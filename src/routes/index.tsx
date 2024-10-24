@@ -1,4 +1,15 @@
 import { asset } from "$fresh/runtime.ts";
+import { FreshContext, Handlers } from "$fresh/server.ts";
+
+
+export const handler: Handlers = {
+  GET: async (_req: Request, ctx: FreshContext) =>{
+    const resp = await ctx.render();
+    resp.headers.set("DevMsg", "Let me know if you see any issues with this site. eric at bullmoose.cc");
+    return resp;
+  },
+};
+
 
 export default function Home() {
   return (
