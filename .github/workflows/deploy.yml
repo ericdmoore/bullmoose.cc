@@ -31,6 +31,6 @@ jobs:
         with:
           project: "ericdmoore-bullmoosecc-76"
           entrypoint: "main.ts"
-          root: "."
+          root: "/bullmoose"
           
           
