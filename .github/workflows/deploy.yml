@@ -24,14 +24,13 @@ jobs:
           deno-version: v1.x
 
       - name: Build step
-        run: "cd bullmoose && deno task build"
-        
+        run: "pwd"
 
       - name: Upload to Deno Deploy
         uses: denoland/deployctl@v1
         with:
           project: "ericdmoore-bullmoosecc-76"
-          entrypoint: "main.ts"
-          root: "/src"
+          entrypoint: "bullmoose/main.ts"
+          root: "bullmoose"
           
           
