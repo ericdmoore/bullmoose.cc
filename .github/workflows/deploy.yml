@@ -30,7 +30,7 @@ jobs:
         uses: denoland/deployctl@v1
         with:
           project: "ericdmoore-bullmoosecc-76"
-          entrypoint: "src/main.ts"
+          entrypoint: "main.ts"
           root: "src"
           
           
