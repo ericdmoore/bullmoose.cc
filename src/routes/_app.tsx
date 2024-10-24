@@ -9,7 +9,7 @@ export default function App({ Component }: PageProps) {
         <meta charset="utf-8" />
         <title>bullmoose.cc</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <link rel="icon" href={asset("/stripped_favicon.svg" )}/>
+        <link rel="icon" href={asset("/stripped_favicon.svg")} />
         <link rel="stylesheet" href={asset("/styles.css")} />
       </head>
       <body class=" bg-slate-50">
