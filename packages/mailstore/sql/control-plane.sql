@@ -46,6 +46,32 @@ CREATE TABLE IF NOT EXISTS identities (
   UNIQUE (account_id, email)
 );
 
+-- Primary login credential (password → mints tokens; passkeys later).
+CREATE TABLE IF NOT EXISTS credentials (
+  principal_id TEXT PRIMARY KEY REFERENCES principals(id),
+  pw_algo      TEXT NOT NULL DEFAULT 'pbkdf2-sha256', -- future: 'argon2id' (WASM)
+  pw_hash      TEXT NOT NULL,
+  pw_salt      TEXT NOT NULL,
+  pw_iters     INTEGER NOT NULL,          -- self-describing: verify uses the row's params
+  updated_at   INTEGER NOT NULL
+);
+
+-- Scoped revocable bearer tokens: device tokens, agent tokens, admin
+-- tokens — one table, one verification path. Plaintext secret is shown
+-- once at mint; only its SHA-256 is stored.
+CREATE TABLE IF NOT EXISTS tokens (
+  id            TEXT PRIMARY KEY,          -- tk_<hex>, embedded in bm_ string
+  principal_id  TEXT NOT NULL REFERENCES principals(id),
+  kind          TEXT NOT NULL DEFAULT 'bearer',   -- future: 'pubkey'
+  secret_hash   TEXT NOT NULL,
+  name          TEXT NOT NULL,             -- "eric-laptop", "hermes-runtime"
+  scopes        TEXT NOT NULL DEFAULT '["mail"]', -- JSON array
+  created_at    INTEGER NOT NULL,
+  expires_at    INTEGER,
+  last_used_at  INTEGER
+);
+CREATE INDEX IF NOT EXISTS tokens_principal ON tokens (principal_id);
+
 -- Inbound address resolution. kind: 'mailbox' | 'alias' | 'forward' | 'catchall'
 CREATE TABLE IF NOT EXISTS routes (
   domain      TEXT NOT NULL REFERENCES domains(domain),

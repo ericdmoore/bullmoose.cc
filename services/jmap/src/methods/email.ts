@@ -62,7 +62,7 @@ async function emailGet(
   args: Record<string, unknown>,
   ctx: RequestContext,
 ): Promise<Record<string, unknown>> {
-  const access = requireAccount(ctx, args);
+  const access = requireAccount(ctx, args, "read");
   if (!Array.isArray(args.ids)) {
     throw new MethodError("invalidArguments", "Email/get requires ids");
   }
@@ -189,7 +189,7 @@ async function emailQuery(
   args: Record<string, unknown>,
   ctx: RequestContext,
 ): Promise<Record<string, unknown>> {
-  const access = requireAccount(ctx, args);
+  const access = requireAccount(ctx, args, "read");
   const store = storeFor(ctx);
 
   const result = await store.queryEmails(access.accountId, {
@@ -227,7 +227,7 @@ async function emailSet(
   args: Record<string, unknown>,
   ctx: RequestContext,
 ): Promise<Record<string, unknown>> {
-  const access = requireAccount(ctx, args);
+  const access = requireAccount(ctx, args, "draft");
   const store = storeFor(ctx);
 
   const oldState = await accountState(ctx, access.accountId);
@@ -492,7 +492,7 @@ async function emailImport(
   args: Record<string, unknown>,
   ctx: RequestContext,
 ): Promise<Record<string, unknown>> {
-  const access = requireAccount(ctx, args);
+  const access = requireAccount(ctx, args, "draft");
   const store = storeFor(ctx);
 
   const oldState = await accountState(ctx, access.accountId);

@@ -2,7 +2,8 @@ import { dispatch, RequestErrors, type JmapRequest } from "@bullmoose/jmap-core"
 import { CORE_CAP, MAIL_CAP, SUBMISSION_CAP, WEBSOCKET_CAP } from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
-import { authenticate, accountAccess, type AuthEnv } from "./auth";
+import { authenticate, accountAccess, principalHasScope, type AuthEnv } from "./auth";
+import { handleLogin, handleTokens } from "./authRoutes";
 import { buildSession } from "./session";
 import { buildRegistry, type RequestContext } from "./methods";
 
@@ -36,11 +37,21 @@ export default {
       return handleShareDownload(url, env);
     }
 
-    const principal = authenticate(request, env);
+    // Password login mints the caller's first bearer token.
+    if (request.method === "POST" && url.pathname === "/auth/login") {
+      return handleLogin(request, env);
+    }
+
+    const principal = await authenticate(request, env);
     if (!principal) {
       return json({ error: "unauthorized" }, 401, {
         "www-authenticate": 'Bearer realm="jmap"',
       });
+    }
+
+    // Self-service token management (list / mint-within-scopes / revoke).
+    if (url.pathname === "/auth/tokens" || url.pathname.startsWith("/auth/tokens/")) {
+      return handleTokens(request, url, env, principal);
     }
 
     // RFC 8620 §2: session resource.
@@ -55,17 +66,20 @@ export default {
 
     // Blob download: /api/download/{accountId}/{blobId}/{name}
     if (request.method === "GET" && url.pathname.startsWith("/api/download/")) {
+      if (!principalHasScope(principal, "read")) return json({ error: "forbidden" }, 403);
       return handleDownload(url, env, principal);
     }
 
     // Blob upload: /api/upload/{accountId}
     if (request.method === "POST" && url.pathname.startsWith("/api/upload/")) {
+      if (!principalHasScope(principal, "draft")) return json({ error: "forbidden" }, 403);
       return handleUpload(request, url, env, principal);
     }
 
     // Mint an expiring public link for an already-uploaded blob:
     // POST /api/share/{accountId}/{blobId}  {name, type?, ttlSeconds?}
     if (request.method === "POST" && url.pathname.startsWith("/api/share/")) {
+      if (!principalHasScope(principal, "draft")) return json({ error: "forbidden" }, 403);
       return handleShareCreate(request, url, env, principal);
     }
 
@@ -75,6 +89,7 @@ export default {
       if (!accountId || !accountAccess(principal, accountId)) {
         return json({ error: "unknown account" }, 404);
       }
+      if (!principalHasScope(principal, "read")) return json({ error: "forbidden" }, 403);
       return accountStub(env.ACCOUNT_DO, accountId).fetch("https://do/ws", request);
     }
 

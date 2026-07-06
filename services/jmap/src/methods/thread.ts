@@ -3,7 +3,7 @@ import { accountState, requireAccount, storeFor, type RequestContext } from "./c
 
 export function registerThreadMethods(registry: MethodRegistry<RequestContext>): void {
   registry.register("Thread/get", async (args, ctx) => {
-    const access = requireAccount(ctx, args);
+    const access = requireAccount(ctx, args, "read");
     if (!Array.isArray(args.ids)) {
       throw new MethodError("invalidArguments", "Thread/get requires ids");
     }

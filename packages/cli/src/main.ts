@@ -9,11 +9,17 @@ import { processAssets } from "./assets.js";
 import { buildMime } from "./mime.js";
 import { pidPaths, readAlivePid, watch, writePid } from "./watch.js";
 import { cmdAdmin } from "./admin.js";
+import { cmdLogin, cmdToken } from "./tokens.js";
 
 const HELP = `bullmoose — JMAP sync client with a local SQLite message log
 
 Usage:
+  bullmoose login <email> --base <url> [--name <device-name>]
+                 (password via prompt, $BULLMOOSE_PASSWORD, or --password;
+                  used once to mint this device's token — never stored)
   bullmoose init --base <url> --token <token> [--account <id>]
+                 (paste an existing token instead of logging in)
+  bullmoose token create --name <n> [--scopes read,draft] | list | revoke <id>
   bullmoose sync [--blobs <dir>]
   bullmoose send --to <addr>[,<addr>] --subject <s> [--cc ..] [--bcc ..]
                  [--expandMD no|html] [--file <path>] [--body <text>]
@@ -34,6 +40,9 @@ Usage:
   bullmoose admin tenant  create <id> --name <n> | list
   bullmoose admin domain  add <domain> --tenant <t> | status <domain> | list
   bullmoose admin account create <local@domain> --tenant <t> [--name <n>] | list [--tenant <t>]
+  bullmoose admin password <email>            set a principal's login password
+  bullmoose admin token   create <email> --name <n> [--scopes read,draft,send]
+                          | list [<email>] | revoke <id>    (agent/operator tokens)
                  (operator surface — wraps the provision worker; separate
                  credentials from the mail account. Planned nouns: route,
                  identity, policy, share, suppression, token, agent)
@@ -64,6 +73,8 @@ const { values: opts, positionals } = parseArgs({
     token: { type: "string" },
     tenant: { type: "string" },
     name: { type: "string" },
+    password: { type: "string" },
+    scopes: { type: "string" },
     account: { type: "string" },
     blobs: { type: "string" },
     mailbox: { type: "string" },
@@ -101,6 +112,21 @@ try {
     case "init":
       await cmdInit();
       break;
+    case "login":
+      await cmdLogin(db, positionals[1], {
+        base: opts.base,
+        password: opts.password,
+        name: opts.name,
+        json: opts.json ?? false,
+      });
+      break;
+    case "token":
+      await cmdToken(db, requireSettings(db), positionals.slice(1), {
+        name: opts.name,
+        scopes: opts.scopes,
+        json: opts.json ?? false,
+      });
+      break;
     case "sync":
       await cmdSync();
       break;
@@ -131,6 +157,8 @@ try {
         token: opts.token,
         tenant: opts.tenant,
         name: opts.name,
+        password: opts.password,
+        scopes: opts.scopes,
         json: opts.json ?? false,
       });
       break;

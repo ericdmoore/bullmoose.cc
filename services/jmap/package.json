@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@bullmoose/account-do": "*",
+    "@bullmoose/auth-core": "*",
     "@bullmoose/jmap-core": "*",
     "@bullmoose/mailstore": "*",
     "@bullmoose/mime": "*",

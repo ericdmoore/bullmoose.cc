@@ -15,6 +15,7 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
+      "@bullmoose/auth-core": ["packages/auth-core/src/index.ts"],
       "@bullmoose/jmap-core": ["packages/jmap-core/src/index.ts"],
       "@bullmoose/account-do": ["packages/account-do/src/index.ts"],
       "@bullmoose/mailstore": ["packages/mailstore/src/index.ts"],

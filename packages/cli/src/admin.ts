@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { getConfig, setConfig } from "./db.js";
+import { promptHidden } from "./tokens.js";
 
 /**
  * `bullmoose admin <noun> <verb>` — operator surface, wrapping the
@@ -24,6 +25,8 @@ export interface AdminOpts {
   token?: string;
   tenant?: string;
   name?: string;
+  password?: string;
+  scopes?: string;
   json: boolean;
 }
 
@@ -119,12 +122,56 @@ export async function cmdAdmin(
       });
       return;
     }
-    default:
+    case "token create": {
+      if (!arg || !opts.name) fail("usage: admin token create <email> --name <n> [--scopes read,draft,send]");
+      const scopes = opts.scopes ? opts.scopes.split(",").map((s) => s.trim()) : ["mail"];
+      const res = (await api("POST", "/tokens", { email: arg, name: opts.name, scopes })) as {
+        token: string;
+        tokenId: string;
+      };
+      out(res, opts, () => {
+        console.log(`minted ${res.tokenId} for ${arg} [${scopes.join(",")}]`);
+        console.log(`\n  ${res.token}\n`);
+        console.log("shown once — deliver it to the device/agent now.");
+      });
+      return;
+    }
+    case "token list": {
+      const qs = arg ? `?email=${encodeURIComponent(arg)}` : "";
+      const res = (await api("GET", `/tokens${qs}`)) as { tokens: Array<Record<string, unknown>> };
+      out(res, opts, () => {
+        for (const t of res.tokens) {
+          const scopes = JSON.parse(t.scopes as string).join(",");
+          console.log(`${t.id}  ${t.login_email}  [${scopes}]  ${t.name}`);
+        }
+        if (res.tokens.length === 0) console.log("(no tokens)");
+      });
+      return;
+    }
+    case "token revoke": {
+      if (!arg) fail("usage: admin token revoke <tokenId>");
+      const res = (await api("DELETE", `/tokens/${arg}`)) as { revoked: boolean };
+      out(res, opts, () => console.log(res.revoked ? `revoked ${arg}` : `${arg} not found`));
+      return;
+    }
+    default: {
+      // `admin password <email>` — noun with no separate verb.
+      if (noun === "password") {
+        const email = verb;
+        if (!email) fail("usage: admin password <email> [--password <pw>]");
+        const password =
+          opts.password ?? process.env.BULLMOOSE_PASSWORD ?? (await promptHidden(`new password for ${email}: `));
+        const res = await api("POST", "/principals/password", { email, password });
+        out(res, opts, () => console.log(`password set for ${email}`));
+        return;
+      }
       fail(
         `unknown admin command: ${[noun, verb].filter(Boolean).join(" ") || "(none)"}\n` +
-          `implemented: init | tenant create/list | domain add/status/list | account create/list\n` +
-          `designed (not yet built): route, identity, policy, share, suppression, token, agent`,
+          `implemented: init | tenant create/list | domain add/status/list |\n` +
+          `             account create/list | password <email> | token create/list/revoke\n` +
+          `designed (not yet built): route, identity, policy, share, suppression, agent`,
       );
+    }
   }
 }
 

@@ -1,7 +1,7 @@
 import { MethodError } from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
-import { accountAccess, type AccountAccess, type Principal } from "../auth";
+import { accountAccess, principalHasScope, type AccountAccess, type Principal } from "../auth";
 import type { Env } from "../index";
 
 export interface RequestContext {
@@ -9,13 +9,26 @@ export interface RequestContext {
   principal: Principal;
 }
 
-export function requireAccount(ctx: RequestContext, args: Record<string, unknown>): AccountAccess {
+/**
+ * Resolve + authorize the account for a method call. `scope` is the verb
+ * this method needs ("read" | "draft" | "send" | ...); the "mail" scope
+ * covers all mail verbs. Grant-scoped tokens (agents!) fail here with
+ * `forbidden` before touching any data.
+ */
+export function requireAccount(
+  ctx: RequestContext,
+  args: Record<string, unknown>,
+  scope: string,
+): AccountAccess {
   const accountId = args.accountId;
   if (typeof accountId !== "string") {
     throw new MethodError("invalidArguments", "accountId is required");
   }
   const access = accountAccess(ctx.principal, accountId);
   if (!access) throw new MethodError("accountNotFound");
+  if (!principalHasScope(ctx.principal, scope)) {
+    throw new MethodError("forbidden", `token lacks the "${scope}" scope`);
+  }
   return access;
 }
 
@@ -35,7 +48,7 @@ export async function proxyChanges(
   args: Record<string, unknown>,
   collection: "Email" | "Mailbox" | "Thread" | "EmailSubmission",
 ): Promise<Record<string, unknown>> {
-  const access = requireAccount(ctx, args);
+  const access = requireAccount(ctx, args, "read");
   const since = args.sinceState;
   if (typeof since !== "string") {
     throw new MethodError("invalidArguments", "sinceState is required");

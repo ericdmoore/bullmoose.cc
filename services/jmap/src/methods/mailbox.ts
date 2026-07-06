@@ -4,7 +4,7 @@ import { accountState, proxyChanges, requireAccount, storeFor, type RequestConte
 
 export function registerMailboxMethods(registry: MethodRegistry<RequestContext>): void {
   registry.register("Mailbox/get", async (args, ctx) => {
-    const access = requireAccount(ctx, args);
+    const access = requireAccount(ctx, args, "read");
     const store = storeFor(ctx);
 
     const ids = args.ids === null || args.ids === undefined ? undefined : (args.ids as string[]);
@@ -52,7 +52,7 @@ export function registerMailboxMethods(registry: MethodRegistry<RequestContext>)
 
   // himalaya enumerates folders via query, not get (§15 punch list).
   registry.register("Mailbox/query", async (args, ctx) => {
-    const access = requireAccount(ctx, args);
+    const access = requireAccount(ctx, args, "read");
     const store = storeFor(ctx);
     const rows = await store.getMailboxes(access.accountId);
 

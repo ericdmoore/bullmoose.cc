@@ -1,4 +1,5 @@
 import { AwsClient } from "aws4fetch";
+import { hashPassword, mintToken } from "@bullmoose/auth-core";
 
 /**
  * Provision — multi-domain onboarding, fully API-driven (§8 of the design
@@ -64,6 +65,24 @@ export default {
           },
           env,
         );
+      }
+      if (route === "POST /principals/password") {
+        return setPassword((await request.json()) as { email: string; password: string }, env);
+      }
+      if (route === "POST /tokens") {
+        return mintPrincipalToken(
+          (await request.json()) as {
+            email: string;
+            name: string;
+            scopes?: string[];
+            expiresDays?: number;
+          },
+          env,
+        );
+      }
+      if (route === "GET /tokens") return listTokens(url, env);
+      if (request.method === "DELETE" && /^\/tokens\/[^/]+$/.test(url.pathname)) {
+        return revokeToken(url.pathname.split("/")[2] as string, env);
       }
     } catch (err) {
       return json({ error: String(err) }, 500);
@@ -314,6 +333,79 @@ async function createAccount(
   );
 
   return json({ ok: true, accountId, address });
+}
+
+// ---- credentials & tokens ---------------------------------------------
+
+async function findPrincipal(env: Env, email: string): Promise<{ id: string } | null> {
+  return env.DB.prepare(`SELECT id FROM principals WHERE login_email = ?`)
+    .bind(email.toLowerCase())
+    .first<{ id: string }>();
+}
+
+async function setPassword(body: { email: string; password: string }, env: Env) {
+  if (!body.email || !body.password || body.password.length < 8) {
+    return json({ error: "email and password (min 8 chars) required" }, 400);
+  }
+  const principal = await findPrincipal(env, body.email);
+  if (!principal) return json({ error: `no principal for ${body.email}` }, 404);
+
+  const hashed = await hashPassword(body.password);
+  await env.DB.prepare(
+    `INSERT INTO credentials (principal_id, pw_hash, pw_salt, pw_iters, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (principal_id) DO UPDATE SET
+       pw_hash = excluded.pw_hash, pw_salt = excluded.pw_salt,
+       pw_iters = excluded.pw_iters, updated_at = excluded.updated_at`,
+  )
+    .bind(principal.id, hashed.hashHex, hashed.saltHex, hashed.iterations, Date.now())
+    .run();
+  return json({ ok: true, email: body.email.toLowerCase() });
+}
+
+/** Operator-minted tokens: agent runtimes, devices for other users, etc. */
+async function mintPrincipalToken(
+  body: { email: string; name: string; scopes?: string[]; expiresDays?: number },
+  env: Env,
+) {
+  if (!body.email || !body.name) return json({ error: "email and name required" }, 400);
+  const principal = await findPrincipal(env, body.email);
+  if (!principal) return json({ error: `no principal for ${body.email}` }, 404);
+
+  const scopes = body.scopes ?? ["mail"];
+  const minted = await mintToken();
+  await env.DB.prepare(
+    `INSERT INTO tokens (id, principal_id, secret_hash, name, scopes, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      minted.id,
+      principal.id,
+      minted.secretHash,
+      body.name,
+      JSON.stringify(scopes),
+      Date.now(),
+      body.expiresDays ? Date.now() + body.expiresDays * 86_400_000 : null,
+    )
+    .run();
+  return json({ token: minted.token, tokenId: minted.id, scopes }); // shown once
+}
+
+async function listTokens(url: URL, env: Env) {
+  const email = url.searchParams.get("email");
+  const { results } = await env.DB.prepare(
+    `SELECT t.id, t.name, t.scopes, t.created_at, t.expires_at, t.last_used_at, p.login_email
+     FROM tokens t JOIN principals p ON p.id = t.principal_id
+     ${email ? "WHERE p.login_email = ?" : ""} ORDER BY t.created_at`,
+  )
+    .bind(...(email ? [email.toLowerCase()] : []))
+    .all();
+  return json({ tokens: results });
+}
+
+async function revokeToken(id: string, env: Env) {
+  const res = await env.DB.prepare(`DELETE FROM tokens WHERE id = ?`).bind(id).run();
+  return json({ revoked: (res.meta.changes ?? 0) > 0 });
 }
 
 // ---- API helpers -----------------------------------------------------
