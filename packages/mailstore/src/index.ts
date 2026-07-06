@@ -122,6 +122,18 @@ export interface SubmissionRow {
 const blobKey = (tenantId: string, accountId: string, blobId: string) =>
   `mail/${tenantId}/${accountId}/blobs/${blobId}`;
 
+/**
+ * Normalize an RFC 5322 Message-ID for storage: JMAP exposes ids WITHOUT
+ * angle brackets, and thread resolution compares stored message_id against
+ * stored in_reply_to — so every write path must strip consistently
+ * (postal-mime returns "<id@host>"; Email/set create generates bare ids).
+ */
+export function normalizeMessageId(raw: string | null | undefined): string | null {
+  const trimmed = raw?.trim() ?? "";
+  if (!trimmed) return null;
+  return trimmed.replace(/^<|>$/g, "") || null;
+}
+
 export class Mailstore {
   constructor(
     private db: D1Database,

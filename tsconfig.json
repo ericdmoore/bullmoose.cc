@@ -23,5 +23,8 @@
     }
   },
   "include": ["packages/*/src/**/*.ts", "services/*/src/**/*.ts"],
-  "exclude": ["node_modules", "src", "webmail"]
+  // packages/cli is a Node program (node:sqlite etc.) with its own
+  // tsconfig — Node globals clash with workers-types, so it's excluded
+  // here and typechecked separately (npm run typecheck covers both).
+  "exclude": ["node_modules", "src", "webmail", "packages/cli"]
 }

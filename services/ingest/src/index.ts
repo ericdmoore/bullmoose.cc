@@ -1,6 +1,11 @@
 import PostalMime from "postal-mime";
 import { commitChanges } from "@bullmoose/account-do";
-import { Mailstore, type AttachmentMeta, type EmailAddress } from "@bullmoose/mailstore";
+import {
+  Mailstore,
+  normalizeMessageId,
+  type AttachmentMeta,
+  type EmailAddress,
+} from "@bullmoose/mailstore";
 
 /**
  * Ingest — the Email Routing target for every hosted domain.
@@ -40,7 +45,7 @@ export default {
     const blobId = await store.putBlob(route.tenantId, route.accountId, raw);
 
     const parsed = await PostalMime.parse(raw);
-    const inReplyTo = parsed.inReplyTo?.trim() || null;
+    const inReplyTo = normalizeMessageId(parsed.inReplyTo);
     const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
     const inboxId = await store.ensureRoleMailbox(route.accountId, "inbox", "Inbox");
 
@@ -66,7 +71,7 @@ export default {
       id: emailId,
       blobId,
       threadId,
-      messageId: parsed.messageId ?? null,
+      messageId: normalizeMessageId(parsed.messageId),
       inReplyTo,
       subject: parsed.subject ?? "",
       from: toAddresses(parsed.from ? [parsed.from] : []),

@@ -82,6 +82,9 @@ and HTTPS subscription pointed at
 `https://bullmoose-submit.<account>.workers.dev/webhooks/ses`
 (bounce/complaint suppression). Also request SES production access early.
 
+See `tools/README.md` for the full local e2e suites and the CLI-based
+incremental-sync test.
+
 ## 5. Smoke test
 
 ```sh

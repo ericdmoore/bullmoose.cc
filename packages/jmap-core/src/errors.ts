@@ -21,7 +21,10 @@ export type MethodErrorType =
   | "accountReadOnly"
   | "requestTooLarge"
   | "cannotCalculateChanges"
-  | "stateMismatch";
+  | "stateMismatch"
+  // SetError types surfaced through MethodError in /set-shaped methods:
+  | "blobNotFound"
+  | "notFound";
 
 /**
  * Thrown inside a method handler; the dispatcher converts it into an

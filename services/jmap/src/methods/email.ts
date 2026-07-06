@@ -2,7 +2,14 @@ import PostalMime from "postal-mime";
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
-import type { EmailAddress, EmailFilter, EmailRow, EmailSort, Mailstore } from "@bullmoose/mailstore";
+import {
+  normalizeMessageId,
+  type EmailAddress,
+  type EmailFilter,
+  type EmailRow,
+  type EmailSort,
+  type Mailstore,
+} from "@bullmoose/mailstore";
 import {
   accountState,
   proxyChanges,
@@ -41,7 +48,12 @@ export function registerEmailMethods(registry: MethodRegistry<RequestContext>): 
   registry.register("Email/get", emailGet);
   registry.register("Email/query", emailQuery);
   registry.register("Email/set", emailSet);
+  registry.register("Email/import", emailImport);
   registry.register("Email/changes", async (args, ctx) => proxyChanges(ctx, args, "Email"));
+  // Email/query advertises canCalculateChanges: false; answer per spec.
+  registry.register("Email/queryChanges", async () => {
+    throw new MethodError("cannotCalculateChanges");
+  });
 }
 
 // ---- Email/get -------------------------------------------------------
@@ -409,10 +421,11 @@ async function createDraft(
   const cc = fromJmapAddresses(spec.cc);
   const bcc = fromJmapAddresses(spec.bcc);
   const subject = typeof spec.subject === "string" ? spec.subject : "";
-  const inReplyTo =
+  const inReplyTo = normalizeMessageId(
     Array.isArray(spec.inReplyTo) && typeof spec.inReplyTo[0] === "string"
       ? (spec.inReplyTo[0] as string)
-      : null;
+      : null,
+  );
 
   // Body: resolve textBody/htmlBody partId refs against bodyValues.
   const bodyValues = (spec.bodyValues as Record<string, { value?: string }> | undefined) ?? {};
@@ -463,6 +476,136 @@ async function createDraft(
   for (const mb of mailboxIds) r.mailboxesTouched.add(mb);
 
   return { id, blobId, threadId, size: raw.byteLength };
+}
+
+// ---- Email/import (RFC 8621 §4.8) --------------------------------------
+// himalaya's send path: Blob upload → Email/import into drafts → submit.
+
+interface ImportSpec {
+  blobId?: string;
+  mailboxIds?: Record<string, unknown>;
+  keywords?: Record<string, unknown>;
+  receivedAt?: string;
+}
+
+async function emailImport(
+  args: Record<string, unknown>,
+  ctx: RequestContext,
+): Promise<Record<string, unknown>> {
+  const access = requireAccount(ctx, args);
+  const store = storeFor(ctx);
+
+  const oldState = await accountState(ctx, access.accountId);
+  if (typeof args.ifInState === "string" && args.ifInState !== oldState) {
+    throw new MethodError("stateMismatch");
+  }
+
+  const created: Record<string, unknown> = {};
+  const notCreated: Record<string, SetError> = {};
+  const emailsCreated: string[] = [];
+  const mailboxesTouched = new Set<string>();
+
+  const specs = (args.emails as Record<string, ImportSpec> | undefined) ?? {};
+  for (const [cid, spec] of Object.entries(specs)) {
+    try {
+      const result = await importOne(store, access, spec, mailboxesTouched);
+      created[cid] = result;
+      emailsCreated.push(result.id);
+    } catch (err) {
+      notCreated[cid] =
+        err instanceof MethodError
+          ? setError(err.type === "invalidArguments" ? "invalidProperties" : err.type, err.description)
+          : setError("serverFail", String(err));
+    }
+  }
+
+  let newState = oldState;
+  if (emailsCreated.length > 0) {
+    ({ newState } = await commitChanges(ctx.env.ACCOUNT_DO, access.accountId, [
+      { collection: "Email", created: emailsCreated },
+      { collection: "Mailbox", updated: [...mailboxesTouched] },
+    ]));
+  }
+
+  return { accountId: access.accountId, oldState, newState, created, notCreated };
+}
+
+async function importOne(
+  store: Mailstore,
+  access: { accountId: string; tenantId: string },
+  spec: ImportSpec,
+  mailboxesTouched: Set<string>,
+): Promise<{ id: string; blobId: string; threadId: string; size: number }> {
+  if (!spec.blobId) throw new MethodError("invalidArguments", "blobId is required");
+  const mailboxIds = Object.entries(spec.mailboxIds ?? {})
+    .filter(([, v]) => v === true)
+    .map(([k]) => k);
+  if (mailboxIds.length === 0) {
+    throw new MethodError("invalidArguments", "mailboxIds must contain at least one mailbox");
+  }
+  const keywords = Object.entries(spec.keywords ?? {})
+    .filter(([, v]) => v === true)
+    .map(([k]) => k);
+
+  const blob = await store.getBlob(access.tenantId, access.accountId, spec.blobId);
+  if (!blob) throw new MethodError("blobNotFound", `blob ${spec.blobId} not found`);
+  const raw = await blob.arrayBuffer();
+
+  const parsed = await PostalMime.parse(raw);
+  const inReplyTo = normalizeMessageId(parsed.inReplyTo);
+  const threadId = await store.resolveThreadId(access.accountId, inReplyTo);
+
+  // Attachments become individual content-hash blobs, same as ingest.
+  const attachments = [];
+  for (const att of parsed.attachments ?? []) {
+    const content =
+      typeof att.content === "string" ? new TextEncoder().encode(att.content).buffer : att.content;
+    const attBlobId = await store.putBlob(access.tenantId, access.accountId, content as ArrayBuffer);
+    attachments.push({
+      blobId: attBlobId,
+      type: att.mimeType ?? "application/octet-stream",
+      name: att.filename ?? null,
+      size: (content as ArrayBuffer).byteLength,
+      cid: att.contentId ?? null,
+      disposition: att.disposition ?? null,
+    });
+  }
+
+  const id = `e_${crypto.randomUUID()}`;
+  const receivedAt = spec.receivedAt
+    ? Date.parse(spec.receivedAt)
+    : parsed.date
+      ? Date.parse(parsed.date)
+      : Date.now();
+
+  await store.insertEmail(access.accountId, {
+    id,
+    blobId: spec.blobId,
+    threadId,
+    messageId: normalizeMessageId(parsed.messageId),
+    inReplyTo,
+    subject: parsed.subject ?? "",
+    from: importAddresses(parsed.from ? [parsed.from] : []),
+    to: importAddresses(parsed.to ?? []),
+    cc: importAddresses(parsed.cc ?? []),
+    bcc: importAddresses(parsed.bcc ?? []),
+    preview: (parsed.text ?? "").slice(0, 256),
+    size: raw.byteLength,
+    receivedAt: Number.isFinite(receivedAt) ? receivedAt : Date.now(),
+    hasAttachment: attachments.some((a) => a.disposition !== "inline"),
+    attachments,
+    mailboxIds,
+    keywords,
+  });
+
+  for (const mb of mailboxIds) mailboxesTouched.add(mb);
+  return { id, blobId: spec.blobId, threadId, size: raw.byteLength };
+}
+
+function importAddresses(list: Array<{ name?: string; address?: string }>): EmailAddress[] {
+  return list
+    .filter((a) => a.address)
+    .map((a) => ({ ...(a.name ? { name: a.name } : {}), email: a.address as string }));
 }
 
 function resolveBodyPart(
