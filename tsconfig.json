@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["@cloudflare/workers-types"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@bullmoose/jmap-core": ["packages/jmap-core/src/index.ts"],
+      "@bullmoose/account-do": ["packages/account-do/src/index.ts"],
+      "@bullmoose/mailstore": ["packages/mailstore/src/index.ts"],
+      "@bullmoose/outbound": ["packages/outbound/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src/**/*.ts", "services/*/src/**/*.ts"],
+  "exclude": ["node_modules", "src", "webmail"]
+}

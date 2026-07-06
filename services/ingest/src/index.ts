@@ -1,0 +1,93 @@
+import PostalMime from "postal-mime";
+import { commitChanges } from "@bullmoose/account-do";
+import { Mailstore, type EmailAddress } from "@bullmoose/mailstore";
+
+/**
+ * Ingest — the Email Routing target for every hosted domain.
+ *
+ * Pipeline per message:
+ *   1. resolve RCPT via the KV route table (exact → plus-strip → catch-all)
+ *   2. store raw RFC 5322 bytes in R2 (blobId = content hash)
+ *   3. parse MIME and insert metadata into the account's D1 shard
+ *   4. commit to AccountDO → state bump + WebSocket push to live clients
+ */
+
+export interface Env {
+  DB: D1Database;
+  BLOBS: R2Bucket;
+  ROUTES: KVNamespace;
+  ACCOUNT_DO: DurableObjectNamespace;
+}
+
+/** Value shape stored under route:{domain}:{localpart} in KV. */
+interface Route {
+  kind: "mailbox" | "alias" | "forward" | "catchall";
+  accountId: string;
+  tenantId: string;
+}
+
+export default {
+  async email(message: ForwardableEmailMessage, env: Env, _ctx: ExecutionContext) {
+    const [localpart = "", domain = ""] = message.to.toLowerCase().split("@");
+    const route = await resolveRoute(env.ROUTES, domain, localpart);
+    if (!route) {
+      message.setReject("550 5.1.1 recipient unknown");
+      return;
+    }
+
+    const raw = await new Response(message.raw).arrayBuffer();
+    const store = new Mailstore(env.DB, env.BLOBS);
+    const blobId = await store.putBlob(route.tenantId, route.accountId, raw);
+
+    const parsed = await PostalMime.parse(raw);
+    const inReplyTo = parsed.inReplyTo?.trim() || null;
+    const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
+    const inboxId = await store.ensureRoleMailbox(route.accountId, "inbox", "Inbox");
+
+    const emailId = `e_${crypto.randomUUID()}`;
+    await store.insertEmail(route.accountId, {
+      id: emailId,
+      blobId,
+      threadId,
+      messageId: parsed.messageId ?? null,
+      inReplyTo,
+      subject: parsed.subject ?? "",
+      from: toAddresses(parsed.from ? [parsed.from] : []),
+      to: toAddresses(parsed.to ?? []),
+      preview: (parsed.text ?? "").slice(0, 256),
+      size: raw.byteLength,
+      receivedAt: Date.now(),
+      hasAttachment: (parsed.attachments?.length ?? 0) > 0,
+      mailboxIds: [inboxId],
+      keywords: [],
+    });
+
+    // Single-writer state bump; pushes StateChange to connected clients.
+    await commitChanges(env.ACCOUNT_DO, route.accountId, [
+      { collection: "Email", created: [emailId] },
+      { collection: "Mailbox", updated: [inboxId] },
+    ]);
+  },
+} satisfies ExportedHandler<Env>;
+
+/** exact match → plus-tag stripped → catch-all. Alias fan-out is TODO. */
+async function resolveRoute(
+  kv: KVNamespace,
+  domain: string,
+  localpart: string,
+): Promise<Route | null> {
+  const base = localpart.split("+")[0] ?? localpart;
+  return (
+    (await kv.get<Route>(`route:${domain}:${localpart}`, "json")) ??
+    (base !== localpart ? await kv.get<Route>(`route:${domain}:${base}`, "json") : null) ??
+    (await kv.get<Route>(`route:${domain}:*`, "json"))
+  );
+}
+
+function toAddresses(
+  list: Array<{ name?: string; address?: string }>,
+): EmailAddress[] {
+  return list
+    .filter((a) => a.address)
+    .map((a) => ({ ...(a.name ? { name: a.name } : {}), email: a.address as string }));
+}

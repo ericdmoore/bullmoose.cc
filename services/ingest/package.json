@@ -1,0 +1,15 @@
+{
+  "name": "@bullmoose/service-ingest",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@bullmoose/account-do": "*",
+    "@bullmoose/mailstore": "*",
+    "postal-mime": "^2.3.2"
+  }
+}

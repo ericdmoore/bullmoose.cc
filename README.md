@@ -1,2 +1,22 @@
 # bullmoose.cc
 My hat is still in the ring
+
+## Mail platform
+
+A serverless JMAP mail server (multi-domain) is being built in this repo:
+Cloudflare Workers + Durable Objects + D1 + R2 for the mailstore and sync,
+AWS SES for outbound. Design doc: [`docs/architecture/serverless-jmap.md`](docs/architecture/serverless-jmap.md).
+
+```
+packages/jmap-core    JMAP wire types, errors, method dispatch (RFC 8620)
+packages/account-do   per-account Durable Object: state, changelog, WS push
+packages/mailstore    D1 schemas + data access, R2 blob keyspace
+packages/outbound     OutboundRelay adapter (SES via SigV4 fetch)
+services/jmap         JMAP HTTP endpoint: session, api, upload/download, ws
+services/ingest       Email Routing target: parse → R2/D1 → state bump
+services/submit       outbound sends + SES bounce/complaint webhook
+infra/                bootstrap runbook (D1/R2/KV creation, deploy order)
+src/                  the existing bullmoose.cc Fresh site (unchanged)
+```
+
+Dev: `npm install && npm run typecheck`, then `npm run dev:jmap`.

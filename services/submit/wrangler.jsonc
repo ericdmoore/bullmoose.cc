@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bullmoose-submit",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "ACCOUNT_DO", "class_name": "AccountDO", "script_name": "bullmoose-jmap" }
+    ]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bullmoose-mail-shard0",
+      "database_id": "REPLACE_AFTER_wrangler_d1_create"
+    }
+  ],
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "bullmoose-mail-blobs" }],
+  "kv_namespaces": [{ "binding": "ROUTES", "id": "REPLACE_AFTER_wrangler_kv_create" }],
+
+  "vars": {
+    "SES_REGION": "us-east-1"
+  }
+  // Secrets (wrangler secret put):
+  //   SES_ACCESS_KEY_ID     — IAM user scoped to ses:SendRawEmail only
+  //   SES_SECRET_ACCESS_KEY
+  //   INTERNAL_TOKEN        — shared secret for /internal/* calls from jmap worker
+}
