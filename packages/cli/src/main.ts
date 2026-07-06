@@ -1,9 +1,12 @@
 import { parseArgs } from "node:util";
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { marked } from "marked";
 import { defaultDbPath, getConfig, openDb, requireSettings, setConfig } from "./db.js";
 import { JmapClient } from "./jmap.js";
 import { sync } from "./sync.js";
+import { processAssets } from "./assets.js";
+import { buildMime } from "./mime.js";
 
 const HELP = `bullmoose — JMAP sync client with a local SQLite message log
 
@@ -12,8 +15,8 @@ Usage:
   bullmoose sync [--blobs <dir>]
   bullmoose send --to <addr>[,<addr>] --subject <s> [--cc ..] [--bcc ..]
                  [--expandMD no|html] [--file <path>] [--body <text>]
-                 [--identity <id-or-email>]
-                 (body from --file, else piped stdin, else --body)
+                 [--identity <id-or-email>] [--linkMax <MiB>] [--linkTTL <days>]
+                 (body from --file, else --body, else piped stdin)
   bullmoose read [emailId] [--raw] [--json]
                  (no id → most recent message)
   bullmoose log [-n <count>] [--mailbox <role-or-id>] [--json]
@@ -23,9 +26,17 @@ Usage:
 
 Options:
   --db <path>        SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db)
-  --expandMD html    treat the body as Markdown: send multipart/alternative
-                     with the raw Markdown as text and rendered HTML
+  --expandMD html    treat the body as Markdown: rendered HTML becomes the
+                     displayed body (raw Markdown rides along as the hidden
+                     plain-text fallback). Local references are resolved
+                     relative to --file's directory (or cwd for stdin):
+                       images       → inlined as cid: parts
+                       linked files → attached, link annotated
+                       either, over --linkMax → uploaded to R2 and rewritten
+                         to a signed link expiring after --linkTTL days
   --expandMD no      send the body as plain text as-is (default)
+  --linkMax <MiB>    big-file threshold (default 4)
+  --linkTTL <days>   share-link lifetime (default 30)
 
 The database is the server's own data-plane schema — open it directly with
 \`sqlite3\` for anything the commands don't cover.`;
@@ -46,6 +57,8 @@ const { values: opts, positionals } = parseArgs({
     file: { type: "string" },
     body: { type: "string" },
     expandMD: { type: "string", default: "no" },
+    linkMax: { type: "string", default: "4" },
+    linkTTL: { type: "string", default: "30" },
     identity: { type: "string" },
     raw: { type: "boolean", default: false },
     json: { type: "boolean", default: false },
@@ -178,40 +191,105 @@ async function cmdSend(): Promise<void> {
     process.exit(1);
   }
 
-  // 1. Create the draft (server builds the MIME).
-  const bodyValues: Record<string, { value: string }> = { t: { value: body } };
-  const bodyParts: Record<string, unknown> = { textBody: [{ partId: "t", type: "text/plain" }] };
+  // 1. Create the draft.
+  let draftId: string;
+  let extras = "";
+
   if (expand === "html") {
-    bodyValues.h = { value: marked.parse(body, { async: false }) };
-    bodyParts.htmlBody = [{ partId: "h", type: "text/html" }];
-  }
+    // Markdown mode: render, resolve local assets, build the MIME locally
+    // (cid inline images / attachments / expiring big-file links need
+    // multipart/related+mixed), then upload → Email/import into Drafts.
+    const baseDir = opts.file ? dirname(resolve(opts.file)) : process.cwd();
+    const linkMaxBytes = Math.max(0.1, Number(opts.linkMax) || 4) * 1024 * 1024;
+    const ttlSeconds = Math.max(1, Number(opts.linkTTL) || 30) * 24 * 3600;
 
-  const setRes = await client.one("Email/set", {
-    accountId: settings.accountId,
-    create: {
-      d: {
-        mailboxIds: { [draftsId]: true },
-        keywords: { $draft: true, $seen: true },
-        from: [{ ...(identity.name ? { name: identity.name } : {}), email: identity.email }],
-        to,
-        ...(cc.length > 0 ? { cc } : {}),
-        ...(bcc.length > 0 ? { bcc } : {}),
-        subject,
-        bodyValues,
-        ...bodyParts,
+    const rendered = marked.parse(body, { async: false });
+    const assets = await processAssets(body, rendered, baseDir, {
+      linkMaxBytes,
+      share: async (file) => {
+        const { blobId } = await client.upload(settings.accountId, file.content, file.type);
+        const { url } = await client.createShareLink(settings.accountId, blobId, {
+          name: file.name,
+          type: file.type,
+          ttlSeconds,
+        });
+        return url;
       },
-    },
-  });
-  const draft = (setRes.created as Record<string, { id: string }> | undefined)?.d;
-  if (!draft) {
-    console.error(`draft creation failed: ${JSON.stringify(setRes.notCreated)}`);
-    process.exit(1);
+    });
+    for (const w of assets.warnings) console.error(`warning: ${w}`);
+
+    const raw = buildMime({
+      from: [{ ...(identity.name ? { name: identity.name } : {}), email: identity.email }],
+      to,
+      ...(cc.length > 0 ? { cc } : {}),
+      subject,
+      messageId: `${crypto.randomUUID()}@${identity.email.split("@")[1] ?? "localhost"}`,
+      date: new Date(),
+      text: assets.text,
+      html: assets.html,
+      inline: assets.inline,
+      attachments: assets.attachments,
+    });
+
+    const { blobId } = await client.upload(settings.accountId, raw, "message/rfc822");
+    const impRes = await client.one("Email/import", {
+      accountId: settings.accountId,
+      emails: {
+        d: { blobId, mailboxIds: { [draftsId]: true }, keywords: { $draft: true, $seen: true } },
+      },
+    });
+    const imported = (impRes.created as Record<string, { id: string }> | undefined)?.d;
+    if (!imported) {
+      console.error(`draft import failed: ${JSON.stringify(impRes.notCreated)}`);
+      process.exit(1);
+    }
+    draftId = imported.id;
+
+    const bits = ["markdown→html"];
+    if (assets.inline.length > 0) bits.push(`${assets.inline.length} inlined`);
+    if (assets.attachments.length > 0) bits.push(`${assets.attachments.length} attached`);
+    if (assets.linked.length > 0) {
+      bits.push(`${assets.linked.length} linked (expires in ${opts.linkTTL}d)`);
+    }
+    extras = `, ${bits.join(", ")}`;
+  } else {
+    // Plain text: the server builds the MIME from bodyValues.
+    const setRes = await client.one("Email/set", {
+      accountId: settings.accountId,
+      create: {
+        d: {
+          mailboxIds: { [draftsId]: true },
+          keywords: { $draft: true, $seen: true },
+          from: [{ ...(identity.name ? { name: identity.name } : {}), email: identity.email }],
+          to,
+          ...(cc.length > 0 ? { cc } : {}),
+          ...(bcc.length > 0 ? { bcc } : {}),
+          subject,
+          bodyValues: { t: { value: body } },
+          textBody: [{ partId: "t", type: "text/plain" }],
+        },
+      },
+    });
+    const draft = (setRes.created as Record<string, { id: string }> | undefined)?.d;
+    if (!draft) {
+      console.error(`draft creation failed: ${JSON.stringify(setRes.notCreated)}`);
+      process.exit(1);
+    }
+    draftId = draft.id;
   }
 
-  // 2. Submit it; on success the server moves it Drafts → Sent.
+  // 2. Submit; on success the server moves it Drafts → Sent. The envelope
+  // is explicit so bcc recipients (never written into the MIME) receive it.
+  const rcptTo = [...to, ...cc, ...bcc].map((a) => ({ email: a.email }));
   const subRes = await client.one("EmailSubmission/set", {
     accountId: settings.accountId,
-    create: { s: { emailId: draft.id, identityId: identity.id } },
+    create: {
+      s: {
+        emailId: draftId,
+        identityId: identity.id,
+        envelope: { mailFrom: { email: identity.email }, rcptTo },
+      },
+    },
     onSuccessUpdateEmail: {
       "#s": {
         [`mailboxIds/${draftsId}`]: null,
@@ -227,8 +305,8 @@ async function cmdSend(): Promise<void> {
   }
 
   console.log(
-    `sent ${draft.id} to ${[...to, ...cc, ...bcc].map((a) => a.email).join(", ")} ` +
-      `(submission ${submission.id}${expand === "html" ? ", markdown→html" : ""})`,
+    `sent ${draftId} to ${rcptTo.map((a) => a.email).join(", ")} ` +
+      `(submission ${submission.id}${extras})`,
   );
 
   // Keep the local log current; best-effort.

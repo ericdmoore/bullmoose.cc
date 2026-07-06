@@ -60,6 +60,41 @@ export class JmapClient {
     return resp[1];
   }
 
+  /** RFC 8620 §6.1 blob upload; returns the content-hash blobId. */
+  async upload(
+    accountId: string,
+    content: Uint8Array,
+    type: string,
+  ): Promise<{ blobId: string; size: number }> {
+    const res = await fetch(`${this.base}/api/upload/${encodeURIComponent(accountId)}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.token}`, "content-type": type },
+      // Copy into a fresh ArrayBuffer-backed view: fetch rejects
+      // SharedArrayBuffer-typed views, and Node types demand it.
+      body: new Uint8Array(content),
+    });
+    if (!res.ok) throw new Error(`upload failed: HTTP ${res.status} ${await res.text()}`);
+    return (await res.json()) as { blobId: string; size: number };
+  }
+
+  /** Mint an expiring public link for an uploaded blob (big-file sends). */
+  async createShareLink(
+    accountId: string,
+    blobId: string,
+    opts: { name: string; type?: string; ttlSeconds?: number },
+  ): Promise<{ url: string; expiresAt: string }> {
+    const res = await fetch(
+      `${this.base}/api/share/${encodeURIComponent(accountId)}/${encodeURIComponent(blobId)}`,
+      {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(opts),
+      },
+    );
+    if (!res.ok) throw new Error(`share link failed: HTTP ${res.status} ${await res.text()}`);
+    return (await res.json()) as { url: string; expiresAt: string };
+  }
+
   async downloadBlob(accountId: string, blobId: string): Promise<Uint8Array> {
     const session = await this.session();
     const url = session.downloadUrl

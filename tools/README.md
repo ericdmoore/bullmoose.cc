@@ -45,6 +45,8 @@ registry connects the SUBMIT service binding automatically:
 
 ```sh
 printf 'INTERNAL_TOKEN=internal\nRELAY=mock\n' > services/submit/.dev.vars
+# jmap .dev.vars additionally needs SHARE_SIGNING_KEY=<anything> for
+# big-file share links (send --expandMD html with files over --linkMax)
 STATE=/tmp/bm-state   # seed D1 with --persist-to $STATE as above
 (cd services/submit && npx wrangler dev --port 8788 --persist-to $STATE) &
 (cd services/jmap   && npx wrangler dev --port 8787 --persist-to $STATE) &

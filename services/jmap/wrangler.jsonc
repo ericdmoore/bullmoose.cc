@@ -31,5 +31,6 @@
   }
   // Secrets (wrangler secret put):
   //   DEV_BEARER_TOKEN
-  //   INTERNAL_TOKEN   — must match the submit worker's INTERNAL_TOKEN
+  //   INTERNAL_TOKEN     — must match the submit worker's INTERNAL_TOKEN
+  //   SHARE_SIGNING_KEY  — HMAC key for expiring /share/* links
 }
