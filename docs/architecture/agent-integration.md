@@ -256,15 +256,22 @@ responding as if nothing happened.
 ### The unification: one "armed responder" primitive
 
 The watchdog is not a new feature — it's one parameterization of a single
-primitive, `respond(template, wait, cancelIf, suppression)`, armed at
-delivery and hosted on the AccountDO alarm:
+primitive, `respond(template, wait, cancelIf, suppression)`, hosted on the
+AccountDO alarm. The third axis is the **arming event**: vacation mode and
+the watchdog both arm on message receipt (delivery), which makes them the
+same ingest-pipeline rule differing only in parameters; the wider family
+arms elsewhere:
 
-| Feature | wait | cancelIf | action target | suppression |
-|---|---|---|---|---|
-| Vacation mode | 0 | never (date-range instead) | sender | per sender / N days |
-| Homelab watchdog | pickup SLA | invocation claimed | sender | per sender / outage |
-| FollowUpFrank | days | reply arrived | owner (nudge draft) | per thread |
-| Snooze / Bubble-Up (§19 C) | T | — | self (resurface) | — |
+| Feature | armed by | wait | cancelIf | action target | suppression |
+|---|---|---|---|---|---|
+| Vacation mode | delivery | 0 | never (date-range instead) | sender | per sender / N days |
+| Homelab watchdog | delivery | pickup SLA | invocation claimed | sender | per sender / outage |
+| FollowUpFrank | send (outbound) | days | reply arrived | owner (nudge draft) | per thread |
+| Snooze / Bubble-Up (§19 C) | user action | T | — | self (resurface) | — |
+
+The arming event determines which pipeline makes the arm call — delivery →
+ingest rule action, send → submit path hook, user action → JMAP method —
+and all converge on the same alarm/cancel/suppression machinery.
 
 Consequences: the standard `VacationResponse` object (RFC 8621 §8, himalaya-
 supported) becomes a *facade* over one instance of this primitive; and the
