@@ -1,4 +1,6 @@
 import { parseArgs } from "node:util";
+import { readFileSync } from "node:fs";
+import { marked } from "marked";
 import { defaultDbPath, getConfig, openDb, requireSettings, setConfig } from "./db.js";
 import { JmapClient } from "./jmap.js";
 import { sync } from "./sync.js";
@@ -8,13 +10,22 @@ const HELP = `bullmoose — JMAP sync client with a local SQLite message log
 Usage:
   bullmoose init --base <url> --token <token> [--account <id>]
   bullmoose sync [--blobs <dir>]
+  bullmoose send --to <addr>[,<addr>] --subject <s> [--cc ..] [--bcc ..]
+                 [--expandMD no|html] [--file <path>] [--body <text>]
+                 [--identity <id-or-email>]
+                 (body from --file, else piped stdin, else --body)
+  bullmoose read [emailId] [--raw] [--json]
+                 (no id → most recent message)
   bullmoose log [-n <count>] [--mailbox <role-or-id>] [--json]
   bullmoose search <fts5-query> [--json]
   bullmoose show <emailId> [--json]
   bullmoose mailboxes [--json]
 
 Options:
-  --db <path>   SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db)
+  --db <path>        SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db)
+  --expandMD html    treat the body as Markdown: send multipart/alternative
+                     with the raw Markdown as text and rendered HTML
+  --expandMD no      send the body as plain text as-is (default)
 
 The database is the server's own data-plane schema — open it directly with
 \`sqlite3\` for anything the commands don't cover.`;
@@ -28,6 +39,15 @@ const { values: opts, positionals } = parseArgs({
     account: { type: "string" },
     blobs: { type: "string" },
     mailbox: { type: "string" },
+    to: { type: "string", multiple: true },
+    cc: { type: "string", multiple: true },
+    bcc: { type: "string", multiple: true },
+    subject: { type: "string" },
+    file: { type: "string" },
+    body: { type: "string" },
+    expandMD: { type: "string", default: "no" },
+    identity: { type: "string" },
+    raw: { type: "boolean", default: false },
     json: { type: "boolean", default: false },
     n: { type: "string", short: "n", default: "20" },
     help: { type: "boolean", short: "h", default: false },
@@ -49,6 +69,12 @@ try {
       break;
     case "sync":
       await cmdSync();
+      break;
+    case "send":
+      await cmdSend();
+      break;
+    case "read":
+      await cmdRead();
       break;
     case "log":
       cmdLog();
@@ -105,6 +131,206 @@ async function cmdSync(): Promise<void> {
       `+${stats.created} ~${stats.updated} -${stats.destroyed} ` +
       `(${stats.mailboxes} mailboxes)`,
   );
+}
+
+// ---- send --------------------------------------------------------------
+
+async function cmdSend(): Promise<void> {
+  const settings = requireSettings(db);
+  const client = new JmapClient(settings.base, settings.token);
+
+  const to = splitAddresses(opts.to);
+  const cc = splitAddresses(opts.cc);
+  const bcc = splitAddresses(opts.bcc);
+  if (to.length === 0) {
+    console.error("send requires --to");
+    process.exit(1);
+  }
+  const subject = opts.subject ?? "";
+  const expand = opts.expandMD ?? "no";
+  if (expand !== "no" && expand !== "html") {
+    console.error(`--expandMD must be "no" or "html" (got "${expand}")`);
+    process.exit(1);
+  }
+
+  const body = readBody();
+
+  // Identity: --identity by id or email, else the first one.
+  const idRes = await client.one("Identity/get", { accountId: settings.accountId, ids: null });
+  const identities = idRes.list as Array<{ id: string; email: string; name: string }>;
+  const identity = opts.identity
+    ? identities.find((i) => i.id === opts.identity || i.email === opts.identity)
+    : identities[0];
+  if (!identity) {
+    console.error(
+      `identity ${opts.identity ?? "(default)"} not found; available: ${identities.map((i) => i.email).join(", ")}`,
+    );
+    process.exit(1);
+  }
+
+  // Role mailboxes for the draft → Sent dance.
+  const mbRes = await client.one("Mailbox/get", { accountId: settings.accountId, ids: null });
+  const mailboxes = mbRes.list as Array<{ id: string; role: string | null }>;
+  const draftsId = mailboxes.find((m) => m.role === "drafts")?.id;
+  const sentId = mailboxes.find((m) => m.role === "sent")?.id;
+  if (!draftsId || !sentId) {
+    console.error("account is missing a drafts/sent role mailbox");
+    process.exit(1);
+  }
+
+  // 1. Create the draft (server builds the MIME).
+  const bodyValues: Record<string, { value: string }> = { t: { value: body } };
+  const bodyParts: Record<string, unknown> = { textBody: [{ partId: "t", type: "text/plain" }] };
+  if (expand === "html") {
+    bodyValues.h = { value: marked.parse(body, { async: false }) };
+    bodyParts.htmlBody = [{ partId: "h", type: "text/html" }];
+  }
+
+  const setRes = await client.one("Email/set", {
+    accountId: settings.accountId,
+    create: {
+      d: {
+        mailboxIds: { [draftsId]: true },
+        keywords: { $draft: true, $seen: true },
+        from: [{ ...(identity.name ? { name: identity.name } : {}), email: identity.email }],
+        to,
+        ...(cc.length > 0 ? { cc } : {}),
+        ...(bcc.length > 0 ? { bcc } : {}),
+        subject,
+        bodyValues,
+        ...bodyParts,
+      },
+    },
+  });
+  const draft = (setRes.created as Record<string, { id: string }> | undefined)?.d;
+  if (!draft) {
+    console.error(`draft creation failed: ${JSON.stringify(setRes.notCreated)}`);
+    process.exit(1);
+  }
+
+  // 2. Submit it; on success the server moves it Drafts → Sent.
+  const subRes = await client.one("EmailSubmission/set", {
+    accountId: settings.accountId,
+    create: { s: { emailId: draft.id, identityId: identity.id } },
+    onSuccessUpdateEmail: {
+      "#s": {
+        [`mailboxIds/${draftsId}`]: null,
+        [`mailboxIds/${sentId}`]: true,
+        "keywords/$draft": null,
+      },
+    },
+  });
+  const submission = (subRes.created as Record<string, { id: string }> | undefined)?.s;
+  if (!submission) {
+    console.error(`submission failed: ${JSON.stringify(subRes.notCreated)}`);
+    process.exit(1);
+  }
+
+  console.log(
+    `sent ${draft.id} to ${[...to, ...cc, ...bcc].map((a) => a.email).join(", ")} ` +
+      `(submission ${submission.id}${expand === "html" ? ", markdown→html" : ""})`,
+  );
+
+  // Keep the local log current; best-effort.
+  try {
+    await sync(db, client, settings.accountId);
+  } catch {
+    /* next `bullmoose sync` catches up */
+  }
+}
+
+function splitAddresses(values: string[] | undefined): Array<{ email: string }> {
+  return (values ?? [])
+    .flatMap((v) => v.split(","))
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .map((email) => ({ email }));
+}
+
+function readBody(): string {
+  // Explicit flags beat implicit stdin — a script with stdin redirected
+  // to /dev/null must still be able to use --body.
+  if (opts.file) return readFileSync(opts.file, "utf8");
+  if (opts.body !== undefined) return opts.body;
+  if (!process.stdin.isTTY) {
+    const piped = readFileSync(0, "utf8");
+    if (piped.length > 0) return piped;
+  }
+  console.error("no body: pipe stdin, or pass --file/--body");
+  process.exit(1);
+}
+
+// ---- read --------------------------------------------------------------
+
+async function cmdRead(): Promise<void> {
+  const settings = requireSettings(db);
+  const client = new JmapClient(settings.base, settings.token);
+
+  // Explicit id, else the most recent message — queried live so this
+  // works without a prior sync.
+  let id = positionals[1];
+  if (!id) {
+    const q = await client.one("Email/query", {
+      accountId: settings.accountId,
+      sort: [{ property: "receivedAt", isAscending: false }],
+      limit: 1,
+    });
+    id = (q.ids as string[])[0];
+    if (!id) {
+      console.error("(mailbox is empty)");
+      process.exit(1);
+    }
+  }
+
+  if (opts.raw) {
+    const meta = await client.one("Email/get", {
+      accountId: settings.accountId,
+      ids: [id],
+      properties: ["blobId"],
+    });
+    const blobId = (meta.list as Array<{ blobId: string }>)[0]?.blobId;
+    if (!blobId) {
+      console.error(`${id} not found`);
+      process.exit(1);
+    }
+    process.stdout.write(await client.downloadBlob(settings.accountId, blobId));
+    return;
+  }
+
+  const res = await client.one("Email/get", {
+    accountId: settings.accountId,
+    ids: [id],
+    properties: ["id", "from", "to", "cc", "subject", "receivedAt", "bodyValues", "textBody"],
+    fetchTextBodyValues: true,
+  });
+  const email = (res.list as Array<Record<string, unknown>>)[0];
+  if (!email) {
+    console.error(`${id} not found`);
+    process.exit(1);
+  }
+
+  const bodyValues = (email.bodyValues ?? {}) as Record<string, { value?: string }>;
+  const text = Object.values(bodyValues)[0]?.value ?? "(no text body)";
+
+  if (opts.json) {
+    console.log(JSON.stringify({ ...email, body: text, bodyValues: undefined }, null, 2));
+    return;
+  }
+  console.log(`From:    ${formatAddrs(email.from)}`);
+  console.log(`To:      ${formatAddrs(email.to)}`);
+  const ccList = formatAddrs(email.cc);
+  if (ccList) console.log(`Cc:      ${ccList}`);
+  console.log(`Subject: ${email.subject ?? ""}`);
+  console.log(`Date:    ${email.receivedAt}`);
+  console.log("");
+  console.log(text);
+}
+
+function formatAddrs(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  return (value as Array<{ name?: string | null; email: string }>)
+    .map((a) => (a.name ? `${a.name} <${a.email}>` : a.email))
+    .join(", ");
 }
 
 interface LogRow {

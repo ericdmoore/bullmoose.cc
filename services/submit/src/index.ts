@@ -1,5 +1,5 @@
 import { Mailstore } from "@bullmoose/mailstore";
-import { SesRelay, type Envelope } from "@bullmoose/outbound";
+import { MockRelay, SesRelay, type Envelope, type OutboundRelay } from "@bullmoose/outbound";
 
 /**
  * Submit — outbound sends + delivery-event handling.
@@ -16,9 +16,11 @@ export interface Env {
   DB: D1Database;
   BLOBS: R2Bucket;
   ROUTES: KVNamespace; // also holds suppress:{email} keys
+  /** "ses" (default) or "mock" for local dev — see MockRelay. */
+  RELAY?: string;
   SES_REGION: string;
-  SES_ACCESS_KEY_ID: string;
-  SES_SECRET_ACCESS_KEY: string;
+  SES_ACCESS_KEY_ID?: string;
+  SES_SECRET_ACCESS_KEY?: string;
   INTERNAL_TOKEN: string;
 }
 
@@ -63,11 +65,19 @@ async function handleSubmit(body: SubmitBody, env: Env): Promise<Response> {
   if (!blob) return json({ error: "draft blob not found" }, 404);
   const raw = new Uint8Array(await blob.arrayBuffer());
 
-  const relay = new SesRelay({
-    accessKeyId: env.SES_ACCESS_KEY_ID,
-    secretAccessKey: env.SES_SECRET_ACCESS_KEY,
-    region: env.SES_REGION,
-  });
+  let relay: OutboundRelay;
+  if (env.RELAY === "mock") {
+    relay = new MockRelay();
+  } else {
+    if (!env.SES_ACCESS_KEY_ID || !env.SES_SECRET_ACCESS_KEY) {
+      return json({ error: "SES credentials not configured" }, 500);
+    }
+    relay = new SesRelay({
+      accessKeyId: env.SES_ACCESS_KEY_ID,
+      secretAccessKey: env.SES_SECRET_ACCESS_KEY,
+      region: env.SES_REGION,
+    });
+  }
   const result = await relay.send(raw, body.envelope);
 
   // State bookkeeping (EmailSubmission row, DO commit, draft → Sent) is

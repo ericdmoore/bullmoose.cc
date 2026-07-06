@@ -18,7 +18,9 @@
   "kv_namespaces": [{ "binding": "ROUTES", "id": "REPLACE_AFTER_wrangler_kv_create" }],
 
   "vars": {
-    "SES_REGION": "us-east-1"
+    "SES_REGION": "us-east-1",
+    // "mock" (via .dev.vars) fakes the relay for local dev — no SES needed.
+    "RELAY": "ses"
   }
   // Secrets (wrangler secret put):
   //   SES_ACCESS_KEY_ID     — IAM user scoped to ses:SendRawEmail only

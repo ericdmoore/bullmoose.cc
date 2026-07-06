@@ -71,6 +71,18 @@ export class SesRelay implements OutboundRelay {
   }
 }
 
+/**
+ * Dev/test relay: accepts everything, sends nothing. Selected in the
+ * submit worker with RELAY=mock so the full EmailSubmission path can be
+ * exercised locally (SES cannot run against wrangler dev).
+ */
+export class MockRelay implements OutboundRelay {
+  async send(_rawMessage: Uint8Array, envelope: Envelope): Promise<SendResult> {
+    console.log(`MockRelay: would send to ${envelope.rcptTo.join(", ")}`);
+    return { relayMessageId: `mock-${crypto.randomUUID()}` };
+  }
+}
+
 function base64(bytes: Uint8Array): string {
   let bin = "";
   const chunk = 0x8000;

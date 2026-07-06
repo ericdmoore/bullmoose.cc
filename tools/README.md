@@ -33,3 +33,25 @@ node packages/cli/bin/bullmoose.mjs sync      # full
 node packages/cli/bin/bullmoose.mjs sync      # incremental via Email/changes
 node packages/cli/bin/bullmoose.mjs log
 ```
+
+## Testing `send` locally (mock relay, two workers)
+
+`bullmoose send` exercises the full submission path
+(Email/set draft → EmailSubmission/set → submit worker → relay →
+onSuccessUpdateEmail drafts→Sent). SES can't run locally, so the submit
+worker has a mock relay mode; both workers must share one local state
+dir (`--persist-to`) so they see the same D1/R2, and wrangler's dev
+registry connects the SUBMIT service binding automatically:
+
+```sh
+printf 'INTERNAL_TOKEN=internal\nRELAY=mock\n' > services/submit/.dev.vars
+STATE=/tmp/bm-state   # seed D1 with --persist-to $STATE as above
+(cd services/submit && npx wrangler dev --port 8788 --persist-to $STATE) &
+(cd services/jmap   && npx wrangler dev --port 8787 --persist-to $STATE) &
+
+printf '# Hello\n\n**bold** move' | \
+  node packages/cli/bin/bullmoose.mjs send \
+    --to someone@example.com --subject "Hi" --expandMD html
+node packages/cli/bin/bullmoose.mjs read           # most recent message
+node packages/cli/bin/bullmoose.mjs read <id> --raw  # original MIME
+```
