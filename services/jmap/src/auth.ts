@@ -24,7 +24,13 @@ export interface AuthEnv {
 
 export function authenticate(request: Request, env: AuthEnv): Principal | null {
   const header = request.headers.get("Authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  let token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) {
+    // Browser/Node WebSocket clients cannot set an Authorization header —
+    // accept the token as a query parameter (RFC 6750 §2.3 style) so the
+    // push channel is reachable. Header wins when both are present.
+    token = new URL(request.url).searchParams.get("access_token");
+  }
   if (!token || !env.DEV_BEARER_TOKEN || token !== env.DEV_BEARER_TOKEN) return null;
 
   return {

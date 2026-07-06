@@ -7,6 +7,7 @@ import { JmapClient } from "./jmap.js";
 import { sync } from "./sync.js";
 import { processAssets } from "./assets.js";
 import { buildMime } from "./mime.js";
+import { pidPaths, readAlivePid, watch, writePid } from "./watch.js";
 
 const HELP = `bullmoose — JMAP sync client with a local SQLite message log
 
@@ -19,6 +20,11 @@ Usage:
                  (body from --file, else --body, else piped stdin)
   bullmoose read [emailId] [--raw] [--json]
                  (no id → most recent message)
+  bullmoose watch [--json] [--exec <cmd>] [--daemon | --status | --stop]
+                 push-triggered live sync: prints new mail as it arrives.
+                 --json emits NDJSON events; --exec runs a shell command per
+                 new message ({id} {from} {subject} {preview} placeholders);
+                 --daemon detaches (prints PID; logs beside the db file)
   bullmoose log [-n <count>] [--mailbox <role-or-id>] [--json]
   bullmoose search <fts5-query> [--json]
   bullmoose show <emailId> [--json]
@@ -61,6 +67,10 @@ const { values: opts, positionals } = parseArgs({
     linkTTL: { type: "string", default: "30" },
     identity: { type: "string" },
     raw: { type: "boolean", default: false },
+    exec: { type: "string" },
+    daemon: { type: "boolean", default: false },
+    status: { type: "boolean", default: false },
+    stop: { type: "boolean", default: false },
     json: { type: "boolean", default: false },
     n: { type: "string", short: "n", default: "20" },
     help: { type: "boolean", short: "h", default: false },
@@ -88,6 +98,9 @@ try {
       break;
     case "read":
       await cmdRead();
+      break;
+    case "watch":
+      await cmdWatch();
       break;
     case "log":
       cmdLog();
@@ -336,6 +349,73 @@ function readBody(): string {
   }
   console.error("no body: pipe stdin, or pass --file/--body");
   process.exit(1);
+}
+
+// ---- watch ---------------------------------------------------------------
+
+async function cmdWatch(): Promise<void> {
+  const dbPath = opts.db ?? defaultDbPath();
+  const paths = pidPaths(dbPath);
+
+  if (opts.stop) {
+    const pid = readAlivePid(paths.pid);
+    if (!pid) {
+      console.log("no watcher running");
+      return;
+    }
+    process.kill(pid, "SIGTERM");
+    console.log(`stopped watcher (pid ${pid})`);
+    return;
+  }
+
+  if (opts.status) {
+    const pid = readAlivePid(paths.pid);
+    console.log(pid ? `watcher running (pid ${pid}, log: ${paths.log})` : "no watcher running");
+    return;
+  }
+
+  const settings = requireSettings(db);
+  if (opts.account && opts.account !== settings.accountId) {
+    console.error(`only the configured account (${settings.accountId}) is supported until multi-account lands`);
+    process.exit(1);
+  }
+
+  // A --daemon parent writes the child's pid before the child boots, so
+  // the child finds its OWN pid here — that's us, not a rival watcher.
+  const running = readAlivePid(paths.pid);
+  if (running && running !== process.pid) {
+    console.error(`watcher already running (pid ${running}) — bullmoose watch --stop first`);
+    process.exit(1);
+  }
+
+  if (opts.daemon) {
+    // Re-exec ourselves detached, minus --daemon, with the db pinned.
+    const { spawn } = await import("node:child_process");
+    const { openSync } = await import("node:fs");
+    const log = openSync(paths.log, "a");
+    const args = [process.argv[1] as string, "watch", "--db", dbPath];
+    if (opts.json) args.push("--json");
+    if (opts.exec) args.push("--exec", opts.exec);
+    const child = spawn(process.execPath, args, {
+      detached: true,
+      stdio: ["ignore", log, log],
+    });
+    child.unref();
+    writePid(paths.pid, child.pid as number);
+    console.log(`watch daemon started (pid ${child.pid}, log: ${paths.log})`);
+    console.log(`stop with: bullmoose watch --stop`);
+    return;
+  }
+
+  // Foreground. If we were spawned by --daemon, our pid is already in the
+  // pidfile; claim it for cleanup-on-exit either way.
+  writePid(paths.pid, process.pid);
+  const client = new JmapClient(settings.base, settings.token);
+  await watch(db, client, settings.accountId, settings.base, settings.token, {
+    json: opts.json ?? false,
+    exec: opts.exec,
+    pidFile: paths.pid,
+  });
 }
 
 // ---- read --------------------------------------------------------------

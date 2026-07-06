@@ -58,6 +58,11 @@ export interface SyncStats {
   updated: number;
   destroyed: number;
   newState: string;
+  /** Changed ids, incremental mode only — full resyncs leave these empty
+   * (a first sync would otherwise "announce" the whole mailbox). */
+  createdIds: string[];
+  updatedIds: string[];
+  destroyedIds: string[];
 }
 
 export async function sync(
@@ -95,6 +100,9 @@ export async function sync(
     updated: 0,
     destroyed: 0,
     newState: "0",
+    createdIds: [],
+    updatedIds: [],
+    destroyedIds: [],
   };
 
   if (cursor) {
@@ -159,6 +167,9 @@ async function incrementalSync(
     stats.created += created.length;
     stats.updated += updated.length;
     stats.destroyed += destroyed.length;
+    stats.createdIds.push(...created);
+    stats.updatedIds.push(...updated);
+    stats.destroyedIds.push(...destroyed);
     stats.newState = String(ch.newState);
 
     if (ch.hasMoreChanges !== true) break;
