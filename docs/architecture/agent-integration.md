@@ -253,6 +253,25 @@ recorded on the thread's AgentNote so the recovered agent knows a delay
 notice went out and can acknowledge it ("sorry for the delay") instead of
 responding as if nothing happened.
 
+### The unification: one "armed responder" primitive
+
+The watchdog is not a new feature — it's one parameterization of a single
+primitive, `respond(template, wait, cancelIf, suppression)`, armed at
+delivery and hosted on the AccountDO alarm:
+
+| Feature | wait | cancelIf | action target | suppression |
+|---|---|---|---|---|
+| Vacation mode | 0 | never (date-range instead) | sender | per sender / N days |
+| Homelab watchdog | pickup SLA | invocation claimed | sender | per sender / outage |
+| FollowUpFrank | days | reply arrived | owner (nudge draft) | per thread |
+| Snooze / Bubble-Up (§19 C) | T | — | self (resurface) | — |
+
+Consequences: the standard `VacationResponse` object (RFC 8621 §8, himalaya-
+supported) becomes a *facade* over one instance of this primitive; and the
+§17 rules engine gains it as an action verb rather than three features being
+built separately. RFC 3834 etiquette is implemented once, in the shared
+primitive.
+
 ---
 
 ## 9. Security summary (defense in depth)
