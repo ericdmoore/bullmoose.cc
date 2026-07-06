@@ -17,6 +17,11 @@ graduates in later for full-fidelity sends).
       request now** (~24h human review); create an IAM user scoped to
       `ses:SendRawEmail`
 - [ ] `npm install && npm run typecheck` green locally
+- [ ] **Pre-flight** (read-only account readiness check):
+      `CF_API_TOKEN=... CF_ACCOUNT_ID=... CF_ZONE_ID=... node tools/preflight.mjs`
+      — verifies zone/account/plan, flags existing MX records before the
+      cutover, Email Routing state, workers.dev subdomain, and name
+      collisions with the resources this runbook creates
 
 ## 1. Create resources, paste ids
 
