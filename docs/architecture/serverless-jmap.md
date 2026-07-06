@@ -228,7 +228,7 @@ Notes:
 
 ## 13. Phased roadmap
 
-1. **MVP (single tenant, single domain, one account):** ingest→R2/D1, minimal JMAP (`Session`, `Mailbox/get`, `Email/query`+`get`, `EmailSubmission/set`), webmail read+send, **poll** for changes.
+1. **MVP (single tenant, single domain, one account):** ingest→R2/D1, minimal JMAP (`Session`, `Mailbox/get`, `Email/query`+`get`, `EmailSubmission/set`), webmail read+send, **poll** for changes. To also drive a real third-party CLI (himalaya) day one, extend this set per the compatibility target in §15.
 2. **Real sync:** AccountDO + `state`/`/changes`, then WS push.
 3. **Multi-domain + multi-tenant:** control plane, route table/KV, provisioning automation, per-domain SES identities + suppression.
 4. **Hardening:** auth (OIDC/passkeys/app-passwords), spam/virus policy, search polish, quotas.
@@ -244,3 +244,129 @@ Notes:
 - **Secrets** — IAM key in Worker secret is the pragmatic choice; rotate; scope to `ses:SendRawEmail`.
 - **Spam/AV** — CF/SES verdicts are basic; may need a scanning step (e.g. Rspamd via a container) for a serious deployment.
 - **Client ecosystem** — thin native JMAP support; webmail is the primary client; bridges are the answer for stock apps.
+
+---
+
+## 15. Client compatibility target — himalaya (and the hermes agent skill)
+
+For agents to act on mail, the interface is **not** a TUI (aerc, meli) driven over a pty — it's a client that speaks the JMAP contract directly. [himalaya](https://github.com/pimalaya/himalaya) is the fit: CLI-first, emits `--output json`, and it is already the **bundled email skill for the Nous Hermes agent**, which runs it as a terminal-command skill *outside* Hermes' built-in messaging gateway (the gateway is not an extension point). So the agent path is: **hermes → himalaya (skill) → JMAP → bullmoose.cc**. himalaya's JMAP client (`io-jmap` + `io-email`) is a near-complete RFC 8620/8621 implementation with conformance tests against Stalwart and Fastmail — treat those tests as our acceptance target. The compat work is on **our server**, not the client.
+
+**Session structural requirements (must ship even in MVP):** the client parses capabilities leniently (`BTreeMap<String, Value>` — advertising only `core` + `mail` will *not* break session parse; a method call against an unadvertised capability returns `unknownCapability`). But `api_url`, `upload_url`, and `download_url` are **required non-optional** fields and must be valid URI templates, alongside `accounts` and `primaryAccounts`.
+
+**What himalaya actually drives (verified against `io-email/src/*/jmap/`):**
+
+| himalaya op | JMAP methods issued |
+|---|---|
+| list folders | `Mailbox/get` **+ `Mailbox/query`** |
+| list / search mail | `Email/query` + `Email/get` |
+| read body / attachments | `Email/get` (bodyValues) + **Blob download** |
+| flag / move / delete | `Email/set` (`keywords`, `mailboxIds`, `destroy`) |
+| **send** | **`Blob/upload` → `Email/import` into a `role=drafts`/`$draft` mailbox → `EmailSubmission/set`** against an `Identity` resolved via **`Identity/get`** |
+| watch / incremental | `Email/changes`, `Mailbox/changes`, `Email/queryChanges` |
+| niche (skip initially) | `Thread/get`, `Email/copy`, `Email/parse`, `VacationResponse/*` |
+
+**Punch list — delta from the §13 MVP method set** (needed for read + triage + send):
+
+1. **`Mailbox/query`** — himalaya enumerates folders via query, not just `get`.
+2. **`Email/set`** — flags/move/delete (pulled forward from Phase 2; needed day one for triage).
+3. **`Identity/get`** + at least one seeded `Identity` — the send path resolves `identity_id` first.
+4. **`Blob/upload` endpoint + `Email/import`** — the big one: himalaya does **not** send by creating a draft via `Email/set`. It uploads raw MIME, `Email/import`s it into drafts with `$draft`, then submits. An `EmailSubmission/set`-only MVP is insufficient.
+5. **Mailbox roles** — a `drafts` mailbox (import target) and `trash` (delete target) must exist with proper `role`.
+
+`Email/changes` et al. map onto the Phase-2 AccountDO `/changes` and are not needed for read+triage+send.
+
+**Note:** himalaya cannot author server rules over JMAP — `io-jmap` exposes only `identity`, `mailbox`, `email_submission`, `vacation_response`, `thread`, `email` (caps `core / mail / submission / vacationresponse`). Rule/policy authoring (§17) is a webmail / own-API / agent job.
+
+**Escape hatch:** if the `Email/import` + `Identity` send semantics prove costly, a thin bespoke CLI (text/MD → bash pipe → JSON → JMAP) can target only the lean MVP methods (draft via `Email/set`), at the cost of owning a client and re-implementing attachments/search/threading/auth ourselves. Prefer himalaya; keep this as fallback.
+
+---
+
+## 16. Mailbox membership model — set-valued, not location
+
+JMAP is IMAP-family, **not POP3**: the server holds the authoritative copy; a client keeps a *subordinate, disposable* cache kept coherent via `state` + `/changes`. It can always resync from scratch; the server never depends on a client existing.
+
+Within an account, membership is the **Gmail-labels model, not folders-as-location**: an `Email` is **one object** whose `mailboxIds` is a **set**. This shapes the schema — emails ↔ mailboxes is **many-to-many** (a join table or a `mailboxIds` set), *not* a single `folder` column.
+
+| Operation | Mechanism (verified in `io-email/src/message/jmap/`) |
+|---|---|
+| **move** | `Email/set` mutating the set — remove `sourceId`, add `destId` |
+| **copy (within account)** | `Email/set` **adding** a `mailboxId` — still one object, now in two mailboxes; **no second message** |
+| **delete** | `Email/set { destroy }` — **global delete across all mailboxes at once**. Removing from a single folder is a move (drop the id / move to Trash), *not* `destroy` |
+| **copy across accounts** | the separate `Email/copy` method — the only real object duplication |
+
+`destroy` must purge across every membership. Retrofitting folder-as-location into label-as-membership later is painful — bake the many-to-many in now.
+
+**Search locality.** `Email/query` is **server-side**: the server evaluates the filter (including full-text `text`/`subject`/`body` conditions) and sort. This is why the D1 + FTS5 index is load-bearing. himalaya specifically is **server-first hybrid** (`envelope/jmap/search.rs`): it translates the query to a JMAP filter (`AND/OR/NOT` → `JmapFilterOperator`s), runs it server-side, then applies a small residual client-side `PostFilter` for predicates JMAP can't express (and paginates client-side only when a post-filter is present). It keeps **no persistent local corpus** — local-index search is only its notmuch/maildir backends (or a mujmap→notmuch mirror). **Consequence:** our `Email/query` filter coverage *is* the agent's search quality — thin filter support forces himalaya to over-fetch and filter client-side (slow, more egress). Implement a rich `text` full-text condition over FTS5 to keep the residue near-empty.
+
+---
+
+## 17. Delivery-time rules & policies engine
+
+Rules run **server-side, at delivery** — never in a client. A client-side sweep (cron polling + `Email/set`) only fires when that client is online, is racy across clients, and duplicates logic. "Always" requires the rule to run where mail lands, whether or not anyone is connected. **Split:** the client *authors/validates* rules; the server *owns, compiles, and executes* them. Standard shape is Sieve (RFC 5228) for execution + JMAP-for-Sieve (`SieveScript/*`) for management; `VacationResponse` is the one built-in auto-rule JMAP standardizes (and himalaya supports it).
+
+**Home: the Ingest Worker** — it already resolves RCPT and decides the landing mailbox, so rule evaluation is one inserted step:
+
+```
+Ingest:  parse MIME
+      →  resolve RCPT (route table / KV)
+      →  ▶ evaluate tenant policies, then user rules ◀   → target mailboxIds / keywords
+      →  blob → R2
+      →  Email row → D1  (mailboxIds = rule result, else [Inbox])
+      →  AccountDO: bump state + push
+```
+
+- **Storage & sync:** the ruleset is **another synced, versioned collection** — its own `state` + `/changes` and optimistic concurrency (`ifInState`) so webmail + agent + CLI editors don't clobber each other. Start with a JSON ruleset in D1/control-plane; graduate to Sieve if/when a ManageSieve story is wanted.
+- **User rules vs tenant policies** (distinct scopes): **user rules** ("from X → Y") are end-user-authored, per-account. **Tenant policies** (quarantine, DLP, retention, forced malware quarantine) are **admin-scoped**, live in the control plane, evaluate **before** user rules, and are **not** CRUD-able by an end-user client.
+- **Apply-to-existing** ("run this rule on mail already in my inbox") is *not* a delivery rule — it's a batch `Email/query` + `Email/set` sweep (a server-side job), kept separate from the always-on delivery path.
+- **Rules vs the agent:** deterministic routing → ingest rules (don't burn an agent on it). Judgment ("is this important? draft a reply?") → the hermes agent. Making the agent a polling cron that moves mail is the client-side anti-pattern above.
+
+---
+
+## 18. AI classification — classify-then-route
+
+Taxonomy classification (e.g. a bucket tree `SPAM | NOTSPAM:[Marketing, Newsletter, Family:[Close, Extended], CollegeFriends, Business Opportunities, …]`) does **not** happen inside Sieve. Sieve is a deterministic, sandboxed router with no model-call primitive, kept that way on purpose. The precedent is `spamtest`/`virustest` (RFC 5235): a scanner runs first and writes a score, and Sieve routes on that score. The AI classifier is the same shape.
+
+> **AI = perception** (emits a label + confidence). **Rules/Sieve = policy** (decides what to do with it).
+
+**Home: a classify stage in the Ingest Worker**, feeding the §17 rule engine:
+
+```
+Ingest:  parse MIME → resolve RCPT
+      →  spam gate         ← cheap/deterministic (CF/SES verdict, Rspamd)
+      →  ▶ AI classify ◀   ← bucket tree → { bucket: "Family/CloseFamily", confidence: 0.86 }
+      →  stamp result      ← keyword `$bucket/Family/CloseFamily` (or X-Bucket header + score)
+      →  rules route on { bucket, confidence } → mailboxIds
+      →  R2/D1, AccountDO bump state + push
+```
+
+Design calls:
+
+- **Keep the spam gate cheap and separate.** Don't spend an LLM call to catch spam (adversarial, high-volume); let deterministic scanners drop it, and reserve the LLM for the **nuanced ham taxonomy**.
+- **Async, don't block delivery.** An LLM on the hot path adds latency + a failure mode. Prefer: deliver fast (Inbox or a `pending` state) → enqueue a classification job (Cloudflare Queues / DO) → classify off-path → `Email/set` to move into the bucket (bumps state, pushes the move). Or hold in a staging state until classified, at the cost of per-message latency.
+- **Inference:** Workers AI (in-region text classifier) or an external LLM via `fetch` (e.g. Claude for subtle buckets). A prompt-based classifier with the taxonomy in-prompt is the pragmatic start — evolve the tree by editing a prompt, not retraining.
+- **Confidence lives in the rule, not the classifier.** Low-confidence mail stays in Inbox / a `Needs Review` bucket rather than being silently auto-filed. The user's rule decides trust per bucket: `if bucket=Newsletter and confidence>0.85 → Newsletter, mark read; else leave in Inbox`. AI proposes; policy disposes.
+- **Feedback loop (hermes):** low-confidence/ambiguous → route to the agent for a judgment call; a human/agent moving a message *out* of a bucket is a labeled example — feed it back as few-shot context (or fine-tune data later). The agent can also *propose taxonomy edits*.
+
+---
+
+## 19. Feature layer — mapping product features to architectural homes
+
+Rich-client product features (the HEY.com set is a good stress test) collapse into **five homes**. Placing a feature is a matter of identifying which home it needs; the architecture already has every primitive — features add **stages and objects**, not subsystems (with one exception, below).
+
+| Home | Primitive | Example features |
+|---|---|---|
+| **A. Ingest pipeline** | delivery-time rule/classify step keyed on per-account lists | Screener (first-contact hold + allow/block list), Speakeasy/bypass code, Imbox/Feed/Paper-Trail sorting, **Mute/Exit thread** (per-account muted-`threadId` set), spy-pixel stripping, group addresses, autoresponder |
+| **B. Per-account overlay data** (synced via JMAP) | **keyword** (boolean) *or* **custom vendor object** (structured) | Reply Later / Set Aside (`$replylater`/`$setaside` keywords), **Thread/Inbox/Contact Notes** + renamed subjects + clips/snippets/workflows (custom `Note/*` object under `urn:bullmoose:params:jmap:notes`) |
+| **C. AccountDO alarms** | DO alarm → mutate + bump state + push | **Bubble Up / snooze** (resurface at T), Send Later, timed autoresponder |
+| **D. R2 + link/download Worker** | R2 object + expiring signed URL | **Big Files** (Submit rewrites outbound MIME to a download link; a download Worker streams from R2 with range support), Attachment Library (per-account query over the blob index) |
+| **E. Server-side query / aggregation** | `Email/query` + maintained counters | **Bundles / Dominators** (group by sender via query or per-sender DO counters; "bundle" writes a per-sender ingest rule), Focus & Reply (`Email/query` on `$replylater`), Feed rendering |
+
+Already covered elsewhere: Multi-Account Linking → `Session.accounts` (§4); Send As / Extensions → Identity + routing (§4); Calendar → §11; 2FA → §10.
+
+**Cross-cutting heuristic — keyword vs. custom capability = the client-support boundary.**
+- **Boolean state → JMAP keyword.** Rides the standard rails (`Email/set` + `state`/`/changes`), syncs for free, and **shows up in himalaya as a flag**. Prefer this whenever the feature is a boolean.
+- **Structured data → custom vendor capability** (`urn:bullmoose:...` + custom method namespace). Richer, but **only clients that speak it** (our webmail + the hermes agent) see it — *not* himalaya.
+
+So: express as a keyword when boolean, reach for a custom capability only when it carries structure, and treat custom as webmail/agent-only.
+
+**The one genuine new subsystem: collaboration / ACL.** Shared Threads, Private Comments, Collections, and Sharable Links are **not** overlay data — they need *multi-principal access control*: a sharing/grant table in the control plane, ACL checks in the JMAP method layer, and a public-link Worker with scoped tokens. HEY's "Private Comments" looks like Thread Notes but is fundamentally different (single-principal overlay vs multi-principal ACL'd data). Treat this as its own Phase-6 "teams" epic, not a per-account overlay.
