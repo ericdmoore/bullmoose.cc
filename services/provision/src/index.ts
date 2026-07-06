@@ -45,6 +45,9 @@ export default {
       if (route === "POST /tenants") {
         return createTenant((await request.json()) as { tenantId: string; name: string }, env);
       }
+      if (route === "GET /tenants") return listTenants(env);
+      if (route === "GET /domains") return listDomains(env);
+      if (route === "GET /accounts") return listAccounts(url, env);
       if (route === "POST /domains") {
         return addDomain((await request.json()) as { tenantId: string; domain: string }, env);
       }
@@ -79,6 +82,34 @@ async function createTenant(body: { tenantId: string; name: string }, env: Env) 
     .bind(body.tenantId, body.name, Date.now())
     .run();
   return json({ ok: true, tenantId: body.tenantId });
+}
+
+async function listTenants(env: Env) {
+  const { results } = await env.DB.prepare(
+    `SELECT id, name, status, created_at FROM tenants ORDER BY created_at`,
+  ).all();
+  return json({ tenants: results });
+}
+
+async function listDomains(env: Env) {
+  const { results } = await env.DB.prepare(
+    `SELECT domain, tenant_id, status, created_at FROM domains ORDER BY domain`,
+  ).all();
+  return json({ domains: results });
+}
+
+async function listAccounts(url: URL, env: Env) {
+  const tenant = url.searchParams.get("tenant");
+  const { results } = await env.DB.prepare(
+    `SELECT a.id, a.tenant_id, a.display_name, a.shard, a.created_at,
+       (SELECT group_concat(i.email) FROM identities i WHERE i.account_id = a.id) AS addresses
+     FROM accounts a
+     ${tenant ? "WHERE a.tenant_id = ?" : ""}
+     ORDER BY a.created_at`,
+  )
+    .bind(...(tenant ? [tenant] : []))
+    .all();
+  return json({ accounts: results });
 }
 
 // ---- domains ---------------------------------------------------------
@@ -221,6 +252,18 @@ async function createAccount(
   const { tenantId, domain, localpart, displayName } = body;
   const address = `${localpart.toLowerCase()}@${domain}`;
   const now = Date.now();
+
+  // The route row references domains(domain); creating a mailbox on an
+  // unwired domain must be a clear client error, not an FK 500.
+  const domainRow = await env.DB.prepare(`SELECT tenant_id FROM domains WHERE domain = ?`)
+    .bind(domain)
+    .first<{ tenant_id: string }>();
+  if (!domainRow) {
+    return json({ error: `domain ${domain} not onboarded — run POST /domains first` }, 422);
+  }
+  if (domainRow.tenant_id !== tenantId) {
+    return json({ error: `domain ${domain} belongs to a different tenant` }, 422);
+  }
 
   const principalId = `p_${crypto.randomUUID()}`;
   const accountId = `${tenantId}__a_${crypto.randomUUID().slice(0, 8)}`;

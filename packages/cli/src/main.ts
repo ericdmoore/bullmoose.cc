@@ -8,6 +8,7 @@ import { sync } from "./sync.js";
 import { processAssets } from "./assets.js";
 import { buildMime } from "./mime.js";
 import { pidPaths, readAlivePid, watch, writePid } from "./watch.js";
+import { cmdAdmin } from "./admin.js";
 
 const HELP = `bullmoose — JMAP sync client with a local SQLite message log
 
@@ -29,6 +30,13 @@ Usage:
   bullmoose search <fts5-query> [--json]
   bullmoose show <emailId> [--json]
   bullmoose mailboxes [--json]
+  bullmoose admin init --url <provision-url> --token <admin-token>
+  bullmoose admin tenant  create <id> --name <n> | list
+  bullmoose admin domain  add <domain> --tenant <t> | status <domain> | list
+  bullmoose admin account create <local@domain> --tenant <t> [--name <n>] | list [--tenant <t>]
+                 (operator surface — wraps the provision worker; separate
+                 credentials from the mail account. Planned nouns: route,
+                 identity, policy, share, suppression, token, agent)
 
 Options:
   --db <path>        SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db)
@@ -52,7 +60,10 @@ const { values: opts, positionals } = parseArgs({
   options: {
     db: { type: "string" },
     base: { type: "string" },
+    url: { type: "string" },
     token: { type: "string" },
+    tenant: { type: "string" },
+    name: { type: "string" },
     account: { type: "string" },
     blobs: { type: "string" },
     mailbox: { type: "string" },
@@ -113,6 +124,15 @@ try {
       break;
     case "mailboxes":
       cmdMailboxes();
+      break;
+    case "admin":
+      await cmdAdmin(db, positionals.slice(1), {
+        url: opts.url,
+        token: opts.token,
+        tenant: opts.tenant,
+        name: opts.name,
+        json: opts.json ?? false,
+      });
       break;
     default:
       console.error(`unknown command: ${command}\n\n${HELP}`);
