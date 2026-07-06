@@ -6,7 +6,7 @@ service's `wrangler.jsonc` (search for `REPLACE_AFTER_`).
 ## 1. Cloudflare resources
 
 ```sh
-# D1 — data-plane shard 0 (control plane can share it for the MVP)
+# D1 — data-plane shard 0 (control plane shares it for the MVP)
 npx wrangler d1 create bullmoose-mail-shard0
 npx wrangler d1 execute bullmoose-mail-shard0 --file packages/mailstore/sql/data-plane.sql
 npx wrangler d1 execute bullmoose-mail-shard0 --file packages/mailstore/sql/control-plane.sql
@@ -18,54 +18,75 @@ npx wrangler r2 bucket create bullmoose-mail-blobs
 npx wrangler kv namespace create ROUTES
 ```
 
-Paste the returned `database_id` / KV `id` into all three
+Paste the returned `database_id` / KV `id` into all four
 `services/*/wrangler.jsonc` files.
 
 ## 2. Deploy order
 
-`bullmoose-jmap` declares the `AccountDO` Durable Object; `ingest` and
-`submit` bind it via `script_name`, so **deploy jmap first**:
+Binding graph: `jmap` binds `submit` as a service (SUBMIT), and `ingest`
+binds jmap's `AccountDO` cross-script — so:
 
 ```sh
-npm run -w services/jmap deploy
-npm run -w services/ingest deploy
-npm run -w services/submit deploy
+npm run -w services/submit deploy      # 1. no dependencies
+npm run -w services/jmap deploy        # 2. declares AccountDO; binds SUBMIT
+npm run -w services/ingest deploy      # 3. binds AccountDO from jmap
+npm run -w services/provision deploy   # 4. admin/control plane only
 ```
 
 ## 3. Secrets
 
 ```sh
-# dev auth for the jmap worker (until services/auth exists)
+# jmap worker
 npx wrangler secret put DEV_BEARER_TOKEN -c services/jmap/wrangler.jsonc
+npx wrangler secret put INTERNAL_TOKEN   -c services/jmap/wrangler.jsonc
 
-# outbound relay (IAM user scoped to ses:SendRawEmail ONLY)
+# submit worker (IAM user scoped to ses:SendRawEmail ONLY; INTERNAL_TOKEN
+# must match jmap's)
 npx wrangler secret put SES_ACCESS_KEY_ID     -c services/submit/wrangler.jsonc
 npx wrangler secret put SES_SECRET_ACCESS_KEY -c services/submit/wrangler.jsonc
 npx wrangler secret put INTERNAL_TOKEN        -c services/submit/wrangler.jsonc
+
+# provision worker (CF token: Zone:Edit + Email Routing:Edit + DNS:Edit;
+# SES IAM user additionally needs identity-management permissions)
+npx wrangler secret put ADMIN_TOKEN           -c services/provision/wrangler.jsonc
+npx wrangler secret put CF_API_TOKEN          -c services/provision/wrangler.jsonc
+npx wrangler secret put SES_ACCESS_KEY_ID     -c services/provision/wrangler.jsonc
+npx wrangler secret put SES_SECRET_ACCESS_KEY -c services/provision/wrangler.jsonc
 ```
 
-## 4. Per-domain wiring (manual until services/provision exists)
+## 4. Onboarding a domain + account (via the provision worker)
 
-For each hosted domain (see `docs/architecture/serverless-jmap.md` §8):
+```sh
+ADMIN=... PROV=https://bullmoose-provision.<account>.workers.dev
 
-1. Cloudflare zone: enable Email Routing, catch-all route → `bullmoose-ingest`.
-2. SES: `CreateEmailIdentity`, add the 3 DKIM CNAMEs + MAIL FROM records to
-   the zone, wait for verification.
-3. Add `DMARC` TXT.
-4. Seed KV routes, e.g.:
+# one-time tenant
+curl -H "Authorization: Bearer $ADMIN" -H 'content-type: application/json' \
+  -d '{"tenantId":"t_bullmoose","name":"Bullmoose"}' $PROV/tenants
 
-   ```sh
-   npx wrangler kv key put --binding ROUTES "route:example.com:eric" \
-     '{"kind":"mailbox","accountId":"t_dev__a_local","tenantId":"t_dev"}'
-   ```
+# wire a domain: Email Routing + catch-all → ingest, SES identity,
+# DKIM CNAMEs, MAIL FROM, DMARC. Idempotent — re-run after fixing failures.
+curl -H "Authorization: Bearer $ADMIN" -H 'content-type: application/json' \
+  -d '{"tenantId":"t_bullmoose","domain":"example.com"}' $PROV/domains
 
-5. SES configuration set → SNS topic → HTTPS subscription pointed at
-   `https://bullmoose-submit.<account>.workers.dev/webhooks/ses`.
+# poll until DKIM verifies; flips the domain to active
+curl -H "Authorization: Bearer $ADMIN" $PROV/domains/example.com
+
+# create a mailbox (account + identity + route + KV + role mailboxes)
+curl -H "Authorization: Bearer $ADMIN" -H 'content-type: application/json' \
+  -d '{"tenantId":"t_bullmoose","domain":"example.com","localpart":"eric","displayName":"Eric"}' \
+  $PROV/accounts
+```
+
+Remaining manual AWS step: an SES **configuration set** with an SNS topic
+and HTTPS subscription pointed at
+`https://bullmoose-submit.<account>.workers.dev/webhooks/ses`
+(bounce/complaint suppression). Also request SES production access early.
 
 ## 5. Smoke test
 
 ```sh
 TOKEN=... BASE=https://bullmoose-jmap.<account>.workers.dev
+ACCT=t_dev__a_local
 
 # session
 curl -H "Authorization: Bearer $TOKEN" $BASE/.well-known/jmap
@@ -75,8 +96,19 @@ curl -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"using":["urn:ietf:params:jmap:core"],"methodCalls":[["Core/echo",{"hello":true},"c0"]]}' \
   $BASE/api/jmap
 
-# Mailbox/get
-curl -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-  -d '{"using":["urn:ietf:params:jmap:core","urn:ietf:params:jmap:mail"],"methodCalls":[["Mailbox/get",{"accountId":"t_dev__a_local","ids":null},"c0"]]}' \
-  $BASE/api/jmap
+# inbox listing: query newest 20, then fetch metadata via back-reference
+curl -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{
+  "using":["urn:ietf:params:jmap:core","urn:ietf:params:jmap:mail"],
+  "methodCalls":[
+    ["Email/query",{"accountId":"'$ACCT'","limit":20},"q"],
+    ["Email/get",{"accountId":"'$ACCT'",
+      "#ids":{"resultOf":"q","name":"Email/query","path":"/ids"}},"g"]
+  ]}' $BASE/api/jmap
+
+# mark an email read
+curl -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{
+  "using":["urn:ietf:params:jmap:core","urn:ietf:params:jmap:mail"],
+  "methodCalls":[
+    ["Email/set",{"accountId":"'$ACCT'","update":{"<emailId>":{"keywords/$seen":true}}},"s"]
+  ]}' $BASE/api/jmap
 ```

@@ -1,4 +1,3 @@
-import { commitChanges } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
 import { SesRelay, type Envelope } from "@bullmoose/outbound";
 
@@ -17,7 +16,6 @@ export interface Env {
   DB: D1Database;
   BLOBS: R2Bucket;
   ROUTES: KVNamespace; // also holds suppress:{email} keys
-  ACCOUNT_DO: DurableObjectNamespace;
   SES_REGION: string;
   SES_ACCESS_KEY_ID: string;
   SES_SECRET_ACCESS_KEY: string;
@@ -72,12 +70,10 @@ async function handleSubmit(body: SubmitBody, env: Env): Promise<Response> {
   });
   const result = await relay.send(raw, body.envelope);
 
-  // TODO: move the email Drafts → Sent and record the EmailSubmission
-  // object; for now just bump state so clients refetch.
-  await commitChanges(env.ACCOUNT_DO, body.accountId, [
-    { collection: "EmailSubmission", created: [result.relayMessageId] },
-  ]);
-
+  // State bookkeeping (EmailSubmission row, DO commit, draft → Sent) is
+  // owned by the jmap worker's EmailSubmission/set — this endpoint only
+  // relays. That also keeps this worker free of a Durable Object binding,
+  // which would otherwise be circular with jmap's SUBMIT service binding.
   return json({ relayMessageId: result.relayMessageId });
 }
 

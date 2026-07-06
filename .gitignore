@@ -128,3 +128,7 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Wrangler local dev state + local secrets
+.wrangler/
+.dev.vars

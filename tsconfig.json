@@ -18,6 +18,7 @@
       "@bullmoose/jmap-core": ["packages/jmap-core/src/index.ts"],
       "@bullmoose/account-do": ["packages/account-do/src/index.ts"],
       "@bullmoose/mailstore": ["packages/mailstore/src/index.ts"],
+      "@bullmoose/mime": ["packages/mime/src/index.ts"],
       "@bullmoose/outbound": ["packages/outbound/src/index.ts"]
     }
   },

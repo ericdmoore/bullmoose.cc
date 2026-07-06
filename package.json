@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "dev:jmap": "npm run dev -w services/jmap",
     "dev:ingest": "npm run dev -w services/ingest",
-    "dev:submit": "npm run dev -w services/submit"
+    "dev:submit": "npm run dev -w services/submit",
+    "dev:provision": "npm run dev -w services/provision"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250620.0",

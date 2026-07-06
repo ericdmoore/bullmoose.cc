@@ -15,6 +15,10 @@ export interface Env extends AuthEnv {
   BLOBS: R2Bucket;
   ROUTES: KVNamespace;
   ACCOUNT_DO: DurableObjectNamespace;
+  /** Service binding to bullmoose-submit for EmailSubmission sends. */
+  SUBMIT: Fetcher;
+  /** Shared secret expected by the submit worker's /internal/* routes. */
+  INTERNAL_TOKEN: string;
 }
 
 const SUPPORTED_CAPS = new Set([CORE_CAP, MAIL_CAP, SUBMISSION_CAP, WEBSOCKET_CAP]);
