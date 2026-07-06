@@ -2,7 +2,15 @@ import { parseArgs } from "node:util";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { marked } from "marked";
-import { defaultDbPath, getConfig, openDb, requireSettings, setConfig } from "./db.js";
+import {
+  defaultDbPath,
+  getConfig,
+  isFileUrl,
+  loadBootstrap,
+  openDb,
+  requireSettings,
+  setConfig,
+} from "./db.js";
 import { JmapClient } from "./jmap.js";
 import { sync } from "./sync.js";
 import { processAssets } from "./assets.js";
@@ -17,8 +25,11 @@ Usage:
   bullmoose login <email> --base <url> [--name <device-name>]
                  (password via prompt, $BULLMOOSE_PASSWORD, or --password;
                   used once to mint this device's token — never stored)
-  bullmoose init --base <url> --token <token> [--account <id>]
-                 (paste an existing token instead of logging in)
+  bullmoose init --base <url> --token <token> [--account <id>] [--offline]
+                 (paste an existing token instead of logging in; --base
+                  also accepts file:///path/to/bundle.json — a JSON
+                  {base, token, accountId} bootstrap written by an
+                  operator; --offline stores it without validating)
   bullmoose token create --name <n> [--scopes read,draft] | list | revoke <id>
   bullmoose sync [--blobs <dir>]
   bullmoose send --to <addr>[,<addr>] --subject <s> [--cc ..] [--bcc ..]
@@ -89,6 +100,7 @@ const { values: opts, positionals } = parseArgs({
     linkTTL: { type: "string", default: "30" },
     identity: { type: "string" },
     raw: { type: "boolean", default: false },
+    offline: { type: "boolean", default: false },
     exec: { type: "string" },
     daemon: { type: "boolean", default: false },
     status: { type: "boolean", default: false },
@@ -174,15 +186,39 @@ try {
 // ---- commands ----------------------------------------------------------
 
 async function cmdInit(): Promise<void> {
-  if (!opts.base || !opts.token) {
-    console.error("init requires --base and --token");
+  // A file:// base is a bootstrap bundle; explicit flags win over it.
+  let base = opts.base;
+  let token = opts.token;
+  let account = opts.account;
+  if (isFileUrl(base)) {
+    const boot = loadBootstrap(base);
+    base = boot.base ?? boot.url;
+    token = opts.token ?? boot.token;
+    account = opts.account ?? boot.accountId;
+  }
+  if (!base || !token) {
+    console.error("init requires --base and --token (flags or bootstrap file)");
     process.exit(1);
   }
-  const client = new JmapClient(opts.base, opts.token);
+
+  if (opts.offline) {
+    // Store without touching the network — for prepping machines before
+    // they have connectivity. Needs an explicit accountId (no discovery).
+    if (!account) {
+      console.error("--offline requires an accountId (flag or bootstrap file)");
+      process.exit(1);
+    }
+    setConfig(db, "base", base);
+    setConfig(db, "token", token);
+    setConfig(db, "accountId", account);
+    console.log(`configured (offline, unvalidated): ${account} @ ${base}`);
+    return;
+  }
+
+  const client = new JmapClient(base, token);
   const session = await client.session();
 
-  const accountId =
-    opts.account ?? session.primaryAccounts["urn:ietf:params:jmap:mail"];
+  const accountId = account ?? session.primaryAccounts["urn:ietf:params:jmap:mail"];
   if (!accountId || !session.accounts[accountId]) {
     console.error(
       `account ${accountId ?? "(none)"} not in session; available: ${Object.keys(session.accounts).join(", ")}`,
@@ -190,10 +226,10 @@ async function cmdInit(): Promise<void> {
     process.exit(1);
   }
 
-  setConfig(db, "base", opts.base);
-  setConfig(db, "token", opts.token);
+  setConfig(db, "base", base);
+  setConfig(db, "token", token);
   setConfig(db, "accountId", accountId);
-  console.log(`configured: ${session.username} / ${accountId} @ ${opts.base}`);
+  console.log(`configured: ${session.username} / ${accountId} @ ${base}`);
 }
 
 async function cmdSync(): Promise<void> {

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { getConfig, setConfig } from "./db.js";
+import { getConfig, isFileUrl, loadBootstrap, setConfig } from "./db.js";
 import { promptHidden } from "./tokens.js";
 
 /**
@@ -38,10 +38,18 @@ export async function cmdAdmin(
   const [noun, verb, arg] = args;
 
   if (noun === "init") {
-    if (!opts.url || !opts.token) fail("admin init requires --url and --token");
-    setConfig(db, "adminUrl", opts.url);
-    setConfig(db, "adminToken", opts.token);
-    console.log(`admin configured: ${opts.url}`);
+    // --url also accepts file:///bundle.json ({url, token}); flags win.
+    let url = opts.url;
+    let token = opts.token;
+    if (isFileUrl(url)) {
+      const boot = loadBootstrap(url);
+      url = boot.url ?? boot.base;
+      token = opts.token ?? boot.token;
+    }
+    if (!url || !token) fail("admin init requires --url and --token (flags or bootstrap file)");
+    setConfig(db, "adminUrl", url);
+    setConfig(db, "adminToken", token);
+    console.log(`admin configured: ${url}`);
     return;
   }
 

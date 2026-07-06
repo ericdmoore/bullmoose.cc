@@ -6,6 +6,49 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 /**
+ * Bootstrap file support: anywhere the CLI takes a server URL, a
+ * `file://` URL is accepted instead — the file is a JSON connection
+ * bundle written by an operator (e.g. minted alongside an admin token)
+ * and carried to the device out-of-band:
+ *
+ *   { "base": "https://mail.bullmoose.cc",   // or "url" for admin
+ *     "token": "bm_...",
+ *     "accountId": "t_..__a_.." }             // optional
+ *
+ * Explicit CLI flags always win over file contents.
+ */
+export interface Bootstrap {
+  base?: string;
+  url?: string;
+  token?: string;
+  accountId?: string;
+}
+
+export function isFileUrl(value: string | undefined): value is string {
+  return !!value && value.startsWith("file:");
+}
+
+export function loadBootstrap(fileUrl: string): Bootstrap {
+  let path: string;
+  try {
+    path = fileURLToPath(fileUrl);
+  } catch {
+    console.error(`invalid file:// URL: ${fileUrl}`);
+    process.exit(1);
+  }
+  if (!existsSync(path)) {
+    console.error(`bootstrap file not found: ${path}`);
+    process.exit(1);
+  }
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as Bootstrap;
+  } catch (err) {
+    console.error(`bootstrap file is not valid JSON: ${path} (${err instanceof Error ? err.message : err})`);
+    process.exit(1);
+  }
+}
+
+/**
  * Local mailstore: the SAME SQLite schema as the server's D1 data plane
  * (packages/mailstore/sql/data-plane.sql), so local queries are the same
  * SQL you'd run server-side. On top of it, three CLI-only tables:

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { setConfig } from "./db.js";
+import { isFileUrl, loadBootstrap, setConfig } from "./db.js";
 
 /**
  * `bullmoose login` + `bullmoose token` — password-based bootstrap and
@@ -15,6 +15,12 @@ export interface LoginOpts {
 }
 
 export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts: LoginOpts): Promise<void> {
+  // A file:// base is a bootstrap bundle carrying the real server URL
+  // (login still goes over the network — it exists to mint a token).
+  if (isFileUrl(opts.base)) {
+    const boot = loadBootstrap(opts.base);
+    opts.base = boot.base ?? boot.url;
+  }
   if (!email || !opts.base) {
     console.error("usage: bullmoose login <email> --base <url> [--name <device-name>]");
     process.exit(1);
