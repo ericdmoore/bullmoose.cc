@@ -10,6 +10,8 @@
   "dependencies": {
     "@bullmoose/account-do": "*",
     "@bullmoose/jmap-core": "*",
-    "@bullmoose/mailstore": "*"
+    "@bullmoose/mailstore": "*",
+    "@bullmoose/mime": "*",
+    "postal-mime": "^2.3.2"
   }
 }

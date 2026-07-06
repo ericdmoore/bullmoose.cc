@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bullmoose-provision",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+
+  "d1_databases": [
+    {
+      // Control plane; shares shard0 for the MVP.
+      "binding": "DB",
+      "database_name": "bullmoose-mail-shard0",
+      "database_id": "REPLACE_AFTER_wrangler_d1_create"
+    }
+  ],
+  "kv_namespaces": [{ "binding": "ROUTES", "id": "REPLACE_AFTER_wrangler_kv_create" }],
+
+  "vars": {
+    "SES_REGION": "us-east-1",
+    "INGEST_WORKER_NAME": "bullmoose-ingest"
+  }
+  // Secrets (wrangler secret put):
+  //   ADMIN_TOKEN            — bearer token for this admin API
+  //   CF_API_TOKEN           — Zone:Edit + Email Routing:Edit + DNS:Edit
+  //   SES_ACCESS_KEY_ID      — IAM scoped to ses identity management
+  //   SES_SECRET_ACCESS_KEY
+}

@@ -4,12 +4,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-06-01",
 
-  "durable_objects": {
-    "bindings": [
-      { "name": "ACCOUNT_DO", "class_name": "AccountDO", "script_name": "bullmoose-jmap" }
-    ]
-  },
-
+  // No Durable Object binding on purpose: jmap binds this worker as a
+  // service (SUBMIT), so a DO binding back to bullmoose-jmap would make
+  // the two deployments circular. State commits live in EmailSubmission/set.
   "d1_databases": [
     {
       "binding": "DB",

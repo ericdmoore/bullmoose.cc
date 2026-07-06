@@ -7,13 +7,16 @@
     "services/*"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && npm run -w @bullmoose/cli typecheck",
+    "build:cli": "npm run -w @bullmoose/cli build",
     "dev:jmap": "npm run dev -w services/jmap",
     "dev:ingest": "npm run dev -w services/ingest",
-    "dev:submit": "npm run dev -w services/submit"
+    "dev:submit": "npm run dev -w services/submit",
+    "dev:provision": "npm run dev -w services/provision"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250620.0",
+    "@types/node": "^22.10.0",
     "typescript": "^5.5.4",
     "wrangler": "^4.20.0"
   }

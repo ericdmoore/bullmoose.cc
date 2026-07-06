@@ -25,16 +25,22 @@ CREATE TABLE IF NOT EXISTS emails (
   subject       TEXT NOT NULL DEFAULT '',
   from_json     TEXT NOT NULL DEFAULT '[]', -- JSON EmailAddress[]
   to_json       TEXT NOT NULL DEFAULT '[]',
+  cc_json       TEXT NOT NULL DEFAULT '[]',
+  bcc_json      TEXT NOT NULL DEFAULT '[]',
   preview       TEXT NOT NULL DEFAULT '',
   size          INTEGER NOT NULL,
   received_at   INTEGER NOT NULL,          -- epoch ms
   has_attachment INTEGER NOT NULL DEFAULT 0,
+  attachments_json TEXT NOT NULL DEFAULT '[]', -- JSON AttachmentMeta[]
   PRIMARY KEY (account_id, id)
 );
 CREATE INDEX IF NOT EXISTS emails_received ON emails (account_id, received_at DESC);
 CREATE INDEX IF NOT EXISTS emails_thread   ON emails (account_id, thread_id);
+CREATE INDEX IF NOT EXISTS emails_msgid    ON emails (account_id, message_id);
 
 -- Full-text search backing Email/query text filters.
+-- TODO: populate at ingest and swap the LIKE fallback in queryEmails for
+-- an FTS MATCH once rowid<->email id mapping is in place.
 CREATE VIRTUAL TABLE IF NOT EXISTS emails_fts USING fts5 (
   subject, from_text, to_text, body_text,
   content='',            -- external-content: we only store the index
@@ -57,4 +63,17 @@ CREATE TABLE IF NOT EXISTS email_keywords (
   email_id    TEXT NOT NULL,
   keyword     TEXT NOT NULL,
   PRIMARY KEY (account_id, email_id, keyword)
+);
+
+-- JMAP EmailSubmission objects (RFC 8621 §7).
+CREATE TABLE IF NOT EXISTS email_submissions (
+  id            TEXT NOT NULL,
+  account_id    TEXT NOT NULL,
+  email_id      TEXT NOT NULL,
+  identity_id   TEXT NOT NULL,
+  envelope_json TEXT NOT NULL,
+  undo_status   TEXT NOT NULL DEFAULT 'final', -- pending|final|canceled
+  relay_message_id TEXT,
+  send_at       INTEGER NOT NULL,          -- epoch ms
+  PRIMARY KEY (account_id, id)
 );

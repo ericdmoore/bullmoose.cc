@@ -1,0 +1,14 @@
+{
+  "name": "@bullmoose/cli",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "bullmoose — JMAP sync client with a local SQLite message log",
+  "bin": {
+    "bullmoose": "./bin/bullmoose.mjs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

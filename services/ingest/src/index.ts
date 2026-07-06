@@ -1,6 +1,11 @@
 import PostalMime from "postal-mime";
 import { commitChanges } from "@bullmoose/account-do";
-import { Mailstore, type EmailAddress } from "@bullmoose/mailstore";
+import {
+  Mailstore,
+  normalizeMessageId,
+  type AttachmentMeta,
+  type EmailAddress,
+} from "@bullmoose/mailstore";
 
 /**
  * Ingest — the Email Routing target for every hosted domain.
@@ -40,24 +45,44 @@ export default {
     const blobId = await store.putBlob(route.tenantId, route.accountId, raw);
 
     const parsed = await PostalMime.parse(raw);
-    const inReplyTo = parsed.inReplyTo?.trim() || null;
+    const inReplyTo = normalizeMessageId(parsed.inReplyTo);
     const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
     const inboxId = await store.ensureRoleMailbox(route.accountId, "inbox", "Inbox");
+
+    // Each attachment becomes its own content-hash blob so Email/get can
+    // hand out real, individually downloadable blobIds.
+    const attachments: AttachmentMeta[] = [];
+    for (const att of parsed.attachments ?? []) {
+      const content =
+        typeof att.content === "string" ? new TextEncoder().encode(att.content).buffer : att.content;
+      const attBlobId = await store.putBlob(route.tenantId, route.accountId, content as ArrayBuffer);
+      attachments.push({
+        blobId: attBlobId,
+        type: att.mimeType ?? "application/octet-stream",
+        name: att.filename ?? null,
+        size: (content as ArrayBuffer).byteLength,
+        cid: att.contentId ?? null,
+        disposition: att.disposition ?? null,
+      });
+    }
 
     const emailId = `e_${crypto.randomUUID()}`;
     await store.insertEmail(route.accountId, {
       id: emailId,
       blobId,
       threadId,
-      messageId: parsed.messageId ?? null,
+      messageId: normalizeMessageId(parsed.messageId),
       inReplyTo,
       subject: parsed.subject ?? "",
       from: toAddresses(parsed.from ? [parsed.from] : []),
       to: toAddresses(parsed.to ?? []),
+      cc: toAddresses(parsed.cc ?? []),
+      bcc: [],
       preview: (parsed.text ?? "").slice(0, 256),
       size: raw.byteLength,
       receivedAt: Date.now(),
-      hasAttachment: (parsed.attachments?.length ?? 0) > 0,
+      hasAttachment: attachments.some((a) => a.disposition !== "inline"),
+      attachments,
       mailboxIds: [inboxId],
       keywords: [],
     });
