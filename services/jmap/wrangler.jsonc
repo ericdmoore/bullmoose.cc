@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bullmoose-jmap",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+
+  // AccountDO lives in THIS worker; ingest/submit bind it via script_name.
+  "durable_objects": {
+    "bindings": [{ "name": "ACCOUNT_DO", "class_name": "AccountDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AccountDO"] }],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bullmoose-mail-shard0",
+      "database_id": "REPLACE_AFTER_wrangler_d1_create"
+    }
+  ],
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "bullmoose-mail-blobs" }],
+  "kv_namespaces": [{ "binding": "ROUTES", "id": "REPLACE_AFTER_wrangler_kv_create" }],
+
+  "vars": {
+    // Dev-only single-account auth; replaced by OIDC (services/auth) later.
+    "DEV_ACCOUNT_ID": "t_dev__a_local",
+    "DEV_TENANT_ID": "t_dev",
+    "DEV_USERNAME": "dev@localhost"
+  }
+  // Secrets (wrangler secret put): DEV_BEARER_TOKEN
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@bullmoose/service-jmap",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@bullmoose/account-do": "*",
+    "@bullmoose/jmap-core": "*",
+    "@bullmoose/mailstore": "*"
+  }
+}
