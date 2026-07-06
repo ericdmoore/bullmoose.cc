@@ -1,5 +1,11 @@
 import { Mailstore } from "@bullmoose/mailstore";
-import { MockRelay, SesRelay, type Envelope, type OutboundRelay } from "@bullmoose/outbound";
+import {
+  CloudflareRelay,
+  MockRelay,
+  SesRelay,
+  type Envelope,
+  type OutboundRelay,
+} from "@bullmoose/outbound";
 
 /**
  * Submit — outbound sends + delivery-event handling.
@@ -16,11 +22,13 @@ export interface Env {
   DB: D1Database;
   BLOBS: R2Bucket;
   ROUTES: KVNamespace; // also holds suppress:{email} keys
-  /** "ses" (default) or "mock" for local dev — see MockRelay. */
+  /** "ses" (default), "cloudflare" (Email Service beta), or "mock" (local dev). */
   RELAY?: string;
   SES_REGION: string;
   SES_ACCESS_KEY_ID?: string;
   SES_SECRET_ACCESS_KEY?: string;
+  CF_ACCOUNT_ID?: string;
+  CF_EMAIL_API_TOKEN?: string;
   INTERNAL_TOKEN: string;
 }
 
@@ -68,6 +76,11 @@ async function handleSubmit(body: SubmitBody, env: Env): Promise<Response> {
   let relay: OutboundRelay;
   if (env.RELAY === "mock") {
     relay = new MockRelay();
+  } else if (env.RELAY === "cloudflare") {
+    if (!env.CF_ACCOUNT_ID || !env.CF_EMAIL_API_TOKEN) {
+      return json({ error: "Cloudflare Email credentials not configured" }, 500);
+    }
+    relay = new CloudflareRelay({ accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_EMAIL_API_TOKEN });
   } else {
     if (!env.SES_ACCESS_KEY_ID || !env.SES_SECRET_ACCESS_KEY) {
       return json({ error: "SES credentials not configured" }, 500);

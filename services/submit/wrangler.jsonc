@@ -19,11 +19,15 @@
 
   "vars": {
     "SES_REGION": "us-east-1",
-    // "mock" (via .dev.vars) fakes the relay for local dev — no SES needed.
+    // "ses" (full-fidelity raw MIME, default) | "cloudflare" (Email
+    // Service beta — day-one sends without SES production access, with
+    // fidelity caveats; see CloudflareRelay) | "mock" (local dev).
     "RELAY": "ses"
+    // For RELAY=cloudflare also set var CF_ACCOUNT_ID.
   }
   // Secrets (wrangler secret put):
   //   SES_ACCESS_KEY_ID     — IAM user scoped to ses:SendRawEmail only
   //   SES_SECRET_ACCESS_KEY
+  //   CF_EMAIL_API_TOKEN    — only for RELAY=cloudflare
   //   INTERNAL_TOKEN        — shared secret for /internal/* calls from jmap worker
 }

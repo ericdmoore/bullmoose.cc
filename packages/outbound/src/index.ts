@@ -72,6 +72,80 @@ export class SesRelay implements OutboundRelay {
 }
 
 /**
+ * Cloudflare Email Service relay (beta) — makes an all-Cloudflare
+ * deployment possible and gives day-one outbound without waiting on SES
+ * production access (3k sends/mo included on Workers Paid).
+ *
+ * EXPERIMENTAL, with a known fidelity caveat: the REST API takes
+ * structured payloads, not raw RFC 5322 — so the stored message is
+ * decomposed (postal-mime) and threading headers (Message-ID,
+ * In-Reply-To, References) are re-attached via custom headers.
+ * Attachments are NOT yet mapped (structured attachment support exists
+ * in the API but is unimplemented here). SES SendRawEmail remains the
+ * full-fidelity default; prefer it once available. A raw-fidelity CF
+ * path would be their SMTP endpoint via cloudflare:sockets — future.
+ */
+export class CloudflareRelay implements OutboundRelay {
+  constructor(
+    private opts: { accountId: string; apiToken: string },
+  ) {}
+
+  async send(rawMessage: Uint8Array, envelope: Envelope): Promise<SendResult> {
+    const { default: PostalMime } = await import("postal-mime");
+    const buf = rawMessage.buffer.slice(
+      rawMessage.byteOffset,
+      rawMessage.byteOffset + rawMessage.byteLength,
+    ) as ArrayBuffer;
+    const parsed = await PostalMime.parse(buf);
+
+    const headers: Record<string, string> = {};
+    if (parsed.messageId) headers["Message-ID"] = parsed.messageId;
+    if (parsed.inReplyTo) headers["In-Reply-To"] = parsed.inReplyTo;
+    const references = parsed.headers?.find((h) => h.key === "references")?.value;
+    if (references) headers["References"] = references;
+
+    const body = {
+      from: envelope.mailFrom,
+      to: envelope.rcptTo,
+      subject: parsed.subject ?? "",
+      ...(parsed.text !== undefined ? { text: parsed.text } : {}),
+      ...(parsed.html !== undefined ? { html: parsed.html } : {}),
+      ...(Object.keys(headers).length > 0 ? { headers } : {}),
+    };
+
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${this.opts.accountId}/email/sending/send`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.opts.apiToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+    );
+    if (!res.ok) {
+      throw new Error(`Cloudflare Email send failed (${res.status}): ${await res.text()}`);
+    }
+    const data = (await res.json()) as {
+      success: boolean;
+      result?: { delivered?: string[]; queued?: string[]; permanent_bounces?: string[] };
+      errors?: Array<{ message: string }>;
+    };
+    if (!data.success) {
+      throw new Error(`Cloudflare Email send failed: ${data.errors?.[0]?.message ?? "unknown"}`);
+    }
+    const bounced = data.result?.permanent_bounces ?? [];
+    if (bounced.length > 0) {
+      console.warn(`CloudflareRelay: permanent bounces for ${bounced.join(", ")}`);
+    }
+    return {
+      relayMessageId: `cf-${(data.result?.delivered?.length ?? 0)}d-${(data.result?.queued?.length ?? 0)}q-${crypto.randomUUID()}`,
+    };
+  }
+}
+
+/**
  * Dev/test relay: accepts everything, sends nothing. Selected in the
  * submit worker with RELAY=mock so the full EmailSubmission path can be
  * exercised locally (SES cannot run against wrangler dev).

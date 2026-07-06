@@ -26,3 +26,13 @@ src/                  the existing bullmoose.cc Fresh site (unchanged)
 ```
 
 Dev: `npm install && npm run typecheck`, then `npm run dev:jmap`.
+Deploy: see [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+### Roadmap
+
+1. **Deploy** — first light: real inbound at bullmoose.cc (`docs/DEPLOY.md`)
+2. **SRV autodiscovery** — `bullmoose init eric@moore.coffee` (RFC 8620 §2.2)
+3. **Multi-account CLI** — one session, many inboxes, batched sync
+4. **Armed-responder policies + agent harness** — vacation/watchdog/follow-up
+   as one primitive; `urn:bullmoose:agent` collections + `packages/agent-harness`
+   (see `docs/architecture/agent-integration.md`)
