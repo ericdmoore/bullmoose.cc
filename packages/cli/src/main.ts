@@ -412,7 +412,7 @@ async function cmdWatch(): Promise<void> {
     // Re-exec ourselves detached, minus --daemon, with the db pinned.
     const { spawn } = await import("node:child_process");
     const { openSync } = await import("node:fs");
-    const log = openSync(paths.log, "a");
+    const log = openSync(paths.log, "a", 0o600); // log lines carry senders/subjects
     const args = [process.argv[1] as string, "watch", "--db", dbPath];
     if (opts.json) args.push("--json");
     if (opts.exec) args.push("--exec", opts.exec);

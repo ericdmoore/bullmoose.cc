@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -36,8 +36,20 @@ export function defaultDbPath(): string {
 }
 
 export function openDb(path: string): DatabaseSync {
-  mkdirSync(dirname(path), { recursive: true });
+  // The db holds the bearer token AND the synced mailbox — owner-only,
+  // both the directory and the file (plus WAL sidecars once created).
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const preexisting = existsSync(path);
   const db = new DatabaseSync(path);
+  if (!preexisting) {
+    for (const p of [path, `${path}-wal`, `${path}-shm`]) {
+      try {
+        chmodSync(p, 0o600);
+      } catch {
+        /* sidecar may not exist yet */
+      }
+    }
+  }
   db.exec("PRAGMA journal_mode = WAL");
 
   // Same directory depth from src/ (dev, type-stripped) and dist/ (built).

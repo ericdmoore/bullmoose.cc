@@ -253,5 +253,5 @@ export function readAlivePid(pidFile: string): number | null {
 }
 
 export function writePid(pidFile: string, pid: number): void {
-  writeFileSync(pidFile, `${pid}\n`);
+  writeFileSync(pidFile, `${pid}\n`, { mode: 0o600 });
 }
