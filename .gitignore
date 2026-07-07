@@ -132,3 +132,7 @@ dist
 # Wrangler local dev state + local secrets
 .wrangler/
 .dev.vars
+
+# popcorn build outputs
+packages/popcorn/dist/
+packages/popcorn/popcorn
