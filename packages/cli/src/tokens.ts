@@ -26,11 +26,13 @@ export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts
     process.exit(1);
   }
   const password = opts.password ?? process.env.BULLMOOSE_PASSWORD ?? (await promptHidden("password: "));
+  // Stretching happens HERE — the raw password never leaves this process.
+  const loginKey = await deriveLoginKey(email, password);
 
   const res = await fetch(`${opts.base}/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password, name: opts.name ?? deviceName() }),
+    body: JSON.stringify({ email, loginKey, name: opts.name ?? deviceName() }),
   });
   if (!res.ok) {
     console.error(`login failed: HTTP ${res.status} ${await res.text()}`);
@@ -121,6 +123,29 @@ export async function cmdToken(
 
 function deviceName(): string {
   return `${process.env.USER ?? "user"}@${process.env.HOSTNAME ?? "host"}`;
+}
+
+/**
+ * Client-side key stretching — MUST match packages/auth-core exactly
+ * (duplicated here because the CLI can't import workspace TS at runtime):
+ *   salt     = SHA-256("bullmoose-login-v1:" + lowercase(email))
+ *   loginKey = hex(PBKDF2-HMAC-SHA256(password, salt, 600_000, 256 bits))
+ * The server only ever sees/stores (a hash of) the derived key. The
+ * ~200-400ms of local CPU is the point: offline crackers pay it per guess,
+ * and the Workers Free 10ms CPU cap never does.
+ */
+export async function deriveLoginKey(email: string, password: string): Promise<string> {
+  const enc = new TextEncoder();
+  const salt = await crypto.subtle.digest("SHA-256", enc.encode(`bullmoose-login-v1:${email.toLowerCase()}`));
+  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, [
+    "deriveBits",
+  ]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 600_000 },
+    key,
+    256,
+  );
+  return [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** Hidden terminal prompt (no echo); falls back to plain stdin when piped. */

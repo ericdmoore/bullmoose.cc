@@ -1,5 +1,12 @@
 import { AwsClient } from "aws4fetch";
-import { hashPassword, mintToken } from "@bullmoose/auth-core";
+import {
+  LOGIN_KEY_ALGO,
+  LOGIN_KEY_ITERATIONS,
+  hashLoginKey,
+  isLoginKey,
+  loginSaltHex,
+  mintToken,
+} from "@bullmoose/auth-core";
 
 /**
  * Provision — multi-domain onboarding, fully API-driven (§8 of the design
@@ -67,7 +74,7 @@ export default {
         );
       }
       if (route === "POST /principals/password") {
-        return setPassword((await request.json()) as { email: string; password: string }, env);
+        return setPassword((await request.json()) as { email: string; loginKey: string }, env);
       }
       if (route === "POST /tokens") {
         return mintPrincipalToken(
@@ -343,24 +350,37 @@ async function findPrincipal(env: Env, email: string): Promise<{ id: string } | 
     .first<{ id: string }>();
 }
 
-async function setPassword(body: { email: string; password: string }, env: Env) {
-  if (!body.email || !body.password || body.password.length < 8) {
-    return json({ error: "email and password (min 8 chars) required" }, 400);
+async function setPassword(body: { email: string; loginKey: string }, env: Env) {
+  // The client derives loginKey via PBKDF2 (see auth-core) — the raw
+  // password never reaches this worker, and the KDF cost never hits the
+  // Workers Free 10ms CPU cap.
+  if (!body.email || !isLoginKey(body.loginKey)) {
+    return json(
+      { error: "email and loginKey (64-hex client-derived key; the CLI derives it) required" },
+      400,
+    );
   }
   const principal = await findPrincipal(env, body.email);
   if (!principal) return json({ error: `no principal for ${body.email}` }, 404);
 
-  const hashed = await hashPassword(body.password);
   await env.DB.prepare(
-    `INSERT INTO credentials (principal_id, pw_hash, pw_salt, pw_iters, updated_at)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO credentials (principal_id, pw_algo, pw_hash, pw_salt, pw_iters, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT (principal_id) DO UPDATE SET
-       pw_hash = excluded.pw_hash, pw_salt = excluded.pw_salt,
-       pw_iters = excluded.pw_iters, updated_at = excluded.updated_at`,
+       pw_algo = excluded.pw_algo, pw_hash = excluded.pw_hash,
+       pw_salt = excluded.pw_salt, pw_iters = excluded.pw_iters,
+       updated_at = excluded.updated_at`,
   )
-    .bind(principal.id, hashed.hashHex, hashed.saltHex, hashed.iterations, Date.now())
+    .bind(
+      principal.id,
+      LOGIN_KEY_ALGO,
+      await hashLoginKey(body.loginKey),
+      await loginSaltHex(body.email),
+      LOGIN_KEY_ITERATIONS,
+      Date.now(),
+    )
     .run();
-  return json({ ok: true, email: body.email.toLowerCase() });
+  return json({ ok: true, email: body.email.toLowerCase(), algo: LOGIN_KEY_ALGO });
 }
 
 /** Operator-minted tokens: agent runtimes, devices for other users, etc. */

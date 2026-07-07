@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { getConfig, isFileUrl, loadBootstrap, setConfig } from "./db.js";
-import { promptHidden } from "./tokens.js";
+import { deriveLoginKey, promptHidden } from "./tokens.js";
 
 /**
  * `bullmoose admin <noun> <verb>` — operator surface, wrapping the
@@ -169,7 +169,10 @@ export async function cmdAdmin(
         if (!email) fail("usage: admin password <email> [--password <pw>]");
         const password =
           opts.password ?? process.env.BULLMOOSE_PASSWORD ?? (await promptHidden(`new password for ${email}: `));
-        const res = await api("POST", "/principals/password", { email, password });
+        // Client-side stretching: the server (and the wire) only ever see
+        // the derived key, and the KDF cost stays off the 10ms CPU cap.
+        const loginKey = await deriveLoginKey(email, password);
+        const res = await api("POST", "/principals/password", { email, loginKey });
         out(res, opts, () => console.log(`password set for ${email}`));
         return;
       }

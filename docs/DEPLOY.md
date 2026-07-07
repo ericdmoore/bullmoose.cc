@@ -1,21 +1,29 @@
 # Deploying bullmoose mail — first-light checklist
 
 Goal: real inbound mail at `bullmoose.cc`, visible in `bullmoose watch`
-within seconds; outbound via Cloudflare Email Service on day one (SES
-graduates in later for full-fidelity sends).
+within seconds; outbound via SES sandbox on day one.
+
+**Plan: Cloudflare Workers FREE tier ($0/mo).** The stack fits it:
+SQLite-backed Durable Objects (our AccountDO's flavor), D1, R2, KV, and
+Email Routing all have free tiers, and auth uses client-side key
+stretching so login fits the free plan's 10ms CPU cap. Known free-tier
+edges: very large attachment ingest may occasionally trip the CPU cap,
+and CF Email Service *sending* is unavailable (use SES — planned
+anyway). If limits ever pinch, Workers Paid ($5/mo) is a zero-code
+upgrade.
 
 ## 0. Account prerequisites (human steps)
 
-- [ ] Cloudflare **Workers Paid** plan ($5/mo — the only fixed cost)
-- [ ] `bullmoose.cc` zone active on the Cloudflare account
+- [ ] `bullmoose.cc` zone active on the Cloudflare account (Workers Free OK)
 - [ ] **CF API token #1 (provisioning)**: Zone.Zone:Read, Zone.DNS:Edit,
       Zone.Email Routing:Edit — for the provision worker
-- [ ] *(outbound option A — recommended for day one)* Onboard the domain
-      in **Email Service → Sending** (dashboard, beta) and mint
-      **CF API token #2 (email sending)**
-- [ ] *(outbound option B)* Start the **AWS SES production access
-      request now** (~24h human review); create an IAM user scoped to
-      `ses:SendRawEmail`
+- [ ] **Outbound = SES sandbox** (free at this volume, full raw-MIME
+      fidelity): create an IAM user scoped to `ses:SendRawEmail` (+
+      `ses:CreateEmailIdentity`, `ses:GetEmailIdentity`,
+      `ses:PutEmailIdentityMailFromAttributes` for provisioning), and
+      **verify your personal inbox** in SES → Verified identities so
+      sandbox sends can reach it. Optionally start the production
+      access request (~24h) to lift the recipient restriction.
 - [ ] `npm install && npm run typecheck` green locally
 - [ ] **Pre-flight** (read-only account readiness check):
       `CF_API_TOKEN=... CF_ACCOUNT_ID=... CF_ZONE_ID=... node tools/preflight.mjs`
@@ -56,8 +64,8 @@ npm run -w services/provision deploy   # 4. control plane
 | `SHARE_SIGNING_KEY` | jmap | `openssl rand -hex 32` |
 | `ADMIN_TOKEN` | provision | `openssl rand -hex 24` |
 | `CF_API_TOKEN` | provision | token #1 |
-| `SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY` | provision (+ submit for RELAY=ses) | IAM user |
-| `CF_EMAIL_API_TOKEN` | submit (RELAY=cloudflare) | token #2 |
+| `SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY` | provision + submit | IAM user |
+| `CF_EMAIL_API_TOKEN` | submit — only if RELAY=cloudflare (requires Workers Paid) | CF sending token |
 
 ```sh
 npx wrangler secret put INTERNAL_TOKEN -c services/jmap/wrangler.jsonc
@@ -65,9 +73,9 @@ npx wrangler secret put INTERNAL_TOKEN -c services/jmap/wrangler.jsonc
 ```
 
 **Do NOT set `DEV_BEARER_TOKEN` in production** — with it unset, auth
-runs purely on the token table. For day-one outbound set submit's
-`RELAY` var to `cloudflare` (or leave `ses` once production access
-clears; `mock` if you want inbound-only first).
+runs purely on the token table. Submit's `RELAY` var: `ses` (default;
+sandbox delivers to your verified inbox on day one) or `mock` for
+inbound-only first.
 
 ## 4. Onboard the domain + your account
 

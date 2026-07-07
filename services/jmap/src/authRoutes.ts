@@ -1,48 +1,49 @@
 import {
-  hashPassword,
+  hashLoginKey,
+  isLoginKey,
   mintToken,
   scopesWithin,
-  verifyPassword,
+  timingSafeEqualHex,
 } from "@bullmoose/auth-core";
 import type { Principal } from "./auth";
 import type { Env } from "./index";
 
 /**
  * Self-service auth endpoints on the jmap worker:
- *   POST   /auth/login        {email, password, name?, scopes?} → token (once)
+ *   POST   /auth/login        {email, loginKey, name?, scopes?} → token (once)
  *   GET    /auth/tokens       list own tokens (no secrets)
  *   POST   /auth/tokens       {name, scopes?} mint another (⊆ own scopes)
  *   DELETE /auth/tokens/{id}  revoke own
  *
- * Passwords exist only to mint tokens; day-to-day calls are bearer-only.
- * TODO: rate-limit /auth/login; device-code flow so init never sees a
- * long-lived secret.
+ * loginKey is CLIENT-derived (PBKDF2 — see auth-core's contract): the
+ * raw password never transits, and server verification is one SHA-256,
+ * which fits the Workers Free 10ms CPU cap. Credentials exist only to
+ * mint tokens; day-to-day calls are bearer-only.
+ * TODO: rate-limit /auth/login; device-code flow.
  */
 
 export async function handleLogin(request: Request, env: Env): Promise<Response> {
   const body = (await request.json()) as {
     email?: string;
-    password?: string;
+    loginKey?: string;
     name?: string;
     scopes?: string[];
   };
-  if (!body.email || !body.password) return json({ error: "email and password required" }, 400);
+  if (!body.email || !isLoginKey(body.loginKey)) {
+    return json({ error: "email and loginKey (client-derived; the CLI derives it) required" }, 400);
+  }
 
   const principal = await env.DB.prepare(
-    `SELECT p.id, p.login_email, c.pw_hash, c.pw_salt, c.pw_iters
+    `SELECT p.id, p.login_email, c.pw_hash
      FROM principals p JOIN credentials c ON c.principal_id = p.id
      WHERE p.login_email = ?`,
   )
     .bind(body.email.toLowerCase())
-    .first<{ id: string; login_email: string; pw_hash: string; pw_salt: string; pw_iters: number }>();
-  // Same response for unknown user and wrong password.
+    .first<{ id: string; login_email: string; pw_hash: string }>();
+  // Same response for unknown user and wrong loginKey.
   if (!principal) return json({ error: "invalid credentials" }, 401);
 
-  const ok = await verifyPassword(body.password, {
-    hashHex: principal.pw_hash,
-    saltHex: principal.pw_salt,
-    iterations: principal.pw_iters,
-  });
+  const ok = timingSafeEqualHex(await hashLoginKey(body.loginKey), principal.pw_hash);
   if (!ok) return json({ error: "invalid credentials" }, 401);
 
   const scopes = body.scopes ?? ["mail"];
@@ -126,9 +127,6 @@ export async function handleTokens(
 
   return json({ error: "method not allowed" }, 405);
 }
-
-/** Password hashing for the provision worker lives in auth-core too. */
-export { hashPassword };
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {

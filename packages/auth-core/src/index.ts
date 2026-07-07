@@ -57,30 +57,40 @@ export function scopesWithin(requested: string[], granted: string[]): boolean {
   return requested.every((s) => hasScope(granted, s));
 }
 
-// ---- passwords (PBKDF2-SHA256 via WebCrypto) -----------------------------
+// ---- passwords: CLIENT-side stretching ------------------------------------
 //
-// Why not argon2? argon2id IS the modern standard (memory-hard, PHC
-// winner) — but Workers' WebCrypto has no argon2; it would need a WASM
-// build. PBKDF2 at OWASP-recommended iterations is the strongest
-// platform-native primitive, and the password's blast radius here is
-// deliberately small: it only mints tokens (rare, never on the hot
-// path). The credentials table carries pw_algo so rows can migrate to
-// 'argon2id' (WASM) later — verify-by-row, rehash-on-next-login.
+// The KDF runs on the CLIENT (CLI / webmail), not the server, because
+// Workers Free caps invocations at 10ms CPU and PBKDF2@600k burns
+// ~100ms+. The client derives a loginKey; the wire and the server only
+// ever see the derived key — the raw password never leaves the device,
+// and server-side verification is one SHA-256 (microseconds).
+//
+// Derivation contract (any client must match EXACTLY — see the CLI's
+// copy in packages/cli/src/tokens.ts):
+//   salt      = SHA-256("bullmoose-login-v1:" + lowercase(email))
+//   loginKey  = hex(PBKDF2-HMAC-SHA256(password, salt, 600_000 iters, 256 bits))
+// Server stores sha256(loginKey); offline crackers still pay the full
+// stretching cost per guess. pw_algo = 'client-pbkdf2-sha256-v1'; the
+// column exists so rows can migrate (e.g. to argon2id WASM client-side)
+// via verify-by-row + rehash-on-login.
+//
+// Why not argon2? It's the modern standard (memory-hard), but neither
+// Workers nor browsers ship it natively — WASM later, same contract slot.
 
-/** OWASP 2023+ guidance for PBKDF2-HMAC-SHA256. */
-const PBKDF2_ITERATIONS = 600_000;
+export const LOGIN_KEY_ALGO = "client-pbkdf2-sha256-v1";
+export const LOGIN_KEY_ITERATIONS = 600_000;
+const LOGIN_SALT_LABEL = "bullmoose-login-v1:";
 
-export interface PasswordHash {
-  saltHex: string;
-  iterations: number;
-  hashHex: string;
+export function isLoginKey(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
 }
 
-export async function hashPassword(
-  password: string,
-  saltHex = randomHex(16),
-  iterations = PBKDF2_ITERATIONS,
-): Promise<PasswordHash> {
+/** Runs on the CLIENT. ~200-400ms of local CPU by design. */
+export async function deriveLoginKey(email: string, password: string): Promise<string> {
+  const salt = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(LOGIN_SALT_LABEL + email.toLowerCase()),
+  );
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(password),
@@ -89,19 +99,26 @@ export async function hashPassword(
     ["deriveBits"],
   );
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt: hexToBytes(saltHex), iterations },
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: LOGIN_KEY_ITERATIONS },
     key,
     256,
   );
-  return { saltHex, iterations, hashHex: bytesToHex(new Uint8Array(bits)) };
+  return bytesToHex(new Uint8Array(bits));
 }
 
-export async function verifyPassword(
-  password: string,
-  stored: PasswordHash,
-): Promise<boolean> {
-  const candidate = await hashPassword(password, stored.saltHex, stored.iterations);
-  return timingSafeEqualHex(candidate.hashHex, stored.hashHex);
+/** Runs on the SERVER: the stored value, and the per-login compare input. */
+export async function hashLoginKey(loginKeyHex: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(loginKeyHex));
+  return bytesToHex(new Uint8Array(digest));
+}
+
+/** The salt hex a given email derives (stored for row self-description). */
+export async function loginSaltHex(email: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(LOGIN_SALT_LABEL + email.toLowerCase()),
+  );
+  return bytesToHex(new Uint8Array(digest));
 }
 
 // ---- helpers -------------------------------------------------------------

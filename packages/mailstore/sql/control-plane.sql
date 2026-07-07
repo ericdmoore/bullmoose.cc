@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS identities (
 -- Primary login credential (password → mints tokens; passkeys later).
 CREATE TABLE IF NOT EXISTS credentials (
   principal_id TEXT PRIMARY KEY REFERENCES principals(id),
-  pw_algo      TEXT NOT NULL DEFAULT 'pbkdf2-sha256', -- future: 'argon2id' (WASM)
+  pw_algo      TEXT NOT NULL DEFAULT 'client-pbkdf2-sha256-v1', -- future: client argon2id (WASM)
   pw_hash      TEXT NOT NULL,
   pw_salt      TEXT NOT NULL,
   pw_iters     INTEGER NOT NULL,          -- self-describing: verify uses the row's params
