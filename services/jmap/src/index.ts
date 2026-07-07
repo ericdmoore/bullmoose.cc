@@ -45,7 +45,9 @@ export default {
     const principal = await authenticate(request, env);
     if (!principal) {
       return json({ error: "unauthorized" }, 401, {
-        "www-authenticate": 'Bearer realm="jmap"',
+        // Basic is advertised for third-party clients that only speak
+        // user+password — the "password" is a minted bm_ token (app password).
+        "www-authenticate": 'Basic realm="jmap", Bearer realm="jmap"',
       });
     }
 

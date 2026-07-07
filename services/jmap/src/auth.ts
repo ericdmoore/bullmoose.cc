@@ -32,6 +32,22 @@ const LAST_USED_WRITE_INTERVAL_MS = 5 * 60_000;
 export async function authenticate(request: Request, env: AuthEnv): Promise<Principal | null> {
   const header = request.headers.get("Authorization") ?? "";
   let raw = header.startsWith("Bearer ") ? header.slice(7) : null;
+  // App-password pattern: third-party JMAP clients (Mailtemi, etc.) often
+  // only speak HTTP Basic. Accept Basic where the password IS a minted
+  // bm_ token; the username must match the token's principal.
+  let basicUser: string | null = null;
+  if (!raw && header.startsWith("Basic ")) {
+    try {
+      const decoded = atob(header.slice(6));
+      const colon = decoded.indexOf(":");
+      if (colon > 0) {
+        basicUser = decoded.slice(0, colon);
+        raw = decoded.slice(colon + 1);
+      }
+    } catch {
+      return null;
+    }
+  }
   if (!raw) {
     // Browser/Node WebSocket clients cannot set an Authorization header —
     // accept the token as a query parameter (RFC 6750 §2.3 style) so the
@@ -72,6 +88,7 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Prin
   if (!row) return null;
   if (!(await verifyTokenSecret(parsed.secret, row.secret_hash))) return null;
   if (row.expires_at !== null && row.expires_at < Date.now()) return null;
+  if (basicUser && basicUser.toLowerCase() !== row.login_email.toLowerCase()) return null;
 
   const { results: accountRows } = await env.DB.prepare(
     `SELECT id, tenant_id, display_name FROM accounts WHERE principal_id = ? ORDER BY created_at`,
