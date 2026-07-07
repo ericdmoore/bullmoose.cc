@@ -112,6 +112,34 @@ Anti-recommendation: anything marketed for "mail servers" — popcorn
 sends nothing (port 25 never enters the picture), so blocked-SMTP
 policies on cheap VPSes don't matter here.
 
+### IPv6-only vs dual-stack: better coverage for a lil' mo' money
+
+The cheapest tiers above are cheap because they skip the IPv4 address
+(AWS bills a public IPv4 at ~$3.65/mo under the **VPC** service — on a
+nano instance the IP costs more than the computer). Tempting. But
+popcorn is raw TCP: there is no Cloudflare proxy in front to bridge
+protocol families like there is for HTTP. **An IPv6-only popcorn is
+flatly invisible from any IPv4-only network your mail client sits on.**
+
+And v4-only networks hide where you least expect them. Field notes from
+this repo's own testing: an AT&T Fiber home network — full IPv6, both
+directions ✓ — while an AT&T 5G+ phone *on the same carrier* scored
+0/10 on IPv6 (legacy v4-only APN provisioning; the handset was fine).
+Turning on a VPN (1.1.1.1/WARP) "fixed" it by tunneling to dual-stack —
+which just means the mail path now depends on a VPN toggle. That's a
+bad failure mode to buy for ~$1.50/mo of savings.
+
+So, before choosing an IPv6-only tier, run [test-ipv6.com](https://test-ipv6.com)
+from **every network you actually read mail on** — home Wi-Fi, cellular
+*with any VPN off*, the office. All 10/10? The v6-only tier is a clean
+buy, and arguably the more direct path (v6-native phones reach it with
+no carrier NAT64 in the way). Anything 0/10? Pay the lil' mo' money for
+dual-stack — it's the difference between "reachable from my networks"
+and "reachable from networks."
+
+(popcorn's *upstream* leg is immune either way: Cloudflare publishes
+AAAA records, so a v6-only box reaches the JMAP API natively.)
+
 ## Client setup
 
 - Server: `pop3.bullmoose.cc` (or wherever popcorn runs), SSL/TLS,
