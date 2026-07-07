@@ -128,6 +128,29 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
 CREATE INDEX IF NOT EXISTS invocations_status
   ON agent_invocations (account_id, status);
 
+-- Spend facts — the ledger behind analyst@ (agent ledger pipeline).
+-- One row per extracted receipt; SQL owns every aggregate. The dedup
+-- hash (vendor|amount|date) makes re-forwarded receipts a no-op.
+CREATE TABLE IF NOT EXISTS spend_facts (
+  account_id   TEXT NOT NULL,
+  id           TEXT NOT NULL,
+  email_id     TEXT,                           -- provenance ref
+  vendor       TEXT NOT NULL,                  -- normalized: "sparkling-pools"
+  amount_cents INTEGER NOT NULL,               -- never floats
+  currency     TEXT NOT NULL DEFAULT 'USD',
+  txn_date     TEXT NOT NULL,                  -- YYYY-MM-DD
+  period_month TEXT NOT NULL,                  -- YYYY-MM, precomputed for GROUP BY
+  category     TEXT NOT NULL DEFAULT 'other',
+  confidence   REAL NOT NULL DEFAULT 1,
+  dedup_hash   TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  PRIMARY KEY (account_id, id),
+  UNIQUE (account_id, dedup_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_spend_facts_date
+  ON spend_facts (account_id, currency, txn_date);
+
 -- JMAP EmailSubmission objects (RFC 8621 §7).
 CREATE TABLE IF NOT EXISTS email_submissions (
   id            TEXT NOT NULL,

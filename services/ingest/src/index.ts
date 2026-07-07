@@ -185,7 +185,9 @@ async function deliver(
         binding.id,
         binding.name,
         emailId,
-        JSON.stringify({ emailId, threadId }),
+        // envelopeTo keeps the plus-tag (route lookup strips it) — the
+        // ledger pipeline uses it to select a digest target.
+        JSON.stringify({ emailId, threadId, envelopeTo: envelopeTo.toLowerCase() }),
         Date.now(),
       )
       .run();
