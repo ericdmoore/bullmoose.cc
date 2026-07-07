@@ -18,8 +18,12 @@ export BULLMOOSE_HOME="$HOME/.hermes-bullmoose"
 BM="$HOME/bin/bullmoose"
 HERMES="${HERMES_BIN:-$HOME/.local/bin/hermes}"
 SELF="hermes@bullmoose.cc"
+# popcorn serves implicit TLS on the tailnet: connect to the IP but
+# validate the ts.net hostname cert via curl --resolve (MagicDNS isn't
+# in alpaca's OS resolver).
 TSIP=$(/opt/homebrew/bin/tailscale ip -4 2>/dev/null | head -1)
-SMTP="smtp://${TSIP:-127.0.0.1}:9587"
+TSDNS=$(/opt/homebrew/bin/tailscale status --json 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null)
+SMTP_PORT=9587
 STATE="$HOME/.hermes-bullmoose/state"
 LOG="$HOME/.hermes-bullmoose/bridge.log"
 WATCHDOG_SECS=45
@@ -36,7 +40,9 @@ send() {
   _to="$1"; _sub="$2"; _auto="$3"; _body="$4"
   printf 'From: Hermes <%s>\r\nTo: %s\r\nSubject: %s\r\n%s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\r\n' \
     "$SELF" "$_to" "$_sub" "$_auto" "$_body" \
-    | curl -s --url "$SMTP" --mail-from "$SELF" --mail-rcpt "$_to" \
+    | curl -s --url "smtps://$TSDNS:$SMTP_PORT" \
+        --resolve "$TSDNS:$SMTP_PORT:$TSIP" \
+        --mail-from "$SELF" --mail-rcpt "$_to" \
         --user "$SELF:$HERMES_SMTP_TOKEN" --upload-file - >>"$LOG" 2>&1
 }
 
