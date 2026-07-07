@@ -22,5 +22,11 @@
     }
   ],
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "bullmoose-mail-blobs" }],
-  "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }]
+  "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }],
+
+  // Cloud agent runtime — poked (fire-and-forget) after invocation inserts.
+  "services": [{ "binding": "AGENT", "service": "bullmoose-agent" }]
+
+  // Secrets (wrangler secret put):
+  //   INTERNAL_TOKEN — authenticates the agent poke (same shared secret)
 }

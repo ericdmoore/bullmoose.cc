@@ -102,6 +102,9 @@ CREATE TABLE IF NOT EXISTS agent_bindings (
   trigger_on   TEXT NOT NULL DEFAULT 'mailbox-delivery',
   sla_seconds  INTEGER,
   enabled      INTEGER NOT NULL DEFAULT 1,
+  -- Cloud-runtime config: persona (L1), replyMode, allowedSenders,
+  -- modelAliases/defaultModel (services/agent resolver), maxTokens.
+  config_json  TEXT NOT NULL DEFAULT '{}',
   PRIMARY KEY (account_id, id)
 );
 

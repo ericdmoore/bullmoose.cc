@@ -24,6 +24,8 @@ export interface Env {
   BLOBS: R2Bucket;
   ROUTES: KVNamespace;
   ACCOUNT_DO: DurableObjectNamespace;
+  /** Cloud agent runtime — poked after invocation inserts (fast path). */
+  AGENT?: Fetcher;
   /** "1" enables POST /dev/inject (guarded; local testing only). */
   DEV_INJECT?: string;
   INTERNAL_TOKEN?: string;
@@ -43,13 +45,14 @@ interface Route {
 }
 
 export default {
-  async email(message: ForwardableEmailMessage, env: Env, _ctx: ExecutionContext) {
+  async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext) {
     const raw = await new Response(message.raw).arrayBuffer();
     const result = await deliver(env, message.from, message.to, raw);
     if (result.rejected) {
       message.setReject(result.rejected);
       return;
     }
+    pokeAgent(env, ctx, result);
     // Copies go out only after the store succeeded; a forward failure must
     // not bounce a message we already delivered.
     for (const addr of result.forwardTo ?? []) {
@@ -63,7 +66,7 @@ export default {
 
   // Local-dev injection: wrangler dev can't receive SMTP, so tests POST
   // raw MIME here. Requires DEV_INJECT=1 AND the internal token.
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (
       env.DEV_INJECT === "1" &&
@@ -75,6 +78,7 @@ export default {
       const to = url.searchParams.get("to") ?? "";
       const raw = await request.arrayBuffer();
       const result = await deliver(env, from, to, raw);
+      pokeAgent(env, _ctx, result);
       return new Response(JSON.stringify(result), {
         status: result.rejected ? 550 : 200,
         headers: { "content-type": "application/json" },
@@ -84,12 +88,30 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
+/** Fast-path wake for the cloud agent runtime; the cron sweep is the net. */
+function pokeAgent(
+  env: Env,
+  ctx: ExecutionContext,
+  result: { invocations?: number },
+): void {
+  if (!env.AGENT || !result.invocations) return;
+  ctx.waitUntil(
+    env.AGENT.fetch("https://agent.internal/drain", {
+      method: "POST",
+      headers: { "x-internal-token": env.INTERNAL_TOKEN ?? "" },
+    }).then(
+      () => undefined,
+      (err) => console.error(`agent poke failed: ${err}`),
+    ),
+  );
+}
+
 async function deliver(
   env: Env,
   envelopeFrom: string,
   envelopeTo: string,
   raw: ArrayBuffer,
-): Promise<{ rejected?: string; emailId?: string; forwardTo?: string[] }> {
+): Promise<{ rejected?: string; emailId?: string; forwardTo?: string[]; invocations?: number }> {
   const [localpart = "", domain = ""] = envelopeTo.toLowerCase().split("@");
   const route = await resolveRoute(env.ROUTES, domain, localpart);
   if (!route) return { rejected: "550 5.1.1 recipient unknown" };
@@ -191,7 +213,11 @@ async function deliver(
     });
   }
 
-  return { emailId, ...(route.forwardTo?.length ? { forwardTo: route.forwardTo } : {}) };
+  return {
+    emailId,
+    ...(route.forwardTo?.length ? { forwardTo: route.forwardTo } : {}),
+    ...(invocationIds.length > 0 ? { invocations: invocationIds.length } : {}),
+  };
 }
 
 function autoResponseEligible(

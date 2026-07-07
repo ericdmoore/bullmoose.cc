@@ -495,7 +495,7 @@ async function accountByAddress(env: Env, email: string) {
 }
 
 async function createAgentBinding(
-  body: { email: string; name: string; slaSeconds?: number },
+  body: { email: string; name: string; slaSeconds?: number; config?: Record<string, unknown> },
   env: Env,
 ) {
   if (!body.email || !body.name) return json({ error: "email and name required" }, 400);
@@ -504,10 +504,10 @@ async function createAgentBinding(
 
   const id = `bind_${crypto.randomUUID().slice(0, 8)}`;
   await env.DB.prepare(
-    `INSERT INTO agent_bindings (id, account_id, name, trigger_on, sla_seconds, enabled)
-     VALUES (?, ?, ?, 'mailbox-delivery', ?, 1)`,
+    `INSERT INTO agent_bindings (id, account_id, name, trigger_on, sla_seconds, enabled, config_json)
+     VALUES (?, ?, ?, 'mailbox-delivery', ?, 1, ?)`,
   )
-    .bind(id, account.id, body.name, body.slaSeconds ?? null)
+    .bind(id, account.id, body.name, body.slaSeconds ?? null, JSON.stringify(body.config ?? {}))
     .run();
 
   // SLA set → a watchdog responder backs this binding: fires unless the
@@ -541,7 +541,7 @@ async function listAgentBindings(url: URL, env: Env) {
     accountId = account.id;
   }
   const { results } = await env.DB.prepare(
-    `SELECT id, account_id, name, trigger_on, sla_seconds, enabled FROM agent_bindings
+    `SELECT id, account_id, name, trigger_on, sla_seconds, enabled, config_json FROM agent_bindings
      ${accountId ? "WHERE account_id = ?" : ""}`,
   )
     .bind(...(accountId ? [accountId] : []))

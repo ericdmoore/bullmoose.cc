@@ -75,6 +75,8 @@ Usage:
                           | list [--tenant <t>]
   bullmoose admin password <email>            set a principal's login password
   bullmoose admin agent bind <account-email> --name <binding> [--sla <seconds>]
+                          [--allow a@b,c@d] [--reply-mode send|draft]
+                          [--config <file.json>]  persona/modelAliases/defaultModel
                           | list <account-email>
                  (delivery-triggered agent binding; --sla arms a watchdog
                   responder per delivery, canceled when the agent claims)
@@ -135,6 +137,8 @@ const { values: opts, positionals } = parseArgs({
     once: { type: "boolean", default: false },
     until: { type: "string" },
     sla: { type: "string" },
+    allow: { type: "string" },
+    "reply-mode": { type: "string" },
     raw: { type: "boolean", default: false },
     offline: { type: "boolean", default: false },
     exec: { type: "string" },
@@ -221,6 +225,9 @@ try {
         scopes: opts.scopes,
         principal: opts.principal,
         sla: opts.sla,
+        allow: opts.allow,
+        replyMode: opts["reply-mode"],
+        config: opts.config,
         json: opts.json ?? false,
       });
       break;

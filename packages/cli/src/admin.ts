@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { getConfig, isFileUrl, loadBootstrap, setConfig } from "./db.js";
 import { deriveLoginKey, promptHidden } from "./tokens.js";
@@ -29,6 +30,12 @@ export interface AdminOpts {
   scopes?: string;
   principal?: string;
   sla?: string;
+  /** agent bind: comma-separated allowed sender addresses. */
+  allow?: string;
+  /** agent bind: "send" | "draft" (cloud runtime default: draft). */
+  replyMode?: string;
+  /** agent bind: JSON file with persona/modelAliases/defaultModel/maxTokens. */
+  config?: string;
   json: boolean;
 }
 
@@ -134,11 +141,26 @@ export async function cmdAdmin(
       return;
     }
     case "agent bind": {
-      if (!arg || !opts.name) fail("usage: admin agent bind <account-email> --name <binding> [--sla <seconds>]");
+      if (!arg || !opts.name) {
+        fail(
+          "usage: admin agent bind <account-email> --name <binding> [--sla <seconds>]\n" +
+            "                       [--allow a@b,c@d] [--reply-mode send|draft] [--config file.json]",
+        );
+      }
+      // --config file is the base; --allow/--reply-mode flags win over it.
+      const config: Record<string, unknown> = opts.config
+        ? (JSON.parse(readFileSync(opts.config, "utf8")) as Record<string, unknown>)
+        : {};
+      if (opts.allow) config.allowedSenders = opts.allow.split(",").map((s) => s.trim());
+      if (opts.replyMode) {
+        if (opts.replyMode !== "send" && opts.replyMode !== "draft") fail("--reply-mode must be send or draft");
+        config.replyMode = opts.replyMode;
+      }
       const res = (await api("POST", "/agent-bindings", {
         email: arg,
         name: opts.name,
         ...(opts.sla ? { slaSeconds: Number(opts.sla) } : {}),
+        ...(Object.keys(config).length > 0 ? { config } : {}),
       })) as { bindingId: string; watchdog: boolean };
       out(res, opts, () =>
         console.log(`binding ${res.bindingId} (${opts.name}) on ${arg}${res.watchdog ? " + watchdog responder" : ""}`),
