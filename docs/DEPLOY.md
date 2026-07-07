@@ -120,6 +120,30 @@ SPF/DKIM/DMARC pass (Gmail: "show original").
 4. SES config set → SNS → `/webhooks/ses` for bounce/complaint
    suppression (when RELAY=ses)
 
+### GHA repo secrets
+
+Set from a machine with `gh` authed to the repo (the remote sandbox's
+GitHub proxy blocks the Actions-secrets API on purpose, so this step is
+manual). Worker *runtime* secrets (INTERNAL_TOKEN, SES runtime pair,
+SHARE_SIGNING_KEY, …) live in Cloudflare via `wrangler secret put` and
+survive redeploys — they do NOT need to be mirrored into GHA. Only the
+deploy-time credentials do:
+
+```sh
+R=ericdmoore/bullmoose.cc
+gh secret set CLOUDFLARE_API_TOKEN  -R $R   # the *deploy* token (Workers Scripts/D1/KV/R2:Edit)
+gh secret set CLOUDFLARE_ACCOUNT_ID -R $R   # cf473a1c1e6f51585477ccf5216ae636
+
+# optional — only if GHA scripts will call the provision admin API
+# or manage SES identities from CI:
+gh secret set BULLMOOSE_ADMIN_TOKEN     -R $R
+gh secret set SES_DEPLOY_ACCESS_KEY_ID  -R $R
+gh secret set SES_DEPLOY_SECRET_KEY     -R $R
+```
+
+Each `gh secret set` with no value flag prompts on stdin, so tokens
+never land in shell history.
+
 ## Troubleshooting
 
 - 401 on everything → token table empty? `admin password` + `login` again;
