@@ -63,17 +63,24 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
     .run();
 
   const { results: accounts } = await env.DB.prepare(
-    `SELECT id, tenant_id, display_name FROM accounts WHERE principal_id = ?`,
+    `SELECT a.id, a.tenant_id, a.display_name,
+       (SELECT i.email FROM identities i WHERE i.account_id = a.id LIMIT 1) AS address
+     FROM accounts a WHERE a.principal_id = ? ORDER BY a.created_at`,
   )
     .bind(principal.id)
-    .all<{ id: string; tenant_id: string; display_name: string }>();
+    .all<{ id: string; tenant_id: string; display_name: string; address: string | null }>();
 
   return json({
     token: minted.token, // the one and only time it's visible
     tokenId: minted.id,
     username: principal.login_email,
     scopes,
-    accounts: accounts.map((a) => ({ accountId: a.id, tenantId: a.tenant_id, name: a.display_name })),
+    accounts: accounts.map((a) => ({
+      accountId: a.id,
+      tenantId: a.tenant_id,
+      name: a.display_name,
+      address: a.address,
+    })),
   });
 }
 

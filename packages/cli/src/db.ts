@@ -115,10 +115,21 @@ export function setConfig(db: DatabaseSync, key: string, value: string): void {
   db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(key, value);
 }
 
+export interface AccountRef {
+  accountId: string;
+  tenantId?: string;
+  name?: string;
+  /** Primary email address (from login discovery); selection key. */
+  address?: string;
+}
+
 export interface Settings {
   base: string;
   token: string;
+  /** Default account (send/read targets when unspecified). */
   accountId: string;
+  /** Every account this login can see. */
+  accounts: AccountRef[];
 }
 
 export function requireSettings(db: DatabaseSync): Settings {
@@ -126,8 +137,51 @@ export function requireSettings(db: DatabaseSync): Settings {
   const token = getConfig(db, "token");
   const accountId = getConfig(db, "accountId");
   if (!base || !token || !accountId) {
-    console.error("Not configured. Run: bullmoose init --base <url> --token <token>");
+    console.error("Not configured. Run: bullmoose login <email>  (or init --base/--token)");
     process.exit(1);
   }
-  return { base, token, accountId };
+  let accounts: AccountRef[] = [];
+  try {
+    accounts = JSON.parse(getConfig(db, "accounts") ?? "[]") as AccountRef[];
+  } catch {
+    /* legacy config */
+  }
+  if (accounts.length === 0) accounts = [{ accountId }];
+  return { base, token, accountId, accounts };
+}
+
+/**
+ * Resolve an --account selector to a set of accounts. Matching, in order:
+ * undefined → all; "default" → the default; exact accountId; exact
+ * address; "@suffix" → address domain suffix; else substring of
+ * address/name/id.
+ */
+export function selectAccounts(settings: Settings, selector?: string): AccountRef[] {
+  const all = settings.accounts;
+  if (!selector) return all;
+  if (selector === "default") {
+    return all.filter((a) => a.accountId === settings.accountId);
+  }
+  const exact = all.filter((a) => a.accountId === selector || a.address === selector);
+  if (exact.length > 0) return exact;
+  if (selector.startsWith("@")) {
+    const bySuffix = all.filter((a) => a.address?.endsWith(selector));
+    if (bySuffix.length > 0) return bySuffix;
+  }
+  const fuzzy = all.filter(
+    (a) =>
+      a.address?.includes(selector) ||
+      a.name?.toLowerCase().includes(selector.toLowerCase()) ||
+      a.accountId.includes(selector),
+  );
+  if (fuzzy.length > 0) return fuzzy;
+  console.error(
+    `no account matches "${selector}"; have: ${all.map((a) => a.address ?? a.accountId).join(", ")}`,
+  );
+  process.exit(1);
+}
+
+/** Short human label for an account (log columns, watch lines). */
+export function accountLabel(a: AccountRef): string {
+  return a.address ?? a.name ?? a.accountId.slice(-8);
 }

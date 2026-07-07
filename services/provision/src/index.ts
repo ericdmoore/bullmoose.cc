@@ -71,6 +71,7 @@ export default {
             domain: string;
             localpart: string;
             displayName: string;
+            principalEmail?: string;
           },
           env,
         );
@@ -297,7 +298,13 @@ async function checkDomain(domain: string, env: Env) {
 // ---- accounts --------------------------------------------------------
 
 async function createAccount(
-  body: { tenantId: string; domain: string; localpart: string; displayName: string },
+  body: {
+    tenantId: string;
+    domain: string;
+    localpart: string;
+    displayName: string;
+    principalEmail?: string;
+  },
   env: Env,
 ) {
   const { tenantId, domain, localpart, displayName } = body;
@@ -316,22 +323,38 @@ async function createAccount(
     return json({ error: `domain ${domain} belongs to a different tenant` }, 422);
   }
 
-  const principalId = `p_${crypto.randomUUID()}`;
+  // --principal attaches this mailbox to an EXISTING login, so one
+  // session surfaces eric@a.com and eric@b.com as sibling accounts
+  // (the §4 multi-domain model). Default: a new principal keyed to the
+  // address itself.
+  let principalId: string;
+  if (body.principalEmail) {
+    const existing = await findPrincipal(env, body.principalEmail);
+    if (!existing) {
+      return json({ error: `principal ${body.principalEmail} not found` }, 422);
+    }
+    principalId = existing.id;
+  } else {
+    principalId = `p_${crypto.randomUUID()}`;
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO principals (id, tenant_id, login_email, created_at)
+       VALUES (?, ?, ?, ?)`,
+    )
+      .bind(principalId, tenantId, address, now)
+      .run();
+    const row = await findPrincipal(env, address);
+    principalId = row?.id ?? principalId;
+  }
+
   const accountId = `${tenantId}__a_${crypto.randomUUID().slice(0, 8)}`;
 
   await env.DB.batch([
     env.DB
       .prepare(
-        `INSERT OR IGNORE INTO principals (id, tenant_id, login_email, created_at)
-         VALUES (?, ?, ?, ?)`,
-      )
-      .bind(principalId, tenantId, address, now),
-    env.DB
-      .prepare(
         `INSERT INTO accounts (id, tenant_id, principal_id, display_name, shard, created_at)
-         VALUES (?, ?, (SELECT id FROM principals WHERE login_email = ?), ?, 'shard0', ?)`,
+         VALUES (?, ?, ?, ?, 'shard0', ?)`,
       )
-      .bind(accountId, tenantId, address, displayName, now),
+      .bind(accountId, tenantId, principalId, displayName, now),
     env.DB
       .prepare(`INSERT INTO identities (id, account_id, email, name) VALUES (?, ?, ?, ?)`)
       .bind(`identity_${crypto.randomUUID().slice(0, 8)}`, accountId, address, displayName),

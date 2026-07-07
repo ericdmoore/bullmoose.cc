@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import type { JmapClient } from "./jmap.js";
 import { sync } from "./sync.js";
+import { accountLabel, type AccountRef } from "./db.js";
 
 /**
  * `bullmoose watch` — long-running, push-triggered sync.
@@ -39,7 +40,7 @@ interface WatchRow {
 export async function watch(
   db: DatabaseSync,
   client: JmapClient,
-  accountId: string,
+  accounts: AccountRef[],
   base: string,
   token: string,
   opts: WatchOptions,
@@ -50,21 +51,38 @@ export async function watch(
     process.exit(1);
   }
 
-  let ws: WsLike | null = null;
-  let backoff = BACKOFF_MIN_MS;
-  let debounceTimer: NodeJS.Timeout | null = null;
-  let syncing = false;
-  let pendingReason: string | null = null;
+  const multi = accounts.length > 1;
   let stopping = false;
 
   const status = (msg: string) => console.error(`[watch] ${msg}`);
 
+  // One channel per account: its own socket, backoff, debounce, and sync
+  // serialization — a burst on one inbox never blocks another's pushes.
+  interface Channel {
+    account: AccountRef;
+    ws: WsLike | null;
+    backoff: number;
+    debounceTimer: NodeJS.Timeout | null;
+    syncing: boolean;
+    pendingReason: string | null;
+  }
+  const channels: Channel[] = accounts.map((account) => ({
+    account,
+    ws: null,
+    backoff: BACKOFF_MIN_MS,
+    debounceTimer: null,
+    syncing: false,
+    pendingReason: null,
+  }));
+
   const shutdown = () => {
     stopping = true;
-    try {
-      ws?.close();
-    } catch {
-      /* already closed */
+    for (const ch of channels) {
+      try {
+        ch.ws?.close();
+      } catch {
+        /* already closed */
+      }
     }
     if (opts.pidFile) {
       try {
@@ -78,44 +96,48 @@ export async function watch(
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  async function runSync(reason: string): Promise<void> {
-    if (syncing) {
-      pendingReason = reason; // coalesce; rerun once the current pass ends
+  const tag = (ch: Channel) => (multi ? `${accountLabel(ch.account)}: ` : "");
+
+  async function runSync(ch: Channel, reason: string): Promise<void> {
+    if (ch.syncing) {
+      ch.pendingReason = reason; // coalesce; rerun once the current pass ends
       return;
     }
-    syncing = true;
+    ch.syncing = true;
     try {
-      const stats = await sync(db, client, accountId);
+      const stats = await sync(db, client, ch.account.accountId);
       if (stats.mode === "full") {
-        status(`full sync (${reason}): ${stats.created} messages, state ${stats.newState}`);
+        status(`${tag(ch)}full sync (${reason}): ${stats.created} messages, state ${stats.newState}`);
       } else if (stats.created + stats.updated + stats.destroyed > 0) {
         status(
-          `sync (${reason}): +${stats.created} ~${stats.updated} -${stats.destroyed}, state ${stats.newState}`,
+          `${tag(ch)}sync (${reason}): +${stats.created} ~${stats.updated} -${stats.destroyed}, state ${stats.newState}`,
         );
       }
-      emit(stats.createdIds, "created");
-      emit(stats.updatedIds, "updated");
+      emit(ch, stats.createdIds, "created");
+      emit(ch, stats.updatedIds, "updated");
       for (const id of stats.destroyedIds) {
-        if (opts.json) console.log(JSON.stringify({ event: "destroyed", id }));
+        if (opts.json) {
+          console.log(JSON.stringify({ event: "destroyed", id, account: accountLabel(ch.account) }));
+        }
       }
     } catch (err) {
-      status(`sync failed (${reason}): ${err instanceof Error ? err.message : err}`);
+      status(`${tag(ch)}sync failed (${reason}): ${err instanceof Error ? err.message : err}`);
     } finally {
-      syncing = false;
-      if (pendingReason) {
-        const next = pendingReason;
-        pendingReason = null;
-        void runSync(next);
+      ch.syncing = false;
+      if (ch.pendingReason) {
+        const next = ch.pendingReason;
+        ch.pendingReason = null;
+        void runSync(ch, next);
       }
     }
   }
 
-  function scheduleSync(reason: string): void {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => void runSync(reason), DEBOUNCE_MS);
+  function scheduleSync(ch: Channel, reason: string): void {
+    if (ch.debounceTimer) clearTimeout(ch.debounceTimer);
+    ch.debounceTimer = setTimeout(() => void runSync(ch, reason), DEBOUNCE_MS);
   }
 
-  function emit(ids: string[], event: "created" | "updated"): void {
+  function emit(ch: Channel, ids: string[], event: "created" | "updated"): void {
     if (ids.length === 0) return;
     const marks = ids.map(() => "?").join(",");
     const rows = db
@@ -126,7 +148,7 @@ export async function watch(
             WHERE em.account_id = e.account_id AND em.email_id = e.id) AS mailboxes
          FROM emails e WHERE e.account_id = ? AND e.id IN (${marks})`,
       )
-      .all(accountId, ...ids) as unknown as WatchRow[];
+      .all(ch.account.accountId, ...ids) as unknown as WatchRow[];
 
     for (const row of rows) {
       const from = (JSON.parse(row.from_json) as Array<{ name?: string; email: string }>)
@@ -137,6 +159,7 @@ export async function watch(
           JSON.stringify({
             event,
             id: row.id,
+            account: accountLabel(ch.account),
             from,
             subject: row.subject,
             preview: row.preview,
@@ -147,8 +170,9 @@ export async function watch(
       } else {
         const date = new Date(row.received_at).toISOString().slice(0, 16).replace("T", " ");
         const mark = event === "created" ? "●" : "~";
+        const acct = multi ? `${accountLabel(ch.account).padEnd(20).slice(0, 20)}  ` : "";
         console.log(
-          `${mark} ${date}  ${from.padEnd(24).slice(0, 24)}  ${(row.subject || "(no subject)").slice(0, 48)}  [${row.mailboxes ?? ""}]  ${row.id}`,
+          `${mark} ${date}  ${acct}${from.padEnd(24).slice(0, 24)}  ${(row.subject || "(no subject)").slice(0, 48)}  [${row.mailboxes ?? ""}]  ${row.id}`,
         );
       }
       if (opts.exec && event === "created") runHook(opts.exec, row, from);
@@ -165,50 +189,52 @@ export async function watch(
     child.on("error", (err) => status(`--exec failed: ${err.message}`));
   }
 
-  function connect(): void {
+  function connect(ch: Channel): void {
     if (stopping) return;
     const url = new URL(base);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = "/api/ws";
-    url.searchParams.set("accountId", accountId);
+    url.searchParams.set("accountId", ch.account.accountId);
     // WebSocket clients can't set an Authorization header.
     url.searchParams.set("access_token", token);
 
     const socket = new WebSocketCtor!(url.toString());
-    ws = socket;
+    ch.ws = socket;
 
     socket.onopen = () => {
-      backoff = BACKOFF_MIN_MS;
-      status("connected — waiting for pushes");
-      void runSync("reconnect"); // catch up on anything missed while offline
+      ch.backoff = BACKOFF_MIN_MS;
+      status(`${tag(ch)}connected — waiting for pushes`);
+      void runSync(ch, "reconnect"); // catch up on anything missed while offline
     };
     socket.onmessage = (event: { data: unknown }) => {
       try {
         const msg = JSON.parse(String(event.data)) as { "@type"?: string };
-        if (msg["@type"] === "StateChange") scheduleSync("push");
+        if (msg["@type"] === "StateChange") scheduleSync(ch, "push");
       } catch {
         /* not JSON — ignore */
       }
     };
-    socket.onclose = () => reconnect();
+    socket.onclose = () => reconnect(ch);
     socket.onerror = () => {
       /* onclose fires next; reconnect there */
     };
   }
 
-  function reconnect(): void {
+  function reconnect(ch: Channel): void {
     if (stopping) return;
-    const jitter = backoff * (0.5 + Math.random() * 0.5);
-    status(`disconnected — retrying in ${Math.round(jitter / 1000)}s`);
-    setTimeout(connect, jitter);
-    backoff = Math.min(backoff * 2, BACKOFF_MAX_MS);
+    const jitter = ch.backoff * (0.5 + Math.random() * 0.5);
+    status(`${tag(ch)}disconnected — retrying in ${Math.round(jitter / 1000)}s`);
+    setTimeout(() => connect(ch), jitter);
+    ch.backoff = Math.min(ch.backoff * 2, BACKOFF_MAX_MS);
   }
 
   // Startup: catch up first so pushes only ever mean deltas, then listen.
-  await runSync("startup");
-  connect();
+  for (const ch of channels) await runSync(ch, "startup");
+  for (const ch of channels) connect(ch);
   // Guard against silently dead sockets: a slow unconditional resync.
-  setInterval(() => void runSync("fallback"), FALLBACK_SYNC_MS).unref?.();
+  setInterval(() => {
+    for (const ch of channels) void runSync(ch, "fallback");
+  }, FALLBACK_SYNC_MS).unref?.();
 
   return new Promise<never>(() => {
     /* runs until signalled */

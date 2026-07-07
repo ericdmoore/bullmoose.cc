@@ -49,10 +49,12 @@ export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts
     token: string;
     tokenId: string;
     username: string;
-    accounts: Array<{ accountId: string; tenantId: string; name: string }>;
+    accounts: Array<{ accountId: string; tenantId: string; name: string; address: string | null }>;
   };
 
-  const primary = body.accounts[0];
+  const primary =
+    body.accounts.find((a) => a.address?.toLowerCase() === email.toLowerCase()) ??
+    body.accounts[0];
   if (!primary) {
     console.error(`login ok but ${email} has no accounts — provision one first`);
     process.exit(1);
@@ -60,12 +62,24 @@ export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts
   setConfig(db, "base", opts.base);
   setConfig(db, "token", body.token);
   setConfig(db, "accountId", primary.accountId);
-
-  console.log(
-    `logged in as ${body.username} (token ${body.tokenId}, this device only)\n` +
-      `primary account: ${primary.accountId}` +
-      (body.accounts.length > 1 ? ` (+${body.accounts.length - 1} more)` : ""),
+  setConfig(
+    db,
+    "accounts",
+    JSON.stringify(
+      body.accounts.map((a) => ({
+        accountId: a.accountId,
+        tenantId: a.tenantId,
+        name: a.name,
+        ...(a.address ? { address: a.address } : {}),
+      })),
+    ),
   );
+
+  console.log(`logged in as ${body.username} (token ${body.tokenId}, this device only)`);
+  for (const a of body.accounts) {
+    const mark = a.accountId === primary.accountId ? "★" : " ";
+    console.log(`  ${mark} ${a.address ?? a.accountId}  (${a.name})`);
+  }
 }
 
 export interface TokenOpts {

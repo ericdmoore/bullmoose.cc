@@ -3,16 +3,18 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { marked } from "marked";
 import {
+  accountLabel,
   defaultDbPath,
   getConfig,
   isFileUrl,
   loadBootstrap,
   openDb,
   requireSettings,
+  selectAccounts,
   setConfig,
 } from "./db.js";
 import { JmapClient } from "./jmap.js";
-import { sync } from "./sync.js";
+import { sync, syncAll } from "./sync.js";
 import { processAssets } from "./assets.js";
 import { buildMime } from "./mime.js";
 import { pidPaths, readAlivePid, watch, writePid } from "./watch.js";
@@ -35,7 +37,11 @@ Usage:
                   {base, token, accountId} bootstrap written by an
                   operator; --offline stores it without validating)
   bullmoose token create --name <n> [--scopes read,draft] | list | revoke <id>
-  bullmoose sync [--blobs <dir>]
+  bullmoose accounts
+                 list this login's accounts (★ = default; local counts)
+  bullmoose sync [--blobs <dir>] [--account <sel>]
+                 default: ALL accounts — clean ones detected in one batched
+                 round-trip and skipped; only dirty inboxes fully sync
   bullmoose send --to <addr>[,<addr>] --subject <s> [--cc ..] [--bcc ..]
                  [--expandMD no|html] [--file <path>] [--body <text>]
                  [--identity <id-or-email>] [--linkMax <MiB>] [--linkTTL <days>]
@@ -47,14 +53,16 @@ Usage:
                  --json emits NDJSON events; --exec runs a shell command per
                  new message ({id} {from} {subject} {preview} placeholders);
                  --daemon detaches (prints PID; logs beside the db file)
-  bullmoose log [-n <count>] [--mailbox <role-or-id>] [--json]
-  bullmoose search <fts5-query> [--json]
+  bullmoose log [-n <count>] [--mailbox <role-or-id>] [--account <sel>] [--json]
+  bullmoose search <fts5-query> [--account <sel>] [--json]
   bullmoose show <emailId> [--json]
   bullmoose mailboxes [--json]
   bullmoose admin init --url <provision-url> --token <admin-token>
   bullmoose admin tenant  create <id> --name <n> | list
   bullmoose admin domain  add <domain> --tenant <t> | status <domain> | list
-  bullmoose admin account create <local@domain> --tenant <t> [--name <n>] | list [--tenant <t>]
+  bullmoose admin account create <local@domain> --tenant <t> [--name <n>]
+                          [--principal <email>]   attach to an existing login
+                          | list [--tenant <t>]
   bullmoose admin password <email>            set a principal's login password
   bullmoose admin token   create <email> --name <n> [--scopes read,draft,send]
                           | list [<email>] | revoke <id>    (agent/operator tokens)
@@ -64,6 +72,10 @@ Usage:
 
 Options:
   --db <path>        SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db)
+  --account <sel>    account selector: accountId, address, @domain-suffix,
+                     name substring, or "default" (log/search/sync/watch/
+                     mailboxes accept it; send uses --from to pick sender)
+  --from <address>   (send) select the sending account + identity
   --expandMD html    treat the body as Markdown: rendered HTML becomes the
                      displayed body (raw Markdown rides along as the hidden
                      plain-text fallback). Local references are resolved
@@ -91,6 +103,8 @@ const { values: opts, positionals } = parseArgs({
     password: { type: "string" },
     scopes: { type: "string" },
     account: { type: "string" },
+    from: { type: "string" },
+    principal: { type: "string" },
     blobs: { type: "string" },
     mailbox: { type: "string" },
     to: { type: "string", multiple: true },
@@ -149,6 +163,9 @@ try {
     case "sync":
       await cmdSync();
       break;
+    case "accounts":
+      cmdAccounts();
+      break;
     case "send":
       await cmdSend();
       break;
@@ -178,6 +195,7 @@ try {
         name: opts.name,
         password: opts.password,
         scopes: opts.scopes,
+        principal: opts.principal,
         json: opts.json ?? false,
       });
       break;
@@ -236,18 +254,59 @@ async function cmdInit(): Promise<void> {
   setConfig(db, "base", base);
   setConfig(db, "token", token);
   setConfig(db, "accountId", accountId);
+  setConfig(
+    db,
+    "accounts",
+    JSON.stringify(
+      Object.entries(session.accounts).map(([id, a]) => ({
+        accountId: id,
+        name: (a as { name?: string }).name,
+      })),
+    ),
+  );
   console.log(`configured: ${session.username} / ${accountId} @ ${base}`);
 }
 
 async function cmdSync(): Promise<void> {
   const settings = requireSettings(db);
   const client = new JmapClient(settings.base, settings.token);
-  const stats = await sync(db, client, settings.accountId, { blobs: opts.blobs });
-  console.log(
-    `${stats.mode} sync → state ${stats.newState}: ` +
-      `+${stats.created} ~${stats.updated} -${stats.destroyed} ` +
-      `(${stats.mailboxes} mailboxes)`,
-  );
+  const accounts = selectAccounts(settings, opts.account);
+  const results = await syncAll(db, client, accounts, { blobs: opts.blobs });
+  let failures = 0;
+  for (const r of results) {
+    const label = accountLabel(r.account).padEnd(28);
+    if (r.clean) console.log(`${label} clean (no changes)`);
+    else if (r.error) {
+      console.error(`${label} FAILED: ${r.error}`);
+      failures++;
+    } else if (r.stats) {
+      console.log(
+        `${label} ${r.stats.mode} → state ${r.stats.newState}: ` +
+          `+${r.stats.created} ~${r.stats.updated} -${r.stats.destroyed} ` +
+          `(${r.stats.mailboxes} mailboxes)`,
+      );
+    }
+  }
+  if (failures > 0) process.exit(1);
+}
+
+function cmdAccounts(): void {
+  const settings = requireSettings(db);
+  for (const a of settings.accounts) {
+    const state = db
+      .prepare("SELECT email_state, last_sync FROM sync_state WHERE account_id = ?")
+      .get(a.accountId) as { email_state: string | null; last_sync: number | null } | undefined;
+    const count = db
+      .prepare("SELECT COUNT(*) AS n FROM emails WHERE account_id = ?")
+      .get(a.accountId) as { n: number };
+    const mark = a.accountId === settings.accountId ? "★" : " ";
+    const synced = state?.last_sync
+      ? `synced ${new Date(state.last_sync).toISOString().slice(0, 16).replace("T", " ")}`
+      : "never synced";
+    console.log(
+      `${mark} ${accountLabel(a).padEnd(28)} ${String(count.n).padStart(6)} msgs  state=${state?.email_state ?? "-"}  ${synced}  (${a.accountId})`,
+    );
+  }
 }
 
 // ---- send --------------------------------------------------------------
@@ -255,6 +314,14 @@ async function cmdSync(): Promise<void> {
 async function cmdSend(): Promise<void> {
   const settings = requireSettings(db);
   const client = new JmapClient(settings.base, settings.token);
+
+  // --from selects both the sending ACCOUNT (by address) and, below, the
+  // identity within it. Falls back to --account, then the default.
+  const sendAccount = opts.from
+    ? (selectAccounts(settings, opts.from)[0]?.accountId ?? settings.accountId)
+    : opts.account
+      ? (selectAccounts(settings, opts.account)[0]?.accountId ?? settings.accountId)
+      : settings.accountId;
 
   const to = splitAddresses(opts.to);
   const cc = splitAddresses(opts.cc);
@@ -273,11 +340,13 @@ async function cmdSend(): Promise<void> {
   const body = readBody();
 
   // Identity: --identity by id or email, else the first one.
-  const idRes = await client.one("Identity/get", { accountId: settings.accountId, ids: null });
+  const idRes = await client.one("Identity/get", { accountId: sendAccount, ids: null });
   const identities = idRes.list as Array<{ id: string; email: string; name: string }>;
   const identity = opts.identity
     ? identities.find((i) => i.id === opts.identity || i.email === opts.identity)
-    : identities[0];
+    : opts.from
+      ? (identities.find((i) => i.email === opts.from) ?? identities[0])
+      : identities[0];
   if (!identity) {
     console.error(
       `identity ${opts.identity ?? "(default)"} not found; available: ${identities.map((i) => i.email).join(", ")}`,
@@ -286,7 +355,7 @@ async function cmdSend(): Promise<void> {
   }
 
   // Role mailboxes for the draft → Sent dance.
-  const mbRes = await client.one("Mailbox/get", { accountId: settings.accountId, ids: null });
+  const mbRes = await client.one("Mailbox/get", { accountId: sendAccount, ids: null });
   const mailboxes = mbRes.list as Array<{ id: string; role: string | null }>;
   const draftsId = mailboxes.find((m) => m.role === "drafts")?.id;
   const sentId = mailboxes.find((m) => m.role === "sent")?.id;
@@ -311,8 +380,8 @@ async function cmdSend(): Promise<void> {
     const assets = await processAssets(body, rendered, baseDir, {
       linkMaxBytes,
       share: async (file) => {
-        const { blobId } = await client.upload(settings.accountId, file.content, file.type);
-        const { url } = await client.createShareLink(settings.accountId, blobId, {
+        const { blobId } = await client.upload(sendAccount, file.content, file.type);
+        const { url } = await client.createShareLink(sendAccount, blobId, {
           name: file.name,
           type: file.type,
           ttlSeconds,
@@ -335,9 +404,9 @@ async function cmdSend(): Promise<void> {
       attachments: assets.attachments,
     });
 
-    const { blobId } = await client.upload(settings.accountId, raw, "message/rfc822");
+    const { blobId } = await client.upload(sendAccount, raw, "message/rfc822");
     const impRes = await client.one("Email/import", {
-      accountId: settings.accountId,
+      accountId: sendAccount,
       emails: {
         d: { blobId, mailboxIds: { [draftsId]: true }, keywords: { $draft: true, $seen: true } },
       },
@@ -359,7 +428,7 @@ async function cmdSend(): Promise<void> {
   } else {
     // Plain text: the server builds the MIME from bodyValues.
     const setRes = await client.one("Email/set", {
-      accountId: settings.accountId,
+      accountId: sendAccount,
       create: {
         d: {
           mailboxIds: { [draftsId]: true },
@@ -386,7 +455,7 @@ async function cmdSend(): Promise<void> {
   // is explicit so bcc recipients (never written into the MIME) receive it.
   const rcptTo = [...to, ...cc, ...bcc].map((a) => ({ email: a.email }));
   const subRes = await client.one("EmailSubmission/set", {
-    accountId: settings.accountId,
+    accountId: sendAccount,
     create: {
       s: {
         emailId: draftId,
@@ -415,9 +484,9 @@ async function cmdSend(): Promise<void> {
 
   // Keep the local log current; best-effort.
   try {
-    await sync(db, client, settings.accountId);
+    await sync(db, client, sendAccount);
   } catch {
-    /* next `bullmoose sync` catches up */
+    /* next \`bullmoose sync\` catches up */
   }
 }
 
@@ -487,10 +556,7 @@ async function cmdWatch(): Promise<void> {
   }
 
   const settings = requireSettings(db);
-  if (opts.account && opts.account !== settings.accountId) {
-    console.error(`only the configured account (${settings.accountId}) is supported until multi-account lands`);
-    process.exit(1);
-  }
+  const watchAccounts = selectAccounts(settings, opts.account);
 
   // A --daemon parent writes the child's pid before the child boots, so
   // the child finds its OWN pid here — that's us, not a rival watcher.
@@ -508,6 +574,7 @@ async function cmdWatch(): Promise<void> {
     const args = [process.argv[1] as string, "watch", "--db", dbPath];
     if (opts.json) args.push("--json");
     if (opts.exec) args.push("--exec", opts.exec);
+    if (opts.account) args.push("--account", opts.account);
     const child = spawn(process.execPath, args, {
       detached: true,
       stdio: ["ignore", log, log],
@@ -523,7 +590,7 @@ async function cmdWatch(): Promise<void> {
   // pidfile; claim it for cleanup-on-exit either way.
   writePid(paths.pid, process.pid);
   const client = new JmapClient(settings.base, settings.token);
-  await watch(db, client, settings.accountId, settings.base, settings.token, {
+  await watch(db, client, watchAccounts, settings.base, settings.token, {
     json: opts.json ?? false,
     exec: opts.exec,
     pidFile: paths.pid,
@@ -536,12 +603,24 @@ async function cmdRead(): Promise<void> {
   const settings = requireSettings(db);
   const client = new JmapClient(settings.base, settings.token);
 
+  // Which account? Explicit --account wins; a given id is looked up in the
+  // local db to find its owner; otherwise the default account.
+  let accountId = opts.account
+    ? (selectAccounts(settings, opts.account)[0]?.accountId ?? settings.accountId)
+    : settings.accountId;
+
   // Explicit id, else the most recent message — queried live so this
   // works without a prior sync.
   let id = positionals[1];
+  if (id && !opts.account) {
+    const owner = db.prepare(`SELECT account_id FROM emails WHERE id = ?`).get(id) as
+      | { account_id: string }
+      | undefined;
+    if (owner) accountId = owner.account_id;
+  }
   if (!id) {
     const q = await client.one("Email/query", {
-      accountId: settings.accountId,
+      accountId,
       sort: [{ property: "receivedAt", isAscending: false }],
       limit: 1,
     });
@@ -554,7 +633,7 @@ async function cmdRead(): Promise<void> {
 
   if (opts.raw) {
     const meta = await client.one("Email/get", {
-      accountId: settings.accountId,
+      accountId,
       ids: [id],
       properties: ["blobId"],
     });
@@ -563,12 +642,12 @@ async function cmdRead(): Promise<void> {
       console.error(`${id} not found`);
       process.exit(1);
     }
-    process.stdout.write(await client.downloadBlob(settings.accountId, blobId));
+    process.stdout.write(await client.downloadBlob(accountId, blobId));
     return;
   }
 
   const res = await client.one("Email/get", {
-    accountId: settings.accountId,
+    accountId,
     ids: [id],
     properties: ["id", "from", "to", "cc", "subject", "receivedAt", "bodyValues", "textBody"],
     fetchTextBodyValues: true,
@@ -605,6 +684,7 @@ function formatAddrs(value: unknown): string {
 
 interface LogRow {
   id: string;
+  account_id: string;
   subject: string;
   from_json: string;
   preview: string;
@@ -615,10 +695,12 @@ interface LogRow {
 
 function cmdLog(): void {
   const settings = requireSettings(db);
+  const selected = selectAccounts(settings, opts.account);
   const limit = Number(opts.n) || 20;
 
+  const accountMarks = selected.map(() => "?").join(",");
   let mailboxClause = "";
-  const params: Array<string | number> = [settings.accountId];
+  const params: Array<string | number> = selected.map((a) => a.accountId);
   if (opts.mailbox) {
     mailboxClause = `AND EXISTS (
       SELECT 1 FROM email_mailboxes em JOIN mailboxes m
@@ -631,19 +713,19 @@ function cmdLog(): void {
 
   const rows = db
     .prepare(
-      `SELECT e.id, e.subject, e.from_json, e.preview, e.received_at,
+      `SELECT e.id, e.account_id, e.subject, e.from_json, e.preview, e.received_at,
          EXISTS (SELECT 1 FROM email_keywords k WHERE k.account_id = e.account_id
                  AND k.email_id = e.id AND k.keyword = '$seen') AS seen,
          (SELECT group_concat(COALESCE(m.role, m.name)) FROM email_mailboxes em
             JOIN mailboxes m ON m.account_id = em.account_id AND m.id = em.mailbox_id
           WHERE em.account_id = e.account_id AND em.email_id = e.id) AS mailboxes
        FROM emails e
-       WHERE e.account_id = ? ${mailboxClause}
+       WHERE e.account_id IN (${accountMarks}) ${mailboxClause}
        ORDER BY e.received_at DESC LIMIT ?`,
     )
     .all(...params) as unknown as LogRow[];
 
-  printRows(rows);
+  printRows(rows, selected.length > 1);
 }
 
 function cmdSearch(): void {
@@ -654,21 +736,23 @@ function cmdSearch(): void {
     process.exit(1);
   }
 
+  const selected = selectAccounts(settings, opts.account);
+  const accountMarks = selected.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT e.id, e.subject, e.from_json, e.preview, e.received_at,
+      `SELECT e.id, e.account_id, e.subject, e.from_json, e.preview, e.received_at,
          EXISTS (SELECT 1 FROM email_keywords k WHERE k.account_id = e.account_id
                  AND k.email_id = e.id AND k.keyword = '$seen') AS seen,
          (SELECT group_concat(COALESCE(m.role, m.name)) FROM email_mailboxes em
             JOIN mailboxes m ON m.account_id = em.account_id AND m.id = em.mailbox_id
           WHERE em.account_id = e.account_id AND em.email_id = e.id) AS mailboxes
        FROM cli_fts f JOIN emails e ON e.id = f.email_id
-       WHERE e.account_id = ? AND cli_fts MATCH ?
+       WHERE e.account_id IN (${accountMarks}) AND cli_fts MATCH ?
        ORDER BY rank LIMIT 50`,
     )
-    .all(settings.accountId, query) as unknown as LogRow[];
+    .all(...selected.map((a) => a.accountId), query) as unknown as LogRow[];
 
-  printRows(rows);
+  printRows(rows, selected.length > 1);
 }
 
 async function cmdShow(): Promise<void> {
@@ -715,30 +799,38 @@ async function cmdShow(): Promise<void> {
 
 function cmdMailboxes(): void {
   const settings = requireSettings(db);
-  const rows = db
-    .prepare(
-      `SELECT m.id, m.name, m.role,
-         (SELECT COUNT(*) FROM email_mailboxes em
-          WHERE em.account_id = m.account_id AND em.mailbox_id = m.id) AS total
-       FROM mailboxes m WHERE m.account_id = ? ORDER BY m.sort_order, m.name`,
-    )
-    .all(settings.accountId) as unknown as Array<{
-    id: string;
-    name: string;
-    role: string | null;
-    total: number;
-  }>;
-
-  if (opts.json) {
-    console.log(JSON.stringify(rows, null, 2));
-    return;
+  const selected = selectAccounts(settings, opts.account);
+  const all: Array<Record<string, unknown>> = [];
+  for (const account of selected) {
+    const rows = db
+      .prepare(
+        `SELECT m.id, m.name, m.role,
+           (SELECT COUNT(*) FROM email_mailboxes em
+            WHERE em.account_id = m.account_id AND em.mailbox_id = m.id) AS total
+         FROM mailboxes m WHERE m.account_id = ? ORDER BY m.sort_order, m.name`,
+      )
+      .all(account.accountId) as unknown as Array<{
+      id: string;
+      name: string;
+      role: string | null;
+      total: number;
+    }>;
+    if (opts.json) {
+      all.push(...rows.map((r) => ({ ...r, account: accountLabel(account) })));
+      continue;
+    }
+    if (selected.length > 1) console.log(`# ${accountLabel(account)}`);
+    for (const r of rows) {
+      console.log(`${(r.role ?? "-").padEnd(8)} ${String(r.total).padStart(5)}  ${r.name}  (${r.id})`);
+    }
   }
-  for (const r of rows) {
-    console.log(`${(r.role ?? "-").padEnd(8)} ${String(r.total).padStart(5)}  ${r.name}  (${r.id})`);
-  }
+  if (opts.json) console.log(JSON.stringify(all, null, 2));
 }
 
-function printRows(rows: LogRow[]): void {
+function printRows(rows: LogRow[], showAccount = false): void {
+  const settings = requireSettings(db);
+  const labelFor = (id: string) =>
+    accountLabel(settings.accounts.find((a) => a.accountId === id) ?? { accountId: id });
   if (opts.json) {
     console.log(
       JSON.stringify(
@@ -759,8 +851,9 @@ function printRows(rows: LogRow[]): void {
       .join(", ");
     const date = new Date(r.received_at).toISOString().slice(0, 16).replace("T", " ");
     const unread = r.seen ? " " : "●";
+    const acct = showAccount ? `${labelFor(r.account_id).padEnd(24).slice(0, 24)}  ` : "";
     console.log(
-      `${unread} ${date}  ${from.padEnd(24).slice(0, 24)}  ${(r.subject || "(no subject)").slice(0, 48).padEnd(48)}  [${r.mailboxes ?? ""}]  ${r.id}`,
+      `${unread} ${date}  ${acct}${from.padEnd(24).slice(0, 24)}  ${(r.subject || "(no subject)").slice(0, 48).padEnd(48)}  [${r.mailboxes ?? ""}]  ${r.id}`,
     );
   }
 }

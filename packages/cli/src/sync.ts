@@ -1,7 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { mkdirSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { JmapClient } from "./jmap.js";
+import type { JmapClient, Invocation } from "./jmap.js";
+import type { AccountRef } from "./db.js";
 
 /**
  * Sync engine. Incremental when the server can replay our cursor
@@ -63,6 +64,75 @@ export interface SyncStats {
   createdIds: string[];
   updatedIds: string[];
   destroyedIds: string[];
+}
+
+export type MultiSyncResult = Array<{
+  account: AccountRef;
+  stats?: SyncStats;
+  clean?: boolean;
+  error?: string;
+}>;
+
+/**
+ * Sync many accounts with a batched clean-probe: ONE JMAP request carries
+ * an Email/changes call per cursored account (each call names its own
+ * accountId — this is why JMAP batching exists). Accounts whose state is
+ * unchanged are skipped entirely, so N idle inboxes cost ~one round trip;
+ * only dirty or never-synced accounts run the full engine.
+ */
+export async function syncAll(
+  db: DatabaseSync,
+  client: JmapClient,
+  accounts: AccountRef[],
+  opts: { blobs?: string } = {},
+): Promise<MultiSyncResult> {
+  const cursors = new Map<string, string | null>();
+  for (const a of accounts) {
+    const row = db
+      .prepare("SELECT email_state FROM sync_state WHERE account_id = ?")
+      .get(a.accountId) as { email_state: string | null } | undefined;
+    cursors.set(a.accountId, row?.email_state ?? null);
+  }
+
+  // Probe (chunked at the server's maxCallsInRequest).
+  const clean = new Set<string>();
+  const probeable = accounts.filter((a) => cursors.get(a.accountId));
+  for (let i = 0; i < probeable.length; i += 16) {
+    const chunk = probeable.slice(i, i + 16);
+    const calls: Invocation[] = chunk.map((a, idx) => [
+      "Email/changes",
+      { accountId: a.accountId, sinceState: cursors.get(a.accountId), maxChanges: 1 },
+      `p${idx}`,
+    ]);
+    try {
+      const responses = await client.call(calls);
+      for (const [name, res, callId] of responses) {
+        const account = chunk[Number(callId.slice(1))];
+        if (!account || name === "error") continue; // dirty by default (e.g. cannotCalculateChanges)
+        const r = res as { newState?: unknown; hasMoreChanges?: unknown };
+        if (String(r.newState) === cursors.get(account.accountId) && r.hasMoreChanges !== true) {
+          clean.add(account.accountId);
+        }
+      }
+    } catch {
+      /* probe failure → treat all as dirty; full sync decides */
+    }
+  }
+
+  const results: MultiSyncResult = [];
+  for (const account of accounts) {
+    if (clean.has(account.accountId)) {
+      results.push({ account, clean: true });
+      continue;
+    }
+    try {
+      const stats = await sync(db, client, account.accountId, opts);
+      results.push({ account, stats });
+    } catch (err) {
+      results.push({ account, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return results;
 }
 
 export async function sync(

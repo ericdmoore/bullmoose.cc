@@ -27,6 +27,7 @@ export interface AdminOpts {
   name?: string;
   password?: string;
   scopes?: string;
+  principal?: string;
   json: boolean;
 }
 
@@ -113,6 +114,7 @@ export async function cmdAdmin(
         domain,
         localpart,
         displayName: opts.name ?? localpart,
+        ...(opts.principal ? { principalEmail: opts.principal } : {}),
       })) as { accountId: string; address: string };
       out(res, opts, () => console.log(`account ${res.accountId} created for ${res.address}`));
       return;
