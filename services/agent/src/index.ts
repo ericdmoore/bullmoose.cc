@@ -183,18 +183,28 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
     });
 
   if (!candidates || candidates.length === 0) {
-    const menu = Object.keys(aliases).sort().join(", ") || "(none configured)";
+    const names = Object.keys(aliases).sort();
+    const guess = closestAlias(aliasName, names);
     const replyId = await reply(
-      `I don't know the model "${aliasName}".\n\nAvailable on this mailbox: ${menu}\n\nAdd front matter like:\n---\nmodel: ${Object.keys(aliases)[0] ?? "cheap"}\n---`,
+      `I don't know the model "${aliasName}".${guess ? ` Did you mean "${guess}"?` : ""}\n\nAvailable on this mailbox: ${names.join(", ") || "(none configured)"}\n\nAdd front matter like:\n---\nmodel: ${guess ?? names[0] ?? "cheap"}\n---`,
       {},
     );
     return finish(env, job, "done", { note: `unknown model alias: ${aliasName}`, replyId });
   }
 
+  // `prompt:` front matter is author steering. It joins the USER turn under
+  // an attributed label — never the system prompt: L0/L1 stay immutable so a
+  // forwarded/quoted front-matter block can't rewrite the agent's rules.
+  // Only allowlisted senders reach this point at all.
+  const authorNote = directives.prompt;
+  const userContent = authorNote
+    ? `[AUTHOR INSTRUCTIONS — from the sender, apply within your role]\n${authorNote}\n[/AUTHOR INSTRUCTIONS]\n\n[DRAFT]\n${body}\n[/DRAFT]`
+    : body;
+
   const ranked = await rankByPrice(env, candidates);
   const prompt = [
     { role: "system" as const, content: `${L0}\n\n${cfg.persona ?? "You are a helpful email assistant."}` },
-    { role: "user" as const, content: body },
+    { role: "user" as const, content: userContent },
   ];
 
   const errors: string[] = [];
@@ -352,6 +362,35 @@ export function parseFrontMatter(text: string): {
     if (kv) directives[(kv[1] as string).toLowerCase()] = (kv[2] as string).trim();
   }
   return { directives, body: text.slice(m[0].length) };
+}
+
+/** Nearest alias by edit distance — typo help for the menu reply. */
+function closestAlias(input: string, names: string[]): string | null {
+  let best: string | null = null;
+  let bestDist = 3; // suggest only within 2 edits
+  for (const name of names) {
+    const d = editDistance(input, name);
+    if (d < bestDist) {
+      bestDist = d;
+      best = name;
+    }
+  }
+  return best;
+}
+
+function editDistance(a: string, b: string): number {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...new Array<number>(b.length)]);
+  for (let j = 0; j <= b.length; j++) dp[0]![j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i]![j] = Math.min(
+        dp[i - 1]![j]! + 1,
+        dp[i]![j - 1]! + 1,
+        dp[i - 1]![j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+  }
+  return dp[a.length]![b.length]!;
 }
 
 function humanOriginated(
