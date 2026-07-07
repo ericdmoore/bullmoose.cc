@@ -79,6 +79,39 @@ make all   # dist/popcorn-{darwin-arm64,linux-amd64,linux-arm64}
 TLS cert for `pop3.<domain>`: Let's Encrypt DNS-01 (the zone is already
 on Cloudflare — certbot's cloudflare plugin with a DNS-scoped token).
 
+## Picking a VPS
+
+popcorn is a ~6 MB static binary, stateless, with a 64-connection cap —
+it is comfortable on the **smallest instance every provider sells**.
+What actually matters when picking:
+
+- **RAM ≥ 256 MB** (512 MB is plenty; popcorn idles under 20 MB)
+- **1 shared vCPU** — traffic is I/O-bound JMAP calls, not compute
+- **A public IPv4** and the ability to open port 995 (and/or 443) —
+  this disqualifies some cheap IPv6-only tiers unless your clients do v6
+- **Prefer ARM** where offered — same binary (`popcorn-linux-arm64`),
+  usually the cheapest tier
+- Distro: Debian or Ubuntu LTS (the systemd unit targets both); disk is
+  irrelevant (binary + cert + logs)
+
+Approximate entry tiers (prices drift — check current):
+
+| provider | pick | arch | ~cost | notes |
+|---|---|---|---|---|
+| Hetzner | CAX11 | arm64 | ~€4/mo | best value; EU + US regions |
+| DigitalOcean | Basic Droplet 512 MB | amd64 | ~$4/mo | simplest UX; regular CPU is fine |
+| AWS | Lightsail 512 MB, or EC2 `t4g.nano` | arm64 | ~$3.50–5/mo | Lightsail bundles the IPv4; raw EC2 adds an IPv4 charge |
+| Vultr | Regular Cloud Compute 512 MB | amd64 | ~$5/mo (IPv4) | the ~$2.50 tier is IPv6-only — mind the client caveat |
+| Linode/Akamai | Nanode 1 GB | amd64 | ~$5/mo | |
+| GCP | `e2-micro` (Always Free, select US regions) | amd64 | $0 | free-tier egress limits are far above popcorn's needs |
+| Oracle Cloud | Ampere A1 (Always Free) | arm64 | $0 | famously generous, famously fussy signup/reclaim policies |
+| Fly.io | `shared-cpu-1x` + TCP service | either | ~$2–3/mo | deploy the Dockerfile; Fly does raw-TCP passthrough natively |
+| your homelab | alpaca et al. | any | $0 | needs a router port-forward + DNS-01 cert |
+
+Anti-recommendation: anything marketed for "mail servers" — popcorn
+sends nothing (port 25 never enters the picture), so blocked-SMTP
+policies on cheap VPSes don't matter here.
+
 ## Client setup
 
 - Server: `pop3.bullmoose.cc` (or wherever popcorn runs), SSL/TLS,
