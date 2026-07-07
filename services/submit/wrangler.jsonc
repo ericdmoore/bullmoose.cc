@@ -11,14 +11,14 @@
     {
       "binding": "DB",
       "database_name": "bullmoose-mail-shard0",
-      "database_id": "REPLACE_AFTER_wrangler_d1_create"
+      "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9"
     }
   ],
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "bullmoose-mail-blobs" }],
-  "kv_namespaces": [{ "binding": "ROUTES", "id": "REPLACE_AFTER_wrangler_kv_create" }],
+  "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }],
 
   "vars": {
-    "SES_REGION": "us-east-1",
+    "SES_REGION": "us-west-2",
     // "ses" (full-fidelity raw MIME, default) | "cloudflare" (Email
     // Service beta — day-one sends without SES production access, with
     // fidelity caveats; see CloudflareRelay) | "mock" (local dev).
