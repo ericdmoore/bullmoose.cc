@@ -18,6 +18,7 @@ TS=$(command -v tailscale || echo /opt/homebrew/bin/tailscale)
 TS_IP=$($TS ip -4 | head -1)
 DNS_NAME=$($TS status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')
 PORT="${POPCORN_PORT:-9995}"
+SMTP_PORT="${POPCORN_SMTP_PORT:-9587}"
 CONF="$HOME/.popcorn"
 mkdir -p "$CONF" "$HOME/bin"
 
@@ -63,6 +64,7 @@ cat > "$PLIST" <<EOF
     <key>EnvironmentVariables</key>
     <dict>
         <key>POPCORN_LISTEN</key><string>$TS_IP:$PORT</string>
+        <key>POPCORN_SMTP_LISTEN</key><string>$TS_IP:$SMTP_PORT</string>
         $TLS_ENV
     </dict>
     <key>RunAtLoad</key><true/>
@@ -98,6 +100,7 @@ fi
 echo
 echo "popcorn (tailscale variant) is up:"
 echo "  server:   $DNS_NAME  (tailnet-only: $TS_IP)"
-echo "  port:     $PORT"
+echo "  POP3:     port $PORT   (incoming mail)"
+echo "  SMTP:     port $SMTP_PORT   (outgoing — kettle-corn mode)"
 echo "  TLS:      $([ -n "$TLS_ENV" ] && echo "ts.net cert (auto-renews weekly)" || echo "none — WireGuard only")"
 echo "  logs:     $CONF/popcorn.log"

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"bullmoose.cc/popcorn/internal/pop3"
+	"bullmoose.cc/popcorn/internal/smtp"
 )
 
 func main() {
@@ -47,26 +48,43 @@ func main() {
 		log.Printf("WARNING: no POPCORN_TLS_CERT/KEY — serving PLAINTEXT (dev only; tokens travel in the clear)")
 	}
 
-	sem := make(chan struct{}, 64) // connection cap
+	sem := make(chan struct{}, 64) // connection cap, shared by both faces
 
-	addrs := strings.Split(envOr("POPCORN_LISTEN", ":995"), ",")
-	for _, addr := range addrs {
-		addr = strings.TrimSpace(addr)
-		ln, err := net.Listen("tcp", addr)
-		if err != nil {
-			log.Fatalf("listen %s: %v", addr, err)
-		}
-		if tlsConfig != nil {
-			ln = tls.NewListener(ln, tlsConfig)
-		}
-		log.Printf("popcorn listening on %s (tls=%v, dele=%s, jmap=%s)",
+	for _, addr := range strings.Split(envOr("POPCORN_LISTEN", ":995"), ",") {
+		ln := listen(strings.TrimSpace(addr), tlsConfig)
+		log.Printf("popcorn POP3 on %s (tls=%v, dele=%s, jmap=%s)",
 			addr, tlsConfig != nil, cfg.DeleMode, orSRV(cfg.JMAPBase))
-		go accept(ln, cfg, sem)
+		go accept(ln, sem, func(c net.Conn) { pop3.Serve(c, cfg) })
+	}
+
+	// kettle-corn mode: the SMTP submission face. Off unless configured.
+	if smtpAddrs := os.Getenv("POPCORN_SMTP_LISTEN"); smtpAddrs != "" {
+		smtpCfg := smtp.Config{
+			JMAPBase:    cfg.JMAPBase,
+			MaxSize:     envInt("POPCORN_SMTP_MAX_SIZE", 25<<20),
+			IdleTimeout: cfg.IdleTimeout,
+		}
+		for _, addr := range strings.Split(smtpAddrs, ",") {
+			ln := listen(strings.TrimSpace(addr), tlsConfig)
+			log.Printf("popcorn SMTP submission on %s (tls=%v)", addr, tlsConfig != nil)
+			go accept(ln, sem, func(c net.Conn) { smtp.Serve(c, smtpCfg) })
+		}
 	}
 	select {} // serve forever; the service manager owns our lifecycle
 }
 
-func accept(ln net.Listener, cfg pop3.Config, sem chan struct{}) {
+func listen(addr string, tlsConfig *tls.Config) net.Listener {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("listen %s: %v", addr, err)
+	}
+	if tlsConfig != nil {
+		ln = tls.NewListener(ln, tlsConfig)
+	}
+	return ln
+}
+
+func accept(ln net.Listener, sem chan struct{}, serve func(net.Conn)) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -77,7 +95,7 @@ func accept(ln net.Listener, cfg pop3.Config, sem chan struct{}) {
 		sem <- struct{}{}
 		go func() {
 			defer func() { <-sem }()
-			pop3.Serve(conn, cfg)
+			serve(conn)
 		}()
 	}
 }

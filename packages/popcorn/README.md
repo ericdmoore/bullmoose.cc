@@ -44,11 +44,32 @@ Conformance: `USER PASS CAPA STAT LIST UIDL RETR TOP DELE RSET NOOP QUIT`
 over implicit TLS. No STLS, no APOP, no plaintext in production. That
 covers every client we care about; "barely" is a feature.
 
+## kettle-corn mode: SMTP submission (sending)
+
+POP3 only receives — legacy clients also want an *outgoing* server.
+Set `POPCORN_SMTP_LISTEN` and the same daemon grows an RFC 6409
+submission face: `EHLO, AUTH PLAIN/LOGIN, MAIL, RCPT, DATA, RSET, NOOP,
+QUIT` over implicit TLS (no STARTTLS — downgrade attacks live there).
+
+SMTP submission and JMAP submission are the same abstraction, so the
+translation is direct: `MAIL FROM`/`RCPT TO` become the
+`EmailSubmission` envelope (which is why **BCC works correctly** —
+recipients live in the envelope, never the headers), `DATA` becomes an
+uploaded blob, and `Email/import` files the message so it lands in
+**Sent on every JMAP client**. No queue in the shim: a JMAP rejection
+returns 554 and the *client* keeps SMTP's retry responsibility.
+
+Guardrail: `MAIL FROM` must match an identity of the authenticated
+account (550 otherwise) — one token cannot spoof another hosted address.
+While SES is sandboxed, recipients must be verified (same as any send).
+
 ## Configuration (environment)
 
 | var | default | notes |
 |---|---|---|
-| `POPCORN_LISTEN` | `:995` | comma-separated; any port works (`:443` too — see below) |
+| `POPCORN_LISTEN` | `:995` | POP3; comma-separated; any port works (`:443` too — see below) |
+| `POPCORN_SMTP_LISTEN` | *(off)* | SMTP submission (kettle-corn); e.g. `:9587` |
+| `POPCORN_SMTP_MAX_SIZE` | `26214400` | DATA cap in bytes (25 MB) |
 | `POPCORN_TLS_CERT` / `_KEY` | *(empty)* | PEM paths; both unset = plaintext **dev only** |
 | `POPCORN_JMAP_BASE` | *(SRV discovery)* | e.g. `https://jmap.bullmoose.cc` |
 | `POPCORN_DELE_MODE` | `archive` | or `noop` |

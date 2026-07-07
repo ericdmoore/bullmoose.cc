@@ -22,7 +22,13 @@ type Client struct {
 	password  string // app-password token (bm_…); never the login password
 	apiURL    string
 	dlTmpl    string
+	upTmpl    string
 	AccountID string
+}
+
+type Identity struct {
+	ID    string
+	Email string
 }
 
 type Msg struct {
@@ -78,6 +84,7 @@ func Login(base, email, password string) (*Client, error) {
 	var session struct {
 		APIURL          string            `json:"apiUrl"`
 		DownloadURL     string            `json:"downloadUrl"`
+		UploadURL       string            `json:"uploadUrl"`
 		PrimaryAccounts map[string]string `json:"primaryAccounts"`
 		Accounts        map[string]any    `json:"accounts"`
 	}
@@ -86,6 +93,7 @@ func Login(base, email, password string) (*Client, error) {
 	}
 	c.apiURL = session.APIURL
 	c.dlTmpl = session.DownloadURL
+	c.upTmpl = session.UploadURL
 	c.AccountID = session.PrimaryAccounts["urn:ietf:params:jmap:mail"]
 	if c.AccountID == "" { // fall back to the only account
 		for id := range session.Accounts {
@@ -251,6 +259,163 @@ func (c *Client) Download(blobID string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("download: HTTP %d", res.StatusCode)
 	}
 	return res.Body, nil
+}
+
+// Identities lists the from-addresses this account may submit as.
+func (c *Client) Identities() ([]Identity, error) {
+	resps, err := c.call([]string{coreCap, mailCap, submissionCap}, []methodCall{
+		{"Identity/get", map[string]any{"accountId": c.AccountID}, "i"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	args, err := respArgs(resps[0], "Identity/get")
+	if err != nil {
+		return nil, err
+	}
+	var parsed struct {
+		List []struct {
+			ID    string `json:"id"`
+			Email string `json:"email"`
+		} `json:"list"`
+	}
+	if err := json.Unmarshal(args, &parsed); err != nil {
+		return nil, err
+	}
+	ids := make([]Identity, 0, len(parsed.List))
+	for _, i := range parsed.List {
+		ids = append(ids, Identity{ID: i.ID, Email: i.Email})
+	}
+	return ids, nil
+}
+
+const submissionCap = "urn:ietf:params:jmap:submission"
+
+// Upload posts raw bytes to the session's upload endpoint → blobId.
+func (c *Client) Upload(raw []byte, contentType string) (string, error) {
+	u := strings.ReplaceAll(c.upTmpl, "{accountId}", url.PathEscape(c.AccountID))
+	req, err := http.NewRequest("POST", u, bytes.NewReader(raw))
+	if err != nil {
+		return "", err
+	}
+	req.SetBasicAuth(c.email, c.password)
+	req.Header.Set("Content-Type", contentType)
+	res, err := c.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 && res.StatusCode != 201 {
+		b, _ := io.ReadAll(io.LimitReader(res.Body, 512))
+		return "", fmt.Errorf("upload: HTTP %d: %s", res.StatusCode, b)
+	}
+	var parsed struct {
+		BlobID string `json:"blobId"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&parsed); err != nil || parsed.BlobID == "" {
+		return "", fmt.Errorf("upload: no blobId in response")
+	}
+	return parsed.BlobID, nil
+}
+
+// Send is the SMTP DATA translation: upload the raw message, import it
+// as a draft, then EmailSubmission/set with the explicit envelope (BCC
+// correctness lives there) — on success the server moves Drafts → Sent.
+// Returns the submission id.
+func (c *Client) Send(raw []byte, mailFrom string, rcptTo []string, identityID string) (string, error) {
+	roles, err := c.Mailboxes()
+	if err != nil {
+		return "", err
+	}
+	draftsID, sentID := roles["drafts"], roles["sent"]
+	if draftsID == "" || sentID == "" {
+		return "", fmt.Errorf("account missing drafts/sent mailboxes")
+	}
+
+	blobID, err := c.Upload(raw, "message/rfc822")
+	if err != nil {
+		return "", err
+	}
+
+	resps, err := c.call([]string{coreCap, mailCap}, []methodCall{
+		{"Email/import", map[string]any{
+			"accountId": c.AccountID,
+			"emails": map[string]any{
+				"d": map[string]any{
+					"blobId":     blobID,
+					"mailboxIds": map[string]bool{draftsID: true},
+					"keywords":   map[string]bool{"$draft": true, "$seen": true},
+				},
+			},
+		}, "imp"},
+	})
+	if err != nil {
+		return "", err
+	}
+	args, err := respArgs(resps[0], "Email/import")
+	if err != nil {
+		return "", err
+	}
+	var imp struct {
+		Created map[string]struct {
+			ID string `json:"id"`
+		} `json:"created"`
+		NotCreated map[string]any `json:"notCreated"`
+	}
+	if err := json.Unmarshal(args, &imp); err != nil {
+		return "", err
+	}
+	emailID := imp.Created["d"].ID
+	if emailID == "" {
+		return "", fmt.Errorf("import rejected: %v", imp.NotCreated)
+	}
+
+	rcpts := make([]map[string]string, 0, len(rcptTo))
+	for _, r := range rcptTo {
+		rcpts = append(rcpts, map[string]string{"email": r})
+	}
+	resps, err = c.call([]string{coreCap, mailCap, submissionCap}, []methodCall{
+		{"EmailSubmission/set", map[string]any{
+			"accountId": c.AccountID,
+			"create": map[string]any{
+				"s": map[string]any{
+					"emailId":    emailID,
+					"identityId": identityID,
+					"envelope": map[string]any{
+						"mailFrom": map[string]string{"email": mailFrom},
+						"rcptTo":   rcpts,
+					},
+				},
+			},
+			"onSuccessUpdateEmail": map[string]any{
+				"#s": map[string]any{
+					"mailboxIds/" + draftsID: nil,
+					"mailboxIds/" + sentID:   true,
+					"keywords/$draft":        nil,
+				},
+			},
+		}, "sub"},
+	})
+	if err != nil {
+		return "", err
+	}
+	args, err = respArgs(resps[0], "EmailSubmission/set")
+	if err != nil {
+		return "", err
+	}
+	var sub struct {
+		Created map[string]struct {
+			ID string `json:"id"`
+		} `json:"created"`
+		NotCreated map[string]any `json:"notCreated"`
+	}
+	if err := json.Unmarshal(args, &sub); err != nil {
+		return "", err
+	}
+	if sub.Created["s"].ID == "" {
+		return "", fmt.Errorf("submission rejected: %v", sub.NotCreated)
+	}
+	return sub.Created["s"].ID, nil
 }
 
 // Archive moves messages out of the listed mailbox (popcorn's DELE:
