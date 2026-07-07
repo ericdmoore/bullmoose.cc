@@ -22,9 +22,13 @@ import { cmdLogin, cmdToken } from "./tokens.js";
 const HELP = `bullmoose — JMAP sync client with a local SQLite message log
 
 Usage:
-  bullmoose login <email> --base <url> [--name <device-name>]
-                 (password via prompt, $BULLMOOSE_PASSWORD, or --password;
-                  used once to mint this device's token — never stored)
+  bullmoose login <email> [--base <url>] [--name <device-name>]
+                 (no --base → the server is autodiscovered from the email's
+                  domain via SRV _jmap._tcp / well-known (RFC 8620 §2.2);
+                  password via prompt, $BULLMOOSE_PASSWORD, or --password —
+                  stretched locally, used once, never stored or sent raw)
+  bullmoose discover <email-or-domain>
+                 show what autodiscovery finds and probe the server
   bullmoose init --base <url> --token <token> [--account <id>] [--offline]
                  (paste an existing token instead of logging in; --base
                   also accepts file:///path/to/bundle.json — a JSON
@@ -131,6 +135,9 @@ try {
         name: opts.name,
         json: opts.json ?? false,
       });
+      break;
+    case "discover":
+      await cmdDiscover();
       break;
     case "token":
       await cmdToken(db, requireSettings(db), positionals.slice(1), {
@@ -433,6 +440,27 @@ function readBody(): string {
   }
   console.error("no body: pipe stdin, or pass --file/--body");
   process.exit(1);
+}
+
+// ---- discover ------------------------------------------------------------
+
+async function cmdDiscover(): Promise<void> {
+  const { resolveJmapBase, probeSession } = await import("./discover.js");
+  let target = positionals[1];
+  if (!target) {
+    console.error("usage: bullmoose discover <email-or-domain>");
+    process.exit(1);
+  }
+  if (!target.includes("@")) target = `probe@${target}`;
+
+  const found = await resolveJmapBase(target);
+  console.log(`domain:  ${found.domain}`);
+  console.log(`method:  ${found.via === "fallback" ? "no SRV record — well-known fallback" : `SRV _jmap._tcp (${found.via})`}`);
+  console.log(`base:    ${found.base}`);
+
+  const probe = await probeSession(found.base);
+  console.log(`session: ${probe.ok ? "✓" : "✗"} ${probe.detail}`);
+  process.exit(probe.ok ? 0 : 1);
 }
 
 // ---- watch ---------------------------------------------------------------

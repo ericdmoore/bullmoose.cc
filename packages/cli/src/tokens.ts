@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { isFileUrl, loadBootstrap, setConfig } from "./db.js";
+import { resolveJmapBase } from "./discover.js";
 
 /**
  * `bullmoose login` + `bullmoose token` — password-based bootstrap and
@@ -21,9 +22,15 @@ export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts
     const boot = loadBootstrap(opts.base);
     opts.base = boot.base ?? boot.url;
   }
-  if (!email || !opts.base) {
-    console.error("usage: bullmoose login <email> --base <url> [--name <device-name>]");
+  if (!email) {
+    console.error("usage: bullmoose login <email> [--base <url>] [--name <device-name>]");
     process.exit(1);
+  }
+  // No --base? The email address is enough: RFC 8620 §2.2 autodiscovery.
+  if (!opts.base) {
+    const found = await resolveJmapBase(email);
+    opts.base = found.base;
+    console.error(`discovered ${found.base} (via ${found.via})`);
   }
   const password = opts.password ?? process.env.BULLMOOSE_PASSWORD ?? (await promptHidden("password: "));
   // Stretching happens HERE — the raw password never leaves this process.

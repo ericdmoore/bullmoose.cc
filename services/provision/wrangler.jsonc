@@ -16,7 +16,12 @@
 
   "vars": {
     "SES_REGION": "us-east-1",
-    "INGEST_WORKER_NAME": "bullmoose-ingest"
+    "INGEST_WORKER_NAME": "bullmoose-ingest",
+    // Set after first deploy to the jmap worker's public hostname
+    // (e.g. bullmoose-jmap.<subdomain>.workers.dev, later mail.<domain>).
+    // Enables the _jmap._tcp SRV record → `bullmoose login <email>`
+    // works with no --base.
+    "JMAP_HOST": ""
   }
   // Secrets (wrangler secret put):
   //   ADMIN_TOKEN            — bearer token for this admin API

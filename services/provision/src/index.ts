@@ -28,6 +28,8 @@ export interface Env {
   ROUTES: KVNamespace;
   SES_REGION: string;
   INGEST_WORKER_NAME: string;
+  /** Public hostname of the jmap worker (SRV autodiscovery target). */
+  JMAP_HOST?: string;
   ADMIN_TOKEN: string;
   CF_API_TOKEN: string;
   SES_ACCESS_KEY_ID: string;
@@ -230,6 +232,29 @@ async function addDomain(body: { tenantId: string; domain: string }, env: Env) {
     content: `"v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}"`,
   });
   steps.push({ step: "cf:dmarc", ok: dmarc.ok, detail: dmarc.detail });
+
+  // 7b. JMAP autodiscovery (RFC 8620 §2.2): _jmap._tcp SRV → jmap worker,
+  // so `bullmoose login user@<domain>` needs no --base.
+  if (env.JMAP_HOST) {
+    const srv = await cf(env, `/zones/${zoneId}/dns_records`, {
+      method: "POST",
+      body: {
+        type: "SRV",
+        name: `_jmap._tcp.${domain}`,
+        ttl: 1,
+        data: { priority: 0, weight: 1, port: 443, target: env.JMAP_HOST },
+      },
+    });
+    const msg = firstError(srv);
+    const already = msg !== undefined && /already exists/i.test(msg);
+    steps.push({
+      step: "cf:jmap-srv",
+      ok: srv.success || already,
+      detail: srv.success ? `→ ${env.JMAP_HOST}:443` : already ? "already existed" : msg,
+    });
+  } else {
+    steps.push({ step: "cf:jmap-srv", ok: true, detail: "skipped — set JMAP_HOST var to enable autodiscovery" });
+  }
 
   // 8. Record in the control plane; GET /domains/{domain} flips to active
   //    once SES verifies DKIM.
