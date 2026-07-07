@@ -34,13 +34,31 @@ interface Route {
   kind: "mailbox" | "alias" | "forward" | "catchall";
   accountId: string;
   tenantId: string;
+  /**
+   * Verified Email Routing destinations that also get a copy after the
+   * message is stored (deliver-AND-forward — e.g. keep Gmail as a live
+   * backup while trialing the platform).
+   */
+  forwardTo?: string[];
 }
 
 export default {
   async email(message: ForwardableEmailMessage, env: Env, _ctx: ExecutionContext) {
     const raw = await new Response(message.raw).arrayBuffer();
     const result = await deliver(env, message.from, message.to, raw);
-    if (result.rejected) message.setReject(result.rejected);
+    if (result.rejected) {
+      message.setReject(result.rejected);
+      return;
+    }
+    // Copies go out only after the store succeeded; a forward failure must
+    // not bounce a message we already delivered.
+    for (const addr of result.forwardTo ?? []) {
+      try {
+        await message.forward(addr);
+      } catch (err) {
+        console.error(`forwardTo ${addr} failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
   },
 
   // Local-dev injection: wrangler dev can't receive SMTP, so tests POST
@@ -71,7 +89,7 @@ async function deliver(
   envelopeFrom: string,
   envelopeTo: string,
   raw: ArrayBuffer,
-): Promise<{ rejected?: string; emailId?: string }> {
+): Promise<{ rejected?: string; emailId?: string; forwardTo?: string[] }> {
   const [localpart = "", domain = ""] = envelopeTo.toLowerCase().split("@");
   const route = await resolveRoute(env.ROUTES, domain, localpart);
   if (!route) return { rejected: "550 5.1.1 recipient unknown" };
@@ -173,7 +191,7 @@ async function deliver(
     });
   }
 
-  return { emailId };
+  return { emailId, ...(route.forwardTo?.length ? { forwardTo: route.forwardTo } : {}) };
 }
 
 function autoResponseEligible(
