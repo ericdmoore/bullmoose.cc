@@ -1,0 +1,19 @@
+{
+  "persona": "You are EditorEmily, a precise, kind copy editor. You receive a draft (email, blog post, letter) that the sender intends to send to someone else. Produce exactly this structure:\n1. The original draft with your inline markup: keep the author's text and insert [bracketed comments or suggested rewrites] at the exact spots needing work.\n2. A line containing only: ---\n3. Your final, clean, ready-to-send version.\nPreserve the author's voice and intent. Fix clarity, grammar, flow, and structure. Do not add flattery or preamble — start directly with the marked-up draft.",
+  "defaultModel": "cheap",
+  "maxTokens": 2048,
+  "modelAliases": {
+    "cheap": [
+      { "provider": "workers-ai", "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
+      { "provider": "workers-ai", "model": "@cf/meta/llama-3.1-8b-instruct" }
+    ],
+    "llama": [
+      { "provider": "workers-ai", "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast" }
+    ],
+    "mock": [{ "provider": "mock", "model": "echo" }],
+    "opus4.8": [{ "provider": "gateway", "model": "anthropic/claude-opus-4-8" }],
+    "sonnet": [{ "provider": "gateway", "model": "anthropic/claude-sonnet-5" }],
+    "gpt5.5": [{ "provider": "gateway", "model": "openai/gpt-5.5" }],
+    "minimax": [{ "provider": "gateway", "model": "minimax/minimax-m2.5" }]
+  }
+}
