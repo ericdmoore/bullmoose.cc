@@ -91,6 +91,13 @@ export default {
         );
       }
       if (route === "GET /tokens") return listTokens(url, env);
+      if (route === "POST /agent-bindings") {
+        return createAgentBinding(
+          (await request.json()) as { email: string; name: string; slaSeconds?: number },
+          env,
+        );
+      }
+      if (route === "GET /agent-bindings") return listAgentBindings(url, env);
       if (request.method === "DELETE" && /^\/tokens\/[^/]+$/.test(url.pathname)) {
         return revokeToken(url.pathname.split("/")[2] as string, env);
       }
@@ -474,6 +481,72 @@ async function listTokens(url: URL, env: Env) {
 async function revokeToken(id: string, env: Env) {
   const res = await env.DB.prepare(`DELETE FROM tokens WHERE id = ?`).bind(id).run();
   return json({ revoked: (res.meta.changes ?? 0) > 0 });
+}
+
+// ---- agent bindings ----------------------------------------------------
+
+async function accountByAddress(env: Env, email: string) {
+  return env.DB.prepare(
+    `SELECT a.id FROM accounts a JOIN identities i ON i.account_id = a.id
+     WHERE i.email = ? LIMIT 1`,
+  )
+    .bind(email.toLowerCase())
+    .first<{ id: string }>();
+}
+
+async function createAgentBinding(
+  body: { email: string; name: string; slaSeconds?: number },
+  env: Env,
+) {
+  if (!body.email || !body.name) return json({ error: "email and name required" }, 400);
+  const account = await accountByAddress(env, body.email);
+  if (!account) return json({ error: `no account for ${body.email}` }, 404);
+
+  const id = `bind_${crypto.randomUUID().slice(0, 8)}`;
+  await env.DB.prepare(
+    `INSERT INTO agent_bindings (id, account_id, name, trigger_on, sla_seconds, enabled)
+     VALUES (?, ?, ?, 'mailbox-delivery', ?, 1)`,
+  )
+    .bind(id, account.id, body.name, body.slaSeconds ?? null)
+    .run();
+
+  // SLA set → a watchdog responder backs this binding: fires unless the
+  // invocation is claimed in time (agent-integration.md §8 ladder rung 1).
+  if (body.slaSeconds) {
+    await env.DB.prepare(
+      `INSERT INTO responders (id, account_id, kind, enabled, wait_seconds, cancel_if,
+         subject, text_body, suppress_seconds)
+       VALUES (?, ?, 'watchdog', 1, ?, 'invocation-active', ?, ?, 3600)
+       ON CONFLICT (account_id, id) DO UPDATE SET
+         enabled = 1, wait_seconds = excluded.wait_seconds`,
+    )
+      .bind(
+        `watchdog_${id}`,
+        account.id,
+        body.slaSeconds,
+        `Auto: delayed response from ${body.email}`,
+        `This mailbox is handled by an automated agent ("${body.name}") that appears to be temporarily unavailable. Your message is queued and will be answered when it recovers.`,
+      )
+      .run();
+  }
+  return json({ ok: true, bindingId: id, accountId: account.id, watchdog: !!body.slaSeconds });
+}
+
+async function listAgentBindings(url: URL, env: Env) {
+  const email = url.searchParams.get("email");
+  let accountId: string | null = null;
+  if (email) {
+    const account = await accountByAddress(env, email);
+    if (!account) return json({ bindings: [] });
+    accountId = account.id;
+  }
+  const { results } = await env.DB.prepare(
+    `SELECT id, account_id, name, trigger_on, sla_seconds, enabled FROM agent_bindings
+     ${accountId ? "WHERE account_id = ?" : ""}`,
+  )
+    .bind(...(accountId ? [accountId] : []))
+    .all();
+  return json({ bindings: results });
 }
 
 // ---- API helpers -----------------------------------------------------

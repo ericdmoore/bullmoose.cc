@@ -20,6 +20,7 @@ import { buildMime } from "./mime.js";
 import { pidPaths, readAlivePid, watch, writePid } from "./watch.js";
 import { cmdAdmin } from "./admin.js";
 import { cmdLogin, cmdToken } from "./tokens.js";
+import { agentServe, loadAgentConfig } from "./agent.js";
 
 const HELP = `bullmoose — JMAP sync client with a local SQLite message log
 
@@ -53,6 +54,15 @@ Usage:
                  --json emits NDJSON events; --exec runs a shell command per
                  new message ({id} {from} {subject} {preview} placeholders);
                  --daemon detaches (prints PID; logs beside the db file)
+  bullmoose vacation on|off|status [--subject <s>] [--body <text>]
+                 [--until <date>] [--account <sel>]
+                 (RFC 8621 VacationResponse — an armed responder with wait=0;
+                  RFC 3834 suppression: once per sender per 7 days)
+  bullmoose agent serve --config <agent.json> [--once]
+                 homelab agent runtime: watches the AgentInvocation queue,
+                 claims pending work, drafts replies in template mode
+                 (providers: mock | anthropic | openai-compatible; API keys
+                 by env reference). --once drains and exits (cron-friendly)
   bullmoose log [-n <count>] [--mailbox <role-or-id>] [--account <sel>] [--json]
   bullmoose search <fts5-query> [--account <sel>] [--json]
   bullmoose show <emailId> [--json]
@@ -64,6 +74,10 @@ Usage:
                           [--principal <email>]   attach to an existing login
                           | list [--tenant <t>]
   bullmoose admin password <email>            set a principal's login password
+  bullmoose admin agent bind <account-email> --name <binding> [--sla <seconds>]
+                          | list <account-email>
+                 (delivery-triggered agent binding; --sla arms a watchdog
+                  responder per delivery, canceled when the agent claims)
   bullmoose admin token   create <email> --name <n> [--scopes read,draft,send]
                           | list [<email>] | revoke <id>    (agent/operator tokens)
                  (operator surface — wraps the provision worker; separate
@@ -117,6 +131,10 @@ const { values: opts, positionals } = parseArgs({
     linkMax: { type: "string", default: "4" },
     linkTTL: { type: "string", default: "30" },
     identity: { type: "string" },
+    config: { type: "string" },
+    once: { type: "boolean", default: false },
+    until: { type: "string" },
+    sla: { type: "string" },
     raw: { type: "boolean", default: false },
     offline: { type: "boolean", default: false },
     exec: { type: "string" },
@@ -175,6 +193,12 @@ try {
     case "watch":
       await cmdWatch();
       break;
+    case "vacation":
+      await cmdVacation();
+      break;
+    case "agent":
+      await cmdAgent();
+      break;
     case "log":
       cmdLog();
       break;
@@ -196,6 +220,7 @@ try {
         password: opts.password,
         scopes: opts.scopes,
         principal: opts.principal,
+        sla: opts.sla,
         json: opts.json ?? false,
       });
       break;
@@ -509,6 +534,61 @@ function readBody(): string {
   }
   console.error("no body: pipe stdin, or pass --file/--body");
   process.exit(1);
+}
+
+// ---- vacation --------------------------------------------------------------
+
+async function cmdVacation(): Promise<void> {
+  const settings = requireSettings(db);
+  const client = new JmapClient(settings.base, settings.token);
+  const account = selectAccounts(settings, opts.account)[0] ?? settings.accounts[0];
+  if (!account) {
+    console.error("no account configured");
+    process.exit(1);
+  }
+  const verb = positionals[1];
+
+  if (verb === "status" || !verb) {
+    const res = await client.one("VacationResponse/get", { accountId: account.accountId });
+    const v = (res.list as Array<Record<string, unknown>>)[0];
+    console.log(
+      `${accountLabel(account)}: ${v?.isEnabled ? "ON" : "off"}` +
+        (v?.subject ? `  subject: ${v.subject}` : "") +
+        (v?.toDate ? `  until: ${v.toDate}` : ""),
+    );
+    return;
+  }
+  if (verb !== "on" && verb !== "off") {
+    console.error("usage: bullmoose vacation on|off|status [--subject s] [--body text] [--until date]");
+    process.exit(1);
+  }
+
+  const patch: Record<string, unknown> = { isEnabled: verb === "on" };
+  if (opts.subject) patch.subject = opts.subject;
+  if (opts.body) patch.textBody = opts.body;
+  if (opts.until) patch.toDate = new Date(opts.until).toISOString();
+  await client.one("VacationResponse/set", {
+    accountId: account.accountId,
+    update: { singleton: patch },
+  });
+  console.log(`vacation ${verb === "on" ? "ON" : "off"} for ${accountLabel(account)}`);
+}
+
+// ---- agent -----------------------------------------------------------------
+
+async function cmdAgent(): Promise<void> {
+  const verb = positionals[1];
+  if (verb !== "serve") {
+    console.error("usage: bullmoose agent serve --config <agent.json> [--once]");
+    process.exit(1);
+  }
+  if (!opts.config) {
+    console.error("agent serve requires --config <agent.json>");
+    process.exit(1);
+  }
+  const settings = requireSettings(db);
+  const client = new JmapClient(settings.base, settings.token);
+  await agentServe(db, client, settings, loadAgentConfig(opts.config), { once: opts.once });
 }
 
 // ---- discover ------------------------------------------------------------

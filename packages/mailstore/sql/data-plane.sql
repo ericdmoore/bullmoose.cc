@@ -65,6 +65,66 @@ CREATE TABLE IF NOT EXISTS email_keywords (
   PRIMARY KEY (account_id, email_id, keyword)
 );
 
+-- Armed responders (agent-integration.md §8): respond(template, wait,
+-- cancelIf, suppression), armed at delivery, fired by the AccountDO alarm.
+-- VacationResponse (RFC 8621 §8) is a facade over kind='vacation'.
+CREATE TABLE IF NOT EXISTS responders (
+  id               TEXT NOT NULL,
+  account_id       TEXT NOT NULL,
+  kind             TEXT NOT NULL,             -- 'vacation' | 'watchdog'
+  enabled          INTEGER NOT NULL DEFAULT 0,
+  wait_seconds     INTEGER NOT NULL DEFAULT 0,
+  cancel_if        TEXT NOT NULL DEFAULT 'never', -- 'never' | 'invocation-active'
+  subject          TEXT,
+  text_body        TEXT,
+  from_date        INTEGER,                   -- vacation date range (epoch ms)
+  to_date          INTEGER,
+  suppress_seconds INTEGER NOT NULL DEFAULT 604800, -- once/sender/window
+  PRIMARY KEY (account_id, id)
+);
+
+-- Per-sender suppression bookkeeping (RFC 3834 etiquette).
+CREATE TABLE IF NOT EXISTS responder_log (
+  account_id   TEXT NOT NULL,
+  responder_id TEXT NOT NULL,
+  sender       TEXT NOT NULL,
+  sent_at      INTEGER NOT NULL,
+  PRIMARY KEY (account_id, responder_id, sender)
+);
+
+-- Agent bindings (agent-integration.md §2): which agents fire on delivery
+-- to this account. sla_seconds set → a watchdog responder is armed per
+-- delivery, canceled when the invocation is claimed.
+CREATE TABLE IF NOT EXISTS agent_bindings (
+  id           TEXT NOT NULL,
+  account_id   TEXT NOT NULL,
+  name         TEXT NOT NULL,                 -- matched by the runtime config
+  trigger_on   TEXT NOT NULL DEFAULT 'mailbox-delivery',
+  sla_seconds  INTEGER,
+  enabled      INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (account_id, id)
+);
+
+-- Agent invocations — a synced collection (the AccountDO changelog is
+-- collection-agnostic). Pull-based: runtimes watch for pending work.
+CREATE TABLE IF NOT EXISTS agent_invocations (
+  id           TEXT NOT NULL,
+  account_id   TEXT NOT NULL,
+  binding_id   TEXT NOT NULL,
+  binding_name TEXT NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'pending', -- pending|running|done|failed
+  email_id     TEXT,                          -- primary context ref
+  context_json TEXT NOT NULL DEFAULT '{}',
+  result_json  TEXT,
+  note         TEXT,
+  created_at   INTEGER NOT NULL,
+  claimed_at   INTEGER,
+  done_at      INTEGER,
+  PRIMARY KEY (account_id, id)
+);
+CREATE INDEX IF NOT EXISTS invocations_status
+  ON agent_invocations (account_id, status);
+
 -- JMAP EmailSubmission objects (RFC 8621 §7).
 CREATE TABLE IF NOT EXISTS email_submissions (
   id            TEXT NOT NULL,

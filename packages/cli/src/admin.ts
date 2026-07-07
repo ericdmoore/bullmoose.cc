@@ -28,6 +28,7 @@ export interface AdminOpts {
   password?: string;
   scopes?: string;
   principal?: string;
+  sla?: string;
   json: boolean;
 }
 
@@ -129,6 +130,29 @@ export async function cmdAdmin(
           console.log(`${a.id}  ${a.addresses ?? "(no identity)"}  "${a.display_name}"  shard=${a.shard}`);
         }
         if (res.accounts.length === 0) console.log("(no accounts)");
+      });
+      return;
+    }
+    case "agent bind": {
+      if (!arg || !opts.name) fail("usage: admin agent bind <account-email> --name <binding> [--sla <seconds>]");
+      const res = (await api("POST", "/agent-bindings", {
+        email: arg,
+        name: opts.name,
+        ...(opts.sla ? { slaSeconds: Number(opts.sla) } : {}),
+      })) as { bindingId: string; watchdog: boolean };
+      out(res, opts, () =>
+        console.log(`binding ${res.bindingId} (${opts.name}) on ${arg}${res.watchdog ? " + watchdog responder" : ""}`),
+      );
+      return;
+    }
+    case "agent list": {
+      const qs = arg ? `?email=${encodeURIComponent(arg)}` : "";
+      const res = (await api("GET", `/agent-bindings${qs}`)) as { bindings: Array<Record<string, unknown>> };
+      out(res, opts, () => {
+        for (const b of res.bindings) {
+          console.log(`${b.id}  ${b.name}  trigger=${b.trigger_on}  sla=${b.sla_seconds ?? "-"}  ${b.enabled ? "enabled" : "disabled"}`);
+        }
+        if (res.bindings.length === 0) console.log("(no bindings)");
       });
       return;
     }

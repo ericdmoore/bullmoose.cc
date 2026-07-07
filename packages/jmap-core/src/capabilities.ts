@@ -4,6 +4,9 @@ export const CORE_CAP = "urn:ietf:params:jmap:core";
 export const MAIL_CAP = "urn:ietf:params:jmap:mail";
 export const SUBMISSION_CAP = "urn:ietf:params:jmap:submission";
 export const WEBSOCKET_CAP = "urn:ietf:params:jmap:websocket";
+export const VACATION_CAP = "urn:ietf:params:jmap:vacationresponse";
+/** Vendor capability: AgentInvocation queue etc. (agent-integration.md). */
+export const AGENT_CAP = "urn:bullmoose:params:jmap:agent";
 
 /** RFC 8620 §2 core capability object. */
 export const coreCapability = {

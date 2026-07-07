@@ -5,6 +5,8 @@ import { registerEmailMethods } from "./email";
 import { registerThreadMethods } from "./thread";
 import { registerIdentityMethods } from "./identity";
 import { registerSubmissionMethods } from "./submission";
+import { registerAgentMethods } from "./agent";
+import { registerVacationMethods } from "./vacation";
 
 export type { RequestContext } from "./common";
 
@@ -16,5 +18,7 @@ export function buildRegistry(): MethodRegistry<RequestContext> {
   registerThreadMethods(registry);
   registerIdentityMethods(registry);
   registerSubmissionMethods(registry);
+  registerAgentMethods(registry);
+  registerVacationMethods(registry);
   return registry;
 }

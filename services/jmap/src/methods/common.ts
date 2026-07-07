@@ -46,7 +46,7 @@ export async function accountState(ctx: RequestContext, accountId: string): Prom
 export async function proxyChanges(
   ctx: RequestContext,
   args: Record<string, unknown>,
-  collection: "Email" | "Mailbox" | "Thread" | "EmailSubmission",
+  collection: "Email" | "Mailbox" | "Thread" | "EmailSubmission" | "AgentInvocation",
 ): Promise<Record<string, unknown>> {
   const access = requireAccount(ctx, args, "read");
   const since = args.sinceState;

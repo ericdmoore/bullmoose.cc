@@ -1,7 +1,9 @@
 import {
+  AGENT_CAP,
   CORE_CAP,
   MAIL_CAP,
   SUBMISSION_CAP,
+  VACATION_CAP,
   WEBSOCKET_CAP,
   coreCapability,
   mailCapability,
@@ -20,6 +22,8 @@ export function buildSession(origin: string, principal: Principal): Session {
       accountCapabilities: {
         [MAIL_CAP]: mailCapability,
         [SUBMISSION_CAP]: { maxDelayedSend: 0, submissionExtensions: {} },
+        [VACATION_CAP]: {},
+        [AGENT_CAP]: {},
       },
     };
   }
@@ -32,6 +36,8 @@ export function buildSession(origin: string, principal: Principal): Session {
       [CORE_CAP]: coreCapability,
       [MAIL_CAP]: {},
       [SUBMISSION_CAP]: {},
+      [VACATION_CAP]: {},
+      [AGENT_CAP]: {},
       [WEBSOCKET_CAP]: { url: `${wsOrigin}/api/ws`, supportsPush: true },
     },
     accounts,

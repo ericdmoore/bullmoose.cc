@@ -24,6 +24,8 @@ export interface DraftMessage {
   date: Date;
   text?: string;
   html?: string;
+  /** Verbatim extra header lines, e.g. "Auto-Submitted: auto-replied". */
+  extraHeaders?: string[];
 }
 
 const CRLF = "\r\n";
@@ -41,6 +43,7 @@ export function buildMime(draft: DraftMessage): Uint8Array {
     headers.push(`References: <${draft.inReplyTo}>`);
   }
   headers.push(`Subject: ${encodeHeaderValue(draft.subject)}`);
+  for (const h of draft.extraHeaders ?? []) headers.push(h);
   headers.push("MIME-Version: 1.0");
 
   let body: string;
