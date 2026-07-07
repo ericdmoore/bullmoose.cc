@@ -79,6 +79,34 @@ make all   # dist/popcorn-{darwin-arm64,linux-amd64,linux-arm64}
 TLS cert for `pop3.<domain>`: Let's Encrypt DNS-01 (the zone is already
 on Cloudflare — certbot's cloudflare plugin with a DNS-scoped token).
 
+### Tailscale variant (no port-forward, no DDNS, nothing public)
+
+For a homelab host on a tailnet, skip ALL the network surgery — no
+router hole, no dynamic-DNS updater, no exposure to the internet:
+
+```sh
+sh deploy/install-tailscale-macos.sh    # macOS/launchd; idempotent
+```
+
+- binds **only** the node's tailscale IP — invisible to the LAN and
+  the public internet; reachable from every device on your tailnet
+  (rotating home DHCP is irrelevant: tailnet IPs and the
+  `<node>.<tailnet>.ts.net` name are stable)
+- TLS via `tailscale cert` — a real Let's Encrypt certificate for the
+  ts.net name, auto-renewed weekly by a companion launchd job.
+  Requires the tailnet's **HTTPS Certificates** toggle
+  (admin console → DNS); until it's enabled the installer runs without
+  app-layer TLS, which is acceptable *only* here because every tailnet
+  packet is already WireGuard-encrypted device-to-device — re-run the
+  installer after flipping the toggle to upgrade in place
+- client setup: server `<node>.<tailnet>.ts.net`, port 9995, your
+  app-password — works from any tailnet device (phones included)
+
+Tradeoff vs the public variant: mail fetch requires the client device
+to be on the tailnet — same failure class as any VPN dependency. Both
+variants can run side by side (public VPS + tailnet homelab) since
+popcorn is stateless: the JMAP server is the single source of truth.
+
 ## Picking a VPS
 
 popcorn is a ~6 MB static binary, stateless, with a 64-connection cap —
