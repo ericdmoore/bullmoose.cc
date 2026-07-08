@@ -5,12 +5,13 @@ import Footer from "../components/Footer.astro";
 import Postmark from "../components/Postmark.astro";
 
 const repo = "https://github.com/ericdmoore/bullmoose.cc";
+const cookbook = `${repo}/blob/main/docs/README.md`;
 
 const pillars = [
   {
     tag: "JMAP · RFC 8620/8621",
     h: "Mail, your domain",
-    p: "A full JMAP server — send, receive, threads, search, push, drafts, vacation. Inbound via Cloudflare Email Routing; outbound via SES with DKIM, SPF, and DMARC wired for you.",
+    p: "A full JMAP server — send, receive, threads, search, push, drafts, vacation. Inbound via Cloudflare Email Routing; outbound via SES with DKIM/SPF/DMARC wired for you.",
   },
   {
     tag: "JSContact · JSCalendar",
@@ -18,96 +19,219 @@ const pillars = [
     p: "Stored losslessly, with a DST-correct recurrence engine. Apple devices sync over CardDAV/CalDAV against the very same core your agents read.",
   },
   {
-    tag: "Mailboxes with a runtime",
-    h: "Email-native agents",
-    p: "Bind a runtime to an address and it replies, files receipts to a spend ledger, or runs your own pipeline — with scoped, auditable, revocable access.",
+    tag: "token ∩ grant · vault",
+    h: "Sharing, done right",
+    p: "Cross-account grants (effective rights = token ∩ grant, every access audited) back family sharing and agent delegation; a write-only, envelope-encrypted vault holds third-party keys.",
   },
   {
-    tag: "One binary",
+    tag: "one binary",
     h: "A real CLI",
-    p: "Login and autodiscovery, offline sync to local SQLite, Markdown-to-MIME send, live watch, contacts/calendar import, and token/grant administration.",
+    p: "Login, offline sync to local SQLite, Markdown-to-MIME send, live watch, contacts/calendar import, and token/grant admin — self-documenting via `bullmoose help`.",
   },
+];
+
+const steps = [
+  { h: "Deploy", p: "One idempotent command stands up six workers on Cloudflare's free tier — D1, R2, KV, schemas, secrets, and all.", code: "node infra/bootstrap.mjs" },
+  { h: "Point your domain", p: "One call wires Email Routing + catch-all, an SES identity, and DKIM / SPF / DMARC. Poll until it flips active.", code: "bullmoose admin domain add you.com" },
+  { h: "Connect clients", p: "Speak JMAP directly, sync Apple over CardDAV/CalDAV, or point a legacy client at the POP3/SMTP shim.", code: "bullmoose login you@you.com" },
+];
+
+const wire = [
+  { k: "JMAP", d: "modern mail sync — send, search, push" },
+  { k: "CardDAV / CalDAV", d: "Apple contacts & calendar sync" },
+  { k: "POP3 / SMTP shim", d: "legacy mail clients (via popcorn)" },
+  { k: "vCard / iCalendar", d: "standard contacts & events" },
+];
+
+const compareRows = [
+  { f: "Own domain", b: "✓", fm: "✓", g: "paid", mb: "✓" },
+  { f: "JMAP-native", b: "✓", fm: "✓", g: "✗", mb: "✗" },
+  { f: "Email-native agents", b: "✓", fm: "✗", g: "✗", mb: "✗" },
+  { f: "Self-hosted (you hold the keys)", b: "✓", fm: "✗", g: "✗", mb: "✓" },
+  { f: "Server cost", b: "$0", fm: "$$$", g: "ads / data", mb: "$5–10/mo VPS" },
 ];
 ---
 
 <Base>
   <Nav />
   <main>
+    <!-- HERO -->
     <section class="hero">
       <div class="hero__stripes" aria-hidden="true"></div>
       <div class="wrap hero__in">
         <div class="hero__copy">
-          <p class="eyebrow reveal">Self-hosted personal-data platform</p>
+          <p class="eyebrow reveal">Email for agents · self-hosted · $0/mo</p>
           <h1 class="hero__slogan">
             <span>Your domain.</span><br />
             <span class="l2">Your data.</span><br />
             <span class="l3">One core.</span>
           </h1>
           <p class="hero__lede reveal stagger-1">
-            Email, contacts, calendar, and email-native agents — serverless on
-            Cloudflare, standards-native, and yours. A typical personal
-            deployment runs <b>$0/month</b>, plus your domain.
+            Bind an agent to an email address — it files receipts, triages, or
+            replies with context from your notes. On top of a full, self-hosted
+            <b>mail + contacts + calendar</b> core: serverless on Cloudflare,
+            standards-native, <b>~$0/month</b>.
           </p>
           <div class="hero__cta reveal stagger-2">
-            <a class="btn btn-solid" href="/apps">Get the apps &rarr;</a>
-            <a class="btn btn-ghost" href="/guides">Connection guides &rarr;</a>
-            <a class="btn btn-ghost" href={`${repo}/blob/main/docs/DEPLOY.md`}>Deploy your own &rarr;</a>
+            <a class="btn btn-solid" href={`${repo}/blob/main/docs/DEPLOY.md`}>Deploy your own &rarr;</a>
+            <a class="btn btn-ghost" href="#agents">See agent recipes &rarr;</a>
           </div>
         </div>
         <div class="hero__art reveal stagger-3">
-          <img
-            src="/moose.svg"
-            alt="The bullmoose — a bull moose in stars and stripes, striding forward"
-            width="480"
-            height="480"
-          />
+          <img src="/moose.svg" alt="The bullmoose — a bull moose in stars and stripes, striding forward" width="480" height="480" />
           <Postmark />
         </div>
       </div>
     </section>
 
-    <section id="what" class="band band--rag">
+    <!-- AGENTS — the star -->
+    <section id="agents" class="band band--rag">
       <div class="wrap">
         <div class="band__head reveal">
-          <h2 class="band__title">What it does</h2>
+          <h2 class="band__title">Email-native agents</h2>
           <span class="flagrule"><span class="stars">&#9733; &#9733; &#9733;</span></span>
         </div>
-        <div class="pillars">
-          {
-            pillars.map((p, i) => (
-              <article class={`pillar reveal stagger-${i + 1}`}>
-                <p class="tag">{p.tag}</p>
-                <h3>{p.h}</h3>
-                <p>{p.p}</p>
-              </article>
-            ))
-          }
+        <div class="agents">
+          <div class="agents__copy reveal">
+            <p>
+              Bind an agent to an address and it becomes a worker with an inbox:
+              it replies, files receipts to a spend ledger, triages newsletters,
+              or runs your own pipeline — with <b>scoped, auditable, revocable</b>
+              access. A read-only analytics MCP gives it safe tools over your
+              message log, with zero external credentials.
+            </p>
+            <ul class="routes">
+              <li><code>receipts@you.com</code> <span>&rarr;</span> parses invoices <span>&rarr;</span> writes to the ledger</li>
+              <li><code>editor@you.com</code> <span>&rarr;</span> marks up a draft, replies with a clean version</li>
+              <li><code>assistant@you.com</code> <span>&rarr;</span> answers with context from your own mail</li>
+            </ul>
+            <a class="btn btn-ink" href={cookbook}>See agent recipes &rarr;</a>
+          </div>
+          <div class="term reveal stagger-1" data-type aria-label="Example terminal session">
+            <div class="term__bar"><span></span><span></span><span></span> bullmoose</div>
+            <pre><code><span class="t-p">$</span> bullmoose admin agent bind receipts@you.com --name ledger --config allen.json
+<span class="t-o">  binding b_9f… (ledger) on receipts@you.com + watchdog responder</span>
+<span class="t-p">$</span> bullmoose watch
+<span class="t-h">●</span> 14:45  stripe.com   "Invoice #1284"   <span class="t-o">→ analyst filed $42.00 · saas</span>
+<span class="t-h">●</span> 14:52  you@you.com  "draft: Q3 recap" <span class="t-o">→ editor replied (draft)</span></code></pre>
+          </div>
         </div>
-        <p class="stack reveal">
-          <span>On the wire:</span>
-          <span><b>JMAP</b></span>
-          <span><b>CardDAV</b></span>
-          <span><b>CalDAV</b></span>
-          <span><b>POP3/SMTP</b> shim</span>
-          <span><b>vCard</b> &amp; <b>iCalendar</b></span>
-          <span>&mdash; one core, every standard.</span>
-        </p>
       </div>
     </section>
 
+    <!-- HOW IT WORKS -->
+    <section class="band band--navy">
+      <div class="wrap">
+        <div class="band__head band__head--navy reveal">
+          <h2 class="band__title">Live in three steps</h2>
+        </div>
+        <ol class="steps">
+          {steps.map((s, i) => (
+            <li class={`step reveal stagger-${i + 1}`}>
+              <span class="step__n">{i + 1}</span>
+              <h3>{s.h}</h3>
+              <p>{s.p}</p>
+              <code>{s.code}</code>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+
+    <!-- WHAT IT DOES (pillars) -->
+    <section id="what" class="band band--rag">
+      <div class="wrap">
+        <div class="band__head reveal">
+          <h2 class="band__title">And a full mail core</h2>
+          <span class="flagrule"><span class="stars">&#9733; &#9733; &#9733;</span></span>
+        </div>
+        <div class="pillars">
+          {pillars.map((p, i) => (
+            <article class={`pillar reveal stagger-${i + 1}`}>
+              <p class="tag">{p.tag}</p>
+              <h3>{p.h}</h3>
+              <p>{p.p}</p>
+            </article>
+          ))}
+        </div>
+
+        <!-- On the wire — protocol badges -->
+        <div class="wire reveal">
+          {wire.map((w) => (
+            <div class="wire__item">
+              <span class="wire__k">{w.k}</span>
+              <span class="wire__d">{w.d}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- PRICING + COMPARISON -->
+    <section class="band band--rag">
+      <div class="wrap price-grid">
+        <div class="pricebox reveal">
+          <p class="eyebrow">What's the catch?</p>
+          <h2 class="pricebox__amt">$0<span>/month</span></h2>
+          <ul>
+            <li><span>Cloudflare Workers, D1, R2, KV</span> <b>free tier</b></li>
+            <li><span>Cloudflare Email Routing (inbound)</span> <b>free</b></li>
+            <li><span>AWS SES (outbound)</span> <b>free tier*</b></li>
+            <li class="pricebox__paid"><span>Your domain</span> <b>not free</b></li>
+          </ul>
+          <p class="pricebox__foot">*3,000 emails/mo off-EC2, 62,000 from EC2. Finally, something to do with that spare domain.</p>
+        </div>
+        <div class="compare reveal stagger-1">
+          <table>
+            <thead>
+              <tr><th></th><th class="is-us">bullmoose</th><th>Fastmail</th><th>Gmail</th><th>Mail-in-a-Box</th></tr>
+            </thead>
+            <tbody>
+              {compareRows.map((r) => (
+                <tr>
+                  <th scope="row">{r.f}</th>
+                  <td class="is-us">{r.b}</td>
+                  <td>{r.fm}</td>
+                  <td>{r.g}</td>
+                  <td>{r.mb}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRUST -->
+    <section class="band band--rag trust-band">
+      <div class="wrap">
+        <div class="band__head reveal">
+          <h2 class="band__title">Why trust it</h2>
+        </div>
+        <div class="trust">
+          <div class="reveal"><h3>Open source</h3><p>MIT-licensed and <a href={repo}>readable on GitHub</a> — a compact implementation of the IETF stack, e2e-tested against real clients and real data.</p></div>
+          <div class="reveal stagger-1"><h3>You hold the keys</h3><p>Your domain, your Cloudflare account, your data. Self-hosted means there's no vendor inbox to trust — and no server to patch.</p></div>
+          <div class="reveal stagger-2"><h3>Auditable by design</h3><p>Every cross-account access is logged; agent access is scoped and revocable; the credential vault is write-only.</p></div>
+          <div class="reveal stagger-3"><h3>No lock-in</h3><p>Standards on the wire (JMAP, CardDAV/CalDAV, vCard/iCalendar). Swap any client, or take your local SQLite copy and leave.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ENLIST -->
     <section class="enlist">
       <div class="wrap enlist__in">
         <div class="reveal">
           <h2>Put your hat<br />in the ring.</h2>
           <p>The whole stack, one command &middot; $0/month</p>
         </div>
-        <a class="btn btn-ghost reveal stagger-2" href={repo}>Read the source &rarr;</a>
+        <a class="btn btn-ghost reveal stagger-2" href={`${repo}/blob/main/docs/DEPLOY.md`}>Deploy your own &rarr;</a>
       </div>
     </section>
   </main>
   <Footer />
 
   <script is:inline>
+    // Scroll reveals.
     const io = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
@@ -116,7 +240,48 @@ const pillars = [
         }
       });
     }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
-
     document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+
+    // Animated terminal: type the session out when it scrolls into view.
+    // Reads the pre-rendered (colored) content as the source, so no-JS and
+    // reduced-motion both keep the full static text.
+    const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function typeTerm(term) {
+      const code = term.querySelector("code");
+      if (!code) return;
+      const toks = [];
+      code.childNodes.forEach((n) => {
+        const cls = n.nodeType === 1 ? n.className : "";
+        for (const ch of n.textContent) toks.push([ch, cls]);
+      });
+      code.textContent = "";
+      const cursor = document.createElement("span");
+      cursor.className = "t-cursor";
+      code.appendChild(cursor);
+      let i = 0;
+      (function step() {
+        if (i >= toks.length) return;
+        const [ch, cls] = toks[i++];
+        let span = cursor.previousSibling;
+        if (!span || span.nodeType !== 1 || span.className !== cls) {
+          span = document.createElement("span");
+          if (cls) span.className = cls;
+          code.insertBefore(span, cursor);
+        }
+        span.textContent += ch;
+        setTimeout(step, ch === "\n" ? 180 : cls === "t-o" ? 6 : 18);
+      })();
+    }
+    if (!reduceMotion) {
+      const tio = new IntersectionObserver((entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            tio.unobserve(e.target);
+            typeTerm(e.target);
+          }
+        });
+      }, { threshold: 0.4 });
+      document.querySelectorAll("[data-type]").forEach((t) => tio.observe(t));
+    }
   </script>
 </Base>

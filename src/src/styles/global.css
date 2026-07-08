@@ -442,3 +442,78 @@ a.card:hover { border-color: var(--brass); transform: translateY(-2px); transiti
 .prose th, .prose td { border: 1px solid var(--rag-2); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
 .prose th { background: #f3ead6; font-family: var(--font-mono); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.03em; }
 .guide-foot { margin-top: 2.5rem; padding-top: 1rem; border-top: 2px solid var(--rag-2); font-family: var(--font-mono); font-size: 0.8rem; color: var(--on-rag-dim); }
+
+/* ---- band variants + navy heads --------------------------- */
+.band--navy { background: var(--navy); color: var(--on-navy); border-block: 3px solid var(--brass); }
+.band--navy .band__title { color: var(--on-navy); }
+.band__head--navy { border-bottom-color: rgba(183, 188, 203, 0.25); }
+
+/* ---- agents section (the star) ---------------------------- */
+.agents { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: start; }
+.agents__copy p { color: var(--on-rag-dim); max-width: 46ch; }
+.agents__copy b { color: var(--ink); }
+.routes { list-style: none; margin: 1.3rem 0 1.6rem; display: grid; gap: 0.55rem; }
+.routes li { font-size: 0.92rem; color: var(--on-rag-dim); display: flex; flex-wrap: wrap; align-items: center; gap: 0.5ch; }
+.routes code { font-family: var(--font-mono); font-size: 0.78rem; background: #eae1cd; color: var(--oxblood); padding: 0.12em 0.5em; }
+.routes span { color: var(--brass); font-weight: 700; }
+
+/* ---- terminal --------------------------------------------- */
+.term { background: #0f1830; border: 1px solid #26324f; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22); overflow: hidden; }
+.term__bar { display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.9rem; background: #172140; color: var(--on-navy-dim); font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.1em; }
+.term__bar span { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: #3a4a6a; }
+.term__bar span:nth-child(1) { background: var(--oxblood-2); }
+.term__bar span:nth-child(2) { background: var(--brass-2); }
+.term__bar span:nth-child(3) { background: #5f9e6f; }
+.term pre { margin: 0; padding: 1rem 1.1rem; overflow-x: auto; }
+.term code { font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.65; color: var(--on-navy); white-space: pre; }
+.term .t-p { color: var(--brass-2); }
+.term .t-o { color: var(--on-navy-dim); }
+.term .t-h { color: #7fb98a; }
+.term .t-cursor { display: inline-block; width: 0.6ch; height: 1.02em; margin-left: 1px; vertical-align: text-bottom; background: var(--brass-2); animation: term-blink 1.1s steps(1, end) infinite; }
+@keyframes term-blink { 50% { opacity: 0; } }
+
+/* ---- how it works (a real sequence → numbered) ------------ */
+.steps { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.3rem; }
+.step { border-top: 3px solid var(--brass); padding-top: 1rem; }
+.step__n { font-family: var(--font-display); font-weight: 800; font-size: 2.6rem; line-height: 1; color: var(--brass-2); display: block; }
+.step h3 { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 1.25rem; margin: 0.25rem 0 0.4rem; }
+.step p { color: var(--on-navy-dim); font-size: 0.94rem; margin-bottom: 0.8rem; }
+.step code { font-family: var(--font-mono); font-size: 0.77rem; color: var(--brass-2); background: rgba(0, 0, 0, 0.28); padding: 0.3em 0.55em; display: inline-block; }
+
+/* ---- on the wire (protocol badges) ------------------------ */
+.wire { margin-top: 2.4rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.9rem; }
+.wire__item { border: 1px solid var(--rag-2); border-left: 3px solid var(--oxblood); padding: 0.8rem 1rem; background: #fbf8ee; }
+.wire__k { display: block; font-family: var(--font-mono); font-weight: 700; font-size: 0.88rem; color: var(--ink); }
+.wire__d { display: block; font-size: 0.8rem; color: var(--on-rag-dim); margin-top: 0.2rem; }
+
+/* ---- pricing + comparison --------------------------------- */
+.price-grid { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: start; }
+.pricebox { background: var(--navy); color: var(--on-navy); padding: 1.6rem 1.7rem; border-top: 4px solid var(--brass); }
+.pricebox .eyebrow { color: var(--brass-2); }
+.pricebox__amt { font-family: var(--font-display); font-weight: 800; font-size: 4rem; line-height: 1; margin: 0.3rem 0 1rem; }
+.pricebox__amt span { font-size: 1.2rem; color: var(--on-navy-dim); }
+.pricebox ul { list-style: none; display: grid; gap: 0.4rem; }
+.pricebox li { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.9rem; color: var(--on-navy-dim); border-bottom: 1px solid rgba(183, 188, 203, 0.15); padding-bottom: 0.45rem; }
+.pricebox li b { color: #7fb98a; font-family: var(--font-mono); font-size: 0.76rem; white-space: nowrap; }
+.pricebox__paid b { color: var(--brass-2); }
+.pricebox__foot { margin-top: 1rem; font-size: 0.77rem; color: var(--on-navy-dim); }
+.compare { overflow-x: auto; }
+.compare table { border-collapse: collapse; width: 100%; font-size: 0.9rem; min-width: 34rem; }
+.compare th, .compare td { padding: 0.55rem 0.8rem; text-align: center; border-bottom: 1px solid var(--rag-2); }
+.compare thead th { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 1rem; }
+.compare tbody th[scope="row"] { text-align: left; font-weight: 600; color: var(--ink); }
+.compare .is-us { background: #f3ead6; color: var(--oxblood); font-weight: 700; }
+.compare thead .is-us { border-bottom: 3px solid var(--oxblood); }
+
+/* ---- trust ------------------------------------------------ */
+.trust { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1.4rem; }
+.trust h3 { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 1.2rem; margin-bottom: 0.35rem; }
+.trust p { color: var(--on-rag-dim); font-size: 0.93rem; }
+.trust a { color: var(--oxblood); border-bottom: 1px solid var(--brass); }
+
+/* ---- responsive (added sections) -------------------------- */
+@media (max-width: 52rem) {
+  .agents { grid-template-columns: 1fr; }
+  .steps { grid-template-columns: 1fr; }
+  .price-grid { grid-template-columns: 1fr; }
+}
