@@ -1,0 +1,41 @@
+BEGIN:VCARD
+VERSION:3.0
+PRODID:-//Apple Inc.//macOS 15.0//EN
+N:Lovelace;Ada;Augusta;Countess;
+FN:Ada Lovelace
+ORG:Analytical Engines Ltd;Research
+TITLE:Chief Programmer
+EMAIL;type=INTERNET;type=HOME;type=pref:ada@example.com
+EMAIL;type=INTERNET;type=WORK:ada@engines.example
+TEL;type=CELL;type=VOICE;type=pref:+44 20 7946 0101
+TEL;type=HOME;type=VOICE:+44 20 7946 0102
+item1.ADR;type=HOME;type=pref:;;12 St James Square;London;;SW1Y 4JH;United Kingdom
+item1.X-ABADR:gb
+item2.URL;type=pref:https://findingada.com
+item2.X-ABLabel:_$!<HomePage>!$_
+BDAY:1815-12-10
+NOTE:First programmer.\nWorked on the Analytical Engine\, with Babbage.
+CATEGORIES:pioneers,mathematicians
+UID:ada-lovelace-uid-1
+X-SOCIALPROFILE;type=twitter:https://twitter.com/ada
+END:VCARD
+BEGIN:VCARD
+VERSION:4.0
+UID:urn:uuid:9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+FN:Charles Babbage
+N:Babbage;Charles;;;
+EMAIL;PREF=1:charles@example.com
+TEL;VALUE=uri;TYPE="voice,work":tel:+44-20-7946-0958
+KIND:individual
+ANNIVERSARY:18140702
+REV:20260101T080000Z
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Acme Water Delivery
+ORG:Acme Water Delivery;
+TEL;type=MAIN:+1 (555) 010-9999
+X-ABShowAs:COMPANY
+NOTE;ENCODING=QUOTED-PRINTABLE:D=C3=A9livery on Tuesdays=0A2nd f=
+loor entrance
+END:VCARD

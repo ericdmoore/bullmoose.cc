@@ -109,6 +109,86 @@ export interface IdentityRow {
   name: string;
 }
 
+export interface AddressBookRow {
+  id: string;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+  isDefault: boolean;
+  isSubscribed: boolean;
+  ctag: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * JSContact Card (RFC 9553). Stored losslessly as card_json; only the
+ * properties the server itself reads or maintains are typed here.
+ */
+export interface JSContactCard {
+  "@type"?: string;
+  version?: string;
+  uid?: string;
+  created?: string; // UTCDate
+  updated?: string;
+  kind?: string;
+  name?: {
+    full?: string;
+    components?: Array<{ kind?: string; value?: string } & Record<string, unknown>>;
+  } & Record<string, unknown>;
+  addressBookIds?: Record<string, boolean>;
+  [key: string]: unknown;
+}
+
+export interface ContactCardRow {
+  id: string;
+  addressBookId: string;
+  uid: string;
+  card: JSContactCard;
+  nameFull: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** JMAP ContactCard/query filter (RFC 9610 §4.4.1), the subset we support. */
+export type ContactFilter = ContactFilterOperator | ContactFilterCondition;
+
+export interface ContactFilterOperator {
+  operator: "AND" | "OR" | "NOT";
+  conditions: ContactFilter[];
+}
+
+export interface ContactFilterCondition {
+  inAddressBook?: string;
+  uid?: string;
+  kind?: string;
+  hasMember?: string;
+  createdBefore?: string; // UTCDate
+  createdAfter?: string;
+  updatedBefore?: string;
+  updatedAfter?: string;
+  text?: string;
+  name?: string;
+  nickname?: string;
+  organization?: string;
+  email?: string;
+  phone?: string;
+  note?: string;
+}
+
+export interface ContactSort {
+  property: "created" | "updated" | "name";
+  isAscending: boolean;
+}
+
+export interface ContactQuery {
+  filter?: ContactFilter | null;
+  sort?: ContactSort[];
+  position?: number;
+  limit?: number;
+  calculateTotal?: boolean;
+}
+
 export interface SubmissionRow {
   id: string;
   emailId: string;
@@ -521,6 +601,396 @@ export class Mailstore {
     return results.map((r) => r.id);
   }
 
+  // ---- Address books (JMAP Contacts, RFC 9610) ----------------------
+
+  async getAddressBooks(accountId: string, ids?: string[]): Promise<AddressBookRow[]> {
+    let stmt;
+    const cols = `id, name, description, sort_order, is_default, is_subscribed,
+                  ctag, created_at, updated_at`;
+    if (ids && ids.length > 0) {
+      const marks = ids.map(() => "?").join(",");
+      stmt = this.db
+        .prepare(`SELECT ${cols} FROM address_books WHERE account_id = ? AND id IN (${marks})`)
+        .bind(accountId, ...ids);
+    } else {
+      stmt = this.db
+        .prepare(`SELECT ${cols} FROM address_books WHERE account_id = ? ORDER BY sort_order, name`)
+        .bind(accountId);
+    }
+    const { results } = await stmt.all<{
+      id: string;
+      name: string;
+      description: string | null;
+      sort_order: number;
+      is_default: number;
+      is_subscribed: number;
+      ctag: number;
+      created_at: number;
+      updated_at: number;
+    }>();
+    return results.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      sortOrder: r.sort_order,
+      isDefault: r.is_default === 1,
+      isSubscribed: r.is_subscribed === 1,
+      ctag: r.ctag,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  async insertAddressBook(accountId: string, book: AddressBookRow): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO address_books
+           (id, account_id, name, description, sort_order, is_default, is_subscribed,
+            ctag, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        book.id,
+        accountId,
+        book.name,
+        book.description,
+        book.sortOrder,
+        book.isDefault ? 1 : 0,
+        book.isSubscribed ? 1 : 0,
+        book.ctag,
+        book.createdAt,
+        book.updatedAt,
+      )
+      .run();
+  }
+
+  async updateAddressBook(
+    accountId: string,
+    id: string,
+    patch: { name?: string; description?: string | null; sortOrder?: number; isSubscribed?: boolean },
+  ): Promise<void> {
+    const sets: string[] = ["updated_at = ?"];
+    const params: unknown[] = [Date.now()];
+    if (patch.name !== undefined) {
+      sets.push("name = ?");
+      params.push(patch.name);
+    }
+    if (patch.description !== undefined) {
+      sets.push("description = ?");
+      params.push(patch.description);
+    }
+    if (patch.sortOrder !== undefined) {
+      sets.push("sort_order = ?");
+      params.push(patch.sortOrder);
+    }
+    if (patch.isSubscribed !== undefined) {
+      sets.push("is_subscribed = ?");
+      params.push(patch.isSubscribed ? 1 : 0);
+    }
+    await this.db
+      .prepare(`UPDATE address_books SET ${sets.join(", ")} WHERE account_id = ? AND id = ?`)
+      .bind(...params, accountId, id)
+      .run();
+  }
+
+  async deleteAddressBook(accountId: string, id: string): Promise<void> {
+    await this.db
+      .prepare(`DELETE FROM address_books WHERE account_id = ? AND id = ?`)
+      .bind(accountId, id)
+      .run();
+  }
+
+  /** Make `id` the account's default book (clearing any previous default). */
+  async setDefaultAddressBook(accountId: string, id: string): Promise<void> {
+    await this.db.batch([
+      this.db
+        .prepare(`UPDATE address_books SET is_default = 0 WHERE account_id = ? AND is_default = 1`)
+        .bind(accountId),
+      this.db
+        .prepare(`UPDATE address_books SET is_default = 1 WHERE account_id = ? AND id = ?`)
+        .bind(accountId, id),
+    ]);
+  }
+
+  /**
+   * Resolve the default address book, creating "Contacts" on first touch
+   * (mirrors ensureRoleMailbox). If books exist but none is default —
+   * e.g. the default was destroyed — the oldest is promoted.
+   * Callers must commit the returned change to the account changelog.
+   */
+  async ensureDefaultAddressBook(
+    accountId: string,
+  ): Promise<{ id: string; change: "created" | "updated" | null }> {
+    const existing = await this.db
+      .prepare(`SELECT id FROM address_books WHERE account_id = ? AND is_default = 1`)
+      .bind(accountId)
+      .first<{ id: string }>();
+    if (existing) return { id: existing.id, change: null };
+
+    const oldest = await this.db
+      .prepare(
+        `SELECT id FROM address_books WHERE account_id = ? ORDER BY created_at LIMIT 1`,
+      )
+      .bind(accountId)
+      .first<{ id: string }>();
+    if (oldest) {
+      await this.setDefaultAddressBook(accountId, oldest.id);
+      return { id: oldest.id, change: "updated" };
+    }
+
+    const id = `ab_${crypto.randomUUID()}`;
+    const now = Date.now();
+    await this.insertAddressBook(accountId, {
+      id,
+      name: "Contacts",
+      description: null,
+      sortOrder: 0,
+      isDefault: true,
+      isSubscribed: true,
+      ctag: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { id, change: "created" };
+  }
+
+  /**
+   * Bump the DAV ctag of the given books (member changed). Deliberately
+   * leaves updated_at alone — that tracks the book object itself.
+   */
+  async bumpAddressBookCtags(accountId: string, ids: Iterable<string>): Promise<void> {
+    const list = [...new Set(ids)];
+    if (list.length === 0) return;
+    const marks = list.map(() => "?").join(",");
+    await this.db
+      .prepare(`UPDATE address_books SET ctag = ctag + 1 WHERE account_id = ? AND id IN (${marks})`)
+      .bind(accountId, ...list)
+      .run();
+  }
+
+  async cardIdsInBook(accountId: string, bookId: string): Promise<string[]> {
+    const { results } = await this.db
+      .prepare(`SELECT id FROM contact_cards WHERE account_id = ? AND address_book_id = ?`)
+      .bind(accountId, bookId)
+      .all<{ id: string }>();
+    return results.map((r) => r.id);
+  }
+
+  // ---- Contact cards --------------------------------------------------
+
+  async getContactCards(accountId: string, ids?: string[]): Promise<ContactCardRow[]> {
+    let stmt;
+    const cols = `id, address_book_id, uid, card_json, name_full, created_at, updated_at`;
+    if (ids && ids.length > 0) {
+      const marks = ids.map(() => "?").join(",");
+      stmt = this.db
+        .prepare(`SELECT ${cols} FROM contact_cards WHERE account_id = ? AND id IN (${marks})`)
+        .bind(accountId, ...ids);
+    } else {
+      stmt = this.db
+        .prepare(
+          `SELECT ${cols} FROM contact_cards WHERE account_id = ? ORDER BY name_full, id`,
+        )
+        .bind(accountId);
+    }
+    const { results } = await stmt.all<{
+      id: string;
+      address_book_id: string;
+      uid: string;
+      card_json: string;
+      name_full: string | null;
+      created_at: number;
+      updated_at: number;
+    }>();
+    return results.map((r) => ({
+      id: r.id,
+      addressBookId: r.address_book_id,
+      uid: r.uid,
+      card: JSON.parse(r.card_json) as JSContactCard,
+      nameFull: r.name_full,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  /** Id of the card holding `uid`, if any (RFC 9610: uid unique per account). */
+  async contactCardIdByUid(accountId: string, uid: string): Promise<string | null> {
+    const row = await this.db
+      .prepare(`SELECT id FROM contact_cards WHERE account_id = ? AND uid = ?`)
+      .bind(accountId, uid)
+      .first<{ id: string }>();
+    return row?.id ?? null;
+  }
+
+  async insertContactCard(accountId: string, row: ContactCardRow): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO contact_cards
+           (id, account_id, address_book_id, uid, card_json, name_full, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        row.id,
+        accountId,
+        row.addressBookId,
+        row.uid,
+        JSON.stringify(row.card),
+        row.nameFull,
+        row.createdAt,
+        row.updatedAt,
+      )
+      .run();
+  }
+
+  async updateContactCard(accountId: string, row: ContactCardRow): Promise<void> {
+    await this.db
+      .prepare(
+        `UPDATE contact_cards
+         SET address_book_id = ?, card_json = ?, name_full = ?, updated_at = ?
+         WHERE account_id = ? AND id = ?`,
+      )
+      .bind(
+        row.addressBookId,
+        JSON.stringify(row.card),
+        row.nameFull,
+        row.updatedAt,
+        accountId,
+        row.id,
+      )
+      .run();
+  }
+
+  async destroyContactCard(accountId: string, id: string): Promise<void> {
+    await this.db
+      .prepare(`DELETE FROM contact_cards WHERE account_id = ? AND id = ?`)
+      .bind(accountId, id)
+      .run();
+  }
+
+  /** ContactCard/query → ordered id list (+ optional total). */
+  async queryContactCards(
+    accountId: string,
+    query: ContactQuery,
+  ): Promise<{ ids: string[]; position: number; total?: number }> {
+    const params: unknown[] = [accountId];
+    const where = query.filter ? this.buildContactFilter(query.filter, params) : "1=1";
+
+    const sort = (query.sort ?? [{ property: "name", isAscending: true }])
+      .map(
+        (s) =>
+          `${CONTACT_SORT_COLUMNS[s.property] ?? "c.name_full"} ${s.isAscending ? "ASC" : "DESC"}`,
+      )
+      .join(", ");
+
+    const position = Math.max(0, query.position ?? 0);
+    const limit = Math.min(Math.max(1, query.limit ?? 100), 256);
+
+    const { results } = await this.db
+      .prepare(
+        `SELECT c.id FROM contact_cards c WHERE c.account_id = ? AND (${where})
+         ORDER BY ${sort}, c.id LIMIT ? OFFSET ?`,
+      )
+      .bind(...params, limit, position)
+      .all<{ id: string }>();
+
+    const out: { ids: string[]; position: number; total?: number } = {
+      ids: results.map((r) => r.id),
+      position,
+    };
+
+    if (query.calculateTotal) {
+      const row = await this.db
+        .prepare(`SELECT COUNT(*) AS n FROM contact_cards c WHERE c.account_id = ? AND (${where})`)
+        .bind(...params)
+        .first<{ n: number }>();
+      out.total = row?.n ?? 0;
+    }
+    return out;
+  }
+
+  private buildContactFilter(filter: ContactFilter, params: unknown[]): string {
+    if ("operator" in filter) {
+      const parts = filter.conditions.map((c) => `(${this.buildContactFilter(c, params)})`);
+      if (parts.length === 0) return "1=1";
+      switch (filter.operator) {
+        case "AND":
+          return parts.join(" AND ");
+        case "OR":
+          return parts.join(" OR ");
+        case "NOT":
+          return `NOT (${parts.join(" OR ")})`;
+      }
+    }
+
+    const clauses: string[] = [];
+    const c = filter as ContactFilterCondition;
+    if (c.inAddressBook !== undefined) {
+      clauses.push(`c.address_book_id = ?`);
+      params.push(c.inAddressBook);
+    }
+    if (c.uid !== undefined) {
+      clauses.push(`c.uid = ?`);
+      params.push(c.uid);
+    }
+    if (c.kind !== undefined) {
+      // JSContact defaults kind to "individual" when absent.
+      clauses.push(`COALESCE(json_extract(c.card_json, '$.kind'), 'individual') = ?`);
+      params.push(c.kind);
+    }
+    if (c.hasMember !== undefined) {
+      clauses.push(jsonMapExists("$.members", `je.key = ?`));
+      params.push(c.hasMember);
+    }
+    if (c.createdBefore !== undefined) {
+      clauses.push(`c.created_at < ?`);
+      params.push(Date.parse(c.createdBefore));
+    }
+    if (c.createdAfter !== undefined) {
+      clauses.push(`c.created_at >= ?`);
+      params.push(Date.parse(c.createdAfter));
+    }
+    if (c.updatedBefore !== undefined) {
+      clauses.push(`c.updated_at < ?`);
+      params.push(Date.parse(c.updatedBefore));
+    }
+    if (c.updatedAfter !== undefined) {
+      clauses.push(`c.updated_at >= ?`);
+      params.push(Date.parse(c.updatedAfter));
+    }
+    // Substring matchers. Each targets the RFC-named properties via
+    // json_each so a query for "phone" can't false-positive on the JSON
+    // key "phones" the way a raw card_json LIKE would.
+    if (c.name !== undefined) clauses.push(nameClause(params, c.name));
+    if (c.nickname !== undefined) {
+      clauses.push(jsonMapLike("$.nicknames", ["$.name"], params, c.nickname));
+    }
+    if (c.organization !== undefined) {
+      clauses.push(jsonMapLike("$.organizations", ["$.name"], params, c.organization));
+    }
+    if (c.email !== undefined) {
+      clauses.push(jsonMapLike("$.emails", ["$.address", "$.label"], params, c.email));
+    }
+    if (c.phone !== undefined) {
+      clauses.push(jsonMapLike("$.phones", ["$.number", "$.label"], params, c.phone));
+    }
+    if (c.note !== undefined) {
+      clauses.push(jsonMapLike("$.notes", ["$.note"], params, c.note));
+    }
+    if (c.text !== undefined) {
+      clauses.push(
+        `(${[
+          nameClause(params, c.text),
+          jsonMapLike("$.nicknames", ["$.name"], params, c.text),
+          jsonMapLike("$.organizations", ["$.name"], params, c.text),
+          jsonMapLike("$.emails", ["$.address", "$.label"], params, c.text),
+          jsonMapLike("$.phones", ["$.number", "$.label"], params, c.text),
+          jsonMapLike("$.notes", ["$.note"], params, c.text),
+        ].join(" OR ")})`,
+      );
+    }
+    return clauses.length > 0 ? clauses.join(" AND ") : "1=1";
+  }
+
   // ---- Identities (control plane, same shard for MVP) ---------------
 
   async getIdentities(accountId: string): Promise<IdentityRow[]> {
@@ -575,8 +1045,43 @@ const SORT_COLUMNS: Record<string, string> = {
   from: "e.from_json",
 };
 
+const CONTACT_SORT_COLUMNS: Record<string, string> = {
+  created: "c.created_at",
+  updated: "c.updated_at",
+  name: "c.name_full",
+};
+
 function escapeLike(s: string): string {
   return s.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
+
+/**
+ * EXISTS over the values of a JSContact Id-map property (e.g. $.emails),
+ * testing `condition` against each entry as `je`. COALESCE keeps
+ * json_each happy when the property is absent from the card.
+ */
+function jsonMapExists(path: string, condition: string): string {
+  return `EXISTS (SELECT 1 FROM json_each(COALESCE(json_extract(c.card_json, '${path}'), '{}')) je
+          WHERE ${condition})`;
+}
+
+/** jsonMapExists specialised to "any of these subfields LIKE ?". */
+function jsonMapLike(path: string, fields: string[], params: unknown[], needle: string): string {
+  const like = `%${escapeLike(needle)}%`;
+  const tests = fields.map((f) => {
+    params.push(like);
+    return `COALESCE(json_extract(je.value, '${f}'), '') LIKE ? ESCAPE '\\'`;
+  });
+  return jsonMapExists(path, tests.join(" OR "));
+}
+
+/** RFC 9610 `name` filter: the extracted full name or any name component. */
+function nameClause(params: unknown[], needle: string): string {
+  const like = `%${escapeLike(needle)}%`;
+  params.push(like, like);
+  return `(COALESCE(c.name_full, '') LIKE ? ESCAPE '\\'
+     OR EXISTS (SELECT 1 FROM json_each(COALESCE(json_extract(c.card_json, '$.name.components'), '[]')) jn
+        WHERE COALESCE(json_extract(jn.value, '$.value'), '') LIKE ? ESCAPE '\\'))`;
 }
 
 function hex(buf: ArrayBuffer): string {

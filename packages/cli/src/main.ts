@@ -21,6 +21,7 @@ import { pidPaths, readAlivePid, watch, writePid } from "./watch.js";
 import { cmdAdmin } from "./admin.js";
 import { cmdLogin, cmdToken } from "./tokens.js";
 import { agentServe, loadAgentConfig } from "./agent.js";
+import { cmdContacts } from "./contacts.js";
 
 const HELP = `bullmoose — JMAP sync client with a local SQLite message log
 
@@ -63,6 +64,13 @@ Usage:
                  claims pending work, drafts replies in template mode
                  (providers: mock | anthropic | openai-compatible; API keys
                  by env reference). --once drains and exits (cron-friendly)
+  bullmoose contacts import <file.vcf> [--book <name-or-id>] [--account <sel>]
+                 seed the contacts core from a vCard export (idempotent:
+                 cards dedup by uid; a missing --book is created).
+                 Export from macOS Contacts: select cards → File →
+                 Export → Export vCard…
+  bullmoose contacts list [--book <name-or-id>] [-n <count>] [--json]
+  bullmoose contacts show <cardId> [--json]
   bullmoose log [-n <count>] [--mailbox <role-or-id>] [--account <sel>] [--json]
   bullmoose search <fts5-query> [--account <sel>] [--json]
   bullmoose show <emailId> [--json]
@@ -123,6 +131,7 @@ const { values: opts, positionals } = parseArgs({
     principal: { type: "string" },
     blobs: { type: "string" },
     mailbox: { type: "string" },
+    book: { type: "string" },
     to: { type: "string", multiple: true },
     cc: { type: "string", multiple: true },
     bcc: { type: "string", multiple: true },
@@ -202,6 +211,14 @@ try {
       break;
     case "agent":
       await cmdAgent();
+      break;
+    case "contacts":
+      await cmdContacts(db, positionals.slice(1), {
+        account: opts.account,
+        book: opts.book,
+        json: opts.json ?? false,
+        n: opts.n,
+      });
       break;
     case "log":
       cmdLog();

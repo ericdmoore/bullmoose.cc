@@ -22,6 +22,10 @@ export type MethodErrorType =
   | "requestTooLarge"
   | "cannotCalculateChanges"
   | "stateMismatch"
+  // RFC 8620 §5.5 /query errors:
+  | "unsupportedFilter"
+  | "unsupportedSort"
+  | "anchorNotFound"
   // SetError types surfaced through MethodError in /set-shaped methods:
   | "blobNotFound"
   | "notFound";

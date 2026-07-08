@@ -36,12 +36,12 @@ export class JmapClient {
     return this.sessionCache;
   }
 
-  async call(methodCalls: Invocation[]): Promise<Invocation[]> {
+  async call(methodCalls: Invocation[], using: string[] = USING): Promise<Invocation[]> {
     const session = await this.session();
     const res = await fetch(session.apiUrl, {
       method: "POST",
       headers: this.headers(),
-      body: JSON.stringify({ using: USING, methodCalls }),
+      body: JSON.stringify({ using, methodCalls }),
     });
     if (!res.ok) throw new Error(`JMAP request failed: HTTP ${res.status} ${await res.text()}`);
     const body = (await res.json()) as { methodResponses: Invocation[] };
@@ -49,8 +49,12 @@ export class JmapClient {
   }
 
   /** Single method call; throws on a method-level error response. */
-  async one(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const [resp] = await this.call([[name, args, "c0"]]);
+  async one(
+    name: string,
+    args: Record<string, unknown>,
+    using?: string[],
+  ): Promise<Record<string, unknown>> {
+    const [resp] = await this.call([[name, args, "c0"]], using);
     if (!resp) throw new Error(`no response for ${name}`);
     if (resp[0] === "error") {
       const err = new Error(`${name} → ${JSON.stringify(resp[1])}`);

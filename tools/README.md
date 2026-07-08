@@ -19,6 +19,19 @@ npx wrangler dev --port 8787 &
 cd ../..
 node tools/e2e-jmap.mjs        # core surface: session, set/query/get, patches, changes, blobs
 node tools/e2e-punchlist.mjs   # himalaya punch list: Mailbox/query, Email/import, threading
+node tools/e2e-contacts.mjs    # JMAP Contacts (RFC 9610): books, cards, query, ctag cascade
+```
+
+The contacts CLI doubles as the vCard-import acceptance test (same dev
+server; `tools/fixtures/contacts-sample.vcf` exercises v3/v4, Apple item
+groups, QP, and a UID-less card):
+
+```sh
+export BULLMOOSE_DB=/tmp/bullmoose-test.db
+node packages/cli/bin/bullmoose.mjs init --base http://127.0.0.1:8787 --token devtoken
+node packages/cli/bin/bullmoose.mjs contacts import tools/fixtures/contacts-sample.vcf
+node packages/cli/bin/bullmoose.mjs contacts import tools/fixtures/contacts-sample.vcf  # idempotent: created 0
+node packages/cli/bin/bullmoose.mjs contacts list
 ```
 
 The `@bullmoose/cli` sync client doubles as the acceptance test for

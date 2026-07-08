@@ -151,6 +151,49 @@ CREATE TABLE IF NOT EXISTS spend_facts (
 CREATE INDEX IF NOT EXISTS idx_spend_facts_date
   ON spend_facts (account_id, currency, txn_date);
 
+-- Address books (JMAP Contacts, RFC 9610). `ctag` is a per-collection
+-- counter bumped on ANY member change — CardDAV clients poll, and a
+-- stable ctag makes an idle poll O(1) instead of O(N) PROPFIND
+-- (capability-roadmap: cost-critical on the free tier). The JMAP
+-- sync-token stays the AccountDO global state sequence; ctag is DAV-only.
+CREATE TABLE IF NOT EXISTS address_books (
+  id            TEXT NOT NULL,
+  account_id    TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  description   TEXT,
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  is_default    INTEGER NOT NULL DEFAULT 0,
+  is_subscribed INTEGER NOT NULL DEFAULT 1,
+  ctag          INTEGER NOT NULL DEFAULT 0,
+  created_at    INTEGER NOT NULL,          -- epoch ms
+  updated_at    INTEGER NOT NULL,
+  PRIMARY KEY (account_id, id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS address_books_default
+  ON address_books (account_id) WHERE is_default = 1;
+
+-- Contact cards. card_json = the JSContact Card (RFC 9553), the lossless
+-- source of truth (never lose data to the column model); the rest are
+-- extracted columns for query/sort. One address book per card in v1
+-- (matches CardDAV; the blob keeps full addressBookIds; junction table
+-- later if ever needed). uid is unique per account per RFC 9610.
+CREATE TABLE IF NOT EXISTS contact_cards (
+  id              TEXT NOT NULL,
+  account_id      TEXT NOT NULL,
+  address_book_id TEXT NOT NULL,
+  uid             TEXT NOT NULL,
+  card_json       TEXT NOT NULL,
+  name_full       TEXT,
+  created_at      INTEGER NOT NULL,        -- epoch ms; mirrors card.created
+  updated_at      INTEGER NOT NULL,        -- epoch ms; mirrors card.updated
+  PRIMARY KEY (account_id, id),
+  UNIQUE (account_id, uid)
+);
+CREATE INDEX IF NOT EXISTS contact_cards_book
+  ON contact_cards (account_id, address_book_id);
+CREATE INDEX IF NOT EXISTS contact_cards_updated
+  ON contact_cards (account_id, updated_at);
+
 -- JMAP EmailSubmission objects (RFC 8621 §7).
 CREATE TABLE IF NOT EXISTS email_submissions (
   id            TEXT NOT NULL,

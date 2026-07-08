@@ -1,5 +1,5 @@
 import { dispatch, RequestErrors, type JmapRequest } from "@bullmoose/jmap-core";
-import { AGENT_CAP, CORE_CAP, MAIL_CAP, SUBMISSION_CAP, VACATION_CAP, WEBSOCKET_CAP } from "@bullmoose/jmap-core";
+import { AGENT_CAP, CONTACTS_CAP, CORE_CAP, MAIL_CAP, SUBMISSION_CAP, VACATION_CAP, WEBSOCKET_CAP } from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
 import { authenticate, accountAccess, principalHasScope, type AuthEnv } from "./auth";
@@ -24,7 +24,7 @@ export interface Env extends AuthEnv {
   SHARE_SIGNING_KEY?: string;
 }
 
-const SUPPORTED_CAPS = new Set([CORE_CAP, MAIL_CAP, SUBMISSION_CAP, WEBSOCKET_CAP, VACATION_CAP, AGENT_CAP]);
+const SUPPORTED_CAPS = new Set([CORE_CAP, MAIL_CAP, SUBMISSION_CAP, WEBSOCKET_CAP, VACATION_CAP, CONTACTS_CAP, AGENT_CAP]);
 const registry = buildRegistry();
 
 export default {
