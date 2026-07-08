@@ -104,17 +104,11 @@ holds metadata and JSON documents; [R2](https://www.cloudflare.com/products/r2/)
 holds bytes (raw messages, attachments, contact photos). Rationale, diagrams, and the free-tier
 capacity story live in [`docs/architecture/`](docs/architecture/README.md).
 
-```
-packages/jmap-core       JMAP wire types, errors, dispatch (RFC 8620)
-packages/account-do      per-account Durable Object: state, changelog, push, alarms
-packages/mailstore       D1 schemas + data access, R2 blob keyspace
-packages/auth-core       tokens, scopes, grants, vault envelope crypto
-packages/contacts-core   vCard ⇄ JSContact (RFC 9555)
-packages/calendar-core   recurrence/timezone engine, iCalendar ⇄ JSCalendar
-packages/mime            RFC 5322 builder · packages/outbound  SES relay
-packages/cli             the `bullmoose` command
-packages/popcorn         POP3S/SMTPS → JMAP shim (Go) for legacy clients
+The reusable logic lives in **ten [packages](packages/README.md)** — that
+index links down into each one. Six **services** compose them into deployed
+workers:
 
+```
 services/jmap            JMAP endpoint: mail/contacts/calendar methods, auth, push
 services/ingest          Email Routing target: parse → R2/D1 → state bump
 services/submit          outbound relay (SES) + webhooks
