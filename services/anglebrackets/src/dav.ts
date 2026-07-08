@@ -859,19 +859,26 @@ async function calQuery(
     before = parse(endAttr);
   }
 
+  const wantData = /calendar-data/i.test(body);
   const rows = (await store.getCalendarEvents(access.accountId)).filter(
     (r) => r.calendarId === cal.id,
   );
   const parts: string[] = [];
   for (const row of rows) {
     if (after !== undefined || before !== undefined) {
-      const hit = expandOccurrences(row.event, { after, before, maxOccurrences: 1 });
-      if (hit.length === 0) continue;
+      // Indexed outer span first (cheap, can only over-include)…
+      if (before !== undefined && (row.startAt === null || row.startAt >= before)) continue;
+      if (after !== undefined && row.endAt !== null && row.endAt <= after) continue;
+      // …then the real occurrence check for recurring events.
+      if (row.isRecurring) {
+        const hit = expandOccurrences(row.event, { after, before, maxOccurrences: 1 });
+        if (hit.length === 0) continue;
+      }
     }
     parts.push(
       response(eventPath(access.accountId, cal.id, row.davName ?? row.id), {
         getetag: xmlEscape(etagOf(row.id, row.updatedAt)),
-        "calendar-data": xmlEscape(serializeICal(row.event)),
+        ...(wantData ? { "calendar-data": xmlEscape(serializeICal(row.event)) } : {}),
       }),
     );
   }

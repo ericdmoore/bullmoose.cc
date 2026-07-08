@@ -185,48 +185,56 @@ const fmtOffset = (ms: number) => {
   return `${sign}${p2(Math.floor(abs / 60))}${p2(abs % 60)}`;
 };
 
+const vtzCache = new Map<string, string>();
+
 /**
- * Explicit-date VTIMEZONE covering [fromYear, toYear]: scan for offset
- * transitions (day-level, then binary-search to the hour) and emit one
- * STANDARD/DAYLIGHT block per transition. RFC 5545-legal without
- * recurrence rules; a couple of years around the event is plenty for
- * client rendering.
+ * Explicit-date VTIMEZONE covering [fromYear, toYear], emitted as one
+ * STANDARD/DAYLIGHT block per transition. Transitions are found by
+ * probing month boundaries then binary-searching day and hour —
+ * ~30 Intl probes per year instead of a day-by-day scan, and the result
+ * is cached per (zone, range): the free-tier CPU budget cannot afford
+ * rediscovering America/Chicago on every serialized event.
  */
 export function vtimezone(timeZone: string, fromYear: number, toYear: number): string {
   if (timeZone === "Etc/UTC" || timeZone === "UTC") return "";
+  const key = `${timeZone}:${fromYear}:${toYear}`;
+  const cached = vtzCache.get(key);
+  if (cached !== undefined) return cached;
+
   const lines = [`BEGIN:VTIMEZONE`, `TZID:${timeZone}`];
-  let cursor = Date.UTC(fromYear, 0, 1);
-  const end = Date.UTC(toYear + 1, 0, 1);
-  let prev = offsetAt(cursor, timeZone);
   let blocks = 0;
-  while (cursor < end) {
-    const next = cursor + 86_400_000;
-    const off = offsetAt(next, timeZone);
-    if (off !== prev) {
-      // Binary-search the hour of the transition.
-      let lo = cursor;
-      let hi = next;
-      while (hi - lo > 3_600_000) {
-        const mid = lo + Math.floor((hi - lo) / 2 / 3_600_000) * 3_600_000;
-        if (offsetAt(mid, timeZone) === prev) lo = mid;
-        else hi = mid;
+  let prev = offsetAt(Date.UTC(fromYear, 0, 1), timeZone);
+  for (let year = fromYear; year <= toYear; year++) {
+    // Probe month boundaries; binary-search inside a changed month.
+    let lo = Date.UTC(year, 0, 1);
+    for (let m = 1; m <= 12; m++) {
+      const hi = Date.UTC(year, m, 1);
+      const offHi = offsetAt(hi, timeZone);
+      if (offHi !== prev) {
+        let a = lo;
+        let b = hi;
+        while (b - a > 3_600_000) {
+          const mid = a + Math.floor((b - a) / 2 / 3_600_000) * 3_600_000;
+          if (offsetAt(mid, timeZone) === prev) a = mid;
+          else b = mid;
+        }
+        const off = offsetAt(b, timeZone);
+        const isDst = off > prev;
+        const localAtTransition = parseLocalDateTime(wallClockIso(b - 1, timeZone))!;
+        lines.push(
+          `BEGIN:${isDst ? "DAYLIGHT" : "STANDARD"}`,
+          `TZOFFSETFROM:${fmtOffset(prev)}`,
+          `TZOFFSETTO:${fmtOffset(off)}`,
+          `DTSTART:${icsStamp({ ...localAtTransition, hour: localAtTransition.hour + 1, minute: 0, second: 0 })}`,
+          `END:${isDst ? "DAYLIGHT" : "STANDARD"}`,
+        );
+        blocks++;
+        prev = off;
       }
-      const isDst = off > prev;
-      const localAtTransition = parseLocalDateTime(wallClockIso(hi - 1, timeZone))!;
-      lines.push(
-        `BEGIN:${isDst ? "DAYLIGHT" : "STANDARD"}`,
-        `TZOFFSETFROM:${fmtOffset(prev)}`,
-        `TZOFFSETTO:${fmtOffset(off)}`,
-        `DTSTART:${icsStamp({ ...localAtTransition, hour: localAtTransition.hour + 1, minute: 0, second: 0 })}`,
-        `END:${isDst ? "DAYLIGHT" : "STANDARD"}`,
-      );
-      blocks++;
-      prev = off;
+      lo = hi;
     }
-    cursor = next;
   }
   if (blocks === 0) {
-    // Fixed-offset zone: one STANDARD block.
     lines.push(
       `BEGIN:STANDARD`,
       `TZOFFSETFROM:${fmtOffset(prev)}`,
@@ -236,7 +244,9 @@ export function vtimezone(timeZone: string, fromYear: number, toYear: number): s
     );
   }
   lines.push(`END:VTIMEZONE`);
-  return lines.join("\r\n");
+  const out = lines.join("\r\n");
+  vtzCache.set(key, out);
+  return out;
 }
 
 // ---- serialize -----------------------------------------------------------

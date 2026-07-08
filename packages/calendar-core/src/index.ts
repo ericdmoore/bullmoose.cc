@@ -294,8 +294,19 @@ function expandRule(
   const pastHorizon = (dt: LocalDateTime): boolean =>
     horizonMs !== undefined && count === undefined && zonedToUtc(dt, timeZone) >= horizonMs;
 
+  // Fast-forward toward the window for unbounded-by-COUNT rules: a
+  // years-old weekly series must not iterate hundreds of steps (each a
+  // tz conversion) to reach "this week" — the free-tier CPU budget is
+  // 10ms. COUNT rules can't skip (early occurrences consume the count).
+  const skipToMs = count === undefined && opts.after !== undefined ? opts.after : null;
+
   if (freq === "daily") {
     let cur = start;
+    if (skipToMs !== null) {
+      const stepMs = interval * 86_400_000;
+      const behind = skipToMs - asUtcMs(cur) - 2 * 86_400_000; // stay a step short (tz slack)
+      if (behind > stepMs) cur = addDays(cur, Math.floor(behind / stepMs) * interval);
+    }
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       if (pastHorizon(cur)) break;
       if (!emit(cur)) break;
@@ -311,6 +322,11 @@ function expandRule(
     wanted.sort((a, b) => a - b);
     // Anchor at the Monday of the start week; step whole weeks.
     let weekStart = addDays(start, -weekday(start));
+    if (skipToMs !== null) {
+      const stepMs = interval * 7 * 86_400_000;
+      const behind = skipToMs - asUtcMs(weekStart) - 2 * stepMs;
+      if (behind > stepMs) weekStart = addDays(weekStart, Math.floor(behind / stepMs) * interval * 7);
+    }
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       let done = false;
       for (const wd of wanted) {
