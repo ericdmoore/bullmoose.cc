@@ -11,7 +11,8 @@ Forward-looking design docs — proposals, not yet built — sit here too:
 `capability-roadmap.md` (the next layer), and the Cloudflare-AI evaluation
 `ai-surface.md` with its companions `agents-sdk.md` (reject the framework,
 cherry-pick the patterns) and `ai-search-rag.md` (opt-in retrieval,
-isolation-first).
+isolation-first). The public-site rework — Astro on Cloudflare Pages, apps +
+connection guides — is in `marketing-site.md`.
 
 The whole system is a **serverless JMAP mail platform**: modern clients
 speak JMAP directly; legacy clients reach it through a homelab protocol
