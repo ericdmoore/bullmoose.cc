@@ -21,6 +21,7 @@ node tools/e2e-jmap.mjs        # core surface: session, set/query/get, patches, 
 node tools/e2e-punchlist.mjs   # himalaya punch list: Mailbox/query, Email/import, threading
 node tools/e2e-contacts.mjs    # JMAP Contacts (RFC 9610): books, cards, query, ctag cascade
 node tools/e2e-grants.mjs      # Phase 3: sharing, delegation, vault, analytics MCP (3 workers)
+node tools/e2e-carddav.mjs     # Phase 2: anglebrackets CardDAV (jmap :8787 + anglebrackets :8791)
 ```
 
 `e2e-grants.mjs` needs three workers on one `--persist-to` state dir,

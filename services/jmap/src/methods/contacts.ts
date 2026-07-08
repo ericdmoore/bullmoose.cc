@@ -189,10 +189,8 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
         }
         // v1 is single-book-per-card, so removing a card from its only
         // book (RFC 9610 onDestroyRemoveContents) destroys the card.
-        for (const cardId of cardIds) {
-          await store.destroyContactCard(access.accountId, cardId);
-          cardEntry.destroyed.push(cardId);
-        }
+        await store.destroyContactCards(access.accountId, cardIds);
+        cardEntry.destroyed.push(...cardIds);
         await store.deleteAddressBook(access.accountId, id);
         // A destroyed book takes its sharing with it.
         await ctx.env.DB.prepare(
@@ -402,6 +400,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
             uid: card.uid,
             card,
             nameFull: deriveNameFull(card),
+            davName: null,
             createdAt: Date.parse(card.created),
             updatedAt: now,
           },
@@ -482,6 +481,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
           uid: row.uid,
           card,
           nameFull: deriveNameFull(card),
+          davName: row.davName,
           createdAt: row.createdAt,
           updatedAt: Date.parse(card.updated),
         });

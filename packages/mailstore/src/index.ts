@@ -146,6 +146,8 @@ export interface ContactCardRow {
   uid: string;
   card: JSContactCard;
   nameFull: string | null;
+  /** CardDAV resource name (client PUT filename); null → id serves. */
+  davName: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -813,13 +815,14 @@ export class Mailstore {
   // ---- Contact cards --------------------------------------------------
 
   async getContactCards(accountId: string, ids?: string[]): Promise<ContactCardRow[]> {
-    const cols = `id, address_book_id, uid, card_json, name_full, created_at, updated_at`;
+    const cols = `id, address_book_id, uid, card_json, name_full, dav_name, created_at, updated_at`;
     type Row = {
       id: string;
       address_book_id: string;
       uid: string;
       card_json: string;
       name_full: string | null;
+      dav_name: string | null;
       created_at: number;
       updated_at: number;
     };
@@ -846,9 +849,28 @@ export class Mailstore {
       uid: r.uid,
       card: JSON.parse(r.card_json) as JSContactCard,
       nameFull: r.name_full,
+      davName: r.dav_name,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));
+  }
+
+  /** Resolve a CardDAV resource inside a book: dav_name first, id fallback. */
+  async getCardByDavName(
+    accountId: string,
+    bookId: string,
+    resourceName: string,
+  ): Promise<ContactCardRow | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT id FROM contact_cards
+         WHERE account_id = ? AND address_book_id = ? AND (dav_name = ? OR id = ?)
+         LIMIT 1`,
+      )
+      .bind(accountId, bookId, resourceName, resourceName)
+      .first<{ id: string }>();
+    if (!row) return null;
+    return (await this.getContactCards(accountId, [row.id]))[0] ?? null;
   }
 
   /**
@@ -859,32 +881,61 @@ export class Mailstore {
   async getContactCardRefs(
     accountId: string,
     ids?: string[],
-  ): Promise<Array<{ id: string; addressBookId: string; uid: string }>> {
-    type Row = { id: string; address_book_id: string; uid: string };
+  ): Promise<
+    Array<{ id: string; addressBookId: string; uid: string; davName: string | null; updatedAt: number }>
+  > {
+    type Row = {
+      id: string;
+      address_book_id: string;
+      uid: string;
+      dav_name: string | null;
+      updated_at: number;
+    };
+    const cols = `id, address_book_id, uid, dav_name, updated_at`;
     const rows: Row[] = [];
     if (ids && ids.length > 0) {
       for (const chunk of chunked(ids)) {
         const marks = chunk.map(() => "?").join(",");
         const { results } = await this.db
-          .prepare(
-            `SELECT id, address_book_id, uid FROM contact_cards
-             WHERE account_id = ? AND id IN (${marks})`,
-          )
+          .prepare(`SELECT ${cols} FROM contact_cards WHERE account_id = ? AND id IN (${marks})`)
           .bind(accountId, ...chunk)
           .all<Row>();
         rows.push(...results);
       }
     } else {
       const { results } = await this.db
-        .prepare(
-          `SELECT id, address_book_id, uid FROM contact_cards
-           WHERE account_id = ? ORDER BY name_full, id`,
-        )
+        .prepare(`SELECT ${cols} FROM contact_cards WHERE account_id = ? ORDER BY name_full, id`)
         .bind(accountId)
         .all<Row>();
       rows.push(...results);
     }
-    return rows.map((r) => ({ id: r.id, addressBookId: r.address_book_id, uid: r.uid }));
+    return rows.map((r) => ({
+      id: r.id,
+      addressBookId: r.address_book_id,
+      uid: r.uid,
+      davName: r.dav_name,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  /** Refs for every card in one book (DAV listings / initial sync). */
+  async cardRefsInBook(
+    accountId: string,
+    bookId: string,
+  ): Promise<Array<{ id: string; uid: string; davName: string | null; updatedAt: number }>> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT id, uid, dav_name, updated_at FROM contact_cards
+         WHERE account_id = ? AND address_book_id = ? ORDER BY id`,
+      )
+      .bind(accountId, bookId)
+      .all<{ id: string; uid: string; dav_name: string | null; updated_at: number }>();
+    return results.map((r) => ({
+      id: r.id,
+      uid: r.uid,
+      davName: r.dav_name,
+      updatedAt: r.updated_at,
+    }));
   }
 
   /** Id of the card holding `uid`, if any (RFC 9610: uid unique per account). */
@@ -922,8 +973,9 @@ export class Mailstore {
         this.db
           .prepare(
             `INSERT INTO contact_cards
-               (id, account_id, address_book_id, uid, card_json, name_full, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+               (id, account_id, address_book_id, uid, card_json, name_full, dav_name,
+                created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             row.id,
@@ -932,6 +984,7 @@ export class Mailstore {
             row.uid,
             JSON.stringify(row.card),
             row.nameFull,
+            row.davName,
             row.createdAt,
             row.updatedAt,
           ),
@@ -943,13 +996,14 @@ export class Mailstore {
     await this.db
       .prepare(
         `UPDATE contact_cards
-         SET address_book_id = ?, card_json = ?, name_full = ?, updated_at = ?
+         SET address_book_id = ?, card_json = ?, name_full = ?, dav_name = ?, updated_at = ?
          WHERE account_id = ? AND id = ?`,
       )
       .bind(
         row.addressBookId,
         JSON.stringify(row.card),
         row.nameFull,
+        row.davName,
         row.updatedAt,
         accountId,
         row.id,
@@ -958,9 +1012,75 @@ export class Mailstore {
   }
 
   async destroyContactCard(accountId: string, id: string): Promise<void> {
+    await this.destroyContactCards(accountId, [id]);
+  }
+
+  /**
+   * Bulk destroy with DAV tombstones: sync-collection must answer
+   * deletions with the resource name a client knew, and the changelog
+   * only keeps ids. Batched — a whole-book cascade stays within the
+   * per-request budget.
+   */
+  async destroyContactCards(accountId: string, ids: string[]): Promise<void> {
+    const now = Date.now();
+    for (const chunk of chunked(ids)) {
+      const marks = chunk.map(() => "?").join(",");
+      const { results } = await this.db
+        .prepare(
+          `SELECT id, address_book_id, dav_name FROM contact_cards
+           WHERE account_id = ? AND id IN (${marks})`,
+        )
+        .bind(accountId, ...chunk)
+        .all<{ id: string; address_book_id: string; dav_name: string | null }>();
+      if (results.length === 0) continue;
+      await this.db.batch([
+        ...results.map((r) =>
+          this.db
+            .prepare(
+              `INSERT OR REPLACE INTO dav_tombstones
+                 (account_id, collection_id, item_id, resource_name, deleted_at)
+               VALUES (?, ?, ?, ?, ?)`,
+            )
+            .bind(accountId, r.address_book_id, r.id, r.dav_name ?? r.id, now),
+        ),
+        this.db
+          .prepare(
+            `DELETE FROM contact_cards WHERE account_id = ? AND id IN (${results
+              .map(() => "?")
+              .join(",")})`,
+          )
+          .bind(accountId, ...results.map((r) => r.id)),
+      ]);
+    }
+  }
+
+  /** resource names for destroyed card ids (sync-collection 404s). */
+  async tombstoneNames(
+    accountId: string,
+    ids: string[],
+  ): Promise<Map<string, { resourceName: string; collectionId: string }>> {
+    const out = new Map<string, { resourceName: string; collectionId: string }>();
+    for (const chunk of chunked(ids)) {
+      const marks = chunk.map(() => "?").join(",");
+      const { results } = await this.db
+        .prepare(
+          `SELECT item_id, resource_name, collection_id FROM dav_tombstones
+           WHERE account_id = ? AND item_id IN (${marks})`,
+        )
+        .bind(accountId, ...chunk)
+        .all<{ item_id: string; resource_name: string; collection_id: string }>();
+      for (const r of results) {
+        out.set(r.item_id, { resourceName: r.resource_name, collectionId: r.collection_id });
+      }
+    }
+    return out;
+  }
+
+  /** Age out tombstones the DO changelog can no longer reference. */
+  async pruneTombstones(accountId: string, olderThanMs: number): Promise<void> {
     await this.db
-      .prepare(`DELETE FROM contact_cards WHERE account_id = ? AND id = ?`)
-      .bind(accountId, id)
+      .prepare(`DELETE FROM dav_tombstones WHERE account_id = ? AND deleted_at < ?`)
+      .bind(accountId, Date.now() - olderThanMs)
       .run();
   }
 

@@ -184,15 +184,35 @@ CREATE TABLE IF NOT EXISTS contact_cards (
   uid             TEXT NOT NULL,
   card_json       TEXT NOT NULL,
   name_full       TEXT,
+  -- CardDAV resource name (client-chosen filename minus .vcf on PUT).
+  -- NULL → the card id serves as the resource name. Existing DBs:
+  --   ALTER TABLE contact_cards ADD COLUMN dav_name TEXT;
+  dav_name        TEXT,
   created_at      INTEGER NOT NULL,        -- epoch ms; mirrors card.created
   updated_at      INTEGER NOT NULL,        -- epoch ms; mirrors card.updated
   PRIMARY KEY (account_id, id),
   UNIQUE (account_id, uid)
 );
+CREATE INDEX IF NOT EXISTS contact_cards_dav
+  ON contact_cards (account_id, address_book_id, dav_name);
 CREATE INDEX IF NOT EXISTS contact_cards_book
   ON contact_cards (account_id, address_book_id);
 CREATE INDEX IF NOT EXISTS contact_cards_updated
   ON contact_cards (account_id, updated_at);
+
+-- DAV tombstones: a sync-collection REPORT must answer "what was
+-- deleted" with the RESOURCE NAME the client knows, but the AccountDO
+-- changelog only carries ids. Every contact-card destroy (JMAP or DAV)
+-- records one; pruned opportunistically after 30 days (past the DO log
+-- window, a client is forced into a full resync anyway).
+CREATE TABLE IF NOT EXISTS dav_tombstones (
+  account_id    TEXT NOT NULL,
+  collection_id TEXT NOT NULL,          -- address book id
+  item_id       TEXT NOT NULL,          -- destroyed card id
+  resource_name TEXT NOT NULL,          -- dav_name ?? id at delete time
+  deleted_at    INTEGER NOT NULL,
+  PRIMARY KEY (account_id, item_id)
+);
 
 -- JMAP EmailSubmission objects (RFC 8621 §7).
 CREATE TABLE IF NOT EXISTS email_submissions (

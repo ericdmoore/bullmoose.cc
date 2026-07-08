@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bullmoose-anglebrackets",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+
+  // The AccountDO lives in the jmap worker; bind cross-script for
+  // sync-token / changelog reads and mutation commits.
+  "durable_objects": {
+    "bindings": [
+      { "name": "ACCOUNT_DO", "class_name": "AccountDO", "script_name": "bullmoose-jmap" }
+    ]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bullmoose-mail-shard0",
+      "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9"
+    }
+  ],
+
+  "vars": {
+    // Dev-only single-account auth (parity with the jmap worker); prod
+    // has no DEV_BEARER_TOKEN secret so auth runs purely on the token table.
+    "DEV_ACCOUNT_ID": "t_dev__a_local",
+    "DEV_TENANT_ID": "t_dev",
+    "DEV_USERNAME": "dev@localhost"
+  }
+}
