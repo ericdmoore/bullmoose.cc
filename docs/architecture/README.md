@@ -2,7 +2,10 @@
 
 How bullmoose is wired, and — more importantly — **why** it's wired that
 way. Deep dives live alongside this file: `serverless-jmap.md` (the core
-design) and `agent-integration.md` (agents). This README is the map.
+design), `agent-integration.md` (agents), and
+`capacity-and-scaling.md` (what the free tier holds, the quotas that
+bind, and the shelved relief valves — blob compression and shard
+rotation). This README is the map.
 
 The whole system is a **serverless JMAP mail platform**: modern clients
 speak JMAP directly; legacy clients reach it through a homelab protocol
