@@ -203,6 +203,19 @@ const blobKey = (tenantId: string, accountId: string, blobId: string) =>
   `mail/${tenantId}/${accountId}/blobs/${blobId}`;
 
 /**
+ * Production D1 caps bound parameters at 100 per query (local SQLite
+ * allows ~1000, so only prod trips it). Split id lists for IN (...)
+ * queries; callers merge the per-chunk results.
+ */
+const MAX_BINDS = 90;
+
+function chunked<T>(items: T[], size = MAX_BINDS): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
  * Normalize an RFC 5322 Message-ID for storage: JMAP exposes ids WITHOUT
  * angle brackets, and thread resolution compares stored message_id against
  * stored in_reply_to — so every write path must strip consistently
@@ -223,30 +236,36 @@ export class Mailstore {
   // ---- Mailboxes ----------------------------------------------------
 
   async getMailboxes(accountId: string, ids?: string[]): Promise<MailboxRow[]> {
-    let stmt;
-    if (ids && ids.length > 0) {
-      const marks = ids.map(() => "?").join(",");
-      stmt = this.db
-        .prepare(
-          `SELECT id, parent_id, name, role, sort_order FROM mailboxes
-           WHERE account_id = ? AND id IN (${marks})`,
-        )
-        .bind(accountId, ...ids);
-    } else {
-      stmt = this.db
-        .prepare(
-          `SELECT id, parent_id, name, role, sort_order FROM mailboxes
-           WHERE account_id = ? ORDER BY sort_order, name`,
-        )
-        .bind(accountId);
-    }
-    const { results } = await stmt.all<{
+    type Row = {
       id: string;
       parent_id: string | null;
       name: string;
       role: string | null;
       sort_order: number;
-    }>();
+    };
+    const results: Row[] = [];
+    if (ids && ids.length > 0) {
+      for (const chunk of chunked(ids)) {
+        const marks = chunk.map(() => "?").join(",");
+        const { results: r } = await this.db
+          .prepare(
+            `SELECT id, parent_id, name, role, sort_order FROM mailboxes
+             WHERE account_id = ? AND id IN (${marks})`,
+          )
+          .bind(accountId, ...chunk)
+          .all<Row>();
+        results.push(...r);
+      }
+    } else {
+      const { results: r } = await this.db
+        .prepare(
+          `SELECT id, parent_id, name, role, sort_order FROM mailboxes
+           WHERE account_id = ? ORDER BY sort_order, name`,
+        )
+        .bind(accountId)
+        .all<Row>();
+      results.push(...r);
+    }
     return results.map((r) => ({
       id: r.id,
       parentId: r.parent_id,
@@ -302,38 +321,43 @@ export class Mailstore {
   async getEmailRows(accountId: string, ids: string[]): Promise<Map<string, EmailRow>> {
     const out = new Map<string, EmailRow>();
     if (ids.length === 0) return out;
-    const marks = ids.map(() => "?").join(",");
 
-    const [emails, mailboxes, keywords] = await this.db.batch<Record<string, unknown>>([
-      this.db
-        .prepare(`SELECT * FROM emails WHERE account_id = ? AND id IN (${marks})`)
-        .bind(accountId, ...ids),
-      this.db
-        .prepare(
-          `SELECT email_id, mailbox_id FROM email_mailboxes
-           WHERE account_id = ? AND email_id IN (${marks})`,
-        )
-        .bind(accountId, ...ids),
-      this.db
-        .prepare(
-          `SELECT email_id, keyword FROM email_keywords
-           WHERE account_id = ? AND email_id IN (${marks})`,
-        )
-        .bind(accountId, ...ids),
-    ]);
-
+    const emailRows: Array<Record<string, unknown>> = [];
     const mbByEmail = new Map<string, string[]>();
-    for (const r of (mailboxes?.results ?? []) as Array<{ email_id: string; mailbox_id: string }>) {
-      (mbByEmail.get(r.email_id) ?? mbByEmail.set(r.email_id, []).get(r.email_id)!).push(
-        r.mailbox_id,
-      );
-    }
     const kwByEmail = new Map<string, string[]>();
-    for (const r of (keywords?.results ?? []) as Array<{ email_id: string; keyword: string }>) {
-      (kwByEmail.get(r.email_id) ?? kwByEmail.set(r.email_id, []).get(r.email_id)!).push(r.keyword);
+    for (const chunk of chunked(ids)) {
+      const marks = chunk.map(() => "?").join(",");
+      const [emails, mailboxes, keywords] = await this.db.batch<Record<string, unknown>>([
+        this.db
+          .prepare(`SELECT * FROM emails WHERE account_id = ? AND id IN (${marks})`)
+          .bind(accountId, ...chunk),
+        this.db
+          .prepare(
+            `SELECT email_id, mailbox_id FROM email_mailboxes
+             WHERE account_id = ? AND email_id IN (${marks})`,
+          )
+          .bind(accountId, ...chunk),
+        this.db
+          .prepare(
+            `SELECT email_id, keyword FROM email_keywords
+             WHERE account_id = ? AND email_id IN (${marks})`,
+          )
+          .bind(accountId, ...chunk),
+      ]);
+      emailRows.push(...((emails?.results ?? []) as Array<Record<string, unknown>>));
+      for (const r of (mailboxes?.results ?? []) as Array<{ email_id: string; mailbox_id: string }>) {
+        (mbByEmail.get(r.email_id) ?? mbByEmail.set(r.email_id, []).get(r.email_id)!).push(
+          r.mailbox_id,
+        );
+      }
+      for (const r of (keywords?.results ?? []) as Array<{ email_id: string; keyword: string }>) {
+        (kwByEmail.get(r.email_id) ?? kwByEmail.set(r.email_id, []).get(r.email_id)!).push(
+          r.keyword,
+        );
+      }
     }
 
-    for (const r of (emails?.results ?? []) as Array<Record<string, unknown>>) {
+    for (const r of emailRows) {
       const id = r.id as string;
       out.set(id, {
         id,
@@ -604,20 +628,9 @@ export class Mailstore {
   // ---- Address books (JMAP Contacts, RFC 9610) ----------------------
 
   async getAddressBooks(accountId: string, ids?: string[]): Promise<AddressBookRow[]> {
-    let stmt;
     const cols = `id, name, description, sort_order, is_default, is_subscribed,
                   ctag, created_at, updated_at`;
-    if (ids && ids.length > 0) {
-      const marks = ids.map(() => "?").join(",");
-      stmt = this.db
-        .prepare(`SELECT ${cols} FROM address_books WHERE account_id = ? AND id IN (${marks})`)
-        .bind(accountId, ...ids);
-    } else {
-      stmt = this.db
-        .prepare(`SELECT ${cols} FROM address_books WHERE account_id = ? ORDER BY sort_order, name`)
-        .bind(accountId);
-    }
-    const { results } = await stmt.all<{
+    type Row = {
       id: string;
       name: string;
       description: string | null;
@@ -627,7 +640,24 @@ export class Mailstore {
       ctag: number;
       created_at: number;
       updated_at: number;
-    }>();
+    };
+    const results: Row[] = [];
+    if (ids && ids.length > 0) {
+      for (const chunk of chunked(ids)) {
+        const marks = chunk.map(() => "?").join(",");
+        const { results: r } = await this.db
+          .prepare(`SELECT ${cols} FROM address_books WHERE account_id = ? AND id IN (${marks})`)
+          .bind(accountId, ...chunk)
+          .all<Row>();
+        results.push(...r);
+      }
+    } else {
+      const { results: r } = await this.db
+        .prepare(`SELECT ${cols} FROM address_books WHERE account_id = ? ORDER BY sort_order, name`)
+        .bind(accountId)
+        .all<Row>();
+      results.push(...r);
+    }
     return results.map((r) => ({
       id: r.id,
       name: r.name,
@@ -759,13 +789,15 @@ export class Mailstore {
    * leaves updated_at alone — that tracks the book object itself.
    */
   async bumpAddressBookCtags(accountId: string, ids: Iterable<string>): Promise<void> {
-    const list = [...new Set(ids)];
-    if (list.length === 0) return;
-    const marks = list.map(() => "?").join(",");
-    await this.db
-      .prepare(`UPDATE address_books SET ctag = ctag + 1 WHERE account_id = ? AND id IN (${marks})`)
-      .bind(accountId, ...list)
-      .run();
+    for (const chunk of chunked([...new Set(ids)])) {
+      const marks = chunk.map(() => "?").join(",");
+      await this.db
+        .prepare(
+          `UPDATE address_books SET ctag = ctag + 1 WHERE account_id = ? AND id IN (${marks})`,
+        )
+        .bind(accountId, ...chunk)
+        .run();
+    }
   }
 
   async cardIdsInBook(accountId: string, bookId: string): Promise<string[]> {
@@ -779,21 +811,8 @@ export class Mailstore {
   // ---- Contact cards --------------------------------------------------
 
   async getContactCards(accountId: string, ids?: string[]): Promise<ContactCardRow[]> {
-    let stmt;
     const cols = `id, address_book_id, uid, card_json, name_full, created_at, updated_at`;
-    if (ids && ids.length > 0) {
-      const marks = ids.map(() => "?").join(",");
-      stmt = this.db
-        .prepare(`SELECT ${cols} FROM contact_cards WHERE account_id = ? AND id IN (${marks})`)
-        .bind(accountId, ...ids);
-    } else {
-      stmt = this.db
-        .prepare(
-          `SELECT ${cols} FROM contact_cards WHERE account_id = ? ORDER BY name_full, id`,
-        )
-        .bind(accountId);
-    }
-    const { results } = await stmt.all<{
+    type Row = {
       id: string;
       address_book_id: string;
       uid: string;
@@ -801,8 +820,25 @@ export class Mailstore {
       name_full: string | null;
       created_at: number;
       updated_at: number;
-    }>();
-    return results.map((r) => ({
+    };
+    const rows: Row[] = [];
+    if (ids && ids.length > 0) {
+      for (const chunk of chunked(ids)) {
+        const marks = chunk.map(() => "?").join(",");
+        const { results } = await this.db
+          .prepare(`SELECT ${cols} FROM contact_cards WHERE account_id = ? AND id IN (${marks})`)
+          .bind(accountId, ...chunk)
+          .all<Row>();
+        rows.push(...results);
+      }
+    } else {
+      const { results } = await this.db
+        .prepare(`SELECT ${cols} FROM contact_cards WHERE account_id = ? ORDER BY name_full, id`)
+        .bind(accountId)
+        .all<Row>();
+      rows.push(...results);
+    }
+    return rows.map((r) => ({
       id: r.id,
       addressBookId: r.address_book_id,
       uid: r.uid,
@@ -822,25 +858,31 @@ export class Mailstore {
     accountId: string,
     ids?: string[],
   ): Promise<Array<{ id: string; addressBookId: string; uid: string }>> {
-    let stmt;
+    type Row = { id: string; address_book_id: string; uid: string };
+    const rows: Row[] = [];
     if (ids && ids.length > 0) {
-      const marks = ids.map(() => "?").join(",");
-      stmt = this.db
-        .prepare(
-          `SELECT id, address_book_id, uid FROM contact_cards
-           WHERE account_id = ? AND id IN (${marks})`,
-        )
-        .bind(accountId, ...ids);
+      for (const chunk of chunked(ids)) {
+        const marks = chunk.map(() => "?").join(",");
+        const { results } = await this.db
+          .prepare(
+            `SELECT id, address_book_id, uid FROM contact_cards
+             WHERE account_id = ? AND id IN (${marks})`,
+          )
+          .bind(accountId, ...chunk)
+          .all<Row>();
+        rows.push(...results);
+      }
     } else {
-      stmt = this.db
+      const { results } = await this.db
         .prepare(
           `SELECT id, address_book_id, uid FROM contact_cards
            WHERE account_id = ? ORDER BY name_full, id`,
         )
-        .bind(accountId);
+        .bind(accountId)
+        .all<Row>();
+      rows.push(...results);
     }
-    const { results } = await stmt.all<{ id: string; address_book_id: string; uid: string }>();
-    return results.map((r) => ({ id: r.id, addressBookId: r.address_book_id, uid: r.uid }));
+    return rows.map((r) => ({ id: r.id, addressBookId: r.address_book_id, uid: r.uid }));
   }
 
   /** Id of the card holding `uid`, if any (RFC 9610: uid unique per account). */
@@ -852,16 +894,17 @@ export class Mailstore {
     return row?.id ?? null;
   }
 
-  /** Batch uid → id lookup — one query, not one per card (CPU budget). */
+  /** Batch uid → id lookup — one query per 90 uids, not one per card. */
   async contactCardIdsByUids(accountId: string, uids: string[]): Promise<Map<string, string>> {
     const out = new Map<string, string>();
-    if (uids.length === 0) return out;
-    const marks = uids.map(() => "?").join(",");
-    const { results } = await this.db
-      .prepare(`SELECT id, uid FROM contact_cards WHERE account_id = ? AND uid IN (${marks})`)
-      .bind(accountId, ...uids)
-      .all<{ id: string; uid: string }>();
-    for (const r of results) out.set(r.uid, r.id);
+    for (const chunk of chunked(uids)) {
+      const marks = chunk.map(() => "?").join(",");
+      const { results } = await this.db
+        .prepare(`SELECT id, uid FROM contact_cards WHERE account_id = ? AND uid IN (${marks})`)
+        .bind(accountId, ...chunk)
+        .all<{ id: string; uid: string }>();
+      for (const r of results) out.set(r.uid, r.id);
+    }
     return out;
   }
 
