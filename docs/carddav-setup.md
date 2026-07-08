@@ -3,7 +3,7 @@
 The contacts core is the source of truth; anglebrackets serves it over
 CardDAV at:
 
-    https://bullmoose-anglebrackets.eric-d-moore.workers.dev
+    https://dav.bullmoose.cc
 
 Autodiscovery (`/.well-known/carddav`) is wired, so clients only need
 the hostname.
@@ -28,7 +28,7 @@ Contacts → **Settings → Accounts → Add Other Account… → CardDAV accoun
 | Account type | Advanced (if asked; Manual also works) |
 | User name | `eric@bullmoose.cc` |
 | Password | the `bm_…` token |
-| Server address | `bullmoose-anglebrackets.eric-d-moore.workers.dev` |
+| Server address | `dav.bullmoose.cc` |
 | Server path (Advanced only) | `/dav/` |
 | Port / SSL (Advanced only) | 443, SSL on |
 
@@ -44,7 +44,7 @@ Calendar → **Settings → Accounts → Add Account… → Other CalDAV Account
 | Account type | Advanced (Manual also works) |
 | User name | `eric@bullmoose.cc` |
 | Password | a `bm_…` token (mint with `--scopes read,calendar`, or reuse one with both `contacts,calendar`) |
-| Server address | `bullmoose-anglebrackets.eric-d-moore.workers.dev` |
+| Server address | `dav.bullmoose.cc` |
 | Server path (Advanced only) | `/dav/` |
 | Port / SSL | 443, SSL on |
 

@@ -4,6 +4,11 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-06-01",
 
+  // Client-facing hostname (Workers custom domain — Cloudflare creates
+  // the DNS record + cert on deploy). Devices point at dav.bullmoose.cc;
+  // the workers.dev URL keeps working as a fallback.
+  "routes": [{ "pattern": "dav.bullmoose.cc", "custom_domain": true }],
+
   // The AccountDO lives in the jmap worker; bind cross-script for
   // sync-token / changelog reads and mutation commits.
   "durable_objects": {
