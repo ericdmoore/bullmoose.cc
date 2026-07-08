@@ -23,9 +23,13 @@ interface ContactsOpts {
   n: string;
 }
 
-/** Set-request chunking: stay well under maxObjectsInSet/maxSizeRequest. */
-const CREATE_CHUNK = 50;
-const CREATE_CHUNK_BYTES = 3_000_000;
+/**
+ * Set-request chunking: small enough that the worker's JSON handling of
+ * a photo-heavy chunk stays inside the free tier's per-request CPU
+ * budget (inline photos make single cards ~MB-scale).
+ */
+const CREATE_CHUNK = 25;
+const CREATE_CHUNK_BYTES = 1_000_000;
 const PAGE = 256;
 
 export async function cmdContacts(
@@ -101,21 +105,28 @@ async function cmdImport(
   }
 
   const toCreate: Card[] = [];
-  let skipped = 0;
+  let skippedExisting = 0;
+  let duplicatesInFile = 0;
   const seenInFile = new Set<string>();
   for (const card of cards) {
     const uid = String(card.uid);
-    if (existing.has(uid) || seenInFile.has(uid)) {
-      skipped++;
+    if (seenInFile.has(uid)) {
+      duplicatesInFile++;
       continue;
     }
     seenInFile.add(uid);
+    if (existing.has(uid)) {
+      skippedExisting++;
+      continue;
+    }
     toCreate.push({ ...card, addressBookIds: { [book.id]: true } });
   }
 
   let created = 0;
   const failed: Array<{ uid: string; error: string }> = [];
-  for (const chunk of chunkBySize(toCreate)) {
+  const chunks = chunkBySize(toCreate);
+  let done = 0;
+  for (const chunk of chunks) {
     const create: Record<string, Card> = {};
     chunk.forEach((card, i) => (create[`c${i}`] = card));
     const res = await client.one("ContactCard/set", { accountId, create }, CONTACTS_USING);
@@ -129,20 +140,36 @@ async function cmdImport(
         error: err.description ?? err.type ?? "unknown error",
       });
     }
+    done += chunk.length;
+    if (chunks.length > 1 && !opts.json) {
+      process.stderr.write(`\rimporting… ${done}/${toCreate.length}`);
+    }
   }
+  if (chunks.length > 1 && !opts.json) process.stderr.write("\n");
 
   if (opts.json) {
     console.log(
       JSON.stringify(
-        { file, book: { id: book.id, name: book.name }, parsed: cards.length, created, skipped, failed },
+        {
+          file,
+          book: { id: book.id, name: book.name },
+          parsed: cards.length,
+          created,
+          skippedExisting,
+          duplicatesInFile,
+          failed,
+        },
         null,
         2,
       ),
     );
   } else {
+    const parts = [`created ${created}`];
+    if (skippedExisting > 0) parts.push(`${skippedExisting} already on server`);
+    if (duplicatesInFile > 0) parts.push(`${duplicatesInFile} duplicates within the file`);
     console.log(
       `${file}: parsed ${cards.length} card${cards.length === 1 ? "" : "s"} → ` +
-        `created ${created}, skipped ${skipped} already present → "${book.name}"`,
+        `${parts.join(", ")} → "${book.name}"`,
     );
     for (const f of failed) console.error(`failed: ${f.uid}: ${f.error}`);
   }

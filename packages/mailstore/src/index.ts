@@ -813,6 +813,36 @@ export class Mailstore {
     }));
   }
 
+  /**
+   * Column-only card refs — no card_json read/parse. Serving skinny
+   * ContactCard/get requests (sync scans: id/uid/addressBookIds) from
+   * columns keeps big photo blobs out of the Worker CPU budget.
+   */
+  async getContactCardRefs(
+    accountId: string,
+    ids?: string[],
+  ): Promise<Array<{ id: string; addressBookId: string; uid: string }>> {
+    let stmt;
+    if (ids && ids.length > 0) {
+      const marks = ids.map(() => "?").join(",");
+      stmt = this.db
+        .prepare(
+          `SELECT id, address_book_id, uid FROM contact_cards
+           WHERE account_id = ? AND id IN (${marks})`,
+        )
+        .bind(accountId, ...ids);
+    } else {
+      stmt = this.db
+        .prepare(
+          `SELECT id, address_book_id, uid FROM contact_cards
+           WHERE account_id = ? ORDER BY name_full, id`,
+        )
+        .bind(accountId);
+    }
+    const { results } = await stmt.all<{ id: string; address_book_id: string; uid: string }>();
+    return results.map((r) => ({ id: r.id, addressBookId: r.address_book_id, uid: r.uid }));
+  }
+
   /** Id of the card holding `uid`, if any (RFC 9610: uid unique per account). */
   async contactCardIdByUid(accountId: string, uid: string): Promise<string | null> {
     const row = await this.db

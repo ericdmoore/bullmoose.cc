@@ -195,17 +195,33 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
     const store = storeFor(ctx);
 
     const ids = args.ids === null || args.ids === undefined ? undefined : (args.ids as string[]);
-    const rows = await store.getContactCards(access.accountId, ids);
-    const found = new Set(rows.map((r) => r.id));
-
     const properties = Array.isArray(args.properties) ? (args.properties as string[]) : null;
-    const list = rows.map((row) => {
-      const full = cardToJmap(row);
-      if (!properties) return full;
-      const picked: Record<string, unknown> = { id: full.id };
-      for (const p of properties) if (p in full) picked[p] = full[p];
-      return picked;
-    });
+
+    // Skinny fast path: id/uid/addressBookIds come from columns — no
+    // card_json parse. Sync-shaped scans over thousands of photo-bearing
+    // cards must not pay the blob cost (free-tier CPU budget).
+    let list: Record<string, unknown>[];
+    let found: Set<string>;
+    if (properties && properties.every((p) => p === "id" || p === "uid" || p === "addressBookIds")) {
+      const refs = await store.getContactCardRefs(access.accountId, ids);
+      found = new Set(refs.map((r) => r.id));
+      list = refs.map((r) => {
+        const picked: Record<string, unknown> = { id: r.id };
+        if (properties.includes("uid")) picked.uid = r.uid;
+        if (properties.includes("addressBookIds")) picked.addressBookIds = { [r.addressBookId]: true };
+        return picked;
+      });
+    } else {
+      const rows = await store.getContactCards(access.accountId, ids);
+      found = new Set(rows.map((r) => r.id));
+      list = rows.map((row) => {
+        const full = cardToJmap(row);
+        if (!properties) return full;
+        const picked: Record<string, unknown> = { id: full.id };
+        for (const p of properties) if (p in full) picked[p] = full[p];
+        return picked;
+      });
+    }
 
     return {
       accountId: access.accountId,
