@@ -1,4 +1,4 @@
-# Connecting Apple Contacts to bullmoose (anglebrackets CardDAV)
+# Connecting Apple Contacts & Calendar to bullmoose (anglebrackets DAV)
 
 The contacts core is the source of truth; anglebrackets serves it over
 CardDAV at:
@@ -34,6 +34,24 @@ Contacts → **Settings → Accounts → Add Other Account… → CardDAV accoun
 
 iOS: Settings → Contacts → Accounts → Add Account → Other → **Add
 CardDAV Account** with the same values.
+
+## 2b. Apple Calendar (CalDAV — same worker, same credentials)
+
+Calendar → **Settings → Accounts → Add Account… → Other CalDAV Account**
+
+| field | value |
+|---|---|
+| Account type | Advanced (Manual also works) |
+| User name | `eric@bullmoose.cc` |
+| Password | a `bm_…` token (mint with `--scopes read,calendar`, or reuse one with both `contacts,calendar`) |
+| Server address | `bullmoose-anglebrackets.eric-d-moore.workers.dev` |
+| Server path (Advanced only) | `/dav/` |
+| Port / SSL | 443, SSL on |
+
+The default "Calendar" (with the imported Google events) appears;
+recurring events carry RRULE/EXDATE and a generated VTIMEZONE, so the
+Mac expands them correctly across DST. Edits PUT back into the core and
+show up in `bullmoose calendar agenda` (and vice versa).
 
 ## 3. What to expect
 

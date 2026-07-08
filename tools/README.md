@@ -23,6 +23,7 @@ node tools/e2e-contacts.mjs    # JMAP Contacts (RFC 9610): books, cards, query, 
 node tools/e2e-grants.mjs      # Phase 3: sharing, delegation, vault, analytics MCP (3 workers)
 node tools/e2e-carddav.mjs     # Phase 2: anglebrackets CardDAV (jmap :8787 + anglebrackets :8791)
 node tools/e2e-calendar.mjs    # Phase 4: JSCalendar core — recurrence/DST/overrides/queries
+node tools/e2e-caldav.mjs      # Phase 5: anglebrackets CalDAV — iCalendar, time-range, sync
 ```
 
 `e2e-grants.mjs` needs three workers on one `--persist-to` state dir,

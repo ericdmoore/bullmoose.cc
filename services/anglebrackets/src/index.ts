@@ -31,8 +31,8 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    // RFC 6764 discovery: clients try /.well-known/carddav first.
-    if (url.pathname === "/.well-known/carddav") {
+    // RFC 6764 discovery: clients try the well-known paths first.
+    if (url.pathname === "/.well-known/carddav" || url.pathname === "/.well-known/caldav") {
       return new Response(null, { status: 301, headers: { Location: "/dav/" } });
     }
 
@@ -40,7 +40,7 @@ export default {
       return new Response(null, {
         status: 204,
         headers: {
-          DAV: "1, 3, addressbook",
+          DAV: "1, 3, addressbook, calendar-access",
           Allow: "OPTIONS, GET, PUT, DELETE, PROPFIND, REPORT",
         },
       });

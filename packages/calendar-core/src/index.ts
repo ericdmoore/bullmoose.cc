@@ -19,6 +19,8 @@
 
 export type JSCalendarEvent = Record<string, unknown>;
 
+export { parseICal, serializeICal, ruleToRrule, rruleToRule, vtimezone } from "./ical.js";
+
 export interface Occurrence {
   /** Master event id is supplied by the caller; this is the recurrence id. */
   recurrenceId: string; // LocalDateTime of the (unmodified) occurrence start

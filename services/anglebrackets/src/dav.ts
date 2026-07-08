@@ -5,10 +5,18 @@ import {
   matchingGrants,
   principalHasScope,
   type AccountAccess,
+  type MethodDomain,
   type Principal,
 } from "@bullmoose/auth-core/principal";
 import { parseVcf, serializeVcard, type Card } from "@bullmoose/contacts-core";
-import { Mailstore, type AddressBookRow, type JSContactCard } from "@bullmoose/mailstore";
+import { eventSpan, parseICal, serializeICal, expandOccurrences } from "@bullmoose/calendar-core";
+import {
+  Mailstore,
+  type AddressBookRow,
+  type CalendarRow,
+  type JSCalendarEventBlob,
+  type JSContactCard,
+} from "@bullmoose/mailstore";
 import type { Env } from "./index.js";
 
 /**
@@ -30,6 +38,7 @@ import type { Env } from "./index.js";
 
 const D = "DAV:";
 const C = "urn:ietf:params:xml:ns:carddav";
+const CAL = "urn:ietf:params:xml:ns:caldav";
 const CS = "http://calendarserver.org/ns/";
 const SYNC_PREFIX = "bm:sync:";
 const TOMBSTONE_TTL_MS = 30 * 24 * 3600_000;
@@ -66,10 +75,16 @@ export async function handleDav(
 
     if (segments[0] === "principals" && segments.length === 2) {
       if (request.method !== "PROPFIND") return notAllowed();
-      const access = requireAccess(principal, segments[1]!);
+      const access = requireAccess(principal, segments[1]!, "contacts");
       const own = principal.accounts.find((a) => !a.granted);
       const homes = principal.accounts
         .map((a) => href(homePath(a.accountId)))
+        .join("");
+      // Calendar homes: whole-account access only (no calendar-collection
+      // grants yet), so book-scoped sharees don't get one for the target.
+      const calHomes = principal.accounts
+        .filter((a) => !a.granted || matchingGrants(a, "read", "calendar").length > 0)
+        .map((a) => href(calHomePath(a.accountId)))
         .join("");
       return propfindResponse(await request.text(), [
         {
@@ -80,13 +95,14 @@ export async function handleDav(
             "current-user-principal": href(principalPath((own ?? access).accountId)),
             "principal-URL": href(principalPath(access.accountId)),
             "addressbook-home-set": homes,
+            ...(calHomes ? { "calendar-home-set": calHomes } : {}),
           },
         },
       ]);
     }
 
     if (segments[0] === "addressbooks" && segments.length >= 2) {
-      const access = requireAccess(principal, segments[1]!);
+      const access = requireAccess(principal, segments[1]!, "contacts");
       const store = new Mailstore(env.DB, undefined as unknown as R2Bucket);
 
       // `return await` so a rejected DavError is caught below.
@@ -97,6 +113,20 @@ export async function handleDav(
       }
       if (segments.length === 4) {
         return await handleResource(request, env, store, principal, access, bookId, segments[3]!);
+      }
+    }
+
+    if (segments[0] === "calendars" && segments.length >= 2) {
+      const access = requireAccess(principal, segments[1]!, "calendar");
+      const store = new Mailstore(env.DB, undefined as unknown as R2Bucket);
+
+      if (segments.length === 2) return await handleCalHome(request, env, store, principal, access);
+      const calId = segments[2]!;
+      if (segments.length === 3) {
+        return await handleCalendar(request, env, store, principal, access, calId, await request.text());
+      }
+      if (segments.length === 4) {
+        return await handleEventResource(request, env, store, principal, access, calId, segments[3]!);
       }
     }
 
@@ -126,11 +156,15 @@ class DavError extends Error {
   }
 }
 
-function requireAccess(principal: Principal, accountId: string): AccountAccess {
+function requireAccess(
+  principal: Principal,
+  accountId: string,
+  domain: MethodDomain,
+): AccountAccess {
   const access = accountAccess(principal, accountId);
   if (!access) throw new DavError(404, "unknown account");
   if (!principalHasScope(principal, "read")) throw new DavError(403, "token lacks read");
-  if (access.granted && matchingGrants(access, "read", "contacts").length === 0) {
+  if (access.granted && matchingGrants(access, "read", domain).length === 0) {
     throw new DavError(403, "no grant covers this account");
   }
   return access;
@@ -563,6 +597,424 @@ async function handleResource(
   return notAllowed();
 }
 
+// ---- CalDAV: calendars ---------------------------------------------------
+
+async function visibleCalendars(
+  store: Mailstore,
+  access: AccountAccess,
+): Promise<CalendarRow[]> {
+  // No calendar-collection grants yet: requireAccess(domain "calendar")
+  // already gated whole-account access, so everything is visible.
+  return store.getCalendars(access.accountId);
+}
+
+async function requireCalendar(
+  store: Mailstore,
+  access: AccountAccess,
+  calId: string,
+): Promise<CalendarRow> {
+  const cal = (await visibleCalendars(store, access)).find((c) => c.id === calId);
+  if (!cal) throw new DavError(404, "no such calendar");
+  return cal;
+}
+
+async function requireCalWrite(
+  env: Env,
+  principal: Principal,
+  access: AccountAccess,
+): Promise<void> {
+  if (!principalHasScope(principal, "calendar")) {
+    throw new DavError(403, "token lacks the calendar scope");
+  }
+  if (access.granted && matchingGrants(access, "calendar", "calendar").length === 0) {
+    throw new DavError(403, "no calendar write grant on this account");
+  }
+  await audit(env, principal, access, "dav:cal-write");
+}
+
+function calendarResource(access: AccountAccess, cal: CalendarRow): PropfindResource {
+  return {
+    href: calPath(access.accountId, cal.id),
+    props: {
+      resourcetype: `<D:collection/><CAL:calendar/>`,
+      displayname: xmlEscape(cal.name),
+      ...(cal.description ? { "calendar-description": xmlEscape(cal.description) } : {}),
+      ...(cal.color ? { "calendar-color": xmlEscape(cal.color) } : {}),
+      getctag: xmlEscape(String(cal.ctag)),
+      "supported-calendar-component-set": `<CAL:comp name="VEVENT"/>`,
+      "current-user-privilege-set": `<D:privilege><D:read/></D:privilege><D:privilege><D:write/></D:privilege>`,
+    },
+  };
+}
+
+async function handleCalHome(
+  request: Request,
+  env: Env,
+  store: Mailstore,
+  principal: Principal,
+  access: AccountAccess,
+): Promise<Response> {
+  if (request.method !== "PROPFIND") return notAllowed();
+  await audit(env, principal, access, "dav:cal-read");
+  const body = await request.text();
+  const depth = request.headers.get("Depth") ?? "0";
+
+  const resources: PropfindResource[] = [
+    {
+      href: calHomePath(access.accountId),
+      props: {
+        resourcetype: `<D:collection/>`,
+        displayname: xmlEscape(`${access.name} calendars`),
+        "current-user-principal": href(principalPath(access.accountId)),
+      },
+    },
+  ];
+  if (depth !== "0") {
+    const state = await doState(env, access.accountId);
+    for (const cal of await visibleCalendars(store, access)) {
+      const r = calendarResource(access, cal);
+      r.props["sync-token"] = syncToken(state);
+      resources.push(r);
+    }
+  }
+  return propfindResponse(body, resources);
+}
+
+async function handleCalendar(
+  request: Request,
+  env: Env,
+  store: Mailstore,
+  principal: Principal,
+  access: AccountAccess,
+  calId: string,
+  body: string,
+): Promise<Response> {
+  const cal = await requireCalendar(store, access, calId);
+  await audit(env, principal, access, `dav:cal-${request.method.toLowerCase()}`);
+
+  if (request.method === "PROPFIND") {
+    const depth = request.headers.get("Depth") ?? "0";
+    const calRes = calendarResource(access, cal);
+    calRes.props["sync-token"] = syncToken(await doState(env, access.accountId));
+    const resources: PropfindResource[] = [calRes];
+    if (depth !== "0") {
+      for (const ref of await store.eventRefsInCalendar(access.accountId, cal.id)) {
+        resources.push({
+          href: eventPath(access.accountId, cal.id, ref.davName ?? ref.id),
+          props: {
+            resourcetype: ``,
+            getetag: xmlEscape(etagOf(ref.id, ref.updatedAt)),
+            getcontenttype: `text/calendar; charset=utf-8; component=VEVENT`,
+          },
+        });
+      }
+    }
+    return propfindResponse(body, resources);
+  }
+
+  if (request.method === "REPORT") {
+    const root = reportRoot(body);
+    if (root === "sync-collection") return calSyncCollection(env, store, access, cal, body);
+    if (root === "calendar-multiget") return calMultiget(store, access, cal, body);
+    if (root === "calendar-query") return calQuery(store, access, cal, body);
+    return new Response(`unsupported report: ${root}`, { status: 403 });
+  }
+
+  return notAllowed();
+}
+
+async function calSyncCollection(
+  env: Env,
+  store: Mailstore,
+  access: AccountAccess,
+  cal: CalendarRow,
+  body: string,
+): Promise<Response> {
+  await store.pruneTombstones(access.accountId, TOMBSTONE_TTL_MS);
+  const tokenRaw = textOf(body, "sync-token").trim();
+  const parts: string[] = [];
+
+  if (tokenRaw === "") {
+    for (const ref of await store.eventRefsInCalendar(access.accountId, cal.id)) {
+      parts.push(
+        response(eventPath(access.accountId, cal.id, ref.davName ?? ref.id), {
+          getetag: xmlEscape(etagOf(ref.id, ref.updatedAt)),
+        }),
+      );
+    }
+    return multistatus(parts, syncToken(await doState(env, access.accountId)));
+  }
+
+  if (!tokenRaw.startsWith(SYNC_PREFIX) || !/^\d+$/.test(tokenRaw.slice(SYNC_PREFIX.length))) {
+    throw invalidSyncToken();
+  }
+  let since = tokenRaw.slice(SYNC_PREFIX.length);
+  const created = new Set<string>();
+  const updated = new Set<string>();
+  const destroyed = new Set<string>();
+  for (;;) {
+    const res = await accountStub(env.ACCOUNT_DO, access.accountId).fetch(
+      `https://do/changes?collection=CalendarEvent&since=${since}&maxChanges=1024`,
+    );
+    if (res.status === 409) throw invalidSyncToken();
+    if (!res.ok) throw new DavError(500, `changelog ${res.status}`);
+    const delta = (await res.json()) as {
+      newState: string;
+      hasMoreChanges: boolean;
+      created: string[];
+      updated: string[];
+      destroyed: string[];
+    };
+    for (const id of delta.created) created.add(id);
+    for (const id of delta.updated) updated.add(id);
+    for (const id of delta.destroyed) {
+      if (created.delete(id)) continue;
+      updated.delete(id);
+      destroyed.add(id);
+    }
+    since = delta.newState;
+    if (!delta.hasMoreChanges) break;
+  }
+
+  const liveIds = [...created, ...updated];
+  if (liveIds.length > 0) {
+    for (const ref of await store.getCalendarEventRefs(access.accountId, liveIds)) {
+      if (ref.calendarId !== cal.id) continue;
+      parts.push(
+        response(eventPath(access.accountId, cal.id, ref.davName ?? ref.id), {
+          getetag: xmlEscape(etagOf(ref.id, ref.updatedAt)),
+        }),
+      );
+    }
+  }
+  if (destroyed.size > 0) {
+    const stones = await store.tombstoneNames(access.accountId, [...destroyed]);
+    for (const [id, stone] of stones) {
+      if (stone.collectionId !== cal.id) continue;
+      parts.push(
+        `<D:response><D:href>${xmlEscape(
+          eventPath(access.accountId, cal.id, stone.resourceName),
+        )}</D:href><D:status>HTTP/1.1 404 Not Found</D:status></D:response>`,
+      );
+      destroyed.delete(id);
+    }
+    for (const id of destroyed) {
+      parts.push(
+        `<D:response><D:href>${xmlEscape(
+          eventPath(access.accountId, cal.id, id),
+        )}</D:href><D:status>HTTP/1.1 404 Not Found</D:status></D:response>`,
+      );
+    }
+  }
+  return multistatus(parts, `${SYNC_PREFIX}${since}`);
+}
+
+async function calMultiget(
+  store: Mailstore,
+  access: AccountAccess,
+  cal: CalendarRow,
+  body: string,
+): Promise<Response> {
+  const parts: string[] = [];
+  for (const rawHref of hrefsOf(body)) {
+    const name = decodeURIComponent(rawHref.split("/").filter(Boolean).pop() ?? "");
+    const row = await store.getEventByDavName(access.accountId, cal.id, stripIcs(name));
+    if (!row) {
+      parts.push(
+        `<D:response><D:href>${xmlEscape(rawHref)}</D:href><D:status>HTTP/1.1 404 Not Found</D:status></D:response>`,
+      );
+      continue;
+    }
+    parts.push(
+      response(eventPath(access.accountId, cal.id, row.davName ?? row.id), {
+        getetag: xmlEscape(etagOf(row.id, row.updatedAt)),
+        "calendar-data": xmlEscape(serializeICal(row.event)),
+      }),
+    );
+  }
+  return multistatus(parts);
+}
+
+/** calendar-query: time-range filter honored via the occurrence expander;
+ * other filters return the whole calendar (Apple syncs via
+ * sync-collection + multiget — query is a fallback path). */
+async function calQuery(
+  store: Mailstore,
+  access: AccountAccess,
+  cal: CalendarRow,
+  body: string,
+): Promise<Response> {
+  const tr = body.match(/<(?:[A-Za-z0-9_-]+:)?time-range([^>]*)\/?>/);
+  let after: number | undefined;
+  let before: number | undefined;
+  if (tr) {
+    const startAttr = tr[1]!.match(/start="([^"]+)"/)?.[1];
+    const endAttr = tr[1]!.match(/end="([^"]+)"/)?.[1];
+    const parse = (v?: string) => {
+      if (!v) return undefined;
+      const m = v.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/);
+      return m ? Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!) : undefined;
+    };
+    after = parse(startAttr);
+    before = parse(endAttr);
+  }
+
+  const rows = (await store.getCalendarEvents(access.accountId)).filter(
+    (r) => r.calendarId === cal.id,
+  );
+  const parts: string[] = [];
+  for (const row of rows) {
+    if (after !== undefined || before !== undefined) {
+      const hit = expandOccurrences(row.event, { after, before, maxOccurrences: 1 });
+      if (hit.length === 0) continue;
+    }
+    parts.push(
+      response(eventPath(access.accountId, cal.id, row.davName ?? row.id), {
+        getetag: xmlEscape(etagOf(row.id, row.updatedAt)),
+        "calendar-data": xmlEscape(serializeICal(row.event)),
+      }),
+    );
+  }
+  return multistatus(parts);
+}
+
+async function handleEventResource(
+  request: Request,
+  env: Env,
+  store: Mailstore,
+  principal: Principal,
+  access: AccountAccess,
+  calId: string,
+  rawName: string,
+): Promise<Response> {
+  const cal = await requireCalendar(store, access, calId);
+  const name = stripIcs(rawName);
+
+  if (request.method === "GET" || request.method === "HEAD") {
+    await audit(env, principal, access, "dav:cal-read");
+    const row = await store.getEventByDavName(access.accountId, cal.id, name);
+    if (!row) return new Response("not found", { status: 404 });
+    const ics = serializeICal(row.event);
+    return new Response(request.method === "HEAD" ? null : ics, {
+      headers: {
+        "content-type": "text/calendar; charset=utf-8; component=VEVENT",
+        etag: etagOf(row.id, row.updatedAt),
+      },
+    });
+  }
+
+  if (request.method === "PUT") {
+    await requireCalWrite(env, principal, access);
+    const { event, warnings } = parseICal(await request.text());
+    if (!event) return new Response(`no VEVENT in body (${warnings.join("; ")})`, { status: 400 });
+
+    const existing = await store.getEventByDavName(access.accountId, cal.id, name);
+    const ifMatch = request.headers.get("If-Match");
+    const ifNoneMatch = request.headers.get("If-None-Match");
+    if (ifNoneMatch === "*" && existing) return new Response("exists", { status: 412 });
+    if (ifMatch) {
+      if (!existing || !etagMatches(ifMatch, etagOf(existing.id, existing.updatedAt))) {
+        return new Response("etag mismatch", { status: 412 });
+      }
+    }
+
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+    const uid = String(event.uid);
+    const blob = event as JSCalendarEventBlob;
+    blob["@type"] = "Event";
+    if (typeof blob.created !== "string") blob.created = existing?.event.created ?? nowIso;
+    blob.updated = nowIso;
+    blob.calendarIds = { [cal.id]: true };
+    let span;
+    try {
+      span = eventSpan(blob);
+    } catch (err) {
+      return new Response(`recurrence expansion failed: ${String(err)}`, { status: 400 });
+    }
+    const title = typeof blob.title === "string" ? blob.title : null;
+
+    if (existing) {
+      if (uid !== existing.uid) throw calUidConflict("a resource's UID cannot change on update");
+      await store.updateCalendarEvent(access.accountId, {
+        id: existing.id,
+        calendarId: cal.id,
+        uid: existing.uid,
+        event: blob,
+        title,
+        startAt: span.startMs,
+        endAt: span.endMs,
+        isRecurring: span.isRecurring,
+        davName: name,
+        createdAt: existing.createdAt,
+        updatedAt: now,
+      });
+      await store.bumpCalendarCtags(access.accountId, [cal.id]);
+      await commitChanges(env.ACCOUNT_DO, access.accountId, [
+        { collection: "CalendarEvent", updated: [existing.id] },
+      ]);
+      return new Response(null, { status: 204, headers: { etag: etagOf(existing.id, now) } });
+    }
+
+    const uidTaken = await store.calendarEventIdsByUids(access.accountId, [uid]);
+    if (uidTaken.size > 0) throw calUidConflict(`uid already in use: ${uid}`);
+    const id = `ev_${crypto.randomUUID()}`;
+    await store.insertCalendarEvents(access.accountId, [
+      {
+        id,
+        calendarId: cal.id,
+        uid,
+        event: blob,
+        title,
+        startAt: span.startMs,
+        endAt: span.endMs,
+        isRecurring: span.isRecurring,
+        davName: name,
+        createdAt: Date.parse(String(blob.created)) || now,
+        updatedAt: now,
+      },
+    ]);
+    await store.bumpCalendarCtags(access.accountId, [cal.id]);
+    await commitChanges(env.ACCOUNT_DO, access.accountId, [
+      { collection: "CalendarEvent", created: [id] },
+    ]);
+    return new Response(null, { status: 201, headers: { etag: etagOf(id, now) } });
+  }
+
+  if (request.method === "DELETE") {
+    await requireCalWrite(env, principal, access);
+    const row = await store.getEventByDavName(access.accountId, cal.id, name);
+    if (!row) return new Response("not found", { status: 404 });
+    const ifMatch = request.headers.get("If-Match");
+    if (ifMatch && !etagMatches(ifMatch, etagOf(row.id, row.updatedAt))) {
+      return new Response("etag mismatch", { status: 412 });
+    }
+    await store.destroyCalendarEvents(access.accountId, [row.id]);
+    await store.bumpCalendarCtags(access.accountId, [cal.id]);
+    await commitChanges(env.ACCOUNT_DO, access.accountId, [
+      { collection: "CalendarEvent", destroyed: [row.id] },
+    ]);
+    return new Response(null, { status: 204 });
+  }
+
+  return notAllowed();
+}
+
+function calUidConflict(detail: string): DavError {
+  return new DavError(
+    409,
+    detail,
+    `<?xml version="1.0" encoding="utf-8"?><D:error xmlns:D="DAV:" xmlns:CAL="${CAL}"><CAL:no-uid-conflict/><D:responsedescription>${xmlEscape(detail)}</D:responsedescription></D:error>`,
+  );
+}
+
+const calHomePath = (acct: string) => `/dav/calendars/${encodeURIComponent(acct)}/`;
+const calPath = (acct: string, cal: string) =>
+  `/dav/calendars/${encodeURIComponent(acct)}/${encodeURIComponent(cal)}/`;
+const eventPath = (acct: string, cal: string, name: string) =>
+  `${calPath(acct, cal)}${encodeURIComponent(name)}.ics`;
+const stripIcs = (name: string) => name.replace(/\.ics$/i, "");
+
 function uidConflict(detail: string): DavError {
   return new DavError(
     409,
@@ -652,6 +1104,11 @@ const PROP_NS: Record<string, string> = {
   "supported-address-data": "C",
   "addressbook-description": "C",
   "address-data": "C",
+  "calendar-home-set": "CAL",
+  "supported-calendar-component-set": "CAL",
+  "calendar-description": "CAL",
+  "calendar-data": "CAL",
+  "calendar-color": "ICAL",
   getctag: "CS",
 };
 
@@ -693,13 +1150,17 @@ function propfindResponse(body: string, resources: PropfindResource[]): Response
 function multistatus(parts: string[], syncTokenValue?: string): Response {
   const xml =
     `<?xml version="1.0" encoding="utf-8"?>` +
-    `<D:multistatus xmlns:D="${D}" xmlns:C="${C}" xmlns:CS="${CS}">` +
+    `<D:multistatus xmlns:D="${D}" xmlns:C="${C}" xmlns:CAL="${CAL}" xmlns:CS="${CS}"` +
+    ` xmlns:ICAL="http://apple.com/ns/ical/">` +
     parts.join("") +
     (syncTokenValue ? `<D:sync-token>${xmlEscape(syncTokenValue)}</D:sync-token>` : "") +
     `</D:multistatus>`;
   return new Response(xml, {
     status: 207,
-    headers: { "content-type": "application/xml; charset=utf-8", DAV: "1, 3, addressbook" },
+    headers: {
+      "content-type": "application/xml; charset=utf-8",
+      DAV: "1, 3, addressbook, calendar-access",
+    },
   });
 }
 

@@ -1560,14 +1560,103 @@ export class Mailstore {
       .run();
   }
 
+  /** Bulk destroy with DAV tombstones (same contract as contact cards:
+   * CalDAV sync must 404 the resource name the client knows). */
   async destroyCalendarEvents(accountId: string, ids: string[]): Promise<void> {
+    const now = Date.now();
     for (const chunk of chunked(ids)) {
       const marks = chunk.map(() => "?").join(",");
-      await this.db
-        .prepare(`DELETE FROM calendar_events WHERE account_id = ? AND id IN (${marks})`)
+      const { results } = await this.db
+        .prepare(
+          `SELECT id, calendar_id, dav_name FROM calendar_events
+           WHERE account_id = ? AND id IN (${marks})`,
+        )
         .bind(accountId, ...chunk)
-        .run();
+        .all<{ id: string; calendar_id: string; dav_name: string | null }>();
+      if (results.length === 0) continue;
+      await this.db.batch([
+        ...results.map((r) =>
+          this.db
+            .prepare(
+              `INSERT OR REPLACE INTO dav_tombstones
+                 (account_id, collection_id, item_id, resource_name, deleted_at)
+               VALUES (?, ?, ?, ?, ?)`,
+            )
+            .bind(accountId, r.calendar_id, r.id, r.dav_name ?? r.id, now),
+        ),
+        this.db
+          .prepare(
+            `DELETE FROM calendar_events WHERE account_id = ? AND id IN (${results
+              .map(() => "?")
+              .join(",")})`,
+          )
+          .bind(accountId, ...results.map((r) => r.id)),
+      ]);
     }
+  }
+
+  /** Refs for every event in one calendar (CalDAV listings / initial sync). */
+  async eventRefsInCalendar(
+    accountId: string,
+    calendarId: string,
+  ): Promise<Array<{ id: string; uid: string; davName: string | null; updatedAt: number }>> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT id, uid, dav_name, updated_at FROM calendar_events
+         WHERE account_id = ? AND calendar_id = ? ORDER BY id`,
+      )
+      .bind(accountId, calendarId)
+      .all<{ id: string; uid: string; dav_name: string | null; updated_at: number }>();
+    return results.map((r) => ({
+      id: r.id,
+      uid: r.uid,
+      davName: r.dav_name,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  /** Column-only event refs by ids (sync filtering). */
+  async getCalendarEventRefs(
+    accountId: string,
+    ids: string[],
+  ): Promise<Array<{ id: string; calendarId: string; davName: string | null; updatedAt: number }>> {
+    const out: Array<{ id: string; calendarId: string; davName: string | null; updatedAt: number }> = [];
+    for (const chunk of chunked(ids)) {
+      const marks = chunk.map(() => "?").join(",");
+      const { results } = await this.db
+        .prepare(
+          `SELECT id, calendar_id, dav_name, updated_at FROM calendar_events
+           WHERE account_id = ? AND id IN (${marks})`,
+        )
+        .bind(accountId, ...chunk)
+        .all<{ id: string; calendar_id: string; dav_name: string | null; updated_at: number }>();
+      out.push(
+        ...results.map((r) => ({
+          id: r.id,
+          calendarId: r.calendar_id,
+          davName: r.dav_name,
+          updatedAt: r.updated_at,
+        })),
+      );
+    }
+    return out;
+  }
+
+  /** Resolve a CalDAV resource inside a calendar: dav_name first, id fallback. */
+  async getEventByDavName(
+    accountId: string,
+    calendarId: string,
+    resourceName: string,
+  ): Promise<CalendarEventRow | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT id FROM calendar_events
+         WHERE account_id = ? AND calendar_id = ? AND (dav_name = ? OR id = ?) LIMIT 1`,
+      )
+      .bind(accountId, calendarId, resourceName, resourceName)
+      .first<{ id: string }>();
+    if (!row) return null;
+    return (await this.getCalendarEvents(accountId, [row.id]))[0] ?? null;
   }
 
   /**
