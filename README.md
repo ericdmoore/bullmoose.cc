@@ -137,16 +137,66 @@ bullmoose admin init --url https://bullmoose-provision.<acct>.workers.dev --toke
 bullmoose admin tenant create t_home --name "Home"
 bullmoose admin domain add example.com --tenant t_home
 bullmoose admin account create you@example.com --tenant t_home
-bullmoose login ted@example.com
+bullmoose login you@example.com
 ```
 
 The full checklist — SES identity verification, first-light testing, and what
 each phase does under the hood — is [`docs/DEPLOY.md`](docs/DEPLOY.md). 
 
-Then: [`docs/carddav-setup.md`](docs/carddav-setup.md) connects Apple
-Contacts/Calendar, [`docs/README.md`](docs/README.md) is the use-case
-cookbook (agents included), and [`tools/`](tools/README.md) holds the 
-eight e2e suites everything is verified against.
+Then: [`docs/playbooks/`](docs/playbooks/README.md) are step-by-step client
+setups (Apple Mail + Calendar, a JMAP client like Mailtemi, family sharing),
+[`docs/carddav-setup.md`](docs/carddav-setup.md) is the Apple Contacts/Calendar
+detail, [`docs/README.md`](docs/README.md) is the use-case cookbook (agents
+included), and [`tools/`](tools/README.md) holds the eight e2e suites
+everything is verified against.
+
+## Agent-backed accounts — cloud or homelab
+
+An agent is an ordinary account plus a **binding**. Create the mailbox, bind a
+runtime to it, and every delivery enqueues an `AgentInvocation`; `--sla` arms a
+watchdog that answers if the agent goes quiet. The cloud worker and any homelab
+runner claim from that **same** queue — whoever claims first wins, the watchdog
+backstops both. So the account and binding are made identically; what differs is
+*which runtime claims the work*.
+
+**Cloud-backed** — the deployed `agent` worker runs the binding (ingest poke +
+5-minute sweep). Persona, `defaultModel`, and `modelAliases` (Workers AI, or
+`gateway` once [AI Gateway](docs/architecture/ai-surface.md) is wired) live in
+the binding config. Nothing to run:
+
+```sh
+bullmoose admin account create emily@example.com --tenant t_home --name "Editor Emily"
+bullmoose admin agent bind emily@example.com --name editor --reply-mode draft \
+  --config docs/examples/editor-emily.config.json
+```
+
+**Homelab-backed** — you run the runtime on your own box; it logs in as the
+account, watches the queue over JMAP push, and calls a local or self-hosted
+model (API keys by env *reference*, never in the file). Same account + binding,
+plus a long-running serve:
+
+```sh
+bullmoose admin account create hermes@example.com --tenant t_home --name "Hermes"
+bullmoose admin agent bind hermes@example.com --name hermes-responder --sla 45
+
+# on the homelab (Node ≥ 22):
+cat > hermes.json <<'JSON'
+{ "binding": "hermes-responder",
+  "persona": "You are Hermes, a terse, helpful assistant.",
+  "model": { "provider": "openai-compatible", "baseURL": "http://localhost:11434/v1",
+             "model": "llama3.3", "apiKeyEnv": "OLLAMA_KEY" },
+  "reply": { "send": false } }
+JSON
+bullmoose login hermes@example.com
+bullmoose agent serve --config hermes.json     # --once drains and exits (cron-friendly)
+```
+
+`binding` must match the bind `--name`; `model.provider` is `mock | anthropic |
+openai-compatible` (point `baseURL` at Ollama, a local gateway, anything). For a
+fully custom loop that skips bindings entirely, the `watch --json` bridge in
+[`docs/examples/hermes-bridge.sh`](docs/examples/hermes-bridge.sh) is the
+pattern. Deeper:
+[`docs/architecture/agent-integration.md`](docs/architecture/agent-integration.md).
 
 ## Status
 
