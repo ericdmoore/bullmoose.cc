@@ -3,10 +3,11 @@ name: Deploy site
 # The bullmoose.cc marketing + guides site (src/, Astro → Cloudflare Pages).
 # Design/plan: docs/architecture/marketing-site.md.
 #
-# Prereqs (one-time, in Cloudflare):
-#   1. The CLOUDFLARE_API_TOKEN repo secret must include **Cloudflare Pages:
-#      Edit** (the Workers deploy token may not — add the scope or use a
-#      Pages-scoped token). CLOUDFLARE_ACCOUNT_ID is already set.
+# Prereqs (one-time):
+#   1. A dedicated Pages token (Account > Cloudflare Pages: Edit), kept
+#      separate from the platform's bullmoose-deploy token. Store it as the
+#      GitHub repo secret BULLMOOSE_SITE_DEPLOY_TOKEN (`gh secret set …` —
+#      a local .env copy is NOT visible to CI). CLOUDFLARE_ACCOUNT_ID is set.
 #   2. First run creates the `bullmoose` Pages project (direct upload).
 #      Then map the apex `bullmoose.cc` to it in the Pages dashboard.
 
@@ -38,7 +39,7 @@ jobs:
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.BULLMOOSE_SITE_DEPLOY_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: src
           command: pages deploy dist --project-name=bullmoose --branch=main
