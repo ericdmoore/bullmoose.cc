@@ -2,7 +2,7 @@
   <img src="docs/assets/logo.svg" width="240" alt="bullmoose — a bull moose in stars and stripes, walking right" />
 </p>
 
-<h1 align="center">bullmoose</h1>
+<h1 align="center" align="center">bullmoose</h1>
 <a href="https://quoteinvestigator.com/2022/12/17/what-you-can/" target="_blank">
   <p align="center">
     <em>“Do what you can,</em> <br/>
@@ -70,21 +70,20 @@ runtime attached. A typical personal deployment costs **$0/month**
 
 | layer | contacts | calendar | mail |
 |---|---|---|---|
-| JSON model | [JSContact](https://jmap.io/spec/rfc9610/) — RFC 9553 | [JSCalendar](https://jmap.io/spec/calendars-draft/) — RFC 8984 | [JMAP](https://jmap.io/) Mail — RFC 8621 |
+| JSON model | [JSContact](https://jmap.io/spec/rfc9610/) — RFC 9553 | [JSCalendar](https://jmap.io/spec/calendars-draft/) — RFC 8984 | [JMAP Mail](https://jmap.io/) - RFC 8621 |
 | JMAP methods | RFC 9610 | draft-ietf-jmap-calendars (pragmatic core) | RFC 8620/8621 |
-| DAV / wire | [vCard 6350](https://datatracker.ietf.org/doc/html/rfc6350) over [CardDAV 6352](https://datatracker.ietf.org/doc/html/rfc6352) | [iCalendar 5545](https://datatracker.ietf.org/doc/html/rfc5545) over [CalDAV 4791](https://datatracker.ietf.org/doc/html/rfc4791) | POP3/SMTP via the popcorn shim |
-| translation | [RFC 9555](https://datatracker.ietf.org/doc/html/rfc9555) | JSCalendar⇄iCalendar | [RFC 5322](https://datatracker.ietf.org/doc/html/rfc5322) MIME |
+| Compat APIs | [vCard 6350](https://datatracker.ietf.org/doc/html/rfc6350) over [CardDAV 6352](https://datatracker.ietf.org/doc/html/rfc6352) | [iCalendar 5545](https://datatracker.ietf.org/doc/html/rfc5545) over [CalDAV 4791](https://datatracker.ietf.org/doc/html/rfc4791) | POP3/SMTP via the popcorn shim |
+| translation | [RFC 9555](https://datatracker.ietf.org/doc/html/rfc9555) | JSCalendar ⇄ iCalendar | [RFC 5322](https://datatracker.ietf.org/doc/html/rfc5322) MIME |
 
 ## How it's built
 
 Five stateless [workers](https://developers.cloudflare.com/workers/) around
-one stateful actor: each account has a
-**[Durable Object](https://developers.cloudflare.com/durable-objects/)**
-owning a monotonic state sequence and a
-collection-agnostic changelog — mail, contacts, calendar, and agent
-queues all sync through the same commit/`/changes`/push machinery. [D1](https://www.cloudflare.com/products/d1/)
-holds metadata and JSON documents; [R2](https://www.cloudflare.com/products/r2/) holds bytes (raw messages,
-attachments, contact photos). Rationale, diagrams, and the free-tier
+one stateful actor: each account has a **[Durable Object](https://developers.cloudflare.com/durable-objects/)**
+owning a monotonic state sequence and a collection-agnostic changelog 
+— mail, contacts, calendar, and agent queues all sync through the same 
+commit/`/changes`/push machinery. [D1](https://www.cloudflare.com/products/d1/)
+holds metadata and JSON documents; [R2](https://www.cloudflare.com/products/r2/) 
+holds bytes (raw messages, attachments, contact photos). Rationale, diagrams, and the free-tier
 capacity story live in [`docs/architecture/`](docs/architecture/README.md).
 
 ```
@@ -132,26 +131,28 @@ node infra/bootstrap.mjs --dry-run
 #    step 1 generated into .env.deploy). Create the tenant, then reference it.
 ADMIN_TOKEN=$(grep -m1 '^ADMIN_TOKEN=' .env.deploy | cut -d= -f2)
 bullmoose admin init --url https://bullmoose-provision.<acct>.workers.dev --token "$ADMIN_TOKEN"
-bullmoose admin tenant  create t_home --name "Home"
-bullmoose admin domain  add    example.com     --tenant t_home
+bullmoose admin tenant create t_home --name "Home"
+bullmoose admin domain add example.com --tenant t_home
 bullmoose admin account create you@example.com --tenant t_home
-bullmoose login you@example.com
+bullmoose login ted@example.com
 ```
 
 The full checklist — SES identity verification, first-light testing, and what
-each phase does under the hood — is [`docs/DEPLOY.md`](docs/DEPLOY.md). Then:
-[`docs/carddav-setup.md`](docs/carddav-setup.md) connects Apple
+each phase does under the hood — is [`docs/DEPLOY.md`](docs/DEPLOY.md). 
+
+Then: [`docs/carddav-setup.md`](docs/carddav-setup.md) connects Apple
 Contacts/Calendar, [`docs/README.md`](docs/README.md) is the use-case
-cookbook (agents included), and
-[`tools/`](tools/README.md) holds the eight e2e suites everything is
-verified against.
+cookbook (agents included), and [`tools/`](tools/README.md) holds the 
+eight e2e suites everything is verified against.
 
 ## Status
 
 Live and e2e-tested: the full mail surface, contacts + CardDAV,
 calendar + CalDAV, grants/sharing, the credential vault, agent
-pipelines, and the CLI. Deliberately out of scope for now: calendar
-scheduling (iTIP/iMIP), WebDAV LOCK/COPY/MOVE, and CRDT merge for
-shared collections (ETags carry v1). Capacity headroom and the shelved
-scaling valves are documented in
+pipelines, and the CLI. 
+
+Deliberately out of scope for now: calendar scheduling (iTIP/iMIP), 
+WebDAV LOCK/COPY/MOVE, and CRDT merge for shared collections (ETags carry v1). 
+
+Capacity headroom and the shelved scaling valves are documented in
 [`docs/architecture/capacity-and-scaling.md`](docs/architecture/capacity-and-scaling.md).
