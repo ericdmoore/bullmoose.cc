@@ -3,11 +3,15 @@
 </p>
 
 <h1 align="center">bullmoose</h1>
-<p align="center"><em>My hat is still in the ring.</em></p>
+<p align="center">
+  <a href="https://quoteinvestigator.com/2022/12/17/what-you-can/" target="_blank">
+    <em>“Do what you can, with what you’ve got, where you are.” - Bill Widener (made popular by Theodore Roosevelt)</em>
+  </a>
+</p>
 
 **bullmoose is a self-hosted personal-data platform — email, contacts,
-calendar, and email-native agents — that runs serverless on Cloudflare's
-free tier.** Your domain, your data, one core: modern clients speak
+calendar, and email-native agents — that runs serverless on
+[Cloudflare's free tier](https://developers.cloudflare.com/workers/platform/pricing/).** Your domain, your data, one core: modern clients speak
 JMAP, Apple devices sync over CardDAV/CalDAV, legacy apps reach mail
 through a POP3/SMTP shim, and agents are simply mailboxes with a
 runtime attached. A typical personal deployment costs **$0/month**
@@ -17,8 +21,10 @@ runtime attached. A typical personal deployment costs **$0/month**
 
 - **Mail on your own domain** — a full JMAP server (RFC 8620/8621):
   send, receive, threads, search, push, drafts, vacation responses.
-  Inbound arrives via Cloudflare Email Routing; outbound relays through
-  AWS SES with DKIM/SPF/DMARC wired by the provisioning API.
+  Inbound arrives via [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/);
+  outbound relays through [AWS SES](https://aws.amazon.com/ses/) with
+  DKIM/SPF/DMARC wired by the provisioning API (swappable to Cloudflare
+  Email Sending once it exits beta).
 - **Contacts and calendar as the source of truth** — JSContact
   (RFC 9553/9610) and JSCalendar (RFC 8984) stored losslessly, with a
   capped on-demand recurrence engine (DST-correct, timezone-aware) and
@@ -61,18 +67,20 @@ runtime attached. A typical personal deployment costs **$0/month**
 
 | layer | contacts | calendar | mail |
 |---|---|---|---|
-| JSON model | JSContact — RFC 9553 | JSCalendar — RFC 8984 | JMAP Mail — RFC 8621 |
+| JSON model | [JSContact](https://jmap.io/spec/rfc9610/) — RFC 9553 | [JSCalendar](https://jmap.io/spec/calendars-draft/) — RFC 8984 | [JMAP](https://jmap.io/) Mail — RFC 8621 |
 | JMAP methods | RFC 9610 | draft-ietf-jmap-calendars (pragmatic core) | RFC 8620/8621 |
-| DAV / wire | vCard 6350 over CardDAV 6352 | iCalendar 5545 over CalDAV 4791 | POP3/SMTP via the popcorn shim |
-| translation | RFC 9555 | JSCalendar⇄iCalendar | RFC 5322 MIME |
+| DAV / wire | [vCard 6350](https://datatracker.ietf.org/doc/html/rfc6350) over [CardDAV 6352](https://datatracker.ietf.org/doc/html/rfc6352) | [iCalendar 5545](https://datatracker.ietf.org/doc/html/rfc5545) over [CalDAV 4791](https://datatracker.ietf.org/doc/html/rfc4791) | POP3/SMTP via the popcorn shim |
+| translation | [RFC 9555](https://datatracker.ietf.org/doc/html/rfc9555) | JSCalendar⇄iCalendar | [RFC 5322](https://datatracker.ietf.org/doc/html/rfc5322) MIME |
 
 ## How it's built
 
-Five stateless workers around one stateful actor: each account has a
-**Durable Object** owning a monotonic state sequence and a
+Five stateless [workers](https://developers.cloudflare.com/workers/) around
+one stateful actor: each account has a
+**[Durable Object](https://developers.cloudflare.com/durable-objects/)**
+owning a monotonic state sequence and a
 collection-agnostic changelog — mail, contacts, calendar, and agent
-queues all sync through the same commit/`/changes`/push machinery. D1
-holds metadata and JSON documents; R2 holds bytes (raw messages,
+queues all sync through the same commit/`/changes`/push machinery. [D1](https://www.cloudflare.com/products/d1/)
+holds metadata and JSON documents; [R2](https://www.cloudflare.com/products/r2/) holds bytes (raw messages,
 attachments, contact photos). Rationale, diagrams, and the free-tier
 capacity story live in [`docs/architecture/`](docs/architecture/README.md).
 
@@ -100,31 +108,35 @@ src/                     the bullmoose.cc Fresh site (unrelated to the platform)
 
 ## Deploying your own
 
-Prerequisites: a domain on a Cloudflare account (free plan works), an
-AWS account for SES outbound, Node 22+.
+Prerequisites: a domain on a [Cloudflare](https://www.cloudflare.com/) account
+(free plan works), an [AWS](https://aws.amazon.com/ses/) account for SES
+outbound, and [Node](https://nodejs.org/) 22+. Authenticate wrangler once with
+`npx wrangler login`.
 
 ```sh
 npm install && npm run typecheck
 
-# 1. create resources, apply schemas          (docs/DEPLOY.md §1)
-npx wrangler d1 create ... && npx wrangler r2 bucket create ...
+# 1. resources → wire ids → schemas → secrets → deploy, in one idempotent pass.
+#    It creates D1/R2/KV, writes their ids into every services/*/wrangler.jsonc,
+#    applies the schemas, generates the four secrets into .env.deploy (gitignored)
+#    and installs them, then deploys the six workers in binding-graph order.
+#    Preview everything first; drop --dry-run to execute. Re-runnable, and you
+#    can run a single phase, e.g. `node infra/bootstrap.mjs secrets`.
+node infra/bootstrap.mjs --dry-run
 
-# 2. deploy the workers (order matters — binding graph)
-npm run -w services/submit        deploy
-npm run -w services/jmap          deploy   # declares the AccountDO
-npm run -w services/ingest        deploy
-npm run -w services/provision     deploy
-npm run -w services/agent         deploy
-npm run -w services/anglebrackets deploy
-
-# 3. onboard your domain and first account
-bullmoose admin domain add example.com --tenant t_you
-bullmoose admin account create you@example.com --tenant t_you
+# 2. onboard your domain + first account. `t_home` is a *tenant id* you pick —
+#    a namespace for your org/family, NOT a secret (that's ADMIN_TOKEN, which
+#    step 1 generated into .env.deploy). Create the tenant, then reference it.
+ADMIN_TOKEN=$(grep -m1 '^ADMIN_TOKEN=' .env.deploy | cut -d= -f2)
+bullmoose admin init --url https://bullmoose-provision.<acct>.workers.dev --token "$ADMIN_TOKEN"
+bullmoose admin tenant  create t_home --name "Home"
+bullmoose admin domain  add    example.com     --tenant t_home
+bullmoose admin account create you@example.com --tenant t_home
 bullmoose login you@example.com
 ```
 
-The full checklist — secrets, SES verification, first-light testing —
-is [`docs/DEPLOY.md`](docs/DEPLOY.md). Then:
+The full checklist — SES identity verification, first-light testing, and what
+each phase does under the hood — is [`docs/DEPLOY.md`](docs/DEPLOY.md). Then:
 [`docs/carddav-setup.md`](docs/carddav-setup.md) connects Apple
 Contacts/Calendar, [`docs/README.md`](docs/README.md) is the use-case
 cookbook (agents included), and

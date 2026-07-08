@@ -1,15 +1,21 @@
 # Infra — bootstrap runbook
 
-Resources are created once with `wrangler`, then their ids pasted into each
-service's `wrangler.jsonc` (search for `REPLACE_AFTER_`).
+**One command:** `node infra/bootstrap.mjs` (preview with `--dry-run`) runs the
+whole deploy — create resources → wire their ids into every
+`services/*/wrangler.jsonc` → apply schemas → generate + install secrets →
+deploy the workers in order. It's idempotent and phase-addressable
+(`node infra/bootstrap.mjs <resources|wire|schemas|secrets|deploy>`), and it is
+the source of truth for the resource names, schema list, deploy order, and
+secret→worker matrix. The sections below are the by-hand equivalent, for
+reference or partial runs.
 
 ## 1. Cloudflare resources
 
 ```sh
 # D1 — data-plane shard 0 (control plane shares it for the MVP)
 npx wrangler d1 create bullmoose-mail-shard0
-npx wrangler d1 execute bullmoose-mail-shard0 --file packages/mailstore/sql/data-plane.sql
-npx wrangler d1 execute bullmoose-mail-shard0 --file packages/mailstore/sql/control-plane.sql
+npx wrangler d1 execute bullmoose-mail-shard0 --remote --file packages/mailstore/sql/data-plane.sql
+npx wrangler d1 execute bullmoose-mail-shard0 --remote --file packages/mailstore/sql/control-plane.sql
 
 # R2 — raw message + attachment blobs
 npx wrangler r2 bucket create bullmoose-mail-blobs
@@ -18,8 +24,8 @@ npx wrangler r2 bucket create bullmoose-mail-blobs
 npx wrangler kv namespace create ROUTES
 ```
 
-Paste the returned `database_id` / KV `id` into all four
-`services/*/wrangler.jsonc` files.
+Paste the returned `database_id` / KV `id` into all six
+`services/*/wrangler.jsonc` files — or let `bootstrap.mjs wire` do it.
 
 ## 2. Deploy order
 

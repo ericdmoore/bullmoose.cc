@@ -12,6 +12,20 @@ and CF Email Service *sending* is unavailable (use SES — planned
 anyway). If limits ever pinch, Workers Paid ($5/mo) is a zero-code
 upgrade.
 
+## The one command
+
+After §0's human steps, the whole-machine deploy is one idempotent script:
+
+```sh
+node infra/bootstrap.mjs --dry-run   # preview every step; then drop --dry-run
+```
+
+It runs five phases — `resources → wire → schemas → secrets → deploy` — and is
+the single source of truth for resource names, the schema list, the deploy
+order, and the secret→worker matrix. Run one phase at a time by naming it
+(`node infra/bootstrap.mjs secrets`). Sections 1–3 below document what each
+phase does and the by-hand equivalent, if you'd rather drive it yourself.
+
 ## 0. Account prerequisites (human steps)
 
 - [ ] `bullmoose.cc` zone active on the Cloudflare account (Workers Free OK)
@@ -31,7 +45,7 @@ upgrade.
       cutover, Email Routing state, workers.dev subdomain, and name
       collisions with the resources this runbook creates
 
-## 1. Create resources, paste ids
+## 1. Create resources + wire ids  (bootstrap: `resources` + `wire`)
 
 ```sh
 npx wrangler d1 create bullmoose-mail-shard0
@@ -39,15 +53,18 @@ npx wrangler r2 bucket create bullmoose-mail-blobs
 npx wrangler kv namespace create ROUTES
 ```
 
-Paste the returned `database_id` / KV `id` into all four
-`services/*/wrangler.jsonc` (search `REPLACE_AFTER_`). Then schemas:
+`bootstrap.mjs wire` reads these ids back from `wrangler … list` and writes
+them into all six `services/*/wrangler.jsonc` for you — no hand-editing, and it
+overwrites the repo's committed prod ids with yours. (By hand: paste the
+returned `database_id` / KV `id` into each config.) Then schemas
+(`bootstrap.mjs schemas`):
 
 ```sh
 npx wrangler d1 execute bullmoose-mail-shard0 --remote --file packages/mailstore/sql/data-plane.sql
 npx wrangler d1 execute bullmoose-mail-shard0 --remote --file packages/mailstore/sql/control-plane.sql
 ```
 
-## 2. Deploy (order matters — binding graph)
+## 2. Deploy — order matters, binding graph  (bootstrap: `deploy`)
 
 ```sh
 npm run -w services/submit        deploy   # 1. no dependencies
@@ -61,11 +78,19 @@ npm run -w services/anglebrackets deploy   # 6. CardDAV/CalDAV face (binds Accou
 Agent-worker extras: `wrangler secret put VAULT_MASTER_KEY -c
 services/agent/wrangler.jsonc` (credential vault; `openssl rand -hex 32`).
 
-## 3. Secrets
+## 3. Secrets  (bootstrap: `secrets`)
+
+`bootstrap.mjs secrets` generates the four random secrets (`INTERNAL_TOKEN`,
+`SHARE_SIGNING_KEY`, `ADMIN_TOKEN`, `VAULT_MASTER_KEY`) into `.env.deploy`
+(gitignored, `chmod 600`) once — re-runs reuse them, no silent rotation — and
+installs each to the workers that read it. Paste the external creds (CF/SES
+rows below) into `.env.deploy` first so they install in the same pass; missing
+required ones are reported and skipped, so you can add them and re-run. The
+full matrix, by hand:
 
 | Secret | Worker | Value |
 |---|---|---|
-| `INTERNAL_TOKEN` | jmap **and** submit (same value) | `openssl rand -hex 24` |
+| `INTERNAL_TOKEN` | jmap, submit, ingest, agent (same value) | `openssl rand -hex 24` |
 | `SHARE_SIGNING_KEY` | jmap | `openssl rand -hex 32` |
 | `ADMIN_TOKEN` | provision | `openssl rand -hex 24` |
 | `CF_API_TOKEN` | provision | token #1 |
@@ -92,6 +117,10 @@ bullmoose admin domain status bullmoose.cc                     # poll until acti
 bullmoose admin account create eric@bullmoose.cc --tenant t_bullmoose --name "Eric Moore"
 bullmoose admin password eric@bullmoose.cc
 ```
+
+The tenant id (`t_bullmoose`) is a slug you choose — a namespace for an org or
+family, reused by every `--tenant` flag; it is not a credential. `<ADMIN_TOKEN>`
+is, and lives in `.env.deploy` (`grep ADMIN_TOKEN .env.deploy`).
 
 Note: `domain add` wires Email Routing + catch-all→ingest + SES identity
 + DKIM/MAIL FROM/DMARC. If skipping SES for now, expect the `ses:*`
