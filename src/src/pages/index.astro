@@ -68,9 +68,9 @@ const compareRows = [
           </h1>
           <p class="hero__lede reveal stagger-1">
             Bind an agent to an email address — it files receipts, triages, or
-            replies with context from your notes. On top of a full, self-hosted
-            <b>mail + contacts + calendar</b> core: serverless on Cloudflare,
-            standards-native, <b>~$0/month</b>.
+            replies with context from your notes. On top of a full,
+            self-hosted <b>mail + contacts + calendar</b> core — serverless on
+            Cloudflare, standards-native, <b>~$0/month</b>.
           </p>
           <div class="hero__cta reveal stagger-2">
             <a class="btn btn-solid" href={`${repo}/blob/main/docs/DEPLOY.md`}>Deploy your own &rarr;</a>
@@ -96,9 +96,9 @@ const compareRows = [
             <p>
               Bind an agent to an address and it becomes a worker with an inbox:
               it replies, files receipts to a spend ledger, triages newsletters,
-              or runs your own pipeline — with <b>scoped, auditable, revocable</b>
-              access. A read-only analytics MCP gives it safe tools over your
-              message log, with zero external credentials.
+              or runs your own pipeline — with <b>scoped, auditable,
+              revocable</b> access. A read-only analytics MCP gives it safe
+              tools over your message log, with zero external credentials.
             </p>
             <ul class="routes">
               <li><code>receipts@you.com</code> <span>&rarr;</span> parses invoices <span>&rarr;</span> writes to the ledger</li>
@@ -109,11 +109,11 @@ const compareRows = [
           </div>
           <div class="term reveal stagger-1" data-type aria-label="Example terminal session">
             <div class="term__bar"><span></span><span></span><span></span> bullmoose</div>
-            <pre><code><span class="t-p">$</span> bullmoose admin agent bind receipts@you.com --name ledger --config allen.json
-<span class="t-o">  binding b_9f… (ledger) on receipts@you.com + watchdog responder</span>
+            <pre><code><span class="t-p">$</span> bullmoose admin agent bind receipts@you.com --name ledger
+<span class="t-o">  binding b_9f… (ledger) → receipts@you.com</span>
 <span class="t-p">$</span> bullmoose watch
-<span class="t-h">●</span> 14:45  stripe.com   "Invoice #1284"   <span class="t-o">→ analyst filed $42.00 · saas</span>
-<span class="t-h">●</span> 14:52  you@you.com  "draft: Q3 recap" <span class="t-o">→ editor replied (draft)</span></code></pre>
+<span class="t-h">●</span> stripe.com   "Invoice #1284"  <span class="t-o">→ filed $42.00 · saas</span>
+<span class="t-h">●</span> you@you.com  "Q3 recap"      <span class="t-o">→ editor replied (draft)</span></code></pre>
           </div>
         </div>
       </div>
