@@ -7,10 +7,22 @@ import { hasScope, parseToken, verifyTokenSecret } from "@bullmoose/auth-core";
  * bootstrap that maps to a synthetic single-account principal.
  */
 
+/** One grant row, resolved onto a granted AccountAccess. */
+export interface GrantRef {
+  grantId: string;
+  /** Same vocabulary as token scopes; effective = token ∩ grant. */
+  scopes: string[];
+  /** NULL = whole account; 'AddressBook' = one shared book. */
+  collection: string | null;
+  collectionId: string | null;
+}
+
 export interface AccountAccess {
   accountId: string;
   tenantId: string;
   name: string;
+  /** Present iff access comes through grants rather than ownership. */
+  granted?: GrantRef[];
 }
 
 export interface Principal {
@@ -104,14 +116,62 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Prin
       .run();
   }
 
+  const accounts: AccountAccess[] = accountRows.map((a) => ({
+    accountId: a.id,
+    tenantId: a.tenant_id,
+    name: a.display_name,
+  }));
+
+  // Grants extend the principal's reach to other accounts (sharing +
+  // agent delegation). Owned accounts win over grants to themselves.
+  if (accounts.length > 0) {
+    const marks = accounts.map(() => "?").join(",");
+    const { results: grantRows } = await env.DB.prepare(
+      `SELECT g.id, g.target_account_id, g.scopes, g.collection, g.collection_id,
+              a.tenant_id, a.display_name
+       FROM grants g JOIN accounts a ON a.id = g.target_account_id
+       WHERE g.grantee_account_id IN (${marks})
+         AND (g.expires_at IS NULL OR g.expires_at > ?)`,
+    )
+      .bind(...accounts.map((a) => a.accountId), now)
+      .all<{
+        id: string;
+        target_account_id: string;
+        scopes: string;
+        collection: string | null;
+        collection_id: string | null;
+        tenant_id: string;
+        display_name: string;
+      }>();
+
+    const owned = new Set(accounts.map((a) => a.accountId));
+    const grantedByTarget = new Map<string, AccountAccess>();
+    for (const g of grantRows) {
+      if (owned.has(g.target_account_id)) continue;
+      const ref: GrantRef = {
+        grantId: g.id,
+        scopes: JSON.parse(g.scopes) as string[],
+        collection: g.collection,
+        collectionId: g.collection_id,
+      };
+      const existing = grantedByTarget.get(g.target_account_id);
+      if (existing) existing.granted!.push(ref);
+      else {
+        grantedByTarget.set(g.target_account_id, {
+          accountId: g.target_account_id,
+          tenantId: g.tenant_id,
+          name: g.display_name,
+          granted: [ref],
+        });
+      }
+    }
+    accounts.push(...grantedByTarget.values());
+  }
+
   return {
     username: row.login_email,
     scopes: JSON.parse(row.scopes) as string[],
-    accounts: accountRows.map((a) => ({
-      accountId: a.id,
-      tenantId: a.tenant_id,
-      name: a.display_name,
-    })),
+    accounts,
   };
 }
 
@@ -121,4 +181,40 @@ export function accountAccess(principal: Principal, accountId: string): AccountA
 
 export function principalHasScope(principal: Principal, scope: string): boolean {
   return hasScope(principal.scopes, scope);
+}
+
+/** Method domains for grant coverage: an AddressBook-scoped grant only
+ * unlocks contacts methods; a whole-account grant covers any domain its
+ * scopes allow. */
+export type MethodDomain = "mail" | "contacts";
+
+function grantCoversDomain(g: GrantRef, domain: MethodDomain): boolean {
+  if (g.collection === null) return true;
+  return g.collection === "AddressBook" && domain === "contacts";
+}
+
+/** Grants on this access that satisfy scope+domain (empty for owners). */
+export function matchingGrants(
+  access: AccountAccess,
+  scope: string,
+  domain: MethodDomain,
+): GrantRef[] {
+  if (!access.granted) return [];
+  return access.granted.filter((g) => grantCoversDomain(g, domain) && hasScope(g.scopes, scope));
+}
+
+/**
+ * Collection restriction for contacts methods: null = unrestricted
+ * (owner, or a whole-account grant); otherwise the set of AddressBook
+ * ids the principal may touch under this scope.
+ */
+export function allowedBookIds(access: AccountAccess, scope: string): Set<string> | null {
+  if (!access.granted) return null;
+  const matching = matchingGrants(access, scope, "contacts");
+  if (matching.some((g) => g.collection === null)) return null;
+  return new Set(
+    matching.flatMap((g) =>
+      g.collection === "AddressBook" && g.collectionId ? [g.collectionId] : [],
+    ),
+  );
 }

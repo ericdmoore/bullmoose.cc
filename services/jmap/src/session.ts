@@ -17,6 +17,27 @@ import type { Principal } from "./auth";
 export function buildSession(origin: string, principal: Principal): Session {
   const accounts: Session["accounts"] = {};
   for (const a of principal.accounts) {
+    if (a.granted) {
+      // Grant-reached account (sharing / delegation): a book-scoped
+      // grant exposes only the contacts capability; a whole-account
+      // grant exposes the full surface (its scopes still gate).
+      const wholeAccount = a.granted.some((g) => g.collection === null);
+      accounts[a.accountId] = {
+        name: a.name,
+        isPersonal: false,
+        isReadOnly: !a.granted.some((g) => g.scopes.some((s) => s !== "read")),
+        accountCapabilities: wholeAccount
+          ? {
+              [MAIL_CAP]: mailCapability,
+              [SUBMISSION_CAP]: { maxDelayedSend: 0, submissionExtensions: {} },
+              [VACATION_CAP]: {},
+              [CONTACTS_CAP]: contactsCapability,
+              [AGENT_CAP]: {},
+            }
+          : { [CONTACTS_CAP]: contactsCapability },
+      };
+      continue;
+    }
     accounts[a.accountId] = {
       name: a.name,
       isPersonal: true,
@@ -31,7 +52,7 @@ export function buildSession(origin: string, principal: Principal): Session {
     };
   }
 
-  const primary = principal.accounts[0]?.accountId ?? "";
+  const primary = principal.accounts.find((a) => !a.granted)?.accountId ?? "";
   const wsOrigin = origin.replace(/^http/, "ws");
 
   return {

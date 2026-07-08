@@ -101,6 +101,23 @@ export default {
       if (request.method === "DELETE" && /^\/tokens\/[^/]+$/.test(url.pathname)) {
         return revokeToken(url.pathname.split("/")[2] as string, env);
       }
+      if (route === "POST /grants") {
+        return createGrant(
+          (await request.json()) as {
+            granteeEmail: string;
+            targetEmail: string;
+            scopes?: string[];
+            collection?: string;
+            collectionId?: string;
+            expiresDays?: number;
+          },
+          env,
+        );
+      }
+      if (route === "GET /grants") return listGrants(url, env);
+      if (request.method === "DELETE" && /^\/grants\/[^/]+$/.test(url.pathname)) {
+        return revokeGrant(url.pathname.split("/")[2] as string, env);
+      }
     } catch (err) {
       return json({ error: String(err) }, 500);
     }
@@ -481,6 +498,118 @@ async function listTokens(url: URL, env: Env) {
 async function revokeToken(id: string, env: Env) {
   const res = await env.DB.prepare(`DELETE FROM tokens WHERE id = ?`).bind(id).run();
   return json({ revoked: (res.meta.changes ?? 0) > 0 });
+}
+
+// ---- grants (Phase 3: cross-account delegation + sharing) ---------------
+
+const GRANTABLE_SCOPES = new Set([
+  "read",
+  "annotate",
+  "draft",
+  "move",
+  "send",
+  "delete",
+  "contacts",
+  "mail",
+]);
+
+/** Operator-minted grant: agent delegation (whole account) or a scoped
+ * collection share. Same primitive AddressBook.shareWith rides on. */
+async function createGrant(
+  body: {
+    granteeEmail: string;
+    targetEmail: string;
+    scopes?: string[];
+    collection?: string;
+    collectionId?: string;
+    expiresDays?: number;
+  },
+  env: Env,
+) {
+  if (!body.granteeEmail || !body.targetEmail) {
+    return json({ error: "granteeEmail and targetEmail required" }, 400);
+  }
+  const grantee = await accountWithTenant(env, body.granteeEmail);
+  const target = await accountWithTenant(env, body.targetEmail);
+  if (!grantee) return json({ error: `no account for ${body.granteeEmail}` }, 404);
+  if (!target) return json({ error: `no account for ${body.targetEmail}` }, 404);
+  if (grantee.id === target.id) return json({ error: "grantee = target" }, 400);
+  if (grantee.tenant_id !== target.tenant_id) {
+    return json({ error: "cross-tenant grants are not supported" }, 400);
+  }
+
+  const scopes = body.scopes && body.scopes.length > 0 ? body.scopes : ["read"];
+  const bad = scopes.filter((s) => !GRANTABLE_SCOPES.has(s));
+  if (bad.length > 0) return json({ error: `ungrantable scopes: ${bad.join(",")}` }, 400);
+  if (body.collection !== undefined && body.collection !== "AddressBook") {
+    return json({ error: `unknown collection: ${body.collection}` }, 400);
+  }
+  if (body.collection && !body.collectionId) {
+    return json({ error: "collectionId required with collection" }, 400);
+  }
+
+  const id = `g_${crypto.randomUUID()}`;
+  await env.DB.prepare(
+    `INSERT INTO grants (id, tenant_id, grantee_account_id, target_account_id, scopes,
+       collection, collection_id, created_by, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'admin', ?, ?)
+     ON CONFLICT DO NOTHING`,
+  )
+    .bind(
+      id,
+      target.tenant_id,
+      grantee.id,
+      target.id,
+      JSON.stringify(scopes),
+      body.collection ?? null,
+      body.collectionId ?? null,
+      Date.now(),
+      body.expiresDays ? Date.now() + body.expiresDays * 86_400_000 : null,
+    )
+    .run();
+  return json({
+    grantId: id,
+    grantee: { email: body.granteeEmail.toLowerCase(), accountId: grantee.id },
+    target: { email: body.targetEmail.toLowerCase(), accountId: target.id },
+    scopes,
+    collection: body.collection ?? null,
+    collectionId: body.collectionId ?? null,
+  });
+}
+
+async function listGrants(url: URL, env: Env) {
+  const email = url.searchParams.get("email");
+  let acct: { id: string } | null = null;
+  if (email) {
+    acct = await accountByAddress(env, email);
+    if (!acct) return json({ grants: [] });
+  }
+  const { results } = await env.DB.prepare(
+    `SELECT g.id, g.grantee_account_id, g.target_account_id, g.scopes, g.collection,
+            g.collection_id, g.created_by, g.created_at, g.expires_at,
+            (SELECT i.email FROM identities i WHERE i.account_id = g.grantee_account_id LIMIT 1) AS grantee_email,
+            (SELECT i.email FROM identities i WHERE i.account_id = g.target_account_id LIMIT 1) AS target_email
+     FROM grants g
+     ${acct ? "WHERE g.grantee_account_id = ?1 OR g.target_account_id = ?1" : ""}
+     ORDER BY g.created_at`,
+  )
+    .bind(...(acct ? [acct.id] : []))
+    .all();
+  return json({ grants: results });
+}
+
+async function revokeGrant(id: string, env: Env) {
+  const res = await env.DB.prepare(`DELETE FROM grants WHERE id = ?`).bind(id).run();
+  return json({ revoked: (res.meta.changes ?? 0) > 0 });
+}
+
+async function accountWithTenant(env: Env, email: string) {
+  return env.DB.prepare(
+    `SELECT a.id, a.tenant_id FROM accounts a JOIN identities i ON i.account_id = a.id
+     WHERE i.email = ? LIMIT 1`,
+  )
+    .bind(email.toLowerCase())
+    .first<{ id: string; tenant_id: string }>();
 }
 
 // ---- agent bindings ----------------------------------------------------

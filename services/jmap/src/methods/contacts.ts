@@ -9,6 +9,8 @@ import type {
   JSContactCard,
   Mailstore,
 } from "@bullmoose/mailstore";
+import { hasScope } from "@bullmoose/auth-core";
+import { accountAccess, allowedBookIds, type AccountAccess } from "../auth";
 import {
   accountState,
   proxyChanges,
@@ -35,13 +37,28 @@ import {
  * read/draft agent token can read but not edit the address book).
  */
 
-/** Owner rights; shareWith lands with the Phase 3 grant model. */
+/**
+ * Sharing (Phase 3): AddressBook.shareWith/myRights are a FACADE over
+ * the grant model — one AddressBook-scoped grant row per sharee. The
+ * owner edits shareWith through AddressBook/set; sharees reach the book
+ * through their grants (requireAccount domain "contacts"), see only
+ * shared books, and read shareWith as null per RFC 9670. Rights map to
+ * scopes: mayRead = ["read"], +mayWrite = +["contacts"];
+ * mayShare/mayDelete stay owner-only in v1 (server-clamped, spec-legal).
+ */
 const OWNER_RIGHTS = {
   mayRead: true,
   mayWrite: true,
   mayShare: true,
   mayDelete: true,
 } as const;
+
+interface BookRights {
+  mayRead: boolean;
+  mayWrite: boolean;
+  mayShare: boolean;
+  mayDelete: boolean;
+}
 
 const BOOK_SERVER_SET = ["id", "isDefault", "myRights"] as const;
 const MAX_BOOK_NAME_OCTETS = 255;
@@ -50,26 +67,59 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
   // ---- AddressBook ---------------------------------------------------
 
   registry.register("AddressBook/get", async (args, ctx) => {
-    const access = requireAccount(ctx, args, "read");
+    const access = await requireAccount(ctx, args, "read", "contacts");
     const store = storeFor(ctx);
-    await ensureDefaultBook(ctx, store, access.accountId);
+    const readable = allowedBookIds(access, "read");
+    if (!access.granted) await ensureDefaultBook(ctx, store, access.accountId);
 
     const ids = args.ids === null || args.ids === undefined ? undefined : (args.ids as string[]);
-    const rows = await store.getAddressBooks(access.accountId, ids);
+    let rows = await store.getAddressBooks(access.accountId, ids);
+    if (readable) rows = rows.filter((r) => readable.has(r.id));
     const found = new Set(rows.map((r) => r.id));
+
+    // Owners see who each book is shared with; sharees see null (RFC 9670).
+    const shareWith = access.granted ? null : await loadShareWith(ctx, access.accountId);
+    const writable = access.granted ? allowedBookIds(access, "contacts") : null;
 
     return {
       accountId: access.accountId,
       state: await accountState(ctx, access.accountId),
-      list: rows.map(bookToJmap),
+      list: rows.map((r) =>
+        bookToJmap(r, {
+          shareWith: shareWith?.get(r.id) ?? null,
+          myRights: access.granted
+            ? {
+                mayRead: true,
+                mayWrite: writable === null || writable.has(r.id),
+                mayShare: false,
+                mayDelete: false,
+              }
+            : OWNER_RIGHTS,
+        }),
+      ),
       notFound: (ids ?? []).filter((id) => !found.has(id)),
     };
   });
 
-  registry.register("AddressBook/changes", async (args, ctx) => proxyChanges(ctx, args, "AddressBook"));
+  registry.register("AddressBook/changes", async (args, ctx) => {
+    const res = await proxyChanges(ctx, args, "AddressBook");
+    const access = accountAccess(ctx.principal, res.accountId as string);
+    const readable = access?.granted ? allowedBookIds(access, "read") : null;
+    if (!readable) return res;
+    return {
+      ...res,
+      created: (res.created as string[]).filter((id) => readable.has(id)),
+      updated: (res.updated as string[]).filter((id) => readable.has(id)),
+    };
+  });
 
   registry.register("AddressBook/set", async (args, ctx) => {
-    const access = requireAccount(ctx, args, "contacts");
+    const access = await requireAccount(ctx, args, "contacts", "contacts");
+    if (access.granted) {
+      // v1: sharees edit contents (per mayWrite), never the books
+      // themselves or their sharing.
+      throw new MethodError("forbidden", "only the account owner manages address books");
+    }
     const store = storeFor(ctx);
 
     const oldState = await accountState(ctx, access.accountId);
@@ -95,12 +145,16 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
     const createSpecs = (args.create as Record<string, Record<string, unknown>> | undefined) ?? {};
     for (const [cid, spec] of Object.entries(createSpecs)) {
       try {
-        const row = validateNewBook(spec, !hasDefault);
+        const { shareWith, ...bookSpec } = spec;
+        const row = validateNewBook(bookSpec, !hasDefault);
         await store.insertAddressBook(access.accountId, row);
+        if (shareWith !== undefined && shareWith !== null) {
+          await replaceShareWith(ctx, access, row.id, validateShareWithObject(shareWith));
+        }
         byId.set(row.id, row);
         if (row.isDefault) hasDefault = true;
         bookEntry.created.push(row.id);
-        created[cid] = { id: row.id, isDefault: row.isDefault, myRights: OWNER_RIGHTS, shareWith: null };
+        created[cid] = { id: row.id, isDefault: row.isDefault, myRights: OWNER_RIGHTS };
       } catch (err) {
         notCreated[cid] = toSetError(err);
       }
@@ -112,7 +166,9 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
       try {
         const row = byId.get(id);
         if (!row) throw new NotFound();
-        await store.updateAddressBook(access.accountId, id, validateBookPatch(patch));
+        const { columns, share } = validateBookPatch(patch);
+        await store.updateAddressBook(access.accountId, id, columns);
+        if (share) await applyShareWithPatch(ctx, access, id, share);
         bookEntry.updated.push(id);
         updated[id] = null;
       } catch (err) {
@@ -138,6 +194,13 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
           cardEntry.destroyed.push(cardId);
         }
         await store.deleteAddressBook(access.accountId, id);
+        // A destroyed book takes its sharing with it.
+        await ctx.env.DB.prepare(
+          `DELETE FROM grants WHERE target_account_id = ? AND collection = 'AddressBook'
+             AND collection_id = ?`,
+        )
+          .bind(access.accountId, id)
+          .run();
         byId.delete(id);
         if (row.isDefault) destroyedDefault = true;
         bookEntry.destroyed.push(id);
@@ -191,8 +254,9 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
   // ---- ContactCard ---------------------------------------------------
 
   registry.register("ContactCard/get", async (args, ctx) => {
-    const access = requireAccount(ctx, args, "read");
+    const access = await requireAccount(ctx, args, "read", "contacts");
     const store = storeFor(ctx);
+    const readable = allowedBookIds(access, "read");
 
     const ids = args.ids === null || args.ids === undefined ? undefined : (args.ids as string[]);
     const properties = Array.isArray(args.properties) ? (args.properties as string[]) : null;
@@ -203,7 +267,8 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
     let list: Record<string, unknown>[];
     let found: Set<string>;
     if (properties && properties.every((p) => p === "id" || p === "uid" || p === "addressBookIds")) {
-      const refs = await store.getContactCardRefs(access.accountId, ids);
+      let refs = await store.getContactCardRefs(access.accountId, ids);
+      if (readable) refs = refs.filter((r) => readable.has(r.addressBookId));
       found = new Set(refs.map((r) => r.id));
       list = refs.map((r) => {
         const picked: Record<string, unknown> = { id: r.id };
@@ -212,7 +277,8 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
         return picked;
       });
     } else {
-      const rows = await store.getContactCards(access.accountId, ids);
+      let rows = await store.getContactCards(access.accountId, ids);
+      if (readable) rows = rows.filter((r) => readable.has(r.addressBookId));
       found = new Set(rows.map((r) => r.id));
       list = rows.map((row) => {
         const full = cardToJmap(row);
@@ -231,11 +297,30 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
     };
   });
 
-  registry.register("ContactCard/changes", async (args, ctx) => proxyChanges(ctx, args, "ContactCard"));
+  registry.register("ContactCard/changes", async (args, ctx) => {
+    const res = await proxyChanges(ctx, args, "ContactCard");
+    const access = accountAccess(ctx.principal, res.accountId as string);
+    const readable = access?.granted ? allowedBookIds(access, "read") : null;
+    if (!readable) return res;
+    // Restricted viewers only learn about cards in their shared books.
+    // Destroys pass through: membership is gone, and a destroyed id only
+    // tells the client to drop it from cache.
+    const candidates = [...(res.created as string[]), ...(res.updated as string[])];
+    if (candidates.length === 0) return res;
+    const refs = await storeFor(ctx).getContactCardRefs(res.accountId as string, candidates);
+    const visible = new Set(refs.filter((r) => readable.has(r.addressBookId)).map((r) => r.id));
+    return {
+      ...res,
+      created: (res.created as string[]).filter((id) => visible.has(id)),
+      updated: (res.updated as string[]).filter((id) => visible.has(id)),
+    };
+  });
 
   registry.register("ContactCard/set", async (args, ctx) => {
-    const access = requireAccount(ctx, args, "contacts");
+    const access = await requireAccount(ctx, args, "contacts", "contacts");
     const store = storeFor(ctx);
+    // Sharees (mayWrite) edit cards only inside their shared books.
+    const writable = allowedBookIds(access, "contacts");
 
     const oldState = await accountState(ctx, access.accountId);
     if (typeof args.ifInState === "string" && args.ifInState !== oldState) {
@@ -270,9 +355,22 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
         }
         let bookId: string;
         if (rest.addressBookIds === undefined) {
-          bookId = await ensureDefaultBook(ctx, store, access.accountId);
+          if (writable) {
+            // Restricted writer with exactly one shared book: use it.
+            if (writable.size !== 1) {
+              throw new SetErrorSignal("invalidProperties", "addressBookIds is required", [
+                "addressBookIds",
+              ]);
+            }
+            bookId = [...writable][0]!;
+          } else {
+            bookId = await ensureDefaultBook(ctx, store, access.accountId);
+          }
         } else {
           bookId = singleBookId(rest.addressBookIds, books);
+        }
+        if (writable && !writable.has(bookId)) {
+          throw new SetErrorSignal("forbidden", "no write grant on this address book");
         }
         delete rest.addressBookIds;
 
@@ -358,7 +456,8 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
     for (const [id, patch] of Object.entries(updateSpecs)) {
       try {
         const [row] = await store.getContactCards(access.accountId, [id]);
-        if (!row) throw new NotFound();
+        // Out-of-grant cards read as absent — don't leak their existence.
+        if (!row || (writable && !writable.has(row.addressBookId))) throw new NotFound();
 
         const patched = applyCardPatch(cardToJmap(row), patch);
         if (patched.id !== row.id) {
@@ -368,6 +467,9 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
           throw new SetErrorSignal("invalidProperties", "uid is immutable", ["uid"]);
         }
         const bookId = singleBookId(patched.addressBookIds, books);
+        if (writable && !writable.has(bookId)) {
+          throw new SetErrorSignal("forbidden", "no write grant on the target address book");
+        }
 
         const card = { ...patched } as JSContactCard;
         delete (card as Record<string, unknown>).id;
@@ -396,7 +498,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
     for (const id of (args.destroy as string[] | undefined) ?? []) {
       try {
         const [row] = await store.getContactCards(access.accountId, [id]);
-        if (!row) throw new NotFound();
+        if (!row || (writable && !writable.has(row.addressBookId))) throw new NotFound();
         await store.destroyContactCard(access.accountId, id);
         ctagBooks.add(row.addressBookId);
         cardEntry.destroyed.push(id);
@@ -423,8 +525,9 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
   });
 
   registry.register("ContactCard/query", async (args, ctx) => {
-    const access = requireAccount(ctx, args, "read");
+    const access = await requireAccount(ctx, args, "read", "contacts");
     const store = storeFor(ctx);
+    const readable = allowedBookIds(access, "read");
 
     const filter = (args.filter as ContactFilter | null | undefined) ?? null;
     if (filter) validateContactFilter(filter);
@@ -437,6 +540,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
       position: typeof args.position === "number" ? args.position : 0,
       limit: typeof args.limit === "number" ? args.limit : undefined,
       calculateTotal: args.calculateTotal === true,
+      ...(readable ? { restrictToBooks: [...readable] } : {}),
     });
 
     return {
@@ -483,7 +587,10 @@ function toSetError(err: unknown): SetError {
   return setError("serverFail", String(err));
 }
 
-function bookToJmap(r: AddressBookRow): Record<string, unknown> {
+function bookToJmap(
+  r: AddressBookRow,
+  view: { shareWith: Record<string, BookRights> | null; myRights: BookRights },
+): Record<string, unknown> {
   return {
     id: r.id,
     name: r.name,
@@ -491,8 +598,8 @@ function bookToJmap(r: AddressBookRow): Record<string, unknown> {
     sortOrder: r.sortOrder,
     isDefault: r.isDefault,
     isSubscribed: r.isSubscribed,
-    shareWith: null,
-    myRights: OWNER_RIGHTS,
+    shareWith: view.shareWith,
+    myRights: view.myRights,
   };
 }
 
@@ -510,9 +617,6 @@ function validateNewBook(spec: Record<string, unknown>, becomeDefault: boolean):
     if (spec[p] !== undefined) {
       throw new SetErrorSignal("invalidProperties", `${p} is server-set`, [p]);
     }
-  }
-  if (spec.shareWith !== undefined && spec.shareWith !== null) {
-    throw new SetErrorSignal("invalidProperties", "sharing lands with the grant model", ["shareWith"]);
   }
   const name = spec.name;
   if (typeof name !== "string" || name.length === 0 || utf8Octets(name) > MAX_BOOK_NAME_OCTETS) {
@@ -540,44 +644,263 @@ function validateNewBook(spec: Record<string, unknown>, becomeDefault: boolean):
   };
 }
 
+/** ShareWith mutations extracted from an AddressBook/set patch. */
+interface ShareOps {
+  /** Full replace via the "shareWith" path (null = unshare everyone). */
+  replace?: Record<string, BookRights> | null;
+  /** "shareWith/<acct>" entries: rights object or null (remove). */
+  entries: Array<{ acct: string; rights: BookRights | null }>;
+  /** "shareWith/<acct>/<right>" boolean flips. */
+  bits: Array<{ acct: string; right: keyof BookRights; value: boolean }>;
+}
+
 function validateBookPatch(patch: Record<string, unknown>): {
-  name?: string;
-  description?: string | null;
-  sortOrder?: number;
-  isSubscribed?: boolean;
+  columns: { name?: string; description?: string | null; sortOrder?: number; isSubscribed?: boolean };
+  share: ShareOps | null;
 } {
-  const out: ReturnType<typeof validateBookPatch> = {};
+  const columns: {
+    name?: string;
+    description?: string | null;
+    sortOrder?: number;
+    isSubscribed?: boolean;
+  } = {};
+  const share: ShareOps = { entries: [], bits: [] };
+  let touchedShare = false;
+
   for (const [path, value] of Object.entries(patch)) {
+    if (path === "shareWith" || path.startsWith("shareWith/")) {
+      touchedShare = true;
+      const tokens = path.split("/");
+      if (tokens.length === 1) {
+        share.replace = value === null ? null : validateShareWithObject(value);
+      } else if (tokens.length === 2) {
+        share.entries.push({
+          acct: tokens[1]!,
+          rights: value === null ? null : validateRights(value),
+        });
+      } else if (tokens.length === 3 && typeof value === "boolean") {
+        const right = tokens[2] as keyof BookRights;
+        if (!["mayRead", "mayWrite", "mayShare", "mayDelete"].includes(right)) {
+          throw new SetErrorSignal("invalidProperties", `unknown right "${tokens[2]}"`, [path]);
+        }
+        share.bits.push({ acct: tokens[1]!, right, value });
+      } else {
+        throw new SetErrorSignal("invalidProperties", `unsupported patch path "${path}"`, [path]);
+      }
+      continue;
+    }
     switch (path) {
       case "name":
         if (typeof value !== "string" || value.length === 0 || utf8Octets(value) > MAX_BOOK_NAME_OCTETS) {
           throw new SetErrorSignal("invalidProperties", "name must be a 1..255-octet string", ["name"]);
         }
-        out.name = value;
+        columns.name = value;
         break;
       case "description":
         if (value !== null && typeof value !== "string") {
           throw new SetErrorSignal("invalidProperties", "description must be a string or null", ["description"]);
         }
-        out.description = value as string | null;
+        columns.description = value as string | null;
         break;
       case "sortOrder":
         if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
           throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", ["sortOrder"]);
         }
-        out.sortOrder = value;
+        columns.sortOrder = value;
         break;
       case "isSubscribed":
         if (typeof value !== "boolean") {
           throw new SetErrorSignal("invalidProperties", "isSubscribed must be a boolean", ["isSubscribed"]);
         }
-        out.isSubscribed = value;
+        columns.isSubscribed = value;
         break;
       default:
         throw new SetErrorSignal("invalidProperties", `unsupported patch path "${path}"`, [path]);
     }
   }
+  return { columns, share: touchedShare ? share : null };
+}
+
+// ---- shareWith ⇄ grants facade --------------------------------------------
+
+function validateRights(raw: unknown): BookRights {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new SetErrorSignal("invalidProperties", "rights must be an AddressBookRights object", [
+      "shareWith",
+    ]);
+  }
+  const r = raw as Record<string, unknown>;
+  const rights: BookRights = {
+    mayRead: r.mayRead !== false,
+    mayWrite: r.mayWrite === true,
+    mayShare: r.mayShare === true,
+    mayDelete: r.mayDelete === true,
+  };
+  if (rights.mayShare || rights.mayDelete) {
+    throw new SetErrorSignal(
+      "forbidden",
+      "mayShare/mayDelete are owner-only on this server",
+      ["shareWith"],
+    );
+  }
+  return rights;
+}
+
+function validateShareWithObject(raw: unknown): Record<string, BookRights> {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new SetErrorSignal("invalidProperties", "shareWith must be an Id[AddressBookRights] map", [
+      "shareWith",
+    ]);
+  }
+  const out: Record<string, BookRights> = {};
+  for (const [acct, rights] of Object.entries(raw as Record<string, unknown>)) {
+    out[acct] = validateRights(rights);
+  }
   return out;
+}
+
+const scopesToRights = (scopes: string[]): BookRights => ({
+  mayRead: true,
+  mayWrite: hasScope(scopes, "contacts"),
+  mayShare: false,
+  mayDelete: false,
+});
+
+const rightsToScopes = (r: BookRights): string[] => [
+  "read",
+  ...(r.mayWrite ? ["contacts"] : []),
+];
+
+/** Owner view: bookId → {granteeAccountId: rights} for every shared book. */
+async function loadShareWith(
+  ctx: RequestContext,
+  accountId: string,
+): Promise<Map<string, Record<string, BookRights>>> {
+  const { results } = await ctx.env.DB.prepare(
+    `SELECT grantee_account_id, scopes, collection_id FROM grants
+     WHERE target_account_id = ? AND collection = 'AddressBook'`,
+  )
+    .bind(accountId)
+    .all<{ grantee_account_id: string; scopes: string; collection_id: string }>();
+  const out = new Map<string, Record<string, BookRights>>();
+  for (const r of results) {
+    const book = out.get(r.collection_id) ?? {};
+    book[r.grantee_account_id] = scopesToRights(JSON.parse(r.scopes) as string[]);
+    out.set(r.collection_id, book);
+  }
+  return out;
+}
+
+async function replaceShareWith(
+  ctx: RequestContext,
+  access: AccountAccess,
+  bookId: string,
+  desired: Record<string, BookRights>,
+): Promise<void> {
+  await applyShareWithPatch(ctx, access, bookId, { replace: desired, entries: [], bits: [] });
+}
+
+/** Materialize a shareWith mutation as grant upserts/deletes. */
+async function applyShareWithPatch(
+  ctx: RequestContext,
+  access: AccountAccess,
+  bookId: string,
+  ops: ShareOps,
+): Promise<void> {
+  const { results } = await ctx.env.DB.prepare(
+    `SELECT id, grantee_account_id, scopes FROM grants
+     WHERE target_account_id = ? AND collection = 'AddressBook' AND collection_id = ?`,
+  )
+    .bind(access.accountId, bookId)
+    .all<{ id: string; grantee_account_id: string; scopes: string }>();
+  const current = new Map(results.map((r) => [r.grantee_account_id, r]));
+
+  // Desired end state, starting from what exists.
+  const desired = new Map<string, BookRights>();
+  if (ops.replace === undefined) {
+    for (const [acct, row] of current) {
+      desired.set(acct, scopesToRights(JSON.parse(row.scopes) as string[]));
+    }
+  } else if (ops.replace !== null) {
+    for (const [acct, rights] of Object.entries(ops.replace)) desired.set(acct, rights);
+  }
+  for (const e of ops.entries) {
+    if (e.rights === null) desired.delete(e.acct);
+    else desired.set(e.acct, e.rights);
+  }
+  for (const b of ops.bits) {
+    const existing = desired.get(b.acct);
+    if (!existing) {
+      throw new SetErrorSignal("invalidProperties", `no shareWith entry for ${b.acct}`, [
+        "shareWith",
+      ]);
+    }
+    existing[b.right] = b.value;
+    if (existing.mayShare || existing.mayDelete) {
+      throw new SetErrorSignal("forbidden", "mayShare/mayDelete are owner-only on this server", [
+        "shareWith",
+      ]);
+    }
+    if (!existing.mayRead) desired.delete(b.acct); // no read = no access
+  }
+
+  // Validate grantees: real accounts, same tenant, not the owner itself.
+  const grantees = [...desired.keys()];
+  if (grantees.length > 0) {
+    const marks = grantees.map(() => "?").join(",");
+    const { results: acctRows } = await ctx.env.DB.prepare(
+      `SELECT id, tenant_id FROM accounts WHERE id IN (${marks})`,
+    )
+      .bind(...grantees)
+      .all<{ id: string; tenant_id: string }>();
+    const known = new Map(acctRows.map((a) => [a.id, a.tenant_id]));
+    for (const acct of grantees) {
+      if (acct === access.accountId) {
+        throw new SetErrorSignal("invalidProperties", "cannot share a book with its owner", [
+          "shareWith",
+        ]);
+      }
+      if (known.get(acct) !== access.tenantId) {
+        throw new SetErrorSignal("invalidProperties", `unknown account: ${acct}`, ["shareWith"]);
+      }
+    }
+  }
+
+  // Diff → grant rows.
+  const now = Date.now();
+  for (const [acct, row] of current) {
+    if (!desired.has(acct)) {
+      await ctx.env.DB.prepare(`DELETE FROM grants WHERE id = ?`).bind(row.id).run();
+    }
+  }
+  for (const [acct, rights] of desired) {
+    const scopes = JSON.stringify(rightsToScopes(rights));
+    const existing = current.get(acct);
+    if (existing) {
+      if (existing.scopes !== scopes) {
+        await ctx.env.DB.prepare(`UPDATE grants SET scopes = ? WHERE id = ?`)
+          .bind(scopes, existing.id)
+          .run();
+      }
+    } else {
+      await ctx.env.DB.prepare(
+        `INSERT INTO grants (id, tenant_id, grantee_account_id, target_account_id, scopes,
+           collection, collection_id, created_by, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, 'AddressBook', ?, ?, ?, NULL)`,
+      )
+        .bind(
+          `g_${crypto.randomUUID()}`,
+          access.tenantId,
+          acct,
+          access.accountId,
+          scopes,
+          bookId,
+          ctx.principal.username,
+          now,
+        )
+        .run();
+    }
+  }
 }
 
 /**

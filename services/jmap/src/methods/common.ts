@@ -1,7 +1,14 @@
 import { MethodError } from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
-import { accountAccess, principalHasScope, type AccountAccess, type Principal } from "../auth";
+import {
+  accountAccess,
+  matchingGrants,
+  principalHasScope,
+  type AccountAccess,
+  type MethodDomain,
+  type Principal,
+} from "../auth";
 import type { Env } from "../index";
 
 export interface RequestContext {
@@ -11,15 +18,19 @@ export interface RequestContext {
 
 /**
  * Resolve + authorize the account for a method call. `scope` is the verb
- * this method needs ("read" | "draft" | "send" | ...); the "mail" scope
- * covers all mail verbs. Grant-scoped tokens (agents!) fail here with
- * `forbidden` before touching any data.
+ * this method needs ("read" | "draft" | "send" | "contacts" | ...); the
+ * "mail" scope covers all mail verbs. For owned accounts only the token's
+ * scopes gate. For grant-reached accounts the effective rights are
+ * token ∩ grant, the grant must cover the method's domain (an
+ * AddressBook-scoped grant unlocks contacts methods only), and every
+ * call is written to the grant_audit log.
  */
-export function requireAccount(
+export async function requireAccount(
   ctx: RequestContext,
   args: Record<string, unknown>,
   scope: string,
-): AccountAccess {
+  domain: MethodDomain = "mail",
+): Promise<AccountAccess> {
   const accountId = args.accountId;
   if (typeof accountId !== "string") {
     throw new MethodError("invalidArguments", "accountId is required");
@@ -28,6 +39,24 @@ export function requireAccount(
   if (!access) throw new MethodError("accountNotFound");
   if (!principalHasScope(ctx.principal, scope)) {
     throw new MethodError("forbidden", `token lacks the "${scope}" scope`);
+  }
+  if (access.granted) {
+    const matching = matchingGrants(access, scope, domain);
+    if (matching.length === 0) {
+      throw new MethodError("forbidden", `no grant covers "${scope}" on this account`);
+    }
+    await ctx.env.DB.prepare(
+      `INSERT INTO grant_audit (grant_id, principal, account_id, method, at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        matching[0]!.grantId,
+        ctx.principal.username,
+        access.accountId,
+        `${domain}:${scope}`,
+        Date.now(),
+      )
+      .run();
   }
   return access;
 }
@@ -55,7 +84,9 @@ export async function proxyChanges(
     | "AddressBook"
     | "ContactCard",
 ): Promise<Record<string, unknown>> {
-  const access = requireAccount(ctx, args, "read");
+  const domain =
+    collection === "AddressBook" || collection === "ContactCard" ? "contacts" : "mail";
+  const access = await requireAccount(ctx, args, "read", domain);
   const since = args.sinceState;
   if (typeof since !== "string") {
     throw new MethodError("invalidArguments", "sinceState is required");

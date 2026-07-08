@@ -36,6 +36,10 @@ export interface AdminOpts {
   replyMode?: string;
   /** agent bind: JSON file with persona/modelAliases/defaultModel/maxTokens. */
   config?: string;
+  /** grant create: restrict to one address book (AddressBook collection). */
+  book?: string;
+  /** grant create: expiry in days. */
+  expires?: string;
   json: boolean;
 }
 
@@ -176,6 +180,51 @@ export async function cmdAdmin(
         }
         if (res.bindings.length === 0) console.log("(no bindings)");
       });
+      return;
+    }
+    case "grant create": {
+      // args: grant create <grantee-email> <target-email>
+      const target = args[3];
+      if (!arg || !target) {
+        fail(
+          "usage: admin grant create <grantee-email> <target-email> [--scopes read,contacts]\n" +
+            "                          [--book <addressBookId>] [--expires <days>]",
+        );
+      }
+      const scopes = opts.scopes ? opts.scopes.split(",").map((s) => s.trim()) : ["read"];
+      const res = (await api("POST", "/grants", {
+        granteeEmail: arg,
+        targetEmail: target,
+        scopes,
+        ...(opts.book ? { collection: "AddressBook", collectionId: opts.book } : {}),
+        ...(opts.expires ? { expiresDays: Number(opts.expires) } : {}),
+      })) as { grantId: string };
+      out(res, opts, () =>
+        console.log(
+          `grant ${res.grantId}: ${arg} → ${target} [${scopes.join(",")}]` +
+            (opts.book ? ` book=${opts.book}` : " (whole account)"),
+        ),
+      );
+      return;
+    }
+    case "grant list": {
+      const qs = arg ? `?email=${encodeURIComponent(arg)}` : "";
+      const res = (await api("GET", `/grants${qs}`)) as { grants: Array<Record<string, unknown>> };
+      out(res, opts, () => {
+        for (const g of res.grants) {
+          const scopes = JSON.parse(g.scopes as string).join(",");
+          const scope = g.collection ? `${g.collection}:${g.collection_id}` : "account";
+          const exp = g.expires_at ? `  expires ${new Date(g.expires_at as number).toISOString().slice(0, 10)}` : "";
+          console.log(`${g.id}  ${g.grantee_email ?? g.grantee_account_id} → ${g.target_email ?? g.target_account_id}  [${scopes}]  ${scope}${exp}`);
+        }
+        if (res.grants.length === 0) console.log("(no grants)");
+      });
+      return;
+    }
+    case "grant revoke": {
+      if (!arg) fail("usage: admin grant revoke <grantId>");
+      const res = (await api("DELETE", `/grants/${arg}`)) as { revoked: boolean };
+      out(res, opts, () => console.log(res.revoked ? `revoked ${arg}` : `${arg} not found`));
       return;
     }
     case "token create": {

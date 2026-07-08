@@ -121,6 +121,104 @@ export async function loginSaltHex(email: string): Promise<string> {
   return bytesToHex(new Uint8Array(digest));
 }
 
+// ---- credential vault envelope crypto (Phase 3, Q2 "build it right") ------
+//
+// sealSecret/openSecret protect vault_credentials rows. Construction:
+//   key = HKDF-SHA256(masterSecret, salt="bullmoose-vault-v1", info=aad)
+//   ciphertext = AES-256-GCM(key, iv=random 96-bit, aad)
+// The AAD is the row's identity (principalId + ":" + name), so a sealed
+// value copied onto another row fails to open — no row-swap attacks.
+// The envelope is versioned for future rotation ({v:1}); rotating the
+// master means open-with-old + seal-with-new per row.
+// The master secret lives ONLY in the agent worker (VAULT_MASTER_KEY);
+// nothing here ever logs or returns plaintext except openSecret's value,
+// which callers must keep in-process.
+
+export interface SealedSecret {
+  v: 1;
+  /** base64 96-bit GCM nonce */
+  iv: string;
+  /** base64 ciphertext + GCM tag */
+  ct: string;
+}
+
+const VAULT_HKDF_SALT = "bullmoose-vault-v1";
+
+async function vaultKey(masterSecret: string, aad: string): Promise<CryptoKey> {
+  const ikm = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(masterSecret),
+    "HKDF",
+    false,
+    ["deriveKey"],
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new TextEncoder().encode(VAULT_HKDF_SALT),
+      info: new TextEncoder().encode(aad),
+    },
+    ikm,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+
+export async function sealSecret(
+  masterSecret: string,
+  plaintext: string,
+  aad: string,
+): Promise<SealedSecret> {
+  const key = await vaultKey(masterSecret, aad);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv, additionalData: new TextEncoder().encode(aad) },
+    key,
+    new TextEncoder().encode(plaintext),
+  );
+  return { v: 1, iv: bytesToBase64(iv), ct: bytesToBase64(new Uint8Array(ct)) };
+}
+
+/** Throws on tamper/wrong-row/wrong-master. Keep the return value in-process. */
+export async function openSecret(
+  masterSecret: string,
+  sealed: SealedSecret,
+  aad: string,
+): Promise<string> {
+  if (sealed.v !== 1) throw new Error(`unknown vault envelope version: ${String(sealed.v)}`);
+  const key = await vaultKey(masterSecret, aad);
+  const pt = await crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv: base64ToBytes(sealed.iv),
+      additionalData: new TextEncoder().encode(aad),
+    },
+    key,
+    base64ToBytes(sealed.ct),
+  );
+  return new TextDecoder().decode(pt);
+}
+
+/** The canonical AAD for a vault row. */
+export function vaultAad(principalId: string, name: string): string {
+  return `${principalId}:${name}`;
+}
+
+function bytesToBase64(b: Uint8Array): string {
+  let s = "";
+  for (const x of b) s += String.fromCharCode(x);
+  return btoa(s);
+}
+
+function base64ToBytes(s: string): Uint8Array {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
 // ---- helpers -------------------------------------------------------------
 
 export function timingSafeEqualHex(a: string, b: string): boolean {

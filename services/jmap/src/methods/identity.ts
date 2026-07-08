@@ -3,7 +3,7 @@ import { accountState, requireAccount, storeFor, type RequestContext } from "./c
 
 export function registerIdentityMethods(registry: MethodRegistry<RequestContext>): void {
   registry.register("Identity/get", async (args, ctx) => {
-    const access = requireAccount(ctx, args, "read");
+    const access = await requireAccount(ctx, args, "read");
     const store = storeFor(ctx);
 
     let identities = await store.getIdentities(access.accountId);

@@ -15,6 +15,8 @@ export interface Env {
   /** AI Gateway OpenAI-compat endpoint, e.g. https://gateway.ai.cloudflare.com/v1/<acct>/bullmoose/compat */
   GATEWAY_COMPAT_URL?: string;
   GATEWAY_TOKEN?: string;
+  /** Master secret for the credential vault (auth-core sealSecret). */
+  VAULT_MASTER_KEY?: string;
 }
 
 /** One route a model alias can resolve to. */

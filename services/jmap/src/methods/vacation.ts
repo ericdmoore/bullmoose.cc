@@ -9,7 +9,7 @@ import { accountState, requireAccount, type RequestContext } from "./common";
  */
 export function registerVacationMethods(registry: MethodRegistry<RequestContext>): void {
   registry.register("VacationResponse/get", async (args, ctx) => {
-    const access = requireAccount(ctx, args, "read");
+    const access = await requireAccount(ctx, args, "read");
     const row = await vacationRow(ctx, access.accountId);
     return {
       accountId: access.accountId,
@@ -30,7 +30,7 @@ export function registerVacationMethods(registry: MethodRegistry<RequestContext>
   });
 
   registry.register("VacationResponse/set", async (args, ctx) => {
-    const access = requireAccount(ctx, args, "draft");
+    const access = await requireAccount(ctx, args, "draft");
     const oldState = await accountState(ctx, access.accountId);
     const update = (args.update as Record<string, Record<string, unknown>> | undefined) ?? {};
     const patch = update.singleton;

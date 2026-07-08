@@ -187,6 +187,8 @@ export interface ContactQuery {
   position?: number;
   limit?: number;
   calculateTotal?: boolean;
+  /** Sharing: restrict results to these AddressBook ids (grant-scoped viewers). */
+  restrictToBooks?: string[];
 }
 
 export interface SubmissionRow {
@@ -968,7 +970,13 @@ export class Mailstore {
     query: ContactQuery,
   ): Promise<{ ids: string[]; position: number; total?: number }> {
     const params: unknown[] = [accountId];
-    const where = query.filter ? this.buildContactFilter(query.filter, params) : "1=1";
+    let where = query.filter ? this.buildContactFilter(query.filter, params) : "1=1";
+    if (query.restrictToBooks) {
+      const books = query.restrictToBooks.slice(0, MAX_BINDS);
+      if (books.length === 0) return { ids: [], position: 0, ...(query.calculateTotal ? { total: 0 } : {}) };
+      where = `(${where}) AND c.address_book_id IN (${books.map(() => "?").join(",")})`;
+      params.push(...books);
+    }
 
     const sort = (query.sort ?? [{ property: "name", isAscending: true }])
       .map(

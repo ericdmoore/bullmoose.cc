@@ -20,6 +20,23 @@ cd ../..
 node tools/e2e-jmap.mjs        # core surface: session, set/query/get, patches, changes, blobs
 node tools/e2e-punchlist.mjs   # himalaya punch list: Mailbox/query, Email/import, threading
 node tools/e2e-contacts.mjs    # JMAP Contacts (RFC 9610): books, cards, query, ctag cascade
+node tools/e2e-grants.mjs      # Phase 3: sharing, delegation, vault, analytics MCP (3 workers)
+```
+
+`e2e-grants.mjs` needs three workers on one `--persist-to` state dir,
+seeded with `tools/fixtures/grants-e2e-seed.sql` on top of the schemas
+(fixed dev tokens for eric/carol/editor — local only):
+
+```sh
+STATE=/tmp/bm-e2e-state
+# seed data-plane + control-plane + mailboxes as above, all with --persist-to $STATE, then:
+npx wrangler d1 execute bullmoose-mail-shard0 --local --persist-to $STATE --file ../../tools/fixtures/grants-e2e-seed.sql
+printf 'INTERNAL_TOKEN=internal\nVAULT_MASTER_KEY=e2e-vault-master\n' > ../agent/.dev.vars
+printf 'ADMIN_TOKEN=admintoken\n' > ../provision/.dev.vars
+(cd ../../services/jmap      && npx wrangler dev --port 8787 --persist-to $STATE) &
+(cd ../../services/agent     && npx wrangler dev --port 8789 --persist-to $STATE) &
+(cd ../../services/provision && npx wrangler dev --port 8790 --persist-to $STATE) &
+node tools/e2e-grants.mjs
 ```
 
 The contacts CLI doubles as the vCard-import acceptance test (same dev

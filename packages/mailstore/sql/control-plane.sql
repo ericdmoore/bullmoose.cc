@@ -72,6 +72,64 @@ CREATE TABLE IF NOT EXISTS tokens (
 );
 CREATE INDEX IF NOT EXISTS tokens_principal ON tokens (principal_id);
 
+-- Cross-account delegation + sharing (devPlan-handoff Phase 3). A grant
+-- lets every token of the principal owning grantee_account_id act on
+-- target_account_id, restricted to `scopes` — the SAME vocabulary as
+-- token scopes (read/annotate/draft/move/send/delete/contacts), so one
+-- scope system governs both — and optionally to a single collection
+-- (e.g. one shared AddressBook: collection='AddressBook',
+-- collection_id='ab_…'; NULL collection = the whole account, the
+-- agent-delegation shape). Effective rights = token scopes ∩ grant
+-- scopes. Owner/operator-minted only; every granted access is audited.
+CREATE TABLE IF NOT EXISTS grants (
+  id                  TEXT PRIMARY KEY,      -- g_<uuid>
+  tenant_id           TEXT NOT NULL REFERENCES tenants(id),
+  grantee_account_id  TEXT NOT NULL REFERENCES accounts(id),
+  target_account_id   TEXT NOT NULL REFERENCES accounts(id),
+  scopes              TEXT NOT NULL,         -- JSON array
+  collection          TEXT,                  -- NULL | 'AddressBook' (calendar later)
+  collection_id       TEXT,
+  created_by          TEXT NOT NULL,         -- minting principal id, or 'admin'
+  created_at          INTEGER NOT NULL,
+  expires_at          INTEGER                -- epoch ms; NULL = no expiry
+);
+CREATE UNIQUE INDEX IF NOT EXISTS grants_tuple
+  ON grants (grantee_account_id, target_account_id,
+             COALESCE(collection, ''), COALESCE(collection_id, ''));
+CREATE INDEX IF NOT EXISTS grants_target ON grants (target_account_id);
+
+-- Append-only audit of granted (cross-account) access: one row per
+-- JMAP method call a grantee makes against a target account.
+CREATE TABLE IF NOT EXISTS grant_audit (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  grant_id    TEXT NOT NULL,
+  principal   TEXT NOT NULL,                 -- acting login email
+  account_id  TEXT NOT NULL,                 -- target account
+  method      TEXT NOT NULL,                 -- scope:domain acted under
+  at          INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS grant_audit_account ON grant_audit (account_id, at);
+
+-- Credential vault (Phase 3, Q2 "build it right"): per-principal
+-- third-party secrets, envelope-encrypted with the agent worker's
+-- master secret (see auth-core sealSecret: HKDF per row + AES-256-GCM,
+-- AAD binds principal+name so rows can't be swapped). WRITE-ONLY API:
+-- a stored secret is never returned; the agent worker decrypts
+-- in-process when acting. meta_json is non-secret (provider, endpoints,
+-- client_id, scopes). Named vault_credentials because `credentials`
+-- already holds login-password rows.
+CREATE TABLE IF NOT EXISTS vault_credentials (
+  id           TEXT PRIMARY KEY,             -- vc_<uuid>
+  principal_id TEXT NOT NULL REFERENCES principals(id),
+  name         TEXT NOT NULL,                -- "anthropic-api", "google-oauth"
+  kind         TEXT NOT NULL,                -- 'api-key' | 'oauth-refresh'
+  enc_json     TEXT NOT NULL,                -- {v:1, iv, ct} base64 envelope
+  meta_json    TEXT NOT NULL DEFAULT '{}',
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  UNIQUE (principal_id, name)
+);
+
 -- Inbound address resolution. kind: 'mailbox' | 'alias' | 'forward' | 'catchall'
 CREATE TABLE IF NOT EXISTS routes (
   domain      TEXT NOT NULL REFERENCES domains(domain),

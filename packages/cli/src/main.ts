@@ -22,6 +22,7 @@ import { cmdAdmin } from "./admin.js";
 import { cmdLogin, cmdToken } from "./tokens.js";
 import { agentServe, loadAgentConfig } from "./agent.js";
 import { cmdContacts } from "./contacts.js";
+import { cmdCreds } from "./creds.js";
 
 const HELP = `bullmoose — JMAP sync client with a local SQLite message log
 
@@ -71,6 +72,14 @@ Usage:
                  Export → Export vCard…
   bullmoose contacts list [--book <name-or-id>] [-n <count>] [--json]
   bullmoose contacts show <cardId> [--json]
+  bullmoose creds init --url <agent-worker-url>
+  bullmoose creds set <name> --kind api-key|oauth-refresh [--secret <s>]
+                 [--secret-env VAR] [--meta k=v,...]   (else hidden prompt)
+  bullmoose creds list | rm <name>
+  bullmoose creds oauth <name> --authorize-url <u> --token-url <u>
+                 --client-id <id> [--client-secret <s>] [--oauth-scopes "a b"]
+                 (browser + localhost PKCE flow; ONLY the refresh token is
+                  uploaded — the vault is write-only, secrets never return)
   bullmoose log [-n <count>] [--mailbox <role-or-id>] [--account <sel>] [--json]
   bullmoose search <fts5-query> [--account <sel>] [--json]
   bullmoose show <emailId> [--json]
@@ -90,6 +99,13 @@ Usage:
                   responder per delivery, canceled when the agent claims)
   bullmoose admin token   create <email> --name <n> [--scopes read,draft,send]
                           | list [<email>] | revoke <id>    (agent/operator tokens)
+  bullmoose admin grant   create <grantee-email> <target-email>
+                          [--scopes read,contacts] [--book <addressBookId>]
+                          [--expires <days>] | list [<email>] | revoke <id>
+                 (cross-account delegation: grantee's tokens act on the
+                  target, effective rights = token ∩ grant; --book limits
+                  the grant to one shared address book. Every granted
+                  access lands in the grant_audit log.)
                  (operator surface — wraps the provision worker; separate
                  credentials from the mail account. Planned nouns: route,
                  identity, policy, share, suppression, token, agent)
@@ -145,6 +161,17 @@ const { values: opts, positionals } = parseArgs({
     config: { type: "string" },
     once: { type: "boolean", default: false },
     until: { type: "string" },
+    expires: { type: "string" },
+    kind: { type: "string" },
+    secret: { type: "string" },
+    "secret-env": { type: "string" },
+    meta: { type: "string" },
+    "authorize-url": { type: "string" },
+    "token-url": { type: "string" },
+    "client-id": { type: "string" },
+    "client-secret": { type: "string" },
+    "oauth-scopes": { type: "string" },
+    port: { type: "string" },
     sla: { type: "string" },
     allow: { type: "string" },
     "reply-mode": { type: "string" },
@@ -220,6 +247,22 @@ try {
         n: opts.n,
       });
       break;
+    case "creds":
+      await cmdCreds(db, positionals.slice(1), {
+        url: opts.url,
+        kind: opts.kind,
+        secret: opts.secret,
+        secretEnv: opts["secret-env"],
+        meta: opts.meta,
+        authorizeUrl: opts["authorize-url"],
+        tokenUrl: opts["token-url"],
+        clientId: opts["client-id"],
+        clientSecret: opts["client-secret"],
+        oauthScopes: opts["oauth-scopes"],
+        port: opts.port,
+        json: opts.json ?? false,
+      });
+      break;
     case "log":
       cmdLog();
       break;
@@ -245,6 +288,8 @@ try {
         allow: opts.allow,
         replyMode: opts["reply-mode"],
         config: opts.config,
+        book: opts.book,
+        expires: opts.expires,
         json: opts.json ?? false,
       });
       break;

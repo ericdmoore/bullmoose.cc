@@ -18,7 +18,7 @@ import {
  */
 export function registerAgentMethods(registry: MethodRegistry<RequestContext>): void {
   registry.register("AgentInvocation/query", async (args, ctx) => {
-    const access = requireAccount(ctx, args, "read");
+    const access = await requireAccount(ctx, args, "read");
     const status = typeof args.status === "string" ? args.status : "pending";
     const { results } = await ctx.env.DB.prepare(
       `SELECT id FROM agent_invocations
@@ -36,7 +36,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
   });
 
   registry.register("AgentInvocation/get", async (args, ctx) => {
-    const access = requireAccount(ctx, args, "read");
+    const access = await requireAccount(ctx, args, "read");
     if (!Array.isArray(args.ids)) {
       throw new MethodError("invalidArguments", "AgentInvocation/get requires ids");
     }
@@ -76,7 +76,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
 
   // update only: { id: { status: "running"|"done"|"failed", result? } }
   registry.register("AgentInvocation/set", async (args, ctx) => {
-    const access = requireAccount(ctx, args, "draft");
+    const access = await requireAccount(ctx, args, "draft");
     const oldState = await accountState(ctx, access.accountId);
     const updated: Record<string, null> = {};
     const notUpdated: Record<string, SetError> = {};

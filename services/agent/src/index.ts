@@ -3,6 +3,8 @@ import { commitChanges } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
 import { Mailstore } from "@bullmoose/mailstore";
 import { runLedger } from "./ledger.js";
+import { handleMcp } from "./mcp.js";
+import { handleVault, handleVaultVerify } from "./vault.js";
 import {
   callWithFallback,
   refreshPricing,
@@ -59,6 +61,17 @@ export default {
       if (url.pathname === "/internal/refresh-pricing") {
         return json(await refreshPricing(env));
       }
+      if (url.pathname === "/internal/vault/verify") {
+        return handleVaultVerify(request, env);
+      }
+      // mailstore-analytics MCP: internal read-only tool surface.
+      if (url.pathname === "/mcp/analytics") {
+        return handleMcp(request, env);
+      }
+    }
+    // Credential vault: principal-facing, bearer-token authed.
+    if (url.pathname === "/vault/credentials" || url.pathname.startsWith("/vault/credentials/")) {
+      return handleVault(request, env);
     }
     return new Response("bullmoose-agent", { status: url.pathname === "/" ? 200 : 404 });
   },

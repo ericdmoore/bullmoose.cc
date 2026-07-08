@@ -35,7 +35,7 @@ async function emailSubmissionSet(
   args: Record<string, unknown>,
   ctx: RequestContext,
 ): Promise<Record<string, unknown>> {
-  const access = requireAccount(ctx, args, "send");
+  const access = await requireAccount(ctx, args, "send");
   const store = storeFor(ctx);
   const oldState = await accountState(ctx, access.accountId);
 
