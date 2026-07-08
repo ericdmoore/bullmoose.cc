@@ -1,0 +1,17 @@
+{
+  "name": "bullmoose-site",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@fontsource/big-shoulders-display": "^5",
+    "@fontsource/public-sans": "^5",
+    "@fontsource/space-mono": "^5",
+    "astro": "^7"
+  }
+}

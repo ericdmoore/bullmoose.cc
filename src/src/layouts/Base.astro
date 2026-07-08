@@ -1,0 +1,39 @@
+---
+import "@fontsource/big-shoulders-display/400.css";
+import "@fontsource/big-shoulders-display/700.css";
+import "@fontsource/big-shoulders-display/800.css";
+import "@fontsource/public-sans/400.css";
+import "@fontsource/public-sans/600.css";
+import "@fontsource/space-mono/400.css";
+import "@fontsource/space-mono/700.css";
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+const {
+  title = "bullmoose — self-hosted mail, contacts, calendar & agents",
+  description =
+    "A self-hosted personal-data platform — email, contacts, calendar, and email-native agents — that runs serverless on Cloudflare's free tier. Your domain, your data, one core. ~$0/month.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#16223f" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="/moose.svg" />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>

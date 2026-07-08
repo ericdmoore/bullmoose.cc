@@ -1,0 +1,109 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import Postmark from "../components/Postmark.astro";
+
+const repo = "https://github.com/ericdmoore/bullmoose.cc";
+
+const pillars = [
+  {
+    tag: "JMAP · RFC 8620/8621",
+    h: "Mail, your domain",
+    p: "A full JMAP server — send, receive, threads, search, push, drafts, vacation. Inbound via Cloudflare Email Routing; outbound via SES with DKIM, SPF, and DMARC wired for you.",
+  },
+  {
+    tag: "JSContact · JSCalendar",
+    h: "Contacts & calendar",
+    p: "Stored losslessly, with a DST-correct recurrence engine. Apple devices sync over CardDAV/CalDAV against the very same core your agents read.",
+  },
+  {
+    tag: "Mailboxes with a runtime",
+    h: "Email-native agents",
+    p: "Bind a runtime to an address and it replies, files receipts to a spend ledger, or runs your own pipeline — with scoped, auditable, revocable access.",
+  },
+  {
+    tag: "One binary",
+    h: "A real CLI",
+    p: "Login and autodiscovery, offline sync to local SQLite, Markdown-to-MIME send, live watch, contacts/calendar import, and token/grant administration.",
+  },
+];
+---
+
+<Base>
+  <Nav />
+  <main>
+    <section class="hero">
+      <div class="hero__stripes" aria-hidden="true"></div>
+      <div class="wrap hero__in">
+        <div class="hero__copy">
+          <p class="eyebrow">Self-hosted personal-data platform</p>
+          <h1 class="hero__slogan">
+            <span>Your domain.</span><br />
+            <span class="l2">Your data.</span><br />
+            <span class="l3">One core.</span>
+          </h1>
+          <p class="hero__lede">
+            Email, contacts, calendar, and email-native agents — serverless on
+            Cloudflare, standards-native, and yours. A typical personal
+            deployment runs <b>$0/month</b>, plus your domain.
+          </p>
+          <div class="hero__cta">
+            <a class="btn btn-solid" href="/apps">Get the apps &rarr;</a>
+            <a class="btn btn-ghost" href="/guides">Connection guides &rarr;</a>
+            <a class="btn btn-ghost" href={`${repo}/blob/main/docs/DEPLOY.md`}>Deploy your own &rarr;</a>
+          </div>
+        </div>
+        <div class="hero__art">
+          <img
+            src="/moose.svg"
+            alt="The bullmoose — a bull moose in stars and stripes, striding forward"
+            width="480"
+            height="480"
+          />
+          <Postmark />
+        </div>
+      </div>
+    </section>
+
+    <section id="what" class="band band--rag">
+      <div class="wrap">
+        <div class="band__head">
+          <h2 class="band__title">What it does</h2>
+          <span class="flagrule"><span class="stars">&#9733; &#9733; &#9733;</span></span>
+        </div>
+        <div class="pillars">
+          {
+            pillars.map((p) => (
+              <article class="pillar">
+                <p class="tag">{p.tag}</p>
+                <h3>{p.h}</h3>
+                <p>{p.p}</p>
+              </article>
+            ))
+          }
+        </div>
+        <p class="stack">
+          <span>On the wire:</span>
+          <span><b>JMAP</b></span>
+          <span><b>CardDAV</b></span>
+          <span><b>CalDAV</b></span>
+          <span><b>POP3/SMTP</b> shim</span>
+          <span><b>vCard</b> &amp; <b>iCalendar</b></span>
+          <span>&mdash; one core, every standard.</span>
+        </p>
+      </div>
+    </section>
+
+    <section class="enlist">
+      <div class="wrap enlist__in">
+        <div>
+          <h2>Put your hat<br />in the ring.</h2>
+          <p>The whole stack, one command &middot; $0/month</p>
+        </div>
+        <a class="btn btn-ghost" href={repo}>Read the source &rarr;</a>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</Base>

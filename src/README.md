@@ -1,16 +1,28 @@
-# Fresh project
+# bullmoose.cc — the site
 
-Your new Fresh project is ready to go. You can follow the Fresh "Getting
-Started" guide here: https://fresh.deno.dev/docs/getting-started
+The public marketing + connection-guides site. **Astro**, static output,
+deployed to **Cloudflare Pages** (`.github/workflows/deploy.yml`). Design and
+plan: [`../docs/architecture/marketing-site.md`](../docs/architecture/marketing-site.md).
 
-### Usage
+```sh
+cd src
+npm install
+npm run dev        # http://localhost:4321
+npm run build      # → dist/
+npm run preview    # serve dist/ locally
+```
 
-Make sure to install Deno: https://deno.land/manual/getting_started/installation
-
-Then start the project:
+Structure:
 
 ```
-deno task start
+public/            static assets (moose.svg, favicon, stripe)
+src/layouts/       Base.astro — the html shell, fonts, meta
+src/components/    Nav, Footer, Postmark (the $0/mo seal)
+src/pages/         index.astro (landing) · apps.astro · guides.astro
+src/styles/        global.css — the design system (tokens + sections)
 ```
 
-This will watch the project directory and restart as necessary.
+Type: Big Shoulders Display (slogan) · Public Sans (body) · Space Mono
+(technical). Palette: aged flag — navy, rag, oxblood, brass. Guides will be
+sourced from [`../docs/playbooks/`](../docs/playbooks/README.md) in a later
+phase.

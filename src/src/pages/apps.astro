@@ -1,0 +1,28 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+const repo = "https://github.com/ericdmoore/bullmoose.cc";
+---
+
+<Base title="Apps — bullmoose">
+  <Nav />
+  <main class="wrap page">
+    <p class="eyebrow">Recommended clients</p>
+    <h1>Apps</h1>
+    <p class="lede">
+      One pick per job. The full card layout lands in the next phase — for now,
+      here are the picks; each is written up in the connection playbooks.
+    </p>
+    <ul>
+      <li><b>Email (modern):</b> Mailtemi — a JMAP-native client, calendaring on the way.</li>
+      <li><b>Calendar &amp; contacts:</b> Apple Calendar/Contacts (built-in), or DAVx5 on Android.</li>
+      <li><b>Legacy mail:</b> Apple Mail, Outlook, or Thunderbird over the POP3/SMTP shim.</li>
+      <li><b>Terminal:</b> the <code>bullmoose</code> CLI.</li>
+    </ul>
+    <p style="margin-top:1.8rem">
+      <a class="btn btn-ink" href={`${repo}/tree/main/docs/playbooks`}>Connection playbooks on GitHub &rarr;</a>
+    </p>
+  </main>
+  <Footer />
+</Base>

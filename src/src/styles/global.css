@@ -1,0 +1,176 @@
+/* ============================================================
+   bullmoose.cc — design system
+   Aged-flag civic Americana: a campaign broadside for your data.
+   Palette + type set once here; sections below compose them.
+   ============================================================ */
+
+:root {
+  /* aged flag */
+  --navy: #16223f;      /* hero ground */
+  --navy-2: #223257;    /* raised navy */
+  --rag: #efe9db;       /* paper */
+  --rag-2: #e5dbc4;     /* deeper paper / rules */
+  --ink: #1a1611;       /* warm near-black */
+  --oxblood: #8f2d2d;   /* barn red */
+  --oxblood-2: #a83a37;
+  --brass: #b5892f;     /* gold accent / seal */
+  --brass-2: #d8b45e;
+
+  --on-navy: #efe9db;
+  --on-navy-dim: #b7bccb;
+  --on-rag-dim: #6b6355;
+
+  --font-display: "Big Shoulders Display", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Public Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --wrap: 74rem;
+  --gutter: clamp(1.25rem, 4vw, 3rem);
+}
+
+/* ---- reset ------------------------------------------------ */
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  font-family: var(--font-body);
+  background: var(--rag);
+  color: var(--ink);
+  line-height: 1.55;
+  font-size: 1.0625rem;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+img, svg { display: block; max-width: 100%; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 3px solid var(--brass); outline-offset: 3px; }
+
+/* ---- primitives ------------------------------------------- */
+.wrap { max-width: var(--wrap); margin-inline: auto; padding-inline: var(--gutter); }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.flagrule { display: inline-flex; align-items: center; gap: 0.5ch; color: var(--brass); }
+.flagrule::before, .flagrule::after {
+  content: ""; height: 2px; width: clamp(1.5rem, 6vw, 4rem);
+  background: currentColor; opacity: 0.6;
+}
+.flagrule > .stars { letter-spacing: 0.15em; font-size: 0.7em; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5ch;
+  font-family: var(--font-mono);
+  font-size: 0.82rem; letter-spacing: 0.06em;
+  padding: 0.7rem 1.1rem;
+  border: 2px solid transparent;
+  transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn-solid { background: var(--oxblood); color: var(--rag); }
+.btn-solid:hover { background: var(--oxblood-2); }
+.btn-ghost { border-color: currentColor; color: var(--on-navy); }
+.btn-ghost:hover { background: rgba(239, 233, 219, 0.1); }
+.btn-ink { border-color: var(--ink); color: var(--ink); }
+.btn-ink:hover { background: var(--ink); color: var(--rag); }
+
+/* ---- top nav ---------------------------------------------- */
+.nav { background: var(--navy); color: var(--on-navy); border-bottom: 3px solid var(--brass); position: sticky; top: 0; z-index: 20; }
+.nav__in { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-block: 0.7rem; }
+.nav__brand { display: inline-flex; align-items: center; gap: 0.55rem; font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; letter-spacing: 0.02em; text-transform: uppercase; }
+.nav__brand img { width: 1.7rem; height: 1.7rem; }
+.nav__links { display: flex; align-items: center; gap: clamp(0.75rem, 2.5vw, 1.75rem); font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.04em; }
+.nav__links a { color: var(--on-navy-dim); padding-block: 0.3rem; border-bottom: 2px solid transparent; }
+.nav__links a:hover, .nav__links a[aria-current] { color: var(--on-navy); border-color: var(--brass); }
+.nav__links .is-cta { color: var(--brass-2); }
+
+/* ---- hero ------------------------------------------------- */
+.hero { background: var(--navy); color: var(--on-navy); position: relative; overflow: hidden; }
+.hero__stripes { position: absolute; inset: 0; opacity: 0.06; background:
+  repeating-linear-gradient(115deg, var(--rag) 0 2px, transparent 2px 46px);
+  pointer-events: none; }
+.hero__in { position: relative; display: grid; grid-template-columns: 1.15fr 0.85fr; gap: clamp(1.5rem, 5vw, 4rem); align-items: center; padding-block: clamp(3rem, 8vw, 6rem); }
+.hero__slogan {
+  font-family: var(--font-display); font-weight: 800;
+  font-size: clamp(3.2rem, 11vw, 8rem);
+  line-height: 0.86; letter-spacing: -0.01em; text-transform: uppercase;
+  margin-block: 1.1rem 0.4rem;
+}
+.hero__slogan .l2 { color: var(--brass-2); }
+.hero__slogan .l3 { -webkit-text-stroke: 1.5px var(--on-navy); color: transparent; }
+.hero__lede { font-size: clamp(1.05rem, 1.6vw, 1.3rem); color: var(--on-navy-dim); max-width: 40ch; margin-bottom: 1.6rem; }
+.hero__lede b { color: var(--on-navy); font-weight: 600; }
+.hero__cta { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+
+.hero__art { position: relative; display: grid; place-items: center; }
+.hero__art img { width: min(100%, 30rem); filter: drop-shadow(0 18px 30px rgba(0,0,0,0.35)); }
+
+/* ---- postmark (the signature seal) ------------------------ */
+.postmark { position: absolute; right: -0.5rem; bottom: -0.5rem; width: clamp(7rem, 13vw, 10rem); color: var(--brass-2); transform: rotate(-9deg); }
+.postmark text { fill: currentColor; font-family: var(--font-mono); }
+.postmark .pm-ring { fill: none; stroke: currentColor; }
+.postmark .pm-amt { font-family: var(--font-display); font-weight: 800; fill: currentColor; }
+
+/* ---- section framing -------------------------------------- */
+.band { padding-block: clamp(3rem, 7vw, 5rem); }
+.band--rag { background: var(--rag); color: var(--ink); }
+.band__head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; border-bottom: 2px solid var(--rag-2); padding-bottom: 0.9rem; }
+.band__title { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: clamp(1.6rem, 4vw, 2.4rem); letter-spacing: 0.01em; }
+
+/* pillars — NOT a numbered sequence, so no 01/02/03 */
+.pillars { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0; }
+.pillar { padding: 1.4rem 1.5rem; border-top: 3px solid var(--oxblood); background: transparent; }
+.pillar + .pillar { border-left: 1px solid var(--rag-2); }
+.pillar h3 { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; font-size: 1.3rem; margin-bottom: 0.35rem; }
+.pillar p { color: var(--on-rag-dim); font-size: 0.97rem; }
+.pillar .tag { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--brass); }
+
+/* stack strip */
+.stack { display: flex; flex-wrap: wrap; gap: 0.6rem 1.4rem; font-family: var(--font-mono); font-size: 0.82rem; color: var(--on-rag-dim); }
+.stack span { white-space: nowrap; }
+.stack b { color: var(--ink); font-weight: 700; }
+
+/* ---- cta band --------------------------------------------- */
+.enlist { background: var(--oxblood); color: var(--rag); }
+.enlist__in { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; padding-block: clamp(2.2rem, 5vw, 3.2rem); }
+.enlist h2 { font-family: var(--font-display); font-weight: 800; text-transform: uppercase; font-size: clamp(1.8rem, 4.5vw, 3rem); line-height: 0.95; }
+.enlist p { color: #f2d9c9; font-family: var(--font-mono); font-size: 0.85rem; margin-top: 0.4rem; }
+
+/* ---- footer ----------------------------------------------- */
+.site-footer { background: var(--navy); color: var(--on-navy-dim); padding-block: 2.5rem; border-top: 3px solid var(--brass); }
+.site-footer__in { display: grid; grid-template-columns: 1.3fr 1fr; gap: 2rem; align-items: start; }
+.site-footer__quote { font-family: var(--font-display); font-weight: 400; font-size: 1.15rem; color: var(--on-navy); max-width: 34ch; }
+.site-footer__quote cite { display: block; margin-top: 0.5rem; font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.08em; color: var(--brass); font-style: normal; }
+.site-footer__links { display: flex; flex-direction: column; gap: 0.5rem; font-family: var(--font-mono); font-size: 0.82rem; }
+.site-footer__links a:hover { color: var(--on-navy); border-bottom: 1px solid var(--brass); width: max-content; }
+.site-footer__meta { grid-column: 1 / -1; margin-top: 1.5rem; padding-top: 1.2rem; border-top: 1px solid rgba(183,188,203,0.2); font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.04em; }
+
+/* ---- simple content page (apps/guides stubs) -------------- */
+.page { padding-block: clamp(3rem, 8vw, 6rem); min-height: 50vh; }
+.page h1 { font-family: var(--font-display); font-weight: 800; text-transform: uppercase; font-size: clamp(2.4rem, 7vw, 4.5rem); line-height: 0.9; }
+.page .lede { font-size: 1.15rem; color: var(--on-rag-dim); max-width: 48ch; margin-block: 1rem 1.8rem; }
+.page ul { padding-left: 1.1rem; display: grid; gap: 0.5rem; max-width: 46ch; }
+
+/* ---- responsive ------------------------------------------- */
+@media (max-width: 52rem) {
+  .hero__in { grid-template-columns: 1fr; }
+  .hero__art { order: -1; max-width: 20rem; margin-inline: auto; }
+  .site-footer__in { grid-template-columns: 1fr; }
+  .pillar + .pillar { border-left: 0; }
+  .band__head .flagrule { display: none; }
+}
+@media (max-width: 40rem) {
+  .nav__in { flex-wrap: wrap; row-gap: 0.3rem; }
+  .nav__links { width: 100%; gap: 1.25rem; }
+  .nav__links .hide-sm { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto; }
+  .btn { transition: none; }
+  .btn:hover { transform: none; }
+}

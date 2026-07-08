@@ -1,0 +1,24 @@
+---
+const repo = "https://github.com/ericdmoore/bullmoose.cc";
+const links = [
+  { href: "/#what", label: "What it does", hideSm: true },
+  { href: "/apps", label: "Apps" },
+  { href: "/guides", label: "Guides" },
+  { href: repo, label: "GitHub ↗", cta: true },
+];
+---
+
+<header class="nav">
+  <div class="wrap nav__in">
+    <a class="nav__brand" href="/"><img src="/favicon.svg" alt="" width="27" height="27" /> bullmoose</a>
+    <nav class="nav__links" aria-label="Primary">
+      {
+        links.map((l) => (
+          <a href={l.href} class={[l.cta && "is-cta", l.hideSm && "hide-sm"].filter(Boolean).join(" ") || undefined}>
+            {l.label}
+          </a>
+        ))
+      }
+    </nav>
+  </div>
+</header>
