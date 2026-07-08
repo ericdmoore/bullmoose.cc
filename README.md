@@ -3,11 +3,14 @@
 </p>
 
 <h1 align="center">bullmoose</h1>
-<p align="center">
-  <a href="https://quoteinvestigator.com/2022/12/17/what-you-can/" target="_blank">
-    <em>“Do what you can, with what you’ve got, where you are.” - Bill Widener (made popular by Theodore Roosevelt)</em>
-  </a>
-</p>
+<a href="https://quoteinvestigator.com/2022/12/17/what-you-can/" target="_blank">
+  <p align="center">
+    <em>“Do what you can,</em> <br/>
+    <em>with what you’ve got, </em><br/>
+    <em>from where you are.” </em><br/>
+    <em>- Bill Widener (made popular by Theodore Roosevelt)</em>
+  </p>
+</a>
 
 **bullmoose is a self-hosted personal-data platform — email, contacts,
 calendar, and email-native agents — that runs serverless on
