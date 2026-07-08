@@ -6,6 +6,10 @@ export const SUBMISSION_CAP = "urn:ietf:params:jmap:submission";
 export const WEBSOCKET_CAP = "urn:ietf:params:jmap:websocket";
 export const VACATION_CAP = "urn:ietf:params:jmap:vacationresponse";
 export const CONTACTS_CAP = "urn:ietf:params:jmap:contacts";
+/** JMAP for Calendars is still an IETF draft; we advertise the URN and
+ * implement the pragmatic core (Calendar/CalendarEvent CRUD + query +
+ * changes + a bullmoose occurrence expansion helper). */
+export const CALENDARS_CAP = "urn:ietf:params:jmap:calendars";
 /** Vendor capability: AgentInvocation queue etc. (agent-integration.md). */
 export const AGENT_CAP = "urn:bullmoose:params:jmap:agent";
 

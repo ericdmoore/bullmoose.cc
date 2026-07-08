@@ -200,6 +200,54 @@ CREATE INDEX IF NOT EXISTS contact_cards_book
 CREATE INDEX IF NOT EXISTS contact_cards_updated
   ON contact_cards (account_id, updated_at);
 
+-- Calendars (JSCalendar-on-JMAP, Phase 4) — the contacts pattern
+-- verbatim: blob = source of truth, extracted columns for queries,
+-- per-collection ctag for the Phase 5 CalDAV poll short-circuit.
+CREATE TABLE IF NOT EXISTS calendars (
+  id            TEXT NOT NULL,
+  account_id    TEXT NOT NULL,
+  name          TEXT NOT NULL,
+  description   TEXT,
+  color         TEXT,
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  is_default    INTEGER NOT NULL DEFAULT 0,
+  is_subscribed INTEGER NOT NULL DEFAULT 1,
+  ctag          INTEGER NOT NULL DEFAULT 0,
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL,
+  PRIMARY KEY (account_id, id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS calendars_default
+  ON calendars (account_id) WHERE is_default = 1;
+
+-- event_json = the JSCalendar Event (RFC 8984), lossless. start_at /
+-- end_at index the event's OUTER span in UTC ms: first occurrence start
+-- → last occurrence end, with NULL end for unbounded recurrences (reads
+-- as +infinity in time-range queries). Recurrence expansion is always
+-- on-demand and capped (calendar-core) — never pre-computed rows.
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id           TEXT NOT NULL,
+  account_id   TEXT NOT NULL,
+  calendar_id  TEXT NOT NULL,
+  uid          TEXT NOT NULL,
+  event_json   TEXT NOT NULL,
+  title        TEXT,
+  start_at     INTEGER,
+  end_at       INTEGER,
+  is_recurring INTEGER NOT NULL DEFAULT 0,
+  dav_name     TEXT,                    -- reserved for Phase 5 CalDAV
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  PRIMARY KEY (account_id, id),
+  UNIQUE (account_id, uid)
+);
+CREATE INDEX IF NOT EXISTS calendar_events_cal
+  ON calendar_events (account_id, calendar_id);
+CREATE INDEX IF NOT EXISTS calendar_events_span
+  ON calendar_events (account_id, start_at);
+CREATE INDEX IF NOT EXISTS calendar_events_updated
+  ON calendar_events (account_id, updated_at);
+
 -- DAV tombstones: a sync-collection REPORT must answer "what was
 -- deleted" with the RESOURCE NAME the client knows, but the AccountDO
 -- changelog only carries ids. Every contact-card destroy (JMAP or DAV)

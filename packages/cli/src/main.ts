@@ -23,6 +23,7 @@ import { cmdLogin, cmdToken } from "./tokens.js";
 import { agentServe, loadAgentConfig } from "./agent.js";
 import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
+import { cmdCalendar } from "./calendar.js";
 
 const HELP = `bullmoose — JMAP sync client with a local SQLite message log
 
@@ -72,6 +73,9 @@ Usage:
                  Export → Export vCard…
   bullmoose contacts list [--book <name-or-id>] [-n <count>] [--json]
   bullmoose contacts show <cardId> [--json]
+  bullmoose calendar list [--json]
+  bullmoose calendar agenda [--days <n>] [--json]
+                 upcoming occurrences, recurrence-expanded server-side
   bullmoose creds init --url <agent-worker-url>
   bullmoose creds set <name> --kind api-key|oauth-refresh [--secret <s>]
                  [--secret-env VAR] [--meta k=v,...]   (else hidden prompt)
@@ -172,6 +176,7 @@ const { values: opts, positionals } = parseArgs({
     "client-secret": { type: "string" },
     "oauth-scopes": { type: "string" },
     port: { type: "string" },
+    days: { type: "string" },
     sla: { type: "string" },
     allow: { type: "string" },
     "reply-mode": { type: "string" },
@@ -245,6 +250,13 @@ try {
         book: opts.book,
         json: opts.json ?? false,
         n: opts.n,
+      });
+      break;
+    case "calendar":
+      await cmdCalendar(db, positionals.slice(1), {
+        account: opts.account,
+        days: opts.days,
+        json: opts.json ?? false,
       });
       break;
     case "creds":

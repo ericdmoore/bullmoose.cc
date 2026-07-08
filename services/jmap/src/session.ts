@@ -1,5 +1,6 @@
 import {
   AGENT_CAP,
+  CALENDARS_CAP,
   CONTACTS_CAP,
   CORE_CAP,
   MAIL_CAP,
@@ -32,6 +33,7 @@ export function buildSession(origin: string, principal: Principal): Session {
               [SUBMISSION_CAP]: { maxDelayedSend: 0, submissionExtensions: {} },
               [VACATION_CAP]: {},
               [CONTACTS_CAP]: contactsCapability,
+              [CALENDARS_CAP]: {},
               [AGENT_CAP]: {},
             }
           : { [CONTACTS_CAP]: contactsCapability },
@@ -47,6 +49,7 @@ export function buildSession(origin: string, principal: Principal): Session {
         [SUBMISSION_CAP]: { maxDelayedSend: 0, submissionExtensions: {} },
         [VACATION_CAP]: {},
         [CONTACTS_CAP]: contactsCapability,
+        [CALENDARS_CAP]: {},
         [AGENT_CAP]: {},
       },
     };
@@ -62,11 +65,17 @@ export function buildSession(origin: string, principal: Principal): Session {
       [SUBMISSION_CAP]: {},
       [VACATION_CAP]: {},
       [CONTACTS_CAP]: {},
+      [CALENDARS_CAP]: {},
       [AGENT_CAP]: {},
       [WEBSOCKET_CAP]: { url: `${wsOrigin}/api/ws`, supportsPush: true },
     },
     accounts,
-    primaryAccounts: { [MAIL_CAP]: primary, [SUBMISSION_CAP]: primary, [CONTACTS_CAP]: primary },
+    primaryAccounts: {
+      [MAIL_CAP]: primary,
+      [SUBMISSION_CAP]: primary,
+      [CONTACTS_CAP]: primary,
+      [CALENDARS_CAP]: primary,
+    },
     username: principal.username,
     apiUrl: `${origin}/api/jmap`,
     downloadUrl: `${origin}/api/download/{accountId}/{blobId}/{name}?type={type}`,

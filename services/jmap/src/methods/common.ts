@@ -82,10 +82,16 @@ export async function proxyChanges(
     | "EmailSubmission"
     | "AgentInvocation"
     | "AddressBook"
-    | "ContactCard",
+    | "ContactCard"
+    | "Calendar"
+    | "CalendarEvent",
 ): Promise<Record<string, unknown>> {
   const domain =
-    collection === "AddressBook" || collection === "ContactCard" ? "contacts" : "mail";
+    collection === "AddressBook" || collection === "ContactCard"
+      ? "contacts"
+      : collection === "Calendar" || collection === "CalendarEvent"
+        ? "calendar"
+        : "mail";
   const access = await requireAccount(ctx, args, "read", domain);
   const since = args.sinceState;
   if (typeof since !== "string") {

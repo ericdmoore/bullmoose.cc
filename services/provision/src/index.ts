@@ -510,6 +510,7 @@ const GRANTABLE_SCOPES = new Set([
   "send",
   "delete",
   "contacts",
+  "calendar",
   "mail",
 ]);
 

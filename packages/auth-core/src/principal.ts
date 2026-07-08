@@ -183,14 +183,16 @@ export function principalHasScope(principal: Principal, scope: string): boolean 
   return hasScope(principal.scopes, scope);
 }
 
-/** Method domains for grant coverage: an AddressBook-scoped grant only
- * unlocks contacts methods; a whole-account grant covers any domain its
- * scopes allow. */
-export type MethodDomain = "mail" | "contacts";
+/** Method domains for grant coverage: a collection-scoped grant only
+ * unlocks its domain's methods; a whole-account grant covers any domain
+ * its scopes allow. */
+export type MethodDomain = "mail" | "contacts" | "calendar";
 
 function grantCoversDomain(g: GrantRef, domain: MethodDomain): boolean {
   if (g.collection === null) return true;
-  return g.collection === "AddressBook" && domain === "contacts";
+  if (g.collection === "AddressBook") return domain === "contacts";
+  if (g.collection === "Calendar") return domain === "calendar";
+  return false;
 }
 
 /** Grants on this access that satisfy scope+domain (empty for owners). */

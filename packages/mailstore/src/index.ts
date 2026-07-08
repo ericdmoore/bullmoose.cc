@@ -152,6 +152,56 @@ export interface ContactCardRow {
   updatedAt: number;
 }
 
+export interface CalendarRow {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  sortOrder: number;
+  isDefault: boolean;
+  isSubscribed: boolean;
+  ctag: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** JSCalendar Event (RFC 8984) — stored losslessly; open object. */
+export type JSCalendarEventBlob = Record<string, unknown>;
+
+export interface CalendarEventRow {
+  id: string;
+  calendarId: string;
+  uid: string;
+  event: JSCalendarEventBlob;
+  title: string | null;
+  /** Outer span in UTC ms; endAt null = unbounded recurrence. */
+  startAt: number | null;
+  endAt: number | null;
+  isRecurring: boolean;
+  davName: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CalendarEventFilterCondition {
+  inCalendar?: string;
+  uid?: string;
+  /** UTCDate: occurrence span must end after this. */
+  after?: string;
+  /** UTCDate: occurrence span must start before this. */
+  before?: string;
+  text?: string;
+  title?: string;
+}
+
+export interface CalendarEventQuery {
+  filter?: CalendarEventFilterCondition | null;
+  sort?: Array<{ property: "start" | "updated" | "created"; isAscending: boolean }>;
+  position?: number;
+  limit?: number;
+  calculateTotal?: boolean;
+}
+
 /** JMAP ContactCard/query filter (RFC 9610 §4.4.1), the subset we support. */
 export type ContactFilter = ContactFilterOperator | ContactFilterCondition;
 
@@ -1212,6 +1262,388 @@ export class Mailstore {
       );
     }
     return clauses.length > 0 ? clauses.join(" AND ") : "1=1";
+  }
+
+  // ---- Calendars (JSCalendar-on-JMAP, Phase 4) -----------------------
+
+  async getCalendars(accountId: string, ids?: string[]): Promise<CalendarRow[]> {
+    const cols = `id, name, description, color, sort_order, is_default, is_subscribed,
+                  ctag, created_at, updated_at`;
+    type Row = {
+      id: string;
+      name: string;
+      description: string | null;
+      color: string | null;
+      sort_order: number;
+      is_default: number;
+      is_subscribed: number;
+      ctag: number;
+      created_at: number;
+      updated_at: number;
+    };
+    const results: Row[] = [];
+    if (ids && ids.length > 0) {
+      for (const chunk of chunked(ids)) {
+        const marks = chunk.map(() => "?").join(",");
+        const { results: r } = await this.db
+          .prepare(`SELECT ${cols} FROM calendars WHERE account_id = ? AND id IN (${marks})`)
+          .bind(accountId, ...chunk)
+          .all<Row>();
+        results.push(...r);
+      }
+    } else {
+      const { results: r } = await this.db
+        .prepare(`SELECT ${cols} FROM calendars WHERE account_id = ? ORDER BY sort_order, name`)
+        .bind(accountId)
+        .all<Row>();
+      results.push(...r);
+    }
+    return results.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      color: r.color,
+      sortOrder: r.sort_order,
+      isDefault: r.is_default === 1,
+      isSubscribed: r.is_subscribed === 1,
+      ctag: r.ctag,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  async insertCalendar(accountId: string, cal: CalendarRow): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO calendars
+           (id, account_id, name, description, color, sort_order, is_default, is_subscribed,
+            ctag, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        cal.id,
+        accountId,
+        cal.name,
+        cal.description,
+        cal.color,
+        cal.sortOrder,
+        cal.isDefault ? 1 : 0,
+        cal.isSubscribed ? 1 : 0,
+        cal.ctag,
+        cal.createdAt,
+        cal.updatedAt,
+      )
+      .run();
+  }
+
+  async updateCalendar(
+    accountId: string,
+    id: string,
+    patch: {
+      name?: string;
+      description?: string | null;
+      color?: string | null;
+      sortOrder?: number;
+      isSubscribed?: boolean;
+    },
+  ): Promise<void> {
+    const sets: string[] = ["updated_at = ?"];
+    const params: unknown[] = [Date.now()];
+    if (patch.name !== undefined) {
+      sets.push("name = ?");
+      params.push(patch.name);
+    }
+    if (patch.description !== undefined) {
+      sets.push("description = ?");
+      params.push(patch.description);
+    }
+    if (patch.color !== undefined) {
+      sets.push("color = ?");
+      params.push(patch.color);
+    }
+    if (patch.sortOrder !== undefined) {
+      sets.push("sort_order = ?");
+      params.push(patch.sortOrder);
+    }
+    if (patch.isSubscribed !== undefined) {
+      sets.push("is_subscribed = ?");
+      params.push(patch.isSubscribed ? 1 : 0);
+    }
+    await this.db
+      .prepare(`UPDATE calendars SET ${sets.join(", ")} WHERE account_id = ? AND id = ?`)
+      .bind(...params, accountId, id)
+      .run();
+  }
+
+  async deleteCalendar(accountId: string, id: string): Promise<void> {
+    await this.db
+      .prepare(`DELETE FROM calendars WHERE account_id = ? AND id = ?`)
+      .bind(accountId, id)
+      .run();
+  }
+
+  async setDefaultCalendar(accountId: string, id: string): Promise<void> {
+    await this.db.batch([
+      this.db
+        .prepare(`UPDATE calendars SET is_default = 0 WHERE account_id = ? AND is_default = 1`)
+        .bind(accountId),
+      this.db
+        .prepare(`UPDATE calendars SET is_default = 1 WHERE account_id = ? AND id = ?`)
+        .bind(accountId, id),
+    ]);
+  }
+
+  /** Resolve the default calendar, creating "Calendar" on first touch. */
+  async ensureDefaultCalendar(
+    accountId: string,
+  ): Promise<{ id: string; change: "created" | "updated" | null }> {
+    const existing = await this.db
+      .prepare(`SELECT id FROM calendars WHERE account_id = ? AND is_default = 1`)
+      .bind(accountId)
+      .first<{ id: string }>();
+    if (existing) return { id: existing.id, change: null };
+    const oldest = await this.db
+      .prepare(`SELECT id FROM calendars WHERE account_id = ? ORDER BY created_at LIMIT 1`)
+      .bind(accountId)
+      .first<{ id: string }>();
+    if (oldest) {
+      await this.setDefaultCalendar(accountId, oldest.id);
+      return { id: oldest.id, change: "updated" };
+    }
+    const id = `cal_${crypto.randomUUID()}`;
+    const now = Date.now();
+    await this.insertCalendar(accountId, {
+      id,
+      name: "Calendar",
+      description: null,
+      color: null,
+      sortOrder: 0,
+      isDefault: true,
+      isSubscribed: true,
+      ctag: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { id, change: "created" };
+  }
+
+  async bumpCalendarCtags(accountId: string, ids: Iterable<string>): Promise<void> {
+    for (const chunk of chunked([...new Set(ids)])) {
+      const marks = chunk.map(() => "?").join(",");
+      await this.db
+        .prepare(`UPDATE calendars SET ctag = ctag + 1 WHERE account_id = ? AND id IN (${marks})`)
+        .bind(accountId, ...chunk)
+        .run();
+    }
+  }
+
+  async eventIdsInCalendar(accountId: string, calendarId: string): Promise<string[]> {
+    const { results } = await this.db
+      .prepare(`SELECT id FROM calendar_events WHERE account_id = ? AND calendar_id = ?`)
+      .bind(accountId, calendarId)
+      .all<{ id: string }>();
+    return results.map((r) => r.id);
+  }
+
+  // ---- Calendar events -----------------------------------------------
+
+  async getCalendarEvents(accountId: string, ids?: string[]): Promise<CalendarEventRow[]> {
+    const cols = `id, calendar_id, uid, event_json, title, start_at, end_at, is_recurring,
+                  dav_name, created_at, updated_at`;
+    type Row = {
+      id: string;
+      calendar_id: string;
+      uid: string;
+      event_json: string;
+      title: string | null;
+      start_at: number | null;
+      end_at: number | null;
+      is_recurring: number;
+      dav_name: string | null;
+      created_at: number;
+      updated_at: number;
+    };
+    const rows: Row[] = [];
+    if (ids && ids.length > 0) {
+      for (const chunk of chunked(ids)) {
+        const marks = chunk.map(() => "?").join(",");
+        const { results } = await this.db
+          .prepare(`SELECT ${cols} FROM calendar_events WHERE account_id = ? AND id IN (${marks})`)
+          .bind(accountId, ...chunk)
+          .all<Row>();
+        rows.push(...results);
+      }
+    } else {
+      const { results } = await this.db
+        .prepare(`SELECT ${cols} FROM calendar_events WHERE account_id = ? ORDER BY start_at, id`)
+        .bind(accountId)
+        .all<Row>();
+      rows.push(...results);
+    }
+    return rows.map((r) => ({
+      id: r.id,
+      calendarId: r.calendar_id,
+      uid: r.uid,
+      event: JSON.parse(r.event_json) as JSCalendarEventBlob,
+      title: r.title,
+      startAt: r.start_at,
+      endAt: r.end_at,
+      isRecurring: r.is_recurring === 1,
+      davName: r.dav_name,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
+  }
+
+  async calendarEventIdsByUids(accountId: string, uids: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    for (const chunk of chunked(uids)) {
+      const marks = chunk.map(() => "?").join(",");
+      const { results } = await this.db
+        .prepare(`SELECT id, uid FROM calendar_events WHERE account_id = ? AND uid IN (${marks})`)
+        .bind(accountId, ...chunk)
+        .all<{ id: string; uid: string }>();
+      for (const r of results) out.set(r.uid, r.id);
+    }
+    return out;
+  }
+
+  async insertCalendarEvents(accountId: string, rows: CalendarEventRow[]): Promise<void> {
+    if (rows.length === 0) return;
+    await this.db.batch(
+      rows.map((row) =>
+        this.db
+          .prepare(
+            `INSERT INTO calendar_events
+               (id, account_id, calendar_id, uid, event_json, title, start_at, end_at,
+                is_recurring, dav_name, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            row.id,
+            accountId,
+            row.calendarId,
+            row.uid,
+            JSON.stringify(row.event),
+            row.title,
+            row.startAt,
+            row.endAt,
+            row.isRecurring ? 1 : 0,
+            row.davName,
+            row.createdAt,
+            row.updatedAt,
+          ),
+      ),
+    );
+  }
+
+  async updateCalendarEvent(accountId: string, row: CalendarEventRow): Promise<void> {
+    await this.db
+      .prepare(
+        `UPDATE calendar_events
+         SET calendar_id = ?, event_json = ?, title = ?, start_at = ?, end_at = ?,
+             is_recurring = ?, dav_name = ?, updated_at = ?
+         WHERE account_id = ? AND id = ?`,
+      )
+      .bind(
+        row.calendarId,
+        JSON.stringify(row.event),
+        row.title,
+        row.startAt,
+        row.endAt,
+        row.isRecurring ? 1 : 0,
+        row.davName,
+        row.updatedAt,
+        accountId,
+        row.id,
+      )
+      .run();
+  }
+
+  async destroyCalendarEvents(accountId: string, ids: string[]): Promise<void> {
+    for (const chunk of chunked(ids)) {
+      const marks = chunk.map(() => "?").join(",");
+      await this.db
+        .prepare(`DELETE FROM calendar_events WHERE account_id = ? AND id IN (${marks})`)
+        .bind(accountId, ...chunk)
+        .run();
+    }
+  }
+
+  /**
+   * CalendarEvent/query candidates by indexed OUTER span; time-range
+   * refinement against actual occurrences happens in the method layer
+   * (calendar-core expansion — the span can over-include, never miss).
+   */
+  async queryCalendarEvents(
+    accountId: string,
+    query: CalendarEventQuery,
+  ): Promise<{ ids: string[]; position: number; total?: number }> {
+    const params: unknown[] = [accountId];
+    const clauses: string[] = [];
+    const c = query.filter ?? {};
+    if (c.inCalendar !== undefined) {
+      clauses.push(`e.calendar_id = ?`);
+      params.push(c.inCalendar);
+    }
+    if (c.uid !== undefined) {
+      clauses.push(`e.uid = ?`);
+      params.push(c.uid);
+    }
+    if (c.before !== undefined) {
+      clauses.push(`e.start_at IS NOT NULL AND e.start_at < ?`);
+      params.push(Date.parse(c.before));
+    }
+    if (c.after !== undefined) {
+      clauses.push(`(e.end_at IS NULL OR e.end_at > ?)`);
+      params.push(Date.parse(c.after));
+    }
+    if (c.title !== undefined) {
+      clauses.push(`COALESCE(e.title, '') LIKE ? ESCAPE '\\'`);
+      params.push(`%${escapeLike(c.title)}%`);
+    }
+    if (c.text !== undefined) {
+      const like = `%${escapeLike(c.text)}%`;
+      clauses.push(
+        `(COALESCE(e.title, '') LIKE ? ESCAPE '\\'
+          OR COALESCE(json_extract(e.event_json, '$.description'), '') LIKE ? ESCAPE '\\')`,
+      );
+      params.push(like, like);
+    }
+    const where = clauses.length > 0 ? clauses.join(" AND ") : "1=1";
+
+    const SORT: Record<string, string> = {
+      start: "e.start_at",
+      updated: "e.updated_at",
+      created: "e.created_at",
+    };
+    const sort = (query.sort ?? [{ property: "start", isAscending: true }])
+      .map((s) => `${SORT[s.property] ?? "e.start_at"} ${s.isAscending ? "ASC" : "DESC"}`)
+      .join(", ");
+
+    const position = Math.max(0, query.position ?? 0);
+    const limit = Math.min(Math.max(1, query.limit ?? 100), 256);
+
+    const { results } = await this.db
+      .prepare(
+        `SELECT e.id FROM calendar_events e WHERE e.account_id = ? AND (${where})
+         ORDER BY ${sort}, e.id LIMIT ? OFFSET ?`,
+      )
+      .bind(...params, limit, position)
+      .all<{ id: string }>();
+
+    const out: { ids: string[]; position: number; total?: number } = {
+      ids: results.map((r) => r.id),
+      position,
+    };
+    if (query.calculateTotal) {
+      const row = await this.db
+        .prepare(`SELECT COUNT(*) AS n FROM calendar_events e WHERE e.account_id = ? AND (${where})`)
+        .bind(...params)
+        .first<{ n: number }>();
+      out.total = row?.n ?? 0;
+    }
+    return out;
   }
 
   // ---- Identities (control plane, same shard for MVP) ---------------
