@@ -149,7 +149,7 @@ detail, [`docs/README.md`](docs/README.md) is the use-case cookbook (agents
 included), and [`tools/`](tools/README.md) holds the eight e2e suites
 everything is verified against.
 
-## Agent-backed accounts — cloud or homelab
+## Agent-backed accounts — cloud or local/homelab
 
 An agent is an ordinary account plus a **binding**. Create the mailbox, bind a
 runtime to it, and every delivery enqueues an `AgentInvocation`; `--sla` arms a
