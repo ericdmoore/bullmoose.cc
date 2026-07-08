@@ -50,11 +50,16 @@ npx wrangler d1 execute bullmoose-mail-shard0 --remote --file packages/mailstore
 ## 2. Deploy (order matters — binding graph)
 
 ```sh
-npm run -w services/submit    deploy   # 1. no dependencies
-npm run -w services/jmap      deploy   # 2. declares AccountDO; binds SUBMIT
-npm run -w services/ingest    deploy   # 3. binds AccountDO from jmap
-npm run -w services/provision deploy   # 4. control plane
+npm run -w services/submit        deploy   # 1. no dependencies
+npm run -w services/jmap          deploy   # 2. declares AccountDO; binds SUBMIT
+npm run -w services/ingest        deploy   # 3. binds AccountDO from jmap
+npm run -w services/provision     deploy   # 4. control plane
+npm run -w services/agent         deploy   # 5. agent runtime + vault + MCP (binds AccountDO)
+npm run -w services/anglebrackets deploy   # 6. CardDAV/CalDAV face (binds AccountDO)
 ```
+
+Agent-worker extras: `wrangler secret put VAULT_MASTER_KEY -c
+services/agent/wrangler.jsonc` (credential vault; `openssl rand -hex 32`).
 
 ## 3. Secrets
 

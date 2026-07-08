@@ -1,38 +1,142 @@
-# bullmoose.cc
-My hat is still in the ring
+<p align="center">
+  <img src="docs/assets/logo.svg" width="240" alt="bullmoose — a bull moose in stars and stripes, walking right" />
+</p>
 
-## Mail platform
+<h1 align="center">bullmoose</h1>
+<p align="center"><em>My hat is still in the ring.</em></p>
 
-A serverless JMAP mail server (multi-domain) is being built in this repo:
-Cloudflare Workers + Durable Objects + D1 + R2 for the mailstore and sync,
-AWS SES for outbound. Design doc: [`docs/architecture/serverless-jmap.md`](docs/architecture/serverless-jmap.md).
+**bullmoose is a self-hosted personal-data platform — email, contacts,
+calendar, and email-native agents — that runs serverless on Cloudflare's
+free tier.** Your domain, your data, one core: modern clients speak
+JMAP, Apple devices sync over CardDAV/CalDAV, legacy apps reach mail
+through a POP3/SMTP shim, and agents are simply mailboxes with a
+runtime attached. A typical personal deployment costs **$0/month**
+(plus your domain).
+
+## What it does
+
+- **Mail on your own domain** — a full JMAP server (RFC 8620/8621):
+  send, receive, threads, search, push, drafts, vacation responses.
+  Inbound arrives via Cloudflare Email Routing; outbound relays through
+  AWS SES with DKIM/SPF/DMARC wired by the provisioning API.
+- **Contacts and calendar as the source of truth** — JSContact
+  (RFC 9553/9610) and JSCalendar (RFC 8984) stored losslessly, with a
+  capped on-demand recurrence engine (DST-correct, timezone-aware) and
+  CLI importers to converge your existing data in (vCard exports,
+  Google Calendar).
+- **Native app sync** — the `anglebrackets` worker serves CardDAV +
+  CalDAV (the minimal verb subset real clients use), so Apple
+  Contacts/Calendar sync against the same core your agents read. Idle
+  device polls cost one row read.
+- **Agents as mailboxes** — bind a runtime to an address
+  (`editor@`, `analyst@`) and it replies, extracts receipts into a
+  spend ledger, or runs your own pipeline; SLA watchdogs auto-respond
+  if an agent goes quiet. A read-only analytics MCP gives agents safe
+  tools over the message log with zero external credentials.
+- **Sharing and delegation, built correctly** — cross-account grants
+  (effective rights = token ∩ grant, every access audited) back both
+  agent delegation and family sharing (`AddressBook.shareWith`); a
+  write-only, envelope-encrypted credential vault holds third-party
+  API keys and OAuth refresh tokens.
+- **A real CLI** — `bullmoose`: login/autodiscovery, offline-capable
+  sync to local SQLite, send (Markdown → MIME with inline images and
+  big-file links), watch (live push), contacts/calendar import and
+  agenda, token/grant/credential administration.
+
+## Who it's for
+
+- **Self-hosters** who want mail + contacts + calendar on their own
+  domain without running (or trusting) a mail VPS — there are no
+  servers here to patch.
+- **Families** — multi-tenant schema, shared address books, per-device
+  revocable app-passwords.
+- **Agent builders** who want email-native agents with real tools,
+  scoped delegated access, and an auditable trail — not a bot with
+  your whole inbox password.
+- **Protocol tinkerers** — a compact, readable implementation of the
+  modern IETF personal-data stack (see the table below), e2e-tested
+  against real clients and real data.
+
+## The stack, standard by standard
+
+| layer | contacts | calendar | mail |
+|---|---|---|---|
+| JSON model | JSContact — RFC 9553 | JSCalendar — RFC 8984 | JMAP Mail — RFC 8621 |
+| JMAP methods | RFC 9610 | draft-ietf-jmap-calendars (pragmatic core) | RFC 8620/8621 |
+| DAV / wire | vCard 6350 over CardDAV 6352 | iCalendar 5545 over CalDAV 4791 | POP3/SMTP via the popcorn shim |
+| translation | RFC 9555 | JSCalendar⇄iCalendar | RFC 5322 MIME |
+
+## How it's built
+
+Five stateless workers around one stateful actor: each account has a
+**Durable Object** owning a monotonic state sequence and a
+collection-agnostic changelog — mail, contacts, calendar, and agent
+queues all sync through the same commit/`/changes`/push machinery. D1
+holds metadata and JSON documents; R2 holds bytes (raw messages,
+attachments, contact photos). Rationale, diagrams, and the free-tier
+capacity story live in [`docs/architecture/`](docs/architecture/README.md).
 
 ```
-packages/jmap-core    JMAP wire types, errors, method dispatch (RFC 8620)
-packages/account-do   per-account Durable Object: state, changelog, WS push
-packages/mailstore    D1 schemas + data access, R2 blob keyspace
-packages/mime         minimal RFC 5322 builder for drafts
-packages/outbound     OutboundRelay adapter (SES via SigV4 fetch)
-packages/cli          `bullmoose` — JMAP sync client with a local SQLite
-                      message log (same schema as the server data plane)
-services/jmap         JMAP endpoint: session, Email/Mailbox/Thread/Identity/
-                      EmailSubmission methods, upload/download, ws push
-services/ingest       Email Routing target: parse → R2/D1 → state bump
-services/submit       outbound relay (SES) + bounce/complaint webhook
-services/provision    multi-domain onboarding: CF zone/DNS + SES identity
-infra/                bootstrap runbook (D1/R2/KV creation, deploy order)
-tools/                end-to-end test suites (run against wrangler dev)
-src/                  the existing bullmoose.cc Fresh site (unchanged)
+packages/jmap-core       JMAP wire types, errors, dispatch (RFC 8620)
+packages/account-do      per-account Durable Object: state, changelog, push, alarms
+packages/mailstore       D1 schemas + data access, R2 blob keyspace
+packages/auth-core       tokens, scopes, grants, vault envelope crypto
+packages/contacts-core   vCard ⇄ JSContact (RFC 9555)
+packages/calendar-core   recurrence/timezone engine, iCalendar ⇄ JSCalendar
+packages/mime            RFC 5322 builder · packages/outbound  SES relay
+packages/cli             the `bullmoose` command
+packages/popcorn         POP3S/SMTPS → JMAP shim (Go) for legacy clients
+
+services/jmap            JMAP endpoint: mail/contacts/calendar methods, auth, push
+services/ingest          Email Routing target: parse → R2/D1 → state bump
+services/submit          outbound relay (SES) + webhooks
+services/provision       onboarding API: zones, DNS, SES identities, accounts, grants
+services/agent           agent runtime, credential vault, analytics MCP
+services/anglebrackets   CardDAV/CalDAV over the same core
+
+infra/                   bootstrap runbook · tools/  e2e suites
+src/                     the bullmoose.cc Fresh site (unrelated to the platform)
 ```
 
-Dev: `npm install && npm run typecheck`, then `npm run dev:jmap`.
-Deploy: see [`docs/DEPLOY.md`](docs/DEPLOY.md).
+## Deploying your own
 
-### Roadmap
+Prerequisites: a domain on a Cloudflare account (free plan works), an
+AWS account for SES outbound, Node 22+.
 
-1. **Deploy** — first light: real inbound at bullmoose.cc (`docs/DEPLOY.md`)
-2. **SRV autodiscovery** — `bullmoose init eric@moore.coffee` (RFC 8620 §2.2)
-3. **Multi-account CLI** — one session, many inboxes, batched sync
-4. **Armed-responder policies + agent harness** — vacation/watchdog/follow-up
-   as one primitive; `urn:bullmoose:agent` collections + `packages/agent-harness`
-   (see `docs/architecture/agent-integration.md`)
+```sh
+npm install && npm run typecheck
+
+# 1. create resources, apply schemas          (docs/DEPLOY.md §1)
+npx wrangler d1 create ... && npx wrangler r2 bucket create ...
+
+# 2. deploy the workers (order matters — binding graph)
+npm run -w services/submit        deploy
+npm run -w services/jmap          deploy   # declares the AccountDO
+npm run -w services/ingest        deploy
+npm run -w services/provision     deploy
+npm run -w services/agent         deploy
+npm run -w services/anglebrackets deploy
+
+# 3. onboard your domain and first account
+bullmoose admin domain add example.com --tenant t_you
+bullmoose admin account create you@example.com --tenant t_you
+bullmoose login you@example.com
+```
+
+The full checklist — secrets, SES verification, first-light testing —
+is [`docs/DEPLOY.md`](docs/DEPLOY.md). Then:
+[`docs/carddav-setup.md`](docs/carddav-setup.md) connects Apple
+Contacts/Calendar, [`docs/README.md`](docs/README.md) is the use-case
+cookbook (agents included), and
+[`tools/`](tools/README.md) holds the eight e2e suites everything is
+verified against.
+
+## Status
+
+Live and e2e-tested: the full mail surface, contacts + CardDAV,
+calendar + CalDAV, grants/sharing, the credential vault, agent
+pipelines, and the CLI. Deliberately out of scope for now: calendar
+scheduling (iTIP/iMIP), WebDAV LOCK/COPY/MOVE, and CRDT merge for
+shared collections (ETags carry v1). Capacity headroom and the shelved
+scaling valves are documented in
+[`docs/architecture/capacity-and-scaling.md`](docs/architecture/capacity-and-scaling.md).
