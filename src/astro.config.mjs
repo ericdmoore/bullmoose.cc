@@ -1,5 +1,6 @@
 // @ts-check
 import { defineConfig } from "astro/config";
+import { unified } from "@astrojs/markdown-remark";
 
 // Static output (default) — brochure + guides, no SSR. Deploys as static
 // assets to Cloudflare Pages. Design/plan: docs/architecture/marketing-site.md.
@@ -40,5 +41,7 @@ function rewritePlaybookLinks() {
 
 export default defineConfig({
   site: "https://bullmoose.cc",
-  markdown: { rehypePlugins: [rewritePlaybookLinks] },
+  // Astro 7: customize Markdown via a unified() processor (gfm + Shiki +
+  // smartypants stay on by default). Our rehype pass rewrites playbook links.
+  markdown: { processor: unified({ rehypePlugins: [rewritePlaybookLinks] }) },
 });
