@@ -80,6 +80,9 @@ web_modules/
 .env.production.local
 .env.local
 
+# local scratch (agent feedback, notes)
+_scratch/
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

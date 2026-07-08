@@ -10,6 +10,22 @@ npm ci && npm run build:cli && npm install -g ./packages/cli
 bullmoose login eric@bullmoose.cc     # SRV autodiscovery — no URL needed
 ```
 
+## Help & discovery
+
+Every command is self-documenting from one source of truth
+([`src/help.ts`](src/help.ts)):
+
+```sh
+bullmoose help                 # overview: every command + global options
+bullmoose help <command>       # verbose: synopsis, flags, examples, see-also
+bullmoose <command> --help     # (same)
+bullmoose help --json          # the whole command spec, machine-readable (for agents)
+man packages/cli/man/bullmoose.1   # the generated man page
+```
+
+Full reference: [`docs/cli.md`](../../docs/cli.md) (generated). After editing
+the spec, regenerate the man page + markdown: `npm run -w @bullmoose/cli gen:docs`.
+
 ## Commands (high points)
 
 - `login` / `discover` / `init --url` (accepts `file://` bootstrap

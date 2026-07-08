@@ -24,116 +24,8 @@ import { agentServe, loadAgentConfig } from "./agent.js";
 import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
 import { cmdCalendar } from "./calendar.js";
+import { findCommand, helpJson, renderCommand, renderMan, renderMarkdown, renderOverview } from "./help.js";
 
-const HELP = `bullmoose — JMAP sync client with a local SQLite message log
-
-Usage:
-  bullmoose login <email> [--base <url>] [--name <device-name>]
-                 (no --base → the server is autodiscovered from the email's
-                  domain via SRV _jmap._tcp / well-known (RFC 8620 §2.2);
-                  password via prompt, $BULLMOOSE_PASSWORD, or --password —
-                  stretched locally, used once, never stored or sent raw)
-  bullmoose discover <email-or-domain>
-                 show what autodiscovery finds and probe the server
-  bullmoose init --base <url> --token <token> [--account <id>] [--offline]
-                 (paste an existing token instead of logging in; --base
-                  also accepts file:///path/to/bundle.json — a JSON
-                  {base, token, accountId} bootstrap written by an
-                  operator; --offline stores it without validating)
-  bullmoose token create --name <n> [--scopes read,draft] | list | revoke <id>
-  bullmoose accounts
-                 list this login's accounts (★ = default; local counts)
-  bullmoose sync [--blobs <dir>] [--account <sel>]
-                 default: ALL accounts — clean ones detected in one batched
-                 round-trip and skipped; only dirty inboxes fully sync
-  bullmoose send --to <addr>[,<addr>] --subject <s> [--cc ..] [--bcc ..]
-                 [--expandMD no|html] [--file <path>] [--body <text>]
-                 [--identity <id-or-email>] [--linkMax <MiB>] [--linkTTL <days>]
-                 (body from --file, else --body, else piped stdin)
-  bullmoose read [emailId] [--raw] [--json]
-                 (no id → most recent message)
-  bullmoose watch [--json] [--exec <cmd>] [--daemon | --status | --stop]
-                 push-triggered live sync: prints new mail as it arrives.
-                 --json emits NDJSON events; --exec runs a shell command per
-                 new message ({id} {from} {subject} {preview} placeholders);
-                 --daemon detaches (prints PID; logs beside the db file)
-  bullmoose vacation on|off|status [--subject <s>] [--body <text>]
-                 [--until <date>] [--account <sel>]
-                 (RFC 8621 VacationResponse — an armed responder with wait=0;
-                  RFC 3834 suppression: once per sender per 7 days)
-  bullmoose agent serve --config <agent.json> [--once]
-                 homelab agent runtime: watches the AgentInvocation queue,
-                 claims pending work, drafts replies in template mode
-                 (providers: mock | anthropic | openai-compatible; API keys
-                 by env reference). --once drains and exits (cron-friendly)
-  bullmoose contacts import <file.vcf> [--book <name-or-id>] [--account <sel>]
-                 seed the contacts core from a vCard export (idempotent:
-                 cards dedup by uid; a missing --book is created).
-                 Export from macOS Contacts: select cards → File →
-                 Export → Export vCard…
-  bullmoose contacts list [--book <name-or-id>] [-n <count>] [--json]
-  bullmoose contacts show <cardId> [--json]
-  bullmoose calendar list [--json]
-  bullmoose calendar agenda [--days <n>] [--json]
-                 upcoming occurrences, recurrence-expanded server-side
-  bullmoose creds init --url <agent-worker-url>
-  bullmoose creds set <name> --kind api-key|oauth-refresh [--secret <s>]
-                 [--secret-env VAR] [--meta k=v,...]   (else hidden prompt)
-  bullmoose creds list | rm <name>
-  bullmoose creds oauth <name> --authorize-url <u> --token-url <u>
-                 --client-id <id> [--client-secret <s>] [--oauth-scopes "a b"]
-                 (browser + localhost PKCE flow; ONLY the refresh token is
-                  uploaded — the vault is write-only, secrets never return)
-  bullmoose log [-n <count>] [--mailbox <role-or-id>] [--account <sel>] [--json]
-  bullmoose search <fts5-query> [--account <sel>] [--json]
-  bullmoose show <emailId> [--json]
-  bullmoose mailboxes [--json]
-  bullmoose admin init --url <provision-url> --token <admin-token>
-  bullmoose admin tenant  create <id> --name <n> | list
-  bullmoose admin domain  add <domain> --tenant <t> | status <domain> | list
-  bullmoose admin account create <local@domain> --tenant <t> [--name <n>]
-                          [--principal <email>]   attach to an existing login
-                          | list [--tenant <t>]
-  bullmoose admin password <email>            set a principal's login password
-  bullmoose admin agent bind <account-email> --name <binding> [--sla <seconds>]
-                          [--allow a@b,c@d] [--reply-mode send|draft]
-                          [--config <file.json>]  persona/modelAliases/defaultModel
-                          | list <account-email>
-                 (delivery-triggered agent binding; --sla arms a watchdog
-                  responder per delivery, canceled when the agent claims)
-  bullmoose admin token   create <email> --name <n> [--scopes read,draft,send]
-                          | list [<email>] | revoke <id>    (agent/operator tokens)
-  bullmoose admin grant   create <grantee-email> <target-email>
-                          [--scopes read,contacts] [--book <addressBookId>]
-                          [--expires <days>] | list [<email>] | revoke <id>
-                 (cross-account delegation: grantee's tokens act on the
-                  target, effective rights = token ∩ grant; --book limits
-                  the grant to one shared address book. Every granted
-                  access lands in the grant_audit log.)
-                 (operator surface — wraps the provision worker; separate
-                 credentials from the mail account. Planned nouns: route,
-                 identity, policy, share, suppression, token, agent)
-
-Options:
-  --db <path>        SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db)
-  --account <sel>    account selector: accountId, address, @domain-suffix,
-                     name substring, or "default" (log/search/sync/watch/
-                     mailboxes accept it; send uses --from to pick sender)
-  --from <address>   (send) select the sending account + identity
-  --expandMD html    treat the body as Markdown: rendered HTML becomes the
-                     displayed body (raw Markdown rides along as the hidden
-                     plain-text fallback). Local references are resolved
-                     relative to --file's directory (or cwd for stdin):
-                       images       → inlined as cid: parts
-                       linked files → attached, link annotated
-                       either, over --linkMax → uploaded to R2 and rewritten
-                         to a signed link expiring after --linkTTL days
-  --expandMD no      send the body as plain text as-is (default)
-  --linkMax <MiB>    big-file threshold (default 4)
-  --linkTTL <days>   share-link lifetime (default 30)
-
-The database is the server's own data-plane schema — open it directly with
-\`sqlite3\` for anything the commands don't cover.`;
 
 const { values: opts, positionals } = parseArgs({
   allowPositionals: true,
@@ -189,13 +81,39 @@ const { values: opts, positionals } = parseArgs({
     json: { type: "boolean", default: false },
     n: { type: "string", short: "n", default: "20" },
     help: { type: "boolean", short: "h", default: false },
+    man: { type: "boolean", default: false },
+    markdown: { type: "boolean", default: false },
   },
 });
 
 const command = positionals[0];
-if (opts.help || !command) {
-  console.log(HELP);
-  process.exit(command ? 0 : 1);
+if (command === "help" || opts.help || !command) {
+  // `bullmoose help <cmd>` or `bullmoose <cmd> --help` → per-command help.
+  const topic = command && command !== "help" ? command : positionals[1];
+  if (opts.json) {
+    console.log(helpJson());
+    process.exit(0);
+  }
+  if (opts.man) {
+    process.stdout.write(renderMan());
+    process.exit(0);
+  }
+  if (opts.markdown) {
+    console.log(renderMarkdown());
+    process.exit(0);
+  }
+  if (topic) {
+    const c = findCommand(topic);
+    if (!c) {
+      console.error(`unknown command: ${topic}\n`);
+      console.log(renderOverview());
+      process.exit(1);
+    }
+    console.log(renderCommand(c));
+    process.exit(0);
+  }
+  console.log(renderOverview());
+  process.exit(opts.help || command === "help" ? 0 : 1);
 }
 
 const db = openDb(opts.db ?? defaultDbPath());
@@ -306,7 +224,7 @@ try {
       });
       break;
     default:
-      console.error(`unknown command: ${command}\n\n${HELP}`);
+      console.error(`unknown command: ${command}\n\n${renderOverview()}`);
       process.exit(1);
   }
 } catch (err) {

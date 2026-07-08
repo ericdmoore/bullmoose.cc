@@ -1,0 +1,523 @@
+.TH BULLMOOSE 1 "" "bullmoose" "User Commands"
+.SH NAME
+bullmoose \- the CLI for the bullmoose personal\-data platform — mail, contacts, calendar, email\-native agents, and operator admin, over JMAP
+.SH SYNOPSIS
+.B bullmoose
+.I command
+[\fIoptions\fR]
+.SH DESCRIPTION
+Auth model: login stretches your password locally and stores a bearer token; device/app tokens (bm_…) are minted with `token create` and used by clients (JMAP, CalDAV/CardDAV, POP3/SMTP). The login password is never stored or sent raw.
+.PP
+The database is the server's own data\-plane schema — open it directly with `sqlite3` for anything the commands don't cover.
+.PP
+Operator commands (`admin …`) wrap the provision worker and use separate credentials from a mail account.
+.PP
+.SH COMMANDS
+.TP
+.B login
+log in and store a bearer token for this account
+.TP
+.B discover
+show what autodiscovery finds and probe the server
+.TP
+.B init
+configure an account from an existing token (no password login)
+.TP
+.B token
+mint / list / revoke device app\-passwords for this account
+.TP
+.B accounts
+list this login's accounts (★ = default; local counts shown)
+.TP
+.B sync
+pull mail into the local SQLite log (all accounts by default)
+.TP
+.B send
+compose and send mail (Markdown → MIME, inline images, big\-file links)
+.TP
+.B read
+print a message (newest if no id)
+.TP
+.B watch
+push\-triggered live sync: print new mail as it arrives
+.TP
+.B vacation
+manage the RFC 8621 vacation responder
+.TP
+.B agent
+run the homelab agent runtime (claims the AgentInvocation queue)
+.TP
+.B contacts
+import and browse the contacts core (vCard ⇄ JSContact)
+.TP
+.B calendar
+browse the calendar core (JSCalendar; recurrence expanded server\-side)
+.TP
+.B creds
+manage the write\-only, envelope\-encrypted credential vault
+.TP
+.B log
+list messages from the local log
+.TP
+.B search
+full\-text search the local log (SQLite FTS5)
+.TP
+.B show
+show a message's metadata + structure
+.TP
+.B mailboxes
+list mailboxes for the selected account
+.TP
+.B admin
+operator surface — wraps the provision worker (separate credentials)
+.SH COMMAND DETAILS
+.SS login
+.B Synopsis:
+.br
+bullmoose login <email> [\-\-base <url>] [\-\-name <device\-name>] [\-\-password <pw>]
+.PP
+Authenticates to a JMAP server. With no \-\-base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well\-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or \-\-password; it is stretched locally, used once, and never stored or sent raw.
+.PP
+.B Flags:
+.TP
+.B \-\-base <url>
+JMAP server base; skip to autodiscover from the email domain
+.TP
+.B \-\-name <device\-name>
+label the minted token (shows in `token list`)
+.TP
+.B \-\-password <pw>
+password (else prompt or $BULLMOOSE_PASSWORD)
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose login you@example.com
+.EE
+autodiscover the server, prompt for password
+.PP
+.EX
+bullmoose login you@example.com \-\-base https://jmap.example.com \-\-name laptop
+.EE
+.SS discover
+.B Synopsis:
+.br
+bullmoose discover <email\-or\-domain>
+.PP
+Resolves the JMAP base for an email or domain (SRV _jmap._tcp, then .well\-known/jmap), prints the method and base, and probes the session endpoint. Read\-only; no auth.
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose discover example.com
+.EE
+.SS init
+.B Synopsis:
+.br
+bullmoose init \-\-base <url> \-\-token <token> [\-\-account <id>] [\-\-offline]
+.PP
+Pastes an existing token instead of logging in. \-\-base also accepts file:///path/to/bundle.json — a {base, token, accountId} bootstrap written by an operator. \-\-offline stores it without validating against the server.
+.PP
+.B Flags:
+.TP
+.B \-\-base <url>
+JMAP base, or file:// path to a bootstrap bundle
+.TP
+.B \-\-token <token>
+a bm_… bearer token
+.TP
+.B \-\-account <id>
+account id, if the token covers several
+.TP
+.B \-\-offline
+store without validating
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose init \-\-base https://jmap.example.com \-\-token bm_… \-\-account t_home__a_you
+.EE
+.PP
+.EX
+bullmoose init \-\-base file:///tmp/bootstrap.json
+.EE
+operator\-written bundle
+.SS token
+.B Synopsis:
+.br
+bullmoose token create \-\-name <n> [\-\-scopes read,draft,send] | list | revoke <id>
+.PP
+Device tokens (bm_…) are what clients authenticate with — never the login password. Scope them per device so a lost device can be revoked alone. Scope vocabulary: read, annotate, draft, move, send, delete, mail (all verbs), contacts, calendar.
+.PP
+.B Subcommands:
+.TP
+.B create
+mint a token (shown once) \(em \f[CR]token create \-\-name <n> [\-\-scopes read,draft,send]\fR
+.TP
+.B list
+list this account's tokens \(em \f[CR]token list\fR
+.TP
+.B revoke
+revoke one token by id \(em \f[CR]token revoke <id>\fR
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose token create \-\-name iphone \-\-scopes mail,contacts,calendar
+.EE
+.PP
+.EX
+bullmoose token create \-\-name popper \-\-scopes read,move
+.EE
+POP3 via popcorn
+.SS accounts
+.B Synopsis:
+.br
+bullmoose accounts
+.SS sync
+.B Synopsis:
+.br
+bullmoose sync [\-\-blobs <dir>] [\-\-account <sel>]
+.PP
+Default syncs ALL accounts: clean ones are detected in one batched round\-trip and skipped; only dirty inboxes fully sync. \-\-blobs downloads message blobs into a directory.
+.PP
+.B Flags:
+.TP
+.B \-\-blobs <dir>
+also download blobs into <dir>
+.TP
+.B \-\-account <sel>
+limit to one account
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose sync
+.EE
+.PP
+.EX
+bullmoose sync \-\-account @example.com \-\-blobs ./blobs
+.EE
+.SS send
+.B Synopsis:
+.br
+bullmoose send \-\-to <addr>[,<addr>] \-\-subject <s> [\-\-cc ..] [\-\-bcc ..] [\-\-file <path> | \-\-body <text>]
+.PP
+Body comes from \-\-file, else \-\-body, else piped stdin. With \-\-expandMD html the body is treated as Markdown: rendered HTML becomes the displayed body (raw Markdown rides along as the plain\-text fallback), local images inline as cid: parts, linked files attach, and anything over \-\-linkMax is uploaded to R2 and rewritten to a signed link expiring after \-\-linkTTL days.
+.PP
+.B Flags:
+.TP
+.B \-\-to / \-\-cc / \-\-bcc <addr>
+recipients (repeatable or comma\-separated)
+.TP
+.B \-\-subject <s>
+subject line
+.TP
+.B \-\-file <path> / \-\-body <text>
+body source (else stdin)
+.TP
+.B \-\-from <address>
+select the sending account + identity
+.TP
+.B \-\-identity <id\-or\-email>
+pick a specific identity
+.TP
+.B \-\-expandMD html|no
+render Markdown to HTML (default: no)
+.TP
+.B \-\-linkMax <MiB>
+big\-file threshold (default 4)
+.TP
+.B \-\-linkTTL <days>
+share\-link lifetime (default 30)
+.PP
+.B Examples:
+.PP
+.EX
+echo "it lives" | bullmoose send \-\-to a@b.com \-\-subject "first light"
+.EE
+.PP
+.EX
+bullmoose send \-\-to a@b.com \-\-subject Notes \-\-file notes.md \-\-expandMD html
+.EE
+Markdown → HTML with inline assets
+.SS read
+.B Synopsis:
+.br
+bullmoose read [emailId] [\-\-raw] [\-\-json]
+.PP
+.B Flags:
+.TP
+.B \-\-raw
+print the raw RFC 5322 source
+.TP
+.B \-\-json
+structured output
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose read
+.EE
+.PP
+.EX
+bullmoose read <emailId> \-\-raw
+.EE
+.SS watch
+.B Synopsis:
+.br
+bullmoose watch [\-\-json] [\-\-exec <cmd>] [\-\-daemon | \-\-status | \-\-stop]
+.PP
+Holds a JMAP push channel and prints each new message. \-\-json emits NDJSON events; \-\-exec runs a shell command per new message with {id} {from} {subject} {preview} placeholders; \-\-daemon detaches (prints a PID; logs beside the db file).
+.PP
+.B Flags:
+.TP
+.B \-\-json
+emit NDJSON events
+.TP
+.B \-\-exec <cmd>
+run per message ({id} {from} {subject} {preview})
+.TP
+.B \-\-daemon / \-\-status / \-\-stop
+manage a detached watcher
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose watch
+.EE
+.PP
+.EX
+bullmoose watch \-\-json \-\-exec 'notify\-send "{from}: {subject}"'
+.EE
+.SS vacation
+.B Synopsis:
+.br
+bullmoose vacation on|off|status [\-\-subject <s>] [\-\-body <text>] [\-\-until <date>]
+.PP
+An armed auto\-responder (wait=0) with RFC 3834 suppression — once per sender per 7 days. `status` shows the current state.
+.PP
+.B Flags:
+.TP
+.B \-\-subject <s> / \-\-body <text>
+the auto\-reply content
+.TP
+.B \-\-until <date>
+auto\-disable date
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose vacation on \-\-subject "Away" \-\-body "Back Monday." \-\-until 2026\-07\-15
+.EE
+.SS agent
+.B Synopsis:
+.br
+bullmoose agent serve \-\-config <agent.json> [\-\-once]
+.PP
+Logs in as the bound account, watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai\-compatible; API keys by env reference, never in the config. \-\-once drains and exits (cron\-friendly). The config's `binding` must match the server\-side binding name (see `admin agent bind`).
+.PP
+.B Flags:
+.TP
+.B \-\-config <agent.json>
+agent definition (binding, persona, model{provider,baseURL,apiKeyEnv})
+.TP
+.B \-\-once
+drain the queue once and exit
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose agent serve \-\-config hermes.json
+.EE
+.PP
+.EX
+bullmoose agent serve \-\-config hermes.json \-\-once
+.EE
+cron drain
+.SS contacts
+.B Synopsis:
+.br
+bullmoose contacts import <file.vcf> | list | show <cardId>
+.PP
+.B Subcommands:
+.TP
+.B import
+seed from a vCard export (idempotent; dedup by uid; missing \-\-book created) \(em \f[CR]contacts import <file.vcf> [\-\-book <name\-or\-id>] [\-\-account <sel>]\fR
+.TP
+.B list
+list cards \(em \f[CR]contacts list [\-\-book <name\-or\-id>] [\-n <count>] [\-\-json]\fR
+.TP
+.B show
+show one card \(em \f[CR]contacts show <cardId> [\-\-json]\fR
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose contacts import Contacts.vcf \-\-book Personal
+.EE
+export from macOS Contacts: File → Export → Export vCard…
+.PP
+.EX
+bullmoose contacts list \-\-book Family \-n 50
+.EE
+.SS calendar
+.B Synopsis:
+.br
+bullmoose calendar list | agenda [\-\-days <n>]
+.PP
+.B Subcommands:
+.TP
+.B list
+list calendars \(em \f[CR]calendar list [\-\-json]\fR
+.TP
+.B agenda
+upcoming occurrences, recurrence\-expanded \(em \f[CR]calendar agenda [\-\-days <n>] [\-\-json]\fR
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose calendar agenda \-\-days 14
+.EE
+.SS creds
+.B Synopsis:
+.br
+bullmoose creds init | set <name> | list | rm <name> | oauth <name> …
+.PP
+The vault stores third\-party API keys and OAuth refresh tokens for agents. It is WRITE\-ONLY — secrets go in and are never returned. `oauth` runs a browser + localhost PKCE flow and uploads only the refresh token.
+.PP
+.B Subcommands:
+.TP
+.B init
+point the vault at the agent worker \(em \f[CR]creds init \-\-url <agent\-worker\-url>\fR
+.TP
+.B set
+store a secret (else hidden prompt) \(em \f[CR]creds set <name> \-\-kind api\-key|oauth\-refresh [\-\-secret <s> | \-\-secret\-env VAR] [\-\-meta k=v,…]\fR
+.TP
+.B list
+list credential names (not values) \(em \f[CR]creds list\fR
+.TP
+.B rm
+remove a credential \(em \f[CR]creds rm <name>\fR
+.TP
+.B oauth
+PKCE flow; uploads only the refresh token \(em \f[CR]creds oauth <name> \-\-authorize\-url <u> \-\-token\-url <u> \-\-client\-id <id> [\-\-client\-secret <s>] [\-\-oauth\-scopes "a b"]\fR
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose creds set openai \-\-kind api\-key \-\-secret\-env OPENAI_API_KEY
+.EE
+.SS log
+.B Synopsis:
+.br
+bullmoose log [\-n <count>] [\-\-mailbox <role\-or\-id>] [\-\-account <sel>] [\-\-json]
+.PP
+.B Flags:
+.TP
+.B \-n <count>
+how many (default 20)
+.TP
+.B \-\-mailbox <role\-or\-id>
+filter by mailbox (e.g. inbox, sent)
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose log \-n 50 \-\-mailbox inbox
+.EE
+.SS search
+.B Synopsis:
+.br
+bullmoose search <fts5\-query> [\-\-account <sel>] [\-\-json]
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose search "invoice NEAR quote"
+.EE
+.SS show
+.B Synopsis:
+.br
+bullmoose show <emailId> [\-\-json]
+.SS mailboxes
+.B Synopsis:
+.br
+bullmoose mailboxes [\-\-json]
+.SS admin
+.B Synopsis:
+.br
+bullmoose admin <noun> <verb> …
+.PP
+Onboarding and administration. `admin init` stores the provision URL + admin token; the rest manage tenants, domains, accounts, agent bindings, tokens, and grants. A tenant id (e.g. t_home) is a slug you choose — a namespace, not a secret.
+.PP
+.B Subcommands:
+.TP
+.B init
+configure the operator endpoint \(em \f[CR]admin init \-\-url <provision\-url> \-\-token <admin\-token>\fR
+.TP
+.B tenant
+manage tenants (namespaces) \(em \f[CR]admin tenant create <id> \-\-name <n> | list\fR
+.TP
+.B domain
+wire a domain (Email Routing, SES identity, DKIM/DMARC) \(em \f[CR]admin domain add <domain> \-\-tenant <t> | status <domain> | list\fR
+.TP
+.B account
+create a mailbox account \(em \f[CR]admin account create <local@domain> \-\-tenant <t> [\-\-name <n>] [\-\-principal <email>] | list [\-\-tenant <t>]\fR
+.TP
+.B password
+set a principal's login password \(em \f[CR]admin password <email>\fR
+.TP
+.B agent
+bind a cloud agent runtime to a mailbox \(em \f[CR]admin agent bind <account\-email> \-\-name <binding> [\-\-sla <s>] [\-\-allow a@b,c@d] [\-\-reply\-mode send|draft] [\-\-config <file.json>] | list <account\-email>\fR
+.TP
+.B token
+mint operator/agent tokens for any account \(em \f[CR]admin token create <email> \-\-name <n> [\-\-scopes …] | list [<email>] | revoke <id>\fR
+.TP
+.B grant
+cross\-account delegation (effective rights = token ∩ grant) \(em \f[CR]admin grant create <grantee\-email> <target\-email> [\-\-scopes read,contacts] [\-\-book <id>] [\-\-expires <days>] | list [<email>] | revoke <id>\fR
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose admin init \-\-url https://bullmoose\-provision.<acct>.workers.dev \-\-token $ADMIN_TOKEN
+.EE
+.PP
+.EX
+bullmoose admin tenant create t_home \-\-name "Home"
+.EE
+.PP
+.EX
+bullmoose admin domain add example.com \-\-tenant t_home
+.EE
+.PP
+.EX
+bullmoose admin account create you@example.com \-\-tenant t_home
+.EE
+.PP
+.EX
+bullmoose admin agent bind editor@example.com \-\-name editor \-\-reply\-mode draft \-\-config docs/examples/editor\-emily.config.json
+.EE
+.PP
+.EX
+bullmoose admin grant create partner@example.com you@example.com \-\-scopes read,contacts \-\-book <bookId> \-\-expires 365
+.EE
+.SH GLOBAL OPTIONS
+.TP
+.B \-\-db <path>
+SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db)
+.TP
+.B \-\-account <sel>
+account selector: accountId, address, @domain\-suffix, name substring, or 'default'
+.TP
+.B \-\-json
+machine\-readable output where supported (and `help \-\-json` dumps this whole spec)
+.TP
+.B \-h, \-\-help
+show help; `bullmoose <cmd> \-\-help` shows help for one command
+.SH FILES
+.TP
+~/.bullmoose/mail.db
+Local SQLite message log (override with \-\-db or $BULLMOOSE_DB).
+.SH SEE ALSO
+Project docs: https://github.com/ericdmoore/bullmoose.cc

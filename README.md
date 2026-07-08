@@ -68,7 +68,8 @@ simply mailboxes with a runtime attached. A typical personal deployment costs **
 - **A real CLI** — `bullmoose`: login/autodiscovery, offline-capable
   sync to local SQLite, send (Markdown → MIME with inline images and
   big-file links), watch (live push), contacts/calendar import and
-  agenda, token/grant/credential administration.
+  agenda, token/grant/credential administration. Fully self-documenting —
+  `bullmoose help`, `bullmoose help --json`, or the [CLI reference](docs/cli.md).
 
 ## Who it's for
 
