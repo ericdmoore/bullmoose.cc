@@ -3,22 +3,24 @@
 </p>
 
 <h1 align="center">bullmoose</h1>
-<a href="https://quoteinvestigator.com/2022/12/17/what-you-can/" target="_blank">
+<div align="center">
+<a align="center" href="https://quoteinvestigator.com/2022/12/17/what-you-can/" target="_blank">
   <p align="center">
     <em>“Do what you can,</em> <br/>
     <em>with what you’ve got, </em><br/>
     <em>from where you are.” </em><br/>
     <em>- Bill Widener (made popular by Theodore Roosevelt)</em>
   </p>
-</a>
+</a>  
+</div>
 
 **bullmoose is a self-hosted personal-data platform — email, contacts,
 calendar, and email-native agents — that runs serverless on
-[Cloudflare's free tier](https://developers.cloudflare.com/workers/platform/pricing/).** Your domain, your data, one core: modern clients speak
-JMAP, Apple devices sync over CardDAV/CalDAV, legacy apps reach mail
-through a POP3/SMTP shim, and agents are simply mailboxes with a
-runtime attached. A typical personal deployment costs **$0/month**
-(plus your domain).
+[Cloudflare's free tier](https://developers.cloudflare.com/workers/platform/pricing/).** 
+Your domain, your data, one core: modern clients speak JMAP, Apple devices sync over 
+CardDAV/CalDAV, legacy apps reach mail through a POP3/SMTP shim, and agents are 
+simply mailboxes with a runtime attached. A typical personal deployment costs **$0/month**
+(excluding your domain costs).
 
 ## What it does
 
