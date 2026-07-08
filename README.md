@@ -23,6 +23,21 @@ CardDAV/CalDAV, legacy apps reach mail through a POP3/SMTP shim, and agents are
 simply mailboxes with a runtime attached. A typical personal deployment costs **$0/month**
 (excluding your domain costs).
 
+<p align="center">
+  <a href="#what-it-does">What it does</a> ·
+  <a href="#who-its-for">Who it's for</a> ·
+  <a href="#the-stack-standard-by-standard">The stack</a> ·
+  <a href="#how-its-built">How it's built</a> ·
+  <a href="#deploying-your-own">Deploying your own</a> ·
+  <a href="#agent-backed-accounts--cloud-or-homelab">Agent-backed accounts</a> ·
+  <a href="#status">Status</a>
+  <br/>
+  <sub><a href="docs/playbooks/README.md">Playbooks</a> ·
+  <a href="docs/DEPLOY.md">Deploy checklist</a> ·
+  <a href="docs/architecture/README.md">Architecture</a> ·
+  <a href="docs/README.md">Cookbook</a></sub>
+</p>
+
 ## What it does
 
 - **Mail on your own domain** — a full JMAP server (RFC 8620/8621):
