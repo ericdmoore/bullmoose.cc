@@ -51,6 +51,9 @@ const ogImage = new URL("/og.png", site).href;
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
     <meta name="twitter:image:alt" content="bullmoose — your domain, your data, one core" />
+
+    <!-- Scroll-reveal fallback: if JS is off, show everything (else .reveal stays hidden). -->
+    <noscript><style>.reveal{opacity:1 !important;transform:none !important}</style></noscript>
   </head>
   <body>
     <slot />
