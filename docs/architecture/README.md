@@ -7,6 +7,12 @@ design), `agent-integration.md` (agents), and
 bind, and the shelved relief valves — blob compression and shard
 rotation). This README is the map.
 
+Forward-looking design docs — proposals, not yet built — sit here too:
+`capability-roadmap.md` (the next layer), and the Cloudflare-AI evaluation
+`ai-surface.md` with its companions `agents-sdk.md` (reject the framework,
+cherry-pick the patterns) and `ai-search-rag.md` (opt-in retrieval,
+isolation-first).
+
 The whole system is a **serverless JMAP mail platform**: modern clients
 speak JMAP directly; legacy clients reach it through a homelab protocol
 shim; agents are just mailboxes with a runtime attached. State lives in
