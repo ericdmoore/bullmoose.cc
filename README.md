@@ -104,21 +104,11 @@ holds metadata and JSON documents; [R2](https://www.cloudflare.com/products/r2/)
 holds bytes (raw messages, attachments, contact photos). Rationale, diagrams, and the free-tier
 capacity story live in [`docs/architecture/`](docs/architecture/README.md).
 
-The reusable logic lives in **ten [packages](packages/README.md)** — that
-index links down into each one. Six **services** compose them into deployed
-workers:
-
-```
-services/jmap            JMAP endpoint: mail/contacts/calendar methods, auth, push
-services/ingest          Email Routing target: parse → R2/D1 → state bump
-services/submit          outbound relay (SES) + webhooks
-services/provision       onboarding API: zones, DNS, SES identities, accounts, grants
-services/agent           agent runtime, credential vault, analytics MCP
-services/anglebrackets   CardDAV/CalDAV over the same core
-
-infra/                   bootstrap runbook · tools/  e2e suites
-src/                     the bullmoose.cc Fresh site (unrelated to the platform)
-```
+The reusable logic lives in **ten [packages](packages/README.md)**; the six
+**[services](services/README.md)** compose them into deployed workers. Both
+indexes link down into each component. Around them,
+[`infra/`](infra/README.md) is the bootstrap runbook, [`tools/`](tools/README.md)
+the e2e suites, and `src/` the (unrelated) bullmoose.cc marketing site.
 
 ## Deploying your own
 
