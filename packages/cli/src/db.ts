@@ -95,6 +95,18 @@ export function openDb(path: string): DatabaseSync {
   }
   db.exec("PRAGMA journal_mode = WAL");
 
+  // Column migrations for PRE-EXISTING local mirrors: the schema file
+  // only CREATEs, so columns added later must be ALTERed in before the
+  // file runs (its indexes may reference them). Errors mean "already
+  // there" — exactly what we want.
+  for (const migration of ["ALTER TABLE contact_cards ADD COLUMN dav_name TEXT"]) {
+    try {
+      db.exec(migration);
+    } catch {
+      /* column already present, or table not created yet */
+    }
+  }
+
   // Same directory depth from src/ (dev, type-stripped) and dist/ (built).
   const dataPlane = fileURLToPath(
     new URL("../../mailstore/sql/data-plane.sql", import.meta.url),
