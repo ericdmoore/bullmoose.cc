@@ -24,6 +24,9 @@
       "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9"
     }
   ],
+  // Contact photos live in R2 (offloaded from card_json); the vCard
+  // face re-embeds them at serialize time.
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "bullmoose-mail-blobs" }],
 
   "vars": {
     // Dev-only single-account auth (parity with the jmap worker); prod

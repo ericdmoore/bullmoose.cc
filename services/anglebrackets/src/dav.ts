@@ -103,7 +103,7 @@ export async function handleDav(
 
     if (segments[0] === "addressbooks" && segments.length >= 2) {
       const access = requireAccess(principal, segments[1]!, "contacts");
-      const store = new Mailstore(env.DB, undefined as unknown as R2Bucket);
+      const store = new Mailstore(env.DB, env.BLOBS);
 
       // `return await` so a rejected DavError is caught below.
       if (segments.length === 2) return await handleHome(request, env, store, principal, access);
@@ -118,7 +118,7 @@ export async function handleDav(
 
     if (segments[0] === "calendars" && segments.length >= 2) {
       const access = requireAccess(principal, segments[1]!, "calendar");
-      const store = new Mailstore(env.DB, undefined as unknown as R2Bucket);
+      const store = new Mailstore(env.DB, env.BLOBS);
 
       if (segments.length === 2) return await handleCalHome(request, env, store, principal, access);
       const calId = segments[2]!;
@@ -315,7 +315,7 @@ async function handleBook(
     const root = reportRoot(body);
     if (root === "sync-collection") return syncCollection(env, store, access, book, body);
     if (root === "addressbook-multiget") return multiget(store, access, book, body);
-    if (root === "addressbook-query") return abQuery(store, access, book);
+    if (root === "addressbook-query") return abQuery(store, access, book, body);
     return new Response(`unsupported report: ${root}`, { status: 403 });
   }
 
@@ -443,10 +443,11 @@ async function multiget(
       );
       continue;
     }
+    const card = await store.inflateCardPhotos(access.tenantId, access.accountId, row.card);
     parts.push(
       response(cardPath(access.accountId, book.id, row.davName ?? row.id), {
         getetag: xmlEscape(etagOf(row.id, row.updatedAt)),
-        "address-data": xmlEscape(serializeVcard(row.card as Card)),
+        "address-data": xmlEscape(serializeVcard(card as Card)),
       }),
     );
   }
@@ -454,21 +455,31 @@ async function multiget(
 }
 
 /** v1 addressbook-query: the whole book (filters are a Phase-2.1 nicety —
- * Apple syncs via sync-collection + multiget, not query). */
+ * Apple syncs via sync-collection + multiget, not query). address-data
+ * only when requested: inflating every photo from R2 for an etag-only
+ * query would burn the CPU budget for nothing. */
 async function abQuery(
   store: Mailstore,
   access: AccountAccess,
   book: AddressBookRow,
+  body: string,
 ): Promise<Response> {
-  const rows = await store.getContactCards(access.accountId);
-  const parts = rows
-    .filter((r) => r.addressBookId === book.id)
-    .map((row) =>
+  const wantData = /address-data/i.test(body);
+  const rows = (await store.getContactCards(access.accountId)).filter(
+    (r) => r.addressBookId === book.id,
+  );
+  const parts: string[] = [];
+  for (const row of rows) {
+    const card = wantData
+      ? await store.inflateCardPhotos(access.tenantId, access.accountId, row.card)
+      : row.card;
+    parts.push(
       response(cardPath(access.accountId, book.id, row.davName ?? row.id), {
         getetag: xmlEscape(etagOf(row.id, row.updatedAt)),
-        "address-data": xmlEscape(serializeVcard(row.card as Card)),
+        ...(wantData ? { "address-data": xmlEscape(serializeVcard(card as Card)) } : {}),
       }),
     );
+  }
   return multistatus(parts);
 }
 
@@ -490,7 +501,8 @@ async function handleResource(
     await audit(env, principal, access, "dav:read");
     const row = await store.getCardByDavName(access.accountId, book.id, name);
     if (!row) return new Response("not found", { status: 404 });
-    const vcf = serializeVcard(row.card as Card);
+    const card = await store.inflateCardPhotos(access.tenantId, access.accountId, row.card);
+    const vcf = serializeVcard(card as Card);
     return new Response(request.method === "HEAD" ? null : vcf, {
       headers: {
         "content-type": "text/vcard; charset=utf-8",
@@ -530,6 +542,7 @@ async function handleResource(
       if (typeof stored.created !== "string") stored.created = existing.card.created ?? nowIso;
       stored.updated = nowIso;
       stored.addressBookIds = { [book.id]: true };
+      await store.offloadCardPhotos(access.tenantId, access.accountId, stored);
       await store.updateContactCard(access.accountId, {
         id: existing.id,
         addressBookId: book.id,
@@ -558,6 +571,7 @@ async function handleResource(
     if (typeof stored.created !== "string") stored.created = nowIso;
     stored.updated = nowIso;
     stored.addressBookIds = { [book.id]: true };
+    await store.offloadCardPhotos(access.tenantId, access.accountId, stored);
     const id = `cc_${crypto.randomUUID()}`;
     await store.insertContactCards(access.accountId, [
       {

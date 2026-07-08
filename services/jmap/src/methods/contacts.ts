@@ -390,6 +390,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
         }
         card.updated = nowIso;
         card.addressBookIds = { [bookId]: true };
+        await store.offloadCardPhotos(access.tenantId, access.accountId, card);
 
         pendingUids.add(card.uid);
         pending.push({
@@ -474,6 +475,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
         delete (card as Record<string, unknown>).id;
         card.addressBookIds = { [bookId]: true };
         card.updated = new Date().toISOString();
+        await store.offloadCardPhotos(access.tenantId, access.accountId, card);
 
         await store.updateContactCard(access.accountId, {
           id: row.id,

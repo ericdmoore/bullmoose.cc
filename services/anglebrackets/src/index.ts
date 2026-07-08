@@ -24,6 +24,7 @@ import { handleDav } from "./dav.js";
 
 export interface Env extends AuthEnv {
   DB: D1Database;
+  BLOBS: R2Bucket;
   ACCOUNT_DO: DurableObjectNamespace;
 }
 

@@ -1768,6 +1768,69 @@ export class Mailstore {
       .run();
   }
 
+  // ---- Contact photos ⇄ R2 (RFC 9610 media blobId) --------------------
+  //
+  // Inline data: photos dominated card_json storage (92% of the shard).
+  // Every WRITE path offloads them to content-hashed R2 blobs (identical
+  // photos dedupe for free); JMAP serves the blobId per RFC 9610; the
+  // CardDAV face re-INFLATES at serialize time because Apple clients
+  // only accept photos inline in the vCard.
+
+  /** Replace data: URIs in card.media with R2 blobIds. Mutates card;
+   * returns bytes moved (0 = nothing to do). */
+  async offloadCardPhotos(
+    tenantId: string,
+    accountId: string,
+    card: JSContactCard,
+  ): Promise<number> {
+    const media = card.media as Record<string, Record<string, unknown>> | undefined;
+    if (!media || typeof media !== "object") return 0;
+    let moved = 0;
+    for (const entry of Object.values(media)) {
+      if (!entry || typeof entry !== "object") continue;
+      const uri = entry.uri;
+      if (typeof uri !== "string" || !uri.startsWith("data:")) continue;
+      const m = uri.match(/^data:([a-z0-9.+/-]+);base64,([\s\S]*)$/i);
+      if (!m) continue;
+      const bytes = b64ToBytes(m[2]!.replaceAll(/\s/g, ""));
+      const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      entry.blobId = await this.putBlob(tenantId, accountId, buf as ArrayBuffer);
+      if (entry.mediaType === undefined) entry.mediaType = m[1]!.toLowerCase();
+      entry.size = bytes.byteLength;
+      delete entry.uri;
+      moved += bytes.byteLength;
+    }
+    return moved;
+  }
+
+  /** Resolve blobId media back to data: URIs (DAV serialization).
+   * Returns a clone when inflation happened; missing blobs are skipped
+   * (the card serializes without that photo rather than failing). */
+  async inflateCardPhotos(
+    tenantId: string,
+    accountId: string,
+    card: JSContactCard,
+  ): Promise<JSContactCard> {
+    const media = card.media as Record<string, Record<string, unknown>> | undefined;
+    if (!media || typeof media !== "object") return card;
+    const needs = Object.values(media).some(
+      (e) => e && typeof e === "object" && typeof e.blobId === "string" && e.uri === undefined,
+    );
+    if (!needs) return card;
+
+    const out = structuredClone(card);
+    for (const entry of Object.values(out.media as Record<string, Record<string, unknown>>)) {
+      if (!entry || typeof entry !== "object") continue;
+      if (typeof entry.blobId !== "string" || entry.uri !== undefined) continue;
+      const obj = await this.getBlob(tenantId, accountId, entry.blobId);
+      if (!obj) continue;
+      const bytes = new Uint8Array(await obj.arrayBuffer());
+      const mediaType = typeof entry.mediaType === "string" ? entry.mediaType : "image/jpeg";
+      entry.uri = `data:${mediaType};base64,${bytesToB64(bytes)}`;
+    }
+    return out;
+  }
+
   // ---- Blobs (R2) ---------------------------------------------------
 
   async putBlob(tenantId: string, accountId: string, raw: ArrayBuffer): Promise<string> {
@@ -1830,4 +1893,20 @@ function nameClause(params: unknown[], needle: string): string {
 
 function hex(buf: ArrayBuffer): string {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function b64ToBytes(s: string): Uint8Array {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function bytesToB64(bytes: Uint8Array): string {
+  // Chunked: String.fromCharCode(...bytes) overflows the stack on photos.
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
 }

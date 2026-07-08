@@ -194,4 +194,33 @@ const carolPutDenied = await dav(CAROL, 'PUT', `${bookHref}sneaky.vcf`, {
 assert(carolPutDenied.status === 403 || carolPutDenied.status === 404,
   `sharee cannot write outside the shared book: ${carolPutDenied.status}`);
 
-console.log('E2E CARDDAV OK — discovery, sync, ETags, tombstones, and shared books verified');
+// 18. photo offload: data: URIs leave card_json for R2; DAV re-embeds
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const [[, photoSet]] = await jmap(ERIC, [['ContactCard/set', { accountId: ERIC.acct, create: {
+  p: { uid: 'dav-e2e-photo', name: { full: 'Photo Person' },
+       media: { m1: { kind: 'photo', uri: `data:image/png;base64,${PNG}` } } },
+} }, 'ph']]);
+const photoId = photoSet.created?.p?.id;
+assert(photoId, `photo card created: ${JSON.stringify(photoSet.notCreated)}`);
+const [[, photoGet]] = await jmap(ERIC, [['ContactCard/get', { accountId: ERIC.acct, ids: [photoId] }, 'pg']]);
+const media = Object.values(photoGet.list[0].media)[0];
+assert(media.blobId?.startsWith('b_') && media.uri === undefined && media.mediaType === 'image/png',
+  `photo offloaded to R2: ${JSON.stringify(media)}`);
+
+const photoVcf = await dav(ERIC, 'GET', `${bookHref}${photoId}.vcf`);
+const photoLine = photoVcf.text.replace(/\r\n /g, '').split('\r\n').find(l => l.startsWith('PHOTO'));
+assert(photoLine?.includes('ENCODING=b') && photoLine.endsWith(PNG), 'DAV GET re-embeds identical photo bytes');
+
+// PUT with an inline photo offloads too
+const putPhotoVcf = ['BEGIN:VCARD', 'VERSION:3.0', 'UID:dav-e2e-photo-put', 'FN:Put Photo',
+  `PHOTO;ENCODING=b;TYPE=PNG:${PNG}`, 'END:VCARD', ''].join('\r\n');
+const putPhoto = await dav(ERIC, 'PUT', `${bookHref}photo-put.vcf`, {
+  body: putPhotoVcf, headers: { 'content-type': 'text/vcard' } });
+assert(putPhoto.status === 201, `photo PUT: ${putPhoto.status}`);
+const [[, putGet]] = await jmap(ERIC, [['ContactCard/query', { accountId: ERIC.acct, filter: { uid: 'dav-e2e-photo-put' } }, 'pq']]);
+const [[, putCard]] = await jmap(ERIC, [['ContactCard/get', { accountId: ERIC.acct, ids: putGet.ids }, 'pc']]);
+const putMedia = Object.values(putCard.list[0].media)[0];
+assert(putMedia.blobId?.startsWith('b_') && putMedia.uri === undefined, 'DAV PUT photo offloaded');
+assert(putMedia.blobId === media.blobId, 'identical photos dedupe to one content-hashed blob');
+
+console.log('E2E CARDDAV OK — discovery, sync, ETags, tombstones, shared books, and photo offload verified');
