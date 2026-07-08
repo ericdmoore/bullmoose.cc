@@ -256,8 +256,12 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
       (await store.getAddressBooks(access.accountId)).map((b) => [b.id, b]),
     );
 
-    // -- create --
+    // -- create (two-phase: validate everything, then do the D1 work in
+    //    two batched calls — a 25-card import chunk must not pay ~50
+    //    sequential D1 round-trips against the per-request CPU budget) --
     const createSpecs = (args.create as Record<string, Record<string, unknown>> | undefined) ?? {};
+    const pending: Array<{ cid: string; row: ContactCardRow }> = [];
+    const pendingUids = new Set<string>();
     for (const [cid, spec] of Object.entries(createSpecs)) {
       try {
         const { id, ...rest } = spec;
@@ -279,7 +283,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
         if (typeof card.uid !== "string" || card.uid.length === 0) {
           throw new SetErrorSignal("invalidProperties", "uid must be a non-empty string", ["uid"]);
         }
-        if (await store.contactCardIdByUid(access.accountId, card.uid)) {
+        if (pendingUids.has(card.uid)) {
           throw new SetErrorSignal("invalidProperties", `uid already in use: ${card.uid}`, ["uid"]);
         }
 
@@ -291,21 +295,61 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
         card.updated = nowIso;
         card.addressBookIds = { [bookId]: true };
 
-        const row: ContactCardRow = {
-          id: `cc_${crypto.randomUUID()}`,
-          addressBookId: bookId,
-          uid: card.uid,
-          card,
-          nameFull: deriveNameFull(card),
-          createdAt: Date.parse(card.created),
-          updatedAt: now,
-        };
-        await store.insertContactCard(access.accountId, row);
-        ctagBooks.add(bookId);
-        cardEntry.created.push(row.id);
-        created[cid] = { id: row.id, uid: card.uid, created: card.created, updated: card.updated };
+        pendingUids.add(card.uid);
+        pending.push({
+          cid,
+          row: {
+            id: `cc_${crypto.randomUUID()}`,
+            addressBookId: bookId,
+            uid: card.uid,
+            card,
+            nameFull: deriveNameFull(card),
+            createdAt: Date.parse(card.created),
+            updatedAt: now,
+          },
+        });
       } catch (err) {
         notCreated[cid] = toSetError(err);
+      }
+    }
+    if (pending.length > 0) {
+      const uidTaken = await store.contactCardIdsByUids(
+        access.accountId,
+        pending.map((p) => p.row.uid),
+      );
+      const toInsert = pending.filter((p) => {
+        if (!uidTaken.has(p.row.uid)) return true;
+        notCreated[p.cid] = {
+          type: "invalidProperties",
+          description: `uid already in use: ${p.row.uid}`,
+          properties: ["uid"],
+        };
+        return false;
+      });
+      let inserted = toInsert;
+      try {
+        await store.insertContactCards(access.accountId, inserted.map((p) => p.row));
+      } catch {
+        // Batch is transactional; isolate the failing card(s) per-card.
+        inserted = [];
+        for (const p of toInsert) {
+          try {
+            await store.insertContactCard(access.accountId, p.row);
+            inserted.push(p);
+          } catch (err) {
+            notCreated[p.cid] = toSetError(err);
+          }
+        }
+      }
+      for (const p of inserted) {
+        ctagBooks.add(p.row.addressBookId);
+        cardEntry.created.push(p.row.id);
+        created[p.cid] = {
+          id: p.row.id,
+          uid: p.row.uid,
+          created: p.row.card.created,
+          updated: p.row.card.updated,
+        };
       }
     }
 

@@ -852,24 +852,46 @@ export class Mailstore {
     return row?.id ?? null;
   }
 
+  /** Batch uid → id lookup — one query, not one per card (CPU budget). */
+  async contactCardIdsByUids(accountId: string, uids: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (uids.length === 0) return out;
+    const marks = uids.map(() => "?").join(",");
+    const { results } = await this.db
+      .prepare(`SELECT id, uid FROM contact_cards WHERE account_id = ? AND uid IN (${marks})`)
+      .bind(accountId, ...uids)
+      .all<{ id: string; uid: string }>();
+    for (const r of results) out.set(r.uid, r.id);
+    return out;
+  }
+
   async insertContactCard(accountId: string, row: ContactCardRow): Promise<void> {
-    await this.db
-      .prepare(
-        `INSERT INTO contact_cards
-           (id, account_id, address_book_id, uid, card_json, name_full, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        row.id,
-        accountId,
-        row.addressBookId,
-        row.uid,
-        JSON.stringify(row.card),
-        row.nameFull,
-        row.createdAt,
-        row.updatedAt,
-      )
-      .run();
+    await this.insertContactCards(accountId, [row]);
+  }
+
+  /** One transactional db.batch — bulk imports must not pay per-card D1 calls. */
+  async insertContactCards(accountId: string, rows: ContactCardRow[]): Promise<void> {
+    if (rows.length === 0) return;
+    await this.db.batch(
+      rows.map((row) =>
+        this.db
+          .prepare(
+            `INSERT INTO contact_cards
+               (id, account_id, address_book_id, uid, card_json, name_full, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            row.id,
+            accountId,
+            row.addressBookId,
+            row.uid,
+            JSON.stringify(row.card),
+            row.nameFull,
+            row.createdAt,
+            row.updatedAt,
+          ),
+      ),
+    );
   }
 
   async updateContactCard(accountId: string, row: ContactCardRow): Promise<void> {

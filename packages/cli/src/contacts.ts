@@ -26,10 +26,11 @@ interface ContactsOpts {
 /**
  * Set-request chunking: small enough that the worker's JSON handling of
  * a photo-heavy chunk stays inside the free tier's per-request CPU
- * budget (inline photos make single cards ~MB-scale).
+ * budget (inline photos make single cards ~MB-scale). A chunk that
+ * still trips the limit is split and retried down to single cards.
  */
-const CREATE_CHUNK = 25;
-const CREATE_CHUNK_BYTES = 1_000_000;
+const CREATE_CHUNK = 20;
+const CREATE_CHUNK_BYTES = 600_000;
 const PAGE = 256;
 
 export async function cmdContacts(
@@ -124,28 +125,60 @@ async function cmdImport(
 
   let created = 0;
   const failed: Array<{ uid: string; error: string }> = [];
-  const chunks = chunkBySize(toCreate);
   let done = 0;
-  for (const chunk of chunks) {
-    const create: Record<string, Card> = {};
-    chunk.forEach((card, i) => (create[`c${i}`] = card));
-    const res = await client.one("ContactCard/set", { accountId, create }, CONTACTS_USING);
-    created += Object.keys((res.created as object) ?? {}).length;
-    for (const [cid, err] of Object.entries(
-      (res.notCreated as Record<string, { type?: string; description?: string }>) ?? {},
-    )) {
-      const card = create[cid];
-      failed.push({
-        uid: String(card?.uid ?? cid),
-        error: err.description ?? err.type ?? "unknown error",
-      });
-    }
-    done += chunk.length;
-    if (chunks.length > 1 && !opts.json) {
+  const progress = () => {
+    if (toCreate.length > CREATE_CHUNK && !opts.json) {
       process.stderr.write(`\rimporting… ${done}/${toCreate.length}`);
     }
-  }
-  if (chunks.length > 1 && !opts.json) process.stderr.write("\n");
+  };
+
+  /** Send one chunk; on transport/worker failure split and retry. */
+  const sendChunk = async (chunk: Card[]): Promise<void> => {
+    const create: Record<string, Card> = {};
+    chunk.forEach((card, i) => (create[`c${i}`] = card));
+    try {
+      const res = await client.one("ContactCard/set", { accountId, create }, CONTACTS_USING);
+      created += Object.keys((res.created as object) ?? {}).length;
+      for (const [cid, err] of Object.entries(
+        (res.notCreated as Record<string, { type?: string; description?: string }>) ?? {},
+      )) {
+        failed.push({
+          uid: String(create[cid]?.uid ?? cid),
+          error: err.description ?? err.type ?? "unknown error",
+        });
+      }
+      done += chunk.length;
+      progress();
+    } catch {
+      if (chunk.length > 1) {
+        // Halve until it fits the worker's per-request resource budget.
+        const mid = Math.ceil(chunk.length / 2);
+        await sendChunk(chunk.slice(0, mid));
+        await sendChunk(chunk.slice(mid));
+      } else {
+        // Single card: give a transient failure one more chance.
+        try {
+          await new Promise((r) => setTimeout(r, 1500));
+          await sendChunk0(chunk[0]!);
+        } catch (err2) {
+          failed.push({ uid: String(chunk[0]?.uid), error: String(err2) });
+          done += 1;
+          progress();
+        }
+      }
+    }
+  };
+  const sendChunk0 = async (card: Card): Promise<void> => {
+    const res = await client.one("ContactCard/set", { accountId, create: { c0: card } }, CONTACTS_USING);
+    created += Object.keys((res.created as object) ?? {}).length;
+    const err = (res.notCreated as Record<string, { type?: string; description?: string }>)?.c0;
+    if (err) failed.push({ uid: String(card.uid), error: err.description ?? err.type ?? "unknown" });
+    done += 1;
+    progress();
+  };
+
+  for (const chunk of chunkBySize(toCreate)) await sendChunk(chunk);
+  if (toCreate.length > CREATE_CHUNK && !opts.json) process.stderr.write("\n");
 
   if (opts.json) {
     console.log(
