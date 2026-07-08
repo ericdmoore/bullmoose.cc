@@ -1,0 +1,39 @@
+---
+import Base from "../../layouts/Base.astro";
+import Nav from "../../components/Nav.astro";
+import Footer from "../../components/Footer.astro";
+import { getCollection } from "astro:content";
+import { guideMeta } from "../../lib/guidesMeta";
+
+const items = (await getCollection("guides"))
+  .map((e) => ({ id: e.id, ...guideMeta(e.id) }))
+  .sort((a, b) => a.order - b.order);
+---
+
+<Base
+  title="Connection guides — bullmoose"
+  description="Step-by-step setups for connecting your clients to bullmoose — Apple, a JMAP client, and family sharing."
+>
+  <Nav />
+  <main class="wrap page">
+    <p class="eyebrow">Connect your clients</p>
+    <h1>Guides</h1>
+    <p class="lede">
+      Step-by-step setups, rendered straight from the repo playbooks — same
+      source, so they never drift.
+    </p>
+    <div class="cards">
+      {
+        items.map((g) => (
+          <a class="card" href={`/guides/${g.id}`}>
+            <h3 class="card__name">{g.title}</h3>
+            <p class="card__plat">{g.tag}</p>
+            <p class="card__desc">{g.blurb}</p>
+            <div class="card__links"><span>Read the guide &rarr;</span></div>
+          </a>
+        ))
+      }
+    </div>
+  </main>
+  <Footer />
+</Base>

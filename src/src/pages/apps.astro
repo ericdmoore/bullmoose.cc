@@ -3,26 +3,76 @@ import Base from "../layouts/Base.astro";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
 const repo = "https://github.com/ericdmoore/bullmoose.cc";
+
+const groups = [
+  {
+    title: "Mail",
+    cards: [
+      { name: "Mailtemi", flag: true, plat: "iOS · Android · macOS · Windows", badges: ["Mail", "Calendar soon"],
+        desc: "A modern JMAP email client — the recommended pick for mail. Full folders, threads, search, and push; calendaring is on the way.",
+        get: "https://mailtemi.com", setup: "/guides/jmap-client" },
+      { name: "bullmoose CLI", plat: "macOS · Linux · terminal", badges: ["Mail", "Contacts", "Calendar"],
+        desc: "The one-binary power-user client: send, live-watch, search, offline sync to local SQLite, and token/grant admin.",
+        get: repo, setup: `${repo}/blob/main/docs/DEPLOY.md` },
+    ],
+  },
+  {
+    title: "Calendar & contacts",
+    cards: [
+      { name: "Apple Calendar & Contacts", plat: "macOS · iOS", badges: ["Calendar", "Contacts"],
+        desc: "Built in — sync over CalDAV/CardDAV against the same core your agents read. Recurring events expand correctly across DST.",
+        setup: "/guides/apple-mail-and-calendar" },
+      { name: "DAVx5", plat: "Android", badges: ["Calendar", "Contacts"],
+        desc: "The standard open-source CalDAV/CardDAV sync app for Android. (Step-by-step guide coming soon.)",
+        get: "https://www.davx5.com", setup: "/guides" },
+    ],
+  },
+  {
+    title: "Legacy mail — POP3 / SMTP",
+    note: "Any POP3/SMTP client works through the popcorn shim — the one non-serverless piece. $0 on a homelab box reached over Tailscale, or ~$5/mo on a small VPS. For full fidelity, prefer a JMAP client above.",
+    cards: [
+      { name: "Apple Mail · Outlook · Thunderbird", plat: "macOS · Windows · Linux · iOS", badges: ["Mail"],
+        desc: "Download-style mail for clients that don't speak JMAP — one inbox, no push. Point them at popcorn's POP3S/SMTPS.",
+        get: "https://www.thunderbird.net", setup: "/guides/apple-mail-and-calendar" },
+    ],
+  },
+];
 ---
 
-<Base title="Apps — bullmoose">
+<Base
+  title="Apps — bullmoose"
+  description="Recommended clients for bullmoose: Mailtemi for JMAP mail, Apple & DAVx5 for calendar/contacts, the CLI, and legacy POP3/SMTP clients."
+>
   <Nav />
   <main class="wrap page">
     <p class="eyebrow">Recommended clients</p>
     <h1>Apps</h1>
     <p class="lede">
-      One pick per job. The full card layout lands in the next phase — for now,
-      here are the picks; each is written up in the connection playbooks.
+      One pick per job. Everything speaks an open standard, so nothing here locks
+      you in — swap any client and your data stays put in your core.
     </p>
-    <ul>
-      <li><b>Email (modern):</b> Mailtemi — a JMAP-native client, calendaring on the way.</li>
-      <li><b>Calendar &amp; contacts:</b> Apple Calendar/Contacts (built-in), or DAVx5 on Android.</li>
-      <li><b>Legacy mail:</b> Apple Mail, Outlook, or Thunderbird over the POP3/SMTP shim.</li>
-      <li><b>Terminal:</b> the <code>bullmoose</code> CLI.</li>
-    </ul>
-    <p style="margin-top:1.8rem">
-      <a class="btn btn-ink" href={`${repo}/tree/main/docs/playbooks`}>Connection playbooks on GitHub &rarr;</a>
-    </p>
+    {
+      groups.map((g) => (
+        <section class="group">
+          <h2 class="group__title">{g.title}</h2>
+          {g.note && <p class="group__note">{g.note}</p>}
+          <div class="cards">
+            {g.cards.map((c) => (
+              <article class={c.flag ? "card card--flag" : "card"}>
+                <h3 class="card__name">{c.name}</h3>
+                <p class="card__plat">{c.plat}</p>
+                <div class="card__badges">{c.badges.map((b) => <span class="badge">{b}</span>)}</div>
+                <p class="card__desc">{c.desc}</p>
+                <div class="card__links">
+                  {c.get && <a href={c.get}>Get it &rarr;</a>}
+                  {c.setup && <a href={c.setup}>Set it up &rarr;</a>}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ))
+    }
   </main>
   <Footer />
 </Base>

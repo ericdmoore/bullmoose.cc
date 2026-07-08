@@ -174,3 +174,39 @@ a { color: inherit; text-decoration: none; }
   .btn { transition: none; }
   .btn:hover { transform: none; }
 }
+
+/* ---- app cards (/apps) ------------------------------------ */
+.group { margin-top: 2.6rem; }
+.group__title { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 1.55rem; letter-spacing: 0.01em; padding-bottom: 0.5rem; border-bottom: 2px solid var(--rag-2); }
+.group__note { font-size: 0.92rem; color: var(--on-rag-dim); margin: 0.7rem 0 0; max-width: 60ch; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(18.5rem, 1fr)); gap: 1.1rem; margin-top: 1.3rem; }
+.card { display: flex; flex-direction: column; gap: 0.5rem; background: #fbf8ee; border: 1px solid var(--rag-2); border-top: 3px solid var(--brass); padding: 1.35rem 1.4rem; color: var(--ink); }
+.card--flag { border-top-color: var(--oxblood); }
+.card__name { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 1.4rem; letter-spacing: 0.01em; }
+.card__plat { font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--on-rag-dim); }
+.card__badges { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.badge { font-family: var(--font-mono); font-size: 0.63rem; letter-spacing: 0.05em; text-transform: uppercase; padding: 0.15rem 0.45rem; border: 1px solid var(--brass); color: var(--oxblood); }
+.card__desc { color: var(--on-rag-dim); font-size: 0.94rem; flex: 1; }
+.card__links { display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; margin-top: 0.4rem; font-family: var(--font-mono); font-size: 0.8rem; }
+.card__links a, a.card .card__links span { border-bottom: 2px solid var(--brass); padding-bottom: 1px; }
+.card__links a:hover { color: var(--oxblood); }
+a.card:hover { border-color: var(--brass); transform: translateY(-2px); transition: transform 0.12s ease; }
+
+/* ---- prose (rendered guides) ------------------------------ */
+.prose { max-width: 46rem; }
+.prose > * + * { margin-top: 1rem; }
+.prose h1 { font-family: var(--font-display); font-weight: 800; text-transform: uppercase; font-size: clamp(2rem, 5vw, 3rem); line-height: 0.95; margin-bottom: 0.5rem; }
+.prose h2 { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 1.5rem; margin-top: 2.1rem; padding-bottom: 0.35rem; border-bottom: 2px solid var(--rag-2); }
+.prose h3 { font-family: var(--font-display); font-weight: 700; font-size: 1.2rem; margin-top: 1.4rem; }
+.prose a { color: var(--oxblood); border-bottom: 1px solid var(--brass); }
+.prose a:hover { background: #f3ead6; }
+.prose code { font-family: var(--font-mono); font-size: 0.86em; background: #eae1cd; padding: 0.1em 0.35em; }
+.prose pre { background: var(--navy); color: var(--on-navy); padding: 1rem 1.1rem; overflow-x: auto; border-left: 3px solid var(--brass); font-size: 0.84rem; }
+.prose pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+.prose ul, .prose ol { padding-left: 1.3rem; }
+.prose li + li { margin-top: 0.3rem; }
+.prose blockquote { border-left: 3px solid var(--oxblood); padding: 0.5rem 0 0.5rem 1rem; color: var(--on-rag-dim); background: #f3ead6; }
+.prose table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; font-size: 0.9rem; }
+.prose th, .prose td { border: 1px solid var(--rag-2); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
+.prose th { background: #f3ead6; font-family: var(--font-mono); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.guide-foot { margin-top: 2.5rem; padding-top: 1rem; border-top: 2px solid var(--rag-2); font-family: var(--font-mono); font-size: 0.8rem; color: var(--on-rag-dim); }

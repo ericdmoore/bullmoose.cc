@@ -9,6 +9,7 @@
     "check": "astro check"
   },
   "dependencies": {
+    "@astrojs/markdown-remark": "^7.2.1",
     "@fontsource/big-shoulders-display": "^5",
     "@fontsource/public-sans": "^5",
     "@fontsource/space-mono": "^5",
