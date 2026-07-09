@@ -99,7 +99,7 @@ const prompt = (i: number, a: Answers): string => {
     "Let's connect an agent to your inbox. Where should it live?",
     "How smart — and how expensive — should it be? 1 = quick & cheap, 10 = deep & pricey. (Changeable later.)",
     "Preferred AI provider? Skip for the free default (Cloudflare Workers AI).",
-    "What should we call it?",
+    "What is its name?",
     `What should ${n} help you do? Pick a recipe, or type your own.`,
     `What should talking to ${n} feel like? Describe it, or open the sliders.`,
   ][i];
@@ -155,6 +155,7 @@ export default function DeployWizard() {
 
   const key = STEPS[step];
   const command = done ? buildScript(answers) : "";
+  const tone = composeTone(vals, axes);
 
   return (
     <div class="wiz">
@@ -226,10 +227,10 @@ export default function DeployWizard() {
                           </label>
                         ))}
                         <div class="wiz__personas-foot">
-                          <em>Dark-triad traits are excluded.</em>
+                          <em>{tone ? `feels ${tone}` : "Drag a few sliders to taste."}</em>
                           <div>
                             <button onClick={() => setVals(axes.map(() => 50))}>Reset</button>
-                            <button class="wiz__go" onClick={() => commit("persona", personaString(answers.name || "your agent", answers.purpose || "", composeTone(vals, axes)))}>Use these</button>
+                            <button class="wiz__go" onClick={() => commit("persona", personaString(answers.name || "your agent", answers.purpose || "", tone))}>Use these</button>
                           </div>
                         </div>
                       </div>
