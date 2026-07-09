@@ -8,31 +8,26 @@ const repo = "https://github.com/ericdmoore/bullmoose.cc";
 
 const pillars = [
   {
-    tag: "JMAP · RFC 8620/8621",
-    h: "Mail, your domain",
-    p: "A full JMAP server — send, receive, threads, search, push, drafts, vacation. Inbound via Cloudflare Email Routing; outbound via SES with DKIM/SPF/DMARC wired for you.",
+    tag: "mail · calendar · contacts",
+    h: "A full stack, per agent",
+    p: "Every agent — you on Apple Mail, or a bot on the API — gets a complete JMAP mailbox, a DST-correct calendar, and contacts. One standards-native core, no second-class accounts.",
   },
   {
-    tag: "JSContact · JSCalendar",
-    h: "Contacts & calendar",
-    p: "Stored losslessly, with a DST-correct recurrence engine. Apple devices sync over CardDAV/CalDAV against the very same core your agents read.",
+    tag: "token ∩ grant · audited",
+    h: "Share what you choose",
+    p: "Any agent can grant another scoped, revocable, fully-audited access to its mail, calendar, or contacts — family sharing and agent delegation on the very same rails.",
   },
   {
-    tag: "token ∩ grant · vault",
-    h: "Sharing, done right",
-    p: "Cross-account grants (effective rights = token ∩ grant, every access audited) back family sharing and agent delegation; a write-only, envelope-encrypted vault holds third-party keys.",
-  },
-  {
-    tag: "one binary",
-    h: "A real CLI",
-    p: "Login, offline sync to local SQLite, Markdown-to-MIME send, live watch, contacts/calendar import, and token/grant admin — self-documenting via `bullmoose help`.",
+    tag: "MCP · zero credentials",
+    h: "Hand it real tools",
+    p: "Each agent can be granted MCP servers — a read-only analytics MCP over its own message log today, more connectors next — so it acts with real tools and no external secrets.",
   },
 ];
 
 const steps = [
-  { h: "Deploy", p: "One idempotent command stands up six workers on Cloudflare's free tier — D1, R2, KV, schemas, secrets, and all.", code: "node infra/bootstrap.mjs" },
-  { h: "Point your domain", p: "One call wires Email Routing + catch-all, an SES identity, and DKIM / SPF / DMARC. Poll until it flips active.", code: "bullmoose admin domain add you.com" },
-  { h: "Connect clients", p: "Speak JMAP directly, sync Apple over CardDAV/CalDAV, or point a legacy client at the POP3/SMTP shim.", code: "bullmoose login you@you.com" },
+  { h: "Install", p: "Clone the repo and build the one-binary CLI — no daemons, nothing to babysit.", code: "npm install" },
+  { h: "Deploy", p: "One idempotent command stands up the workers on Cloudflare's free tier — D1, R2, KV, schemas, secrets, and all.", code: "node infra/bootstrap.mjs" },
+  { h: "Setup", p: "Point your domain — Email Routing, SES, and DKIM / SPF / DMARC wired for you — then connect clients over JMAP or CardDAV/CalDAV.", code: "bullmoose admin domain add you.com" },
 ];
 
 const wire = [
@@ -75,7 +70,7 @@ const compareRows = [
             Cloudflare, standards-native, <b>~$0/month</b>.
           </p>
           <div class="hero__cta reveal stagger-2">
-            <a class="btn btn-solid" href={`${repo}/blob/main/docs/DEPLOY.md`}>Deploy your own &rarr;</a>
+            <a class="btn btn-solid" href="/deploy">Deploy your own &rarr;</a>
             <a class="btn btn-ghost" href="/recipes">See agent recipes &rarr;</a>
           </div>
         </div>
@@ -144,9 +139,10 @@ const compareRows = [
     <section id="what" class="band band--rag">
       <div class="wrap">
         <div class="band__head reveal">
-          <h2 class="band__title">And a full mail core</h2>
+          <h2 class="band__title">Batteries included</h2>
           <span class="flagrule"><span class="stars">&#9733; &#9733; &#9733;</span></span>
         </div>
+        <p class="band__intro reveal">Every account is an agent — human or AI — and each one comes fully equipped.</p>
         <div class="pillars">
           {pillars.map((p, i) => (
             <article class={`pillar reveal stagger-${i + 1}`}>
@@ -175,13 +171,14 @@ const compareRows = [
         <div class="pricebox reveal">
           <p class="eyebrow">What's the catch?</p>
           <h2 class="pricebox__amt">$0<span>/month</span></h2>
+          <p class="pricebox__kicker">Finally, something to do with that spare domain.</p>
           <ul>
             <li><span>Cloudflare Workers, D1, R2, KV</span> <b>free tier</b></li>
             <li><span>Cloudflare Email Routing (inbound)</span> <b>free</b></li>
             <li><span>AWS SES (outbound)</span> <b>free tier*</b></li>
             <li class="pricebox__paid"><span>Your domain</span> <b>not free</b></li>
           </ul>
-          <p class="pricebox__foot">*3,000 emails/mo off-EC2, 62,000 from EC2. Finally, something to do with that spare domain.</p>
+          <p class="pricebox__foot">*SES free tier — 3,000 emails/mo off-EC2, 62,000 from EC2.</p>
         </div>
         <div class="compare reveal stagger-1">
           <table>
@@ -223,10 +220,11 @@ const compareRows = [
     <section class="enlist">
       <div class="wrap enlist__in">
         <div class="reveal">
-          <h2>Put your hat<br />in the ring.</h2>
+          <h2>Believe you can,<br />and you&rsquo;re halfway there.</h2>
+          <p class="enlist__cite">&mdash; Theodore Roosevelt</p>
           <p>The whole stack, one command &middot; $0/month</p>
         </div>
-        <a class="btn btn-ghost reveal stagger-2" href={`${repo}/blob/main/docs/DEPLOY.md`}>Deploy your own &rarr;</a>
+        <a class="btn btn-ghost reveal stagger-2" href="/deploy">Deploy your own &rarr;</a>
       </div>
     </section>
   </main>
