@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import { unified } from "@astrojs/markdown-remark";
+import preact from "@astrojs/preact";
 
 // Static output (default) — brochure + guides, no SSR. Deploys as static
 // assets to Cloudflare Pages. Design/plan: docs/architecture/marketing-site.md.
@@ -41,6 +42,9 @@ function rewritePlaybookLinks() {
 
 export default defineConfig({
   site: "https://bullmoose.cc",
+  // Preact powers the one interactive island — the /deploy agent wizard.
+  // Everything else stays static (zero JS).
+  integrations: [preact()],
   // Astro 7: customize Markdown via a unified() processor (gfm + Shiki +
   // smartypants stay on by default). Our rehype pass rewrites playbook links.
   markdown: { processor: unified({ rehypePlugins: [rewritePlaybookLinks] }) },
