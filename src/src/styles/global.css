@@ -188,7 +188,7 @@ body::before {
 .hero__slogan {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: clamp(3.2rem, 11vw, 8.5rem);
+  font-size: clamp(2.6rem, 9.2vw, 7rem);
   line-height: 0.86;
   letter-spacing: -0.01em;
   text-transform: uppercase;
