@@ -10,13 +10,17 @@ import "../styles/global.css";
 
 interface Props {
   title?: string;
+  ogTitle?: string;
   description?: string;
 }
 const {
   title = "bullmoose — self-hosted mail, contacts, calendar & agents",
+  ogTitle,
   description = "Self-hosted agentic email, contacts, calendars, $0/mo.",
 } = Astro.props;
 
+// og/twitter title can mirror the hero while <title> stays brand-first.
+const socialTitle = ogTitle ?? title;
 const site = Astro.site ?? new URL("https://bullmoose.cc");
 const canonical = new URL(Astro.url.pathname, site).href;
 const ogImage = new URL("/og.png", site).href;
@@ -37,7 +41,7 @@ const ogImage = new URL("/og.png", site).href;
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="bullmoose" />
     <meta property="og:url" content={canonical} />
-    <meta property="og:title" content={title} />
+    <meta property="og:title" content={socialTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImage} />
     <meta property="og:image:type" content="image/png" />
@@ -47,7 +51,7 @@ const ogImage = new URL("/og.png", site).href;
 
     <!-- Twitter / X -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={title} />
+    <meta name="twitter:title" content={socialTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
     <meta name="twitter:image:alt" content="bullmoose — your domain, your data, one core" />

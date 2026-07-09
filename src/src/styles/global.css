@@ -180,16 +180,16 @@ body::before {
 .hero__in {
   position: relative;
   display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
-  gap: clamp(1.5rem, 5vw, 4rem);
+  grid-template-columns: 1.32fr 0.78fr;
+  gap: clamp(1.5rem, 5vw, 3.5rem);
   align-items: center;
   padding-block: clamp(3rem, 8vw, 6.5rem);
 }
 .hero__slogan {
   font-family: var(--font-display);
   font-weight: 800;
-  font-size: clamp(2.6rem, 9.2vw, 7rem);
-  line-height: 0.86;
+  font-size: clamp(2.4rem, 7.4vw, 5.5rem);
+  line-height: 0.9;
   letter-spacing: -0.01em;
   text-transform: uppercase;
   margin-block: 1.1rem 0.4rem;
