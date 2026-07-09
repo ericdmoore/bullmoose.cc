@@ -524,9 +524,49 @@ a.card:hover { border-color: var(--brass); transform: translateY(-2px); transiti
 .recipes-cta { margin-top: 2.6rem; padding-top: 1.6rem; border-top: 2px solid var(--rag-2); display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap; }
 .recipes-cta > p { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 1.4rem; margin-right: 0.3rem; }
 
+/* ---- deploy wizard (Preact island) ------------------------ */
+.wiz { background: #0f1830; border: 1px solid #26324f; box-shadow: 0 16px 40px rgba(0,0,0,0.25); margin-top: 1.6rem; overflow: hidden; font-family: var(--font-mono); }
+.wiz__scroll { padding: 1.1rem 1.2rem 1.4rem; color: var(--on-navy); font-size: 0.86rem; line-height: 1.7; }
+.wiz__q { color: var(--on-navy); }
+.wiz__hist { opacity: 0.7; margin-bottom: 0.45rem; }
+.wiz__a { color: var(--brass-2); }
+.wiz__a span { color: #5f9e6f; margin-right: 0.4ch; }
+.wiz__now { margin-top: 0.3rem; }
+.wiz__in { margin-top: 0.7rem; }
+.wiz__opts { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.wiz__opts button, .wiz__personas-foot button { font-family: var(--font-mono); font-size: 0.82rem; color: var(--on-navy); background: #172140; border: 1px solid #2e3c5e; padding: 0.5rem 0.8rem; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.wiz__opts button:hover, .wiz__personas-foot button:hover { border-color: var(--brass-2); background: #1e2a4d; }
+.wiz__opts button em { color: var(--on-navy-dim); font-style: normal; font-size: 0.72rem; margin-left: 0.4ch; }
+.wiz__scale button { min-width: 2.4rem; text-align: center; }
+.wiz form { display: flex; align-items: center; gap: 0.5ch; margin-top: 0.5rem; }
+.wiz__prompt { color: var(--brass-2); }
+.wiz input { flex: 1; min-width: 8rem; background: transparent; border: none; border-bottom: 1px solid #2e3c5e; color: var(--on-navy); font-family: var(--font-mono); font-size: 0.86rem; padding: 0.35rem 0.2rem; caret-color: var(--brass-2); }
+.wiz input:focus { outline: none; border-color: var(--brass-2); }
+.wiz__go { background: var(--oxblood); color: var(--rag); border: none; padding: 0.42rem 0.85rem; cursor: pointer; font-family: var(--font-mono); font-size: 0.82rem; }
+.wiz__go:hover { background: var(--oxblood-2); }
+.wiz__cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.4rem; margin-bottom: 0.6rem; }
+.wiz__card { text-align: left; font-family: var(--font-mono); font-size: 0.76rem; color: var(--on-navy-dim); background: #141d38; border: 1px solid #26324f; padding: 0.45rem 0.6rem; cursor: pointer; }
+.wiz__card:hover { border-color: var(--brass-2); color: var(--on-navy); }
+.wiz__card code { color: var(--brass-2); }
+.wiz__personas { display: grid; gap: 0.5rem; margin-top: 0.5rem; }
+.wiz__axis { display: grid; grid-template-columns: 1fr 7rem 1fr; align-items: center; gap: 0.6rem; font-size: 0.72rem; color: var(--on-navy-dim); }
+.wiz__axis span:first-child { text-align: right; }
+.wiz__axis input[type="range"] { accent-color: var(--brass-2); width: 100%; }
+.wiz__personas-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 0.7rem; flex-wrap: wrap; gap: 0.5rem; }
+.wiz__personas-foot em { color: var(--on-navy-dim); font-size: 0.72rem; }
+.wiz__personas-foot > div { display: flex; gap: 0.5rem; }
+.wiz__cmd { background: #0a1226; border-left: 3px solid var(--brass); padding: 0.9rem 1rem; overflow-x: auto; margin: 0.7rem 0; }
+.wiz__cmd code { color: #cdd6ea; font-size: 0.8rem; white-space: pre; }
+.wiz__outbtns { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.wiz__outbtns button { font-family: var(--font-mono); font-size: 0.82rem; cursor: pointer; padding: 0.45rem 0.9rem; border: 1px solid #2e3c5e; background: #172140; color: var(--on-navy); }
+.wiz__outbtns button.wiz__go { border-color: transparent; }
+.wiz__note { margin-top: 0.9rem; color: var(--on-navy-dim); font-size: 0.78rem; }
+.wiz__note a { color: var(--brass-2); border-bottom: 1px solid var(--brass); }
+
 /* ---- responsive (added sections) -------------------------- */
 @media (max-width: 52rem) {
   .agents { grid-template-columns: 1fr; }
   .steps { grid-template-columns: 1fr; }
   .price-grid { grid-template-columns: 1fr; }
+  .wiz__axis { grid-template-columns: 1fr 5rem 1fr; font-size: 0.68rem; }
 }
