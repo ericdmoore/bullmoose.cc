@@ -207,7 +207,7 @@ body::before {
 @keyframes slogan-in {
   to { opacity: 1; transform: translateY(0); }
 }
-.hero__slogan .l2 { color: var(--brass-2); font-size: clamp(2.4rem, 7.4vw, 5.7rem); } /* the star — short, so it goes BIG */
+.hero__slogan .l2 { color: var(--brass-2); font-size: clamp(2.5rem, 8.3vw, 6.5rem); } /* the star — short, so it goes BIG (~1.6x the framing lines) */
 .hero__slogan .l3 {
   -webkit-text-stroke: 1.5px var(--on-navy);
   color: transparent;
