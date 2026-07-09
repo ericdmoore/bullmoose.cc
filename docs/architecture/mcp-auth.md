@@ -34,13 +34,14 @@
 14. [A note on GraphQL](#14-a-note-on-graphql)
 15. [Build sequencing](#15-build-sequencing)
 16. [Security invariants — the testable properties](#16-security-invariants)
+17. [Sandboxed code execution](#17-sandboxed-code-execution)
 
 ---
 
 ## 1. The agent tool surface
 
-The decision that bounds this entire design: **agents get three capabilities and
-no more.**
+The decision that bounds this entire design: **agents get three capabilities** for now. With an eye 
+towards the blessing of not having to harden-surfaces that dont exist.
 
 | Capability | What it is | Trust model |
 |---|---|---|
@@ -48,8 +49,8 @@ no more.**
 | **MCP** | the agent as a *client* of MCP servers — bullmoose's own and external (`mcp.aws.amazon.com`, Google Calendar, …) | credential bound to the server, held by the runtime |
 | **WebFetch** | raw HTTP reads of public URLs | **no credential, ever** — the model chooses the URL |
 
-**No bash. No tty. No arbitrary code execution.** [proposed — this is the design
-stance; the runtime today runs *no* tools at all, see §4]
+**No bash. No tty. No arbitrary code execution.** 
+[proposed — this is the design stance; today, the runtime has *no* tools at all, see §4]
 
 This bound is what makes the rest tractable. Because there is no shell escape
 hatch, "an agent reaches an external service" *is* "an agent is an MCP client to
@@ -245,7 +246,7 @@ server, optionally dynamic client registration. Build it **when the first
 non-bullmoose client appears** — not before; carrying OAuth complexity with no
 consumer is wasted surface.
 
-### 7b. Agents as MCP *clients*
+### 7b. Agents using MCP *clients*
 
 The other direction, and where external systems enter (`mcp.aws.amazon.com`,
 Google Calendar MCP, …). The credential belongs in the **vault**, referenced by
@@ -749,6 +750,120 @@ The properties that must hold — written as things you can assert/test.
 7. **Actions are capability-gated, not prompt-gated.** `send` (and any egress) is
    denied unless scope ∩ grant covers it — so an injected instruction cannot
    perform it regardless of what the untrusted email says.
+8. **The compute sandbox's only output is its return value.** With
+   `entitlements: []` the box has zero ambient authority; its failure modes are
+   limited to a wrong value or resource abuse — the latter capped by an
+   interruptible, memory-bounded QuickJS-in-WASM runtime (§17).
+9. **Sandbox entitlements are host-mediated proxies, not powers.** Code inside the
+   sandbox holds no credential; each entitlement call marshals out to the host,
+   which runs the §6/§8 enforcement and returns only the result. Code Mode never
+   widens authority beyond an ordinary tool call.
+
+---
+
+## 17. Sandboxed code execution
+
+**Why.** LLMs are unreliable at exact work (arithmetic, counting, sorting, date
+math, reconciliation) but excellent at *writing code that does it*. The single most
+reliable lever in agent design is **offload determinism**: the model writes the
+program; a real interpreter runs it. For a spend-ledger / PIM system the payoff is
+direct — *sum these invoices, dedupe these contacts, compute this variance* should
+be code the model authors, never mental arithmetic.
+
+This gives agents a **second kind of tool**, complementary to MCP:
+
+| | **Effect tools** (MCP / JMAP — §6–§11) | **The compute tool** (this section) |
+|---|---|---|
+| Job | get data / cause effects | reason deterministically over data in hand |
+| Authority | I/O + credentials | **none** — an empty box |
+| Security bar | high | low — nothing to steal |
+| Concern | grants, egress, confused-deputy | resource limits + determinism |
+
+**Concept, not dependency.** `kyushu` (QuickJS→WASM→Wasmtime, capability-gated) and
+Juno (self-contained, owner-owned app containers) are the right *shapes*; neither is
+a dependency to adopt (both are experimental / off-substrate — kyushu is explicitly
+"not recommended for production," Juno runs on the Internet Computer). Build the
+shape on the stack already committed to: a QuickJS interpreter compiled to WASM, run
+inside a Worker, over DO + R2 + vault + grants.
+
+### The empty box — safe by construction [proposed]
+
+```ts
+evaluate({
+  code,                         // model-written, UNTRUSTED
+  input,                        // data the model already has
+  entitlements?: ToolHandle[]   // OPTIONAL — see the dial below
+}) → result
+```
+
+With `entitlements` omitted or `[]`, this is **safe-sandboxed arbitrary code
+execution, full stop** — for a precise reason: **the only channel out of the sandbox
+is the return value.** No fs, no net, no secrets, no ambient anything. Adversarial
+code (e.g. injected via `input`) can only:
+
+- compute a **wrong value** — harmless; the model reads it like any tool output; or
+- **abuse resources** — a `while(true)` or a memory bomb.
+
+So confidentiality and integrity are free; **availability is the one residual
+concern**, capped by limits. Use **QuickJS-in-WASM** specifically because it is
+**interruptible and memory-bounded** — a runaway loop can be *killed* via QuickJS's
+interrupt handler + heap cap. A same-isolate `eval` or a SES `Compartment` cannot:
+an infinite loop there hangs the whole isolate. For untrusted throwaway code you
+want an interpreter you can yank.
+
+### The `entitlements` dial — where the box becomes Code Mode [proposed]
+
+The `entitlements` parameter is exactly the seam between the safe box and Code Mode.
+**"Zero endowments" and "entitlements" are the two ends of one dial, not both at
+once** — the moment the box has entitlements, it is no longer empty.
+
+- **`entitlements = []`** → zero authority → the safe compute box above.
+- **`entitlements = [tool…]`** → **Code Mode.** The code can now *do things*. The
+  WASM boundary still protects the *host* (the code can't touch disk/net/secrets
+  directly), but **it does not make the entitlements themselves safe.** Safety of the
+  entitled box = safety of the entitlements you inject. Hand it a raw credentialed
+  `fetch` and it exfiltrates through the door you installed.
+
+**The rule that keeps Code Mode inside §8: entitlements are host-mediated proxies,
+not raw powers.** An entitlement is *the name of a door the sandbox may knock on*,
+never the key itself:
+
+```
+code in sandbox:  await tools.usage_by_day({ serviceName, region })
+                        │  (a proxy — carries NO credential)
+                        ▼  marshals OUT to the host
+host:  §6 grant check · §8 credential injection at transport · grant_audit · egress redact
+                        │
+                        ▼  marshals only the RESULT back IN
+code in sandbox:  → [{date, amountUSD}, …]
+```
+
+So "zero endowments" (no *ambient* authority) and "entitlements" (explicit
+*mediated* authority) coexist correctly — the object-capability model. The sandbox
+never holds a key; every entitlement use re-crosses to the host, where the full
+§6/§8/§11 enforcement runs. Passing `entitlements` **per call** (not as global
+sandbox config) is deliberate: the code's authority is scoped to *this invocation*,
+matching per-invocation minted tokens (§15).
+
+### Two high-value uses, one primitive [proposed]
+
+- **Determinism / math** — the motivating case; `entitlements: []`.
+- **Untrusted-attachment parsing** — bytes in → text out, also `entitlements: []`.
+  The empty box is the right home for parsing a hostile PDF/CSV/image: the *host* is
+  protected by construction. Caveat: the *output* is untrusted (attacker-controlled
+  content), so §8's "untrusted data, never instructions" pin applies to the
+  extracted text exactly as to the email body — and this is precisely why parsing
+  must **not** run in a privileged native parser.
+
+### Build note
+
+Build the `entitlements: []` box **first** — it is unconditionally safe, ships the
+determinism + attachment-parse wins, and teaches the sandbox plumbing before any
+capability is injected. "Adding a capability" later is literally passing a non-empty
+`entitlements` — Code Mode is the *same primitive* with the host-side proxy plumbing
+added. Per §1's discipline, the empty box is the lowest-risk new surface and the
+natural first code-execution tier; Code Mode waits until the bounded tool-loop's
+composition limits actually bite.
 
 ---
 
