@@ -565,7 +565,8 @@ a.card:hover { border-color: var(--brass); transform: translateY(-2px); transiti
 
 /* ---- batteries-included intro + pricing kicker + enlist cite ---- */
 .band__intro { max-width: 62ch; margin: -0.6rem 0 1.9rem; color: var(--on-rag-dim); font-size: 1.08rem; }
-.pricebox__kicker { font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; line-height: 1.02; color: var(--brass-2); margin: 0.2rem 0 1.2rem; }
+.domain-band__in { display: flex; flex-direction: column; align-items: center; gap: 1rem; text-align: center; }
+.domain-band__line { font-family: var(--font-display); font-weight: 800; text-transform: uppercase; font-size: clamp(1.6rem, 4.6vw, 3rem); line-height: 0.98; color: var(--brass-2); max-width: 26ch; margin: 0; }
 .enlist .enlist__cite { color: var(--brass-2); font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.05em; margin: 0.55rem 0 0.9rem; }
 
 /* ---- connectors (MCP) page -------------------------------- */
