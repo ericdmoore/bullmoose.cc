@@ -511,6 +511,19 @@ a.card:hover { border-color: var(--brass); transform: translateY(-2px); transiti
 .trust p { color: var(--on-rag-dim); font-size: 0.93rem; }
 .trust a { color: var(--oxblood); border-bottom: 1px solid var(--brass); }
 
+/* ---- recipes page ----------------------------------------- */
+.recipes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: 1.1rem; margin-top: 1.5rem; }
+.recipe { display: flex; flex-direction: column; gap: 0.45rem; background: #fbf8ee; border: 1px solid var(--rag-2); border-top: 3px solid var(--oxblood); padding: 1.3rem 1.4rem; }
+.recipe__addr { align-self: flex-start; font-family: var(--font-mono); font-size: 0.76rem; background: var(--navy); color: var(--brass-2); padding: 0.2em 0.55em; }
+.recipe h3 { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 1.35rem; letter-spacing: 0.01em; margin-top: 0.15rem; }
+.recipe > p { color: var(--on-rag-dim); font-size: 0.93rem; }
+.recipe__ex { margin-top: 0.5rem; border-left: 2px solid var(--rag-2); padding-left: 0.85rem; display: grid; gap: 0.35rem; }
+.recipe__ex .ex { font-size: 0.85rem; color: var(--ink); }
+.recipe__ex .ex span { font-family: var(--font-mono); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--brass); margin-right: 0.5ch; }
+.recipe__ex .ex--you span { color: var(--oxblood); }
+.recipes-cta { margin-top: 2.6rem; padding-top: 1.6rem; border-top: 2px solid var(--rag-2); display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap; }
+.recipes-cta > p { font-family: var(--font-display); font-weight: 700; text-transform: uppercase; font-size: 1.4rem; margin-right: 0.3rem; }
+
 /* ---- responsive (added sections) -------------------------- */
 @media (max-width: 52rem) {
   .agents { grid-template-columns: 1fr; }

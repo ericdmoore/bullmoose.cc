@@ -5,7 +5,6 @@ import Footer from "../components/Footer.astro";
 import Postmark from "../components/Postmark.astro";
 
 const repo = "https://github.com/ericdmoore/bullmoose.cc";
-const cookbook = `${repo}/blob/main/docs/README.md`;
 
 const pillars = [
   {
@@ -77,7 +76,7 @@ const compareRows = [
           </p>
           <div class="hero__cta reveal stagger-2">
             <a class="btn btn-solid" href={`${repo}/blob/main/docs/DEPLOY.md`}>Deploy your own &rarr;</a>
-            <a class="btn btn-ghost" href="#agents">See agent recipes &rarr;</a>
+            <a class="btn btn-ghost" href="/recipes">See agent recipes &rarr;</a>
           </div>
         </div>
         <div class="hero__art reveal stagger-3">
@@ -108,7 +107,7 @@ const compareRows = [
               <li><code>editor@you.com</code> <span>&rarr;</span> marks up a draft, replies with a clean version</li>
               <li><code>assistant@you.com</code> <span>&rarr;</span> answers with context from your own mail</li>
             </ul>
-            <a class="btn btn-ink" href={cookbook}>See agent recipes &rarr;</a>
+            <a class="btn btn-ink" href="/recipes">See agent recipes &rarr;</a>
           </div>
           <div class="term reveal stagger-1" data-type aria-label="Example terminal session">
             <div class="term__bar"><span></span><span></span><span></span> bullmoose</div>
