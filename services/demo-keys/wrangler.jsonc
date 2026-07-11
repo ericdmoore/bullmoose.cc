@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bullmoose-demo-keys",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+
+  "kv_namespaces": [
+    { "binding": "DEMO_KEYS", "id": "REPLACE_AFTER_wrangler_kv_create" }
+  ],
+
+  "vars": {
+    // Public Turnstile site key — safe to commit; it's embedded in the page anyway.
+    // Pair it with the TURNSTILE_SECRET below (same widget in the Cloudflare dash).
+    "TURNSTILE_SITEKEY": "REPLACE_WITH_TURNSTILE_SITEKEY"
+  }
+
+  // Secrets (wrangler secret put):
+  //   INTERNAL_TOKEN    — bearer for /demo/verify. The mail bridge on alpaca holds
+  //                       ONLY this. It cannot mint keys or enumerate the namespace.
+  //   TURNSTILE_SECRET  — REQUIRED. /demo/request and /demo both fail closed without
+  //                       it (no widget on the page, no minting), so the public demo
+  //                       is never open without the challenge. Create a Turnstile
+  //                       widget in the Cloudflare dash; put its secret here and its
+  //                       site key in vars.TURNSTILE_SITEKEY above.
+}
