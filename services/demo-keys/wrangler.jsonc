@@ -12,7 +12,16 @@
     // Public Turnstile site key — safe to commit; it's embedded in the page anyway.
     // Pair it with the TURNSTILE_SECRET below (same widget in the Cloudflare dash).
     "TURNSTILE_SITEKEY": "REPLACE_WITH_TURNSTILE_SITEKEY"
-  }
+  },
+
+  // The mail bridge on alpaca defaults DEMO_VERIFY_URL to https://bullmoose.cc/demo/verify
+  // and the /demo page is meant to live at bullmoose.cc/demo — so this must be routed on
+  // the bullmoose.cc zone, not left on *.workers.dev. Uncomment and set the zone once the
+  // domain is on Cloudflare. (Alternatively use a custom domain in the dashboard.)
+  // "routes": [
+  //   { "pattern": "bullmoose.cc/demo", "zone_name": "bullmoose.cc" },
+  //   { "pattern": "bullmoose.cc/demo/*", "zone_name": "bullmoose.cc" }
+  // ]
 
   // Secrets (wrangler secret put):
   //   INTERNAL_TOKEN    — bearer for /demo/verify. The mail bridge on alpaca holds

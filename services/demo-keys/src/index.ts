@@ -88,6 +88,19 @@ const json = (body: unknown, status = 200) =>
     headers: { "content-type": "application/json" },
   });
 
+/**
+ * Write a key record, pinning KV collection to the record's OWN logical expiry rather
+ * than "30 days from this write". Using a rolling expirationTtl here would push the KV
+ * entry forward on every verify, so an actively-used phrase would linger in KV up to
+ * TTL_DAYS past its logical expiry. An absolute `expiration` collects it on time no
+ * matter how often it's touched. Floored to now+60s because KV rejects a shorter one.
+ */
+function putRec(env: Env, canonical: string, rec: KeyRecord): Promise<void> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const expSec = Math.max(Math.floor(Date.parse(rec.expires) / 1000), nowSec + 60);
+  return env.DEMO_KEYS.put(`k:${canonical}`, JSON.stringify(rec), { expiration: expSec });
+}
+
 async function turnstileOk(env: Env, req: Request, token: string | undefined) {
   // Fail CLOSED: a misconfigured deploy (secret not set) must not silently drop the
   // challenge and mint to anyone. If Turnstile isn't wired, nobody gets a key.
@@ -132,12 +145,9 @@ async function handleRequest(req: Request, env: Env): Promise<Response> {
     lastUsed: null,
     revoked: false,
   };
-  await env.DEMO_KEYS.put(`k:${normalize(phrase)}`, JSON.stringify(rec), {
-    // KV reaps the record on its own, so an abandoned key can't linger as a
-    // credential just because nothing swept the namespace.
-    expirationTtl: TTL_DAYS * 86400,
-  });
+  await putRec(env, normalize(phrase), rec);
 
+  console.log(JSON.stringify({ evt: "mint", ip, expires: rec.expires }));
   return json({ phrase, expires: rec.expires, line: `demo-key: ${phrase}` });
 }
 
@@ -175,21 +185,19 @@ async function handleVerify(req: Request, env: Env): Promise<Response> {
     // and don't serve this request either.
     rec.revoked = true;
     rec.revokedReason = `leaked: used by >${MAX_SENDERS} senders`;
-    await env.DEMO_KEYS.put(`k:${canonical}`, JSON.stringify(rec), {
-      expirationTtl: TTL_DAYS * 86400,
-    });
+    await putRec(env, canonical, rec);
+    console.log(JSON.stringify({ evt: "revoke_leaked", senders: rec.senders.length }));
     return json({ ok: false, reason: "revoked_leaked" });
   }
 
   if (!known) rec.senders.push(from);
   rec.uses += 1;
   rec.lastUsed = new Date().toISOString();
-  await env.DEMO_KEYS.put(`k:${canonical}`, JSON.stringify(rec), {
-    expirationTtl: TTL_DAYS * 86400,
-  });
+  await putRec(env, canonical, rec);
 
   // Echo the canonical phrase back: the bridge strips exactly this string from the
   // body before the model sees it, and scrubs it from the reply on the way out.
+  console.log(JSON.stringify({ evt: "verify_ok", uses: rec.uses, senders: rec.senders.length }));
   return json({ ok: true, phrase: canonical, uses: rec.uses });
 }
 
@@ -202,10 +210,13 @@ function page(sitekey: string): string {
  body{font:16px/1.6 system-ui,sans-serif;max-width:34rem;margin:12vh auto;padding:0 1rem}
  code{background:#f4f4f5;padding:.15em .4em;border-radius:4px}
  pre{background:#f4f4f5;padding:1rem;border-radius:8px;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
- button{font:inherit;padding:.6em 1.2em;border-radius:8px;border:1px solid #999;cursor:pointer}
+ button,.btn{font:inherit;padding:.6em 1.2em;border-radius:8px;border:1px solid #999;cursor:pointer;background:transparent;color:inherit;text-decoration:none;display:inline-block}
  button[disabled]{opacity:.5;cursor:not-allowed}
  .cf-turnstile{margin:1rem 0}
- @media(prefers-color-scheme:dark){body{background:#111;color:#eee}code,pre{background:#222}}
+ #key{width:100%;box-sizing:border-box;font:1rem ui-monospace,monospace;padding:.7em;margin:.4em 0;border:1px solid #999;border-radius:8px;background:#f4f4f5}
+ .row{display:flex;gap:.6rem;flex-wrap:wrap;margin:.6rem 0}
+ .hint{color:#666;font-size:.9rem}
+ @media(prefers-color-scheme:dark){body{background:#111;color:#eee}code,pre,#key{background:#222;color:#eee}.hint{color:#aaa}}
 </style>
 <h1>Try the bullmoose demo</h1>
 <p>Get a key phrase, then email <code>demo@bullmoose.cc</code> with the phrase on its
@@ -228,10 +239,30 @@ document.getElementById('go').onclick = async () => {
     body: JSON.stringify({ turnstile: token }),
   });
   const d = await r.json();
-  document.getElementById('out').innerHTML = d.error
-    ? '<p>Sorry — ' + d.error + '. Please solve the challenge again.</p>'
-    : '<p>Include this line in your email:</p><pre>' + d.line + '</pre><p>Valid until ' + new Date(d.expires).toDateString() + '.</p>';
-  // A token is single-use server-side; reset the widget for another go.
+  const out = document.getElementById('out');
+  if (d.error) {
+    out.innerHTML = '<p>Sorry — ' + d.error + '. Please solve the challenge again.</p>';
+  } else {
+    // Prefill an email: the key line the gate needs, then a starter question the
+    // sender can edit. mailto body must be URL-encoded.
+    const body = d.line + '\\n\\nAsk me anything about bullmoose — e.g. what makes it different from IMAP?\\n';
+    const href = 'mailto:demo@bullmoose.cc?subject=' + encodeURIComponent('bullmoose demo')
+      + '&body=' + encodeURIComponent(body);
+    out.innerHTML =
+      '<p>Your key phrase — valid until ' + new Date(d.expires).toDateString() + ':</p>'
+      + '<input id=key readonly>'
+      + '<div class=row><button id=copy type=button>Copy</button>'
+      + '<a class=btn href="' + href + '">Email demo@bullmoose.cc</a></div>'
+      + '<p class=hint>Keep that <code>demo-key:</code> line in your email. Reply to the answer to keep the thread going.</p>';
+    const key = document.getElementById('key');
+    key.value = d.line;                          // set via property — never HTML
+    key.onclick = () => key.select();
+    document.getElementById('copy').onclick = async () => {
+      try { await navigator.clipboard.writeText(d.line); document.getElementById('copy').textContent = 'Copied ✓'; }
+      catch (e) { key.select(); }                // clipboard blocked → select for manual copy
+    };
+  }
+  // A token is single-use server-side; reset the widget so the next click re-solves.
   token = ""; if (window.turnstile) window.turnstile.reset();
 };
 </script>`;
