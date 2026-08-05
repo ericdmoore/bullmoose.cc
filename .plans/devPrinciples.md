@@ -1,0 +1,8 @@
+- Leverage open-source project when it makes sense.
+- If we are designing and implementing something - here are our architectural principles:
+    - Pure-core; effects-in-the-shell
+    - tests must be ample, and fast
+    - clients are always passed in to functions - so that tests can pass in mocks/fakes
+    - leverage 3rd party fake-clients & fake-db-mocks, and harnesses for testing - make them as needed.
+    - By injecting fake-clients most of the shell code can get coverage too without the need for real network access
+    - use codecoverage to find places where these priu
