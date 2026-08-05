@@ -1,0 +1,55 @@
+name: Coverage
+# Optional, manual-only: does NOT gate pushes or PRs. Runs the vitest suite
+# with coverage, publishes a browsable HTML report as an artifact, and diffs
+# the totals against the previous successful run (rendered in the run summary).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read # list + download the previous run's summary artifact
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Run coverage
+        run: npm run coverage
+
+      - name: Fetch previous run's summary (for comparison)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev=$(gh run list --workflow=coverage.yml --status=success --limit=1 \
+                   --json databaseId -q '.[0].databaseId' 2>/dev/null || true)
+          if [ -n "$prev" ]; then
+            echo "Comparing against run $prev"
+            gh run download "$prev" --name coverage-summary --dir prev-cov \
+              || echo "previous run had no coverage-summary artifact"
+          else
+            echo "No previous successful run to compare against (baseline)."
+          fi
+
+      - name: Render report into the run summary
+        run: node .github/scripts/coverage-report.mjs >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage/
+          retention-days: 30
+
+      - name: Upload summary (source for the next run's diff)
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: coverage/coverage-summary.json
+          retention-days: 90
