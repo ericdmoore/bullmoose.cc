@@ -206,6 +206,42 @@ export function matchingGrants(
 }
 
 /**
+ * Pure authorization decision for one account access, shared by every
+ * transport that gates on scope ∩ grant (the JMAP `requireAccount` method
+ * gate and the stateless-MCP handler both run on this). No I/O: it resolves
+ * the account on the principal, enforces the token scope, and — for
+ * grant-reached accounts — the token ∩ grant intersection over the method's
+ * domain. It returns the grant that MUST be written to `grant_audit` (null
+ * for owned accounts); performing that write is the caller's job, so the
+ * effect stays in the shell and the decision stays testable without a DB.
+ */
+export type AuthzDecision =
+  | { ok: true; access: AccountAccess; auditGrant: GrantRef | null }
+  | { ok: false; reason: "accountNotFound" }
+  | { ok: false; reason: "forbidden"; detail: string };
+
+export function authorizeAccount(
+  principal: Principal,
+  accountId: string,
+  scope: string,
+  domain: MethodDomain = "mail",
+): AuthzDecision {
+  const access = accountAccess(principal, accountId);
+  if (!access) return { ok: false, reason: "accountNotFound" };
+  if (!principalHasScope(principal, scope)) {
+    return { ok: false, reason: "forbidden", detail: `token lacks the "${scope}" scope` };
+  }
+  if (access.granted) {
+    const matching = matchingGrants(access, scope, domain);
+    if (matching.length === 0) {
+      return { ok: false, reason: "forbidden", detail: `no grant covers "${scope}" on this account` };
+    }
+    return { ok: true, access, auditGrant: matching[0]! };
+  }
+  return { ok: true, access, auditGrant: null };
+}
+
+/**
  * Collection restriction for contacts methods: null = unrestricted
  * (owner, or a whole-account grant); otherwise the set of AddressBook
  * ids the principal may touch under this scope.

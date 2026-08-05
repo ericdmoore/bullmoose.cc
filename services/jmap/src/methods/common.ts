@@ -2,9 +2,7 @@ import { MethodError } from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
 import {
-  accountAccess,
-  matchingGrants,
-  principalHasScope,
+  authorizeAccount,
   type AccountAccess,
   type MethodDomain,
   type Principal,
@@ -35,30 +33,26 @@ export async function requireAccount(
   if (typeof accountId !== "string") {
     throw new MethodError("invalidArguments", "accountId is required");
   }
-  const access = accountAccess(ctx.principal, accountId);
-  if (!access) throw new MethodError("accountNotFound");
-  if (!principalHasScope(ctx.principal, scope)) {
-    throw new MethodError("forbidden", `token lacks the "${scope}" scope`);
+  const decision = authorizeAccount(ctx.principal, accountId, scope, domain);
+  if (!decision.ok) {
+    if (decision.reason === "accountNotFound") throw new MethodError("accountNotFound");
+    throw new MethodError("forbidden", decision.detail);
   }
-  if (access.granted) {
-    const matching = matchingGrants(access, scope, domain);
-    if (matching.length === 0) {
-      throw new MethodError("forbidden", `no grant covers "${scope}" on this account`);
-    }
+  if (decision.auditGrant) {
     await ctx.env.DB.prepare(
       `INSERT INTO grant_audit (grant_id, principal, account_id, method, at)
        VALUES (?, ?, ?, ?, ?)`,
     )
       .bind(
-        matching[0]!.grantId,
+        decision.auditGrant.grantId,
         ctx.principal.username,
-        access.accountId,
+        decision.access.accountId,
         `${domain}:${scope}`,
         Date.now(),
       )
       .run();
   }
-  return access;
+  return decision.access;
 }
 
 export function storeFor(ctx: RequestContext): Mailstore {
