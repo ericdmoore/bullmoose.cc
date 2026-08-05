@@ -79,10 +79,29 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Prin
     };
   }
 
+  const principal = await verifyBearer(env.DB, raw);
+  if (!principal) return null;
+  // App-password: a Basic username, when present, must be the token's own
+  // principal (its login email).
+  if (basicUser && basicUser.toLowerCase() !== principal.username.toLowerCase()) {
+    return null;
+  }
+  return principal;
+}
+
+/**
+ * Bearer → principal, decoupled from the HTTP request so any transport can
+ * reuse it — the stateless-MCP handler resolves identity through this rather
+ * than through `authenticate`. Reads the token row, its owned accounts, and
+ * the grants that extend its reach; returns null for any missing/invalid/
+ * expired token. `db` is injected, so the whole path is testable with a fake
+ * D1 (no request, no env).
+ */
+export async function verifyBearer(db: D1Database, raw: string): Promise<Principal | null> {
   const parsed = parseToken(raw);
   if (!parsed) return null;
 
-  const row = await env.DB.prepare(
+  const row = await db.prepare(
     `SELECT t.secret_hash, t.scopes, t.expires_at, t.last_used_at,
             t.principal_id, p.login_email
      FROM tokens t JOIN principals p ON p.id = t.principal_id
@@ -100,9 +119,8 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Prin
   if (!row) return null;
   if (!(await verifyTokenSecret(parsed.secret, row.secret_hash))) return null;
   if (row.expires_at !== null && row.expires_at < Date.now()) return null;
-  if (basicUser && basicUser.toLowerCase() !== row.login_email.toLowerCase()) return null;
 
-  const { results: accountRows } = await env.DB.prepare(
+  const { results: accountRows } = await db.prepare(
     `SELECT id, tenant_id, display_name FROM accounts WHERE principal_id = ? ORDER BY created_at`,
   )
     .bind(row.principal_id)
@@ -111,7 +129,7 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Prin
   // Throttled liveness bookkeeping — one small write per token per window.
   const now = Date.now();
   if (!row.last_used_at || now - row.last_used_at > LAST_USED_WRITE_INTERVAL_MS) {
-    await env.DB.prepare(`UPDATE tokens SET last_used_at = ? WHERE id = ?`)
+    await db.prepare(`UPDATE tokens SET last_used_at = ? WHERE id = ?`)
       .bind(now, parsed.id)
       .run();
   }
@@ -126,7 +144,7 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Prin
   // agent delegation). Owned accounts win over grants to themselves.
   if (accounts.length > 0) {
     const marks = accounts.map(() => "?").join(",");
-    const { results: grantRows } = await env.DB.prepare(
+    const { results: grantRows } = await db.prepare(
       `SELECT g.id, g.target_account_id, g.scopes, g.collection, g.collection_id,
               a.tenant_id, a.display_name
        FROM grants g JOIN accounts a ON a.id = g.target_account_id

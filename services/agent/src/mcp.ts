@@ -1,3 +1,4 @@
+import { authorizeAccount, verifyBearer, type Principal } from "@bullmoose/auth-core/principal";
 import type { Env } from "./models.js";
 
 /**
@@ -7,13 +8,23 @@ import type { Env } from "./models.js";
  * external credentials. Every tool is a bounded, parameterized query —
  * no free-form SQL crosses this boundary.
  *
- * Transport: MCP streamable-HTTP (JSON-RPC 2.0 over POST, single
- * response per request — we never open a stream). Auth: the platform
- * INTERNAL_TOKEN via x-internal-token; this is an internal tool surface
- * for agent runtimes, not a public endpoint.
+ * Transport: stateless MCP (2026-07-28 / SEP-2575). One JSON-RPC request
+ * per POST, one response — no session, no `initialize`, no `ping`. Each
+ * request carries its own protocol version (an HTTP header mirrored in
+ * `_meta`) and its own identity: a bearer token resolved to a principal,
+ * with every tool call authorized against the TARGET account (token ∩
+ * grant) and audited — never a self-asserted accountId. The platform
+ * `x-internal-token` remains as a coarse network ACL on the route (see
+ * index.ts); the bearer is the identity. See .plans/s01-stateless-MCP/.
  */
 
-const PROTOCOL_VERSION = "2025-06-18";
+const PROTOCOL_VERSION = "2026-07-28";
+const SUPPORTED_VERSIONS = [PROTOCOL_VERSION];
+/** Clients may cache tools/list this long (MCP.2 list cache hint). */
+const TOOLS_LIST_TTL_MS = 5 * 60_000;
+const UNSUPPORTED_PROTOCOL_VERSION = -32022;
+const PROTO_META = "io.modelcontextprotocol/protocolVersion";
+const CAPS_META = "io.modelcontextprotocol/clientCapabilities";
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -149,59 +160,121 @@ const TOOLS: ToolDef[] = [
 
 export async function handleMcp(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") {
-    return json({ error: "MCP streamable-http: POST JSON-RPC only" }, 405);
+    return json({ error: "MCP: POST JSON-RPC only" }, 405);
   }
+
+  // Identity first: MCP.2 has no session to authenticate once, so every
+  // request carries its own bearer. Resolve it to a principal up front.
+  const authz = request.headers.get("Authorization") ?? "";
+  const raw = authz.startsWith("Bearer ") ? authz.slice(7) : null;
+  const principal = raw ? await verifyBearer(env.DB, raw) : null;
+  if (!principal) return rpcError(null, -32001, "unauthorized", 401);
 
   let msg: JsonRpcRequest;
   try {
     msg = (await request.json()) as JsonRpcRequest;
   } catch {
-    return rpcError(null, -32700, "parse error");
+    return rpcError(null, -32700, "parse error", 400);
   }
   if (msg.jsonrpc !== "2.0" || typeof msg.method !== "string") {
-    return rpcError(msg.id ?? null, -32600, "invalid request");
+    return rpcError(msg.id ?? null, -32600, "invalid request", 400);
   }
 
-  // Notifications get an empty 202 per the streamable-http spec.
+  // Notifications carry no id and expect an empty 202 — no version gate.
   if (msg.id === undefined || msg.method.startsWith("notifications/")) {
     return new Response(null, { status: 202 });
   }
 
+  // Per-request protocol negotiation (SEP-2575): the header MUST be present
+  // and MUST equal the _meta value; an unknown version returns a typed error
+  // carrying the supported set. No `initialize`, no `ping`.
+  const meta = (msg.params?._meta ?? {}) as Record<string, unknown>;
+  const headerVersion = request.headers.get("MCP-Protocol-Version");
+  if (!headerVersion || headerVersion !== meta[PROTO_META]) {
+    return rpcError(
+      msg.id,
+      -32600,
+      "MCP-Protocol-Version header is required and must equal _meta protocolVersion",
+      400,
+    );
+  }
+  if (!SUPPORTED_VERSIONS.includes(headerVersion)) {
+    return rpcError(msg.id, UNSUPPORTED_PROTOCOL_VERSION, `unsupported protocol version: ${headerVersion}`, 400, {
+      supported: SUPPORTED_VERSIONS,
+      requested: headerVersion,
+    });
+  }
+  if (typeof meta[CAPS_META] !== "object" || meta[CAPS_META] === null) {
+    return rpcError(msg.id, -32602, "_meta clientCapabilities is required per request", 400);
+  }
+
   switch (msg.method) {
-    case "initialize":
+    case "server/discover":
       return rpcResult(msg.id, {
-        protocolVersion: PROTOCOL_VERSION,
+        supportedVersions: SUPPORTED_VERSIONS,
         capabilities: { tools: {} },
         serverInfo: { name: "bullmoose-mailstore-analytics", version: "1.0.0" },
+        instructions:
+          "Read-only analytics over the bullmoose message log and spend ledger. " +
+          "Each tool takes the accountId you are authorized to read.",
       });
-    case "ping":
-      return rpcResult(msg.id, {});
     case "tools/list":
       return rpcResult(msg.id, {
-        tools: TOOLS.map(({ name, description, inputSchema }) => ({
-          name,
-          description,
-          inputSchema,
-        })),
+        tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+        ttlMs: TOOLS_LIST_TTL_MS,
+        cacheScope: "session",
       });
-    case "tools/call": {
-      const params = (msg.params ?? {}) as { name?: string; arguments?: Record<string, unknown> };
-      const tool = TOOLS.find((t) => t.name === params.name);
-      if (!tool) return rpcError(msg.id, -32602, `unknown tool: ${String(params.name)}`);
-      try {
-        const result = await tool.run(env, params.arguments ?? {});
-        return rpcResult(msg.id, {
-          content: [{ type: "text", text: JSON.stringify(result, null, 1) }],
-        });
-      } catch (err) {
-        return rpcResult(msg.id, {
-          content: [{ type: "text", text: String(err) }],
-          isError: true,
-        });
-      }
-    }
+    case "tools/call":
+      return handleToolCall(msg, request, env, principal);
     default:
-      return rpcError(msg.id, -32601, `method not found: ${msg.method}`);
+      return rpcError(msg.id, -32601, `method not found: ${msg.method}`, 404);
+  }
+}
+
+async function handleToolCall(
+  msg: JsonRpcRequest,
+  request: Request,
+  env: Env,
+  principal: Principal,
+): Promise<Response> {
+  const params = (msg.params ?? {}) as { name?: string; arguments?: Record<string, unknown> };
+  // The routable Mcp-Name header, when present, must agree with the body.
+  const nameHeader = request.headers.get("Mcp-Name");
+  if (nameHeader && nameHeader !== params.name) {
+    return rpcError(msg.id, -32602, "Mcp-Name header does not match params.name", 400);
+  }
+  const tool = TOOLS.find((t) => t.name === params.name);
+  if (!tool) return rpcError(msg.id, -32602, `unknown tool: ${String(params.name)}`, 400);
+
+  const args = params.arguments ?? {};
+  const accountId = args.accountId;
+  if (typeof accountId !== "string" || accountId.length === 0) {
+    return rpcError(msg.id, -32602, "accountId is required", 400);
+  }
+
+  // §6 gate: authorize the TARGET account (token ∩ grant), never a self-
+  // asserted id, and audit any grant-reached read.
+  const decision = authorizeAccount(principal, accountId, "read", "mail");
+  if (!decision.ok) {
+    const detail = decision.reason === "accountNotFound" ? "account not found" : decision.detail;
+    return rpcError(msg.id, -32004, detail, 403);
+  }
+  if (decision.auditGrant) {
+    await env.DB.prepare(
+      `INSERT INTO grant_audit (grant_id, principal, account_id, method, at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind(decision.auditGrant.grantId, principal.username, accountId, `mcp:${tool.name}`, Date.now())
+      .run();
+  }
+
+  try {
+    const result = await tool.run(env, args);
+    return rpcResult(msg.id, {
+      content: [{ type: "text", text: JSON.stringify(result, null, 1) }],
+    });
+  } catch (err) {
+    return rpcResult(msg.id, { content: [{ type: "text", text: String(err) }], isError: true });
   }
 }
 
@@ -209,8 +282,16 @@ function rpcResult(id: number | string | null | undefined, result: unknown): Res
   return json({ jsonrpc: "2.0", id: id ?? null, result });
 }
 
-function rpcError(id: number | string | null | undefined, code: number, message: string): Response {
-  return json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
+function rpcError(
+  id: number | string | null | undefined,
+  code: number,
+  message: string,
+  status = 200,
+  data?: unknown,
+): Response {
+  const error: { code: number; message: string; data?: unknown } = { code, message };
+  if (data !== undefined) error.data = data;
+  return json({ jsonrpc: "2.0", id: id ?? null, error }, status);
 }
 
 function json(data: unknown, status = 200): Response {
