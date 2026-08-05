@@ -1,36 +1,45 @@
-name: Deploy
+name: Deploy site
+
+# The bullmoose.cc marketing + guides site (src/, Astro → Cloudflare Pages).
+# Design/plan: docs/architecture/marketing-site.md.
+#
+# Prereqs (one-time):
+#   1. A dedicated Pages token (Account > Cloudflare Pages: Edit), kept
+#      separate from the platform's bullmoose-deploy token. Store it as the
+#      GitHub repo secret BULLMOOSE_SITE_DEPLOY_TOKEN (`gh secret set …` —
+#      a local .env copy is NOT visible to CI). CLOUDFLARE_ACCOUNT_ID is set.
+#   2. First run creates the `bullmoose` Pages project (direct upload).
+#      Then map the apex `bullmoose.cc` to it in the Pages dashboard.
+
 on:
   push:
-    branches: main
-  pull_request:
-    branches: main
+    branches: [main]
+    paths:
+      - "src/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
 
 jobs:
   deploy:
-    name: Deploy
+    name: Build & deploy
     runs-on: ubuntu-latest
-
     permissions:
-      id-token: write # Needed for auth with Deno Deploy
-      contents: read # Needed to clone the repository
-
+      contents: read
+      deployments: write
     steps:
-      - name: Clone repository
-        uses: actions/checkout@v4
-
-      - name: Install Deno
-        uses: denoland/setup-deno@v1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          deno-version: v1.x
-
-      - name: Build step
-        run: "cd src && deno task build"
-
-      - name: Upload to Deno Deploy
-        uses: denoland/deployctl@v1
+          node-version: 22
+      - name: Build
+        working-directory: src
+        run: |
+          npm ci
+          npm run build
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
         with:
-          project: "bullmoose"
-          entrypoint: "main.ts"
-          root: "src"
-          
-          
+          apiToken: ${{ secrets.BULLMOOSE_SITE_DEPLOY_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: src
+          command: pages deploy dist --project-name=bullmoose --branch=main

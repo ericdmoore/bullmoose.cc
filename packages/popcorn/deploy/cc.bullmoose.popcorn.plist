@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- launchd agent — macOS (alpaca) branch.
+     install: cp cc.bullmoose.popcorn.plist ~/Library/LaunchAgents/
+              launchctl load ~/Library/LaunchAgents/cc.bullmoose.popcorn.plist
+     Ports <1024 need root (LaunchDaemon in /Library/LaunchDaemons instead);
+     the default here listens on 9995 to stay in userland. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>cc.bullmoose.popcorn</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/popcorn</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>POPCORN_LISTEN</key>
+        <string>:9995</string>
+        <key>POPCORN_TLS_CERT</key>
+        <string>/usr/local/etc/popcorn/cert.pem</string>
+        <key>POPCORN_TLS_KEY</key>
+        <string>/usr/local/etc/popcorn/key.pem</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/log/popcorn.log</string>
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/log/popcorn.log</string>
+</dict>
+</plist>

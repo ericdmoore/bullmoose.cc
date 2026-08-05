@@ -1,0 +1,10 @@
+{
+  "name": "@bullmoose/popcorn",
+  "version": "0.0.1",
+  "private": true,
+  "description": "POP3 'but way more corny' — barely-conforming POP3S front-end that translates to JMAP. Go daemon; see README.md.",
+  "scripts": {
+    "build": "go build -o dist/popcorn ./cmd/popcorn",
+    "typecheck": "go vet ./..."
+  }
+}

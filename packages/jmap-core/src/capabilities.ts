@@ -4,6 +4,14 @@ export const CORE_CAP = "urn:ietf:params:jmap:core";
 export const MAIL_CAP = "urn:ietf:params:jmap:mail";
 export const SUBMISSION_CAP = "urn:ietf:params:jmap:submission";
 export const WEBSOCKET_CAP = "urn:ietf:params:jmap:websocket";
+export const VACATION_CAP = "urn:ietf:params:jmap:vacationresponse";
+export const CONTACTS_CAP = "urn:ietf:params:jmap:contacts";
+/** JMAP for Calendars is still an IETF draft; we advertise the URN and
+ * implement the pragmatic core (Calendar/CalendarEvent CRUD + query +
+ * changes + a bullmoose occurrence expansion helper). */
+export const CALENDARS_CAP = "urn:ietf:params:jmap:calendars";
+/** Vendor capability: AgentInvocation queue etc. (agent-integration.md). */
+export const AGENT_CAP = "urn:bullmoose:params:jmap:agent";
 
 /** RFC 8620 §2 core capability object. */
 export const coreCapability = {
@@ -15,6 +23,17 @@ export const coreCapability = {
   maxObjectsInGet: 500,
   maxObjectsInSet: 500,
   collationAlgorithms: ["i;ascii-numeric", "i;ascii-casemap", "i;unicode-casemap"],
+} as const;
+
+/**
+ * RFC 9610 §1.3 contacts capability object (per-account).
+ * maxAddressBooksPerCard: 1 advertises the v1 single-book-per-card
+ * constraint (spec-legal: any integer >= 1); the schema keeps the full
+ * addressBookIds set in the blob so lifting it later is a backfill.
+ */
+export const contactsCapability = {
+  maxAddressBooksPerCard: 1,
+  mayCreateAddressBook: true,
 } as const;
 
 /** RFC 8621 §1.3 mail capability object (per-account). */

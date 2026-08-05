@@ -74,10 +74,14 @@ web_modules/
 
 # dotenv environment variable files
 .env
+.env.deploy
 .env.development.local
 .env.test.local
 .env.production.local
 .env.local
+
+# local scratch (agent feedback, notes)
+_scratch/
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -128,4 +132,11 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# Wrangler local dev state + local secrets
+.wrangler/
 .dev.vars
+
+# popcorn build outputs
+packages/popcorn/dist/
+packages/popcorn/popcorn

@@ -1,0 +1,14 @@
+{
+  "name": "@bullmoose/service-provision",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@bullmoose/auth-core": "*",
+    "aws4fetch": "^1.0.20"
+  }
+}

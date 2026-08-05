@@ -1,0 +1,31 @@
+---
+import Base from "../../layouts/Base.astro";
+import Nav from "../../components/Nav.astro";
+import Footer from "../../components/Footer.astro";
+import { getCollection, render } from "astro:content";
+import { guideMeta } from "../../lib/guidesMeta";
+
+export async function getStaticPaths() {
+  const entries = await getCollection("guides");
+  return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const meta = guideMeta(entry.id);
+const { Content } = await render(entry);
+const source = `https://github.com/ericdmoore/bullmoose.cc/blob/main/docs/playbooks/${entry.id}.md`;
+---
+
+<Base title={`${meta.title} — bullmoose guides`} description={meta.blurb}>
+  <Nav />
+  <main class="wrap page">
+    <p class="eyebrow"><a href="/guides" style="color:var(--brass)">Guides</a> &nbsp;/&nbsp; {meta.tag}</p>
+    <article class="prose">
+      <Content />
+    </article>
+    <p class="guide-foot">
+      Source: <a href={source}>docs/playbooks/{entry.id}.md</a> — edit it in the repo and this page updates.
+    </p>
+  </main>
+  <Footer />
+</Base>

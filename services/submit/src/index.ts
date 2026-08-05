@@ -1,6 +1,11 @@
-import { commitChanges } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
-import { SesRelay, type Envelope } from "@bullmoose/outbound";
+import {
+  CloudflareRelay,
+  MockRelay,
+  SesRelay,
+  type Envelope,
+  type OutboundRelay,
+} from "@bullmoose/outbound";
 
 /**
  * Submit — outbound sends + delivery-event handling.
@@ -17,10 +22,13 @@ export interface Env {
   DB: D1Database;
   BLOBS: R2Bucket;
   ROUTES: KVNamespace; // also holds suppress:{email} keys
-  ACCOUNT_DO: DurableObjectNamespace;
+  /** "ses" (default), "cloudflare" (Email Service beta), or "mock" (local dev). */
+  RELAY?: string;
   SES_REGION: string;
-  SES_ACCESS_KEY_ID: string;
-  SES_SECRET_ACCESS_KEY: string;
+  SES_ACCESS_KEY_ID?: string;
+  SES_SECRET_ACCESS_KEY?: string;
+  CF_ACCOUNT_ID?: string;
+  CF_EMAIL_API_TOKEN?: string;
   INTERNAL_TOKEN: string;
 }
 
@@ -65,19 +73,30 @@ async function handleSubmit(body: SubmitBody, env: Env): Promise<Response> {
   if (!blob) return json({ error: "draft blob not found" }, 404);
   const raw = new Uint8Array(await blob.arrayBuffer());
 
-  const relay = new SesRelay({
-    accessKeyId: env.SES_ACCESS_KEY_ID,
-    secretAccessKey: env.SES_SECRET_ACCESS_KEY,
-    region: env.SES_REGION,
-  });
+  let relay: OutboundRelay;
+  if (env.RELAY === "mock") {
+    relay = new MockRelay();
+  } else if (env.RELAY === "cloudflare") {
+    if (!env.CF_ACCOUNT_ID || !env.CF_EMAIL_API_TOKEN) {
+      return json({ error: "Cloudflare Email credentials not configured" }, 500);
+    }
+    relay = new CloudflareRelay({ accountId: env.CF_ACCOUNT_ID, apiToken: env.CF_EMAIL_API_TOKEN });
+  } else {
+    if (!env.SES_ACCESS_KEY_ID || !env.SES_SECRET_ACCESS_KEY) {
+      return json({ error: "SES credentials not configured" }, 500);
+    }
+    relay = new SesRelay({
+      accessKeyId: env.SES_ACCESS_KEY_ID,
+      secretAccessKey: env.SES_SECRET_ACCESS_KEY,
+      region: env.SES_REGION,
+    });
+  }
   const result = await relay.send(raw, body.envelope);
 
-  // TODO: move the email Drafts → Sent and record the EmailSubmission
-  // object; for now just bump state so clients refetch.
-  await commitChanges(env.ACCOUNT_DO, body.accountId, [
-    { collection: "EmailSubmission", created: [result.relayMessageId] },
-  ]);
-
+  // State bookkeeping (EmailSubmission row, DO commit, draft → Sent) is
+  // owned by the jmap worker's EmailSubmission/set — this endpoint only
+  // relays. That also keeps this worker free of a Durable Object binding,
+  // which would otherwise be circular with jmap's SUBMIT service binding.
   return json({ relayMessageId: result.relayMessageId });
 }
 

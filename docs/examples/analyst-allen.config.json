@@ -1,0 +1,18 @@
+{
+  "pipeline": "ledger",
+  "digestTo": "eric@bullmoose.cc",
+  "digestTargets": {
+    "eric": "eric@bullmoose.cc"
+  },
+  "defaultModel": "cheap",
+  "maxTokens": 1024,
+  "chartMinPoints": 10,
+  "categories": ["saas", "utilities", "home", "insurance", "travel", "food", "health", "pool", "other"],
+  "modelAliases": {
+    "cheap": [
+      { "provider": "workers-ai", "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
+      { "provider": "workers-ai", "model": "@cf/meta/llama-3.1-8b-instruct" }
+    ],
+    "mock": [{ "provider": "mock", "model": "echo" }]
+  }
+}

@@ -1,0 +1,51 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import { RECIPES } from "../lib/recipes";
+---
+
+<Base
+  title="Agent recipes — bullmoose"
+  description="What an email-native agent can do: a spend ledger, a relationship CRM, an inbox bouncer, a reservation watcher, and more — each just an address with a runtime."
+>
+  <Nav />
+  <main class="wrap page">
+    <p class="eyebrow">Agent recipes</p>
+    <h1>Recipes</h1>
+    <p class="lede">
+      Connect an agent to an address and it becomes a worker with an inbox.
+      Here's what people wire up — each is a binding plus, where it's needed,
+      the write-only credential vault and a schedule.
+    </p>
+
+    <div class="recipes-grid">
+      {
+        RECIPES.map((r) => (
+          <article class="recipe">
+            <code class="recipe__addr">{r.addr}@you.com</code>
+            <h3>{r.title}</h3>
+            <p>{r.blurb}</p>
+            {r.example && (
+              <div class="recipe__ex">
+                {r.example.map((e) => (
+                  <p class={`ex ex--${e.role}`}>
+                    <span>{e.role === "you" ? "you" : r.addr}</span>
+                    {e.text}
+                  </p>
+                ))}
+              </div>
+            )}
+          </article>
+        ))
+      }
+    </div>
+
+    <div class="recipes-cta">
+      <p>Ready to wire one up?</p>
+      <a class="btn btn-solid" href="/deploy">Connect an agent &rarr;</a>
+      <a class="btn btn-ink" href="/apps">Get the apps &rarr;</a>
+    </div>
+  </main>
+  <Footer />
+</Base>

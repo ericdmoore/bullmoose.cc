@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>cc.bullmoose.hermes-bridge</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/sh</string><string>/Users/alpaca/.hermes-bullmoose/bridge.sh</string></array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HERMES_SMTP_TOKEN</key><string>__TOKEN__</string>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/alpaca/.hermes-bullmoose/bridge.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/alpaca/.hermes-bullmoose/bridge.out.log</string>
+</dict>
+</plist>

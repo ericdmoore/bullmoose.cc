@@ -21,7 +21,14 @@ export type MethodErrorType =
   | "accountReadOnly"
   | "requestTooLarge"
   | "cannotCalculateChanges"
-  | "stateMismatch";
+  | "stateMismatch"
+  // RFC 8620 §5.5 /query errors:
+  | "unsupportedFilter"
+  | "unsupportedSort"
+  | "anchorNotFound"
+  // SetError types surfaced through MethodError in /set-shaped methods:
+  | "blobNotFound"
+  | "notFound";
 
 /**
  * Thrown inside a method handler; the dispatcher converts it into an

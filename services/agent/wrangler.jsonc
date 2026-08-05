@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bullmoose-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+
+  // Cloud runtime for agent-backed mailboxes. Ingest pokes POST /drain
+  // after inserting invocations; the cron sweep is the retry net.
+  "triggers": { "crons": ["*/5 * * * *"] },
+
+  // AccountDO is declared by bullmoose-jmap; bind it cross-script.
+  "durable_objects": {
+    "bindings": [
+      { "name": "ACCOUNT_DO", "class_name": "AccountDO", "script_name": "bullmoose-jmap" }
+    ]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bullmoose-mail-shard0",
+      "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9"
+    }
+  ],
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "bullmoose-mail-blobs" }],
+  "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }],
+
+  // Replies exit through the submit worker, same as fireResponder.
+  "services": [{ "binding": "SUBMIT", "service": "bullmoose-submit" }],
+
+  // Workers AI — the free-allocation "cheap" model tier.
+  "ai": { "binding": "AI" }
+
+  // Secrets (wrangler secret put):
+  //   INTERNAL_TOKEN      — shared with ingest (poke) and submit (relay)
+  //   GATEWAY_TOKEN       — AI Gateway auth, only when gateway aliases exist
+  // Vars (set once the AI Gateway exists):
+  //   GATEWAY_COMPAT_URL  — https://gateway.ai.cloudflare.com/v1/<acct>/bullmoose/compat
+}

@@ -1,0 +1,41 @@
+name: Deploy mail platform
+# Manual-only until the first hand deploy proves the config.
+# Requires repo secrets: CLOUDFLARE_API_TOKEN (Workers Scripts:Edit,
+# D1:Edit, Workers KV:Edit, Workers R2:Edit), CLOUDFLARE_ACCOUNT_ID.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+      # Order matters: submit (no deps) → jmap (declares AccountDO,
+      # binds SUBMIT) → ingest (binds AccountDO) → provision.
+      - name: Deploy submit
+        run: npx wrangler deploy -c services/submit/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Deploy jmap
+        run: npx wrangler deploy -c services/jmap/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Deploy ingest
+        run: npx wrangler deploy -c services/ingest/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Deploy provision
+        run: npx wrangler deploy -c services/provision/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

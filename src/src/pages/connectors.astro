@@ -1,0 +1,133 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+
+// Roadmap catalog, curated from Anthropic's connectors directory
+// (claude.com/connectors). These are connectors worth borrowing from the
+// wider MCP ecosystem — a direction of travel, not a shipped list.
+const groups = [
+  {
+    title: "Google Workspace",
+    items: [
+      ["Gmail", "read, search, draft, label"],
+      ["Google Calendar", "events & availability"],
+      ["Google Drive", "find and read files"],
+      ["Docs", "read and edit documents"],
+      ["Sheets", "query and update rows"],
+    ],
+  },
+  {
+    title: "Dev & incident",
+    items: [
+      ["GitHub", "issues, PRs, code search"],
+      ["Linear", "issues and cycles"],
+      ["Jira", "tickets and boards"],
+      ["Sentry", "errors and traces"],
+      ["Vercel", "deploys and logs"],
+    ],
+  },
+  {
+    title: "Comms",
+    items: [
+      ["Slack", "read and post to channels"],
+      ["Intercom", "conversations & contacts"],
+      ["Discord", "servers and messages"],
+    ],
+  },
+  {
+    title: "Knowledge",
+    items: [
+      ["Notion", "pages and databases"],
+      ["Confluence", "spaces and docs"],
+    ],
+  },
+  {
+    title: "CRM & sales",
+    items: [
+      ["HubSpot", "contacts and deals"],
+      ["Salesforce", "records and reports"],
+      ["Attio", "people and companies"],
+    ],
+  },
+  {
+    title: "Payments",
+    items: [
+      ["Stripe", "charges and invoices"],
+      ["PayPal", "orders and payouts"],
+      ["Square", "sales and catalog"],
+      ["Plaid", "balances and transactions"],
+    ],
+  },
+  {
+    title: "Projects & tasks",
+    items: [
+      ["Asana", "tasks and projects"],
+      ["monday.com", "boards and items"],
+      ["ClickUp", "tasks and docs"],
+    ],
+  },
+  {
+    title: "Design & files",
+    items: [
+      ["Figma", "files and comments"],
+      ["Canva", "designs and exports"],
+    ],
+  },
+];
+const count = groups.reduce((n, g) => n + g.items.length, 0);
+---
+
+<Base
+  title="Connectors (MCP) — bullmoose"
+  description="Agents get tools over the Model Context Protocol. bullmoose speaks it both ways — expose your own mail, contacts & calendar to any MCP client, and hand your agents the connectors they already use."
+>
+  <Nav />
+  <main class="wrap page">
+    <p class="eyebrow">Connectors &middot; MCP</p>
+    <h1>Connectors</h1>
+    <p class="lede">
+      Agents reach the world through the <b>Model Context Protocol</b>. bullmoose
+      speaks it both ways — expose your own data to any MCP client, and grant your
+      agents the tools you already use.
+    </p>
+
+    <!-- The one we're building -->
+    <div class="mcp-callout">
+      <p class="mcp-callout__tag">bullmoose MCP &middot; coming soon</p>
+      <h2>Give Claude your inbox — safely.</h2>
+      <p>
+        A read-only MCP server over your own bullmoose mail, calendar, and
+        contacts. Any MCP client — Claude included — gets <b>scoped, revocable,
+        audited</b> access, with no external credentials to hand out. The same
+        grant rails your agents already run on.
+      </p>
+    </div>
+
+    <p class="connectors-intro">
+      And on the roadmap — {count} connectors worth borrowing from the wider MCP
+      ecosystem, so an agent bound to your inbox can act on the tools you live in:
+    </p>
+
+    {groups.map((g) => (
+      <section class="connectors-group">
+        <h3>{g.title}</h3>
+        <div class="connectors-grid">
+          {g.items.map(([name, desc]) => (
+            <div class="connector">
+              <span class="connector__name">{name}</span>
+              <span class="connector__desc">{desc}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    ))}
+
+    <div class="recipes-cta">
+      <p>Want it wired to your mail?</p>
+      <a class="btn btn-solid" href="/deploy">Connect an agent &rarr;</a>
+      <a class="btn btn-ink" href="/recipes">See recipes &rarr;</a>
+    </div>
+  </main>
+  <Footer />
+</Base>

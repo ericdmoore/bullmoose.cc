@@ -1,0 +1,24 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import DeployWizard from "../components/DeployWizard.tsx";
+---
+
+<Base
+  title="Connect an agent — bullmoose"
+  description="A guided wizard that assembles the exact bullmoose command to connect an email-native agent — where it lives, how smart, what it does, and its personality. Nothing runs here; you copy-paste."
+>
+  <Nav />
+  <main class="wrap page">
+    <p class="eyebrow">Connect an agent</p>
+    <h1>Deploy</h1>
+    <p class="lede">
+      Answer a few questions and we'll assemble the exact <code>bullmoose</code> command
+      to connect an agent to an address. Nothing runs here — you copy the command and
+      paste it into your terminal.
+    </p>
+    <DeployWizard client:load />
+  </main>
+  <Footer />
+</Base>

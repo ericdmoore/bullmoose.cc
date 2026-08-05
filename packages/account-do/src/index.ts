@@ -1,4 +1,6 @@
 import type { StateChange } from "@bullmoose/jmap-core";
+import { Mailstore } from "@bullmoose/mailstore";
+import { buildMime } from "@bullmoose/mime";
 
 /**
  * AccountDO — the single-writer actor for one JMAP account.
@@ -38,12 +40,46 @@ const LOG_WINDOW = 4096;
 const MAX_CHANGES_DEFAULT = 1024;
 
 const logKey = (seq: number) => `log:${seq.toString().padStart(12, "0")}`;
+const pendingKey = (fireAt: number, id: string) =>
+  `pending:${fireAt.toString().padStart(14, "0")}:${id}`;
+
+/**
+ * An armed response (agent-integration.md §8): fire at fireAt unless the
+ * cancel condition holds by then. Suppression + enablement are
+ * re-checked at fire time; the responder row is the source of truth.
+ */
+export interface PendingResponse {
+  responderId: string;
+  accountId: string;
+  tenantId: string;
+  /** The account's own address (From + envelope mailFrom of the reply). */
+  accountAddress: string;
+  /** Who triggered it — the reply's recipient. */
+  sender: string;
+  /** Original message id (bare) for In-Reply-To threading. */
+  origMessageId: string | null;
+  origSubject: string;
+  /** Watchdog cancel: the delivered email whose invocation we watch. */
+  emailId: string | null;
+  cancelIf: "never" | "invocation-active";
+  fireAt: number;
+}
+
+/** Bindings the DO needs for responder firing (jmap worker's env). */
+interface DOEnv {
+  DB?: D1Database;
+  BLOBS?: R2Bucket;
+  SUBMIT?: Fetcher;
+  INTERNAL_TOKEN?: string;
+}
 
 export class AccountDO implements DurableObject {
   private ctx: DurableObjectState;
+  private env: DOEnv;
 
-  constructor(ctx: DurableObjectState, _env: unknown) {
+  constructor(ctx: DurableObjectState, env: unknown) {
     this.ctx = ctx;
+    this.env = (env ?? {}) as DOEnv;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -59,9 +95,130 @@ export class AccountDO implements DurableObject {
         return this.changes(url);
       case "GET /ws":
         return this.upgradeWebSocket(request);
+      case "POST /arm":
+        return this.arm((await request.json()) as PendingResponse);
       default:
         return json({ error: `no such route: ${route}` }, 404);
     }
+  }
+
+  // ---- armed responders --------------------------------------------
+
+  private async arm(pending: PendingResponse): Promise<Response> {
+    await this.ctx.storage.put(pendingKey(pending.fireAt, crypto.randomUUID()), pending);
+    const current = await this.ctx.storage.getAlarm();
+    if (current === null || pending.fireAt < current) {
+      await this.ctx.storage.setAlarm(pending.fireAt);
+    }
+    return json({ armed: true, fireAt: pending.fireAt });
+  }
+
+  async alarm(): Promise<void> {
+    const now = Date.now();
+    const entries = await this.ctx.storage.list<PendingResponse>({ prefix: "pending:" });
+    let nextFire: number | null = null;
+
+    for (const [key, pending] of entries) {
+      if (pending.fireAt > now) {
+        nextFire = nextFire === null ? pending.fireAt : Math.min(nextFire, pending.fireAt);
+        continue;
+      }
+      try {
+        await this.fireResponder(pending);
+      } catch (err) {
+        console.error(`responder fire failed (${pending.responderId}):`, err);
+      }
+      await this.ctx.storage.delete(key);
+    }
+    if (nextFire !== null) await this.ctx.storage.setAlarm(nextFire);
+  }
+
+  private async fireResponder(p: PendingResponse): Promise<void> {
+    const { DB, BLOBS, SUBMIT, INTERNAL_TOKEN } = this.env;
+    if (!DB || !BLOBS || !SUBMIT) return; // not wired in this worker
+
+    // Responder still enabled (and, for vacation, still in range)?
+    const responder = await DB.prepare(
+      `SELECT enabled, subject, text_body, from_date, to_date, suppress_seconds
+       FROM responders WHERE account_id = ? AND id = ?`,
+    )
+      .bind(p.accountId, p.responderId)
+      .first<{
+        enabled: number;
+        subject: string | null;
+        text_body: string | null;
+        from_date: number | null;
+        to_date: number | null;
+        suppress_seconds: number;
+      }>();
+    const now = Date.now();
+    if (!responder || responder.enabled !== 1) return;
+    if (responder.from_date !== null && now < responder.from_date) return;
+    if (responder.to_date !== null && now > responder.to_date) return;
+
+    // Cancel condition: the watchdog stands down once any invocation for
+    // this email has been claimed or completed.
+    if (p.cancelIf === "invocation-active" && p.emailId) {
+      const active = await DB.prepare(
+        `SELECT 1 FROM agent_invocations
+         WHERE account_id = ? AND email_id = ? AND status IN ('running','done') LIMIT 1`,
+      )
+        .bind(p.accountId, p.emailId)
+        .first();
+      if (active) return;
+    }
+
+    // Once-per-sender-per-window suppression (RFC 3834 etiquette).
+    const seen = await DB.prepare(
+      `SELECT sent_at FROM responder_log
+       WHERE account_id = ? AND responder_id = ? AND sender = ?`,
+    )
+      .bind(p.accountId, p.responderId, p.sender)
+      .first<{ sent_at: number }>();
+    if (seen && now - seen.sent_at < responder.suppress_seconds * 1000) return;
+
+    // Build + relay the auto-response.
+    const subject = responder.subject ?? `Auto: Re: ${p.origSubject}`;
+    const raw = buildMime({
+      from: [{ email: p.accountAddress }],
+      to: [{ email: p.sender }],
+      subject,
+      messageId: `${crypto.randomUUID()}@${p.accountAddress.split("@")[1] ?? "localhost"}`,
+      inReplyTo: p.origMessageId,
+      date: new Date(now),
+      text: responder.text_body ?? "This is an automated response.",
+      extraHeaders: ["Auto-Submitted: auto-replied", "X-Auto-Response-Suppress: All"],
+    });
+
+    const store = new Mailstore(DB, BLOBS);
+    const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
+    const blobId = await store.putBlob(p.tenantId, p.accountId, buf);
+
+    const res = await SUBMIT.fetch("https://submit.internal/internal/submit", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-internal-token": INTERNAL_TOKEN ?? "",
+      },
+      body: JSON.stringify({
+        accountId: p.accountId,
+        tenantId: p.tenantId,
+        blobId,
+        envelope: { mailFrom: p.accountAddress, rcptTo: [p.sender] },
+      }),
+    });
+    if (!res.ok) {
+      console.error(`responder relay failed (${res.status}): ${await res.text()}`);
+      return;
+    }
+
+    await DB.prepare(
+      `INSERT INTO responder_log (account_id, responder_id, sender, sent_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (account_id, responder_id, sender) DO UPDATE SET sent_at = excluded.sent_at`,
+    )
+      .bind(p.accountId, p.responderId, p.sender, now)
+      .run();
   }
 
   private async seq(): Promise<number> {
@@ -204,6 +361,18 @@ function json(data: unknown, status = 200): Response {
 /** Helper for workers: get the DO stub for an account. */
 export function accountStub(ns: DurableObjectNamespace, accountId: string): DurableObjectStub {
   return ns.get(ns.idFromName(accountId));
+}
+
+/** Helper for workers: arm a pending response on the account's alarm. */
+export async function armResponder(
+  ns: DurableObjectNamespace,
+  pending: PendingResponse,
+): Promise<void> {
+  const res = await accountStub(ns, pending.accountId).fetch("https://do/arm", {
+    method: "POST",
+    body: JSON.stringify(pending),
+  });
+  if (!res.ok) throw new Error(`AccountDO arm failed: ${res.status}`);
 }
 
 /** Helper for workers: commit a change set and return the new state. */

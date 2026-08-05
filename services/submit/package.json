@@ -8,7 +8,6 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@bullmoose/account-do": "*",
     "@bullmoose/mailstore": "*",
     "@bullmoose/outbound": "*"
   }
