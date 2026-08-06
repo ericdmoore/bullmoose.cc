@@ -149,15 +149,18 @@ Two consequences:
 - **Inbound symmetry is nearly free.** Attachments already land in R2 as blobs
   (`Mailstore.putBlob` **[live]**), so *"promote attachment ≥ N to a Files node, keep a
   link in the message"* makes Files useful on day one instead of an empty drive.
-- **Sharing pulls forward an epic.** Sending a file link *outside* bullmoose needs a
-  public-link worker with scoped tokens — the multi-principal ACL work
-  `serverless-jmap.md` flags as a Phase-6 "teams" item. Scope **"Files for me"** and
-  **"Files I can share"** as separate steps.
+- **Link-sharing already ships.** ~~Sending a file link outside bullmoose pulls forward
+  the ACL epic~~ — **corrected**: `POST /api/share/{accountId}/{blobId}` already mints
+  expiring public links (`services/jmap/src/index.ts:81-86` **[live]**). What the
+  Phase-6 ACL epic actually gates is *named-principal* sharing (the draft's
+  `shareWith`), not "send someone a link." See `arch.md` §3.4.
 
-⚠️ **Research item:** mail/contacts/calendar each have an RFC to conform to. Files does
-not have a finalized one; Bulwark gets it from Stalwart's `FileNode`, which may track
-an IETF JMAP draft. **Verify whether a draft exists before designing a vendor
-capability** — conforming beats inventing, if there's something to conform to.
+✅ **Research item — resolved.** A standard exists:
+[`draft-ietf-jmap-filenode-14`](https://datatracker.ietf.org/doc/draft-ietf-jmap-filenode/)
+(JMAP WG, intended Proposed Standard, capability `urn:ietf:params:jmap:filenode`) — the
+same thing Stalwart implements and Bulwark consumes. **Decision: conform, don't invent**
+(`arch.md` §3.1). Caveat: it is a draft, not an RFC — pin the targeted version and
+expect churn.
 
 ---
 
