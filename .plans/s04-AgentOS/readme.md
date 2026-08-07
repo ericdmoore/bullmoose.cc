@@ -13,7 +13,7 @@ or Share "The App Blueprint with others"
         - Read/Write across granted MCPs
         - 
 - Governance
-    - Gatekeeper
+    - Gatekeeper  → designed in [`bureau.md`](./bureau.md) ("The Bureau")
     - Budget Constraints
     - Access Control Lists 
         - People Accessing Agents
