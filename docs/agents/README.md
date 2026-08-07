@@ -16,14 +16,18 @@ localparts stay reserved for actual humans.
 
 ## Categories
 
-| | reply (Emily-class) | ledger (Allen-class) | armed responder |
-|---|---|---|---|
-| example | `editor@bullmoose.cc` | `analyst@bullmoose.cc` | vacation, watchdog |
-| state | none — request→reply | accumulates `spend_facts` | none |
-| talks to | the (allowlisted) sender | a configured digest target — **never** the sender | the sender, once per window |
-| LLM use | persona reply | extract one fact + narrate computed numbers | none (template) |
-| trust gate | `allowedSenders` + RFC 3834 | SPF/DKIM pass + receipt prefilter + dedup | RFC 3834 + suppression |
-| config | `pipeline: "reply"` (default) | `pipeline: "ledger"` | `responders` table |
+
+|            | reply (Emily-class)           | ledger (Allen-class)                              | armed responder             |
+| ---------- | ----------------------------- | ------------------------------------------------- | --------------------------- |
+| example    | `editor@bullmoose.cc`         | `analyst@bullmoose.cc`                            | vacation, watchdog          |
+| state      | none — request→reply          | accumulates `spend_facts`                         | none                        |
+| talks to   | the (allowlisted) sender      | a configured digest target — **never** the sender | the sender, once per window |
+| LLM use    | persona reply                 | extract one fact + narrate computed numbers       | none (template)             |
+| trust gate | `allowedSenders` + RFC 3834   | SPF/DKIM pass + receipt prefilter + dedup         | RFC 3834 + suppression      |
+| config     | `pipeline: "reply"` (default) | `pipeline: "ledger"`                              | `responders` table          |
+
+
+
 
 ### Reply agents (`pipeline: "reply"`)
 
@@ -126,15 +130,18 @@ Aliases with multiple candidates rank by blended models.dev pricing (slim
 cache in KV; refresh with `POST /internal/refresh-pricing` on the agent
 worker) and fall through on provider errors. `workers-ai` runs on the
 free allocation; `gateway` needs an AI Gateway (`GATEWAY_COMPAT_URL` var
-+ `GATEWAY_TOKEN` secret) with provider keys stored BYOK.
+
+- `GATEWAY_TOKEN` secret) with provider keys stored BYOK.
+
+
 
 ## Operational notes
 
 - Replies/digests carry `Auto-Submitted` + `X-Auto-Response-Suppress`
-  (RFC 3834), `X-Bullmoose-Model`, `X-Bullmoose-Invocation`, and a
-  model-attribution footer — auditable from the recipient's inbox.
+(RFC 3834), `X-Bullmoose-Model`, `X-Bullmoose-Invocation`, and a
+model-attribution footer — auditable from the recipient's inbox.
 - Ingest pokes the agent worker after invocation inserts; a `*/5` cron
-  sweep retries anything a poke missed and fails stale claims (15 min).
-- Inspect work: `SELECT id, status, note, result_json FROM
-  agent_invocations ORDER BY created_at DESC` — every drop states why.
+sweep retries anything a poke missed and fails stale claims (15 min).
+- Inspect work: `SELECT id, status, note, result_json FROM agent_invocations ORDER BY created_at DESC` — every drop states why.
 - While SES is sandboxed, digest/reply targets must be SES-verified.
+

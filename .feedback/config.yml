@@ -6,3 +6,8 @@ components:
   - name: agentic-components 
     label: 'agentic'
   - name: webUI
+
+sources:
+  - dir: packages/*
+  - dir: services/*
+  - dir: tools/*
