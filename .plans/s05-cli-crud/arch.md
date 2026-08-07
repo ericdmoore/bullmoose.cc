@@ -127,25 +127,66 @@ reimplementing.
 | `calendar export [--ics]` | `CalendarEvent/get` → iCal | new |
 | `calendar list/agenda` | — | **[live]** |
 
-**Recurrence caution.** `agenda` shows *expanded occurrences*, but a write targets the
-**master event**, not an occurrence. Editing "next Tuesday's standup" must either patch
-the master's recurrence overrides or be refused with a clear message — silently
-rewriting the series is the failure mode to avoid. This is the one genuinely subtle
-piece of the slice.
+### Recurrence: the read model is already decided — s05 owns only the write side
+
+**Settled, and built** (`docs/devPlan-handoff.md:67`): *"store master + recurrence rule;
+**expand on demand** within a bounded window (cap the pre-compute)"* → **on-demand,
+capped**. Concretely **[live]**:
+
+- recurring events are **one row, never expanded to storage** (`capacity-and-scaling.md:23`)
+- `expandOccurrences(event, {after, before, maxOccurrences})`, hard cap
+  `MAX_OCCURRENCES = 1000` (`calendar-core/index.ts:51`); `CalendarEvent/getOccurrences`
+  defaults to 200
+- generation runs to the **window horizon or the cap, never the rule's natural end**
+  (`index.ts:213-215`), so an unbounded `RRULE` terminates
+- `RRULE` ⇄ JSCalendar round-trips both ways (`ruleToRrule` / `rruleToRule`), EXDATE and
+  overrides as sibling VEVENTs with `RECURRENCE-ID`; `rruleToRule` returns `null` on an
+  unsupported part rather than guessing
+
+**So reading is solved.** What s05 must decide is only the **write** side, because
+`agenda` shows expanded *occurrences* while a write targets the **master**. The data
+model already supports per-occurrence patches (`recurrenceOverrides`, read at
+`ical.ts:261` **[live]**), so this is a CLI-UX decision, not a platform one:
+
+| Command | Effect |
+|---|---|
+| `calendar event edit <id>` | edits the **master** — whole series |
+| `calendar event edit <id> --occurrence <recurrenceId>` | writes a `recurrenceOverrides` entry |
+| bare edit against an *occurrence* id | **refuse**, with a message naming the two explicit forms |
+
+"Refuse rather than guess" matches how `rruleToRule` already handles unsupported parts.
+Silently rewriting a series is the failure mode to avoid.
 
 ## 4. Creds
 
-Existing **[live]**: `init`, `set`, `list`, `rm`, `oauth`. Additions:
+Existing **[live]**: `init`, `set`, `list`, `rm`, `oauth`.
 
-| Command | Notes |
+**The CLI is the ingestion path for secrets** — the only safe one, since plaintext must
+never transit a web tier (`mcp-auth.md` §9). So s05 owns the mint-time surface defined in
+[`../s04-AgentOS/bureau.md`](../s04-AgentOS/bureau.md) §5.
+
+| Command / flag | Notes |
 |---|---|
+| `creds set --kind` | `api-key` \| `oauth-refresh` \| `aws-sigv4` \| `hmac-key` — **gates which Bureau verbs may use it**; the field people forget, and it is load-bearing |
+| `creds set --allow` | destination allowlist. **Fail closed** — no allowlist, no injection |
+| `creds set --header` | injection recipe (`"Authorization: Bearer {}"`). Header-only, never a query param |
+| `creds set --scope` | `actor` today; `inbox`/`global` accepted-and-refused until the AAD change lands |
 | `creds show <name>` | **metadata only** — the vault is write-only; a value is never returned |
-| `creds rotate <name>` | re-seal under a new secret; same name, no re-attachment needed |
+| `creds rotate <name>` | re-seal under a new secret; same name, so nothing downstream re-attaches |
 
-**Scoping (Global / PerActor / PerInbox) is specified, not built here.** `vaultAad(principalId, name)`
-binds each row to its principal by construction (the row-swap defense). Global/PerInbox
-require a new AAD scheme plus migration — real crypto work, not a flag. s05 documents
-the requirement and leaves the change to its own slice.
+**Derive rather than type where possible:** `--header` usually follows from `--kind`, and
+for OAuth credentials `--allow` can default to the issuer origin already in `meta`
+(`token_url`) **[live]**.
+
+**Not built here: the scoping itself.** `vaultAad(principalId, name)` binds each row to
+its principal by construction (the row-swap defense) — which means **today the AAD does
+double duty as access control**. Global/PerInbox let multiple principals open the same
+row, so the crypto stops being the access control and an explicit authZ check plus a
+re-seal migration are required. That is `bureau.md` §9's work; s05 only ships the flag so
+the CLI surface doesn't change twice.
+
+**Minting is not authorizing** (`bureau.md` §5.1): who may *use* a credential is a
+separate grant over `(principal, credRef, verb)`, not a `creds set` field.
 
 ---
 

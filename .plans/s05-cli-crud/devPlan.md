@@ -47,26 +47,41 @@ cheapest correctness test available); create/edit/rm work from both flags and st
 - `calendar create|rename|rm`
 - `calendar event create|edit|rm`, iCal or JSON via stdin
 - `calendar export [--ics]`
-- **Recurrence handling** (`arch.md` §3): a write targets the **master** event. Editing a
-  single occurrence either patches recurrence overrides explicitly or is refused with a
-  clear message — never a silent series rewrite.
+- **Recurrence — write side only.** The read model is already decided *and built*
+  (`arch.md` §3: master + rule, expand on demand, capped). T3 implements the write
+  decision: bare `edit` hits the **master**; `--occurrence <recurrenceId>` writes a
+  `recurrenceOverrides` entry; a bare edit aimed at an occurrence id is **refused** with a
+  message naming both forms. Never a silent series rewrite.
 
-**Done when:** an event round-trips iCal → JMAP → iCal; editing one occurrence of a
-recurring series leaves the other occurrences untouched (asserted in a test, not assumed);
-`agenda` reflects writes immediately.
+**Done when:** an event round-trips iCal → JMAP → iCal; editing one occurrence leaves the
+other occurrences untouched (asserted in a test, not assumed); a bare edit against an
+occurrence id refuses rather than guessing; `agenda` reflects writes immediately.
 
 ---
 
 ## T4 — Creds
 
-**Blocks:** `src/creds.ts`.
+**Blocks:** `src/creds.ts` · the vault API in `services/agent/src/vault.ts` **[live]**.
 
+The CLI is the **ingestion path** for secrets, so this task carries the mint-time contract
+from [`../s04-AgentOS/bureau.md`](../s04-AgentOS/bureau.md) §5 — not just the two new
+read verbs:
+
+- `creds set --kind --allow --header [--scope]` — the mint-time fields (`arch.md` §4).
+  `--kind` gates which Bureau verbs may ever use the credential; `--allow` is the
+  destination binding and **fails closed**; `--header` is the injection recipe.
+- Derive `--header` from `--kind`, and `--allow` from the OAuth issuer in `meta`, so the
+  common cases need no hand-typed hosts.
+- `--scope actor` works; `inbox`/`global` are **accepted and refused** pending the AAD
+  change (`bureau.md` §9) — the flag ships now so the surface doesn't change twice.
 - `creds show <name>` — **metadata only**, never a value
 - `creds rotate <name>` — re-seal under a new secret, same name
 
-**Done when:** `show` returns kind/meta/timestamps and provably no secret material; a
-rotated credential still opens under the vault's verify endpoint; a test asserts no
-command path can return a plaintext value.
+**Done when:** a credential minted without `--allow` cannot be used (fail closed);
+`--kind` is persisted and readable by the Bureau; `--scope global` refuses with a message
+pointing at the pending AAD work; `show` returns kind/meta/timestamps and provably no
+secret material; a rotated credential still opens under the vault's verify endpoint; a
+test asserts no command path can return a plaintext value; entropy never arrives via argv.
 
 ---
 

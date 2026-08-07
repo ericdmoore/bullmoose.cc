@@ -57,26 +57,44 @@ The EPIPE gap is the sharpest: piping any list command into `head` produces a No
 stack trace instead of clean output. That single fix makes half the composition story
 work.
 
-## 4. The creds scoping question — flagged, not assumed
+## 4. Creds: the CLI *is* the ingestion path
 
-The taxonomy floated **Global / PerActor / PerInbox** secrets. Worth knowing before
-designing it: the vault is **per-principal by construction**. `vaultAad(principalId, name)`
-binds the ciphertext to its principal, so a row copied to another principal *cannot be
-opened* — that's the deliberate row-swap defense in `auth-core`.
+**The CLI is how secrets get in — and per `mcp-auth.md` §9 it is the only safe path**,
+because plaintext must never transit a web tier. So s05 owns the **mint-time surface**
+for credentials, and it grows to carry the contract designed in
+[`../s04-AgentOS/bureau.md`](../s04-AgentOS/bureau.md) §5:
 
-So **PerActor exists today; Global and PerInbox do not**, and adding them is a
-**crypto/schema change** (a new AAD scheme + migration), not a CLI flag. s05 exposes
-what exists and **specifies** the scoping change; it does not implement a new AAD scheme
-on the side.
+```sh
+creds set <name>
+  --kind    api-key | oauth-refresh | aws-sigv4 | hmac-key   # gates the verb set
+  --allow   https://api.stripe.com                            # destination binding
+  --scope   actor | inbox | global                            # see below
+  --header  "Authorization: Bearer {}"                        # injection recipe
+  # entropy: stdin / hidden prompt / --secret-env — never argv
+```
+
+**What s05 does *not* do is implement the scoping.** The vault is **per-principal by
+construction**: `vaultAad(principalId, name)` binds the ciphertext to its principal, so a
+row copied elsewhere *cannot be opened* — the deliberate row-swap defense in `auth-core`.
+
+The non-obvious consequence: **today the AAD does double duty as access control.** Global
+and PerInbox mean multiple principals legitimately open the same row, so the crypto stops
+being the access control and an explicit authorization check is required — plus a
+re-seal migration of every existing row. That is real crypto work, specified in
+`bureau.md` §9 and built there.
+
+So: **PerActor works today; `--scope` is accepted and stored, and non-actor scopes are
+refused until the AAD change lands.** The flag exists so the CLI surface doesn't have to
+change twice.
 
 ## 5. Scope
 
-**In:** contacts card + address-book CRUD · calendar + event CRUD · creds `show`/rotate ·
-the Unix I/O contract applied across every command.
+**In:** contacts card + address-book CRUD · calendar + event CRUD · creds `show`/`rotate`
+**+ the mint-time fields** (§4) · the Unix I/O contract applied across every command.
 
 **Out:** mail triage verbs (`move`/`label`/`flag`/`archive` — same class-(b) gap, worth
-its own slice) · Files (s03.B) · the Global/PerInbox AAD change (specified here, built
-elsewhere) · webmail (s03.C).
+its own slice) · Files (s03.B) · the Global/PerInbox **AAD change itself** (`bureau.md`
+§9) · the Bureau's verbs and proxy (s04) · webmail (s03.C).
 
 ## 6. Acceptance
 
