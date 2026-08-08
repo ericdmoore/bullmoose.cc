@@ -7,6 +7,7 @@ import {
 } from "@bullmoose/auth-core";
 import type { Principal } from "./auth";
 import type { Env } from "./index";
+import { beginLoginAttempt } from "./loginThrottle";
 
 /**
  * Self-service auth endpoints on the jmap worker:
@@ -19,8 +20,19 @@ import type { Env } from "./index";
  * raw password never transits, and server verification is one SHA-256,
  * which fits the Workers Free 10ms CPU cap. Credentials exist only to
  * mint tokens; day-to-day calls are bearer-only.
- * TODO: rate-limit /auth/login; device-code flow.
+ *
+ * Because verification is that cheap, /auth/login is throttled: see
+ * loginThrottle.ts for the windows and why they live in KV. The gate
+ * runs BEFORE the credential lookup and before hashLoginKey — a
+ * throttle that only takes effect after the work it is meant to
+ * conserve is decoration.
+ * TODO: device-code flow.
  */
+
+/** The one 401 this endpoint may emit. Unknown user, wrong key and
+ *  throttled-email must be byte-identical, or the difference is an
+ *  account-existence oracle. */
+const INVALID_CREDENTIALS = { error: "invalid credentials" };
 
 export async function handleLogin(request: Request, env: Env): Promise<Response> {
   const body = (await request.json()) as {
@@ -33,18 +45,46 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
     return json({ error: "email and loginKey (client-derived; the CLI derives it) required" }, 400);
   }
 
+  const email = body.email.toLowerCase();
+  // cf-connecting-ip is set by the edge on every real request; "unknown"
+  // only shows up in local dev, where sharing one bucket is harmless.
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const attempt = await beginLoginAttempt(env.ROUTES, email, ip);
+
+  // Refuse the caller, not the account: this 429 is identical for every
+  // email, so it says nothing about which of them exist.
+  if (attempt.block === "ip") {
+    return json({ error: "too many login attempts" }, 429, {
+      "retry-after": String(attempt.retryAfterSeconds),
+    });
+  }
+  // Email window tripped: still the plain 401, and still counted against
+  // the IP — but no D1 read and no hash, which is the whole point.
+  if (attempt.block === "email") {
+    await attempt.fail();
+    return json(INVALID_CREDENTIALS, 401);
+  }
+
   const principal = await env.DB.prepare(
     `SELECT p.id, p.login_email, c.pw_hash
      FROM principals p JOIN credentials c ON c.principal_id = p.id
      WHERE p.login_email = ?`,
   )
-    .bind(body.email.toLowerCase())
+    .bind(email)
     .first<{ id: string; login_email: string; pw_hash: string }>();
-  // Same response for unknown user and wrong loginKey.
-  if (!principal) return json({ error: "invalid credentials" }, 401);
+  // Same response for unknown user and wrong loginKey — and the same
+  // counted failure, so the windows trip at the same count either way.
+  if (!principal) {
+    await attempt.fail();
+    return json(INVALID_CREDENTIALS, 401);
+  }
 
   const ok = timingSafeEqualHex(await hashLoginKey(body.loginKey), principal.pw_hash);
-  if (!ok) return json({ error: "invalid credentials" }, 401);
+  if (!ok) {
+    await attempt.fail();
+    return json(INVALID_CREDENTIALS, 401);
+  }
+  await attempt.succeed();
 
   const scopes = body.scopes ?? ["mail"];
   const minted = await mintToken();
@@ -135,9 +175,9 @@ export async function handleTokens(
   return json({ error: "method not allowed" }, 405);
 }
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
   });
 }
