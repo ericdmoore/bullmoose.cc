@@ -1,6 +1,7 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges } from "@bullmoose/account-do";
-import type { EmailAddress, Mailstore } from "@bullmoose/mailstore";
+import type { EmailAddress, EmailRow, Mailstore } from "@bullmoose/mailstore";
+import type { AccountAccess } from "../auth";
 import {
   accountState,
   proxyChanges,
@@ -11,6 +12,7 @@ import {
   type SetError,
 } from "./common";
 import { applyEmailPatch } from "./email";
+import { resolveIdentities } from "./identity";
 
 /**
  * EmailSubmission/set (RFC 8621 §7.5). Sends exit through the submit
@@ -106,7 +108,7 @@ async function emailSubmissionSet(
 async function submitOne(
   ctx: RequestContext,
   store: Mailstore,
-  access: { accountId: string; tenantId: string },
+  access: AccountAccess,
   spec: CreateSpec,
 ): Promise<{ submissionId: string; emailId: string; sendAt: string }> {
   if (!spec.emailId || !spec.identityId) {
@@ -116,19 +118,39 @@ async function submitOne(
   const email = await store.getEmailRow(access.accountId, spec.emailId);
   if (!email) throw new MethodError("invalidArguments", `email ${spec.emailId} not found`);
 
-  // Identity must belong to this account (synthesized default included).
-  const identities = await store.getIdentities(access.accountId);
-  const identity =
-    identities.find((i) => i.id === spec.identityId) ??
-    (spec.identityId === "identity_default"
-      ? { id: "identity_default", email: ctx.principal.username, name: "" }
-      : null);
+  // Only unsent drafts may be submitted. Without this a send-scoped token
+  // could re-relay any stored message in the account — including inbound
+  // mail it merely received — to recipients of its choosing.
+  if (!(await isDraft(store, access.accountId, email))) {
+    throw new MethodError("forbidden", `email ${spec.emailId} is not a draft`);
+  }
+
+  // Identity must be one Identity/get would have offered for this account.
+  const identities = await resolveIdentities(ctx, access, store);
+  const identity = identities.find((i) => i.id === spec.identityId);
   if (!identity) {
     throw new MethodError("invalidArguments", `identity ${spec.identityId} not found`);
   }
 
-  // Envelope: explicit, or derived from the message (to + cc + bcc).
-  const mailFrom = spec.envelope?.mailFrom?.email ?? identity.email;
+  // The identity — never the client — is authoritative for the sender.
+  // `envelope.mailFrom` reaches the relay as the outgoing MAIL FROM, and
+  // on the Cloudflare Email path (packages/outbound) it becomes the
+  // message's actual From: header, so an unchecked value is header
+  // forgery, not merely a return-path quirk. An explicit value is allowed
+  // (the CLI and RFC 8621 clients send one) but must name the identity.
+  const requestedMailFrom = spec.envelope?.mailFrom?.email;
+  if (
+    typeof requestedMailFrom === "string" &&
+    requestedMailFrom.trim().toLowerCase() !== identity.email.trim().toLowerCase()
+  ) {
+    throw new MethodError(
+      "invalidArguments",
+      `envelope.mailFrom must match the identity's email (${identity.email})`,
+    );
+  }
+  const mailFrom = identity.email;
+
+  // Recipients: explicit (Bcc needs this), or derived from the message.
   const rcptTo =
     spec.envelope?.rcptTo
       ?.map((r) => r.email)
@@ -176,6 +198,20 @@ async function submitOne(
     emailId: spec.emailId,
     sendAt: new Date(sendAtMs).toISOString(),
   };
+}
+
+/**
+ * Is this email a draft? Either signal counts, because the two supported
+ * send flows set different ones: `Email/set` create + `Email/import`
+ * both write `$draft`, while a client that only files into the role
+ * mailbox (docs/architecture/serverless-jmap.md:264 — "`role=drafts`/
+ * `$draft`") is equally legitimate.
+ */
+async function isDraft(store: Mailstore, accountId: string, email: EmailRow): Promise<boolean> {
+  if (email.keywords.includes("$draft")) return true;
+  if (email.mailboxIds.length === 0) return false;
+  const mailboxes = await store.getMailboxes(accountId, email.mailboxIds);
+  return mailboxes.some((m) => m.role === "drafts");
 }
 
 function dedupe(list: string[]): string[] {
