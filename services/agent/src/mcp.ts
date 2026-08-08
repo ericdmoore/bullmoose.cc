@@ -1,4 +1,9 @@
-import { authorizeAccount, verifyBearer, type Principal } from "@bullmoose/auth-core/principal";
+import {
+  authorizeAccount,
+  verifyBearer,
+  type MethodDomain,
+  type Principal,
+} from "@bullmoose/auth-core/principal";
 import type { Env } from "./models.js";
 
 /**
@@ -37,6 +42,26 @@ interface ToolDef {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  /**
+   * What this tool needs, declared per tool rather than assumed per request.
+   *
+   * `handleToolCall` used to hardcode `("read", "mail")` for EVERY tool, which
+   * was harmless while the surface was four read-only analytics tools but is
+   * not a gate — a write tool added under it would be authorized as a read on
+   * mail.
+   *
+   * Mirror the live JMAP convention exactly (services/jmap/src/methods/):
+   *
+   *   mail       reads `("read", "mail")`, writes the lattice verb
+   *              (`read < annotate < draft < move < send < delete`)
+   *   calendar   reads `("read", "calendar")`, writes `("calendar", "calendar")`
+   *   contacts   reads `("read", "contacts")`, writes `("contacts", "contacts")`
+   *
+   * Calendar and contacts do NOT use the mail lattice — one scope named after
+   * the domain covers create, update and delete. Do not invent a mapping.
+   */
+  scope: string;
+  domain: MethodDomain;
   run: (env: Env, args: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -52,9 +77,12 @@ const requireAccountId = (args: Record<string, unknown>): string => {
   return args.accountId;
 };
 
-const TOOLS: ToolDef[] = [
+/** Exported so tests can assert every tool declares its own gate. */
+export const TOOLS: ToolDef[] = [
   {
     name: "spend_by_month",
+    scope: "read",
+    domain: "mail",
     description:
       "Monthly spend totals from the receipt ledger (spend_facts): period, currency, total, transaction count.",
     inputSchema: {
@@ -80,6 +108,8 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "spend_by_vendor",
+    scope: "read",
+    domain: "mail",
     description:
       "Spend grouped by vendor, optionally within one month (YYYY-MM). Top N by total.",
     inputSchema: {
@@ -107,6 +137,8 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "top_senders",
+    scope: "read",
+    domain: "mail",
     description: "Most frequent senders over a recent window of days.",
     inputSchema: {
       type: "object",
@@ -134,6 +166,8 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "message_volume",
+    scope: "read",
+    domain: "mail",
     description: "Messages received per day over a recent window.",
     inputSchema: {
       type: "object",
@@ -254,7 +288,7 @@ async function handleToolCall(
 
   // §6 gate: authorize the TARGET account (token ∩ grant), never a self-
   // asserted id, and audit any grant-reached read.
-  const decision = authorizeAccount(principal, accountId, "read", "mail");
+  const decision = authorizeAccount(principal, accountId, tool.scope, tool.domain);
   if (!decision.ok) {
     const detail = decision.reason === "accountNotFound" ? "account not found" : decision.detail;
     return rpcError(msg.id, -32004, detail, 403);
