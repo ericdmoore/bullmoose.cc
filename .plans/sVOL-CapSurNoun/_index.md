@@ -153,6 +153,14 @@ the wrong side: `CalendarEvent/set` takes JSCalendar directly and never validate
 `calendar-core` went from zero tests to 100 with an external oracle. See
 `.feedback/fromClaude/✅003`.
 
+⚠️ **`002` shipped, but two suites arrived after its base and are NOT migrated.**
+`services/anglebrackets/src/dav.test.ts` (`009`) and `services/jmap/src/methods/mailbox.test.ts`
+(`004`) landed while `002` was in flight, each carrying its own local fake. `mailbox.test.ts`'s
+is deliberately **stateful** — writes are visible to later reads — which the six originals were
+not, and which its destroy assertions cannot be written without. That is a capability
+`@bullmoose/test-fakes` should absorb, not a duplicate to delete. Tracked here rather than
+reopening the unit; whoever touches either suite next should migrate it.
+
 **Owned elsewhere (9 of 27):** 003, 011, 016, 017, 018, 020, 021, 023, 025 point at an
 existing section or filed issue rather than restating the work. Their files here carry the
 cell mapping, the grades, and the dependency edges — nothing else.
