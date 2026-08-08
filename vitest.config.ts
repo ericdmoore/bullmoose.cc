@@ -1,10 +1,32 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+
+const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 // Fast unit tests, no workerd/miniflare: per .plans/devPrinciples.md the core
 // logic is pure and clients are injected, so tests run in plain Node with
 // fakes and need no network. Worker-level integration (miniflare/D1) can be
 // added later for the shell paths that resist faking.
 export default defineConfig({
+  // Resolve workspace packages from THIS checkout, mirroring the `paths` in
+  // tsconfig.json. Without it Node's upward node_modules lookup wins, and in
+  // a git worktree (`.claude/worktrees/*`) that lookup lands on the PARENT
+  // checkout's symlinks — so tests silently exercised a different branch's
+  // source than the one being typechecked. Everything below is imported by
+  // services/* through its bare specifier, so all of it needs pinning.
+  resolve: {
+    alias: {
+      "@bullmoose/auth-core/principal": here("packages/auth-core/src/principal.ts"),
+      "@bullmoose/auth-core": here("packages/auth-core/src/index.ts"),
+      "@bullmoose/contacts-core": here("packages/contacts-core/src/index.ts"),
+      "@bullmoose/calendar-core": here("packages/calendar-core/src/index.ts"),
+      "@bullmoose/jmap-core": here("packages/jmap-core/src/index.ts"),
+      "@bullmoose/account-do": here("packages/account-do/src/index.ts"),
+      "@bullmoose/mailstore": here("packages/mailstore/src/index.ts"),
+      "@bullmoose/mime": here("packages/mime/src/index.ts"),
+      "@bullmoose/outbound": here("packages/outbound/src/index.ts"),
+    },
+  },
   test: {
     include: ["packages/**/*.test.ts", "services/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**", "src/**", "webmail/**"],

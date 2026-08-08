@@ -79,6 +79,93 @@ export function scopesWithin(requested: string[], granted: string[]): boolean {
   return requested.every((s) => hasScope(granted, s));
 }
 
+// ---- what a mint may ask for -------------------------------------------
+//
+// Three lists, because "valid scope" depends on who is asking.
+//
+// Nothing used to validate a mint request at all: /auth/login, /auth/tokens
+// and provision's POST /tokens each wrote `body.scopes` into the tokens row
+// verbatim. An invented string ("maiil") stored fine and then failed every
+// hasScope check — a token that looks minted and silently does nothing —
+// and "admin" was mintable by anyone who knew a password.
+
+/** Everything the operator plane (provision, behind ADMIN_TOKEN) may mint. */
+export const TOKEN_SCOPES: readonly string[] = [
+  ...MAIL_SCOPES,
+  ...REALM_SCOPES,
+  "mail",
+  "admin",
+];
+
+/**
+ * What a self-service caller may mint — `/auth/login` (password-authenticated)
+ * and `POST /auth/tokens` (bearer-authenticated).
+ *
+ * `admin` is deliberately absent: it is control-plane only, so knowing a
+ * password must not be a path to it. `/auth/tokens` would already refuse via
+ * `scopesWithin`, but `/auth/login` has no minter token to compare against —
+ * this list is the only thing standing there.
+ */
+export const SELF_SERVICE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "mail"];
+
+/**
+ * The default for `/auth/login` ONLY, and the one default that survives.
+ *
+ * Every other mint site now requires scopes explicitly. Login cannot: it is
+ * how a user with no token gets their first one, so refusing an unscoped
+ * login would make the system unbootstrappable. `mail` is the honest default
+ * for a primary device token — post-`hasScope` fix it is exactly the six mail
+ * verbs and grants no contacts, calendar or vault access.
+ */
+export const DEFAULT_LOGIN_SCOPES: readonly string[] = ["mail"];
+
+/**
+ * Which of `requested` are not in `allowed`. Empty result = acceptable.
+ * Order-preserving and de-duplicated so the 400 lists each offender once.
+ */
+export function unknownScopes(requested: readonly string[], allowed: readonly string[]): string[] {
+  const ok = new Set(allowed);
+  const bad: string[] = [];
+  for (const s of requested) if (!ok.has(s) && !bad.includes(s)) bad.push(s);
+  return bad;
+}
+
+/**
+ * The one gate every mint site runs. Returns the scopes to store, or the
+ * message to hand back — callers never re-derive either.
+ *
+ * `requested === undefined` means "the caller said nothing", which is an
+ * error unless the site passes a `fallback` (only `/auth/login` does).
+ */
+export function resolveMintScopes(
+  requested: readonly string[] | undefined,
+  allowed: readonly string[],
+  fallback?: readonly string[],
+): { ok: true; scopes: string[] } | { ok: false; error: string } {
+  if (requested === undefined) {
+    if (fallback) return { ok: true, scopes: [...fallback] };
+    return { ok: false, error: `scopes required — one or more of: ${allowed.join(", ")}` };
+  }
+  if (!Array.isArray(requested)) return { ok: false, error: "scopes must be an array of strings" };
+  const trimmed = requested.filter((s) => typeof s === "string" && s.trim() !== "");
+  if (trimmed.length !== requested.length) {
+    return { ok: false, error: "scopes must be an array of non-empty strings" };
+  }
+  if (trimmed.length === 0) {
+    // An empty array is not "give me the default" — it is a token that can
+    // do nothing. Almost always a client bug; say so rather than mint it.
+    return { ok: false, error: `scopes must not be empty — one or more of: ${allowed.join(", ")}` };
+  }
+  const bad = unknownScopes(trimmed, allowed);
+  if (bad.length > 0) {
+    return {
+      ok: false,
+      error: `unknown scope(s): ${bad.join(", ")} — valid: ${allowed.join(", ")}`,
+    };
+  }
+  return { ok: true, scopes: trimmed };
+}
+
 // ---- passwords: CLIENT-side stretching ------------------------------------
 //
 // The KDF runs on the CLIENT (CLI / webmail), not the server, because

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { getConfig, isFileUrl, loadBootstrap, setConfig } from "./db.js";
+import { TOKEN_SCOPES, parseScopeFlag } from "./scopes.js";
 import { deriveLoginKey, promptHidden } from "./tokens.js";
 
 /**
@@ -228,8 +229,18 @@ export async function cmdAdmin(
       return;
     }
     case "token create": {
-      if (!arg || !opts.name) fail("usage: admin token create <email> --name <n> [--scopes read,draft,send]");
-      const scopes = opts.scopes ? opts.scopes.split(",").map((s) => s.trim()) : ["mail"];
+      if (!arg || !opts.name) fail("usage: admin token create <email> --name <n> --scopes <a,b,c>");
+      // REQUIRED, and the operator vocabulary (TOKEN_SCOPES) is the only one
+      // that includes `admin`. An operator minting a token for someone
+      // else's device is the last place a silent ["mail"] default belongs.
+      const parsed = parseScopeFlag(opts.scopes, TOKEN_SCOPES, true);
+      if (!parsed.ok || !parsed.scopes) {
+        fail(
+          (parsed.ok ? "--scopes is required" : parsed.error) +
+            "\n\nusage: admin token create <email> --name <n> --scopes <a,b,c>",
+        );
+      }
+      const scopes = parsed.scopes;
       const res = (await api("POST", "/tokens", { email: arg, name: opts.name, scopes })) as {
         token: string;
         tokenId: string;

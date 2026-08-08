@@ -2,10 +2,12 @@ import { AwsClient } from "aws4fetch";
 import {
   LOGIN_KEY_ALGO,
   LOGIN_KEY_ITERATIONS,
+  TOKEN_SCOPES,
   hashLoginKey,
   isLoginKey,
   loginSaltHex,
   mintToken,
+  resolveMintScopes,
 } from "@bullmoose/auth-core";
 
 /**
@@ -464,7 +466,14 @@ async function mintPrincipalToken(
   const principal = await findPrincipal(env, body.email);
   if (!principal) return json({ error: `no principal for ${body.email}` }, 404);
 
-  const scopes = body.scopes ?? ["mail"];
+  // Explicit scopes, always. This is the operator plane, so it is the one
+  // mint site that may issue `admin` — all the more reason not to let an
+  // omitted field pick for you. TOKEN_SCOPES also closes the hole where any
+  // invented string was written to the row verbatim: GRANTABLE_SCOPES below
+  // has always validated grants, and tokens had no equivalent.
+  const wanted = resolveMintScopes(body.scopes, TOKEN_SCOPES);
+  if (!wanted.ok) return json({ error: wanted.error }, 400);
+  const scopes = wanted.scopes;
   const minted = await mintToken();
   await env.DB.prepare(
     `INSERT INTO tokens (id, principal_id, secret_hash, name, scopes, created_at, expires_at)

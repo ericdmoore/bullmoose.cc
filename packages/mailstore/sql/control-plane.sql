@@ -65,7 +65,13 @@ CREATE TABLE IF NOT EXISTS tokens (
   kind          TEXT NOT NULL DEFAULT 'bearer',   -- future: 'pubkey'
   secret_hash   TEXT NOT NULL,
   name          TEXT NOT NULL,             -- "eric-laptop", "hermes-runtime"
-  scopes        TEXT NOT NULL DEFAULT '["mail"]', -- JSON array
+  -- JSON array. Every code path supplies this explicitly (the workers now
+  -- refuse a mint that omits it), so the column default only fires for a
+  -- hand-written INSERT — exactly the case where failing narrow beats
+  -- failing wide. It was '["mail"]', i.e. an ad-hoc row silently got a full
+  -- mail credential. Existing databases keep their old default: this file
+  -- is CREATE TABLE IF NOT EXISTS, so only fresh ones pick this up.
+  scopes        TEXT NOT NULL DEFAULT '["read"]',
   created_at    INTEGER NOT NULL,
   expires_at    INTEGER,
   last_used_at  INTEGER
