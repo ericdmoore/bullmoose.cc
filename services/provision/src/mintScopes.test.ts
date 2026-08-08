@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { fakeD1, fakeKV } from "@bullmoose/test-fakes";
 import worker from "./index";
+import type { Env } from "./index";
 
 // POST /tokens on the operator plane. It had the same `body.scopes ??
 // ["mail"]` default as the CLI and the jmap worker, plus a gap of its own:
@@ -14,33 +16,24 @@ import worker from "./index";
 const ADMIN_TOKEN = "admin-secret";
 const EMAIL = "hermes@bullmoose.cc";
 
+// The D1 fake is @bullmoose/test-fakes (sVOL 002) — real SQLite on the live
+// schema, so the principal lookup and the tokens INSERT run as written and the
+// tokens row's foreign key to principals is actually enforced.
 function harness(principalExists = true) {
-  const writes: Array<{ sql: string; args: unknown[] }> = [];
-  const prepare = (sql: string) => {
-    let bound: unknown[] = [];
-    return {
-      bind(...args: unknown[]) {
-        bound = args;
-        return this;
-      },
-      async first() {
-        return sql.includes("FROM principals WHERE login_email") && principalExists
-          ? { id: "p_hermes" }
-          : null;
-      },
-      async all() {
-        return { results: [] };
-      },
-      async run() {
-        writes.push({ sql, args: bound });
-        return { meta: { changes: 1 } };
-      },
-    };
-  };
-  const env = {
-    DB: { prepare } as unknown as D1Database,
+  const db = fakeD1();
+  if (principalExists) db.seedAccount({ accountId: "a_hermes", principalId: "p_hermes", loginEmail: EMAIL });
+
+  const env: Env = {
+    DB: db,
+    ROUTES: fakeKV().ns,
     ADMIN_TOKEN,
-  } as unknown as Parameters<typeof worker.fetch>[1];
+    SES_REGION: "us-east-1",
+    INGEST_WORKER_NAME: "bullmoose-ingest",
+    CF_API_TOKEN: "cf",
+    SES_ACCESS_KEY_ID: "ak",
+    SES_SECRET_ACCESS_KEY: "sk",
+  };
+  const writes = db.writes;
 
   const post = (body: Record<string, unknown>, token = ADMIN_TOKEN) =>
     worker.fetch(
