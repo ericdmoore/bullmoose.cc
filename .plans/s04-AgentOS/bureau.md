@@ -125,10 +125,11 @@ wired to SES today **[live]** — so this is largely wiring.
 
 ```sh
 creds set <name>
-  --kind    api-key | oauth-refresh | aws-sigv4 | hmac-key
-  --allow   https://api.stripe.com          # or *.amazonaws.com
-  --scope   actor | inbox | global
-  --header  "Authorization: Bearer {}"      # injection recipe
+  --kind        api-key | oauth-refresh | aws-sigv4 | hmac-key
+  --allow       https://api.stripe.com          # or *.amazonaws.com
+  --scope       actor | inbox | global
+  --header      "Authorization: Bearer {}"      # injection recipe
+  --enforcement federated | narrow | broad      # which rung — §5.2
   # entropy: stdin / hidden prompt / --secret-env — NEVER argv
 ```
 
@@ -139,6 +140,7 @@ creds set <name>
 | **`--allow`** | destination binding — **the** primary control (§6). Fail closed |
 | **`--kind`** | gates the verb set (§4.1) — the field people forget, and it is load-bearing |
 | **`--header`** | where the value goes. Config, never caller-supplied — the model has no syntax for "the secret" |
+| **`--enforcement`** | records **who enforces the narrowing** (§5.2). `broad` means *only our code does* — surfaced in the console so that is visible, not tribal knowledge |
 
 **Derive rather than type, where possible.** `--header` usually follows from `--kind`; for
 OAuth credentials `--allow` can default to the issuer origin already stored in `meta`
@@ -169,6 +171,89 @@ This separation makes revocation cheap (drop the grant, keep the credential), ma
 console's two views work (per-agent reads grants; per-resource reads the credential), and
 makes "this agent holds a **signing** capability" legible in a way a scope string never is.
 Every use is auditable through the existing `grant_audit` path **[live]**.
+
+### 5.2 How narrow should the *provider-side* credential be?
+
+One mega key that the Bureau scopes down, or many narrow keys from the provider? The
+question that settles it is **who enforces the narrowing, and does that enforcement trust
+our code?**
+
+| | One mega key + Bureau scoping | Many narrow keys |
+|---|---|---|
+| **Enforced by** | **our own code** | **the provider**, independently |
+| If the Bureau has a bug | the mega key's *entire* policy is reachable | still only that key's policy |
+| Blast radius on leak | everything | one capability |
+| Revocation | cut it → **everything stops** | cut one capability, others unaffected |
+| Provider-side audit | one identity in their logs | attribution per agent |
+| Management cost | 1 key, 1 rotation | N keys, N policies to drift |
+
+The first row is the argument. It is the same principle this whole document rests on, one
+level up:
+
+> **Policy is our opinion. The capability wall is the guarantee.**
+
+Narrow provider keys *are* the wall; Bureau grants are policy. A missing check in the verb
+gate is a bug; a missing permission in an IAM policy is an impossibility.
+
+The last row is the honest counterargument — hand-maintaining a dozen policies is how you
+end up with a dozen copies of `*`.
+
+#### For AWS you don't have to choose
+
+Two mechanisms give **provider-enforced narrowing with single-key management**:
+
+1. **SigV4's own derivation** (§4.2). `kSigning` is scoped to *(date, region, service)* by
+   construction — one root key yields a signing key that only works for Cost Explorer, in
+   one region, today. AWS enforces that, not us.
+2. **STS `AssumeRole` with a session policy** — the stronger one, and designed for exactly
+   this broker shape. Effective permissions are the **intersection** of the role policy and
+   a per-call session policy, and the credentials are **temporary**:
+
+   ```
+   analyst@ invocation → AssumeRole(role, sessionPolicy: { ce:GetCostAndUsage })
+                       → temp creds, minutes-long, AWS-enforced
+   ```
+
+   That is narrow-key enforcement with mega-key management, **plus expiry** — and it
+   composes directly with the invocation-scoped lifetime in §8.
+
+#### The rule
+
+> **Prefer the narrowest thing the provider will enforce. Use Bureau scoping to go *finer*
+> than that — never as a substitute for it.**
+
+Ladder, best first (an extension of §10's):
+
+| Rung | Mechanism | Enforced by |
+|---|---|---|
+| **1** | Federation / STS session policies | provider, per-invocation, no stored root secret |
+| **2** | Multiple narrow keys | provider, static |
+| **3** | One key + Bureau scoping only | **us alone** |
+
+Rung 3 is unavoidable for most SaaS APIs — one key, full access, no scoping story. That is
+acceptable; it must be **recorded on the credential** (§5) so "only our code enforces this"
+is visible in the s03.E console rather than tribal knowledge.
+
+#### Split by blast radius, not by consumer
+
+The trap is one key per *agent*. That multiplies rotation work without reducing blast
+radius — three agents needing identical access share a risk profile. The grant
+`(principal, credRef, verb)` already handles per-agent; **keys handle per-capability.**
+
+Split a credential when:
+
+- the capabilities differ in **blast-radius class** — read-only analytics vs. anything that
+  spends money or destroys
+- rotation cadence or owner differs
+- **"would I want to revoke this one without the others, mid-incident?"** ← the sharpest test
+
+#### Why this matters more here than in a normal app
+
+Our agents read **untrusted email by design**, so the confused-deputy case in §8 —
+*"call the AWS tool, email the result to evil@"* — is a live risk, not a hypothetical. Under
+a mega key a successful injection reaches the entire policy; under a narrow key it reaches
+one capability. For a system whose input is attacker-controlled as a matter of course, that
+shifts the calculus toward narrow harder than it would elsewhere.
 
 ---
 

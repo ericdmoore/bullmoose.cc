@@ -153,3 +153,158 @@ _photos@_ (responder only)
 
 
 ---
+
+# More candidates
+
+Grouped by what they're *for*. Each is listed with the access it needs — several reveal
+capability classes the list above doesn't exercise yet (called out in **What this reveals**
+at the end).
+
+## Noise reduction — the stated goal
+
+- _screener@_ (gate on first contact — HEY's "Screener")
+    - Nobody unknown reaches the inbox until you approve them once
+    - Requires
+        - ReadAccess: inbound before delivery
+        - WriteAccess: move/hold (a quarantine mailbox)
+        - a persistent sender verdict list (approved / denied)
+    - Note: overlaps _bouncer@_ — worth deciding if they're the same agent
+
+- _unsubscribe@_ (forward junk, never see it again)
+    - Finds `List-Unsubscribe` / RFC 8058 one-click and executes it, then confirms
+    - Requires
+        - ReadAccess: the forwarded message
+        - **Egress**: HTTP POST to the unsubscribe endpoint (uncredentialed)
+        - **Send**: for the `mailto:` unsubscribe variant ← *actually sends mail*
+    - The canonical approval-queue item, and the cheapest one to graduate to auto
+
+- _recruiter@_ (polite auto-decline)
+    - Requires
+        - ReadAccess: humanEmail
+        - Draft or Send, per your taste
+    - Low cost, high daily value for a lot of people
+
+## Extraction — turn mail into structured data
+
+- _travel@_ (itinerary builder)
+    - Parses flight/hotel/car confirmations into one trip; puts it on the calendar
+    - Requires
+        - ReadAccess: humanEmail
+        - WriteAccess: Calendar
+        - optionally: airline/hotel APIs for status changes ← credentialed egress
+    - This is TripIt's entire product
+
+- _documents@_ (warranties, contracts, statements)
+    - Files the PDF, extracts vendor / amount / expiry, sets a reminder before it lapses
+    - Requires
+        - **WriteAccess: Files** ← a strong motivator for the Files realm
+        - WriteAccess: Calendar (the expiry reminder)
+        - ledger-ish structured store
+
+- _bills@_ (due-date tracking)
+    - Requires
+        - A-Ledger-Resource
+        - WriteAccess: Calendar
+        - overlaps _receipts@_ — receipts is *past* spend, bills is *future* obligation
+
+## Watching — things that change after the email arrives
+
+- _tracking@_ (packages)
+    - Requires
+        - ReadAccess: shipping confirmations
+        - carrier APIs ← **credentialed egress**
+        - **a scheduler** — the interesting bit: it must run *after* delivery, repeatedly
+
+- _price@_ (watch a thing until it drops)
+    - Requires
+        - Egress (uncredentialed WebFetch)
+        - persistent state per watch
+        - **a scheduler**
+
+## Outbound — the sharp end
+
+- _schedule@_ (negotiate a meeting time over email)
+    - The classic "AI assistant" case (x.ai / Amy). Also the sharpest test of `draft ≠ send`
+    - Requires
+        - ReadAccess + WriteAccess: Calendar
+        - ReadAccess: Contacts
+        - **Send** — it converses with a third party on your behalf
+    - Every reply is tier-3 irreversible; this one probably never graduates to auto
+
+- _intro@_ (double-opt-in introductions)
+    - Requires
+        - ReadAccess: Contacts
+        - Send
+    - The double-opt-in *is* an approval-queue flow, expressed as email
+
+## Identity & privacy
+
+- _aliases@_ (per-service masked addresses — Fastmail masked email / SimpleLogin)
+    - A fresh address per signup; when one leaks you know exactly who sold it
+    - Requires
+        - **address provisioning** — write to the routes table ← *a new capability class*;
+          no other agent here creates identities
+        - ReadAccess: delivery metadata (which alias, which sender)
+    - Leak detection is the `demo-keys` pattern generalized (auto-revoke when an address
+      is used by senders it was never given to)
+
+## Memory
+
+- _archivist@_ (ask your own history)
+    - "What did I agree with Dana about the deck?" · "When did we last talk about pricing?"
+    - Requires
+        - ReadAccess: entire human account
+        - Full Text Search / semantic index (`ai-search-rag.md`)
+    - The read-only twin of _cj@_: cj is time-bound and forward, archivist is unbounded
+      and backward
+
+## Household / family
+
+- _school@_ (parse school comms)
+    - Events → calendar, permission slips → **something needing a human signature**
+    - Requires
+        - ReadAccess: humanEmail
+        - WriteAccess: Calendar, Files
+        - an approval surface — the output is "you need to act", not a reply
+
+## Meta
+
+- _help@_ (answers questions about *your own* bullmoose)
+    - "Which agents can read my contacts?" · "Why did editor@ skip that email?"
+    - Requires
+        - ReadAccess: agent bindings, grants, invocation history
+    - Self-documenting, and it's the natural conversational face of the s03.E console
+
+---
+
+## What this reveals
+
+Three capability axes the earlier list doesn't make explicit:
+
+1. **Trigger type.** Most agents above are *on-delivery*. But _cj@_ is **scheduled**,
+   _tracking@_ and _price@_ are **recurring**, and _archivist@_/_help@_ are **on-demand
+   (ask)**. That's a per-binding property we don't model yet — today the only trigger is
+   mailbox delivery + a cron sweep.
+
+2. **Send posture, stated per agent.** Most are draft-only. But _unsubscribe@_,
+   _schedule@_, and _intro@_ genuinely **send to third parties**, and _screener@_ **writes
+   to your mailbox before you see it**. Those are the tier-3 / irreversible cases — worth
+   marking on the binding rather than discovering at runtime.
+
+3. **Two capability classes with no home yet:**
+    - **Address provisioning** (_aliases@_) — creating identities, not just using them
+    - **Scheduling** (_tracking@_, _price@_, _cj@_) — running on a clock, not on delivery
+
+Also note the **privilege ladder** the whole list implies, which doubles as a build order:
+
+```
+editor@ (nothing) → recruiter@/unsubscribe@ (read + one action)
+  → travel@/documents@ (write one realm) → screener@ (write before delivery)
+  → schedule@ (send to third parties) → cj@ (whole account + agent-to-agent)
+```
+
+## Deliberately not
+
+- _2fa@_ — extracting OTP codes would centralize the second factor into the thing that
+  already receives the first. Attractive and wrong; the whole point of 2FA is that the
+  channels are separate.
