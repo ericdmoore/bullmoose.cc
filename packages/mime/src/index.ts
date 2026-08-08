@@ -33,17 +33,20 @@ const CRLF = "\r\n";
 export function buildMime(draft: DraftMessage): Uint8Array {
   const headers: string[] = [
     `Date: ${rfc5322Date(draft.date)}`,
-    `Message-ID: <${draft.messageId}>`,
+    `Message-ID: <${msgId(draft.messageId)}>`,
     `From: ${formatAddressList(draft.from)}`,
     `To: ${formatAddressList(draft.to)}`,
   ];
   if (draft.cc && draft.cc.length > 0) headers.push(`Cc: ${formatAddressList(draft.cc)}`);
   if (draft.inReplyTo) {
-    headers.push(`In-Reply-To: <${draft.inReplyTo}>`);
-    headers.push(`References: <${draft.inReplyTo}>`);
+    // inReplyTo is copied from INBOUND mail, so it is attacker-controlled.
+    const ref = msgId(draft.inReplyTo);
+    headers.push(`In-Reply-To: <${ref}>`);
+    headers.push(`References: <${ref}>`);
   }
   headers.push(`Subject: ${encodeHeaderValue(draft.subject)}`);
-  for (const h of draft.extraHeaders ?? []) headers.push(h);
+  // Callers pass whole "Name: value" lines; one CRLF here is an extra header.
+  for (const h of draft.extraHeaders ?? []) headers.push(stripCtl(h));
   headers.push("MIME-Version: 1.0");
 
   let body: string;
@@ -99,18 +102,55 @@ export function formatAddressList(list: MimeAddress[]): string {
 }
 
 export function formatAddress(a: MimeAddress): string {
-  if (!a.name) return a.email;
-  const name = /^[\w .'-]+$/.test(a.name)
-    ? a.name
-    : isAscii(a.name)
-      ? `"${a.name.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
-      : encodeWord(a.name);
-  return `${name} <${a.email}>`;
+  // Both halves are attacker-reachable: `email` was interpolated with zero
+  // escaping, and the quoted-string branch below only escapes \ and " — it
+  // never touched CR/LF.
+  const email = stripCtl(a.email);
+  if (!a.name) return email;
+  const rawName = stripCtl(a.name);
+  const name = /^[\w .'-]+$/.test(rawName)
+    ? rawName
+    : isAscii(rawName)
+      ? `"${rawName.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
+      : encodeWord(rawName);
+  return `${name} <${email}>`;
+}
+
+/**
+ * RFC 5322 §2.2: a header field body may not contain bare CR or LF.
+ *
+ * This is the header-injection chokepoint. Untrusted values reach header
+ * lines from several directions — an inbound Subject echoed by the vacation
+ * responder or an agent auto-reply, a display name, a Message-ID — and a
+ * decoded CRLF in any of them ends the field and starts an attacker-chosen
+ * one (`Bcc:` to exfiltrate, or a doubled CRLF to forge the whole body,
+ * DKIM-signed by us).
+ *
+ * Sanitising lives in the BUILDER rather than at each caller, so a new
+ * caller cannot forget. Folding to a single space rather than deleting
+ * matches RFC 5322 unfolding, which replaces CRLF+WSP with WSP.
+ *
+ * NB `isAscii` is not a guard here: CR (0x0D), LF (0x0A) and NUL are all
+ * inside `[\x00-\x7F]`, which is exactly why the old code let them through.
+ */
+function stripCtl(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\r\n\0]+/g, " ");
+}
+
+/**
+ * A msg-id sits inside angle brackets, so `<`, `>` or whitespace would
+ * terminate or split the field even without a CRLF. `inReplyTo` is copied
+ * straight off inbound mail — treat it as hostile.
+ */
+function msgId(value: string): string {
+  return stripCtl(value).replace(/[<>\s]+/g, "");
 }
 
 /** RFC 2047 B-encoding for non-ASCII header values. */
 export function encodeHeaderValue(value: string): string {
-  return isAscii(value) ? value : encodeWord(value);
+  const safe = stripCtl(value);
+  return isAscii(safe) ? safe : encodeWord(safe);
 }
 
 function encodeWord(value: string): string {

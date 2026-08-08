@@ -54,7 +54,7 @@ const CRLF = "\r\n";
 export function buildMime(msg: OutgoingMessage): Uint8Array {
   const headers: string[] = [
     `Date: ${rfc5322Date(msg.date)}`,
-    `Message-ID: <${msg.messageId}>`,
+    `Message-ID: <${msgId(msg.messageId)}>`,
     `From: ${msg.from.map(formatAddress).join(", ")}`,
     `To: ${msg.to.map(formatAddress).join(", ")}`,
   ];
@@ -62,8 +62,10 @@ export function buildMime(msg: OutgoingMessage): Uint8Array {
   // Bcc is deliberately NOT written into the message — bcc recipients
   // travel only in the SMTP envelope (EmailSubmission's rcptTo).
   if (msg.inReplyTo) {
-    headers.push(`In-Reply-To: <${msg.inReplyTo}>`);
-    headers.push(`References: <${msg.inReplyTo}>`);
+    // Copied from inbound mail on reply, so treat it as attacker-controlled.
+    const ref = msgId(msg.inReplyTo);
+    headers.push(`In-Reply-To: <${ref}>`);
+    headers.push(`References: <${ref}>`);
   }
   headers.push(`Subject: ${encodeHeaderValue(msg.subject)}`);
   headers.push("MIME-Version: 1.0");
@@ -154,17 +156,44 @@ function rfc5322Date(d: Date): string {
 }
 
 export function formatAddress(a: MimeAddress): string {
-  if (!a.name) return a.email;
-  const name = /^[\w .'-]+$/.test(a.name)
-    ? a.name
-    : isAscii(a.name)
-      ? `"${a.name.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
-      : encodeWord(a.name);
-  return `${name} <${a.email}>`;
+  // Both halves are reachable: `email` had zero escaping, and the quoted
+  // branch below escapes only \ and " — never CR/LF.
+  const email = stripCtl(a.email);
+  if (!a.name) return email;
+  const rawName = stripCtl(a.name);
+  const name = /^[\w .'-]+$/.test(rawName)
+    ? rawName
+    : isAscii(rawName)
+      ? `"${rawName.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`
+      : encodeWord(rawName);
+  return `${name} <${email}>`;
+}
+
+/**
+ * RFC 5322 §2.2: a header field body may not contain bare CR or LF.
+ *
+ * Mirrors `packages/mime`'s guard — the two builders have diverged (this one
+ * does nested multipart + CID inlining) so the fix has to land in both. See
+ * `.feedback/fromClaude/common/002`.
+ *
+ * `isAscii` is not a guard: CR (0x0D), LF (0x0A) and NUL are all inside
+ * `[\x00-\x7F]`, which is exactly why the old code let them through. Note
+ * `sanitizeName` below already knew this — it was just never applied to the
+ * header path.
+ */
+function stripCtl(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\r\n\0]+/g, " ");
+}
+
+/** A msg-id sits inside angle brackets; `<`, `>` and WSP split the field. */
+function msgId(value: string): string {
+  return stripCtl(value).replace(/[<>\s]+/g, "");
 }
 
 export function encodeHeaderValue(value: string): string {
-  return isAscii(value) ? value : encodeWord(value);
+  const safe = stripCtl(value);
+  return isAscii(safe) ? safe : encodeWord(safe);
 }
 
 function encodeWord(value: string): string {
