@@ -27,64 +27,15 @@ vi.mock("@bullmoose/auth-core", async (importOriginal) => {
 // Static imports are safe here: vitest hoists vi.mock (and vi.hoisted)
 // above them, so ./authRoutes binds the wrapped hashLoginKey.
 import { hashLoginKey } from "@bullmoose/auth-core";
+import { fakeEnv } from "@bullmoose/test-fakes";
 import { handleLogin } from "./authRoutes";
 
+// The D1 and KV fakes are @bullmoose/test-fakes (sVOL 002). The KV in
+// particular used to be local to this file precisely because it honoured
+// absolute `expiration` while the copy in mintScopes.test.ts ignored every
+// option — two fakes that disagreed about the semantics these tests turn on.
+
 const CRED_SQL = "FROM principals p JOIN credentials";
-
-/** A fake D1 that records every prepared statement and every write. */
-function fakeD1(principal: { id: string; login_email: string; pw_hash: string } | null) {
-  const queries: string[] = [];
-  const writes: Array<{ sql: string; args: unknown[] }> = [];
-  const prepare = (sql: string) => {
-    queries.push(sql);
-    let bound: unknown[] = [];
-    return {
-      bind(...args: unknown[]) {
-        bound = args;
-        return this;
-      },
-      async first() {
-        return sql.includes(CRED_SQL) ? principal : null;
-      },
-      async all() {
-        return { results: [] };
-      },
-      async run() {
-        writes.push({ sql, args: bound });
-        return { meta: { changes: 1 } };
-      },
-    };
-  };
-  return {
-    db: { prepare } as unknown as D1Database,
-    writes,
-    /** How many times the credential lookup actually ran. */
-    credLookups: () => queries.filter((q) => q.includes(CRED_SQL)).length,
-  };
-}
-
-/** A fake KV that honours absolute `expiration`, like the real namespace. */
-function fakeKV() {
-  const store = new Map<string, { value: string; expiration?: number }>();
-  const kv = {
-    async get(key: string) {
-      const e = store.get(key);
-      if (!e) return null;
-      if (e.expiration !== undefined && e.expiration * 1000 <= Date.now()) {
-        store.delete(key);
-        return null;
-      }
-      return e.value;
-    },
-    async put(key: string, value: string, opts?: { expiration?: number }) {
-      store.set(key, { value, expiration: opts?.expiration });
-    },
-    async delete(key: string) {
-      store.delete(key);
-    },
-  };
-  return { kv: kv as unknown as KVNamespace, store };
-}
 
 const GOOD_KEY = "a".repeat(64); // isLoginKey: 64 lowercase hex
 const BAD_KEY = "b".repeat(64);
@@ -97,11 +48,23 @@ beforeAll(async () => {
 });
 
 function harness(principalExists = true) {
-  const d1 = fakeD1(
-    principalExists ? { id: "p_eric", login_email: EMAIL, pw_hash: pwHash } : null,
-  );
-  const { kv, store } = fakeKV();
-  const env = { DB: d1.db, ROUTES: kv } as unknown as Parameters<typeof handleLogin>[1];
+  const w = fakeEnv();
+  if (principalExists) {
+    w.db.seedAccount({ accountId: "a_eric", principalId: "p_eric", loginEmail: EMAIL });
+    w.db.seed("credentials", [
+      {
+        principal_id: "p_eric",
+        pw_algo: "client-pbkdf2-sha256-v1",
+        pw_hash: pwHash,
+        pw_salt: "salt",
+        pw_iters: 1,
+        updated_at: 1,
+      },
+    ]);
+  }
+  const env = w.env;
+  /** How many times the credential lookup actually ran. */
+  const credLookups = () => w.db.queries.filter((q) => q.includes(CRED_SQL)).length;
   const login = (loginKey = BAD_KEY, email = EMAIL, ip = IP) =>
     handleLogin(
       new Request("https://jmap.bullmoose.cc/auth/login", {
@@ -111,7 +74,7 @@ function harness(principalExists = true) {
       }),
       env,
     );
-  return { ...d1, login, store, kv, env };
+  return { writes: w.db.writes, credLookups, login, store: w.kv.store, kv: w.env.ROUTES, env };
 }
 
 /** Status + exact body bytes + the headers a client can see. */

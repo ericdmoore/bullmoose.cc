@@ -229,10 +229,15 @@ at `:138`. Only **`calendar-core` is absent.** The raw-SQL habit in `mcp.ts` is 
 weakens any argument that routing an MCP tool through the store is expensive plumbing.
 
 **Testing a write through the JMAP method layer needs more than a fake D1.** `storeFor`
-requires `ctx.env.BLOBS` (`services/jmap/src/methods/common.ts:58`) and `accountState` /
-`commitChanges` require `ctx.env.ACCOUNT_DO` (`common.ts:62-63`). Any acceptance criterion of
-the form "…and the write appears in `Foo/changes`" needs a fake Durable Object too. See
-unit `002`'s Open Questions — its scope as written is necessary but **not sufficient**.
+requires `ctx.env.BLOBS` (`services/jmap/src/methods/common.ts:117`) and `accountState` /
+`commitChanges` require `ctx.env.ACCOUNT_DO` (`common.ts:120-124`). Any acceptance criterion of
+the form "…and the write appears in `Foo/changes`" needs a fake Durable Object too.
+
+✅ **Both exist now.** Unit `002` shipped widened: `fakeEnv()` from `@bullmoose/test-fakes`
+supplies `DB`, `BLOBS`, `ROUTES`, `ACCOUNT_DO` and `SUBMIT` in one object, with no cast. The DO
+runs the real `AccountDO`, so the changelog assertion is against the deployed class rather than
+a canned `{newState}`. Write a `Foo/changes` assertion into any new write surface's tests — it
+is the only thing that catches this failure mode, and it is now cheap.
 
 ---
 
@@ -290,19 +295,37 @@ worktree agents: without it Node's upward `node_modules` lookup escapes the work
 resolves `@bullmoose/*` to the **parent checkout**, so tests silently exercise a different
 branch's source than `tsc` checks.
 
-⚠️ **There is still no SHARED fake-D1 helper.** FIVE separate local copies now exist —
-`services/agent/src/mcp.test.ts`, `services/jmap/src/authRoutes.test.ts`,
-`services/jmap/src/mintScopes.test.ts`, `services/jmap/src/methods/submission.test.ts` — each
-routing by SQL substring, each extended ad hoc (one grew a `batch` router). Unit `002` is
-therefore *more* valuable than when filed, not less: it now has four divergent
-implementations to consolidate rather than one to extract.
+✅ **There is now a shared fake-client harness** — `packages/test-fakes`
+(`@bullmoose/test-fakes`), sVOL unit `002`. It replaced **six** divergent local fakes
+(`services/agent/src/mcp.test.ts`, `services/jmap/src/{authRoutes,mintScopes}.test.ts`,
+`services/jmap/src/methods/{submission,calendars}.test.ts`,
+`services/provision/src/mintScopes.test.ts`), each routing by SQL substring and each extended
+ad hoc. It provides D1 (real `node:sqlite` loading the live `packages/mailstore/sql/*.sql`,
+with an atomic `.batch()`), R2, KV, and `ACCOUNT_DO` — the last running the **real** `AccountDO`
+class over in-memory storage.
 
-Coverage is ~11% lines overall. Still at or near zero: `packages/cli` (excluded from the
-coverage report entirely, `vitest.config.ts`), `services/ingest`, `services/submit`,
-`packages/mailstore`, and most JMAP methods. `services/anglebrackets` is no longer at zero —
-`dav.test.ts` (sVOL `009`) covers the collection verbs, though the resource verbs, the
-REPORTs and the XML helpers remain untested.
-`calendar-core`, `auth-core`, `mime` and the auth/scope paths are now genuinely covered.
+**What that changes for anyone planning a unit:** §3's write-choreography claim is now
+*assertable*. A test can drive a JMAP `/set` end to end and then ask `Foo/changes` whether the
+changelog recorded it, which is the only way to catch a write that lands the row and skips
+`commitChanges`. `services/jmap/src/methods/calendars.test.ts` is the worked example. The
+harness is deliberately **not** an npm workspace (no `package.json`), so it resolves only under
+`tsc` and vitest and can never be bundled into a Worker; `packages/cli` therefore cannot import
+it, and needs a relative import if it ever wants one.
+
+Coverage is ~22% lines overall (was ~11% before `002`; `packages/mailstore` went 0% → 22.9%
+because the store's SQL now actually executes). Still at or near zero: `packages/cli` (excluded
+from the coverage report entirely, `vitest.config.ts`), `services/anglebrackets` (the whole DAV
+surface), `services/ingest`, `services/submit`, and most JMAP methods. `calendar-core`,
+`auth-core`, `mime` and the auth/scope paths are genuinely covered.
+
+Coverage is ~21.8% lines overall (was ~11% before `002`; most of the jump is
+`packages/mailstore`, 0% → 22.9%, now that fixtures run against the real schema).
+`calendar-core`, `auth-core`, `mime`, the auth/scope paths, the mailbox verbs (`004`) and the
+DAV collection verbs (`009`) are genuinely covered. Still at or near zero: `packages/cli`
+(excluded from the coverage report entirely, `vitest.config.ts`), `services/ingest`,
+`services/submit`, and the DAV resource verbs / REPORTs / XML helpers. Those are the shell
+paths `002` makes cheap to reach, and **no unit owns them.**
+
 
 ⚠️ `common/003` is **CLOSED**. The RRULE parser/expander mismatch is fixed at the `eventSpan`
 write boundary — bad rules are refused on write and dropped (not thrown) on read, so one
