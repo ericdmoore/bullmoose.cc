@@ -1,7 +1,10 @@
 import {
+  DEFAULT_LOGIN_SCOPES,
+  SELF_SERVICE_SCOPES,
   hashLoginKey,
   isLoginKey,
   mintToken,
+  resolveMintScopes,
   scopesWithin,
   timingSafeEqualHex,
 } from "@bullmoose/auth-core";
@@ -13,8 +16,12 @@ import { beginLoginAttempt } from "./loginThrottle";
  * Self-service auth endpoints on the jmap worker:
  *   POST   /auth/login        {email, loginKey, name?, scopes?} → token (once)
  *   GET    /auth/tokens       list own tokens (no secrets)
- *   POST   /auth/tokens       {name, scopes?} mint another (⊆ own scopes)
+ *   POST   /auth/tokens       {name, scopes}  mint another (⊆ own scopes)
  *   DELETE /auth/tokens/{id}  revoke own
+ *
+ * `scopes` is optional on login (it is the bootstrap — see
+ * DEFAULT_LOGIN_SCOPES) and REQUIRED on /auth/tokens. Both are checked
+ * against SELF_SERVICE_SCOPES, which excludes `admin`.
  *
  * loginKey is CLIENT-derived (PBKDF2 — see auth-core's contract): the
  * raw password never transits, and server verification is one SHA-256,
@@ -44,6 +51,13 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
   if (!body.email || !isLoginKey(body.loginKey)) {
     return json({ error: "email and loginKey (client-derived; the CLI derives it) required" }, 400);
   }
+
+  // Scope check first: it is a property of the REQUEST, not the account, so
+  // rejecting here costs no throttle slot and leaks nothing about which
+  // emails exist. `admin` is not in SELF_SERVICE_SCOPES, so a password —
+  // however valid — cannot mint a control-plane token.
+  const wanted = resolveMintScopes(body.scopes, SELF_SERVICE_SCOPES, DEFAULT_LOGIN_SCOPES);
+  if (!wanted.ok) return json({ error: wanted.error }, 400);
 
   const email = body.email.toLowerCase();
   // cf-connecting-ip is set by the edge on every real request; "unknown"
@@ -86,7 +100,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
   }
   await attempt.succeed();
 
-  const scopes = body.scopes ?? ["mail"];
+  const scopes = wanted.scopes;
   const minted = await mintToken();
   await env.DB.prepare(
     `INSERT INTO tokens (id, principal_id, secret_hash, name, scopes, created_at)
@@ -148,7 +162,13 @@ export async function handleTokens(
 
   if (request.method === "POST") {
     const body = (await request.json()) as { name?: string; scopes?: string[] };
-    const scopes = body.scopes ?? ["mail"];
+    // No default here, unlike /auth/login: the caller already holds a token,
+    // so there is nothing to bootstrap and no reason to guess. Omitting
+    // `scopes` used to mint ["mail"] — the widest self-service credential —
+    // for a request that never asked for it.
+    const wanted = resolveMintScopes(body.scopes, SELF_SERVICE_SCOPES);
+    if (!wanted.ok) return json({ error: wanted.error }, 400);
+    const scopes = wanted.scopes;
     // No privilege escalation: requested ⊆ what the minting token holds.
     if (!scopesWithin(scopes, principal.scopes)) {
       return json({ error: "requested scopes exceed this token's scopes" }, 403);

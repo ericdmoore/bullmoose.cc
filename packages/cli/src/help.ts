@@ -59,19 +59,23 @@ export const COMMANDS: Command[] = [
       "bullmoose login <email> [--base <url>] [--name <device-name>] [--password <pw>] [--scopes <a,b,c>]",
     summary: "log in and store a bearer token for this account",
     description:
-      "Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw. --scopes sets what the minted token may do; `login` is the only self-service way to WIDEN scope, because `token create` can only narrow the token it is called with.",
+      "Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw. --scopes sets what the minted token may do and is OPTIONAL here — this is the one command that must work before you hold any token, so omitting it takes the server default of `mail` (the six mail verbs; no contacts, calendar or vault). `login` is also the only self-service way to WIDEN scope, because `token create` can only narrow the token it is called with.",
     flags: [
       { flag: "--base <url>", desc: "JMAP server base; skip to autodiscover from the email domain" },
       { flag: "--name <device-name>", desc: "label the minted token (shows in `token list`)" },
       { flag: "--password <pw>", desc: "password (else prompt or $BULLMOOSE_PASSWORD)" },
       {
         flag: "--scopes <a,b,c>",
-        desc: "scopes for the minted token (default: server's). Vocabulary: read, annotate, draft, move, send, delete, mail, contacts, calendar, vault",
+        desc: "scopes for the minted token; omit for the server default (mail). Vocabulary: read, annotate, draft, move, send, delete, mail, contacts, calendar, vault",
       },
     ],
     examples: [
       { cmd: "bullmoose login you@example.com", note: "autodiscover the server, prompt for password" },
       { cmd: "bullmoose login you@example.com --base https://jmap.example.com --name laptop" },
+      {
+        cmd: "bullmoose login you@example.com --scopes mail,contacts,calendar,vault",
+        note: "widen past the default (login is the only way)",
+      },
     ],
     seeAlso: ["discover", "init", "token"],
   },
@@ -104,18 +108,20 @@ export const COMMANDS: Command[] = [
   },
   {
     name: "token",
-    synopsis: "bullmoose token create --name <n> [--scopes read,draft,send] | list | revoke <id>",
+    synopsis: "bullmoose token create --name <n> --scopes <a,b,c> | list | revoke <id>",
     summary: "mint / list / revoke device app-passwords for this account",
     description:
-      "Device tokens (bm_…) are what clients authenticate with — never the login password. Scope them per device so a lost device can be revoked alone. Scope vocabulary: read, annotate, draft, move, send, delete, mail (all verbs), contacts, calendar.",
+      "Device tokens (bm_…) are what clients authenticate with — never the login password. Scope them per device so a lost device can be revoked alone. --scopes is REQUIRED: there is no default, because the shortest command should not mint the widest credential. Vocabulary: the mail verbs read, annotate, draft, move, send, delete; the bundle `mail`, which means exactly those six and nothing else; and the independent realms contacts, calendar, vault. A token can only ever be narrower than the one that minted it, so to widen, run `login` again with --scopes.",
     subcommands: [
-      { name: "create", synopsis: "token create --name <n> [--scopes read,draft,send]", summary: "mint a token (shown once)" },
+      { name: "create", synopsis: "token create --name <n> --scopes <a,b,c>", summary: "mint a token (shown once)" },
       { name: "list", synopsis: "token list", summary: "list this account's tokens" },
       { name: "revoke", synopsis: "token revoke <id>", summary: "revoke one token by id" },
     ],
     examples: [
-      { cmd: "bullmoose token create --name iphone --scopes mail,contacts,calendar" },
+      { cmd: "bullmoose token create --name backup --scopes read", note: "read-only sync/archive" },
       { cmd: "bullmoose token create --name popper --scopes read,move", note: "POP3 via popcorn" },
+      { cmd: "bullmoose token create --name laptop --scopes read,draft,send", note: "a mail client" },
+      { cmd: "bullmoose token create --name macbook-contacts --scopes contacts", note: "CardDAV only" },
     ],
     seeAlso: ["login", "admin token"],
   },
@@ -309,7 +315,7 @@ export const COMMANDS: Command[] = [
       { name: "account", synopsis: "admin account create <local@domain> --tenant <t> [--name <n>] [--principal <email>] | list [--tenant <t>]", summary: "create a mailbox account" },
       { name: "password", synopsis: "admin password <email>", summary: "set a principal's login password" },
       { name: "agent", synopsis: "admin agent bind <account-email> --name <binding> [--sla <s>] [--allow a@b,c@d] [--reply-mode send|draft] [--config <file.json>] | list <account-email>", summary: "bind a cloud agent runtime to a mailbox" },
-      { name: "token", synopsis: "admin token create <email> --name <n> [--scopes …] | list [<email>] | revoke <id>", summary: "mint operator/agent tokens for any account" },
+      { name: "token", synopsis: "admin token create <email> --name <n> --scopes <a,b,c> | list [<email>] | revoke <id>", summary: "mint operator/agent tokens for any account (--scopes required; only this command may mint `admin`)" },
       { name: "grant", synopsis: "admin grant create <grantee-email> <target-email> [--scopes read,contacts] [--book <id>] [--expires <days>] | list [<email>] | revoke <id>", summary: "cross-account delegation (effective rights = token ∩ grant)" },
     ],
     examples: [
@@ -318,6 +324,7 @@ export const COMMANDS: Command[] = [
       { cmd: "bullmoose admin domain add example.com --tenant t_home" },
       { cmd: "bullmoose admin account create you@example.com --tenant t_home" },
       { cmd: "bullmoose admin agent bind editor@example.com --name editor --reply-mode draft --config docs/examples/editor-emily.config.json" },
+      { cmd: "bullmoose admin token create hermes@example.com --name hermes-bridge --scopes read,send" },
       { cmd: "bullmoose admin grant create partner@example.com you@example.com --scopes read,contacts --book <bookId> --expires 365" },
     ],
     seeAlso: ["token", "agent"],

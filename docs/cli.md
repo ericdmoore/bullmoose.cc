@@ -49,14 +49,14 @@ log in and store a bearer token for this account
 bullmoose login <email> [--base <url>] [--name <device-name>] [--password <pw>] [--scopes <a,b,c>]
 ```
 
-Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw. --scopes sets what the minted token may do; `login` is the only self-service way to WIDEN scope, because `token create` can only narrow the token it is called with.
+Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw. --scopes sets what the minted token may do and is OPTIONAL here — this is the one command that must work before you hold any token, so omitting it takes the server default of `mail` (the six mail verbs; no contacts, calendar or vault). `login` is also the only self-service way to WIDEN scope, because `token create` can only narrow the token it is called with.
 
 | flag | description |
 |---|---|
 | `--base <url>` | JMAP server base; skip to autodiscover from the email domain |
 | `--name <device-name>` | label the minted token (shows in `token list`) |
 | `--password <pw>` | password (else prompt or $BULLMOOSE_PASSWORD) |
-| `--scopes <a,b,c>` | scopes for the minted token (default: server's). Vocabulary: read, annotate, draft, move, send, delete, mail, contacts, calendar, vault |
+| `--scopes <a,b,c>` | scopes for the minted token; omit for the server default (mail). Vocabulary: read, annotate, draft, move, send, delete, mail, contacts, calendar, vault |
 
 **Examples**
 
@@ -64,6 +64,8 @@ Authenticates to a JMAP server. With no --base, the server is autodiscovered fro
 bullmoose login you@example.com
 # autodiscover the server, prompt for password
 bullmoose login you@example.com --base https://jmap.example.com --name laptop
+bullmoose login you@example.com --scopes mail,contacts,calendar,vault
+# widen past the default (login is the only way)
 ```
 
 See also: [`discover`](#discover), [`init`](#init), [`token`](#token)
@@ -118,15 +120,15 @@ See also: [`login`](#login), [`token`](#token)
 mint / list / revoke device app-passwords for this account
 
 ```
-bullmoose token create --name <n> [--scopes read,draft,send] | list | revoke <id>
+bullmoose token create --name <n> --scopes <a,b,c> | list | revoke <id>
 ```
 
-Device tokens (bm_…) are what clients authenticate with — never the login password. Scope them per device so a lost device can be revoked alone. Scope vocabulary: read, annotate, draft, move, send, delete, mail (all verbs), contacts, calendar.
+Device tokens (bm_…) are what clients authenticate with — never the login password. Scope them per device so a lost device can be revoked alone. --scopes is REQUIRED: there is no default, because the shortest command should not mint the widest credential. Vocabulary: the mail verbs read, annotate, draft, move, send, delete; the bundle `mail`, which means exactly those six and nothing else; and the independent realms contacts, calendar, vault. A token can only ever be narrower than the one that minted it, so to widen, run `login` again with --scopes.
 
 **Subcommands**
 
 - **create** — mint a token (shown once)  
-  `token create --name <n> [--scopes read,draft,send]`
+  `token create --name <n> --scopes <a,b,c>`
 - **list** — list this account's tokens  
   `token list`
 - **revoke** — revoke one token by id  
@@ -135,9 +137,14 @@ Device tokens (bm_…) are what clients authenticate with — never the login pa
 **Examples**
 
 ```sh
-bullmoose token create --name iphone --scopes mail,contacts,calendar
+bullmoose token create --name backup --scopes read
+# read-only sync/archive
 bullmoose token create --name popper --scopes read,move
 # POP3 via popcorn
+bullmoose token create --name laptop --scopes read,draft,send
+# a mail client
+bullmoose token create --name macbook-contacts --scopes contacts
+# CardDAV only
 ```
 
 See also: [`login`](#login), [`admin token`](#admin)
@@ -463,8 +470,8 @@ Onboarding and administration. `admin init` stores the provision URL + admin tok
   `admin password <email>`
 - **agent** — bind a cloud agent runtime to a mailbox  
   `admin agent bind <account-email> --name <binding> [--sla <s>] [--allow a@b,c@d] [--reply-mode send|draft] [--config <file.json>] | list <account-email>`
-- **token** — mint operator/agent tokens for any account  
-  `admin token create <email> --name <n> [--scopes …] | list [<email>] | revoke <id>`
+- **token** — mint operator/agent tokens for any account (--scopes required; only this command may mint `admin`)  
+  `admin token create <email> --name <n> --scopes <a,b,c> | list [<email>] | revoke <id>`
 - **grant** — cross-account delegation (effective rights = token ∩ grant)  
   `admin grant create <grantee-email> <target-email> [--scopes read,contacts] [--book <id>] [--expires <days>] | list [<email>] | revoke <id>`
 
@@ -476,6 +483,7 @@ bullmoose admin tenant create t_home --name "Home"
 bullmoose admin domain add example.com --tenant t_home
 bullmoose admin account create you@example.com --tenant t_home
 bullmoose admin agent bind editor@example.com --name editor --reply-mode draft --config docs/examples/editor-emily.config.json
+bullmoose admin token create hermes@example.com --name hermes-bridge --scopes read,send
 bullmoose admin grant create partner@example.com you@example.com --scopes read,contacts --book <bookId> --expires 365
 ```
 
