@@ -1,22 +1,22 @@
-name: Mail platform typecheck
+name: verify
+
+# Deliberately NOT paths-filtered.
+#
+# `verify` is a required status check (see .github/rulesets/), and GitHub
+# renders a required-but-SKIPPED check as pending forever — so a paths filter
+# would make any PR outside the filter permanently unmergeable. The suite is
+# ~31 tests in under a second; there is no cost argument for filtering.
 on:
   push:
-    paths:
-      - "packages/**"
-      - "services/**"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
   pull_request:
-    paths:
-      - "packages/**"
-      - "services/**"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
 
 jobs:
-  typecheck:
+  # The job id is the status-check context the branch ruleset requires.
+  # DO NOT RENAME IT — a required check is registered by job id, so a rename
+  # silently detaches the gate and it stops gating while still looking green.
+  # Add new commands as steps here instead; `verify` is meant to grow
+  # (lint and fmt land here later) without branch protection ever changing.
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,3 +26,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test

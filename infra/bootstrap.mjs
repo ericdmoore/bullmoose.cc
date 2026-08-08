@@ -44,9 +44,20 @@ const SCHEMAS = [
   "packages/mailstore/sql/control-plane.sql",
 ];
 
-// Deploy order IS the binding graph: submit has no deps; jmap declares the
-// AccountDO; everything after binds it (or submit) cross-script.
-const DEPLOY_ORDER = ["submit", "jmap", "ingest", "provision", "agent", "anglebrackets"];
+// Deploy order IS the binding graph, derived from the wrangler configs:
+//
+//   submit         no deps
+//   jmap           services: submit          · declares AccountDO
+//   agent          services: submit          · durable_objects script_name: jmap
+//   ingest         services: AGENT -> agent  · durable_objects script_name: jmap
+//   provision      no deps
+//   anglebrackets  durable_objects script_name: jmap
+//
+// agent MUST precede ingest — services/ingest/wrangler.jsonc:28 binds
+// `bullmoose-agent`, so on a clean account ingest deploys against a service
+// that does not exist yet. This list previously had ingest at 3 and agent at
+// 5, which only ever worked because agent already existed from a prior run.
+const DEPLOY_ORDER = ["submit", "jmap", "agent", "ingest", "provision", "anglebrackets"];
 
 const cfg = (w) => `services/${w}/wrangler.jsonc`;
 // Configs that carry resource ids to wire. anglebrackets has no KV binding —
