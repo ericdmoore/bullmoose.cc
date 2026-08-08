@@ -1,5 +1,5 @@
 import { authenticate, type AuthEnv, type Principal } from "@bullmoose/auth-core/principal";
-import { handleDav } from "./dav.js";
+import { handleDav, DAV_ALLOW, DAV_COMPLIANCE } from "./dav.js";
 
 /**
  * anglebrackets — CardDAV over the contacts core (devPlan-handoff
@@ -10,7 +10,8 @@ import { handleDav } from "./dav.js";
  * Deliberately barely-conforming (locked decision Q4): the verb subset
  * CardDAV clients actually use — OPTIONS, PROPFIND, REPORT
  * (sync-collection / addressbook-multiget / addressbook-query),
- * GET/PUT/DELETE with ETags — plus /.well-known/carddav discovery.
+ * GET/PUT/DELETE with ETags, and MKCALENDAR / extended MKCOL + DELETE for
+ * the collections themselves — plus /.well-known/carddav discovery.
  * LOCK/UNLOCK, COPY/MOVE, and ACLs are intentionally absent.
  *
  * Cost shape (why ctag exists): native clients POLL. An idle poll is
@@ -37,13 +38,14 @@ export default {
       return new Response(null, { status: 301, headers: { Location: "/dav/" } });
     }
 
+    // NB: this runs BEFORE authenticate, so the advertisement is
+    // unauthenticated and account-independent — it cannot be conditional
+    // on what a given principal may do. A client reads `Allow` to decide
+    // whether to OFFER "New Calendar", so it has to name the verbs.
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
-        headers: {
-          DAV: "1, 3, addressbook, calendar-access",
-          Allow: "OPTIONS, GET, PUT, DELETE, PROPFIND, REPORT",
-        },
+        headers: { DAV: DAV_COMPLIANCE, Allow: DAV_ALLOW },
       });
     }
 

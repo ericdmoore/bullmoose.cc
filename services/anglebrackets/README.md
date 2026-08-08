@@ -15,6 +15,12 @@ bound cross-script from the jmap worker).
 - `OPTIONS`, `PROPFIND`, `REPORT` (sync-collection, addressbook-multiget /
   addressbook-query, calendar-multiget / calendar-query),
   `GET`/`PUT`/`DELETE` with ETags
+- **Collections are read-write too**: `MKCALENDAR` (RFC 4791 §5.3.1) and
+  extended `MKCOL` with an `addressbook` resourcetype (RFC 6352 §5.2 /
+  RFC 5689), plus `DELETE` on a collection. So `File → New Calendar` in
+  Apple Calendar works — the client picks the URI and that id **is** the
+  collection id, since collections have no `dav_name` column. Structural
+  writes are owner-only and refuse the default collection on delete.
 - Deliberately **barely-conforming** (locked decision): the verb subset
   real clients actually use. `LOCK`/`UNLOCK`, `COPY`/`MOVE`, and ACLs are
   intentionally absent.

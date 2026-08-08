@@ -151,9 +151,10 @@ trusting what the screen shows.
 ## Done when
 
 1. A person creates an address book and a contact in the browser, then opens Contacts.app
-   over CardDAV and sees both. **The address book is the interesting half** — DAV has no
-   `MKCOL` (`dav.ts:322` → `notAllowed()` `:1229-1232`, 405), so the WebUI would become the
-   *only* human surface that can create a collection until unit `009` lands.
+   over CardDAV and sees both. **The address book used to be the interesting half** — until
+   `009` shipped `MKCOL`/`MKCALENDAR`, the WebUI would have been the *only* human surface
+   that could create a collection. It no longer is, which lowers this screen's urgency: the
+   remaining collection gap is *rename* (`PROPPATCH`), not create.
 2. Same for a calendar and a single-instance event, verified in Apple Calendar and in
    `bullmoose calendar agenda`.
 3. An edit made in Contacts.app appears in the browser **without a reload** — proving the

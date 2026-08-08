@@ -16,9 +16,9 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | **Mailbox** | **`-R--`** | `-R--` | `----` | `----` | `----` | `----` | `~` |
 | Thread | `-R--` | `----` | `----` | `----` | `----` | `----` | n/a |
 | EmailSubmission | `C---` | `C---` | `----` | `----` | `----` | `----` | `C---` |
-| AddressBook | `CRUD` | `~R--` | `----` | `-R--` | `----` | `----` | n/a |
+| AddressBook | `CRUD` | `~R--` | `----` | `CR-D` | `----` | `----` | n/a |
 | ContactCard | `CRUD` | `CR--` | `----` | `CRUD` | `----` | `----` | n/a |
-| Calendar | `CRUD` | `-R--` | `----` | `-R--` | `----` | `----` | n/a |
+| Calendar | `CRUD` | `-R--` | `----` | `CR-D` | `----` | `----` | n/a |
 | CalendarEvent | `CRUD` | `-R--` | `----` | `CRUD` | `----` | `----` | n/a |
 | **FileNode** | **`----`** | `----` | `----` | `----` | `----` | `----` | n/a |
 | Agents | `-RU-` | `-RU-` | `----` | n/a | `----` | `----` | `C---` |
@@ -37,8 +37,10 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
   value-per-effort block in the volume, because the capability beneath it is already built.
 - **The WebUI and GraphQL columns are empty because the surfaces don't exist.** Every cell
   there is `E4` by definition.
-- **DAV is read-write for resources, read-only for collections.** Cards and events PUT/DELETE
-  with proper ETags; there is no `MKCOL`/`MKCALENDAR`.
+- **DAV is read-write end to end.** Cards and events PUT/DELETE with proper ETags, and since
+  `009` collections do too — `MKCALENDAR` / extended `MKCOL` / collection `DELETE`. The one
+  remaining `-` in both DAV columns is Update: there is no `PROPPATCH`, so a client can create
+  and delete a calendar but not rename or recolour one.
 
 ---
 
@@ -57,7 +59,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 006 | `Identity/set` + CLI signatures | cap | **E3** ² | I3 | sVOL | 002 | todo |
 | 007 | `AgentInvocation` on-demand trigger | cap | E2 | I3 | sVOL | 002 | todo |
 | 008 | Admin lifecycle — update + delete | cap | E2 | I1 ⁵ | sVOL | — | todo |
-| 009 | DAV collection creation (`MKCOL`/`MKCALENDAR`) | cap | E2 | I3 | sVOL | — | todo |
+| 009 | DAV collection creation (`MKCOL`/`MKCALENDAR`) | cap | E2 | I3 | sVOL | — | **✅ done** |
 | 010 | Blob lifecycle — enumerate, delete, revoke share | cap | E2 | I1 | sVOL | — | todo |
 | 011 | The `FileNode` noun | cap | E4 | I3 | **s03.B** | s03.A | todo |
 | 012 | `AddressBook/query` + `Calendar/query` | cap | E1 | I1 ³ | sVOL | — | todo |
@@ -164,7 +166,7 @@ wave 3 — close the capability holes
   004  Mailbox/set + CLI              E3  I3   ← the biggest single gap
   019  Email triage over CLI          E2  I3
   014  Email over MCP                 E2  I3
-  009  DAV collection creation        E2  I3
+  009  DAV collection creation        E2  I3   ← DONE
   006  Identity/set + signatures      E3  I3
   008a binding-disable route ONLY     E1  I3   ← the agent kill switch; MUST precede 007
   007  AgentInvocation trigger        E2  I3
@@ -199,7 +201,8 @@ Every non-`n/a` gap cell in §1 maps to at least one unit:
 | AddressBook/Calendar × query | 012 |
 | ContactCard/CalendarEvent × C/U/D × CLI | 017, 018 |
 | ContactCard/CalendarEvent × CRUD × MCP | 013 |
-| AddressBook/Calendar × C × DAV | 009 |
+| AddressBook/Calendar × C × DAV | 009 ✅ |
+| AddressBook/Calendar × U × DAV (`PROPPATCH`) | — (unfiled; see `009`) |
 | FileNode × everything | 011 → 021 |
 | Blob delete / share revoke | 010 |
 | Agents × C/D | 007 |
