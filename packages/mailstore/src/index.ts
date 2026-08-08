@@ -348,6 +348,67 @@ export class Mailstore {
     return id;
   }
 
+  /**
+   * Mailbox writes. Bare, like every other write here: no depth check, no
+   * sibling-name check, no role protection. Mailstore is a thin data layer
+   * and maintains no invariants — the choreography and the validation live
+   * in Mailbox/set, next to the SetError they produce.
+   */
+  async insertMailbox(accountId: string, row: MailboxRow): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(row.id, accountId, row.parentId, row.name, row.role, row.sortOrder)
+      .run();
+  }
+
+  /** Patch a mailbox. `parentId: null` reparents to top level. */
+  async updateMailbox(
+    accountId: string,
+    id: string,
+    patch: { name?: string; parentId?: string | null; sortOrder?: number },
+  ): Promise<void> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (patch.name !== undefined) {
+      sets.push("name = ?");
+      params.push(patch.name);
+    }
+    if (patch.parentId !== undefined) {
+      sets.push("parent_id = ?");
+      params.push(patch.parentId);
+    }
+    if (patch.sortOrder !== undefined) {
+      sets.push("sort_order = ?");
+      params.push(patch.sortOrder);
+    }
+    if (sets.length === 0) return;
+    await this.db
+      .prepare(`UPDATE mailboxes SET ${sets.join(", ")} WHERE account_id = ? AND id = ?`)
+      .bind(...params, accountId, id)
+      .run();
+  }
+
+  async deleteMailbox(accountId: string, id: string): Promise<void> {
+    await this.db
+      .prepare(`DELETE FROM mailboxes WHERE account_id = ? AND id = ?`)
+      .bind(accountId, id)
+      .run();
+  }
+
+  /** Every email filed in a mailbox — the onDestroyRemoveEmails input. */
+  async emailIdsInMailbox(accountId: string, mailboxId: string): Promise<string[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT email_id FROM email_mailboxes WHERE account_id = ? AND mailbox_id = ?`,
+      )
+      .bind(accountId, mailboxId)
+      .all<{ email_id: string }>();
+    return results.map((r) => r.email_id);
+  }
+
   /** Unread/total counts for Mailbox/get. */
   async mailboxCounts(
     accountId: string,

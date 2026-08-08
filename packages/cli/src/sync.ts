@@ -135,21 +135,30 @@ export async function syncAll(
   return results;
 }
 
-export async function sync(
+export interface MirroredMailbox {
+  id: string;
+  parentId: string | null;
+  name: string;
+  role: string | null;
+  sortOrder: number;
+}
+
+/**
+ * Refresh the local mailbox mirror in full from Mailbox/get. The set is
+ * small, so a blind DELETE + re-INSERT is cheaper than reconciling — and it
+ * is now the only correct option, because Mailbox/set can DESTROY a mailbox
+ * and an incremental merge would leave the dead row behind.
+ *
+ * Shared with `bullmoose mailbox`, which calls it after a write so the
+ * mirror that `bullmoose mailboxes` reads is current without a full `sync`.
+ */
+export async function refreshMailboxes(
   db: DatabaseSync,
   client: JmapClient,
   accountId: string,
-  opts: { blobs?: string } = {},
-): Promise<SyncStats> {
-  // Mailboxes: small set — always refresh in full.
+): Promise<{ mailboxes: MirroredMailbox[]; state: string }> {
   const mb = await client.one("Mailbox/get", { accountId, ids: null });
-  const mailboxes = mb.list as Array<{
-    id: string;
-    parentId: string | null;
-    name: string;
-    role: string | null;
-    sortOrder: number;
-  }>;
+  const mailboxes = (mb.list as MirroredMailbox[]) ?? [];
   db.prepare("DELETE FROM mailboxes WHERE account_id = ?").run(accountId);
   const insMb = db.prepare(
     "INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
@@ -157,6 +166,17 @@ export async function sync(
   for (const m of mailboxes) {
     insMb.run(m.id, accountId, m.parentId, m.name, m.role, m.sortOrder);
   }
+  return { mailboxes, state: String(mb.state) };
+}
+
+export async function sync(
+  db: DatabaseSync,
+  client: JmapClient,
+  accountId: string,
+  opts: { blobs?: string } = {},
+): Promise<SyncStats> {
+  // Mailboxes: small set — always refresh in full.
+  const { mailboxes, state: mailboxState } = await refreshMailboxes(db, client, accountId);
 
   const cursorRow = db
     .prepare("SELECT email_state FROM sync_state WHERE account_id = ?")
@@ -197,7 +217,7 @@ export async function sync(
        email_state = excluded.email_state,
        mailbox_state = excluded.mailbox_state,
        last_sync = excluded.last_sync`,
-  ).run(accountId, stats.newState, String(mb.state), Date.now());
+  ).run(accountId, stats.newState, mailboxState, Date.now());
 
   // --blobs guarantees a complete local blob store, not just blobs for
   // rows touched this pass — backfill anything missing (content-hash

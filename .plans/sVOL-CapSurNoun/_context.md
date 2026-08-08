@@ -24,9 +24,12 @@
 > was planned against is materially different — in particular, any unit reasoning about
 > scopes must re-read §4 rather than trusting a memory of it.
 >
-> **Still true and still the point:** the MCP column is empty of noun CRUD, `Mailbox/set`
-> exists nowhere, and there is no WebUI. *(DAV collection creation was the fourth item here
-> until sVOL `009` landed it — see §2 footnote 9.)*
+> **Still true and still the point:** the MCP column is empty of noun CRUD, and there is no
+> WebUI.
+>
+> ⚠️ Two items left this list in one batch — **DAV collection creation** (`009`) and
+> **`Mailbox/set`** (`004`, with the CLI `mailbox` verbs). Both were headline gaps in the
+> original audit. The grid rows and footnotes 4 and 9 are corrected inline.
 
 > **Read this before reviewing or building anything in `sVOL`.**
 > Do not re-derive state from `.plans/` — several plan docs overstate what exists, and
@@ -63,7 +66,7 @@ Five things that are not what they look like:
 
 | Surface | State | Where |
 |---|---|---|
-| JMAP | ✅ live — 38 registered methods | `services/jmap`, registry at `src/methods/index.ts:15-30` |
+| JMAP | ✅ live — 39 registered methods | `services/jmap`, registry at `src/methods/index.ts:15-30` |
 | CLI | ✅ live — 19 top-level commands, ~5,012 lines | `packages/cli` |
 | MCP | ⚠️ live but narrow — 4 read-only tools | `services/agent/src/mcp.ts:55` |
 | AngleBracket (CalDAV/CardDAV) | ✅ live — read-write at both *resource* and *collection* level (no `PROPPATCH`) | `services/anglebrackets/src/dav.ts` |
@@ -75,7 +78,7 @@ Five things that are not what they look like:
 
 ```
 Core/echo
-Mailbox         get changes query queryChanges          ← no set
+Mailbox         get changes query queryChanges set
 Email           get query set import changes queryChanges
 Thread          get                                      ← no changes
 Identity        get                                      ← no set
@@ -102,7 +105,7 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
 | Noun | JMAP | CLI | MCP | AngleBracket | WebUI | GraphQL | Transport |
 |---|---|---|---|---|---|---|---|
 | **Email** | `CRUD` | `-R~-` ¹ | `~` ² | `----` | `----` | `----` | `C---` ³ |
-| **Mailbox** | `-R--` ⁴ | `-R--` | `----` | `----` | `----` | `----` | `~` ⁵ |
+| **Mailbox** | `CRUD` ⁴ | `CRUD` ⁴ | `----` | `----` | `----` | `----` | `~` ⁵ |
 | **Thread** | `-R--` | `----` | `----` | `----` | `----` | `----` | n/a |
 | **EmailSubmission** | `C---` ⁶ | `C---` | `----` | `----` | `----` | `----` | `C---` |
 | **AddressBook** | `CRUD` ⁷ | `~R--` ⁸ | `----` | `CR-D` ⁹ | `----` | `----` | n/a |
@@ -125,19 +128,24 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
 2. MCP has aggregates only: `spend_by_month` `:57`, `spend_by_vendor` `:82`, `top_senders`
    `:109`, `message_volume` `:136`. No message body or header retrieval.
 3. Inbound store to R2 + D1, `services/ingest/src/index.ts:48`.
-4. **`Mailbox/set` is not registered anywhere.** You cannot create, rename, move, or delete a
-   mailbox on any surface. Folders are frozen at whatever
-   `services/provision/src/index.ts:390-401` seeds at account creation. Also
-   `mailbox.ts:25`: `totalThreads` is faked as `totalEmails` (TODO in source).
+4. ✅ **CLOSED by sVOL `004`.** `Mailbox/set` is registered inside `registerMailboxMethods`
+   (`mailbox.ts`), and `bullmoose mailbox create|rename|move|rm` is the CLI half. This entry
+   used to read *"`Mailbox/set` is not registered anywhere — folders are frozen at whatever
+   `services/provision/src/index.ts:390-401` seeds at account creation"*, and that was the
+   largest capability gap in the repo.
 
-   ⚠️ **The server already advertises the policy it cannot honour.** `mailCapability`
-   (`packages/jmap-core/src/capabilities.ts:39-46`) publishes `maxMailboxDepth: 10`,
+   ⚠️ **The server used to advertise a policy it could not honour** — the sharpest instance of
+   `common/005` (advertised-capabilities-not-enforced). `mailCapability`
+   (`packages/jmap-core/src/capabilities.ts:40-47`) publishes `maxMailboxDepth: 10`,
    `maxSizeMailboxName: 200`, and `mayCreateTopLevelMailbox: true`; `Mailbox/get` returns
-   `mayCreateChild: true`, `mayRename: true`, `mayDelete: r.role === null`
-   (`mailbox.ts:33-35`). A conforming client is told it may create, rename, and delete
-   mailboxes, and there is no method to do any of it. This is `common/005`
-   (advertised-capabilities-not-enforced) in a second place — the limits and permissions were
-   designed; only the method is missing, which lowers the design cost of unit `004`.
+   `mayCreateChild: true`, `mayRename: true`, `mayDelete: r.role === null`. **All of those are
+   now enforced by the write path, which reads the same `mailCapability` constants rather than
+   re-declaring the numbers**, so the session object and the enforcement cannot drift apart.
+   `Mailbox/get`'s `myRights` and the destroy gate are single-sourced through one `rightsFor`.
+
+   Still true: `mailbox.ts` fakes `totalThreads` as `totalEmails` (TODO in source), and
+   `isSubscribed` is still hardcoded `true` with no column — but `Mailbox/set` now *rejects*
+   `isSubscribed: false` instead of silently discarding it.
 5. Role mailboxes seeded at account creation only.
 6. Create only — `submission.ts:22`, `args.create` at `:48`. `args.update` and `args.destroy`
    are never read; `destroyed: []` is hardcoded `:101`. **`EmailSubmission/changes` is
@@ -274,7 +282,7 @@ unit `002`'s Open Questions — its scope as written is necessary but **not suff
 
 ## 5. Test infrastructure — the honest state
 
-**17 test files, 313 tests** (was 2 files / 19 at the original audit; sVOL `009` added the 29 in `services/anglebrackets`). `npm test` runs in
+**19 test files, 357 tests** (was 2 files / 19 at the original audit). `npm test` runs in
 well under a second and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
@@ -282,7 +290,7 @@ worktree agents: without it Node's upward `node_modules` lookup escapes the work
 resolves `@bullmoose/*` to the **parent checkout**, so tests silently exercise a different
 branch's source than `tsc` checks.
 
-⚠️ **There is still no SHARED fake-D1 helper.** Four separate local copies now exist —
+⚠️ **There is still no SHARED fake-D1 helper.** FIVE separate local copies now exist —
 `services/agent/src/mcp.test.ts`, `services/jmap/src/authRoutes.test.ts`,
 `services/jmap/src/mintScopes.test.ts`, `services/jmap/src/methods/submission.test.ts` — each
 routing by SQL substring, each extended ad hoc (one grew a `batch` router). Unit `002` is
@@ -322,7 +330,7 @@ self-correct at read time. Unit `003`'s data-integrity gate on `013`/`018` is di
 `s03.E` → Agents + Secrets × Read × WebUI. `s04` → the Bureau egress axis.
 
 **Gaps owned by nobody** — these are what `sVOL` is for:
-`Mailbox/set` · `EmailSubmission/get` · `Identity/set` · any noun × MCP (s02 covers only
+`EmailSubmission/get` · `Identity/set` · any noun × MCP (s02 covers only
 *foreign* clients) · Email triage verbs × CLI (s05 punted them: *"worth its own slice"*) ·
 ContactCard/CalendarEvent × WebUI (s03.C covers Email + Files only) · DAV collection *update*
 (`PROPPATCH` — `009` shipped create/delete only) · admin update/delete ·

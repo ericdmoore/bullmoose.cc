@@ -24,6 +24,7 @@ import { agentServe, loadAgentConfig } from "./agent.js";
 import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
 import { cmdCalendar } from "./calendar.js";
+import { cmdMailbox } from "./mailbox.js";
 import { findCommand, helpJson, renderCommand, renderMan, renderMarkdown, renderOverview } from "./help.js";
 
 
@@ -43,6 +44,9 @@ const { values: opts, positionals } = parseArgs({
     principal: { type: "string" },
     blobs: { type: "string" },
     mailbox: { type: "string" },
+    parent: { type: "string" },
+    sort: { type: "string" },
+    force: { type: "boolean", default: false },
     book: { type: "string" },
     to: { type: "string", multiple: true },
     cc: { type: "string", multiple: true },
@@ -205,6 +209,15 @@ try {
       break;
     case "mailboxes":
       cmdMailboxes();
+      break;
+    case "mailbox":
+      await cmdMailbox(db, positionals.slice(1), {
+        account: opts.account,
+        parent: opts.parent,
+        sort: opts.sort,
+        force: opts.force ?? false,
+        json: opts.json ?? false,
+      });
       break;
     case "admin":
       await cmdAdmin(db, positionals.slice(1), {

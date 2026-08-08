@@ -145,11 +145,11 @@ check "Email/import         present"        ok jmap_outcome "Email/import" "$SET
 check "Email/queryChanges   throws (026)"   cannotCalculateChanges \
       jmap_outcome "Email/queryChanges" "{\"accountId\":$ACC,\"sinceQueryState\":\"0\"}"
 
-section "Mailbox — grid says READ ONLY (unit 004 is the gap)"
+section "Mailbox — grid says CRUD on JMAP (unit 004 closed the gap)"
 check "Mailbox/get          present"        ok           jmap_outcome "Mailbox/get"   "$GET_NOOP"
 check "Mailbox/query        present"        ok           jmap_outcome "Mailbox/query" "$QRY_NOOP"
-# ↓ THE headline gap. When 004 lands this flips to "ok" and the grid needs updating.
-check "Mailbox/set          ABSENT  ← 004"  unknownMethod jmap_outcome "Mailbox/set"  "$SET_NOOP"
+# ↓ WAS the headline gap; 004 landed and this flipped from unknownMethod to ok.
+check "Mailbox/set          present  ← 004" ok           jmap_outcome "Mailbox/set"  "$SET_NOOP"
 
 section "Thread — derived, read only (unit 027)"
 check "Thread/get           present"        ok            jmap_outcome "Thread/get"     "$GET_NOOP"
