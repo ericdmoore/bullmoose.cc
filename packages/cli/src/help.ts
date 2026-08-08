@@ -300,7 +300,35 @@ export const COMMANDS: Command[] = [
     name: "mailboxes",
     synopsis: "bullmoose mailboxes [--json]",
     summary: "list mailboxes for the selected account",
-    seeAlso: ["log"],
+    description:
+      "Reads the LOCAL mirror, so it shows what the last `sync` (or `mailbox` write) fetched. Use `mailbox` to create, rename, move or remove folders.",
+    seeAlso: ["mailbox", "log", "sync"],
+  },
+  {
+    name: "mailbox",
+    synopsis: "bullmoose mailbox create <name> | rename <box> <new> | move <box> --parent <box|-> | rm <box> [--force]",
+    summary: "create, rename, move and remove folders (over JMAP)",
+    description:
+      "Folder management via Mailbox/set. A <box> is an id, a role (inbox, sent, drafts, trash, junk, archive), or a name — names are matched case-insensitively and an ambiguous one is refused. Folders nest: --parent puts a new or existing folder under another, up to the server's advertised maxMailboxDepth (10), and --parent - moves one back to the top level. Names must be unique among siblings. Role folders may be renamed but never removed, and `rm` refuses a folder that still holds mail or has children — `--force` removes the mail with it, destroying any message that is in no other folder. Every verb refreshes the local mirror on success, so `bullmoose mailboxes` is current immediately without a full `sync`.",
+    subcommands: [
+      { name: "create", synopsis: "mailbox create <name> [--parent <box>] [--sort <n>]", summary: "make a folder" },
+      { name: "rename", synopsis: "mailbox rename <box> <new-name>", summary: "rename a folder (roles may be renamed)" },
+      { name: "move", synopsis: "mailbox move <box> --parent <box|->", summary: "reparent a folder ('-' = top level)" },
+      { name: "rm", synopsis: "mailbox rm <box> [--force]", summary: "remove a folder; --force takes its mail too" },
+    ],
+    flags: [
+      { flag: "--parent <box>", desc: "parent folder for create/move; '-' means top level" },
+      { flag: "--sort <n>", desc: "sortOrder for create (unsigned integer, default 0)" },
+      { flag: "--force", desc: "on rm: onDestroyRemoveEmails — remove the mail inside it too" },
+    ],
+    examples: [
+      { cmd: "bullmoose mailbox create Receipts" },
+      { cmd: "bullmoose mailbox create 2026 --parent Receipts", note: "nest under an existing folder" },
+      { cmd: "bullmoose mailbox rename Receipts Invoices" },
+      { cmd: "bullmoose mailbox move Invoices --parent -", note: "back to the top level" },
+      { cmd: "bullmoose mailbox rm Invoices --force" },
+    ],
+    seeAlso: ["mailboxes", "sync", "log"],
   },
   {
     name: "admin",

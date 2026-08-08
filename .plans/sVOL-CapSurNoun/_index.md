@@ -52,7 +52,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 001 | MCP `ToolDef` scope + domain | pre | E1 | I2 | sVOL | — | **✅ done** |
 | 002 | Shared test harness — fake D1 (`.batch()`) + DO/blob stubs ¹ | pre | E2 | I2 | sVOL | — | todo |
 | 003 | Recurrence correctness before calendar writes | pre | **E3** ⁶ | I3 | `common/003` | — | **✅ done** |
-| 004 | `Mailbox/set` + CLI | cap | E3 | I3 | sVOL | 002 | todo |
+| 004 | `Mailbox/set` + CLI | cap | E3 | I3 | sVOL | 002 ⁷ | **✅ done** |
 | 005 | `EmailSubmission/get` | cap | E1 | I2 | sVOL | — | todo |
 | 006 | `Identity/set` + CLI signatures | cap | **E3** ² | I3 | sVOL | 002 | todo |
 | 007 | `AgentInvocation` on-demand trigger | cap | E2 | I3 | sVOL | 002 | todo |
@@ -99,6 +99,17 @@ column `Mailbox/set` writes. `004` needs a schema change only if `isSubscribed` 
 code must respect"** limb, not the migration limb: four call sites currently assume mailboxes
 are immutable (`ingest/src/index.ts:125`, `email.ts:362-364`, `cli/src/sync.ts:153`,
 `cli/src/main.ts:884`).
+
+**Confirmed on delivery.** `004` shipped with no schema change: `isSubscribed` stayed hardcoded
+and the write path *rejects* `isSubscribed: false` rather than accepting a property it discards,
+which was the open question's worry and costs no column. All four call sites turned out to need
+no edit — see the unit file's Status note.
+
+⁷ **`004` did NOT wait for `002`.** The dependency was on a shared fake-D1 with `.batch()`;
+`004` carries a local, self-contained one (a *stateful* one — the destroy assertions need reads
+to see prior writes, which a write-recording fake cannot express) so as not to conflict with
+`002` consolidating the others in parallel. `002`'s scope grows by one more implementation to
+absorb; the edge was soft, not hard.
 
 ³ **`012`'s `I1` is contested and probably wrong.** As scoped it ships two JMAP methods,
 observable only by an engineer — which `readme.md`'s verifiability bar disqualifies, making it
@@ -161,7 +172,7 @@ wave 2 — the first thing a human can see
   017  Contacts CRUD over CLI         E2  I3
 
 wave 3 — close the capability holes
-  004  Mailbox/set + CLI              E3  I3   ← the biggest single gap
+  004  Mailbox/set + CLI              E3  I3   ← ✅ done (was the biggest single gap)
   019  Email triage over CLI          E2  I3
   014  Email over MCP                 E2  I3
   009  DAV collection creation        E2  I3

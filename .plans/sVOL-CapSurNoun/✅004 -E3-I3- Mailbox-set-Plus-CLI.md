@@ -6,8 +6,44 @@
 | **Effort** | **E3** — new semantics every other write path must respect; tests mandatory |
 | **Impact** | **I3** — unlocks *and* human-verifiable |
 | **Owner** | `sVOL` |
-| **Depends on** | `002` (shared fake-D1 with `.batch()`) |
-| **Status** | todo |
+| **Depends on** | `002` (shared fake-D1 with `.batch()`) — **not waited for**, see Status |
+| **Status** | **✅ done.** 44 tests added (284 → 328). No schema change. |
+
+## Status notes — what the build actually found
+
+**Line numbers in this file were written against an older commit.** Verified against
+`caabf7f`: `ingest/src/index.ts:125` ✅ exact; `cli/src/sync.ts:153-158` ✅ exact;
+`email.ts:362-364` is now **`396-398`**; `cli/src/main.ts:884` is now **`885-890`** (the
+function starts at `:880`). `email.ts:230` (the old single `draft` gate) is now
+`requiredScopesForEmailSet` at `:241` + `requireAccountScopes` at `:264` — the per-operation
+scope work landed after this unit was filed, and it changed the answer to open question 2.
+
+**The four "mailboxes are immutable" call sites all turned out to need NO edit** — the
+semantics were chosen so the assumptions stay true rather than patching the consumers:
+
+- `ingest:125` `ensureRoleMailbox` — safe, because destroying a role mailbox is refused. The
+  Inbox id can never change, so nothing is orphaned. It matches on `role`, not `name`, so
+  renaming Inbox → "Bin" (which IS allowed) does not make it re-create anything either.
+- `email.ts:396-398` "an email must belong to at least one mailbox" — honoured by implementing
+  RFC 8621's actual `onDestroyRemoveEmails`: emails are *unfiled*, and destroyed only if that
+  leaves them in no mailbox. This unit file proposed destroying them all, which would have been
+  wrong — `maxMailboxesPerEmail` is `null`, so a message can be in several folders.
+- `sync.ts:153-158` blind DELETE + re-INSERT — already destroy-correct (a full refresh drops a
+  destroyed row for free). Extracted to `refreshMailboxes` and now shared. `upsertOne` already
+  replaces `email_mailboxes` per email, so the unfile case reconciles via `Email/changes`
+  `updated` with no new code.
+- `main.ts:885-890` raw-SQL local read — addressed by having every write verb refresh the
+  mirror inline, so `mailbox create` → `mailboxes` works with no `sync` in between.
+
+**Open questions, resolved:** (1) `isSubscribed` stays column-less, but `false` is *rejected*
+rather than silently dropped — the reviewer's objection was right and costs no migration.
+(2) Scope is `move` for create/update and `delete` for destroy, NOT `draft`: charging less than
+`Email/set`'s destroy for an operation that can permanently destroy mail would reopen exactly
+the escalation `requiredScopesForEmailSet` was written to close. (3) Reparent is a plain
+`parentId` patch, and the batch semantics were indeed the interesting part — solved by mutating
+one in-memory tree alongside the D1 writes so every check runs post-mutation. (4) Provisioning
+still raw-`INSERT`s; left alone, no provision → jmap dependency introduced. (5) `totalThreads`
+is still a lie; no test asserts on it.
 
 ## Cells covered
 
