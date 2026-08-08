@@ -2,6 +2,7 @@ import {
   formatLocalDateTime,
   parseDuration,
   parseLocalDateTime,
+  unsupportedRuleReason,
   zonedToUtc,
   type JSCalendarEvent,
   type LocalDateTime,
@@ -92,6 +93,11 @@ export function ruleToRrule(rule: RecurrenceRule, timeZone: string): string {
   if (rule.bySetPosition && rule.bySetPosition.length > 0) {
     parts.push(`BYSETPOS=${rule.bySetPosition.join(",")}`);
   }
+  // Round-trip WKST rather than dropping it: inert for the dates we
+  // expand, but a client that sent it should get it back unchanged.
+  if (rule.firstDayOfWeek) {
+    parts.push(`WKST=${DAY_UP[rule.firstDayOfWeek.toLowerCase()] ?? "MO"}`);
+  }
   return parts.join(";");
 }
 
@@ -149,12 +155,20 @@ export function rruleToRule(body: string, timeZone: string): RecurrenceRule | nu
         rule.bySetPosition = v.split(",").map(Number);
         break;
       case "WKST":
-        break; // MO default matches the expander
+        // Keep it: the expander anchors weeks on Monday, and whether a
+        // different WKST actually changes any date depends on FREQ and
+        // INTERVAL. `unsupportedRuleReason` makes that call below.
+        rule.firstDayOfWeek = DAY_DOWN[v.toUpperCase()] ?? v.toLowerCase();
+        break;
       default:
         return null;
     }
   }
-  return rule.frequency ? rule : null;
+  if (!rule.frequency) return null;
+  // Same table the expander and the write path use, so an RRULE the
+  // expander would mis-expand takes the module's existing "unsupported"
+  // exit (parseICal turns it into a warning) instead of parsing clean.
+  return unsupportedRuleReason(rule) === null ? rule : null;
 }
 
 function wallClockIso(utcMs: number, timeZone: string): string {
