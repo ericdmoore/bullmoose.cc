@@ -141,3 +141,6 @@ dist
 # popcorn build outputs
 packages/popcorn/dist/
 packages/popcorn/popcorn
+
+# Agent worktrees (ephemeral; each is its own git checkout)
+.claude/worktrees/

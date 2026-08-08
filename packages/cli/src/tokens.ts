@@ -12,6 +12,17 @@ export interface LoginOpts {
   base?: string;
   password?: string;
   name?: string;
+  /**
+   * Scopes for the minted device token. Omitted -> the server's default.
+   *
+   * This exists so the login token is not a dead end. `/auth/tokens` gates a
+   * self-service mint on `scopesWithin(requested, thisToken.scopes)`, so a
+   * token can only ever narrow itself — you cannot mint a scope you do not
+   * already hold. `/auth/login` has no such gate (it is password-authenticated,
+   * not token-authenticated), which makes it the ONLY self-service way to widen.
+   * Without this flag the CLI could never reach a scope its first token lacked.
+   */
+  scopes?: string;
   json: boolean;
 }
 
@@ -23,8 +34,18 @@ export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts
     opts.base = boot.base ?? boot.url;
   }
   if (!email) {
-    console.error("usage: bullmoose login <email> [--base <url>] [--name <device-name>]");
+    console.error(
+      "usage: bullmoose login <email> [--base <url>] [--name <device-name>] [--scopes <a,b,c>]",
+    );
     process.exit(1);
+  }
+  const scopes = opts.scopes
+    ?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (opts.scopes !== undefined && (!scopes || scopes.length === 0)) {
+    console.error("--scopes was given but empty; omit it to take the server default");
+    process.exit(2);
   }
   // No --base? The email address is enough: RFC 8620 §2.2 autodiscovery.
   if (!opts.base) {
@@ -39,7 +60,12 @@ export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts
   const res = await fetch(`${opts.base}/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, loginKey, name: opts.name ?? deviceName() }),
+    body: JSON.stringify({
+      email,
+      loginKey,
+      name: opts.name ?? deviceName(),
+      ...(scopes ? { scopes } : {}),
+    }),
   });
   if (!res.ok) {
     console.error(`login failed: HTTP ${res.status} ${await res.text()}`);

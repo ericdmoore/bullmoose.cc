@@ -18,6 +18,10 @@
     }
   ],
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "bullmoose-mail-blobs" }],
+  // ROUTES is the shared small-hot-state namespace. This worker also keeps the
+  // /auth/login throttle windows here under `login:` keys (see loginThrottle.ts) —
+  // deliberately NOT a second namespace: `infra/bootstrap.mjs` wire rewrites only
+  // the first "id" after "kv_namespaces", so a second one would be clobbered.
   "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }],
 
   // Outbound sends go through the submit worker (which holds SES creds).

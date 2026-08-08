@@ -7,9 +7,16 @@ provision workers call.
   SHA-256 hash-at-rest, `parseToken` / `verifyTokenSecret`. Shown once,
   revocable individually. These double as **app passwords** for
   HTTP Basic (Mailtemi, popcorn): username + `bm_…` as the password.
-- **Scopes**: `read < annotate < draft < move < send < delete`, with
-  `mail` as the superset; `hasScope` / `scopesWithin` (a token can only
-  mint tokens ⊆ its own scopes).
+- **Scopes** — two independent axes, plus a control-plane one:
+  - **mail verbs**: `read < annotate < draft < move < send < delete`.
+    `mail` is a bundle of exactly these six.
+  - **realms**: `contacts`, `calendar`, `vault`. Unordered, and **not**
+    covered by `mail` — a mail token does not open the vault.
+  - **control plane**: `admin`.
+
+  `hasScope` / `scopesWithin` (a token can only mint tokens ⊆ its own
+  scopes, so `login --scopes` is the only way to *widen*). Unknown scope
+  strings are denied unless held verbatim.
 - **Login keys** (client-side stretching): `deriveLoginKey` =
   PBKDF2-SHA256, 600k iterations (OWASP), salt =
   SHA-256(`"bullmoose-login-v1:" + lowercase(email)`). The server (and

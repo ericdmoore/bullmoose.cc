@@ -14,6 +14,7 @@ import {
   accountState,
   proxyChanges,
   requireAccount,
+  requireAccountScopes,
   setError,
   storeFor,
   type RequestContext,
@@ -223,11 +224,44 @@ interface EmailSetResult {
   mailboxesTouched: Set<string>;
 }
 
+/**
+ * Which scopes an `Email/set` call needs, derived from its own arguments.
+ *
+ * Pure — no ctx, no D1 — so the mapping is testable without a harness.
+ *
+ * One gate for the whole method used to mean `draft` authorized creating a
+ * draft AND flagging, moving, and permanently destroying mail. The lattice is
+ * `read < annotate < draft < move < send < delete`, so a token deliberately
+ * scoped to compose drafts could delete the inbox.
+ *
+ * `move` is charged only when a patch actually touches `mailboxIds`; a
+ * keywords-only patch is `annotate`. Patch keys arrive in JSON-pointer form
+ * (`mailboxIds/<id>`, `keywords/$seen`) or as whole-property replacements.
+ */
+export function requiredScopesForEmailSet(args: Record<string, unknown>): string[] {
+  const need = new Set<string>();
+  const create = args.create as Record<string, unknown> | undefined;
+  const update = args.update as Record<string, Record<string, unknown>> | undefined;
+  const destroy = args.destroy as string[] | undefined;
+
+  if (create && Object.keys(create).length > 0) need.add("draft");
+  if (update) {
+    for (const patch of Object.values(update)) {
+      const touchesMailboxes = Object.keys(patch ?? {}).some(
+        (k) => k === "mailboxIds" || k.startsWith("mailboxIds/"),
+      );
+      need.add(touchesMailboxes ? "move" : "annotate");
+    }
+  }
+  if (destroy && destroy.length > 0) need.add("delete");
+  return [...need];
+}
+
 async function emailSet(
   args: Record<string, unknown>,
   ctx: RequestContext,
 ): Promise<Record<string, unknown>> {
-  const access = await requireAccount(ctx, args, "draft");
+  const access = await requireAccountScopes(ctx, args, requiredScopesForEmailSet(args));
   const store = storeFor(ctx);
 
   const oldState = await accountState(ctx, access.accountId);

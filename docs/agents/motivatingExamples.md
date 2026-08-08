@@ -1,3 +1,10 @@
+---
+ref:
+    - https://www.mindstudio.ai/models
+    
+---
+
+
 Motivating Examples
 =================
 
@@ -65,8 +72,43 @@ Ideally less but better emails to deal with.
 
 
 - _bouncer@_
+    - Can answer questions about the Email Sieve State
     - Requires access to:
-        - Whole Human Account
+        - Read All Human Account Email
+        - Read/Write/Execute Sieve scripts
+        - see: https://gist.github.com/Hotrod369/6b7a24e1ea060e48e0c02459cbb950a0
+
+
+_photos@_ (supports multiple workflows)
+    - Multiple Uses:
+        - Photo Archivist - think Google Photo backups (gets much better with ios app)
+        - Make a Named Shared Folders
+            - Co-Owned Fodlers (basically permanent)
+            - Shared Folder (Long Term)
+                - Think Very long-term (almost permanent)
+            - Event Folder
+                - think: school-event, football game, prom-dance, etc
+                - optionally with:
+                    - end date
+                        - send out summaries daily until end
+                        - sends out final compilation folder
+            - Inviting email addresses
+                - just CC them when starting a new Event Fodler
+                - those people email in their images to the hosted service
+            - My `photos@alice` joining your `photos@bob`
+                - Downloads Copies whole image - folder to my account 
+        - Social Imaging Apps?
+            - Could some folder of mine be syndicated out to 
+                - pixelfed?
+                - bluesky?
+                - or some other image service?
+        - Share good pictures to include in daily report
+            - good pics (meaning not-screenshots, not reciepts, )
+    - Required:
+        - []; it can just wait to recieve messages
+    - Optional:
+        - Read All Human Account Email
+            - scans for attachments and files            
 
 
 - _newsletters@_
@@ -79,6 +121,44 @@ Ideally less but better emails to deal with.
     - Requires access to:
         - Full Text Search
 
+- _cal@_
+    - Calvin will look at my next week calendar
+    - Calvin will think through tight spots in the calendar - and prpose around 7 days early 
+    - Highlight issue - and maybe even propose solutions - for how to get kids to all the places with limited number of drivers
+    - Required access:
+        - Calendar
+        - Start Email Threads
+        - Responds to CJ
+
+- _docs@_
+    - Doc keeps track of warranties, contracts, statements, 
+
+- _schedule@_ (alias sydney@)
+    - scheduling assistant
+    - proposes times to external accounts
+
+- _unsub@_
+    - fwd emails to here and assume you will never see the sender again
+    - 
+
+- _travel@_
+    - 
+
+- _packages@_
+    - 
+
+- _help@_ 
+    - answers questions about your own bullmoose 
+        - "which agents can read my contacts?"
+        - "why did editor@ skip that email?"
+        - Self-referential, and it's the conversational face of the s03.E console.
+    - Requires:
+        - Github, docs, WebFetch
+        - Email
+        - Calendar
+        - Contacts
+        - Files
+    
 
 - _followups@_
     - Requires access to:

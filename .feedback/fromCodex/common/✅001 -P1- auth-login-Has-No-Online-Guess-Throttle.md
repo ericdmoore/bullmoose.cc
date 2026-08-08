@@ -1,4 +1,4 @@
-# 001 -P1- `/auth/login` has no online guessing throttle
+# ✅ 001 -P1- `/auth/login` has no online guessing throttle
 
 **Subsystem:** common (`services/jmap` auth) · **Severity:** HIGH (account security) · **Fix class:** CHANGE-CODE + UPDATE-DOC
 
