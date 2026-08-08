@@ -736,22 +736,67 @@ self-describing typed schema and **field-level auth directives** (`@requiresScop
 projects CardDAV straight off `Mailstore` (`dav.ts:106`) alongside JMAP. A GraphQL
 facade would be the third projection of an established pattern, not new architecture.
 
-### 14.5 Where it could land, and what gates it
+#### The two rules that make multi-projection safe
 
-A split that matches the human/agent audience split:
+Three surfaces over one store is fine — *if* they share the parts that must not diverge:
 
-| Surface | Audience | Rationale |
+1. **One authorization implementation, N callers.** Every projection resolves through the
+   same `authorizeAccount`; none carries its own scope logic. This is not hypothetical —
+   `anglebrackets` doing its own `hasScope` checks (`dav.ts:179,640`) is exactly how it
+   inherited the `mail`-covers-`contacts` hole. Lifting the decision into `auth-core` is
+   what makes an additional projection cheap instead of dangerous.
+2. **Writes go through shared `Mailstore` methods, never per-projection SQL.** Reading N
+   ways is easy; writing N ways means N paths that must each maintain AccountDO
+   `commitChanges` (for `/changes` + push), provenance columns, and blob pinning. DAV
+   already writes (CardDAV `PUT`), so this is a live constraint, not a future one.
+
+### 14.5 Where it could land — the case is agent-first
+
+| Surface | Audience | Assessment |
 |---|---|---|
-| **JMAP** | standard clients (himalaya, Apple Mail, Bulwark) | it is *the standard*; interop is its entire job |
-| **GraphQL** | **agents + our own webmail** | typed, introspectable, traversal-efficient — and we control both ends |
+| **JMAP** | standard clients (himalaya, Apple Mail, Bulwark) | **keep.** It is *the standard*; interop is its entire job |
+| **DAV** (`anglebrackets`) | Apple Contacts/Calendar, DAVx5 | **keep.** Those clients speak nothing else |
+| **GraphQL → agents** | the harness / MCP tools | **strong case** — see below |
+| **GraphQL → webmail** | our own SPA | **weak case** — genuinely a toss-up |
 
-MCP tools would then wrap GraphQL rather than JMAP, and webmail gets one round trip
-per screen.
+**The agent case is strong.** In an agent loop **every tool call is a model round trip**.
+Collapsing a four-hop traversal into one query saves three turns, three prompt re-sends,
+and three latencies. That is a cost-curve change.
 
-**Gate: measure the resolver cost before committing.** One spike — a query traversing
-email → sender → contact → events, with batching, measured against the Workers CPU
-budget and D1 round trips. If that is comfortable, the only objection I actually
-believe in dissolves. If it is not, *that* is the reason to decline — not §14.1.
+**The webmail case is weak, for two concrete reasons:**
+
+1. **JMAP already does batched traversal, and we support it.**
+   `packages/jmap-core/src/dispatch.ts:63-83` resolves back-references (`#key` /
+   `resultOf`) per RFC 8620 §3.7 — so webmail can already chain *"query the thread's
+   emails, then get the senders of **those results**"* in a single POST. GraphQL's
+   round-trip win is largely **already available here**.
+2. **Webmail's hardest problem is sync, and that is JMAP's best feature.** `Foo/changes`,
+   `queryChanges`, `state`, plus AccountDO push exist across every realm. GraphQL has no
+   equivalent — subscriptions are live event push, not *"give me the delta since state
+   X"*. Adopting it for webmail would mean reimplementing `/changes` on top of it.
+
+Also: a GUI is not turn-limited the way an agent is. It can pipeline, prefetch, and cache
+three requests without anyone noticing.
+
+**So what is genuinely left for webmail is ergonomics and tooling** — typed schema,
+codegen, one schema shared with agents, and maintainer legibility (§14.3). Real, but a
+different and weaker justification than the agent case.
+
+**Hybrid, if it comes to it:** JMAP for **sync** (its strength), GraphQL for **views**.
+Defensible, but that is two clients in one app — the ergonomics must be worth it.
+
+### 14.6 The gate
+
+**Measure where the ceiling is, not what the average costs.** Resolver overhead on a
+personal-scale mailbox is a utility tax and not worth optimizing. The thing that matters
+is that Workers' CPU limit is a **cliff, not a gradient** — an over-budget request is
+killed, not slowed. So the question is: *how deep a traversal, over how many rows, before
+a request dies?* That tells you whether the tax has a wall behind it and at what distance.
+
+Batching is a **known remedy that can be added later** without changing the schema or any
+caller — so this is an operational concern with a fix in hand, not an architectural risk.
+
+Filed as `.feedback/fromClaude/common/022`.
 
 **Still true regardless:** persisted/whitelisted queries remain a good option for the
 narrowest surfaces, and GraphQL is a fine admin-console backing. They are *one* choice
