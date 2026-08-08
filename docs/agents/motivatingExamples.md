@@ -65,8 +65,25 @@ Ideally less but better emails to deal with.
 
 
 - _bouncer@_
+    - Can answer questions about the Email Sieve State
     - Requires access to:
-        - Whole Human Account
+        - Read All Human Account Email
+        - Read/Write/Execute Sieve scripts
+        - see: https://gist.github.com/Hotrod369/6b7a24e1ea060e48e0c02459cbb950a0
+
+_photos@_ (responder only)
+    - Multi Usage:
+        - Photo Archivist
+        - Sharing 
+            - Is there somethhing to leverage?
+            - pixelfed?
+        - Share good pictures to include in daily report
+            - good pics (meaning not-screenshots, not reciepts, )
+    - Required
+        - [] - can wait to recieve
+    - Optoinal
+        - Read All Human Account Email
+            - scans for attachments and files            
 
 
 - _newsletters@_
@@ -79,6 +96,44 @@ Ideally less but better emails to deal with.
     - Requires access to:
         - Full Text Search
 
+- _cal@_
+    - Calvin will look at my next week calendar
+    - Calvin will think through tight spots in the calendar - and prpose around 7 days early 
+    - Highlight issue - and maybe even propose solutions - for how to get kids to all the places with limited number of drivers
+    - Required access:
+        - Calendar
+        - Start Email Threads
+        - Responds to CJ
+
+- _docs@_
+    - Doc keeps track of warranties, contracts, statements, 
+
+- _schedule@_ (alias sydney@)
+    - scheduling assistant
+    - proposes times to external accounts
+
+- _unsub@_
+    - fwd emails to here and assume you will never see the sender again
+    - 
+
+- _travel@_
+    - 
+
+- _packages@_
+    - 
+
+- _help@_ 
+    - answers questions about your own bullmoose 
+        - "which agents can read my contacts?"
+        - "why did editor@ skip that email?"
+        - Self-referential, and it's the conversational face of the s03.E console.
+    - Requires:
+        - Github, docs, WebFetch
+        - Email
+        - Calendar
+        - Contacts
+        - Files
+    
 
 - _followups@_
     - Requires access to:
