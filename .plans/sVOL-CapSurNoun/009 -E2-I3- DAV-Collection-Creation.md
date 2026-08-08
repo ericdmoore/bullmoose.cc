@@ -7,7 +7,79 @@
 | **Impact** | **I3** — human-verifiable beyond argument; *unlocks* is the weak half (Open Questions #1) |
 | **Owner** | `sVOL` |
 | **Depends on** | — |
-| **Status** | todo |
+| **Status** | **✅ done** — shipped as `E2`; §1 resolved as a fourth option, see *Resolution* |
+
+## Resolution (as built)
+
+**§1 — the collection-id problem: none of (a)/(b)/(c). A fourth option, and it kept
+this `E2`.**
+
+(a) proposed an internal escape hatch in `validateNewCalendar` / `validateNewBook`. That
+turned out to be unnecessary, because the premise behind it was wrong: **the DAV worker
+never calls the JMAP method layer at all.** `Calendar/set` lives in `services/jmap`;
+`services/anglebrackets` binds only `ACCOUNT_DO` cross-script (`wrangler.jsonc`), so there
+is no in-process path to those validators and no service binding either. Every existing DAV
+write — `handleResource` PUT, `handleEventResource` PUT/DELETE — already *replicates* the
+choreography (Mailstore mutation → ctag bump → `commitChanges`) rather than delegating it.
+
+So the create path does the same, and constructs the row **in the DAV layer** with the
+client's chosen id after a charset + uniqueness check. Consequences:
+
+- `CAL_SERVER_SET` / `BOOK_SERVER_SET` are **untouched**. Open question #2's worry — that an
+  escape hatch is safe the day it is written and a bug when a second caller reaches it —
+  does not arise, because no hatch exists. A JMAP client still cannot choose an id.
+- No column, no migration. **Stays `E2`.**
+- The id namespace stops being `cal_`/`ab_`-prefixed for DAV-created collections. Grepped
+  before committing: the only prefix match in the tree is `tools/e2e-caldav.mjs:57`, which
+  discovers a calendar href with `/cal_[^<]+/`. It seeds its own calendar over JMAP, so it
+  still matches — but it would not find a DAV-created one. Left alone; noted here.
+
+Charset is `/^[A-Za-z0-9][A-Za-z0-9._-]{0,64}$/` — leading alphanumeric so `.` and `..` can
+never be collection ids.
+
+**§2 — routing.** Confirmed exactly as filed. Both create verbs branch in the dispatcher
+(`handleDav`), ahead of the `requireBook` / `requireCalendar` call. `dav.test.ts` asserts
+`status !== 404` on a create to a new path specifically to pin this down.
+
+**§4 — collection `DELETE`: shipped.** Owner-only, cascades to contents unconditionally
+(DAV `DELETE` on a collection is depth-infinity), prunes tombstones, and commits both
+collections. It **refuses the default collection with 403** rather than promoting the oldest
+survivor the way `AddressBook/set` / `Calendar/set` do — a silent reshuffle under a client
+that did not ask for one is worse than a refusal it can show the user.
+
+⚠️ **Open question #5 stands as filed and is now live.** A CardDAV `DELETE` of a book does
+delete the `grants` rows scoped to it, exactly as `AddressBook/set` does — i.e. **deleting a
+shared address book from Contacts.app silently unshares it.** Parity with JMAP was chosen
+over safety on the grounds that one noun should not have two delete semantics, but this is
+the sharpest edge in the unit and deserves its own review.
+
+**§5 — ctag / sync-token.** New collections start at `ctag: 0`; the `MKCALENDAR` /
+`MKCOL` 201 carries `getctag` and the post-commit account `sync-token` in a
+`CAL:mkcalendar-response` / `D:mkcol-response` body so the client need not immediately
+re-`PROPFIND`. The account-wide sync-token churn the unit describes is unchanged and
+still pre-existing.
+
+**§3 — `calendar-timezone`** is accepted, dropped, and *reported*: a `403` propstat inside
+the success body plus a `bullmoose-dav-warnings` response header, mirroring the PUT path's
+`bullmoose-ical-warnings`.
+
+**Open question #3 remains open.** No real client was driven and no packet was captured.
+The Apple-invents-a-UUID claim is still inferred; what changed is that the implementation no
+longer *depends* on it, since any client-chosen segment matching the charset works. The
+`Done when` list is still the acceptance test and still needs a human with Calendar.app.
+
+**Tests.** `services/anglebrackets/src/dav.test.ts` — 29 tests, the first in this worker.
+Self-contained fakes (D1 + AccountDO + R2) per the note that `002` is consolidating the
+existing copies in parallel. Reverting only the source change fails 27 of 29; the 2 that
+survive are degenerate coincidences (MKCOL on an *existing* path already 405s via
+`notAllowed()`, and DELETE of an unknown collection already 404s at `requireCalendar`).
+
+**Not built — `PROPPATCH`.** Collections can now be created and deleted from a client but
+not renamed or recoloured, because there is no `PROPPATCH` handler on any DAV resource. The
+capability exists (`Calendar/set` update, `AddressBook/set` update); this is the `U` still
+missing from both DAV columns. Unfiled.
+
+---
 
 ## Cells covered
 

@@ -10,7 +10,7 @@
 >
 > | Was | Now |
 > |---|---|
-> | 2 test files, 19 tests | **16 test files, 284 tests** |
+> | 2 test files, 19 tests | **17 test files, 313 tests** |
 > | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
 > | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
 > | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
@@ -25,7 +25,8 @@
 > scopes must re-read §4 rather than trusting a memory of it.
 >
 > **Still true and still the point:** the MCP column is empty of noun CRUD, `Mailbox/set`
-> exists nowhere, DAV cannot create collections, and there is no WebUI.
+> exists nowhere, and there is no WebUI. *(DAV collection creation was the fourth item here
+> until sVOL `009` landed it — see §2 footnote 9.)*
 
 > **Read this before reviewing or building anything in `sVOL`.**
 > Do not re-derive state from `.plans/` — several plan docs overstate what exists, and
@@ -65,7 +66,7 @@ Five things that are not what they look like:
 | JMAP | ✅ live — 38 registered methods | `services/jmap`, registry at `src/methods/index.ts:15-30` |
 | CLI | ✅ live — 19 top-level commands, ~5,012 lines | `packages/cli` |
 | MCP | ⚠️ live but narrow — 4 read-only tools | `services/agent/src/mcp.ts:55` |
-| AngleBracket (CalDAV/CardDAV) | ✅ live — read-write at *resource* level, read-only at *collection* level | `services/anglebrackets/src/dav.ts` (1234 lines) |
+| AngleBracket (CalDAV/CardDAV) | ✅ live — read-write at both *resource* and *collection* level (no `PROPPATCH`) | `services/anglebrackets/src/dav.ts` |
 | WebUI | ❌ does not exist | — |
 | GraphQL | ❌ does not exist | design discussion only, `docs/architecture/mcp-auth.md` §14 |
 | Transport (in/out) | ✅ live | `services/ingest`, `services/submit` |
@@ -104,9 +105,9 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
 | **Mailbox** | `-R--` ⁴ | `-R--` | `----` | `----` | `----` | `----` | `~` ⁵ |
 | **Thread** | `-R--` | `----` | `----` | `----` | `----` | `----` | n/a |
 | **EmailSubmission** | `C---` ⁶ | `C---` | `----` | `----` | `----` | `----` | `C---` |
-| **AddressBook** | `CRUD` ⁷ | `~R--` ⁸ | `----` | `-R--` ⁹ | `----` | `----` | n/a |
+| **AddressBook** | `CRUD` ⁷ | `~R--` ⁸ | `----` | `CR-D` ⁹ | `----` | `----` | n/a |
 | **ContactCard** | `CRUD` | `CR--` ¹⁰ | `----` | `CRUD` | `----` | `----` | n/a |
-| **Calendar** | `CRUD` ⁷ | `-R--` | `----` | `-R--` ⁹ | `----` | `----` | n/a |
+| **Calendar** | `CRUD` ⁷ | `-R--` | `----` | `CR-D` ⁹ | `----` | `----` | n/a |
 | **CalendarEvent** | `CRUD` | `-R--` ¹¹ | `----` | `CRUD` | `----` | `----` | n/a |
 | **FileNode** | `----` ¹² | `----` | `----` | `----` | `----` | `----` | n/a |
 | **Agents** | `-RU-` ¹³ | `-RU-` | `----` | n/a | `----` | `----` | `C---` ¹⁴ |
@@ -145,8 +146,12 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
 7. No `AddressBook/query`, no `Calendar/query`.
 8. Implicit create only — `contacts import` auto-creates a missing book
    (`contacts.ts:337`). No explicit `books create`.
-9. **No `MKCOL` / `MKCALENDAR`** — `dav.ts:322` and `dav.ts:737` return 405. Apple
-   Calendar/Contacts can sync items but can never create an address book or calendar.
+9. ✅ **`MKCOL` / `MKCALENDAR` now exist** (sVOL `009`). Both branch in the `handleDav`
+   dispatcher *ahead* of `requireBook`/`requireCalendar`, since those resolve the collection
+   before looking at the method. Collection `DELETE` shipped with them. The collection id is
+   the client-chosen URI segment — collections still have **no `dav_name` column**, so the id
+   *is* the path. Reads `CR-D`: there is no `PROPPATCH`, so a client can create and delete a
+   collection but not rename one.
 10. `contacts import` is create-only, dedups by uid, skips existing (`contacts.ts:120`).
 11. `calendar list` (`calendar.ts:32`) and `calendar agenda` (`:45` → `getOccurrences` `:50`).
     **Zero `/set` calls in the CLI calendar module** (97 lines total).
@@ -269,7 +274,7 @@ unit `002`'s Open Questions — its scope as written is necessary but **not suff
 
 ## 5. Test infrastructure — the honest state
 
-**16 test files, 284 tests** (was 2 files / 19 at the original audit). `npm test` runs in
+**17 test files, 313 tests** (was 2 files / 19 at the original audit; sVOL `009` added the 29 in `services/anglebrackets`). `npm test` runs in
 well under a second and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
@@ -285,8 +290,10 @@ therefore *more* valuable than when filed, not less: it now has four divergent
 implementations to consolidate rather than one to extract.
 
 Coverage is ~11% lines overall. Still at or near zero: `packages/cli` (excluded from the
-coverage report entirely, `vitest.config.ts`), `services/anglebrackets` (the whole DAV
-surface), `services/ingest`, `services/submit`, `packages/mailstore`, and most JMAP methods.
+coverage report entirely, `vitest.config.ts`), `services/ingest`, `services/submit`,
+`packages/mailstore`, and most JMAP methods. `services/anglebrackets` is no longer at zero —
+`dav.test.ts` (sVOL `009`) covers the collection verbs, though the resource verbs, the
+REPORTs and the XML helpers remain untested.
 `calendar-core`, `auth-core`, `mime` and the auth/scope paths are now genuinely covered.
 
 ⚠️ `common/003` is **CLOSED**. The RRULE parser/expander mismatch is fixed at the `eventSpan`
@@ -317,8 +324,9 @@ self-correct at read time. Unit `003`'s data-integrity gate on `013`/`018` is di
 **Gaps owned by nobody** — these are what `sVOL` is for:
 `Mailbox/set` · `EmailSubmission/get` · `Identity/set` · any noun × MCP (s02 covers only
 *foreign* clients) · Email triage verbs × CLI (s05 punted them: *"worth its own slice"*) ·
-ContactCard/CalendarEvent × WebUI (s03.C covers Email + Files only) · DAV collection creation ·
-admin update/delete · AgentInvocation create/destroy.
+ContactCard/CalendarEvent × WebUI (s03.C covers Email + Files only) · DAV collection *update*
+(`PROPPATCH` — `009` shipped create/delete only) · admin update/delete ·
+AgentInvocation create/destroy.
 
 ---
 

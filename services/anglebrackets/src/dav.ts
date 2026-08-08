@@ -43,6 +43,28 @@ const CS = "http://calendarserver.org/ns/";
 const SYNC_PREFIX = "bm:sync:";
 const TOMBSTONE_TTL_MS = 30 * 24 * 3600_000;
 
+/**
+ * The two advertisement strings, in one place because they are read as a
+ * contract: a client decides whether to OFFER "New Calendar" from the
+ * `Allow` header rather than by probing. `extended-mkcol` (RFC 5689 §5)
+ * is what tells a CardDAV client it may MKCOL an addressbook resourcetype
+ * (RFC 6352 §5.2) instead of needing a bespoke verb.
+ */
+export const DAV_COMPLIANCE = "1, 3, addressbook, calendar-access, extended-mkcol";
+export const DAV_ALLOW = "OPTIONS, GET, PUT, DELETE, PROPFIND, REPORT, MKCOL, MKCALENDAR";
+
+/**
+ * Client-chosen collection ids. Both specs create the collection AT the
+ * Request-URI — Apple Calendar invents a UUID path segment and then PUTs
+ * into it — so the DAV layer, unlike JMAP, must accept an id from the
+ * caller. Collections have no `dav_name` column (unlike contact_cards /
+ * calendar_events), and adding one would be a migration in a repo with no
+ * migration framework, so the id IS the URI. Charset is deliberately
+ * narrow: it lands in a PRIMARY KEY and in every href we emit.
+ * Leading char is alphanumeric so "." and ".." can never be ids.
+ */
+const COLLECTION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
 export async function handleDav(
   request: Request,
   url: URL,
@@ -109,7 +131,18 @@ export async function handleDav(
       if (segments.length === 2) return await handleHome(request, env, store, principal, access);
       const bookId = segments[2]!;
       if (segments.length === 3) {
-        return await handleBook(request, env, store, principal, access, bookId, await request.text());
+        const body = await request.text();
+        // Structural verbs branch HERE, ahead of handleBook — which resolves
+        // the collection first (requireBook) and would 404 the very path
+        // MKCOL is being asked to create. DELETE rides along so it gets its
+        // own audit string and its own owner-only gate.
+        if (request.method === "MKCOL") {
+          return await createBook(env, store, principal, access, bookId, body);
+        }
+        if (request.method === "DELETE") {
+          return await destroyBook(env, store, principal, access, bookId);
+        }
+        return await handleBook(request, env, store, principal, access, bookId, body);
       }
       if (segments.length === 4) {
         return await handleResource(request, env, store, principal, access, bookId, segments[3]!);
@@ -123,7 +156,15 @@ export async function handleDav(
       if (segments.length === 2) return await handleCalHome(request, env, store, principal, access);
       const calId = segments[2]!;
       if (segments.length === 3) {
-        return await handleCalendar(request, env, store, principal, access, calId, await request.text());
+        const body = await request.text();
+        // Same inversion as the addressbook branch above.
+        if (request.method === "MKCALENDAR") {
+          return await createCalendar(env, store, principal, access, calId, body);
+        }
+        if (request.method === "DELETE") {
+          return await destroyCalendar(env, store, principal, access, calId);
+        }
+        return await handleCalendar(request, env, store, principal, access, calId, body);
       }
       if (segments.length === 4) {
         return await handleEventResource(request, env, store, principal, access, calId, segments[3]!);
@@ -320,6 +361,132 @@ async function handleBook(
   }
 
   return notAllowed();
+}
+
+// ---- collection create / destroy (CardDAV) -----------------------------
+
+/**
+ * Structural writes are OWNER-ONLY, mirroring `AddressBook/set`'s
+ * "v1: sharees edit contents (per mayWrite), never the books themselves"
+ * (services/jmap/src/methods/contacts.ts). Book-scoped grants have no way
+ * to express "may create a sibling", so a sharee reaching this is refused
+ * before anything is read.
+ */
+async function requireBookOwner(
+  env: Env,
+  principal: Principal,
+  access: AccountAccess,
+  auditMethod: string,
+): Promise<void> {
+  if (!principalHasScope(principal, "contacts")) {
+    throw new DavError(403, "token lacks the contacts scope");
+  }
+  if (access.granted) {
+    throw new DavError(403, "only the account owner manages address books");
+  }
+  await audit(env, principal, access, auditMethod);
+}
+
+/**
+ * Extended MKCOL (RFC 5689) with an `addressbook` resourcetype — how
+ * RFC 6352 §5.2 creates an address book. There is no MKADDRESSBOOK verb.
+ */
+async function createBook(
+  env: Env,
+  store: Mailstore,
+  principal: Principal,
+  access: AccountAccess,
+  bookId: string,
+  body: string,
+): Promise<Response> {
+  await requireBookOwner(env, principal, access, "dav:mkcol");
+  // No RFC 6352 precondition covers "that URI is not an acceptable name"
+  // (CalDAV has calendar-collection-location-ok; CardDAV has no twin), so
+  // this is a plain 403 rather than an invented element.
+  if (!COLLECTION_ID_RE.test(bookId)) {
+    throw new DavError(403, `illegal collection name: ${bookId}`);
+  }
+
+  const props = parseMkcolProps(body);
+  // An empty body is legal and means "defaults". This home holds address
+  // books and nothing else, so an unqualified MKCOL is read as one; a body
+  // that asks for some OTHER resourcetype is refused rather than quietly
+  // creating the wrong kind of thing.
+  if (props.resourcetype !== null && !/addressbook/i.test(props.resourcetype)) {
+    throw precondition(403, "D:valid-resourcetype", "only addressbook collections live here");
+  }
+
+  const books = await store.getAddressBooks(access.accountId);
+  // RFC 4918 §9.3.1: MKCOL only executes on an unmapped URL.
+  if (books.some((b) => b.id === bookId)) return notAllowed();
+
+  // Name rule mirrors validateNewBook (contacts.ts), which measures OCTETS,
+  // not chars — a DAV-created book must be a book JMAP would have accepted.
+  const name = props.displayname ?? bookId;
+  if (new TextEncoder().encode(name).length > 255) {
+    throw new DavError(403, "displayname must be 1..255 octets");
+  }
+
+  const now = Date.now();
+  await store.insertAddressBook(access.accountId, {
+    id: bookId,
+    name,
+    description: props.description,
+    sortOrder: 0,
+    // NEVER steal the default: `address_books_default` is a partial UNIQUE
+    // index, so a second is_default=1 row is a constraint violation, not a
+    // preference. Matches `validateNewBook(spec, !hasDefault)`.
+    isDefault: !books.some((b) => b.isDefault),
+    isSubscribed: true,
+    ctag: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const { newState } = await commitChanges(env.ACCOUNT_DO, access.accountId, [
+    { collection: "AddressBook", created: [bookId] },
+  ]);
+  return mkcolResponse("D:mkcol-response", newState, props.dropped);
+}
+
+async function destroyBook(
+  env: Env,
+  store: Mailstore,
+  principal: Principal,
+  access: AccountAccess,
+  bookId: string,
+): Promise<Response> {
+  await requireBookOwner(env, principal, access, "dav:rmcol");
+  const book = (await store.getAddressBooks(access.accountId)).find((b) => b.id === bookId);
+  if (!book) return new Response("not found", { status: 404 });
+  // AddressBook/set promotes the oldest survivor when the default goes.
+  // Doing that under a DAV client is a silent reshuffle it never asked
+  // for, so refuse instead — the client can rename or empty the book.
+  if (book.isDefault) {
+    throw new DavError(403, "the default address book cannot be deleted");
+  }
+
+  // DAV DELETE on a collection is unconditional depth-infinity: it takes
+  // the contents with it (JMAP's onDestroyRemoveContents, always on).
+  const cardIds = await store.cardIdsInBook(access.accountId, bookId);
+  await store.destroyContactCards(access.accountId, cardIds);
+  await store.deleteAddressBook(access.accountId, bookId);
+  // A destroyed book takes its sharing with it (parity with
+  // AddressBook/set) — note this means a CardDAV DELETE can unshare.
+  await env.DB.prepare(
+    `DELETE FROM grants WHERE target_account_id = ? AND collection = 'AddressBook'
+       AND collection_id = ?`,
+  )
+    .bind(access.accountId, bookId)
+    .run();
+  // The tombstones just written point at a collection that no longer
+  // exists; age out the expired ones so a late sync-collection is coherent.
+  await store.pruneTombstones(access.accountId, TOMBSTONE_TTL_MS);
+
+  await commitChanges(env.ACCOUNT_DO, access.accountId, [
+    { collection: "AddressBook", destroyed: [bookId] },
+    { collection: "ContactCard", destroyed: cardIds },
+  ]);
+  return new Response(null, { status: 204 });
 }
 
 // ---- REPORTs ----------------------------------------------------------
@@ -735,6 +902,110 @@ async function handleCalendar(
   }
 
   return notAllowed();
+}
+
+// ---- collection create / destroy (CalDAV) ------------------------------
+
+/** Owner-only, twin of requireBookOwner — `Calendar/set` refuses sharees. */
+async function requireCalOwner(
+  env: Env,
+  principal: Principal,
+  access: AccountAccess,
+  auditMethod: string,
+): Promise<void> {
+  if (!principalHasScope(principal, "calendar")) {
+    throw new DavError(403, "token lacks the calendar scope");
+  }
+  if (access.granted) {
+    throw new DavError(403, "only the account owner manages calendars");
+  }
+  await audit(env, principal, access, auditMethod);
+}
+
+/** MKCALENDAR — RFC 4791 §5.3.1. */
+async function createCalendar(
+  env: Env,
+  store: Mailstore,
+  principal: Principal,
+  access: AccountAccess,
+  calId: string,
+  body: string,
+): Promise<Response> {
+  await requireCalOwner(env, principal, access, "dav:mkcalendar");
+  if (!COLLECTION_ID_RE.test(calId)) {
+    throw precondition(403, "CAL:calendar-collection-location-ok", `illegal collection name: ${calId}`);
+  }
+
+  const props = parseMkcolProps(body);
+  // We serve VEVENT only (calendarResource's supported-calendar-component-set).
+  // A client asking for VTODO/VJOURNAL gets refused here rather than a
+  // calendar that will reject its own writes.
+  const unsupported = props.components.filter((c) => c.toUpperCase() !== "VEVENT");
+  if (unsupported.length > 0) {
+    throw precondition(
+      403,
+      "CAL:supported-calendar-component",
+      `unsupported components: ${unsupported.join(", ")}`,
+    );
+  }
+
+  const cals = await store.getCalendars(access.accountId);
+  // RFC 4791 §5.3.1: 405 when the Request-URI is already mapped.
+  if (cals.some((c) => c.id === calId)) return notAllowed();
+
+  // validateNewCalendar measures CHARS (contacts measures octets); mirror
+  // each realm's own rule so DAV and JMAP accept the same names.
+  const name = props.displayname ?? calId;
+  if (name.length > 255) {
+    throw new DavError(403, "displayname must be 1..255 chars");
+  }
+
+  const now = Date.now();
+  await store.insertCalendar(access.accountId, {
+    id: calId,
+    name,
+    description: props.description,
+    color: props.color,
+    sortOrder: 0,
+    // See createBook: `calendars_default` is a partial UNIQUE index.
+    isDefault: !cals.some((c) => c.isDefault),
+    isSubscribed: true,
+    // A brand-new collection starts at 0: the client has never seen it.
+    ctag: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const { newState } = await commitChanges(env.ACCOUNT_DO, access.accountId, [
+    { collection: "Calendar", created: [calId] },
+  ]);
+  return mkcolResponse("CAL:mkcalendar-response", newState, props.dropped);
+}
+
+async function destroyCalendar(
+  env: Env,
+  store: Mailstore,
+  principal: Principal,
+  access: AccountAccess,
+  calId: string,
+): Promise<Response> {
+  await requireCalOwner(env, principal, access, "dav:cal-rmcol");
+  const cal = (await store.getCalendars(access.accountId)).find((c) => c.id === calId);
+  if (!cal) return new Response("not found", { status: 404 });
+  if (cal.isDefault) {
+    throw new DavError(403, "the default calendar cannot be deleted");
+  }
+
+  const eventIds = await store.eventIdsInCalendar(access.accountId, calId);
+  await store.destroyCalendarEvents(access.accountId, eventIds);
+  await store.deleteCalendar(access.accountId, calId);
+  await store.pruneTombstones(access.accountId, TOMBSTONE_TTL_MS);
+  // Calendar/set has no grants cleanup here and neither do we: grants can
+  // only be scoped to an AddressBook today (services/provision).
+  await commitChanges(env.ACCOUNT_DO, access.accountId, [
+    { collection: "Calendar", destroyed: [calId] },
+    { collection: "CalendarEvent", destroyed: eventIds },
+  ]);
+  return new Response(null, { status: 204 });
 }
 
 async function calSyncCollection(
@@ -1190,7 +1461,112 @@ function multistatus(parts: string[], syncTokenValue?: string): Response {
     status: 207,
     headers: {
       "content-type": "application/xml; charset=utf-8",
-      DAV: "1, 3, addressbook, calendar-access",
+      DAV: DAV_COMPLIANCE,
+    },
+  });
+}
+
+// ---- MKCOL / MKCALENDAR bodies -----------------------------------------
+
+interface MkcolProps {
+  displayname: string | null;
+  description: string | null;
+  color: string | null;
+  /** Raw inner XML of <resourcetype>; null when the body did not set one. */
+  resourcetype: string | null;
+  /** Component names from supported-calendar-component-set ([] = unset). */
+  components: string[];
+  /** Props we understood, accepted, and did NOT store. */
+  dropped: string[];
+}
+
+/**
+ * The `<D:set><D:prop>` block both verbs may carry. Only properties the
+ * tables can hold are mapped; anything understood-but-unstorable is
+ * reported back in `dropped` rather than silently discarded — losing a
+ * client's default timezone with a bare 201 is a data-loss surprise.
+ */
+function parseMkcolProps(body: string): MkcolProps {
+  const dropped: string[] = [];
+  // calendar-timezone has no column, and neither table stores it.
+  if (innerOf(body, "calendar-timezone") !== null) dropped.push("calendar-timezone");
+
+  const components: string[] = [];
+  const compRe = /<(?:[A-Za-z0-9_-]+:)?comp\s[^>]*name="([^"]+)"/g;
+  const compBlock = innerOf(body, "supported-calendar-component-set") ?? "";
+  let m;
+  while ((m = compRe.exec(compBlock)) !== null) components.push(m[1]!);
+
+  // address_books has no colour column (data-plane.sql); calendars does.
+  const color = text(innerOf(body, "calendar-color"));
+  const description =
+    text(innerOf(body, "calendar-description")) ?? text(innerOf(body, "addressbook-description"));
+
+  return {
+    displayname: text(innerOf(body, "displayname")),
+    description,
+    color,
+    resourcetype: innerOf(body, "resourcetype"),
+    components,
+    dropped,
+  };
+}
+
+/** Raw inner XML of the first `localName` element, or null when absent. */
+function innerOf(body: string, localName: string): string | null {
+  const re = new RegExp(
+    `<(?:[A-Za-z0-9_-]+:)?${localName}[^>]*>([\\s\\S]*?)</(?:[A-Za-z0-9_-]+:)?${localName}>`,
+  );
+  const m = body.match(re);
+  return m ? m[1]! : null;
+}
+
+const text = (raw: string | null): string | null =>
+  raw === null ? null : xmlUnescape(raw).trim() || null;
+
+/** A DavError carrying a spec precondition element, not bare prose. */
+function precondition(status: number, element: string, detail: string): DavError {
+  return new DavError(
+    status,
+    detail,
+    `<?xml version="1.0" encoding="utf-8"?>` +
+      `<D:error xmlns:D="${D}" xmlns:C="${C}" xmlns:CAL="${CAL}">` +
+      `<${element}/><D:responsedescription>${xmlEscape(detail)}</D:responsedescription>` +
+      `</D:error>`,
+  );
+}
+
+/**
+ * 201 for a created collection, carrying the new ctag and the account
+ * sync-token so the client does not have to turn around and PROPFIND.
+ * Both `CAL:mkcalendar-response` (RFC 4791 §5.3.1.2) and `D:mkcol-response`
+ * (RFC 5689 §5.2) permit exactly this shape.
+ */
+function mkcolResponse(root: string, state: string, dropped: string[]): Response {
+  const failed = dropped
+    .map((p) => renderProp(p, ""))
+    .join("");
+  const xml =
+    `<?xml version="1.0" encoding="utf-8"?>` +
+    `<${root} xmlns:D="${D}" xmlns:C="${C}" xmlns:CAL="${CAL}" xmlns:CS="${CS}"` +
+    ` xmlns:ICAL="http://apple.com/ns/ical/">` +
+    `<D:propstat><D:prop>` +
+    `<CS:getctag>0</CS:getctag><D:sync-token>${xmlEscape(syncToken(state))}</D:sync-token>` +
+    `</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>` +
+    (failed
+      ? `<D:propstat><D:prop>${failed}</D:prop>` +
+        `<D:status>HTTP/1.1 403 Forbidden</D:status>` +
+        `<D:responsedescription>not stored by this server</D:responsedescription></D:propstat>`
+      : "") +
+    `</${root}>`;
+  return new Response(xml, {
+    status: 201,
+    headers: {
+      "content-type": "application/xml; charset=utf-8",
+      DAV: DAV_COMPLIANCE,
+      // Mirrors the PUT path's bullmoose-ical-warnings: the collection WAS
+      // created, and here is what we did not keep.
+      ...(dropped.length > 0 ? { "bullmoose-dav-warnings": `dropped: ${dropped.join(", ")}` } : {}),
     },
   });
 }
@@ -1239,6 +1615,6 @@ function xmlUnescape(s: string): string {
 function notAllowed(): Response {
   return new Response("method not allowed", {
     status: 405,
-    headers: { Allow: "OPTIONS, GET, PUT, DELETE, PROPFIND, REPORT" },
+    headers: { Allow: DAV_ALLOW },
   });
 }

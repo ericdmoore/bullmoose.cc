@@ -214,19 +214,25 @@ else
 fi
 
 # =============================================================================
-# DAV — read-write for RESOURCES, read-only for COLLECTIONS (unit 009)
+# DAV — read-write for RESOURCES **and** COLLECTIONS since unit 009
 # =============================================================================
 section "AngleBracket (CalDAV/CardDAV)"
 check "DAV principal PROPFIND reachable" 207 \
       http_status PROPFIND "$BM_DAV/dav/principals/$BM_ACCOUNT/" -H 'Depth: 0'
-# MKCALENDAR is unimplemented. NB unit 009 found handleCalendar resolves the
-# collection BEFORE branching on method, so a NEW path 404s rather than 405s.
-# Either answer proves "absent"; 201 would mean it landed.
-check "MKCALENDAR absent ← 009 (405 or 404)" absent \
-      bash -c 'c=$(curl -sS -m 20 -o /dev/null -w "%{http_code}" -X MKCALENDAR \
-        "'"$BM_DAV"'/dav/calendars/'"$BM_ACCOUNT"'/verify-probe/" \
-        -H "Authorization: Bearer '"$BM_TOKEN"'" 2>/dev/null);
-        case "$c" in 405|404|501) echo absent ;; 201) echo "created(201)" ;; *) echo "http-$c" ;; esac'
+check "OPTIONS advertises MKCALENDAR ← 009" ok \
+      bash -c 'curl -sS -m 20 -D - -o /dev/null -X OPTIONS "'"$BM_DAV"'/dav/" 2>/dev/null \
+        | grep -qi "^allow:.*MKCALENDAR" && echo ok || echo missing'
+# 009 landed: MKCALENDAR creates the collection AT the client-chosen URI.
+# The only WRITING assertions in this file, so they are self-cleaning: the
+# leftover-probe DELETE is folded INSIDE the check command, not run at file
+# scope, or `--list` would mutate the account it claims only to describe.
+check "MKCALENDAR creates ← 009" 201 \
+      bash -c 'p="'"$BM_DAV"'/dav/calendars/'"$BM_ACCOUNT"'/verify-probe/";
+        a="Authorization: Bearer '"$BM_TOKEN"'";
+        curl -sS -m 20 -o /dev/null -X DELETE "$p" -H "$a" 2>/dev/null;
+        curl -sS -m 20 -o /dev/null -w "%{http_code}" -X MKCALENDAR "$p" -H "$a" 2>/dev/null'
+check "collection DELETE removes it ← 009" 204 \
+      http_status DELETE "$BM_DAV/dav/calendars/$BM_ACCOUNT/verify-probe/"
 
 # =============================================================================
 # MCP — the column is EMPTY of noun CRUD (units 013/014/015)
