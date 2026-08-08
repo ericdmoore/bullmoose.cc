@@ -46,16 +46,17 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 log in and store a bearer token for this account
 
 ```
-bullmoose login <email> [--base <url>] [--name <device-name>] [--password <pw>]
+bullmoose login <email> [--base <url>] [--name <device-name>] [--password <pw>] [--scopes <a,b,c>]
 ```
 
-Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw.
+Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw. --scopes sets what the minted token may do; `login` is the only self-service way to WIDEN scope, because `token create` can only narrow the token it is called with.
 
 | flag | description |
 |---|---|
 | `--base <url>` | JMAP server base; skip to autodiscover from the email domain |
 | `--name <device-name>` | label the minted token (shows in `token list`) |
 | `--password <pw>` | password (else prompt or $BULLMOOSE_PASSWORD) |
+| `--scopes <a,b,c>` | scopes for the minted token (default: server's). Vocabulary: read, annotate, draft, move, send, delete, mail, contacts, calendar, vault |
 
 **Examples**
 
@@ -236,19 +237,20 @@ push-triggered live sync: print new mail as it arrives
 bullmoose watch [--json] [--exec <cmd>] [--daemon | --status | --stop]
 ```
 
-Holds a JMAP push channel and prints each new message. --json emits NDJSON events; --exec runs a shell command per new message with {id} {from} {subject} {preview} placeholders; --daemon detaches (prints a PID; logs beside the db file).
+Holds a JMAP push channel and prints each new message. --json emits NDJSON events; --daemon detaches (prints a PID; logs beside the db file). --exec runs a shell command once per new message: the command is handed to `sh -c` verbatim and the message arrives in the environment as $BM_ID, $BM_ACCOUNT, $BM_FROM, $BM_SUBJECT and $BM_PREVIEW (preview truncated to 120 chars). Quote them — an inbound subject is attacker-controlled text, and unquoted it still word-splits inside your own command. BREAKING (was: substitution): the {id} {from} {subject} {preview} placeholders are no longer substituted — they were a shell-injection vector, since a stranger's subject line ended up parsed by your shell. A template still containing them gets a warning on stderr. The hook is fire-and-forget, gets no stdin, and under --json its stdout is redirected to stderr so it cannot corrupt the NDJSON stream.
 
 | flag | description |
 |---|---|
 | `--json` | emit NDJSON events |
-| `--exec <cmd>` | run per message ({id} {from} {subject} {preview}) |
+| `--exec <cmd>` | run `sh -c <cmd>` per new message; fields arrive as $BM_ID $BM_ACCOUNT $BM_FROM $BM_SUBJECT $BM_PREVIEW |
 | `--daemon / --status / --stop` | manage a detached watcher |
 
 **Examples**
 
 ```sh
 bullmoose watch
-bullmoose watch --json --exec 'notify-send "{from}: {subject}"'
+bullmoose watch --json --exec 'notify-send "$BM_FROM: $BM_SUBJECT"'
+# always quote $BM_* — the values come from whoever emailed you
 ```
 
 See also: [`sync`](#sync), [`agent`](#agent)

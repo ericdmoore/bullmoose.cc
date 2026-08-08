@@ -16,9 +16,21 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
 
-      # Order matters: submit (no deps) → jmap (declares AccountDO,
-      # binds SUBMIT) → ingest (binds AccountDO) → provision.
+      # Order IS the binding graph. Keep in sync with DEPLOY_ORDER in
+      # infra/bootstrap.mjs — that file carries the derivation.
+      #
+      #   submit         no deps
+      #   jmap           services: submit          · declares AccountDO
+      #   agent          services: submit          · DO script_name: jmap
+      #   ingest         services: AGENT -> agent  · DO script_name: jmap
+      #   provision      no deps
+      #   anglebrackets  DO script_name: jmap      · serves dav.bullmoose.cc
+      #
+      # agent BEFORE ingest: services/ingest/wrangler.jsonc:28 binds
+      # `bullmoose-agent`. The previous order (submit → jmap → ingest →
+      # provision) both skipped agent entirely and had it in the wrong place.
       - name: Deploy submit
         run: npx wrangler deploy -c services/submit/wrangler.jsonc
         env:
@@ -26,6 +38,11 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy jmap
         run: npx wrangler deploy -c services/jmap/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Deploy agent
+        run: npx wrangler deploy -c services/agent/wrangler.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -39,3 +56,16 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # anglebrackets serves dav.bullmoose.cc — a live client-facing hostname.
+      # Deploying jmap without it moves the AccountDO schema out from under a
+      # customer endpoint, and CI used to do exactly that, green.
+      - name: Deploy anglebrackets
+        run: npx wrangler deploy -c services/anglebrackets/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # NOT deployed here: services/demo-keys. It is absent from
+      # infra/bootstrap.mjs DEPLOY_ORDER and docs/DEPLOY.md §2 as well —
+      # tracked separately as .feedback/fromClaude/infra/013, since wiring it
+      # needs its own resource/secret story rather than one more step.

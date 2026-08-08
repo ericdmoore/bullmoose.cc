@@ -69,11 +69,21 @@ npx wrangler d1 execute bullmoose-mail-shard0 --remote --file packages/mailstore
 ```sh
 npm run -w services/submit        deploy   # 1. no dependencies
 npm run -w services/jmap          deploy   # 2. declares AccountDO; binds SUBMIT
-npm run -w services/ingest        deploy   # 3. binds AccountDO from jmap
-npm run -w services/provision     deploy   # 4. control plane
-npm run -w services/agent         deploy   # 5. agent runtime + vault + MCP (binds AccountDO)
+npm run -w services/agent         deploy   # 3. binds SUBMIT + AccountDO from jmap
+npm run -w services/ingest        deploy   # 4. binds AGENT -> agent, + AccountDO
+npm run -w services/provision     deploy   # 5. control plane, no deps
 npm run -w services/anglebrackets deploy   # 6. CardDAV/CalDAV face (binds AccountDO)
 ```
+
+> **agent must precede ingest.** `services/ingest/wrangler.jsonc:28` binds
+> `bullmoose-agent`, so on a clean account the old order (ingest at 3, agent at
+> 5) deploys ingest against a service that does not exist yet. It only ever
+> worked because agent already existed from a prior run. Corrected in
+> `infra/bootstrap.mjs` `DEPLOY_ORDER` and `.github/workflows/deploy-mail.yml`
+> — all three must stay in sync.
+
+`services/demo-keys` is deliberately absent from this list, from
+`DEPLOY_ORDER`, and from CI. Tracked as `.feedback/fromClaude/infra/013`.
 
 Agent-worker extras: `wrangler secret put VAULT_MASTER_KEY -c
 services/agent/wrangler.jsonc` (credential vault; `openssl rand -hex 32`).

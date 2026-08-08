@@ -128,6 +128,7 @@ try {
         base: opts.base,
         password: opts.password,
         name: opts.name,
+        scopes: opts.scopes,
         json: opts.json ?? false,
       });
       break;

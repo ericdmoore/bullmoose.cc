@@ -240,6 +240,15 @@ CPU at 10ms per request — nowhere near enough for a 600k-iteration KDF.
 So the *client* runs PBKDF2 and the server only ever sees (and does one
 cheap SHA-256 over) the derived key. The password never crosses the wire.
 
+**Why that forces a login throttle.** "Cheap to verify" is also "cheap
+to attack": one SHA-256 per guess, and a hit mints a bearer token
+immediately. `/auth/login` is therefore gated *before* the credential
+lookup and the hash — 5 failures per email and 20 per client IP, each in
+a 15-minute window, counted in KV (see `services/jmap/README.md`). Only
+the IP window returns 429; the email window returns the ordinary 401,
+because a status code that varies by account would undo the uniform-401
+property that keeps this endpoint enumeration-resistant.
+
 **Why tokens double as app-passwords.** Legacy clients and third-party
 JMAP apps only speak username+password. A minted `bm_` token *is* that
 password (HTTP Basic / POP3 PASS / SMTP AUTH), scoped and individually

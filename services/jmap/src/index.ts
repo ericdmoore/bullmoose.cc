@@ -14,6 +14,7 @@ export { AccountDO } from "@bullmoose/account-do";
 export interface Env extends AuthEnv {
   DB: D1Database;
   BLOBS: R2Bucket;
+  /** Route hot copy; also holds the `login:` /auth/login throttle windows. */
   ROUTES: KVNamespace;
   ACCOUNT_DO: DurableObjectNamespace;
   /** Service binding to bullmoose-submit for EmailSubmission sends. */

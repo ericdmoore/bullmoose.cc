@@ -23,6 +23,64 @@ export interface RequestContext {
  * AddressBook-scoped grant unlocks contacts methods only), and every
  * call is written to the grant_audit log.
  */
+/**
+ * Like `requireAccount`, but demands SEVERAL scopes for one call.
+ *
+ * For methods whose single entry point performs operations of differing
+ * severity — `Email/set` does create, update and destroy behind one gate — so
+ * the token must satisfy every operation the arguments actually ask for.
+ *
+ * Deliberately a sibling rather than a change to `requireAccount`: that has 25
+ * call sites, and calling it once per operation would also write one
+ * `grant_audit` row and one D1 write PER operation. Here the decision is taken
+ * per scope (pure) and the audit effect happens once.
+ *
+ * Empty `scopes` means the call asks for nothing; account access is still
+ * verified, so a no-op `Email/set` cannot be used to probe account existence
+ * with no scope at all.
+ */
+export async function requireAccountScopes(
+  ctx: RequestContext,
+  args: Record<string, unknown>,
+  scopes: string[],
+  domain: MethodDomain = "mail",
+): Promise<AccountAccess> {
+  const accountId = args.accountId;
+  if (typeof accountId !== "string") {
+    throw new MethodError("invalidArguments", "accountId is required");
+  }
+  // Always authorize at least account membership, even for a no-op call.
+  const required = scopes.length > 0 ? scopes : ["read"];
+  let auditGrant: { grantId: string } | null = null;
+  let access: AccountAccess | null = null;
+
+  for (const scope of required) {
+    const decision = authorizeAccount(ctx.principal, accountId, scope, domain);
+    if (!decision.ok) {
+      if (decision.reason === "accountNotFound") throw new MethodError("accountNotFound");
+      throw new MethodError("forbidden", decision.detail);
+    }
+    access = decision.access;
+    auditGrant ??= decision.auditGrant;
+  }
+
+  if (auditGrant && access) {
+    await ctx.env.DB.prepare(
+      `INSERT INTO grant_audit (grant_id, principal, account_id, method, at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        auditGrant.grantId,
+        ctx.principal.username,
+        access.accountId,
+        `${domain}:${required.join("+")}`,
+        Date.now(),
+      )
+      .run();
+  }
+  return access!;
+}
+
 export async function requireAccount(
   ctx: RequestContext,
   args: Record<string, unknown>,

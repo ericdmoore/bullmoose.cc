@@ -44,12 +44,34 @@ export async function verifyTokenSecret(secret: string, storedHash: string): Pro
 // ---- scopes ------------------------------------------------------------
 
 export const MAIL_SCOPES = ["read", "annotate", "draft", "move", "send", "delete"] as const;
-export type Scope = (typeof MAIL_SCOPES)[number] | "mail" | "admin";
 
-/** Does a token's scope list satisfy a required scope? "mail" covers all mail verbs. */
+/** Realm scopes. Independent of the mail verbs — NOT covered by "mail". */
+export const REALM_SCOPES = ["contacts", "calendar", "vault"] as const;
+
+export type Scope = (typeof MAIL_SCOPES)[number] | (typeof REALM_SCOPES)[number] | "mail" | "admin";
+
+const MAIL_COVERS: ReadonlySet<string> = new Set<string>(MAIL_SCOPES);
+
+/**
+ * Does a token's scope list satisfy a required scope?
+ *
+ * `"mail"` is a BUNDLE OF THE MAIL VERBS, not a wildcard. It covers exactly
+ * MAIL_SCOPES and nothing else.
+ *
+ * It used to return true for every non-"admin" scope, which meant a `mail`
+ * token silently satisfied `contacts`, `calendar` and — the sharp one —
+ * `vault`, the store holding third-party provider credentials. Since
+ * `/auth/login` mints `["mail"]` by default (authRoutes.ts:89), that was
+ * every token this system has ever issued.
+ *
+ * The old `required !== "admin"` carve-out is gone as redundant: `admin` is
+ * not in MAIL_SCOPES, so the set membership test excludes it for free.
+ *
+ * Unknown scope strings are denied unless held verbatim. Fail closed.
+ */
 export function hasScope(granted: string[], required: string): boolean {
   if (granted.includes(required)) return true;
-  return required !== "admin" && granted.includes("mail");
+  return granted.includes("mail") && MAIL_COVERS.has(required);
 }
 
 /** For self-service minting: requested must not exceed what the minter holds. */
