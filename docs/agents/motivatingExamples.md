@@ -95,3 +95,6 @@ Ideally less but better emails to deal with.
             - Files
         - Asks other agents if they have anything intersting an time-bound for the next 48hrs
         - Collects Responses
+
+
+---
