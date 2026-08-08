@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { isFileUrl, loadBootstrap, setConfig } from "./db.js";
 import { resolveJmapBase } from "./discover.js";
+import { SELF_SERVICE_SCOPES, parseScopeFlag } from "./scopes.js";
 
 /**
  * `bullmoose login` + `bullmoose token` — password-based bootstrap and
@@ -39,14 +40,14 @@ export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts
     );
     process.exit(1);
   }
-  const scopes = opts.scopes
-    ?.split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (opts.scopes !== undefined && (!scopes || scopes.length === 0)) {
-    console.error("--scopes was given but empty; omit it to take the server default");
+  // Optional HERE and nowhere else: login is the bootstrap, so a user with
+  // no token must be able to run it bare and take the server's default.
+  const parsed = parseScopeFlag(opts.scopes, SELF_SERVICE_SCOPES, false);
+  if (!parsed.ok) {
+    console.error(`${parsed.error}\n(omit --scopes to take the server default)`);
     process.exit(2);
   }
+  const scopes = parsed.scopes;
   // No --base? The email address is enough: RFC 8620 §2.2 autodiscovery.
   if (!opts.base) {
     const found = await resolveJmapBase(email);
@@ -124,7 +125,21 @@ export async function cmdToken(
   const headers = { Authorization: `Bearer ${settings.token}`, "content-type": "application/json" };
 
   if (verb === "create") {
-    const scopes = opts.scopes ? opts.scopes.split(",").map((s) => s.trim()) : ["mail"];
+    // REQUIRED. This used to default to ["mail"], so the shortest invocation
+    // minted the widest credential the self-service API can express — and
+    // this token is the one that gets pasted into third-party clients.
+    // Unlike `login` there is nothing to bootstrap here: the caller already
+    // holds a token, so demanding one word costs them nothing.
+    const parsed = parseScopeFlag(opts.scopes, SELF_SERVICE_SCOPES, true);
+    if (!parsed.ok || !parsed.scopes) {
+      console.error(
+        parsed.ok
+          ? "--scopes is required"
+          : `${parsed.error}\n\nusage: bullmoose token create --name <n> --scopes <a,b,c>`,
+      );
+      process.exit(2);
+    }
+    const scopes = parsed.scopes;
     const res = await fetch(`${settings.base}/auth/tokens`, {
       method: "POST",
       headers,
@@ -165,7 +180,7 @@ export async function cmdToken(
     return;
   }
 
-  fail("usage: bullmoose token create --name <n> [--scopes a,b] | list | revoke <id>");
+  fail("usage: bullmoose token create --name <n> --scopes <a,b> | list | revoke <id>");
 }
 
 function deviceName(): string {
