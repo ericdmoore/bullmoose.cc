@@ -55,14 +55,19 @@ export const NOTES = [
 export const COMMANDS: Command[] = [
   {
     name: "login",
-    synopsis: "bullmoose login <email> [--base <url>] [--name <device-name>] [--password <pw>]",
+    synopsis:
+      "bullmoose login <email> [--base <url>] [--name <device-name>] [--password <pw>] [--scopes <a,b,c>]",
     summary: "log in and store a bearer token for this account",
     description:
-      "Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw.",
+      "Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw. --scopes sets what the minted token may do; `login` is the only self-service way to WIDEN scope, because `token create` can only narrow the token it is called with.",
     flags: [
       { flag: "--base <url>", desc: "JMAP server base; skip to autodiscover from the email domain" },
       { flag: "--name <device-name>", desc: "label the minted token (shows in `token list`)" },
       { flag: "--password <pw>", desc: "password (else prompt or $BULLMOOSE_PASSWORD)" },
+      {
+        flag: "--scopes <a,b,c>",
+        desc: "scopes for the minted token (default: server's). Vocabulary: read, annotate, draft, move, send, delete, mail, contacts, calendar, vault",
+      },
     ],
     examples: [
       { cmd: "bullmoose login you@example.com", note: "autodiscover the server, prompt for password" },

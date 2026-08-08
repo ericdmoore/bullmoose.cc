@@ -74,9 +74,9 @@ operator surface — wraps the provision worker (separate credentials)
 .SS login
 .B Synopsis:
 .br
-bullmoose login <email> [\-\-base <url>] [\-\-name <device\-name>] [\-\-password <pw>]
+bullmoose login <email> [\-\-base <url>] [\-\-name <device\-name>] [\-\-password <pw>] [\-\-scopes <a,b,c>]
 .PP
-Authenticates to a JMAP server. With no \-\-base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well\-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or \-\-password; it is stretched locally, used once, and never stored or sent raw.
+Authenticates to a JMAP server. With no \-\-base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well\-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or \-\-password; it is stretched locally, used once, and never stored or sent raw. \-\-scopes sets what the minted token may do; `login` is the only self\-service way to WIDEN scope, because `token create` can only narrow the token it is called with.
 .PP
 .B Flags:
 .TP
@@ -88,6 +88,9 @@ label the minted token (shows in `token list`)
 .TP
 .B \-\-password <pw>
 password (else prompt or $BULLMOOSE_PASSWORD)
+.TP
+.B \-\-scopes <a,b,c>
+scopes for the minted token (default: server's). Vocabulary: read, annotate, draft, move, send, delete, mail, contacts, calendar, vault
 .PP
 .B Examples:
 .PP

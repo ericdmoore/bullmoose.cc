@@ -46,16 +46,17 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 log in and store a bearer token for this account
 
 ```
-bullmoose login <email> [--base <url>] [--name <device-name>] [--password <pw>]
+bullmoose login <email> [--base <url>] [--name <device-name>] [--password <pw>] [--scopes <a,b,c>]
 ```
 
-Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw.
+Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw. --scopes sets what the minted token may do; `login` is the only self-service way to WIDEN scope, because `token create` can only narrow the token it is called with.
 
 | flag | description |
 |---|---|
 | `--base <url>` | JMAP server base; skip to autodiscover from the email domain |
 | `--name <device-name>` | label the minted token (shows in `token list`) |
 | `--password <pw>` | password (else prompt or $BULLMOOSE_PASSWORD) |
+| `--scopes <a,b,c>` | scopes for the minted token (default: server's). Vocabulary: read, annotate, draft, move, send, delete, mail, contacts, calendar, vault |
 
 **Examples**
 
