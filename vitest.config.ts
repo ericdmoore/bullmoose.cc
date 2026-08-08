@@ -25,6 +25,10 @@ export default defineConfig({
       "@bullmoose/mailstore": here("packages/mailstore/src/index.ts"),
       "@bullmoose/mime": here("packages/mime/src/index.ts"),
       "@bullmoose/outbound": here("packages/outbound/src/index.ts"),
+      // The shared fake-client harness (sVOL 002). Same reason as the rest,
+      // plus one of its own: it is not linked into node_modules at all, so
+      // this alias and tsconfig's `paths` are its ONLY resolution paths.
+      "@bullmoose/test-fakes": here("packages/test-fakes/src/index.ts"),
     },
   },
   test: {
@@ -43,7 +47,9 @@ export default defineConfig({
       // suite happens to touch (per .plans/devPrinciples.md: use coverage
       // to find the gaps).
       include: ["packages/**/src/**/*.ts", "services/**/src/**/*.ts"],
-      exclude: ["**/*.test.ts", "**/dist/**", "packages/cli/**"],
+      // packages/test-fakes is the test harness itself — reporting coverage of
+      // it measures the suite's scaffolding, not the product.
+      exclude: ["**/*.test.ts", "**/dist/**", "packages/cli/**", "packages/test-fakes/**"],
     },
   },
 });

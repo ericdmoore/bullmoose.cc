@@ -23,7 +23,12 @@
       "@bullmoose/account-do": ["packages/account-do/src/index.ts"],
       "@bullmoose/mailstore": ["packages/mailstore/src/index.ts"],
       "@bullmoose/mime": ["packages/mime/src/index.ts"],
-      "@bullmoose/outbound": ["packages/outbound/src/index.ts"]
+      "@bullmoose/outbound": ["packages/outbound/src/index.ts"],
+      // Test-only. Deliberately NOT linked into node_modules: it imports
+      // node:sqlite, which workerd does not have, so resolution exists only
+      // here and in vitest.config.ts and a worker build fails on the bare
+      // specifier rather than bundling it.
+      "@bullmoose/test-fakes": ["packages/test-fakes/src/index.ts"]
     }
   },
   "include": ["packages/*/src/**/*.ts", "services/*/src/**/*.ts"],

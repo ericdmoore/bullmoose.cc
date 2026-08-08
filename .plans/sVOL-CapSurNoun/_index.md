@@ -52,7 +52,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | # | Unit | kind | E | I | owner | depends on | status |
 |---|---|---|---|---|---|---|---|
 | 001 | MCP `ToolDef` scope + domain | pre | E1 | I2 | sVOL | — | **✅ done** |
-| 002 | Shared test harness — fake D1 (`.batch()`) + DO/blob stubs ¹ | pre | E2 | I2 | sVOL | — | todo |
+| 002 | Shared test harness — fake D1 (`.batch()`) + DO/blob stubs ¹ | pre | E2 | I2 | sVOL | — | **✅ done** |
 | 003 | Recurrence correctness before calendar writes | pre | **E3** ⁶ | I3 | `common/003` | — | **✅ done** |
 | 004 | `Mailbox/set` + CLI | cap | E3 | I3 | sVOL | 002 ⁷ | **✅ done** |
 | 005 | `EmailSubmission/get` | cap | E1 | I2 | sVOL | — | todo |
@@ -86,6 +86,13 @@ which is necessary but **not sufficient**: `storeFor` requires `env.BLOBS`
 `Foo/changes`"* — which is the criterion that catches the skipped-choreography bug — is
 untestable without DO stubs too. The unit file still carries the narrower title; its Open
 Questions section owns the discrepancy.
+
+  **Shipped as `@bullmoose/test-fakes`.** The widened scope was built: D1 (real SQLite on the
+  live schema, atomic `.batch()`), R2, KV, and `ACCOUNT_DO` — the last running the **real**
+  `AccountDO` class over in-memory storage, so `Foo/changes` is answered by the deployed
+  changelog rather than a canned `{newState}`. Six local fakes were consolidated, not one: the
+  count grew to `services/provision/src/mintScopes.test.ts` as well. `013`'s done-when #2 is now
+  a supported assertion, and `services/jmap/src/methods/calendars.test.ts` demonstrates it.
 
 ² **`006` was regraded `E2` → `E3` after review.** `identities`
 (`packages/mailstore/sql/control-plane.sql:41-47`) has exactly four columns —
@@ -163,8 +170,8 @@ Grade is not priority. `001` is `I2` and goes first because it blocks four `I3` 
 
 ```
 wave 1 — unblock everything, cheap
-  001  MCP ToolDef scope+domain       E1  ← blocks 013,014,015
-  002  shared fake-D1 + .batch()      E2  ← blocks every write-path test
+  001  MCP ToolDef scope+domain       E1  ← blocks 013,014,015          ✅
+  002  shared fake-D1 + .batch()      E2  ← blocks every write-path test ✅
   016  CLI I/O contract (s05 T1)      E2  ← blocks 017,018,019
 
 wave 2 — the first thing a human can see

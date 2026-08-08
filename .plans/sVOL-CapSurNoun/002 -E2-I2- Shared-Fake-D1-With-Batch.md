@@ -8,7 +8,20 @@
 | **Owner** | `sVOL` |
 | **Depends on** | — |
 | **Blocks** | `004` (`Mailbox/set`) · `006` (`Identity/set`) · `007` (AgentInvocation trigger) · `013` (Calendar + Contacts over MCP) · `014` (Email over MCP) |
-| **Status** | todo |
+| **Status** | **✅ done** — shipped as `packages/test-fakes` (`@bullmoose/test-fakes`) |
+
+> ## Shipped — what actually landed, and where this file was wrong
+>
+> **Option (c) as recommended**, plus two things this file did not scope. See
+> *§ Outcome* at the bottom for the decision record and the answers to the Open
+> Questions.
+>
+> | This file said | Reality when built |
+> |---|---|
+> | "Two test files in the entire repo" | 16 files / 284 tests. Written against `8ba3fe3`; the P1 security work landed in between. |
+> | one fake to extract (`mcp.test.ts`) | **six** divergent fakes, in `services/agent`, `services/jmap` (×3), `services/jmap/src/methods` (×2 — one had grown a `batch` router) and `services/provision`. Consolidating divergence was the job, not extraction. |
+> | test files are excluded from `tsc` | they are typechecked in both configs now, so the `as unknown as` casts were live code, not invisible. |
+> | `packages/auth-core/src/principal.test.ts` — "check whether it rolls its own D1 fake" (OQ #5) | it does not. It tests the pure `authorizeAccount` path and needed no change. |
 
 ## Cells covered
 
@@ -303,3 +316,143 @@ assertion loosened to pass, the fake is wrong — investigate rather than loosen
 6. **One citation in `_context.md` §5 is off by one.** It cites `vitest.config.ts:25` for the
    `packages/cli/**` coverage exclusion; the `exclude` line is `:24` (`:25` is the closing brace
    of the `coverage` block). The claim is correct, the line is not.
+
+---
+
+## Outcome — the decision record
+
+### The fork: (c), and (b) is now a *cheaper* future step, not a foregone one
+
+**Chose (c), a `node:sqlite`-backed fake.** `packages/test-fakes/src/d1.ts` loads
+`packages/mailstore/sql/{control-plane,data-plane}.sql` — the same files wrangler applies —
+into an in-memory `DatabaseSync` and implements all five `D1Database` members.
+
+Why not **(a) extract-and-improve**: the union of what the six fakes routed is ~12 SQL
+fragments, and every one is a duplicate of a string literal in production SQL. More decisively,
+(a) cannot satisfy done-when #3 or #4 *at all*: `run()` writes to an array `all()` never reads,
+so a round-trip is not expressible, and there is no transaction to roll back. The two
+acceptance criteria that make this unit worth doing are the two (a) cannot meet.
+
+Why not **(b) miniflare / `@cloudflare/vitest-pool-workers`**, and the twenty minutes OQ #4
+asked for: the pool **can** be scoped per-project via a vitest workspace, so that objection was
+indeed weak — as suspected. The reasons that survive are different ones:
+
+1. **It is not on the critical path.** (b) tests the *shell*: bindings, DO placement, real D1
+   wire semantics. The units blocked on `002` (`004`, `006`, `007`, `013`, `014`) are blocked
+   on the *write choreography* — mutate → bump ctag → commit changelog — which is method-layer
+   logic. A workerd boot per test file buys nothing for that and costs a second of loop time
+   per file forever.
+2. **The `AccountDO` half is better under (c) than it looks.** The fake runs the **real**
+   `AccountDO` class over in-memory storage, so `/changes` collapse semantics and the 409
+   window are the shipped code, not a re-implementation. That was the part (b) was supposed to
+   win, and (c) wins most of it for ~90 lines.
+3. **The whole suite is 333 ms.** Done-when #5's bar was "a couple of seconds". Adopting (b)
+   repo-wide would trade that for a boot cost paid on every run by every test, including the
+   ~180 pure ones that want nothing to do with a Worker.
+
+**(b) is still the right answer for a different question** — "does this deploy?" — and it is
+now *cheaper* to adopt, because the fixtures are real SQL against the real schema rather than
+substring routers. A future integration suite can seed the same rows through wrangler's local
+D1 and reuse the fixture builders verbatim. Filing that is `_verify.sh`'s job, not this unit's.
+
+### Where it lives, and why it is not a workspace
+
+`packages/test-fakes/`, with **no `package.json`**. That is deliberate and load-bearing:
+
+- npm's `packages/*` workspace glob only matches directories that contain a `package.json`, so
+  nothing is linked into `node_modules/@bullmoose/`. Resolution exists **only** in
+  `tsconfig.json`'s `paths` and `vitest.config.ts`'s `resolve.alias` — under `tsc` and under
+  vitest, and nowhere else. The module imports `node:sqlite`, which workerd does not have; a
+  wrangler build that reached this specifier now fails loudly instead of bundling a Node
+  builtin into a Worker.
+- It is still fully typechecked — root `tsconfig.json`'s `include` covers every package's
+  `src` — so `FakeD1 implements D1Database` is verified against the real `@cloudflare/
+  workers-types`, with **no `as unknown as`**. That was most of the value and exactly what the
+  six local fakes could not do.
+- It also settles **OQ #2** without needing the rubric carve-out: this is not a new workspace,
+  so the `E4` anchor never fires. `E2` stands as filed.
+- The location was checked against every consumer. `packages/cli` **cannot** import it — its
+  tsconfig is Node-typed with no `paths`, which is why it is excluded from the root program in
+  the first place. No CLI test needs a D1 fake today (they use `node:sqlite` directly); if one
+  ever does, it needs a relative import, not this specifier.
+
+### What became newly testable
+
+The harness must catch something the old fakes could not. It does, in four ways:
+
+1. **The write choreography.** `services/jmap/src/methods/calendars.test.ts` now asserts that
+   `CalendarEvent/set` shows up in `CalendarEvent/changes`, commits under that collection and
+   no other, bumps the calendar's `ctag`, and commits **nothing** when the write is rejected.
+   This is `_context.md` §3's failure mode — a write that lands the row and skips `commitChanges`
+   reads back fine and is invisible to every incremental consumer — and it is exactly `013`'s
+   done-when #2. The old `ACCOUNT_DO` stub returned a canned `{oldState:"s1", newState:"s2"}`,
+   which answers "did the changelog record it?" identically whether or not it did.
+2. **Round-trips and atomicity.** `Mailstore.insertCalendarEvents` → `getCalendarEvents` through
+   a real `.batch()`, and a batch whose second statement violates `UNIQUE (account_id, uid)`
+   leaves **no** rows from the first. Impossible before by two independent mechanisms.
+3. **Negative assertions that mean something.** "Nothing was written" used to mean "no INSERT
+   was attempted". It can now mean "the table is empty", which is the claim anyone reading the
+   test thinks it makes.
+4. **Wrong-table bugs fail.** The old catch-all answered *any* unmatched query from a fixture.
+   An unpreparable query is now an error, and account scoping is enforced by real `WHERE`
+   clauses rather than assumed.
+
+Side effect worth recording: line coverage went **~11% → 21.8%**, most of it
+`packages/mailstore` (0% → 22.9%), because the store's SQL now actually executes.
+
+### Four fidelity bugs the review caught, and what they teach
+
+A review pass over the diff found four places where the fake would have let a test pass on
+code that fails in production — the worst possible defect in a harness. All four are fixed with
+regression tests, and all four were verified against `node:sqlite` before being believed:
+
+1. **`undefined` bound as NULL.** Real D1 throws `D1_TYPE_ERROR`, and `undefined` is exactly
+   what a fixture missing an optional key produces. The fake would have written a clean row.
+2. **`.run()` on a read.** `node:sqlite`'s `run()` reports a *stale* `sqlite3_changes` value, so
+   `SELECT … .run()` returned `changes: 1` and no rows. `run()` and `batch()` now share one
+   kind-aware executor.
+3. **Rollback masking the real error.** `ON CONFLICT ROLLBACK` unwinds the transaction itself,
+   so the fake's own `ROLLBACK` threw *"no transaction is active"* and replaced the constraint
+   violation with it.
+4. **The DO stub dropped headers.** `services/jmap/src/index.ts:96` passes a `Request` as the
+   *init* argument and `AccountDO.upgradeWebSocket` reads `Upgrade`, so header loss produces a
+   426 only the fake sees.
+
+The pattern is worth naming for anyone extending this: **every convenience the fake offers the
+caller is a potential lie about what deploys.** Three of the four were coercions or shortcuts
+that made the fake easier to use. When in doubt, throw.
+
+### Answers to the Open Questions
+
+1. **"Unlocks every write-path test" was overstated — correct, and the scope was widened.**
+   Built: `BLOBS` (a real in-memory R2) and `ACCOUNT_DO` (the real `AccountDO`), alongside D1
+   and KV. `_index.md` footnote 1 already recorded the widening; it is now discharged.
+2. **`E2` stands.** Not a workspace — see above.
+3. **`node:sqlite` is not D1 — gap now partly mapped, not closed.** Mapped: `D1Meta.changes` /
+   `last_row_id` are real, the rest are fillers; `batch` is atomic and reports per-statement
+   meta by statement kind; foreign keys are ENFORCED (node:sqlite's default, and D1's), which
+   is stricter than the fakes it replaces and forced every fixture to seed a coherent
+   control-plane spine — hence `seedAccount()`. Still unmapped and documented in the source:
+   D1's session consistency (`withSession` throws), and the fact that both schema planes load
+   into **one** database where production has two.
+4. **The miniflare deferral is defended above, on different grounds than this file guessed.**
+   The pool *can* be scoped per-project; that argument is withdrawn.
+5. **`principal.test.ts` has no D1 fake.** Pure; untouched.
+6. Citation fixed by not restating it.
+
+### Operational note
+
+`node:sqlite` needs Node **>= 22.13**, where `--experimental-sqlite` was dropped (added
+flagged in 22.5). CI pins `node-version: 22`, which resolves to the latest 22.x, so `verify` is
+satisfied — but pinning an exact older 22.x would break `npm test` with a module-not-found.
+Recorded in `packages/test-fakes/src/node-builtins.d.ts` too.
+
+### Out of scope, worth filing
+
+- **`services/agent/src/index.ts:329`** (`finish`) writes terminal invocation state with raw SQL
+  and bypasses `commitChanges`, so invocation completion never reaches the changelog.
+  `_context.md` footnote 13 already flags it as live in the tree. It is now *testable* — the
+  choreography assertions in `calendars.test.ts` are the template — and it deserves a
+  `.feedback` issue independent of this volume.
+- **`services/anglebrackets`, `services/ingest`, `services/submit`** are still at 0% and all
+  three are shell paths this harness now makes cheap to reach. No unit owns that.

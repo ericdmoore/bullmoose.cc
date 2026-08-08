@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { mintToken } from "@bullmoose/auth-core";
+import { fakeEnv } from "@bullmoose/test-fakes";
 import { handleMcp } from "./mcp";
 
 // Handler-level conformance for the stateless-MCP (2026-07-28) surface +
@@ -7,41 +8,12 @@ import { handleMcp } from "./mcp";
 // so the whole path — verifyBearer → authorizeAccount → tool — runs in plain
 // Node against a fake DB with no network. verifyBearer does real crypto over
 // a really-minted token, so the auth path is exercised for real, not stubbed.
-
-type Rows = {
-  token?: Record<string, unknown> | null;
-  accounts?: unknown[];
-  grants?: unknown[];
-  tool?: unknown[];
-};
-
-/** A fake D1 that routes by SQL and records every write for assertions. */
-function fakeD1(rows: Rows) {
-  const writes: Array<{ sql: string; args: unknown[] }> = [];
-  const prepare = (sql: string) => {
-    let bound: unknown[] = [];
-    return {
-      bind(...args: unknown[]) {
-        bound = args;
-        return this;
-      },
-      async first() {
-        if (sql.includes("FROM tokens t JOIN principals")) return rows.token ?? null;
-        return null;
-      },
-      async all() {
-        if (sql.includes("FROM accounts WHERE principal_id")) return { results: rows.accounts ?? [] };
-        if (sql.includes("FROM grants g")) return { results: rows.grants ?? [] };
-        return { results: rows.tool ?? [] }; // tool queries (spend_facts / emails …)
-      },
-      async run() {
-        writes.push({ sql, args: bound });
-        return { meta: { changes: 1 } };
-      },
-    };
-  };
-  return { db: { prepare }, writes };
-}
+//
+// The DB is @bullmoose/test-fakes (sVOL 002) — real SQLite on the live schema.
+// The fixture is now the ROWS, so `verifyBearer`'s tokens⋈principals join, its
+// accounts lookup and its grants⋈accounts join all execute as written; the fake
+// this replaced answered each of them from a hand-labelled bucket and answered
+// every unrecognized query, including a tool's, from a catch-all.
 
 const V = "2026-07-28";
 
@@ -50,21 +22,98 @@ beforeAll(async () => {
   minted = await mintToken();
 });
 
-const tokenRow = (over: Record<string, unknown> = {}) => ({
-  secret_hash: minted.secretHash,
-  scopes: JSON.stringify(["read"]),
-  expires_at: null,
-  last_used_at: Date.now(), // recent → no last_used write to add noise
-  principal_id: "p_eric",
-  login_email: "eric@bullmoose.cc",
-  ...over,
-});
+interface Fixture {
+  /** Who the bearer belongs to. */
+  principalId?: string;
+  loginEmail?: string;
+  tokenScopes?: string[];
+  /** Accounts this principal owns. */
+  accounts?: Array<{ id: string; display_name: string }>;
+  /** Cross-account grants reaching the principal's accounts. */
+  grants?: Array<{ id: string; grantee_account_id: string; target_account_id: string; scopes: string[] }>;
+  /** Accounts that exist but belong to someone else (grant targets). */
+  otherAccounts?: Array<{ id: string; display_name: string }>;
+  /** Rows the analytics tools read. */
+  spend?: Array<Record<string, unknown>>;
+}
 
-const ericOwns = (): Rows => ({
-  token: tokenRow(),
-  accounts: [{ id: "a_eric", tenant_id: "t_bm", display_name: "Eric" }],
-  grants: [],
-  tool: [{ period_month: "2026-08", total_cents: 4200, txns: 3 }],
+const TENANT = "t_bm";
+
+const SPEND_ROW = {
+  id: "sf_1",
+  vendor: "sparkling-pools",
+  amount_cents: 4200,
+  currency: "USD",
+  txn_date: "2026-08-03",
+  period_month: "2026-08",
+  category: "home",
+  confidence: 1,
+  dedup_hash: "h1",
+  created_at: 1,
+};
+
+function world(fx: Fixture) {
+  const principalId = fx.principalId ?? "p_eric";
+  const w = fakeEnv();
+
+  for (const a of fx.accounts ?? []) {
+    w.db.seedAccount({
+      accountId: a.id,
+      tenantId: TENANT,
+      principalId,
+      loginEmail: fx.loginEmail ?? "eric@bullmoose.cc",
+      displayName: a.display_name,
+    });
+  }
+  for (const a of fx.otherAccounts ?? []) {
+    w.db.seedAccount({
+      accountId: a.id,
+      tenantId: TENANT,
+      principalId: `p_owner_${a.id}`,
+      loginEmail: `owner-${a.id}@bullmoose.cc`,
+      displayName: a.display_name,
+    });
+  }
+  w.db.seed("tokens", [
+    {
+      id: minted.id,
+      principal_id: principalId,
+      kind: "bearer",
+      secret_hash: minted.secretHash,
+      name: "test",
+      scopes: JSON.stringify(fx.tokenScopes ?? ["read"]),
+      created_at: 1,
+      expires_at: null,
+      last_used_at: Date.now(), // recent → no last_used write to add noise
+    },
+  ]);
+  w.db.seed(
+    "grants",
+    (fx.grants ?? []).map((g) => ({
+      id: g.id,
+      tenant_id: TENANT,
+      grantee_account_id: g.grantee_account_id,
+      target_account_id: g.target_account_id,
+      scopes: JSON.stringify(g.scopes),
+      collection: null,
+      collection_id: null,
+      created_by: "admin",
+      created_at: 1,
+      expires_at: null,
+    })),
+  );
+  w.db.seed(
+    "spend_facts",
+    (fx.spend ?? []).map((s) => ({ ...SPEND_ROW, ...s })),
+  );
+  return w;
+}
+
+const ericOwns = (): Fixture => ({
+  principalId: "p_eric",
+  loginEmail: "eric@bullmoose.cc",
+  accounts: [{ id: "a_eric", display_name: "Eric" }],
+  spend: [{ account_id: "a_eric" }],
 });
 
 const bearer = () => `Bearer ${minted.token}`;
@@ -79,15 +128,15 @@ const meta = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function call(body: unknown, hdrs: Record<string, string>, rows: Rows) {
-  const { db, writes } = fakeD1(rows);
+function call(body: unknown, hdrs: Record<string, string>, fx: Fixture) {
+  const w = world(fx);
   const req = new Request("https://agent/mcp/analytics", {
     method: "POST",
     headers: { "content-type": "application/json", ...hdrs },
     body: JSON.stringify(body),
   });
-  // Test file is excluded from tsc; the env only needs DB for this handler.
-  return { res: handleMcp(req, { DB: db } as unknown as Parameters<typeof handleMcp>[1]), writes };
+  // No cast: the harness supplies every binding services/agent's Env requires.
+  return { res: handleMcp(req, w.env), writes: w.db.writes, db: w.db };
 }
 
 describe("handleMcp — MCP.2 transport conformance", () => {
@@ -218,22 +267,60 @@ describe("handleMcp — §6 auth gate", () => {
     expect(writes.some((w) => w.sql.includes("grant_audit"))).toBe(false);
   });
 
+  it("11. actually aggregates the ledger, per month and per currency", async () => {
+    // New with the shared harness. The old fake answered the tool's query from
+    // a catch-all holding a PRE-aggregated row, so `SUM`, `COUNT`, the
+    // GROUP BY and the account filter were all inert — the tool would have
+    // returned the fixture unchanged even with the SQL deleted. These rows are
+    // raw receipts; the numbers below only appear if the query runs.
+    const { res } = call(
+      {
+        jsonrpc: "2.0",
+        id: 11,
+        method: "tools/call",
+        params: { name: "spend_by_month", arguments: { accountId: "a_eric" }, _meta: meta() },
+      },
+      headers(),
+      {
+        ...ericOwns(),
+        spend: [
+          { account_id: "a_eric", id: "sf_1", amount_cents: 4200, dedup_hash: "h1" },
+          { account_id: "a_eric", id: "sf_2", amount_cents: 800, dedup_hash: "h2" },
+          // Different month → its own bucket.
+          { account_id: "a_eric", id: "sf_3", amount_cents: 100, period_month: "2026-07", dedup_hash: "h3" },
+          // Another account's receipt must not be summed into Eric's total.
+          { account_id: "a_other", id: "sf_4", amount_cents: 9999, dedup_hash: "h4" },
+        ],
+        otherAccounts: [{ id: "a_other", display_name: "Someone" }],
+      },
+    );
+    const b = (await res).json() as Promise<any>;
+    const rows = JSON.parse((await b).result.content[0].text) as Array<{
+      period_month: string;
+      currency: string;
+      total_cents: number;
+      txns: number;
+    }>;
+    // ORDER BY period_month DESC
+    expect(rows).toEqual([
+      { period_month: "2026-08", currency: "USD", total_cents: 5000, txns: 2 },
+      { period_month: "2026-07", currency: "USD", total_cents: 100, txns: 1 },
+    ]);
+  });
+
   it("10. allows and audits a grant-reached read", async () => {
-    const rows: Rows = {
-      token: tokenRow({ principal_id: "p_allen", login_email: "allen@bullmoose.cc" }),
-      accounts: [{ id: "a_allen", tenant_id: "t_bm", display_name: "Allen" }],
+    const rows: Fixture = {
+      principalId: "p_allen",
+      loginEmail: "allen@bullmoose.cc",
+      accounts: [{ id: "a_allen", display_name: "Allen" }],
+      // a_eric belongs to someone else; the grant is the only way Allen
+      // reaches it, and the tenant/display_name now come from the real
+      // grants ⋈ accounts join rather than being pasted into the grant row.
+      otherAccounts: [{ id: "a_eric", display_name: "Eric" }],
       grants: [
-        {
-          id: "g1",
-          target_account_id: "a_eric",
-          scopes: JSON.stringify(["read"]),
-          collection: null,
-          collection_id: null,
-          tenant_id: "t_bm",
-          display_name: "Eric",
-        },
+        { id: "g1", grantee_account_id: "a_allen", target_account_id: "a_eric", scopes: ["read"] },
       ],
-      tool: [{ period_month: "2026-08", total_cents: 1 }],
+      spend: [{ account_id: "a_eric", amount_cents: 1 }],
     };
     const { res, writes } = call(
       {

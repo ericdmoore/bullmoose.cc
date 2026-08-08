@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { MethodRegistry } from "@bullmoose/jmap-core";
+import { fakeEnv } from "@bullmoose/test-fakes";
 import { registerSubmissionMethods } from "./submission";
 import type { RequestContext } from "./common";
-import type { Env } from "../index";
 
 // EmailSubmission/set is the outbound identity boundary: whatever ends up
 // in `envelope.mailFrom` is handed to the relay, and on the Cloudflare
@@ -13,7 +13,13 @@ import type { Env } from "../index";
 // expectation. Per .plans/devPrinciples.md clients are injected, so this
 // runs in plain Node with no workerd and no network.
 
-// ---- fakes ------------------------------------------------------------
+// The fakes are @bullmoose/test-fakes (sVOL 002): real SQLite on the live
+// schema, a real R2, and the REAL AccountDO behind ACCOUNT_DO. The fixture is
+// now the ROW — seeded into the actual table Mailstore queries — rather than a
+// canned answer to a SQL substring, so a query against the wrong table is an
+// error instead of a pass.
+
+// ---- fixtures ---------------------------------------------------------
 
 interface Fixture {
   emails?: Array<Record<string, unknown>>;
@@ -28,83 +34,6 @@ interface Fixture {
   }>;
   identities?: Array<{ id: string; email: string; name: string }>;
 }
-
-/** A fake D1 that routes by SQL and records every write for assertions. */
-function fakeD1(fx: Fixture) {
-  const writes: Array<{ sql: string; args: unknown[] }> = [];
-
-  const rowsFor = (sql: string): unknown[] => {
-    if (sql.includes("FROM emails WHERE account_id")) return fx.emails ?? [];
-    if (sql.includes("FROM email_mailboxes")) return fx.emailMailboxes ?? [];
-    if (sql.includes("FROM email_keywords")) return fx.emailKeywords ?? [];
-    if (sql.includes("FROM mailboxes")) return fx.mailboxes ?? [];
-    if (sql.includes("FROM identities")) return fx.identities ?? [];
-    return [];
-  };
-
-  const prepare = (sql: string) => {
-    let bound: unknown[] = [];
-    const stmt = {
-      sql,
-      bind(...args: unknown[]) {
-        bound = args;
-        return this;
-      },
-      async first() {
-        return (rowsFor(sql)[0] as Record<string, unknown> | undefined) ?? null;
-      },
-      async all() {
-        return { results: rowsFor(sql) };
-      },
-      async run() {
-        writes.push({ sql, args: bound });
-        return { meta: { changes: 1 } };
-      },
-    };
-    return stmt;
-  };
-
-  const batch = async (stmts: Array<{ sql: string }>) =>
-    stmts.map((s) => ({ results: rowsFor(s.sql) }));
-
-  return { db: { prepare, batch }, writes };
-}
-
-/** AccountDO stand-in: only /state and /commit are reached from here. */
-function fakeAccountDo() {
-  const stub = {
-    async fetch(input: RequestInfo | URL) {
-      const url = String(input instanceof Request ? input.url : input);
-      if (url.endsWith("/state")) return jsonRes({ state: "s1" });
-      if (url.endsWith("/commit")) return jsonRes({ oldState: "s1", newState: "s2" });
-      return new Response("not found", { status: 404 });
-    },
-  };
-  return { idFromName: (n: string) => n, get: () => stub };
-}
-
-/** The submit worker's /internal/submit, recording what it was handed. */
-function fakeSubmit() {
-  const calls: Array<{ mailFrom: string; rcptTo: string[] }> = [];
-  const binding = {
-    async fetch(_input: RequestInfo | URL, init?: RequestInit) {
-      const body = JSON.parse(String(init?.body)) as {
-        envelope: { mailFrom: string; rcptTo: string[] };
-      };
-      calls.push(body.envelope);
-      return jsonRes({ relayMessageId: "relay-1" });
-    },
-  };
-  return { binding, calls };
-}
-
-function jsonRes(body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    headers: { "content-type": "application/json" },
-  });
-}
-
-// ---- fixtures ---------------------------------------------------------
 
 const ACCOUNT = "a_eric";
 const LOGIN_EMAIL = "eric@login.example";
@@ -144,21 +73,21 @@ const draftFixture = (over: Fixture = {}): Fixture => ({
 });
 
 function harness(fx: Fixture) {
-  const { db, writes } = fakeD1(fx);
-  const submit = fakeSubmit();
+  const w = fakeEnv();
+  w.db.seedAccount({ accountId: ACCOUNT, loginEmail: LOGIN_EMAIL, displayName: "Eric" });
+  const withAccount = <T extends object>(rows: T[]) => rows.map((r) => ({ account_id: ACCOUNT, ...r }));
+  w.db.seed("emails", withAccount(fx.emails ?? []));
+  w.db.seed("email_mailboxes", withAccount(fx.emailMailboxes ?? []));
+  w.db.seed("email_keywords", withAccount(fx.emailKeywords ?? []));
+  w.db.seed("mailboxes", withAccount(fx.mailboxes ?? []));
+  w.db.seed("identities", withAccount(fx.identities ?? []));
+
   const registry = new MethodRegistry<RequestContext>();
   registerSubmissionMethods(registry);
   const handler = registry.get("EmailSubmission/set")!;
 
   const ctx: RequestContext = {
-    env: {
-      DB: db,
-      BLOBS: {},
-      ROUTES: {},
-      ACCOUNT_DO: fakeAccountDo(),
-      SUBMIT: submit.binding,
-      INTERNAL_TOKEN: "tok",
-    } as unknown as Env,
+    env: w.env,
     principal: {
       username: LOGIN_EMAIL,
       scopes: ["mail"],
@@ -169,7 +98,7 @@ function harness(fx: Fixture) {
   const call = (create: Record<string, unknown>) =>
     handler({ accountId: ACCOUNT, create }, ctx);
 
-  return { call, relayCalls: submit.calls, writes };
+  return { call, relayCalls: w.submit.calls, writes: w.db.writes, w };
 }
 
 /** The envelope persisted by insertSubmission, for the audit-trail check. */

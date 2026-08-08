@@ -1,5 +1,6 @@
 import { hashLoginKey } from "@bullmoose/auth-core";
 import { beforeAll, describe, expect, it } from "vitest";
+import { fakeEnv } from "@bullmoose/test-fakes";
 import type { Principal } from "./auth";
 import { handleLogin, handleTokens } from "./authRoutes";
 
@@ -22,49 +23,26 @@ beforeAll(async () => {
   pwHash = await hashLoginKey(GOOD_KEY);
 });
 
-/** Fake D1 recording writes; answers the two SELECTs these handlers make. */
-function fakeD1() {
-  const writes: Array<{ sql: string; args: unknown[] }> = [];
-  const prepare = (sql: string) => {
-    let bound: unknown[] = [];
-    return {
-      bind(...args: unknown[]) {
-        bound = args;
-        return this;
-      },
-      async first() {
-        if (sql.includes("FROM principals p JOIN credentials")) {
-          return { id: "p_eric", login_email: EMAIL, pw_hash: pwHash };
-        }
-        if (sql.includes("FROM principals WHERE login_email")) return { id: "p_eric" };
-        return null;
-      },
-      async all() {
-        return { results: [] };
-      },
-      async run() {
-        writes.push({ sql, args: bound });
-        return { meta: { changes: 1 } };
-      },
-    };
-  };
-  return { db: { prepare } as unknown as D1Database, writes };
-}
-
-/** KV good enough for the login throttle (never trips in these tests). */
-function fakeKV() {
-  const store = new Map<string, string>();
-  return {
-    async get(k: string) {
-      return store.get(k) ?? null;
+/**
+ * One principal with a password, seeded into the real tables so both handlers'
+ * SELECTs run as written. Fakes are @bullmoose/test-fakes (sVOL 002); this file
+ * used to carry its own D1 *and* its own KV, and the KV disagreed with the one
+ * in authRoutes.test.ts about whether expiry exists.
+ */
+function world() {
+  const w = fakeEnv();
+  w.db.seedAccount({ accountId: "a_eric", principalId: "p_eric", loginEmail: EMAIL });
+  w.db.seed("credentials", [
+    {
+      principal_id: "p_eric",
+      pw_algo: "client-pbkdf2-sha256-v1",
+      pw_hash: pwHash,
+      pw_salt: "salt",
+      pw_iters: 1,
+      updated_at: 1,
     },
-    async put(k: string, v: string) {
-      store.set(k, v);
-    },
-    async delete(k: string) {
-      store.delete(k);
-    },
-  } as unknown as KVNamespace;
+  ]);
+  return w;
 }
 
 /** The `scopes` column of the single INSERT INTO tokens, parsed. */
@@ -76,27 +54,25 @@ function insertedScopes(writes: Array<{ sql: string; args: unknown[] }>): string
 }
 
 function login(body: Record<string, unknown>) {
-  const d1 = fakeD1();
-  const env = { DB: d1.db, ROUTES: fakeKV() } as unknown as Parameters<typeof handleLogin>[1];
+  const w = world();
   const req = new Request("https://jmap.bullmoose.cc/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.7" },
     body: JSON.stringify({ email: EMAIL, loginKey: GOOD_KEY, ...body }),
   });
-  return { res: handleLogin(req, env), writes: d1.writes };
+  return { res: handleLogin(req, w.env), writes: w.db.writes };
 }
 
 function mint(body: Record<string, unknown>, held: string[] = ["mail", "contacts", "vault"]) {
-  const d1 = fakeD1();
-  const env = { DB: d1.db } as unknown as Parameters<typeof handleTokens>[2];
-  const principal = { username: EMAIL, scopes: held, accounts: [] } as unknown as Principal;
+  const w = world();
+  const principal: Principal = { username: EMAIL, scopes: held, accounts: [] };
   const url = new URL("https://jmap.bullmoose.cc/auth/tokens");
   const req = new Request(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  return { res: handleTokens(req, url, env, principal), writes: d1.writes };
+  return { res: handleTokens(req, url, w.env, principal), writes: w.db.writes };
 }
 
 describe("POST /auth/login — the one surviving default", () => {
