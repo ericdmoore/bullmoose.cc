@@ -49,9 +49,9 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 
 | # | Unit | kind | E | I | owner | depends on | status |
 |---|---|---|---|---|---|---|---|
-| 001 | MCP `ToolDef` scope + domain | pre | E1 | I2 | sVOL | — | todo |
+| 001 | MCP `ToolDef` scope + domain | pre | E1 | I2 | sVOL | — | **✅ done** |
 | 002 | Shared test harness — fake D1 (`.batch()`) + DO/blob stubs ¹ | pre | E2 | I2 | sVOL | — | todo |
-| 003 | Recurrence correctness before calendar writes | pre | E2 | I3 | `common/003` | — | todo |
+| 003 | Recurrence correctness before calendar writes | pre | **E3** ⁶ | I3 | `common/003` | — | **✅ done** |
 | 004 | `Mailbox/set` + CLI | cap | E3 | I3 | sVOL | 002 | todo |
 | 005 | `EmailSubmission/get` | cap | E1 | I2 | sVOL | — | todo |
 | 006 | `Identity/set` + CLI signatures | cap | **E3** ² | I3 | sVOL | 002 | todo |
@@ -125,6 +125,13 @@ paths filter on it (`agent/src/index.ts:110`, `ingest/src/index.ts:169`), so it 
 kill switch, merely unreachable. `007` hands a human an on-demand agent trigger into a system
 with no off switch, which makes binding-disable a named de-risking dependency of `007` — `I3`,
 wave 3. The rest of `008` (tenant/domain/account lifecycle) stays `I1`/wave 4.
+
+⁶ **`003` shipped as `E3`, not the `E2` the ledger predicted** — and the earlier note that
+this grade was "contestable" was right. The guard had to move to `eventSpan` (the parser was
+the wrong side: `CalendarEvent/set` takes JSCalendar directly and never validated
+`recurrenceRules`), a `Set<RulePart>` could not express several of the needed predicates, and
+`calendar-core` went from zero tests to 100 with an external oracle. See
+`.feedback/fromClaude/✅003`.
 
 **Owned elsewhere (9 of 27):** 003, 011, 016, 017, 018, 020, 021, 023, 025 point at an
 existing section or filed issue rather than restating the work. Their files here carry the

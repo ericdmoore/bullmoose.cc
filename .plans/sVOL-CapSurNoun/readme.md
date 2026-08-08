@@ -183,9 +183,30 @@ The exhaustive property is what the grid in `_index.md` is for. The pile is for 
 
 ## Process
 
+0. **If you are an agent working in a git worktree, sync it before anything else:**
+
+   ```bash
+   git fetch origin && git merge origin/main
+   ```
+
+   Worktrees branch from `main` at creation and go stale fast. One agent skipped this and
+   silently reverted part of another commit — its change was correct against its own base and
+   wrong against the branch. Confirm `npm test` is green *before* you change anything, so a
+   failure later is unambiguously yours.
+
+   Related, and easy to miss: `vitest.config.ts` pins `@bullmoose/*` with `resolve.alias`.
+   Without it, Node's upward `node_modules` lookup escapes the worktree and resolves workspace
+   packages to the **parent checkout** — tests then exercise a different branch's source than
+   `tsc` checks. If you touch that config, keep the aliases.
+
 1. Read `_context.md` first. It is the audited state of the repo, with `file:line` evidence.
    **Do not re-derive it from the docs** — several plan docs are stale or overstate what
    exists, and *no existing plan records its own status*.
+
+   Note the irony, and take the warning seriously: this volume's own `_context.md` went stale
+   within one session of being written. It carries a "Changes since the original audit"
+   banner for exactly that reason. **Check that banner's date against `git log` before
+   trusting a number in it.**
 2. Pick a unit from the `_index.md` ledger whose dependencies are met.
 3. Build it. Update the unit file's **Status** line.
 4. On commit, prefix the filename with ✅ and update `_index.md`.

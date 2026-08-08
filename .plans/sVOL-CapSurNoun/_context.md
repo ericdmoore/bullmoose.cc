@@ -1,7 +1,31 @@
 # _context — audited ground truth
 
-**Audited 2026-08-08 against the working tree at `8ba3fe3`.** Everything here was read out of
-the source, not out of the plan docs. Every `file:line` was verified at audit time.
+**Originally audited against `8ba3fe3`. Refreshed after the P1 security backlog landed
+(PRs #12, #13, #15).** Everything here was read out of the source, not out of the plan docs.
+
+> ## ⚠️ Changes since the original audit — read this first
+>
+> A single session of security work invalidated several claims below. They are corrected
+> inline, but the *shape* of the change matters more than any one line:
+>
+> | Was | Now |
+> |---|---|
+> | 2 test files, 19 tests | **16 test files, 284 tests** |
+> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
+> | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
+> | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
+> | test files excluded from typecheck | typechecked in both configs |
+> | `mail` satisfied every scope | `mail` = exactly the six mail verbs; `contacts`/`calendar`/`vault` are independent |
+> | `Email/set` gated everything on `draft` | per-operation: `draft`/`annotate`/`move`/`delete` |
+> | MCP `ToolDef` had no scope/domain | declared per tool; the gate reads it |
+> | CI deployed 4 of 7 workers, wrong order | 6 of 7, order derived from the binding graph |
+>
+> **Eight P1s are closed** (`✅`-prefixed in `.feedback/`). The security posture this volume
+> was planned against is materially different — in particular, any unit reasoning about
+> scopes must re-read §4 rather than trusting a memory of it.
+>
+> **Still true and still the point:** the MCP column is empty of noun CRUD, `Mailbox/set`
+> exists nowhere, DAV cannot create collections, and there is no WebUI.
 
 > **Read this before reviewing or building anything in `sVOL`.**
 > Do not re-derive state from `.plans/` — several plan docs overstate what exists, and
@@ -226,15 +250,18 @@ unit `002`'s Open Questions — its scope as written is necessary but **not suff
   `MethodDomain = "mail" | "contacts" | "calendar"`, and the methods pass them as live scope
   arguments. The code is correct; the header comment is stale. It is a load-bearing comment —
   it is the thing someone reads before adding a scope check.
-- **MCP** hardcodes it for **every** tool: `authorizeAccount(principal, accountId, "read",
-  "mail")` at `services/agent/src/mcp.ts:257`. `ToolDef` (`:36-41`) has no scope/domain field.
-  **Any write tool added today would be authorized as a `read` on `mail`.**
+- ✅ **MCP now declares scope + domain PER TOOL** (`ToolDef` in `services/agent/src/mcp.ts`),
+  and the gate reads them — sVOL unit `001`, shipped. All four existing tools declare
+  `("read","mail")`, so runtime behaviour is unchanged; the value is that the next tool cannot
+  silently inherit a read gate. `TOOLS` is exported and `mcpTools.test.ts` asserts every tool
+  declares a scope from the real vocabulary.
 - `authorizeAccount` is pure and returns `{ok, access, auditGrant}`
   (`packages/auth-core/src/principal.ts`); the `grant_audit` write stays in the shell.
-- ⚠️ **`common/001` (P1, open)**: `hasScope` treats `mail` as a universal scope, so a
-  `mail`-scoped token already satisfies `calendar`, `contacts`, `vault`, `send`, `delete`.
-  Verified empirically. Any scope-gate work in this volume is weaker than it reads until that
-  is fixed.
+- ✅ **`common/001` is CLOSED.** `mail` now covers exactly the six mail verbs;
+  `contacts`/`calendar`/`vault` are independent realm scopes (`REALM_SCOPES` in auth-core) and
+  unknown scopes fail closed. **Scope gates in this volume now actually bite** — the opposite
+  of the warning that used to sit here. `bullmoose login --scopes` is the only self-service way
+  to widen, because `token create` can only narrow the token it is called with.
 - **`services/agent/src/vault.ts:41-66` still hand-rolls its own bearer verification**,
   duplicating the `tokens ⋈ principals` join. This is the unfinished half of `s01` T1.
 
@@ -242,53 +269,31 @@ unit `002`'s Open Questions — its scope as written is necessary but **not suff
 
 ## 5. Test infrastructure — the honest state
 
-**Two test files exist in the entire repo:**
-- `packages/auth-core/src/principal.test.ts`
-- `services/agent/src/mcp.test.ts`
+**16 test files, 284 tests** (was 2 files / 19 at the original audit). `npm test` runs in
+well under a second and is a **required status check** on `main` via the `verify` job.
 
-**There is no shared fake-D1 helper.** `fakeD1` is a local, non-exported function at
-`services/agent/src/mcp.test.ts:19-43`. It routes by SQL substring match and **does not
-implement `.batch()`** — which `Mailstore` calendar and contact writes use
-(`insertCalendarEvents:1513`). Any write-path test needs it extracted and taught real routing,
-or needs miniflare.
+`vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
+worktree agents: without it Node's upward `node_modules` lookup escapes the worktree and
+resolves `@bullmoose/*` to the **parent checkout**, so tests silently exercise a different
+branch's source than `tsc` checks.
 
-`vitest.config.ts` includes `packages/**/*.test.ts` and `services/**/*.test.ts`,
-`environment: "node"`, **no workerd/miniflare** (`:4-6` says worker-level D1 integration "can
-be added later"). Coverage excludes `packages/cli/**` (`:24`).
+⚠️ **There is still no SHARED fake-D1 helper.** Four separate local copies now exist —
+`services/agent/src/mcp.test.ts`, `services/jmap/src/authRoutes.test.ts`,
+`services/jmap/src/mintScopes.test.ts`, `services/jmap/src/methods/submission.test.ts` — each
+routing by SQL substring, each extended ad hoc (one grew a `batch` router). Unit `002` is
+therefore *more* valuable than when filed, not less: it now has four divergent
+implementations to consolidate rather than one to extract.
 
-**Zero coverage** for: `calendar-core` recurrence expansion, all JMAP methods, all `Mailstore`
-methods, the entire CalDAV/CardDAV surface, and the entire CLI (`packages/cli` has no test
-directory at all).
+Coverage is ~11% lines overall. Still at or near zero: `packages/cli` (excluded from the
+coverage report entirely, `vitest.config.ts`), `services/anglebrackets` (the whole DAV
+surface), `services/ingest`, `services/submit`, `packages/mailstore`, and most JMAP methods.
+`calendar-core`, `auth-core`, `mime` and the auth/scope paths are now genuinely covered.
 
-⚠️ **`common/003` (P1, open)** — `calendar-core`'s RRULE parser accepts rules the expander
-silently mis-expands. Parser (`ical.ts:129-150`) and expander (`index.ts:393-419`) have
-independent supported-sets with nothing keeping them in sync. Highest-risk untested logic in
-the repo.
-
-**The filed issue understates it.** These were confirmed *by execution*, not by reading — the
-only executed claims anywhere in this volume:
-
-| rule | expands to | should be |
-|---|---|---|
-| `FREQ=YEARLY;BYMONTH=11;BYDAY=4TH` | `start.day` of Nov, every year | 4th Thursday of Nov |
-| `FREQ=MONTHLY;BYMONTH=11;BYDAY=4TH` | 4th Thu of **every month** | Nov only — `byMonth` is never read by the monthly branch |
-| `FREQ=DAILY;BYDAY=MO` | **every day** | Mondays only |
-| `FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=25` from a Dec-20 start | Dec 20, forever | Dec 25 |
-
-So it is at least four distinct defects across three frequency branches, not the single
-yearly-branch bug the issue describes.
-
-🔴 **And it corrupts data at write time, not just display.** `eventSpan` — which runs on
-**both** write surfaces and populates the indexed `calendar_events.end_at` column — returned
-Nov 26 2028 for a bounded Thanksgiving rule whose true last occurrence is Nov 23. That column
-is the prefilter for `CalendarEvent/query` time-range filtering.
-
-**Consequence for sequencing:** writing recurring events before `003` lands puts wrong values
-in an index column, and fixing the expander later does **not** retroactively repair rows
-already written. This is why `003` gates `013` and `018` for recurring events specifically —
-it is a data-integrity dependency, not a politeness.
-
----
+⚠️ `common/003` is **CLOSED**. The RRULE parser/expander mismatch is fixed at the `eventSpan`
+write boundary — bad rules are refused on write and dropped (not thrown) on read, so one
+legacy row cannot break a whole collection's query. Stale `calendar_events.end_at` values can
+only **over-include**, and both windowed read paths re-check with a real expansion, so they
+self-correct at read time. Unit `003`'s data-integrity gate on `013`/`018` is discharged.
 
 ## 6. Existing `sNN` status — verified from git and source, not from the docs
 
