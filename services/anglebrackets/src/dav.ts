@@ -928,6 +928,13 @@ async function handleEventResource(
     await requireCalWrite(env, principal, access);
     const { event, warnings } = parseICal(await request.text());
     if (!event) return new Response(`no VEVENT in body (${warnings.join("; ")})`, { status: 400 });
+    // parseICal drops RRULEs the expander cannot honour (calendar-core
+    // SUPPORTED_PARTS) and the VEVENT is still stored, minus the rule. Say
+    // so rather than 4xx-ing: failing the PUT would stall the client's whole
+    // sync over one event. A header keeps it out of the silence the original
+    // defect lived in without breaking Apple Calendar.
+    const warned: Record<string, string> =
+      warnings.length > 0 ? { "bullmoose-ical-warnings": warnings.join("; ") } : {};
 
     const existing = await store.getEventByDavName(access.accountId, cal.id, name);
     const ifMatch = request.headers.get("If-Match");
@@ -974,7 +981,10 @@ async function handleEventResource(
       await commitChanges(env.ACCOUNT_DO, access.accountId, [
         { collection: "CalendarEvent", updated: [existing.id] },
       ]);
-      return new Response(null, { status: 204, headers: { etag: etagOf(existing.id, now) } });
+      return new Response(null, {
+        status: 204,
+        headers: { etag: etagOf(existing.id, now), ...warned },
+      });
     }
 
     const uidTaken = await store.calendarEventIdsByUids(access.accountId, [uid]);
@@ -999,7 +1009,7 @@ async function handleEventResource(
     await commitChanges(env.ACCOUNT_DO, access.accountId, [
       { collection: "CalendarEvent", created: [id] },
     ]);
-    return new Response(null, { status: 201, headers: { etag: etagOf(id, now) } });
+    return new Response(null, { status: 201, headers: { etag: etagOf(id, now), ...warned } });
   }
 
   if (request.method === "DELETE") {
