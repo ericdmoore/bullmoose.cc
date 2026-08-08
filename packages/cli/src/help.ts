@@ -171,15 +171,21 @@ export const COMMANDS: Command[] = [
     synopsis: "bullmoose watch [--json] [--exec <cmd>] [--daemon | --status | --stop]",
     summary: "push-triggered live sync: print new mail as it arrives",
     description:
-      "Holds a JMAP push channel and prints each new message. --json emits NDJSON events; --exec runs a shell command per new message with {id} {from} {subject} {preview} placeholders; --daemon detaches (prints a PID; logs beside the db file).",
+      "Holds a JMAP push channel and prints each new message. --json emits NDJSON events; --daemon detaches (prints a PID; logs beside the db file). --exec runs a shell command once per new message: the command is handed to `sh -c` verbatim and the message arrives in the environment as $BM_ID, $BM_ACCOUNT, $BM_FROM, $BM_SUBJECT and $BM_PREVIEW (preview truncated to 120 chars). Quote them — an inbound subject is attacker-controlled text, and unquoted it still word-splits inside your own command. BREAKING (was: substitution): the {id} {from} {subject} {preview} placeholders are no longer substituted — they were a shell-injection vector, since a stranger's subject line ended up parsed by your shell. A template still containing them gets a warning on stderr. The hook is fire-and-forget, gets no stdin, and under --json its stdout is redirected to stderr so it cannot corrupt the NDJSON stream.",
     flags: [
       { flag: "--json", desc: "emit NDJSON events" },
-      { flag: "--exec <cmd>", desc: "run per message ({id} {from} {subject} {preview})" },
+      {
+        flag: "--exec <cmd>",
+        desc: "run `sh -c <cmd>` per new message; fields arrive as $BM_ID $BM_ACCOUNT $BM_FROM $BM_SUBJECT $BM_PREVIEW",
+      },
       { flag: "--daemon / --status / --stop", desc: "manage a detached watcher" },
     ],
     examples: [
       { cmd: "bullmoose watch" },
-      { cmd: 'bullmoose watch --json --exec \'notify-send "{from}: {subject}"\'' },
+      {
+        cmd: 'bullmoose watch --json --exec \'notify-send "$BM_FROM: $BM_SUBJECT"\'',
+        note: "always quote $BM_* — the values come from whoever emailed you",
+      },
     ],
     seeAlso: ["sync", "agent"],
   },

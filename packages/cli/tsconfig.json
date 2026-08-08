@@ -12,5 +12,8 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  // Tests run under vitest (root vitest.config.ts) and are not shipped in
+  // dist; the root tsconfig excludes **/*.test.ts for the same reason.
+  "exclude": ["src/**/*.test.ts"]
 }

