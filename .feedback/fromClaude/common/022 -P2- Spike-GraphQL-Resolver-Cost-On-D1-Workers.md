@@ -11,11 +11,17 @@ see `common/005`).
 
 What's left is **one operational unknown**, and it is the actual gate on the decision:
 
-> Can a GraphQL resolver graph traverse mail → contacts → calendar on **D1 inside a
-> Worker's CPU budget**, with batching?
+> **Where is the ceiling?** How deep a traversal, over how many rows, before a resolver
+> graph on D1 exceeds a Worker's CPU budget?
 
-If yes, the split in §14.5 (JMAP for standard clients, GraphQL for agents + our own
-webmail) becomes attractive. If no, that is the honest reason to decline.
+**Framing matters here.** Resolver overhead at personal-mailbox scale is a *utility tax* —
+a fine price for better-shaped data, and not worth optimizing. The reason to measure at
+all is that **Workers' CPU limit is a cliff, not a gradient**: an over-budget request is
+**killed**, not slowed. So the risk isn't slowness — it's a traversal that works on a
+small inbox and hard-fails on a 50k-message one, with no warning in between.
+
+If the ceiling is comfortably far away, the case in §14.5 (GraphQL for **agents**) is
+attractive. If it's close, that's the honest reason to decline — not §14.1's arguments.
 
 ## What makes this non-obvious
 
@@ -58,5 +64,14 @@ than the sequence it replaces."
   option; a parallel stack is refused regardless.
 - `services/anglebrackets/src/dav.ts:106` — the existing proof that multi-projection over
   `Mailstore` works.
-- `.plans/s03.C-webmail-floor` — if GraphQL wins, its JMAP client module changes shape.
-  Worth deciding **before** that slice starts.
+
+## ⚠️ Sequencing correction
+
+An earlier draft of this issue said the spike should land **before**
+`.plans/s03.C-webmail-floor` T1, because a GraphQL decision would change webmail's client
+shape. **That is no longer true** — §14.5 now concludes the webmail case is weak
+(JMAP back-references already batch, `dispatch.ts:63-83`; and sync, webmail's hardest
+problem, is JMAP's best feature with no GraphQL equivalent).
+
+**So: this spike does not block s03.C.** Webmail proceeds on JMAP either way. The spike
+gates only the **agent-facing** surface, which is s04/harness territory.

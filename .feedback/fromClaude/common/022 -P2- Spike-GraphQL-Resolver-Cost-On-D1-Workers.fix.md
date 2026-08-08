@@ -23,17 +23,24 @@ Batching on Workers: collect ids within a single resolution tick, issue one
 `WHERE id IN (...)` per entity type. D1 supports batch statements — check whether
 `env.DB.batch()` or a single `IN` clause performs better; they are not the same shape.
 
-### 3. Measure
+### 3. Measure — find the ceiling, not the average
 
 | Metric | Why |
 |---|---|
-| **D1 statements per query** | the real cost driver |
-| **CPU ms** | the binding constraint (10ms tier limit informed `auth-core:60-66`) |
+| **the breaking point** | *the deliverable* — depth × row count at which a request is killed |
+| **D1 statements per query** | the cost driver behind that ceiling |
+| **CPU ms** | the binding constraint (a 10ms tier limit informed `auth-core:60-66`) |
+| same traversal as 3–4 JMAP calls | the comparison, for the agent case |
 | wall-clock | secondary |
-| same traversal as 3–4 JMAP calls | **the comparison that decides it** |
 
-Run against a **seeded, realistic dataset** — a few thousand emails, not five. N+1 is
-invisible at toy scale.
+Run against a **seeded, realistic dataset and then push past it** — a few thousand emails,
+then tens of thousands. N+1 is invisible at toy scale, and the whole point is to locate the
+wall rather than to report a comfortable average.
+
+**Do not optimize during the spike.** Overhead at personal scale is a utility tax and a
+fine trade. Batching is a known remedy that can be added later without changing the schema
+or any caller — so measure the naive path *first*, and only add batching to see how much
+further out it pushes the ceiling.
 
 ### 4. Decide, and write it down
 
