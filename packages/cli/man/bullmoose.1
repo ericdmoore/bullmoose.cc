@@ -68,6 +68,9 @@ show a message's metadata + structure
 .B mailboxes
 list mailboxes for the selected account
 .TP
+.B mailbox
+create, rename, move and remove folders (over JMAP)
+.TP
 .B admin
 operator surface — wraps the provision worker (separate credentials)
 .SH COMMAND DETAILS
@@ -464,6 +467,63 @@ bullmoose show <emailId> [\-\-json]
 .B Synopsis:
 .br
 bullmoose mailboxes [\-\-json]
+.PP
+Reads the LOCAL mirror, so it shows what the last `sync` (or `mailbox` write) fetched. Use `mailbox` to create, rename, move or remove folders.
+.SS mailbox
+.B Synopsis:
+.br
+bullmoose mailbox create <name> | rename <box> <new> | move <box> \-\-parent <box|\-> | rm <box> [\-\-force]
+.PP
+Folder management via Mailbox/set. A <box> is an id, a role (inbox, sent, drafts, trash, junk, archive), or a name — names are matched case\-insensitively and an ambiguous one is refused. Folders nest: \-\-parent puts a new or existing folder under another, up to the server's advertised maxMailboxDepth (10), and \-\-parent \- moves one back to the top level. Names must be unique among siblings. Role folders may be renamed but never removed, and `rm` refuses a folder that still holds mail or has children — `\-\-force` removes the mail with it, destroying any message that is in no other folder. Every verb refreshes the local mirror on success, so `bullmoose mailboxes` is current immediately without a full `sync`.
+.PP
+.B Subcommands:
+.TP
+.B create
+make a folder \(em \f[CR]mailbox create <name> [\-\-parent <box>] [\-\-sort <n>]\fR
+.TP
+.B rename
+rename a folder (roles may be renamed) \(em \f[CR]mailbox rename <box> <new\-name>\fR
+.TP
+.B move
+reparent a folder ('\-' = top level) \(em \f[CR]mailbox move <box> \-\-parent <box|\->\fR
+.TP
+.B rm
+remove a folder; \-\-force takes its mail too \(em \f[CR]mailbox rm <box> [\-\-force]\fR
+.PP
+.B Flags:
+.TP
+.B \-\-parent <box>
+parent folder for create/move; '\-' means top level
+.TP
+.B \-\-sort <n>
+sortOrder for create (unsigned integer, default 0)
+.TP
+.B \-\-force
+on rm: onDestroyRemoveEmails — remove the mail inside it too
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose mailbox create Receipts
+.EE
+.PP
+.EX
+bullmoose mailbox create 2026 \-\-parent Receipts
+.EE
+nest under an existing folder
+.PP
+.EX
+bullmoose mailbox rename Receipts Invoices
+.EE
+.PP
+.EX
+bullmoose mailbox move Invoices \-\-parent \-
+.EE
+back to the top level
+.PP
+.EX
+bullmoose mailbox rm Invoices \-\-force
+.EE
 .SS admin
 .B Synopsis:
 .br

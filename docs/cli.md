@@ -30,6 +30,7 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 | [`search`](#search) | full-text search the local log (SQLite FTS5) |
 | [`show`](#show) | show a message's metadata + structure |
 | [`mailboxes`](#mailboxes) | list mailboxes for the selected account |
+| [`mailbox`](#mailbox) | create, rename, move and remove folders (over JMAP) |
 | [`admin`](#admin) | operator surface — wraps the provision worker (separate credentials) |
 
 ## Global options
@@ -444,7 +445,50 @@ list mailboxes for the selected account
 bullmoose mailboxes [--json]
 ```
 
-See also: [`log`](#log)
+Reads the LOCAL mirror, so it shows what the last `sync` (or `mailbox` write) fetched. Use `mailbox` to create, rename, move or remove folders.
+
+See also: [`mailbox`](#mailbox), [`log`](#log), [`sync`](#sync)
+
+## mailbox
+
+create, rename, move and remove folders (over JMAP)
+
+```
+bullmoose mailbox create <name> | rename <box> <new> | move <box> --parent <box|-> | rm <box> [--force]
+```
+
+Folder management via Mailbox/set. A <box> is an id, a role (inbox, sent, drafts, trash, junk, archive), or a name — names are matched case-insensitively and an ambiguous one is refused. Folders nest: --parent puts a new or existing folder under another, up to the server's advertised maxMailboxDepth (10), and --parent - moves one back to the top level. Names must be unique among siblings. Role folders may be renamed but never removed, and `rm` refuses a folder that still holds mail or has children — `--force` removes the mail with it, destroying any message that is in no other folder. Every verb refreshes the local mirror on success, so `bullmoose mailboxes` is current immediately without a full `sync`.
+
+**Subcommands**
+
+- **create** — make a folder  
+  `mailbox create <name> [--parent <box>] [--sort <n>]`
+- **rename** — rename a folder (roles may be renamed)  
+  `mailbox rename <box> <new-name>`
+- **move** — reparent a folder ('-' = top level)  
+  `mailbox move <box> --parent <box|->`
+- **rm** — remove a folder; --force takes its mail too  
+  `mailbox rm <box> [--force]`
+
+| flag | description |
+|---|---|
+| `--parent <box>` | parent folder for create/move; '-' means top level |
+| `--sort <n>` | sortOrder for create (unsigned integer, default 0) |
+| `--force` | on rm: onDestroyRemoveEmails — remove the mail inside it too |
+
+**Examples**
+
+```sh
+bullmoose mailbox create Receipts
+bullmoose mailbox create 2026 --parent Receipts
+# nest under an existing folder
+bullmoose mailbox rename Receipts Invoices
+bullmoose mailbox move Invoices --parent -
+# back to the top level
+bullmoose mailbox rm Invoices --force
+```
+
+See also: [`mailboxes`](#mailboxes), [`sync`](#sync), [`log`](#log)
 
 ## admin
 
