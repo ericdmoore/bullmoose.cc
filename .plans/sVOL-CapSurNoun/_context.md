@@ -169,10 +169,18 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
     revocation** — a minted URL is valid until `exp` with no kill switch.
 13. `AgentInvocation/set` implements **update only** (`agent.ts:84`); `created: {}` `:128` and
     `destroyed: []` `:132` are hardcoded. Optimistic claim guard at `:92`.
-    🔴 **`_context.md` §3's failure mode is already live in the tree**: `finish`
-    (`services/agent/src/index.ts:329`) writes terminal invocation state with **raw SQL**,
-    bypassing `commitChanges` — so invocation completion never reaches the changelog. Worth a
-    `.feedback` issue independent of this volume.
+    ❌ **REFUTED — do not re-report this.** An earlier revision of this footnote claimed
+    `finish` (`services/agent/src/index.ts`) writes terminal invocation state with raw SQL
+    "bypassing `commitChanges`", i.e. that §3's failure mode was already live. **That is
+    false.** Read the whole function: the raw `UPDATE` is immediately followed by
+    `commitChanges(env.ACCOUNT_DO, job.account_id, [{ collection: "AgentInvocation",
+    updated: [job.id] }])`. The changelog invariant holds. Only `Mailstore` is bypassed,
+    which is a consistency preference, not a defect.
+
+    Recorded rather than deleted because **three independent agents have now reported it as a
+    bug** — the first one's report is what put the false claim in this file, and the next two
+    were reading it back out of here and re-deriving it in good faith. If you are about to
+    file this, read `finish` in full first.
 14. **Inbound mail is the only creator of invocations** —
     `services/ingest/src/index.ts:178`. There is no way to trigger an agent on demand.
 15. Vault is a direct HTTP API on the agent worker, not JMAP: PUT `vault.ts:79`,
