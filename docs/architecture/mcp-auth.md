@@ -678,23 +678,84 @@ Each does what the others can't — which is exactly why the redeem step exists.
 
 ---
 
-## 14. A note on GraphQL
+## 14. GraphQL — an open question, not a closed one
+
+> **Revised.** An earlier version of this section rejected model-facing GraphQL on
+> security grounds. Those arguments don't survive scrutiny (§14.1). The real
+> objections are operational, and there is a real upside the original missed. This is
+> a **live decision** gated on one measurement (§14.5) — not a settled "no".
 
 The property you'd want from GraphQL — *auth happens outside the query* — is not
-unique to it; it's **"authenticate the transport, authorize against a context,"**
-and the JMAP worker already works this way (`authenticate` once at the front door,
-`Principal` threaded via `RequestContext`, per-method `requireAccount`). GraphQL
-would add a self-describing typed schema (nice for auto-generating tool menus) and
-field-level auth directives (`@requiresScope`, `@grantScoped`) that map cleanly
-onto scopes ∩ grants.
+unique to it; it's **"authenticate the transport, authorize against a context,"** and
+the JMAP worker already works this way (`authenticate` at the front door, `Principal`
+threaded via `RequestContext`, per-method `requireAccount`). What GraphQL adds is a
+self-describing typed schema and **field-level auth directives** (`@requiresScope`,
+`@grantScoped`) that map cleanly onto scope ∩ grant.
 
-**But do not let the model compose free-form GraphQL** — query-depth/complexity
-attacks, over-fetching, and it reopens the "model chooses the shape" surface. The
-safe pattern is **persisted (whitelisted) queries exposed as bounded tools**: the
-model calls a named tool with params; the tool *is* a fixed query with holes for
-args. GraphQL is a fine **backend / admin-console** surface and a fine **backing**
-for tools; the model-facing surface stays bounded regardless. Optional, not on the
-critical path.
+### 14.1 The old arguments against, and why they fail
+
+| Claim | Assessment |
+|---|---|
+| *Query-depth / complexity attacks* | **Weak here.** That threat model is a public anonymous endpoint. Our caller is an authenticated agent under a budget, and depth-limiting/cost-analysis is standard middleware. Worse: **JMAP has the identical exposure and we enforce it less** — `maxCallsInRequest`/`maxObjectsInGet` are advertised in `capabilities.ts:19-24` and enforced nowhere. |
+| *Over-fetching* | **Backwards.** Reducing over-fetching is GraphQL's core pitch. A model selecting three fields fetches less than a fixed tool returning a fat object. This conflated over-fetching with result-set size, which is the row above. |
+| *"Reopens the model-chooses-the-shape surface"* | **Doesn't match §8.** The danger in §8 is the model choosing a **destination for a credential**, or holding a secret. Choosing the *shape of a read over data it is already authorized for* is not that — and we already let the model compose arbitrary `Email/query` filters through tool wrappers. A typed, schema-validated query is *more* constrained than a free-form filter object. |
+
+### 14.2 The objections that are real
+
+1. **N+1 resolvers on D1** — the strongest practical concern, and absent from the
+   original. A naive resolver graph becomes dozens of D1 round trips inside a Worker's
+   CPU budget. DataLoader-style batching is the answer; it is real work.
+2. **Field-level authorization is a requirement, not a bonus.** Resolve-then-filter
+   leaks. Enforcement must live *in* the resolvers, calling the same
+   `authorizeAccount`.
+3. **Duplication** — only if it becomes a parallel data path (§14.4).
+
+### 14.3 The upside the original missed
+
+- **Traversal economics.** In an agent loop **every tool call is a model round trip**.
+  *"The sender of this email, their contact card, and their next three events"* is
+  **one query** versus 3–4 tool calls — each costing a turn, tokens, and latency. For
+  an agent-facing surface that is a different cost curve, not a nicety.
+- **Ecosystem.** GraphQL has clients, codegen, explorers, and caching. This repo
+  already records that the **native JMAP client ecosystem is thin**
+  (`serverless-jmap.md` §2).
+- **Maintainer ergonomics — a real cost, not a preference.** JMAP is comparatively
+  inscrutable to reason about. Its payoff is *entirely* third-party interop; we pay its
+  legibility cost on every surface, including the ones where we own both ends. In a
+  small-team project that asymmetry is a legitimate input.
+
+### 14.4 The decisive question: facade or parallel stack?
+
+- **Facade** — the same `Mailstore` methods, projected a second way, auth enforced by
+  directives calling the same `authorizeAccount`. Cost is a resolver layer + batching.
+  **Not a third protocol in any meaningful sense — a second projection of one core.**
+- **Parallel stack** — its own data access and auth path. *That* is the complexity to
+  refuse.
+
+**Precedent: this repo already does multi-projection.** `services/anglebrackets`
+projects CardDAV straight off `Mailstore` (`dav.ts:106`) alongside JMAP. A GraphQL
+facade would be the third projection of an established pattern, not new architecture.
+
+### 14.5 Where it could land, and what gates it
+
+A split that matches the human/agent audience split:
+
+| Surface | Audience | Rationale |
+|---|---|---|
+| **JMAP** | standard clients (himalaya, Apple Mail, Bulwark) | it is *the standard*; interop is its entire job |
+| **GraphQL** | **agents + our own webmail** | typed, introspectable, traversal-efficient — and we control both ends |
+
+MCP tools would then wrap GraphQL rather than JMAP, and webmail gets one round trip
+per screen.
+
+**Gate: measure the resolver cost before committing.** One spike — a query traversing
+email → sender → contact → events, with batching, measured against the Workers CPU
+budget and D1 round trips. If that is comfortable, the only objection I actually
+believe in dissolves. If it is not, *that* is the reason to decline — not §14.1.
+
+**Still true regardless:** persisted/whitelisted queries remain a good option for the
+narrowest surfaces, and GraphQL is a fine admin-console backing. They are *one* choice
+here, not the verdict.
 
 ---
 
