@@ -1,0 +1,167 @@
+# sVOL — authoritative axis + grade definitions.
+# Mirrors .feedback/config.yml in spirit: this file is the source of truth for the
+# taxonomy, so tooling and reviewers agree on the vocabulary.
+
+# ---------------------------------------------------------------------------
+# NOUNS — kept at JMAP-datatype grain, not at "realm" grain.
+#
+# Deliberate: collapsing Email/Mailbox/Thread/EmailSubmission into one "Mail"
+# noun hides that `Mailbox/set` does not exist anywhere, which is the single
+# largest capability gap in the repo. Grain follows where the gaps actually are.
+# ---------------------------------------------------------------------------
+nouns:
+  - name: Email
+    realm: mail
+    datatypes: [Email]
+  - name: Mailbox
+    realm: mail
+    datatypes: [Mailbox]
+  - name: Thread
+    realm: mail
+    datatypes: [Thread]
+    derived: true            # no independent CRUD; computed from Email
+  - name: EmailSubmission
+    realm: mail
+    datatypes: [EmailSubmission]
+  - name: AddressBook
+    realm: contacts
+    datatypes: [AddressBook]
+    container_of: ContactCard
+  - name: ContactCard
+    realm: contacts
+    datatypes: [ContactCard]
+  - name: Calendar
+    realm: calendar
+    datatypes: [Calendar]
+    container_of: CalendarEvent
+  - name: CalendarEvent
+    realm: calendar
+    datatypes: [CalendarEvent]
+  - name: FileNode
+    realm: files
+    datatypes: [FileNode]
+    status: does-not-exist   # the noun itself is unbuilt — see s03.B
+  - name: Agents
+    realm: agentic
+    datatypes: [AgentInvocation, AgentBinding]
+  - name: Secrets
+    realm: agentic
+    datatypes: [VaultCredential]
+    no_read_by_design: true  # bureau.md invariant 1 — no "reveal password" button
+  - name: HumanSettings
+    realm: settings
+    datatypes: [VacationResponse, Identity]
+  - name: IdentitySetup
+    realm: setup
+    datatypes: [Account, Token, Session]
+  - name: SystemAdmin
+    realm: admin
+    datatypes: [Tenant, Domain, Principal, Grant]
+
+# ---------------------------------------------------------------------------
+# SURFACES
+# ---------------------------------------------------------------------------
+surfaces:
+  - name: JMAP
+    dir: services/jmap
+    status: live
+    human_verifiable: false   # curl + JSON is test-verifiable, not human-verifiable
+  - name: CLI
+    dir: packages/cli
+    status: live
+    human_verifiable: true
+  - name: MCP
+    dir: services/agent
+    status: live-but-narrow   # 4 read-only analytics tools; no noun tools
+    human_verifiable: true    # a human drives it through Claude/Codex and reads the answer
+  - name: AngleBracket
+    dir: services/anglebrackets
+    label: CalDAV/CardDAV
+    status: live
+    human_verifiable: true    # Apple Calendar / Contacts.app
+  - name: WebUI
+    dir: null
+    status: does-not-exist    # src/ is the Astro marketing site; no webmail workspace
+    human_verifiable: true
+  - name: GraphQL
+    dir: null
+    status: does-not-exist
+    gated_on: .feedback/fromClaude/common/022
+    human_verifiable: false
+  - name: Transport
+    dir: [services/ingest, services/submit]
+    label: inbound/outbound mail
+    status: live
+    note: >
+      Not SMTP. Inbound is the Cloudflare Email Routing email() handler;
+      outbound is SES v2 over HTTPS SigV4. Nothing in this repo speaks the
+      SMTP protocol. Named "Transport" to stop the misnomer spreading.
+    human_verifiable: true
+
+# ---------------------------------------------------------------------------
+# GRADES — see readme.md for the full rubric and rationale.
+# ---------------------------------------------------------------------------
+effort:
+  - id: E1
+    size: S
+    anchor: One file. No schema change, no new method, no new dependency.
+  - id: E2
+    size: M
+    anchor: >
+      Several files in one package/service. New methods over existing tables,
+      or a new tool/command surface. No migration.
+  - id: E3
+    size: L
+    anchor: >
+      New table or column + migration, OR new semantics other code must respect
+      (write choreography, auth gate, sync contract). Tests mandatory.
+      NB: this repo has no migration framework (tools/README.md:10-11).
+  - id: E4
+    size: XL
+    anchor: >
+      New workspace, service, or protocol surface. Includes anything built on a
+      stack that does not exist yet (WebUI, GraphQL).
+
+impact:
+  - id: I3
+    unlocks: true
+    human_verifiable: true
+    label: highest
+  - id: I2
+    unlocks: true
+    human_verifiable: false
+  - id: I1
+    unlocks: false
+    human_verifiable: true
+  - id: I0
+    unlocks: false
+    human_verifiable: false
+    label: leaf work, invisible
+
+impact_definitions:
+  unlocks: >
+    Completing this unit removes a STATED blocker from at least one other unit
+    or sNN section. A named dependency — not "would be nice to have first".
+  human_verifiable: >
+    A non-engineer could confirm it works through a normal interface: a mail
+    client, Apple Calendar, a browser, or CLI output they can read. Judged ON
+    COMPLETION OF THIS UNIT, not hypothetically once some future surface renders
+    it. curl returning correct JSON does NOT count.
+
+# ---------------------------------------------------------------------------
+# WORK KINDS — the law: a projection unit may only contain cells whose
+# capability already exists. See readme.md.
+# ---------------------------------------------------------------------------
+work_kinds:
+  - name: capability
+    batches_by: noun
+    definition: Can the system do this at all — schema, core logic, write choreography.
+  - name: projection
+    batches_by: surface
+    definition: Expose an existing capability on one more surface.
+    precondition: the capability must already exist
+  - name: prerequisite
+    batches_by: null
+    definition: >
+      Cross-cutting work that gates a group of units (auth gates, test harness,
+      correctness fixes). Not a cell; graded and sequenced like one.
