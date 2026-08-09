@@ -389,6 +389,8 @@ async function main() {
       eq(only.stdout.trim(), "cc_alan", "only the Work book's card");
       const books = sh("$BM contacts books list --ids 2>/dev/null", env);
       assert(books.stdout.includes("ab_personal"), `books list --ids should print book ids:\n${books.stdout}`);
+    });
+
     // ═══ sVOL 019 — email triage verbs over the CLI ═══════════════════════
     //
     // These MUTATE the fixture, so they run last, and each reserves distinct
