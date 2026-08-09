@@ -112,10 +112,11 @@ function identityToJmap(row: IdentityRow): Record<string, unknown> {
  * Per-operation scope charging, the house style of `requiredScopesForEmailSet`
  * (`email.ts`) and `requiredScopesForMailboxSet` (`mailbox.ts`).
  *
- * ⚠️ `hasScope` is a FLAT SET, not the ordered lattice the docs draw
- * (`.feedback/fromClaude/common/027`): `send` does not imply `draft` and
- * `delete` implies nothing. So these are three independent demands and each
- * one is picked on its own merits, not on where it sits in a chain.
+ * ⚠️ `hasScope` is a FLAT SET, not an ordered lattice
+ * (`.feedback/fromClaude/common/027`): `send` does not imply `draft`, and no
+ * write verb implies another (the one implication is that every write implies
+ * `read`, which is irrelevant to charging a write). So these are three
+ * independent demands, each picked on its own merits, not on a chain position.
  *
  *  create  → `send`. A new row is a new address `EmailSubmission/set` will
  *            accept in `From:` — `submitOne` resolves against exactly this

@@ -559,21 +559,29 @@ describe("scope gates — no new endpoint is ungated", () => {
     expect(h.w.blobs.objects.size).toBe(1);
   });
 
-  it("a delete-scoped token may delete and revoke but may not enumerate", async () => {
+  it("a delete-scoped token may delete, revoke AND enumerate — delete implies read", async () => {
+    // common/027: any write capability implies `read`, and `delete` is a write,
+    // so a delete-scoped token satisfies the read-gated enumeration endpoints
+    // too. It still cannot MINT a link — that gates on `draft`, which `delete`
+    // does not confer (delete is not an order over the other verbs).
     const h = await harness(["delete"]);
-    expect((await h.call("GET", `/api/blobs/${ACCOUNT}`)).status).toBe(403);
-    expect((await h.call("GET", `/api/shares/${ACCOUNT}`)).status).toBe(403);
-    // Reaches the handler (404 = "no such share"), i.e. the gate let it past.
+    expect((await h.call("GET", `/api/blobs/${ACCOUNT}`)).status).toBe(200);
+    expect((await h.call("GET", `/api/shares/${ACCOUNT}`)).status).toBe(200);
+    // Reaches the handler (404 = "no such share"), i.e. the delete gate let it past.
     expect((await h.call("POST", `/api/shares/${ACCOUNT}/sh_x/revoke`)).status).toBe(404);
+    // But delete does NOT imply draft: minting a link is still refused.
+    expect((await h.call("POST", `/api/share/${ACCOUNT}/b_x`, { body: "{}" })).status).toBe(403);
   });
 
-  it("a realm-scoped token gets nothing — `mail` is a bundle, not a wildcard", async () => {
-    // Regression cover for common/001: `hasScope` used to return true for
-    // every non-"admin" scope, so a `contacts` token satisfied `read` and
-    // `delete` alike. New routes must not re-open that.
+  it("a realm-scoped token reads but cannot delete — the read edge, not the wildcard", async () => {
+    // The update to common/001. `hasScope` no longer returns true for every
+    // non-"admin" scope, but common/027 opened ONE edge: any write/realm
+    // capability implies `read`. So a `contacts` token now CAN enumerate — yet
+    // it still cannot DELETE or revoke (those gate on `delete`, which no realm
+    // scope confers). The wildcard stays closed; only the read edge opened.
     const h = await harness(["contacts"]);
-    expect((await h.call("GET", `/api/blobs/${ACCOUNT}`)).status).toBe(403);
-    expect((await h.call("GET", `/api/shares/${ACCOUNT}`)).status).toBe(403);
+    expect((await h.call("GET", `/api/blobs/${ACCOUNT}`)).status).toBe(200);
+    expect((await h.call("GET", `/api/shares/${ACCOUNT}`)).status).toBe(200);
     expect((await h.call("DELETE", `/api/blobs/${ACCOUNT}/b_x`)).status).toBe(403);
     expect((await h.call("POST", `/api/shares/${ACCOUNT}/sh_x/revoke`)).status).toBe(403);
   });

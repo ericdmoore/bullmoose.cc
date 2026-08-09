@@ -84,12 +84,13 @@ export interface ToolDef {
    *
    * Mirror the live JMAP convention exactly (services/jmap/src/methods/):
    *
-   *   mail       reads `("read", "mail")`, writes the lattice verb
-   *              (`read < annotate < draft < move < send < delete`)
+   *   mail       reads `("read", "mail")`, writes the specific verb for the
+   *              operation (annotate/draft/move/delete — an independent flat
+   *              set, common/027; any write also implies read)
    *   calendar   reads `("read", "calendar")`, writes `("calendar", "calendar")`
    *   contacts   reads `("read", "contacts")`, writes `("contacts", "contacts")`
    *
-   * Calendar and contacts do NOT use the mail lattice — one scope named after
+   * Calendar and contacts do NOT use the mail verbs — one scope named after
    * the domain covers create, update and delete. Do not invent a mapping.
    */
   scope: string;

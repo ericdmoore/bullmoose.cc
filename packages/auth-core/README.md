@@ -7,12 +7,20 @@ provision workers call.
   SHA-256 hash-at-rest, `parseToken` / `verifyTokenSecret`. Shown once,
   revocable individually. These double as **app passwords** for
   HTTP Basic (Mailtemi, popcorn): username + `bm_…` as the password.
-- **Scopes** — two independent axes, plus a control-plane one:
-  - **mail verbs**: `read < annotate < draft < move < send < delete`.
-    `mail` is a bundle of exactly these six.
-  - **realms**: `contacts`, `calendar`, `vault`. Unordered, and **not**
-    covered by `mail` — a mail token does not open the vault.
-  - **control plane**: `admin`.
+- **Scopes** — a flat set, **not** a lattice (`<` would imply an ordering the
+  code does not have — common/027):
+  - **`read`** — the base "see it" capability.
+  - **mail verbs** (independent; none implies another): `annotate`, `draft`,
+    `move`, `send`, `delete`. `mail` is a bundle of exactly `read` + these five.
+  - **realms** (independent; one never implies another): `contacts`,
+    `calendar`, `vault`, `files`. **Not** covered by `mail` — a mail token does
+    not open the vault.
+  - **control plane**: `admin` — implies nothing, and nothing implies it.
+  - **The one implication**: any write implies `read` — you cannot change what
+    you cannot see. Every mail verb, `mail`, and every realm scope satisfies
+    `read`. It stops there: `delete` does not imply `send` (`send` stays its own
+    capability, since mailing a stranger is irreversible), and `send` implies
+    only `read` — never `move`/`delete`/`annotate`.
 
   `hasScope` / `scopesWithin` (a token can only mint tokens ⊆ its own
   scopes, so `login --scopes` is the only way to *widen*). Unknown scope

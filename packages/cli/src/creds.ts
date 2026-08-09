@@ -16,21 +16,39 @@ import {
 import { promptHidden } from "./tokens.js";
 
 /**
- * bullmoose creds — the CLI face of the credential vault (Phase 3).
- * Secrets go UP to the vault (write-only API on the agent worker) and
- * never come back down; `list` shows names/kinds/meta only.
+ * bullmoose creds — the CLI face of the credential vault (Phase 3, Bureau §5).
+ * Secrets go UP to the vault (write-only API on the agent worker) and never
+ * come back down; `list`/`show` return names/kinds/metadata only — invariant 1,
+ * there is no reveal button.
  *
  *   creds init --url <agent-worker-url>       point at the vault host
- *   creds set <name> --kind api-key           secret via --secret,
- *            [--secret-env VAR] [--meta k=v]  $VAR, or hidden prompt
- *   creds list
+ *   creds set <name> --kind K --allow ORIGIN  mint with the §5 contract:
+ *            [--header "Name: …{}…"]           secret via --secret, $VAR, or
+ *            [--scope actor] [--enforcement B] hidden prompt (never argv)
+ *   creds list                                names + kind + binding
+ *   creds show <name>                         one credential's metadata (no secret)
+ *   creds rotate <name>                       re-seal a NEW secret, same name
  *   creds rm <name>
  *   creds oauth <name> --authorize-url U --token-url U --client-id ID
  *            [--client-secret S] [--oauth-scopes "a b"] [--port 8976]
- *     Runs the browser + localhost-callback PKCE flow locally — the CLI
- *     is only the conduit: the refresh token is uploaded to the vault
- *     (kind oauth-refresh, token_url/client_id in meta) and discarded.
+ *     Runs the browser + localhost-callback PKCE flow locally — the CLI is only
+ *     the conduit: the refresh token is uploaded (kind oauth-refresh; token_url/
+ *     client_id in meta; --allow derived from the issuer) and discarded.
+ *
+ * ⚠ Fail closed (bureau.md §6, invariant 5): `set` REQUIRES --allow for the
+ * capability kinds — a credential with no destination is unusable by design.
+ * NOTHING enforces the allowlist, verb set or redaction yet; the Bureau proxy
+ * is a later task. `--enforcement broad` (the default) records "only our code
+ * will enforce the narrowing, once that proxy exists" (§5.2).
  */
+
+/** kind → the Bureau verbs it may ever be used with (bureau.md §4.1). */
+const KIND_VERBS: Record<string, string> = {
+  "api-key": "fetch",
+  "oauth-refresh": "oauth_token, fetch",
+  "aws-sigv4": "sign_sigv4, fetch",
+  "hmac-key": "hmac_sha256",
+};
 
 export interface CredsOpts extends IoOpts {
   url?: string;
@@ -38,6 +56,10 @@ export interface CredsOpts extends IoOpts {
   secret?: string;
   secretEnv?: string;
   meta?: string;
+  allow?: string;
+  header?: string;
+  scope?: string;
+  enforcement?: string;
   authorizeUrl?: string;
   tokenUrl?: string;
   clientId?: string;
@@ -86,38 +108,96 @@ export async function cmdCreds(
 
   switch (sub) {
     case "set": {
-      if (!name) usage("bullmoose creds set <name> --kind api-key|oauth-refresh");
+      if (!name) usage("bullmoose creds set <name> --kind <kind> --allow <origin> [--header …]");
       const kind = opts.kind ?? "api-key";
-      if (kind !== "api-key" && kind !== "oauth-refresh") {
-        usage("--kind must be api-key or oauth-refresh");
+      if (!(kind in KIND_VERBS)) {
+        usage(`--kind must be one of ${Object.keys(KIND_VERBS).join(", ")}`);
+      }
+      // Fail closed (bureau.md §6, invariant 5): no destination → refuse to mint.
+      if (!opts.allow) {
+        usage(
+          `--allow <origin> is required — a credential with no destination is unusable by design ` +
+            `(bureau.md §6). e.g. --allow https://api.stripe.com or --allow "*.amazonaws.com"`,
+        );
       }
       const secret =
         opts.secret ??
         (opts.secretEnv ? process.env[opts.secretEnv] : undefined) ??
         (await promptHidden(`secret for ${name}: `));
       if (!secret) usage("no secret provided");
-      const res = await api("PUT", "/vault/credentials", {
+      const res = (await api("PUT", "/vault/credentials", {
         name,
         kind,
         secret,
         meta: parseMeta(opts.meta),
-      });
-      report(res, opts, () => out(`stored ${name} (${kind}) — write-only, never shown again`));
+        allow: opts.allow,
+        ...(opts.header ? { header: opts.header } : {}),
+        ...(opts.scope ? { scope: opts.scope } : {}),
+        ...(opts.enforcement ? { enforcement: opts.enforcement } : {}),
+      })) as { allow?: string | null; enforcement?: string };
+      report(res, opts, () =>
+        out(
+          `stored ${name} (${kind} → ${KIND_VERBS[kind]}) allow=${res.allow ?? "(none)"} ` +
+            `enforcement=${res.enforcement ?? "?"} — write-only, never shown again`,
+        ),
+      );
       return;
     }
     case "list": {
-      const res = (await api("GET", "/vault/credentials")) as {
-        credentials: Array<{ name: string; kind: string; meta: Record<string, unknown> }>;
-      };
+      const res = (await api("GET", "/vault/credentials")) as { credentials: CredView[] };
       if (opts.json) {
         emitNdjson(res.credentials);
         return;
       }
-      for (const c of res.credentials) {
-        const meta = Object.keys(c.meta).length > 0 ? `  ${JSON.stringify(c.meta)}` : "";
-        out(`${c.name.padEnd(24)} ${c.kind}${meta}`);
-      }
+      for (const c of res.credentials) out(credLine(c));
       if (res.credentials.length === 0) note("(no credentials)");
+      return;
+    }
+    case "show": {
+      if (!name) usage("bullmoose creds show <name>");
+      // GET is the whole collection; `show` is a client-side filter (sVOL 020).
+      const res = (await api("GET", "/vault/credentials")) as { credentials: CredView[] };
+      const c = res.credentials.find((x) => x.name === name);
+      if (!c) {
+        note(`${name} not found`);
+        process.exitCode = exitCodeForHttpStatus(404);
+        return;
+      }
+      if (opts.json) {
+        emitJson(c);
+        return;
+      }
+      out(`name         ${c.name}`);
+      out(`kind         ${c.kind} → ${KIND_VERBS[c.kind] ?? "?"}`);
+      out(`allow        ${c.allow ?? "(none) — fail-closed, unusable by design"}`);
+      out(`header       ${c.header ?? "(none)"}`);
+      out(`scope        ${c.scope ?? "actor"}`);
+      out(
+        `enforcement  ${c.enforcement ?? "?"}` +
+          (c.enforcement === "broad" ? "  (only our code enforces, once the proxy exists)" : ""),
+      );
+      if (c.meta && Object.keys(c.meta).length > 0) out(`meta         ${JSON.stringify(c.meta)}`);
+      note("(the secret is never returned — invariant 1, no reveal button)");
+      return;
+    }
+    case "rotate": {
+      if (!name) usage("bullmoose creds rotate <name>");
+      if (opts.dryRun) {
+        note(`dry run: would re-seal a new secret for ${name}; nothing was written`);
+        if (opts.json) emitJson({ dryRun: true, name });
+        return;
+      }
+      const secret =
+        opts.secret ??
+        (opts.secretEnv ? process.env[opts.secretEnv] : undefined) ??
+        (await promptHidden(`new secret for ${name}: `));
+      if (!secret) usage("no secret provided");
+      const res = await api("POST", `/vault/credentials/${encodeURIComponent(name)}/rotate`, {
+        secret,
+      });
+      report(res, opts, () =>
+        out(`rotated ${name} — re-sealed under the same name; downstream refs unchanged`),
+      );
       return;
     }
     case "rm": {
@@ -161,6 +241,10 @@ export async function cmdCreds(
           client_id: opts.clientId,
           ...(opts.oauthScopes ? { scopes: opts.oauthScopes } : {}),
         },
+        // Destination binding: default to the issuer origin (§5 "derive rather
+        // than type"); an explicit --allow still wins.
+        ...(opts.allow ? { allow: opts.allow } : {}),
+        ...(opts.enforcement ? { enforcement: opts.enforcement } : {}),
       });
       report(res, opts, () =>
         out(`refresh token for ${name} uploaded to the vault — not kept locally`),
@@ -168,8 +252,27 @@ export async function cmdCreds(
       return;
     }
     default:
-      usage(`unknown creds subcommand: ${sub ?? "(none)"} (init|set|list|rm|oauth)`);
+      usage(`unknown creds subcommand: ${sub ?? "(none)"} (init|set|list|show|rotate|rm|oauth)`);
   }
+}
+
+/** The secret-free view the vault's GET returns (bureau.md §5 surfaced). */
+interface CredView {
+  name: string;
+  kind: string;
+  allow: string | null;
+  header: string | null;
+  scope: string | null;
+  enforcement: string | null;
+  bound?: boolean;
+  meta: Record<string, unknown>;
+}
+
+/** One `list` line: name, kind, and the destination binding at a glance. */
+function credLine(c: CredView): string {
+  const dest = c.allow ?? "UNBOUND";
+  const enf = c.enforcement ? ` [${c.enforcement}]` : "";
+  return `${c.name.padEnd(24)} ${c.kind.padEnd(14)} ${dest}${enf}`;
 }
 
 // ---- OAuth 2.0 authorization-code + PKCE (RFC 7636) ------------------------

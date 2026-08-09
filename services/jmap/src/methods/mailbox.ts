@@ -136,9 +136,10 @@ export function registerMailboxMethods(registry: MethodRegistry<RequestContext>)
  * Pure — no ctx, no D1 — so the mapping is testable without a harness, the
  * same shape as `requiredScopesForEmailSet` (email.ts).
  *
- * The lattice is read < annotate < draft < move < send < delete, and
- * `hasScope` treats those six as a flat set, so the choice of verb per
- * operation IS the gate. Folder management is mail ORGANISATION, which is
+ * `hasScope` treats the mail verbs as a flat set (read, annotate, draft, move,
+ * send, delete — independent; the only implication is that any write implies
+ * read, common/027), so the choice of verb per operation IS the gate. Folder
+ * management is mail ORGANISATION, which is
  * what `move` names — charging `draft` (compose) would let a token scoped to
  * write drafts restructure the whole tree, and charging `annotate` (flag)
  * would be worse. Destroy takes `delete` because with

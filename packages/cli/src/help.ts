@@ -138,7 +138,7 @@ export const COMMANDS: Command[] = [
       { flag: "--password <pw>", desc: "password (else prompt or $BULLMOOSE_PASSWORD)" },
       {
         flag: "--scopes <a,b,c>",
-        desc: "scopes for the minted token; omit for the server default (mail). Vocabulary: read, annotate, draft, move, send, delete, mail, contacts, calendar, vault",
+        desc: "scopes for the minted token; omit for the server default (mail). Vocabulary (a flat set, not an ordering): read; the mail verbs annotate, draft, move, send, delete; the bundle mail; the realms contacts, calendar, vault, files. Any write implies read.",
       },
     ],
     examples: [
@@ -183,7 +183,7 @@ export const COMMANDS: Command[] = [
     synopsis: "bullmoose token create --name <n> --scopes <a,b,c> | list | revoke <id>",
     summary: "mint / list / revoke device app-passwords for this account",
     description:
-      "Device tokens (bm_…) are what clients authenticate with — never the login password. Scope them per device so a lost device can be revoked alone. --scopes is REQUIRED: there is no default, because the shortest command should not mint the widest credential. Vocabulary: the mail verbs read, annotate, draft, move, send, delete; the bundle `mail`, which means exactly those six and nothing else; and the independent realms contacts, calendar, vault. A token can only ever be narrower than the one that minted it, so to widen, run `login` again with --scopes.",
+      "Device tokens (bm_…) are what clients authenticate with — never the login password. Scope them per device so a lost device can be revoked alone. --scopes is REQUIRED: there is no default, because the shortest command should not mint the widest credential. Vocabulary is a flat set, not an ordering: the base read; the mail verbs annotate, draft, move, send, delete; the bundle `mail`, which means exactly read + those five and nothing else; and the independent realms contacts, calendar, vault, files. The one implication is that any write implies read (you cannot change what you cannot see); nothing else implies anything — delete does not imply send, and one realm never implies another. A token can only ever be narrower than the one that minted it, so to widen, run `login` again with --scopes.",
     subcommands: [
       { name: "create", synopsis: "token create --name <n> --scopes <a,b,c>", summary: "mint a token (shown once)" },
       { name: "list", synopsis: "token list", summary: "list this account's tokens" },
@@ -320,7 +320,7 @@ export const COMMANDS: Command[] = [
     synopsis: "bullmoose contacts import|list|show|books|create|edit|rm|export …",
     summary: "read and write the contacts core (vCard ⇄ JSContact)",
     description:
-      "The full CRUD surface over the JSContact core. `import` is the idempotent bulk seed (dedup by uid); `create` makes one card without dedup; `export` is its inverse — vCard 3.0 on stdout, so `export | import` round-trips a book with no drift. Card writes need the `contacts` scope, which does NOT imply `read` (grant one scope per verb you need). `books create|rename|rm` manage address books and are OWNER-ONLY: the server refuses them on delegated (grant-reached) access with a clean exit 4, so an agent should edit cards, not books. All write verbs take --if-state (exit 5 on a stale state) and --dry-run.",
+      "The full CRUD surface over the JSContact core. `import` is the idempotent bulk seed (dedup by uid); `create` makes one card without dedup; `export` is its inverse — vCard 3.0 on stdout, so `export | import` round-trips a book with no drift. Card writes need the `contacts` scope; because any write implies read (common/027), a `contacts` token also satisfies the read verbs, so one scope covers both listing and editing cards. `books create|rename|rm` manage address books and are OWNER-ONLY: the server refuses them on delegated (grant-reached) access with a clean exit 4, so an agent should edit cards, not books. All write verbs take --if-state (exit 5 on a stale state) and --dry-run.",
     subcommands: [
       { name: "import", synopsis: "contacts import [<file.vcf>|-] [--book <name-or-id>] [--as vcard] [--dry-run]", summary: "seed from a vCard export (idempotent; dedup by uid; missing --book created); reads stdin with no path, or with `-`" },
       { name: "list", synopsis: "contacts list [--book <name-or-id>] [-n <count>] [--json|--ids]", summary: "list cards" },
@@ -371,26 +371,33 @@ export const COMMANDS: Command[] = [
   },
   {
     name: "creds",
-    synopsis: "bullmoose creds init | set <name> | list | rm <name> | oauth <name> …",
+    synopsis: "bullmoose creds init | set <name> | list | show <name> | rotate <name> | rm <name> | oauth <name> …",
     summary: "manage the write-only, envelope-encrypted credential vault",
     description:
-      "The vault stores third-party API keys and OAuth refresh tokens for agents. It is WRITE-ONLY — secrets go in and are never returned. `oauth` runs a browser + localhost PKCE flow and uploads only the refresh token.",
+      "The vault stores third-party API keys, OAuth refresh tokens and signing keys for agents. It is WRITE-ONLY — secrets go in and are never returned (`show`/`list` are metadata only). Every credential carries the Bureau's mint-time contract (bureau.md §5): a `--kind` that gates which verbs may ever use it, and a `--allow` destination binding it fails closed without. NOTHING enforces the binding, verb set or redaction yet — the Bureau proxy is a later task; `--enforcement broad` records that only our code will, once it exists. `oauth` runs a browser + localhost PKCE flow and uploads only the refresh token.",
     subcommands: [
       { name: "init", synopsis: "creds init --url <agent-worker-url>", summary: "point the vault at the agent worker" },
-      { name: "set", synopsis: "creds set <name> --kind api-key|oauth-refresh [--secret <s> | --secret-env VAR] [--meta k=v,…]", summary: "store a secret (else hidden prompt)" },
-      { name: "list", synopsis: "creds list", summary: "list credential names (not values)" },
+      { name: "set", synopsis: "creds set <name> --kind <kind> --allow <origin> [--header \"Name: …{}…\"] [--scope actor] [--enforcement federated|narrow|broad] [--secret <s> | --secret-env VAR] [--meta k=v,…]", summary: "mint a credential with its §5 contract (else hidden prompt)" },
+      { name: "list", synopsis: "creds list", summary: "list names, kinds and destination bindings (never values)" },
+      { name: "show", synopsis: "creds show <name>", summary: "one credential's metadata — never the secret" },
+      { name: "rotate", synopsis: "creds rotate <name> [--secret <s> | --secret-env VAR]", summary: "re-seal a new secret under the same name (refs unchanged)" },
       { name: "rm", synopsis: "creds rm <name>", summary: "remove a credential" },
-      { name: "oauth", synopsis: "creds oauth <name> --authorize-url <u> --token-url <u> --client-id <id> [--client-secret <s>] [--oauth-scopes \"a b\"] [--meta k=v,…] [--port <n>]", summary: "PKCE flow; uploads only the refresh token" },
+      { name: "oauth", synopsis: "creds oauth <name> --authorize-url <u> --token-url <u> --client-id <id> [--client-secret <s>] [--oauth-scopes \"a b\"] [--allow <origin>] [--meta k=v,…] [--port <n>]", summary: "PKCE flow; uploads only the refresh token" },
     ],
     flags: [
-      { flag: "--kind api-key|oauth-refresh", desc: "what the credential is; gates which verbs may ever use it" },
+      { flag: "--kind api-key|oauth-refresh|aws-sigv4|hmac-key", desc: "what the credential is; gates which Bureau verbs may ever use it (bureau.md §4.1)" },
+      { flag: "--allow <origin>", desc: "destination binding — the primary control; an origin (https://host) or a *.wildcard. Required on `set`: fail closed (§6)" },
+      { flag: "--header \"Name: …{}…\"", desc: "injection recipe; the {} is where the value goes. Header-only, never a query param. Defaults to Authorization: Bearer {} for api-key" },
+      { flag: "--scope actor", desc: "who may open the row; only `actor` today — `inbox`/`global` need the AAD re-seal (§9), deferred" },
+      { flag: "--enforcement federated|narrow|broad", desc: "which §5.2 rung enforces the narrowing; `broad` (default) = only our code will, once the proxy exists" },
       { flag: "--secret <s> / --secret-env VAR", desc: "the value, or the env var holding it (else a hidden prompt — never argv)" },
       { flag: "--meta k=v,…", desc: "free-form metadata stored beside the credential (also accepted on `oauth`)" },
       { flag: "--port <n>", desc: "localhost port for the `oauth` PKCE callback (default 8976)" },
-      { flag: "--dry-run", desc: "on `rm`: report what would be deleted, delete nothing" },
+      { flag: "--dry-run", desc: "on `rm`/`rotate`: report what would happen, write nothing" },
     ],
     examples: [
-      { cmd: "bullmoose creds set openai --kind api-key --secret-env OPENAI_API_KEY" },
+      { cmd: "bullmoose creds set stripe --kind api-key --allow https://api.stripe.com --secret-env STRIPE_KEY" },
+      { cmd: "bullmoose creds set aws-mcp --kind aws-sigv4 --allow \"*.amazonaws.com\" --enforcement narrow --secret-env AWS_SECRET" },
       { cmd: "bullmoose creds oauth gcal --authorize-url … --token-url … --client-id … --port 9000" },
     ],
     seeAlso: ["agent"],

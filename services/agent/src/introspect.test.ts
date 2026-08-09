@@ -432,11 +432,13 @@ describe("015 — \"which agents can read my contacts?\"", () => {
       { accountId: "a_eric", domain: "calendar", scope: "read" },
       ericWithGrantees(),
     );
-    // g_sched holds ["calendar"], which does NOT confer "read"
-    // (REALM_SCOPES are independent of the mail verbs, post-common/001) —
-    // so asking who can READ the calendar excludes it. g_editor's whole
-    // account ["mail"] does confer read.
-    expect(r.out.grants.map((g: any) => g.grantId)).toEqual(["g_editor"]);
+    // g_sched holds ["calendar"], which — since common/027 — DOES confer
+    // "read" (any write/realm capability implies read), and its grant covers
+    // the calendar domain, so asking who can READ the calendar now includes it.
+    // This is exactly 027 symptom 1 fixed: a calendar grant could write events
+    // it could not list; now it can list them. g_editor's whole-account
+    // ["mail"] also confers read; g_book is AddressBook-scoped, so excluded.
+    expect(r.out.grants.map((g: any) => g.grantId)).toEqual(["g_editor", "g_sched"]);
   });
 
   it("11. filtering matches what the gate would actually decide", async () => {
@@ -883,10 +885,12 @@ describe("015 — the tools are declared and reachable", () => {
     }
   });
 
-  it("38. a token with no `read` scope cannot call them", async () => {
-    // `hasScope` is no longer a wildcard: ["calendar"] does not satisfy
-    // "read" (common/001, closed). The declared scope has to bite.
-    const r = await callTool("whoami", { accountId: "a_eric" }, eric({ scopes: ["calendar"] }));
+  it("38. a token with no `read` capability cannot call them", async () => {
+    // The declared read scope has to bite. Since common/027 any write or realm
+    // capability implies `read`, so the only token that is genuinely read-less
+    // is `admin` — control-plane only, it implies nothing and nothing implies
+    // it. (A `["calendar"]` token, by contrast, now DOES satisfy read.)
+    const r = await callTool("whoami", { accountId: "a_eric" }, eric({ scopes: ["admin"] }));
     expect(r.status).toBe(403);
     expect(r.body.error.message).toMatch(/lacks the "read" scope/);
   });

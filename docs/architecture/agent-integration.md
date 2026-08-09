@@ -77,10 +77,12 @@ No full per-invocation persona override: it destroys reproducibility and turns e
 
 ## 4. Grants — capability, not trust
 
-Default deny. Verb-tiered, enforced **at the API layer via scoped tokens**, never by trusting agent code:
+Default deny. Capability-scoped, enforced **at the API layer via scoped tokens**, never by trusting agent code. The scopes are a flat set, not an ordered lattice (common/027):
 
 ```
-read:{query}  <  annotate  <  draft  <  move  <  SEND  <  delete
+read · annotate · draft · move · SEND · delete   (independent mail verbs; "mail" bundles all six)
+realms: contacts · calendar · vault · files      (independent)
+the one implication: any write verb or realm scope implies read
 ```
 
 - **Per-invocation tokens**: minted at invocation time, scoped to exactly the

@@ -36,10 +36,12 @@ import type { ToolDef } from "./mcp.js";
  *   email_create_draft   Email/set create
  *   email_destroy        Email/set destroy            PERMANENT, not the Trash
  *
- * ## Scopes — mail is the one domain that uses the lattice
+ * ## Scopes — independent mail verbs, and any write implies read
  *
- * `read < annotate < draft < move < send < delete`
- * (`packages/auth-core/src/index.ts`), and unlike calendar/contacts it was
+ * `hasScope` is a FLAT SET, not an ordered lattice (common/027): the mail
+ * verbs read, annotate, draft, move, send, delete are mutually independent,
+ * with the ONE implication that every write verb also satisfies `read`
+ * (`packages/auth-core/src/index.ts`). Unlike calendar/contacts, mail was
  * designed for exactly these operations, so every tool has an obviously
  * correct verb and none of them is blanket-scoped:
  *
@@ -56,11 +58,12 @@ import type { ToolDef } from "./mcp.js";
  * as "stricter than the method"; the fix landed, and tool and method now
  * charge the same verb for the same operation.
  *
- * ⚠️ `hasScope` treats the six mail verbs as a FLAT SET, not a chain: `move`
- * does NOT imply `read`. A token holding only `move` can call `email_move`
- * with an explicit `mailboxId` but cannot resolve a `role` to an id, because
- * that is a `Mailbox/query` read. Said in the tool description, and the
- * refusal names the way out.
+ * The verbs stay independent for WRITES — `move` does not imply `annotate`,
+ * `draft` does not imply `delete` — but every write verb DOES imply `read`
+ * (common/027). So a token holding only `move` can call `email_move` with an
+ * explicit `mailboxId` AND resolve a `role` to an id (a `Mailbox/query`, a
+ * read), which before 027 it could not. `resolveRole` keeps its helpful
+ * refusal wording as a safety net for a genuinely read-less token.
  *
  * ## NO SEND TOOL — and this is the invariant, not an omission
  *
@@ -214,10 +217,11 @@ const KNOWN_ROLES = ["inbox", "sent", "drafts", "trash", "junk", "archive"] as c
 /**
  * Resolve a role like "archive" to a mailbox id.
  *
- * Costs a `Mailbox/query`, which is a `read`. `move` does not imply `read`
- * (flat set, see the module docstring), so a move-only token gets a refusal
- * here — reworded to name the way out rather than surfacing a bare
- * "forbidden" the model will retry.
+ * Costs a `Mailbox/query`, which is a `read`. Since common/027 any write verb
+ * implies `read` (see the module docstring), so a move-only token resolves a
+ * role here fine. The catch below stays as a safety net: if a token ever
+ * reaches here without read, the refusal names the way out (pass an explicit
+ * `mailboxId`) rather than surfacing a bare "forbidden" the model will retry.
  */
 async function resolveRole(
   env: Parameters<typeof callJmap>[0],

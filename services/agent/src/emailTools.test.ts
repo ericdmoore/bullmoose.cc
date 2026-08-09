@@ -623,9 +623,19 @@ describe("the per-tool scope gate refuses the specific verb", () => {
     expect(r.body.result!.isError).toBeUndefined();
   });
 
-  it("refuses a mail tool to a calendar-only token", async () => {
+  it("a calendar-only token may READ mail but not WRITE it", async () => {
+    // common/027: any write/realm capability implies `read`, so a calendar
+    // token satisfies the mail read tools. It still cannot MUTATE mail — the
+    // write tools gate on the mail verbs (move/delete), which `calendar` never
+    // confers. (Cross-domain read is the accepted cost of the flat read edge.)
     const w = world({ scopes: ["calendar"] });
-    refused(await callTool(w, "email_query", { accountId: ACCOUNT }));
+    const r = await callTool(w, "email_query", { accountId: ACCOUNT });
+    expect(r.status).toBe(200);
+    expect(r.body.result!.isError).toBeUndefined();
+    refused(await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }));
+    refused(
+      await callTool(w, "email_destroy", { accountId: ACCOUNT, emailId: "e_1", confirm: true }),
+    );
   });
 
   it("cannot reach another principal's mail", async () => {
@@ -656,25 +666,27 @@ describe("the per-tool scope gate refuses the specific verb", () => {
     expect(audit.map((a) => a.method)).toContain("mcp:email_query");
   });
 
-  it("a move-only token gets a useful refusal when resolving a role needs read", async () => {
-    // `move` does not imply `read`, so the role lookup is refused — the tool
-    // says how to proceed instead of surfacing a bare "forbidden".
+  it("a move-only token can now resolve a role, because move implies read (027 symptom 3)", async () => {
+    // Used to refuse: resolving a role to a mailbox id is a `Mailbox/query`,
+    // a read, and `move` did not imply `read`, so the tool told the caller to
+    // pass an explicit mailboxId. common/027 gave every write verb the read
+    // edge, so the role lookup now just works with `move` alone.
     const w = world({ scopes: ["move"] });
     const r = await callTool(w, "email_move", {
       accountId: ACCOUNT,
       emailId: "e_1",
       role: "archive",
     });
-    expect(r.body.result!.isError).toBe(true);
-    expect(r.text).toContain("mailboxId");
-    // ...and naming the mailbox explicitly works with move alone.
+    expect(r.body.result!.isError).toBeUndefined();
+    expect(mailboxesOf(w, "e_1")).toEqual([ARCHIVE]);
+    // ...and naming the mailbox explicitly still works too.
     const direct = await callTool(w, "email_move", {
       accountId: ACCOUNT,
       emailId: "e_1",
-      mailboxId: ARCHIVE,
+      mailboxId: INBOX,
     });
     expect(direct.body.result!.isError).toBeUndefined();
-    expect(mailboxesOf(w, "e_1")).toEqual([ARCHIVE]);
+    expect(mailboxesOf(w, "e_1")).toEqual([INBOX]);
   });
 });
 

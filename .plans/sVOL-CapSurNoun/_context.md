@@ -286,12 +286,12 @@ is the only thing that catches this failure mode, and it is now cheap.
 
   ⚠️ **Calendar and contacts do NOT use the mail scope lattice.** One scope named after the
   domain covers create, update, *and* delete. Only mail uses
-  `read < annotate < draft < move < send < delete`. Any new surface must mirror this rather
+  `read · annotate · draft · move · send · delete (flat; any write implies read — common/027 DECIDED)`. Any new surface must mirror this rather
   than invent a mapping — and note the consequence: an agent granted `calendar` in order to
   *add* events can also *destroy* them, with no finer grant available.
 
   📄 **Doc drift, unfiled** — worth a `.feedback` issue. `packages/auth-core/src/index.ts:10-12`
-  declares the vocabulary as `read < annotate < draft < move < send < delete ; "mail" = all of
+  declares the vocabulary as `read · annotate · draft · move · send · delete (flat; any write implies read — common/027 DECIDED) ; "mail" = all of
   them` plus `admin`, and **omits `contacts` and `calendar` entirely**. Those two are real:
   `packages/cli/src/help.ts:105` documents the full list to users, `principal.ts:207` types
   `MethodDomain = "mail" | "contacts" | "calendar"`, and the methods pass them as live scope
