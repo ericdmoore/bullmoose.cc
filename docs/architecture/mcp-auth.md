@@ -157,44 +157,57 @@ a valid signature is not a valid sender, and a valid sender is not an authorizat
 
 ## 4. Where we are today
 
-**Baseline (honest posture).** The one MCP server, `services/agent/src/mcp.ts`
-("mailstore-analytics", 4 read-only tools), has **no caller identity at all.**
+**Baseline [live].** The one MCP server, `services/agent/src/mcp.ts`, authenticates
+**per request** and authorizes **per tool call**. The gap the rest of this section
+used to describe — "no caller identity, self-asserted `accountId`" — is closed; it was
+the s01 port (`.plans/s01-stateless-MCP`). What is actually there now:
 
-- It is gated by a single shared secret: `x-internal-token === env.INTERNAL_TOKEN`
-  at the router (`services/agent/src/index.ts:56,68`), the same secret shared
-  across the jmap/submit/ingest/agent workers.
-- Each tool takes `accountId` as a **self-asserted argument** with a presence
-  check only — no ownership check (`requireAccountId`, `mcp.ts:37-42`). Any holder
-  of the platform secret can read **any** account's spend ledger and message log.
-- The handler threads no principal; `run(env, args)` sees only env + args.
+- **Identity is a bearer, not a shared secret.** Every request carries an
+  `Authorization: Bearer` that `handleMcp` resolves to a principal via `verifyBearer`
+  (`mcp.ts:250-253`); an absent or invalid token is `401` before any method runs. The
+  platform `x-internal-token` still fronts the route (`services/agent/src/index.ts:56`;
+  `/mcp/analytics` at `:70`) but only as a **coarse network ACL** — it is no longer
+  identity.
+- **`accountId` is authorized, not self-asserted.** Each `tools/call` runs
+  `authorizeAccount(principal, accountId, tool.scope, tool.domain)` against the
+  **target** account (token ∩ grant, `mcp.ts:347`) and `403`s on failure, writing
+  `grant_audit` on any grant-reached read (`mcp.ts:352-359`). The old presence-only
+  `requireAccountId` (`mcp.ts:105-110`) survives only as a redundant inner check behind
+  the real gate.
+- **The handler threads a `Principal`.** `run({ env, principal }, args)`
+  (`mcp.ts:362`) — the noun/email write tools need the identity to re-enter the JMAP
+  method gate, not just the bindings.
+- **The surface is no longer four read-only tools.** `TOOLS` (`mcp.ts:236-241`) is the
+  four analytics reads **plus** calendar/contacts CRUD (sVOL `013`), email CRUD (`014`)
+  and introspection (`015`) — ~29 tools, reads *and* writes. `ToolDef` carries its own
+  `scope`/`domain` (`mcp.ts:73-98`) so a delete is not authorized like a read.
 
-That is fine for "one trusted internal runtime." It does **not** survive *multiple*
-agents — the whole point of multiple agents is that `analyst@` must not read the
-accounts `editor@` was delegated.
+That closes identity (layer 2) and capability (layer 3) on MCP — they were the whole of
+§6, and §6 shipped.
 
-**The runtime runs no tools yet.** `packages/cli/src/agent.ts` is TEMPLATE mode:
-`AgentConfig` (`agent.ts:39-50`) has no `tools`/`mcpServers` field; the loop does
-one model call and takes the text. `allen.json` declares zero tools. So the
-tool-injection layer (§8) is greenfield — the right time to set its rules.
-
-**The gap, in one line:** identity (layer 2) and capability (layer 3) are fully
-built for JMAP and absent on MCP.
+**The remaining gap — the runtime still runs no tools.** `packages/cli/src/agent.ts` is
+TEMPLATE mode: `AgentConfig` (`agent.ts:39-50`) has no `tools`/`mcpServers` field, and
+`callModel` (`agent.ts:235`) is a single non-looping call; `allen.json` declares zero
+tools. So the *server* is secured, but the *client* tool-injection layer (§8) is still
+greenfield — the right time to set its rules.
 
 ---
 
 ## 5. The reuse map
 
-Everything the real design needs already exists — it just isn't wired into MCP.
+Everything the real design needs already exists — and the identity/authz half is, since
+s01, **already wired into MCP** (§6). The map, with anchors re-pinned to their current
+homes (the token verifier and grant logic moved into `auth-core` in the lift):
 
 | Primitive | Where | Notes |
 |---|---|---|
-| **Opaque bearer token** `bm_<id>_<secret>` | `packages/auth-core/src/index.ts:24-42` | SHA-256 hash at rest; `mintToken`/`parseToken`/`verifyTokenSecret`. Minted for agents via `mintPrincipalToken` (`services/provision/src/index.ts:459`), supports expiry. **Not a JWT.** |
-| **Token verifier** (bearer → principal) | `services/jmap/src/auth.ts:44` **and** `services/agent/src/vault.ts:41` | Same `tokens ⋈ principals` join, **duplicated**. Lift into `auth-core` as `verifyBearer` [proposed]. |
-| **Scope lattice** | `packages/auth-core/src/index.ts:46-58` | `read<annotate<draft<move<send<delete`, plus `mail`, `admin`. `hasScope` — **`mail` covers everything except `admin`** (:50-53). `scopesWithin` = no-escalation (:56-58). `vault`/`contacts`/`calendar` exist by usage, not in the union. |
-| **Grants** (account → account) | table `packages/mailstore/sql/control-plane.sql:84-99`; resolution `services/jmap/src/auth.ts:127-169` | grantee→target, scopes, optional `collection`+`collection_id`, `expires_at`. |
-| **Grant enforcement** (`token ∩ grant` + audit) | `services/jmap/src/methods/common.ts:28-62` | `requireAccount`: scope check, `matchingGrants` intersection (`auth.ts:199-206`), **writes `grant_audit` every delegated call**. `grantCoversDomain` (`:191`), `allowedBookIds` (`:213`). |
-| **Grant minting** (owner/admin only) | `services/provision/src/index.ts:519-579` | `createGrant`; rejects cross-tenant; `GRANTABLE_SCOPES` (`:505`). Self-granting blocked by design. |
-| **Vault** (per-principal sealed secrets) | crypto `packages/auth-core/src/index.ts:147-207`; store `services/agent/src/vault.ts:69-210` | HKDF-SHA256 → AES-256-GCM, `AAD = "principalId:name"` (`vaultAad`, `:205`) binds the row. `openVaultSecret(env, principalId, name)` (`vault.ts:191`) — in-process, no request auth; caller keeps plaintext in memory only. Write-only HTTP API needs `vault` scope. |
+| **Opaque bearer token** `bm_<id>_<secret>` | `packages/auth-core/src/index.ts:24-42` | SHA-256 hash at rest; `mintToken`/`parseToken`/`verifyTokenSecret`. Minted for agents via `mintPrincipalToken` (`services/provision/src/index.ts:1400`), supports expiry. **Not a JWT.** |
+| **Token verifier** (bearer → principal) | **[live for jmap + mcp; vault outstanding]** `verifyBearer` in `packages/auth-core/src/principal.ts:100` | Lifted into `auth-core` by s01; `services/jmap/src/auth.ts` is now a 4-line re-export shim and MCP calls it directly. **Still duplicated:** `services/agent/src/vault.ts:43` (`authenticateVault`) hand-rolls its own `parseToken`+`verifyTokenSecret` verify (no grants/accounts — enough for the per-principal vault). One real duplicate remains — see issue `017`. |
+| **Scope lattice** | `packages/auth-core/src/index.ts:46-85` | `MAIL_SCOPES` = `read<annotate<draft<move<send<delete` (`:46`); `REALM_SCOPES` `contacts`/`calendar`/`vault`/`files` are **flat and independent** (`:54`). `hasScope` (`:77-80`) — **`mail` is a bundle of the mail verbs only, NOT a wildcard**: since common/027 it no longer covers `contacts`/`calendar`/`vault`, and unknown scopes fail closed. `scopesWithin` = no-escalation (`:83-85`). |
+| **Grants** (account → account) | table `packages/mailstore/sql/control-plane.sql:143-158`; resolution `packages/auth-core/src/principal.ts:147-192` | grantee→target, scopes, optional `collection`+`collection_id`, `expires_at`. |
+| **Grant enforcement** (`token ∩ grant` + audit) | decision `packages/auth-core/src/principal.ts:249` (`authorizeAccount`); JMAP caller `services/jmap/src/methods/common.ts:84` (`requireAccount`) | `authorizeAccount` is the **pure, shared** decision — scope check + `matchingGrants` intersection (`principal.ts:225`) over the method domain (`grantCoversDomain:217`); it returns the grant the caller must write to `grant_audit`. `requireAccount` performs that INSERT on every delegated call (`common.ts:101`); MCP does the same (`mcp.ts:352`). `allowedBookIds` (`principal.ts:275`) narrows collection-scoped grants. |
+| **Grant minting** (owner/admin only) | `services/provision/src/index.ts:1467` (`createGrant`) | rejects cross-tenant; `GRANTABLE_SCOPES` (`:1453`). Self-granting blocked by design. |
+| **Vault** (per-principal sealed secrets) | crypto `packages/auth-core/src/index.ts:240-330`; store `services/agent/src/vault.ts:69-210` | HKDF-SHA256 → AES-256-GCM, `AAD = "principalId:name"` (`vaultAad`, `:319`) binds the row. `openVaultSecret(env, principalId, name)` (`vault.ts:191`) — in-process, no request auth; caller keeps plaintext in memory only. Write-only HTTP API needs `vault` scope. |
 | **Identity chain** | `control-plane.sql` principals `:24`, accounts `:31`, identities `:41`; `agent_bindings` `data-plane.sql:98-109` | An agent = an ordinary account with an `agent_bindings` row. `editor@` = the EditorEmily persona. Tokens & vault rows hang off `principal_id`. |
 | **CLI vault face** | `packages/cli/src/creds.ts` | `creds init/set/list/rm/oauth`; `set` PUTs to `/vault/credentials` (`:84`); `oauth` runs a local browser+PKCE flow and uploads only the refresh token (`:161`). |
 | **SigV4 client** | `aws4fetch` (`packages/outbound`, `services/provision`) | Already a dependency — wired only to SES today. |
@@ -203,23 +216,28 @@ Everything the real design needs already exists — it just isn't wired into MCP
 
 ## 6. Securing the MCP surface
 
-This must exist regardless of anything fancier. Three changes [all proposed]:
+This had to exist regardless of anything fancier. Three changes — **all now [live]**,
+shipped by the s01 port (`.plans/s01-stateless-MCP`):
 
-1. **Lift the verifier into `auth-core`.** `verifyBearer(db, raw) → {principalId,
-   email, scopes, accounts}`; JMAP, vault, and MCP all call it. Kills the
-   duplication (`auth.ts:44` vs `vault.ts:41`).
-2. **Replace the self-asserted `accountId` with an authorization check.** In
-   `handleMcp`, authenticate the bearer, resolve the principal, and route each
-   tool's target account through a `requireAccount`-style gate — token scope ∩
-   grant, and **write `grant_audit`** exactly like the JMAP methods do
-   (`methods/common.ts:28-62`). This single change turns "any token reads any
-   account" into "each agent reads only what it holds or was granted."
+1. **Lift the verifier into `auth-core`.** **[live]** `verifyBearer(db, raw) →
+   Principal` now lives in `packages/auth-core/src/principal.ts:100`; JMAP and MCP both
+   call it, and `services/jmap/src/auth.ts` is a re-export shim. (One duplicate remains
+   — the vault's own `authenticateVault`, `vault.ts:43`; issue `017`.)
+2. **Replace the self-asserted `accountId` with an authorization check.** **[live]**
+   `handleMcp` authenticates the bearer, resolves the principal, and routes each tool's
+   target account through `authorizeAccount` — token scope ∩ grant, domain-checked —
+   **writing `grant_audit`** exactly like the JMAP methods do (`mcp.ts:347-359`; cf.
+   `methods/common.ts:84`). "Any token reads any account" is now "each agent reads only
+   what it holds or was granted."
 3. **Scope MCP tools to the domain they read, not a blanket `mcp` scope.**
-   Analytics reads the message log → `read`; the spend ledger → a dedicated
-   `analytics` scope if you want it separable. **Mind the trap:** `hasScope`
-   treats `mail` as a superset of everything except `admin` (`auth-core:50-53`),
-   so a `mail` token satisfies any new custom scope unless you special-case it
-   like `admin`.
+   **[live — followed]** `ToolDef` declares `scope`/`domain` per tool
+   (`mcp.ts:73-98`): the analytics reads gate on `("read","mail")`, and the
+   calendar/contacts/email tools added since carry their own domain verbs.
+   **The lattice trap, now corrected:** `hasScope` **no longer** treats `mail` as a
+   superset of everything but `admin` — since common/027 it covers only the mail verbs
+   (`auth-core/src/index.ts:77-80`), so `contacts`/`calendar`/`vault` are independent
+   scopes a `mail` token does *not* satisfy. A separable `analytics` scope, if ever
+   wanted, would likewise be independent by default.
 
 ---
 
@@ -234,6 +252,51 @@ Today the only own-MCP is the analytics surface, deliberately **not public**
 **native JMAP tools**, not MCP — richer semantics, no protocol hop, and it already
 runs through `requireAccount`/`grant_audit`. So **JMAP is bullmoose's own
 capability surface; it just isn't spoken as MCP.**
+
+#### The MCP.2 wire contract [live]
+
+The internal server speaks **stateless MCP.2** (`2026-07-28` / SEP-2575): one
+JSON-RPC request per POST, one response, no session, **no `initialize`, no `ping`**.
+It is `POST /mcp/analytics` on the agent worker (`services/agent/src/mcp.ts`). Every
+request stands alone and must carry both its identity and its protocol version — a
+harness client (§15) builds against exactly this.
+
+*Request headers*
+```
+Authorization: Bearer bm_<id>_<secret>      # identity — mandatory (401 if absent/invalid)
+MCP-Protocol-Version: 2026-07-28            # mandatory; MUST equal _meta protocolVersion
+Mcp-Name: spend_by_month                    # tools/call only; MUST match params.name when sent
+Content-Type: application/json
+```
+(*The s01 design lists an `Mcp-Method` routing hint, but the server does not read it
+— advisory only, safe to omit.*)
+
+*Body* — JSON-RPC 2.0 with per-request `_meta`:
+```jsonc
+{ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+  "params": {
+    "name": "spend_by_month",
+    "arguments": { "accountId": "a_eric", "months": 6 },
+    "_meta": {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",   // MUST equal the header
+      "io.modelcontextprotocol/clientCapabilities": {}           // required, every request
+    } } }
+```
+
+*What the server enforces* (`mcp.ts:270-321`):
+- header/`_meta` version **missing or mismatched** → `400`, JSON-RPC `-32600`.
+- **unsupported** version → `400`, `-32022` (`UNSUPPORTED_PROTOCOL_VERSION`) with
+  `data.supported = ["2026-07-28"]`.
+- missing `clientCapabilities` → `400`, `-32602`.
+- `server/discover` **MUST** exist (returns `supportedVersions`,
+  `capabilities:{tools:{}}`, `serverInfo`, `instructions`); unknown method →
+  `-32601` / `404`.
+- `tools/list` returns the `tools` array **plus `ttlMs` + `cacheScope`**.
+- notifications (id-less, or `notifications/*`) → `202`, no body.
+
+This is exercised by the conformance suite (`services/agent/src/mcp.test.ts`) and —
+end to end against a real worker with real D1 and tokens — by `tools/e2e-grants.mjs`
+§14.
 
 **A first-class "bullmoose MCP" becomes necessary the moment the client isn't
 yours.** claude.ai, Claude Desktop, a teammate's agent, another agent-native
@@ -564,7 +627,7 @@ STEP                                    MECHANISM              STATUS
  1. Delivery triggers analyst@ invocation   agent binding         [live]
  2. Redeem the capability → grant           JWS verify + grant    [new]
  3. Mint a per-invocation token             scoped short token    [new]
- 4. Read Eric's spend (analytics MCP)       bearer + grant ∩      [new gate]
+ 4. Read Eric's spend (analytics MCP)       bearer + grant ∩      [live gate]
  5. Needs Emily's Vendors book              A2A request           [new]
  6. Emily's policy auto-approves            binding template      [new]
  7. Read the AWS contact                    collection grant ∩    [live gate]
@@ -578,8 +641,8 @@ Key beats:
 - **Step 2** is the only JOSE in the flow. Everything downstream is bearer + grant.
   (Intra-tenant, this could be a plain grant — the JWS is shown to exercise the
   cross-boundary mechanism; see §11's rule.)
-- **Step 4** is the MCP gate that doesn't exist yet: principal-scoped, ownership-
-  checked, audited — the §6 change.
+- **Step 4** is the MCP gate — now **live** (§6): principal-scoped, ownership-checked,
+  audited (`mcp.ts:347-359`), and drawn exactly as the §12 mermaid shows.
 - **Steps 5–7** are the agent-to-agent case: Allen requests read on *Emily's*
   private `Vendors` book; her `autoGrant` template approves within bounds;
   `allowedBookIds` narrows him to that one book.
@@ -808,22 +871,23 @@ here, not the verdict.
 
 Ordered by value and dependency; each stands alone.
 
-1. **Close the MCP hole** (§6) — `verifyBearer` in `auth-core`; principal-scoped,
-   ownership-checked, audited `handleMcp`. Small, high-value; makes the analytics
-   MCP safe for multiple agents. *No new concepts — reuses `requireAccount`.*
-2. **Per-invocation minted tokens** — the runtime mints a short-lived bearer scoped
+**Done (s01):** *Close the MCP hole* (§6) — `verifyBearer` lifted to `auth-core`;
+principal-scoped, ownership-checked, audited `handleMcp` (`mcp.ts`). This was step 1;
+it shipped, so the next effort starts at per-invocation tokens.
+
+1. **Per-invocation minted tokens** — the runtime mints a short-lived bearer scoped
    to context ∪ standing grants (the model the docs already call for).
-3. **The tool-calling harness** (§2, §8) — the loop that turns `tool_use` into
+2. **The tool-calling harness** (§2, §8) — the loop that turns `tool_use` into
    `tools/call`, with the credential-injection layer wired so no compose/send
    module holds a vault reference (§16). Unblocks *any* external tool.
-4. **Credential admin plane** (§9) — WebUI for cred *references/lifecycle* + OAuth
+3. **Credential admin plane** (§9) — WebUI for cred *references/lifecycle* + OAuth
    initiation; raw-secret entry stays CLI/direct-to-vault.
-5. **A2A request → approve → grant** (§11d) — the `autoGrant` template shape + a
+4. **A2A request → approve → grant** (§11d) — the `autoGrant` template shape + a
    request/redeem endpoint. Reuses `createGrant`/`grant_audit`.
-6. **Front-matter capability** (§11b–c) — the JWS signer + JWKS endpoint + redeem
-   endpoint + `jti` replay cache. The genuinely new mechanism; sits on top of 1–5.
+5. **Front-matter capability** (§11b–c) — the JWS signer + JWKS endpoint + redeem
+   endpoint + `jti` replay cache. The genuinely new mechanism; sits on top of 1–4.
    Needed first at the **cross-domain** frontier.
-7. **OAuth 2.1 resource-server** (§7a) — only when you expose an MCP server to a
+6. **OAuth 2.1 resource-server** (§7a) — only when you expose an MCP server to a
    client that isn't yours.
 
 Throughline: **the email authorizes; the grants table dispenses and audits; the
@@ -844,9 +908,13 @@ The properties that must hold — written as things you can assert/test.
    import `openVaultSecret`; grep-assertable in CI.*
 3. **Credentials are destination-bound.** A vault secret is attached only to a
    request to its configured host. WebFetch attaches none.
-4. **MCP calls are principal-scoped.** Every `tools/call` resolves a principal via
-   `verifyBearer` and authorizes the target account via `requireAccount` (token ∩
-   grant), writing `grant_audit`. No self-asserted `accountId`.
+4. **MCP calls are principal-scoped.** **[holds]** Every `tools/call` resolves a
+   principal via `verifyBearer` and authorizes the target account via
+   `authorizeAccount` (token ∩ grant), writing `grant_audit`; no self-asserted
+   `accountId`. Regression-tested against a fake D1 in
+   `services/agent/src/mcp.test.ts:247-365` (the "§6 auth gate" block, cases 7–10:
+   no-bearer → 401, owned read without audit, cross-account → 403 with no rows
+   leaked, grant-reached read with a `grant_audit` write).
 5. **Delegation is owner-authored or template-bounded.** No agent grants itself
    access; the requester is never the approver; auto-approval only within
    pre-authorized templates; A2A grants always carry `expires_at`.
