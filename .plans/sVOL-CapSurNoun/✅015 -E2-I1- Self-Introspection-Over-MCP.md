@@ -7,7 +7,7 @@
 | **Impact** | **I1** — human-verifiable, unlocks nothing named |
 | **Owner** | `sVOL` |
 | **Depends on** | `001` (ToolDef scope+domain) |
-| **Status** | todo |
+| **Status** | **done** — `services/agent/src/introspectTools.ts` + `introspect.test.ts` (38 tests). See *Shipped* at the bottom. |
 
 ## Cells covered
 
@@ -343,3 +343,91 @@ queries in a small shared module rather than inline in `mcp.ts` costs nothing no
    `grant_audit` actually accumulates rows in a live deployment — it is written on every
    grant-reached call in both surfaces, but if grants are rarely used in practice the table
    may be empty, and `access_log` would be a tool that always returns nothing.
+
+---
+
+## Shipped
+
+`services/agent/src/introspectTools.ts` (new module; `mcp.ts` touched only for the import and
+the `TOOLS` spread, one line each, to stay out of `014`'s way) and
+`services/agent/src/introspect.test.ts` (38 tests). Seven tools, all `scope: "read"`,
+`domain: "mail"`:
+
+```
+whoami  my_access  who_can_access  my_agents  invocation_history  explain_skip  access_log
+```
+
+`explain_skip` is not in the tool list above — it was added because open question 5 turned out
+to be **wrong**, see below.
+
+### Open questions, resolved
+
+**5 — "Why did editor@ skip that email?" IS answerable, and the unit stays a projection.**
+This was filed as the claim most likely to break the unit's classification. It does not. The
+*cloud* runtime already writes a decision log: `runInvocation` finishes a filtered message with
+`done("done", { note: \`skipped: ${sender} not in allowedSenders\` })`
+(`services/agent/src/index.ts:172`, and `:167` for the RFC 3834 auto-sender case), and
+`finish()` copies that string into `agent_invocations.note` (`:330-335`). The fact *and* the
+reason are on a row. The unit's premise — "`allowedSenders` filtering lives in the runtime's
+binding config, not in a logged decision" — was read from `packages/cli/src/agent.ts` (the
+homelab runtime) and generalised to both; `services/agent/src/index.ts` was not checked. No
+capability is needed and nothing new is written.
+
+Where it is genuinely unanswerable, `explain_skip` says so instead of guessing, and returns a
+`limitations` array with every answer:
+
+| Case | Verdict | Evidence |
+|---|---|---|
+| sender/auto-submitted filtered, cloud runtime | `skipped` | the runtime's own `note` |
+| binding disabled, or `trigger_on ≠ mailbox-delivery` | `never-ran` | ingest filters on exactly those two columns (`ingest/src/index.ts:167-172`), so no row provably means not queued |
+| still queued | `not-skipped` | status |
+| homelab runtime name-mismatch | **no evidence** | `packages/cli/src/agent.ts:156` is a bare `return false` — no note, row left `pending` |
+| never delivered / predates the binding | **no evidence** | nothing records a delivery that matched no binding |
+
+**3 — `MethodDomain` was NOT widened, and the stated reason for widening it does not hold.**
+The unit argued that riding on `mail` is "a lie the audit log then records". It is not: MCP
+writes `mcp:${tool.name}` as the audit `method` (`mcp.ts:350`), never the domain. `domain` is
+consumed only by `grantCoversDomain`, i.e. which grants could unlock the tool for a
+*grant-reached* caller — and Rule 1 refuses every one of those. Widening a shared type for a
+label nothing records would be a change with no behaviour. Also decisive: `mcpTools.test.ts:19`
+pins `VALID_DOMAINS` to the closed union, so widening is a two-package change, not a one-line one.
+
+**4 — the `config_json` field-level allowlist is specified and frozen by a test.**
+`describeBinding()` returns derived facts only: `pipeline`, `replyMode` (re-narrowed to the
+enum this module owns), `hasPersona`, `senderAllowlist: {active, count}`, `modelAliasCount`.
+Never the persona text, the allowlisted addresses, the model routing or the digest targets.
+Test 22 asserts the projected key set exactly, so a new `BindingConfig` field cannot arrive by
+passthrough.
+
+**6 — `grant_audit` was in fact never read, and its columns only partly support the questions.**
+This unit is its first reader. What it supports: *who* (acting login email), *which account*,
+*what method label*, *when*, *under which grant*. What it does not, all now returned as an
+explicit `limitations` array on every `access_log` answer rather than left to be misread:
+
+- **only DELEGATED access is recorded.** The write is conditional on `decision.auditGrant`, which
+  is `null` for an owned account (`principal.ts:259`). An owner's own reads are never logged, so
+  an empty `access_log` means "nobody reached this through a grant", not "nothing happened".
+  This is the single most misreadable thing about the table.
+- **rows are attempts, not outcomes.** The insert happens *before* the tool or method runs
+  (`mcp.ts:345-352`) and there is no status column, so a refused call is indistinguishable from
+  a successful one. (This is also what makes *Done when* #6 work for free.)
+- **no row says what was read** — no object id, count or collection.
+- **a revoked grant's scopes are unrecoverable.** `revokeGrant` is a hard `DELETE`
+  (`provision/src/index.ts:603`) and `s03.A`'s tombstones do not exist, so the `grant_id`
+  dangles. Rendered as `grantStatus: "revoked-or-deleted"` with the explaining sentence, per
+  *Done when* #5.
+
+One shape the bread-crumbs missed: `method` has **three** forms, not two.
+`requireAccountScopes` writes `${domain}:${scopes.join("+")}` (`methods/common.ts:76`), e.g.
+`mail:draft+delete`, alongside `requireAccount`'s `${domain}:${scope}` (`:108`) and MCP's
+`mcp:${tool}`. Parsed naively that is a scope named `draft+delete`. All three are covered.
+
+### Not done
+
+**`whoami` still takes an `accountId`** and therefore does not satisfy *Done when* #7's
+account-less form — only its substance (owned and grant-reached accounts, listed separately and
+distinguished). Skipping the account gate needs `requiresAccount?: boolean` on `ToolDef` plus a
+branch in `handleToolCall`, which is a change to shared dispatch. This unit's brief was to touch
+`mcp.ts` in one line while `014` was in flight, and the unit itself says the `ToolDef` change
+belongs in `001` "so there is one shape, not two". Filed there, not done here. Everything else
+in *Done when* is covered by `introspect.test.ts`.

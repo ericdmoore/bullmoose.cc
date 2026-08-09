@@ -38,7 +38,9 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
   kind: full CRUD on `CalendarEvent` and `ContactCard`, Read on `Calendar` and `AddressBook`.
   `014` then added eight Email tools — read, search, body, and triage (flag / move / destroy)
   plus `Mailbox` Read — and deliberately **no send tool**, an invariant asserted over the tool
-  table. The introspection nouns (`015`) are still absent. Note the shape of what
+  table. `015` added seven read-only introspection tools over the authorization state itself
+  (`Agents × Read`, `SystemAdmin × Read`), narrowed to accounts the caller **owns**. Note the
+  shape of what
   shipped — the two *collection* nouns are `R` only, because the unit's own tool list maps
   `calendar_list` → `Calendar/get` and `contacts_list_books` → `AddressBook/get` and stops
   there; creating and deleting calendars and address books over MCP is unfiled (see §4).
@@ -73,7 +75,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 012 | `AddressBook/query` + `Calendar/query` | cap | E1 | I1 ³ | sVOL | — | todo |
 | 013 | **Calendar + Contacts CRUD over MCP** | proj | E2 | I3 | sVOL | 001, 002, 003 | **✅ done** |
 | 014 | **Email read + triage over MCP** | proj | E2 | I3 | sVOL | 001, 002 | **✅ done** |
-| 015 | Self-introspection over MCP (`help@`) | proj | E2 | I1 | sVOL | 001 | todo |
+| 015 | **Self-introspection over MCP (`help@`)** | proj | E2 | I1 | sVOL | 001 | **✅ done** |
 | 016 | CLI I/O contract | proj | E2 | I3 | **s05** T1 | — | todo |
 | 017 | Contacts CRUD over CLI | proj | E2 | I3 | **s05** T2 | 016 | todo |
 | 018 | Calendar CRUD over CLI | proj | E2 | I3 | **s05** T3 | 016, 003 | todo |
@@ -239,7 +241,8 @@ wave 3 — close the capability holes
   007  AgentInvocation trigger        E2  I3
 
 wave 4 — cheap cleanup, any time
-  005 · 008b (tenant/domain/account lifecycle) · 010 ← ✅ DONE, pulled forward · 012 · 015
+  005 · 008b (tenant/domain/account lifecycle) · 010 ← ✅ DONE, pulled forward · 012
+  015  self-introspection over MCP    E2  I1   ← ✅ done, pulled forward
 wave 5 — the unbuilt stacks
   011 (s03.B) → 021 (s03.C) → 022 → 024 → 023 (s03.E)
   025 GraphQL — only after the common/022 spike returns a number
@@ -281,7 +284,7 @@ Every non-`n/a` gap cell in §1 maps to at least one unit:
 | FileNode × everything | 011 → 021 |
 | Blob delete / share revoke | 010 ✅ |
 | Agents × C/D | 007 |
-| Agents/Secrets × MCP | 015 |
+| Agents/Secrets × MCP | 015 ✅ (Agents × Read + SystemAdmin × Read; `Secrets × Read` is out of scope by `bureau.md` invariant 1 and always will be) |
 | HumanSettings × U (`Identity/set`) | 006 |
 | SystemAdmin × U/D | 008 |
 | every noun × WebUI | 021, 022, 023, 024 |
