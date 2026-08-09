@@ -34,7 +34,9 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
   system: no create, rename, move, or delete on *any* surface.
 - **The MCP column is no longer empty.** `013` landed ten tools and MCP's first WRITE of any
   kind: full CRUD on `CalendarEvent` and `ContactCard`, Read on `Calendar` and `AddressBook`.
-  Email (`014`) and the introspection nouns (`015`) are still absent. Note the shape of what
+  `014` then added eight Email tools — read, search, body, and triage (flag / move / destroy)
+  plus `Mailbox` Read — and deliberately **no send tool**, an invariant asserted over the tool
+  table. The introspection nouns (`015`) are still absent. Note the shape of what
   shipped — the two *collection* nouns are `R` only, because the unit's own tool list maps
   `calendar_list` → `Calendar/get` and `contacts_list_books` → `AddressBook/get` and stops
   there; creating and deleting calendars and address books over MCP is unfiled (see §4).
@@ -68,7 +70,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 011 | The `FileNode` noun | cap | E4 | I3 | **s03.B** | s03.A | todo |
 | 012 | `AddressBook/query` + `Calendar/query` | cap | E1 | I1 ³ | sVOL | — | todo |
 | 013 | **Calendar + Contacts CRUD over MCP** | proj | E2 | I3 | sVOL | 001, 002, 003 | **✅ done** |
-| 014 | Email read + triage over MCP | proj | E2 | I3 | sVOL | 001, 002 | todo |
+| 014 | **Email read + triage over MCP** | proj | E2 | I3 | sVOL | 001, 002 | **✅ done** |
 | 015 | Self-introspection over MCP (`help@`) | proj | E2 | I1 | sVOL | 001 | todo |
 | 016 | CLI I/O contract | proj | E2 | I3 | **s05** T1 | — | todo |
 | 017 | Contacts CRUD over CLI | proj | E2 | I3 | **s05** T2 | 016 | todo |
@@ -228,7 +230,7 @@ wave 2 — the first thing a human can see
 wave 3 — close the capability holes
   004  Mailbox/set + CLI              E3  I3   ← ✅ done (was the biggest single gap)
   019  Email triage over CLI          E2  I3
-  014  Email over MCP                 E2  I3
+  014  Email over MCP                 E2  I3   ← ✅ done (read + triage; no send tool)
   009  DAV collection creation        E2  I3   ← DONE
   006  Identity/set + signatures      E3  I3
   008a binding-disable route ONLY     E1  I3   ← the agent kill switch; MUST precede 007
@@ -264,7 +266,7 @@ Every non-`n/a` gap cell in §1 maps to at least one unit:
 | Gap | Unit |
 |---|---|
 | Email × U/D × CLI | 019 |
-| Email × CRUD × MCP | 014 |
+| Email × CRUD × MCP | 014 ✅ |
 | Mailbox × C/U/D × all | 004 |
 | Thread × changes | 027 |
 | EmailSubmission × R | 005 ✅ |
