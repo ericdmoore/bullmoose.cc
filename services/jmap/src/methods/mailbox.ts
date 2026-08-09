@@ -57,8 +57,12 @@ export function registerMailboxMethods(registry: MethodRegistry<RequestContext>)
           sortOrder: r.sortOrder,
           totalEmails: counts.totalEmails,
           unreadEmails: counts.unreadEmails,
-          totalThreads: counts.totalEmails, // TODO: real thread counts
-          unreadThreads: counts.unreadEmails,
+          // Real COUNT(DISTINCT thread_id), not a copy of the message count.
+          // RFC 8621 §2 lists all four as required server-set properties, so
+          // omitting the pair rather than fixing it would trade one spec
+          // deviation for another; mailboxCounts documents what each means.
+          totalThreads: counts.totalThreads,
+          unreadThreads: counts.unreadThreads,
           // Single-sourced with Mailbox/set, which now enforces these:
           // mayDelete: role === null is the role-mailbox protection.
           myRights: rightsFor(r),

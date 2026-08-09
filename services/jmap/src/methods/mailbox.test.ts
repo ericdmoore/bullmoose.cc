@@ -194,13 +194,28 @@ function fakeD1(tables: Tables) {
       const inBox = tables.email_mailboxes.filter(
         (r) => r.account_id === accountId && r.mailbox_id === mailboxId,
       );
-      const unread = inBox.filter(
-        (r) =>
-          !tables.email_keywords.some(
-            (k) => k.account_id === accountId && k.email_id === r.email_id && k.keyword === "$seen",
-          ),
-      ).length;
-      return { results: [{ total: inBox.length, unread }] };
+      const isUnread = (emailId: string) =>
+        !tables.email_keywords.some(
+          (k) => k.account_id === accountId && k.email_id === emailId && k.keyword === "$seen",
+        );
+      // Mirrors the LEFT JOIN: an email_mailboxes row with no `emails` row
+      // still counts toward total, but contributes a NULL thread_id that
+      // COUNT(DISTINCT …) skips. Several destroy tests seed exactly that
+      // shape, so getting this wrong would change totalEmails under them.
+      const threadOf = (emailId: string) =>
+        tables.emails.find((e) => e.account_id === accountId && e.id === emailId)?.thread_id ?? null;
+      const distinctThreads = (rows: typeof inBox) =>
+        new Set(rows.map((r) => threadOf(r.email_id)).filter((t) => t !== null)).size;
+      return {
+        results: [
+          {
+            total: inBox.length,
+            unread: inBox.filter((r) => isUnread(r.email_id)).length,
+            total_threads: distinctThreads(inBox),
+            unread_threads: distinctThreads(inBox.filter((r) => isUnread(r.email_id))),
+          },
+        ],
+      };
     }
 
     return { results: [] };
@@ -319,11 +334,14 @@ const mb = (over: Partial<MailboxRec> & { id: string; name: string }): MailboxRe
 const INBOX = mb({ id: "mb_inbox", name: "Inbox", role: "inbox" });
 const ARCHIVE = mb({ id: "mb_archive", name: "Archive", role: "archive" });
 
-const emailRec = (id: string): EmailRec => ({
+// `threadId` defaults to a thread of one. Pass it explicitly to put several
+// emails in one thread, which is the only way totalThreads can differ from
+// totalEmails — and therefore the only way a thread-count test can bite.
+const emailRec = (id: string, threadId = `t_${id}`): EmailRec => ({
   id,
   account_id: ACCOUNT,
   blob_id: `b_${id}`,
-  thread_id: `t_${id}`,
+  thread_id: threadId,
   message_id: `<${id}@bullmoose.cc>`,
   in_reply_to: null,
   subject: "hi",
@@ -836,5 +854,132 @@ describe("Mailbox/set — the gate bites", () => {
     // ...but allows it the create, so the split is real in both directions.
     const ok = await h.set({ create: { c1: { name: "Later" } } });
     expect(ok.notCreated).toEqual({});
+  });
+});
+
+// ---- Mailbox/get counts (common/026 item 2) ---------------------------
+
+/**
+ * `Mailbox/get` used to return `totalThreads: counts.totalEmails` behind a
+ * `// TODO: real thread counts`, and `unreadThreads: counts.unreadEmails`.
+ * RFC 8621 §2 defines threads and messages as distinct, and threading here
+ * is real (`resolveThreadId` joins a reply to its parent by In-Reply-To), so
+ * the numbers diverge on any threaded mailbox.
+ *
+ * Every assertion below is chosen so the thread number DIFFERS from the
+ * message number. A fixture where each email is its own thread would pass
+ * against the broken source and prove nothing.
+ */
+describe("Mailbox/get — thread counts are counted, not copied", () => {
+  /**
+   * Inbox, five messages across three threads:
+   *
+   *   t_alpha  e_1 ($seen) · e_2            → thread has unread
+   *   t_beta   e_3         · e_4            → thread has unread (two of them)
+   *   t_gamma  e_5 ($seen)                  → thread fully read
+   *
+   * totalEmails 5 vs totalThreads 3, and unreadEmails 3 vs unreadThreads 2 —
+   * so both properties bite independently.
+   */
+  const threaded = () =>
+    harness({
+      mailboxes: [{ ...INBOX }, { ...ARCHIVE }],
+      emails: [
+        emailRec("e_1", "t_alpha"),
+        emailRec("e_2", "t_alpha"),
+        emailRec("e_3", "t_beta"),
+        emailRec("e_4", "t_beta"),
+        emailRec("e_5", "t_gamma"),
+      ],
+      email_mailboxes: ["e_1", "e_2", "e_3", "e_4", "e_5"].map((email_id) => ({
+        account_id: ACCOUNT,
+        email_id,
+        mailbox_id: "mb_inbox",
+      })),
+      email_keywords: [
+        { account_id: ACCOUNT, email_id: "e_1", keyword: "$seen" },
+        { account_id: ACCOUNT, email_id: "e_5", keyword: "$seen" },
+      ],
+    });
+
+  const inboxOf = async (h: ReturnType<typeof harness>) => {
+    const res = await h.get();
+    const list = res.list as Array<Record<string, unknown>>;
+    return list.find((m) => m.id === "mb_inbox")!;
+  };
+
+  it("counts distinct threads, not messages", async () => {
+    const inbox = await inboxOf(threaded());
+    expect(inbox.totalEmails).toBe(5);
+    expect(inbox.totalThreads).toBe(3);
+    // The precise regression: these two were the same value.
+    expect(inbox.totalThreads).not.toBe(inbox.totalEmails);
+  });
+
+  it("counts threads containing unread mail, not unread messages", async () => {
+    const inbox = await inboxOf(threaded());
+    expect(inbox.unreadEmails).toBe(3);
+    // t_beta holds two unread messages but is one unread thread.
+    expect(inbox.unreadThreads).toBe(2);
+    expect(inbox.unreadThreads).not.toBe(inbox.unreadEmails);
+  });
+
+  it("reports zero unread threads when every message is read", async () => {
+    const h = harness({
+      emails: [emailRec("e_1", "t_alpha"), emailRec("e_2", "t_alpha")],
+      email_mailboxes: [
+        { account_id: ACCOUNT, email_id: "e_1", mailbox_id: "mb_inbox" },
+        { account_id: ACCOUNT, email_id: "e_2", mailbox_id: "mb_inbox" },
+      ],
+      email_keywords: [
+        { account_id: ACCOUNT, email_id: "e_1", keyword: "$seen" },
+        { account_id: ACCOUNT, email_id: "e_2", keyword: "$seen" },
+      ],
+    });
+    const inbox = await inboxOf(h);
+    expect(inbox.totalEmails).toBe(2);
+    expect(inbox.totalThreads).toBe(1);
+    expect(inbox.unreadEmails).toBe(0);
+    expect(inbox.unreadThreads).toBe(0);
+  });
+
+  it("counts a thread once per mailbox it appears in", async () => {
+    // One thread, one message in each of two mailboxes. Each mailbox sees a
+    // thread count of 1 — the count is per-mailbox, not global.
+    const h = harness({
+      emails: [emailRec("e_1", "t_alpha"), emailRec("e_2", "t_alpha")],
+      email_mailboxes: [
+        { account_id: ACCOUNT, email_id: "e_1", mailbox_id: "mb_inbox" },
+        { account_id: ACCOUNT, email_id: "e_2", mailbox_id: "mb_archive" },
+      ],
+    });
+    const res = await h.get();
+    const list = res.list as Array<Record<string, unknown>>;
+    for (const id of ["mb_inbox", "mb_archive"]) {
+      const box = list.find((m) => m.id === id)!;
+      expect(box.totalEmails).toBe(1);
+      expect(box.totalThreads).toBe(1);
+      expect(box.unreadThreads).toBe(1);
+    }
+  });
+
+  it("reports zeros for an empty mailbox", async () => {
+    const inbox = await inboxOf(harness());
+    expect(inbox.totalEmails).toBe(0);
+    expect(inbox.totalThreads).toBe(0);
+    expect(inbox.unreadEmails).toBe(0);
+    expect(inbox.unreadThreads).toBe(0);
+  });
+
+  it("still reports a freshly created mailbox as empty on all four counts", async () => {
+    const h = harness();
+    const res = await h.set({ create: { c1: { name: "Receipts" } } });
+    const created = (res.created as Record<string, Record<string, unknown>>).c1;
+    expect(created).toMatchObject({
+      totalEmails: 0,
+      unreadEmails: 0,
+      totalThreads: 0,
+      unreadThreads: 0,
+    });
   });
 });

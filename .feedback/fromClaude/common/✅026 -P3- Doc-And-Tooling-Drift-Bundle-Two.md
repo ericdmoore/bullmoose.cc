@@ -7,7 +7,21 @@ filing.
 
 ---
 
-## 1. `.feedback/readme.md` tells you to run a file that does not exist
+## 1. `.feedback/readme.md` tells you to run a file that does not exist — ✅ **CLOSED**
+
+> **Shipped.** A root dispatcher won: there is now exactly one `.feedback/reindex.mjs`,
+> and the five per-provider copies are deleted, so `readme.md`'s command is correct as
+> written and there is nothing left to drift. It walks every `from*/` folder, takes the
+> subsystem list from `config.yml` (fixing `021` in the same change — the two were not
+> separable, as this issue predicted), and writes one `.feedback/_index.md`. Verified
+> against real data: **21 open, 13 closed**, which is every ✅-prefixed file in the tree.
+> `readme.md` now also states the ✅ convention (filename prefix, **no space**, on both
+> the `.md` and the `.fix.md`), defines `-P{num}-` as priority, and records that issue
+> numbers are one sequence per provider. See `common/021` for the full defect list.
+>
+> Side effect worth knowing: `fromComposer/`, `fromEric/` and `fromGrok/` contained
+> *only* the duplicated script, so deleting it removed those (git cannot track empty
+> directories). Any `from*/` folder is picked up automatically when recreated.
 
 `readme.md:28`:
 
@@ -29,7 +43,31 @@ wouldn't work anyway. Worth fixing together.
 
 ---
 
-## 2. `Mailbox/get` reports a thread count it has not computed
+## 2. `Mailbox/get` reports a thread count it has not computed — ✅ **CLOSED**
+
+> **Shipped — computed, not omitted.** `mailboxCounts` (`packages/mailstore/src/index.ts`)
+> now returns all four counts from one aggregate: `COUNT(DISTINCT e.thread_id)` over a
+> `LEFT JOIN emails`, plus the unread variant reusing the *same* `$seen` predicate string
+> as `unreadEmails` so the two can never disagree on what unread means. No extra round
+> trip; `emails_thread (account_id, thread_id)` already indexes it.
+>
+> The recommendation in the `.fix.md` was to omit. Overridden, because RFC 8621 §2 lists
+> all four counts as **required** server-set Mailbox properties — omitting would have
+> traded a wrong number for a missing one and left `services/agent/src/emailTools.ts`
+> carrying a hand-written "these are not real thread counts, do not report them as
+> threads" disclaimer in the `mailbox_list` tool description. That disclaimer is now
+> deleted rather than reworded. Threading here is real (`resolveThreadId` joins replies
+> by In-Reply-To), so the numbers genuinely diverge — this was not a distinction without
+> a difference.
+>
+> `unreadThreads` counts threads with unread mail **in this mailbox**. RFC 8621 defines it
+> thread-wide but pairs that with a Trash-exclusion refinement; implementing the clause
+> without the refinement would let a thread whose only unread copy sits in Trash inflate
+> the Inbox badge forever, which is worse than this. Filed as `common/029`.
+>
+> 6 new tests in `services/jmap/src/methods/mailbox.test.ts` (38 → 44), on fixtures where
+> the thread count deliberately differs from the message count (5 emails / 3 threads,
+> 3 unread emails / 2 unread threads). 3 of the 6 fail on the reverted source.
 
 `services/jmap/src/methods/mailbox.ts`:
 
@@ -65,7 +103,7 @@ than return a known-wrong value. Omission is defensible — a client can tell "a
 > Role/default collections rename freely, per sVOL `004`. 18 new tests in
 > `services/anglebrackets/src/dav.test.ts` (29 → 47); all 18 fail on the reverted source.
 >
-> **Items 1 and 2 are still open**, so this issue is NOT `✅`-prefixed yet.
+> **Items 1 and 2 are now closed too** (see above), so this issue is `✅`-prefixed.
 
 `grep -c PROPPATCH services/anglebrackets/src/dav.ts` → **0**.
 

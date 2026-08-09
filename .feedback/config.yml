@@ -3,7 +3,7 @@ components:
   - name: cli
   - name: cloud-infra
     label: 'infra'
-  - name: agentic-components 
+  - name: agentic-components
     label: 'agentic'
   - name: webUI
 

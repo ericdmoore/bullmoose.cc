@@ -428,26 +428,74 @@ export class Mailstore {
     return results.map((r) => r.email_id);
   }
 
-  /** Unread/total counts for Mailbox/get. */
+  /**
+   * The four RFC 8621 §2 count properties for Mailbox/get.
+   *
+   * Threads are counted, not guessed. `Mailbox/get` used to return
+   * `totalThreads: counts.totalEmails` behind a TODO, and threading here is
+   * real — `resolveThreadId` joins a reply to its parent by In-Reply-To — so
+   * the two numbers genuinely diverge as soon as a thread has two messages
+   * in one mailbox.
+   *
+   * `totalThreads` is exactly the RFC's definition: threads with at least one
+   * email in this mailbox.
+   *
+   * `unreadThreads` counts threads with at least one unread email IN THIS
+   * MAILBOX. RFC 8621 §2 defines it thread-wide — at least one unread email
+   * anywhere in the thread — but pairs that with a refinement excluding mail
+   * that only exists in Trash. Implementing the thread-wide clause WITHOUT
+   * the Trash refinement is strictly worse than this for the mailbox list it
+   * feeds: a thread whose only unread copy sits in the Trash would inflate
+   * the Inbox's badge forever. Both together need thread-wide scans and the
+   * identity of the trash mailbox inside a per-mailbox aggregate; filed as
+   * fromClaude/common/029 rather than half-done here.
+   *
+   * One aggregate, no extra round trip. The LEFT JOIN is deliberate: an
+   * `email_mailboxes` row whose `emails` row is missing must still count
+   * toward `totalEmails` exactly as it did before, and `COUNT(DISTINCT …)`
+   * skips the NULL `thread_id` it produces.
+   */
   async mailboxCounts(
     accountId: string,
     mailboxId: string,
-  ): Promise<{ totalEmails: number; unreadEmails: number }> {
+  ): Promise<{
+    totalEmails: number;
+    unreadEmails: number;
+    totalThreads: number;
+    unreadThreads: number;
+  }> {
+    // Defined once and used by both unread aggregates, so the message count
+    // and the thread count can never drift apart on what "unread" means.
+    const UNREAD = `NOT EXISTS (
+             SELECT 1 FROM email_keywords k
+             WHERE k.account_id = em.account_id
+               AND k.email_id = em.email_id AND k.keyword = '$seen'
+           )`;
     const row = await this.db
       .prepare(
         `SELECT
            COUNT(*) AS total,
-           SUM(CASE WHEN NOT EXISTS (
-             SELECT 1 FROM email_keywords k
-             WHERE k.account_id = em.account_id
-               AND k.email_id = em.email_id AND k.keyword = '$seen'
-           ) THEN 1 ELSE 0 END) AS unread
+           SUM(CASE WHEN ${UNREAD} THEN 1 ELSE 0 END) AS unread,
+           COUNT(DISTINCT e.thread_id) AS total_threads,
+           COUNT(DISTINCT CASE WHEN ${UNREAD} THEN e.thread_id END) AS unread_threads
          FROM email_mailboxes em
+         LEFT JOIN emails e
+           ON e.account_id = em.account_id AND e.id = em.email_id
          WHERE em.account_id = ? AND em.mailbox_id = ?`,
       )
       .bind(accountId, mailboxId)
-      .first<{ total: number; unread: number | null }>();
-    return { totalEmails: row?.total ?? 0, unreadEmails: row?.unread ?? 0 };
+      .first<{
+        total: number;
+        unread: number | null;
+        total_threads: number | null;
+        unread_threads: number | null;
+      }>();
+    return {
+      totalEmails: row?.total ?? 0,
+      unreadEmails: row?.unread ?? 0,
+      totalThreads: row?.total_threads ?? 0,
+      unreadThreads: row?.unread_threads ?? 0,
+    };
   }
 
   // ---- Emails: read -------------------------------------------------
