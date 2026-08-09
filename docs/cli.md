@@ -484,36 +484,45 @@ See also: [`contacts`](#contacts)
 manage the write-only, envelope-encrypted credential vault
 
 ```
-bullmoose creds init | set <name> | list | rm <name> | oauth <name> …
+bullmoose creds init | set <name> | list | show <name> | rotate <name> | rm <name> | oauth <name> …
 ```
 
-The vault stores third-party API keys and OAuth refresh tokens for agents. It is WRITE-ONLY — secrets go in and are never returned. `oauth` runs a browser + localhost PKCE flow and uploads only the refresh token.
+The vault stores third-party API keys, OAuth refresh tokens and signing keys for agents. It is WRITE-ONLY — secrets go in and are never returned (`show`/`list` are metadata only). Every credential carries the Bureau's mint-time contract (bureau.md §5): a `--kind` that gates which verbs may ever use it, and a `--allow` destination binding it fails closed without. NOTHING enforces the binding, verb set or redaction yet — the Bureau proxy is a later task; `--enforcement broad` records that only our code will, once it exists. `oauth` runs a browser + localhost PKCE flow and uploads only the refresh token.
 
 **Subcommands**
 
 - **init** — point the vault at the agent worker  
   `creds init --url <agent-worker-url>`
-- **set** — store a secret (else hidden prompt)  
-  `creds set <name> --kind api-key|oauth-refresh [--secret <s> | --secret-env VAR] [--meta k=v,…]`
-- **list** — list credential names (not values)  
+- **set** — mint a credential with its §5 contract (else hidden prompt)  
+  `creds set <name> --kind <kind> --allow <origin> [--header "Name: …{}…"] [--scope actor] [--enforcement federated|narrow|broad] [--secret <s> | --secret-env VAR] [--meta k=v,…]`
+- **list** — list names, kinds and destination bindings (never values)  
   `creds list`
+- **show** — one credential's metadata — never the secret  
+  `creds show <name>`
+- **rotate** — re-seal a new secret under the same name (refs unchanged)  
+  `creds rotate <name> [--secret <s> | --secret-env VAR]`
 - **rm** — remove a credential  
   `creds rm <name>`
 - **oauth** — PKCE flow; uploads only the refresh token  
-  `creds oauth <name> --authorize-url <u> --token-url <u> --client-id <id> [--client-secret <s>] [--oauth-scopes "a b"] [--meta k=v,…] [--port <n>]`
+  `creds oauth <name> --authorize-url <u> --token-url <u> --client-id <id> [--client-secret <s>] [--oauth-scopes "a b"] [--allow <origin>] [--meta k=v,…] [--port <n>]`
 
 | flag | description |
 |---|---|
-| `--kind api-key\|oauth-refresh` | what the credential is; gates which verbs may ever use it |
+| `--kind api-key\|oauth-refresh\|aws-sigv4\|hmac-key` | what the credential is; gates which Bureau verbs may ever use it (bureau.md §4.1) |
+| `--allow <origin>` | destination binding — the primary control; an origin (https://host) or a *.wildcard. Required on `set`: fail closed (§6) |
+| `--header "Name: …{}…"` | injection recipe; the {} is where the value goes. Header-only, never a query param. Defaults to Authorization: Bearer {} for api-key |
+| `--scope actor` | who may open the row; only `actor` today — `inbox`/`global` need the AAD re-seal (§9), deferred |
+| `--enforcement federated\|narrow\|broad` | which §5.2 rung enforces the narrowing; `broad` (default) = only our code will, once the proxy exists |
 | `--secret <s> / --secret-env VAR` | the value, or the env var holding it (else a hidden prompt — never argv) |
 | `--meta k=v,…` | free-form metadata stored beside the credential (also accepted on `oauth`) |
 | `--port <n>` | localhost port for the `oauth` PKCE callback (default 8976) |
-| `--dry-run` | on `rm`: report what would be deleted, delete nothing |
+| `--dry-run` | on `rm`/`rotate`: report what would happen, write nothing |
 
 **Examples**
 
 ```sh
-bullmoose creds set openai --kind api-key --secret-env OPENAI_API_KEY
+bullmoose creds set stripe --kind api-key --allow https://api.stripe.com --secret-env STRIPE_KEY
+bullmoose creds set aws-mcp --kind aws-sigv4 --allow "*.amazonaws.com" --enforcement narrow --secret-env AWS_SECRET
 bullmoose creds oauth gcal --authorize-url … --token-url … --client-id … --port 9000
 ```
 

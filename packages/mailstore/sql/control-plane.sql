@@ -177,13 +177,25 @@ CREATE INDEX IF NOT EXISTS grant_audit_account ON grant_audit (account_id, at);
 -- in-process when acting. meta_json is non-secret (provider, endpoints,
 -- client_id, scopes). Named vault_credentials because `credentials`
 -- already holds login-password rows.
+--
+-- The Bureau's mint-time contract (bureau.md §5, sVOL 020) rides in
+-- meta_json under RESERVED keys rather than typed columns — deliberately,
+-- so the unit stays E2 with no migration (this repo has no migration
+-- framework; tools/README.md:10-11). Reserved keys:
+--   allow        destination binding, normalized origin or *.wildcard (§6)
+--   header       injection recipe "Name: …{}…" (§5), header-only (invariant 8)
+--   scope        'actor' today; 'inbox'/'global' need the AAD re-seal (§9)
+--   enforcement  'federated' | 'narrow' | 'broad' — who enforces §5.2's
+--                narrowing ('broad' = only our code, once the proxy exists)
+-- Promote `allow` to a typed, indexed column (an E3 ALTER) only when the
+-- Bureau proxy exists and needs to query it — not before.
 CREATE TABLE IF NOT EXISTS vault_credentials (
   id           TEXT PRIMARY KEY,             -- vc_<uuid>
   principal_id TEXT NOT NULL REFERENCES principals(id),
   name         TEXT NOT NULL,                -- "anthropic-api", "google-oauth"
-  kind         TEXT NOT NULL,                -- 'api-key' | 'oauth-refresh'
+  kind         TEXT NOT NULL,                -- 'api-key'|'oauth-refresh'|'aws-sigv4'|'hmac-key'
   enc_json     TEXT NOT NULL,                -- {v:1, iv, ct} base64 envelope
-  meta_json    TEXT NOT NULL DEFAULT '{}',
+  meta_json    TEXT NOT NULL DEFAULT '{}',   -- non-secret; carries the §5 mint-time fields
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL,
   UNIQUE (principal_id, name)
