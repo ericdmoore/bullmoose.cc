@@ -367,7 +367,7 @@ self-correct at read time. Unit `003`'s data-integrity gate on `013`/`018` is di
 |---|---|---|
 | `s01-stateless-MCP` | **~90% shipped** (`c1cdc83`, `b8f1133`). T1–T4 done. Residue: `vault.ts` dedupe never done; the promised curl runbook script does not exist | source + git |
 | `s02-mcp-facade` | Not started, **deliberately** — "deferred stub", gated on "the first non-bullmoose client appears". 59 lines, no tasks | `s02/readme.md:3-5` |
-| `s03.A-foundations` | Not started — zero `last_writer` / `revoked_at` in code | grep |
+| `s03.A-foundations` | **shipped** — provenance columns on all 7 realms + grant tombstones (`revoked_at`+`grant_lifecycle`); `verifyBearer` filters revoked grants | source |
 | `s03.B-files` | Not started — zero `file_nodes` / `FileNode` in code | grep |
 | `s03.C-webmail-floor` | Not started — no `webmail/` workspace | filesystem |
 | `s03.D-coexistence` | Not started — zero `ActionProposal` / `urn:bullmoose:agent` | grep |

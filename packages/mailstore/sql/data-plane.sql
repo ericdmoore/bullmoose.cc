@@ -3,6 +3,57 @@
 -- Raw RFC 5322 messages live in R2 at mail/{tenant}/{account}/blobs/{blobId};
 -- only metadata lives here.
 
+-- ============================================================================
+-- Cross-realm provenance (s03.A T1) — the last_writer_* trio.
+--
+-- WHY. grant_audit only fires on *delegated* access (requireAccount writes it
+-- when access is grant-reached), so an agent acting on its OWNER's account logs
+-- nothing — "Emily's agent scrambled Emily's VendorsBook" produces zero audit
+-- rows, exactly where you'd look first. These columns close that gap: every
+-- mutable data-plane record carries who last wrote it, attributable to a
+-- binding and an invocation when an agent acted.
+--
+--   last_writer_principal   -- acting login email; mirrors grant_audit.principal
+--   last_writer_binding     -- agent binding name, when a binding acted (else NULL)
+--   last_writer_invocation  -- agent_invocations.id, when applicable (else NULL)
+--
+-- Populated in the SHARED Mailstore write path (packages/mailstore insert/update
+-- methods), never per JMAP method — a per-method implementation guarantees
+-- silent drift. All three are NULLable so a null-provenance write (system paths,
+-- pre-s03.A rows) is valid and the ALTER cannot fail on existing data.
+--
+-- NO MIGRATION FRAMEWORK (tools/README.md): this file is re-run as
+-- CREATE TABLE IF NOT EXISTS, so only a FRESH database picks these up. An
+-- EXISTING shard needs, by hand, BEFORE the workers that stamp them deploy
+-- (precedent: contact_cards.dav_name below; full runbook: docs/DEPLOY.md):
+--
+--   ALTER TABLE emails          ADD COLUMN last_writer_principal  TEXT;
+--   ALTER TABLE emails          ADD COLUMN last_writer_binding    TEXT;
+--   ALTER TABLE emails          ADD COLUMN last_writer_invocation TEXT;
+--   ALTER TABLE mailboxes       ADD COLUMN last_writer_principal  TEXT;
+--   ALTER TABLE mailboxes       ADD COLUMN last_writer_binding    TEXT;
+--   ALTER TABLE mailboxes       ADD COLUMN last_writer_invocation TEXT;
+--   ALTER TABLE address_books   ADD COLUMN last_writer_principal  TEXT;
+--   ALTER TABLE address_books   ADD COLUMN last_writer_binding    TEXT;
+--   ALTER TABLE address_books   ADD COLUMN last_writer_invocation TEXT;
+--   ALTER TABLE contact_cards   ADD COLUMN last_writer_principal  TEXT;
+--   ALTER TABLE contact_cards   ADD COLUMN last_writer_binding    TEXT;
+--   ALTER TABLE contact_cards   ADD COLUMN last_writer_invocation TEXT;
+--   ALTER TABLE calendars       ADD COLUMN last_writer_principal  TEXT;
+--   ALTER TABLE calendars       ADD COLUMN last_writer_binding    TEXT;
+--   ALTER TABLE calendars       ADD COLUMN last_writer_invocation TEXT;
+--   ALTER TABLE calendar_events ADD COLUMN last_writer_principal  TEXT;
+--   ALTER TABLE calendar_events ADD COLUMN last_writer_binding    TEXT;
+--   ALTER TABLE calendar_events ADD COLUMN last_writer_invocation TEXT;
+--   ALTER TABLE file_nodes      ADD COLUMN last_writer_principal  TEXT;
+--   ALTER TABLE file_nodes      ADD COLUMN last_writer_binding    TEXT;
+--   ALTER TABLE file_nodes      ADD COLUMN last_writer_invocation TEXT;
+--
+-- Order within the trio is irrelevant (independent NULL columns); the 21 ALTERs
+-- have no cross-table ordering constraint. grants.revoked_at + grant_lifecycle
+-- (s03.A T2) live in control-plane.sql with their own note.
+-- ============================================================================
+
 CREATE TABLE IF NOT EXISTS mailboxes (
   id            TEXT NOT NULL,
   account_id    TEXT NOT NULL,
@@ -10,6 +61,9 @@ CREATE TABLE IF NOT EXISTS mailboxes (
   name          TEXT NOT NULL,
   role          TEXT,                      -- inbox|sent|drafts|trash|junk|archive
   sort_order    INTEGER NOT NULL DEFAULT 0,
+  last_writer_principal   TEXT,             -- provenance (s03.A T1) — see header
+  last_writer_binding     TEXT,
+  last_writer_invocation  TEXT,
   PRIMARY KEY (account_id, id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS mailboxes_role
@@ -32,6 +86,9 @@ CREATE TABLE IF NOT EXISTS emails (
   received_at   INTEGER NOT NULL,          -- epoch ms
   has_attachment INTEGER NOT NULL DEFAULT 0,
   attachments_json TEXT NOT NULL DEFAULT '[]', -- JSON AttachmentMeta[]
+  last_writer_principal   TEXT,             -- provenance (s03.A T1) — see header
+  last_writer_binding     TEXT,
+  last_writer_invocation  TEXT,
   PRIMARY KEY (account_id, id)
 );
 CREATE INDEX IF NOT EXISTS emails_received ON emails (account_id, received_at DESC);
@@ -167,6 +224,9 @@ CREATE TABLE IF NOT EXISTS address_books (
   ctag          INTEGER NOT NULL DEFAULT 0,
   created_at    INTEGER NOT NULL,          -- epoch ms
   updated_at    INTEGER NOT NULL,
+  last_writer_principal   TEXT,             -- provenance (s03.A T1) — see header
+  last_writer_binding     TEXT,
+  last_writer_invocation  TEXT,
   PRIMARY KEY (account_id, id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS address_books_default
@@ -190,6 +250,9 @@ CREATE TABLE IF NOT EXISTS contact_cards (
   dav_name        TEXT,
   created_at      INTEGER NOT NULL,        -- epoch ms; mirrors card.created
   updated_at      INTEGER NOT NULL,        -- epoch ms; mirrors card.updated
+  last_writer_principal   TEXT,             -- provenance (s03.A T1) — see header
+  last_writer_binding     TEXT,
+  last_writer_invocation  TEXT,
   PRIMARY KEY (account_id, id),
   UNIQUE (account_id, uid)
 );
@@ -215,6 +278,9 @@ CREATE TABLE IF NOT EXISTS calendars (
   ctag          INTEGER NOT NULL DEFAULT 0,
   created_at    INTEGER NOT NULL,
   updated_at    INTEGER NOT NULL,
+  last_writer_principal   TEXT,             -- provenance (s03.A T1) — see header
+  last_writer_binding     TEXT,
+  last_writer_invocation  TEXT,
   PRIMARY KEY (account_id, id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS calendars_default
@@ -238,6 +304,9 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   dav_name     TEXT,                    -- reserved for Phase 5 CalDAV
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL,
+  last_writer_principal   TEXT,          -- provenance (s03.A T1) — see header
+  last_writer_binding     TEXT,
+  last_writer_invocation  TEXT,
   PRIMARY KEY (account_id, id),
   UNIQUE (account_id, uid)
 );
@@ -295,6 +364,9 @@ CREATE TABLE IF NOT EXISTS file_nodes (
   executable    INTEGER NOT NULL DEFAULT 0,
   is_subscribed INTEGER NOT NULL DEFAULT 1,
   role          TEXT,
+  last_writer_principal   TEXT,             -- provenance (s03.A T1) — see header
+  last_writer_binding     TEXT,
+  last_writer_invocation  TEXT,
   PRIMARY KEY (account_id, id),
   UNIQUE (account_id, parent_id, name)
 );
