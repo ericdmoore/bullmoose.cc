@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { mintToken } from "@bullmoose/auth-core";
 import { fakeEnv } from "@bullmoose/test-fakes";
-import { handleMcp } from "./mcp";
+import { handleMcp, TOOLS } from "./mcp";
 
 // Handler-level conformance for the stateless-MCP (2026-07-28) surface +
 // the §6 auth gate. Per .plans/devPrinciples.md the D1 client is injected,
@@ -150,6 +150,31 @@ describe("handleMcp — MCP.2 transport conformance", () => {
     const b = (await r.json()) as any;
     expect(r.status).toBe(200);
     expect(b.result.supportedVersions).toEqual([V]);
+  });
+
+  it("1b. server/discover describes the surface it actually has", async () => {
+    // The third leg of the coupling mcpTools.test.ts guards: `instructions` is
+    // what a client shows the model before it picks a tool, and it said
+    // "Read-only analytics" until sVOL 013 made that false. Asserted against
+    // TOOLS rather than against a remembered string.
+    const { res } = call(
+      { jsonrpc: "2.0", id: 12, method: "server/discover", params: { _meta: meta() } },
+      headers(),
+      ericOwns(),
+    );
+    const b = (await (await res).json()) as any;
+    const instructions = b.result.instructions as string;
+    // It opened with "Read-only analytics over the bullmoose message log…",
+    // which described the WHOLE surface. Read-only may still qualify the
+    // analytics half; it may not lead.
+    expect(instructions).not.toMatch(/^\s*read-only/i);
+    if (TOOLS.some((t) => t.scope !== "read")) {
+      expect(instructions).toMatch(/creat/i);
+      expect(instructions).toMatch(/delet/i);
+    }
+    for (const domain of new Set(TOOLS.map((t) => t.domain))) {
+      expect(instructions.toLowerCase()).toContain(domain === "mail" ? "message log" : domain);
+    }
   });
 
   it("2. tools/list carries a cache ttl", async () => {

@@ -7,7 +7,7 @@
 | **Impact** | **I3** — unlocks *and* human-verifiable |
 | **Owner** | `sVOL` |
 | **Depends on** | `001` (ToolDef scope+domain) · `002` (fake-D1 `.batch()`) · `003` (recurrence, for recurring events only) |
-| **Status** | todo |
+| **Status** | ✅ **done** — see *Status on delivery* at the foot of this file |
 
 ## Cells covered
 
@@ -201,3 +201,79 @@ in the expander.
 5. **Nothing here was run.** All claims read from source. In particular I have not verified
    that a CalDAV `PROPFIND` from real Apple Calendar succeeds against this deployment — done-
    when #1 assumes it does, on the strength of `dav.ts` handlers alone.
+
+---
+
+## Status on delivery
+
+Shipped. Ten tools, four of them writes — MCP's first write surface of any kind.
+
+```
+services/agent/src/jmapBridge.ts    new  the bridge into the JMAP method layer
+services/agent/src/mcpNouns.ts      new  the ten ToolDefs
+services/agent/src/mcp.ts           mod  ToolContext, docstring, discover text, ToolError
+services/agent/src/mcpNouns.test.ts new  26 tests
+services/agent/src/mcpTools.test.ts mod  the read-only tripwire, after it fired
+services/agent/src/mcp.test.ts      mod  server/discover prose asserted against TOOLS
+services/agent/package.json         mod  jmap-core / calendar-core / auth-core declared
+```
+
+378 → 428 tests, `npm run typecheck && npm test` clean.
+
+### Open question #1 resolved: in-process import, not a service binding
+
+The unit leaned service binding, on the stated grounds that it "matches how
+`services/anglebrackets` already projects off shared state". **That premise is false.**
+`services/anglebrackets/wrangler.jsonc` has no service binding to the jmap worker at all — it
+binds `ACCOUNT_DO` cross-script and therefore *replicates* the ctag + changelog choreography
+inside `dav.ts`. The cited precedent is an instance of the failure mode `_context.md` §3
+warns about, not a model to copy.
+
+`services/agent/wrangler.jsonc` binds `DB`, `BLOBS`, `ROUTES`, `ACCOUNT_DO` (cross-script) and
+`SUBMIT` — which is already every binding the calendar and contacts methods read. So:
+
+| | in-process | service binding |
+|---|---|---|
+| wrangler / CI deploy-graph change | none | new `services` entry + new deploy edge |
+| implementations of the choreography | **one** | one, plus a hop |
+| auth passes per tool call | 2 (tool gate + method gate) | 3 (+ the jmap worker's own) |
+| testable with `@bullmoose/test-fakes` | yes | no — needs a Fetcher fake running jmap |
+| latency inside an agent loop | none added | one round trip per tool call |
+| cost | **build-time coupling; +95 KiB raw / +20 KiB gzip on the agent bundle** | none |
+
+The bundle number is measured: `wrangler deploy --dry-run` goes 212.14 KiB → 307.48 KiB raw,
+50.09 → 69.78 KiB gzipped. `node:sqlite` and `@bullmoose/test-fakes` are confirmed absent from
+the output, as the harness's no-`package.json` layout intends.
+
+The coupling is the real cost and is worth naming: this is the first cross-service relative
+import in the tree. It is also the cheaper mistake to reverse — lifting the method layer into
+a `packages/jmap-methods` workspace later is a rename, whereas un-replicating a second copy of
+the write choreography is an audit.
+
+### Open question #3 resolved: separate tools, not one `calendar_set`
+
+Kept split. Each write tool carries its own scope declaration, which is the whole point of
+`001`, and a single `calendar_set` would have to declare the union. The batching argument
+stands but nothing needs it yet.
+
+### What was NOT built
+
+- **`Calendar` and `AddressBook` are Read-only over MCP.** The unit header claims "16 cells —
+  the entire Calendar and Contacts columns", but its own *Tool set* section lists ten tools, of
+  which the two collection tools are `Calendar/get` and `AddressBook/get`. `_index.md` §4's
+  coverage row agrees with the tool list (`ContactCard/CalendarEvent × CRUD × MCP`). Built the
+  tool list; the header's cell count was aspirational. Creating/renaming/deleting calendars and
+  address books over MCP is now an unfiled gap, recorded in `_index.md` §4.
+- **Done-when #1 and #5's live legs.** Three-reader triangulation and a Contacts.app round trip
+  need `wrangler dev` and real client software. The suite gets as close as a test can: real
+  `node:sqlite` on the live schema, the real `AccountDO`, and an assertion that the stored
+  JSContact card uses the property shapes `contacts-core`'s vCard face actually reads.
+
+### The recurrence guard, surfaced
+
+`003`'s guard rejects rather than throws, so a naive tool would have returned
+`{"created":{},"notCreated":{…}}` with `isError` unset and the model would have read it as
+success. Single-object write tools now convert a `notCreated`/`notUpdated`/`notDestroyed`
+entry into an MCP tool error carrying the SetError, a plain sentence, and a *what to do
+instead* hint keyed off the offending property — for `recurrenceRules`, explicitly that
+retrying the same rule will fail the same way.

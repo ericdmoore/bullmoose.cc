@@ -4,14 +4,33 @@ import {
   type MethodDomain,
   type Principal,
 } from "@bullmoose/auth-core/principal";
+import { ToolError } from "./jmapBridge.js";
+import { NOUN_TOOLS } from "./mcpNouns.js";
 import type { Env } from "./models.js";
 
 /**
- * mailstore-analytics — bullmoose's own MCP server (devPlan-handoff
- * Phase 3): a READ-ONLY tool surface over the message log + spend
- * ledger, so an analyst-style agent gets useful tools with zero
- * external credentials. Every tool is a bounded, parameterized query —
- * no free-form SQL crosses this boundary.
+ * bullmoose's own MCP server. Two kinds of tool live here, and the
+ * difference between them is the most important thing on this page.
+ *
+ *  1. **Analytics** (devPlan-handoff Phase 3) — bounded, parameterized
+ *     read-only queries over the message log and spend ledger, so an
+ *     analyst-style agent gets useful tools with zero external
+ *     credentials. No free-form SQL crosses this boundary. These read
+ *     `env.DB` directly, which is correct for aggregates over rows
+ *     nobody else is watching.
+ *
+ *  2. **Nouns** (sVOL `013`) — Calendar and Contacts CRUD. These are
+ *     WRITES, and they do NOT touch D1. Every one of them dispatches
+ *     into the JMAP method layer through `jmapBridge.ts`, because the
+ *     write choreography — ctag bump, AccountDO changelog commit, new
+ *     state string — lives in the methods and nowhere else. A write that
+ *     skips it lands the row, reads back fine on a direct `/get`, and is
+ *     invisible to CalDAV, to `Foo/changes` and to the CLI mirror. See
+ *     `jmapBridge.ts` and `_context.md` §3 before adding a third kind.
+ *
+ * This surface was read-only until `013`; it is not any more. `ToolDef`
+ * declares scope and domain per tool and `handleToolCall` gates on them,
+ * so a read tool and a delete tool are no longer authorized alike.
  *
  * Transport: stateless MCP (2026-07-28 / SEP-2575). One JSON-RPC request
  * per POST, one response — no session, no `initialize`, no `ping`. Each
@@ -38,7 +57,18 @@ interface JsonRpcRequest {
   params?: Record<string, unknown>;
 }
 
-interface ToolDef {
+/**
+ * What a tool is handed. `principal` is here because the noun tools call
+ * the JMAP method layer, which runs its own `requireAccount` gate and
+ * therefore needs the identity, not just the bindings — the analytics
+ * tools destructure `{ env }` and ignore it.
+ */
+export interface ToolContext {
+  env: Env;
+  principal: Principal;
+}
+
+export interface ToolDef {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
@@ -62,7 +92,7 @@ interface ToolDef {
    */
   scope: string;
   domain: MethodDomain;
-  run: (env: Env, args: Record<string, unknown>) => Promise<unknown>;
+  run: (ctx: ToolContext, args: Record<string, unknown>) => Promise<unknown>;
 }
 
 const clampInt = (v: unknown, def: number, min: number, max: number): number => {
@@ -77,8 +107,12 @@ const requireAccountId = (args: Record<string, unknown>): string => {
   return args.accountId;
 };
 
-/** Exported so tests can assert every tool declares its own gate. */
-export const TOOLS: ToolDef[] = [
+/**
+ * Read-only aggregates over rows this worker owns. Raw SQL is the right
+ * shape here and the wrong shape for anything that writes — see the module
+ * docstring.
+ */
+const ANALYTICS_TOOLS: ToolDef[] = [
   {
     name: "spend_by_month",
     scope: "read",
@@ -93,7 +127,7 @@ export const TOOLS: ToolDef[] = [
       },
       required: ["accountId"],
     },
-    async run(env, args) {
+    async run({ env }, args) {
       const months = clampInt(args.months, 6, 1, 24);
       const { results } = await env.DB.prepare(
         `SELECT period_month, currency, SUM(amount_cents) AS total_cents, COUNT(*) AS txns
@@ -121,7 +155,7 @@ export const TOOLS: ToolDef[] = [
       },
       required: ["accountId"],
     },
-    async run(env, args) {
+    async run({ env }, args) {
       const top = clampInt(args.top, 10, 1, 50);
       const month = typeof args.month === "string" && /^\d{4}-\d{2}$/.test(args.month) ? args.month : null;
       const { results } = await env.DB.prepare(
@@ -149,7 +183,7 @@ export const TOOLS: ToolDef[] = [
       },
       required: ["accountId"],
     },
-    async run(env, args) {
+    async run({ env }, args) {
       const days = clampInt(args.days, 30, 1, 365);
       const limit = clampInt(args.limit, 10, 1, 50);
       const since = Date.now() - days * 86_400_000;
@@ -177,7 +211,7 @@ export const TOOLS: ToolDef[] = [
       },
       required: ["accountId"],
     },
-    async run(env, args) {
+    async run({ env }, args) {
       const days = clampInt(args.days, 14, 1, 90);
       const since = Date.now() - days * 86_400_000;
       const { results } = await env.DB.prepare(
@@ -191,6 +225,13 @@ export const TOOLS: ToolDef[] = [
     },
   },
 ];
+
+/**
+ * The whole surface. Exported so tests can assert every tool declares its
+ * own gate, and so the read/write split is one list rather than a claim in
+ * a comment.
+ */
+export const TOOLS: ToolDef[] = [...ANALYTICS_TOOLS, ...NOUN_TOOLS];
 
 export async function handleMcp(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") {
@@ -247,10 +288,18 @@ export async function handleMcp(request: Request, env: Env): Promise<Response> {
       return rpcResult(msg.id, {
         supportedVersions: SUPPORTED_VERSIONS,
         capabilities: { tools: {} },
-        serverInfo: { name: "bullmoose-mailstore-analytics", version: "1.0.0" },
+        // The name is an identifier clients pin config to, and it is the
+        // one "mailstore-analytics" spelling that four plan docs, the route
+        // (/mcp/analytics) and mcp-auth.md all share — so it stays, now
+        // historical rather than descriptive. The version moves instead.
+        serverInfo: { name: "bullmoose-mailstore-analytics", version: "1.1.0" },
         instructions:
-          "Read-only analytics over the bullmoose message log and spend ledger. " +
-          "Each tool takes the accountId you are authorized to read.",
+          "bullmoose: read-only analytics over the message log and spend ledger, plus full " +
+          "calendar and contacts CRUD. Every tool takes the accountId it should act on, and " +
+          "each is authorized separately — a token may be able to read a calendar and not " +
+          "write it. Creating, changing and deleting events and cards are real, immediate, " +
+          "un-undoable writes that the human's calendar and contacts apps will sync; confirm " +
+          "destructive ones first. List calendars and address books before guessing an id.",
       });
     case "tools/list":
       return rpcResult(msg.id, {
@@ -303,12 +352,22 @@ async function handleToolCall(
   }
 
   try {
-    const result = await tool.run(env, args);
+    const result = await tool.run({ env, principal }, args);
     return rpcResult(msg.id, {
       content: [{ type: "text", text: JSON.stringify(result, null, 1) }],
     });
   } catch (err) {
-    return rpcResult(msg.id, { content: [{ type: "text", text: String(err) }], isError: true });
+    // A ToolError is a refusal the agent can act on — a sentence saying what
+    // was rejected, why, and what to do instead, plus the structured JMAP
+    // SetError for anything reading programmatically. Everything else is a
+    // bug and is stringified as before.
+    const text =
+      err instanceof ToolError
+        ? err.data === undefined
+          ? err.message
+          : `${err.message}\n${JSON.stringify(err.data, null, 1)}`
+        : String(err);
+    return rpcResult(msg.id, { content: [{ type: "text", text }], isError: true });
   }
 }
 

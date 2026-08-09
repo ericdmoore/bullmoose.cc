@@ -281,34 +281,48 @@ check "collection DELETE removes it ← 009" 204 \
       http_status DELETE "$BM_DAV/dav/calendars/$BM_ACCOUNT/verify-probe/"
 
 # =============================================================================
-# MCP — the column is EMPTY of noun CRUD (units 013/014/015)
+# MCP — the noun column was EMPTY until 013; 014/015 are still absent
 # =============================================================================
 section "MCP tool surface"
-mcp_tools() {
-  local body
-  body="$(curl -sS -m 20 -X POST "$BM_MCP/mcp" \
+# MCP.2 negotiates PER REQUEST: the MCP-Protocol-Version header must be present
+# AND equal `_meta` protocolVersion, and `_meta` clientCapabilities is required
+# (services/agent/src/mcp.ts). `params: {}` — what an earlier draft of this file
+# sent — is a 400 every time, so these assertions could only ever have reported
+# a transport error. §7's "nothing here was ever run" in one line of evidence.
+MCP_META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
+mcp_post() {   # $1 = params object body (without the surrounding braces), $2 = token
+  curl -sS -m 20 -X POST "$BM_MCP/mcp" \
+    -H "Authorization: Bearer ${2:-$BM_TOKEN}" -H 'Content-Type: application/json' \
+    -H 'MCP-Protocol-Version: 2026-07-28' \
+    ${BM_INTERNAL:+-H "x-internal-token: $BM_INTERNAL"} \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{$1,$MCP_META}}" 2>/dev/null
+}
+mcp_list() {
+  curl -sS -m 20 -X POST "$BM_MCP/mcp" \
     -H "Authorization: Bearer $BM_TOKEN" -H 'Content-Type: application/json' \
     -H 'MCP-Protocol-Version: 2026-07-28' \
     ${BM_INTERNAL:+-H "x-internal-token: $BM_INTERNAL"} \
-    -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' 2>/dev/null)" || {
-      echo "TRANSPORT-ERROR"; return; }
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{$MCP_META}}" 2>/dev/null
+}
+mcp_tools() {
+  local body; body="$(mcp_list)" || { echo "TRANSPORT-ERROR"; return; }
   printf '%s' "$body" | jq -r '(.result.tools // []) | length' 2>/dev/null || echo "UNPARSEABLE"
 }
-mcp_has_calendar_tool() {
-  local body
-  body="$(curl -sS -m 20 -X POST "$BM_MCP/mcp" \
-    -H "Authorization: Bearer $BM_TOKEN" -H 'Content-Type: application/json' \
-    -H 'MCP-Protocol-Version: 2026-07-28' \
-    ${BM_INTERNAL:+-H "x-internal-token: $BM_INTERNAL"} \
-    -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' 2>/dev/null)"
-  printf '%s' "$body" | jq -r '
-    if ((.result.tools // []) | map(select(.name | test("calendar|contact"))) | length) > 0
+mcp_noun_tools() {
+  printf '%s' "$(mcp_list)" | jq -r '
+    (.result.tools // []) | map(select(.name | test("^(calendar|contacts)_"))) | length' \
+    2>/dev/null || echo "UNPARSEABLE"
+}
+mcp_has_email_tool() {   # 014, still absent
+  printf '%s' "$(mcp_list)" | jq -r '
+    if ((.result.tools // []) | map(select(.name | test("^email_"))) | length) > 0
     then "present" else "none" end' 2>/dev/null || echo "UNPARSEABLE"
 }
-# 4 read-only analytics tools today: spend_by_month, spend_by_vendor,
-# top_senders, message_volume (services/agent/src/mcp.ts:55).
-check "MCP tools/list returns 4 tools"      4    mcp_tools
-check "MCP has NO calendar/contact tool ← 013" none mcp_has_calendar_tool
+# 4 read-only analytics tools (spend_by_month, spend_by_vendor, top_senders,
+# message_volume) + the 10 noun tools 013 landed.
+check "MCP tools/list returns 14 tools"          14 mcp_tools
+check "MCP HAS 10 calendar/contact tools ← 013"  10 mcp_noun_tools
+check "MCP has NO email tool ← 014"            none mcp_has_email_tool
 # MCP.2 removed `initialize` entirely (s01 T2).
 check "MCP initialize removed (s01)" "-32601" \
       bash -c 'curl -sS -m 20 -X POST "'"$BM_MCP"'/mcp" \
@@ -317,6 +331,25 @@ check "MCP initialize removed (s01)" "-32601" \
         '"${BM_INTERNAL:+-H \"x-internal-token: $BM_INTERNAL\"}"' \
         -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}" 2>/dev/null \
         | jq -r ".error.code // \"no-error\""'
+
+# The MCP half of the scope-gate suite. It lives here rather than up in the
+# "Scope gates" section only because mcp_post is defined below that section;
+# it is the same regression test, on the surface where an AGENT rather than a
+# human holds the scope. 013 done-when #3.
+if [ -n "$BM_RO_TOKEN" ] || [ "$LIST_ONLY" = 1 ]; then
+  mcp_ro_create() {
+    printf '%s' "$(mcp_post "\"name\":\"calendar_create_event\",\"arguments\":{\"accountId\":\"$BM_ACCOUNT\",\"title\":\"verify-probe\",\"start\":\"2030-01-01T09:00:00\"}" "$BM_RO_TOKEN")" \
+      | jq -r '.error.code // "no-error"' 2>/dev/null || echo "UNPARSEABLE"
+  }
+  mcp_ro_list() {
+    printf '%s' "$(mcp_post "\"name\":\"calendar_list\",\"arguments\":{\"accountId\":\"$BM_ACCOUNT\"}" "$BM_RO_TOKEN")" \
+      | jq -r 'if .result then "ok" else (.error.code|tostring) end' 2>/dev/null || echo "UNPARSEABLE"
+  }
+  # A read token must be refused the WRITE and allowed the READ. If the first
+  # returns anything but -32004, the per-tool gate 001 added is not biting.
+  check "read-token refused calendar_create_event ← 013" "-32004" mcp_ro_create
+  check "read-token CAN calendar_list ← 013"             ok       mcp_ro_list
+fi
 
 # =============================================================================
 # Summary
