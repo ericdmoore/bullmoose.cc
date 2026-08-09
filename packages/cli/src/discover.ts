@@ -16,6 +16,8 @@ export interface Discovery {
   domain: string;
 }
 
+import { usage } from "./io.js";
+
 interface SrvRecord {
   priority: number;
   weight: number;
@@ -25,10 +27,7 @@ interface SrvRecord {
 
 export async function resolveJmapBase(email: string): Promise<Discovery> {
   const domain = email.split("@")[1]?.toLowerCase();
-  if (!domain) {
-    console.error(`not an email address: ${email}`);
-    process.exit(1);
-  }
+  if (!domain) usage(`not an email address: ${email}`);
   const name = `_jmap._tcp.${domain}`;
 
   let records: SrvRecord[] | null = null;

@@ -41,18 +41,90 @@ export interface Command {
 
 export const GLOBAL_OPTIONS: Flag[] = [
   { flag: "--db <path>", desc: "SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db)" },
-  { flag: "--account <sel>", desc: "account selector: accountId, address, @domain-suffix, name substring, or 'default'" },
-  { flag: "--json", desc: "machine-readable output where supported (and `help --json` dumps this whole spec)" },
+  {
+    flag: "--account <sel>",
+    desc:
+      "account selector: accountId, address, @domain-suffix, name substring, or 'default'. " +
+      "For commands that act on ONE account a selector matching several is an error, not a choice — " +
+      "name one. Commands that legitimately fan out (log, search, sync, watch, mailboxes) still do.",
+  },
+  {
+    flag: "--json",
+    desc:
+      "machine-readable output: NDJSON — one complete JSON value per line — for collections, " +
+      "exactly one object for show-style commands. Never a wrapping array, so `| head`, `| wc -l` " +
+      "and `| jq` all stream. (`help --json` dumps this whole spec.)",
+  },
+  {
+    flag: "--ids",
+    desc: "print bare identifiers, one per line, and nothing else — the `| xargs -n1` shape",
+  },
+  {
+    flag: "--dry-run",
+    desc:
+      "on destructive commands (mailbox rm, blobs rm, share revoke, token revoke, creds rm, " +
+      "contacts import, vacation on|off, admin *revoke): resolve everything, report what would " +
+      "happen, write nothing",
+  },
+  {
+    flag: "--if-state <state>",
+    desc:
+      "optimistic concurrency for writes: passed to JMAP as ifInState. If the server has moved on, " +
+      "the write is refused with exit 5 and nothing changes. The state to pass is printed by the " +
+      "previous write (and is in its --json output as `state`).",
+  },
+  {
+    flag: "--as <type>",
+    desc: "force the input content type — vcard | ical | json | text (default: inferred from the bytes)",
+  },
   { flag: "-h, --help", desc: "show help; `bullmoose <cmd> --help` shows help for one command" },
+  { flag: "--man / --markdown", desc: "render the whole spec as a man page / Markdown (used to generate the docs)" },
+];
+
+/**
+ * The exit-code table (`.plans/s05-cli-crud/arch.md` §1.5). Kept here as data
+ * so `help --json` carries it: an agent scripting the CLI needs to know what
+ * the numbers mean, and prose in a paragraph is not that.
+ */
+export const EXIT_CODES: Array<{ code: number; meaning: string; when: string }> = [
+  { code: 0, meaning: "success", when: "the command did what it said" },
+  { code: 1, meaning: "generic failure", when: "server error, quota, rate limit — nothing you can restate" },
+  { code: 2, meaning: "usage error", when: "unknown flag or command, missing argument, ambiguous --account" },
+  { code: 3, meaning: "not found", when: "no such message, mailbox, contact, account or blob" },
+  { code: 4, meaning: "auth / forbidden", when: "the token is rejected or lacks the scope" },
+  { code: 5, meaning: "conflict", when: "--if-state mismatch, or a precondition like a non-empty mailbox" },
 ];
 
 export const NOTES = [
   "Auth model: login stretches your password locally and stores a bearer token; device/app tokens (bm_…) are minted with `token create` and used by clients (JMAP, CalDAV/CardDAV, POP3/SMTP). The login password is never stored or sent raw.",
   "The database is the server's own data-plane schema — open it directly with `sqlite3` for anything the commands don't cover.",
   "Operator commands (`admin …`) wrap the provision worker and use separate credentials from a mail account.",
+  "I/O contract — every command obeys it. **stdout carries records; stderr carries everything else**: progress, prompts, warnings, counts and summaries, tree decoration, \"(none)\" notices and hints. So `bullmoose log > /dev/null` shows the chrome and no records, and `2>/dev/null` shows the records and no chrome. A downstream reader closing the pipe (`| head`, quitting `less`) is not an error: the CLI exits 0 silently instead of printing a stack trace. Output is never paged, never coloured when stdout is not a terminal, and never coloured at all when $NO_COLOR is set. Where a command takes a file, `-` means stdin explicitly and a bare invocation reads stdin when it is not a terminal — but an explicit flag always beats implicit stdin.",
+  "Exit codes are the branch points for scripts: 0 success · 1 generic failure · 2 usage error · 3 not found · 4 auth/forbidden · 5 conflict (an --if-state mismatch, or a precondition such as removing a mailbox that still holds mail). JMAP error types map onto them by rule: `stateMismatch`/`alreadyExists`/`mailboxHasEmail` → 5, `notFound`/`blobNotFound`/`accountNotFound` → 3, `forbidden`/`accountReadOnly` → 4, `invalidProperties`/`invalidArguments`/`tooLarge` → 2, and `serverFail`/`overQuota`/`rateLimit` → 1.",
 ];
 
 export const COMMANDS: Command[] = [
+  {
+    // `help` was a real command with no spec entry: `bullmoose help help`
+    // answered "unknown command: help" and exited 1, and it was missing from
+    // `help --json`, which is what agents parse
+    // (`.feedback/fromClaude/cli/010` item 3). `help.test.ts` now asserts the
+    // registry and main.ts's switch cover exactly the same set.
+    name: "help",
+    synopsis: "bullmoose help [<command>] | --json | --man | --markdown",
+    summary: "show help — for everything, one command, or as a machine-readable spec",
+    description:
+      "With no argument, the command overview. With a command name, that command's synopsis, flags and examples (`bullmoose <cmd> --help` is the same thing). `--json` dumps this entire spec — commands, subcommands, flags, examples, global options, the exit-code table and the I/O contract notes — and is what an agent should read rather than scraping the text. `--man` and `--markdown` render the same spec as a man page and as Markdown; `docs/cli.md` and `man/bullmoose.1` are generated from them by `npm run -w @bullmoose/cli gen:docs` and must never be hand-edited.",
+    flags: [
+      { flag: "--json", desc: "the whole command spec, machine-readable" },
+      { flag: "--man", desc: "roff man page (→ man/bullmoose.1)" },
+      { flag: "--markdown", desc: "Markdown reference (→ docs/cli.md)" },
+    ],
+    examples: [
+      { cmd: "bullmoose help mailbox" },
+      { cmd: "bullmoose help --json | jq -r '.commands[].name'", note: "what can this CLI do?" },
+    ],
+  },
   {
     name: "login",
     synopsis:
@@ -119,6 +191,10 @@ export const COMMANDS: Command[] = [
     ],
     examples: [
       { cmd: "bullmoose token create --name backup --scopes read", note: "read-only sync/archive" },
+      {
+        cmd: 'T=$(bullmoose token create --name ci --scopes read)',
+        note: "the token is the only thing on stdout; the chrome goes to stderr",
+      },
       { cmd: "bullmoose token create --name popper --scopes read,move", note: "POP3 via popcorn" },
       { cmd: "bullmoose token create --name laptop --scopes read,draft,send", note: "a mail client" },
       { cmd: "bullmoose token create --name macbook-contacts --scopes contacts", note: "CardDAV only" },
@@ -233,13 +309,15 @@ export const COMMANDS: Command[] = [
     synopsis: "bullmoose contacts import <file.vcf> | list | show <cardId>",
     summary: "import and browse the contacts core (vCard ⇄ JSContact)",
     subcommands: [
-      { name: "import", synopsis: "contacts import <file.vcf> [--book <name-or-id>] [--account <sel>]", summary: "seed from a vCard export (idempotent; dedup by uid; missing --book created)" },
+      { name: "import", synopsis: "contacts import [<file.vcf>|-] [--book <name-or-id>] [--as vcard] [--dry-run]", summary: "seed from a vCard export (idempotent; dedup by uid; missing --book created); reads stdin with no path, or with `-`" },
       { name: "list", synopsis: "contacts list [--book <name-or-id>] [-n <count>] [--json]", summary: "list cards" },
       { name: "show", synopsis: "contacts show <cardId> [--json]", summary: "show one card" },
     ],
     examples: [
       { cmd: "bullmoose contacts import Contacts.vcf --book Personal", note: "export from macOS Contacts: File → Export → Export vCard…" },
       { cmd: "bullmoose contacts list --book Family -n 50" },
+      { cmd: "cat Contacts.vcf | bullmoose contacts import - --book Personal", note: "`-` is explicit stdin" },
+      { cmd: "bullmoose contacts list --ids | xargs -n1 bullmoose contacts show" },
     ],
     seeAlso: ["calendar", "admin grant"],
   },
@@ -265,10 +343,18 @@ export const COMMANDS: Command[] = [
       { name: "set", synopsis: "creds set <name> --kind api-key|oauth-refresh [--secret <s> | --secret-env VAR] [--meta k=v,…]", summary: "store a secret (else hidden prompt)" },
       { name: "list", synopsis: "creds list", summary: "list credential names (not values)" },
       { name: "rm", synopsis: "creds rm <name>", summary: "remove a credential" },
-      { name: "oauth", synopsis: "creds oauth <name> --authorize-url <u> --token-url <u> --client-id <id> [--client-secret <s>] [--oauth-scopes \"a b\"]", summary: "PKCE flow; uploads only the refresh token" },
+      { name: "oauth", synopsis: "creds oauth <name> --authorize-url <u> --token-url <u> --client-id <id> [--client-secret <s>] [--oauth-scopes \"a b\"] [--meta k=v,…] [--port <n>]", summary: "PKCE flow; uploads only the refresh token" },
+    ],
+    flags: [
+      { flag: "--kind api-key|oauth-refresh", desc: "what the credential is; gates which verbs may ever use it" },
+      { flag: "--secret <s> / --secret-env VAR", desc: "the value, or the env var holding it (else a hidden prompt — never argv)" },
+      { flag: "--meta k=v,…", desc: "free-form metadata stored beside the credential (also accepted on `oauth`)" },
+      { flag: "--port <n>", desc: "localhost port for the `oauth` PKCE callback (default 8976)" },
+      { flag: "--dry-run", desc: "on `rm`: report what would be deleted, delete nothing" },
     ],
     examples: [
       { cmd: "bullmoose creds set openai --kind api-key --secret-env OPENAI_API_KEY" },
+      { cmd: "bullmoose creds oauth gcal --authorize-url … --token-url … --client-id … --port 9000" },
     ],
     seeAlso: ["agent"],
   },
@@ -280,7 +366,12 @@ export const COMMANDS: Command[] = [
       { flag: "-n <count>", desc: "how many (default 20)" },
       { flag: "--mailbox <role-or-id>", desc: "filter by mailbox (e.g. inbox, sent)" },
     ],
-    examples: [{ cmd: "bullmoose log -n 50 --mailbox inbox" }],
+    examples: [
+      { cmd: "bullmoose log -n 50 --mailbox inbox" },
+      { cmd: "bullmoose log | head -3", note: "exits 0 silently — a closed pipe is not an error" },
+      { cmd: "bullmoose log --json | jq -r .subject", note: "NDJSON: streams, one record per line" },
+      { cmd: "bullmoose log --ids | xargs -n1 bullmoose show", note: "bare ids, the xargs shape" },
+    ],
     seeAlso: ["search", "read", "sync"],
   },
   {
@@ -320,6 +411,8 @@ export const COMMANDS: Command[] = [
       { flag: "--parent <box>", desc: "parent folder for create/move; '-' means top level" },
       { flag: "--sort <n>", desc: "sortOrder for create (unsigned integer, default 0)" },
       { flag: "--force", desc: "on rm: onDestroyRemoveEmails — remove the mail inside it too" },
+      { flag: "--if-state <state>", desc: "refuse the write (exit 5) if the account has moved on since <state>" },
+      { flag: "--dry-run", desc: "resolve the folder and report; write nothing" },
     ],
     examples: [
       { cmd: "bullmoose mailbox create Receipts" },
@@ -327,6 +420,11 @@ export const COMMANDS: Command[] = [
       { cmd: "bullmoose mailbox rename Receipts Invoices" },
       { cmd: "bullmoose mailbox move Invoices --parent -", note: "back to the top level" },
       { cmd: "bullmoose mailbox rm Invoices --force" },
+      { cmd: "bullmoose mailbox rm Invoices --dry-run", note: "resolves the name, writes nothing" },
+      {
+        cmd: "S=$(bullmoose mailbox create A --json | jq -r .state); bullmoose mailbox rename A B --if-state \"$S\"",
+        note: "read-modify-write that cannot clobber a concurrent change: exit 5 if it would",
+      },
     ],
     seeAlso: ["mailboxes", "sync", "log"],
   },
@@ -415,7 +513,10 @@ export function renderOverview(): string {
   for (const c of COMMANDS) out.push(`  ${pad(c.name, 12)} ${c.summary}`);
   out.push("");
   out.push("Global options:");
-  for (const f of GLOBAL_OPTIONS) out.push(`  ${pad(f.flag, 18)} ${f.desc}`);
+  for (const f of GLOBAL_OPTIONS) out.push(indent(wrapHanging(f.flag, f.desc, 22, 78)));
+  out.push("");
+  out.push("Exit codes:");
+  for (const e of EXIT_CODES) out.push(`  ${e.code}  ${pad(e.meaning, 18)} ${e.when}`);
   out.push("");
   out.push(`Run \`bullmoose help <command>\` for details. ${NOTES[1]}`);
   return out.join("\n");
@@ -464,10 +565,24 @@ export function renderCommand(cmd: string | Command): string {
 
 export function helpJson(): string {
   return JSON.stringify(
-    { name: "bullmoose", tagline: TAGLINE, notes: NOTES, globalOptions: GLOBAL_OPTIONS, commands: COMMANDS },
+    {
+      name: "bullmoose",
+      tagline: TAGLINE,
+      notes: NOTES,
+      globalOptions: GLOBAL_OPTIONS,
+      exitCodes: EXIT_CODES,
+      commands: COMMANDS,
+    },
     null,
     2,
   );
+}
+
+/** `--flag   description`, wrapped with the description block hanging. */
+function wrapHanging(label: string, desc: string, gutter: number, width: number): string {
+  const body = wrap(desc, width - gutter).split("\n");
+  const head = `${pad(label, gutter - 1)} ${body[0] ?? ""}`;
+  return [head, ...body.slice(1).map((l) => " ".repeat(gutter) + l)].join("\n");
 }
 
 // ---- word wrap (shared by DESCRIPTION rendering) ----
@@ -553,6 +668,12 @@ export function renderMan(): string {
     L.push(`.B ${roff(f.flag)}`);
     L.push(roff(f.desc));
   }
+  L.push(".SH EXIT STATUS");
+  for (const e of EXIT_CODES) {
+    L.push(".TP");
+    L.push(`.B ${e.code}`);
+    L.push(roff(`${e.meaning} \u2014 ${e.when}`));
+  }
   L.push(".SH FILES");
   L.push(".TP");
   L.push("~/.bullmoose/mail.db");
@@ -563,6 +684,14 @@ export function renderMan(): string {
 }
 
 // ---- markdown reference (docs/cli.md) ----
+
+/**
+ * A literal `|` inside a table cell starts a new column, so `--expandMD
+ * html|no` rendered as four cells in a two-column table
+ * (`.feedback/fromClaude/cli/010` item 8). Escape it. Newlines would break the
+ * row the same way, so they fold to spaces.
+ */
+const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\n/g, " ");
 export function renderMarkdown(): string {
   const M: string[] = [];
   M.push("# bullmoose CLI");
@@ -577,13 +706,19 @@ export function renderMarkdown(): string {
   M.push("");
   M.push("| command | what it does |");
   M.push("|---|---|");
-  for (const c of COMMANDS) M.push(`| [\`${c.name}\`](#${c.name}) | ${c.summary} |`);
+  for (const c of COMMANDS) M.push(`| [\`${c.name}\`](#${c.name}) | ${cell(c.summary)} |`);
   M.push("");
   M.push("## Global options");
   M.push("");
   M.push("| flag | description |");
   M.push("|---|---|");
-  for (const f of GLOBAL_OPTIONS) M.push(`| \`${f.flag}\` | ${f.desc} |`);
+  for (const f of GLOBAL_OPTIONS) M.push(`| \`${cell(f.flag)}\` | ${cell(f.desc)} |`);
+  M.push("");
+  M.push("## Exit codes");
+  M.push("");
+  M.push("| code | meaning | when |");
+  M.push("|---|---|---|");
+  for (const e of EXIT_CODES) M.push(`| ${e.code} | ${cell(e.meaning)} | ${cell(e.when)} |`);
   M.push("");
   for (const c of COMMANDS) {
     M.push(`## ${c.name}`);
@@ -607,7 +742,7 @@ export function renderMarkdown(): string {
       M.push("");
       M.push("| flag | description |");
       M.push("|---|---|");
-      for (const f of c.flags) M.push(`| \`${f.flag}\` | ${f.desc} |`);
+      for (const f of c.flags) M.push(`| \`${cell(f.flag)}\` | ${cell(f.desc)} |`);
     }
     if (c.examples?.length) {
       M.push("");

@@ -56,6 +56,36 @@ const USING = [
   "urn:ietf:params:jmap:submission",
 ];
 
+/**
+ * Every error this client throws carries the machine-readable half of what the
+ * server said, so `io.exitCodeFor` can map it to an exit code (`arch.md` §1.5)
+ * without re-parsing a human message. `jmapType` is the RFC 8620 error type
+ * when there is one; `httpStatus` is the transport status for the endpoints
+ * outside the JMAP envelope (`/auth`, `/api/blobs`, `/api/shares`, upload).
+ */
+export interface JmapError extends Error {
+  jmapType?: string;
+  httpStatus?: number;
+}
+
+/**
+ * Non-JMAP endpoints answer a refusal with a JSON body; several of them name a
+ * `type` (or an `error`) in it. Lift that when present — a 409 that says
+ * `blob in use` should not be indistinguishable from any other 409.
+ */
+function transportError(message: string, status: number, body: string): JmapError {
+  const err = new Error(message) as JmapError;
+  err.httpStatus = status;
+  try {
+    const parsed = JSON.parse(body) as { type?: unknown; error?: unknown };
+    const type = typeof parsed.type === "string" ? parsed.type : parsed.error;
+    if (typeof type === "string") err.jmapType = type;
+  } catch {
+    /* not JSON — the status alone decides the exit code */
+  }
+  return err;
+}
+
 export class JmapClient {
   private sessionCache?: Session;
 
@@ -71,7 +101,10 @@ export class JmapClient {
   async session(): Promise<Session> {
     if (this.sessionCache) return this.sessionCache;
     const res = await fetch(`${this.base}/.well-known/jmap`, { headers: this.headers() });
-    if (!res.ok) throw new Error(`session fetch failed: HTTP ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      const body = await res.text();
+      throw transportError(`session fetch failed: HTTP ${res.status} ${body}`, res.status, body);
+    }
     this.sessionCache = (await res.json()) as Session;
     return this.sessionCache;
   }
@@ -83,12 +116,23 @@ export class JmapClient {
       headers: this.headers(),
       body: JSON.stringify({ using, methodCalls }),
     });
-    if (!res.ok) throw new Error(`JMAP request failed: HTTP ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      const text = await res.text();
+      throw transportError(`JMAP request failed: HTTP ${res.status} ${text}`, res.status, text);
+    }
     const body = (await res.json()) as { methodResponses: Invocation[] };
     return body.methodResponses;
   }
 
-  /** Single method call; throws on a method-level error response. */
+  /**
+   * Single method call; throws on a method-level error response.
+   *
+   * The returned record is the whole result, `newState` and all — which is why
+   * `--if-state` (`arch.md` §1.7) needed no new plumbing: a `/set` reply's
+   * `oldState`/`newState` are already here for a caller to chain, and an
+   * `ifInState` mismatch comes back as a method-level `stateMismatch`, whose
+   * type lands on `jmapType` below and maps to exit 5.
+   */
   async one(
     name: string,
     args: Record<string, unknown>,
@@ -97,8 +141,11 @@ export class JmapClient {
     const [resp] = await this.call([[name, args, "c0"]], using);
     if (!resp) throw new Error(`no response for ${name}`);
     if (resp[0] === "error") {
-      const err = new Error(`${name} → ${JSON.stringify(resp[1])}`);
-      (err as Error & { jmapType?: string }).jmapType = (resp[1] as { type?: string }).type;
+      const detail = resp[1] as { type?: string; description?: string };
+      const err = new Error(
+        `${name} → ${detail.type ?? "error"}${detail.description ? `: ${detail.description}` : ""}`,
+      ) as JmapError;
+      err.jmapType = detail.type;
       throw err;
     }
     return resp[1];
@@ -117,7 +164,10 @@ export class JmapClient {
       // SharedArrayBuffer-typed views, and Node types demand it.
       body: new Uint8Array(content),
     });
-    if (!res.ok) throw new Error(`upload failed: HTTP ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      const body = await res.text();
+      throw transportError(`upload failed: HTTP ${res.status} ${body}`, res.status, body);
+    }
     return (await res.json()) as { blobId: string; size: number };
   }
 
@@ -135,7 +185,10 @@ export class JmapClient {
         body: JSON.stringify(opts),
       },
     );
-    if (!res.ok) throw new Error(`share link failed: HTTP ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      const body = await res.text();
+      throw transportError(`share link failed: HTTP ${res.status} ${body}`, res.status, body);
+    }
     return (await res.json()) as { url: string; expiresAt: string };
   }
 
@@ -191,7 +244,7 @@ export class JmapClient {
   private async sendJson<T>(method: string, path: string, what: string): Promise<T> {
     const res = await fetch(`${this.base}${path}`, { method, headers: this.headers() });
     const text = await res.text();
-    if (!res.ok) throw new Error(`${what} failed: HTTP ${res.status} ${text}`);
+    if (!res.ok) throw transportError(`${what} failed: HTTP ${res.status} ${text}`, res.status, text);
     return JSON.parse(text) as T;
   }
 
@@ -203,7 +256,7 @@ export class JmapClient {
       .replaceAll("{name}", "blob")
       .replaceAll("{type}", encodeURIComponent("application/octet-stream"));
     const res = await fetch(url, { headers: { Authorization: `Bearer ${this.token}` } });
-    if (!res.ok) throw new Error(`blob download failed: HTTP ${res.status}`);
+    if (!res.ok) throw transportError(`blob download failed: HTTP ${res.status}`, res.status, "");
     return new Uint8Array(await res.arrayBuffer());
   }
 }

@@ -93,11 +93,11 @@ bullmoose admin account create editor@bullmoose.cc --tenant t_bullmoose --name "
 # 2. binding: reply agent
 bullmoose admin agent bind editor@bullmoose.cc --name EditorEmily --sla 300 \
   --reply-mode send --allow "eric@bullmoose.cc,eric@moore.coffee" \
-  --config emily-config.json
+  --config docs/examples/editor-emily.config.json
 
 # 2'. binding: ledger agent
 bullmoose admin agent bind analyst@bullmoose.cc --name "Allen the Analyst" --sla 300 \
-  --config allen-config.json
+  --config docs/examples/analyst-allen.config.json
 ```
 
 `--allow` and `--reply-mode` are flags over the `--config` JSON; flags win.

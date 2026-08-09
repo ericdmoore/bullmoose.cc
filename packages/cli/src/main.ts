@@ -5,14 +5,32 @@ import { marked } from "marked";
 import {
   accountLabel,
   defaultDbPath,
-  getConfig,
   isFileUrl,
   loadBootstrap,
+  matchAccounts,
   openDb,
+  pickAccount,
   requireSettings,
   selectAccounts,
   setConfig,
 } from "./db.js";
+import {
+  EXIT,
+  conflict,
+  die,
+  emitIds,
+  emitJson,
+  emitNdjson,
+  installEpipeGuard,
+  failSetError,
+  notFound,
+  note,
+  out,
+  outRaw,
+  readInput,
+  usage,
+  warn,
+} from "./io.js";
 import { JmapClient } from "./jmap.js";
 import { sync, syncAll } from "./sync.js";
 import { processAssets } from "./assets.js";
@@ -29,97 +47,150 @@ import { cmdBlobs, cmdShare } from "./blobs.js";
 import { findCommand, helpJson, renderCommand, renderMan, renderMarkdown, renderOverview } from "./help.js";
 
 
-const { values: opts, positionals } = parseArgs({
-  allowPositionals: true,
-  options: {
-    db: { type: "string" },
-    base: { type: "string" },
-    url: { type: "string" },
-    token: { type: "string" },
-    tenant: { type: "string" },
-    name: { type: "string" },
-    password: { type: "string" },
-    scopes: { type: "string" },
-    account: { type: "string" },
-    from: { type: "string" },
-    principal: { type: "string" },
-    blobs: { type: "string" },
-    mailbox: { type: "string" },
-    parent: { type: "string" },
-    sort: { type: "string" },
-    force: { type: "boolean", default: false },
-    book: { type: "string" },
-    to: { type: "string", multiple: true },
-    cc: { type: "string", multiple: true },
-    bcc: { type: "string", multiple: true },
-    subject: { type: "string" },
-    file: { type: "string" },
-    body: { type: "string" },
-    expandMD: { type: "string", default: "no" },
-    linkMax: { type: "string", default: "4" },
-    linkTTL: { type: "string", default: "30" },
-    identity: { type: "string" },
-    config: { type: "string" },
-    once: { type: "boolean", default: false },
-    until: { type: "string" },
-    expires: { type: "string" },
-    kind: { type: "string" },
-    secret: { type: "string" },
-    "secret-env": { type: "string" },
-    meta: { type: "string" },
-    "authorize-url": { type: "string" },
-    "token-url": { type: "string" },
-    "client-id": { type: "string" },
-    "client-secret": { type: "string" },
-    "oauth-scopes": { type: "string" },
-    port: { type: "string" },
-    days: { type: "string" },
-    sla: { type: "string" },
-    allow: { type: "string" },
-    "reply-mode": { type: "string" },
-    raw: { type: "boolean", default: false },
-    offline: { type: "boolean", default: false },
-    exec: { type: "string" },
-    daemon: { type: "boolean", default: false },
-    status: { type: "boolean", default: false },
-    stop: { type: "boolean", default: false },
-    json: { type: "boolean", default: false },
-    n: { type: "string", short: "n", default: "20" },
-    help: { type: "boolean", short: "h", default: false },
-    man: { type: "boolean", default: false },
-    markdown: { type: "boolean", default: false },
-  },
-});
+// §1.2, and it has to be the FIRST thing that happens: every line below is a
+// write to a pipe that a `| head` may already have closed. `.plans/s05-cli-crud/
+// arch.md` calls this the highest-leverage line in the whole plan.
+installEpipeGuard();
+
+/**
+ * Kept as a function so `parseArgs`'s inference still produces the exact flag
+ * types; hoisting the options object out to a `const` collapses them to
+ * `string | boolean`. It exists as a function at all so the call can sit
+ * inside a try/catch — see below.
+ */
+const parseCommandLine = () =>
+  parseArgs({
+    allowPositionals: true,
+    options: {
+      db: { type: "string" },
+      base: { type: "string" },
+      url: { type: "string" },
+      token: { type: "string" },
+      tenant: { type: "string" },
+      name: { type: "string" },
+      password: { type: "string" },
+      scopes: { type: "string" },
+      account: { type: "string" },
+      from: { type: "string" },
+      principal: { type: "string" },
+      blobs: { type: "string" },
+      mailbox: { type: "string" },
+      parent: { type: "string" },
+      sort: { type: "string" },
+      force: { type: "boolean", default: false },
+      book: { type: "string" },
+      to: { type: "string", multiple: true },
+      cc: { type: "string", multiple: true },
+      bcc: { type: "string", multiple: true },
+      subject: { type: "string" },
+      file: { type: "string" },
+      body: { type: "string" },
+      expandMD: { type: "string", default: "no" },
+      linkMax: { type: "string", default: "4" },
+      linkTTL: { type: "string", default: "30" },
+      identity: { type: "string" },
+      config: { type: "string" },
+      once: { type: "boolean", default: false },
+      until: { type: "string" },
+      expires: { type: "string" },
+      kind: { type: "string" },
+      secret: { type: "string" },
+      "secret-env": { type: "string" },
+      meta: { type: "string" },
+      "authorize-url": { type: "string" },
+      "token-url": { type: "string" },
+      "client-id": { type: "string" },
+      "client-secret": { type: "string" },
+      "oauth-scopes": { type: "string" },
+      port: { type: "string" },
+      days: { type: "string" },
+      sla: { type: "string" },
+      allow: { type: "string" },
+      "reply-mode": { type: "string" },
+      raw: { type: "boolean", default: false },
+      offline: { type: "boolean", default: false },
+      exec: { type: "string" },
+      daemon: { type: "boolean", default: false },
+      status: { type: "boolean", default: false },
+      stop: { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
+      // ---- the I/O contract's own flags (arch.md §1.4 / §1.7 / §1.8) ----
+      ids: { type: "boolean", default: false },
+      "dry-run": { type: "boolean", default: false },
+      "if-state": { type: "string" },
+      as: { type: "string" },
+      n: { type: "string", short: "n", default: "20" },
+      help: { type: "boolean", short: "h", default: false },
+      man: { type: "boolean", default: false },
+      markdown: { type: "boolean", default: false },
+    },
+  });
+
+// parseArgs used to run bare at module scope, OUTSIDE the try/catch that
+// formats every other error, so `bullmoose log --dry-run` answered with a raw
+// ERR_PARSE_ARGS_UNKNOWN_OPTION and ten lines of Node internals
+// (`.feedback/fromClaude/cli/010` item 2). An unknown flag is the textbook
+// usage error: message on stderr, the overview on stderr, exit 2.
+let parsed: ReturnType<typeof parseCommandLine>;
+try {
+  parsed = parseCommandLine();
+} catch (err) {
+  note(err instanceof Error ? err.message.split("\n")[0]! : String(err));
+  note("");
+  note(renderOverview());
+  process.exit(EXIT.USAGE);
+}
+const opts = parsed.values;
+const positionals = parsed.positionals;
 
 const command = positionals[0];
 if (command === "help" || opts.help || !command) {
   // `bullmoose help <cmd>` or `bullmoose <cmd> --help` → per-command help.
+  // Help that was ASKED for is the requested data, so it goes to stdout;
+  // help printed because the invocation was wrong is chrome, so it does not.
   const topic = command && command !== "help" ? command : positionals[1];
   if (opts.json) {
-    console.log(helpJson());
-    process.exit(0);
+    outRaw(`${helpJson()}\n`);
+    process.exit(EXIT.OK);
   }
   if (opts.man) {
-    process.stdout.write(renderMan());
-    process.exit(0);
+    outRaw(renderMan());
+    process.exit(EXIT.OK);
   }
   if (opts.markdown) {
-    console.log(renderMarkdown());
-    process.exit(0);
+    out(renderMarkdown());
+    process.exit(EXIT.OK);
   }
   if (topic) {
     const c = findCommand(topic);
     if (!c) {
-      console.error(`unknown command: ${topic}\n`);
-      console.log(renderOverview());
-      process.exit(1);
+      note(`unknown command: ${topic}\n`);
+      note(renderOverview());
+      process.exit(EXIT.USAGE);
     }
-    console.log(renderCommand(c));
-    process.exit(0);
+    out(renderCommand(c));
+    process.exit(EXIT.OK);
   }
-  console.log(renderOverview());
-  process.exit(opts.help || command === "help" ? 0 : 1);
+  if (opts.help || command === "help") {
+    out(renderOverview());
+    process.exit(EXIT.OK);
+  }
+  note(renderOverview());
+  process.exit(EXIT.USAGE);
 }
+
+/**
+ * The contract flags, in the shape every command module takes. Threaded as one
+ * object so adding a clause to `arch.md` §1 means touching this line and the
+ * modules that honour it, not every call site in the switch below.
+ */
+const io = {
+  json: opts.json ?? false,
+  ids: opts.ids ?? false,
+  dryRun: opts["dry-run"] ?? false,
+  ifState: opts["if-state"],
+  as: opts.as,
+};
 
 const db = openDb(opts.db ?? defaultDbPath());
 
@@ -134,7 +205,7 @@ try {
         password: opts.password,
         name: opts.name,
         scopes: opts.scopes,
-        json: opts.json ?? false,
+        ...io,
       });
       break;
     case "discover":
@@ -144,7 +215,7 @@ try {
       await cmdToken(db, requireSettings(db), positionals.slice(1), {
         name: opts.name,
         scopes: opts.scopes,
-        json: opts.json ?? false,
+        ...io,
       });
       break;
     case "sync":
@@ -172,15 +243,15 @@ try {
       await cmdContacts(db, positionals.slice(1), {
         account: opts.account,
         book: opts.book,
-        json: opts.json ?? false,
         n: opts.n,
+        ...io,
       });
       break;
     case "calendar":
       await cmdCalendar(db, positionals.slice(1), {
         account: opts.account,
         days: opts.days,
-        json: opts.json ?? false,
+        ...io,
       });
       break;
     case "creds":
@@ -196,7 +267,7 @@ try {
         clientSecret: opts["client-secret"],
         oauthScopes: opts["oauth-scopes"],
         port: opts.port,
-        json: opts.json ?? false,
+        ...io,
       });
       break;
     case "log":
@@ -217,20 +288,14 @@ try {
         parent: opts.parent,
         sort: opts.sort,
         force: opts.force ?? false,
-        json: opts.json ?? false,
+        ...io,
       });
       break;
     case "blobs":
-      await cmdBlobs(db, positionals.slice(1), {
-        account: opts.account,
-        json: opts.json ?? false,
-      });
+      await cmdBlobs(db, positionals.slice(1), { account: opts.account, ...io });
       break;
     case "share":
-      await cmdShare(db, positionals.slice(1), {
-        account: opts.account,
-        json: opts.json ?? false,
-      });
+      await cmdShare(db, positionals.slice(1), { account: opts.account, ...io });
       break;
     case "admin":
       await cmdAdmin(db, positionals.slice(1), {
@@ -247,23 +312,29 @@ try {
         config: opts.config,
         book: opts.book,
         expires: opts.expires,
-        json: opts.json ?? false,
+        ...io,
       });
       break;
     default:
-      console.error(`unknown command: ${command}\n\n${renderOverview()}`);
-      process.exit(1);
+      note(`unknown command: ${command}\n`);
+      note(renderOverview());
+      process.exit(EXIT.USAGE);
   }
 } catch (err) {
-  console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
+  // The single exit path. `die` maps the error to a code from the §1.5 table:
+  // a JMAP error type first (so `stateMismatch` → 5 and `notFound` → 3), then
+  // an HTTP status, then the CLI's own judgement, then 1.
+  die(err);
 }
 
 // ---- commands ----------------------------------------------------------
 
 async function cmdInit(): Promise<void> {
   // A file:// base is a bootstrap bundle; explicit flags win over it.
-  let base = opts.base;
+  // `--url` is accepted as an alias because it parses, is documented in
+  // packages/cli/README.md, and used to be silently discarded — which failed
+  // with "init requires --base" and no hint (.feedback/fromClaude/cli/010 §5).
+  let base = opts.base ?? opts.url;
   let token = opts.token;
   let account = opts.account;
   if (isFileUrl(base)) {
@@ -272,22 +343,20 @@ async function cmdInit(): Promise<void> {
     token = opts.token ?? boot.token;
     account = opts.account ?? boot.accountId;
   }
-  if (!base || !token) {
-    console.error("init requires --base and --token (flags or bootstrap file)");
-    process.exit(1);
-  }
+  if (!base || !token) usage("bullmoose init --base <url> --token <token>  (or a file:// bundle)");
 
   if (opts.offline) {
     // Store without touching the network — for prepping machines before
     // they have connectivity. Needs an explicit accountId (no discovery).
-    if (!account) {
-      console.error("--offline requires an accountId (flag or bootstrap file)");
-      process.exit(1);
-    }
+    if (!account) usage("--offline requires an accountId (flag or bootstrap file)");
     setConfig(db, "base", base);
     setConfig(db, "token", token);
     setConfig(db, "accountId", account);
-    console.log(`configured (offline, unvalidated): ${account} @ ${base}`);
+    if (io.json) {
+      emitJson({ base, accountId: account, validated: false });
+      return;
+    }
+    out(`configured (offline, unvalidated): ${account} @ ${base}`);
     return;
   }
 
@@ -296,26 +365,24 @@ async function cmdInit(): Promise<void> {
 
   const accountId = account ?? session.primaryAccounts["urn:ietf:params:jmap:mail"];
   if (!accountId || !session.accounts[accountId]) {
-    console.error(
+    notFound(
       `account ${accountId ?? "(none)"} not in session; available: ${Object.keys(session.accounts).join(", ")}`,
     );
-    process.exit(1);
   }
 
+  const accounts = Object.entries(session.accounts).map(([id, a]) => ({
+    accountId: id,
+    name: (a as { name?: string }).name,
+  }));
   setConfig(db, "base", base);
   setConfig(db, "token", token);
   setConfig(db, "accountId", accountId);
-  setConfig(
-    db,
-    "accounts",
-    JSON.stringify(
-      Object.entries(session.accounts).map(([id, a]) => ({
-        accountId: id,
-        name: (a as { name?: string }).name,
-      })),
-    ),
-  );
-  console.log(`configured: ${session.username} / ${accountId} @ ${base}`);
+  setConfig(db, "accounts", JSON.stringify(accounts));
+  if (io.json) {
+    emitJson({ base, accountId, username: session.username, accounts, validated: true });
+    return;
+  }
+  out(`configured: ${session.username} / ${accountId} @ ${base}`);
 }
 
 async function cmdSync(): Promise<void> {
@@ -324,38 +391,64 @@ async function cmdSync(): Promise<void> {
   const accounts = selectAccounts(settings, opts.account);
   const results = await syncAll(db, client, accounts, { blobs: opts.blobs });
   let failures = 0;
+  // Per-account lines are PROGRESS (arch.md §1.1 names it explicitly), so they
+  // go to stderr; `--json` gives the same information as data on stdout.
+  const records: Array<Record<string, unknown>> = [];
   for (const r of results) {
     const label = accountLabel(r.account).padEnd(28);
-    if (r.clean) console.log(`${label} clean (no changes)`);
-    else if (r.error) {
-      console.error(`${label} FAILED: ${r.error}`);
+    if (r.clean) {
+      records.push({ account: accountLabel(r.account), clean: true });
+      note(`${label} clean (no changes)`);
+    } else if (r.error) {
+      records.push({ account: accountLabel(r.account), error: r.error });
+      note(`${label} FAILED: ${r.error}`);
       failures++;
     } else if (r.stats) {
-      console.log(
+      records.push({ account: accountLabel(r.account), clean: false, ...r.stats });
+      note(
         `${label} ${r.stats.mode} → state ${r.stats.newState}: ` +
           `+${r.stats.created} ~${r.stats.updated} -${r.stats.destroyed} ` +
           `(${r.stats.mailboxes} mailboxes)`,
       );
     }
   }
-  if (failures > 0) process.exit(1);
+  if (io.json) emitNdjson(records);
+  if (failures > 0) process.exit(EXIT.FAIL);
 }
 
 function cmdAccounts(): void {
   const settings = requireSettings(db);
-  for (const a of settings.accounts) {
+  if (io.ids) {
+    emitIds(settings.accounts.map((a) => a.accountId));
+    return;
+  }
+  const rows = settings.accounts.map((a) => {
     const state = db
       .prepare("SELECT email_state, last_sync FROM sync_state WHERE account_id = ?")
       .get(a.accountId) as { email_state: string | null; last_sync: number | null } | undefined;
     const count = db
       .prepare("SELECT COUNT(*) AS n FROM emails WHERE account_id = ?")
       .get(a.accountId) as { n: number };
-    const mark = a.accountId === settings.accountId ? "★" : " ";
-    const synced = state?.last_sync
-      ? `synced ${new Date(state.last_sync).toISOString().slice(0, 16).replace("T", " ")}`
-      : "never synced";
-    console.log(
-      `${mark} ${accountLabel(a).padEnd(28)} ${String(count.n).padStart(6)} msgs  state=${state?.email_state ?? "-"}  ${synced}  (${a.accountId})`,
+    return {
+      accountId: a.accountId,
+      address: a.address ?? null,
+      name: a.name ?? null,
+      isDefault: a.accountId === settings.accountId,
+      messages: count.n,
+      state: state?.email_state ?? null,
+      lastSync: state?.last_sync ? new Date(state.last_sync).toISOString() : null,
+    };
+  });
+  if (io.json) {
+    emitNdjson(rows);
+    return;
+  }
+  for (const r of rows) {
+    const synced = r.lastSync ? `synced ${r.lastSync.slice(0, 16).replace("T", " ")}` : "never synced";
+    const label = r.address ?? r.name ?? r.accountId.slice(-8);
+    out(
+      `${r.isDefault ? "★" : " "} ${label.padEnd(28)} ${String(r.messages).padStart(6)} msgs  ` +
+        `state=${r.state ?? "-"}  ${synced}  (${r.accountId})`,
     );
   }
 }
@@ -368,24 +461,30 @@ async function cmdSend(): Promise<void> {
 
   // --from selects both the sending ACCOUNT (by address) and, below, the
   // identity within it. Falls back to --account, then the default.
-  const sendAccount = opts.from
-    ? (selectAccounts(settings, opts.from)[0]?.accountId ?? settings.accountId)
-    : opts.account
-      ? (selectAccounts(settings, opts.account)[0]?.accountId ?? settings.accountId)
-      : settings.accountId;
+  //
+  // Ambiguity is refused rather than resolved to [0]
+  // (.feedback/fromClaude/cli/009): this is the send path, and silently
+  // choosing a sender is the one outcome that cannot be undone. A --from that
+  // matches NO account is not an error here, though — it may name an alias
+  // identity inside the default account, and the identity lookup below is the
+  // strict check for that.
+  const fromAccounts = opts.from ? matchAccounts(settings, opts.from) : [];
+  if (fromAccounts.length > 1) {
+    usage(
+      `--from "${opts.from}" matches ${fromAccounts.length} accounts; ` +
+        `name the sending account with --account`,
+    );
+  }
+  const sendAccount = fromAccounts[0]?.accountId ?? pickAccount(settings, opts.account).accountId;
 
   const to = splitAddresses(opts.to);
   const cc = splitAddresses(opts.cc);
   const bcc = splitAddresses(opts.bcc);
-  if (to.length === 0) {
-    console.error("send requires --to");
-    process.exit(1);
-  }
+  if (to.length === 0) usage("send requires --to");
   const subject = opts.subject ?? "";
   const expand = opts.expandMD ?? "no";
   if (expand !== "no" && expand !== "html") {
-    console.error(`--expandMD must be "no" or "html" (got "${expand}")`);
-    process.exit(1);
+    usage(`--expandMD must be "no" or "html" (got "${expand}")`);
   }
 
   const body = readBody();
@@ -393,16 +492,17 @@ async function cmdSend(): Promise<void> {
   // Identity: --identity by id or email, else the first one.
   const idRes = await client.one("Identity/get", { accountId: sendAccount, ids: null });
   const identities = idRes.list as Array<{ id: string; email: string; name: string }>;
+  // Same rule as --account: an explicit selector that matches nothing is an
+  // error. Only the absence of a selector falls back to the first identity.
   const identity = opts.identity
     ? identities.find((i) => i.id === opts.identity || i.email === opts.identity)
     : opts.from
-      ? (identities.find((i) => i.email === opts.from) ?? identities[0])
+      ? identities.find((i) => i.email === opts.from)
       : identities[0];
   if (!identity) {
-    console.error(
-      `identity ${opts.identity ?? "(default)"} not found; available: ${identities.map((i) => i.email).join(", ")}`,
+    notFound(
+      `identity ${opts.identity ?? opts.from ?? "(default)"} not found; available: ${identities.map((i) => i.email).join(", ")}`,
     );
-    process.exit(1);
   }
 
   // Role mailboxes for the draft → Sent dance.
@@ -410,10 +510,7 @@ async function cmdSend(): Promise<void> {
   const mailboxes = mbRes.list as Array<{ id: string; role: string | null }>;
   const draftsId = mailboxes.find((m) => m.role === "drafts")?.id;
   const sentId = mailboxes.find((m) => m.role === "sent")?.id;
-  if (!draftsId || !sentId) {
-    console.error("account is missing a drafts/sent role mailbox");
-    process.exit(1);
-  }
+  if (!draftsId || !sentId) notFound("account is missing a drafts/sent role mailbox");
 
   // 1. Create the draft.
   let draftId: string;
@@ -440,7 +537,7 @@ async function cmdSend(): Promise<void> {
         return url;
       },
     });
-    for (const w of assets.warnings) console.error(`warning: ${w}`);
+    for (const w of assets.warnings) warn(w);
 
     const raw = buildMime({
       from: [{ ...(identity.name ? { name: identity.name } : {}), email: identity.email }],
@@ -463,10 +560,7 @@ async function cmdSend(): Promise<void> {
       },
     });
     const imported = (impRes.created as Record<string, { id: string }> | undefined)?.d;
-    if (!imported) {
-      console.error(`draft import failed: ${JSON.stringify(impRes.notCreated)}`);
-      process.exit(1);
-    }
+    if (!imported) failSetError("draft import", (impRes.notCreated as Record<string, unknown>)?.d);
     draftId = imported.id;
 
     const bits = ["markdown→html"];
@@ -495,10 +589,7 @@ async function cmdSend(): Promise<void> {
       },
     });
     const draft = (setRes.created as Record<string, { id: string }> | undefined)?.d;
-    if (!draft) {
-      console.error(`draft creation failed: ${JSON.stringify(setRes.notCreated)}`);
-      process.exit(1);
-    }
+    if (!draft) failSetError("draft creation", (setRes.notCreated as Record<string, unknown>)?.d);
     draftId = draft.id;
   }
 
@@ -523,15 +614,21 @@ async function cmdSend(): Promise<void> {
     },
   });
   const submission = (subRes.created as Record<string, { id: string }> | undefined)?.s;
-  if (!submission) {
-    console.error(`submission failed: ${JSON.stringify(subRes.notCreated)}`);
-    process.exit(1);
-  }
+  if (!submission) failSetError("submission", (subRes.notCreated as Record<string, unknown>)?.s);
 
-  console.log(
-    `sent ${draftId} to ${rcptTo.map((a) => a.email).join(", ")} ` +
-      `(submission ${submission.id}${extras})`,
-  );
+  if (io.json) {
+    emitJson({
+      emailId: draftId,
+      submissionId: submission.id,
+      identity: identity.email,
+      to: rcptTo.map((a) => a.email),
+    });
+  } else {
+    out(
+      `sent ${draftId} to ${rcptTo.map((a) => a.email).join(", ")} ` +
+        `(submission ${submission.id}${extras})`,
+    );
+  }
 
   // Keep the local log current; best-effort.
   try {
@@ -550,16 +647,11 @@ function splitAddresses(values: string[] | undefined): Array<{ email: string }> 
 }
 
 function readBody(): string {
-  // Explicit flags beat implicit stdin — a script with stdin redirected
-  // to /dev/null must still be able to use --body.
-  if (opts.file) return readFileSync(opts.file, "utf8");
+  // arch.md §1.4, and the rule this command already stated: explicit flags beat
+  // implicit stdin — a script with stdin redirected to /dev/null must still be
+  // able to use --body. `--file -` is explicit stdin.
   if (opts.body !== undefined) return opts.body;
-  if (!process.stdin.isTTY) {
-    const piped = readFileSync(0, "utf8");
-    if (piped.length > 0) return piped;
-  }
-  console.error("no body: pipe stdin, or pass --file/--body");
-  process.exit(1);
+  return readInput(opts.file, { required: true, what: "body" })!.text;
 }
 
 // ---- vacation --------------------------------------------------------------
@@ -567,51 +659,54 @@ function readBody(): string {
 async function cmdVacation(): Promise<void> {
   const settings = requireSettings(db);
   const client = new JmapClient(settings.base, settings.token);
-  const account = selectAccounts(settings, opts.account)[0] ?? settings.accounts[0];
-  if (!account) {
-    console.error("no account configured");
-    process.exit(1);
-  }
+  const account = pickAccount(settings, opts.account);
   const verb = positionals[1];
 
   if (verb === "status" || !verb) {
     const res = await client.one("VacationResponse/get", { accountId: account.accountId });
-    const v = (res.list as Array<Record<string, unknown>>)[0];
-    console.log(
-      `${accountLabel(account)}: ${v?.isEnabled ? "ON" : "off"}` +
-        (v?.subject ? `  subject: ${v.subject}` : "") +
-        (v?.toDate ? `  until: ${v.toDate}` : ""),
+    const v = (res.list as Array<Record<string, unknown>>)[0] ?? {};
+    if (io.json) {
+      emitJson({ account: accountLabel(account), ...v });
+      return;
+    }
+    out(
+      `${accountLabel(account)}: ${v.isEnabled ? "ON" : "off"}` +
+        (v.subject ? `  subject: ${String(v.subject)}` : "") +
+        (v.toDate ? `  until: ${String(v.toDate)}` : ""),
     );
     return;
   }
   if (verb !== "on" && verb !== "off") {
-    console.error("usage: bullmoose vacation on|off|status [--subject s] [--body text] [--until date]");
-    process.exit(1);
+    usage("bullmoose vacation on|off|status [--subject s] [--body text] [--until date]");
   }
 
   const patch: Record<string, unknown> = { isEnabled: verb === "on" };
   if (opts.subject) patch.subject = opts.subject;
   if (opts.body) patch.textBody = opts.body;
   if (opts.until) patch.toDate = new Date(opts.until).toISOString();
-  await client.one("VacationResponse/set", {
+  if (io.dryRun) {
+    note(`dry run: would set vacation ${verb.toUpperCase()} for ${accountLabel(account)}`);
+    if (io.json) emitJson({ dryRun: true, account: accountLabel(account), ...patch });
+    return;
+  }
+  const res = await client.one("VacationResponse/set", {
     accountId: account.accountId,
+    ...ifInState(),
     update: { singleton: patch },
   });
-  console.log(`vacation ${verb === "on" ? "ON" : "off"} for ${accountLabel(account)}`);
+  if (io.json) {
+    emitJson({ account: accountLabel(account), state: res.newState ?? null, ...patch });
+    return;
+  }
+  out(`vacation ${verb === "on" ? "ON" : "off"} for ${accountLabel(account)}`);
 }
 
 // ---- agent -----------------------------------------------------------------
 
 async function cmdAgent(): Promise<void> {
   const verb = positionals[1];
-  if (verb !== "serve") {
-    console.error("usage: bullmoose agent serve --config <agent.json> [--once]");
-    process.exit(1);
-  }
-  if (!opts.config) {
-    console.error("agent serve requires --config <agent.json>");
-    process.exit(1);
-  }
+  if (verb !== "serve") usage("bullmoose agent serve --config <agent.json> [--once]");
+  if (!opts.config) usage("agent serve requires --config <agent.json>");
   const settings = requireSettings(db);
   const client = new JmapClient(settings.base, settings.token);
   await agentServe(db, client, settings, loadAgentConfig(opts.config), { once: opts.once });
@@ -622,20 +717,20 @@ async function cmdAgent(): Promise<void> {
 async function cmdDiscover(): Promise<void> {
   const { resolveJmapBase, probeSession } = await import("./discover.js");
   let target = positionals[1];
-  if (!target) {
-    console.error("usage: bullmoose discover <email-or-domain>");
-    process.exit(1);
-  }
+  if (!target) usage("bullmoose discover <email-or-domain>");
   if (!target.includes("@")) target = `probe@${target}`;
 
   const found = await resolveJmapBase(target);
-  console.log(`domain:  ${found.domain}`);
-  console.log(`method:  ${found.via === "fallback" ? "no SRV record — well-known fallback" : `SRV _jmap._tcp (${found.via})`}`);
-  console.log(`base:    ${found.base}`);
-
   const probe = await probeSession(found.base);
-  console.log(`session: ${probe.ok ? "✓" : "✗"} ${probe.detail}`);
-  process.exit(probe.ok ? 0 : 1);
+  if (io.json) {
+    emitJson({ domain: found.domain, via: found.via, base: found.base, ok: probe.ok, detail: probe.detail });
+  } else {
+    out(`domain:  ${found.domain}`);
+    out(`method:  ${found.via === "fallback" ? "no SRV record — well-known fallback" : `SRV _jmap._tcp (${found.via})`}`);
+    out(`base:    ${found.base}`);
+    out(`session: ${probe.ok ? "✓" : "✗"} ${probe.detail}`);
+  }
+  process.exit(probe.ok ? EXIT.OK : EXIT.FAIL);
 }
 
 // ---- watch ---------------------------------------------------------------
@@ -647,17 +742,23 @@ async function cmdWatch(): Promise<void> {
   if (opts.stop) {
     const pid = readAlivePid(paths.pid);
     if (!pid) {
-      console.log("no watcher running");
+      note("no watcher running");
       return;
     }
     process.kill(pid, "SIGTERM");
-    console.log(`stopped watcher (pid ${pid})`);
+    if (io.json) emitJson({ stopped: true, pid });
+    else out(`stopped watcher (pid ${pid})`);
     return;
   }
 
   if (opts.status) {
     const pid = readAlivePid(paths.pid);
-    console.log(pid ? `watcher running (pid ${pid}, log: ${paths.log})` : "no watcher running");
+    if (io.json) {
+      emitJson({ running: pid !== null, pid, log: paths.log });
+      return;
+    }
+    if (pid) out(`watcher running (pid ${pid}, log: ${paths.log})`);
+    else note("no watcher running");
     return;
   }
 
@@ -668,8 +769,7 @@ async function cmdWatch(): Promise<void> {
   // the child finds its OWN pid here — that's us, not a rival watcher.
   const running = readAlivePid(paths.pid);
   if (running && running !== process.pid) {
-    console.error(`watcher already running (pid ${running}) — bullmoose watch --stop first`);
-    process.exit(1);
+    conflict(`watcher already running (pid ${running}) — bullmoose watch --stop first`);
   }
 
   if (opts.daemon) {
@@ -687,8 +787,12 @@ async function cmdWatch(): Promise<void> {
     });
     child.unref();
     writePid(paths.pid, child.pid as number);
-    console.log(`watch daemon started (pid ${child.pid}, log: ${paths.log})`);
-    console.log(`stop with: bullmoose watch --stop`);
+    if (io.json) {
+      emitJson({ daemon: true, pid: child.pid, log: paths.log });
+    } else {
+      out(`watch daemon started (pid ${child.pid}, log: ${paths.log})`);
+      note("stop with: bullmoose watch --stop");
+    }
     return;
   }
 
@@ -711,9 +815,7 @@ async function cmdRead(): Promise<void> {
 
   // Which account? Explicit --account wins; a given id is looked up in the
   // local db to find its owner; otherwise the default account.
-  let accountId = opts.account
-    ? (selectAccounts(settings, opts.account)[0]?.accountId ?? settings.accountId)
-    : settings.accountId;
+  let accountId = pickAccount(settings, opts.account).accountId;
 
   // Explicit id, else the most recent message — queried live so this
   // works without a prior sync.
@@ -731,10 +833,7 @@ async function cmdRead(): Promise<void> {
       limit: 1,
     });
     id = (q.ids as string[])[0];
-    if (!id) {
-      console.error("(mailbox is empty)");
-      process.exit(1);
-    }
+    if (!id) notFound("mailbox is empty — nothing to read");
   }
 
   if (opts.raw) {
@@ -744,11 +843,8 @@ async function cmdRead(): Promise<void> {
       properties: ["blobId"],
     });
     const blobId = (meta.list as Array<{ blobId: string }>)[0]?.blobId;
-    if (!blobId) {
-      console.error(`${id} not found`);
-      process.exit(1);
-    }
-    process.stdout.write(await client.downloadBlob(accountId, blobId));
+    if (!blobId) notFound(`${id} not found`);
+    outRaw(await client.downloadBlob(accountId, blobId));
     return;
   }
 
@@ -759,26 +855,28 @@ async function cmdRead(): Promise<void> {
     fetchTextBodyValues: true,
   });
   const email = (res.list as Array<Record<string, unknown>>)[0];
-  if (!email) {
-    console.error(`${id} not found`);
-    process.exit(1);
-  }
+  if (!email) notFound(`${id} not found`);
 
   const bodyValues = (email.bodyValues ?? {}) as Record<string, { value?: string }>;
   const text = Object.values(bodyValues)[0]?.value ?? "(no text body)";
 
-  if (opts.json) {
-    console.log(JSON.stringify({ ...email, body: text, bodyValues: undefined }, null, 2));
+  if (io.ids) {
+    emitIds([String(email.id ?? id)]);
     return;
   }
-  console.log(`From:    ${formatAddrs(email.from)}`);
-  console.log(`To:      ${formatAddrs(email.to)}`);
+  if (io.json) {
+    // §1.3: `show`-shaped commands emit exactly ONE object, one line.
+    emitJson({ ...email, body: text, bodyValues: undefined });
+    return;
+  }
+  out(`From:    ${formatAddrs(email.from)}`);
+  out(`To:      ${formatAddrs(email.to)}`);
   const ccList = formatAddrs(email.cc);
-  if (ccList) console.log(`Cc:      ${ccList}`);
-  console.log(`Subject: ${email.subject ?? ""}`);
-  console.log(`Date:    ${email.receivedAt}`);
-  console.log("");
-  console.log(text);
+  if (ccList) out(`Cc:      ${ccList}`);
+  out(`Subject: ${String(email.subject ?? "")}`);
+  out(`Date:    ${String(email.receivedAt)}`);
+  out("");
+  out(text);
 }
 
 function formatAddrs(value: unknown): string {
@@ -837,10 +935,7 @@ function cmdLog(): void {
 function cmdSearch(): void {
   const settings = requireSettings(db);
   const query = positionals.slice(1).join(" ");
-  if (!query) {
-    console.error("search requires a query");
-    process.exit(1);
-  }
+  if (!query) usage("bullmoose search <fts5-query> [--account <sel>] [--json|--ids]");
 
   const selected = selectAccounts(settings, opts.account);
   const accountMarks = selected.map(() => "?").join(",");
@@ -864,23 +959,42 @@ function cmdSearch(): void {
 async function cmdShow(): Promise<void> {
   const settings = requireSettings(db);
   const id = positionals[1];
-  if (!id) {
-    console.error("show requires an emailId");
-    process.exit(1);
-  }
+  if (!id) usage("bullmoose show <emailId> [--json]");
 
+  // `show` used to bind `account_id = settings.accountId` and ignore --account
+  // entirely (.feedback/fromClaude/cli/009 §A). `log` fans out across every
+  // account by default, so feeding it an id from a non-default account got
+  // "not in local db (run: bullmoose sync)" — which was simply false. Resolve
+  // the same way `read` does: look the id up across the accounts the selector
+  // allows, then bind.
+  const allowed = selectAccounts(settings, opts.account);
+  const marks = allowed.map(() => "?").join(",");
   const row = db
-    .prepare(`SELECT * FROM emails WHERE account_id = ? AND id = ?`)
-    .get(settings.accountId, id) as Record<string, unknown> | undefined;
+    .prepare(`SELECT * FROM emails WHERE id = ? AND account_id IN (${marks})`)
+    .get(id, ...allowed.map((a) => a.accountId)) as Record<string, unknown> | undefined;
   if (!row) {
-    console.error(`${id} not in local db (run: bullmoose sync)`);
-    process.exit(1);
+    // Distinguish "no such id" from "that id belongs to an account you did not
+    // select" — the second is a different mistake and deserves a different fix.
+    const elsewhere = db.prepare(`SELECT account_id FROM emails WHERE id = ?`).get(id) as
+      | { account_id: string }
+      | undefined;
+    if (elsewhere) {
+      notFound(
+        `${id} belongs to ${accountLabel(
+          settings.accounts.find((a) => a.accountId === elsewhere.account_id) ?? {
+            accountId: elsewhere.account_id,
+          },
+        )}, which --account "${opts.account}" did not select`,
+      );
+    }
+    notFound(`${id} not in local db (run: bullmoose sync)`);
   }
+  const accountId = String(row.account_id);
 
   // Body is fetched live — the local log stores metadata + preview.
   const client = new JmapClient(settings.base, settings.token);
   const res = await client.one("Email/get", {
-    accountId: settings.accountId,
+    accountId,
     ids: [id],
     properties: ["bodyValues", "textBody"],
     fetchTextBodyValues: true,
@@ -889,18 +1003,22 @@ async function cmdShow(): Promise<void> {
   const bodyValues = (email?.bodyValues ?? {}) as Record<string, { value?: string }>;
   const text = Object.values(bodyValues)[0]?.value ?? "(no text body)";
 
-  if (opts.json) {
-    console.log(JSON.stringify({ ...row, body: text }, null, 2));
+  if (io.ids) {
+    emitIds([id]);
+    return;
+  }
+  if (io.json) {
+    emitJson({ ...row, body: text });
     return;
   }
   const from = (JSON.parse(row.from_json as string) as Array<{ name?: string; email: string }>)
     .map((a) => (a.name ? `${a.name} <${a.email}>` : a.email))
     .join(", ");
-  console.log(`From:    ${from}`);
-  console.log(`Subject: ${row.subject}`);
-  console.log(`Date:    ${new Date(row.received_at as number).toISOString()}`);
-  console.log("");
-  console.log(text);
+  out(`From:    ${from}`);
+  out(`Subject: ${String(row.subject)}`);
+  out(`Date:    ${new Date(row.received_at as number).toISOString()}`);
+  out("");
+  out(text);
 }
 
 function cmdMailboxes(): void {
@@ -921,34 +1039,39 @@ function cmdMailboxes(): void {
       role: string | null;
       total: number;
     }>;
-    if (opts.json) {
+    if (io.json || io.ids) {
       all.push(...rows.map((r) => ({ ...r, account: accountLabel(account) })));
       continue;
     }
-    if (selected.length > 1) console.log(`# ${accountLabel(account)}`);
+    // A `# account` banner is decoration, not a record: it would otherwise
+    // land in the middle of a stream that `awk` is reading column-wise.
+    if (selected.length > 1) note(`# ${accountLabel(account)}`);
     for (const r of rows) {
-      console.log(`${(r.role ?? "-").padEnd(8)} ${String(r.total).padStart(5)}  ${r.name}  (${r.id})`);
+      out(`${(r.role ?? "-").padEnd(8)} ${String(r.total).padStart(5)}  ${r.name}  (${r.id})`);
     }
   }
-  if (opts.json) console.log(JSON.stringify(all, null, 2));
+  if (io.ids) emitIds(all.map((r) => String(r.id)));
+  else if (io.json) emitNdjson(all);
 }
 
 function printRows(rows: LogRow[], showAccount = false): void {
   const settings = requireSettings(db);
   const labelFor = (id: string) =>
     accountLabel(settings.accounts.find((a) => a.accountId === id) ?? { accountId: id });
-  if (opts.json) {
-    console.log(
-      JSON.stringify(
-        rows.map((r) => ({ ...r, from: JSON.parse(r.from_json), from_json: undefined })),
-        null,
-        2,
-      ),
-    );
+  // §1.8 first: --ids is the `| xargs` shape and outranks every other format.
+  if (io.ids) {
+    emitIds(rows.map((r) => r.id));
+    return;
+  }
+  if (io.json) {
+    // §1.3: one record per line, no wrapping array — so `| head -3` truncates
+    // cleanly and `| jq -r .id` streams instead of buffering the whole page.
+    emitNdjson(rows.map((r) => ({ ...r, from: JSON.parse(r.from_json), from_json: undefined })));
     return;
   }
   if (rows.length === 0) {
-    console.log("(no messages)");
+    // Not a record. `bullmoose log | wc -l` on an empty log must say 0.
+    note("(no messages)");
     return;
   }
   for (const r of rows) {
@@ -958,8 +1081,22 @@ function printRows(rows: LogRow[], showAccount = false): void {
     const date = new Date(r.received_at).toISOString().slice(0, 16).replace("T", " ");
     const unread = r.seen ? " " : "●";
     const acct = showAccount ? `${labelFor(r.account_id).padEnd(24).slice(0, 24)}  ` : "";
-    console.log(
+    out(
       `${unread} ${date}  ${acct}${from.padEnd(24).slice(0, 24)}  ${(r.subject || "(no subject)").slice(0, 48).padEnd(48)}  [${r.mailboxes ?? ""}]  ${r.id}`,
     );
   }
+}
+
+/**
+ * §1.7 — `--if-state <state>` maps straight onto JMAP's `ifInState`, so a
+ * scripted read-modify-write cannot silently clobber a concurrent change. The
+ * server answers a mismatch with a method-level `stateMismatch`, which
+ * `io.exitCodeFor` turns into exit 5, and nothing is written.
+ *
+ * `arch.md` made this invariant 6 and then no task in `s05/devPlan.md` owned
+ * it; sVOL `016` picked it up. It is the one clause that cannot be retrofitted
+ * cheaply, because it changes every write command's signature.
+ */
+function ifInState(): Record<string, string> {
+  return io.ifState ? { ifInState: io.ifState } : {};
 }

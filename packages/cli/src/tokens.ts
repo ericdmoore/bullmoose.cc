@@ -1,6 +1,18 @@
 import type { DatabaseSync } from "node:sqlite";
 import { isFileUrl, loadBootstrap, setConfig } from "./db.js";
 import { resolveJmapBase } from "./discover.js";
+import {
+  EXIT,
+  emitIds,
+  emitJson,
+  emitNdjson,
+  exitCodeForHttpStatus,
+  fail,
+  note,
+  out,
+  usage,
+  type IoOpts,
+} from "./io.js";
 import { SELF_SERVICE_SCOPES, parseScopeFlag } from "./scopes.js";
 
 /**
@@ -9,7 +21,7 @@ import { SELF_SERVICE_SCOPES, parseScopeFlag } from "./scopes.js";
  * device token; only the token is stored (0600 db).
  */
 
-export interface LoginOpts {
+export interface LoginOpts extends IoOpts {
   base?: string;
   password?: string;
   name?: string;
@@ -24,7 +36,6 @@ export interface LoginOpts {
    * Without this flag the CLI could never reach a scope its first token lacked.
    */
   scopes?: string;
-  json: boolean;
 }
 
 export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts: LoginOpts): Promise<void> {
@@ -35,24 +46,18 @@ export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts
     opts.base = boot.base ?? boot.url;
   }
   if (!email) {
-    console.error(
-      "usage: bullmoose login <email> [--base <url>] [--name <device-name>] [--scopes <a,b,c>]",
-    );
-    process.exit(1);
+    usage("bullmoose login <email> [--base <url>] [--name <device-name>] [--scopes <a,b,c>]");
   }
   // Optional HERE and nowhere else: login is the bootstrap, so a user with
   // no token must be able to run it bare and take the server's default.
   const parsed = parseScopeFlag(opts.scopes, SELF_SERVICE_SCOPES, false);
-  if (!parsed.ok) {
-    console.error(`${parsed.error}\n(omit --scopes to take the server default)`);
-    process.exit(2);
-  }
+  if (!parsed.ok) fail(`${parsed.error}\n(omit --scopes to take the server default)`, EXIT.USAGE);
   const scopes = parsed.scopes;
   // No --base? The email address is enough: RFC 8620 §2.2 autodiscovery.
   if (!opts.base) {
     const found = await resolveJmapBase(email);
     opts.base = found.base;
-    console.error(`discovered ${found.base} (via ${found.via})`);
+    note(`discovered ${found.base} (via ${found.via})`);
   }
   const password = opts.password ?? process.env.BULLMOOSE_PASSWORD ?? (await promptHidden("password: "));
   // Stretching happens HERE — the raw password never leaves this process.
@@ -69,8 +74,7 @@ export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts
     }),
   });
   if (!res.ok) {
-    console.error(`login failed: HTTP ${res.status} ${await res.text()}`);
-    process.exit(1);
+    fail(`login failed: HTTP ${res.status} ${await res.text()}`, exitCodeForHttpStatus(res.status));
   }
   const body = (await res.json()) as {
     token: string;
@@ -82,10 +86,7 @@ export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts
   const primary =
     body.accounts.find((a) => a.address?.toLowerCase() === email.toLowerCase()) ??
     body.accounts[0];
-  if (!primary) {
-    console.error(`login ok but ${email} has no accounts — provision one first`);
-    process.exit(1);
-  }
+  if (!primary) fail(`login ok but ${email} has no accounts — provision one first`, EXIT.NOT_FOUND);
   setConfig(db, "base", opts.base);
   setConfig(db, "token", body.token);
   setConfig(db, "accountId", primary.accountId);
@@ -102,17 +103,34 @@ export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts
     ),
   );
 
-  console.log(`logged in as ${body.username} (token ${body.tokenId}, this device only)`);
+  // .feedback/fromClaude/cli/008: `json` was threaded into LoginOpts and never
+  // read — dead plumbing that looked implemented. It is implemented now, and
+  // this is the priority case the fix note names, because the value worth
+  // capturing (the account you just bound) is otherwise only in prose.
+  if (opts.json) {
+    emitJson({
+      username: body.username,
+      tokenId: body.tokenId,
+      accountId: primary.accountId,
+      base: opts.base,
+      accounts: body.accounts,
+    });
+    return;
+  }
+  if (opts.ids) {
+    emitIds(body.accounts.map((a) => a.accountId));
+    return;
+  }
+  out(`logged in as ${body.username} (token ${body.tokenId}, this device only)`);
   for (const a of body.accounts) {
     const mark = a.accountId === primary.accountId ? "★" : " ";
-    console.log(`  ${mark} ${a.address ?? a.accountId}  (${a.name})`);
+    out(`  ${mark} ${a.address ?? a.accountId}  (${a.name})`);
   }
 }
 
-export interface TokenOpts {
+export interface TokenOpts extends IoOpts {
   name?: string;
   scopes?: string;
-  json: boolean;
 }
 
 export async function cmdToken(
@@ -132,12 +150,12 @@ export async function cmdToken(
     // holds a token, so demanding one word costs them nothing.
     const parsed = parseScopeFlag(opts.scopes, SELF_SERVICE_SCOPES, true);
     if (!parsed.ok || !parsed.scopes) {
-      console.error(
+      fail(
         parsed.ok
           ? "--scopes is required"
           : `${parsed.error}\n\nusage: bullmoose token create --name <n> --scopes <a,b,c>`,
+        EXIT.USAGE,
       );
-      process.exit(2);
     }
     const scopes = parsed.scopes;
     const res = await fetch(`${settings.base}/auth/tokens`, {
@@ -145,42 +163,74 @@ export async function cmdToken(
       headers,
       body: JSON.stringify({ name: opts.name ?? "token", scopes }),
     });
-    if (!res.ok) fail(`token create failed: HTTP ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      fail(
+        `token create failed: HTTP ${res.status} ${await res.text()}`,
+        exitCodeForHttpStatus(res.status),
+      );
+    }
     const body = (await res.json()) as { token: string; tokenId: string; scopes: string[] };
-    console.log(`created ${body.tokenId} [${body.scopes.join(",")}]`);
-    console.log(`\n  ${body.token}\n`);
-    console.log("shown once — store it now.");
+    if (opts.json) {
+      emitJson({ tokenId: body.tokenId, token: body.token, scopes: body.scopes });
+      return;
+    }
+    // The secret is the ONLY thing on stdout, so `T=$(bullmoose token create
+    // --name x --scopes read)` is the whole capture. Everything else — what was
+    // minted, with which scopes, and the shown-once warning — is chrome, which
+    // is why a token used to be un-scriptable without screen-scraping
+    // (.feedback/fromClaude/cli/008).
+    note(`created ${body.tokenId} [${body.scopes.join(",")}]`);
+    out(body.token);
+    note("shown once — store it now.");
     return;
   }
 
   if (verb === "list") {
     const res = await fetch(`${settings.base}/auth/tokens`, { headers });
-    if (!res.ok) fail(`token list failed: HTTP ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      fail(`token list failed: HTTP ${res.status} ${await res.text()}`, exitCodeForHttpStatus(res.status));
+    }
     const body = (await res.json()) as {
       tokens: Array<{ id: string; name: string; scopes: string; created_at: number; last_used_at: number | null }>;
     };
+    if (opts.ids) {
+      emitIds(body.tokens.map((t) => t.id));
+      return;
+    }
     if (opts.json) {
-      console.log(JSON.stringify(body.tokens, null, 2));
+      emitNdjson(body.tokens);
       return;
     }
     for (const t of body.tokens) {
       const lastUsed = t.last_used_at ? new Date(t.last_used_at).toISOString().slice(0, 10) : "never";
-      console.log(`${t.id}  ${JSON.parse(t.scopes).join(",").padEnd(20)}  last-used=${lastUsed}  ${t.name}`);
+      out(`${t.id}  ${JSON.parse(t.scopes).join(",").padEnd(20)}  last-used=${lastUsed}  ${t.name}`);
     }
-    if (body.tokens.length === 0) console.log("(no tokens)");
+    if (body.tokens.length === 0) note("(no tokens)");
     return;
   }
 
   if (verb === "revoke") {
-    if (!arg) fail("usage: bullmoose token revoke <tokenId>");
+    if (!arg) usage("bullmoose token revoke <tokenId>");
+    if (opts.dryRun) {
+      note(`dry run: would revoke token ${arg}`);
+      if (opts.json) emitJson({ dryRun: true, tokenId: arg });
+      return;
+    }
     const res = await fetch(`${settings.base}/auth/tokens/${arg}`, { method: "DELETE", headers });
-    if (!res.ok) fail(`revoke failed: HTTP ${res.status} ${await res.text()}`);
+    if (!res.ok) {
+      fail(`revoke failed: HTTP ${res.status} ${await res.text()}`, exitCodeForHttpStatus(res.status));
+    }
     const body = (await res.json()) as { revoked: boolean };
-    console.log(body.revoked ? `revoked ${arg}` : `${arg} not found (or not yours)`);
+    if (opts.json) {
+      emitJson({ tokenId: arg, revoked: body.revoked });
+      return;
+    }
+    if (body.revoked) out(`revoked ${arg}`);
+    else note(`${arg} not found (or not yours)`);
     return;
   }
 
-  fail("usage: bullmoose token create --name <n> --scopes <a,b> | list | revoke <id>");
+  usage("bullmoose token create --name <n> --scopes <a,b> | list | revoke <id>");
 }
 
 function deviceName(): string {
@@ -238,9 +288,4 @@ export async function promptHidden(msg: string): Promise<string> {
     };
     process.stdin.on("data", onData);
   });
-}
-
-function fail(msg: string): never {
-  console.error(msg);
-  process.exit(1);
 }
