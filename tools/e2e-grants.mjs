@@ -193,26 +193,108 @@ assert((await verify.json()).ok === true, 'sealed secret decrypts under the mast
 const del = await vault(ERIC, 'DELETE', '/vault/credentials/anthropic-api');
 assert(del.body.deleted === true, 'credential deleted');
 
-// ---- 14. mailstore-analytics MCP -----------------------------------------
-const mcp = async (payload) => {
+// ---- 14. mailstore-analytics MCP (stateless MCP.2, 2026-07-28) ------------
+// Mirrors services/agent/src/mcp.ts request handling: the router still gates on
+// x-internal-token (a coarse network ACL), but IDENTITY is now a per-request
+// bearer, and the protocol version rides both a header AND params._meta (they
+// must be equal). There is no `initialize`/session anymore — `server/discover`
+// replaces it. See docs/architecture/mcp-auth.md §7a for the wire contract.
+const MCP_PROTO = '2026-07-28';
+const mcp = async (body, token) => {
   const res = await fetch(`${AGENT}/mcp/analytics`, {
     method: 'POST',
-    headers: { 'x-internal-token': INTERNAL, 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-token': INTERNAL,                // router ACL (unchanged)
+      Authorization: `Bearer ${token}`,            // identity (MCP.2)
+      'MCP-Protocol-Version': MCP_PROTO,           // MUST equal _meta below
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1, ...body,
+      params: {
+        ...(body.params ?? {}),
+        _meta: {
+          'io.modelcontextprotocol/protocolVersion': MCP_PROTO,
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
+      },
+    }),
   });
-  return res.json();
+  return { status: res.status, body: await res.json().catch(() => null) };
 };
-const init = await mcp({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
-assert(init.result?.serverInfo?.name === 'bullmoose-mailstore-analytics', 'MCP initialize');
-const tools = await mcp({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
-assert(tools.result?.tools?.length === 4, `MCP lists 4 tools: ${tools.result?.tools?.map(t => t.name)}`);
-const spend = await mcp({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: {
-  name: 'spend_by_month', arguments: { accountId: ERIC.acct } } });
-const spendRows = JSON.parse(spend.result.content[0].text);
-assert(spendRows.length === 2 && spendRows[0].period_month === '2026-07', `spend_by_month: ${spend.result.content[0].text}`);
-const senders = await mcp({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: {
-  name: 'top_senders', arguments: { accountId: ERIC.acct, days: 365 } } });
-assert(JSON.parse(senders.result.content[0].text)[0]?.sender === 'cfo@example.com', 'top_senders');
+
+// server/discover replaces the dead `initialize` handshake.
+const disc = await mcp({ method: 'server/discover' }, ERIC.token);
+assert(disc.status === 200 && disc.body?.result?.serverInfo?.name === 'bullmoose-mailstore-analytics',
+  `MCP server/discover: ${disc.status} ${JSON.stringify(disc.body)}`);
+assert(JSON.stringify(disc.body.result?.supportedVersions) === JSON.stringify([MCP_PROTO]),
+  `server/discover advertises only MCP.2: ${JSON.stringify(disc.body.result?.supportedVersions)}`);
+
+// tools/list — the surface grew well past the original four (analytics + calendar/
+// contacts/email CRUD + introspection), so assert the analytics reads are present
+// rather than an exact count, and that the MCP.2 cache hint (ttlMs) rides along.
+const tools = await mcp({ method: 'tools/list' }, ERIC.token);
+const toolNames = (tools.body?.result?.tools ?? []).map((t) => t.name);
+assert(['spend_by_month', 'spend_by_vendor', 'top_senders', 'message_volume'].every((n) => toolNames.includes(n)),
+  `MCP lists the analytics tools: ${JSON.stringify(toolNames)}`);
+assert(typeof tools.body.result?.ttlMs === 'number',
+  `tools/list carries a cache ttl: ${JSON.stringify(tools.body.result)}`);
+
+// owner read: ERIC's bearer on ERIC's own account → 200 + rows, no grant needed.
+const spend = await mcp({ method: 'tools/call', params: {
+  name: 'spend_by_month', arguments: { accountId: ERIC.acct } } }, ERIC.token);
+assert(spend.status === 200, `spend_by_month owner read is 200: ${JSON.stringify(spend.body)}`);
+const spendRows = JSON.parse(spend.body.result.content[0].text);
+assert(spendRows.length === 2 && spendRows[0].period_month === '2026-07', `spend_by_month: ${JSON.stringify(spendRows)}`);
+const senders = await mcp({ method: 'tools/call', params: {
+  name: 'top_senders', arguments: { accountId: ERIC.acct, days: 365 } } }, ERIC.token);
+assert(JSON.parse(senders.body.result.content[0].text)[0]?.sender === 'cfo@example.com', 'top_senders');
+
+// cross-account denial: CAROL holds no grant on ERIC's account (unshared back in
+// §11) → 403 and ZERO rows leak (authorizeAccount fails before the tool runs).
+const denied = await mcp({ method: 'tools/call', params: {
+  name: 'spend_by_month', arguments: { accountId: ERIC.acct } } }, CAROL.token);
+assert(denied.status === 403 && denied.body?.error && denied.body?.result === undefined,
+  `cross-account MCP read denied with no rows: ${denied.status} ${JSON.stringify(denied.body)}`);
+
+// grant-reached read: re-grant EDITOR read on ERIC, then EDITOR's bearer reads
+// ERIC's ledger THROUGH the grant → 200 + rows. This exercises the live
+// token ∩ grant path end-to-end; the grant_audit WRITE it triggers is asserted
+// directly by the fake-D1 unit test (services/agent/src/mcp.test.ts case 10) —
+// this harness has no HTTP path to read grant_audit rows back.
+const mcpGrant = await prov('POST', '/grants', {
+  granteeEmail: EDITOR.email, targetEmail: ERIC.email, scopes: ['read'],
+});
+assert(mcpGrant.grantId?.startsWith('g_'), `mcp grant minted: ${JSON.stringify(mcpGrant)}`);
+const edSpend = await mcp({ method: 'tools/call', params: {
+  name: 'spend_by_month', arguments: { accountId: ERIC.acct } } }, EDITOR.token);
+assert(edSpend.status === 200, `grant-reached MCP read is 200: ${JSON.stringify(edSpend.body)}`);
+assert(JSON.parse(edSpend.body.result.content[0].text).length === 2,
+  `grant-reached read returns ERIC's rows: ${edSpend.body.result.content[0].text}`);
+await prov('DELETE', `/grants/${mcpGrant.grantId}`);
+
+// version rejection: an old protocol string → 400 / -32022 with a supported[] set.
+const badVer = await fetch(`${AGENT}/mcp/analytics`, {
+  method: 'POST',
+  headers: {
+    'content-type': 'application/json', 'x-internal-token': INTERNAL,
+    Authorization: `Bearer ${ERIC.token}`, 'MCP-Protocol-Version': '2025-06-18',
+  },
+  body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/list', params: { _meta: {
+    'io.modelcontextprotocol/protocolVersion': '2025-06-18',
+    'io.modelcontextprotocol/clientCapabilities': {},
+  } } }),
+});
+const badVerBody = await badVer.json();
+assert(badVer.status === 400 && badVerBody.error?.code === -32022 && Array.isArray(badVerBody.error?.data?.supported),
+  `unsupported version rejected with supported[]: ${badVer.status} ${JSON.stringify(badVerBody)}`);
+
+// the dead handshake is gone: `initialize` is just an unknown method now (-32601).
+const legacy = await mcp({ method: 'initialize' }, ERIC.token);
+assert(legacy.status === 404 && legacy.body?.error?.code === -32601,
+  `initialize is no longer a method: ${legacy.status} ${JSON.stringify(legacy.body)}`);
+
+// still valid: no internal token → the route stays hidden (404), unchanged by s01.
 const noTokenMcp = await fetch(`${AGENT}/mcp/analytics`, { method: 'POST', body: '{}' });
 assert(noTokenMcp.status === 404, 'MCP hidden without internal token');
 
