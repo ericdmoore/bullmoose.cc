@@ -328,6 +328,7 @@ function invoke([name, args, callId]) {
         list,
         notFound: ids.filter((id) => !list.some((c) => c.id === id)),
       });
+    }
     // ---- calendar CRUD (sVOL 018) --------------------------------------
     case "Calendar/get": {
       const ids = args.ids == null ? null : args.ids;
