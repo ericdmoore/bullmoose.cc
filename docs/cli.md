@@ -7,11 +7,14 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 - Auth model: login stretches your password locally and stores a bearer token; device/app tokens (bm_…) are minted with `token create` and used by clients (JMAP, CalDAV/CardDAV, POP3/SMTP). The login password is never stored or sent raw.
 - The database is the server's own data-plane schema — open it directly with `sqlite3` for anything the commands don't cover.
 - Operator commands (`admin …`) wrap the provision worker and use separate credentials from a mail account.
+- I/O contract — every command obeys it. **stdout carries records; stderr carries everything else**: progress, prompts, warnings, counts and summaries, tree decoration, "(none)" notices and hints. So `bullmoose log > /dev/null` shows the chrome and no records, and `2>/dev/null` shows the records and no chrome. A downstream reader closing the pipe (`| head`, quitting `less`) is not an error: the CLI exits 0 silently instead of printing a stack trace. Output is never paged, never coloured when stdout is not a terminal, and never coloured at all when $NO_COLOR is set. Where a command takes a file, `-` means stdin explicitly and a bare invocation reads stdin when it is not a terminal — but an explicit flag always beats implicit stdin.
+- Exit codes are the branch points for scripts: 0 success · 1 generic failure · 2 usage error · 3 not found · 4 auth/forbidden · 5 conflict (an --if-state mismatch, or a precondition such as removing a mailbox that still holds mail). JMAP error types map onto them by rule: `stateMismatch`/`alreadyExists`/`mailboxHasEmail` → 5, `notFound`/`blobNotFound`/`accountNotFound` → 3, `forbidden`/`accountReadOnly` → 4, `invalidProperties`/`invalidArguments`/`tooLarge` → 2, and `serverFail`/`overQuota`/`rateLimit` → 1.
 
 ## Commands
 
 | command | what it does |
 |---|---|
+| [`help`](#help) | show help — for everything, one command, or as a machine-readable spec |
 | [`login`](#login) | log in and store a bearer token for this account |
 | [`discover`](#discover) | show what autodiscovery finds and probe the server |
 | [`init`](#init) | configure an account from an existing token (no password login) |
@@ -40,9 +43,49 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 | flag | description |
 |---|---|
 | `--db <path>` | SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db) |
-| `--account <sel>` | account selector: accountId, address, @domain-suffix, name substring, or 'default' |
-| `--json` | machine-readable output where supported (and `help --json` dumps this whole spec) |
+| `--account <sel>` | account selector: accountId, address, @domain-suffix, name substring, or 'default'. For commands that act on ONE account a selector matching several is an error, not a choice — name one. Commands that legitimately fan out (log, search, sync, watch, mailboxes) still do. |
+| `--json` | machine-readable output: NDJSON — one complete JSON value per line — for collections, exactly one object for show-style commands. Never a wrapping array, so `\| head`, `\| wc -l` and `\| jq` all stream. (`help --json` dumps this whole spec.) |
+| `--ids` | print bare identifiers, one per line, and nothing else — the `\| xargs -n1` shape |
+| `--dry-run` | on destructive commands (mailbox rm, blobs rm, share revoke, token revoke, creds rm, contacts import, vacation on\|off, admin *revoke): resolve everything, report what would happen, write nothing |
+| `--if-state <state>` | optimistic concurrency for writes: passed to JMAP as ifInState. If the server has moved on, the write is refused with exit 5 and nothing changes. The state to pass is printed by the previous write (and is in its --json output as `state`). |
+| `--as <type>` | force the input content type — vcard \| ical \| json \| text (default: inferred from the bytes) |
 | `-h, --help` | show help; `bullmoose <cmd> --help` shows help for one command |
+| `--man / --markdown` | render the whole spec as a man page / Markdown (used to generate the docs) |
+
+## Exit codes
+
+| code | meaning | when |
+|---|---|---|
+| 0 | success | the command did what it said |
+| 1 | generic failure | server error, quota, rate limit — nothing you can restate |
+| 2 | usage error | unknown flag or command, missing argument, ambiguous --account |
+| 3 | not found | no such message, mailbox, contact, account or blob |
+| 4 | auth / forbidden | the token is rejected or lacks the scope |
+| 5 | conflict | --if-state mismatch, or a precondition like a non-empty mailbox |
+
+## help
+
+show help — for everything, one command, or as a machine-readable spec
+
+```
+bullmoose help [<command>] | --json | --man | --markdown
+```
+
+With no argument, the command overview. With a command name, that command's synopsis, flags and examples (`bullmoose <cmd> --help` is the same thing). `--json` dumps this entire spec — commands, subcommands, flags, examples, global options, the exit-code table and the I/O contract notes — and is what an agent should read rather than scraping the text. `--man` and `--markdown` render the same spec as a man page and as Markdown; `docs/cli.md` and `man/bullmoose.1` are generated from them by `npm run -w @bullmoose/cli gen:docs` and must never be hand-edited.
+
+| flag | description |
+|---|---|
+| `--json` | the whole command spec, machine-readable |
+| `--man` | roff man page (→ man/bullmoose.1) |
+| `--markdown` | Markdown reference (→ docs/cli.md) |
+
+**Examples**
+
+```sh
+bullmoose help mailbox
+bullmoose help --json | jq -r '.commands[].name'
+# what can this CLI do?
+```
 
 ## login
 
@@ -142,6 +185,8 @@ Device tokens (bm_…) are what clients authenticate with — never the login pa
 ```sh
 bullmoose token create --name backup --scopes read
 # read-only sync/archive
+T=$(bullmoose token create --name ci --scopes read)
+# the token is the only thing on stdout; the chrome goes to stderr
 bullmoose token create --name popper --scopes read,move
 # POP3 via popcorn
 bullmoose token create --name laptop --scopes read,draft,send
@@ -203,7 +248,7 @@ Body comes from --file, else --body, else piped stdin. With --expandMD html the 
 | `--file <path> / --body <text>` | body source (else stdin) |
 | `--from <address>` | select the sending account + identity |
 | `--identity <id-or-email>` | pick a specific identity |
-| `--expandMD html|no` | render Markdown to HTML (default: no) |
+| `--expandMD html\|no` | render Markdown to HTML (default: no) |
 | `--linkMax <MiB>` | big-file threshold (default 4) |
 | `--linkTTL <days>` | share-link lifetime (default 30) |
 
@@ -321,8 +366,8 @@ bullmoose contacts import <file.vcf> | list | show <cardId>
 
 **Subcommands**
 
-- **import** — seed from a vCard export (idempotent; dedup by uid; missing --book created)  
-  `contacts import <file.vcf> [--book <name-or-id>] [--account <sel>]`
+- **import** — seed from a vCard export (idempotent; dedup by uid; missing --book created); reads stdin with no path, or with `-`  
+  `contacts import [<file.vcf>|-] [--book <name-or-id>] [--as vcard] [--dry-run]`
 - **list** — list cards  
   `contacts list [--book <name-or-id>] [-n <count>] [--json]`
 - **show** — show one card  
@@ -334,6 +379,9 @@ bullmoose contacts import <file.vcf> | list | show <cardId>
 bullmoose contacts import Contacts.vcf --book Personal
 # export from macOS Contacts: File → Export → Export vCard…
 bullmoose contacts list --book Family -n 50
+cat Contacts.vcf | bullmoose contacts import - --book Personal
+# `-` is explicit stdin
+bullmoose contacts list --ids | xargs -n1 bullmoose contacts show
 ```
 
 See also: [`calendar`](#calendar), [`admin grant`](#admin)
@@ -382,12 +430,21 @@ The vault stores third-party API keys and OAuth refresh tokens for agents. It is
 - **rm** — remove a credential  
   `creds rm <name>`
 - **oauth** — PKCE flow; uploads only the refresh token  
-  `creds oauth <name> --authorize-url <u> --token-url <u> --client-id <id> [--client-secret <s>] [--oauth-scopes "a b"]`
+  `creds oauth <name> --authorize-url <u> --token-url <u> --client-id <id> [--client-secret <s>] [--oauth-scopes "a b"] [--meta k=v,…] [--port <n>]`
+
+| flag | description |
+|---|---|
+| `--kind api-key\|oauth-refresh` | what the credential is; gates which verbs may ever use it |
+| `--secret <s> / --secret-env VAR` | the value, or the env var holding it (else a hidden prompt — never argv) |
+| `--meta k=v,…` | free-form metadata stored beside the credential (also accepted on `oauth`) |
+| `--port <n>` | localhost port for the `oauth` PKCE callback (default 8976) |
+| `--dry-run` | on `rm`: report what would be deleted, delete nothing |
 
 **Examples**
 
 ```sh
 bullmoose creds set openai --kind api-key --secret-env OPENAI_API_KEY
+bullmoose creds oauth gcal --authorize-url … --token-url … --client-id … --port 9000
 ```
 
 See also: [`agent`](#agent)
@@ -409,6 +466,12 @@ bullmoose log [-n <count>] [--mailbox <role-or-id>] [--account <sel>] [--json]
 
 ```sh
 bullmoose log -n 50 --mailbox inbox
+bullmoose log | head -3
+# exits 0 silently — a closed pipe is not an error
+bullmoose log --json | jq -r .subject
+# NDJSON: streams, one record per line
+bullmoose log --ids | xargs -n1 bullmoose show
+# bare ids, the xargs shape
 ```
 
 See also: [`search`](#search), [`read`](#read), [`sync`](#sync)
@@ -477,6 +540,8 @@ Folder management via Mailbox/set. A <box> is an id, a role (inbox, sent, drafts
 | `--parent <box>` | parent folder for create/move; '-' means top level |
 | `--sort <n>` | sortOrder for create (unsigned integer, default 0) |
 | `--force` | on rm: onDestroyRemoveEmails — remove the mail inside it too |
+| `--if-state <state>` | refuse the write (exit 5) if the account has moved on since <state> |
+| `--dry-run` | resolve the folder and report; write nothing |
 
 **Examples**
 
@@ -488,6 +553,10 @@ bullmoose mailbox rename Receipts Invoices
 bullmoose mailbox move Invoices --parent -
 # back to the top level
 bullmoose mailbox rm Invoices --force
+bullmoose mailbox rm Invoices --dry-run
+# resolves the name, writes nothing
+S=$(bullmoose mailbox create A --json | jq -r .state); bullmoose mailbox rename A B --if-state "$S"
+# read-modify-write that cannot clobber a concurrent change: exit 5 if it would
 ```
 
 See also: [`mailboxes`](#mailboxes), [`sync`](#sync), [`log`](#log)

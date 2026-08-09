@@ -1,6 +1,17 @@
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { getConfig, isFileUrl, loadBootstrap, setConfig } from "./db.js";
+import {
+  emitIds,
+  emitJson,
+  emitNdjson,
+  exitCodeForHttpStatus,
+  fail,
+  note,
+  out,
+  usage,
+  type IoOpts,
+} from "./io.js";
 import { TOKEN_SCOPES, parseScopeFlag } from "./scopes.js";
 import { deriveLoginKey, promptHidden } from "./tokens.js";
 
@@ -9,26 +20,45 @@ import { deriveLoginKey, promptHidden } from "./tokens.js";
  * provision worker's admin API (separate credentials from the mail
  * account: adminUrl/adminToken vs base/token).
  *
- * Noun taxonomy (implemented ✓ / designed ○):
- *   ✓ tenant       create | list
- *   ✓ domain       add | status | list          (drives CF DNS + SES wiring)
- *   ✓ account      create | list                (mailbox provisioning)
- *   ○ route        aliases / forwards / catch-all management
- *   ○ identity     extra from-addresses per account
- *   ○ policy       tenant-scoped delivery policies (§17: quarantine/DLP/retention)
- *   ✓ share        BUILT, but as `bullmoose share list|revoke` — not here.
- *                  This line used to read "needs the shares table"; sVOL 010
- *                  put the records in KV instead (see
- *                  services/jmap/src/shares.ts for why), so there is no table
- *                  and no operator credential involved. Revoking a link you
- *                  minted runs on your own mail token, against the jmap
- *                  worker, so it does not belong on the admin surface.
- *   ○ suppression  list | add | remove           (outbound suppression list)
- *   ○ token        app passwords / scoped agent tokens (needs auth service)
- *   ○ agent        register agents, grants, bindings (agent-integration.md §2)
+ * Noun taxonomy: IMPLEMENTED and DESIGNED below are the single source of
+ * truth, used both to dispatch and to render the unknown-command message.
+ * The header list used to be hand-written prose and drifted — it called
+ * `agent`, `token` and `grant` unbuilt while all three were live, so a typo in
+ * `admin grant create` was answered with "grants do not exist"
+ * (`.feedback/fromClaude/cli/010` item 1). `admin.test.ts` now diffs
+ * IMPLEMENTED against the `case` labels in this file, so it cannot drift again.
+ *
+ * `share` is BUILT, but as `bullmoose share list|revoke` — not here. sVOL 010
+ * put the share records in KV (see services/jmap/src/shares.ts for why), so
+ * there is no table and no operator credential involved: revoking a link you
+ * minted runs on your own mail token against the jmap worker.
  */
 
-export interface AdminOpts {
+/** Every implemented `admin` command, as `"<noun> <verb>"`. */
+export const IMPLEMENTED = [
+  "init",
+  "password",
+  "tenant create",
+  "tenant list",
+  "domain add",
+  "domain status",
+  "domain list",
+  "account create",
+  "account list",
+  "agent bind",
+  "agent list",
+  "grant create",
+  "grant list",
+  "grant revoke",
+  "token create",
+  "token list",
+  "token revoke",
+] as const;
+
+/** Designed, not built. Anything here must NOT appear in IMPLEMENTED. */
+export const DESIGNED = ["route", "identity", "policy", "suppression"] as const;
+
+export interface AdminOpts extends IoOpts {
   url?: string;
   token?: string;
   tenant?: string;
@@ -47,7 +77,6 @@ export interface AdminOpts {
   book?: string;
   /** grant create: expiry in days. */
   expires?: string;
-  json: boolean;
 }
 
 export async function cmdAdmin(
@@ -66,10 +95,11 @@ export async function cmdAdmin(
       url = boot.url ?? boot.base;
       token = opts.token ?? boot.token;
     }
-    if (!url || !token) fail("admin init requires --url and --token (flags or bootstrap file)");
+    if (!url || !token) usage("bullmoose admin init --url <provision-url> --token <admin-token>");
     setConfig(db, "adminUrl", url);
     setConfig(db, "adminToken", token);
-    console.log(`admin configured: ${url}`);
+    if (opts.json) emitJson({ adminUrl: url });
+    else out(`admin configured: ${url}`);
     return;
   }
 
@@ -77,38 +107,38 @@ export async function cmdAdmin(
 
   switch (`${noun} ${verb}`) {
     case "tenant create": {
-      if (!arg) fail("usage: admin tenant create <tenantId> --name <name>");
+      if (!arg) usage("bullmoose admin tenant create <tenantId> --name <name>");
       const res = await api("POST", "/tenants", { tenantId: arg, name: opts.name ?? arg });
-      out(res, opts, () => console.log(`tenant ${arg} created`));
+      report(res, opts, () => out(`tenant ${arg} created`));
       return;
     }
     case "tenant list": {
       const res = (await api("GET", "/tenants")) as { tenants: Array<Record<string, unknown>> };
-      out(res, opts, () => {
-        for (const t of res.tenants) console.log(`${t.id}  ${t.status}  ${t.name}`);
-        if (res.tenants.length === 0) console.log("(no tenants)");
+      collection(res.tenants, opts, "id", () => {
+        for (const t of res.tenants) out(`${t.id}  ${t.status}  ${t.name}`);
+        if (res.tenants.length === 0) note("(no tenants)");
       });
       return;
     }
     case "domain add": {
-      if (!arg || !opts.tenant) fail("usage: admin domain add <domain> --tenant <tenantId>");
+      if (!arg || !opts.tenant) usage("bullmoose admin domain add <domain> --tenant <tenantId>");
       const res = (await api("POST", "/domains", { tenantId: opts.tenant, domain: arg })) as {
         ok: boolean;
         steps: Array<{ step: string; ok: boolean; detail?: string }>;
       };
-      out(res, opts, () => {
+      report(res, opts, () => {
         for (const s of res.steps) {
-          console.log(`${s.ok ? "✓" : "✗"} ${s.step}${s.detail ? `  (${s.detail})` : ""}`);
+          out(`${s.ok ? "✓" : "✗"} ${s.step}${s.detail ? `  (${s.detail})` : ""}`);
         }
-        console.log(res.ok ? `${arg} wired — poll: admin domain status ${arg}` : "some steps failed — re-run after fixing");
+        note(res.ok ? `${arg} wired — poll: admin domain status ${arg}` : "some steps failed — re-run after fixing");
       });
       return;
     }
     case "domain status": {
-      if (!arg) fail("usage: admin domain status <domain>");
+      if (!arg) usage("bullmoose admin domain status <domain>");
       const res = (await api("GET", `/domains/${arg}`)) as Record<string, unknown>;
-      out(res, opts, () =>
-        console.log(
+      report(res, opts, () =>
+        out(
           `${arg}: ${res.status} (sending verified: ${res.verifiedForSending}, dkim: ${res.dkimStatus})`,
         ),
       );
@@ -116,9 +146,9 @@ export async function cmdAdmin(
     }
     case "domain list": {
       const res = (await api("GET", "/domains")) as { domains: Array<Record<string, unknown>> };
-      out(res, opts, () => {
-        for (const d of res.domains) console.log(`${d.domain}  ${d.status}  tenant=${d.tenant_id}`);
-        if (res.domains.length === 0) console.log("(no domains)");
+      collection(res.domains, opts, "domain", () => {
+        for (const d of res.domains) out(`${d.domain}  ${d.status}  tenant=${d.tenant_id}`);
+        if (res.domains.length === 0) note("(no domains)");
       });
       return;
     }
@@ -126,7 +156,7 @@ export async function cmdAdmin(
       // arg is local@domain
       const [localpart, domain] = (arg ?? "").split("@");
       if (!localpart || !domain || !opts.tenant) {
-        fail("usage: admin account create <local@domain> --tenant <tenantId> [--name <display>]");
+        usage("bullmoose admin account create <local@domain> --tenant <tenantId> [--name <display>]");
       }
       const res = (await api("POST", "/accounts", {
         tenantId: opts.tenant,
@@ -135,7 +165,7 @@ export async function cmdAdmin(
         displayName: opts.name ?? localpart,
         ...(opts.principal ? { principalEmail: opts.principal } : {}),
       })) as { accountId: string; address: string };
-      out(res, opts, () => console.log(`account ${res.accountId} created for ${res.address}`));
+      report(res, opts, () => out(`account ${res.accountId} created for ${res.address}`));
       return;
     }
     case "account list": {
@@ -143,18 +173,18 @@ export async function cmdAdmin(
       const res = (await api("GET", `/accounts${qs}`)) as {
         accounts: Array<Record<string, unknown>>;
       };
-      out(res, opts, () => {
+      collection(res.accounts, opts, "id", () => {
         for (const a of res.accounts) {
-          console.log(`${a.id}  ${a.addresses ?? "(no identity)"}  "${a.display_name}"  shard=${a.shard}`);
+          out(`${a.id}  ${a.addresses ?? "(no identity)"}  "${a.display_name}"  shard=${a.shard}`);
         }
-        if (res.accounts.length === 0) console.log("(no accounts)");
+        if (res.accounts.length === 0) note("(no accounts)");
       });
       return;
     }
     case "agent bind": {
       if (!arg || !opts.name) {
-        fail(
-          "usage: admin agent bind <account-email> --name <binding> [--sla <seconds>]\n" +
+        usage(
+          "bullmoose admin agent bind <account-email> --name <binding> [--sla <seconds>]\n" +
             "                       [--allow a@b,c@d] [--reply-mode send|draft] [--config file.json]",
         );
       }
@@ -164,7 +194,7 @@ export async function cmdAdmin(
         : {};
       if (opts.allow) config.allowedSenders = opts.allow.split(",").map((s) => s.trim());
       if (opts.replyMode) {
-        if (opts.replyMode !== "send" && opts.replyMode !== "draft") fail("--reply-mode must be send or draft");
+        if (opts.replyMode !== "send" && opts.replyMode !== "draft") usage("--reply-mode must be send or draft");
         config.replyMode = opts.replyMode;
       }
       const res = (await api("POST", "/agent-bindings", {
@@ -173,19 +203,19 @@ export async function cmdAdmin(
         ...(opts.sla ? { slaSeconds: Number(opts.sla) } : {}),
         ...(Object.keys(config).length > 0 ? { config } : {}),
       })) as { bindingId: string; watchdog: boolean };
-      out(res, opts, () =>
-        console.log(`binding ${res.bindingId} (${opts.name}) on ${arg}${res.watchdog ? " + watchdog responder" : ""}`),
+      report(res, opts, () =>
+        out(`binding ${res.bindingId} (${opts.name}) on ${arg}${res.watchdog ? " + watchdog responder" : ""}`),
       );
       return;
     }
     case "agent list": {
       const qs = arg ? `?email=${encodeURIComponent(arg)}` : "";
       const res = (await api("GET", `/agent-bindings${qs}`)) as { bindings: Array<Record<string, unknown>> };
-      out(res, opts, () => {
+      collection(res.bindings, opts, "id", () => {
         for (const b of res.bindings) {
-          console.log(`${b.id}  ${b.name}  trigger=${b.trigger_on}  sla=${b.sla_seconds ?? "-"}  ${b.enabled ? "enabled" : "disabled"}`);
+          out(`${b.id}  ${b.name}  trigger=${b.trigger_on}  sla=${b.sla_seconds ?? "-"}  ${b.enabled ? "enabled" : "disabled"}`);
         }
-        if (res.bindings.length === 0) console.log("(no bindings)");
+        if (res.bindings.length === 0) note("(no bindings)");
       });
       return;
     }
@@ -193,8 +223,8 @@ export async function cmdAdmin(
       // args: grant create <grantee-email> <target-email>
       const target = args[3];
       if (!arg || !target) {
-        fail(
-          "usage: admin grant create <grantee-email> <target-email> [--scopes read,contacts]\n" +
+        usage(
+          "bullmoose admin grant create <grantee-email> <target-email> [--scopes read,contacts]\n" +
             "                          [--book <addressBookId>] [--expires <days>]",
         );
       }
@@ -206,8 +236,8 @@ export async function cmdAdmin(
         ...(opts.book ? { collection: "AddressBook", collectionId: opts.book } : {}),
         ...(opts.expires ? { expiresDays: Number(opts.expires) } : {}),
       })) as { grantId: string };
-      out(res, opts, () =>
-        console.log(
+      report(res, opts, () =>
+        out(
           `grant ${res.grantId}: ${arg} → ${target} [${scopes.join(",")}]` +
             (opts.book ? ` book=${opts.book}` : " (whole account)"),
         ),
@@ -217,33 +247,37 @@ export async function cmdAdmin(
     case "grant list": {
       const qs = arg ? `?email=${encodeURIComponent(arg)}` : "";
       const res = (await api("GET", `/grants${qs}`)) as { grants: Array<Record<string, unknown>> };
-      out(res, opts, () => {
+      collection(res.grants, opts, "id", () => {
         for (const g of res.grants) {
           const scopes = JSON.parse(g.scopes as string).join(",");
           const scope = g.collection ? `${g.collection}:${g.collection_id}` : "account";
           const exp = g.expires_at ? `  expires ${new Date(g.expires_at as number).toISOString().slice(0, 10)}` : "";
-          console.log(`${g.id}  ${g.grantee_email ?? g.grantee_account_id} → ${g.target_email ?? g.target_account_id}  [${scopes}]  ${scope}${exp}`);
+          out(`${g.id}  ${g.grantee_email ?? g.grantee_account_id} → ${g.target_email ?? g.target_account_id}  [${scopes}]  ${scope}${exp}`);
         }
-        if (res.grants.length === 0) console.log("(no grants)");
+        if (res.grants.length === 0) note("(no grants)");
       });
       return;
     }
     case "grant revoke": {
-      if (!arg) fail("usage: admin grant revoke <grantId>");
+      if (!arg) usage("bullmoose admin grant revoke <grantId>");
+      if (dryRun(opts, `revoke grant ${arg}`)) return;
       const res = (await api("DELETE", `/grants/${arg}`)) as { revoked: boolean };
-      out(res, opts, () => console.log(res.revoked ? `revoked ${arg}` : `${arg} not found`));
+      report(res, opts, () => {
+        if (res.revoked) out(`revoked ${arg}`);
+        else note(`${arg} not found`);
+      });
       return;
     }
     case "token create": {
-      if (!arg || !opts.name) fail("usage: admin token create <email> --name <n> --scopes <a,b,c>");
+      if (!arg || !opts.name) usage("bullmoose admin token create <email> --name <n> --scopes <a,b,c>");
       // REQUIRED, and the operator vocabulary (TOKEN_SCOPES) is the only one
       // that includes `admin`. An operator minting a token for someone
       // else's device is the last place a silent ["mail"] default belongs.
       const parsed = parseScopeFlag(opts.scopes, TOKEN_SCOPES, true);
       if (!parsed.ok || !parsed.scopes) {
-        fail(
+        usage(
           (parsed.ok ? "--scopes is required" : parsed.error) +
-            "\n\nusage: admin token create <email> --name <n> --scopes <a,b,c>",
+            "\n\nusage: bullmoose admin token create <email> --name <n> --scopes <a,b,c>",
         );
       }
       const scopes = parsed.scopes;
@@ -251,61 +285,76 @@ export async function cmdAdmin(
         token: string;
         tokenId: string;
       };
-      out(res, opts, () => {
-        console.log(`minted ${res.tokenId} for ${arg} [${scopes.join(",")}]`);
-        console.log(`\n  ${res.token}\n`);
-        console.log("shown once — deliver it to the device/agent now.");
+      // Same split as `token create`: the secret alone on stdout, so
+      // `T=$(bullmoose admin token create …)` is the whole capture.
+      report(res, opts, () => {
+        note(`minted ${res.tokenId} for ${arg} [${scopes.join(",")}]`);
+        out(res.token);
+        note("shown once — deliver it to the device/agent now.");
       });
       return;
     }
     case "token list": {
       const qs = arg ? `?email=${encodeURIComponent(arg)}` : "";
       const res = (await api("GET", `/tokens${qs}`)) as { tokens: Array<Record<string, unknown>> };
-      out(res, opts, () => {
+      collection(res.tokens, opts, "id", () => {
         for (const t of res.tokens) {
           const scopes = JSON.parse(t.scopes as string).join(",");
-          console.log(`${t.id}  ${t.login_email}  [${scopes}]  ${t.name}`);
+          out(`${t.id}  ${t.login_email}  [${scopes}]  ${t.name}`);
         }
-        if (res.tokens.length === 0) console.log("(no tokens)");
+        if (res.tokens.length === 0) note("(no tokens)");
       });
       return;
     }
     case "token revoke": {
-      if (!arg) fail("usage: admin token revoke <tokenId>");
+      if (!arg) usage("bullmoose admin token revoke <tokenId>");
+      if (dryRun(opts, `revoke token ${arg}`)) return;
       const res = (await api("DELETE", `/tokens/${arg}`)) as { revoked: boolean };
-      out(res, opts, () => console.log(res.revoked ? `revoked ${arg}` : `${arg} not found`));
+      report(res, opts, () => {
+        if (res.revoked) out(`revoked ${arg}`);
+        else note(`${arg} not found`);
+      });
       return;
     }
     default: {
       // `admin password <email>` — noun with no separate verb.
       if (noun === "password") {
         const email = verb;
-        if (!email) fail("usage: admin password <email> [--password <pw>]");
+        if (!email) usage("bullmoose admin password <email> [--password <pw>]");
         const password =
           opts.password ?? process.env.BULLMOOSE_PASSWORD ?? (await promptHidden(`new password for ${email}: `));
         // Client-side stretching: the server (and the wire) only ever see
         // the derived key, and the KDF cost stays off the 10ms CPU cap.
         const loginKey = await deriveLoginKey(email, password);
         const res = await api("POST", "/principals/password", { email, loginKey });
-        out(res, opts, () => console.log(`password set for ${email}`));
+        report(res, opts, () => out(`password set for ${email}`));
         return;
       }
-      fail(
-        `unknown admin command: ${[noun, verb].filter(Boolean).join(" ") || "(none)"}\n` +
-          `implemented: init | tenant create/list | domain add/status/list |\n` +
-          `             account create/list | password <email> | token create/list/revoke\n` +
-          `designed (not yet built): route, identity, policy, suppression, agent\n` +
-          `share links: see \`bullmoose share list|revoke\` (mail token, not admin)`,
-      );
+      usage(unknownAdminCommand(noun, verb));
     }
   }
+}
+
+/**
+ * The usage text, DERIVED from the same arrays the dispatcher is checked
+ * against. It used to be a hand-written string and went stale: it listed
+ * `agent` as unbuilt while `agent bind` and `agent list` were live twenty lines
+ * above it, so `admin grnat create` was answered with "grants do not exist".
+ */
+export function unknownAdminCommand(noun?: string, verb?: string): string {
+  return (
+    `unknown admin command: ${[noun, verb].filter(Boolean).join(" ") || "(none)"}\n` +
+    `implemented: ${IMPLEMENTED.join(" | ")}\n` +
+    `designed (not yet built): ${DESIGNED.join(", ")}\n` +
+    "share links: see `bullmoose share list|revoke` (mail token, not admin)"
+  );
 }
 
 function adminApi(db: DatabaseSync) {
   const url = getConfig(db, "adminUrl");
   const token = getConfig(db, "adminToken");
   if (!url || !token) {
-    fail("admin not configured — run: bullmoose admin init --url <provision-url> --token <admin-token>");
+    usage("admin not configured — run: bullmoose admin init --url <provision-url> --token <admin-token>");
   }
   return async (method: string, path: string, body?: unknown): Promise<unknown> => {
     const res = await fetch(`${url}${path}`, {
@@ -313,17 +362,38 @@ function adminApi(db: DatabaseSync) {
       headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    if (!res.ok) fail(`admin API ${method} ${path} → HTTP ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      fail(
+        `admin API ${method} ${path} → HTTP ${res.status}: ${await res.text()}`,
+        exitCodeForHttpStatus(res.status),
+      );
+    }
     return res.json();
   };
 }
 
-function out(res: unknown, opts: AdminOpts, human: () => void): void {
-  if (opts.json) console.log(JSON.stringify(res, null, 2));
+/** One JSON object under --json, the human rendering otherwise. */
+function report(res: unknown, opts: AdminOpts, human: () => void): void {
+  if (opts.json) emitJson(res);
   else human();
 }
 
-function fail(msg: string): never {
-  console.error(msg);
-  process.exit(1);
+/** A list result: `--ids` first (§1.8), then NDJSON (§1.3), then the human table. */
+function collection(
+  rows: Array<Record<string, unknown>>,
+  opts: AdminOpts,
+  idKey: string,
+  human: () => void,
+): void {
+  if (opts.ids) emitIds(rows.map((r) => String(r[idKey])));
+  else if (opts.json) emitNdjson(rows);
+  else human();
+}
+
+/** §1.7 `--dry-run` for the admin surface's destructive verbs. */
+function dryRun(opts: AdminOpts, what: string): boolean {
+  if (!opts.dryRun) return false;
+  note(`dry run: would ${what}; nothing was written`);
+  if (opts.json) emitJson({ dryRun: true, action: what });
+  return true;
 }

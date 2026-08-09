@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { JmapClient } from "./jmap.js";
 import type { AccountRef, Settings } from "./db.js";
 import { accountLabel } from "./db.js";
+import { note } from "./io.js";
 
 /**
  * `bullmoose agent serve` — the HOMELAB agent runtime
@@ -52,7 +53,7 @@ export interface AgentConfig {
 export function loadAgentConfig(path: string): AgentConfig {
   const cfg = JSON.parse(readFileSync(path, "utf8")) as AgentConfig;
   if (!cfg.binding || !cfg.persona || !cfg.model?.provider) {
-    console.error("agent config needs: binding, persona, model.provider");
+    note("agent config needs: binding, persona, model.provider");
     process.exit(1);
   }
   return cfg;
@@ -65,7 +66,7 @@ export async function agentServe(
   cfg: AgentConfig,
   opts: { once?: boolean },
 ): Promise<void> {
-  const status = (m: string) => console.error(`[agent:${cfg.binding}] ${m}`);
+  const status = (m: string) => note(`[agent:${cfg.binding}] ${m}`);
   status(`serving (provider: ${cfg.model.provider}, template mode, draft-${cfg.reply?.send ? "and-send" : "only"})`);
 
   const drain = async (): Promise<number> => {
@@ -89,7 +90,7 @@ export async function agentServe(
 
   const WebSocketCtor = (globalThis as { WebSocket?: new (url: string) => WsLite }).WebSocket;
   if (!WebSocketCtor) {
-    console.error("agent serve requires Node with global WebSocket (Node >= 22)");
+    note("agent serve requires Node with global WebSocket (Node >= 22)");
     process.exit(1);
   }
   for (const account of settings.accounts) {

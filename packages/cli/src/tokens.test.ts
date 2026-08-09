@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { errorMessage, exitCodeFor } from "./io.js";
 import { cmdToken } from "./tokens.js";
 
 // The call site, not just the helper. `token create` used to read
@@ -10,24 +11,27 @@ import { cmdToken } from "./tokens.js";
 // So the assertion that matters is about the REQUEST: either the flag was
 // given and the body carries exactly it, or no request happens at all.
 
+// sVOL 016 note: failures used to be `console.error` + `process.exit(2)` inside
+// the command. They now throw a typed error that main.ts maps to a code from
+// the arch.md §1.5 table, so nothing below a command body calls process.exit
+// and every failure reaches the same funnel. The assertions are unchanged —
+// still exit 2, still zero round trips — only the observation point moved.
+
 const settings = { base: "https://jmap.example.com", token: "bm_test" };
 const db = null as unknown as DatabaseSync; // cmdToken never touches it
 
-class ExitError extends Error {
-  constructor(readonly code: number) {
-    super(`process.exit(${code})`);
-  }
-}
+/** The contract flags, as main.ts threads them in. */
+const IO = { json: false, ids: false, dryRun: false };
 
 let posted: Array<{ url: string; body: unknown }>;
+let failure: string;
 
 beforeEach(() => {
   posted = [];
-  vi.spyOn(process, "exit").mockImplementation((code) => {
-    throw new ExitError(Number(code ?? 0));
-  });
-  vi.spyOn(console, "log").mockImplementation(() => {});
-  vi.spyOn(console, "error").mockImplementation(() => {});
+  failure = "";
+  // The command writes through io.ts now, so silence the streams themselves.
+  vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+  vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     posted.push({ url: String(url), body: JSON.parse(String(init?.body ?? "null")) });
     return new Response(
@@ -45,11 +49,11 @@ afterEach(() => {
 /** Run `token create` and report the exit code, or null if it completed. */
 async function create(opts: { name?: string; scopes?: string }): Promise<number | null> {
   try {
-    await cmdToken(db, settings, ["create"], { ...opts, json: false });
+    await cmdToken(db, settings, ["create"], { ...IO, ...opts });
     return null;
   } catch (e) {
-    if (e instanceof ExitError) return e.code;
-    throw e;
+    failure = errorMessage(e);
+    return exitCodeFor(e);
   }
 }
 
@@ -81,15 +85,10 @@ describe("bullmoose token create — --scopes is required", () => {
   });
 
   it("tells the user what the valid scopes are", async () => {
-    const errors: string[] = [];
-    vi.mocked(console.error).mockImplementation((...a: unknown[]) => {
-      errors.push(a.join(" "));
-    });
     await create({ name: "x" });
-    const msg = errors.join("\n");
-    expect(msg).toContain("--scopes is required");
-    expect(msg).toContain("read");
-    expect(msg).toContain("contacts");
+    expect(failure).toContain("--scopes is required");
+    expect(failure).toContain("read");
+    expect(failure).toContain("contacts");
   });
 });
 
@@ -99,7 +98,7 @@ describe("token list / revoke are unaffected", () => {
       posted.push({ url: String(url), body: null });
       return new Response(JSON.stringify({ tokens: [] }), { status: 200 });
     });
-    await cmdToken(db, settings, ["list"], { json: true });
+    await cmdToken(db, settings, ["list"], { ...IO, json: true });
     expect(posted).toHaveLength(1);
   });
 });

@@ -4,6 +4,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import type { JmapClient } from "./jmap.js";
 import { sync } from "./sync.js";
 import { accountLabel, type AccountRef } from "./db.js";
+import { emitJson, fail, note, out } from "./io.js";
 
 /**
  * `bullmoose watch` — long-running, push-triggered sync.
@@ -144,15 +145,14 @@ export async function watch(
   opts: WatchOptions,
 ): Promise<never> {
   const WebSocketCtor = (globalThis as { WebSocket?: new (url: string) => WsLike }).WebSocket;
-  if (!WebSocketCtor) {
-    console.error("watch requires Node with a global WebSocket client (Node >= 22)");
-    process.exit(1);
-  }
+  if (!WebSocketCtor) fail("watch requires Node with a global WebSocket client (Node >= 22)");
 
   const multi = accounts.length > 1;
   let stopping = false;
 
-  const status = (msg: string) => console.error(`[watch] ${msg}`);
+  // Connection state, sync progress and hook failures are chrome (§1.1): under
+  // --json stdout carries an NDJSON event stream and nothing else may enter it.
+  const status = (msg: string) => note(`[watch] ${msg}`);
 
   // Templates written against the old contract would otherwise fail
   // silently (the literal `{subject}` reaches the shell). Say so once —
@@ -229,7 +229,7 @@ export async function watch(
       emit(ch, stats.updatedIds, "updated");
       for (const id of stats.destroyedIds) {
         if (opts.json) {
-          console.log(JSON.stringify({ event: "destroyed", id, account: accountLabel(ch.account) }));
+          emitJson({ event: "destroyed", id, account: accountLabel(ch.account) });
         }
       }
     } catch (err) {
@@ -267,23 +267,21 @@ export async function watch(
         .map((a) => a.name ?? a.email)
         .join(", ");
       if (opts.json) {
-        console.log(
-          JSON.stringify({
-            event,
-            id: row.id,
-            account: accountLabel(ch.account),
-            from,
-            subject: row.subject,
-            preview: row.preview,
-            receivedAt: new Date(row.received_at).toISOString(),
-            mailboxes: row.mailboxes,
-          }),
-        );
+        emitJson({
+          event,
+          id: row.id,
+          account: accountLabel(ch.account),
+          from,
+          subject: row.subject,
+          preview: row.preview,
+          receivedAt: new Date(row.received_at).toISOString(),
+          mailboxes: row.mailboxes,
+        });
       } else {
         const date = new Date(row.received_at).toISOString().slice(0, 16).replace("T", " ");
         const mark = event === "created" ? "●" : "~";
         const acct = multi ? `${accountLabel(ch.account).padEnd(20).slice(0, 20)}  ` : "";
-        console.log(
+        out(
           `${mark} ${date}  ${acct}${from.padEnd(24).slice(0, 24)}  ${(row.subject || "(no subject)").slice(0, 48)}  [${row.mailboxes ?? ""}]  ${row.id}`,
         );
       }

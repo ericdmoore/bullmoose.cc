@@ -10,7 +10,7 @@
 >
 > | Was | Now |
 > |---|---|
-> | 2 test files, 19 tests | **26 test files, 620 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
+> | 2 test files, 19 tests | **29 test files, 715 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
 > | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
 > | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
 > | test files excluded from typecheck | typechecked in both configs |
@@ -316,7 +316,7 @@ is the only thing that catches this failure mode, and it is now cheap.
 
 ## 5. Test infrastructure — the honest state
 
-**26 test files, 620 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
+**29 test files, 715 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
 worktree agents: without it Node's upward `node_modules` lookup escapes the worktree and
@@ -373,7 +373,7 @@ self-correct at read time. Unit `003`'s data-integrity gate on `013`/`018` is di
 | `s03.D-coexistence` | Not started — zero `ActionProposal` / `urn:bullmoose:agent` | grep |
 | `s03.E-console` | Not started **and blocked** on s04 being *specified* | `s03.E/devPlan.md:6` |
 | `s04-AgentOS` | Docs only. `bureau.md` (429 lines) is a serious design doc with **zero tasks**; `readme.md` is a 23-line napkin with 4 of 5 bullets undesigned | git: only `docs(...)` commits |
-| `s05-cli-crud` | Not started. ⚠️ Its headline claim *"No server work — every method this slice calls is already live"* (`devPlan.md:4`) is **false for T4** — `--kind aws-sigv4` is hard-rejected at `vault.ts:89-91`, there is no `rotate` route, and `--allow`/`--header` have no columns | source |
+| `s05-cli-crud` | **T1 done** (sVOL `016` — the I/O contract). T2/T3/T5 not started. ⚠️ Its headline claim *"No server work — every method this slice calls is already live"* (`devPlan.md:4`) is **false for T4** — `--kind aws-sigv4` is hard-rejected at `vault.ts:89-91`, there is no `rotate` route, and `--allow`/`--header` have no columns | source |
 
 **Ownership already claimed by existing sections** (do not duplicate in `sVOL`):
 `s03.B` → FileNode × CRUD × JMAP. `s03.C` → Email + FileNode × CRUD × WebUI.

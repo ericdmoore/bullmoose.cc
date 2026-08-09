@@ -76,10 +76,10 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 013 | **Calendar + Contacts CRUD over MCP** | proj | E2 | I3 | sVOL | 001, 002, 003 | **✅ done** |
 | 014 | **Email read + triage over MCP** | proj | E2 | I3 | sVOL | 001, 002 | **✅ done** |
 | 015 | **Self-introspection over MCP (`help@`)** | proj | E2 | I1 | sVOL | 001 | **✅ done** |
-| 016 | CLI I/O contract | proj | E2 | I3 | **s05** T1 | — | todo |
-| 017 | Contacts CRUD over CLI | proj | E2 | I3 | **s05** T2 | 016 | todo |
-| 018 | Calendar CRUD over CLI | proj | E2 | I3 | **s05** T3 | 016, 003 | todo |
-| 019 | Email triage verbs over CLI | proj | E2 | I3 | sVOL | 016 | todo |
+| 016 | **CLI I/O contract** | proj ⁹ | E2 | I3 | **s05** T1 | — | **✅ done** |
+| 017 | Contacts CRUD over CLI | proj | E2 | I3 | **s05** T2 | ~~016~~ **unblocked** | todo |
+| 018 | Calendar CRUD over CLI | proj | E2 | I3 | **s05** T3 | ~~016, 003~~ **unblocked** | todo |
+| 019 | Email triage verbs over CLI | proj | E2 | I3 | sVOL | ~~016~~ **unblocked** | todo |
 | 020 | Creds mint-time fields | proj | E2 | I2 | **s05** T4 + **s04** | s04 spec | todo |
 | 021 | Email + Files over WebUI | proj | E4 | I3 | **s03.C** | s03.A, s03.B | todo |
 | 022 | Contacts + Calendar over WebUI | proj | E4 | I3 | sVOL | 021 | todo |
@@ -203,6 +203,11 @@ hot path of `GET /share/*`, the one route in the jmap worker an anonymous client
   refuses while a live share points at the blob, but `FileNode/set {destroy}` will not travel
   through that route — `011` must call revoke on destroy or the leak `011` warned about
   survives this unit.
+
+⁹ **`016` is filed as a projection and isn't one.** It projects no capability onto a new
+surface — it is a prerequisite that reshapes an existing one, and `017`/`018`/`019` all
+depend on it. The unit's own open question 1 says so. Left as `proj` to match the ledger's
+history; worth reclassifying when the ledger is next revised.
 
 **Owned elsewhere (9 of 27):** 003, 011, 016, 017, 018, 020, 021, 023, 025 point at an
 existing section or filed issue rather than restating the work. Their files here carry the
