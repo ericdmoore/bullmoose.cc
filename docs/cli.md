@@ -25,7 +25,7 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 | [`read`](#read) | print a message (newest if no id) |
 | [`watch`](#watch) | push-triggered live sync: print new mail as it arrives |
 | [`vacation`](#vacation) | manage the RFC 8621 vacation responder |
-| [`agent`](#agent) | run the homelab agent runtime (claims the AgentInvocation queue) |
+| [`agent`](#agent) | run the homelab agent runtime, and trigger agents on demand |
 | [`contacts`](#contacts) | import and browse the contacts core (vCard ⇄ JSContact) |
 | [`calendar`](#calendar) | browse the calendar core (JSCalendar; recurrence expanded server-side) |
 | [`creds`](#creds) | manage the write-only, envelope-encrypted credential vault |
@@ -334,18 +334,33 @@ bullmoose vacation on --subject "Away" --body "Back Monday." --until 2026-07-15
 
 ## agent
 
-run the homelab agent runtime (claims the AgentInvocation queue)
+run the homelab agent runtime, and trigger agents on demand
 
 ```
-bullmoose agent serve --config <agent.json> [--once]
+bullmoose agent serve --config <agent.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId>
 ```
 
-Logs in as the bound account, watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config. --once drains and exits (cron-friendly). The config's `binding` must match the server-side binding name (see `admin agent bind`).
+`serve` logs in as the bound account, watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config. --once drains and exits (cron-friendly). The config's `binding` must match the server-side binding name (see `admin agent bind`).
+
+`invoke` (sVOL 007) is the on-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.
+
+**Subcommands**
+
+- **serve** — run the homelab runtime; claims the queue  
+  `agent serve --config <agent.json> [--once]`
+- **invoke** — queue an invocation for a binding on a message (refused if the binding is disabled)  
+  `agent invoke <binding> --email <emailId> [--note <text>]`
+- **invocations** — list the invocation queue (default: pending)  
+  `agent invocations [pending|running|done|failed]`
+- **rm** — purge an invocation (a running one is refused)  
+  `agent rm <invId>`
 
 | flag | description |
 |---|---|
-| `--config <agent.json>` | agent definition (binding, persona, model{provider,baseURL,apiKeyEnv}) |
-| `--once` | drain the queue once and exit |
+| `--config <agent.json>` | serve: agent definition (binding, persona, model{provider,baseURL,apiKeyEnv}) |
+| `--once` | serve: drain the queue once and exit |
+| `--email <emailId>` | invoke: the message the agent acts on (required) |
+| `--note <text>` | invoke: a human note stored in the invocation context |
 
 **Examples**
 
@@ -353,6 +368,12 @@ Logs in as the bound account, watches the AgentInvocation queue over the same pu
 bullmoose agent serve --config hermes.json
 bullmoose agent serve --config hermes.json --once
 # cron drain
+bullmoose agent invoke emily --email e_9f3c…
+# start emily on an existing message
+bullmoose agent invocations
+# what is queued right now
+bullmoose agent invocations --ids | xargs -n1 bullmoose agent rm
+# clear the pending queue
 ```
 
 See also: [`admin agent bind`](#admin), [`watch`](#watch)
