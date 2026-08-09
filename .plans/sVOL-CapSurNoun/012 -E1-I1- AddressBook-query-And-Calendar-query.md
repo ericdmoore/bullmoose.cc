@@ -7,7 +7,56 @@
 | **Impact** | **I1** — human-verifiable, unlocks nothing (contested — see *Why these grades*) |
 | **Owner** | `sVOL` |
 | **Depends on** | — |
-| **Status** | todo |
+| **Status** | **wontfix** — the specs define neither method (see *Resolution* below) |
+
+## Resolution (2026-08 — verified against the RFC text)
+
+**Both `/query` methods are wontfix. Neither noun's `/query` exists in the specification,
+so building it would invent non-standard JMAP surface — not close a gap.** Open Question #1
+(*"these methods may not exist in the specs"*) was the single blocking check and it is now
+answered from the authoritative source, confirming the doubt the author recorded from
+`contacts.ts:25-26`.
+
+**AddressBook/query — does not exist. RFC 9610 (JMAP for Contacts), §2** defines exactly three
+AddressBook methods:
+
+- §2.1 `AddressBook/get`
+- §2.2 `AddressBook/changes`
+- §2.3 `AddressBook/set`
+
+There is no `AddressBook/query`. The item type does have one: §3.3 `ContactCard/query`.
+(Source: <https://www.rfc-editor.org/rfc/rfc9610.txt>.)
+
+**Calendar/query — does not exist. `draft-ietf-jmap-calendars-27` (JMAP for Calendars), §4**
+defines exactly three Calendar methods:
+
+- §4.1 `Calendar/get`
+- §4.2 `Calendar/changes`
+- §4.3 `Calendar/set`
+
+There is no `Calendar/query`. The item type does have one: §5.11 `CalendarEvent/query`.
+(Source: <https://datatracker.ietf.org/doc/html/draft-ietf-jmap-calendars-27>.)
+
+**Interpretation.** The container-vs-item `/query` asymmetry this file kept circling is
+deliberate in the specs, not an accidental omission: both specs give the high-cardinality item
+type (`ContactCard`, `CalendarEvent`) a `/query` and withhold it from the low-cardinality
+container (`AddressBook`, `Calendar`). The repo's existing surface — `AddressBook/get·set·changes`
++ `ContactCard/query`, and the exact mirror on the calendar side — is therefore already the
+complete, conformant set. `Mailbox/query` is not a counter-precedent: it exists because RFC 8621
+§2.3 explicitly defines it. No spec defines these two.
+
+**Decision, per noun (the unit file split them deliberately):**
+
+- **`AddressBook/query`: do not build.** Not in RFC 9610. The grant-filtering concern in
+  *What to build* is moot — there is no method to attach it to.
+- **`Calendar/query`: do not build.** Not in calendars-27.
+
+No code was written. No `methods/index.ts` registration was added. `services/jmap` is unchanged;
+the pre-existing 769 tests remain the baseline. The genuine-value filter this file floated
+(`isShared`/`hasShareWith` on address books, done-when #1's CLI flag) can still be delivered
+without inventing a JMAP method — as a CLI-side filter over `AddressBook/get`, which is where the
+existing consumers (`packages/cli/src/contacts.ts:318`) already filter — but that belongs to a
+CLI unit, not here.
 
 ## Cells covered
 
@@ -231,8 +280,13 @@ wrote down get rediscovered expensively.
 
 ## Open questions / where this could be wrong
 
-1. **⚠️ These methods may not exist in the specs, which would make this a vendor extension
-   rather than a gap.** The repo's own doc comment at `services/jmap/src/methods/contacts.ts:25-26`
+1. **✅ RESOLVED — CONFIRMED, and it decides the unit (see *Resolution* at top).** The methods
+   do **not** exist in the specs: RFC 9610 §2 defines no `AddressBook/query`,
+   `draft-ietf-jmap-calendars-27` §4 defines no `Calendar/query`. This is a vendor extension,
+   not a gap, so the unit is **wontfix**. The rest of this question, preserved below, is what
+   prompted the check. **⚠️ These methods may not exist in the specs, which would make this a
+   vendor extension rather than a gap.** The repo's own doc comment at
+   `services/jmap/src/methods/contacts.ts:25-26`
    enumerates the RFC 9610 surface as *"AddressBook/get·set·changes, ContactCard/get·set·query·changes"*
    — i.e. **the author's reading is that RFC 9610 defines no `AddressBook/query`**, and the same
    omission pattern holds for `Calendar` under draft-ietf-jmap-calendars. `Mailbox/query` exists

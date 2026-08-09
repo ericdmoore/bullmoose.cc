@@ -72,7 +72,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 009 | DAV collection creation (`MKCOL`/`MKCALENDAR`) | cap | E2 | I3 | sVOL | — | **✅ done** |
 | 010 | Blob lifecycle — enumerate, delete, revoke share | cap | E2 ⁸ | I1 | sVOL | — | **✅ done** |
 | 011 | The `FileNode` noun | cap | E4 | I3 | **s03.B** | s03.A | todo |
-| 012 | `AddressBook/query` + `Calendar/query` | cap | E1 | I1 ³ | sVOL | — | todo |
+| 012 | `AddressBook/query` + `Calendar/query` | cap | E1 | I1 ³ | sVOL | — | **wontfix** ³ — neither method exists in RFC 9610 §2 / draft-jmap-calendars-27 §4 |
 | 013 | **Calendar + Contacts CRUD over MCP** | proj | E2 | I3 | sVOL | 001, 002, 003 | **✅ done** |
 | 014 | **Email read + triage over MCP** | proj | E2 | I3 | sVOL | 001, 002 | **✅ done** |
 | 015 | **Self-introspection over MCP (`help@`)** | proj | E2 | I1 | sVOL | 001 | **✅ done** |
@@ -136,7 +136,14 @@ observable only by an engineer — which `readme.md`'s verifiability bar disqual
 nothing downstream depends on the difference; the unit file argues it. A sharper doubt is
 recorded there too: `contacts.ts:25-26` enumerates RFC 9610 as *"AddressBook/get·set·changes"*,
 implying the spec may define **no** `AddressBook/query` at all — in which case this unit is not
-low-value but ill-formed. Unverified against the RFC text.
+low-value but ill-formed. **Verified 2026-08 against the RFC text and the doubt is confirmed:**
+RFC 9610 §2 defines only `AddressBook/get` (§2.1), `AddressBook/changes` (§2.2), `AddressBook/set`
+(§2.3) — no `AddressBook/query`; `draft-ietf-jmap-calendars-27` §4 defines only `Calendar/get`
+(§4.1), `Calendar/changes` (§4.2), `Calendar/set` (§4.3) — no `Calendar/query`. `/query` is a
+container-vs-item asymmetry the specs make on purpose (`ContactCard/query` RFC 9610 §3.3,
+`CalendarEvent/query` calendars-27 §5.11 both exist). Building either method would invent
+non-standard surface, so the unit is **wontfix**, not `todo`. The unit file carries the full
+citation and per-noun verdict.
 
 ⁴ **`023` and `026` were regraded down at review, on the reviewers' own argument.**
 `023` (`I2` → `I1`): it *is* human-verifiable (the rubric names "a browser" — revoke a grant,
@@ -280,7 +287,7 @@ Every non-`n/a` gap cell in §1 maps to at least one unit:
 | Mailbox × C/U/D × all | 004 |
 | Thread × changes | 027 |
 | EmailSubmission × R | 005 ✅ |
-| AddressBook/Calendar × query | 012 |
+| AddressBook/Calendar × query | 012 — **wontfix**: no such method in RFC 9610 §2 / calendars-27 §4 (see §2 fn 3) |
 | ContactCard/CalendarEvent × C/U/D × CLI | 017, 018 |
 | ContactCard/CalendarEvent × CRUD × MCP | 013 ✅ |
 | AddressBook/Calendar × C/U/D × MCP | — (unfiled; `013` shipped Read only) |
