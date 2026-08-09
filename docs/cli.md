@@ -34,6 +34,15 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 | [`show`](#show) | show a message's metadata + structure |
 | [`mailboxes`](#mailboxes) | list mailboxes for the selected account |
 | [`mailbox`](#mailbox) | create, rename, move and remove folders (over JMAP) |
+| [`flag`](#flag) | set or clear message keywords (over JMAP) |
+| [`seen`](#seen) | mark messages read, or unread with --unset (sugar over flag $seen) |
+| [`move`](#move) | move messages into exactly one mailbox (replaces the set) |
+| [`label`](#label) | add or remove one mailbox without disturbing the others |
+| [`archive`](#archive) | move messages to the Archive folder (sugar over move --role archive) |
+| [`junk`](#junk) | move messages to the Junk folder (sugar over move --role junk) |
+| [`trash`](#trash) | move messages to Trash (sugar over move --role trash) — reversible, unlike rm |
+| [`rm`](#rm) | PERMANENTLY destroy messages — hard delete, no Trash, no undo |
+| [`delete`](#delete) | alias for `rm` — PERMANENTLY destroy messages (no Trash, no undo) |
 | [`blobs`](#blobs) | see and remove the objects this account stores in R2 |
 | [`share`](#share) | list and revoke the expiring public links this account has minted |
 | [`identity`](#identity) | send-as addresses and mail signatures (over JMAP) |
@@ -47,7 +56,7 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 | `--account <sel>` | account selector: accountId, address, @domain-suffix, name substring, or 'default'. For commands that act on ONE account a selector matching several is an error, not a choice — name one. Commands that legitimately fan out (log, search, sync, watch, mailboxes) still do. |
 | `--json` | machine-readable output: NDJSON — one complete JSON value per line — for collections, exactly one object for show-style commands. Never a wrapping array, so `\| head`, `\| wc -l` and `\| jq` all stream. (`help --json` dumps this whole spec.) |
 | `--ids` | print bare identifiers, one per line, and nothing else — the `\| xargs -n1` shape |
-| `--dry-run` | on destructive commands (mailbox rm, blobs rm, share revoke, token revoke, creds rm, contacts import, vacation on\|off, admin *revoke): resolve everything, report what would happen, write nothing |
+| `--dry-run` | on destructive commands (move, trash, rm/delete, mailbox rm, blobs rm, share revoke, token revoke, creds rm, contacts import, vacation on\|off, admin *revoke): resolve everything, report what would happen, write nothing |
 | `--if-state <state>` | optimistic concurrency for writes: passed to JMAP as ifInState. If the server has moved on, the write is refused with exit 5 and nothing changes. The state to pass is printed by the previous write (and is in its --json output as `state`). |
 | `--as <type>` | force the input content type — vcard \| ical \| json \| text (default: inferred from the bytes) |
 | `-h, --help` | show help; `bullmoose <cmd> --help` shows help for one command |
@@ -561,6 +570,209 @@ S=$(bullmoose mailbox create A --json | jq -r .state); bullmoose mailbox rename 
 ```
 
 See also: [`mailboxes`](#mailboxes), [`sync`](#sync), [`log`](#log)
+
+## flag
+
+set or clear message keywords (over JMAP)
+
+```
+bullmoose flag <id…> --add <keyword> [--remove <keyword>] [--if-state <s>]
+```
+
+Adds and removes RFC 8621 keywords on one or more messages via Email/set. Keywords are a set: --add and --remove take system flags ($seen, $flagged, $answered, $forwarded, $draft) or custom labels, and both are repeatable. Quote system flags — $flagged is a shell variable unquoted. This is a keywords-only patch, so it needs the `annotate` scope alone (not `move` or `draft`). Ids come as arguments (the xargs shape) or on stdin, and stdout is the ids it changed, so verbs chain. The local mirror is reconciled on success unless --no-sync.
+
+| flag | description |
+|---|---|
+| `--add <keyword>` | keyword to set (repeatable); e.g. --add '$flagged' |
+| `--remove <keyword>` | keyword to clear (repeatable); e.g. --remove '$seen' |
+| `--no-sync` | skip reconciling the local mirror (batch, then sync once) |
+| `--if-state <state>` | refuse (exit 5) if the account moved on since <state> |
+
+**Examples**
+
+```sh
+bullmoose flag em_1 --add '$flagged'
+# quote it — $flagged is a shell var
+bullmoose search important --ids | xargs bullmoose flag --add '$flagged'
+```
+
+See also: [`seen`](#seen), [`move`](#move), [`log`](#log)
+
+## seen
+
+mark messages read, or unread with --unset (sugar over flag $seen)
+
+```
+bullmoose seen <id…> [--unset]
+```
+
+Sugar for `flag --add '$seen'` (or `--remove` with --unset). `bullmoose read` does NOT mark a message read, so this is how a script or a human clears the unread dot. Ids come as arguments or on stdin.
+
+| flag | description |
+|---|---|
+| `--unset` | mark UNread instead (clear $seen) |
+
+**Examples**
+
+```sh
+bullmoose log -n 200 --json | jq -r 'select(.seen==0) | .id' | xargs bullmoose seen
+```
+
+See also: [`flag`](#flag), [`read`](#read)
+
+## move
+
+move messages into exactly one mailbox (replaces the set)
+
+```
+bullmoose move <id…> --role <role> | --mailbox <id-or-name> [--if-state <s>]
+```
+
+REPLACES a message's mailbox set with the single named target, via an Email/set mailboxIds patch (scope: `move`). --role names a seeded role folder (inbox, sent, drafts, trash, junk, archive); --mailbox names any folder by id or name. Contrast `label`, which ADDS or removes one mailbox without disturbing the others — getting this wrong is the classic mail-CLI bug. Ids come as arguments or on stdin; stdout is the ids it moved; the local mirror is reconciled unless --no-sync.
+
+| flag | description |
+|---|---|
+| `--role <role>` | target a seeded role folder (archive, junk, trash, inbox, …) |
+| `--mailbox <id-or-name>` | target any folder by id or name |
+| `--no-sync` | skip reconciling the local mirror |
+| `--if-state <state>` | refuse (exit 5) if the account moved on since <state> |
+| `--dry-run` | resolve the destination and report; write nothing |
+
+**Examples**
+
+```sh
+bullmoose move em_1 --mailbox Receipts
+bullmoose search 'from:amazon' --ids | xargs bullmoose move --role archive
+```
+
+See also: [`archive`](#archive), [`label`](#label), [`mailbox`](#mailbox)
+
+## label
+
+add or remove one mailbox without disturbing the others
+
+```
+bullmoose label <id…> --add <mailbox> [--remove <mailbox>]
+```
+
+JMAP's mailboxIds is a SET — a message can live in several folders — so `label` adds and removes individual mailboxes with a per-key patch (scope: `move`), leaving the rest in place. This is what you want when `move` (which replaces the whole set) would unfile the message. A --remove that would leave a message in NO mailbox is refused client-side, naming `move`, rather than surfacing a server invalidProperties. Both flags take an id or name and are repeatable.
+
+| flag | description |
+|---|---|
+| `--add <mailbox>` | mailbox (id or name) to add (repeatable) |
+| `--remove <mailbox>` | mailbox to remove; refused if it would empty the set |
+| `--no-sync` | skip reconciling the local mirror |
+
+**Examples**
+
+```sh
+bullmoose label em_1 --add Receipts
+bullmoose search receipt --ids | xargs bullmoose label --add Receipts
+```
+
+See also: [`move`](#move), [`mailbox`](#mailbox)
+
+## archive
+
+move messages to the Archive folder (sugar over move --role archive)
+
+```
+bullmoose archive <id…> [--if-state <s>] [--dry-run]
+```
+
+The most-used triage verb: move messages into the seeded `archive` role mailbox. Sugar for `move --role archive`. Ids come as arguments or on stdin; stdout is the ids archived, so it chains into the next verb.
+
+**Examples**
+
+```sh
+bullmoose archive em_1 em_2
+bullmoose search 'from:amazon' --ids | xargs bullmoose archive
+```
+
+See also: [`move`](#move), [`trash`](#trash), [`junk`](#junk)
+
+## junk
+
+move messages to the Junk folder (sugar over move --role junk)
+
+```
+bullmoose junk <id…>
+```
+
+**Examples**
+
+```sh
+bullmoose search spammy --ids | xargs bullmoose junk
+```
+
+See also: [`move`](#move), [`trash`](#trash), [`archive`](#archive)
+
+## trash
+
+move messages to Trash (sugar over move --role trash) — reversible, unlike rm
+
+```
+bullmoose trash <id…> [--dry-run]
+```
+
+Moves messages to the seeded `trash` role mailbox. This is what a human means by "delete": the message is recoverable from Trash. For a permanent, unrecoverable destroy use `rm --force`.
+
+**Examples**
+
+```sh
+bullmoose search unsubscribe --ids | xargs bullmoose trash --dry-run
+# rehearse the sweep
+bullmoose search unsubscribe --ids | xargs bullmoose trash
+# then run it
+```
+
+See also: [`rm`](#rm), [`archive`](#archive), [`move`](#move)
+
+## rm
+
+PERMANENTLY destroy messages — hard delete, no Trash, no undo
+
+```
+bullmoose rm <id…> --force  |  --dry-run
+```
+
+Destroys messages via Email/set destroy (scope: `delete`). This is a HARD delete: the rows are removed, the R2 blob is orphaned, there is no tombstone and NOTHING is recoverable. It is not Trash. Because of that it REFUSES without --force; use --dry-run to see exactly what it would destroy first. If you meant "move to Trash", use `bullmoose trash`. `delete` is an alias for this command.
+
+| flag | description |
+|---|---|
+| `--force` | required: confirm the permanent, unrecoverable destroy |
+| `--dry-run` | list what would be destroyed; destroy nothing |
+| `--if-state <state>` | refuse (exit 5) if the account moved on since <state> |
+| `--no-sync` | skip reconciling the local mirror |
+
+**Examples**
+
+```sh
+bullmoose search 'older_than:1y' --ids | xargs bullmoose rm --dry-run
+# rehearse first
+bullmoose rm em_1 --force
+# permanent; prefer `trash` unless you are sure
+```
+
+See also: [`trash`](#trash), [`archive`](#archive)
+
+## delete
+
+alias for `rm` — PERMANENTLY destroy messages (no Trash, no undo)
+
+```
+bullmoose delete <id…> --force  |  --dry-run
+```
+
+Identical to `bullmoose rm`: a hard, unrecoverable Email/set destroy that refuses without --force. See `bullmoose help rm`. To move to Trash reversibly, use `bullmoose trash`.
+
+**Examples**
+
+```sh
+bullmoose search 'older_than:1y' --ids | xargs bullmoose delete --dry-run
+```
+
+See also: [`rm`](#rm), [`trash`](#trash)
 
 ## blobs
 

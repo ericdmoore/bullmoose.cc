@@ -90,7 +90,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 016 | **CLI I/O contract** | proj ⁹ | E2 | I3 | **s05** T1 | — | **✅ done** |
 | 017 | Contacts CRUD over CLI | proj | E2 | I3 | **s05** T2 | ~~016~~ **unblocked** | todo |
 | 018 | Calendar CRUD over CLI | proj | E2 | I3 | **s05** T3 | ~~016, 003~~ **unblocked** | todo |
-| 019 | Email triage verbs over CLI | proj | E2 | I3 | sVOL | ~~016~~ **unblocked** | todo |
+| 019 | Email triage verbs over CLI | proj | E2 | I3 | sVOL | ~~016~~ **unblocked** | done |
 | 020 | Creds mint-time fields | proj | E2 | I2 | **s05** T4 + **s04** | s04 spec | todo |
 | 021 | Email + Files over WebUI | proj | E4 | I3 | **s03.C** | s03.A, s03.B | todo |
 | 022 | Contacts + Calendar over WebUI | proj | E4 | I3 | sVOL | 021 | todo |

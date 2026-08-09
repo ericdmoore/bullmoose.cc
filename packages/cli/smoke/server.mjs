@@ -19,15 +19,25 @@ import { createServer } from "node:http";
 const ACCOUNT = "t_smoke__a_you";
 const TOKEN = "bm_smoke_token";
 
-/** Mailboxes, keyed by id. `mb_full` deliberately holds mail (exit-5 case). */
+/**
+ * Mailboxes, keyed by id. `mb_full` deliberately holds mail (exit-5 case). The
+ * archive/junk/trash roles are seeded so the triage sugar verbs (sVOL 019) have
+ * a real destination to resolve — provisioning seeds these on every account
+ * (`services/provision/src/index.ts`).
+ */
 const mailboxes = new Map([
   ["mb_inbox", { id: "mb_inbox", parentId: null, name: "Inbox", role: "inbox", sortOrder: 0 }],
   ["mb_sent", { id: "mb_sent", parentId: null, name: "Sent", role: "sent", sortOrder: 1 }],
   ["mb_full", { id: "mb_full", parentId: null, name: "Full", role: null, sortOrder: 2 }],
   ["mb_empty", { id: "mb_empty", parentId: null, name: "Empty", role: null, sortOrder: 3 }],
+  ["mb_archive", { id: "mb_archive", parentId: null, name: "Archive", role: "archive", sortOrder: 4 }],
+  ["mb_junk", { id: "mb_junk", parentId: null, name: "Junk", role: "junk", sortOrder: 5 }],
+  ["mb_trash", { id: "mb_trash", parentId: null, name: "Trash", role: "trash", sortOrder: 6 }],
 ]);
 let mailboxState = "mbstate-1";
 let created = 0;
+/** Email state advances on every Email/set that mutates — the ifInState axis. */
+let emailState = "emstate-1";
 
 /** Twelve messages, so `| head -3` has something to truncate. */
 const emails = Array.from({ length: 12 }, (_, i) => ({
@@ -53,6 +63,18 @@ const emails = Array.from({ length: 12 }, (_, i) => ({
 }));
 
 const err = (type, description) => ["error", description ? { type, description } : { type }, "c0"];
+
+/** RFC 8620 PatchObject set semantics: full-replace (no sub) or per-key add/remove. */
+function applySetPatch(target, sub, value) {
+  if (sub === undefined) {
+    target.clear();
+    for (const [k, v] of Object.entries(value ?? {})) if (v === true) target.add(k);
+  } else if (value === true) {
+    target.add(sub);
+  } else {
+    target.delete(sub); // null or false
+  }
+}
 
 function invoke([name, args, callId]) {
   const reply = (result) => [name, result, callId];
@@ -131,7 +153,7 @@ function invoke([name, args, callId]) {
       const ordered = asc ? emails : [...emails].reverse();
       return reply({
         accountId: ACCOUNT,
-        queryState: "emstate-1",
+        queryState: emailState,
         position,
         ids: ordered.slice(position, position + limit).map((e) => e.id),
       });
@@ -141,7 +163,7 @@ function invoke([name, args, callId]) {
       return reply({
         accountId: ACCOUNT,
         oldState: args.sinceState,
-        newState: "emstate-1",
+        newState: emailState,
         hasMoreChanges: false,
         created: [],
         updated: [],
@@ -153,10 +175,88 @@ function invoke([name, args, callId]) {
       const list = emails.filter((e) => ids.includes(e.id));
       return reply({
         accountId: ACCOUNT,
-        state: "emstate-1",
+        state: emailState,
         list,
         notFound: ids.filter((id) => !list.some((e) => e.id === id)),
       });
+    }
+
+    case "Email/set": {
+      // sVOL 019's target. Honours ifInState exactly as
+      // services/jmap/src/methods/email.ts does, and MUTATES the fixture so a
+      // reconcile (Email/get) and a second client's sync both see the change —
+      // the choreography and mirror assertions in the unit's done-when.
+      if (typeof args.ifInState === "string" && args.ifInState !== emailState) {
+        return err("stateMismatch");
+      }
+      const res = {
+        accountId: ACCOUNT,
+        oldState: emailState,
+        newState: emailState,
+        created: {},
+        notCreated: {},
+        updated: {},
+        notUpdated: {},
+        destroyed: [],
+        notDestroyed: {},
+      };
+      let mutated = false;
+
+      for (const [id, patch] of Object.entries(args.update ?? {})) {
+        const e = emails.find((x) => x.id === id);
+        if (!e) {
+          res.notUpdated[id] = { type: "notFound" };
+          continue;
+        }
+        const kw = new Set(Object.keys(e.keywords ?? {}));
+        const mb = new Set(Object.keys(e.mailboxIds ?? {}));
+        let touchedMb = false;
+        let bad = null;
+        for (const [path, value] of Object.entries(patch)) {
+          const [head, sub] = path.split("/");
+          if (head === "keywords") applySetPatch(kw, sub, value);
+          else if (head === "mailboxIds") {
+            touchedMb = true;
+            applySetPatch(mb, sub, value);
+          } else {
+            bad = { type: "invalidProperties", description: `unknown path ${path}` };
+            break;
+          }
+        }
+        if (bad) {
+          res.notUpdated[id] = bad;
+          continue;
+        }
+        // The RFC 8621 guard the CLI is supposed to pre-empt client-side.
+        if (touchedMb && mb.size === 0) {
+          res.notUpdated[id] = {
+            type: "invalidProperties",
+            description: "an email must belong to at least one mailbox",
+          };
+          continue;
+        }
+        e.keywords = Object.fromEntries([...kw].map((k) => [k, true]));
+        e.mailboxIds = Object.fromEntries([...mb].map((k) => [k, true]));
+        res.updated[id] = null;
+        mutated = true;
+      }
+
+      for (const id of args.destroy ?? []) {
+        const idx = emails.findIndex((x) => x.id === id);
+        if (idx === -1) {
+          res.notDestroyed[id] = { type: "notFound" };
+          continue;
+        }
+        emails.splice(idx, 1); // HARD delete — no tombstone, mirrors the store
+        res.destroyed.push(id);
+        mutated = true;
+      }
+
+      if (mutated) {
+        emailState = `emstate-${Number(emailState.split("-")[1]) + 1}`;
+        res.newState = emailState;
+      }
+      return reply(res);
     }
 
     case "Identity/get":

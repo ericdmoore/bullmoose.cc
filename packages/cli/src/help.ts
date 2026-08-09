@@ -62,9 +62,9 @@ export const GLOBAL_OPTIONS: Flag[] = [
   {
     flag: "--dry-run",
     desc:
-      "on destructive commands (mailbox rm, blobs rm, share revoke, token revoke, creds rm, " +
-      "contacts import, vacation on|off, admin *revoke): resolve everything, report what would " +
-      "happen, write nothing",
+      "on destructive commands (move, trash, rm/delete, mailbox rm, blobs rm, share revoke, " +
+      "token revoke, creds rm, contacts import, vacation on|off, admin *revoke): resolve " +
+      "everything, report what would happen, write nothing",
   },
   {
     flag: "--if-state <state>",
@@ -427,6 +427,131 @@ export const COMMANDS: Command[] = [
       },
     ],
     seeAlso: ["mailboxes", "sync", "log"],
+  },
+  {
+    // ---- triage verbs (sVOL 019) ----
+    name: "flag",
+    synopsis: "bullmoose flag <id…> --add <keyword> [--remove <keyword>] [--if-state <s>]",
+    summary: "set or clear message keywords (over JMAP)",
+    description:
+      "Adds and removes RFC 8621 keywords on one or more messages via Email/set. Keywords are a set: --add and --remove take system flags ($seen, $flagged, $answered, $forwarded, $draft) or custom labels, and both are repeatable. Quote system flags — $flagged is a shell variable unquoted. This is a keywords-only patch, so it needs the `annotate` scope alone (not `move` or `draft`). Ids come as arguments (the xargs shape) or on stdin, and stdout is the ids it changed, so verbs chain. The local mirror is reconciled on success unless --no-sync.",
+    flags: [
+      { flag: "--add <keyword>", desc: "keyword to set (repeatable); e.g. --add '$flagged'" },
+      { flag: "--remove <keyword>", desc: "keyword to clear (repeatable); e.g. --remove '$seen'" },
+      { flag: "--no-sync", desc: "skip reconciling the local mirror (batch, then sync once)" },
+      { flag: "--if-state <state>", desc: "refuse (exit 5) if the account moved on since <state>" },
+    ],
+    examples: [
+      { cmd: "bullmoose flag em_1 --add '$flagged'", note: "quote it — $flagged is a shell var" },
+      { cmd: "bullmoose search important --ids | xargs bullmoose flag --add '$flagged'" },
+    ],
+    seeAlso: ["seen", "move", "log"],
+  },
+  {
+    name: "seen",
+    synopsis: "bullmoose seen <id…> [--unset]",
+    summary: "mark messages read, or unread with --unset (sugar over flag $seen)",
+    description:
+      "Sugar for `flag --add '$seen'` (or `--remove` with --unset). `bullmoose read` does NOT mark a message read, so this is how a script or a human clears the unread dot. Ids come as arguments or on stdin.",
+    flags: [{ flag: "--unset", desc: "mark UNread instead (clear $seen)" }],
+    examples: [
+      { cmd: "bullmoose log -n 200 --json | jq -r 'select(.seen==0) | .id' | xargs bullmoose seen" },
+    ],
+    seeAlso: ["flag", "read"],
+  },
+  {
+    name: "move",
+    synopsis: "bullmoose move <id…> --role <role> | --mailbox <id-or-name> [--if-state <s>]",
+    summary: "move messages into exactly one mailbox (replaces the set)",
+    description:
+      "REPLACES a message's mailbox set with the single named target, via an Email/set mailboxIds patch (scope: `move`). --role names a seeded role folder (inbox, sent, drafts, trash, junk, archive); --mailbox names any folder by id or name. Contrast `label`, which ADDS or removes one mailbox without disturbing the others — getting this wrong is the classic mail-CLI bug. Ids come as arguments or on stdin; stdout is the ids it moved; the local mirror is reconciled unless --no-sync.",
+    flags: [
+      { flag: "--role <role>", desc: "target a seeded role folder (archive, junk, trash, inbox, …)" },
+      { flag: "--mailbox <id-or-name>", desc: "target any folder by id or name" },
+      { flag: "--no-sync", desc: "skip reconciling the local mirror" },
+      { flag: "--if-state <state>", desc: "refuse (exit 5) if the account moved on since <state>" },
+      { flag: "--dry-run", desc: "resolve the destination and report; write nothing" },
+    ],
+    examples: [
+      { cmd: "bullmoose move em_1 --mailbox Receipts" },
+      { cmd: "bullmoose search 'from:amazon' --ids | xargs bullmoose move --role archive" },
+    ],
+    seeAlso: ["archive", "label", "mailbox"],
+  },
+  {
+    name: "label",
+    synopsis: "bullmoose label <id…> --add <mailbox> [--remove <mailbox>]",
+    summary: "add or remove one mailbox without disturbing the others",
+    description:
+      "JMAP's mailboxIds is a SET — a message can live in several folders — so `label` adds and removes individual mailboxes with a per-key patch (scope: `move`), leaving the rest in place. This is what you want when `move` (which replaces the whole set) would unfile the message. A --remove that would leave a message in NO mailbox is refused client-side, naming `move`, rather than surfacing a server invalidProperties. Both flags take an id or name and are repeatable.",
+    flags: [
+      { flag: "--add <mailbox>", desc: "mailbox (id or name) to add (repeatable)" },
+      { flag: "--remove <mailbox>", desc: "mailbox to remove; refused if it would empty the set" },
+      { flag: "--no-sync", desc: "skip reconciling the local mirror" },
+    ],
+    examples: [
+      { cmd: "bullmoose label em_1 --add Receipts" },
+      { cmd: "bullmoose search receipt --ids | xargs bullmoose label --add Receipts" },
+    ],
+    seeAlso: ["move", "mailbox"],
+  },
+  {
+    name: "archive",
+    synopsis: "bullmoose archive <id…> [--if-state <s>] [--dry-run]",
+    summary: "move messages to the Archive folder (sugar over move --role archive)",
+    description:
+      "The most-used triage verb: move messages into the seeded `archive` role mailbox. Sugar for `move --role archive`. Ids come as arguments or on stdin; stdout is the ids archived, so it chains into the next verb.",
+    examples: [
+      { cmd: "bullmoose archive em_1 em_2" },
+      { cmd: "bullmoose search 'from:amazon' --ids | xargs bullmoose archive" },
+    ],
+    seeAlso: ["move", "trash", "junk"],
+  },
+  {
+    name: "junk",
+    synopsis: "bullmoose junk <id…>",
+    summary: "move messages to the Junk folder (sugar over move --role junk)",
+    examples: [{ cmd: "bullmoose search spammy --ids | xargs bullmoose junk" }],
+    seeAlso: ["move", "trash", "archive"],
+  },
+  {
+    name: "trash",
+    synopsis: "bullmoose trash <id…> [--dry-run]",
+    summary: "move messages to Trash (sugar over move --role trash) — reversible, unlike rm",
+    description:
+      "Moves messages to the seeded `trash` role mailbox. This is what a human means by \"delete\": the message is recoverable from Trash. For a permanent, unrecoverable destroy use `rm --force`.",
+    examples: [
+      { cmd: "bullmoose search unsubscribe --ids | xargs bullmoose trash --dry-run", note: "rehearse the sweep" },
+      { cmd: "bullmoose search unsubscribe --ids | xargs bullmoose trash", note: "then run it" },
+    ],
+    seeAlso: ["rm", "archive", "move"],
+  },
+  {
+    name: "rm",
+    synopsis: "bullmoose rm <id…> --force  |  --dry-run",
+    summary: "PERMANENTLY destroy messages — hard delete, no Trash, no undo",
+    description:
+      "Destroys messages via Email/set destroy (scope: `delete`). This is a HARD delete: the rows are removed, the R2 blob is orphaned, there is no tombstone and NOTHING is recoverable. It is not Trash. Because of that it REFUSES without --force; use --dry-run to see exactly what it would destroy first. If you meant \"move to Trash\", use `bullmoose trash`. `delete` is an alias for this command.",
+    flags: [
+      { flag: "--force", desc: "required: confirm the permanent, unrecoverable destroy" },
+      { flag: "--dry-run", desc: "list what would be destroyed; destroy nothing" },
+      { flag: "--if-state <state>", desc: "refuse (exit 5) if the account moved on since <state>" },
+      { flag: "--no-sync", desc: "skip reconciling the local mirror" },
+    ],
+    examples: [
+      { cmd: "bullmoose search 'older_than:1y' --ids | xargs bullmoose rm --dry-run", note: "rehearse first" },
+      { cmd: "bullmoose rm em_1 --force", note: "permanent; prefer `trash` unless you are sure" },
+    ],
+    seeAlso: ["trash", "archive"],
+  },
+  {
+    name: "delete",
+    synopsis: "bullmoose delete <id…> --force  |  --dry-run",
+    summary: "alias for `rm` — PERMANENTLY destroy messages (no Trash, no undo)",
+    description:
+      "Identical to `bullmoose rm`: a hard, unrecoverable Email/set destroy that refuses without --force. See `bullmoose help rm`. To move to Trash reversibly, use `bullmoose trash`.",
+    examples: [{ cmd: "bullmoose search 'older_than:1y' --ids | xargs bullmoose delete --dry-run" }],
+    seeAlso: ["rm", "trash"],
   },
   {
     name: "blobs",

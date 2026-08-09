@@ -45,6 +45,7 @@ import { cmdCalendar } from "./calendar.js";
 import { cmdMailbox } from "./mailbox.js";
 import { appendHtmlSignature, appendTextSignature, cmdIdentity, type JmapIdentity } from "./identity.js";
 import { cmdBlobs, cmdShare } from "./blobs.js";
+import { cmdTriage } from "./triage.js";
 import { findCommand, helpJson, renderCommand, renderMan, renderMarkdown, renderOverview } from "./help.js";
 
 
@@ -130,6 +131,12 @@ const parseCommandLine = () =>
       "dry-run": { type: "boolean", default: false },
       "if-state": { type: "string" },
       as: { type: "string" },
+      // ---- triage verbs (sVOL 019): flag/seen/move/label/archive/junk/trash/rm ----
+      add: { type: "string", multiple: true },
+      remove: { type: "string", multiple: true },
+      role: { type: "string" },
+      unset: { type: "boolean", default: false },
+      "no-sync": { type: "boolean", default: false },
       n: { type: "string", short: "n", default: "20" },
       help: { type: "boolean", short: "h", default: false },
       man: { type: "boolean", default: false },
@@ -299,6 +306,28 @@ try {
         parent: opts.parent,
         sort: opts.sort,
         force: opts.force ?? false,
+        ...io,
+      });
+      break;
+    // ---- triage verbs (sVOL 019) ----
+    case "flag":
+    case "seen":
+    case "move":
+    case "label":
+    case "archive":
+    case "junk":
+    case "trash":
+    case "rm":
+    case "delete":
+      await cmdTriage(db, command, positionals.slice(1), {
+        account: opts.account,
+        add: opts.add,
+        remove: opts.remove,
+        role: opts.role,
+        mailbox: opts.mailbox,
+        force: opts.force ?? false,
+        unset: opts.unset ?? false,
+        noSync: opts["no-sync"] ?? false,
         ...io,
       });
       break;
