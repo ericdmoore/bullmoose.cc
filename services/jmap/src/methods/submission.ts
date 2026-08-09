@@ -1,6 +1,6 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges } from "@bullmoose/account-do";
-import type { EmailAddress, EmailRow, Mailstore } from "@bullmoose/mailstore";
+import type { EmailAddress, EmailRow, Mailstore, StoredSubmission } from "@bullmoose/mailstore";
 import type { AccountAccess } from "../auth";
 import {
   accountState,
@@ -15,16 +15,109 @@ import { applyEmailPatch } from "./email";
 import { resolveIdentities } from "./identity";
 
 /**
- * EmailSubmission/set (RFC 8621 §7.5). Sends exit through the submit
- * worker (service binding) which relays via SES — Cloudflare cannot
- * originate SMTP. Supports create + onSuccessUpdateEmail (the standard
- * "move draft to Sent, clear $draft" dance).
+ * EmailSubmission — `set` (RFC 8621 §7.5), `get` (§7.1), `changes` (§7.2).
+ *
+ * Sends exit through the submit worker (service binding) which relays via SES
+ * — Cloudflare cannot originate SMTP. `/set` supports create +
+ * onSuccessUpdateEmail (the standard "move draft to Sent, clear $draft"
+ * dance); update and destroy are not implemented, and the response says so
+ * structurally rather than pretending.
  */
 export function registerSubmissionMethods(registry: MethodRegistry<RequestContext>): void {
   registry.register("EmailSubmission/set", emailSubmissionSet);
+  registry.register("EmailSubmission/get", emailSubmissionGet);
   registry.register("EmailSubmission/changes", async (args, ctx) =>
     proxyChanges(ctx, args, "EmailSubmission"),
   );
+}
+
+/**
+ * EmailSubmission/get (RFC 8621 §7.1).
+ *
+ * This exists because `/changes` was registered without it: `/set` commits
+ * created ids to the AccountDO changelog via `commitChanges` below, so the
+ * server tells a client which submission ids changed and — until now — offered
+ * no method to read them. A conformant client runs `/changes` then `/get`, and
+ * dead-ended on the second call. That is the whole of this unit (sVOL `005`).
+ *
+ * ⚠️ What it deliberately does NOT do: claim a delivery outcome.
+ *
+ * `deliveryStatus` is `null`, permanently, until something actually populates
+ * it. The delivery signal this system receives — SES bounce/complaint events
+ * at `services/submit/src/index.ts:108` — is written to a KV suppression list
+ * keyed by RECIPIENT and never correlated back to the submission on
+ * `relay_message_id`. There is therefore no per-recipient outcome to report.
+ * Synthesizing `{"<rcpt>": {delivered: "unknown", ...}}` would be spec-legal,
+ * so nothing would ever flag it, and a future surface would render "unknown"
+ * as though the server had checked. `null` is the honest answer and it is what
+ * RFC 8621 §7 prescribes when the information is unavailable.
+ *
+ * `undoStatus` is echoed from the column rather than hardcoded. Today it only
+ * ever holds `'final'`, written at its single call site in `submitOne` below,
+ * and `'final'` is nonetheless TRUE: the row is inserted only after the relay
+ * accepted the message, and `maxDelayedSend` is 0 (`session.ts`), so the send
+ * genuinely cannot be undone. It is a statement about cancelability, not about
+ * delivery — the delivery claim is the one above, and it is null. Echoing
+ * rather than hardcoding is also what makes a future `pending`/`canceled`
+ * (delayed send) readable without touching this method.
+ *
+ * `relayMessageId` is not exposed: it is not an RFC 8621 property, it is the
+ * upstream relay's internal id, and no client has a use for it.
+ */
+async function emailSubmissionGet(
+  args: Record<string, unknown>,
+  ctx: RequestContext,
+): Promise<Record<string, unknown>> {
+  const access = await requireAccount(ctx, args, "read");
+  const store = storeFor(ctx);
+
+  const ids = args.ids === null || args.ids === undefined ? undefined : (args.ids as string[]);
+  const properties = Array.isArray(args.properties) ? (args.properties as string[]) : null;
+
+  const rows = await store.getSubmissions(access.accountId, ids);
+  const found = new Set(rows.map((r) => r.id));
+
+  const list = rows.map((row) => {
+    const full = submissionToJmap(row);
+    if (!properties) return full;
+    const picked: Record<string, unknown> = { id: full.id };
+    for (const p of properties) if (p in full) picked[p] = full[p];
+    return picked;
+  });
+
+  return {
+    accountId: access.accountId,
+    state: await accountState(ctx, access.accountId),
+    list,
+    notFound: (ids ?? []).filter((id) => !found.has(id)),
+  };
+}
+
+/**
+ * Row → RFC 8621 §7 EmailSubmission.
+ *
+ * The envelope is re-inflated, not echoed: the row stores the flattened shape
+ * the relay wants (`{mailFrom: string, rcptTo: string[]}`), while the wire type
+ * is `EmailSubmissionAddress` objects — the same shape `/set` accepts. Handing
+ * back the stored shape would break the obvious client round-trip of reading a
+ * submission and re-submitting its envelope.
+ */
+function submissionToJmap(row: StoredSubmission): Record<string, unknown> {
+  return {
+    id: row.id,
+    identityId: row.identityId,
+    emailId: row.emailId,
+    threadId: row.threadId,
+    envelope: {
+      mailFrom: { email: row.envelope.mailFrom, parameters: null },
+      rcptTo: row.envelope.rcptTo.map((email) => ({ email, parameters: null })),
+    },
+    sendAt: new Date(row.sendAt).toISOString(),
+    undoStatus: row.undoStatus,
+    deliveryStatus: null,
+    dsnBlobIds: [],
+    mdnBlobIds: [],
+  };
 }
 
 interface CreateSpec {

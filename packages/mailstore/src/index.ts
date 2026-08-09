@@ -253,6 +253,17 @@ export interface SubmissionRow {
   sendAt: number;
 }
 
+/**
+ * A submission read back out. Identical to what was written, plus the
+ * `threadId` that RFC 8621 §7 lists as an EmailSubmission property and that
+ * this table does not store — it is resolved from the email. Null when the
+ * email has since been destroyed, which is a state the schema permits
+ * (`email_submissions` declares no foreign key, and nothing cascades).
+ */
+export interface StoredSubmission extends SubmissionRow {
+  threadId: string | null;
+}
+
 const blobKey = (tenantId: string, accountId: string, blobId: string) =>
   `mail/${tenantId}/${accountId}/blobs/${blobId}`;
 
@@ -1827,6 +1838,63 @@ export class Mailstore {
         sub.sendAt,
       )
       .run();
+  }
+
+  /**
+   * Submissions for an account. `ids` undefined = all; an EMPTY array is a
+   * request for nothing and returns nothing (RFC 8620 §5.1) — deliberately
+   * unlike `getMailboxes`, whose `ids && ids.length > 0` test treats `[]` as
+   * "everything". Mirroring that quirk here would make `/get` with `ids: []`
+   * return the whole account.
+   *
+   * The LEFT JOIN carries `threadId` (see `StoredSubmission`); it is a join on
+   * `emails`' primary key, so it costs an index seek per row and cannot drop a
+   * submission whose email is gone.
+   */
+  async getSubmissions(accountId: string, ids?: string[]): Promise<StoredSubmission[]> {
+    type Row = {
+      id: string;
+      email_id: string;
+      identity_id: string;
+      envelope_json: string;
+      undo_status: string;
+      relay_message_id: string | null;
+      send_at: number;
+      thread_id: string | null;
+    };
+    const select = `SELECT s.id, s.email_id, s.identity_id, s.envelope_json, s.undo_status,
+                           s.relay_message_id, s.send_at, e.thread_id
+                    FROM email_submissions s
+                    LEFT JOIN emails e ON e.account_id = s.account_id AND e.id = s.email_id`;
+
+    const results: Row[] = [];
+    if (ids) {
+      for (const chunk of chunked(ids)) {
+        const marks = chunk.map(() => "?").join(",");
+        const { results: r } = await this.db
+          .prepare(`${select} WHERE s.account_id = ? AND s.id IN (${marks})`)
+          .bind(accountId, ...chunk)
+          .all<Row>();
+        results.push(...r);
+      }
+    } else {
+      const { results: r } = await this.db
+        .prepare(`${select} WHERE s.account_id = ? ORDER BY s.send_at DESC, s.id`)
+        .bind(accountId)
+        .all<Row>();
+      results.push(...r);
+    }
+
+    return results.map((r) => ({
+      id: r.id,
+      emailId: r.email_id,
+      identityId: r.identity_id,
+      threadId: r.thread_id,
+      envelope: JSON.parse(r.envelope_json) as { mailFrom: string; rcptTo: string[] },
+      undoStatus: r.undo_status,
+      relayMessageId: r.relay_message_id,
+      sendAt: r.send_at,
+    }));
   }
 
   // ---- Contact photos ⇄ R2 (RFC 9610 media blobId) --------------------

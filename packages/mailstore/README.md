@@ -13,7 +13,9 @@ The storage layer: one `Mailstore` class over D1 (metadata) + R2
   `normalizeMessageId()` strips angle brackets — REQUIRED on every
   write path, or postal-mime ids (`<x@y>`) and Email/set ids (`x@y`)
   fork threads (regression-tested)
-- **Identities / submissions**: `getIdentities`, `insertSubmission`
+- **Identities / submissions**: `getIdentities`, `insertSubmission`,
+  `getSubmissions` (LEFT JOINs `emails` for RFC 8621's `threadId`;
+  `ids: []` means *nothing*, unlike `getMailboxes`)
 
 `sql/data-plane.sql` — per-account tables: emails, mailboxes,
 junctions, FTS, responders, responder_log, agent_bindings (with

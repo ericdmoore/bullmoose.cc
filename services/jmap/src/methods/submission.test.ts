@@ -33,6 +33,8 @@ interface Fixture {
     sort_order: number;
   }>;
   identities?: Array<{ id: string; email: string; name: string }>;
+  /** Pre-existing rows in `email_submissions`, for /get without a live send. */
+  submissions?: Array<Record<string, unknown>>;
 }
 
 const ACCOUNT = "a_eric";
@@ -72,7 +74,7 @@ const draftFixture = (over: Fixture = {}): Fixture => ({
   ...over,
 });
 
-function harness(fx: Fixture) {
+function harness(fx: Fixture, scopes: string[] = ["mail"]) {
   const w = fakeEnv();
   w.db.seedAccount({ accountId: ACCOUNT, loginEmail: LOGIN_EMAIL, displayName: "Eric" });
   const withAccount = <T extends object>(rows: T[]) => rows.map((r) => ({ account_id: ACCOUNT, ...r }));
@@ -81,24 +83,43 @@ function harness(fx: Fixture) {
   w.db.seed("email_keywords", withAccount(fx.emailKeywords ?? []));
   w.db.seed("mailboxes", withAccount(fx.mailboxes ?? []));
   w.db.seed("identities", withAccount(fx.identities ?? []));
+  w.db.seed("email_submissions", withAccount(fx.submissions ?? []));
 
   const registry = new MethodRegistry<RequestContext>();
   registerSubmissionMethods(registry);
   const handler = registry.get("EmailSubmission/set")!;
+  const getHandler = registry.get("EmailSubmission/get")!;
+  const changesHandler = registry.get("EmailSubmission/changes")!;
 
   const ctx: RequestContext = {
     env: w.env,
     principal: {
       username: LOGIN_EMAIL,
-      scopes: ["mail"],
+      scopes,
       accounts: [{ accountId: ACCOUNT, tenantId: "t_bm", name: "Eric" }],
     },
   };
 
   const call = (create: Record<string, unknown>) =>
     handler({ accountId: ACCOUNT, create }, ctx);
+  const get = async (args: Record<string, unknown> = {}) =>
+    (await getHandler({ accountId: ACCOUNT, ...args }, ctx)) as unknown as GetResponse;
+  const changes = async (sinceState: string) =>
+    (await changesHandler({ accountId: ACCOUNT, sinceState }, ctx)) as unknown as {
+      created: string[];
+      updated: string[];
+      destroyed: string[];
+    };
 
-  return { call, relayCalls: w.submit.calls, writes: w.db.writes, w };
+  return { call, get, changes, relayCalls: w.submit.calls, writes: w.db.writes, w };
+}
+
+/** The `/get` response, typed only as far as the assertions need. */
+interface GetResponse {
+  accountId: string;
+  state: string;
+  list: Array<Record<string, unknown>>;
+  notFound: string[];
 }
 
 /** The envelope persisted by insertSubmission, for the audit-trail check. */
@@ -290,5 +311,236 @@ describe("EmailSubmission/set — only drafts may be submitted", () => {
 
     expect(res.notCreated).toEqual({});
     expect(h.relayCalls).toHaveLength(1);
+  });
+});
+
+// =======================================================================
+// EmailSubmission/get — sVOL 005
+//
+// The gap this closes is a registry inconsistency, not a feature: `/set`
+// commits created ids to the AccountDO changelog and `/changes` reports
+// them, so the server has always told clients WHICH submissions changed
+// while offering no method to read them. The first suite below is that
+// exact sequence — /set → /changes → /get — because it is what a
+// conformant client runs and what dead-ended before this unit.
+//
+// The second suite is the more important one. `/get` must not claim a
+// delivery outcome it cannot know: SES bounce/complaint events land in a
+// KV suppression list keyed by RECIPIENT (services/submit/src/index.ts)
+// and are never correlated back onto a submission's relay_message_id, so
+// there is no per-recipient status to report. `deliveryStatus: null` is
+// the honest answer and these tests pin it as a deliberate choice rather
+// than an oversight a future patch can quietly "fix" with a synthesized
+// "unknown" map.
+// =======================================================================
+
+const submissionRow = (over: Record<string, unknown> = {}) => ({
+  id: "es_seeded",
+  email_id: "e_1",
+  identity_id: "id_1",
+  envelope_json: JSON.stringify({ mailFrom: IDENTITY_EMAIL, rcptTo: ["to@example.com"] }),
+  undo_status: "final",
+  relay_message_id: "relay-1",
+  send_at: 1_700_000_000_000,
+  ...over,
+});
+
+describe("EmailSubmission/get — the /changes → /get round trip", () => {
+  it("resolves every id /changes reported, with the envelope that was sent", async () => {
+    const h = harness(draftFixture());
+
+    const set = await h.call({
+      s: {
+        emailId: "e_1",
+        identityId: "id_1",
+        envelope: {
+          mailFrom: { email: IDENTITY_EMAIL },
+          rcptTo: [{ email: "to@example.com" }, { email: "bcc@example.com" }],
+        },
+      },
+    });
+    const submissionId = (set.created as Record<string, { id: string }>).s!.id;
+
+    // Exactly the sequence a conformant client runs: ask what changed since
+    // the pre-write state, then read those ids.
+    const delta = await h.changes(set.oldState as string);
+    expect(delta.created).toEqual([submissionId]);
+
+    const got = await h.get({ ids: delta.created });
+    expect(got.notFound).toEqual([]);
+    expect(got.list).toHaveLength(1);
+    expect(got.list[0]).toMatchObject({
+      id: submissionId,
+      emailId: "e_1",
+      identityId: "id_1",
+      threadId: "t_1",
+      envelope: {
+        mailFrom: { email: IDENTITY_EMAIL, parameters: null },
+        rcptTo: [
+          { email: "to@example.com", parameters: null },
+          { email: "bcc@example.com", parameters: null },
+        ],
+      },
+    });
+  });
+
+  it("returns the state /set committed, not one computed some other way", async () => {
+    // /set commits through the AccountDO (commitChanges); a row inserted by a
+    // future path that skips that commit, or a /get that derives state
+    // independently, shows up HERE rather than as an unexplained client
+    // resync months later.
+    const h = harness(draftFixture());
+
+    const set = await h.call({
+      s: { emailId: "e_1", identityId: "id_1", envelope: { rcptTo: [{ email: "x@y.z" }] } },
+    });
+
+    const got = await h.get({ ids: [(set.created as Record<string, { id: string }>).s!.id] });
+    expect(got.state).toBe(set.newState);
+    expect(got.state).not.toBe(set.oldState);
+  });
+
+  it("re-inflates the envelope into the shape /set accepts", async () => {
+    // The row stores the flattened form the relay wants; RFC 8621 §7 puts
+    // EmailSubmissionAddress objects on the wire. Read → re-submit has to
+    // work without the client reshaping anything.
+    const h = harness(draftFixture({ submissions: [submissionRow()] }));
+
+    const got = await h.get({ ids: ["es_seeded"] });
+    const envelope = got.list[0]!.envelope as {
+      mailFrom: { email: string };
+      rcptTo: Array<{ email: string }>;
+    };
+
+    const replay = await h.call({
+      s: { emailId: "e_1", identityId: "id_1", envelope },
+    });
+    expect(replay.notCreated).toEqual({});
+    expect(h.relayCalls).toEqual([{ mailFrom: IDENTITY_EMAIL, rcptTo: ["to@example.com"] }]);
+  });
+});
+
+describe("EmailSubmission/get — it does not claim a delivery status it cannot know", () => {
+  it("returns deliveryStatus null rather than a synthesized 'unknown' map", async () => {
+    // Nothing correlates SES events back to a submission (they become KV
+    // suppression keys on the RECIPIENT). A fabricated per-recipient map
+    // would be spec-legal — so nothing would ever flag it — and a future
+    // surface would render "unknown" as though the server had checked.
+    const h = harness(draftFixture({ submissions: [submissionRow()] }));
+
+    const got = await h.get({ ids: ["es_seeded"] });
+    expect(got.list[0]!.deliveryStatus).toBeNull();
+    expect(got.list[0]!.dsnBlobIds).toEqual([]);
+    expect(got.list[0]!.mdnBlobIds).toEqual([]);
+  });
+
+  it("echoes undoStatus from the row instead of hardcoding 'final'", async () => {
+    // Today the column only ever holds 'final' and that is TRUE — the row is
+    // written only after the relay accepted, so the send cannot be undone.
+    // Hardcoding it would read identically today and lie the moment delayed
+    // send lands, so seed the value the product cannot yet produce.
+    const h = harness(
+      draftFixture({
+        submissions: [
+          submissionRow(),
+          submissionRow({ id: "es_pending", undo_status: "pending", send_at: 1_700_000_001_000 }),
+          submissionRow({ id: "es_canceled", undo_status: "canceled", send_at: 1_700_000_002_000 }),
+        ],
+      }),
+    );
+
+    const got = await h.get({ ids: ["es_seeded", "es_pending", "es_canceled"] });
+    const byId = new Map(got.list.map((s) => [s.id as string, s.undoStatus]));
+    expect(byId.get("es_seeded")).toBe("final");
+    expect(byId.get("es_pending")).toBe("pending");
+    expect(byId.get("es_canceled")).toBe("canceled");
+  });
+
+  it("does not leak the relay's message id", async () => {
+    // relay_message_id is stored (it is the correlation key a future
+    // delivery-status unit needs) but is not an RFC 8621 property.
+    const h = harness(draftFixture({ submissions: [submissionRow()] }));
+
+    const got = await h.get({ ids: ["es_seeded"] });
+    expect(JSON.stringify(got.list[0])).not.toContain("relay-1");
+  });
+});
+
+describe("EmailSubmission/get — ids, accounts, and scope", () => {
+  it("returns every submission for the account when ids is null", async () => {
+    const h = harness(
+      draftFixture({
+        submissions: [
+          submissionRow(),
+          submissionRow({ id: "es_2", send_at: 1_700_000_005_000 }),
+        ],
+      }),
+    );
+
+    const got = await h.get({ ids: null });
+    expect(got.list.map((s) => s.id)).toEqual(["es_2", "es_seeded"]); // newest first
+    expect(got.notFound).toEqual([]);
+  });
+
+  it("returns nothing for ids: [] — an empty request, not a request for everything", async () => {
+    const h = harness(draftFixture({ submissions: [submissionRow()] }));
+
+    const got = await h.get({ ids: [] });
+    expect(got.list).toEqual([]);
+    expect(got.notFound).toEqual([]);
+  });
+
+  it("never returns another account's submission, and reports its id as notFound", async () => {
+    const h = harness(draftFixture({ submissions: [submissionRow()] }));
+    // Seeded straight past `withAccount` so it belongs to someone else.
+    h.w.db.seed("email_submissions", [
+      { account_id: "a_someone_else", ...submissionRow({ id: "es_theirs" }) },
+    ]);
+
+    const got = await h.get({ ids: ["es_seeded", "es_theirs"] });
+    expect(got.list.map((s) => s.id)).toEqual(["es_seeded"]);
+    expect(got.notFound).toEqual(["es_theirs"]);
+
+    const all = await h.get({ ids: null });
+    expect(all.list.map((s) => s.id)).toEqual(["es_seeded"]);
+  });
+
+  it("resolves threadId from the email, and reads null once the email is gone", async () => {
+    const h = harness(
+      draftFixture({
+        submissions: [submissionRow(), submissionRow({ id: "es_orphan", email_id: "e_gone" })],
+      }),
+    );
+
+    const got = await h.get({ ids: ["es_seeded", "es_orphan"] });
+    const byId = new Map(got.list.map((s) => [s.id as string, s.threadId]));
+    expect(byId.get("es_seeded")).toBe("t_1");
+    // The LEFT JOIN must not drop the row — an orphaned submission is still a
+    // submission, and `email_submissions` declares no foreign key.
+    expect(byId.get("es_orphan")).toBeNull();
+  });
+
+  it("honours `properties`, always including id", async () => {
+    const h = harness(draftFixture({ submissions: [submissionRow()] }));
+
+    const got = await h.get({ ids: ["es_seeded"], properties: ["undoStatus"] });
+    expect(got.list[0]).toEqual({ id: "es_seeded", undoStatus: "final" });
+  });
+
+  it("refuses a send-scoped token that may create submissions but not read them", async () => {
+    // `mail` is a bundle of the six mail verbs, not a wildcard (auth-core
+    // hasScope), so this gate is real for a narrowly scoped agent token.
+    const h = harness(draftFixture({ submissions: [submissionRow()] }), ["send"]);
+
+    // The same token CAN send — this is a read gate, not an account gate.
+    const set = await h.call({
+      s: { emailId: "e_1", identityId: "id_1", envelope: { rcptTo: [{ email: "x@y.z" }] } },
+    });
+    expect(set.notCreated).toEqual({});
+
+    await expect(h.get({ ids: ["es_seeded"] })).rejects.toMatchObject({
+      type: "forbidden",
+      description: 'token lacks the "read" scope',
+    });
   });
 });
