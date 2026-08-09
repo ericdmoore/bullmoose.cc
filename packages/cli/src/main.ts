@@ -39,12 +39,14 @@ import { pidPaths, readAlivePid, watch, writePid } from "./watch.js";
 import { cmdAdmin } from "./admin.js";
 import { cmdLogin, cmdToken } from "./tokens.js";
 import { agentServe, loadAgentConfig } from "./agent.js";
+import { cmdAgentInvoke } from "./agentInvoke.js";
 import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
 import { cmdCalendar } from "./calendar.js";
 import { cmdMailbox } from "./mailbox.js";
 import { appendHtmlSignature, appendTextSignature, cmdIdentity, type JmapIdentity } from "./identity.js";
 import { cmdBlobs, cmdShare } from "./blobs.js";
+import { cmdTriage } from "./triage.js";
 import { findCommand, helpJson, renderCommand, renderMan, renderMarkdown, renderOverview } from "./help.js";
 
 
@@ -102,6 +104,9 @@ const parseCommandLine = () =>
       identity: { type: "string" },
       config: { type: "string" },
       once: { type: "boolean", default: false },
+      // ---- agent invoke (sVOL 007) ----
+      email: { type: "string" },
+      note: { type: "string" },
       until: { type: "string" },
       expires: { type: "string" },
       kind: { type: "string" },
@@ -115,6 +120,16 @@ const parseCommandLine = () =>
       "oauth-scopes": { type: "string" },
       port: { type: "string" },
       days: { type: "string" },
+      // ---- calendar CRUD (sVOL 018) ----
+      title: { type: "string" },
+      start: { type: "string" },
+      duration: { type: "string" },
+      tz: { type: "string" },
+      "all-day": { type: "boolean", default: false },
+      rrule: { type: "string" },
+      calendar: { type: "string" },
+      occurrence: { type: "string" },
+      ics: { type: "boolean", default: false },
       sla: { type: "string" },
       allow: { type: "string" },
       "reply-mode": { type: "string" },
@@ -130,6 +145,12 @@ const parseCommandLine = () =>
       "dry-run": { type: "boolean", default: false },
       "if-state": { type: "string" },
       as: { type: "string" },
+      // ---- triage verbs (sVOL 019): flag/seen/move/label/archive/junk/trash/rm ----
+      add: { type: "string", multiple: true },
+      remove: { type: "string", multiple: true },
+      role: { type: "string" },
+      unset: { type: "boolean", default: false },
+      "no-sync": { type: "boolean", default: false },
       n: { type: "string", short: "n", default: "20" },
       help: { type: "boolean", short: "h", default: false },
       man: { type: "boolean", default: false },
@@ -255,6 +276,7 @@ try {
         account: opts.account,
         book: opts.book,
         n: opts.n,
+        force: opts.force ?? false,
         ...io,
       });
       break;
@@ -262,6 +284,16 @@ try {
       await cmdCalendar(db, positionals.slice(1), {
         account: opts.account,
         days: opts.days,
+        title: opts.title,
+        start: opts.start,
+        duration: opts.duration,
+        tz: opts.tz,
+        allDay: opts["all-day"],
+        rrule: opts.rrule,
+        calendar: opts.calendar,
+        occurrence: opts.occurrence,
+        ics: opts.ics,
+        force: opts.force,
         ...io,
       });
       break;
@@ -299,6 +331,28 @@ try {
         parent: opts.parent,
         sort: opts.sort,
         force: opts.force ?? false,
+        ...io,
+      });
+      break;
+    // ---- triage verbs (sVOL 019) ----
+    case "flag":
+    case "seen":
+    case "move":
+    case "label":
+    case "archive":
+    case "junk":
+    case "trash":
+    case "rm":
+    case "delete":
+      await cmdTriage(db, command, positionals.slice(1), {
+        account: opts.account,
+        add: opts.add,
+        remove: opts.remove,
+        role: opts.role,
+        mailbox: opts.mailbox,
+        force: opts.force ?? false,
+        unset: opts.unset ?? false,
+        noSync: opts["no-sync"] ?? false,
         ...io,
       });
       break;
@@ -747,7 +801,19 @@ async function cmdVacation(): Promise<void> {
 
 async function cmdAgent(): Promise<void> {
   const verb = positionals[1];
-  if (verb !== "serve") usage("bullmoose agent serve --config <agent.json> [--once]");
+  // On-demand trigger (sVOL 007): a separate module + JMAP path from `serve`.
+  if (verb === "invoke" || verb === "invocations" || verb === "rm") {
+    await cmdAgentInvoke(db, positionals.slice(1), {
+      account: opts.account,
+      email: opts.email,
+      note: opts.note,
+      ...io,
+    });
+    return;
+  }
+  if (verb !== "serve") {
+    usage("bullmoose agent serve --config <agent.json> [--once] | invoke <binding> --email <id> | invocations | rm <invId>");
+  }
   if (!opts.config) usage("agent serve requires --config <agent.json>");
   const settings = requireSettings(db);
   const client = new JmapClient(settings.base, settings.token);

@@ -339,6 +339,36 @@ async function main() {
       for (const id of ids) assert(/^em_\d{3}$/.test(id), `last column is not the id: ${id}`);
     });
 
+    // ---- sVOL 018  calendar CRUD -----------------------------------------
+    check("§018", "event create rejects an unexpandable --rrule, naming the part (exit 2)", () => {
+      // The common/003 shape — parses clean, the YEARLY branch discards BYDAY.
+      // Refused CLIENT-SIDE, so it needs no calendar server at all.
+      const r = bm(
+        "calendar event create --title Thx --start 2026-11-26T09:00:00 --rrule 'FREQ=YEARLY;BYMONTH=11;BYDAY=4TH'",
+      );
+      eq(r.code, 2, "exit code");
+      assert(/BYDAY/.test(r.stderr), `should name the discarded part:\n${r.stderr}`);
+      assert(!/at Object|node:internal|UnsupportedRecurrence/.test(r.stderr), `no stack trace:\n${r.stderr}`);
+    });
+
+    check("§018", "create → event create → export --ics composes end to end", () => {
+      const mk = bm("calendar create Work --json");
+      eq(mk.code, 0, `calendar create failed: ${mk.stderr}`);
+      const ev = bm(
+        "calendar event create --title Standup --start 2026-07-08T09:00:00 --duration PT15M --calendar Work",
+      );
+      eq(ev.code, 0, `event create failed: ${ev.stderr}`);
+      const ics = sh("$BM calendar export --ics 2>/dev/null | grep SUMMARY", env);
+      assert(/SUMMARY:Standup/.test(ics.stdout), `exported iCal should carry the event:\n${ics.stdout}`);
+    });
+
+    check("§018", "export --ids feeds a pipe, and agenda still reports the unknownMethod cleanly", () => {
+      const n = sh("$BM calendar export --ids 2>/dev/null | wc -l", env);
+      assert(Number(n.stdout.trim()) >= 1, `expected the event we created, got ${n.stdout.trim()}`);
+      // getOccurrences is unimplemented on the stub — the §1.5 case relies on it.
+      eq(bm("calendar agenda").code, 2, "agenda over an unimplemented method still exits 2");
+    });
+
     // ---- the headline example from devPlan.md ----------------------------
     check("§1", "the devPlan's own pipeline runs end to end", () => {
       const r = sh(
@@ -347,6 +377,202 @@ async function main() {
       );
       eq(r.code, 0, "pipeline exit code");
       assert(r.stdout.includes("Subject:"), "messages should be rendered");
+    });
+
+    // ---- contacts CRUD projection (sVOL 017) -----------------------------
+    check("017", "`contacts export --json` is one complete card per line", () => {
+      const r = bm("contacts export --json");
+      eq(r.code, 0, `export failed: ${r.stderr}`);
+      const lines = r.stdout.trimEnd().split("\n");
+      eq(lines.length, 3, "one line per card");
+      for (const l of lines) {
+        const c = JSON.parse(l);
+        assert(typeof c.uid === "string", "each line is a card object");
+        assert(!l.startsWith("["), "no wrapping array");
+      }
+    });
+
+    check("017", "`contacts export --json | jq | wc -l` streams and counts", () => {
+      const r = sh("$BM contacts export --json 2>/dev/null | wc -l", env);
+      eq(Number(r.stdout.trim()), 3, "record count through the pipe");
+    });
+
+    check("017", "default `contacts export` is vCard on stdout — the inverse of import", () => {
+      const r = sh("$BM contacts export 2>/dev/null", env);
+      eq(r.code, 0, "exit code");
+      eq((r.stdout.match(/BEGIN:VCARD/g) ?? []).length, 3, "one vCard block per card");
+      assert(/VERSION:3\.0/.test(r.stdout), "vCard 3.0");
+      assert(/FN:Ada Lovelace/.test(r.stdout), "the JSContact name round-trips to FN");
+    });
+
+    check("017", "`contacts export --ids | xargs show` really composes", () => {
+      const r = sh(
+        "$BM contacts export --ids 2>/dev/null | xargs -n1 $BM contacts show 2>/dev/null",
+        env,
+      );
+      eq(r.code, 0, "pipeline exit code");
+      eq((r.stdout.match(/"uid"/g) ?? []).length, 3, "one card rendered per id");
+    });
+
+    check("017", "`--book` filters the export, and `books list --ids` yields ids", () => {
+      const only = sh("$BM contacts export --book Work --ids 2>/dev/null", env);
+      eq(only.stdout.trim(), "cc_alan", "only the Work book's card");
+      const books = sh("$BM contacts books list --ids 2>/dev/null", env);
+      assert(books.stdout.includes("ab_personal"), `books list --ids should print book ids:\n${books.stdout}`);
+    });
+
+    // ═══ sVOL 019 — email triage verbs over the CLI ═══════════════════════
+    //
+    // These MUTATE the fixture, so they run last, and each reserves distinct
+    // ids so the sub-tests do not collide. The mirror helpers read `log --json`
+    // (the local SQLite mirror) — the same source `search`/`log` read — so an
+    // assertion that the mirror moved is an assertion that reconciliation ran.
+    const jlog = () =>
+      sh("$BM log -n 100 --json 2>/dev/null", env)
+        .stdout.trimEnd()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l));
+    const mailboxesOf = (id) => jlog().find((r) => r.id === id)?.mailboxes ?? null;
+    const seenOf = (id) => jlog().find((r) => r.id === id)?.seen ?? null;
+    // The live JMAP email state, read back after a sync — the axis `--dry-run`
+    // and `--if-state` turn on. A real write advances it; a dry-run must not.
+    const state = () => {
+      bm("sync");
+      return JSON.parse(bm("accounts --json").stdout.trim().split("\n")[0]).state;
+    };
+
+    check("§019", "seen marks a message read and the mirror reflects it", () => {
+      eq(seenOf("em_001"), 0, "em_001 (odd) starts unread");
+      const r = bm("seen em_001");
+      eq(r.code, 0, `seen failed: ${r.stderr}`);
+      eq(r.stdout.trim(), "em_001", "stdout is the id it acted on, so verbs chain");
+      eq(seenOf("em_001"), 1, "reconciled: the mirror now shows it read");
+    });
+
+    check("§019", "flag writes a keyword, and --if-state chains on the reported state", () => {
+      const rec = JSON.parse(bm("seen em_000 --json").stdout.trim().split("\n")[0]);
+      assert(rec.state, "a write must report the state it landed on");
+      // Chain the next write on that exact state — the read-modify-write loop.
+      const r = bm(`flag em_000 --add '$flagged' --if-state ${rec.state}`);
+      eq(r.code, 0, `chaining on a fresh state failed: ${r.stderr}`);
+    });
+
+    check("§019", "`search --ids | xargs archive` fans ids and archives them", () => {
+      // The headline pipeline: search feeds ids into a triage verb via xargs.
+      const r = sh("$BM search invoice --ids 2>/dev/null | xargs $BM archive 2>/dev/null", env);
+      eq(r.code, 0, "pipeline exit code");
+      // done-when #3: the mirror reflects the move with no explicit sync.
+      assert(mailboxesOf("em_003") === "archive", "the searched message is now in Archive");
+    });
+
+    check("§019", "choreography: a SECOND client sees the archive after its own sync", () => {
+      // done-when #2 — the check that catches a local-only write. A fresh db
+      // syncs from the server; if `archive` had only touched the first mirror,
+      // the server would never have changed and this client would see inbox.
+      const env2 = { ...env, BULLMOOSE_DB: join(dir, "mail2.db") };
+      eq(sh(`$BM init --base ${base} --token ${token} --account ${account}`, env2).code, 0, "init2");
+      eq(sh("$BM sync", env2).code, 0, "sync2");
+      const rows = sh("$BM log -n 100 --json 2>/dev/null", env2)
+        .stdout.trimEnd()
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l));
+      const e3 = rows.find((r) => r.id === "em_003");
+      assert(e3 && e3.mailboxes === "archive", "the move reached the server, not just a mirror");
+    });
+
+    check("§019", "--dry-run performs ZERO mutations; a real write advances the state", () => {
+      const before = state();
+      const dry = bm("trash em_005 --dry-run");
+      eq(dry.code, 0, "dry-run exit 0");
+      assert(/dry run/.test(dry.stderr), "the rehearsal belongs on stderr");
+      eq(state(), before, "invariant 4: a dry-run must not advance the JMAP state");
+      assert(mailboxesOf("em_005") === "inbox", "dry-run moved nothing");
+      const real = bm("trash em_005");
+      eq(real.code, 0, `real trash failed: ${real.stderr}`);
+      assert(state() !== before, "a real write DOES advance the state");
+      assert(mailboxesOf("em_005") === "trash", "em_005 is now in Trash");
+    });
+
+    check("§019", "a destructive sweep rehearses via `xargs … --dry-run`, then runs", () => {
+      const dry = sh("printf 'em_006\\nem_007\\n' | xargs $BM trash --dry-run 2>&1", env);
+      assert(/dry run/.test(dry.stdout), `the rehearsal reported:\n${dry.stdout}`);
+      assert(mailboxesOf("em_006") === "inbox", "the rehearsal moved nothing");
+      const run = sh("printf 'em_006\\nem_007\\n' | xargs $BM trash 2>/dev/null", env);
+      eq(run.code, 0, "sweep exit code");
+      assert(
+        mailboxesOf("em_006") === "trash" && mailboxesOf("em_007") === "trash",
+        "both messages swept to Trash",
+      );
+    });
+
+    check("§019", "`delete` is an alias for `rm`, and --dry-run destroys nothing", () => {
+      const r = sh("printf 'em_006\\n' | xargs $BM delete --dry-run 2>&1", env);
+      assert(/dry run/.test(r.stdout), `reported the rehearsal:\n${r.stdout}`);
+      assert(mailboxesOf("em_006") !== null, "a dry-run delete destroyed nothing");
+    });
+
+    check("§019", "rm REFUSES a hard delete without --force", () => {
+      const r = bm("rm em_009");
+      eq(r.code, 2, "must refuse — hard delete is not the default");
+      assert(/--force/.test(r.stderr) && /trash/i.test(r.stderr), "point at the safe path");
+      assert(mailboxesOf("em_009") !== null, "nothing was destroyed");
+    });
+
+    check("§019", "rm --force destroys permanently and reconciles the mirror", () => {
+      const r = bm("rm em_009 --force");
+      eq(r.code, 0, `rm --force failed: ${r.stderr}`);
+      eq(r.stdout.trim(), "em_009", "stdout is the destroyed id");
+      assert(mailboxesOf("em_009") === null, "gone from the local mirror too");
+    });
+
+    check("§019", "`help rm` says it is permanent, not Trash, not recoverable", () => {
+      const h = bm("help rm").stdout;
+      assert(/permanent|hard delete/i.test(h), "must say it is permanent");
+      assert(/recoverable/i.test(h), "must say nothing is recoverable");
+      assert(/trash/i.test(h), "must contrast with Trash");
+    });
+
+    check("§019", "partial failure is honest — successes kept, failure reported, non-zero", () => {
+      const r = bm("archive em_002 em_004 em_nope");
+      eq(r.code, 3, "notFound-mapped, and non-zero because one id failed");
+      const ids = r.stdout.trimEnd().split("\n").filter(Boolean);
+      assert(ids.includes("em_002") && ids.includes("em_004"), "the two that worked are on stdout");
+      assert(!ids.includes("em_nope"), "the failure is NOT on stdout");
+      assert(/em_nope/.test(r.stderr), "the failure is reported on stderr");
+      assert(
+        mailboxesOf("em_002") === "archive" && mailboxesOf("em_004") === "archive",
+        "the successes were really applied — not swallowed by the failure",
+      );
+    });
+
+    check("§019", "`label --remove` on the only mailbox refuses client-side, naming `move`", () => {
+      // done-when #8 — em_010 is in inbox only, so removing inbox would leave it
+      // in no mailbox. The CLI must catch that BEFORE the server does.
+      const r = bm("label em_010 --remove inbox");
+      eq(r.code, 2, "a usage-class refusal, not a server invalidProperties");
+      assert(/move/.test(r.stderr), "the message must name `move`");
+      assert(mailboxesOf("em_010") === "inbox", "the message is unchanged");
+    });
+
+    check("§019", "a stale --if-state exits 5 and changes nothing", () => {
+      const r = bm("archive em_011 --if-state emstate-bogus");
+      eq(r.code, 5, "conflict");
+      assert(/stateMismatch/.test(r.stderr), "message should name stateMismatch");
+      assert(mailboxesOf("em_011") === "inbox", "invariant 6: the refused write changed nothing");
+    });
+
+    check("§019", "`search --ids | head` exits 0 with no stack trace (EPIPE)", () => {
+      const r = sh("$BM search message --ids 2>/dev/null | head -1", env);
+      eq(r.code, 0, "exit code");
+      assert(/^em_\d{3}$/.test(r.stdout.trim()), "a bare id came through");
+      assert(!/EPIPE|node:internal/.test(r.stderr), `stack trace leaked:\n${r.stderr}`);
+    });
+
+    check("§019", "a triage verb's stdout is exactly the ids it acted on", () => {
+      const r = sh("$BM archive em_008 2>/dev/null", env);
+      eq(r.stdout.trim(), "em_008", "stdout carries only the acted-on id");
     });
   } finally {
     server.kill("SIGTERM");

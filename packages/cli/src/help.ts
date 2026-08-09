@@ -62,9 +62,9 @@ export const GLOBAL_OPTIONS: Flag[] = [
   {
     flag: "--dry-run",
     desc:
-      "on destructive commands (mailbox rm, blobs rm, share revoke, token revoke, creds rm, " +
-      "contacts import, vacation on|off, admin *revoke): resolve everything, report what would " +
-      "happen, write nothing",
+      "on destructive commands (move, trash, rm/delete, mailbox rm, blobs rm, share revoke, " +
+      "token revoke, creds rm, contacts import, vacation on|off, admin *revoke): resolve " +
+      "everything, report what would happen, write nothing",
   },
   {
     flag: "--if-state <state>",
@@ -290,46 +290,83 @@ export const COMMANDS: Command[] = [
   },
   {
     name: "agent",
-    synopsis: "bullmoose agent serve --config <agent.json> [--once]",
-    summary: "run the homelab agent runtime (claims the AgentInvocation queue)",
+    synopsis: "bullmoose agent serve --config <agent.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId>",
+    summary: "run the homelab agent runtime, and trigger agents on demand",
     description:
-      "Logs in as the bound account, watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config. --once drains and exits (cron-friendly). The config's `binding` must match the server-side binding name (see `admin agent bind`).",
+      "`serve` logs in as the bound account, watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config. --once drains and exits (cron-friendly). The config's `binding` must match the server-side binding name (see `admin agent bind`).\n\n`invoke` (sVOL 007) is the on-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.",
+    subcommands: [
+      { name: "serve", synopsis: "agent serve --config <agent.json> [--once]", summary: "run the homelab runtime; claims the queue" },
+      { name: "invoke", synopsis: "agent invoke <binding> --email <emailId> [--note <text>]", summary: "queue an invocation for a binding on a message (refused if the binding is disabled)" },
+      { name: "invocations", synopsis: "agent invocations [pending|running|done|failed]", summary: "list the invocation queue (default: pending)" },
+      { name: "rm", synopsis: "agent rm <invId>", summary: "purge an invocation (a running one is refused)" },
+    ],
     flags: [
-      { flag: "--config <agent.json>", desc: "agent definition (binding, persona, model{provider,baseURL,apiKeyEnv})" },
-      { flag: "--once", desc: "drain the queue once and exit" },
+      { flag: "--config <agent.json>", desc: "serve: agent definition (binding, persona, model{provider,baseURL,apiKeyEnv})" },
+      { flag: "--once", desc: "serve: drain the queue once and exit" },
+      { flag: "--email <emailId>", desc: "invoke: the message the agent acts on (required)" },
+      { flag: "--note <text>", desc: "invoke: a human note stored in the invocation context" },
     ],
     examples: [
       { cmd: "bullmoose agent serve --config hermes.json" },
       { cmd: "bullmoose agent serve --config hermes.json --once", note: "cron drain" },
+      { cmd: "bullmoose agent invoke emily --email e_9f3c…", note: "start emily on an existing message" },
+      { cmd: "bullmoose agent invocations", note: "what is queued right now" },
+      { cmd: "bullmoose agent invocations --ids | xargs -n1 bullmoose agent rm", note: "clear the pending queue" },
     ],
     seeAlso: ["admin agent bind", "watch"],
   },
   {
     name: "contacts",
-    synopsis: "bullmoose contacts import <file.vcf> | list | show <cardId>",
-    summary: "import and browse the contacts core (vCard ⇄ JSContact)",
+    synopsis: "bullmoose contacts import|list|show|books|create|edit|rm|export …",
+    summary: "read and write the contacts core (vCard ⇄ JSContact)",
+    description:
+      "The full CRUD surface over the JSContact core. `import` is the idempotent bulk seed (dedup by uid); `create` makes one card without dedup; `export` is its inverse — vCard 3.0 on stdout, so `export | import` round-trips a book with no drift. Card writes need the `contacts` scope, which does NOT imply `read` (grant one scope per verb you need). `books create|rename|rm` manage address books and are OWNER-ONLY: the server refuses them on delegated (grant-reached) access with a clean exit 4, so an agent should edit cards, not books. All write verbs take --if-state (exit 5 on a stale state) and --dry-run.",
     subcommands: [
       { name: "import", synopsis: "contacts import [<file.vcf>|-] [--book <name-or-id>] [--as vcard] [--dry-run]", summary: "seed from a vCard export (idempotent; dedup by uid; missing --book created); reads stdin with no path, or with `-`" },
-      { name: "list", synopsis: "contacts list [--book <name-or-id>] [-n <count>] [--json]", summary: "list cards" },
+      { name: "list", synopsis: "contacts list [--book <name-or-id>] [-n <count>] [--json|--ids]", summary: "list cards" },
       { name: "show", synopsis: "contacts show <cardId> [--json]", summary: "show one card" },
+      { name: "books", synopsis: "contacts books list | create <name> | rename <name-or-id> <new> | rm <name-or-id> [--force]", summary: "address-book lifecycle; create/rename/rm are owner-only (exit 4 on delegated access); rm of a non-empty book needs --force (else exit 5)" },
+      { name: "create", synopsis: "contacts create [<file>|-] [--book <name-or-id>] [--as vcard|json] [--dry-run]", summary: "create card(s) from a vCard or JSON body — no dedup; reads stdin with no path, or with `-`" },
+      { name: "edit", synopsis: "contacts edit <cardId> [<file>|-] [--book <name-or-id>] [--as vcard|json]", summary: "replace a card's content from a vCard or JSON body (JMAP patch semantics)" },
+      { name: "rm", synopsis: "contacts rm <cardId> [--dry-run] [--if-state <s>]", summary: "delete a card; resolves the target first, so a bad id is exit 3" },
+      { name: "export", synopsis: "contacts export [--book <name-or-id>] [--json|--ids]", summary: "the inverse of import — vCard 3.0 on stdout (or JSContact NDJSON under --json)" },
     ],
     examples: [
       { cmd: "bullmoose contacts import Contacts.vcf --book Personal", note: "export from macOS Contacts: File → Export → Export vCard…" },
-      { cmd: "bullmoose contacts list --book Family -n 50" },
-      { cmd: "cat Contacts.vcf | bullmoose contacts import - --book Personal", note: "`-` is explicit stdin" },
-      { cmd: "bullmoose contacts list --ids | xargs -n1 bullmoose contacts show" },
+      { cmd: "bullmoose contacts export --book Personal | bullmoose contacts import - --book Backup", note: "round-trip a book" },
+      { cmd: "cat card.vcf | bullmoose contacts create - --book Personal", note: "`-` is explicit stdin" },
+      { cmd: "echo '{\"name\":{\"full\":\"Ada\"}}' | bullmoose contacts create --as json" },
+      { cmd: "bullmoose contacts export --json | jq -r .uid" },
+      { cmd: "bullmoose contacts export --ids | xargs -n1 bullmoose contacts show" },
+      { cmd: "bullmoose contacts books create Family --if-state \"$STATE\"" },
     ],
     seeAlso: ["calendar", "admin grant"],
   },
   {
     name: "calendar",
-    synopsis: "bullmoose calendar list | agenda [--days <n>]",
-    summary: "browse the calendar core (JSCalendar; recurrence expanded server-side)",
+    synopsis: "bullmoose calendar list | agenda | create | rename | rm | event … | export",
+    summary: "browse and edit the calendar core (JSCalendar; recurrence expanded server-side)",
+    description:
+      "Read verbs (`list`, `agenda`) and CRUD over the live JMAP methods. An event body may come from flags (--title/--start/--duration/--tz/--all-day/--rrule), a JSON JSCalendar object, or an iCalendar VEVENT on stdin (`-`) or a path; --as forces the type. Recurrence is master-only: `event edit` changes the whole series; single-occurrence editing (--occurrence) is not yet implemented and refuses cleanly. An --rrule the server's expander cannot expand faithfully (e.g. FREQ=YEARLY;BYDAY=4TH) is rejected up front, naming the part, rather than written wrong.",
     subcommands: [
-      { name: "list", synopsis: "calendar list [--json]", summary: "list calendars" },
-      { name: "agenda", synopsis: "calendar agenda [--days <n>] [--json]", summary: "upcoming occurrences, recurrence-expanded" },
+      { name: "list", synopsis: "calendar list [--json] [--ids]", summary: "list calendars" },
+      { name: "agenda", synopsis: "calendar agenda [--days <n>] [--json] [--ids]", summary: "upcoming occurrences, recurrence-expanded; --ids yields the event ids" },
+      { name: "create", synopsis: "calendar create <name> [--dry-run] [--if-state <s>]", summary: "create a calendar" },
+      { name: "rename", synopsis: "calendar rename <id-or-name> <new-name>", summary: "rename a calendar" },
+      { name: "rm", synopsis: "calendar rm <id-or-name> [--force] [--dry-run]", summary: "delete a calendar; --force also removes its events" },
+      { name: "event create", synopsis: "calendar event create [<file>|-] [--calendar <id-or-name>] [--title <t>] [--start <local>] [--duration <iso8601>] [--tz <iana>] [--all-day] [--rrule <RRULE>] [--as ical|json] [--dry-run]", summary: "create an event from flags, JSON, or iCal" },
+      { name: "event edit", synopsis: "calendar event edit <id> [--title …] [--start …] [--rrule …] [<patch.json>|-] [--if-state <s>]", summary: "edit the whole series (the master)" },
+      { name: "event rm", synopsis: "calendar event rm <id> [--dry-run]", summary: "delete an event" },
+      { name: "export", synopsis: "calendar export [--ics] [--calendar <id-or-name>] [--json] [--ids]", summary: "dump events as iCalendar or NDJSON JSCalendar" },
     ],
-    examples: [{ cmd: "bullmoose calendar agenda --days 14" }],
+    examples: [
+      { cmd: "bullmoose calendar agenda --days 14" },
+      { cmd: "bullmoose calendar create Work" },
+      { cmd: "bullmoose calendar event create --title 'Standup' --start 2026-07-08T09:00:00 --duration PT15M --tz America/Chicago" },
+      { cmd: "cat meeting.ics | bullmoose calendar event create - --calendar Work", note: "`-` is explicit stdin" },
+      { cmd: "bullmoose calendar export --ics > backup.ics", note: "open in Apple Calendar to verify" },
+      { cmd: "bullmoose calendar agenda --ids | xargs -n1 bullmoose calendar event rm --dry-run" },
+    ],
     seeAlso: ["contacts"],
   },
   {
@@ -427,6 +464,131 @@ export const COMMANDS: Command[] = [
       },
     ],
     seeAlso: ["mailboxes", "sync", "log"],
+  },
+  {
+    // ---- triage verbs (sVOL 019) ----
+    name: "flag",
+    synopsis: "bullmoose flag <id…> --add <keyword> [--remove <keyword>] [--if-state <s>]",
+    summary: "set or clear message keywords (over JMAP)",
+    description:
+      "Adds and removes RFC 8621 keywords on one or more messages via Email/set. Keywords are a set: --add and --remove take system flags ($seen, $flagged, $answered, $forwarded, $draft) or custom labels, and both are repeatable. Quote system flags — $flagged is a shell variable unquoted. This is a keywords-only patch, so it needs the `annotate` scope alone (not `move` or `draft`). Ids come as arguments (the xargs shape) or on stdin, and stdout is the ids it changed, so verbs chain. The local mirror is reconciled on success unless --no-sync.",
+    flags: [
+      { flag: "--add <keyword>", desc: "keyword to set (repeatable); e.g. --add '$flagged'" },
+      { flag: "--remove <keyword>", desc: "keyword to clear (repeatable); e.g. --remove '$seen'" },
+      { flag: "--no-sync", desc: "skip reconciling the local mirror (batch, then sync once)" },
+      { flag: "--if-state <state>", desc: "refuse (exit 5) if the account moved on since <state>" },
+    ],
+    examples: [
+      { cmd: "bullmoose flag em_1 --add '$flagged'", note: "quote it — $flagged is a shell var" },
+      { cmd: "bullmoose search important --ids | xargs bullmoose flag --add '$flagged'" },
+    ],
+    seeAlso: ["seen", "move", "log"],
+  },
+  {
+    name: "seen",
+    synopsis: "bullmoose seen <id…> [--unset]",
+    summary: "mark messages read, or unread with --unset (sugar over flag $seen)",
+    description:
+      "Sugar for `flag --add '$seen'` (or `--remove` with --unset). `bullmoose read` does NOT mark a message read, so this is how a script or a human clears the unread dot. Ids come as arguments or on stdin.",
+    flags: [{ flag: "--unset", desc: "mark UNread instead (clear $seen)" }],
+    examples: [
+      { cmd: "bullmoose log -n 200 --json | jq -r 'select(.seen==0) | .id' | xargs bullmoose seen" },
+    ],
+    seeAlso: ["flag", "read"],
+  },
+  {
+    name: "move",
+    synopsis: "bullmoose move <id…> --role <role> | --mailbox <id-or-name> [--if-state <s>]",
+    summary: "move messages into exactly one mailbox (replaces the set)",
+    description:
+      "REPLACES a message's mailbox set with the single named target, via an Email/set mailboxIds patch (scope: `move`). --role names a seeded role folder (inbox, sent, drafts, trash, junk, archive); --mailbox names any folder by id or name. Contrast `label`, which ADDS or removes one mailbox without disturbing the others — getting this wrong is the classic mail-CLI bug. Ids come as arguments or on stdin; stdout is the ids it moved; the local mirror is reconciled unless --no-sync.",
+    flags: [
+      { flag: "--role <role>", desc: "target a seeded role folder (archive, junk, trash, inbox, …)" },
+      { flag: "--mailbox <id-or-name>", desc: "target any folder by id or name" },
+      { flag: "--no-sync", desc: "skip reconciling the local mirror" },
+      { flag: "--if-state <state>", desc: "refuse (exit 5) if the account moved on since <state>" },
+      { flag: "--dry-run", desc: "resolve the destination and report; write nothing" },
+    ],
+    examples: [
+      { cmd: "bullmoose move em_1 --mailbox Receipts" },
+      { cmd: "bullmoose search 'from:amazon' --ids | xargs bullmoose move --role archive" },
+    ],
+    seeAlso: ["archive", "label", "mailbox"],
+  },
+  {
+    name: "label",
+    synopsis: "bullmoose label <id…> --add <mailbox> [--remove <mailbox>]",
+    summary: "add or remove one mailbox without disturbing the others",
+    description:
+      "JMAP's mailboxIds is a SET — a message can live in several folders — so `label` adds and removes individual mailboxes with a per-key patch (scope: `move`), leaving the rest in place. This is what you want when `move` (which replaces the whole set) would unfile the message. A --remove that would leave a message in NO mailbox is refused client-side, naming `move`, rather than surfacing a server invalidProperties. Both flags take an id or name and are repeatable.",
+    flags: [
+      { flag: "--add <mailbox>", desc: "mailbox (id or name) to add (repeatable)" },
+      { flag: "--remove <mailbox>", desc: "mailbox to remove; refused if it would empty the set" },
+      { flag: "--no-sync", desc: "skip reconciling the local mirror" },
+    ],
+    examples: [
+      { cmd: "bullmoose label em_1 --add Receipts" },
+      { cmd: "bullmoose search receipt --ids | xargs bullmoose label --add Receipts" },
+    ],
+    seeAlso: ["move", "mailbox"],
+  },
+  {
+    name: "archive",
+    synopsis: "bullmoose archive <id…> [--if-state <s>] [--dry-run]",
+    summary: "move messages to the Archive folder (sugar over move --role archive)",
+    description:
+      "The most-used triage verb: move messages into the seeded `archive` role mailbox. Sugar for `move --role archive`. Ids come as arguments or on stdin; stdout is the ids archived, so it chains into the next verb.",
+    examples: [
+      { cmd: "bullmoose archive em_1 em_2" },
+      { cmd: "bullmoose search 'from:amazon' --ids | xargs bullmoose archive" },
+    ],
+    seeAlso: ["move", "trash", "junk"],
+  },
+  {
+    name: "junk",
+    synopsis: "bullmoose junk <id…>",
+    summary: "move messages to the Junk folder (sugar over move --role junk)",
+    examples: [{ cmd: "bullmoose search spammy --ids | xargs bullmoose junk" }],
+    seeAlso: ["move", "trash", "archive"],
+  },
+  {
+    name: "trash",
+    synopsis: "bullmoose trash <id…> [--dry-run]",
+    summary: "move messages to Trash (sugar over move --role trash) — reversible, unlike rm",
+    description:
+      "Moves messages to the seeded `trash` role mailbox. This is what a human means by \"delete\": the message is recoverable from Trash. For a permanent, unrecoverable destroy use `rm --force`.",
+    examples: [
+      { cmd: "bullmoose search unsubscribe --ids | xargs bullmoose trash --dry-run", note: "rehearse the sweep" },
+      { cmd: "bullmoose search unsubscribe --ids | xargs bullmoose trash", note: "then run it" },
+    ],
+    seeAlso: ["rm", "archive", "move"],
+  },
+  {
+    name: "rm",
+    synopsis: "bullmoose rm <id…> --force  |  --dry-run",
+    summary: "PERMANENTLY destroy messages — hard delete, no Trash, no undo",
+    description:
+      "Destroys messages via Email/set destroy (scope: `delete`). This is a HARD delete: the rows are removed, the R2 blob is orphaned, there is no tombstone and NOTHING is recoverable. It is not Trash. Because of that it REFUSES without --force; use --dry-run to see exactly what it would destroy first. If you meant \"move to Trash\", use `bullmoose trash`. `delete` is an alias for this command.",
+    flags: [
+      { flag: "--force", desc: "required: confirm the permanent, unrecoverable destroy" },
+      { flag: "--dry-run", desc: "list what would be destroyed; destroy nothing" },
+      { flag: "--if-state <state>", desc: "refuse (exit 5) if the account moved on since <state>" },
+      { flag: "--no-sync", desc: "skip reconciling the local mirror" },
+    ],
+    examples: [
+      { cmd: "bullmoose search 'older_than:1y' --ids | xargs bullmoose rm --dry-run", note: "rehearse first" },
+      { cmd: "bullmoose rm em_1 --force", note: "permanent; prefer `trash` unless you are sure" },
+    ],
+    seeAlso: ["trash", "archive"],
+  },
+  {
+    name: "delete",
+    synopsis: "bullmoose delete <id…> --force  |  --dry-run",
+    summary: "alias for `rm` — PERMANENTLY destroy messages (no Trash, no undo)",
+    description:
+      "Identical to `bullmoose rm`: a hard, unrecoverable Email/set destroy that refuses without --force. See `bullmoose help rm`. To move to Trash reversibly, use `bullmoose trash`.",
+    examples: [{ cmd: "bullmoose search 'older_than:1y' --ids | xargs bullmoose delete --dry-run" }],
+    seeAlso: ["rm", "trash"],
   },
   {
     name: "blobs",

@@ -7,7 +7,40 @@
 | **Impact** | **I3** — unlocks *and* human-verifiable |
 | **Owner** | **`s05-cli-crud`** T3 |
 | **Depends on** | `016` (I/O contract) · `003` (recurrence correctness — see below) |
-| **Status** | todo |
+| **Status** | ✅ done — `packages/cli/src/calendar.ts` |
+
+## Delivery notes (build)
+
+Shipped `calendar create|rename|rm`, `calendar event create|edit|rm`, `calendar export [--ics]`
+over the live `Calendar/set` / `CalendarEvent/set`, on the `016` I/O contract (NDJSON, exit-code
+map, `--if-state`→`ifInState`→exit-5, `--dry-run` resolves-then-refuses, stdin/`--as` for JSON or
+iCal bodies). Calendar writes send the `urn:…:calendars` capability and rely on the server's flat
+`("calendar","calendar")` scope check (`common/027` — no lattice implication assumed CLI-side).
+
+**Two deliberate calls, both flagged in this unit's §What sVOL adds:**
+
+1. **Single-occurrence editing is DEFERRED, not shipped half-working.** `event edit <id>` edits
+   the master (whole series, solidly). `--occurrence <recurrenceId>` refuses cleanly with exit 2
+   and a message pointing at the whole-series form — the s05 Risk-section v1 (`devPlan.md:132`).
+   The contradiction the unit flagged (§2) is resolved in favour of the escape hatch, per the
+   build brief. The "refuse a bare edit against an occurrence id" clause is moot in this codebase:
+   `CalendarEvent/getOccurrences` keys occurrences by `eventId`+`recurrenceId`, so there is no
+   standalone occurrence id a user could pass — the addressable id *is* the master's.
+
+2. **The `003` guard is enforced client-side.** `--rrule FREQ=YEARLY;BYMONTH=11;BYDAY=4TH`
+   (Thanksgiving) is rejected up front with exit 2 naming `BYDAY`, before any write — so `agenda`
+   and the write path cannot disagree with Apple Calendar (§What sVOL adds 1). The CLI carries a
+   compact local mirror of `SUPPORTED_PARTS`/`unsupportedRuleReason` kept in lockstep with
+   `packages/calendar-core`; the server re-checks via `eventSpan`, so a drift is self-correcting
+   (a round-trip, never a silent wrong write). An unsupported RRULE arriving via iCal input is
+   likewise rejected, not warn-and-dropped as the server's import codec does.
+
+**One thing worth filing (see report):** arch.md:117-119 says "the CLI imports
+`calendar-core` rather than reimplementing." It cannot: the compiled CLI runs as raw `dist/*.js`
+with no bundler and no `node_modules/@bullmoose`, so workspace packages resolve only through tsc
+`paths`/vitest aliases — never at runtime. `contacts.ts` already vendors `vcard.ts` for the same
+reason. This unit vendors an iCal/RRULE codec into `calendar.ts` to match. The arch claim should
+be corrected, or the CLI given a bundle step + a compiled `calendar-core` dependency.
 
 ## Cells covered
 

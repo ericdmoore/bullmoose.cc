@@ -8,7 +8,34 @@
 | **Owner** | `sVOL` |
 | **Depends on** | `002` (fake-D1 `.batch()` — see Bread-crumbs for why the edge is softer than it looks) |
 | **Blocks** | `s03.D` T3 (*"Human → agent invoke on a thread"*, `s03.D-coexistence/devPlan.md:44-45`) |
-| **Status** | todo |
+| **Status** | done |
+
+> **Delivered.** `AgentInvocation/set` now honours `create` and `destroy`
+> (`services/jmap/src/methods/agent.ts`) — `created: {}` / `destroyed: []` are no
+> longer hardcoded. CLI surface `bullmoose agent invoke <binding> --email <id>` +
+> `invocations` + `rm` (`packages/cli/src/agentInvoke.ts`). Decisions:
+> - **Create acts on an emailId** (v1 requires it — the cloud runtime hard-requires
+>   email context). `context_json` mirrors ingest's shape but OMITS `envelopeTo`
+>   (no synthetic envelope → no ledger digest mis-steer); the human's reason rides
+>   in `context.note`.
+> - **The interlock** (008 kill switch): create REFUSES a disabled binding
+>   (`forbidden`), distinct from a missing binding (`notFound`) and a bad emailId
+>   (`invalidProperties`) — three distinguishable errors, none leaving a `pending`
+>   row. Asserted, plus the drain's own `enabled` gate holding a queued row.
+> - **Destroy is IN scope** — hard DELETE (Open Q #5's grade-preserving choice),
+>   guarded: a `running` invocation is refused (`forbidden`).
+> - **Scope**: `draft`, all three branches (§4). Flat-set (common/027): a
+>   `send`/`delete`-only token does NOT satisfy it.
+> - **No poke path added** (§3): the `commitChanges` entry wakes the CLI runner;
+>   the cron sweep covers the cloud runtime. Verified end-to-end — a JMAP-created
+>   invocation drains through the real `services/agent` worker to `done` with a
+>   reply draft, same pass as an ingest-created one.
+> - **Watchdog interaction (done-when #5)**: not exercised. `invoke` reuses the
+>   existing claim→`done` path, so the `cancel_if='invocation-active'` disarm at
+>   `packages/account-do/src/index.ts` fires identically for an on-demand claim as
+>   for a mail-triggered one — the fall-out-by-accident behaviour Open Q #4
+>   describes is unchanged, not decided. Filed as a follow-up rather than silently
+>   changed.
 
 ## Cells covered
 

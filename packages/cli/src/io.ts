@@ -135,6 +135,7 @@ export const JMAP_EXIT: Readonly<Record<string, ExitCode>> = {
   invalidEmail: EXIT.USAGE,
   mailboxHasChild: EXIT.CONFLICT,
   mailboxHasEmail: EXIT.CONFLICT,
+  addressBookHasContents: EXIT.CONFLICT,
   tooManyKeywords: EXIT.USAGE,
   tooManyMailboxes: EXIT.USAGE,
 };

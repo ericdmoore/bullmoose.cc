@@ -78,7 +78,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 004 | `Mailbox/set` + CLI | cap | E3 | I3 | sVOL | 002 ⁷ | **✅ done** |
 | 005 | `EmailSubmission/get` | cap | E1 | I2 | sVOL | — | **✅ done** ⁸ |
 | 006 | `Identity/set` + CLI signatures | cap | **E3** ² | I3 | sVOL | 002 | **✅ done** |
-| 007 | `AgentInvocation` on-demand trigger | cap | E2 | I3 | sVOL | 002 | todo |
+| 007 | `AgentInvocation` on-demand trigger | cap | E2 | I3 | sVOL | 002 | **✅ done** |
 | 008 | Admin lifecycle — update + delete | cap | **E3** ⁵ | **I3** ⁵ | sVOL | — | **✅ done** |
 | 009 | DAV collection creation (`MKCOL`/`MKCALENDAR`) | cap | E2 | I3 | sVOL | — | **✅ done** |
 | 010 | Blob lifecycle — enumerate, delete, revoke share | cap | E2 ⁸ | I1 | sVOL | — | **✅ done** |
@@ -88,9 +88,9 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 014 | **Email read + triage over MCP** | proj | E2 | I3 | sVOL | 001, 002 | **✅ done** |
 | 015 | **Self-introspection over MCP (`help@`)** | proj | E2 | I1 | sVOL | 001 | **✅ done** |
 | 016 | **CLI I/O contract** | proj ⁹ | E2 | I3 | **s05** T1 | — | **✅ done** |
-| 017 | Contacts CRUD over CLI | proj | E2 | I3 | **s05** T2 | ~~016~~ **unblocked** | todo |
-| 018 | Calendar CRUD over CLI | proj | E2 | I3 | **s05** T3 | ~~016, 003~~ **unblocked** | todo |
-| 019 | Email triage verbs over CLI | proj | E2 | I3 | sVOL | ~~016~~ **unblocked** | todo |
+| 017 | Contacts CRUD over CLI | proj | E2 | I3 | **s05** T2 | ~~016~~ **unblocked** | **✅ done** |
+| 018 | Calendar CRUD over CLI | proj | E2 | I3 | **s05** T3 | ~~016, 003~~ **unblocked** | **✅ done** ¹⁰ |
+| 019 | Email triage verbs over CLI | proj | E2 | I3 | sVOL | ~~016~~ **unblocked** | **✅ done** |
 | 020 | Creds mint-time fields | proj | E2 | I2 | **s05** T4 + **s04** | s04 spec | todo |
 | 021 | Email + Files over WebUI | proj | E4 | I3 | **s03.C** | s03.A, s03.B | todo |
 | 022 | Contacts + Calendar over WebUI | proj | E4 | I3 | sVOL | 021 | todo |
@@ -246,6 +246,15 @@ hot path of `GET /share/*`, the one route in the jmap worker an anonymous client
 surface — it is a prerequisite that reshapes an existing one, and `017`/`018`/`019` all
 depend on it. The unit's own open question 1 says so. Left as `proj` to match the ledger's
 history; worth reclassifying when the ledger is next revised.
+
+¹⁰ **`018` shipped `create/rename/rm`, `event create/edit/rm`, `export [--ics]`** over the live
+JMAP methods, honouring the `016` I/O contract. Two deliberate calls, both recorded in the unit
+file: single-occurrence editing (`--occurrence`) is **deferred with a clean refusal** (the s05
+Risk-section v1), and the CLI **vendors a compact local iCal/RRULE codec** rather than importing
+`@bullmoose/calendar-core` — the compiled CLI cannot resolve workspace packages at runtime (no
+`node_modules/@bullmoose`), exactly why `contacts.ts` vendors `vcard.ts`. Open question 1's
+"gate `018` on `003`" is honoured: the recurrence guard is enforced CLIENT-SIDE (exit 2, naming
+the part), so `agenda` and `--rrule` cannot write what the expander mis-expands.
 
 **Owned elsewhere (9 of 27):** 003, 011, 016, 017, 018, 020, 021, 023, 025 point at an
 existing section or filed issue rather than restating the work. Their files here carry the

@@ -74,12 +74,138 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
     };
   });
 
-  // update only: { id: { status: "running"|"done"|"failed", result? } }
+  /**
+   * AgentInvocation/set — three branches:
+   *
+   *   create   on-demand trigger (sVOL 007). Queue a `pending` invocation for a
+   *            chosen binding against an existing email; the drain (CLI runner
+   *            or cloud worker) picks it up over the changelog with NO new
+   *            trigger type — `services/agent` gates on status+enabled, not
+   *            `trigger_on`. This is the "Human → agent invoke on a thread"
+   *            capability `s03.D-coexistence/devPlan.md:42-46` depends on.
+   *   update   claim/complete: { id: { status: "running"|"done"|"failed", result? } }
+   *   destroy  purge an invocation (pending|done|failed) — a `running` one is
+   *            refused, since a runtime is mid-flight on it.
+   *
+   * `draft` scope gates the whole method: creating an invocation causes an agent
+   * to draft or send, which is exactly what `draft` means (unit 007 §4). Post
+   * common/001 that is advisory — a `mail` token (the mint default) satisfies
+   * `draft` — but declared correctly. Note the flat-set semantics of common/027:
+   * a `send`- or `delete`-only token does NOT satisfy `draft`.
+   *
+   * SAFETY INTERLOCK (008 kill switch): create REFUSES a binding whose
+   * `enabled = 0`. Both drain paths gate on `enabled` and neither cancels a
+   * queued row, so an invocation against a disabled binding would sit `pending`
+   * forever — a held black hole. Handing a human an on-demand trigger while
+   * ignoring the off switch is the ordering hazard 007 was sequenced after 008
+   * to avoid; the refusal is the interlock.
+   */
   registry.register("AgentInvocation/set", async (args, ctx) => {
     const access = await requireAccount(ctx, args, "draft");
     const oldState = await accountState(ctx, access.accountId);
+    const created: Record<string, Record<string, unknown>> = {};
+    const notCreated: Record<string, SetError> = {};
     const updated: Record<string, null> = {};
     const notUpdated: Record<string, SetError> = {};
+    const destroyed: string[] = [];
+    const notDestroyed: Record<string, SetError> = {};
+
+    // ---- create: on-demand invocation ----
+    const create = (args.create as Record<string, Record<string, unknown>> | undefined) ?? {};
+    for (const [cid, props] of Object.entries(create)) {
+      const bindingId = typeof props.bindingId === "string" ? props.bindingId : undefined;
+      const bindingName = typeof props.bindingName === "string" ? props.bindingName : undefined;
+      if (!bindingId && !bindingName) {
+        notCreated[cid] = {
+          type: "invalidProperties",
+          description: "one of bindingId | bindingName is required",
+          properties: ["bindingId", "bindingName"],
+        };
+        continue;
+      }
+
+      // Resolve the binding within THIS account and read its kill-switch state
+      // in one query — a binding on another account is simply not found here.
+      const binding = await ctx.env.DB.prepare(
+        bindingId
+          ? `SELECT id, name, enabled FROM agent_bindings WHERE account_id = ? AND id = ?`
+          : `SELECT id, name, enabled FROM agent_bindings WHERE account_id = ? AND name = ?`,
+      )
+        .bind(access.accountId, bindingId ?? bindingName)
+        .first<{ id: string; name: string; enabled: number }>();
+      if (!binding) {
+        notCreated[cid] = setError(
+          "notFound",
+          `no such binding "${bindingId ?? bindingName}" on this account`,
+        );
+        continue;
+      }
+      // THE INTERLOCK. A disabled binding is a clean refusal, distinct from
+      // "no such binding" — the drain would never touch the row.
+      if (binding.enabled !== 1) {
+        notCreated[cid] = setError(
+          "forbidden",
+          `binding "${binding.name}" is disabled (008 kill switch) — ` +
+            `re-enable it before invoking: bullmoose admin agent enable ${binding.id}`,
+        );
+        continue;
+      }
+
+      // v1 requires an emailId: the cloud runtime hard-requires email context
+      // (`services/agent/src/index.ts` — `if (!job.email_id) …failed`), so a
+      // no-email invocation is marked failed within one drain cycle. This is
+      // the "invoke on a thread" framing s03.D T3 asks for.
+      const emailId = typeof props.emailId === "string" ? props.emailId : undefined;
+      if (!emailId) {
+        notCreated[cid] = {
+          type: "invalidProperties",
+          description: "emailId is required — invoke acts on an existing message",
+          properties: ["emailId"],
+        };
+        continue;
+      }
+      const email = await ctx.env.DB.prepare(
+        `SELECT id FROM emails WHERE account_id = ? AND id = ?`,
+      )
+        .bind(access.accountId, emailId)
+        .first<{ id: string }>();
+      if (!email) {
+        notCreated[cid] = {
+          type: "invalidProperties",
+          description: `email "${emailId}" not found in this account`,
+          properties: ["emailId"],
+        };
+        continue;
+      }
+
+      // context_json mirrors ingest's shape but omits `envelopeTo`: an
+      // on-demand invocation has no envelope, and inventing one would mis-steer
+      // the ledger digest-target selection. The human's reason rides in `note`.
+      const threadId = typeof props.threadId === "string" ? props.threadId : undefined;
+      const note = typeof props.note === "string" ? props.note : undefined;
+      const context: Record<string, unknown> = { emailId };
+      if (threadId) context.threadId = threadId;
+      if (note) context.note = note;
+      if (props.params !== undefined) context.params = props.params;
+
+      const invId = `inv_${crypto.randomUUID()}`;
+      const createdAt = Date.now();
+      await ctx.env.DB.prepare(
+        `INSERT INTO agent_invocations
+           (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      )
+        .bind(invId, access.accountId, binding.id, binding.name, emailId, JSON.stringify(context), createdAt)
+        .run();
+      created[cid] = {
+        id: invId,
+        bindingId: binding.id,
+        bindingName: binding.name,
+        status: "pending",
+        emailId,
+        createdAt: new Date(createdAt).toISOString(),
+      };
+    }
 
     const update = (args.update as Record<string, Record<string, unknown>> | undefined) ?? {};
     for (const [id, patch] of Object.entries(update)) {
@@ -114,23 +240,59 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
       else notUpdated[id] = setError("notFound", "no such invocation (or already claimed)");
     }
 
+    // ---- destroy: purge an invocation ----
+    const destroy = Array.isArray(args.destroy) ? (args.destroy as string[]) : [];
+    for (const id of destroy) {
+      const row = await ctx.env.DB.prepare(
+        `SELECT status FROM agent_invocations WHERE account_id = ? AND id = ?`,
+      )
+        .bind(access.accountId, id)
+        .first<{ status: string }>();
+      if (!row) {
+        notDestroyed[id] = setError("notFound", "no such invocation");
+        continue;
+      }
+      // A `running` row is being processed by a runtime whose terminal UPDATE
+      // would then hit zero rows and log nothing — and `failStaleRunning` only
+      // sweeps rows that still exist. Refuse; let it reach a terminal state.
+      if (row.status === "running") {
+        notDestroyed[id] = setError(
+          "forbidden",
+          "cannot destroy a running invocation — wait for it to finish or fail",
+        );
+        continue;
+      }
+      await ctx.env.DB.prepare(
+        `DELETE FROM agent_invocations WHERE account_id = ? AND id = ?`,
+      )
+        .bind(access.accountId, id)
+        .run();
+      destroyed.push(id);
+    }
+
     let newState = oldState;
-    const ids = Object.keys(updated);
-    if (ids.length > 0) {
+    const createdIds = Object.values(created).map((c) => c.id as string);
+    const updatedIds = Object.keys(updated);
+    if (createdIds.length + updatedIds.length + destroyed.length > 0) {
       ({ newState } = await commitChanges(ctx.env.ACCOUNT_DO, access.accountId, [
-        { collection: "AgentInvocation", updated: ids },
+        {
+          collection: "AgentInvocation",
+          created: createdIds,
+          updated: updatedIds,
+          destroyed,
+        },
       ]));
     }
     return {
       accountId: access.accountId,
       oldState,
       newState,
-      created: {},
-      notCreated: {},
+      created,
+      notCreated,
       updated,
       notUpdated,
-      destroyed: [],
-      notDestroyed: {},
+      destroyed,
+      notDestroyed,
     };
   });
 
