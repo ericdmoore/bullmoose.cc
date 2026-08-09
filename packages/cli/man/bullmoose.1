@@ -58,7 +58,7 @@ run the homelab agent runtime (claims the AgentInvocation queue)
 import and browse the contacts core (vCard ⇄ JSContact)
 .TP
 .B calendar
-browse the calendar core (JSCalendar; recurrence expanded server\-side)
+browse and edit the calendar core (JSCalendar; recurrence expanded server\-side)
 .TP
 .B creds
 manage the write\-only, envelope\-encrypted credential vault
@@ -445,20 +445,65 @@ bullmoose contacts list \-\-ids | xargs \-n1 bullmoose contacts show
 .SS calendar
 .B Synopsis:
 .br
-bullmoose calendar list | agenda [\-\-days <n>]
+bullmoose calendar list | agenda | create | rename | rm | event … | export
+.PP
+Read verbs (`list`, `agenda`) and CRUD over the live JMAP methods. An event body may come from flags (\-\-title/\-\-start/\-\-duration/\-\-tz/\-\-all\-day/\-\-rrule), a JSON JSCalendar object, or an iCalendar VEVENT on stdin (`\-`) or a path; \-\-as forces the type. Recurrence is master\-only: `event edit` changes the whole series; single\-occurrence editing (\-\-occurrence) is not yet implemented and refuses cleanly. An \-\-rrule the server's expander cannot expand faithfully (e.g. FREQ=YEARLY;BYDAY=4TH) is rejected up front, naming the part, rather than written wrong.
 .PP
 .B Subcommands:
 .TP
 .B list
-list calendars \(em \f[CR]calendar list [\-\-json]\fR
+list calendars \(em \f[CR]calendar list [\-\-json] [\-\-ids]\fR
 .TP
 .B agenda
-upcoming occurrences, recurrence\-expanded \(em \f[CR]calendar agenda [\-\-days <n>] [\-\-json]\fR
+upcoming occurrences, recurrence\-expanded; \-\-ids yields the event ids \(em \f[CR]calendar agenda [\-\-days <n>] [\-\-json] [\-\-ids]\fR
+.TP
+.B create
+create a calendar \(em \f[CR]calendar create <name> [\-\-dry\-run] [\-\-if\-state <s>]\fR
+.TP
+.B rename
+rename a calendar \(em \f[CR]calendar rename <id\-or\-name> <new\-name>\fR
+.TP
+.B rm
+delete a calendar; \-\-force also removes its events \(em \f[CR]calendar rm <id\-or\-name> [\-\-force] [\-\-dry\-run]\fR
+.TP
+.B event create
+create an event from flags, JSON, or iCal \(em \f[CR]calendar event create [<file>|\-] [\-\-calendar <id\-or\-name>] [\-\-title <t>] [\-\-start <local>] [\-\-duration <iso8601>] [\-\-tz <iana>] [\-\-all\-day] [\-\-rrule <RRULE>] [\-\-as ical|json] [\-\-dry\-run]\fR
+.TP
+.B event edit
+edit the whole series (the master) \(em \f[CR]calendar event edit <id> [\-\-title …] [\-\-start …] [\-\-rrule …] [<patch.json>|\-] [\-\-if\-state <s>]\fR
+.TP
+.B event rm
+delete an event \(em \f[CR]calendar event rm <id> [\-\-dry\-run]\fR
+.TP
+.B export
+dump events as iCalendar or NDJSON JSCalendar \(em \f[CR]calendar export [\-\-ics] [\-\-calendar <id\-or\-name>] [\-\-json] [\-\-ids]\fR
 .PP
 .B Examples:
 .PP
 .EX
 bullmoose calendar agenda \-\-days 14
+.EE
+.PP
+.EX
+bullmoose calendar create Work
+.EE
+.PP
+.EX
+bullmoose calendar event create \-\-title 'Standup' \-\-start 2026\-07\-08T09:00:00 \-\-duration PT15M \-\-tz America/Chicago
+.EE
+.PP
+.EX
+cat meeting.ics | bullmoose calendar event create \- \-\-calendar Work
+.EE
+`\-` is explicit stdin
+.PP
+.EX
+bullmoose calendar export \-\-ics > backup.ics
+.EE
+open in Apple Calendar to verify
+.PP
+.EX
+bullmoose calendar agenda \-\-ids | xargs \-n1 bullmoose calendar event rm \-\-dry\-run
 .EE
 .SS creds
 .B Synopsis:

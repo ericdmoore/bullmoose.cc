@@ -339,6 +339,36 @@ async function main() {
       for (const id of ids) assert(/^em_\d{3}$/.test(id), `last column is not the id: ${id}`);
     });
 
+    // ---- sVOL 018  calendar CRUD -----------------------------------------
+    check("§018", "event create rejects an unexpandable --rrule, naming the part (exit 2)", () => {
+      // The common/003 shape — parses clean, the YEARLY branch discards BYDAY.
+      // Refused CLIENT-SIDE, so it needs no calendar server at all.
+      const r = bm(
+        "calendar event create --title Thx --start 2026-11-26T09:00:00 --rrule 'FREQ=YEARLY;BYMONTH=11;BYDAY=4TH'",
+      );
+      eq(r.code, 2, "exit code");
+      assert(/BYDAY/.test(r.stderr), `should name the discarded part:\n${r.stderr}`);
+      assert(!/at Object|node:internal|UnsupportedRecurrence/.test(r.stderr), `no stack trace:\n${r.stderr}`);
+    });
+
+    check("§018", "create → event create → export --ics composes end to end", () => {
+      const mk = bm("calendar create Work --json");
+      eq(mk.code, 0, `calendar create failed: ${mk.stderr}`);
+      const ev = bm(
+        "calendar event create --title Standup --start 2026-07-08T09:00:00 --duration PT15M --calendar Work",
+      );
+      eq(ev.code, 0, `event create failed: ${ev.stderr}`);
+      const ics = sh("$BM calendar export --ics 2>/dev/null | grep SUMMARY", env);
+      assert(/SUMMARY:Standup/.test(ics.stdout), `exported iCal should carry the event:\n${ics.stdout}`);
+    });
+
+    check("§018", "export --ids feeds a pipe, and agenda still reports the unknownMethod cleanly", () => {
+      const n = sh("$BM calendar export --ids 2>/dev/null | wc -l", env);
+      assert(Number(n.stdout.trim()) >= 1, `expected the event we created, got ${n.stdout.trim()}`);
+      // getOccurrences is unimplemented on the stub — the §1.5 case relies on it.
+      eq(bm("calendar agenda").code, 2, "agenda over an unimplemented method still exits 2");
+    });
+
     // ---- the headline example from devPlan.md ----------------------------
     check("§1", "the devPlan's own pipeline runs end to end", () => {
       const r = sh(
