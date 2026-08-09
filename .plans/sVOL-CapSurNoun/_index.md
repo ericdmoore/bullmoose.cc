@@ -25,7 +25,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | Secrets | n/a | `CRUD` | `----` | n/a | `----` | `----` | n/a |
 | HumanSettings | `~R~-` | `-RU-` | `----` | n/a | `----` | `----` | n/a |
 | IdentitySetup | `CR-D` | `CR-D` | `----` | `~` | `----` | `----` | n/a |
-| SystemAdmin | `CR~~` | `CR~~` | `----` | n/a | `----` | `----` | n/a |
+| SystemAdmin | `CRUD` | `CRUD` | `----` | n/a | `----` | `----` | n/a |
 
 **What the grid says at a glance:**
 
@@ -44,6 +44,17 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
   shipped — the two *collection* nouns are `R` only, because the unit's own tool list maps
   `calendar_list` → `Calendar/get` and `contacts_list_books` → `AddressBook/get` and stops
   there; creating and deleting calendars and address books over MCP is unfiled (see §4).
+- **`SystemAdmin` closed its `~~` on both surfaces, with two asterisks worth keeping.** `008`
+  landed rename, suspend/resume, and delete for tenant, domain, account and agent-binding.
+  Account delete is **soft** (a `deleted_at` tombstone plus a route/KV teardown — the mail is
+  on a shard this worker cannot reach), and `principals`, `credentials` and `identities` still
+  have no delete of their own; they go when their tenant does. Also note the row's **`agent
+  disable`** — the one route here that is a safety control rather than an ergonomic one, and
+  the reason this unit moved from wave 4 to wave 3 (footnote ⁵).
+- **`Agents × D` is deliberately still open in §4 even though `agent unbind` shipped.** `008`
+  built binding delete; `007` owns *invocation* create/delete. `config.yml` files both under
+  `Agents`, which is the disagreement `✅008`'s own header records — resolving it is a ledger
+  decision, not a code one.
 - **The WebUI and GraphQL columns are empty because the surfaces don't exist.** Every cell
   there is `E4` by definition.
 - **DAV is read-write end to end, at both levels.** Cards and events PUT/DELETE with proper
@@ -68,7 +79,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 005 | `EmailSubmission/get` | cap | E1 | I2 | sVOL | — | **✅ done** ⁸ |
 | 006 | `Identity/set` + CLI signatures | cap | **E3** ² | I3 | sVOL | 002 | todo |
 | 007 | `AgentInvocation` on-demand trigger | cap | E2 | I3 | sVOL | 002 | todo |
-| 008 | Admin lifecycle — update + delete | cap | E2 | I1 ⁵ | sVOL | — | todo |
+| 008 | Admin lifecycle — update + delete | cap | **E3** ⁵ | **I3** ⁵ | sVOL | — | **✅ done** |
 | 009 | DAV collection creation (`MKCOL`/`MKCALENDAR`) | cap | E2 | I3 | sVOL | — | **✅ done** |
 | 010 | Blob lifecycle — enumerate, delete, revoke share | cap | E2 ⁸ | I1 | sVOL | — | **✅ done** |
 | 011 | The `FileNode` noun | cap | E4 | I3 | **s03.B** | s03.A | todo |
@@ -156,6 +167,26 @@ kill switch, merely unreachable. `007` hands a human an on-demand agent trigger 
 with no off switch, which makes binding-disable a named de-risking dependency of `007` — `I3`,
 wave 3. The rest of `008` (tenant/domain/account lifecycle) stays `I1`/wave 4.
 
+  **Resolved by shipping, not by splitting — and BOTH grades moved.** `008` and
+  `.feedback/fromClaude/✅023` landed as one commit, because the kill switch and the rest of the
+  unit are the same two files (`services/provision/src/index.ts`, `packages/cli/src/admin.ts`)
+  and the split this footnote proposed would have put two agents in one file. So `008a` never
+  became a separate ledger row; the wave-3 sequencing this footnote asked for was honoured by
+  moving the *whole* unit forward.
+
+  - **`I1` → `I3`**, on this footnote's own argument. `007`'s named de-risking dependency is met.
+  - **`E2` → `E3`**, on the unit file's Open Question #2. The tombstone design was adopted for
+    `accounts` (`deleted_at`), which is the literal `E3` anchor: one hand-run
+    `ALTER TABLE accounts ADD COLUMN deleted_at INTEGER` (`docs/DEPLOY.md` §1), and it must run
+    **before** the workers deploy — `deleted_at IS NULL` is now in `verifyBearer`'s account
+    resolution, so a worker ahead of the column authenticates nobody.
+
+  Scope note: `tokens` and `grants` deliberately keep their hard `DELETE`. `s03.A` T2 owns their
+  tombstones *and* the `grant_lifecycle` log; doing the column half here would have bought this
+  repo two hand-run schema events instead of one, which is the exact thing the unit's tier-2
+  warning says to avoid. **`s03.A` T2 is therefore still the only outstanding schema event**, and
+  it now has a precedent to follow rather than a coordination problem to solve.
+
 ⁶ **`003` shipped as `E3`, not the `E2` the ledger predicted** — and the earlier note that
 this grade was "contestable" was right. The guard had to move to `eventSpan` (the parser was
 the wrong side: `CalendarEvent/set` takes JSCalendar directly and never validated
@@ -242,11 +273,11 @@ wave 3 — close the capability holes
   014  Email over MCP                 E2  I3   ← ✅ done (read + triage; no send tool)
   009  DAV collection creation        E2  I3   ← DONE
   006  Identity/set + signatures      E3  I3
-  008a binding-disable route ONLY     E1  I3   ← the agent kill switch; MUST precede 007
-  007  AgentInvocation trigger        E2  I3
+  008  admin lifecycle + kill switch  E3  I3   ← ✅ done; 008a/008b never split — see ⁵
+  007  AgentInvocation trigger        E2  I3   ← unblocked: the off switch exists now
 
 wave 4 — cheap cleanup, any time
-  005 · 008b (tenant/domain/account lifecycle) · 010 ← ✅ DONE, pulled forward · 012
+  005 · ~~008b~~ (folded into 008) · 010 ← ✅ DONE, pulled forward · 012
   015  self-introspection over MCP    E2  I1   ← ✅ done, pulled forward
 wave 5 — the unbuilt stacks
   011 (s03.B) → 021 (s03.C) → 022 → 024 → 023 (s03.E)
@@ -291,7 +322,7 @@ Every non-`n/a` gap cell in §1 maps to at least one unit:
 | Agents × C/D | 007 |
 | Agents/Secrets × MCP | 015 ✅ (Agents × Read + SystemAdmin × Read; `Secrets × Read` is out of scope by `bureau.md` invariant 1 and always will be) |
 | HumanSettings × U (`Identity/set`) | 006 |
-| SystemAdmin × U/D | 008 |
+| SystemAdmin × U/D | 008 ✅ (⚠️ `_verify.sh` asserts nothing here — `services/provision` is not JMAP, so this row is invisible to the executable grid in both directions) |
 | every noun × WebUI | 021, 022, 023, 024 |
 | every noun × GraphQL | 025 |
 | `queryChanges` × 4 | 026 |
@@ -314,12 +345,12 @@ Recounted from the ledger above — an earlier draft of this table was arithmeti
 | | count | notes |
 |---|---|---|
 | E1 | 4 | 001, 005, 012, 024 |
-| E2 | 15 | the bulk — mostly projection over live capability |
-| E3 | 3 | 004, 006, 026 |
+| E2 | 14 | the bulk — mostly projection over live capability |
+| E3 | 4 | 004, 006, 026, **008** (regraded on delivery — footnote ⁵) |
 | E4 | 5 | 011, 021, 022, 023, 025 — all on stacks that don't exist |
-| **I3** | **14** | |
+| **I3** | **15** | **008** joined them on delivery — footnote ⁵ |
 | I2 | 5 | |
-| I1 | 6 | |
+| I1 | 5 | |
 | I0 | 2 | 026, 027 |
 | owned by `sVOL` | 18 | |
 | owned elsewhere | 9 | pointers only |

@@ -34,7 +34,28 @@ CREATE TABLE IF NOT EXISTS accounts (
   principal_id  TEXT NOT NULL REFERENCES principals(id),
   display_name  TEXT NOT NULL,
   shard         TEXT NOT NULL DEFAULT 'shard0',  -- data-plane D1 database
-  created_at    INTEGER NOT NULL
+  created_at    INTEGER NOT NULL,
+  -- Tombstone (sVOL 008). NULL = live; epoch ms = deleted.
+  --
+  -- `DELETE /accounts/{id}` is SOFT, and deliberately: an account's mail,
+  -- calendars, contacts and R2 blobs live on `shard`, which the provision
+  -- worker cannot reach. Dropping this row would strand every one of those
+  -- rows unattributable — the id in `emails.account_id` would resolve to
+  -- nothing. Delivery is what actually stops: the KV route key and the
+  -- `routes` row go at tombstone time, so mail bounces 550 immediately.
+  --
+  -- Every RESOLUTION path filters `deleted_at IS NULL`, so live behaviour is
+  -- identical while history survives (same bargain as s03.A T2's grant
+  -- tombstones): auth-core `verifyBearer`, the jmap worker's /auth/login
+  -- account list, the agent drain's accounts join, and provision's own
+  -- `listAccounts` / `accountByAddress` / `accountWithTenant`.
+  --
+  -- ⚠️ No migration framework — this file is CREATE TABLE IF NOT EXISTS, so
+  -- only a FRESH database picks this up. An EXISTING one needs, by hand,
+  -- BEFORE deploying the workers (auth stops resolving without it):
+  --   ALTER TABLE accounts ADD COLUMN deleted_at INTEGER;
+  -- Precedent: contact_cards.dav_name (data-plane.sql). See docs/DEPLOY.md.
+  deleted_at    INTEGER
 );
 
 -- From-addresses an account may send as (JMAP Identity objects).

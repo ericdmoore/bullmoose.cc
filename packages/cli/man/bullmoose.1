@@ -697,6 +697,12 @@ reload the link: it now refuses
 bullmoose admin <noun> <verb> …
 .PP
 Onboarding and administration. `admin init` stores the provision URL + admin token; the rest manage tenants, domains, accounts, agent bindings, tokens, and grants. A tenant id (e.g. t_home) is a slug you choose — a namespace, not a secret.
+
+Lifecycle verbs come in two flavours. REVERSIBLE ones — `agent disable|enable`, `domain suspend|resume`, both renames — just run. IRREVERSIBLE ones — `tenant delete`, `domain delete`, `account delete`, `agent unbind` — refuse without `\-\-yes`; use `\-\-dry\-run` first to see what they would do.
+
+`agent disable` is the kill switch: both the ingest enqueue path and the agent drain gate on the binding's `enabled` column, so disabling stops an agent being invoked at all. Invocations already queued are HELD, not cancelled — the count is printed, and they resume on `enable`.
+
+`account delete` is a SOFT delete: it removes the delivery route (D1 row and the ingest KV key together, so mail bounces immediately) and tombstones the account so it stops authenticating, but the account's mail, calendars, contacts and blobs live in a different database and are retained. The command prints exactly what it kept.
 .PP
 .B Subcommands:
 .TP
@@ -704,25 +710,36 @@ Onboarding and administration. `admin init` stores the provision URL + admin tok
 configure the operator endpoint \(em \f[CR]admin init \-\-url <provision\-url> \-\-token <admin\-token>\fR
 .TP
 .B tenant
-manage tenants (namespaces) \(em \f[CR]admin tenant create <id> \-\-name <n> | list\fR
+manage tenants (namespaces) \(em \f[CR]admin tenant create <id> \-\-name <n> | list | rename <id> \-\-name <n> | delete <id> \-\-yes\fR
 .TP
 .B domain
-wire a domain (Email Routing, SES identity, DKIM/DMARC) \(em \f[CR]admin domain add <domain> \-\-tenant <t> | status <domain> | list\fR
+wire a domain (Email Routing, SES identity, DKIM/DMARC); suspend stops mail reversibly, delete refuses while accounts remain \(em \f[CR]admin domain add <domain> \-\-tenant <t> | status <domain> | list | suspend <domain> | resume <domain> | delete <domain> \-\-yes\fR
 .TP
 .B account
-create a mailbox account \(em \f[CR]admin account create <local@domain> \-\-tenant <t> [\-\-name <n>] [\-\-principal <email>] | list [\-\-tenant <t>]\fR
+create, rename and (soft) delete a mailbox account \(em \f[CR]admin account create <local@domain> \-\-tenant <t> [\-\-name <n>] [\-\-principal <email>] | list [\-\-tenant <t>] [\-\-include\-deleted] | rename <accountId> \-\-name <n> | delete <accountId> \-\-yes\fR
 .TP
 .B password
 set a principal's login password \(em \f[CR]admin password <email>\fR
 .TP
 .B agent
-bind a cloud agent runtime to a mailbox \(em \f[CR]admin agent bind <account\-email> \-\-name <binding> [\-\-sla <s>] [\-\-allow a@b,c@d] [\-\-reply\-mode send|draft] [\-\-config <file.json>] | list <account\-email>\fR
+bind a cloud agent runtime to a mailbox — and disable it when it misbehaves \(em \f[CR]admin agent bind <account\-email> \-\-name <binding> [\-\-sla <s>] [\-\-allow a@b,c@d] [\-\-reply\-mode send|draft] [\-\-config <file.json>] | list <account\-email> | disable <binding\-id> | enable <binding\-id> | unbind <binding\-id> \-\-yes\fR
 .TP
 .B token
 mint operator/agent tokens for any account (\-\-scopes required; only this command may mint `admin`) \(em \f[CR]admin token create <email> \-\-name <n> \-\-scopes <a,b,c> | list [<email>] | revoke <id>\fR
 .TP
 .B grant
 cross\-account delegation (effective rights = token ∩ grant) \(em \f[CR]admin grant create <grantee\-email> <target\-email> [\-\-scopes read,contacts] [\-\-book <id>] [\-\-expires <days>] | list [<email>] | revoke <id>\fR
+.PP
+.B Flags:
+.TP
+.B \-\-yes
+confirm an irreversible verb (tenant/domain/account delete, agent unbind); nothing else needs it
+.TP
+.B \-\-account <email>
+on `agent disable|enable|unbind`, the binding's account — only needed if one binding id exists on more than one account
+.TP
+.B \-\-include\-deleted
+on `account list`, also show tombstoned accounts (the forensic view; they are hidden by default)
 .PP
 .B Examples:
 .PP
@@ -744,6 +761,30 @@ bullmoose admin account create you@example.com \-\-tenant t_home
 .PP
 .EX
 bullmoose admin agent bind editor@example.com \-\-name editor \-\-reply\-mode draft \-\-config docs/examples/editor\-emily.config.json
+.EE
+.PP
+.EX
+bullmoose admin agent disable bind_9f2c1a04
+.EE
+the kill switch: no further invocations are enqueued or drained
+.PP
+.EX
+bullmoose admin agent list editor@example.com \-\-ids | xargs \-n1 bullmoose admin agent disable
+.EE
+stop every agent on one mailbox
+.PP
+.EX
+bullmoose admin domain suspend exmaple.com
+.EE
+mail bounces 550 immediately; `resume` puts it back, forwardTo and all
+.PP
+.EX
+bullmoose admin domain delete exmaple.com \-\-dry\-run
+.EE
+the typo'd domain — check before you mean it
+.PP
+.EX
+bullmoose admin account delete t_home__a_3f2a1b9c \-\-yes
 .EE
 .PP
 .EX

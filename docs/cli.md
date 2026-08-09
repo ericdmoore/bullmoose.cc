@@ -633,24 +633,36 @@ bullmoose admin <noun> <verb> …
 
 Onboarding and administration. `admin init` stores the provision URL + admin token; the rest manage tenants, domains, accounts, agent bindings, tokens, and grants. A tenant id (e.g. t_home) is a slug you choose — a namespace, not a secret.
 
+Lifecycle verbs come in two flavours. REVERSIBLE ones — `agent disable|enable`, `domain suspend|resume`, both renames — just run. IRREVERSIBLE ones — `tenant delete`, `domain delete`, `account delete`, `agent unbind` — refuse without `--yes`; use `--dry-run` first to see what they would do.
+
+`agent disable` is the kill switch: both the ingest enqueue path and the agent drain gate on the binding's `enabled` column, so disabling stops an agent being invoked at all. Invocations already queued are HELD, not cancelled — the count is printed, and they resume on `enable`.
+
+`account delete` is a SOFT delete: it removes the delivery route (D1 row and the ingest KV key together, so mail bounces immediately) and tombstones the account so it stops authenticating, but the account's mail, calendars, contacts and blobs live in a different database and are retained. The command prints exactly what it kept.
+
 **Subcommands**
 
 - **init** — configure the operator endpoint  
   `admin init --url <provision-url> --token <admin-token>`
 - **tenant** — manage tenants (namespaces)  
-  `admin tenant create <id> --name <n> | list`
-- **domain** — wire a domain (Email Routing, SES identity, DKIM/DMARC)  
-  `admin domain add <domain> --tenant <t> | status <domain> | list`
-- **account** — create a mailbox account  
-  `admin account create <local@domain> --tenant <t> [--name <n>] [--principal <email>] | list [--tenant <t>]`
+  `admin tenant create <id> --name <n> | list | rename <id> --name <n> | delete <id> --yes`
+- **domain** — wire a domain (Email Routing, SES identity, DKIM/DMARC); suspend stops mail reversibly, delete refuses while accounts remain  
+  `admin domain add <domain> --tenant <t> | status <domain> | list | suspend <domain> | resume <domain> | delete <domain> --yes`
+- **account** — create, rename and (soft) delete a mailbox account  
+  `admin account create <local@domain> --tenant <t> [--name <n>] [--principal <email>] | list [--tenant <t>] [--include-deleted] | rename <accountId> --name <n> | delete <accountId> --yes`
 - **password** — set a principal's login password  
   `admin password <email>`
-- **agent** — bind a cloud agent runtime to a mailbox  
-  `admin agent bind <account-email> --name <binding> [--sla <s>] [--allow a@b,c@d] [--reply-mode send|draft] [--config <file.json>] | list <account-email>`
+- **agent** — bind a cloud agent runtime to a mailbox — and disable it when it misbehaves  
+  `admin agent bind <account-email> --name <binding> [--sla <s>] [--allow a@b,c@d] [--reply-mode send|draft] [--config <file.json>] | list <account-email> | disable <binding-id> | enable <binding-id> | unbind <binding-id> --yes`
 - **token** — mint operator/agent tokens for any account (--scopes required; only this command may mint `admin`)  
   `admin token create <email> --name <n> --scopes <a,b,c> | list [<email>] | revoke <id>`
 - **grant** — cross-account delegation (effective rights = token ∩ grant)  
   `admin grant create <grantee-email> <target-email> [--scopes read,contacts] [--book <id>] [--expires <days>] | list [<email>] | revoke <id>`
+
+| flag | description |
+|---|---|
+| `--yes` | confirm an irreversible verb (tenant/domain/account delete, agent unbind); nothing else needs it |
+| `--account <email>` | on `agent disable\|enable\|unbind`, the binding's account — only needed if one binding id exists on more than one account |
+| `--include-deleted` | on `account list`, also show tombstoned accounts (the forensic view; they are hidden by default) |
 
 **Examples**
 
@@ -660,6 +672,15 @@ bullmoose admin tenant create t_home --name "Home"
 bullmoose admin domain add example.com --tenant t_home
 bullmoose admin account create you@example.com --tenant t_home
 bullmoose admin agent bind editor@example.com --name editor --reply-mode draft --config docs/examples/editor-emily.config.json
+bullmoose admin agent disable bind_9f2c1a04
+# the kill switch: no further invocations are enqueued or drained
+bullmoose admin agent list editor@example.com --ids | xargs -n1 bullmoose admin agent disable
+# stop every agent on one mailbox
+bullmoose admin domain suspend exmaple.com
+# mail bounces 550 immediately; `resume` puts it back, forwardTo and all
+bullmoose admin domain delete exmaple.com --dry-run
+# the typo'd domain — check before you mean it
+bullmoose admin account delete t_home__a_3f2a1b9c --yes
 bullmoose admin token create hermes@example.com --name hermes-bridge --scopes read,send
 bullmoose admin grant create partner@example.com you@example.com --scopes read,contacts --book <bookId> --expires 365
 ```

@@ -850,8 +850,13 @@ async function applyShareWithPatch(
   const grantees = [...desired.keys()];
   if (grantees.length > 0) {
     const marks = grantees.map(() => "?").join(",");
+    // `deleted_at IS NULL` so a tombstoned account (sVOL 008) reads as
+    // "unknown account" here rather than as a valid grantee. The grant would
+    // have been inert either way — `verifyBearer` never surfaces a tombstoned
+    // account, so nothing could act on it — but the owner would see a book
+    // shared with someone who no longer exists and no way to explain it.
     const { results: acctRows } = await ctx.env.DB.prepare(
-      `SELECT id, tenant_id FROM accounts WHERE id IN (${marks})`,
+      `SELECT id, tenant_id FROM accounts WHERE id IN (${marks}) AND deleted_at IS NULL`,
     )
       .bind(...grantees)
       .all<{ id: string; tenant_id: string }>();
