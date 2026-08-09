@@ -64,6 +64,36 @@ npx wrangler d1 execute bullmoose-mail-shard0 --remote --file packages/mailstore
 npx wrangler d1 execute bullmoose-mail-shard0 --remote --file packages/mailstore/sql/control-plane.sql
 ```
 
+### Upgrading an EXISTING database — `accounts.deleted_at`
+
+Both `.sql` files are `CREATE TABLE IF NOT EXISTS`, so re-running them does
+**not** add a column to a table that already exists. There is no migration
+framework; new columns are hand-run, once, in this order.
+
+`sVOL 008` adds one:
+
+```sh
+npx wrangler d1 execute bullmoose-mail-shard0 --remote \
+  --command "ALTER TABLE accounts ADD COLUMN deleted_at INTEGER"
+```
+
+**Run it BEFORE deploying the workers, not after.** `deleted_at IS NULL` is now
+in the account-resolution path of `@bullmoose/auth-core` (`verifyBearer`), the
+jmap worker's `/auth/login`, the agent drain and every provision read — on a
+database without the column those queries fail and *nothing authenticates*.
+Adding a nullable column to SQLite is a metadata-only operation: it does not
+rewrite the table and it is safe to run while the workers are live, which is
+why the order is "column first, deploy second" rather than a maintenance
+window.
+
+Idempotent enough to be safe to re-run blind — a second run errors with
+`duplicate column name: deleted_at` and changes nothing. Verify with:
+
+```sh
+npx wrangler d1 execute bullmoose-mail-shard0 --remote \
+  --command "SELECT COUNT(*) AS live FROM accounts WHERE deleted_at IS NULL"
+```
+
 ## 2. Deploy — order matters, binding graph  (bootstrap: `deploy`)
 
 ```sh
@@ -243,9 +273,83 @@ npx wrangler kv key put -c services/provision/wrangler.jsonc --remote \
 per §2. If the control plane is ever split out, step 1 moves with `routes`.)
 
 Verify with `admin account create` for the same address: it should now come back
-`created: false` with `<GOOD_ACCOUNT_ID>`. There is **no `DELETE /accounts`**
-(`.plans/sVOL-CapSurNoun/008`), so the duplicate account stays until that lands;
-it is inert once nothing routes to it.
+`created: false` with `<GOOD_ACCOUNT_ID>`. The duplicate is inert once nothing
+routes to it, and since `sVOL 008` it can be tombstoned properly — which drops
+its route row and its KV key together, so you no longer have to keep the two in
+step by hand:
+
+```sh
+bullmoose admin account delete <DUPLICATE_ACCOUNT_ID> --dry-run
+bullmoose admin account delete <DUPLICATE_ACCOUNT_ID> --yes
+bullmoose admin account list --include-deleted     # the tombstone is still readable
+```
+
+It is a **soft** delete: the messages the duplicate received stay on the shard,
+because nothing in the platform can garbage-collect a data-plane account yet.
+The command prints exactly what it retained. It also revokes, in the same call,
+everything that could still reach the mailbox without going through the
+tombstone — the KV route key and every `routes` row naming it, its public share
+links, its queued agent invocations, and (only if the account was the
+principal's last live one) that principal's tokens and password. That last one
+matters more than it looks: `principals.login_email` is UNIQUE and
+`admin account create` reuses a principal by email, so re-provisioning the same
+address later re-attaches the same principal — without the revoke, an old token
+would silently become a live credential for the new mailbox.
+
+### Runbook: undo a mistyped domain
+
+Teardown is inside-out, and each step refuses while the next one down still has
+something live on it — so the order is forced rather than remembered:
+
+```sh
+bullmoose admin account list --tenant t_home        # find accounts on the typo
+bullmoose admin account delete <accountId> --yes    # soft; frees the route
+bullmoose admin domain delete exmaple.com --yes     # refuses while a LIVE account remains
+bullmoose admin tenant delete t_home --yes          # only if the tenant is going too
+```
+
+`domain delete` unwinds the Cloudflare catch-all and the SES identity and
+prints a `✓/✗` line per step, in the same shape `domain add` uses. It
+deliberately does **not** delete DNS records (DKIM CNAMEs, MAIL FROM MX/SPF,
+`_dmarc`, the `_jmap._tcp` SRV) or disable Email Routing for the zone — both are
+reported as not-unwound rather than done silently, because the zone may carry
+other rules and the records may have been hand-edited.
+
+Tombstoned accounts do **not** block `domain delete` or `tenant delete`;
+`tenant delete` is the terminal verb that purges them, along with their
+principals, identities, tokens and credentials. The data plane (messages,
+calendars, contacts, R2 blobs) is never touched by any of this — it is a
+separate database, and nothing owns its teardown yet.
+
+If you only want mail to stop and want it reversible, suspend instead:
+
+```sh
+bullmoose admin domain suspend exmaple.com   # route keys parked; mail bounces 550
+bullmoose admin domain resume  exmaple.com   # restored, deliver-and-forward included
+```
+
+### Runbook: stop an agent, now
+
+An agent that is replying wrongly, looping, or spending is stopped by its
+binding, not by its token — revoking the token stops it *acting* while
+`services/ingest` keeps enqueueing a `pending` invocation on every delivery.
+
+```sh
+bullmoose admin agent list <account-email>          # binding ids
+bullmoose admin agent disable <binding-id>          # no --yes: this is the safe direction
+```
+
+Both the ingest enqueue path and the agent drain gate on `agent_bindings.enabled`,
+so this stops new invocations being created *and* stops queued ones running.
+Invocations already queued are **held, not cancelled** — the count is printed,
+and they resume on `bullmoose admin agent enable <binding-id>`. If they are
+stale by the time you re-enable, clear them first:
+
+```sh
+npx wrangler d1 execute bullmoose-mail-shard0 --remote \
+  --command "UPDATE agent_invocations SET status='failed', note='cleared by operator'
+             WHERE binding_id='<binding-id>' AND status='pending'"
+```
 
 ### GHA repo secrets
 

@@ -40,13 +40,23 @@ export const IMPLEMENTED = [
   "password",
   "tenant create",
   "tenant list",
+  "tenant rename",
+  "tenant delete",
   "domain add",
   "domain status",
   "domain list",
+  "domain suspend",
+  "domain resume",
+  "domain delete",
   "account create",
   "account list",
+  "account rename",
+  "account delete",
   "agent bind",
   "agent list",
+  "agent disable",
+  "agent enable",
+  "agent unbind",
   "grant create",
   "grant list",
   "grant revoke",
@@ -54,6 +64,22 @@ export const IMPLEMENTED = [
   "token list",
   "token revoke",
 ] as const;
+
+/**
+ * Verbs that cannot be undone by another verb here, and therefore refuse to
+ * run without `--yes`.
+ *
+ * Deliberately NOT an interactive prompt, which the unit file suggested: every
+ * other destructive verb on this surface (`grant revoke`, `token revoke`,
+ * `mailbox rm`) runs straight through, prompting breaks under `ssh host
+ * 'bullmoose …'` and in CI, and the I/O contract has no interactive posture to
+ * build on. `--dry-run` is the preview; `--yes` is the confirmation.
+ *
+ * The reversible verbs — `agent disable|enable`, `domain suspend|resume`, both
+ * renames — deliberately do NOT need it. Making the kill switch harder to pull
+ * than it has to be defeats the point of having one.
+ */
+const IRREVERSIBLE = new Set(["tenant delete", "domain delete", "account delete", "agent unbind"]);
 
 /** Designed, not built. Anything here must NOT appear in IMPLEMENTED. */
 export const DESIGNED = ["route", "identity", "policy", "suppression"] as const;
@@ -77,6 +103,12 @@ export interface AdminOpts extends IoOpts {
   book?: string;
   /** grant create: expiry in days. */
   expires?: string;
+  /** agent disable|enable|unbind: the binding's account, if its id is ambiguous. */
+  account?: string;
+  /** Required by the irreversible verbs; see IRREVERSIBLE. */
+  yes?: boolean;
+  /** account list: show tombstoned accounts too. */
+  includeDeleted?: boolean;
 }
 
 export async function cmdAdmin(
@@ -104,6 +136,7 @@ export async function cmdAdmin(
   }
 
   const api = adminApi(db);
+  requireConfirmation(`${noun} ${verb}`, opts);
 
   switch (`${noun} ${verb}`) {
     case "tenant create": {
@@ -120,6 +153,21 @@ export async function cmdAdmin(
       });
       return;
     }
+    case "tenant rename": {
+      if (!arg || !opts.name) usage("bullmoose admin tenant rename <tenantId> --name <new name>");
+      const res = await api("PATCH", `/tenants/${encodeURIComponent(arg)}`, { name: opts.name });
+      report(res, opts, () => out(`tenant ${arg} renamed to "${opts.name}"`));
+      return;
+    }
+    case "tenant delete": {
+      if (!arg) usage("bullmoose admin tenant delete <tenantId> --yes");
+      if (dryRun(opts, `delete tenant ${arg}`)) return;
+      const res = (await api("DELETE", `/tenants/${encodeURIComponent(arg)}`)) as {
+        deleted: boolean;
+      };
+      report(res, opts, () => out(`tenant ${arg} deleted`));
+      return;
+    }
     case "domain add": {
       if (!arg || !opts.tenant) usage("bullmoose admin domain add <domain> --tenant <tenantId>");
       const res = (await api("POST", "/domains", { tenantId: opts.tenant, domain: arg })) as {
@@ -127,9 +175,7 @@ export async function cmdAdmin(
         steps: Array<{ step: string; ok: boolean; detail?: string }>;
       };
       report(res, opts, () => {
-        for (const s of res.steps) {
-          out(`${s.ok ? "✓" : "✗"} ${s.step}${s.detail ? `  (${s.detail})` : ""}`);
-        }
+        printSteps(res.steps);
         note(res.ok ? `${arg} wired — poll: admin domain status ${arg}` : "some steps failed — re-run after fixing");
       });
       return;
@@ -152,6 +198,42 @@ export async function cmdAdmin(
       });
       return;
     }
+    case "domain suspend":
+    case "domain resume": {
+      const status = verb === "suspend" ? "suspended" : "active";
+      if (!arg) usage(`bullmoose admin domain ${verb} <domain>`);
+      if (dryRun(opts, `set ${arg} to ${status}`)) return;
+      const res = (await api("PATCH", `/domains/${encodeURIComponent(arg)}`, { status })) as {
+        previousStatus: string;
+        steps: Array<{ step: string; ok: boolean; detail?: string }>;
+      };
+      report(res, opts, () => {
+        printSteps(res.steps);
+        note(
+          status === "suspended"
+            ? `${arg} suspended — mail to it now bounces 550 5.1.1; undo with: admin domain resume ${arg}`
+            : `${arg} active again`,
+        );
+      });
+      return;
+    }
+    case "domain delete": {
+      if (!arg) usage("bullmoose admin domain delete <domain> --yes");
+      if (dryRun(opts, `delete domain ${arg}`)) return;
+      const res = (await api("DELETE", `/domains/${encodeURIComponent(arg)}`)) as {
+        ok: boolean;
+        steps: Array<{ step: string; ok: boolean; detail?: string }>;
+      };
+      report(res, opts, () => {
+        printSteps(res.steps);
+        note(
+          res.ok
+            ? `${arg} deleted`
+            : `${arg} deleted from bullmoose, but some external teardown failed — see the ✗ steps above`,
+        );
+      });
+      return;
+    }
     case "account create": {
       // arg is local@domain
       const [localpart, domain] = (arg ?? "").split("@");
@@ -164,20 +246,68 @@ export async function cmdAdmin(
         localpart,
         displayName: opts.name ?? localpart,
         ...(opts.principal ? { principalEmail: opts.principal } : {}),
-      })) as { accountId: string; address: string };
-      report(res, opts, () => out(`account ${res.accountId} created for ${res.address}`));
+      })) as { accountId: string; address: string; created: boolean };
+      // `POST /accounts` is idempotent since common/024: a retry ADOPTS the
+      // existing mailbox and answers `created: false`. Printing "created"
+      // unconditionally told an operator a second account had been built —
+      // the exact thing that guard exists to prevent.
+      report(res, opts, () =>
+        out(
+          res.created
+            ? `account ${res.accountId} created for ${res.address}`
+            : `account ${res.accountId} already exists for ${res.address} — nothing was created`,
+        ),
+      );
       return;
     }
     case "account list": {
-      const qs = opts.tenant ? `?tenant=${encodeURIComponent(opts.tenant)}` : "";
+      const params = new URLSearchParams();
+      if (opts.tenant) params.set("tenant", opts.tenant);
+      if (opts.includeDeleted) params.set("includeDeleted", "1");
+      const qs = params.size > 0 ? `?${params}` : "";
       const res = (await api("GET", `/accounts${qs}`)) as {
         accounts: Array<Record<string, unknown>>;
       };
       collection(res.accounts, opts, "id", () => {
         for (const a of res.accounts) {
-          out(`${a.id}  ${a.addresses ?? "(no identity)"}  "${a.display_name}"  shard=${a.shard}`);
+          const tomb = a.deleted_at ? `  DELETED ${new Date(a.deleted_at as number).toISOString().slice(0, 10)}` : "";
+          out(
+            `${a.id}  ${a.addresses ?? "(no identity)"}  "${a.display_name}"  shard=${a.shard}${tomb}`,
+          );
         }
         if (res.accounts.length === 0) note("(no accounts)");
+      });
+      return;
+    }
+    case "account rename": {
+      if (!arg || !opts.name) usage("bullmoose admin account rename <accountId> --name <display>");
+      const res = await api("PATCH", `/accounts/${encodeURIComponent(arg)}`, {
+        displayName: opts.name,
+      });
+      report(res, opts, () => out(`account ${arg} renamed to "${opts.name}"`));
+      return;
+    }
+    case "account delete": {
+      if (!arg) usage("bullmoose admin account delete <accountId> --yes");
+      if (dryRun(opts, `delete account ${arg}`)) return;
+      const res = (await api("DELETE", `/accounts/${encodeURIComponent(arg)}`)) as {
+        deleted: boolean;
+        addresses?: string[];
+        steps?: Array<{ step: string; ok: boolean; detail?: string }>;
+        retained?: string[];
+        note?: string;
+      };
+      report(res, opts, () => {
+        if (!res.deleted) {
+          note(res.note ?? `${arg} was already deleted`);
+          return;
+        }
+        printSteps(res.steps ?? []);
+        out(`account ${arg} deleted (${(res.addresses ?? []).join(", ") || "no addresses"})`);
+        // What a delete does NOT do is the part an operator has to know: the
+        // data plane is a different database and R2 has no GC path at all.
+        for (const line of res.retained ?? []) note(`  retained: ${line}`);
+        if (res.note) note(res.note);
       });
       return;
     }
@@ -216,6 +346,47 @@ export async function cmdAdmin(
           out(`${b.id}  ${b.name}  trigger=${b.trigger_on}  sla=${b.sla_seconds ?? "-"}  ${b.enabled ? "enabled" : "disabled"}`);
         }
         if (res.bindings.length === 0) note("(no bindings)");
+      });
+      return;
+    }
+    // ── the kill switch (.feedback/fromClaude/agentic/023) ──────────────
+    // Two verbs, not `agent set-enabled <bool>`: mid-incident the dangerous
+    // direction must be impossible to typo into its opposite.
+    case "agent disable":
+    case "agent enable": {
+      const enable = verb === "enable";
+      if (!arg) {
+        usage(
+          `bullmoose admin agent ${verb} <binding-id> [--account <account-email>]\n` +
+            "                       (binding ids come from: bullmoose admin agent list)",
+        );
+      }
+      if (dryRun(opts, `${verb} agent binding ${arg}`)) return;
+      const res = (await api(
+        "POST",
+        `/agent-bindings/${encodeURIComponent(arg)}/${verb}${accountQuery(opts)}`,
+      )) as { name: string; accountId: string; pendingInvocations: number; note: string };
+      report(res, opts, () => {
+        out(
+          `binding ${arg} (${res.name}) on ${res.accountId} is now ${enable ? "ENABLED" : "DISABLED"}`,
+        );
+        // Queued work is held, never cancelled — surfacing the count is what
+        // keeps that from becoming an invisible backlog.
+        note(res.note);
+        if (!enable) note(`re-enable with: bullmoose admin agent enable ${arg}`);
+      });
+      return;
+    }
+    case "agent unbind": {
+      if (!arg) usage("bullmoose admin agent unbind <binding-id> [--account <account-email>] --yes");
+      if (dryRun(opts, `unbind agent binding ${arg}`)) return;
+      const res = (await api(
+        "DELETE",
+        `/agent-bindings/${encodeURIComponent(arg)}${accountQuery(opts)}`,
+      )) as { name: string; steps: Array<{ step: string; ok: boolean; detail?: string }> };
+      report(res, opts, () => {
+        printSteps(res.steps);
+        out(`binding ${arg} (${res.name}) removed`);
       });
       return;
     }
@@ -396,4 +567,30 @@ function dryRun(opts: AdminOpts, what: string): boolean {
   note(`dry run: would ${what}; nothing was written`);
   if (opts.json) emitJson({ dryRun: true, action: what });
   return true;
+}
+
+/**
+ * Gate the irreversible verbs on `--yes`, before any request goes out.
+ *
+ * `--dry-run` is exempt: previewing a delete is how you decide to run it, and
+ * a preview that itself demands the confirmation flag is a preview nobody uses.
+ */
+function requireConfirmation(command: string, opts: AdminOpts): void {
+  if (!IRREVERSIBLE.has(command) || opts.yes || opts.dryRun) return;
+  usage(
+    `bullmoose admin ${command} cannot be undone — re-run with --yes\n` +
+      `       (or --dry-run to see what it would do first)`,
+  );
+}
+
+/** `?email=` narrows a binding id to one account; the worker 409s if an id is
+ * ambiguous, which is the only case that needs it. */
+function accountQuery(opts: AdminOpts): string {
+  return opts.account ? `?email=${encodeURIComponent(opts.account)}` : "";
+}
+
+/** The `steps[]` ok/detail shape `POST /domains` established, shared by every
+ * teardown route so create and delete read the same way. */
+function printSteps(steps: Array<{ step: string; ok: boolean; detail?: string }>): void {
+  for (const s of steps) out(`${s.ok ? "✓" : "✗"} ${s.step}${s.detail ? `  (${s.detail})` : ""}`);
 }
