@@ -4,6 +4,7 @@ import {
   type MethodDomain,
   type Principal,
 } from "@bullmoose/auth-core/principal";
+import { INTROSPECT_TOOLS } from "./introspectTools.js";
 import { ToolError } from "./jmapBridge.js";
 import { NOUN_TOOLS } from "./mcpNouns.js";
 import type { Env } from "./models.js";
@@ -231,7 +232,7 @@ const ANALYTICS_TOOLS: ToolDef[] = [
  * own gate, and so the read/write split is one list rather than a claim in
  * a comment.
  */
-export const TOOLS: ToolDef[] = [...ANALYTICS_TOOLS, ...NOUN_TOOLS];
+export const TOOLS: ToolDef[] = [...ANALYTICS_TOOLS, ...NOUN_TOOLS, ...INTROSPECT_TOOLS];
 
 export async function handleMcp(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") {
