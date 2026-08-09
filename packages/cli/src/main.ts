@@ -120,6 +120,16 @@ const parseCommandLine = () =>
       "oauth-scopes": { type: "string" },
       port: { type: "string" },
       days: { type: "string" },
+      // ---- calendar CRUD (sVOL 018) ----
+      title: { type: "string" },
+      start: { type: "string" },
+      duration: { type: "string" },
+      tz: { type: "string" },
+      "all-day": { type: "boolean", default: false },
+      rrule: { type: "string" },
+      calendar: { type: "string" },
+      occurrence: { type: "string" },
+      ics: { type: "boolean", default: false },
       sla: { type: "string" },
       allow: { type: "string" },
       "reply-mode": { type: "string" },
@@ -274,6 +284,16 @@ try {
       await cmdCalendar(db, positionals.slice(1), {
         account: opts.account,
         days: opts.days,
+        title: opts.title,
+        start: opts.start,
+        duration: opts.duration,
+        tz: opts.tz,
+        allDay: opts["all-day"],
+        rrule: opts.rrule,
+        calendar: opts.calendar,
+        occurrence: opts.occurrence,
+        ics: opts.ics,
+        force: opts.force,
         ...io,
       });
       break;

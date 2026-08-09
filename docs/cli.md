@@ -27,7 +27,7 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 | [`vacation`](#vacation) | manage the RFC 8621 vacation responder |
 | [`agent`](#agent) | run the homelab agent runtime, and trigger agents on demand |
 | [`contacts`](#contacts) | read and write the contacts core (vCard ⇄ JSContact) |
-| [`calendar`](#calendar) | browse the calendar core (JSCalendar; recurrence expanded server-side) |
+| [`calendar`](#calendar) | browse and edit the calendar core (JSCalendar; recurrence expanded server-side) |
 | [`creds`](#creds) | manage the write-only, envelope-encrypted credential vault |
 | [`log`](#log) | list messages from the local log |
 | [`search`](#search) | full-text search the local log (SQLite FTS5) |
@@ -435,23 +435,46 @@ See also: [`calendar`](#calendar), [`admin grant`](#admin)
 
 ## calendar
 
-browse the calendar core (JSCalendar; recurrence expanded server-side)
+browse and edit the calendar core (JSCalendar; recurrence expanded server-side)
 
 ```
-bullmoose calendar list | agenda [--days <n>]
+bullmoose calendar list | agenda | create | rename | rm | event … | export
 ```
+
+Read verbs (`list`, `agenda`) and CRUD over the live JMAP methods. An event body may come from flags (--title/--start/--duration/--tz/--all-day/--rrule), a JSON JSCalendar object, or an iCalendar VEVENT on stdin (`-`) or a path; --as forces the type. Recurrence is master-only: `event edit` changes the whole series; single-occurrence editing (--occurrence) is not yet implemented and refuses cleanly. An --rrule the server's expander cannot expand faithfully (e.g. FREQ=YEARLY;BYDAY=4TH) is rejected up front, naming the part, rather than written wrong.
 
 **Subcommands**
 
 - **list** — list calendars  
-  `calendar list [--json]`
-- **agenda** — upcoming occurrences, recurrence-expanded  
-  `calendar agenda [--days <n>] [--json]`
+  `calendar list [--json] [--ids]`
+- **agenda** — upcoming occurrences, recurrence-expanded; --ids yields the event ids  
+  `calendar agenda [--days <n>] [--json] [--ids]`
+- **create** — create a calendar  
+  `calendar create <name> [--dry-run] [--if-state <s>]`
+- **rename** — rename a calendar  
+  `calendar rename <id-or-name> <new-name>`
+- **rm** — delete a calendar; --force also removes its events  
+  `calendar rm <id-or-name> [--force] [--dry-run]`
+- **event create** — create an event from flags, JSON, or iCal  
+  `calendar event create [<file>|-] [--calendar <id-or-name>] [--title <t>] [--start <local>] [--duration <iso8601>] [--tz <iana>] [--all-day] [--rrule <RRULE>] [--as ical|json] [--dry-run]`
+- **event edit** — edit the whole series (the master)  
+  `calendar event edit <id> [--title …] [--start …] [--rrule …] [<patch.json>|-] [--if-state <s>]`
+- **event rm** — delete an event  
+  `calendar event rm <id> [--dry-run]`
+- **export** — dump events as iCalendar or NDJSON JSCalendar  
+  `calendar export [--ics] [--calendar <id-or-name>] [--json] [--ids]`
 
 **Examples**
 
 ```sh
 bullmoose calendar agenda --days 14
+bullmoose calendar create Work
+bullmoose calendar event create --title 'Standup' --start 2026-07-08T09:00:00 --duration PT15M --tz America/Chicago
+cat meeting.ics | bullmoose calendar event create - --calendar Work
+# `-` is explicit stdin
+bullmoose calendar export --ics > backup.ics
+# open in Apple Calendar to verify
+bullmoose calendar agenda --ids | xargs -n1 bullmoose calendar event rm --dry-run
 ```
 
 See also: [`contacts`](#contacts)
