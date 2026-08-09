@@ -7,7 +7,49 @@
 | **Impact** | **I3** — unlocks *and* human-verifiable |
 | **Owner** | `sVOL` |
 | **Depends on** | `001` (ToolDef scope+domain) · `002` (fake-D1 `.batch()`) |
-| **Status** | todo |
+| **Status** | **shipped** — `services/agent/src/emailTools.ts` + `emailTools.test.ts` (33 tests) |
+
+## What actually shipped, and where this file was overtaken
+
+Eight tools in a new module `services/agent/src/emailTools.ts`, spread into `TOOLS` by one
+line in `mcp.ts`. `jmapBridge.ts` now registers `registerEmailMethods` **and**
+`registerMailboxMethods` — the latter because `mailbox_list` and `email_move --role` both need
+`Mailbox/query`. The registry is private to the bridge and every `callJmap` method name is a
+string literal, so registering the module does not expose `Mailbox/set`.
+
+Three claims in the sections below were true when this unit was written and are **not true
+now**; they are left in place per the readme's "argue with it, don't delete it" rule:
+
+1. **`common/003` is FIXED.** `Email/set` derives scope per operation via
+   `requiredScopesForEmailSet` (`email.ts:241`) through `requireAccountScopes`. So the
+   "declared scopes are stricter than the method" discussion, and the instruction to
+   *additionally* require `draft` on `email_move`/`email_set_keywords`, are both obsolete —
+   doing that now would be strictly wrong. Tool and method charge the same verb.
+   **Open question 3 is closed.**
+2. **`common/001` is FIXED**, so `mail` is a bundle of the six mail verbs rather than a
+   wildcard, and the scope table below actually bites.
+3. **`004` (`Mailbox/set`) has landed**, so the "this unit does not depend on 004" section is
+   still correct but no longer load-bearing.
+
+Deviations from *What to build*, each deliberate:
+
+- **No `thread_get`.** Open question 5 argues against it (a snapshot no client can
+  incrementally refresh, since `Thread/changes` is unregistered) and the grid does not credit
+  the cell here. Omitted rather than shipped-and-regretted.
+- **No separate archive tool.** `email_move` takes either `mailboxId` or `role`, so archive,
+  file and trash are one tool with one scope. A separate `email_archive` would have been a
+  third name for the same `move` authority.
+- **`email_move` is a whole-property `mailboxIds` replacement**, not `mailboxIds/<id>: true`.
+  Adding a destination without clearing the source is a copy, not a move; "file this in
+  Archive" must take it out of the Inbox.
+- **`email_destroy` requires `confirm: true`** rather than shipping disabled. The refusal
+  names `email_move role=trash` as the reversible thing a human usually means.
+
+⚠️ **`move` does not imply `read`.** `hasScope` treats the six verbs as a flat SET, despite the
+lattice being written `read < annotate < draft < move < send < delete` everywhere. A
+`move`-only token therefore cannot resolve a role to a mailbox id (that is a `Mailbox/query`),
+so `email_move` accepts an explicit `mailboxId` for that case and the refusal says so. Worth
+knowing before anyone writes `<` in a doc again and expects it to behave like an order.
 
 ## Cells covered
 
