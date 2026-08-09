@@ -10,7 +10,7 @@
 >
 > | Was | Now |
 > |---|---|
-> | 2 test files, 19 tests | **29 test files, 721 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
+> | 2 test files, 19 tests | **31 test files, 769 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
 > | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
 > | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
 > | test files excluded from typecheck | typechecked in both configs |
@@ -85,7 +85,7 @@ Core/echo
 Mailbox         get changes query queryChanges set
 Email           get query set import changes queryChanges
 Thread          get                                      ← no changes
-Identity        get                                      ← no set
+Identity        get set changes
 EmailSubmission set get changes
 AgentInvocation query get set changes
 VacationResponse get set
@@ -120,7 +120,7 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
 | **Agents** | `-RU-` ¹³ | `-RU-` | `----` | n/a | `----` | `----` | `C---` ¹⁴ |
 | **Secrets** | n/a ¹⁵ | `CRUD` ¹⁶ | `----` | n/a | `----` | `----` | n/a |
 | **HumanSettings** | `~R~-` ¹⁷ | `-RU-` | `----` | n/a | `----` | `----` | n/a |
-| **IdentitySetup** | `CR-D` ¹⁸ | `CR-D` | `----` | `~` ¹⁹ | `----` | `----` | n/a |
+| **IdentitySetup** | `CRUD` ¹⁸ | `CRUD` | `----` | `~` ¹⁹ | `----` | `----` | n/a |
 | **SystemAdmin** | `CR~~` ²⁰ | `CR~~` | `----` | n/a | `----` | `----` | n/a |
 
 **Footnotes — the ones that matter:**
@@ -316,7 +316,7 @@ is the only thing that catches this failure mode, and it is now cheap.
 
 ## 5. Test infrastructure — the honest state
 
-**29 test files, 721 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
+**31 test files, 769 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
 worktree agents: without it Node's upward `node_modules` lookup escapes the worktree and

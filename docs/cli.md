@@ -36,6 +36,7 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 | [`mailbox`](#mailbox) | create, rename, move and remove folders (over JMAP) |
 | [`blobs`](#blobs) | see and remove the objects this account stores in R2 |
 | [`share`](#share) | list and revoke the expiring public links this account has minted |
+| [`identity`](#identity) | send-as addresses and mail signatures (over JMAP) |
 | [`admin`](#admin) | operator surface — wraps the provision worker (separate credentials) |
 
 ## Global options
@@ -622,6 +623,57 @@ bullmoose share revoke sh_4c1f…
 ```
 
 See also: [`blobs`](#blobs), [`send`](#send)
+
+## identity
+
+send-as addresses and mail signatures (over JMAP)
+
+```
+bullmoose identity list | show <id> | signature <id> [--text <file|->] | add <email> | rm <id>
+```
+
+The addresses this account may put in From:, and the signature attached to each. An <id> is an identity id or its email address. `signature` reads the signature from --text (a file, or - for stdin), from --html for the HTML alternative, or from a bare pipe; --clear removes both. `send` inserts the signature itself, below the RFC 3676 "-- " separator, because RFC 8621 defines it as something the client inserts — a third-party JMAP client will not apply it. `add` refuses an address that is not on one of your tenant's active domains, and `rm` refuses the account's provisioned primary.
+
+**Subcommands**
+
+- **list** — every send-as address (primary first)  
+  `identity list`
+- **show** — one identity, with its signature  
+  `identity show <id-or-email>`
+- **signature** — set or clear the signature  
+  `identity signature <id-or-email> [--text <file|->] [--html <file>] [--clear]`
+- **add** — add a send-as address on an active domain  
+  `identity add <email> [--name <n>] [--reply-to <addr>] [--bcc <addr>]`
+- **rm** — remove a send-as address (never the primary)  
+  `identity rm <id-or-email>`
+
+| flag | description |
+|---|---|
+| `--text <file\|->` | plain-text signature source; - is stdin |
+| `--html <file\|->` | HTML signature source (a snippet, not a document) |
+| `--clear` | on signature: remove both signatures |
+| `--name <n>` | display name for add |
+| `--reply-to <addr>` | Reply-To for mail sent from this identity |
+| `--bcc <addr>` | silent Bcc for mail sent from this identity |
+| `--if-state <state>` | refuse the write (exit 5) if the account has moved on since <state> |
+| `--dry-run` | resolve the identity and report; write nothing |
+
+**Examples**
+
+```sh
+bullmoose identity list
+bullmoose identity signature default --text ~/.signature
+printf 'Eric\nbullmoose.cc\n' | bullmoose identity signature default
+# a bare pipe is the signature
+bullmoose send --to you@example.com --subject hi --body test
+# the signature travels with it
+bullmoose identity add hello@example.com --name Sales
+bullmoose send --to a@b.com --identity hello@example.com --subject hi --body test
+bullmoose identity rm hello@example.com --dry-run
+# resolves the address, writes nothing
+```
+
+See also: [`send`](#send), [`vacation`](#vacation), [`accounts`](#accounts)
 
 ## admin
 

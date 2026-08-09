@@ -111,10 +111,34 @@ export interface EmailQuery {
   calculateTotal?: boolean;
 }
 
+/**
+ * A row of `identities` — the addresses an account may send as.
+ *
+ * Widened by sVOL 006. `services/agent/src/index.ts` and
+ * `EmailSubmission/set` both read `.id`/`.email` only, so the extra
+ * properties are additive for them.
+ */
 export interface IdentityRow {
   id: string;
   email: string;
   name: string;
+  /** RFC 8621 §6.1 replyTo — `null` means unset, not "empty list". */
+  replyTo: EmailAddress[] | null;
+  bcc: EmailAddress[] | null;
+  textSignature: string;
+  htmlSignature: string;
+  /** False for the provisioned primary: `Identity/set` refuses to destroy it. */
+  mayDelete: boolean;
+}
+
+/** The writable half of an identity — everything except `id` and `email`. */
+export interface IdentityColumns {
+  name?: string;
+  reply_to_json?: string | null;
+  bcc_json?: string | null;
+  text_signature?: string;
+  html_signature?: string;
+  may_delete?: number;
 }
 
 export interface AddressBookRow {
@@ -1867,10 +1891,98 @@ export class Mailstore {
 
   async getIdentities(accountId: string): Promise<IdentityRow[]> {
     const { results } = await this.db
-      .prepare(`SELECT id, email, name FROM identities WHERE account_id = ?`)
+      .prepare(
+        `SELECT id, email, name, reply_to_json, bcc_json, text_signature,
+                html_signature, may_delete
+         FROM identities WHERE account_id = ? ORDER BY may_delete, email`,
+      )
       .bind(accountId)
-      .all<IdentityRow>();
-    return results;
+      .all<{
+        id: string;
+        email: string;
+        name: string;
+        reply_to_json: string | null;
+        bcc_json: string | null;
+        text_signature: string;
+        html_signature: string;
+        may_delete: number;
+      }>();
+    return results.map((r) => ({
+      id: r.id,
+      email: r.email,
+      name: r.name,
+      replyTo: r.reply_to_json === null ? null : (JSON.parse(r.reply_to_json) as EmailAddress[]),
+      bcc: r.bcc_json === null ? null : (JSON.parse(r.bcc_json) as EmailAddress[]),
+      textSignature: r.text_signature,
+      htmlSignature: r.html_signature,
+      mayDelete: r.may_delete === 1,
+    }));
+  }
+
+  /**
+   * Bare SQL, no invariants — `Identity/set` owns the validation (the
+   * active-domain check, immutable `email`, the undeletable primary). The
+   * `UNIQUE (account_id, email)` index is deliberately left to raise, so a
+   * duplicate address is caught by the database rather than by a
+   * read-then-write race in the method.
+   */
+  async insertIdentity(
+    accountId: string,
+    row: { id: string; email: string; name: string } & IdentityColumns,
+  ): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO identities
+           (id, account_id, email, name, reply_to_json, bcc_json,
+            text_signature, html_signature, may_delete)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        row.id,
+        accountId,
+        row.email,
+        row.name,
+        row.reply_to_json ?? null,
+        row.bcc_json ?? null,
+        row.text_signature ?? "",
+        row.html_signature ?? "",
+        row.may_delete ?? 1,
+      )
+      .run();
+  }
+
+  async updateIdentity(
+    accountId: string,
+    id: string,
+    columns: IdentityColumns,
+  ): Promise<void> {
+    const entries = Object.entries(columns);
+    if (entries.length === 0) return;
+    const set = entries.map(([c]) => `${c} = ?`).join(", ");
+    await this.db
+      .prepare(`UPDATE identities SET ${set} WHERE account_id = ? AND id = ?`)
+      .bind(...entries.map(([, v]) => v), accountId, id)
+      .run();
+  }
+
+  async deleteIdentity(accountId: string, id: string): Promise<void> {
+    await this.db
+      .prepare(`DELETE FROM identities WHERE account_id = ? AND id = ?`)
+      .bind(accountId, id)
+      .run();
+  }
+
+  /**
+   * Is `domain` wired to this tenant and sending? The `identities` DDL has
+   * always said "must be on an active domain" and nothing enforced it;
+   * `Identity/set` create does, using this.
+   */
+  async isActiveDomain(tenantId: string, domain: string): Promise<boolean> {
+    const row = await this.db
+      .prepare(`SELECT 1 AS ok FROM domains WHERE domain = ? AND tenant_id = ? AND status = 'active'`)
+      .bind(domain.toLowerCase(), tenantId)
+      .first<{ ok: number }>();
+    return row?.ok === 1;
   }
 
   // ---- EmailSubmissions ----------------------------------------------

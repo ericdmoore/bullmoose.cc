@@ -43,6 +43,7 @@ import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
 import { cmdCalendar } from "./calendar.js";
 import { cmdMailbox } from "./mailbox.js";
+import { appendHtmlSignature, appendTextSignature, cmdIdentity, type JmapIdentity } from "./identity.js";
 import { cmdBlobs, cmdShare } from "./blobs.js";
 import { findCommand, helpJson, renderCommand, renderMan, renderMarkdown, renderOverview } from "./help.js";
 
@@ -88,6 +89,11 @@ const parseCommandLine = () =>
       expandMD: { type: "string", default: "no" },
       linkMax: { type: "string", default: "4" },
       linkTTL: { type: "string", default: "30" },
+      // ---- identity (sVOL 006) ----
+      text: { type: "string" },
+      html: { type: "string" },
+      clear: { type: "boolean", default: false },
+      "reply-to": { type: "string" },
       identity: { type: "string" },
       config: { type: "string" },
       once: { type: "boolean", default: false },
@@ -291,6 +297,18 @@ try {
         ...io,
       });
       break;
+    case "identity":
+      await cmdIdentity(db, positionals.slice(1), {
+        account: opts.account,
+        name: opts.name,
+        text: opts.text,
+        html: opts.html,
+        clear: opts.clear ?? false,
+        "reply-to": opts["reply-to"],
+        bcc: opts.bcc,
+        ...io,
+      });
+      break;
     case "blobs":
       await cmdBlobs(db, positionals.slice(1), { account: opts.account, ...io });
       break;
@@ -491,7 +509,7 @@ async function cmdSend(): Promise<void> {
 
   // Identity: --identity by id or email, else the first one.
   const idRes = await client.one("Identity/get", { accountId: sendAccount, ids: null });
-  const identities = idRes.list as Array<{ id: string; email: string; name: string }>;
+  const identities = idRes.list as JmapIdentity[];
   // Same rule as --account: an explicit selector that matches nothing is an
   // error. Only the absence of a selector falls back to the first identity.
   const identity = opts.identity
@@ -504,6 +522,15 @@ async function cmdSend(): Promise<void> {
       `identity ${opts.identity ?? opts.from ?? "(default)"} not found; available: ${identities.map((i) => i.email).join(", ")}`,
     );
   }
+
+  // The signature is applied HERE, in the client, where the MIME is built —
+  // RFC 8621 §6.1 defines textSignature as "a signature the client SHOULD
+  // insert", and this repo's write path leaves no honest alternative:
+  // `EmailSubmission/set` hands the submit worker an already-imported blob id,
+  // and the worker relays those exact R2 bytes to SES without ever parsing
+  // MIME. Injecting a signature there would mean the message in Sent — the one
+  // `Email/get` returns — is not the message the recipient received.
+  const signedBody = appendTextSignature(body, identity.textSignature ?? "");
 
   // Role mailboxes for the draft → Sent dance.
   const mbRes = await client.one("Mailbox/get", { accountId: sendAccount, ids: null });
@@ -546,8 +573,15 @@ async function cmdSend(): Promise<void> {
       subject,
       messageId: `${crypto.randomUUID()}@${identity.email.split("@")[1] ?? "localhost"}`,
       date: new Date(),
-      text: assets.text,
-      html: assets.html,
+      // Both alternatives carry it, or the signature appears in one half of a
+      // multipart/alternative and not the other, depending on which part the
+      // recipient's client renders.
+      text: appendTextSignature(assets.text, identity.textSignature ?? ""),
+      html: appendHtmlSignature(
+        assets.html,
+        identity.htmlSignature ?? "",
+        identity.textSignature ?? "",
+      ),
       inline: assets.inline,
       attachments: assets.attachments,
     });
@@ -583,7 +617,7 @@ async function cmdSend(): Promise<void> {
           ...(cc.length > 0 ? { cc } : {}),
           ...(bcc.length > 0 ? { bcc } : {}),
           subject,
-          bodyValues: { t: { value: body } },
+          bodyValues: { t: { value: signedBody } },
           textBody: [{ partId: "t", type: "text/plain" }],
         },
       },
