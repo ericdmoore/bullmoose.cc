@@ -10,6 +10,46 @@ export interface Session {
   username: string;
 }
 
+/** One stored object, as `GET /api/blobs/{accountId}` reports it. */
+export interface BlobEntry {
+  blobId: string;
+  size: number;
+  uploaded: string;
+}
+
+export interface BlobListing {
+  accountId: string;
+  blobs: BlobEntry[];
+  totalSize: number;
+  cursor?: string;
+}
+
+/** One minted share link, as `GET /api/shares/{accountId}` reports it. */
+export interface ShareEntry {
+  shareId: string;
+  blobId: string;
+  name: string;
+  type?: string;
+  expiresAt: string;
+  createdAt: string;
+  revokedAt?: string;
+  /** Unrevoked and unexpired — i.e. this URL still resolves. */
+  live: boolean;
+}
+
+export interface ShareListing {
+  accountId: string;
+  shares: ShareEntry[];
+}
+
+export interface RevokeResult {
+  shareId: string;
+  revoked: boolean;
+  alreadyRevoked: boolean;
+  blobId: string | null;
+  note: string;
+}
+
 const USING = [
   "urn:ietf:params:jmap:core",
   "urn:ietf:params:jmap:mail",
@@ -97,6 +137,62 @@ export class JmapClient {
     );
     if (!res.ok) throw new Error(`share link failed: HTTP ${res.status} ${await res.text()}`);
     return (await res.json()) as { url: string; expiresAt: string };
+  }
+
+  // ---- blob + share lifecycle (sVOL 010) -------------------------------
+  //
+  // These hardcode paths on `this.base`, as `upload` and `createShareLink`
+  // already do. `downloadBlob` resolves through the session's `downloadUrl`
+  // template because RFC 8620 §2 defines one; there is no session template for
+  // blob enumeration, delete, or share management, so there is nothing to
+  // resolve through. Adding non-standard members to the session resource to
+  // create one would be worse than this.
+
+  /** Every object stored for the account — the only way to see what R2 holds. */
+  async listBlobs(accountId: string): Promise<BlobListing> {
+    return this.getJson<BlobListing>(`/api/blobs/${encodeURIComponent(accountId)}`, "blobs list");
+  }
+
+  /** Explicit single-blob delete. Refused (409) if mail or a share needs it. */
+  async deleteBlob(accountId: string, blobId: string): Promise<{ blobId: string }> {
+    return this.sendJson<{ blobId: string }>(
+      "DELETE",
+      `/api/blobs/${encodeURIComponent(accountId)}/${encodeURIComponent(blobId)}`,
+      "blobs rm",
+    );
+  }
+
+  /** Every share link the server still has a record of, live or revoked. */
+  async listShares(accountId: string): Promise<ShareListing> {
+    return this.getJson<ShareListing>(
+      `/api/shares/${encodeURIComponent(accountId)}`,
+      "share list",
+    );
+  }
+
+  /** The kill switch. Eventually consistent — see the note in the response. */
+  async revokeShare(accountId: string, shareId: string): Promise<RevokeResult> {
+    return this.sendJson<RevokeResult>(
+      "POST",
+      `/api/shares/${encodeURIComponent(accountId)}/${encodeURIComponent(shareId)}/revoke`,
+      "share revoke",
+    );
+  }
+
+  private async getJson<T>(path: string, what: string): Promise<T> {
+    return this.sendJson<T>("GET", path, what);
+  }
+
+  /**
+   * The server answers a refusal with a JSON body that names the reason
+   * (`blob in use` + the message ids, `blob shared` + the share ids). Surface
+   * that verbatim — a bare "HTTP 409" would drop the one part a human needs.
+   */
+  private async sendJson<T>(method: string, path: string, what: string): Promise<T> {
+    const res = await fetch(`${this.base}${path}`, { method, headers: this.headers() });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`${what} failed: HTTP ${res.status} ${text}`);
+    return JSON.parse(text) as T;
   }
 
   async downloadBlob(accountId: string, blobId: string): Promise<Uint8Array> {

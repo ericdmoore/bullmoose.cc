@@ -6,6 +6,16 @@ import { authenticate, accountAccess, principalHasScope, type AuthEnv } from "./
 import { handleLogin, handleTokens } from "./authRoutes";
 import { buildSession } from "./session";
 import { buildRegistry, type RequestContext } from "./methods";
+import {
+  getShareRecord,
+  isLive,
+  listShareRecords,
+  liveSharesForBlob,
+  newShareId,
+  putShareRecord,
+  revokeShareRecord,
+  type ShareRecord,
+} from "./shares";
 
 // The AccountDO class must be exported from the worker that declares it
 // in wrangler.jsonc; ingest/submit bind it via script_name.
@@ -14,7 +24,10 @@ export { AccountDO } from "@bullmoose/account-do";
 export interface Env extends AuthEnv {
   DB: D1Database;
   BLOBS: R2Bucket;
-  /** Route hot copy; also holds the `login:` /auth/login throttle windows. */
+  /**
+   * Route hot copy; also holds the `login:` /auth/login throttle windows and
+   * the `share:` mint records that make share links revocable (shares.ts).
+   */
   ROUTES: KVNamespace;
   ACCOUNT_DO: DurableObjectNamespace;
   /** Service binding to bullmoose-submit for EmailSubmission sends. */
@@ -79,11 +92,47 @@ export default {
       return handleUpload(request, url, env, principal);
     }
 
+    // Share-link lifecycle. NOTE the trailing "s": "/api/shares/" and
+    // "/api/share/" are disjoint prefixes (they differ at index 10), so the
+    // order below is for readers, not for correctness.
+    //   GET  /api/shares/{accountId}                    — enumerate
+    //   POST /api/shares/{accountId}/{shareId}/revoke   — the kill switch
+    if (url.pathname.startsWith("/api/shares/")) {
+      if (request.method === "GET") {
+        if (!principalHasScope(principal, "read")) return json({ error: "forbidden" }, 403);
+        return handleShareList(url, env, principal);
+      }
+      if (request.method === "POST") {
+        // `delete` — revoking destroys a capability. Deliberately the same
+        // tier as minting (`draft`): both are covered by the `mail` bundle, so
+        // no token can create a link it is then unable to kill. A gate that
+        // made revocation HARDER than minting would be the wrong way round.
+        if (!principalHasScope(principal, "delete")) return json({ error: "forbidden" }, 403);
+        return handleShareRevoke(url, env, principal);
+      }
+      return json({ error: "method not allowed" }, 405);
+    }
+
     // Mint an expiring public link for an already-uploaded blob:
     // POST /api/share/{accountId}/{blobId}  {name, type?, ttlSeconds?}
     if (request.method === "POST" && url.pathname.startsWith("/api/share/")) {
       if (!principalHasScope(principal, "draft")) return json({ error: "forbidden" }, 403);
       return handleShareCreate(request, url, env, principal);
+    }
+
+    // Blob lifecycle:
+    //   GET    /api/blobs/{accountId}            — enumerate
+    //   DELETE /api/blobs/{accountId}/{blobId}   — explicit delete, refcounted
+    if (url.pathname.startsWith("/api/blobs/")) {
+      if (request.method === "GET") {
+        if (!principalHasScope(principal, "read")) return json({ error: "forbidden" }, 403);
+        return handleBlobList(url, env, principal);
+      }
+      if (request.method === "DELETE") {
+        if (!principalHasScope(principal, "delete")) return json({ error: "forbidden" }, 403);
+        return handleBlobDelete(url, env, principal);
+      }
+      return json({ error: "method not allowed" }, 405);
     }
 
     // Push: proxy the WebSocket straight to the account's Durable Object.
@@ -168,6 +217,21 @@ async function handleUpload(
 const SHARE_DEFAULT_TTL = 30 * 24 * 3600; // 30 days
 const SHARE_MAX_TTL = 90 * 24 * 3600;
 
+/**
+ * The signed payload now ends in `shareId`.
+ *
+ * That binding is what stops a holder of one valid link from swapping in
+ * another account's share id to dodge a revocation: the id is not a free
+ * parameter, it is part of what was signed.
+ *
+ * ⚠️ IT IS ALSO A ONE-TIME FLUSH. Links minted before this change carry a
+ * signature over the old five-field payload and no longer verify — they 403.
+ * That is the intended outcome, not collateral: the state this unit exists to
+ * fix is that nobody knows what links are out there, and every surviving old
+ * link is one more unknown that can never be enumerated or revoked. Accepting
+ * both payload shapes during a window would preserve exactly the population
+ * we cannot account for. See unit `010` Open Question #5.
+ */
 async function shareSignature(
   key: string,
   tenantId: string,
@@ -175,6 +239,7 @@ async function shareSignature(
   blobId: string,
   name: string,
   exp: number,
+  shareId: string,
 ): Promise<string> {
   const hmacKey = await crypto.subtle.importKey(
     "raw",
@@ -183,7 +248,7 @@ async function shareSignature(
     false,
     ["sign"],
   );
-  const payload = `${tenantId}:${accountId}:${blobId}:${name}:${exp}`;
+  const payload = `${tenantId}:${accountId}:${blobId}:${name}:${exp}:${shareId}`;
   const sig = await crypto.subtle.sign("HMAC", hmacKey, new TextEncoder().encode(payload));
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -204,18 +269,48 @@ async function handleShareCreate(
   const name = (body.name ?? "file").replaceAll("/", "_");
   const ttl = Math.min(Math.max(60, body.ttlSeconds ?? SHARE_DEFAULT_TTL), SHARE_MAX_TTL);
 
-  // Verify the blob exists before minting a link to it.
+  // Verify the blob exists before minting a link to it. `head` — this only
+  // needs a boolean, and `getBlob` streamed the whole object to get one.
   const store = new Mailstore(env.DB, env.BLOBS);
-  const head = await store.getBlob(access.tenantId, accountId, blobId);
+  const head = await store.headBlob(access.tenantId, accountId, blobId);
   if (!head) return json({ error: "blob not found" }, 404);
 
-  const exp = Math.floor(Date.now() / 1000) + ttl;
-  const sig = await shareSignature(env.SHARE_SIGNING_KEY, access.tenantId, accountId, blobId, name, exp);
+  const now = Date.now();
+  const exp = Math.floor(now / 1000) + ttl;
+  const shareId = newShareId();
+  const sig = await shareSignature(
+    env.SHARE_SIGNING_KEY,
+    access.tenantId,
+    accountId,
+    blobId,
+    name,
+    exp,
+    shareId,
+  );
+
+  // Record BEFORE returning the URL. If the KV write fails the mint fails,
+  // and the caller gets no link — the alternative is handing out a URL that
+  // deny-by-default will refuse, which looks like a broken link rather than
+  // a failed mint, and would be unrevocable in exactly the way this unit
+  // exists to end.
+  const record: ShareRecord = {
+    shareId,
+    tenantId: access.tenantId,
+    accountId,
+    blobId,
+    name,
+    ...(body.type ? { type: body.type } : {}),
+    exp,
+    createdAt: now,
+  };
+  await putShareRecord(env.ROUTES, record, now);
+
   const shareUrl =
     `${url.origin}/share/${access.tenantId}/${accountId}/${blobId}/${encodeURIComponent(name)}` +
-    `?exp=${exp}&sig=${sig}${body.type ? `&type=${encodeURIComponent(body.type)}` : ""}`;
+    `?exp=${exp}&sid=${shareId}&sig=${sig}` +
+    (body.type ? `&type=${encodeURIComponent(body.type)}` : "");
 
-  return json({ url: shareUrl, expiresAt: new Date(exp * 1000).toISOString() });
+  return json({ url: shareUrl, shareId, expiresAt: new Date(exp * 1000).toISOString() });
 }
 
 async function handleShareDownload(url: URL, env: Env): Promise<Response> {
@@ -223,14 +318,35 @@ async function handleShareDownload(url: URL, env: Env): Promise<Response> {
   const [, , tenantId, accountId, blobId, encodedName] = url.pathname.split("/");
   const exp = Number(url.searchParams.get("exp"));
   const sig = url.searchParams.get("sig") ?? "";
+  // `sid` is deliberately NOT in the required-fields check: a missing one
+  // signs as "" and fails the HMAC, so stripping it returns the same 403 as
+  // forging it. A 400 here would tell a prober that `sid` is load-bearing.
+  const shareId = url.searchParams.get("sid") ?? "";
   if (!tenantId || !accountId || !blobId || !encodedName || !Number.isFinite(exp)) {
     return json({ error: "bad share link" }, 400);
   }
   const name = decodeURIComponent(encodedName);
 
-  const expected = await shareSignature(env.SHARE_SIGNING_KEY, tenantId, accountId, blobId, name, exp);
+  const expected = await shareSignature(
+    env.SHARE_SIGNING_KEY,
+    tenantId,
+    accountId,
+    blobId,
+    name,
+    exp,
+    shareId,
+  );
   if (!timingSafeEqualHex(sig, expected)) return json({ error: "invalid signature" }, 403);
   if (exp * 1000 < Date.now()) return json({ error: "link expired" }, 410);
+
+  // The kill switch. Absent record and revoked record are the SAME refusal as
+  // a forged signature — identical status and identical body — so the route
+  // is not an oracle for which share ids exist. Deny-by-default: a link is
+  // served only while the system can still account for it.
+  const record = await getShareRecord(env.ROUTES, accountId, shareId);
+  if (!record || record.revokedAt !== undefined) {
+    return json({ error: "invalid signature" }, 403);
+  }
 
   const store = new Mailstore(env.DB, env.BLOBS);
   const obj = await store.getBlob(tenantId, accountId, blobId);
@@ -245,6 +361,155 @@ async function handleShareDownload(url: URL, env: Env): Promise<Response> {
       "cache-control": "private, max-age=3600",
     },
   });
+}
+
+// ---- share enumeration + revocation -----------------------------------
+//
+// Both refuse with 501 when SHARE_SIGNING_KEY is unset, matching the two
+// handlers above: a deployment without the key has no sharing at all, and
+// "sharing not configured" is a better answer than an empty list that looks
+// like "you have no links".
+
+/** GET /api/shares/{accountId} */
+async function handleShareList(
+  url: URL,
+  env: Env,
+  principal: RequestContext["principal"],
+): Promise<Response> {
+  if (!env.SHARE_SIGNING_KEY) return json({ error: "sharing not configured" }, 501);
+  const [, , , accountId] = url.pathname.split("/");
+  if (!accountId) return json({ error: "bad shares path" }, 400);
+  if (!accountAccess(principal, accountId)) return json({ error: "unknown account" }, 404);
+
+  const now = Date.now();
+  const records = await listShareRecords(env.ROUTES, accountId);
+  return json({
+    accountId,
+    shares: records.map((r) => ({
+      shareId: r.shareId,
+      blobId: r.blobId,
+      name: r.name,
+      ...(r.type ? { type: r.type } : {}),
+      expiresAt: new Date(r.exp * 1000).toISOString(),
+      createdAt: new Date(r.createdAt).toISOString(),
+      ...(r.revokedAt !== undefined
+        ? { revokedAt: new Date(r.revokedAt).toISOString() }
+        : {}),
+      live: isLive(r, now),
+    })),
+  });
+}
+
+/** POST /api/shares/{accountId}/{shareId}/revoke */
+async function handleShareRevoke(
+  url: URL,
+  env: Env,
+  principal: RequestContext["principal"],
+): Promise<Response> {
+  if (!env.SHARE_SIGNING_KEY) return json({ error: "sharing not configured" }, 501);
+  const [, , , accountId, shareId, verb] = url.pathname.split("/");
+  if (!accountId || !shareId || verb !== "revoke") {
+    return json({ error: "bad revoke path" }, 400);
+  }
+  if (!accountAccess(principal, accountId)) return json({ error: "unknown account" }, 404);
+
+  const { outcome, record } = await revokeShareRecord(env.ROUTES, accountId, shareId);
+  if (outcome === "notFound") return json({ error: "unknown share" }, 404);
+  return json({
+    shareId,
+    revoked: true,
+    alreadyRevoked: outcome === "alreadyRevoked",
+    blobId: record?.blobId ?? null,
+    // KV is eventually consistent. Say so here so the CLI can repeat it to a
+    // human rather than leaving them to discover it on a reload.
+    note: "revoked; KV propagation may take up to ~60s at other edges",
+  });
+}
+
+// ---- blob enumeration + delete -----------------------------------------
+
+/** GET /api/blobs/{accountId}?cursor&limit */
+async function handleBlobList(
+  url: URL,
+  env: Env,
+  principal: RequestContext["principal"],
+): Promise<Response> {
+  const [, , , accountId] = url.pathname.split("/");
+  if (!accountId) return json({ error: "bad blobs path" }, 400);
+  const access = accountAccess(principal, accountId);
+  if (!access) return json({ error: "unknown account" }, 404);
+
+  const rawLimit = Number(url.searchParams.get("limit"));
+  const store = new Mailstore(env.DB, env.BLOBS);
+  const page = await store.listBlobs(access.tenantId, accountId, {
+    ...(url.searchParams.get("cursor") ? { cursor: url.searchParams.get("cursor")! } : {}),
+    ...(Number.isFinite(rawLimit) && rawLimit > 0 ? { limit: Math.min(rawLimit, 1000) } : {}),
+  });
+  return json({
+    accountId,
+    blobs: page.blobs,
+    totalSize: page.blobs.reduce((n, b) => n + b.size, 0),
+    ...(page.cursor ? { cursor: page.cursor } : {}),
+  });
+}
+
+/**
+ * DELETE /api/blobs/{accountId}/{blobId}
+ *
+ * Refuses rather than cascades, in both directions:
+ *
+ *  - a blob still referenced by a message → 409, because content addressing
+ *    means the object may back several messages and deleting it would break
+ *    every one of them;
+ *  - a blob with a live share link → 409, because the alternative is a link
+ *    that silently starts returning 410 gone. `handleShareDownload` already
+ *    does return 410 for a missing object, which is honest — but arriving
+ *    there by accident is worse than being told to revoke first.
+ *
+ * 🚧 This is EXPLICIT delete only. The GC sweep is deliberately not here:
+ * `s03.B` T1 owns blob pinning, and a sweep written before pinning exists
+ * would delete FileNode-backed blobs the moment Files ships.
+ */
+async function handleBlobDelete(
+  url: URL,
+  env: Env,
+  principal: RequestContext["principal"],
+): Promise<Response> {
+  const [, , , accountId, blobId] = url.pathname.split("/");
+  if (!accountId || !blobId) return json({ error: "bad blob path" }, 400);
+  const access = accountAccess(principal, accountId);
+  if (!access) return json({ error: "unknown account" }, 404);
+
+  const store = new Mailstore(env.DB, env.BLOBS);
+  const head = await store.headBlob(access.tenantId, accountId, blobId);
+  if (!head) return json({ error: "blob not found" }, 404);
+
+  const referencedBy = await store.blobReferences(accountId, blobId);
+  if (referencedBy.length > 0) {
+    return json(
+      {
+        error: "blob in use",
+        detail: "still referenced by mail; destroy the message(s) first",
+        referencedBy,
+      },
+      409,
+    );
+  }
+
+  const shares = await liveSharesForBlob(env.ROUTES, accountId, blobId);
+  if (shares.length > 0) {
+    return json(
+      {
+        error: "blob shared",
+        detail: "a live share link points at this blob; revoke it first",
+        shareIds: shares.map((s) => s.shareId),
+      },
+      409,
+    );
+  }
+
+  await store.deleteBlob(access.tenantId, accountId, blobId);
+  return json({ accountId, blobId, deleted: true });
 }
 
 function timingSafeEqualHex(a: string, b: string): boolean {

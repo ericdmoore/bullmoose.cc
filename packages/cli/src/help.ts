@@ -331,6 +331,40 @@ export const COMMANDS: Command[] = [
     seeAlso: ["mailboxes", "sync", "log"],
   },
   {
+    name: "blobs",
+    synopsis: "bullmoose blobs list | rm <blobId> [--account <sel>] [--json]",
+    summary: "see and remove the objects this account stores in R2",
+    description:
+      "Attachments and raw messages live in R2 under a per-account prefix. `list` is the only way to find out what is actually stored and how big it is — until it existed, nothing could answer that question while the storage was still billed. `rm` deletes ONE object and refuses (409) if it is still referenced: content-addressed blobs are shared, so the same bytes attached to two messages are one object, and deleting it because one message is gone would break the other. It also refuses while a live share link points at the blob — revoke the link first, so the recipient gets a clear refusal rather than a link that silently starts failing. This is explicit delete only; there is no garbage-collection sweep, deliberately (a sweep written before Files exists would delete FileNode-backed blobs).",
+    subcommands: [
+      { name: "list", synopsis: "blobs list", summary: "objects and sizes, largest first" },
+      { name: "rm", synopsis: "blobs rm <blobId>", summary: "delete one object; refused if referenced" },
+    ],
+    flags: [{ flag: "--account <sel>", desc: "which account, when you have more than one" }],
+    examples: [
+      { cmd: "bullmoose blobs list" },
+      { cmd: "bullmoose blobs rm b_9f3c… ", note: "refused while any message or share needs it" },
+    ],
+    seeAlso: ["share", "sync"],
+  },
+  {
+    name: "share",
+    synopsis: "bullmoose share list | revoke <shareId> [--account <sel>] [--json]",
+    summary: "list and revoke the expiring public links this account has minted",
+    description:
+      "`bullmoose send` mints a public link for any attachment over --link-max, and those links used to be permanent for their whole TTL (up to 90 days) with no way to list or cancel them. `share list` shows every link the server still has a record of, live or revoked, with its expiry. `share revoke` is the kill switch: the link stops resolving and returns exactly the same refusal as a forged one, so nobody can probe which ids exist. Records are kept in KV and expire with the link they describe, so an expired link cleans itself up and `list` never grows without bound. Revocation is eventually consistent — allow up to a minute for it to take effect at every edge. To kill EVERY link for EVERY account at once, rotate the server's SHARE_SIGNING_KEY (see docs/DEPLOY.md); that is the break-glass, and its blast radius is total.",
+    subcommands: [
+      { name: "list", synopsis: "share list", summary: "every minted link, live ones first" },
+      { name: "revoke", synopsis: "share revoke <shareId>", summary: "stop a link resolving" },
+    ],
+    flags: [{ flag: "--account <sel>", desc: "which account, when you have more than one" }],
+    examples: [
+      { cmd: "bullmoose share list" },
+      { cmd: "bullmoose share revoke sh_4c1f…", note: "reload the link: it now refuses" },
+    ],
+    seeAlso: ["blobs", "send"],
+  },
+  {
     name: "admin",
     synopsis: "bullmoose admin <noun> <verb> …",
     summary: "operator surface — wraps the provision worker (separate credentials)",

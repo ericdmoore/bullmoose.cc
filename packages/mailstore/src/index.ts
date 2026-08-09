@@ -19,6 +19,14 @@ export interface AttachmentMeta {
   disposition: string | null;
 }
 
+/** One stored object, as blob enumeration reports it. */
+export interface BlobInfo {
+  blobId: string;
+  size: number;
+  /** ISO-8601, from R2's own `uploaded`. */
+  uploaded: string;
+}
+
 export interface MailboxRow {
   id: string;
   parentId: string | null;
@@ -1971,6 +1979,84 @@ export class Mailstore {
 
   async getBlob(tenantId: string, accountId: string, blobId: string): Promise<R2ObjectBody | null> {
     return this.blobs.get(blobKey(tenantId, accountId, blobId));
+  }
+
+  /**
+   * Metadata only — no body transfer.
+   *
+   * Minting a share link verified the blob existed by GETting it
+   * (`services/jmap/src/index.ts`), which streams the whole object to decide
+   * a boolean. Existence checks use this.
+   */
+  async headBlob(tenantId: string, accountId: string, blobId: string): Promise<R2Object | null> {
+    return this.blobs.head(blobKey(tenantId, accountId, blobId));
+  }
+
+  /**
+   * What this account actually holds in R2.
+   *
+   * `blobKey` puts every account's objects under one prefix, so per-account
+   * listing is a prefix scan and needs no index. Until this existed nothing —
+   * not the CLI, not JMAP, not an operator — could answer "what is stored and
+   * how big is it", while R2 billed for all of it.
+   */
+  async listBlobs(
+    tenantId: string,
+    accountId: string,
+    opts: { cursor?: string; limit?: number } = {},
+  ): Promise<{ blobs: BlobInfo[]; cursor?: string }> {
+    const prefix = blobKey(tenantId, accountId, "");
+    const page = await this.blobs.list({
+      prefix,
+      ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+      ...(opts.cursor !== undefined ? { cursor: opts.cursor } : {}),
+    });
+    const blobs = page.objects.map((o) => ({
+      blobId: o.key.slice(prefix.length),
+      size: o.size,
+      uploaded: o.uploaded.toISOString(),
+    }));
+    return page.truncated ? { blobs, cursor: page.cursor } : { blobs };
+  }
+
+  /**
+   * Emails that still reference this blob, as the raw RFC 5322 object
+   * (`emails.blob_id`) or as an attachment (`emails.attachments_json`).
+   *
+   * THIS IS WHY BLOB DELETE NEEDS A GUARD. `putBlob` is content-addressed, so
+   * the same bytes attached to two messages are ONE object: deleting it
+   * because one message is gone silently breaks the other. `destroyEmail`
+   * takes the opposite tack — it leaves the object behind and says so — which
+   * means orphans accumulate but nothing is ever wrongly destroyed.
+   *
+   * Cost: `blob_id` is a plain column, but the attachment side is a JSON scan
+   * with no index — O(emails in the account). Fine for an interactive
+   * single-blob delete; NOT a sweep. `limit` caps the evidence gathered,
+   * since the caller only needs to know that a reference exists and to name a
+   * couple of them.
+   */
+  async blobReferences(accountId: string, blobId: string, limit = 5): Promise<string[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT id FROM emails
+          WHERE account_id = ?
+            AND (blob_id = ?
+                 OR EXISTS (SELECT 1 FROM json_each(emails.attachments_json) je
+                             WHERE json_extract(je.value, '$.blobId') = ?))
+          LIMIT ?`,
+      )
+      .bind(accountId, blobId, blobId, limit)
+      .all<{ id: string }>();
+    return results.map((r) => r.id);
+  }
+
+  /**
+   * Remove one object. Unconditional — reference checking is the caller's
+   * decision to make and to report on, so it stays in the route handler
+   * rather than being buried here.
+   */
+  async deleteBlob(tenantId: string, accountId: string, blobId: string): Promise<void> {
+    await this.blobs.delete(blobKey(tenantId, accountId, blobId));
   }
 }
 

@@ -25,6 +25,7 @@ import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
 import { cmdCalendar } from "./calendar.js";
 import { cmdMailbox } from "./mailbox.js";
+import { cmdBlobs, cmdShare } from "./blobs.js";
 import { findCommand, helpJson, renderCommand, renderMan, renderMarkdown, renderOverview } from "./help.js";
 
 
@@ -216,6 +217,18 @@ try {
         parent: opts.parent,
         sort: opts.sort,
         force: opts.force ?? false,
+        json: opts.json ?? false,
+      });
+      break;
+    case "blobs":
+      await cmdBlobs(db, positionals.slice(1), {
+        account: opts.account,
+        json: opts.json ?? false,
+      });
+      break;
+    case "share":
+      await cmdShare(db, positionals.slice(1), {
+        account: opts.account,
         json: opts.json ?? false,
       });
       break;

@@ -8,7 +8,98 @@
 | **Owner** | `sVOL` |
 | **Depends on** | — |
 | **Related** | `011` / `s03.B` T1 owns **blob pinning + GC**; this unit must not build that |
-| **Status** | todo |
+| **Status** | ✅ **shipped** — KV (§2 option a), so the unit held at **E2**. 42 tests. |
+
+## What shipped, and the decision behind it
+
+**KV, not a `shares` table. The unit stays E2.**
+
+The fork in §2 was decided on the lifetime argument, not the effort grade. A
+share record is useful for exactly as long as its link is valid; `expirationTtl`
+reaps it at that instant. Three consequences follow that a D1 table does not
+get for free:
+
+1. **Growth is bounded without maintenance.** At most `SHARE_MAX_TTL` (90 days)
+   of records can be live, whatever the mint rate — a record cannot outlive the
+   link it describes. Done-when #6 ("an expired link's record disappears on its
+   own — no sweeper, no cron") is not a feature that was built; it is the
+   storage engine's default. Under (b) it is a cron job this repo has nowhere
+   to put.
+2. **No migration, so no cliff.** `readme.md`'s E3 anchor is the migration, and
+   this repo has no framework for one (`tools/README.md:10-11`).
+3. **The public route stays off D1.** `GET /share/*` is the only route in this
+   worker an anonymous internet client can reach. Option (b) puts a mail-database
+   read on the hot path of an unauthenticated request; KV does not.
+
+Open Question #2 worried that "the cheaper option preserves my effort grade" is
+a suspicious reason to prefer a design. Agreed — so the tie-break was (1) and
+(3), both of which point the same way independently of cost, and the counter-
+argument from `admin.ts:18` is answered rather than ignored: that line is now
+corrected in place, because the join it anticipated is a *reporting* need that
+`s03.B` can serve from `file_nodes` when it exists, not a revocation need.
+
+**Four things the unit did not anticipate, all decided here:**
+
+- **A separate KV namespace is not available.** §2(a) says "bind a **separate**
+  namespace". `infra/bootstrap.mjs`'s `wireText` (`:160`) rewrites only the
+  FIRST `"id"` after `"kv_namespaces"` — the regex is deliberately non-global —
+  so a second binding deploys with an unwired id. `services/jmap/wrangler.jsonc`
+  says this in a comment. Records therefore live in `ROUTES` under a `share:`
+  prefix, exactly as the `login:` throttle windows already do. Prefix isolation
+  is the mechanism this repo has; namespace isolation is not.
+- **Deny-by-default, not a revocation list.** A tombstone list would be
+  cheaper and would tolerate KV loss more gracefully, but it cannot answer
+  "what links are live?" — which is half this unit, and Done-when #2 outright.
+  Fail-closed also means losing a KV key is not equivalent to un-revoking.
+- **Open Question #5 resolved as FLUSH.** `shareId` is inside the signed
+  payload, so every pre-existing link 403s. Taken deliberately: the state this
+  unit exists to end is that nobody knows what is out there, and every
+  surviving old link is one more record that can never be enumerated or
+  revoked. A transition window would have preserved precisely the population
+  we cannot account for.
+- **Delete kept, per Open Question #3, but narrowed.** Explicit single-blob
+  delete only, refusing on any reference. No sweep — `s03.B` T1 still owns
+  pinning, and a sweep built now would delete FileNode-backed blobs the moment
+  Files ships.
+
+⚠️ **`s03.B` interaction, unchanged and still live.** `s03.B` T3 makes this
+path the *standard* attachment route. A `FileNode` destroy that leaves a live
+share URL is a data leak, and nothing in this unit prevents that: `011` must
+call the revoke path (or `liveSharesForBlob`) on destroy. `handleBlobDelete`
+refuses while a live share exists, which turns the silent leak into a visible
+409 — but only for callers that go through blob delete. `FileNode/set
+{destroy}` will not, unless `011` wires it.
+
+### Where to look
+
+| | |
+|---|---|
+| Record model + KV ops, with the decision written where it is executed | `services/jmap/src/shares.ts` |
+| Routes, signature change, download gate | `services/jmap/src/index.ts` |
+| `listBlobs` / `headBlob` / `blobReferences` / `deleteBlob` | `packages/mailstore/src/index.ts` |
+| `bullmoose blobs list\|rm`, `bullmoose share list\|revoke` | `packages/cli/src/blobs.ts` |
+| 33 worker tests + 9 CLI render tests | `services/jmap/src/shares.test.ts`, `packages/cli/src/blobs.test.ts` |
+| Break-glass runbook (Done-when #7) | `docs/DEPLOY.md` § *Runbook: revoking share links* |
+
+**The tests were verified to catch the gap**: with `services/jmap/src/index.ts`
+and `packages/mailstore/src/index.ts` reverted to their pre-unit state (the
+test files and `shares.ts` left in place, so the failures are behavioural
+rather than import errors), **33 of 33** worker tests fail; restored, **420/420**
+pass repo-wide against a 378 baseline. Five of them initially passed while
+reverted, because the worker's catch-all 404 is indistinguishable from a real
+"unknown account" by status alone — they now assert the response body, which
+is the same lesson `packages/test-fakes/src/d1.ts`'s header records about
+catch-all fakes, in HTTP form.
+
+### Line numbers in "What exists today", re-verified
+
+The unit predates several commits and every `services/jmap/src/index.ts`
+citation below had drifted by one line (the file grew a comment above the
+share routes); `Mailstore`'s had drifted by ~61. Corrected: `putBlob` was
+`:1836`, now `:1897`; `getBlob` was `:1843`, now `:1904`. The route table's
+`:36/:70/:76/:83` read `:37/:71/:77/:84`, and `handleShareCreate` `:190` read
+`:191`. All are now stale again in the other direction — this unit moved them
+itself — which is the argument for citing symbols rather than lines.
 
 ## Cells covered
 

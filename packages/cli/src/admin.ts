@@ -16,7 +16,13 @@ import { deriveLoginKey, promptHidden } from "./tokens.js";
  *   ○ route        aliases / forwards / catch-all management
  *   ○ identity     extra from-addresses per account
  *   ○ policy       tenant-scoped delivery policies (§17: quarantine/DLP/retention)
- *   ○ share        list | revoke expiring links  (needs the shares table)
+ *   ✓ share        BUILT, but as `bullmoose share list|revoke` — not here.
+ *                  This line used to read "needs the shares table"; sVOL 010
+ *                  put the records in KV instead (see
+ *                  services/jmap/src/shares.ts for why), so there is no table
+ *                  and no operator credential involved. Revoking a link you
+ *                  minted runs on your own mail token, against the jmap
+ *                  worker, so it does not belong on the admin surface.
  *   ○ suppression  list | add | remove           (outbound suppression list)
  *   ○ token        app passwords / scoped agent tokens (needs auth service)
  *   ○ agent        register agents, grants, bindings (agent-integration.md §2)
@@ -288,7 +294,8 @@ export async function cmdAdmin(
         `unknown admin command: ${[noun, verb].filter(Boolean).join(" ") || "(none)"}\n` +
           `implemented: init | tenant create/list | domain add/status/list |\n` +
           `             account create/list | password <email> | token create/list/revoke\n` +
-          `designed (not yet built): route, identity, policy, share, suppression, agent`,
+          `designed (not yet built): route, identity, policy, suppression, agent\n` +
+          `share links: see \`bullmoose share list|revoke\` (mail token, not admin)`,
       );
     }
   }
