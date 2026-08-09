@@ -7,9 +7,18 @@
  * tokens are symmetric possession-secrets — a future `kind: "pubkey"`
  * row adds signed-request auth without a redesign.
  *
- * Scope vocabulary (shared with agent grants):
- *   read < annotate < draft < move < send < delete ; "mail" = all of them
- *   "admin" is control-plane only.
+ * Scope vocabulary (shared with agent grants) — a FLAT SET, not a lattice.
+ * There is no ordering; a `<` chain would be a lie (common/027). The parts:
+ *   read                                    — the base "see it" capability.
+ *   annotate · draft · move · send · delete — mail verbs, mutually independent.
+ *   mail                                    — a bundle of read + those five.
+ *   contacts · calendar · vault · files     — realms, mutually independent.
+ *   admin                                   — control-plane only; implies nothing.
+ * The one implication: any write implies read — you cannot change what you
+ * cannot see. Every mail verb, "mail", and every realm scope satisfies `read`.
+ * Nothing else implies anything: delete does NOT imply send, contacts does
+ * NOT imply calendar, and `send` — kept its own capability because mailing a
+ * stranger is irreversible — implies only `read`, never move/delete/annotate.
  */
 
 export interface MintedToken {
@@ -45,38 +54,64 @@ export async function verifyTokenSecret(secret: string, storedHash: string): Pro
 
 export const MAIL_SCOPES = ["read", "annotate", "draft", "move", "send", "delete"] as const;
 
-/** Realm scopes. Independent of the mail verbs — NOT covered by "mail".
+/** Realm scopes. Independent of the mail verbs — NOT covered by "mail" — and
+ * they do not cover each other (`contacts` never implies `calendar`).
  * `files` is the FileNode realm (JMAP for Files, sVOL 011): a dedicated realm
  * scope, mirroring `contacts`/`calendar`, because Files is its own data realm
- * and none of the existing scopes fit. Like the others, it is a FLAT scope —
- * `hasScope(["files"], "read")` is false (common/027), so FileNode reads gate
- * on `read` and writes on `files`, exactly as calendar/contacts do. */
+ * and none of the existing scopes fit. Holding a realm scope satisfies `read`
+ * (common/027: any write implies read), so a `files` token gates FileNode
+ * reads AND writes, while a bare `read` token can do neither a write nor any
+ * realm. */
 export const REALM_SCOPES = ["contacts", "calendar", "vault", "files"] as const;
 
 export type Scope = (typeof MAIL_SCOPES)[number] | (typeof REALM_SCOPES)[number] | "mail" | "admin";
 
 const MAIL_COVERS: ReadonlySet<string> = new Set<string>(MAIL_SCOPES);
 
+/** The mail verbs that are writes — every mail verb except `read`. Holding
+ * any of them satisfies `read` (you cannot change what you cannot see). */
+const WRITE_VERBS: ReadonlySet<string> = new Set<string>(
+  MAIL_SCOPES.filter((s) => s !== "read"),
+);
+
+/** Realm scopes as a set, for the same `read`-implication test. */
+const REALMS: ReadonlySet<string> = new Set<string>(REALM_SCOPES);
+
 /**
  * Does a token's scope list satisfy a required scope?
  *
  * `"mail"` is a BUNDLE OF THE MAIL VERBS, not a wildcard. It covers exactly
- * MAIL_SCOPES and nothing else.
+ * MAIL_SCOPES and nothing else. It used to return true for every non-"admin"
+ * scope, which meant a `mail` token silently satisfied `contacts`, `calendar`
+ * and — the sharp one — `vault`, the store holding third-party provider
+ * credentials. That wildcard is gone (common/001); this is not a reopening of
+ * it — only `read` is implied, and `vault` is never `read`.
  *
- * It used to return true for every non-"admin" scope, which meant a `mail`
- * token silently satisfied `contacts`, `calendar` and — the sharp one —
- * `vault`, the store holding third-party provider credentials. Since
- * `/auth/login` mints `["mail"]` by default (authRoutes.ts:89), that was
- * every token this system has ever issued.
+ * The one implication (common/027): ANY write capability implies `read`.
+ * A capability to change is a capability to see, so every mail write verb
+ * (annotate/draft/move/send/delete), the `mail` bundle, and every realm scope
+ * (contacts/calendar/vault/files) satisfies a required `read`. This closes the
+ * gap where a token scoped to its own domain — `["calendar"]`, `["files"]`,
+ * `["move"]` — could write data it could not list.
  *
- * The old `required !== "admin"` carve-out is gone as redundant: `admin` is
- * not in MAIL_SCOPES, so the set membership test excludes it for free.
+ * It stops there. This is a flat set with a single `read` edge, NOT an order:
+ *   - `delete` does NOT imply `send` — "may clean up" is not "may mail
+ *     strangers"; `send` stays its own irreversible capability.
+ *   - `send` implies only `read`, never move/delete/annotate.
+ *   - one realm never implies another (`contacts` ↛ `calendar`).
+ *   - `admin` is control-plane only and implies nothing (and nothing implies
+ *     it — it is not in MAIL_SCOPES, so the membership test excludes it).
  *
  * Unknown scope strings are denied unless held verbatim. Fail closed.
  */
 export function hasScope(granted: string[], required: string): boolean {
   if (granted.includes(required)) return true;
-  return granted.includes("mail") && MAIL_COVERS.has(required);
+  if (granted.includes("mail") && MAIL_COVERS.has(required)) return true;
+  // A capability to change implies the capability to see.
+  if (required === "read") {
+    return granted.some((g) => WRITE_VERBS.has(g) || REALMS.has(g) || g === "mail");
+  }
+  return false;
 }
 
 /** For self-service minting: requested must not exceed what the minter holds. */

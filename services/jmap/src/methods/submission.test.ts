@@ -527,9 +527,12 @@ describe("EmailSubmission/get — ids, accounts, and scope", () => {
     expect(got.list[0]).toEqual({ id: "es_seeded", undoStatus: "final" });
   });
 
-  it("refuses a send-scoped token that may create submissions but not read them", async () => {
-    // `mail` is a bundle of the six mail verbs, not a wildcard (auth-core
-    // hasScope), so this gate is real for a narrowly scoped agent token.
+  it("a send-scoped token may create submissions AND read them back — send implies read", async () => {
+    // common/027: any write capability implies `read` — you must be able to see
+    // what you send. `send` is the write here, so the same token that creates a
+    // submission may also read it. This USED to be a deliberate refusal
+    // ('token lacks the "read" scope'); 027 closed it. `send` still stays its
+    // own irreversible capability and implies ONLY read — never move/delete.
     const h = harness(draftFixture({ submissions: [submissionRow()] }), ["send"]);
 
     // The same token CAN send — this is a read gate, not an account gate.
@@ -538,9 +541,7 @@ describe("EmailSubmission/get — ids, accounts, and scope", () => {
     });
     expect(set.notCreated).toEqual({});
 
-    await expect(h.get({ ids: ["es_seeded"] })).rejects.toMatchObject({
-      type: "forbidden",
-      description: 'token lacks the "read" scope',
-    });
+    const got = await h.get({ ids: ["es_seeded"] });
+    expect(got.list.map((s) => s.id)).toContain("es_seeded");
   });
 });

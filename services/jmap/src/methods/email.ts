@@ -230,9 +230,10 @@ interface EmailSetResult {
  * Pure — no ctx, no D1 — so the mapping is testable without a harness.
  *
  * One gate for the whole method used to mean `draft` authorized creating a
- * draft AND flagging, moving, and permanently destroying mail. The lattice is
- * `read < annotate < draft < move < send < delete`, so a token deliberately
- * scoped to compose drafts could delete the inbox.
+ * draft AND flagging, moving, and permanently destroying mail. The mail verbs
+ * (read, annotate, draft, move, send, delete) are an INDEPENDENT flat set, not
+ * an order — `draft` does not imply `move` or `delete` — so a token
+ * deliberately scoped to compose drafts must NOT be able to delete the inbox.
  *
  * `move` is charged only when a patch actually touches `mailboxIds`; a
  * keywords-only patch is `annotate`. Patch keys arrive in JSON-pointer form
@@ -250,9 +251,9 @@ export function requiredScopesForEmailSet(args: Record<string, unknown>): string
       // Charge for EVERY kind of change the patch makes, not just the highest.
       // This was `need.add(touchesMailboxes ? "move" : "annotate")` — a ternary,
       // so a patch touching both mailboxIds AND keywords charged only `move`.
-      // `hasScope` is a flat set, NOT the ordered lattice the docs draw, so
-      // `move` does not imply `annotate`: a move-scoped token could flip
-      // keywords for free by bundling them into a move.
+      // `hasScope` is a flat set, not an order (common/027): `move` does not
+      // imply `annotate`, so a move-scoped token could otherwise flip keywords
+      // for free by bundling them into a move.
       const keys = Object.keys(patch ?? {});
       const isMailboxKey = (k: string) => k === "mailboxIds" || k.startsWith("mailboxIds/");
       if (keys.some(isMailboxKey)) need.add("move");

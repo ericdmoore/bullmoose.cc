@@ -41,8 +41,9 @@ import { parseVcf, type Card } from "./vcard.js";
  * (`AddressBook/set`, contacts.ts:117-121) refuses it on delegated access
  * with `forbidden`, which the §1.5 table maps to a clean exit 4 — so an
  * agent reaching the account through a grant gets a plain refusal, not a
- * stack trace. Card writes follow the flat-set scope model: they require
- * the `contacts` scope, which does NOT imply `read` (`.feedback/…/common/027`).
+ * stack trace. Card writes require the `contacts` scope; because any write
+ * implies `read` (`.feedback/…/common/027`), a `contacts` token also satisfies
+ * the read verbs, so one scope covers both listing and editing cards.
  */
 
 interface ContactsOpts extends IoOpts {

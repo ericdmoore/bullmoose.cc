@@ -138,7 +138,7 @@ export const COMMANDS: Command[] = [
       { flag: "--password <pw>", desc: "password (else prompt or $BULLMOOSE_PASSWORD)" },
       {
         flag: "--scopes <a,b,c>",
-        desc: "scopes for the minted token; omit for the server default (mail). Vocabulary: read, annotate, draft, move, send, delete, mail, contacts, calendar, vault",
+        desc: "scopes for the minted token; omit for the server default (mail). Vocabulary (a flat set, not an ordering): read; the mail verbs annotate, draft, move, send, delete; the bundle mail; the realms contacts, calendar, vault, files. Any write implies read.",
       },
     ],
     examples: [
@@ -183,7 +183,7 @@ export const COMMANDS: Command[] = [
     synopsis: "bullmoose token create --name <n> --scopes <a,b,c> | list | revoke <id>",
     summary: "mint / list / revoke device app-passwords for this account",
     description:
-      "Device tokens (bm_…) are what clients authenticate with — never the login password. Scope them per device so a lost device can be revoked alone. --scopes is REQUIRED: there is no default, because the shortest command should not mint the widest credential. Vocabulary: the mail verbs read, annotate, draft, move, send, delete; the bundle `mail`, which means exactly those six and nothing else; and the independent realms contacts, calendar, vault. A token can only ever be narrower than the one that minted it, so to widen, run `login` again with --scopes.",
+      "Device tokens (bm_…) are what clients authenticate with — never the login password. Scope them per device so a lost device can be revoked alone. --scopes is REQUIRED: there is no default, because the shortest command should not mint the widest credential. Vocabulary is a flat set, not an ordering: the base read; the mail verbs annotate, draft, move, send, delete; the bundle `mail`, which means exactly read + those five and nothing else; and the independent realms contacts, calendar, vault, files. The one implication is that any write implies read (you cannot change what you cannot see); nothing else implies anything — delete does not imply send, and one realm never implies another. A token can only ever be narrower than the one that minted it, so to widen, run `login` again with --scopes.",
     subcommands: [
       { name: "create", synopsis: "token create --name <n> --scopes <a,b,c>", summary: "mint a token (shown once)" },
       { name: "list", synopsis: "token list", summary: "list this account's tokens" },
@@ -320,7 +320,7 @@ export const COMMANDS: Command[] = [
     synopsis: "bullmoose contacts import|list|show|books|create|edit|rm|export …",
     summary: "read and write the contacts core (vCard ⇄ JSContact)",
     description:
-      "The full CRUD surface over the JSContact core. `import` is the idempotent bulk seed (dedup by uid); `create` makes one card without dedup; `export` is its inverse — vCard 3.0 on stdout, so `export | import` round-trips a book with no drift. Card writes need the `contacts` scope, which does NOT imply `read` (grant one scope per verb you need). `books create|rename|rm` manage address books and are OWNER-ONLY: the server refuses them on delegated (grant-reached) access with a clean exit 4, so an agent should edit cards, not books. All write verbs take --if-state (exit 5 on a stale state) and --dry-run.",
+      "The full CRUD surface over the JSContact core. `import` is the idempotent bulk seed (dedup by uid); `create` makes one card without dedup; `export` is its inverse — vCard 3.0 on stdout, so `export | import` round-trips a book with no drift. Card writes need the `contacts` scope; because any write implies read (common/027), a `contacts` token also satisfies the read verbs, so one scope covers both listing and editing cards. `books create|rename|rm` manage address books and are OWNER-ONLY: the server refuses them on delegated (grant-reached) access with a clean exit 4, so an agent should edit cards, not books. All write verbs take --if-state (exit 5 on a stale state) and --dry-run.",
     subcommands: [
       { name: "import", synopsis: "contacts import [<file.vcf>|-] [--book <name-or-id>] [--as vcard] [--dry-run]", summary: "seed from a vCard export (idempotent; dedup by uid; missing --book created); reads stdin with no path, or with `-`" },
       { name: "list", synopsis: "contacts list [--book <name-or-id>] [-n <count>] [--json|--ids]", summary: "list cards" },

@@ -139,14 +139,18 @@ describe("every MCP tool declares its own gate", () => {
   });
 });
 
-describe("the declared scopes are meaningful post-common/001", () => {
-  it("a token holding only a realm scope cannot reach a mail tool", () => {
-    // Before common/001, ["contacts"] would NOT have satisfied "read" either —
-    // but ["mail"] satisfied literally everything. This asserts the gate is
-    // now a real partition.
-    const mailTool = TOOLS.find((t) => t.domain === "mail");
-    expect(mailTool).toBeDefined();
-    expect(hasScope(["contacts"], mailTool!.scope)).toBe(false);
-    expect(hasScope(["mail"], mailTool!.scope)).toBe(true);
+describe("the declared scopes are meaningful post-common/001 + 027", () => {
+  it("a realm scope reaches mail READS but is still refused mail WRITES", () => {
+    // common/001 killed the ["mail"] wildcard. common/027 then opened ONE edge:
+    // any write/realm capability implies `read`. So a realm token now DOES
+    // satisfy a mail READ tool — but a mail WRITE tool gates on a mail verb the
+    // realm never confers, so the partition still bites where it matters.
+    const mailRead = TOOLS.find((t) => t.domain === "mail" && t.scope === "read");
+    const mailWrite = TOOLS.find((t) => t.domain === "mail" && t.scope !== "read");
+    expect(mailRead).toBeDefined();
+    expect(mailWrite).toBeDefined();
+    expect(hasScope(["contacts"], mailRead!.scope)).toBe(true); // 027: read is implied
+    expect(hasScope(["contacts"], mailWrite!.scope)).toBe(false); // but not the write verb
+    expect(hasScope(["mail"], mailWrite!.scope)).toBe(true);
   });
 });
