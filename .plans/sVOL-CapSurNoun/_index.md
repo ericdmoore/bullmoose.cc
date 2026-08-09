@@ -88,7 +88,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 014 | **Email read + triage over MCP** | proj | E2 | I3 | sVOL | 001, 002 | **✅ done** |
 | 015 | **Self-introspection over MCP (`help@`)** | proj | E2 | I1 | sVOL | 001 | **✅ done** |
 | 016 | **CLI I/O contract** | proj ⁹ | E2 | I3 | **s05** T1 | — | **✅ done** |
-| 017 | Contacts CRUD over CLI | proj | E2 | I3 | **s05** T2 | ~~016~~ **unblocked** | todo |
+| 017 | Contacts CRUD over CLI | proj | E2 | I3 | **s05** T2 | ~~016~~ **unblocked** | **✅ done** |
 | 018 | Calendar CRUD over CLI | proj | E2 | I3 | **s05** T3 | ~~016, 003~~ **unblocked** | todo |
 | 019 | Email triage verbs over CLI | proj | E2 | I3 | sVOL | ~~016~~ **unblocked** | todo |
 | 020 | Creds mint-time fields | proj | E2 | I2 | **s05** T4 + **s04** | s04 spec | todo |

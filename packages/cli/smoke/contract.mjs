@@ -348,6 +348,48 @@ async function main() {
       eq(r.code, 0, "pipeline exit code");
       assert(r.stdout.includes("Subject:"), "messages should be rendered");
     });
+
+    // ---- contacts CRUD projection (sVOL 017) -----------------------------
+    check("017", "`contacts export --json` is one complete card per line", () => {
+      const r = bm("contacts export --json");
+      eq(r.code, 0, `export failed: ${r.stderr}`);
+      const lines = r.stdout.trimEnd().split("\n");
+      eq(lines.length, 3, "one line per card");
+      for (const l of lines) {
+        const c = JSON.parse(l);
+        assert(typeof c.uid === "string", "each line is a card object");
+        assert(!l.startsWith("["), "no wrapping array");
+      }
+    });
+
+    check("017", "`contacts export --json | jq | wc -l` streams and counts", () => {
+      const r = sh("$BM contacts export --json 2>/dev/null | wc -l", env);
+      eq(Number(r.stdout.trim()), 3, "record count through the pipe");
+    });
+
+    check("017", "default `contacts export` is vCard on stdout — the inverse of import", () => {
+      const r = sh("$BM contacts export 2>/dev/null", env);
+      eq(r.code, 0, "exit code");
+      eq((r.stdout.match(/BEGIN:VCARD/g) ?? []).length, 3, "one vCard block per card");
+      assert(/VERSION:3\.0/.test(r.stdout), "vCard 3.0");
+      assert(/FN:Ada Lovelace/.test(r.stdout), "the JSContact name round-trips to FN");
+    });
+
+    check("017", "`contacts export --ids | xargs show` really composes", () => {
+      const r = sh(
+        "$BM contacts export --ids 2>/dev/null | xargs -n1 $BM contacts show 2>/dev/null",
+        env,
+      );
+      eq(r.code, 0, "pipeline exit code");
+      eq((r.stdout.match(/"uid"/g) ?? []).length, 3, "one card rendered per id");
+    });
+
+    check("017", "`--book` filters the export, and `books list --ids` yields ids", () => {
+      const only = sh("$BM contacts export --book Work --ids 2>/dev/null", env);
+      eq(only.stdout.trim(), "cc_alan", "only the Work book's card");
+      const books = sh("$BM contacts books list --ids 2>/dev/null", env);
+      assert(books.stdout.includes("ab_personal"), `books list --ids should print book ids:\n${books.stdout}`);
+    });
   } finally {
     server.kill("SIGTERM");
     rmSync(dir, { recursive: true, force: true });

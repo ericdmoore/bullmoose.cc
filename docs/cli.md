@@ -26,7 +26,7 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 | [`watch`](#watch) | push-triggered live sync: print new mail as it arrives |
 | [`vacation`](#vacation) | manage the RFC 8621 vacation responder |
 | [`agent`](#agent) | run the homelab agent runtime (claims the AgentInvocation queue) |
-| [`contacts`](#contacts) | import and browse the contacts core (vCard ⇄ JSContact) |
+| [`contacts`](#contacts) | read and write the contacts core (vCard ⇄ JSContact) |
 | [`calendar`](#calendar) | browse the calendar core (JSCalendar; recurrence expanded server-side) |
 | [`creds`](#creds) | manage the write-only, envelope-encrypted credential vault |
 | [`log`](#log) | list messages from the local log |
@@ -359,30 +359,46 @@ See also: [`admin agent bind`](#admin), [`watch`](#watch)
 
 ## contacts
 
-import and browse the contacts core (vCard ⇄ JSContact)
+read and write the contacts core (vCard ⇄ JSContact)
 
 ```
-bullmoose contacts import <file.vcf> | list | show <cardId>
+bullmoose contacts import|list|show|books|create|edit|rm|export …
 ```
+
+The full CRUD surface over the JSContact core. `import` is the idempotent bulk seed (dedup by uid); `create` makes one card without dedup; `export` is its inverse — vCard 3.0 on stdout, so `export | import` round-trips a book with no drift. Card writes need the `contacts` scope, which does NOT imply `read` (grant one scope per verb you need). `books create|rename|rm` manage address books and are OWNER-ONLY: the server refuses them on delegated (grant-reached) access with a clean exit 4, so an agent should edit cards, not books. All write verbs take --if-state (exit 5 on a stale state) and --dry-run.
 
 **Subcommands**
 
 - **import** — seed from a vCard export (idempotent; dedup by uid; missing --book created); reads stdin with no path, or with `-`  
   `contacts import [<file.vcf>|-] [--book <name-or-id>] [--as vcard] [--dry-run]`
 - **list** — list cards  
-  `contacts list [--book <name-or-id>] [-n <count>] [--json]`
+  `contacts list [--book <name-or-id>] [-n <count>] [--json|--ids]`
 - **show** — show one card  
   `contacts show <cardId> [--json]`
+- **books** — address-book lifecycle; create/rename/rm are owner-only (exit 4 on delegated access); rm of a non-empty book needs --force (else exit 5)  
+  `contacts books list | create <name> | rename <name-or-id> <new> | rm <name-or-id> [--force]`
+- **create** — create card(s) from a vCard or JSON body — no dedup; reads stdin with no path, or with `-`  
+  `contacts create [<file>|-] [--book <name-or-id>] [--as vcard|json] [--dry-run]`
+- **edit** — replace a card's content from a vCard or JSON body (JMAP patch semantics)  
+  `contacts edit <cardId> [<file>|-] [--book <name-or-id>] [--as vcard|json]`
+- **rm** — delete a card; resolves the target first, so a bad id is exit 3  
+  `contacts rm <cardId> [--dry-run] [--if-state <s>]`
+- **export** — the inverse of import — vCard 3.0 on stdout (or JSContact NDJSON under --json)  
+  `contacts export [--book <name-or-id>] [--json|--ids]`
 
 **Examples**
 
 ```sh
 bullmoose contacts import Contacts.vcf --book Personal
 # export from macOS Contacts: File → Export → Export vCard…
-bullmoose contacts list --book Family -n 50
-cat Contacts.vcf | bullmoose contacts import - --book Personal
+bullmoose contacts export --book Personal | bullmoose contacts import - --book Backup
+# round-trip a book
+cat card.vcf | bullmoose contacts create - --book Personal
 # `-` is explicit stdin
-bullmoose contacts list --ids | xargs -n1 bullmoose contacts show
+echo '{"name":{"full":"Ada"}}' | bullmoose contacts create --as json
+bullmoose contacts export --json | jq -r .uid
+bullmoose contacts export --ids | xargs -n1 bullmoose contacts show
+bullmoose contacts books create Family --if-state "$STATE"
 ```
 
 See also: [`calendar`](#calendar), [`admin grant`](#admin)

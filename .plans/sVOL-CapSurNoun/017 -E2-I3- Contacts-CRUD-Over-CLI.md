@@ -7,7 +7,7 @@
 | **Impact** | **I3** — unlocks *and* human-verifiable |
 | **Owner** | **`s05-cli-crud`** T2 |
 | **Depends on** | `016` (the I/O contract — strictly first) |
-| **Status** | todo |
+| **Status** | ✅ done |
 
 ## Cells covered
 

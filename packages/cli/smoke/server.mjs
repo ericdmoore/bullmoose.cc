@@ -52,6 +52,29 @@ const emails = Array.from({ length: 12 }, (_, i) => ({
   textBody: [{ partId: "t", type: "text/plain" }],
 }));
 
+/**
+ * Contacts fixtures for the sVOL-017 pipes: two books and three cards, so
+ * `export` has more than one line to stream, `--book` has something to filter,
+ * and `--ids | xargs show` fans real ids back in. As with the mail methods,
+ * this is the minimum that lets a command produce output, not a JMAP contacts
+ * implementation.
+ */
+const addressBooks = [
+  { id: "ab_personal", name: "Personal", isDefault: true, myRights: { mayWrite: true } },
+  { id: "ab_work", name: "Work", isDefault: false, myRights: { mayWrite: true } },
+];
+const contactCards = [
+  { id: "cc_ada", "@type": "Card", version: "1.0", uid: "urn:uuid:ada",
+    name: { full: "Ada Lovelace" }, emails: { e1: { address: "ada@smoke.test" } },
+    addressBookIds: { ab_personal: true } },
+  { id: "cc_grace", "@type": "Card", version: "1.0", uid: "urn:uuid:grace",
+    name: { full: "Grace Hopper" }, emails: { e1: { address: "grace@smoke.test" } },
+    addressBookIds: { ab_personal: true } },
+  { id: "cc_alan", "@type": "Card", version: "1.0", uid: "urn:uuid:alan",
+    name: { full: "Alan Turing" }, emails: { e1: { address: "alan@smoke.test" } },
+    addressBookIds: { ab_work: true } },
+];
+
 const err = (type, description) => ["error", description ? { type, description } : { type }, "c0"];
 
 function invoke([name, args, callId]) {
@@ -165,6 +188,36 @@ function invoke([name, args, callId]) {
         state: "1",
         list: [{ id: "id_1", email: "you@smoke.test", name: "You" }],
       });
+
+    // ---- contacts (sVOL 017) --------------------------------------------
+    case "AddressBook/get":
+      return reply({ accountId: ACCOUNT, state: "abstate-1", list: addressBooks, notFound: [] });
+
+    case "ContactCard/query": {
+      const bookId = args.filter?.inAddressBook;
+      const matched = bookId
+        ? contactCards.filter((c) => c.addressBookIds[bookId])
+        : contactCards;
+      const position = args.position ?? 0;
+      const limit = args.limit ?? 256;
+      return reply({
+        accountId: ACCOUNT,
+        queryState: "ccstate-1",
+        position,
+        ids: matched.slice(position, position + limit).map((c) => c.id),
+      });
+    }
+
+    case "ContactCard/get": {
+      const ids = args.ids ?? [];
+      const list = contactCards.filter((c) => ids.includes(c.id));
+      return reply({
+        accountId: ACCOUNT,
+        state: "ccstate-1",
+        list,
+        notFound: ids.filter((id) => !list.some((c) => c.id === id)),
+      });
+    }
 
     // Deliberately unimplemented, to exercise the method-error → exit-code path.
     case "CalendarEvent/getOccurrences":

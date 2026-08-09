@@ -255,6 +255,7 @@ try {
         account: opts.account,
         book: opts.book,
         n: opts.n,
+        force: opts.force ?? false,
         ...io,
       });
       break;
