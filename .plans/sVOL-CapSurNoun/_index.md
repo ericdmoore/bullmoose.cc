@@ -40,10 +40,11 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
   there; creating and deleting calendars and address books over MCP is unfiled (see §4).
 - **The WebUI and GraphQL columns are empty because the surfaces don't exist.** Every cell
   there is `E4` by definition.
-- **DAV is read-write end to end.** Cards and events PUT/DELETE with proper ETags, and since
-  `009` collections do too — `MKCALENDAR` / extended `MKCOL` / collection `DELETE`. The one
-  remaining `-` in both DAV columns is Update: there is no `PROPPATCH`, so a client can create
-  and delete a calendar but not rename or recolour one.
+- **DAV is read-write end to end, at both levels.** Cards and events PUT/DELETE with proper
+  ETags; collections gained create/delete in `009` (`MKCALENDAR` / extended `MKCOL` /
+  collection `DELETE`) and update in `common/026` item 3 (`PROPPATCH`). Both DAV collection
+  columns now read `CRUD` — a client can create, rename, recolour and delete a calendar or
+  address book. This bullet used to end *"the one remaining `-` is Update"*.
 
 ---
 
@@ -272,7 +273,7 @@ Every non-`n/a` gap cell in §1 maps to at least one unit:
 | ContactCard/CalendarEvent × CRUD × MCP | 013 ✅ |
 | AddressBook/Calendar × C/U/D × MCP | — (unfiled; `013` shipped Read only) |
 | AddressBook/Calendar × C × DAV | 009 ✅ |
-| AddressBook/Calendar × U × DAV (`PROPPATCH`) | — (unfiled; see `009`) |
+| AddressBook/Calendar × U × DAV (`PROPPATCH`) | ✅ done — `common/026` item 3 |
 | FileNode × everything | 011 → 021 |
 | Blob delete / share revoke | 010 ✅ |
 | Agents × C/D | 007 |
