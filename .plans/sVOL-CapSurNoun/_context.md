@@ -10,7 +10,7 @@
 >
 > | Was | Now |
 > |---|---|
-> | 2 test files, 19 tests | **17 test files, 313 tests** |
+> | 2 test files, 19 tests | **22 test files, 421 tests** |
 > | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
 > | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
 > | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
@@ -165,8 +165,16 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
     **Zero `/set` calls in the CLI calendar module** (97 lines total).
 12. **The Files noun does not exist.** What exists is attachment-blob plumbing:
     `POST /api/upload/{accountId}` (`services/jmap/src/index.ts:76`), `GET /api/download/…`
-    (`:70`), signed share links (`:83`, minted `:190`). No enumeration, no delete, **no share
-    revocation** — a minted URL is valid until `exp` with no kill switch.
+    (`:70`), signed share links (`:83`, minted `:190`). ✅ **CLOSED by sVOL `010`.** Enumeration, blob delete and share revocation all exist
+    now (`GET/DELETE /api/blobs/…`, `GET/DELETE /api/share/…`). Share records live in KV with
+    `expirationTtl`, so a record cannot outlive its own link and expiry needs no sweeper.
+    Verification is **deny-by-default** — `shareId` is inside the HMAC payload, so a link with
+    no live record 403s. This entry used to read *"no enumeration, no delete, no share
+    revocation — a minted URL is valid until `exp` with no kill switch."*
+
+    ⚠️ **`011` (FileNode) must call revoke on destroy.** `handleBlobDelete` refuses while a
+    live share exists, but `FileNode/set {destroy}` does not travel that route — so the leak
+    `010` warned about survives unless `011` wires it.
 13. `AgentInvocation/set` implements **update only** (`agent.ts:84`); `created: {}` `:128` and
     `destroyed: []` `:132` are hardcoded. Optimistic claim guard at `:92`.
     🔴 **`_context.md` §3's failure mode is already live in the tree**: `finish`
@@ -287,7 +295,7 @@ is the only thing that catches this failure mode, and it is now cheap.
 
 ## 5. Test infrastructure — the honest state
 
-**19 test files, 357 tests** (was 2 files / 19 at the original audit). `npm test` runs in
+**22 test files, 421 tests** (was 2 files / 19 at the original audit). `npm test` runs in
 well under a second and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for

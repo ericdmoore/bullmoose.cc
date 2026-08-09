@@ -27,8 +27,8 @@ absent** — and the absences are the point. When someone lands `Mailbox/set`, t
 It is designed to decay loudly rather than rot quietly.
 
 ```bash
-BM_TOKEN=bm_… BM_ACCOUNT=acc_… ./_verify.sh      # 44 assertions
-./_verify.sh --list                              # show them, run nothing
+BM_TOKEN=bm_… BM_ACCOUNT=acc_… ./_verify.sh      # run every assertion
+./_verify.sh --list                              # show them (and their count), run nothing
 ./_verify.sh calendar                            # filter by label
 ```
 

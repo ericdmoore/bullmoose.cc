@@ -322,7 +322,11 @@ check "MCP initialize removed (s01)" "-32601" \
 # Summary
 # =============================================================================
 if [ "$LIST_ONLY" = 1 ]; then
-  printf '\n%s(--list: nothing was executed)%s\n' "$D" "$Z"; exit 0
+  # Print the count rather than documenting it anywhere. A hardcoded number in
+  # prose drifts every time a unit lands — readme.md said "44 assertions" while
+  # this script had 47, and was already wrong by two before that.
+  printf '\n%s%d assertions. (--list: nothing was executed)%s\n' \
+    "$D" "$(grep -cE '^[[:space:]]*check ' "$0")" "$Z"; exit 0
 fi
 
 printf '\n%s─────────────────────────────%s\n' "$Y" "$Z"
