@@ -54,6 +54,21 @@ describe("requiredScopesForEmailSet", () => {
     expect(new Set(scopes)).toEqual(new Set(["draft", "move", "delete"]));
   });
 
+  it("charges BOTH when one patch bundles a move and a flag", () => {
+    // Regression: this used to charge only `move`, via a ternary. Because
+    // hasScope is a flat set (not the ordered lattice the docs draw), `move`
+    // does not imply `annotate` — so a move-scoped token could flip keywords
+    // for free by bundling them into a move patch. Found by sVOL 014.
+    const scopes = requiredScopesForEmailSet({
+      update: { e1: { "mailboxIds/mb2": true, "keywords/$seen": true } },
+    });
+    expect(new Set(scopes)).toEqual(new Set(["move", "annotate"]));
+  });
+
+  it("charges annotate for an empty patch — fail closed", () => {
+    expect(requiredScopesForEmailSet({ update: { e1: {} } })).toEqual(["annotate"]);
+  });
+
   it("asks for nothing when nothing is requested", () => {
     // requireAccountScopes still verifies account membership, so this cannot
     // be used to probe for accounts with no scope at all.

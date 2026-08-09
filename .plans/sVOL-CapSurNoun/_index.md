@@ -12,14 +12,15 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 
 | Noun | JMAP | CLI | MCP | DAV | WebUI | GraphQL | Transport |
 |---|---|---|---|---|---|---|---|
-| Email | `CRUD` | `-R~-` | `~` | `----` | `----` | `----` | `C---` |
-| **Mailbox** | **`-R--`** | `-R--` | `----` | `----` | `----` | `----` | `~` |
+| Email | `CRUD` | `-R~-` | `CRUD` | `----` | `----` | `----` | `C---` |
+| Mailbox | `CRUD` | `CRUD` | `-R--` | `----` | `----` | `----` | `~` |
 | Thread | `-R--` | `----` | `----` | `----` | `----` | `----` | n/a |
-| EmailSubmission | `C---` | `C---` | `----` | `----` | `----` | `----` | `C---` |
-| AddressBook | `CRUD` | `~R--` | **`-R--`** | `CR-D` | `----` | `----` | n/a |
-| ContactCard | `CRUD` | `CR--` | **`CRUD`** | `CRUD` | `----` | `----` | n/a |
-| Calendar | `CRUD` | `-R--` | **`-R--`** | `CR-D` | `----` | `----` | n/a |
-| CalendarEvent | `CRUD` | `-R--` | **`CRUD`** | `CRUD` | `----` | `----` | n/a || **FileNode** | **`----`** | `----` | `----` | `----` | `----` | `----` | n/a |
+| EmailSubmission | `CR--` | `C---` | `----` | `----` | `----` | `----` | `C---` |
+| AddressBook | `CRUD` | `~R--` | `-R--` | `CRUD` | `----` | `----` | n/a |
+| ContactCard | `CRUD` | `CR--` | `CRUD` | `CRUD` | `----` | `----` | n/a |
+| Calendar | `CRUD` | `-R--` | `-R--` | `CRUD` | `----` | `----` | n/a |
+| CalendarEvent | `CRUD` | `-R--` | `CRUD` | `CRUD` | `----` | `----` | n/a |
+| **FileNode** | **`----`** | `----` | `----` | `----` | `----` | `----` | n/a |
 | Agents | `-RU-` | `-RU-` | `----` | n/a | `----` | `----` | `C---` |
 | Secrets | n/a | `CRUD` | `----` | n/a | `----` | `----` | n/a |
 | HumanSettings | `~R~-` | `-RU-` | `----` | n/a | `----` | `----` | n/a |
@@ -28,10 +29,11 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 
 **What the grid says at a glance:**
 
-- **Contacts and Calendar are finished at the expensive layer** — full CRUD on both JMAP and
-  DAV. Everything remaining for them is cheap projection.
-- **`Mailbox` is the outlier.** Mail is the flagship noun and the least mutable thing in the
-  system: no create, rename, move, or delete on *any* surface.
+- **Contacts and Calendar are finished at the expensive layer** — full CRUD on JMAP, DAV and
+  now MCP. What remains for them is the CLI and WebUI columns, plus collection C/U/D over MCP.
+- **`Mailbox` was the outlier and no longer is.** It used to read *"mail is the flagship noun
+  and the least mutable thing in the system — no create, rename, move or delete on any
+  surface."* `004` shipped `Mailbox/set` plus the CLI verbs.
 - **The MCP column is no longer empty.** `013` landed ten tools and MCP's first WRITE of any
   kind: full CRUD on `CalendarEvent` and `ContactCard`, Read on `Calendar` and `AddressBook`.
   `014` then added eight Email tools — read, search, body, and triage (flag / move / destroy)
