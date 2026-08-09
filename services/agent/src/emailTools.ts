@@ -419,8 +419,9 @@ const READ_TOOLS: ToolDef[] = [
       "List the account's mailboxes: id, name, role, and message counts. Call this before " +
       "email_move to get a destination mailboxId, and before email_query to filter by " +
       'inMailbox. The six seeded roles are inbox, sent, drafts, trash, junk and archive. ' +
-      "Note: totalThreads and unreadThreads are not real thread counts on this server — they " +
-      "repeat the message counts; do not report them as threads.",
+      "totalThreads/unreadThreads are real thread counts and will be lower than " +
+      "totalEmails/unreadEmails wherever a thread has more than one message in the mailbox; " +
+      "unreadThreads counts threads holding unread mail in THIS mailbox.",
     inputSchema: {
       type: "object",
       properties: {
