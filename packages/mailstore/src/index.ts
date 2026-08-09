@@ -352,6 +352,29 @@ export interface StoredSubmission extends SubmissionRow {
   threadId: string | null;
 }
 
+/**
+ * Cross-realm provenance (s03.A T1) — the writer stamped onto every mutable
+ * data-plane record by the shared write path below.
+ *
+ * The motivating gap: `grant_audit` only fires on *delegated* (grant-reached)
+ * access, so an agent scrambling its OWNER's data leaves zero trace. These three
+ * columns, stamped in `Mailstore` (never per JMAP method — that guarantees
+ * drift), make every write attributable to a principal, and — when an agent
+ * binding acted — to its binding and invocation.
+ */
+export interface WriteProvenance {
+  /** Acting principal — login email, the same value `grant_audit.principal` holds. */
+  principal: string;
+  /** Agent binding name, when a binding drove the write; null/omitted otherwise. */
+  binding?: string | null;
+  /** `agent_invocations.id`, when an invocation drove the write; null/omitted otherwise. */
+  invocation?: string | null;
+}
+
+/** The SQL column list for the provenance trio, in bind order. */
+const PROVENANCE_COLUMNS =
+  "last_writer_principal, last_writer_binding, last_writer_invocation";
+
 const blobKey = (tenantId: string, accountId: string, blobId: string) =>
   `mail/${tenantId}/${accountId}/blobs/${blobId}`;
 
@@ -384,7 +407,42 @@ export class Mailstore {
   constructor(
     private db: D1Database,
     private blobs: R2Bucket,
+    /**
+     * Who is writing (s03.A T1). Optional and defaults to null so every
+     * existing `new Mailstore(db, blobs)` call site keeps compiling and writes
+     * NULL provenance — the safe value for system paths (inbound delivery,
+     * provisioning) that have no acting principal. The JMAP write path supplies
+     * it via `storeFor(ctx)`, so every JMAP `/set` records the writer.
+     */
+    private writer: WriteProvenance | null = null,
   ) {}
+
+  /**
+   * The provenance trio as positional bind values, in `PROVENANCE_COLUMNS`
+   * order. THE single source of the last_writer_* values — every insert/update
+   * of a mutable data-plane record threads these, so no write path can bypass
+   * provenance without dropping this call (which the tests assert). Binding and
+   * invocation are null unless an agent binding drove the write.
+   */
+  private provenanceValues(): [string | null, string | null, string | null] {
+    const w = this.writer;
+    return [w?.principal ?? null, w?.binding ?? null, w?.invocation ?? null];
+  }
+
+  /**
+   * Append the provenance SET clauses + bind values to a dynamic UPDATE, so an
+   * update stamps the same trio an insert does. Call it only when the update is
+   * real (`sets.length > 0`): a no-op patch stays a no-op rather than becoming a
+   * provenance-only write.
+   */
+  private appendProvenance(sets: string[], params: unknown[]): void {
+    sets.push(
+      "last_writer_principal = ?",
+      "last_writer_binding = ?",
+      "last_writer_invocation = ?",
+    );
+    params.push(...this.provenanceValues());
+  }
 
   // ---- Mailboxes ----------------------------------------------------
 
@@ -439,10 +497,10 @@ export class Mailstore {
     const id = `mb_${crypto.randomUUID()}`;
     await this.db
       .prepare(
-        `INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order)
-         VALUES (?, ?, NULL, ?, ?, 0)`,
+        `INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order, ${PROVENANCE_COLUMNS})
+         VALUES (?, ?, NULL, ?, ?, 0, ?, ?, ?)`,
       )
-      .bind(id, accountId, name, role)
+      .bind(id, accountId, name, role, ...this.provenanceValues())
       .run();
     return id;
   }
@@ -456,10 +514,10 @@ export class Mailstore {
   async insertMailbox(accountId: string, row: MailboxRow): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order, ${PROVENANCE_COLUMNS})
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(row.id, accountId, row.parentId, row.name, row.role, row.sortOrder)
+      .bind(row.id, accountId, row.parentId, row.name, row.role, row.sortOrder, ...this.provenanceValues())
       .run();
   }
 
@@ -484,6 +542,7 @@ export class Mailstore {
       params.push(patch.sortOrder);
     }
     if (sets.length === 0) return;
+    this.appendProvenance(sets, params);
     await this.db
       .prepare(`UPDATE mailboxes SET ${sets.join(", ")} WHERE account_id = ? AND id = ?`)
       .bind(...params, accountId, id)
@@ -775,8 +834,8 @@ export class Mailstore {
         .prepare(
           `INSERT INTO emails (id, account_id, blob_id, thread_id, message_id, in_reply_to,
              subject, from_json, to_json, cc_json, bcc_json, preview, size, received_at,
-             has_attachment, attachments_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             has_attachment, attachments_json, ${PROVENANCE_COLUMNS})
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           email.id,
@@ -795,6 +854,7 @@ export class Mailstore {
           email.receivedAt,
           email.hasAttachment ? 1 : 0,
           JSON.stringify(email.attachments),
+          ...this.provenanceValues(),
         ),
       ...email.mailboxIds.map((mb) =>
         this.db
@@ -845,7 +905,21 @@ export class Mailstore {
         ),
       );
     }
-    if (statements.length > 0) await this.db.batch(statements);
+    if (statements.length > 0) {
+      // A flag/move mutates the email's state through child tables, not the
+      // `emails` row — so stamp provenance onto the email itself, or "who last
+      // touched this message?" would miss every triage action.
+      statements.push(
+        this.db
+          .prepare(
+            `UPDATE emails
+             SET last_writer_principal = ?, last_writer_binding = ?, last_writer_invocation = ?
+             WHERE account_id = ? AND id = ?`,
+          )
+          .bind(...this.provenanceValues(), accountId, emailId),
+      );
+      await this.db.batch(statements);
+    }
   }
 
   async destroyEmail(accountId: string, emailId: string): Promise<void> {
@@ -938,8 +1012,8 @@ export class Mailstore {
       .prepare(
         `INSERT INTO address_books
            (id, account_id, name, description, sort_order, is_default, is_subscribed,
-            ctag, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ctag, created_at, updated_at, ${PROVENANCE_COLUMNS})
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         book.id,
@@ -952,6 +1026,7 @@ export class Mailstore {
         book.ctag,
         book.createdAt,
         book.updatedAt,
+        ...this.provenanceValues(),
       )
       .run();
   }
@@ -979,6 +1054,7 @@ export class Mailstore {
       sets.push("is_subscribed = ?");
       params.push(patch.isSubscribed ? 1 : 0);
     }
+    this.appendProvenance(sets, params);
     await this.db
       .prepare(`UPDATE address_books SET ${sets.join(", ")} WHERE account_id = ? AND id = ?`)
       .bind(...params, accountId, id)
@@ -1232,8 +1308,8 @@ export class Mailstore {
           .prepare(
             `INSERT INTO contact_cards
                (id, account_id, address_book_id, uid, card_json, name_full, dav_name,
-                created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                created_at, updated_at, ${PROVENANCE_COLUMNS})
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             row.id,
@@ -1245,6 +1321,7 @@ export class Mailstore {
             row.davName,
             row.createdAt,
             row.updatedAt,
+            ...this.provenanceValues(),
           ),
       ),
     );
@@ -1254,7 +1331,8 @@ export class Mailstore {
     await this.db
       .prepare(
         `UPDATE contact_cards
-         SET address_book_id = ?, card_json = ?, name_full = ?, dav_name = ?, updated_at = ?
+         SET address_book_id = ?, card_json = ?, name_full = ?, dav_name = ?, updated_at = ?,
+             last_writer_principal = ?, last_writer_binding = ?, last_writer_invocation = ?
          WHERE account_id = ? AND id = ?`,
       )
       .bind(
@@ -1263,6 +1341,7 @@ export class Mailstore {
         row.nameFull,
         row.davName,
         row.updatedAt,
+        ...this.provenanceValues(),
         accountId,
         row.id,
       )
@@ -1525,8 +1604,8 @@ export class Mailstore {
       .prepare(
         `INSERT INTO calendars
            (id, account_id, name, description, color, sort_order, is_default, is_subscribed,
-            ctag, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ctag, created_at, updated_at, ${PROVENANCE_COLUMNS})
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         cal.id,
@@ -1540,6 +1619,7 @@ export class Mailstore {
         cal.ctag,
         cal.createdAt,
         cal.updatedAt,
+        ...this.provenanceValues(),
       )
       .run();
   }
@@ -1577,6 +1657,7 @@ export class Mailstore {
       sets.push("is_subscribed = ?");
       params.push(patch.isSubscribed ? 1 : 0);
     }
+    this.appendProvenance(sets, params);
     await this.db
       .prepare(`UPDATE calendars SET ${sets.join(", ")} WHERE account_id = ? AND id = ?`)
       .bind(...params, accountId, id)
@@ -1724,8 +1805,8 @@ export class Mailstore {
           .prepare(
             `INSERT INTO calendar_events
                (id, account_id, calendar_id, uid, event_json, title, start_at, end_at,
-                is_recurring, dav_name, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                is_recurring, dav_name, created_at, updated_at, ${PROVENANCE_COLUMNS})
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             row.id,
@@ -1740,6 +1821,7 @@ export class Mailstore {
             row.davName,
             row.createdAt,
             row.updatedAt,
+            ...this.provenanceValues(),
           ),
       ),
     );
@@ -1750,7 +1832,8 @@ export class Mailstore {
       .prepare(
         `UPDATE calendar_events
          SET calendar_id = ?, event_json = ?, title = ?, start_at = ?, end_at = ?,
-             is_recurring = ?, dav_name = ?, updated_at = ?
+             is_recurring = ?, dav_name = ?, updated_at = ?,
+             last_writer_principal = ?, last_writer_binding = ?, last_writer_invocation = ?
          WHERE account_id = ? AND id = ?`,
       )
       .bind(
@@ -1762,6 +1845,7 @@ export class Mailstore {
         row.isRecurring ? 1 : 0,
         row.davName,
         row.updatedAt,
+        ...this.provenanceValues(),
         accountId,
         row.id,
       )
@@ -1987,8 +2071,9 @@ export class Mailstore {
       .prepare(
         `INSERT INTO file_nodes
            (id, account_id, parent_id, name, node_type, blob_id, size, type,
-            created, modified, accessed, changed, executable, is_subscribed, role)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            created, modified, accessed, changed, executable, is_subscribed, role,
+            ${PROVENANCE_COLUMNS})
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         row.id,
@@ -2006,6 +2091,7 @@ export class Mailstore {
         row.executable ? 1 : 0,
         row.isSubscribed ? 1 : 0,
         row.role,
+        ...this.provenanceValues(),
       )
       .run();
   }
@@ -2029,6 +2115,7 @@ export class Mailstore {
     if (patch.changed !== undefined) put("changed", patch.changed);
     if (patch.accessed !== undefined) put("accessed", patch.accessed);
     if (sets.length === 0) return;
+    this.appendProvenance(sets, params);
     await this.db
       .prepare(`UPDATE file_nodes SET ${sets.join(", ")} WHERE account_id = ? AND id = ?`)
       .bind(...params, accountId, id)

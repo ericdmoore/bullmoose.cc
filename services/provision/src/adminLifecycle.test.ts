@@ -954,3 +954,89 @@ describe("DELETE /accounts — soft delete, and the three things that must all m
     ).toBe(second);
   });
 });
+
+// ── grant tombstones (s03.A T2) ───────────────────────────────────────────
+// `008` left grants on hard-DELETE with a note that this slice owns their
+// lifecycle. Revoke now SETs `revoked_at` instead of DELETEing, and every
+// transition is written to grant_lifecycle — so reach ends immediately while
+// "who could have reached this account, and when did that change?" survives.
+describe("grant lifecycle — revoke tombstones, and the log remembers", () => {
+  async function mintGrant(h: Harness): Promise<string> {
+    await makeAccount(h, "editor"); // target
+    await makeAccount(h, "other"); // grantee
+    const res = await h.call("POST", "/grants", {
+      granteeEmail: `other@${DOMAIN}`,
+      targetEmail: `editor@${DOMAIN}`,
+    });
+    return (await body<{ grantId: string }>(res)).grantId;
+  }
+
+  it("logs a `created` event when a grant is minted", async () => {
+    const h = harness();
+    const grantId = await mintGrant(h);
+    expect(h.db.count("grant_lifecycle", "grant_id = ? AND event = 'created'", grantId)).toBe(1);
+  });
+
+  it("revoke TOMBSTONES the row instead of deleting it, and logs `revoked`", async () => {
+    const h = harness();
+    const grantId = await mintGrant(h);
+
+    const res = await body<{ revoked: boolean }>(await h.call("DELETE", `/grants/${grantId}`));
+    expect(res.revoked).toBe(true);
+
+    // The row survives — this is the whole point of a tombstone vs a DELETE.
+    expect(h.db.count("grants", "id = ?", grantId)).toBe(1);
+    expect(h.db.count("grants", "id = ? AND revoked_at IS NOT NULL", grantId)).toBe(1);
+    // ...and the lifecycle log carries both transitions.
+    expect(h.db.count("grant_lifecycle", "grant_id = ? AND event = 'revoked'", grantId)).toBe(1);
+    expect(h.db.count("grant_lifecycle", "grant_id = ?", grantId)).toBe(2);
+  });
+
+  it("a second revoke is an idempotent no-op — no phantom log row", async () => {
+    const h = harness();
+    const grantId = await mintGrant(h);
+    await h.call("DELETE", `/grants/${grantId}`);
+    const second = await body<{ revoked: boolean }>(await h.call("DELETE", `/grants/${grantId}`));
+    expect(second.revoked).toBe(false);
+    expect(h.db.count("grant_lifecycle", "grant_id = ? AND event = 'revoked'", grantId)).toBe(1);
+  });
+
+  it("the grantee's reach vanishes on revoke, end to end through verifyBearer", async () => {
+    const h = harness();
+    await makeAccount(h, "editor"); // target
+    const granteeId = await makeAccount(h, "other"); // grantee
+    const principalId = h.db.query<{ principal_id: string }>(
+      `SELECT principal_id FROM accounts WHERE id = ?`,
+      granteeId,
+    )[0]!.principal_id;
+    const minted = await mintToken();
+    h.db.seed("tokens", [
+      {
+        id: minted.id,
+        principal_id: principalId,
+        secret_hash: minted.secretHash,
+        name: "laptop",
+        scopes: JSON.stringify(["mail"]),
+        created_at: Date.now(),
+      },
+    ]);
+    const grantId = (
+      await body<{ grantId: string }>(
+        await h.call("POST", "/grants", {
+          granteeEmail: `other@${DOMAIN}`,
+          targetEmail: `editor@${DOMAIN}`,
+        }),
+      )
+    ).grantId;
+
+    const before = await verifyBearer(h.db, minted.token);
+    expect(before?.accounts.some((a) => a.granted)).toBe(true);
+
+    await h.call("DELETE", `/grants/${grantId}`);
+
+    const after = await verifyBearer(h.db, minted.token);
+    expect(after?.accounts.some((a) => a.granted)).toBe(false);
+    // Reach is gone; the history that explains it is not.
+    expect(h.db.count("grant_lifecycle", "grant_id = ?", grantId)).toBe(2);
+  });
+});

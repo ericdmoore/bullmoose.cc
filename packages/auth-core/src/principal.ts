@@ -148,12 +148,19 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
   // agent delegation). Owned accounts win over grants to themselves.
   if (accounts.length > 0) {
     const marks = accounts.map(() => "?").join(",");
+    // `revoked_at IS NULL` is the s03.A T2 tombstone filter, sitting beside the
+    // existing `expires_at` check: a revoked grant stops resolving IMMEDIATELY
+    // while its row (and its grant_lifecycle history) survive, so a point-in-time
+    // query can still reconstruct who could reach this account last Tuesday. This
+    // is a resolution-layer change only — `authorizeAccount` is untouched, so the
+    // authz DECISION is identical.
     const { results: grantRows } = await db.prepare(
       `SELECT g.id, g.target_account_id, g.scopes, g.collection, g.collection_id,
               a.tenant_id, a.display_name
        FROM grants g JOIN accounts a ON a.id = g.target_account_id
        WHERE g.grantee_account_id IN (${marks})
          AND a.deleted_at IS NULL
+         AND g.revoked_at IS NULL
          AND (g.expires_at IS NULL OR g.expires_at > ?)`,
     )
       .bind(...accounts.map((a) => a.accountId), now)

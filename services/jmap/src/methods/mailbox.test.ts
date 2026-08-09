@@ -134,6 +134,26 @@ function fakeD1(tables: Tables) {
       tables.emails = tables.emails.filter((e) => !(e.account_id === accountId && e.id === id));
       return { results: [] };
     }
+    // Provenance stamp (s03.A T1) — replaceEmailSets bumps the email's
+    // last_writer_* when a flag/move changes its child tables. Nothing here
+    // asserts on it, so record it faithfully and move on.
+    if (sql.startsWith("UPDATE emails")) {
+      const [principal, binding, invocation, accountId, id] = args as [
+        string | null,
+        string | null,
+        string | null,
+        string,
+        string,
+      ];
+      const row = tables.emails.find((e) => e.account_id === accountId && e.id === id);
+      if (row) {
+        const r = row as unknown as Record<string, unknown>;
+        r.last_writer_principal = principal;
+        r.last_writer_binding = binding;
+        r.last_writer_invocation = invocation;
+      }
+      return { results: [] };
+    }
     throw new Error(`fake D1: unrouted write: ${sql}`);
   };
 

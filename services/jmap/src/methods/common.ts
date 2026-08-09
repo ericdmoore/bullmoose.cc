@@ -12,6 +12,18 @@ import type { Env } from "../index";
 export interface RequestContext {
   env: Env;
   principal: Principal;
+  /**
+   * Agent provenance (s03.A T1), present only when an agent binding drove this
+   * request. `storeFor` folds it into the writer stamped on every mutable
+   * record: the principal always comes from `principal.username`, and these two
+   * add the binding/invocation attribution when applicable. Absent for ordinary
+   * human/token calls (binding + invocation stay NULL). Downstream agent
+   * surfaces (the s03 bridge) populate it; the human JMAP path leaves it unset.
+   */
+  agent?: {
+    binding?: string | null;
+    invocation?: string | null;
+  };
 }
 
 /**
@@ -113,8 +125,20 @@ export async function requireAccount(
   return decision.access;
 }
 
+/**
+ * The Mailstore every JMAP `/set` writes through, carrying the caller as write
+ * provenance (s03.A T1). The store stamps `last_writer_principal` (the acting
+ * login email, the same value `grant_audit` records) onto every mutable record
+ * — so a write to an OWNED account is attributable even though it fires no
+ * grant_audit row, which is the gap the whole slice exists to close. The binding
+ * and invocation are stamped too when `ctx.agent` is present.
+ */
 export function storeFor(ctx: RequestContext): Mailstore {
-  return new Mailstore(ctx.env.DB, ctx.env.BLOBS);
+  return new Mailstore(ctx.env.DB, ctx.env.BLOBS, {
+    principal: ctx.principal.username,
+    binding: ctx.agent?.binding ?? null,
+    invocation: ctx.agent?.invocation ?? null,
+  });
 }
 
 export async function accountState(ctx: RequestContext, accountId: string): Promise<string> {
