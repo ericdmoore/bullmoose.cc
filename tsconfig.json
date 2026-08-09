@@ -32,8 +32,18 @@
     }
   },
   "include": ["packages/*/src/**/*.ts", "services/*/src/**/*.ts"],
-  // packages/cli is a Node program (node:sqlite etc.) with its own
-  // tsconfig — Node globals clash with workers-types, so it's excluded
-  // here and typechecked separately (npm run typecheck covers both).
-  "exclude": ["node_modules", "src", "webmail", "packages/cli"]
+  // Two workspaces are typechecked with their OWN compiler settings, not this
+  // workers-typed program, so they're excluded here and chained into the root
+  // `typecheck` script (`&& npm run -w webmail typecheck && npm run -w
+  // @bullmoose/cli typecheck`):
+  //   • packages/cli — a Node program (node:sqlite etc.); Node globals clash
+  //     with workers-types.
+  //   • webmail (s03.C) — an Astro + Preact browser app; DOM libs + preact JSX
+  //     clash with workers-types the same way. Now a REAL directory (it used to
+  //     be a stale exclude of a dir that never existed): its `astro build`
+  //     validates the .astro files and its tsconfig(.test).json typecheck the
+  //     .ts/.tsx. A project reference doesn't fit — it would force composite +
+  //     emit on a noEmit Astro app — so the exclude-plus-chain pattern (proven
+  //     by cli) is the honest resolution.
+  "exclude": ["node_modules", "src", "packages/cli", "webmail"]
 }

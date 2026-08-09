@@ -1,0 +1,14 @@
+{
+  // Typecheck-only view that INCLUDES the client unit tests. Split from
+  // tsconfig.json so the app view stays test-free (same pattern as
+  // packages/cli/tsconfig.test.json). Tests run under the root vitest config;
+  // this only proves they type-check. `@bullmoose/jmap-core` resolves through
+  // the workspace symlink (declared as a devDependency).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["dist", "node_modules", ".astro"]
+}

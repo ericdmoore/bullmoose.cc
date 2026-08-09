@@ -1,0 +1,13 @@
+{
+  // App view: typecheck the shell's .ts/.tsx with DOM + Preact JSX. The .astro
+  // files are validated by `astro build`, not tsc (tsc can't parse .astro) —
+  // same split the marketing site uses. Tests live in tsconfig.test.json so
+  // they don't drag vitest/node types into the app view (mirrors packages/cli).
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "jsxImportSource": "preact",
+    "types": []
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["dist", "node_modules", ".astro", "src/**/*.test.ts"]
+}

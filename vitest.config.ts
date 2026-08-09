@@ -32,8 +32,15 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["packages/**/*.test.ts", "services/**/*.test.ts"],
-    exclude: ["**/node_modules/**", "**/dist/**", "src/**", "webmail/**"],
+    // webmail/ (s03.C): the JmapClient is pure TS and unit-tested here in plain
+    // Node against a fake fetch / FakeJmapClient — no browser. Its tests import
+    // `@bullmoose/jmap-core` through the SAME alias block above (do not remove
+    // it: a git-worktree lookup would otherwise resolve the wrong checkout).
+    // The Astro/Preact SHELL is not unit-tested — `astro build` is its bar.
+    include: ["packages/**/*.test.ts", "services/**/*.test.ts", "webmail/**/*.test.ts"],
+    // Still exclude the marketing site (src/) and any build output; webmail/dist
+    // and webmail/node_modules are covered by the two globs that precede them.
+    exclude: ["**/node_modules/**", "**/dist/**", "src/**"],
     environment: "node",
     coverage: {
       provider: "v8",
