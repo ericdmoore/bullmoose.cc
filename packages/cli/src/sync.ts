@@ -169,6 +169,32 @@ export async function refreshMailboxes(
   return { mailboxes, state: String(mb.state) };
 }
 
+/**
+ * Reconcile the local mirror for specific ids after a CLI-originated
+ * `Email/set` write (sVOL 019). Re-fetches the `updated` ids and rewrites their
+ * mirror rows (emails, email_mailboxes, email_keywords, cli_fts); drops the
+ * `destroyed` ids.
+ *
+ * The contract, and why it is a separate entry point rather than a `sync`:
+ * call it with ONLY the ids the server reported in `updated`/`destroyed`, and
+ * ONLY after the write returns. A triage verb that reconciled optimistically —
+ * before the server confirmed the change, or for ids the server refused —
+ * would re-introduce exactly the mirror-vs-server divergence this exists to
+ * prevent. It reuses `upsertEmails`/`deleteEmail`, so the mirror rows it writes
+ * are byte-for-byte the ones a full `sync` would.
+ */
+export async function reconcileEmails(
+  db: DatabaseSync,
+  client: JmapClient,
+  accountId: string,
+  changed: { updated?: string[]; destroyed?: string[] },
+): Promise<void> {
+  if (changed.updated && changed.updated.length > 0) {
+    await upsertEmails(db, client, accountId, changed.updated, {});
+  }
+  for (const id of changed.destroyed ?? []) deleteEmail(db, accountId, id);
+}
+
 export async function sync(
   db: DatabaseSync,
   client: JmapClient,

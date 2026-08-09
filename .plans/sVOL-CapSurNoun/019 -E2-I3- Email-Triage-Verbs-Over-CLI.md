@@ -7,7 +7,7 @@
 | **Impact** | **I3** — human-verifiable; *unlocks* is contested, see below |
 | **Owner** | `sVOL` |
 | **Depends on** | `016` (CLI I/O contract, `s05` T1) |
-| **Status** | todo |
+| **Status** | done |
 
 ## Cells covered
 
