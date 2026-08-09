@@ -55,9 +55,8 @@ Five things that are not what they look like:
 3. **"SMTP" is a misnomer in this repo.** No SMTP server, no SMTP client. Inbound is the
    Cloudflare Email Routing `email()` handler (`services/ingest/src/index.ts:48`); outbound is
    SES v2 over **HTTPS** SigV4 (`services/submit/src/index.ts:46`).
-4. **There is no WebUI.** `src/` is the Astro **marketing site**
-   (`src/src/pages/{index,apps,connectors,deploy,recipes}.astro`). `tsconfig.json:38` excludes
-   a `webmail/` directory that has never existed. Every "web" reference in `.plans/` is
+4. **WebUI: a shell floor exists, no surfaces yet.** `src/` is the Astro **marketing site**; `webmail/` (s03.C T1) is a bootable Astro+Preact shell with a tested JmapClient but renders no mail/contacts/calendar. `src/`
+   (`src/src/pages/{index,apps,connectors,deploy,recipes}.astro`). `webmail/` now exists (s03.C T1 — Astro+Preact shell + injected JmapClient); it renders no nouns yet. Every "web" reference in `.plans/` is
    aspirational.
 5. **MCP is far narrower than its docs suggest.** Four read-only analytics tools. An agent on
    MCP today cannot read a message, send mail, or touch contacts, calendar, or the vault —
