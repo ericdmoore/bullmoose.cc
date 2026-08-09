@@ -19,8 +19,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | AddressBook | `CRUD` | `~R--` | **`-R--`** | `CR-D` | `----` | `----` | n/a |
 | ContactCard | `CRUD` | `CR--` | **`CRUD`** | `CRUD` | `----` | `----` | n/a |
 | Calendar | `CRUD` | `-R--` | **`-R--`** | `CR-D` | `----` | `----` | n/a |
-| CalendarEvent | `CRUD` | `-R--` | **`CRUD`** | `CRUD` | `----` | `----` | n/a |
-| **FileNode** | **`----`** | `----` | `----` | `----` | `----` | `----` | n/a |
+| CalendarEvent | `CRUD` | `-R--` | **`CRUD`** | `CRUD` | `----` | `----` | n/a || **FileNode** | **`----`** | `----` | `----` | `----` | `----` | `----` | n/a |
 | Agents | `-RU-` | `-RU-` | `----` | n/a | `----` | `----` | `C---` |
 | Secrets | n/a | `CRUD` | `----` | n/a | `----` | `----` | n/a |
 | HumanSettings | `~R~-` | `-RU-` | `----` | n/a | `----` | `----` | n/a |
@@ -59,7 +58,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 002 | Shared test harness — fake D1 (`.batch()`) + DO/blob stubs ¹ | pre | E2 | I2 | sVOL | — | **✅ done** |
 | 003 | Recurrence correctness before calendar writes | pre | **E3** ⁶ | I3 | `common/003` | — | **✅ done** |
 | 004 | `Mailbox/set` + CLI | cap | E3 | I3 | sVOL | 002 ⁷ | **✅ done** |
-| 005 | `EmailSubmission/get` | cap | E1 | I2 | sVOL | — | todo |
+| 005 | `EmailSubmission/get` | cap | E1 | I2 | sVOL | — | **✅ done** ⁸ |
 | 006 | `Identity/set` + CLI signatures | cap | **E3** ² | I3 | sVOL | 002 | todo |
 | 007 | `AgentInvocation` on-demand trigger | cap | E2 | I3 | sVOL | 002 | todo |
 | 008 | Admin lifecycle — update + delete | cap | E2 | I1 ⁵ | sVOL | — | todo |
@@ -157,6 +156,19 @@ the wrong side: `CalendarEvent/set` takes JSCalendar directly and never validate
 `calendar-core` went from zero tests to 100 with an external oracle. See
 `.feedback/fromClaude/✅003`.
 
+⁸ **`005` shipped as spec conformance ONLY, deliberately — it does not wire delivery status.**
+The triage in its unit file is correct: `undo_status` is a near-constant and nothing correlates
+SES events back onto a submission. `/get` therefore returns `deliveryStatus: null` rather than a
+synthesized `"unknown"` map, and the reasoning is pinned by a test so a later patch cannot
+quietly "fix" it into a confident lie. Wiring real delivery status was scoped and rejected as a
+**separate `E3`** unit, not smuggled in: it needs a new column on a deployed table (no migration
+framework), an `ACCOUNT_DO` binding the submit worker deliberately lacks (circular with jmap's
+`SUBMIT` binding, `services/submit/src/index.ts:96-99`) without which the update never reaches
+`/changes`, and SNS signature verification that is still a `TODO` (`:106`). That unit is
+**unfiled** — the original file's Open Question 1 says it should have been, and it still should.
+The `I2` grade survives delivery intact and the unit file explains why it is the rubric's clean
+teaching case.
+
 ⚠️ **`002` shipped, but two suites arrived after its base and are NOT migrated.**
 `services/anglebrackets/src/dav.test.ts` (`009`) and `services/jmap/src/methods/mailbox.test.ts`
 (`004`) landed while `002` was in flight, each carrying its own local fake. `mailbox.test.ts`'s
@@ -223,7 +235,6 @@ wave 3 — close the capability holes
 
 wave 4 — cheap cleanup, any time
   005 · 008b (tenant/domain/account lifecycle) · 010 ← ✅ DONE, pulled forward · 012 · 015
-
 wave 5 — the unbuilt stacks
   011 (s03.B) → 021 (s03.C) → 022 → 024 → 023 (s03.E)
   025 GraphQL — only after the common/022 spike returns a number
@@ -255,7 +266,7 @@ Every non-`n/a` gap cell in §1 maps to at least one unit:
 | Email × CRUD × MCP | 014 |
 | Mailbox × C/U/D × all | 004 |
 | Thread × changes | 027 |
-| EmailSubmission × R | 005 |
+| EmailSubmission × R | 005 ✅ |
 | AddressBook/Calendar × query | 012 |
 | ContactCard/CalendarEvent × C/U/D × CLI | 017, 018 |
 | ContactCard/CalendarEvent × CRUD × MCP | 013 ✅ |

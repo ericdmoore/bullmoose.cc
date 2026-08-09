@@ -10,8 +10,7 @@
 >
 > | Was | Now |
 > |---|---|
-> | 2 test files, 19 tests | **23 test files, 471 tests** |
-> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
+> | 2 test files, 19 tests | **23 test files, 483 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
 > | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
 > | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
 > | test files excluded from typecheck | typechecked in both configs |
@@ -71,7 +70,7 @@ Five things that are not what they look like:
 
 | Surface | State | Where |
 |---|---|---|
-| JMAP | ✅ live — 39 registered methods | `services/jmap`, registry at `src/methods/index.ts:15-30` |
+| JMAP | ✅ live — 40 registered methods | `services/jmap`, registry at `src/methods/index.ts:15-30` |
 | CLI | ✅ live — 19 top-level commands, ~5,012 lines | `packages/cli` |
 | MCP | ⚠️ live but narrow — 4 read-only tools | `services/agent/src/mcp.ts:55` |
 | AngleBracket (CalDAV/CardDAV) | ✅ live — read-write at both *resource* and *collection* level (no `PROPPATCH`) | `services/anglebrackets/src/dav.ts` |
@@ -87,7 +86,7 @@ Mailbox         get changes query queryChanges set
 Email           get query set import changes queryChanges
 Thread          get                                      ← no changes
 Identity        get                                      ← no set
-EmailSubmission set changes                              ← no get
+EmailSubmission set get changes
 AgentInvocation query get set changes
 VacationResponse get set
 AddressBook     get changes set                          ← no query
@@ -112,7 +111,7 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
 | **Email** | `CRUD` | `-R~-` ¹ | `~` ² | `----` | `----` | `----` | `C---` ³ |
 | **Mailbox** | `CRUD` ⁴ | `CRUD` ⁴ | `----` | `----` | `----` | `----` | `~` ⁵ |
 | **Thread** | `-R--` | `----` | `----` | `----` | `----` | `----` | n/a |
-| **EmailSubmission** | `C---` ⁶ | `C---` | `----` | `----` | `----` | `----` | `C---` |
+| **EmailSubmission** | `CR--` ⁶ | `C---` | `----` | `----` | `----` | `----` | `C---` |
 | **AddressBook** | `CRUD` ⁷ | `~R--` ⁸ | `-R--` | `CR-D` ⁹ | `----` | `----` | n/a |
 | **ContactCard** | `CRUD` | `CR--` ¹⁰ | `CRUD` | `CRUD` | `----` | `----` | n/a |
 | **Calendar** | `CRUD` ⁷ | `-R--` | `-R--` | `CR-D` ⁹ | `----` | `----` | n/a |
@@ -155,8 +154,7 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
    `isSubscribed: false` instead of silently discarding it.
 5. Role mailboxes seeded at account creation only.
 6. Create only — `submission.ts:22`, `args.create` at `:48`. `args.update` and `args.destroy`
-   are never read; `destroyed: []` is hardcoded `:101`. **`EmailSubmission/changes` is
-   registered with no `/get`** — a client is told which ids changed and has no method to read
+   are never read; `destroyed: []` is hardcoded `:101`. ~~`EmailSubmission/changes` is registered with no `/get`~~ (**closed by sVOL `005`**) — a client is told which ids changed and has no method to read
    them. Delivery status is write-and-forget.
 7. No `AddressBook/query`, no `Calendar/query`.
 8. Implicit create only — `contacts import` auto-creates a missing book
@@ -184,10 +182,18 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
     `010` warned about survives unless `011` wires it.
 13. `AgentInvocation/set` implements **update only** (`agent.ts:84`); `created: {}` `:128` and
     `destroyed: []` `:132` are hardcoded. Optimistic claim guard at `:92`.
-    🔴 **`_context.md` §3's failure mode is already live in the tree**: `finish`
-    (`services/agent/src/index.ts:329`) writes terminal invocation state with **raw SQL**,
-    bypassing `commitChanges` — so invocation completion never reaches the changelog. Worth a
-    `.feedback` issue independent of this volume.
+    ❌ **REFUTED — do not re-report this.** An earlier revision of this footnote claimed
+    `finish` (`services/agent/src/index.ts`) writes terminal invocation state with raw SQL
+    "bypassing `commitChanges`", i.e. that §3's failure mode was already live. **That is
+    false.** Read the whole function: the raw `UPDATE` is immediately followed by
+    `commitChanges(env.ACCOUNT_DO, job.account_id, [{ collection: "AgentInvocation",
+    updated: [job.id] }])`. The changelog invariant holds. Only `Mailstore` is bypassed,
+    which is a consistency preference, not a defect.
+
+    Recorded rather than deleted because **three independent agents have now reported it as a
+    bug** — the first one's report is what put the false claim in this file, and the next two
+    were reading it back out of here and re-deriving it in good faith. If you are about to
+    file this, read `finish` in full first.
 14. **Inbound mail is the only creator of invocations** —
     `services/ingest/src/index.ts:178`. There is no way to trigger an agent on demand.
 15. Vault is a direct HTTP API on the agent worker, not JMAP: PUT `vault.ts:79`,
@@ -310,8 +316,7 @@ is the only thing that catches this failure mode, and it is now cheap.
 
 ## 5. Test infrastructure — the honest state
 
-**23 test files, 471 tests** (was 2 files / 19 at the original audit). `npm test` runs in
-well under a second and is a **required status check** on `main` via the `verify` job.
+**23 test files, 483 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
 worktree agents: without it Node's upward `node_modules` lookup escapes the worktree and
@@ -376,7 +381,7 @@ self-correct at read time. Unit `003`'s data-integrity gate on `013`/`018` is di
 `s03.E` → Agents + Secrets × Read × WebUI. `s04` → the Bureau egress axis.
 
 **Gaps owned by nobody** — these are what `sVOL` is for:
-`EmailSubmission/get` · `Identity/set` · any noun × MCP (s02 covers only
+`Identity/set` · any noun × MCP (s02 covers only
 *foreign* clients) · Email triage verbs × CLI (s05 punted them: *"worth its own slice"*) ·
 ContactCard/CalendarEvent × WebUI (s03.C covers Email + Files only) · DAV collection *update*
 (`PROPPATCH` — `009` shipped create/delete only) · admin update/delete ·

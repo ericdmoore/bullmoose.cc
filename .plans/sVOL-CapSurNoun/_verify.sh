@@ -155,9 +155,23 @@ section "Thread — derived, read only (unit 027)"
 check "Thread/get           present"        ok            jmap_outcome "Thread/get"     "$GET_NOOP"
 check "Thread/changes       ABSENT  ← 027"  unknownMethod jmap_outcome "Thread/changes" "{\"accountId\":$ACC,\"sinceState\":\"0\"}"
 
-section "EmailSubmission — set+changes registered, /get missing (unit 005)"
+section "EmailSubmission — set+get+changes all registered (005 closed the /get hole)"
 check "EmailSubmission/set     present"     ok            jmap_outcome "EmailSubmission/set" "$SET_NOOP"
-check "EmailSubmission/get     ABSENT ← 005" unknownMethod jmap_outcome "EmailSubmission/get" "$GET_NOOP"
+# ↓ WAS the registry inconsistency — /changes reported ids no method could read.
+#   005 landed and this flipped from unknownMethod to ok.
+check "EmailSubmission/get     present ← 005" ok          jmap_outcome "EmailSubmission/get" "$GET_NOOP"
+# NOT asserted here, deliberately: 005 shipped CONFORMANCE ONLY, so every row's
+# `deliveryStatus` is null and `undoStatus` is "final". Both are honest (nothing
+# correlates SES bounce/complaint events back onto a submission — _index.md fn 8)
+# and neither is a grid fact this script can check without a sent message in the
+# account. They are pinned by unit test instead:
+# services/jmap/src/methods/submission.test.ts, "it does not claim a delivery
+# status it cannot know". If that suite ever goes green while /get emits a
+# per-recipient map, the follow-up unit landed — and THIS section needs a row.
+#
+# `EmailSubmission/changes` is likewise not asserted: `sinceState: "0"` legally
+# 409s (→ cannotCalculateChanges) once the changelog window has moved past the
+# floor, so the row would be flaky against a live account rather than wrong.
 
 # =============================================================================
 # Grid — Contacts / Calendar  (capability COMPLETE; only projections missing)
