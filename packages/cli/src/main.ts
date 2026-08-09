@@ -39,6 +39,7 @@ import { pidPaths, readAlivePid, watch, writePid } from "./watch.js";
 import { cmdAdmin } from "./admin.js";
 import { cmdLogin, cmdToken } from "./tokens.js";
 import { agentServe, loadAgentConfig } from "./agent.js";
+import { cmdAgentInvoke } from "./agentInvoke.js";
 import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
 import { cmdCalendar } from "./calendar.js";
@@ -102,6 +103,9 @@ const parseCommandLine = () =>
       identity: { type: "string" },
       config: { type: "string" },
       once: { type: "boolean", default: false },
+      // ---- agent invoke (sVOL 007) ----
+      email: { type: "string" },
+      note: { type: "string" },
       until: { type: "string" },
       expires: { type: "string" },
       kind: { type: "string" },
@@ -748,7 +752,19 @@ async function cmdVacation(): Promise<void> {
 
 async function cmdAgent(): Promise<void> {
   const verb = positionals[1];
-  if (verb !== "serve") usage("bullmoose agent serve --config <agent.json> [--once]");
+  // On-demand trigger (sVOL 007): a separate module + JMAP path from `serve`.
+  if (verb === "invoke" || verb === "invocations" || verb === "rm") {
+    await cmdAgentInvoke(db, positionals.slice(1), {
+      account: opts.account,
+      email: opts.email,
+      note: opts.note,
+      ...io,
+    });
+    return;
+  }
+  if (verb !== "serve") {
+    usage("bullmoose agent serve --config <agent.json> [--once] | invoke <binding> --email <id> | invocations | rm <invId>");
+  }
   if (!opts.config) usage("agent serve requires --config <agent.json>");
   const settings = requireSettings(db);
   const client = new JmapClient(settings.base, settings.token);

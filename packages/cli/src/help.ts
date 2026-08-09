@@ -290,17 +290,28 @@ export const COMMANDS: Command[] = [
   },
   {
     name: "agent",
-    synopsis: "bullmoose agent serve --config <agent.json> [--once]",
-    summary: "run the homelab agent runtime (claims the AgentInvocation queue)",
+    synopsis: "bullmoose agent serve --config <agent.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId>",
+    summary: "run the homelab agent runtime, and trigger agents on demand",
     description:
-      "Logs in as the bound account, watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config. --once drains and exits (cron-friendly). The config's `binding` must match the server-side binding name (see `admin agent bind`).",
+      "`serve` logs in as the bound account, watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config. --once drains and exits (cron-friendly). The config's `binding` must match the server-side binding name (see `admin agent bind`).\n\n`invoke` (sVOL 007) is the on-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.",
+    subcommands: [
+      { name: "serve", synopsis: "agent serve --config <agent.json> [--once]", summary: "run the homelab runtime; claims the queue" },
+      { name: "invoke", synopsis: "agent invoke <binding> --email <emailId> [--note <text>]", summary: "queue an invocation for a binding on a message (refused if the binding is disabled)" },
+      { name: "invocations", synopsis: "agent invocations [pending|running|done|failed]", summary: "list the invocation queue (default: pending)" },
+      { name: "rm", synopsis: "agent rm <invId>", summary: "purge an invocation (a running one is refused)" },
+    ],
     flags: [
-      { flag: "--config <agent.json>", desc: "agent definition (binding, persona, model{provider,baseURL,apiKeyEnv})" },
-      { flag: "--once", desc: "drain the queue once and exit" },
+      { flag: "--config <agent.json>", desc: "serve: agent definition (binding, persona, model{provider,baseURL,apiKeyEnv})" },
+      { flag: "--once", desc: "serve: drain the queue once and exit" },
+      { flag: "--email <emailId>", desc: "invoke: the message the agent acts on (required)" },
+      { flag: "--note <text>", desc: "invoke: a human note stored in the invocation context" },
     ],
     examples: [
       { cmd: "bullmoose agent serve --config hermes.json" },
       { cmd: "bullmoose agent serve --config hermes.json --once", note: "cron drain" },
+      { cmd: "bullmoose agent invoke emily --email e_9f3c…", note: "start emily on an existing message" },
+      { cmd: "bullmoose agent invocations", note: "what is queued right now" },
+      { cmd: "bullmoose agent invocations --ids | xargs -n1 bullmoose agent rm", note: "clear the pending queue" },
     ],
     seeAlso: ["admin agent bind", "watch"],
   },
