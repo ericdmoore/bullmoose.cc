@@ -9,6 +9,7 @@ import { registerAgentMethods } from "./agent";
 import { registerVacationMethods } from "./vacation";
 import { registerContactsMethods } from "./contacts";
 import { registerCalendarMethods } from "./calendars";
+import { registerFileNodeMethods } from "./filenode";
 
 export type { RequestContext } from "./common";
 
@@ -24,5 +25,6 @@ export function buildRegistry(): MethodRegistry<RequestContext> {
   registerVacationMethods(registry);
   registerContactsMethods(registry);
   registerCalendarMethods(registry);
+  registerFileNodeMethods(registry);
   return registry;
 }

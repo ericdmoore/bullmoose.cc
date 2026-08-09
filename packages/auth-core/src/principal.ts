@@ -203,8 +203,11 @@ export function principalHasScope(principal: Principal, scope: string): boolean 
 
 /** Method domains for grant coverage: a collection-scoped grant only
  * unlocks its domain's methods; a whole-account grant covers any domain
- * its scopes allow. */
-export type MethodDomain = "mail" | "contacts" | "calendar";
+ * its scopes allow. `files` (FileNode realm, sVOL 011) has no collection-scoped
+ * grant type in this slice — sharing is deferred to the ACL epic (shareWith is
+ * always null) — so a `files` grant is reachable only via a whole-account
+ * grant (collection === null), which grantCoversDomain already covers. */
+export type MethodDomain = "mail" | "contacts" | "calendar" | "files";
 
 function grantCoversDomain(g: GrantRef, domain: MethodDomain): boolean {
   if (g.collection === null) return true;

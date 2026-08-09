@@ -7,7 +7,43 @@
 | **Impact** | **I3** — unlocks *and* human-verifiable |
 | **Owner** | **`s03.B-files`** |
 | **Depends on** | `s03.A` (provenance columns — `file_nodes` should carry them from birth) |
-| **Status** | todo |
+| **Status** | **T1 + T2 shipped.** T3 (attachment sidestep) and s03.A provenance deferred — see below. |
+
+## What shipped (T1 + T2)
+
+- **T1 — schema + accessors + pinning.** `file_nodes` inode table in
+  `packages/mailstore/sql/data-plane.sql` (`UNIQUE(account_id, parent_id, name)`,
+  four epoch-ms timestamps, `file_nodes_{parent,blob,changed}` indexes). Mailstore
+  accessors `getFileNodes`, `getFileNodeChildren`, `insertFileNode`,
+  `updateFileNode`, `deleteFileNodes`, `queryFileNodes`, `fileNodesReferencingBlob`.
+  **Blob pinning landed with the schema:** `handleBlobDelete`
+  (`services/jmap/src/index.ts`) now refuses (409 "blob pinned") while any live
+  FileNode references the blob, alongside the existing mail-reference and
+  live-share guards.
+- **T2 — `FileNode/*` methods** in `services/jmap/src/methods/filenode.ts`:
+  `get` (+`fetchParents`), `set` (+`onExists`, `compareCaseInsensitively`,
+  `onDestroyRemoveChildren`, cycle rejection, **010 revoke-on-destroy**), `query`
+  (+`ancestorId` depth recursion), `changes`, `queryChanges` (always-throw stub),
+  `copy`. Full write choreography — mutate → `commitChanges(collection:"FileNode")`
+  → `newState`. Advertised as `urn:ietf:params:jmap:filenode` (pinned to
+  `draft-ietf-jmap-filenode-14`) in the session and `SUPPORTED_CAPS`.
+- **Scope.** New realm scope `files` in `REALM_SCOPES` (+ CLI mirror) and
+  `MethodDomain` — reads gate `("read","files")`, writes `("files","files")`,
+  mirroring calendar/contacts (`_context.md` §4).
+- **Tests.** `services/jmap/src/methods/filenode.test.ts` — 29 tests, including the
+  write-choreography counterfactual and the 010 obligation. 746 total (was 715).
+
+## Deferred (explicit follow-ups)
+
+- **T3 — the attachment sidestep** (in `services/ingest`, out via a compose helper).
+  Not started. The metadata + link primitives it needs now exist.
+- **s03.A provenance** — `file_nodes` carries no `last_writer_*` columns. Adding
+  them later is an ALTER, which this repo has no framework for — but the table is
+  new, so a fresh deploy that includes them would be clean.
+- **CLI `files` verbs** (the projection cell this unit flagged) — still unwritten.
+- **Named-principal sharing** — `shareWith` is hardcoded `null` (ACL/"teams" epic).
+- **Conditional capability advertisement** — advertised unconditionally (like
+  calendars); the draft-churn mitigation is the pinned-version constant, not a flag.
 
 ## Cells covered
 

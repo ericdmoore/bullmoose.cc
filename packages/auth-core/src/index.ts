@@ -45,8 +45,13 @@ export async function verifyTokenSecret(secret: string, storedHash: string): Pro
 
 export const MAIL_SCOPES = ["read", "annotate", "draft", "move", "send", "delete"] as const;
 
-/** Realm scopes. Independent of the mail verbs — NOT covered by "mail". */
-export const REALM_SCOPES = ["contacts", "calendar", "vault"] as const;
+/** Realm scopes. Independent of the mail verbs — NOT covered by "mail".
+ * `files` is the FileNode realm (JMAP for Files, sVOL 011): a dedicated realm
+ * scope, mirroring `contacts`/`calendar`, because Files is its own data realm
+ * and none of the existing scopes fit. Like the others, it is a FLAT scope —
+ * `hasScope(["files"], "read")` is false (common/027), so FileNode reads gate
+ * on `read` and writes on `files`, exactly as calendar/contacts do. */
+export const REALM_SCOPES = ["contacts", "calendar", "vault", "files"] as const;
 
 export type Scope = (typeof MAIL_SCOPES)[number] | (typeof REALM_SCOPES)[number] | "mail" | "admin";
 

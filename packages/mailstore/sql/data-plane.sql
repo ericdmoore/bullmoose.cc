@@ -262,6 +262,49 @@ CREATE TABLE IF NOT EXISTS dav_tombstones (
   PRIMARY KEY (account_id, item_id)
 );
 
+-- FileNode inodes (JMAP for Files, draft-ietf-jmap-filenode-14). The inode
+-- metadata layer over the EXISTING blob path: content bytes stay in R2 at
+-- mail/{tenant}/{account}/blobs/{blobId} (no new storage code); this table is
+-- the tree. A blob referenced by a live FileNode is PINNED — handleBlobDelete
+-- refuses to remove it (services/jmap/src/index.ts), which is the blob-pinning
+-- invariant landing WITH the schema (s03.B/arch.md §3), not after.
+--
+-- node_type: 'file' (blob_id required) | 'directory' | 'symlink' (blob_id null).
+-- The four timestamps are epoch ms; the JMAP layer emits them as UTCDate
+-- strings. role is 'root'|'home'|'trash'|... (nullable; unconstrained in v1).
+--
+-- Sibling-name uniqueness is UNIQUE(account_id, parent_id, name). NOTE the
+-- SQLite NULL caveat: two top-level nodes (parent_id NULL) with the same name do
+-- NOT collide under this constraint, because NULLs compare distinct — so the
+-- METHOD LAYER's onExists check is the primary enforcement (and the only one
+-- that can do compareCaseInsensitively). This constraint is the backstop for
+-- non-NULL parents.
+CREATE TABLE IF NOT EXISTS file_nodes (
+  id            TEXT NOT NULL,
+  account_id    TEXT NOT NULL,
+  parent_id     TEXT,                      -- NULL = top level
+  name          TEXT NOT NULL,
+  node_type     TEXT NOT NULL,             -- file | directory | symlink
+  blob_id       TEXT,                      -- key into R2; required for files
+  size          INTEGER,                   -- bytes; files only
+  type          TEXT,                      -- IANA media type; files only
+  created       INTEGER NOT NULL,          -- epoch ms
+  modified      INTEGER NOT NULL,          -- content last modified
+  accessed      INTEGER NOT NULL,          -- last read
+  changed       INTEGER NOT NULL,          -- metadata last changed
+  executable    INTEGER NOT NULL DEFAULT 0,
+  is_subscribed INTEGER NOT NULL DEFAULT 1,
+  role          TEXT,
+  PRIMARY KEY (account_id, id),
+  UNIQUE (account_id, parent_id, name)
+);
+CREATE INDEX IF NOT EXISTS file_nodes_parent
+  ON file_nodes (account_id, parent_id);
+CREATE INDEX IF NOT EXISTS file_nodes_blob
+  ON file_nodes (account_id, blob_id);
+CREATE INDEX IF NOT EXISTS file_nodes_changed
+  ON file_nodes (account_id, changed);
+
 -- JMAP EmailSubmission objects (RFC 8621 §7).
 CREATE TABLE IF NOT EXISTS email_submissions (
   id            TEXT NOT NULL,
