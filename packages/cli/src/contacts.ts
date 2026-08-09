@@ -1,6 +1,20 @@
-import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
-import { requireSettings, selectAccounts, type Settings } from "./db.js";
+import { pickAccountId, requireSettings } from "./db.js";
+import {
+  EXIT,
+  emitIds,
+  emitJson,
+  emitNdjson,
+  failSetError,
+  fail,
+  note,
+  notFound,
+  out,
+  readInput,
+  usage,
+  warn,
+  type IoOpts,
+} from "./io.js";
 import { JmapClient } from "./jmap.js";
 import { parseVcf, type Card } from "./vcard.js";
 
@@ -16,10 +30,9 @@ import { parseVcf, type Card } from "./vcard.js";
  * only creates what's new.
  */
 
-interface ContactsOpts {
+interface ContactsOpts extends IoOpts {
   account?: string;
   book?: string;
-  json: boolean;
   n: string;
 }
 
@@ -40,46 +53,27 @@ export async function cmdContacts(
 ): Promise<void> {
   const [sub, arg] = positionals;
   const settings = requireSettings(db);
-  const accountId = pickAccount(settings, opts.account);
+  const accountId = pickAccountId(settings, opts.account);
   const client = new JmapClient(settings.base, settings.token);
 
   switch (sub) {
-    case "import": {
-      if (!arg) {
-        console.error("usage: bullmoose contacts import <file.vcf> [--book <name-or-id>]");
-        process.exit(1);
-      }
+    case "import":
+      // §1.4: the path is optional and `-` is explicit stdin, so
+      // `cat a.vcf | bullmoose contacts import -` works like every other
+      // Unix filter. `--as` forces the type when the bytes are ambiguous.
       await cmdImport(client, accountId, arg, opts);
       break;
-    }
     case "list":
       await cmdList(client, accountId, opts);
       break;
     case "show": {
-      if (!arg) {
-        console.error("usage: bullmoose contacts show <cardId>");
-        process.exit(1);
-      }
+      if (!arg) usage("bullmoose contacts show <cardId>");
       await cmdShow(client, accountId, arg, opts);
       break;
     }
     default:
-      console.error(`unknown contacts subcommand: ${sub ?? "(none)"} (import|list|show)`);
-      process.exit(1);
+      usage(`unknown contacts subcommand: ${sub ?? "(none)"} (import|list|show)`);
   }
-}
-
-function pickAccount(settings: Settings, selector?: string): string {
-  if (!selector) return settings.accountId;
-  const matches = selectAccounts(settings, selector);
-  if (matches.length !== 1) {
-    console.error(
-      `--account "${selector}" matches ${matches.length} accounts; pick one of: ` +
-        matches.map((a) => a.address ?? a.accountId).join(", "),
-    );
-    process.exit(1);
-  }
-  return matches[0]!.accountId;
 }
 
 // ---- import -------------------------------------------------------------
@@ -87,15 +81,20 @@ function pickAccount(settings: Settings, selector?: string): string {
 async function cmdImport(
   client: JmapClient,
   accountId: string,
-  file: string,
+  file: string | undefined,
   opts: ContactsOpts,
 ): Promise<void> {
-  const { cards, warnings } = parseVcf(readFileSync(file, "utf-8"));
-  for (const w of warnings) console.error(`warn: ${w}`);
-  if (cards.length === 0) {
-    console.error(`no vCards found in ${file}`);
-    process.exit(1);
+  const input = readInput(file, { as: opts.as, required: true, what: "vCard" })!;
+  if (input.type !== "vcard") {
+    fail(
+      `${input.from} looks like ${input.type}, not vCard — pass --as vcard to force it`,
+      EXIT.USAGE,
+    );
   }
+  const { cards, warnings } = parseVcf(input.text);
+  for (const w of warnings) warn(w);
+  if (cards.length === 0) notFound(`no vCards found in ${input.from}`);
+  const source = input.from;
 
   const book = await resolveBook(client, accountId, opts.book, { createMissing: true });
 
@@ -103,6 +102,29 @@ async function cmdImport(
   const existing = new Map<string, string>();
   for (const c of await listAllCards(client, accountId, ["id", "uid"])) {
     existing.set(String(c.uid), String(c.id));
+  }
+
+  if (opts.dryRun) {
+    // §1.7: a --dry-run write performs zero mutations. Everything up to here
+    // is reads, so the report is real — it names the book the cards WOULD land
+    // in and what would be skipped, then stops before the first /set.
+    const wouldSkip = cards.filter((c) => existing.has(String(c.uid))).length;
+    if (opts.json) {
+      emitJson({
+        dryRun: true,
+        source,
+        book: { id: book.id, name: book.name },
+        parsed: cards.length,
+        wouldCreate: cards.length - wouldSkip,
+        wouldSkip,
+      });
+    } else {
+      note(
+        `dry run: ${source} would create ${cards.length - wouldSkip} of ${cards.length} ` +
+          `card(s) in "${book.name}" (${wouldSkip} already on server); nothing was written`,
+      );
+    }
+    return;
   }
 
   const toCreate: Card[] = [];
@@ -181,32 +203,26 @@ async function cmdImport(
   if (toCreate.length > CREATE_CHUNK && !opts.json) process.stderr.write("\n");
 
   if (opts.json) {
-    console.log(
-      JSON.stringify(
-        {
-          file,
-          book: { id: book.id, name: book.name },
-          parsed: cards.length,
-          created,
-          skippedExisting,
-          duplicatesInFile,
-          failed,
-        },
-        null,
-        2,
-      ),
-    );
+    emitJson({
+      source,
+      book: { id: book.id, name: book.name },
+      parsed: cards.length,
+      created,
+      skippedExisting,
+      duplicatesInFile,
+      failed,
+    });
   } else {
     const parts = [`created ${created}`];
     if (skippedExisting > 0) parts.push(`${skippedExisting} already on server`);
     if (duplicatesInFile > 0) parts.push(`${duplicatesInFile} duplicates within the file`);
-    console.log(
-      `${file}: parsed ${cards.length} card${cards.length === 1 ? "" : "s"} → ` +
+    out(
+      `${source}: parsed ${cards.length} card${cards.length === 1 ? "" : "s"} → ` +
         `${parts.join(", ")} → "${book.name}"`,
     );
-    for (const f of failed) console.error(`failed: ${f.uid}: ${f.error}`);
+    for (const f of failed) note(`failed: ${f.uid}: ${f.error}`);
   }
-  if (failed.length > 0) process.exit(1);
+  if (failed.length > 0) process.exit(EXIT.FAIL);
 }
 
 /** Greedy chunks bounded by count and serialized size (photos are big). */
@@ -271,16 +287,21 @@ async function cmdList(client: JmapClient, accountId: string, opts: ContactsOpts
   const rank = new Map(ids.map((id, i) => [id, i]));
   cards.sort((a, b) => (rank.get(String(a.id)) ?? 0) - (rank.get(String(b.id)) ?? 0));
 
+  if (opts.ids) {
+    emitIds(cards.map((c) => String(c.id)));
+    return;
+  }
   if (opts.json) {
-    console.log(JSON.stringify(cards, null, 2));
+    // §1.3 — one card per line, so `| jq -r .id | xargs` streams.
+    emitNdjson(cards);
     return;
   }
   if (cards.length === 0) {
-    console.log(book ? `no contacts in "${book.name}"` : "no contacts");
+    note(book ? `no contacts in "${book.name}"` : "no contacts");
     return;
   }
   for (const c of cards) {
-    console.log(`${displayName(c).padEnd(28)} ${firstEmail(c).padEnd(30)} ${c.id}`);
+    out(`${displayName(c).padEnd(28)} ${firstEmail(c).padEnd(30)} ${c.id}`);
   }
 }
 
@@ -292,11 +313,15 @@ async function cmdShow(
 ): Promise<void> {
   const g = await client.one("ContactCard/get", { accountId, ids: [id] }, CONTACTS_USING);
   const card = ((g.list as Card[]) ?? [])[0];
-  if (!card) {
-    console.error(`no such contact: ${id}`);
-    process.exit(1);
+  if (!card) notFound(`no such contact: ${id}`);
+  if (opts.ids) {
+    emitIds([String(card.id ?? id)]);
+    return;
   }
-  console.log(JSON.stringify(card, null, opts.json ? undefined : 2));
+  // §1.3: `show` is the single-object case — one JSON object under --json,
+  // pretty-printed only for a human.
+  if (opts.json) emitJson(card);
+  else out(JSON.stringify(card, null, 2));
 }
 
 // ---- shared helpers -------------------------------------------------------
@@ -321,8 +346,7 @@ async function resolveBook(
   if (!selector) {
     const book = books.find((b) => b.isDefault) ?? books[0];
     if (book) return book;
-    console.error("no address book on the account");
-    process.exit(1);
+    notFound("no address book on the account");
   }
 
   const match = books.find(
@@ -330,8 +354,7 @@ async function resolveBook(
   );
   if (match) return match;
   if (!createMissing) {
-    console.error(`no address book "${selector}"; have: ${books.map((b) => b.name).join(", ")}`);
-    process.exit(1);
+    notFound(`no address book "${selector}"; have: ${books.map((b) => b.name).join(", ")}`);
   }
   const set = await client.one(
     "AddressBook/set",
@@ -340,10 +363,9 @@ async function resolveBook(
   );
   const createdId = (set.created as Record<string, { id?: string }>)?.b0?.id;
   if (!createdId) {
-    console.error(`could not create address book "${selector}": ${JSON.stringify(set.notCreated)}`);
-    process.exit(1);
+    failSetError(`create address book "${selector}"`, (set.notCreated as Record<string, unknown>)?.b0);
   }
-  console.error(`created address book "${selector}" (${createdId})`);
+  note(`created address book "${selector}" (${createdId})`);
   return { id: createdId, name: selector, isDefault: false };
 }
 

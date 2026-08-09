@@ -3,6 +3,16 @@ import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import type { DatabaseSync } from "node:sqlite";
 import { getConfig, requireSettings, setConfig } from "./db.js";
+import {
+  emitJson,
+  emitNdjson,
+  exitCodeForHttpStatus,
+  fail,
+  note,
+  out,
+  usage,
+  type IoOpts,
+} from "./io.js";
 import { promptHidden } from "./tokens.js";
 
 /**
@@ -22,7 +32,7 @@ import { promptHidden } from "./tokens.js";
  *     (kind oauth-refresh, token_url/client_id in meta) and discarded.
  */
 
-export interface CredsOpts {
+export interface CredsOpts extends IoOpts {
   url?: string;
   kind?: string;
   secret?: string;
@@ -34,7 +44,6 @@ export interface CredsOpts {
   clientSecret?: string;
   oauthScopes?: string;
   port?: string;
-  json: boolean;
 }
 
 export async function cmdCreds(
@@ -45,9 +54,10 @@ export async function cmdCreds(
   const [sub, name] = positionals;
 
   if (sub === "init") {
-    if (!opts.url) fail("usage: bullmoose creds init --url <agent-worker-url>");
+    if (!opts.url) usage("bullmoose creds init --url <agent-worker-url>");
     setConfig(db, "vaultUrl", opts.url.replace(/\/$/, ""));
-    console.log(`vault configured: ${opts.url}`);
+    if (opts.json) emitJson({ vaultUrl: opts.url });
+    else out(`vault configured: ${opts.url}`);
     return;
   }
 
@@ -65,56 +75,71 @@ export async function cmdCreds(
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    if (!res.ok) fail(`vault ${method} ${path} → HTTP ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      fail(
+        `vault ${method} ${path} → HTTP ${res.status}: ${await res.text()}`,
+        exitCodeForHttpStatus(res.status),
+      );
+    }
     return res.json();
   };
 
   switch (sub) {
     case "set": {
-      if (!name) fail("usage: bullmoose creds set <name> --kind api-key|oauth-refresh");
+      if (!name) usage("bullmoose creds set <name> --kind api-key|oauth-refresh");
       const kind = opts.kind ?? "api-key";
       if (kind !== "api-key" && kind !== "oauth-refresh") {
-        fail("--kind must be api-key or oauth-refresh");
+        usage("--kind must be api-key or oauth-refresh");
       }
       const secret =
         opts.secret ??
         (opts.secretEnv ? process.env[opts.secretEnv] : undefined) ??
         (await promptHidden(`secret for ${name}: `));
-      if (!secret) fail("no secret provided");
+      if (!secret) usage("no secret provided");
       const res = await api("PUT", "/vault/credentials", {
         name,
         kind,
         secret,
         meta: parseMeta(opts.meta),
       });
-      out(res, opts, () => console.log(`stored ${name} (${kind}) — write-only, never shown again`));
+      report(res, opts, () => out(`stored ${name} (${kind}) — write-only, never shown again`));
       return;
     }
     case "list": {
       const res = (await api("GET", "/vault/credentials")) as {
         credentials: Array<{ name: string; kind: string; meta: Record<string, unknown> }>;
       };
-      out(res, opts, () => {
-        for (const c of res.credentials) {
-          const meta = Object.keys(c.meta).length > 0 ? `  ${JSON.stringify(c.meta)}` : "";
-          console.log(`${c.name.padEnd(24)} ${c.kind}${meta}`);
-        }
-        if (res.credentials.length === 0) console.log("(no credentials)");
-      });
+      if (opts.json) {
+        emitNdjson(res.credentials);
+        return;
+      }
+      for (const c of res.credentials) {
+        const meta = Object.keys(c.meta).length > 0 ? `  ${JSON.stringify(c.meta)}` : "";
+        out(`${c.name.padEnd(24)} ${c.kind}${meta}`);
+      }
+      if (res.credentials.length === 0) note("(no credentials)");
       return;
     }
     case "rm": {
-      if (!name) fail("usage: bullmoose creds rm <name>");
+      if (!name) usage("bullmoose creds rm <name>");
+      if (opts.dryRun) {
+        note(`dry run: would delete credential ${name}; nothing was written`);
+        if (opts.json) emitJson({ dryRun: true, name });
+        return;
+      }
       const res = (await api("DELETE", `/vault/credentials/${encodeURIComponent(name)}`)) as {
         deleted: boolean;
       };
-      out(res, opts, () => console.log(res.deleted ? `deleted ${name}` : `${name} not found`));
+      report(res, opts, () => {
+        if (res.deleted) out(`deleted ${name}`);
+        else note(`${name} not found`);
+      });
       return;
     }
     case "oauth": {
       if (!name || !opts.authorizeUrl || !opts.tokenUrl || !opts.clientId) {
-        fail(
-          "usage: bullmoose creds oauth <name> --authorize-url <url> --token-url <url>\n" +
+        usage(
+          "bullmoose creds oauth <name> --authorize-url <url> --token-url <url>\n" +
             '                 --client-id <id> [--client-secret <s>] [--oauth-scopes "a b"] [--port 8976]',
         );
       }
@@ -137,13 +162,13 @@ export async function cmdCreds(
           ...(opts.oauthScopes ? { scopes: opts.oauthScopes } : {}),
         },
       });
-      out(res, opts, () =>
-        console.log(`refresh token for ${name} uploaded to the vault — not kept locally`),
+      report(res, opts, () =>
+        out(`refresh token for ${name} uploaded to the vault — not kept locally`),
       );
       return;
     }
     default:
-      fail(`unknown creds subcommand: ${sub ?? "(none)"} (init|set|list|rm|oauth)`);
+      usage(`unknown creds subcommand: ${sub ?? "(none)"} (init|set|list|rm|oauth)`);
   }
 }
 
@@ -195,8 +220,8 @@ async function runPkceFlow(flow: PkceFlow): Promise<string> {
     });
     server.on("error", reject);
     server.listen(flow.port, "127.0.0.1", () => {
-      console.error(`listening on ${redirectUri} — opening browser…`);
-      console.error(`if it doesn't open: ${authUrl.toString()}`);
+      note(`listening on ${redirectUri} — opening browser…`);
+      note(`if it doesn't open: ${authUrl.toString()}`);
       const opener =
         process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
       spawn(opener, [authUrl.toString()], { stdio: "ignore", detached: true }).unref();
@@ -220,7 +245,12 @@ async function runPkceFlow(flow: PkceFlow): Promise<string> {
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: body.toString(),
   });
-  if (!res.ok) fail(`token exchange failed: HTTP ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    fail(
+      `token exchange failed: HTTP ${res.status}: ${await res.text()}`,
+      exitCodeForHttpStatus(res.status),
+    );
+  }
   const tokens = (await res.json()) as { refresh_token?: string; access_token?: string };
   if (!tokens.refresh_token) {
     fail(
@@ -232,20 +262,16 @@ async function runPkceFlow(flow: PkceFlow): Promise<string> {
 }
 
 function parseMeta(raw?: string): Record<string, string> {
-  const out: Record<string, string> = {};
+  const meta: Record<string, string> = {};
   for (const pair of (raw ?? "").split(",")) {
     const [k, v] = pair.split("=");
-    if (k?.trim() && v !== undefined) out[k.trim()] = v.trim();
+    if (k?.trim() && v !== undefined) meta[k.trim()] = v.trim();
   }
-  return out;
+  return meta;
 }
 
-function out(res: unknown, opts: CredsOpts, human: () => void): void {
-  if (opts.json) console.log(JSON.stringify(res, null, 2));
+/** One JSON object under --json, the human rendering otherwise. */
+function report(res: unknown, opts: CredsOpts, human: () => void): void {
+  if (opts.json) emitJson(res);
   else human();
-}
-
-function fail(msg: string): never {
-  console.error(msg);
-  process.exit(1);
 }

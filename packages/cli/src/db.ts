@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { EXIT, fail, notFound, usage } from "./io.js";
 
 /**
  * Bootstrap file support: anywhere the CLI takes a server URL, a
@@ -33,18 +34,16 @@ export function loadBootstrap(fileUrl: string): Bootstrap {
   try {
     path = fileURLToPath(fileUrl);
   } catch {
-    console.error(`invalid file:// URL: ${fileUrl}`);
-    process.exit(1);
+    fail(`invalid file:// URL: ${fileUrl}`, EXIT.USAGE);
   }
-  if (!existsSync(path)) {
-    console.error(`bootstrap file not found: ${path}`);
-    process.exit(1);
-  }
+  if (!existsSync(path)) notFound(`bootstrap file not found: ${path}`);
   try {
     return JSON.parse(readFileSync(path, "utf8")) as Bootstrap;
   } catch (err) {
-    console.error(`bootstrap file is not valid JSON: ${path} (${err instanceof Error ? err.message : err})`);
-    process.exit(1);
+    fail(
+      `bootstrap file is not valid JSON: ${path} (${err instanceof Error ? err.message : err})`,
+      EXIT.USAGE,
+    );
   }
 }
 
@@ -149,8 +148,7 @@ export function requireSettings(db: DatabaseSync): Settings {
   const token = getConfig(db, "token");
   const accountId = getConfig(db, "accountId");
   if (!base || !token || !accountId) {
-    console.error("Not configured. Run: bullmoose login <email>  (or init --base/--token)");
-    process.exit(1);
+    usage("not configured — run: bullmoose login <email>  (or init --base/--token)");
   }
   let accounts: AccountRef[] = [];
   try {
@@ -169,6 +167,23 @@ export function requireSettings(db: DatabaseSync): Settings {
  * address/name/id.
  */
 export function selectAccounts(settings: Settings, selector?: string): AccountRef[] {
+  const matches = matchAccounts(settings, selector);
+  if (matches.length > 0) return matches;
+  notFound(
+    `no account matches "${selector}"; have: ` +
+      settings.accounts.map((a) => a.address ?? a.accountId).join(", "),
+  );
+}
+
+/**
+ * `selectAccounts` without the refusal: an unmatched selector is `[]`.
+ *
+ * For the one caller where a miss is not a mistake — `send --from` names an
+ * ADDRESS, which may be another account of this login *or* an alias identity
+ * inside the default one. Making the account lookup fatal there would break
+ * sending from an alias, so the strict check moves to the identity instead.
+ */
+export function matchAccounts(settings: Settings, selector?: string): AccountRef[] {
   const all = settings.accounts;
   if (!selector) return all;
   if (selector === "default") {
@@ -180,17 +195,47 @@ export function selectAccounts(settings: Settings, selector?: string): AccountRe
     const bySuffix = all.filter((a) => a.address?.endsWith(selector));
     if (bySuffix.length > 0) return bySuffix;
   }
-  const fuzzy = all.filter(
+  return all.filter(
     (a) =>
       a.address?.includes(selector) ||
       a.name?.toLowerCase().includes(selector.toLowerCase()) ||
       a.accountId.includes(selector),
   );
-  if (fuzzy.length > 0) return fuzzy;
-  console.error(
-    `no account matches "${selector}"; have: ${all.map((a) => a.address ?? a.accountId).join(", ")}`,
-  );
-  process.exit(1);
+}
+
+/**
+ * The single-account resolver. `.feedback/fromClaude/cli/009`: `selectAccounts`
+ * matches by SUBSTRING and returns a set, and half the CLI then took `[0]`
+ * silently while the other half refused. `send` was in the silent half — so
+ * `--account @bullmoose.cc` on a multi-account login picked a sender by
+ * enumeration order, and sending from the wrong identity is the one outcome you
+ * cannot undo.
+ *
+ * The rule, stated in the help text: **a selector that matches more than one
+ * account is an error, not a choice.** `selectAccounts` stays as it is — it is
+ * correct for the commands that legitimately fan out (`log`, `sync`, `watch`) —
+ * and this is the wrapper for everything that needs exactly one.
+ *
+ * No match → 3 (not found, via `selectAccounts`); ambiguous → 2 (usage).
+ */
+export function pickAccount(settings: Settings, selector?: string): AccountRef {
+  if (!selector) {
+    const dflt = settings.accounts.find((a) => a.accountId === settings.accountId);
+    return dflt ?? { accountId: settings.accountId };
+  }
+  const matches = selectAccounts(settings, selector);
+  if (matches.length > 1) {
+    usage(
+      `--account "${selector}" matches ${matches.length} accounts; name one of:\n` +
+        matches.map((a) => `  ${a.address ?? a.accountId}`).join("\n"),
+    );
+  }
+  return matches[0]!;
+}
+
+/** `pickAccount`, when only the id is wanted. */
+export function pickAccountId(settings: Settings, selector?: string): string {
+  return pickAccount(settings, selector).accountId;
 }
 
 /** Short human label for an account (log columns, watch lines). */

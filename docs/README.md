@@ -41,6 +41,10 @@ never risks losing mail.
 bullmoose admin account create eric@bullmoose.cc --tenant t_bullmoose --name "Eric Moore"
 bullmoose admin password eric@bullmoose.cc          # prompts
 
+# `token create` is SELF-SERVICE: it needs a configured login of its own, so
+# log in first (or mint from the operator side with `admin token create`).
+bullmoose login eric@bullmoose.cc
+
 # a device/app password (never the login password) for clients:
 bullmoose token create --name laptop --scopes mail   # → bm_… , shown once
 ```

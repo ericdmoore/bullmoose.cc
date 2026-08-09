@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
-import { requireSettings, selectAccounts, type Settings } from "./db.js";
+import { pickAccountId, requireSettings } from "./db.js";
+import { emitIds, emitNdjson, note, out, usage, type IoOpts } from "./io.js";
 import { JmapClient } from "./jmap.js";
 
 /**
@@ -12,10 +13,9 @@ import { JmapClient } from "./jmap.js";
 
 const CAL_USING = ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:calendars"];
 
-export interface CalendarOpts {
+export interface CalendarOpts extends IoOpts {
   account?: string;
   days?: string;
-  json: boolean;
 }
 
 export async function cmdCalendar(
@@ -25,21 +25,25 @@ export async function cmdCalendar(
 ): Promise<void> {
   const [sub] = positionals;
   const settings = requireSettings(db);
-  const accountId = pickAccount(settings, opts.account);
+  const accountId = pickAccountId(settings, opts.account);
   const client = new JmapClient(settings.base, settings.token);
 
   switch (sub) {
     case "list": {
       const res = await client.one("Calendar/get", { accountId, ids: null }, CAL_USING);
       const cals = (res.list as Array<Record<string, unknown>>) ?? [];
+      if (opts.ids) {
+        emitIds(cals.map((c) => String(c.id)));
+        return;
+      }
       if (opts.json) {
-        console.log(JSON.stringify(cals, null, 2));
+        emitNdjson(cals);
         return;
       }
       for (const c of cals) {
-        console.log(`${String(c.name).padEnd(24)} ${c.isDefault ? "★ default" : ""}  ${c.id}`);
+        out(`${String(c.name).padEnd(24)} ${c.isDefault ? "★ default" : ""}  ${c.id}`);
       }
-      if (cals.length === 0) console.log("(no calendars)");
+      if (cals.length === 0) note("(no calendars)");
       return;
     }
     case "agenda": {
@@ -52,12 +56,16 @@ export async function cmdCalendar(
         CAL_USING,
       );
       const occ = (res.list as Array<Record<string, unknown>>) ?? [];
+      if (opts.ids) {
+        emitIds(occ.map((o) => String(o.id)));
+        return;
+      }
       if (opts.json) {
-        console.log(JSON.stringify(occ, null, 2));
+        emitNdjson(occ);
         return;
       }
       if (occ.length === 0) {
-        console.log(`(nothing scheduled in the next ${days} day${days === 1 ? "" : "s"})`);
+        note(`(nothing scheduled in the next ${days} day${days === 1 ? "" : "s"})`);
         return;
       }
       let lastDay = "";
@@ -69,29 +77,19 @@ export async function cmdCalendar(
           day: "numeric",
         });
         if (day !== lastDay) {
-          console.log(`\n${day}`);
+          // A date heading is decoration between records, not a record.
+          note(day);
           lastDay = day;
         }
         const time =
           o.showWithoutTime === true
             ? "all day"
             : `${start.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}–${new Date(String(o.utcEnd)).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
-        console.log(`  ${time.padEnd(16)} ${o.title ?? "(untitled)"}`);
+        out(`  ${time.padEnd(16)} ${String(o.title ?? "(untitled)")}  ${String(o.id ?? "")}`);
       }
       return;
     }
     default:
-      console.error(`unknown calendar subcommand: ${sub ?? "(none)"} (list|agenda)`);
-      process.exit(1);
+      usage(`unknown calendar subcommand: ${sub ?? "(none)"} (list|agenda)`);
   }
-}
-
-function pickAccount(settings: Settings, selector?: string): string {
-  if (!selector) return settings.accountId;
-  const matches = selectAccounts(settings, selector);
-  if (matches.length !== 1) {
-    console.error(`--account "${selector}" matches ${matches.length} accounts`);
-    process.exit(1);
-  }
-  return matches[0]!.accountId;
 }

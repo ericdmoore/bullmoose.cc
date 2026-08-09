@@ -12,7 +12,14 @@ The database is the server's own data\-plane schema — open it directly with `s
 .PP
 Operator commands (`admin …`) wrap the provision worker and use separate credentials from a mail account.
 .PP
+I/O contract — every command obeys it. **stdout carries records; stderr carries everything else**: progress, prompts, warnings, counts and summaries, tree decoration, "(none)" notices and hints. So `bullmoose log > /dev/null` shows the chrome and no records, and `2>/dev/null` shows the records and no chrome. A downstream reader closing the pipe (`| head`, quitting `less`) is not an error: the CLI exits 0 silently instead of printing a stack trace. Output is never paged, never coloured when stdout is not a terminal, and never coloured at all when $NO_COLOR is set. Where a command takes a file, `\-` means stdin explicitly and a bare invocation reads stdin when it is not a terminal — but an explicit flag always beats implicit stdin.
+.PP
+Exit codes are the branch points for scripts: 0 success · 1 generic failure · 2 usage error · 3 not found · 4 auth/forbidden · 5 conflict (an \-\-if\-state mismatch, or a precondition such as removing a mailbox that still holds mail). JMAP error types map onto them by rule: `stateMismatch`/`alreadyExists`/`mailboxHasEmail` → 5, `notFound`/`blobNotFound`/`accountNotFound` → 3, `forbidden`/`accountReadOnly` → 4, `invalidProperties`/`invalidArguments`/`tooLarge` → 2, and `serverFail`/`overQuota`/`rateLimit` → 1.
+.PP
 .SH COMMANDS
+.TP
+.B help
+show help — for everything, one command, or as a machine\-readable spec
 .TP
 .B login
 log in and store a bearer token for this account
@@ -80,6 +87,34 @@ list and revoke the expiring public links this account has minted
 .B admin
 operator surface — wraps the provision worker (separate credentials)
 .SH COMMAND DETAILS
+.SS help
+.B Synopsis:
+.br
+bullmoose help [<command>] | \-\-json | \-\-man | \-\-markdown
+.PP
+With no argument, the command overview. With a command name, that command's synopsis, flags and examples (`bullmoose <cmd> \-\-help` is the same thing). `\-\-json` dumps this entire spec — commands, subcommands, flags, examples, global options, the exit\-code table and the I/O contract notes — and is what an agent should read rather than scraping the text. `\-\-man` and `\-\-markdown` render the same spec as a man page and as Markdown; `docs/cli.md` and `man/bullmoose.1` are generated from them by `npm run \-w @bullmoose/cli gen:docs` and must never be hand\-edited.
+.PP
+.B Flags:
+.TP
+.B \-\-json
+the whole command spec, machine\-readable
+.TP
+.B \-\-man
+roff man page (→ man/bullmoose.1)
+.TP
+.B \-\-markdown
+Markdown reference (→ docs/cli.md)
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose help mailbox
+.EE
+.PP
+.EX
+bullmoose help \-\-json | jq \-r '.commands[].name'
+.EE
+what can this CLI do?
 .SS login
 .B Synopsis:
 .br
@@ -183,6 +218,11 @@ revoke one token by id \(em \f[CR]token revoke <id>\fR
 bullmoose token create \-\-name backup \-\-scopes read
 .EE
 read\-only sync/archive
+.PP
+.EX
+T=$(bullmoose token create \-\-name ci \-\-scopes read)
+.EE
+the token is the only thing on stdout; the chrome goes to stderr
 .PP
 .EX
 bullmoose token create \-\-name popper \-\-scopes read,move
@@ -372,7 +412,7 @@ bullmoose contacts import <file.vcf> | list | show <cardId>
 .B Subcommands:
 .TP
 .B import
-seed from a vCard export (idempotent; dedup by uid; missing \-\-book created) \(em \f[CR]contacts import <file.vcf> [\-\-book <name\-or\-id>] [\-\-account <sel>]\fR
+seed from a vCard export (idempotent; dedup by uid; missing \-\-book created); reads stdin with no path, or with `\-` \(em \f[CR]contacts import [<file.vcf>|\-] [\-\-book <name\-or\-id>] [\-\-as vcard] [\-\-dry\-run]\fR
 .TP
 .B list
 list cards \(em \f[CR]contacts list [\-\-book <name\-or\-id>] [\-n <count>] [\-\-json]\fR
@@ -389,6 +429,15 @@ export from macOS Contacts: File → Export → Export vCard…
 .PP
 .EX
 bullmoose contacts list \-\-book Family \-n 50
+.EE
+.PP
+.EX
+cat Contacts.vcf | bullmoose contacts import \- \-\-book Personal
+.EE
+`\-` is explicit stdin
+.PP
+.EX
+bullmoose contacts list \-\-ids | xargs \-n1 bullmoose contacts show
 .EE
 .SS calendar
 .B Synopsis:
@@ -430,12 +479,33 @@ list credential names (not values) \(em \f[CR]creds list\fR
 remove a credential \(em \f[CR]creds rm <name>\fR
 .TP
 .B oauth
-PKCE flow; uploads only the refresh token \(em \f[CR]creds oauth <name> \-\-authorize\-url <u> \-\-token\-url <u> \-\-client\-id <id> [\-\-client\-secret <s>] [\-\-oauth\-scopes "a b"]\fR
+PKCE flow; uploads only the refresh token \(em \f[CR]creds oauth <name> \-\-authorize\-url <u> \-\-token\-url <u> \-\-client\-id <id> [\-\-client\-secret <s>] [\-\-oauth\-scopes "a b"] [\-\-meta k=v,…] [\-\-port <n>]\fR
+.PP
+.B Flags:
+.TP
+.B \-\-kind api\-key|oauth\-refresh
+what the credential is; gates which verbs may ever use it
+.TP
+.B \-\-secret <s> / \-\-secret\-env VAR
+the value, or the env var holding it (else a hidden prompt — never argv)
+.TP
+.B \-\-meta k=v,…
+free\-form metadata stored beside the credential (also accepted on `oauth`)
+.TP
+.B \-\-port <n>
+localhost port for the `oauth` PKCE callback (default 8976)
+.TP
+.B \-\-dry\-run
+on `rm`: report what would be deleted, delete nothing
 .PP
 .B Examples:
 .PP
 .EX
 bullmoose creds set openai \-\-kind api\-key \-\-secret\-env OPENAI_API_KEY
+.EE
+.PP
+.EX
+bullmoose creds oauth gcal \-\-authorize\-url … \-\-token\-url … \-\-client\-id … \-\-port 9000
 .EE
 .SS log
 .B Synopsis:
@@ -455,6 +525,21 @@ filter by mailbox (e.g. inbox, sent)
 .EX
 bullmoose log \-n 50 \-\-mailbox inbox
 .EE
+.PP
+.EX
+bullmoose log | head \-3
+.EE
+exits 0 silently — a closed pipe is not an error
+.PP
+.EX
+bullmoose log \-\-json | jq \-r .subject
+.EE
+NDJSON: streams, one record per line
+.PP
+.EX
+bullmoose log \-\-ids | xargs \-n1 bullmoose show
+.EE
+bare ids, the xargs shape
 .SS search
 .B Synopsis:
 .br
@@ -506,6 +591,12 @@ sortOrder for create (unsigned integer, default 0)
 .TP
 .B \-\-force
 on rm: onDestroyRemoveEmails — remove the mail inside it too
+.TP
+.B \-\-if\-state <state>
+refuse the write (exit 5) if the account has moved on since <state>
+.TP
+.B \-\-dry\-run
+resolve the folder and report; write nothing
 .PP
 .B Examples:
 .PP
@@ -530,6 +621,16 @@ back to the top level
 .EX
 bullmoose mailbox rm Invoices \-\-force
 .EE
+.PP
+.EX
+bullmoose mailbox rm Invoices \-\-dry\-run
+.EE
+resolves the name, writes nothing
+.PP
+.EX
+S=$(bullmoose mailbox create A \-\-json | jq \-r .state); bullmoose mailbox rename A B \-\-if\-state "$S"
+.EE
+read\-modify\-write that cannot clobber a concurrent change: exit 5 if it would
 .SS blobs
 .B Synopsis:
 .br
@@ -658,13 +759,47 @@ bullmoose admin grant create partner@example.com you@example.com \-\-scopes read
 SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db)
 .TP
 .B \-\-account <sel>
-account selector: accountId, address, @domain\-suffix, name substring, or 'default'
+account selector: accountId, address, @domain\-suffix, name substring, or 'default'. For commands that act on ONE account a selector matching several is an error, not a choice — name one. Commands that legitimately fan out (log, search, sync, watch, mailboxes) still do.
 .TP
 .B \-\-json
-machine\-readable output where supported (and `help \-\-json` dumps this whole spec)
+machine\-readable output: NDJSON — one complete JSON value per line — for collections, exactly one object for show\-style commands. Never a wrapping array, so `| head`, `| wc \-l` and `| jq` all stream. (`help \-\-json` dumps this whole spec.)
+.TP
+.B \-\-ids
+print bare identifiers, one per line, and nothing else — the `| xargs \-n1` shape
+.TP
+.B \-\-dry\-run
+on destructive commands (mailbox rm, blobs rm, share revoke, token revoke, creds rm, contacts import, vacation on|off, admin *revoke): resolve everything, report what would happen, write nothing
+.TP
+.B \-\-if\-state <state>
+optimistic concurrency for writes: passed to JMAP as ifInState. If the server has moved on, the write is refused with exit 5 and nothing changes. The state to pass is printed by the previous write (and is in its \-\-json output as `state`).
+.TP
+.B \-\-as <type>
+force the input content type — vcard | ical | json | text (default: inferred from the bytes)
 .TP
 .B \-h, \-\-help
 show help; `bullmoose <cmd> \-\-help` shows help for one command
+.TP
+.B \-\-man / \-\-markdown
+render the whole spec as a man page / Markdown (used to generate the docs)
+.SH EXIT STATUS
+.TP
+.B 0
+success — the command did what it said
+.TP
+.B 1
+generic failure — server error, quota, rate limit — nothing you can restate
+.TP
+.B 2
+usage error — unknown flag or command, missing argument, ambiguous \-\-account
+.TP
+.B 3
+not found — no such message, mailbox, contact, account or blob
+.TP
+.B 4
+auth / forbidden — the token is rejected or lacks the scope
+.TP
+.B 5
+conflict — \-\-if\-state mismatch, or a precondition like a non\-empty mailbox
 .SH FILES
 .TP
 ~/.bullmoose/mail.db

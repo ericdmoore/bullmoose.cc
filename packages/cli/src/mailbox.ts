@@ -1,5 +1,17 @@
 import type { DatabaseSync } from "node:sqlite";
-import { requireSettings, selectAccounts, type Settings } from "./db.js";
+import { pickAccountId, requireSettings } from "./db.js";
+import {
+  EXIT,
+  emitIds,
+  emitJson,
+  fail,
+  failSetError,
+  note,
+  notFound,
+  out,
+  usage,
+  type IoOpts,
+} from "./io.js";
 import { JmapClient } from "./jmap.js";
 import { refreshMailboxes, type MirroredMailbox } from "./sync.js";
 
@@ -17,12 +29,11 @@ import { refreshMailboxes, type MirroredMailbox } from "./sync.js";
  * folders exist, which reads as a bug no matter how well documented.
  */
 
-export interface MailboxOpts {
+export interface MailboxOpts extends IoOpts {
   account?: string;
   parent?: string;
   sort?: string;
   force?: boolean;
-  json: boolean;
 }
 
 interface JmapMailbox {
@@ -40,49 +51,58 @@ export async function cmdMailbox(
 ): Promise<void> {
   const [sub, arg, arg2] = positionals;
   const settings = requireSettings(db);
-  const accountId = pickAccount(settings, opts.account);
+  const accountId = pickAccountId(settings, opts.account);
   const client = new JmapClient(settings.base, settings.token);
 
   switch (sub) {
     case "create": {
-      if (!arg) usage("mailbox create <name> [--parent <id-or-name>] [--sort <n>]");
+      if (!arg) usage("bullmoose mailbox create <name> [--parent <id-or-name>] [--sort <n>]");
       const boxes = await listMailboxes(client, accountId);
       const spec: Record<string, unknown> = { name: arg };
       if (opts.parent !== undefined) spec.parentId = resolveMailbox(boxes, opts.parent).id;
       if (opts.sort !== undefined) spec.sortOrder = parseSort(opts.sort);
-      const res = await setMailbox(client, accountId, { create: { c1: spec } });
+      if (dryRun(opts, "create", arg)) return;
+      const res = await setMailbox(client, accountId, opts, { create: { c1: spec } });
       const made = (res.created as Record<string, { id: string }>).c1;
-      if (!made) fail("create", (res.notCreated as Record<string, unknown>).c1);
-      await report(db, client, accountId, opts, { action: "created", id: made.id, name: arg });
+      if (!made) failSetError("create", (res.notCreated as Record<string, unknown>).c1);
+      await report(db, client, accountId, opts, res, { action: "created", id: made.id, name: arg });
       return;
     }
     case "rename": {
-      if (!arg || !arg2) usage("mailbox rename <id-or-name> <new-name>");
+      if (!arg || !arg2) usage("bullmoose mailbox rename <id-or-name> <new-name>");
       const boxes = await listMailboxes(client, accountId);
       const target = resolveMailbox(boxes, arg);
-      const res = await setMailbox(client, accountId, {
+      if (dryRun(opts, "rename", `${target.name} → ${arg2}`)) return;
+      const res = await setMailbox(client, accountId, opts, {
         update: { [target.id]: { name: arg2 } },
       });
       if (!(target.id in (res.updated as Record<string, unknown>))) {
-        fail("rename", (res.notUpdated as Record<string, unknown>)[target.id]);
+        failSetError("rename", (res.notUpdated as Record<string, unknown>)[target.id]);
       }
-      await report(db, client, accountId, opts, { action: "renamed", id: target.id, name: arg2 });
+      await report(db, client, accountId, opts, res, {
+        action: "renamed",
+        id: target.id,
+        name: arg2,
+      });
       return;
     }
     case "move": {
-      if (!arg || opts.parent === undefined) usage("mailbox move <id-or-name> --parent <id-or-name|->");
+      if (!arg || opts.parent === undefined) {
+        usage("bullmoose mailbox move <id-or-name> --parent <id-or-name|->");
+      }
       const boxes = await listMailboxes(client, accountId);
       const target = resolveMailbox(boxes, arg);
       // "-" is the only way to say "top level" on a command line: an empty
       // --parent is indistinguishable from a missing one.
       const parentId = opts.parent === "-" ? null : resolveMailbox(boxes, opts.parent!).id;
-      const res = await setMailbox(client, accountId, {
+      if (dryRun(opts, "move", `${target.name} → parent ${parentId ?? "(top level)"}`)) return;
+      const res = await setMailbox(client, accountId, opts, {
         update: { [target.id]: { parentId } },
       });
       if (!(target.id in (res.updated as Record<string, unknown>))) {
-        fail("move", (res.notUpdated as Record<string, unknown>)[target.id]);
+        failSetError("move", (res.notUpdated as Record<string, unknown>)[target.id]);
       }
-      await report(db, client, accountId, opts, {
+      await report(db, client, accountId, opts, res, {
         action: "moved",
         id: target.id,
         name: target.name,
@@ -90,19 +110,25 @@ export async function cmdMailbox(
       return;
     }
     case "rm": {
-      if (!arg) usage("mailbox rm <id-or-name> [--force]");
+      if (!arg) usage("bullmoose mailbox rm <id-or-name> [--force] [--dry-run]");
       const boxes = await listMailboxes(client, accountId);
       const target = resolveMailbox(boxes, arg);
-      const res = await setMailbox(client, accountId, {
+      // The destructive verb, so this is the one --dry-run exists for: the
+      // selector is resolved for real (an unknown folder still exits 3) and
+      // then nothing is written.
+      if (dryRun(opts, "rm", `${target.name} (${target.id})${opts.force ? " and its mail" : ""}`)) {
+        return;
+      }
+      const res = await setMailbox(client, accountId, opts, {
         destroy: [target.id],
         // --force is onDestroyRemoveEmails: without it a folder holding
         // mail is refused, which is the RFC 8621 default and the right one.
         ...(opts.force ? { onDestroyRemoveEmails: true } : {}),
       });
       if (!(res.destroyed as string[]).includes(target.id)) {
-        fail("rm", (res.notDestroyed as Record<string, unknown>)[target.id]);
+        failSetError("rm", (res.notDestroyed as Record<string, unknown>)[target.id]);
       }
-      await report(db, client, accountId, opts, {
+      await report(db, client, accountId, opts, res, {
         action: "destroyed",
         id: target.id,
         name: target.name,
@@ -110,17 +136,38 @@ export async function cmdMailbox(
       return;
     }
     default:
-      console.error(`unknown mailbox subcommand: ${sub ?? "(none)"} (create|rename|move|rm)`);
-      process.exit(1);
+      usage(`unknown mailbox subcommand: ${sub ?? "(none)"} (create|rename|move|rm)`);
   }
+}
+
+/**
+ * `--dry-run` (arch.md §1.7, invariant 4). Returns true when the caller must
+ * stop. Everything before the call is a READ, so the report names the resolved
+ * target rather than the string that was typed — a dry run that did not resolve
+ * would not be evidence of anything.
+ */
+function dryRun(opts: MailboxOpts, verb: string, what: string): boolean {
+  if (!opts.dryRun) return false;
+  note(`dry run: would ${verb} ${what}; nothing was written`);
+  if (opts.json) emitJson({ dryRun: true, action: verb, target: what });
+  return true;
 }
 
 async function setMailbox(
   client: JmapClient,
   accountId: string,
+  opts: MailboxOpts,
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  return client.one("Mailbox/set", { accountId, ...args });
+  // §1.7: --if-state becomes JMAP's ifInState. The server compares it to the
+  // account's current Mailbox state and answers a mismatch with a method-level
+  // `stateMismatch` — which JmapClient.one rethrows with `jmapType` set, so it
+  // reaches exit 5 through the ordinary error path with nothing written.
+  return client.one("Mailbox/set", {
+    accountId,
+    ...(opts.ifState ? { ifInState: opts.ifState } : {}),
+    ...args,
+  });
 }
 
 async function listMailboxes(client: JmapClient, accountId: string): Promise<JmapMailbox[]> {
@@ -144,35 +191,20 @@ export function resolveMailbox<T extends { id: string; name: string; role: strin
   const byName = boxes.filter((m) => m.name.toLowerCase() === selector.toLowerCase());
   if (byName.length === 1) return byName[0]!;
   if (byName.length > 1) {
-    console.error(
+    usage(
       `"${selector}" matches ${byName.length} mailboxes; use an id: ` +
         byName.map((m) => m.id).join(", "),
     );
-    process.exit(1);
   }
-  console.error(`no such mailbox: ${selector}`);
-  process.exit(1);
+  notFound(`no such mailbox: ${selector}`);
 }
 
 export function parseSort(raw: string): number {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0) {
-    console.error(`--sort must be a non-negative integer, got "${raw}"`);
-    process.exit(1);
+    fail(`--sort must be a non-negative integer, got "${raw}"`, EXIT.USAGE);
   }
   return n;
-}
-
-/** A per-object SetError is the normal failure here, not an exception. */
-function fail(verb: string, err: unknown): never {
-  const e = (err ?? {}) as { type?: string; description?: string };
-  console.error(`${verb} failed: ${e.type ?? "unknown"}${e.description ? ` — ${e.description}` : ""}`);
-  process.exit(1);
-}
-
-function usage(line: string): never {
-  console.error(`usage: bullmoose ${line}`);
-  process.exit(1);
 }
 
 async function report(
@@ -180,15 +212,25 @@ async function report(
   client: JmapClient,
   accountId: string,
   opts: MailboxOpts,
+  res: Record<string, unknown>,
   what: { action: string; id: string; name: string },
 ): Promise<void> {
   const { mailboxes: boxes } = await refreshMailboxes(db, client, accountId);
-  if (opts.json) {
-    console.log(JSON.stringify({ ...what, mailboxes: boxes }, null, 2));
+  // The state the write LANDED on. Without it `--if-state` is half a feature:
+  // a script has to be able to read the new state to pass it to the next write.
+  const state = (res.newState as string | undefined) ?? null;
+  if (opts.ids) {
+    emitIds([what.id]);
     return;
   }
-  console.log(`${what.action} ${what.name} (${what.id})`);
-  console.log(renderTree(boxes));
+  if (opts.json) {
+    emitJson({ ...what, state, mailboxes: boxes });
+    return;
+  }
+  out(`${what.action} ${what.name} (${what.id})`);
+  if (state) note(`state ${state}  (pass to --if-state on the next write)`);
+  // The tree is decoration: useful to a human, noise in a pipeline.
+  note(renderTree(boxes));
 }
 
 /** The point of the whole unit: a human can see the hierarchy they made. */
@@ -208,15 +250,3 @@ export function renderTree(boxes: MirroredMailbox[]): string {
   return lines.join("\n");
 }
 
-function pickAccount(settings: Settings, selector?: string): string {
-  if (!selector) return settings.accountId;
-  const matches = selectAccounts(settings, selector);
-  if (matches.length !== 1) {
-    console.error(
-      `--account "${selector}" matches ${matches.length} accounts; pick one of: ` +
-        matches.map((a) => a.address ?? a.accountId).join(", "),
-    );
-    process.exit(1);
-  }
-  return matches[0]!.accountId;
-}
