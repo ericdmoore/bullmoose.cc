@@ -5,6 +5,31 @@
 > [`../s03-webAccess/arch.md`](../s03-webAccess/arch.md) (the system architecture).
 > This slice is scoped, standalone, and **gates every other s03 slice.**
 
+## Status — ✅ SHIPPED (T1 + T2)
+
+Both tasks landed. Nothing user-visible, as designed.
+
+- **T1 provenance** — `last_writer_{principal,binding,invocation}` on all seven
+  mutable data-plane tables (`emails, mailboxes, address_books, contact_cards,
+  calendars, calendar_events, file_nodes`), stamped in the **shared
+  `packages/mailstore` write path** (every insert + primary update, plus the
+  email flag/move path), never per JMAP method. `storeFor(ctx)` supplies the
+  writer; `RequestContext.agent` carries binding/invocation when an agent acts.
+- **T2 tombstones** — `grants.revoked_at` + a `grant_lifecycle` log. Resolution
+  filters `revoked_at IS NULL` in `@bullmoose/auth-core` `verifyBearer`;
+  `authorizeAccount` is **untouched** (additive, resolution-layer only). Provision
+  `revokeGrant` now soft-deletes + logs; `createGrant` logs `created`. The
+  tenant-teardown cascade keeps its hard DELETE (no history to keep).
+- **Migration (E3)** — no framework; the exact operator ALTER list (21 provenance
+  columns + `grants.revoked_at` + `grant_lifecycle`) is documented as comments in
+  `packages/mailstore/sql/{data-plane,control-plane}.sql` and as a runbook in
+  `docs/DEPLOY.md §1`. All columns NULLable → safe on existing rows.
+- **Tests** — 933 pass (was 900): `packages/mailstore/src/provenance.test.ts`
+  (26, all seven realms × owner/agent/system), `principal.test.ts` (+3 grant
+  tombstone resolution), `adminLifecycle.test.ts` (+4 revoke→tombstone +
+  lifecycle). Bite-proven: reverting the source alone fails 20/90. Typecheck
+  clean, `@bullmoose/cli smoke` green.
+
 ## Why this exists, and why it's first
 
 Two data-model changes that are **cheap now and impossible retroactively**. Every month

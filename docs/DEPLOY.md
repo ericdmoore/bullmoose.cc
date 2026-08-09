@@ -94,6 +94,84 @@ npx wrangler d1 execute bullmoose-mail-shard0 --remote \
   --command "SELECT COUNT(*) AS live FROM accounts WHERE deleted_at IS NULL"
 ```
 
+### Upgrading an EXISTING database — `s03.A` provenance + grant tombstones
+
+`s03.A` adds two more hand-run changes on the SAME rule: nullable columns, so
+each ALTER is a metadata-only operation that rewrites no rows and is safe to run
+while the workers are live. **Run all of them BEFORE deploying the workers.**
+
+**T1 — cross-realm provenance.** Three `last_writer_*` columns on every mutable
+data-plane record. The shared Mailstore write path stamps them on every
+`*/set`, so a database without the columns fails every write once the new jmap
+worker deploys. The 21 ALTERs have no ordering constraint among themselves
+(independent nullable columns on seven tables):
+
+```sh
+for t in emails mailboxes address_books contact_cards calendars calendar_events file_nodes; do
+  for c in last_writer_principal last_writer_binding last_writer_invocation; do
+    npx wrangler d1 execute bullmoose-mail-shard0 --remote \
+      --command "ALTER TABLE $t ADD COLUMN $c TEXT"
+  done
+done
+```
+
+Explicit form, if you prefer to paste the exact list (same 21 statements):
+
+```sql
+ALTER TABLE emails          ADD COLUMN last_writer_principal  TEXT;
+ALTER TABLE emails          ADD COLUMN last_writer_binding    TEXT;
+ALTER TABLE emails          ADD COLUMN last_writer_invocation TEXT;
+ALTER TABLE mailboxes       ADD COLUMN last_writer_principal  TEXT;
+ALTER TABLE mailboxes       ADD COLUMN last_writer_binding    TEXT;
+ALTER TABLE mailboxes       ADD COLUMN last_writer_invocation TEXT;
+ALTER TABLE address_books   ADD COLUMN last_writer_principal  TEXT;
+ALTER TABLE address_books   ADD COLUMN last_writer_binding    TEXT;
+ALTER TABLE address_books   ADD COLUMN last_writer_invocation TEXT;
+ALTER TABLE contact_cards   ADD COLUMN last_writer_principal  TEXT;
+ALTER TABLE contact_cards   ADD COLUMN last_writer_binding    TEXT;
+ALTER TABLE contact_cards   ADD COLUMN last_writer_invocation TEXT;
+ALTER TABLE calendars       ADD COLUMN last_writer_principal  TEXT;
+ALTER TABLE calendars       ADD COLUMN last_writer_binding    TEXT;
+ALTER TABLE calendars       ADD COLUMN last_writer_invocation TEXT;
+ALTER TABLE calendar_events ADD COLUMN last_writer_principal  TEXT;
+ALTER TABLE calendar_events ADD COLUMN last_writer_binding    TEXT;
+ALTER TABLE calendar_events ADD COLUMN last_writer_invocation TEXT;
+ALTER TABLE file_nodes      ADD COLUMN last_writer_principal  TEXT;
+ALTER TABLE file_nodes      ADD COLUMN last_writer_binding    TEXT;
+ALTER TABLE file_nodes      ADD COLUMN last_writer_invocation TEXT;
+```
+
+**T2 — grant tombstones.** One column on `grants` plus one new table. The column
+is what `@bullmoose/auth-core` (`verifyBearer`) now filters on (`revoked_at IS
+NULL`), so — exactly like `deleted_at` — a database without it fails grant
+resolution the moment the workers deploy. Run the column FIRST, then the table
+(the table is a `CREATE TABLE IF NOT EXISTS`, so a plain schema re-run also
+creates it; the explicit form is here so the whole change is in one place):
+
+```sh
+npx wrangler d1 execute bullmoose-mail-shard0 --remote \
+  --command "ALTER TABLE grants ADD COLUMN revoked_at INTEGER"
+npx wrangler d1 execute bullmoose-mail-shard0 --remote --command "
+  CREATE TABLE IF NOT EXISTS grant_lifecycle (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    grant_id TEXT NOT NULL,
+    event    TEXT NOT NULL,
+    at       INTEGER NOT NULL,
+    actor    TEXT
+  );
+  CREATE INDEX IF NOT EXISTS grant_lifecycle_grant ON grant_lifecycle (grant_id, at);"
+```
+
+Each ALTER is idempotent-enough to re-run blind (a second run errors
+`duplicate column name: …` and changes nothing). Verify the whole s03.A set:
+
+```sh
+npx wrangler d1 execute bullmoose-mail-shard0 --remote \
+  --command "SELECT last_writer_principal FROM emails LIMIT 1"
+npx wrangler d1 execute bullmoose-mail-shard0 --remote \
+  --command "SELECT COUNT(*) AS live_grants FROM grants WHERE revoked_at IS NULL"
+```
+
 ## 2. Deploy — order matters, binding graph  (bootstrap: `deploy`)
 
 ```sh

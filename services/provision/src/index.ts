@@ -1498,7 +1498,8 @@ async function createGrant(
   }
 
   const id = `g_${crypto.randomUUID()}`;
-  await env.DB.prepare(
+  const now = Date.now();
+  const res = await env.DB.prepare(
     `INSERT INTO grants (id, tenant_id, grantee_account_id, target_account_id, scopes,
        collection, collection_id, created_by, created_at, expires_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'admin', ?, ?)
@@ -1512,10 +1513,21 @@ async function createGrant(
       JSON.stringify(scopes),
       body.collection ?? null,
       body.collectionId ?? null,
-      Date.now(),
-      body.expiresDays ? Date.now() + body.expiresDays * 86_400_000 : null,
+      now,
+      body.expiresDays ? now + body.expiresDays * 86_400_000 : null,
     )
     .run();
+  // Log the birth of the grant (s03.A T2) — but only when a row was actually
+  // inserted. `ON CONFLICT DO NOTHING` makes a duplicate tuple a silent no-op, so
+  // guarding on `changes` keeps grant_lifecycle from claiming a create that never
+  // happened.
+  if ((res.meta.changes ?? 0) > 0) {
+    await env.DB.prepare(
+      `INSERT INTO grant_lifecycle (grant_id, event, at, actor) VALUES (?, 'created', ?, 'admin')`,
+    )
+      .bind(id, now)
+      .run();
+  }
   return json({
     grantId: id,
     grantee: { email: body.granteeEmail.toLowerCase(), accountId: grantee.id },
@@ -1552,8 +1564,28 @@ async function listGrants(url: URL, env: Env) {
 }
 
 async function revokeGrant(id: string, env: Env) {
-  const res = await env.DB.prepare(`DELETE FROM grants WHERE id = ?`).bind(id).run();
-  return json({ revoked: (res.meta.changes ?? 0) > 0 });
+  const now = Date.now();
+  // Soft delete (s03.A T2): tombstone the row instead of DELETEing it. The grant
+  // stops resolving immediately — verifyBearer filters `revoked_at IS NULL` — but
+  // the row and its grant_lifecycle history survive, so "who could have reached
+  // this account last Tuesday?" stays answerable. `008` left grants on hard
+  // DELETE with a note that this slice owns their lifecycle; this is it. Only a
+  // still-live grant flips; revoking an already-revoked grant is a no-op that
+  // logs nothing (idempotent).
+  const res = await env.DB.prepare(
+    `UPDATE grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`,
+  )
+    .bind(now, id)
+    .run();
+  const revoked = (res.meta.changes ?? 0) > 0;
+  if (revoked) {
+    await env.DB.prepare(
+      `INSERT INTO grant_lifecycle (grant_id, event, at, actor) VALUES (?, 'revoked', ?, 'admin')`,
+    )
+      .bind(id, now)
+      .run();
+  }
+  return json({ revoked });
 }
 
 /** Tombstoned accounts are not grantable, bindable or resolvable — the whole

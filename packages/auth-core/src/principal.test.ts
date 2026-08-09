@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { fakeD1 } from "@bullmoose/test-fakes";
+import { mintToken } from "./index";
 import {
   authorizeAccount,
+  verifyBearer,
   type AccountAccess,
   type GrantRef,
   type Principal,
@@ -123,5 +126,69 @@ describe("authorizeAccount — grant-reached accounts", () => {
       "contacts",
     );
     expect(d.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// s03.A T2 — grant tombstones. verifyBearer is the resolution layer where a
+// grant becomes reach; this is where `revoked_at IS NULL` must bite. Real
+// node:sqlite on the live schema, so the tombstone column is the deployed one.
+// ---------------------------------------------------------------------------
+describe("verifyBearer — a revoked grant stops resolving but its history survives", () => {
+  const GRANTEE = "a_allen";
+  const TARGET = "a_eric";
+
+  /** Two accounts, a token for the grantee, and one grant onto the target. */
+  async function seed(revokedAt: number | null) {
+    const db = fakeD1();
+    db.seedAccount({ accountId: GRANTEE, principalId: "p_allen", loginEmail: "allen@bullmoose.cc" });
+    db.seedAccount({ accountId: TARGET, principalId: "p_eric", loginEmail: "eric@bullmoose.cc" });
+    const minted = await mintToken();
+    db.seed("tokens", [
+      {
+        id: minted.id,
+        principal_id: "p_allen",
+        secret_hash: minted.secretHash,
+        name: "laptop",
+        scopes: JSON.stringify(["mail"]),
+        created_at: 1,
+      },
+    ]);
+    db.seed("grants", [
+      {
+        id: "g_1",
+        tenant_id: "t_bm",
+        grantee_account_id: GRANTEE,
+        target_account_id: TARGET,
+        scopes: JSON.stringify(["read"]),
+        created_by: "admin",
+        created_at: 1,
+        revoked_at: revokedAt,
+      },
+    ]);
+    return { db, token: minted.token };
+  }
+
+  it("resolves a LIVE grant — the target appears as a granted account", async () => {
+    const { db, token } = await seed(null);
+    const p = await verifyBearer(db, token);
+    const target = p?.accounts.find((a) => a.accountId === TARGET);
+    expect(target?.granted?.[0]?.grantId).toBe("g_1");
+  });
+
+  it("does NOT resolve a REVOKED grant — reach is gone immediately", async () => {
+    const { db, token } = await seed(Date.now());
+    const p = await verifyBearer(db, token);
+    // The grantee still owns its own account; it just no longer reaches the target.
+    expect(p?.accounts.map((a) => a.accountId)).toEqual([GRANTEE]);
+    expect(p?.accounts.some((a) => a.accountId === TARGET)).toBe(false);
+  });
+
+  it("keeps the tombstoned row — a point-in-time query can still find it", async () => {
+    const { db } = await seed(Date.now());
+    // The row is not deleted: "who could have reached this account?" stays
+    // answerable. This is the whole bargain — resolution hides it, history keeps it.
+    expect(db.count("grants")).toBe(1);
+    expect(db.count("grants", "revoked_at IS NOT NULL")).toBe(1);
   });
 });

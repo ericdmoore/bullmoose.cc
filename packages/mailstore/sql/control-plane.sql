@@ -150,12 +150,47 @@ CREATE TABLE IF NOT EXISTS grants (
   collection_id       TEXT,
   created_by          TEXT NOT NULL,         -- minting principal id, or 'admin'
   created_at          INTEGER NOT NULL,
-  expires_at          INTEGER                -- epoch ms; NULL = no expiry
+  expires_at          INTEGER,               -- epoch ms; NULL = no expiry
+  -- Tombstone (s03.A T2). NULL = live; epoch ms = revoked. `008` deliberately
+  -- left `grants` on hard-DELETE with a note that s03.A owns their lifecycle;
+  -- this is that lifecycle. `revokeGrant` now SETs this instead of DELETEing, so
+  -- "who could have done this last Tuesday?" stays answerable — a point-in-time
+  -- query returns the historical set including since-revoked rows, and every
+  -- RESOLUTION path filters `revoked_at IS NULL` (auth-core verifyBearer's grant
+  -- load), so live behaviour is identical while history survives. Same bargain
+  -- as accounts.deleted_at. The tenant-teardown cascade (deleteTenant) keeps its
+  -- hard DELETE — the whole tenant is going away, so there is no history to keep.
+  --
+  -- NO migration framework — CREATE TABLE IF NOT EXISTS, so only a FRESH DB picks
+  -- this up. An EXISTING one needs, by hand, BEFORE the workers deploy
+  -- (precedent: contact_cards.dav_name in data-plane.sql; see docs/DEPLOY.md):
+  --   ALTER TABLE grants ADD COLUMN revoked_at INTEGER;
+  revoked_at          INTEGER
 );
 CREATE UNIQUE INDEX IF NOT EXISTS grants_tuple
   ON grants (grantee_account_id, target_account_id,
              COALESCE(collection, ''), COALESCE(collection_id, ''));
 CREATE INDEX IF NOT EXISTS grants_target ON grants (target_account_id);
+
+-- Append-only lifecycle log for grants (s03.A T2). One row per lifecycle
+-- transition — the forensic record that survives even a hard tenant-teardown
+-- delete of the grants row, exactly as grant_audit does. No FK to `grants` (like
+-- grant_audit): the point is that history outlives the grant. `revoked_at` on
+-- `grants` answers "is it live now?"; this answers "what happened to it, when,
+-- and who did it?". Created rows are logged by createGrant; revocations by
+-- revokeGrant. `expired` is reserved for a future expiry sweeper (nothing writes
+-- it yet — expiry is currently computed at read time from `expires_at`).
+--
+-- This is a NEW table, so a fresh CREATE TABLE IF NOT EXISTS run creates it on
+-- both fresh and existing databases (unlike an ADD COLUMN). See docs/DEPLOY.md.
+CREATE TABLE IF NOT EXISTS grant_lifecycle (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  grant_id    TEXT NOT NULL,                 -- g_<uuid> (no FK — history outlives the grant)
+  event       TEXT NOT NULL,                 -- 'created' | 'revoked' | 'expired'
+  at          INTEGER NOT NULL,              -- epoch ms
+  actor       TEXT                           -- minting/revoking principal id, or 'admin'; NULL if unknown
+);
+CREATE INDEX IF NOT EXISTS grant_lifecycle_grant ON grant_lifecycle (grant_id, at);
 
 -- Append-only audit of granted (cross-account) access: one row per
 -- JMAP method call a grantee makes against a target account.
