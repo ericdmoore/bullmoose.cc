@@ -187,6 +187,52 @@ section "Files — the noun does not exist (unit 011 / s03.B)"
 check "FileNode/get         ABSENT ← 011"   unknownMethod jmap_outcome "FileNode/get" "$GET_NOOP"
 check "FileNode/set         ABSENT ← 011"   unknownMethod jmap_outcome "FileNode/set" "$SET_NOOP"
 
+# -----------------------------------------------------------------------------
+# Blob + share lifecycle — unit 010. Not JMAP methods: plain routes on the jmap
+# worker, so these assert HTTP status rather than a method outcome.
+#
+# The revoke round-trip below is the ONLY assertion in this file that both
+# writes and then proves a NEGATIVE, and it is the unit's whole point: mint a
+# link, fetch it (200), revoke it, fetch the SAME url again (403). A test that
+# stopped at "revoke returned 200" would pass against a revoke that did
+# nothing, which is exactly the failure this replaces. It is self-cleaning —
+# the link it mints is the link it kills.
+# -----------------------------------------------------------------------------
+section "Blob + share lifecycle (unit 010)"
+check "GET /api/blobs      present ← 010"  200  http_status GET  "$BM_BASE/api/blobs/$BM_ACCOUNT"
+check "GET /api/shares     present ← 010"  200  http_status GET  "$BM_BASE/api/shares/$BM_ACCOUNT"
+check "DELETE /api/blobs   404 unknown blob" 404 http_status DELETE "$BM_BASE/api/blobs/$BM_ACCOUNT/b_definitely_not_a_blob"
+check "revoke unknown id   404 not 200"    404  http_status POST "$BM_BASE/api/shares/$BM_ACCOUNT/sh_nonexistent/revoke"
+
+# share_revoke_roundtrip → "200/403" when the kill switch works.
+# Any other pair is a real failure; read both halves.
+share_revoke_roundtrip() {
+  local blob sid url before after
+  blob="$(curl -sS -m 20 -X POST "$BM_BASE/api/upload/$BM_ACCOUNT" \
+    -H "Authorization: Bearer $BM_TOKEN" -H 'Content-Type: text/plain' \
+    --data-binary "sVOL 010 verify $(date +%s)" 2>/dev/null | jq -r '.blobId // empty')"
+  [ -n "$blob" ] || { echo "UPLOAD-FAILED"; return; }
+
+  local mint
+  mint="$(curl -sS -m 20 -X POST "$BM_BASE/api/share/$BM_ACCOUNT/$blob" \
+    -H "Authorization: Bearer $BM_TOKEN" -H 'Content-Type: application/json' \
+    -d '{"name":"verify.txt","ttlSeconds":60}' 2>/dev/null)"
+  url="$(printf '%s' "$mint" | jq -r '.url // empty')"
+  sid="$(printf '%s' "$mint" | jq -r '.shareId // empty')"
+  # No shareId in the response = the pre-010 stateless minter is still deployed.
+  [ -n "$url" ] && [ -n "$sid" ] || { echo "MINT-FAILED-OR-STATELESS"; return; }
+
+  # The public fetch carries NO Authorization header — a recipient's view.
+  before="$(curl -sS -m 20 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)"
+  curl -sS -m 20 -o /dev/null -X POST "$BM_BASE/api/shares/$BM_ACCOUNT/$sid/revoke" \
+    -H "Authorization: Bearer $BM_TOKEN" 2>/dev/null
+  # KV is eventually consistent; give propagation a moment before concluding.
+  sleep 2
+  after="$(curl -sS -m 20 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)"
+  echo "$before/$after"
+}
+check "share revoke KILLS the link ← 010" "200/403" share_revoke_roundtrip
+
 section "Agents / HumanSettings"
 check "AgentInvocation/get  present"        ok            jmap_outcome "AgentInvocation/get" "$GET_NOOP"
 check "VacationResponse/get present"        ok            jmap_outcome "VacationResponse/get" "$GET_NOOP"

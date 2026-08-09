@@ -60,7 +60,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 007 | `AgentInvocation` on-demand trigger | cap | E2 | I3 | sVOL | 002 | todo |
 | 008 | Admin lifecycle — update + delete | cap | E2 | I1 ⁵ | sVOL | — | todo |
 | 009 | DAV collection creation (`MKCOL`/`MKCALENDAR`) | cap | E2 | I3 | sVOL | — | **✅ done** |
-| 010 | Blob lifecycle — enumerate, delete, revoke share | cap | E2 | I1 | sVOL | — | todo |
+| 010 | Blob lifecycle — enumerate, delete, revoke share | cap | E2 ⁸ | I1 | sVOL | — | **✅ done** |
 | 011 | The `FileNode` noun | cap | E4 | I3 | **s03.B** | s03.A | todo |
 | 012 | `AddressBook/query` + `Calendar/query` | cap | E1 | I1 ³ | sVOL | — | todo |
 | 013 | **Calendar + Contacts CRUD over MCP** | proj | E2 | I3 | sVOL | 001, 002, 003 | todo |
@@ -161,6 +161,26 @@ not, and which its destroy assertions cannot be written without. That is a capab
 `@bullmoose/test-fakes` should absorb, not a duplicate to delete. Tracked here rather than
 reopening the unit; whoever touches either suite next should migrate it.
 
+⁸ **`010` shipped at `E2` — the KV fork in its §2 was taken, so no migration and no
+regrade.** The tie-break was NOT effort: a share record is useful for exactly as long as its
+link is valid, so `expirationTtl` reaps it at that instant and Done-when #6 ("expired records
+disappear on their own — no sweeper, no cron") is the storage engine's default rather than a
+cron job this repo has nowhere to put. The `shares` table would also have put a D1 read on the
+hot path of `GET /share/*`, the one route in the jmap worker an anonymous client can reach.
+`packages/cli/src/admin.ts:18`'s *"needs the shares table"* is corrected in place.
+
+  Two calls the unit file did not anticipate. §2(a)'s advice to bind a **separate** KV
+  namespace is not available: `infra/bootstrap.mjs`'s `wireText` (`:160`) rewrites only the
+  first `"id"` after `"kv_namespaces"`, so a second binding deploys unwired — records live in
+  `ROUTES` under `share:`, as `login:` already does. And Open Question #5 resolved as **flush**:
+  `shareId` is inside the signed payload, so every link minted before this change 403s, by
+  design.
+
+  ⚠️ **The `s03.B` edge in `011:62-65` is narrowed, not closed.** `handleBlobDelete` now
+  refuses while a live share points at the blob, but `FileNode/set {destroy}` will not travel
+  through that route — `011` must call revoke on destroy or the leak `011` warned about
+  survives this unit.
+
 **Owned elsewhere (9 of 27):** 003, 011, 016, 017, 018, 020, 021, 023, 025 point at an
 existing section or filed issue rather than restating the work. Their files here carry the
 cell mapping, the grades, and the dependency edges — nothing else.
@@ -198,7 +218,7 @@ wave 3 — close the capability holes
   007  AgentInvocation trigger        E2  I3
 
 wave 4 — cheap cleanup, any time
-  005 · 008b (tenant/domain/account lifecycle) · 010 · 012 · 015
+  005 · 008b (tenant/domain/account lifecycle) · 010 ← ✅ DONE, pulled forward · 012 · 015
 
 wave 5 — the unbuilt stacks
   011 (s03.B) → 021 (s03.C) → 022 → 024 → 023 (s03.E)
@@ -230,7 +250,7 @@ Every non-`n/a` gap cell in §1 maps to at least one unit:
 | AddressBook/Calendar × C × DAV | 009 ✅ |
 | AddressBook/Calendar × U × DAV (`PROPPATCH`) | — (unfiled; see `009`) |
 | FileNode × everything | 011 → 021 |
-| Blob delete / share revoke | 010 |
+| Blob delete / share revoke | 010 ✅ |
 | Agents × C/D | 007 |
 | Agents/Secrets × MCP | 015 |
 | HumanSettings × U (`Identity/set`) | 006 |

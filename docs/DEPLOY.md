@@ -164,6 +164,44 @@ SPF/DKIM/DMARC pass (Gmail: "show original").
 4. SES config set → SNS → `/webhooks/ses` for bounce/complaint
    suppression (when RELAY=ses)
 
+### Runbook: revoking share links
+
+`bullmoose send` mints an expiring public URL for any attachment over
+`--link-max` (default 4 MB), signed with `SHARE_SIGNING_KEY` and valid for up
+to 90 days. Three levers, escalating:
+
+| Reach | Command | Effect |
+|---|---|---|
+| one link | `bullmoose share revoke <shareId>` | that URL stops resolving |
+| audit first | `bullmoose share list` | every link the server still has a record of, live ones first |
+| **everything** | rotate `SHARE_SIGNING_KEY` | **every link, every account, instantly and irreversibly dead** |
+
+```sh
+# BREAK-GLASS — read the blast radius first.
+openssl rand -hex 32 | npx wrangler secret put SHARE_SIGNING_KEY -c services/jmap/wrangler.jsonc
+```
+
+**Blast radius of the rotation: total.** Every link ever minted under the old
+key fails signature verification the moment the new secret is live — other
+accounts, other tenants, links you did not mean to kill, links a recipient is
+mid-download on. There is no partial rotation and no undo; the only recovery
+is putting the old value back, which un-revokes everything it killed. Reach for
+`share revoke` first and keep this for "we do not know which link leaked".
+
+Two things that are easy to get wrong:
+
+- **Rotation is not automatic and never has been.** `bootstrap.mjs secrets`
+  reuses existing values by design (§3), so a re-run does **not** rotate.
+- **Per-link revocation is eventually consistent.** Records live in KV, so a
+  revoke can take up to ~60s to reach every edge. The CLI says so on success.
+  Key rotation has no such delay — it is a secret change, not a data read.
+
+Share-link *records* live in KV under `share:` in the `ROUTES` namespace and
+expire with the link they describe, so nothing accumulates and there is no
+sweeper to run. Rotating the key does not clear them; they age out on their
+own, and `share list` will show links that the rotation has already killed
+until they do. That is cosmetic, but know it before reading the output.
+
 ### GHA repo secrets
 
 Set from a machine with `gh` authed to the repo (the remote sandbox's
