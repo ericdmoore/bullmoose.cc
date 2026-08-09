@@ -54,43 +54,116 @@ rungs in sequence.
 > *Its own Worker, or inside the agent worker (which already holds
 > `VAULT_MASTER_KEY`)?* (`bureau.md` §13.1)
 
-**Recommendation: run it INSIDE the agent worker, as an internal chokepoint module —
-not a separate Worker.** `bureau.md` was "leaning separate"; I am recommending against
-that lean, and the reason is a security invariant, not convenience.
+## ✅ RESOLVED — isolated Worker. Ratified by the user, 2026-08-09.
 
-The crown jewel is `VAULT_MASTER_KEY`, and the credentials + the decrypt path
-(`openVaultSecret`, `sealSecret`) **already live in the agent worker**. The Bureau's
-whole job — proxy, sign, derive, redact — operates on *decrypted* secrets, so it must
-run where it can decrypt. A separate Worker forces one of two bad trades:
+**The Bureau is its own Cloudflare Worker.** `VAULT_MASTER_KEY` is bound **only** to it.
+The agent worker never holds the key and therefore cannot unseal a credential — not by
+discipline, by the platform.
 
-- **Give the separate Worker its own copy of the master key** → there are now **two
-  copies** of the one secret whose leak is catastrophic. `bureau.md` §13.1 names this
-  cost directly ("a second copy of the master key"). It doubles the blast radius of
-  the single worst leak in the system.
-- **Have it call the agent worker to decrypt** → the *plaintext secret* now crosses a
-  worker boundary on every call, which is precisely the thing invariant 1 exists to
-  prevent ("no caller … ever holds a credential value"). A hop that carries plaintext
-  is strictly worse than no hop.
+The governing principle, in the user's words:
 
-The chokepoint and audit-boundary cleanliness that motivated "separate" is achievable
-**in-process**: make the Bureau the *only* code path that may call `openVaultSecret`,
-enforced by module boundary and lint ("enforce by wiring, not rule", `mcp-auth.md` §8),
-and route every use through the existing `grant_audit` sink (invariant 6). You get the
-chokepoint without duplicating the key or moving plaintext.
+> *You can only compute with what you have. WebFetch, bullmoose MCP, etc. Anything else
+> needs the Bureau.*
 
-The hinge `bureau.md` itself identified — *"whether anything besides the agent runtime
-ever calls it"* — resolves cleanly: **today, nothing does.** Only agent pipelines need
-credentialed egress. The moment a second consumer appears (say the jmap worker wants
-Class-A `fetch`), **that** is the trigger to extract the Bureau into its own Worker —
-and at that point you move the master key *out* of the agent worker and *into* the
-Bureau, preserving the single-copy property rather than breaking it.
+That is the object-capability model, and isolation is what makes it true rather than
+aspirational. Embedded, the master key is **ambient** in the agent worker: every MCP tool
+and every future code path shares its address space, so security degrades to "remember not
+to reach for it" — allow-unless-forbidden. Isolated, there is no code path to the key
+because the key is not in that environment.
 
-**Does it need the user?** Recommendation is firm and technically grounded, but this
-is a **security-boundary decision** that contradicts the design doc's stated lean, so
-**flag it for user ratification.** The user may hold a constraint I cannot see — a
-compliance/audit requirement for process isolation, or a near-term plan for a non-agent
-caller — either of which would flip the answer to "separate, and accept the second key
-copy deliberately." Absent such a constraint, build same-worker.
+### The argument for embedded was wrong, and here is precisely how
+
+An earlier revision of this section recommended embedding, on the grounds that a separate
+Worker forces either *a second copy of the master key* or *plaintext crossing a boundary*.
+**Both are false**, and they fail for the same reason: they conflate the key with the vault.
+
+- **No second copy.** The key lives in exactly one Worker — the Bureau. It is *moved*, not
+  duplicated. `services/agent` gives it up.
+- **No plaintext crossing.** §1's own contract is *"the Bureau applies the credential
+  itself, and returns only the result."* A **name** (`credRef` + verb) goes in; a **result**
+  (an HTTP response, a signature) comes back. The secret never leaves.
+
+Recorded rather than deleted, because the mistake is instructive: it argued a *security*
+invariant from an assumption about *plumbing*. Isolation is the faithful implementation of
+what §1 and §3 already say the Bureau does.
+
+### What this costs (honestly)
+
+A same-colo service-binding hop (sub-millisecond), one more Worker in the deploy graph, and
+one real refactor: **the seal-on-mint path moves too.** `services/agent/src/vault.ts`
+splits — the metadata/reference layer stays in the agent worker; all `VAULT_MASTER_KEY`
+crypto (`sealSecret`, `openVaultSecret`) moves to the Bureau. One key, one home, zero
+crypto in the agent worker. Tracked as **T3a**.
+
+---
+
+## Open question 1b — how does the Bureau know *which agent* is calling?
+
+Isolation stops the agent worker from reading the key. It does **not** answer this: all
+agents (`travel@`, `editor@`, `receipts@`) run inside the same agent worker and call the
+Bureau over the same service binding. Every call looks identical — *"a request from the
+agent worker."* The binding proves which **worker**, never which **agent**.
+
+That gap is live, not theoretical: sVOL `014` is the unit where an agent reads *untrusted
+email content*. A prompt-injected `editor@` calling `fetch(credRef: "aws-mcp")` must be
+refused, and a self-asserted principal id in the request body is exactly the antipattern
+this session removed from MCP.
+
+### Resolution: **inward = opaque token · outward = JWT**
+
+The test that decides it every time: **who has to verify, and can they call the issuer?**
+
+**Inward (agent → Bureau): an opaque, per-invocation bearer token.**
+
+Do **not** mint a new token type. The invocation already has an identity (sVOL `007` built
+the create path; `mcp-auth.md` §15.2 specifies per-invocation tokens). It presents that
+token on every Bureau call; the Bureau verifies with **`verifyBearer`** — the same function
+every other surface uses.
+
+A JWT here would be actively worse. Its value is offline verification by a third party;
+when issuer and verifier are the same service it buys nothing — and it **costs
+revocability**. A JWT is valid until it expires. This system now has two kill switches
+(sVOL `008`'s `agent_bindings.enabled`, `s03.A`'s `grants.revoked_at`), and both work by
+making a token *stop resolving on the next check*. A self-contained JWT routes around both:
+flip the kill switch, and the agent keeps acting until expiry.
+
+Using `verifyBearer` means Bureau authorization **inherits every revocation control already
+built** — `revoked_at IS NULL`, `deleted_at IS NULL`, the disabled-binding gate — for free.
+Cost: one D1 lookup per Bureau call, which is noise beside the outbound network request the
+call is about to make, and it is what makes revocation instant.
+
+**Outward (Bureau → AWS / third party): a JWT is exactly right.**
+
+Here the verifier **cannot call us**. `AssumeRoleWithWebIdentity` requires an OIDC token
+AWS validates offline against a published key. That is textbook JWT — and it is the unlock
+for open question 3, which stalled on *"Workers issues no federatable OIDC token."* An
+isolated Bureau holding a private signing key and publishing a JWKS **is** an OIDC provider.
+
+The two keypairs point opposite ways, which is the easiest thing to confuse:
+
+| | who holds private | who verifies |
+|---|---|---|
+| agent proving identity to Bureau (v2) | the **agent** | the Bureau (holds public only) |
+| Bureau proving identity to AWS | the **Bureau** | AWS (public via JWKS) |
+
+### End-to-end shape
+
+```
+invocation starts  ->  gets its token            (existing machinery, 007 / §15.2)
+agent -> Bureau    :  "fetch, credRef 42" + token   <- opaque, revocable, verifyBearer
+Bureau             :  verifyBearer -> grant(principal, credRef, verb)? -> unseal -> call
+Bureau -> AWS      :  self-signed JWT -> STS -> temp creds   <- JWT, offline verification
+Bureau -> agent    :  the response only. Never the credential.
+```
+
+### Deferred to v2: request signing
+
+Per-invocation **signatures** (agent holds an ephemeral private key, Bureau holds the public
+half, the signature covers verb + destination + credRef) defend against **token replay** — a
+leaked token could otherwise be reused for a different action. Real, but second-order, and it
+needs a lifecycle design (where an ephemeral private key lives inside a shared worker) that
+should not block the proxy. **Not built now**; noted so the request shape can accommodate it
+later without a rewrite.
 
 ---
 

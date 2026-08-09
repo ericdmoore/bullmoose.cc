@@ -419,10 +419,21 @@ where federation is the analogue.
 
 ## 13. Open questions
 
-1. **Where does the Bureau run?** Its own Worker, or inside the agent worker (which
-   already holds `VAULT_MASTER_KEY`)? Separate is cleaner as a chokepoint and an audit
-   boundary; same-worker avoids a hop and a second copy of the master key. Leaning
-   separate, but it turns on whether anything besides the agent runtime ever calls it.
+1. ✅ **RESOLVED (2026-08-09) — its own Worker.** The lean was right. Full reasoning in
+   `arch.md` OQ1; in short: the key is **moved, not copied** (bound only to the Bureau,
+   removed from `services/agent`), and no plaintext crosses the hop because §1's contract
+   already says a *name* goes in and a *result* comes back. Embedded would leave
+   `VAULT_MASTER_KEY` ambient in a worker that also runs every MCP tool — security by
+   discipline rather than by platform.
+
+   The follow-on question isolation *doesn't* answer — "which agent is calling, given they
+   share one worker and one service binding?" — resolves as **opaque per-invocation bearer
+   token inward** (verified by `verifyBearer`, inheriting the `008`/`s03.A` revocation
+   controls; a JWT would route around them) and **JWT outward** for federation, where AWS
+   must verify offline. Request signing against replay is deferred to v2.
+
+   Structural consequence: `services/agent/src/vault.ts` splits — reference layer stays,
+   all master-key crypto moves. Tracked as **T3a**, a prerequisite of T3.
 2. **Does Class A need response streaming**, or is buffer-and-scan (§7) acceptable for
    all realistic agent traffic?
 3. **Federation feasibility for SES** (§10) — needs a real investigation before it's
