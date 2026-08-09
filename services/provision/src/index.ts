@@ -22,7 +22,10 @@ import {
  *   POST /accounts              {tenantId, domain, localpart, displayName}
  *
  * POST /domains is idempotent-ish: each step reports ok/detail so a failed
- * run can simply be re-run after fixing the underlying issue.
+ * run can simply be re-run after fixing the underlying issue. POST /accounts
+ * is idempotent outright: re-running it for an address that already has a
+ * mailbox returns that mailbox (`created: false`) rather than building a
+ * second one — see `createAccount` for why that matters.
  */
 
 export interface Env {
@@ -323,6 +326,34 @@ async function checkDomain(domain: string, env: Env) {
 
 // ---- accounts --------------------------------------------------------
 
+/**
+ * A mail address must be unique as a **delivery route**. That constraint
+ * already exists — `routes` is `PRIMARY KEY (domain, localpart)` — and it
+ * deliberately does NOT exist on `identities`, whose `UNIQUE (account_id,
+ * email)` is per-account on purpose: aliases and send-as (`Identity/set`)
+ * legitimately want one address usable from more than one place. The route is
+ * what decides where mail lands, so the route is what must be unique.
+ *
+ * Before this guard, `POST /accounts` was last-write-wins. A second call for
+ * an address that already had a mailbox created a SECOND account and repointed
+ * delivery onto it with `INSERT OR REPLACE`, which in SQLite is
+ * delete-then-insert. Account #1 kept every message it had ever received and
+ * became unreachable by any address; the API reported success. The triggers
+ * were mundane — a request retried after a timeout, a re-run bootstrap, a typo
+ * "fixed" by running it again — and the symptom was "my mail stopped arriving"
+ * on a system where every component reports healthy.
+ *
+ *   existing route for (domain, localpart)?
+ *   ├── none                     → create the account, insert the route    200
+ *   ├── already THIS address's   → return the existing account             200
+ *   │   mailbox                    (idempotent retry; no D1 write)
+ *   └── anything else            → 409, change nothing
+ *
+ * The pre-check cannot be atomic with the write (D1 has no interactive
+ * transaction), so the write is its own guard too: `INSERT INTO routes`
+ * — not `INSERT OR REPLACE` — lets the primary key reject a concurrent
+ * duplicate, and D1's batch is atomic so the loser rolls back whole.
+ */
 async function createAccount(
   body: {
     tenantId: string;
@@ -333,8 +364,11 @@ async function createAccount(
   },
   env: Env,
 ) {
-  const { tenantId, domain, localpart, displayName } = body;
-  const address = `${localpart.toLowerCase()}@${domain}`;
+  const { tenantId, domain, displayName } = body;
+  // Normalize once. The route row, the identity and the KV key must all agree
+  // on casing or delivery resolves to a different key than provisioning wrote.
+  const localpart = body.localpart.toLowerCase();
+  const address = `${localpart}@${domain}`;
   const now = Date.now();
 
   // The route row references domains(domain); creating a mailbox on an
@@ -347,6 +381,18 @@ async function createAccount(
   }
   if (domainRow.tenant_id !== tenantId) {
     return json({ error: `domain ${domain} belongs to a different tenant` }, 422);
+  }
+
+  // Uniqueness check BEFORE any write, so a rejected create leaves nothing
+  // behind: no stray principal row, no KV key pointing at an account that was
+  // never wired, no half-provisioned account.
+  const existingRoute = await env.DB.prepare(
+    `SELECT kind, target FROM routes WHERE domain = ? AND localpart = ?`,
+  )
+    .bind(domain, localpart)
+    .first<{ kind: string; target: string }>();
+  if (existingRoute) {
+    return adoptOrConflict(existingRoute, { tenantId, domain, localpart, address }, body.principalEmail, env);
   }
 
   // --principal attaches this mailbox to an EXISTING login, so one
@@ -374,46 +420,201 @@ async function createAccount(
 
   const accountId = `${tenantId}__a_${crypto.randomUUID().slice(0, 8)}`;
 
-  await env.DB.batch([
-    env.DB
-      .prepare(
-        `INSERT INTO accounts (id, tenant_id, principal_id, display_name, shard, created_at)
-         VALUES (?, ?, ?, ?, 'shard0', ?)`,
-      )
-      .bind(accountId, tenantId, principalId, displayName, now),
-    env.DB
-      .prepare(`INSERT INTO identities (id, account_id, email, name) VALUES (?, ?, ?, ?)`)
-      .bind(`identity_${crypto.randomUUID().slice(0, 8)}`, accountId, address, displayName),
-    env.DB
-      .prepare(
-        `INSERT OR REPLACE INTO routes (domain, localpart, kind, target) VALUES (?, ?, 'mailbox', ?)`,
-      )
-      .bind(domain, localpart.toLowerCase(), accountId),
-    // Standard role mailboxes so the first Mailbox/get isn't empty.
-    ...[
-      ["inbox", "Inbox"],
-      ["sent", "Sent"],
-      ["drafts", "Drafts"],
-      ["trash", "Trash"],
-      ["junk", "Junk"],
-      ["archive", "Archive"],
-    ].map(([role, name]) =>
+  try {
+    await env.DB.batch([
       env.DB
         .prepare(
-          `INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order)
-           VALUES (?, ?, NULL, ?, ?, 0)`,
+          `INSERT INTO accounts (id, tenant_id, principal_id, display_name, shard, created_at)
+           VALUES (?, ?, ?, ?, 'shard0', ?)`,
         )
-        .bind(`mb_${crypto.randomUUID()}`, accountId, name, role),
-    ),
-  ]);
+        .bind(accountId, tenantId, principalId, displayName, now),
+      env.DB
+        .prepare(`INSERT INTO identities (id, account_id, email, name) VALUES (?, ?, ?, ?)`)
+        .bind(`identity_${crypto.randomUUID().slice(0, 8)}`, accountId, address, displayName),
+      // NOT `INSERT OR REPLACE` — that is a delete-then-insert in SQLite and
+      // was the mechanism that silently moved delivery off account #1. Plain
+      // INSERT lets PRIMARY KEY (domain, localpart) reject the duplicate, which
+      // is what makes this batch safe against the race the pre-check above
+      // cannot close on its own.
+      env.DB
+        .prepare(`INSERT INTO routes (domain, localpart, kind, target) VALUES (?, ?, 'mailbox', ?)`)
+        .bind(domain, localpart, accountId),
+      // Standard role mailboxes so the first Mailbox/get isn't empty.
+      ...[
+        ["inbox", "Inbox"],
+        ["sent", "Sent"],
+        ["drafts", "Drafts"],
+        ["trash", "Trash"],
+        ["junk", "Junk"],
+        ["archive", "Archive"],
+      ].map(([role, name]) =>
+        env.DB
+          .prepare(
+            `INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order)
+             VALUES (?, ?, NULL, ?, ?, 0)`,
+          )
+          .bind(`mb_${crypto.randomUUID()}`, accountId, name, role),
+      ),
+    ]);
+  } catch (err) {
+    // Two concurrent creates for one address both clear the pre-check and
+    // arrive here; the primary key picks a winner. D1's batch is atomic, so the
+    // loser rolls back whole — no account, no identity, no mailboxes — and it
+    // has touched no KV, because the put below is deliberately after the batch.
+    // 409 rather than the generic 500 says what actually happened.
+    if (isRouteConflict(err)) {
+      return json(
+        {
+          error: `${address} was provisioned concurrently by another request — nothing was written`,
+          address,
+        },
+        409,
+      );
+    }
+    throw err;
+  }
 
-  // Hot copy for the ingest fast path.
+  // Hot copy for the ingest fast path. After the batch, never before: ingest
+  // resolves delivery through this key alone, so a key written ahead of a
+  // batch that then rolled back would point at an account that does not exist.
   await env.ROUTES.put(
-    `route:${domain}:${localpart.toLowerCase()}`,
+    `route:${domain}:${localpart}`,
     JSON.stringify({ kind: "mailbox", accountId, tenantId }),
   );
 
-  return json({ ok: true, accountId, address });
+  return json({ ok: true, created: true, accountId, address });
+}
+
+/**
+ * A route already exists for this address. Adopt it only when it is *exactly*
+ * what a successful create would have produced — a mailbox route onto an
+ * account in this tenant that already carries this identity. That is the
+ * retried-bootstrap case, which is where this actually bites.
+ *
+ * Everything else is a real conflict: a forward/alias/catch-all route, another
+ * tenant's account, a target that no longer exists, or an explicit
+ * `principalEmail` that disagrees with who owns the account. Returning 200 for
+ * any of those would be the same species of lie as the silent repoint it
+ * replaces — success reported, reality somewhere else.
+ */
+async function adoptOrConflict(
+  route: { kind: string; target: string },
+  req: { tenantId: string; domain: string; localpart: string; address: string },
+  principalEmail: string | undefined,
+  env: Env,
+) {
+  const conflict = (reason: string) =>
+    json(
+      {
+        error: `${req.address} already routes somewhere — ${reason}`,
+        address: req.address,
+        existingRoute: { kind: route.kind, target: route.target },
+        // The reason this is 409 and not a repoint: there is no DELETE
+        // /accounts, so an accidental repoint is not recoverable through the
+        // API (.plans/sVOL-CapSurNoun/008).
+        hint: "delivery was left untouched — see docs/DEPLOY.md, 'Runbook: an address already routes somewhere'",
+      },
+      409,
+    );
+
+  if (route.kind !== "mailbox") return conflict(`it is a '${route.kind}' route, not a mailbox`);
+
+  const account = await env.DB.prepare(
+    `SELECT id, tenant_id, principal_id FROM accounts WHERE id = ?`,
+  )
+    .bind(route.target)
+    .first<{ id: string; tenant_id: string; principal_id: string }>();
+  if (!account) return conflict(`its target account ${route.target} no longer exists`);
+  if (account.tenant_id !== req.tenantId) {
+    return conflict(`its account belongs to tenant ${account.tenant_id}`);
+  }
+
+  // A mailbox route onto an account with no identity for this address is not a
+  // retry of this request — it is some other wiring that happens to sit on the
+  // same key, and taking it over is precisely the orphaning this guards.
+  const identity = await env.DB.prepare(
+    `SELECT id FROM identities WHERE account_id = ? AND email = ?`,
+  )
+    .bind(account.id, req.address)
+    .first<{ id: string }>();
+  if (!identity) return conflict(`its account ${account.id} has no ${req.address} identity`);
+
+  if (principalEmail) {
+    const wanted = await findPrincipal(env, principalEmail);
+    if (!wanted) return json({ error: `principal ${principalEmail} not found` }, 422);
+    if (wanted.id !== account.principal_id) {
+      return conflict(`its account is owned by principal ${account.principal_id}, not ${principalEmail}`);
+    }
+  }
+
+  // Idempotent retry. Nothing is written to D1 — the rows are already correct.
+  const repaired = await reconcileRouteKey(env, req, account.id);
+  return json({
+    ok: true,
+    created: false,
+    accountId: account.id,
+    address: req.address,
+    note: `${req.address} already exists — returned the existing account, delivery untouched`,
+    ...(repaired ? { repairedRouteKey: repaired } : {}),
+  });
+}
+
+/**
+ * Bring the ingest fast-path key back in line with the `routes` row.
+ *
+ * Worth doing on the adopt path specifically: ingest resolves delivery through
+ * `route:{domain}:{localpart}` and has **no D1 fallback**
+ * (`services/ingest/src/index.ts` `resolveRoute`), so a key that is missing —
+ * the first call died between the batch and the put — means every message
+ * bounces `550 5.1.1` while the control plane looks perfectly healthy. D1 is
+ * the durable record; KV is the copy, so KV is what gets corrected.
+ *
+ * A key that already agrees is left completely alone, which keeps a hand-set
+ * `forwardTo` (read by ingest, written by nothing here) from being clobbered
+ * by a retry. Returns what it fixed, or null if there was nothing to fix.
+ */
+async function reconcileRouteKey(
+  env: Env,
+  req: { tenantId: string; domain: string; localpart: string },
+  accountId: string,
+): Promise<string | null> {
+  const key = `route:${req.domain}:${req.localpart}`;
+  const current = await env.ROUTES.get<{
+    kind?: string;
+    accountId?: string;
+    tenantId?: string;
+    forwardTo?: string[];
+  }>(key, "json");
+  if (
+    current?.kind === "mailbox" &&
+    current.accountId === accountId &&
+    current.tenantId === req.tenantId
+  ) {
+    return null;
+  }
+  await env.ROUTES.put(
+    key,
+    JSON.stringify({
+      kind: "mailbox",
+      accountId,
+      tenantId: req.tenantId,
+      ...(current?.forwardTo?.length ? { forwardTo: current.forwardTo } : {}),
+    }),
+  );
+  return current ? "stale" : "missing";
+}
+
+/**
+ * A `PRIMARY KEY (domain, localpart)` violation on `routes`.
+ *
+ * SQLite implements a composite primary key on a rowid table as a unique
+ * index, so the failure surfaces as `UNIQUE constraint failed: routes.domain,
+ * routes.localpart` — matched here rather than compared exactly because D1
+ * prefixes it (`D1_ERROR: …`) and the column list is not worth pinning.
+ */
+function isRouteConflict(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /constraint failed:[^\n]*\broutes\b/i.test(msg);
 }
 
 // ---- credentials & tokens ---------------------------------------------
