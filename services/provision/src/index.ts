@@ -429,7 +429,16 @@ async function createAccount(
         )
         .bind(accountId, tenantId, principalId, displayName, now),
       env.DB
-        .prepare(`INSERT INTO identities (id, account_id, email, name) VALUES (?, ?, ?, ?)`)
+        // may_delete = 0 explicitly rather than by default: this is the
+        // account's primary, the row EmailSubmission/set resolves `From:`
+        // against, and Identity/set refuses to destroy it. The column
+        // DEFAULTs to 1 because user-added identities are the common case,
+        // so relying on the default here would make the one identity that
+        // must survive the one that is deletable.
+        .prepare(
+          `INSERT INTO identities (id, account_id, email, name, may_delete)
+           VALUES (?, ?, ?, ?, 0)`,
+        )
         .bind(`identity_${crypto.randomUUID().slice(0, 8)}`, accountId, address, displayName),
       // NOT `INSERT OR REPLACE` — that is a delete-then-insert in SQLite and
       // was the mechanism that silently moved delivery off account #1. Plain

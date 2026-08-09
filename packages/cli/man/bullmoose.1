@@ -84,6 +84,9 @@ see and remove the objects this account stores in R2
 .B share
 list and revoke the expiring public links this account has minted
 .TP
+.B identity
+send\-as addresses and mail signatures (over JMAP)
+.TP
 .B admin
 operator surface — wraps the provision worker (separate credentials)
 .SH COMMAND DETAILS
@@ -691,6 +694,88 @@ bullmoose share list
 bullmoose share revoke sh_4c1f…
 .EE
 reload the link: it now refuses
+.SS identity
+.B Synopsis:
+.br
+bullmoose identity list | show <id> | signature <id> [\-\-text <file|\->] | add <email> | rm <id>
+.PP
+The addresses this account may put in From:, and the signature attached to each. An <id> is an identity id or its email address. `signature` reads the signature from \-\-text (a file, or \- for stdin), from \-\-html for the HTML alternative, or from a bare pipe; \-\-clear removes both. `send` inserts the signature itself, below the RFC 3676 "\-\- " separator, because RFC 8621 defines it as something the client inserts — a third\-party JMAP client will not apply it. `add` refuses an address that is not on one of your tenant's active domains, and `rm` refuses the account's provisioned primary.
+.PP
+.B Subcommands:
+.TP
+.B list
+every send\-as address (primary first) \(em \f[CR]identity list\fR
+.TP
+.B show
+one identity, with its signature \(em \f[CR]identity show <id\-or\-email>\fR
+.TP
+.B signature
+set or clear the signature \(em \f[CR]identity signature <id\-or\-email> [\-\-text <file|\->] [\-\-html <file>] [\-\-clear]\fR
+.TP
+.B add
+add a send\-as address on an active domain \(em \f[CR]identity add <email> [\-\-name <n>] [\-\-reply\-to <addr>] [\-\-bcc <addr>]\fR
+.TP
+.B rm
+remove a send\-as address (never the primary) \(em \f[CR]identity rm <id\-or\-email>\fR
+.PP
+.B Flags:
+.TP
+.B \-\-text <file|\->
+plain\-text signature source; \- is stdin
+.TP
+.B \-\-html <file|\->
+HTML signature source (a snippet, not a document)
+.TP
+.B \-\-clear
+on signature: remove both signatures
+.TP
+.B \-\-name <n>
+display name for add
+.TP
+.B \-\-reply\-to <addr>
+Reply\-To for mail sent from this identity
+.TP
+.B \-\-bcc <addr>
+silent Bcc for mail sent from this identity
+.TP
+.B \-\-if\-state <state>
+refuse the write (exit 5) if the account has moved on since <state>
+.TP
+.B \-\-dry\-run
+resolve the identity and report; write nothing
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose identity list
+.EE
+.PP
+.EX
+bullmoose identity signature default \-\-text ~/.signature
+.EE
+.PP
+.EX
+printf 'Eric\\nbullmoose.cc\\n' | bullmoose identity signature default
+.EE
+a bare pipe is the signature
+.PP
+.EX
+bullmoose send \-\-to you@example.com \-\-subject hi \-\-body test
+.EE
+the signature travels with it
+.PP
+.EX
+bullmoose identity add hello@example.com \-\-name Sales
+.EE
+.PP
+.EX
+bullmoose send \-\-to a@b.com \-\-identity hello@example.com \-\-subject hi \-\-body test
+.EE
+.PP
+.EX
+bullmoose identity rm hello@example.com \-\-dry\-run
+.EE
+resolves the address, writes nothing
 .SS admin
 .B Synopsis:
 .br
