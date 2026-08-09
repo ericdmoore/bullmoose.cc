@@ -10,7 +10,7 @@
 >
 > | Was | Now |
 > |---|---|
-> | 2 test files, 19 tests | **22 test files, 421 tests** |
+> | 2 test files, 19 tests | **23 test files, 471 tests** |
 > | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
 > | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
 > | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
@@ -24,8 +24,13 @@
 > was planned against is materially different — in particular, any unit reasoning about
 > scopes must re-read §4 rather than trusting a memory of it.
 >
-> **Still true and still the point:** the MCP column is empty of noun CRUD, and there is no
-> WebUI.
+> **Still true and still the point:** there is no WebUI.
+>
+> ⚠️ *"The MCP column is empty of noun CRUD"* — the line this volume was built around — is
+> **no longer true.** sVOL `013` landed Calendar + Contacts CRUD over MCP, routed through the
+> JMAP method layer in-process. Email, vault and introspection over MCP are still absent
+> (`014`, `015`), as is `Calendar`/`AddressBook` **collection** C/U/D — `013` shipped those
+> as `/get` only.
 >
 > ⚠️ Two items left this list in one batch — **DAV collection creation** (`009`) and
 > **`Mailbox/set`** (`004`, with the CLI `mailbox` verbs). Both were headline gaps in the
@@ -108,10 +113,10 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
 | **Mailbox** | `CRUD` ⁴ | `CRUD` ⁴ | `----` | `----` | `----` | `----` | `~` ⁵ |
 | **Thread** | `-R--` | `----` | `----` | `----` | `----` | `----` | n/a |
 | **EmailSubmission** | `C---` ⁶ | `C---` | `----` | `----` | `----` | `----` | `C---` |
-| **AddressBook** | `CRUD` ⁷ | `~R--` ⁸ | `----` | `CR-D` ⁹ | `----` | `----` | n/a |
-| **ContactCard** | `CRUD` | `CR--` ¹⁰ | `----` | `CRUD` | `----` | `----` | n/a |
-| **Calendar** | `CRUD` ⁷ | `-R--` | `----` | `CR-D` ⁹ | `----` | `----` | n/a |
-| **CalendarEvent** | `CRUD` | `-R--` ¹¹ | `----` | `CRUD` | `----` | `----` | n/a |
+| **AddressBook** | `CRUD` ⁷ | `~R--` ⁸ | `-R--` | `CR-D` ⁹ | `----` | `----` | n/a |
+| **ContactCard** | `CRUD` | `CR--` ¹⁰ | `CRUD` | `CRUD` | `----` | `----` | n/a |
+| **Calendar** | `CRUD` ⁷ | `-R--` | `-R--` | `CR-D` ⁹ | `----` | `----` | n/a |
+| **CalendarEvent** | `CRUD` | `-R--` ¹¹ | `CRUD` | `CRUD` | `----` | `----` | n/a |
 | **FileNode** | `----` ¹² | `----` | `----` | `----` | `----` | `----` | n/a |
 | **Agents** | `-RU-` ¹³ | `-RU-` | `----` | n/a | `----` | `----` | `C---` ¹⁴ |
 | **Secrets** | n/a ¹⁵ | `CRUD` ¹⁶ | `----` | n/a | `----` | `----` | n/a |
@@ -125,8 +130,10 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
    `sync.ts:264`) and `send` (`main.ts:338` → `Email/import` at `:432`). Update exists **only
    inside the agent worker loop** (`packages/cli/src/agent.ts:196`). **No general
    flag/move/archive/delete command.**
-2. MCP has aggregates only: `spend_by_month` `:57`, `spend_by_vendor` `:82`, `top_senders`
-   `:109`, `message_volume` `:136`. No message body or header retrieval.
+2. MCP is **no longer aggregates-only** (sVOL `013`). The four analytics tools remain
+   (`spend_by_month`, `spend_by_vendor`, `top_senders`, `message_volume`) alongside ten noun
+   tools for calendar events and contact cards. Still absent: any message body or header
+   retrieval (`014`), vault, introspection (`015`).
 3. Inbound store to R2 + D1, `services/ingest/src/index.ts:48`.
 4. ✅ **CLOSED by sVOL `004`.** `Mailbox/set` is registered inside `registerMailboxMethods`
    (`mailbox.ts`), and `bullmoose mailbox create|rename|move|rm` is the CLI half. This entry
@@ -226,8 +233,16 @@ changelog entry ⇒ `/changes` never reports it ⇒ the CLI mirror never sees it
 This failure mode looks like a sync bug and is actually a write-path bug. **New write
 surfaces call the JMAP method layer.**
 
-Note the asymmetry that makes this easy to get wrong: all four existing MCP tools query
-`env.DB` with **raw SQL** — fine for read-only analytics, wrong for writes.
+Note the asymmetry that makes this easy to get wrong: the four **analytics** MCP tools query
+`env.DB` with **raw SQL** — fine for read-only aggregates, wrong for writes. The ten **noun**
+tools added by `013` route through the method layer in-process via
+`services/agent/src/jmapBridge.ts`.
+
+⚠️ **`services/anglebrackets` CANNOT reach the method layer** — it binds only `ACCOUNT_DO`
+cross-script, and therefore *replicates* the choreography in `dav.ts`. That is an instance of
+this failure mode being survived by hand, **not a precedent to copy**. It is also the datum
+that settled `013`'s in-process-vs-service-binding question: `services/agent` already binds
+`DB`, `BLOBS` and `ACCOUNT_DO`, so the import costs no new deploy-graph edge.
 
 ⚠️ **Correction to an earlier draft of this file**, which claimed `services/agent` depends on
 neither `Mailstore` nor `calendar-core`. That is wrong for `Mailstore`: it is declared at
@@ -295,7 +310,7 @@ is the only thing that catches this failure mode, and it is now cheap.
 
 ## 5. Test infrastructure — the honest state
 
-**22 test files, 421 tests** (was 2 files / 19 at the original audit). `npm test` runs in
+**23 test files, 471 tests** (was 2 files / 19 at the original audit). `npm test` runs in
 well under a second and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
