@@ -119,6 +119,11 @@ const parseCommandLine = () =>
       "client-secret": { type: "string" },
       "oauth-scopes": { type: "string" },
       port: { type: "string" },
+      // ---- creds mint-time contract (bureau.md §5 / sVOL 020); --allow is
+      //      shared with agent-invoke below and defined there ----
+      header: { type: "string" },
+      scope: { type: "string" },
+      enforcement: { type: "string" },
       days: { type: "string" },
       // ---- calendar CRUD (sVOL 018) ----
       title: { type: "string" },
@@ -304,6 +309,10 @@ try {
         secret: opts.secret,
         secretEnv: opts["secret-env"],
         meta: opts.meta,
+        allow: opts.allow,
+        header: opts.header,
+        scope: opts.scope,
+        enforcement: opts.enforcement,
         authorizeUrl: opts["authorize-url"],
         tokenUrl: opts["token-url"],
         clientId: opts["client-id"],

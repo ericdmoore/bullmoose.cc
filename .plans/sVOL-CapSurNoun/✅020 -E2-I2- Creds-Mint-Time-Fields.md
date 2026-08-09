@@ -3,11 +3,37 @@
 | | |
 |---|---|
 | **Kind** | filed as projection — **it is not** (see below) |
-| **Effort** | **E2** only if the fields ride in `meta_json`; **E3** if they get typed columns |
+| **Effort** | **E2** — resolved: the fields ride in `meta_json`, no schema change (decision below) |
 | **Impact** | **I2** — unlocks, not human-verifiable |
-| **Owner** | **`s05-cli-crud`** T4 + **`s04-AgentOS`** (`bureau.md` §5) |
-| **Depends on** | the `s04` spec (`bureau.md` has **zero tasks**, `_context.md` §6) |
-| **Status** | todo |
+| **Owner** | **`s05-cli-crud`** T4 + **`s04-AgentOS`** (`bureau.md` §5, now `devPlan.md` **T1**) |
+| **Depends on** | the `s04` spec (`bureau.md` — now decomposed in `s04/devPlan.md` + `arch.md`) |
+| **Status** | **done** — built on `worktree-agent-a859a55616dd69f77` (`vault.test.ts`, 18 tests; suite 900→918; smoke 61/0) |
+
+## Resolution (Open Question #1: `meta_json` vs typed columns)
+
+**Decided: `meta_json`, so the unit stays E2.** The fields (`allow`, `header`, `scope`,
+`enforcement`) fold into `vault_credentials.meta_json` under reserved keys — **no
+`ALTER`, no operator migration** (this repo has no migration framework;
+`tools/README.md:10-11`). The sVOL author leaned typed for `--allow` "because it is
+enforced on every egress request and wants an index" — but that enforcement is the
+Bureau **proxy**, a *later* task (`s04/devPlan.md` T3). No proxy exists yet, so the
+index buys nothing today, and the migration cliff (`readme.md:72`) should not be paid
+before it does. §5.2's visibility requirement is met: `meta_json` is returned by the
+GET/`show` read API, so `--enforcement` is console-visible, not tribal knowledge.
+**Promotion trigger recorded** (in `control-plane.sql` and `vault.ts`): lift `allow`
+to a typed, indexed column (an E3 `ALTER`) when — and only when — the proxy exists and
+needs to query it.
+
+**What was built** (all in `services/agent/src/vault.ts` + `packages/cli/src/creds.ts`):
+`PUT` now accepts `aws-sigv4`/`hmac-key` (was a hard 400 — verification (a)); a
+`POST …/rotate` route re-seals under the same name (was missing — verification (b));
+the §5 fields persist and read back through `creds show`/`list` (secret never
+returned — invariant 1). `--enforcement` is accepted and defaults to `broad`
+(surfaced), closing the "one flag behind" gap. `--scope` accepts only `actor` and
+refuses `inbox`/`global` with a "not yet" (the §9 AAD change stays DEFERRED).
+Fail-closed at mint: `creds set` requires `--allow`; a row minted without one is
+recorded `bound: false`, unusable by design (invariant 5) — **nothing enforces yet**,
+and that is stated, not faked.
 
 ## Cells covered
 
