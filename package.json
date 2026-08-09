@@ -4,13 +4,14 @@
   "description": "Serverless JMAP mail platform — Cloudflare Workers + Durable Objects + D1 + R2, SES outbound",
   "workspaces": [
     "packages/*",
-    "services/*"
+    "services/*",
+    "webmail"
   ],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit && npm run -w @bullmoose/cli typecheck",
+    "typecheck": "tsc --noEmit && npm run -w webmail typecheck && npm run -w @bullmoose/cli typecheck",
     "build:cli": "npm run -w @bullmoose/cli build",
     "dev:jmap": "npm run dev -w services/jmap",
     "dev:ingest": "npm run dev -w services/ingest",
