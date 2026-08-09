@@ -17,7 +17,11 @@ compute, so wiring domain #50 is the same call as domain #1. Fronted by
   domain `active`
 - `POST/GET /accounts` — mailbox provisioning (default mailboxes, KV
   route, identity; optional `principalEmail` attach for multi-inbox
-  logins); domain validation → clean 422
+  logins); domain validation → clean 422. **Idempotent**: the address is
+  unique as a *delivery route* (`routes` is `PRIMARY KEY (domain,
+  localpart)`), so a repeat call returns the existing account
+  (`created: false`) and a call for an address routing anywhere else is a
+  `409` that changes nothing — see the DEPLOY.md runbook
 - `POST /principals/password` — stores the client-side-stretched
   loginKey
 - `POST/GET/DELETE /tokens` — mint/list/revoke bearer tokens
