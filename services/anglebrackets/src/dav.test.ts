@@ -109,7 +109,12 @@ function fakeD1(seed: Partial<Record<string, Row[]>> = {}) {
 
 /** Records what was committed to the changelog — the assertion that matters. */
 function fakeAccountDo() {
-  const commits: Array<{ collection: string; created?: string[]; destroyed?: string[] }> = [];
+  const commits: Array<{
+    collection: string;
+    created?: string[];
+    updated?: string[];
+    destroyed?: string[];
+  }> = [];
   const stub = {
     async fetch(input: RequestInfo | URL, init?: RequestInit) {
       const url = String(input instanceof Request ? input.url : input);
@@ -448,6 +453,285 @@ describe("DELETE on a collection", () => {
   });
 });
 
+// ---- PROPPATCH ----------------------------------------------------------
+//
+// common/026 item 3. Apple Calendar renames and recolours a collection with
+// PROPPATCH; before this it fell through to `notAllowed()`… except it did
+// not even get that far, because the dispatcher had no branch, so the client
+// saw a plain 405 for the whole request and — the sharper defect — a body
+// that says nothing about WHICH property failed.
+//
+// The thing most easily got wrong here is the response SHAPE: 207 with one
+// <propstat> per outcome and a status on each. A partial success is normal.
+// So every test below asserts the PER-PROPERTY status, not just the 207.
+
+/** Status line → the local names of the props inside that propstat. */
+function propstats(xml: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  const re = /<D:propstat><D:prop>([\s\S]*?)<\/D:prop><D:status>([^<]+)<\/D:status>/g;
+  let m;
+  while ((m = re.exec(xml)) !== null) {
+    out[m[2]!] = [...m[1]!.matchAll(/<(?:[A-Za-z0-9_-]+:)?([A-Za-z0-9_-]+)[^>]*\/>/g)].map(
+      (x) => x[1]!,
+    );
+  }
+  return out;
+}
+
+const OK = "HTTP/1.1 200 OK";
+const FORBIDDEN = "HTTP/1.1 403 Forbidden";
+const CONFLICT = "HTTP/1.1 409 Conflict";
+
+const ICAL = "http://apple.com/ns/ical/";
+
+/** The real Apple shape: prefixed DAV:, and its own ns bound per element. */
+const propertyupdate = (inner: string, verb: "set" | "remove" = "set") =>
+  `<?xml version="1.0" encoding="UTF-8"?>` +
+  `<A:propertyupdate xmlns:A="DAV:">` +
+  `<A:${verb}><A:prop>${inner}</A:prop></A:${verb}>` +
+  `</A:propertyupdate>`;
+
+const RENAME = propertyupdate(`<A:displayname>Renamed</A:displayname>`);
+
+describe("PROPPATCH on a calendar", () => {
+  it("renames it: 200 on displayname, the column written, ctag bumped, change committed", async () => {
+    const { call, writes, written, commits } = harness({ calendars: [calRow({ id: "cal_work" })] });
+    const res = await call("PROPPATCH", calUrl("cal_work"), owner(), RENAME);
+
+    expect(res.status).toBe(207);
+    const xml = await res.text();
+    expect(propstats(xml)).toEqual({ [OK]: ["displayname"] });
+    expect(xml).toContain(`<D:href>/dav/calendars/${ACCOUNT}/cal_work/</D:href>`);
+
+    // Mailstore mutation…
+    const update = writes.find((w) => w.sql.startsWith("UPDATE calendars SET updated_at"))!;
+    expect(update.sql).toContain("name = ?");
+    expect(update.args).toContain("Renamed");
+    // …ctag bump…
+    expect(written("UPDATE calendars SET ctag = ctag + 1")).toHaveLength(1);
+    // …and the commit, without which the rename never reaches /changes.
+    expect(commits).toEqual([{ collection: "Calendar", updated: ["cal_work"] }]);
+  });
+
+  it("recolours it — the property Apple sends for a colour swatch", async () => {
+    const { call, writes } = harness({ calendars: [calRow({ id: "cal_work" })] });
+    const body = propertyupdate(
+      `<B:calendar-color xmlns:B="${ICAL}" symbolic-color="custom">#FF2968FF</B:calendar-color>`,
+    );
+    const res = await call("PROPPATCH", calUrl("cal_work"), owner(), body);
+
+    expect(propstats(await res.text())).toEqual({ [OK]: ["calendar-color"] });
+    const update = writes.find((w) => w.sql.startsWith("UPDATE calendars SET updated_at"))!;
+    expect(update.sql).toContain("color = ?");
+    // Apple's #RRGGBBAA is stored verbatim — validateCalendarPatch takes any
+    // string, and a stricter pattern here would refuse the real client.
+    expect(update.args).toContain("#FF2968FF");
+  });
+
+  it("sets calendar-description", async () => {
+    const { call, writes } = harness({ calendars: [calRow({ id: "cal_work" })] });
+    const body = propertyupdate(
+      `<B:calendar-description xmlns:B="urn:ietf:params:xml:ns:caldav">Sprints</B:calendar-description>`,
+    );
+    const res = await call("PROPPATCH", calUrl("cal_work"), owner(), body);
+
+    expect(propstats(await res.text())).toEqual({ [OK]: ["calendar-description"] });
+    const update = writes.find((w) => w.sql.startsWith("UPDATE calendars SET updated_at"))!;
+    expect(update.sql).toContain("description = ?");
+    expect(update.args).toContain("Sprints");
+  });
+
+  it("PARTIAL SUCCESS: the rename lands even though a sibling property is refused", async () => {
+    // Apple ships calendar-order in the same <propertyupdate> as displayname.
+    // RFC 4918's all-or-nothing reading would 424 the rename over it, which
+    // is the original defect back again — so this asserts the deviation.
+    const { call, writes, commits } = harness({ calendars: [calRow({ id: "cal_work" })] });
+    const body = propertyupdate(
+      `<A:displayname>Renamed</A:displayname>` +
+        `<B:calendar-order xmlns:B="${ICAL}">2</B:calendar-order>`,
+    );
+    const res = await call("PROPPATCH", calUrl("cal_work"), owner(), body);
+
+    expect(res.status).toBe(207);
+    const xml = await res.text();
+    expect(propstats(xml)).toEqual({ [OK]: ["displayname"], [FORBIDDEN]: ["calendar-order"] });
+    // The refusal is per-property, inside the 207 — not the whole request.
+    expect(xml).toContain("403 Forbidden");
+    expect(writes.some((w) => w.sql.startsWith("UPDATE calendars SET updated_at"))).toBe(true);
+    expect(commits).toEqual([{ collection: "Calendar", updated: ["cal_work"] }]);
+  });
+
+  it("403s an unknown property per-property, and writes NOTHING", async () => {
+    const { call, writes, commits } = harness({ calendars: [calRow({ id: "cal_work" })] });
+    const body = propertyupdate(`<B:calendar-order xmlns:B="${ICAL}">2</B:calendar-order>`);
+    const res = await call("PROPPATCH", calUrl("cal_work"), owner(), body);
+
+    expect(res.status).toBe(207);
+    const stats = propstats(await res.text());
+    expect(stats).toEqual({ [FORBIDDEN]: ["calendar-order"] });
+    // No property was applied, so no ctag churn and no phantom /changes
+    // entry: a client polling the ctag must not be woken for nothing.
+    expect(writes.filter((w) => w.sql.startsWith("UPDATE calendars"))).toEqual([]);
+    expect(commits).toEqual([]);
+  });
+
+  it("echoes a foreign property under its OWN namespace so the client can tell which failed", async () => {
+    const { call } = harness({ calendars: [calRow({ id: "cal_work" })] });
+    const body = propertyupdate(`<Z:whatever xmlns:Z="http://example.test/ns/">x</Z:whatever>`);
+    const xml = await (await call("PROPPATCH", calUrl("cal_work"), owner(), body)).text();
+    expect(xml).toContain(`<whatever xmlns="http://example.test/ns/"/>`);
+  });
+
+  it("409s a displayname over 255 chars rather than truncating it", async () => {
+    const { call, writes } = harness({ calendars: [calRow({ id: "cal_work" })] });
+    const body = propertyupdate(`<A:displayname>${"n".repeat(256)}</A:displayname>`);
+    const res = await call("PROPPATCH", calUrl("cal_work"), owner(), body);
+
+    expect(res.status).toBe(207);
+    expect(propstats(await res.text())).toEqual({ [CONFLICT]: ["displayname"] });
+    expect(writes.filter((w) => w.sql.startsWith("UPDATE calendars"))).toEqual([]);
+  });
+
+  it("<remove> nulls a colour but may not remove the name", async () => {
+    const { call, writes } = harness({ calendars: [calRow({ id: "cal_work" })] });
+    const body = propertyupdate(`<B:calendar-color xmlns:B="${ICAL}"/>`, "remove");
+    const res = await call("PROPPATCH", calUrl("cal_work"), owner(), body);
+    expect(propstats(await res.text())).toEqual({ [OK]: ["calendar-color"] });
+    const update = writes.find((w) => w.sql.startsWith("UPDATE calendars SET updated_at"))!;
+    expect(update.sql).toContain("color = ?");
+    expect(update.args).toContain(null);
+
+    const named = harness({ calendars: [calRow({ id: "cal_work" })] });
+    const res2 = await named.call(
+      "PROPPATCH",
+      calUrl("cal_work"),
+      owner(),
+      propertyupdate(`<A:displayname/>`, "remove"),
+    );
+    expect(propstats(await res2.text())).toEqual({ [FORBIDDEN]: ["displayname"] });
+    expect(named.writes.filter((w) => w.sql.startsWith("UPDATE calendars"))).toEqual([]);
+  });
+
+  it("honours document order — set then remove the same property means remove", async () => {
+    const { call, writes } = harness({ calendars: [calRow({ id: "cal_work" })] });
+    const body =
+      `<?xml version="1.0" encoding="UTF-8"?><A:propertyupdate xmlns:A="DAV:">` +
+      `<A:set><A:prop><A:displayname>Renamed</A:displayname></A:prop></A:set>` +
+      `<A:remove><A:prop><A:displayname/></A:prop></A:remove>` +
+      `</A:propertyupdate>`;
+    const res = await call("PROPPATCH", calUrl("cal_work"), owner(), body);
+
+    // Named once, carrying the LAST outcome — never in two propstats.
+    expect(propstats(await res.text())).toEqual({ [FORBIDDEN]: ["displayname"] });
+    expect(writes.filter((w) => w.sql.startsWith("UPDATE calendars"))).toEqual([]);
+  });
+
+  it("renames the DEFAULT calendar — sVOL 004: role is the contract, name is a label", async () => {
+    // Deliberately unlike collection DELETE, which refuses the default:
+    // deleting removes the contract-bearer, renaming does not.
+    const { call, writes, commits } = harness({ calendars: [calRow({ is_default: 1 })] });
+    const res = await call("PROPPATCH", calUrl("cal_seed"), owner(), RENAME);
+
+    expect(propstats(await res.text())).toEqual({ [OK]: ["displayname"] });
+    expect(writes.some((w) => w.sql.startsWith("UPDATE calendars SET updated_at"))).toBe(true);
+    expect(commits).toEqual([{ collection: "Calendar", updated: ["cal_seed"] }]);
+  });
+
+  it("404s an unknown collection", async () => {
+    const { call, writes } = harness({ calendars: [calRow()] });
+    const res = await call("PROPPATCH", calUrl("nope"), owner(), RENAME);
+    expect(res.status).toBe(404);
+    expect(writes.filter((w) => w.sql.startsWith("UPDATE calendars"))).toEqual([]);
+  });
+
+  it("403s the whole request without the calendar scope, and for a sharee", async () => {
+    // Authorization is not a per-property matter: it fails the request.
+    const noScope = harness({ calendars: [calRow({ id: "cal_work" })] });
+    expect(
+      (await noScope.call("PROPPATCH", calUrl("cal_work"), owner(["read"]), RENAME)).status,
+    ).toBe(403);
+    expect(noScope.writes.filter((w) => w.sql.startsWith("UPDATE calendars"))).toEqual([]);
+
+    const shared = harness({ calendars: [calRow({ id: "cal_work" })] });
+    expect((await shared.call("PROPPATCH", calUrl("cal_work"), sharee(), RENAME)).status).toBe(403);
+    expect(shared.writes.filter((w) => w.sql.startsWith("UPDATE calendars"))).toEqual([]);
+  });
+
+  it("400s a body with no property instructions", async () => {
+    const { call } = harness({ calendars: [calRow({ id: "cal_work" })] });
+    const res = await call("PROPPATCH", calUrl("cal_work"), owner(), `<A:propertyupdate/>`);
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("PROPPATCH on an address book", () => {
+  it("renames it, bumps the ctag, and commits AddressBook/updated", async () => {
+    const { call, writes, written, commits } = harness({
+      address_books: [bookRow({ id: "ab_work" })],
+    });
+    const res = await call("PROPPATCH", bookUrl("ab_work"), owner(), RENAME);
+
+    expect(res.status).toBe(207);
+    const xml = await res.text();
+    expect(propstats(xml)).toEqual({ [OK]: ["displayname"] });
+    expect(xml).toContain(`<D:href>/dav/addressbooks/${ACCOUNT}/ab_work/</D:href>`);
+
+    const update = writes.find((w) => w.sql.startsWith("UPDATE address_books SET updated_at"))!;
+    expect(update.sql).toContain("name = ?");
+    expect(update.args).toContain("Renamed");
+    expect(written("UPDATE address_books SET ctag = ctag + 1")).toHaveLength(1);
+    expect(commits).toEqual([{ collection: "AddressBook", updated: ["ab_work"] }]);
+  });
+
+  it("takes addressbook-description but refuses the calendar realm's twins", async () => {
+    const { call, writes } = harness({ address_books: [bookRow({ id: "ab_work" })] });
+    const body = propertyupdate(
+      `<C:addressbook-description xmlns:C="urn:ietf:params:xml:ns:carddav">Suppliers</C:addressbook-description>` +
+        `<B:calendar-description xmlns:B="urn:ietf:params:xml:ns:caldav">no</B:calendar-description>` +
+        // address_books has no colour column (data-plane.sql).
+        `<I:calendar-color xmlns:I="${ICAL}">#FF2968</I:calendar-color>`,
+    );
+    const res = await call("PROPPATCH", bookUrl("ab_work"), owner(), body);
+
+    expect(propstats(await res.text())).toEqual({
+      [OK]: ["addressbook-description"],
+      [FORBIDDEN]: ["calendar-description", "calendar-color"],
+    });
+    const update = writes.find((w) => w.sql.startsWith("UPDATE address_books SET updated_at"))!;
+    expect(update.args).toContain("Suppliers");
+  });
+
+  it("measures the name in OCTETS, where a calendar measures CHARS", async () => {
+    // Each realm's JMAP validator disagrees on purpose (validateNewBook vs
+    // validateNewCalendar), and DAV must accept exactly what JMAP accepts.
+    const name = "é".repeat(200); // 200 chars, 400 octets
+    const body = propertyupdate(`<A:displayname>${name}</A:displayname>`);
+
+    const book = harness({ address_books: [bookRow({ id: "ab_work" })] });
+    expect(
+      propstats(await (await book.call("PROPPATCH", bookUrl("ab_work"), owner(), body)).text()),
+    ).toEqual({ [CONFLICT]: ["displayname"] });
+
+    const cal = harness({ calendars: [calRow({ id: "cal_work" })] });
+    expect(
+      propstats(await (await cal.call("PROPPATCH", calUrl("cal_work"), owner(), body)).text()),
+    ).toEqual({ [OK]: ["displayname"] });
+  });
+
+  it("403s for a sharee — only the owner renames a book", async () => {
+    const { call, writes } = harness({ address_books: [bookRow({ id: "ab_work" })] });
+    expect((await call("PROPPATCH", bookUrl("ab_work"), sharee(), RENAME)).status).toBe(403);
+    expect(writes.filter((w) => w.sql.startsWith("UPDATE address_books"))).toEqual([]);
+  });
+
+  it("renames the DEFAULT address book", async () => {
+    const { call, commits } = harness({ address_books: [bookRow()] });
+    const res = await call("PROPPATCH", bookUrl("ab_seed"), owner(), RENAME);
+    expect(propstats(await res.text())).toEqual({ [OK]: ["displayname"] });
+    expect(commits).toEqual([{ collection: "AddressBook", updated: ["ab_seed"] }]);
+  });
+});
+
 // ---- advertisement -----------------------------------------------------
 //
 // A client decides whether to OFFER "New Calendar" from these headers
@@ -461,6 +745,7 @@ describe("verb advertisement", () => {
     );
     expect(res.headers.get("Allow")).toContain("MKCOL");
     expect(res.headers.get("Allow")).toContain("MKCALENDAR");
+    expect(res.headers.get("Allow")).toContain("PROPPATCH");
     expect(res.headers.get("DAV")).toContain("extended-mkcol");
   });
 

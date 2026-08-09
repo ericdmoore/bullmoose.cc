@@ -27,6 +27,7 @@ import type { Env } from "./index.js";
  *                                            shared accounts appear via grants)
  *   /dav/addressbooks/{accountId}/          PROPFIND depth 1 → visible books
  *   /dav/addressbooks/{acct}/{book}/        PROPFIND (ctag/sync-token),
+ *                                           PROPPATCH (rename/describe),
  *                                           REPORT sync-collection /
  *                                           addressbook-multiget / -query
  *   /dav/addressbooks/{acct}/{book}/{res}   GET / PUT / DELETE (ETags)
@@ -43,6 +44,12 @@ const CS = "http://calendarserver.org/ns/";
 const SYNC_PREFIX = "bm:sync:";
 const TOMBSTONE_TTL_MS = 30 * 24 * 3600_000;
 
+/** The `<D:status>` lines this surface emits inside a multistatus. */
+const OK_200 = "HTTP/1.1 200 OK";
+const NOT_FOUND_404 = "HTTP/1.1 404 Not Found";
+const FORBIDDEN_403 = "HTTP/1.1 403 Forbidden";
+const CONFLICT_409 = "HTTP/1.1 409 Conflict";
+
 /**
  * The two advertisement strings, in one place because they are read as a
  * contract: a client decides whether to OFFER "New Calendar" from the
@@ -51,7 +58,8 @@ const TOMBSTONE_TTL_MS = 30 * 24 * 3600_000;
  * (RFC 6352 §5.2) instead of needing a bespoke verb.
  */
 export const DAV_COMPLIANCE = "1, 3, addressbook, calendar-access, extended-mkcol";
-export const DAV_ALLOW = "OPTIONS, GET, PUT, DELETE, PROPFIND, REPORT, MKCOL, MKCALENDAR";
+export const DAV_ALLOW =
+  "OPTIONS, GET, PUT, DELETE, PROPFIND, PROPPATCH, REPORT, MKCOL, MKCALENDAR";
 
 /**
  * Client-chosen collection ids. Both specs create the collection AT the
@@ -142,6 +150,20 @@ export async function handleDav(
         if (request.method === "DELETE") {
           return await destroyBook(env, store, principal, access, bookId);
         }
+        // PROPPATCH branches here too — handleBook's requireBook resolves
+        // through the read-grant filter, and a rename is an owner-only
+        // structural write with its own gate and its own audit string.
+        if (request.method === "PROPPATCH") {
+          return await propPatchCollection(
+            env,
+            store,
+            principal,
+            access,
+            "addressbook",
+            bookId,
+            body,
+          );
+        }
         return await handleBook(request, env, store, principal, access, bookId, body);
       }
       if (segments.length === 4) {
@@ -163,6 +185,9 @@ export async function handleDav(
         }
         if (request.method === "DELETE") {
           return await destroyCalendar(env, store, principal, access, calId);
+        }
+        if (request.method === "PROPPATCH") {
+          return await propPatchCollection(env, store, principal, access, "calendar", calId, body);
         }
         return await handleCalendar(request, env, store, principal, access, calId, body);
       }
@@ -1008,6 +1033,173 @@ async function destroyCalendar(
   return new Response(null, { status: 204 });
 }
 
+// ---- collection PROPPATCH (both realms) --------------------------------
+
+/**
+ * `PROPPATCH` on a calendar or address book — RFC 4918 §9.2. This is how
+ * Apple Calendar renames or recolours a collection; without it those edits
+ * silently no-op, which is worse than a 405 because the client believes it
+ * succeeded.
+ *
+ * Scoped to the three properties clients actually send, each of which has a
+ * column to land in. Everything else is refused **per property**, inside the
+ * 207 — including properties we understand but cannot store, because a bare
+ * 200 that quietly drops one is the defect this handler exists to fix.
+ *
+ * ⚠️ **Deliberate deviation from RFC 4918 §9.2's all-or-nothing rule.** A
+ * strict reading says one failed instruction must fail the rest with 424.
+ * But Apple ships `calendar-order` (and friends) in the *same*
+ * `<propertyupdate>` as `displayname`, so atomicity would mean no rename
+ * ever lands — the whole defect, reintroduced with a spec citation. We apply
+ * what we can and report the rest, which is what the client's UI expects and
+ * what mainstream CalDAV servers do in practice.
+ *
+ * Role/default collections are NOT special-cased: sVOL `004` settled that
+ * rename is allowed on role mailboxes because "role is the contract, name is
+ * a label", and the same reasoning holds here. Note the contrast with
+ * collection DELETE, which does refuse the default — deleting removes the
+ * contract-bearer, renaming does not.
+ */
+async function propPatchCollection(
+  env: Env,
+  store: Mailstore,
+  principal: Principal,
+  access: AccountAccess,
+  kind: "calendar" | "addressbook",
+  collectionId: string,
+  body: string,
+): Promise<Response> {
+  const isCal = kind === "calendar";
+  // Structural writes are owner-only, same gate as MKCOL/MKCALENDAR/DELETE:
+  // `AddressBook/set` lets a sharee edit contents, never the book itself.
+  if (isCal) await requireCalOwner(env, principal, access, "dav:cal-proppatch");
+  else await requireBookOwner(env, principal, access, "dav:proppatch");
+
+  // Unlike the create verbs, PROPPATCH acts on a collection that must
+  // already exist — but it is still routed ahead of handleBook /
+  // handleCalendar so this handler owns the whole flow.
+  const exists = isCal
+    ? (await store.getCalendars(access.accountId)).some((c) => c.id === collectionId)
+    : (await store.getAddressBooks(access.accountId)).some((b) => b.id === collectionId);
+  if (!exists) return new Response("not found", { status: 404 });
+
+  const ops = parsePropPatch(body);
+  if (ops.length === 0) {
+    throw new DavError(400, "PROPPATCH requires at least one property instruction");
+  }
+
+  type Verdict = { op: PropPatchOp; status: string; column?: "name" | "description" | "color" };
+  // Keyed by property, in first-seen order: a property may be instructed
+  // twice in one body ("set displayname, then remove it") and MUST still be
+  // named exactly once in the reply, carrying the LAST outcome.
+  const verdicts = new Map<string, Verdict>();
+  const decide = (op: PropPatchOp, status: string, column?: Verdict["column"]) =>
+    verdicts.set(`${op.ns ?? ""} ${op.name}`, { op, status, column });
+
+  // The property name carrying `description` differs by realm, and the
+  // wrong realm's name is a property this collection genuinely lacks.
+  const descriptionProp = isCal ? "calendar-description" : "addressbook-description";
+  const values = new Map<string, string | null>();
+
+  for (const op of ops) {
+    // A <remove>, or a set with an empty body, means "no value". Names
+    // cannot be removed (the column is NOT NULL and JMAP requires 1..255);
+    // description and colour are nullable, so removal is just NULL.
+    const value = op.action === "remove" ? null : text(op.raw);
+
+    if (op.name === "displayname") {
+      if (value === null) {
+        decide(op, FORBIDDEN_403); // a collection must keep a name
+        continue;
+      }
+      // Mirror each realm's own JMAP validator so DAV and JMAP accept the
+      // same names: calendars measure CHARS, address books measure OCTETS.
+      const tooLong = isCal ? value.length > 255 : new TextEncoder().encode(value).length > 255;
+      if (tooLong) {
+        decide(op, CONFLICT_409);
+        continue;
+      }
+      values.set("name", value);
+      decide(op, OK_200, "name");
+      continue;
+    }
+
+    if (op.name === descriptionProp) {
+      values.set("description", value);
+      decide(op, OK_200, "description");
+      continue;
+    }
+
+    // address_books has no colour column (data-plane.sql); calendars does.
+    // Any string is accepted, matching validateCalendarPatch — Apple sends
+    // #RRGGBBAA and a tighter pattern would reject the real client.
+    if (op.name === "calendar-color" && isCal) {
+      values.set("color", value);
+      decide(op, OK_200, "color");
+      continue;
+    }
+
+    decide(op, FORBIDDEN_403);
+  }
+
+  // Only the columns whose FINAL verdict is 200 are written — a property
+  // that was set and then removed in the same body must not land.
+  const patch: { name?: string; description?: string | null; color?: string | null } = {};
+  const ok = [...verdicts.values()].filter((v) => v.status === OK_200);
+  for (const v of ok) {
+    if (v.column === "name") patch.name = values.get("name") as string;
+    if (v.column === "description") patch.description = values.get("description") ?? null;
+    if (v.column === "color") patch.color = values.get("color") ?? null;
+  }
+
+  if (ok.length > 0) {
+    // The choreography every DAV write in this file replicates, because
+    // anglebrackets binds only ACCOUNT_DO and cannot reach the JMAP method
+    // layer: mutate → bump the ctag → commit. Skipping the commit lands the
+    // row and leaves it invisible to /changes forever.
+    if (isCal) {
+      await store.updateCalendar(access.accountId, collectionId, patch);
+      await store.bumpCalendarCtags(access.accountId, [collectionId]);
+      await commitChanges(env.ACCOUNT_DO, access.accountId, [
+        { collection: "Calendar", updated: [collectionId] },
+      ]);
+    } else {
+      await store.updateAddressBook(access.accountId, collectionId, {
+        name: patch.name,
+        description: patch.description,
+      });
+      await store.bumpAddressBookCtags(access.accountId, [collectionId]);
+      await commitChanges(env.ACCOUNT_DO, access.accountId, [
+        { collection: "AddressBook", updated: [collectionId] },
+      ]);
+    }
+  }
+
+  const render = (status: string) =>
+    [...verdicts.values()]
+      .filter((v) => v.status === status)
+      .map((v) => renderEmptyProp(v.op))
+      .join("");
+  const href = isCal
+    ? calPath(access.accountId, collectionId)
+    : bookPath(access.accountId, collectionId);
+  return multistatus([
+    responseXml(href, [
+      { props: render(OK_200), status: OK_200 },
+      {
+        props: render(CONFLICT_409),
+        status: CONFLICT_409,
+        description: "value rejected by this server",
+      },
+      {
+        props: render(FORBIDDEN_403),
+        status: FORBIDDEN_403,
+        description: "not a property this collection stores",
+      },
+    ]),
+  ]);
+}
+
 async function calSyncCollection(
   env: Env,
   store: Mailstore,
@@ -1419,15 +1611,52 @@ function renderProp(name: string, inner: string): string {
   return inner === "" ? `<${ns}:${name}/>` : `<${ns}:${name}>${inner}</${ns}:${name}>`;
 }
 
+/**
+ * One `<D:propstat>`: a bag of already-rendered `<D:prop>` children and the
+ * status that applies to all of them.
+ */
+interface Propstat {
+  /** Rendered prop elements. Empty groups are dropped unless `always`. */
+  props: string;
+  status: string;
+  description?: string;
+  /**
+   * Emit even with an empty prop bag. PROPFIND needs it — "found, and none
+   * of what you asked for" is still a 200 propstat — while PROPPATCH must
+   * never claim 200 for zero properties.
+   */
+  always?: boolean;
+}
+
+/**
+ * The single `<D:response>` shape, shared by PROPFIND, the REPORTs and
+ * PROPPATCH. PROPPATCH is why this is factored out: RFC 4918 §9.2 gives it
+ * the *same* body as PROPFIND but a different status per group, and a second
+ * hand-rolled builder would be free to disagree with this one.
+ */
+function responseXml(hrefPath: string, groups: Propstat[]): string {
+  return (
+    `<D:response><D:href>${xmlEscape(hrefPath)}</D:href>` +
+    groups
+      .filter((g) => g.props !== "" || g.always === true)
+      .map(
+        (g) =>
+          `<D:propstat><D:prop>${g.props}</D:prop><D:status>${g.status}</D:status>` +
+          (g.description
+            ? `<D:responsedescription>${xmlEscape(g.description)}</D:responsedescription>`
+            : "") +
+          `</D:propstat>`,
+      )
+      .join("") +
+    `</D:response>`
+  );
+}
+
 function response(hrefPath: string, props: Record<string, string>): string {
   const rendered = Object.entries(props)
     .map(([k, v]) => renderProp(k, v))
     .join("");
-  return (
-    `<D:response><D:href>${xmlEscape(hrefPath)}</D:href>` +
-    `<D:propstat><D:prop>${rendered}</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>` +
-    `</D:response>`
-  );
+  return responseXml(hrefPath, [{ props: rendered, status: OK_200, always: true }]);
 }
 
 function propfindResponse(body: string, resources: PropfindResource[]): Response {
@@ -1437,14 +1666,12 @@ function propfindResponse(body: string, resources: PropfindResource[]): Response
     const missing = wanted.filter((w) => !(w in r.props));
     const ok = known.map((k) => renderProp(k, r.props[k]!)).join("");
     const notFound = missing.map((k) => renderProp(k, "")).join("");
-    return (
-      `<D:response><D:href>${xmlEscape(r.href)}</D:href>` +
-      `<D:propstat><D:prop>${ok}</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>` +
-      (notFound
-        ? `<D:propstat><D:prop>${notFound}</D:prop><D:status>HTTP/1.1 404 Not Found</D:status></D:propstat>`
-        : "") +
-      `</D:response>`
-    );
+    return responseXml(r.href, [
+      // PROPFIND always says 200, even with nothing in it: a resource with
+      // no requested props is "found, and here is nothing".
+      { props: ok, status: OK_200, always: true },
+      { props: notFound, status: NOT_FOUND_404 },
+    ]);
   });
   return multistatus(parts);
 }
@@ -1510,6 +1737,90 @@ function parseMkcolProps(body: string): MkcolProps {
     components,
     dropped,
   };
+}
+
+// ---- PROPPATCH bodies ---------------------------------------------------
+
+/** One instruction from a `<D:propertyupdate>`, in document order. */
+interface PropPatchOp {
+  action: "set" | "remove";
+  /** Local name. Matched namespace-blind, like the rest of this file. */
+  name: string;
+  /** Resolved namespace URI, used only to echo the name back accurately. */
+  ns: string | null;
+  /** Raw inner XML for a `set`; null for a `remove` or an empty element. */
+  raw: string | null;
+}
+
+/**
+ * Every `xmlns` binding in the document, flattened to prefix → URI ("" is
+ * the default namespace). DAV bodies are one element deep in practice and
+ * never rebind a prefix, so a flat map is enough — and it is only used to
+ * label properties we are about to refuse, never to decide anything.
+ */
+function namespaceBindings(body: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const re = /xmlns(?::([A-Za-z0-9_-]+))?\s*=\s*"([^"]*)"/g;
+  let m;
+  while ((m = re.exec(body)) !== null) out[m[1] ?? ""] = m[2]!;
+  return out;
+}
+
+/**
+ * `<D:propertyupdate>` → an ordered instruction list (RFC 4918 §9.2). Both
+ * `<D:set>` and `<D:remove>` may appear, more than once, and order matters:
+ * a client that sets then removes the same property means the removal.
+ */
+function parsePropPatch(body: string): PropPatchOp[] {
+  const ns = namespaceBindings(body);
+  const ops: PropPatchOp[] = [];
+  const blockRe =
+    /<(?:[A-Za-z0-9_-]+:)?(set|remove)(?:\s[^>]*)?>([\s\S]*?)<\/(?:[A-Za-z0-9_-]+:)?\1\s*>/g;
+  let block;
+  while ((block = blockRe.exec(body)) !== null) {
+    const action = block[1] as "set" | "remove";
+    const propBlock = innerOf(block[2]!, "prop");
+    if (propBlock === null) continue;
+    const childRe =
+      /<([A-Za-z0-9_-]+:)?([A-Za-z0-9_-]+)((?:\s[^>]*?)?)(?:\/>|>([\s\S]*?)<\/(?:[A-Za-z0-9_-]+:)?\2\s*>)/g;
+    let child;
+    while ((child = childRe.exec(propBlock)) !== null) {
+      const prefix = child[1] ? child[1].slice(0, -1) : "";
+      // A prefix bound on the element itself wins over the document map.
+      const local = new RegExp(
+        `xmlns${prefix ? `:${prefix}` : ""}\\s*=\\s*"([^"]*)"`,
+      ).exec(child[3] ?? "");
+      ops.push({
+        action,
+        name: child[2]!,
+        ns: local?.[1] ?? ns[prefix] ?? null,
+        raw: child[4] ?? null,
+      });
+    }
+  }
+  return ops;
+}
+
+/** URI → the prefix `multistatus()` declares, so echoes stay readable. */
+const NS_PREFIX: Record<string, string> = {
+  [D]: "D",
+  [C]: "C",
+  [CAL]: "CAL",
+  [CS]: "CS",
+  "http://apple.com/ns/ical/": "ICAL",
+};
+
+/**
+ * An empty prop element for a PROPPATCH propstat — RFC 4918 §9.2.1 forbids
+ * echoing values. A property we do not know still has to come back under
+ * the namespace the client sent it in, or the client cannot tell which of
+ * its properties was refused.
+ */
+function renderEmptyProp(op: PropPatchOp): string {
+  const known = op.ns === null ? undefined : NS_PREFIX[op.ns];
+  if (known) return `<${known}:${op.name}/>`;
+  if (op.ns !== null) return `<${op.name} xmlns="${xmlEscape(op.ns)}"/>`;
+  return renderProp(op.name, "");
 }
 
 /** Raw inner XML of the first `localName` element, or null when absent. */
