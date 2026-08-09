@@ -71,7 +71,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 008 | Admin lifecycle — update + delete | cap | E2 | I1 ⁵ | sVOL | — | todo |
 | 009 | DAV collection creation (`MKCOL`/`MKCALENDAR`) | cap | E2 | I3 | sVOL | — | **✅ done** |
 | 010 | Blob lifecycle — enumerate, delete, revoke share | cap | E2 ⁸ | I1 | sVOL | — | **✅ done** |
-| 011 | The `FileNode` noun | cap | E4 | I3 | **s03.B** | s03.A | todo |
+| 011 | The `FileNode` noun | cap | E4 | I3 | **s03.B** | s03.A | **T1+T2 done; T3 deferred** |
 | 012 | `AddressBook/query` + `Calendar/query` | cap | E1 | I1 ³ | sVOL | — | todo |
 | 013 | **Calendar + Contacts CRUD over MCP** | proj | E2 | I3 | sVOL | 001, 002, 003 | **✅ done** |
 | 014 | **Email read + triage over MCP** | proj | E2 | I3 | sVOL | 001, 002 | **✅ done** |

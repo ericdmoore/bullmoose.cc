@@ -12,6 +12,18 @@ export const CONTACTS_CAP = "urn:ietf:params:jmap:contacts";
 export const CALENDARS_CAP = "urn:ietf:params:jmap:calendars";
 /** Vendor capability: AgentInvocation queue etc. (agent-integration.md). */
 export const AGENT_CAP = "urn:bullmoose:params:jmap:agent";
+/**
+ * JMAP for Files (sVOL 011). Still an IETF WG draft — we advertise the URN and
+ * implement the pragmatic core (FileNode get/set/query/changes/queryChanges/copy
+ * over an inode table + the existing R2 blob path).
+ *
+ * ⚠️ The targeted draft version is PINNED here per s03.B/arch.md §1: the URN is
+ * stable but field semantics can shift between revisions, so when a new draft
+ * lands, re-read the diff before bumping this constant. `shareWith` is always
+ * null in this slice (named-principal ACLs are the teams epic).
+ */
+export const FILENODE_CAP = "urn:ietf:params:jmap:filenode";
+export const FILENODE_DRAFT_VERSION = "draft-ietf-jmap-filenode-14";
 
 /** RFC 8620 §2 core capability object. */
 export const coreCapability = {

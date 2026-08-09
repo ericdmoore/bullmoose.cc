@@ -210,6 +210,62 @@ export interface CalendarEventQuery {
   calculateTotal?: boolean;
 }
 
+/** FileNode inode row (JMAP for Files, draft-ietf-jmap-filenode-14). Metadata
+ * only — content bytes live in R2 under blobId via the existing blob path. */
+export type FileNodeType = "file" | "directory" | "symlink";
+
+export interface FileNodeRow {
+  id: string;
+  parentId: string | null;
+  name: string;
+  nodeType: FileNodeType;
+  blobId: string | null;
+  size: number | null;
+  type: string | null;
+  /** All four are epoch ms; the JMAP layer emits UTCDate strings. */
+  created: number;
+  modified: number;
+  accessed: number;
+  changed: number;
+  executable: boolean;
+  isSubscribed: boolean;
+  role: string | null;
+}
+
+/** Shallow patch for updateFileNode — only the mutable columns. */
+export interface FileNodePatch {
+  parentId?: string | null;
+  name?: string;
+  blobId?: string | null;
+  size?: number | null;
+  type?: string | null;
+  executable?: boolean;
+  isSubscribed?: boolean;
+  role?: string | null;
+  modified?: number;
+  changed?: number;
+  accessed?: number;
+}
+
+export interface FileNodeFilterCondition {
+  /** Direct children of this parent; null = top-level nodes. */
+  parentId?: string | null;
+  nodeType?: FileNodeType;
+  role?: string;
+  /** Exact sibling/name match. */
+  name?: string;
+  /** true → only nodes with a blob; false → only nodes without. */
+  hasBlobId?: boolean;
+}
+
+export interface FileNodeQuery {
+  filter?: FileNodeFilterCondition | null;
+  sort?: Array<{ property: "name" | "created" | "modified" | "changed" | "size"; isAscending: boolean }>;
+  position?: number;
+  limit?: number;
+  calculateTotal?: boolean;
+}
+
 /** JMAP ContactCard/query filter (RFC 9610 §4.4.1), the subset we support. */
 export type ContactFilter = ContactFilterOperator | ContactFilterCondition;
 
@@ -1815,6 +1871,188 @@ export class Mailstore {
     return out;
   }
 
+  // ---- FileNode inodes (JMAP for Files, draft-14) -------------------
+  //
+  // Thin data layer, exactly like calendars/contacts: bare reads and writes,
+  // no invariant maintenance. Sibling-name uniqueness, cycle rejection,
+  // onDestroyRemoveChildren, blob pinning and the 010 revoke-on-destroy path
+  // all live in the JMAP method layer (services/jmap/src/methods/filenode.ts).
+
+  async getFileNodes(accountId: string, ids?: string[]): Promise<FileNodeRow[]> {
+    const results: FileNodeRawRow[] = [];
+    if (ids && ids.length > 0) {
+      for (const chunk of chunked(ids)) {
+        const marks = chunk.map(() => "?").join(",");
+        const { results: r } = await this.db
+          .prepare(`SELECT ${FILE_NODE_COLS} FROM file_nodes WHERE account_id = ? AND id IN (${marks})`)
+          .bind(accountId, ...chunk)
+          .all<FileNodeRawRow>();
+        results.push(...r);
+      }
+    } else {
+      const { results: r } = await this.db
+        .prepare(`SELECT ${FILE_NODE_COLS} FROM file_nodes WHERE account_id = ? ORDER BY name`)
+        .bind(accountId)
+        .all<FileNodeRawRow>();
+      results.push(...r);
+    }
+    return results.map(rowToFileNode);
+  }
+
+  /** Direct children of a parent; `null` = the account's top-level nodes. */
+  async getFileNodeChildren(accountId: string, parentId: string | null): Promise<FileNodeRow[]> {
+    const clause = parentId === null ? "parent_id IS NULL" : "parent_id = ?";
+    const binds = parentId === null ? [accountId] : [accountId, parentId];
+    const { results } = await this.db
+      .prepare(`SELECT ${FILE_NODE_COLS} FROM file_nodes WHERE account_id = ? AND ${clause} ORDER BY name`)
+      .bind(...binds)
+      .all<FileNodeRawRow>();
+    return results.map(rowToFileNode);
+  }
+
+  async insertFileNode(accountId: string, row: FileNodeRow): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO file_nodes
+           (id, account_id, parent_id, name, node_type, blob_id, size, type,
+            created, modified, accessed, changed, executable, is_subscribed, role)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        row.id,
+        accountId,
+        row.parentId,
+        row.name,
+        row.nodeType,
+        row.blobId,
+        row.size,
+        row.type,
+        row.created,
+        row.modified,
+        row.accessed,
+        row.changed,
+        row.executable ? 1 : 0,
+        row.isSubscribed ? 1 : 0,
+        row.role,
+      )
+      .run();
+  }
+
+  async updateFileNode(accountId: string, id: string, patch: FileNodePatch): Promise<void> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    const put = (col: string, val: unknown) => {
+      sets.push(`${col} = ?`);
+      params.push(val);
+    };
+    if (patch.parentId !== undefined) put("parent_id", patch.parentId);
+    if (patch.name !== undefined) put("name", patch.name);
+    if (patch.blobId !== undefined) put("blob_id", patch.blobId);
+    if (patch.size !== undefined) put("size", patch.size);
+    if (patch.type !== undefined) put("type", patch.type);
+    if (patch.executable !== undefined) put("executable", patch.executable ? 1 : 0);
+    if (patch.isSubscribed !== undefined) put("is_subscribed", patch.isSubscribed ? 1 : 0);
+    if (patch.role !== undefined) put("role", patch.role);
+    if (patch.modified !== undefined) put("modified", patch.modified);
+    if (patch.changed !== undefined) put("changed", patch.changed);
+    if (patch.accessed !== undefined) put("accessed", patch.accessed);
+    if (sets.length === 0) return;
+    await this.db
+      .prepare(`UPDATE file_nodes SET ${sets.join(", ")} WHERE account_id = ? AND id = ?`)
+      .bind(...params, accountId, id)
+      .run();
+  }
+
+  async deleteFileNodes(accountId: string, ids: string[]): Promise<void> {
+    for (const chunk of chunked(ids)) {
+      if (chunk.length === 0) continue;
+      const marks = chunk.map(() => "?").join(",");
+      await this.db
+        .prepare(`DELETE FROM file_nodes WHERE account_id = ? AND id IN (${marks})`)
+        .bind(accountId, ...chunk)
+        .run();
+    }
+  }
+
+  async queryFileNodes(
+    accountId: string,
+    query: FileNodeQuery,
+  ): Promise<{ ids: string[]; total?: number; position: number }> {
+    const where: string[] = ["account_id = ?"];
+    const params: unknown[] = [accountId];
+    const f = query.filter;
+    if (f) {
+      if (f.parentId !== undefined) {
+        if (f.parentId === null) where.push("parent_id IS NULL");
+        else {
+          where.push("parent_id = ?");
+          params.push(f.parentId);
+        }
+      }
+      if (f.nodeType !== undefined) {
+        where.push("node_type = ?");
+        params.push(f.nodeType);
+      }
+      if (f.role !== undefined) {
+        where.push("role = ?");
+        params.push(f.role);
+      }
+      if (f.name !== undefined) {
+        where.push("name = ?");
+        params.push(f.name);
+      }
+      if (f.hasBlobId !== undefined) {
+        where.push(f.hasBlobId ? "blob_id IS NOT NULL" : "blob_id IS NULL");
+      }
+    }
+    const whereSql = where.join(" AND ");
+
+    let total: number | undefined;
+    if (query.calculateTotal) {
+      const row = await this.db
+        .prepare(`SELECT COUNT(*) AS n FROM file_nodes WHERE ${whereSql}`)
+        .bind(...params)
+        .first<{ n: number }>();
+      total = row?.n ?? 0;
+    }
+
+    const sortCols: Record<string, string> = {
+      name: "name",
+      created: "created",
+      modified: "modified",
+      changed: "changed",
+      size: "size",
+    };
+    const order =
+      query.sort && query.sort.length > 0
+        ? query.sort
+            .map((s) => `${sortCols[s.property] ?? "name"} ${s.isAscending ? "ASC" : "DESC"}`)
+            .join(", ")
+        : "name ASC";
+    const position = query.position ?? 0;
+    const limit = query.limit ?? 256;
+    const { results } = await this.db
+      .prepare(
+        `SELECT id FROM file_nodes WHERE ${whereSql} ORDER BY ${order}, id ASC LIMIT ? OFFSET ?`,
+      )
+      .bind(...params, limit, position)
+      .all<{ id: string }>();
+    return { ids: results.map((r) => r.id), position, ...(total !== undefined ? { total } : {}) };
+  }
+
+  /**
+   * FileNode ids in this account that reference a blob — the pinning lookup.
+   * A blob with ≥1 live FileNode reference MUST NOT be GC'd or explicitly
+   * deleted (s03.B/arch.md §3). `handleBlobDelete` calls this to refuse.
+   */
+  async fileNodesReferencingBlob(accountId: string, blobId: string, limit = 5): Promise<string[]> {
+    const { results } = await this.db
+      .prepare(`SELECT id FROM file_nodes WHERE account_id = ? AND blob_id = ? LIMIT ?`)
+      .bind(accountId, blobId, limit)
+      .all<{ id: string }>();
+    return results.map((r) => r.id);
+  }
+
   // ---- Identities (control plane, same shard for MVP) ---------------
 
   async getIdentities(accountId: string): Promise<IdentityRow[]> {
@@ -2072,6 +2310,47 @@ const CONTACT_SORT_COLUMNS: Record<string, string> = {
   updated: "c.updated_at",
   name: "c.name_full",
 };
+
+// ---- FileNode row mapping -------------------------------------------------
+
+const FILE_NODE_COLS = `id, parent_id, name, node_type, blob_id, size, type,
+  created, modified, accessed, changed, executable, is_subscribed, role`;
+
+interface FileNodeRawRow {
+  id: string;
+  parent_id: string | null;
+  name: string;
+  node_type: string;
+  blob_id: string | null;
+  size: number | null;
+  type: string | null;
+  created: number;
+  modified: number;
+  accessed: number;
+  changed: number;
+  executable: number;
+  is_subscribed: number;
+  role: string | null;
+}
+
+function rowToFileNode(r: FileNodeRawRow): FileNodeRow {
+  return {
+    id: r.id,
+    parentId: r.parent_id,
+    name: r.name,
+    nodeType: r.node_type as FileNodeType,
+    blobId: r.blob_id,
+    size: r.size,
+    type: r.type,
+    created: r.created,
+    modified: r.modified,
+    accessed: r.accessed,
+    changed: r.changed,
+    executable: r.executable === 1,
+    isSubscribed: r.is_subscribed === 1,
+    role: r.role,
+  };
+}
 
 function escapeLike(s: string): string {
   return s.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");

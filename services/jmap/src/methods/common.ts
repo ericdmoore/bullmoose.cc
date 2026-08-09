@@ -136,14 +136,17 @@ export async function proxyChanges(
     | "AddressBook"
     | "ContactCard"
     | "Calendar"
-    | "CalendarEvent",
+    | "CalendarEvent"
+    | "FileNode",
 ): Promise<Record<string, unknown>> {
   const domain =
     collection === "AddressBook" || collection === "ContactCard"
       ? "contacts"
       : collection === "Calendar" || collection === "CalendarEvent"
         ? "calendar"
-        : "mail";
+        : collection === "FileNode"
+          ? "files"
+          : "mail";
   const access = await requireAccount(ctx, args, "read", domain);
   const since = args.sinceState;
   if (typeof since !== "string") {
