@@ -62,6 +62,33 @@ credential and its other grants survive; every attempted use is in `grant_audit`
 
 ---
 
+## T3a — Extract the Bureau Worker; move the master key ⬚ — **NEW, prerequisite of T3**
+
+Falls out of open question 1's resolution (`arch.md`). Structural only — no new verbs, no
+behaviour change for the vault API's callers.
+
+- Create `services/bureau` (a Worker). Bind **`VAULT_MASTER_KEY` to it and remove that
+  binding from `services/agent`** — the key is *moved*, never copied. That single fact is
+  what makes "you can only compute with what you have" true rather than aspirational: after
+  this, the agent worker *cannot* unseal a credential, by platform, not by rule.
+- **Split `services/agent/src/vault.ts`.** The metadata/reference layer (list, names,
+  `meta_json`, the `creds` HTTP surface) stays; **all master-key crypto — `sealSecret`,
+  `openVaultSecret` — moves to the Bureau.** Seal-on-mint moves too, or the agent worker
+  still needs the key. One key, one home, zero crypto in the agent worker.
+- Add a `BUREAU` service binding on `services/agent`. Update `infra/bootstrap.mjs`'s
+  `DEPLOY_ORDER` and `docs/DEPLOY.md` — **the Bureau must deploy before `agent`**, which
+  binds it (same class of dependency as `agent` before `ingest`; see `infra/011`).
+- Caller authentication is `verifyBearer` on the invocation token (T3 step 0), so the Bureau
+  needs the control-plane `DB` binding.
+
+**Done when:** `grep VAULT_MASTER_KEY services/agent` returns nothing; minting and using a
+credential both still work end to end; deploying `agent` without `bureau` fails loudly
+rather than at runtime.
+
+**Depends on:** T1. **Blocks:** T3.
+
+---
+
 ## T3 — The Bureau runtime: Class A `fetch` + destination binding ⬚
 
 Discharges **§3** (Class A, the proxy-completing verb), **§4** (`bureau.fetch`),
@@ -70,9 +97,18 @@ Discharges **§3** (Class A, the proxy-completing verb), **§4** (`bureau.fetch`
 API-key service that will ever exist" (§3), and the first place anything is actually
 *enforced*.
 
-Resolving **open question 1** (where the Bureau runs) is a prerequisite — see
-`arch.md`. On every call the runtime, in order:
+**Open question 1 is RESOLVED** (`arch.md`, ratified 2026-08-09): the Bureau is its **own
+Worker**, `VAULT_MASTER_KEY` bound only to it, and callers authenticate with an **opaque
+per-invocation bearer token verified by `verifyBearer`** — not a JWT, because issuer and
+verifier are the same service and a JWT would route around the `008` / `s03.A` revocation
+controls. That makes **T3a a prerequisite of T3.**
 
+On every call the runtime, in order:
+
+0. **Verifies the caller** — `verifyBearer` on the presented invocation token, so identity
+   is *authenticated*, never self-asserted in the body. This is what stops a prompt-injected
+   `editor@` (sVOL `014` reads untrusted email) from exercising `travel@`'s grant: the
+   service binding proves which *worker*; only the token proves which *agent*.
 1. **Authorizes** `(principal, credRef, verb)` against T2's grants, else refuse.
 2. **Gates the verb by kind** (§4.1): `fetch` is legal for `api-key`/`oauth-refresh`/
    `aws-sigv4`; a verb outside the kind's set is refused.
@@ -173,11 +209,32 @@ credentials, `sign_sigv4` (T5) may never be needed for anything but third-party 
 must be *verified* before it is promised — see `arch.md`'s open-question-3 verdict.
 Time-box a spike; do not schedule it as committed work until the spike returns green.
 
-**Done when:** a spike has either (a) demonstrated a Worker sending through SES with
-**no** long-lived AWS secret at rest, or (b) recorded why that is not achievable
-today and closed the question — either outcome unblocks the plan.
+**Open question 1's resolution changes this materially.** The spike stalled on *"Workers
+issues no AWS-federatable OIDC token."* That was framed as a platform gap; it is really a
+missing component we can supply. **An isolated Bureau holding a signing key and publishing a
+JWKS at a well-known URL *is* an OIDC provider** — the one place a JWT is correct, because
+the verifier (AWS) cannot call us and must verify offline:
 
-**Depends on:** nothing structurally; informed by T5 (the baseline it hopes to retire).
+```
+Bureau self-signs a short-lived JWT  ->  sts:AssumeRoleWithWebIdentity
+AWS verifies against the published JWKS  ->  temporary STS credentials  ->  SES
+```
+
+That reaches §10's top rung: **no long-lived AWS secret at rest** — only a signing key that
+never leaves the Bureau and which, unlike an SES key, grants nothing on its own. It is an
+honest *rung*, not rung zero: a signing key is still a secret at rest, but it is one secret,
+in one Worker, exchangeable for narrowly-scoped short-lived creds via an STS session policy.
+
+Prerequisite: the JWKS must be publicly reachable and stably hosted — a route on the Bureau
+(or the marketing site) plus a key-rotation story. **That** is the real spike now, not "is
+federation possible."
+
+**Done when:** a spike has either (a) demonstrated a Worker sending through SES with **no**
+long-lived AWS secret at rest, or (b) recorded why that is not achievable today and closed
+the question — either outcome unblocks the plan.
+
+**Depends on:** T3a (the Bureau Worker that would host the signing key + JWKS route);
+informed by T5 (the baseline it hopes to retire).
 
 ---
 
