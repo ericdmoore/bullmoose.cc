@@ -38,11 +38,43 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 -- From-addresses an account may send as (JMAP Identity objects).
+--
+-- Everything below `name` was added by sVOL 006 (`Identity/set`). This repo
+-- has no migration framework — schema is applied by re-running these files
+-- with CREATE TABLE IF NOT EXISTS (tools/README.md) — so new columns follow
+-- the contact_cards.dav_name convention: declared here so fresh deploys are
+-- correct, with the ALTER an operator must run on an EXISTING database
+-- written beside them. Every one is nullable or defaulted, which is what
+-- makes the ALTER safe on SQLite (it rewrites no rows and cannot fail on
+-- existing data).
 CREATE TABLE IF NOT EXISTS identities (
   id          TEXT PRIMARY KEY,
   account_id  TEXT NOT NULL REFERENCES accounts(id),
   email       TEXT NOT NULL,               -- must be on an active domain
   name        TEXT NOT NULL DEFAULT '',
+  -- RFC 8621 §6.1 Identity properties. replyTo/bcc are JSON EmailAddress[]
+  -- (or NULL for "unset"), matching how the data plane already stores
+  -- address lists — emails.from_json et al. Signatures are hints the CLIENT
+  -- inserts when composing (§6.1: "a signature the client SHOULD insert"),
+  -- so nothing on the relay path reads them. Existing DBs:
+  --   ALTER TABLE identities ADD COLUMN reply_to_json TEXT;
+  --   ALTER TABLE identities ADD COLUMN bcc_json TEXT;
+  --   ALTER TABLE identities ADD COLUMN text_signature TEXT NOT NULL DEFAULT '';
+  --   ALTER TABLE identities ADD COLUMN html_signature TEXT NOT NULL DEFAULT '';
+  --   ALTER TABLE identities ADD COLUMN may_delete INTEGER NOT NULL DEFAULT 1;
+  --   UPDATE identities SET may_delete = 0;   -- see below
+  reply_to_json   TEXT,
+  bcc_json        TEXT,
+  text_signature  TEXT NOT NULL DEFAULT '',
+  html_signature  TEXT NOT NULL DEFAULT '',
+  -- 0 = the account's provisioned primary, which EmailSubmission/set needs
+  -- to keep resolving; Identity/set refuses to destroy it. The DEFAULT is 1
+  -- because user-added identities are the common case, but every row that
+  -- already exists when this column lands was written by provisioning
+  -- (services/provision) and is therefore a primary — hence the one-time
+  -- UPDATE in the ALTER block above. Run it, or an operator's first
+  -- `identity rm` can delete the only address the account can send from.
+  may_delete      INTEGER NOT NULL DEFAULT 1,
   UNIQUE (account_id, email)
 );
 

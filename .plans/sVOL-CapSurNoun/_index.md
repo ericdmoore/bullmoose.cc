@@ -66,7 +66,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 003 | Recurrence correctness before calendar writes | pre | **E3** ⁶ | I3 | `common/003` | — | **✅ done** |
 | 004 | `Mailbox/set` + CLI | cap | E3 | I3 | sVOL | 002 ⁷ | **✅ done** |
 | 005 | `EmailSubmission/get` | cap | E1 | I2 | sVOL | — | **✅ done** ⁸ |
-| 006 | `Identity/set` + CLI signatures | cap | **E3** ² | I3 | sVOL | 002 | todo |
+| 006 | `Identity/set` + CLI signatures | cap | **E3** ² | I3 | sVOL | 002 | **✅ done** |
 | 007 | `AgentInvocation` on-demand trigger | cap | E2 | I3 | sVOL | 002 | todo |
 | 008 | Admin lifecycle — update + delete | cap | E2 | I1 ⁵ | sVOL | — | todo |
 | 009 | DAV collection creation (`MKCOL`/`MKCALENDAR`) | cap | E2 | I3 | sVOL | — | **✅ done** |
@@ -241,7 +241,7 @@ wave 3 — close the capability holes
   019  Email triage over CLI          E2  I3
   014  Email over MCP                 E2  I3   ← ✅ done (read + triage; no send tool)
   009  DAV collection creation        E2  I3   ← DONE
-  006  Identity/set + signatures      E3  I3
+  006  Identity/set + signatures      E3  I3   ← ✅ done (+ Identity/changes)
   008a binding-disable route ONLY     E1  I3   ← the agent kill switch; MUST precede 007
   007  AgentInvocation trigger        E2  I3
 

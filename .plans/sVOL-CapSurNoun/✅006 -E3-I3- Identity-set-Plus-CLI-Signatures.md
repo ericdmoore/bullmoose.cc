@@ -7,7 +7,7 @@
 | **Impact** | **I3** — unlocks *and* human-verifiable |
 | **Owner** | `sVOL` |
 | **Depends on** | `002` (shared fake-D1 with `.batch()`) |
-| **Status** | todo |
+| **Status** | **✅ done** — `Identity/set` + `Identity/changes` + `bullmoose identity` (see § Resolutions) |
 
 ## Cells covered
 
@@ -321,3 +321,93 @@ signature". Without it this unit is `I2` with extra steps.
    source only. In particular I did not verify that `services/anglebrackets` has no identity
    surface — I checked that it is a CalDAV/CardDAV worker and that `Identity` appears in no
    JMAP registration, but I did not read all 1234 lines of `dav.ts`.
+
+---
+
+## Resolutions — what was actually built, and the calls that were open
+
+Shipped: `Identity/set`, `Identity/changes`, five columns on `identities`, four `Mailstore`
+methods, `bullmoose identity {list,show,signature,add,rm}`, and client-side signature
+application in `bullmoose send`. 46 new tests (32 JMAP + 14 CLI); suite 715 → 763.
+
+**Open question 1 — E2 or E3?** Built as **E3**, and the review's regrade was right. The
+column additions themselves were cheap; what was not cheap was the *semantics the columns
+forced*: `may_delete` created an undeletable-primary rule that `EmailSubmission/set` depends
+on, and the active-domain check turned `create` into an outbound-identity gate. That is the E3
+anchor's "new semantics that other code must respect", independent of the migration argument.
+
+**Open question 2 — server or client applies the signature? → CLIENT, and it is not close.**
+Three reasons, in order of force:
+
+1. **RFC 8621 §6.1 says so.** `textSignature` is defined as "a signature the **client** SHOULD
+   insert into new plaintext messages", and `htmlSignature` as a snippet "to be inserted into
+   the `<body></body>` section". `replyTo` and `bcc` are the same shape. The protocol already
+   assigned this job.
+2. **Server-side injection would make `Sent` a lie.** `cmdSend` uploads a blob and
+   `Email/import`s it; `EmailSubmission/set` hands the submit worker that *blob id*; the worker
+   fetches those exact R2 bytes and relays them. For the server to add a signature it would
+   have to re-encode the message **and rewrite the stored blob, size and preview** — otherwise
+   the copy in Sent, which `Email/get` returns, is not the message the recipient received. That
+   is a write-path change in the relay path, to do a job the client is already positioned for.
+3. The middle path the unit file names — "append when it is a single text/plain part" — was
+   rejected for the reason it gives: "sometimes" is the one behaviour a user cannot model.
+
+The unit file's counter-argument stands and is not dismissed: a third-party JMAP client will
+ignore `textSignature` and the user's signature will not travel from that client. That is a
+real cost, and it is the protocol's chosen cost. It is now stated in `bullmoose identity`'s
+own help text so the person setting a signature learns it from the CLI, not from a surprise.
+
+**Open question 3 — what happens to `identity_default`? → (a), materialise, with the trick
+that makes it safe: the materialised row KEEPS THE ID.** `Identity/set` writes a real row under
+the literal id `identity_default`, with the same email `resolveIdentities` was already
+offering and `may_delete = 0`. Consequences:
+
+- Every client that cached `identity_default` keeps working — it is now a real row with that id.
+- `resolveIdentities` is untouched and unforked. `/set` calls a new sibling,
+  `resolveIdentitySet`, which returns the same list *plus* the one bit `/set` needs
+  (`synthesized: boolean`); `resolveIdentities` is now a one-line projection of it. Both
+  existing readers (`Identity/get`, `submitOne`) go through the same query as before.
+- **Materialisation is mandatory before ANY write on an empty table, including a `create`.**
+  Without it, adding a second identity makes `rows.length > 0` and the synthesized default
+  silently disappears — the account loses the ability to send as its own login address, and
+  `EmailSubmission/set` starts refusing `identity_default`. Two tests pin exactly this.
+- Materialisation **preserves, never widens**: the active-domain check that guards `create` is
+  deliberately not applied, because the address is one the account demonstrably already had.
+  Applying it would break the dev account (whose login domain is not in `domains`).
+- `Identity/set` refuses grant-reached principals outright (like `Mailbox/set`,
+  `AddressBook/set`, `Calendar/set`). Sharper here than there: the synthesis path is built from
+  `ctx.principal.username`, so a sharee materialising it would persist THEIR address as a
+  permanent send-as on someone else's account — `fromCodex/002`'s bug, made durable.
+
+**Open question 4 — keep `replyTo`/`bcc`?** Kept, as the unit argued. Same `.map()` block, same
+`ALTER`, and coming back for a second migration on a table with no migration framework is the
+cost worth avoiding.
+
+**`Identity/changes` (sVOL `027`'s suggestion) — folded in, and it is the opposite of `027`'s
+trap.** `027` warns that registering `Thread/changes` today returns an eternally empty delta
+because `"Thread"` sits in `proxyChanges`' union with no producer — worse than `unknownMethod`,
+since a client cannot tell "no changes" from "not implemented". Here the producer and the
+consumer ship in the same commit: `"Identity"` was added to the union *and* `identitySet`
+commits an entry for every write, so `Identity/changes` reports real ids from its first call.
+It is also not optional in practice — `Identity/get` returns the ACCOUNT state, so without the
+commit a state-caching client never re-reads and the signature is set but never seen.
+
+**Scope (per `.feedback/fromClaude/common/027`: `hasScope` is a FLAT set).** Per-operation
+charging via `requiredScopesForIdentitySet`, the `requiredScopesForEmailSet` house style:
+`create → send`, `update → draft`, `destroy → delete`. Chosen on merits, not implication:
+a create widens what `submitOne` will accept in `From:` (a send-capability change); an update
+touches composition-time hints, which is what `VacationResponse/set` already charges `draft`
+for; destroy matches `Mailbox/set`. Because the set is flat this means a `send`-only token
+cannot edit a signature and a `draft`-only token cannot mint a sender — deliberate, and pinned
+by tests. Domain stays `"mail"`.
+
+## Deltas for `_context.md` / `_verify.sh` (NOT edited here)
+
+- `_verify.sh:254` `Identity/set ABSENT ← 006` and `:255` `Identity/changes ABSENT ← 006` now
+  **fail** — both methods are registered. That is the decay-loudly signal working; flip both to
+  `ok`.
+- `_index.md:88` `Identity  get  ← no set` and `:204` (**No `Identity/set`**…) are stale.
+- `_context.md` §2 footnote 17's line numbers were already wrong (`:31-34`/`:35` for a 41-line
+  file) and are now doubly so — `identity.ts` is ~430 lines.
+- Grid row `IdentitySetup`: the JMAP column is now genuinely `CRUD` (`Identity/get` + `/set`
+  create/update/destroy + `/changes`), and the CLI column moves from `----` to `CRUD`.
