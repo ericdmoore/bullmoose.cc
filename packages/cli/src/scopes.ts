@@ -16,8 +16,9 @@
 /** Mail verbs. `mail` is the bundle of exactly these. */
 export const MAIL_SCOPES = ["read", "annotate", "draft", "move", "send", "delete"] as const;
 
-/** Realm scopes — independent of the mail verbs, NOT covered by `mail`. */
-export const REALM_SCOPES = ["contacts", "calendar", "vault"] as const;
+/** Realm scopes — independent of the mail verbs, NOT covered by `mail`.
+ * `files` is the FileNode realm (sVOL 011); mirrors auth-core. */
+export const REALM_SCOPES = ["contacts", "calendar", "vault", "files"] as const;
 
 /** What `bullmoose login` / `bullmoose token create` may ask for (no `admin`). */
 export const SELF_SERVICE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "mail"];

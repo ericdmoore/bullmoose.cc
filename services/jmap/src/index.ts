@@ -1,5 +1,5 @@
 import { dispatch, RequestErrors, type JmapRequest } from "@bullmoose/jmap-core";
-import { AGENT_CAP, CALENDARS_CAP, CONTACTS_CAP, CORE_CAP, MAIL_CAP, SUBMISSION_CAP, VACATION_CAP, WEBSOCKET_CAP } from "@bullmoose/jmap-core";
+import { AGENT_CAP, CALENDARS_CAP, CONTACTS_CAP, CORE_CAP, FILENODE_CAP, MAIL_CAP, SUBMISSION_CAP, VACATION_CAP, WEBSOCKET_CAP } from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
 import { authenticate, accountAccess, principalHasScope, type AuthEnv } from "./auth";
@@ -38,7 +38,7 @@ export interface Env extends AuthEnv {
   SHARE_SIGNING_KEY?: string;
 }
 
-const SUPPORTED_CAPS = new Set([CORE_CAP, MAIL_CAP, SUBMISSION_CAP, WEBSOCKET_CAP, VACATION_CAP, CONTACTS_CAP, CALENDARS_CAP, AGENT_CAP]);
+const SUPPORTED_CAPS = new Set([CORE_CAP, MAIL_CAP, SUBMISSION_CAP, WEBSOCKET_CAP, VACATION_CAP, CONTACTS_CAP, CALENDARS_CAP, FILENODE_CAP, AGENT_CAP]);
 const registry = buildRegistry();
 
 export default {
@@ -465,10 +465,15 @@ async function handleBlobList(
  *    that silently starts returning 410 gone. `handleShareDownload` already
  *    does return 410 for a missing object, which is honest — but arriving
  *    there by accident is worse than being told to revoke first.
+ *  - a blob referenced by a live FileNode → 409: BLOB PINNING (sVOL 011 /
+ *    s03.B arch §3). The draft is explicit that a blob backing a FileNode MUST
+ *    NOT be GC'd or deleted while the node exists. This guard is the pinning
+ *    invariant landing WITH the schema — without it, the first explicit delete
+ *    after Files ships eats a live file. Destroy the FileNode first (which
+ *    also revokes any shares), then the blob becomes deletable.
  *
  * 🚧 This is EXPLICIT delete only. The GC sweep is deliberately not here:
- * `s03.B` T1 owns blob pinning, and a sweep written before pinning exists
- * would delete FileNode-backed blobs the moment Files ships.
+ * a sweep must respect the same three guards, and none exists yet.
  */
 async function handleBlobDelete(
   url: URL,
@@ -491,6 +496,18 @@ async function handleBlobDelete(
         error: "blob in use",
         detail: "still referenced by mail; destroy the message(s) first",
         referencedBy,
+      },
+      409,
+    );
+  }
+
+  const pinnedBy = await store.fileNodesReferencingBlob(accountId, blobId);
+  if (pinnedBy.length > 0) {
+    return json(
+      {
+        error: "blob pinned",
+        detail: "referenced by a FileNode; destroy the file(s) first",
+        fileNodeIds: pinnedBy,
       },
       409,
     );
