@@ -24,7 +24,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | Agents | `-RU-` | `-RU-` | `----` | n/a | `----` | `----` | `C---` |
 | Secrets | n/a | `CRUD` | `----` | n/a | `----` | `----` | n/a |
 | HumanSettings | `~R~-` | `-RU-` | `----` | n/a | `----` | `----` | n/a |
-| IdentitySetup | `CR-D` | `CR-D` | `----` | `~` | `----` | `----` | n/a |
+| IdentitySetup | `CRUD` | `CRUD` | `----` | `~` | `----` | `----` | n/a |
 | SystemAdmin | `CR~~` | `CR~~` | `----` | n/a | `----` | `----` | n/a |
 
 **What the grid says at a glance:**

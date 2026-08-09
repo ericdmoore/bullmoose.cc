@@ -251,8 +251,8 @@ section "Agents / HumanSettings"
 check "AgentInvocation/get  present"        ok            jmap_outcome "AgentInvocation/get" "$GET_NOOP"
 check "VacationResponse/get present"        ok            jmap_outcome "VacationResponse/get" "$GET_NOOP"
 check "Identity/get         present"        ok            jmap_outcome "Identity/get"  "$GET_NOOP"
-check "Identity/set         ABSENT ← 006"   unknownMethod jmap_outcome "Identity/set"  "$SET_NOOP"
-check "Identity/changes     ABSENT ← 006"   unknownMethod jmap_outcome "Identity/changes" "{\"accountId\":$ACC,\"sinceState\":\"0\"}"
+check "Identity/set         present ← 006"   ok            jmap_outcome "Identity/set"  "$SET_NOOP"
+check "Identity/changes     present ← 006"   ok            jmap_outcome "Identity/changes" "{\"accountId\":$ACC,\"sinceState\":\"0\"}"
 
 # =============================================================================
 # Scope gates — this suite is a live regression test for common/001 (P1)
