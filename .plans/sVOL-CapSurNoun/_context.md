@@ -10,7 +10,7 @@
 >
 > | Was | Now |
 > |---|---|
-> | 2 test files, 19 tests | **24 test files, 497 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
+> | 2 test files, 19 tests | **24 test files, 515 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
 > | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
 > | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
 > | test files excluded from typecheck | typechecked in both configs |
@@ -73,7 +73,7 @@ Five things that are not what they look like:
 | JMAP | ✅ live — 40 registered methods | `services/jmap`, registry at `src/methods/index.ts:15-30` |
 | CLI | ✅ live — 19 top-level commands, ~5,012 lines | `packages/cli` |
 | MCP | ⚠️ live but narrow — 4 read-only tools | `services/agent/src/mcp.ts:55` |
-| AngleBracket (CalDAV/CardDAV) | ✅ live — read-write at both *resource* and *collection* level (no `PROPPATCH`) | `services/anglebrackets/src/dav.ts` |
+| AngleBracket (CalDAV/CardDAV) | ✅ live — read-write at both *resource* and *collection* level, incl. `PROPPATCH` | `services/anglebrackets/src/dav.ts` |
 | WebUI | ❌ does not exist | — |
 | GraphQL | ❌ does not exist | design discussion only, `docs/architecture/mcp-auth.md` §14 |
 | Transport (in/out) | ✅ live | `services/ingest`, `services/submit` |
@@ -112,9 +112,9 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
 | **Mailbox** | `CRUD` ⁴ | `CRUD` ⁴ | `----` | `----` | `----` | `----` | `~` ⁵ |
 | **Thread** | `-R--` | `----` | `----` | `----` | `----` | `----` | n/a |
 | **EmailSubmission** | `CR--` ⁶ | `C---` | `----` | `----` | `----` | `----` | `C---` |
-| **AddressBook** | `CRUD` ⁷ | `~R--` ⁸ | `-R--` | `CR-D` ⁹ | `----` | `----` | n/a |
+| **AddressBook** | `CRUD` ⁷ | `~R--` ⁸ | `-R--` | `CRUD` ⁹ | `----` | `----` | n/a |
 | **ContactCard** | `CRUD` | `CR--` ¹⁰ | `CRUD` | `CRUD` | `----` | `----` | n/a |
-| **Calendar** | `CRUD` ⁷ | `-R--` | `-R--` | `CR-D` ⁹ | `----` | `----` | n/a |
+| **Calendar** | `CRUD` ⁷ | `-R--` | `-R--` | `CRUD` ⁹ | `----` | `----` | n/a |
 | **CalendarEvent** | `CRUD` | `-R--` ¹¹ | `CRUD` | `CRUD` | `----` | `----` | n/a |
 | **FileNode** | `----` ¹² | `----` | `----` | `----` | `----` | `----` | n/a |
 | **Agents** | `-RU-` ¹³ | `-RU-` | `----` | n/a | `----` | `----` | `C---` ¹⁴ |
@@ -316,7 +316,7 @@ is the only thing that catches this failure mode, and it is now cheap.
 
 ## 5. Test infrastructure — the honest state
 
-**24 test files, 497 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
+**24 test files, 515 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
 worktree agents: without it Node's upward `node_modules` lookup escapes the worktree and

@@ -50,7 +50,22 @@ than return a known-wrong value. Omission is defensible — a client can tell "a
 
 ---
 
-## 3. `PROPPATCH` is missing on every DAV resource
+## 3. `PROPPATCH` is missing on every DAV resource — ✅ **CLOSED**
+
+> **Shipped.** `PROPPATCH` on calendar and address-book collections, routed in the `handleDav`
+> dispatcher ahead of `handleBook`/`handleCalendar`. Supports `displayname` → `name`,
+> `{apple}calendar-color` → `color` (calendars only — `address_books` has no colour column),
+> `{caldav}calendar-description` / `{carddav}addressbook-description` → `description`;
+> everything else is `403 Forbidden` **per property** inside the 207, echoed under its own
+> namespace. `<remove>` nulls a nullable column and is refused for `displayname`. Applies
+> what it can rather than RFC 4918 §9.2's all-or-nothing, because Apple ships
+> `calendar-order` in the same body as `displayname` and atomicity would mean no rename ever
+> lands — see the handler comment. Full choreography (Mailstore → ctag bump →
+> `commitChanges`) on any applied property, and none at all when every property is refused.
+> Role/default collections rename freely, per sVOL `004`. 18 new tests in
+> `services/anglebrackets/src/dav.test.ts` (29 → 47); all 18 fail on the reverted source.
+>
+> **Items 1 and 2 are still open**, so this issue is NOT `✅`-prefixed yet.
 
 `grep -c PROPPATCH services/anglebrackets/src/dav.ts` → **0**.
 
