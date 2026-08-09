@@ -64,7 +64,9 @@ export default {
       if (url.pathname === "/internal/vault/verify") {
         return handleVaultVerify(request, env);
       }
-      // mailstore-analytics MCP: internal read-only tool surface.
+      // The MCP tool surface. Named /mcp/analytics historically; since sVOL
+      // 013 it carries calendar + contacts CRUD as well, so it is no longer
+      // read-only and no longer only analytics. See mcp.ts.
       if (url.pathname === "/mcp/analytics") {
         return handleMcp(request, env);
       }

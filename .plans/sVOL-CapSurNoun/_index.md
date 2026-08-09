@@ -16,10 +16,10 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | **Mailbox** | **`-R--`** | `-R--` | `----` | `----` | `----` | `----` | `~` |
 | Thread | `-R--` | `----` | `----` | `----` | `----` | `----` | n/a |
 | EmailSubmission | `C---` | `C---` | `----` | `----` | `----` | `----` | `C---` |
-| AddressBook | `CRUD` | `~R--` | `----` | `CR-D` | `----` | `----` | n/a |
-| ContactCard | `CRUD` | `CR--` | `----` | `CRUD` | `----` | `----` | n/a |
-| Calendar | `CRUD` | `-R--` | `----` | `CR-D` | `----` | `----` | n/a |
-| CalendarEvent | `CRUD` | `-R--` | `----` | `CRUD` | `----` | `----` | n/a |
+| AddressBook | `CRUD` | `~R--` | **`-R--`** | `CR-D` | `----` | `----` | n/a |
+| ContactCard | `CRUD` | `CR--` | **`CRUD`** | `CRUD` | `----` | `----` | n/a |
+| Calendar | `CRUD` | `-R--` | **`-R--`** | `CR-D` | `----` | `----` | n/a |
+| CalendarEvent | `CRUD` | `-R--` | **`CRUD`** | `CRUD` | `----` | `----` | n/a |
 | **FileNode** | **`----`** | `----` | `----` | `----` | `----` | `----` | n/a |
 | Agents | `-RU-` | `-RU-` | `----` | n/a | `----` | `----` | `C---` |
 | Secrets | n/a | `CRUD` | `----` | n/a | `----` | `----` | n/a |
@@ -33,8 +33,12 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
   DAV. Everything remaining for them is cheap projection.
 - **`Mailbox` is the outlier.** Mail is the flagship noun and the least mutable thing in the
   system: no create, rename, move, or delete on *any* surface.
-- **The MCP column is empty.** Not "thin" — empty of noun CRUD. This is the largest
-  value-per-effort block in the volume, because the capability beneath it is already built.
+- **The MCP column is no longer empty.** `013` landed ten tools and MCP's first WRITE of any
+  kind: full CRUD on `CalendarEvent` and `ContactCard`, Read on `Calendar` and `AddressBook`.
+  Email (`014`) and the introspection nouns (`015`) are still absent. Note the shape of what
+  shipped — the two *collection* nouns are `R` only, because the unit's own tool list maps
+  `calendar_list` → `Calendar/get` and `contacts_list_books` → `AddressBook/get` and stops
+  there; creating and deleting calendars and address books over MCP is unfiled (see §4).
 - **The WebUI and GraphQL columns are empty because the surfaces don't exist.** Every cell
   there is `E4` by definition.
 - **DAV is read-write end to end.** Cards and events PUT/DELETE with proper ETags, and since
@@ -63,7 +67,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | 010 | Blob lifecycle — enumerate, delete, revoke share | cap | E2 | I1 | sVOL | — | todo |
 | 011 | The `FileNode` noun | cap | E4 | I3 | **s03.B** | s03.A | todo |
 | 012 | `AddressBook/query` + `Calendar/query` | cap | E1 | I1 ³ | sVOL | — | todo |
-| 013 | **Calendar + Contacts CRUD over MCP** | proj | E2 | I3 | sVOL | 001, 002, 003 | todo |
+| 013 | **Calendar + Contacts CRUD over MCP** | proj | E2 | I3 | sVOL | 001, 002, 003 | **✅ done** |
 | 014 | Email read + triage over MCP | proj | E2 | I3 | sVOL | 001, 002 | todo |
 | 015 | Self-introspection over MCP (`help@`) | proj | E2 | I1 | sVOL | 001 | todo |
 | 016 | CLI I/O contract | proj | E2 | I3 | **s05** T1 | — | todo |
@@ -183,8 +187,8 @@ wave 1 — unblock everything, cheap
   016  CLI I/O contract (s05 T1)      E2  ← blocks 017,018,019
 
 wave 2 — the first thing a human can see
-  013  Calendar+Contacts over MCP     E2  I3   ← needs 003 for recurring events
-  003  recurrence correctness         E2  I3
+  013  Calendar+Contacts over MCP     E2  I3   ← ✅ done (MCP's first write surface)
+  003  recurrence correctness         E2  I3   ← ✅ done
   018  Calendar CRUD over CLI         E2  I3
   017  Contacts CRUD over CLI         E2  I3
 
@@ -211,6 +215,14 @@ demo that motivated this: Claude creates a calendar event over MCP; Codex reads 
 independent projections over one write — the difference between *self-consistent* and
 *correct*.
 
+**Half of it has landed.** `013` shipped the write, and the reason the triangulation should
+hold is structural rather than lucky: the MCP tools do not write — they call
+`CalendarEvent/set` and `ContactCard/set` in process (`services/agent/src/jmapBridge.ts`), so
+the ctag bump and the changelog commit that CalDAV and the CLI mirror depend on are the *same
+code path* the JMAP worker runs, not a second implementation of it. What is still unproven is
+the *live* leg: the tests drive real SQLite and the real `AccountDO`, but nothing has been run
+against `wrangler dev` or a real Apple Calendar. `018` closes the CLI third of the triangle.
+
 ---
 
 ## 4. Coverage check
@@ -226,7 +238,8 @@ Every non-`n/a` gap cell in §1 maps to at least one unit:
 | EmailSubmission × R | 005 |
 | AddressBook/Calendar × query | 012 |
 | ContactCard/CalendarEvent × C/U/D × CLI | 017, 018 |
-| ContactCard/CalendarEvent × CRUD × MCP | 013 |
+| ContactCard/CalendarEvent × CRUD × MCP | 013 ✅ |
+| AddressBook/Calendar × C/U/D × MCP | — (unfiled; `013` shipped Read only) |
 | AddressBook/Calendar × C × DAV | 009 ✅ |
 | AddressBook/Calendar × U × DAV (`PROPPATCH`) | — (unfiled; see `009`) |
 | FileNode × everything | 011 → 021 |
