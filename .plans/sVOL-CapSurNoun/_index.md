@@ -20,7 +20,7 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | ContactCard | `CRUD` | `CR--` | `CRUD` | `CRUD` | `----` | `----` | n/a |
 | Calendar | `CRUD` | `-R--` | `-R--` | `CRUD` | `----` | `----` | n/a |
 | CalendarEvent | `CRUD` | `-R--` | `CRUD` | `CRUD` | `----` | `----` | n/a |
-| **FileNode** | **`----`** | `----` | `----` | `----` | `----` | `----` | n/a |
+| **FileNode** | `CRUD` | `----` | `----` | `----` | `----` | `----` | n/a |
 | Agents | `-RU-` | `-RU-` | `----` | n/a | `----` | `----` | `C---` |
 | Secrets | n/a | `CRUD` | `----` | n/a | `----` | `----` | n/a |
 | HumanSettings | `~R~-` | `-RU-` | `----` | n/a | `----` | `----` | n/a |
