@@ -79,6 +79,11 @@ const parseCommandLine = () =>
       parent: { type: "string" },
       sort: { type: "string" },
       force: { type: "boolean", default: false },
+      // Confirmation for the irreversible `admin` verbs (admin.ts IRREVERSIBLE).
+      // Distinct from --force, which on `mailbox rm` means
+      // onDestroyRemoveEmails rather than "yes, I mean it".
+      yes: { type: "boolean", default: false },
+      "include-deleted": { type: "boolean", default: false },
       book: { type: "string" },
       to: { type: "string", multiple: true },
       cc: { type: "string", multiple: true },
@@ -330,6 +335,9 @@ try {
         config: opts.config,
         book: opts.book,
         expires: opts.expires,
+        account: opts.account,
+        yes: opts.yes,
+        includeDeleted: opts["include-deleted"],
         ...io,
       });
       break;

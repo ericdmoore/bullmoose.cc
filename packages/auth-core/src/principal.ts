@@ -120,8 +120,12 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
   if (!(await verifyTokenSecret(parsed.secret, row.secret_hash))) return null;
   if (row.expires_at !== null && row.expires_at < Date.now()) return null;
 
+  // `deleted_at IS NULL` is what makes `DELETE /accounts/{id}` mean anything:
+  // the tombstone is a soft delete (sVOL 008), so without this filter a
+  // "deleted" account keeps authenticating and keeps serving its mail.
   const { results: accountRows } = await db.prepare(
-    `SELECT id, tenant_id, display_name FROM accounts WHERE principal_id = ? ORDER BY created_at`,
+    `SELECT id, tenant_id, display_name FROM accounts
+     WHERE principal_id = ? AND deleted_at IS NULL ORDER BY created_at`,
   )
     .bind(row.principal_id)
     .all<{ id: string; tenant_id: string; display_name: string }>();
@@ -149,6 +153,7 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
               a.tenant_id, a.display_name
        FROM grants g JOIN accounts a ON a.id = g.target_account_id
        WHERE g.grantee_account_id IN (${marks})
+         AND a.deleted_at IS NULL
          AND (g.expires_at IS NULL OR g.expires_at > ?)`,
     )
       .bind(...accounts.map((a) => a.accountId), now)

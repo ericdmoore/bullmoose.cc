@@ -1,6 +1,32 @@
-# 023 -P1- The agent kill switch exists but no route can reach it
+# ✅ 023 -P1- The agent kill switch exists but no route can reach it
 
 **Subsystem:** agentic · **Severity:** HIGH (safety control, unreachable) · **Fix class:** CHANGE-CODE
+
+> **FIXED.** Shipped inside `.plans/sVOL-CapSurNoun/✅008` — the same two files, so
+> splitting it would have put two agents in one file.
+>
+> - `POST /agent-bindings/{id}/disable` · `/enable`, admin-token gated like every other
+>   provision route. Two verbs, not `PATCH {enabled}`, per the fix.
+> - `bullmoose admin agent disable|enable <binding-id> [--account <email>]`, plus
+>   `agent unbind` which **409s while invocations are queued** rather than stranding them
+>   behind the drain's `JOIN agent_bindings`.
+> - The drain logs a held-backlog count on every wake-up, so "disabled" and "broken" stop
+>   looking identical from outside.
+> - **The queue question, decided: HELD, not cancelled.** Disable is a pause with a matching
+>   enable, those rows are the evidence of what the agent was about to do, and they are inert
+>   while disabled. The cost — an invisible backlog — is paid down by *reporting* rather than
+>   by deleting: both verbs return `pendingInvocations`, the CLI prints it, the drain logs it,
+>   and `docs/DEPLOY.md` carries the SQL to clear them if they go stale.
+>   The refinement review forced: **a pause holds, a terminal verb terminates.** `disable`
+>   holds the queue, but `DELETE /accounts` *cancels* it — the drain skips tombstoned
+>   accounts, so rows left `pending` there could never reach a terminal status, which would
+>   have blocked `agent unbind` forever and inflated the held-backlog log with work nobody
+>   could act on.
+> - Deviation from the fix note: the route takes a **bare binding id**, not
+>   `/accounts/{accountId}/agent-bindings/{id}`. Reasoning in `✅008` § *judgement call 5*.
+> - Proved by `services/provision/src/adminLifecycle.test.ts`: create a binding, disable it,
+>   assert **ingest's own enqueue query** returns zero rows — plus a source-level assertion
+>   that both drain paths still carry the `enabled = 1` gate the switch rides on.
 
 ## The defect
 

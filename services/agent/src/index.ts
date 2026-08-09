@@ -82,6 +82,7 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await failStaleRunning(env);
     await drain(env, ctx);
+    await reportHeldBacklog(env);
   },
 } satisfies ExportedHandler<Env>;
 
@@ -109,7 +110,7 @@ async function drain(env: Env, _ctx: ExecutionContext): Promise<number> {
        FROM agent_invocations inv
        JOIN agent_bindings b ON b.account_id = inv.account_id AND b.id = inv.binding_id
        JOIN accounts a ON a.id = inv.account_id
-       WHERE inv.status = 'pending' AND b.enabled = 1
+       WHERE inv.status = 'pending' AND b.enabled = 1 AND a.deleted_at IS NULL
        ORDER BY inv.created_at LIMIT ${DRAIN_BATCH}`,
     ).all<Job>();
 
@@ -133,6 +134,44 @@ async function drain(env: Env, _ctx: ExecutionContext): Promise<number> {
     if (results.length < DRAIN_BATCH) break;
   }
   return handled;
+}
+
+/**
+ * "the agent stopped working" and "the agent is disabled" look identical from
+ * the outside, and someone will spend an hour on the difference
+ * (`.feedback/fromClaude/agentic/023` fix, item 3).
+ *
+ * The kill switch deliberately leaves `pending` rows alone rather than
+ * cancelling them — see `setBindingEnabled` in `services/provision` for that
+ * decision — so the only thing standing between a held queue and a mystery is
+ * this line.
+ *
+ * Called from `scheduled`, NOT from `drain`. `drain` also runs on the ingest
+ * poke, i.e. once per delivered message, and this is a JOIN + two aggregates
+ * over `agent_invocations` that has nothing to say unless an operator has
+ * pulled the kill switch. On the cron it costs nothing anyone notices; on the
+ * delivery path it would be a scan added to every inbound email.
+ *
+ * `a.deleted_at IS NULL` matters for the ADVICE, not the count: `drain` also
+ * holds back invocations whose account is tombstoned, and telling an operator
+ * to `agent enable` those would be wrong — enabling cannot help, and provision
+ * now refuses it. Deleting an account cancels its queue, so this filter should
+ * be redundant; it is here so the message can never become misleading if that
+ * ever stops being true.
+ */
+async function reportHeldBacklog(env: Env): Promise<void> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n, COUNT(DISTINCT inv.binding_id) AS bindings
+     FROM agent_invocations inv
+     JOIN agent_bindings b ON b.account_id = inv.account_id AND b.id = inv.binding_id
+     JOIN accounts a ON a.id = inv.account_id
+     WHERE inv.status = 'pending' AND b.enabled = 0 AND a.deleted_at IS NULL`,
+  ).first<{ n: number; bindings: number }>();
+  if (!row || row.n === 0) return;
+  console.log(
+    `agent drain: holding ${row.n} pending invocation(s) across ${row.bindings} DISABLED binding(s) — ` +
+      "they are queued, not lost; re-enable with `bullmoose admin agent enable <bindingId>`",
+  );
 }
 
 async function runInvocation(env: Env, job: Job): Promise<void> {
