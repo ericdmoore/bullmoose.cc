@@ -247,10 +247,17 @@ export function requiredScopesForEmailSet(args: Record<string, unknown>): string
   if (create && Object.keys(create).length > 0) need.add("draft");
   if (update) {
     for (const patch of Object.values(update)) {
-      const touchesMailboxes = Object.keys(patch ?? {}).some(
-        (k) => k === "mailboxIds" || k.startsWith("mailboxIds/"),
-      );
-      need.add(touchesMailboxes ? "move" : "annotate");
+      // Charge for EVERY kind of change the patch makes, not just the highest.
+      // This was `need.add(touchesMailboxes ? "move" : "annotate")` — a ternary,
+      // so a patch touching both mailboxIds AND keywords charged only `move`.
+      // `hasScope` is a flat set, NOT the ordered lattice the docs draw, so
+      // `move` does not imply `annotate`: a move-scoped token could flip
+      // keywords for free by bundling them into a move.
+      const keys = Object.keys(patch ?? {});
+      const isMailboxKey = (k: string) => k === "mailboxIds" || k.startsWith("mailboxIds/");
+      if (keys.some(isMailboxKey)) need.add("move");
+      // Fail closed: an empty patch charges `annotate` rather than nothing.
+      if (keys.length === 0 || keys.some((k) => !isMailboxKey(k))) need.add("annotate");
     }
   }
   if (destroy && destroy.length > 0) need.add("delete");

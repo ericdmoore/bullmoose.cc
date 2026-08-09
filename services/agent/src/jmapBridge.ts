@@ -4,6 +4,8 @@ import type { Env as JmapEnv } from "../../jmap/src/index";
 import type { RequestContext } from "../../jmap/src/methods/common";
 import { registerCalendarMethods } from "../../jmap/src/methods/calendars";
 import { registerContactsMethods } from "../../jmap/src/methods/contacts";
+import { registerEmailMethods } from "../../jmap/src/methods/email";
+import { registerMailboxMethods } from "../../jmap/src/methods/mailbox";
 import type { Env } from "./models.js";
 
 /**
@@ -56,13 +58,24 @@ import type { Env } from "./models.js";
  * cheaper mistake to reverse — extracting the method layer into a package
  * later is a rename, whereas un-replicating a second copy is an audit.
  *
- * Only the calendar and contacts modules are registered. `014` (Email over
- * MCP) adds `registerEmailMethods` here; nothing else should.
+ * Calendar, contacts, email and mailbox modules are registered. `014` added
+ * the last two: `Email/*` for read + triage, and `Mailbox/*` because a move
+ * tool is useless without a way to name its destination, and because
+ * `email_move --role archive` resolves the role through `Mailbox/query`.
+ *
+ * Registering a module is not the same as exposing it. The registry is
+ * private to this file and reachable only through `callJmap`, whose `method`
+ * argument every tool passes as a string LITERAL — no caller-controlled
+ * method name reaches it. So `Mailbox/set` is registered and unreachable:
+ * there is no folder-management tool, and adding one is `004`'s surface, not
+ * this bridge's.
  */
 
 const registry = new MethodRegistry<RequestContext>();
 registerCalendarMethods(registry);
 registerContactsMethods(registry);
+registerEmailMethods(registry);
+registerMailboxMethods(registry);
 
 /**
  * Exactly the bindings the calendar/contacts methods read off `ctx.env`:

@@ -65,7 +65,10 @@ describe("every MCP tool declares its own gate", () => {
 
   const writeTools = TOOLS.filter((t) => t.scope !== "read");
 
-  it("the write surface is exactly the nouns 013 shipped", () => {
+  it("the write surface is exactly the nouns 013 and 014 shipped", () => {
+    // Extended by sVOL 014 with the four Email triage writes. The tripwire
+    // works as designed: adding a write tool fails this list until someone
+    // states it here, which is the point — the inventory is the review.
     expect(writeTools.map((t) => t.name).sort()).toEqual([
       "calendar_create_event",
       "calendar_delete_event",
@@ -73,6 +76,10 @@ describe("every MCP tool declares its own gate", () => {
       "contacts_create_card",
       "contacts_delete_card",
       "contacts_update_card",
+      "email_create_draft",
+      "email_destroy",
+      "email_move",
+      "email_set_keywords",
     ]);
   });
 
@@ -86,16 +93,38 @@ describe("every MCP tool declares its own gate", () => {
     expect(src).not.toContain("READ-ONLY tool surface");
   });
 
-  it("writes take the domain-named scope, never a mail lattice verb", () => {
+  it("realm writes take the domain-named scope, never a mail lattice verb", () => {
     // `_context.md` §4: calendar and contacts do NOT use
     // `read < annotate < draft < move < send < delete`. One scope named after
     // the domain covers create, update AND delete. A write tool declaring
     // `draft` or `delete` would be inventing a mapping the methods do not
     // honour — it would gate on a scope no calendar method ever checks.
     for (const tool of writeTools) {
+      if (tool.domain === "mail") continue;
       expect(tool.scope).toBe(tool.domain);
-      expect(tool.domain).not.toBe("mail");
     }
+  });
+
+  it("mail writes take a lattice verb, and the SPECIFIC one for the operation", () => {
+    // The other half of the same rule, and the inverse mistake: mail is the
+    // one domain that DOES use the lattice, so a mail write must name the
+    // verb for what it does rather than the domain. `Email/set` derives the
+    // same scope per operation (`requiredScopesForEmailSet`), so a tool that
+    // blanket-declared `draft` would be BOTH wider than the operation and out
+    // of step with the method it calls.
+    const mailWrites = writeTools.filter((t) => t.domain === "mail");
+    expect(Object.fromEntries(mailWrites.map((t) => [t.name, t.scope]))).toEqual({
+      email_set_keywords: "annotate",
+      email_move: "move",
+      email_create_draft: "draft",
+      email_destroy: "delete",
+    });
+  });
+
+  it("no tool anywhere declares `send` — sVOL 014's chosen invariant", () => {
+    // sending stays a human click; asserted over the table rather than left
+    // as a convention. See emailTools.ts for the three reasons.
+    expect(TOOLS.filter((t) => t.scope === "send")).toEqual([]);
   });
 
   it("reads take `read` in their own domain, on every domain", () => {
@@ -103,8 +132,10 @@ describe("every MCP tool declares its own gate", () => {
       if (writeTools.includes(tool)) continue;
       expect(tool.scope).toBe("read");
     }
-    // And the read/write split covers both noun domains, not just one.
-    expect(new Set(writeTools.map((t) => t.domain))).toEqual(new Set(["calendar", "contacts"]));
+    // And the read/write split covers every noun domain, not just one.
+    expect(new Set(writeTools.map((t) => t.domain))).toEqual(
+      new Set(["calendar", "contacts", "mail"]),
+    );
   });
 });
 
