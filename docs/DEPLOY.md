@@ -202,6 +202,51 @@ sweeper to run. Rotating the key does not clear them; they age out on their
 own, and `share list` will show links that the rotation has already killed
 until they do. That is cosmetic, but know it before reading the output.
 
+### Runbook: an address already routes somewhere
+
+`admin account create` is idempotent. Re-running it for an address that already
+has a mailbox returns the **existing** account (`created: false`) and touches
+nothing — safe to re-run a bootstrap, safe to retry after a timeout.
+
+It refuses, `409`, when the address routes somewhere that is *not* that mailbox:
+a forward/alias/catch-all row, another tenant's account, a target account that
+no longer exists, or a `--principal` that disagrees with who owns the account.
+The response carries `existingRoute` so you can see what is in the way. **The
+409 means delivery was left exactly as it was** — that is the point of it.
+
+Before this was enforced, a second create for one address built a second
+account and repointed delivery onto it. If you are on a deployment that ran the
+old code, the symptom is *"mail stopped arriving"* with everything reporting
+healthy, and the fix is to point the route back:
+
+```sh
+bullmoose admin account list --tenant t_bullmoose   # two accounts, one address
+```
+
+The orphaned account still holds every message it received — nothing was
+deleted. Repointing is one `routes` row plus the matching KV key, and **both**
+must move together: ingest resolves delivery through the KV key alone, so D1
+alone is not enough.
+
+```sh
+# 1. control plane (authoritative)
+npx wrangler d1 execute bullmoose-mail-shard0 --remote \
+  --command "UPDATE routes SET target='<GOOD_ACCOUNT_ID>' WHERE domain='bullmoose.cc' AND localpart='eric'"
+
+# 2. the ingest fast path — omit this and mail keeps landing in the wrong account
+npx wrangler kv key put -c services/provision/wrangler.jsonc --remote \
+  --binding=ROUTES 'route:bullmoose.cc:eric' \
+  '{"kind":"mailbox","accountId":"<GOOD_ACCOUNT_ID>","tenantId":"t_bullmoose"}'
+```
+
+(One D1 today — `bullmoose-mail-shard0` holds both the control and data planes,
+per §2. If the control plane is ever split out, step 1 moves with `routes`.)
+
+Verify with `admin account create` for the same address: it should now come back
+`created: false` with `<GOOD_ACCOUNT_ID>`. There is **no `DELETE /accounts`**
+(`.plans/sVOL-CapSurNoun/008`), so the duplicate account stays until that lands;
+it is inert once nothing routes to it.
+
 ### GHA repo secrets
 
 Set from a machine with `gh` authed to the repo (the remote sandbox's

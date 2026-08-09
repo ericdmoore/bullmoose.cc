@@ -10,7 +10,7 @@
 >
 > | Was | Now |
 > |---|---|
-> | 2 test files, 19 tests | **23 test files, 483 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
+> | 2 test files, 19 tests | **24 test files, 497 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
 > | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
 > | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
 > | test files excluded from typecheck | typechecked in both configs |
@@ -316,7 +316,7 @@ is the only thing that catches this failure mode, and it is now cheap.
 
 ## 5. Test infrastructure — the honest state
 
-**23 test files, 483 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
+**24 test files, 497 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
 worktree agents: without it Node's upward `node_modules` lookup escapes the worktree and
@@ -327,7 +327,7 @@ branch's source than `tsc` checks.
 (`@bullmoose/test-fakes`), sVOL unit `002`. It replaced **six** divergent local fakes
 (`services/agent/src/mcp.test.ts`, `services/jmap/src/{authRoutes,mintScopes}.test.ts`,
 `services/jmap/src/methods/{submission,calendars}.test.ts`,
-`services/provision/src/mintScopes.test.ts`), each routing by SQL substring and each extended
+`services/provision/src/{mintScopes,accounts}.test.ts`), each routing by SQL substring and each extended
 ad hoc. It provides D1 (real `node:sqlite` loading the live `packages/mailstore/sql/*.sql`,
 with an atomic `.batch()`), R2, KV, and `ACCOUNT_DO` — the last running the **real** `AccountDO`
 class over in-memory storage.
