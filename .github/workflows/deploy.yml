@@ -16,6 +16,9 @@ on:
     branches: [main]
     paths:
       - "src/**"
+      # The guides render straight from docs/playbooks (src/content.config.ts
+      # globs ../docs/playbooks), so a playbook edit must redeploy the site.
+      - "docs/playbooks/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
