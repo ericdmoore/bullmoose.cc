@@ -2,8 +2,8 @@
 // no network. Two audiences (mirroring how the CLI ships a FakeJmapClient /
 // @bullmoose/test-fakes):
 //   • tests — assert UI/data flow without a server;
-//   • the T2/T3 UI (DEFERRED) — develop mail + Files surfaces against this
-//     before the real endpoints are reachable.
+//   • the UI — T2's mail surfaces shipped against this and still develop
+//     against it; T3's Files browser remains deferred on s03.B.
 //
 // It resolves RFC 8620 §3.7 back-references locally (a compact version of the
 // server's dispatch.ts) so `queryThenGet` and other batches behave like the

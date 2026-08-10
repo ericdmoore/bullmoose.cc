@@ -3,6 +3,24 @@
 > Scope: [`readme.md`](./readme.md) · structure: [`arch.md`](./arch.md).
 > **Depends on s03.A** (provenance) and **s03.C** (the shell these render in).
 
+## Status — 2026-08-10
+
+**Nothing built. Not blocked either** — both stated dependencies are done, so this is
+unstarted by choice rather than by gate.
+
+| Task | State | Evidence |
+|---|---|---|
+| **T1** — `urn:bullmoose:agent` capability + `ActionProposal` | ❌ not started | `ActionProposal` appears nowhere in the repo |
+| **T2–T5** | ❌ not started | gated on T1 |
+
+The seam is already cut and empty: `webmail/src/components/AppShell.tsx:688` renders
+`{agentSeam ? <aside class="agent-seam" aria-label="Agent" /> : null}` — an empty `<aside>`,
+deliberately (`:682-687`). `s03.C` T4's capability gate is live and tested, so the shell
+already behaves correctly for a plain client; what is missing is anything to put in the box.
+
+**T1 is the whole gate.** Until an agent worker produces an `ActionProposal`, T2–T5 have no
+input.
+
 ---
 
 ## T1 — `urn:bullmoose:agent` capability + `ActionProposal`

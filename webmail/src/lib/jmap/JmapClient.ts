@@ -10,8 +10,15 @@
 //      session, so a surface whose capability is absent never sends a call
 //      that would 400.
 //
-// T2 (mail surfaces) and T3 (Files browser) are DEFERRED — this module is the
-// substrate they will develop against, alongside FakeJmapClient.
+// T2 (mail surfaces) SHIPPED and develops against this module alongside
+// FakeJmapClient. T3 (Files browser) is still deferred on s03.B's attachment
+// sidestep, so nothing here calls the FileNode methods yet.
+//
+// Note that `sync`, `cursor`, `seedCursor`, `queryThenGet`, `upload` and
+// `download` are built and tested but reached by NO surface: AppShell syncs by
+// re-querying on a push notification rather than walking a /changes cursor, and
+// there is no attachment UI to call upload/download. Tested-but-unreached, which
+// is the opposite of dead code and worth knowing before assuming a gap is work.
 
 import {
   AGENT_CAP,

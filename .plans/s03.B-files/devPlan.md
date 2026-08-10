@@ -3,6 +3,24 @@
 > Scope: [`readme.md`](./readme.md) · structure: [`arch.md`](./arch.md).
 > **Depends on s03.A** (provenance).
 
+## Status — 2026-08-10
+
+This file carried no status section until now; its state was only recoverable from the
+sVOL ledger, which is how T3 stayed quietly unstarted.
+
+| Task | State | Evidence |
+|---|---|---|
+| **T1** — `file_nodes` schema + blob pinning | ✅ **done** | table live in the data plane; provenance columns land with s03.A |
+| **T2** — `FileNode/*` methods | ✅ **done** | all six registered in `services/jmap/src/methods/filenode.ts`; covered by `filenode.test.ts` |
+| **T3** — attachment sidestep | ❌ **not started** | `grep -rniE "sidestep\|ATTACHMENT_THRESHOLD\|large attachment" services/ packages/` returns **zero files**. `services/ingest/src/index.ts:219-254` stores attachment metadata inline with no size threshold and never creates a FileNode. |
+
+**T3 is the gate for `s03.C` T3 (Files browser)** and for the attachment hole in
+compose/forward — `webmail` today renders attachment chips as inert `<span>`s
+(`MessageView.tsx:50-59`) and forwarding silently drops them (`compose.ts:101`).
+
+⚠️ Related open issue: `.feedback` `common/030` — FileNode copy OOM. Worth resolving before
+building a browser surface that makes copy easy to trigger.
+
 ---
 
 ## T1 — `file_nodes` schema + blob pinning

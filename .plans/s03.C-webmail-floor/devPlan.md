@@ -10,7 +10,7 @@
 | Task | State | Notes |
 |---|---|---|
 | **T1 — App shell + injected JmapClient** | ✅ **done** | `webmail/` workspace (Astro + Preact); `astro build` clean → static `dist/index.html` + island bundle. `JmapClient` (`FetchJmapClient`) + `FakeJmapClient` live and unit-tested (37 tests). |
-| **T2 — Mail surfaces** | ✅ **done** | Mailbox list · virtualized thread list · thread view (sanitized, remote content blocked, quotes collapsed) · compose/reply/forward + drafts + send · server-side search · keyboard triage. 208 new tests (245 in `webmail/`). |
+| **T2 — Mail surfaces** | ✅ **done** | Mailbox list · virtualized thread list · thread view (sanitized, remote content blocked, quotes collapsed) · compose/reply/forward + drafts + send · server-side search · keyboard triage. 208 new tests (374 in `webmail/` as of 2026-08-10). |
 | **T3 — Files browser** | ⏸ **deferred** | Needs s03.B's `FileNode` (partly built). |
 | **T4 — Capability gate + plain-client proof** | ✅ **built into T1, held by T2** | `hasAgentCapability` gate + `computeUsing` capability-awareness; still the only agent seam in the shell, still tested against a capability-less session. |
 
