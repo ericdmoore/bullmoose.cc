@@ -76,7 +76,18 @@ export default function AgentConsole({ reads: injectedReads, vault: injectedVaul
     let cancelled = false;
     void (async () => {
       try {
-        const jmap = injectedClient ?? resolveClient().client;
+        let jmap = injectedClient;
+        if (!jmap) {
+          const resolved = resolveClient();
+          // Same rule as the mail shell: no session → the door, never a
+          // sample deployment a stranger could mistake for this one
+          // (lib/app/client.ts).
+          if (resolved.mode === "unauthenticated") {
+            location.assign("/login");
+            return;
+          }
+          jmap = resolved.client;
+        }
         const live = await jmap.session();
         if (cancelled) return;
         setSession(live);
@@ -256,7 +267,7 @@ export default function AgentConsole({ reads: injectedReads, vault: injectedVaul
             Per resource — <em>who could have?</em>
           </button>
         </nav>
-        <a class="session" href="/">
+        <a class="session" href="/mail">
           ← mail
         </a>
       </header>

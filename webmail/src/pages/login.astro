@@ -1,0 +1,17 @@
+---
+// The interim front door (s07 T1). One island, no chrome: there is no session
+// to sign out of and no section to navigate to, and a nav full of disabled
+// links is a poor first impression of a product you have not signed into yet.
+//
+// The door is client-side for the same reason `/` is (see index.astro): the
+// build is static output and the credential lives in `localStorage`, so the
+// only place the question can be answered is the browser. That is also what
+// keeps the token out of every URL — nothing has to travel to a server for the
+// session to exist.
+import LoginForm from "../components/LoginForm.tsx";
+import App from "../layouts/App.astro";
+---
+
+<App title="bullmoose — sign in" chrome={false}>
+  <LoginForm client:only="preact" />
+</App>

@@ -1,9 +1,11 @@
-// Type-only view of `@bullmoose/auth-core`, for the ONE test that imports it.
+// Type-only view of `@bullmoose/auth-core`, for the TWO tests that import it.
 //
 // `scopes.test.ts` drives the real `hasScope` to prove `lib/console/scopes.ts`'s
-// mirror has not drifted from the gate every server-side check calls. That is a
-// RUNTIME assertion, and vitest resolves the real module through its
-// `resolve.alias` (see `vitest.config.ts`).
+// mirror has not drifted from the gate every server-side check calls;
+// `lib/app/login.test.ts` drives the real `parseToken` for the same reason,
+// against the token regex the login door mirrors. Both are RUNTIME assertions,
+// and vitest resolves the real module through its `resolve.alias` (see
+// `vitest.config.ts`).
 //
 // tsc cannot follow the same path. `packages/auth-core` is Worker code and
 // typechecks against `@cloudflare/workers-types`; pulled into webmail's program
@@ -25,3 +27,9 @@
 export const MAIL_SCOPES: readonly string[];
 export const REALM_SCOPES: readonly string[];
 export function hasScope(granted: readonly string[], required: string): boolean;
+
+export interface ParsedToken {
+  id: string;
+  secret: string;
+}
+export function parseToken(raw: string): ParsedToken | null;
