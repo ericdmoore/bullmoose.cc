@@ -94,18 +94,31 @@ jobs:
           ACCT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           base="https://api.cloudflare.com/client/v4/accounts/$ACCT/pages/projects/bullmoose-app/domains"
-          have=$(curl -sS -m 20 -H "Authorization: Bearer $TOKEN" "$base" \
-                  | grep -o '"name":"app.bullmoose.cc"' | head -1)
-          if [ -n "$have" ]; then
+          # NOTE the whitespace-insensitive match. The first version grepped
+          # '"name":"app.bullmoose.cc"' against pretty-printed JSON, never
+          # matched, and re-POSTed a domain that was already attached — then
+          # treated Cloudflare's "you have already added this" as a failure.
+          list=$(curl -sS -m 20 -H "Authorization: Bearer $TOKEN" "$base")
+          if printf '%s' "$list" | tr -d ' \n' | grep -q '"name":"app.bullmoose.cc"'; then
             echo "app.bullmoose.cc already attached"
           else
             r=$(curl -sS -m 30 -X POST -H "Authorization: Bearer $TOKEN" \
                   -H "content-type: application/json" \
                   -d '{"name":"app.bullmoose.cc"}' "$base")
-            echo "$r" | grep -q '"success":true' \
-              && echo "attached app.bullmoose.cc" \
-              || { echo "::error::could not attach domain"; echo "$r" | head -c 400; exit 1; }
+            # 8000018 = already added. Idempotent runs must treat that as success.
+            if printf '%s' "$r" | grep -q '"success":true'; then echo "attached"
+            elif printf '%s' "$r" | grep -q '8000018'; then echo "already attached (per API)"
+            else echo "::error::could not attach domain"; printf '%s' "$r" | head -c 400; exit 1; fi
           fi
+
+          # Attaching is not the same as SERVING. Pages verifies the domain and
+          # provisions DNS asynchronously, and a domain can sit attached with no
+          # record — which looks identical from the outside to "never added".
+          # Print the status so the difference is visible.
+          echo "── custom domain status ──"
+          curl -sS -m 20 -H "Authorization: Bearer $TOKEN" "$base" \
+            | tr ',' '\n' | grep -oE '"(name|status|verification_data|certificate_authority)":[^,}]*' \
+            | sed 's/^/  /' | head -12
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
