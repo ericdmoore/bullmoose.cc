@@ -469,9 +469,31 @@ function main() {
   const plan = phaseArg === "all" ? ALL : [phaseArg];
   console.log(`bullmoose bootstrap — ${paint(c.cyn, plan.join(" → "))}${DRY ? paint(c.yel, "  (dry-run)") : ""}`);
 
-  if (!DRY) {
+  // Liveness check — but NOT via `whoami` when the account is already explicit.
+  //
+  // `wrangler whoami` ENUMERATES the account list, which needs a broader
+  // permission than anything this script actually does. A correctly-scoped
+  // deploy token (Workers Scripts / D1 / KV / R2 : Edit) fails it with
+  // "Failed to automatically retrieve account IDs for the logged in user"
+  // while being perfectly able to run every command below — so using it as a
+  // gate rejects exactly the tokens we want people to use, and tells them to
+  // re-authenticate when authentication was never the problem.
+  //
+  // With CLOUDFLARE_ACCOUNT_ID set there is nothing to enumerate: the account
+  // is named, and a wrong token will fail its first real call with a message
+  // about that call. Wrangler says as much in the same error ("You can also
+  // skip this account check by ... setting the value of CLOUDFLARE_ACCOUNT_ID").
+  // Interactive `wrangler login` users have no CLOUDFLARE_ACCOUNT_ID, so they
+  // keep the friendly up-front check.
+  if (!DRY && !process.env.CLOUDFLARE_ACCOUNT_ID) {
     const who = wrangler(["whoami"], { capture: true, allowFail: true });
-    if (who.status !== 0) die("wrangler not authenticated — run `npx wrangler login` (or set CLOUDFLARE_API_TOKEN)");
+    if (who.status !== 0) {
+      die(
+        "wrangler not authenticated — run `npx wrangler login`, or set " +
+          "CLOUDFLARE_API_TOKEN together with CLOUDFLARE_ACCOUNT_ID (a scoped " +
+          "token cannot list accounts, so it needs the id given explicitly)",
+      );
+    }
   }
   for (const p of plan) PHASES[p]();
   console.log(`\n${paint(c.grn, "done")} — ${plan.join(", ")}${DRY ? " (dry-run; nothing changed)" : ""}`);
