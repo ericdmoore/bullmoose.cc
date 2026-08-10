@@ -167,9 +167,20 @@ CREATE TABLE IF NOT EXISTS grants (
   --   ALTER TABLE grants ADD COLUMN revoked_at INTEGER;
   revoked_at          INTEGER
 );
+-- PARTIAL on `revoked_at IS NULL`, and it has to be. s03.A turned revocation
+-- into a tombstone, so the row survives — and a plain unique index would let
+-- that dead row occupy the tuple forever, making "revoke, then change your
+-- mind" impossible. Worse than impossible, in fact: `createGrant` inserts with
+-- `ON CONFLICT DO NOTHING`, so the re-grant is a silent no-op that still
+-- returns 200 with a grantId no row carries. Verified against the real index
+-- before this line was added — insert, tombstone, re-insert, constraint fails.
+-- ⚠️ A database created before this changed has the NON-partial index and
+-- `IF NOT EXISTS` will not replace it. DROP INDEX grants_tuple first —
+-- docs/DEPLOY.md.
 CREATE UNIQUE INDEX IF NOT EXISTS grants_tuple
   ON grants (grantee_account_id, target_account_id,
-             COALESCE(collection, ''), COALESCE(collection_id, ''));
+             COALESCE(collection, ''), COALESCE(collection_id, ''))
+  WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS grants_target ON grants (target_account_id);
 
 -- Append-only lifecycle log for grants (s03.A T2). One row per lifecycle
@@ -284,6 +295,26 @@ CREATE TABLE IF NOT EXISTS bureau_grants (
   expires_at   INTEGER,                      -- epoch ms; NULL = no expiry
   revoked_at   INTEGER                       -- tombstone; NULL = live
 );
+-- NOT partial, deliberately — unlike `grants_tuple` above, which is. The two
+-- tables solve the revoke-then-re-grant problem differently and each index has
+-- to match its own writer:
+--
+--   bureau_grants  upserts. `grantVerb` does ON CONFLICT (principal_id,
+--                  cred_name, verb) DO UPDATE SET revoked_at = NULL, which
+--                  RESURRECTS the tombstoned row. A partial index breaks that
+--                  outright: SQLite matches a conflict target against a unique
+--                  index, and a partial one needs its WHERE clause repeated in
+--                  the target. (Learned by making this partial and watching 14
+--                  tests fail to even prepare.)
+--
+--   grants         inserts with ON CONFLICT DO NOTHING and no resurrection
+--                  path, so the tombstone would sit on the tuple forever.
+--                  Hence the partial index there.
+--
+-- Resurrection also erases `revoked_at`, so the fact of the revocation lives
+-- only in `grant_lifecycle`; the partial-index approach keeps the tombstone as
+-- a row. Both are defensible. What is not defensible is one index shape
+-- assumed to fit both writers.
 CREATE UNIQUE INDEX IF NOT EXISTS bureau_grants_tuple
   ON bureau_grants (principal_id, cred_name, verb);
 CREATE INDEX IF NOT EXISTS bureau_grants_cred ON bureau_grants (principal_id, cred_name);

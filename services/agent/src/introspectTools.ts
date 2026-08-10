@@ -209,7 +209,7 @@ const marksFor = (xs: readonly unknown[]): string => xs.map(() => "?").join(",")
 /** `grants` columns that are safe to project. Rule 3 — enumerated, not `*`. */
 const GRANT_COLUMNS =
   "g.id, g.grantee_account_id, g.target_account_id, g.scopes, g.collection, " +
-  "g.collection_id, g.created_by, g.created_at, g.expires_at";
+  "g.collection_id, g.created_by, g.created_at, g.expires_at, g.revoked_at";
 
 interface GrantRow {
   id: string;
@@ -221,6 +221,7 @@ interface GrantRow {
   created_by: string;
   created_at: number;
   expires_at: number | null;
+  revoked_at: number | null;
   other_name: string | null;
   other_email: string | null;
 }
@@ -231,7 +232,15 @@ interface GrantRow {
  */
 function renderGrant(r: GrantRow, side: "grantee" | "target") {
   const scopes = JSON.parse(r.scopes) as string[];
-  const live = r.expires_at === null || r.expires_at > Date.now();
+  // Two independent ways a grant stops being live, and this checked only one
+  // until s03.A made revocation a tombstone (UPDATE, not DELETE). Enforcement
+  // was always right -- auth-core's principal.ts filters `revoked_at IS NULL`
+  // on the resolution path -- so a revoked grant genuinely stopped working.
+  // What was wrong was this surface SAYING it was still live, which is worse
+  // than it sounds: the entire point of these tools is letting a human check
+  // who can reach their mail.
+  const live =
+    r.revoked_at === null && (r.expires_at === null || r.expires_at > Date.now());
   return {
     grantId: r.id,
     [side === "grantee" ? "grantee" : "target"]: {
@@ -246,6 +255,7 @@ function renderGrant(r: GrantRow, side: "grantee" | "target") {
     createdBy: r.created_by,
     createdAt: new Date(r.created_at).toISOString(),
     expiresAt: r.expires_at === null ? null : new Date(r.expires_at).toISOString(),
+    revokedAt: r.revoked_at === null ? null : new Date(r.revoked_at).toISOString(),
     live,
     warnings: grantWarnings(scopes, r.collection, r.expires_at),
   };
@@ -264,6 +274,7 @@ export async function grantsAsGrantee(db: D1Database, accountIds: string[]): Pro
             (SELECT i.email FROM identities i WHERE i.account_id = g.target_account_id LIMIT 1) AS other_email
      FROM grants g
      WHERE g.grantee_account_id IN (${marksFor(accountIds)})
+       AND g.revoked_at IS NULL
      ORDER BY g.created_at DESC`,
   )
     .bind(...accountIds)
@@ -283,6 +294,7 @@ export async function grantsAsTarget(db: D1Database, accountId: string): Promise
             (SELECT i.email FROM identities i WHERE i.account_id = g.grantee_account_id LIMIT 1) AS other_email
      FROM grants g
      WHERE g.target_account_id = ?
+       AND g.revoked_at IS NULL
      ORDER BY g.created_at DESC`,
   )
     .bind(accountId)
@@ -569,6 +581,8 @@ interface AuditRow {
   method: string;
   at: number;
   grant_live: number;
+  grant_revoked_at: number | null;
+  grant_scopes: string | null;
 }
 
 /**
@@ -593,7 +607,14 @@ export async function readAccessLog(
 ): Promise<AuditRow[]> {
   const { results } = await db.prepare(
     `SELECT ga.id, ga.grant_id, ga.principal, ga.method, ga.at,
-            (SELECT COUNT(*) FROM grants g WHERE g.id = ga.grant_id) AS grant_live
+            -- COUNT(*) alone counted the TOMBSTONE: since s03.A revocation is
+            -- an UPDATE, not a DELETE, so the row survives and this was always
+            -- >= 1. Every historical access rendered "live" and the
+            -- underRevokedGrants summary was permanently 0.
+            (SELECT COUNT(*) FROM grants g
+              WHERE g.id = ga.grant_id AND g.revoked_at IS NULL) AS grant_live,
+            (SELECT g.revoked_at FROM grants g WHERE g.id = ga.grant_id) AS grant_revoked_at,
+            (SELECT g.scopes FROM grants g WHERE g.id = ga.grant_id) AS grant_scopes
      FROM grant_audit ga
      WHERE ga.account_id = ? AND ga.at >= ?
      ORDER BY ga.at DESC LIMIT ?`,
@@ -644,15 +665,32 @@ function renderAudit(r: AuditRow) {
     principal: r.principal,
     ...parseAuditMethod(r.method),
     grantId: r.grant_id,
-    grantStatus: r.grant_live > 0 ? "live" : "revoked-or-deleted",
+    grantStatus: r.grant_live > 0 ? "live" : r.grant_revoked_at !== null ? "revoked" : "deleted",
     ...(r.grant_live > 0
       ? {}
-      : {
-          note:
-            "This grant no longer exists — it was revoked or deleted. The access below " +
-            "happened while it was live. Revocation is a hard DELETE with no tombstone, so " +
-            "the grant's original scopes cannot be recovered.",
-        }),
+      : r.grant_revoked_at !== null
+        ? {
+            // s03.A turned revocation into a tombstone, which makes this case
+            // BETTER than the note used to claim: the row survives, so both the
+            // revocation time and the original scopes are recoverable. The old
+            // text ("a hard DELETE with no tombstone, so the grant's original
+            // scopes cannot be recovered") described the pre-s03.A world and
+            // would have told an auditor to stop looking.
+            revokedAt: new Date(r.grant_revoked_at).toISOString(),
+            scopesAtAccess: r.grant_scopes === null ? null : (JSON.parse(r.grant_scopes) as string[]),
+            note:
+              "This grant was revoked. The access below happened while it was live — " +
+              "revocation does not retroactively un-do it. Because revocation is a " +
+              "tombstone rather than a delete, the grant's scopes are shown above as " +
+              "they stood.",
+          }
+        : {
+            note:
+              "This grant row is gone entirely — not revoked, deleted. Revocation " +
+              "leaves a tombstone, so a missing row means something bypassed the " +
+              "revocation path. The access below happened while the grant was live, " +
+              "but its original scopes cannot be recovered.",
+          }),
   };
 }
 
