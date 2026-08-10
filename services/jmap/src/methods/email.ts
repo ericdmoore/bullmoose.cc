@@ -5,6 +5,7 @@ import { buildMime } from "@bullmoose/mime";
 import {
   htmlToIndexText,
   normalizeMessageId,
+  previewText,
   type EmailAddress,
   type EmailFilter,
   type EmailRow,
@@ -506,7 +507,7 @@ async function createDraft(
     to,
     cc,
     bcc,
-    preview: (text ?? "").slice(0, 256),
+    preview: previewText(text, html),
     // Full body into the FTS index (common/004) — a draft is searchable by
     // its own text, not just its first 256 characters.
     bodyText: text && text.trim() !== "" ? text : htmlToIndexText(html),
@@ -635,7 +636,7 @@ async function importOne(
     to: importAddresses(parsed.to ?? []),
     cc: importAddresses(parsed.cc ?? []),
     bcc: importAddresses(parsed.bcc ?? []),
-    preview: (parsed.text ?? "").slice(0, 256),
+    preview: previewText(parsed.text, parsed.html),
     // Imported mail is indexed on the same terms as delivered mail
     // (common/004) — an HTML-only message has no `.text` at all.
     bodyText:

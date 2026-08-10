@@ -448,11 +448,20 @@ export interface EmailFtsText {
 /**
  * Strip an HTML body down to indexable words.
  *
- * Not a sanitizer and not a renderer — nothing here is ever displayed. It
- * exists because HTML-only mail (most newsletters, most transactional mail)
- * has NO text/plain part, so `parsed.text` is undefined and such a message
- * would otherwise be searchable by subject and sender alone. `<script>` and
- * `<style>` go first, or their contents become "words".
+ * Not a sanitizer. It exists because HTML-only mail (most newsletters, most
+ * transactional mail) has NO text/plain part, so `parsed.text` is undefined
+ * and such a message would otherwise be searchable by subject and sender
+ * alone. `<script>` and `<style>` go first, or their contents become "words".
+ *
+ * ⚠️ This output IS displayed, via `previewText` below — the earlier version
+ * of this comment said it never was, which stopped being true when `preview`
+ * started falling back to it. That matters because the entity decoding here
+ * runs in the *unsafe* direction: `&lt;script&gt;` becomes `<script>`. Correct
+ * for an index (you want the words) and correct per RFC 8621, which defines
+ * `preview` as *plaintext* — so the obligation to escape sits with whatever
+ * renders it. Our own client satisfies that by construction (Preact escapes
+ * `{email.preview}`); a third-party JMAP client is responsible for its own.
+ * Do not interpolate this into HTML without escaping.
  */
 export function htmlToIndexText(html: string | null | undefined): string {
   if (!html) return "";
@@ -468,6 +477,30 @@ export function htmlToIndexText(html: string | null | undefined): string {
     .replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d)))
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * The `preview` column: a one-line plaintext fragment, RFC 8621 §4.1.4.
+ *
+ * All three write paths (delivery, `Email/set` create, `Email/import`) cut it
+ * as `(parsed.text ?? "").slice(0, 256)`, which yields **empty string** for
+ * HTML-only mail — i.e. for most newsletters and most transactional mail, the
+ * thread list showed a blank line. This is the same `text`-then-`html` fallback
+ * the FTS `bodyText` sites already use, so preview and index now agree on what
+ * a message says.
+ *
+ * Whitespace is collapsed on BOTH paths, which is a deliberate change to the
+ * plaintext one: a preview is rendered as a single line, and letting the two
+ * paths differ in shape (HTML collapsed, plaintext not) would be worse than
+ * either. Cut happens after collapsing, so 256 characters means 256 visible
+ * ones rather than 256 mostly-newlines.
+ */
+export function previewText(
+  text: string | null | undefined,
+  html: string | null | undefined,
+): string {
+  const plain = text && text.trim() !== "" ? text : htmlToIndexText(html);
+  return plain.replace(/\s+/g, " ").trim().slice(0, 256);
 }
 
 /** `[{name, email}]` → "Ada Lovelace ada@example.com", the form FTS indexes. */
