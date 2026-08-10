@@ -37,7 +37,16 @@ export default defineConfig({
     // `@bullmoose/jmap-core` through the SAME alias block above (do not remove
     // it: a git-worktree lookup would otherwise resolve the wrong checkout).
     // The Astro/Preact SHELL is not unit-tested — `astro build` is its bar.
-    include: ["packages/**/*.test.ts", "services/**/*.test.ts", "webmail/**/*.test.ts"],
+    // `infra/` is in here for migrations.test.ts, which applies the real .sql
+    // files to node:sqlite and proves each drift check bites. Deploy DDL is the
+    // one thing with no other test surface — it runs against a live D1 or not
+    // at all — so it earns a place in the suite that gates `main`.
+    include: [
+      "packages/**/*.test.ts",
+      "services/**/*.test.ts",
+      "webmail/**/*.test.ts",
+      "infra/**/*.test.ts",
+    ],
     // Still exclude the marketing site (src/) and any build output; webmail/dist
     // and webmail/node_modules are covered by the two globs that precede them.
     exclude: ["**/node_modules/**", "**/dist/**", "src/**"],
