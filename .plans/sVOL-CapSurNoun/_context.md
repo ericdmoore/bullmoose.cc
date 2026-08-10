@@ -10,7 +10,7 @@
 >
 > | Was | Now |
 > |---|---|
-> | 2 test files, 19 tests | **34 test files, 900 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
+> | 2 test files, 19 tests | **46 test files, 1040 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
 > | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
 > | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
 > | test files excluded from typecheck | typechecked in both configs |
@@ -60,7 +60,7 @@ Five things that are not what they look like:
    aspirational.
 5. **MCP is far narrower than its docs suggest.** Four read-only analytics tools. An agent on
    MCP today cannot read a message, send mail, or touch contacts, calendar, or the vault —
-   despite the vault living in the same worker. The agent's real capability comes from the
+   despite the vault's metadata layer living in the same worker (its crypto moved to services/bureau in Bureau T3a). The agent's real capability comes from the
    **CLI polling JMAP** (`packages/cli/src/agent.ts`), not from MCP.
 
 ---
@@ -315,7 +315,7 @@ is the only thing that catches this failure mode, and it is now cheap.
 
 ## 5. Test infrastructure — the honest state
 
-**34 test files, 900 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
+**46 test files, 1040 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
 worktree agents: without it Node's upward `node_modules` lookup escapes the worktree and
