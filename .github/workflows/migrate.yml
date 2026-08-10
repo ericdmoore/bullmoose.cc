@@ -1,0 +1,54 @@
+name: Migrate D1
+
+# Runs `infra/bootstrap.mjs migrate` — the DDL a schema re-run cannot perform.
+# See infra/migrations.mjs for the list and why each entry exists.
+#
+# SEPARATE from deploy-mail.yml on purpose. Two of these columns
+# (accounts.deleted_at, grants.revoked_at) sit in verifyBearer's path, so a
+# worker deployed against a database missing them authenticates NOBODY. Running
+# migrations as their own step, before any deploy, makes that ordering something
+# you do rather than something you remember.
+#
+# Manual-only. Schema changes should never ride in on a push.
+#
+# ⚠️ This deliberately runs ONE phase. Never `node infra/bootstrap.mjs` bare
+# here: the default is every phase including `secrets`, which on a machine
+# without .env.deploy would mint fresh values over the live ones —
+# VAULT_MASTER_KEY unrecoverably. bootstrap now refuses that without --rotate,
+# and this workflow never gives it the chance.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview only — print every statement, touch nothing"
+        type: boolean
+        default: true
+
+jobs:
+  migrate:
+    name: Apply pending migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      # The round-trip test proves each check actually detects its own absence.
+      # If it fails, the migration list disagrees with the schema and nothing
+      # should touch a live database until that is understood.
+      - run: npx vitest run infra/migrations.test.ts
+      - name: Migrate
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            node infra/bootstrap.mjs migrate --dry-run
+          else
+            # --yes: wrangler prompts before each remote d1 execute, and there is
+            # no tty here. The guard that matters is the per-migration `check`,
+            # which hard-stops if a statement ran and its check still fails.
+            node infra/bootstrap.mjs migrate --yes
+          fi
