@@ -59,13 +59,21 @@ facade over one row of the armed-responder primitive (`vacation.ts:4-9`).
 
 **`Identity` — read-only, and the read is partly synthetic.**
 
-`Identity/get` (`identity.ts:5`) is the only registered `Identity` method — confirmed
-against the full 38-method registry (`services/jmap/src/methods/index.ts:15-30`);
-`grep -r "Identity/set"` over the source tree returns zero hits. Worse for a settings
-screen: when the `identities` table is empty, `Identity/get` **synthesizes**
-`identity_default` from the principal (`identity.ts:12-16`), and every response hardcodes
-`replyTo: null`, `bcc: null`, `textSignature: ""`, `htmlSignature: ""`, `mayDelete: false`
-(`identity.ts:26-30`). Signatures and send-as are unreachable on every surface.
+⚠️ **STALE — `006` shipped, so this unit's only dependency is already satisfied.** The
+paragraph below described the world before that. `Identity/set` **is** registered
+(`services/jmap/src/methods/identity.ts:167`), the registry is now 48 methods, and the CLI
+carries signatures. Read what follows as the motivation, not the current state — and note
+the practical consequence: **`024` is unblocked and is the cheapest WebUI unit on the
+board.** The one caveat that survives is real: `VacationResponse.htmlBody` is permanently
+`null` server-side, so keep that editor plain-text.
+
+> ~~`Identity/get` (`identity.ts:5`) is the only registered `Identity` method — confirmed
+> against the full 38-method registry (`services/jmap/src/methods/index.ts:15-30`);
+> `grep -r "Identity/set"` over the source tree returns zero hits.~~ Worse for a settings
+> screen: when the `identities` table is empty, `Identity/get` **synthesizes**
+> `identity_default` from the principal (`identity.ts:12-16`), and every response hardcodes
+> `replyTo: null`, `bcc: null`, `textSignature: ""`, `htmlSignature: ""`, `mayDelete: false`
+> (`identity.ts:26-30`) — that synthesis is unchanged.
 
 > Second ref correction: `_context.md:135` cites those hardcoded fields at
 > `identity.ts:31-34`. They are at **`:26-29`** (`mayDelete` at `:30`).

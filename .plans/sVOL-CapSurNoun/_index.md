@@ -12,20 +12,29 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 
 | Noun | JMAP | CLI | MCP | DAV | WebUI | GraphQL | Transport |
 |---|---|---|---|---|---|---|---|
-| Email | `CRUD` | `-R~-` | `CRUD` | `----` | `----` | `----` | `C---` |
-| Mailbox | `CRUD` | `CRUD` | `-R--` | `----` | `----` | `----` | `~` |
-| Thread | `-R--` | `----` | `----` | `----` | `----` | `----` | n/a |
-| EmailSubmission | `CR--` | `C---` | `----` | `----` | `----` | `----` | `C---` |
+| Email | `CRUD` | `-R~-` | `CRUD` | `----` | `CRUD` | `----` | `C---` |
+| Mailbox | `CRUD` | `CRUD` | `-R--` | `----` | `-R--` | `----` | `~` |
+| Thread | `-R--` | `----` | `----` | `----` | `-R--` | `----` | n/a |
+| EmailSubmission | `CR--` | `C---` | `----` | `----` | `C---` | `----` | `C---` |
 | AddressBook | `CRUD` | `~R--` | `-R--` | `CRUD` | `----` | `----` | n/a |
 | ContactCard | `CRUD` | `CR--` | `CRUD` | `CRUD` | `----` | `----` | n/a |
 | Calendar | `CRUD` | `-R--` | `-R--` | `CRUD` | `----` | `----` | n/a |
 | CalendarEvent | `CRUD` | `-R--` | `CRUD` | `CRUD` | `----` | `----` | n/a |
 | **FileNode** | `CRUD` | `----` | `----` | `----` | `----` | `----` | n/a |
-| Agents | `-RU-` | `-RU-` | `----` | n/a | `----` | `----` | `C---` |
-| Secrets | n/a | `CRUD` | `----` | n/a | `----` | `----` | n/a |
+| Agents | `-RU-` | `-RU-` | `----` | n/a | `-R--`† | `----` | `C---` |
+| Secrets | n/a | `CRUD` | `----` | n/a | `-R-D`† | `----` | n/a |
 | HumanSettings | `~R~-` | `-RU-` | `----` | n/a | `----` | `----` | n/a |
 | IdentitySetup | `CRUD` | `CRUD` | `----` | `~` | `----` | `----` | n/a |
 | SystemAdmin | `CRUD` | `CRUD` | `----` | n/a | `----` | `----` | n/a |
+
+† **Agents and Secrets render, but only against `?demo=1`.** `s03.E` shipped both screens
+with 128 tests, and the client code is real — but four of the five endpoints it reads
+(`/console/agents`, `/console/agents/{id}`, `/console/accounts/{id}/resources`,
+`/console/resources/{c}/{id}`) are **requested, not served**. Only `GET /vault/credentials`
+is live, which is why Secrets shows `-R-D` and Agents only `-R--`. Against a real token the
+per-resource view is an "unavailable" panel naming the missing route rather than invented
+data. The remaining cost is a browser-reachable projection of sVOL `015`'s introspection
+queries, which today sit behind `x-internal-token` on the agent worker.
 
 **What the grid says at a glance:**
 
