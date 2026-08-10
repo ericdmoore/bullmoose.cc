@@ -327,6 +327,51 @@ the tool result is clean before it can get there.
 
 ---
 
+## 7a. Credential-returning responses — who chooses the scope
+
+A real case, surfaced in review: *"an agent asks the AWS MCP to give it access to a new
+sandbox."* If that response carries **new** credentials (STS session creds), §7's redaction
+will not catch them — it scrubs values the Bureau **injected**, matching "a precise value
+list", and a freshly-minted credential was never on that list.
+
+**An earlier note called this a violation of invariant 1. That was too strong**, and §3
+already says why: Class B *deliberately* hands the caller "a scoped, expiring artifact."
+An STS credential with a session policy is exactly that shape — the same category as
+`kSigning` (one service/region/day) and an OAuth access token (dies on the provider's
+clock). Invariant 1 protects the **root** credential. Bounded artifacts are the design's
+own escape hatch, not a breach of it.
+
+**The real control is who chooses the scope**, and that is a §5.2 question — *policy is our
+opinion; the capability wall is the guarantee*:
+
+| route | who composes the request | who picks the blast radius |
+|---|---|---|
+| Class A `fetch` passthrough | **the agent** | **the agent** — asks for no session policy, gets the whole role |
+| a Bureau **verb** | the Bureau | **the Bureau** — the session policy is config, not caller input |
+
+So a credential-minting operation is **a verb, not a passthrough**. That is §2's rule
+applied unchanged: *the Bureau implements the permutation; callers name it.* The agent names
+the operation; scope is imposed. And `--allow` is what keeps a credential-minting endpoint
+from being reachable through plain `fetch` in the first place.
+
+**Do not solve this by detecting credentials in responses.** It is unsolvable in general and
+fails in the direction that hurts: a false negative leaks, a false positive corrupts real
+data, and you cannot regex for a value you have never seen. Declaration at mint time beats
+sniffing at runtime — the same reason `--header` is config rather than caller-supplied (§5).
+
+**Two open sub-questions**, neither blocking T3:
+1. When a verb *does* mint a new credential, should the Bureau **capture** it (seal it, hand
+   back a new `credRef` — another coat-tag) rather than return the value? That preserves
+   invariant 1 fully and lets the agent's capability set grow without it ever holding a
+   secret. Probably yes for anything long-lived; unnecessary for short-lived artifacts that
+   are already bounded.
+2. **Does the sandbox case need AWS at all?** `mcp-auth.md` §17's Cloudflare update argues
+   not: a Dynamic Worker gets *"only the bindings you provide"*, so a native sandbox needs no
+   external credential — the problem stops existing rather than being solved. Prefer that
+   route where the workload can run on-substrate.
+
+---
+
 ## 8. OAuth token lifetime — scope it to the invocation
 
 The **provider** sets the access-token TTL (typically ~1h); the Bureau holds the refresh
