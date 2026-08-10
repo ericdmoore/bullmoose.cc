@@ -78,6 +78,43 @@ time**, aggregated and always labelled as human-supplied. A number the machine g
 number you asserted must never render the same way — that is the same discipline
 `s03.E`'s caveats already apply to the access log.
 
+### 4. Search everything — but the index tiers, not the API
+
+Searching attachment bodies is the right ambition and it is also the first feature that
+genuinely cannot be free. Message-body FTS5 costs ~0.6 KB/message and moved the single-shard
+ceiling from ~300K to ~200K. Attachment text is a different order: one 20-page PDF carries
+more text than a hundred emails, and extracting it means PDF/DOCX/XLSX parsing — and for
+scans, OCR — which is CPU-bound work that a request-scoped Worker is the wrong shape for.
+
+So the tiering is real, and it lands exactly where the `$0/mo` line already is:
+
+| tier | index | infra |
+|---|---|---|
+| **free** | subject, sender, recipients, message body | D1 + FTS5, serverless, already built |
+| **premium, opt-in** | + attachment text, OCR, possibly embeddings | always-on: extraction queue + durable worker or Containers |
+
+**The constraint that makes this work: the premium tier is an INDEX, not a different API.**
+`/search` and the MCP `search` tool must have one shape whether or not the extra index
+exists — the same query, the same result envelope, with coverage *declared* in the response
+rather than implied by which endpoint you called. If upgrading changes the API, every
+consumer has to learn about tiers, and the MCP tool would need two versions.
+
+That means the scope note from T6 is not cosmetic — it is the tier boundary made visible:
+
+```
+searched: mail bodies (indexed) · contacts, calendar (scanned)
+not searched: attachment contents — requires the extraction index
+```
+
+- **Opt-in and budgetary, never automatic.** Turning it on provisions billable always-on
+  infra, so it belongs to the same consent-and-ledger machinery as agent spend, not to a
+  settings checkbox that silently starts a meter.
+- **This is where sharding by year earns its keep.** Extraction is a per-object one-time
+  cost; storage is forever. Recent years in the rich index, cold years body-only, is a much
+  better default than all-or-nothing.
+- The free tier must never *degrade* when the premium one is off. Today's mail search stays
+  exactly as it is.
+
 ---
 
 ## Tasks (in dependency order)
@@ -164,6 +201,37 @@ honestly:
 - **`/agents/<id>`** — the per-agent dossier: pending, upcoming queue, historical
   approved/declined, and the three numbers from refinement 3.
 
+**`/agents/<id>` must also show how the agent is CONFIGURED**, not just what it has done.
+Three questions, and they have three different answers today:
+
+| question | state |
+|---|---|
+| **what can it read / edit / do?** | ✅ modelled and rendered — `s03.E`'s scope expansion through the real `hasScope`, plus grants and credential references |
+| **who can talk to it?** | ⚠️ **enforced but invisible.** `config.allowedSenders` gates inbound at `services/agent/src/index.ts:209-211` (`skipped: <sender> not in allowedSenders`) — and the console renders `replyMode` but never `allowedSenders` |
+| **who will it respond to?** | ❌ **not bounded at all.** There is no `allowedRecipients`, no outbound address allowlist, nothing anywhere in `services/` or `packages/` |
+
+That third row is the finding. **Inbound has a gate; outbound has none.** For `analyst@` it
+does not bite — `digestTargets` is a fixed operator-written map. For a *social* agent it is
+the whole problem: `docs/agents/motivatingExamples.md:82-111` describes `photos@` as
+CC-invited into event folders, receiving images from arbitrary external senders, joining
+*another account's* `photos@`, and syndicating outward to pixelfed/bluesky — with
+`Required: []`, i.e. no standing permissions, it just waits for mail.
+
+An agent whose whole job is emailing many people, with no bound on who it may email, is the
+confused-deputy shape. **This is the same control the Bureau already built, in a different
+realm:** `services/bureau/src/binding.ts` binds a credential to the origins it may reach, and
+refuses when unbound (invariant 5, fail closed). An agent that sends mail needs the
+equivalent for addresses — and by the same reasoning, unbound should mean *cannot send*,
+not *may send anywhere*.
+
+**`config_json` is also the wrong home for this.** It is an untyped blob with no schema and
+no validation; `digestTargets` is an `analyst@`-specific key sharing a namespace with every
+other agent's settings. `photos@` would add event folders, invited addresses and syndication
+targets to the same bag. The per-agent shape genuinely varies — which argues for a small
+typed core (`allowedSenders`, `allowedRecipients`, `replyMode`, `enabled`) that the console
+renders and enforces uniformly, plus an agent-specific remainder the console shows read-only
+rather than pretending to understand.
+
 This is **not new design work.** `ActionProposal` is fully specified in
 `.plans/s03.D-coexistence/arch.md:19-36` — `status pending | approved | rejected | held |
 expired`, `decision { by, reason, note }`, `rationale` always present, `evidence[]`, and
@@ -225,7 +293,9 @@ The realms are not equally searchable, and shipping without saying so would repe
   primitive, and it makes `/search` and the MCP tool the same query planner rather than two.
 
 **Done when:** one query returns results from three realms; the scope note names what is
-indexed vs scanned; the MCP `search` tool and the page share a code path.
+indexed vs scanned **and what is not searched at all**; the MCP `search` tool and the page
+share a code path; the response envelope declares its own coverage, so adding the attachment
+index later changes the data and not the shape.
 
 ### T7 — Real login, folded into `s02` · *retire the interim door*
 
@@ -280,3 +350,14 @@ T1 origin + door ──┬─→ T2 /settings ───────────�
    per-proposal, optional, aggregated up — a per-period number invites invention.*
 4. **Does `/search` search *other people's* shared realms?** *Recommendation: no, not in the
    first cut. Cross-account search is a permissions surface of its own.*
+5. **Does an agent with no `allowedRecipients` send freely, or not at all?** The Bureau
+   answered the same question with fail-closed (invariant 5). *Recommendation: match it —
+   unbound means cannot send. It is the safer default and the inconsistency of having two
+   answers to one question is worse than either answer.*
+6. **Where does attachment extraction run?** Containers, a queue plus a durable consumer, or
+   an external service. *Recommendation: defer until someone actually wants it — the tiering
+   decision above is what needs to be true now, and it holds regardless of which one wins.*
+7. **Does the typed agent-config core get its own columns, or stay in `config_json`?**
+   *Recommendation: columns for the four the console enforces (`allowedSenders`,
+   `allowedRecipients`, `replyMode`, `enabled`), blob for the agent-specific remainder —
+   otherwise the console is parsing untyped JSON to decide what to warn about.*
