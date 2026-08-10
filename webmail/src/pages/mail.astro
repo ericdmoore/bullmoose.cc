@@ -1,0 +1,21 @@
+---
+// The mail section (s03.C · T2, moved to `/mail` by s07 T1). The Astro page is
+// a thin static host; the mail client is one Preact island (arch.md §1,
+// "SPA-in-an-island").
+//
+// It moved off `/` because `/` is not a section: home is the Looking Ahead +
+// Waiting Approvals view (s07 T0), and leaving the mail client there would
+// have made the product "a mail client with extras" by default — the exact
+// claim the s07 devPlan's nav ordering argues against.
+//
+// client:only — the shell is authenticated and interactive, so it runs in the
+// browser rather than being rendered at build time. (A comment out here in the
+// template would land in the document ahead of <html>, so it lives in the
+// frontmatter.)
+import AppShell from "../components/AppShell.tsx";
+import App from "../layouts/App.astro";
+---
+
+<App title="bullmoose webmail" section="mail">
+  <AppShell client:only="preact" />
+</App>

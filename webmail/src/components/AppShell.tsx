@@ -94,6 +94,14 @@ export default function AppShell({ client: injected }: Props) {
         let active = injected;
         if (!active) {
           const resolved = resolveClient();
+          // No session → the door. This used to fall through to demo data,
+          // which on a public origin means a stranger reading fake mail and
+          // believing it (client.ts). The type has no client on this branch,
+          // so there is nothing to render even by accident.
+          if (resolved.mode === "unauthenticated") {
+            location.assign("/login");
+            return;
+          }
           active = resolved.client;
           if (!cancelled) {
             setMode(resolved.mode);
@@ -508,8 +516,13 @@ export default function AppShell({ client: injected }: Props) {
       <main class="shell shell-error">
         <h1>bullmoose webmail</h1>
         <p>Could not reach the server: {fatal}</p>
+        {/* This used to tell the user to append `?token=…`, i.e. to type a
+            live credential into the address bar — which is the leak s07 T1
+            exists to close (lib/app/tokenInUrl.test.ts). The door does the
+            same job without the URL ever seeing it. */}
         <p class="muted">
-          Append <code>?demo=1</code> to browse sample data, or <code>?token=…</code> to sign in.
+          <a href="/login">Sign in again</a>, or append <code>?demo=1</code> to browse sample
+          data.
         </p>
       </main>
     );
@@ -528,7 +541,10 @@ export default function AppShell({ client: injected }: Props) {
   return (
     <div class="app">
       <header class="topbar">
-        <span class="brand">bullmoose</span>
+        {/* Brand and identity moved up into the shared chrome (layouts/App.astro)
+            when the app grew a section nav — two "bullmoose" wordmarks and two
+            copies of the signed-in address stacked on one screen. What is left
+            here is the mail section's own bar: search, and the agent seam. */}
         <form
           class="search"
           onSubmit={(ev) => {
@@ -564,13 +580,20 @@ export default function AppShell({ client: injected }: Props) {
           absent this renders NOTHING — no disabled button, no link to a page
           that would only explain itself. The plain-client floor (arch.md §8.6)
           is that the mail client is complete without it.
+
+          It survives the section nav rather than being replaced by it, and the
+          reason is exactly that gate: the nav is STATIC markup (App.astro), so
+          it cannot know whether this session carries the agent capability —
+          only the browser, after `session()`, knows that. A capability-less
+          account therefore sees "Agents" in the nav; this seam is the one that
+          still tells the truth, and the duplication is the cost of not
+          hydrating the whole nav to hide one word.
         */}
         {agentSeam ? (
-          <a class="console-link" href="/console">
+          <a class="console-link" href="/agents">
             Agents
           </a>
         ) : null}
-        <span class="session">{session.username}</span>
       </header>
 
       {/* Search honesty: what the server actually matches (see search.ts). */}
