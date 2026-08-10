@@ -31,8 +31,15 @@ const BASE_KEY = "bullmoose.apiBase";
 export function resolveClient(search = globalThis.location?.search ?? ""): ResolvedClient {
   const params = new URLSearchParams(search);
 
+  // `?agentcap=0` drops `urn:bullmoose:params:jmap:agent` from the demo
+  // session, so the plain-client floor (arch.md §8.6) can be DRIVEN in a
+  // browser rather than only asserted in unit tests — s03.C T2's lesson was
+  // that `astro build` and a green suite both reported success while the page
+  // rendered empty. Demo-only: it configures the fake, never the real client.
+  const demoOpts = params.get("agentcap") === "0" ? { agentCapability: false } : {};
+
   if (params.get("demo") === "1") {
-    const demo = createDemoBackend();
+    const demo = createDemoBackend(demoOpts);
     return { client: demo.client, mode: "demo", demo, reason: "?demo=1" };
   }
 
@@ -40,7 +47,7 @@ export function resolveClient(search = globalThis.location?.search ?? ""): Resol
   const baseUrl = params.get("api") ?? readStorage(BASE_KEY) ?? defaultBase();
 
   if (!token) {
-    const demo = createDemoBackend();
+    const demo = createDemoBackend(demoOpts);
     return {
       client: demo.client,
       mode: "demo",

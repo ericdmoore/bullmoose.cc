@@ -47,8 +47,10 @@ export interface FakeJmapClientOptions {
 
 const DEFAULT_ACCOUNT = "acct-fake";
 
-/** A full-capability default session, so the plain path "just works". */
-function defaultSession(): Session {
+/** A full-capability default session, so the plain path "just works".
+ *  Exported so `demo.ts` can derive a session with one capability REMOVED —
+ *  key presence is the gate, so removal is the only faithful simulation. */
+export function defaultSession(): Session {
   const allCaps = {
     [CORE_CAP]: {},
     [MAIL_CAP]: {},

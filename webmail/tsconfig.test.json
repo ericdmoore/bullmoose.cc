@@ -7,8 +7,17 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": ["node"],
-    "noEmit": true
+    "noEmit": true,
+    // `@bullmoose/auth-core` is redirected to a local declaration on purpose —
+    // see the header of `src/types/auth-core.d.ts`. tsc checks the SHAPE here;
+    // vitest imports the REAL module through `resolve.alias` and checks the
+    // BEHAVIOUR. Following the real source with tsc instead would drag Worker
+    // code into a DOM-typed program, which is what the root tsconfig excludes
+    // `webmail` to avoid.
+    "paths": {
+      "@bullmoose/auth-core": ["./src/types/auth-core.d.ts"]
+    }
   },
-  "include": ["src/**/*.test.ts", "src/**/*.ts", "src/**/*.tsx"],
+  "include": ["src/**/*.test.ts", "src/**/*.ts", "src/**/*.tsx", "src/types/*.d.ts"],
   "exclude": ["dist", "node_modules", ".astro"]
 }

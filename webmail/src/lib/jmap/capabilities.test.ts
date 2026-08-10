@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { consoleGate } from "../console/gate";
+import { createDemoBackend } from "./demo";
 import {
   AGENT_CAP,
   CALENDARS_CAP,
@@ -50,5 +52,38 @@ describe("capabilityForMethod", () => {
     ["AgentInvocation/get", AGENT_CAP],
   ])("maps %s → %s", (method, cap) => {
     expect(capabilityForMethod(method)).toBe(cap);
+  });
+});
+
+// ── the plain-client floor, drivable ────────────────────────────────────────
+
+describe("createDemoBackend can drop the agent capability", () => {
+  it("advertises it by default", async () => {
+    const { client } = createDemoBackend();
+    expect(hasAgentCapability(await client.session())).toBe(true);
+  });
+
+  it("removes the KEY — not sets it falsy — when asked", async () => {
+    // The gate is `hasOwnProperty`, so a falsy value would still read as
+    // present. Removal is the only faithful simulation of a server that does
+    // not advertise the capability, and this is what makes `?agentcap=0`
+    // exercise the real floor in a browser.
+    const { client } = createDemoBackend({ agentCapability: false });
+    const session = await client.session();
+    expect(hasAgentCapability(session)).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(session.capabilities, AGENT_CAP)).toBe(false);
+    // …including on the account, which is where a surface would look next.
+    for (const account of Object.values(session.accounts)) {
+      expect(
+        Object.prototype.hasOwnProperty.call(account.accountCapabilities, AGENT_CAP),
+      ).toBe(false);
+    }
+    // Everything else is untouched: the mail client is unaffected.
+    expect(hasCapability(session, MAIL_CAP)).toBe(true);
+    expect(hasCapability(session, SUBMISSION_CAP)).toBe(true);
+  });
+
+  it("keeps the console gate closed against that session", () => {
+    expect(consoleGate({ capabilities: {} }).visible).toBe(false);
   });
 });
