@@ -145,6 +145,20 @@ check "Email/import         present"        ok jmap_outcome "Email/import" "$SET
 check "Email/queryChanges   throws (026)"   cannotCalculateChanges \
       jmap_outcome "Email/queryChanges" "{\"accountId\":$ACC,\"sinceQueryState\":\"0\"}"
 
+# Every other assertion in this file proves a method *dispatches*. This one
+# proves full-text search actually *works*: `text` is the condition common/004
+# moved off a full-table LIKE scan onto FTS5. A pre-common/004 deployment
+# answers `ok` here too (LIKE would also match), so this does NOT detect a
+# missing index — what it detects is the migration hazard in docs/DEPLOY.md,
+# where `emails_fts_map` exists but `emails_fts` was never rebuilt with
+# `contentless_delete=1`. That database still delivers and still queries; it
+# fails only on destroy — which this script never exercises, because every
+# assertion here is a read-only no-op against a live deployment. Detecting
+# that hazard needs a real create-then-destroy round trip, which this file
+# is deliberately not in the business of doing. Verify it by hand at deploy.
+check "Email/query text     accepts FTS condition" ok \
+      jmap_outcome "Email/query" "{\"accountId\":$ACC,\"filter\":{\"text\":\"bullmoose\"},\"limit\":1}"
+
 section "Mailbox — grid says CRUD on JMAP (unit 004 closed the gap)"
 check "Mailbox/get          present"        ok           jmap_outcome "Mailbox/get"   "$GET_NOOP"
 check "Mailbox/query        present"        ok           jmap_outcome "Mailbox/query" "$QRY_NOOP"

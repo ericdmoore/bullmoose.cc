@@ -10,7 +10,7 @@
 >
 > | Was | Now |
 > |---|---|
-> | 2 test files, 19 tests | **55 test files, 1248 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
+> | 2 test files, 19 tests | **59 test files, 1338 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
 > | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
 > | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
 > | test files excluded from typecheck | typechecked in both configs |
@@ -315,7 +315,7 @@ is the only thing that catches this failure mode, and it is now cheap.
 
 ## 5. Test infrastructure — the honest state
 
-**55 test files, 1248 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
+**59 test files, 1338 tests** (was 2 files / 19 at the original audit; 1248 when this line was first written — Bureau T3 and the FTS wiring have landed since). `npm test` runs in ~7s and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
 worktree agents: without it Node's upward `node_modules` lookup escapes the worktree and
