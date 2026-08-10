@@ -95,14 +95,46 @@ CREATE INDEX IF NOT EXISTS emails_received ON emails (account_id, received_at DE
 CREATE INDEX IF NOT EXISTS emails_thread   ON emails (account_id, thread_id);
 CREATE INDEX IF NOT EXISTS emails_msgid    ON emails (account_id, message_id);
 
--- Full-text search backing Email/query text filters.
--- TODO: populate at ingest and swap the LIKE fallback in queryEmails for
--- an FTS MATCH once rowid<->email id mapping is in place.
+-- Full-text search backing Email/query's `text` filter (common/004).
+--
+-- Written by `Mailstore.insertEmail` and cleared by `Mailstore.destroyEmail`,
+-- so every server write path — ingest, Email/set create, Email/import, the
+-- agent worker — maintains it without knowing it exists.
+--
+-- `content=''` keeps this CONTENTLESS: only the inverted index is stored, not
+-- a second copy of the body. That is the whole reason full bodies are
+-- affordable here (see docs/architecture/capacity-and-scaling.md §1).
+-- `contentless_delete=1` is what makes per-message removal possible at all —
+-- without it SQLite refuses `DELETE FROM emails_fts`, and the only way to
+-- retract a row would be to re-supply the exact original text, which lives in
+-- R2 and not in D1. It requires SQLite >= 3.43 (D1 and node:sqlite both ship
+-- newer). ⚠️ A pre-common/004 database has this table WITHOUT the flag, and the
+-- `IF NOT EXISTS` below will not upgrade it — while `emails_fts_map` below IS
+-- an ordinary CREATE TABLE and will appear. The two halves then disagree and
+-- the failure is partial: delivery keeps working (INSERT is allowed on a
+-- contentless table) but `Email/set destroy` throws "cannot DELETE from
+-- contentless fts5 table" and rolls back. Migrate by hand FIRST — docs/DEPLOY.md,
+-- "Upgrading an EXISTING database — common/004 full-text search".
 CREATE VIRTUAL TABLE IF NOT EXISTS emails_fts USING fts5 (
   subject, from_text, to_text, body_text,
-  content='',            -- external-content: we only store the index
+  content='',            -- contentless: we only store the index
+  contentless_delete=1,  -- ...but a message can still be un-indexed
   tokenize='unicode61'
 );
+
+-- rowid ↔ (account_id, email_id). A contentless FTS5 table returns NULL for
+-- its own UNINDEXED columns, so the mapping cannot live inside `emails_fts`;
+-- and an FTS5 rowid is an INTEGER while an email id is a TEXT uuid. This table
+-- is the join, and `docid` is the only source of FTS rowids. AUTOINCREMENT is
+-- deliberate: a reused rowid would silently attach one message's index entries
+-- to another message's id.
+CREATE TABLE IF NOT EXISTS emails_fts_map (
+  docid      INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id TEXT NOT NULL,
+  email_id   TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS emails_fts_map_email
+  ON emails_fts_map (account_id, email_id);
 
 -- Email ↔ Mailbox membership (JMAP mailboxIds is a set).
 CREATE TABLE IF NOT EXISTS email_mailboxes (

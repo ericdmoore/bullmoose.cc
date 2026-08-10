@@ -46,11 +46,16 @@ this split is what makes the surfaces testable at all without adding jsdom.)
    back-referenced get), bounded by `REFRESH_CAP` so a push cannot re-read an
    unbounded list. A test asserts the store never emits `Email/queryChanges`,
    against a fake that throws exactly as the server does.
-2. **Server search does not cover message bodies.** The `text` condition is a
-   LIKE over `subject`/`preview`/`from_json`/`to_json` (FTS unwired —
-   `common/004`). The UI says so in `SEARCH_SCOPE_NOTE` under the search box and
-   in `describeSearchScope` under the results, and a test proves a body-only word
-   really is missed rather than merely warning about it in the abstract.
+2. ~~**Server search does not cover message bodies.**~~ **CLOSED by `common/004`.**
+   At the time of T2 the `text` condition was a LIKE over
+   `subject`/`preview`/`from_json`/`to_json` with the FTS index unwired, and the UI said
+   so in `SEARCH_SCOPE_NOTE` and `describeSearchScope`, with a test proving a body-only
+   word really was missed. `common/004` wired the index: `text` is now an FTS5 `MATCH`
+   covering **full message bodies**. Both strings and that test were updated in the same
+   change — the note now carries the limitation that IS real (whole words, not
+   substrings). The demo backend (`lib/jmap/demo.ts`) is still a client-side fake with no
+   index and still misses body-only words; `search.test.ts` pins that as a statement about
+   the fake, not the server.
 3. **`Email/set create` has no attachment path.** Forwarding therefore drops
    attachments; `buildForwardDraft` returns `droppedAttachments` and the composer
    warns. Wiring the real path is T3.

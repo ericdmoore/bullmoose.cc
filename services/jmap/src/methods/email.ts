@@ -3,6 +3,7 @@ import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
 import {
+  htmlToIndexText,
   normalizeMessageId,
   type EmailAddress,
   type EmailFilter,
@@ -506,6 +507,9 @@ async function createDraft(
     cc,
     bcc,
     preview: (text ?? "").slice(0, 256),
+    // Full body into the FTS index (common/004) — a draft is searchable by
+    // its own text, not just its first 256 characters.
+    bodyText: text && text.trim() !== "" ? text : htmlToIndexText(html),
     size: raw.byteLength,
     receivedAt,
     hasAttachment: false,
@@ -632,6 +636,10 @@ async function importOne(
     cc: importAddresses(parsed.cc ?? []),
     bcc: importAddresses(parsed.bcc ?? []),
     preview: (parsed.text ?? "").slice(0, 256),
+    // Imported mail is indexed on the same terms as delivered mail
+    // (common/004) — an HTML-only message has no `.text` at all.
+    bodyText:
+      parsed.text && parsed.text.trim() !== "" ? parsed.text : htmlToIndexText(parsed.html),
     size: raw.byteLength,
     receivedAt: Number.isFinite(receivedAt) ? receivedAt : Date.now(),
     hasAttachment: attachments.some((a) => a.disposition !== "inline"),

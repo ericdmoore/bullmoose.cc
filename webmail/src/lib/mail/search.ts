@@ -1,17 +1,33 @@
 // Server-side search — `Email/query` with a `text` filter (arch.md §4).
 //
-// ⚠️ **Be honest about what this searches.** The server's `text` condition is a
-// LIKE over four columns (`packages/mailstore/src/index.ts`, `buildFilter`):
+// ⚠️ **Be honest about what this searches.** That is this module's whole job,
+// and the honest answer CHANGED with common/004.
 //
-//     e.subject LIKE ? OR e.preview LIKE ? OR e.from_json LIKE ? OR e.to_json LIKE ?
-//     // "LIKE fallback until the FTS index is populated at ingest"
+// Was: a LIKE over `subject`/`preview`/`from_json`/`to_json`, where `preview`
+// is the first 256 characters. Message bodies were not searchable at all, and
+// the note said so.
 //
-// `preview` is the first 256 characters of the body. **Message bodies are NOT
-// searchable** — the FTS index exists in the schema but is unwired at ingest
-// (common/004). A UI that says "Search mail" and quietly misses the word in
-// paragraph four teaches people the mail is not there. So `SEARCH_SCOPE_NOTE`
-// is rendered next to the box, and `describeSearchScope` spells it out for the
-// query actually run. When FTS lands, this module is the one place to change.
+// Now: the server matches an FTS5 index that `Mailstore.insertEmail` writes at
+// ingest (`packages/mailstore/src/index.ts`, `ftsMatchQuery` + `buildFilter`).
+// **Message bodies ARE searched**, including HTML-only mail. Two limits remain,
+// and they are the ones the note now carries:
+//
+//   1. FTS matches whole words, not fragments. `ell` no longer finds `hello` —
+//      the LIKE it replaced would have. This is a real, user-visible trade.
+//   2. Bodies are indexed to `FTS_BODY_LIMIT` (64 KiB, ~15 printed pages).
+//      Not worth a sentence in the UI; documented in the mailstore.
+//
+// A UI that says "Search mail" and quietly misses the word in paragraph four
+// teaches people the mail is not there — and a UI that keeps apologising for a
+// gap that has been closed teaches them not to trust the notes. So
+// `SEARCH_SCOPE_NOTE` is rendered next to the box, `describeSearchScope`
+// spells it out for the query actually run, and both track what the server
+// really does. This module is the one place to change when it changes again.
+//
+// ⚠️ One caveat that is NOT the server's: the demo backend
+// (`webmail/src/lib/jmap/demo.ts`) is a client-side fake with no index, and it
+// still matches subject/preview/from/to only. Against demo data a body-only
+// word will miss. See `search.test.ts`.
 
 /** Mirrors `EmailFilter` in `packages/mailstore/src/index.ts`. */
 export type EmailFilter = EmailFilterOperator | EmailFilterCondition;
@@ -41,12 +57,12 @@ export interface EmailSort {
   isAscending: boolean;
 }
 
-/** Exactly the columns the server's `text` condition touches. */
-export const SERVER_SEARCH_FIELDS = ["subject", "preview", "sender", "recipients"] as const;
+/** Exactly what the server's `text` condition matches, post-common/004. */
+export const SERVER_SEARCH_FIELDS = ["subject", "sender", "recipients", "body"] as const;
 
 /** The sentence the search box shows. Short, and true. */
 export const SEARCH_SCOPE_NOTE =
-  "Searches subject, sender, recipients and the first 256 characters of each message. Full message bodies are not searched yet.";
+  "Searches subject, sender, recipients and full message bodies. Matches whole words, so partial words are not found.";
 
 export interface SearchSpec {
   /** Free text → the server's `text` condition. */
@@ -70,8 +86,11 @@ const KEYED = /(\w+):("([^"]*)"|\S*)/g;
  * `subject:`, `in:`, `has:attachment`, `is:unread`, `is:flagged`,
  * `before:`/`after:`; everything left over is free text.
  *
- * Operators map onto conditions the server really implements — deliberately no
- * `body:`, because there is nothing behind it.
+ * Operators map onto conditions the server really implements. There is still
+ * no `body:` operator — not because bodies are unsearchable (they are, since
+ * common/004) but because the server has no body-ONLY condition: `text`
+ * already covers bodies, and `body:foo` would have to be a lie or a
+ * client-side filter.
  */
 export function parseSearchInput(input: string, mailboxIdByName?: Map<string, string>): SearchSpec {
   const spec: SearchSpec = {};
@@ -163,12 +182,17 @@ export function isEmptySpec(spec: SearchSpec): boolean {
  * under the results. The `text` clause is the one that needs the caveat; a
  * `from:`/`subject:` search really is exact about its column, so saying so
  * makes the honest limitation legible rather than blanket-apologetic.
+ *
+ * The caveat used to be "not in full message bodies". Since common/004 it is
+ * the tokenizer: `text` is whole-word, while `from:`/`subject:` remain
+ * substring matches on their column. Those two really do behave differently
+ * now, which is exactly why this sentence exists.
  */
 export function describeSearchScope(spec: SearchSpec): string {
   const parts: string[] = [];
   if (nonEmpty(spec.text)) {
     parts.push(
-      `“${spec.text.trim()}” in subject, sender, recipients and message previews (first 256 characters) — not in full message bodies`,
+      `“${spec.text.trim()}” as whole words in subject, sender, recipients and message bodies`,
     );
   }
   if (nonEmpty(spec.from)) parts.push(`sender containing “${spec.from.trim()}”`);
@@ -183,7 +207,15 @@ export function describeSearchScope(spec: SearchSpec): string {
   return `Matching ${parts.join("; ")}.`;
 }
 
-/** True when the result set may be missing matches that live only in a body. */
+/**
+ * True when the free-text clause may be missing matches a substring search
+ * would have found — i.e. when the whole-word tokenizer is in play.
+ *
+ * Pre-common/004 this meant "may be missing BODY matches", which is no longer
+ * a thing that happens. The name is kept (`AppShell` and any future caller
+ * want the same signal: "warn about this query") but the gap it points at is
+ * now word boundaries, not body coverage.
+ */
 export function mayMissBodyMatches(spec: SearchSpec): boolean {
   return nonEmpty(spec.text);
 }
