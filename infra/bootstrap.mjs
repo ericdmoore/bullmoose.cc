@@ -342,6 +342,52 @@ function secrets() {
   const env = loadEnv();
 
   // Generate only what's missing → re-runs reuse existing keys (no rotation).
+  //
+  // "Missing" means missing from .env.deploy, which is gitignored and therefore
+  // MACHINE-LOCAL. Run this from a laptop that never held the file — a fresh
+  // clone, a new machine, CI — and every secret reads as missing, so this mints
+  // new ones and the `put` below pushes them over the live values. That is not
+  // a rotation anyone asked for, and for one of these it is unrecoverable:
+  //
+  //   INTERNAL_TOKEN      survivable — every worker gets the same new value
+  //   SHARE_SIGNING_KEY   every outstanding share link stops verifying
+  //   ADMIN_TOKEN         stored admin credentials stop working
+  //   VAULT_MASTER_KEY    EVERY SEALED CREDENTIAL BECOMES UNDECRYPTABLE.
+  //                       There is no recovery. The ciphertext is all there is.
+  //
+  // So before minting anything, ask the deployment what it already has.
+  // `wrangler secret list` returns names only — never values — which is
+  // exactly enough to tell "first deploy" from "about to clobber production".
+  const alreadySet = new Set();
+  if (!DRY) {
+    for (const [name, spec] of Object.entries(GENERATED)) {
+      if (env[name]) continue; // we have it locally; nothing to discover
+      for (const w of spec.workers) {
+        const r = wrangler(["secret", "list", "-c", cfg(w)], { capture: true, allowFail: true });
+        if (r.status === 0 && new RegExp(`"name"\\s*:\\s*"${name}"`).test(r.stdout)) {
+          alreadySet.add(name);
+          break;
+        }
+      }
+    }
+  }
+
+  const clobber = [...alreadySet];
+  if (clobber.length && !args.includes("--rotate")) {
+    die(
+      `refusing to rotate ${clobber.length} secret(s) already live: ${clobber.join(", ")}\n` +
+        `  ${ENV_DEPLOY} does not have them, but the deployment does — so this is a\n` +
+        `  machine without the file, not a first deploy. Minting fresh values here\n` +
+        `  would overwrite the live ones.\n` +
+        (clobber.includes("VAULT_MASTER_KEY")
+          ? `  VAULT_MASTER_KEY is UNRECOVERABLE: rotating it makes every sealed\n` +
+            `  credential permanently undecryptable.\n`
+          : "") +
+        `  Recover ${ENV_DEPLOY} from wherever the first deploy ran, or pass\n` +
+        `  --rotate if you genuinely mean to replace them.`,
+    );
+  }
+
   let minted = 0;
   for (const [name, spec] of Object.entries(GENERATED)) {
     if (!env[name]) {
@@ -407,6 +453,10 @@ function help() {
   phases:  ${ALL.join("  ")}   (default: all)
   --dry-run   show every command/edit; touch nothing
   --yes       auto-confirm wrangler's d1-execute prompt
+  --rotate    allow the secrets phase to REPLACE values already live.
+              Without it, a machine whose ${ENV_DEPLOY} is missing refuses
+              rather than minting fresh secrets over production —
+              VAULT_MASTER_KEY in particular is unrecoverable.
 
   auth: npx wrangler login   (or CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID)
   runbook: docs/DEPLOY.md`);
