@@ -20,11 +20,31 @@ After §0's human steps, the whole-machine deploy is one idempotent script:
 node infra/bootstrap.mjs --dry-run   # preview every step; then drop --dry-run
 ```
 
-It runs five phases — `resources → wire → schemas → secrets → deploy` — and is
-the single source of truth for resource names, the schema list, the deploy
-order, and the secret→worker matrix. Run one phase at a time by naming it
+It runs six phases — `resources → wire → schemas → migrate → secrets → deploy` —
+and is the single source of truth for resource names, the schema list, the
+deploy order, and the secret→worker matrix. Run one phase at a time by naming it
 (`node infra/bootstrap.mjs secrets`). Sections 1–3 below document what each
 phase does and the by-hand equivalent, if you'd rather drive it yourself.
+
+**`schemas` creates; `migrate` upgrades.** They are separate phases because the
+`.sql` files are all `CREATE … IF NOT EXISTS`, which is idempotent for *creating*
+and silently declines to *upgrade*. An existing database keeps its old columns,
+its old index definitions and its old virtual-table flags, and says nothing —
+so every failure in this class is silent and partial:
+
+| drift | what you see |
+|---|---|
+| `accounts.deleted_at` missing | `verifyBearer` throws — **nobody authenticates** |
+| `grants.revoked_at` missing | same, every grant lookup breaks |
+| `grants_tuple` not partial | revoke-then-re-grant is a no-op that still returns **200** with a `grantId` no row carries |
+| `emails_fts` without `contentless_delete` | delivery works; `Email/set destroy` throws and rolls back |
+
+`infra/migrations.mjs` is the machine-readable list, each entry carrying an
+executable `check`, so `migrate` skips what is already applied and **hard-stops**
+if a check still fails after its DDL ran. `infra/migrations.test.ts` proves each
+check bites by reversing the migration and asserting the check flips — a check
+that returned "applied" unconditionally would be the same silent failure one
+level up. The sub-sections below remain as the by-hand equivalent.
 
 ## 0. Account prerequisites (human steps)
 

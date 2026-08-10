@@ -1,0 +1,43 @@
+# ⚠️ THIS FILE DOES NOT AFFECT THE RED CHECK ON PULL REQUESTS.
+#
+# It is read ONLY by the `ggshield` CLI. The GitGuardian check you see on a PR
+# comes from the GitGuardian GitHub App, which scans server-side at the
+# post-receive stage and never reads this repository's working tree. Their docs
+# are explicit that the relationship is one-directional — a secret ignored on
+# the dashboard is ignored by ggshield, but never the reverse:
+#
+#   https://docs.gitguardian.com/ggshield-docs/reference/secret/ignore
+#
+# There is currently no ggshield step in .github/workflows/, so today this file
+# does nothing at all. It is committed because (a) it is correct the moment a
+# ggshield pre-commit hook or CI step is added, and (b) this comment is the
+# finding, sitting where the next person will look for it before spending an
+# afternoon discovering it themselves. See .feedback/fromClaude/infra/036.
+#
+# To ACTUALLY silence the PR check, an operator with GitGuardian dashboard
+# access (workspace Manager) sets Settings → Secrets → exclusion rules:
+#   - secret pattern exclusions, scoped to this repo (preferred — narrow, so a
+#     REAL leaked key in a test file still alerts):
+#       bm-canary-DO-NOT-USE-[A-Za-z0-9._-]+
+#       test-vault-master-key-[0-9a-f]+
+#       internal-test-token
+#   - then Ignore the open incidents as "this is test credential" (Ignore, not
+#     Resolve — resolved incidents regress and reopen).
+#
+# Why these strings exist at all: this is a credential-vault mail platform, so
+# its tests necessarily hold variables named SECRET, MASTER and token. The
+# values are deliberately non-vendor-shaped canaries. An earlier fixture used
+# Stripe's real `sk_live_51…` account-prefixed shape, and GitHub push protection
+# blocked it — correctly. Do not reintroduce a realistic vendor format here.
+
+version: 2
+secret:
+  ignored_matches:
+    - name: bullmoose vault fixture canary
+      match: bm-canary-DO-NOT-USE-vault-9f3d1c
+    - name: bullmoose leak-probe fixture canary
+      match: bm-canary-DO-NOT-USE-leakprobe-9f3d1c
+    - name: fake vault master key used across bureau/agent tests
+      match: test-vault-master-key-0123456789abcdef
+    - name: fake internal service token used across worker tests
+      match: internal-test-token

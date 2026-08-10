@@ -39,6 +39,8 @@ const D1_NAME = "bullmoose-mail-shard0"; // data plane; control plane shares it 
 const R2_NAME = "bullmoose-mail-blobs"; // raw messages, attachments, contact photos
 const KV_TITLE = "ROUTES"; // route table hot copy + suppression list
 
+import { MIGRATIONS } from "./migrations.mjs";
+
 const SCHEMAS = [
   "packages/mailstore/sql/data-plane.sql",
   "packages/mailstore/sql/control-plane.sql",
@@ -267,12 +269,72 @@ function wire() {
 }
 
 function schemas() {
-  step("schemas — apply mailstore SQL to D1 (idempotent)");
+  step("schemas — apply mailstore SQL to D1 (creates what is missing)");
   for (const sql of SCHEMAS) {
     wrangler(["d1", "execute", D1_NAME, "--remote", "--file", sql, ...(YES ? ["--yes"] : [])]);
     ok(sql);
   }
   if (!YES && !DRY) info("re-run with --yes to skip wrangler's execute confirmation");
+  warn("a schema re-run CREATES what is missing; it cannot UPGRADE what exists — see `migrate`");
+}
+
+/**
+ * Apply the DDL a schema re-run cannot perform, then prove it landed.
+ *
+ * Each entry in infra/migrations.mjs carries an executable `check` returning a
+ * column `n` (applied iff n >= 1), so this never guesses from an error message.
+ * Already-applied migrations are skipped, making the phase re-runnable, and any
+ * check still failing AFTER its `up` ran is a hard stop rather than a warning —
+ * silent partial application is the exact failure this phase exists to end.
+ */
+function migrate() {
+  step("migrate — DDL a schema re-run cannot perform");
+
+  const checkOne = (m) => {
+    if (DRY) return null; // cannot read a remote DB in dry-run
+    const r = wrangler(
+      ["d1", "execute", D1_NAME, "--remote", "--json", "--command", m.check],
+      { capture: true, allowFail: true },
+    );
+    if (r.status !== 0) return null;
+    const parsed = parseJson(r.stdout, null);
+    const rows = Array.isArray(parsed) ? parsed[0]?.results : parsed?.results;
+    const n = Array.isArray(rows) ? rows[0]?.n : undefined;
+    return typeof n === "number" ? n >= 1 : null;
+  };
+
+  let applied = 0;
+  const unknown = [];
+  for (const m of MIGRATIONS) {
+    const before = checkOne(m);
+    if (before === true) {
+      ok(`${m.id} — already applied`);
+      continue;
+    }
+    if (before === null && !DRY) unknown.push(m.id);
+    info(`${m.id} — ${m.why}`);
+    for (const sql of m.up) {
+      // SQLite has no ADD COLUMN IF NOT EXISTS, so a partially-applied group
+      // re-runs into `duplicate column name`. That is success, not failure.
+      const r = wrangler(
+        ["d1", "execute", D1_NAME, "--remote", "--command", sql, ...(YES ? ["--yes"] : [])],
+        { capture: true, allowFail: true },
+      );
+      if (r.status !== 0 && !/duplicate column name/i.test(r.stdout)) {
+        die(`${m.id} failed on: ${sql.split("\n")[0].trim()}`);
+      }
+    }
+    if (!DRY && checkOne(m) !== true) {
+      die(`${m.id} ran but its check still fails — stopping before anything deploys against it`);
+    }
+    applied++;
+    ok(`${m.id} — applied`);
+  }
+
+  if (unknown.length) {
+    warn(`could not read state for: ${unknown.join(", ")} — applied blind, verify by hand`);
+  }
+  info(applied ? `${applied} migration(s) applied` : "nothing to do — every migration already applied");
 }
 
 function secrets() {
@@ -328,8 +390,14 @@ function deploy() {
 
 // ───────────────────────────────── driver ───────────────────────────────────
 
-const PHASES = { resources, wire, schemas, secrets, deploy };
-const ALL = ["resources", "wire", "schemas", "secrets", "deploy"];
+const PHASES = { resources, wire, schemas, migrate, secrets, deploy };
+// migrate sits BETWEEN schemas and deploy, and that position is the point.
+// `schemas` cannot upgrade an existing database -- every DDL is IF NOT EXISTS,
+// which is idempotent for CREATING and silently declines to UPGRADE -- and two
+// of the migrations (accounts.deleted_at, grants.revoked_at) are ones
+// verifyBearer filters on, so a worker deployed against a database missing them
+// authenticates nobody. Running it after `deploy` would be too late.
+const ALL = ["resources", "wire", "schemas", "migrate", "secrets", "deploy"];
 
 function help() {
   console.log(`bullmoose deploy bootstrap
