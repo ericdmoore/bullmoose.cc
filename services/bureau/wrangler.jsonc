@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bullmoose-bureau",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+
+  // The Bureau (bureau.md; arch.md open question 1, ratified 2026-08-09).
+  //
+  // Its own Worker for exactly one reason: VAULT_MASTER_KEY is bound HERE and
+  // NOWHERE ELSE. `services/agent` gave it up — the key was MOVED, not copied —
+  // so the worker that runs every MCP tool and reads untrusted email has no code
+  // path to a credential, by platform rather than by discipline.
+  //
+  // No public route. Reachable only through the BUREAU service binding on
+  // `services/agent`, which is why this must deploy BEFORE agent (same class of
+  // dependency as agent before ingest; docs/DEPLOY.md §2).
+  //
+  // No R2, no KV, no DO, no AI, no SUBMIT: the smallest binding set that can do
+  // the job. Every binding this worker does not have is a capability an attacker
+  // who reaches it does not inherit.
+
+  // Control plane. Needed for two things: the vault_credentials rows whose
+  // enc_json only this worker ever touches, and caller authentication —
+  // `verifyBearer` on the presented invocation token (arch.md OQ1b), which is a
+  // D1 lookup and is what buys instant revocation.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bullmoose-mail-shard0",
+      "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9"
+    }
+  ]
+
+  // Secrets (wrangler secret put):
+  //   VAULT_MASTER_KEY  — the credential-vault master secret (openssl rand -hex 32).
+  //                       ONE key, ONE home. If this appears on any other worker,
+  //                       the isolation this whole service exists for is gone.
+  //   INTERNAL_TOKEN    — shared with agent; gates /internal/* (the seal-on-mint
+  //                       and health-check paths agent proxies over the binding).
+}

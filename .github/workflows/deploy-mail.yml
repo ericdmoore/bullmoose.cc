@@ -23,7 +23,8 @@ jobs:
       #
       #   submit         no deps
       #   jmap           services: submit          · declares AccountDO
-      #   agent          services: submit          · DO script_name: jmap
+      #   bureau         no deps                   · holds VAULT_MASTER_KEY
+      #   agent          services: submit, bureau  · DO script_name: jmap
       #   ingest         services: AGENT -> agent  · DO script_name: jmap
       #   provision      no deps
       #   anglebrackets  DO script_name: jmap      · serves dav.bullmoose.cc
@@ -31,6 +32,10 @@ jobs:
       # agent BEFORE ingest: services/ingest/wrangler.jsonc:28 binds
       # `bullmoose-agent`. The previous order (submit → jmap → ingest →
       # provision) both skipped agent entirely and had it in the wrong place.
+      #
+      # bureau BEFORE agent: services/agent/wrangler.jsonc binds
+      # `bullmoose-bureau` (s04 T3a — the credential vault's master key moved
+      # there), so the same failure mode sits one edge further up the graph.
       - name: Deploy submit
         run: npx wrangler deploy -c services/submit/wrangler.jsonc
         env:
@@ -38,6 +43,11 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy jmap
         run: npx wrangler deploy -c services/jmap/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Deploy bureau
+        run: npx wrangler deploy -c services/bureau/wrangler.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

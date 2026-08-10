@@ -604,16 +604,30 @@ export async function readAccessLog(
 }
 
 /**
- * `grant_audit.method` has three shapes, all written by this repo:
- *   `mcp:<tool>`             — `mcp.ts:350`
- *   `<domain>:<scope>`       — `methods/common.ts:108` (requireAccount)
- *   `<domain>:<a>+<b>`       — `methods/common.ts:76` (requireAccountScopes)
- * The third is not in `015`'s bread-crumbs and would render as a scope named
+ * `grant_audit.method` has four shapes, all written by this repo:
+ *   `mcp:<tool>`                  — `mcp.ts:350`
+ *   `bureau:<verb>:<credRef>`     — `services/bureau/src/grants.ts` (Bureau T2)
+ *   `<domain>:<scope>`            — `methods/common.ts:108` (requireAccount)
+ *   `<domain>:<a>+<b>`            — `methods/common.ts:76` (requireAccountScopes)
+ * The last is not in `015`'s bread-crumbs and would render as a scope named
  * "draft+delete" if parsed naively.
+ *
+ * The `bureau:` shape must be matched BEFORE the generic `<domain>:<scope>`
+ * fallthrough, or a credential-use row renders as domain "bureau" with a scope
+ * literally named "fetch:aws-mcp".
  */
 function parseAuditMethod(method: string): Record<string, unknown> {
   if (method.startsWith("mcp:")) {
     return { surface: "mcp", tool: method.slice(4) };
+  }
+  if (method.startsWith("bureau:")) {
+    // bureau:<verb>:<credRef> — credRef may itself contain no colon
+    // (validated `^[a-z0-9][a-z0-9._-]{0,63}$`), so one split is safe.
+    const rest = method.slice(7);
+    const sep = rest.indexOf(":");
+    return sep < 0
+      ? { surface: "bureau", verb: rest }
+      : { surface: "bureau", verb: rest.slice(0, sep), credRef: rest.slice(sep + 1) };
   }
   const colon = method.indexOf(":");
   if (colon < 0) return { surface: "unknown", raw: method };
