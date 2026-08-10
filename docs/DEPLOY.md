@@ -483,9 +483,12 @@ perfectly — the most confusing possible failure.
 
 One-time human steps:
 
-1. Run `deploy-mail.yml` so the routes exist. Cloudflare creates the DNS record
-   for a routed hostname automatically; you do **not** add an `app` A/CNAME by
-   hand.
+1. Run `deploy-mail.yml` so the routes exist.
+   ⚠️ A `routes` pattern with `zone_name` binds paths on a hostname that must
+   **already resolve** through Cloudflare — it does **not** provision DNS. (That
+   is `custom_domain: true`, which these are not.) Attaching the Pages custom
+   domain in step 2 is what creates the record; until then every path on
+   `app.bullmoose.cc` fails to connect at all, routes or no routes.
 2. Run `deploy-app.yml` once — it creates the `bullmoose-app` Pages project by
    direct upload — then map `app.bullmoose.cc` to it in the Pages dashboard.
 3. **No new token.** It reuses `BULLMOOSE_SITE_DEPLOY_TOKEN`; a token scoped

@@ -78,6 +78,35 @@ jobs:
             echo "::error::could not ensure the Pages project exists"; exit 1
           fi
 
+      # Attaching the custom domain is what CREATES the DNS record for
+      # app.bullmoose.cc. The Worker routes cannot do it: a `routes` pattern
+      # with zone_name binds paths on a hostname that must ALREADY resolve
+      # through Cloudflare — unlike `custom_domain: true`, which does provision
+      # DNS. Deploy the routes without this and every path returns nothing at
+      # all, because the name does not exist. (docs/DEPLOY.md said otherwise;
+      # corrected there.)
+      #
+      # Once the name resolves to Pages, the Worker routes take precedence on
+      # their four path patterns and Pages serves the rest — one origin, no CORS.
+      - name: Ensure app.bullmoose.cc is attached
+        env:
+          TOKEN: ${{ secrets.BULLMOOSE_SITE_DEPLOY_TOKEN }}
+          ACCT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          base="https://api.cloudflare.com/client/v4/accounts/$ACCT/pages/projects/bullmoose-app/domains"
+          have=$(curl -sS -m 20 -H "Authorization: Bearer $TOKEN" "$base" \
+                  | grep -o '"name":"app.bullmoose.cc"' | head -1)
+          if [ -n "$have" ]; then
+            echo "app.bullmoose.cc already attached"
+          else
+            r=$(curl -sS -m 30 -X POST -H "Authorization: Bearer $TOKEN" \
+                  -H "content-type: application/json" \
+                  -d '{"name":"app.bullmoose.cc"}' "$base")
+            echo "$r" | grep -q '"success":true' \
+              && echo "attached app.bullmoose.cc" \
+              || { echo "::error::could not attach domain"; echo "$r" | head -c 400; exit 1; }
+          fi
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
