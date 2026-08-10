@@ -11,6 +11,35 @@
 
 ---
 
+## ⚠️ What this is NOT — read before designing any screen
+
+**This is a collaboration space for people and agents.** It is not "Google Drive with
+agents," and the Drive analogy is load-bearing in the wrong direction.
+
+Drive is **storage-centric and passive**: here are your things, go browse them. You arrive to
+*find* something. This product is **decision-centric and temporal**: here is what is about to
+happen and what needs you. You arrive to *decide* something.
+
+Reaching for the familiar shape imports Drive's home page, its nav ordering, and its
+assumption that the user is a librarian. Drive has no notion of an actor that proposes work
+you approve — which is the entire novel thing here.
+
+**The test, applied to any proposed feature:** does this make sense on its own, or only
+because Drive has it? The second answer is the signal to stop.
+
+**The concrete consequences, all of which fall out of this and none of which are cosmetic:**
+
+- **Home is a view, not a section.** `/` is *Looking Ahead* + *Waiting Approvals* — see T0.
+  The eight nouns are where you drill down, never where you land.
+- **Nav order is a claim about what this is.** Put `/mail` first and you have built a mail
+  client with extras.
+- **The queue is co-authoring, not a gate.** *Approve / Edit / Decline*, and **Edit is the
+  one that matters** — see T4.
+- **Sharing is a first-class verb**, not a per-object menu item. It is currently unbuilt
+  (T7) and it is the largest unclaimed piece of the premise.
+
+---
+
 ## Three refinements to the proposal
 
 ### 1. The token must never enter a URL
@@ -119,6 +148,29 @@ not searched: attachment contents — requires the extraction index
 
 ## Tasks (in dependency order)
 
+### T0 — The home view · *the thing that makes this not a file manager*
+
+**Files:** `webmail/src/pages/index.astro`, `webmail/src/lib/home/`.
+
+`/` is **not** a section and **not** a dashboard of counts. Two stacks:
+
+- **Waiting Approvals** — the queue, newest-urgent first, each row acting inline:
+  **Approve · Edit · Decline**. Two subtle marks per row, and they are opposites:
+  - **waited for** — how long this has sat on *you*. Grows. Shames the human.
+  - **expires in** — how long it has left. Shrinks. Shames the clock.
+- **Looking Ahead** — the next horizon across realms: today's events, things due, holds
+  about to commit, proposals about to expire.
+
+⚠️ **`expires in` has nothing to compute from today.** `ActionProposal` carries
+`status: expired` but no `expiresAt` (`s03.D/arch.md:29-30`). And do **not** reach for
+`holdUntil` — that is a different clock entirely: the tier-2 *post-approval* retraction
+window (`arch.md:47`), a window in which an approved action can still be pulled back.
+Conflating "how long until I lose the chance to decide" with "how long until my decision
+becomes irreversible" would be a genuine bug. T4 adds `expiresAt`.
+
+**Done when:** a first-time visitor with mail, a calendar and one agent sees what needs them
+today without clicking anything, and nothing on this page is a file browser.
+
 ### T1 — The origin, the layout, and the interim door · *foundation*
 
 **Files:** `webmail/wrangler.jsonc` (new), `webmail/astro.config.mjs`,
@@ -201,6 +253,38 @@ honestly:
 - **`/agents/<id>`** — the per-agent dossier: pending, upcoming queue, historical
   approved/declined, and the three numbers from refinement 3.
 
+**Edit is the load-bearing verb, and the data model has no room for it.**
+
+Approve/Decline is a gate — the shape you build when the agent is a subordinate. *Edit* is
+collaboration: the human amends the proposal and then approves the amended thing. That is the
+difference between this and a file manager with a notifications tray, and it is worth the
+extra design.
+
+`ActionProposal.status` is `pending | approved | rejected | held | expired`
+(`s03.D/arch.md:29`) — there is **no amended state and no record of what changed**. Adding
+Edit means:
+
+- the `payload` becomes co-authorable, not just readable;
+- the proposal records that a human modified it, and ideally a diff;
+- **three outcomes replace two.**
+
+That last one changes the score from refinement 3, and it matters more than it looks:
+
+| outcome | what it says about the agent |
+|---|---|
+| approved clean | it understood the job |
+| **approved after edit** | it was directionally right and mechanically wrong — *the most informative signal in the system* |
+| declined | it misread the job |
+
+**Acceptance rate as originally framed hides the middle row entirely** by counting an edited
+approval as a win. An agent whose every proposal needs rewriting is not performing like one
+whose proposals ship untouched, and the edit diff is the highest-signal feedback the system
+will ever collect — it is a human saying *exactly* what "right" looked like. Track it as its
+own rate; do not fold it into approvals.
+
+⚠️ **Also add `expiresAt`** (see T0). `status: expired` exists with no field that produces
+it, so nothing can currently expire and nothing can show a countdown.
+
 **`/agents/<id>` must also show how the agent is CONFIGURED**, not just what it has done.
 Three questions, and they have three different answers today:
 
@@ -253,9 +337,35 @@ accordingly.
 **Files:** `packages/mailstore/sql/data-plane.sql`, `infra/migrations.mjs`,
 `services/agent/src/`.
 
-Add to `agent_invocations`: `model TEXT`, `tokens_in INTEGER`, `tokens_out INTEGER`,
-`cost_usd REAL`. Nullable — historical rows keep NULL and must render as *not recorded*,
-never as zero. A zero would make every past invocation look free.
+Add to `agent_invocations`: `provider TEXT`, `model TEXT`, `tokens_in INTEGER`,
+`tokens_out INTEGER`, `cost_usd REAL`. Nullable — historical rows keep NULL and must render
+as *not recorded*, never as zero. A zero would make every past invocation look free.
+
+**What the approval queue shows: `tokenCount`, `costAmt`, `provider`. Deliberately NOT
+`modelName`.**
+
+The line is *whose business is it*. **Model choice is the agent's craft; provider is the
+operator's procurement.** You are paying, so where compute is bought is legitimately yours;
+which model the agent reached for is its own business, and putting it on every row invites
+exactly the wrong second-guessing — approving work because it came from a model you like
+rather than because the work is right.
+
+`modelName` still gets stored (debugging an agent producing garbage needs it) and still gets
+shown — on `/agents/<id>` as *what this agent is configured to use*. That is a property of
+the agent, not of the decision in front of you.
+
+Provider is already first-class, so this is surfacing rather than modelling:
+`ModelCandidate.provider` (`services/agent/src/models.ts:29`), and the `@<source>/<vendor>/<model>`
+alias convention where the source segment *is* "where it runs and who pays" — `@local/`
+free, `@cf/`, `@crof/`.
+
+⚠️ **The price-arbitrage machinery exists and is currently inverted.** `rankByPrice` ranks
+candidates by blended models.dev pricing, but `.feedback` `018` (**still open**) found that
+a `workers-ai` candidate can never be priced — its model id can never equal
+`provider/model`, so it resolves to `Infinity` and **sorts last**. In a mixed alias the paid
+route is tried first and the free route becomes the fallback, exactly inverted. Surfacing
+`provider` in the UI makes that visible; fixing `018` makes it true. Do `018` first, or the
+console will faithfully display a broken preference.
 
 - Register in `infra/migrations.mjs` with an executable check, so a database missing the
   columns is caught by `bootstrap migrate` rather than by a dashboard quietly reading NULL.
@@ -323,6 +433,9 @@ login and an AS for MCP would be building it twice.
 ## Sequencing
 
 ```
+T0 home view  ─────── depends on T4's data; ships LAST but is designed FIRST,
+                      because it is what the sections are arranged around
+
 T1 origin + door ──┬─→ T2 /settings ────────────────┐
                    ├─→ T3 /contacts /calendar ──────┤
                    ├─→ T6 /search (stub → indexed) ─┼─→ T7 real login
@@ -333,7 +446,13 @@ T1 origin + door ──┬─→ T2 /settings ───────────�
   like a product, and both are pure surfacing.
 - **T4 has the most behind it** — `s03.D` T1 *and* four `/console/*` routes. Do not start
   the screens before the routes; that is exactly how `s03.E` ended up demo-only.
-- **T5 before T4**, or the agent dossier ships with three numbers it cannot compute.
+- **T5 before T4**, or the agent dossier ships with three numbers it cannot compute. And
+  `.feedback` `018` before T5, or the console faithfully renders an inverted price
+  preference.
+- **T0 ships last and is designed first.** It cannot render until T4 produces proposals, but
+  every other section is arranged around it — start by drawing the home view, then build
+  inward. Building the sections first and bolting a home page on afterwards is precisely how
+  this ends up as a file manager with a notifications tray.
 - `/files` is deliberately absent from this plan's tasks: it is `s03.C` T3, blocked on
   `s03.B` T3 (unstarted), and `.feedback` `common/030` (FileNode copy OOM) is open. Ship the
   nav item disabled with a reason rather than a section that 500s.
