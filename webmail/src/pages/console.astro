@@ -1,0 +1,37 @@
+---
+// The agent/credential console (s03.E). A second thin static host; the console
+// is one Preact island, same "SPA-in-an-island" shape as the mail client.
+//
+// Its own page rather than a pane inside the mail shell: the two views are
+// full screens ("Both questions are answerable in one screen each" —
+// readme.md Acceptance 1), and a governance surface that only exists while a
+// thread is open is a governance surface nobody opens.
+import AgentConsole from "../components/AgentConsole.tsx";
+import "../styles/webmail.css";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>bullmoose — agent console</title>
+    <meta name="robots" content="noindex" />
+    <!--
+      No hand-written CSP here, for the reason index.astro records: Astro's
+      hydration bootstrap for `client:only` is an INLINE script, so a
+      hand-written `script-src 'self'` makes the island silently never mount —
+      and `astro build` plus the unit tests both report that as success. The
+      policy is GENERATED from `security.csp` in astro.config.mjs.
+
+      ⚠️ That generated policy contains `form-action 'none'`, which is load-
+      bearing here rather than incidental: this page must never submit a form to
+      anywhere, and the credential surfaces post with `fetch` to the vault
+      origin under `connect-src`. `origins.ts` enforces the destination; this is
+      the browser's own second opinion.
+    -->
+  </head>
+  <body>
+    <AgentConsole client:only="preact" />
+  </body>
+</html>

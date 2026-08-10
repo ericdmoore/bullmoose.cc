@@ -558,6 +558,18 @@ export default function AppShell({ client: injected }: Props) {
             </button>
           ) : null}
         </form>
+        {/*
+          The console's entry point (s03.E), behind the same capability gate as
+          every other agent surface. With `urn:bullmoose:params:jmap:agent`
+          absent this renders NOTHING — no disabled button, no link to a page
+          that would only explain itself. The plain-client floor (arch.md §8.6)
+          is that the mail client is complete without it.
+        */}
+        {agentSeam ? (
+          <a class="console-link" href="/console">
+            Agents
+          </a>
+        ) : null}
         <span class="session">{session.username}</span>
       </header>
 

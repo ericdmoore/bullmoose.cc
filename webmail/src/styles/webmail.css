@@ -345,3 +345,230 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   .sidebar { display: none; }
   .search input::placeholder { color: transparent; }
 }
+
+/* ── agent console (s03.E) ───────────────────────────────────────────────
+   Two views, one screen each. The console is a scrolling document rather than
+   a three-pane app: its content is prose-with-evidence — a warning nobody
+   reads is a warning that did not happen — so the layout optimizes for reading
+   width, not for density. */
+
+.console-link {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.console-link:hover { color: var(--fg); border-color: var(--accent); }
+
+.console { display: flex; flex-direction: column; min-height: 100vh; }
+.console-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px max(20px, calc((100% - 1180px) / 2));
+}
+
+.console-tabs { display: flex; gap: 8px; flex: 1; }
+.console-tabs .tab {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--fg-muted);
+}
+.console-tabs .tab em { font-style: italic; opacity: 0.85; }
+.console-tabs .tab-on {
+  color: var(--fg);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 0 16px;
+}
+.picker label { display: inline-flex; align-items: center; gap: 6px; }
+.picker select,
+.picker input,
+.attach-body input,
+.attach-body select {
+  font: inherit;
+  color: inherit;
+  background: var(--bg-alt);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  background: var(--bg-alt);
+}
+.panel > h2 { margin: 0 0 10px; font-size: 15px; letter-spacing: 0.01em; }
+.panel-alert { border-color: var(--error); background: var(--error-soft); }
+.panel-warn { border-color: var(--warn); background: var(--warn-soft); }
+
+.banner-warn { background: var(--warn-soft); color: var(--warn); }
+
+.row {
+  border-top: 1px solid var(--line);
+  padding: 12px 0 4px;
+}
+.row:first-of-type { border-top: none; }
+.row h3 {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.pill {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+.pill-on { color: var(--accent); border-color: var(--accent); }
+.pill-hot { color: var(--error); border-color: var(--error); background: var(--error-soft); }
+.pill-verb { color: var(--warn); border-color: var(--warn); }
+.pill-revoked, .pill-expired { text-decoration: line-through; }
+.pill-live { color: var(--accent); border-color: var(--accent); }
+
+.chip {
+  display: inline-block;
+  background: var(--bg-sunken);
+  border-radius: 4px;
+  padding: 0 5px;
+  margin-right: 4px;
+}
+
+/* "Can it?" — the headline row. The answer is the largest thing on the card,
+   because a screen that makes you read a paragraph to learn whether an agent
+   can send has not answered the question. */
+.headline { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.can {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+}
+.can h3 { margin: 0 0 4px; font-size: 15px; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.can-yes { border-color: var(--error); }
+.can-yes h3 { color: var(--error); }
+.can-no h3 { color: var(--fg-muted); font-weight: 500; }
+.can .meaning { margin: 2px 0; color: var(--fg-muted); font-style: italic; }
+.can p { margin: 4px 0 0; }
+
+.combo, .finding {
+  border-left: 3px solid var(--error);
+  padding: 8px 0 8px 12px;
+  margin: 12px 0;
+  background: var(--bg);
+  border-radius: 0 8px 8px 0;
+}
+.combo-warning { border-left-color: var(--warn); }
+.finding-explained { border-left-color: var(--line); }
+.finding-over-permissioned { border-left-color: var(--warn); }
+.finding-not-captured { border-left-color: var(--fg-muted); border-left-style: dashed; }
+.combo h3, .finding h3 { margin: 0 0 6px; font-size: 13.5px; }
+.combo ul { margin: 4px 0; padding-left: 20px; color: var(--fg-muted); }
+.combo p, .finding p { margin: 4px 0 0; }
+.sev {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid currentcolor;
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 6px;
+}
+
+.gap { font-size: 15px; margin: 0 0 8px; }
+
+.warnings, .notes {
+  margin: 6px 0;
+  padding-left: 20px;
+  color: var(--warn);
+}
+.notes { color: var(--fg-muted); }
+
+.actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.actions button {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+.actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+.actions .danger { color: var(--error); border-color: var(--error); }
+
+/* The CLI bounce. Deliberately prominent rather than apologetic: it is the
+   safest flow in the product, not a missing feature. */
+.cli-bounce {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border-radius: 8px;
+}
+.cli-bounce pre {
+  margin: 6px 0 0;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+}
+
+.attach { margin-top: 14px; }
+.attach summary { cursor: pointer; color: var(--accent); }
+.attach-body { display: flex; flex-direction: column; gap: 8px; padding: 10px 0 0; max-width: 620px; }
+.attach-body label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--fg-muted); }
+
+.side-by-side { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+
+.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+.grid th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--fg-muted);
+  border-bottom: 1px solid var(--line);
+  padding: 4px 8px 4px 0;
+}
+.grid td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.grid tr.uncaptured td { background: repeating-linear-gradient(45deg, transparent, transparent 6px, var(--bg-sunken) 6px, var(--bg-sunken) 12px); }
+.uncaptured-cell { color: var(--fg-muted); }
+
+/* "Empty" is a claim, so it gets a sentence instead of blank space. */
+.empty-means {
+  padding: 12px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--fg-muted);
+}
+
+.caveats {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--fg-muted);
+}
+.caveats h3 { font-size: 12.5px; margin: 10px 0 4px; color: var(--fg); }
+.caveats ol, .caveats ul { margin: 0; padding-left: 20px; }
+.caveats li { margin-bottom: 5px; }
+
+@media (max-width: 900px) {
+  .side-by-side { grid-template-columns: 1fr; }
+  .console-tabs { flex-wrap: wrap; }
+}

@@ -22,7 +22,8 @@
 
 import type { Email, Identity, Mailbox } from "../mail/types";
 import type { EmailFilter, EmailFilterCondition } from "../mail/search";
-import { FakeJmapClient } from "./FakeJmapClient";
+import { AGENT_CAP } from "./capabilities";
+import { FakeJmapClient, defaultSession } from "./FakeJmapClient";
 import type { MethodHandler } from "./FakeJmapClient";
 
 const ACCOUNT = "acct-fake";
@@ -36,6 +37,14 @@ export interface DemoOptions {
   emails?: Email[];
   mailboxes?: Mailbox[];
   identities?: Identity[];
+  /**
+   * Advertise `urn:bullmoose:params:jmap:agent`? Default true. Set false to
+   * DRIVE the plain-client floor (arch.md §8.6) rather than only unit-testing
+   * it: with the capability absent, no agent surface may render, error, or
+   * leave a dead region. Same intent as `scopes` above — a demo knob whose
+   * whole purpose is to make a refusal path reachable in a browser.
+   */
+  agentCapability?: boolean;
 }
 
 export interface DemoBackend {
@@ -458,8 +467,31 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
     },
   };
 
-  const client = new FakeJmapClient({ handlers });
+  // Drop the agent capability by rebuilding the capability map without it —
+  // key PRESENCE is the gate (`capabilities.ts`), so deleting the key is the
+  // only faithful way to simulate a server that does not advertise it.
+  const base = defaultSession();
+  const session =
+    opts.agentCapability === false
+      ? {
+          capabilities: withoutAgentCap(base.capabilities),
+          accounts: Object.fromEntries(
+            Object.entries(base.accounts).map(([id, a]) => [
+              id,
+              { ...a, accountCapabilities: withoutAgentCap(a.accountCapabilities) },
+            ]),
+          ),
+        }
+      : undefined;
+
+  const client = new FakeJmapClient({ handlers, ...(session ? { session } : {}) });
   return { client, mailboxes, emails, identities, sent, state };
+}
+
+/** Every capability except the agent one. */
+function withoutAgentCap(caps: Record<string, unknown>): Record<string, unknown> {
+  const { [AGENT_CAP]: _dropped, ...rest } = caps;
+  return rest;
 }
 
 /** Just the client, for callers that do not need to inspect the backend. */
