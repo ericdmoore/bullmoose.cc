@@ -53,6 +53,31 @@ jobs:
       # thing that catches a CSP/hydration break -- `astro build` succeeding
       # while the page renders empty is the s03.C failure mode.
       - run: npm run -w webmail build
+      # `pages deploy` does NOT create a missing project -- it fails with
+      # "Maybe you intended to deploy a Worker project instead?", which reads
+      # like a config mistake rather than a missing prerequisite. (deploy.yml's
+      # comment claims "first run creates the project"; that was true of an
+      # older wrangler and is not true now -- corrected there too.) Creating it
+      # here keeps the workflow the single source of truth instead of a
+      # dashboard step someone has to know about.
+      - name: Ensure the Pages project exists
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_SITE_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          out=$(npx wrangler pages project create bullmoose-app \
+                  --production-branch=main 2>&1) || true
+          echo "$out"
+          # Idempotent: a second run is expected to collide, and that is success.
+          # Anything else must fail loudly rather than deploying into the dark.
+          if echo "$out" | grep -qiE "already exists|8000007"; then
+            echo "project already exists — continuing"
+          elif echo "$out" | grep -qiE "Successfully created|✨"; then
+            echo "project created"
+          else
+            echo "::error::could not ensure the Pages project exists"; exit 1
+          fi
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:

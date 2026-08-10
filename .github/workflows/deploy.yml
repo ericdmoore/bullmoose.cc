@@ -8,8 +8,12 @@ name: Deploy site
 #      separate from the platform's bullmoose-deploy token. Store it as the
 #      GitHub repo secret BULLMOOSE_SITE_DEPLOY_TOKEN (`gh secret set …` —
 #      a local .env copy is NOT visible to CI). CLOUDFLARE_ACCOUNT_ID is set.
-#   2. First run creates the `bullmoose` Pages project (direct upload).
-#      Then map the apex `bullmoose.cc` to it in the Pages dashboard.
+#   2. ⚠️ First run does NOT create the project — current wrangler fails
+#      `pages deploy` on a missing project with "Maybe you intended to deploy
+#      a Worker project instead?", which reads as a config error rather than a
+#      missing prerequisite. Run `wrangler pages project create bullmoose`
+#      first (deploy-app.yml does this inline). Then map the apex
+#      `bullmoose.cc` to it in the Pages dashboard.
 
 on:
   push:
