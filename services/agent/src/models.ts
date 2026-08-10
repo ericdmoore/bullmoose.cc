@@ -15,8 +15,13 @@ export interface Env {
   /** AI Gateway OpenAI-compat endpoint, e.g. https://gateway.ai.cloudflare.com/v1/<acct>/bullmoose/compat */
   GATEWAY_COMPAT_URL?: string;
   GATEWAY_TOKEN?: string;
-  /** Master secret for the credential vault (auth-core sealSecret). */
-  VAULT_MASTER_KEY?: string;
+  /**
+   * The Bureau (s04 T3a). There is deliberately NO master-key binding on this
+   * worker: the credential vault's key was moved to `services/bureau`, so every
+   * seal and every unseal is a hop across this binding and the agent worker
+   * cannot decrypt anything on its own. See `vault.ts`.
+   */
+  BUREAU: Fetcher;
 }
 
 /** One route a model alias can resolve to. */

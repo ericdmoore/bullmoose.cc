@@ -4,7 +4,11 @@
 > had **zero tasks** (`_context.md` §6); this is the spine. Rationale for the
 > order and the three open-question calls live in [`arch.md`](./arch.md).
 >
-> **Legend:** ✅ built here (sVOL 020) · ⬚ todo · 🔬 spike (investigate, don't assume).
+> **Legend:** ✅ built · ⬚ todo · 🔬 spike (investigate, don't assume).
+>
+> **Built so far:** T1 (sVOL 020) · T3a + T2 (2026-08-09) — the key is moved and the
+> grant model exists, so **T3's steps 0 and 1 are already live**; T3 is now the verb
+> runtime alone.
 
 The whole design is one ladder (`bureau.md` §10): *a closed set of operations over
 a key you cannot extract.* The tasks climb it. Each `T` cites the `bureau.md`
@@ -41,7 +45,7 @@ re-seals — all under test, with the tests proven to bite. *(Met: `vault.test.t
 
 ---
 
-## T2 — Mint ≠ authorize: the grant split ⬚
+## T2 — Mint ≠ authorize: the grant split ✅
 
 Discharges **§5.1**. Who may *use* a credential is not a mint-time field — it is a
 separate, revocable grant over **`(principal, credRef, verb)`** ("`p_allen` may use
@@ -57,12 +61,43 @@ separate, revocable grant over **`(principal, credRef, verb)`** ("`p_allen` may 
 **Done when:** an admin can grant and revoke `(principal, credRef, verb)`
 independently of the credential; a revoked grant denies the verb while the
 credential and its other grants survive; every attempted use is in `grant_audit`.
+*(Met: `services/bureau/src/grants.test.ts`, 18 tests, proven to bite.)*
 
 **Depends on:** T1 (a `credRef` and `kind` to grant a verb against).
 
+### As built
+
+- **Its own table, `bureau_grants`** — not `grants`. The tombstone *contract* is
+  reused; the table is not. `grants` is account→account
+  (`grantee_account_id` → `target_account_id` + JMAP scopes + collection) and
+  `verifyBearer` JOINs it to `accounts` on every authenticated request. A Bureau
+  grant has no target account and no scope list. Overloading it would have meant a
+  nullable `target_account_id` on a `NOT NULL REFERENCES` column and teaching a hot
+  authentication join to skip a row shape it must never resolve — a live auth path
+  made conditional to save one table.
+- **Revoke = tombstone** (`bureau_grants.revoked_at`), matching `s03.A` exactly:
+  `resolveBureauGrant` filters `revoked_at IS NULL`, so the capability stops
+  resolving on the next call while the row survives. Transitions are logged to the
+  **existing `grant_lifecycle`** table — it has no FK by design ("history outlives
+  the grant"), and `bg_`-prefixed ids keep the two grant families distinguishable
+  in one forensic log.
+- **Re-granting a revoked tuple reinstates it** (`revoked_at = NULL` + a fresh
+  `created` event) rather than silently no-opping the way `POST /grants`'
+  `ON CONFLICT DO NOTHING` does. A tombstone must not make a capability
+  ungrantable forever; the history is in `grant_lifecycle` either way.
+- **Admin surface on `services/provision`** (`POST`/`GET`/`DELETE
+  /bureau-grants`), beside the existing grant verbs and under the same
+  `ADMIN_TOKEN`. It refuses an unknown verb, an unknown principal, and an unknown
+  `credRef` — a typo would otherwise mint a grant that authorizes nothing and
+  looks live in the console forever.
+- **Audit:** the existing `grant_audit` path, one row per *attempted* use,
+  `method = bureau:<verb>:<credRef>`, `grant_id = 'none'` on a refusal. Refusals
+  are audited deliberately — an agent probing for capabilities it was never
+  granted is the row a success-only log would drop.
+
 ---
 
-## T3a — Extract the Bureau Worker; move the master key ⬚ — **NEW, prerequisite of T3**
+## T3a — Extract the Bureau Worker; move the master key ✅ — prerequisite of T3
 
 Falls out of open question 1's resolution (`arch.md`). Structural only — no new verbs, no
 behaviour change for the vault API's callers.
@@ -83,9 +118,35 @@ behaviour change for the vault API's callers.
 
 **Done when:** `grep VAULT_MASTER_KEY services/agent` returns nothing; minting and using a
 credential both still work end to end; deploying `agent` without `bureau` fails loudly
-rather than at runtime.
+rather than at runtime. *(Met: `services/bureau/src/vault.test.ts` 10 tests +
+`services/agent/src/vault.test.ts` 21, proven to bite. The grep is clean over all
+non-test source and config; `vault.test.ts` names the binding because it is the file
+that asserts its absence — and runs that sweep over the whole `src/` directory, so a
+future file cannot quietly reintroduce it.)*
 
 **Depends on:** T1. **Blocks:** T3.
+
+### As built
+
+- **`services/bureau`**, a Worker with two bindings and nothing else: `DB` and
+  `VAULT_MASTER_KEY`. No R2, KV, DO, AI or `SUBMIT` — every binding it lacks is a
+  capability an attacker reaching it does not inherit.
+- **The split.** `services/agent/src/vault.ts` kept names, kinds, `meta_json`, the §5
+  mint-time validation and the whole `creds` HTTP surface. `sealSecret`,
+  `openSecret`, `vaultAad`, seal-on-mint and `openVaultSecret` (now
+  `openCredential`) moved. Sharper than the plan required: **the Bureau also writes
+  the row**, so `enc_json` is touched by exactly one worker.
+  `/internal/vault/verify` stayed on the agent as a pure proxy, so
+  `tools/e2e-grants.mjs` and operator muscle memory keep working.
+- **Fail closed.** If the Bureau refuses a seal the agent answers 502 and writes no
+  row — a credential that was never sealed must not appear in `creds list`.
+- **Deploy order** is now `submit → jmap → bureau → agent → ingest → provision →
+  anglebrackets`, in `infra/bootstrap.mjs` `DEPLOY_ORDER`, `docs/DEPLOY.md` §2,
+  `.github/workflows/deploy-mail.yml` and `services/README.md` (whose stale
+  agent-after-ingest order was corrected in passing).
+- **Operator action on an existing deployment:** the key must be *moved*, not
+  regenerated — a fresh value cannot open rows already sealed. Runbook in
+  `docs/DEPLOY.md` §2.
 
 ---
 
@@ -105,11 +166,13 @@ controls. That makes **T3a a prerequisite of T3.**
 
 On every call the runtime, in order:
 
-0. **Verifies the caller** — `verifyBearer` on the presented invocation token, so identity
+0. ✅ **Verifies the caller** — `verifyBearer` on the presented invocation token, so identity
    is *authenticated*, never self-asserted in the body. This is what stops a prompt-injected
    `editor@` (sVOL `014` reads untrusted email) from exercising `travel@`'s grant: the
    service binding proves which *worker*; only the token proves which *agent*.
-1. **Authorizes** `(principal, credRef, verb)` against T2's grants, else refuse.
+   *(Built in T3a — `services/bureau/src/grants.ts` `authorizeUse`.)*
+1. ✅ **Authorizes** `(principal, credRef, verb)` against T2's grants, else refuse.
+   *(Built in T2, with the `grant_audit` write of invariant 6.)*
 2. **Gates the verb by kind** (§4.1): `fetch` is legal for `api-key`/`oauth-refresh`/
    `aws-sigv4`; a verb outside the kind's set is refused.
 3. **Binds the destination** (§6): parse the request URL, compare **scheme+host+port**
@@ -125,7 +188,12 @@ allowlisted host with the credential injected server-side; a request to any othe
 origin, a cross-origin redirect, an ungranted verb, or a credential with no
 allowlist are each refused; the caller receives a response and never the credential.
 
-**Depends on:** T1 (kind + allow + header), T2 (authorization).
+**Depends on:** T1 (kind + allow + header), T3a (the Worker + the key), T2 (authorization).
+
+**Where to start:** `services/bureau/src/index.ts`'s `handleUse` returns 501 *after*
+authorizing and auditing. T3 replaces exactly that branch — steps 0 and 1 above are
+already enforced, and `authorizeUse` already hands back the credential's `kind` and its
+§5 `meta` (allow, header, enforcement) for steps 2–4 to gate on.
 
 ---
 
@@ -241,7 +309,7 @@ informed by T5 (the baseline it hopes to retire).
 ## Order at a glance
 
 ```
-T1 mint-time contract ✅ ──▶ T2 grant split ──▶ T3 runtime + fetch + binding ──▶ T4 redaction ──▶ T5 Class B verbs
+T1 mint-time contract ✅ ──▶ T3a extract Bureau ✅ ──▶ T2 grant split ✅ ──▶ T3 runtime + fetch + binding ──▶ T4 redaction ──▶ T5 Class B verbs
                         └──▶ T6 AAD re-scope (deferred, independent)
                              T7 SES federation (spike, informs whether T5's sign_sigv4 is ever load-bearing)
 ```

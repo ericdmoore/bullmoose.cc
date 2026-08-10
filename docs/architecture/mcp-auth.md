@@ -207,7 +207,8 @@ homes (the token verifier and grant logic moved into `auth-core` in the lift):
 | **Grants** (account → account) | table `packages/mailstore/sql/control-plane.sql:143-158`; resolution `packages/auth-core/src/principal.ts:147-192` | grantee→target, scopes, optional `collection`+`collection_id`, `expires_at`. |
 | **Grant enforcement** (`token ∩ grant` + audit) | decision `packages/auth-core/src/principal.ts:249` (`authorizeAccount`); JMAP caller `services/jmap/src/methods/common.ts:84` (`requireAccount`) | `authorizeAccount` is the **pure, shared** decision — scope check + `matchingGrants` intersection (`principal.ts:225`) over the method domain (`grantCoversDomain:217`); it returns the grant the caller must write to `grant_audit`. `requireAccount` performs that INSERT on every delegated call (`common.ts:101`); MCP does the same (`mcp.ts:352`). `allowedBookIds` (`principal.ts:275`) narrows collection-scoped grants. |
 | **Grant minting** (owner/admin only) | `services/provision/src/index.ts:1467` (`createGrant`) | rejects cross-tenant; `GRANTABLE_SCOPES` (`:1453`). Self-granting blocked by design. |
-| **Vault** (per-principal sealed secrets) | crypto `packages/auth-core/src/index.ts:240-330`; store `services/agent/src/vault.ts:69-210` | HKDF-SHA256 → AES-256-GCM, `AAD = "principalId:name"` (`vaultAad`, `:319`) binds the row. `openVaultSecret(env, principalId, name)` (`vault.ts:191`) — in-process, no request auth; caller keeps plaintext in memory only. Write-only HTTP API needs `vault` scope. |
+| **Vault** (per-principal sealed secrets) | crypto `packages/auth-core/src/index.ts:240-330`; **key + crypto** `services/bureau/src/vault.ts`; metadata + HTTP surface `services/agent/src/vault.ts` | HKDF-SHA256 → AES-256-GCM, `AAD = "principalId:name"` (`vaultAad`, `:319`) binds the row. **s04 T3a split this:** `VAULT_MASTER_KEY` is bound ONLY to `services/bureau`, so seal-on-mint, `openCredential` (was `openVaultSecret`) and every `enc_json` read/write live there; the agent worker keeps names, kinds, `meta_json` and the write-only HTTP API (`vault` scope) and **cannot decrypt anything**. Write-only still means write-only: no route on either worker returns a value. |
+| **Bureau grants** (principal → verb → credRef) | table `packages/mailstore/sql/control-plane.sql` (`bureau_grants`); resolution `packages/auth-core/src/principal.ts` (`resolveBureauGrant`); admin `services/provision/src/index.ts` (`/bureau-grants`) | s04 T2. Minting a credential authorizes nobody; a grant over `(principal, credRef, verb)` does — capability-shaped, not access-shaped. Tombstoned on revoke (`revoked_at`), logged to `grant_lifecycle`, every attempted use written to `grant_audit` as `bureau:<verb>:<credRef>`. |
 | **Identity chain** | `control-plane.sql` principals `:24`, accounts `:31`, identities `:41`; `agent_bindings` `data-plane.sql:98-109` | An agent = an ordinary account with an `agent_bindings` row. `editor@` = the EditorEmily persona. Tokens & vault rows hang off `principal_id`. |
 | **CLI vault face** | `packages/cli/src/creds.ts` | `creds init/set/list/rm/oauth`; `set` PUTs to `/vault/credentials` (`:84`); `oauth` runs a local browser+PKCE flow and uploads only the refresh token (`:161`). |
 | **SigV4 client** | `aws4fetch` (`packages/outbound`, `services/provision`) | Already a dependency — wired only to SES today. |
@@ -905,7 +906,11 @@ The properties that must hold — written as things you can assert/test.
    context; no tool schema exposed to the model contains an auth field.*
 2. **Injection only at the credentialed-transport sink.** No module on the
    compose/send path holds a vault reference. *Test: the MIME/reply builder does not
-   import `openVaultSecret`; grep-assertable in CI.*
+   import `openCredential`; grep-assertable in CI.* **s04 T3a strengthened this from
+   a grep into a platform property** — the unsealing function now lives in a
+   different Worker, so no module outside `services/bureau` CAN import it, and the
+   agent worker holds no master key to use if it did
+   (`services/agent/src/vault.test.ts`, "the agent worker genuinely cannot unseal").
 3. **Credentials are destination-bound.** A vault secret is attached only to a
    request to its configured host. WebFetch attaches none.
 4. **MCP calls are principal-scoped.** **[holds]** Every `tools/call` resolves a

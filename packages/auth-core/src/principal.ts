@@ -274,6 +274,69 @@ export function authorizeAccount(
   return { ok: true, access, auditGrant: null };
 }
 
+// ---- Bureau grants (bureau.md §5.1, s04 T2) --------------------------------
+//
+// A SECOND, deliberately separate grant vocabulary, living here beside
+// `authorizeAccount` because this file is the repo's authorization module — not
+// because the two share a table. They do not: see `bureau_grants` in
+// control-plane.sql for why account-sharing grants and capability grants cannot
+// be one row shape. What they DO share is the tombstone contract, and this is
+// the resolution layer that enforces it (`revoked_at IS NULL`), exactly as
+// `verifyBearer` does for `grants`.
+
+/** The Bureau's closed verb set (bureau.md §4). Widening it widens the oracle
+ *  surface, so the bar is high — each verb exists only because its protocol
+ *  cannot be expressed as "proxy the call". */
+export const BUREAU_VERBS = ["fetch", "oauth_token", "sign_sigv4", "hmac_sha256"] as const;
+export type BureauVerb = (typeof BUREAU_VERBS)[number];
+
+export function isBureauVerb(v: string): v is BureauVerb {
+  return (BUREAU_VERBS as readonly string[]).includes(v);
+}
+
+/** One live capability: this principal may use this verb with this credRef. */
+export interface BureauGrant {
+  grantId: string;
+  principalId: string;
+  credRef: string;
+  verb: BureauVerb;
+  expiresAt: number | null;
+}
+
+/**
+ * Resolve `(principal, credRef, verb)` to a LIVE grant, or null.
+ *
+ * The tuple is matched exactly — no prefix, no wildcard, no "adjacent" verb and
+ * no other credential. A grant on `sign_sigv4`+`aws-mcp` says nothing about
+ * `fetch`+`aws-mcp` or `sign_sigv4`+`stripe`, and that narrowness IS the
+ * capability model: authorization is over what you may DO, not what you may
+ * reach.
+ *
+ * Filters `revoked_at IS NULL` (the s03.A tombstone contract — a revoked grant
+ * stops resolving immediately while its row and history survive) and expiry, the
+ * same two clauses `verifyBearer` applies to account grants. `db` is injected so
+ * the decision is testable against a fake D1 with no request and no env.
+ */
+export async function resolveBureauGrant(
+  db: D1Database,
+  principalId: string,
+  credRef: string,
+  verb: string,
+  now = Date.now(),
+): Promise<BureauGrant | null> {
+  if (!isBureauVerb(verb)) return null;
+  const row = await db.prepare(
+    `SELECT id, expires_at FROM bureau_grants
+     WHERE principal_id = ? AND cred_name = ? AND verb = ?
+       AND revoked_at IS NULL
+       AND (expires_at IS NULL OR expires_at > ?)`,
+  )
+    .bind(principalId, credRef, verb, now)
+    .first<{ id: string; expires_at: number | null }>();
+  if (!row) return null;
+  return { grantId: row.id, principalId, credRef, verb, expiresAt: row.expires_at };
+}
+
 /**
  * Collection restriction for contacts methods: null = unrestricted
  * (owner, or a whole-account grant); otherwise the set of AddressBook

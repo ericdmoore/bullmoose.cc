@@ -37,14 +37,39 @@ export function fakeSubmit(relayMessageId = "relay-1"): FakeSubmit {
 }
 
 /**
+ * A BUREAU binding that refuses to be used by accident.
+ *
+ * `services/agent` requires the binding (s04 T3a moved the credential vault's
+ * master key into `services/bureau`), so the fake env has to supply one — but
+ * supplying a permissive stub would let a test believe it had sealed a
+ * credential when no crypto ran anywhere. A test that genuinely exercises the
+ * vault wires the REAL Bureau worker over the same D1 (see
+ * `services/agent/src/vault.test.ts`); every other test should never touch this,
+ * and finds out loudly if it does.
+ */
+function unwiredBureau(): Fetcher {
+  return {
+    async fetch() {
+      throw new Error(
+        "no Bureau wired into this fixture — a test that seals or uses a credential " +
+          "must bind services/bureau's worker over the same D1 (see agent/src/vault.test.ts)",
+      );
+    },
+  } as unknown as Fetcher;
+}
+
+/**
  * The bindings shared by `services/jmap` and `services/agent`.
  *
  * Deliberately a superset of both `Env` interfaces' REQUIRED members, so a test
  * can write `const ctx = { env: w.env, principal }` with no cast at all — the
  * `as unknown as Env` that every fake in this repo carried existed only because
- * the fakes were partial. `services/agent`'s optional `AI`, `GATEWAY_*` and
- * `VAULT_MASTER_KEY`, and `services/jmap`'s optional `SHARE_SIGNING_KEY`, are
- * left unset; a test that needs one sets it on the returned object.
+ * the fakes were partial. `services/agent`'s optional `AI` and `GATEWAY_*`, and
+ * `services/jmap`'s optional `SHARE_SIGNING_KEY`, are left unset; a test that
+ * needs one sets it on the returned object.
+ *
+ * There is deliberately no `VAULT_MASTER_KEY` here any more: after s04 T3a no
+ * worker this fixture serves is allowed to hold one.
  */
 export interface FakeEnv {
   DB: D1Database;
@@ -52,6 +77,7 @@ export interface FakeEnv {
   ROUTES: KVNamespace;
   ACCOUNT_DO: DurableObjectNamespace;
   SUBMIT: Fetcher;
+  BUREAU: Fetcher;
   INTERNAL_TOKEN: string;
   DEV_ACCOUNT_ID: string;
   DEV_TENANT_ID: string;
@@ -102,6 +128,7 @@ export function fakeEnv(opts: FakeWorkerOptions = {}): FakeWorker {
       ROUTES: kv.ns,
       ACCOUNT_DO: accountDo.ns,
       SUBMIT: submit.binding,
+      BUREAU: unwiredBureau(),
       INTERNAL_TOKEN: "internal-test-token",
       DEV_ACCOUNT_ID: "t_dev__a_local",
       DEV_TENANT_ID: "t_dev",

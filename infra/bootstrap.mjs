@@ -57,7 +57,12 @@ const SCHEMAS = [
 // `bullmoose-agent`, so on a clean account ingest deploys against a service
 // that does not exist yet. This list previously had ingest at 3 and agent at
 // 5, which only ever worked because agent already existed from a prior run.
-const DEPLOY_ORDER = ["submit", "jmap", "agent", "ingest", "provision", "anglebrackets"];
+// bureau BEFORE agent: services/agent/wrangler.jsonc binds BUREAU ->
+// bullmoose-bureau, so on a clean account the reverse order deploys agent
+// against a service that does not exist yet. Same class of dependency as
+// agent-before-ingest (infra/011); docs/DEPLOY.md §2 and
+// .github/workflows/deploy-mail.yml must stay in sync with this list.
+const DEPLOY_ORDER = ["submit", "jmap", "bureau", "agent", "ingest", "provision", "anglebrackets"];
 
 const cfg = (w) => `services/${w}/wrangler.jsonc`;
 // Configs that carry resource ids to wire. anglebrackets has no KV binding —
@@ -67,10 +72,14 @@ const CONFIGS = DEPLOY_ORDER.map(cfg);
 // Secrets we generate: name → { bytes, workers }. INTERNAL_TOKEN is ONE value
 // shared across all its workers (the /internal/* + agent-poke shared secret).
 const GENERATED = {
-  INTERNAL_TOKEN: { bytes: 24, workers: ["jmap", "submit", "ingest", "agent"] },
+  INTERNAL_TOKEN: { bytes: 24, workers: ["jmap", "submit", "ingest", "agent", "bureau"] },
   SHARE_SIGNING_KEY: { bytes: 32, workers: ["jmap"] },
   ADMIN_TOKEN: { bytes: 24, workers: ["provision"] },
-  VAULT_MASTER_KEY: { bytes: 32, workers: ["agent"] },
+  // ONE key, ONE home (s04 T3a, arch.md OQ1). This list having exactly one entry
+  // is the platform guarantee behind "you can only compute with what you have":
+  // add `agent` back here and the agent worker can unseal every credential
+  // again, and the Bureau stops being a boundary.
+  VAULT_MASTER_KEY: { bytes: 32, workers: ["bureau"] },
 };
 
 // Secrets you supply (paste into .env.deploy). Missing required → warn + skip;

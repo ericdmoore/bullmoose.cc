@@ -236,6 +236,58 @@ CREATE TABLE IF NOT EXISTS vault_credentials (
   UNIQUE (principal_id, name)
 );
 
+-- Bureau grants (bureau.md §5.1, s04 T2): who may USE a credential, and for
+-- WHICH verb. Deliberately NOT a mint-time field on vault_credentials — it is a
+-- separate, revocable record over `(principal, credRef, verb)`:
+--
+--     p_allen may use `sign_sigv4` with `aws-mcp`
+--
+-- capability-shaped, never access-shaped ("p_allen may read aws-mcp"). Separate
+-- from the credential row is the point: revoking a grant leaves the credential
+-- and its sibling grants untouched.
+--
+-- ⚠️ Why its OWN table rather than `grants`. `grants` is account→account sharing:
+-- `grantee_account_id` → `target_account_id`, plus a JMAP scope list and an
+-- optional collection, and `verifyBearer` JOINs it to `accounts` to widen a
+-- principal's reach. A Bureau grant has no target account, no scope list and no
+-- collection — it names a credential by handle and exactly one verb. Overloading
+-- `grants` would mean a nullable `target_account_id` on a `NOT NULL REFERENCES`
+-- column and teaching `verifyBearer`'s hot join to skip a row shape it must never
+-- resolve: a live authentication path made conditional to save one table. The
+-- tombstone CONTRACT is what gets reused, not the table.
+--
+-- Tombstone (same bargain as `grants.revoked_at`, s03.A T2): revoke SETs
+-- `revoked_at` rather than DELETEing, every resolution path filters
+-- `revoked_at IS NULL`, and the row plus its `grant_lifecycle` history survive so
+-- "who could have signed with this key last Tuesday?" stays answerable.
+--
+-- Re-granting a revoked tuple REINSTATES the row (`revoked_at = NULL`) and logs a
+-- fresh 'created' event, rather than silently no-opping on the unique index the
+-- way `grants`' `ON CONFLICT DO NOTHING` does. The forensic record lives in
+-- `grant_lifecycle`, so reuse of the row costs no history.
+--
+-- `cred_name` is the public handle (`vault_credentials.name`), not the row id —
+-- it is what agent configs carry (`credentialRef: "aws-mcp"`) and it survives a
+-- rotate. Under today's `scope=actor` the credential resolves within the SAME
+-- principal (the AAD binds principal+name), so `principal_id` identifies both the
+-- grantee and the credential's owner; §9/T6's re-scope is what separates them.
+--
+-- NEW table, so `CREATE TABLE IF NOT EXISTS` creates it on fresh AND existing
+-- databases (unlike an ADD COLUMN). See docs/DEPLOY.md.
+CREATE TABLE IF NOT EXISTS bureau_grants (
+  id           TEXT PRIMARY KEY,             -- bg_<uuid>
+  principal_id TEXT NOT NULL REFERENCES principals(id),
+  cred_name    TEXT NOT NULL,                -- credRef — vault_credentials.name
+  verb         TEXT NOT NULL,                -- 'fetch'|'oauth_token'|'sign_sigv4'|'hmac_sha256'
+  created_by   TEXT NOT NULL,                -- minting principal id, or 'admin'
+  created_at   INTEGER NOT NULL,
+  expires_at   INTEGER,                      -- epoch ms; NULL = no expiry
+  revoked_at   INTEGER                       -- tombstone; NULL = live
+);
+CREATE UNIQUE INDEX IF NOT EXISTS bureau_grants_tuple
+  ON bureau_grants (principal_id, cred_name, verb);
+CREATE INDEX IF NOT EXISTS bureau_grants_cred ON bureau_grants (principal_id, cred_name);
+
 -- Inbound address resolution. kind: 'mailbox' | 'alias' | 'forward' | 'catchall'
 CREATE TABLE IF NOT EXISTS routes (
   domain      TEXT NOT NULL REFERENCES domains(domain),
