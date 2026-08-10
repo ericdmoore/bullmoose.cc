@@ -4,6 +4,33 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-06-01",
 
+  // SAME-ORIGIN API for app.bullmoose.cc (s07 T1). Pages serves the app's
+  // documents; these four patterns hand the API paths to this worker instead.
+  // Worker routes take precedence over Pages on a shared hostname, so the two
+  // coexist on one name and the browser never makes a cross-origin request.
+  //
+  // Why same-origin and not api.bullmoose.cc: this worker sends NO CORS headers
+  // and has no OPTIONS handler (src/index.ts), so a cross-origin app would fail
+  // at preflight before reaching any of these routes. Same-origin removes the
+  // CORS surface entirely rather than adding one to get wrong.
+  //
+  // The list is EXACTLY the paths src/index.ts answers, and a single "/api/*"
+  // is not enough -- the client opens with `/.well-known/jmap` (JmapClient.ts:150)
+  // and the door posts to `/auth/login`. Anything not listed here falls through
+  // to Pages and 404s as HTML, which reads as "the app is broken" rather than
+  // "the route is missing". webmail/src/lib/app/sameOrigin.test.ts asserts both
+  // directions; keep this in sync with src/index.ts's dispatch.
+  "routes": [
+    { "pattern": "app.bullmoose.cc/.well-known/jmap", "zone_name": "bullmoose.cc" },
+    { "pattern": "app.bullmoose.cc/api/*", "zone_name": "bullmoose.cc" },
+    { "pattern": "app.bullmoose.cc/auth/*", "zone_name": "bullmoose.cc" },
+    // Share links are public-by-design URLs handed to people with no account.
+    // They live here because this worker serves them and the API base is what
+    // mints them; giving them their own hostname is a product decision, not a
+    // routing one.
+    { "pattern": "app.bullmoose.cc/share/*", "zone_name": "bullmoose.cc" }
+  ],
+
   // AccountDO lives in THIS worker; ingest/submit bind it via script_name.
   "durable_objects": {
     "bindings": [{ "name": "ACCOUNT_DO", "class_name": "AccountDO" }]

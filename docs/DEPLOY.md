@@ -451,6 +451,56 @@ runs purely on the token table. Submit's `RELAY` var: `ses` (default;
 sandbox delivers to your verified inbox on day one) or `mock` for
 inbound-only first.
 
+### The app surface — `app.bullmoose.cc` (Pages + Worker routes, ONE origin)
+
+`webmail/` deploys to a **second** Pages project, `bullmoose-app`, via
+`.github/workflows/deploy-app.yml`. The API is **not** a separate host: four
+Worker routes on `services/jmap` claim the API paths on the same name, and Pages
+serves everything else. Worker routes take precedence over Pages on a shared
+hostname, so the two coexist.
+
+That is deliberate. `services/jmap` sends **no CORS headers and has no `OPTIONS`
+handler**, so an app on `app.` talking to an API on `api.` would die at the
+browser's preflight before reaching a single route. Same-origin removes the CORS
+surface rather than adding one to get wrong — and no credential crosses an
+origin boundary.
+
+| path | served by |
+|---|---|
+| `/.well-known/jmap`, `/api/*`, `/auth/*`, `/share/*` | `bullmoose-jmap` worker |
+| everything else (`/`, `/login`, `/mail`, `/calendar`, …) | `bullmoose-app` Pages |
+
+⚠️ **A single `/api/*` route is not enough** and looks like it is. The client
+opens on `/.well-known/jmap` and the login door posts to `/auth/login`; neither
+is under `/api`. A missing route falls through to Pages and returns **404 HTML**,
+which reads as "the app is broken" rather than "the route is missing".
+`webmail/src/lib/app/sameOrigin.test.ts` asserts the route list and that no app
+page or nav section collides with it.
+
+**Order matters:** deploy the worker (`deploy-mail.yml`) **before** the Pages
+project. Reverse it and `/api/*` 404s into Pages while the login page renders
+perfectly — the most confusing possible failure.
+
+One-time human steps:
+
+1. Run `deploy-mail.yml` so the routes exist. Cloudflare creates the DNS record
+   for a routed hostname automatically; you do **not** add an `app` A/CNAME by
+   hand.
+2. Run `deploy-app.yml` once — it creates the `bullmoose-app` Pages project by
+   direct upload — then map `app.bullmoose.cc` to it in the Pages dashboard.
+3. **No new token.** It reuses `BULLMOOSE_SITE_DEPLOY_TOKEN`; a token scoped
+   *Account > Cloudflare Pages: Edit* covers every Pages project in the account,
+   so a second project needs no widening. If a run 403s, that assumption was
+   wrong — widen that one token rather than minting another.
+
+And before any of it, run the migrations — `accounts.deleted_at` and
+`grants.revoked_at` are both in `verifyBearer`'s path, so a worker deployed
+against a database missing either **authenticates nobody**:
+
+```sh
+node infra/bootstrap.mjs migrate --dry-run   # then drop --dry-run
+```
+
 ## 4. Onboard the domain + your account
 
 ```sh
