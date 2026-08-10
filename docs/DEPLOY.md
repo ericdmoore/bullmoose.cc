@@ -544,7 +544,7 @@ SPF/DKIM/DMARC pass (Gmail: "show original").
    is next on the roadmap)
 2. Spam gate at ingest (honor Email Routing verdict headers)
 3. GHA deploy workflow (see `.github/workflows/deploy-mail.yml`) once
-   `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` repo secrets exist
+   `BULLMOOSE_RUNTIME_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` repo secrets exist
 4. SES config set → SNS → `/webhooks/ses` for bounce/complaint
    suppression (when RELAY=ses)
 
@@ -716,7 +716,7 @@ deploy-time credentials do:
 
 ```sh
 R=ericdmoore/bullmoose.cc
-gh secret set CLOUDFLARE_API_TOKEN  -R $R   # the *deploy* token (Workers Scripts/D1/KV/R2:Edit)
+gh secret set BULLMOOSE_RUNTIME_TOKEN -R $R # runtime: Workers Scripts/D1/KV/R2:Edit + Zone>Workers Routes:Edit
 gh secret set CLOUDFLARE_ACCOUNT_ID -R $R   # cf473a1c1e6f51585477ccf5216ae636
 
 # optional — only if GHA scripts will call the provision admin API
