@@ -1,6 +1,6 @@
 # 036 -P2- Secret scanners will fail every vault-test PR, and the obvious fixes are all wrong
 
-**Subsystem:** infra · **Severity:** MEDIUM (recurring CI friction → alert fatigue) · **Fix class:** DECISION
+**Subsystem:** infra · **Severity:** MEDIUM (recurring CI friction → alert fatigue) · **Fix class:** DECISION (operator, dashboard-only)
 
 ## What happened
 
@@ -20,26 +20,52 @@ merged with GitGuardian red.
 
 GitGuardian's generic detector keys on **variable name plus value shape**: `const SECRET =`,
 `MASTER =`, `…token`. A test suite for a *credential vault* cannot avoid those identifiers —
-they are the subject matter. So this fails on every PR touching `services/bureau/**` or
-`services/agent/src/vault*`, forever.
+they are the subject matter.
 
-## The three tempting fixes, and why each is worse
+## ⚠️ CORRECTION — the first version of this file recommended a fix that does not work
 
-- **Click the allow-secret / dashboard-ignore URL.** Whitelists a credential-shaped string
-  permanently and teaches the next person that the block is noise.
-- **Build fixture values at runtime** (`"not-real-" + "key"`) to duck entropy detection. This
-  is obfuscation, and it defeats the scanner for *real* secrets in the same files.
-- **Ignore `**/*.test.ts` wholesale.** The cheapest and the most dangerous: a real key pasted
-  into a test is the single most likely way one enters this repo.
+This file originally said: *"Recommended: per-match ignores in `.gitguardian.yaml`
+(`secret.ignored-matches`, keyed by match hash)."* **That is wrong, and acting on it would
+have wasted an afternoon.**
 
-## What to actually decide
+`.gitguardian.yaml` is read **only by the `ggshield` CLI**. The red check here comes from the
+GitGuardian **GitHub App**, which scans server-side at the post-receive stage and never reads
+the repository working tree. GitGuardian's own docs state the dashboard↔ggshield relationship
+is one-directional — dashboard → CLI, never the reverse:
 
-Recommended: **per-match ignores** in `.gitguardian.yaml` (`secret.ignored-matches`, keyed by
-match hash, one entry per fixture with a comment). Narrow, auditable, and adding one is a
-deliberate act rather than a blanket exemption. Requires dashboard access to read the hashes.
+> "ggshield does not share its ignored secrets with the dashboard. Therefore … a secret
+> ignored on ggshield will still show as a potential incident on your GitGuardian dashboard."
+> — <https://docs.gitguardian.com/ggshield-docs/reference/secret/ignore>
 
-Alternative worth considering: make GitGuardian a **required** check once the fixtures are
-ignored — a soft-failing security check that is always red is worse than no check, because it
-trains everyone to merge past it. That is the actual risk here, not these 14 strings.
+There is no ggshield step in any workflow in `.github/workflows/`, so **100% of the signal is
+the App** and no committed file can change it. Two further corrections to the original: the
+config keys use underscores (`ignored_matches`, not `ignored-matches`), and `match` accepts
+the literal string *or* a SHA256 — hashing was never required.
 
-Either way this is an operator decision, not a code change.
+## What actually fixes it — all dashboard, Settings → Secrets → exclusion rules
+
+1. **Secret pattern exclusions** scoped to this repo. Preferred, because it stays narrow: a
+   *real* leaked key in a test file still alerts. Applies retroactively to open incidents.
+   - `bm-canary-DO-NOT-USE-[A-Za-z0-9._-]+`
+   - `test-vault-master-key-[0-9a-f]+`
+   - `internal-test-token`
+2. **Ignore the open incidents** with reason **"this is test credential"** — *Ignore*, not
+   *Resolve*. Resolved incidents regress and reopen on a new occurrence; ignored ones do not,
+   and closed incidents "will no longer be raised by GitHub checkruns."
+3. Only if 1 proves insufficient: filepath exclusions `**/*.test.ts`, `**/test-fakes/**`.
+   This is the tempting and dangerous one — a real key pasted into a test is the likeliest
+   way one enters this repo, and this blinds the scanner to exactly that.
+
+Developers can also self-unblock from the GitHub UI via **Skip: test credential**, if the
+workspace Manager leaves skip actions enabled.
+
+## The part that is not about GitGuardian
+
+A security check that is **always red** is worse than no check, because it trains everyone to
+merge past it — which is precisely what happened on #43, by me. That is the actual risk here,
+not the 14 strings. Once the exclusions are in, GitGuardian is worth making a **required**
+check so it can never be background noise again.
+
+`.gitguardian.yaml` is committed anyway, with a comment saying plainly that it does nothing
+for the App check. It costs nothing, it is correct the day a ggshield pre-commit hook is
+added, and it documents this finding at the exact place the next person will look.
