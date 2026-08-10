@@ -115,6 +115,18 @@ jobs:
           # provisions DNS asynchronously, and a domain can sit attached with no
           # record — which looks identical from the outside to "never added".
           # Print the status so the difference is visible.
+          # A domain can sit `pending` indefinitely: Pages stages the record and
+          # waits to verify, and until it activates the authoritative NS answers
+          # NXDOMAIN even though the API lists a correct CNAME. PATCH re-triggers
+          # verification, which is the documented nudge and is safe to repeat.
+          if printf '%s' "$list" | tr -d ' \n' | grep -q '"status":"pending"'; then
+            echo "domain is pending — re-triggering verification"
+            curl -sS -m 25 -X PATCH -H "Authorization: Bearer $TOKEN" \
+              -H "content-type: application/json" -d '{}' \
+              "$base/app.bullmoose.cc" | tr ',' '\n' \
+              | grep -oE '"(status|code|message)":[^,}]*' | sed 's/^/    /' | head -6
+          fi
+
           echo "── custom domain status ──"
           curl -sS -m 20 -H "Authorization: Bearer $TOKEN" "$base" \
             | tr ',' '\n' | grep -oE '"(name|status|verification_data|certificate_authority)":[^,}]*' \
