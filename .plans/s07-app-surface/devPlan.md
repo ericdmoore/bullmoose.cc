@@ -223,6 +223,51 @@ the unit file's claim that `grep -r "Identity/set"` returns zero hits is stale
 
 **Server routes needed:** none. All four methods are live.
 
+> **Where `/settings` goes next: the vacation responder is the send invariant's one existing
+> exception, and that is the whole design problem.**
+>
+> Agents have no send tool, and that is an invariant rather than an omission
+> (`emailTools.ts:68-90`). But a vacation responder **already sends without a human click** —
+> it is automated outbound mail by definition. It is safe today for exactly one reason: the
+> content is a fixed string the human wrote in advance. **The human pre-approved a *string*.**
+> Model-generated content means pre-approving a ***policy***, which is a categorically
+> different act, and the human is by definition unavailable to supervise it.
+>
+> The three risks are not equally hard, and two of them should not be the model's job at all:
+>
+> | risk | difficulty | control |
+> |---|---|---|
+> | perfunctory vs substantive | **cheap to get wrong** — failure is a missing or needless reply | this is the part that actually wants a model |
+> | leaking private info | expensive | **structural, and mechanically checkable** |
+> | committing on the human's behalf | expensive | **structural — remove the slot** |
+>
+> - **Leaking:** constrain the reply so its factual content is a **subset of the incoming
+>   message**. The model may quote back what the sender said and nothing from the mailbox.
+>   That is checkable rather than judged — verify no substantive token appears outside
+>   *(incoming message ∪ fixed template)*. Same shape as the Bureau's egress filter, one realm
+>   over.
+> - **Committing:** the model fills exactly **one** slot — *the questions I understand you to
+>   be asking*. The expectation sentence ("she will get to it, slower than usual") stays
+>   human-written and fixed. Never give the model a slot a commitment could fit in.
+> - **Prefer quotation to paraphrase.** *"You asked: ‹quote›"* delivers most of the value of
+>   *"I understand you to be asking ‹paraphrase›"* at a fraction of the risk. A confidently
+>   wrong summary of someone's question is worse than saying nothing at all.
+>
+> **The mechanism is already built, and it is better than a naive auto-reply.** `responders`
+> (`data-plane.sql:157-173`) is `respond(template, wait, cancelIf, suppression)` — armed at
+> delivery, fired by the AccountDO alarm, with `wait_seconds`, `cancel_if`
+> (`'never' | 'invocation-active'`) and `suppress_seconds` (once per sender per window).
+> Ingest already gates on `autoResponseEligible` for RFC 3834 — never auto-respond to
+> auto-submitted mail, bounces or list traffic (`services/ingest/src/index.ts:300-311`).
+>
+> **The delay is a safety feature, not politeness.** Arm, wait, cancel if the human answers
+> first from their phone. `cancel_if` wants a `'human-replied'` value; today it only knows
+> `'invocation-active'`.
+>
+> And this is the concrete case that makes the missing outbound bound real: a responder that
+> generates its own content and replies to arbitrary senders is precisely why an agent needs
+> `allowedRecipients` (T4, decision 5).
+
 ### T3 — `/contacts` and `/calendar` · *the biggest gap on the grid*
 
 **Files:** `webmail/src/pages/contacts.astro`, `calendar.astro`, `webmail/src/lib/contacts/`,
