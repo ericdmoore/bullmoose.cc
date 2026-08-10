@@ -69,4 +69,21 @@ jobs:
             ok "Workers Routes" "⚠️  cannot probe — zone id unreadable"
           fi
           echo
+          echo "── is this the zone that actually SERVES bullmoose.cc? ────"
+          # The discriminator: the live zone must contain dav.bullmoose.cc,
+          # which demonstrably resolves. If the token resolves a zone id whose
+          # record set does NOT include dav, then the token is looking at a
+          # different zone of the same name — and every write we have made
+          # (the app CNAME) landed somewhere that serves no traffic. That would
+          # explain an API-visible record with an NXDOMAIN from the real NS.
+          if [ -n "$z" ]; then
+            echo "  zone id: $z"
+            api "/zones/$z" | tr ',' '\n' | grep -oE '"(name|status|account)":[^,}]*' | sed 's/^/  /' | head -3
+            echo "  records:"
+            api "/zones/$z/dns_records?per_page=100" | tr ',' '\n' \
+              | grep -oE '"name":"[^"]*bullmoose[^"]*"' | sort -u | sed 's/^/    /' | head -15
+            echo "  nameservers on this zone:"
+            api "/zones/$z" | tr ',' '\n' | grep -oE '"[a-z]+\.ns\.cloudflare\.com"' | sort -u | sed 's/^/    /'
+          fi
+          echo
           echo "Nothing above was modified. Read-only."
