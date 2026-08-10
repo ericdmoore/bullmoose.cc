@@ -16,14 +16,14 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 | Mailbox | `CRUD` | `CRUD` | `-R--` | `----` | `-R--` | `----` | `~` |
 | Thread | `-R--` | `----` | `----` | `----` | `-R--` | `----` | n/a |
 | EmailSubmission | `CR--` | `C---` | `----` | `----` | `C---` | `----` | `C---` |
-| AddressBook | `CRUD` | `~R--` | `-R--` | `CRUD` | `----` | `----` | n/a |
-| ContactCard | `CRUD` | `CR--` | `CRUD` | `CRUD` | `----` | `----` | n/a |
-| Calendar | `CRUD` | `-R--` | `-R--` | `CRUD` | `----` | `----` | n/a |
-| CalendarEvent | `CRUD` | `-R--` | `CRUD` | `CRUD` | `----` | `----` | n/a |
+| AddressBook | `CRUD` | `~R--` | `-R--` | `CRUD` | `-R--` | `----` | n/a |
+| ContactCard | `CRUD` | `CR--` | `CRUD` | `CRUD` | `CRUD` | `----` | n/a |
+| Calendar | `CRUD` | `-R--` | `-R--` | `CRUD` | `-R--` | `----` | n/a |
+| CalendarEvent | `CRUD` | `-R--` | `CRUD` | `CRUD` | `CRUD` | `----` | n/a |
 | **FileNode** | `CRUD` | `----` | `----` | `----` | `----` | `----` | n/a |
 | Agents | `-RU-` | `-RU-` | `----` | n/a | `-R--`† | `----` | `C---` |
 | Secrets | n/a | `CRUD` | `----` | n/a | `-R-D`† | `----` | n/a |
-| HumanSettings | `~R~-` | `-RU-` | `----` | n/a | `----` | `----` | n/a |
+| HumanSettings | `~R~-` | `-RU-` | `----` | n/a | `-RU-` | `----` | n/a |
 | IdentitySetup | `CRUD` | `CRUD` | `----` | `~` | `----` | `----` | n/a |
 | SystemAdmin | `CRUD` | `CRUD` | `----` | n/a | `----` | `----` | n/a |
 

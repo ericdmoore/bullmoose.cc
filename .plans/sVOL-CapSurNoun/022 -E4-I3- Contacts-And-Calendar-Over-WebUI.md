@@ -96,8 +96,30 @@ E4, and the WebUI stack does not exist.
 Plus `CalendarEvent/getOccurrences` (`calendars.ts:402`) — a bullmoose extension, not in
 the draft spec, which is what the CLI's `calendar agenda` already renders.
 
-**Surface: nothing.** The WebUI column is empty for every noun. `ls webmail` fails;
-`tsconfig.json:33` excludes a directory that has never existed.
+⚠️ **STALE, and this unit is now BUILT.** Both halves shipped under `s07` T3 —
+`/contacts` and `/calendar` are live pages with ~300 tests between them. The paragraph
+below was the E4 justification and every clause of it is now false: `webmail/` exists,
+and `tsconfig.json:33` is a closing brace.
+
+**Regrade E4 → E2**, which this unit already conceded would be right once the shell
+existed ("if s03.C's shell and JmapClient already existed, this would be an E2").
+
+Three bread-crumbs this unit did not have, learned by building it:
+
+1. **The group model.** A group is a **ContactCard** — not an AddressBook, not a property
+   on member cards — carrying `kind: "group"` and `members` keyed by **UID** (RFC 9553
+   §2.1.5), so membership needs a uid-filtered query and never a `/get`. Groups do **not**
+   round-trip over CardDAV in either direction; see `.feedback` `common/039`.
+2. **`ifInState` is not free.** This unit says threading `newState` from one write into the
+   next makes optimistic concurrency free. It does not — the state is **account-wide**, so
+   unrelated *mail* advances it. Re-read, verify, write with that state, retry once.
+3. **Recurrence must not be expanded in the browser.** Use `CalendarEvent/getOccurrences`.
+   And `getOccurrences` returns two spellings — `start` (wall clock) and `utcStart` (the
+   instant); all-day events must read `start` and **never** parse `utcStart`, or every
+   viewer west of UTC sees the wrong day.
+
+> ~~**Surface: nothing.** The WebUI column is empty for every noun. `ls webmail` fails;
+> `tsconfig.json:33` excludes a directory that has never existed.~~
 
 **Two capability edges to know about before designing screens:**
 

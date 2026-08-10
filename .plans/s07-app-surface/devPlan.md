@@ -171,15 +171,19 @@ becomes irreversible" would be a genuine bug. T4 adds `expiresAt`.
 **Done when:** a first-time visitor with mail, a calendar and one agent sees what needs them
 today without clicking anything, and nothing on this page is a file browser.
 
-### T1 — The origin, the layout, and the interim door · *foundation*
+### T1 — The origin, the layout, and the interim door · ✅ **DONE**, except the hostname (moved to T7)
 
 **Files:** `webmail/wrangler.jsonc` (new), `webmail/astro.config.mjs`,
 `webmail/src/layouts/App.astro` (new), `webmail/src/pages/index.astro`,
 `webmail/src/lib/app/client.ts`, `.github/workflows/deploy-app.yml` (new), `docs/DEPLOY.md`.
 
-- **`app.bullmoose.cc`.** The webmail is currently deployed by **nothing** — `deploy.yml`
-  ships `src/` (the marketing site) to Pages project `bullmoose`, and `webmail/` has no
-  deploy config and no `DEPLOY.md` entry. Add a Pages project and a workflow.
+- **`app.bullmoose.cc`.** The webmail is deployed by **nothing** — `deploy.yml` ships `src/`
+  (the marketing site) to Pages project `bullmoose`, and `webmail/` has no deploy config and
+  no `DEPLOY.md` entry.
+  ⚠️ **This bullet used to say "add a Pages project and a workflow", which contradicts
+  Decision 1** ("public, but only after T7 — the interim door should not face the internet").
+  Decision 1 wins: **T1 builds no deploy config.** The Pages project lands with T7, when
+  there is a real login to put behind it.
 - **Write the domain map down before it collides.** Five hostnames are now in play across
   three plans:
 
@@ -192,9 +196,11 @@ today without clicking anything, and nothing on this page is a file browser.
   | `auth.bullmoose.cc` | OAuth AS | `s02` T3 |
 
 - **A shared layout** with the eight-section nav, one island per page.
-- **Tighten `connect-src`.** It is `'self' https: wss:` today — fine for one page talking to
-  one API, too broad once the origin is public. Narrow to the JMAP worker's origin plus the
-  WS endpoint.
+- ~~**Tighten `connect-src`.**~~ ⚠️ **NOT DONE, and cannot be done as written.** The
+  instruction assumed a fixed API origin. It is runtime-configurable — `?api=`, the door's
+  advanced field, and a stored `bullmoose.apiBase`, with `defaultBase()` falling back to the
+  page origin — so a build-time literal breaks every non-default deployment. This needs a
+  decision (drop the affordance, or accept the broad policy), not an edit.
 - **The interim door** per refinement 1: paste-a-token, `localStorage`, `location.assign`.
   No token in any URL, ever. Strip `?token=` via `replaceState` on read.
 - ⚠️ **Decide the no-token behaviour deliberately.** Today `client.ts:49-57` silently falls
@@ -202,11 +208,16 @@ today without clicking anything, and nothing on this page is a file browser.
   at `app.bullmoose.cc` sees a convincing mailbox full of fake mail. Demo mode must become
   opt-in (`?demo=1` only) and the bare no-token case must render the door.
 
-**Done when:** `app.bullmoose.cc/mail` serves the existing client against a real token; a
-first-time visitor gets the token form and not demo data; the token appears in no URL,
-no history entry, and no log.
+**Done when:** ~~`app.bullmoose.cc/mail` serves~~ the client is reachable at `/mail` against a
+real token; a first-time visitor gets the token form and not demo data; the token appears in
+no URL, no history entry, and no log. (The hostname moves to T7 per the correction above.)
 
-### T2 — `/settings` · *cheapest real section, and unblocked*
+⚠️ **A static nav cannot honour the agent-capability gate** (`arch.md` §8.6). `/agents` shows
+for a session lacking `urn:bullmoose:params:jmap:agent`, because only the browser knows after
+`session()`. `AppShell`'s gated seam — repointed to `/agents` — remains the surface that
+tells the truth. T4 needs to decide: hydrate the nav, or accept the gate only inside the page.
+
+### T2 — `/settings` · ✅ **DONE** (was: cheapest real section, and unblocked)
 
 **Files:** `webmail/src/pages/settings.astro`, `webmail/src/lib/settings/`.
 
@@ -218,8 +229,8 @@ the unit file's claim that `grep -r "Identity/set"` returns zero hits is stale
 - `VacationResponse/get` + `/set`.
 - ⚠️ `VacationResponse.htmlBody` is permanently `null` server-side — keep the editor
   plain-text rather than building a rich one that silently discards its output.
-- Sign-out. `signOut()` exists at `client.ts:65` and **is called from nowhere** — there is
-  no sign-out UI at all today.
+- ~~Sign-out~~ — **done in T1**: `SessionBar.tsx` calls `signOut()`, wiring it for the first
+  time since it was written. `/settings` deliberately does not duplicate the control.
 
 **Server routes needed:** none. All four methods are live.
 
@@ -268,7 +279,7 @@ the unit file's claim that `grep -r "Identity/set"` returns zero hits is stale
 > generates its own content and replies to arbitrary senders is precisely why an agent needs
 > `allowedRecipients` (T4, decision 5).
 
-### T3 — `/contacts` and `/calendar` · *the biggest gap on the grid*
+### T3 — `/contacts` and `/calendar` · ✅ **DONE** (was: the biggest gap on the grid)
 
 **Files:** `webmail/src/pages/contacts.astro`, `calendar.astro`, `webmail/src/lib/contacts/`,
 `webmail/src/lib/calendar/`.

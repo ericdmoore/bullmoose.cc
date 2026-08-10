@@ -8,7 +8,7 @@
 | **Owner** | **`.feedback/fromClaude/common/003`** — the defect and the fix are filed there; this file carries the cell mapping, the grades, the dependency edges, and the test work the issue does not cover |
 | **Depends on** | — |
 | **Blocks** | `013` (Calendar + Contacts over MCP — recurring events only) · `018` (Calendar CRUD over CLI — s05 T3) |
-| **Status** | todo |
+| **Status** | ✅ done — `.feedback/fromClaude/common/✅003…` is closed and `_index.md:86` marks it done |
 
 ## Cells covered
 
