@@ -1,7 +1,25 @@
 name: Deploy mail platform
 # Manual-only until the first hand deploy proves the config.
-# Requires repo secrets: CLOUDFLARE_API_TOKEN (Workers Scripts:Edit,
-# D1:Edit, Workers KV:Edit, Workers R2:Edit), CLOUDFLARE_ACCOUNT_ID.
+# Requires repo secrets: BULLMOOSE_RUNTIME_TOKEN, CLOUDFLARE_ACCOUNT_ID.
+#
+# BULLMOOSE_RUNTIME_TOKEN is the RUNTIME half of a deliberate two-token split;
+# BULLMOOSE_SITE_DEPLOY_TOKEN (deploy.yml, deploy-app.yml) is the other. They
+# are not interchangeable and must not be merged:
+#
+#   SITE_DEPLOY   Account > Cloudflare Pages:Edit
+#                 uploads static files. Blast radius: the website looks wrong.
+#   RUNTIME       Workers Scripts:Edit, D1:Edit, Workers KV:Edit,
+#                 Workers R2:Edit, AND Zone > Workers Routes:Edit on
+#                 bullmoose.cc (needed since services/jmap gained `routes`;
+#                 without it the script uploads fine and the ROUTES fail,
+#                 which is a confusing place to land).
+#                 D1:Edit is arbitrary SQL against the mailstore. Blast
+#                 radius: the mail, and everyone's.
+#
+# The env var below stays CLOUDFLARE_API_TOKEN because that is the name
+# wrangler reads; only the SECRET is bullmoose-named, so the privilege level
+# is legible at the point of use rather than hidden behind a vendor-generic
+# label. deploy-app.yml already maps SITE_DEPLOY the same way.
 on:
   workflow_dispatch:
 
@@ -39,32 +57,32 @@ jobs:
       - name: Deploy submit
         run: npx wrangler deploy -c services/submit/wrangler.jsonc
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy jmap
         run: npx wrangler deploy -c services/jmap/wrangler.jsonc
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy bureau
         run: npx wrangler deploy -c services/bureau/wrangler.jsonc
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy agent
         run: npx wrangler deploy -c services/agent/wrangler.jsonc
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy ingest
         run: npx wrangler deploy -c services/ingest/wrangler.jsonc
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy provision
         run: npx wrangler deploy -c services/provision/wrangler.jsonc
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       # anglebrackets serves dav.bullmoose.cc — a live client-facing hostname.
       # Deploying jmap without it moves the AccountDO schema out from under a
@@ -72,7 +90,7 @@ jobs:
       - name: Deploy anglebrackets
         run: npx wrangler deploy -c services/anglebrackets/wrangler.jsonc
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       # NOT deployed here: services/demo-keys. It is absent from
