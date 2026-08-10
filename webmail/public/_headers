@@ -1,0 +1,22 @@
+# Cloudflare Pages response headers for the webmail origin.
+#
+# The Content-Security-Policy itself is emitted as a <meta> element by Astro
+# (astro.config.mjs `security.csp`), because only the build knows the hashes of
+# its own inline hydration scripts. What lives HERE is the set of protections a
+# <meta> tag cannot deliver:
+#
+#   • frame-ancestors is IGNORED in <meta> — the browser says so out loud. It
+#     has to be a header, and without it the triage buttons are click-jackable.
+#   • HSTS, nosniff and Referrer-Policy are header-only by definition.
+#
+# Referrer-Policy matters more than usual here: every link in every message is
+# attacker-chosen, and a referrer would leak the webmail URL to whoever the
+# sender picked.
+
+/*
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
