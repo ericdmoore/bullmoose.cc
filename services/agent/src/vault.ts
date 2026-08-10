@@ -1,23 +1,28 @@
-import {
-  hasScope,
-  openSecret,
-  parseToken,
-  sealSecret,
-  vaultAad,
-  verifyTokenSecret,
-  type SealedSecret,
-} from "@bullmoose/auth-core";
+import { hasScope, parseToken, verifyTokenSecret } from "@bullmoose/auth-core";
 import type { Env } from "./models.js";
 
 /**
- * Credential vault (devPlan-handoff Phase 3, Q2 "build it right").
+ * Credential vault — the METADATA half (T3a split).
  *
- * Per-principal third-party secrets, envelope-encrypted with this
- * worker's VAULT_MASTER_KEY (HKDF per row + AES-256-GCM, AAD binds
- * principal+name — see auth-core). The API is WRITE-ONLY: a stored
- * secret is never returned by any route. When an agent pipeline needs a
- * credential it calls openVaultSecret() in-process and keeps the value
- * in memory only.
+ * Per-principal third-party secrets. This file owns everything about a
+ * credential except the credential: names, kinds, `meta_json`, the mint-time
+ * contract of bureau.md §5, and the `creds` HTTP surface. It owns no key.
+ *
+ * **The vault's master key is not bound to this worker.** It was MOVED to
+ * `services/bureau`, not copied (arch.md open question 1, ratified 2026-08-09),
+ * and `sealSecret` / `openSecret` / `vaultAad` moved with it — including
+ * seal-on-mint, which is the part that would otherwise have dragged the key back
+ * here. The agent worker therefore *cannot* unseal a credential: not by rule, by
+ * platform. That is what makes the governing principle — *you can only compute
+ * with what you have* — a guarantee rather than a convention.
+ *
+ * The key's name appears nowhere in this worker's source or config, which is the
+ * form the guarantee takes that a reviewer can check in one command;
+ * `vault.test.ts` runs that check so it cannot rot.
+ *
+ * What crosses the BUREAU service binding: a plaintext secret goes IN once, at
+ * mint and at rotate, on its way to being sealed. Nothing comes back but an
+ * acknowledgement. There is no route, here or there, that returns a value.
  *
  * Routes (bearer token, scope "vault"; "mail" covers it):
  *   PUT    /vault/credentials          {name, kind, secret, meta?, +mint-time fields}
@@ -27,7 +32,8 @@ import type { Env } from "./models.js";
  *   DELETE /vault/credentials/{name}
  * Internal (x-internal-token):
  *   POST   /internal/vault/verify      {principalEmail, name} → {ok}
- *          (decrypt-and-discard health check; returns a boolean only)
+ *          (decrypt-and-discard health check — proxied to the Bureau, which is
+ *           the only worker that can decrypt anything)
  *
  * Four kinds (bureau.md §4.1 types the Bureau's verbs to the credential kind):
  *   api-key       secret = the key                 → fetch
@@ -37,11 +43,14 @@ import type { Env } from "./models.js";
  *   aws-sigv4     secret = the AWS secret key       → sign_sigv4, fetch
  *   hmac-key      secret = a purpose-scoped HMAC key → hmac_sha256
  *
- * The Bureau (bureau.md) is a LATER task; nothing here enforces the verb set,
- * the destination allowlist, or egress redaction yet. This route mints and
- * records the contract (bureau.md §5). The mint-time fields ride in meta_json
- * — no schema change, so the unit stays E2 (sVOL 020). Promote --allow to a
- * typed, indexed column only when the proxy exists and needs to query it.
+ * Minting still does not AUTHORIZE anything (bureau.md §5.1): who may use a
+ * credential is a separate `bureau_grants` record over `(principal, credRef,
+ * verb)`, administered through `services/provision` and enforced by the Bureau.
+ * Nothing here enforces the verb set, the destination allowlist, or egress
+ * redaction — that is the Bureau runtime, s04 T3. This route mints and records
+ * the contract (bureau.md §5). The mint-time fields ride in meta_json — no
+ * schema change. Promote --allow to a typed, indexed column only when the proxy
+ * exists and needs to query it.
  *
  *   allow        destination binding — origin or *.wildcard (§6). THE control.
  *   header       injection recipe, "Name: …{}…" (§5). Header-only (invariant 8).
@@ -72,9 +81,9 @@ type VaultKind = (typeof VAULT_KINDS)[number];
 const ENFORCEMENT_LEVELS = ["federated", "narrow", "broad"] as const;
 type Enforcement = (typeof ENFORCEMENT_LEVELS)[number];
 
-/** The mint-time fields fold into meta_json under these reserved keys, so
- *  `openVaultSecret`'s `meta` carries the whole contract to the future Bureau,
- *  and GET can surface them typed without a schema change. */
+/** The mint-time fields fold into meta_json under these reserved keys, so the
+ *  whole contract reaches the Bureau with the credential, and GET can surface
+ *  them typed without a schema change. */
 const RESERVED_META_KEYS = ["allow", "header", "scope", "enforcement"] as const;
 
 /**
@@ -140,8 +149,21 @@ async function authenticateVault(request: Request, env: Env): Promise<VaultPrinc
   };
 }
 
+/** Call the Bureau over the service binding. The only way this worker can get a
+ *  secret sealed — and the only reason it ever holds a plaintext one, for the
+ *  length of one request on its way in. */
+function bureau(env: Env, path: string, body: unknown): Promise<Response> {
+  return env.BUREAU.fetch(`https://bureau.internal${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-internal-token": env.INTERNAL_TOKEN },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function handleVault(request: Request, env: Env): Promise<Response> {
-  if (!env.VAULT_MASTER_KEY) return json({ error: "vault not configured" }, 501);
+  // No Bureau, no vault. The agent worker has no fallback path here by design:
+  // there is no master key to fall back TO.
+  if (!env.BUREAU) return json({ error: "vault not configured" }, 501);
   const url = new URL(request.url);
 
   const principal = await authenticateVault(request, env);
@@ -233,31 +255,19 @@ export async function handleVault(request: Request, env: Env): Promise<Response>
       meta.allow = norm;
     }
 
-    const sealed = await sealSecret(
-      env.VAULT_MASTER_KEY,
-      body.secret,
-      vaultAad(principal.principalId, body.name),
-    );
-    const now = Date.now();
-    await env.DB.prepare(
-      `INSERT INTO vault_credentials (id, principal_id, name, kind, enc_json, meta_json,
-         created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (principal_id, name) DO UPDATE SET
-         kind = excluded.kind, enc_json = excluded.enc_json,
-         meta_json = excluded.meta_json, updated_at = excluded.updated_at`,
-    )
-      .bind(
-        `vc_${crypto.randomUUID()}`,
-        principal.principalId,
-        body.name,
-        kind,
-        JSON.stringify(sealed),
-        JSON.stringify(meta),
-        now,
-        now,
-      )
-      .run();
+    // Seal-on-mint happens in the Bureau, which also writes the row: `enc_json`
+    // is touched by exactly one worker, and it is not this one.
+    const sealed = await bureau(env, "/internal/bureau/seal", {
+      mode: "mint",
+      principalId: principal.principalId,
+      name: body.name,
+      kind,
+      metaJson: JSON.stringify(meta),
+      secret: body.secret,
+    });
+    if (!sealed.ok) {
+      return json({ error: `bureau refused the seal (${sealed.status})` }, 502);
+    }
     // Write-only: acknowledge with the (non-secret) contract, never the value.
     return json({
       ok: true,
@@ -287,24 +297,23 @@ export async function handleVault(request: Request, env: Env): Promise<Response>
     }
     // Re-seal the NEW secret under the SAME name — so the AAD, kind, allowlist
     // and every other mint-time field are unchanged and nothing downstream
-    // re-attaches (bureau.md §5). Only enc_json + updated_at move.
+    // re-attaches (bureau.md §5). The Bureau moves enc_json + updated_at and
+    // nothing else; `kind` is read here only to echo it back.
     const existing = await env.DB.prepare(
       `SELECT kind FROM vault_credentials WHERE principal_id = ? AND name = ?`,
     )
       .bind(principal.principalId, name)
       .first<{ kind: string }>();
     if (!existing) return json({ error: "not found" }, 404);
-    const sealed = await sealSecret(
-      env.VAULT_MASTER_KEY,
-      body.secret,
-      vaultAad(principal.principalId, name),
-    );
-    await env.DB.prepare(
-      `UPDATE vault_credentials SET enc_json = ?, updated_at = ?
-       WHERE principal_id = ? AND name = ?`,
-    )
-      .bind(JSON.stringify(sealed), Date.now(), principal.principalId, name)
-      .run();
+    const rotated = await bureau(env, "/internal/bureau/seal", {
+      mode: "rotate",
+      principalId: principal.principalId,
+      name,
+      secret: body.secret,
+    });
+    if (!rotated.ok) {
+      return json({ error: `bureau refused the rotate (${rotated.status})` }, 502);
+    }
     return json({ ok: true, name, kind: existing.kind, rotated: true });
   }
 
@@ -322,60 +331,20 @@ export async function handleVault(request: Request, env: Env): Promise<Response>
 }
 
 /**
- * Decrypt-and-discard health check (internal token only): proves a row
- * is present AND openable under the current master key, returning just
- * a boolean. The plaintext never leaves this function.
+ * Decrypt-and-discard health check (internal token only): proves a row is
+ * present AND openable under the current master key, returning just a boolean.
+ *
+ * Kept as an agent route so `tools/e2e-grants.mjs` and any operator muscle
+ * memory keep working, but it is now a pure PROXY — the decrypt happens in the
+ * Bureau, because this worker has nothing to decrypt with.
  */
 export async function handleVaultVerify(request: Request, env: Env): Promise<Response> {
-  if (!env.VAULT_MASTER_KEY) return json({ error: "vault not configured" }, 501);
+  if (!env.BUREAU) return json({ error: "vault not configured" }, 501);
   const body = (await request.json()) as { principalEmail?: string; name?: string };
   if (!body.principalEmail || !body.name) {
     return json({ error: "principalEmail and name required" }, 400);
   }
-  const row = await env.DB.prepare(
-    `SELECT v.enc_json, v.principal_id FROM vault_credentials v
-     JOIN principals p ON p.id = v.principal_id
-     WHERE p.login_email = ? AND v.name = ?`,
-  )
-    .bind(body.principalEmail.toLowerCase(), body.name)
-    .first<{ enc_json: string; principal_id: string }>();
-  if (!row) return json({ ok: false, reason: "not found" });
-  try {
-    await openSecret(
-      env.VAULT_MASTER_KEY,
-      JSON.parse(row.enc_json) as SealedSecret,
-      vaultAad(row.principal_id, body.name),
-    );
-    return json({ ok: true });
-  } catch {
-    return json({ ok: false, reason: "cannot decrypt" });
-  }
-}
-
-/**
- * In-worker credential access for agent pipelines. Callers MUST keep the
- * returned value in-process (headers to the external API, never logs,
- * never responses).
- */
-export async function openVaultSecret(
-  env: Env,
-  principalId: string,
-  name: string,
-): Promise<{ kind: string; secret: string; meta: Record<string, unknown> } | null> {
-  if (!env.VAULT_MASTER_KEY) return null;
-  const row = await env.DB.prepare(
-    `SELECT kind, enc_json, meta_json FROM vault_credentials
-     WHERE principal_id = ? AND name = ?`,
-  )
-    .bind(principalId, name)
-    .first<{ kind: string; enc_json: string; meta_json: string }>();
-  if (!row) return null;
-  const secret = await openSecret(
-    env.VAULT_MASTER_KEY,
-    JSON.parse(row.enc_json) as SealedSecret,
-    vaultAad(principalId, name),
-  );
-  return { kind: row.kind, secret, meta: JSON.parse(row.meta_json) as Record<string, unknown> };
+  return bureau(env, "/internal/bureau/verify", body);
 }
 
 /**

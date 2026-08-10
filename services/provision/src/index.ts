@@ -9,6 +9,7 @@ import {
   mintToken,
   resolveMintScopes,
 } from "@bullmoose/auth-core";
+import { BUREAU_VERBS, isBureauVerb } from "@bullmoose/auth-core/principal";
 
 /**
  * Provision — multi-domain onboarding, fully API-driven (§8 of the design
@@ -29,6 +30,9 @@ import {
  *   POST   /agent-bindings/{id}/disable  → the agent kill switch
  *   POST   /agent-bindings/{id}/enable
  *   DELETE /agent-bindings/{id}   → refuses while invocations are queued
+ *   POST   /bureau-grants         {principalEmail, credRef, verb, expiresDays?}
+ *   GET    /bureau-grants         → the capability table (?email= / ?credRef=)
+ *   DELETE /bureau-grants/{id}    → TOMBSTONE; credential + siblings survive
  *
  * POST /domains is idempotent-ish: each step reports ok/detail so a failed
  * run can simply be re-run after fixing the underlying issue. POST /accounts
@@ -196,6 +200,21 @@ export default {
       if (route === "GET /grants") return listGrants(url, env);
       if (request.method === "DELETE" && /^\/grants\/[^/]+$/.test(url.pathname)) {
         return revokeGrant(url.pathname.split("/")[2] as string, env);
+      }
+      if (route === "POST /bureau-grants") {
+        return createBureauGrant(
+          (await request.json()) as {
+            principalEmail: string;
+            credRef: string;
+            verb: string;
+            expiresDays?: number;
+          },
+          env,
+        );
+      }
+      if (route === "GET /bureau-grants") return listBureauGrants(url, env);
+      if (request.method === "DELETE" && /^\/bureau-grants\/[^/]+$/.test(url.pathname)) {
+        return revokeBureauGrant(url.pathname.split("/")[2] as string, env);
       }
     } catch (err) {
       return json({ error: String(err) }, 500);
@@ -1574,6 +1593,153 @@ async function revokeGrant(id: string, env: Env) {
   // logs nothing (idempotent).
   const res = await env.DB.prepare(
     `UPDATE grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`,
+  )
+    .bind(now, id)
+    .run();
+  const revoked = (res.meta.changes ?? 0) > 0;
+  if (revoked) {
+    await env.DB.prepare(
+      `INSERT INTO grant_lifecycle (grant_id, event, at, actor) VALUES (?, 'revoked', ?, 'admin')`,
+    )
+      .bind(id, now)
+      .run();
+  }
+  return json({ revoked });
+}
+
+// ---- Bureau grants: mint ≠ authorize (bureau.md §5.1, s04 T2) --------------
+//
+// A SECOND grant vocabulary, and deliberately not the one above. `POST /grants`
+// says "this account may read that account's mail"; this says "this principal
+// may run THIS VERB with THAT CREDENTIAL" —
+//
+//     p_allen may use `sign_sigv4` with `aws-mcp`
+//
+// capability-shaped, never access-shaped. The distinction is not pedantry: it is
+// what makes "this agent holds a SIGNING capability" legible in a way a scope
+// string never is, and what lets the console show a per-agent view (grants) and
+// a per-resource view (the credential) of the same fact.
+//
+// Who may use a credential is NOT a mint-time field. Keeping it out of
+// `vault_credentials` is what makes revocation cheap: dropping a grant leaves
+// the credential and every other grant on it untouched, so cutting `editor@`'s
+// `fetch` does not disturb `travel@`'s.
+
+/**
+ * Grant `(principal, credRef, verb)`.
+ *
+ * Re-granting a tuple that was revoked REINSTATES it (`revoked_at = NULL`) and
+ * logs a fresh `created` event, rather than the silent `ON CONFLICT DO NOTHING`
+ * no-op `POST /grants` performs — a tombstone should not make a capability
+ * ungrantable forever. The history survives in `grant_lifecycle` either way.
+ */
+async function createBureauGrant(
+  body: { principalEmail: string; credRef: string; verb: string; expiresDays?: number },
+  env: Env,
+) {
+  if (!body?.principalEmail || !body?.credRef || !body?.verb) {
+    return json({ error: "principalEmail, credRef and verb are required" }, 400);
+  }
+  if (!isBureauVerb(body.verb)) {
+    return json({ error: `verb must be one of ${BUREAU_VERBS.join(", ")}` }, 400);
+  }
+  const principal = await env.DB.prepare(
+    `SELECT id FROM principals WHERE login_email = ?`,
+  )
+    .bind(body.principalEmail.toLowerCase())
+    .first<{ id: string }>();
+  if (!principal) return json({ error: `no principal for ${body.principalEmail}` }, 404);
+
+  // The credential must exist before a capability over it can be granted —
+  // otherwise a typo in `credRef` mints a grant that authorizes nothing and
+  // looks live in the console forever.
+  const cred = await env.DB.prepare(
+    `SELECT kind FROM vault_credentials WHERE principal_id = ? AND name = ?`,
+  )
+    .bind(principal.id, body.credRef)
+    .first<{ kind: string }>();
+  if (!cred) return json({ error: `no credential named ${body.credRef}` }, 404);
+
+  const id = `bg_${crypto.randomUUID()}`;
+  const now = Date.now();
+  const expiresAt = body.expiresDays ? now + body.expiresDays * 86_400_000 : null;
+  await env.DB.prepare(
+    `INSERT INTO bureau_grants (id, principal_id, cred_name, verb, created_by,
+       created_at, expires_at, revoked_at)
+     VALUES (?, ?, ?, ?, 'admin', ?, ?, NULL)
+     ON CONFLICT (principal_id, cred_name, verb) DO UPDATE SET
+       revoked_at = NULL, created_at = excluded.created_at,
+       created_by = excluded.created_by, expires_at = excluded.expires_at`,
+  )
+    .bind(id, principal.id, body.credRef, body.verb, now, expiresAt)
+    .run();
+
+  // The row may be the pre-existing one (reinstated), so read the id back rather
+  // than assuming the one we generated won — the lifecycle log must name the row
+  // that is actually live.
+  const row = await env.DB.prepare(
+    `SELECT id FROM bureau_grants WHERE principal_id = ? AND cred_name = ? AND verb = ?`,
+  )
+    .bind(principal.id, body.credRef, body.verb)
+    .first<{ id: string }>();
+  const grantId = row?.id ?? id;
+  await env.DB.prepare(
+    `INSERT INTO grant_lifecycle (grant_id, event, at, actor) VALUES (?, 'created', ?, 'admin')`,
+  )
+    .bind(grantId, now)
+    .run();
+
+  return json({
+    grantId,
+    principal: { email: body.principalEmail.toLowerCase(), principalId: principal.id },
+    credRef: body.credRef,
+    kind: cred.kind,
+    verb: body.verb,
+    expiresAt,
+  });
+}
+
+/** The capability table. Tombstones included and labelled — an operator
+ *  auditing what an agent COULD do must be able to see what it no longer can. */
+async function listBureauGrants(url: URL, env: Env) {
+  const email = url.searchParams.get("email");
+  const credRef = url.searchParams.get("credRef");
+  const where: string[] = [];
+  const binds: unknown[] = [];
+  if (email) {
+    where.push("p.login_email = ?");
+    binds.push(email.toLowerCase());
+  }
+  if (credRef) {
+    where.push("bg.cred_name = ?");
+    binds.push(credRef);
+  }
+  const { results } = await env.DB.prepare(
+    `SELECT bg.id, bg.principal_id, p.login_email, bg.cred_name, bg.verb,
+            bg.created_by, bg.created_at, bg.expires_at, bg.revoked_at
+     FROM bureau_grants bg JOIN principals p ON p.id = bg.principal_id
+     ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+     ORDER BY bg.created_at`,
+  )
+    .bind(...binds)
+    .all();
+  return json({ bureauGrants: results });
+}
+
+/**
+ * Revoke = TOMBSTONE, matching `grants.revoked_at` (s03.A T2) rather than the
+ * hard DELETE `008` left behind. The capability stops resolving on the very next
+ * Bureau call — `resolveBureauGrant` filters `revoked_at IS NULL` — while the row
+ * and its `grant_lifecycle` history survive, so "what could this agent sign with
+ * last Tuesday?" stays answerable. Idempotent: revoking an already-revoked grant
+ * changes nothing and logs nothing.
+ *
+ * What it does NOT touch: the credential, and every other grant on it.
+ */
+async function revokeBureauGrant(id: string, env: Env) {
+  const now = Date.now();
+  const res = await env.DB.prepare(
+    `UPDATE bureau_grants SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`,
   )
     .bind(now, id)
     .run();

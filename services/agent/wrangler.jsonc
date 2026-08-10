@@ -26,7 +26,14 @@
   "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }],
 
   // Replies exit through the submit worker, same as fireResponder.
-  "services": [{ "binding": "SUBMIT", "service": "bullmoose-submit" }],
+  // BUREAU is the credential vault's crypto half (s04 T3a): this worker holds NO
+  // master key, so sealing and using a credential are both hops across this
+  // binding. bullmoose-bureau must therefore deploy BEFORE this worker — same
+  // class of dependency as agent-before-ingest (docs/DEPLOY.md §2).
+  "services": [
+    { "binding": "SUBMIT", "service": "bullmoose-submit" },
+    { "binding": "BUREAU", "service": "bullmoose-bureau" }
+  ],
 
   // Workers AI — the free-allocation "cheap" model tier.
   "ai": { "binding": "AI" }

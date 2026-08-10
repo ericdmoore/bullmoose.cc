@@ -172,15 +172,63 @@ npx wrangler d1 execute bullmoose-mail-shard0 --remote \
   --command "SELECT COUNT(*) AS live_grants FROM grants WHERE revoked_at IS NULL"
 ```
 
+### Upgrading an EXISTING database — `s04` Bureau grants
+
+**T2 — mint ≠ authorize.** One new table, no ALTER. `bureau_grants` records who
+may use which credential for which verb (`bureau.md` §5.1); it is separate from
+`grants` on purpose (see the table's comment in `control-plane.sql`) and separate
+from `vault_credentials` so that revoking a capability leaves the credential and
+its sibling grants intact.
+
+Because it is a `CREATE TABLE IF NOT EXISTS` and not an `ADD COLUMN`, a plain
+schema re-run also creates it; the explicit form is here so the whole change is
+in one place.
+
+```sh
+npx wrangler d1 execute bullmoose-mail-shard0 --remote --command "
+  CREATE TABLE IF NOT EXISTS bureau_grants (
+    id           TEXT PRIMARY KEY,
+    principal_id TEXT NOT NULL REFERENCES principals(id),
+    cred_name    TEXT NOT NULL,
+    verb         TEXT NOT NULL,
+    created_by   TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    expires_at   INTEGER,
+    revoked_at   INTEGER
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS bureau_grants_tuple
+    ON bureau_grants (principal_id, cred_name, verb);
+  CREATE INDEX IF NOT EXISTS bureau_grants_cred ON bureau_grants (principal_id, cred_name);"
+```
+
+Verify:
+
+```sh
+npx wrangler d1 execute bullmoose-mail-shard0 --remote \
+  --command "SELECT COUNT(*) AS live FROM bureau_grants WHERE revoked_at IS NULL"
+```
+
+No backfill. A credential minted before this table exists simply has no grants,
+which means nothing may use it — fail-closed, and the correct default: the whole
+point of T2 is that minting a credential never authorized anybody in the first
+place. Grant explicitly, one verb at a time:
+
+```sh
+curl -sX POST https://<provision-host>/bureau-grants \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' \
+  -d '{"principalEmail":"allen@bullmoose.cc","credRef":"aws-mcp","verb":"sign_sigv4"}'
+```
+
 ## 2. Deploy — order matters, binding graph  (bootstrap: `deploy`)
 
 ```sh
 npm run -w services/submit        deploy   # 1. no dependencies
 npm run -w services/jmap          deploy   # 2. declares AccountDO; binds SUBMIT
-npm run -w services/agent         deploy   # 3. binds SUBMIT + AccountDO from jmap
-npm run -w services/ingest        deploy   # 4. binds AGENT -> agent, + AccountDO
-npm run -w services/provision     deploy   # 5. control plane, no deps
-npm run -w services/anglebrackets deploy   # 6. CardDAV/CalDAV face (binds AccountDO)
+npm run -w services/bureau        deploy   # 3. holds VAULT_MASTER_KEY; no deps
+npm run -w services/agent         deploy   # 4. binds SUBMIT + BUREAU + AccountDO
+npm run -w services/ingest        deploy   # 5. binds AGENT -> agent, + AccountDO
+npm run -w services/provision     deploy   # 6. control plane, no deps
+npm run -w services/anglebrackets deploy   # 7. CardDAV/CalDAV face (binds AccountDO)
 ```
 
 > **agent must precede ingest.** `services/ingest/wrangler.jsonc:28` binds
@@ -190,11 +238,37 @@ npm run -w services/anglebrackets deploy   # 6. CardDAV/CalDAV face (binds Accou
 > `infra/bootstrap.mjs` `DEPLOY_ORDER` and `.github/workflows/deploy-mail.yml`
 > — all three must stay in sync.
 
+> **bureau must precede agent** — the same failure, one edge further up the
+> graph. `services/agent/wrangler.jsonc` binds `BUREAU -> bullmoose-bureau`
+> (s04 T3a), so deploying agent first fails against a service that does not
+> exist. Same three files must stay in sync.
+
 `services/demo-keys` is deliberately absent from this list, from
 `DEPLOY_ORDER`, and from CI. Tracked as `.feedback/fromClaude/infra/013`.
 
-Agent-worker extras: `wrangler secret put VAULT_MASTER_KEY -c
-services/agent/wrangler.jsonc` (credential vault; `openssl rand -hex 32`).
+Bureau-worker extras: `wrangler secret put VAULT_MASTER_KEY -c
+services/bureau/wrangler.jsonc` (credential vault; `openssl rand -hex 32`).
+
+> ⚠️ **The key MOVED; it was not copied.** Before s04 T3a this secret was bound
+> to `services/agent`. It is now bound to `services/bureau` and to nothing else —
+> that single fact is what makes "the agent worker cannot unseal a credential" a
+> platform property rather than a coding convention. On an EXISTING deployment,
+> put the *same value* on bureau (a new random one cannot open the rows already
+> sealed), then delete it from agent:
+>
+> ```sh
+> npx wrangler secret put VAULT_MASTER_KEY -c services/bureau/wrangler.jsonc   # paste the OLD value
+> npx wrangler secret delete VAULT_MASTER_KEY -c services/agent/wrangler.jsonc
+> ```
+>
+> Order matters: bureau first, or minting breaks between the two commands.
+> Verify the move landed — the first command should list it, the second should
+> not:
+>
+> ```sh
+> npx wrangler secret list -c services/bureau/wrangler.jsonc
+> npx wrangler secret list -c services/agent/wrangler.jsonc
+> ```
 
 ## 3. Secrets  (bootstrap: `secrets`)
 
