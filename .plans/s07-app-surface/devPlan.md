@@ -253,6 +253,55 @@ honestly:
 - **`/agents/<id>`** — the per-agent dossier: pending, upcoming queue, historical
   approved/declined, and the three numbers from refinement 3.
 
+**The `reply-draft` kind already half-exists, and drafts are its legacy transport.**
+
+The motivating case — *an agent drafts replies to things I should respond to* — is already
+the shipped architecture at the MCP layer: `email_create_draft` exists with scope `draft`
+(`services/agent/src/emailTools.ts:577-579`), and there is deliberately **no send tool**,
+asserted over the whole `TOOLS` table (`mcpTools.test.ts:124-128`). *Agent drafts, human
+sends* is an invariant, not a gap. What is missing is the review surface and the signal.
+
+And the verbs are isomorphic — which is why a draft is the cleanest thing to shim into an
+old-world client:
+
+| draft | proposal |
+|---|---|
+| edit before sending | amend |
+| send | approve |
+| delete | decline |
+
+**But the mapping leaks in two places, and both lose exactly the signal worth having:**
+
+1. **A deleted draft leaves no trace.** "I deleted it" and "I never saw it" are
+   indistinguishable — so *decline*, the outcome that most tells you the agent misread the
+   job, evaporates silently.
+2. **A draft edited in place overwrites itself.** The diff is gone unless the agent's
+   original was kept somewhere else.
+
+**So the proposal is the source of truth and the draft is a projection**, never the reverse.
+`ActionProposal.payload` holds the agent's version; the draft in the mailbox is a copy;
+the diff is computed at send time against the retained original. That is what lets someone
+edit in Apple Mail on a phone and still have the system learn from it — the client does not
+have to know anything.
+
+**Keep them out of the human's Drafts.** A folder that mixes half-finished human thoughts
+with agent output serves neither. A child mailbox under Drafts plus a keyword degrades
+gracefully in both directions: old clients see an ordinary subfolder (universally supported),
+new clients filter on the keyword, and nobody's abandoned thoughts get lost among proposals.
+
+**Backwards compatibility is a digest, and the pattern already exists.** A periodic summary —
+*N threads drafted*, then per thread: datetime, subject, to, first ~100 characters — is
+exactly the shape `analyst@` already ships (`services/agent/src/ledger.ts`: receipts in,
+digest out to configured targets). Reuse it. Include **expires in** per row, or the digest
+goes stale the moment something ages out.
+
+> On calling this an RL loop: worth being precise, because it changes what to build. Nobody
+> is fine-tuning a frontier model from one mailbox. The near-term value is **prompt-time
+> context** — *"here are the last N edits this human made to your drafts"* is a strong
+> steering signal available immediately, with no training pipeline at all. Retaining the
+> diffs is what makes either option possible, so retention is the requirement; training is
+> not.
+
 **Edit is the load-bearing verb, and the data model has no room for it.**
 
 Approve/Decline is a gate — the shape you build when the agent is a subordinate. *Edit* is
