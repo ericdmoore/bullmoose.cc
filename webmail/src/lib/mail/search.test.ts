@@ -83,45 +83,65 @@ describe("buildEmailFilter", () => {
 });
 
 describe("honesty about what search covers", () => {
-  // The server's `text` condition is a LIKE over subject / preview / from / to
-  // (packages/mailstore buildFilter, "LIKE fallback until the FTS index is
-  // populated at ingest"). Message bodies are NOT searchable. The UI must say
-  // so — a search box that quietly misses paragraph four teaches people the
-  // mail is not there.
-  it("the note names the covered fields and the gap", () => {
+  // ⚠️ These assertions FLIPPED with common/004. The server's `text` condition
+  // is no longer a LIKE over subject / preview / from / to — it is an FTS5
+  // MATCH over an index that `Mailstore.insertEmail` writes at ingest, and it
+  // covers full message BODIES (proved server-side in
+  // packages/mailstore/src/search.test.ts and services/ingest/src/fts.test.ts).
+  //
+  // A note that keeps apologising for a closed gap is as dishonest as one that
+  // hides an open one, so what these tests pin is the NEW limitation: FTS
+  // matches whole words, where the old LIKE matched substrings.
+  it("the note names the covered fields, bodies included", () => {
     expect(SEARCH_SCOPE_NOTE).toMatch(/subject/i);
     expect(SEARCH_SCOPE_NOTE).toMatch(/sender/i);
-    expect(SEARCH_SCOPE_NOTE).toMatch(/not searched/i);
+    expect(SEARCH_SCOPE_NOTE).toMatch(/bodies/i);
+    // The gap it must NOT claim any more.
+    expect(SEARCH_SCOPE_NOTE).not.toMatch(/not searched/i);
+    expect(SEARCH_SCOPE_NOTE).not.toMatch(/256/);
   });
 
-  it("describeSearchScope spells out the body gap for a free-text search", () => {
+  it("the note names the limitation that IS real — whole words, not fragments", () => {
+    expect(SEARCH_SCOPE_NOTE).toMatch(/whole words/i);
+  });
+
+  it("describeSearchScope describes a free-text search without the stale body caveat", () => {
     const description = describeSearchScope({ text: "punch cards" });
     expect(description).toContain("punch cards");
-    expect(description).toMatch(/not in full message bodies/i);
+    expect(description).toMatch(/whole words/i);
+    expect(description).toMatch(/bodies/i);
+    expect(description).not.toMatch(/not in full message bodies/i);
   });
 
-  it("does NOT claim a body gap for a search that has no free-text clause", () => {
+  it("does NOT put the whole-word caveat on a search with no free-text clause", () => {
+    // `from:`/`subject:` are still substring LIKEs on their own column — a
+    // different contract from `text`, and the reason this distinction survives.
     const description = describeSearchScope({ from: "ada" });
-    expect(description).not.toMatch(/message bodies/i);
+    expect(description).not.toMatch(/whole words/i);
     expect(mayMissBodyMatches({ from: "ada" })).toBe(false);
     expect(mayMissBodyMatches({ text: "ada" })).toBe(true);
   });
 
-  it("really does miss a word that appears only in the body — the claim is not theoretical", async () => {
+  it("the DEMO backend still misses body-only words — it is a fake with no index", async () => {
+    // This is now a statement about `webmail/src/lib/jmap/demo.ts`, NOT about
+    // the server. The demo client re-implements the filter in TypeScript over
+    // subject / preview / from / to; it has no FTS5 and no body text to match.
+    // Kept because it is the one thing that would otherwise silently drift:
+    // when the demo backend learns to match `bodyValues`, this test fails and
+    // says so.
     const { client } = createDemoBackend();
     const store = new ThreadListStore(client, ACCOUNT, { pageSize: 50 });
 
-    // "relevant" appears ONLY inside the newsletter's HTML body — not in its
-    // subject, preview, sender or recipients. The server cannot see it.
+    // "relevant" appears ONLY inside the newsletter's HTML body. A real server
+    // finds this since common/004; the demo fake does not.
     await store.setQuery({ filter: buildEmailFilter({ text: "relevant" }) });
     expect(store.getRows()).toHaveLength(0);
 
     // The same message IS found by a word in its subject — so the miss above is
-    // the body gap, not a broken query.
+    // the fake's body gap, not a broken query.
     await store.setQuery({ filter: buildEmailFilter({ text: "Analytical Engine" }) });
     expect(store.getRows()).toHaveLength(1);
 
-    // …and by a word in the preview, which is only the first 256 characters.
     await store.setQuery({ filter: buildEmailFilter({ text: "punch cards" }) });
     expect(store.getRows()).toHaveLength(1);
   });

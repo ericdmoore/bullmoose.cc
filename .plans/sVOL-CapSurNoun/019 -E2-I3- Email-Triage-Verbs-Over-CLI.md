@@ -298,11 +298,14 @@ there as *"the machine-readable spec agents read."*
 - `sync.ts` reconciliation entry points: `upsertEmails:282`, `deleteEmail:364`,
   `incrementalSync:215`, `fullResync:250`. `fullResync` deletes and repages, so never use it
   to "fix" a mirror after a write — it will mask a missing server write.
-- The CLI's `cli_fts` is real and written (`sync.ts:352`); the **server's** `emails_fts` is
-  created and never used —
-  [`fromClaude/common/004`](../../.feedback/fromClaude/common/004%20-P2-%20FTS5-Documented-As-Load-Bearing-But-Unwired.md).
-  So `bullmoose search` is local-only by necessity, and the pipelines above depend on a synced
-  mirror. Worth one line in the help text.
+- The CLI's `cli_fts` is real and written (`sync.ts:352`). ⚠️ **The server's `emails_fts` is
+  now real too** — `common/004` is closed
+  ([`fromClaude/common/✅004`](../../.feedback/fromClaude/common/%E2%9C%85004%20-P2-%20FTS5-Documented-As-Load-Bearing-But-Unwired.md)):
+  `Mailstore.insertEmail` writes it and `Email/query`'s `text` condition matches it, bodies
+  included. `bullmoose search` is still local-only, but that is now a CHOICE (offline, no
+  round trip) rather than a necessity, and the pipelines above still depend on a synced
+  mirror. Worth one line in the help text — and worth revisiting whether `search` should
+  grow a `--server` mode.
 - No tests exist for `packages/cli` and coverage excludes it (`vitest.config.ts:24`,
   `_context.md` §5). `s05/devPlan.md:115-125` specifies the shape: unit tests with an injected
   fake JMAP client, **plus** a composition smoke script that actually pipes. Done-when #6 and

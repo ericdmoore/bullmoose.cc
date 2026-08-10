@@ -1,4 +1,10 @@
-# FIX — 004 -P2- FTS5 documented as load-bearing but unwired
+# ✅ FIX — 004 -P2- FTS5 documented as load-bearing but unwired
+
+> **SHIPPED, with the split collapsed.** This proposal argued for UPDATE-DOC now and
+> BUILD-later as separate items. Both landed at once — see the resolution note on the
+> issue file. The reasoning that survived: the doc was indeed the drifted side, but
+> "designed-not-built" was a marker with a short shelf life, and marking it would have
+> cost most of the work of removing it.
 
 ## Proposal: UPDATE-DOC now, and file the build work separately
 
