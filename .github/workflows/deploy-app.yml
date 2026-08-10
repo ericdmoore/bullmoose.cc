@@ -120,6 +120,38 @@ jobs:
             | tr ',' '\n' | grep -oE '"(name|status|verification_data|certificate_authority)":[^,}]*' \
             | sed 's/^/  /' | head -12
 
+      # Pages reports the domain `pending` until a DNS record points at it, and
+      # it did not create one — so this closes the loop. Uses the RUNTIME token
+      # because DNS:Edit lives there, not on the Pages token.
+      #
+      # ⚠️ proxied MUST be true. A grey-cloud record resolves straight to the
+      # origin and never enters Cloudflare's edge, so the jmap Worker routes
+      # would never fire and every /api/* path would fall through to Pages —
+      # the same 404-as-HTML failure the routes exist to prevent, arrived at
+      # from the other direction.
+      - name: Ensure the app DNS record exists
+        env:
+          TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
+        run: |
+          cf() { curl -sS -m 25 -H "Authorization: Bearer $TOKEN" \
+                   -H "content-type: application/json" "$@"; }
+          zone=$(cf "https://api.cloudflare.com/client/v4/zones?name=bullmoose.cc" \
+                  | tr -d ' \n' | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
+          [ -n "$zone" ] || { echo "::error::could not resolve zone id for bullmoose.cc"; exit 1; }
+
+          recs="https://api.cloudflare.com/client/v4/zones/$zone/dns_records"
+          existing=$(cf "$recs?name=app.bullmoose.cc" | tr -d ' \n')
+          if printf '%s' "$existing" | grep -q '"name":"app.bullmoose.cc"'; then
+            echo "DNS record already exists:"
+            printf '%s' "$existing" | tr ',' '\n' \
+              | grep -oE '"(type|content|proxied)":[^,}]*' | sed 's/^/  /' | head -3
+          else
+            r=$(cf -X POST -d '{"type":"CNAME","name":"app","content":"bullmoose-app.pages.dev","proxied":true,"comment":"s07 app surface — Pages + jmap Worker routes share this origin"}' "$recs")
+            printf '%s' "$r" | grep -q '"success":true' \
+              && echo "created app.bullmoose.cc → bullmoose-app.pages.dev (proxied)" \
+              || { echo "::error::could not create DNS record"; printf '%s' "$r" | head -c 400; exit 1; }
+          fi
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
