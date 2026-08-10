@@ -1,8 +1,8 @@
 ---
-// Placeholder route for the webmail floor (s03.C · T1). NOT a mail client yet —
-// mail views (T2) and Files (T3) are deferred. This page exists to prove the
-// Astro + Preact island shell builds clean and mounts.
+// The webmail app (s03.C · T2). The Astro page is a thin static host; the mail
+// client is one Preact island (arch.md §1, "SPA-in-an-island").
 import AppShell from "../components/AppShell.tsx";
+import "../styles/webmail.css";
 ---
 
 <!doctype html>
@@ -12,10 +12,19 @@ import AppShell from "../components/AppShell.tsx";
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>bullmoose webmail</title>
     <meta name="robots" content="noindex" />
+    <!--
+      No hand-written CSP here on purpose. Sender HTML is sanitized before it
+      reaches the DOM (lib/mail/sanitize.ts) and CSP is the second half of that
+      defence (arch.md §4), but the policy is GENERATED — `security.csp` in
+      astro.config.mjs — because only the build knows the hashes of Astro's own
+      inline hydration scripts. Writing `script-src 'self'` by hand here blocks
+      that bootstrap and the island silently never mounts.
+      `frame-ancestors` lives in public/_headers; <meta> ignores it.
+    -->
   </head>
   <body>
-    <!-- SPA-in-an-island (arch.md §1). client:only — the shell is
-         authenticated + interactive, so it runs in the browser, not at build. -->
+    <!-- client:only — the shell is authenticated and interactive, so it runs in
+         the browser rather than being rendered at build time. -->
     <AppShell client:only="preact" />
   </body>
 </html>
