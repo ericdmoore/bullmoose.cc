@@ -10,7 +10,7 @@
 >
 > | Was | Now |
 > |---|---|
-> | 2 test files, 19 tests | **46 test files, 1040 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
+> | 2 test files, 19 tests | **55 test files, 1248 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
 > | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
 > | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
 > | test files excluded from typecheck | typechecked in both configs |
@@ -55,7 +55,7 @@ Five things that are not what they look like:
 3. **"SMTP" is a misnomer in this repo.** No SMTP server, no SMTP client. Inbound is the
    Cloudflare Email Routing `email()` handler (`services/ingest/src/index.ts:48`); outbound is
    SES v2 over **HTTPS** SigV4 (`services/submit/src/index.ts:46`).
-4. **WebUI: a shell floor exists, no surfaces yet.** `src/` is the Astro **marketing site**; `webmail/` (s03.C T1) is a bootable Astro+Preact shell with a tested JmapClient but renders no mail/contacts/calendar. `src/`
+4. **WebUI: a working mail client.** s03.C T2 landed Email + Mailbox surfaces (list, read, compose/send, search, keyboard triage) on T1's injected JmapClient. Contacts, calendar and Files remain unrendered. `src/` is the Astro **marketing site**; `webmail/` (s03.C T1) is a bootable Astro+Preact shell with a tested JmapClient but renders no mail/contacts/calendar. `src/`
    (`src/src/pages/{index,apps,connectors,deploy,recipes}.astro`). `webmail/` now exists (s03.C T1 — Astro+Preact shell + injected JmapClient); it renders no nouns yet. Every "web" reference in `.plans/` is
    aspirational.
 5. **MCP is far narrower than its docs suggest.** Four read-only analytics tools. An agent on
@@ -315,7 +315,7 @@ is the only thing that catches this failure mode, and it is now cheap.
 
 ## 5. Test infrastructure — the honest state
 
-**46 test files, 1040 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
+**55 test files, 1248 tests** (was 2 files / 19 at the original audit). `npm test` runs inwell under a second and is a **required status check** on `main` via the `verify` job.
 
 `vitest.config.ts` pins workspace packages with `resolve.alias`. That is load-bearing for
 worktree agents: without it Node's upward `node_modules` lookup escapes the worktree and
