@@ -38,8 +38,22 @@ jobs:
           probe() {  # $1 label  $2 path  $3 what-it-implies
             r=$(api "$2")
             if echo "$r" | grep -q '"success":true'; then ok "$1" "✅  $3"
-            else ok "$1" "❌  $(echo "$r" | grep -o '"code":[0-9]*' | head -1) — $3 MISSING"; fi
+            else
+              # Print what Cloudflare actually said. An earlier version grepped
+              # only for "code":N and rendered an empty ❌ when the error came
+              # back in a different shape — a diagnostic that hides the answer
+              # is worse than no diagnostic, because it looks authoritative.
+              msg=$(printf '%s' "$r" | tr ',' '\n' | grep -oE '"(code|message)":[^,}]*' | tr '\n' ' ')
+              ok "$1" "❌  $3"
+              printf '       └─ %s\n' "${msg:-<no parseable error> raw: $(printf '%s' "$r" | head -c 160)}"
+            fi
           }
+
+          # Cloudflare's own view of the token, which is the authority when the
+          # dashboard summary and the API disagree.
+          echo
+          echo "── what Cloudflare says this token may do ─────────────────"
+          api /user/tokens/verify | tr ',' '\n' | grep -oE '"(id|status)":"[^"]*"' | sed 's/^/  /'
           probe "D1"            "/accounts/$ACCT/d1/database"        "D1:Edit — migrations"
           probe "Workers"       "/accounts/$ACCT/workers/scripts"    "Workers Scripts:Edit — deploys"
           probe "KV"            "/accounts/$ACCT/storage/kv/namespaces" "Workers KV:Edit"
