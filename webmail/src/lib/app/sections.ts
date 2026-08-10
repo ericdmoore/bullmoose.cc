@@ -100,11 +100,12 @@ export const SECTIONS: readonly Section[] = [
     id: "contacts",
     label: "Contacts",
     href: "/contacts",
-    status: "planned",
-    reason: "server is live, screen is not",
-    detail:
-      "AddressBook/* and ContactCard/* — eight JMAP methods, plus full CardDAV — are " +
-      "serving today with no browser path to them. s07 T3 needs no server work at all.",
+    // Live as of s07 T3: the eight AddressBook/ContactCard methods now have a
+    // browser path, and none of it needed server work. Its own caveats — the
+    // unindexed search and the CardDAV group gap — are rendered by the section
+    // itself (lib/contacts/cards.ts, lib/contacts/groups.ts) rather than
+    // duplicated into the nav where they would drift.
+    status: "live",
   },
   {
     id: "files",
