@@ -383,11 +383,14 @@ human a queue. That is a capability unit of its own, and it is not this one.
 - `Email/queryChanges` always throws `cannotCalculateChanges` (`email.ts:54-56`). Do not
   build a tool on it. `Thread/changes` is not registered at all (`_context.md` §1).
 - `Email/query` filters are whatever `store.queryEmails` accepts (`email.ts:195-201`).
-  ⚠️ Server-side full-text is **not** what the architecture doc claims: `emails_fts` is
-  created (`data-plane.sql:44-48`) and never written or read; `text` is a LIKE scan over
-  `subject`/`preview`/`from_json`/`to_json`, and `preview` is capped at 256 chars —
-  [`fromClaude/common/004`](../../.feedback/fromClaude/common/004%20-P2-%20FTS5-Documented-As-Load-Bearing-But-Unwired.md).
-  Do not describe `email_query` to the model as full-text search over bodies. It is not.
+  ⚠️ **This warning has EXPIRED — `common/004` is closed**
+  ([`fromClaude/common/✅004`](../../.feedback/fromClaude/common/%E2%9C%85004%20-P2-%20FTS5-Documented-As-Load-Bearing-But-Unwired.md)).
+  It used to read: server-side full-text is not what the architecture doc claims, `text` is a
+  LIKE scan over `subject`/`preview`/`from_json`/`to_json` capped at a 256-char preview, so do
+  not describe `email_query` to the model as full-text search over bodies. As of `common/004`,
+  `text` IS an FTS5 `MATCH` over subject, addresses and **full message bodies**, and describing
+  it that way to a model is now correct. The one caveat to pass on instead: it matches whole
+  words, not substrings.
 - `Mailbox/get` fakes `totalThreads` as `totalEmails` (`mailbox.ts:25`, TODO in source).
   Don't surface thread counts as if they were real.
 - Tests: `002` must land first — both `replaceEmailSets` (`mailstore:640`) and

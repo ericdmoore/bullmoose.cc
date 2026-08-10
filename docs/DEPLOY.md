@@ -219,6 +219,111 @@ curl -sX POST https://<provision-host>/bureau-grants \
   -d '{"principalEmail":"allen@bullmoose.cc","credRef":"aws-mcp","verb":"sign_sigv4"}'
 ```
 
+### Upgrading an EXISTING database — `common/004` full-text search
+
+`Email/query`'s `text` condition now matches an FTS5 index instead of scanning
+with `LIKE`, and that index covers **message bodies**, which were previously
+unsearchable past the 256-character preview. Two things have to happen on a
+database that predates it, and **the second one is not optional** — an empty
+index means search silently returns nothing, which is worse than the `LIKE` it
+replaced.
+
+**Step 1 — the table.** `emails_fts` has existed since the first schema, but
+without `contentless_delete=1`, and `CREATE VIRTUAL TABLE IF NOT EXISTS` will
+not upgrade it. Without that flag SQLite refuses to delete a row, so a
+destroyed message could never leave the index. Drop and recreate it — there is
+nothing to lose, because nothing ever wrote to it:
+
+```sh
+npx wrangler d1 execute bullmoose-mail-shard0 --remote --command "
+  DROP TABLE IF EXISTS emails_fts;
+  CREATE VIRTUAL TABLE emails_fts USING fts5 (
+    subject, from_text, to_text, body_text,
+    content='', contentless_delete=1, tokenize='unicode61');
+  CREATE TABLE IF NOT EXISTS emails_fts_map (
+    docid      INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id TEXT NOT NULL,
+    email_id   TEXT NOT NULL);
+  CREATE UNIQUE INDEX IF NOT EXISTS emails_fts_map_email
+    ON emails_fts_map (account_id, email_id);
+  DELETE FROM emails_fts_map;"
+```
+
+The trailing `DELETE FROM emails_fts_map` is what makes this safe to re-run: it
+puts the map back in step with the table you just dropped, so every message
+looks un-indexed again and the backfill below rebuilds from scratch.
+
+⚠️ **Run it BEFORE deploying the workers, and do not skip it because delivery
+still looks fine.** Skipping is nastier than it appears, because a plain schema
+re-run creates `emails_fts_map` (a normal `CREATE TABLE`) while leaving
+`emails_fts` on its old definition — so the two halves disagree and the failure
+is *partial*:
+
+| on an un-migrated database | |
+|---|---|
+| inbound delivery | **works** — the first index write for a message is an `INSERT`, which a contentless table allows |
+| free-text search of new mail | works |
+| **`Email/set destroy`** | **fails**, `cannot DELETE from contentless fts5 table` — and the destroy batch is atomic, so the message is not deleted at all |
+| **the backfill below** | **fails**, same error, on the second pass over any message |
+
+Delivery keeping up while deletes throw is exactly the shape of failure that
+gets diagnosed slowly. Migrate first.
+
+**Step 2 — the backfill.** New mail is indexed as it is delivered; existing
+mail is not. The `ingest` worker exposes a resumable one-shot for it, guarded
+by the same `x-internal-token` as `/dev/inject`:
+
+```sh
+INGEST=https://<ingest-host>          # e.g. bullmoose-ingest.<subdomain>.workers.dev
+TOKEN=$INTERNAL_TOKEN
+
+# How much is left? (limit=0 reports and indexes nothing.)
+curl -sX POST "$INGEST/admin/fts/backfill?limit=0" -H "x-internal-token: $TOKEN"
+
+# Run it to completion. Each pass indexes the NEWEST unindexed mail first,
+# so an interrupted run has still made recent mail searchable.
+while :; do
+  out=$(curl -sX POST "$INGEST/admin/fts/backfill?limit=25" -H "x-internal-token: $TOKEN")
+  echo "$out"
+  [ "$(printf '%s' "$out" | jq -r .remaining)" = "0" ] && break
+  sleep 1
+done
+```
+
+| param | default | meaning |
+|---|---|---|
+| `limit` | 25 deep / 200 shallow | messages per call; `0` = status only |
+| `deep` | `1` | re-read each raw message from R2 and index the **full body** |
+| `account` | all | restrict to one `accountId` |
+
+`deep=1` costs one R2 GET plus one MIME parse per message, and CPU-per-invocation
+is the tightest free-tier budget — hence the small default `limit`. If a pass
+dies on CPU, lower it and re-run; nothing is lost, because the work queue is
+"messages with no index row" and each pass only shrinks it.
+
+`deep=0` is the fast path: pure D1, no R2, ~200/call. It indexes subject,
+addresses and the 256-character preview, so you get the **scan → index**
+speedup immediately but old bodies stay searchable only to 256 characters. A
+reasonable sequence for a large mailbox is `deep=0` over everything first, then
+`deep=1` — but note that a message already indexed shallowly is no longer in the
+queue, so a later deep pass needs the map cleared again (step 1's
+`DELETE FROM emails_fts_map`).
+
+**Verify** — the count should equal the message count, and a body-only word
+should now be findable:
+
+```sh
+npx wrangler d1 execute bullmoose-mail-shard0 --remote --command "
+  SELECT (SELECT COUNT(*) FROM emails) AS messages,
+         (SELECT COUNT(*) FROM emails_fts_map) AS indexed"
+```
+
+**Capacity note.** The index adds roughly **0.6 KB per message** for an ordinary
+2.3 KB body (measured; ~26% of body size) — call it 1.2 KB → ~1.8 KB per message
+of D1. That moves the single-shard ceiling from ~300K messages to ~200K. See
+`docs/architecture/capacity-and-scaling.md` §1. If you would rather not spend
+it, run the backfill with `deep=0` and leave `bodyText` unindexed for history.
+
 ## 2. Deploy — order matters, binding graph  (bootstrap: `deploy`)
 
 ```sh

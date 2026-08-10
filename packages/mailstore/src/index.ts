@@ -73,6 +73,16 @@ export interface NewEmail {
   attachments: AttachmentMeta[];
   mailboxIds: string[];
   keywords: string[];
+  /**
+   * The message's plain-text body, for the full-text index ONLY — it is not a
+   * column and `Email/get` never reads it back (the bytes live in R2).
+   *
+   * Optional so that every existing call site keeps compiling, but a caller
+   * that omits it makes only `preview` searchable, which is the pre-common/004
+   * behaviour. Supply it wherever the parse is already in hand: ingest,
+   * `Email/set` create, `Email/import`. Truncated to `FTS_BODY_LIMIT`.
+   */
+  bodyText?: string;
 }
 
 /** JMAP Email/query filter (RFC 8621 §4.4.1), the subset we support. */
@@ -403,6 +413,121 @@ export function normalizeMessageId(raw: string | null | undefined): string | nul
   return trimmed.replace(/^<|>$/g, "") || null;
 }
 
+// ---- Full-text search (common/004) ------------------------------------
+//
+// `emails_fts` is a CONTENTLESS FTS5 index (see sql/data-plane.sql). Three
+// facts drive every line below:
+//
+//  1. Its rowid is an integer and an email id is a uuid, so `emails_fts_map`
+//     holds the mapping. `docid` is allocated by AUTOINCREMENT, never by us.
+//  2. Contentless means the index cannot be read back — only matched. Every
+//     value we want to SELECT has to come from `emails` or the map table.
+//  3. Contentless also means no UPDATE. Re-indexing is delete-then-insert,
+//     which is why `insertEmail` clears the row before writing it and is
+//     therefore safe to re-run (the backfill depends on that).
+
+/**
+ * How much body text goes into the index, in characters.
+ *
+ * Unbounded would be wrong in two directions: D1 caps a single bound value at
+ * ~2 MB (capacity-and-scaling.md §2.5), and one pathological 5 MB message
+ * would cost more index than a thousand ordinary ones. 64 KiB is ~15 printed
+ * pages — past the length of any mail a human wrote, and comfortably inside
+ * both limits.
+ */
+export const FTS_BODY_LIMIT = 64 * 1024;
+
+/** The text of one message, as the index sees it. */
+export interface EmailFtsText {
+  subject: string;
+  fromText: string;
+  toText: string;
+  bodyText: string;
+}
+
+/**
+ * Strip an HTML body down to indexable words.
+ *
+ * Not a sanitizer and not a renderer — nothing here is ever displayed. It
+ * exists because HTML-only mail (most newsletters, most transactional mail)
+ * has NO text/plain part, so `parsed.text` is undefined and such a message
+ * would otherwise be searchable by subject and sender alone. `<script>` and
+ * `<style>` go first, or their contents become "words".
+ */
+export function htmlToIndexText(html: string | null | undefined): string {
+  if (!html) return "";
+  return html
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d)))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** `[{name, email}]` → "Ada Lovelace ada@example.com", the form FTS indexes. */
+function addressText(addresses: EmailAddress[]): string {
+  return addresses.map((a) => [a.name, a.email].filter(Boolean).join(" ")).join(" ");
+}
+
+/** Everything about an email that the `text` condition should match. */
+export function ftsTextOf(email: {
+  subject: string;
+  from: EmailAddress[];
+  to: EmailAddress[];
+  cc?: EmailAddress[];
+  preview: string;
+  bodyText?: string;
+}): EmailFtsText {
+  // `preview` is the fallback, not an addition: it is a prefix of bodyText
+  // whenever both exist, and indexing it twice would only inflate the index.
+  const body = email.bodyText ?? email.preview ?? "";
+  return {
+    subject: email.subject ?? "",
+    fromText: addressText(email.from ?? []),
+    // cc rides in to_text: JMAP's `text` condition is "any address", and a
+    // separate column would buy nothing a caller can ask for.
+    toText: addressText([...(email.to ?? []), ...(email.cc ?? [])]),
+    bodyText: body.length > FTS_BODY_LIMIT ? body.slice(0, FTS_BODY_LIMIT) : body,
+  };
+}
+
+/**
+ * Turn arbitrary user text into a safe FTS5 MATCH expression, or `null` when
+ * it contains nothing the tokenizer would index.
+ *
+ * FTS5's query language is a language: bare input can carry `AND`/`OR`/`NOT`,
+ * `NEAR(...)`, column filters (`subject:`), prefix stars, parentheses and
+ * quotes. A user typing `foo AND bar` means the literal string, and a user
+ * typing a lone `"` should not get a 500. So EVERY whitespace-run becomes a
+ * quoted phrase — inside double quotes the only metacharacter left is `"`
+ * itself, which FTS5 escapes by doubling — and the phrases are joined by
+ * implicit AND.
+ *
+ * The result is "every word must appear somewhere in the message", which is
+ * both what a search box means and what the LIKE it replaces approximated.
+ * Two honest differences from LIKE, worth knowing before reading a test:
+ *
+ *   · FTS matches WHOLE TOKENS. `ell` no longer finds `hello`.
+ *   · `foo bar` no longer requires the words to be adjacent — for that,
+ *     the caller's words are still matched as a phrase within each run only.
+ */
+export function ftsMatchQuery(raw: string): string | null {
+  const phrases: string[] = [];
+  for (const run of raw.split(/\s+/)) {
+    // unicode61 indexes only alphanumerics; a run of pure punctuation ("--",
+    // "?!") produces an empty phrase, and `""` is an FTS5 syntax error.
+    if (!/[\p{L}\p{N}]/u.test(run)) continue;
+    phrases.push(`"${run.replace(/"/g, '""')}"`);
+  }
+  return phrases.length > 0 ? phrases.join(" ") : null;
+}
+
 export class Mailstore {
   constructor(
     private db: D1Database,
@@ -713,7 +838,7 @@ export class Mailstore {
     query: EmailQuery,
   ): Promise<{ ids: string[]; position: number; total?: number }> {
     const params: unknown[] = [accountId];
-    const where = query.filter ? this.buildFilter(query.filter, params) : "1=1";
+    const where = query.filter ? this.buildFilter(query.filter, params, accountId) : "1=1";
 
     const sort = (query.sort ?? [{ property: "receivedAt", isAscending: false }])
       .map((s) => `${SORT_COLUMNS[s.property] ?? "received_at"} ${s.isAscending ? "ASC" : "DESC"}`)
@@ -745,9 +870,9 @@ export class Mailstore {
     return out;
   }
 
-  private buildFilter(filter: EmailFilter, params: unknown[]): string {
+  private buildFilter(filter: EmailFilter, params: unknown[], accountId: string): string {
     if ("operator" in filter) {
-      const parts = filter.conditions.map((c) => `(${this.buildFilter(c, params)})`);
+      const parts = filter.conditions.map((c) => `(${this.buildFilter(c, params, accountId)})`);
       if (parts.length === 0) return "1=1";
       switch (filter.operator) {
         case "AND":
@@ -783,13 +908,31 @@ export class Mailstore {
       params.push(c.notKeyword);
     }
     if (c.text !== undefined) {
-      // LIKE fallback until the FTS index is populated at ingest.
-      const like = `%${escapeLike(c.text)}%`;
-      clauses.push(
-        `(e.subject LIKE ? ESCAPE '\\' OR e.preview LIKE ? ESCAPE '\\'
-          OR e.from_json LIKE ? ESCAPE '\\' OR e.to_json LIKE ? ESCAPE '\\')`,
-      );
-      params.push(like, like, like, like);
+      // Full-text, over the FTS5 index that `insertEmail` maintains — subject,
+      // addresses AND the message body (common/004). The subquery is
+      // UNCORRELATED on purpose: SQLite materialises it once, so the MATCH runs
+      // a single index lookup instead of once per candidate row. Written as
+      // `e.id IN (…)` rather than a JOIN so it composes inside the AND/OR/NOT
+      // tree above exactly like every other condition.
+      const match = ftsMatchQuery(c.text);
+      if (match !== null) {
+        clauses.push(
+          `e.id IN (SELECT m.email_id FROM emails_fts f
+                      JOIN emails_fts_map m ON m.docid = f.rowid
+                     WHERE emails_fts MATCH ? AND m.account_id = ?)`,
+        );
+        params.push(match, accountId);
+      } else {
+        // Nothing tokenizable — `"..."`, `-`, `!!!`. FTS5 cannot express that
+        // query at all, so keep the old LIKE for it rather than inventing a
+        // result. This is the ONLY surviving LIKE path for `text`.
+        const like = `%${escapeLike(c.text)}%`;
+        clauses.push(
+          `(e.subject LIKE ? ESCAPE '\\' OR e.preview LIKE ? ESCAPE '\\'
+            OR e.from_json LIKE ? ESCAPE '\\' OR e.to_json LIKE ? ESCAPE '\\')`,
+        );
+        params.push(like, like, like, like);
+      }
     }
     if (c.from !== undefined) {
       clauses.push(`e.from_json LIKE ? ESCAPE '\\'`);
@@ -868,8 +1011,119 @@ export class Mailstore {
           .prepare(`INSERT INTO email_keywords (account_id, email_id, keyword) VALUES (?, ?, ?)`)
           .bind(accountId, email.id, kw),
       ),
+      ...this.ftsIndexStatements(accountId, email.id, ftsTextOf(email)),
     ];
     await this.db.batch(statements);
+  }
+
+  /**
+   * Statements that leave `emails_fts` holding exactly one up-to-date row for
+   * this message. Delete-then-insert because a contentless FTS5 table has no
+   * UPDATE; `INSERT OR IGNORE` on the map because re-indexing must reuse the
+   * SAME docid it allocated the first time (otherwise the old index entries
+   * are orphaned under a rowid nothing points at).
+   *
+   * All three are ordinary statements — no round trip to read the docid back —
+   * so they ride inside the caller's existing `db.batch()` and inherit its
+   * atomicity. If the batch rolls back, so does the index.
+   *
+   * Idempotent by construction, which is what makes the backfill safe to
+   * re-run over a database that is already partly indexed.
+   */
+  private ftsIndexStatements(
+    accountId: string,
+    emailId: string,
+    text: EmailFtsText,
+  ): D1PreparedStatement[] {
+    return [
+      this.db
+        .prepare(`INSERT OR IGNORE INTO emails_fts_map (account_id, email_id) VALUES (?, ?)`)
+        .bind(accountId, emailId),
+      this.db
+        .prepare(
+          `DELETE FROM emails_fts WHERE rowid IN
+             (SELECT docid FROM emails_fts_map WHERE account_id = ? AND email_id = ?)`,
+        )
+        .bind(accountId, emailId),
+      this.db
+        .prepare(
+          `INSERT INTO emails_fts (rowid, subject, from_text, to_text, body_text)
+             SELECT docid, ?, ?, ?, ? FROM emails_fts_map
+              WHERE account_id = ? AND email_id = ?`,
+        )
+        .bind(text.subject, text.fromText, text.toText, text.bodyText, accountId, emailId),
+    ];
+  }
+
+  /** Statements that retract a message from the index. Safe if never indexed. */
+  private ftsDeleteStatements(accountId: string, emailId: string): D1PreparedStatement[] {
+    return [
+      this.db
+        .prepare(
+          `DELETE FROM emails_fts WHERE rowid IN
+             (SELECT docid FROM emails_fts_map WHERE account_id = ? AND email_id = ?)`,
+        )
+        .bind(accountId, emailId),
+      this.db
+        .prepare(`DELETE FROM emails_fts_map WHERE account_id = ? AND email_id = ?`)
+        .bind(accountId, emailId),
+    ];
+  }
+
+  /**
+   * Re-index one already-stored message. The backfill path (see
+   * `services/ingest` `POST /admin/fts/backfill`) — nothing in the request
+   * path needs it, because `insertEmail` indexes as it writes.
+   */
+  async reindexEmailText(
+    accountId: string,
+    emailId: string,
+    text: EmailFtsText,
+  ): Promise<void> {
+    await this.db.batch(this.ftsIndexStatements(accountId, emailId, text));
+  }
+
+  /**
+   * Ids of stored messages with no `emails_fts_map` row — i.e. not indexed.
+   *
+   * The backfill's work queue, and the reason it is resumable: each pass
+   * indexes what it takes, so the next call sees a strictly smaller set and an
+   * interrupted run loses nothing. Ordered by `received_at DESC` so a run that
+   * never finishes has still made the newest mail searchable.
+   */
+  async unindexedEmailIds(
+    accountId: string | null,
+    limit: number,
+  ): Promise<Array<{ accountId: string; id: string }>> {
+    const scope = accountId === null ? "" : "AND e.account_id = ?";
+    const binds = accountId === null ? [limit] : [accountId, limit];
+    const { results } = await this.db
+      .prepare(
+        `SELECT e.account_id, e.id FROM emails e
+          WHERE NOT EXISTS (SELECT 1 FROM emails_fts_map m
+                             WHERE m.account_id = e.account_id AND m.email_id = e.id)
+            ${scope}
+          ORDER BY e.received_at DESC LIMIT ?`,
+      )
+      .bind(...binds)
+      .all<{ account_id: string; id: string }>();
+    return results.map((r) => ({ accountId: r.account_id, id: r.id }));
+  }
+
+  /** How many stored messages are still missing from the index. */
+  async unindexedEmailCount(accountId: string | null): Promise<number> {
+    const scope = accountId === null ? "" : "AND e.account_id = ?";
+    const binds = accountId === null ? [] : [accountId];
+    const row = await this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM emails e
+          WHERE NOT EXISTS (SELECT 1 FROM emails_fts_map m
+                             WHERE m.account_id = e.account_id AND m.email_id = e.id)
+            ${scope}`,
+      )
+      .bind(...binds)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
   }
 
   /** Replace the full mailboxIds and/or keywords sets for an email. */
@@ -932,6 +1186,10 @@ export class Mailstore {
       this.db
         .prepare(`DELETE FROM email_keywords WHERE account_id = ? AND email_id = ?`)
         .bind(accountId, emailId),
+      // Before the `emails` row goes: an index entry that outlives its message
+      // is a search result pointing at nothing, and the id could later be
+      // matched against a different account's row.
+      ...this.ftsDeleteStatements(accountId, emailId),
       this.db.prepare(`DELETE FROM emails WHERE account_id = ? AND id = ?`).bind(accountId, emailId),
     ]);
   }

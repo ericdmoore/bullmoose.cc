@@ -27,7 +27,7 @@ JMAP's value is **stateful, efficient sync**: a monotonic `state` string per acc
 
 - **One Durable Object per account** = a single-writer actor → the natural serialization point for the per-account `state` counter and changelog. No distributed locks.
 - **DO hibernatable WebSockets** = JMAP-over-WebSocket push (RFC 8887) with no always-on server.
-- **D1 (SQLite + FTS5)** = `Email/query` filter/sort + full-text search map cleanly to SQL.
+- **D1 (SQLite + FTS5)** = `Email/query` filter/sort + full-text search map cleanly to SQL. **[live]** since `common/004`: `emails_fts` is written by `Mailstore.insertEmail` at ingest and matched by the `text` condition — subject, addresses **and message bodies**.
 - **R2** = raw-message + attachment blobs, no egress fees, range requests for partial fetch.
 - **Gap:** outbound. Filled by SES via signed `fetch` from a Worker.
 
@@ -296,7 +296,15 @@ Within an account, membership is the **Gmail-labels model, not folders-as-locati
 
 `destroy` must purge across every membership. Retrofitting folder-as-location into label-as-membership later is painful — bake the many-to-many in now.
 
-**Search locality.** `Email/query` is **server-side**: the server evaluates the filter (including full-text `text`/`subject`/`body` conditions) and sort. This is why the D1 + FTS5 index is load-bearing. himalaya specifically is **server-first hybrid** (`envelope/jmap/search.rs`): it translates the query to a JMAP filter (`AND/OR/NOT` → `JmapFilterOperator`s), runs it server-side, then applies a small residual client-side `PostFilter` for predicates JMAP can't express (and paginates client-side only when a post-filter is present). It keeps **no persistent local corpus** — local-index search is only its notmuch/maildir backends (or a mujmap→notmuch mirror). **Consequence:** our `Email/query` filter coverage *is* the agent's search quality — thin filter support forces himalaya to over-fetch and filter client-side (slow, more egress). Implement a rich `text` full-text condition over FTS5 to keep the residue near-empty.
+**Search locality.** `Email/query` is **server-side**: the server evaluates the filter (including full-text `text`/`subject`/`body` conditions) and sort. This is why the D1 + FTS5 index is load-bearing. himalaya specifically is **server-first hybrid** (`envelope/jmap/search.rs`): it translates the query to a JMAP filter (`AND/OR/NOT` → `JmapFilterOperator`s), runs it server-side, then applies a small residual client-side `PostFilter` for predicates JMAP can't express (and paginates client-side only when a post-filter is present). It keeps **no persistent local corpus** — local-index search is only its notmuch/maildir backends (or a mujmap→notmuch mirror). **Consequence:** our `Email/query` filter coverage *is* the agent's search quality — thin filter support forces himalaya to over-fetch and filter client-side (slow, more egress).
+
+**[live]** since `common/004`. `text` is an FTS5 `MATCH` over `emails_fts`, populated at every write path through `Mailstore.insertEmail` (ingest, `Email/set` create, `Email/import`, the agent worker) and retracted by `destroyEmail`. It covers subject, sender, recipients and **full message bodies** (HTML-only mail included, stripped to words), to a 64 KiB-per-message cap. Measured against the `LIKE` scan it replaced, on a 200K-message shard: a selective search is 200×–7500× faster and reads only matching rows rather than every row in the table — which is the budget that actually binds (`capacity-and-scaling.md` §2.2). The costs, stated plainly:
+
+- `text` is now **whole-token**, not substring: `ell` no longer finds `hello`. `subject`/`from`/`to` are still `LIKE` and still substring, so the two conditions genuinely differ.
+- A query matching ~half the corpus converges to the old scan's cost — it must sort every hit. That is a degenerate search, not a regression to design around.
+- The index costs ~0.6 KB per message (~26% of body size). See `capacity-and-scaling.md` §1.
+
+There is still **no `body`/`header` filter condition** — `text` covers bodies, and a `body`-only condition would need a second index.
 
 ---
 

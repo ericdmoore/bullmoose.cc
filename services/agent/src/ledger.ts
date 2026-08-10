@@ -530,6 +530,7 @@ ${hasChart ? chartHtml(agg) : `<p style="color:#777">${escapeHtml(progress.trim(
     cc: [],
     bcc: [],
     preview: text.slice(0, 256),
+    bodyText: text,   // full body into the FTS index (common/004)
     size: raw.byteLength,
     receivedAt: now,
     hasAttachment: false,
@@ -619,6 +620,7 @@ ${f.parsed.text ?? orig.preview}`;
     cc: [],
     bcc: [],
     preview: text.slice(0, 256),
+    bodyText: text,   // full body into the FTS index (common/004)
     size: raw.byteLength,
     receivedAt: now,
     hasAttachment: false,

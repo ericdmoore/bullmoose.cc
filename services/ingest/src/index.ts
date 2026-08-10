@@ -2,6 +2,8 @@ import PostalMime from "postal-mime";
 import { armResponder, commitChanges } from "@bullmoose/account-do";
 import {
   Mailstore,
+  ftsTextOf,
+  htmlToIndexText,
   normalizeMessageId,
   type AttachmentMeta,
   type EmailAddress,
@@ -84,9 +86,96 @@ export default {
         headers: { "content-type": "application/json" },
       });
     }
+
+    // One-shot full-text backfill for databases that predate common/004.
+    // Lives here because this worker already owns "extract text from raw
+    // MIME" and already binds both DB and BLOBS. Same internal-token guard
+    // as /dev/inject, but NOT behind DEV_INJECT — it is a production runbook
+    // step (docs/DEPLOY.md).
+    if (
+      request.method === "POST" &&
+      url.pathname === "/admin/fts/backfill" &&
+      (env.INTERNAL_TOKEN ?? "") !== "" &&
+      request.headers.get("x-internal-token") === env.INTERNAL_TOKEN
+    ) {
+      return Response.json(await backfillFts(env, url.searchParams));
+    }
+
     return new Response("bullmoose-ingest", { status: 200 });
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * Index one batch of already-stored messages, newest first.
+ *
+ * Resumable and idempotent: the work queue is "emails with no `emails_fts_map`
+ * row", so every pass shrinks it, an interrupted run loses nothing, and
+ * re-running after it reaches zero is a no-op. The operator loops on
+ * `remaining` — see docs/DEPLOY.md.
+ *
+ * `deep=1` (the default) re-reads each raw message from R2 and parses it, so
+ * historical mail gets its FULL body indexed, the same as new mail. `deep=0`
+ * indexes subject/addresses/preview only: no R2 reads, far faster, and the
+ * honest choice if you only want the scan-to-index speedup and can live with
+ * old bodies being searchable to 256 characters.
+ */
+async function backfillFts(env: Env, params: URLSearchParams): Promise<{
+  scanned: number;
+  indexed: number;
+  failed: number;
+  remaining: number;
+  deep: boolean;
+}> {
+  const store = new Mailstore(env.DB, env.BLOBS);
+  const account = params.get("account");
+  const deep = params.get("deep") !== "0";
+  // A deep pass costs one MIME parse per message, and CPU-per-invocation is
+  // the tightest budget on the free tier (capacity-and-scaling.md §2.1), so
+  // the default is small and the LOOP does the volume. Shallow passes are
+  // pure D1 and can take the ceiling.
+  const fallback = deep ? 25 : 200;
+  const ceiling = deep ? 200 : 500;
+  const asked = Number(params.get("limit") ?? fallback);
+  // `limit=0` is a STATUS call: report `remaining` and index nothing. An
+  // operator running the loop below needs a way to ask "how far in am I?"
+  // that does not itself do work.
+  const limit = Math.min(Math.max(0, Number.isFinite(asked) ? asked : fallback), ceiling);
+
+  const todo = limit === 0 ? [] : await store.unindexedEmailIds(account, limit);
+  let indexed = 0;
+  let failed = 0;
+  const tenants = new Map<string, string>();
+
+  for (const { accountId, id } of todo) {
+    const row = await store.getEmailRow(accountId, id);
+    if (!row) continue; // destroyed between the scan and now
+    let bodyText = row.preview;
+    if (deep) {
+      try {
+        const blob = await store.getBlob(await tenantOf(env, tenants, accountId), accountId, row.blobId);
+        if (blob) {
+          const parsed = await PostalMime.parse(await blob.arrayBuffer());
+          bodyText = bodyTextOf(parsed) || row.preview;
+        }
+      } catch (err) {
+        // A blob that will not parse must not stall the whole backfill —
+        // index what D1 knows and keep going, but say that it happened.
+        failed++;
+        console.error(`fts backfill: ${id} body unavailable: ${err}`);
+      }
+    }
+    await store.reindexEmailText(accountId, id, ftsTextOf({ ...row, bodyText }));
+    indexed++;
+  }
+
+  return {
+    scanned: todo.length,
+    indexed,
+    failed,
+    remaining: await store.unindexedEmailCount(account),
+    deep,
+  };
+}
 
 /** Fast-path wake for the cloud agent runtime; the cron sweep is the net. */
 function pokeAgent(
@@ -154,6 +243,10 @@ async function deliver(
     cc: toAddresses(parsed.cc ?? []),
     bcc: [],
     preview: (parsed.text ?? "").slice(0, 256),
+    // The full body, for the FTS index only — never stored as a column
+    // (the bytes are in R2). This is the step that makes message bodies
+    // searchable server-side at all; see common/004.
+    bodyText: bodyTextOf(parsed),
     size: raw.byteLength,
     receivedAt: Date.now(),
     hasAttachment: attachments.some((a) => a.disposition !== "inline"),
@@ -279,6 +372,43 @@ async function armResponders(
       fireAt: now + r.wait_seconds * 1000,
     });
   }
+}
+
+/**
+ * The tenant an account belongs to — needed to build an R2 blob key, and NOT
+ * something delivery ever has to look up (the KV route carries it).
+ *
+ * `accounts.tenant_id` is authoritative; the id-prefix fallback holds because
+ * provisioning mints `${tenantId}__a_${rand}` (`services/provision`), and it
+ * is what keeps this working if the control plane ever moves off this binding.
+ * Memoised per request: a backfill batch is usually one account.
+ */
+async function tenantOf(env: Env, cache: Map<string, string>, accountId: string): Promise<string> {
+  const hit = cache.get(accountId);
+  if (hit !== undefined) return hit;
+  let tenantId = accountId.split("__")[0] ?? "";
+  try {
+    const row = await env.DB.prepare(`SELECT tenant_id FROM accounts WHERE id = ?`)
+      .bind(accountId)
+      .first<{ tenant_id: string }>();
+    if (row?.tenant_id) tenantId = row.tenant_id;
+  } catch {
+    /* control plane not on this binding — the prefix is the answer */
+  }
+  cache.set(accountId, tenantId);
+  return tenantId;
+}
+
+/**
+ * The searchable text of a parsed message.
+ *
+ * `text/plain` when there is one; otherwise the HTML part stripped to words.
+ * The `??`-with-fallback order matters — an HTML-only newsletter has no
+ * `.text` at all, and those are exactly the messages people search for later.
+ */
+function bodyTextOf(parsed: { text?: string; html?: string }): string {
+  const text = parsed.text?.trim();
+  return text && text.length > 0 ? text : htmlToIndexText(parsed.html);
 }
 
 /** exact match → plus-tag stripped → catch-all. Alias fan-out is TODO. */

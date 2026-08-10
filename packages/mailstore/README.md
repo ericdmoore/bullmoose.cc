@@ -6,8 +6,16 @@ The storage layer: one `Mailstore` class over D1 (metadata) + R2
 - **Blobs**: content-hash `blobId`s in R2 (`putBlob`/`getBlob`) — raw
   RFC 5322 messages and individual attachments
 - **Emails**: `insertEmail`, `getEmailRow(s)`, `queryEmails` (filter
-  operator tree with AND/OR/NOT recursion, LIKE-based text search),
-  keyword/mailbox junctions, `destroyEmail`
+  operator tree with AND/OR/NOT recursion), keyword/mailbox junctions,
+  `destroyEmail`
+- **Full-text search** (`common/004`): `queryEmails`' `text` condition is
+  an FTS5 `MATCH` over `emails_fts` — subject, addresses and **message
+  bodies**. `insertEmail` writes the index row (pass `bodyText`;
+  `preview` is the fallback), `destroyEmail` retracts it, and
+  `ftsMatchQuery` quotes user input so FTS5 operators (`AND`, `NEAR`,
+  `*`, `"`) stay literal. `subject`/`from`/`to` remain substring `LIKE`
+  on their own columns. Retrofit an existing database with the ingest
+  worker's `POST /admin/fts/backfill` (`docs/DEPLOY.md`).
 - **Mailboxes**: `getMailboxes`, `ensureRoleMailbox`, counts
 - **Threading**: `resolveThreadId` via In-Reply-To;
   `normalizeMessageId()` strips angle brackets — REQUIRED on every

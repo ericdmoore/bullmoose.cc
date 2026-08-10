@@ -331,6 +331,7 @@ async function sendReply(
     cc: [],
     bcc: [],
     preview: r.text.slice(0, 256),
+    bodyText: r.text,   // full body into the FTS index (common/004)
     size: raw.byteLength,
     receivedAt: now,
     hasAttachment: false,

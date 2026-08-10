@@ -22,12 +22,39 @@ offload:
 | contact card (photo in R2) | ~0.7 KB |
 | calendar event (recurring = ONE row, never expanded to storage) | ~0.8 KB |
 | email metadata (body in R2) | ~1.2 KB with indexes |
+| **+ full-text index** (`emails_fts`, since `common/004`) | **~0.6 KB** |
 
 A shard carrying 3,559 real contacts, 50 events, and mail metadata
 occupies **6.8 MB of the 500 MB** free-tier database cap. Back of the
 envelope for one shard: several hundred thousand contacts, a lifetime
-of calendar, or ~300K messages of mail metadata — and R2's 10 GB free
+of calendar, or ~200K messages of mail metadata — and R2's 10 GB free
 holds roughly 130K raw messages beside it.
+
+**The FTS line is the one that moved.** `common/004` wired `emails_fts`,
+which had been declared and never written, so `Email/query`'s `text`
+condition indexes full message bodies instead of scanning `LIKE` over
+subject + a 256-character preview. Measured on synthetic shards of 50K
+and 200K messages with ~2.3 KB bodies: **~0.6 KB of index per message,
+≈26% of the indexed text.** That is roughly a 50% increase on the 1.2 KB
+metadata row and moves the single-shard mail ceiling from ~300K messages
+to ~200K.
+
+Three things keep that affordable, and they were all design choices:
+
+- The table is **contentless** (`content=''`) — only the inverted index
+  is stored, never a second copy of the body. A content-carrying FTS5
+  table would have cost ~2.3 KB/message instead of ~0.6 KB.
+- Bodies are indexed to a **64 KiB cap** (`FTS_BODY_LIMIT`), so one
+  pathological message cannot cost more than a thousand ordinary ones.
+- It buys back budget #2 below. A `LIKE '%term%'` cannot use an index,
+  so every search read **one row per stored message** — 200K rows
+  against the 5M/day pool, per search. The FTS path reads only matching
+  rows: measured 200×–7500× faster on selective terms at 200K messages,
+  and flat in corpus size rather than linear.
+
+If the trade is not wanted on a given deployment, the backfill has a
+`deep=0` mode that indexes metadata + preview only (`docs/DEPLOY.md`);
+that keeps the scan→index speedup at close to zero added storage.
 
 ## 2. The budgets that actually bind
 
@@ -45,7 +72,11 @@ Storage is rarely the first wall. In order of how soon they bite:
    gets ~100 such searches a day — while ctag polls and indexed lookups
    are effectively free. Chatty **agents are read-heavy long before
    they are storage-heavy**; bounded, indexed queries (see the
-   analytics MCP) are the pattern.
+   analytics MCP) are the pattern. **Mail search left this category in
+   `common/004`**: `Email/query`'s `text` condition now reads matching
+   rows via `emails_fts`, not every row in `emails`. Contacts
+   (`queryContactCards`) and calendar (`queryCalendarEvents`) are still
+   `LIKE` full scans and still count here.
 3. **100K rows written/day.** Generous for mail flow; the reason bulk
    migrations are designed to never happen (see rotation below).
 4. **500 MB per D1 database / 5 GB total** and **10 GB R2** — the slow
