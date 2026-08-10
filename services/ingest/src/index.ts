@@ -1,10 +1,11 @@
 import PostalMime from "postal-mime";
 import { armResponder, commitChanges } from "@bullmoose/account-do";
 import {
-  Mailstore,
   ftsTextOf,
   htmlToIndexText,
+  Mailstore,
   normalizeMessageId,
+  previewText,
   type AttachmentMeta,
   type EmailAddress,
 } from "@bullmoose/mailstore";
@@ -242,7 +243,7 @@ async function deliver(
     to: toAddresses(parsed.to ?? []),
     cc: toAddresses(parsed.cc ?? []),
     bcc: [],
-    preview: (parsed.text ?? "").slice(0, 256),
+    preview: previewText(parsed.text, parsed.html),
     // The full body, for the FTS index only — never stored as a column
     // (the bytes are in R2). This is the step that makes message bodies
     // searchable server-side at all; see common/004.
