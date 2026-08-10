@@ -1,3 +1,5 @@
+import { verbPermittedForKind } from "./binding.js";
+import { runFetchVerb } from "./fetchVerb.js";
 import { authorizeUse, type UseRequest } from "./grants.js";
 import { reseal, sealAndStore, verifyOpenable } from "./vault.js";
 import type { Env } from "./models.js";
@@ -13,17 +15,22 @@ import type { Env } from "./models.js";
  *
  *   POST /internal/bureau/seal    (x-internal-token)  seal-on-mint / rotate
  *   POST /internal/bureau/verify  (x-internal-token)  decrypt-and-discard health check
- *   POST /bureau/use              (Bearer)            authorize + audit a verb
+ *   POST /bureau/use              (Bearer)            authorize, audit, RUN a verb
  *
  * Reached only over the BUREAU service binding from `services/agent`; there is
  * no public route. `/bureau/use` still authenticates its caller with a real
  * bearer token rather than trusting the binding, because the binding proves
  * which worker and the token proves which agent (arch.md OQ1b).
  *
- * **This slice is T3a + T2: the key moved, and the grant model exists.** The
- * verb RUNTIME is T3 — `/bureau/use` authorizes, audits, and then answers 501,
- * which is the honest state: authorization is real and enforced today, the proxy
- * is not built yet. When T3 lands it replaces exactly one branch below.
+ * **T3a + T2 + T3: the key moved, the grant model exists, and the Class A verb
+ * runs.** `/bureau/use` now authenticates, authorizes, audits, gates the verb by
+ * the credential's kind (§4.1), binds the destination (§6) and proxies the call
+ * with the credential injected as a header (invariant 8). The Class B verbs
+ * (§3) are still T5 and still answer 501 — but now from behind the kind gate.
+ *
+ * Egress redaction (§7, invariant 7) is T4 and is deliberately absent: it is
+ * ranked BELOW destination binding on purpose (§7), so it is the thing that may
+ * arrive second. `fetchVerb.ts`'s `EgressFilter` is the seam it lands on.
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -99,11 +106,25 @@ async function handleSeal(request: Request, env: Env): Promise<Response> {
 /**
  * The one call an agent makes: "run this verb with this credential."
  *
- * Everything before the 501 is live, enforced behaviour — caller
- * authentication, exact-tuple authorization, and the audit row. Only the verb
- * execution is missing, and it is missing loudly rather than silently
- * permissive, which is the right way round for a security boundary under
- * construction.
+ * The five steps of bureau.md's T3 runtime, in the order that makes them
+ * enforceable rather than merely present:
+ *
+ *   0. authenticate the caller          `authorizeUse` (T3a)
+ *   1. authorize (principal, credRef, verb) + audit   `authorizeUse` (T2)
+ *   2. gate the verb by the credential's KIND (§4.1)  ← here
+ *   3. bind the destination (§6)                      ┐
+ *   4. inject header-only (invariant 8)               ├ the verb runtime
+ *   5. return only the result                         ┘
+ *
+ * Step 2 sits here rather than inside the verb because it is a property of the
+ * *vocabulary*, not of any one verb: it is what stops `hmac_sha256` being
+ * pointed at an `aws-sigv4` credential and used to derive `kSigning` (§4.1), and
+ * that has to hold for verbs that do not exist yet. A Class B verb added in T5
+ * inherits the gate by arriving after it.
+ *
+ * The remaining 501 is now honest in a narrower way than it was: the Class B
+ * verbs are unbuilt, but they are unbuilt *behind* the kind gate, so an
+ * unimplemented verb on the wrong kind is a 403 and not a 501.
  */
 async function handleUse(request: Request, env: Env): Promise<Response> {
   let body: UseRequest;
@@ -115,16 +136,45 @@ async function handleUse(request: Request, env: Env): Promise<Response> {
   const decision = await authorizeUse(env, request, body);
   if (!decision.ok) return json({ error: decision.error }, decision.status);
 
-  // T3 lands here: gate the verb by kind (§4.1), bind the destination (§6),
-  // unseal in-process, inject as a header (invariant 8), return only the result.
+  const { verb } = decision.grant;
+
+  // 2 — §4.1. A grant can say "this agent may run this verb with this
+  // credential"; only the kind can say the verb makes sense against it. Both
+  // must agree, and an operator's mis-grant is caught here.
+  if (!verbPermittedForKind(decision.kind, verb)) {
+    return json(
+      { error: `verb "${verb}" is not permitted for a "${decision.kind}" credential` },
+      403,
+    );
+  }
+
+  // 3–5 — Class A. One verb, forever (§3): the destination binding lives on the
+  // credential, so `fetch` covers every static-bearer service without ever
+  // gaining a per-service sibling.
+  if (verb === "fetch") {
+    return runFetchVerb(
+      env,
+      {
+        principalId: decision.principalId,
+        credRef: decision.grant.credRef,
+        kind: decision.kind,
+        meta: decision.meta,
+      },
+      body.request,
+    );
+  }
+
+  // Class B (§3) — `sign_sigv4`, `oauth_token`, `hmac_sha256` are T5. Loud
+  // rather than silently permissive, which is the right way round for a
+  // security boundary under construction.
   return json(
     {
-      error: `verb "${decision.grant.verb}" is authorized but not implemented yet`,
+      error: `verb "${verb}" is authorized but not implemented yet`,
       authorized: true,
       grantId: decision.grant.grantId,
       credRef: decision.grant.credRef,
       kind: decision.kind,
-      hint: "the Bureau runtime is s04 T3; T3a moved the key and T2 built the grant model",
+      hint: "Class B verbs are s04 T5; T3 built the Class A `fetch` runtime",
     },
     501,
   );

@@ -146,7 +146,7 @@ describe("the §5 mint-time fields persist and read back", () => {
     await put(env, {
       name: "stripe",
       kind: "api-key",
-      secret: "sk_live_TOPSECRET",
+      secret: "bm-canary-DO-NOT-USE-vault-9f3d1c",
       allow: "https://api.stripe.com",
       header: "Authorization: Bearer {}",
       enforcement: "broad",
@@ -165,7 +165,7 @@ describe("the §5 mint-time fields persist and read back", () => {
     });
     // Invariant 1: no read path returns the value or the envelope.
     const raw = JSON.stringify(c);
-    expect(raw).not.toContain("sk_live_TOPSECRET");
+    expect(raw).not.toContain("bm-canary-DO-NOT-USE-vault-9f3d1c");
     expect(raw).not.toContain("enc_json");
     expect(raw).not.toMatch(/"ct"|"iv"/);
   });
@@ -277,7 +277,7 @@ describe("the agent worker genuinely cannot unseal", () => {
 
   it("cannot open a credential it just minted", async () => {
     const { env, bureauEnv, db } = world();
-    await put(env, { name: "stripe", kind: "api-key", secret: "sk_live_TOPSECRET", allow: "https://api.stripe.com" });
+    await put(env, { name: "stripe", kind: "api-key", secret: "bm-canary-DO-NOT-USE-vault-9f3d1c", allow: "https://api.stripe.com" });
 
     // The ciphertext is right there in a table the agent worker CAN read. What
     // it lacks is the key, and that is the whole difference between isolation
@@ -285,11 +285,11 @@ describe("the agent worker genuinely cannot unseal", () => {
     const row = db.query<{ enc_json: string }>(
       `SELECT enc_json FROM vault_credentials WHERE name = 'stripe'`,
     )[0]!;
-    expect(row.enc_json).not.toContain("sk_live_TOPSECRET");
+    expect(row.enc_json).not.toContain("bm-canary-DO-NOT-USE-vault-9f3d1c");
     expect(Object.keys(env)).not.toContain("VAULT_MASTER_KEY");
     // ...and with the key, in the Bureau, it opens. The value is recoverable —
     // just not here.
-    expect((await openCredential(bureauEnv, PRINCIPAL, "stripe"))?.secret).toBe("sk_live_TOPSECRET");
+    expect((await openCredential(bureauEnv, PRINCIPAL, "stripe"))?.secret).toBe("bm-canary-DO-NOT-USE-vault-9f3d1c");
   });
 
   it("fails closed when the Bureau is unreachable rather than sealing locally", async () => {
@@ -303,7 +303,7 @@ describe("the agent worker genuinely cannot unseal", () => {
     const res = await put(broken, {
       name: "stripe",
       kind: "api-key",
-      secret: "sk_live_TOPSECRET",
+      secret: "bm-canary-DO-NOT-USE-vault-9f3d1c",
       allow: "https://api.stripe.com",
     });
     expect(res.status).toBe(502);

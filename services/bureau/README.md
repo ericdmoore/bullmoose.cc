@@ -43,13 +43,46 @@ the same reason — they conflate the key with the vault. §1's contract is that
 |---|---|---|
 | `POST /internal/bureau/seal` | `x-internal-token` | seal-on-mint / rotate; writes `enc_json` |
 | `POST /internal/bureau/verify` | `x-internal-token` | decrypt-and-discard health check → `{ok}` |
-| `POST /bureau/use` | `Bearer` (invocation token) | authenticate → authorize `(principal, credRef, verb)` → audit |
+| `POST /bureau/use` | `Bearer` (invocation token) | authenticate → authorize `(principal, credRef, verb)` → audit → **run the verb** |
 
-`/bureau/use` currently answers **501 after authorizing**. That is the honest
-state of the ladder: T3a moved the key, T2 built the grant model, and the verb
-runtime (Class A `fetch` + destination binding) is **T3**. Authorization is real
-and enforced today; the proxy is not built yet, and it fails loudly rather than
-permissively while that is true.
+```jsonc
+// POST /bureau/use            Authorization: Bearer <invocation token>
+{ "verb": "fetch", "credRef": "stripe",
+  "request": { "url": "https://api.stripe.com/v1/charges",
+               "method": "POST", "headers": {…}, "body": "amount=100" } }
+
+// → 200
+{ "ok": true, "status": 200, "headers": {…}, "body": "…",
+  "bodyEncoding": "text", "redirects": 0 }
+```
+
+Note what the caller does **not** send: the header name, the destination
+allowlist, or any transform. Those are properties of the credential, read from
+its mint-time contract (bureau.md §2, §5). A caller that names the injected
+header is refused rather than quietly overridden.
+
+**Class A `fetch` is live (T3).** Per call, in order: the verb is gated by the
+credential's `kind` (§4.1); the URL is parsed and matched against the
+credential's `--allow` on **scheme + host + port exactly** — wildcards only as an
+explicit `*.suffix`, never `startsWith`, never substring — with **no allowlist
+meaning unusable** (invariant 5); the credential is unsealed only once all of
+that has passed, injected as a **header** (invariant 8), and the caller gets back
+only the result.
+
+Redirects use `redirect: "manual"` and **any origin change ends the call**
+(invariant 4). Not "follow it without the header": that would turn the Bureau
+into a relay fetching attacker-chosen URLs on an agent's behalf. Same-origin hops
+are followed, re-checking the allowlist each time.
+
+**Class B verbs** (`sign_sigv4`, `oauth_token`, `hmac_sha256`) still answer
+**501** — but from *behind* the kind gate, so an unimplemented verb pointed at
+the wrong kind is a 403 and not a 501. They are **T5**.
+
+**Egress redaction is not here yet** (§7, **T4**). §7 ranks it explicitly *below*
+destination binding — redaction stops accidents, binding stops adversaries — so
+it is the piece that may arrive second. The seam is wired:
+`fetchVerb.ts`'s `EgressFilter` receives the response text plus the exact values
+the request injected.
 
 ## Bindings, and the ones it deliberately lacks
 

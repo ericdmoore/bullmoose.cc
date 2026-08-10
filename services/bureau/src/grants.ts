@@ -47,6 +47,15 @@ export type UseDecision =
 export interface UseRequest {
   verb?: unknown;
   credRef?: unknown;
+  /**
+   * The verb's arguments — for `fetch`, the request the agent wants proxied
+   * (`{url, method?, headers?, body?}`; see `fetchVerb.ts`). Opaque to the
+   * authorization spine on purpose: authorization is a decision about a tuple,
+   * and nothing the caller puts in here may influence it. Note what a caller
+   * still cannot supply anywhere on this interface — the header name, the
+   * destination allowlist, or any transform (§2).
+   */
+  request?: unknown;
 }
 
 /**

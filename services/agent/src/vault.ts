@@ -235,7 +235,13 @@ export async function handleVault(request: Request, env: Env): Promise<Response>
     // allow — destination binding, THE primary control (§6). Derive from the
     // OAuth issuer when not given (§5). We do NOT hard-require it here: the CLI
     // fails closed at the human boundary, and a row with no allow is recorded
-    // as unusable-by-design (invariant 5). NOTHING enforces yet — no proxy.
+    // as unusable-by-design (invariant 5) — services/bureau/src/binding.ts
+    // refuses a credential with no allowlist rather than defaulting to allow-all.
+    //
+    // This IS enforced as of Bureau T3: binding.ts re-parses this stored value
+    // on every use and matches by parsed origin, never by string compare. Note
+    // it accepts `string | string[]` while this mint path only ever writes a
+    // single string — see .feedback 035 for that seam.
     let allow = body.allow;
     if (!allow && kind === "oauth-refresh" && typeof meta.token_url === "string") {
       try {
