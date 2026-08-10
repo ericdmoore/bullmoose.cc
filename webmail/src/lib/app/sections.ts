@@ -84,11 +84,11 @@ export const SECTIONS: readonly Section[] = [
     id: "calendar",
     label: "Calendar",
     href: "/calendar",
-    status: "planned",
-    reason: "server is live, screen is not",
-    detail:
-      "Calendar/* and CalendarEvent/* — nine JMAP methods, plus full CalDAV — are " +
-      "serving today with no browser path to them. s07 T3 needs no server work at all.",
+    // Live as of s07 T3. Month/week/day over CalendarEvent/getOccurrences —
+    // the server expands recurrence, the browser never does. The screen
+    // carries its own caveats (the 256-candidate ceiling, the full-scan search)
+    // rather than duplicating them into the nav where they would drift.
+    status: "live",
   },
   {
     id: "mail",
