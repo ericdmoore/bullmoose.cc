@@ -1,0 +1,61 @@
+name: Deploy app
+
+# The bullmoose app surface (webmail/, Astro → Cloudflare Pages) at
+# app.bullmoose.cc. Plan: .plans/s07-app-surface/devPlan.md.
+#
+# SAME-ORIGIN BY DESIGN. The API is not a separate host: services/jmap owns
+# `app.bullmoose.cc/{api/*, auth/*, .well-known/jmap, share/*}` via Worker
+# routes, and Pages serves everything else. Worker routes take precedence over
+# Pages on a shared hostname, so the two coexist on one name.
+#
+# That is not a convenience. The alternative — Pages on app., the worker on
+# api. — makes every request cross-origin, and services/jmap sends NO CORS
+# headers and has NO OPTIONS handler (`services/jmap/src/index.ts`), so every
+# browser call would die at preflight before reaching the worker. Same-origin
+# means there is no CORS surface to get wrong, no preflight latency, and no
+# origin boundary for a credential to cross.
+#
+# Prereqs (one-time, human):
+#   1. First run creates the `bullmoose-app` Pages project (direct upload).
+#      Then map app.bullmoose.cc to it in the Pages dashboard.
+#   2. Reuses BULLMOOSE_SITE_DEPLOY_TOKEN. A token scoped
+#      "Account > Cloudflare Pages: Edit" covers every Pages project in the
+#      account, so a SECOND project needs no new token and no widening. If a
+#      run 403s, that assumption was wrong — widen that one token rather than
+#      minting another.
+#   3. The Worker routes ship with deploy-mail.yml (CLOUDFLARE_API_TOKEN),
+#      NOT with this workflow. Deploy the worker first, or /api/* 404s into
+#      Pages and the app looks broken while the login page works.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "webmail/**"
+      - "packages/jmap-core/**"
+      - ".github/workflows/deploy-app.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      # The suite gates `main` already, but webmail's own build is the only
+      # thing that catches a CSP/hydration break -- `astro build` succeeding
+      # while the page renders empty is the s03.C failure mode.
+      - run: npm run -w webmail build
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.BULLMOOSE_SITE_DEPLOY_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy webmail/dist --project-name=bullmoose-app --branch=main

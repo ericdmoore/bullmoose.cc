@@ -46,6 +46,7 @@ export default defineConfig({
       "services/**/*.test.ts",
       "webmail/**/*.test.ts",
       "infra/**/*.test.ts",
+      "tools/**/*.test.ts",
     ],
     // Still exclude the marketing site (src/) and any build output; webmail/dist
     // and webmail/node_modules are covered by the two globs that precede them.
