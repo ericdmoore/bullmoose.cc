@@ -132,12 +132,12 @@ export const SECTIONS: readonly Section[] = [
     id: "settings",
     label: "Settings",
     href: "/settings",
-    status: "planned",
-    reason: "screen not built",
-    detail:
-      "The cheapest unblocked section: Identity/get+set and VacationResponse/get+set " +
-      "are all live (services/jmap/src/methods/identity.ts:167). s07 T2 builds it. " +
-      "Sign-out, which T2 also listed, is in the app bar as of T1.",
+    // Live as of s07 T2 over all four `HumanSettings` methods —
+    // `Identity/get`+`/set` and `VacationResponse/get`+`/set` — with no server
+    // work behind it. What the screen cannot do it says on its own face
+    // (`lib/settings/vacation.ts`: no HTML body, no concurrency guard) rather
+    // than in the nav, which would drift.
+    status: "live",
   },
 ];
 

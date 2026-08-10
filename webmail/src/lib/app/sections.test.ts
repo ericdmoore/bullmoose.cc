@@ -84,12 +84,25 @@ describe("nothing is a dead link and nothing 404s", () => {
   });
 
   it("marks any section that has NO page as planned", () => {
-    // The other direction, and the one that rots: ship `/settings` and forget
-    // this map, and the nav keeps it greyed out with a stale excuse under a
-    // page that works.
     const pages = pageNames();
     for (const s of SECTIONS) {
       if (!pages.has(s.id)) expect(s.status, `${s.href} is dark but not marked`).toBe("planned");
+    }
+  });
+
+  it("marks any section that HAS a page as live", () => {
+    // The direction that rots, and the one this file previously only claimed
+    // to check: ship `/settings` and forget this map, and the nav keeps the
+    // section greyed out with a stale excuse sitting over a page that works.
+    //
+    // The assertion above does not catch that — "no page ⇒ planned" and
+    // "live ⇒ has a page" are the same implication written twice, and both
+    // stay green while a built page is marked dark. s07 T2 hit exactly this:
+    // `settings.astro` existed and every check here passed with `/settings`
+    // still advertising "screen not built".
+    const pages = pageNames();
+    for (const s of SECTIONS) {
+      if (pages.has(s.id)) expect(s.status, `${s.href} has a page but is marked dark`).toBe("live");
     }
   });
 
