@@ -238,6 +238,20 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
   const state = (): string => String(stateCounter);
   const bump = (): string => String(++stateCounter);
 
+  /**
+   * The `responders` row behind the `VacationResponse` facade — one row, five
+   * columns, which is all `VacationResponse/set` ever writes
+   * (`services/jmap/src/methods/vacation.ts:50-60`). Starts unset, the state a
+   * freshly provisioned account is in.
+   */
+  let vacation: {
+    isEnabled: boolean;
+    subject: string | null;
+    textBody: string | null;
+    fromDate: string | null;
+    toDate: string | null;
+  } = { isEnabled: false, subject: null, textBody: null, fromDate: null, toDate: null };
+
   const findEmail = (id: string): Email | undefined => emails.find((e) => e.id === id);
 
   const counts = (mailboxId: string) => {
@@ -268,6 +282,136 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
       list: identities,
       notFound: [],
     }),
+
+    /**
+     * `Identity/set`, warts included — the three refusals a settings screen has
+     * to survive (`services/jmap/src/methods/identity.ts`):
+     *   • `ifInState` is COMPARED and a mismatch refuses the whole call (:207-210);
+     *   • `id` / `mayDelete` in a patch fail it entirely (`rejectServerSet`, :430-437);
+     *   • `email` is immutable and refused by name (:478-483).
+     * Only `update` is modelled: `/settings` never creates or destroys an
+     * identity, and a create would also need the active-domain check (:459-462)
+     * which the demo has no domain table to answer.
+     */
+    "Identity/set": (args) => {
+      if (!scopes.has("draft")) {
+        return ["error", { type: "forbidden", description: "token lacks scope: draft" }];
+      }
+      const oldState = state();
+      if (typeof args.ifInState === "string" && args.ifInState !== oldState) {
+        return ["error", { type: "stateMismatch" }];
+      }
+
+      const updated: Record<string, null> = {};
+      const notUpdated: Record<string, unknown> = {};
+      for (const [id, patch] of Object.entries(
+        (args.update as Record<string, Record<string, unknown>> | undefined) ?? {},
+      )) {
+        const row = identities.find((i) => i.id === id);
+        if (!row) {
+          notUpdated[id] = { type: "notFound" };
+          continue;
+        }
+        const serverSet = ["id", "mayDelete"].filter((p) => p in patch);
+        if (serverSet.length > 0) {
+          notUpdated[id] = {
+            type: "invalidProperties",
+            description: `${serverSet.join(", ")} is set by the server`,
+            properties: serverSet,
+          };
+          continue;
+        }
+        if ("email" in patch) {
+          notUpdated[id] = {
+            type: "invalidProperties",
+            description: "email is immutable; destroy the identity and create another",
+            properties: ["email"],
+          };
+          continue;
+        }
+        const unknownProps = Object.keys(patch).filter(
+          (k) => !["name", "replyTo", "bcc", "textSignature", "htmlSignature"].includes(k),
+        );
+        if (unknownProps.length > 0) {
+          notUpdated[id] = {
+            type: "invalidProperties",
+            description: `unknown properties: ${unknownProps.join(", ")}`,
+            properties: unknownProps,
+          };
+          continue;
+        }
+        Object.assign(row, patch);
+        updated[id] = null;
+      }
+
+      const touched = Object.keys(updated).length > 0;
+      return {
+        accountId: ACCOUNT,
+        oldState,
+        newState: touched ? bump() : oldState,
+        created: {},
+        notCreated: {},
+        updated,
+        notUpdated,
+        destroyed: [],
+        notDestroyed: {},
+      };
+    },
+
+    "VacationResponse/get": () => ({
+      accountId: ACCOUNT,
+      state: state(),
+      // Always exactly one row whether or not a responder has been configured
+      // (`services/jmap/src/methods/vacation.ts:13-29`), and `htmlBody` is
+      // hardcoded null there — so it is hardcoded null here too. A demo that
+      // echoed an HTML body back would hide the one bug this screen was told
+      // to avoid.
+      list: [{ ...vacation, htmlBody: null }],
+      notFound: [],
+    }),
+
+    "VacationResponse/set": (args) => {
+      if (!scopes.has("draft")) {
+        return ["error", { type: "forbidden", description: "token lacks scope: draft" }];
+      }
+      const oldState = state();
+      const patch = (args.update as Record<string, Record<string, unknown>> | undefined)?.singleton;
+      // `if (!patch) throw invalidArguments` (vacation.ts:36-39). Note there is
+      // deliberately NO `ifInState` check: the real method never reads it, and a
+      // fake that enforced a guard the server does not have would let a client
+      // ship believing it was protected.
+      if (!patch) {
+        return ["error", { type: "invalidArguments", description: "VacationResponse/set updates the singleton" }];
+      }
+
+      // Merge exactly the five fields the server merges (vacation.ts:42-48),
+      // with its fallback semantics: a string wins, an explicit null clears,
+      // anything else keeps the stored value. `htmlBody` is not among them and
+      // is silently dropped here for the same reason it is there.
+      const keep = <T,>(v: unknown, fallback: T, ok: (x: unknown) => boolean): T =>
+        ok(v) ? (v as T) : v === null ? (null as T) : fallback;
+      vacation = {
+        isEnabled: typeof patch.isEnabled === "boolean" ? patch.isEnabled : vacation.isEnabled,
+        subject: keep(patch.subject, vacation.subject, (x) => typeof x === "string"),
+        textBody: keep(patch.textBody, vacation.textBody, (x) => typeof x === "string"),
+        fromDate: demoDate(patch.fromDate, vacation.fromDate),
+        toDate: demoDate(patch.toDate, vacation.toDate),
+      };
+
+      return {
+        accountId: ACCOUNT,
+        oldState,
+        // The real method commits no ChangeEntry, so the account state does not
+        // move on a vacation write (`vacation.ts:34,65` read the same value).
+        newState: oldState,
+        created: {},
+        notCreated: {},
+        updated: { singleton: null },
+        notUpdated: {},
+        destroyed: [],
+        notDestroyed: {},
+      };
+    },
 
     "Email/query": (args) => {
       const filter = (args.filter as EmailFilter | null) ?? null;
@@ -500,6 +644,23 @@ export function createDemoClient(opts: DemoOptions = {}): FakeJmapClient {
 }
 
 // ── server-behaviour mirrors ──────────────────────────────────────────────
+
+/**
+ * Mirrors `dateMs` (`services/jmap/src/methods/vacation.ts:97-104`), including
+ * the wart that matters: an unparseable date FALLS BACK to the stored value
+ * rather than being refused, so a bad date is swallowed and the write still
+ * reports success. `lib/settings/vacation.ts` rejects it client-side precisely
+ * because of this, and the demo has to reproduce it or that guard looks
+ * unnecessary.
+ */
+function demoDate(v: unknown, fallback: string | null): string | null {
+  if (v === null) return null;
+  if (typeof v === "string") {
+    const ms = Date.parse(v);
+    if (Number.isFinite(ms)) return new Date(ms).toISOString();
+  }
+  return fallback;
+}
 
 /** Mirrors `requiredScopesForEmailSet` (services/jmap/src/methods/email.ts). */
 function requiredScopes(args: Record<string, unknown>): string[] {

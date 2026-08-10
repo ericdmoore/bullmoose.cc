@@ -1,0 +1,21 @@
+---
+// `/settings` — sVOL `024`, s07 T2. The two `HumanSettings` datatypes over
+// four live server methods: `Identity/get`+`/set` and
+// `VacationResponse/get`+`/set`. No server work was needed; this is surfacing.
+//
+// One `client:only` island, like every other section: the values come from an
+// authenticated JMAP session, so there is nothing to render at build time and
+// nothing to prerender. The CSP note lives in the layout (`layouts/App.astro`)
+// — do not hand-write a policy here, `astro.config.mjs` emits the per-build
+// hashes and a hand-written `script-src 'self'` stops the island mounting while
+// the build still reports success (s03.C/devPlan.md:69-74).
+//
+// Sign-out, which T2's brief also listed, is already in the app bar as of T1
+// (`components/SessionBar.tsx`), so it is deliberately not duplicated here.
+import SettingsPanel from "../components/SettingsPanel.tsx";
+import App from "../layouts/App.astro";
+---
+
+<App title="bullmoose — settings" section="settings">
+  <SettingsPanel client:only="preact" />
+</App>

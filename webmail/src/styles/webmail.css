@@ -178,6 +178,69 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   color: var(--fg-muted);
 }
 
+/* ── settings (s07 T2 · sVOL 024) ────────────────────────────────────────
+   A reading-width column, not a three-pane app: these are two short forms over
+   two singleton datatypes, and the screen's real work is the prose next to the
+   fields explaining what the server will and will not keep. */
+
+.settings {
+  width: min(660px, 100%);
+  margin: 0 auto;
+  padding: 22px 20px 60px;
+  overflow-y: auto;
+}
+.settings-section + .settings-section { margin-top: 34px; padding-top: 26px; border-top: 1px solid var(--line); }
+.settings-h { font-size: 16px; margin: 0 0 14px; }
+.settings-form { display: flex; flex-direction: column; gap: 5px; }
+.settings-label { font-size: 12.5px; font-weight: 600; margin-top: 12px; }
+.settings-input, .settings-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13.5px;
+}
+.settings-textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+.settings-input[readonly] { background: var(--bg-sunken); color: var(--fg-muted); }
+.settings-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; margin: 6px 0; }
+.settings-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.settings-row > div { flex: 1 1 200px; min-width: 0; }
+.settings-help { margin: 0; font-size: 12.5px; color: var(--fg-muted); }
+.settings-muted { color: var(--fg-muted); font-size: 13.5px; }
+.settings-warn { color: var(--warn); }
+.settings-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+.settings-submit {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.settings-submit:disabled { opacity: 0.5; cursor: default; }
+.settings-problems, .settings-warnings { margin: 8px 0 0; padding: 8px 10px 8px 26px; border-radius: 6px; font-size: 13px; }
+.settings-problems { background: var(--error-soft); color: var(--error); }
+.settings-warnings { background: var(--warn-soft); color: var(--warn); }
+.settings-ok { margin: 8px 0 0; font-size: 13px; color: var(--accent); }
+.settings-error { padding: 10px 12px; border-radius: 6px; background: var(--error-soft); color: var(--error); }
+.settings-banner {
+  margin: 0 0 18px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 12.5px;
+}
+/* The responder's REAL state, which is not the same as the checkbox: an
+   enabled responder whose window has closed sends nothing (ingest 360-361). */
+.settings-status { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.settings-status-off { color: var(--fg-muted); }
+.settings-status-active { color: var(--accent); }
+.settings-status-scheduled, .settings-status-ended { color: var(--warn); }
+
 /* ── top bar ─────────────────────────────────────────────────────────── */
 
 .topbar {
