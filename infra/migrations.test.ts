@@ -47,32 +47,24 @@ describe("infra/migrations — the DDL a schema re-run cannot perform", () => {
   });
 
   it.each(MIGRATIONS.map((m) => [m.id, m] as const))(
-    "%s — check fails when reversed, passes again after up",
+    "%s — check reports missing when absent, applied after up",
     (_id, m) => {
-      const db = freshDb();
-      expect(checkPasses(db, m.check), "should start applied").toBe(true);
+      // A MINIMAL database in which this migration has not run: just enough
+      // tables for `up` to execute. Built forward rather than by reversing the
+      // real schema, because `ALTER TABLE … DROP COLUMN` makes SQLite re-parse
+      // the table's stored CREATE and older builds fail it with `incomplete
+      // input` — green locally, red in CI. A check that only holds on one
+      // SQLite build is not a check.
+      const db = new DatabaseSync(":memory:");
+      for (const sql of m.absent) db.exec(sql);
 
-      // Anything that `needs` this one has to come off first, and go back on
-      // after. Not ceremony: the partial `grants_tuple` references
-      // `grants.revoked_at`, so dropping that column with the index in place
-      // fails with `no such column: revoked_at`. This test is how that
-      // dependency was discovered.
-      const dependents = MIGRATIONS.filter((d) => d.needs?.includes(m.id));
-      for (const d of [...dependents].reverse()) for (const sql of d.undo) db.exec(sql);
-
-      for (const sql of m.undo) db.exec(sql);
-      // The whole point. If this stays true, the check cannot detect the drift
-      // it exists to detect, and an operator would be told a missing migration
-      // was already applied.
+      // The whole point. If this passes on a database where the migration
+      // plainly has not run, the check cannot detect the drift it exists to
+      // detect, and an operator would be told a missing migration was applied.
       expect(checkPasses(db, m.check), `${m.id}: check did not bite`).toBe(false);
 
       for (const sql of m.up) db.exec(sql);
-      expect(checkPasses(db, m.check), `${m.id}: up did not restore`).toBe(true);
-
-      for (const d of dependents) {
-        for (const sql of d.up) db.exec(sql);
-        expect(checkPasses(db, d.check), `${d.id}: dependent not restored`).toBe(true);
-      }
+      expect(checkPasses(db, m.check), `${m.id}: up did not satisfy its own check`).toBe(true);
     },
   );
 

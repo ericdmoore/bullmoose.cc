@@ -28,9 +28,17 @@
 //           functions and sqlite_master only, no wrangler-specific output
 //           parsing.
 //   up      SQL statements to apply it, in order
-//   undo    TEST ONLY. Reverses `up` so the round-trip test can prove `check`
-//           actually bites. Never run against a real database — several of
-//           these destroy data.
+//   absent  TEST ONLY. Statements that build a MINIMAL database in which this
+//           migration is not yet applied — enough tables for `up` to run, and
+//           nothing more. The round-trip test uses it to prove `check` reports
+//           "missing" when it is missing, then flips after `up`.
+//
+//           This deliberately does NOT reverse the real schema with
+//           `ALTER TABLE … DROP COLUMN`. That worked locally and failed in CI
+//           with `incomplete input`: dropping a column makes SQLite re-parse
+//           the table's whole stored CREATE, and older builds choke on it. A
+//           test that passes on one SQLite and fails on another is not a test
+//           of this repo. Building the absent case forward is version-proof.
 //   needs   ids this one depends on. A REAL constraint, not documentation: the
 //           partial `grants_tuple` references `grants.revoked_at`, so the index
 //           cannot be built before the column exists, and the column cannot be
@@ -66,7 +74,7 @@ export const MIGRATIONS = [
     blocks: "deploy",
     check: hasColumn("accounts", "deleted_at"),
     up: ["ALTER TABLE accounts ADD COLUMN deleted_at INTEGER"],
-    undo: ["ALTER TABLE accounts DROP COLUMN deleted_at"],
+    absent: ["CREATE TABLE accounts (id TEXT PRIMARY KEY)"],
   },
 
   {
@@ -75,7 +83,7 @@ export const MIGRATIONS = [
     blocks: "deploy",
     check: hasColumn("grants", "revoked_at"),
     up: ["ALTER TABLE grants ADD COLUMN revoked_at INTEGER"],
-    undo: ["ALTER TABLE grants DROP COLUMN revoked_at"],
+    absent: ["CREATE TABLE grants (id TEXT PRIMARY KEY, grantee_account_id TEXT, target_account_id TEXT, collection TEXT, collection_id TEXT)"],
   },
 
   {
@@ -93,7 +101,7 @@ export const MIGRATIONS = [
        )`,
       "CREATE INDEX IF NOT EXISTS grant_lifecycle_grant ON grant_lifecycle (grant_id, at)",
     ],
-    undo: ["DROP INDEX IF EXISTS grant_lifecycle_grant", "DROP TABLE IF EXISTS grant_lifecycle"],
+    absent: [], // an empty database: the table simply is not there
   },
 
   {
@@ -109,8 +117,11 @@ export const MIGRATIONS = [
                     COALESCE(collection, ''), COALESCE(collection_id, ''))
          WHERE revoked_at IS NULL`,
     ],
-    undo: [
-      "DROP INDEX IF EXISTS grants_tuple",
+    absent: [
+      // The pre-s03.A world: the column exists (its own migration ran) but the
+      // index is still the plain non-partial one, which is exactly the drift
+      // `CREATE UNIQUE INDEX IF NOT EXISTS` will not repair.
+      "CREATE TABLE grants (id TEXT PRIMARY KEY, grantee_account_id TEXT, target_account_id TEXT, collection TEXT, collection_id TEXT, revoked_at INTEGER)",
       `CREATE UNIQUE INDEX grants_tuple
          ON grants (grantee_account_id, target_account_id,
                     COALESCE(collection, ''), COALESCE(collection_id, ''))`,
@@ -136,13 +147,7 @@ export const MIGRATIONS = [
       // ADD COLUMN and precede any new identity being created.
       "UPDATE identities SET may_delete = 0",
     ],
-    undo: [
-      "ALTER TABLE identities DROP COLUMN may_delete",
-      "ALTER TABLE identities DROP COLUMN html_signature",
-      "ALTER TABLE identities DROP COLUMN text_signature",
-      "ALTER TABLE identities DROP COLUMN bcc_json",
-      "ALTER TABLE identities DROP COLUMN reply_to_json",
-    ],
+    absent: ["CREATE TABLE identities (id TEXT PRIMARY KEY, account_id TEXT, email TEXT)"],
   },
 
   {
@@ -154,9 +159,7 @@ export const MIGRATIONS = [
     up: PROVENANCE_TABLES.flatMap((t) =>
       PROVENANCE_COLUMNS.map((c) => `ALTER TABLE ${t} ADD COLUMN ${c} TEXT`),
     ),
-    undo: PROVENANCE_TABLES.flatMap((t) =>
-      PROVENANCE_COLUMNS.map((c) => `ALTER TABLE ${t} DROP COLUMN ${c}`),
-    ),
+    absent: PROVENANCE_TABLES.map((t) => `CREATE TABLE ${t} (id TEXT PRIMARY KEY)`),
   },
 
   {
@@ -172,8 +175,9 @@ export const MIGRATIONS = [
          subject, from_text, to_text, body_text,
          content='', contentless_delete=1, tokenize='unicode61')`,
     ],
-    undo: [
-      "DROP TABLE IF EXISTS emails_fts",
+    absent: [
+      // The pre-common/004 table: same columns, no contentless_delete. INSERT
+      // works on this, DELETE does not — which is why the drift is silent.
       `CREATE VIRTUAL TABLE emails_fts USING fts5 (
          subject, from_text, to_text, body_text,
          content='', tokenize='unicode61')`,
@@ -192,7 +196,7 @@ export const MIGRATIONS = [
          email_id   TEXT NOT NULL
        )`,
     ],
-    undo: ["DROP TABLE IF EXISTS emails_fts_map"],
+    absent: [], // an empty database: the table simply is not there
   },
 ];
 
