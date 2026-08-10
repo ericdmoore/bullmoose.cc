@@ -960,6 +960,46 @@ a dependency to adopt (both are experimental / off-substrate — kyushu is expli
 shape on the stack already committed to: a QuickJS interpreter compiled to WASM, run
 inside a Worker, over DO + R2 + vault + grants.
 
+### ⚡ Update (2026-08): Cloudflare shipped this shape natively
+
+The hand-rolled QuickJS-in-WASM path above was written when nothing on-substrate did
+this. Two Cloudflare products now do, and they match this section's model closely
+enough that they should be evaluated before building an interpreter:
+
+- **Dynamic Workers** — executes model-generated code in its own Worker isolate
+  **"with only the bindings you provide"**; code-mode spins a fresh Worker per
+  snippet, runs it, discards it.
+- **Sandbox SDK** — isolated containers with persistent JS *and* Python interpreters,
+  a filesystem, background processes, and rich output (charts, tables, HTML, JSON).
+
+**"Only the bindings you provide" is precisely the `entitlements` dial below**, enforced
+by the platform per snippet rather than by our marshalling layer. The binding set *is*
+the capability boundary — which is the object-capability property this whole section is
+reaching for, and the same principle the Bureau rests on (`.plans/s04-AgentOS`):
+
+> *You can only compute with what you have.*
+
+What this does **not** change: the entitlement rule still holds. A Dynamic Worker with a
+credentialed binding is exactly as dangerous as an entitled QuickJS box — the isolate
+protects the *host*, never the *entitlements*. So entitlements stay **host-mediated
+proxies** (below), and a sandbox that needs credentialed egress gets a `BUREAU` service
+binding, never a raw key.
+
+What it *does* change, and it is significant: **a Cloudflare-native agent sandbox needs
+no external credential at all.** Hand the isolate a D1 read binding, an R2 prefix, and a
+`BUREAU` binding — no STS credential, no session policy, no credential returning through
+a response. The credential-capture problem stops existing rather than being solved.
+
+Rich output (HTML/charts/tables) also makes the reporting case concrete: `cj@`'s daily
+brief, `analyst@`'s variance, `receipts@`'s reconciliation — the model authors the
+program, the sandbox renders the artifact.
+
+**Still to decide** (do not treat as settled): Dynamic Workers vs Sandbox SDK per use
+case (isolate-per-snippet vs persistent interpreter), cost at agent-loop frequency, and
+whether the interruptibility/memory-cap argument below is satisfied by the platform's
+limits or still argues for QuickJS. Sources:
+<https://github.com/cloudflare/sandbox-sdk>, <https://www.cloudflare.com/products/sandboxes/>.
+
 ### The empty box — safe by construction [proposed]
 
 ```ts
