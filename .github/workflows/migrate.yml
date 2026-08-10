@@ -1,6 +1,17 @@
 name: Migrate D1
 
-# Runs `infra/bootstrap.mjs migrate` — the DDL a schema re-run cannot perform.
+# Runs `infra/bootstrap.mjs schemas` then `migrate`, in that order.
+#
+# BOTH, because they do different jobs and neither covers the other:
+#   schemas   CREATE TABLE IF NOT EXISTS — adds tables that do not exist yet
+#   migrate   the DDL a re-run cannot perform — upgrades tables that DO exist
+#
+# Running migrate alone assumes the schema is current. On this deployment it
+# was not: the live database predated FileNode, so `provenance-columns` died
+# with `no such table: file_nodes` after five migrations had already applied.
+# A partially-migrated database is exactly what the per-migration `check` makes
+# safe to recover from — re-running skips what landed — but the ordering should
+# not have needed recovering from in the first place.
 # See infra/migrations.mjs for the list and why each entry exists.
 #
 # SEPARATE from deploy-mail.yml on purpose. Two of these columns
@@ -45,10 +56,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
+            node infra/bootstrap.mjs schemas --dry-run
             node infra/bootstrap.mjs migrate --dry-run
           else
+            # schemas first: every statement is CREATE ... IF NOT EXISTS, so it
+            # is safe on a current database and necessary on a stale one.
             # --yes: wrangler prompts before each remote d1 execute, and there is
             # no tty here. The guard that matters is the per-migration `check`,
             # which hard-stops if a statement ran and its check still fails.
+            node infra/bootstrap.mjs schemas --yes
             node infra/bootstrap.mjs migrate --yes
           fi
