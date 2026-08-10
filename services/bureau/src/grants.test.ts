@@ -149,9 +149,21 @@ async function grant(
   return (await jsonBody<{ grantId: string }>(res)).grantId;
 }
 
-/** Authorized-but-not-yet-implemented. T3 replaces the 501 with a real result;
- *  until then it is the unambiguous "the grant said yes" signal. */
+/** Authorized-but-not-yet-implemented — the Class B verbs, still T5. For those,
+ *  a 501 remains the unambiguous "the grant said yes" signal. */
 const AUTHORIZED = 501;
+
+/**
+ * The same signal for `fetch`, which T3 made real: the call now falls through
+ * into the verb runtime, which refuses an argument-free probe. `url is required`
+ * is a message only the runtime produces — the authorization spine cannot emit
+ * it — so reaching it proves authorization passed, exactly as the 501 does for
+ * Class B.
+ */
+async function expectAuthorizedFetch(res: Response): Promise<void> {
+  expect(res.status).toBe(400);
+  expect(await res.text()).toMatch(/url is required/);
+}
 
 describe("a grant authorizes exactly its (principal, credRef, verb)", () => {
   it("authorizes the granted tuple", async () => {
@@ -250,9 +262,9 @@ describe("revoking a grant leaves the credential and its sibling grants intact",
     // The revoked capability is gone...
     expect((await h.use(allenToken.token, { verb: "sign_sigv4", credRef: "aws-mcp" })).status).toBe(403);
     // ...its sibling on the same credential survives...
-    expect((await h.use(allenToken.token, { verb: "fetch", credRef: "aws-mcp" })).status).toBe(AUTHORIZED);
+    await expectAuthorizedFetch(await h.use(allenToken.token, { verb: "fetch", credRef: "aws-mcp" }));
     // ...as does the grant on the other credential...
-    expect((await h.use(allenToken.token, { verb: "fetch", credRef: "stripe" })).status).toBe(AUTHORIZED);
+    await expectAuthorizedFetch(await h.use(allenToken.token, { verb: "fetch", credRef: "stripe" }));
     // ...and the credential row itself is untouched. Revocation drops a
     // capability, never a secret (bureau.md §5.1).
     expect(h.db.count("vault_credentials", "principal_id = ?", ALLEN.principalId)).toBe(2);

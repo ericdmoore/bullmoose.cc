@@ -371,7 +371,7 @@ self-correct at read time. Unit `003`'s data-integrity gate on `013`/`018` is di
 | `s03.C-webmail-floor` | Not started — no `webmail/` workspace | filesystem |
 | `s03.D-coexistence` | Not started — zero `ActionProposal` / `urn:bullmoose:agent` | grep |
 | `s03.E-console` | Not started **and blocked** on s04 being *specified* | `s03.E/devPlan.md:6` |
-| `s04-AgentOS` | Docs only. `bureau.md` (429 lines) is a serious design doc with **zero tasks**; `readme.md` is a 23-line napkin with 4 of 5 bullets undesigned | git: only `docs(...)` commits |
+| `s04-AgentOS` | ~~Docs only … **zero tasks**~~ **STALE as of Bureau T3.** `devPlan.md` now carries T1–T7, of which **T1 · T2 · T3a · T3 are done**: `services/bureau` is a live Worker enforcing destination binding (90 tests). T4–T7 remain. `readme.md` is still a 23-line napkin | `services/bureau/src/binding.ts`; `devPlan.md` |
 | `s05-cli-crud` | **T1 done** (sVOL `016` — the I/O contract). T2/T3/T5 not started. ⚠️ Its headline claim *"No server work — every method this slice calls is already live"* (`devPlan.md:4`) is **false for T4** — `--kind aws-sigv4` is hard-rejected at `vault.ts:89-91`, there is no `rotate` route, and `--allow`/`--header` have no columns | source |
 
 **Ownership already claimed by existing sections** (do not duplicate in `sVOL`):

@@ -49,22 +49,22 @@ const mint = (h: { call: ReturnType<typeof harness>["call"] }, name: string, sec
 describe("seal-on-mint lives in the Bureau now", () => {
   it("seals, stores, and opens back in-process", async () => {
     const h = harness();
-    expect((await mint(h, "stripe", "sk_live_TOPSECRET")).status).toBe(200);
+    expect((await mint(h, "stripe", "bm-canary-DO-NOT-USE-vault-9f3d1c")).status).toBe(200);
 
     const opened = await openCredential(h.env, PRINCIPAL, "stripe");
-    expect(opened?.secret).toBe("sk_live_TOPSECRET");
+    expect(opened?.secret).toBe("bm-canary-DO-NOT-USE-vault-9f3d1c");
     expect(opened?.kind).toBe("api-key");
     expect(opened?.meta).toMatchObject({ allow: "https://api.stripe.com", scope: "actor" });
   });
 
   it("never writes the plaintext to the row", async () => {
     const h = harness();
-    await mint(h, "stripe", "sk_live_TOPSECRET");
+    await mint(h, "stripe", "bm-canary-DO-NOT-USE-vault-9f3d1c");
     const row = h.db.query<{ enc_json: string; meta_json: string }>(
       `SELECT enc_json, meta_json FROM vault_credentials WHERE name = 'stripe'`,
     )[0]!;
-    expect(row.enc_json).not.toContain("sk_live_TOPSECRET");
-    expect(row.meta_json).not.toContain("sk_live_TOPSECRET");
+    expect(row.enc_json).not.toContain("bm-canary-DO-NOT-USE-vault-9f3d1c");
+    expect(row.meta_json).not.toContain("bm-canary-DO-NOT-USE-vault-9f3d1c");
     expect(JSON.parse(row.enc_json)).toMatchObject({ v: 1 });
   });
 
@@ -138,7 +138,7 @@ describe("the AAD still binds the row (auth-core vaultAad)", () => {
   it("refuses to open a sealed value copied onto another principal's row", async () => {
     const h = harness();
     h.db.seedAccount({ accountId: "a_thief", principalId: "p_thief", loginEmail: "thief@bullmoose.cc" });
-    await mint(h, "stripe", "sk_live_TOPSECRET");
+    await mint(h, "stripe", "bm-canary-DO-NOT-USE-vault-9f3d1c");
     const stolen = h.db.query<{ enc_json: string }>(
       `SELECT enc_json FROM vault_credentials WHERE name = 'stripe'`,
     )[0]!;
@@ -169,13 +169,13 @@ describe("no route on this worker returns a credential", () => {
 
   it("has no route that echoes a stored value back", async () => {
     const h = harness();
-    await mint(h, "stripe", "sk_live_TOPSECRET");
+    await mint(h, "stripe", "bm-canary-DO-NOT-USE-vault-9f3d1c");
     // Invariant 1, asserted as a sweep rather than as a claim about one handler:
     // whatever these routes answer, none of it is the secret. `/bureau/use` is
     // included because it is the one route DESIGNED to act on a credential.
     for (const path of ["/", "/internal/bureau/seal", "/internal/bureau/verify", "/bureau/use"]) {
       const res = await h.call(path, { principalId: PRINCIPAL, name: "stripe", credRef: "stripe", verb: "fetch" });
-      expect(await res.text(), path).not.toContain("sk_live_TOPSECRET");
+      expect(await res.text(), path).not.toContain("bm-canary-DO-NOT-USE-vault-9f3d1c");
     }
   });
 });

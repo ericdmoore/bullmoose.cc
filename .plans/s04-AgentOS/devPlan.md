@@ -6,9 +6,12 @@
 >
 > **Legend:** ✅ built · ⬚ todo · 🔬 spike (investigate, don't assume).
 >
-> **Built so far:** T1 (sVOL 020) · T3a + T2 (2026-08-09) — the key is moved and the
-> grant model exists, so **T3's steps 0 and 1 are already live**; T3 is now the verb
-> runtime alone.
+> **Built so far:** T1 (sVOL 020) · T3a + T2 · **T3 (2026-08-09)** — the key is moved,
+> the grant model exists, and the Class A `fetch` runtime enforces the kind gate and
+> the destination binding on the wire. **The Bureau now applies a credential and
+> returns only the result**, which is `bureau.md` §1's whole sentence. What remains is
+> subordinate (T4 redaction, ranked *below* binding by §7) or additive (T5's Class B
+> verbs).
 
 The whole design is one ladder (`bureau.md` §10): *a closed set of operations over
 a key you cannot extract.* The tasks climb it. Each `T` cites the `bureau.md`
@@ -150,7 +153,7 @@ future file cannot quietly reintroduce it.)*
 
 ---
 
-## T3 — The Bureau runtime: Class A `fetch` + destination binding ⬚
+## T3 — The Bureau runtime: Class A `fetch` + destination binding ✅
 
 Discharges **§3** (Class A, the proxy-completing verb), **§4** (`bureau.fetch`),
 **§6** (destination binding as the *enforced* primary control), **invariants 1–6, 8**.
@@ -173,27 +176,72 @@ On every call the runtime, in order:
    *(Built in T3a — `services/bureau/src/grants.ts` `authorizeUse`.)*
 1. ✅ **Authorizes** `(principal, credRef, verb)` against T2's grants, else refuse.
    *(Built in T2, with the `grant_audit` write of invariant 6.)*
-2. **Gates the verb by kind** (§4.1): `fetch` is legal for `api-key`/`oauth-refresh`/
+2. ✅ **Gates the verb by kind** (§4.1): `fetch` is legal for `api-key`/`oauth-refresh`/
    `aws-sigv4`; a verb outside the kind's set is refused.
-3. **Binds the destination** (§6): parse the request URL, compare **scheme+host+port**
+3. ✅ **Binds the destination** (§6): parse the request URL, compare **scheme+host+port**
    exactly against the credential's `allow` (wildcards only as an explicit suffix),
    **fail closed** when there is no allowlist, and **drop the credential across any
    redirect that changes origin** — never `startsWith`, never substring.
-4. Injects the credential **as a header only** (invariant 8), per the stored
+4. ✅ Injects the credential **as a header only** (invariant 8), per the stored
    `--header` recipe — caller never names the secret.
-5. Returns **only the result**; the value never enters caller, model, transcript, log.
+5. ✅ Returns **only the result**; the value never enters caller, model, transcript, log.
 
 **Done when:** an agent calls `bureau.fetch(request, credRef)` and reaches its
 allowlisted host with the credential injected server-side; a request to any other
 origin, a cross-origin redirect, an ungranted verb, or a credential with no
 allowlist are each refused; the caller receives a response and never the credential.
+*(Met: `services/bureau/src/binding.test.ts` 27 + `fetchVerb.test.ts` 35, driven
+through the real worker with a really-sealed credential, a really-minted bearer and a
+recording fake upstream. Proven to bite — see "Proven to bite" below.)*
 
 **Depends on:** T1 (kind + allow + header), T3a (the Worker + the key), T2 (authorization).
 
-**Where to start:** `services/bureau/src/index.ts`'s `handleUse` returns 501 *after*
-authorizing and auditing. T3 replaces exactly that branch — steps 0 and 1 above are
-already enforced, and `authorizeUse` already hands back the credential's `kind` and its
-§5 `meta` (allow, header, enforcement) for steps 2–4 to gate on.
+### As built
+
+- **Two modules, split along the pure/effectful line** (`devPrinciples.md`).
+  `services/bureau/src/binding.ts` is the whole decision — the §4.1 kind table, the
+  §6 allowlist parser and matcher, the `--header` recipe — with no I/O and no
+  secret, so §6's adversarial cases are unit tests that run in microseconds.
+  `services/bureau/src/fetchVerb.ts` is the shell that unseals, injects and sends.
+- **The kind gate lives in `handleUse`, not in the verb.** It is a property of the
+  *vocabulary*, so a Class B verb added in T5 inherits it by arriving after it. The
+  remaining 501 is now reached only from *behind* the gate.
+- **Nothing is unsealed until the request is known to be legal.** Destination,
+  allowlist, kind and recipe are all decided while the worker holds nothing;
+  `openCredential` is called on the line before injection. Every refusal costs a
+  decryption that never happened, and the secret's lifetime is the shortest window
+  in which the work can be done.
+- **The allowlist is re-parsed at enforcement time**, not trusted in the canonical
+  form `services/agent`'s mint path wrote. A row can outlive the validation that
+  produced it — older mint path, operator edit, restored backup — and the
+  guarantee has to hold regardless of how the row got there.
+- **One malformed allowlist entry poisons the whole list.** Skipping it would
+  silently narrow a policy nobody re-read; refusing makes an operator's typo a
+  visible failure at first use.
+- **Redirects: `redirect: "manual"`, and any origin change ends the call.** Not
+  "follow it without the header" — that would make the Bureau a general-purpose
+  relay fetching attacker-chosen URLs on an agent's behalf, which is a different
+  hole in the same wall. This is the strict reading of invariant 4: a hop to
+  another *allowlisted* origin is refused too. The allowlist is re-checked on
+  every hop even though a same-origin hop cannot fail it, because a control that
+  holds by argument is one refactor away from not holding at all.
+- **The caller supplies a URL, a method, headers and a body — and no policy.**
+  Naming the injected header is *refused*, not stripped. `allow` / `header` fields
+  smuggled into the request body are inert (§2).
+- **`set-cookie` is dropped on the way out**: a session cookie minted for the
+  Bureau by an allowlisted host is a bearer-shaped artifact the caller was never
+  granted.
+- **Result envelope** `{ok, status, headers, body, bodyEncoding, redirects}`.
+  Text-ish content types come back as text (what T4 will scan); everything else is
+  base64 and passes through with header inspection only, per §7. An upstream 402
+  is reported as a *result*, not adopted as a Bureau refusal.
+
+**Proven to bite.** Reverting only the source drops `binding.test.ts` and
+`fetchVerb.test.ts` entirely (3 of 4 bureau files fail). Seven targeted mutations,
+each reverted after: exact host → `startsWith` (3 fail) · wildcard suffix →
+`includes` (3) · `redirect:"manual"` → `"follow"` (1) · fail-closed → fail-open on a
+missing allowlist (2) · kind gate always permits (6) · also inject as a query
+parameter (3) · origin-change refusal removed (3).
 
 ---
 
@@ -215,6 +263,15 @@ its marker before the response leaves the Bureau; binary passes through untouche
 no pre-redaction body is logged. *(Adversarial echo is out of scope by design — §7.)*
 
 **Depends on:** T3 (the response path to filter).
+
+**Where to start:** T3 left the seam wired. `services/bureau/src/fetchVerb.ts` exports
+`EgressFilter = (text, injected) => text` and `runFetchVerb` takes it as an option,
+defaulting to a passthrough; `renderResult` is the ONE place a Bureau result crosses
+back to a caller, and it already receives the exact list of values the request put on
+the wire — so T4 replaces the default and changes nothing else. The text/binary split
+is already made there (`bodyEncoding`), so "scan text-ish, pass binary through" needs
+no new branch. `fetchVerb.test.ts`'s *"hands the egress filter the exact value that
+was injected"* drives that seam end to end today.
 
 ---
 
@@ -309,7 +366,7 @@ informed by T5 (the baseline it hopes to retire).
 ## Order at a glance
 
 ```
-T1 mint-time contract ✅ ──▶ T3a extract Bureau ✅ ──▶ T2 grant split ✅ ──▶ T3 runtime + fetch + binding ──▶ T4 redaction ──▶ T5 Class B verbs
+T1 mint-time contract ✅ ──▶ T3a extract Bureau ✅ ──▶ T2 grant split ✅ ──▶ T3 runtime + fetch + binding ✅ ──▶ T4 redaction ──▶ T5 Class B verbs
                         └──▶ T6 AAD re-scope (deferred, independent)
                              T7 SES federation (spike, informs whether T5's sign_sigv4 is ever load-bearing)
 ```
