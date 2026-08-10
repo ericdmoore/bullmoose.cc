@@ -1,0 +1,95 @@
+---
+// The shared chrome for the app origin (s07 T1): one document skeleton, one
+// section nav, one way out.
+//
+// This is a LAYOUT, not a shell component, and that is the structural decision
+// of T1 (s07 devPlan, refinement 2). Every section is its own Astro page with
+// its own `client:only` island, so `/calendar` is a real URL that returns a
+// real document, someone reading mail never downloads the calendar bundle, and
+// there is no history shimming, no scroll restoration and no 404-on-refresh.
+// A client-routed SPA would also re-open the CSP problem: the policy carries
+// per-build hashes of Astro's own inline hydration scripts, and the last time
+// that was hand-managed the island silently never mounted while `astro build`
+// and the whole suite reported success (s03.C/devPlan.md:69-74).
+import SessionBar from "../components/SessionBar.tsx";
+import { SECTIONS, type SectionId } from "../lib/app/sections";
+import "../styles/webmail.css";
+
+interface Props {
+  title: string;
+  /** Which nav entry is the current page. */
+  section?: SectionId;
+  /** The door has no nav and nobody to sign out — see login.astro. */
+  chrome?: boolean;
+}
+
+const { title, section, chrome = true } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="robots" content="noindex" />
+    <!--
+      No hand-written CSP here on purpose. Sender HTML is sanitized before it
+      reaches the DOM (lib/mail/sanitize.ts) and CSP is the second half of that
+      defence (arch.md §4), but the policy is GENERATED — `security.csp` in
+      astro.config.mjs — because only the build knows the hashes of Astro's own
+      inline hydration scripts. Writing `script-src 'self'` by hand here blocks
+      that bootstrap and every island silently never mounts.
+
+      Two of its directives are load-bearing rather than incidental, and both
+      are asserted by tests as well:
+        • `form-action 'none'` — the browser's own refusal to let the login
+          form navigate, so a pasted token cannot reach a URL even if the
+          island's `preventDefault` were removed (LoginForm.tsx).
+        • `frame-ancestors` cannot live in <meta> at all; it is in
+          public/_headers with the other header-only protections.
+    -->
+  </head>
+  <body>
+    {
+      chrome && (
+        <header class="app-nav">
+          {/* Home is a VIEW, not a section — `/` is Looking Ahead + Waiting
+              Approvals once s07 T0 lands, which is why it is the brand and not
+              a ninth nav item. */}
+          <a class="app-brand" href="/">
+            bullmoose
+          </a>
+
+          <nav class="app-sections" aria-label="Sections">
+            {SECTIONS.map((s) =>
+              s.status === "live" ? (
+                <a
+                  class="app-section"
+                  href={s.href}
+                  aria-current={s.id === section ? "page" : undefined}
+                >
+                  <span class="app-section-label">{s.label}</span>
+                </a>
+              ) : (
+                /* Disabled, with the reason VISIBLE — not a tooltip, not a
+                   dead link, not a 404. A greyed word with no explanation
+                   reads as broken; `sections.ts` keeps the reason as data so
+                   there is one place to correct when the section ships. */
+                <span class="app-section app-section-off" aria-disabled="true" title={s.detail}>
+                  <span class="app-section-label">{s.label}</span>
+                  <span class="app-section-why">{s.reason}</span>
+                </span>
+              ),
+            )}
+          </nav>
+
+          <SessionBar client:only="preact" />
+        </header>
+      )
+    }
+    <div class="app-view">
+      <slot />
+    </div>
+  </body>
+</html>

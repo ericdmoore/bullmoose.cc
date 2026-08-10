@@ -1,30 +1,24 @@
 ---
-// The webmail app (s03.C · T2). The Astro page is a thin static host; the mail
-// client is one Preact island (arch.md §1, "SPA-in-an-island").
-import AppShell from "../components/AppShell.tsx";
-import "../styles/webmail.css";
+// ⚠️ PLACEHOLDER — s07 **T0** replaces this page entirely.
+//
+// `/` is meant to be the actual product: *Looking Ahead* + *Waiting Approvals*,
+// the two stacks that answer "what is about to happen and what needs me". T0 is
+// the task that makes this a collaboration space for people and agents rather
+// than a file manager with a notifications tray, and it is the thing the eight
+// sections are arranged around — not a dashboard of counts, and never a section
+// of its own.
+//
+// It cannot render yet: it needs proposals, and nothing produces an
+// `ActionProposal` until s07 T4. So until then `/` only routes — `/mail` with a
+// session, `/login` without one. Replace the island; do not grow a home page
+// out of it.
+//
+// No chrome: this document is on screen for one frame, and rendering the nav
+// here would flash a full app bar and then throw it away.
+import HomeRedirect from "../components/HomeRedirect.tsx";
+import App from "../layouts/App.astro";
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>bullmoose webmail</title>
-    <meta name="robots" content="noindex" />
-    <!--
-      No hand-written CSP here on purpose. Sender HTML is sanitized before it
-      reaches the DOM (lib/mail/sanitize.ts) and CSP is the second half of that
-      defence (arch.md §4), but the policy is GENERATED — `security.csp` in
-      astro.config.mjs — because only the build knows the hashes of Astro's own
-      inline hydration scripts. Writing `script-src 'self'` by hand here blocks
-      that bootstrap and the island silently never mounts.
-      `frame-ancestors` lives in public/_headers; <meta> ignores it.
-    -->
-  </head>
-  <body>
-    <!-- client:only — the shell is authenticated and interactive, so it runs in
-         the browser rather than being rendered at build time. -->
-    <AppShell client:only="preact" />
-  </body>
-</html>
+<App title="bullmoose" chrome={false}>
+  <HomeRedirect client:only="preact" />
+</App>
