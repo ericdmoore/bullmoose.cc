@@ -39,6 +39,8 @@ interface Grant {
   collection?: string | null;
   collectionId?: string | null;
   expiresAt?: number | null;
+  /** s03.A tombstone. A revoked grant keeps its row; only this is set. */
+  revokedAt?: number | null;
 }
 
 interface Binding {
@@ -142,6 +144,7 @@ function world(fx: Fixture): FakeWorker {
       created_by: "admin",
       created_at: 1,
       expires_at: g.expiresAt ?? null,
+      revoked_at: g.revokedAt ?? null,
     })),
   );
 
@@ -792,15 +795,28 @@ describe("015 — access_log is grant_audit's first reader", () => {
   const withAudit = (over: Partial<Fixture> = {}): Fixture =>
     eric({
       others: [{ id: "a_allen", address: "allen@bullmoose.cc" }],
-      grants: [{ id: "g_live", grantee: "a_allen", target: "a_eric", scopes: ["read"] }],
+      grants: [
+        { id: "g_live", grantee: "a_allen", target: "a_eric", scopes: ["read"] },
+        // Revoked, therefore tombstoned — the row survives with its scopes.
+        {
+          id: "g_revoked",
+          grantee: "a_allen",
+          target: "a_eric",
+          scopes: ["mail", "send"],
+          revokedAt: 1_700_000_000_000,
+        },
+      ],
       audit: [
         { grantId: "g_live", principal: "allen@bullmoose.cc", accountId: "a_eric", method: "mcp:contacts_search" },
         { grantId: "g_live", principal: "allen@bullmoose.cc", accountId: "a_eric", method: "mail:read" },
         // requireAccountScopes writes several scopes joined with "+"
         // (methods/common.ts:76) — a shape 015's bread-crumbs did not list.
         { grantId: "g_live", principal: "allen@bullmoose.cc", accountId: "a_eric", method: "mail:draft+delete" },
-        // A grant that has since been hard-DELETEd. No tombstone exists.
+        // Two DIFFERENT ways a grant stops being live, which this fixture
+        // could not tell apart before s03.A. `g_gone` has no row at all;
+        // `g_revoked` has a row carrying a tombstone.
         { grantId: "g_gone", principal: "mallory@bullmoose.cc", accountId: "a_eric", method: "contacts:read" },
+        { grantId: "g_revoked", principal: "trent@bullmoose.cc", accountId: "a_eric", method: "mail:read" },
       ],
       ...over,
     });
@@ -817,20 +833,51 @@ describe("015 — access_log is grant_audit's first reader", () => {
   });
 
   it("34. annotates access made under a since-revoked grant — never drops it", async () => {
-    // Done-when #5. `revokeGrant` is a hard DELETE (provision:603) and
-    // `s03.A`'s tombstones do not exist, so audit rows outlive their grant.
-    // Dropping them would hide exactly the access an operator wants; a
-    // dangling id would be a puzzle. s03.E:29-31 — the gap IS the finding.
+    // Done-when #5. Audit rows outlive their grant either way, and dropping
+    // them would hide exactly the access an operator wants while a dangling id
+    // would be a puzzle. What changed since this test was written: s03.A made
+    // revocation a TOMBSTONE, so "revoked" and "deleted" are now genuinely
+    // different states and this asserts both. The old single
+    // "revoked-or-deleted" status could not have distinguished them, and the
+    // old note actively told an auditor the scopes were unrecoverable.
     const r = await callTool("access_log", { accountId: "a_eric" }, withAudit());
+
+    // No row at all — not revoked, gone. That means something bypassed the
+    // revocation path, which is a louder finding than a normal revocation.
     const gone = r.out.access.find((a: any) => a.grantId === "g_gone");
     expect(gone).toBeDefined();
-    expect(gone.grantStatus).toBe("revoked-or-deleted");
-    expect(gone.note).toMatch(/no longer exists/);
+    expect(gone.grantStatus).toBe("deleted");
+    expect(gone.note).toMatch(/gone entirely/);
     expect(gone.principal).toBe("mallory@bullmoose.cc");
+
+    // Tombstoned. The row survives, so the scopes it carried ARE recoverable —
+    // this is the case the pre-s03.A note said was impossible.
+    const revoked = r.out.access.find((a: any) => a.grantId === "g_revoked");
+    expect(revoked).toBeDefined();
+    expect(revoked.grantStatus).toBe("revoked");
+    expect(revoked.revokedAt).toBe(new Date(1_700_000_000_000).toISOString());
+    expect(revoked.scopesAtAccess).toEqual(["mail", "send"]);
+    expect(revoked.note).toMatch(/tombstone/);
+
     const live = r.out.access.find((a: any) => a.grantId === "g_live");
     expect(live.grantStatus).toBe("live");
     expect(live.note).toBeUndefined();
-    expect(r.out.summary.underRevokedGrants).toBe(1);
+
+    // Was permanently 0 before: grant_live counted the tombstone.
+    expect(r.out.summary.underRevokedGrants).toBe(2);
+  });
+
+  it("34b. a revoked grant is not an answer to \"who can reach me\"", async () => {
+    // The defect the s03.E console found and pinned. Enforcement was always
+    // right — auth-core's principal.ts filters `revoked_at IS NULL` on the
+    // resolution path — so a revoked grant really had stopped working. This
+    // surface said otherwise, which is worse than it sounds: these tools exist
+    // so a human can check who can reach their mail.
+    const r = await callTool("who_can_access", { accountId: "a_eric" }, withAudit());
+    const ids = r.out.grants.map((g: any) => g.grantId);
+    expect(ids).toContain("g_live");
+    expect(ids).not.toContain("g_revoked");
+    expect(r.out.grants.every((g: any) => g.live)).toBe(true);
   });
 
   it("35. windows on (account_id, at) and never crosses accounts", async () => {

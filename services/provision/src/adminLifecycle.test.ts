@@ -992,6 +992,50 @@ describe("grant lifecycle — revoke tombstones, and the log remembers", () => {
     expect(h.db.count("grant_lifecycle", "grant_id = ?", grantId)).toBe(2);
   });
 
+  it("revoke, then RE-grant the same pair — the tombstone must not block it", async () => {
+    // The bug the s03.A tombstone introduced and nothing caught: `grants_tuple`
+    // was a plain UNIQUE index, so a revoked row occupied its tuple forever and
+    // `ON CONFLICT DO NOTHING` made the re-grant a silent no-op. The response
+    // still said 200 with a fresh grantId that no row carried — the operator
+    // was told access was restored when it was not. Fixed by making the index
+    // partial on `revoked_at IS NULL`.
+    const h = harness();
+    const first = await mintGrant(h);
+    await h.call("DELETE", `/grants/${first}`);
+
+    const res = await h.call("POST", "/grants", {
+      granteeEmail: `other@${DOMAIN}`,
+      targetEmail: `editor@${DOMAIN}`,
+    });
+    expect(res.status).toBe(200);
+    const second = (await body<{ grantId: string }>(res)).grantId;
+    expect(second).not.toBe(first);
+
+    // A real row, actually live.
+    expect(h.db.count("grants", "id = ? AND revoked_at IS NULL", second)).toBe(1);
+    expect(h.db.count("grant_lifecycle", "grant_id = ? AND event = 'created'", second)).toBe(1);
+    // ...and the tombstone survives beside it, so the history is not rewritten.
+    expect(h.db.count("grants", "id = ? AND revoked_at IS NOT NULL", first)).toBe(1);
+  });
+
+  it("a duplicate LIVE grant is refused with 409, not a phantom 200", async () => {
+    // The other half. Uniqueness still bites for genuinely-live duplicates —
+    // the partial index narrows WHICH rows collide, it does not stop collisions.
+    // Previously this returned 200 with an id no row carried.
+    const h = harness();
+    const first = await mintGrant(h);
+    const res = await h.call("POST", "/grants", {
+      granteeEmail: `other@${DOMAIN}`,
+      targetEmail: `editor@${DOMAIN}`,
+    });
+    expect(res.status).toBe(409);
+    const dup = await body<{ error: string; grantId: string | null }>(res);
+    expect(dup.error).toMatch(/already covers/);
+    // It names the grant that is actually in the way, rather than a new uuid.
+    expect(dup.grantId).toBe(first);
+    expect(h.db.count("grants", "grantee_account_id IS NOT NULL AND revoked_at IS NULL")).toBe(1);
+  });
+
   it("a second revoke is an idempotent no-op — no phantom log row", async () => {
     const h = harness();
     const grantId = await mintGrant(h);

@@ -162,6 +162,33 @@ npx wrangler d1 execute bullmoose-mail-shard0 --remote --command "
   CREATE INDEX IF NOT EXISTS grant_lifecycle_grant ON grant_lifecycle (grant_id, at);"
 ```
 
+**Then rebuild `grants_tuple` — this one is NOT optional and NOT covered by a
+schema re-run.** The index is `CREATE UNIQUE INDEX IF NOT EXISTS`, so an
+existing database keeps its old **non-partial** definition and `IF NOT EXISTS`
+silently declines to replace it. The tombstone then occupies the tuple forever,
+which makes *revoke, then change your mind* impossible:
+
+```sh
+npx wrangler d1 execute bullmoose-mail-shard0 --remote --command "
+  DROP INDEX IF EXISTS grants_tuple;
+  CREATE UNIQUE INDEX grants_tuple
+    ON grants (grantee_account_id, target_account_id,
+               COALESCE(collection, ''), COALESCE(collection_id, ''))
+    WHERE revoked_at IS NULL;"
+```
+
+Skipping this does not throw. `createGrant` inserts with `ON CONFLICT DO
+NOTHING`, so re-granting a previously-revoked pair is a **silent no-op that
+still returns 200** with a `grantId` no row carries — the operator is told
+access was restored when it was not. Verified against the real index: insert →
+tombstone → re-insert fails on `grants_tuple`; with the partial index the
+re-insert succeeds while a genuinely-duplicate LIVE grant is still refused.
+
+Do **not** apply the same shape to `bureau_grants_tuple`. That table's writer
+upserts (`ON CONFLICT … DO UPDATE SET revoked_at = NULL`) and resurrects its own
+tombstone; SQLite matches a conflict target against a unique index, so making
+that one partial breaks every Bureau grant write.
+
 Each ALTER is idempotent-enough to re-run blind (a second run errors
 `duplicate column name: …` and changes nothing). Verify the whole s03.A set:
 

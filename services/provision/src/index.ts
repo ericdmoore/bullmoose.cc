@@ -1546,6 +1546,31 @@ async function createGrant(
     )
       .bind(id, now)
       .run();
+  } else {
+    // The guard above was already here, keeping grant_lifecycle from claiming a
+    // create that never happened — but the response still reported success with
+    // an `id` no row carries. That is the worst shape for this failure: the
+    // caller is told access was granted, gets a grantId to quote back, and
+    // nothing exists. Now that `grants_tuple` is partial on `revoked_at IS
+    // NULL`, a conflict can only mean a LIVE grant already covers this exact
+    // tuple, so say that instead of inventing an id.
+    const existing = await env.DB.prepare(
+      `SELECT id FROM grants
+        WHERE grantee_account_id = ? AND target_account_id = ?
+          AND COALESCE(collection, '') = COALESCE(?, '')
+          AND COALESCE(collection_id, '') = COALESCE(?, '')
+          AND revoked_at IS NULL`,
+    )
+      .bind(grantee.id, target.id, body.collection ?? null, body.collectionId ?? null)
+      .first<{ id: string }>();
+    return json(
+      {
+        error: "a live grant already covers this grantee, target and collection",
+        grantId: existing?.id ?? null,
+        hint: "revoke the existing grant before creating one with different scopes",
+      },
+      409,
+    );
   }
   return json({
     grantId: id,
