@@ -1,33 +1,50 @@
-// Package cmd is where the native subcommands will live (s08 T6,
+// Package cmd is where the native subcommands live (s08 T6,
 // `.plans/s08-go-cli/devPlan.md:116`).
 //
-// At T4 it holds only the seams that two closed `.feedback` findings must be
-// tested against before the commands exist (`arch.md` §6). Each finding is
-// fixed in TypeScript the Go port will never read, so a fresh implementation
-// reintroduces it by default; the test therefore has to predate the code.
+// Wave 1 (devPlan.md:135) fills the read-only / local-mirror commands:
+// `mailboxes` ("mailbox list"), `search`, `log`, and `accounts` (the CLI's
+// nearest thing to the plan's "whoami" — there is no `whoami` subcommand). Each
+// reads packages/cli/src/db.ts's local SQLite mirror through internal/store and
+// emits byte-identical output to the Node CLI via internal/io (bmio). Writes,
+// login, token, watch and the vendored codecs are later waves.
+//
+// This package also still holds the T4 seams (cli/007, cli/008) that two closed
+// `.feedback` findings are tested against (arch.md §6).
 package cmd
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
+)
 
 // ErrNotImplemented marks a seam T6 has yet to fill. The cli/007 test treats it
 // as "skip, for the right reason" rather than a satisfied assertion.
 var ErrNotImplemented = errors.New("cli-go: native command not implemented (s08 T6)")
 
-// spec describes what one native command can do. T6 registers entries; the map
-// is empty now, exactly like delegate.native (`internal/delegate/delegate.go`),
-// because every command still delegates.
+// spec describes one native command: whether it honours --json (the cli/008
+// capability bit) and the handler that serves it.
 type spec struct {
 	// json is true when the command honours --json with machine-readable
 	// output. cli/008: --json is a GLOBAL flag (packages/cli/src/help.ts
-	// GLOBAL_OPTIONS) yet was a silent no-op on eight commands. The registry is
-	// where "advertised" meets "implemented"; this bit must never claim support
-	// the command does not actually deliver.
+	// GLOBAL_OPTIONS) yet was a silent no-op on eight commands. This bit must
+	// never claim support the command does not actually deliver.
 	json bool
+	// run serves the command against the process streams, returning the exit
+	// code. nil for a command listed for capability only.
+	run func(s *bmio.Streams, argv []string) int
 }
 
 // registry is the single source of truth for which commands this binary serves
-// natively. Empty at T4.
-var registry = map[string]spec{}
+// natively — wave 1's four read-only local-mirror commands. delegate.native is
+// wired from exactly this set by Install, so routing and capability cannot
+// drift apart. All four honour --json (emitNdjson / emitJson).
+var registry = map[string]spec{
+	"mailboxes": {json: true, run: runMailboxes},
+	"search":    {json: true, run: runSearch},
+	"log":       {json: true, run: runLog},
+	"accounts":  {json: true, run: runAccounts},
+}
 
 // SupportsJSON reports whether the NATIVE command honours --json, and whether it
 // is implemented at all. A command that still delegates is (false, false): the
@@ -40,4 +57,20 @@ func SupportsJSON(command string) (jsonSupported, implemented bool) {
 		return false, false
 	}
 	return s.json, true
+}
+
+// Install wires every registered native command into the delegate's routing map
+// (via the register callback main.go passes). Each handler is bound to the
+// process streams (bmio.New) at call time, so a broken-pipe mid-output exits 0
+// exactly as io.ts does. Keeping delegate.native derived from this registry is
+// what keeps the two lists in step — the routing table and the cli/008
+// capability table are the same source.
+func Install(register func(command string, run func(argv []string) int)) {
+	for name, s := range registry {
+		if s.run == nil {
+			continue
+		}
+		run := s.run
+		register(name, func(argv []string) int { return run(bmio.New(), argv) })
+	}
 }

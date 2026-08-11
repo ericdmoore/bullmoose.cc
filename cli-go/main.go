@@ -21,10 +21,23 @@ package main
 import (
 	"os"
 
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/cmd"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/delegate"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
 )
 
 func main() {
+	// §1.2, before any output: a native command's every write may hit a pipe a
+	// `| head` already closed, and the guard lets that exit 0 instead of dying
+	// on SIGPIPE (bmio.InstallSIGPIPE, io.ts:287 installEpipeGuard). No-op for
+	// delegated commands — Node installs its own guard in the child.
+	bmio.InstallSIGPIPE()
+
+	// Wire the wave-1 native commands into the delegate's routing map. Derived
+	// from cmd's registry so routing and the cli/008 capability table stay one
+	// source (cmd.Install).
+	cmd.Install(delegate.Register)
+
 	// Dispatch does not always return: a child that died by a signal is
 	// reported by re-raising that signal here, so the parent's disposition is
 	// the child's (arch.md §4). os.Exit covers the ordinary path.

@@ -11,22 +11,24 @@ import "os"
 //
 // Empty at T2, deliberately: every command delegates, which is exactly why
 // `packages/cli/smoke/contract.mjs` passes 61/61 on day one (`arch.md` §3). T6
-// flips entries in here one at a time (`devPlan.md:121`), each flip moving one
-// invocation from `delegated` to `native` in the trace, and the contract suite
-// stays at 61/61 throughout. Zero `delegated` for the shipped set is T6's
-// done-when; a release with zero is what licenses deleting the Node CLI
-// (`devPlan.md:132`).
+// fills it via Register (from cmd.Install in main.go), one wave at a time
+// (`devPlan.md:121`), each flip moving one invocation from `delegated` to
+// `native` in the trace while the contract suite stays at 61/61. Zero
+// `delegated` for the shipped set is T6's done-when; a release with zero is what
+// licenses deleting the Node CLI (`devPlan.md:132`).
 var native = map[string]func(argv []string) int{}
 
 // Dispatch routes one invocation and returns the process exit code.
 //
-// It may not return at all: when the delegate dies by a signal, Run re-raises
-// that signal here so the parent reports the child's disposition rather than
-// its own (`arch.md` §4).
+// A native handler serves the command only when its argv is one the native
+// commands fully own (ownedNatively, native.go): help and unowned/unknown flags
+// still go to Node, so those paths stay byte-identical. It may not return at
+// all: when the delegate dies by a signal, Run re-raises that signal here so the
+// parent reports the child's disposition rather than its own (`arch.md` §4).
 func Dispatch(argv []string) int {
 	command := Command(argv)
 
-	if run, ok := native[command]; ok {
+	if run, ok := native[command]; ok && ownedNatively(argv) {
 		Trace(os.Stderr, "native", command)
 		return run(argv)
 	}
