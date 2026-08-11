@@ -425,8 +425,9 @@ This is **not new design work.** `ActionProposal` is fully specified in
 `.plans/s03.D-coexistence/arch.md:19-36` — `status pending | approved | rejected | held |
 expired`, `decision { by, reason, note }`, `rationale` always present, `evidence[]`, and
 `tier` for reversibility. `grant-request` deliberately shares the queue, so an agent asking
-for permission and an agent proposing a reply are one review surface. It is designed and
-built nowhere.
+for permission and an agent proposing a reply are one review surface. It is designed, and its DATA LAYER is now BUILT (s03.D T1): the ActionProposal
+collection, expiresAt, and the edit-diff retention all exist. What remains for s07 is the
+SURFACE — the queue, the dossier, and the score.
 
 ⚠️ **`/agents` cannot ship on the existing console as-is.** `s03.E` needs four routes that
 do not exist: `/console/agents`, `/console/agents/{id}`, `/console/accounts/{id}/resources`,

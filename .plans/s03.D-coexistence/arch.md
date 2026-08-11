@@ -28,6 +28,12 @@ ActionProposal {
   evidence     [{ realm, objectId, note }]  // what it looked at
   status       pending | approved | rejected | held | expired
   createdAt, decidedAt, holdUntil
+  expiresAt    // pre-decision deadline — a DIFFERENT clock from holdUntil.
+               // holdUntil = tier-2 post-approval retraction window (§2);
+               // expiresAt = how long the human has to decide. A sweep flips
+               // pending→expired past it. (folded from s07 §T0; T1 built it.)
+  editedPayload // a human edit lands HERE and never overwrites `payload`, so
+               // the agent's original survives as the diff the s07 score reads.
   decision     { by, reason, note }         // the no-thanks signal — §3
 }
 ```
@@ -48,7 +54,10 @@ identically for permissions and for actions.
 | **3** irreversible — anything already outside, data already read | human click, every time | ❌ **never** |
 
 **The guarantee is not the policy engine.** Agents lack the `send` scope, so tier-3
-egress cannot be auto-committed even if a policy bug said otherwise
+egress cannot be auto-committed even if a policy bug said otherwise. T1 implements this
+literally: the tier-3 approve path calls `authorizeAccount(principal, accountId, "send",
+"mail")` (`services/jmap/src/methods/actionProposal.ts:257`), the same gate the real send
+path uses — an agent token is refused, a human token permits.
 (`mcp-auth.md` §12 step 10). Policy is the UI's opinion; the capability wall is the
 enforcement. Design accordingly — a policy bug must be a *nuisance*, not a breach.
 
