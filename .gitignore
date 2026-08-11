@@ -144,3 +144,6 @@ packages/popcorn/popcorn
 
 # Agent worktrees (ephemeral; each is its own git checkout)
 .claude/worktrees/
+
+# Go CLI build output
+cli-go/bin/
