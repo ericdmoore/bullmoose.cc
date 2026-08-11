@@ -217,6 +217,61 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
 CREATE INDEX IF NOT EXISTS invocations_status
   ON agent_invocations (account_id, status);
 
+-- ActionProposal (s03.D T1) — a READ MODEL over agent_invocations, NOT a
+-- parallel store (arch.md §1). The invocation state machine
+-- (pending→running→done→failed), its optimistic claim and its SLA watchdog are
+-- the single source of truth for "what is the agent doing"; a second store would
+-- diverge the first time a runner died mid-claim. So this 1:1 side table holds
+-- ONLY the proposal-specific fields and `id` IS the invocation id it hangs off
+-- (PRIMARY KEY (account_id, id), keyed the same) — `ActionProposal/*` projects
+-- the JOIN. `agent` (binding) and the "what is it doing" status are read from
+-- agent_invocations, never duplicated here (invariant §8.5: proposal state never
+-- contradicts the invocation).
+--
+-- Two clocks that must NOT be conflated (s07 §T0/§T4):
+--   expires_at  PRE-decision — how long until the human loses the chance to
+--               decide. A `pending` proposal past it is what a sweep flips to
+--               `expired` (services/agent scheduled hook).
+--   hold_until  POST-approval — the tier-2 retraction window; how long an
+--               approved-but-uncommitted action can still be yanked before it
+--               becomes irreversible.
+--
+-- edited_payload_json is the load-bearing half of "the proposal is the source of
+-- truth, a draft is a projection" (s07 §T4): a human edit is captured SEPARATELY
+-- and NEVER overwrites payload_json, so the diff against the agent's original
+-- survives — that is what lets a later score tell "approved clean" from
+-- "approved after edit". Cost fields (tokens/cost/provider) are deliberately
+-- absent — they are s07 T5's separate agent_invocations migration.
+--
+-- New table, so a plain schema re-run (CREATE TABLE IF NOT EXISTS) DOES create it
+-- on an existing shard; it is still listed in infra/migrations.mjs
+-- (agent-proposals-table) so `bootstrap migrate` accounts for it — precedent:
+-- grant_lifecycle below in control-plane.sql.
+CREATE TABLE IF NOT EXISTS agent_proposals (
+  id                   TEXT NOT NULL,     -- == agent_invocations.id (the 1:1 key)
+  account_id           TEXT NOT NULL,
+  kind                 TEXT NOT NULL,     -- reply-draft|unsubscribe|create-event|
+                                          --   start-thread|create-contact|
+                                          --   organize-files|grant-request
+  tier                 INTEGER NOT NULL,  -- 1 reversible | 2 retractable | 3 irreversible
+  subject_json         TEXT NOT NULL DEFAULT '{}',  -- { realm, objectId } — what it acts on
+  payload_json         TEXT NOT NULL DEFAULT '{}',  -- kind-specific; the AGENT's version
+  edited_payload_json  TEXT,              -- the HUMAN's edit; never overwrites payload_json
+  rationale            TEXT NOT NULL,     -- the "why" — always present (invariant §8.3)
+  evidence_json        TEXT NOT NULL DEFAULT '[]',  -- [{ realm, objectId, note }]
+  status               TEXT NOT NULL DEFAULT 'pending', -- pending|approved|rejected|held|expired
+  decision_json        TEXT,             -- { by, reason, note } — the no-thanks signal (§3)
+  created_at           INTEGER NOT NULL,  -- epoch ms
+  decided_at           INTEGER,
+  hold_until           INTEGER,          -- tier-2 POST-approval retraction window
+  expires_at           INTEGER,          -- PRE-decision deadline; sweep flips pending→expired
+  PRIMARY KEY (account_id, id)
+);
+CREATE INDEX IF NOT EXISTS agent_proposals_status
+  ON agent_proposals (account_id, status);
+CREATE INDEX IF NOT EXISTS agent_proposals_expires
+  ON agent_proposals (account_id, expires_at);
+
 -- Spend facts — the ledger behind analyst@ (agent ledger pipeline).
 -- One row per extracted receipt; SQL owns every aggregate. The dedup
 -- hash (vendor|amount|date) makes re-forwarded receipts a no-op.

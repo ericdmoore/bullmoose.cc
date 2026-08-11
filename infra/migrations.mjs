@@ -185,6 +185,36 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "agent-proposals-table",
+    why: "s03.D T1's ActionProposal read model over agent_invocations; a plain schema re-run DOES create this one (CREATE TABLE IF NOT EXISTS), it is listed so `bootstrap migrate` accounts for the set and an existing shard is not left without it",
+    blocks: null,
+    check: tableExists("agent_proposals"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS agent_proposals (
+         id                   TEXT NOT NULL,
+         account_id           TEXT NOT NULL,
+         kind                 TEXT NOT NULL,
+         tier                 INTEGER NOT NULL,
+         subject_json         TEXT NOT NULL DEFAULT '{}',
+         payload_json         TEXT NOT NULL DEFAULT '{}',
+         edited_payload_json  TEXT,
+         rationale            TEXT NOT NULL,
+         evidence_json        TEXT NOT NULL DEFAULT '[]',
+         status               TEXT NOT NULL DEFAULT 'pending',
+         decision_json        TEXT,
+         created_at           INTEGER NOT NULL,
+         decided_at           INTEGER,
+         hold_until           INTEGER,
+         expires_at           INTEGER,
+         PRIMARY KEY (account_id, id)
+       )`,
+      "CREATE INDEX IF NOT EXISTS agent_proposals_status ON agent_proposals (account_id, status)",
+      "CREATE INDEX IF NOT EXISTS agent_proposals_expires ON agent_proposals (account_id, expires_at)",
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
     id: "emails-fts-map",
     why: "a contentless FTS5 table returns NULL for its own UNINDEXED columns, so the rowid↔email-id mapping cannot live inside emails_fts",
     blocks: null,

@@ -157,6 +157,9 @@ export async function proxyChanges(
     | "Thread"
     | "EmailSubmission"
     | "AgentInvocation"
+    // ActionProposal (s03.D T1) — a synced collection over the same AccountDO
+    // changelog, projected from agent_invocations + agent_proposals.
+    | "ActionProposal"
     // Identity is committed by Identity/set (sVOL 006) — added here in the
     // same commit as its producer, deliberately unlike "Thread", which has
     // sat in this union with nothing writing it (sVOL 027).
