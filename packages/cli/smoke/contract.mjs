@@ -19,7 +19,24 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const CLI = join(HERE, "..", "bin", "bullmoose.mjs");
+/**
+ * The binary under test. `.plans/s08-go-cli/arch.md` §3: the suite drives *a*
+ * built binary through real pipes, and pointing it at another implementation is
+ * what turns it into a cross-language conformance gate — "the suite never goes
+ * red; it quietly changes which implementation it is exercising".
+ *
+ *   BULLMOOSE_CLI_BIN=../../cli-go/bin/bullmoose npm run -w @bullmoose/cli smoke
+ *
+ * The default is the Node CLI, so every existing caller — including
+ * `src/contract.test.ts`, which runs this under `npm test` — is unchanged.
+ */
+const CLI = process.env.BULLMOOSE_CLI_BIN || join(HERE, "..", "bin", "bullmoose.mjs");
+/**
+ * A `.mjs` needs the interpreter in front of it; a native binary must not get
+ * one. `$BM` is the whole invocation either way, so every pipeline below reads
+ * the same for both implementations.
+ */
+const INVOKE = CLI.endsWith(".mjs") ? `${process.execPath} ${CLI}` : CLI;
 const ESC = String.fromCharCode(27);
 
 let passed = 0;
@@ -72,7 +89,7 @@ async function main() {
       BULLMOOSE_DB: join(dir, "mail.db"),
       // `bm` is the whole CLI invocation, so every pipeline below reads the way
       // a user would type it.
-      BM: `${process.execPath} ${CLI}`,
+      BM: INVOKE,
       NO_COLOR: "",
     };
     const bm = (args) => sh(`$BM ${args}`, env);
