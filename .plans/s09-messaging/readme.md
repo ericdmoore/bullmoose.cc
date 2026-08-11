@@ -6,13 +6,70 @@
 >
 > **Trigger:** a second human actually needs to talk to you *inside* bullmoose. Today the
 > deployment has one operator, so a messaging service would have nobody on the other end.
-> Presence and rosters are infrastructure for a social graph that does not exist yet.
+>
+> ⚠️ **SCOPE CORRECTION (2026-08-11).** This file was first written to answer "could
+> serverless bullmoose host XMPP", which assumed federation. The actual want is narrower and
+> it changes the answer completely: **same-domain only** — `eric@bullmoose` ↔ `cal@bullmoose`,
+> humans and agents, in a chat surface rather than a mail client. Federation is explicitly
+> not on the horizon.
+>
+> With that scope, **the recommendation is not to implement XMPP at all.** See §0. The
+> federation analysis below is kept because it is correct and because it explains *why* the
+> protocol stops earning its keep here — not because S2S is a thing to build.
 >
 > **Ordering:** firmly behind `s03.D` (`ActionProposal` — the thing that makes this a
 > collaboration space at all) and `s08` (the Go CLI). Do not start this because it is
 > interesting.
 
 ---
+
+## 0. Same-domain changes the answer: build a JMAP collection, not a protocol
+
+Federation was the hard half (§1). Removing it does not leave "the easy half of XMPP" — it
+removes the reason to speak XMPP.
+
+**The constraint that blocks S2S also blocks most XMPP clients.** This runtime can serve
+WebSocket (RFC 7395) and cannot hold TCP 5222. Native clients — Conversations, Monal, Dino,
+Gajim — speak 5222; web clients like Converse.js speak WebSocket. So an XMPP server here is
+reachable by *our own web client and little else*: the full protocol tax (stream
+negotiation, stanza routing, presence, rosters, MUC) for no interop, because the clients
+that make XMPP worth speaking cannot connect and the servers that make it worth federating
+are out of scope.
+
+**What the use case actually needs is a noun, and the substrate already exists:**
+
+| need | already here |
+|---|---|
+| real-time delivery | `AccountDO` + the WS proxy (`services/jmap/src/index.ts:138`), driving `watch()` |
+| who may talk to whom | `grants` — an authorization question the table already answers |
+| sync, ordering, consistency | the JMAP dispatcher: `/get` `/set` `/query` `/changes`, `ifInState`, ctag → changelog → newState |
+| a client | `JmapClient` + the island pattern in `webmail` |
+
+A `ChatMessage` type drops into that the same way `Calendar`, `ContactCard` and `FileNode`
+did — a new **row on the sVOL grid**, not a new protocol. This repo has done that four
+times and has the choreography written down.
+
+**The one honest argument for XMPP** is that it encodes hard-won semantics you would
+otherwise reinvent badly: multi-device sync, ordering, delivery receipts, offline delivery,
+carbons, archive (MAM). That trap is real. But JMAP already solves that shape for mail and
+the idioms transfer directly — `/changes` with a cursor *is* multi-device sync, state
+strings *are* consistency, the AccountDO changelog *is* ordered delivery. The alternative
+to XMPP here is not "invent chat from scratch"; it is "add a noun to an object-sync protocol
+this codebase already speaks fluently and has tests for."
+
+**Agent↔human conversation is the interesting part**, and it is not chat-shaped in the way
+XMPP assumes. An agent asking *"which of these three dates works?"* is neither an
+`ActionProposal` nor an email — it is a conversational turn, and it overlaps with MCP
+elicitation (out of scope in `s07`). Whatever gets built should be designed with `s03.D`,
+not beside it.
+
+---
+
+## 1. The federation analysis — kept for the reasoning, not as a plan
+
+> Everything below answers the original, wider question: *could a federated XMPP service run
+> on this runtime?* It is correct and worth keeping — it is the clearest statement of what
+> this runtime can and cannot host — but under §0's scope none of it is work to do.
 
 ## The finding: XMPP splits cleanly, and the halves land on opposite sides
 
@@ -88,17 +145,12 @@ event-graph replication per room is not a D1-shaped workload, and
 `docs/architecture/capacity-and-scaling.md` already worries about single-shard ceilings for
 mail alone. Any serious Matrix work starts with that measurement, not with the protocol.
 
-## The pragmatic path, when the trigger fires
+## The pragmatic path, if federation ever DOES become the point
 
-**Do not federate first.** XMPP C2S over WebSocket, one DO per account, no S2S:
-
-- a working messaging service for your own users
-- zero new infrastructure — the WS proxy and AccountDO already exist
-- no port-holder, no second popcorn, nothing on the alpaca box
-
-Federation is the *only* part that needs the shim, and deferring it indefinitely is a
-legitimate end state. If federation ever becomes the point, that is the moment to weigh
-Matrix seriously rather than bolting S2S onto XMPP.
+Superseded by §0 for the same-domain case. Retained for the day the trigger changes:
+federation is the only part that needs a port-holder, so the decision point is not "add S2S
+to our XMPP" but "weigh Matrix seriously" — its federation is HTTPS and needs nothing extra,
+which is the whole finding of §1.
 
 ## What it would reuse
 
