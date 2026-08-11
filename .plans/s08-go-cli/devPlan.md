@@ -25,8 +25,12 @@ code, because the fork already happened.** Read `arch.md` §2 before arguing the
 
 ### T1 — Conformance vectors, generated from TypeScript · *before any Go*
 
-**Files:** `packages/cli/src/conformance.ts` (+ test), `conformance/*.json` (generated,
-committed).
+**Files:** `conformance/vectors.ts` (+ `vectors.test.ts`), `conformance/*.json` (generated,
+committed), `conformance/README.md`, `npm run gen:conformance`.
+> The generator canNOT live in `packages/cli/` as originally written — that tsconfig is
+> Node-typed and cannot import `auth-core`, which is the exact fact that makes the vectors
+> necessary. It also exported `LOGIN_SALT_LABEL` from auth-core (was module-private).
+> **T1 ✅ done.**
 
 Three couplings stop being imports and become files both languages read (`arch.md` §5).
 Generate them from the **live TypeScript**, never hand-write them — a hand-written vector
@@ -49,9 +53,12 @@ records what someone believed, which is the thing being checked.
 **Done when:** a TS test regenerates each file and fails if the committed copy differs, so
 drift is a red build rather than a discovery.
 
-### T2 — The front door that delegates everything · *the seam*
+### T2 — The front door that delegates everything · *the seam* — ✅ **DONE**
 
-**Files:** `cli-go/` (new), `cli-go/main.go`, `cli-go/internal/delegate/`.
+**Files:** `cli-go/` (its OWN Go module — build is `cd cli-go && go build -o bin/bullmoose .`,
+not `go build ./cli-go`; relevant to T3/T7 CI). `cli-go/main.go`, `cli-go/internal/delegate/`.
+Landed with `BULLMOOSE_TRACE_FILE` beyond the plan, because the stderr count is uncountable —
+20+ contract cases run `2>/dev/null`. T3's metric should `grep -c` over that file.
 
 - Parse argv only far enough to identify the subcommand. Everything else is opaque and
   forwarded verbatim — the Go binary must not "helpfully" normalise flags it does not own.

@@ -68,15 +68,23 @@ The Go binary is the front door. Anything not yet implemented natively `exec`s t
 CLI with the same argv. Three details decide whether that is transparent:
 
 - **Inherit file descriptors; do not copy streams.** `cmd.Stdin = os.Stdin` and the same
-  for stdout/stderr. Wrap them in pipes Go pumps and Node's `isatty` flips — colour and
-  framing change under delegation, and the early-close/SIGPIPE cases in the contract suite
-  fail. This is the single easiest way to get a subtly wrong shim that still looks fine
-  interactively.
+  for stdout/stderr. Wrap them in pipes Go pumps and Node's `isatty` flips.
+  ⚠️ **Corrected by T2's measurement:** this does NOT break the contract suite —
+  `spawnSync` gives every case a closed stdin and a non-TTY stdout, so `isatty` is false
+  either way and the suite is blind to fd identity. The real breakage is only visible under
+  a **real pty**: the pumped build reports `isTTY=false` where Node reports `true`, then
+  **hangs forever**, because `os/exec` waits on a stdin copier that never ends on a
+  terminal. `cli-go`'s `TestDelegateInheritsFileDescriptors` is the only thing that catches
+  this — the contract suite cannot. This is the single easiest way to get a shim that looks
+  fine interactively (and in CI) and is subtly wrong.
 - **Propagate the exit code exactly.** `packages/cli/src/io.ts` maps every JMAP
   `setError` to a specific code (`JMAP_EXIT`). The shim passes it through untouched;
   it must not normalise, clamp, or substitute.
 - **Forward signals.** SIGINT/SIGTERM reach the child, and the parent reports the child's
-  disposition rather than its own.
+  disposition rather than its own. Note (T2): a Go process **cannot re-raise SIGPIPE on
+  itself** — the runtime's handler swallows it, so a child killed by SIGPIPE surfaces as
+  exit 141 rather than a re-raised signal. `$?` is identical under `sh`, and `io.ts:287`'s
+  EPIPE guard means the CLI never dies that way regardless.
 
 **The seam must be observable.** `BULLMOOSE_TRACE=1` on stderr, printing `native` or
 `delegated` per invocation. Without it a passing contract run cannot distinguish "the Go
@@ -103,9 +111,21 @@ strictly better, and would be worth doing even if the CLI stayed in TypeScript.
 
 | coupling | today | as a contract |
 |---|---|---|
-| `deriveLoginKey` | CLI imports nothing; mirrors the algorithm | golden vectors: (email, password) → key |
-| scope vocabulary | `scopes.test.ts` **reads `auth-core/src/index.ts` as text** and regex-parses it | JSON emitted from `auth-core`, asserted by both suites |
-| `JMAP_EXIT` | `io.ts` constant | JSON table, asserted by both |
+| `deriveLoginKey` | CLI imports nothing; mirrors the algorithm | ✅ `conformance/login-key.json` (T1) |
+| scope vocabulary | `scopes.test.ts` **reads `auth-core/src/index.ts` as text** and regex-parses it | ✅ `conformance/scopes.json` exists (T1); ⏳ `scopes.test.ts` still regex-parses — swap to the vector in T5 |
+| `JMAP_EXIT` | `io.ts` constant | ✅ `conformance/exit-codes.json` (T1) |
+| **argv flag spec** *(4th, found in T2)* | `main.ts` flag table | mirrored in `cli-go/internal/delegate/argv.go` with a drift test; candidate for T1's generator |
+
+⚠️ **T1 also captured a Go-specific divergence worth reading before T6:** `strings.ToLower`
+vs JS full case mapping. `strings.ToLower("İ")` yields a bare `i`; JS yields `i` + U+0307.
+The login salt lower-cases the email, so a naive Go port derives a **different key** for such
+an address and login fails looking exactly like a wrong password. The vector's
+`unicode-email-turkish-dotted-i` case is red until the port matches; do not "fix" it by
+changing the vector.
+
+⚠️ **Not in the T1 vector, flagged for T5:** `exitCodeForHttpStatus` (`io.ts:144`) is the
+same taxonomy for the CLI's non-JMAP endpoints. Either extend the vector or record why the
+Go port re-derives it.
 
 ### 5.1 `deriveLoginKey` — do not change the algorithm
 
