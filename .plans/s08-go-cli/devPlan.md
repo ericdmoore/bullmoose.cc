@@ -74,9 +74,16 @@ Landed with `BULLMOOSE_TRACE_FILE` beyond the plan, because the stderr count is 
 `BULLMOOSE_TRACE=1` shows every case as `delegated`. That second half is the real
 assertion — without it a green run only proves the shim did not crash.
 
-### T3 — Run the contract suite against both, in CI · *the ratchet*
+### T3 — Run the contract suite against both, in CI · *the ratchet* — ✅ **DONE**
 
-**Files:** `packages/cli/smoke/contract.mjs`, `.github/workflows/mail-typecheck.yml`.
+**Files:** `.github/workflows/mail-typecheck.yml` only. (`contract.mjs` was already
+`BULLMOOSE_CLI_BIN`-driven from T2, so T3 did not touch it.) Added as **steps in the existing
+`verify` job**, not a new job — so branch protection's required context stays exactly
+`verify` and now fails if either implementation breaks, with no ruleset change. The
+native/delegated split is written to the step summary. ⚠️ The metric counts **CLI
+invocations (113), not cases (61)** — one case invokes the CLI many times — so do not expect
+"61". Node runs first, so a Go regression lands the red X on the Go step with its green Node
+twin already visible.
 
 - Take the binary path from an env var, defaulting to the Node CLI so existing usage is
   unchanged.
@@ -100,7 +107,13 @@ fail against a not-yet-written implementation, and only then build it:
 - `✅cli/008` — `--json` honoured on every command that advertises it.
 - `✅cli/009` — one account-resolution rule, applied identically everywhere.
 
-**Done when:** each has a failing Go test naming its `.feedback` id.
+**Done when:** ✅ **DONE** — each has a Go test naming its `.feedback` id that **skips while
+its seam returns `ErrNotImplemented`** and enforces automatically once T6 fills the seam.
+NOT a hard-failing test: T4 lands before T5/T6 and T3's ratchet runs `go test ./...`, so a
+literal failure would red the module the moment T4 merges and block the tasks meant to
+follow. The skip is gated on the seam, not a static `t.Skip`, so it cannot be silently
+forgotten. cli/006 was verified to catch a real RCE (a vulnerable `sh -c` impl created the
+`pwned` file; the test failed) before being reverted to the stub.
 
 ### T5 — Port the I/O contract · *the foundation everything else sits on*
 
