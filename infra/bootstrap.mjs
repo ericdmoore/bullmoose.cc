@@ -94,6 +94,32 @@ export const EXTERNAL = {
   GATEWAY_TOKEN: { workers: ["agent"], required: false, note: "only if an AI Gateway alias exists" },
 };
 
+// Role-based aliases for the EXTERNAL credentials.
+//
+// bootstrap names these after the VENDOR (`CF_API_TOKEN`, `SES_ACCESS_KEY_ID`).
+// The operator's own `.env` names them after the ROLE, with the vendor as data:
+//
+//   BULLMOOSE_OUTBOUND_PROVIDER=ses
+//   BULLMOOSE_OUTBOUND_TOKEN=…
+//
+// That is the better scheme and it is worth adopting rather than translating.
+// A vendor baked into a variable name is a decision you cannot revisit without
+// a rename, and `docs/DEPLOY.md` already contemplates RELAY=cloudflare as an
+// alternative to SES — so the vendor was always going to be data eventually.
+//
+// Canonical names still win when both are present; these only fill gaps, so an
+// existing .env keeps working and nobody has to migrate to be unblocked.
+const ALIASES = {
+  CF_API_TOKEN: ["BULLMOOSE_RUNTIME_TOKEN"],
+  SES_ACCESS_KEY_ID: ["BULLMOOSE_OUTBOUND_TOKEN"],
+  SES_SECRET_ACCESS_KEY: ["BULLMOOSE_OUTBOUND_SECRET"],
+};
+
+// The token wrangler itself needs. Not a worker secret — it authenticates the
+// CLI. Read from the role-named key so one file is genuinely enough, which was
+// the point of collapsing to a single .env.
+const WRANGLER_TOKEN_KEYS = ["CLOUDFLARE_API_TOKEN", "BULLMOOSE_DPELOY_TOKEN", "BULLMOOSE_DEPLOY_TOKEN"];
+
 // ONE env file, at the repo root. It was `.env.deploy`; it is `.env` because a
 // second dotfile is a second place to look and a second thing to forget to copy
 // to a new machine. `.gitignore` already covers `.env`.
@@ -206,6 +232,31 @@ function loadEnv() {
   if (from === ENV_LEGACY) {
     warn(`read ${ENV_LEGACY} — migrating to ${ENV_FILE}; delete the old file once this run succeeds`);
   }
+
+  // Fill canonical names from role-named aliases. Canonical wins if both exist.
+  for (const [canon, alts] of Object.entries(ALIASES)) {
+    if (env[canon]) continue;
+    const hit = alts.find((a) => env[a]);
+    if (hit) {
+      env[canon] = env[hit];
+      info(`using ${hit} for ${canon}`);
+    }
+  }
+
+  // Let wrangler authenticate from the same file. Without this, a machine with
+  // a perfectly good token in .env still needs `wrangler login` — which is the
+  // second place to look that collapsing to one file was meant to remove.
+  if (!process.env.CLOUDFLARE_API_TOKEN) {
+    const k = WRANGLER_TOKEN_KEYS.find((n) => env[n]);
+    if (k) {
+      process.env.CLOUDFLARE_API_TOKEN = env[k];
+      info(`wrangler will authenticate with ${k} from ${ENV_FILE}`);
+    }
+  }
+  if (!process.env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_ACCOUNT_ID) {
+    process.env.CLOUDFLARE_ACCOUNT_ID = env.CLOUDFLARE_ACCOUNT_ID;
+  }
+
   return env;
 }
 
@@ -434,7 +485,13 @@ function secrets() {
   info(minted ? `minted ${minted} new secret${minted === 1 ? "" : "s"} into ${ENV_FILE}` : `reusing existing secrets in ${ENV_FILE}`);
 
   const put = (name, worker, value) => {
-    if (!DRY && (value === undefined || value === "")) return false;
+    // The empty check applies in DRY too. It used to be `!DRY && …`, so a
+    // dry run printed `wrangler secret put GATEWAY_TOKEN` and a ✓ for optional
+    // credentials that are not set — installs that a real run would skip. A
+    // preview whose entire job is "show me exactly what will happen" must not
+    // overstate; a reader checking whether they had filled everything in would
+    // have been told yes.
+    if (value === undefined || value === "") return false;
     wrangler(["secret", "put", name, "-c", cfg(worker)], { input: value });
     return true;
   };
@@ -448,7 +505,11 @@ function secrets() {
   // External: install what's present; nudge for missing required ones.
   for (const [name, spec] of Object.entries(EXTERNAL)) {
     const value = env[name];
-    if (DRY || (value !== undefined && value !== "")) {
+    // `DRY ||` used to short-circuit this, so a dry run reported every optional
+    // credential as installed whether or not it was set — the branch below that
+    // says "skipped" was unreachable in preview. The whole point of --dry-run is
+    // to answer "have I filled everything in", and it answered yes regardless.
+    if (value !== undefined && value !== "") {
       for (const w of spec.workers) put(name, w, value);
       ok(`${name} → ${spec.workers.join(", ")}`);
     } else if (spec.required) {
@@ -503,6 +564,12 @@ function main() {
 
   const plan = phaseArg === "all" ? ALL : [phaseArg];
   console.log(`bullmoose bootstrap — ${paint(c.cyn, plan.join(" → "))}${DRY ? paint(c.yel, "  (dry-run)") : ""}`);
+
+  // Read .env BEFORE the liveness check below. loadEnv exports the wrangler
+  // credentials into process.env, and the check consults them — so doing this
+  // lazily inside `secrets` would mean a machine with a perfectly good token in
+  // .env still failed the preflight it was supposed to satisfy.
+  loadEnv();
 
   // Liveness check — but NOT via `whoami` when the account is already explicit.
   //
