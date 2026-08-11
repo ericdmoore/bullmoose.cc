@@ -16,7 +16,7 @@
 //   resources  create D1 + R2 + KV (skips any that already exist)
 //   wire       write the live database_id / KV id into all services/*/wrangler.jsonc
 //   schemas    apply the mailstore SQL to D1 (idempotent — every DDL is IF NOT EXISTS)
-//   secrets    generate the 4 random secrets → gitignored .env.deploy → `wrangler secret put`
+//   secrets    generate the 4 random secrets → gitignored .env → `wrangler secret put`
 //   deploy     `npm run -w services/<w> deploy` in binding-graph order
 //
 // Auth: uses your ambient wrangler credentials (`npx wrangler login`, or
@@ -73,7 +73,7 @@ const CONFIGS = DEPLOY_ORDER.map(cfg);
 
 // Secrets we generate: name → { bytes, workers }. INTERNAL_TOKEN is ONE value
 // shared across all its workers (the /internal/* + agent-poke shared secret).
-const GENERATED = {
+export const GENERATED = {
   INTERNAL_TOKEN: { bytes: 24, workers: ["jmap", "submit", "ingest", "agent", "bureau"] },
   SHARE_SIGNING_KEY: { bytes: 32, workers: ["jmap"] },
   ADMIN_TOKEN: { bytes: 24, workers: ["provision"] },
@@ -84,9 +84,9 @@ const GENERATED = {
   VAULT_MASTER_KEY: { bytes: 32, workers: ["bureau"] },
 };
 
-// Secrets you supply (paste into .env.deploy). Missing required → warn + skip;
+// Secrets you supply (paste into .env). Missing required → warn + skip;
 // missing optional → quiet skip. We only install them; we never generate them.
-const EXTERNAL = {
+export const EXTERNAL = {
   CF_API_TOKEN: { workers: ["provision"], required: true, note: "Zone:Edit + Email Routing:Edit + DNS:Edit" },
   SES_ACCESS_KEY_ID: { workers: ["provision", "submit"], required: true, note: "IAM: ses:SendRawEmail (+ identity mgmt on provision)" },
   SES_SECRET_ACCESS_KEY: { workers: ["provision", "submit"], required: true, note: "" },
@@ -94,7 +94,15 @@ const EXTERNAL = {
   GATEWAY_TOKEN: { workers: ["agent"], required: false, note: "only if an AI Gateway alias exists" },
 };
 
-const ENV_DEPLOY = ".env.deploy"; // gitignored; holds generated + your pasted secrets
+// ONE env file, at the repo root. It was `.env.deploy`; it is `.env` because a
+// second dotfile is a second place to look and a second thing to forget to copy
+// to a new machine. `.gitignore` already covers `.env`.
+//
+// `.env.deploy` is still read ONCE as a migration path (see loadEnv) — a machine
+// that has the old file must not be told its secrets are missing, because the
+// consequence of "missing" here is minting fresh ones over the live values.
+const ENV_FILE = ".env";
+const ENV_LEGACY = ".env.deploy";
 
 // ─────────────────────────────── plumbing ───────────────────────────────────
 
@@ -177,14 +185,26 @@ export function wireText(text, d1Id, kvId) {
   return { text: out, changed };
 }
 
-// ─────────────────────────── .env.deploy I/O ────────────────────────────────
+// ───────────────────────────── .env I/O ─────────────────────────────────────
 
 function loadEnv() {
   const env = {};
-  if (!existsSync(rel(ENV_DEPLOY))) return env;
-  for (const line of readFileSync(rel(ENV_DEPLOY), "utf8").split("\n")) {
+  // Prefer .env; fall back to the legacy name so an existing machine keeps
+  // working and, more importantly, does NOT read as "no secrets present" —
+  // that is the state the rotation guard turns into a refusal, and without
+  // this fallback the guard would fire on the one machine that is correct.
+  const from = existsSync(rel(ENV_FILE))
+    ? ENV_FILE
+    : existsSync(rel(ENV_LEGACY))
+      ? ENV_LEGACY
+      : null;
+  if (!from) return env;
+  for (const line of readFileSync(rel(from), "utf8").split("\n")) {
     const m = line.match(/^\s*([A-Z][A-Z0-9_]+)\s*=\s*(.*)$/);
     if (m) env[m[1]] = m[2];
+  }
+  if (from === ENV_LEGACY) {
+    warn(`read ${ENV_LEGACY} — migrating to ${ENV_FILE}; delete the old file once this run succeeds`);
   }
   return env;
 }
@@ -193,24 +213,39 @@ function saveEnv(env) {
   const known = new Set([...Object.keys(GENERATED), ...Object.keys(EXTERNAL)]);
   const line = (k) => `${k}=${env[k] ?? ""}`;
   const body = [
-    "# bullmoose deploy secrets — GITIGNORED, never commit.",
-    "# Generated values are created once and reused on re-run (no silent rotation).",
-    "# Paste the external credentials below, then: node infra/bootstrap.mjs secrets",
+    "# ─────────────────────────────────────────────────────────────────────────",
+    "#  bullmoose — the one env file.  GITIGNORED. chmod 600. Never commit.",
+    "# ─────────────────────────────────────────────────────────────────────────",
+    "#",
+    "#  Back this up somewhere you will still have in a year. A machine without",
+    "#  it reads as 'no secrets exist', and the honest response to that state is",
+    "#  to mint new ones — which for VAULT_MASTER_KEY is unrecoverable. bootstrap",
+    "#  refuses rather than doing it (--rotate overrides), but the refusal is a",
+    "#  seatbelt, not a backup.",
+    "#",
+    "#  Names only in this header; values live below. `.env.example` is the",
+    "#  committed, value-free copy of this shape.",
     "",
-    "## GENERATED (openssl-equivalent random; leave as-is to keep keys stable)",
+    "## ── GENERATED ────────────────────────────────────────────────────────────",
+    "## Created once, reused on every re-run. Rotating them is not symmetric:",
+    "##   VAULT_MASTER_KEY   every sealed credential becomes UNDECRYPTABLE. No recovery.",
+    "##   SHARE_SIGNING_KEY  every outstanding share link stops verifying.",
+    "##   ADMIN_TOKEN        stored admin credentials stop working.",
+    "##   INTERNAL_TOKEN     survivable — all five workers get the same new value.",
     ...Object.keys(GENERATED).map(line),
     "",
-    "## EXTERNAL (you supply these)",
+    "## ── EXTERNAL ─────────────────────────────────────────────────────────────",
+    "## You supply these. bootstrap installs them and never generates them.",
     ...Object.entries(EXTERNAL).map(([k, v]) => `${v.note ? `# ${v.note}\n` : ""}${line(k)}`),
   ];
   const extras = Object.keys(env).filter((k) => !known.has(k));
   if (extras.length) body.push("", "## (preserved)", ...extras.map(line));
   if (DRY) {
-    info(`would write ${ENV_DEPLOY} (${Object.keys(GENERATED).length} generated + ${extras.length} preserved)`);
+    info(`would write ${ENV_FILE} (${Object.keys(GENERATED).length} generated + ${extras.length} preserved)`);
     return;
   }
-  writeFileSync(rel(ENV_DEPLOY), body.join("\n") + "\n");
-  chmodSync(rel(ENV_DEPLOY), 0o600);
+  writeFileSync(rel(ENV_FILE), body.join("\n") + "\n");
+  chmodSync(rel(ENV_FILE), 0o600);
 }
 
 // ─────────────────────────────── resolve ids ────────────────────────────────
@@ -338,12 +373,12 @@ function migrate() {
 }
 
 function secrets() {
-  step("secrets — generate → .env.deploy → wrangler secret put");
+  step("secrets — generate → .env → wrangler secret put");
   const env = loadEnv();
 
   // Generate only what's missing → re-runs reuse existing keys (no rotation).
   //
-  // "Missing" means missing from .env.deploy, which is gitignored and therefore
+  // "Missing" means missing from .env, which is gitignored and therefore
   // MACHINE-LOCAL. Run this from a laptop that never held the file — a fresh
   // clone, a new machine, CI — and every secret reads as missing, so this mints
   // new ones and the `put` below pushes them over the live values. That is not
@@ -376,14 +411,14 @@ function secrets() {
   if (clobber.length && !args.includes("--rotate")) {
     die(
       `refusing to rotate ${clobber.length} secret(s) already live: ${clobber.join(", ")}\n` +
-        `  ${ENV_DEPLOY} does not have them, but the deployment does — so this is a\n` +
+        `  ${ENV_FILE} does not have them, but the deployment does — so this is a\n` +
         `  machine without the file, not a first deploy. Minting fresh values here\n` +
         `  would overwrite the live ones.\n` +
         (clobber.includes("VAULT_MASTER_KEY")
           ? `  VAULT_MASTER_KEY is UNRECOVERABLE: rotating it makes every sealed\n` +
             `  credential permanently undecryptable.\n`
           : "") +
-        `  Recover ${ENV_DEPLOY} from wherever the first deploy ran, or pass\n` +
+        `  Recover ${ENV_FILE} from wherever the first deploy ran, or pass\n` +
         `  --rotate if you genuinely mean to replace them.`,
     );
   }
@@ -396,7 +431,7 @@ function secrets() {
     }
   }
   saveEnv(env);
-  info(minted ? `minted ${minted} new secret${minted === 1 ? "" : "s"} into ${ENV_DEPLOY}` : `reusing existing secrets in ${ENV_DEPLOY}`);
+  info(minted ? `minted ${minted} new secret${minted === 1 ? "" : "s"} into ${ENV_FILE}` : `reusing existing secrets in ${ENV_FILE}`);
 
   const put = (name, worker, value) => {
     if (!DRY && (value === undefined || value === "")) return false;
@@ -417,7 +452,7 @@ function secrets() {
       for (const w of spec.workers) put(name, w, value);
       ok(`${name} → ${spec.workers.join(", ")}`);
     } else if (spec.required) {
-      warn(`${name} not set in ${ENV_DEPLOY} — add it (${spec.note || "required"}) and re-run 'secrets'`);
+      warn(`${name} not set in ${ENV_FILE} — add it (${spec.note || "required"}) and re-run 'secrets'`);
     } else {
       info(`${name} skipped (${spec.note || "optional"})`);
     }
@@ -454,7 +489,7 @@ function help() {
   --dry-run   show every command/edit; touch nothing
   --yes       auto-confirm wrangler's d1-execute prompt
   --rotate    allow the secrets phase to REPLACE values already live.
-              Without it, a machine whose ${ENV_DEPLOY} is missing refuses
+              Without it, a machine whose ${ENV_FILE} is missing refuses
               rather than minting fresh secrets over production —
               VAULT_MASTER_KEY in particular is unrecoverable.
 
