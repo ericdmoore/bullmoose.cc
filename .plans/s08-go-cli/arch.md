@@ -111,10 +111,18 @@ strictly better, and would be worth doing even if the CLI stayed in TypeScript.
 
 Nobody uses bullmoose yet, so PBKDF2-SHA256/600k is free to replace. **It should not be.**
 
-The constraint that chose it is still in force and has nothing to do with existing users:
-`auth-core` records that argon2 is the better algorithm but "neither Workers nor browsers
-ship it natively", and login is client-stretched specifically so it fits the Workers
-free-plan 10 ms CPU cap — the server must never do the expensive part.
+⚠️ **Correction — this section originally cited the weaker of two reasons.** It said login
+is client-stretched to fit the Workers **free-plan 10 ms CPU cap**. That is true and, on a
+paid plan, **no longer binding**. It should not have been the argument.
+
+The reason that survives has nothing to do with billing: **the server never sees the
+password.** A compromised server, a malicious operator, or an accidental log line never
+observes plaintext, because plaintext never leaves the client. That property is worth the
+same on any plan.
+
+And the argon2 obstacle is unchanged, because it was never the Worker: `auth-core` records
+that argon2 is better but "neither Workers **nor browsers** ship it natively". Paid compute
+does not give a browser argon2.
 
 So the derivation is a **cross-client contract, not a per-client choice.** A Go CLI can do
 argon2id natively; a browser cannot without shipping WASM. Ship both and one password
@@ -125,6 +133,17 @@ recorded per credential, but that makes the split explicit rather than removing 
 Only the CLI derives a key today (the webmail door takes a pasted token), so the
 constraint is not binding *right now*. It binds the moment webmail grows a password login
 — which is `s02` T7's business, and a decision to make there rather than here.
+
+**What paid Workers buys here, honestly: very little.** A database leak already costs an
+attacker 600k PBKDF2 iterations per password guess, because the client-side stretch is in
+the chain — adding a server-side stretch does not change the dominant term. The design is
+already the right one; the plan change removes a *justification* without changing the
+*conclusion*.
+
+Where paid compute genuinely changes assumptions is elsewhere, and those are worth
+revisiting deliberately rather than inheriting: `s07`'s attachment-search tiering assumes
+extraction cannot happen in a Worker, and `capacity-and-scaling.md` budgets against the
+free plan. Eight files across `docs/` and `.plans/` assert free-tier constraints.
 
 **What being pre-users actually buys is cheapness of error:** a mismatch during the port
 is re-minted, not migrated. That lowers the risk of the port, not the quality of the
