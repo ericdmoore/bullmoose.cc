@@ -165,6 +165,47 @@ reintroduces them by default. Each becomes a Go test case up front, not a follow
 The open ones split cleanly: **`038`** (`vacation --if-state` ignored) is a *server* bug
 and unaffected by the language; **`032`** is resolved by §2.
 
+## 6a. Measured: Go-WASM cannot be the shared codec core (for the browser)
+
+The appealing version of this section is bigger than a CLI: extract the codecs
+(`contacts-core`, `calendar-core`, `mime`, the scope lattice) into a **pure-data core**,
+compile it to WASM, and let the CLI, the browser and Workers all consume one
+implementation — with effects staying in each shell. The duplication is real: the scope
+vocabulary alone exists in `auth-core`, the CLI mirror, and the webmail mirror, and
+`GRANTABLE_SCOPES` has already drifted (it silently omits `vault` and `files`).
+
+Go does have a WASM target, so this looked available. **Measured, it is not** — for the
+browser:
+
+| | gzipped |
+|---|---|
+| entire webmail: 7 pages, every island, Preact, all of it | **83 KB** |
+| one Go-WASM module — a *toy* vCard parser | **844 KB** |
+
+Ten times the whole application, for a fraction of one codec. The bytes are Go's runtime —
+GC, scheduler, reflection — not the parser. `GOOS=js GOARCH=wasm`, `-ldflags="-s -w"`, plus
+20 KB of `wasm_exec.js` glue. Reproduce with the toy in this section's history; the number
+moves with the Go version but not by an order of magnitude.
+
+Consequences, in order:
+
+- **The browser is out.** A mail client cannot pay 10× its own weight for a parser.
+- **Workers might tolerate it** (paid script limits are generous), but at a cold-start cost
+  and for one of three consumers.
+- So Go-as-shared-core yields **Go native + Go WASM for Workers + TS for the browser** —
+  still two implementations, just differently arranged. That is not an improvement over
+  today, and it is the reason this section stays scoped to the CLI.
+
+⚠️ **Not measured, and it is the deciding number if this is ever revisited:** Rust has no
+runtime and no GC, so the same toy should be far smaller — plausibly under 150 KB gzipped.
+That is an *estimate from general knowledge, not a measurement*, and this whole section
+exists because an estimate was wrong by an order of magnitude once already. TinyGo is the
+other unmeasured option; its weak spot is `encoding/json` and reflection, which is exactly
+what a codec needs.
+
+**If the codec-deduplication goal ever outranks the static-binary goal, measure Rust
+first.** The CLI port does not depend on that answer.
+
 ## 7. What stays in TypeScript, permanently
 
 Nothing about this section proposes a second platform. Workers, JMAP methods, the
