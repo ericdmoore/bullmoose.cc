@@ -41,12 +41,17 @@ export default defineConfig({
     // files to node:sqlite and proves each drift check bites. Deploy DDL is the
     // one thing with no other test surface — it runs against a live D1 or not
     // at all — so it earns a place in the suite that gates `main`.
+    // `conformance/` is here for the same reason and one more: it is the only
+    // file that imports auth-core (workers-typed) and packages/cli/src/io.ts
+    // (Node-typed) together, so vitest — which needs no tsc program — is the
+    // ONLY place it can run. See conformance/README.md.
     include: [
       "packages/**/*.test.ts",
       "services/**/*.test.ts",
       "webmail/**/*.test.ts",
       "infra/**/*.test.ts",
       "tools/**/*.test.ts",
+      "conformance/**/*.test.ts",
     ],
     // Still exclude the marketing site (src/) and any build output; webmail/dist
     // and webmail/node_modules are covered by the two globs that precede them.

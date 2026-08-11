@@ -228,7 +228,10 @@ export function resolveMintScopes(
 
 export const LOGIN_KEY_ALGO = "client-pbkdf2-sha256-v1";
 export const LOGIN_KEY_ITERATIONS = 600_000;
-const LOGIN_SALT_LABEL = "bullmoose-login-v1:";
+/** Exported so `conformance/vectors.ts` can RECORD the label rather than
+ * restate it. A port that matches the golden keys but not the parameters
+ * passes today and diverges the moment a vector is regenerated (s08 T1). */
+export const LOGIN_SALT_LABEL = "bullmoose-login-v1:";
 
 export function isLoginKey(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
