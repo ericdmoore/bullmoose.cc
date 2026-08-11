@@ -1,0 +1,610 @@
+import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
+import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
+import type { ContactCardRow, JSContactCard } from "@bullmoose/mailstore";
+import { authorizeAccount } from "../auth";
+import {
+  accountState,
+  proxyChanges,
+  requireAccount,
+  setError,
+  storeFor,
+  type RequestContext,
+  type SetError,
+} from "./common";
+
+/**
+ * ActionProposal (urn:bullmoose:params:jmap:agent) — the human review surface
+ * for agent-proposed work, and a READ MODEL over `agent_invocations`, not a
+ * parallel store (s03.D/arch.md §1).
+ *
+ * The invocation is the single source of truth for "what is the agent doing"
+ * (pending→running→done→failed, the optimistic claim, the SLA watchdog). This
+ * collection JOINs `agent_proposals` (the proposal-specific fields, keyed by the
+ * SAME (account_id, id) as the invocation) onto that invocation and projects the
+ * arch shape. `agent` and the live invocation status are READ from the
+ * invocation, never duplicated (invariant §8.5).
+ *
+ * ⚠️ Write choreography (the recurring bug in this repo — `agent.test.ts` docs,
+ * `filenode.ts` header): a `/set` must mutate → commit the ActionProposal
+ * changelog entry → return newState. A decision that lands the row but skips
+ * `commitChanges` reads back on a direct `/get` and is INVISIBLE to `/changes`
+ * (and therefore to push). `applyProposal` folds its own writes' entries into the
+ * SAME commit so one newState covers the whole transaction.
+ *
+ * `ActionProposal/set` is the human decision surface: `update` only. Agents do
+ * NOT create proposals here — the agent worker produces them (services/agent
+ * `emitProposal`); a `create` on this method is refused. The three decision
+ * verbs and how tier drives them (arch.md §2):
+ *
+ *   tier 1  reversible   → apply immediately, keep an undo handle
+ *   tier 2  retractable  → enter the hold tray (status `held`, `holdUntil`);
+ *                          the yank-window commit is s03.D T2, not this slice
+ *   tier 3  irreversible → a human action every time. The guarantee is the
+ *                          CAPABILITY WALL, not policy (arch.md §2): approving a
+ *                          tier-3 egress requires the `send` scope, which agents
+ *                          structurally lack (mcp-auth.md §12 step 10; there is
+ *                          no send tool, `mcpTools.test.ts:124-128`). A policy
+ *                          bug is then a nuisance, never a breach.
+ */
+
+/** Rejection reasons — the no-thanks signal (arch.md §3). `notNow` is a snooze,
+ * not a real rejection; the training/autonomy semantics are s03.D T2. Here we
+ * only preserve the DATA. */
+const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "notNow"]);
+
+/**
+ * The tier-2 post-approval retraction window. A tier-2 approve enters the hold
+ * tray with `holdUntil = now + this`; committing out of the tray (and the
+ * yank-before-commit UI) is s03.D T2. Distinct clock from `expiresAt` (the
+ * pre-decision deadline) — conflating them is a bug (s07 §T0).
+ */
+const HOLD_WINDOW_MS = 5 * 60_000;
+
+/** The JOINed read-model row: proposal columns + the invocation it hangs off. */
+interface ProposalJoinRow {
+  id: string;
+  account_id: string;
+  kind: string;
+  tier: number;
+  subject_json: string;
+  payload_json: string;
+  edited_payload_json: string | null;
+  rationale: string;
+  evidence_json: string;
+  status: string;
+  decision_json: string | null;
+  created_at: number;
+  decided_at: number | null;
+  hold_until: number | null;
+  expires_at: number | null;
+  // projected from agent_invocations — the single source of truth (§8.5):
+  binding_name: string;
+  inv_status: string;
+  claimed_at: number | null;
+  email_id: string | null;
+}
+
+const SELECT_JOIN = `
+  SELECT p.id, p.account_id, p.kind, p.tier, p.subject_json, p.payload_json,
+         p.edited_payload_json, p.rationale, p.evidence_json, p.status,
+         p.decision_json, p.created_at, p.decided_at, p.hold_until, p.expires_at,
+         inv.binding_name, inv.status AS inv_status, inv.claimed_at, inv.email_id
+    FROM agent_proposals p
+    JOIN agent_invocations inv
+      ON inv.account_id = p.account_id AND inv.id = p.id`;
+
+export function registerActionProposalMethods(registry: MethodRegistry<RequestContext>): void {
+  registry.register("ActionProposal/get", async (args, ctx) => {
+    const access = await requireAccount(ctx, args, "read");
+    const ids = args.ids === null || args.ids === undefined ? undefined : (args.ids as string[]);
+    const properties = Array.isArray(args.properties) ? (args.properties as string[]) : null;
+
+    let rows: ProposalJoinRow[];
+    if (ids === undefined) {
+      const { results } = await ctx.env.DB.prepare(
+        `${SELECT_JOIN} WHERE p.account_id = ? ORDER BY p.created_at DESC LIMIT 256`,
+      )
+        .bind(access.accountId)
+        .all<ProposalJoinRow>();
+      rows = results;
+    } else if (ids.length === 0) {
+      rows = [];
+    } else {
+      const marks = ids.map(() => "?").join(",");
+      const { results } = await ctx.env.DB.prepare(
+        `${SELECT_JOIN} WHERE p.account_id = ? AND p.id IN (${marks})`,
+      )
+        .bind(access.accountId, ...ids)
+        .all<ProposalJoinRow>();
+      rows = results;
+    }
+    const found = new Set(rows.map((r) => r.id));
+
+    return {
+      accountId: access.accountId,
+      state: await accountState(ctx, access.accountId),
+      list: rows.map((r) => pickProps(proposalToJmap(r), properties)),
+      notFound: (ids ?? []).filter((id) => !found.has(id)),
+    };
+  });
+
+  registry.register("ActionProposal/query", async (args, ctx) => {
+    const access = await requireAccount(ctx, args, "read");
+    const filter = (args.filter as Record<string, unknown> | null | undefined) ?? null;
+    if (filter) {
+      for (const key of Object.keys(filter)) {
+        if (key !== "status") {
+          throw new MethodError("unsupportedFilter", `unknown filter property "${key}"`);
+        }
+      }
+    }
+    // Optional status filter: a single status or a set. The default queue is
+    // everything, newest first — the client narrows to `pending`/`held`.
+    const wanted =
+      filter && filter.status !== undefined
+        ? Array.isArray(filter.status)
+          ? (filter.status as string[])
+          : [filter.status as string]
+        : null;
+
+    let sql = `SELECT id FROM agent_proposals WHERE account_id = ?`;
+    const binds: unknown[] = [access.accountId];
+    if (wanted) {
+      sql += ` AND status IN (${wanted.map(() => "?").join(",")})`;
+      binds.push(...wanted);
+    }
+    sql += ` ORDER BY created_at DESC LIMIT 256`;
+    const { results } = await ctx.env.DB.prepare(sql)
+      .bind(...binds)
+      .all<{ id: string }>();
+
+    return {
+      accountId: access.accountId,
+      queryState: await accountState(ctx, access.accountId),
+      canCalculateChanges: false,
+      position: 0,
+      ids: results.map((r) => r.id),
+    };
+  });
+
+  registry.register("ActionProposal/changes", async (args, ctx) =>
+    proxyChanges(ctx, args, "ActionProposal"),
+  );
+
+  // Advertised canCalculateChanges: false — conformant clients re-query.
+  registry.register("ActionProposal/queryChanges", async () => {
+    throw new MethodError("cannotCalculateChanges");
+  });
+
+  registry.register("ActionProposal/set", async (args, ctx) => {
+    // Base gate: reviewing/deciding is a `draft`-tier mail action, the same
+    // scope AgentInvocation/set takes. A tier-3 APPROVE additionally demands the
+    // `send` scope below — the capability wall (arch.md §2).
+    const access = await requireAccount(ctx, args, "draft", "mail");
+
+    const oldState = await accountState(ctx, access.accountId);
+    if (typeof args.ifInState === "string" && args.ifInState !== oldState) {
+      throw new MethodError("stateMismatch");
+    }
+
+    // Agents produce proposals through the worker (services/agent), never here.
+    if (args.create && Object.keys(args.create as object).length > 0) {
+      throw new MethodError(
+        "invalidArguments",
+        "ActionProposal has no create: proposals are produced by the agent worker, " +
+          "not created over JMAP. ActionProposal/set is the human decision surface (update).",
+      );
+    }
+
+    const updated: Record<string, null> = {};
+    const notUpdated: Record<string, SetError> = {};
+    const destroyed: string[] = [];
+    const notDestroyed: Record<string, SetError> = {};
+    const propEntry: ChangeEntry = { collection: "ActionProposal", created: [], updated: [], destroyed: [] };
+    const applyEntries: ChangeEntry[] = [];
+
+    const updateSpecs = (args.update as Record<string, Record<string, unknown>> | undefined) ?? {};
+    for (const [id, patch] of Object.entries(updateSpecs)) {
+      try {
+        const row = await loadProposal(ctx, access.accountId, id);
+        if (!row) throw new NotFound();
+        // T1 decides only from `pending`. `held` (post-approval hold tray) and
+        // the terminal states are not re-decidable here — that is T2's yank.
+        if (row.status !== "pending") {
+          throw new SetErrorSignal("invalidProperties", `proposal is ${row.status}, not pending`, ["status"]);
+        }
+
+        const status = patch.status;
+        if (status !== "approved" && status !== "rejected") {
+          throw new SetErrorSignal("invalidProperties", 'status must be "approved" or "rejected"', ["status"]);
+        }
+
+        // The human's edit is captured SEPARATELY and never overwrites the
+        // agent's original payload — that retention is what lets a later score
+        // tell "approved clean" from "approved after edit" (s07 §T4).
+        const editedPayload = patch.editedPayload;
+        if (editedPayload !== undefined && (editedPayload === null || typeof editedPayload !== "object")) {
+          throw new SetErrorSignal("invalidProperties", "editedPayload must be an object", ["editedPayload"]);
+        }
+        const decision = buildDecision(ctx, patch.decision);
+
+        const now = Date.now();
+        if (status === "rejected") {
+          await ctx.env.DB.prepare(
+            `UPDATE agent_proposals SET status = 'rejected', decided_at = ?,
+               decision_json = ?, edited_payload_json = COALESCE(?, edited_payload_json)
+             WHERE account_id = ? AND id = ?`,
+          )
+            .bind(
+              now,
+              JSON.stringify(decision),
+              editedPayload !== undefined ? JSON.stringify(editedPayload) : null,
+              access.accountId,
+              id,
+            )
+            .run();
+          propEntry.updated.push(id);
+          updated[id] = null;
+          continue;
+        }
+
+        // ---- approve ----
+        if (row.tier === 3) {
+          // THE CAPABILITY WALL. Approving a tier-3 (irreversible egress) is a
+          // human action every time: it requires the `send` scope, which an
+          // agent token structurally lacks. This reuses the exact gate the real
+          // send path uses — no separate policy layer to get wrong.
+          const send = authorizeAccount(ctx.principal, access.accountId, "send", "mail");
+          if (!send.ok) {
+            throw new SetErrorSignal(
+              "forbidden",
+              "approving a tier-3 proposal requires the send capability (a human action); " +
+                "an agent token cannot auto-commit irreversible egress",
+              ["status"],
+            );
+          }
+        }
+
+        if (row.tier === 2) {
+          // Enter the hold tray. The commit-out-of-tray (and yank-before-commit)
+          // is s03.D T2 — deliberately NOT done here, so nothing egresses before
+          // the retraction UI exists.
+          await ctx.env.DB.prepare(
+            `UPDATE agent_proposals SET status = 'held', decided_at = ?, hold_until = ?,
+               decision_json = ?, edited_payload_json = COALESCE(?, edited_payload_json)
+             WHERE account_id = ? AND id = ?`,
+          )
+            .bind(
+              now,
+              now + HOLD_WINDOW_MS,
+              JSON.stringify(decision),
+              editedPayload !== undefined ? JSON.stringify(editedPayload) : null,
+              access.accountId,
+              id,
+            )
+            .run();
+          propEntry.updated.push(id);
+          updated[id] = null;
+          continue;
+        }
+
+        // tier 1 (immediate, reversible) and tier 3 (human already authorized):
+        // apply now. The applied write stamps provenance (the approved-proposal
+        // application is an agent write — .feedback common/033).
+        const effectivePayload =
+          editedPayload !== undefined
+            ? (editedPayload as Record<string, unknown>)
+            : safeJson(row.payload_json);
+        const { entries, undo } = await applyProposal(ctx, access, row, effectivePayload);
+        applyEntries.push(...entries);
+
+        await ctx.env.DB.prepare(
+          `UPDATE agent_proposals SET status = 'approved', decided_at = ?,
+             decision_json = ?, edited_payload_json = COALESCE(?, edited_payload_json)
+           WHERE account_id = ? AND id = ?`,
+        )
+          .bind(
+            now,
+            JSON.stringify({ ...decision, ...(undo ? { undo } : {}) }),
+            editedPayload !== undefined ? JSON.stringify(editedPayload) : null,
+            access.accountId,
+            id,
+          )
+          .run();
+        propEntry.updated.push(id);
+        updated[id] = null;
+      } catch (err) {
+        notUpdated[id] = toSetError(err);
+      }
+    }
+
+    // Destroy: purge a decided proposal (housekeeping). A pending one is refused
+    // — decide it, don't drop it (the queue is the point).
+    for (const id of (args.destroy as string[] | undefined) ?? []) {
+      try {
+        const row = await loadProposal(ctx, access.accountId, id);
+        if (!row) throw new NotFound();
+        if (row.status === "pending") {
+          throw new SetErrorSignal("forbidden", "decide a pending proposal rather than destroying it");
+        }
+        await ctx.env.DB.prepare(`DELETE FROM agent_proposals WHERE account_id = ? AND id = ?`)
+          .bind(access.accountId, id)
+          .run();
+        propEntry.destroyed.push(id);
+        destroyed.push(id);
+      } catch (err) {
+        notDestroyed[id] = toSetError(err);
+      }
+    }
+
+    // ONE commit for the whole transaction — the proposal transition plus any
+    // writes its application produced — so a single newState is authoritative.
+    const entries = [propEntry, ...applyEntries].filter(
+      (e) => e.created.length + e.updated.length + e.destroyed.length > 0,
+    );
+    let newState = oldState;
+    if (entries.length > 0) {
+      ({ newState } = await commitChanges(ctx.env.ACCOUNT_DO, access.accountId, entries));
+    }
+
+    return {
+      accountId: access.accountId,
+      oldState,
+      newState,
+      created: {},
+      notCreated: {},
+      updated,
+      notUpdated,
+      destroyed,
+      notDestroyed,
+    };
+  });
+}
+
+// ---- apply ----------------------------------------------------------------
+
+/**
+ * Perform the write an approved proposal describes, returning the changelog
+ * entries for the caller to fold into the single commit, plus an undo handle for
+ * reversible (tier-1) applications. Provenance is stamped through the Mailstore
+ * write path: the approving human is the principal, and the agent binding +
+ * invocation the proposal projects over ride along, so the applied write is
+ * attributable to "the human approved the agent's proposal" rather than landing
+ * NULL (.feedback common/033).
+ */
+async function applyProposal(
+  ctx: RequestContext,
+  access: { accountId: string; tenantId: string },
+  row: ProposalJoinRow,
+  payload: Record<string, unknown>,
+): Promise<{ entries: ChangeEntry[]; undo?: Record<string, unknown> }> {
+  const provCtx: RequestContext = {
+    ...ctx,
+    agent: { binding: row.binding_name, invocation: row.id },
+  };
+  const store = storeFor(provCtx);
+
+  switch (row.kind) {
+    case "create-contact": {
+      const card = payload.card as JSContactCard | undefined;
+      if (!card || typeof card !== "object") {
+        throw new SetErrorSignal("invalidProperties", "create-contact payload needs a `card`", ["payload"]);
+      }
+      const { id: bookId, change } = await store.ensureDefaultAddressBook(access.accountId);
+      const now = Date.now();
+      const nowIso = new Date(now).toISOString();
+      const built: JSContactCard = { ...card };
+      built["@type"] = "Card";
+      if (built.version === undefined) built.version = "1.0";
+      if (built.uid === undefined) built.uid = `urn:uuid:${crypto.randomUUID()}`;
+      built.created = typeof built.created === "string" ? built.created : nowIso;
+      built.updated = nowIso;
+      built.addressBookIds = { [bookId]: true };
+      const cardRow: ContactCardRow = {
+        id: `cc_${crypto.randomUUID()}`,
+        addressBookId: bookId,
+        uid: built.uid as string,
+        card: built,
+        nameFull: typeof built.name?.full === "string" ? built.name.full : null,
+        davName: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await store.insertContactCard(access.accountId, cardRow);
+      const entries: ChangeEntry[] = [
+        { collection: "ContactCard", created: [cardRow.id], updated: [], destroyed: [] },
+      ];
+      if (change) {
+        entries.push({ collection: "AddressBook", created: change === "created" ? [bookId] : [], updated: change === "updated" ? [bookId] : [], destroyed: [] });
+      }
+      // The undo handle a tier-1 application keeps (arch.md §2).
+      return { entries, undo: { action: "destroy-contact", cardId: cardRow.id } };
+    }
+
+    case "reply-draft": {
+      // The irreversible egress (tier 3, human-approved). Relay the drafted MIME
+      // through the submit worker, then record a Sent copy whose provenance the
+      // Mailstore stamps. There is no undo — that irreversibility is exactly why
+      // it is tier 3.
+      const to = str(payload.to);
+      const self = str(payload.self);
+      const blobId = str(payload.blobId);
+      const subject = str(payload.subject) ?? "";
+      const text = str(payload.text) ?? "";
+      if (!to || !self || !blobId) {
+        throw new SetErrorSignal("invalidProperties", "reply-draft payload needs to/self/blobId", ["payload"]);
+      }
+      const res = await ctx.env.SUBMIT.fetch("https://submit.internal/internal/submit", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-internal-token": ctx.env.INTERNAL_TOKEN },
+        body: JSON.stringify({
+          accountId: access.accountId,
+          tenantId: access.tenantId,
+          blobId,
+          envelope: { mailFrom: self, rcptTo: [to] },
+        }),
+      });
+      if (!res.ok) {
+        throw new SetErrorSignal("serverFail", `submit relay failed (${res.status})`);
+      }
+      const now = Date.now();
+      const sentMailbox = await store.ensureRoleMailbox(access.accountId, "sent", "Sent");
+      const emailId = `e_${crypto.randomUUID()}`;
+      await store.insertEmail(access.accountId, {
+        id: emailId,
+        blobId,
+        threadId: await store.resolveThreadId(access.accountId, str(payload.inReplyTo) ?? null),
+        messageId: str(payload.messageId) ?? `${crypto.randomUUID()}@${self.split("@")[1] ?? "localhost"}`,
+        inReplyTo: str(payload.inReplyTo) ?? null,
+        subject,
+        from: [{ name: row.binding_name, email: self }],
+        to: [{ email: to }],
+        cc: [],
+        bcc: [],
+        preview: text.slice(0, 256),
+        bodyText: text,
+        size: text.length,
+        receivedAt: now,
+        hasAttachment: false,
+        attachments: [],
+        mailboxIds: [sentMailbox],
+        keywords: ["$seen", "$agent"],
+      });
+      return {
+        entries: [
+          { collection: "Email", created: [emailId], updated: [], destroyed: [] },
+          { collection: "Mailbox", created: [], updated: [sentMailbox], destroyed: [] },
+        ],
+      };
+    }
+
+    case "grant-request":
+      // The queue is unified (arch.md §1), but MINTING the grant is provision's
+      // job (s04), reached by watching approved grant-request proposals. The
+      // decision is recorded here; no local write.
+      return { entries: [] };
+
+    default:
+      throw new SetErrorSignal(
+        "invalidProperties",
+        `approving a "${row.kind}" proposal is not applied in this slice (s03.D T1)`,
+        ["kind"],
+      );
+  }
+}
+
+// ---- helpers --------------------------------------------------------------
+
+class NotFound extends Error {}
+
+class SetErrorSignal extends Error {
+  constructor(
+    public type: string,
+    public description?: string,
+    public properties?: string[],
+  ) {
+    super(description ?? type);
+  }
+}
+
+function toSetError(err: unknown): SetError {
+  if (err instanceof NotFound) return setError("notFound");
+  if (err instanceof SetErrorSignal) {
+    return {
+      type: err.type,
+      ...(err.description ? { description: err.description } : {}),
+      ...(err.properties ? { properties: err.properties } : {}),
+    };
+  }
+  if (err instanceof MethodError) return setError("invalidProperties", err.description ?? err.type);
+  return setError("serverFail", String(err));
+}
+
+async function loadProposal(
+  ctx: RequestContext,
+  accountId: string,
+  id: string,
+): Promise<ProposalJoinRow | null> {
+  return (
+    (await ctx.env.DB.prepare(`${SELECT_JOIN} WHERE p.account_id = ? AND p.id = ?`)
+      .bind(accountId, id)
+      .first<ProposalJoinRow>()) ?? null
+  );
+}
+
+/** The decision record (arch.md §3): who + reason enum + optional free text. */
+function buildDecision(ctx: RequestContext, raw: unknown): Record<string, unknown> {
+  const decision: Record<string, unknown> = { by: ctx.principal.username };
+  if (raw && typeof raw === "object") {
+    const r = raw as Record<string, unknown>;
+    if (r.reason !== undefined) {
+      if (typeof r.reason !== "string" || !REJECT_REASONS.has(r.reason)) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "decision.reason must be wrongContent | wrongAction | notNow",
+          ["decision"],
+        );
+      }
+      decision.reason = r.reason;
+    }
+    if (r.note !== undefined) {
+      if (typeof r.note !== "string") {
+        throw new SetErrorSignal("invalidProperties", "decision.note must be a string", ["decision"]);
+      }
+      decision.note = r.note;
+    }
+  }
+  return decision;
+}
+
+function proposalToJmap(r: ProposalJoinRow): Record<string, unknown> {
+  return {
+    id: r.id,
+    agent: r.binding_name, // read from the invocation (§8.5), not stored twice
+    kind: r.kind,
+    tier: r.tier,
+    subject: safeJson(r.subject_json),
+    payload: safeJson(r.payload_json),
+    editedPayload: r.edited_payload_json ? safeJson(r.edited_payload_json) : null,
+    rationale: r.rationale,
+    evidence: safeJsonArray(r.evidence_json),
+    status: r.status,
+    decision: r.decision_json ? safeJson(r.decision_json) : null,
+    createdAt: new Date(r.created_at).toISOString(),
+    decidedAt: r.decided_at ? new Date(r.decided_at).toISOString() : null,
+    holdUntil: r.hold_until ? new Date(r.hold_until).toISOString() : null,
+    expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null,
+    // the read-model surface projected from the invocation:
+    invocationStatus: r.inv_status,
+    claimedAt: r.claimed_at ? new Date(r.claimed_at).toISOString() : null,
+  };
+}
+
+function pickProps(full: Record<string, unknown>, properties: string[] | null): Record<string, unknown> {
+  if (!properties) return full;
+  const picked: Record<string, unknown> = { id: full.id };
+  for (const p of properties) if (p in full) picked[p] = full[p];
+  return picked;
+}
+
+function safeJson(s: string): Record<string, unknown> {
+  try {
+    const v = JSON.parse(s);
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function safeJsonArray(s: string): unknown[] {
+  try {
+    const v = JSON.parse(s);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.length > 0 ? v : null;
+}

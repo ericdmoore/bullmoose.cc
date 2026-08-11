@@ -4,6 +4,7 @@ import { buildMime } from "@bullmoose/mime";
 import { Mailstore } from "@bullmoose/mailstore";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
+import { proposeReply, expireStaleProposals } from "./proposals.js";
 import { handleVault, handleVaultVerify } from "./vault.js";
 import {
   callWithFallback,
@@ -81,6 +82,7 @@ export default {
   // Retry net: pokes can die mid-flight; the pending row cannot.
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await failStaleRunning(env);
+    await expireStaleProposals(env);
     await drain(env, ctx);
     await reportHeldBacklog(env);
   },
@@ -256,10 +258,27 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   try {
     const { output, used } = await callWithFallback(env, candidates, prompt, cfg.maxTokens ?? 2048);
     const model = `${used.provider}/${used.model}`;
-    const replyId = await reply(
-      `${output}\n\n— ${job.binding_name} · ${model} · bullmoose agent`,
-      { model, alias: aliasName },
-    );
+    const replyText = `${output}\n\n— ${job.binding_name} · ${model} · bullmoose agent`;
+
+    // Tier gate (s03.D arch §2): sending a reply is a tier-2 (retractable)
+    // action, so a `send`-mode binding no longer auto-egresses — it EMITS a
+    // pending `reply-draft` proposal for the human to approve in the queue. The
+    // hold-tray commit is s03.D T2. `draft` mode is tier-1 (a draft is reversible)
+    // and is written directly, unchanged — the existing co-authoring path.
+    if ((cfg.replyMode ?? "draft") === "send") {
+      const proposalId = await proposeReply(env, store, job, {
+        selfAddress,
+        to: sender,
+        origSubject: email.subject,
+        origMessageId: email.messageId,
+        text: replyText,
+        model,
+        sourceEmailId: email.id,
+      });
+      return done("done", { kind: "reply-draft", tier: 2, proposalId, model, alias: aliasName });
+    }
+
+    const replyId = await reply(replyText, { model, alias: aliasName });
     return done("done", { model, alias: aliasName, replyId });
   } catch (err) {
     // Every route failed — say so (the sender is allowlisted; this is for Eric).

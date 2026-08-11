@@ -50,6 +50,12 @@ describe("capabilityForMethod", () => {
     ["CalendarEvent/query", CALENDARS_CAP],
     ["FileNode/get", FILENODE_CAP],
     ["AgentInvocation/get", AGENT_CAP],
+    // s03.D T1: the ActionProposal collection is gated by the same capability,
+    // so a session without urn:bullmoose:agent never calls it (the plain-client
+    // floor — a client computes a method's using[] from the live session).
+    ["ActionProposal/get", AGENT_CAP],
+    ["ActionProposal/set", AGENT_CAP],
+    ["ActionProposal/changes", AGENT_CAP],
   ])("maps %s → %s", (method, cap) => {
     expect(capabilityForMethod(method)).toBe(cap);
   });
