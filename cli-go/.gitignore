@@ -1,0 +1,4 @@
+# Built binaries. `go build -o cli-go/bin/bullmoose ./cli-go` puts one here so
+# discovery's exe-relative walk finds packages/cli/bin/bullmoose.mjs two levels
+# up; T7 (.plans/s08-go-cli/devPlan.md:127) is where releases get built properly.
+/bin/
