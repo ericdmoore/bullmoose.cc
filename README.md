@@ -123,7 +123,7 @@ npm install && npm run typecheck
 
 # 1. resources → wire ids → schemas → secrets → deploy, in one idempotent pass.
 #    It creates D1/R2/KV, writes their ids into every services/*/wrangler.jsonc,
-#    applies the schemas, generates the four secrets into .env.deploy (gitignored)
+#    applies the schemas, generates the four secrets into .env (gitignored)
 #    and installs them, then deploys the six workers in binding-graph order.
 #    Preview everything first; drop --dry-run to execute. Re-runnable, and you
 #    can run a single phase, e.g. `node infra/bootstrap.mjs secrets`.
@@ -131,8 +131,8 @@ node infra/bootstrap.mjs --dry-run
 
 # 2. onboard your domain + first account. `t_home` is a *tenant id* you pick —
 #    a namespace for your org/family, NOT a secret (that's ADMIN_TOKEN, which
-#    step 1 generated into .env.deploy). Create the tenant, then reference it.
-ADMIN_TOKEN=$(grep -m1 '^ADMIN_TOKEN=' .env.deploy | cut -d= -f2)
+#    step 1 generated into .env). Create the tenant, then reference it.
+ADMIN_TOKEN=$(grep -m1 '^ADMIN_TOKEN=' .env | cut -d= -f2)
 bullmoose admin init --url https://bullmoose-provision.<acct>.workers.dev --token "$ADMIN_TOKEN"
 bullmoose admin tenant create t_home --name "Home"
 bullmoose admin domain add example.com --tenant t_home

@@ -425,10 +425,17 @@ services/bureau/wrangler.jsonc` (credential vault; `openssl rand -hex 32`).
 ## 3. Secrets  (bootstrap: `secrets`)
 
 `bootstrap.mjs secrets` generates the four random secrets (`INTERNAL_TOKEN`,
-`SHARE_SIGNING_KEY`, `ADMIN_TOKEN`, `VAULT_MASTER_KEY`) into `.env.deploy`
+`SHARE_SIGNING_KEY`, `ADMIN_TOKEN`, `VAULT_MASTER_KEY`) into `.env`
+
+> **Renamed from `.env.deploy`.** One file, at the repo root — a second dotfile is a
+> second place to look and a second thing to forget when moving machines. `bootstrap`
+> still *reads* `.env.deploy` if `.env` is absent, so an existing machine keeps working
+> and, more importantly, does not read as "no secrets present" — which is the state the
+> rotation guard turns into a refusal. Delete the old file once a run has written the new
+> one. `.env.example` is the committed, value-free copy of the shape.
 (gitignored, `chmod 600`) once — re-runs reuse them, no silent rotation — and
 installs each to the workers that read it. Paste the external creds (CF/SES
-rows below) into `.env.deploy` first so they install in the same pass; missing
+rows below) into `.env` first so they install in the same pass; missing
 required ones are reported and skipped, so you can add them and re-run. The
 full matrix, by hand:
 
@@ -517,7 +524,7 @@ bullmoose admin password eric@bullmoose.cc
 
 The tenant id (`t_bullmoose`) is a slug you choose — a namespace for an org or
 family, reused by every `--tenant` flag; it is not a credential. `<ADMIN_TOKEN>`
-is, and lives in `.env.deploy` (`grep ADMIN_TOKEN .env.deploy`).
+is, and lives in `.env` (`grep ADMIN_TOKEN .env`).
 
 Note: `domain add` wires Email Routing + catch-all→ingest + SES identity
 + DKIM/MAIL FROM/DMARC. If skipping SES for now, expect the `ses:*`
