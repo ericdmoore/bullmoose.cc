@@ -115,9 +115,13 @@ follow. The skip is gated on the seam, not a static `t.Skip`, so it cannot be si
 forgotten. cli/006 was verified to catch a real RCE (a vulnerable `sh -c` impl created the
 `pwned` file; the test failed) before being reverted to the stub.
 
-### T5 — Port the I/O contract · *the foundation everything else sits on*
+### T5 — Port the I/O contract · *the foundation everything else sits on* — ✅ **DONE**
 
-**Files:** `cli-go/internal/io/`.
+**Files:** `cli-go/internal/io/` (package `bmio`, name ≠ dir, so it does not shadow stdlib
+`io` in T6's command files — T6 must import `bmio`). The exit-code map is oracle-checked
+against `conformance/exit-codes.json` and proven to bite. **First dependency lands here, not
+at T6:** `golang.org/x/term` (pure Go, cross-compiles clean) for correct `isatty` — the plan
+had implied `modernc.org/sqlite` would be first.
 
 `arch.md` §3: this is what `contract.mjs` actually tests, and the reason the suite is worth
 inheriting. TTY detection, colour policy, `--json`, framing under pipes, early-close and
@@ -132,10 +136,20 @@ SIGPIPE handling, and the `EXIT`/`JMAP_EXIT` mapping from T1's vector.
 Suggested order — read-only before writes, and the two credential-shaped commands last so
 T1's vectors are proven by then:
 
-1. `whoami`, `mailbox list`, `search` (local mirror)
+1. ~~`whoami`~~, `mailbox list` (→ `mailboxes`), `search`, `log`, `accounts` (local mirror) —
+   ✅ **WAVE 1 DONE.** ⚠️ There is **no `whoami` subcommand** — it exists only as an agent MCP
+   tool. `accounts` is the read-only identity command and the one the contract suite
+   exercises. Wave 1 flipped **42 of 113 invocations** to native, contract still 61/0 both
+   binaries. `modernc.org/sqlite` (decision 2) is proven: linux amd64/arm64 + windows amd64
+   all build with `CGO_ENABLED=0`, FTS5 included — the static-binary premise survives SQLite
+   (binary 2.8M → 9.9M). `show` (email read) was correctly stopped-and-delegated: it needs
+   the live JMAP client, not a local-mirror read.
 2. `email` read/triage
 3. `contacts`, `calendar` — these carry the vendored codecs, so budget for them
-4. `watch` (concurrency, and T4's injection case)
+4. `watch` (concurrency, and T4's injection case). Note: the **cli/009 `Pick` seam flips in
+   a WRITE wave, not a read wave** — read commands fan out via `selectAccounts`, not
+   single-account `pickAccount`, so no wave-1 command exercised it. It enforces when a
+   single-account write (send / mailbox mutate) goes native.
 5. `login`, `token create` — the loginKey vector's real test
 
 Each command flips one delegation to native; `contract.mjs` stays 61/61 throughout.
@@ -152,7 +166,7 @@ Each command flips one delegation to native; `contract.mjs` stays 61/61 througho
 - **Delete the Node CLI only when the delegation count has been zero for a release**, not
   when it "feels done" — the trace metric is the criterion.
 
-**Done when:** a machine with no Node runs `bullmoose whoami` against the live server.
+**Done when:** a machine with no Node runs `bullmoose accounts` (the read-only identity command; there is no `whoami` subcommand) against the live server.
 
 ---
 
