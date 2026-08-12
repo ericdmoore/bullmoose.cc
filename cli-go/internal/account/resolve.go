@@ -9,10 +9,14 @@
 // calls Pick, so a selector means the same thing everywhere.
 package account
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
 
-// ErrNotImplemented marks the seam T6 has yet to fill. The cli/009 test treats
-// it as "skip, for the right reason".
+// ErrNotImplemented marked the seam before T6 filled it. Kept exported because
+// the cli/009 regression test still references it; Pick no longer returns it.
 var ErrNotImplemented = errors.New("cli-go: native account resolution not implemented (s08 T6)")
 
 // The two failure modes, distinguished because they map to different exit codes
@@ -32,7 +36,9 @@ type Account struct {
 	Name      string
 }
 
-// Pick resolves an --account selector to EXACTLY ONE account, or an error.
+// Pick resolves an --account selector to EXACTLY ONE account, or an error —
+// packages/cli/src/db.ts:221 pickAccount, over the same matchAccounts
+// fall-through Select uses.
 //
 // The rule, applied identically everywhere (cli/009): a selector that matches
 // more than one account is an error, not a choice. `send` was in the old silent
@@ -41,8 +47,31 @@ type Account struct {
 // cannot undo. No match → ErrNoMatch (exit 3); more than one → ErrAmbiguous
 // (exit 2); exactly one → that account.
 //
-// T6 implements this; until then it returns ErrNotImplemented so the test skips
-// rather than passing for the wrong reason.
+// s08 T6 fills this seam the first time a SINGLE-ACCOUNT WRITE goes native
+// (devPlan.md:151). `approvals` is that write — a per-account decision surface —
+// so it routes here rather than duplicating account resolution and reintroducing
+// exactly the inconsistency cli/009 closed. The returned errors WRAP the
+// sentinels, so `errors.Is` still identifies them and the caller maps each to its
+// exit code (ambiguous → usage/2, no match → not found/3).
 func Pick(accounts []Account, selector string) (Account, error) {
-	return Account{}, ErrNotImplemented
+	// Pick is the selector-PRESENT resolver; the no-selector default belongs to
+	// the caller (db.ts:222), so an empty selector is treated as no match here.
+	matches := match(accounts, "", selector)
+	if len(matches) == 0 {
+		have := make([]string, len(accounts))
+		for i, a := range accounts {
+			have[i] = Label(a)
+		}
+		return Account{}, fmt.Errorf("%w: --account %q (have: %s)",
+			ErrNoMatch, selector, strings.Join(have, ", "))
+	}
+	if len(matches) > 1 {
+		named := make([]string, len(matches))
+		for i, a := range matches {
+			named[i] = Label(a)
+		}
+		return Account{}, fmt.Errorf("%w: --account %q matches %d accounts; name one of: %s",
+			ErrAmbiguous, selector, len(matches), strings.Join(named, ", "))
+	}
+	return matches[0], nil
 }

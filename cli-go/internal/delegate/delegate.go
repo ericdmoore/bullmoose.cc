@@ -20,15 +20,24 @@ var native = map[string]func(argv []string) int{}
 
 // Dispatch routes one invocation and returns the process exit code.
 //
-// A native handler serves the command only when its argv is one the native
-// commands fully own (ownedNatively, native.go): help and unowned/unknown flags
-// still go to Node, so those paths stay byte-identical. It may not return at
-// all: when the delegate dies by a signal, Run re-raises that signal here so the
-// parent reports the child's disposition rather than its own (`arch.md` §4).
+// A PORTED native command (one that shadows a TypeScript command) serves the
+// invocation only when its argv is one the native commands fully own
+// (ownedNatively, native.go): help and unowned/unknown flags still go to Node, so
+// those paths stay byte-identical. That guard exists to preserve byte-identity
+// against a Node twin.
+//
+// A GO-NATIVE-ONLY command (nativeOnly, native.go) has no Node twin, so there is
+// nothing to be byte-identical to and nothing to delegate to — `approvals` (s08,
+// the first strictly-more-capable command) is the case. It runs native
+// unconditionally; delegating it would hit "command not found" in the Node CLI.
+//
+// Dispatch may not return at all: when the delegate dies by a signal, Run
+// re-raises that signal here so the parent reports the child's disposition rather
+// than its own (`arch.md` §4).
 func Dispatch(argv []string) int {
 	command := Command(argv)
 
-	if run, ok := native[command]; ok && ownedNatively(argv) {
+	if run, ok := native[command]; ok && (nativeOnly[command] || ownedNatively(argv)) {
 		Trace(os.Stderr, "native", command)
 		return run(argv)
 	}
