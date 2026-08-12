@@ -63,12 +63,13 @@ export const SECTIONS: readonly Section[] = [
     id: "approvals",
     label: "Approvals",
     href: "/approvals",
-    status: "planned",
-    reason: "no proposal queue yet",
-    detail:
-      "ActionProposal is fully specified (s03.D arch.md:19-36) and built nowhere — " +
-      "nothing produces a proposal, so there is nothing to approve, edit or decline. " +
-      "s07 T4 builds the queue and the producer behind it.",
+    // Live as of s07 T4, over s03.D T1's ActionProposal collection
+    // (services/jmap/src/methods/actionProposal.ts): the cross-agent queue
+    // with Approve / Edit / Decline inline. Its own caveat — the tier-2 hold
+    // tray has no commit path until s03.D T2 — is rendered by the section
+    // itself (lib/approvals/rows.ts HOLD_UNWIRED_NOTE) rather than duplicated
+    // into the nav where it would drift.
+    status: "live",
   },
   {
     id: "agents",
@@ -122,12 +123,12 @@ export const SECTIONS: readonly Section[] = [
     id: "search",
     label: "Search",
     href: "/search",
-    status: "planned",
-    reason: "cross-realm query not built",
-    detail:
-      "The realms are not equally searchable — mail is FTS5-indexed, contacts and " +
-      "calendar are full scans, files has no search path at all. s07 T6 ships the " +
-      "fan-out with a scope note that says which is which.",
+    // Live as of s07 T6, as the stub-that-names-its-limits: one query fans out
+    // to mail (FTS5-indexed), contacts and calendar (full scans), and the page
+    // itself declares what is indexed vs scanned vs not searched at all —
+    // files, attachment contents — via `lib/search/scope.ts`, rather than
+    // duplicating that coverage story into the nav where it would drift.
+    status: "live",
   },
   {
     id: "settings",
