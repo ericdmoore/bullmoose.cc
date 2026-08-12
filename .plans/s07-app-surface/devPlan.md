@@ -148,7 +148,7 @@ not searched: attachment contents — requires the extraction index
 
 ## Tasks (in dependency order)
 
-### T0 — The home view · *the thing that makes this not a file manager*
+### T0 — The home view · ✅ **DONE** — *the thing that makes this not a file manager*
 
 **Files:** `webmail/src/pages/index.astro`, `webmail/src/lib/home/`.
 
@@ -298,7 +298,7 @@ Both realms have full CRUD on **JMAP and DAV** already.
 
 **Server routes needed:** none.
 
-### T4 — `/approvals` and `/agents` · *the part with no prior art*
+### T4 — `/approvals` ✅ **DONE** · `/agents` ⛔ (needs `/console/*` served) · *the part with no prior art*
 
 **Files:** `webmail/src/pages/approvals.astro`, `agents.astro`, plus `s03.D` T1 server work.
 
@@ -481,7 +481,7 @@ console will faithfully display a broken preference.
 **Done when:** the three numbers compute from real rows; an agent with no recorded cost
 renders "not recorded" rather than a flattering zero.
 
-### T6 — `/search` · *cross-realm, and honest about what it can reach*
+### T6 — `/search` ✅ **DONE (stub)** · *cross-realm, and honest about what it can reach*
 
 **Files:** `webmail/src/pages/search.astro`, `services/jmap/`, `services/agent/src/mcp.ts`.
 

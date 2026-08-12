@@ -45,7 +45,7 @@ identically for permissions and for actions.
 
 ## 2. Tiers drive behaviour, not labels
 
-`tier` is a property of `kind` and decides what the system is permitted to do:
+`tier` is a property of `kind` and decides what the system is permitted to do. (Note: it is *stored* as a per-proposal column, not re-derived from `kind` at read time — the producer sets it, so a future `kind` could carry a variable tier without a schema change.)
 
 | Tier | On approve | May graduate? |
 |---|---|---|
