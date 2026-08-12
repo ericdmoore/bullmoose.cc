@@ -1,0 +1,152 @@
+// Row presentation rules: what a tier MEANS at the approve button, how a
+// payload summarizes into one line, and the capability gate the whole section
+// hides behind. Pure, tested, and the reason the island can stay markup-only.
+
+import { hasAgentCapability, MAIL_CAP } from "../jmap/capabilities";
+import type { Session } from "../jmap/types";
+import type { ActionProposal, ProposalTier, RejectReason } from "./types";
+
+// ── the gate ──────────────────────────────────────────────────────────────
+
+export type ApprovalsGateState = "open" | "no-capability";
+
+export interface ApprovalsGate {
+  state: ApprovalsGateState;
+  reason: string;
+}
+
+/**
+ * The plain-client floor (s03-webAccess/arch.md §8.6), same shape as
+ * `lib/console/gate.ts`: with `urn:bullmoose:params:jmap:agent` absent this
+ * section is an explanation, not an error and not a dead region. Its own
+ * function rather than a reuse of `consoleGate` because the wording is the
+ * surface — "no agents to govern" and "no proposals to decide" are different
+ * sentences.
+ */
+export function approvalsGate(session: Pick<Session, "capabilities"> | undefined): ApprovalsGate {
+  if (!session) return { state: "no-capability", reason: "no session yet" };
+  if (!hasAgentCapability(session)) {
+    return {
+      state: "no-capability",
+      // Not an error string: a server without the capability is the supported
+      // plain-client configuration, and nothing proposes work there.
+      reason:
+        "This server does not advertise the bullmoose agent capability, so no agent can " +
+        "propose work and there is nothing to approve. Mail, contacts and calendar are unaffected.",
+    };
+  }
+  return { state: "open", reason: "agent capability advertised" };
+}
+
+/**
+ * Which account the queue reads. The live session keys `primaryAccounts` by
+ * the IETF capabilities only (services/jmap/src/session.ts:77-83 — no agent
+ * entry), so the mail primary is the honest anchor, with the first account as
+ * the fallback a grant-only session gets.
+ */
+export function approvalsAccountId(session: Pick<Session, "primaryAccounts" | "accounts">): string {
+  return session.primaryAccounts[MAIL_CAP] ?? Object.keys(session.accounts)[0] ?? "";
+}
+
+// ── tiers at the buttons ──────────────────────────────────────────────────
+
+/** Short pill text — the reversibility claim, visible on every row. */
+export function tierLabel(tier: ProposalTier): string {
+  switch (tier) {
+    case 1:
+      return "tier 1 · reversible";
+    case 2:
+      return "tier 2 · retractable";
+    case 3:
+      return "tier 3 · irreversible";
+  }
+}
+
+/**
+ * What the approve button SAYS, which must match what approving DOES
+ * (arch.md §2, actionProposal.ts:38-47):
+ *   tier 1 — applied immediately, an undo handle is kept;
+ *   tier 2 — enters the hold tray as `held`; NOTHING egresses, because
+ *            committing out of the tray is s03.D T2 and is not built;
+ *   tier 3 — the real thing, immediately: the server reuses the actual send
+ *            gate, so the label must not soften it.
+ */
+export function approveVerb(tier: ProposalTier): string {
+  switch (tier) {
+    case 1:
+      return "Approve — applies now, undoable";
+    case 2:
+      return "Approve — holds, nothing sent yet";
+    case 3:
+      return "Approve & send — irreversible";
+  }
+}
+
+/** The fine print under a tier-3 row: where the guarantee actually lives. */
+export const TIER3_CAPABILITY_NOTE =
+  "Approving this calls the real send gate and requires your send capability — " +
+  "an agent token is refused by the same check (actionProposal.ts:252-266), so " +
+  "irreversible egress is a human click every time.";
+
+/**
+ * The hold-tray affordances that are NOT wired: commit-now and yank are
+ * s03.D T2 (actionProposal.ts:268-271). The buttons render disabled with this
+ * text visible, because an enabled button here would be a lie about egress —
+ * and no affordance at all would hide that the tray has an exit.
+ */
+export const HOLD_UNWIRED_NOTE = "commit / yank land with s03.D T2 — not wired yet";
+
+// ── the no-thanks signal (arch.md §3) ─────────────────────────────────────
+
+/**
+ * The three reasons, in the order the decline panel offers them. `notNow`
+ * last and visually a snooze: it deliberately trains nothing and must not be
+ * the reflex click.
+ */
+export const REJECT_REASONS: ReadonlyArray<{ reason: RejectReason; label: string; hint: string }> = [
+  { reason: "wrongContent", label: "Wrong content", hint: "right action, badly done — trains the drafter" },
+  { reason: "wrongAction", label: "Wrong action", hint: "should not have been proposed — trains the classifier" },
+  { reason: "notNow", label: "Not now", hint: "a snooze; counts against nothing" },
+];
+
+// ── one-line summaries ────────────────────────────────────────────────────
+
+/**
+ * The row's headline: what the agent wants to do, from the payload it wants
+ * to do it with. `grant-request` renders through the same function because it
+ * shares the queue (arch.md §1) — an agent asking for a permission and an
+ * agent proposing a reply are the same interaction, so there is deliberately
+ * no separate surface and no separate summarizer.
+ */
+export function summarizeProposal(p: ActionProposal): string {
+  const s = (v: unknown): string => (typeof v === "string" ? v : "");
+  switch (p.kind) {
+    case "reply-draft":
+      return `Reply to ${s(p.payload.to) || "(unknown recipient)"} — “${s(p.payload.subject)}”`;
+    case "start-thread":
+      return `Start a thread to ${s(p.payload.to) || "(unknown recipient)"} — “${s(p.payload.subject)}”`;
+    case "create-contact": {
+      const card = (p.payload.card ?? {}) as { name?: { full?: unknown } };
+      return `Add contact ${s(card.name?.full) || "(unnamed)"}`;
+    }
+    case "create-event":
+      return `Create event “${s(p.payload.title)}”`;
+    case "unsubscribe":
+      return `Unsubscribe from ${s(p.payload.listName) || s(p.payload.to) || p.subject.objectId}`;
+    case "organize-files":
+      return `Organize files under ${s(p.payload.target) || p.subject.objectId}`;
+    case "grant-request": {
+      const scope = s(p.payload.scope) || "access";
+      const target = s(p.payload.target) || s(p.payload.realm) || p.subject.realm;
+      const days = typeof p.payload.durationDays === "number" ? ` for ${p.payload.durationDays} days` : "";
+      return `Requests ${scope} on ${target}${days}`;
+    }
+    default:
+      return `${p.kind} on ${p.subject.realm} ${p.subject.objectId}`;
+  }
+}
+
+/** The body preview a reply-shaped payload carries, if any. */
+export function payloadText(payload: Record<string, unknown>): string | null {
+  return typeof payload.text === "string" && payload.text.length > 0 ? payload.text : null;
+}

@@ -63,12 +63,13 @@ export const SECTIONS: readonly Section[] = [
     id: "approvals",
     label: "Approvals",
     href: "/approvals",
-    status: "planned",
-    reason: "no proposal queue yet",
-    detail:
-      "ActionProposal is fully specified (s03.D arch.md:19-36) and built nowhere — " +
-      "nothing produces a proposal, so there is nothing to approve, edit or decline. " +
-      "s07 T4 builds the queue and the producer behind it.",
+    // Live as of s07 T4, over s03.D T1's ActionProposal collection
+    // (services/jmap/src/methods/actionProposal.ts): the cross-agent queue
+    // with Approve / Edit / Decline inline. Its own caveat — the tier-2 hold
+    // tray has no commit path until s03.D T2 — is rendered by the section
+    // itself (lib/approvals/rows.ts HOLD_UNWIRED_NOTE) rather than duplicated
+    // into the nav where it would drift.
+    status: "live",
   },
   {
     id: "agents",
