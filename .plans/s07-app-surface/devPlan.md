@@ -447,8 +447,43 @@ accordingly.
 `services/agent/src/`.
 
 Add to `agent_invocations`: `provider TEXT`, `model TEXT`, `tokens_in INTEGER`,
-`tokens_out INTEGER`, `cost_usd REAL`. Nullable — historical rows keep NULL and must render
-as *not recorded*, never as zero. A zero would make every past invocation look free.
+`tokens_out INTEGER`, `cost_micros INTEGER`.
+
+**`cost_micros`, not `cost_usd REAL`.** Micro-USD (1 USD = 1,000,000), a recognised
+convention (Google billing), integer — no float-money bugs, exact sums. It also makes the
+arithmetic division-free: prices are quoted per **million** tokens, so
+`cost_micros = tokens × price_per_million_dollars` — the "per million" and the "millionth of
+a dollar" cancel. SQLite `INTEGER` is 64-bit, so ~$9.2T of headroom; no bigint decision.
+
+**Frozen at capture, and store the FACTS alongside.** The cost is what it cost *then* — an
+accounting fact that must NOT drift when `models.dev` prices move; recomputing historical
+spend from today's map is the real silent-wrongness. But bullmoose's cost is a blended
+*estimate* (`models.ts:160`: `input + 3×output`), not an invoice, so keep `tokens_in/out` +
+`model` + `provider` to audit or recompute the *formula* if it was wrong — store the answer,
+keep the receipt.
+
+**NULL vs 0 is a real distinction, not a fallback:**
+- **`0`** = known and genuinely free — a `@local/` Ollama run reads "$0.00" because in dollar
+  terms it was.
+- **`NULL`** = undetermined — an unpriceable provider (the `018` workers-ai bug) or a
+  pre-migration row — and renders *"not recorded,"* never 0.
+
+So a local agent shows an honest zero; only the genuinely-unknown reads unrecorded. That
+split is exactly what the *"is this agent worth its spend"* score needs — "free" and
+"unmeasured" must not collapse together.
+
+> **The facts are stored for a job that does not exist yet:** optimising model/provider for
+> **$/work**. That decomposes as `tokens/work × $/token`, and you cannot optimise what you
+> did not record — which is the whole reason to keep the token facts and not just the rolled-up
+> cost. Plausibly this becomes a standing background loop (Allen's territory — the analyst
+> already reasons about spend). Not scoped here; flagged so the facts are understood as its
+> substrate, not redundant columns beside `cost_micros`.
+
+**The capture point is throwing the data away today.** `callModel` (`services/agent/src/models.ts:61`)
+already RECEIVES usage — the gateway path's `res.json()` returns `{choices, usage}` and reads
+only `choices`; the Workers AI path's `env.AI.run` returns usage too and reads only
+`.response`. T5's first move is making `callModel` **return** the usage it already has, before
+any column exists.
 
 **What the approval queue shows: `tokenCount`, `costAmt`, `provider`. Deliberately NOT
 `modelName`.**
