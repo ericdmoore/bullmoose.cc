@@ -78,6 +78,12 @@ stamped `asOf`; disabling the UI leaves the email working.
 
 ## T5 — Promote repetition to policy
 
+> **Needed-detail:** [`decline-taxonomy.md`](./decline-taxonomy.md) — the directed no-signal
+> (`wrongContent`/`wrongAction`/`unsafe` + the `tookItMyself`/`defer` non-feedback actions),
+> and the pipeline invariant that `defer`/`tookItMyself` are NOT negative. Repetition of a
+> reason feeds two DIFFERENT promotions — autonomy (repeated approve) vs scheduling (repeated
+> `defer` → `s11-scheduling`) — and conflating them is the failure mode.
+
 - Detect repetition (N approvals of one `kind`/subject; a bulk filter application) and
   offer the promotion: autonomy dial ▸ `autoGrant` template ▸ ingest rule.
 - Write through a **narrow interface**; s04 owns the semantics (`arch.md` §4).

@@ -478,6 +478,10 @@ split is exactly what the *"is this agent worth its spend"* score needs — "fre
 > cost. Plausibly this becomes a standing background loop (Allen's territory — the analyst
 > already reasons about spend). Not scoped here; flagged so the facts are understood as its
 > substrate, not redundant columns beside `cost_micros`.
+>
+> **Now specified in `.plans/s11-scheduling/`** — the optimistic scheduler spends these facts
+> against a deadline (sit free, escalate near-due), and its own T5 is the `$/work` optimiser
+> this line anticipated.
 
 **The capture point is throwing the data away today.** `callModel` (`services/agent/src/models.ts:61`)
 already RECEIVES usage — the gateway path's `res.json()` returns `{choices, usage}` and reads

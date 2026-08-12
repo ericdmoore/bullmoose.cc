@@ -58,6 +58,8 @@ AgentNote        per-thread agent-private annotation (vendor object,
 
 All of these live under a vendor capability `urn:bullmoose:params:jmap:agent` — visible to our webmail, native apps, and CLI; invisible to plain-JMAP clients like himalaya (per the §19 keyword-vs-capability boundary).
 
+> **Scheduling layer:** the queue is claim-FIRST-AVAILABLE. Making it claim-SMART — sit for a free `@local` runtime, escalate to paid cloud only near a due-date, treat out-of-budget as a queue state — is specified in `.plans/s11-scheduling/`, sitting on s07 T5's cost facts.
+
 **Pull-based by design.** The platform never calls into an agent runtime. Invocations are created, state-bumped, and pushed like any other collection; the runtime — cloud Worker or homelab process — *watches for work* over the same WS/changes machinery as mail. A homelab hermes and a cloud Emily implement the identical contract and are interchangeable.
 
 ---

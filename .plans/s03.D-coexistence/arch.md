@@ -34,7 +34,7 @@ ActionProposal {
                // pending→expired past it. (folded from s07 §T0; T1 built it.)
   editedPayload // a human edit lands HERE and never overwrites `payload`, so
                // the agent's original survives as the diff the s07 score reads.
-  decision     { by, reason, note }         // the no-thanks signal — §3
+  decision     { by, reason, note }         // the no-thanks signal — §3; taxonomy in decline-taxonomy.md
 }
 ```
 
