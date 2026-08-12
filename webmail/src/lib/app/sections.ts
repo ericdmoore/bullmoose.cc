@@ -123,12 +123,12 @@ export const SECTIONS: readonly Section[] = [
     id: "search",
     label: "Search",
     href: "/search",
-    status: "planned",
-    reason: "cross-realm query not built",
-    detail:
-      "The realms are not equally searchable — mail is FTS5-indexed, contacts and " +
-      "calendar are full scans, files has no search path at all. s07 T6 ships the " +
-      "fan-out with a scope note that says which is which.",
+    // Live as of s07 T6, as the stub-that-names-its-limits: one query fans out
+    // to mail (FTS5-indexed), contacts and calendar (full scans), and the page
+    // itself declares what is indexed vs scanned vs not searched at all —
+    // files, attachment contents — via `lib/search/scope.ts`, rather than
+    // duplicating that coverage story into the nav where it would drift.
+    status: "live",
   },
   {
     id: "settings",
