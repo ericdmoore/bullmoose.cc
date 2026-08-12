@@ -19,6 +19,18 @@ func Register(command string, run func(argv []string) int) {
 	native[command] = run
 }
 
+// nativeOnly names the native commands that have NO TypeScript twin, so Dispatch
+// must never delegate them (Node has no such command) and the ownedNatively
+// byte-identity guard does not apply to them. Populated by RegisterNativeOnly
+// from cmd's registry.
+var nativeOnly = map[string]bool{}
+
+// RegisterNativeOnly marks a command as Go-native-only — see Dispatch. `approvals`
+// (s08) is the first: a server-backed decision surface the Node CLI never had.
+func RegisterNativeOnly(command string) {
+	nativeOnly[command] = true
+}
+
 // ownedValueFlags: the value-taking flags the wave-1 native commands consume
 // (main.ts:64-163). Deliberately a SUBSET of the full parseArgs spec — under-
 // inclusion only over-delegates, and Node produces identical bytes for a
