@@ -212,6 +212,19 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
   created_at   INTEGER NOT NULL,
   claimed_at   INTEGER,
   done_at      INTEGER,
+  -- s07 T5 — what this invocation cost, frozen at capture by the drain's
+  -- finish() and never recomputed from a later pricing map. cost_micros is
+  -- micro-USD (1 USD = 1,000,000; integer, no float money). NULL vs 0 is
+  -- load-bearing: 0 = known and genuinely free (Workers AI allocation);
+  -- NULL = undetermined (unpriceable model, provider reported no usage,
+  -- pre-migration row) and renders "not recorded", never $0.00. The token
+  -- and provider/model columns are the receipt — they let the pricing
+  -- formula be audited or refined later without touching the frozen answer.
+  provider     TEXT,
+  model        TEXT,
+  tokens_in    INTEGER,
+  tokens_out   INTEGER,
+  cost_micros  INTEGER,
   PRIMARY KEY (account_id, id)
 );
 CREATE INDEX IF NOT EXISTS invocations_status

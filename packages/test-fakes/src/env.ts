@@ -84,6 +84,10 @@ export interface FakeEnv {
   DEV_USERNAME: string;
   SHARE_SIGNING_KEY?: string;
   DEV_BEARER_TOKEN?: string;
+  /** Unset by default (see above); a Workers AI test assigns its own stub. */
+  AI?: Ai;
+  GATEWAY_COMPAT_URL?: string;
+  GATEWAY_TOKEN?: string;
 }
 
 export interface FakeWorker {

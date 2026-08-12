@@ -8,9 +8,11 @@ import { proposeReply, expireStaleProposals } from "./proposals.js";
 import { handleVault, handleVaultVerify } from "./vault.js";
 import {
   callWithFallback,
+  invocationCost,
   refreshPricing,
   type BindingConfig,
   type Env,
+  type InvocationCost,
 } from "./models.js";
 
 /**
@@ -179,8 +181,8 @@ async function reportHeldBacklog(env: Env): Promise<void> {
 async function runInvocation(env: Env, job: Job): Promise<void> {
   const cfg = JSON.parse(job.config_json) as BindingConfig;
   const store = new Mailstore(env.DB, env.BLOBS);
-  const done = (status: "done" | "failed", result: Record<string, unknown>) =>
-    finish(env, job, status, result);
+  const done = (status: "done" | "failed", result: Record<string, unknown>, cost?: InvocationCost) =>
+    finish(env, job, status, result, cost);
 
   if (!job.email_id) return done("failed", { note: "no email context" });
   const email = await store.getEmailRow(job.account_id, job.email_id);
@@ -196,7 +198,11 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
 
   // Ledger pipeline diverges before any reply-path gate: receipts come
   // from automated senders (Auto-Submitted, bulk) on purpose, and the
-  // sender is never who we talk back to.
+  // sender is never who we talk back to. Its cost columns stay NULL ("not
+  // recorded"): the pipeline makes up to three model calls (extract, retry,
+  // narrate), each with its own fallback resolution, and one provider/model
+  // pair cannot honestly describe that — s07 T5 scopes the stamp to
+  // single-call invocations.
   if (cfg.pipeline === "ledger") {
     return runLedger(env, store, job, cfg, email, parsed, selfAddress, done);
   }
@@ -256,8 +262,11 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   ];
 
   try {
-    const { output, used } = await callWithFallback(env, candidates, prompt, cfg.maxTokens ?? 2048);
+    const { output, usage, used } = await callWithFallback(env, candidates, prompt, cfg.maxTokens ?? 2048);
     const model = `${used.provider}/${used.model}`;
+    // Freeze the cost NOW, at capture (s07 T5) — priced against today's map,
+    // never recomputed when models.dev moves. NULL = undetermined; 0 = free.
+    const cost = await invocationCost(env, used, usage);
     const replyText = `${output}\n\n— ${job.binding_name} · ${model} · bullmoose agent`;
 
     // Tier gate (s03.D arch §2): sending a reply is a tier-2 (retractable)
@@ -275,11 +284,11 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
         model,
         sourceEmailId: email.id,
       });
-      return done("done", { kind: "reply-draft", tier: 2, proposalId, model, alias: aliasName });
+      return done("done", { kind: "reply-draft", tier: 2, proposalId, model, alias: aliasName }, cost);
     }
 
     const replyId = await reply(replyText, { model, alias: aliasName });
-    return done("done", { model, alias: aliasName, replyId });
+    return done("done", { model, alias: aliasName, replyId }, cost);
   } catch (err) {
     // Every route failed — say so (the sender is allowlisted; this is for Eric).
     const detail = String(err instanceof Error ? err.message : err);
@@ -380,17 +389,38 @@ async function sendReply(
   return emailId;
 }
 
+/**
+ * The single finalisation write. `cost` (s07 T5) stamps what the invocation
+ * cost when it completed — frozen, never recomputed at read. Absent cost
+ * leaves the columns NULL, which downstream renders "not recorded"; only a
+ * genuinely-free run stores 0 (see `invocationCost`).
+ */
 async function finish(
   env: Env,
   job: Job,
   status: "done" | "failed",
   result: Record<string, unknown>,
+  cost?: InvocationCost,
 ): Promise<void> {
   await env.DB.prepare(
-    `UPDATE agent_invocations SET status = ?, result_json = ?, note = ?, done_at = ?
+    `UPDATE agent_invocations
+     SET status = ?, result_json = ?, note = ?, done_at = ?,
+         provider = ?, model = ?, tokens_in = ?, tokens_out = ?, cost_micros = ?
      WHERE account_id = ? AND id = ?`,
   )
-    .bind(status, JSON.stringify(result), (result.note as string) ?? null, Date.now(), job.account_id, job.id)
+    .bind(
+      status,
+      JSON.stringify(result),
+      (result.note as string) ?? null,
+      Date.now(),
+      cost?.provider ?? null,
+      cost?.model ?? null,
+      cost?.tokensIn ?? null,
+      cost?.tokensOut ?? null,
+      cost?.costMicros ?? null,
+      job.account_id,
+      job.id,
+    )
     .run();
   await commitChanges(env.ACCOUNT_DO, job.account_id, [
     { collection: "AgentInvocation", updated: [job.id] },

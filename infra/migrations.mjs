@@ -215,6 +215,25 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "invocation-cost-columns",
+    why: "s07 T5: cost frozen at capture. The agent worker's finish() names these columns in its UPDATE, so a worker deployed against a database missing them fails EVERY invocation finalisation — not merely a dashboard reading NULL",
+    blocks: "deploy",
+    // cost_micros is the last column applied, so it is the honest sentinel
+    // for "did the whole group land" (precedent: identities-jmap-properties).
+    check: hasColumn("agent_invocations", "cost_micros"),
+    up: [
+      "ALTER TABLE agent_invocations ADD COLUMN provider TEXT",
+      "ALTER TABLE agent_invocations ADD COLUMN model TEXT",
+      "ALTER TABLE agent_invocations ADD COLUMN tokens_in INTEGER",
+      "ALTER TABLE agent_invocations ADD COLUMN tokens_out INTEGER",
+      "ALTER TABLE agent_invocations ADD COLUMN cost_micros INTEGER",
+      // Deliberately no backfill: a pre-migration row's NULL is the truthful
+      // value — "not recorded" — and the whole point of the NULL/0 split.
+    ],
+    absent: ["CREATE TABLE agent_invocations (id TEXT NOT NULL, account_id TEXT NOT NULL)"],
+  },
+
+  {
     id: "emails-fts-map",
     why: "a contentless FTS5 table returns NULL for its own UNINDEXED columns, so the rowid↔email-id mapping cannot live inside emails_fts",
     blocks: null,
