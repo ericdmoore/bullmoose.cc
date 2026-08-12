@@ -174,8 +174,10 @@ Three concentric containments:
    change rules) are disabled or require an explicit human-in-the-loop
    confirmation, never taken autonomously from inbox-derived reasoning.
 
-**Design.**
-- `agent_bindings.config_json` gains `allowedRecipients` (out-list) and a
+**Design.** *(The `allowedRecipients` mechanism below is specified and built in
+`.plans/s10-agents/` T1 — fail-closed, and promoted OUT of `config_json` into a typed
+column rather than staying in the blob, per s07 decision 7.)*
+- `agent_bindings` gains `allowedRecipients` (out-list) and a
   `grants` reference; `benedict@` holds a `read+query` grant on `eric@`
   (§3).
 - v1 tools are a **read-only analytics surface**: bounded queries over the

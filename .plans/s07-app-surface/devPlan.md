@@ -390,14 +390,17 @@ own rate; do not fold it into approvals.
 ⚠️ **Also add `expiresAt`** (see T0). `status: expired` exists with no field that produces
 it, so nothing can currently expire and nothing can show a countdown.
 
-**`/agents/<id>` must also show how the agent is CONFIGURED**, not just what it has done.
+**`/agents/<id>` must also show how the agent is CONFIGURED**, not just what it has done —
+and the configuration surface (CLI + WebUI), plus the two controls it depends on
+(`allowedRecipients`, the typed config core), is specified in full in **`.plans/s10-agents/`**.
+This section builds the activity/queue half; s10 builds the config half.
 Three questions, and they have three different answers today:
 
 | question | state |
 |---|---|
 | **what can it read / edit / do?** | ✅ modelled and rendered — `s03.E`'s scope expansion through the real `hasScope`, plus grants and credential references |
 | **who can talk to it?** | ⚠️ **enforced but invisible.** `config.allowedSenders` gates inbound at `services/agent/src/index.ts:209-211` (`skipped: <sender> not in allowedSenders`) — and the console renders `replyMode` but never `allowedSenders` |
-| **who will it respond to?** | ❌ **not bounded at all.** There is no `allowedRecipients`, no outbound address allowlist, nothing anywhere in `services/` or `packages/` |
+| **who will it respond to?** | ❌ **not bounded at all** — no `allowedRecipients` anywhere in `services/`/`packages/`. **Built in `s10-agents` T1**, fail-closed; the config surface cannot honestly offer this control until then |
 
 That third row is the finding. **Inbound has a gate; outbound has none.** For `analyst@` it
 does not bite — `digestTargets` is a fixed operator-written map. For a *social* agent it is
@@ -575,14 +578,16 @@ T1 origin + door ──┬─→ T2 /settings ───────────�
    per-proposal, optional, aggregated up — a per-period number invites invention.*
 4. **Does `/search` search *other people's* shared realms?** *Recommendation: no, not in the
    first cut. Cross-account search is a permissions surface of its own.*
-5. **Does an agent with no `allowedRecipients` send freely, or not at all?** The Bureau
+5. **Does an agent with no `allowedRecipients` send freely, or not at all?** → **owned by
+   `s10-agents` T1** (the outbound bound is that section's first task, fail-closed). The Bureau
    answered the same question with fail-closed (invariant 5). *Recommendation: match it —
    unbound means cannot send. It is the safer default and the inconsistency of having two
    answers to one question is worse than either answer.*
 6. **Where does attachment extraction run?** Containers, a queue plus a durable consumer, or
    an external service. *Recommendation: defer until someone actually wants it — the tiering
    decision above is what needs to be true now, and it holds regardless of which one wins.*
-7. **Does the typed agent-config core get its own columns, or stay in `config_json`?**
+7. **Does the typed agent-config core get its own columns, or stay in `config_json`?** →
+   **owned by `s10-agents` T1** (typed columns for the core, blob for the remainder).
    *Recommendation: columns for the four the console enforces (`allowedSenders`,
    `allowedRecipients`, `replyMode`, `enabled`), blob for the agent-specific remainder —
    otherwise the console is parsing untyped JSON to decide what to warn about.*

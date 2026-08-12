@@ -5,7 +5,8 @@
 | **Kind** | projection |
 | **Effort** | **E4** — screens on the `s03.C` stack, which does not exist |
 | **Impact** | **I1** — human-verifiable (revoke a grant, reload, watch the answer change), unlocks nothing. Regraded from `I2` at review; `s03.E` is the terminal leaf of the arc — `s03.C` blocks it, `s04` gates it, nothing follows. The argument is in *Open questions*; the ledger now agrees |
-| **Owner** | **`s03.E`** — `.plans/s03.E-console/{readme,devPlan}.md` |
+| **Owner** | **`s03.E`** (activity/console) — `.plans/s03.E-console/{readme,devPlan}.md` |
+| **Config half** | **`s10-agents`** — this unit is the *activity* surface (who can do what, what they've done). The agent **configuration** surface (list/show/edit/create/remove, `allowedRecipients`, the typed config core) is `.plans/s10-agents/`. Do not build config CRUD here. |
 | **Depends on** | **`s04` governance model, specified** · `021` (the shell) · `s03.A` (provenance) |
 | **Status** | todo — **pointer only**, and gated. `s03.E` owns the work. |
 
