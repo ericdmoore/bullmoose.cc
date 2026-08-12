@@ -55,18 +55,52 @@ export interface BindingConfig {
 
 export type ChatMessage = { role: "system" | "user"; content: string };
 
+/** Token counts as the provider reported them, when it reported them at all. */
+export interface TokenUsage {
+  tokensIn: number;
+  tokensOut: number;
+}
+
+/** What one model call produced. `usage` absent = the provider said nothing. */
+export interface ModelResult {
+  output: string;
+  usage?: TokenUsage;
+}
+
 const PRICING_KEY = "cache:modelsdev:slim";
 const PRICING_MAX_AGE_MS = 48 * 3600_000;
+
+/**
+ * Both providers report usage in the OpenAI shape ({prompt_tokens,
+ * completion_tokens}) — the gateway because its compat endpoint IS OpenAI's
+ * schema, Workers AI because its text-generation output mirrors it. Missing or
+ * partial counts map to `undefined`, never to 0: absent usage must land as
+ * NULL cost downstream (s07 T5), not as a flattering zero.
+ */
+function toUsage(u?: { prompt_tokens?: number; completion_tokens?: number }): TokenUsage | undefined {
+  return typeof u?.prompt_tokens === "number" && typeof u?.completion_tokens === "number"
+    ? { tokensIn: u.prompt_tokens, tokensOut: u.completion_tokens }
+    : undefined;
+}
 
 export async function callModel(
   env: Env,
   c: ModelCandidate,
   messages: ChatMessage[],
   maxTokens: number,
-): Promise<string> {
+): Promise<ModelResult> {
   if (c.provider === "mock") {
     const body = messages[messages.length - 1]?.content ?? "";
-    return `[mock markup of your draft]\n${body}\n---\n${body.trim()} (edited)`;
+    const output = `[mock markup of your draft]\n${body}\n---\n${body.trim()} (edited)`;
+    // Deterministic pseudo-usage (chars in ≈ tokens in) so cost capture is
+    // testable end-to-end without a provider.
+    return {
+      output,
+      usage: {
+        tokensIn: messages.reduce((n, m) => n + m.content.length, 0),
+        tokensOut: output.length,
+      },
+    };
   }
 
   if (c.provider === "workers-ai") {
@@ -74,13 +108,19 @@ export async function callModel(
     const out = (await env.AI.run(c.model as Parameters<Ai["run"]>[0], {
       messages,
       max_tokens: maxTokens,
-    })) as { response?: unknown };
+    })) as {
+      response?: unknown;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
     if (out.response === undefined || out.response === null || out.response === "") {
       throw new Error("empty Workers AI response");
     }
     // When the model emits valid JSON, the runtime can hand back a parsed
     // object instead of text — normalize to a string for every caller.
-    return typeof out.response === "string" ? out.response : JSON.stringify(out.response);
+    return {
+      output: typeof out.response === "string" ? out.response : JSON.stringify(out.response),
+      usage: toUsage(out.usage),
+    };
   }
 
   // gateway — AI Gateway's OpenAI-compatible endpoint; provider prefix in
@@ -97,10 +137,13 @@ export async function callModel(
     body: JSON.stringify({ model: c.model, messages, max_tokens: maxTokens }),
   });
   if (!res.ok) throw new Error(`gateway ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error("empty gateway response");
-  return content;
+  return { output: content, usage: toUsage(data.usage) };
 }
 
 /** Try each candidate in ranked order; first success wins. */
@@ -109,11 +152,12 @@ export async function callWithFallback(
   candidates: ModelCandidate[],
   messages: ChatMessage[],
   maxTokens: number,
-): Promise<{ output: string; used: ModelCandidate }> {
+): Promise<{ output: string; usage?: TokenUsage; used: ModelCandidate }> {
   const errors: string[] = [];
   for (const c of await rankByPrice(env, candidates)) {
     try {
-      return { output: await callModel(env, c, messages, maxTokens), used: c };
+      const { output, usage } = await callModel(env, c, messages, maxTokens);
+      return { output, usage, used: c };
     } catch (err) {
       errors.push(`${c.provider}/${c.model}: ${String(err).slice(0, 200)}`);
     }
@@ -121,10 +165,24 @@ export async function callWithFallback(
   throw new Error(errors.join(" | "));
 }
 
-/** Slim pricing map: "provider/model" → blended $ per M tokens. */
+/** One model's $ per M tokens, each direction its own price. */
+interface PriceLegs {
+  input: number;
+  output: number;
+}
+
+/**
+ * Slim pricing map, keyed "provider/model": `prices` is the blended figure
+ * used for ranking; `legs` (s07 T5) keeps input/output separate so recorded
+ * cost is computed per leg, not from the ranking blend. Optional because a
+ * cache written before T5 lacks it — cost then lands NULL until the next
+ * refresh, which is honest ("undetermined"), where a blended fallback would
+ * quietly triple-charge the output leg.
+ */
 interface PricingCache {
   fetchedAt: number;
   prices: Record<string, number>;
+  legs?: Record<string, PriceLegs>;
 }
 
 export async function rankByPrice(
@@ -134,9 +192,17 @@ export async function rankByPrice(
   if (candidates.length < 2) return candidates;
   const cache = await env.ROUTES.get<PricingCache>(PRICING_KEY, "json");
   if (!cache || Date.now() - cache.fetchedAt > PRICING_MAX_AGE_MS) return candidates;
-  // Stable: unknown pricing sorts last, config order breaks ties.
+  // Workers AI runs on the account's free allocation, and its `@cf/...` ids
+  // can never equal a models.dev "provider/model" key, so a cache lookup is
+  // Infinity forever — which sorted the FREE route last (.feedback
+  // agentic/018, inverting every doc). Price it 0 by policy: "free" holds
+  // within the allocation and is metered past it, so this encodes "prefer
+  // the free tier", not a market price.
+  const priceOf = (c: ModelCandidate) =>
+    c.provider === "workers-ai" ? 0 : (cache.prices[c.model] ?? Number.POSITIVE_INFINITY);
+  // Stable: unknown gateway pricing sorts last, config order breaks ties.
   return candidates
-    .map((c, i) => ({ c, i, price: cache.prices[c.model] ?? Number.POSITIVE_INFINITY }))
+    .map((c, i) => ({ c, i, price: priceOf(c) }))
     .sort((a, b) => a.price - b.price || a.i - b.i)
     .map((x) => x.c);
 }
@@ -153,14 +219,65 @@ export async function refreshPricing(env: Env): Promise<{ models: number }> {
     { models?: Record<string, { cost?: { input?: number; output?: number } }> }
   >;
   const prices: Record<string, number> = {};
+  const legs: Record<string, PriceLegs> = {};
   for (const [providerId, provider] of Object.entries(catalog)) {
     for (const [modelId, model] of Object.entries(provider.models ?? {})) {
       const cost = model.cost;
       if (cost?.input === undefined && cost?.output === undefined) continue;
       prices[`${providerId}/${modelId}`] = (cost.input ?? 0) + 3 * (cost.output ?? 0);
+      legs[`${providerId}/${modelId}`] = { input: cost.input ?? 0, output: cost.output ?? 0 };
     }
   }
-  const cache: PricingCache = { fetchedAt: Date.now(), prices };
+  const cache: PricingCache = { fetchedAt: Date.now(), prices, legs };
   await env.ROUTES.put(PRICING_KEY, JSON.stringify(cache));
   return { models: Object.keys(prices).length };
+}
+
+// ---- invocation cost (s07 T5) ----------------------------------------
+
+/**
+ * What `finish()` stamps onto the invocation row when it completes. The cost
+ * is FROZEN here — an accounting fact that must not drift when the pricing
+ * map moves — and tokens/provider/model are kept beside it as the receipt.
+ */
+export interface InvocationCost {
+  provider: string;
+  model: string;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  /** Micro-USD (1 USD = 1,000,000). 0 = genuinely free; null = undetermined. */
+  costMicros: number | null;
+}
+
+/**
+ * tokens × ($ per M tokens) = micro-USD exactly: the "per million" in the
+ * price and the "millionth of a dollar" in micros cancel, so the only
+ * arithmetic beyond two multiplies is the final round.
+ */
+export function priceMicros(tokensIn: number, tokensOut: number, legs: PriceLegs): number {
+  return Math.round(tokensIn * legs.input + tokensOut * legs.output);
+}
+
+/**
+ * The NULL-vs-0 split is the point (s07 T5): 0 means known and genuinely
+ * free (Workers AI's allocation — the same policy `rankByPrice` sorts by);
+ * null means undetermined — usage the provider never reported, or a model
+ * the pricing cache cannot price — and must render "not recorded", never $0.
+ */
+export async function invocationCost(
+  env: Env,
+  used: ModelCandidate,
+  usage: TokenUsage | undefined,
+): Promise<InvocationCost> {
+  const tokensIn = usage?.tokensIn ?? null;
+  const tokensOut = usage?.tokensOut ?? null;
+  const base = { provider: used.provider, model: used.model, tokensIn, tokensOut };
+  if (used.provider === "workers-ai") return { ...base, costMicros: 0 };
+  if (tokensIn === null || tokensOut === null) return { ...base, costMicros: null };
+  // Same freshness rule as rankByPrice: a cache too stale to rank by is too
+  // stale to book dollars against.
+  const cache = await env.ROUTES.get<PricingCache>(PRICING_KEY, "json");
+  const fresh = cache && Date.now() - cache.fetchedAt <= PRICING_MAX_AGE_MS;
+  const legs = fresh ? cache.legs?.[used.model] : undefined;
+  return { ...base, costMicros: legs ? priceMicros(tokensIn, tokensOut, legs) : null };
 }
