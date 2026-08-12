@@ -33,10 +33,11 @@ func main() {
 	// delegated commands — Node installs its own guard in the child.
 	bmio.InstallSIGPIPE()
 
-	// Wire the wave-1 native commands into the delegate's routing map. Derived
-	// from cmd's registry so routing and the cli/008 capability table stay one
-	// source (cmd.Install).
-	cmd.Install(delegate.Register)
+	// Wire the native commands into the delegate's routing map. Derived from
+	// cmd's registry so routing and the cli/008 capability table stay one source
+	// (cmd.Install). Go-native-only commands (approvals, s08) are also registered
+	// as native-only so Dispatch never delegates a command Node does not have.
+	cmd.Install(delegate.Register, delegate.RegisterNativeOnly)
 
 	// Dispatch does not always return: a child that died by a signal is
 	// reported by re-raising that signal here, so the parent's disposition is
