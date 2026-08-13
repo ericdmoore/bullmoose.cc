@@ -358,7 +358,14 @@ CREATE INDEX IF NOT EXISTS invocations_status
 --                        NULL = not paused (or no deadline existed).
 -- needsInfo is an ACTION, not a reject reason: it never writes decision_json,
 -- so it can never be mistaken for negative feedback (the taxonomy's invariant:
--- tookItMyself/defer/needsInfo are excluded from the negative signal).
+-- tookItMyself/needsInfo are excluded from the negative signal, and `unsafe` is
+-- the categorically-separate HARD negative — decline-taxonomy.md).
+--
+-- decision_json.reason is stored as written and NEVER migrated. The live enum
+-- is {wrongContent, wrongAction, unsafe}; `notNow` is retired, so rows decided
+-- before the revision still carry it and are left exactly as recorded — a human
+-- decision is a fact, and a backfill would be an audit hole. Readers tolerate
+-- an unrecognized reason and render it as itself, marked retired.
 --
 -- New table, so a plain schema re-run (CREATE TABLE IF NOT EXISTS) DOES create it
 -- on an existing shard; it is still listed in infra/migrations.mjs

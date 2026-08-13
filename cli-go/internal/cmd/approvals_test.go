@@ -258,7 +258,7 @@ func (fs *fakeServer) applySet(id string, patch map[string]any) (bool, map[strin
 			rs, _ := r.(string)
 			if !rejectReasons[rs] {
 				return false, map[string]any{"type": "invalidProperties",
-					"description": "decision.reason must be wrongContent | wrongAction | notNow"}
+					"description": "decision.reason must be wrongContent | wrongAction | unsafe"}
 			}
 			decision["reason"] = rs
 		}
@@ -921,10 +921,11 @@ func TestRejectReasons_NeedsInfoIsNeverAReason(t *testing.T) {
 		t.Error("needsInfo is an ACTION, not a reject reason — it must never enter rejectReasons " +
 			"(decline-taxonomy.md: the rule a learning pipeline must not break)")
 	}
-	// Mirrors REJECT_REASONS in services/jmap/src/methods/actionProposal.ts. If
-	// the server's enum moves (the taxonomy revises it to
-	// {wrongContent, wrongAction, unsafe}), this fails and both move together.
-	want := map[string]bool{"wrongContent": true, "wrongAction": true, "notNow": true}
+	// Mirrors REJECT_REASONS in services/jmap/src/methods/actionProposal.ts —
+	// the revised set of decline-taxonomy.md, `unsafe` in and `notNow` retired.
+	// The two sides now AGREE, and this is what pins the agreement: if either
+	// moves alone, this fails and they move together.
+	want := map[string]bool{"wrongContent": true, "wrongAction": true, "unsafe": true}
 	if len(rejectReasons) != len(want) {
 		t.Errorf("rejectReasons has %d entries, want %d: %v", len(rejectReasons), len(want), rejectReasons)
 	}
@@ -946,6 +947,93 @@ func TestRejectReasons_NeedsInfoIsNeverAReason(t *testing.T) {
 	}
 	if strings.Contains(rejectReasonList, "needsInfo") {
 		t.Errorf("the usage text offers needsInfo as a reason: %q", rejectReasonList)
+	}
+	// The retirement, both halves. `notNow` may not be OFFERED any more…
+	if rejectReasons["notNow"] {
+		t.Error("notNow is retired (decline-taxonomy.md) and must not be offered as a reject reason")
+	}
+	if strings.Contains(rejectReasonList, "notNow") {
+		t.Errorf("the usage text still offers the retired notNow: %q", rejectReasonList)
+	}
+	// …and must still be READABLE, marked, wherever a recorded decision prints.
+	// Retiring narrows the write path only; history is never migrated.
+	if got := proposal.ReasonLabel("notNow"); got != "notNow (retired)" {
+		t.Errorf("a retired reason must render as itself and marked, got %q", got)
+	}
+}
+
+// A decline typed with the retired reason is refused CLIENT-SIDE, before any
+// round trip, and the refusal names the three that are left. The set is the
+// contract; a stale spelling costs a keystroke, not a request.
+func TestApprovals_Decline_RetiredReasonIsRefusedLocally(t *testing.T) {
+	fs := newFake(true)
+	fs.add(&fakeProp{id: "r1", kind: "reply-draft", tier: 2, rationale: "why", createdAt: time.Now().UnixMilli()})
+	db := newEnv(t, fs, true)
+
+	_, errOut, code := runAP(t, db, "decline", "r1", "--reason", "notNow")
+	if code != int(bmio.ExitUsage) {
+		t.Errorf("a retired reason must exit %d, got %d", bmio.ExitUsage, code)
+	}
+	if !strings.Contains(errOut, "wrongContent, wrongAction, unsafe") {
+		t.Errorf("the refusal must name the reasons that are left, stderr=%q", errOut)
+	}
+	if len(fs.sets) != 0 {
+		t.Error("a retired reason must never reach the server")
+	}
+	if fs.props["r1"].status != "pending" || fs.props["r1"].decision != nil {
+		t.Errorf("a refused decline must record nothing, row=%v", fs.props["r1"])
+	}
+}
+
+// `unsafe` is the hard negative, and it has to be typeable: a reason that cannot
+// be recorded is one nothing can ever weight (decline-taxonomy.md).
+func TestApprovals_Decline_UnsafeIsAccepted(t *testing.T) {
+	fs := newFake(true)
+	fs.add(&fakeProp{id: "u1", kind: "reply-draft", tier: 3, rationale: "why", createdAt: time.Now().UnixMilli()})
+	db := newEnv(t, fs, true)
+
+	out, errOut, code := runAP(t, db, "decline", "u1", "--reason", "unsafe", "--note", "quoted the contract")
+	if code != 0 {
+		t.Fatalf("declining unsafe must succeed, code=%d stderr=%q", code, errOut)
+	}
+	if !strings.Contains(out, "declined") || !strings.Contains(out, "unsafe") {
+		t.Errorf("the echo must name the recorded reason, stdout=%q", out)
+	}
+	d := fs.props["u1"].decision
+	if fs.props["u1"].status != "rejected" || d["reason"] != "unsafe" || d["note"] != "quoted the contract" {
+		t.Errorf("unsafe must land verbatim in the decision record, row=%v", fs.props["u1"])
+	}
+}
+
+// A row decided BEFORE the taxonomy was revised still shows, with its reason
+// intact and marked retired. Nothing migrated it, so the CLI must read it —
+// throwing, hiding it, or printing a reason the human never chose would each be
+// a different way of losing the record.
+func TestApprovals_Show_LegacyReasonStillReads(t *testing.T) {
+	now := time.Now().UnixMilli()
+	fs := newFake(true)
+	fs.add(&fakeProp{
+		id: "old1", kind: "start-thread", tier: 3, status: "rejected", rationale: "the quote expires Friday",
+		createdAt: now - 30*day, decidedAt: now - 29*day,
+		decision: map[string]any{"by": "eric@login.example", "reason": "notNow", "note": "I'll ring them instead."},
+	})
+	db := newEnv(t, fs, true)
+
+	out, errOut, code := runAP(t, db, "show", "old1")
+	if code != 0 {
+		t.Fatalf("a legacy row must still read, code=%d stderr=%q", code, errOut)
+	}
+	if !strings.Contains(out, "reason=notNow (retired)") {
+		t.Errorf("a retired reason must print as itself and marked, stdout=%q", out)
+	}
+	if !strings.Contains(out, "I'll ring them instead.") {
+		t.Errorf("the note recorded with it must survive too, stdout=%q", out)
+	}
+	// The reason must not be laundered into one of the live three.
+	for _, live := range []string{"wrongContent", "wrongAction", "unsafe"} {
+		if strings.Contains(out, live) {
+			t.Errorf("a legacy reason was remapped to %q, stdout=%q", live, out)
+		}
 	}
 }
 

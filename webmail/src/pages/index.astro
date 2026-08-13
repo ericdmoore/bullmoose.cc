@@ -166,6 +166,14 @@ import App from "../layouts/App.astro";
   }
   .home-editor textarea { resize: vertical; }
   .home-reason { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; }
+  /* The hard negative reads apart from the two quality reasons (see
+     approvals.astro; decline-taxonomy.md). */
+  .home-reason-severe {
+    color: var(--error);
+    border-left: 2px solid var(--error);
+    padding-left: 8px;
+    margin-left: -10px;
+  }
 
   /* ── Looking Ahead ── */
   .home-horizon { list-style: none; margin: 0; padding: 0; }

@@ -73,6 +73,10 @@ interface SeedSpec {
   expiresRemainingMs?: number | null;
   /** s11 T1 — the work's deadline, on the INVOCATION (epoch ms). */
   dueAt?: number | null;
+  /** A decision ALREADY on the row — how history (including history recorded
+   * under an older reason taxonomy) is put in front of the read path. */
+  decision?: Record<string, unknown> | null;
+  decidedAt?: number | null;
 }
 
 /** Seed the invocation (source of truth) + its 1:1 proposal side-row. */
@@ -100,6 +104,8 @@ function seedProposal(w: ReturnType<typeof fakeEnv>, s: SeedSpec): void {
       evidence_json: JSON.stringify(s.evidence ?? [{ realm: "Email", objectId: "e_1" }]),
       status: s.status ?? "pending",
       created_at: 1,
+      decision_json: s.decision ? JSON.stringify(s.decision) : null,
+      decided_at: s.decidedAt ?? null,
       expires_at: s.expiresAt ?? null,
       question: s.question ?? null,
       amendments_json: s.amendments ? JSON.stringify(s.amendments) : null,
@@ -338,6 +344,91 @@ describe("rejecting captures the no-thanks signal", () => {
     const res = await h.set({ update: { inv_bad: { status: "rejected", decision: { reason: "meh" } } } });
     expect(res.notUpdated.inv_bad!.type).toBe("invalidProperties");
   });
+
+  it("accepts `unsafe` — the categorically-separate hard negative (decline-taxonomy.md)", async () => {
+    // Not a stronger "no": it says a boundary was crossed (private information
+    // left the account, or the agent committed the human to something). It must
+    // be recordable, because a hard negative that cannot be written is one a
+    // learning pipeline can never weight.
+    const h = harness(["mail"]);
+    seedProposal(h.w, { id: "inv_unsafe", kind: "reply-draft", tier: 2 });
+    const res = await h.set({
+      update: {
+        inv_unsafe: { status: "rejected", decision: { reason: "unsafe", note: "quoted the contract terms" } },
+      },
+    });
+    expect(res.updated.inv_unsafe).toBeNull();
+    const prop = h.w.db.query<{ status: string; decision_json: string }>(
+      "SELECT status, decision_json FROM agent_proposals WHERE account_id = ? AND id = ?",
+      ACCOUNT,
+      "inv_unsafe",
+    )[0]!;
+    expect(prop.status).toBe("rejected");
+    expect(JSON.parse(prop.decision_json)).toEqual({
+      by: "eric@login.example",
+      reason: "unsafe",
+      note: "quoted the contract terms",
+    });
+  });
+
+  it("REFUSES the retired `notNow`, naming the three reasons that are left", async () => {
+    // The retirement has to bite on the WRITE path or it is a comment. `notNow`
+    // was a grab-bag — "I'll do it myself" (positive on selection), "not due
+    // yet" (a dueAt correction, which records nothing) and "meh, later" — so it
+    // may not enter a new rejection record.
+    const h = harness(["mail"]);
+    seedProposal(h.w, { id: "inv_retired", kind: "reply-draft", tier: 2 });
+    const res = await h.set({
+      update: { inv_retired: { status: "rejected", decision: { reason: "notNow" } } },
+    });
+    expect(res.notUpdated.inv_retired!.type).toBe("invalidProperties");
+    expect(res.notUpdated.inv_retired!.description).toBe(
+      "decision.reason must be wrongContent | wrongAction | unsafe",
+    );
+    expect(res.notUpdated.inv_retired!.description).not.toContain("notNow");
+    // Refused means refused: undecided, nothing recorded.
+    expect(
+      h.w.db.query<{ status: string; decision_json: string | null }>(
+        "SELECT status, decision_json FROM agent_proposals WHERE account_id = ? AND id = ?",
+        ACCOUNT,
+        "inv_retired",
+      )[0]!,
+    ).toEqual({ status: "pending", decision_json: null });
+  });
+
+  it("still READS a decision recorded under the old taxonomy — history is not migrated", async () => {
+    // The legacy-tolerance rule. Retiring `notNow` narrowed what may be
+    // WRITTEN; rows decided before the revision keep it verbatim, because a
+    // recorded human decision is a fact and a backfill would be an audit hole.
+    // So the projection must carry it through untouched rather than throwing,
+    // dropping it, or remapping it to a reason the human never chose.
+    const h = harness(["mail"]);
+    seedProposal(h.w, {
+      id: "inv_legacy",
+      kind: "reply-draft",
+      tier: 2,
+      status: "rejected",
+      decidedAt: 1_700_000_000_000,
+      decision: { by: "eric@login.example", reason: "notNow", note: "I'll ring them instead." },
+    });
+    const got = await h.call<{ list: Array<Record<string, unknown>> }>("ActionProposal/get", {
+      ids: ["inv_legacy"],
+    });
+    expect(got.list).toHaveLength(1);
+    expect(got.list[0]!.status).toBe("rejected");
+    expect(got.list[0]!.decision).toEqual({
+      by: "eric@login.example",
+      reason: "notNow",
+      note: "I'll ring them instead.",
+    });
+    // And it survives a filtered read too — nothing along the projection
+    // validates the reason on the way out.
+    const narrowed = await h.call<{ list: Array<Record<string, unknown>> }>("ActionProposal/get", {
+      ids: ["inv_legacy"],
+      properties: ["decision"],
+    });
+    expect((narrowed.list[0]!.decision as { reason: string }).reason).toBe("notNow");
+  });
 });
 
 // ---- create is not a thing here -------------------------------------------
@@ -500,7 +591,7 @@ describe("needsInfo — status info-requested with a required question", () => {
       update: { inv_taxo: { status: "rejected", decision: { reason: "needsInfo" } } },
     });
     expect(res.notUpdated.inv_taxo!.type).toBe("invalidProperties");
-    expect(res.notUpdated.inv_taxo!.description).toMatch(/wrongContent \| wrongAction \| notNow/);
+    expect(res.notUpdated.inv_taxo!.description).toMatch(/wrongContent \| wrongAction \| unsafe/);
     expect(
       h.w.db.query<{ status: string; decision_json: string | null }>(
         "SELECT status, decision_json FROM agent_proposals WHERE account_id = ? AND id = ?",

@@ -133,6 +133,15 @@ import App from "../layouts/App.astro";
   }
   .apq-editor textarea { resize: vertical; }
   .apq-reason { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
+  /* `unsafe` is a different KIND of judgment, not a louder one — the hard
+     negative of decline-taxonomy.md. It reads apart from the two quality
+     reasons so it is never the reflex click. */
+  .apq-reason-severe {
+    color: var(--error);
+    border-left: 2px solid var(--error);
+    padding-left: 8px;
+    margin-left: -10px;
+  }
 
   /* The needsInfo dialogue (s10 T3): the Q&A rounds attached to a proposal,
      and the open question an info-requested row is waiting on. */
