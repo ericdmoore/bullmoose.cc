@@ -9,6 +9,8 @@
 
 /** What a Bayes training label is recorded against. Wave 2-D always passes
  * the EVIDENCE message (the forwarded payload), never the wrapper. */
+import { recordBayesLabel as storeRecordBayesLabel } from "@bullmoose/mailstore";
+
 export interface BayesLabelMessage {
   sender: string;
   subject: string;
@@ -34,15 +36,13 @@ export function __resetRecordedBayesLabels(): void {
 }
 
 /**
- * s12-C contract: recordBayesLabel(db, accountId, msg, label).
- *
  * The per-account Bayes training write — quarantine rescues and bouncer@'s
- * FN reports are the filter's labeled corrections. C owns the state tables
- * and tokenizer; REPLACE THIS BODY with C's training write at merge. The
- * signature is the contract and must not drift.
+ * FN reports are the filter's labeled corrections. Delegates to the mailstore
+ * training write (wave 2-C); the journal stays as test observability so the
+ * conversation tests can assert labels without reading Bayes internals.
  */
 export async function recordBayesLabel(
-  _db: D1Database,
+  db: D1Database,
   accountId: string,
   msg: BayesLabelMessage,
   label: "spam" | "ham",
@@ -54,7 +54,21 @@ export async function recordBayesLabel(
     subject: msg.subject,
     emailId: msg.emailId ?? null,
   });
-  console.log(`bayes label (s12-C stub): ${label} for ${accountId} — sender ${msg.sender || "(unknown)"}`);
+  const at = msg.sender.lastIndexOf("@");
+  await storeRecordBayesLabel(
+    db,
+    accountId,
+    {
+      from: msg.sender,
+      fromDomain: at < 0 ? "" : msg.sender.slice(at + 1),
+      subject: msg.subject,
+      textBody: msg.text,
+      headers: {},
+      sizeBytes: msg.text.length,
+      hasAttachments: false,
+    },
+    label,
+  );
 }
 
 /** The environment slice the deny write needs. */
