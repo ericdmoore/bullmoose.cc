@@ -9,6 +9,15 @@ import {
   type AttachmentMeta,
   type EmailAddress,
 } from "@bullmoose/mailstore";
+import {
+  bumpDenyCounter,
+  normalizeSender,
+  runBoundaryStages2to4,
+  senderDomainOf,
+  stage1SenderSets,
+  type BoundaryVerdict,
+} from "./boundary";
+import type { BoundaryMessage } from "./boundaryContract";
 import { extractDueAt } from "./dueDate";
 import {
   composePrivacy,
@@ -22,10 +31,14 @@ import {
  *
  * Pipeline per message:
  *   1. resolve RCPT via the KV route table (exact → plus-strip → catch-all)
- *   2. store raw RFC 5322 bytes in R2 (blobId = content hash)
- *   3. parse MIME and insert metadata into the account's D1 shard
- *   4. commit to AccountDO → state bump + WebSocket push to live clients
- *   5. evaluate delivery-armed responders (vacation, agent watchdogs) and
+ *   2. the s12 boundary cascade (boundary.ts): stage 1 on the bare envelope
+ *      (deny-listed domains exit at the SMTP edge with ZERO storage), stages
+ *      2–4 on the parsed message (rejects go to the quarantine mailbox with a
+ *      chain row, rescuable — never deleted)
+ *   3. store raw RFC 5322 bytes in R2 (blobId = content hash)
+ *   4. parse MIME and insert metadata into the account's D1 shard
+ *   5. commit to AccountDO → state bump + WebSocket push to live clients
+ *   6. evaluate delivery-armed responders (vacation, agent watchdogs) and
  *      create agent invocations for mailbox-delivery bindings
  */
 
@@ -208,38 +221,82 @@ async function deliver(
   envelopeFrom: string,
   envelopeTo: string,
   raw: ArrayBuffer,
-): Promise<{ rejected?: string; emailId?: string; forwardTo?: string[]; invocations?: number }> {
+): Promise<{
+  rejected?: string;
+  emailId?: string;
+  forwardTo?: string[];
+  invocations?: number;
+  /** The firing stage, when the boundary shunted this message to quarantine. */
+  quarantined?: string;
+}> {
   const [localpart = "", domain = ""] = envelopeTo.toLowerCase().split("@");
   const route = await resolveRoute(env.ROUTES, domain, localpart);
   if (!route) return { rejected: "550 5.1.1 recipient unknown" };
 
   const store = new Mailstore(env.DB, env.BLOBS);
-  const blobId = await store.putBlob(route.tenantId, route.accountId, raw);
+
+  // s12 stage 1 — sender sets, on the bare envelope, BEFORE the parse and
+  // BEFORE any storage: a deny-listed domain exits at the SMTP edge (5xx —
+  // retry becomes the sender's problem) having cost one KV get, one D1 read
+  // and one daily-counter upsert. Counters, never chain rows (the industrial
+  // tier's audit is proportional to its decision value).
+  const s1 = await stage1SenderSets(env, route, envelopeFrom);
+  if (s1.action === "REJECT_EDGE") {
+    await bumpDenyCounter(env.DB, senderDomainOf(normalizeSender(envelopeFrom)));
+    return { rejected: s1.smtpReply ?? "550 5.7.1 sender address rejected" };
+  }
 
   const parsed = await PostalMime.parse(raw);
+  const bodyText = bodyTextOf(parsed);
+
+  // s12 stages 2–4 — only for stage-1 survivors; a known-good ACCEPT skips
+  // every remaining rejection stage and goes straight to stamping.
+  let verdict: BoundaryVerdict = s1;
+  if (s1.action === "CONTINUE") {
+    const sender = normalizeSender(envelopeFrom);
+    const msg: BoundaryMessage = {
+      sender,
+      senderDomain: senderDomainOf(sender),
+      recipient: envelopeTo.toLowerCase(),
+      subject: parsed.subject ?? "",
+      text: bodyText,
+      headers: (parsed.headers ?? []).map((h) => ({ key: h.key.toLowerCase(), value: h.value })),
+      size: raw.byteLength,
+      hasAttachment: (parsed.attachments ?? []).some((a) => a.disposition !== "inline"),
+    };
+    verdict = runBoundaryStages2to4(msg);
+  }
+
+  if (verdict.action === "REJECT_STORE") {
+    try {
+      return await quarantineDeliver(
+        env,
+        store,
+        route,
+        { raw, parsed, bodyText, envelopeFrom },
+        verdict.stage ?? "unknown",
+      );
+    } catch (err) {
+      // Fail OPEN: a shard that predates the quarantine tables (or any store
+      // failure) must not bounce or lose mail — deliver to the inbox exactly
+      // as pre-s12 ingest did, and say so. This is what keeps the s12
+      // migrations non-blockers.
+      console.error(
+        `quarantine store failed (stage ${verdict.stage}): ${
+          err instanceof Error ? err.message : err
+        }; delivering to inbox`,
+      );
+    }
+  }
+
+  const blobId = await store.putBlob(route.tenantId, route.accountId, raw);
   const inReplyTo = normalizeMessageId(parsed.inReplyTo);
   const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
   const inboxId = await store.ensureRoleMailbox(route.accountId, "inbox", "Inbox");
 
-  // Each attachment becomes its own content-hash blob so Email/get can
-  // hand out real, individually downloadable blobIds.
-  const attachments: AttachmentMeta[] = [];
-  for (const att of parsed.attachments ?? []) {
-    const content =
-      typeof att.content === "string" ? new TextEncoder().encode(att.content).buffer : att.content;
-    const attBlobId = await store.putBlob(route.tenantId, route.accountId, content as ArrayBuffer);
-    attachments.push({
-      blobId: attBlobId,
-      type: att.mimeType ?? "application/octet-stream",
-      name: att.filename ?? null,
-      size: (content as ArrayBuffer).byteLength,
-      cid: att.contentId ?? null,
-      disposition: att.disposition ?? null,
-    });
-  }
+  const attachments = await storeAttachments(store, route, parsed);
 
   const emailId = `e_${crypto.randomUUID()}`;
-  const bodyText = bodyTextOf(parsed);
   await store.insertEmail(route.accountId, {
     id: emailId,
     blobId,
@@ -306,10 +363,13 @@ async function deliver(
     // The stamp rides AFTER the unchanged INSERT (see stampInvocationFacets
     // for why): ingest stamps no privacy of its own — the stamp is NULL — so
     // the composed class is exactly the binding's floor, or NULL (DefaultCase).
+    // sender_class is stage 1's verdict (s12 1-A): 'known'/'unknown' against
+    // the recipient's default book, NULL when there is no book to judge by.
     await stampInvocationFacets(env.DB, route.accountId, invId, {
       dueAt,
       privacy: composePrivacy(null, [privacyFloorOf(binding.config_json)]),
       requires,
+      senderClass: s1.action === "ACCEPT" || s1.action === "CONTINUE" ? s1.senderClass : null,
     });
     invocationIds.push(invId);
   }
@@ -340,6 +400,106 @@ async function deliver(
     ...(route.forwardTo?.length ? { forwardTo: route.forwardTo } : {}),
     ...(invocationIds.length > 0 ? { invocations: invocationIds.length } : {}),
   };
+}
+
+/**
+ * REJECT-STORE: the message is stored — full fidelity, rescuable, never
+ * deleted — but in the QUARANTINE role mailbox, with its 'shunted' chain row
+ * (message + chain commit atomically; see Mailstore.insertQuarantinedEmail).
+ *
+ * Deliberately absent from this path: agent invocations (suspected spam must
+ * not reach the lobby), armed responders (never auto-reply to judged spam),
+ * and deliver-AND-forward copies (a shunted message is held, not propagated).
+ * The AccountDO commit still runs so live clients see the quarantine fill.
+ */
+async function quarantineDeliver(
+  env: Env,
+  store: Mailstore,
+  route: Route,
+  m: {
+    raw: ArrayBuffer;
+    parsed: Awaited<ReturnType<typeof PostalMime.parse>>;
+    bodyText: string;
+    envelopeFrom: string;
+  },
+  stage: string,
+): Promise<{ emailId: string; quarantined: string }> {
+  const blobId = await store.putBlob(route.tenantId, route.accountId, m.raw);
+  const inReplyTo = normalizeMessageId(m.parsed.inReplyTo);
+  const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
+  // Lazily ensured (the inbox precedent) so accounts that predate the
+  // 'quarantine' role in provisioning still get one on first shunt.
+  const quarantineId = await store.ensureRoleMailbox(route.accountId, "quarantine", "Quarantine");
+  const attachments = await storeAttachments(store, route, m.parsed);
+
+  const emailId = `e_${crypto.randomUUID()}`;
+  const sender = normalizeSender(m.envelopeFrom);
+  await store.insertQuarantinedEmail(
+    route.accountId,
+    {
+      id: emailId,
+      blobId,
+      threadId,
+      messageId: normalizeMessageId(m.parsed.messageId),
+      inReplyTo,
+      subject: m.parsed.subject ?? "",
+      from: toAddresses(m.parsed.from ? [m.parsed.from] : []),
+      to: toAddresses(m.parsed.to ?? []),
+      cc: toAddresses(m.parsed.cc ?? []),
+      bcc: [],
+      preview: previewText(m.parsed.text, m.parsed.html),
+      bodyText: m.bodyText,
+      size: m.raw.byteLength,
+      receivedAt: Date.now(),
+      hasAttachment: attachments.some((a) => a.disposition !== "inline"),
+      attachments,
+      mailboxIds: [quarantineId],
+      keywords: [],
+    },
+    {
+      event: "shunted",
+      sender,
+      domain: senderDomainOf(sender),
+      stage,
+      emailId,
+      at: Date.now(),
+    },
+  );
+
+  await commitChanges(env.ACCOUNT_DO, route.accountId, [
+    { collection: "Email", created: [emailId] },
+    { collection: "Mailbox", updated: [quarantineId] },
+  ]);
+
+  return { emailId, quarantined: stage };
+}
+
+/**
+ * Each attachment becomes its own content-hash blob so Email/get can hand
+ * out real, individually downloadable blobIds. Shared by the inbox and
+ * quarantine store paths — a rescued message must be as whole as a delivered
+ * one.
+ */
+async function storeAttachments(
+  store: Mailstore,
+  route: Route,
+  parsed: Awaited<ReturnType<typeof PostalMime.parse>>,
+): Promise<AttachmentMeta[]> {
+  const attachments: AttachmentMeta[] = [];
+  for (const att of parsed.attachments ?? []) {
+    const content =
+      typeof att.content === "string" ? new TextEncoder().encode(att.content).buffer : att.content;
+    const attBlobId = await store.putBlob(route.tenantId, route.accountId, content as ArrayBuffer);
+    attachments.push({
+      blobId: attBlobId,
+      type: att.mimeType ?? "application/octet-stream",
+      name: att.filename ?? null,
+      size: (content as ArrayBuffer).byteLength,
+      cid: att.contentId ?? null,
+      disposition: att.disposition ?? null,
+    });
+  }
+  return attachments;
 }
 
 function autoResponseEligible(
