@@ -319,16 +319,33 @@ export const TOOLS: ToolDef[] = [
   ...INTROSPECT_TOOLS,
 ];
 
-export async function handleMcp(request: Request, env: Env): Promise<Response> {
+/**
+ * @param authenticated - A principal the CALLER already resolved (s02 T4).
+ *   Supplied when an OAuth access token authenticated the request: the
+ *   provider validated the token against its own store and handed back the
+ *   encrypted `props`, which the route turned into a principal. Absent for a
+ *   `bm_` bearer, which is resolved here as it always was.
+ *
+ *   Two credential systems, ONE authorization path: whichever way the
+ *   principal arrived, everything below — `authorizeAccount`, the per-tool
+ *   scope/domain gate, `grant_audit` — is identical and unaware of which
+ *   credential was used. That is the property that makes adopting an AS
+ *   cheap, and it is worth protecting: a future third credential type should
+ *   also land here as a `Principal` and nowhere else.
+ */
+export async function handleMcp(request: Request, env: Env, authenticated?: Principal): Promise<Response> {
   if (request.method !== "POST") {
     return json({ error: "MCP: POST JSON-RPC only" }, 405);
   }
 
   // Identity first: MCP.2 has no session to authenticate once, so every
   // request carries its own bearer. Resolve it to a principal up front.
-  const authz = request.headers.get("Authorization") ?? "";
-  const raw = authz.startsWith("Bearer ") ? authz.slice(7) : null;
-  const principal = raw ? await verifyBearer(env.DB, raw) : null;
+  let principal = authenticated ?? null;
+  if (!principal) {
+    const authz = request.headers.get("Authorization") ?? "";
+    const raw = authz.startsWith("Bearer ") ? authz.slice(7) : null;
+    principal = raw ? await verifyBearer(env.DB, raw) : null;
+  }
   if (!principal) return rpcError(null, -32001, "unauthorized", 401);
 
   let msg: JsonRpcRequest;

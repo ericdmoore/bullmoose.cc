@@ -123,13 +123,6 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
   // `deleted_at IS NULL` is what makes `DELETE /accounts/{id}` mean anything:
   // the tombstone is a soft delete (sVOL 008), so without this filter a
   // "deleted" account keeps authenticating and keeps serving its mail.
-  const { results: accountRows } = await db.prepare(
-    `SELECT id, tenant_id, display_name FROM accounts
-     WHERE principal_id = ? AND deleted_at IS NULL ORDER BY created_at`,
-  )
-    .bind(row.principal_id)
-    .all<{ id: string; tenant_id: string; display_name: string }>();
-
   // Throttled liveness bookkeeping — one small write per token per window.
   const now = Date.now();
   if (!row.last_used_at || now - row.last_used_at > LAST_USED_WRITE_INTERVAL_MS) {
@@ -138,6 +131,34 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
       .run();
   }
 
+  return {
+    username: row.login_email,
+    scopes: JSON.parse(row.scopes) as string[],
+    accounts: await reachableAccounts(db, row.principal_id),
+  };
+}
+
+/**
+ * Every account a principal can reach — owned first, then grant-reached.
+ *
+ * Split out of `verifyBearer` (s02 T4) because a `bm_` token is no longer the
+ * only way to become a principal: an OAuth access token authenticates the
+ * same human, and its scopes come from the consent grant rather than from a
+ * `tokens` row. What must NOT fork is which accounts that human reaches and
+ * on what basis — so the reach is computed here, once, for both credentials.
+ */
+export async function reachableAccounts(db: D1Database, principalId: string): Promise<AccountAccess[]> {
+  // `deleted_at IS NULL` is what makes `DELETE /accounts/{id}` mean anything:
+  // the tombstone is a soft delete (sVOL 008), so without this filter a
+  // "deleted" account keeps authenticating and keeps serving its mail.
+  const { results: accountRows } = await db.prepare(
+    `SELECT id, tenant_id, display_name FROM accounts
+     WHERE principal_id = ? AND deleted_at IS NULL ORDER BY created_at`,
+  )
+    .bind(principalId)
+    .all<{ id: string; tenant_id: string; display_name: string }>();
+
+  const now = Date.now();
   const accounts: AccountAccess[] = accountRows.map((a) => ({
     accountId: a.id,
     tenantId: a.tenant_id,
@@ -198,11 +219,37 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
     accounts.push(...grantedByTarget.values());
   }
 
-  return {
-    username: row.login_email,
-    scopes: JSON.parse(row.scopes) as string[],
-    accounts,
-  };
+  return accounts;
+}
+
+/**
+ * Become a principal from a CONSENT GRANT rather than from a `bm_` token
+ * (s02 T4) — the resource-server half of the OAuth bridge.
+ *
+ * The two arguments come from different places on purpose, and the split is
+ * the security property:
+ *
+ *  - `principalId` is server-resolved: the AS put it into the provider's
+ *    ENCRYPTED props after verifying a password, so it is not client-supplied
+ *    and cannot be swapped by whoever holds the token.
+ *  - `scopes` are the scopes of THIS grant, not the human's full authority. A
+ *    connected app that was granted `read` gets `read`, even though the owner
+ *    could have granted more. Passing the principal's own scopes here would
+ *    silently upgrade every connected app to full account authority.
+ *
+ * Returns null when the principal no longer exists, so deleting a human
+ * revokes their connected apps without a second bookkeeping step.
+ */
+export async function principalFromGrant(
+  db: D1Database,
+  principalId: string,
+  scopes: string[],
+): Promise<Principal | null> {
+  const row = await db.prepare(`SELECT id, login_email FROM principals WHERE id = ?`)
+    .bind(principalId)
+    .first<{ id: string; login_email: string }>();
+  if (!row) return null;
+  return { username: row.login_email, scopes, accounts: await reachableAccounts(db, row.id) };
 }
 
 export function accountAccess(principal: Principal, accountId: string): AccountAccess | null {
