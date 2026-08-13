@@ -429,7 +429,29 @@ export async function handleMcp(request: Request, env: Env, authenticated?: Prin
       });
     case "tools/list":
       return rpcResult(msg.id, {
-        tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+        // `scope` and `domain` are PUBLISHED, not stripped (s02 T6).
+        //
+        // The primary consumer of this surface is bullmoose's own agents
+        // finding facts across each other — and an agent that cannot see what
+        // a tool requires can only discover it by calling and eating a -32004.
+        // That is a wasted turn per tool per agent, on the hot path of exactly
+        // the thing this surface is for. Publishing the requirement lets a
+        // caller pre-filter to the tools its token can actually use.
+        //
+        // This leaks nothing: the gate is enforced per call regardless, and
+        // "this tool needs the calendar scope" is not a secret — it is the
+        // same sentence the refusal would have said, delivered before the
+        // round trip instead of after it.
+        tools: TOOLS.map(({ name, description, inputSchema, scope, domain, accountless }) => ({
+          name,
+          description,
+          inputSchema,
+          scope,
+          domain,
+          // Absent rather than false for the 28 account-scoped tools, so the
+          // flag reads as the exception it is.
+          ...(accountless ? { accountless: true } : {}),
+        })),
         ttlMs: TOOLS_LIST_TTL_MS,
         cacheScope: "session",
       });
@@ -500,6 +522,35 @@ async function handleToolCall(
   return runTool(tool, msg, env, principal, args);
 }
 
+/**
+ * Tool results are capped, and the cap ANNOUNCES itself (s02 T6).
+ *
+ * Client limits are real — roughly 150,000 characters for claude.ai and
+ * Desktop, ~25,000 tokens for Code — and `email_get_body` on a large message
+ * clears them easily. What matters is not the truncation but the honesty of
+ * it: a result cut by the transport ends mid-JSON, so the caller sees
+ * malformed output and cannot tell whether the tool failed, the data is
+ * corrupt, or there is simply more. An agent doing fact-finding then draws a
+ * conclusion from a fragment it believes is complete, which is worse than
+ * getting nothing.
+ *
+ * So: cut on our terms, leave valid text, and say plainly what happened and
+ * how much is missing. The marker is prose because its reader is a model.
+ */
+const RESULT_CHAR_CAP = 100_000;
+
+export function capResult(text: string): string {
+  if (text.length <= RESULT_CHAR_CAP) return text;
+  const omitted = text.length - RESULT_CHAR_CAP;
+  return (
+    text.slice(0, RESULT_CHAR_CAP) +
+    `\n\n[truncated by bullmoose: ${omitted.toLocaleString("en-US")} of ` +
+    `${text.length.toLocaleString("en-US")} characters omitted. This output is INCOMPLETE and is ` +
+    `no longer valid JSON — do not parse it, and do not conclude anything from what is missing. ` +
+    `Narrow the request (fewer items, a smaller range, or a more specific id) and call again.]`
+  );
+}
+
 /** Dispatch past the gate. Both the account path and the accountless one land
  *  here, so a tool cannot acquire a second error convention by which route it
  *  was reached. */
@@ -513,7 +564,7 @@ async function runTool(
   try {
     const result = await tool.run({ env, principal }, args);
     return rpcResult(msg.id, {
-      content: [{ type: "text", text: JSON.stringify(result, null, 1) }],
+      content: [{ type: "text", text: capResult(JSON.stringify(result, null, 1)) }],
     });
   } catch (err) {
     // A ToolError is a refusal the agent can act on — a sentence saying what

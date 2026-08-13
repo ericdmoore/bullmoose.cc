@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { mintToken } from "@bullmoose/auth-core";
 import { fakeEnv } from "@bullmoose/test-fakes";
-import { handleMcp, TOOLS } from "./mcp";
+import { capResult, handleMcp, TOOLS } from "./mcp";
 
 // Handler-level conformance for the stateless-MCP (2026-07-28) surface +
 // the §6 auth gate. Per .plans/devPrinciples.md the D1 client is injected,
@@ -705,5 +705,74 @@ describe("handleMcp — modern-lane conformance codes (s02 T2)", () => {
     const b = (await (await res).json()) as any;
     expect(b.error.code).toBe(-32022);
     expect(b.error.data.supported).toEqual([V]);
+  });
+});
+
+// s02 T6. The MCP.2 surface exists primarily so bullmoose's OWN agents can
+// find facts across each other (Eric, 2026-08-13), and both groups below
+// serve that: an agent should learn what a tool requires without spending a
+// turn on a refusal, and should never mistake a truncated answer for a
+// complete one.
+describe("tools/list publishes what a caller needs to pre-filter (s02 T6)", () => {
+  const list = () =>
+    call({ jsonrpc: "2.0", id: 50, method: "tools/list", params: { _meta: meta() } }, headers(), ericOwns());
+
+  it("50. every tool carries its scope and domain", async () => {
+    // Stripped before T6, so a caller could only discover the requirement by
+    // calling and eating a -32004 — a wasted turn per tool, per agent.
+    const b = (await (await list().res).json()) as any;
+    expect(b.result.tools.length).toBeGreaterThan(0);
+    for (const t of b.result.tools) {
+      expect(typeof t.scope, t.name).toBe("string");
+      expect(typeof t.domain, t.name).toBe("string");
+    }
+  });
+
+  it("51. the published scope is the one the gate actually enforces", async () => {
+    // The coupling that matters: an advertised requirement differing from the
+    // enforced one is worse than none at all.
+    const b = (await (await list().res).json()) as any;
+    const published = new Map(b.result.tools.map((t: any) => [t.name, `${t.scope}:${t.domain}`]));
+    for (const t of TOOLS) {
+      expect(published.get(t.name), t.name).toBe(`${t.scope}:${t.domain}`);
+    }
+  });
+
+  it("52. marks the accountless tool, and only that one", async () => {
+    const b = (await (await list().res).json()) as any;
+    const flagged = b.result.tools.filter((t: any) => t.accountless).map((t: any) => t.name);
+    expect(flagged).toEqual(["whoami"]);
+  });
+
+  it("53. still carries the cache hint", async () => {
+    const b = (await (await list().res).json()) as any;
+    expect(b.result.ttlMs).toBeGreaterThan(0);
+  });
+});
+
+describe("oversized results are capped, and say so (s02 T6)", () => {
+  it("60. leaves a small result byte-identical", () => {
+    expect(capResult('{"a":1}')).toBe('{"a":1}');
+  });
+
+  it("61. truncates a huge one and announces it in prose a model will read", () => {
+    const capped = capResult("x".repeat(250_000));
+    expect(capped.length).toBeLessThan(250_000);
+    expect(capped).toContain("truncated by bullmoose");
+    expect(capped).toContain("INCOMPLETE");
+  });
+
+  it("62. says how much is missing, so the caller can judge the gap", () => {
+    expect(capResult("x".repeat(250_000))).toMatch(/150,000 of 250,000 characters omitted/);
+  });
+
+  it("63. tells the caller what to DO — a refusal with no next step wastes a turn", () => {
+    expect(capResult("x".repeat(250_000))).toMatch(/Narrow the request/);
+  });
+
+  it("64. warns the text is no longer parseable, rather than letting it look valid", () => {
+    // The failure this prevents: an agent parses a fragment, gets a shorter
+    // list than reality, and concludes something false about the account.
+    expect(capResult("x".repeat(250_000))).toMatch(/no longer valid JSON/);
   });
 });
