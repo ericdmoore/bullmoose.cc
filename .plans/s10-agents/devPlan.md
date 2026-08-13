@@ -1,5 +1,34 @@
 # s10 — the Agents area: dev plan
 
+> **Status: T1+T2+T3 LANDED** (PRs #88, #89 — 2026-08-12). Deltas from the build, folded in:
+> - **Agent identity is a sticky `"agent"` marker scope**, not `allowedBookIds` grants: the
+>   governing book usually lives on the agent's *own* account where it is the owner, so
+>   grant-scoping cannot express "not writable by its owner-agent". The marker grants nothing
+>   (`hasScope` fail-closed), survives self-service re-mints, and is the chokepoint's writer
+>   signal. Cross-language contract change; conformance regenerated (additive).
+> - **Typed-core promotion deferred**: only `recipients_book_id` is a typed column;
+>   `allowedSenders`/`replyMode` stay in `config_json` for now.
+> - The MCP **self-write rule is broader than "its own book"**: a bearer cannot be mapped to
+>   one binding over MCP, so writes touching ANY binding's governing book are refused pre-store
+>   (also closes the unflipped-write_policy misconfiguration).
+> - `AddressBook/set` cannot set or see `write_policy` — governing books are marked via
+>   provisioning (`setAddressBookWritePolicy` / seed). Wire exposure is T5's console work.
+> - T3's amendments live in a dedicated append-only `amendments_json` (same discipline as
+>   editedPayload, separate field); the expiry pause banks the remainder in
+>   `expires_remaining_ms` so the sweep can never lapse a waiting proposal.
+> - The CJ gate landed as beneficiary-binding inequality; the finer "which books CJ may
+>   widen is itself a narrow grant" remains future work (T5 console should render it).
+> - **Known hardening gap**: the jmap actionProposal reply-draft egress executor does not
+>   re-check the governing book (mitigated: the agent worker refuses to *propose* to
+>   out-of-book recipients, so the pipeline cannot mint an approvable out-of-bound proposal).
+>   Gate the executor too — small task, belongs with T5.
+> - **Follow-up named**: Go CLI `approvals` needs the `needs-info <id> --question` verb +
+>   `info-requested` vocabulary (additive to the contract suite).
+> - **Deploy**: 3 new deploy-blocker migrations; every send-capable binding needs its
+>   governing book seeded (analyst@ stops sending until seeded — fail-closed by design);
+>   agent tokens need a marker re-mint (unmarked legacy agent tokens are the one fail-open
+>   edge until re-minted).
+
 > Ordered build for [`readme.md`](./readme.md): the agent **configuration** surface (CLI +
 > WebUI) and the two controls it depends on. Activity (queue/dossier/score) is linked, not
 > rebuilt — it lives in `/approvals` (s07 T4) and the `s03.E` console.
