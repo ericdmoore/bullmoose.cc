@@ -385,6 +385,19 @@ export interface WriteProvenance {
 const PROVENANCE_COLUMNS =
   "last_writer_principal, last_writer_binding, last_writer_invocation";
 
+/**
+ * s10 T1 contract: the authorization an approved proposal confers on a contact
+ * write. T1's store-layer chokepoint (writePolicy) accepts a write into a
+ * `governed` book ONLY when this is present, and T2's membership log carries
+ * `proposalId` as `via_proposal_id` — the one link field that inherits the
+ * rationale, evidence, approver and edit-diff, because it IS the authorization
+ * record. Defined here (minimal, pass-through) so s10 T3's approve path can
+ * build against the contract; T1 merges first and supplies the enforcement.
+ */
+export interface ContactWriteAuthorization {
+  proposalId: string;
+}
+
 const blobKey = (tenantId: string, accountId: string, blobId: string) =>
   `mail/${tenantId}/${accountId}/blobs/${blobId}`;
 
@@ -1586,12 +1599,28 @@ export class Mailstore {
     return out;
   }
 
-  async insertContactCard(accountId: string, row: ContactCardRow): Promise<void> {
-    await this.insertContactCards(accountId, [row]);
+  async insertContactCard(
+    accountId: string,
+    row: ContactCardRow,
+    authorization?: ContactWriteAuthorization,
+  ): Promise<void> {
+    await this.insertContactCards(accountId, [row], authorization);
   }
 
   /** One transactional db.batch — bulk imports must not pay per-card D1 calls. */
-  async insertContactCards(accountId: string, rows: ContactCardRow[]): Promise<void> {
+  async insertContactCards(
+    accountId: string,
+    rows: ContactCardRow[],
+    // s10 T1 contract: T1's writePolicy chokepoint consumes this — an approved
+    // proposal is the ONLY authorization that lets an agent write reach a
+    // `governed` book, and T2 stamps `authorization.proposalId` as
+    // `via_proposal_id` on the book_membership_log row it appends in the same
+    // batch. This copy is the minimal pass-through half of that contract
+    // (accepted, unused): T1 merges first and the merge reconciles. Until
+    // then the proposal linkage rides on `last_writer_invocation`, which the
+    // approve path stamps with the proposal id (== invocation id).
+    _authorization?: ContactWriteAuthorization,
+  ): Promise<void> {
     if (rows.length === 0) return;
     await this.db.batch(
       rows.map((row) =>

@@ -106,12 +106,18 @@ describe("infra/migrations — the DDL a schema re-run cannot perform", () => {
   it("the migrations that break a worker outright are marked as deploy blockers", () => {
     // These are ordering-critical in a way the others are not: verifyBearer
     // filters on both auth columns (a worker deployed against a database
-    // missing either one authenticates nobody), and the agent worker's
-    // finish() UPDATE names the s07 T5 cost columns (missing them fails every
-    // invocation finalisation). Naming them in data keeps the runbook and the
-    // runner from drifting apart.
+    // missing either one authenticates nobody), the agent worker's finish()
+    // UPDATE names the s07 T5 cost columns (missing them fails every
+    // invocation finalisation), and the ActionProposal JOIN projection SELECTs
+    // the s10 T3 needsInfo columns (missing them fails every proposal read).
+    // Naming them in data keeps the runbook and the runner from drifting apart.
     const blockers = MIGRATIONS.filter((m) => m.blocks === "deploy").map((m) => m.id).sort();
-    expect(blockers).toEqual(["accounts-deleted-at", "grants-revoked-at", "invocation-cost-columns"]);
+    expect(blockers).toEqual([
+      "accounts-deleted-at",
+      "grants-revoked-at",
+      "invocation-cost-columns",
+      "proposal-needsinfo-columns",
+    ]);
   });
 
   it("grants_tuple is partial and bureau_grants_tuple is NOT", () => {
