@@ -26,17 +26,33 @@ SMTP → ingest (mechanical: parse, dedup, store, mechanical facets)
    decision. The model sees only ambiguous mail, and its output is a classification enum,
    never a free action. p50 latency stays flat; mid-band mail may sit briefly in a
    screening state.
-   - use rejection-lists & bloomfilters
-      - ABS_NO(CONTINUE), POSSIBLY_YES(CHECK LIST - mark email as rejected)
-   - use Sieve rules
-      - PASS(CONTINUE),  FAILED(mark email as rejected)
-   - Baesyian Email Spam Filter
-      - Given(Threshold:T) LIEKLYNOTSPAM@T(CONTINUE), LIKLEY_SPAM@T(mark email as rejected)
-   - escalatting determinsitc computation effort
-      - ... 
-   - Stamp Determinstic Meta Data + facets - mail enters the lobby
-   - LLM Stamps Estimations of a few extracted factets
-   
+   **The cascade** (Eric's sketch, 2026-08-13, formalized): cost-ordered, each stage
+   emitting **ACCEPT** (skip remaining rejection stages, go to stamping), **REJECT**
+   (quarantine + chain, naming the firing stage), or **CONTINUE** (next stage). The gray
+   zone *is* the escalation channel; each stage sees only the survivors of the last:
+
+   1. **Sender books first** (commitment 2, made literal): known-good → **ACCEPT**
+      fast-path; blocked → **REJECT**. A **bloom filter** fronts the blocked book:
+      `ABS_NO` → CONTINUE for free (blooms have no false negatives), `POSSIBLY_YES` →
+      exact check against the book. The bloom is a *derived index*, rebuilt on the book's
+      ctag bump — the book stays canonical; no second blocklist store may emerge.
+   2. **Envelope auth**: SPF/DKIM/DMARC alignment (cheap; the inbound edge already
+      computes most of it) — hard-fail → REJECT; the result feeds the Bayes prior.
+   3. **Sieve rules**: PASS → CONTINUE, FAIL → REJECT (rule id recorded as the reason).
+   4. **Bayesian filter — two thresholds, not one**: score ≥ `T_reject` → REJECT
+      (`reason: bayes@score`); ≤ `T_clean` → CONTINUE-as-clean; **between → the
+      mid-band** that escalates. One threshold makes a binary gate; two make a cascade.
+      Trained per-account, and the quarantine **rescues are its labeled corrections** —
+      the escape hatch feeds the filter.
+   5. **Deterministic facet stamping** (the s11 T6 pass: due_at, requires, mechanical
+      metadata) — clean mail **enters the lobby** here.
+   6. **LLM, mid-band only**: stamps *estimated* facets (`sender_class` for unknowns,
+      `effort_prior`) as classification enums — never a free action; the floor rule
+      applies.
+
+   Every REJECT is a quarantine-chain event whose reason names the firing stage — "why
+   was this shunted?" is always answerable by stage name, no archaeology.
+
 2. **Sender-classification first, message-rescue second.** Spam is a *sender* problem
    before it is a message problem. Sender classes are **address books** (known-good /
    blocked), inheriting CRUD on every protocol, CardDAV inspectability, `write_policy`,
