@@ -315,8 +315,8 @@ export const MIGRATIONS = [
 
   {
     id: "invocation-due-at",
-    why: "s11 T1: the work's business deadline (third clock — distinct from expires_at and hold_until). Deliberately NOT a deploy blocker: no hot path names the column — ingest stamps it via a tolerant follow-up UPDATE and the ActionProposal projection reads it via a separate tolerant SELECT, so a shard that predates this delivers unfaceted mail and renders 'no deadline' instead of failing",
-    blocks: null,
+    why: "s11 T1: the work's business deadline (third clock — distinct from expires_at and hold_until). Was a non-blocker in the T6 wave; since T2 the eligibility gate names due_at in EVERY claim statement's WHERE (jmap AgentInvocation/set and the agent worker's drain), so a worker deployed against a database missing it fails every claim and all agent mail stops",
+    blocks: "deploy",
     check: hasColumn("agent_invocations", "due_at"),
     up: ["ALTER TABLE agent_invocations ADD COLUMN due_at INTEGER"],
     absent: ["CREATE TABLE agent_invocations (id TEXT NOT NULL, account_id TEXT NOT NULL)"],
@@ -324,8 +324,8 @@ export const MIGRATIONS = [
 
   {
     id: "invocation-facet-columns",
-    why: "s11 T6: the facet columns the future claim gate (T2) will read. NOT a deploy blocker: nothing hot reads them yet — mayClaim is not built, the drain's SELECT and claim UPDATE name none of them, and ingest's stamp UPDATE degrades to an unfaceted enqueue (DefaultCase) on a shard missing them. Deliberately no backfill: NULL is the DefaultCase — claimable exactly as today",
-    blocks: null,
+    why: "s11 T6: the facet columns the claim gate reads. Was a non-blocker in the T6 wave (nothing hot read them); since T2 the gate names privacy and requires_json in every claim statement's WHERE, so a worker deployed first fails every claim. Ingest's stamp UPDATE still degrades to an unfaceted enqueue where they are missing, and NULL remains the DefaultCase — claimable exactly as today",
+    blocks: "deploy",
     // requires_json is the last column applied, so it is the honest sentinel
     // for "did the whole group land" (precedent: invocation-cost-columns).
     check: hasColumn("agent_invocations", "requires_json"),
@@ -334,6 +334,20 @@ export const MIGRATIONS = [
       "ALTER TABLE agent_invocations ADD COLUMN sender_class TEXT",
       "ALTER TABLE agent_invocations ADD COLUMN effort_prior TEXT",
       "ALTER TABLE agent_invocations ADD COLUMN requires_json TEXT",
+    ],
+    absent: ["CREATE TABLE agent_invocations (id TEXT NOT NULL, account_id TEXT NOT NULL)"],
+  },
+
+  {
+    id: "invocation-claimant-columns",
+    why: "s11 T2: the claim records the claimant's self-declared identity (trust-but-audit), and the gate's liveness inference reads claimant_free ('a free claim in the last 15 min = a free runtime is live'). Every T2 claim UPDATE SETs claimant_free, so a worker deployed against a database missing it fails every claim",
+    blocks: "deploy",
+    needs: ["invocation-due-at", "invocation-facet-columns"],
+    // claimant_caps_json is the last column applied — the group sentinel.
+    check: hasColumn("agent_invocations", "claimant_caps_json"),
+    up: [
+      "ALTER TABLE agent_invocations ADD COLUMN claimant_free INTEGER",
+      "ALTER TABLE agent_invocations ADD COLUMN claimant_caps_json TEXT",
     ],
     absent: ["CREATE TABLE agent_invocations (id TEXT NOT NULL, account_id TEXT NOT NULL)"],
   },

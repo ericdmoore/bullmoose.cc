@@ -24,6 +24,7 @@
       "@bullmoose/mailstore": ["packages/mailstore/src/index.ts"],
       "@bullmoose/mime": ["packages/mime/src/index.ts"],
       "@bullmoose/outbound": ["packages/outbound/src/index.ts"],
+      "@bullmoose/scheduling": ["packages/scheduling/src/index.ts"],
       // Test-only. Deliberately NOT linked into node_modules: it imports
       // node:sqlite, which workerd does not have, so resolution exists only
       // here and in vitest.config.ts and a worker build fails on the bare

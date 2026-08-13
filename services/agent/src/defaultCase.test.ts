@@ -1,25 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { Mailstore } from "@bullmoose/mailstore";
 import { buildMime } from "@bullmoose/mime";
+import { claimGateSql } from "@bullmoose/scheduling";
 import { fakeEnv } from "@bullmoose/test-fakes";
 import agentWorker from "./index";
 
 /**
  * DefaultCase is structural (s11 T6, jobs-and-facets.md §1): an invocation
  * with NO facets — every s11 column NULL — is claimed and processed EXACTLY
- * as before the columns existed. Facets tighten, never strand; and in THIS
- * wave they do not even tighten, because the eligibility gate is T2.
+ * as before the columns existed, in the default world (no free runtime has
+ * claimed recently — production today runs no homelab daemon). Facets
+ * tighten, never strand.
  *
  * Two guarantees, each held by a different kind of assertion:
  *
  *  1. BEHAVIOR: the real cloud drain (`POST /drain`, the same worker
  *     production runs) claims an unfaceted pending row and completes it with
- *     a reply draft — the onDemandDrain outcome, unchanged.
- *  2. STRUCTURE: the claim path's SQL is byte-identical to what shipped
- *     before s11. The claim UPDATE is asserted as an exact string and every
- *     statement the drain issued is swept for facet column names. This is
- *     deliberately brittle: if T2 (or anyone) wires facets into claiming,
- *     this test fails and the change has to be made on purpose, here.
+ *     a reply draft — the onDemandDrain outcome, unchanged. This case is the
+ *     T6 contract and has been UNTOUCHED by T2.
+ *  2. STRUCTURE: the claim UPDATE is pinned as an exact string. Pre-T2 that
+ *     string was the bare optimistic guard and this case's job was to make
+ *     wiring facets into claiming a deliberate act; T2 was that act, and the
+ *     pin moved forward with it: the claim SQL is now guard + the SHARED
+ *     eligibility gate (@bullmoose/scheduling claimGateSql — the same
+ *     fragment the JMAP claim path appends), the drain READS facets only in
+ *     that gate, and its writes still never AUTHOR a facet — facet
+ *     authorship stays at the boundary.
  */
 
 const ACCOUNT = "t_bm__a_default";
@@ -29,10 +35,12 @@ const SENDER = "human@example.com";
 
 const FACET_COLUMNS = ["due_at", "privacy", "sender_class", "effort_prior", "requires_json"];
 
-/** The exact claim UPDATE `drain` has always issued (services/agent/src/index.ts). */
+/** The exact claim UPDATE `drain` issues (services/agent/src/index.ts): the
+ * pre-s11 optimistic guard + claimant recording + the shared T2 gate. */
 const CLAIM_SQL =
-  "UPDATE agent_invocations SET status = 'running', claimed_at = ?\n" +
-  "         WHERE account_id = ? AND id = ? AND status = 'pending'";
+  "UPDATE agent_invocations SET status = 'running', claimed_at = ?, claimant_free = 0, claimant_caps_json = NULL\n" +
+  "         WHERE account_id = ? AND id = ? AND status = 'pending'" +
+  claimGateSql("agent_invocations");
 
 const REPLY_CONFIG = JSON.stringify({
   pipeline: "reply",
@@ -136,34 +144,39 @@ describe("DefaultCase — an unfaceted invocation behaves byte-identically to be
     for (const col of FACET_COLUMNS) expect(row[col], col).toBeNull();
   });
 
-  it("issues the exact pre-s11 claim UPDATE, and no drain statement names a facet column", async () => {
+  it("issues exactly the guarded claim UPDATE + the SHARED gate, and never WRITES a facet", async () => {
     const s = await scaffold();
     s.seedInvocation("inv_plain");
     await s.drain();
 
-    // The optimistic claim, byte for byte. An innocent reformat fails this
-    // on purpose — "claiming behavior unchanged" is the T6 guarantee, and an
-    // exact string is the strongest structural witness a test can hold.
+    // The claim, byte for byte: optimistic guard + claimant recording + the
+    // same claimGateSql fragment the JMAP claim path appends. An innocent
+    // reformat — or a drain-only fork of the gate — fails this on purpose:
+    // the two claim sites must keep sharing ONE gate definition. (Pre-T2
+    // this pinned the bare guard; T2 is the deliberate change the old pin
+    // existed to force through this file.)
     const claims = s.w.db.writes.filter((q) => q.sql.includes("SET status = 'running'"));
     expect(claims).toHaveLength(1);
     expect(claims[0]!.sql).toBe(CLAIM_SQL);
 
-    // Nothing the drain prepared — selection, claim, run, finalisation —
-    // mentions any facet column. The columns exist in the schema this test
-    // runs on (the live data-plane.sql), so this proves coexistence, not
-    // absence: present in the table, invisible to the claim path.
-    for (const sql of s.w.db.queries) {
+    // The drain READS facets (in the gate's WHERE) but never AUTHORS one:
+    // no statement it writes SETs a facet column. Facet authorship stays at
+    // the boundary (ingest/bouncer) — the claim path consumes, only.
+    for (const { sql } of s.w.db.writes) {
+      const whereAt = sql.search(/\bWHERE\b/i);
+      const setClause = whereAt === -1 ? sql : sql.slice(0, whereAt);
       for (const col of FACET_COLUMNS) {
-        expect(sql, `drain statement must not name ${col}`).not.toContain(col);
+        expect(setClause, `a drain write must not SET ${col}`).not.toContain(col);
       }
     }
   });
 
-  it("a FACETED invocation is claimed identically in this wave — stamping changed nothing about claiming", async () => {
-    // The gate that will read these is T2. Until it lands, a pinned, due,
-    // vision-requiring row and a bare row must be indistinguishable to the
-    // drain — nothing this wave built may change claiming behavior. T2
-    // supersedes this case deliberately when mayClaim arrives.
+  it("a pinned, far-due, vision-requiring row is NOT claimed by the paid drain — T2 superseded the pre-gate case here", async () => {
+    // Until T2 this case pinned the opposite (facets invisible to claiming);
+    // its comment promised "T2 supersedes this case deliberately when
+    // mayClaim arrives". It has: the same row now sits for a free/local
+    // runtime — privacy = 'pinned' alone guarantees that, whatever the
+    // clock says — and the facets survive untouched for that claimant.
     const s = await scaffold();
     s.seedInvocation("inv_faceted", {
       due_at: Date.UTC(2027, 0, 15, 17, 0),
@@ -174,13 +187,13 @@ describe("DefaultCase — an unfaceted invocation behaves byte-identically to be
     });
 
     const { handled } = await s.drain();
-    expect(handled).toBe(1);
+    expect(handled).toBe(0);
     const row = s.w.db.query<{ status: string; privacy: string; due_at: number }>(
       `SELECT status, privacy, due_at FROM agent_invocations WHERE account_id = ? AND id = 'inv_faceted'`,
       ACCOUNT,
     )[0]!;
-    expect(row.status).toBe("done");
-    // …and the facets rode through the run untouched.
+    expect(row.status).toBe("pending");
+    // …and the facets are exactly as stamped — held, not consumed.
     expect(row.privacy).toBe("pinned");
     expect(row.due_at).toBe(Date.UTC(2027, 0, 15, 17, 0));
   });

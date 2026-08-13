@@ -25,6 +25,7 @@ export default defineConfig({
       "@bullmoose/mailstore": here("packages/mailstore/src/index.ts"),
       "@bullmoose/mime": here("packages/mime/src/index.ts"),
       "@bullmoose/outbound": here("packages/outbound/src/index.ts"),
+      "@bullmoose/scheduling": here("packages/scheduling/src/index.ts"),
       // The shared fake-client harness (sVOL 002). Same reason as the rest,
       // plus one of its own: it is not linked into node_modules at all, so
       // this alias and tsconfig's `paths` are its ONLY resolution paths.

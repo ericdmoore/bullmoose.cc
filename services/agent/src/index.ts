@@ -2,6 +2,15 @@ import PostalMime from "postal-mime";
 import { commitChanges } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
 import { Mailstore } from "@bullmoose/mailstore";
+import {
+  ESCALATION_WINDOW_MAX_MS,
+  ESCALATION_WINDOW_NO_HISTORY_MS,
+  bindingEscalationWindowMs,
+  budgetMonthStartMs,
+  claimGateBinds,
+  claimGateSql,
+  type ClaimantIdentity,
+} from "@bullmoose/scheduling";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
@@ -24,8 +33,11 @@ import {
  * worker via service binding (fast path). A cron sweep is the retry net —
  * the row, not the poke, is the source of truth. Claims use the same
  * optimistic pending→running guard as the homelab CLI runner, so both can
- * serve the same account and whoever claims first wins; the SLA watchdog
- * responder (AccountDO alarm) backstops them both.
+ * serve the same account and whoever claims first wins — within the s11 T2
+ * eligibility gate: this drain is a PAID claimant, so pinned work, out-of-
+ * budget bindings, far-from-due work, and NULL-due work while a free runtime
+ * is live are all outside its set (see @bullmoose/scheduling). The SLA
+ * watchdog responder (AccountDO alarm) backstops them both.
  *
  * Two pipelines, selected by the binding's config_json:
  *   reply  (default) — Emily-style: persona-driven reply to the sender.
@@ -100,32 +112,82 @@ interface Job {
   binding_name: string;
   email_id: string | null;
   context_json: string;
+  due_at: number | null;
   tenant_id: string;
   config_json: string;
 }
+
+/**
+ * Who this drain IS, to the s11 T2 eligibility gate: the PAID cloud runtime,
+ * declaring no capability vector (an undeclared vector claims as today —
+ * fit's DefaultCase; the cloud models' actual reach is not the gate's
+ * business). It claims through its own SQL, so the identity binds straight
+ * into the gate rather than riding a `claimant` argument, and every claim
+ * records claimant_free = 0 — the same trust-but-audit trail the JMAP claim
+ * path writes.
+ */
+const CLOUD_CLAIMANT: ClaimantIdentity = { isFree: false, capabilities: null };
 
 async function drain(env: Env, _ctx: ExecutionContext): Promise<number> {
   let handled = 0;
   // Bounded batches per wake-up; anything beyond waits for the next poke
   // or the cron sweep. Model calls are I/O wait, so wall-clock is cheap.
   for (let round = 0; round < 4; round++) {
+    // The SELECT carries the same eligibility gate as the claim UPDATE below,
+    // with ONE deliberate loosening: the escalation window is per-binding (a
+    // median over history, computed in JS), so the SELECT uses the widest
+    // possible window (4h) and the claim UPDATE enforces the exact one. The
+    // superset costs at most a failed claim on a row inside 4h of due but
+    // outside its true window; without the SELECT-side gate, a head-of-queue
+    // run of far-due (sitting) rows would occupy every batch slot forever and
+    // starve an eligible row behind them.
+    const selectNow = Date.now();
     const { results } = await env.DB.prepare(
       `SELECT inv.id, inv.account_id, inv.binding_id, inv.binding_name, inv.email_id,
-              inv.context_json, a.tenant_id, COALESCE(b.config_json, '{}') AS config_json
+              inv.context_json, inv.due_at, a.tenant_id, COALESCE(b.config_json, '{}') AS config_json
        FROM agent_invocations inv
        JOIN agent_bindings b ON b.account_id = inv.account_id AND b.id = inv.binding_id
        JOIN accounts a ON a.id = inv.account_id
-       WHERE inv.status = 'pending' AND b.enabled = 1 AND a.deleted_at IS NULL
+       WHERE inv.status = 'pending' AND b.enabled = 1 AND a.deleted_at IS NULL${claimGateSql("inv")}
        ORDER BY inv.created_at LIMIT ${DRAIN_BATCH}`,
-    ).all<Job>();
+    )
+      .bind(
+        ...claimGateBinds({
+          now: selectNow,
+          claimant: CLOUD_CLAIMANT,
+          escalationWindowMs: ESCALATION_WINDOW_MAX_MS,
+          monthStartMs: budgetMonthStartMs(selectNow),
+        }),
+      )
+      .all<Job>();
 
     for (const job of results) {
-      // Optimistic claim — loses gracefully to a homelab runner.
+      // Optimistic claim — loses gracefully to a homelab runner — with the
+      // exact eligibility gate folded into the WHERE (s11 T2): the same
+      // predicate `mayClaim` states in @bullmoose/scheduling, enforced where
+      // the pending→running transition happens so nothing between SELECT and
+      // UPDATE (a facet stamp, a budget tick, a free runtime waking up) can
+      // let the paid drain claim outside its set.
+      const now = Date.now();
+      const windowMs =
+        job.due_at !== null
+          ? await bindingEscalationWindowMs(env.DB, job.account_id, job.binding_id)
+          : ESCALATION_WINDOW_NO_HISTORY_MS;
       const claim = await env.DB.prepare(
-        `UPDATE agent_invocations SET status = 'running', claimed_at = ?
-         WHERE account_id = ? AND id = ? AND status = 'pending'`,
+        `UPDATE agent_invocations SET status = 'running', claimed_at = ?, claimant_free = 0, claimant_caps_json = NULL
+         WHERE account_id = ? AND id = ? AND status = 'pending'${claimGateSql("agent_invocations")}`,
       )
-        .bind(Date.now(), job.account_id, job.id)
+        .bind(
+          now,
+          job.account_id,
+          job.id,
+          ...claimGateBinds({
+            now,
+            claimant: CLOUD_CLAIMANT,
+            escalationWindowMs: windowMs,
+            monthStartMs: budgetMonthStartMs(now),
+          }),
+        )
         .run();
       if (claim.meta.changes !== 1) continue;
 
