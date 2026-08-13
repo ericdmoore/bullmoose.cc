@@ -635,27 +635,26 @@ func apConn(a approvalsArgs) (*sql.DB, *jmap.Client, account.Account, error) {
 	return db, jmap.NewClient(settings.Base, settings.Token), acc, nil
 }
 
-// resolveAccount picks the single account approvals acts on: the default when no
-// selector is given (db.ts:222), else account.Pick — the cli/009 single-account
-// rule, where an ambiguous selector is a usage error (exit 2) and no match is not
-// found (exit 3).
+// resolveAccount picks the single account a command acts on — account.One, the
+// cli/009 rule (db.ts:221 pickAccount): no selector → the default; an ambiguous
+// selector is a usage error (exit 2); no match is not found (exit 3).
+//
+// Shared by `approvals`, `read` and `send`, which is the whole point of cli/009:
+// one resolver, so a selector means the same thing whichever command is typed.
+// The exit-code mapping lives here rather than in the account package so the
+// sentence stays byte-identical to the TypeScript's, which `read`/`send` are held
+// to and `approvals` inherits for free.
 func resolveAccount(settings *store.Settings, selector string) (account.Account, error) {
-	if selector == "" || selector == "default" {
-		for _, x := range settings.Accounts {
-			if x.AccountID == settings.AccountID {
-				return x, nil
-			}
-		}
-		return account.Account{AccountID: settings.AccountID}, nil
+	acc, err := account.One(settings.Accounts, settings.AccountID, selector)
+	if err == nil {
+		return acc, nil
 	}
-	acc, err := account.Pick(settings.Accounts, selector)
-	if err != nil {
-		if errors.Is(err, account.ErrAmbiguous) {
-			return account.Account{}, &bmio.CliError{Msg: err.Error(), Code: bmio.ExitUsage}
-		}
-		return account.Account{}, &bmio.CliError{Msg: err.Error(), Code: bmio.ExitNotFound}
+	if errors.Is(err, account.ErrAmbiguous) {
+		// bmio.Usage adds the `usage: ` prefix io.ts:409 adds, which is how
+		// db.ts:225 renders this refusal.
+		return account.Account{}, bmio.Usage(err.Error())
 	}
-	return acc, nil
+	return account.Account{}, &bmio.CliError{Msg: err.Error(), Code: bmio.ExitNotFound}
 }
 
 // readEditBody mirrors send's readBody (main.ts:754) over readInput (io.ts:367):

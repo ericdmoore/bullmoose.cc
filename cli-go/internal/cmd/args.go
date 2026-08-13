@@ -8,26 +8,54 @@ import (
 
 // args is the parsed view a native command needs. It is intentionally NARROW:
 // delegate.Dispatch only routes an invocation here when every flag it carries is
-// one this set understands (delegate/native.go ownedNatively), so this parser
-// never has to reject an unknown flag or render help — those went to Node. That
-// keeps the whole flag grammar and the help system (packages/cli/src/help.ts,
-// ~1k lines) on the TypeScript side until a later wave.
+// one the TARGET command understands (delegate/native.go ownedNatively, fed from
+// this package's registry), so this parser never has to reject an unknown flag or
+// render help — those went to Node. That keeps the whole flag grammar and the
+// help system (packages/cli/src/help.ts, ~1k lines) on the TypeScript side until
+// a later wave.
 type args struct {
 	JSON        bool
 	IDs         bool
+	Raw         bool // `read --raw` — the RFC 5322 source
 	DB          string
 	Account     string
 	Mailbox     string
 	N           string // -n / --n, default "20" as main.ts:159
 	Positionals []string
+
+	// ---- compose (`send`, main.ts:86-93) ----
+	//
+	// To/CC/BCC are `multiple: true` in the parseArgs spec, so repetition
+	// ACCUMULATES rather than overwrites; each element may itself be a
+	// comma-separated list, which splitAddresses flattens (main.ts:767).
+	To       []string
+	CC       []string
+	BCC      []string
+	Subject  string
+	From     string
+	Identity string
+	File     string
+	Body     string
+	// HasBody records PRESENCE, not truthiness: main.ts:778 tests
+	// `opts.body !== undefined`, so `--body ""` is an explicit empty body and
+	// must NOT fall through to stdin.
+	HasBody bool
 }
 
-// ownedValue mirrors the value-taking subset of main.ts:64-163 that the wave-1
-// commands actually read. Kept in lockstep with delegate's ownedNatively guard:
-// a flag parsed here as value-taking must also be skipped there, or the two
-// disagree about where a token ends.
-var ownedValue = map[string]bool{"db": true, "account": true, "mailbox": true, "n": true}
+// at is positionals[n] or "" — main.ts reads a missing positional as undefined
+// and every consumer treats that as absent.
+func (a args) at(n int) string {
+	if n < len(a.Positionals) {
+		return a.Positionals[n]
+	}
+	return ""
+}
 
+// Which command owns which flag now lives in registry.go, one entry per command,
+// and is pushed to delegate.RegisterFlags from there — so the guard and the
+// parser below are fed from the same declaration rather than from two lists that
+// have to be kept level by hand.
+//
 // parse walks argv the way node:util parseArgs (main.ts:65) would for this
 // narrow flag set: `--flag value`, `--flag=value`, `-n value`, booleans, and a
 // `--` end-of-options marker. Positionals[0] is the command name (main.ts:183).
@@ -60,6 +88,8 @@ func parse(argv []string) args {
 				a.JSON = true
 			case "ids":
 				a.IDs = true
+			case "raw":
+				a.Raw = true
 			case "db":
 				a.DB = value()
 			case "account":
@@ -68,6 +98,23 @@ func parse(argv []string) args {
 				a.Mailbox = value()
 			case "n":
 				a.N = value()
+			case "to":
+				a.To = append(a.To, value())
+			case "cc":
+				a.CC = append(a.CC, value())
+			case "bcc":
+				a.BCC = append(a.BCC, value())
+			case "subject":
+				a.Subject = value()
+			case "from":
+				a.From = value()
+			case "identity":
+				a.Identity = value()
+			case "file":
+				a.File = value()
+			case "body":
+				a.Body = value()
+				a.HasBody = true
 			}
 
 		case arg == "-n":

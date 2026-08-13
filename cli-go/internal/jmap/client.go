@@ -11,9 +11,12 @@
 // exit code — so a `forbidden` is exit 4 and a `stateMismatch` is exit 5 without
 // re-parsing a human sentence.
 //
-// It deliberately does NOT fetch the session (`.well-known/jmap`) first: the
-// mirror already holds the base, and session.ts:85 defines apiUrl as
-// `${origin}/api/jmap`, so the endpoint is computable without a round trip.
+// NewClient deliberately does NOT fetch the session (`.well-known/jmap`) first:
+// the mirror already holds the base, and session.ts:85 defines apiUrl as
+// `${origin}/api/jmap`, so the endpoint is computable without a round trip. That
+// holds for the GO-NATIVE commands, which only ever face the real server; the
+// PORTED ones (read, send) need NewSessionClient instead, and session.go records
+// the two reasons why.
 package jmap
 
 import (
@@ -42,10 +45,52 @@ var AgentUsing = []string{CoreCap, AgentCap}
 
 // Invocation is one method call to SEND — the RFC 8620 §3.2 triple
 // [name, args, callId]. It marshals to that JSON array.
+//
+// Args is `any` rather than a map so a caller can pass an ordered value — a
+// struct, or Object below. JSON objects are unordered by spec, but the PORTED
+// commands are held to byte-identity with the TypeScript CLI, and a request
+// stream is as observable as stdout is: it is what the server logs, and what a
+// packet capture shows. A Go map marshals its keys SORTED, so a map here would
+// make every request differ from Node's for no reason at all.
 type Invocation struct {
 	Name   string
-	Args   map[string]any
+	Args   any
 	CallID string
+}
+
+// Object is a JSON object with the key order the author wrote, for the places
+// where the keys are dynamic and a struct cannot express them —
+// `onSuccessUpdateEmail`'s patch, whose keys embed mailbox ids.
+type Object []Member
+
+// Member is one key/value pair of an Object.
+type Member struct {
+	Key   string
+	Value any
+}
+
+// MarshalJSON writes the members in order.
+func (o Object) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, m := range o {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		key, err := json.Marshal(m.Key)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(key)
+		buf.WriteByte(':')
+		value, err := json.Marshal(m.Value)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(value)
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
 }
 
 // MarshalJSON renders the triple. A nil Args becomes `{}` so the server never
@@ -95,6 +140,11 @@ type Client struct {
 	base  string
 	token string
 	http  *http.Client
+	// viaSession routes Call through the session resource's apiUrl instead of
+	// the computed path — set by NewSessionClient, see session.go for why the
+	// PORTED commands need it and the Go-native ones do not.
+	viaSession bool
+	session    *Session
 }
 
 // NewClient reads its base + token from the same place the mirror config holds
@@ -116,7 +166,11 @@ func (c *Client) Call(ctx context.Context, using []string, calls []Invocation) (
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/api/jmap", bytes.NewReader(body))
+	url, err := c.endpoint(ctx)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +203,7 @@ func (c *Client) Call(ctx context.Context, using []string, calls []Invocation) (
 // One is a single method call — jmap.ts:136 `client.one`. It returns the result
 // args (raw), or a *bmio.ServerError carrying the method-level error type so the
 // exit code is the server's judgement, not a generic 1.
-func (c *Client) One(ctx context.Context, method string, args map[string]any, using []string) (json.RawMessage, error) {
+func (c *Client) One(ctx context.Context, method string, args any, using []string) (json.RawMessage, error) {
 	resps, err := c.Call(ctx, using, []Invocation{{Name: method, Args: args, CallID: "c0"}})
 	if err != nil {
 		return nil, err
