@@ -461,7 +461,7 @@ inbound-only first.
 ### The app surface — `app.bullmoose.cc` (Pages + Worker routes, ONE origin)
 
 `webmail/` deploys to a **second** Pages project, `bullmoose-app`, via
-`.github/workflows/deploy-app.yml`. The API is **not** a separate host: four
+`.github/workflows/deploy-app.yml`. The API is **not** a separate host: five
 Worker routes on `services/jmap` claim the API paths on the same name, and Pages
 serves everything else. Worker routes take precedence over Pages on a shared
 hostname, so the two coexist.
@@ -474,8 +474,15 @@ origin boundary.
 
 | path | served by |
 |---|---|
-| `/.well-known/jmap`, `/api/*`, `/auth/*`, `/share/*` | `bullmoose-jmap` worker |
+| `/.well-known/jmap`, `/api/*`, `/auth/*`, `/share/*`, `/console/*` | `bullmoose-jmap` worker |
 | everything else (`/`, `/login`, `/mail`, `/calendar`, …) | `bullmoose-app` Pages |
+
+`/console/*` is the agent console's read interface (s03.E, `services/jmap/src/console.ts`).
+It is here, and not on the worker that owns `/vault/credentials`, for the same
+CORS reason: `services/agent` has no public route and sends no CORS headers, so
+a browser cannot read anything there. **The `/agents` screen 404s into Pages
+until this route is deployed** — it is a new pattern, so an existing deployment
+needs `deploy-mail.yml` re-run before the console goes live.
 
 ⚠️ **A single `/api/*` route is not enough** and looks like it is. The client
 opens on `/.well-known/jmap` and the login door posts to `/auth/login`; neither

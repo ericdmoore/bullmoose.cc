@@ -4,6 +4,7 @@ import { accountStub } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
 import { authenticate, accountAccess, principalHasScope, type AuthEnv } from "./auth";
 import { handleLogin, handleTokens } from "./authRoutes";
+import { handleConsole } from "./console";
 import { buildSession } from "./session";
 import { buildRegistry, type RequestContext } from "./methods";
 import {
@@ -68,6 +69,13 @@ export default {
     // Self-service token management (list / mint-within-scopes / revoke).
     if (url.pathname === "/auth/tokens" || url.pathname.startsWith("/auth/tokens/")) {
       return handleTokens(request, url, env, principal);
+    }
+
+    // The agent console's read interface (s03.E). Same-origin with the app for
+    // the same reason /api/* is — see console.ts's header for why it is served
+    // here and not by the worker that owns /vault/credentials.
+    if (url.pathname === "/console" || url.pathname.startsWith("/console/")) {
+      return handleConsole(request, url, env, principal);
     }
 
     // RFC 8620 §2: session resource.

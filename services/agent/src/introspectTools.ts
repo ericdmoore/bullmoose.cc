@@ -318,8 +318,13 @@ export async function grantsAsTarget(db: D1Database, accountId: string): Promise
  * So: derived facts, never raw values. Booleans and counts where the value
  * itself is sensitive; the literal only where it is an enum this file
  * defines.
+ *
+ * Exported for the drift check in `services/jmap/src/consoleContract.test.ts`:
+ * the console's read interface returns this same summary and mirrors this
+ * derivation, and the two surfaces must not tell an operator different things
+ * about whether an agent SENDS.
  */
-function describeBinding(configJson: string) {
+export function describeBinding(configJson: string) {
   let cfg: BindingConfig = {};
   try {
     cfg = JSON.parse(configJson || "{}") as BindingConfig;
