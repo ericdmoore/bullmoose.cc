@@ -36,8 +36,37 @@ async function scaffold() {
 
   w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT, displayName: "Emily" });
   w.db.seed("identities", [{ id: "id_emily", account_id: ACCOUNT, email: SELF }]);
+  // s10 T1: a send-mode binding is fail-closed without a governing book, so
+  // the proposal producer under test needs SENDER inside one.
+  w.db.seed("address_books", [
+    {
+      id: "ab_reach",
+      account_id: ACCOUNT,
+      name: "emily may email",
+      write_policy: "governed",
+      created_at: 1,
+      updated_at: 1,
+    },
+  ]);
+  w.db.seed("contact_cards", [
+    {
+      id: "cc_sender",
+      account_id: ACCOUNT,
+      address_book_id: "ab_reach",
+      uid: "u_sender",
+      card_json: JSON.stringify({ uid: "u_sender", emails: { e1: { address: SENDER } } }),
+      created_at: 1,
+      updated_at: 1,
+    },
+  ]);
   w.db.seed("agent_bindings", [
-    { id: "bind_emily", account_id: ACCOUNT, name: "emily", config_json: SEND_CONFIG },
+    {
+      id: "bind_emily",
+      account_id: ACCOUNT,
+      name: "emily",
+      config_json: SEND_CONFIG,
+      recipients_book_id: "ab_reach",
+    },
   ]);
 
   const raw = buildMime({
