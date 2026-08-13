@@ -140,6 +140,17 @@ const parseCommandLine = () =>
       sla: { type: "string" },
       allow: { type: "string" },
       "reply-mode": { type: "string" },
+      // ---- the agent config surface (s10 T4): `agents` is GO-NATIVE and has
+      //      no case in the switch below, but its value-taking flags are
+      //      declared here anyway. `cli-go/internal/delegate/argv.go` mirrors
+      //      this spec to know where a token ends, and argv_test.go diffs the
+      //      two in both directions — an undeclared flag there would make the
+      //      Go front door read `--recipients-book`'s VALUE as the command.
+      "allow-sender": { type: "string", multiple: true },
+      "recipients-book": { type: "string" },
+      enabled: { type: "string" },
+      agent: { type: "string" },
+      destroy: { type: "boolean", default: false },
       raw: { type: "boolean", default: false },
       offline: { type: "boolean", default: false },
       exec: { type: "string" },

@@ -45,7 +45,7 @@ import (
 )
 
 const approvalsUsage = "bullmoose approvals <list|show|approve|decline|edit> [id] " +
-	"[--status s] [--reason r] [--note t] [--body t|--file p] [--subject s] [--account sel] [--json|--ids]"
+	"[--status s] [--agent name] [--reason r] [--note t] [--body t|--file p] [--subject s] [--account sel] [--json|--ids]"
 
 // rejectReasons mirrors REJECT_REASONS (actionProposal.ts:53). Checked
 // client-side only to fail a typo fast with a usage code; the server remains the
@@ -134,6 +134,20 @@ func apList(s *bmio.Streams, a approvalsArgs) int {
 			proposals = append(proposals, p)
 		}
 	}
+	// `--agent` is filtered CLIENT-SIDE, and deliberately so: ActionProposal/query
+	// refuses every filter key but `status` (actionProposal.ts:166 —
+	// unsupportedFilter), so asking the server would be a hard error, not a
+	// narrower query. This is the filter `bullmoose agents show <name>` points at,
+	// so the pointer names a flag that exists (s10 T4).
+	if a.Agent != "" {
+		kept := proposals[:0]
+		for _, p := range proposals {
+			if p.Agent == a.Agent {
+				kept = append(kept, p)
+			}
+		}
+		proposals = kept
+	}
 	proposals = proposal.OrderQueue(proposals)
 
 	if a.IDs { // §1.8 — the xargs shape outranks everything
@@ -152,6 +166,9 @@ func apList(s *bmio.Streams, a approvalsArgs) int {
 		label := "pending"
 		if a.Status != "" {
 			label = a.Status
+		}
+		if a.Agent != "" {
+			label += " " + a.Agent
 		}
 		s.Note("(no " + label + " proposals)") // chrome → stderr, so `| wc -l` is 0
 		return 0
@@ -695,7 +712,8 @@ type approvalsArgs struct {
 	JSON, IDs                                              bool
 	DB, Account, Status, Reason, Note, Body, File, Subject string
 	IfState                                                string
-	HasBody                                                bool // --body present, even if ""
+	Agent                                                  string // list: narrow the queue to one agent (client-side)
+	HasBody                                                bool   // --body present, even if ""
 	Positionals                                            []string
 }
 
@@ -732,6 +750,8 @@ func parseApprovals(argv []string) approvalsArgs {
 				a.Account = value()
 			case "status":
 				a.Status = value()
+			case "agent":
+				a.Agent = value()
 			case "reason":
 				a.Reason = value()
 			case "note":
