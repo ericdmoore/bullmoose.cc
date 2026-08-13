@@ -108,6 +108,14 @@ import App from "../layouts/App.astro";
     margin: 0;
     padding: 0;
     overflow-y: auto;
+    /* The pager is the last row and auto-advances on scroll; anchoring keeps the
+       names under the pointer still when a page appends. */
+    overflow-anchor: auto;
+  }
+  .card-pager {
+    display: flex;
+    justify-content: center;
+    padding: 0.75rem 0 1.25rem;
   }
   .card-row {
     display: flex;

@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { resolveClient, type ClientMode } from "../lib/app/client";
 import {
   bookIdOf,
@@ -101,6 +101,7 @@ export default function ContactsApp({ client: injected }: Props) {
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [total, setTotal] = useState<number | undefined>(undefined);
   const [loading, setLoading] = useState(false);
+  const pagerRef = useRef<HTMLButtonElement | null>(null);
   const [exhausted, setExhausted] = useState(false);
 
   const [searchInput, setSearchInput] = useState("");
@@ -232,6 +233,31 @@ export default function ContactsApp({ client: injected }: Props) {
   useEffect(() => {
     void runQuery(0);
   }, [runQuery, reloadKey]);
+
+  // Infinite scroll, as an observer over the pager button rather than a scroll
+  // handler: the browser tells us when the control is actually visible, so there
+  // is no listener firing on every frame and no arithmetic about heights.
+  //
+  // `rootMargin` fetches one screen early, so the next page is usually already
+  // there by the time the names run out — the point of infinite scroll is that
+  // the seam never shows.
+  //
+  // Guards: `loading` stops a second fetch while one is in flight (the observer
+  // fires again the moment the button re-enters view), and `exhausted` unmounts
+  // the button entirely, which disconnects this observer with it.
+  useEffect(() => {
+    const pager = pagerRef.current;
+    if (!pager || exhausted || loading) return;
+    if (typeof IntersectionObserver === "undefined") return; // no observer: the button still works
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) void runQuery(cards.length);
+      },
+      { root: pager.closest(".card-list"), rootMargin: "400px" },
+    );
+    io.observe(pager);
+    return () => io.disconnect();
+  }, [runQuery, cards.length, exhausted, loading]);
 
   // ── the selected card ───────────────────────────────────────────────────
   useEffect(() => {
@@ -686,6 +712,25 @@ export default function ContactsApp({ client: injected }: Props) {
                     : "This address book has no contacts yet."}
                 </li>
               ) : null}
+              {/* The pager lives INSIDE the scrolling list, as its last row: the
+                  list is the scroll container, so a control outside it can never
+                  be reached by scrolling to the bottom of the names. It is still a
+                  real button — the observer below clicks it when it scrolls into
+                  view, but keyboard and screen-reader users reach it the same way
+                  they always could. Infinite scroll that is ONLY an observer
+                  strands anyone who does not scroll with a mouse. */}
+              {!exhausted ? (
+                <li class="card-pager">
+                  <button
+                    ref={pagerRef}
+                    class="link-button"
+                    disabled={loading}
+                    onClick={() => void runQuery(cards.length)}
+                  >
+                    {loading ? "Loading…" : "Load more"}
+                  </button>
+                </li>
+              ) : null}
             </ul>
 
             <section class="card-detail">
@@ -728,11 +773,6 @@ export default function ContactsApp({ client: injected }: Props) {
             </section>
           </div>
 
-          {!exhausted ? (
-            <button class="link-button" disabled={loading} onClick={() => void runQuery(cards.length)}>
-              {loading ? "Loading…" : "Load more"}
-            </button>
-          ) : null}
         </main>
       </div>
 
