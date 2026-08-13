@@ -1,6 +1,14 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges } from "@bullmoose/account-do";
 import {
+  ESCALATION_WINDOW_NO_HISTORY_MS,
+  bindingEscalationWindowMs,
+  budgetMonthStartMs,
+  claimGateBinds,
+  claimGateSql,
+  normalizeClaimant,
+} from "@bullmoose/scheduling";
+import {
   accountState,
   proxyChanges,
   requireAccount,
@@ -91,7 +99,11 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
    *            trigger type — `services/agent` gates on status+enabled, not
    *            `trigger_on`. This is the "Human → agent invoke on a thread"
    *            capability `s03.D-coexistence/devPlan.md:42-46` depends on.
-   *   update   claim/complete: { id: { status: "running"|"done"|"failed", result? } }
+   *   update   claim/complete: { id: { status: "running"|"done"|"failed", result? } }.
+   *            A claim (→ running) may carry a top-level `claimant` argument
+   *            beside `update` — { isFree: boolean, capabilities?: {vision?,
+   *            contextTokens?, tools?} } — and passes the s11 T2 eligibility
+   *            gate folded into the guarded UPDATE (see T2-FIT-CONTRACT below).
    *   destroy  purge an invocation (pending|done|failed) — a `running` one is
    *            refused, since a runtime is mid-flight on it.
    *
@@ -215,6 +227,24 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
       };
     }
 
+    // T2-FIT-CONTRACT (s11 devPlan T2) — LIVE. The claim's guarded UPDATE
+    // carries the full three-term gate (jobs-and-facets §6):
+    //   eligible = authority(grants)          ← requireAccount above
+    //            ∧ fit(capabilities, facets)  ← claimGateSql, below
+    //            ∧ policy(due_at, budget, now)← claimGateSql, below
+    // The claimant declares `{ isFree, capabilities }` in an AgentInvocation/set
+    // `claimant` argument beside `update` (the fleet host sends isFree:true +
+    // its fleet.json vector; the cloud drain claims through its own SQL with
+    // isFree:false). Absent declaration = paid, no vector — conservative for
+    // policy, while an undeclared VECTOR claims as today (fit's DefaultCase;
+    // see @bullmoose/scheduling fit()). Both fit and policy are enforced IN
+    // the UPDATE's WHERE, so a hostile claimant that self-filters generously
+    // still cannot claim outside its set — its preference (which eligible row
+    // to take first) stays client-side, its eligibility does not. The declared
+    // identity is recorded on the claim (claimant_free, claimant_caps_json):
+    // trust-but-audit — isFree is fit-shaped, not authority-shaped, so a lie
+    // earns work, never permissions, and the score catches it from the record.
+    const claimant = normalizeClaimant(args.claimant);
     const update = (args.update as Record<string, Record<string, unknown>> | undefined) ?? {};
     for (const [id, patch] of Object.entries(update)) {
       const status = patch.status;
@@ -222,46 +252,87 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
         notUpdated[id] = setError("invalidProperties", "status must be running|done|failed");
         continue;
       }
-      // Claim is optimistic-concurrency-guarded: only a pending invocation
-      // can move to running (two runtimes can't both claim).
-      //
-      // T2-FIT-CONTRACT (s11 devPlan T2 — server-side eligibility, NOT built
-      // here): this guarded UPDATE is where the three-term gate lands —
-      //   eligible = authority(grants)          ← requireAccount above, LIVE
-      //            ∧ fit(capabilities, facets)  ← T2 adds here
-      //            ∧ policy(due_at, budget, now)← T2 adds here
-      // The claimant's capability vector {vision?, contextTokens?, tools?} is
-      // SELF-DECLARED (safe: it gates fit, not authority — jobs-and-facets §6)
-      // and for this wave rides only client-side (the fleet host declares it
-      // in fleet.json and narrows its own claims; see packages/cli/src/agent.ts
-      // fitsRequirements). T2 must carry that same vector on the claim call —
-      // e.g. an AgentInvocation/set `capabilities` argument beside `update` —
-      // and fold `requires_json` (T6 facet column) into this WHERE clause so a
-      // hostile claimant that self-filters generously still cannot claim
-      // outside its set. A claimant sending NO vector must behave as today
-      // (DefaultCase: unfaceted/undeclared = claimable).
-      const guard = status === "running" ? "AND status = 'pending'" : "";
+      const resultJson = patch.result !== undefined ? JSON.stringify(patch.result) : null;
+
+      if (status !== "running") {
+        // Completion (done|failed) is a runtime finishing its own claim —
+        // never eligibility-gated, and (as before) not state-guarded.
+        const res = await ctx.env.DB.prepare(
+          `UPDATE agent_invocations
+           SET status = ?, result_json = COALESCE(?, result_json), done_at = ?
+           WHERE account_id = ? AND id = ?`,
+        )
+          .bind(status, resultJson, Date.now(), access.accountId, id)
+          .run();
+        if ((res.meta.changes ?? 0) > 0) updated[id] = null;
+        else notUpdated[id] = setError("notFound", "no such invocation");
+        continue;
+      }
+
+      // The claim. Optimistic-concurrency-guarded (only pending → running, so
+      // two runtimes can't both claim) AND eligibility-gated in the same WHERE.
+      // The row read first is advisory only — it feeds the escalation-window
+      // computation (a per-binding median, unbindable as pure SQL); every
+      // enforced predicate reads the row's columns inside the UPDATE itself.
+      const row = await ctx.env.DB.prepare(
+        `SELECT binding_id, due_at FROM agent_invocations WHERE account_id = ? AND id = ?`,
+      )
+        .bind(access.accountId, id)
+        .first<{ binding_id: string; due_at: number | null }>();
+      if (!row) {
+        notUpdated[id] = setError("notFound", "no such invocation");
+        continue;
+      }
+      // The window is only consulted for a paid claim on due work; skip the
+      // history scan otherwise and bind the (unread) default.
+      const windowMs =
+        !claimant.isFree && row.due_at !== null
+          ? await bindingEscalationWindowMs(ctx.env.DB, access.accountId, row.binding_id)
+          : ESCALATION_WINDOW_NO_HISTORY_MS;
+      const now = Date.now();
       const res = await ctx.env.DB.prepare(
         `UPDATE agent_invocations
-         SET status = ?,
+         SET status = 'running',
              result_json = COALESCE(?, result_json),
-             claimed_at = CASE WHEN ? = 'running' THEN ? ELSE claimed_at END,
-             done_at = CASE WHEN ? IN ('done','failed') THEN ? ELSE done_at END
-         WHERE account_id = ? AND id = ? ${guard}`,
+             claimed_at = ?,
+             claimant_free = ?,
+             claimant_caps_json = ?
+         WHERE account_id = ? AND id = ? AND status = 'pending'${claimGateSql("agent_invocations")}`,
       )
         .bind(
-          status,
-          patch.result !== undefined ? JSON.stringify(patch.result) : null,
-          status,
-          Date.now(),
-          status,
-          Date.now(),
+          resultJson,
+          now,
+          claimant.isFree ? 1 : 0,
+          claimant.capabilities !== null ? JSON.stringify(claimant.capabilities) : null,
           access.accountId,
           id,
+          ...claimGateBinds({
+            now,
+            claimant,
+            escalationWindowMs: windowMs,
+            monthStartMs: budgetMonthStartMs(now),
+          }),
         )
         .run();
-      if ((res.meta.changes ?? 0) > 0) updated[id] = null;
-      else notUpdated[id] = setError("notFound", "no such invocation (or already claimed)");
+      if ((res.meta.changes ?? 0) > 0) {
+        updated[id] = null;
+        continue;
+      }
+      // Zero changes: raced/gone, or refused by the gate. Distinguish them —
+      // a still-pending row means the gate said no, and telling the claimant
+      // "notFound" would send it chasing a phantom race.
+      const still = await ctx.env.DB.prepare(
+        `SELECT status FROM agent_invocations WHERE account_id = ? AND id = ?`,
+      )
+        .bind(access.accountId, id)
+        .first<{ status: string }>();
+      notUpdated[id] =
+        still?.status === "pending"
+          ? setError(
+              "forbidden",
+              "claim refused: this claimant is not eligible for this invocation yet (fit/policy)",
+            )
+          : setError("notFound", "no such invocation (or already claimed)");
     }
 
     // ---- destroy: purge an invocation ----
