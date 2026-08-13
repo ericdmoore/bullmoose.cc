@@ -47,12 +47,47 @@ var ownedBoolFlags = map[string]bool{"json": true, "ids": true}
 // deliberately absent, so a `-h` invocation delegates to Node's help.
 var ownedShortFlags = map[string]bool{"n": true}
 
-// ownedNatively reports whether every flag in argv is one the native commands
-// understand. A `--` ends option scanning (the rest are positionals); a bare
-// positional, including "-", is always fine. Any other long or short flag —
-// `--help`, `-h`, an unknown flag, or a known-but-unowned one like `--force` —
-// makes this false, so Dispatch delegates and Node owns the outcome.
+// perCommandValueFlags / perCommandBoolFlags widen the guard for ONE command.
+//
+// The shared sets above are the wave-1 vocabulary, and widening them for a
+// later command would be wrong in a way that is hard to see: adding `--exec`
+// globally would make `bullmoose log --exec rm` run natively (and ignore the
+// flag) where Node rejects it. So `watch`'s four flags are owned by `watch`
+// alone. Populated by RegisterOwnedFlags from cmd's registry, which is the same
+// single source routing and the cli/008 capability table come from.
+var (
+	perCommandValueFlags = map[string]map[string]bool{}
+	perCommandBoolFlags  = map[string]map[string]bool{}
+)
+
+// RegisterOwnedFlags declares the extra flags one native command consumes.
+func RegisterOwnedFlags(command string, valueFlags, boolFlags []string) {
+	if len(valueFlags) > 0 {
+		set := map[string]bool{}
+		for _, f := range valueFlags {
+			set[f] = true
+		}
+		perCommandValueFlags[command] = set
+	}
+	if len(boolFlags) > 0 {
+		set := map[string]bool{}
+		for _, f := range boolFlags {
+			set[f] = true
+		}
+		perCommandBoolFlags[command] = set
+	}
+}
+
+// ownedNatively reports whether every flag in argv is one the native command
+// named by argv understands. A `--` ends option scanning (the rest are
+// positionals); a bare positional, including "-", is always fine. Any other long
+// or short flag — `--help`, `-h`, an unknown flag, or a known-but-unowned one
+// like `--force` — makes this false, so Dispatch delegates and Node owns the
+// outcome.
 func ownedNatively(argv []string) bool {
+	command := Command(argv)
+	extraValue := perCommandValueFlags[command]
+	extraBool := perCommandBoolFlags[command]
 	for i := 0; i < len(argv); i++ {
 		arg := argv[i]
 		switch {
@@ -61,11 +96,11 @@ func ownedNatively(argv []string) bool {
 		case strings.HasPrefix(arg, "--"):
 			name, _, inline := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
 			switch {
-			case ownedValueFlags[name]:
+			case ownedValueFlags[name] || extraValue[name]:
 				if !inline {
 					i++ // consume the value token so it is not read as a flag
 				}
-			case ownedBoolFlags[name]:
+			case ownedBoolFlags[name] || extraBool[name]:
 				// owned boolean, nothing to consume
 			default:
 				return false

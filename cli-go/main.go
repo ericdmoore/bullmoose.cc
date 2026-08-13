@@ -37,7 +37,7 @@ func main() {
 	// cmd's registry so routing and the cli/008 capability table stay one source
 	// (cmd.Install). Go-native-only commands (approvals, s08) are also registered
 	// as native-only so Dispatch never delegates a command Node does not have.
-	cmd.Install(delegate.Register, delegate.RegisterNativeOnly)
+	cmd.InstallWithFlags(delegate.Register, delegate.RegisterNativeOnly, delegate.RegisterOwnedFlags)
 
 	// Dispatch does not always return: a child that died by a signal is
 	// reported by re-raising that signal here, so the parent's disposition is

@@ -23,7 +23,8 @@ import (
 var ErrNotImplemented = errors.New("cli-go: native command not implemented (s08 T6)")
 
 // spec describes one native command: whether it honours --json (the cli/008
-// capability bit), whether it is Go-native-only (no Node twin), and the handler.
+// capability bit), whether it is Go-native-only (no Node twin), which extra
+// flags it owns beyond the shared wave-1 set, and the handler.
 type spec struct {
 	// json is true when the command honours --json with machine-readable
 	// output. cli/008: --json is a GLOBAL flag (packages/cli/src/help.ts
@@ -35,6 +36,15 @@ type spec struct {
 	// (Node has no such command) — the "byte-identical to Node" invariant does not
 	// apply because there is nothing to match. `approvals` is the first (s08).
 	goNative bool
+	// valueFlags / boolFlags are the flags THIS command owns beyond the shared
+	// wave-1 set (delegate/native.go). They matter only for a command with a Node
+	// twin: the byte-identity guard delegates any invocation carrying a flag the
+	// native side does not consume, so a ported command whose own flags were not
+	// declared here would silently never run natively. Scoping them per command
+	// rather than widening the shared set keeps `log --exec …` delegating to the
+	// Node CLI that rejects it.
+	valueFlags []string
+	boolFlags  []string
 	// run serves the command against the process streams, returning the exit
 	// code. nil for a command listed for capability only.
 	run func(s *bmio.Streams, argv []string) int
@@ -51,6 +61,9 @@ type spec struct {
 //   - agents: Go-NATIVE-ONLY (s10 T4) — the agent CONFIGURATION surface. Also
 //     additive, and the first command on the CONTROL plane (the provision
 //     worker's admin API) rather than the mail account's JMAP endpoint.
+//   - watch: wave 4 (devPlan.md:152) and NOT Go-native-only — it has a Node twin
+//     (packages/cli/src/watch.ts), so it is held to byte-identity and declares
+//     its own four flags so the guard lets them through to this side.
 var registry = map[string]spec{
 	"mailboxes": {json: true, run: runMailboxes},
 	"search":    {json: true, run: runSearch},
@@ -58,6 +71,12 @@ var registry = map[string]spec{
 	"accounts":  {json: true, run: runAccounts},
 	"approvals": {json: true, goNative: true, run: runApprovals},
 	"agents":    {json: true, goNative: true, run: runAgents},
+	"watch": {
+		json:       true,
+		valueFlags: []string{"exec"},
+		boolFlags:  []string{"daemon", "status", "stop"},
+		run:        runWatch,
+	},
 }
 
 // SupportsJSON reports whether the NATIVE command honours --json, and whether it
@@ -83,6 +102,17 @@ func Install(
 	register func(command string, run func(argv []string) int),
 	registerNativeOnly func(command string),
 ) {
+	InstallWithFlags(register, registerNativeOnly, nil)
+}
+
+// InstallWithFlags is Install plus the per-command flag declarations. main.go
+// passes delegate.RegisterOwnedFlags; the two-function form is kept so existing
+// callers and tests that only care about routing are unaffected.
+func InstallWithFlags(
+	register func(command string, run func(argv []string) int),
+	registerNativeOnly func(command string),
+	registerOwnedFlags func(command string, valueFlags, boolFlags []string),
+) {
 	for name, s := range registry {
 		if s.run == nil {
 			continue
@@ -91,6 +121,9 @@ func Install(
 		register(name, func(argv []string) int { return run(bmio.New(), argv) })
 		if s.goNative {
 			registerNativeOnly(name)
+		}
+		if registerOwnedFlags != nil && (len(s.valueFlags) > 0 || len(s.boolFlags) > 0) {
+			registerOwnedFlags(name, s.valueFlags, s.boolFlags)
 		}
 	}
 }
