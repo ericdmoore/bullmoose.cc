@@ -1,7 +1,7 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
 import type { ContactCardRow, JSContactCard } from "@bullmoose/mailstore";
-import { budgetPeriodKey } from "@bullmoose/scheduling";
+import { budgetExhaustedSql, budgetMonthStartMs, budgetPeriodKey } from "@bullmoose/scheduling";
 import { authorizeAccount } from "../auth";
 import {
   accountState,
@@ -409,6 +409,45 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
               row.email_id,
               JSON.stringify({ kind: "answer-info-request", proposalId: id, question }),
               now,
+            )
+            .run();
+          // ⚠️ THE DEADLOCK s11 T9 FOUND, and it is not confined to T9's kind.
+          //
+          // The answer round is an ordinary invocation for the proposal's
+          // binding, so it goes through the ordinary eligibility gate — and if
+          // that binding's monthly budget is SPENT, the gate holds the paid
+          // cloud off it exactly as it holds off every other invocation. The
+          // round would sit unanswered until a free runtime appeared or the
+          // month rolled, with the human's decision clock paused the whole
+          // time. On a `budget-overrun` proposal that is absurd by
+          // construction: "what would it cost?" cannot be answered because
+          // there is no money to answer with, which is the dead end T9 exists
+          // to close, reappearing one level up.
+          //
+          // The fix reuses T3 rather than inventing anything: stamp the round
+          // past-due, and the overdue backstop — which claims OUTSIDE the
+          // policy gate precisely so budget exhaustion cannot strand work —
+          // picks it up on the next sweep. The answer handler is untouched, and
+          // so is the round's cost accounting (chronic needsInfo still shows up
+          // in $/approved-action, s10 T3).
+          //
+          // Guarded by the gate's OWN budget fragment, so the stamp lands only
+          // on the rounds that would actually deadlock and its arithmetic can
+          // never drift from the gate's: a binding under its cap (or covered by
+          // an approved overage) leaves `due_at` NULL and behaves exactly as it
+          // did before T9.
+          const gateNow = Date.now();
+          await ctx.env.DB.prepare(
+            `UPDATE agent_invocations SET due_at = ?
+              WHERE account_id = ? AND id = ?
+                AND ${budgetExhaustedSql("agent_invocations")}`,
+          )
+            .bind(
+              gateNow,
+              access.accountId,
+              answerInvId,
+              budgetMonthStartMs(gateNow),
+              budgetPeriodKey(gateNow),
             )
             .run();
           applyEntries.push({

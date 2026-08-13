@@ -546,3 +546,86 @@ describe("the sweep composes with T3's, and never claims anything itself", () =>
     expect(s.proposals()).toEqual([]);
   });
 });
+
+// ---- needsInfo: the answer is a FACT, not a guess ---------------------------
+
+describe('needsInfo — "what would it cost?" is answered from the record', () => {
+  it("the EXISTING answer handler serves this kind unchanged, with the numbers in front of it", async () => {
+    // s10 T3's `answer-info-request` round is not forked for T9. What T9 owes
+    // it is that the answer be DERIVABLE: `composeAnswer` feeds the proposal's
+    // rationale/evidence/payload to the model and forbids invention, so the
+    // cost estimate has to be ON the record. It is — as `estimateMicros`, and
+    // spelled out again in the rationale.
+    const s = await scaffold();
+    s.spend(1_000_000);
+    s.spend(1_000_000);
+    s.spend(1_500_000);
+    s.spend(1_500_000);
+    for (let i = 0; i < 12; i++) s.seedInvocation(`inv_wait_${i}`);
+    await s.sweep();
+    const proposalId = s.proposals()[0]!.id;
+
+    // The human asks, exactly as ActionProposal/set records it.
+    const question = "What would finishing the queue cost?";
+    s.w.db.sqlite.exec(
+      `UPDATE agent_proposals SET status = 'info-requested', question = '${question}',
+         amendments_json = '${JSON.stringify([
+           { question, answer: null, askedAt: new Date(1).toISOString(), answeredAt: null, askedBy: "eric" },
+         ])}',
+         expires_at = NULL, expires_remaining_ms = 3600000
+       WHERE id = '${proposalId}'`,
+    );
+    s.w.db.seed("agent_invocations", [
+      {
+        id: "inv_answer",
+        account_id: ACCOUNT,
+        binding_id: "bind_photos",
+        binding_name: "photos",
+        status: "pending",
+        email_id: null,
+        context_json: JSON.stringify({ kind: "answer-info-request", proposalId, question }),
+        created_at: 999,
+      },
+    ]);
+
+    // THE DEADLOCK, and how it is broken. The answer round is an ordinary
+    // invocation for a binding whose budget is SPENT, so the gated drain will
+    // not touch it — "what would it cost?" cannot be answered because there is
+    // no money to answer with. `ActionProposal/set` therefore stamps such a
+    // round past-due (guarded by the gate's own budget fragment), and T3's
+    // backstop — which claims outside the policy gate for exactly this reason —
+    // runs it on the next sweep.
+    s.w.db.sqlite.exec(`UPDATE agent_invocations SET due_at = ${Date.now()} WHERE id = 'inv_answer'`);
+    expect(await drainOnly(s.w)).toBe(0); // the gated path refuses it, as designed
+    await s.cron();
+
+    const answered = s.w.db.query<{ status: string; amendments_json: string; expires_at: number }>(
+      "SELECT status, amendments_json, expires_at FROM agent_proposals WHERE account_id = ? AND id = ?",
+      ACCOUNT,
+      proposalId,
+    )[0]!;
+    expect(answered.status).toBe("pending"); // back in the human's queue, clock resumed
+    const rounds = JSON.parse(answered.amendments_json) as Array<{ answer: string | null }>;
+    expect(rounds[0]!.answer).toBeTruthy();
+    // The mock model echoes its prompt, so this asserts what the REAL model is
+    // given: the estimate, the count and the ceiling, as recorded facts.
+    expect(rounds[0]!.answer).toContain(String(1_250_000 * 12)); // estimateMicros
+    expect(rounds[0]!.answer).toContain("12"); // waitingCount
+    expect(rounds[0]!.answer).toContain(String(CAP)); // capMicros
+    expect(rounds[0]!.answer).toContain(question);
+  });
+});
+
+/** The gated drain alone — the control for "the backstop is the way through". */
+async function drainOnly(w: FakeWorker): Promise<number> {
+  const execCtx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
+  const res = await agentWorker.fetch!(
+    new Request("https://agent.internal/drain", {
+      method: "POST",
+      headers: { "x-internal-token": w.env.INTERNAL_TOKEN },
+    }),
+    w.env as never,
+    execCtx,
+  );
+  return ((await res.json()) as { handled: number }).handled;
+}
