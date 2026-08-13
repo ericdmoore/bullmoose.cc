@@ -102,6 +102,17 @@ T1 due_at ──→ T2 eligibility policy ──→ T3 watchdog reconcile
 
 ## Decisions needed
 
+0. **Privacy is a pin, not a preference — and it collides with the watchdog.** Cost routing
+   says *"prefer free"*; privacy routing says *"MUST run local"* — a hard constraint on the
+   claimant set (e.g. a binding whose mail must never transit a paid cloud model). These are
+   different axes: the scheduler may escalate a cost-preferred job past `due_at`, but a
+   privacy-**pinned** invocation is exempt from T3's cloud-escalation backstop *by
+   definition* — when the homelab is down and `due_at` passes, the system must choose between
+   violating privacy and violating liveness. **Privacy wins: the work sits, and the human is
+   alerted** (the invariant "no past-due invocation sits pending" gains the qualifier
+   "…unclaimed *silently*"). Needs a `runtimePin: local | any` on the binding when built;
+   named now so T2/T3 leave room for it.
+
 1. **The escalation window — fixed, or cost-scaled?** A cheap job might escalate 10 min before
    due; an expensive one an hour, to leave retry room. *Recommendation: cost-scaled — the window
    is a function of the estimate and a retry budget, not a constant.*
