@@ -156,6 +156,14 @@ const parseCommandLine = () =>
       add: { type: "string", multiple: true },
       remove: { type: "string", multiple: true },
       role: { type: "string" },
+      // ---- approvals needs-info (s10 T3): the human's required question ----
+      // `approvals` is served natively by the Go binary and has no case in the
+      // switch below, but this spec is the DECLARATION both front doors read:
+      // cli-go/internal/delegate/argv.go mirrors every `type: "string"` entry so
+      // its scanner knows `--question <text>` consumes the next token rather
+      // than naming it as the command, and argv_test.go fails on drift in
+      // either direction.
+      question: { type: "string" },
       unset: { type: "boolean", default: false },
       "no-sync": { type: "boolean", default: false },
       n: { type: "string", short: "n", default: "20" },

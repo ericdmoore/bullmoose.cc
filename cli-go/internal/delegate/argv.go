@@ -56,6 +56,12 @@ var valueFlags = map[string]bool{
 	"if-state": true, "as": true,
 	// ---- triage verbs (sVOL 019) ----
 	"add": true, "remove": true, "role": true,
+	// ---- approvals needs-info (s10 T3) ----
+	// `approvals` is Go-native, but the scanner still has to know `--question`
+	// takes a value or `bullmoose --question "why?" approvals …` would name the
+	// question text as the command. Declared on the TypeScript side too
+	// (packages/cli/src/main.ts), because argv_test.go checks BOTH directions.
+	"question": true,
 	// ---- paging ----
 	"n": true,
 }

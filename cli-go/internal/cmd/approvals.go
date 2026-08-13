@@ -19,9 +19,14 @@ package cmd
 //   - a tier-3 approve lets the server's capability wall decide — an insufficient
 //     token's `forbidden` is surfaced verbatim with its own exit code;
 //   - `edit` writes editedPayload and NEVER payload, and a no-op edit sends no
-//     editedPayload at all.
+//     editedPayload at all;
+//   - `needs-info` is an ACTION, not a decline (s10 T3, decline-taxonomy.md): it
+//     carries only the required human question, records NO decision, and an
+//     `info-requested` row renders as waiting-on-the-agent with NO deadline —
+//     the server banked the remaining window and nulled `expiresAt`, so any
+//     countdown here would be invented and "expired" would be a lie.
 //
-// The verbs: list · show · approve · decline · edit.
+// The verbs: list · show · approve · decline · needs-info · edit.
 
 import (
 	"bytes"
@@ -44,19 +49,48 @@ import (
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/store"
 )
 
-const approvalsUsage = "bullmoose approvals <list|show|approve|decline|edit> [id] " +
-	"[--status s] [--reason r] [--note t] [--body t|--file p] [--subject s] [--account sel] [--json|--ids]"
+const approvalsUsage = "bullmoose approvals <list|show|approve|decline|needs-info|edit> [id] " +
+	"[--status s] [--reason r] [--note t] [--question t] [--body t|--file p] [--subject s] " +
+	"[--account sel] [--json|--ids]"
 
-// rejectReasons mirrors REJECT_REASONS (actionProposal.ts:53). Checked
+// rejectReasons mirrors REJECT_REASONS (actionProposal.ts:74). Checked
 // client-side only to fail a typo fast with a usage code; the server remains the
 // authority (a valid-but-unknown value would still be refused there).
+//
+// It mirrors what the SERVER enforces today — three reasons, `notNow` among
+// them. `.plans/s03.D-coexistence/decline-taxonomy.md` revises the set to
+// {wrongContent, wrongAction, unsafe}, retiring `notNow` and adding `unsafe`;
+// that revision has NOT landed in actionProposal.ts (nor in webmail's
+// `RejectReason`), so mirroring the taxonomy here would make the CLI refuse a
+// reason the server accepts and offer one it rejects. The enum is the contract;
+// when the server moves, this map and the message below move with it.
+//
+// ⚠️ `needsInfo` is deliberately absent and must STAY absent. It is an ACTION
+// (`needs-info`, status `info-requested`), never a reject reason — the taxonomy's
+// invariant is that it never lands in a rejection record, and this set is where
+// the invariant is enforced on the client write path. `--reason needsInfo` is
+// refused in apDecline with a pointer at the verb.
 var rejectReasons = map[string]bool{"wrongContent": true, "wrongAction": true, "notNow": true}
 
-// runApprovals is the front door for the five verbs. It is registered
+// rejectReasonList is the one place the enum is spelled for humans, so a usage
+// message can never drift from the set it describes.
+const rejectReasonList = "wrongContent, wrongAction, notNow"
+
+// runApprovals is the front door for the six verbs. It is registered
 // Go-native-only (registry.go), so Dispatch routes here regardless of flags.
 func runApprovals(s *bmio.Streams, argv []string) int {
 	a := parseApprovals(argv)
-	switch positionalAt(a, 1) {
+	verb := positionalAt(a, 1)
+	// `--question` belongs to exactly one verb. Dropping it silently on any other
+	// would let a human believe they had asked the agent something when nothing
+	// was asked — the same reason needs-info refuses --reason/--note.
+	if a.Question != "" && verb != proposal.NeedsInfoVerb {
+		return die(s, bmio.Usage(fmt.Sprintf(
+			"--question is the needsInfo ask and belongs to `approvals %s` alone — "+
+				"%q would have ignored it.\n%s",
+			proposal.NeedsInfoVerb, verb, needsInfoUsage(positionalAt(a, 2)))))
+	}
+	switch verb {
 	case "list":
 		return apList(s, a)
 	case "show":
@@ -65,6 +99,8 @@ func runApprovals(s *bmio.Streams, argv []string) int {
 		return apApprove(s, a)
 	case "decline":
 		return apDecline(s, a)
+	case proposal.NeedsInfoVerb: // "needs-info"
+		return apNeedsInfo(s, a)
 	case "edit":
 		return apEdit(s, a)
 	case "":
@@ -158,6 +194,15 @@ func apList(s *bmio.Streams, a approvalsArgs) int {
 	}
 	// Header + legend are chrome (stderr); rows are data (stdout, §1.1).
 	s.Note("clocks: WAITED grows (sat on you) · exp/hold SHRINK — exp is the decision deadline, hold is the tier-2 retraction window (nothing sent)")
+	// The needsInfo legend is printed only when such a row is on screen: it
+	// explains an ABSENCE (no clock at all), which is only confusing if it is
+	// there to be seen.
+	for _, p := range proposals {
+		if p.Status == "info-requested" {
+			s.Note("info-requested: " + proposal.WaitingOnAgentNote + " — no deadline is shown because none is running")
+			break
+		}
+	}
 	s.Note(apHeader())
 	now := time.Now().UnixMilli()
 	for _, p := range proposals {
@@ -217,10 +262,24 @@ func apApprove(s *bmio.Streams, a approvalsArgs) int {
 func apDecline(s *bmio.Streams, a approvalsArgs) int {
 	id := positionalAt(a, 2)
 	if id == "" {
-		return die(s, bmio.Usage("bullmoose approvals decline <id> [--reason wrongContent|wrongAction|notNow] [--note t]"))
+		return die(s, bmio.Usage("bullmoose approvals decline <id> [--reason "+
+			strings.ReplaceAll(rejectReasonList, ", ", "|")+"] [--note t]"))
+	}
+	// needsInfo reached for as a REASON is the taxonomy's one forbidden move: it
+	// is an action, and letting it through as a reason would write it into a
+	// rejection record — the exact thing a learning pipeline must never read as
+	// negative feedback. Refused here, before any round trip, with the verb that
+	// does what the human meant.
+	if isNeedsInfoReason(a.Reason) {
+		return die(s, bmio.Usage(fmt.Sprintf(
+			"needsInfo is not a reject reason — it is its own verb (decline-taxonomy.md):\n"+
+				"    bullmoose approvals %s %s --question \"why do you need this?\"\n"+
+				"%s\n"+
+				"Reject reasons are: %s.",
+			proposal.NeedsInfoVerb, id, proposal.NeedsInfoHint, rejectReasonList)))
 	}
 	if a.Reason != "" && !rejectReasons[a.Reason] {
-		return die(s, bmio.Usage("--reason must be one of: wrongContent, wrongAction, notNow"))
+		return die(s, bmio.Usage("--reason must be one of: "+rejectReasonList))
 	}
 	db, client, acc, err := apConn(a)
 	if err != nil {
@@ -240,6 +299,67 @@ func apDecline(s *bmio.Streams, a approvalsArgs) int {
 		patch["decision"] = decision
 	}
 	return decideAndReport(s, client, acc.AccountID, "decline", id, patch, false, a)
+}
+
+// isNeedsInfoReason recognises the taxonomy's action being reached for as a
+// reject reason, in the spellings a human would actually type. Recognising the
+// near-misses is the point: the refusal only teaches if it fires.
+func isNeedsInfoReason(reason string) bool {
+	switch strings.ToLower(strings.TrimSpace(reason)) {
+	case "needsinfo", "needs-info", "needs_info", "needinfo", "info-requested":
+		return true
+	}
+	return false
+}
+
+// apNeedsInfo is the THIRD verb (s10 T3, decline-taxonomy.md): "I'm not ardently
+// opposed — help me understand why you need this."
+//
+// It writes {status: "info-requested", question} and NOTHING else. No decision
+// rides along, because it is not a reject: the server refuses a `decision` on
+// this verb, the row keeps `decision_json` NULL, and a learning pipeline can
+// therefore never mistake the round for negative feedback. The question is
+// required — an empty one is "a decline in disguise" — and is refused HERE, so a
+// blank ask costs a keystroke rather than a round trip.
+func apNeedsInfo(s *bmio.Streams, a approvalsArgs) int {
+	id := positionalAt(a, 2)
+	if id == "" {
+		return die(s, bmio.Usage(needsInfoUsage("<id>")))
+	}
+	// A reason or a note would make this look like a decline, and it is not one.
+	// Silently dropping them would be worse than refusing: the human would think
+	// they had recorded something.
+	if a.Reason != "" || a.Note != "" {
+		return die(s, bmio.Usage(fmt.Sprintf(
+			"needs-info takes only --question: it is an ACTION, not a decline, so there is no "+
+				"--reason and no --note to record (decline-taxonomy.md).\n"+
+				"To reject instead: bullmoose approvals decline %s --reason <%s>\n%s",
+			id, strings.ReplaceAll(rejectReasonList, ", ", "|"), needsInfoUsage(id))))
+	}
+	if problem := proposal.QuestionProblem(a.Question); problem != "" {
+		return die(s, bmio.Usage(problem+"\n"+needsInfoUsage(id)))
+	}
+	db, client, acc, err := apConn(a)
+	if err != nil {
+		return die(s, err)
+	}
+	defer db.Close()
+
+	// The whole patch. The server trims the question too; sending it trimmed
+	// keeps what the CLI displays and what the row stores the same bytes.
+	patch := map[string]any{
+		"status":   "info-requested",
+		"question": strings.TrimSpace(a.Question),
+	}
+	return decideAndReport(s, client, acc.AccountID, proposal.NeedsInfoVerb, id, patch, false, a)
+}
+
+func needsInfoUsage(id string) string {
+	if id == "" {
+		id = "<id>"
+	}
+	return fmt.Sprintf("usage: bullmoose approvals %s %s --question \"<text>\"",
+		proposal.NeedsInfoVerb, id)
 }
 
 // apEdit is the load-bearing verb: amend a reply-draft payload and approve the
@@ -365,7 +485,9 @@ func decideAndReport(
 }
 
 // outcomeJSON is the --json shape for a decision. `held` and `egressed` are read
-// off the re-read row, so they cannot over-claim.
+// off the re-read row, so they cannot over-claim. `question` is present only
+// while a needsInfo round is open (the server NULLs it when the agent answers),
+// so it is omitempty rather than a null every other verb has to carry.
 type outcomeJSON struct {
 	ID       string `json:"id"`
 	Verb     string `json:"verb"`
@@ -375,6 +497,7 @@ type outcomeJSON struct {
 	Edited   bool   `json:"edited"`
 	Held     bool   `json:"held"`
 	Egressed bool   `json:"egressed"`
+	Question string `json:"question,omitempty"`
 }
 
 // reportOutcome renders the decision honestly from the re-read row.
@@ -385,7 +508,7 @@ func reportOutcome(s *bmio.Streams, verb string, p *proposal.Proposal, edited, j
 	if jsonOut {
 		if err := s.EmitJSON(outcomeJSON{
 			ID: p.ID, Verb: verb, Status: p.Status, Tier: p.Tier, Kind: p.Kind,
-			Edited: edited, Held: held, Egressed: egressed,
+			Edited: edited, Held: held, Egressed: egressed, Question: p.Question,
 		}); err != nil {
 			return die(s, err)
 		}
@@ -399,6 +522,18 @@ func reportOutcome(s *bmio.Streams, verb string, p *proposal.Proposal, edited, j
 	switch {
 	case verb == "decline":
 		s.Out(p.ID + " declined" + declineSuffix(p))
+	case verb == proposal.NeedsInfoVerb:
+		// Never a verdict, and never a clock: the row left the human's queue for
+		// the agent's court, and the deadline is banked, not running.
+		if p.Status != "info-requested" {
+			s.Out(fmt.Sprintf("%s is %s after the question — nothing was rejected.", p.ID, p.Status))
+			break
+		}
+		s.Out(p.ID + " question sent to " + p.Agent + " — " + proposal.WaitingOnAgentNote +
+			". Not a decline: no rejection was recorded.")
+		if q := p.OpenQuestion(); q != nil {
+			s.Note("you asked: " + q.Question)
+		}
 	case held: // tier-2 → the hold tray; nothing egressed
 		s.Out(p.ID + " HELD in the retraction tray" + editMark +
 			" — nothing was sent. Committing out of the hold tray is not built yet (s03.D T2).")
@@ -534,8 +669,12 @@ func readAllStdin() (string, error) {
 
 // ---- rendering ------------------------------------------------------------
 
+// The STATUS column is 14 wide because `info-requested` is 14 characters: the
+// server's own status token is what the row prints (it is also what `--status`
+// filters on), so the column has to hold the longest one rather than smear the
+// table.
 func apHeader() string {
-	return fmt.Sprintf("%-8s  %-16s  %-13s  %-4s  %-13s  %-16s  %-24s  %s",
+	return fmt.Sprintf("%-14s  %-16s  %-13s  %-4s  %-13s  %-16s  %-24s  %s",
 		"STATUS", "AGENT", "KIND", "TIER", "WAITED", "CLOCK", "ID", "RATIONALE")
 }
 
@@ -547,8 +686,14 @@ func renderRow(p *proposal.Proposal, now int64) string {
 		clock = compactExpiry(c)
 	case "held":
 		clock = compactHold(c)
+	case "info-requested":
+		// NO deadline, in either direction. The server nulled `expiresAt` and
+		// banked the remainder, so there is nothing counting down — and printing
+		// "exp:OVERDUE" for a paused clock would be a lie about a row nobody is
+		// late on. What the column says instead is WHO the ball is with.
+		clock = "waiting:agent"
 	}
-	return fmt.Sprintf("%-8s  %-16s  %-13s  T%-3d  %-13s  %-16s  %-24s  %s",
+	return fmt.Sprintf("%-14s  %-16s  %-13s  T%-3d  %-13s  %-16s  %-24s  %s",
 		p.Status, trunc(p.Agent, 16), trunc(p.Kind, 13), p.Tier,
 		proposal.FormatDuration(c.WaitedMs), trunc(clock, 16),
 		trunc(p.ID, 24), trunc(firstLine(p.Rationale), 60))
@@ -594,6 +739,7 @@ func renderShow(s *bmio.Streams, p *proposal.Proposal) {
 			s.Out(line)
 		}
 	}
+	renderDialogue(s, p)
 	// The two clocks — each printed ONLY when it applies, never conflated.
 	s.Out("waited:    " + proposal.WaitedLabel(p.Status, c))
 	if c.ExpiresInMs != nil {
@@ -601,6 +747,12 @@ func renderShow(s *bmio.Streams, p *proposal.Proposal) {
 	}
 	if c.HoldRemainingMs != nil {
 		s.Out("hold:      " + proposal.HoldLabel(c.HoldRemainingMs))
+	}
+	// A paused row says so in place of a clock. Not "no deadline" as an
+	// afterthought and never "expired": the window is banked server-side and
+	// resumes when the answer lands.
+	if p.Status == "info-requested" {
+		s.Out("waiting:   " + proposal.WaitingOnAgentNote)
 	}
 	s.Out("payload:   " + jsonCompact(p.Payload))
 	if p.EditedPayload != nil {
@@ -622,6 +774,53 @@ func renderShow(s *bmio.Streams, p *proposal.Proposal) {
 		}
 		s.Out(line)
 	}
+}
+
+// renderDialogue prints the needsInfo Q&A (s10 T3) in the order it happened,
+// each line attributed: the human who asked, the agent that answered. The
+// dialogue travels with the proposal through pending, decided and history —
+// a challenged-then-approved grant carrying its question and its answer is the
+// strongest "why" the provenance chain can hold (decline-taxonomy.md).
+func renderDialogue(s *bmio.Streams, p *proposal.Proposal) {
+	if len(p.Amendments) == 0 {
+		// Defensive: the server appends a round with every needsInfo, so an open
+		// `question` with no dialogue should not happen — but printing the
+		// question beats swallowing it.
+		if p.Question != "" {
+			s.Out("question:  " + jsonCompact(p.Question))
+		}
+		return
+	}
+	s.Out("dialogue:")
+	for i, am := range p.Amendments {
+		asker := am.AskedBy
+		if asker == "" {
+			asker = "someone"
+		}
+		s.Out(fmt.Sprintf("  %d. %s asked%s: %s", i+1, asker, atStamp(am.AskedAt), jsonCompact(am.Question)))
+		if am.Answered() {
+			answerer := p.Agent
+			if answerer == "" {
+				answerer = "the agent"
+			}
+			s.Out(fmt.Sprintf("     %s answered%s: %s", answerer, atStamp(am.AnsweredAt), am.AnswerText()))
+			continue
+		}
+		owed := p.Agent
+		if owed == "" {
+			owed = "the agent"
+		}
+		s.Out("     (unanswered — still owed by " + owed + ")")
+	}
+}
+
+// atStamp renders " (<iso>)" for a timestamp the server sent, and nothing at all
+// for one it did not — an invented time on the record would be worse than none.
+func atStamp(iso string) string {
+	if iso == "" {
+		return ""
+	}
+	return " (" + iso + ")"
 }
 
 func renderDiff(d proposal.FieldDiff) string {
@@ -694,9 +893,12 @@ func positionalAt(a approvalsArgs, n int) string {
 type approvalsArgs struct {
 	JSON, IDs                                              bool
 	DB, Account, Status, Reason, Note, Body, File, Subject string
-	IfState                                                string
-	HasBody                                                bool // --body present, even if ""
-	Positionals                                            []string
+	// Question is the needsInfo ask (s10 T3). Required by that verb, refused on
+	// every other one — it is not a note and not a reason.
+	Question    string
+	IfState     string
+	HasBody     bool // --body present, even if ""
+	Positionals []string
 }
 
 func parseApprovals(argv []string) approvalsArgs {
@@ -736,6 +938,11 @@ func parseApprovals(argv []string) approvalsArgs {
 				a.Reason = value()
 			case "note":
 				a.Note = value()
+			case "question":
+				// Mirrored into delegate.valueFlags (and the TypeScript parseArgs
+				// spec it is checked against) so the front door knows the next
+				// token is this flag's value, not the command.
+				a.Question = value()
 			case "body":
 				a.Body = value()
 				a.HasBody = true
