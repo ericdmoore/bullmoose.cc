@@ -5,6 +5,7 @@
  * binds one D1 database as DB.
  */
 
+import PostalMime from "postal-mime";
 import {
   BookWriteRefused,
   cardContribution,
@@ -17,6 +18,7 @@ import {
   type BookWritePolicy,
   type ContactWriter,
 } from "./governance";
+import { recordBayesLabel } from "./boundaryStore";
 
 // Book governance (s10 T1/T2) — the pure half of the contact-write chokepoint.
 export {
@@ -32,6 +34,21 @@ export {
   type BookWriteRefusalReason,
   type ContactWriter,
 } from "./governance";
+
+// s12 wave 2-C — the boundary's per-account machine state (sieve ruleset,
+// Bayes filter) and the ONE Bayes training entry point. The contract surface
+// bouncer@'s mailbox side consumes; see boundaryStore.ts.
+export {
+  BAYES_STATE_MAX_BYTES,
+  SieveRulesInvalid,
+  listSieveRules,
+  loadBayesState,
+  putSieveRules,
+  recordBayesLabel,
+  saveBayesState,
+  validateSieveRules,
+} from "./boundaryStore";
+export type { BayesState, BoundaryMessage, SieveMatch, SieveRule } from "./boundaryStore";
 
 export interface EmailAddress {
   name?: string;
@@ -437,9 +454,11 @@ function chunked<T>(items: T[], size = MAX_BINDS): T[][] {
  * stored in_reply_to — so every write path must strip consistently
  * (postal-mime returns "<id@host>"; Email/set create generates bare ids).
  */
-/** One row of the s12 quarantine chain (append-only; no FK — see the DDL). */
+/** One row of the s12 quarantine chain (append-only; no FK — see the DDL).
+ * 'screened' (wave 2-C) is the mid-band hold — distinct from 'shunted'
+ * because nothing has judged the message spam yet. */
 export interface QuarantineEventInput {
-  event: "shunted" | "rescued" | "released";
+  event: "shunted" | "screened" | "rescued" | "released";
   /** Normalized (lowercased) envelope sender. */
   sender: string;
   /** Normalized sender domain (lowercase, no leading/trailing dot). */
@@ -457,7 +476,7 @@ export interface QuarantineEventInput {
 
 export interface QuarantineEventRow {
   id: number;
-  event: "shunted" | "rescued" | "released";
+  event: "shunted" | "screened" | "rescued" | "released";
   sender: string;
   domain: string;
   stage: string;
@@ -1352,20 +1371,29 @@ export class Mailstore {
   }
 
   /**
-   * Store a REJECT-STORE message: the full `insertEmail` write (the caller
-   * points `mailboxIds` at the quarantine mailbox) plus its 'shunted' chain
-   * row, atomically. On a shard that predates the `quarantine-events-table`
-   * migration the whole batch fails — the caller (ingest) falls back to inbox
-   * delivery, which is why that migration is not a deploy blocker.
+   * Store a REJECT-STORE (or wave 2-C 'screened') message: the full
+   * `insertEmail` write (the caller points `mailboxIds` at the quarantine
+   * mailbox) plus its chain row, atomically. On a shard that predates the
+   * `quarantine-events-table` migration the whole batch fails — the caller
+   * (ingest) falls back to inbox delivery, which is why that migration is not
+   * a deploy blocker.
+   *
+   * `extraStatements` (wave 2-C) ride the SAME batch — the screening path
+   * appends its bouncer-classify invocation INSERT here, so "held" and "a
+   * classifier is coming" commit together or not at all: a hold with no
+   * classifier enqueued is exactly the state the mid-band must never produce.
+   * Statements must come from this store's own `db.prepare`.
    */
   async insertQuarantinedEmail(
     accountId: string,
     email: NewEmail,
     event: QuarantineEventInput,
+    extraStatements: D1PreparedStatement[] = [],
   ): Promise<void> {
     await this.db.batch([
       ...this.emailInsertStatements(accountId, email),
       this.quarantineEventStatement(accountId, event),
+      ...extraStatements,
     ]);
   }
 
@@ -1528,7 +1556,149 @@ export class Mailstore {
         demotedDomain = domain;
       }
     }
+
+    // s12 2-C: a rescue IS a 'ham' label — the escape hatch feeds the filter
+    // (bayes.ts header, readme commitment 1.4). Trained from the stored raw
+    // message; if the blob is unfetchable or won't parse, skip silently — the
+    // rescue itself must never fail over its training side effect.
+    await this.trainHamFromStoredEmail(accountId, emailId, sender, domain);
+
     return { rescued: true, demotedDomain };
+  }
+
+  /**
+   * Rebuild the labeled message from what the rescue stored — the raw RFC
+   * 5322 blob for text/headers, the chain row's ENVELOPE sender/domain (the
+   * same identities Bayes tokenizes at classify time) — and fold it in as
+   * ham. Every failure is a silent skip (logged): training is a best-effort
+   * side effect of a write path that has already succeeded.
+   */
+  private async trainHamFromStoredEmail(
+    accountId: string,
+    emailId: string,
+    sender: string,
+    domain: string,
+  ): Promise<void> {
+    try {
+      const row = await this.db
+        .prepare(
+          `SELECT blob_id, subject, size, has_attachment FROM emails
+           WHERE account_id = ? AND id = ?`,
+        )
+        .bind(accountId, emailId)
+        .first<{ blob_id: string; subject: string; size: number; has_attachment: number }>();
+      if (!row) return;
+      const blob = await this.getBlob(await this.tenantIdOf(accountId), accountId, row.blob_id);
+      if (!blob) return;
+      const parsed = await PostalMime.parse(await blob.arrayBuffer());
+      // Topmost occurrence wins on duplicate header names — the same trust
+      // order the cascade applies (boundaryContract.toEngineMessage).
+      const headers: Record<string, string> = {};
+      for (const h of parsed.headers ?? []) {
+        const key = h.key.toLowerCase();
+        if (!(key in headers)) headers[key] = h.value;
+      }
+      const text = parsed.text?.trim() ? parsed.text : htmlToIndexText(parsed.html);
+      await recordBayesLabel(
+        this.db,
+        accountId,
+        {
+          from: sender,
+          fromDomain: domain,
+          subject: row.subject ?? "",
+          textBody: text,
+          headers,
+          sizeBytes: row.size,
+          hasAttachments: row.has_attachment === 1,
+        },
+        "ham",
+      );
+    } catch (err) {
+      console.error(
+        `rescue ham label skipped for ${emailId}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /**
+   * The MACHINE's release path (s12 2-C): the mid-band classifier letting a
+   * 'screened' message through (verdicts notSpam / unsure). Moves the message
+   * from the quarantine mailbox to the inbox and appends the 'released' chain
+   * row naming the deciding stage ('llm:notSpam' | 'llm:unsure'), one batch.
+   *
+   * Returns `released: false` when the message is not currently held — a
+   * human rescue raced the classifier and their correction already won; a
+   * second chain row would make the chain lie. Unlike a rescue, a release
+   * never demotes deny-list entries and never trains the filter here: it is
+   * the machine's own verdict, not a human correction (the classifier's
+   * OPTIONAL training rides behind LLM_LABELS_TRAIN in services/agent).
+   */
+  async releaseQuarantined(
+    accountId: string,
+    emailId: string,
+    stage: string,
+  ): Promise<{ released: boolean; mailboxIds: string[] }> {
+    const quarantineId = await this.db
+      .prepare(`SELECT id FROM mailboxes WHERE account_id = ? AND role = 'quarantine'`)
+      .bind(accountId)
+      .first<{ id: string }>();
+    if (!quarantineId) return { released: false, mailboxIds: [] };
+    const held = await this.db
+      .prepare(
+        `SELECT 1 AS held FROM email_mailboxes
+         WHERE account_id = ? AND email_id = ? AND mailbox_id = ?`,
+      )
+      .bind(accountId, emailId, quarantineId.id)
+      .first<{ held: number }>();
+    if (!held) return { released: false, mailboxIds: [] };
+
+    // The hold row ('screened' — or 'shunted' for defense in depth) is the
+    // source of truth for the envelope sender/domain, as in rescue.
+    const holdRow = await this.db
+      .prepare(
+        `SELECT sender, domain FROM quarantine_events
+         WHERE account_id = ? AND email_id = ? AND event IN ('screened', 'shunted')
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .bind(accountId, emailId)
+      .first<{ sender: string; domain: string }>();
+
+    const inboxId = await this.ensureRoleMailbox(accountId, "inbox", "Inbox");
+    await this.db.batch([
+      this.db
+        .prepare(
+          `DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ? AND mailbox_id = ?`,
+        )
+        .bind(accountId, emailId, quarantineId.id),
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO email_mailboxes (account_id, email_id, mailbox_id)
+           VALUES (?, ?, ?)`,
+        )
+        .bind(accountId, emailId, inboxId),
+      this.quarantineEventStatement(accountId, {
+        event: "released",
+        sender: holdRow?.sender ?? "",
+        domain: holdRow?.domain ?? "",
+        stage,
+        emailId,
+        actor: null,
+        viaMessageId: null,
+        at: Date.now(),
+      }),
+      // The move mutates the email's state through a child table; stamp the
+      // releasing writer (binding/invocation when an agent store did it —
+      // the replaceEmailSets precedent).
+      this.db
+        .prepare(
+          `UPDATE emails
+           SET last_writer_principal = ?, last_writer_binding = ?, last_writer_invocation = ?
+           WHERE account_id = ? AND id = ?`,
+        )
+        .bind(...this.provenanceValues(), accountId, emailId),
+    ]);
+    // Both touched mailboxes, for the caller's changelog commit.
+    return { released: true, mailboxIds: [quarantineId.id, inboxId] };
   }
 
   /**

@@ -411,6 +411,38 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "sieve-rules-table",
+    why: "s12 2-C: cascade stage 3's per-account JSON ruleset (§17's 'JSON ruleset in D1' start). A plain schema re-run DOES create it; NOT a deploy blocker: the boundary reads fail OPEN — a shard missing the table reads as NO rules (logged) and every message passes stage 3 as today",
+    blocks: null,
+    check: tableExists("sieve_rules"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS sieve_rules (
+         account_id TEXT NOT NULL,
+         rules_json TEXT NOT NULL,
+         updated_at INTEGER NOT NULL,
+         PRIMARY KEY (account_id)
+       )`,
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
+    id: "bayes-state-table",
+    why: "s12 2-C: cascade stage 4's per-account Bayes filter state (VOCAB_CAP-pruned JSON). A plain schema re-run DOES create it; NOT a deploy blocker: a missing/corrupt row loads as NULL and stage 4 skips (fail open) — DefaultCase delivery, said out loud",
+    blocks: null,
+    check: tableExists("bayes_state"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS bayes_state (
+         account_id TEXT NOT NULL,
+         state_json TEXT NOT NULL,
+         updated_at INTEGER NOT NULL,
+         PRIMARY KEY (account_id)
+       )`,
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
     id: "grant-lifecycle-via-proposal",
     why: "s10 T2: the WHY on the grant chain. provision's lifecycle writer names the column in its INSERT, so a provision worker deployed against a database missing it fails every grant mint and revoke",
     blocks: "deploy",

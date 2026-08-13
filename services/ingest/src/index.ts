@@ -10,14 +10,18 @@ import {
   type EmailAddress,
 } from "@bullmoose/mailstore";
 import {
+  EXPENSIVE_STAGE,
   bumpDenyCounter,
   normalizeSender,
+  resolveBouncerBinding,
   runBoundaryStages2to4,
   senderDomainOf,
   stage1SenderSets,
+  type BouncerBinding,
   type BoundaryVerdict,
 } from "./boundary";
 import type { BoundaryMessage } from "./boundaryContract";
+import { sweepGraduations } from "./graduationSweep";
 import { extractDueAt } from "./dueDate";
 import {
   composePrivacy,
@@ -124,6 +128,15 @@ export default {
 
     return new Response("bullmoose-ingest", { status: 200 });
   },
+
+  // Periodic work rides the same cron + scheduled() pattern the agent worker
+  // established (services/agent/src/index.ts: failStaleRunning /
+  // expireStaleProposals / drain). Here: the s12 graduation sweep — repeat
+  // spam domains graduate into the deny list so their future mail exits at
+  // the SMTP edge instead of paying Bayes compute.
+  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    await sweepGraduations(env);
+  },
 } satisfies ExportedHandler<Env>;
 
 /**
@@ -228,6 +241,8 @@ async function deliver(
   invocations?: number;
   /** The firing stage, when the boundary shunted this message to quarantine. */
   quarantined?: string;
+  /** The mid-band stage, when the message is held pending the classifier. */
+  screened?: string;
 }> {
   const [localpart = "", domain = ""] = envelopeTo.toLowerCase().split("@");
   const route = await resolveRoute(env.ROUTES, domain, localpart);
@@ -264,18 +279,26 @@ async function deliver(
       size: raw.byteLength,
       hasAttachment: (parsed.attachments ?? []).some((a) => a.disposition !== "inline"),
     };
-    verdict = runBoundaryStages2to4(msg);
+    verdict = await runBoundaryStages2to4(env.DB, route.accountId, msg);
   }
 
   if (verdict.action === "REJECT_STORE") {
     try {
-      return await quarantineDeliver(
+      const out = await quarantineDeliver(
         env,
         store,
         route,
         { raw, parsed, bodyText, envelopeFrom },
         verdict.stage ?? "unknown",
       );
+      // Expensive-stage (sieve/bayes) rejects feed the graduation loop's
+      // per-domain counters (wave 2-C) — bumped only when the hold actually
+      // landed, so counts never exceed rescue opportunities. Cheap-stage
+      // holds (blocked books, auth) stay chains-only, as wave 1-A pinned.
+      if (EXPENSIVE_STAGE.test(verdict.stage ?? "")) {
+        await bumpDenyCounter(env.DB, senderDomainOf(normalizeSender(envelopeFrom)));
+      }
+      return out;
     } catch (err) {
       // Fail OPEN: a shard that predates the quarantine tables (or any store
       // failure) must not bounce or lose mail — deliver to the inbox exactly
@@ -286,6 +309,34 @@ async function deliver(
           err instanceof Error ? err.message : err
         }; delivering to inbox`,
       );
+    }
+  } else if (verdict.action === "SCREEN") {
+    // The Bayes mid-band (stage 5's doorway): hold ONLY when the tenant has
+    // a classifier to come for the message — a hold nobody will ever judge
+    // is lost mail, so no bouncer binding means normal delivery, said aloud.
+    const bouncer = await resolveBouncerBinding(env.DB, route.tenantId);
+    if (bouncer === null) {
+      console.log(
+        `mid-band (${verdict.stage}) with no bouncer binding for tenant ${route.tenantId}: delivering normally`,
+      );
+    } else {
+      try {
+        return await screenDeliver(
+          env,
+          store,
+          route,
+          { raw, parsed, bodyText, envelopeFrom },
+          verdict.stage ?? "bayes-mid",
+          bouncer,
+        );
+      } catch (err) {
+        // Same fail-open as the quarantine store: never bounce, never lose.
+        console.error(
+          `screening store failed (stage ${verdict.stage}): ${
+            err instanceof Error ? err.message : err
+          }; delivering to inbox`,
+        );
+      }
     }
   }
 
@@ -472,6 +523,116 @@ async function quarantineDeliver(
   ]);
 
   return { emailId, quarantined: stage };
+}
+
+/**
+ * The MID-BAND hold (s12 wave 2-C, cascade stage 5's doorway): store the
+ * message in the QUARANTINE mailbox with a 'screened' chain row — distinct
+ * from 'shunted', because nothing has judged it spam yet — and enqueue ONE
+ * bouncer-classify invocation for the tenant's bouncer binding, all in the
+ * SAME D1 batch: "held" and "a classifier is coming" commit together or not
+ * at all (a hold with no classifier enqueued is mail nobody will ever free).
+ *
+ * Like quarantineDeliver, no mailbox-delivery invocations (nothing reaches
+ * the lobby until it is judged clean), no armed responders, no
+ * deliver-AND-forward copies. The classifier's enqueue is the same
+ * agent_invocations INSERT + poke that ordinary bindings get — it rides the
+ * s07 T5 cost machinery like any other invocation (free when the binding's
+ * model resolves to workers-ai).
+ */
+async function screenDeliver(
+  env: Env,
+  store: Mailstore,
+  route: Route,
+  m: {
+    raw: ArrayBuffer;
+    parsed: Awaited<ReturnType<typeof PostalMime.parse>>;
+    bodyText: string;
+    envelopeFrom: string;
+  },
+  stage: string,
+  bouncer: BouncerBinding,
+): Promise<{ emailId: string; screened: string; invocations: number }> {
+  const blobId = await store.putBlob(route.tenantId, route.accountId, m.raw);
+  const inReplyTo = normalizeMessageId(m.parsed.inReplyTo);
+  const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
+  const quarantineId = await store.ensureRoleMailbox(route.accountId, "quarantine", "Quarantine");
+  const attachments = await storeAttachments(store, route, m.parsed);
+
+  const emailId = `e_${crypto.randomUUID()}`;
+  const invId = `inv_${crypto.randomUUID()}`;
+  const sender = normalizeSender(m.envelopeFrom);
+  const domain = senderDomainOf(sender);
+  await store.insertQuarantinedEmail(
+    route.accountId,
+    {
+      id: emailId,
+      blobId,
+      threadId,
+      messageId: normalizeMessageId(m.parsed.messageId),
+      inReplyTo,
+      subject: m.parsed.subject ?? "",
+      from: toAddresses(m.parsed.from ? [m.parsed.from] : []),
+      to: toAddresses(m.parsed.to ?? []),
+      cc: toAddresses(m.parsed.cc ?? []),
+      bcc: [],
+      preview: previewText(m.parsed.text, m.parsed.html),
+      bodyText: m.bodyText,
+      size: m.raw.byteLength,
+      receivedAt: Date.now(),
+      hasAttachment: attachments.some((a) => a.disposition !== "inline"),
+      attachments,
+      mailboxIds: [quarantineId],
+      keywords: [],
+    },
+    {
+      event: "screened",
+      sender,
+      domain,
+      stage,
+      emailId,
+      at: Date.now(),
+    },
+    [
+      // The classifier's enqueue, riding the hold's batch. The invocation
+      // belongs to the BOUNCER binding's account (the drain joins bindings on
+      // the invocation's account); the context names the message's account —
+      // the classifier acts across that seam on purpose (bouncer sees the
+      // whole tenant's boundary).
+      env.DB.prepare(
+        `INSERT INTO agent_invocations
+           (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      ).bind(
+        invId,
+        bouncer.accountId,
+        bouncer.id,
+        bouncer.name,
+        emailId,
+        JSON.stringify({
+          kind: "bouncer-classify",
+          accountId: route.accountId,
+          tenantId: route.tenantId,
+          emailId,
+          sender,
+          domain,
+          stage,
+        }),
+        Date.now(),
+      ),
+    ],
+  );
+
+  await commitChanges(env.ACCOUNT_DO, route.accountId, [
+    { collection: "Email", created: [emailId] },
+    { collection: "Mailbox", updated: [quarantineId] },
+  ]);
+  await commitChanges(env.ACCOUNT_DO, bouncer.accountId, [
+    { collection: "AgentInvocation", created: [invId] },
+  ]);
+
+  // invocations: 1 → the caller pokes the agent worker, same as any enqueue.
+  return { emailId, screened: stage, invocations: 1 };
 }
 
 /**

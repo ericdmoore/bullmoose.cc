@@ -11,6 +11,8 @@ import {
   claimGateSql,
   type ClaimantIdentity,
 } from "@bullmoose/scheduling";
+import { classifyScreened } from "./bouncerClassify.js";
+import { runBouncer } from "./bouncer.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
@@ -260,6 +262,13 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   if (context.kind === "answer-info-request") {
     return answerInfoRequest(env, job, cfg, context, done);
   }
+  // s12 2-C: the mid-band classifier (enqueued by ingest's screenDeliver).
+  // Also dispatched by context kind, and before the email-context machinery
+  // below: the screened message may live on a DIFFERENT account than the
+  // bouncer binding's — the context carries its coordinates.
+  if (context.kind === "bouncer-classify") {
+    return classifyScreened(env, job, cfg, context, done);
+  }
 
   if (!job.email_id) return done("failed", { note: "no email context" });
   const email = await store.getEmailRow(job.account_id, job.email_id);
@@ -294,6 +303,37 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   const allowed = (cfg.allowedSenders ?? []).map((s) => s.toLowerCase());
   if (allowed.length > 0 && !allowed.includes(sender)) {
     return done("done", { note: `skipped: ${sender} not in allowedSenders` });
+  }
+
+  // s12 2-D — bouncer@'s conversational surface. Dispatched AFTER the
+  // humanOriginated + allowedSenders gates (only the tenant's listed human
+  // principals get this far — a stranger was skipped SILENTLY above, which is
+  // deliberate: replying to arbitrary senders is backscatter and an existence
+  // oracle) and BEFORE the reply pipeline. The bouncer pipeline is reply-only
+  // and template-mode: it runs its own fail-closed outbound gate, its own
+  // authentication gate (canned refusal, no error oracle) and sends
+  // deterministic replies — no model ever writes the reply body, and the one
+  // optional model call (intent fallback) sees the wrapper only. See bouncer.ts.
+  if (cfg.pipeline === "bouncer") {
+    const bouncerCfg: BindingConfig = { ...cfg, replyMode: "send" };
+    return runBouncer(
+      env,
+      store,
+      job,
+      cfg,
+      email,
+      parsed,
+      selfAddress,
+      (text) =>
+        sendReply(env, store, job, bouncerCfg, {
+          selfAddress,
+          to: sender,
+          origSubject: email.subject,
+          origMessageId: email.messageId,
+          text,
+        }),
+      done,
+    );
   }
 
   // The outbound twin of the gate above (s10 T1). Everything the reply

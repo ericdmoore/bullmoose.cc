@@ -140,6 +140,15 @@ export default {
         );
       }
       if (route === "GET /agent-bindings") return listAgentBindings(url, env);
+      // s12 2-D — mint the bouncer@ account + reply-only binding for ONE
+      // tenant domain. Explicit per-tenant call; nothing is auto-provisioned
+      // for existing tenants.
+      if (route === "POST /bouncer") {
+        return provisionBouncer(
+          (await request.json()) as { tenantId: string; domain: string; localpart?: string },
+          env,
+        );
+      }
       // The kill switch (`.feedback/fromClaude/agentic/023`). TWO EXPLICIT
       // VERBS rather than a general `PATCH {enabled}`: in an incident the
       // dangerous direction must be unambiguous in the audit log and
@@ -1892,6 +1901,158 @@ async function createAgentBinding(
       .run();
   }
   return json({ ok: true, bindingId: id, accountId: account.id, watchdog: !!body.slaSeconds });
+}
+
+/**
+ * s12 2-D — one call mints bouncer@'s conversational surface for a tenant:
+ *
+ *   1. the agent ACCOUNT `bouncer@<domain>` (reuses POST /accounts —
+ *      idempotent, so a retried call adopts rather than duplicates);
+ *   2. its GOVERNING BOOK (`write_policy: 'governed'`) seeded with the
+ *      tenant's human principals — the binding's reply-only reach, because
+ *      every bouncer egress targets exactly the directive's sender and the
+ *      s10 outbound bound resolves recipients against this book;
+ *   3. the BINDING itself (name 'bouncer', mailbox-delivery trigger,
+ *      `pipeline: 'bouncer'`, `replyMode: 'send'`), with `allowedSenders` =
+ *      the same principals — the inbound gate's mirror of the book.
+ *
+ * "Human principals" is structural: every principal of the tenant none of
+ * whose accounts carries an agent binding. Agent accounts (analyst@, emily@,
+ * bouncer@ itself) mint a principal per address at create, and each of those
+ * accounts has a binding — so binding-less principals are the humans. The
+ * list is FROZEN at provision time; adding a household member later means
+ * re-running this call (idempotent) or editing the book + config by hand.
+ *
+ * Fail-closed: a tenant with NO human principals gets refused — a bouncer
+ * with an empty allowedSenders list would gate nobody (the empty allowlist
+ * means "no gate" in services/agent), which is the one config this endpoint
+ * must never write.
+ *
+ * Explicitly NOT called from any other path: existing tenants are never
+ * auto-provisioned.
+ */
+async function provisionBouncer(
+  body: { tenantId: string; domain: string; localpart?: string },
+  env: Env,
+) {
+  const { tenantId, domain } = body;
+  if (!tenantId || !domain) return json({ error: "tenantId and domain required" }, 400);
+  const localpart = (body.localpart ?? "bouncer").toLowerCase();
+  const address = `${localpart}@${domain}`;
+  const now = Date.now();
+
+  // The humans, BEFORE any write: refusing an empty house must leave nothing.
+  const { results: principalRows } = await env.DB.prepare(
+    `SELECT DISTINCT p.login_email FROM principals p
+     WHERE p.tenant_id = ?1 AND p.login_email != ?2
+       AND NOT EXISTS (
+         SELECT 1 FROM accounts a
+         JOIN agent_bindings b ON b.account_id = a.id
+         WHERE a.principal_id = p.id)
+     ORDER BY p.login_email`,
+  )
+    .bind(tenantId, address)
+    .all<{ login_email: string }>();
+  const humans = principalRows.map((r) => r.login_email.toLowerCase());
+  if (humans.length === 0) {
+    return json(
+      {
+        error: `tenant ${tenantId} has no human principals — provision the household first; ` +
+          "a bouncer with an empty allowedSenders list would gate nobody",
+      },
+      422,
+    );
+  }
+
+  // 1 — the account (idempotent through createAccount's adopt path).
+  const accountRes = await createAccount({ tenantId, domain, localpart, displayName: "Bouncer" }, env);
+  const account = (await accountRes.json()) as { ok?: boolean; accountId?: string; error?: string };
+  if (!account.ok || !account.accountId) {
+    return json({ error: `bouncer account: ${account.error ?? `HTTP ${accountRes.status}`}` }, 422);
+  }
+  const accountId = account.accountId;
+
+  // Idempotency for the rest: an existing 'bouncer' binding on the account
+  // means a previous run finished — report it, write nothing.
+  const existing = await env.DB.prepare(
+    `SELECT id FROM agent_bindings WHERE account_id = ? AND name = 'bouncer'`,
+  )
+    .bind(accountId)
+    .first<{ id: string }>();
+  if (existing) {
+    return json({ ok: true, created: false, accountId, address, bindingId: existing.id });
+  }
+
+  // 2 — the governing book + members + membership chain, one atomic batch.
+  // Direct SQL (the provisioning precedent — this worker seeds mailboxes the
+  // same way and binds no R2, which Mailstore requires); the chain rows ride
+  // the same batch so the s10 fold-reconciliation invariant holds from row one.
+  const bookId = `ab_${crypto.randomUUID()}`;
+  const stmts: D1PreparedStatement[] = [
+    env.DB
+      .prepare(
+        `INSERT INTO address_books
+           (id, account_id, name, description, sort_order, is_default, is_subscribed,
+            ctag, created_at, updated_at, write_policy)
+         VALUES (?, ?, 'Bouncer may reply', 'The household principals bouncer@ answers to — its reply-only outbound bound.',
+                 0, 0, 1, 0, ?, ?, 'governed')`,
+      )
+      .bind(bookId, accountId, now, now),
+  ];
+  for (const human of humans) {
+    const uid = `bouncer-reach-${crypto.randomUUID()}`;
+    const cardId = `cc_${crypto.randomUUID().slice(0, 8)}`;
+    stmts.push(
+      env.DB
+        .prepare(
+          `INSERT INTO contact_cards
+             (id, account_id, address_book_id, uid, card_json, name_full, dav_name,
+              created_at, updated_at, last_writer_principal)
+           VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 'provision')`,
+        )
+        .bind(
+          cardId,
+          accountId,
+          bookId,
+          uid,
+          JSON.stringify({ uid, kind: "individual", emails: { e0: { address: human } } }),
+          human,
+          now,
+          now,
+        ),
+      env.DB
+        .prepare(
+          `INSERT INTO book_membership_log
+             (account_id, book_id, event, address, card_id, uid, actor, via_proposal_id, at)
+           VALUES (?, ?, 'added', ?, ?, ?, 'provision', NULL, ?)`,
+        )
+        .bind(accountId, bookId, human, cardId, uid, now),
+    );
+  }
+  await env.DB.batch(stmts);
+
+  // 3 — the binding, through the same path POST /agent-bindings takes.
+  const bindingRes = await createAgentBinding(
+    {
+      email: address,
+      name: "bouncer",
+      config: { pipeline: "bouncer", replyMode: "send", allowedSenders: humans },
+      recipientsBookId: bookId,
+    },
+    env,
+  );
+  const binding = (await bindingRes.json()) as { ok?: boolean; bindingId?: string; error?: string };
+  if (!binding.ok) return json({ error: `bouncer binding: ${binding.error ?? "failed"}` }, 422);
+
+  return json({
+    ok: true,
+    created: true,
+    accountId,
+    address,
+    bindingId: binding.bindingId,
+    recipientsBookId: bookId,
+    allowedSenders: humans,
+  });
 }
 
 async function listAgentBindings(url: URL, env: Env) {
