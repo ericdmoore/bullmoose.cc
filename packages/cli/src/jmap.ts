@@ -3,7 +3,19 @@
 export type Invocation = [string, Record<string, unknown>, string];
 
 export interface Session {
-  accounts: Record<string, { name: string }>;
+  accounts: Record<
+    string,
+    {
+      name: string;
+      /** False for grant-reached (shared/delegated) accounts. */
+      isPersonal?: boolean;
+      /** Per-account capability URNs — the fleet host's discovery surface:
+       * a whole-account grant exposes the agent capability, a book-scoped
+       * one only contacts (services/jmap/src/session.ts). Optional because
+       * older CLI configs may talk to servers predating the field. */
+      accountCapabilities?: Record<string, unknown>;
+    }
+  >;
   primaryAccounts: Record<string, string>;
   apiUrl: string;
   downloadUrl: string;
@@ -96,6 +108,17 @@ export class JmapClient {
 
   private headers(): Record<string, string> {
     return { Authorization: `Bearer ${this.token}`, "content-type": "application/json" };
+  }
+
+  /**
+   * `session()` with the cache dropped — for consumers whose account SET is
+   * dynamic. The fleet host re-resolves "which accounts granted me claim?"
+   * on every discovery refresh; serving yesterday's cached session would hold
+   * a revoked binding open and hide a freshly granted one.
+   */
+  async refreshSession(): Promise<Session> {
+    this.sessionCache = undefined;
+    return this.session();
   }
 
   async session(): Promise<Session> {

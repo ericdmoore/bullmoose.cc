@@ -38,7 +38,7 @@ import { buildMime } from "./mime.js";
 import { pidPaths, readAlivePid, watch, writePid } from "./watch.js";
 import { cmdAdmin } from "./admin.js";
 import { cmdLogin, cmdToken } from "./tokens.js";
-import { agentServe, loadAgentConfig } from "./agent.js";
+import { agentServe, fleetFromSingle, loadAgentConfig, loadFleetConfig } from "./agent.js";
 import { cmdAgentInvoke } from "./agentInvoke.js";
 import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
@@ -103,6 +103,8 @@ const parseCommandLine = () =>
       "reply-to": { type: "string" },
       identity: { type: "string" },
       config: { type: "string" },
+      // ---- fleet host (s11 T8): one daemon, N bindings, discovery from grants
+      fleet: { type: "string" },
       once: { type: "boolean", default: false },
       // ---- agent invoke (sVOL 007) ----
       email: { type: "string" },
@@ -821,12 +823,21 @@ async function cmdAgent(): Promise<void> {
     return;
   }
   if (verb !== "serve") {
-    usage("bullmoose agent serve --config <agent.json> [--once] | invoke <binding> --email <id> | invocations | rm <invId>");
+    usage("bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations | rm <invId>");
   }
-  if (!opts.config) usage("agent serve requires --config <agent.json>");
+  if (!opts.config && !opts.fleet) {
+    usage("agent serve requires --config <agent.json> (one binding) or --fleet <fleet.json> (fleet host)");
+  }
+  if (opts.config && opts.fleet) usage("agent serve takes --config OR --fleet, not both");
   const settings = requireSettings(db);
   const client = new JmapClient(settings.base, settings.token);
-  await agentServe(db, client, settings, loadAgentConfig(opts.config), { once: opts.once });
+  // --fleet: ONE login as a runtime principal, served accounts DISCOVERED
+  // from grants (s11 T8). --config: the original one-binding shape, the
+  // login's own accounts — unchanged.
+  const fleet = opts.fleet
+    ? loadFleetConfig(opts.fleet)
+    : fleetFromSingle(loadAgentConfig(opts.config!));
+  await agentServe(db, client, settings, fleet, { once: opts.once, discover: !!opts.fleet });
 }
 
 // ---- discover ------------------------------------------------------------
