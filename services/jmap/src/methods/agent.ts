@@ -69,6 +69,14 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
         result: r.result_json ? JSON.parse(r.result_json as string) : null,
         note: r.note,
         createdAt: new Date(r.created_at as number).toISOString(),
+        // s11 capability facets, FEATURE-DETECTED: `requires_json` is the T6
+        // facet column ({vision?, contextTokens?, tools?}). The SELECT * above
+        // yields it iff the migration has run; on a pre-T6 database this is
+        // undefined → null, and a null `requires` tells claimants "no facets —
+        // claim exactly as today" (jobs-and-facets §1 DefaultCase: facets
+        // tighten, never strand). The fleet host's client-side narrowing
+        // (packages/cli/src/agent.ts fitsRequirements) reads this field.
+        requires: typeof r.requires_json === "string" ? JSON.parse(r.requires_json) : null,
       })),
       notFound: ids.filter((id) => !found.has(id)),
     };
@@ -216,6 +224,22 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
       }
       // Claim is optimistic-concurrency-guarded: only a pending invocation
       // can move to running (two runtimes can't both claim).
+      //
+      // T2-FIT-CONTRACT (s11 devPlan T2 — server-side eligibility, NOT built
+      // here): this guarded UPDATE is where the three-term gate lands —
+      //   eligible = authority(grants)          ← requireAccount above, LIVE
+      //            ∧ fit(capabilities, facets)  ← T2 adds here
+      //            ∧ policy(due_at, budget, now)← T2 adds here
+      // The claimant's capability vector {vision?, contextTokens?, tools?} is
+      // SELF-DECLARED (safe: it gates fit, not authority — jobs-and-facets §6)
+      // and for this wave rides only client-side (the fleet host declares it
+      // in fleet.json and narrows its own claims; see packages/cli/src/agent.ts
+      // fitsRequirements). T2 must carry that same vector on the claim call —
+      // e.g. an AgentInvocation/set `capabilities` argument beside `update` —
+      // and fold `requires_json` (T6 facet column) into this WHERE clause so a
+      // hostile claimant that self-filters generously still cannot claim
+      // outside its set. A claimant sending NO vector must behave as today
+      // (DefaultCase: unfaceted/undeclared = claimable).
       const guard = status === "running" ? "AND status = 'pending'" : "";
       const res = await ctx.env.DB.prepare(
         `UPDATE agent_invocations
