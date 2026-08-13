@@ -353,6 +353,64 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "domain-deny-list-table",
+    why: "s12 1-A: the industrial deny tier (bouncer@'s working data). A plain schema re-run DOES create it; NOT a deploy blocker because the ingest cascade fails OPEN — a shard missing the table reads as an empty deny list (logged) and every message flows as today",
+    blocks: null,
+    check: tableExists("domain_deny_list"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS domain_deny_list (
+         tenant_id TEXT NOT NULL,
+         domain    TEXT NOT NULL,
+         added_at  INTEGER NOT NULL,
+         source    TEXT NOT NULL,
+         evidence  TEXT,
+         PRIMARY KEY (tenant_id, domain)
+       )`,
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
+    id: "deny-counters-table",
+    why: "s12 1-A: per-domain daily counters — the industrial tier's ONLY per-message write (counters, never chain rows). A plain schema re-run DOES create it; NOT a deploy blocker: a failed counter bump is logged and the edge reject still happens",
+    blocks: null,
+    check: tableExists("deny_counters"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS deny_counters (
+         domain TEXT NOT NULL,
+         day    TEXT NOT NULL,
+         count  INTEGER NOT NULL DEFAULT 0,
+         PRIMARY KEY (domain, day)
+       )`,
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
+    id: "quarantine-events-table",
+    why: "s12 1-A: the append-only quarantine chain (book_membership_log model). A plain schema re-run DOES create it; NOT a deploy blocker: the quarantine store writes chain row + message in ONE batch, so a shard missing the table fails that batch and ingest falls back to inbox delivery — today's behavior, logged",
+    blocks: null,
+    check: tableExists("quarantine_events"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS quarantine_events (
+         id             INTEGER PRIMARY KEY AUTOINCREMENT,
+         account_id     TEXT NOT NULL,
+         event          TEXT NOT NULL,
+         sender         TEXT NOT NULL,
+         domain         TEXT NOT NULL,
+         stage          TEXT NOT NULL,
+         email_id       TEXT,
+         actor          TEXT,
+         via_message_id TEXT,
+         at             INTEGER NOT NULL
+       )`,
+      "CREATE INDEX IF NOT EXISTS quarantine_events_account ON quarantine_events (account_id, id)",
+      "CREATE INDEX IF NOT EXISTS quarantine_events_sender ON quarantine_events (account_id, sender, id)",
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
     id: "grant-lifecycle-via-proposal",
     why: "s10 T2: the WHY on the grant chain. provision's lifecycle writer names the column in its INSERT, so a provision worker deployed against a database missing it fails every grant mint and revoke",
     blocks: "deploy",
