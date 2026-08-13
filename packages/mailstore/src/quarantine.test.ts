@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { bayesClassify, type BoundaryMessage } from "@bullmoose/boundary";
 import { fakeD1, fakeR2, type FakeD1 } from "@bullmoose/test-fakes";
-import { Mailstore, type NewEmail } from "./index";
+import { Mailstore, loadBayesState, type NewEmail } from "./index";
 
 /**
  * The s12 quarantine chain + the rescue write path (wave 1-A).
@@ -220,5 +221,144 @@ describe("rescueQuarantined — the rescue write path", () => {
     const hits = await store.quarantineEvents(ACCOUNT, { sender: SENDER });
     expect(hits).toHaveLength(1);
     expect(hits[0]!.emailId).toBe("e_1");
+  });
+});
+
+// ---- s12 wave 2-C: the rescue is a 'ham' label -----------------------------
+
+const RAW_MIME = [
+  "From: Sender <sender@spamfarm.test>",
+  "To: Ada <ada@example.test>",
+  "Subject: one weird trick",
+  "Content-Type: text/plain; charset=utf-8",
+  "",
+  "Legitimate quarterly numbers attached, no rush.",
+].join("\r\n");
+
+describe("rescueQuarantined trains the Bayes filter (rescue = ham label)", () => {
+  /** A shunted message whose raw blob is REAL — trainable. */
+  async function shuntWithBlob(store: Mailstore): Promise<string> {
+    const raw = new TextEncoder().encode(RAW_MIME);
+    const blobId = await store.putBlob("t_bm", ACCOUNT, raw.buffer as ArrayBuffer);
+    const quarantineId = await store.ensureRoleMailbox(ACCOUNT, "quarantine", "Quarantine");
+    await store.insertQuarantinedEmail(
+      ACCOUNT,
+      { ...email("e_train", [quarantineId]), blobId, size: raw.byteLength },
+      { event: "shunted", sender: SENDER, domain: DOMAIN, stage: "bayes@0.99", emailId: "e_train", at: 1000 },
+    );
+    return "e_train";
+  }
+
+  it("records a 'ham' label from the stored raw message; the verdict shifts", async () => {
+    const { db, store } = harness();
+    const emailId = await shuntWithBlob(store);
+    expect(await loadBayesState(db, ACCOUNT)).toBeNull(); // untrained before
+
+    const out = await store.rescueQuarantined(ACCOUNT, emailId, "eric@moore.coffee");
+    expect(out.rescued).toBe(true);
+
+    const state = await loadBayesState(db, ACCOUNT);
+    expect(state).not.toBeNull();
+    expect(state!.hamCount).toBe(1);
+    expect(state!.spamCount).toBe(0);
+    // Tokenized from the RAW message + the chain row's envelope identities.
+    expect(state!.tokens["quarterly"]).toEqual({ s: 0, h: 1 });
+    expect(state!.tokens[`from:${SENDER}`]).toEqual({ s: 0, h: 1 });
+
+    // The labeled correction moves a re-classify of the same material below
+    // the untrained 0.5 — the escape hatch fed the filter.
+    const reMsg: BoundaryMessage = {
+      from: SENDER,
+      fromDomain: DOMAIN,
+      subject: "one weird trick",
+      textBody: "Legitimate quarterly numbers attached, no rush.",
+      headers: {},
+      sizeBytes: 100,
+      hasAttachments: false,
+    };
+    expect(bayesClassify(state!, reMsg).score).toBeLessThan(0.5);
+  });
+
+  it("skips SILENTLY when the blob is unfetchable — the rescue itself still lands", async () => {
+    const { db, store } = harness();
+    const { emailId } = await shunt(store); // blobId 'b_x' points at nothing
+    const out = await store.rescueQuarantined(ACCOUNT, emailId, "eric@moore.coffee");
+    expect(out.rescued).toBe(true);
+    expect(db.count("bayes_state")).toBe(0); // no label, no error
+  });
+
+  it("skips silently on a shard with no bayes_state table (fail open)", async () => {
+    const { db, store } = harness();
+    db.sqlite.exec("DROP TABLE bayes_state");
+    const emailId = await shuntWithBlob(store);
+    const out = await store.rescueQuarantined(ACCOUNT, emailId, "eric@moore.coffee");
+    expect(out.rescued).toBe(true); // training failure never fails the rescue
+  });
+});
+
+// ---- s12 wave 2-C: the machine's release path ------------------------------
+
+describe("releaseQuarantined — the classifier's exit (screened → released)", () => {
+  /** One SCREENED message (the mid-band hold, not a judged shunt). */
+  async function screen(store: Mailstore, emailId = "e_scr"): Promise<string> {
+    const quarantineId = await store.ensureRoleMailbox(ACCOUNT, "quarantine", "Quarantine");
+    await store.insertQuarantinedEmail(ACCOUNT, email(emailId, [quarantineId]), {
+      event: "screened",
+      sender: SENDER,
+      domain: DOMAIN,
+      stage: "bayes-mid@0.55",
+      emailId,
+      at: 1000,
+    });
+    return emailId;
+  }
+
+  it("moves to the inbox and appends 'released' with the deciding stage", async () => {
+    const { db, store } = harness();
+    const emailId = await screen(store);
+
+    const out = await store.releaseQuarantined(ACCOUNT, emailId, "llm:notSpam");
+    expect(out.released).toBe(true);
+
+    const inboxId = await store.ensureRoleMailbox(ACCOUNT, "inbox", "Inbox");
+    expect(mailboxesOf(db, emailId)).toEqual([inboxId]);
+    expect(out.mailboxIds).toContain(inboxId);
+
+    const events = await store.quarantineEvents(ACCOUNT);
+    expect(events.map((e) => e.event)).toEqual(["screened", "released"]);
+    expect(events[1]).toMatchObject({
+      event: "released",
+      sender: SENDER,
+      domain: DOMAIN,
+      stage: "llm:notSpam",
+      emailId,
+      actor: null, // the machine, not a human — that is what 'rescued' is for
+    });
+    // A release trains NOTHING (LLM labels are the agent's flag-gated call).
+    expect(db.count("bayes_state")).toBe(0);
+  });
+
+  it("refuses when the message is not held — a raced human rescue already won", async () => {
+    const { store } = harness();
+    const emailId = await screen(store);
+    await store.rescueQuarantined(ACCOUNT, emailId, "eric@moore.coffee");
+
+    const out = await store.releaseQuarantined(ACCOUNT, emailId, "llm:notSpam");
+    expect(out.released).toBe(false);
+    expect((await store.quarantineEvents(ACCOUNT)).map((e) => e.event)).toEqual([
+      "screened",
+      "rescued", // no 'released' row on top of the human's rescue
+    ]);
+  });
+
+  it("never demotes deny-list entries (that is the RESCUE's human-correction power)", async () => {
+    const { db, store } = harness();
+    db.seedAccount({ accountId: ACCOUNT, tenantId: "t_bm" });
+    db.seed("domain_deny_list", [
+      { tenant_id: "t_bm", domain: DOMAIN, added_at: 1, source: "graduated", evidence: "10×rejects, 0 rescues" },
+    ]);
+    const emailId = await screen(store);
+    await store.releaseQuarantined(ACCOUNT, emailId, "llm:unsure");
+    expect(db.count("domain_deny_list", "domain = ?", DOMAIN)).toBe(1); // untouched
   });
 });
