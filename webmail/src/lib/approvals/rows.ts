@@ -185,6 +185,25 @@ export function summarizeProposal(p: ActionProposal): string {
       return `Unsubscribe from ${s(p.payload.listName) || s(p.payload.to) || p.subject.objectId}`;
     case "organize-files":
       return `Organize files under ${s(p.payload.target) || p.subject.objectId}`;
+    case "budget-overrun": {
+      // s11 T9 — LEAD WITH THE NUMBERS. This proposal is not a persuasion
+      // surface: the whole decision is "how much is waiting, how much has been
+      // spent, how much would it cost", so the row states those before it names
+      // anything. An unknown estimate says "cost unknown" rather than a
+      // plausible-looking zero — the agent has no paid history for this binding
+      // and a guessed dollar figure would be the one lie that matters here.
+      const n = num(p.payload.waitingCount);
+      const spent = usdOrNull(p.payload.monthSpentMicros);
+      const cap = usdOrNull(p.payload.capMicros);
+      const clear = usdOrNull(p.payload.estimateMicros);
+      const bound = usdOrNull(p.payload.overageMicros);
+      const who = s(p.payload.bindingName) || s(p.payload.bindingId) || p.subject.objectId;
+      const spend = spent && cap ? `${spent} of ${cap} spent` : "budget spent";
+      return (
+        `${n ?? "?"} waiting · ${spend} · ${clear ? `~${clear} to clear` : "cost unknown"}` +
+        ` — approve ${bound ? `a ${bound}` : "an"} overage for ${who}`
+      );
+    }
     case "grant-request": {
       // The allowlist widening (s10 T3): grantType "recipient" is "let me
       // email <address>" — approving APPLIES a contact write into the
@@ -201,6 +220,23 @@ export function summarizeProposal(p: ActionProposal): string {
     default:
       return `${p.kind} on ${p.subject.realm} ${p.subject.objectId}`;
   }
+}
+
+/** A payload number, or null when the field is absent or not a finite number.
+ * Absent is not zero — every reader here has to be able to say "unknown". */
+function num(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * micro-USD → "$1.23", or null when there is no honest number to print.
+ * micro-USD is the unit the whole budget path speaks (`cost_micros`,
+ * `spendPerMonth`, `amount_micros`); converting at the render edge keeps the
+ * integer money integral everywhere it is compared.
+ */
+export function usdOrNull(v: unknown): string | null {
+  const n = num(v);
+  return n === null ? null : `$${(n / 1_000_000).toFixed(2)}`;
 }
 
 /** The body preview a reply-shaped payload carries, if any. */

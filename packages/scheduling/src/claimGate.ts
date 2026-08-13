@@ -83,9 +83,25 @@ export function notPinnedSql(inv: string): string {
 }
 
 /**
- * The binding's monthly spend cap, reached — 1 placeholder (monthStartMs).
+ * The binding's monthly spend cap, reached — 2 placeholders, in order:
+ * `monthStartMs` (the spend bucket) and `periodKey` (the overage bucket).
  * Exhaustion NARROWS the claimant set (free only); it never fails the
  * invocation, and the T3 backstop deliberately drops this term.
+ *
+ * s11 T9 — THE EFFECTIVE CEILING IS `cap + approved overage`. An approved
+ * `budget-overrun` proposal writes a bounded, period-scoped amount into
+ * `agent_budget_overages`; this is where the gate honors it, so an approval is
+ * a real widening of the claimant set rather than a row nobody reads. The twin
+ * of `budgetExhausted()` in mayClaim.ts, and claimGateAgreement.test.ts holds
+ * the two to the same verdict WITH the overage term included.
+ *
+ * Both buckets are the same UTC calendar month, and that is what makes the
+ * grant expire by ARITHMETIC: at the month roll the spend sum resets and the
+ * `period_key` stops matching in the same instant. No sweep, no cleanup, no
+ * overage that outlives the question it answered.
+ *
+ * `COALESCE(SUM(...), 0)` over an empty overage table is 0, so a binding that
+ * was never granted anything compares exactly as it did before T9.
  */
 export function budgetExhaustedSql(inv: string): string {
   return (
@@ -98,7 +114,12 @@ export function budgetExhaustedSql(inv: string): string {
     `\n                       WHERE gate_s.account_id = ${inv}.account_id` +
     `\n                         AND gate_s.binding_id = ${inv}.binding_id` +
     `\n                         AND gate_s.done_at IS NOT NULL AND gate_s.done_at >= ?)` +
-    `\n                      >= json_extract(gate_b.config_json, '$.budgets.spendPerMonth'))`
+    `\n                      >= json_extract(gate_b.config_json, '$.budgets.spendPerMonth')` +
+    `\n                         + (SELECT COALESCE(SUM(gate_o.amount_micros), 0)` +
+    `\n                            FROM agent_budget_overages gate_o` +
+    `\n                            WHERE gate_o.account_id = ${inv}.account_id` +
+    `\n                              AND gate_o.binding_id = ${inv}.binding_id` +
+    `\n                              AND gate_o.period_key = ?))`
   );
 }
 
@@ -128,6 +149,32 @@ export function freeRuntimeLiveCutoff(now: number): number {
 }
 
 /**
+ * THE TIMING TERM — 3 placeholders, in order: `escalationWindowMs`, `now`,
+ * `freeRuntimeLiveCutoff(now)`. "Is a PAID claimant allowed to take this yet,
+ * on the clock?" — due within the escalation window, or no deadline at all and
+ * no free runtime live to sit for (`policy` cases 3 and 4).
+ *
+ * Its own exported fragment because s11 T9 needs the gate MINUS the budget
+ * term: "would this row be claimable if the budget were not spent?" is the
+ * exact counterfactual that makes a binding budget-STRANDED rather than merely
+ * waiting, and composing it from the same expression `claimGateSql` folds is
+ * what stops the sweep's idea of stranded from drifting from the gate's idea of
+ * eligible. Same discipline that gave T3 `notPinnedSql`/`claimFitSql`.
+ */
+export function dueWindowSql(inv: string): string {
+  return (
+    `(CASE WHEN ${inv}.due_at IS NOT NULL THEN ${inv}.due_at - ? <= ?` +
+    `\n       ELSE NOT ${freeRuntimeLiveSql(inv)}` +
+    `\n       END)`
+  );
+}
+
+/** The 3 binds `dueWindowSql` takes, in placeholder order. */
+export function dueWindowBinds(p: { now: number; escalationWindowMs: number }): number[] {
+  return [p.escalationWindowMs, p.now, freeRuntimeLiveCutoff(p.now)];
+}
+
+/**
  * The whole gate, to be appended to a claim statement's WHERE (it begins with
  * ` AND`) — fit ∧ (free ∨ (pin ∧ budget ∧ due)), the fold of the fragments
  * above. `inv` is how the statement refers to the agent_invocations row under
@@ -141,9 +188,7 @@ export function claimGateSql(inv: string): string {
     `\n AND (? = 1` +
     `\n      OR (${notPinnedSql(inv)}` +
     `\n          AND NOT ${budgetExhaustedSql(inv)}` +
-    `\n          AND (CASE WHEN ${inv}.due_at IS NOT NULL THEN ${inv}.due_at - ? <= ?` +
-    `\n                ELSE NOT ${freeRuntimeLiveSql(inv)}` +
-    `\n                END)))`
+    `\n          AND ${dueWindowSql(inv)}))`
   );
 }
 
@@ -161,14 +206,17 @@ export interface ClaimGateParams {
 }
 
 /** The binds for `claimGateSql`, in placeholder order. */
-export function claimGateBinds(p: ClaimGateParams): Array<number | null> {
+export function claimGateBinds(p: ClaimGateParams): Array<number | string | null> {
   return [
     ...claimFitBinds(p.claimant),
     p.claimant.isFree ? 1 : 0,
     p.monthStartMs,
-    p.escalationWindowMs,
-    p.now,
-    freeRuntimeLiveCutoff(p.now),
+    // The overage bucket. Derived from monthStartMs, NOT from `now`, so the two
+    // halves of the budget comparison can never key different months — a
+    // sweep that straddles midnight UTC on the 1st still compares one period
+    // against itself.
+    budgetPeriodKey(p.monthStartMs),
+    ...dueWindowBinds(p),
   ];
 }
 
@@ -181,6 +229,76 @@ export function claimGateBinds(p: ClaimGateParams): Array<number | null> {
 export function budgetMonthStartMs(now: number): number {
   const d = new Date(now);
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+}
+
+/**
+ * The budget PERIOD's name — 'YYYY-MM', UTC (s11 T9). The same bucket
+ * `budgetMonthStartMs` opens, spelled as a key so it can be stored on a row
+ * (`agent_budget_overages.period_key`) and compared with `=` instead of a
+ * range. One period = one month = one ask; the T9 proposal's idempotence and
+ * its expiry are both keyed to it.
+ */
+export function budgetPeriodKey(now: number): string {
+  const d = new Date(now);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * The instant the current budget period ENDS (= the next month's start, UTC).
+ *
+ * s11 T9 sets a `budget-overrun` proposal's `expiresAt` here, because an
+ * unanswered overage question is MOOT next month: the spend sum resets, the
+ * binding is under its cap again, and the work the question was about is
+ * claimable without anyone deciding anything. A proposal that outlived its
+ * period would ask a human to authorize spending against a budget that no
+ * longer needs it.
+ */
+export function budgetPeriodEndMs(now: number): number {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+}
+
+/**
+ * What one invocation of this binding typically COSTS — the median of its past
+ * `cost_micros` (the s07 T5 history), micro-USD. The number a `budget-overrun`
+ * proposal multiplies by the waiting count to answer "what would it cost to
+ * clear the queue?", and the reason that answer is a FACT rather than a guess.
+ *
+ * `cost_micros > 0` is the population, deliberately: 0 means "known and
+ * genuinely free" (a Workers-AI allocation run, or a homelab claimant), and a
+ * free run predicts nothing about what the PAID cloud will charge to drain this
+ * queue — averaging zeros in would under-quote the human by construction. NULL
+ * (undetermined) is excluded for the same reason it renders "not recorded"
+ * everywhere else: it is not a zero.
+ *
+ * No qualifying history → `null`, and every caller must carry that null through
+ * as "unknown" rather than substituting a number. 101 most recent keeps the
+ * median recency-weighted and the scan bounded (same shape as
+ * `bindingEscalationWindowMs`).
+ */
+export async function bindingMedianCostMicros(
+  db: D1Database,
+  accountId: string,
+  bindingId: string,
+): Promise<number | null> {
+  const { results } = await db
+    .prepare(
+      `SELECT cost_micros AS c FROM agent_invocations
+       WHERE account_id = ? AND binding_id = ? AND status = 'done'
+         AND cost_micros IS NOT NULL AND cost_micros > 0
+       ORDER BY done_at DESC LIMIT 101`,
+    )
+    .bind(accountId, bindingId)
+    .all<{ c: number }>();
+  return medianMicros(results.map((r) => r.c));
+}
+
+/** The fold behind `bindingMedianCostMicros`. Pure; empty → null (unknown). */
+export function medianMicros(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
 /**

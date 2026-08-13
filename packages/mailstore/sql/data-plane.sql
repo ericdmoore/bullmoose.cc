@@ -335,15 +335,30 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
   --                     liveness; the work sits for a private runtime)
   --   'overdue-unfit'   the cloud's declared capability vector cannot satisfy
   --                     requires_json — claiming it would only fail
-  -- This is deliberately NOT an ActionProposal: there is no decision to make
-  -- and no action to approve, so a proposal row would be a second store of a
-  -- fact the invocation already holds (arch.md §1's read-model rule). It is a
-  -- marker: DURABLE (a row, not a log line), QUERYABLE (AgentInvocation/get
-  -- projects it; AgentInvocation/query filters on it), and raised ONCE — the
-  -- sweep's UPDATE guards on `alert_kind IS NULL`, so repeated sweeps over the
-  -- same stuck row cannot storm. It is never cleared: that a deadline passed
-  -- with nobody able to take the work is a FACT about this run, and it stays
-  -- on the row after a homelab eventually claims it.
+  -- Neither is an ActionProposal: there is no decision to make and no action to
+  -- approve, so a proposal row would be a second store of a fact the invocation
+  -- already holds (arch.md §1's read-model rule). It is a marker: DURABLE (a
+  -- row, not a log line), QUERYABLE (AgentInvocation/get projects it;
+  -- AgentInvocation/query filters on it), and raised ONCE — the sweep's UPDATE
+  -- guards on `alert_kind IS NULL`, so repeated sweeps over the same stuck row
+  -- cannot storm. It is never cleared: that a deadline passed with nobody able
+  -- to take the work is a FACT about this run, and it stays on the row after a
+  -- homelab eventually claims it.
+  --
+  -- s11 T9 adds a THIRD value with a different job, and the difference is the
+  -- rule "marker when nothing can be decided; proposal when something can":
+  --   'budget-stranded:<YYYY-MM>'  the binding is out of monthly budget and
+  --                     this row is waiting on it. Unlike the two above there
+  --                     IS a human choice here ("spend anyway?"), so this
+  --                     marker does not stand alone — it is the IDEMPOTENCE KEY
+  --                     of a `budget-overrun` proposal, raised on ONE
+  --                     representative invocation per binding so the sweep asks
+  --                     once per period instead of every cron tick.
+  -- It is PERIOD-SCOPED in its value (the two overdue kinds are not) because
+  -- the question genuinely recurs: a new month is a new budget and a new ask.
+  -- Its guarded UPDATE therefore also admits a row carrying a budget marker
+  -- from an EARLIER period, and never one carrying an overdue marker — a passed
+  -- deadline is permanent and must not be overwritten by a money problem.
   alert_kind         TEXT,
   alert_at           INTEGER,
   PRIMARY KEY (account_id, id)
@@ -437,6 +452,57 @@ CREATE INDEX IF NOT EXISTS agent_proposals_status
   ON agent_proposals (account_id, status);
 CREATE INDEX IF NOT EXISTS agent_proposals_expires
   ON agent_proposals (account_id, expires_at);
+
+-- s11 T9 — an APPROVED, BOUNDED budget overage. One binding, one period, one
+-- amount; never a raised cap.
+--
+-- The hole T9 closes: a binding whose `config_json.budgets.spendPerMonth` is
+-- spent strands its pending work when no free runtime is live — the policy gate
+-- says "budget exhausted → free claimants only" and nobody free is listening.
+-- That is a QUESTION with a real answer ("spend anyway?"), so it earns the
+-- approvals queue as a `budget-overrun` proposal; approving it lands a row here.
+--
+-- Why this is a table and not a `config_json` key: raising `spendPerMonth` is a
+-- CONFIG edit with its own route (`PATCH /agent-bindings/{id}`), and one click
+-- must never silently become standing policy (devPlan T9). An approved overage
+-- is a DECISION — it has an approver, a proposal that argued for it, a
+-- timestamp and a bound — so it is stored as the record it is, not folded into
+-- the binding's configuration where the next config write would have to
+-- preserve it and an audit could not tell the two apart.
+--
+-- AMOUNT, not count (micro-USD, same unit as spendPerMonth and cost_micros).
+-- A count bounds nothing: one expensive invocation can outspend ten cheap ones,
+-- and "budget" is denominated in money everywhere else in this schema. The
+-- gate's arithmetic is therefore a single addition — the effective ceiling for
+-- a period is `spendPerMonth + SUM(amount_micros)` — which is why the pure
+-- `budgetExhausted()` and `budgetExhaustedSql()` can stay in provable
+-- agreement (packages/scheduling).
+--
+-- period_key is the UTC calendar month, 'YYYY-MM' (`budgetPeriodKey`), the SAME
+-- bucket the spend sum uses. It is what makes the grant expire by ARITHMETIC
+-- rather than by a sweep: at the month roll the spend resets AND the overage
+-- stops matching, both at the same instant, with no cleanup job and no row to
+-- delete. An overage never outlives the question it answered.
+--
+-- Keyed by proposal too, so two approvals (a re-ask in a later period, or a
+-- second grant a human deliberately made) are two auditable rows that SUM,
+-- rather than one silently overwriting the other.
+--
+-- New table, so a plain schema re-run (CREATE TABLE IF NOT EXISTS) DOES create
+-- it. Existing DBs: infra/migrations.mjs `budget-overage-table` — a DEPLOY
+-- BLOCKER, unlike most new tables, because the claim gate names it in EVERY
+-- claim statement's WHERE (budgetExhaustedSql), so a worker deployed against a
+-- database missing it fails every claim rather than one route.
+CREATE TABLE IF NOT EXISTS agent_budget_overages (
+  account_id    TEXT NOT NULL,
+  binding_id    TEXT NOT NULL,
+  period_key    TEXT NOT NULL,      -- 'YYYY-MM', UTC (budgetPeriodKey)
+  amount_micros INTEGER NOT NULL,   -- the BOUND, micro-USD; added to the cap
+  proposal_id   TEXT NOT NULL,      -- the budget-overrun proposal that argued it
+  approved_by   TEXT,               -- the deciding principal
+  approved_at   INTEGER NOT NULL,   -- epoch ms
+  PRIMARY KEY (account_id, binding_id, period_key, proposal_id)
+);
 
 -- Spend facts — the ledger behind analyst@ (agent ledger pipeline).
 -- One row per extracted receipt; SQL owns every aggregate. The dedup

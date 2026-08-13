@@ -1202,3 +1202,119 @@ func TestApprovals_NeedsInfo_JSONShapes(t *testing.T) {
 		t.Errorf("decline --json drifted.\n got: %s\nwant: %s", got, wantDecline)
 	}
 }
+
+// ---- s11 T9: budget-overrun ------------------------------------------------
+//
+// The kind whose payload is entirely numbers. Both surfaces lead with them,
+// because they ARE the decision — and neither may invent one it does not have.
+
+func budgetOverrunPayload() map[string]any {
+	return map[string]any{
+		"bindingId":        "bind_photos",
+		"bindingName":      "photos",
+		"waitingCount":     float64(12),
+		"monthSpentMicros": float64(5_000_000),
+		"capMicros":        float64(5_000_000),
+		"estimateMicros":   float64(1_800_000),
+		"overageMicros":    float64(2_250_000),
+		"periodKey":        "2026-08",
+	}
+}
+
+// list puts the numbers in the row, not a truncated prose rationale.
+func TestApprovals_List_BudgetOverrunLeadsWithTheNumbers(t *testing.T) {
+	now := time.Now().UnixMilli()
+	fs := newFake(true)
+	fs.add(&fakeProp{
+		id: "b1", kind: "budget-overrun", tier: 1, agent: "photos",
+		rationale: "photos has spent $5.00 of its $5.00 budget for 2026-08 and 12 invocations are waiting",
+		subject:   map[string]any{"realm": "AgentBinding", "objectId": "bind_photos"},
+		payload:   budgetOverrunPayload(),
+		createdAt: now - 60_000, expiresAt: now + day,
+	})
+	db := newEnv(t, fs, true)
+
+	out, _, code := runAP(t, db, "list")
+	if code != 0 {
+		t.Fatalf("list exit %d (%s)", code, out)
+	}
+	if !strings.Contains(out, "12 waiting · $5.00 of $5.00 spent") {
+		t.Errorf("list row does not lead with the numbers:\n%s", out)
+	}
+	// The kind and the tier still read as every other row does. (The KIND column
+	// is 13 wide and elides at 14, exactly as it already does for the pre-T9
+	// `organize-files` — no re-layout was needed to fit a new kind.)
+	if !strings.Contains(out, "budget-overr") || !strings.Contains(out, "T1") {
+		t.Errorf("list row lost its kind/tier columns:\n%s", out)
+	}
+}
+
+// show states the numbers above the prose, and says the period is the bound.
+func TestApprovals_Show_BudgetOverrunStatesTheBound(t *testing.T) {
+	fs := newFake(true)
+	fs.add(&fakeProp{
+		id: "b1", kind: "budget-overrun", tier: 1, agent: "photos",
+		rationale: "photos has spent $5.00 of its $5.00 budget",
+		subject:   map[string]any{"realm": "AgentBinding", "objectId": "bind_photos"},
+		payload:   budgetOverrunPayload(),
+	})
+	db := newEnv(t, fs, true)
+
+	out, _, code := runAP(t, db, "show", "b1")
+	if code != 0 {
+		t.Fatalf("show exit %d", code)
+	}
+	for _, want := range []string{
+		"summary:   12 waiting · $5.00 of $5.00 spent · ~$1.80 to clear — approve a $2.25 overage for photos",
+		"period:    2026-08",
+		"configured cap is not changed",
+		"rationale: photos has spent",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("show output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// A binding with no paid history: "cost unknown", never a plausible $0.00.
+func TestApprovals_Show_BudgetOverrunUnknownCostIsHonest(t *testing.T) {
+	payload := budgetOverrunPayload()
+	payload["estimateMicros"] = nil
+	fs := newFake(true)
+	fs.add(&fakeProp{
+		id: "b1", kind: "budget-overrun", tier: 1, agent: "photos",
+		rationale: "no cost history",
+		subject:   map[string]any{"realm": "AgentBinding", "objectId": "bind_photos"},
+		payload:   payload,
+	})
+	db := newEnv(t, fs, true)
+
+	out, _, code := runAP(t, db, "show", "b1")
+	if code != 0 {
+		t.Fatalf("show exit %d", code)
+	}
+	if !strings.Contains(out, "cost unknown") {
+		t.Errorf("show must say the cost is unknown:\n%s", out)
+	}
+	if strings.Contains(out, "~$0.00 to clear") {
+		t.Errorf("show invented a zero estimate:\n%s", out)
+	}
+}
+
+// Every other kind's row is byte-identical to before T9 — the change is
+// additive, not a re-layout of the queue.
+func TestApprovals_List_OtherKindsStillShowTheRationale(t *testing.T) {
+	now := time.Now().UnixMilli()
+	fs := newFake(true)
+	fs.add(&fakeProp{id: "r1", kind: "reply-draft", tier: 2, rationale: "drafted a reply to grace",
+		createdAt: now - 60_000, expiresAt: now + day})
+	db := newEnv(t, fs, true)
+
+	out, _, code := runAP(t, db, "list")
+	if code != 0 {
+		t.Fatalf("list exit %d", code)
+	}
+	if !strings.Contains(out, "drafted a reply to grace") {
+		t.Errorf("a non-budget row must still print its rationale:\n%s", out)
+	}
+}
