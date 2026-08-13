@@ -17,6 +17,12 @@
 // meet: `rowClocks` sources `expiresIn` from `expiresAt` alone and
 // `holdRemaining` from `holdUntil` alone, gated on status, and the tests hold
 // a row carrying both to that.
+//
+// s11 T1 adds a THIRD, `dueAt` — the WORK's own business deadline, inferred
+// at the boundary and correctable on the row (`dueLabel` / `dueInputValue` /
+// `dueFromInput` below). Same discipline, now three ways: the due clock is
+// sourced from `dueAt` alone and its wording names "the work", never the
+// decision.
 
 import type { ActionProposal } from "./types";
 
@@ -107,6 +113,44 @@ export function expiryLabel(expiresInMs: number | null): string {
     return `decision window passed ${formatDuration(-expiresInMs)} ago`;
   }
   return `expires in ${formatDuration(expiresInMs)}`;
+}
+
+/**
+ * The THIRD clock (s11 T1): the WORK's own deadline, worded so it can never
+ * be read as either of the other two — "the work" is due, not the decision
+ * ("expires in") and not the retraction window ("retraction window ends").
+ * Null in, honest "no due date" out: NULL means never-urgent, and inventing
+ * urgency is exactly the mis-read the correctable surface exists to catch.
+ */
+export function dueLabel(dueAt: string | null, now: number): string {
+  if (dueAt === null) return "no due date";
+  const due = Date.parse(dueAt);
+  if (!Number.isFinite(due)) return "no due date";
+  return due - now >= 0
+    ? `work due in ${formatDuration(due - now)}`
+    : `work was due ${formatDuration(now - due)} ago`;
+}
+
+/**
+ * ISO instant → `<input type="datetime-local">` value (the viewer's LOCAL
+ * wall time, minute precision) — and back. The pair round-trips the instant
+ * in any host timezone, which is what the test holds them to; the human sees
+ * and edits local time, the server only ever receives the ISO instant.
+ */
+export function dueInputValue(dueAt: string | null): string {
+  const ms = dueAt !== null ? Date.parse(dueAt) : NaN;
+  if (!Number.isFinite(ms)) return "";
+  const d = new Date(ms);
+  const pad = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Empty or unparseable input reads as "clear the deadline" (→ null). */
+export function dueFromInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  const ms = new Date(trimmed).getTime(); // datetime-local parses as LOCAL time
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
 /**

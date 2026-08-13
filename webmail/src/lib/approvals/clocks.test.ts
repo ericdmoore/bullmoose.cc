@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   NEAR_EXPIRY_MS,
+  dueFromInput,
+  dueInputValue,
+  dueLabel,
   expiryLabel,
   formatDuration,
   holdLabel,
@@ -33,6 +36,7 @@ function proposal(partial: Partial<ActionProposal> & Pick<ActionProposal, "id">)
     decidedAt: null,
     holdUntil: null,
     expiresAt: null,
+    dueAt: null,
     question: null,
     amendments: [],
     invocationStatus: "done",
@@ -201,5 +205,58 @@ describe("formatDuration", () => {
     expect(formatDuration(4 * MIN + 10_000)).toBe("4m 10s");
     expect(formatDuration(41_000)).toBe("41s");
     expect(formatDuration(0)).toBe("0s");
+  });
+});
+
+// ---- the THIRD clock (s11 T1): the work's own deadline ---------------------
+
+describe("dueLabel — the work's clock, never confusable with the other two", () => {
+  it("renders a future due date as the WORK being due, not the decision", () => {
+    const label = dueLabel(new Date(NOW + 2 * DAY + 4 * HOUR).toISOString(), NOW);
+    expect(label).toBe("work due in 2d 4h");
+    // Wording is the firewall: the other clocks say "expires in" and
+    // "retraction window" — this one must say neither.
+    expect(label).not.toContain("expires");
+    expect(label).not.toContain("retraction");
+  });
+
+  it("says so plainly once the work's deadline has passed", () => {
+    expect(dueLabel(new Date(NOW - 3 * HOUR).toISOString(), NOW)).toBe("work was due 3h 0m ago");
+  });
+
+  it("renders null as 'no due date' — never-urgent is a value, not an absence", () => {
+    expect(dueLabel(null, NOW)).toBe("no due date");
+    expect(dueLabel("not a date", NOW)).toBe("no due date");
+  });
+
+  it("a proposal can carry all three clocks and each label reads from its own field", () => {
+    // The three-clock discipline, held in one place: same row, three sources.
+    const p = proposal({
+      id: "three",
+      createdAt: new Date(NOW - HOUR).toISOString(),
+      expiresAt: new Date(NOW + 2 * HOUR).toISOString(),
+      holdUntil: new Date(NOW + 30 * MIN).toISOString(),
+      dueAt: new Date(NOW + 5 * DAY).toISOString(),
+    });
+    const clocks = rowClocks(p, NOW);
+    expect(clocks.expiresInMs).toBe(2 * HOUR); // from expiresAt alone
+    expect(clocks.holdRemainingMs).toBeNull(); // pending → hold clock off
+    expect(dueLabel(p.dueAt, NOW)).toBe("work due in 5d 0h"); // from dueAt alone
+  });
+});
+
+describe("dueInputValue / dueFromInput — the correction round-trips in any host timezone", () => {
+  it("ISO → input → ISO preserves the instant to minute precision", () => {
+    const iso = "2026-08-20T17:00:00.000Z";
+    const input = dueInputValue(iso);
+    // Local wall time, minute precision — the shape datetime-local wants.
+    expect(input).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    expect(dueFromInput(input)).toBe(iso);
+  });
+
+  it("empty or unparseable input clears to null — never a silent wrong instant", () => {
+    expect(dueFromInput("")).toBeNull();
+    expect(dueFromInput("   ")).toBeNull();
+    expect(dueInputValue(null)).toBe("");
   });
 });

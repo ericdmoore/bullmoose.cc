@@ -133,6 +133,7 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: iso(now + 35 * min), // near expiry: under the 1h urgency line
+      dueAt: iso(now + 22 * hour), // inferred from "a yes/no on Monday" — the boundary's proposal, correctable
       question: null,
       amendments: [],
       invocationStatus: "done",
@@ -166,6 +167,7 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: iso(now + 4 * day),
+      dueAt: null,
       question: null,
       amendments: [],
       invocationStatus: "done",
@@ -203,6 +205,7 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: iso(now + 2 * day),
+      dueAt: iso(now + 2 * day), // "payment … by wire on Friday"
       question: null,
       amendments: [],
       invocationStatus: "done",
@@ -228,6 +231,7 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: iso(now + 5 * day),
+      dueAt: null,
       question: null,
       amendments: [],
       invocationStatus: "done",
@@ -260,6 +264,7 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: iso(now + 6 * day), // resumed when the answer landed
+      dueAt: null,
       question: null,
       amendments: [
         {
@@ -294,6 +299,7 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: null, // paused — the remainder is banked server-side
+      dueAt: null,
       question: "Which nine issues? I read it on my phone — does that count as opened here?",
       amendments: [
         {
@@ -334,6 +340,7 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: iso(now - 2 * min),
       holdUntil: iso(now + 3 * min),
       expiresAt: iso(now + 6 * day), // moot once held — rendered from holdUntil, never this
+      dueAt: null,
       question: null,
       amendments: [],
       invocationStatus: "done",
@@ -378,6 +385,7 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: iso(now - 26 * hour),
       holdUntil: null,
       expiresAt: iso(now - 26 * hour + 7 * day),
+      dueAt: null,
       question: null,
       amendments: [],
       invocationStatus: "done",
@@ -400,6 +408,7 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: iso(now - 2 * day),
       holdUntil: null,
       expiresAt: iso(now + 5 * day),
+      dueAt: null,
       question: null,
       amendments: [],
       invocationStatus: "done",
@@ -423,6 +432,7 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: iso(now - 2 * day),
+      dueAt: null,
       question: null,
       amendments: [],
       invocationStatus: "done",
@@ -542,6 +552,31 @@ export function installApprovalsDemo(
           };
           continue;
         }
+        // ---- s11 T1: the due-date CORRECTION, mirroring the server — a
+        // status-free { dueAt } patch fixes the boundary's read and leaves
+        // the row pending; riding it on a decision is refused whole.
+        if (patch.dueAt !== undefined && patch.status === undefined) {
+          if (patch.dueAt !== null && (typeof patch.dueAt !== "string" || !Number.isFinite(Date.parse(patch.dueAt)))) {
+            notUpdated[id] = {
+              type: "invalidProperties",
+              description: "dueAt must be null (no deadline) or an ISO 8601 date string",
+              properties: ["dueAt"],
+            };
+            continue;
+          }
+          row.dueAt = patch.dueAt === null ? null : new Date(Date.parse(patch.dueAt)).toISOString();
+          updated[id] = null;
+          continue;
+        }
+        if (patch.dueAt !== undefined) {
+          notUpdated[id] = {
+            type: "invalidProperties",
+            description: "dueAt is a correction, not part of a decision — send it in its own update, without status",
+            properties: ["dueAt"],
+          };
+          continue;
+        }
+
         const status = patch.status;
         if (status !== "approved" && status !== "rejected" && status !== "info-requested") {
           notUpdated[id] = {
