@@ -390,6 +390,26 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "budget-overage-table",
+    why: "s11 T9: the approved, bounded budget overage a `budget-overrun` proposal grants. UNLIKE most new tables this IS a deploy blocker: the eligibility gate's budgetExhaustedSql names it in EVERY claim statement's WHERE (the effective ceiling is cap + SUM(amount_micros) for the period), so a jmap/agent worker deployed against a database missing it fails every claim and all agent mail stops — the same blast radius as invocation-claimant-columns, not the one-route failure a new table usually is",
+    blocks: "deploy",
+    check: tableExists("agent_budget_overages"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS agent_budget_overages (
+         account_id    TEXT NOT NULL,
+         binding_id    TEXT NOT NULL,
+         period_key    TEXT NOT NULL,
+         amount_micros INTEGER NOT NULL,
+         proposal_id   TEXT NOT NULL,
+         approved_by   TEXT,
+         approved_at   INTEGER NOT NULL,
+         PRIMARY KEY (account_id, binding_id, period_key, proposal_id)
+       )`,
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
     id: "domain-deny-list-table",
     why: "s12 1-A: the industrial deny tier (bouncer@'s working data). A plain schema re-run DOES create it; NOT a deploy blocker because the ingest cascade fails OPEN — a shard missing the table reads as an empty deny list (logged) and every message flows as today",
     blocks: null,

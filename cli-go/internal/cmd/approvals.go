@@ -721,10 +721,14 @@ func renderRow(p *proposal.Proposal, now int64) string {
 		// late on. What the column says instead is WHO the ball is with.
 		clock = "waiting:agent"
 	}
+	// The last column is the row's one line. For every kind it is the rationale
+	// (the agent's "why", first line only); for s11 T9's `budget-overrun` it is
+	// the numbers-first summary, because the numbers ARE the why there and a
+	// truncated prose sentence would bury them (proposal.RowSummary).
 	return fmt.Sprintf("%-14s  %-16s  %-13s  T%-3d  %-13s  %-16s  %-24s  %s",
 		p.Status, trunc(p.Agent, 16), trunc(p.Kind, 13), p.Tier,
 		proposal.FormatDuration(c.WaitedMs), trunc(clock, 16),
-		trunc(p.ID, 24), trunc(firstLine(p.Rationale), 60))
+		trunc(p.ID, 24), trunc(proposal.RowSummary(p), 60))
 }
 
 // compactExpiry / compactHold are the table's short forms of the two clocks. They
@@ -755,6 +759,19 @@ func renderShow(s *bmio.Streams, p *proposal.Proposal) {
 	s.Out(fmt.Sprintf("%s  [%s]  tier %d  agent %s  kind %s", p.ID, p.Status, p.Tier, p.Agent, p.Kind))
 	if p.Subject.Realm != "" || p.Subject.ObjectID != "" {
 		s.Out("subject:   " + strings.TrimSpace(p.Subject.Realm+" "+p.Subject.ObjectID))
+	}
+	// s11 T9 — the numbers, above the prose. A `budget-overrun` is decided from
+	// four figures (waiting, spent/ceiling, cost to clear, the bound being
+	// asked for), so `show` states them on their own line before the rationale
+	// that explains them. Every other kind is unchanged: no summary line, the
+	// rationale leads.
+	if proposal.IsBudgetOverrun(p.Kind) {
+		b := proposal.ParseBudgetOverrun(p.Payload)
+		s.Out("summary:   " + b.Summary(p.Subject.ObjectID))
+		if b.PeriodKey != "" {
+			s.Out("period:    " + b.PeriodKey + " — the overage applies to this period ONLY; " +
+				"the binding's configured cap is not changed")
+		}
 	}
 	s.Out("rationale: " + p.Rationale)
 	if len(p.Evidence) > 0 {
@@ -887,13 +904,6 @@ func jsonCompact(v any) string {
 		return ""
 	}
 	return strings.TrimRight(buf.String(), "\n")
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 func trunc(s string, w int) string {

@@ -4,6 +4,7 @@ export {
   ESCALATION_WINDOW_MIN_MS,
   ESCALATION_WINDOW_NO_HISTORY_MS,
   FREE_RUNTIME_LIVE_MS,
+  budgetExhausted,
   escalationWindowMs,
   fit,
   mayClaim,
@@ -17,14 +18,20 @@ export {
 } from "./mayClaim.js";
 export {
   bindingEscalationWindowMs,
+  bindingMedianCostMicros,
   budgetExhaustedSql,
   budgetMonthStartMs,
+  budgetPeriodEndMs,
+  budgetPeriodKey,
   claimFitBinds,
   claimFitSql,
   claimGateBinds,
   claimGateSql,
+  dueWindowBinds,
+  dueWindowSql,
   freeRuntimeLiveCutoff,
   freeRuntimeLiveSql,
+  medianMicros,
   notPinnedSql,
   type ClaimGateParams,
 } from "./claimGate.js";
