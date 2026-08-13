@@ -12,8 +12,10 @@
 //                     (quarantine mailbox + chain row)
 //   2. envelope auth — hard DMARC fail per the topmost Authentication-Results
 //                     header → REJECT-STORE 'auth:dmarc'
-//   3. sieve rules   — s12-B contract stub (always PASS today)
-//   4. Bayes         — s12-B contract stub (no trained state stored → skip)
+//   3. sieve rules   — real engine (@bullmoose/boundary); no rules stored yet
+//                     so every message passes until wave 2 wires rule storage
+//   4. Bayes         — real engine; no trained per-account state stored yet
+//                     (null → skip), trained by wave 2's rescue/report labels
 //
 // DefaultCase is pinned: with no deny rows, no blocked books, no bloom and no
 // default contacts book, every stage returns CONTINUE with a null sender

@@ -1,18 +1,27 @@
-// s12-B contract: the pure-engine surface of `@bullmoose/boundary`.
+// The seam between the cascade (this worker) and the pure engines
+// (`@bullmoose/boundary`, s12 wave 1-B). Wave 1-A stubbed this file against a
+// pinned contract; the package landed, so the stubs are gone and the engines
+// are re-exported through ONE adapter.
 //
-// A PARALLEL wave (s12 1-B) is building the real engines — sieve rules, the
-// per-account Bayes filter, the graduation policy — as a package. This file
-// is the CONTRACT the cascade in boundary.ts is wired against: the exported
-// names and signatures here are exactly the package's exports, and every
-// implementation below is a deliberate PASS-THROUGH stub (sieve always
-// passes, Bayes always scores clean, nothing graduates), so the wired stages
-// 3–4 are no-ops until the package lands. When it does, this file's stubs
-// are replaced by `export { ... } from "@bullmoose/boundary"` and nothing in
-// boundary.ts moves.
-//
-// BoundaryMessage is defined HERE (wave 1-A owns it): it is what ingest can
-// honestly hand a pure engine — envelope + parsed header/text material, no
-// D1, no R2 handle. Both waves and the next build against this shape.
+// BoundaryMessage is defined HERE (ingest owns it): it is what this worker can
+// honestly hand a pure engine — envelope + parsed header/text material, no D1,
+// no R2 handle. The package's message shape differs deliberately (it has no
+// envelope concept, and its headers are a flat Record); `toEngineMessage` is
+// the single place the two shapes meet.
+
+import {
+  type SieveRule,
+  type BayesState,
+  type GraduationPolicy,
+  type BoundaryMessage as EngineMessage,
+  sieveVerdict as engineSieveVerdict,
+  bayesClassify as engineBayesClassify,
+  graduationDue,
+} from "@bullmoose/boundary";
+
+export { DEFAULT_THRESHOLDS, bayesVerdict } from "@bullmoose/boundary";
+export type { SieveRule, BayesState, GraduationPolicy };
+export { graduationDue };
 
 /** What a cascade stage sees of one inbound message. Pure data. */
 export interface BoundaryMessage {
@@ -35,50 +44,34 @@ export interface BoundaryMessage {
   hasAttachment: boolean;
 }
 
-// s12-B contract: rule shape is 1-B's to finalize; `id` is the one field the
-// cascade depends on (REJECT reasons are recorded as `sieve:<ruleId>`).
-export interface SieveRule {
-  id: string;
-  [key: string]: unknown;
+/**
+ * Ingest shape → engine shape. Headers collapse to a Record with the TOPMOST
+ * occurrence winning — the same trust order stage 2 applies to
+ * Authentication-Results (RFC 8601: our edge prepends, forgeries sit below).
+ */
+export function toEngineMessage(msg: BoundaryMessage): EngineMessage {
+  const headers: Record<string, string> = {};
+  for (const { key, value } of msg.headers) {
+    if (!(key in headers)) headers[key] = value;
+  }
+  return {
+    from: msg.sender,
+    fromDomain: msg.senderDomain,
+    subject: msg.subject,
+    textBody: msg.text,
+    headers,
+    sizeBytes: msg.size,
+    hasAttachments: msg.hasAttachment,
+  };
 }
 
-// s12-B contract: opaque to the cascade — trained per account, fed by
-// quarantine rescues as labeled corrections. `null` at the call site means
-// "no trained state stored", and stage 4 skips entirely.
-export interface BayesState {
-  [key: string]: unknown;
-}
-
-// s12-B contract: thresholds/windows are 1-B's to define.
-export interface GraduationPolicy {
-  [key: string]: unknown;
-}
-
-// s12-B contract: first FAILing rule wins; PASS when no rule fires.
 export function sieveVerdict(
   rules: SieveRule[],
   msg: BoundaryMessage,
 ): { verdict: "PASS" | "FAIL"; ruleId?: string } {
-  void rules;
-  void msg;
-  return { verdict: "PASS" }; // stub: no rule engine yet — every message passes
+  return engineSieveVerdict(rules, toEngineMessage(msg));
 }
 
-// s12-B contract: spam probability in [0,1]; the cascade applies the two
-// thresholds (T_reject / T_clean), never this function.
 export function bayesClassify(state: BayesState, msg: BoundaryMessage): { score: number } {
-  void state;
-  void msg;
-  return { score: 0 }; // stub: no classifier yet — everything scores clean
-}
-
-// s12-B contract: which domains have earned graduation into the industrial
-// deny list (N expensive-stage rejects, no rescues). Returns domains.
-export function graduationDue(
-  counts: Array<{ domain: string; rejects: number; rescues: number }>,
-  policy: GraduationPolicy,
-): string[] {
-  void counts;
-  void policy;
-  return []; // stub: no graduation policy yet — nothing graduates
+  return engineBayesClassify(state, toEngineMessage(msg));
 }
