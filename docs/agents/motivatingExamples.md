@@ -193,7 +193,8 @@ at the end).
         - ReadAccess: inbound before delivery
         - WriteAccess: move/hold (a quarantine mailbox)
         - a persistent sender verdict list (approved / denied)
-    - Note: overlaps _bouncer@_ — worth deciding if they're the same agent
+    - Note: overlaps _bouncer@_ — RESOLVED: same agent. bouncer@ is now the fourth
+      agent kind, specced in `.plans/s12-boundary/` (screening = the unknown-sender path)
 
 - _unsubscribe@_ (forward junk, never see it again)
     - Finds `List-Unsubscribe` / RFC 8058 one-click and executes it, then confirms

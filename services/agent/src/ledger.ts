@@ -2,6 +2,7 @@ import { commitChanges } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
 import type { EmailRow, Mailstore } from "@bullmoose/mailstore";
 import { callWithFallback, type BindingConfig, type Env } from "./models.js";
+import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
 
 /**
  * Ledger pipeline — "Allen the Analyst" (analyst@bullmoose.cc).
@@ -50,6 +51,7 @@ export async function runLedger(
   job: {
     id: string;
     account_id: string;
+    binding_id: string;
     binding_name: string;
     tenant_id: string;
     context_json?: string;
@@ -65,6 +67,16 @@ export async function runLedger(
 ): Promise<void> {
   const digestTo = resolveDigestTarget(cfg, email, selfAddress, job.context_json);
   if (!digestTo) return finish("failed", { note: "no digestTo/digestTargets configured" });
+
+  // The outbound bound (s10 T1): ALL agent sends go through the same gate,
+  // and every ledger egress — digest, pass-along forward, bootstrap report —
+  // targets digestTo, so one check here bounds the whole run. An analyst@
+  // whose digest target is not in its governing book (or that has no book)
+  // stops sending: correct fail-closed behavior, seeded at deploy.
+  {
+    const refusal = await outboundRefusal(env, job, [digestTo]);
+    if (refusal) return finish("done", { note: `skipped: outbound bound — ${refusal}` });
+  }
 
   // Anything that isn't a bookable receipt still FORWARDS to the digest
   // target with a light note — the mailbox never silently eats mail.
@@ -443,7 +455,7 @@ ${rows}
 async function sendDigest(
   env: Env,
   store: Mailstore,
-  job: { id: string; account_id: string; binding_name: string; tenant_id: string },
+  job: { id: string; account_id: string; binding_id: string; binding_name: string; tenant_id: string },
   d: {
     selfAddress: string;
     to: string;
@@ -504,6 +516,8 @@ ${hasChart ? chartHtml(agg) : `<p style="color:#777">${escapeHtml(progress.trim(
 
   const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
   const blobId = await store.putBlob(job.tenant_id, job.account_id, buf);
+  // Belt to the run-level gate in runLedger (s10 T1).
+  await assertOutboundAllowed(env, job, [d.to]);
   const res = await env.SUBMIT.fetch("https://submit.internal/internal/submit", {
     method: "POST",
     headers: { "content-type": "application/json", "x-internal-token": env.INTERNAL_TOKEN },
@@ -555,7 +569,7 @@ function escapeHtml(s: string): string {
 async function forwardOriginal(
   env: Env,
   store: Mailstore,
-  job: { id: string; account_id: string; binding_name: string; tenant_id: string },
+  job: { id: string; account_id: string; binding_id: string; binding_name: string; tenant_id: string },
   f: {
     selfAddress: string;
     to: string;
@@ -594,6 +608,8 @@ ${f.parsed.text ?? orig.preview}`;
 
   const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
   const blobId = await store.putBlob(job.tenant_id, job.account_id, buf);
+  // Belt to the run-level gate in runLedger (s10 T1).
+  await assertOutboundAllowed(env, job, [f.to]);
   const res = await env.SUBMIT.fetch("https://submit.internal/internal/submit", {
     method: "POST",
     headers: { "content-type": "application/json", "x-internal-token": env.INTERNAL_TOKEN },
@@ -640,7 +656,7 @@ ${f.parsed.text ?? orig.preview}`;
 async function bootstrapCsv(
   env: Env,
   store: Mailstore,
-  job: { id: string; account_id: string; binding_name: string; tenant_id: string },
+  job: { id: string; account_id: string; binding_id: string; binding_name: string; tenant_id: string },
   cfg: BindingConfig,
   email: EmailRow,
   selfAddress: string,

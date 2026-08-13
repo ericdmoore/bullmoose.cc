@@ -4,7 +4,8 @@ import { buildMime } from "@bullmoose/mime";
 import { Mailstore } from "@bullmoose/mailstore";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
-import { proposeReply, expireStaleProposals } from "./proposals.js";
+import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
+import { answerInfoRequest, proposeReply, expireStaleProposals } from "./proposals.js";
 import { handleVault, handleVaultVerify } from "./vault.js";
 import {
   callWithFallback,
@@ -184,6 +185,20 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   const done = (status: "done" | "failed", result: Record<string, unknown>, cost?: InvocationCost) =>
     finish(env, job, status, result, cost);
 
+  // s10 T3: an `answer-info-request` invocation (enqueued by ActionProposal/set
+  // when a human asks needsInfo) acts on a PROPOSAL, not on a message —
+  // dispatched by context kind, and BEFORE the email-context requirement,
+  // because the round needs no email to answer.
+  let context: Record<string, unknown> = {};
+  try {
+    context = JSON.parse(job.context_json) as Record<string, unknown>;
+  } catch {
+    // fall through — a malformed context is handled by the pipelines below
+  }
+  if (context.kind === "answer-info-request") {
+    return answerInfoRequest(env, job, cfg, context, done);
+  }
+
   if (!job.email_id) return done("failed", { note: "no email context" });
   const email = await store.getEmailRow(job.account_id, job.email_id);
   if (!email) return done("failed", { note: `email ${job.email_id} missing` });
@@ -217,6 +232,16 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   const allowed = (cfg.allowedSenders ?? []).map((s) => s.toLowerCase());
   if (allowed.length > 0 && !allowed.includes(sender)) {
     return done("done", { note: `skipped: ${sender} not in allowedSenders` });
+  }
+
+  // The outbound twin of the gate above (s10 T1). Everything the reply
+  // pipeline could send — direct replies, error notes, and the reply-draft
+  // PROPOSAL a send-mode run emits (whose approval egresses elsewhere) —
+  // targets `sender`, so one check here bounds the whole run. Fail-closed:
+  // a send-mode binding with no governing book cannot email anyone.
+  if ((cfg.replyMode ?? "draft") === "send") {
+    const refusal = await outboundRefusal(env, job, [sender]);
+    if (refusal) return done("done", { note: `skipped: outbound bound — ${refusal}` });
   }
 
   const { directives, body } = parseFrontMatter(parsed.text ?? email.preview);
@@ -369,6 +394,9 @@ async function sendReply(
   });
 
   if (mode === "send") {
+    // Belt to the invocation-level check in runInvocation: no path to the
+    // relay exists that has not resolved the governing book (s10 T1).
+    await assertOutboundAllowed(env, job, [r.to]);
     const res = await env.SUBMIT.fetch("https://submit.internal/internal/submit", {
       method: "POST",
       headers: { "content-type": "application/json", "x-internal-token": env.INTERNAL_TOKEN },

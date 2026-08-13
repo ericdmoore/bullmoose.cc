@@ -123,6 +123,20 @@ import App from "../layouts/App.astro";
   .apq-editor textarea { resize: vertical; }
   .apq-reason { display: flex; gap: 8px; align-items: baseline; font-size: 13px; }
 
+  /* The needsInfo dialogue (s10 T3): the Q&A rounds attached to a proposal,
+     and the open question an info-requested row is waiting on. */
+  .apq-dialogue {
+    margin: 6px 0;
+    padding: 6px 10px;
+    border-left: 2px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .apq-round { margin: 0; }
+  .apq-question { margin: 2px 0; font-size: 12.5px; }
+  .apq-answer { margin: 2px 0; font-size: 12.5px; }
+
   .apq-diff { margin: 6px 0; font-size: 12.5px; }
   .apq-diff summary { cursor: pointer; color: var(--fg-muted); }
   .apq-diff-text {

@@ -19,9 +19,13 @@
 - Add `due_at INTEGER` (epoch ms, nullable) to `agent_invocations`. NULL = "no known deadline"
   → the scheduler treats it as *never urgent* (free-runtime-only, indefinitely). Migration with
   an executable check.
-- The agent **infers** `due_at` from the work — the implied-due-date-from-the-email-body. This
-  is a *proposal*, not a hidden field: it surfaces on the approval row beside the two clocks so
-  a human can see and correct a mis-read deadline (readme caution 3).
+- **Extraction happens at the boundary, not in the claiming agent** (jobs-and-facets §6 —
+  the discussion caught this: eligibility needs `due_at` BEFORE any claim exists, because
+  sit-free-vs-escalate is a pre-claim decision). Deterministic patterns (explicit dates,
+  "by Friday", "EOD") at enqueue; model extraction only where a binding opts in; no match →
+  NULL (never-urgent). It remains a *proposal*, not a hidden field: it surfaces on the
+  approval row beside the two clocks so a human can see and correct a mis-read deadline
+  (readme caution 3).
 - ⚠️ Distinct from `budgets.deadlineMs` (a loop kill-switch) and from `ActionProposal.expiresAt`
   (the *human's* decide-by). `due_at` is the *work's* business deadline. Three clocks now; keep
   them apart, same discipline as `expiresAt` vs `holdUntil`.
@@ -34,8 +38,21 @@ correctable; NULL means never-urgent.
 **Files:** `services/agent` (the claim gate), `packages/auth-core` or a new `scheduling` module
 (pure policy).
 
-A pure function `mayClaim(invocation, runtime, budgetState, now) → bool`, over `(due_at, cost
-estimate, remaining spendPerMonth, runtime.isFree)`:
+A pure function `mayClaim(invocation, runtime, budgetState, now) → bool`. Its full shape is
+the three-term gate (jobs-and-facets §6):
+
+```
+eligible = authority(runtime.grants)            -- MAY it act     (hard, server-verified)
+         ∧ fit(runtime.capabilities, facets)    -- CAN it succeed (self-declared at connect)
+         ∧ policy(facets, budgetState, now)     -- SHOULD it, yet (this task)
+-- claimant preference = ORDER BY within the eligible set, never a widener
+```
+
+`authority` is the existing grant machinery; `fit` compares the claimant's declared
+capability vector (vision, context length, tools) against the facets (T6) — safe to
+self-declare because it gates fit, not authority, and history punishes over-claiming.
+This task builds `policy`, over `(due_at, cost estimate, remaining spendPerMonth,
+runtime.isFree)`:
 
 - **Far from due** (`due_at − now` large, or NULL): only `isFree` runtimes may claim. Paid cloud
   holds.
@@ -89,29 +106,119 @@ bar. Depends on enough T5-cost history to estimate `$/work` per model, and on a 
 standing "Allen's background loop" the T5 spec forward-referenced. Do not build until the cost
 history is real.
 
+### T6 — Facets at the boundary · *what the gate reads*
+
+**Files:** `packages/mailstore/sql/data-plane.sql` + `infra/migrations.mjs` (facet columns on
+`agent_invocations`), `services/ingest` (mechanical facets), the boundary agent (judged
+facets — s12).
+
+The facet set and its authorship table are `jobs-and-facets.md` §2/§6 — one author class per
+facet, nobody hand-authors per message:
+
+- **Mechanical at enqueue** (ingest): size, attachment MIME → derived capability
+  requirements (`requires: {contextTokens?, vision?, tools?}`), thread refs, `from`.
+- **Judged at enqueue** (bouncer, s12): sender class, privacy stamp, due extraction (T1),
+  effort prior.
+- **Privacy is a class, not a score** (`open | internal | pinned`) and composes **max-wise
+  against the binding's floor**: a stamp may raise, never lower below any implicated floor.
+  The floor is config, written once; the stamp is per-message. This is the rule that makes
+  boundary stamping safe to concentrate.
+- **DefaultCase is structural**: an invocation with no facets is claimable exactly as today.
+  Facets tighten, never strand.
+
+**Done when:** facets persist on the invocation; mechanical facets are stamped by ingest;
+`mayClaim` (T2) reads them; a floor test proves a stamp cannot lower a binding's privacy
+class; an unfaceted invocation behaves byte-identically to today.
+
+### T7 — Jobs: the DAG · *tasks, sub-tasks, and the planner node*
+
+**Files:** `packages/mailstore/sql/data-plane.sql` + `infra/migrations.mjs` (`job_id`,
+`parent_id`, `needs` on `agent_invocations`; a `jobs` table for the underivable), the claim
+query (claimability), `services/agent` (planner-node output → task creation).
+
+Design is `jobs-and-facets.md` §3/§5. The load-bearing choices:
+
+- **Nodes are ordinary invocations.** `job_id` (root, denormalized), `parent_id` (context +
+  attenuation chain), `needs: [...]` (execution ordering — a DIFFERENT relation from
+  parent). The `jobs` row stores only what cannot be derived: aggregate budget
+  `{costMicros, maxNodes, maxDepth}`, originating binding, facets.
+- **No new queues.** Claimability = `status='pending' AND NOT EXISTS (unmet needs)` computed
+  in the claim query; Job status is a **view** derived from its tasks. Never store what can
+  be derived — the membership-chain lesson, applied forward.
+- **The planner node** emits tasks as output; the harness creates them (fan-out capped by
+  the Job's `maxNodes`/`maxDepth`, spend capped by the aggregate budget). Progressive
+  revelation: the plan is produced at runtime, not declared as front matter.
+- **Attenuation is monotonic** (invariant): a sub-task's tools, credentials and budget are
+  a subset of its parent's. Delegation attenuates, never amplifies. A test proves a planner
+  cannot mint a child that exceeds its parent on any axis.
+- **Composition:** a failed node blocks dependents (derived); `needsInfo` pauses only its
+  subtree; join nodes receive their needs' results as context; side-effectful leaves still
+  exit via `/approvals` — a Job reorganizes work, never its egress.
+
+**Done when:** a planner's output becomes claimable sibling tasks that two different
+runtimes process in parallel; a join node synthesizes; the aggregate budget stops a
+runaway fan-out; the attenuation test refuses an amplifying child; Job progress renders
+from the derived view.
+
+### T8 — The fleet host · *one daemon, N agents, discovery from grants*
+
+**Files:** `packages/cli/src/agent.ts` (multi-binding serve), `services/jmap` (claim-grant
+resolution — the machinery exists: `authorizeAccount`), provisioning (the claim grant).
+
+Design is `jobs-and-facets.md` §4. Today `agent serve` is one binding per process and five
+agents means five logins — wrong shape.
+
+- **Runtime-as-principal**: the daemon logs in once (e.g. `alpaca-daemon`); each agent
+  account **grants** it claim authority via the existing cross-account grant machinery.
+- **Discovery, not declaration**: on connect the daemon serves whatever granted it claim.
+  Adding an agent = minting a grant; revoking one = revoking a grant, instantly, the other
+  bindings untouched. The grants are visible in the console like every other grant.
+- **The capability vector rides the connect** (T2's `fit`): the host declares what it can
+  run (vision, context, tools); local backend config stays local — it describes the host's
+  capability, never an agent's identity.
+
+**Done when:** one daemon process serves two bindings on two accounts with one login; a
+revoked claim grant stops claims for that binding without a restart; the declared
+capability vector excludes the host from unfit work.
+
 ---
 
 ## Sequencing
 
 ```
-T1 due_at ──→ T2 eligibility policy ──→ T3 watchdog reconcile
-     │              (spends s07 T5's cost facts)
-     └──→ T4 defer writes due_at (human override)
-                    T5 $/work optimiser — deferred, needs cost history
+T6 facets (boundary) ──┬──→ T2 eligibility (authority ∧ fit ∧ policy) ──→ T3 watchdog reconcile
+T1 due_at (boundary) ──┘         │                                          (privacy pin exempt,
+                                 │                                           decision 0)
+                                 ├──→ T7 Jobs (DAG, planner, attenuation)
+                                 └──→ T8 fleet host (grants + capability vector)
+T4 defer writes due_at (human override) — anytime after T1
+T5 $/work optimiser — deferred, needs cost history
+s12 bouncer@ — stamps T6's judged facets; deterministic sieve is its own section
 ```
 
 ## Decisions needed
 
+0. **Privacy is a pin, not a preference — and it collides with the watchdog.** Cost routing
+   says *"prefer free"*; privacy routing says *"MUST run local"* — a hard constraint on the
+   claimant set (e.g. a binding whose mail must never transit a paid cloud model). These are
+   different axes: the scheduler may escalate a cost-preferred job past `due_at`, but a
+   privacy-**pinned** invocation is exempt from T3's cloud-escalation backstop *by
+   definition* — when the homelab is down and `due_at` passes, the system must choose between
+   violating privacy and violating liveness. **Privacy wins: the work sits, and the human is
+   alerted** (the invariant "no past-due invocation sits pending" gains the qualifier
+   "…unclaimed *silently*"). Needs a `runtimePin: local | any` on the binding when built;
+   named now so T2/T3 leave room for it.
+
 1. **The escalation window — fixed, or cost-scaled?** A cheap job might escalate 10 min before
    due; an expensive one an hour, to leave retry room. *Recommendation: cost-scaled — the window
    is a function of the estimate and a retry budget, not a constant.*
-2. **`due_at` extraction — always, or only for deadline-shaped work?** Inferring a deadline for
-   every email invites false urgency. *Recommendation: only when the body is deadline-shaped
-   (explicit date/"by"/"EOD"), else NULL (never-urgent). A wrong `due_at` is worse than none.*
-3. **Does a homelab runtime advertise liveness, or is absence inferred?** The scheduler needs to
-   know a free runtime *could* claim. *Recommendation: infer from recent claims — a homelab that
-   claimed in the last N minutes is "available"; do not add a heartbeat unless absence-inference
-   proves too slow.*
+2. **`due_at` extraction — RESOLVED (2026-08-13):** only deadline-shaped bodies, at the
+   boundary, deterministic patterns first, NULL otherwise (never-urgent). A wrong `due_at`
+   is worse than none. See T1 and jobs-and-facets §6.
+3. **Does a homelab runtime advertise liveness, or is absence inferred?** Partially resolved
+   by T8: the connect carries the capability vector (what it CAN do); liveness (is it here
+   NOW) is still inferred from recent claims — a host that claimed in the last N minutes is
+   "available". No heartbeat unless absence-inference proves too slow.
 
 ## Out of scope
 

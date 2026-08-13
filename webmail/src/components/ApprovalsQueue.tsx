@@ -18,6 +18,14 @@ import {
   type EditorForm,
 } from "../lib/approvals/edit";
 import {
+  NEEDS_INFO_HINT,
+  NEEDS_INFO_VERB,
+  WAITING_ON_AGENT_NOTE,
+  answeredRounds,
+  openQuestion,
+  questionProblem,
+} from "../lib/approvals/needsInfo";
+import {
   HOLD_UNWIRED_NOTE,
   REJECT_REASONS,
   TIER3_CAPABILITY_NOTE,
@@ -50,10 +58,12 @@ interface Props {
   now?: number;
 }
 
-/** The one inline panel a row can have open: the editor or the decline form. */
+/** The one inline panel a row can have open: the editor, the decline form, or
+ * the needs-info question (s10 T3). */
 type Panel =
   | { id: string; kind: "edit"; form: EditorForm }
-  | { id: string; kind: "decline"; reason?: RejectReason; note: string };
+  | { id: string; kind: "decline"; reason?: RejectReason; note: string }
+  | { id: string; kind: "needs-info"; question: string };
 
 export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }: Props) {
   const [client, setClient] = useState<JmapClient | undefined>(injectedClient);
@@ -145,8 +155,11 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
 
   const ordered = useMemo(() => orderQueue(proposals), [proposals]);
   const pending = ordered.filter((p) => p.status === "pending");
+  const infoRequested = ordered.filter((p) => p.status === "info-requested");
   const held = ordered.filter((p) => p.status === "held");
-  const history = ordered.filter((p) => p.status !== "pending" && p.status !== "held");
+  const history = ordered.filter(
+    (p) => p.status !== "pending" && p.status !== "info-requested" && p.status !== "held",
+  );
 
   async function reload(): Promise<void> {
     if (!client || !accountId) return;
@@ -254,10 +267,24 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
             onDecline={(reason, note) =>
               void act(p.id, { status: "rejected", reason, ...(note ? { note } : {}) })
             }
+            onNeedsInfo={(question) => void act(p.id, { status: "info-requested", question })}
             onSubmitEdit={(form) => submitEdit(p, form)}
           />
         ))}
       </section>
+
+      {infoRequested.length > 0 ? (
+        <section aria-label="Waiting on the agent">
+          <h2 class="apq-h2">Waiting on the agent</h2>
+          <p class="muted apq-fine">
+            You asked; the agent owes an answer. Each returns to the queue with its dialogue
+            attached, and its decision deadline is paused meanwhile.
+          </p>
+          {infoRequested.map((p) => (
+            <InfoRequestedRow key={p.id} p={p} />
+          ))}
+        </section>
+      ) : null}
 
       {held.length > 0 ? (
         <section aria-label="Hold tray">
@@ -294,6 +321,7 @@ function PendingRow(props: {
   setPanel: (panel: Panel | undefined) => void;
   onApprove: () => void;
   onDecline: (reason: RejectReason, note: string) => void;
+  onNeedsInfo: (question: string) => void;
   onSubmitEdit: (form: EditorForm) => void;
 }) {
   const { p, now, busy, error, panel, setPanel } = props;
@@ -307,6 +335,7 @@ function PendingRow(props: {
       <p class="apq-summary">{summarizeProposal(p)}</p>
       <p class="apq-rationale">{p.rationale}</p>
       <Evidence evidence={p.evidence} />
+      <Dialogue p={p} />
       {text ? <pre class="apq-body">{text}</pre> : null}
 
       {/* The two opposed marks. One grows, one shrinks; expiresAt only —
@@ -343,6 +372,14 @@ function PendingRow(props: {
           onSubmit={() => panel.reason && props.onDecline(panel.reason, panel.note)}
           onCancel={() => setPanel(undefined)}
         />
+      ) : panel?.kind === "needs-info" ? (
+        <NeedsInfoPanel
+          question={panel.question}
+          busy={busy}
+          onChange={(question) => setPanel({ id: p.id, kind: "needs-info", question })}
+          onSubmit={() => props.onNeedsInfo(panel.question.trim())}
+          onCancel={() => setPanel(undefined)}
+        />
       ) : (
         <div class="actions">
           <button type="button" disabled={busy} onClick={props.onApprove}>
@@ -359,6 +396,13 @@ function PendingRow(props: {
           ) : null}
           <button
             type="button"
+            disabled={busy}
+            onClick={() => setPanel({ id: p.id, kind: "needs-info", question: "" })}
+          >
+            {NEEDS_INFO_VERB}
+          </button>
+          <button
+            type="button"
             class="danger"
             disabled={busy}
             onClick={() => setPanel({ id: p.id, kind: "decline", note: "" })}
@@ -367,6 +411,31 @@ function PendingRow(props: {
           </button>
         </div>
       )}
+    </article>
+  );
+}
+
+/**
+ * An `info-requested` row (s10 T3): waiting on the AGENT, so no verbs and no
+ * running clocks — the decision deadline is paused server-side, and rendering
+ * the question is the point: the row must say what is owed and by whom.
+ */
+function InfoRequestedRow({ p }: { p: ActionProposal }) {
+  const open = openQuestion(p);
+  return (
+    <article class="apq-row apq-held">
+      <RowHead p={p} />
+      <p class="apq-summary">{summarizeProposal(p)}</p>
+      <p class="apq-rationale">{p.rationale}</p>
+      <Dialogue p={p} />
+      {open ? (
+        <p class="apq-question">
+          <span class="muted">you asked:</span> “{open.question}”
+        </p>
+      ) : null}
+      <p class="apq-clocks">
+        <span class="apq-hold">{WAITING_ON_AGENT_NOTE}</span>
+      </p>
     </article>
   );
 }
@@ -417,8 +486,34 @@ function HistoryRow({ p, now }: { p: ActionProposal; now: number }) {
           {p.decision.note ? ` — “${p.decision.note}”` : ""}
         </p>
       ) : null}
+      <Dialogue p={p} />
       <EditedDiff p={p} />
     </article>
+  );
+}
+
+/**
+ * The needsInfo dialogue (s10 T3) — every ANSWERED round, attached to the
+ * proposal wherever it renders. A challenged-then-approved grant carrying its
+ * question and answer is the strongest "why" the provenance chain can hold,
+ * so the record travels with the row through pending, decided and history.
+ */
+function Dialogue({ p }: { p: ActionProposal }) {
+  const rounds = answeredRounds(p);
+  if (rounds.length === 0) return null;
+  return (
+    <div class="apq-dialogue">
+      {rounds.map((a, i) => (
+        <div key={i} class="apq-round">
+          <p class="apq-question">
+            <span class="muted">{a.askedBy} asked:</span> “{a.question}”
+          </p>
+          <p class="apq-answer">
+            <span class="muted">{p.agent} answered:</span> {a.answer}
+          </p>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -583,6 +678,40 @@ function DeclinePanel(props: {
       <div class="actions">
         <button type="button" class="danger" disabled={props.busy || !props.reason} onClick={props.onSubmit}>
           Decline
+        </button>
+        <button type="button" disabled={props.busy} onClick={props.onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NeedsInfoPanel(props: {
+  question: string;
+  busy: boolean;
+  onChange: (question: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  // The problem string gates the button, same shape as the edit panel: an
+  // empty question is refused a keystroke away, not a round trip away.
+  const problem = questionProblem(props.question);
+  return (
+    <div class="apq-editor">
+      <p class="apq-fine">{NEEDS_INFO_HINT}</p>
+      <label class="apq-label">
+        Your question (required)
+        <input
+          type="text"
+          value={props.question}
+          placeholder="Why do you need this?"
+          onInput={(e) => props.onChange((e.target as HTMLInputElement).value)}
+        />
+      </label>
+      <div class="actions">
+        <button type="button" disabled={props.busy || Boolean(problem)} onClick={props.onSubmit}>
+          Ask the agent
         </button>
         <button type="button" disabled={props.busy} onClick={props.onCancel}>
           Cancel

@@ -45,11 +45,32 @@ import {
  *                          structurally lack (mcp-auth.md §12 step 10; there is
  *                          no send tool, `mcpTools.test.ts:124-128`). A policy
  *                          bug is then a nuisance, never a breach.
+ *
+ * needsInfo (s10 T3, decline-taxonomy.md) — the third verb, an ACTION and not
+ * a reject: judgment cannot yet be rendered, the missing input is information,
+ * and it is the PROPOSER's to supply. `status: "info-requested"` with a
+ * required human-authored `question` takes a `pending` row out of the human's
+ * queue, PAUSES the pre-decision clock (the remaining window is banked in
+ * `expires_remaining_ms`; `expires_at` goes NULL so the deadline cannot lapse
+ * while the ball is in the agent's court) and enqueues a NEW
+ * `answer-info-request` agent invocation (costed — chronic rounds show up in
+ * $/approved-action). The agent's answer (services/agent `answerInfoRequest`)
+ * fills the open round in `amendments_json` — APPEND beside the originals,
+ * never over them (the `editedPayload` discipline) — and returns the row to
+ * `pending` with the clock resumed. ONE round per human action: only a fresh
+ * human needsInfo re-opens the loop. It never writes `decision_json`, so a
+ * learning pipeline can never mistake it for negative feedback.
  */
 
 /** Rejection reasons — the no-thanks signal (arch.md §3). `notNow` is a snooze,
  * not a real rejection; the training/autonomy semantics are s03.D T2. Here we
- * only preserve the DATA. */
+ * only preserve the DATA.
+ *
+ * `needsInfo` is deliberately NOT in this set (decline-taxonomy.md): it is an
+ * ACTION (`status: "info-requested"`), never a reject reason, so it can never
+ * land in a rejection record — the taxonomy's invariant excludes
+ * tookItMyself/defer/needsInfo from the negative signal, and the enum is where
+ * that invariant is enforced on the write path. */
 const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "notNow"]);
 
 /**
@@ -77,7 +98,13 @@ interface ProposalJoinRow {
   decided_at: number | null;
   hold_until: number | null;
   expires_at: number | null;
+  // needsInfo (s10 T3): the open question, the append-only Q&A rounds, and
+  // the banked (paused) remainder of the pre-decision clock.
+  question: string | null;
+  amendments_json: string | null;
+  expires_remaining_ms: number | null;
   // projected from agent_invocations — the single source of truth (§8.5):
+  binding_id: string;
   binding_name: string;
   inv_status: string;
   claimed_at: number | null;
@@ -88,7 +115,9 @@ const SELECT_JOIN = `
   SELECT p.id, p.account_id, p.kind, p.tier, p.subject_json, p.payload_json,
          p.edited_payload_json, p.rationale, p.evidence_json, p.status,
          p.decision_json, p.created_at, p.decided_at, p.hold_until, p.expires_at,
-         inv.binding_name, inv.status AS inv_status, inv.claimed_at, inv.email_id
+         p.question, p.amendments_json, p.expires_remaining_ms,
+         inv.binding_id, inv.binding_name, inv.status AS inv_status,
+         inv.claimed_at, inv.email_id
     FROM agent_proposals p
     JOIN agent_invocations inv
       ON inv.account_id = p.account_id AND inv.id = p.id`;
@@ -215,8 +244,87 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         }
 
         const status = patch.status;
-        if (status !== "approved" && status !== "rejected") {
-          throw new SetErrorSignal("invalidProperties", 'status must be "approved" or "rejected"', ["status"]);
+        if (status !== "approved" && status !== "rejected" && status !== "info-requested") {
+          throw new SetErrorSignal(
+            "invalidProperties",
+            'status must be "approved", "rejected" or "info-requested"',
+            ["status"],
+          );
+        }
+
+        // ---- needsInfo (s10 T3): an action, not a reject ----
+        if (status === "info-requested") {
+          // Only `question` rides on this verb. Refusing a `decision` here is
+          // the RL invariant made structural: needsInfo must never produce a
+          // rejection record (decline-taxonomy.md), and an editedPayload
+          // belongs to approve, not to a question.
+          if (patch.decision !== undefined || patch.editedPayload !== undefined) {
+            throw new SetErrorSignal(
+              "invalidProperties",
+              "needsInfo carries only a question — no decision (it is not a reject) and no editedPayload",
+              ["status"],
+            );
+          }
+          const question = typeof patch.question === "string" ? patch.question.trim() : "";
+          if (question.length === 0) {
+            throw new SetErrorSignal(
+              "invalidProperties",
+              "needsInfo requires a non-empty human-authored question",
+              ["question"],
+            );
+          }
+          const now = Date.now();
+          // PAUSE the pre-decision clock: bank the remaining window and NULL
+          // the deadline, so the sweep cannot lapse a proposal while the ball
+          // is in the agent's court. The answer path restores
+          // expires_at = now + expires_remaining_ms (proposals.ts).
+          const remaining = row.expires_at !== null ? Math.max(0, row.expires_at - now) : null;
+          // APPEND the open round. rationale/evidence_json are the agent's
+          // originals and are never rewritten (the editedPayload discipline).
+          const amendments = safeJsonArray(row.amendments_json ?? "[]");
+          amendments.push({
+            question,
+            answer: null,
+            askedAt: new Date(now).toISOString(),
+            answeredAt: null,
+            askedBy: ctx.principal.username,
+          });
+          await ctx.env.DB.prepare(
+            `UPDATE agent_proposals SET status = 'info-requested', question = ?,
+               amendments_json = ?, expires_at = NULL, expires_remaining_ms = ?
+             WHERE account_id = ? AND id = ? AND status = 'pending'`,
+          )
+            .bind(question, JSON.stringify(amendments), remaining, access.accountId, id)
+            .run();
+
+          // The answer round is a NEW invocation for the proposal's binding —
+          // it goes through the ordinary drain (claim, run, finish) and is
+          // COSTED, so chronic needsInfo rounds show up in $/approved-action.
+          const answerInvId = `inv_${crypto.randomUUID()}`;
+          await ctx.env.DB.prepare(
+            `INSERT INTO agent_invocations
+               (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at)
+             VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+          )
+            .bind(
+              answerInvId,
+              access.accountId,
+              row.binding_id,
+              row.binding_name,
+              row.email_id,
+              JSON.stringify({ kind: "answer-info-request", proposalId: id, question }),
+              now,
+            )
+            .run();
+          applyEntries.push({
+            collection: "AgentInvocation",
+            created: [answerInvId],
+            updated: [],
+            destroyed: [],
+          });
+          propEntry.updated.push(id);
+          updated[id] = null;
+          continue;
         }
 
         // The human's edit is captured SEPARATELY and never overwrites the
@@ -249,6 +357,23 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         }
 
         // ---- approve ----
+        if (row.kind === "grant-request" && ctx.agent?.binding === row.binding_name) {
+          // CJ-cannot-self-approve (s10 T3): the approver of a grant-request
+          // must not be the principal that benefits. When an agent binding
+          // drove this call (ctx.agent — the s03 bridge populates it) and it
+          // IS the proposal's binding, the agent is approving its own
+          // widening — refused. A human decision (ctx.agent absent) is always
+          // fine, and so is a DIFFERENT binding with bounded approval
+          // authority (CJ approving photos@'s ask) — recorded as itself via
+          // decision.by, never indistinguishable from a human.
+          throw new SetErrorSignal(
+            "forbidden",
+            `a grant-request cannot be approved by its beneficiary: binding "${row.binding_name}" ` +
+              "may not approve its own widening (s10 T3). A human, or a differently-bound " +
+              "approver, must decide.",
+            ["status"],
+          );
+        }
         if (row.tier === 3) {
           // THE CAPABILITY WALL. Approving a tier-3 (irreversible egress) is a
           // human action every time: it requires the `send` scope, which an
@@ -410,7 +535,16 @@ async function applyProposal(
         createdAt: now,
         updatedAt: now,
       };
-      await store.insertContactCard(access.accountId, cardRow);
+      // An approved-proposal write is still an AGENT write at the chokepoint —
+      // the human's approval rides as `authorization`, which is what a
+      // propose/governed book accepts and RECORDS (via_proposal_id, s10 T2).
+      await store.insertContactCard(access.accountId, cardRow, {
+        principal: ctx.principal.username,
+        kind: "agent",
+        binding: row.binding_name,
+        invocation: row.id,
+        authorization: { proposalId: row.id },
+      });
       const entries: ChangeEntry[] = [
         { collection: "ContactCard", created: [cardRow.id], updated: [], destroyed: [] },
       ];
@@ -478,11 +612,82 @@ async function applyProposal(
       };
     }
 
-    case "grant-request":
-      // The queue is unified (arch.md §1), but MINTING the grant is provision's
-      // job (s04), reached by watching approved grant-request proposals. The
-      // decision is recorded here; no local write.
-      return { entries: [] };
+    case "grant-request": {
+      // Two shapes share this kind. The ORIGINAL contract stands for
+      // scope-style asks ({scope, target, durationDays, …}): the queue is
+      // unified (arch.md §1), but MINTING the grant is provision's job (s04),
+      // reached by watching approved grant-request proposals — the decision is
+      // recorded here; no local write.
+      //
+      // An ALLOWLIST WIDENING (s10 T3) is the exception, discriminated by
+      // grantType: "recipient" — "let me email <address>". Its "minting" IS a
+      // contact write into the governing book, applied here THROUGH the
+      // mailstore chokepoint with the proposal as authorization
+      // ({proposalId} → via_proposal_id, the s10 T1/T2 contract), so the T2
+      // chain links the membership change to the rationale, evidence and
+      // approver that produced it.
+      if (str(payload.grantType) !== "recipient") return { entries: [] };
+      const bookId = str(payload.bookId);
+      const address = str(payload.address);
+      if (!bookId || !address) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "a recipient grant-request payload needs bookId + address",
+          ["payload"],
+        );
+      }
+      const book = await ctx.env.DB.prepare(
+        `SELECT id FROM address_books WHERE account_id = ? AND id = ?`,
+      )
+        .bind(access.accountId, bookId)
+        .first<{ id: string }>();
+      if (!book) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `address book "${bookId}" not found in this account`,
+          ["payload"],
+        );
+      }
+      const now = Date.now();
+      const nowIso = new Date(now).toISOString();
+      const name = str(payload.name);
+      const card: JSContactCard = {
+        "@type": "Card",
+        version: "1.0",
+        uid: `urn:uuid:${crypto.randomUUID()}`,
+        created: nowIso,
+        updated: nowIso,
+        ...(name ? { name: { full: name } } : {}),
+        emails: { primary: { address } },
+        addressBookIds: { [bookId]: true },
+      };
+      const cardRow: ContactCardRow = {
+        id: `cc_${crypto.randomUUID()}`,
+        addressBookId: bookId,
+        uid: card.uid as string,
+        card,
+        nameFull: name,
+        davName: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      // The chokepoint write. An approved widening is still an AGENT write —
+      // the human's approval rides as `authorization`, whose proposalId T2
+      // stamps as via_proposal_id on the membership-log row.
+      await store.insertContactCard(access.accountId, cardRow, {
+        principal: ctx.principal.username,
+        kind: "agent",
+        binding: row.binding_name,
+        invocation: row.id,
+        authorization: { proposalId: row.id },
+      });
+      await store.bumpAddressBookCtags(access.accountId, [bookId]);
+      return {
+        entries: [{ collection: "ContactCard", created: [cardRow.id], updated: [], destroyed: [] }],
+        // The undo handle a tier-1 application keeps (arch.md §2).
+        undo: { action: "destroy-contact", cardId: cardRow.id },
+      };
+    }
 
     default:
       throw new SetErrorSignal(
@@ -573,7 +778,12 @@ function proposalToJmap(r: ProposalJoinRow): Record<string, unknown> {
     createdAt: new Date(r.created_at).toISOString(),
     decidedAt: r.decided_at ? new Date(r.decided_at).toISOString() : null,
     holdUntil: r.hold_until ? new Date(r.hold_until).toISOString() : null,
+    // NULL while a needsInfo round is open — the clock is banked in
+    // expires_remaining_ms, not running (s10 T3).
     expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null,
+    // needsInfo (s10 T3): the open question and the append-only Q&A dialogue.
+    question: r.question ?? null,
+    amendments: safeJsonArray(r.amendments_json ?? "[]"),
     // the read-model surface projected from the invocation:
     invocationStatus: r.inv_status,
     claimedAt: r.claimed_at ? new Date(r.claimed_at).toISOString() : null,

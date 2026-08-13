@@ -22,12 +22,57 @@ same fix, they are one reason. If a "reason" implies no fix at all, it is not fe
 | **`unsafe`** | it leaked private info, or made a commitment on the human's behalf | a **hard** negative, weighted heavily, never tolerated repeated | yes (safety — categorically separate) |
 | **`tookItMyself`** *(action, not a reject)* | the proposal was **correct**; the human just handled it personally (already exists: edit-in-queue before self-send) | near-neutral-to-**positive** on selection | **no** |
 | **`defer`** *(action, not a reject)* | correct proposal, wrong *time* — re-surface later | **scheduling**, not quality (see `s11-scheduling`) | **no** |
+| **`needsInfo`** *(action, not a reject)* | possibly right, **insufficiently justified** — "help me understand why you need this" | **rationale** quality; shifts the burden of proof to the proposer | **no** (neutral on selection; *repeated* = chronic under-justification, a config fix) |
 
 ### `wrongAction` is the most useful, and rarity is the point
 A well-configured agent rarely proposes the wrong *kind* of thing — so when it does, that is a
 **policy bug worth catching loudly**, not routine noise. Frequent `wrongAction` means the
 binding's trigger or persona is miscalibrated, which is a config fix (`s10-agents`), not a
 per-proposal correction. Its rarity is what makes each occurrence high-signal.
+
+### `needsInfo` — the verb that protects least privilege
+
+The feeling it encodes, verbatim from the design discussion: *"I'm not ardently opposed — but
+it's pushing against some principle I'm holding. Help me better understand why exactly you
+need to do XYZ."*
+
+It is a **third axis**, not a variant of anything above:
+
+- `approve`/`decline` — judgment **rendered**.
+- `defer` — judgment correct, timing wrong. **Time** resolves it.
+- `needsInfo` — judgment **cannot yet be rendered**; the missing input is **information**,
+  and it is the *proposer's* to supply. Time will not fix a `needsInfo`; an answer will not
+  fix a `defer`. Different missing input → different verb.
+
+Why it is load-bearing and not a courtesy: **approval fatigue is the enemy of least
+privilege.** A binary approve/decline queue under fatigue degrades toward rubber-stamping —
+when declining feels obstructive and approving is one click, over-granting is the path of
+least resistance. `needsInfo` makes under-justification cost the **agent** a round-trip
+instead of costing the **human** a risk. The burden of proof moves to the proposer, which is
+exactly where least privilege wants it. The verb's *existence* reduces over-granting even
+when it is rarely used, because agents learn (as prompt context) that thin rationales bounce.
+
+It is sharpest on **`grant-request`** (s10 T3): "let me email X" met with "why X?" — and a
+challenged-then-approved grant carries the strongest possible *why* in the provenance chain
+(s10 T2): question, justification, approval. An audit that answers "why can `photos@` email
+bob@?" with a recorded challenge and its answer beats silent assent by a mile.
+
+**Mechanics** (all fields already exist on the proposal row):
+- The action carries a required, human-authored `question`.
+- Status `pending` → `info-requested`: it leaves the human's queue and becomes an **agent
+  invocation** (costed — chronic `needsInfo` rounds show up in $/approved-action).
+- The answer **appends** to `rationale`/`evidence` — never overwrites (the `editedPayload`
+  discipline). The Q&A is part of the proposal forever.
+- Re-surfaces in `/approvals` with the dialogue attached; `expiresAt` pauses while the ball
+  is in the agent's court.
+- One round per human action — the loop is human-paced by construction; an agent cannot spam
+  re-answers into the queue.
+
+**Naming:** `needsInfo` over "RFC" — RFC implies commentary from many parties; this is a
+directed question with an owed answer. But the generalization RFC gestures at is real and
+Space-shaped: a proposal *thread* where humans and other agents comment before a decision is
+decision-first collaboration in its purest form. `needsInfo` is that thread's first, most
+disciplined instance: exactly one question, exactly one owed answer, on the record.
 
 ### `notNow` is retired — it was a grab-bag
 `notNow` conflated three different gradients under one label:
@@ -40,12 +85,18 @@ is exactly why it read as confusing — the tell that it was mis-named.
 
 ## The rule a learning pipeline must not break
 
-**`tookItMyself` and `defer` are NOT negative feedback.** If a pipeline trains on *every*
-decline as a reject, it teaches the agent to stop proposing things the human actually **wanted**
-proposed but chose to handle personally, or that were simply early. That is reward poisoning,
-and the taxonomy is the only thing that prevents it — but only if the training side **excludes**
-the two non-feedback actions from the negative signal. Write this into the loop as an
-invariant, not a footnote.
+**`tookItMyself`, `defer`, and `needsInfo` are NOT negative feedback.** If a pipeline trains
+on *every* decline as a reject, it teaches the agent to stop proposing things the human
+actually **wanted** proposed but chose to handle personally, that were simply early, or that
+were right but under-explained. That is reward poisoning, and the taxonomy is the only thing
+that prevents it — but only if the training side **excludes** the three non-reject actions
+from the negative signal. Write this into the loop as an invariant, not a footnote.
+
+(`needsInfo` has one negative shadow, and it is not about selection: **repetition** of
+`needsInfo` on one kind means the binding chronically under-justifies — a persona/template
+fix in `s10-agents`, like repeated `wrongAction`. And repetition→policy applies: a question
+the human keeps asking of one kind should be promoted *into that kind's proposal template*,
+so the answer arrives front-loaded and the round-trip disappears.)
 
 ## The richest signal is not a decline reason at all
 

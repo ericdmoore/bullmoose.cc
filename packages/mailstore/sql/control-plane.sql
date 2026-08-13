@@ -199,7 +199,13 @@ CREATE TABLE IF NOT EXISTS grant_lifecycle (
   grant_id    TEXT NOT NULL,                 -- g_<uuid> (no FK — history outlives the grant)
   event       TEXT NOT NULL,                 -- 'created' | 'revoked' | 'expired'
   at          INTEGER NOT NULL,              -- epoch ms
-  actor       TEXT                           -- minting/revoking principal id, or 'admin'; NULL if unknown
+  actor       TEXT,                          -- minting/revoking principal id, or 'admin'; NULL if unknown
+  -- s10 T2 — the WHY. `actor` says who; this links the authorizing proposal
+  -- (rationale, evidence, approver, edit-diff all ride on it, and it cannot be
+  -- faked because it is the actual authorization record). NULL when no
+  -- proposal was in scope (today's admin-plane writers); T3 fills it.
+  -- Existing DBs: infra/migrations.mjs `grant-lifecycle-via-proposal`.
+  via_proposal_id TEXT
 );
 CREATE INDEX IF NOT EXISTS grant_lifecycle_grant ON grant_lifecycle (grant_id, at);
 

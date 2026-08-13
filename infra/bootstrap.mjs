@@ -118,7 +118,25 @@ const ALIASES = {
 // The token wrangler itself needs. Not a worker secret — it authenticates the
 // CLI. Read from the role-named key so one file is genuinely enough, which was
 // the point of collapsing to a single .env.
-const WRANGLER_TOKEN_KEYS = ["CLOUDFLARE_API_TOKEN", "BULLMOOSE_DPELOY_TOKEN", "BULLMOOSE_DEPLOY_TOKEN"];
+// Order matters, and it is NOT alphabetical or name-intuitive.
+//
+// ⚠️ On this deployment the names are INVERTED relative to what the tokens can
+// do: BULLMOOSE_RUNTIME_TOKEN carries Workers Scripts access, and
+// BULLMOOSE_DPELOY_TOKEN does not. An earlier version of this list preferred
+// the "DPELOY" one on the strength of its NAME and every `wrangler secret put`
+// failed with `10000 Authentication error` while the token itself verified
+// fine — a valid token that simply cannot touch that resource, which is the
+// most misleading shape of this failure.
+//
+// So: prefer an explicit CLOUDFLARE_API_TOKEN, then the key that empirically
+// holds Workers access here. `secrets` verifies the pick before using it
+// (see loadEnv) rather than trusting this order.
+const WRANGLER_TOKEN_KEYS = [
+  "CLOUDFLARE_API_TOKEN",
+  "BULLMOOSE_RUNTIME_TOKEN",
+  "BULLMOOSE_DEPLOY_TOKEN",
+  "BULLMOOSE_DPELOY_TOKEN",
+];
 
 // ONE env file, at the repo root. It was `.env.deploy`; it is `.env` because a
 // second dotfile is a second place to look and a second thing to forget to copy
@@ -227,7 +245,18 @@ function loadEnv() {
   if (!from) return env;
   for (const line of readFileSync(rel(from), "utf8").split("\n")) {
     const m = line.match(/^\s*([A-Z][A-Z0-9_]+)\s*=\s*(.*)$/);
-    if (m) env[m[1]] = m[2];
+    // Strip ONE matched pair of surrounding quotes. dotenv-style files often
+    // carry them and a shell `source` would remove them, so a human who tested
+    // with `set -a; . ./.env` sees a working value while this parser installed
+    // a secret with literal `"` at both ends — a credential that is wrong in a
+    // way nothing reports, because the API accepts any string.
+    if (m) {
+      let v = m[2].trim();
+      if (v.length >= 2 && (v[0] === '"' || v[0] === "'") && v[v.length - 1] === v[0]) {
+        v = v.slice(1, -1);
+      }
+      env[m[1]] = v;
+    }
   }
   if (from === ENV_LEGACY) {
     warn(`read ${ENV_LEGACY} — migrating to ${ENV_FILE}; delete the old file once this run succeeds`);

@@ -206,12 +206,36 @@ export const MIGRATIONS = [
          decided_at           INTEGER,
          hold_until           INTEGER,
          expires_at           INTEGER,
+         question             TEXT,
+         amendments_json      TEXT,
+         expires_remaining_ms INTEGER,
          PRIMARY KEY (account_id, id)
        )`,
       "CREATE INDEX IF NOT EXISTS agent_proposals_status ON agent_proposals (account_id, status)",
       "CREATE INDEX IF NOT EXISTS agent_proposals_expires ON agent_proposals (account_id, expires_at)",
     ],
     absent: [], // an empty database: the table simply is not there
+  },
+
+  {
+    id: "proposal-needsinfo-columns",
+    why: "s10 T3: the needsInfo verb. ActionProposal/set names question/amendments_json/expires_remaining_ms in its info-requested UPDATE and the JOIN projection SELECTs them, so a worker deployed against a shard missing them fails every proposal read — not merely the new verb",
+    blocks: "deploy",
+    needs: ["agent-proposals-table"],
+    // expires_remaining_ms is the last column applied, so it is the honest
+    // sentinel for "did the whole group land" (precedent: invocation-cost-columns).
+    check: hasColumn("agent_proposals", "expires_remaining_ms"),
+    up: [
+      "ALTER TABLE agent_proposals ADD COLUMN question TEXT",
+      "ALTER TABLE agent_proposals ADD COLUMN amendments_json TEXT",
+      "ALTER TABLE agent_proposals ADD COLUMN expires_remaining_ms INTEGER",
+      // Deliberately no backfill: NULL amendments_json reads as "no Q&A rounds"
+      // (the same empty-value degrade the projection applies to evidence_json).
+    ],
+    absent: [
+      // The pre-s10 table: enough for the ALTERs to run, nothing more.
+      "CREATE TABLE agent_proposals (id TEXT NOT NULL, account_id TEXT NOT NULL, PRIMARY KEY (account_id, id))",
+    ],
   },
 
   {
@@ -246,6 +270,66 @@ export const MIGRATIONS = [
        )`,
     ],
     absent: [], // an empty database: the table simply is not there
+  },
+
+  {
+    id: "address-books-write-policy",
+    why: "s10 T1: the per-book write policy the Mailstore chokepoint enforces. getAddressBooks and insertAddressBook name the column, so a worker deployed against a database missing it fails EVERY address-book read and create — not merely 'governance is off'",
+    blocks: "deploy",
+    check: hasColumn("address_books", "write_policy"),
+    up: ["ALTER TABLE address_books ADD COLUMN write_policy TEXT NOT NULL DEFAULT 'open'"],
+    absent: ["CREATE TABLE address_books (id TEXT PRIMARY KEY)"],
+  },
+
+  {
+    id: "agent-bindings-recipients-book",
+    why: "s10 T1: the outbound bound. The agent worker's send gate resolves recipients_book_id before every submit, so a worker deployed against a database missing it fails every send-mode/ledger invocation. NULL is the fail-closed value — an unbound binding cannot send — so no backfill",
+    blocks: "deploy",
+    check: hasColumn("agent_bindings", "recipients_book_id"),
+    up: ["ALTER TABLE agent_bindings ADD COLUMN recipients_book_id TEXT"],
+    absent: ["CREATE TABLE agent_bindings (id TEXT NOT NULL, account_id TEXT NOT NULL)"],
+  },
+
+  {
+    id: "book-membership-log-table",
+    why: "s10 T2's append-only membership chain for governed address books; a plain schema re-run DOES create this one, it is listed so the set is complete (precedent: agent-proposals-table)",
+    blocks: null,
+    check: tableExists("book_membership_log"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS book_membership_log (
+         id              INTEGER PRIMARY KEY AUTOINCREMENT,
+         account_id      TEXT NOT NULL,
+         book_id         TEXT NOT NULL,
+         event           TEXT NOT NULL,
+         address         TEXT NOT NULL,
+         card_id         TEXT,
+         uid             TEXT,
+         actor           TEXT,
+         via_proposal_id TEXT,
+         at              INTEGER NOT NULL
+       )`,
+      "CREATE INDEX IF NOT EXISTS book_membership_log_book ON book_membership_log (account_id, book_id, id)",
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
+    id: "grant-lifecycle-via-proposal",
+    why: "s10 T2: the WHY on the grant chain. provision's lifecycle writer names the column in its INSERT, so a provision worker deployed against a database missing it fails every grant mint and revoke",
+    blocks: "deploy",
+    needs: ["grant-lifecycle-table"],
+    check: hasColumn("grant_lifecycle", "via_proposal_id"),
+    up: ["ALTER TABLE grant_lifecycle ADD COLUMN via_proposal_id TEXT"],
+    absent: [
+      // The s03.A-era table: the log exists, the why column does not.
+      `CREATE TABLE grant_lifecycle (
+         id       INTEGER PRIMARY KEY AUTOINCREMENT,
+         grant_id TEXT NOT NULL,
+         event    TEXT NOT NULL,
+         at       INTEGER NOT NULL,
+         actor    TEXT
+       )`,
+    ],
   },
 ];
 

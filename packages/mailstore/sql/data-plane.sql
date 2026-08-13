@@ -194,6 +194,14 @@ CREATE TABLE IF NOT EXISTS agent_bindings (
   -- Cloud-runtime config: persona (L1), replyMode, allowedSenders,
   -- modelAliases/defaultModel (services/agent resolver), maxTokens.
   config_json  TEXT NOT NULL DEFAULT '{}',
+  -- s10 T1 — `allowedRecipients` as a governed address book: the outbound
+  -- twin of config.allowedSenders, a TYPED column rather than a config_json
+  -- key because the send path must resolve it server-side (a compromised
+  -- agent must not even enumerate its own reach). NULL = no governing book =
+  -- the binding CANNOT SEND (fail-closed, mirroring the Bureau's invariant 5
+  -- in services/bureau/src/binding.ts — never default-allow).
+  -- Existing DBs: infra/migrations.mjs `agent-bindings-recipients-book`.
+  recipients_book_id TEXT,
   PRIMARY KEY (account_id, id)
 );
 
@@ -256,6 +264,28 @@ CREATE INDEX IF NOT EXISTS invocations_status
 -- "approved after edit". Cost fields (tokens/cost/provider) are deliberately
 -- absent — they are s07 T5's separate agent_invocations migration.
 --
+-- needsInfo (s10 T3, decline-taxonomy.md): the third verb. A human meets a
+-- pending proposal with a required question instead of a verdict — status
+-- 'pending' → 'info-requested', and the answer round runs as a NEW agent
+-- invocation ('answer-info-request'), after which the row returns to
+-- 'pending'. Three columns carry it, all following the edited_payload_json
+-- discipline (append beside, never overwrite):
+--   question             the human's CURRENT open question; NULL when no
+--                        round is open. The full dialogue is amendments_json.
+--   amendments_json      append-only Q&A rounds: [{question, answer, askedAt,
+--                        answeredAt, askedBy}]. The agent's answer fills the
+--                        LAST unanswered entry — rationale / evidence_json are
+--                        the agent's originals and are never rewritten.
+--   expires_remaining_ms the PAUSED pre-decision clock. needsInfo banks
+--                        `expires_at - now` here and NULLs expires_at (the
+--                        deadline must not lapse while the ball is in the
+--                        agent's court); the answer restores
+--                        `expires_at = now + this` and NULLs it back.
+--                        NULL = not paused (or no deadline existed).
+-- needsInfo is an ACTION, not a reject reason: it never writes decision_json,
+-- so it can never be mistaken for negative feedback (the taxonomy's invariant:
+-- tookItMyself/defer/needsInfo are excluded from the negative signal).
+--
 -- New table, so a plain schema re-run (CREATE TABLE IF NOT EXISTS) DOES create it
 -- on an existing shard; it is still listed in infra/migrations.mjs
 -- (agent-proposals-table) so `bootstrap migrate` accounts for it — precedent:
@@ -272,12 +302,15 @@ CREATE TABLE IF NOT EXISTS agent_proposals (
   edited_payload_json  TEXT,              -- the HUMAN's edit; never overwrites payload_json
   rationale            TEXT NOT NULL,     -- the "why" — always present (invariant §8.3)
   evidence_json        TEXT NOT NULL DEFAULT '[]',  -- [{ realm, objectId, note }]
-  status               TEXT NOT NULL DEFAULT 'pending', -- pending|approved|rejected|held|expired
+  status               TEXT NOT NULL DEFAULT 'pending', -- pending|approved|rejected|held|expired|info-requested
   decision_json        TEXT,             -- { by, reason, note } — the no-thanks signal (§3)
   created_at           INTEGER NOT NULL,  -- epoch ms
   decided_at           INTEGER,
   hold_until           INTEGER,          -- tier-2 POST-approval retraction window
   expires_at           INTEGER,          -- PRE-decision deadline; sweep flips pending→expired
+  question             TEXT,             -- needsInfo: the open question (see header)
+  amendments_json      TEXT,             -- needsInfo: append-only Q&A rounds
+  expires_remaining_ms INTEGER,          -- needsInfo: the banked (paused) expiry window
   PRIMARY KEY (account_id, id)
 );
 CREATE INDEX IF NOT EXISTS agent_proposals_status
@@ -324,6 +357,15 @@ CREATE TABLE IF NOT EXISTS address_books (
   ctag          INTEGER NOT NULL DEFAULT 0,
   created_at    INTEGER NOT NULL,          -- epoch ms
   updated_at    INTEGER NOT NULL,
+  -- s10 T1 — per-book write policy, enforced ONCE at the Mailstore chokepoint
+  -- (never per protocol; a fifth protocol added later must not bypass it):
+  --   'open'     direct writes under ordinary grants (today's behavior)
+  --   'propose'  humans write directly; AGENT writes are refused with a typed
+  --              error telling them to file a proposal
+  --   'governed' the full outbound bound: agent writes refused unless the
+  --              write carries an approved proposal id; humans write through
+  -- Existing DBs: infra/migrations.mjs `address-books-write-policy`.
+  write_policy  TEXT NOT NULL DEFAULT 'open',
   last_writer_principal   TEXT,             -- provenance (s03.A T1) — see header
   last_writer_binding     TEXT,
   last_writer_invocation  TEXT,
@@ -362,6 +404,40 @@ CREATE INDEX IF NOT EXISTS contact_cards_book
   ON contact_cards (account_id, address_book_id);
 CREATE INDEX IF NOT EXISTS contact_cards_updated
   ON contact_cards (account_id, updated_at);
+
+-- s10 T2 — append-only membership chain for policy != 'open' address books,
+-- on the grant_lifecycle model (control-plane.sql): NO FK to contact_cards —
+-- history outlives the card, and an unlogged remove would put a hole in the
+-- chain exactly where someone would want one. One row per address a card
+-- write adds to / removes from a book's effective membership, written by the
+-- Mailstore chokepoint IN THE SAME db.batch as the card write (card + chain
+-- commit together or neither — that atomicity is what kills dual-write
+-- desync). `contact_cards.last_writer_*` shows only the LAST write; the
+-- widen→send→narrow attack lives in the middle, which is why this is a chain
+-- and why nothing compacts it (a cancelled add+remove pair is the record of a
+-- window in which an agent could send). The fold over this log must reproduce
+-- the book's current membership — `reconcileBookMembership` in
+-- packages/mailstore is that invariant; divergence = a bug or a bypassed
+-- write path, either way an alarm.
+--
+-- New table, so a plain schema re-run (CREATE TABLE IF NOT EXISTS) DOES
+-- create it on an existing shard; listed in infra/migrations.mjs
+-- (book-membership-log-table) so `bootstrap migrate` accounts for it —
+-- precedent: agent_proposals above.
+CREATE TABLE IF NOT EXISTS book_membership_log (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id      TEXT NOT NULL,
+  book_id         TEXT NOT NULL,
+  event           TEXT NOT NULL,             -- 'added' | 'removed'
+  address         TEXT NOT NULL,             -- normalized (lowercased) email
+  card_id         TEXT,                      -- the written card (no FK — see above)
+  uid             TEXT,
+  actor           TEXT,                      -- acting principal (login email)
+  via_proposal_id TEXT,                      -- the WHY: the authorizing proposal (T3); NULL for direct human writes
+  at              INTEGER NOT NULL           -- epoch ms
+);
+CREATE INDEX IF NOT EXISTS book_membership_log_book
+  ON book_membership_log (account_id, book_id, id);
 
 -- Calendars (JSCalendar-on-JMAP, Phase 4) — the contacts pattern
 -- verbatim: blob = source of truth, extracted columns for queries,

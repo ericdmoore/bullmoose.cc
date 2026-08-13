@@ -150,7 +150,11 @@ export async function callJmap<T = Record<string, unknown>>(
   const handler = registry.get(method);
   // Not a user error: the tool named a method this bridge never registered.
   if (!handler) throw new Error(`jmapBridge: no such method "${method}"`);
-  const ctx: RequestContext = { env: env as unknown as JmapEnv, principal };
+  // This bridge IS the agent tool surface, so every call through it carries
+  // agent context (s10 T1): the contact-write chokepoint gates agent writers
+  // on propose/governed books. Binding/invocation are unknown at this layer —
+  // the bearer, not a job, is the identity — so provenance stays principal-only.
+  const ctx: RequestContext = { env: env as unknown as JmapEnv, principal, agent: {} };
   try {
     return (await handler(args, ctx)) as T;
   } catch (err) {

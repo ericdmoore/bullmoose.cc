@@ -33,6 +33,8 @@ function proposal(partial: Partial<ActionProposal> & Pick<ActionProposal, "id">)
     decidedAt: null,
     holdUntil: null,
     expiresAt: null,
+    question: null,
+    amendments: [],
     invocationStatus: "done",
     claimedAt: null,
     ...partial,
@@ -157,13 +159,19 @@ describe("orderQueue — pending first, by urgency", () => {
     proposal({ id: "later", expiresAt: new Date(NOW + 2 * DAY).toISOString() }),
     proposal({ id: "approved", status: "approved", decidedAt: new Date(NOW - 26 * HOUR).toISOString() }),
     proposal({ id: "rejected", status: "rejected", decidedAt: new Date(NOW - 2 * DAY).toISOString() }),
+    // s10 T3: waiting on the AGENT — after everything decidable, before the
+    // hold tray; expiresAt is null because the server banked it (paused).
+    proposal({ id: "asked-late", status: "info-requested", createdAt: new Date(NOW - HOUR).toISOString(), expiresAt: null }),
+    proposal({ id: "asked-early", status: "info-requested", createdAt: new Date(NOW - 5 * HOUR).toISOString(), expiresAt: null }),
   ];
 
-  it("orders pending by soonest deadline, deadline-less last; then held; then history newest-decided first", () => {
+  it("orders pending by soonest deadline, deadline-less last; then info-requested oldest-ask first; then held; then history newest-decided first", () => {
     expect(orderQueue(rows).map((p) => p.id)).toEqual([
       "soon",
       "later",
       "no-deadline",
+      "asked-early",
+      "asked-late",
       "held",
       "approved",
       "rejected",

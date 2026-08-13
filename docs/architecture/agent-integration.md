@@ -174,9 +174,47 @@ be able to POST a thread to an arbitrary host.
 Where inference runs and where the *agent* runs are independent axes; the
 `baseURL` + `apiKeyRef` config makes homelab-first a first-class citizen.
 
+### There are no "cloud agents" and "local agents" — one agent, three axes
+
+The phrase "local agent" conflates three orthogonal things, and the design
+splits them deliberately:
+
+| axis | what it is | lifetime |
+|---|---|---|
+| **identity** | the binding: persona, allowlists, grants, governing book, score, chain | **durable** |
+| **runtime** | whoever claims the invocation: cloud worker, homelab daemon, any future claimant holding a scoped token | per-claim |
+| **backend** | the model endpoint the run calls: Workers AI, Anthropic, LiteLLM→Ollama `@local`, … | per-call |
+
+"Local" names a *runtime* in one sentence and a *backend* in the next — they
+are independent. The homelab daemon can claim work and call Anthropic; the
+same binding on a different day runs in the cloud against Workers AI. The one
+real coupling is **reachability**: a LAN backend (Ollama on alpaca) is only
+callable from a LAN runtime, which is why the s11 scheduler reasons about the
+*claimant set* — pick who may claim, and the backends available follow.
+
+**Execution is already ephemeral; identity must not be.** There is no
+long-lived agent process anywhere — `agent serve` and the cloud drain are
+dispatchers, and "the agent" exists only for the duration of a claimed
+invocation, borrowing the binding's identity, grants, and outbound bound.
+The invocation *is* the ephemeral agent. What stays durable is the
+accountable identity it borrows: the score, the acceptance rate, the
+membership chain, the allowlists all hang off the binding, and an
+ephemeral-identity agent would be an unaccountable one. Ephemeral
+execution, durable accountability — that is the split, and any UI asking
+"cloud agent or local agent?" is really asking a *scheduling* question
+("which runtimes may claim this binding's work?"), not an identity one.
+
 **Timed invocations**: `AgentInvocation.runAt` is fired by the AccountDO's
 alarm — the same §19-home-C mechanism as snooze/Send-Later. This is what
 schedule-triggered bindings (FollowUpFrank) ride.
+
+**Status notes (2026-08-13):** `budgets` above is design vocabulary — today only the
+per-call `maxTokens` is enforced and cost is *recorded* (s07 T5); `spendPerMonth`
+enforcement is `.plans/s11-scheduling/` T2. The homelab daemon is currently one binding
+per process; the fleet-host shape (one runtime principal, N bindings discovered from claim
+grants, capability vector at connect) is s11 T8, designed in
+`.plans/s11-scheduling/jobs-and-facets.md` §4. Jobs (DAGs of invocations with a planner
+node) are s11 T7, same note §3.
 
 ---
 
