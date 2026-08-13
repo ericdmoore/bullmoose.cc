@@ -127,6 +127,11 @@ grant-request; the "minting" is a contact write through the T1 chokepoint.
 
 - The agent proposes *"let me email X, because Y"*; a human approves in `/approvals`. Rationale
   and evidence are already required fields — which is precisely what makes T2's `why` free.
+- **`needsInfo` is the third option, and grant-request is where it earns its keep**
+  (`decline-taxonomy.md`): a widening met with *"why do you need X?"* instead of a fatigued
+  approve or an obstructive decline. The answer appends to the rationale; a
+  challenged-then-approved grant carries the strongest why the T2 chain can hold. Least
+  privilege survives contact with a busy queue *because* this verb exists.
 - **CJ may hold bounded approval authority** (the orchestration idea: granting a privilege =
   adding a contact). Two rules make that safe rather than a hole moved one hop: CJ's approvals
   are recorded **as CJ**, never indistinguishable from a human's; and **CJ may not approve a
