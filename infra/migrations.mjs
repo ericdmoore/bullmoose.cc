@@ -314,6 +314,31 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "invocation-due-at",
+    why: "s11 T1: the work's business deadline (third clock — distinct from expires_at and hold_until). Deliberately NOT a deploy blocker: no hot path names the column — ingest stamps it via a tolerant follow-up UPDATE and the ActionProposal projection reads it via a separate tolerant SELECT, so a shard that predates this delivers unfaceted mail and renders 'no deadline' instead of failing",
+    blocks: null,
+    check: hasColumn("agent_invocations", "due_at"),
+    up: ["ALTER TABLE agent_invocations ADD COLUMN due_at INTEGER"],
+    absent: ["CREATE TABLE agent_invocations (id TEXT NOT NULL, account_id TEXT NOT NULL)"],
+  },
+
+  {
+    id: "invocation-facet-columns",
+    why: "s11 T6: the facet columns the future claim gate (T2) will read. NOT a deploy blocker: nothing hot reads them yet — mayClaim is not built, the drain's SELECT and claim UPDATE name none of them, and ingest's stamp UPDATE degrades to an unfaceted enqueue (DefaultCase) on a shard missing them. Deliberately no backfill: NULL is the DefaultCase — claimable exactly as today",
+    blocks: null,
+    // requires_json is the last column applied, so it is the honest sentinel
+    // for "did the whole group land" (precedent: invocation-cost-columns).
+    check: hasColumn("agent_invocations", "requires_json"),
+    up: [
+      "ALTER TABLE agent_invocations ADD COLUMN privacy TEXT",
+      "ALTER TABLE agent_invocations ADD COLUMN sender_class TEXT",
+      "ALTER TABLE agent_invocations ADD COLUMN effort_prior TEXT",
+      "ALTER TABLE agent_invocations ADD COLUMN requires_json TEXT",
+    ],
+    absent: ["CREATE TABLE agent_invocations (id TEXT NOT NULL, account_id TEXT NOT NULL)"],
+  },
+
+  {
     id: "grant-lifecycle-via-proposal",
     why: "s10 T2: the WHY on the grant chain. provision's lifecycle writer names the column in its INSERT, so a provision worker deployed against a database missing it fails every grant mint and revoke",
     blocks: "deploy",
