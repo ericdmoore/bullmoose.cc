@@ -18,8 +18,16 @@
 //               approved action can still be pulled back before it commits.
 // The arithmetic that keeps them apart lives in `clocks.ts`, with tests.
 
-/** `pending` is the queue; `held` is the tier-2 hold tray; the rest are history. */
-export type ProposalStatus = "pending" | "approved" | "rejected" | "held" | "expired";
+/** `pending` is the queue; `info-requested` is waiting on the AGENT to answer a
+ * needsInfo question (s10 T3 — the decision clock is paused); `held` is the
+ * tier-2 hold tray; the rest are history. */
+export type ProposalStatus =
+  | "pending"
+  | "info-requested"
+  | "approved"
+  | "rejected"
+  | "held"
+  | "expired";
 
 /** Reversibility, and therefore what approve is allowed to do (arch.md §2). */
 export type ProposalTier = 1 | 2 | 3;
@@ -63,6 +71,20 @@ export interface ProposalDecision {
   undo?: Record<string, unknown>;
 }
 
+/**
+ * One needsInfo Q&A round (s10 T3). `amendments` is APPEND-ONLY, mirroring the
+ * server's `amendments_json`: the human's needsInfo pushes an open round
+ * (`answer: null`), the agent's answer fills it — the proposal's original
+ * rationale/evidence are never rewritten (the `editedPayload` discipline).
+ */
+export interface ProposalAmendment {
+  question: string;
+  answer: string | null;
+  askedAt: string;
+  answeredAt: string | null;
+  askedBy: string;
+}
+
 export interface ActionProposal {
   id: string;
   /** Binding name — Allen, Emily. Projected from the invocation (§8.5). */
@@ -87,7 +109,12 @@ export interface ActionProposal {
   createdAt: string;
   decidedAt: string | null;
   holdUntil: string | null;
+  /** NULL while a needsInfo round is open — the clock is paused server-side. */
   expiresAt: string | null;
+  /** needsInfo (s10 T3): the human's OPEN question; null when no round is open. */
+  question: string | null;
+  /** The append-only Q&A dialogue — every needsInfo round, answered or open. */
+  amendments: ProposalAmendment[];
   /** The live invocation status — the read-model surface (arch.md §5). */
   invocationStatus: string;
   claimedAt: string | null;
@@ -124,12 +151,26 @@ export function parseProposal(raw: Record<string, unknown>): ActionProposal | nu
     decidedAt: str(raw.decidedAt),
     holdUntil: str(raw.holdUntil),
     expiresAt: str(raw.expiresAt),
+    question: str(raw.question),
+    amendments: Array.isArray(raw.amendments)
+      ? raw.amendments.filter(
+          (a): a is ProposalAmendment =>
+            a !== null && typeof a === "object" && typeof (a as ProposalAmendment).question === "string",
+        )
+      : [],
     invocationStatus: str(raw.invocationStatus) ?? "",
     claimedAt: str(raw.claimedAt),
   };
 }
 
-const STATUSES: ReadonlySet<string> = new Set(["pending", "approved", "rejected", "held", "expired"]);
+const STATUSES: ReadonlySet<string> = new Set([
+  "pending",
+  "info-requested",
+  "approved",
+  "rejected",
+  "held",
+  "expired",
+]);
 
 function isStatus(v: unknown): v is ProposalStatus {
   return typeof v === "string" && STATUSES.has(v);

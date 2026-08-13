@@ -78,6 +78,13 @@ describe("the no-thanks reasons (arch.md §3)", () => {
   it("marks notNow as counting against nothing", () => {
     expect(REJECT_REASONS[2]?.hint).toContain("counts against nothing");
   });
+
+  it("NEVER offers needsInfo as a decline reason — it is an action, not a reject (decline-taxonomy.md)", () => {
+    // The RL invariant on the UI side: a fatigued click through the decline
+    // panel must not be able to record a needsInfo "rejection", because the
+    // panel cannot offer one. The verb lives on its own button.
+    expect(REJECT_REASONS.map((r) => r.reason)).not.toContain("needsInfo");
+  });
 });
 
 describe("summarizeProposal — one line per row, grant-request included", () => {
@@ -107,6 +114,14 @@ describe("summarizeProposal — one line per row, grant-request included", () =>
       payload: { scope: "read", target: "Events/Fair", durationDays: 30 },
     });
     expect(summarizeProposal(p)).toBe("Requests read on Events/Fair for 30 days");
+  });
+
+  it("headlines a RECIPIENT grant-request by who it wants to email (s10 T3)", () => {
+    const p = base({
+      kind: "grant-request",
+      payload: { grantType: "recipient", bookId: "ab_gov", address: "bob@example.com" },
+    });
+    expect(summarizeProposal(p)).toBe("Asks to email bob@example.com — widens its allowlist");
   });
 
   it("headlines a create-contact by the card's name", () => {

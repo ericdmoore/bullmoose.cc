@@ -30,14 +30,18 @@ export async function loadQueue(client: JmapClient, accountId: string): Promise<
 }
 
 /**
- * The three verbs, as one write. `approve` optionally carries the human's
+ * The verbs, as one write. `approve` optionally carries the human's
  * `editedPayload` — Edit is not a fourth verb but a richer approve, which is
  * exactly how the server models it (a decision patch that lands the edit
- * BESIDE the retained `payload`, actionProposal.ts:222-243).
+ * BESIDE the retained `payload`, actionProposal.ts:222-243). `info-requested`
+ * is needsInfo (s10 T3): an ACTION carrying only the required human question —
+ * deliberately no `reason` and no `note`, because it is not a reject and must
+ * never produce a rejection record (decline-taxonomy.md).
  */
 export type Verdict =
   | { status: "approved"; editedPayload?: Record<string, unknown>; note?: string }
-  | { status: "rejected"; reason: RejectReason; note?: string };
+  | { status: "rejected"; reason: RejectReason; note?: string }
+  | { status: "info-requested"; question: string };
 
 export type DecideOutcome = { ok: true } | { ok: false; message: string };
 
@@ -50,7 +54,7 @@ export async function decide(
 ): Promise<DecideOutcome> {
   const decision: Record<string, unknown> = {};
   if (verdict.status === "rejected") decision.reason = verdict.reason;
-  if (verdict.note) decision.note = verdict.note;
+  if (verdict.status !== "info-requested" && verdict.note) decision.note = verdict.note;
 
   const patch: Record<string, unknown> = {
     status: verdict.status,
@@ -58,6 +62,9 @@ export async function decide(
     ...(verdict.status === "approved" && verdict.editedPayload !== undefined
       ? { editedPayload: verdict.editedPayload }
       : {}),
+    // needsInfo carries ONLY the question — the server refuses a decision on
+    // this verb (actionProposal.ts), and this module never builds one for it.
+    ...(verdict.status === "info-requested" ? { question: verdict.question } : {}),
   };
 
   let result: Record<string, unknown>;
