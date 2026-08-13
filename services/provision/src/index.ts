@@ -985,6 +985,10 @@ async function createAccount(
         ["trash", "Trash"],
         ["junk", "Junk"],
         ["archive", "Archive"],
+        // s12 1-A: where REJECT-STORE boundary verdicts hold mail, rescuable.
+        // Accounts that predate this are covered lazily — ingest's quarantine
+        // path calls ensureRoleMailbox on first shunt (the inbox precedent).
+        ["quarantine", "Quarantine"],
       ].map(([role, name]) =>
         env.DB
           .prepare(

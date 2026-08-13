@@ -437,6 +437,36 @@ function chunked<T>(items: T[], size = MAX_BINDS): T[][] {
  * stored in_reply_to — so every write path must strip consistently
  * (postal-mime returns "<id@host>"; Email/set create generates bare ids).
  */
+/** One row of the s12 quarantine chain (append-only; no FK — see the DDL). */
+export interface QuarantineEventInput {
+  event: "shunted" | "rescued" | "released";
+  /** Normalized (lowercased) envelope sender. */
+  sender: string;
+  /** Normalized sender domain (lowercase, no leading/trailing dot). */
+  domain: string;
+  /** The firing cascade stage, e.g. 'deny-list', 'auth:dmarc', 'bayes@0.97'. */
+  stage: string;
+  /** The stored message, when there is one. */
+  emailId?: string | null;
+  /** Rescuing/releasing principal. */
+  actor?: string | null;
+  /** The authorizing directive's Message-ID (s10 decision-5 pattern). */
+  viaMessageId?: string | null;
+  at: number;
+}
+
+export interface QuarantineEventRow {
+  id: number;
+  event: "shunted" | "rescued" | "released";
+  sender: string;
+  domain: string;
+  stage: string;
+  emailId: string | null;
+  actor: string | null;
+  viaMessageId: string | null;
+  at: number;
+}
+
 export function normalizeMessageId(raw: string | null | undefined): string | null {
   const trimmed = raw?.trim() ?? "";
   if (!trimmed) return null;
@@ -1035,7 +1065,16 @@ export class Mailstore {
   // ---- Emails: write ------------------------------------------------
 
   async insertEmail(accountId: string, email: NewEmail): Promise<void> {
-    const statements = [
+    await this.db.batch(this.emailInsertStatements(accountId, email));
+  }
+
+  /**
+   * The statements `insertEmail` batches, exposed privately so a caller with
+   * one more row to land atomically (the quarantine chain, below) can ride
+   * the same transaction instead of dual-writing.
+   */
+  private emailInsertStatements(accountId: string, email: NewEmail): D1PreparedStatement[] {
+    return [
       this.db
         .prepare(
           `INSERT INTO emails (id, account_id, blob_id, thread_id, message_id, in_reply_to,
@@ -1076,7 +1115,6 @@ export class Mailstore {
       ),
       ...this.ftsIndexStatements(accountId, email.id, ftsTextOf(email)),
     ];
-    await this.db.batch(statements);
   }
 
   /**
@@ -1280,6 +1318,237 @@ export class Mailstore {
       .bind(accountId, threadId)
       .all<{ id: string }>();
     return results.map((r) => r.id);
+  }
+
+  // ---- Quarantine (s12 boundary, wave 1-A) --------------------------
+  //
+  // The chain discipline is book_membership_log's, verbatim: append-only, no
+  // FK, nothing compacts it, and the message write and its 'shunted' row
+  // commit in ONE batch or neither — dual-write desync is how chains lie.
+
+  private quarantineEventStatement(accountId: string, e: QuarantineEventInput): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO quarantine_events
+           (account_id, event, sender, domain, stage, email_id, actor, via_message_id, at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        accountId,
+        e.event,
+        e.sender,
+        e.domain,
+        e.stage,
+        e.emailId ?? null,
+        e.actor ?? null,
+        e.viaMessageId ?? null,
+        e.at,
+      );
+  }
+
+  /** Append one chain row on its own (rescues, releases). */
+  async appendQuarantineEvent(accountId: string, e: QuarantineEventInput): Promise<void> {
+    await this.quarantineEventStatement(accountId, e).run();
+  }
+
+  /**
+   * Store a REJECT-STORE message: the full `insertEmail` write (the caller
+   * points `mailboxIds` at the quarantine mailbox) plus its 'shunted' chain
+   * row, atomically. On a shard that predates the `quarantine-events-table`
+   * migration the whole batch fails — the caller (ingest) falls back to inbox
+   * delivery, which is why that migration is not a deploy blocker.
+   */
+  async insertQuarantinedEmail(
+    accountId: string,
+    email: NewEmail,
+    event: QuarantineEventInput,
+  ): Promise<void> {
+    await this.db.batch([
+      ...this.emailInsertStatements(accountId, email),
+      this.quarantineEventStatement(accountId, event),
+    ]);
+  }
+
+  /** The chain, oldest first; optionally scoped to one sender (the audit query). */
+  async quarantineEvents(
+    accountId: string,
+    opts: { sender?: string; limit?: number } = {},
+  ): Promise<QuarantineEventRow[]> {
+    const senderScope = opts.sender !== undefined ? "AND sender = ?" : "";
+    const binds: unknown[] = [accountId];
+    if (opts.sender !== undefined) binds.push(normalizeAddress(opts.sender));
+    binds.push(opts.limit ?? 1000);
+    const { results } = await this.db
+      .prepare(
+        `SELECT id, event, sender, domain, stage, email_id, actor, via_message_id, at
+         FROM quarantine_events WHERE account_id = ? ${senderScope} ORDER BY id LIMIT ?`,
+      )
+      .bind(...binds)
+      .all<{
+        id: number;
+        event: string;
+        sender: string;
+        domain: string;
+        stage: string;
+        email_id: string | null;
+        actor: string | null;
+        via_message_id: string | null;
+        at: number;
+      }>();
+    return results.map((r) => ({
+      id: r.id,
+      event: r.event as QuarantineEventRow["event"],
+      sender: r.sender,
+      domain: r.domain,
+      stage: r.stage,
+      emailId: r.email_id,
+      actor: r.actor,
+      viaMessageId: r.via_message_id,
+      at: r.at,
+    }));
+  }
+
+  /**
+   * The rescue write path — what the bouncer@ conversations (false-positive
+   * repair) and the quarantine view call. No conversation parsing here.
+   *
+   *   1. Move the message out of the quarantine mailbox into the inbox.
+   *   2. Append the 'rescued' chain row (with the ORIGINAL firing stage, so
+   *      the chain answers "rescued from what"), same batch as the move.
+   *   3. If the sender's domain sits in domain_deny_list with
+   *      source='graduated', remove it (demotion) and reset its counters —
+   *      the human correction always wins over the graduation loop.
+   *
+   * Not rescued (returns `rescued: false`) when the message is not currently
+   * in the quarantine mailbox — a double rescue must not write a second chain
+   * row. Demotion needs no bloom rebuild: a REMOVED entry left in the bloom
+   * is only a false positive, and false positives always fall through to the
+   * exact checks (additions are what require a rebuild).
+   */
+  async rescueQuarantined(
+    accountId: string,
+    emailId: string,
+    actor: string | null,
+    opts: { viaMessageId?: string | null } = {},
+  ): Promise<{ rescued: boolean; demotedDomain: string | null }> {
+    const quarantineId = await this.db
+      .prepare(`SELECT id FROM mailboxes WHERE account_id = ? AND role = 'quarantine'`)
+      .bind(accountId)
+      .first<{ id: string }>();
+    if (!quarantineId) return { rescued: false, demotedDomain: null };
+    const held = await this.db
+      .prepare(
+        `SELECT 1 AS held FROM email_mailboxes
+         WHERE account_id = ? AND email_id = ? AND mailbox_id = ?`,
+      )
+      .bind(accountId, emailId, quarantineId.id)
+      .first<{ held: number }>();
+    if (!held) return { rescued: false, demotedDomain: null };
+
+    // The shunt row is the source of truth for sender/domain/stage — it
+    // recorded the ENVELOPE sender, which the emails row does not carry.
+    const shunt = await this.db
+      .prepare(
+        `SELECT sender, domain, stage FROM quarantine_events
+         WHERE account_id = ? AND email_id = ? AND event = 'shunted'
+         ORDER BY id DESC LIMIT 1`,
+      )
+      .bind(accountId, emailId)
+      .first<{ sender: string; domain: string; stage: string }>();
+    const fromRow = shunt
+      ? null
+      : await this.db
+          .prepare(`SELECT from_json FROM emails WHERE account_id = ? AND id = ?`)
+          .bind(accountId, emailId)
+          .first<{ from_json: string }>();
+    const headerFrom = fromRow
+      ? normalizeAddress((JSON.parse(fromRow.from_json) as EmailAddress[])[0]?.email ?? "")
+      : "";
+    const sender = shunt?.sender ?? headerFrom;
+    const domain = shunt?.domain ?? (sender.split("@")[1] ?? "");
+    const stage = shunt?.stage ?? "unknown";
+
+    const inboxId = await this.ensureRoleMailbox(accountId, "inbox", "Inbox");
+    await this.db.batch([
+      this.db
+        .prepare(
+          `DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ? AND mailbox_id = ?`,
+        )
+        .bind(accountId, emailId, quarantineId.id),
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO email_mailboxes (account_id, email_id, mailbox_id)
+           VALUES (?, ?, ?)`,
+        )
+        .bind(accountId, emailId, inboxId),
+      this.quarantineEventStatement(accountId, {
+        event: "rescued",
+        sender,
+        domain,
+        stage,
+        emailId,
+        actor,
+        viaMessageId: opts.viaMessageId ?? null,
+        at: Date.now(),
+      }),
+      // The move mutates the email's state through a child table; stamp the
+      // rescuer onto the message itself (the replaceEmailSets precedent).
+      this.db
+        .prepare(
+          `UPDATE emails
+           SET last_writer_principal = ?, last_writer_binding = ?, last_writer_invocation = ?
+           WHERE account_id = ? AND id = ?`,
+        )
+        .bind(
+          actor ?? this.writer?.principal ?? null,
+          this.writer?.binding ?? null,
+          this.writer?.invocation ?? null,
+          accountId,
+          emailId,
+        ),
+    ]);
+
+    // Graduated-domain demotion. Only 'graduated' rows: a 'feed' or
+    // 'directive' entry was placed by someone with intent, and a single
+    // rescue must not silently overrule them.
+    let demotedDomain: string | null = null;
+    if (domain !== "") {
+      const tenantId = await this.tenantIdOf(accountId);
+      const deny = await this.db
+        .prepare(`SELECT source FROM domain_deny_list WHERE tenant_id = ? AND domain = ?`)
+        .bind(tenantId, domain)
+        .first<{ source: string }>();
+      if (deny?.source === "graduated") {
+        await this.db.batch([
+          this.db
+            .prepare(`DELETE FROM domain_deny_list WHERE tenant_id = ? AND domain = ?`)
+            .bind(tenantId, domain),
+          this.db.prepare(`DELETE FROM deny_counters WHERE domain = ?`).bind(domain),
+        ]);
+        demotedDomain = domain;
+      }
+    }
+    return { rescued: true, demotedDomain };
+  }
+
+  /**
+   * The tenant an account belongs to. `accounts.tenant_id` is authoritative
+   * where the control plane shares the binding; the id-prefix fallback holds
+   * because provisioning mints `${tenantId}__a_${rand}` (services/provision —
+   * the same degrade `services/ingest` `tenantOf` documents).
+   */
+  private async tenantIdOf(accountId: string): Promise<string> {
+    let tenantId = accountId.split("__")[0] ?? "";
+    try {
+      const row = await this.db
+        .prepare(`SELECT tenant_id FROM accounts WHERE id = ?`)
+        .bind(accountId)
+        .first<{ tenant_id: string }>();
+      if (row?.tenant_id) tenantId = row.tenant_id;
+    } catch {
+      /* control plane not on this binding — the prefix is the answer */
+    }
+    return tenantId;
   }
 
   // ---- Address books (JMAP Contacts, RFC 9610) ----------------------

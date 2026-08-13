@@ -122,11 +122,19 @@ export function mechanicalRequires(opts: {
   return Object.keys(requires).length > 0 ? requires : null;
 }
 
-/** What ingest stamps. sender_class / effort_prior are s12's (bouncer@). */
+/** What ingest stamps. effort_prior stays s12's mid-band LLM's (a later wave). */
 export interface FacetStamp {
   dueAt: number | null;
   privacy: PrivacyClass | null;
   requires: RequiresFacet | null;
+  /**
+   * s12 1-A: stage 1's verdict on the sender — 'known' (in the recipient's
+   * default book) or 'unknown' (a default book exists and the sender is not
+   * in it). NULL when the account has no known-good set to classify against
+   * (the DefaultCase — the stamp stays absent exactly as pre-s12). 'blocked'
+   * never reaches this stamp: blocked mail is rejected before enqueue.
+   */
+  senderClass: "known" | "unknown" | null;
 }
 
 /**
@@ -153,17 +161,25 @@ export async function stampInvocationFacets(
   invocationId: string,
   stamp: FacetStamp,
 ): Promise<void> {
-  if (stamp.dueAt === null && stamp.privacy === null && stamp.requires === null) return;
+  if (
+    stamp.dueAt === null &&
+    stamp.privacy === null &&
+    stamp.requires === null &&
+    stamp.senderClass === null
+  ) {
+    return;
+  }
   try {
     await db
       .prepare(
-        `UPDATE agent_invocations SET due_at = ?, privacy = ?, requires_json = ?
+        `UPDATE agent_invocations SET due_at = ?, privacy = ?, requires_json = ?, sender_class = ?
          WHERE account_id = ? AND id = ?`,
       )
       .bind(
         stamp.dueAt,
         stamp.privacy,
         stamp.requires !== null ? JSON.stringify(stamp.requires) : null,
+        stamp.senderClass,
         accountId,
         invocationId,
       )
