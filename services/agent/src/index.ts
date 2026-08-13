@@ -4,7 +4,7 @@ import { buildMime } from "@bullmoose/mime";
 import { Mailstore } from "@bullmoose/mailstore";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
-import { proposeReply, expireStaleProposals } from "./proposals.js";
+import { answerInfoRequest, proposeReply, expireStaleProposals } from "./proposals.js";
 import { handleVault, handleVaultVerify } from "./vault.js";
 import {
   callWithFallback,
@@ -183,6 +183,20 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   const store = new Mailstore(env.DB, env.BLOBS);
   const done = (status: "done" | "failed", result: Record<string, unknown>, cost?: InvocationCost) =>
     finish(env, job, status, result, cost);
+
+  // s10 T3: an `answer-info-request` invocation (enqueued by ActionProposal/set
+  // when a human asks needsInfo) acts on a PROPOSAL, not on a message —
+  // dispatched by context kind, and BEFORE the email-context requirement,
+  // because the round needs no email to answer.
+  let context: Record<string, unknown> = {};
+  try {
+    context = JSON.parse(job.context_json) as Record<string, unknown>;
+  } catch {
+    // fall through — a malformed context is handled by the pipelines below
+  }
+  if (context.kind === "answer-info-request") {
+    return answerInfoRequest(env, job, cfg, context, done);
+  }
 
   if (!job.email_id) return done("failed", { note: "no email context" });
   const email = await store.getEmailRow(job.account_id, job.email_id);
