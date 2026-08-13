@@ -171,3 +171,24 @@ which is the whole finding of §1.
 - Matrix Server-Server API — federation over HTTPS, Ed25519-signed
 - `docs/architecture/capacity-and-scaling.md` — why Matrix storage needs measuring first
 - `~/.popcorn/` — the existing precedent for "a protocol that needs a held port"
+
+## Coordination by mail, facts by query (2026-08-13)
+
+The rule for agent↔agent traffic, from the "can Allen ask Emily how many edits she made?"
+discussion: **email between agents is for coordination — requests, invitations,
+negotiation, things needing consent. Facts come from the record layer.**
+
+- Activity data (invocation counts, edit counts, cost) already lives in queryable records:
+  `ActionProposal/query` + `AgentInvocation/get` (read scope), the approve-after-edit
+  `editedPayload` rows, the s07 T5 cost columns. Cross-agent access is a **grant** (Allen
+  holds scoped read on Emily's account) — the existing machinery, no GraphQL needed.
+- Asking Emily-the-model for her stats gets a *narration* — confabulatable, costly (two
+  invocations + model calls), weak provenance. Querying the store gets a *fact*. This is
+  the record-not-narrator principle (s12 outbound-stamping §3) applied to agent↔agent.
+- The mail path is also doubly gated by design: the asker's governing book must contain
+  the askee, AND the askee's `allowedSenders` must admit the asker — two consents, correct
+  for *coordination*, pure overhead for *data*.
+- If colleague-style ask-by-email is ever wanted, the design exists: extend the
+  explain-yourself **harness verb** to stats questions (harness computes from the record,
+  persona at most garnishes). Do not build until a use case demands it — a pipeline agent
+  like analyst@ should always take the query path.
