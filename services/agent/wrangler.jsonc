@@ -39,9 +39,15 @@
   // master key, so sealing and using a credential are both hops across this
   // binding. bullmoose-bureau must therefore deploy BEFORE this worker — same
   // class of dependency as agent-before-ingest (docs/DEPLOY.md §2).
+  // OAUTH validates OAuth access tokens (s02 T4). Same shape and same reason
+  // as BUREAU: OAUTH_KV holds every issued credential and is bound to the
+  // oauth worker ONLY, so this worker — which runs every MCP tool and reads
+  // untrusted email — asks rather than holds. bullmoose-oauth must therefore
+  // deploy BEFORE this worker, like bureau.
   "services": [
     { "binding": "SUBMIT", "service": "bullmoose-submit" },
-    { "binding": "BUREAU", "service": "bullmoose-bureau" }
+    { "binding": "BUREAU", "service": "bullmoose-bureau" },
+    { "binding": "OAUTH", "service": "bullmoose-oauth" }
   ],
 
   // Workers AI — the free-allocation "cheap" model tier.

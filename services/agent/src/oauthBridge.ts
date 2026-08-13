@@ -35,6 +35,60 @@ export interface GrantProps {
   loginEmail?: unknown;
 }
 
+/**
+ * A `bm_` bearer is resolved locally; anything else is an OAuth token and
+ * goes to the AS. Dispatching on the prefix rather than by trying one and
+ * falling back means a failed credential produces ONE clear refusal instead
+ * of two confusable ones, and costs no subrequest for the common local case.
+ */
+export function isLocalToken(raw: string): boolean {
+  return raw.startsWith("bm_");
+}
+
+/**
+ * Ask the AS who this token is (s02 T4).
+ *
+ * The token store lives only on the AS, so validation is a hop across the
+ * OAUTH service binding — the same shape as agent→bureau for the vault key,
+ * and for the same reason: this worker reads untrusted email, so the fewer
+ * credential-bearing bindings it holds, the less an attacker who reaches it
+ * inherits. The cost is one subrequest per OAuth-authenticated MCP call.
+ *
+ * Returns null for anything that is not a clean, active answer. A validation
+ * hop that fails — AS down, network error, malformed body — must REFUSE, never
+ * fall through to a weaker check: an availability problem turning into an
+ * authorization bypass is the classic fail-open bug.
+ */
+export async function introspect(
+  oauth: Fetcher,
+  token: string,
+): Promise<{ props: GrantProps; scopes: string[] } | null> {
+  let res: Response;
+  try {
+    res = await oauth.fetch("https://oauth.internal/introspect", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  let body: { active?: unknown; props?: GrantProps; scopes?: unknown };
+  try {
+    body = (await res.json()) as typeof body;
+  } catch {
+    return null;
+  }
+  if (body.active !== true) return null;
+  const props = (body.props ?? {}) as GrantProps & { scope?: unknown };
+  // The grant's scopes ride inside props, written by the AS at consent time.
+  // An unreadable or absent list is treated as an EMPTY grant — which
+  // authorizes nothing rather than everything, and surfaces as a clean -32004
+  // from the tool gate rather than as accidental authority.
+  const scopes = Array.isArray(props.scope) ? props.scope.filter((s): s is string => typeof s === "string") : [];
+  return { props, scopes };
+}
+
 export interface ResolvedGrant {
   principal: Principal;
 }

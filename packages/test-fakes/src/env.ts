@@ -59,6 +59,29 @@ function unwiredBureau(): Fetcher {
 }
 
 /**
+ * An OAUTH binding that refuses to be used by accident, for the same reason
+ * as the Bureau's (s02 T4).
+ *
+ * `services/agent` validates OAuth access tokens by asking the AS, because
+ * OAUTH_KV is bound to `services/oauth` and nowhere else. A permissive stub
+ * here would be worse than no binding: a test could believe it had
+ * authenticated an OAuth caller when nothing validated anything, which is
+ * precisely the assurance this seam exists to provide. Tests that exercise
+ * the bridge inject their own Fetcher (see agent/src/oauthBridge.test.ts).
+ */
+function unwiredOauth(): Fetcher {
+  return {
+    async fetch() {
+      throw new Error(
+        "no OAuth AS wired into this fixture — a test that authenticates an OAuth bearer " +
+          "must supply its own OAUTH Fetcher (see agent/src/oauthBridge.test.ts). A `bm_` " +
+          "token never reaches this binding.",
+      );
+    },
+  } as unknown as Fetcher;
+}
+
+/**
  * The bindings shared by `services/jmap` and `services/agent`.
  *
  * Deliberately a superset of both `Env` interfaces' REQUIRED members, so a test
@@ -78,6 +101,7 @@ export interface FakeEnv {
   ACCOUNT_DO: DurableObjectNamespace;
   SUBMIT: Fetcher;
   BUREAU: Fetcher;
+  OAUTH: Fetcher;
   INTERNAL_TOKEN: string;
   DEV_ACCOUNT_ID: string;
   DEV_TENANT_ID: string;
@@ -133,6 +157,7 @@ export function fakeEnv(opts: FakeWorkerOptions = {}): FakeWorker {
       ACCOUNT_DO: accountDo.ns,
       SUBMIT: submit.binding,
       BUREAU: unwiredBureau(),
+      OAUTH: unwiredOauth(),
       INTERNAL_TOKEN: "internal-test-token",
       DEV_ACCOUNT_ID: "t_dev__a_local",
       DEV_TENANT_ID: "t_dev",

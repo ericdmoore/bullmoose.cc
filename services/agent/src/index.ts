@@ -22,8 +22,10 @@ import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
 import { answerInfoRequest, proposeReply, expireStaleProposals } from "./proposals.js";
+import { introspect, isLocalToken, principalFromProps } from "./oauthBridge.js";
 import { handleVault, handleVaultVerify } from "./vault.js";
 import { handleWellKnown, originAllowed, unauthorized } from "./wellKnown.js";
+import type { Principal } from "@bullmoose/auth-core/principal";
 import {
   callWithFallback,
   invocationCost,
@@ -120,7 +122,28 @@ export default {
       // case is answered here rather than by handleMcp's bare JSON-RPC error.
       const authz = request.headers.get("Authorization") ?? "";
       if (!authz.startsWith("Bearer ")) return unauthorized(url, env);
-      const res = await handleMcp(request, env);
+
+      // Two credential systems, one authorization path (s02 T4). A `bm_`
+      // bearer resolves locally against D1; anything else is an OAuth access
+      // token, and only the AS can validate it — OAUTH_KV is bound there and
+      // nowhere else, so this worker asks rather than looks. Dispatching on
+      // the prefix keeps a bad credential to ONE clear refusal and costs no
+      // subrequest for the local case.
+      const raw = authz.slice(7);
+      let oauthPrincipal: Principal | undefined;
+      if (!isLocalToken(raw)) {
+        const grant = await introspect(env.OAUTH, raw);
+        // A failed hop refuses. It must never fall through to the local
+        // check — an AS outage turning into an authorization bypass is the
+        // classic fail-open bug, and the local check would reject it anyway
+        // with a message about the wrong credential type.
+        if (!grant) return unauthorized(url, env);
+        const principal = await principalFromProps(env, grant.props, grant.scopes);
+        if (!principal) return unauthorized(url, env);
+        oauthPrincipal = principal;
+      }
+
+      const res = await handleMcp(request, env, oauthPrincipal);
       // A bearer that did not resolve gets the same teaching challenge — an
       // expired token is the single most common reason a working connection
       // stops working, and the client can only re-auth if we say so.

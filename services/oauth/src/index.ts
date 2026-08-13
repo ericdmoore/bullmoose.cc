@@ -209,8 +209,14 @@ async function decide(request: Request, env: Env): Promise<Response> {
     metadata: { authorizedAt: Date.now(), loginEmail: row.login_email },
     // The bridge (T4 reads this). Everything the resource server needs to
     // become a principal again, and nothing more — no token it could replay,
-    // no scope list it could widen itself with.
-    props: { principalId: row.id, loginEmail: row.login_email },
+    // no authority beyond this grant.
+    //
+    // `scope` is duplicated here rather than read back off the grant because
+    // props is what introspection returns, and the resource server must build
+    // its principal from THIS grant's scopes. Taking the human's own scopes
+    // instead would silently upgrade every connected app to full account
+    // authority.
+    props: { principalId: row.id, loginEmail: row.login_email, scope },
   });
   return Response.redirect(redirectTo, 302);
 }
@@ -246,8 +252,38 @@ function safeParse(text: string): Record<string, unknown> {
   }
 }
 
+/**
+ * Token introspection, for the resource server (s02 T4).
+ *
+ * `OAUTH_KV` is bound HERE and nowhere else — the same discipline as the
+ * Bureau's master key. `services/agent` runs every MCP tool and reads
+ * untrusted email; giving it the namespace holding every issued credential
+ * would hand exactly that worker the token store, which is the arrangement
+ * the Bureau split exists to prevent.
+ *
+ * The library exposes no standalone "is this token valid" call — validation
+ * happens only inside the provider's own request path. So this route IS an
+ * `apiRoute`: the provider validates the presented bearer before our handler
+ * runs, and the handler's whole job is to hand back the identity the provider
+ * already proved. A request that gets here at all is authenticated.
+ *
+ * It needs no shared secret, and is safe even though it answers on the public
+ * hostname: the credential required to read a token's identity IS that token,
+ * so the only thing a caller can learn is who they already are. Presenting
+ * someone else's token would mean already holding it.
+ */
+const introspectHandler = {
+  async fetch(_request: Request, _env: Env, ctx: ExecutionContext & { props?: Record<string, unknown> }) {
+    const props = ctx.props ?? {};
+    return new Response(JSON.stringify({ active: true, props }), {
+      headers: { "content-type": "application/json", "cache-control": "no-store" },
+    });
+  },
+};
+
 export default new OAuthProvider<Env>({
-  apiRoute: [],
+  apiRoute: ["/introspect"],
+  apiHandler: introspectHandler as never,
   defaultHandler: authorizeHandler as never,
   authorizeEndpoint: "/authorize",
   tokenEndpoint: "/token",

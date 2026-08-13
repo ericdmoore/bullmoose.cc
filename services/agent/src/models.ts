@@ -23,6 +23,14 @@ export interface Env {
    */
   BUREAU: Fetcher;
   /**
+   * The OAuth authorization server (s02 T4). A service binding rather than an
+   * `OAUTH_KV` namespace on this worker, deliberately and for the Bureau's
+   * reason: this worker runs every MCP tool and reads untrusted email, so
+   * binding the store of every issued credential to it would hand an attacker
+   * who reaches this worker the token store. Validation is a hop instead.
+   */
+  OAUTH: Fetcher;
+  /**
    * The canonical RFC 8707 resource URI this server answers for, e.g.
    * `https://mcp.bullmoose.cc/mcp` (s02 T1). Optional: it defaults to
    * `<request origin>/mcp`, which is right for every deployment that is

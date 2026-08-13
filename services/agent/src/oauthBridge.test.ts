@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeEnv } from "@bullmoose/test-fakes";
-import { audienceMatches, principalFromProps } from "./oauthBridge";
+import { audienceMatches, introspect, isLocalToken, principalFromProps } from "./oauthBridge";
 
 // s02 T4 — the bridge. Two credential systems meet at exactly one point, and
 // these pin what may and may not cross it.
@@ -101,5 +101,92 @@ describe("principalFromProps — what the grant may become", () => {
     const w = world();
     const p = await principalFromProps(w.env, { principalId: "p_eric" }, []);
     expect(p?.scopes).toEqual([]);
+  });
+});
+
+// The validation hop. OAUTH_KV is bound to the AS and nowhere else — the same
+// discipline as the Bureau's master key — so this worker asks rather than
+// looks. Most of what follows is about that hop failing SAFELY: an AS outage
+// turning into an authorization bypass is the classic fail-open bug, and it
+// stays invisible until someone goes looking for it.
+function fakeAS(handler: (req: Request) => Response): Fetcher {
+  return {
+    fetch: (input: RequestInfo, init?: RequestInit) => Promise.resolve(handler(new Request(input as string, init))),
+  } as unknown as Fetcher;
+}
+
+const okAS = (props: Record<string, unknown>) =>
+  fakeAS(() => new Response(JSON.stringify({ active: true, props })));
+
+describe("credential dispatch", () => {
+  it("20. a bm_ token is local and never reaches the AS", () => {
+    expect(isLocalToken("bm_abc.def")).toBe(true);
+  });
+
+  it("21. anything else is an OAuth token", () => {
+    expect(isLocalToken("eyJhbGciOi")).toBe(false);
+    expect(isLocalToken("")).toBe(false);
+  });
+});
+
+describe("introspect — fails CLOSED, always", () => {
+  it("30. returns the grant when the AS says the token is active", async () => {
+    const got = await introspect(okAS({ principalId: "p_eric", scope: ["read", "calendar"] }), "tok");
+    expect(got?.props.principalId).toBe("p_eric");
+    expect(got?.scopes).toEqual(["read", "calendar"]);
+  });
+
+  it("31. forwards the token as a bearer, so the AS validates the real credential", async () => {
+    let seen: string | null = null;
+    const as = fakeAS((req) => {
+      seen = req.headers.get("authorization");
+      return new Response(JSON.stringify({ active: true, props: { principalId: "p" } }));
+    });
+    await introspect(as, "tok-123");
+    expect(seen).toBe("Bearer tok-123");
+  });
+
+  it("32. refuses when the AS is DOWN — never falls through to a weaker check", async () => {
+    const as = fakeAS(() => {
+      throw new Error("connection refused");
+    });
+    expect(await introspect(as, "tok")).toBeNull();
+  });
+
+  it("33. refuses on a non-2xx", async () => {
+    expect(await introspect(fakeAS(() => new Response("nope", { status: 401 })), "tok")).toBeNull();
+    expect(await introspect(fakeAS(() => new Response("boom", { status: 500 })), "tok")).toBeNull();
+  });
+
+  it("34. refuses on a malformed body rather than guessing", async () => {
+    expect(await introspect(fakeAS(() => new Response("not json")), "tok")).toBeNull();
+  });
+
+  it("35. refuses when the AS says active:false", async () => {
+    const as = fakeAS(() => new Response(JSON.stringify({ active: false, props: { principalId: "p_eric" } })));
+    expect(await introspect(as, "tok")).toBeNull();
+  });
+
+  it("36. refuses a truthy-but-not-true active, rather than coercing", async () => {
+    const as = fakeAS(() => new Response(JSON.stringify({ active: "yes", props: { principalId: "p_eric" } })));
+    expect(await introspect(as, "tok")).toBeNull();
+  });
+
+  it("37. treats an absent scope list as an EMPTY grant, not an unlimited one", async () => {
+    const got = await introspect(okAS({ principalId: "p_eric" }), "tok");
+    expect(got?.scopes).toEqual([]);
+  });
+
+  it("38. drops non-string scope entries instead of passing them to the gate", async () => {
+    const got = await introspect(okAS({ principalId: "p_eric", scope: ["read", 42, null] }), "tok");
+    expect(got?.scopes).toEqual(["read"]);
+  });
+
+  it("39. a valid hop still cannot invent a principal that does not exist", async () => {
+    // Defence in depth: even a compromised AS answering active:true for a
+    // made-up principal produces nothing, because the reach is D1's answer.
+    const w = fakeEnv();
+    const grant = await introspect(okAS({ principalId: "p_ghost", scope: ["read"] }), "tok");
+    expect(await principalFromProps(w.env, grant!.props, grant!.scopes)).toBeNull();
   });
 });

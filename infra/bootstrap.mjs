@@ -70,10 +70,10 @@ const SCHEMAS = [
 // against a service that does not exist yet. Same class of dependency as
 // agent-before-ingest (infra/011); docs/DEPLOY.md §2 and
 // .github/workflows/deploy-mail.yml must stay in sync with this list.
-// `oauth` binds no service and declares no DO, so it has no edge in the binding
-// graph and may deploy anywhere; it goes last because it is the only worker
-// whose absence degrades "connect a new client" rather than "read your mail".
-const DEPLOY_ORDER = ["submit", "jmap", "bureau", "agent", "ingest", "provision", "anglebrackets", "oauth"];
+// `oauth` precedes `agent`, which binds OAUTH to validate access tokens —
+// the same edge, and the same failure if reversed (deploying against a
+// service that does not exist yet), as bureau-before-agent.
+const DEPLOY_ORDER = ["submit", "jmap", "bureau", "oauth", "agent", "ingest", "provision", "anglebrackets"];
 
 const cfg = (w) => `services/${w}/wrangler.jsonc`;
 // Configs that carry resource ids to wire. anglebrackets has no KV binding —

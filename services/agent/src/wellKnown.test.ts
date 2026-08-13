@@ -212,6 +212,70 @@ describe("s02 T1 — the route is public, /drain and /internal/* are not", () =>
     expect((await res.json()) as any).toHaveProperty("handled");
   });
 
+  it("21c. an OAuth bearer authenticates through the AS and reaches a tool (s02 T4)", async () => {
+    // The whole bridge, through the real worker entry: a non-bm_ token goes
+    // to the AS over the OAUTH binding, comes back as props, becomes a
+    // principal, and runs a tool — with no bm_ token anywhere in the request.
+    const w = fakeEnv();
+    w.db.seedAccount({
+      accountId: "a_eric",
+      tenantId: "t_bm",
+      principalId: "p_eric",
+      loginEmail: "eric@bullmoose.cc",
+      displayName: "Eric",
+    });
+    (w.env as { OAUTH: Fetcher }).OAUTH = {
+      fetch: async () =>
+        new Response(JSON.stringify({ active: true, props: { principalId: "p_eric", scope: ["read"] } })),
+    } as unknown as Fetcher;
+
+    const res = await worker.fetch!(
+      new Request("https://mcp.bullmoose.cc/mcp", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          Authorization: "Bearer oauth-access-token",
+          "MCP-Protocol-Version": "2026-07-28",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "whoami",
+            arguments: {},
+            _meta: {
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+              "io.modelcontextprotocol/clientCapabilities": {},
+            },
+          },
+        }),
+      }),
+      w.env,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    const answer = JSON.parse(((await res.json()) as any).result.content[0].text);
+    expect(answer.principal).toBe("eric@bullmoose.cc");
+    expect(answer.tokenScopes).toEqual(["read"]);
+  });
+
+  it("21d. an OAuth bearer the AS rejects gets the teaching 401, not a fallback", async () => {
+    // Fail-closed at the route, not just in the bridge: a refused token must
+    // not then be tried as a bm_ token.
+    const w = fakeEnv();
+    (w.env as { OAUTH: Fetcher }).OAUTH = {
+      fetch: async () => new Response("no", { status: 401 }),
+    } as unknown as Fetcher;
+    const res = await worker.fetch!(
+      post("/mcp", { Authorization: "Bearer some-oauth-token" }),
+      w.env,
+      ctx,
+    );
+    expect(res.status).toBe(401);
+    expect(res.headers.get("www-authenticate")).toContain("resource_metadata=");
+  });
+
   it("22. discovery is reachable with no credential of any kind", async () => {
     const w = fakeEnv();
     const res = await worker.fetch!(
