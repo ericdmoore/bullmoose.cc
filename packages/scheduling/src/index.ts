@@ -17,8 +17,14 @@ export {
 } from "./mayClaim.js";
 export {
   bindingEscalationWindowMs,
+  budgetExhaustedSql,
   budgetMonthStartMs,
+  claimFitBinds,
+  claimFitSql,
   claimGateBinds,
   claimGateSql,
+  freeRuntimeLiveCutoff,
+  freeRuntimeLiveSql,
+  notPinnedSql,
   type ClaimGateParams,
 } from "./claimGate.js";

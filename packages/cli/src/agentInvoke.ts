@@ -123,9 +123,16 @@ export async function cmdAgentInvoke(
         return;
       }
       for (const inv of list) {
+        // s11 T3: the watchdog's alert marker, if it raised one. A past-due
+        // invocation nobody may claim (pinned, or beyond the cloud's declared
+        // capabilities) is NOT allowed to sit silently, and this listing is
+        // where a human meets it — there is no notification system, and this
+        // needs no decision, so it rides the row it is about.
+        const alert = inv.alert as { kind?: unknown } | null | undefined;
         out(
           `${String(inv.id)}  ${String(inv.status).padEnd(7)}  ${String(inv.bindingName)}  ` +
-            `${inv.emailId ?? "-"}  ${String(inv.createdAt)}`,
+            `${inv.emailId ?? "-"}  ${String(inv.createdAt)}` +
+            (alert && typeof alert.kind === "string" ? `  [alert: ${alert.kind}]` : ""),
         );
       }
       return;

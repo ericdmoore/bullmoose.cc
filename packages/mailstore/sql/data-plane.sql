@@ -287,6 +287,26 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
   -- liveness subquery reads it, so a worker deployed first fails every claim.
   claimant_free      INTEGER,
   claimant_caps_json TEXT,
+  -- s11 T3 — the overdue backstop's ALERT marker. The invariant the watchdog
+  -- holds is "no invocation with a past due_at sits pending SILENTLY": past
+  -- due, the cloud claims outside the policy gate (budget exhaustion is not
+  -- allowed to strand work) — EXCEPT where it may not claim at all, and then
+  -- the human is told instead. Two cases reach here:
+  --   'overdue-pinned'  privacy = 'pinned' (devPlan decision 0: privacy beats
+  --                     liveness; the work sits for a private runtime)
+  --   'overdue-unfit'   the cloud's declared capability vector cannot satisfy
+  --                     requires_json — claiming it would only fail
+  -- This is deliberately NOT an ActionProposal: there is no decision to make
+  -- and no action to approve, so a proposal row would be a second store of a
+  -- fact the invocation already holds (arch.md §1's read-model rule). It is a
+  -- marker: DURABLE (a row, not a log line), QUERYABLE (AgentInvocation/get
+  -- projects it; AgentInvocation/query filters on it), and raised ONCE — the
+  -- sweep's UPDATE guards on `alert_kind IS NULL`, so repeated sweeps over the
+  -- same stuck row cannot storm. It is never cleared: that a deadline passed
+  -- with nobody able to take the work is a FACT about this run, and it stays
+  -- on the row after a homelab eventually claims it.
+  alert_kind         TEXT,
+  alert_at           INTEGER,
   PRIMARY KEY (account_id, id)
 );
 CREATE INDEX IF NOT EXISTS invocations_status
