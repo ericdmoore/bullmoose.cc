@@ -526,7 +526,17 @@ describe("approving a recipient grant-request APPLIES the contact write", () => 
 
   const seedBook = (w: ReturnType<typeof fakeEnv>) =>
     w.db.seed("address_books", [
-      { id: "ab_gov", account_id: ACCOUNT, name: "emily allowlist", ctag: 0, created_at: 1, updated_at: 1 },
+      // A widening targets a GOVERNING book — write_policy matters: it is what
+      // makes the chokepoint demand the authorization and emit the chain row.
+      {
+        id: "ab_gov",
+        account_id: ACCOUNT,
+        name: "emily allowlist",
+        write_policy: "governed",
+        ctag: 0,
+        created_at: 1,
+        updated_at: 1,
+      },
     ]);
 
   it("a HUMAN approve inserts the contact into the target book with the proposal as its why", async () => {
