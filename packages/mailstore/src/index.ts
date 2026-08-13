@@ -5,6 +5,34 @@
  * binds one D1 database as DB.
  */
 
+import {
+  BookWriteRefused,
+  cardContribution,
+  cardMemberUids,
+  cardOwnEmails,
+  contributionDelta,
+  normalizeAddress,
+  refusedDirectWrite,
+  refusedNestedGroup,
+  type BookWritePolicy,
+  type ContactWriter,
+} from "./governance";
+
+// Book governance (s10 T1/T2) — the pure half of the contact-write chokepoint.
+export {
+  BookWriteRefused,
+  cardContribution,
+  cardMemberUids,
+  cardOwnEmails,
+  contributionDelta,
+  normalizeAddress,
+  reconcileBookMembership,
+  type BookMembershipEvent,
+  type BookWritePolicy,
+  type BookWriteRefusalReason,
+  type ContactWriter,
+} from "./governance";
+
 export interface EmailAddress {
   name?: string;
   email: string;
@@ -161,6 +189,8 @@ export interface AddressBookRow {
   ctag: number;
   createdAt: number;
   updatedAt: number;
+  /** s10 T1 — per-book write policy the contact-write chokepoint enforces. */
+  writePolicy: BookWritePolicy;
 }
 
 /**
@@ -1256,7 +1286,7 @@ export class Mailstore {
 
   async getAddressBooks(accountId: string, ids?: string[]): Promise<AddressBookRow[]> {
     const cols = `id, name, description, sort_order, is_default, is_subscribed,
-                  ctag, created_at, updated_at`;
+                  ctag, created_at, updated_at, write_policy`;
     type Row = {
       id: string;
       name: string;
@@ -1267,6 +1297,7 @@ export class Mailstore {
       ctag: number;
       created_at: number;
       updated_at: number;
+      write_policy: string | null;
     };
     const results: Row[] = [];
     if (ids && ids.length > 0) {
@@ -1295,6 +1326,7 @@ export class Mailstore {
       ctag: r.ctag,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      writePolicy: (r.write_policy as BookWritePolicy) ?? "open",
     }));
   }
 
@@ -1303,8 +1335,8 @@ export class Mailstore {
       .prepare(
         `INSERT INTO address_books
            (id, account_id, name, description, sort_order, is_default, is_subscribed,
-            ctag, created_at, updated_at, ${PROVENANCE_COLUMNS})
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ctag, created_at, updated_at, write_policy, ${PROVENANCE_COLUMNS})
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         book.id,
@@ -1317,8 +1349,25 @@ export class Mailstore {
         book.ctag,
         book.createdAt,
         book.updatedAt,
+        book.writePolicy ?? "open",
         ...this.provenanceValues(),
       )
+      .run();
+  }
+
+  /**
+   * Flip a book's write policy (s10 T1). Not reachable over JMAP/DAV in this
+   * slice — governing books are marked by provisioning/operator tooling; the
+   * chokepoint below is what makes the mark mean something.
+   */
+  async setAddressBookWritePolicy(
+    accountId: string,
+    id: string,
+    policy: BookWritePolicy,
+  ): Promise<void> {
+    await this.db
+      .prepare(`UPDATE address_books SET write_policy = ? WHERE account_id = ? AND id = ?`)
+      .bind(policy, accountId, id)
       .run();
   }
 
@@ -1409,6 +1458,7 @@ export class Mailstore {
       ctag: 0,
       createdAt: now,
       updatedAt: now,
+      writePolicy: "open",
     });
     return { id, change: "created" };
   }
@@ -1586,15 +1636,34 @@ export class Mailstore {
     return out;
   }
 
-  async insertContactCard(accountId: string, row: ContactCardRow): Promise<void> {
-    await this.insertContactCards(accountId, [row]);
+  async insertContactCard(accountId: string, row: ContactCardRow, writer: ContactWriter): Promise<void> {
+    await this.insertContactCards(accountId, [row], writer);
   }
 
-  /** One transactional db.batch — bulk imports must not pay per-card D1 calls. */
-  async insertContactCards(accountId: string, rows: ContactCardRow[]): Promise<void> {
+  /**
+   * One transactional db.batch — bulk imports must not pay per-card D1 calls.
+   *
+   * THE CHOKEPOINT (s10 T1/T2). Every contact-write path — JMAP
+   * `ContactCard/set`, CardDAV PUT/DELETE, MCP `contacts_*` and the CLI, which
+   * all funnel here — is policy-gated ONCE, in this class, so a fifth protocol
+   * added later cannot silently bypass the bound. `writer` is required: the
+   * gate turns on `writer.kind`, and the membership chain rows (T2) it emits
+   * ride IN THE SAME batch as the card write — card + chain commit together or
+   * neither.
+   */
+  async insertContactCards(
+    accountId: string,
+    rows: ContactCardRow[],
+    writer: ContactWriter,
+  ): Promise<void> {
     if (rows.length === 0) return;
-    await this.db.batch(
-      rows.map((row) =>
+    const chain = await this.governContactWrites(
+      accountId,
+      writer,
+      rows.map((row) => ({ op: "insert" as const, next: row })),
+    );
+    await this.db.batch([
+      ...rows.map((row) =>
         this.db
           .prepare(
             `INSERT INTO contact_cards
@@ -1615,52 +1684,79 @@ export class Mailstore {
             ...this.provenanceValues(),
           ),
       ),
-    );
+      ...chain,
+    ]);
   }
 
-  async updateContactCard(accountId: string, row: ContactCardRow): Promise<void> {
-    await this.db
-      .prepare(
-        `UPDATE contact_cards
-         SET address_book_id = ?, card_json = ?, name_full = ?, dav_name = ?, updated_at = ?,
-             last_writer_principal = ?, last_writer_binding = ?, last_writer_invocation = ?
-         WHERE account_id = ? AND id = ?`,
-      )
-      .bind(
-        row.addressBookId,
-        JSON.stringify(row.card),
-        row.nameFull,
-        row.davName,
-        row.updatedAt,
-        ...this.provenanceValues(),
-        accountId,
-        row.id,
-      )
-      .run();
+  async updateContactCard(
+    accountId: string,
+    row: ContactCardRow,
+    writer: ContactWriter,
+  ): Promise<void> {
+    const chain = await this.governContactWrites(accountId, writer, [
+      { op: "update", next: row },
+    ]);
+    await this.db.batch([
+      this.db
+        .prepare(
+          `UPDATE contact_cards
+           SET address_book_id = ?, card_json = ?, name_full = ?, dav_name = ?, updated_at = ?,
+               last_writer_principal = ?, last_writer_binding = ?, last_writer_invocation = ?
+           WHERE account_id = ? AND id = ?`,
+        )
+        .bind(
+          row.addressBookId,
+          JSON.stringify(row.card),
+          row.nameFull,
+          row.davName,
+          row.updatedAt,
+          ...this.provenanceValues(),
+          accountId,
+          row.id,
+        ),
+      ...chain,
+    ]);
   }
 
-  async destroyContactCard(accountId: string, id: string): Promise<void> {
-    await this.destroyContactCards(accountId, [id]);
+  async destroyContactCard(accountId: string, id: string, writer: ContactWriter): Promise<void> {
+    await this.destroyContactCards(accountId, [id], writer);
   }
 
   /**
    * Bulk destroy with DAV tombstones: sync-collection must answer
    * deletions with the resource name a client knew, and the changelog
    * only keeps ids. Batched — a whole-book cascade stays within the
-   * per-request budget.
+   * per-request budget. Deletion is a CHAIN EVENT (s10 T2): an unlogged
+   * remove puts a hole in the membership chain exactly where someone
+   * would want one, so the `removed` rows commit with the DELETE.
    */
-  async destroyContactCards(accountId: string, ids: string[]): Promise<void> {
+  async destroyContactCards(
+    accountId: string,
+    ids: string[],
+    writer: ContactWriter,
+  ): Promise<void> {
     const now = Date.now();
     for (const chunk of chunked(ids)) {
       const marks = chunk.map(() => "?").join(",");
       const { results } = await this.db
         .prepare(
-          `SELECT id, address_book_id, dav_name FROM contact_cards
+          `SELECT id, address_book_id, uid, card_json, dav_name FROM contact_cards
            WHERE account_id = ? AND id IN (${marks})`,
         )
         .bind(accountId, ...chunk)
-        .all<{ id: string; address_book_id: string; dav_name: string | null }>();
+        .all<{
+          id: string;
+          address_book_id: string;
+          uid: string;
+          card_json: string;
+          dav_name: string | null;
+        }>();
       if (results.length === 0) continue;
+      const chain = await this.governContactWrites(
+        accountId,
+        writer,
+        results.map((r) => ({ op: "destroy" as const, prevRow: r })),
+      );
       await this.db.batch([
         ...results.map((r) =>
           this.db
@@ -1678,8 +1774,328 @@ export class Mailstore {
               .join(",")})`,
           )
           .bind(accountId, ...results.map((r) => r.id)),
+        ...chain,
       ]);
     }
+  }
+
+  // ---- the write-policy gate + membership chain (s10 T1/T2) -----------
+
+  /**
+   * Books whose policy is not 'open', i.e. the only books governance work
+   * applies to. Empty map (the overwhelmingly common case) short-circuits the
+   * whole engine, so ungoverned accounts pay one indexed SELECT per write.
+   * The value filter is deliberate: only the two known non-open policies
+   * activate the engine — an unknown value written by a future version does
+   * not half-run today's rules.
+   */
+  private async nonOpenBookPolicies(
+    accountId: string,
+  ): Promise<Map<string, Exclude<BookWritePolicy, "open">>> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT id, write_policy FROM address_books
+         WHERE account_id = ? AND write_policy != 'open'`,
+      )
+      .bind(accountId)
+      .all<{ id: string; write_policy: string }>();
+    const out = new Map<string, Exclude<BookWritePolicy, "open">>();
+    for (const r of results) {
+      if (r.write_policy === "propose" || r.write_policy === "governed") {
+        out.set(r.id, r.write_policy);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Enforce write policy and build the membership-chain INSERTs for a set of
+   * card writes. Returns statements the caller MUST include in the same
+   * db.batch as the card writes (T2 atomicity). Throws `BookWriteRefused`
+   * before anything is written when the policy refuses the writer.
+   *
+   * A write "touches" a non-open book when the card lives (or lands) in it,
+   * OR when a group in such a book references the card's uid — the latter is
+   * the viral-reference rule: membership of a governed book must not be
+   * widenable by editing a member card parked in an open book.
+   */
+  private async governContactWrites(
+    accountId: string,
+    writer: ContactWriter,
+    changes: Array<
+      | { op: "insert"; next: ContactCardRow }
+      | { op: "update"; next: ContactCardRow }
+      | {
+          op: "destroy";
+          prevRow: { id: string; address_book_id: string; uid: string; card_json: string };
+        }
+    >,
+  ): Promise<D1PreparedStatement[]> {
+    const policies = await this.nonOpenBookPolicies(accountId);
+    if (policies.size === 0) return [];
+
+    const now = Date.now();
+    const authorized =
+      typeof writer.authorization?.proposalId === "string" &&
+      writer.authorization.proposalId.length > 0;
+    const stmts: D1PreparedStatement[] = [];
+
+    // One `uid → old card` read for the update ops (the delta needs it).
+    const updateIds = changes.flatMap((c) => (c.op === "update" ? [c.next.id] : []));
+    const prevById = new Map<string, ContactCardRow>();
+    if (updateIds.length > 0) {
+      for (const prev of await this.getContactCards(accountId, updateIds)) {
+        prevById.set(prev.id, prev);
+      }
+    }
+
+    // Policy 'propose'/'governed': humans write through (devPlan decision 4);
+    // agents are refused unless the write carries a proposal id. The store
+    // cannot know WHICH binding a book governs, so the self-write rule (the
+    // governed agent never writes its own book, authorization or not) is
+    // enforced in services/agent where binding identity is known.
+    const enforce = (bookId: string): void => {
+      const policy = policies.get(bookId);
+      if (!policy) return;
+      if (writer.kind === "agent" && !authorized) throw refusedDirectWrite(policy, bookId);
+    };
+
+    const emit = (
+      bookId: string,
+      event: "added" | "removed",
+      addresses: Iterable<string>,
+      card: { id: string; uid: string },
+    ): void => {
+      for (const address of addresses) {
+        stmts.push(
+          this.db
+            .prepare(
+              `INSERT INTO book_membership_log
+                 (account_id, book_id, event, address, card_id, uid, actor, via_proposal_id, at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .bind(
+              accountId,
+              bookId,
+              event,
+              address,
+              card.id,
+              card.uid,
+              writer.principal,
+              writer.authorization?.proposalId ?? null,
+              now,
+            ),
+        );
+      }
+    };
+
+    for (const change of changes) {
+      const prev =
+        change.op === "update"
+          ? (prevById.get(change.next.id) ?? null)
+          : change.op === "destroy"
+            ? {
+                id: change.prevRow.id,
+                addressBookId: change.prevRow.address_book_id,
+                uid: change.prevRow.uid,
+                card: JSON.parse(change.prevRow.card_json) as JSContactCard,
+              }
+            : null;
+      const next = change.op === "destroy" ? null : change.next;
+      const uid = (next ?? prev)!.uid;
+      const cardRef = { id: (next ?? prev)!.id, uid };
+
+      // -- enforcement over every touched non-open book --
+      if (next) enforce(next.addressBookId);
+      if (prev && prev.addressBookId !== next?.addressBookId) enforce(prev.addressBookId);
+      const referencing = await this.referencingGroups(accountId, uid, policies, cardRef.id);
+      for (const g of referencing) enforce(g.bookId);
+
+      // -- nested groups are refused into a governed book: adding one member
+      //    to a nested group would widen an agent without touching its list --
+      if (next && policies.get(next.addressBookId) === "governed" && next.card.kind === "group") {
+        const memberUids = cardMemberUids(next.card);
+        if (memberUids.length > 0) {
+          const members = await this.cardsByUids(accountId, memberUids);
+          for (const memberUid of memberUids) {
+            if (members.get(memberUid)?.kind === "group") {
+              throw refusedNestedGroup(next.addressBookId, memberUid);
+            }
+          }
+        }
+      }
+
+      // -- chain rows: the card's own contribution to its book(s) --
+      const prevContribution = prev ? await this.contributionOf(accountId, prev.card) : new Set<string>();
+      const nextContribution = next ? await this.contributionOf(accountId, next.card) : new Set<string>();
+      const prevBook = prev && policies.has(prev.addressBookId) ? prev.addressBookId : null;
+      const nextBook = next && policies.has(next.addressBookId) ? next.addressBookId : null;
+      if (prevBook !== null && prevBook === nextBook) {
+        const delta = contributionDelta(prevContribution, nextContribution);
+        emit(prevBook, "added", delta.added, cardRef);
+        emit(prevBook, "removed", delta.removed, cardRef);
+      } else {
+        if (prevBook !== null) emit(prevBook, "removed", prevContribution, cardRef);
+        if (nextBook !== null) emit(nextBook, "added", nextContribution, cardRef);
+      }
+
+      // -- chain rows: groups in non-open books referencing this uid — their
+      //    contribution shifts by exactly this card's change --
+      for (const g of referencing) {
+        const before = await this.contributionOf(accountId, g.card, {
+          uid,
+          card: prev?.card ?? null,
+        });
+        const after = await this.contributionOf(accountId, g.card, {
+          uid,
+          card: next?.card ?? null,
+        });
+        const delta = contributionDelta(before, after);
+        emit(g.bookId, "added", delta.added, cardRef);
+        emit(g.bookId, "removed", delta.removed, cardRef);
+      }
+    }
+    return stmts;
+  }
+
+  /** Group cards in non-open books whose `members` reference `uid`. */
+  private async referencingGroups(
+    accountId: string,
+    uid: string,
+    policies: Map<string, Exclude<BookWritePolicy, "open">>,
+    excludeCardId: string,
+  ): Promise<Array<{ bookId: string; card: JSContactCard }>> {
+    const marks = [...policies.keys()].map(() => "?").join(",");
+    const { results } = await this.db
+      .prepare(
+        // `c` alias: jsonMapExists (the ContactCard/query hasMember helper)
+        // hardcodes it.
+        `SELECT c.id, c.address_book_id, c.card_json FROM contact_cards c
+         WHERE c.account_id = ? AND c.address_book_id IN (${marks})
+           AND ${jsonMapExists("$.members", "je.key = ?")}`,
+      )
+      .bind(accountId, ...policies.keys(), uid)
+      .all<{ id: string; address_book_id: string; card_json: string }>();
+    return results
+      .filter((r) => r.id !== excludeCardId)
+      .map((r) => ({
+        bookId: r.address_book_id,
+        card: JSON.parse(r.card_json) as JSContactCard,
+      }));
+  }
+
+  /** uid → card for a set of uids (member resolution, chunked). */
+  private async cardsByUids(accountId: string, uids: string[]): Promise<Map<string, JSContactCard>> {
+    const out = new Map<string, JSContactCard>();
+    for (const chunk of chunked([...new Set(uids)])) {
+      const marks = chunk.map(() => "?").join(",");
+      const { results } = await this.db
+        .prepare(
+          `SELECT uid, card_json FROM contact_cards WHERE account_id = ? AND uid IN (${marks})`,
+        )
+        .bind(accountId, ...chunk)
+        .all<{ uid: string; card_json: string }>();
+      for (const r of results) out.set(r.uid, JSON.parse(r.card_json) as JSContactCard);
+    }
+    return out;
+  }
+
+  /**
+   * The addresses `card` contributes to a book: its own emails plus, for a
+   * group, one level of member expansion. `override` substitutes one member's
+   * card (or its absence) so a referencing group's before/after contribution
+   * can be computed around a member write without re-reading the world.
+   */
+  private async contributionOf(
+    accountId: string,
+    card: JSContactCard,
+    override?: { uid: string; card: JSContactCard | null },
+  ): Promise<Set<string>> {
+    const memberUids = cardMemberUids(card);
+    const resolved =
+      memberUids.length > 0 ? await this.cardsByUids(accountId, memberUids) : new Map<string, JSContactCard>();
+    if (override) {
+      if (override.card === null) resolved.delete(override.uid);
+      else resolved.set(override.uid, override.card);
+    }
+    return cardContribution(card, (uid) => resolved.get(uid) ?? null);
+  }
+
+  /**
+   * A book's effective membership — the outbound allowlist the send gate and
+   * the fold-reconciliation invariant both read. Cards' own emails plus one
+   * level of group-member expansion (resolved account-wide by uid; a nested
+   * group contributes nothing — fail-closed). Normalized lowercase; matching
+   * against it must be EXACT equality, never LIKE.
+   */
+  async bookMembership(accountId: string, bookId: string): Promise<Set<string>> {
+    const { results } = await this.db
+      .prepare(`SELECT card_json FROM contact_cards WHERE account_id = ? AND address_book_id = ?`)
+      .bind(accountId, bookId)
+      .all<{ card_json: string }>();
+    const members = new Set<string>();
+    const memberUids: string[] = [];
+    const groups: JSContactCard[] = [];
+    for (const r of results) {
+      const card = JSON.parse(r.card_json) as JSContactCard;
+      for (const a of cardOwnEmails(card)) members.add(a);
+      const uids = cardMemberUids(card);
+      if (uids.length > 0) {
+        groups.push(card);
+        memberUids.push(...uids);
+      }
+    }
+    if (groups.length > 0) {
+      const resolved = await this.cardsByUids(accountId, memberUids);
+      for (const g of groups) {
+        for (const a of cardContribution(g, (uid) => resolved.get(uid) ?? null)) members.add(a);
+      }
+    }
+    return members;
+  }
+
+  /** The membership chain of one book, oldest first (reconciliation input). */
+  async bookMembershipLog(
+    accountId: string,
+    bookId: string,
+  ): Promise<
+    Array<{
+      id: number;
+      event: "added" | "removed";
+      address: string;
+      cardId: string | null;
+      uid: string | null;
+      actor: string | null;
+      viaProposalId: string | null;
+      at: number;
+    }>
+  > {
+    const { results } = await this.db
+      .prepare(
+        `SELECT id, event, address, card_id, uid, actor, via_proposal_id, at
+         FROM book_membership_log WHERE account_id = ? AND book_id = ? ORDER BY id`,
+      )
+      .bind(accountId, bookId)
+      .all<{
+        id: number;
+        event: string;
+        address: string;
+        card_id: string | null;
+        uid: string | null;
+        actor: string | null;
+        via_proposal_id: string | null;
+        at: number;
+      }>();
+    return results.map((r) => ({
+      id: r.id,
+      event: r.event as "added" | "removed",
+      address: r.address,
+      cardId: r.card_id,
+      uid: r.uid,
+      actor: r.actor,
+      viaProposalId: r.via_proposal_id,
+      at: r.at,
+    }));
   }
 
   /** resource names for destroyed card ids (sync-collection 404s). */
