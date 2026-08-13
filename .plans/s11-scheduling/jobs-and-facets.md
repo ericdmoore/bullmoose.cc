@@ -107,7 +107,72 @@ This also kills the last front matter Eric objected to: the daemon no longer dec
 agents it serves; the grants *are* the declaration, made by the accountable party (each
 agent's owner), revocable per-agent, and visible in the console like every other grant.
 
-## 5. Names (proposed)
+## 5. Second-pass resolutions (2026-08-13, cont.)
+
+**The WHERE-clause formulation is blessed — with one security note.** Eric's framing:
+claimants see the invocation table through a WHERE clause and sort by their own strengths.
+Exactly right, with the enforcement point pinned: **the server derives the WHERE from
+facets + the claimant's grants/capabilities; the claimant may narrow it further
+(preference, ORDER BY), never widen it.** Eligibility is enforced in the guarded UPDATE
+server-side — a hostile claimant that self-filters generously still cannot claim outside
+its set. Preference is client-side; eligibility is not.
+
+**Effort/budget facets are derived, never asked.** Nobody hand-writes `effort_hint` per
+message. Sources, in precedence order: (1) mechanical derivation at enqueue — message
+length, attachment MIME types, kind; (2) history — median cost of this kind/binding (T2's
+estimate, already specced); (3) the binding's standing defaults. Humans only *correct*,
+exceptionally, the same way due_at is inferred-surfaced-correctable. If a facet requires
+routine human data entry, it is designed wrong.
+
+**Capabilities are also derived.** "Message is LONG" → context-length requirement;
+"attachment is an image" → vision requirement. Computed at ingest from the work itself, no
+model call needed.
+
+**The verification ladder** (facets.verify → appended verifier nodes, cost rising with
+level; the default level should follow the *tier* of the proposed action):
+
+| level | check | cost |
+|---|---|---|
+| **L0 mechanical** | output parses against the contract (JSON schema — the forced `submit_result` already does this) | free, harness-level, exists |
+| **L1 evidence** | output must cite sources; a cheap verifier node confirms the citations resolve and the quoted text appears in them | cheap node |
+| **L2 second opinion** | independent verifier node, *different* provider/model, refute-framed prompt | real node |
+| **L3 human** | the `/approvals` tier gate — already the ultimate verifier | human attention |
+
+**Attenuation is monotonic down the tree.** Eric's rule, promoted to invariant: a
+sub-task's tools, credentials, and budget are always a **subset of its parent's**.
+Delegation attenuates, never amplifies — the object-capability discipline, applied to
+decomposition. Combined with §3's "decomposition cannot mint authority," the tree is safe
+at every depth by construction: the Job's ceiling is the binding, and every level below
+only lowers it.
+
+**Vocabulary settled:** Job → **tasks** → **sub-tasks** (level 3+ are all just
+"sub-task"). Two distinct relations, both needed, never conflated:
+- `parent_id` — context + authority inheritance (the attenuation chain);
+- `needs: [...]` — execution ordering (usually siblings). A task's *parent* gives it its
+  ceiling and its context; its *needs* give it its start time.
+Plus `job_id` denormalized onto every row for cheap whole-Job queries.
+
+**No new queues — states and views over ONE table.** The direct answer to
+"pending_task_queue vs pending_job_queue vs Inprogress_job_queue": none of them exist as
+tables. There is one physical queue (`agent_invocations`, extended); every "queue" is a
+WHERE clause — the same §1 insight applied to storage:
+
+- *pending task queue* = `status='pending' AND needs satisfied` — claimability is
+  **computed in the claim query** (a NOT EXISTS over unmet needs), not stored. A stored
+  `blocked` flag is derived state that can drift; the membership-chain lesson
+  (fold-vs-book) applies verbatim: never store what you can derive, or you own a
+  reconciliation problem forever.
+- *in-progress job queue* = a **view**: Job status is derived from its tasks (all pending
+  → pending; any done/running → in progress; all done → done; failure among blockers →
+  stalled). The Looking-Ahead / approvals surfaces render Jobs with progress from the same
+  rows.
+- The Job row itself stores only what cannot be derived: the aggregate budget, the caps,
+  the originating binding, the facets.
+
+At bullmoose scale the derived-state queries are noise; if a hot path ever hurts,
+materialize *then*, with the reconcile test that materialization owes.
+
+## 6. Names (proposed)
 
 | concept | name | why |
 |---|---|---|
@@ -117,7 +182,7 @@ agent's owner), revocable per-agent, and visible in the console like every other
 | a Job's decomposition step | **planner node** | its output is DAG, not prose |
 | the homelab process | **fleet host** | it hosts claims for a fleet of bindings it does not own |
 
-## 6. What stays sacred, whatever the scheduler becomes
+## 7. What stays sacred, whatever the scheduler becomes
 
 1. **Pull, never push** — the platform never calls a runtime; gating happens at claim.
 2. **Authority rides the binding** — no facet, plan, runtime or backend choice can widen
