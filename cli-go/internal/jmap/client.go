@@ -40,6 +40,17 @@ const (
 // AgentUsing is the capability list every ActionProposal/* call sends.
 var AgentUsing = []string{CoreCap, AgentCap}
 
+// Mail capability URNs — packages/jmap-core/src/capabilities.ts:4,5.
+const (
+	MailCap       = "urn:ietf:params:jmap:mail"
+	SubmissionCap = "urn:ietf:params:jmap:submission"
+)
+
+// MailUsing is the capability list packages/cli/src/jmap.ts:60 sends on every
+// call — Email/*, Mailbox/* and the submission methods share one `using`, so the
+// sync engine (internal/mirror) speaks the same request the Node CLI does.
+var MailUsing = []string{CoreCap, MailCap, SubmissionCap}
+
 // Invocation is one method call to SEND — the RFC 8620 §3.2 triple
 // [name, args, callId]. It marshals to that JSON array.
 type Invocation struct {
