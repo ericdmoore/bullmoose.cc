@@ -662,10 +662,19 @@ CREATE TABLE IF NOT EXISTS deny_counters (
 -- and writes no chain row — counters only). actor carries the rescuing
 -- principal; via_message_id cites the authenticated directive (s10 decision-5
 -- pattern) when a conversation drove the event.
+--
+-- Events (s12 wave 2-C widened the vocabulary):
+--   'shunted'   a rejection stage held the message ('llm:spam' when the
+--               mid-band classifier confirmed a screened message)
+--   'screened'  the Bayes MID-BAND held the message pending the classifier —
+--               deliberately distinct from 'shunted': nothing has judged it
+--               spam yet, the cascade is asking for the model's opinion
+--   'rescued'   a HUMAN pulled it out (the correction that always wins)
+--   'released'  the MACHINE let it through (classifier notSpam/unsure)
 CREATE TABLE IF NOT EXISTS quarantine_events (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   account_id     TEXT NOT NULL,
-  event          TEXT NOT NULL,             -- 'shunted' | 'rescued' | 'released'
+  event          TEXT NOT NULL,             -- 'shunted' | 'screened' | 'rescued' | 'released'
   sender         TEXT NOT NULL,             -- normalized envelope sender
   domain         TEXT NOT NULL,             -- normalized sender domain
   stage          TEXT NOT NULL,             -- the firing stage (see above)
@@ -680,6 +689,42 @@ CREATE INDEX IF NOT EXISTS quarantine_events_account
 -- query the chain exists to answer, so it gets its own index.
 CREATE INDEX IF NOT EXISTS quarantine_events_sender
   ON quarantine_events (account_id, sender, id);
+
+-- ============================================================================
+-- s12 wave 2-C — the machine side's per-account state (.plans/s12-boundary).
+--
+--   sieve_rules  cascade stage 3's ruleset: ONE JSON document per account —
+--                the serverless-jmap.md §17 "JSON ruleset in D1" start (the
+--                synced-collection / ManageSieve story graduates later).
+--                Validated against the SieveRule shape ON WRITE
+--                (packages/mailstore putSieveRules refuses garbage); reads
+--                fail open — a row that will not parse is NO rules, logged.
+--   bayes_state  cascade stage 4's per-account filter: a JSON BayesState
+--                (@bullmoose/boundary), pruned to VOCAB_CAP on every save.
+--                A corrupt or oversized row loads as NULL and stage 4 skips
+--                (fail open). Trained by quarantine rescues (ham), bouncer@
+--                false-negative reports (spam, wave 2-D), and — only behind
+--                the LLM_LABELS_TRAIN flag — classifier verdicts.
+--
+-- Both are new tables, so a plain schema re-run DOES create them; listed in
+-- infra/migrations.mjs (sieve-rules-table, bayes-state-table) and NOT deploy
+-- blockers — every read of them in the delivery path degrades to "no rules /
+-- no state", which is DefaultCase behavior.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS sieve_rules (
+  account_id TEXT NOT NULL,
+  rules_json TEXT NOT NULL,                  -- JSON array of SieveRule
+  updated_at INTEGER NOT NULL,               -- epoch ms
+  PRIMARY KEY (account_id)
+);
+
+CREATE TABLE IF NOT EXISTS bayes_state (
+  account_id TEXT NOT NULL,
+  state_json TEXT NOT NULL,                  -- JSON BayesState (VOCAB_CAP-pruned)
+  updated_at INTEGER NOT NULL,               -- epoch ms
+  PRIMARY KEY (account_id)
+);
 
 -- JMAP EmailSubmission objects (RFC 8621 §7).
 CREATE TABLE IF NOT EXISTS email_submissions (

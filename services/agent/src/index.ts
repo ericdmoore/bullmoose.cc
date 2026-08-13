@@ -11,6 +11,7 @@ import {
   claimGateSql,
   type ClaimantIdentity,
 } from "@bullmoose/scheduling";
+import { classifyScreened } from "./bouncer.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
@@ -259,6 +260,13 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   }
   if (context.kind === "answer-info-request") {
     return answerInfoRequest(env, job, cfg, context, done);
+  }
+  // s12 2-C: the mid-band classifier (enqueued by ingest's screenDeliver).
+  // Also dispatched by context kind, and before the email-context machinery
+  // below: the screened message may live on a DIFFERENT account than the
+  // bouncer binding's — the context carries its coordinates.
+  if (context.kind === "bouncer-classify") {
+    return classifyScreened(env, job, cfg, context, done);
   }
 
   if (!job.email_id) return done("failed", { note: "no email context" });

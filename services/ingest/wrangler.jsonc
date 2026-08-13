@@ -7,6 +7,11 @@
   // This worker is the Email Routing target ("catch-all → worker") for
   // every hosted zone; the Provisioning worker wires that per domain.
 
+  // s12 graduation sweep (src/graduationSweep.ts) — the same cron +
+  // scheduled() pattern as bullmoose-agent's drain net. Hourly is plenty:
+  // graduation is a cost optimization, not a correctness deadline.
+  "triggers": { "crons": ["17 * * * *"] },
+
   // AccountDO is declared by bullmoose-jmap; bind it cross-script.
   "durable_objects": {
     "bindings": [

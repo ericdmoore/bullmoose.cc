@@ -5,5 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@bullmoose/boundary": "*",
+    "postal-mime": "^2.3.2"
   }
 }
