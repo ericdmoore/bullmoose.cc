@@ -207,6 +207,51 @@ agents means five logins — wrong shape.
 revoked claim grant stops claims for that binding without a restart; the declared
 capability vector excludes the host from unfit work.
 
+### T9 — Budget overrun is a decision, not a dead end · *the stranding hole, closed*
+
+**Files:** `services/agent` (the sweep that detects it), `services/jmap/src/methods/actionProposal.ts`
+(a new proposal kind), `webmail/src/lib/approvals/` + the Go CLI (render it).
+
+**The hole** (found by T3): an invocation with `due_at = NULL`, whose binding is out of monthly
+budget, when no free runtime is live, sits until the month rolls. The overdue backstop cannot
+help — no deadline means it never fires — and the policy gate says "budget exhausted → free
+claimants only" while nobody free is listening. Narrow today (no binding sets `spendPerMonth`),
+reachable the moment a budget exists *and* the homelab runs intermittently.
+
+**The resolution (Eric, 2026-08-13): A + C + D together** — surface it, treat it as an operator
+decision, and make the decision a proposal. Which lands on a line worth stating once and
+reusing:
+
+> **Marker when nothing can be decided; proposal when something can.**
+> T3 chose a durable marker for pinned-overdue *because privacy admits no human override* —
+> there is no question to ask, so a proposal row would duplicate a fact the invocation already
+> holds. Budget is the opposite: *"spend anyway?"* is a real question with a real answer, so it
+> earns the queue. The two mechanisms are not rivals; the distinction is whether a human choice
+> exists.
+
+- **Batch per binding, not per invocation.** One proposal — *"`photos@` is out of budget; 12
+  invocations waiting; approve overage?"* — never 12. A per-invocation proposal would be an
+  alert storm wearing a decision's clothes, and the queue's whole value is that it is short.
+- **The T3 marker becomes the idempotence key.** Mark once → propose once. That is how A and D
+  compose instead of duplicating: the marker is the machine fact, the proposal is the human
+  question, and the marker is what stops the sweep re-asking every hour.
+- **Approve means a bounded overage, not a raised cap** — this binding, this period, capped
+  (an amount or a count). Raising `spendPerMonth` permanently is a *config* edit, and now has
+  a real route (`PATCH /agent-bindings/{id}`). Keeping those separate means one click never
+  silently becomes a standing policy.
+- **`needsInfo` fits perfectly here**: *"how much would finishing the queue cost?"* is exactly
+  the question, and the agent can answer it from the s07 T5 cost facts rather than guessing.
+- **Decline means keep waiting** — it is not a failure and the work is not cancelled.
+- ⚠️ **The taxonomy invariant gains a third exclusion.** A budget decline says nothing about
+  the agent's *work quality* — training on it would teach an agent to stop proposing things
+  the human wanted but could not afford that month. Add it beside `tookItMyself`/`needsInfo`
+  in `decline-taxonomy.md`'s excluded-from-negative-signal rule when the first RL consumer
+  lands.
+
+**Done when:** a budget-stranded binding produces exactly one proposal per period; approving
+releases a bounded overage the claim gate honors; declining leaves the work queued; the marker
+prevents a second ask; no proposal is created when nothing is stranded (DefaultCase).
+
 ---
 
 ## Sequencing
