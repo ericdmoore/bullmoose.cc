@@ -206,12 +206,36 @@ export const MIGRATIONS = [
          decided_at           INTEGER,
          hold_until           INTEGER,
          expires_at           INTEGER,
+         question             TEXT,
+         amendments_json      TEXT,
+         expires_remaining_ms INTEGER,
          PRIMARY KEY (account_id, id)
        )`,
       "CREATE INDEX IF NOT EXISTS agent_proposals_status ON agent_proposals (account_id, status)",
       "CREATE INDEX IF NOT EXISTS agent_proposals_expires ON agent_proposals (account_id, expires_at)",
     ],
     absent: [], // an empty database: the table simply is not there
+  },
+
+  {
+    id: "proposal-needsinfo-columns",
+    why: "s10 T3: the needsInfo verb. ActionProposal/set names question/amendments_json/expires_remaining_ms in its info-requested UPDATE and the JOIN projection SELECTs them, so a worker deployed against a shard missing them fails every proposal read — not merely the new verb",
+    blocks: "deploy",
+    needs: ["agent-proposals-table"],
+    // expires_remaining_ms is the last column applied, so it is the honest
+    // sentinel for "did the whole group land" (precedent: invocation-cost-columns).
+    check: hasColumn("agent_proposals", "expires_remaining_ms"),
+    up: [
+      "ALTER TABLE agent_proposals ADD COLUMN question TEXT",
+      "ALTER TABLE agent_proposals ADD COLUMN amendments_json TEXT",
+      "ALTER TABLE agent_proposals ADD COLUMN expires_remaining_ms INTEGER",
+      // Deliberately no backfill: NULL amendments_json reads as "no Q&A rounds"
+      // (the same empty-value degrade the projection applies to evidence_json).
+    ],
+    absent: [
+      // The pre-s10 table: enough for the ALTERs to run, nothing more.
+      "CREATE TABLE agent_proposals (id TEXT NOT NULL, account_id TEXT NOT NULL, PRIMARY KEY (account_id, id))",
+    ],
   },
 
   {

@@ -264,6 +264,28 @@ CREATE INDEX IF NOT EXISTS invocations_status
 -- "approved after edit". Cost fields (tokens/cost/provider) are deliberately
 -- absent — they are s07 T5's separate agent_invocations migration.
 --
+-- needsInfo (s10 T3, decline-taxonomy.md): the third verb. A human meets a
+-- pending proposal with a required question instead of a verdict — status
+-- 'pending' → 'info-requested', and the answer round runs as a NEW agent
+-- invocation ('answer-info-request'), after which the row returns to
+-- 'pending'. Three columns carry it, all following the edited_payload_json
+-- discipline (append beside, never overwrite):
+--   question             the human's CURRENT open question; NULL when no
+--                        round is open. The full dialogue is amendments_json.
+--   amendments_json      append-only Q&A rounds: [{question, answer, askedAt,
+--                        answeredAt, askedBy}]. The agent's answer fills the
+--                        LAST unanswered entry — rationale / evidence_json are
+--                        the agent's originals and are never rewritten.
+--   expires_remaining_ms the PAUSED pre-decision clock. needsInfo banks
+--                        `expires_at - now` here and NULLs expires_at (the
+--                        deadline must not lapse while the ball is in the
+--                        agent's court); the answer restores
+--                        `expires_at = now + this` and NULLs it back.
+--                        NULL = not paused (or no deadline existed).
+-- needsInfo is an ACTION, not a reject reason: it never writes decision_json,
+-- so it can never be mistaken for negative feedback (the taxonomy's invariant:
+-- tookItMyself/defer/needsInfo are excluded from the negative signal).
+--
 -- New table, so a plain schema re-run (CREATE TABLE IF NOT EXISTS) DOES create it
 -- on an existing shard; it is still listed in infra/migrations.mjs
 -- (agent-proposals-table) so `bootstrap migrate` accounts for it — precedent:
@@ -280,12 +302,15 @@ CREATE TABLE IF NOT EXISTS agent_proposals (
   edited_payload_json  TEXT,              -- the HUMAN's edit; never overwrites payload_json
   rationale            TEXT NOT NULL,     -- the "why" — always present (invariant §8.3)
   evidence_json        TEXT NOT NULL DEFAULT '[]',  -- [{ realm, objectId, note }]
-  status               TEXT NOT NULL DEFAULT 'pending', -- pending|approved|rejected|held|expired
+  status               TEXT NOT NULL DEFAULT 'pending', -- pending|approved|rejected|held|expired|info-requested
   decision_json        TEXT,             -- { by, reason, note } — the no-thanks signal (§3)
   created_at           INTEGER NOT NULL,  -- epoch ms
   decided_at           INTEGER,
   hold_until           INTEGER,          -- tier-2 POST-approval retraction window
   expires_at           INTEGER,          -- PRE-decision deadline; sweep flips pending→expired
+  question             TEXT,             -- needsInfo: the open question (see header)
+  amendments_json      TEXT,             -- needsInfo: append-only Q&A rounds
+  expires_remaining_ms INTEGER,          -- needsInfo: the banked (paused) expiry window
   PRIMARY KEY (account_id, id)
 );
 CREATE INDEX IF NOT EXISTS agent_proposals_status

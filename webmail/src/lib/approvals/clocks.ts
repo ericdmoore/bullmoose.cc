@@ -128,15 +128,19 @@ export function holdLabel(holdRemainingMs: number | null): string {
  *
  *   1. `pending`, soonest deadline first (no deadline sorts last), then the
  *      longest-waiting — both clocks agree on who goes on top.
- *   2. `held`, soonest-closing retraction window first: still watchable, not
+ *   2. `info-requested` (s10 T3), oldest ask first: waiting on the AGENT, not
+ *      on the human — watchable, not decidable, and its deadline is paused so
+ *      there is no expiry clock to order by.
+ *   3. `held`, soonest-closing retraction window first: still watchable, not
  *      still decidable.
- *   3. history (approved / rejected / expired), newest decision first.
+ *   4. history (approved / rejected / expired), newest decision first.
  *
  * Pure and stable so the island never re-sorts in markup; `clocks.test.ts`
  * owns the tie-breaks.
  */
 export function orderQueue(proposals: readonly ActionProposal[]): ActionProposal[] {
-  const rank = (p: ActionProposal): number => (p.status === "pending" ? 0 : p.status === "held" ? 1 : 2);
+  const rank = (p: ActionProposal): number =>
+    p.status === "pending" ? 0 : p.status === "info-requested" ? 1 : p.status === "held" ? 2 : 3;
   const time = (iso: string | null, absent: number): number => {
     const t = iso !== null ? Date.parse(iso) : NaN;
     return Number.isFinite(t) ? t : absent;
@@ -147,6 +151,10 @@ export function orderQueue(proposals: readonly ActionProposal[]): ActionProposal
     if (a.status === "pending") {
       const byDeadline = time(a.expiresAt, Infinity) - time(b.expiresAt, Infinity);
       if (byDeadline !== 0) return byDeadline;
+      const byAge = time(a.createdAt, 0) - time(b.createdAt, 0);
+      if (byAge !== 0) return byAge;
+    } else if (a.status === "info-requested") {
+      // Oldest ask first — the longest-owed answer surfaces on top.
       const byAge = time(a.createdAt, 0) - time(b.createdAt, 0);
       if (byAge !== 0) return byAge;
     } else if (a.status === "held") {

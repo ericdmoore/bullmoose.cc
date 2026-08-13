@@ -36,7 +36,7 @@ interface SetResult {
   notDestroyed: Record<string, { type: string; description?: string; properties?: string[] }>;
 }
 
-function harness(scopes: string[] = ["mail"]) {
+function harness(scopes: string[] = ["mail"], agent?: { binding: string; invocation?: string }) {
   const w = fakeEnv();
   const registry = new MethodRegistry<RequestContext>();
   registerActionProposalMethods(registry);
@@ -47,6 +47,9 @@ function harness(scopes: string[] = ["mail"]) {
       scopes,
       accounts: [{ accountId: ACCOUNT, tenantId: TENANT, name: "Eric" }],
     },
+    // When set, an agent binding drove this call (the s03 bridge shape) — the
+    // self-approve gate reads it.
+    ...(agent ? { agent } : {}),
   };
   const call = <T = Record<string, unknown>>(method: string, args: Record<string, unknown>) =>
     registry.get(method)!({ accountId: ACCOUNT, ...args }, ctx) as Promise<T>;
@@ -65,6 +68,9 @@ interface SeedSpec {
   evidence?: unknown[];
   expiresAt?: number | null;
   bindingName?: string;
+  question?: string | null;
+  amendments?: unknown[] | null;
+  expiresRemainingMs?: number | null;
 }
 
 /** Seed the invocation (source of truth) + its 1:1 proposal side-row. */
@@ -92,6 +98,9 @@ function seedProposal(w: ReturnType<typeof fakeEnv>, s: SeedSpec): void {
       status: s.status ?? "pending",
       created_at: 1,
       expires_at: s.expiresAt ?? null,
+      question: s.question ?? null,
+      amendments_json: s.amendments ? JSON.stringify(s.amendments) : null,
+      expires_remaining_ms: s.expiresRemainingMs ?? null,
     },
   ]);
 }
@@ -343,6 +352,309 @@ describe("ActionProposal/set has no create", () => {
     seedProposal(h.w, { id: "inv_done", kind: "reply-draft", tier: 2, status: "rejected" });
     const res = await h.set({ update: { inv_done: { status: "approved" } } });
     expect(res.notUpdated.inv_done!.type).toBe("invalidProperties");
+  });
+});
+
+// ---- needsInfo: the third verb (s10 T3) -----------------------------------
+
+describe("needsInfo — status info-requested with a required question", () => {
+  const HOUR = 3600_000;
+
+  it("requires a non-empty human-authored question; nothing changes without one", async () => {
+    const h = harness(["mail"]);
+    seedProposal(h.w, { id: "inv_q", kind: "grant-request", tier: 1 });
+
+    for (const patch of [
+      { status: "info-requested" }, // missing
+      { status: "info-requested", question: "   " }, // whitespace-only
+      { status: "info-requested", question: 42 }, // not a string
+    ]) {
+      const res = await h.set({ update: { inv_q: patch } });
+      expect(res.updated).toEqual({});
+      expect(res.notUpdated.inv_q!.type).toBe("invalidProperties");
+      expect(res.notUpdated.inv_q!.description).toMatch(/non-empty/);
+    }
+
+    // Refused means refused: still pending, no answer invocation enqueued.
+    const prop = h.w.db.query<{ status: string }>(
+      "SELECT status FROM agent_proposals WHERE account_id = ? AND id = ?",
+      ACCOUNT,
+      "inv_q",
+    )[0]!;
+    expect(prop.status).toBe("pending");
+    const invs = h.w.db.query<{ id: string }>(
+      "SELECT id FROM agent_invocations WHERE account_id = ? AND status = 'pending'",
+      ACCOUNT,
+    );
+    expect(invs).toEqual([]);
+  });
+
+  it("pauses the clock, appends the open round, enqueues the answer invocation — and writes NO decision", async () => {
+    const h = harness(["mail"]);
+    const before = Date.now();
+    seedProposal(h.w, {
+      id: "inv_ni",
+      kind: "grant-request",
+      tier: 1,
+      payload: { grantType: "recipient", bookId: "ab_gov", address: "bob@example.com" },
+      expiresAt: before + HOUR,
+    });
+
+    const res = await h.set({
+      update: { "inv_ni": { status: "info-requested", question: "Why Bob, and not the alias you have?" } },
+    });
+    expect(res.notUpdated).toEqual({});
+    expect(res.updated.inv_ni).toBeNull();
+
+    const prop = h.w.db.query<{
+      status: string;
+      question: string;
+      amendments_json: string;
+      decision_json: string | null;
+      expires_at: number | null;
+      expires_remaining_ms: number | null;
+    }>(
+      "SELECT status, question, amendments_json, decision_json, expires_at, expires_remaining_ms FROM agent_proposals WHERE account_id = ? AND id = ?",
+      ACCOUNT,
+      "inv_ni",
+    )[0]!;
+    expect(prop.status).toBe("info-requested");
+    expect(prop.question).toBe("Why Bob, and not the alias you have?");
+
+    // The RL invariant, on the write path: needsInfo is an ACTION, not a
+    // reject — it must never produce a rejection record.
+    expect(prop.decision_json).toBeNull();
+
+    // The PAUSE: the deadline is nulled and the remaining window banked, so
+    // expiresAt cannot advance toward expiry while the ball is in the agent's
+    // court (the sweep only flips rows with a live expires_at).
+    expect(prop.expires_at).toBeNull();
+    expect(prop.expires_remaining_ms).toBeGreaterThan(HOUR - 5_000);
+    expect(prop.expires_remaining_ms).toBeLessThanOrEqual(HOUR);
+
+    // The open round APPENDED — asker + timestamps recorded, answer owed.
+    const amendments = JSON.parse(prop.amendments_json) as Array<Record<string, unknown>>;
+    expect(amendments).toHaveLength(1);
+    expect(amendments[0]).toMatchObject({
+      question: "Why Bob, and not the alias you have?",
+      answer: null,
+      answeredAt: null,
+      askedBy: "eric@login.example",
+    });
+    expect(typeof amendments[0]!.askedAt).toBe("string");
+
+    // The answer round is a NEW pending invocation for the proposal's binding.
+    const inv = h.w.db.query<{ id: string; binding_id: string; binding_name: string; context_json: string }>(
+      "SELECT id, binding_id, binding_name, context_json FROM agent_invocations WHERE account_id = ? AND status = 'pending'",
+      ACCOUNT,
+    )[0]!;
+    expect(inv.binding_id).toBe("bind_x");
+    expect(inv.binding_name).toBe("emily");
+    expect(JSON.parse(inv.context_json)).toEqual({
+      kind: "answer-info-request",
+      proposalId: "inv_ni",
+      question: "Why Bob, and not the alias you have?",
+    });
+
+    // CHOREOGRAPHY: both transitions reached the changelog.
+    const propChanges = await h.w.accountDo.changes(ACCOUNT, "ActionProposal", "0");
+    expect(propChanges.updated).toContain("inv_ni");
+    const invChanges = await h.w.accountDo.changes(ACCOUNT, "AgentInvocation", "0");
+    expect(invChanges.created).toContain(inv.id);
+  });
+
+  it("is valid from pending ONLY — an open round cannot be re-asked, history cannot be questioned", async () => {
+    const h = harness(["mail"]);
+    seedProposal(h.w, { id: "inv_open", kind: "reply-draft", tier: 2, status: "info-requested" });
+    seedProposal(h.w, { id: "inv_dead", kind: "reply-draft", tier: 2, status: "rejected" });
+
+    for (const id of ["inv_open", "inv_dead"]) {
+      const res = await h.set({ update: { [id]: { status: "info-requested", question: "why?" } } });
+      expect(res.notUpdated[id]!.type).toBe("invalidProperties");
+      expect(res.notUpdated[id]!.description).toMatch(/not pending/);
+    }
+  });
+
+  it("carries ONLY the question — a decision or editedPayload on the verb is refused", async () => {
+    const h = harness(["mail"]);
+    seedProposal(h.w, { id: "inv_extra", kind: "reply-draft", tier: 2 });
+    const res = await h.set({
+      update: {
+        inv_extra: { status: "info-requested", question: "why?", decision: { note: "sneaky" } },
+      },
+    });
+    expect(res.notUpdated.inv_extra!.type).toBe("invalidProperties");
+    expect(res.notUpdated.inv_extra!.description).toMatch(/not a reject/);
+  });
+
+  it("never lands in rejection records: needsInfo is not a decision.reason", async () => {
+    // The enum guard is where the taxonomy's invariant bites on the write
+    // path: a pipeline reading decision_json can never find a needsInfo
+    // "rejection", because the server refuses to record one.
+    const h = harness(["mail"]);
+    seedProposal(h.w, { id: "inv_taxo", kind: "reply-draft", tier: 2 });
+    const res = await h.set({
+      update: { inv_taxo: { status: "rejected", decision: { reason: "needsInfo" } } },
+    });
+    expect(res.notUpdated.inv_taxo!.type).toBe("invalidProperties");
+    expect(res.notUpdated.inv_taxo!.description).toMatch(/wrongContent \| wrongAction \| notNow/);
+    expect(
+      h.w.db.query<{ status: string; decision_json: string | null }>(
+        "SELECT status, decision_json FROM agent_proposals WHERE account_id = ? AND id = ?",
+        ACCOUNT,
+        "inv_taxo",
+      )[0]!,
+    ).toEqual({ status: "pending", decision_json: null });
+  });
+});
+
+// ---- grant-request: widening-by-proposal (s10 T3) --------------------------
+
+describe("approving a recipient grant-request APPLIES the contact write", () => {
+  const widening = (id = "inv_w") => ({
+    id,
+    kind: "grant-request",
+    tier: 1,
+    payload: {
+      grantType: "recipient",
+      bookId: "ab_gov",
+      address: "bob@example.com",
+      name: "Bob Vendor",
+    },
+    subject: { realm: "AddressBook", objectId: "ab_gov" },
+  });
+
+  const seedBook = (w: ReturnType<typeof fakeEnv>) =>
+    w.db.seed("address_books", [
+      { id: "ab_gov", account_id: ACCOUNT, name: "emily allowlist", ctag: 0, created_at: 1, updated_at: 1 },
+    ]);
+
+  it("a HUMAN approve inserts the contact into the target book with the proposal as its why", async () => {
+    const h = harness(["mail"]);
+    seedBook(h.w);
+    seedProposal(h.w, widening());
+
+    const res = await h.set({ update: { inv_w: { status: "approved" } } });
+    expect(res.notUpdated).toEqual({});
+    expect(res.updated.inv_w).toBeNull();
+
+    const card = h.w.db.query<{
+      id: string;
+      address_book_id: string;
+      card_json: string;
+      name_full: string;
+      last_writer_principal: string;
+      last_writer_binding: string;
+      last_writer_invocation: string;
+    }>(
+      "SELECT id, address_book_id, card_json, name_full, last_writer_principal, last_writer_binding, last_writer_invocation FROM contact_cards WHERE account_id = ?",
+      ACCOUNT,
+    )[0]!;
+    expect(card.address_book_id).toBe("ab_gov");
+    expect(card.name_full).toBe("Bob Vendor");
+    expect(JSON.parse(card.card_json).emails.primary.address).toBe("bob@example.com");
+    // Provenance: the human approved (principal), the agent's proposal drove
+    // it (binding + invocation == the proposal id) — the T2 chain's why.
+    expect(card.last_writer_principal).toBe("eric@login.example");
+    expect(card.last_writer_binding).toBe("emily");
+    expect(card.last_writer_invocation).toBe("inv_w");
+
+    // The applied write's membership-log row carries the authorizing proposal
+    // (T2's via_proposal_id — the "why" is the proposal itself).
+    const log = h.w.db.query<{ via_proposal_id: string; event: string; address: string }>(
+      "SELECT via_proposal_id, event, address FROM book_membership_log WHERE account_id = ? AND book_id = ?",
+      ACCOUNT,
+      "ab_gov",
+    );
+    expect(log).toHaveLength(1);
+    expect(log[0]!.event).toBe("added");
+    expect(log[0]!.address).toBe("bob@example.com");
+    expect(log[0]!.via_proposal_id).toBe("inv_w");
+
+    // The member change bumped the book's DAV ctag (CardDAV clients poll it).
+    expect(
+      h.w.db.query<{ ctag: number }>(
+        "SELECT ctag FROM address_books WHERE account_id = ? AND id = ?",
+        ACCOUNT,
+        "ab_gov",
+      )[0]!.ctag,
+    ).toBe(1);
+
+    // Tier-1 reversibility: the undo handle is kept, and /changes saw the card.
+    const prop = h.w.db.query<{ status: string; decision_json: string }>(
+      "SELECT status, decision_json FROM agent_proposals WHERE account_id = ? AND id = ?",
+      ACCOUNT,
+      "inv_w",
+    )[0]!;
+    expect(prop.status).toBe("approved");
+    expect(JSON.parse(prop.decision_json).undo).toMatchObject({ action: "destroy-contact", cardId: card.id });
+    const cardChanges = await h.w.accountDo.changes(ACCOUNT, "ContactCard", "0");
+    expect(cardChanges.created).toContain(card.id);
+  });
+
+  it("REFUSES the beneficiary approving its own widening (CJ-cannot-self-approve)", async () => {
+    // The approving call is driven by the SAME binding the proposal belongs
+    // to — the agent would be widening its own reach. Refused.
+    const h = harness(["mail"], { binding: "emily" });
+    seedBook(h.w);
+    seedProposal(h.w, widening("inv_self"));
+
+    const res = await h.set({ update: { inv_self: { status: "approved" } } });
+    expect(res.updated).toEqual({});
+    expect(res.notUpdated.inv_self!.type).toBe("forbidden");
+    expect(res.notUpdated.inv_self!.description).toMatch(/own widening/);
+
+    // Refused means refused: no contact, still pending.
+    expect(h.w.db.query("SELECT id FROM contact_cards WHERE account_id = ?", ACCOUNT)).toEqual([]);
+    expect(
+      h.w.db.query<{ status: string }>(
+        "SELECT status FROM agent_proposals WHERE account_id = ? AND id = ?",
+        ACCOUNT,
+        "inv_self",
+      )[0]!.status,
+    ).toBe("pending");
+  });
+
+  it("permits a DIFFERENT binding as approver — CJ approving photos@'s ask, recorded as CJ", async () => {
+    const h = harness(["mail"], { binding: "cj" });
+    seedBook(h.w);
+    seedProposal(h.w, widening("inv_cj"));
+
+    const res = await h.set({ update: { inv_cj: { status: "approved" } } });
+    expect(res.notUpdated).toEqual({});
+    expect(
+      h.w.db.query<{ id: string }>("SELECT id FROM contact_cards WHERE account_id = ?", ACCOUNT),
+    ).toHaveLength(1);
+  });
+
+  it("refuses a widening into a book this account does not have", async () => {
+    const h = harness(["mail"]);
+    // No address_books seeded at all.
+    seedProposal(h.w, widening("inv_nobook"));
+    const res = await h.set({ update: { inv_nobook: { status: "approved" } } });
+    expect(res.notUpdated.inv_nobook!.type).toBe("invalidProperties");
+    expect(res.notUpdated.inv_nobook!.description).toMatch(/not found/);
+  });
+
+  it("keeps the original contract for scope-style grant-requests: decision recorded, NO local write", async () => {
+    const h = harness(["mail"]);
+    seedProposal(h.w, {
+      id: "inv_scope",
+      kind: "grant-request",
+      tier: 1,
+      payload: { scope: "read", realm: "files", target: "Events/2026", durationDays: 30 },
+    });
+    const res = await h.set({ update: { inv_scope: { status: "approved" } } });
+    expect(res.updated.inv_scope).toBeNull();
+    // Provision mints (s04); nothing was written locally.
+    expect(h.w.db.query("SELECT id FROM contact_cards WHERE account_id = ?", ACCOUNT)).toEqual([]);
+    expect(
+      h.w.db.query<{ status: string }>(
+        "SELECT status FROM agent_proposals WHERE account_id = ? AND id = ?",
+        ACCOUNT,
+        "inv_scope",
+      )[0]!.status,
+    ).toBe("approved");
   });
 });
 
