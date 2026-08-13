@@ -34,6 +34,7 @@ function proposal(partial: Partial<ActionProposal> & Pick<ActionProposal, "id">)
     decidedAt: null,
     holdUntil: null,
     expiresAt: null,
+    dueAt: null,
     question: null,
     amendments: [],
     invocationStatus: "done",

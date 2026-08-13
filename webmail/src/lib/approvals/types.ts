@@ -9,13 +9,18 @@
 // does not serve — the s03.E lesson was two complete screens against data that
 // was not reachable.
 //
-// ⚠️ Two timestamps here are DIFFERENT CLOCKS and must never be conflated
-// (s07 devPlan §T0, actionProposal.ts:55-61):
+// ⚠️ THREE timestamps here are DIFFERENT CLOCKS and must never be conflated
+// (s07 devPlan §T0, actionProposal.ts:55-61; s11 T1 adds the third):
 //   expiresAt   the PRE-decision deadline — how long the human has to decide.
 //               The agent worker's sweep flips `pending`→`expired` past it
 //               (services/agent/src/proposals.ts:148-181).
 //   holdUntil   the tier-2 POST-approval retraction window — how long an
 //               approved action can still be pulled back before it commits.
+//   dueAt       the WORK's own business deadline ("review this by Friday") —
+//               inferred at the boundary, projected from the invocation, and
+//               the field the s11 scheduler reads. Null = never-urgent. It is
+//               a proposal the human can CORRECT (api.ts `correctDueAt`),
+//               never a hidden field.
 // The arithmetic that keeps them apart lives in `clocks.ts`, with tests.
 
 /** `pending` is the queue; `info-requested` is waiting on the AGENT to answer a
@@ -111,6 +116,8 @@ export interface ActionProposal {
   holdUntil: string | null;
   /** NULL while a needsInfo round is open — the clock is paused server-side. */
   expiresAt: string | null;
+  /** s11 T1 — the WORK's deadline (the third clock). Null = never-urgent. */
+  dueAt: string | null;
   /** needsInfo (s10 T3): the human's OPEN question; null when no round is open. */
   question: string | null;
   /** The append-only Q&A dialogue — every needsInfo round, answered or open. */
@@ -151,6 +158,7 @@ export function parseProposal(raw: Record<string, unknown>): ActionProposal | nu
     decidedAt: str(raw.decidedAt),
     holdUntil: str(raw.holdUntil),
     expiresAt: str(raw.expiresAt),
+    dueAt: str(raw.dueAt),
     question: str(raw.question),
     amendments: Array.isArray(raw.amendments)
       ? raw.amendments.filter(

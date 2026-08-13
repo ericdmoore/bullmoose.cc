@@ -9,6 +9,13 @@ import {
   type AttachmentMeta,
   type EmailAddress,
 } from "@bullmoose/mailstore";
+import { extractDueAt } from "./dueDate";
+import {
+  composePrivacy,
+  mechanicalRequires,
+  privacyFloorOf,
+  stampInvocationFacets,
+} from "./facets";
 
 /**
  * Ingest — the Email Routing target for every hosted domain.
@@ -232,6 +239,7 @@ async function deliver(
   }
 
   const emailId = `e_${crypto.randomUUID()}`;
+  const bodyText = bodyTextOf(parsed);
   await store.insertEmail(route.accountId, {
     id: emailId,
     blobId,
@@ -247,7 +255,7 @@ async function deliver(
     // The full body, for the FTS index only — never stored as a column
     // (the bytes are in R2). This is the step that makes message bodies
     // searchable server-side at all; see common/004.
-    bodyText: bodyTextOf(parsed),
+    bodyText,
     size: raw.byteLength,
     receivedAt: Date.now(),
     hasAttachment: attachments.some((a) => a.disposition !== "inline"),
@@ -259,11 +267,21 @@ async function deliver(
   // Agent bindings: create invocations for mailbox-delivery triggers.
   // The changelog push is what wakes `bullmoose agent serve`.
   const bindings = await env.DB.prepare(
-    `SELECT id, name, sla_seconds FROM agent_bindings
+    `SELECT id, name, sla_seconds, config_json FROM agent_bindings
      WHERE account_id = ? AND enabled = 1 AND trigger_on = 'mailbox-delivery'`,
   )
     .bind(route.accountId)
-    .all<{ id: string; name: string; sla_seconds: number | null }>();
+    .all<{ id: string; name: string; sla_seconds: number | null; config_json: string }>();
+
+  // s11 T1/T6 — the mechanical facets, computed ONCE per message (no model,
+  // no judgment; the judged facets are s12's bouncer@): the deterministic
+  // due-date proposal and the derived capability requirements. Per-binding
+  // privacy composes below, because the floor is binding config.
+  const dueAt = extractDueAt({ subject: parsed.subject ?? "", text: bodyText, now: Date.now() });
+  const requires = mechanicalRequires({
+    bodyTextChars: bodyText.length,
+    attachmentTypes: attachments.map((a) => a.type),
+  });
 
   const invocationIds: string[] = [];
   for (const binding of bindings.results) {
@@ -285,6 +303,14 @@ async function deliver(
         Date.now(),
       )
       .run();
+    // The stamp rides AFTER the unchanged INSERT (see stampInvocationFacets
+    // for why): ingest stamps no privacy of its own — the stamp is NULL — so
+    // the composed class is exactly the binding's floor, or NULL (DefaultCase).
+    await stampInvocationFacets(env.DB, route.accountId, invId, {
+      dueAt,
+      privacy: composePrivacy(null, [privacyFloorOf(binding.config_json)]),
+      requires,
+    });
     invocationIds.push(invId);
   }
 

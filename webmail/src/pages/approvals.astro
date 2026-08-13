@@ -91,6 +91,17 @@ import App from "../layouts/App.astro";
   .apq-expiry { color: var(--fg-muted); }
   .apq-expiry-near { color: var(--error); font-weight: 600; }
   .apq-hold { color: var(--warn); }
+  /* The third clock (s11 T1): the WORK's deadline, with its correction. */
+  .apq-due { color: var(--fg-muted); }
+  .apq-due-correct {
+    font-size: 11px;
+    padding: 0 6px;
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    color: var(--fg-muted);
+    cursor: pointer;
+  }
 
   .apq-fine { font-size: 11.5px; color: var(--fg-muted); margin: 4px 0; }
   .apq-warn { color: var(--warn); }
