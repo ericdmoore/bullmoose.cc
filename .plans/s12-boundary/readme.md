@@ -157,6 +157,55 @@ owner's own words around the forward) may carry instructions; the forwarded mess
 injection pin applied to bouncer's directive parsing, and it is load-bearing, not
 hygiene: bouncer is the one agent whose job description is reading hostile mail.
 
+## "Junk" is a decision with no owner (2026-08-13, Eric)
+
+> *"The JUNK folder seems like a design flaw now — a folder that MAYBE you need to
+> manage."*
+
+That is the tell: **anything that is *maybe* your job is actually nobody's job.** A Junk
+folder has no completion state, no signal when it needs attention, and accrues obligation
+at a constant rate whether or not it holds anything. It is a pile of unresolved decisions
+wearing storage's clothes — the Drive-shaped answer, in the one place this section was
+supposed to be most decision-first. And wave 1 shipped a **second** one: `Quarantine`
+alongside `Junk`, two piles where there should be zero.
+
+### The fix has two halves, and the rename is the smaller one
+
+**1. The mid-band produces a PROPOSAL, not a hold.** Apply s11 T9's line — *marker when
+nothing can be decided, proposal when something can*:
+
+| bouncer's confidence | wave 1 | corrected |
+|---|---|---|
+| confident spam | quarantine mailbox | **gone** — 5xx at the edge, a counter, no human ever involved |
+| **mid-band (uncertain)** | quarantine mailbox | **a proposal** — "3 I'm unsure about", with a deadline, answerable with `needsInfo`, and *clearable* |
+| confident ham | Inbox | Inbox |
+
+The mid-band is *definitionally* the case bouncer cannot decide, which is precisely what
+`/approvals` exists for. Retrieval likewise stops being browsing: conversation 2 already
+lets a human **ask the doorman** ("did anything from H get shunted?") rather than dig
+through his bin. The held mail becomes bouncer's *working state*, not a human destination —
+it should not render as a mailbox in our surfaces at all.
+
+**2. One mailbox, registered role, honest name.** Wave 1 invented `role: 'quarantine'`,
+which is **not in the IANA JMAP role registry** (`inbox|archive|drafts|junk|sent|trash|
+flagged|important`) — a standards-native client renders it as an ordinary folder with no
+spam handling, no "Mark as Junk" integration. That is a client-compat cost taken by
+accident. Correct shape:
+
+> **`role: "junk"`** (registered — Apple Mail, himalaya and every RFC 8621 client behave
+> correctly) **with the display name `"Quarantined"`.**
+
+The past participle is load-bearing: **"Quarantine" is a room; "Quarantined" is a
+condition.** One names a destination you are expected to visit, the other names a *state
+the mail is in* — the same reason `Sent` and `Drafts` read well. `Junk` survives as a
+**compatibility artifact** for legacy clients (the role, which is not negotiable in a
+standards-native system), while our own surfaces show a decision instead of a pile.
+
+⚠️ **This is free today and costs a migration tomorrow.** There are zero
+`quarantine_events` and zero held messages — nothing has ever been shunted. Today it is a
+schema comment, a role string, and a display name. After the first shunt it is a data
+migration plus a client-visible folder vanishing from under Apple Mail.
+
 ## Relationship to screener@
 
 `motivatingExamples.md` lists _screener@_ (HEY-style first-contact gate) and notes the
