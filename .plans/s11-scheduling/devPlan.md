@@ -1,5 +1,28 @@
 # s11 — the optimistic work scheduler: dev plan
 
+> **Status: wave 1 LANDED** — T1+T6 (PR #91), T8 (PR #90), T2 (PR #93), 2026-08-13.
+> Deltas from the build, authoritative where they refine the text below:
+> - **NULL-due sit-free applies only while a free runtime is live** (a `claimant_free=1`
+>   claim within 15 min — decision 3's absence-inference). The literal "NULL = free-only
+>   indefinitely" would strand every invocation on a homelab-less prod; forcing that
+>   reading fails 13 tests including the DefaultCase drain proof.
+> - **`isFree` is trust-but-audit**: declared on the claim, recorded on the row
+>   (`claimant_free`/`claimant_caps_json`); fit-shaped, not authority-shaped — the score
+>   catches liars. No attestation.
+> - **Escalation window (decision 1) resolved cost-scaled**: clamp(3 × median binding
+>   done-duration, 15 min, 4 h); no history → 1 h. Pure, per-binding.
+> - **due_at extraction is UTC** (no account tz exists in the schema; EOD = 17:00 UTC —
+>   errs earlier, never later). `sender_class`/`effort_prior` are schema-only; their
+>   author is s12 bouncer.
+> - The gate lives in **`@bullmoose/scheduling`**: pure `mayClaim` + a SQL twin, with an
+>   exhaustive agreement test; folded into every claim UPDATE server-side.
+> - ⚠️ **Deploy**: `invocation-due-at`, `invocation-facet-columns`,
+>   `invocation-claimant-columns` are deploy blockers — `migrate` before deploying
+>   jmap/agent. Not yet deployed to prod.
+> - **For T3**: the overdue backstop claims *outside* the policy gate but MUST keep the
+>   pinned term (pinned overdue work sits + alerts, decision 0); the homelab-down alert
+>   signal is `claimant_free=1 AND claimed_at >= now − 15min` per account.
+
 > Ordered build for [`readme.md`](./readme.md): make the invocation queue claim-**smart** —
 > sit for free, escalate near-due, spend paid budget on the next deadline not the first job.
 >
