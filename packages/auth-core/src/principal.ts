@@ -213,6 +213,18 @@ export function principalHasScope(principal: Principal, scope: string): boolean 
   return hasScope(principal.scopes, scope);
 }
 
+/**
+ * Is this an agent-runtime identity? True when the token carries the "agent"
+ * marker scope (see AGENT_MARKER_SCOPE in auth-core). Checked verbatim, not
+ * via hasScope — the marker is metadata, not a capability, and no bundle may
+ * imply it. Used by the contact-write chokepoint's callers (JMAP, CardDAV) to
+ * decide the writer kind; the MCP tool surface and the agent worker's own
+ * writes are agent-driven by construction and do not consult it.
+ */
+export function isAgentPrincipal(principal: Pick<Principal, "scopes">): boolean {
+  return principal.scopes.includes("agent");
+}
+
 /** Method domains for grant coverage: a collection-scoped grant only
  * unlocks its domain's methods; a whole-account grant covers any domain
  * its scopes allow. `files` (FileNode realm, sVOL 011) has no collection-scoped

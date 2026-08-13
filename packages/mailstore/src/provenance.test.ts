@@ -99,6 +99,7 @@ const addressBook = (id: string): AddressBookRow => ({
   ctag: 0,
   createdAt: 1,
   updatedAt: 1,
+  writePolicy: "open",
 });
 
 const card = (id: string, uid = `u_${id}`): ContactCardRow => ({
@@ -111,6 +112,10 @@ const card = (id: string, uid = `u_${id}`): ContactCardRow => ({
   createdAt: 1,
   updatedAt: 1,
 });
+
+/** Chokepoint writer for card writes (s10 T1); provenance still comes from
+ *  the CONSTRUCTOR writer, which is what these tests assert. */
+const HUMAN = { principal: "emily@bullmoose.cc", kind: "human" } as const;
 
 const calendar = (id: string): CalendarRow => ({
   id,
@@ -164,7 +169,7 @@ const INSERTS: Array<{
   { table: "mailboxes", insert: (s, id) => s.insertMailbox(ACCOUNT, mailbox(id)) },
   { table: "emails", insert: (s, id) => s.insertEmail(ACCOUNT, email(id)) },
   { table: "address_books", insert: (s, id) => s.insertAddressBook(ACCOUNT, addressBook(id)) },
-  { table: "contact_cards", insert: (s, id) => s.insertContactCard(ACCOUNT, card(id)) },
+  { table: "contact_cards", insert: (s, id) => s.insertContactCard(ACCOUNT, card(id), HUMAN) },
   { table: "calendars", insert: (s, id) => s.insertCalendar(ACCOUNT, calendar(id)) },
   { table: "calendar_events", insert: (s, id) => s.insertCalendarEvents(ACCOUNT, [event(id)]) },
   { table: "file_nodes", insert: (s, id) => s.insertFileNode(ACCOUNT, fileNode(id)) },
@@ -236,13 +241,13 @@ describe("provenance — updates re-stamp the writer", () => {
 
   it("updateContactCard stamps the new writer", async () => {
     const { db, store } = storeWith({ principal: "emily@bullmoose.cc" });
-    await store.insertContactCard(ACCOUNT, card("cc_u"));
+    await store.insertContactCard(ACCOUNT, card("cc_u"), HUMAN);
     const agent = new Mailstore(db, fakeEnv().env.BLOBS, {
       principal: "emily@bullmoose.cc",
       binding: "scrubber",
       invocation: "inv_7",
     });
-    await agent.updateContactCard(ACCOUNT, { ...card("cc_u"), nameFull: "Grace" });
+    await agent.updateContactCard(ACCOUNT, { ...card("cc_u"), nameFull: "Grace" }, HUMAN);
     expect(provenanceOf(db, "contact_cards", "cc_u")).toEqual({
       principal: "emily@bullmoose.cc",
       binding: "scrubber",

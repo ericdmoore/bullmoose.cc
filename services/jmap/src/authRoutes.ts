@@ -1,4 +1,5 @@
 import {
+  AGENT_MARKER_SCOPE,
   DEFAULT_LOGIN_SCOPES,
   SELF_SERVICE_SCOPES,
   hashLoginKey,
@@ -8,6 +9,7 @@ import {
   scopesWithin,
   timingSafeEqualHex,
 } from "@bullmoose/auth-core";
+import { isAgentPrincipal } from "@bullmoose/auth-core/principal";
 import type { Principal } from "./auth";
 import type { Env } from "./index";
 import { beginLoginAttempt } from "./loginThrottle";
@@ -172,6 +174,12 @@ export async function handleTokens(
     // No privilege escalation: requested ⊆ what the minting token holds.
     if (!scopesWithin(scopes, principal.scopes)) {
       return json({ error: "requested scopes exceed this token's scopes" }, 403);
+    }
+    // The agent marker is sticky (s10 T1): an agent-marked token re-minting
+    // itself narrower must not shed the mark — that would be self-issued
+    // freedom from the governed-book chokepoint.
+    if (isAgentPrincipal(principal) && !scopes.includes(AGENT_MARKER_SCOPE)) {
+      scopes.push(AGENT_MARKER_SCOPE);
     }
     const minted = await mintToken();
     await env.DB.prepare(

@@ -1481,6 +1481,28 @@ const GRANTABLE_SCOPES = new Set([
   "mail",
 ]);
 
+/**
+ * THE grant_lifecycle writer (s10 T2) — every lifecycle row goes through here
+ * so the chain's columns cannot drift between the four call sites.
+ * `viaProposalId` is the WHY: the authorizing proposal, when one was in scope.
+ * The admin plane has none today, so its callers pass nothing and the column
+ * lands NULL — the column existing is the contract T3 fills.
+ */
+async function logGrantLifecycle(
+  env: Env,
+  grantId: string,
+  event: "created" | "revoked",
+  at: number,
+  viaProposalId: string | null = null,
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO grant_lifecycle (grant_id, event, at, actor, via_proposal_id)
+     VALUES (?, ?, ?, 'admin', ?)`,
+  )
+    .bind(grantId, event, at, viaProposalId)
+    .run();
+}
+
 /** Operator-minted grant: agent delegation (whole account) or a scoped
  * collection share. Same primitive AddressBook.shareWith rides on. */
 async function createGrant(
@@ -1541,11 +1563,7 @@ async function createGrant(
   // guarding on `changes` keeps grant_lifecycle from claiming a create that never
   // happened.
   if ((res.meta.changes ?? 0) > 0) {
-    await env.DB.prepare(
-      `INSERT INTO grant_lifecycle (grant_id, event, at, actor) VALUES (?, 'created', ?, 'admin')`,
-    )
-      .bind(id, now)
-      .run();
+    await logGrantLifecycle(env, id, "created", now);
   } else {
     // The guard above was already here, keeping grant_lifecycle from claiming a
     // create that never happened — but the response still reported success with
@@ -1623,11 +1641,7 @@ async function revokeGrant(id: string, env: Env) {
     .run();
   const revoked = (res.meta.changes ?? 0) > 0;
   if (revoked) {
-    await env.DB.prepare(
-      `INSERT INTO grant_lifecycle (grant_id, event, at, actor) VALUES (?, 'revoked', ?, 'admin')`,
-    )
-      .bind(id, now)
-      .run();
+    await logGrantLifecycle(env, id, "revoked", now);
   }
   return json({ revoked });
 }
@@ -1708,11 +1722,7 @@ async function createBureauGrant(
     .bind(principal.id, body.credRef, body.verb)
     .first<{ id: string }>();
   const grantId = row?.id ?? id;
-  await env.DB.prepare(
-    `INSERT INTO grant_lifecycle (grant_id, event, at, actor) VALUES (?, 'created', ?, 'admin')`,
-  )
-    .bind(grantId, now)
-    .run();
+  await logGrantLifecycle(env, grantId, "created", now);
 
   return json({
     grantId,
@@ -1770,11 +1780,7 @@ async function revokeBureauGrant(id: string, env: Env) {
     .run();
   const revoked = (res.meta.changes ?? 0) > 0;
   if (revoked) {
-    await env.DB.prepare(
-      `INSERT INTO grant_lifecycle (grant_id, event, at, actor) VALUES (?, 'revoked', ?, 'admin')`,
-    )
-      .bind(id, now)
-      .run();
+    await logGrantLifecycle(env, id, "revoked", now);
   }
   return json({ revoked });
 }
@@ -1830,7 +1836,16 @@ async function accountByAddressAny(env: Env, email: string) {
 }
 
 async function createAgentBinding(
-  body: { email: string; name: string; slaSeconds?: number; config?: Record<string, unknown> },
+  body: {
+    email: string;
+    name: string;
+    slaSeconds?: number;
+    config?: Record<string, unknown>;
+    /** s10 T1 — the governing book (typed column, not config_json): the
+     *  binding's outbound allowlist. Omitted ⇒ NULL ⇒ the binding cannot
+     *  send (fail-closed) until an operator seeds one. */
+    recipientsBookId?: string;
+  },
   env: Env,
 ) {
   if (!body.email || !body.name) return json({ error: "email and name required" }, 400);
@@ -1839,10 +1854,18 @@ async function createAgentBinding(
 
   const id = `bind_${crypto.randomUUID().slice(0, 8)}`;
   await env.DB.prepare(
-    `INSERT INTO agent_bindings (id, account_id, name, trigger_on, sla_seconds, enabled, config_json)
-     VALUES (?, ?, ?, 'mailbox-delivery', ?, 1, ?)`,
+    `INSERT INTO agent_bindings
+       (id, account_id, name, trigger_on, sla_seconds, enabled, config_json, recipients_book_id)
+     VALUES (?, ?, ?, 'mailbox-delivery', ?, 1, ?, ?)`,
   )
-    .bind(id, account.id, body.name, body.slaSeconds ?? null, JSON.stringify(body.config ?? {}))
+    .bind(
+      id,
+      account.id,
+      body.name,
+      body.slaSeconds ?? null,
+      JSON.stringify(body.config ?? {}),
+      body.recipientsBookId ?? null,
+    )
     .run();
 
   // SLA set → a watchdog responder backs this binding: fires unless the

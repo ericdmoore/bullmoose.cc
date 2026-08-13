@@ -2401,7 +2401,7 @@
     "defaultLoginScopes": ["mail"],
     "mailScopes": ["read", "annotate", "draft", "move", "send", "delete"],
     "realmScopes": ["contacts", "calendar", "vault", "files"],
-    "selfServiceScopes": ["read", "annotate", "draft", "move", "send", "delete", "contacts", "calendar", "vault", "files", "mail"],
-    "tokenScopes": ["read", "annotate", "draft", "move", "send", "delete", "contacts", "calendar", "vault", "files", "mail", "admin"]
+    "selfServiceScopes": ["read", "annotate", "draft", "move", "send", "delete", "contacts", "calendar", "vault", "files", "mail", "agent"],
+    "tokenScopes": ["read", "annotate", "draft", "move", "send", "delete", "contacts", "calendar", "vault", "files", "mail", "admin", "agent"]
   }
 }

@@ -28,7 +28,7 @@ vi.mock("@bullmoose/auth-core", async (importOriginal) => {
 // above them, so ./authRoutes binds the wrapped hashLoginKey.
 import { hashLoginKey } from "@bullmoose/auth-core";
 import { fakeEnv } from "@bullmoose/test-fakes";
-import { handleLogin } from "./authRoutes";
+import { handleLogin, handleTokens } from "./authRoutes";
 
 // The D1 and KV fakes are @bullmoose/test-fakes (sVOL 002). The KV in
 // particular used to be local to this file precisely because it honoured
@@ -266,5 +266,45 @@ describe("handleLogin — online guess throttle", () => {
     expect(res.status).toBe(400);
     expect(hash.calls).toBe(0);
     expect([...h.store.keys()]).toHaveLength(0);
+  });
+});
+
+describe("handleTokens — the agent marker is sticky (s10 T1)", () => {
+  // The marker only ever narrows, so the one thing self-service minting must
+  // never allow is SHEDDING it: an agent re-minting itself an unmarked token
+  // would walk out of the governed-book chokepoint.
+  it("a marked token minting a narrower one still gets 'agent' on the child", async () => {
+    const h = harness();
+    const res = await handleTokens(
+      new Request("https://jmap.bullmoose.cc/auth/tokens", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "narrow", scopes: ["contacts"] }),
+      }),
+      new URL("https://jmap.bullmoose.cc/auth/tokens"),
+      h.env,
+      { username: EMAIL, scopes: ["contacts", "agent"], accounts: [] },
+    );
+    expect(res.status).toBe(200);
+    const { scopes } = (await res.json()) as { scopes: string[] };
+    expect(scopes).toContain("agent");
+    const row = h.writes.find((w) => w.sql.includes("INSERT INTO tokens"));
+    expect(JSON.parse(String(row!.args[4]))).toContain("agent");
+  });
+
+  it("an unmarked token minting stays unmarked — the marker is never invented", async () => {
+    const h = harness();
+    const res = await handleTokens(
+      new Request("https://jmap.bullmoose.cc/auth/tokens", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "plain", scopes: ["contacts"] }),
+      }),
+      new URL("https://jmap.bullmoose.cc/auth/tokens"),
+      h.env,
+      { username: EMAIL, scopes: ["contacts"], accounts: [] },
+    );
+    const { scopes } = (await res.json()) as { scopes: string[] };
+    expect(scopes).toEqual(["contacts"]);
   });
 });

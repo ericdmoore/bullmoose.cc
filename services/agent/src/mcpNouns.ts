@@ -7,6 +7,7 @@ import {
   type JmapSetResponse,
 } from "./jmapBridge.js";
 import type { ToolDef } from "./mcp.js";
+import type { Env } from "./models.js";
 
 /**
  * Calendar + Contacts CRUD over MCP — sVOL unit `013`, the first write
@@ -57,6 +58,61 @@ function requireString(args: Record<string, unknown>, key: string): string {
     throw new ToolError(`${key} is required and must be a non-empty string.`);
   }
   return v;
+}
+
+/**
+ * The self-write rule (s10 T1). A book named as some binding's
+ * `recipients_book_id` IS that agent's outbound send authority, and this
+ * surface is the agent tool surface — so contact writes touching such a book
+ * are refused HERE, before the store, whatever the book's write_policy says.
+ * The store's chokepoint cannot know which binding a book governs; this layer
+ * can, and it errs broad on purpose: MCP cannot map a bearer to one binding,
+ * so EVERY governing book on the account is off-limits over MCP — which also
+ * closes the misconfiguration where a governing book was never flipped to
+ * write_policy 'governed'. Widening flows through a grant-request proposal
+ * (T3), never through this tool.
+ */
+async function refuseGoverningBook(
+  env: Env,
+  accountId: string,
+  bookId: string | null | undefined,
+): Promise<void> {
+  if (!bookId) return;
+  const row = await env.DB.prepare(
+    `SELECT name FROM agent_bindings WHERE account_id = ? AND recipients_book_id = ? LIMIT 1`,
+  )
+    .bind(accountId, bookId)
+    .first<{ name: string }>();
+  if (row) {
+    throw new ToolError(
+      `Address book ${bookId} governs which recipients agent "${row.name}" may email. ` +
+        `Agents never write a governing book directly — file a grant-request proposal for a human to approve.`,
+    );
+  }
+}
+
+/** The book a write will land in: the named one, or the account default. */
+async function targetBookId(
+  env: Env,
+  accountId: string,
+  named: string | undefined,
+): Promise<string | null> {
+  if (named) return named;
+  const row = await env.DB.prepare(
+    `SELECT id FROM address_books WHERE account_id = ? AND is_default = 1`,
+  )
+    .bind(accountId)
+    .first<{ id: string }>();
+  return row?.id ?? null;
+}
+
+async function bookOfCard(env: Env, accountId: string, cardId: string): Promise<string | null> {
+  const row = await env.DB.prepare(
+    `SELECT address_book_id FROM contact_cards WHERE account_id = ? AND id = ?`,
+  )
+    .bind(accountId, cardId)
+    .first<{ address_book_id: string }>();
+  return row?.address_book_id ?? null;
 }
 
 /** `ifInState` gives an agent optimistic concurrency across two calls. */
@@ -482,6 +538,7 @@ const CONTACT_TOOLS: ToolDef[] = [
             "display name and will not appear in any contacts client.",
         );
       }
+      await refuseGoverningBook(env, accountId, await targetBookId(env, accountId, str(args.addressBookId)));
       const res = await callJmap<JmapSetResponse>(env, principal, "ContactCard/set", {
         accountId,
         ...ifInState(args),
@@ -519,6 +576,9 @@ const CONTACT_TOOLS: ToolDef[] = [
             "emails, phones, note or addressBookId.",
         );
       }
+      // Both the card's current book and any move target are off-limits when governing.
+      await refuseGoverningBook(env, accountId, await bookOfCard(env, accountId, cardId));
+      await refuseGoverningBook(env, accountId, str(args.addressBookId));
       const res = await callJmap<JmapSetResponse>(env, principal, "ContactCard/set", {
         accountId,
         ...ifInState(args),
@@ -546,6 +606,8 @@ const CONTACT_TOOLS: ToolDef[] = [
     async run({ env, principal }, args) {
       const accountId = requireString(args, "accountId");
       const cardId = requireString(args, "cardId");
+      // Deletion narrows a governing book — still a write to it (T2 logs removes).
+      await refuseGoverningBook(env, accountId, await bookOfCard(env, accountId, cardId));
       const res = await callJmap<JmapSetResponse>(env, principal, "ContactCard/set", {
         accountId,
         ...ifInState(args),
