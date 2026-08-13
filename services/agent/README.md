@@ -11,9 +11,28 @@ rows, then pokes `POST /drain` via service binding (fast path, ~1s to
 claim). A `*/5` cron sweep retries anything a poke missed and fails
 stale 15-min claims. Claims are optimistic `pending→running` UPDATEs —
 the homelab runner (`bullmoose agent serve`) uses the same guard, so
-both runtimes can serve one mailbox and whoever claims first wins. The
-AccountDO watchdog responder backstops them both (fires at SLA unless
-an invocation went active).
+both runtimes can serve one mailbox and whoever claims first wins —
+inside the s11 eligibility gate (`@bullmoose/scheduling`), which makes
+this drain a PAID claimant that sits on far-from-due work.
+
+Two watchdog triggers backstop that optimism (agent-integration.md §8):
+
+- **SLA silence** — the AccountDO responder fires at SLA unless an
+  invocation went active. Untouched by s11.
+- **overdue** (s11 T3, `escalateOverdue`) — `due_at` passed and the row
+  is still `pending` → the cron claims it OUTSIDE the policy gate, so
+  budget exhaustion cannot strand work past its deadline. Two terms
+  survive that bypass: the privacy **pin** (pinned work sits, however
+  overdue — privacy beats liveness) and **fit**. What it may not claim
+  it MARKS instead (`alert_kind` = `overdue-pinned` | `overdue-unfit`,
+  raised once, visible in `bullmoose agent invocations` and
+  `AgentInvocation/query {alerted: true}`) — the invariant is "no
+  past-due invocation sits pending *silently*".
+
+The same cron logs two aggregates when they have something to say: a
+queue held behind a disabled binding, and pinned work pending with no
+free runtime seen in 15 min ("your homelab is down", inferred from
+recent claims rather than a heartbeat).
 
 ## Pipelines (per binding `config_json.pipeline`)
 

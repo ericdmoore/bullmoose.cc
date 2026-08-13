@@ -229,3 +229,64 @@ describe("AgentInvocation/set create gates on the draft scope", () => {
     ).rejects.toThrow(/forbidden|draft/i);
   });
 });
+
+// ---- the watchdog's alert marker (s11 T3) ---------------------------------
+
+describe("AgentInvocation projects and filters the watchdog's alert marker", () => {
+  /** Two pending rows, one of which the T3 sweep marked as stuck past due. */
+  function seedAlerted(h: ReturnType<typeof harness>) {
+    h.w.db.seed("agent_invocations", [
+      {
+        id: "inv_pin",
+        account_id: ACCOUNT,
+        binding_id: "bind_emily",
+        binding_name: "emily",
+        status: "pending",
+        email_id: EMAIL,
+        created_at: 1,
+        due_at: 1_000,
+        privacy: "pinned",
+        alert_kind: "overdue-pinned",
+        alert_at: 2_000,
+      },
+      {
+        id: "inv_ok",
+        account_id: ACCOUNT,
+        binding_id: "bind_emily",
+        binding_name: "emily",
+        status: "pending",
+        email_id: EMAIL,
+        created_at: 2,
+      },
+    ]);
+  }
+
+  it("/get projects it as a typed notice (and null where none was raised)", async () => {
+    const h = harness();
+    seedAlerted(h);
+    const got = await h.call<{ list: Array<Record<string, unknown>> }>("AgentInvocation/get", {
+      accountId: ACCOUNT,
+      ids: ["inv_pin", "inv_ok"],
+    });
+    const byId = new Map(got.list.map((r) => [r.id as string, r]));
+    expect(byId.get("inv_pin")!.alert).toEqual({
+      kind: "overdue-pinned",
+      at: new Date(2_000).toISOString(),
+    });
+    // The DefaultCase stays null — an unmarked invocation reads exactly as before.
+    expect(byId.get("inv_ok")!.alert).toBeNull();
+  });
+
+  it("/query narrows to alerted rows — 'silently' is what the invariant forbids, so this must be findable", async () => {
+    const h = harness();
+    seedAlerted(h);
+    const all = await h.call<{ ids: string[] }>("AgentInvocation/query", { accountId: ACCOUNT });
+    expect(all.ids.sort()).toEqual(["inv_ok", "inv_pin"]);
+
+    const alerted = await h.call<{ ids: string[] }>("AgentInvocation/query", {
+      accountId: ACCOUNT,
+      alerted: true,
+    });
+    expect(alerted.ids).toEqual(["inv_pin"]);
+  });
+});
