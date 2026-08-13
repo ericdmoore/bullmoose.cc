@@ -78,6 +78,28 @@ offer that control until `allowedRecipients` exists** — which is why T1 builds
 CRUD, and builds it **fail-closed** (unbound ⇒ cannot send), matching the Bureau's invariant
 5 one realm over (`services/bureau/src/binding.ts`).
 
+#### The bound is an address book — and that is a Space decision, not a convenience
+
+`allowedRecipients` is **a contact book**, not a config array. Practically, it inherits CRUD
+across JMAP, CardDAV, CLI, MCP and WebUI, stays inspectable in any CardDAV client, and gets
+groups — expressiveness a flat list never has. But the deeper reason is the framing: *who an
+agent may talk to* is a **social fact**, and it belongs in the same artifact where the humans'
+social facts already live. A permissions matrix in an admin panel would be the Drive-shaped
+answer; a shared address book is the Space-shaped one. **We are not building Google Drive with
+agents — we are building a collaboration Space for people and agents that happens to rhyme
+with those features.** Reach-as-contacts is one of the places that distinction is load-bearing
+rather than rhetorical.
+
+**The hole it opens, and the fix.** If the book is the bound, then *writing a contact grants
+send authority* — and an agent holding `contacts` scope (which `photos@` legitimately needs)
+can call `contacts_create_card` and widen its own reach. Control and controlled become the
+same writable object. What makes it sneaky is that it does not look like a permission grant:
+a reviewer auditing the agent sees `contacts: write` and thinks *address book*, not
+*self-issued send authority*. So the governing book is **not writable by the agent it
+governs** (T1, via the collection-scoped grants `allowedBookIds` already supports), the agent
+**asks** for widening through the existing `grant-request` proposal (T3), and the ask leaves
+an **append-only chain** whose *why* is the proposal itself (T2). Those three are one arc.
+
 ### 3. `remove` is disable-vs-destroy
 `enabled = 0` is reversible and already exists. Destroying a binding orphans its invocations
 and proposals — the same problem grants solved with revoke-vs-tombstone, which the console
@@ -91,15 +113,22 @@ proposals an agent authored.
 `maxTokens`, `pipeline`, and `analyst@`'s own `digestTargets` all share one namespace with no
 schema. A form that edits an untyped blob is fragile, and `agents edit photos@` vs
 `agents edit analyst@` would be editing different unvalidated shapes. The edit surface touches
-a **small typed core** the console enforces uniformly — `allowedSenders`, `allowedRecipients`,
-`replyMode`, `enabled` — and shows the agent-specific remainder **read-only**. This is `s07`
-decision 7, resolved here: typed columns for the core, blob for the tail.
+a **small typed core** the console enforces uniformly — `allowedSenders`, `replyMode`,
+`enabled`, plus a *reference* to the governing book — and shows the agent-specific remainder
+**read-only**. This is `s07` decision 7, resolved here: typed columns for the core, blob for
+the tail, and the outbound bound is a book rather than a column at all.
 
 ## References
 
 - `docs/agents/motivatingExamples.md` — `analyst@` / `photos@` / `newsletters@`, the kinds
 - `services/agent/src/index.ts:209` — `allowedSenders` enforcement (inbound; the model for outbound)
 - `services/bureau/src/binding.ts` — fail-closed destination binding, the outbound-bound model
+- `packages/auth-core/src/principal.ts:345` — `allowedBookIds`, the collection-scoped grant
+  that makes a not-agent-writable governing book expressible with no new machinery
+- `services/jmap/src/methods/actionProposal.ts:481` — the `grant-request` branch the widening
+  ask reuses ("the decision is recorded here; no local write")
+- `packages/mailstore/sql/control-plane.sql:197` — `grant_lifecycle`, the append-only chain
+  this copies (and whose missing *why* T2 also fixes)
 - `webmail/src/lib/console/perAgent.ts` — the activity ItemView this composes, and its warnings
 - `.plans/s07-app-surface/devPlan.md` — decisions 5 & 7, T4 (this is their detail)
 - `.plans/s03.E-console/` — the per-agent view (activity, built)

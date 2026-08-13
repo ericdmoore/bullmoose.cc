@@ -13,31 +13,106 @@
 
 ## Tasks (in dependency order)
 
-### T1 — `allowedRecipients` + the typed config core · *the controls the surface needs*
+### T1 — `allowedRecipients` as a **governed contact book** · *the bound, and the one chokepoint*
 
-**Files:** `services/agent/src/index.ts` (enforcement), `services/agent/src/models.ts` (the
-config type), `packages/mailstore/sql/data-plane.sql` + `infra/migrations.mjs` (the typed
-columns), `webmail/src/lib/console/perAgent.ts` (surface the new bound).
+**Files:** `packages/mailstore/sql/data-plane.sql` + `infra/migrations.mjs` (the flag), the
+contacts store layer (the chokepoint), `services/agent/src/index.ts` (send enforcement),
+`services/agent/src/models.ts` (config type), `webmail/src/lib/console/perAgent.ts`.
 
-Two things, and neither is UI:
+`allowedRecipients` is **an address book**, not a config array — it inherits CRUD across JMAP,
+CardDAV, CLI, MCP and WebUI, and stays inspectable in any CardDAV client. Groups give it
+expressiveness a flat list cannot ("the family group"). Three things, none of them UI:
 
-- **`allowedRecipients`, fail-closed.** An agent that sends mail is bounded to the addresses
-  it may send to; **unbound ⇒ cannot send**, matching the Bureau's invariant 5
-  (`services/bureau/src/binding.ts` — refuse when no allowlist, never default-allow). This is
-  `s07` decision 5, resolved. `allowedSenders` (inbound) is enforced at `index.ts:209`; this
-  is its outbound twin. Harmless for `analyst@` (fixed `digestTargets`); load-bearing for
-  `photos@`.
-- **A typed config core.** Promote `allowedSenders`, `allowedRecipients`, `replyMode`,
-  `enabled` out of the untyped `config_json` blob into typed columns the console reads and the
-  runtime enforces uniformly; leave the agent-specific remainder (`persona`, `modelAliases`,
-  `digestTargets`, `pipeline`) in the blob, shown read-only. This is `s07` decision 7,
-  resolved. Migration via `infra/migrations.mjs` with an executable check.
+- **The governing book is not writable by the agent it governs.** Otherwise the agent
+  self-issues send authority: `photos@` legitimately holds `contacts` scope, calls
+  `contacts_create_card` (`mcpNouns.ts:459`), and has widened its own reach. Control and
+  controlled must not be the same writable object. Cleanest form: the agent gets **no** access
+  to its governing book — the send path resolves it server-side, so a compromised agent cannot
+  even enumerate its own reach. Expressible today via collection-scoped grants —
+  `allowedBookIds` (`packages/auth-core/src/principal.ts:345`) already narrows contacts access
+  to specific `collectionId`s. **No new grant machinery.**
+- **One chokepoint, in the store — not per-protocol.** A book governed by approval but writable
+  over CardDAV is not governed. Today's write paths are JMAP `ContactCard/set`, CardDAV
+  `PUT`/`DELETE`, the CLI, and MCP `contacts_create_card`; four checks means the *fifth*
+  protocol added later silently bypasses the bound. Mark the book (a flag on `address_books`)
+  and enforce **once**, at the store layer every path funnels through. A test must assert each
+  known path is refused.
+- **Fail-closed, exact-match.** Unbound ⇒ **cannot send**, matching the Bureau's invariant 5
+  (`services/bureau/src/binding.ts` — refuse when no allowlist, never default-allow); no book
+  ⇒ cannot send, *never* "unrestricted". `allowedSenders` (inbound) is enforced at
+  `index.ts:209`; this is its outbound twin. The lookup is **normalized exact equality, never
+  `LIKE`** — contact search is a full-scan `LIKE` today, which is fine for search and
+  catastrophic for an allowlist (`bob@evil.com` matching a sloppy pattern for `bob@good.com`).
+  Plus-tags do **not** auto-match (`bob+x@` ≠ `bob@`). Group nesting is forbidden in a
+  governing book, or the expansion is computed and displayed — otherwise adding one member to
+  a nested group silently widens an agent without touching its allowlist.
 
-**Done when:** an agent with no `allowedRecipients` is refused on send (a test, mirroring the
-Bureau's fail-closed tests); the console renders the outbound bound beside the inbound one;
-the typed core round-trips through the migration test.
+Also here: **the typed config core.** Promote `allowedSenders`, `replyMode`, `enabled` out of
+the untyped `config_json` blob into typed columns the console reads and the runtime enforces
+uniformly (`allowedRecipients` is now a book reference, not a column); leave the
+agent-specific remainder (`persona`, `modelAliases`, `digestTargets`, `pipeline`) in the blob,
+shown read-only. `s07` decision 7, resolved. Migration with an executable check.
 
-### T2 — `bullmoose agents` · *the CLI config surface* — Go-native
+**Done when:** an agent with no governing book is refused on send (mirroring the Bureau's
+fail-closed tests); the agent cannot write its own governing book **over any of the four
+paths**; an exact-match test rejects a near-miss address; the console renders the outbound
+bound beside the inbound one; the typed core round-trips through the migration test.
+
+### T2 — The provenance chain · *append-only, and the why comes from the proposal*
+
+**Files:** `packages/mailstore/sql/control-plane.sql` + `infra/migrations.mjs`, the T1
+chokepoint (emit the event).
+
+`contact_cards` already carries `last_writer_{principal,binding,invocation}` — but that is the
+**most recent** write, not a chain, and it answers the wrong question. The attack shape is
+widen → send → narrow; `last_writer_*` shows only the narrowing. Audit here must be
+append-only, on the `grant_lifecycle` model (`control-plane.sql:197` — `(grant_id, event, at,
+actor)`, no FK, history outlives the row).
+
+- An **append-only lifecycle log for governing-book membership**: one row per add/remove, with
+  `actor`. **Deletion is an event** — an unlogged remove puts a hole in the chain exactly where
+  someone would want one.
+- **`via_proposal_id` carries the why.** Do *not* add a free-text `reason` column — it fills
+  with "updating contacts" and is worthless. If widening must flow through a proposal (T3),
+  the proposal **is** the why: rationale, evidence, approver, timestamp, and the edit-diff if
+  it was corrected on the way through. One link field inherits all of it, and cannot be faked
+  because it is the actual authorization record.
+- **Backfill the same gap in `grant_lifecycle`.** It records `actor` but never *why* — the
+  identical hole, one realm over. Same column, general win, do both.
+- **Actor is attributed, not collapsed.** A human approval and CJ's automated one must be
+  distinguishable in the chain (see T3), or the audit cannot tell judgment from automation.
+
+**Done when:** every add *and* remove on a governing book appends a row; the row links the
+authorizing proposal; a test proves a widen-then-narrow sequence is fully reconstructable after
+the fact; `grant_lifecycle` gained the same link.
+
+### T3 — Widening is a `grant-request` proposal · *the agent asks; it does not take*
+
+**Files:** `services/jmap/src/methods/actionProposal.ts` (the existing `grant-request` branch),
+the T1 chokepoint (accept an approved proposal as authorization).
+
+T1 says the agent cannot write its governing book. T3 is how it **asks** — and the queue
+already accepts the shape. `grant-request` is a live proposal kind (`actionProposal.ts:481`),
+whose comment already describes this pattern: *"the decision is recorded here; no local write"*
+— provision watches approved grant-requests and mints. An allowlist widening is a
+grant-request; the "minting" is a contact write through the T1 chokepoint.
+
+- The agent proposes *"let me email X, because Y"*; a human approves in `/approvals`. Rationale
+  and evidence are already required fields — which is precisely what makes T2's `why` free.
+- **CJ may hold bounded approval authority** (the orchestration idea: granting a privilege =
+  adding a contact). Two rules make that safe rather than a hole moved one hop: CJ's approvals
+  are recorded **as CJ**, never indistinguishable from a human's; and **CJ may not approve a
+  widening for itself.** Which books CJ may widen is itself a narrow, audited grant, and the
+  console must render it as *"CJ can widen photos@'s reach"* — not as "CJ has contacts write."
+- **Row 1 has an actor too.** `agents create --kind photos` (T4) seeds a governing book; the
+  human running `create` is the actor on that first row. No `system` actor, no implicit trust
+  at the bootstrap.
+
+**Done when:** an agent denied a direct write can obtain the same change via an approved
+proposal; the resulting contact carries `via_proposal_id`; CJ cannot approve its own widening;
+a seeded book's first row names the human who ran `create`.
+
+### T4 — `bullmoose agents` · *the CLI config surface* — Go-native
 
 **Files:** `cli-go/internal/cmd/agents.go` (+ tests), reusing the JMAP client from the
 `approvals` command.
@@ -64,18 +139,22 @@ and `agents` gets its own Go tests against a fake JMAP server.
 **Done when:** the five verbs drive a fake server; `edit` cannot set an unbounded recipient
 list; `create --kind photos` produces a fail-closed binding; `remove` defaults to reversible.
 
-### T3 — `/agents/<id>` config panel · *the WebUI config surface*
+### T5 — `/agents/<id>` config panel · *the WebUI config surface*
 
 **Files:** `webmail/src/pages/agents.astro` / the existing console island,
 `webmail/src/lib/agents/` (new, config logic), `webmail/src/lib/console/` (compose, don't fork).
 
 - The per-agent page gains a **config panel** beside the existing activity/permissions view
   (`perAgent.ts`). Two panels, labelled *what it is* vs *what it's doing* — not two pages.
-- Edit the typed core with the same fail-closed discipline as T2; the remainder read-only.
+- Edit the typed core with the same fail-closed discipline as T4; the remainder read-only.
 - **The "who it responds to" row now has a backing field** (T1), so it can finally be an
   editable control rather than a warning about its absence.
-- ListView / Create(from kind) / Disable-Remove, mirroring T2's semantics so the two surfaces
+- ListView / Create(from kind) / Disable-Remove, mirroring T4's semantics so the two surfaces
   agree.
+- **The governing book is a link, not an embedded editor.** "Who it may email" opens the book
+  in `/contacts` — that is the point of making it a book. Widening from here files a T3
+  proposal; it does not write directly, even for a human operator, so the chain (T2) stays
+  complete no matter which surface initiated it.
 
 ⚠️ **`/agents` live mode is separately blocked**, and this task does not unblock it: the
 console reads `/console/*`, four routes that are *requested, not served* (s03.E rough edge).
@@ -87,7 +166,7 @@ console, not just this panel.
 writes a real field; the plain-client floor (no agent capability) hides it without a dead
 region.
 
-### T4 — The agent score · *depends on s07 T5, flagged not owned*
+### T6 — The agent score · *depends on s07 T5, flagged not owned*
 
 The dossier's score (acceptance rate, **cost-of-declined**, cost-per-approved, `provider` not
 `modelName`) is designed in `s07` §"Edit is the load-bearing verb" and T5. It needs the
@@ -101,15 +180,24 @@ renders in the activity panel this section built the frame for.
 ## Sequencing
 
 ```
-T1 allowedRecipients + typed core ──┬─→ T2 CLI agents
-   (the controls the surface needs) └─→ T3 WebUI config panel
+T1 governed book + chokepoint ──→ T2 provenance chain ──→ T3 widening-by-proposal
+   (the bound, enforced once)      (append-only + why)      (how the agent asks)
+                    │                                              │
+                    └──────────────┬───────────────────────────────┘
+                                   ├─→ T4 CLI agents
+                                   └─→ T5 WebUI config panel
                                           (also wants /console/* served — separate)
-s07 T5 invocation cost ─────────────────→ T4 score renders (not owned here)
+s07 T5 invocation cost ───────────────→ T6 score renders (not owned here)
 ```
 
 **T1 is non-negotiably first.** Everything after it offers to edit controls; T1 is what makes
 those controls real. Building the CRUD first would ship a form with a field that writes
 nowhere.
+
+**T1 → T2 → T3 is one arc, not three features.** T1 takes the write away from the agent; T3
+gives it a way to ask; T2 is the record that asking produced. Landing T1 without T3 leaves a
+bound with no legitimate path to widen — correct but unusable. Landing T3 without T2 approves
+changes nobody can later reconstruct. Ship the arc.
 
 ## Decisions needed
 
@@ -117,13 +205,21 @@ nowhere.
    a lightweight in-account agent may not. *Recommendation: `--kind` decides — `analyst`/`photos`
    provision an identity via the provision worker; `custom` is binding-only until the operator
    adds an address.*
-2. **Is `allowedRecipients` addresses, domains, or both?** `photos@`'s invitees are individual
-   addresses; a newsletter agent might want a domain. *Recommendation: both, parsed like the
-   Bureau's allowlist (exact host or `*.host`), so the two outbound-bound models stay one
-   idea.*
+2. **Do governing books hold domains, or only addresses?** `photos@`'s invitees are individual
+   addresses; a newsletter agent might want a whole domain — but a contact card is an address,
+   and `*.host` is not a contact. *Recommendation: addresses only in the book (it is a real
+   address book, and a domain wildcard in a CardDAV client is a lie); if a domain bound is ever
+   genuinely needed, it is a separate typed field on the binding parsed like the Bureau's
+   allowlist — not a fake contact. Do not build it until an agent needs it.*
 3. **Does `remove --destroy` cascade to proposals, or orphan-and-tombstone?** *Recommendation:
    tombstone the binding, keep the proposals (they are audit), and render them under a "removed
    agent" heading rather than deleting history — the same stance grant revocation takes.*
+4. **Does a human operator editing the book directly also file a proposal (T3), or write
+   through?** Write-through is more convenient and puts a hole in the chain. *Recommendation:
+   the human writes directly (they are the authority — requiring self-approval is theater), but
+   the T2 row is still appended with the human as `actor` and a null `via_proposal_id`. The
+   chain stays complete; the "why" is simply absent for human edits, which is honest. Agents
+   never write through — that is the whole bound.*
 
 ## Out of scope
 
