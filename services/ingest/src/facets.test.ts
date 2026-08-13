@@ -124,21 +124,28 @@ describe("stampInvocationFacets — the tolerant follow-up UPDATE", () => {
 
   it("writes NOTHING for an all-NULL stamp — the DefaultCase enqueue is byte-identical", async () => {
     const { db, prepare } = dbSpy();
-    await stampInvocationFacets(db, "a_1", "inv_1", { dueAt: null, privacy: null, requires: null });
+    await stampInvocationFacets(db, "a_1", "inv_1", {
+      dueAt: null,
+      privacy: null,
+      requires: null,
+      senderClass: null,
+    });
     expect(prepare).not.toHaveBeenCalled();
   });
 
-  it("stamps the three mechanical columns and serializes requires_json", async () => {
+  it("stamps the mechanical columns + sender_class and serializes requires_json", async () => {
     const { db, bind } = dbSpy();
     await stampInvocationFacets(db, "a_1", "inv_1", {
       dueAt: 1_755_000_000_000,
       privacy: "internal",
       requires: { contextTokens: 250, vision: true },
+      senderClass: "known",
     });
     expect(bind).toHaveBeenCalledWith(
       1_755_000_000_000,
       "internal",
       '{"contextTokens":250,"vision":true}',
+      "known",
       "a_1",
       "inv_1",
     );
@@ -154,7 +161,12 @@ describe("stampInvocationFacets — the tolerant follow-up UPDATE", () => {
       },
     } as unknown as D1Database;
     await expect(
-      stampInvocationFacets(db, "a_1", "inv_1", { dueAt: 5, privacy: null, requires: null }),
+      stampInvocationFacets(db, "a_1", "inv_1", {
+        dueAt: 5,
+        privacy: null,
+        requires: null,
+        senderClass: null,
+      }),
     ).resolves.toBeUndefined();
     expect(err).toHaveBeenCalledOnce();
     err.mockRestore();

@@ -87,7 +87,8 @@ describe("POST /accounts — the address is unique as a delivery route", () => {
     expect(routeTarget(h.db)).toBe(body.accountId);
     expect(kvRoute(h.kv)).toEqual({ kind: "mailbox", accountId: body.accountId, tenantId: TENANT });
     expect(h.db.count("accounts")).toBe(1);
-    expect(h.db.count("mailboxes", "account_id = ?", body.accountId)).toBe(6);
+    // 6 classic roles + the s12 quarantine mailbox.
+    expect(h.db.count("mailboxes", "account_id = ?", body.accountId)).toBe(7);
   });
 
   // ── THE defect ────────────────────────────────────────────────────────
@@ -112,7 +113,7 @@ describe("POST /accounts — the address is unique as a delivery route", () => {
     // And no second account was built behind it.
     expect(h.db.count("accounts")).toBe(1);
     expect(h.db.count("identities", "email = ?", "eric@bullmoose.cc")).toBe(1);
-    expect(h.db.count("mailboxes")).toBe(6);
+    expect(h.db.count("mailboxes")).toBe(7);
     expect(h.db.count("routes")).toBe(1);
   });
 

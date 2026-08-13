@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS mailboxes (
   account_id    TEXT NOT NULL,
   parent_id     TEXT,
   name          TEXT NOT NULL,
-  role          TEXT,                      -- inbox|sent|drafts|trash|junk|archive
+  role          TEXT,                      -- inbox|sent|drafts|trash|junk|archive|quarantine
   sort_order    INTEGER NOT NULL DEFAULT 0,
   last_writer_principal   TEXT,             -- provenance (s03.A T1) — see header
   last_writer_binding     TEXT,
@@ -606,6 +606,80 @@ CREATE INDEX IF NOT EXISTS file_nodes_blob
   ON file_nodes (account_id, blob_id);
 CREATE INDEX IF NOT EXISTS file_nodes_changed
   ON file_nodes (account_id, changed);
+
+-- ============================================================================
+-- s12 wave 1-A — the boundary cascade's working data (.plans/s12-boundary).
+--
+-- Three stores, three audit fidelities (the readme's three-tiers table):
+--   domain_deny_list   the industrial tier — bad-actor DOMAINS, bouncer@'s
+--                      working data. Deliberately a plain table and NOT an
+--                      address book: nothing social about 5k spam-farm
+--                      domains, and nobody wants them in CardDAV.
+--   deny_counters      the industrial tier's ONLY per-message write — a
+--                      per-domain daily counter upsert. Never chain rows:
+--                      an attacker must not be able to make us pay a D1
+--                      chain INSERT per spam message.
+--   quarantine_events  the append-only chain for everything with decision
+--                      value: mid-band / personal-tier shunts, rescues,
+--                      releases. book_membership_log model: no FK (history
+--                      outlives the message), nothing compacts it.
+--
+-- All three are new tables, so a plain schema re-run DOES create them on an
+-- existing shard; they are listed in infra/migrations.mjs (precedent:
+-- agent-proposals-table) and are NOT deploy blockers — the boundary cascade
+-- in services/ingest fails OPEN on a shard that lacks them (a missing
+-- domain_deny_list reads as an empty deny list; a failed quarantine store
+-- falls back to inbox delivery, logged).
+-- ============================================================================
+
+-- Tenant-scoped. `domain` is normalized: lowercase, no leading dot, no
+-- trailing dot. `source` records who put it there; 'graduated' rows are the
+-- graduation loop's policy-authorized writes and are the ONLY rows a
+-- quarantine rescue demotes (the human correction always wins).
+CREATE TABLE IF NOT EXISTS domain_deny_list (
+  tenant_id TEXT NOT NULL,
+  domain    TEXT NOT NULL,
+  added_at  INTEGER NOT NULL,               -- epoch ms
+  source    TEXT NOT NULL,                  -- 'feed' | 'graduated' | 'directive'
+  evidence  TEXT,                           -- e.g. 'graduated: 20×bayes@0.99, 0 rescues'
+  PRIMARY KEY (tenant_id, domain)
+);
+
+-- One cheap upsert per edge-rejected message; day is 'YYYY-MM-DD' (UTC).
+-- Also the substrate for rejection-rate analytics (.backlog/bouncer-analytics).
+CREATE TABLE IF NOT EXISTS deny_counters (
+  domain TEXT NOT NULL,
+  day    TEXT NOT NULL,
+  count  INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (domain, day)
+);
+
+-- The quarantine chain. `stage` names the firing cascade stage ('deny-list',
+-- 'blocked-book:personal', 'auth:dmarc', 'sieve:<ruleId>', 'bayes@0.97') so
+-- "why was this shunted?" is answerable by stage name, no archaeology.
+-- email_id is the stored message when there is one (REJECT-STORE keeps the
+-- message rescuable in the quarantine mailbox; REJECT-AT-EDGE stores nothing
+-- and writes no chain row — counters only). actor carries the rescuing
+-- principal; via_message_id cites the authenticated directive (s10 decision-5
+-- pattern) when a conversation drove the event.
+CREATE TABLE IF NOT EXISTS quarantine_events (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id     TEXT NOT NULL,
+  event          TEXT NOT NULL,             -- 'shunted' | 'rescued' | 'released'
+  sender         TEXT NOT NULL,             -- normalized envelope sender
+  domain         TEXT NOT NULL,             -- normalized sender domain
+  stage          TEXT NOT NULL,             -- the firing stage (see above)
+  email_id       TEXT,                      -- stored message, when there is one (no FK)
+  actor          TEXT,                      -- rescuing principal (rescues have one)
+  via_message_id TEXT,                      -- the authorizing directive's Message-ID
+  at             INTEGER NOT NULL           -- epoch ms
+);
+CREATE INDEX IF NOT EXISTS quarantine_events_account
+  ON quarantine_events (account_id, id);
+-- "Did I get mail from X in the last N days? Did you shunt it?" — the audit
+-- query the chain exists to answer, so it gets its own index.
+CREATE INDEX IF NOT EXISTS quarantine_events_sender
+  ON quarantine_events (account_id, sender, id);
 
 -- JMAP EmailSubmission objects (RFC 8621 §7).
 CREATE TABLE IF NOT EXISTS email_submissions (
