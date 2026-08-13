@@ -16,6 +16,7 @@
     "baseUrl": ".",
     "paths": {
       "@bullmoose/auth-core": ["packages/auth-core/src/index.ts"],
+      "@bullmoose/boundary": ["packages/boundary/src/index.ts"],
       "@bullmoose/auth-core/principal": ["packages/auth-core/src/principal.ts"],
       "@bullmoose/contacts-core": ["packages/contacts-core/src/index.ts"],
       "@bullmoose/calendar-core": ["packages/calendar-core/src/index.ts"],

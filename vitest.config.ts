@@ -18,6 +18,7 @@ export default defineConfig({
     alias: {
       "@bullmoose/auth-core/principal": here("packages/auth-core/src/principal.ts"),
       "@bullmoose/auth-core": here("packages/auth-core/src/index.ts"),
+      "@bullmoose/boundary": here("packages/boundary/src/index.ts"),
       "@bullmoose/contacts-core": here("packages/contacts-core/src/index.ts"),
       "@bullmoose/calendar-core": here("packages/calendar-core/src/index.ts"),
       "@bullmoose/jmap-core": here("packages/jmap-core/src/index.ts"),
