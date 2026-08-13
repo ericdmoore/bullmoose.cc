@@ -4,6 +4,7 @@ import {
   SECRET_FIELDS,
   carriesSecret,
   normalizeOrigin,
+  readBase,
   resolveTarget,
 } from "./origins";
 
@@ -96,5 +97,39 @@ describe("resolveTarget — the T2 boundary", () => {
     expect(resolveTarget({ vault: "", site: SITE }, "/console/agents", "metadata")).toBe(
       `${SITE}/console/agents`,
     );
+  });
+});
+
+describe("readBase — which worker answers, as distinct from what may travel", () => {
+  const origins = { vault: VAULT, site: SITE };
+
+  it("sends /vault/* to the vault, always", () => {
+    expect(resolveTarget(readBase(origins, "/vault/credentials"), "/vault/credentials", "metadata")).toBe(
+      `${VAULT}/vault/credentials`,
+    );
+  });
+
+  it("sends the four /console/* reads to the SITE backend even with a vault configured", () => {
+    // The regression this exists for: T2 requires a vault origin before a
+    // credential may be touched, and `resolveTarget` alone would then send every
+    // console read to a worker that neither serves them nor sends CORS headers —
+    // breaking the console for exactly the operators who configured it.
+    for (const path of [
+      "/console/agents",
+      "/console/agents/acct_allen",
+      "/console/accounts/acct_allen/resources",
+      "/console/resources/AddressBook/ab_vendors?at=1&since=0&accountId=acct_eric",
+    ]) {
+      expect(new URL(resolveTarget(readBase(origins, path), path, "metadata")).origin).toBe(SITE);
+    }
+  });
+
+  it("never widens the secret rule — it only ever removes the vault, never adds one", () => {
+    // A secret-bearing request goes through `resolveTarget(origins, …)`
+    // directly (credentials.ts), but if one ever came through here it must
+    // still refuse rather than silently address the site.
+    expect(() =>
+      resolveTarget(readBase(origins, "/console/agents"), "/console/agents", "secret"),
+    ).toThrow(OriginRefusal);
   });
 });

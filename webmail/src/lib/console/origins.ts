@@ -111,6 +111,31 @@ export function resolveTarget(
 }
 
 /**
+ * WHO ANSWERS a path — a routing question, deliberately separate from
+ * `Sensitivity`, which decides what may travel and is the only security
+ * control here.
+ *
+ * `/vault/*` is the agent worker's: it is where credentials are minted,
+ * rotated and listed, and T2's whole rule is that those requests go there
+ * directly. Everything else the console reads is `/console/*`, the read
+ * interface served by the SITE backend (`services/jmap/src/console.ts`, claimed
+ * same-origin on the app host beside `/api/*`).
+ *
+ * That split is not cosmetic. `resolveTarget` sends a metadata read to
+ * `vault ?? site`, so configuring a vault origin — which T2 REQUIRES before a
+ * credential may be touched at all — used to redirect the four console reads to
+ * a worker that neither serves them nor sends CORS headers. The console then
+ * failed precisely for the operators who had configured it correctly.
+ *
+ * Passing an empty vault leaves `resolveTarget` to fall through to the site
+ * origin, so the refusals stay exactly where they were: a secret still has
+ * nowhere to go without a vault origin, and this function is never on that path.
+ */
+export function readBase(origins: ConsoleOrigins, path: string): ConsoleOrigins {
+  return path.startsWith("/vault/") ? origins : { vault: "", site: origins.site };
+}
+
+/**
  * Is this request body carrying credential material? Used by the test sweep,
  * and by `credentials.ts` to pick the sensitivity — one place decides, so a new
  * route cannot forget.

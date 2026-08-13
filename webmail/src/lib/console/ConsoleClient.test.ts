@@ -37,13 +37,38 @@ describe("HttpConsoleClient", () => {
     expect(creds[0]?.name).toBe("aws-mcp");
   });
 
-  it("addresses every read at the vault worker, never the site", async () => {
-    const { seen, fetchImpl } = recorder(() => json({ agents: [], resources: [] }));
+  it("splits the two surfaces: /console/* to the site backend, /vault/* to the vault", async () => {
+    // The read interface is served same-origin (services/jmap/src/console.ts);
+    // the vault worker has no public route and sends no CORS headers, so a
+    // console read addressed there is unreachable from a browser even now that
+    // the routes exist. `readBase` is what keeps them apart.
+    const { seen, fetchImpl } = recorder(() =>
+      json({ agents: [], resources: [], credentials: [] }),
+    );
     const c = http(fetchImpl);
     await c.listAgents();
     await c.listResources("acct_allen");
     await c.resourceDossier(VENDORS_BOOK, { at: 2, since: 1 }).catch(() => undefined);
-    for (const url of seen) expect(new URL(url).origin).toBe(VAULT);
+    expect(seen).toHaveLength(3);
+    for (const url of seen) expect(new URL(url).origin).toBe(SITE);
+
+    seen.length = 0;
+    await c.listCredentials();
+    expect(new URL(seen[0] as string).origin).toBe(VAULT);
+  });
+
+  it("reads the console with NO vault origin configured — the default deployment", async () => {
+    // T2 only needs a vault origin to MUTATE a credential. An operator who has
+    // not set one must still get the whole read surface, or the console is dead
+    // out of the box.
+    const { seen, fetchImpl } = recorder(() => json({ agents: [] }));
+    const c = new HttpConsoleClient({
+      origins: { vault: "", site: SITE },
+      token: "tok",
+      fetch: fetchImpl,
+    });
+    await c.listAgents();
+    expect(seen[0]).toBe(`${SITE}${CONSOLE_ENDPOINTS.agents}`);
   });
 
   it("carries the point-in-time instant on the wire", async () => {
