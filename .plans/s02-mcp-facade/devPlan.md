@@ -23,6 +23,16 @@
 > - **`Origin` is validated only when browser-shaped** (present, parseable, not `null`), and
 >   absence is treated as "not a browser, therefore not the DNS-rebinding attack" — which is
 >   what lets claude.ai's cloud egress through while the spec's MUST is still honoured.
+> - **`auth.bullmoose.cc` IS the login** (Eric, 2026-08-13). `app.bullmoose.cc/login` was
+>   always interim: it asks a human to paste a `bm_` token, which is a credential they had
+>   to obtain some other way first. The AS takes email + password and the OAuth flow does
+>   the translation into a system token — which is what an authorization server is *for*,
+>   and why the interim door gets deleted (`s07` T7) rather than duplicated. The password
+>   never reaches the server: the browser derives a `loginKey` (auth-core's client-side
+>   600k-iteration PBKDF2) and the server compares one SHA-256, exactly as `/auth/login`
+>   does — cheap by design, which is why the same `beginLoginAttempt` throttle applies.
+>   `loginThrottle.ts` moved to `auth-core` for that; a shared security control reachable
+>   from only one worker was the wrong shape.
 > - **⚠️ Open decision — `Mcp-Method` is validated when present, NOT enforced as required.**
 >   The spec says REQUIRED; enforcing it would break every existing caller including
 >   `tools/e2e-*.mjs`, and contradicts this plan's own "byte-identical except the three

@@ -18,6 +18,7 @@
       "@bullmoose/auth-core": ["packages/auth-core/src/index.ts"],
       "@bullmoose/boundary": ["packages/boundary/src/index.ts"],
       "@bullmoose/auth-core/principal": ["packages/auth-core/src/principal.ts"],
+      "@bullmoose/auth-core/loginThrottle": ["packages/auth-core/src/loginThrottle.ts"],
       "@bullmoose/contacts-core": ["packages/contacts-core/src/index.ts"],
       "@bullmoose/calendar-core": ["packages/calendar-core/src/index.ts"],
       "@bullmoose/jmap-core": ["packages/jmap-core/src/index.ts"],

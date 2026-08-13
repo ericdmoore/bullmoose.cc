@@ -1,7 +1,7 @@
-import { OAUTH_SCOPES, unknownScopes } from "@bullmoose/auth-core";
-import { verifyBearer } from "@bullmoose/auth-core/principal";
+import { hashLoginKey, isLoginKey, OAUTH_SCOPES, timingSafeEqualHex, unknownScopes } from "@bullmoose/auth-core";
+import { beginLoginAttempt } from "@bullmoose/auth-core/loginThrottle";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
-import { consentPage, errorPage } from "./consent.js";
+import { consentPage, deriveScript, errorPage } from "./consent.js";
 import { anyRedirectMatches, CLAUDE_REDIRECT_URIS } from "./redirects.js";
 
 /**
@@ -79,6 +79,9 @@ const authorizeHandler = {
     if (url.pathname === "/authorize") {
       return request.method === "POST" ? decide(request, env) : present(request, env);
     }
+    // The client-side key derivation. A file rather than an inline script so
+    // the password page's CSP can stay `script-src 'self'`.
+    if (url.pathname === "/derive.js") return deriveScript();
     if (url.pathname === "/" || url.pathname === "/health") {
       return new Response("bullmoose-oauth", { status: url.pathname === "/" ? 200 : 404 });
     }
@@ -128,48 +131,119 @@ async function present(request: Request, env: Env): Promise<Response> {
 }
 
 /**
- * POST /authorize — the human said yes (or no).
+ * POST /authorize — the human authenticated and said yes (or no).
  *
- * The principal is resolved from a bm_ token the human supplies, which is the
- * same interim door `s07` T1 built and carries the same caveat: it is interim.
- * `s07` T7 replaces it with a real session, at which point this reads the
- * session instead. What must NOT change is that `props.principalId` is
- * server-resolved from a verified credential and never taken from the form.
+ * This is the system's real login: email + password in, a system token out.
+ * The password itself never arrives — the browser derives a `loginKey` from
+ * it (auth-core's client-side PBKDF2 contract) and the server compares one
+ * SHA-256 of that against `credentials.pw_hash`, exactly as `/auth/login`
+ * does. Verification is therefore CHEAP, which is right for the CPU budget
+ * and hostile without a throttle, so the same `beginLoginAttempt` windows
+ * apply here.
+ *
+ * The invariant that must survive any future rework of this function:
+ * `props.principalId` is SERVER-RESOLVED from a verified credential and never
+ * read from the form.
  */
 async function decide(request: Request, env: Env): Promise<Response> {
   const form = await request.formData();
+  const authRequest = safeParse(String(form.get("authRequest") ?? "{}"));
   if (form.get("decision") !== "approve") {
     return errorPage("Not connected.", "You declined, so nothing was shared and no access was granted.");
   }
 
-  const token = String(form.get("token") ?? "");
-  const principal = token ? await verifyBearer(env.DB, token) : null;
-  if (!principal) {
-    return errorPage("That token was not recognized.", "Check the token and try again.");
+  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const loginKey = String(form.get("loginKey") ?? "");
+  // A form post that skipped the client-side derivation (JS off, or a script
+  // posting directly) must not be treated as a password attempt — we have no
+  // server-side KDF to fall back on, by design.
+  if (!email || !isLoginKey(loginKey)) {
+    return retry(form, "Enter your bullmoose address and password.");
   }
 
-  const scope = String(form.get("scope") ?? "")
-    .split(/\s+/)
-    .filter(Boolean);
+  // Same windows as /auth/login: the IP gate is the outer one, so a throttled
+  // caller sees the same refusal for every email, existing or not.
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const attempt = await beginLoginAttempt(env.OAUTH_KV, email, ip);
+  if (attempt.block === "ip") {
+    return errorPage("Too many attempts.", `Try again in ${attempt.retryAfterSeconds} seconds.`, 429);
+  }
+  if (attempt.block === "email") {
+    await attempt.fail();
+    return retry(form, INVALID);
+  }
+
+  const row = await env.DB.prepare(
+    `SELECT p.id, p.login_email, c.pw_hash
+     FROM principals p JOIN credentials c ON c.principal_id = p.id
+     WHERE p.login_email = ?`,
+  )
+    .bind(email)
+    .first<{ id: string; login_email: string; pw_hash: string }>();
+  // Identical response for an unknown address and a wrong password, and
+  // identically counted, so the windows trip at the same count either way and
+  // neither answer reveals which accounts exist.
+  if (!row) {
+    await attempt.fail();
+    return retry(form, INVALID);
+  }
+  if (!timingSafeEqualHex(await hashLoginKey(loginKey), row.pw_hash)) {
+    await attempt.fail();
+    return retry(form, INVALID);
+  }
+  await attempt.succeed();
+
+  // The scopes are re-validated here rather than trusted: this form is
+  // attacker-reachable, so a hidden field claiming `vault` must die against
+  // the same list the authorize endpoint checked.
+  const scope = String(form.get("scope") ?? "").split(/\s+/).filter(Boolean);
   const bad = unknownScopes(scope, OAUTH_SCOPES);
   if (bad.length > 0) {
     return errorPage("Unavailable permissions were requested.", bad.join(", "));
   }
-  // The consent screen may only ever NARROW what the client asked for, never
-  // widen it — the form is attacker-reachable, so the granted set is
-  // re-derived here rather than trusted.
-  const granted = scope.filter((s) => principal.scopes.includes(s) || principal.scopes.includes("mail"));
 
   const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
-    request: JSON.parse(String(form.get("authRequest") ?? "{}")),
-    userId: principal.username,
-    scope: granted,
-    metadata: { authorizedAt: Date.now() },
-    // The bridge. Everything the resource server needs to become a principal
-    // again, and nothing more — no token, no scopes it could self-widen with.
-    props: { principalId: principal.username },
+    request: authRequest,
+    userId: row.id,
+    scope,
+    metadata: { authorizedAt: Date.now(), loginEmail: row.login_email },
+    // The bridge (T4 reads this). Everything the resource server needs to
+    // become a principal again, and nothing more — no token it could replay,
+    // no scope list it could widen itself with.
+    props: { principalId: row.id, loginEmail: row.login_email },
   });
   return Response.redirect(redirectTo, 302);
+}
+
+/** One message for every credential failure — see the comment at its uses. */
+const INVALID = "That address and password did not match.";
+
+/** Re-render the consent screen with an error, preserving the request. */
+function retry(form: FormData, message: string): Response {
+  const authReq = safeParse(String(form.get("authRequest") ?? "{}")) as unknown as ConsentAuthReq;
+  if (typeof authReq?.clientId !== "string") {
+    return errorPage("This authorization request expired.", "Start again from your client.");
+  }
+  return consentPage({
+    client: { clientId: authReq.clientId, redirectUris: [] },
+    authReq,
+    error: message,
+  });
+}
+
+interface ConsentAuthReq {
+  clientId: string;
+  redirectUri: string;
+  scope: string[];
+  state: string;
+}
+
+function safeParse(text: string): Record<string, unknown> {
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
 }
 
 export default new OAuthProvider<Env>({

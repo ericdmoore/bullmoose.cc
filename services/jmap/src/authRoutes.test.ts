@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { EMAIL_MAX_FAILURES, IP_MAX_FAILURES, LOGIN_WINDOW_MS } from "./loginThrottle";
+import { EMAIL_MAX_FAILURES, IP_MAX_FAILURES, LOGIN_WINDOW_MS } from "@bullmoose/auth-core/loginThrottle";
 
 // The throttle on POST /auth/login. Per .plans/devPrinciples.md the D1 and
 // KV clients are injected, so the whole handler runs in plain Node against
