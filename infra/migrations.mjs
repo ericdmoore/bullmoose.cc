@@ -314,6 +314,28 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "binding-lifecycle-table",
+    why: "s10 T4's append-only provenance chain for the BINDING (which governing book, changed by whom, when). PATCH /agent-bindings/{id} appends a row in the same batch as a book re-point, so a provision worker deployed against a database missing it fails every re-point — but only that one route, so it is not a deploy blocker: reads, creates, the kill switch and delete are all untouched",
+    blocks: null,
+    check: tableExists("binding_lifecycle"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS binding_lifecycle (
+         id              INTEGER PRIMARY KEY AUTOINCREMENT,
+         account_id      TEXT NOT NULL,
+         binding_id      TEXT NOT NULL,
+         event           TEXT NOT NULL,
+         old_value       TEXT,
+         new_value       TEXT,
+         actor           TEXT,
+         via_proposal_id TEXT,
+         at              INTEGER NOT NULL
+       )`,
+      "CREATE INDEX IF NOT EXISTS binding_lifecycle_binding ON binding_lifecycle (account_id, binding_id, id)",
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
     id: "invocation-due-at",
     why: "s11 T1: the work's business deadline (third clock — distinct from expires_at and hold_until). Was a non-blocker in the T6 wave; since T2 the eligibility gate names due_at in EVERY claim statement's WHERE (jmap AgentInvocation/set and the agent worker's drain), so a worker deployed against a database missing it fails every claim and all agent mail stops",
     blocks: "deploy",

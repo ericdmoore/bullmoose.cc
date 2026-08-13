@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -57,13 +58,21 @@ type fakeAdmin struct {
 	bindings    []*fakeBinding
 	calls       []adminCall
 	nextID      int
+	// governedBooks are the books whose write_policy is 'governed' — the only
+	// books PATCH accepts as a target. Anything else is the 422 that stops a
+	// re-point from silently unbinding the agent.
+	governedBooks map[string]bool
 	// noAccountFor makes POST /agent-bindings 404 the way the real worker does
 	// when the address has no account.
 	noAccountFor map[string]bool
 }
 
 func newAdmin() *fakeAdmin {
-	return &fakeAdmin{reportsBook: true, noAccountFor: map[string]bool{}}
+	return &fakeAdmin{
+		reportsBook:   true,
+		noAccountFor:  map[string]bool{},
+		governedBooks: map[string]bool{},
+	}
 }
 
 func (fa *fakeAdmin) add(b *fakeBinding) *fakeBinding {
@@ -175,6 +184,105 @@ func (fa *fakeAdmin) handle(w http.ResponseWriter, r *http.Request) {
 			"ok": true, "bindingId": b.id, "accountId": b.accountID, "name": b.name,
 			"enabled": enable, "changed": (was == 1) != enable,
 			"pendingInvocations": b.queued, "note": note,
+		})
+
+	// PATCH /agent-bindings/{id} — the typed-core write surface (s10 T4). The
+	// fake reproduces the parts of the contract this command depends on: the
+	// typed core is the whole accepted body, an unknown key is a 400, a
+	// non-governed target book is a 422, and the response reports what changed,
+	// what was PRESERVED, and the provenance row a re-point appended.
+	case r.Method == "PATCH" && strings.HasPrefix(r.URL.Path, "/agent-bindings/"):
+		id := strings.TrimPrefix(r.URL.Path, "/agent-bindings/")
+		b := fa.find(id)
+		if b == nil {
+			write(404, map[string]any{"error": "no agent binding " + id})
+			return
+		}
+		for k := range body {
+			switch k {
+			case "enabled", "replyMode", "allowedSenders", "recipientsBookId":
+			default:
+				write(400, map[string]any{
+					"error":    "unknown field(s): " + k + ". This route writes the TYPED CORE only",
+					"rejected": []string{k},
+				})
+				return
+			}
+		}
+		var updated []string
+		var provenance any
+		if v, ok := body["enabled"].(bool); ok {
+			was := b.enabled == 1
+			if was != v {
+				updated = append(updated, "enabled")
+			}
+			if v {
+				b.enabled = 1
+			} else {
+				b.enabled = 0
+			}
+		}
+		if v, ok := body["replyMode"].(string); ok {
+			if b.config == nil {
+				b.config = map[string]any{}
+			}
+			if b.config["replyMode"] != v {
+				updated = append(updated, "replyMode")
+			}
+			b.config["replyMode"] = v
+		}
+		if v, ok := body["allowedSenders"].([]any); ok {
+			if b.config == nil {
+				b.config = map[string]any{}
+			}
+			b.config["allowedSenders"] = v
+			updated = append(updated, "allowedSenders")
+		}
+		if v, present := body["recipientsBookId"]; present {
+			next, _ := v.(string)
+			// The policy refusal, which is the whole reason a re-point is a
+			// server decision: a non-governed book would silently unbind.
+			if next != "" && !fa.governedBooks[next] {
+				write(422, map[string]any{
+					"error": "address book " + next + " has write_policy 'open' — the governing book " +
+						"of a binding must be 'governed'",
+					"writePolicy": "open", "required": "governed",
+				})
+				return
+			}
+			if next != b.bookID {
+				updated = append(updated, "recipientsBookId")
+				provenance = map[string]any{
+					"record": "binding_lifecycle", "event": "recipients-book-changed",
+					"from": nilIfEmpty(b.bookID), "to": nilIfEmpty(next),
+					"actor": "admin", "viaProposalId": nil, "at": 1_700_000_000_000,
+				}
+				b.bookID = next
+			}
+		}
+		var preserved []string
+		for k := range b.config {
+			if k != "replyMode" && k != "allowedSenders" {
+				preserved = append(preserved, k)
+			}
+		}
+		sort.Strings(preserved)
+		outbound := map[string]any{
+			"state": "book", "governingBookId": b.bookID, "failClosed": false,
+			"note": "membership is resolved server-side on every send",
+		}
+		if b.bookID == "" {
+			outbound = map[string]any{
+				"state": "none", "governingBookId": nil, "failClosed": true,
+				"note": "FAIL-CLOSED: with no governing book this binding CANNOT SEND",
+			}
+		}
+		write(200, map[string]any{
+			"ok": true, "bindingId": b.id, "accountId": b.accountID, "name": b.name,
+			"changed": len(updated) > 0, "updated": updated,
+			"enabled": b.enabled == 1, "replyMode": b.config["replyMode"],
+			"allowedSenders": b.config["allowedSenders"],
+			"outbound":       outbound, "preserved": preserved, "provenance": provenance,
 		})
 
 	case r.Method == "DELETE" && strings.HasPrefix(r.URL.Path, "/agent-bindings/"):
@@ -505,30 +613,174 @@ func TestAgents_Edit_CannotProduceAnUnboundedOutboundState(t *testing.T) {
 	}
 }
 
-// A real book id gets past the invariant and lands on the honest gap: there is
-// no server surface for this write anywhere, and the CLI says so rather than
-// inventing a D1 path.
-func TestAgents_Edit_ConfigWritesHaveNoServerSurface(t *testing.T) {
-	cases := [][]string{
-		{"--reply-mode", "send"},
-		{"--allow-sender", "bob@example.com"},
-		{"--recipients-book", "ab_other"},
-	}
-	for _, flags := range cases {
-		fa := newAdmin()
-		fa.add(&fakeBinding{id: "bind_photos", name: "photos", enabled: 1, bookID: "ab_invitees"})
-		db := agEnv(t, fa)
+// A real book id gets past the client-side invariant and is WRITTEN, through
+// the one route that can write it. End-to-end: the request carries the typed
+// core, the fake applies it, and the operator is told what changed — including
+// the provenance row a re-point appended, which is the half of the s10 T2
+// argument a config surface is most tempted to leave silent.
+func TestAgents_Edit_RecipientsBookGoesThroughThePatchRoute(t *testing.T) {
+	fa := newAdmin()
+	fa.governedBooks["ab_next"] = true
+	fa.add(&fakeBinding{id: "bind_photos", name: "photos", enabled: 1, bookID: "ab_invitees",
+		config: map[string]any{"replyMode": "draft", "persona": "you are photos", "pipeline": "reply"}})
+	db := agEnv(t, fa)
 
-		_, errOut, code := runAG(t, db, append([]string{"edit", "photos"}, flags...)...)
-		if code != int(bmio.ExitFail) {
-			t.Fatalf("%v exit %d, want %d", flags, code, bmio.ExitFail)
+	out, errOut, code := runAG(t, db, "edit", "photos", "--recipients-book", "ab_next")
+	if code != 0 {
+		t.Fatalf("edit exit %d: %s", code, errOut)
+	}
+	w := fa.sawWrites()
+	if len(w) != 1 || w[0].method != "PATCH" || w[0].path != "/agent-bindings/bind_photos" {
+		t.Fatalf("the book write must be one PATCH, saw %v", w)
+	}
+	if got := w[0].body["recipientsBookId"]; got != "ab_next" {
+		t.Fatalf("recipientsBookId = %v", got)
+	}
+	// The typed core and NOTHING else: a body carrying a blob key would be a
+	// blind merge, which the route refuses and this command must never attempt.
+	for k := range w[0].body {
+		switch k {
+		case "enabled", "replyMode", "allowedSenders", "recipientsBookId":
+		default:
+			t.Fatalf("edit sent a non-typed-core key %q: %v", k, w[0].body)
 		}
-		if !strings.Contains(errOut, "no server surface") || !strings.Contains(errOut, "PATCH /agent-bindings") {
-			t.Errorf("%v must name the gap, got %q", flags, errOut)
+	}
+	if fa.find("bind_photos").bookID != "ab_next" {
+		t.Fatalf("the server did not move the bound")
+	}
+	if !strings.Contains(out, "updated: recipientsBookId") {
+		t.Errorf("out = %q", out)
+	}
+	// The provenance row is REPORTED, old→new both legible.
+	if !strings.Contains(errOut, "provenance appended") ||
+		!strings.Contains(errOut, "book:ab_invitees") || !strings.Contains(errOut, "book:ab_next") {
+		t.Errorf("a re-point must report its provenance row with old→new, got %q", errOut)
+	}
+	// And the untouched blob is named, so "the remainder survived" is something
+	// the operator can see rather than something they have to trust.
+	if !strings.Contains(errOut, "persona") || !strings.Contains(errOut, "pipeline") {
+		t.Errorf("the preserved remainder must be reported, got %q", errOut)
+	}
+}
+
+// replyMode and allowedSenders take the same route, and the allowlist REPLACES
+// rather than appends — an `edit` that appended could never remove an address.
+func TestAgents_Edit_ReplyModeAndSendersGoThroughThePatchRoute(t *testing.T) {
+	fa := newAdmin()
+	fa.add(&fakeBinding{id: "bind_photos", name: "photos", enabled: 1, bookID: "ab_invitees",
+		config: map[string]any{"replyMode": "draft", "allowedSenders": []any{"old@x.test"}, "persona": "p"}})
+	db := agEnv(t, fa)
+
+	out, errOut, code := runAG(t, db, "edit", "photos",
+		"--reply-mode", "send", "--allow-sender", "bob@example.com,kid@school.test")
+	if code != 0 {
+		t.Fatalf("edit exit %d: %s", code, errOut)
+	}
+	w := fa.sawWrites()
+	if len(w) != 1 || w[0].method != "PATCH" {
+		t.Fatalf("saw %v", w)
+	}
+	if w[0].body["replyMode"] != "send" {
+		t.Errorf("replyMode = %v", w[0].body["replyMode"])
+	}
+	senders, _ := w[0].body["allowedSenders"].([]any)
+	if len(senders) != 2 || senders[0] != "bob@example.com" || senders[1] != "kid@school.test" {
+		t.Fatalf("allowedSenders = %v — the list is REPLACED, comma-split and repeatable", senders)
+	}
+	if !strings.Contains(errOut, "REPLACED") {
+		t.Errorf("the replace semantics must be said out loud, got %q", errOut)
+	}
+	if !strings.Contains(out, "replyMode") || !strings.Contains(out, "allowedSenders") {
+		t.Errorf("out = %q", out)
+	}
+	// The remainder is still there afterwards: this command never merges a blob.
+	if fa.find("bind_photos").config["persona"] != "p" {
+		t.Fatalf("the remainder did not survive the edit: %v", fa.find("bind_photos").config)
+	}
+}
+
+// The server's policy refusal reaches the operator verbatim, and nothing moved.
+// This is the invariant the CLI cannot check itself: whether the named book is
+// really `write_policy = 'governed'` is a question only the store can answer.
+func TestAgents_Edit_NonGovernedBookIsRefusedByTheServer(t *testing.T) {
+	fa := newAdmin()
+	fa.add(&fakeBinding{id: "bind_photos", name: "photos", enabled: 1, bookID: "ab_invitees"})
+	db := agEnv(t, fa)
+
+	_, errOut, code := runAG(t, db, "edit", "photos", "--recipients-book", "ab_open")
+	if code != int(bmio.ExitUsage) {
+		t.Fatalf("exit %d, want %d (the 422 taxonomy) — %s", code, bmio.ExitUsage, errOut)
+	}
+	if !strings.Contains(errOut, "write_policy") || !strings.Contains(errOut, "governed") {
+		t.Errorf("the server's policy sentence must survive verbatim, got %q", errOut)
+	}
+	if fa.find("bind_photos").bookID != "ab_invitees" {
+		t.Fatalf("a refused re-point moved the bound anyway")
+	}
+}
+
+// A combined edit is ONE call. Two calls could half-apply — the enable landing
+// and the config write failing — and leave a binding in a state no operator
+// asked for.
+func TestAgents_Edit_CombinedFieldsAreOnePatch(t *testing.T) {
+	fa := newAdmin()
+	fa.add(&fakeBinding{id: "bind_photos", name: "photos", enabled: 0, bookID: "ab_invitees",
+		config: map[string]any{"replyMode": "draft"}})
+	db := agEnv(t, fa)
+
+	if _, errOut, code := runAG(t, db, "edit", "photos", "--enabled", "true", "--reply-mode", "send"); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	w := fa.sawWrites()
+	if len(w) != 1 || w[0].method != "PATCH" {
+		t.Fatalf("a combined edit must be exactly one PATCH, saw %v", w)
+	}
+	if w[0].body["enabled"] != true || w[0].body["replyMode"] != "send" {
+		t.Fatalf("body = %v", w[0].body)
+	}
+	if b := fa.find("bind_photos"); b.enabled != 1 || b.config["replyMode"] != "send" {
+		t.Fatalf("both fields must land: %+v", b)
+	}
+}
+
+// Fields the operator did not name are ABSENT from the body. Re-sending what
+// the list last returned is how a stale view silently reverts another writer.
+func TestAgents_Edit_SendsOnlyTheNamedFields(t *testing.T) {
+	fa := newAdmin()
+	fa.add(&fakeBinding{id: "bind_photos", name: "photos", enabled: 1, bookID: "ab_invitees",
+		config: map[string]any{"replyMode": "draft", "allowedSenders": []any{"eric@bullmoose.cc"}}})
+	db := agEnv(t, fa)
+
+	if _, errOut, code := runAG(t, db, "edit", "photos", "--reply-mode", "send"); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	body := fa.sawWrites()[0].body
+	if len(body) != 1 {
+		t.Fatalf("only the named field may be sent, got %v", body)
+	}
+	for _, unasked := range []string{"enabled", "allowedSenders", "recipientsBookId"} {
+		if _, present := body[unasked]; present {
+			t.Errorf("edit re-sent %q it was not asked to change: %v", unasked, body)
 		}
-		if w := fa.sawWrites(); len(w) != 0 {
-			t.Fatalf("%v wrote something: %v", flags, w)
-		}
+	}
+}
+
+// Nothing to edit is a usage error, not a no-op PATCH: an empty body is a
+// request the server would (rightly) 400, and the CLI can say so for free.
+func TestAgents_Edit_NothingToEditIsRefusedBeforeTheNetwork(t *testing.T) {
+	fa := newAdmin()
+	fa.add(&fakeBinding{id: "bind_photos", name: "photos", enabled: 1, bookID: "ab_invitees"})
+	db := agEnv(t, fa)
+
+	_, errOut, code := runAG(t, db, "edit", "photos")
+	if code != int(bmio.ExitUsage) {
+		t.Fatalf("exit %d, want 2", code)
+	}
+	if len(fa.sawWrites()) != 0 {
+		t.Fatalf("an empty edit reached the server: %v", fa.sawWrites())
+	}
+	if !strings.Contains(errOut, "--recipients-book") || !strings.Contains(errOut, "--reply-mode") {
+		t.Errorf("the usage line must name the fields that DO work, got %q", errOut)
 	}
 }
 

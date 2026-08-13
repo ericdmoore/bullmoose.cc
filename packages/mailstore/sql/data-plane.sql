@@ -205,6 +205,45 @@ CREATE TABLE IF NOT EXISTS agent_bindings (
   PRIMARY KEY (account_id, id)
 );
 
+-- s10 T4 — append-only lifecycle log for the BINDING itself, on the
+-- grant_lifecycle model (control-plane.sql:197): no FK, because history has to
+-- outlive the binding row a `--destroy` removes.
+--
+-- Why this is not a `book_membership_log` row, since that is the s10 T2 chain
+-- for everything else about a governing book: that log's grain is
+-- (book_id, address, added|removed) and its fold MUST reproduce the book's
+-- current membership (`reconcileBookMembership` — divergence is an alarm, not a
+-- log line). Re-pointing a binding at a different book changes no address in
+-- either book, so there is no honest value for the NOT NULL `address` column;
+-- and writing "removed" rows on the old book plus "added" rows on the new one
+-- would make the fold disagree with both books and trip the reconciliation
+-- invariant as a false tamper alarm. The membership chain answers "who is in
+-- this book?"; this answers "which book governs this binding?" — two different
+-- questions, so two logs rather than one overloaded grain.
+--
+-- One event today (`recipients-book-changed`), written by
+-- `PATCH /agent-bindings/{id}` in the SAME db.batch as the UPDATE it describes.
+-- old_value/new_value are the previous and next `recipients_book_id`; NULL on
+-- either side is legible and load-bearing (NULL = unbound = cannot send).
+-- `via_proposal_id` is the WHY, exactly as in grant_lifecycle: NULL for a
+-- direct admin write, filled when a T3 proposal authorized the change.
+--
+-- New table, so a plain schema re-run creates it; listed in infra/migrations.mjs
+-- (binding-lifecycle-table) so `bootstrap migrate` accounts for it.
+CREATE TABLE IF NOT EXISTS binding_lifecycle (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id      TEXT NOT NULL,
+  binding_id      TEXT NOT NULL,             -- bind_xxxxxxxx (no FK — see above)
+  event           TEXT NOT NULL,             -- 'recipients-book-changed'
+  old_value       TEXT,                      -- previous recipients_book_id (NULL = was unbound)
+  new_value       TEXT,                      -- next recipients_book_id (NULL = unbound ⇒ cannot send)
+  actor           TEXT,                      -- acting principal, or 'admin' on the admin plane
+  via_proposal_id TEXT,                      -- the WHY (s10 T2/T3); NULL for direct admin writes
+  at              INTEGER NOT NULL           -- epoch ms
+);
+CREATE INDEX IF NOT EXISTS binding_lifecycle_binding
+  ON binding_lifecycle (account_id, binding_id, id);
+
 -- Agent invocations — a synced collection (the AccountDO changelog is
 -- collection-agnostic). Pull-based: runtimes watch for pending work.
 CREATE TABLE IF NOT EXISTS agent_invocations (
