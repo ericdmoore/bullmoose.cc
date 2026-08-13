@@ -272,6 +272,20 @@ complete SLA  did the claimed run finish?
 The runtime heartbeats the invocation while working (`running`,
 `heartbeatAt`), so a long LLM call doesn't trip the watchdog.
 
+**A third timer, added by s11 T3 — the deadline.** Once the scheduler may
+*deliberately* leave an invocation unclaimed (sit for free, escalate near-due),
+silence is no longer evidence of failure and the pickup SLA alone stops being a
+sufficient backstop. So the cloud gains a second trigger: **`due_at` passed with
+the invocation still `pending`** → claim it, *outside* the eligibility gate.
+Bypassing the gate is the point: a gated claim would refuse the budget-exhausted
+overdue work the backstop exists to rescue. Two terms survive the bypass —
+**privacy** (a `pinned` invocation is exempt by definition: when the homelab is
+down and the deadline passes, privacy beats liveness) and **fit** (claiming work
+this runtime cannot satisfy burns the deadline on a run that must fail). What
+cannot be claimed is *marked* on the invocation instead, so the invariant reads
+"no invocation with a past `due_at` sits `pending` **silently**".
+Implementation: `services/agent` `escalateOverdue`.
+
 **Fallback ladder** (per binding, configurable; tenant defaults via the
 `policy` admin noun):
 
