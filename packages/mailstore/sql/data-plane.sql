@@ -269,6 +269,24 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
   sender_class  TEXT,
   effort_prior  TEXT,
   requires_json TEXT,
+  -- s11 T2 — WHO claimed, as declared (trust-but-audit). The claim call
+  -- carries a self-declared identity {isFree, capabilities?}; the claim
+  -- UPDATE records it here. Both are FIT-shaped, never authority-shaped, so
+  -- the gate trusts the declaration and the record is what lets the score
+  -- audit a lie (a "free" claimant whose runs keep stamping cost_micros).
+  --   claimant_free      1 = declared free (homelab/fleet host); 0 = paid or
+  --                      undeclared (the conservative default); NULL = a
+  --                      pre-T2 claim. Read back by the eligibility gate's
+  --                      liveness inference: a claimant_free=1 claim within
+  --                      the last 15 min = "a free runtime is live" (readme
+  --                      decision 3, absence-inference).
+  --   claimant_caps_json the declared capability vector ({vision?,
+  --                      contextTokens?, tools?}), NULL if none declared.
+  -- Existing DBs: infra/migrations.mjs `invocation-claimant-columns` — a
+  -- DEPLOY BLOCKER: every T2 claim UPDATE SETs claimant_free and the gate's
+  -- liveness subquery reads it, so a worker deployed first fails every claim.
+  claimant_free      INTEGER,
+  claimant_caps_json TEXT,
   PRIMARY KEY (account_id, id)
 );
 CREATE INDEX IF NOT EXISTS invocations_status
