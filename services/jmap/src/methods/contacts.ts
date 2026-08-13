@@ -1,18 +1,20 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
-import type {
-  AddressBookRow,
-  ContactCardRow,
-  ContactFilter,
-  ContactFilterCondition,
-  ContactSort,
-  JSContactCard,
-  Mailstore,
+import {
+  BookWriteRefused,
+  type AddressBookRow,
+  type ContactCardRow,
+  type ContactFilter,
+  type ContactFilterCondition,
+  type ContactSort,
+  type JSContactCard,
+  type Mailstore,
 } from "@bullmoose/mailstore";
 import { hasScope } from "@bullmoose/auth-core";
 import { accountAccess, allowedBookIds, type AccountAccess } from "../auth";
 import {
   accountState,
+  contactWriterFor,
   proxyChanges,
   requireAccount,
   setError,
@@ -121,6 +123,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
       throw new MethodError("forbidden", "only the account owner manages address books");
     }
     const store = storeFor(ctx);
+    const writer = contactWriterFor(ctx);
 
     const oldState = await accountState(ctx, access.accountId);
     if (typeof args.ifInState === "string" && args.ifInState !== oldState) {
@@ -189,7 +192,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
         }
         // v1 is single-book-per-card, so removing a card from its only
         // book (RFC 9610 onDestroyRemoveContents) destroys the card.
-        await store.destroyContactCards(access.accountId, cardIds);
+        await store.destroyContactCards(access.accountId, cardIds, writer);
         cardEntry.destroyed.push(...cardIds);
         await store.deleteAddressBook(access.accountId, id);
         // A destroyed book takes its sharing with it.
@@ -317,6 +320,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
   registry.register("ContactCard/set", async (args, ctx) => {
     const access = await requireAccount(ctx, args, "contacts", "contacts");
     const store = storeFor(ctx);
+    const writer = contactWriterFor(ctx);
     // Sharees (mayWrite) edit cards only inside their shared books.
     const writable = allowedBookIds(access, "contacts");
 
@@ -426,13 +430,13 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
       });
       let inserted = toInsert;
       try {
-        await store.insertContactCards(access.accountId, inserted.map((p) => p.row));
+        await store.insertContactCards(access.accountId, inserted.map((p) => p.row), writer);
       } catch {
         // Batch is transactional; isolate the failing card(s) per-card.
         inserted = [];
         for (const p of toInsert) {
           try {
-            await store.insertContactCard(access.accountId, p.row);
+            await store.insertContactCard(access.accountId, p.row, writer);
             inserted.push(p);
           } catch (err) {
             notCreated[p.cid] = toSetError(err);
@@ -477,16 +481,20 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
         card.updated = new Date().toISOString();
         await store.offloadCardPhotos(access.tenantId, access.accountId, card);
 
-        await store.updateContactCard(access.accountId, {
-          id: row.id,
-          addressBookId: bookId,
-          uid: row.uid,
-          card,
-          nameFull: deriveNameFull(card),
-          davName: row.davName,
-          createdAt: row.createdAt,
-          updatedAt: Date.parse(card.updated),
-        });
+        await store.updateContactCard(
+          access.accountId,
+          {
+            id: row.id,
+            addressBookId: bookId,
+            uid: row.uid,
+            card,
+            nameFull: deriveNameFull(card),
+            davName: row.davName,
+            createdAt: row.createdAt,
+            updatedAt: Date.parse(card.updated),
+          },
+          writer,
+        );
         ctagBooks.add(row.addressBookId);
         ctagBooks.add(bookId);
         cardEntry.updated.push(id);
@@ -501,7 +509,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
       try {
         const [row] = await store.getContactCards(access.accountId, [id]);
         if (!row || (writable && !writable.has(row.addressBookId))) throw new NotFound();
-        await store.destroyContactCard(access.accountId, id);
+        await store.destroyContactCard(access.accountId, id, writer);
         ctagBooks.add(row.addressBookId);
         cardEntry.destroyed.push(id);
         destroyed.push(id);
@@ -578,6 +586,9 @@ class SetErrorSignal extends Error {
 
 function toSetError(err: unknown): SetError {
   if (err instanceof NotFound) return setError("notFound");
+  // The chokepoint's typed refusal (s10 T1): a proper SetError, not a
+  // serverFail — the description tells the agent the path that IS allowed.
+  if (err instanceof BookWriteRefused) return setError("forbidden", err.message);
   if (err instanceof SetErrorSignal) {
     return {
       type: err.type,
@@ -643,6 +654,9 @@ function validateNewBook(spec: Record<string, unknown>, becomeDefault: boolean):
     ctag: 0,
     createdAt: now,
     updatedAt: now,
+    // Client-created books are ordinary working books; governing books are
+    // marked by provisioning, never over the JMAP wire (s10 T1).
+    writePolicy: "open",
   };
 }
 

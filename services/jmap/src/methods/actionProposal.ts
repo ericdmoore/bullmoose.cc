@@ -410,7 +410,16 @@ async function applyProposal(
         createdAt: now,
         updatedAt: now,
       };
-      await store.insertContactCard(access.accountId, cardRow);
+      // An approved-proposal write is still an AGENT write at the chokepoint —
+      // the human's approval rides as `authorization`, which is what a
+      // propose/governed book accepts and RECORDS (via_proposal_id, s10 T2).
+      await store.insertContactCard(access.accountId, cardRow, {
+        principal: ctx.principal.username,
+        kind: "agent",
+        binding: row.binding_name,
+        invocation: row.id,
+        authorization: { proposalId: row.id },
+      });
       const entries: ChangeEntry[] = [
         { collection: "ContactCard", created: [cardRow.id], updated: [], destroyed: [] },
       ];

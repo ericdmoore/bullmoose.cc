@@ -20,8 +20,10 @@ export const MAIL_SCOPES = ["read", "annotate", "draft", "move", "send", "delete
  * `files` is the FileNode realm (sVOL 011); mirrors auth-core. */
 export const REALM_SCOPES = ["contacts", "calendar", "vault", "files"] as const;
 
-/** What `bullmoose login` / `bullmoose token create` may ask for (no `admin`). */
-export const SELF_SERVICE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "mail"];
+/** What `bullmoose login` / `bullmoose token create` may ask for (no `admin`).
+ * `agent` (s10 T1) is the agent-runtime MARKER: it grants nothing and only
+ * narrows — governed address books refuse agent-marked writers. */
+export const SELF_SERVICE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "mail", "agent"];
 
 /** What `bullmoose admin token create` may ask for — the operator plane. */
 export const TOKEN_SCOPES: readonly string[] = [...SELF_SERVICE_SCOPES, "admin"];

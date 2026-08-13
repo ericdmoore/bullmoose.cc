@@ -129,12 +129,26 @@ export function scopesWithin(requested: string[], granted: string[]): boolean {
 // hasScope check — a token that looks minted and silently does nothing —
 // and "admin" was mintable by anyone who knew a password.
 
-/** Everything the operator plane (provision, behind ADMIN_TOKEN) may mint. */
+/**
+ * The agent MARKER (s10 T1). Not a capability: `hasScope` grants nothing for
+ * it (it is in no cover set and implies not even `read`), so holding it only
+ * ever NARROWS what a token may do — the contact-write chokepoint refuses
+ * agent-marked writers on `propose`/`governed` address books. Minted onto
+ * agent-runtime tokens by the operator plane; self-service re-mints from a
+ * marked token propagate it (services/jmap authRoutes), so an agent cannot
+ * shed its own mark.
+ */
+export const AGENT_MARKER_SCOPE = "agent";
+
+/** Everything the operator plane (provision, behind ADMIN_TOKEN) may mint.
+ * NB: the CLI's drift guard parses these array literals out of this source
+ * (packages/cli/src/scopes.test.ts) — string literals only, comments outside. */
 export const TOKEN_SCOPES: readonly string[] = [
   ...MAIL_SCOPES,
   ...REALM_SCOPES,
   "mail",
   "admin",
+  "agent",
 ];
 
 /**
@@ -146,7 +160,15 @@ export const TOKEN_SCOPES: readonly string[] = [
  * `scopesWithin`, but `/auth/login` has no minter token to compare against —
  * this list is the only thing standing there.
  */
-export const SELF_SERVICE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "mail"];
+// The agent marker is self-service-requestable because holding it only ever
+// NARROWS a token; what self-service must never allow is SHEDDING it — the
+// mint route forces it onto anything a marked token mints.
+export const SELF_SERVICE_SCOPES: readonly string[] = [
+  ...MAIL_SCOPES,
+  ...REALM_SCOPES,
+  "mail",
+  "agent",
+];
 
 /**
  * The default for `/auth/login` ONLY, and the one default that survives.
