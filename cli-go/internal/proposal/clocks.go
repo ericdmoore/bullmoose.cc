@@ -157,9 +157,11 @@ func HoldLabel(holdRemainingMs *int64) string {
 }
 
 // OrderQueue is the queue order — "ordered by urgency, pending first" (s07 §T4,
-// clocks.ts:138). Pending soonest-deadline-first (no deadline last) then
-// longest-waiting; held soonest-closing-window-first; history newest-decision
-// first. Stable, so callers never re-sort in the renderer.
+// clocks.ts:170). Pending soonest-deadline-first (no deadline last) then
+// longest-waiting; then `info-requested` (s10 T3) oldest-ask-first — waiting on
+// the AGENT, watchable but not decidable, and its deadline is paused so there is
+// no expiry to order by; then held soonest-closing-window-first; then history
+// newest-decision first. Stable, so callers never re-sort in the renderer.
 //
 // The server's ActionProposal/query only orders newest-first by created_at
 // (actionProposal.ts:156); urgency is a CLIENT ordering, exactly as webmail's
@@ -173,10 +175,12 @@ func OrderQueue(ps []*Proposal) []*Proposal {
 		switch p.Status {
 		case "pending":
 			return 0
-		case "held":
+		case "info-requested":
 			return 1
-		default:
+		case "held":
 			return 2
+		default:
+			return 3
 		}
 	}
 	timeOf := func(iso string, absent int64) int64 {
@@ -197,6 +201,12 @@ func OrderQueue(ps []*Proposal) []*Proposal {
 			if ad, bd := timeOf(a.ExpiresAt, never), timeOf(b.ExpiresAt, never); ad != bd {
 				return ad < bd
 			}
+			if aa, ba := timeOf(a.CreatedAt, 0), timeOf(b.CreatedAt, 0); aa != ba {
+				return aa < ba
+			}
+		case "info-requested":
+			// Oldest ask first — the longest-owed answer surfaces on top. There is
+			// no expiry to sort by: the clock is banked, not running.
 			if aa, ba := timeOf(a.CreatedAt, 0), timeOf(b.CreatedAt, 0); aa != ba {
 				return aa < ba
 			}

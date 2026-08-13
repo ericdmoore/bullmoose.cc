@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/proposal"
 )
 
 // ---- fake JMAP server -----------------------------------------------------
@@ -31,6 +32,12 @@ type fakeProp struct {
 	payload, editedPayload, subject, decision  map[string]any
 	evidence                                   []any
 	createdAt, decidedAt, holdUntil, expiresAt int64 // ms; 0 == null
+	// needsInfo (s10 T3): the open question, the append-only Q&A rounds, and the
+	// banked remainder of the paused pre-decision clock. `expiresRemainingMs` is
+	// -1 for the wire's null, because 0 is a real banked value (deadline reached).
+	question           string
+	amendments         []any
+	expiresRemainingMs int64
 }
 
 type fakeServer struct {
@@ -39,6 +46,9 @@ type fakeServer struct {
 	hasSend bool         // does the caller's token carry the send capability?
 	sets    []setCapture // every update patch, for asserting what the CLI sent
 	egress  int          // tier-3 relays performed
+	// answer-info-request invocations enqueued — the costed round a needsInfo
+	// creates (actionProposal.ts). Zero for every other verb.
+	answerInvocations int
 }
 
 type setCapture struct {
@@ -65,6 +75,9 @@ func (fs *fakeServer) add(p *fakeProp) {
 	}
 	if p.createdAt == 0 {
 		p.createdAt = time.Now().UnixMilli() - 60_000
+	}
+	if p.expiresRemainingMs == 0 {
+		p.expiresRemainingMs = -1 // null: no round has paused this row's clock
 	}
 	fs.props[p.id] = p
 }
@@ -187,9 +200,46 @@ func (fs *fakeServer) applySet(id string, patch map[string]any) (bool, map[strin
 			"description": "proposal is " + p.status + ", not pending"}
 	}
 	status, _ := patch["status"].(string)
-	if status != "approved" && status != "rejected" {
+	if status != "approved" && status != "rejected" && status != "info-requested" {
 		return false, map[string]any{"type": "invalidProperties",
-			"description": `status must be "approved" or "rejected"`}
+			"description": `status must be "approved", "rejected" or "info-requested"`}
+	}
+
+	// ---- needsInfo (s10 T3), mirroring actionProposal.ts's branch ----
+	if status == "info-requested" {
+		if _, has := patch["decision"]; has {
+			return false, map[string]any{"type": "invalidProperties",
+				"description": "needsInfo carries only a question — no decision (it is not a reject) and no editedPayload"}
+		}
+		if _, has := patch["editedPayload"]; has {
+			return false, map[string]any{"type": "invalidProperties",
+				"description": "needsInfo carries only a question — no decision (it is not a reject) and no editedPayload"}
+		}
+		q, _ := patch["question"].(string)
+		q = strings.TrimSpace(q)
+		if q == "" {
+			return false, map[string]any{"type": "invalidProperties",
+				"description": "needsInfo requires a non-empty human-authored question"}
+		}
+		now := time.Now().UnixMilli()
+		p.status = "info-requested"
+		p.question = q
+		// PAUSE: bank the remaining window, null the deadline. The row cannot
+		// lapse while the ball is in the agent's court.
+		if p.expiresAt != 0 {
+			p.expiresRemainingMs = max64(0, p.expiresAt-now)
+		}
+		p.expiresAt = 0
+		// APPEND the open round — never over the originals.
+		p.amendments = append(p.amendments, map[string]any{
+			"question": q, "answer": nil,
+			"askedAt": isoOrNull(now), "answeredAt": nil, "askedBy": "eric@login.example",
+		})
+		// The answer round is a NEW costed invocation; the CLI never sees it, but
+		// counting it here proves the verb went down the needsInfo path and not
+		// through a decision.
+		fs.answerInvocations++
+		return true, nil
 	}
 
 	var edited map[string]any
@@ -271,6 +321,9 @@ func (fs *fakeServer) sortedByCreatedDesc() []*fakeProp {
 	return out
 }
 
+// toJMAP is proposalToJmap (actionProposal.ts:845) — every field the server
+// projects, including the needsInfo pair, so `--json` is asserted against the
+// shape the CLI will really meet.
 func (p *fakeProp) toJMAP() map[string]any {
 	return map[string]any{
 		"id": p.id, "agent": p.agent, "kind": p.kind, "tier": p.tier,
@@ -284,9 +337,40 @@ func (p *fakeProp) toJMAP() map[string]any {
 		"decidedAt":        isoOrNull(p.decidedAt),
 		"holdUntil":        isoOrNull(p.holdUntil),
 		"expiresAt":        isoOrNull(p.expiresAt),
+		"dueAt":            nil,
+		"question":         strOrNull(p.question),
+		"amendments":       orEmptyArr(p.amendments),
 		"invocationStatus": "done",
 		"claimedAt":        nil,
 	}
+}
+
+func strOrNull(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func max64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// round builds one Q&A amendment as the server stores it; answer "" is the open
+// (still owed) round.
+func round(question, answer, askedBy string, askedAt, answeredAt int64) map[string]any {
+	m := map[string]any{
+		"question": question, "answer": nil,
+		"askedAt": isoOrNull(askedAt), "answeredAt": nil, "askedBy": askedBy,
+	}
+	if answer != "" {
+		m["answer"] = answer
+		m["answeredAt"] = isoOrNull(answeredAt)
+	}
+	return m
 }
 
 func orEmptyMap(m map[string]any) map[string]any {
@@ -608,5 +692,425 @@ func TestApprovals_Show(t *testing.T) {
 	_, _, code = runAP(t, db, "show", "nope")
 	if code != int(bmio.ExitNotFound) {
 		t.Errorf("show missing exit = %d, want %d", code, bmio.ExitNotFound)
+	}
+}
+
+// ---- needsInfo (s10 T3) ---------------------------------------------------
+//
+// The third verb is an ACTION, not a reject (decline-taxonomy.md). These tests
+// hold the two halves of that sentence: what it SENDS (a question and nothing
+// else — no decision, so no rejection record a learning pipeline could read as
+// negative feedback), and what it never becomes (a `--reason`).
+
+// The happy path: the exact request body, the paused clock, and the outcome
+// worded as a question rather than a verdict.
+func TestApprovals_NeedsInfo_HappyPath(t *testing.T) {
+	now := time.Now().UnixMilli()
+	fs := newFake(true)
+	fs.add(&fakeProp{id: "g1", kind: "grant-request", tier: 2, rationale: "let me email bob@",
+		expiresAt: now + 2*day})
+	db := newEnv(t, fs, true)
+
+	out, errOut, code := runAP(t, db, "needs-info", "g1", "--question", "  why does bob@ need this?  ")
+	if code != 0 {
+		t.Fatalf("needs-info exit %d (stderr=%s)", code, errOut)
+	}
+
+	// ---- what went over the wire: status + question, and NOTHING else ----
+	if len(fs.sets) != 1 {
+		t.Fatalf("needs-info must be exactly one /set, got %d", len(fs.sets))
+	}
+	patch := fs.sets[0].patch
+	if patch["status"] != "info-requested" {
+		t.Errorf("status = %v, want info-requested", patch["status"])
+	}
+	if patch["question"] != "why does bob@ need this?" {
+		t.Errorf("question = %q, want the trimmed question", patch["question"])
+	}
+	for _, forbidden := range []string{"decision", "editedPayload", "reason", "note"} {
+		if _, present := patch[forbidden]; present {
+			t.Errorf("needsInfo must not carry %q — it is not a decline (patch=%v)", forbidden, patch)
+		}
+	}
+	if len(patch) != 2 {
+		t.Errorf("needsInfo patch must be exactly {status, question}, got %v", patch)
+	}
+
+	// ---- what the server recorded: a question, a paused clock, no verdict ----
+	p := fs.props["g1"]
+	if p.status != "info-requested" || p.question != "why does bob@ need this?" {
+		t.Errorf("row = status %s question %q", p.status, p.question)
+	}
+	if p.decision != nil {
+		t.Error("needsInfo must never write a decision — the taxonomy's invariant")
+	}
+	if p.expiresAt != 0 || p.expiresRemainingMs <= 0 {
+		t.Errorf("the clock must be PAUSED: expiresAt=%d banked=%d", p.expiresAt, p.expiresRemainingMs)
+	}
+	if len(p.amendments) != 1 {
+		t.Fatalf("one open round must be appended, got %d", len(p.amendments))
+	}
+	if fs.answerInvocations != 1 {
+		t.Errorf("the costed answer round must be enqueued once, got %d", fs.answerInvocations)
+	}
+
+	// ---- what the human was told: a question sent, no verdict, no clock ----
+	if !strings.Contains(out, "question sent") || !strings.Contains(out, "waiting on the agent") {
+		t.Errorf("needs-info output = %q", out)
+	}
+	if !strings.Contains(out, "Not a decline") {
+		t.Errorf("the outcome must say it is not a decline: %q", out)
+	}
+	for _, lie := range []string{"declined", "rejected", "expire", "OVERDUE"} {
+		if strings.Contains(out, lie) {
+			t.Errorf("needs-info output must not contain %q: %q", lie, out)
+		}
+	}
+	if !strings.Contains(errOut, "why does bob@ need this?") {
+		t.Errorf("the question should be echoed as chrome, stderr=%q", errOut)
+	}
+}
+
+// The question is REQUIRED. Missing, empty or whitespace-only is a usage error
+// that never reaches the server — an empty ask is "a decline in disguise".
+func TestApprovals_NeedsInfo_QuestionRequired(t *testing.T) {
+	cases := []struct {
+		name string
+		argv []string
+	}{
+		{"absent", []string{"needs-info", "q1"}},
+		{"empty", []string{"needs-info", "q1", "--question", ""}},
+		{"inline empty", []string{"needs-info", "q1", "--question="}},
+		{"whitespace", []string{"needs-info", "q1", "--question", "   \t \n "}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fs := newFake(true)
+			fs.add(&fakeProp{id: "q1", kind: "grant-request", tier: 2})
+			db := newEnv(t, fs, true)
+
+			out, errOut, code := runAP(t, db, c.argv...)
+			if code != int(bmio.ExitUsage) {
+				t.Fatalf("exit = %d, want %d (usage); stdout=%q stderr=%q", code, bmio.ExitUsage, out, errOut)
+			}
+			if len(fs.sets) != 0 {
+				t.Errorf("a blank question must NOT reach the server, sets=%v", fs.sets)
+			}
+			if fs.props["q1"].status != "pending" {
+				t.Errorf("the row must stay pending, got %s", fs.props["q1"].status)
+			}
+			if !strings.Contains(errOut, "a question is required") {
+				t.Errorf("stderr must say why: %q", errOut)
+			}
+			if !strings.Contains(errOut, "--question") {
+				t.Errorf("stderr must show the usage line: %q", errOut)
+			}
+		})
+	}
+
+	// No id at all is the same class of refusal.
+	fs := newFake(true)
+	db := newEnv(t, fs, true)
+	_, errOut, code := runAP(t, db, "needs-info", "--question", "why?")
+	if code != int(bmio.ExitUsage) || len(fs.sets) != 0 {
+		t.Errorf("needs-info with no id: exit %d sets %d, want 2/0 (%s)", code, len(fs.sets), errOut)
+	}
+}
+
+// needs-info is not a decline, so it takes no --reason and no --note. Silently
+// dropping them would let a human believe they had recorded something.
+func TestApprovals_NeedsInfo_TakesNoDeclineFlags(t *testing.T) {
+	for _, extra := range [][]string{{"--reason", "wrongContent"}, {"--note", "some thoughts"}} {
+		fs := newFake(true)
+		fs.add(&fakeProp{id: "n2", kind: "reply-draft", tier: 2})
+		db := newEnv(t, fs, true)
+
+		argv := append([]string{"needs-info", "n2", "--question", "why?"}, extra...)
+		_, errOut, code := runAP(t, db, argv...)
+		if code != int(bmio.ExitUsage) {
+			t.Errorf("needs-info %v exit = %d, want usage", extra, code)
+		}
+		if len(fs.sets) != 0 {
+			t.Errorf("needs-info %v must not reach the server", extra)
+		}
+		if !strings.Contains(errOut, "only --question") {
+			t.Errorf("stderr must explain, got %q", errOut)
+		}
+	}
+}
+
+// `--question` on any other verb is refused rather than dropped: a human who
+// typed it asked the agent something, and silence would let them believe it.
+func TestApprovals_QuestionBelongsToNeedsInfoAlone(t *testing.T) {
+	for _, argv := range [][]string{
+		{"decline", "n3", "--question", "why?"},
+		{"approve", "n3", "--question", "why?"},
+		{"edit", "n3", "--body", "x", "--question", "why?"},
+		{"list", "--question", "why?"},
+	} {
+		fs := newFake(true)
+		fs.add(&fakeProp{id: "n3", kind: "reply-draft", tier: 2})
+		db := newEnv(t, fs, true)
+
+		_, errOut, code := runAP(t, db, argv...)
+		if code != int(bmio.ExitUsage) {
+			t.Errorf("%v exit = %d, want usage", argv, code)
+		}
+		if len(fs.sets) != 0 {
+			t.Errorf("%v must not reach the server", argv)
+		}
+		if !strings.Contains(errOut, "needs-info") {
+			t.Errorf("%v must point at the verb, stderr=%q", argv, errOut)
+		}
+	}
+}
+
+// A server-side refusal surfaces verbatim with its own exit code — the CLI
+// never invents an outcome for a row the server would not move.
+func TestApprovals_NeedsInfo_ServerRefusalSurfaces(t *testing.T) {
+	fs := newFake(true)
+	fs.add(&fakeProp{id: "h1", kind: "reply-draft", tier: 2, status: "held", holdUntil: time.Now().UnixMilli() + 60_000})
+	db := newEnv(t, fs, true)
+
+	out, errOut, code := runAP(t, db, "needs-info", "h1", "--question", "why?")
+	if code == 0 {
+		t.Fatalf("a refused needs-info must not exit 0 (stdout=%q)", out)
+	}
+	if !strings.Contains(errOut, "needs-info h1 refused") || !strings.Contains(errOut, "not pending") {
+		t.Errorf("the server's sentence must surface, stderr=%q", errOut)
+	}
+	if fs.props["h1"].status != "held" || fs.answerInvocations != 0 {
+		t.Errorf("a refused needs-info must change nothing: status=%s rounds=%d",
+			fs.props["h1"].status, fs.answerInvocations)
+	}
+}
+
+// `--reason needsInfo` is the one move the taxonomy forbids: it would write the
+// action into a rejection record. Refused client-side, pointing at the verb.
+func TestApprovals_Decline_NeedsInfoIsNotAReason(t *testing.T) {
+	for _, spelling := range []string{"needsInfo", "needsinfo", "needs-info", "NEEDSINFO", "info-requested"} {
+		fs := newFake(true)
+		fs.add(&fakeProp{id: "d9", kind: "grant-request", tier: 2})
+		db := newEnv(t, fs, true)
+
+		out, errOut, code := runAP(t, db, "decline", "d9", "--reason", spelling)
+		if code != int(bmio.ExitUsage) {
+			t.Errorf("--reason %s exit = %d, want %d (usage)", spelling, code, bmio.ExitUsage)
+		}
+		if len(fs.sets) != 0 {
+			t.Errorf("--reason %s must never reach the server", spelling)
+		}
+		if fs.props["d9"].status != "pending" || fs.props["d9"].decision != nil {
+			t.Errorf("--reason %s must record nothing, row=%v", spelling, fs.props["d9"])
+		}
+		// The refusal has to teach the verb, with the id already filled in.
+		if !strings.Contains(errOut, "approvals needs-info d9 --question") {
+			t.Errorf("--reason %s must point at the verb, stderr=%q stdout=%q", spelling, errOut, out)
+		}
+		if !strings.Contains(errOut, "not a reject reason") {
+			t.Errorf("--reason %s must say why, stderr=%q", spelling, errOut)
+		}
+	}
+}
+
+// The enum itself. This is the invariant's home: `needsInfo` in this set would
+// let the action be recorded as a rejection, which is the one thing the
+// taxonomy says must be impossible.
+func TestRejectReasons_NeedsInfoIsNeverAReason(t *testing.T) {
+	if rejectReasons["needsInfo"] {
+		t.Error("needsInfo is an ACTION, not a reject reason — it must never enter rejectReasons " +
+			"(decline-taxonomy.md: the rule a learning pipeline must not break)")
+	}
+	// Mirrors REJECT_REASONS in services/jmap/src/methods/actionProposal.ts. If
+	// the server's enum moves (the taxonomy revises it to
+	// {wrongContent, wrongAction, unsafe}), this fails and both move together.
+	want := map[string]bool{"wrongContent": true, "wrongAction": true, "notNow": true}
+	if len(rejectReasons) != len(want) {
+		t.Errorf("rejectReasons has %d entries, want %d: %v", len(rejectReasons), len(want), rejectReasons)
+	}
+	for r := range want {
+		if !rejectReasons[r] {
+			t.Errorf("rejectReasons is missing %q, which the server accepts", r)
+		}
+	}
+	for r := range rejectReasons {
+		if !want[r] {
+			t.Errorf("rejectReasons has %q, which the server's enum does not", r)
+		}
+	}
+	// The message a human sees must name the same set.
+	for r := range want {
+		if !strings.Contains(rejectReasonList, r) {
+			t.Errorf("the usage text %q does not name %q", rejectReasonList, r)
+		}
+	}
+	if strings.Contains(rejectReasonList, "needsInfo") {
+		t.Errorf("the usage text offers needsInfo as a reason: %q", rejectReasonList)
+	}
+}
+
+// An `info-requested` row is watchable, not decidable: it renders as waiting on
+// the AGENT, with NO deadline in either direction — the server banked the
+// remaining window and nulled `expiresAt`, so a countdown would be invented and
+// "OVERDUE" would be a lie.
+func TestApprovals_List_InfoRequestedIsWaitingOnAgent(t *testing.T) {
+	now := time.Now().UnixMilli()
+	fs := newFake(true)
+	fs.add(&fakeProp{id: "pend", kind: "create-contact", tier: 1, rationale: "p", createdAt: now - 60_000, expiresAt: now + day})
+	fs.add(&fakeProp{id: "asked", kind: "grant-request", tier: 2, status: "info-requested", rationale: "why bob",
+		createdAt: now - 120_000, expiresRemainingMs: 3 * 60 * 60_000, question: "why bob@?",
+		amendments: []any{round("why bob@?", "", "eric@login.example", now-90_000, 0)}})
+	fs.add(&fakeProp{id: "onhold", kind: "reply-draft", tier: 2, status: "held", createdAt: now - 180_000,
+		decidedAt: now - 60_000, holdUntil: now + 4*60_000})
+	db := newEnv(t, fs, true)
+
+	out, errOut, code := runAP(t, db, "list", "--status", "all")
+	if code != 0 {
+		t.Fatalf("list exit %d", code)
+	}
+	var askedLine string
+	for _, ln := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
+		if strings.Contains(ln, "asked") {
+			askedLine = ln
+		}
+	}
+	if askedLine == "" {
+		t.Fatalf("the info-requested row is missing from:\n%s", out)
+	}
+	if !strings.HasPrefix(askedLine, "info-requested") {
+		t.Errorf("the row must carry the server's status token: %q", askedLine)
+	}
+	if !strings.Contains(askedLine, "waiting:agent") {
+		t.Errorf("an info-requested row must read as waiting on the agent: %q", askedLine)
+	}
+	for _, clock := range []string{"exp:", "hold:", "OVERDUE", "no deadline"} {
+		if strings.Contains(askedLine, clock) {
+			t.Errorf("an info-requested row must show NO deadline, found %q in %q", clock, askedLine)
+		}
+	}
+	if !strings.Contains(errOut, "decision clock is paused") {
+		t.Errorf("the legend must explain the missing clock, stderr=%q", errOut)
+	}
+
+	// Queue order: decidable first, then waiting-on-agent, then the hold tray.
+	ids, _, code := runAP(t, db, "list", "--status", "all", "--ids")
+	if code != 0 {
+		t.Fatalf("list --ids exit %d", code)
+	}
+	if got := strings.Fields(ids); len(got) != 3 || got[0] != "pend" || got[1] != "asked" || got[2] != "onhold" {
+		t.Errorf("queue order = %v, want [pend asked onhold]", got)
+	}
+
+	// `info-requested` is a filter value too — the vocabulary is one word in
+	// both directions.
+	ids, _, code = runAP(t, db, "list", "--status", "info-requested", "--ids")
+	if code != 0 || strings.TrimSpace(ids) != "asked" {
+		t.Errorf("--status info-requested = %q (exit %d), want asked", ids, code)
+	}
+}
+
+// `show` renders the whole dialogue in order, each round attributed: the human
+// who asked, the agent that answered, and the open round marked as still owed.
+func TestApprovals_Show_RendersDialogue(t *testing.T) {
+	now := time.Now().UnixMilli()
+	fs := newFake(true)
+	fs.add(&fakeProp{id: "dlg", kind: "grant-request", tier: 2, agent: "photos", status: "info-requested",
+		rationale: "let me email bob@", createdAt: now - 10*60_000,
+		question:           "and why now?",
+		expiresRemainingMs: 90 * 60_000,
+		amendments: []any{
+			round("why bob@?", "he is the vendor on the invoice thread", "eric@login.example", now-9*60_000, now-8*60_000),
+			round("and why now?", "", "eric@login.example", now-60_000, 0),
+		}})
+	db := newEnv(t, fs, true)
+
+	out, _, code := runAP(t, db, "show", "dlg")
+	if code != 0 {
+		t.Fatalf("show exit %d", code)
+	}
+	// In order, and attributed on both sides.
+	wantOrder := []string{
+		"dialogue:",
+		`1. eric@login.example asked`,
+		"why bob@?",
+		"photos answered",
+		"he is the vendor on the invoice thread",
+		`2. eric@login.example asked`,
+		"and why now?",
+		"(unanswered",
+	}
+	at := 0
+	for _, want := range wantOrder {
+		i := strings.Index(out[at:], want)
+		if i < 0 {
+			t.Fatalf("show output missing %q (or out of order) after offset %d:\n%s", want, at, out)
+		}
+		at += i + len(want)
+	}
+	// Waiting, not expiring.
+	if !strings.Contains(out, "waiting:   "+proposal.WaitingOnAgentNote) {
+		t.Errorf("show must say the clock is paused:\n%s", out)
+	}
+	if strings.Contains(out, "expires:") {
+		t.Errorf("an info-requested row has no deadline to print:\n%s", out)
+	}
+}
+
+// The --json shapes, pinned. `show --json` is the server's own bytes (so the
+// dialogue passes through faithfully), and the decision outcome is a stable
+// object a script can branch on.
+func TestApprovals_NeedsInfo_JSONShapes(t *testing.T) {
+	// Fixed instants: a golden is only a golden if it does not move.
+	const created = int64(1_700_000_000_000)
+	fs := newFake(true)
+	fs.add(&fakeProp{id: "j9", kind: "grant-request", tier: 2, agent: "photos", status: "info-requested",
+		rationale: "let me email bob@", createdAt: created, question: "why bob@?",
+		expiresRemainingMs: 60_000,
+		payload:            map[string]any{"address": "bob@x.z"},
+		amendments: []any{
+			round("why bob@?", "he is the vendor", "eric@login.example", created+1_000, created+2_000),
+			round("and why now?", "", "eric@login.example", created+3_000, 0),
+		}})
+	db := newEnv(t, fs, true)
+
+	out, _, code := runAP(t, db, "show", "j9", "--json")
+	if code != 0 {
+		t.Fatalf("show --json exit %d", code)
+	}
+	const wantShow = `{"agent":"photos","amendments":[{"answer":"he is the vendor","answeredAt":"2023-11-14T22:13:22.000Z","askedAt":"2023-11-14T22:13:21.000Z","askedBy":"eric@login.example","question":"why bob@?"},{"answer":null,"answeredAt":null,"askedAt":"2023-11-14T22:13:23.000Z","askedBy":"eric@login.example","question":"and why now?"}],"claimedAt":null,"createdAt":"2023-11-14T22:13:20.000Z","decidedAt":null,"decision":null,"dueAt":null,"editedPayload":null,"evidence":[],"expiresAt":null,"holdUntil":null,"id":"j9","invocationStatus":"done","kind":"grant-request","payload":{"address":"bob@x.z"},"question":"why bob@?","rationale":"let me email bob@","status":"info-requested","subject":{},"tier":2}`
+	if got := strings.TrimSpace(out); got != wantShow {
+		t.Errorf("show --json drifted.\n got: %s\nwant: %s", got, wantShow)
+	}
+
+	// The decision outcome: `question` rides along while the round is open, and
+	// nothing claims a verdict.
+	fs2 := newFake(true)
+	fs2.add(&fakeProp{id: "j8", kind: "reply-draft", tier: 2, createdAt: created})
+	db2 := newEnv(t, fs2, true)
+
+	out, _, code = runAP(t, db2, "needs-info", "j8", "--question", "why this recipient?", "--json")
+	if code != 0 {
+		t.Fatalf("needs-info --json exit %d", code)
+	}
+	const wantOutcome = `{"id":"j8","verb":"needs-info","status":"info-requested","tier":2,` +
+		`"kind":"reply-draft","edited":false,"held":false,"egressed":false,"question":"why this recipient?"}`
+	if got := strings.TrimSpace(out); got != wantOutcome {
+		t.Errorf("needs-info --json drifted.\n got: %s\nwant: %s", got, wantOutcome)
+	}
+
+	// And the pre-existing outcome shape is unchanged for a verb with no
+	// question: `question` is absent, not null.
+	fs3 := newFake(true)
+	fs3.add(&fakeProp{id: "j7", kind: "reply-draft", tier: 2, createdAt: created})
+	db3 := newEnv(t, fs3, true)
+
+	out, _, code = runAP(t, db3, "decline", "j7", "--reason", "wrongContent", "--json")
+	if code != 0 {
+		t.Fatalf("decline --json exit %d", code)
+	}
+	const wantDecline = `{"id":"j7","verb":"decline","status":"rejected","tier":2,` +
+		`"kind":"reply-draft","edited":false,"held":false,"egressed":false}`
+	if got := strings.TrimSpace(out); got != wantDecline {
+		t.Errorf("decline --json drifted.\n got: %s\nwant: %s", got, wantDecline)
 	}
 }
