@@ -58,17 +58,18 @@ This is the `feed.works` insight exactly: cheap/free capacity is best-effort and
 capacity is reserved for what is actually due. The scheduler spends the *last* dollar on the
 *next* deadline, not the first job it sees.
 
-## The `defer` connection — human and machine, one signal
+## The human override — editing `due_at`, not a `defer` verb (revised 2026-08-13)
 
-The decline taxonomy (`decline-taxonomy.md`) retires `notNow` into a **`defer`** action. `defer`
-and this scheduler are the same instruction from two directions:
+There is **no `defer` verb** (retired before it was built — devPlan T4). The human and the
+machine still share one signal, from two directions:
 
-- **Human `defer`**: "correct proposal, not due yet — re-surface later." Sets/extends `due_at`.
-- **Scheduler `defer`**: "not due yet, wait for a free runtime." Reads `due_at`.
+- **Human**: corrects/extends `due_at` on the approval row (T1 makes it editable). Setting
+  it to tomorrow *is* deferring — a field edit, recording nothing a learning loop could
+  misread.
+- **Scheduler**: reads `due_at` — "not due yet, wait for a free runtime."
 
-So a human deferring a proposal and the scheduler letting an invocation sit are the *same*
-policy over the *same* field. `defer` is the manual override of the automatic optimism, and it
-is why the taxonomy split matters here.
+Same policy over the same field; the manual override is an edit, not a decision verb.
+Queue-hiding ("collapse until tomorrow") is a display concern with no taxonomy standing.
 
 ## Why T5 is load-bearing, not incidental
 

@@ -85,17 +85,20 @@ The scheduler's patience and the watchdog's liveness guarantee must compose, not
 **Done when:** a `due_at`-passed invocation is always claimed; the two triggers (SLA silence and
 overdue) both reach the watchdog.
 
-### T4 — `defer` writes `due_at` · *the human override*
+### T4 — RETIRED: there is no `defer` verb (2026-08-13)
 
-**Files:** `services/jmap/src/methods/actionProposal.ts`, `webmail/src/lib/approvals/`.
+Eric's call, and the taxonomy discussion supported it: the only use he could imagine was
+queue hygiene ("hide things until tomorrow"), which is a *view* concern, not a decision
+verb. The **capability** survives without the verb:
 
-Land the `defer` action from `decline-taxonomy.md`: a human deferring a proposal sets/extends its
-`due_at` (and re-surfaces it later). `defer` is the manual override of the automatic optimism —
-same field, same policy, human-driven. It is **not** a decline: excluded from any negative
-learning signal (the taxonomy invariant).
+- **The scheduling override is editing `due_at`** — T1 already makes it human-correctable
+  on the approval row. Setting it to tomorrow IS deferring; no new verb, no taxonomy row,
+  nothing recorded that a learning loop could misread.
+- **Queue hygiene**, if ever wanted, is a display-level snooze (sort/collapse rows with a
+  far `due_at`) with no standing in the taxonomy and no write to the proposal.
 
-**Done when:** `defer` on a proposal writes `due_at`, re-queues it, and records nothing negative;
-the scheduler then treats it exactly like an inferred deadline.
+The taxonomy's non-reject actions are `tookItMyself` and `needsInfo`; the invariant
+excludes those two from negative signal. T5–T8 numbering is unchanged.
 
 ### T5 — The `$/work` optimiser · *which model a deadline-pressed run escalates to* — deferred
 
@@ -191,7 +194,7 @@ T1 due_at (boundary) ──┘         │                                      
                                  │                                           decision 0)
                                  ├──→ T7 Jobs (DAG, planner, attenuation)
                                  └──→ T8 fleet host (grants + capability vector)
-T4 defer writes due_at (human override) — anytime after T1
+T4 retired — the scheduling override is editing due_at (T1's correctable row)
 T5 $/work optimiser — deferred, needs cost history
 s12 bouncer@ — stamps T6's judged facets; deterministic sieve is its own section
 ```
