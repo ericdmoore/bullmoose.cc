@@ -19,7 +19,7 @@ import {
   graduationDue,
 } from "@bullmoose/boundary";
 
-export { DEFAULT_THRESHOLDS, bayesVerdict } from "@bullmoose/boundary";
+export { DEFAULT_GRADUATION_POLICY, DEFAULT_THRESHOLDS, bayesVerdict } from "@bullmoose/boundary";
 export type { SieveRule, BayesState, GraduationPolicy };
 export { graduationDue };
 

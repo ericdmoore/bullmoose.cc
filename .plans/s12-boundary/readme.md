@@ -1,6 +1,30 @@
 # s12 — the boundary: bouncer@, the sieve, and the lobby
 
-> **Status: design stub** (2026-08-13 discussion; full design in
+> **Status: BUILT — waves 1+2 LANDED** (PRs #95, #96, #97 — 2026-08-13). The cascade,
+> three-tier blocked storage, quarantine chain, graduation sweep (hourly cron in ingest),
+> LLM mid-band, and both conversations are on main. Build deltas worth knowing:
+> - The bloom property test caught a real sign-coercion bug (a guaranteed-false-negative
+>   class) during the build — the test class earned its keep before shipping.
+> - Stage 2 is real: CF Email Routing prepends `Authentication-Results`; only the topmost
+>   header is trusted (RFC 8601), reject only on explicit `dmarc=fail`.
+> - Blocked books are identified by naming convention (`Blocked`, case-insensitive) +
+>   per-tenant KV config for the tenant book; known-good = the default contacts book.
+> - Expensive-stage (`sieve:`/`bayes@`) quarantines also bump `deny_counters` (the sweep
+>   needs them); cheap-stage holds stay chains-only; edge rejects stay counters-only.
+> - `LLM_LABELS_TRAIN = false` by default: the classifier only sees what Bayes was unsure
+>   about, so training on its verdicts would compound model bias silently — only human
+>   labels (rescues, FN reports) teach the filter.
+> - Directive/feed deny rows never auto-remove (no "undo" verb — replies say so with the
+>   row's provenance); a directive UPGRADES a graduated row; the sweep never repaints a
+>   human's row. The tenant's own domain is refused from the deny list.
+> - Internal directives are recognized by the ABSENCE of Authentication-Results (our MX
+>   prepends one to everything external — absence = our own submit path).
+> - **Deploy posture: inert until configured.** Empty tiers + no rules + no Bayes state +
+>   no bouncer binding ⇒ byte-identical delivery (proven against the real handler).
+>   Migrations are non-blockers; the ingest cron is additive; bouncer provisioning is an
+>   explicit opt-in (`POST /bouncer`).
+>
+> Original stub note: (2026-08-13 discussion; full design in
 > [`../s11-scheduling/jobs-and-facets.md`](../s11-scheduling/jobs-and-facets.md) §6, which
 > this section owns the *build* of). bouncer@ is promoted from the motivating-examples
 > candidate list to the **fourth agent kind** (joining analyst / photos / newsletters) —
