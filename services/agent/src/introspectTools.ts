@@ -1,4 +1,4 @@
-import { hasScope, MAIL_SCOPES, REALM_SCOPES } from "@bullmoose/auth-core";
+import { effectiveScopes, hasScope, MAIL_SCOPES, REALM_SCOPES } from "@bullmoose/auth-core";
 import {
   accountAccess,
   matchingGrants,
@@ -101,19 +101,19 @@ import type { ToolDef } from "./mcp.js";
 // ---- effective permissions -------------------------------------------------
 
 /**
- * Every scope that is a concrete permission rather than a bundle. `mail` is
- * excluded on purpose: it is the bundle, and expanding it is the point.
- */
-const CONCRETE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "admin"];
-
-/**
  * What a scope list ACTUALLY allows, derived by asking `hasScope` — the same
  * function every gate in the tree calls. Exported for `s03.E`, which has the
  * identical requirement on the WebUI (`s03.E/readme.md:41-43`).
+ *
+ * The body MOVED to `@bullmoose/auth-core` (s02 T3) and this is now a
+ * re-export, kept so the many `introspectTools` callers do not all have to
+ * change. It had been copied three times — here, `services/jmap/src/console.ts`
+ * and `webmail/src/lib/console/scopes.ts` — and the OAuth consent screen
+ * needed a fourth. Four independent expansions of what a permission MEANS,
+ * against one `hasScope` that decides what it DOES, is a drift waiting to
+ * mislead someone at exactly the moment they are granting access.
  */
-export function effectiveScopes(granted: string[]): string[] {
-  return CONCRETE_SCOPES.filter((s) => hasScope(granted, s));
-}
+export { effectiveScopes };
 
 /** Scopes that deserve a sentence rather than a chip. */
 const SCOPE_WARNINGS: Record<string, string> = {
