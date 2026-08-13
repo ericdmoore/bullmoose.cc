@@ -26,6 +26,17 @@ SMTP → ingest (mechanical: parse, dedup, store, mechanical facets)
    decision. The model sees only ambiguous mail, and its output is a classification enum,
    never a free action. p50 latency stays flat; mid-band mail may sit briefly in a
    screening state.
+   - use rejection-lists & bloomfilters
+      - ABS_NO(CONTINUE), POSSIBLY_YES(CHECK LIST - mark email as rejected)
+   - use Sieve rules
+      - PASS(CONTINUE),  FAILED(mark email as rejected)
+   - Baesyian Email Spam Filter
+      - Given(Threshold:T) LIEKLYNOTSPAM@T(CONTINUE), LIKLEY_SPAM@T(mark email as rejected)
+   - escalatting determinsitc computation effort
+      - ... 
+   - Stamp Determinstic Meta Data + facets - mail enters the lobby
+   - LLM Stamps Estimations of a few extracted factets
+   
 2. **Sender-classification first, message-rescue second.** Spam is a *sender* problem
    before it is a message problem. Sender classes are **address books** (known-good /
    blocked), inheriting CRUD on every protocol, CardDAV inspectability, `write_policy`,
