@@ -24,35 +24,72 @@ import {
   type ClaimantIdentity,
 } from "./mayClaim.js";
 
+// ── The fragments, and why they are exported one by one ────────────────────
+// The gate is a CONJUNCTION, and s11 T3's watchdog needs a strict SUBSET of
+// its terms: the overdue backstop claims OUTSIDE the policy gate (a gated
+// claim would refuse budget-exhausted overdue work — which is the whole point
+// of a backstop) while KEEPING the privacy pin and fit (devPlan decision 0:
+// pinned work sits, and the human is alerted). So each term is its own
+// exported expression and `claimGateSql` is their fold, rather than the
+// backstop re-typing a hand-copied `privacy <> 'pinned'` that could drift
+// from this one the day the pin gains a second class.
+//
+// Every fragment below returns a BARE boolean expression (parenthesized, no
+// leading ` AND`) so it can be conjoined, negated, or dropped. Placeholders
+// are positional in the order the fragments appear in the statement.
+
 /**
- * The gate fragment, to be appended to a claim statement's WHERE (it begins
- * with ` AND`). `inv` is how the statement refers to the agent_invocations
- * row under test: the table name itself in an UPDATE, the FROM-alias in a
- * SELECT. Placeholders are positional — bind `claimGateBinds()` in order,
- * after the statement's own binds.
- *
- * Two structural notes:
- *   - fit mirrors `fit()` exactly, including the garbage tolerance:
- *     `json_type` = 'true' is JSON true (a string "true" is not), and a
- *     non-numeric contextTokens is no constraint — same as `typeof !==
- *     "number"` on the pure side.
- *   - liveness counts CLAIMS (claimed_at), not completions, and counts them
- *     regardless of the row's current status: a free claim that already
- *     finished still proves a free runtime was here.
+ * FIT — the capability half of the gate, 5 placeholders (`claimFitBinds`).
+ * Mirrors `fit()` exactly, including the garbage tolerance: `json_type` =
+ * 'true' is JSON true (a string "true" is not), and a non-numeric
+ * contextTokens is no constraint — same as `typeof !== "number"` on the pure
+ * side. Never NULL, so `NOT claimFitSql(...)` is a total complement (T3's
+ * alert pass reads it that way).
  */
-export function claimGateSql(inv: string): string {
+export function claimFitSql(inv: string): string {
   return (
-    `\n AND (${inv}.requires_json IS NULL` +
+    `(${inv}.requires_json IS NULL` +
     `\n      OR NOT json_valid(${inv}.requires_json)` +
     `\n      OR ? = 0` +
     `\n      OR ((COALESCE(json_type(${inv}.requires_json, '$.vision'), 'x') <> 'true' OR ? = 1)` +
     `\n          AND (COALESCE(json_type(${inv}.requires_json, '$.tools'), 'x') <> 'true' OR ? = 1)` +
     `\n          AND (COALESCE(json_type(${inv}.requires_json, '$.contextTokens'), 'x') NOT IN ('integer', 'real')` +
     `\n               OR ? IS NULL` +
-    `\n               OR json_extract(${inv}.requires_json, '$.contextTokens') <= ?)))` +
-    `\n AND (? = 1` +
-    `\n      OR (COALESCE(${inv}.privacy, '') <> 'pinned'` +
-    `\n          AND NOT EXISTS (` +
+    `\n               OR json_extract(${inv}.requires_json, '$.contextTokens') <= ?)))`
+  );
+}
+
+/** The 5 binds `claimFitSql` takes, in placeholder order. */
+export function claimFitBinds(claimant: ClaimantIdentity): Array<number | null> {
+  const caps = claimant.capabilities;
+  const ctx = typeof caps?.contextTokens === "number" ? caps.contextTokens : null;
+  return [
+    caps ? 1 : 0, // a vector was declared at all (undeclared = claimable, T2-FIT-CONTRACT)
+    caps?.vision === true ? 1 : 0,
+    caps?.tools === true ? 1 : 0,
+    ctx,
+    ctx,
+  ];
+}
+
+/**
+ * THE PRIVACY PIN, alone — 0 placeholders. True when the row may go to a paid
+ * cloud runtime at all. This is the ONE policy term the s11 T3 backstop keeps
+ * when it claims past `due_at`: privacy beats liveness (devPlan decision 0),
+ * so pinned work sits however overdue and the human is alerted instead.
+ */
+export function notPinnedSql(inv: string): string {
+  return `(COALESCE(${inv}.privacy, '') <> 'pinned')`;
+}
+
+/**
+ * The binding's monthly spend cap, reached — 1 placeholder (monthStartMs).
+ * Exhaustion NARROWS the claimant set (free only); it never fails the
+ * invocation, and the T3 backstop deliberately drops this term.
+ */
+export function budgetExhaustedSql(inv: string): string {
+  return (
+    `EXISTS (` +
     `\n                SELECT 1 FROM agent_bindings gate_b` +
     `\n                WHERE gate_b.account_id = ${inv}.account_id AND gate_b.id = ${inv}.binding_id` +
     `\n                  AND json_valid(gate_b.config_json)` +
@@ -61,14 +98,51 @@ export function claimGateSql(inv: string): string {
     `\n                       WHERE gate_s.account_id = ${inv}.account_id` +
     `\n                         AND gate_s.binding_id = ${inv}.binding_id` +
     `\n                         AND gate_s.done_at IS NOT NULL AND gate_s.done_at >= ?)` +
-    `\n                      >= json_extract(gate_b.config_json, '$.budgets.spendPerMonth'))` +
-    `\n          AND (CASE WHEN ${inv}.due_at IS NOT NULL THEN ${inv}.due_at - ? <= ?` +
-    `\n                ELSE NOT EXISTS (` +
+    `\n                      >= json_extract(gate_b.config_json, '$.budgets.spendPerMonth'))`
+  );
+}
+
+/**
+ * THE ABSENCE-INFERENCE (readme decision 3) — 1 placeholder, the cutoff
+ * `freeRuntimeLiveCutoff(now)`. A free claimant claimed on this row's account
+ * within FREE_RUNTIME_LIVE_MS, i.e. "a homelab runtime is here right now".
+ * Counts CLAIMS (claimed_at), not completions, and counts them regardless of
+ * the row's current status: a free claim that already finished still proves a
+ * free runtime was here. Negated, it is the "your homelab is down" signal the
+ * T3 sweep reports on.
+ */
+export function freeRuntimeLiveSql(inv: string): string {
+  return (
+    `EXISTS (` +
     `\n                  SELECT 1 FROM agent_invocations gate_l` +
     `\n                  WHERE gate_l.account_id = ${inv}.account_id` +
     `\n                    AND gate_l.claimant_free = 1` +
     `\n                    AND gate_l.claimed_at IS NOT NULL` +
-    `\n                    AND gate_l.claimed_at >= ?)` +
+    `\n                    AND gate_l.claimed_at >= ?)`
+  );
+}
+
+/** The single bind `freeRuntimeLiveSql` takes. */
+export function freeRuntimeLiveCutoff(now: number): number {
+  return now - FREE_RUNTIME_LIVE_MS;
+}
+
+/**
+ * The whole gate, to be appended to a claim statement's WHERE (it begins with
+ * ` AND`) — fit ∧ (free ∨ (pin ∧ budget ∧ due)), the fold of the fragments
+ * above. `inv` is how the statement refers to the agent_invocations row under
+ * test: the table name itself in an UPDATE, the FROM-alias in a SELECT.
+ * Placeholders are positional — bind `claimGateBinds()` in order, after the
+ * statement's own binds.
+ */
+export function claimGateSql(inv: string): string {
+  return (
+    `\n AND ${claimFitSql(inv)}` +
+    `\n AND (? = 1` +
+    `\n      OR (${notPinnedSql(inv)}` +
+    `\n          AND NOT ${budgetExhaustedSql(inv)}` +
+    `\n          AND (CASE WHEN ${inv}.due_at IS NOT NULL THEN ${inv}.due_at - ? <= ?` +
+    `\n                ELSE NOT ${freeRuntimeLiveSql(inv)}` +
     `\n                END)))`
   );
 }
@@ -88,19 +162,13 @@ export interface ClaimGateParams {
 
 /** The binds for `claimGateSql`, in placeholder order. */
 export function claimGateBinds(p: ClaimGateParams): Array<number | null> {
-  const caps = p.claimant.capabilities;
-  const ctx = typeof caps?.contextTokens === "number" ? caps.contextTokens : null;
   return [
-    caps ? 1 : 0, // a vector was declared at all (undeclared = claimable, T2-FIT-CONTRACT)
-    caps?.vision === true ? 1 : 0,
-    caps?.tools === true ? 1 : 0,
-    ctx,
-    ctx,
+    ...claimFitBinds(p.claimant),
     p.claimant.isFree ? 1 : 0,
     p.monthStartMs,
     p.escalationWindowMs,
     p.now,
-    p.now - FREE_RUNTIME_LIVE_MS,
+    freeRuntimeLiveCutoff(p.now),
   ];
 }
 

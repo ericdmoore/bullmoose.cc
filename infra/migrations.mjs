@@ -353,6 +353,21 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "invocation-alert-columns",
+    why: "s11 T3: the overdue backstop's alert marker (pinned/unfit work past due_at — the 'not SILENTLY' half of the invariant). The agent worker's scheduled() sweep names alert_kind in its SELECT and its UPDATE, so a worker deployed against a database missing them throws in the cron hook and takes the retry-net drain down with it — the poke path survives, the sweeps do not",
+    blocks: "deploy",
+    needs: ["invocation-due-at"],
+    // alert_at is the last column applied — the group sentinel (precedent:
+    // invocation-cost-columns).
+    check: hasColumn("agent_invocations", "alert_at"),
+    up: [
+      "ALTER TABLE agent_invocations ADD COLUMN alert_kind TEXT",
+      "ALTER TABLE agent_invocations ADD COLUMN alert_at INTEGER",
+    ],
+    absent: ["CREATE TABLE agent_invocations (id TEXT NOT NULL, account_id TEXT NOT NULL)"],
+  },
+
+  {
     id: "domain-deny-list-table",
     why: "s12 1-A: the industrial deny tier (bouncer@'s working data). A plain schema re-run DOES create it; NOT a deploy blocker because the ingest cascade fails OPEN — a shard missing the table reads as an empty deny list (logged) and every message flows as today",
     blocks: null,

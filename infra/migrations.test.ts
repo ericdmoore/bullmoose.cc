@@ -115,7 +115,10 @@ describe("infra/migrations — the DDL a schema re-run cannot perform", () => {
     // The s11 T2 claim gate promoted three more: every claim statement's WHERE
     // now names due_at, privacy, requires_json and claimant_free (jmap
     // AgentInvocation/set and the agent drain), so all three invocation facet
-    // migrations break every claim if a worker deploys first.
+    // migrations break every claim if a worker deploys first. s11 T3 adds the
+    // alert columns, which the agent worker's cron sweep names in a SELECT and
+    // an UPDATE — missing them, `scheduled()` throws and the retry-net drain
+    // behind it never runs.
     // Naming them in data keeps the runbook and the runner from drifting apart.
     const blockers = MIGRATIONS.filter((m) => m.blocks === "deploy").map((m) => m.id).sort();
     expect(blockers).toEqual([
@@ -124,6 +127,7 @@ describe("infra/migrations — the DDL a schema re-run cannot perform", () => {
       "agent-bindings-recipients-book",
       "grant-lifecycle-via-proposal",
       "grants-revoked-at",
+      "invocation-alert-columns",
       "invocation-claimant-columns",
       "invocation-cost-columns",
       "invocation-due-at",

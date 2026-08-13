@@ -9,8 +9,11 @@ import {
 import {
   bindingEscalationWindowMs,
   budgetMonthStartMs,
+  claimFitBinds,
+  claimFitSql,
   claimGateBinds,
   claimGateSql,
+  notPinnedSql,
 } from "./claimGate.js";
 
 /**
@@ -334,6 +337,71 @@ describe("claim gate: SQL and mayClaim agree", () => {
     expect(disagreements).toEqual([]);
     // Anchor: the table exercises both refusals and admissions.
     expect(fitVerdicts).toEqual(new Set([true, false]));
+    db.close();
+  });
+
+  /**
+   * s11 T3 uses this module PIECEWISE: the overdue backstop claims outside
+   * `policy` (a gated claim would refuse the budget-exhausted overdue work it
+   * exists to rescue) while keeping fit and the privacy pin. That is only
+   * sound if the fragments are the same expressions the full gate folds — so
+   * this proves the subset is a strict WIDENING that keeps the pin.
+   */
+  it("the T3 subset (fit ∧ notPinned) admits what the full gate refuses — but never a pin", async () => {
+    const db = fakeD1();
+    const paid = CLAIMANTS.paid!;
+    const subsetSql =
+      `SELECT 1 AS hit FROM agent_invocations
+       WHERE account_id = ? AND id = ? AND status = 'pending'
+         AND ${notPinnedSql("agent_invocations")}
+         AND ${claimFitSql("agent_invocations")}`;
+    const subsetHit = async (s: Seeded) =>
+      (await db
+        .prepare(subsetSql)
+        .bind(s.accountId, s.invId, ...claimFitBinds(paid))
+        .first<{ hit: number }>()) !== null;
+
+    // Overdue AND out of budget: the full gate says no (exhaustion narrows the
+    // claimant set), the backstop says yes (that is the whole point).
+    const broke = {
+      dueAt: NOW - HOUR,
+      privacy: null,
+      requiresJson: null,
+      budget: BUDGETS["budget-over"]!,
+      liveness: LIVENESS["free-absent"]!,
+    };
+    const brokeCase = seedCase(db, broke);
+    const gated = await verdicts(db, brokeCase, {
+      ...broke,
+      claimant: paid,
+      windowMs: ESCALATION_WINDOW_NO_HISTORY_MS,
+    });
+    expect(gated).toEqual({ pure: false, sql: false });
+    expect(await subsetHit(brokeCase)).toBe(true);
+
+    // The pin survives the bypass: overdue, in budget, pinned — refused by both.
+    const pinned = { ...broke, privacy: "pinned", budget: BUDGETS["budget-none"]! };
+    const pinnedCase = seedCase(db, pinned);
+    expect(
+      await verdicts(db, pinnedCase, {
+        ...pinned,
+        claimant: paid,
+        windowMs: ESCALATION_WINDOW_NO_HISTORY_MS,
+      }),
+    ).toEqual({ pure: false, sql: false });
+    expect(await subsetHit(pinnedCase)).toBe(false);
+
+    // So does fit: a declared vector that cannot meet the requirement.
+    const unfit = { ...broke, requiresJson: JSON.stringify({ vision: true }) };
+    const unfitCase = seedCase(db, unfit);
+    const seeing: ClaimantIdentity = { isFree: false, capabilities: { vision: false } };
+    const seen = await db
+      .prepare(subsetSql)
+      .bind(unfitCase.accountId, unfitCase.invId, ...claimFitBinds(seeing))
+      .first<{ hit: number }>();
+    expect(seen).toBeNull();
+    // ...and an UNDECLARED vector still claims it (T2-FIT-CONTRACT).
+    expect(await subsetHit(unfitCase)).toBe(true);
     db.close();
   });
 
