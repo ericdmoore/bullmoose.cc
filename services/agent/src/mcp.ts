@@ -1,5 +1,6 @@
 import {
   authorizeAccount,
+  principalHasScope,
   verifyBearer,
   type MethodDomain,
   type Principal,
@@ -95,7 +96,47 @@ export interface ToolDef {
    */
   scope: string;
   domain: MethodDomain;
+  /**
+   * This tool acts on the PRINCIPAL, not on an account, so the account gate
+   * does not apply to it (s02 T5). Only `whoami` sets it, and the reason is
+   * discovery: a third-party client has no way to learn a bullmoose account
+   * id — they are `t_<tenant>__a_<uuid>`, they appear in no discovery
+   * document, and requiring one here made the tool that answers "what
+   * accounts do I have" unanswerable without already knowing the answer.
+   *
+   * An accountless tool is still scope-gated (`principalHasScope`); what it
+   * skips is the per-account token ∩ grant check, which has nothing to
+   * intersect. Do not set it on a tool that reads or writes account data —
+   * that would be an unauthorized read wearing a discovery costume.
+   */
+  accountless?: true;
   run: (ctx: ToolContext, args: Record<string, unknown>) => Promise<unknown>;
+}
+
+/**
+ * Which account a call means when it does not say (s02 T5).
+ *
+ * Resolution is SERVER-SIDE and never trusts a client-supplied id — that
+ * rejection still stands below. Owned accounts win over grant-reached ones:
+ * defaulting into someone else's account because you happen to hold a grant
+ * on it is a surprise, and surprises about which mailbox you just wrote to
+ * are the expensive kind. When the answer is ambiguous the error NAMES the
+ * candidates, so the next call succeeds instead of the model guessing.
+ */
+function defaultAccountId(principal: Principal): { ok: true; accountId: string } | { ok: false; detail: string } {
+  const owned = principal.accounts.filter((a) => !a.granted);
+  const pool = owned.length > 0 ? owned : principal.accounts;
+  if (pool.length === 1) return { ok: true, accountId: pool[0]!.accountId };
+  if (pool.length === 0) {
+    return { ok: false, detail: "this token reaches no accounts; ask the account owner for a grant" };
+  }
+  const names = pool.map((a) => `${a.accountId} (${a.name})`).join(", ");
+  return {
+    ok: false,
+    detail:
+      `accountId is required: this token reaches ${pool.length} accounts — pass one of ${names}. ` +
+      "Call whoami for the full picture.",
+  };
 }
 
 const clampInt = (v: unknown, def: number, min: number, max: number): number => {
@@ -337,10 +378,30 @@ async function handleToolCall(
   const tool = TOOLS.find((t) => t.name === params.name);
   if (!tool) return rpcError(msg.id, -32602, `unknown tool: ${String(params.name)}`, 400);
 
-  const args = params.arguments ?? {};
-  const accountId = args.accountId;
-  if (typeof accountId !== "string" || accountId.length === 0) {
-    return rpcError(msg.id, -32602, "accountId is required", 400);
+  let args = params.arguments ?? {};
+
+  // A principal-scoped tool (whoami) has no account to gate on. Scope still
+  // applies; the token ∩ grant intersection does not.
+  if (tool.accountless) {
+    if (!principalHasScope(principal, tool.scope)) {
+      return rpcError(msg.id, -32004, `token lacks the "${tool.scope}" scope`, 403);
+    }
+    return runTool(tool, msg, env, principal, args);
+  }
+
+  // Omitted accountId resolves server-side (s02 T5); a supplied one is used
+  // as given and still faces the gate below. `null`/`""` are omissions, not
+  // ids — a client that sends one gets the naming error, not "not found".
+  let accountId: string;
+  if (args.accountId === undefined || args.accountId === null || args.accountId === "") {
+    const resolved = defaultAccountId(principal);
+    if (!resolved.ok) return rpcError(msg.id, -32602, resolved.detail, 400);
+    accountId = resolved.accountId;
+    args = { ...args, accountId };
+  } else if (typeof args.accountId !== "string") {
+    return rpcError(msg.id, -32602, "accountId must be a string", 400);
+  } else {
+    accountId = args.accountId;
   }
 
   // §6 gate: authorize the TARGET account (token ∩ grant), never a self-
@@ -359,6 +420,19 @@ async function handleToolCall(
       .run();
   }
 
+  return runTool(tool, msg, env, principal, args);
+}
+
+/** Dispatch past the gate. Both the account path and the accountless one land
+ *  here, so a tool cannot acquire a second error convention by which route it
+ *  was reached. */
+async function runTool(
+  tool: ToolDef,
+  msg: JsonRpcRequest,
+  env: Env,
+  principal: Principal,
+  args: Record<string, unknown>,
+): Promise<Response> {
   try {
     const result = await tool.run({ env, principal }, args);
     return rpcResult(msg.id, {

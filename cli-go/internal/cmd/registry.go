@@ -48,12 +48,16 @@ type spec struct {
 //   - approvals: Go-NATIVE-ONLY (s08) — the first command that talks to the LIVE
 //     server (ActionProposal is not in the mirror). No Node twin, so it is
 //     additive: the 61-case contract suite does not exercise it.
+//   - agents: Go-NATIVE-ONLY (s10 T4) — the agent CONFIGURATION surface. Also
+//     additive, and the first command on the CONTROL plane (the provision
+//     worker's admin API) rather than the mail account's JMAP endpoint.
 var registry = map[string]spec{
 	"mailboxes": {json: true, run: runMailboxes},
 	"search":    {json: true, run: runSearch},
 	"log":       {json: true, run: runLog},
 	"accounts":  {json: true, run: runAccounts},
 	"approvals": {json: true, goNative: true, run: runApprovals},
+	"agents":    {json: true, goNative: true, run: runAgents},
 }
 
 // SupportsJSON reports whether the NATIVE command honours --json, and whether it

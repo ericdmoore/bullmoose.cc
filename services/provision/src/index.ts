@@ -2066,8 +2066,17 @@ async function listAgentBindings(url: URL, env: Env) {
     if (!account) return json({ bindings: [] });
     accountId = account.id;
   }
+  // `recipients_book_id` is projected because it IS the outbound bound (s10
+  // T1): a read that omits it cannot answer "who may this agent email?", and a
+  // config surface that cannot see the bound will render a blank where the
+  // control is. Read-only and admin-gated — the book id names a collection, it
+  // does not grant access to it, and the send path still resolves membership
+  // server-side. Absent on a pre-s10 database, where SELECT simply yields no
+  // such key and clients (cli-go `agents`) read that as UNREPORTED rather than
+  // as "no book" — the two have opposite meanings.
   const { results } = await env.DB.prepare(
-    `SELECT id, account_id, name, trigger_on, sla_seconds, enabled, config_json FROM agent_bindings
+    `SELECT id, account_id, name, trigger_on, sla_seconds, enabled, config_json, recipients_book_id
+     FROM agent_bindings
      ${accountId ? "WHERE account_id = ?" : ""}`,
   )
     .bind(...(accountId ? [accountId] : []))
