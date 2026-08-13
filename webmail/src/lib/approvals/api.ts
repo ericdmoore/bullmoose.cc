@@ -90,3 +90,40 @@ export async function decide(
     message: notUpdated?.description ?? notUpdated?.type ?? "the server did not accept the decision",
   };
 }
+
+/**
+ * s11 T1 — correct the inferred due date: a status-free `{ dueAt }` patch,
+ * which the server treats as a CORRECTION (it writes `due_at` on the
+ * invocation and leaves the proposal pending and undecided —
+ * actionProposal.ts). Deliberately a separate function from `decide`, not a
+ * fourth verdict: correcting the boundary's mis-read is not a decision, and
+ * keeping the shapes apart here is what keeps a correction from ever
+ * carrying a verdict by accident (the server refuses the combination too).
+ *
+ * `dueAt` is an ISO instant, or null to clear back to never-urgent.
+ */
+export async function correctDueAt(
+  client: JmapClient,
+  accountId: string,
+  id: string,
+  dueAt: string | null,
+  opts: { ifInState?: string } = {},
+): Promise<DecideOutcome> {
+  let result: Record<string, unknown>;
+  try {
+    result = await client.requestOne("ActionProposal/set", {
+      accountId,
+      ...(opts.ifInState ? { ifInState: opts.ifInState } : {}),
+      update: { [id]: { dueAt } },
+    });
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+  const updated = result.updated as Record<string, unknown> | undefined;
+  if (updated && id in updated) return { ok: true };
+  const notUpdated = (result.notUpdated as Record<string, { type?: string; description?: string }>)?.[id];
+  return {
+    ok: false,
+    message: notUpdated?.description ?? notUpdated?.type ?? "the server did not accept the correction",
+  };
+}

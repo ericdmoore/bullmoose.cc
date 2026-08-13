@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeJmapClient } from "../jmap/FakeJmapClient";
-import { decide, loadQueue } from "./api";
+import { correctDueAt, decide, loadQueue } from "./api";
 import { installApprovalsDemo, type ApprovalsDemoBackend } from "./demoApprovals";
 
 const ACCOUNT = "acct-fake";
@@ -231,5 +231,38 @@ describe("decide → needsInfo (s10 T3)", () => {
       question: "Why the whole folder and not the day's uploads?",
     });
     expect(outcome).toEqual({ ok: true });
+  });
+});
+
+describe("correctDueAt → the status-free { dueAt } patch (s11 T1)", () => {
+  it("corrects the due date and leaves the row PENDING — a correction, not a decision", async () => {
+    const { client, backend } = harness();
+    const corrected = new Date(NOW + 3 * 24 * 3600_000).toISOString();
+
+    const outcome = await correctDueAt(client, ACCOUNT, "ap-reply-elk", corrected);
+    expect(outcome).toEqual({ ok: true });
+
+    const row = backend.proposals.find((p) => p.id === "ap-reply-elk")!;
+    expect(row.dueAt).toBe(corrected);
+    // Nothing decision-shaped moved: still pending, no decision, clocks intact.
+    expect(row.status).toBe("pending");
+    expect(row.decision).toBeNull();
+    expect(row.expiresAt).not.toBeNull();
+  });
+
+  it("clears a mis-read deadline back to never-urgent with dueAt: null", async () => {
+    const { client, backend } = harness();
+    expect(backend.proposals.find((p) => p.id === "ap-reply-elk")!.dueAt).not.toBeNull();
+    const outcome = await correctDueAt(client, ACCOUNT, "ap-reply-elk", null);
+    expect(outcome).toEqual({ ok: true });
+    expect(backend.proposals.find((p) => p.id === "ap-reply-elk")!.dueAt).toBeNull();
+  });
+
+  it("surfaces the server's refusal of an unparseable date", async () => {
+    const { client, backend } = harness();
+    const outcome = await correctDueAt(client, ACCOUNT, "ap-reply-elk", "a week from Tuesday");
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.message).toContain("ISO 8601");
+    expect(backend.proposals.find((p) => p.id === "ap-reply-elk")!.dueAt).not.toBeNull(); // untouched
   });
 });

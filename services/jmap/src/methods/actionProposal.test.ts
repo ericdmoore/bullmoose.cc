@@ -71,6 +71,8 @@ interface SeedSpec {
   question?: string | null;
   amendments?: unknown[] | null;
   expiresRemainingMs?: number | null;
+  /** s11 T1 — the work's deadline, on the INVOCATION (epoch ms). */
+  dueAt?: number | null;
 }
 
 /** Seed the invocation (source of truth) + its 1:1 proposal side-row. */
@@ -83,6 +85,7 @@ function seedProposal(w: ReturnType<typeof fakeEnv>, s: SeedSpec): void {
       binding_name: s.bindingName ?? "emily",
       status: "done",
       created_at: 1,
+      due_at: s.dueAt ?? null,
     },
   ]);
   w.db.seed("agent_proposals", [
@@ -695,5 +698,97 @@ describe("the collection lives behind urn:bullmoose:agent", () => {
       Object.prototype.hasOwnProperty.call(session.accounts[acct]!.accountCapabilities, AGENT_CAP);
     expect(has("a_self")).toBe(true); // personal account sees the collection
     expect(has("a_shared")).toBe(false); // book-scoped grant does not
+  });
+});
+
+// ---- s11 T1: due_at — the third clock, projected and correctable -----------
+
+describe("dueAt — the work's deadline rides the projection and is human-correctable", () => {
+  it("projects due_at from the invocation as ISO; absent → null (never-urgent)", async () => {
+    const h = harness();
+    const due = Date.UTC(2027, 2, 5, 17, 0);
+    seedProposal(h.w, { id: "inv_due", kind: "reply-draft", tier: 2, dueAt: due });
+    seedProposal(h.w, { id: "inv_free", kind: "reply-draft", tier: 2 });
+
+    const got = await h.call<{ list: Array<Record<string, unknown>> }>("ActionProposal/get", {
+      ids: ["inv_due", "inv_free"],
+    });
+    const byId = new Map(got.list.map((p) => [p.id as string, p]));
+    expect(byId.get("inv_due")!.dueAt).toBe(new Date(due).toISOString());
+    // NULL is a value with a meaning — never-urgent — not a missing field.
+    expect(byId.get("inv_free")!.dueAt).toBeNull();
+  });
+
+  it("a status-free { dueAt } patch CORRECTS the invocation and leaves the row pending", async () => {
+    const h = harness();
+    seedProposal(h.w, { id: "inv_fix", kind: "reply-draft", tier: 2, dueAt: Date.UTC(2027, 0, 1) });
+
+    const corrected = "2027-03-05T17:00:00.000Z";
+    const res = await h.set({ update: { inv_fix: { dueAt: corrected } } });
+    expect(res.updated.inv_fix).toBeNull();
+    // The write landed on the INVOCATION — due_at is the work's field, not a
+    // proposal clock — and the decision surface is untouched: still pending.
+    expect(
+      h.w.db.query<{ due_at: number }>(
+        "SELECT due_at FROM agent_invocations WHERE account_id = ? AND id = 'inv_fix'",
+        ACCOUNT,
+      )[0]!.due_at,
+    ).toBe(Date.parse(corrected));
+    expect(
+      h.w.db.query<{ status: string; decision_json: string | null }>(
+        "SELECT status, decision_json FROM agent_proposals WHERE account_id = ? AND id = 'inv_fix'",
+        ACCOUNT,
+      )[0],
+    ).toEqual({ status: "pending", decision_json: null });
+    // Choreography: the correction is visible to /changes, not only to /get.
+    expect(res.newState).not.toBe(res.oldState);
+
+    const got = await h.call<{ list: Array<Record<string, unknown>> }>("ActionProposal/get", {
+      ids: ["inv_fix"],
+    });
+    expect(got.list[0]!.dueAt).toBe(corrected);
+  });
+
+  it("dueAt: null clears a mis-read deadline back to never-urgent", async () => {
+    const h = harness();
+    seedProposal(h.w, { id: "inv_clear", kind: "reply-draft", tier: 2, dueAt: Date.UTC(2027, 0, 1) });
+    const res = await h.set({ update: { inv_clear: { dueAt: null } } });
+    expect(res.updated.inv_clear).toBeNull();
+    expect(
+      h.w.db.query<{ due_at: number | null }>(
+        "SELECT due_at FROM agent_invocations WHERE account_id = ? AND id = 'inv_clear'",
+        ACCOUNT,
+      )[0]!.due_at,
+    ).toBeNull();
+  });
+
+  it("refuses dueAt riding on a decision — a correction is not a verdict", async () => {
+    const h = harness();
+    seedProposal(h.w, { id: "inv_both", kind: "reply-draft", tier: 2 });
+    const res = await h.set({
+      update: { inv_both: { status: "approved", dueAt: "2027-03-05T17:00:00Z" } },
+    });
+    expect(res.notUpdated.inv_both!.type).toBe("invalidProperties");
+    expect(res.notUpdated.inv_both!.description).toMatch(/its own update/);
+    // Refused means refused: neither the decision nor the correction landed.
+    expect(
+      h.w.db.query<{ status: string }>(
+        "SELECT status FROM agent_proposals WHERE account_id = ? AND id = 'inv_both'",
+        ACCOUNT,
+      )[0]!.status,
+    ).toBe("pending");
+  });
+
+  it("refuses an unparseable dueAt — a bad date must not silently become 'no deadline'", async () => {
+    const h = harness();
+    seedProposal(h.w, { id: "inv_bad", kind: "reply-draft", tier: 2, dueAt: Date.UTC(2027, 0, 1) });
+    const res = await h.set({ update: { inv_bad: { dueAt: "a week from Tuesday" } } });
+    expect(res.notUpdated.inv_bad!.type).toBe("invalidProperties");
+    expect(
+      h.w.db.query<{ due_at: number | null }>(
+        "SELECT due_at FROM agent_invocations WHERE account_id = ? AND id = 'inv_bad'",
+        ACCOUNT,
+      )[0]!.due_at,
+    ).toBe(Date.UTC(2027, 0, 1)); // untouched
   });
 });

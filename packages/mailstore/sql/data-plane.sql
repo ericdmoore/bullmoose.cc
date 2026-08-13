@@ -233,6 +233,42 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
   tokens_in    INTEGER,
   tokens_out   INTEGER,
   cost_micros  INTEGER,
+  -- s11 T1 — the WORK's business deadline ("review this by Friday"), epoch ms.
+  -- The THIRD clock, distinct from the two on agent_proposals: expires_at is
+  -- the HUMAN's decide-by and hold_until the retraction window; due_at is when
+  -- the work itself is due — the field the s11 eligibility gate (T2) will read.
+  -- NULL = no known deadline = never-urgent (free-runtime-only, indefinitely).
+  -- Stamped at the boundary by ingest's deterministic extraction (dueDate.ts),
+  -- surfaced and correctable on the approval row (a proposal, never a hidden
+  -- field — readme caution 3). Existing DBs: infra/migrations.mjs
+  -- `invocation-due-at` — deliberately NOT a deploy blocker; every reader and
+  -- writer degrades to "no deadline" on a shard that predates it.
+  due_at       INTEGER,
+  -- s11 T6 — facets: constraints the future claim gate reads, never
+  -- prescriptions (jobs-and-facets.md §2). One author class per facet, nobody
+  -- hand-authors per message; all NULL = DefaultCase = claimable exactly as
+  -- today (facets tighten, never strand). Existing DBs: infra/migrations.mjs
+  -- `invocation-facet-columns` — NOT a deploy blocker: nothing hot reads them
+  -- yet (the mayClaim gate is s11 T2), and ingest's stamp UPDATE degrades to
+  -- an unfaceted enqueue where they are missing.
+  --   privacy       NULL | 'open' | 'internal' | 'pinned' — a CLASS, not a
+  --                 score; composed max-wise against the binding's
+  --                 config_json.privacyFloor at stamp time (the floor rule:
+  --                 a stamp may raise, never lower below any implicated floor)
+  --   sender_class  NULL | 'known' | 'unknown' | 'blocked' — the s12 boundary
+  --                 agent (bouncer@) is its author; ingest has no sender
+  --                 verdict today and leaves it NULL
+  --   effort_prior  NULL | 'low' | 'med' | 'high' | 'max' — a prior that
+  --                 seeds the cost estimate until per-kind history exists;
+  --                 judged at the boundary (s12), NULL until then
+  --   requires_json NULL or {"contextTokens"?: n, "vision"?: true,
+  --                 "tools"?: true} — derived capability REQUIREMENTS
+  --                 (capability, not model: requirements constrain, the
+  --                 optimizer chooses); mechanical, stamped by ingest
+  privacy       TEXT,
+  sender_class  TEXT,
+  effort_prior  TEXT,
+  requires_json TEXT,
   PRIMARY KEY (account_id, id)
 );
 CREATE INDEX IF NOT EXISTS invocations_status
