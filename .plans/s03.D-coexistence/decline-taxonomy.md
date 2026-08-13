@@ -136,5 +136,5 @@ training is optional.
 - `services/jmap/src/methods/actionProposal.ts:53` — the enum's canonical home (to be revised)
 - `webmail/src/lib/approvals/` — the decision surface (s07 T4)
 - `.plans/s03.D-coexistence/devPlan.md` T5 — repetition → policy (this note's owner)
-- `.plans/s11-scheduling/` — where `defer` becomes a real scheduling action
+- `.plans/s11-scheduling/` — the scheduler that reads `due_at` (the edit that replaced the defer verb)
 - `.plans/s10-agents/` — where frequent `wrongAction` is fixed (config), not per-proposal

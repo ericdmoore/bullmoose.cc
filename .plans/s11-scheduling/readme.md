@@ -110,5 +110,5 @@ pull; the race shrinks to the eligible set.
 - `docs/architecture/agent-integration.md` §2 (pull queue), §6 (runtimes), §8 (watchdog)
 - `packages/mailstore/sql/data-plane.sql` — `agent_invocations` (`claimed_at`, and s07 T5's cost columns)
 - `.plans/s07-app-surface/devPlan.md` T5 — the cost facts this spends, and the `$/work` forward-reference
-- `.plans/s03.D-coexistence/decline-taxonomy.md` — the `defer` action, the human side of this
+- `.plans/s03.D-coexistence/decline-taxonomy.md` — the retired `defer` row and the due_at-edit override
 - `~/.casa-studio/` — LiteLLM (:4000) and Ollama on alpaca, the free `@local` inference this optimises toward
