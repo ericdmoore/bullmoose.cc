@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Mailstore, loadBayesState } from "@bullmoose/mailstore";
 import { fakeEnv, type FakeWorker } from "@bullmoose/test-fakes";
-import { LLM_LABELS_TRAIN, classifyScreened, parseClassifierVerdict } from "./bouncer";
+import { LLM_LABELS_TRAIN, classifyScreened, parseClassifierVerdict } from "./bouncerClassify";
 import agentWorker from "./index";
 import type { BindingConfig, Env, InvocationCost } from "./models";
 

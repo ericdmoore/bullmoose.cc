@@ -11,7 +11,7 @@ import {
   claimGateSql,
   type ClaimantIdentity,
 } from "@bullmoose/scheduling";
-import { classifyScreened } from "./bouncer.js";
+import { classifyScreened } from "./bouncerClassify.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
