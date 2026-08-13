@@ -34,9 +34,22 @@ expressiveness a flat list cannot ("the family group"). Three things, none of th
 - **One chokepoint, in the store — not per-protocol.** A book governed by approval but writable
   over CardDAV is not governed. Today's write paths are JMAP `ContactCard/set`, CardDAV
   `PUT`/`DELETE`, the CLI, and MCP `contacts_create_card`; four checks means the *fifth*
-  protocol added later silently bypasses the bound. Mark the book (a flag on `address_books`)
-  and enforce **once**, at the store layer every path funnels through. A test must assert each
-  known path is refused.
+  protocol added later silently bypasses the bound. Mark the book and enforce **once**, at the
+  store layer every path funnels through. A test must assert each known path is refused.
+- **The mark is a per-book `writePolicy`, not a boolean** — three levels, one chokepoint:
+  - `open` — direct writes under ordinary grants (an agent's own working books; today's
+    behavior).
+  - `propose` — *agent* writes flow through the queue as `create-contact` proposals (the kind
+    already in the arch enum); humans write directly. Default for **human-owned** books: CJ or
+    `crm@` may curate Eric's contacts, but as reviewable proposals, with approve-after-edit
+    giving the labeled correction s03.D already banks.
+  - `governed` — the full bound: the governed agent cannot write it at all, widening is a
+    `grant-request` (T3), every change chains (T2). Forced for allowlist books.
+  - **Governed is viral through reference.** If a governing book (or its allowlist) references
+    a group in a human book — "photos@ may email the *family* group" — that group is now part
+    of the control surface: adding a member widens an agent. Reference by a governing book
+    escalates the referenced book/group's effective policy to `governed`, automatically. The
+    alternative is the silent-widening hole T1 already forbids for nesting.
 - **Fail-closed, exact-match.** Unbound ⇒ **cannot send**, matching the Bureau's invariant 5
   (`services/bureau/src/binding.ts` — refuse when no allowlist, never default-allow); no book
   ⇒ cannot send, *never* "unrestricted". `allowedSenders` (inbound) is enforced at
@@ -81,10 +94,25 @@ actor)`, no FK, history outlives the row).
   identical hole, one realm over. Same column, general win, do both.
 - **Actor is attributed, not collapsed.** A human approval and CJ's automated one must be
   distinguishable in the chain (see T3), or the audit cannot tell judgment from automation.
+- **The book folds from the log — assert it.** For a *governing* book, membership is fully
+  determined by the chain: added→removed→added-back is three events, and the current book is
+  the fold. We do not flip to literal event sourcing (the book stays the store; the chokepoint
+  writes card + chain row in **one atomic batch**, which is what kills the dual-write desync),
+  but the fold is the **reconciliation invariant**: replaying the chain must reproduce the
+  book's membership exactly. Divergence = a bug or a bypassed write path — either way an
+  alarm, not a log line. Cheap enough to run in CI and on a schedule.
+- **No compaction — the cancelled pairs are the crown jewels.** The tempting compaction is
+  exactly wrong: an add+remove that "cancels out" contributes nothing to current state, but it
+  is the *record of a window in which the agent could send* — the widen→send→narrow attack's
+  entire footprint. Compacting by does-it-affect-current-state is the attacker's deletion
+  policy. The only legitimate axis is **time**: a retention horizon with a signed membership
+  snapshot at the boundary, and none of that until scale demands it — allowlist churn is
+  human-scale (events/week), so the log stays trivially small for years.
 
 **Done when:** every add *and* remove on a governing book appends a row; the row links the
 authorizing proposal; a test proves a widen-then-narrow sequence is fully reconstructable after
-the fact; `grant_lifecycle` gained the same link.
+the fact; the fold-reconciliation invariant runs and a deliberately-bypassed write trips it;
+`grant_lifecycle` gained the same link.
 
 ### T3 — Widening is a `grant-request` proposal · *the agent asks; it does not take*
 
@@ -220,6 +248,15 @@ changes nobody can later reconstruct. Ship the arc.
    the T2 row is still appended with the human as `actor` and a null `via_proposal_id`. The
    chain stays complete; the "why" is simply absent for human edits, which is honest. Agents
    never write through — that is the whole bound.*
+5. **A human-originated request ("add Bob") — does the agent's resulting write still queue?**
+   Eric emails `crm@` asking for a contact; a round-trip back through `/approvals` for a thing
+   he just asked for is friction. But "the human asked" arriving *by email* is the classic
+   injection vector — a message that merely looks like the owner. *Recommendation: still file
+   the proposal (one write path, the chokepoint stays single), but **auto-approve** when the
+   directive came from the book's owner over an authenticated channel (DKIM-aligned +
+   `allowedSenders`), recording `via_proposal_id` as usual with the request's message-id as
+   evidence. Unauthenticated or third-party requests queue normally. On a `governed` book,
+   auto-approve is off, full stop.*
 
 ## Out of scope
 
