@@ -31,11 +31,15 @@ SMTP → ingest (mechanical: parse, dedup, store, mechanical facets)
    (quarantine + chain, naming the firing stage), or **CONTINUE** (next stage). The gray
    zone *is* the escalation channel; each stage sees only the survivors of the last:
 
-   1. **Sender books first** (commitment 2, made literal): known-good → **ACCEPT**
-      fast-path; blocked → **REJECT**. A **bloom filter** fronts the blocked book:
-      `ABS_NO` → CONTINUE for free (blooms have no false negatives), `POSSIBLY_YES` →
-      exact check against the book. The bloom is a *derived index*, rebuilt on the book's
-      ctag bump — the book stays canonical; no second blocklist store may emerge.
+   1. **Sender sets first** (commitment 2, made literal): known-good → **ACCEPT**
+      fast-path; blocked → **REJECT**. A **bloom filter** (in worker memory, loaded at
+      cold start) fronts the union of ALL blocked tiers: `ABS_NO` → CONTINUE for free
+      (blooms have no false negatives), `POSSIBLY_YES` → exact check against the owning
+      tier. The bloom is a *derived index*, rebuilt when any source changes — each tier
+      stays canonical for its entries; no shadow blocklist store may emerge.
+      **Stage-1 rejects should exit at the SMTP edge**: ingest already runs inside a CF
+      Email Routing handler with `message.setReject()` (`ingest/src/index.ts:62`) — a
+      5xx costs us no storage at all and makes retry the sender's problem.
    2. **Envelope auth**: SPF/DKIM/DMARC alignment (cheap; the inbound edge already
       computes most of it) — hard-fail → REJECT; the result feeds the Bayes prior.
    3. **Sieve rules**: PASS → CONTINUE, FAIL → REJECT (rule id recorded as the reason).
@@ -50,8 +54,36 @@ SMTP → ingest (mechanical: parse, dedup, store, mechanical facets)
       `effort_prior`) as classification enums — never a free action; the floor rule
       applies.
 
-   Every REJECT is a quarantine-chain event whose reason names the firing stage — "why
-   was this shunted?" is always answerable by stage name, no archaeology.
+   Every mid-band or personal-tier REJECT is a quarantine-chain event whose reason names
+   the firing stage — "why was this shunted?" is always answerable by stage name, no
+   archaeology. The industrial tier gets **counters, not chains** (below).
+
+   ### "Blocked" is three tiers — different owners, different audit, one bloom
+
+   Eric's refinement (2026-08-13): a bad-actor domain list exists to **minimize the
+   computation budget spent on the hostile internet** — and that goal is incompatible
+   with treating it as a contact book. So the blocked concept splits by what the entry
+   *is*, and audit fidelity is proportional to decision value:
+
+   | tier | what | owner | writes | audit |
+   |---|---|---|---|---|
+   | **industrial denylist** | bad-actor **domains** — spam farms, the background radiation; possibly thousands, feed-sourced | the **operator** (config/feed artifact — *not* a book, nothing social about it, nobody wants 5k junk domains rendered in CardDAV) | feed refresh + the **graduation loop** (below) | **per-domain daily counters**, never per-message chain rows — an attacker must not be able to make us pay D1 writes per spam |
+   | **tenant-wide blocked book** | house-level sender blocks ("nobody here deals with X") | **bouncer@'s account** — its working book | human directive or proposal; graduation-policy auto-writes allowed, always chained | membership chain |
+   | **personal blocked book** | *this human's* blocks ("never that recruiter again") | **the account it protects** — Dad's blocks do not touch Mom's mail | owner writes directly; agents **propose** (`write_policy: propose`); bouncer holds a collection-scoped **read grant** (the `allowedBookIds` machinery) | membership chain |
+
+   Why bouncer may hold more autonomy here than `photos@` ever gets over
+   `allowedRecipients`: block lists are **deny-only**, so the worst failure is
+   over-blocking — visible in quarantine, rescuable, chained. An availability bruise,
+   never a security breach. The failure direction is what earns the autonomy.
+
+   **The graduation loop — the cascade optimizes its own cost.** A domain repeatedly
+   rejected by the *expensive* stages (N Bayes/sieve rejects, no rescues) graduates
+   **downward** into the industrial denylist, so its future mail costs nanoseconds
+   instead of Bayes compute. Repetition→policy, applied to spam: repeat offenders pay
+   less and less of our attention. Graduations are policy-authorized automatic writes,
+   recorded with their evidence (`graduated: 20×bayes@0.99, 0 rescues`); a quarantine
+   rescue of a graduated domain demotes it back out and resets the counter — the human
+   correction always wins.
 
 2. **Sender-classification first, message-rescue second.** Spam is a *sender* problem
    before it is a message problem. Sender classes are **address books** (known-good /
