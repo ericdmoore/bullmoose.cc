@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FakeJmapClient } from "../jmap/FakeJmapClient";
 import { correctDueAt, decide, loadQueue } from "./api";
 import { installApprovalsDemo, type ApprovalsDemoBackend } from "./demoApprovals";
+import { describeReason } from "./rows";
 
 const ACCOUNT = "acct-fake";
 // Wall time, not a pinned instant: the demo's `/set` stamps decisions with
@@ -24,7 +25,7 @@ describe("loadQueue", () => {
   it("returns the whole collection in one query→get round trip", async () => {
     const { client } = harness();
     const { proposals, state } = await loadQueue(client, ACCOUNT);
-    expect(proposals.length).toBe(10);
+    expect(proposals.length).toBe(11);
     expect(state).toBe("0");
     // Every status the arch names is present in the fixture set, so the whole
     // surface — queue, waiting-on-agent, hold tray, history — is drivable
@@ -131,18 +132,55 @@ describe("decide → ActionProposal/set", () => {
     const { client, backend } = harness();
     const outcome = await decide(client, ACCOUNT, "ap-grant-photos", {
       status: "rejected",
-      reason: "notNow",
-      note: "after the fair",
+      reason: "unsafe",
+      note: "that address is not ours to write to",
     });
     expect(outcome).toEqual({ ok: true });
     const row = backend.proposals.find((p) => p.id === "ap-grant-photos")!;
     expect(row.status).toBe("rejected");
-    expect(row.decision).toEqual({ by: "fake@bullmoose.test", reason: "notNow", note: "after the fair" });
+    expect(row.decision).toEqual({
+      by: "fake@bullmoose.test",
+      reason: "unsafe",
+      note: "that address is not ours to write to",
+    });
+  });
+
+  it("a decision recorded under the OLD taxonomy still loads and renders as itself", async () => {
+    // The legacy-tolerance rule (decline-taxonomy.md): `notNow` is retired from
+    // the write path, and `ap-thread-vendor` was decided before that. Nothing
+    // migrated it, so the read path must carry it through untouched — and the
+    // renderer must mark it retired rather than throwing, dropping it, or
+    // quietly turning it into a reason the human never chose.
+    const { client } = harness();
+    const { proposals } = await loadQueue(client, ACCOUNT);
+    const legacy = proposals.find((p) => p.id === "ap-thread-vendor")!;
+    expect(legacy.status).toBe("rejected");
+    expect(legacy.decision?.reason).toBe("notNow");
+    expect(legacy.decision?.note).toBe("I'll ring them instead.");
+    expect(describeReason(legacy.decision!.reason!)).toBe("notNow (retired)");
+  });
+
+  it("REFUSES a retired reason on a NEW decision, with the corrected enum in the message", async () => {
+    const { client, backend } = harness();
+    const outcome = await decide(client, ACCOUNT, "ap-reply-elk", {
+      status: "rejected",
+      // Not offered by the panel any more; typed through the API on purpose.
+      reason: "notNow" as never,
+    });
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.message).toContain("wrongContent | wrongAction | unsafe");
+      expect(outcome.message).not.toContain("notNow");
+    }
+    // Refused means refused: nothing recorded.
+    const row = backend.proposals.find((p) => p.id === "ap-reply-elk")!;
+    expect(row.status).toBe("pending");
+    expect(row.decision).toBeNull();
   });
 
   it("a decided row is not re-decidable (T1: only pending decides; yank is T2)", async () => {
     const { client } = harness();
-    const outcome = await decide(client, ACCOUNT, "ap-held-agenda", { status: "rejected", reason: "notNow" });
+    const outcome = await decide(client, ACCOUNT, "ap-held-agenda", { status: "rejected", reason: "unsafe" });
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.message).toContain("is held, not pending");
   });

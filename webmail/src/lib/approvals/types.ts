@@ -65,12 +65,32 @@ export interface ProposalEvidence {
   note?: string;
 }
 
-/** The no-thanks signal (arch.md §3). `notNow` is a snooze, not a rejection. */
-export type RejectReason = "wrongContent" | "wrongAction" | "notNow";
+/**
+ * The no-thanks signal (arch.md §3) as the decline panel may WRITE it — exactly
+ * the server's enum (actionProposal.ts `REJECT_REASONS`), because a reason this
+ * type offers and the server refuses is a decline that fails at the round trip.
+ *
+ * Each steers a different correction (decline-taxonomy.md): `wrongContent`
+ * fixes generation, `wrongAction` fixes selection, and `unsafe` is
+ * categorically separate — the hard negative, not a stronger "no". `notNow` is
+ * RETIRED: it conflated "I'll do it myself", "not due yet" (now a `dueAt`
+ * correction, which records nothing) and "meh, later".
+ */
+export type RejectReason = "wrongContent" | "wrongAction" | "unsafe";
+
+/**
+ * What a STORED decision may carry, which is deliberately NOT the same set.
+ * Reasons retire from the write path over time and history is never rewritten,
+ * so a read must accept a reason this build no longer offers. Render through
+ * `describeReason` (rows.ts): a retired value shows as itself, marked retired —
+ * never dropped, never silently remapped to a live reason.
+ */
+export type RecordedRejectReason = RejectReason | (string & {});
 
 export interface ProposalDecision {
   by: string;
-  reason?: RejectReason;
+  /** As RECORDED — may predate the current enum (see `RecordedRejectReason`). */
+  reason?: RecordedRejectReason;
   note?: string;
   /** The undo handle a tier-1 application keeps (actionProposal.ts:421). */
   undo?: Record<string, unknown>;

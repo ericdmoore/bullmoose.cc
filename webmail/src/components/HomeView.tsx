@@ -499,9 +499,12 @@ function DeclinePanel(props: {
 }) {
   return (
     <div class="home-editor">
-      <p class="home-fine">Why not? The reason trains different things (or nothing).</p>
+      <p class="home-fine">
+        Why not? Each reason steers a different correction — the last one is a hard stop, not a
+        stronger no.
+      </p>
       {REJECT_REASONS.map((r) => (
-        <label key={r.reason} class="home-reason">
+        <label key={r.reason} class={r.severe ? "home-reason home-reason-severe" : "home-reason"}>
           <input
             type="radio"
             name="home-decline-reason"

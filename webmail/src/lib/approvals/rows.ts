@@ -99,15 +99,65 @@ export const HOLD_UNWIRED_NOTE = "commit / yank land with s03.D T2 — not wired
 // ── the no-thanks signal (arch.md §3) ─────────────────────────────────────
 
 /**
- * The three reasons, in the order the decline panel offers them. `notNow`
- * last and visually a snooze: it deliberately trains nothing and must not be
- * the reflex click.
+ * The three reasons, in the order the decline panel offers them, mirroring the
+ * server's enum exactly (actionProposal.ts `REJECT_REASONS`). A reason earns
+ * its place only if it changes what the agent does next, so the hints say what
+ * each one STEERS rather than how annoyed the human is (decline-taxonomy.md).
+ *
+ * `unsafe` is last and `severe`, and that is not a severity ranking of the
+ * other two: it is a different KIND of judgment. wrongContent and wrongAction
+ * are quality feedback — this was done badly, this should not have been done.
+ * `unsafe` says a boundary was crossed (private information left the account, or
+ * the agent committed the human to something), which is weighted heavily, is
+ * never tolerated twice, and is not a stronger way of saying "no". The panel
+ * words it as the hard stop it is so it is never the reflex click.
+ *
+ * `notNow` is gone (decline-taxonomy.md): it was a grab-bag — "I'll do it
+ * myself", "not due yet" (now a `dueAt` correction, which records nothing) and
+ * "meh, later". Rows decided under it still render; see `describeReason`.
  */
-export const REJECT_REASONS: ReadonlyArray<{ reason: RejectReason; label: string; hint: string }> = [
-  { reason: "wrongContent", label: "Wrong content", hint: "right action, badly done — trains the drafter" },
-  { reason: "wrongAction", label: "Wrong action", hint: "should not have been proposed — trains the classifier" },
-  { reason: "notNow", label: "Not now", hint: "a snooze; counts against nothing" },
+export const REJECT_REASONS: ReadonlyArray<{
+  reason: RejectReason;
+  label: string;
+  hint: string;
+  /** The categorically-separate hard negative — styled and worded apart. */
+  severe?: boolean;
+}> = [
+  { reason: "wrongContent", label: "Wrong content", hint: "right action, badly done — trains the drafter, keeps the trigger" },
+  { reason: "wrongAction", label: "Wrong action", hint: "should not have been proposed at all — trains the classifier; rare by design" },
+  {
+    reason: "unsafe",
+    label: "Unsafe — it leaked private information, or committed me to something",
+    hint: "a hard stop, not a stronger no: weighted heavily and never tolerated twice",
+    severe: true,
+  },
 ];
+
+/**
+ * Reasons the server once accepted and no longer does. Recorded decisions are
+ * NOT migrated — a human's decision is a fact, and rewriting one to fit a later
+ * taxonomy would be an audit hole — so the queue must still render them.
+ */
+export const RETIRED_REJECT_REASONS: ReadonlySet<string> = new Set(["notNow"]);
+
+/**
+ * How a RECORDED reason renders. Tolerant by construction: history is read, not
+ * validated, so this never throws and never remaps.
+ *
+ *   a live reason    → its panel label ("Wrong content")
+ *   a retired one    → itself, marked: "notNow (retired)"
+ *   anything else    → itself, verbatim
+ *
+ * Showing a retired reason as itself is the point: "notNow" silently becoming
+ * "Wrong action" would put a judgment in the human's mouth they never made, and
+ * dropping it would erase why a proposal was declined.
+ */
+export function describeReason(reason: string): string {
+  const known = REJECT_REASONS.find((r) => r.reason === reason);
+  if (known) return known.label;
+  if (RETIRED_REJECT_REASONS.has(reason)) return `${reason} (retired)`;
+  return reason;
+}
 
 // ── one-line summaries ────────────────────────────────────────────────────
 

@@ -6,10 +6,12 @@ import { parseProposal } from "./types";
 import {
   HOLD_UNWIRED_NOTE,
   REJECT_REASONS,
+  RETIRED_REJECT_REASONS,
   TIER3_CAPABILITY_NOTE,
   approvalsAccountId,
   approvalsGate,
   approveVerb,
+  describeReason,
   summarizeProposal,
   tierLabel,
 } from "./rows";
@@ -70,13 +72,32 @@ describe("tier rendering matches what approve DOES (arch.md §2)", () => {
   });
 });
 
-describe("the no-thanks reasons (arch.md §3)", () => {
-  it("offers exactly the server's enum, snooze last", () => {
-    expect(REJECT_REASONS.map((r) => r.reason)).toEqual(["wrongContent", "wrongAction", "notNow"]);
+describe("the no-thanks reasons (arch.md §3, decline-taxonomy.md)", () => {
+  it("offers exactly the server's enum — three, hard negative last", () => {
+    expect(REJECT_REASONS.map((r) => r.reason)).toEqual(["wrongContent", "wrongAction", "unsafe"]);
   });
 
-  it("marks notNow as counting against nothing", () => {
-    expect(REJECT_REASONS[2]?.hint).toContain("counts against nothing");
+  it("words `unsafe` as the categorically-separate hard stop, not another decline flavour", () => {
+    const unsafe = REJECT_REASONS.find((r) => r.reason === "unsafe")!;
+    // What it MEANS, in the human's own terms — the two things it covers.
+    expect(unsafe.label).toContain("leaked private information");
+    expect(unsafe.label).toContain("committed me");
+    // And that it is a different KIND of judgment, not a louder "no".
+    expect(unsafe.hint).toContain("hard stop");
+    expect(unsafe.hint).toContain("not a stronger no");
+    expect(unsafe.severe).toBe(true);
+    // The two quality reasons are NOT marked severe — the separation is the point.
+    expect(REJECT_REASONS.filter((r) => r.severe).map((r) => r.reason)).toEqual(["unsafe"]);
+  });
+
+  it("keeps the two quality reasons pointed at what each STEERS", () => {
+    expect(REJECT_REASONS[0]?.hint).toContain("trains the drafter");
+    expect(REJECT_REASONS[1]?.hint).toContain("trains the classifier");
+  });
+
+  it("NEVER offers a retired reason — notNow cannot be chosen again", () => {
+    expect(REJECT_REASONS.map((r) => r.reason)).not.toContain("notNow");
+    expect(RETIRED_REJECT_REASONS.has("notNow")).toBe(true);
   });
 
   it("NEVER offers needsInfo as a decline reason — it is an action, not a reject (decline-taxonomy.md)", () => {
@@ -84,6 +105,25 @@ describe("the no-thanks reasons (arch.md §3)", () => {
     // panel must not be able to record a needsInfo "rejection", because the
     // panel cannot offer one. The verb lives on its own button.
     expect(REJECT_REASONS.map((r) => r.reason)).not.toContain("needsInfo");
+  });
+});
+
+describe("describeReason — reading history the enum no longer writes", () => {
+  it("renders a live reason by its panel label", () => {
+    expect(describeReason("wrongContent")).toBe("Wrong content");
+    expect(describeReason("unsafe")).toContain("Unsafe");
+  });
+
+  it("renders a RETIRED reason as itself, marked — never remapped, never dropped", () => {
+    // The legacy-tolerance rule: a decision recorded as `notNow` is a fact. It
+    // must not silently become "Wrong action" (a judgment the human never
+    // made) and must not vanish (erasing why the proposal was declined).
+    expect(describeReason("notNow")).toBe("notNow (retired)");
+  });
+
+  it("renders an unrecognized reason verbatim rather than throwing", () => {
+    expect(describeReason("someFutureReason")).toBe("someFutureReason");
+    expect(() => describeReason("")).not.toThrow();
   });
 });
 
