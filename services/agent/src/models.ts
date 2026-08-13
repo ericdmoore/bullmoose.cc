@@ -22,6 +22,19 @@ export interface Env {
    * cannot decrypt anything on its own. See `vault.ts`.
    */
   BUREAU: Fetcher;
+  /**
+   * The canonical RFC 8707 resource URI this server answers for, e.g.
+   * `https://mcp.bullmoose.cc/mcp` (s02 T1). Optional: it defaults to
+   * `<request origin>/mcp`, which is right for every deployment that is
+   * reached at the hostname it serves. Set it when a proxy rewrites the
+   * origin, because the value MUST equal the URL the user typed into their
+   * client exactly — a mismatch makes discovery fail with no useful error.
+   */
+  MCP_RESOURCE_URI?: string;
+  /** The OAuth AS issuing tokens for this resource (s02 T3). Defaults to
+   *  `auth.<registrable domain>`. Claude reads only the FIRST entry of
+   *  `authorization_servers` and never falls back. */
+  OAUTH_ISSUER?: string;
 }
 
 /** One route a model alias can resolve to. */

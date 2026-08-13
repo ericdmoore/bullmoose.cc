@@ -23,6 +23,7 @@ import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
 import { answerInfoRequest, proposeReply, expireStaleProposals } from "./proposals.js";
 import { handleVault, handleVaultVerify } from "./vault.js";
+import { handleWellKnown, originAllowed, unauthorized } from "./wellKnown.js";
 import {
   callWithFallback,
   invocationCost,
@@ -85,6 +86,48 @@ const OVERDUE_ALERT_LIMIT = 100;
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    // Discovery is public by definition — a client reads it precisely because
+    // it has no credential yet (s02 T1).
+    const wellKnown = handleWellKnown(request, url, env);
+    if (wellKnown) return wellKnown;
+
+    // The MCP tool surface. PUBLIC (s02 T1): the `x-internal-token` wrapper
+    // came off this route and stays on /drain and /internal/* below.
+    //
+    // That wrapper was never the authentication — mcp.ts resolves a bearer to
+    // a principal on EVERY request and gates each tool on scope ∩ grant. What
+    // it was, was a coarse network ACL requiring a secret only we hold, which
+    // is exactly what a third-party client cannot have. Removing it weakens
+    // nothing and is what makes claude.ai able to reach the door at all.
+    //
+    // `/mcp` is the canonical path; `/mcp/analytics` is the historical one,
+    // kept because the e2e harness and four plan docs cite it and an alias
+    // costs one line (s02 decision 3).
+    if (url.pathname === "/mcp" || url.pathname === "/mcp/analytics") {
+      if (!originAllowed(request, url)) {
+        return new Response(JSON.stringify({ error: "origin not allowed" }), {
+          status: 403,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      // GET/DELETE are the HTTP+SSE era's transport, removed in 2026-07-28
+      // and never implemented here. 405 is the honest answer (s02 T2).
+      if (request.method === "GET" || request.method === "DELETE") {
+        return new Response(null, { status: 405, headers: { allow: "POST" } });
+      }
+      // The 401 has to carry the resource_metadata pointer, so the no-bearer
+      // case is answered here rather than by handleMcp's bare JSON-RPC error.
+      const authz = request.headers.get("Authorization") ?? "";
+      if (!authz.startsWith("Bearer ")) return unauthorized(url, env);
+      const res = await handleMcp(request, env);
+      // A bearer that did not resolve gets the same teaching challenge — an
+      // expired token is the single most common reason a working connection
+      // stops working, and the client can only re-auth if we say so.
+      if (res.status === 401) return unauthorized(url, env);
+      return res;
+    }
+
     if (request.method === "POST" && request.headers.get("x-internal-token") === env.INTERNAL_TOKEN) {
       if (url.pathname === "/drain") {
         const handled = await drain(env, ctx);
@@ -95,12 +138,6 @@ export default {
       }
       if (url.pathname === "/internal/vault/verify") {
         return handleVaultVerify(request, env);
-      }
-      // The MCP tool surface. Named /mcp/analytics historically; since sVOL
-      // 013 it carries calendar + contacts CRUD as well, so it is no longer
-      // read-only and no longer only analytics. See mcp.ts.
-      if (url.pathname === "/mcp/analytics") {
-        return handleMcp(request, env);
       }
     }
     // Credential vault: principal-facing, bearer-token authed.

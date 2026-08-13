@@ -1,5 +1,33 @@
 # s02 — Public MCP façade: dev plan
 
+> **Status: T5 + T1 + T2 BUILT, not deployed** (2026-08-13). The route, the teaching 401,
+> PRM discovery, the legacy `initialize` lane and the server-side `accountId` default are
+> on main and green (2791 tests). **Nothing is live**: `mcp.bullmoose.cc` and
+> `auth.bullmoose.cc` do not resolve yet, and no deploy has been run. Build deltas:
+> - **The `initialize` test inverted**, exactly as this plan predicted — `mcp.test.ts` 6
+>   asserted the handshake was dead and now asserts it is alive and legacy. That inversion
+>   is the signal T2 landed.
+> - **T5 needed a dispatcher-level concept, not just a default.** `whoami` is the discovery
+>   entry point, but the account gate ran *before* the tool, so the tool that tells you your
+>   account ids could not be called without one. `ToolDef.accountless` (whoami only) skips
+>   the token ∩ grant check while keeping the scope check. Without it, defaulting still
+>   refuses on a two-account principal — the exact case where you most need whoami.
+> - **The grant-reached fallback for the default is unreachable**, so it is not written:
+>   `principal.ts:149` resolves grants only when the principal already owns an account,
+>   because a grantee *is* an account. "Owns nothing" and "reaches nothing" are one state.
+> - **`MCP_RESOURCE_URI` / `OAUTH_ISSUER` are stated in `wrangler.jsonc`, not derived.**
+>   Deriving from the request origin is right for one hostname and wrong the moment the
+>   worker answers on two — the `*.workers.dev` URL stays live, and a client discovering
+>   `https://bullmoose-agent.<acct>.workers.dev/mcp` would authorize against a resource URI
+>   nobody typed. The derivation survives as a dev fallback only.
+> - **`Origin` is validated only when browser-shaped** (present, parseable, not `null`), and
+>   absence is treated as "not a browser, therefore not the DNS-rebinding attack" — which is
+>   what lets claude.ai's cloud egress through while the spec's MUST is still honoured.
+> - **⚠️ Open decision — `Mcp-Method` is validated when present, NOT enforced as required.**
+>   The spec says REQUIRED; enforcing it would break every existing caller including
+>   `tools/e2e-*.mjs`, and contradicts this plan's own "byte-identical except the three
+>   corrected codes" done-condition. Flagged rather than decided.
+>
 > Ordered build for making `bullmoose-mcp` connectable by a client that is **not ours** —
 > claude.ai, Claude Desktop, Claude Code, Codex. Companion to [`readme.md`](./readme.md).
 >
