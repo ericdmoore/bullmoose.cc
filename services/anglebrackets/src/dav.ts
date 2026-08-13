@@ -2,6 +2,7 @@ import { accountStub, commitChanges } from "@bullmoose/account-do";
 import {
   accountAccess,
   allowedBookIds,
+  isAgentPrincipal,
   matchingGrants,
   principalHasScope,
   type AccountAccess,
@@ -11,9 +12,11 @@ import {
 import { parseVcf, serializeVcard, type Card } from "@bullmoose/contacts-core";
 import { eventSpan, parseICal, serializeICal, expandOccurrences } from "@bullmoose/calendar-core";
 import {
+  BookWriteRefused,
   Mailstore,
   type AddressBookRow,
   type CalendarRow,
+  type ContactWriter,
   type JSCalendarEventBlob,
   type JSContactCard,
 } from "@bullmoose/mailstore";
@@ -199,6 +202,9 @@ export async function handleDav(
     return new Response("not found", { status: 404 });
   } catch (err) {
     if (err instanceof DavError) return err.response();
+    // The Mailstore chokepoint's typed refusal (s10 T1): a governed book is
+    // governed over CardDAV too, and the refusal is a 403, not a 500.
+    if (err instanceof BookWriteRefused) return new Response(err.message, { status: 403 });
     console.error("dav error:", err);
     return new Response(`internal error: ${String(err)}`, { status: 500 });
   }
@@ -248,6 +254,18 @@ async function requireWrite(
   const writable = allowedBookIds(access, "contacts");
   if (writable && !writable.has(bookId)) throw new DavError(403, "book is read-only for you");
   await audit(env, principal, access, "dav:write");
+}
+
+/**
+ * The chokepoint writer for a DAV card write (s10 T1). An agent-marked token
+ * (the "agent" scope) speaking CardDAV is still an agent — the write-policy
+ * gate lives in the store, so this surface only has to say WHO is writing.
+ */
+function davWriter(principal: Principal): ContactWriter {
+  return {
+    principal: principal.username,
+    kind: isAgentPrincipal(principal) ? "agent" : "human",
+  };
 }
 
 /** grant_audit for granted principals (parity with the JMAP path). */
@@ -466,6 +484,8 @@ async function createBook(
     ctag: 0,
     createdAt: now,
     updatedAt: now,
+    // Governing books are marked by provisioning, never created over DAV.
+    writePolicy: "open",
   });
   const { newState } = await commitChanges(env.ACCOUNT_DO, access.accountId, [
     { collection: "AddressBook", created: [bookId] },
@@ -493,7 +513,7 @@ async function destroyBook(
   // DAV DELETE on a collection is unconditional depth-infinity: it takes
   // the contents with it (JMAP's onDestroyRemoveContents, always on).
   const cardIds = await store.cardIdsInBook(access.accountId, bookId);
-  await store.destroyContactCards(access.accountId, cardIds);
+  await store.destroyContactCards(access.accountId, cardIds, davWriter(principal));
   await store.deleteAddressBook(access.accountId, bookId);
   // A destroyed book takes its sharing with it (parity with
   // AddressBook/set) — note this means a CardDAV DELETE can unshare.
@@ -735,16 +755,20 @@ async function handleResource(
       stored.updated = nowIso;
       stored.addressBookIds = { [book.id]: true };
       await store.offloadCardPhotos(access.tenantId, access.accountId, stored);
-      await store.updateContactCard(access.accountId, {
-        id: existing.id,
-        addressBookId: book.id,
-        uid: existing.uid,
-        card: stored,
-        nameFull: deriveNameFull(stored),
-        davName: name,
-        createdAt: existing.createdAt,
-        updatedAt: now,
-      });
+      await store.updateContactCard(
+        access.accountId,
+        {
+          id: existing.id,
+          addressBookId: book.id,
+          uid: existing.uid,
+          card: stored,
+          nameFull: deriveNameFull(stored),
+          davName: name,
+          createdAt: existing.createdAt,
+          updatedAt: now,
+        },
+        davWriter(principal),
+      );
       await store.bumpAddressBookCtags(access.accountId, [book.id]);
       await commitChanges(env.ACCOUNT_DO, access.accountId, [
         { collection: "ContactCard", updated: [existing.id] },
@@ -765,18 +789,22 @@ async function handleResource(
     stored.addressBookIds = { [book.id]: true };
     await store.offloadCardPhotos(access.tenantId, access.accountId, stored);
     const id = `cc_${crypto.randomUUID()}`;
-    await store.insertContactCards(access.accountId, [
-      {
-        id,
-        addressBookId: book.id,
-        uid,
-        card: stored,
-        nameFull: deriveNameFull(stored),
-        davName: name,
-        createdAt: Date.parse(stored.created) || now,
-        updatedAt: now,
-      },
-    ]);
+    await store.insertContactCards(
+      access.accountId,
+      [
+        {
+          id,
+          addressBookId: book.id,
+          uid,
+          card: stored,
+          nameFull: deriveNameFull(stored),
+          davName: name,
+          createdAt: Date.parse(stored.created) || now,
+          updatedAt: now,
+        },
+      ],
+      davWriter(principal),
+    );
     await store.bumpAddressBookCtags(access.accountId, [book.id]);
     await commitChanges(env.ACCOUNT_DO, access.accountId, [
       { collection: "ContactCard", created: [id] },
@@ -792,7 +820,7 @@ async function handleResource(
     if (ifMatch && !etagMatches(ifMatch, etagOf(row.id, row.updatedAt))) {
       return new Response("etag mismatch", { status: 412 });
     }
-    await store.destroyContactCard(access.accountId, row.id);
+    await store.destroyContactCard(access.accountId, row.id, davWriter(principal));
     await store.bumpAddressBookCtags(access.accountId, [book.id]);
     await commitChanges(env.ACCOUNT_DO, access.accountId, [
       { collection: "ContactCard", destroyed: [row.id] },

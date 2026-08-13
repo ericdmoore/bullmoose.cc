@@ -1,6 +1,7 @@
 import { MethodError } from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
-import { Mailstore } from "@bullmoose/mailstore";
+import { Mailstore, type ContactWriter } from "@bullmoose/mailstore";
+import { isAgentPrincipal } from "@bullmoose/auth-core/principal";
 import {
   authorizeAccount,
   type AccountAccess,
@@ -139,6 +140,26 @@ export function storeFor(ctx: RequestContext): Mailstore {
     binding: ctx.agent?.binding ?? null,
     invocation: ctx.agent?.invocation ?? null,
   });
+}
+
+/**
+ * The writer the contact-write chokepoint gates on (s10 T1). Agent when the
+ * call carries agent provenance (`ctx.agent` — the proposal executor and the
+ * MCP bridge both set it) or the token itself is agent-marked (the "agent"
+ * scope); human otherwise. `authorization` is the T3 hook: only the approved-
+ * proposal executor passes it.
+ */
+export function contactWriterFor(
+  ctx: RequestContext,
+  authorization?: { proposalId: string },
+): ContactWriter {
+  return {
+    principal: ctx.principal.username,
+    kind: ctx.agent || isAgentPrincipal(ctx.principal) ? "agent" : "human",
+    binding: ctx.agent?.binding ?? null,
+    invocation: ctx.agent?.invocation ?? null,
+    ...(authorization ? { authorization } : {}),
+  };
 }
 
 export async function accountState(ctx: RequestContext, accountId: string): Promise<string> {
