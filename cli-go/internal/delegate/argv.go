@@ -38,6 +38,8 @@ var valueFlags = map[string]bool{
 	// ---- identity (sVOL 006) ----
 	"text": true, "html": true, "reply-to": true, "identity": true,
 	"config": true,
+	// ---- fleet host (s11 T8) ----
+	"fleet": true,
 	// ---- agent invoke (sVOL 007) ----
 	"email": true, "note": true, "until": true, "expires": true, "kind": true,
 	"secret": true, "secret-env": true, "meta": true, "authorize-url": true,

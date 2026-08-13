@@ -148,11 +148,12 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
       rows = results;
     }
     const found = new Set(rows.map((r) => r.id));
+    const dueAt = await invocationDueAt(ctx, access.accountId, rows.map((r) => r.id));
 
     return {
       accountId: access.accountId,
       state: await accountState(ctx, access.accountId),
-      list: rows.map((r) => pickProps(proposalToJmap(r), properties)),
+      list: rows.map((r) => pickProps(proposalToJmap(r, dueAt.get(r.id) ?? null), properties)),
       notFound: (ids ?? []).filter((id) => !found.has(id)),
     };
   });
@@ -241,6 +242,38 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         // the terminal states are not re-decidable here — that is T2's yank.
         if (row.status !== "pending") {
           throw new SetErrorSignal("invalidProperties", `proposal is ${row.status}, not pending`, ["status"]);
+        }
+
+        // ---- s11 T1: due-date CORRECTION — not a decision ----
+        // The boundary's extracted `due_at` is a proposal the human can see
+        // and fix (readme caution 3), so a status-free `{ dueAt }` patch is
+        // the correction verb: it writes the INVOCATION (due_at lives there —
+        // it is the work's deadline, the field the scheduler reads, not a
+        // proposal clock) and leaves the row pending and undecided. Same
+        // discipline as editedPayload: the human's word lands as its own
+        // first-class write, never entangled with a verdict — which is why a
+        // patch carrying BOTH is refused rather than half-applied.
+        if (patch.dueAt !== undefined && patch.status === undefined) {
+          const dueAtMs = parseDueAt(patch.dueAt);
+          await ctx.env.DB.prepare(
+            `UPDATE agent_invocations SET due_at = ? WHERE account_id = ? AND id = ?`,
+          )
+            .bind(dueAtMs, access.accountId, id)
+            .run();
+          // Both collections moved: the invocation carries the value, the
+          // proposal projects it — commit choreography or the correction is
+          // invisible to /changes (this file's header).
+          applyEntries.push({ collection: "AgentInvocation", created: [], updated: [id], destroyed: [] });
+          propEntry.updated.push(id);
+          updated[id] = null;
+          continue;
+        }
+        if (patch.dueAt !== undefined) {
+          throw new SetErrorSignal(
+            "invalidProperties",
+            "dueAt is a correction, not part of a decision — send it in its own update, without status",
+            ["dueAt"],
+          );
         }
 
         const status = patch.status;
@@ -737,6 +770,53 @@ async function loadProposal(
   );
 }
 
+/**
+ * s11 T1 — `due_at` for a set of invocations, read via a SEPARATE tolerant
+ * statement instead of a new name in SELECT_JOIN. Deliberate: the
+ * `invocation-due-at` migration is NOT a deploy blocker (infra/migrations.mjs),
+ * so a shard that predates it must render "no deadline" on every row rather
+ * than fail every proposal read. Contrast proposal-needsinfo-columns, whose
+ * columns the JOIN names and which therefore IS a blocker.
+ */
+async function invocationDueAt(
+  ctx: RequestContext,
+  accountId: string,
+  ids: string[],
+): Promise<Map<string, number>> {
+  if (ids.length === 0) return new Map();
+  try {
+    const marks = ids.map(() => "?").join(",");
+    const { results } = await ctx.env.DB.prepare(
+      `SELECT id, due_at FROM agent_invocations WHERE account_id = ? AND id IN (${marks})`,
+    )
+      .bind(accountId, ...ids)
+      .all<{ id: string; due_at: number | null }>();
+    return new Map(
+      results.filter((r) => r.due_at !== null).map((r) => [r.id, r.due_at as number]),
+    );
+  } catch {
+    return new Map(); // pre-migration shard: every row reads "no deadline"
+  }
+}
+
+/**
+ * The correction's value: null clears (back to never-urgent), an ISO date
+ * string sets. Anything else is refused — a deadline that does not parse must
+ * not silently become "no deadline".
+ */
+function parseDueAt(raw: unknown): number | null {
+  if (raw === null) return null;
+  if (typeof raw === "string") {
+    const ms = Date.parse(raw);
+    if (Number.isFinite(ms)) return ms;
+  }
+  throw new SetErrorSignal(
+    "invalidProperties",
+    "dueAt must be null (no deadline) or an ISO 8601 date string",
+    ["dueAt"],
+  );
+}
+
 /** The decision record (arch.md §3): who + reason enum + optional free text. */
 function buildDecision(ctx: RequestContext, raw: unknown): Record<string, unknown> {
   const decision: Record<string, unknown> = { by: ctx.principal.username };
@@ -762,7 +842,7 @@ function buildDecision(ctx: RequestContext, raw: unknown): Record<string, unknow
   return decision;
 }
 
-function proposalToJmap(r: ProposalJoinRow): Record<string, unknown> {
+function proposalToJmap(r: ProposalJoinRow, dueAt: number | null = null): Record<string, unknown> {
   return {
     id: r.id,
     agent: r.binding_name, // read from the invocation (§8.5), not stored twice
@@ -781,6 +861,9 @@ function proposalToJmap(r: ProposalJoinRow): Record<string, unknown> {
     // NULL while a needsInfo round is open — the clock is banked in
     // expires_remaining_ms, not running (s10 T3).
     expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null,
+    // s11 T1 — the THIRD clock: the WORK's deadline, projected from the
+    // invocation (tolerantly — see invocationDueAt). NULL = never-urgent.
+    dueAt: dueAt !== null ? new Date(dueAt).toISOString() : null,
     // needsInfo (s10 T3): the open question and the append-only Q&A dialogue.
     question: r.question ?? null,
     amendments: safeJsonArray(r.amendments_json ?? "[]"),

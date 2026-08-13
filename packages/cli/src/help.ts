@@ -290,18 +290,19 @@ export const COMMANDS: Command[] = [
   },
   {
     name: "agent",
-    synopsis: "bullmoose agent serve --config <agent.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId>",
-    summary: "run the homelab agent runtime, and trigger agents on demand",
+    synopsis: "bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId>",
+    summary: "run the homelab agent runtime (single binding or fleet host), and trigger agents on demand",
     description:
-      "`serve` logs in as the bound account, watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config. --once drains and exits (cron-friendly). The config's `binding` must match the server-side binding name (see `admin agent bind`).\n\n`invoke` (sVOL 007) is the on-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.",
+      "`serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config. --once drains and exits (cron-friendly). With --config the config's `binding` must match the server-side binding name (see `admin agent bind`).\n\n--fleet (s11 T8) turns the process into a FLEET HOST: ONE login as a runtime principal serving N bindings across N accounts. Which accounts it serves is DISCOVERED from grants, not declared — each agent account grants the runtime principal claim authority (a whole-account grant whose scopes cover `draft`), and the daemon serves whatever granted it. Adding an agent = minting a grant (no restart); revoking the grant stops that binding's claims without touching the rest. fleet.json maps binding name → {persona, model} and may declare host `capabilities` {vision, contextTokens, tools} — the daemon then skips invocations whose declared requirements it cannot satisfy. Model configs stay local: they describe the host's capability, never an agent's identity.\n\n`invoke` (sVOL 007) is the on-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.",
     subcommands: [
-      { name: "serve", synopsis: "agent serve --config <agent.json> [--once]", summary: "run the homelab runtime; claims the queue" },
+      { name: "serve", synopsis: "agent serve --config <agent.json>|--fleet <fleet.json> [--once]", summary: "run the homelab runtime; claims the queue (fleet: N bindings, one login, discovery from grants)" },
       { name: "invoke", synopsis: "agent invoke <binding> --email <emailId> [--note <text>]", summary: "queue an invocation for a binding on a message (refused if the binding is disabled)" },
       { name: "invocations", synopsis: "agent invocations [pending|running|done|failed]", summary: "list the invocation queue (default: pending)" },
       { name: "rm", synopsis: "agent rm <invId>", summary: "purge an invocation (a running one is refused)" },
     ],
     flags: [
-      { flag: "--config <agent.json>", desc: "serve: agent definition (binding, persona, model{provider,baseURL,apiKeyEnv})" },
+      { flag: "--config <agent.json>", desc: "serve: one-binding agent definition (binding, persona, model{provider,baseURL,apiKeyEnv})" },
+      { flag: "--fleet <fleet.json>", desc: "serve: fleet host definition ({capabilities?, bindings: {<name>: {persona, model}}}); accounts discovered from grants" },
       { flag: "--once", desc: "serve: drain the queue once and exit" },
       { flag: "--email <emailId>", desc: "invoke: the message the agent acts on (required)" },
       { flag: "--note <text>", desc: "invoke: a human note stored in the invocation context" },
@@ -309,6 +310,7 @@ export const COMMANDS: Command[] = [
     examples: [
       { cmd: "bullmoose agent serve --config hermes.json" },
       { cmd: "bullmoose agent serve --config hermes.json --once", note: "cron drain" },
+      { cmd: "bullmoose agent serve --fleet alpaca-fleet.json", note: "fleet host: one login, N granted bindings" },
       { cmd: "bullmoose agent invoke emily --email e_9f3c…", note: "start emily on an existing message" },
       { cmd: "bullmoose agent invocations", note: "what is queued right now" },
       { cmd: "bullmoose agent invocations --ids | xargs -n1 bullmoose agent rm", note: "clear the pending queue" },

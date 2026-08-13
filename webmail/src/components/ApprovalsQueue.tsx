@@ -1,8 +1,11 @@
 /** @jsxImportSource preact */
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { resolveClient } from "../lib/app/client";
-import { decide, loadQueue, type Verdict } from "../lib/approvals/api";
+import { correctDueAt, decide, loadQueue, type Verdict } from "../lib/approvals/api";
 import {
+  dueFromInput,
+  dueInputValue,
+  dueLabel,
   expiryLabel,
   holdLabel,
   isNearExpiry,
@@ -58,12 +61,13 @@ interface Props {
   now?: number;
 }
 
-/** The one inline panel a row can have open: the editor, the decline form, or
- * the needs-info question (s10 T3). */
+/** The one inline panel a row can have open: the editor, the decline form,
+ * the needs-info question (s10 T3), or the due-date correction (s11 T1). */
 type Panel =
   | { id: string; kind: "edit"; form: EditorForm }
   | { id: string; kind: "decline"; reason?: RejectReason; note: string }
-  | { id: string; kind: "needs-info"; question: string };
+  | { id: string; kind: "needs-info"; question: string }
+  | { id: string; kind: "due"; value: string };
 
 export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }: Props) {
   const [client, setClient] = useState<JmapClient | undefined>(injectedClient);
@@ -190,6 +194,26 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
     setBusyId(undefined);
   }
 
+  // The due-date CORRECTION (s11 T1) — deliberately not a verdict, so it does
+  // not go through act(): the row stays pending, only the third clock moves.
+  async function correctDue(id: string, dueAt: string | null): Promise<void> {
+    if (!client || busyId) return;
+    setBusyId(id);
+    setRowErrors((prev) => ({ ...prev, [id]: "" }));
+    const outcome = await correctDueAt(client, accountId, id, dueAt, {
+      ...(state ? { ifInState: state } : {}),
+    });
+    if (!outcome.ok) {
+      setRowErrors((prev) => ({ ...prev, [id]: outcome.message }));
+      await reload().catch(() => undefined);
+      setBusyId(undefined);
+      return;
+    }
+    setPanel(undefined);
+    await reload().catch((err) => setFatal(message(err)));
+    setBusyId(undefined);
+  }
+
   function submitEdit(p: ActionProposal, form: EditorForm): void {
     const { editedPayload, problem } = applyEdit(p.payload, form);
     if (problem) {
@@ -269,6 +293,7 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
             }
             onNeedsInfo={(question) => void act(p.id, { status: "info-requested", question })}
             onSubmitEdit={(form) => submitEdit(p, form)}
+            onCorrectDue={(dueAt) => void correctDue(p.id, dueAt)}
           />
         ))}
       </section>
@@ -323,6 +348,7 @@ function PendingRow(props: {
   onDecline: (reason: RejectReason, note: string) => void;
   onNeedsInfo: (question: string) => void;
   onSubmitEdit: (form: EditorForm) => void;
+  onCorrectDue: (dueAt: string | null) => void;
 }) {
   const { p, now, busy, error, panel, setPanel } = props;
   const clocks = rowClocks(p, now);
@@ -338,12 +364,26 @@ function PendingRow(props: {
       <Dialogue p={p} />
       {text ? <pre class="apq-body">{text}</pre> : null}
 
-      {/* The two opposed marks. One grows, one shrinks; expiresAt only —
-          holdUntil is a different clock and never renders here (clocks.ts). */}
+      {/* Three clocks, three sources, never conflated (clocks.ts): the two
+          opposed decision marks, and beside them the WORK's own deadline
+          (s11 T1) — inferred at the boundary, correctable right here, because
+          a silently mis-read due date is the failure the readme warns about. */}
       <p class="apq-clocks">
         <span class="apq-waited">{waitedLabel(p, clocks)}</span>
         <span class={`apq-expiry${isNearExpiry(clocks) ? " apq-expiry-near" : ""}`}>
           {expiryLabel(clocks.expiresInMs)}
+        </span>
+        <span class="apq-due">
+          {dueLabel(p.dueAt, now)}{" "}
+          <button
+            type="button"
+            class="apq-due-correct"
+            disabled={busy}
+            title="The agent inferred this from the message — fix it if it mis-read"
+            onClick={() => setPanel({ id: p.id, kind: "due", value: dueInputValue(p.dueAt) })}
+          >
+            correct
+          </button>
         </span>
       </p>
 
@@ -378,6 +418,15 @@ function PendingRow(props: {
           busy={busy}
           onChange={(question) => setPanel({ id: p.id, kind: "needs-info", question })}
           onSubmit={() => props.onNeedsInfo(panel.question.trim())}
+          onCancel={() => setPanel(undefined)}
+        />
+      ) : panel?.kind === "due" ? (
+        <DuePanel
+          value={panel.value}
+          busy={busy}
+          onChange={(value) => setPanel({ id: p.id, kind: "due", value })}
+          onSubmit={() => props.onCorrectDue(dueFromInput(panel.value))}
+          onClear={() => props.onCorrectDue(null)}
           onCancel={() => setPanel(undefined)}
         />
       ) : (
@@ -678,6 +727,49 @@ function DeclinePanel(props: {
       <div class="actions">
         <button type="button" class="danger" disabled={props.busy || !props.reason} onClick={props.onSubmit}>
           Decline
+        </button>
+        <button type="button" disabled={props.busy} onClick={props.onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The due-date correction (s11 T1). Local wall time in, ISO out
+ * (clocks.ts `dueFromInput`); Clear sets never-urgent explicitly. The row
+ * stays PENDING through all of it — this panel never decides anything.
+ */
+function DuePanel(props: {
+  value: string;
+  busy: boolean;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onClear: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div class="apq-editor">
+      <p class="apq-fine">
+        When the work itself is due — the agent read it out of the message, so
+        fix it if the reading is wrong. Clearing it means "no deadline": the
+        work is never treated as urgent.
+      </p>
+      <label class="apq-label">
+        Due (your local time)
+        <input
+          type="datetime-local"
+          value={props.value}
+          onInput={(e) => props.onChange((e.target as HTMLInputElement).value)}
+        />
+      </label>
+      <div class="actions">
+        <button type="button" disabled={props.busy || props.value.trim().length === 0} onClick={props.onSubmit}>
+          Save due date
+        </button>
+        <button type="button" disabled={props.busy} onClick={props.onClear}>
+          Clear — no deadline
         </button>
         <button type="button" disabled={props.busy} onClick={props.onCancel}>
           Cancel

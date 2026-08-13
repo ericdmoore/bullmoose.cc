@@ -21,7 +21,7 @@ same fix, they are one reason. If a "reason" implies no fix at all, it is not fe
 | **`wrongAction`** | wrong target — it should not have proposed this *kind* of thing at all | fix **selection / policy** | yes (selection) — the loudest, and should be **rare** |
 | **`unsafe`** | it leaked private info, or made a commitment on the human's behalf | a **hard** negative, weighted heavily, never tolerated repeated | yes (safety — categorically separate) |
 | **`tookItMyself`** *(action, not a reject)* | the proposal was **correct**; the human just handled it personally (already exists: edit-in-queue before self-send) | near-neutral-to-**positive** on selection | **no** |
-| **`defer`** *(action, not a reject)* | correct proposal, wrong *time* — re-surface later | **scheduling**, not quality (see `s11-scheduling`) | **no** |
+| ~~`defer`~~ *(retired 2026-08-13 — never built)* | correct proposal, wrong *time* | the capability lives as **editing `due_at`** on the approval row (s11 T1), not a verb; queue-hiding is a view concern | n/a — nothing is recorded |
 | **`needsInfo`** *(action, not a reject)* | possibly right, **insufficiently justified** — "help me understand why you need this" | **rationale** quality; shifts the burden of proof to the proposer | **no** (neutral on selection; *repeated* = chronic under-justification, a config fix) |
 
 ### `wrongAction` is the most useful, and rarity is the point
@@ -39,10 +39,11 @@ need to do XYZ."*
 It is a **third axis**, not a variant of anything above:
 
 - `approve`/`decline` — judgment **rendered**.
-- `defer` — judgment correct, timing wrong. **Time** resolves it.
+- editing `due_at` — judgment correct, timing wrong. **Time** resolves it (a field edit,
+  not a verb — see the retired `defer` row).
 - `needsInfo` — judgment **cannot yet be rendered**; the missing input is **information**,
   and it is the *proposer's* to supply. Time will not fix a `needsInfo`; an answer will not
-  fix a `defer`. Different missing input → different verb.
+  fix a timing problem. Different missing input → different response.
 
 Why it is load-bearing and not a courtesy: **approval fatigue is the enemy of least
 privilege.** A binary approve/decline queue under fatigue degrades toward rubber-stamping —
@@ -77,19 +78,20 @@ disciplined instance: exactly one question, exactly one owed answer, on the reco
 ### `notNow` is retired — it was a grab-bag
 `notNow` conflated three different gradients under one label:
 - *"I'll do it myself"* → **positive** on selection → now `tookItMyself`
-- *"not due yet"* → **neutral**, a scheduling signal → now `defer`
-- *"meh, later"* → weak negative → collapses into a real reject reason or a `defer`
+- *"not due yet"* → **neutral**, a scheduling signal → now: edit `due_at` on the row (no verb)
+- *"meh, later"* → weak negative → collapses into a real reject reason or a pushed-out `due_at`
 
 Splitting it removes the ambiguity. What remained was never a *quality* judgment at all, which
 is exactly why it read as confusing — the tell that it was mis-named.
 
 ## The rule a learning pipeline must not break
 
-**`tookItMyself`, `defer`, and `needsInfo` are NOT negative feedback.** If a pipeline trains
+**`tookItMyself` and `needsInfo` are NOT negative feedback.** (And a corrected `due_at`
+is not feedback at all — it is a field edit that records nothing.) If a pipeline trains
 on *every* decline as a reject, it teaches the agent to stop proposing things the human
 actually **wanted** proposed but chose to handle personally, that were simply early, or that
 were right but under-explained. That is reward poisoning, and the taxonomy is the only thing
-that prevents it — but only if the training side **excludes** the three non-reject actions
+that prevents it — but only if the training side **excludes** the non-reject actions
 from the negative signal. Write this into the loop as an invariant, not a footnote.
 
 (`needsInfo` has one negative shadow, and it is not about selection: **repetition** of
@@ -114,8 +116,9 @@ T5 promotes *repetition* to policy. The taxonomy makes "repetition" meaningful:
   dial down).
 - Repeated **`approve`** of one `kind`/subject → the s03.D T5 case as written → promote *toward*
   autonomy.
-- Repeated **`defer`** → not a policy signal about the agent; a *scheduling* signal that this
-  work class is chronically early — feeds `s11-scheduling`, not the autonomy dial.
+- Repeatedly **pushed-out `due_at`s** on one work class → not a policy signal about the
+  agent; a *scheduling* signal that the class is chronically early — feeds `s11-scheduling`,
+  not the autonomy dial. (Read from the due_at edit history, not from any verb.)
 
 So the reason is not just per-proposal feedback; its **repetition** is the input to two
 different promotions (autonomy vs scheduling), and mixing them up is the failure mode.
@@ -133,5 +136,5 @@ training is optional.
 - `services/jmap/src/methods/actionProposal.ts:53` — the enum's canonical home (to be revised)
 - `webmail/src/lib/approvals/` — the decision surface (s07 T4)
 - `.plans/s03.D-coexistence/devPlan.md` T5 — repetition → policy (this note's owner)
-- `.plans/s11-scheduling/` — where `defer` becomes a real scheduling action
+- `.plans/s11-scheduling/` — the scheduler that reads `due_at` (the edit that replaced the defer verb)
 - `.plans/s10-agents/` — where frequent `wrongAction` is fixed (config), not per-proposal
