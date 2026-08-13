@@ -44,7 +44,10 @@ const USERNAME = "fake@bullmoose.test";
 /** Mirrors HOLD_WINDOW_MS (actionProposal.ts:61). */
 const HOLD_WINDOW_MS = 5 * 60_000;
 
-const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "notNow"]);
+/** Mirrors the server's enum (actionProposal.ts). `notNow` is retired — refused
+ * on a new decision here exactly as the server refuses it, while the retired
+ * fixture below proves an already-recorded one still reads. */
+const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "unsafe"]);
 
 export interface ApprovalsDemoOptions {
   /** Anchor for the fixtures' clocks; defaults to wall time. */
@@ -408,6 +411,35 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: iso(now - 2 * day),
       holdUntil: null,
       expiresAt: iso(now + 5 * day),
+      dueAt: null,
+      question: null,
+      amendments: [],
+      invocationStatus: "done",
+      claimedAt: null,
+    },
+    {
+      // History under the OLD taxonomy: declined `notNow`, a reason the enum no
+      // longer accepts (decline-taxonomy.md). Deliberately left exactly as it
+      // was recorded — a human's decision is a fact, and migrating it to a
+      // reason they never chose would put words in their mouth. The queue must
+      // render it as itself: `describeReason` shows "notNow (retired)". A
+      // fixture rather than a comment, so the tolerance is exercised, not
+      // asserted.
+      id: "ap-thread-vendor",
+      agent: "Emily",
+      kind: "start-thread",
+      tier: 3,
+      subject: { realm: "Email", objectId: "new" },
+      payload: { to: "vendor@example.test", subject: "Spring order", text: "Following up on the quote." },
+      editedPayload: null,
+      rationale: "The quote expires Friday and nobody has replied to it.",
+      evidence: [{ realm: "Email", objectId: "e-quote", note: "the quote" }],
+      status: "rejected",
+      decision: { by: USERNAME, reason: "notNow", note: "I'll ring them instead." },
+      createdAt: iso(now - 30 * day - 2 * hour),
+      decidedAt: iso(now - 30 * day),
+      holdUntil: null,
+      expiresAt: iso(now - 23 * day),
       dueAt: null,
       question: null,
       amendments: [],
@@ -782,7 +814,7 @@ function buildDecision(
         return {
           problem: {
             type: "invalidProperties",
-            description: "decision.reason must be wrongContent | wrongAction | notNow",
+            description: "decision.reason must be wrongContent | wrongAction | unsafe",
             properties: ["decision"],
           },
         };

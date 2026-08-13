@@ -35,6 +35,7 @@ import {
   approvalsAccountId,
   approvalsGate,
   approveVerb,
+  describeReason,
   payloadText,
   summarizeProposal,
   tierLabel,
@@ -531,7 +532,10 @@ function HistoryRow({ p, now }: { p: ActionProposal; now: number }) {
       {p.decision ? (
         <p class="apq-fine">
           {p.status} by {p.decision.by}
-          {p.decision.reason ? ` — ${p.decision.reason}` : ""}
+          {/* describeReason, not the raw value: a decision recorded under an
+              older taxonomy renders as itself and marked retired, because
+              history is not migrated (rows.ts, decline-taxonomy.md). */}
+          {p.decision.reason ? ` — ${describeReason(p.decision.reason)}` : ""}
           {p.decision.note ? ` — “${p.decision.note}”` : ""}
         </p>
       ) : null}
@@ -702,9 +706,12 @@ function DeclinePanel(props: {
 }) {
   return (
     <div class="apq-editor">
-      <p class="apq-fine">Why not? The reason trains different things (or nothing).</p>
+      <p class="apq-fine">
+        Why not? Each reason steers a different correction — the last one is a hard stop, not a
+        stronger no.
+      </p>
       {REJECT_REASONS.map((r) => (
-        <label key={r.reason} class="apq-reason">
+        <label key={r.reason} class={r.severe ? "apq-reason apq-reason-severe" : "apq-reason"}>
           <input
             type="radio"
             name="decline-reason"

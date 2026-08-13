@@ -53,28 +53,36 @@ const approvalsUsage = "bullmoose approvals <list|show|approve|decline|needs-inf
 	"[--status s] [--agent name] [--reason r] [--note t] [--question t] [--body t|--file p] " +
 	"[--subject s] [--account sel] [--json|--ids]"
 
-// rejectReasons mirrors REJECT_REASONS (actionProposal.ts:74). Checked
-// client-side only to fail a typo fast with a usage code; the server remains the
-// authority (a valid-but-unknown value would still be refused there).
+// rejectReasons mirrors REJECT_REASONS (actionProposal.ts). Checked client-side
+// only to fail a typo fast with a usage code; the server remains the authority
+// (a valid-but-unknown value would still be refused there).
 //
-// It mirrors what the SERVER enforces today — three reasons, `notNow` among
-// them. `.plans/s03.D-coexistence/decline-taxonomy.md` revises the set to
-// {wrongContent, wrongAction, unsafe}, retiring `notNow` and adding `unsafe`;
-// that revision has NOT landed in actionProposal.ts (nor in webmail's
-// `RejectReason`), so mirroring the taxonomy here would make the CLI refuse a
-// reason the server accepts and offer one it rejects. The enum is the contract;
-// when the server moves, this map and the message below move with it.
+// The sets AGREE. The revision in `.plans/s03.D-coexistence/decline-taxonomy.md`
+// — retire `notNow`, add `unsafe` — has landed on the server, in webmail's
+// `RejectReason`, and here, together. `TestRejectReasons_NeedsInfoIsNeverAReason`
+// pins that agreement in both directions, so a set that moves on one side alone
+// is a red build rather than a CLI that refuses a reason the server accepts or
+// offers one it rejects. The enum is the contract; the three move as one.
+//
+// What each reason steers (decline-taxonomy.md): `wrongContent` fixes
+// GENERATION, `wrongAction` fixes SELECTION, and `unsafe` — private information
+// leaked, or a commitment made on the human's behalf — is the categorically
+// separate HARD negative, not a stronger way of saying no.
+//
+// `notNow` is retired from this set, which narrows only what may be WRITTEN.
+// Rows already decided under it are never migrated, and `proposal.ReasonLabel`
+// renders such a reason as itself, marked retired, wherever a decision prints.
 //
 // ⚠️ `needsInfo` is deliberately absent and must STAY absent. It is an ACTION
 // (`needs-info`, status `info-requested`), never a reject reason — the taxonomy's
 // invariant is that it never lands in a rejection record, and this set is where
 // the invariant is enforced on the client write path. `--reason needsInfo` is
 // refused in apDecline with a pointer at the verb.
-var rejectReasons = map[string]bool{"wrongContent": true, "wrongAction": true, "notNow": true}
+var rejectReasons = map[string]bool{"wrongContent": true, "wrongAction": true, "unsafe": true}
 
 // rejectReasonList is the one place the enum is spelled for humans, so a usage
 // message can never drift from the set it describes.
-const rejectReasonList = "wrongContent, wrongAction, notNow"
+const rejectReasonList = "wrongContent, wrongAction, unsafe"
 
 // runApprovals is the front door for the six verbs. It is registered
 // Go-native-only (registry.go), so Dispatch routes here regardless of flags.
@@ -568,11 +576,14 @@ func reportOutcome(s *bmio.Streams, verb string, p *proposal.Proposal, edited, j
 	return 0
 }
 
+// declineSuffix echoes back the reason that was recorded. Through ReasonLabel,
+// so a row decided under an older taxonomy reads as itself and marked retired
+// rather than as a reason nobody chose (proposal/reason.go).
 func declineSuffix(p *proposal.Proposal) string {
 	if p.Decision == nil || p.Decision.Reason == "" {
 		return ""
 	}
-	return " (reason: " + p.Decision.Reason + ")"
+	return " (reason: " + proposal.ReasonLabel(p.Decision.Reason) + ")"
 }
 
 // ---- fetch ----------------------------------------------------------------
@@ -783,8 +794,10 @@ func renderShow(s *bmio.Streams, p *proposal.Proposal) {
 	}
 	if p.Decision != nil {
 		line := "decision:  by " + p.Decision.By
+		// History reads whatever it was recorded with — a retired reason is
+		// printed as itself and marked, never migrated (proposal/reason.go).
 		if p.Decision.Reason != "" {
-			line += "  reason=" + p.Decision.Reason
+			line += "  reason=" + proposal.ReasonLabel(p.Decision.Reason)
 		}
 		if p.Decision.Note != "" {
 			line += "  note=" + p.Decision.Note

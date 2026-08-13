@@ -62,16 +62,51 @@ import {
  * learning pipeline can never mistake it for negative feedback.
  */
 
-/** Rejection reasons — the no-thanks signal (arch.md §3). `notNow` is a snooze,
- * not a real rejection; the training/autonomy semantics are s03.D T2. Here we
- * only preserve the DATA.
+/** Rejection reasons — the no-thanks signal (arch.md §3), as revised by
+ * decline-taxonomy.md. A reason earns its place only if it changes what the
+ * agent does NEXT, so each of the three steers a different correction:
+ *
+ *   wrongContent  right target, wrong output (the reply was bad, the event
+ *                 details off) → fix GENERATION, keep the trigger.
+ *   wrongAction   wrong target: it should not have proposed this KIND of thing
+ *                 at all → fix SELECTION / policy. The loudest, and rare by
+ *                 design — frequent `wrongAction` is a miscalibrated binding
+ *                 (a config fix, s10-agents), not a per-proposal correction.
+ *   unsafe        it leaked private information, or made a commitment on the
+ *                 human's behalf. CATEGORICALLY SEPARATE from the other two: a
+ *                 HARD negative, weighted heavily, never tolerated repeated —
+ *                 not a stronger flavour of "no".
+ *
+ * `notNow` is RETIRED (decline-taxonomy.md). It was a grab-bag of three
+ * different gradients under one label — "I'll do it myself" (POSITIVE on
+ * selection → `tookItMyself`), "not due yet" (neutral, a scheduling signal →
+ * edit `due_at` on the row, s11 T1, which records nothing) and "meh, later" (a
+ * weak negative that collapses into a real reason). It was never a quality
+ * judgment at all, which is why it read as confusing. New decisions may not
+ * carry it.
+ *
+ * HISTORY IS NOT REWRITTEN. Retiring a reason narrows the WRITE path only.
+ * Rows whose `decision_json` already carries `reason: "notNow"` keep it
+ * verbatim — no migration, no backfill — and `proposalToJmap` projects
+ * `decision` unvalidated, so a legacy decision still reads. A recorded human
+ * decision is a fact; rewriting one to fit a later taxonomy would be exactly
+ * the audit hole this codebase refuses everywhere else. Clients render an
+ * unrecognized reason AS ITSELF, marked retired (webmail rows.ts
+ * `describeReason`, cli-go `proposal.ReasonLabel`).
  *
  * `needsInfo` is deliberately NOT in this set (decline-taxonomy.md): it is an
  * ACTION (`status: "info-requested"`), never a reject reason, so it can never
  * land in a rejection record — the taxonomy's invariant excludes
- * tookItMyself/defer/needsInfo from the negative signal, and the enum is where
- * that invariant is enforced on the write path. */
-const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "notNow"]);
+ * tookItMyself/needsInfo from the negative signal, and the enum is where that
+ * invariant is enforced on the write path.
+ *
+ * ⚠️ THE RL INVARIANT, for whoever writes the first consumer: `unsafe` is the
+ * categorically-separate hard negative and must be weighted as such, never
+ * averaged in with wrongContent/wrongAction; `needsInfo` and `tookItMyself`
+ * must stay OUT of the negative signal entirely. Nothing reads these reasons
+ * for learning or scoring today — this enum and the render paths are the only
+ * readers — so the invariant lives here until there is a pipeline to put it in. */
+const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "unsafe"]);
 
 /**
  * The tier-2 post-approval retraction window. A tier-2 approve enters the hold
@@ -817,7 +852,12 @@ function parseDueAt(raw: unknown): number | null {
   );
 }
 
-/** The decision record (arch.md §3): who + reason enum + optional free text. */
+/** The decision record (arch.md §3): who + reason enum + optional free text.
+ *
+ * The WRITE path is strict — only the live enum lands, so a retired reason
+ * (`notNow`) is refused here and cannot enter a new record. The READ path
+ * (`proposalToJmap`) is deliberately not: history keeps whatever it was
+ * recorded with. Strict in, tolerant out. */
 function buildDecision(ctx: RequestContext, raw: unknown): Record<string, unknown> {
   const decision: Record<string, unknown> = { by: ctx.principal.username };
   if (raw && typeof raw === "object") {
@@ -826,7 +866,7 @@ function buildDecision(ctx: RequestContext, raw: unknown): Record<string, unknow
       if (typeof r.reason !== "string" || !REJECT_REASONS.has(r.reason)) {
         throw new SetErrorSignal(
           "invalidProperties",
-          "decision.reason must be wrongContent | wrongAction | notNow",
+          "decision.reason must be wrongContent | wrongAction | unsafe",
           ["decision"],
         );
       }
@@ -854,6 +894,11 @@ function proposalToJmap(r: ProposalJoinRow, dueAt: number | null = null): Record
     rationale: r.rationale,
     evidence: safeJsonArray(r.evidence_json),
     status: r.status,
+    // Projected VERBATIM and unvalidated, on purpose: a decision recorded
+    // under an older taxonomy (`reason: "notNow"`, retired — see
+    // REJECT_REASONS) must still read. The enum narrows what may be WRITTEN,
+    // never what may be read back; clients mark an unrecognized reason retired
+    // rather than dropping or remapping it.
     decision: r.decision_json ? safeJson(r.decision_json) : null,
     createdAt: new Date(r.created_at).toISOString(),
     decidedAt: r.decided_at ? new Date(r.decided_at).toISOString() : null,
