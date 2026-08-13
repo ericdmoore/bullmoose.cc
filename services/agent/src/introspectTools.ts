@@ -740,28 +740,28 @@ const INTROSPECTION_TOOLS: ToolDef[] = [
     name: "whoami",
     scope: "read",
     domain: "mail",
+    // The discovery entry point, so it takes NO arguments (s02 T5). It used
+    // to require an accountId "only to satisfy the MCP dispatcher's account
+    // gate" — which meant the one tool that tells you your account ids could
+    // not be called until you knew one. `accountless` is the dispatcher-side
+    // half of that fix; the answer was always a projection of the principal,
+    // never of the account that was being passed in.
+    accountless: true,
     description:
       "Who this token is, what it can actually do, and every account it reaches — owned " +
       "accounts and grant-reached accounts listed separately. Scopes are reported as the " +
       "permissions they confer, not as the raw strings: a token scoped \"mail\" is reported " +
-      "as read/annotate/draft/move/send/delete, because that is what it allows. Start here.",
+      "as read/annotate/draft/move/send/delete, because that is what it allows. Takes no " +
+      "arguments. Start here — every other tool takes an accountId this one gives you, and " +
+      "you may omit that argument when the answer below lists exactly one account.",
     inputSchema: {
       type: "object",
-      properties: {
-        accountId: {
-          type: "string",
-          description:
-            "Any account id this token can reach. The answer covers every account either " +
-            "way; this argument only satisfies the MCP dispatcher's account gate.",
-        },
-      },
-      required: ["accountId"],
+      properties: {},
     },
     // A pure projection of the Principal `verifyBearer` already built
     // (`principal.ts:123-187`) — owned accounts from the accounts table,
     // grant-reached ones with their GrantRefs attached. No query at all.
-    async run({ principal }, args) {
-      requireAccountId(args);
+    async run({ principal }) {
       const owned = principal.accounts.filter((a) => !a.granted);
       const reached = principal.accounts.filter((a) => a.granted);
       return {

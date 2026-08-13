@@ -157,6 +157,42 @@ describe("both drain paths still honour agent_bindings.enabled", () => {
   });
 });
 
+/**
+ * The outbound bound has to be VISIBLE, or the config surface renders a blank
+ * where the control is (s10 T4). `GET /agent-bindings` is the only read path
+ * for a binding — there is no `AgentBinding/*` JMAP collection and `/console/*`
+ * is unserved — so if this projection drops `recipients_book_id`, no client can
+ * answer "who may this agent email?".
+ *
+ * The two states are asserted separately on purpose: NULL and a book id are
+ * opposite answers (NULL means CANNOT SEND), and a read that flattened them
+ * into "absent" would let a client report a bound agent as unbounded.
+ */
+describe("GET /agent-bindings projects the outbound bound", () => {
+  it("reports recipients_book_id, both when it is set and when it is NULL", async () => {
+    const h = harness();
+    await makeAccount(h, "editor");
+    await makeAccount(h, "shooter");
+    await makeBinding(h, `editor@${DOMAIN}`);
+    await h.call("POST", "/agent-bindings", {
+      email: `shooter@${DOMAIN}`,
+      name: "photos",
+      recipientsBookId: "ab_invitees",
+    });
+
+    const res = await body<{
+      bindings: Array<{ name: string; recipients_book_id: string | null }>;
+    }>(await h.call("GET", "/agent-bindings"));
+    const byName = new Map(res.bindings.map((b) => [b.name, b]));
+
+    // The key is PRESENT on every row — a client distinguishes "no book" from
+    // "this worker does not report it" by key presence, so an omitted column
+    // would read as unknown rather than as fail-closed.
+    expect(byName.get("photos")).toHaveProperty("recipients_book_id", "ab_invitees");
+    expect(byName.get("editor")).toHaveProperty("recipients_book_id", null);
+  });
+});
+
 // ── the kill switch ───────────────────────────────────────────────────────
 
 describe("POST /agent-bindings/{id}/disable — the agent kill switch", () => {
