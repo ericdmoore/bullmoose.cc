@@ -136,6 +136,13 @@ export function summarizeProposal(p: ActionProposal): string {
     case "organize-files":
       return `Organize files under ${s(p.payload.target) || p.subject.objectId}`;
     case "grant-request": {
+      // The allowlist widening (s10 T3): grantType "recipient" is "let me
+      // email <address>" — approving APPLIES a contact write into the
+      // governing book, so the summary must say who, not just what.
+      if (s(p.payload.grantType) === "recipient") {
+        const who = s(p.payload.address) || "(unknown address)";
+        return `Asks to email ${who} — widens its allowlist`;
+      }
       const scope = s(p.payload.scope) || "access";
       const target = s(p.payload.target) || s(p.payload.realm) || p.subject.realm;
       const days = typeof p.payload.durationDays === "number" ? ` for ${p.payload.durationDays} days` : "";

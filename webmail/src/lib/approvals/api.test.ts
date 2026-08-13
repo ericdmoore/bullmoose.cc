@@ -24,12 +24,13 @@ describe("loadQueue", () => {
   it("returns the whole collection in one query→get round trip", async () => {
     const { client } = harness();
     const { proposals, state } = await loadQueue(client, ACCOUNT);
-    expect(proposals.length).toBe(8);
+    expect(proposals.length).toBe(10);
     expect(state).toBe("0");
     // Every status the arch names is present in the fixture set, so the whole
-    // surface — queue, hold tray, history — is drivable without a server.
+    // surface — queue, waiting-on-agent, hold tray, history — is drivable
+    // without a server.
     const statuses = new Set(proposals.map((p) => p.status));
-    for (const s of ["pending", "held", "approved", "rejected", "expired"]) {
+    for (const s of ["pending", "info-requested", "held", "approved", "rejected", "expired"]) {
       expect(statuses, `fixture set is missing status ${s}`).toContain(s);
     }
     // …and all three tiers among the PENDING rows, plus the shared-queue ask.
@@ -152,5 +153,83 @@ describe("decide → ActionProposal/set", () => {
     const stale = await decide(client, ACCOUNT, "ap-reply-elk", { status: "approved" }, { ifInState: "0" });
     expect(stale.ok).toBe(false);
     if (!stale.ok) expect(stale.message).toContain("stateMismatch");
+  });
+});
+
+describe("decide → needsInfo (s10 T3)", () => {
+  it("moves a pending row to info-requested, pauses the deadline, appends the open round — and records NO decision", async () => {
+    const { client, backend } = harness();
+    const before = backend.proposals.find((p) => p.id === "ap-reply-elk")!;
+    expect(before.expiresAt).not.toBeNull();
+
+    const outcome = await decide(client, ACCOUNT, "ap-reply-elk", {
+      status: "info-requested",
+      question: "Why does Grace need an answer today?",
+    });
+    expect(outcome).toEqual({ ok: true });
+
+    const row = backend.proposals.find((p) => p.id === "ap-reply-elk")!;
+    expect(row.status).toBe("info-requested");
+    expect(row.question).toBe("Why does Grace need an answer today?");
+    // The PAUSE: no deadline while the ball is in the agent's court.
+    expect(row.expiresAt).toBeNull();
+    // The RL invariant: an action, not a reject — nothing decision-shaped.
+    expect(row.decision).toBeNull();
+    // The open round APPENDED, answer owed.
+    expect(row.amendments).toHaveLength(1);
+    expect(row.amendments[0]).toMatchObject({
+      question: "Why does Grace need an answer today?",
+      answer: null,
+      answeredAt: null,
+    });
+  });
+
+  it("refuses an empty question with the server's sentence", async () => {
+    const { client, backend } = harness();
+    const outcome = await decide(client, ACCOUNT, "ap-reply-elk", {
+      status: "info-requested",
+      question: "   ",
+    });
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.message).toContain("non-empty");
+    expect(backend.proposals.find((p) => p.id === "ap-reply-elk")!.status).toBe("pending");
+  });
+
+  it("the ANSWER (the worker's job, driven via backend.answer) returns the row to pending with the dialogue and a resumed clock", async () => {
+    const { client, backend } = harness();
+    await decide(client, ACCOUNT, "ap-reply-elk", {
+      status: "info-requested",
+      question: "Why today?",
+    });
+
+    backend.answer("ap-reply-elk", "Grace's note says the venue releases the slot at 5pm.");
+
+    const row = backend.proposals.find((p) => p.id === "ap-reply-elk")!;
+    expect(row.status).toBe("pending");
+    expect(row.question).toBeNull();
+    // The banked remainder was restored — a deadline exists again.
+    expect(row.expiresAt).not.toBeNull();
+    // The Q&A survives on the proposal forever.
+    expect(row.amendments).toHaveLength(1);
+    expect(row.amendments[0]!.answer).toContain("releases the slot");
+
+    // One round per human action: a second answer with no fresh question is
+    // a refusal (worker: failed invocation; demo: a no-op).
+    backend.answer("ap-reply-elk", "spam re-answer");
+    const after = backend.proposals.find((p) => p.id === "ap-reply-elk")!;
+    expect(after.amendments).toHaveLength(1);
+    expect(after.amendments[0]!.answer).toContain("releases the slot");
+  });
+
+  it("a needsInfo verdict never carries a decision — the patch has only the question", async () => {
+    // Guarded here because decide() BUILDS the patch: if it ever started
+    // attaching a decision to this verb, the server would refuse — but the
+    // client must not even try (the taxonomy invariant, client half).
+    const { client } = harness();
+    const outcome = await decide(client, ACCOUNT, "ap-grant-photos", {
+      status: "info-requested",
+      question: "Why the whole folder and not the day's uploads?",
+    });
+    expect(outcome).toEqual({ ok: true });
   });
 });

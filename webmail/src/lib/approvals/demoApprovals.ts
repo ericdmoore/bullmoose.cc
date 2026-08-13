@@ -28,6 +28,12 @@
 //   • the expiry sweep is a WORKER cron (services/agent/src/proposals.ts:153),
 //     not a read-path side effect — so reads here never auto-flip an overdue
 //     row either; `sweep()` is exposed for tests and mirrors the cron.
+//   • needsInfo (s10 T3): `status: "info-requested"` from pending only, a
+//     non-empty question required, NO decision (it is an action, not a
+//     reject), the deadline pauses (banked; expiresAt null) and the round
+//     APPENDS to amendments. The ANSWER is the agent worker's job
+//     (`answerInfoRequest`), so — like the sweep — it is exposed as
+//     `answer()` and never a read-path side effect.
 
 import type { FakeJmapClient, MethodHandler } from "../jmap/FakeJmapClient";
 import type { ActionProposal, ProposalDecision } from "./types";
@@ -57,6 +63,14 @@ export interface ApprovalsDemoBackend {
   state(): string;
   /** Mirrors `expireStaleProposals` — call it; reads never run it. */
   sweep(nowMs?: number): void;
+  /**
+   * Mirrors the agent worker's `answerInfoRequest` (s10 T3): the answer round
+   * is a WORKER job, never a read-path side effect, so — like `sweep` — it is
+   * exposed for tests and driven manually. Fills the open round, returns the
+   * row to `pending`, resumes the banked expiry clock. Refuses (a no-op) when
+   * the row is not `info-requested` — one round per human action.
+   */
+  answer(id: string, text?: string): void;
 }
 
 /** The demo knobs this section reads from the URL (see module header). */
@@ -119,6 +133,8 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: iso(now + 35 * min), // near expiry: under the 1h urgency line
+      question: null,
+      amendments: [],
       invocationStatus: "done",
       claimedAt: null,
     },
@@ -150,6 +166,8 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: iso(now + 4 * day),
+      question: null,
+      amendments: [],
       invocationStatus: "done",
       claimedAt: null,
     },
@@ -185,6 +203,8 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: iso(now + 2 * day),
+      question: null,
+      amendments: [],
       invocationStatus: "done",
       claimedAt: null,
     },
@@ -208,7 +228,83 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: iso(now + 5 * day),
+      question: null,
+      amendments: [],
       invocationStatus: "done",
+      claimedAt: null,
+    },
+    {
+      // needsInfo, ANSWERED (s10 T3): a recipient widening that was challenged
+      // and came back to the queue with the dialogue attached — the
+      // challenged-then-approvable grant, the strongest "why" the chain can
+      // hold. Pending again, clock resumed.
+      id: "ap-grant-crm",
+      agent: "crm",
+      kind: "grant-request",
+      tier: 1,
+      subject: { realm: "AddressBook", objectId: "book-crm-allow" },
+      payload: {
+        grantType: "recipient",
+        bookId: "book-crm-allow",
+        address: "dana@calloway.test",
+        name: "Dana Calloway",
+      },
+      editedPayload: null,
+      rationale:
+        "Dana signed the last two invoices and I cannot reach her: she is not in my allowlist. " +
+        "Approving adds her to my governing book — a contact write that carries this proposal as its why.",
+      evidence: [{ realm: "Email", objectId: "e-invoice", note: "the invoice Dana signed" }],
+      status: "pending",
+      decision: null,
+      createdAt: iso(now - 5 * hour),
+      decidedAt: null,
+      holdUntil: null,
+      expiresAt: iso(now + 6 * day), // resumed when the answer landed
+      question: null,
+      amendments: [
+        {
+          question: "Why Dana and not the billing@ alias you already have?",
+          answer:
+            "billing@ is a ticket queue that strips threading; both signed invoices came from " +
+            "dana@calloway.test directly, and the open question is addressed to her by name.",
+          askedAt: iso(now - 4 * hour),
+          answeredAt: iso(now - 3 * hour),
+          askedBy: USERNAME,
+        },
+      ],
+      invocationStatus: "done",
+      claimedAt: null,
+    },
+    {
+      // needsInfo, OPEN (s10 T3): the ball is in the agent's court. No verbs,
+      // no expiry clock — expiresAt is NULL because the server BANKED the
+      // remaining window when the question was asked.
+      id: "ap-info-subscribe",
+      agent: "Allen",
+      kind: "unsubscribe",
+      tier: 2,
+      subject: { realm: "Email", objectId: "e-newsletter" },
+      payload: { listName: "The Analytical Engine Weekly", to: "news@example.test" },
+      editedPayload: null,
+      rationale: "You have not opened the last nine issues; unsubscribing stops the noise.",
+      evidence: [{ realm: "Email", objectId: "e-newsletter", note: "the unopened run" }],
+      status: "info-requested",
+      decision: null,
+      createdAt: iso(now - 2 * hour),
+      decidedAt: null,
+      holdUntil: null,
+      expiresAt: null, // paused — the remainder is banked server-side
+      question: "Which nine issues? I read it on my phone — does that count as opened here?",
+      amendments: [
+        {
+          question: "Which nine issues? I read it on my phone — does that count as opened here?",
+          answer: null,
+          askedAt: iso(now - 20 * min),
+          answeredAt: null,
+          askedBy: USERNAME,
+        },
+      ],
+      invocationStatus: "pending",
       claimedAt: null,
     },
     {
@@ -238,6 +334,8 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: iso(now - 2 * min),
       holdUntil: iso(now + 3 * min),
       expiresAt: iso(now + 6 * day), // moot once held — rendered from holdUntil, never this
+      question: null,
+      amendments: [],
       invocationStatus: "done",
       claimedAt: null,
     },
@@ -280,6 +378,8 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: iso(now - 26 * hour),
       holdUntil: null,
       expiresAt: iso(now - 26 * hour + 7 * day),
+      question: null,
+      amendments: [],
       invocationStatus: "done",
       claimedAt: null,
     },
@@ -300,6 +400,8 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: iso(now - 2 * day),
       holdUntil: null,
       expiresAt: iso(now + 5 * day),
+      question: null,
+      amendments: [],
       invocationStatus: "done",
       claimedAt: null,
     },
@@ -321,6 +423,8 @@ export function demoProposals(now: number): ActionProposal[] {
       decidedAt: null,
       holdUntil: null,
       expiresAt: iso(now - 2 * day),
+      question: null,
+      amendments: [],
       invocationStatus: "done",
       claimedAt: null,
     },
@@ -338,6 +442,10 @@ export function installApprovalsDemo(
   const scopes = new Set(opts.scopes ?? ["read", "annotate", "draft", "move", "send", "delete"]);
   const applied: ApprovalsDemoBackend["applied"] = [];
   const sent: ApprovalsDemoBackend["sent"] = [];
+  // The banked pre-decision windows (s10 T3): the server keeps this in
+  // `expires_remaining_ms`; the demo keeps it beside the rows because the
+  // client-facing ActionProposal shape deliberately does not carry it.
+  const pausedRemaining = new Map<string, number | null>();
   let stateCounter = 0;
   const state = (): string => String(stateCounter);
   const bump = (): string => String(++stateCounter);
@@ -435,12 +543,56 @@ export function installApprovalsDemo(
           continue;
         }
         const status = patch.status;
-        if (status !== "approved" && status !== "rejected") {
+        if (status !== "approved" && status !== "rejected" && status !== "info-requested") {
           notUpdated[id] = {
             type: "invalidProperties",
-            description: 'status must be "approved" or "rejected"',
+            description: 'status must be "approved", "rejected" or "info-requested"',
             properties: ["status"],
           };
+          continue;
+        }
+
+        // ---- needsInfo (s10 T3), mirroring the server's branch: only a
+        // question rides on the verb (a decision here is the RL-poisoning
+        // path); the deadline PAUSES (banked, expiresAt null); the round
+        // APPENDS to amendments — never a rewrite of rationale/evidence.
+        if (status === "info-requested") {
+          if (patch.decision !== undefined || patch.editedPayload !== undefined) {
+            notUpdated[id] = {
+              type: "invalidProperties",
+              description:
+                "needsInfo carries only a question — no decision (it is not a reject) and no editedPayload",
+              properties: ["status"],
+            };
+            continue;
+          }
+          const question = typeof patch.question === "string" ? patch.question.trim() : "";
+          if (question.length === 0) {
+            notUpdated[id] = {
+              type: "invalidProperties",
+              description: "needsInfo requires a non-empty human-authored question",
+              properties: ["question"],
+            };
+            continue;
+          }
+          pausedRemaining.set(
+            row.id,
+            row.expiresAt !== null ? Math.max(0, Date.parse(row.expiresAt) - now) : null,
+          );
+          row.status = "info-requested";
+          row.question = question;
+          row.expiresAt = null;
+          row.amendments = [
+            ...row.amendments,
+            {
+              question,
+              answer: null,
+              askedAt: new Date(now).toISOString(),
+              answeredAt: null,
+              askedBy: USERNAME,
+            },
+          ];
+          updated[id] = null;
           continue;
         }
         const editedPayload = patch.editedPayload;
@@ -554,6 +706,29 @@ export function installApprovalsDemo(
         }
       }
       if (flipped) bump();
+    },
+    answer(id, text) {
+      const row = find(id);
+      // One round per human action: only an info-requested row with an OPEN
+      // round answers; anything else refuses (the worker fails the invocation
+      // with a "refused" note — here, a no-op).
+      if (!row || row.status !== "info-requested") return;
+      const open = row.amendments[row.amendments.length - 1];
+      if (!open || open.answer !== null) return;
+      const nowMs = Date.now();
+      open.answer =
+        text ??
+        `(demo answer) The recorded rationale stands: ${row.rationale}`;
+      open.answeredAt = new Date(nowMs).toISOString();
+      row.status = "pending";
+      row.question = null;
+      // RESUME the banked clock — the remainder from the moment of the ask.
+      const remaining = pausedRemaining.get(row.id);
+      row.expiresAt = remaining !== null && remaining !== undefined
+        ? new Date(nowMs + remaining).toISOString()
+        : null;
+      pausedRemaining.delete(row.id);
+      bump();
     },
   };
 }

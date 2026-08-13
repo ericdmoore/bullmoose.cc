@@ -42,6 +42,26 @@ describe("the fixture set covers what the task needs drivable", () => {
     for (const p of rows) expect(p.rationale.length, p.id).toBeGreaterThan(0);
   });
 
+  it("has an OPEN needsInfo row — waiting on the agent, deadline paused (s10 T3)", () => {
+    const open = rows.filter((p) => p.status === "info-requested");
+    expect(open.map((p) => p.id)).toEqual(["ap-info-subscribe"]);
+    const row = open[0]!;
+    expect(row.question).not.toBeNull();
+    expect(row.expiresAt).toBeNull(); // banked server-side, not running
+    const last = row.amendments[row.amendments.length - 1]!;
+    expect(last.answer).toBeNull(); // the answer is owed
+  });
+
+  it("has a challenged-then-returned row whose Q&A dialogue BOTH survives and reads answered", () => {
+    const back = rows.find((p) => p.id === "ap-grant-crm")!;
+    expect(back.status).toBe("pending"); // decidable again, dialogue attached
+    expect(back.question).toBeNull();
+    expect(back.amendments).toHaveLength(1);
+    expect(back.amendments[0]!.answer).not.toBeNull();
+    // ...and it is the recipient widening, so the new grant shape is drivable.
+    expect(back.payload.grantType).toBe("recipient");
+  });
+
   it("every row carries evidence — what the agent looked at", () => {
     for (const p of rows) expect(p.evidence.length, p.id).toBeGreaterThan(0);
   });
