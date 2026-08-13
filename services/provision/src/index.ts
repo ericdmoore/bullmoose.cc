@@ -29,6 +29,8 @@ import { BUREAU_VERBS, isBureauVerb } from "@bullmoose/auth-core/principal";
  *   DELETE /accounts/{id}         → SOFT (tombstone) + route/KV teardown
  *   POST   /agent-bindings/{id}/disable  → the agent kill switch
  *   POST   /agent-bindings/{id}/enable
+ *   PATCH  /agent-bindings/{id}   → the TYPED CORE only (s10 T4)
+ *   GET    /agent-bindings/{id}/lifecycle → the binding's provenance chain
  *   DELETE /agent-bindings/{id}   → refuses while invocations are queued
  *   POST   /bureau-grants         {principalEmail, credRef, verb, expiresDays?}
  *   GET    /bureau-grants         → the capability table (?email= / ?credRef=)
@@ -156,6 +158,22 @@ export default {
       const bindingVerb = url.pathname.match(/^\/agent-bindings\/([^/]+)\/(disable|enable)$/);
       if (request.method === "POST" && bindingVerb) {
         return setBindingEnabled(bindingVerb[1] as string, bindingVerb[2] === "enable", url, env);
+      }
+      // The binding config write surface (s10 T4). Typed core ONLY — see
+      // `patchAgentBinding`. It sits beside the two kill-switch verbs rather
+      // than replacing them: `enabled` is reachable both ways, but an incident
+      // operator keeps a route whose NAME is the direction.
+      if (request.method === "PATCH" && /^\/agent-bindings\/[^/]+$/.test(url.pathname)) {
+        return patchAgentBinding(
+          url.pathname.split("/")[2] as string,
+          await readJson<Record<string, unknown>>(request),
+          url,
+          env,
+        );
+      }
+      const bindingChain = url.pathname.match(/^\/agent-bindings\/([^/]+)\/lifecycle$/);
+      if (request.method === "GET" && bindingChain) {
+        return listBindingLifecycle(bindingChain[1] as string, url, env);
       }
       if (request.method === "DELETE" && /^\/agent-bindings\/[^/]+$/.test(url.pathname)) {
         return deleteAgentBinding(url.pathname.split("/")[2] as string, url, env);
@@ -2089,6 +2107,16 @@ interface BindingRow {
   account_id: string;
   name: string;
   enabled: number;
+  /**
+   * The untyped remainder + the two typed-core keys whose promotion is
+   * DEFERRED (s10 status block: only `recipients_book_id` became a column).
+   * Projected here because `patchAgentBinding` read-modify-writes it and needs
+   * the PRE-IMAGE both to preserve the remainder and as its compare-and-swap
+   * predicate.
+   */
+  config_json: string;
+  /** The outbound bound. NULL ⇒ this binding cannot send (fail-closed). */
+  recipients_book_id: string | null;
   /** Its account's tombstone — NULL for a live account. */
   deleted_at: number | null;
 }
@@ -2119,7 +2147,7 @@ async function resolveBinding(
     const account = await accountByAddressAny(env, email);
     if (!account) return { response: json({ error: `no account for ${email}` }, 404) };
     const row = await env.DB.prepare(
-      `SELECT b.id, b.account_id, b.name, b.enabled, a.deleted_at
+      `SELECT b.id, b.account_id, b.name, b.enabled, b.config_json, b.recipients_book_id, a.deleted_at
        FROM agent_bindings b JOIN accounts a ON a.id = b.account_id
        WHERE b.account_id = ? AND b.id = ?`,
     )
@@ -2131,7 +2159,7 @@ async function resolveBinding(
   }
 
   const { results } = await env.DB.prepare(
-    `SELECT b.id, b.account_id, b.name, b.enabled, a.deleted_at
+    `SELECT b.id, b.account_id, b.name, b.enabled, b.config_json, b.recipients_book_id, a.deleted_at
      FROM agent_bindings b JOIN accounts a ON a.id = b.account_id
      WHERE b.id = ?`,
   )
@@ -2229,6 +2257,504 @@ async function setBindingEnabled(id: string, enable: boolean, url: URL, env: Env
     note: enable
       ? `${queued} queued invocation(s) will now drain`
       : `${queued} queued invocation(s) are HELD, not cancelled — they resume on enable`,
+  });
+}
+
+// ---- the binding config write surface (s10 T4) ------------------------
+
+/**
+ * The TYPED CORE, and the whole of what `PATCH /agent-bindings/{id}` accepts.
+ *
+ * `.plans/s10-agents/readme.md` — "do not CRUD a blob": `config_json` is one
+ * untyped namespace shared by `persona`, `replyMode`, `allowedSenders`,
+ * `modelAliases`, `maxTokens`, `pipeline` and `analyst@`'s `digestTargets`, so
+ * a general merge endpoint would edit a different unvalidated shape per agent
+ * and would let any caller write any key by accident. This route writes four
+ * named fields and REFUSES every other key by name.
+ *
+ * `allowedSenders` and `replyMode` are still blob keys (the typed-core column
+ * promotion is DEFERRED — s10 status block), so the write is a
+ * read-modify-write that touches those two keys ONLY and leaves the remainder
+ * exactly as it was.
+ */
+const BINDING_PATCH_FIELDS = ["enabled", "replyMode", "allowedSenders", "recipientsBookId"] as const;
+
+/**
+ * The remainder, named in the refusal so the 400 teaches the rule rather than
+ * just enforcing it. Not exhaustive and does not need to be — it is the error
+ * message's example set, while the ACCEPT list above is the actual gate.
+ */
+const BINDING_BLOB_REMAINDER = ["persona", "modelAliases", "digestTargets", "pipeline", "maxTokens"];
+
+/** The values the runtime enforces — services/agent/src/models.ts BindingConfig
+ *  (`replyMode?: "send" | "draft"`), defaulted to `draft` at every read site. */
+const REPLY_MODES = ["send", "draft"];
+
+/** Normalized exact-match discipline, same rule as the outbound bound's
+ *  (packages/mailstore governance.normalizeAddress): lowercase, trimmed, and
+ *  NOTHING else — no plus-tag folding, because `bob+x@` is not `bob@`. */
+const normalizeSender = (raw: string): string => raw.trim().toLowerCase();
+
+/** Structural JSON equality — the no-op test for the config blob. */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== typeof b || a === null || b === null) return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((v, i) => sameJson(v, b[i]));
+  }
+  if (typeof a !== "object") return false;
+  const ao = a as Record<string, unknown>;
+  const bo = b as Record<string, unknown>;
+  const ak = Object.keys(ao);
+  const bk = Object.keys(bo);
+  if (ak.length !== bk.length) return false;
+  return ak.every((k) => k in bo && sameJson(ao[k], bo[k]));
+}
+
+/**
+ * `PATCH /agent-bindings/{id}` — the binding config write surface (s10 T4).
+ *
+ * Until this route existed the ONLY post-create write on a binding was
+ * `UPDATE agent_bindings SET enabled`, which made every other config control a
+ * surface that could render a value and never change it. Four decisions shape
+ * it, and each is a refusal somewhere:
+ *
+ * ── 1. The typed core only ──
+ * Four fields (`BINDING_PATCH_FIELDS`). An unknown key is a 400 that names both
+ * the key and the rule; nothing is blind-merged into `config_json`, and the
+ * agent-specific remainder is preserved byte-for-value across the write.
+ *
+ * ── 2. A re-pointed book must be `write_policy = 'governed'` ──
+ * The bound IS an address book, so re-pointing at an `open` book would silently
+ * UNBIND the agent: an open book takes direct agent writes under ordinary
+ * `contacts` scope (the Mailstore chokepoint only engages for non-open books),
+ * so the agent could then widen its own reach with `contacts_create_card` —
+ * control and controlled become the same writable object, which is the exact
+ * confused-deputy shape s10 T1 exists to close. The book must also live on the
+ * BINDING'S OWN ACCOUNT, because that is the lookup the send gate itself runs
+ * (`services/agent/src/outbound.ts` — `address_books WHERE account_id = ? AND
+ * id = ?`); a book anywhere else reads as "bounded" in a config surface and is
+ * fail-closed at send time, which is a config surface telling a lie.
+ *
+ * NULL is the one other accepted value: it UNBINDS, the binding can no longer
+ * send at all, and the response says so in those words. That is fail-closed and
+ * therefore always allowed — but never silent.
+ *
+ * ── 3. Re-pointing appends a provenance row ──
+ * Changing which book governs an agent is widening-class: the whole T2 argument
+ * is that such a change must be reconstructable afterwards. See
+ * `binding_lifecycle` in data-plane.sql for why the record is NOT a
+ * `book_membership_log` row.
+ *
+ * ── 4. Idempotent, and concurrency-honest ──
+ * A no-op PATCH writes NOTHING — no UPDATE, and no provenance row for a book
+ * that did not move. A real write carries a compare-and-swap predicate on the
+ * pre-image of both `config_json` and `recipients_book_id`: a concurrent edit
+ * between the read and the write makes the UPDATE match zero rows and answers
+ * 409 rather than silently clobbering the other writer's blob. The provenance
+ * INSERT rides the SAME predicate in the SAME `db.batch()`, so the chain row
+ * and the change it describes commit together or not at all.
+ */
+async function patchAgentBinding(
+  id: string,
+  body: Record<string, unknown>,
+  url: URL,
+  env: Env,
+) {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return json({ error: "body must be a JSON object", accepted: BINDING_PATCH_FIELDS }, 400);
+  }
+  const keys = Object.keys(body);
+  const unknown = keys.filter((k) => !(BINDING_PATCH_FIELDS as readonly string[]).includes(k));
+  if (unknown.length > 0) {
+    return json(
+      {
+        error:
+          `unknown field(s): ${unknown.join(", ")}. This route writes the TYPED CORE only ` +
+          `(${BINDING_PATCH_FIELDS.join(", ")}). The agent-specific remainder of config_json ` +
+          `(${BINDING_BLOB_REMAINDER.join(", ")}, …) is deliberately NOT writable here: a form ` +
+          `over an untyped blob edits a different unvalidated shape per agent, so the remainder ` +
+          `stays read-only on every config surface and is preserved verbatim by this write. ` +
+          `A different SHAPE is a new binding (POST /agent-bindings)`,
+        accepted: BINDING_PATCH_FIELDS,
+        rejected: unknown,
+      },
+      400,
+    );
+  }
+  if (keys.length === 0) {
+    return json(
+      { error: `nothing to update — pass at least one of ${BINDING_PATCH_FIELDS.join(", ")}` },
+      400,
+    );
+  }
+
+  // ---- value validation, all of it before any read of the row ----
+  const wantsEnabled = "enabled" in body;
+  if (wantsEnabled && typeof body.enabled !== "boolean") {
+    return json({ error: "enabled must be true or false" }, 400);
+  }
+  const wantsReplyMode = "replyMode" in body;
+  if (wantsReplyMode && !REPLY_MODES.includes(body.replyMode as string)) {
+    return json(
+      {
+        error:
+          `replyMode must be one of ${REPLY_MODES.join(", ")} — these are the values the runtime ` +
+          `enforces (services/agent/src/models.ts; anything else is read as 'draft', so an ` +
+          `unrecognised value here would silently disarm a send-mode agent)`,
+      },
+      400,
+    );
+  }
+  const wantsSenders = "allowedSenders" in body;
+  let nextSenders: string[] | null = null;
+  if (wantsSenders && body.allowedSenders !== null) {
+    const raw = body.allowedSenders;
+    if (!Array.isArray(raw) || raw.some((v) => typeof v !== "string")) {
+      return json({ error: "allowedSenders must be an array of email addresses, or null" }, 400);
+    }
+    const bad = (raw as string[]).filter((v) => !/^[^\s@]+@[^\s@]+$/.test(v.trim()));
+    if (bad.length > 0) {
+      return json(
+        {
+          error:
+            `allowedSenders entries must be addresses (localpart@domain); rejected: ` +
+            `${bad.map((b) => JSON.stringify(b)).join(", ")}. The inbound gate is a normalized ` +
+            `EXACT match, so a non-address entry can never match and would quietly narrow the gate`,
+        },
+        400,
+      );
+    }
+    if (raw.length === 0) {
+      // The one shape that reads as its own opposite: services/agent treats an
+      // empty-but-present allowedSenders as NO GATE, so `[]` from a config
+      // surface means "anyone may invoke this agent" while looking like a
+      // tightening. Removing the gate is allowed, but only when it is SAID.
+      return json(
+        {
+          error:
+            "allowedSenders: [] is refused — an empty-but-present list is read as NO GATE by " +
+            "services/agent (anyone who can reach the mailbox could invoke this binding), which is " +
+            "the opposite of what an empty list looks like. To REMOVE the inbound gate deliberately, " +
+            "send allowedSenders: null; to keep a gate, send at least one address",
+        },
+        400,
+      );
+    }
+    // Normalize + de-duplicate, order preserved. Normalization is not cosmetic:
+    // the gate compares normalized-exact, so an unnormalized entry never matches.
+    const seen = new Set<string>();
+    nextSenders = [];
+    for (const v of raw as string[]) {
+      const n = normalizeSender(v);
+      if (!seen.has(n)) {
+        seen.add(n);
+        nextSenders.push(n);
+      }
+    }
+  }
+  const wantsBook = "recipientsBookId" in body;
+  if (wantsBook && body.recipientsBookId !== null) {
+    if (typeof body.recipientsBookId !== "string" || body.recipientsBookId.trim() === "") {
+      return json(
+        {
+          error:
+            "recipientsBookId must be a governing book id, or null to UNBIND. The empty string is " +
+            "refused: there is no value meaning 'may send anywhere' — the absence of a book means " +
+            "CANNOT SEND, and an empty-but-present bound is the shape that reads as unrestricted",
+        },
+        400,
+      );
+    }
+  }
+
+  const found = await resolveBinding(id, url, env);
+  if ("response" in found) return found.response;
+  const { binding } = found;
+
+  // The blob's pre-image. Refuse rather than repair: a read-modify-write over
+  // an unparseable blob would DESTROY the remainder it exists to preserve.
+  let config: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(binding.config_json || "{}") as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error();
+    config = parsed as Record<string, unknown>;
+  } catch {
+    return json(
+      {
+        error:
+          `binding ${binding.id} has a config_json this route cannot parse as an object. It is ` +
+          `refused rather than replaced: rewriting it would destroy the agent-specific remainder ` +
+          `(${BINDING_BLOB_REMAINDER.join(", ")}) this route exists to preserve. Repair the row, ` +
+          `or re-create the binding`,
+        bindingId: binding.id,
+        accountId: binding.account_id,
+      },
+      409,
+    );
+  }
+
+  // ---- the governing book: exists, on THIS account, and governed ----
+  const nextBook: string | null = wantsBook
+    ? ((body.recipientsBookId as string | null) ?? null)
+    : binding.recipients_book_id;
+  if (wantsBook && nextBook !== null && nextBook !== binding.recipients_book_id) {
+    const book = await env.DB.prepare(
+      // The send gate's own lookup (services/agent/src/outbound.ts), account
+      // and all: a book that this SELECT cannot see is fail-closed at send
+      // time, whatever a config surface renders.
+      `SELECT id, name, write_policy FROM address_books WHERE account_id = ? AND id = ?`,
+    )
+      .bind(binding.account_id, nextBook)
+      .first<{ id: string; name: string; write_policy: string | null }>();
+    if (!book) {
+      return json(
+        {
+          error:
+            `no address book ${nextBook} on account ${binding.account_id}. The governing book must ` +
+            `live on the BINDING'S OWN account — that is the lookup the send gate runs ` +
+            `(services/agent outboundRefusal), so a book elsewhere would render as a bound here and ` +
+            `refuse every send in production`,
+          bindingId: binding.id,
+          accountId: binding.account_id,
+        },
+        404,
+      );
+    }
+    if ((book.write_policy ?? "open") !== "governed") {
+      return json(
+        {
+          error:
+            `address book ${nextBook} (${JSON.stringify(book.name)}) has write_policy ` +
+            `'${book.write_policy ?? "open"}' — the ` +
+            `governing book of a binding must be 'governed'. Pointing a binding at a non-governed ` +
+            `book would SILENTLY UNBIND it: only a governed book refuses the agent's own direct ` +
+            `writes (the Mailstore chokepoint engages on write_policy != 'open'; on 'propose' an ` +
+            `agent write becomes a proposal, and on 'open' it just lands), so the agent could widen ` +
+            `its own reach through contacts_create_card and control and controlled would be the same ` +
+            `writable object. Mark the book governed first (provisioning: setAddressBookWritePolicy), ` +
+            `then re-point`,
+          bindingId: binding.id,
+          bookId: nextBook,
+          writePolicy: book.write_policy ?? "open",
+          required: "governed",
+        },
+        422,
+      );
+    }
+  }
+
+  // Enabling a binding on a tombstoned account is refused for exactly the
+  // reason the kill-switch verb refuses it: the drain skips deleted accounts,
+  // so the success response would promise a queue that never drains.
+  const nextEnabled = wantsEnabled ? (body.enabled as boolean) : binding.enabled === 1;
+  if (wantsEnabled && nextEnabled && binding.deleted_at !== null) {
+    return json(
+      {
+        error:
+          `account ${binding.account_id} is deleted — re-enabling ${binding.id} would arm nothing, ` +
+          "because the drain skips tombstoned accounts",
+        bindingId: binding.id,
+        accountId: binding.account_id,
+      },
+      409,
+    );
+  }
+
+  // ---- the next config: the two typed keys, and NOTHING else ----
+  const nextConfig: Record<string, unknown> = { ...config };
+  if (wantsReplyMode) nextConfig.replyMode = body.replyMode;
+  if (wantsSenders) {
+    if (nextSenders === null) delete nextConfig.allowedSenders;
+    else nextConfig.allowedSenders = nextSenders;
+  }
+  const preserved = Object.keys(config).filter((k) => k !== "replyMode" && k !== "allowedSenders");
+
+  const configChanged = !sameJson(config, nextConfig);
+  const bookChanged = nextBook !== binding.recipients_book_id;
+  const enabledChanged = nextEnabled !== (binding.enabled === 1);
+  const changedFields = [
+    ...(enabledChanged ? ["enabled"] : []),
+    ...(wantsReplyMode && config.replyMode !== nextConfig.replyMode ? ["replyMode"] : []),
+    ...(wantsSenders && !sameJson(config.allowedSenders, nextConfig.allowedSenders)
+      ? ["allowedSenders"]
+      : []),
+    ...(bookChanged ? ["recipientsBookId"] : []),
+  ];
+
+  const now = Date.now();
+  const provenance =
+    bookChanged
+      ? {
+          record: "binding_lifecycle",
+          event: "recipients-book-changed",
+          from: binding.recipients_book_id,
+          to: nextBook,
+          actor: BINDING_ACTOR,
+          viaProposalId: null,
+          at: now,
+        }
+      : null;
+
+  // ---- the write, or the honest absence of one ----
+  if (!configChanged && !bookChanged && !enabledChanged) {
+    // A no-op is a NO-OP: no UPDATE (SQLite would count an identical write as a
+    // change and the response would claim one), and above all no provenance row
+    // — a chain that records non-events is a chain nobody can read.
+    return json({
+      ok: true,
+      changed: false,
+      updated: [],
+      ...bindingConfigView(binding, nextConfig, nextBook, nextEnabled, preserved),
+      provenance: null,
+      note: "no-op — every field already had the requested value; nothing was written",
+    });
+  }
+
+  const nextConfigJson = JSON.stringify(nextConfig);
+  const statements: D1PreparedStatement[] = [];
+  if (provenance) {
+    // Guarded on the SAME pre-image as the UPDATE below and ordered BEFORE it,
+    // so the pair is all-or-nothing inside the batch's transaction: a lost CAS
+    // must not leave a chain row describing a change that never happened.
+    statements.push(
+      env.DB
+        .prepare(
+          `INSERT INTO binding_lifecycle
+             (account_id, binding_id, event, old_value, new_value, actor, via_proposal_id, at)
+           SELECT ?, ?, ?, ?, ?, ?, NULL, ?
+            WHERE EXISTS (SELECT 1 FROM agent_bindings
+                           WHERE account_id = ? AND id = ?
+                             AND config_json = ? AND recipients_book_id IS ?)`,
+        )
+        .bind(
+          binding.account_id,
+          binding.id,
+          provenance.event,
+          provenance.from,
+          provenance.to,
+          provenance.actor,
+          provenance.at,
+          binding.account_id,
+          binding.id,
+          binding.config_json,
+          binding.recipients_book_id,
+        ),
+    );
+  }
+  statements.push(
+    env.DB
+      .prepare(
+        `UPDATE agent_bindings
+            SET config_json = ?, recipients_book_id = ?, enabled = ?
+          WHERE account_id = ? AND id = ?
+            AND config_json = ? AND recipients_book_id IS ?`,
+      )
+      .bind(
+        nextConfigJson,
+        nextBook,
+        nextEnabled ? 1 : 0,
+        binding.account_id,
+        binding.id,
+        binding.config_json,
+        binding.recipients_book_id,
+      ),
+  );
+  const results = await env.DB.batch(statements);
+  if ((results[results.length - 1]?.meta.changes ?? 0) === 0) {
+    // The compare-and-swap lost. Nothing was written — including the provenance
+    // row, which carried the same predicate.
+    return json(
+      {
+        error:
+          `binding ${binding.id} changed between the read and the write of this PATCH — nothing was ` +
+          `written (neither the config nor its provenance row). Re-read it (GET /agent-bindings) and ` +
+          `re-apply: a blind retry would clobber the other writer's edit to config_json`,
+        bindingId: binding.id,
+        accountId: binding.account_id,
+      },
+      409,
+    );
+  }
+
+  return json({
+    ok: true,
+    changed: true,
+    updated: changedFields,
+    ...bindingConfigView(binding, nextConfig, nextBook, nextEnabled, preserved),
+    provenance,
+    ...(wantsEnabled ? { pendingInvocations: await queuedInvocations(env, binding) } : {}),
+  });
+}
+
+/**
+ * The admin plane has one bearer token and no principal behind it, so the actor
+ * on its provenance rows is the literal `admin` — the same convention
+ * `logGrantLifecycle` already writes. It is not a person's name and does not
+ * pretend to be one; when a widening arrives through a proposal instead (T3),
+ * `via_proposal_id` carries the identity, the rationale and the approver.
+ */
+const BINDING_ACTOR = "admin";
+
+/** The config view every PATCH response shares, no-op or not. */
+function bindingConfigView(
+  binding: BindingRow,
+  config: Record<string, unknown>,
+  bookId: string | null,
+  enabled: boolean,
+  preserved: string[],
+) {
+  return {
+    bindingId: binding.id,
+    accountId: binding.account_id,
+    name: binding.name,
+    enabled,
+    replyMode: (config.replyMode as string) ?? null,
+    allowedSenders: (config.allowedSenders as string[] | undefined) ?? null,
+    outbound: {
+      state: bookId === null ? "none" : "book",
+      governingBookId: bookId,
+      failClosed: bookId === null,
+      note:
+        bookId === null
+          ? "FAIL-CLOSED: with no governing book this binding CANNOT SEND — every send is refused " +
+            "server-side (services/agent outboundRefusal). That is safe, not unrestricted"
+          : "membership is resolved server-side on every send, normalized exact match; the agent " +
+            "cannot write this book (write_policy 'governed') — it asks with a grant-request proposal",
+    },
+    // The remainder this write did NOT touch, named so the caller can SEE that
+    // the blob survived rather than having to trust it.
+    preserved,
+  };
+}
+
+/**
+ * `GET /agent-bindings/{id}/lifecycle` — the binding's provenance chain.
+ *
+ * A record nobody can read is half an audit. This is the read half of
+ * `binding_lifecycle`: oldest first, every row legible on its own
+ * (`old_value` → `new_value`, actor, timestamp), and it survives the binding
+ * because the table carries no FK — so "which book governed photos@ last
+ * Tuesday, and who changed it?" stays answerable after a destroy.
+ */
+async function listBindingLifecycle(id: string, url: URL, env: Env) {
+  const found = await resolveBinding(id, url, env);
+  if ("response" in found) return found.response;
+  const { binding } = found;
+  const { results } = await env.DB.prepare(
+    `SELECT id, event, old_value, new_value, actor, via_proposal_id, at
+       FROM binding_lifecycle
+      WHERE account_id = ? AND binding_id = ?
+      ORDER BY id`,
+  )
+    .bind(binding.account_id, binding.id)
+    .all();
+  return json({
+    bindingId: binding.id,
+    accountId: binding.account_id,
+    name: binding.name,
+    events: results,
   });
 }
 

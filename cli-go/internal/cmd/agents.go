@@ -40,15 +40,28 @@ package cmd
 //     every spelling of unbounded (`*`, `all`, `any`, `none`, empty …) before
 //     it goes anywhere near the wire — see checkOutboundBound.
 //
-// ── What is a POINTER and what is a REFUSAL ──
+// ── What `edit` writes, and what it still will not ──
 //
 // The typed-core promotion was DEFERRED (s10 status block): only
 // `recipients_book_id` became a column; `replyMode` and `allowedSenders` are
-// still keys inside `config_json`. Neither has an update surface on ANY server
-// — the provision worker exposes create, enable, disable and delete, and there
-// is no `PATCH /agent-bindings/{id}`. So `edit` writes the one field it can
-// (`enabled`, through the two kill-switch verbs) and REFUSES the rest with the
-// gap named out loud, rather than pretending or reaching into D1.
+// still keys inside `config_json`. `PATCH /agent-bindings/{id}` (services/
+// provision) is the write surface for all four, and it accepts THE TYPED CORE
+// AND NOTHING ELSE — an unknown key is a 400, and the agent-specific remainder
+// (persona, modelAliases, digestTargets, pipeline) is preserved verbatim across
+// every write. So `edit` has no flag that writes an untyped key, and gains none
+// later: a form over an untyped blob is the structural mistake s10 opens by
+// naming, and the refusal lives on the server where every surface inherits it.
+//
+// Two things `edit` still routes around the PATCH:
+//
+//   - `--enabled` ALONE goes through the two explicit kill-switch verbs, not
+//     the PATCH. Mid-incident the dangerous direction must be impossible to
+//     typo into its opposite, and those verbs report the held queue.
+//   - `--recipients-book` is checked against `unboundedSpellings` before the
+//     network. The server refuses too (a target book must be
+//     `write_policy = 'governed'`, and the empty string is refused outright),
+//     but a fail-closed invariant that only exists one hop away is one network
+//     partition from not existing.
 
 import (
 	"context"
@@ -116,10 +129,13 @@ var unboundedSpellings = map[string]bool{
 // checkOutboundBound is THE fail-closed guard, shared by `edit` and `create` so
 // there is one place to get it right and one place a mutation breaks two tests.
 //
-// It cannot verify that the named book is actually `write_policy = 'governed'`:
-// the policy is not exposed on any wire today (AddressBook/set can neither set
-// nor see it — s10 status block; wire exposure is T5). So the guard is honest
-// about what it checks — shape, not governance — and says who does check.
+// It checks SHAPE, not governance: whether the named book is really
+// `write_policy = 'governed'` is a question only the store can answer, and
+// `PATCH /agent-bindings/{id}` now answers it server-side (a non-governed
+// target is a 422 naming the policy). This guard runs anyway and runs FIRST,
+// because the values it refuses are the ones that mean "no limit" — and an
+// invariant that only exists on the far side of a network call is one partition
+// away from not existing.
 func checkOutboundBound(value string) error {
 	if unboundedSpellings[strings.ToLower(strings.TrimSpace(value))] {
 		return bmio.Usage(
@@ -245,18 +261,14 @@ func agShow(s *bmio.Streams, a agentsArgs) int {
 	return 0
 }
 
-// agEdit sets the typed core. Today exactly one field of that core has a server
-// surface — `enabled`, through the two explicit kill-switch verbs — so that is
-// the only thing this verb writes. The rest are refused with the gap named, in
-// this order:
+// agEdit sets the typed core, and only the typed core. Validation order is
+// deliberate: the fail-closed guard runs FIRST and before any network call, so
+// an operator who types `--recipients-book none` gets the invariant rather than
+// a server error — the one refusal that must not depend on reaching a server.
 //
-//  1. the fail-closed guard runs FIRST (exit 2), so an operator who types
-//     `--recipients-book none` gets the invariant, not a capability complaint;
-//  2. then the missing-surface refusal (exit 1).
-//
-// Both are refusals. Neither is a blind edit of the blob: there is no flag here
-// that writes `persona`, `modelAliases` or any other untyped key, because a
-// form over an untyped blob is the structural mistake s10 opens by naming.
+// There is no flag here that writes `persona`, `modelAliases` or any other
+// untyped key. That is not a gap: the route refuses those keys too, so the
+// discipline holds for every client rather than for this one.
 func agEdit(s *bmio.Streams, a agentsArgs) int {
 	sel := agPositional(a, 2)
 	if sel == "" {
@@ -281,14 +293,8 @@ func agEdit(s *bmio.Streams, a agentsArgs) int {
 	}
 	if a.Enabled == "" && a.ReplyMode == "" && len(a.AllowSenders) == 0 && !a.HasBook {
 		return die(s, bmio.Usage(
-			"nothing to edit — pass --enabled, and see `bullmoose agents edit` for the fields\n"+
-				"that have no server surface yet"))
-	}
-
-	// (2) The fields with no server surface. Named before the write, so a
-	// mixed invocation cannot half-apply and report success.
-	if a.ReplyMode != "" || len(a.AllowSenders) > 0 || a.HasBook {
-		return die(s, noUpdateSurface(a))
+			"nothing to edit — pass at least one of --enabled true|false, --reply-mode send|draft,\n"+
+				"--allow-sender <a@b> (repeatable; REPLACES the list), --recipients-book <bookId>"))
 	}
 
 	db, client, err := agConn(a)
@@ -301,8 +307,143 @@ func agEdit(s *bmio.Streams, a agentsArgs) int {
 	if err != nil {
 		return die(s, err)
 	}
-	want, _ := parseBool(a.Enabled)
-	return agSetEnabled(s, client, b, want, a)
+
+	// `--enabled` on its own keeps the two explicit kill-switch verbs. They say
+	// the direction in the ROUTE NAME and they report the held queue, which is
+	// what an operator needs at 3am; the PATCH is the config verb, not the
+	// incident one. Combined with any other field it goes in the same PATCH, so
+	// a multi-field edit cannot half-apply across two calls.
+	if a.Enabled != "" && a.ReplyMode == "" && len(a.AllowSenders) == 0 && !a.HasBook {
+		want, _ := parseBool(a.Enabled)
+		return agSetEnabled(s, client, b, want, a)
+	}
+	return agPatchConfig(s, client, b, a)
+}
+
+// bindingPatch is the PATCH response, which is deliberately more than an `ok`:
+// `Updated` is what actually moved, `Preserved` names the untouched blob keys,
+// and `Provenance` is the append-only record of a re-point. Each of the three
+// is printed, because each answers a question an operator would otherwise have
+// to trust: did it change, did my persona survive, and is the widening on the
+// record.
+type bindingPatch struct {
+	BindingID      string   `json:"bindingId"`
+	AccountID      string   `json:"accountId"`
+	Name           string   `json:"name"`
+	Changed        bool     `json:"changed"`
+	Updated        []string `json:"updated"`
+	Enabled        bool     `json:"enabled"`
+	ReplyMode      *string  `json:"replyMode"`
+	AllowedSenders []string `json:"allowedSenders"`
+	Outbound       struct {
+		State           string  `json:"state"`
+		GoverningBookID *string `json:"governingBookId"`
+		FailClosed      bool    `json:"failClosed"`
+		Note            string  `json:"note"`
+	} `json:"outbound"`
+	Preserved  []string `json:"preserved"`
+	Provenance *struct {
+		Record        string  `json:"record"`
+		Event         string  `json:"event"`
+		From          *string `json:"from"`
+		To            *string `json:"to"`
+		Actor         string  `json:"actor"`
+		ViaProposalID *string `json:"viaProposalId"`
+		At            int64   `json:"at"`
+	} `json:"provenance"`
+	PendingInvocations int    `json:"pendingInvocations"`
+	Note               string `json:"note"`
+}
+
+// agPatchConfig performs the one config write: PATCH /agent-bindings/{id} with
+// the typed core the operator named, and nothing inferred. Fields the operator
+// did not pass are ABSENT from the body rather than sent at their current
+// value — a config surface that re-sends what it last read is how a stale view
+// silently reverts someone else's edit.
+func agPatchConfig(s *bmio.Streams, client *provision.Client, b binding, a agentsArgs) int {
+	body := map[string]any{}
+	if a.Enabled != "" {
+		want, _ := parseBool(a.Enabled)
+		body["enabled"] = want
+	}
+	if a.ReplyMode != "" {
+		body["replyMode"] = a.ReplyMode
+	}
+	if len(a.AllowSenders) > 0 {
+		// REPLACE, not append: the inbound gate is a set, and an `edit` that
+		// appended could never remove an address.
+		body["allowedSenders"] = a.AllowSenders
+	}
+	if a.HasBook {
+		body["recipientsBookId"] = a.RecipientsBook
+	}
+
+	raw, err := client.Call(context.Background(), "PATCH",
+		"/agent-bindings/"+b.ID+provision.Query(a.Email), body)
+	if err != nil {
+		return die(s, err)
+	}
+	var res bindingPatch
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return die(s, err)
+	}
+
+	if a.JSON {
+		out := map[string]any{
+			"id": b.ID, "name": res.Name, "accountId": res.AccountID,
+			"verb": "edit", "changed": res.Changed, "updated": res.Updated,
+			"enabled": res.Enabled, "replyMode": res.ReplyMode,
+			"allowedSenders": res.AllowedSenders,
+			"outbound": outboundJSON(res.Outbound.GoverningBookID != nil,
+				derefString(res.Outbound.GoverningBookID), true),
+			"preserved":  res.Preserved,
+			"provenance": res.Provenance,
+		}
+		if err := s.EmitJSON(out); err != nil {
+			return die(s, err)
+		}
+		return 0
+	}
+
+	if !res.Changed {
+		s.Out(b.ID + " (" + res.Name + ") unchanged — every field already had that value")
+		s.Note("nothing was written, and no provenance row was appended: a chain that records " +
+			"non-events is as unreadable as one with holes")
+		return 0
+	}
+	s.Out(b.ID + " (" + res.Name + ") updated: " + strings.Join(res.Updated, ", "))
+	if len(res.Preserved) > 0 {
+		s.Note("config_json remainder preserved untouched: " + strings.Join(res.Preserved, ", "))
+	}
+	if res.Provenance != nil {
+		s.Note("provenance appended (" + res.Provenance.Record + "): " + res.Provenance.Event +
+			" " + bookWord(res.Provenance.From) + " → " + bookWord(res.Provenance.To) +
+			", actor " + res.Provenance.Actor)
+	}
+	if res.Outbound.FailClosed {
+		s.Note("outbound bound: NONE — " + res.Outbound.Note)
+	}
+	if len(a.AllowSenders) > 0 {
+		s.Note("allowedSenders was REPLACED, not appended: " + strings.Join(res.AllowedSenders, ", "))
+	}
+	return 0
+}
+
+// bookWord renders one side of a re-point. `(none)` is the honest word for a
+// NULL book — it means CANNOT SEND, and it must never render as blank in a
+// sentence an operator reads as a widening.
+func bookWord(id *string) string {
+	if id == nil || *id == "" {
+		return "(none — cannot send)"
+	}
+	return "book:" + *id
+}
+
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 
 // agCreate is provisioning-from-a-kind, not a blank insert. It is honest about
@@ -388,7 +529,9 @@ func agCreate(s *bmio.Streams, a agentsArgs) int {
 	}
 	if a.HasBook {
 		s.Note("  governing book:  " + a.RecipientsBook + " — " + kind.BookPurpose)
-		s.Note("                   NOT verified as write_policy='governed': no wire exposes it yet (s10 T5)")
+		s.Note("                   NOT verified as write_policy='governed': POST /agent-bindings does not")
+		s.Note("                   check (PATCH does — `agents edit --recipients-book` refuses a")
+		s.Note("                   non-governed book server-side). Re-point after create to have it checked.")
 	} else {
 		s.Note("  governing book:  (none) — FAIL-CLOSED: this binding CANNOT SEND until a book is seeded")
 		s.Note("                   " + kind.BookPurpose)
@@ -592,41 +735,6 @@ func agSetEnabled(s *bmio.Streams, client *provision.Client, b binding, enable b
 		s.Note("reversible — re-enable with: bullmoose agents edit " + b.Name + " --enabled true")
 	}
 	return 0
-}
-
-// ---- the missing-surface refusal ------------------------------------------
-
-// noUpdateSurface is the honest answer to "edit the rest of the typed core".
-// It is a REPORTED GAP, not a limitation of this command: nothing anywhere can
-// write these fields after creation.
-func noUpdateSurface(a agentsArgs) error {
-	var asked []string
-	if a.ReplyMode != "" {
-		asked = append(asked, "--reply-mode")
-	}
-	if len(a.AllowSenders) > 0 {
-		asked = append(asked, "--allow-sender")
-	}
-	if a.HasBook {
-		asked = append(asked, "--recipients-book")
-	}
-	return &bmio.CliError{
-		Code: bmio.ExitFail,
-		Msg: strings.Join(asked, ", ") + ": no server surface exists for this write.\n" +
-			"  agent_bindings.config_json (replyMode, allowedSenders) and .recipients_book_id have NO\n" +
-			"  update route: the provision worker serves POST /agent-bindings (create), the two\n" +
-			"  enable/disable verbs and DELETE — there is no PATCH /agent-bindings/{id} — and there is\n" +
-			"  no AgentBinding/* JMAP collection. Writing D1 from a client is not on the table: s10 T1's\n" +
-			"  whole point is that the bound is resolved and enforced server-side.\n" +
-			"  What does work today:\n" +
-			"    enabled:        bullmoose agents edit <name> --enabled true|false\n" +
-			"    a new shape:    bullmoose agents create --kind <k> ...   (a NEW binding)\n" +
-			"    the book's MEMBERS: edit the book in /contacts; an agent widens it by filing a\n" +
-			"                    grant-request proposal (bullmoose approvals), never by writing it.\n" +
-			"  GAP (reported, not worked around): re-pointing recipients_book_id is a widening-class\n" +
-			"  write — a bare PATCH that skipped the s10 T2 provenance row would put a hole in the\n" +
-			"  chain exactly where T2 forbids one, so the route is a server task, not a CLI one.",
-	}
 }
 
 // withAccountHint attaches the identity-minting pointer to the server's 404,
