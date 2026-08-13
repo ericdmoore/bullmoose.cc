@@ -53,6 +53,8 @@ function fakeServer(invocations: FakeInvocation[]) {
   const revoked = new Set<string>();
   const calls: Array<{ method: string; accountId: string }> = [];
   const drafts: Array<{ accountId: string; body: string }> = [];
+  /** Every AgentInvocation/set argument object, verbatim — the wire shape. */
+  const setCalls: Array<Record<string, unknown>> = [];
 
   const client: FleetClient = {
     async refreshSession(): Promise<Session> {
@@ -86,6 +88,7 @@ function fakeServer(invocations: FakeInvocation[]) {
               })),
           };
         case "AgentInvocation/set": {
+          setCalls.push(args);
           const updated: Record<string, null> = {};
           for (const [id, patch] of Object.entries(
             args.update as Record<string, Record<string, unknown>>,
@@ -124,7 +127,7 @@ function fakeServer(invocations: FakeInvocation[]) {
       }
     },
   };
-  return { client, calls, drafts, revoke: (id: string) => revoked.add(id) };
+  return { client, calls, drafts, setCalls, revoke: (id: string) => revoked.add(id) };
 }
 
 const ref = (accountId: string): AccountRef => ({ accountId });
@@ -283,6 +286,52 @@ describe("capability narrowing: unfit work is not claimed", () => {
     for (const [c, r, want] of cases) {
       expect(fitsRequirements(c, r), `caps=${JSON.stringify(c)} requires=${JSON.stringify(r)}`).toBe(want);
     }
+  });
+});
+
+// ---- the claim declares the host's identity (s11 T2) -----------------------
+
+describe("the claim call carries the declared claimant identity", () => {
+  it("a fleet with a capability vector claims as { isFree: true, capabilities }", async () => {
+    const rows = [inv({ id: "inv_h" })];
+    const s = fakeServer(rows);
+    await fleetDrain(s.client, servedOf("a_hermes"), FLEET, quiet);
+
+    const claim = s.setCalls.find(
+      (c) => (c.update as Record<string, { status: string }>).inv_h?.status === "running",
+    )!;
+    // The homelab daemon IS the free runtime; the vector is fleet.json's,
+    // verbatim. The server records this declaration on the claim
+    // (trust-but-audit) and enforces the same fit predicate server-side.
+    expect(claim.claimant).toEqual({
+      isFree: true,
+      capabilities: { vision: false, contextTokens: 32_000, tools: false },
+    });
+  });
+
+  it("a capability-less fleet (single --config mode) still declares isFree, with NO vector", async () => {
+    const rows = [inv({ id: "inv_h" })];
+    const s = fakeServer(rows);
+    const fleet: FleetConfig = { bindings: FLEET.bindings }; // fleetFromSingle's shape
+    await fleetDrain(s.client, servedOf("a_hermes"), fleet, quiet);
+
+    const claim = s.setCalls.find(
+      (c) => (c.update as Record<string, { status: string }>).inv_h?.status === "running",
+    )!;
+    // No vector declared → the server's fit gate treats it as "claims as
+    // today" (T2-FIT-CONTRACT); isFree still feeds policy + liveness.
+    expect(claim.claimant).toEqual({ isFree: true });
+  });
+
+  it("completions carry no claimant — only the claim declares identity", async () => {
+    const rows = [inv({ id: "inv_h" })];
+    const s = fakeServer(rows);
+    await fleetDrain(s.client, servedOf("a_hermes"), FLEET, quiet);
+
+    const done = s.setCalls.find(
+      (c) => (c.update as Record<string, { status: string }>).inv_h?.status === "done",
+    )!;
+    expect(done.claimant).toBeUndefined();
   });
 });
 

@@ -1,0 +1,237 @@
+// The eligibility gate (s11 T2) — `mayClaim`, pure.
+//
+// The three-term gate of jobs-and-facets.md §6:
+//
+//   eligible = authority(claimant.grants)         -- MAY it act    (server-verified; NOT here —
+//                                                    requireAccount / the drain's own identity)
+//            ∧ fit(claimant.capabilities, facets) -- CAN it succeed (self-declared; this module)
+//            ∧ policy(facets, budgetState, now)   -- SHOULD it, yet (this module)
+//
+// This module is the SINGLE definition of terms two and three. It is pure and
+// table-tested; `claimGate.ts` is the same predicate as SQL, folded into every
+// claim UPDATE's WHERE so a generous client-side self-filter cannot widen the
+// eligible set (jobs-and-facets §5: preference is client-side, eligibility is
+// not). `claimGateAgreement.test.ts` proves the two stay in agreement.
+//
+// ── Claimant identity: trust-but-audit, never attestation ──────────────────
+// The claimant declares `{ isFree, capabilities }` on the claim call. Both are
+// FIT-SHAPED, not authority-shaped: lying about `isFree` or a capability earns
+// you work you should not have taken, never permissions you do not hold — the
+// same argument that makes self-declared capabilities safe (§6: history
+// punishes over-claiming). So the server TRUSTS the declaration for the gate
+// and RECORDS it on the claim (`claimant_free`, `claimant_caps_json`), where
+// the score/audit machinery catches a "free" claimant whose invocations keep
+// stamping nonzero cost_micros. Remote attestation is deliberately not
+// attempted. Absent declaration = paid, no capabilities — the conservative
+// default for `policy`; for `fit` an UNDECLARED vector claims exactly as today
+// (see `fit` below — the T2-FIT-CONTRACT obligation).
+//
+// ── The NULL-due reading (PLAN DELTA, authoritative) ───────────────────────
+// devPlan T2 said "due_at NULL → free-runtime-only, indefinitely". Composed
+// with a production deployment that runs NO homelab daemon, that would strand
+// every NULL-due invocation forever — violating jobs-and-facets' "facets
+// tighten, never strand" and its DefaultCase ("no facets = claimable exactly
+// as today"). The reading built here instead applies the sit-free rule ONLY
+// while a free runtime is demonstrably live: a free claimant claimed on this
+// account within FREE_RUNTIME_LIVE_MS (readme decision 3's absence-inference —
+// liveness is inferred from recent claims, no heartbeat). No live free runtime
+// → paid is eligible immediately. DefaultCase is thereby preserved in the
+// default WORLD (no homelab = today's behavior, byte-identical), and the
+// sit-free optimism only ever manifests when someone free is actually there
+// to pick the work up.
+
+/** Privacy is a class, not a score (jobs-and-facets §2). Mirrors ingest's. */
+export type PrivacyClass = "open" | "internal" | "pinned";
+
+/**
+ * The claimant's self-declared capability vector — same shape the fleet host
+ * declares in fleet.json (`HostCapabilities` in packages/cli/src/agent.ts,
+ * which cannot import this package: the CLI has no workspace deps by design).
+ */
+export interface ClaimCapabilities {
+  vision?: boolean;
+  contextTokens?: number;
+  tools?: boolean;
+}
+
+/**
+ * Who is claiming. `capabilities: null` = no vector declared (distinct from
+ * a declared-but-empty `{}`, which means "I can do nothing special").
+ */
+export interface ClaimantIdentity {
+  isFree: boolean;
+  capabilities: ClaimCapabilities | null;
+}
+
+/** The facet slice `policy`/`fit` read off the invocation row. */
+export interface ClaimFacets {
+  /** `due_at` — epoch ms, or null = no known deadline. */
+  dueAt: number | null;
+  /** `privacy` — the stamped class, or null (DefaultCase). */
+  privacy: string | null;
+  /** Parsed `requires_json`, or null. Kept `unknown`: it is stored TEXT. */
+  requires: unknown;
+}
+
+/**
+ * The time-varying world-state `policy` needs, computed by the claim site
+ * (in SQL, by the same claim statement — see claimGate.ts).
+ */
+export interface BudgetState {
+  /**
+   * The binding's `config_json.budgets.spendPerMonth` (micro-USD) is set to a
+   * number AND the current UTC calendar month's summed `cost_micros` for the
+   * binding has reached it. No spendPerMonth configured → never exhausted.
+   * A spendPerMonth of 0 means "never spend paid" and is always exhausted.
+   */
+  budgetExhausted: boolean;
+  /**
+   * A free claimant (`claimant_free = 1`) claimed on this account within
+   * FREE_RUNTIME_LIVE_MS of now — readme decision 3's absence-inference.
+   */
+  freeRuntimeLive: boolean;
+  /** The escalation window for this invocation's binding — escalationWindowMs(). */
+  escalationWindowMs: number;
+}
+
+/**
+ * Liveness horizon for the absence-inference (readme decision 3): a free
+ * runtime that claimed within the last 15 minutes is "here". The fleet host
+ * drains at least every 5 minutes when healthy, so 15 minutes = three missed
+ * ticks — dead, not slow. Worst case after a homelab death, NULL-due work
+ * waits one horizon before the cloud takes it.
+ */
+export const FREE_RUNTIME_LIVE_MS = 15 * 60_000;
+
+/** Escalation window bounds — devPlan decision 1, resolved cost-scaled. */
+export const ESCALATION_WINDOW_NO_HISTORY_MS = 60 * 60_000; // no history → 1h
+export const ESCALATION_WINDOW_MIN_MS = 15 * 60_000;
+export const ESCALATION_WINDOW_MAX_MS = 4 * 60 * 60_000;
+/** Paid escalates at 3× the typical runtime before due — room for one retry
+ * and a fallback, which is what the window exists to buy. */
+export const ESCALATION_RETRY_FACTOR = 3;
+
+/**
+ * The escalation window (devPlan decision 1 — cost-scaled, not fixed):
+ *
+ *   window = clamp(3 × median(past durations of this binding), 15min, 4h)
+ *   no history → 1h
+ *
+ * "Duration" is done_at − claimed_at of past `done` invocations of the same
+ * binding (the per-kind cost estimate's population, time instead of dollars —
+ * history beats hints). Pure: callers fetch the durations; this only folds.
+ */
+export function escalationWindowMs(pastDurationsMs: readonly number[]): number {
+  if (pastDurationsMs.length === 0) return ESCALATION_WINDOW_NO_HISTORY_MS;
+  const sorted = [...pastDurationsMs].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  const median =
+    sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+  return Math.min(
+    ESCALATION_WINDOW_MAX_MS,
+    Math.max(ESCALATION_WINDOW_MIN_MS, ESCALATION_RETRY_FACTOR * median),
+  );
+}
+
+/**
+ * Parse the untrusted `claimant` argument off a claim call. Absent or
+ * malformed → paid with no vector — the conservative default. `isFree` counts
+ * only as the literal boolean true; capability fields keep only well-typed
+ * values (a garbage `vision: "yes"` degrades to "cannot", never to "can").
+ */
+export function normalizeClaimant(raw: unknown): ClaimantIdentity {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { isFree: false, capabilities: null };
+  }
+  const r = raw as { isFree?: unknown; capabilities?: unknown };
+  let capabilities: ClaimCapabilities | null = null;
+  if (typeof r.capabilities === "object" && r.capabilities !== null && !Array.isArray(r.capabilities)) {
+    const c = r.capabilities as { vision?: unknown; contextTokens?: unknown; tools?: unknown };
+    capabilities = {};
+    if (typeof c.vision === "boolean") capabilities.vision = c.vision;
+    if (typeof c.tools === "boolean") capabilities.tools = c.tools;
+    if (typeof c.contextTokens === "number" && Number.isFinite(c.contextTokens)) {
+      capabilities.contextTokens = c.contextTokens;
+    }
+  }
+  return { isFree: r.isFree === true, capabilities };
+}
+
+/**
+ * FIT — can this claimant succeed at this work?
+ *
+ * Semantics are deliberately IDENTICAL to the fleet host's client-side
+ * `fitsRequirements` (packages/cli/src/agent.ts), which becomes pure
+ * preference now that this is enforced server-side:
+ *
+ *   - no `requires` facet (null / not an object)     → no fit constraint
+ *   - NO DECLARED VECTOR (`capabilities: null`)      → claimable, as today.
+ *     This is the T2-FIT-CONTRACT obligation, and it is a deliberate
+ *     asymmetry with `isFree` (where absence = conservative): treating an
+ *     undeclared vector as "can do nothing" would make every requires-stamped
+ *     invocation unclaimable by every pre-T2 claimant — facets would strand,
+ *     not tighten. Under-declaring fit only costs the claimant work; the
+ *     stale-claim sweeper and the score punish OVER-claiming.
+ *   - within a declared vector: booleans default to "cannot"; an unstated
+ *     contextTokens means "no known limit".
+ */
+export function fit(capabilities: ClaimCapabilities | null | undefined, requires: unknown): boolean {
+  if (requires === null || requires === undefined || typeof requires !== "object") return true;
+  if (!capabilities) return true;
+  const r = requires as { vision?: unknown; tools?: unknown; contextTokens?: unknown };
+  if (r.vision === true && capabilities.vision !== true) return false;
+  if (r.tools === true && capabilities.tools !== true) return false;
+  if (
+    typeof r.contextTokens === "number" &&
+    typeof capabilities.contextTokens === "number" &&
+    r.contextTokens > capabilities.contextTokens
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * POLICY — should this claimant take it YET?
+ *
+ * Policy never restricts a FREE claimant: every rule below is about when the
+ * PAID cloud becomes eligible, so `isFree` short-circuits true. For paid:
+ *
+ *   1. privacy = 'pinned'  → never. A hard constraint, past due included —
+ *      devPlan decision 0: privacy beats liveness; pinned work MAY sit, and
+ *      alerting on overdue pinned work is T3's, not the gate's.
+ *   2. budget exhausted    → never, regardless of due-ness. Exhaustion narrows
+ *      the claimant set; it does not fail the invocation. (Past-due liveness
+ *      is T3's watchdog, which claims OUTSIDE this gate.)
+ *   3. due_at set          → eligible from (due_at − escalationWindow) on,
+ *      past-due included.
+ *   4. due_at NULL         → eligible unless a free runtime is live (the
+ *      sit-free rule under the absence-inference — see the header note; this
+ *      is the stranding guard).
+ */
+export function policy(
+  facets: Pick<ClaimFacets, "dueAt" | "privacy">,
+  claimant: Pick<ClaimantIdentity, "isFree">,
+  budget: BudgetState,
+  now: number,
+): boolean {
+  if (claimant.isFree) return true;
+  if (facets.privacy === "pinned") return false;
+  if (budget.budgetExhausted) return false;
+  if (facets.dueAt !== null) return facets.dueAt - budget.escalationWindowMs <= now;
+  return !budget.freeRuntimeLive;
+}
+
+/**
+ * The gate: fit ∧ policy. Authority is the first term and lives with the
+ * claim sites (requireAccount; the drain's own service identity) — it is
+ * hard, server-verified, and no concern of this module's.
+ */
+export function mayClaim(
+  facets: ClaimFacets,
+  claimant: ClaimantIdentity,
+  budget: BudgetState,
+  now: number,
+): boolean {
+  return fit(claimant.capabilities, facets.requires) && policy(facets, claimant, budget, now);
+}

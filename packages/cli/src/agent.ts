@@ -83,10 +83,11 @@ export interface BindingConfig {
  * What this HOST can run — the self-declared capability vector of
  * jobs-and-facets §6. It describes the machine (the local backend's reach),
  * never any agent's identity or authority: declaring `vision` earns vision
- * TASKS, not vision permissions. This wave it drives CLIENT-SIDE narrowing
- * only (`fitsRequirements`); server-side fit enforcement is T2 — see the
- * T2-FIT-CONTRACT comment in services/jmap/src/methods/agent.ts, which is
- * where this same vector must ride the claim call.
+ * TASKS, not vision permissions. It drives CLIENT-SIDE narrowing here
+ * (`fitsRequirements`, a preference) and, since T2, rides the claim call as
+ * `claimant.capabilities`, where the server enforces the same predicate in
+ * the guarded UPDATE — see the T2-FIT-CONTRACT comment in
+ * services/jmap/src/methods/agent.ts and @bullmoose/scheduling.
  */
 export interface HostCapabilities {
   vision?: boolean;
@@ -408,9 +409,23 @@ async function handleInvocation(
     return false;
   }
 
-  // Claim (optimistic — a lost race is a clean no-op).
+  // Claim (optimistic — a lost race is a clean no-op). The claim DECLARES
+  // this host's identity (s11 T2): the homelab daemon is the free runtime
+  // (readme: @local inference is $0), plus the fleet.json capability vector
+  // when one is declared. The server folds the same fit predicate as
+  // fitsRequirements above into the guarded UPDATE — the local check is
+  // preference/self-protection; the server one is eligibility — and RECORDS
+  // the declaration on the claim (trust-but-audit: isFree is fit-shaped, not
+  // authority-shaped, so a lie earns work the score will catch, never
+  // permissions). Declaring free also feeds the server's liveness inference:
+  // a free claim in the last 15 min = "a free runtime is live", which is what
+  // lets NULL-due work sit for this host instead of going to the paid cloud.
   const claim = await client.one("AgentInvocation/set", {
     accountId: account.accountId,
+    claimant: {
+      isFree: true,
+      ...(fleet.capabilities ? { capabilities: fleet.capabilities } : {}),
+    },
     update: { [invId]: { status: "running" } },
   });
   if (!(invId in ((claim.updated as Record<string, unknown>) ?? {}))) return false;
