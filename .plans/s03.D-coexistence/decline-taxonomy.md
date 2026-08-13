@@ -39,10 +39,11 @@ need to do XYZ."*
 It is a **third axis**, not a variant of anything above:
 
 - `approve`/`decline` — judgment **rendered**.
-- `defer` — judgment correct, timing wrong. **Time** resolves it.
+- editing `due_at` — judgment correct, timing wrong. **Time** resolves it (a field edit,
+  not a verb — see the retired `defer` row).
 - `needsInfo` — judgment **cannot yet be rendered**; the missing input is **information**,
   and it is the *proposer's* to supply. Time will not fix a `needsInfo`; an answer will not
-  fix a `defer`. Different missing input → different verb.
+  fix a timing problem. Different missing input → different response.
 
 Why it is load-bearing and not a courtesy: **approval fatigue is the enemy of least
 privilege.** A binary approve/decline queue under fatigue degrades toward rubber-stamping —
@@ -78,7 +79,7 @@ disciplined instance: exactly one question, exactly one owed answer, on the reco
 `notNow` conflated three different gradients under one label:
 - *"I'll do it myself"* → **positive** on selection → now `tookItMyself`
 - *"not due yet"* → **neutral**, a scheduling signal → now: edit `due_at` on the row (no verb)
-- *"meh, later"* → weak negative → collapses into a real reject reason or a `defer`
+- *"meh, later"* → weak negative → collapses into a real reject reason or a pushed-out `due_at`
 
 Splitting it removes the ambiguity. What remained was never a *quality* judgment at all, which
 is exactly why it read as confusing — the tell that it was mis-named.
