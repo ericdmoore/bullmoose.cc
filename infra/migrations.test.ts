@@ -118,13 +118,17 @@ describe("infra/migrations — the DDL a schema re-run cannot perform", () => {
     // migrations break every claim if a worker deploys first. s11 T3 adds the
     // alert columns, which the agent worker's cron sweep names in a SELECT and
     // an UPDATE — missing them, `scheduled()` throws and the retry-net drain
-    // behind it never runs.
+    // behind it never runs. s11 T9 adds the only NEW TABLE on this list: the
+    // approved-overage table is named by the gate's budgetExhaustedSql, i.e. by
+    // every claim statement, so its absence is a total claim failure rather
+    // than the one-route failure a new table usually causes.
     // Naming them in data keeps the runbook and the runner from drifting apart.
     const blockers = MIGRATIONS.filter((m) => m.blocks === "deploy").map((m) => m.id).sort();
     expect(blockers).toEqual([
       "accounts-deleted-at",
       "address-books-write-policy",
       "agent-bindings-recipients-book",
+      "budget-overage-table",
       "grant-lifecycle-via-proposal",
       "grants-revoked-at",
       "invocation-alert-columns",

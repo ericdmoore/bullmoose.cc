@@ -16,6 +16,7 @@ import {
   notPinnedSql,
   type ClaimantIdentity,
 } from "@bullmoose/scheduling";
+import { proposeBudgetOverruns } from "./budgetOverrun.js";
 import { classifyScreened } from "./bouncerClassify.js";
 import { runBouncer } from "./bouncer.js";
 import { runLedger } from "./ledger.js";
@@ -120,6 +121,12 @@ export default {
     await escalateOverdue(env);
     await reportHeldBacklog(env);
     await reportPinnedStranded(env);
+    // LAST, and after the backstop: T9 asks a human about work that is stranded
+    // by BUDGET, and the backstop above has already rescued everything a passed
+    // deadline entitles it to rescue. What is left is the class where money is
+    // genuinely the only obstacle — the one place a human choice exists, and so
+    // the one place a proposal beats a marker (budgetOverrun.ts).
+    await proposeBudgetOverruns(env);
   },
 } satisfies ExportedHandler<Env>;
 

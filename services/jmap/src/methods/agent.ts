@@ -93,11 +93,16 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
         // (packages/cli/src/agent.ts fitsRequirements) reads this field.
         requires: typeof r.requires_json === "string" ? JSON.parse(r.requires_json) : null,
         // s11 T3, FEATURE-DETECTED the same way: the watchdog's alert marker.
-        // Non-null means this invocation's due_at passed while nobody who
-        // could claim it was available — 'overdue-pinned' (privacy beats
-        // liveness, decision 0) or 'overdue-unfit'. It is a NOTICE, not a
-        // decision: there is no verb here, which is exactly why it is a marker
-        // on the run and not an ActionProposal.
+        // 'overdue-pinned' (privacy beats liveness, decision 0) and
+        // 'overdue-unfit' mean this invocation's due_at passed while nobody who
+        // could claim it was available. Those two are NOTICES: there is no verb,
+        // which is exactly why they are markers on the run and not
+        // ActionProposals. 's11 T9's 'budget-stranded:<YYYY-MM>' is the
+        // exception that proves the rule — a human choice DOES exist there
+        // ("spend anyway?"), so the marker rides beside a `budget-overrun`
+        // proposal as its once-per-period idempotence key rather than instead of
+        // one. Projected as an opaque string either way: this is a read model,
+        // and validating a marker here would only add a place to drift.
         alert:
           typeof r.alert_kind === "string"
             ? {

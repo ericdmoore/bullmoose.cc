@@ -50,7 +50,11 @@ export type ProposalKind =
   | "start-thread"
   | "create-contact"
   | "organize-files"
-  | "grant-request";
+  | "grant-request"
+  // s11 T9 — "this binding is out of budget and N invocations are waiting;
+  // approve a bounded overage?" The one kind whose payload is entirely numbers,
+  // which is why its summary leads with them (`summarizeProposal`).
+  | "budget-overrun";
 
 /** What the proposal acts on. */
 export interface ProposalSubject {

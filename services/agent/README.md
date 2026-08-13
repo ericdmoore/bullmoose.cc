@@ -34,6 +34,24 @@ queue held behind a disabled binding, and pinned work pending with no
 free runtime seen in 15 min ("your homelab is down", inferred from
 recent claims rather than a heartbeat).
 
+**Budget stranding is a question, not a marker** (s11 T9,
+`proposeBudgetOverruns`, last on the same cron). A binding whose
+`budgets.spendPerMonth` is spent holds off every paid claimant, so its
+work waits for the month to roll when no free runtime is live — and the
+overdue backstop cannot help work with no deadline. The rule the two
+mechanisms split on: **marker when nothing can be decided; proposal when
+something can.** Privacy admits no human override, so T3 marks; *"spend
+anyway?"* has a real answer, so this ASKS — one `budget-overrun`
+proposal per binding per period (never one per invocation), carrying the
+waiting count, the spend against the ceiling and the cost to clear it
+from the s07 T5 history (`null` when there is no paid history — reported
+unknown, never guessed). The T3 marker is reused as the idempotence key
+(`alert_kind` = `budget-stranded:<YYYY-MM>` on one representative row,
+raised by a guarded UPDATE), so the sweep asks once and not every tick.
+Approving lands a BOUNDED, period-scoped overage in
+`agent_budget_overages` that the claim gate adds to the cap; declining
+leaves the work queued and records nothing against the agent.
+
 ## Pipelines (per binding `config_json.pipeline`)
 
 - **reply** (default) — persona reply to allowlisted senders. Front

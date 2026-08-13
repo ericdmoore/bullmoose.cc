@@ -173,6 +173,64 @@ describe("summarizeProposal — one line per row, grant-request included", () =>
     const p = base({ kind: "mystery-verb", subject: { realm: "Email", objectId: "e-9" } });
     expect(summarizeProposal(p)).toBe("mystery-verb on Email e-9");
   });
+
+  // ---- s11 T9 — the numbers ARE the decision ----
+  it("leads a budget-overrun with the numbers, not the agent's name", () => {
+    const p = base({
+      kind: "budget-overrun",
+      tier: 1,
+      subject: { realm: "AgentBinding", objectId: "bind_photos" },
+      payload: {
+        bindingId: "bind_photos",
+        bindingName: "photos",
+        waitingCount: 12,
+        monthSpentMicros: 5_000_000,
+        capMicros: 5_000_000,
+        estimateMicros: 1_800_000,
+        overageMicros: 2_250_000,
+        periodKey: "2026-08",
+      },
+    });
+    expect(summarizeProposal(p)).toBe(
+      "12 waiting · $5.00 of $5.00 spent · ~$1.80 to clear — approve a $2.25 overage for photos",
+    );
+  });
+
+  it("says the cost is UNKNOWN rather than printing a guessed $0.00", () => {
+    // No paid history for the binding → the sweep reports null, and the row must
+    // carry that through. A plausible-looking $0.00 is the one lie that matters
+    // on a spend decision.
+    const p = base({
+      kind: "budget-overrun",
+      tier: 1,
+      subject: { realm: "AgentBinding", objectId: "bind_photos" },
+      payload: {
+        bindingId: "bind_photos",
+        bindingName: "photos",
+        waitingCount: 3,
+        monthSpentMicros: 1_000_000,
+        capMicros: 1_000_000,
+        estimateMicros: null,
+        overageMicros: 1_000_000,
+        periodKey: "2026-08",
+      },
+    });
+    expect(summarizeProposal(p)).toBe(
+      "3 waiting · $1.00 of $1.00 spent · cost unknown — approve a $1.00 overage for photos",
+    );
+  });
+
+  it("degrades to the subject when the payload is empty, and never throws", () => {
+    const p = base({
+      kind: "budget-overrun",
+      tier: 1,
+      subject: { realm: "AgentBinding", objectId: "bind_photos" },
+      payload: {},
+    });
+    expect(summarizeProposal(p)).toBe(
+      "? waiting · budget spent · cost unknown — approve an overage for bind_photos",
+    );
+  });
 });
 
 describe("parseProposal (types.ts)", () => {
