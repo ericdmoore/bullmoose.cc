@@ -3,9 +3,12 @@
 // and states the price. Mail motif + campaign badge + "$0" in one mark.
 ---
 
-<svg class="postmark" viewBox="0 0 200 200" role="img" aria-label="Runs for zero dollars per month">
+<svg class="postmark" viewBox="0 0 200 200" role="img" aria-label="Email fit for a president — runs for zero dollars per month">
   <defs>
     <path id="pm-arc" d="M18,100 A82,82 0 0 1 182,100" />
+    <!-- bottom arc: glyphs on a bottom textPath extend inward, so the baseline
+         sits at the outer ring to land the letters in the same gap as the top -->
+    <path id="pm-arc-b" d="M7,100 A93,93 0 0 0 193,100" />
   </defs>
 
   <!-- outer rings -->
@@ -30,4 +33,9 @@
   <!-- price -->
   <text class="pm-amt" x="100" y="132" text-anchor="middle" font-size="54">$0</text>
   <text x="100" y="152" text-anchor="middle" font-size="11.5" letter-spacing="4">PER MONTH</text>
+
+  <!-- bottom arc text -->
+  <text font-size="11.5" letter-spacing="2.5">
+    <textPath href="#pm-arc-b" startOffset="50%" text-anchor="middle">EMAIL FIT FOR A PRESIDENT</textPath>
+  </text>
 </svg>
