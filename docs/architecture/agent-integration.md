@@ -208,6 +208,14 @@ execution, durable accountability — that is the split, and any UI asking
 alarm — the same §19-home-C mechanism as snooze/Send-Later. This is what
 schedule-triggered bindings (FollowUpFrank) ride.
 
+**Status notes (2026-08-13):** `budgets` above is design vocabulary — today only the
+per-call `maxTokens` is enforced and cost is *recorded* (s07 T5); `spendPerMonth`
+enforcement is `.plans/s11-scheduling/` T2. The homelab daemon is currently one binding
+per process; the fleet-host shape (one runtime principal, N bindings discovered from claim
+grants, capability vector at connect) is s11 T8, designed in
+`.plans/s11-scheduling/jobs-and-facets.md` §4. Jobs (DAGs of invocations with a planner
+node) are s11 T7, same note §3.
+
 ---
 
 ## 7. Worked examples: the roster
