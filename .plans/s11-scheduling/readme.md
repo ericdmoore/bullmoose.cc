@@ -94,6 +94,16 @@ spent against a deadline.** T5 recorded the facts; s11 spends them.
   hour"* would burn budget on non-urgent work. `due_at` extraction is a proposal the human can
   see and correct, not a hidden field — surface it on the approval row next to the two clocks.
 
+## Extension: Jobs, facets, and the fleet host
+
+[`jobs-and-facets.md`](./jobs-and-facets.md) (2026-08-13) extends this design with the
+shape the eligibility policy grows into: **facets** on the invocation (privacy as a class,
+effort as a prior, capabilities not model pins), **Jobs** — DAGs of ordinary invocations
+whose planner node produces the rest of the graph at runtime (parallel subagents across
+runtimes with no new execution machinery), and the **fleet host** — one homelab daemon
+serving N bindings discovered from grants, replacing per-agent logins. The claim stays
+pull; the race shrinks to the eligible set.
+
 ## References
 
 - `docs/architecture/agent-integration.md` §2 (pull queue), §6 (runtimes), §8 (watchdog)
