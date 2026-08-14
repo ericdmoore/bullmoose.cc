@@ -1005,17 +1005,27 @@ async function createAccount(
         .prepare(`INSERT INTO routes (domain, localpart, kind, target) VALUES (?, ?, 'mailbox', ?)`)
         .bind(domain, localpart, accountId),
       // Standard role mailboxes so the first Mailbox/get isn't empty.
+      //
+      // SIX, not seven: wave 1 seeded a second pile beside Junk under an
+      // invented `role: 'quarantine'`, which is in no IANA registry and which
+      // a standards-native client therefore renders as an ordinary folder.
+      // Held mail lives in the REGISTERED junk role (so Apple Mail, himalaya
+      // et al. behave correctly) under the display name 'Quarantined' — a
+      // condition, not a room.
+      //
+      // The pair is spelled out rather than imported: provision does not
+      // depend on @bullmoose/mailstore and adding the dependency to carry two
+      // strings would pull the whole store (postal-mime and all) into this
+      // worker's bundle. `createAccount.test.ts` asserts the seed against
+      // QUARANTINE_ROLE/QUARANTINE_NAME, so the duplication cannot drift
+      // silently — the test is the link the import would have been.
       ...[
         ["inbox", "Inbox"],
         ["sent", "Sent"],
         ["drafts", "Drafts"],
         ["trash", "Trash"],
-        ["junk", "Junk"],
+        ["junk", "Quarantined"],
         ["archive", "Archive"],
-        // s12 1-A: where REJECT-STORE boundary verdicts hold mail, rescuable.
-        // Accounts that predate this are covered lazily — ingest's quarantine
-        // path calls ensureRoleMailbox on first shunt (the inbox precedent).
-        ["quarantine", "Quarantine"],
       ].map(([role, name]) =>
         env.DB
           .prepare(

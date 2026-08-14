@@ -10,6 +10,7 @@ import {
 } from "../lib/approvals/clocks";
 import { applyEdit, editorFor, type EditorForm } from "../lib/approvals/edit";
 import {
+  declineNeedsReason,
   REJECT_REASONS,
   TIER3_CAPABILITY_NOTE,
   approvalsAccountId,
@@ -322,7 +323,7 @@ function WaitingRow(props: {
   panel: Panel | undefined;
   setPanel: (panel: Panel | undefined) => void;
   onApprove: () => void;
-  onDecline: (reason: RejectReason, note: string) => void;
+  onDecline: (reason: RejectReason | undefined, note: string) => void;
   onSubmitEdit: (form: EditorForm) => void;
 }) {
   const { p, now, busy, error, panel, setPanel } = props;
@@ -371,8 +372,12 @@ function WaitingRow(props: {
           reason={panel.reason}
           note={panel.note}
           busy={busy}
+          needsReason={declineNeedsReason(p.kind)}
           onChange={(reason, note) => setPanel({ id: p.id, kind: "decline", reason, note })}
-          onSubmit={() => panel.reason && props.onDecline(panel.reason, panel.note)}
+          onSubmit={() => {
+            if (declineNeedsReason(p.kind) && !panel.reason) return;
+            props.onDecline(panel.reason, panel.note);
+          }}
           onCancel={() => setPanel(undefined)}
         />
       ) : (
@@ -493,6 +498,9 @@ function DeclinePanel(props: {
   reason: RejectReason | undefined;
   note: string;
   busy: boolean;
+  /** False on a NO-FAULT kind: the server refuses a reason there, so asking
+   * for one would make the verb unsendable (`declineNeedsReason`). */
+  needsReason: boolean;
   onChange: (reason: RejectReason | undefined, note: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
@@ -500,10 +508,11 @@ function DeclinePanel(props: {
   return (
     <div class="home-editor">
       <p class="home-fine">
-        Why not? Each reason steers a different correction — the last one is a hard stop, not a
-        stronger no.
+        {props.needsReason
+          ? "Why not? Each reason steers a different correction — the last one is a hard stop, not a stronger no."
+          : "Declining this is an answer, not a complaint: nothing negative is recorded about the agent."}
       </p>
-      {REJECT_REASONS.map((r) => (
+      {(props.needsReason ? REJECT_REASONS : []).map((r) => (
         <label key={r.reason} class={r.severe ? "home-reason home-reason-severe" : "home-reason"}>
           <input
             type="radio"
@@ -520,7 +529,7 @@ function DeclinePanel(props: {
         <button
           type="button"
           class="home-danger"
-          disabled={props.busy || !props.reason}
+          disabled={props.busy || (props.needsReason && !props.reason)}
           onClick={props.onSubmit}
         >
           Decline

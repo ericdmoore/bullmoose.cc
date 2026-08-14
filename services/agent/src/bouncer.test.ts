@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { Mailstore } from "@bullmoose/mailstore";
+import { Mailstore, QUARANTINE_NAME, QUARANTINE_ROLE } from "@bullmoose/mailstore";
 import { fakeEnv, type FakeWorker } from "@bullmoose/test-fakes";
 import ingestWorker, { type Env as IngestEnv } from "../../ingest/src/index";
 import { authenticatedDirective, BOUNCER_REFUSAL } from "./bouncer";
@@ -190,7 +190,7 @@ async function seedQuarantined(
   opts: { emailId: string; sender: string; stage: string; at?: number },
 ): Promise<void> {
   const store = new Mailstore(w.env.DB, w.env.BLOBS);
-  const quarantineId = await store.ensureRoleMailbox(ASKER_ACC, "quarantine", "Quarantine");
+  const quarantineId = await store.ensureRoleMailbox(ASKER_ACC, QUARANTINE_ROLE, QUARANTINE_NAME);
   const raw = new TextEncoder().encode(`From: ${opts.sender}\r\n\r\nheld`);
   const blobId = await store.putBlob(TENANT, ASKER_ACC, raw.buffer as ArrayBuffer);
   await store.insertEmail(ASKER_ACC, {
@@ -320,7 +320,7 @@ describe("the injection test — wrapper is instruction, payload is evidence", (
     expect(
       w.db.query(`SELECT * FROM quarantine_events WHERE account_id = ? AND event = 'rescued'`, ASKER_ACC),
     ).toEqual([]);
-    expect(inMailbox(w, ASKER_ACC, "e_held", "quarantine")).toBe(true);
+    expect(inMailbox(w, ASKER_ACC, "e_held", QUARANTINE_ROLE)).toBe(true);
 
     // And the reply went to the asker only.
     const reply = replyTo(w, msgId);
@@ -480,7 +480,7 @@ describe("conversation 2 — the FP explain + repair", () => {
     // Repair 1: the message moved out of quarantine, and the rescue row cites
     // the directive (decision-5).
     expect(inMailbox(w, ASKER_ACC, "e_helen", "inbox")).toBe(true);
-    expect(inMailbox(w, ASKER_ACC, "e_helen", "quarantine")).toBe(false);
+    expect(inMailbox(w, ASKER_ACC, "e_helen", QUARANTINE_ROLE)).toBe(false);
     const rescued = w.db.query<{ stage: string; via_message_id: string | null; actor: string | null }>(
       `SELECT stage, via_message_id, actor FROM quarantine_events WHERE account_id = ? AND event = 'rescued'`,
       ASKER_ACC,

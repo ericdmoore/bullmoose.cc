@@ -59,7 +59,12 @@ CREATE TABLE IF NOT EXISTS mailboxes (
   account_id    TEXT NOT NULL,
   parent_id     TEXT,
   name          TEXT NOT NULL,
-  role          TEXT,                      -- inbox|sent|drafts|trash|junk|archive|quarantine
+  -- The IANA JMAP role registry (RFC 8621 §2), and ONLY it: an invented role
+  -- is rendered by a standards-native client as an ordinary folder with no
+  -- special handling. s12 held mail lives in the REGISTERED 'junk' role under
+  -- the display name 'Quarantined' — the role is the compatibility contract,
+  -- the name is our vocabulary (packages/mailstore QUARANTINE_ROLE/NAME).
+  role          TEXT,                      -- inbox|archive|drafts|junk|sent|trash|flagged|important
   sort_order    INTEGER NOT NULL DEFAULT 0,
   last_writer_principal   TEXT,             -- provenance (s03.A T1) — see header
   last_writer_binding     TEXT,
@@ -790,10 +795,16 @@ CREATE TABLE IF NOT EXISTS deny_counters (
 -- 'blocked-book:personal', 'auth:dmarc', 'sieve:<ruleId>', 'bayes@0.97') so
 -- "why was this shunted?" is answerable by stage name, no archaeology.
 -- email_id is the stored message when there is one (REJECT-STORE keeps the
--- message rescuable in the quarantine mailbox; REJECT-AT-EDGE stores nothing
+-- message rescuable in the held mailbox; REJECT-AT-EDGE stores nothing
 -- and writes no chain row — counters only). actor carries the rescuing
 -- principal; via_message_id cites the authenticated directive (s10 decision-5
 -- pattern) when a conversation drove the event.
+--
+-- ⚠️ The table KEEPS this name although no mailbox carries a 'quarantine'
+-- role any more (s12: held mail lives in the registered 'junk' role, named
+-- 'Quarantined'). It is the CHAIN, not the folder — decisions about messages,
+-- which are the same events whatever the holding mailbox is called. Renaming
+-- it would churn history to rename something that was never the folder.
 --
 -- Events (s12 wave 2-C widened the vocabulary):
 --   'shunted'   a rejection stage held the message ('llm:spam' when the

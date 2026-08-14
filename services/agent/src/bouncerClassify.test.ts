@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Mailstore, loadBayesState } from "@bullmoose/mailstore";
+import { Mailstore, QUARANTINE_NAME, QUARANTINE_ROLE, loadBayesState } from "@bullmoose/mailstore";
 import { fakeEnv, type FakeWorker } from "@bullmoose/test-fakes";
 import { LLM_LABELS_TRAIN, classifyScreened, parseClassifierVerdict } from "./bouncerClassify";
 import agentWorker from "./index";
@@ -10,10 +10,18 @@ import type { BindingConfig, Env, InvocationCost } from "./models";
  * message + a bouncer-classify invocation, run through the REAL drain
  * (the proposals.test.ts pattern). The verdict discipline under test:
  *
- *   spam    → stays quarantined, 'shunted' stage 'llm:spam'
+ *   spam    → stays held, 'shunted' stage 'llm:spam' (a JUDGMENT landed)
  *   notSpam → released, 'released' stage 'llm:notSpam'
- *   unsure  → released, 'released' stage 'llm:unsure', NEVER trains
- *   garbage → parses as unsure (defensively), i.e. releases
+ *   unsure  → stays held, a second 'screened' row 'llm:unsure', NEVER trains —
+ *             and the sweep turns it into a human proposal (midBandProposal)
+ *   garbage → parses as unsure (defensively), i.e. holds and asks
+ *
+ * The unsure row is the s12 rework: wave 2-C released on unsure ("an unsure
+ * model must not hold a human's mail"), which is bouncer deciding, in spam's
+ * favour, exactly where it cannot decide. A human CAN decide it, so it becomes
+ * a question instead of a coin flip — s11 T9's "proposal when something can".
+ * The EVENT is what encodes the difference: 'shunted' = decided,
+ * 'screened' = still nobody's judgment, which is what the sweep selects on.
  *
  * and the training pin: LLM_LABELS_TRAIN ships FALSE — model verdicts train
  * nothing unless the operator flips it — proven by asserting no bayes_state
@@ -66,7 +74,7 @@ async function scaffold(
   const store = new Mailstore(w.env.DB, w.env.BLOBS);
   const raw = new TextEncoder().encode(RAW_MIME);
   const blobId = await store.putBlob(TENANT, ACCOUNT, raw.buffer as ArrayBuffer);
-  const quarantineId = await store.ensureRoleMailbox(ACCOUNT, "quarantine", "Quarantine");
+  const quarantineId = await store.ensureRoleMailbox(ACCOUNT, QUARANTINE_ROLE, QUARANTINE_NAME);
   await store.insertQuarantinedEmail(
     ACCOUNT,
     {
@@ -210,36 +218,54 @@ describe("bouncer-classify through the real drain", () => {
     expect(JSON.parse(invocation(w).result_json!)).toMatchObject({ verdict: "notSpam", released: true });
   });
 
-  it("unsure: released 'llm:unsure' and records NO label — never train on a shrug", async () => {
-    const { w } = await scaffold("unsure");
+  it("unsure: STAYS held with a 'screened' row 'llm:unsure', and records NO label — never train on a shrug", async () => {
+    const { w, quarantineId } = await scaffold("unsure");
     await drain(w);
+
+    // Held, and — the load-bearing half — still UNDECIDED: the second row is
+    // 'screened', not 'shunted'. An unsure classifier has not judged anything,
+    // and the sweep asks a human precisely because nothing has.
+    expect(mailboxesOf(w)).toEqual([quarantineId]);
     expect(events(w).map((e) => `${e.event}:${e.stage}`)).toEqual([
       "screened:bayes-mid@0.50",
-      "released:llm:unsure",
+      "screened:llm:unsure",
     ]);
     expect(w.db.count("bayes_state")).toBe(0);
+    expect(JSON.parse(invocation(w).result_json!)).toMatchObject({
+      verdict: "unsure",
+      held: true,
+    });
   });
 
-  it("GARBAGE model output parses as unsure → releases (the defensive-parse bite)", async () => {
+  it("GARBAGE model output parses as unsure → holds and asks (the defensive-parse bite)", async () => {
     const { w, quarantineId } = await scaffold(
       "Well, considering the casino references, I would classify this as spam.",
     );
     await drain(w);
-    // A non-answer must never shunt mail: the message is OUT of quarantine.
-    expect(w.db.count("email_mailboxes", "mailbox_id = ?", quarantineId)).toBe(0);
+    // A non-answer must never SHUNT mail either: it is held, undecided, and
+    // becomes a human question — the model does not get to convict by prose.
+    expect(mailboxesOf(w)).toEqual([quarantineId]);
     expect(events(w).map((e) => `${e.event}:${e.stage}`)).toEqual([
       "screened:bayes-mid@0.50",
-      "released:llm:unsure",
+      "screened:llm:unsure",
     ]);
     expect(JSON.parse(invocation(w).result_json!)).toMatchObject({ verdict: "unsure" });
   });
 
-  it("no model route at all: releases as unsure with a note — fail open, no held mail", async () => {
+  it("no model route at all: holds as unsure WITH THE REASON — the human hears 'we were down'", async () => {
     const { w, quarantineId } = await scaffold("ignored", { config: { kind: "bouncer" } });
     await drain(w);
-    expect(w.db.count("email_mailboxes", "mailbox_id = ?", quarantineId)).toBe(0);
-    const result = JSON.parse(invocation(w).result_json!) as { verdict: string; note?: string };
+    // The infrastructure degrade lands in the same place as a real shrug, on
+    // purpose: silently delivering unscreened mail would hide an outage, and
+    // the note is what carries "no classifier ran" into the proposal.
+    expect(mailboxesOf(w)).toEqual([quarantineId]);
+    const result = JSON.parse(invocation(w).result_json!) as {
+      verdict: string;
+      held?: boolean;
+      note?: string;
+    };
     expect(result.verdict).toBe("unsure");
+    expect(result.held).toBe(true);
     expect(result.note).toMatch(/no model candidates/);
   });
 

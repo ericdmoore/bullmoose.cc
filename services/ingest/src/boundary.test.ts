@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { QUARANTINE_ROLE } from "@bullmoose/mailstore";
 import { fakeEnv, type FakeWorker } from "@bullmoose/test-fakes";
 import { __resetBoundaryBloomCache, rebuildBoundaryBloom } from "./boundary";
 import worker, { type Env } from "./index";
@@ -253,10 +254,21 @@ describe("stage 1 — REJECT-STORE (blocked books)", () => {
     expect(forwards).toEqual([]);
 
     const emailId = w.db.query<{ id: string }>(`SELECT id FROM emails WHERE account_id = ?`, ACCOUNT)[0]!.id;
-    const quarantineId = roleMailboxId(w, "quarantine");
+    const quarantineId = roleMailboxId(w, QUARANTINE_ROLE);
     expect(quarantineId).not.toBeNull();
     expect(mailboxesOf(w, emailId)).toEqual([quarantineId]);
     expect(roleMailboxId(w, "inbox")).toBeNull(); // inbox never even created
+    // The mailbox it lands in is the REGISTERED role under OUR name (s12): a
+    // standards client applies its spam handling to `junk`, and would treat an
+    // invented role as an ordinary folder. Asserted on the row rather than on
+    // the constant, so a lazily-created mailbox cannot drift from provisioning.
+    expect(
+      w.db.query<{ role: string; name: string }>(
+        `SELECT role, name FROM mailboxes WHERE account_id = ? AND id = ?`,
+        ACCOUNT,
+        quarantineId,
+      ),
+    ).toEqual([{ role: "junk", name: "Quarantined" }]);
 
     const events = w.db.query<{
       event: string;
@@ -358,7 +370,7 @@ describe("stage 2 — envelope auth (Authentication-Results)", () => {
       ACCOUNT,
     );
     expect(events).toEqual([{ stage: "auth:dmarc", email_id: res.emailId! }]);
-    expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, "quarantine")]);
+    expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, QUARANTINE_ROLE)]);
   });
 
   it("dmarc=pass → delivered; header absent → delivered (pass/absent record nothing)", async () => {

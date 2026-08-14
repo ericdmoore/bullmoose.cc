@@ -134,6 +134,30 @@ export const REJECT_REASONS: ReadonlyArray<{
 ];
 
 /**
+ * Kinds whose DECLINE says nothing about the agent, mirroring the server's
+ * `NO_FAULT_KINDS` (actionProposal.ts) — which REFUSES a reject reason on
+ * them, so a client that insists on one makes the verb unreachable:
+ *
+ *   `budget-overrun`     declining says "not this month" — about the wallet.
+ *   `held-mail-review`   declining says "yes, that is spam" — an ANSWER, and
+ *                        the agent was right to ask.
+ *
+ * The panel drops the reason list for these rather than offering three
+ * choices the server will reject. (Found while wiring s12: the decline button
+ * required a reason for every kind, which made a `budget-overrun` impossible
+ * to decline from this client at all.)
+ */
+export const NO_FAULT_KINDS: ReadonlySet<string> = new Set([
+  "budget-overrun",
+  "held-mail-review",
+]);
+
+/** Whether the decline panel must collect a reason before it can submit. */
+export function declineNeedsReason(kind: string): boolean {
+  return !NO_FAULT_KINDS.has(kind);
+}
+
+/**
  * Reasons the server once accepted and no longer does. Recorded decisions are
  * NOT migrated — a human's decision is a fact, and rewriting one to fit a later
  * taxonomy would be an audit hole — so the queue must still render them.
@@ -203,6 +227,17 @@ export function summarizeProposal(p: ActionProposal): string {
         `${n ?? "?"} waiting · ${spend} · ${clear ? `~${clear} to clear` : "cost unknown"}` +
         ` — approve ${bound ? `a ${bound}` : "an"} overage for ${who}`
       );
+    }
+    case "held-mail-review": {
+      // s12 — LEAD WITH THE COUNT and name the verbs, because both are real
+      // here: approve releases, decline confirms, and neither is a no-op. The
+      // senders are the evidence a human actually decides on, so the row shows
+      // the first couple rather than making them open the payload.
+      const n = num(p.payload.heldCount) ?? (Array.isArray(p.payload.emailIds) ? p.payload.emailIds.length : null);
+      const msgs = Array.isArray(p.payload.messages) ? (p.payload.messages as Array<{ sender?: unknown }>) : [];
+      const who = [...new Set(msgs.map((m) => s(m.sender)).filter(Boolean))];
+      const from = who.length > 0 ? ` from ${who.slice(0, 2).join(", ")}${who.length > 2 ? ` +${who.length - 2}` : ""}` : "";
+      return `${n ?? "?"} held message${n === 1 ? "" : "s"}${from} — approve releases, decline confirms spam`;
     }
     case "grant-request": {
       // The allowlist widening (s10 T3): grantType "recipient" is "let me
