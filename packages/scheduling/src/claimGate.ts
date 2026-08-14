@@ -23,6 +23,7 @@ import {
   escalationWindowMs,
   type ClaimantIdentity,
 } from "./mayClaim.js";
+import { jobBudgetExhaustedSql, needsSatisfiedSql } from "./jobGraph.js";
 
 // ── The fragments, and why they are exported one by one ────────────────────
 // The gate is a CONJUNCTION, and s11 T3's watchdog needs a strict SUBSET of
@@ -176,18 +177,35 @@ export function dueWindowBinds(p: { now: number; escalationWindowMs: number }): 
 
 /**
  * The whole gate, to be appended to a claim statement's WHERE (it begins with
- * ` AND`) — fit ∧ (free ∨ (pin ∧ budget ∧ due)), the fold of the fragments
- * above. `inv` is how the statement refers to the agent_invocations row under
- * test: the table name itself in an UPDATE, the FROM-alias in a SELECT.
- * Placeholders are positional — bind `claimGateBinds()` in order, after the
- * statement's own binds.
+ * ` AND`) — fit ∧ needs ∧ (free ∨ (pin ∧ budget ∧ jobBudget ∧ due)), the fold
+ * of the fragments above. `inv` is how the statement refers to the
+ * agent_invocations row under test: the table name itself in an UPDATE, the
+ * FROM-alias in a SELECT. Placeholders are positional — bind
+ * `claimGateBinds()` in order, after the statement's own binds.
+ *
+ * s11 T7 adds the two DAG terms, and WHERE each sits is the whole design:
+ *
+ *   needsSatisfiedSql   OUTSIDE the `isFree` short-circuit. Execution ordering
+ *                       is structural, not policy — a free runtime may no more
+ *                       run a join node before its inputs exist than a paid one
+ *                       can. This is the "no new queues" clause: the pending
+ *                       TASK queue is `status='pending' AND needs satisfied`,
+ *                       computed here, never stored.
+ *   jobBudgetExhausted  INSIDE it, beside the binding's monthly cap, because a
+ *                       money cap narrows the claimant set rather than failing
+ *                       the work — and a free claimant costs the Job nothing.
+ *
+ * Both take zero placeholders (the graph is entirely in the rows), so every
+ * existing caller's bind order is untouched.
  */
 export function claimGateSql(inv: string): string {
   return (
     `\n AND ${claimFitSql(inv)}` +
+    `\n AND ${needsSatisfiedSql(inv)}` +
     `\n AND (? = 1` +
     `\n      OR (${notPinnedSql(inv)}` +
     `\n          AND NOT ${budgetExhaustedSql(inv)}` +
+    `\n          AND NOT ${jobBudgetExhaustedSql(inv)}` +
     `\n          AND ${dueWindowSql(inv)}))`
   );
 }

@@ -103,7 +103,13 @@ func (as *Amendments) UnmarshalJSON(b []byte) error {
 // `null`. Payload is the AGENT's version, the retained source of truth;
 // EditedPayload is the HUMAN's edit and NEVER overwrites Payload (actionProposal.ts:222-228).
 type Proposal struct {
-	ID            string         `json:"id"`
+	ID string `json:"id"`
+	// AccountID is WHICH account this row came off (s10 T7). Load-bearing the
+	// moment the queue merges every account a human can reach: the decision
+	// `/set` needs it, and a row that cannot name its account cannot be
+	// labelled. Empty on a pre-T7 server — the caller stamps the account it
+	// asked, which is the same value.
+	AccountID     string         `json:"accountId"`
 	Agent         string         `json:"agent"` // binding name, read from the invocation (§8.5)
 	Kind          string         `json:"kind"`
 	Tier          int            `json:"tier"`

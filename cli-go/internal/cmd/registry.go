@@ -19,6 +19,7 @@ package cmd
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
 )
@@ -101,6 +102,31 @@ var registry = map[string]spec{
 		boolean: []string{"json"}},
 	"approvals": {json: true, goNative: true, run: runApprovals},
 	"agents":    {json: true, goNative: true, run: runAgents},
+	// ---- wave 3 (devPlan.md:154): the standalone gate ----
+	//
+	// `login` and `init` are the two commands that CREATE the local mirror, so
+	// until they landed a Go-only machine had nothing for `watch` to read. They
+	// are listed last in the plan's order on purpose: they are the commands the
+	// conformance vectors exist for, so porting them last means the vectors are
+	// proven by the time the credential paths use them.
+	//
+	// DELIBERATELY ABSENT from `login`: --account (cmdLogin never reads it) and
+	// --token (a login MINTS the token; accepting one would be `init`).
+	"login": {json: true, run: runLogin,
+		value:   []string{"db", "base", "name", "scopes", "password"},
+		boolean: []string{"json", "ids"}},
+	// `init` owns --url as well as --base: the alias is documented, and silently
+	// discarding it is cli/010 §5. No --ids — cmdInit does not read it, and
+	// claiming a flag the native path ignores is the cli/008 shape.
+	"init": {json: true, run: runInit,
+		value:   []string{"db", "base", "url", "token", "account"},
+		boolean: []string{"json", "offline"}},
+	// `token` owns --dry-run because `revoke` reads it (tokens.ts:214); `create`
+	// and `list` do not, and an unowned flag on those would delegate, which is
+	// the safe direction.
+	"token": {json: true, run: runToken,
+		value:   []string{"db", "name", "scopes"},
+		boolean: []string{"json", "ids", "dry-run"}},
 	// watch has a Node twin, so byte-identity applies and it must declare every
 	// flag its native path consumes — `--exec` above all, since an undeclared one
 	// would silently delegate forever and the port would never run. It parses its
@@ -120,11 +146,21 @@ var registry = map[string]spec{
 // commands this binary actually serves — a delegated command's --json is the
 // TypeScript CLI's job.
 func SupportsJSON(command string) (jsonSupported, implemented bool) {
-	s, ok := registry[command]
-	if !ok {
-		return false, false
+	if s, ok := registry[command]; ok {
+		return s.json, true
 	}
-	return s.json, true
+	// The cli/008 regression set names two entries by VERB ("token create",
+	// "token revoke") because that is how the finding was written. The registry is
+	// keyed by command, and a command's `json` bit is a claim about every verb it
+	// serves — `token` honours --json on create, list and revoke alike — so a
+	// verb resolves to its command rather than reporting "not implemented" and
+	// leaving the requirement asleep.
+	if head, _, found := strings.Cut(command, " "); found {
+		if s, ok := registry[head]; ok {
+			return s.json, true
+		}
+	}
+	return false, false
 }
 
 // Install wires every registered native command into the delegate's routing map

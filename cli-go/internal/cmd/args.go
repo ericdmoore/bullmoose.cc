@@ -40,6 +40,44 @@ type args struct {
 	// `opts.body !== undefined`, so `--body ""` is an explicit empty body and
 	// must NOT fall through to stdin.
 	HasBody bool
+
+	// ---- the credential gate (`login`, `init`, `token`) ----
+	//
+	// Every flag here records PRESENCE beside its value, for the same reason
+	// --body does, and here it is load-bearing repeatedly. All of main.ts's reads
+	// are `??`, which is nullish — NOT falsy — so an explicitly empty flag is a
+	// value:
+	//
+	//	--scopes ""    a usage error, not "the server default" (scopes.ts:57);
+	//	               absent-vs-empty is the whole of the cli/007 fix
+	//	--password ""  an explicit empty password (the vector has a case for it),
+	//	               not a reason to open a prompt the user did not ask for
+	//	--token ""     `init`'s `opts.token ?? boot.token` keeps the empty flag and
+	//	               refuses, rather than silently using the bootstrap file's
+	Base       string
+	HasBase    bool
+	URL        string // `init --url`, the documented alias for --base
+	Token      string
+	HasToken   bool
+	HasAccount bool
+	Name       string
+	Scopes     string
+	HasScopes  bool
+	// Password is never printed, never logged and never stored. It exists in this
+	// struct for the length of one derivation; what travels is the derived key.
+	Password    string
+	HasPassword bool
+	Offline     bool
+	DryRun      bool
+}
+
+// scopesFlag returns --scopes the way scopes.ParseFlag wants it: nil for absent,
+// a pointer to the (possibly empty) value for present.
+func (a args) scopesFlag() *string {
+	if !a.HasScopes {
+		return nil
+	}
+	return &a.Scopes
 }
 
 // at is positionals[n] or "" — main.ts reads a missing positional as undefined
@@ -94,6 +132,7 @@ func parse(argv []string) args {
 				a.DB = value()
 			case "account":
 				a.Account = value()
+				a.HasAccount = true
 			case "mailbox":
 				a.Mailbox = value()
 			case "n":
@@ -115,6 +154,26 @@ func parse(argv []string) args {
 			case "body":
 				a.Body = value()
 				a.HasBody = true
+			case "base":
+				a.Base = value()
+				a.HasBase = true
+			case "url":
+				a.URL = value()
+			case "token":
+				a.Token = value()
+				a.HasToken = true
+			case "name":
+				a.Name = value()
+			case "scopes":
+				a.Scopes = value()
+				a.HasScopes = true
+			case "password":
+				a.Password = value()
+				a.HasPassword = true
+			case "offline":
+				a.Offline = true
+			case "dry-run":
+				a.DryRun = true
 			}
 
 		case arg == "-n":

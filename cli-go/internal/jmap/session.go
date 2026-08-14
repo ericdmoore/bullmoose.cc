@@ -1,11 +1,13 @@
 package jmap
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
@@ -35,11 +37,162 @@ import (
 // Mail capability URNs live in client.go (MailCap/SubmissionCap/MailUsing).
 
 // Session is the slice of the session resource the CLI reads —
-// packages/cli/src/jmap.ts Session.
+// packages/cli/src/jmap.ts Session, plus the account map `approvals` needs
+// (s10 T7).
 type Session struct {
 	APIURL      string `json:"apiUrl"`
 	DownloadURL string `json:"downloadUrl"`
 	Username    string `json:"username"`
+	// PrimaryAccounts maps a capability URN to the account that serves it;
+	// `init` reads the mail URN to pick a default account (main.ts:476).
+	PrimaryAccounts map[string]string `json:"primaryAccounts"`
+	// RawAccounts is kept as raw JSON because ORDER MATTERS: main.ts:483 walks
+	// Object.entries(session.accounts), and a Go map would reorder them on every
+	// run — turning `init`'s stored account list, and the `--json` record, into
+	// something that differs between two identical invocations.
+	RawAccounts json.RawMessage `json:"accounts"`
+}
+
+// SessionAccount is one entry of the RFC 8620 §2 `accounts` map, IN THE ORDER
+// the server sent it. The CLI reads it because a human's agents are separate
+// PRINCIPALS on separate ACCOUNTS (s10 T7): the mirror's account list is what
+// this login synced mail for, and the agent accounts a supervisory grant opens
+// are not in it. The session is the only live answer to "what can I reach right
+// now" — recomputed from grants on every request, so a revoked grant drops out
+// immediately.
+type SessionAccount struct {
+	ID         string
+	Name       string
+	IsPersonal bool
+	IsReadOnly bool
+	// Capability URN → its per-account object. Kept raw: this package parses
+	// only the agent capability, and re-marshalling the rest would invent a
+	// schema for capabilities the CLI does not read.
+	AccountCapabilities map[string]json.RawMessage
+}
+
+// AgentAccount is one account the approvals queue spans, with the authority the
+// SERVER reported for it.
+type AgentAccount struct {
+	AccountID  string
+	Name       string
+	IsPersonal bool
+	// MayDecide gates ActionProposal/set (the `draft` scope); MayApproveIrreversible
+	// gates a tier-3 approve (the `send` scope — the capability wall).
+	MayDecide              bool
+	MayApproveIrreversible bool
+}
+
+// agentCapability is the per-account object session.ts publishes under AgentCap.
+// Pointers, so ABSENT and false are distinguishable: a server that predates T7
+// reports neither, and the honest default there is "let the server decide"
+// (true) — the client's flags are a courtesy, the server is the gate.
+type agentCapability struct {
+	MayDecide              *bool `json:"mayDecide"`
+	MayApproveIrreversible *bool `json:"mayApproveIrreversible"`
+}
+
+func boolOrTrue(p *bool) bool {
+	if p == nil {
+		return true // a server that predates s10 T7 reports neither; the server is the gate
+	}
+	return *p
+}
+
+// Accounts decodes RawAccounts PRESERVING KEY ORDER (see the field's note) and
+// carries each account's capability objects, so one decoder serves both callers:
+// `init` needs the order, the approvals queue needs the authority flags.
+func (s *Session) Accounts() ([]SessionAccount, error) {
+	if len(s.RawAccounts) == 0 {
+		return nil, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(s.RawAccounts))
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	if delim, ok := tok.(json.Delim); !ok || delim != '{' {
+		return nil, &bmio.CliError{Msg: "jmap: session accounts is not an object", Code: bmio.ExitFail}
+	}
+	var out []SessionAccount
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		id, _ := key.(string)
+		var value struct {
+			Name                string                     `json:"name"`
+			IsPersonal          bool                       `json:"isPersonal"`
+			IsReadOnly          bool                       `json:"isReadOnly"`
+			AccountCapabilities map[string]json.RawMessage `json:"accountCapabilities"`
+		}
+		if err := dec.Decode(&value); err != nil {
+			return nil, err
+		}
+		out = append(out, SessionAccount{
+			ID:                  id,
+			Name:                value.Name,
+			IsPersonal:          value.IsPersonal,
+			IsReadOnly:          value.IsReadOnly,
+			AccountCapabilities: value.AccountCapabilities,
+		})
+	}
+	return out, nil
+}
+
+// HasAccount reports whether the session serves this account — the check
+// main.ts:477 makes before storing an accountId it was handed.
+func (s *Session) HasAccount(id string) bool {
+	accounts, err := s.Accounts()
+	if err != nil {
+		return false
+	}
+	for _, a := range accounts {
+		if a.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// AgentAccounts is every account the approvals queue spans, with the authority
+// the SERVER reported. Sorted: yours before your agents', then by name.
+func (s *Session) AgentAccounts() []AgentAccount {
+	accounts, err := s.Accounts()
+	if err != nil {
+		return nil
+	}
+	out := make([]AgentAccount, 0, len(accounts))
+	for _, acc := range accounts {
+		raw, ok := acc.AccountCapabilities[AgentCap]
+		if !ok {
+			continue
+		}
+		cap := agentCapability{}
+		_ = json.Unmarshal(raw, &cap)
+		name := acc.Name
+		if name == "" {
+			name = acc.ID
+		}
+		out = append(out, AgentAccount{
+			AccountID:              acc.ID,
+			Name:                   name,
+			IsPersonal:             acc.IsPersonal,
+			MayDecide:              boolOrTrue(cap.MayDecide),
+			MayApproveIrreversible: boolOrTrue(cap.MayApproveIrreversible),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].IsPersonal != out[j].IsPersonal {
+			return out[i].IsPersonal // yours before your agents'
+		}
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].AccountID < out[j].AccountID
+	})
+	return out
 }
 
 // NewSessionClient builds a client that resolves its endpoints from the session
