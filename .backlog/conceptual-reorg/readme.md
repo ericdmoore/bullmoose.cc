@@ -60,8 +60,9 @@ Threads
   ├── decisions (new)
   ├── tasks (new)
   ├── calendar(existing) 
-  ├── ask(search) - chat interface: goal is find witihn my data someting im looking for
+  ├── ask(search) - chat interface: goal is find witihn my data someting im looking for or answer a question from my data.
   ├── agents (existing)
+  ├── connections (MCP connections to the outside - would hold OAuth tokens etc)
   └── agent-log (new)
 
 ⸻
