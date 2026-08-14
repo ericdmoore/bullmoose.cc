@@ -1,6 +1,7 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
-import type { ContactCardRow, JSContactCard } from "@bullmoose/mailstore";
+import { QUARANTINE_ROLE, type ContactCardRow, type JSContactCard, type Mailstore } from "@bullmoose/mailstore";
+import { budgetExhaustedSql, budgetMonthStartMs, budgetPeriodKey } from "@bullmoose/scheduling";
 import { authorizeAccount } from "../auth";
 import {
   accountState,
@@ -62,16 +63,96 @@ import {
  * learning pipeline can never mistake it for negative feedback.
  */
 
-/** Rejection reasons — the no-thanks signal (arch.md §3). `notNow` is a snooze,
- * not a real rejection; the training/autonomy semantics are s03.D T2. Here we
- * only preserve the DATA.
+/** Rejection reasons — the no-thanks signal (arch.md §3), as revised by
+ * decline-taxonomy.md. A reason earns its place only if it changes what the
+ * agent does NEXT, so each of the three steers a different correction:
+ *
+ *   wrongContent  right target, wrong output (the reply was bad, the event
+ *                 details off) → fix GENERATION, keep the trigger.
+ *   wrongAction   wrong target: it should not have proposed this KIND of thing
+ *                 at all → fix SELECTION / policy. The loudest, and rare by
+ *                 design — frequent `wrongAction` is a miscalibrated binding
+ *                 (a config fix, s10-agents), not a per-proposal correction.
+ *   unsafe        it leaked private information, or made a commitment on the
+ *                 human's behalf. CATEGORICALLY SEPARATE from the other two: a
+ *                 HARD negative, weighted heavily, never tolerated repeated —
+ *                 not a stronger flavour of "no".
+ *
+ * `notNow` is RETIRED (decline-taxonomy.md). It was a grab-bag of three
+ * different gradients under one label — "I'll do it myself" (POSITIVE on
+ * selection → `tookItMyself`), "not due yet" (neutral, a scheduling signal →
+ * edit `due_at` on the row, s11 T1, which records nothing) and "meh, later" (a
+ * weak negative that collapses into a real reason). It was never a quality
+ * judgment at all, which is why it read as confusing. New decisions may not
+ * carry it.
+ *
+ * HISTORY IS NOT REWRITTEN. Retiring a reason narrows the WRITE path only.
+ * Rows whose `decision_json` already carries `reason: "notNow"` keep it
+ * verbatim — no migration, no backfill — and `proposalToJmap` projects
+ * `decision` unvalidated, so a legacy decision still reads. A recorded human
+ * decision is a fact; rewriting one to fit a later taxonomy would be exactly
+ * the audit hole this codebase refuses everywhere else. Clients render an
+ * unrecognized reason AS ITSELF, marked retired (webmail rows.ts
+ * `describeReason`, cli-go `proposal.ReasonLabel`).
  *
  * `needsInfo` is deliberately NOT in this set (decline-taxonomy.md): it is an
  * ACTION (`status: "info-requested"`), never a reject reason, so it can never
  * land in a rejection record — the taxonomy's invariant excludes
- * tookItMyself/defer/needsInfo from the negative signal, and the enum is where
- * that invariant is enforced on the write path. */
-const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "notNow"]);
+ * tookItMyself/needsInfo from the negative signal, and the enum is where that
+ * invariant is enforced on the write path.
+ *
+ * ⚠️ THE RL INVARIANT, for whoever writes the first consumer: `unsafe` is the
+ * categorically-separate hard negative and must be weighted as such, never
+ * averaged in with wrongContent/wrongAction; `needsInfo` and `tookItMyself`
+ * must stay OUT of the negative signal entirely. Nothing reads these reasons
+ * for learning or scoring today — this enum and the render paths are the only
+ * readers — so the invariant lives here until there is a pipeline to put it in.
+ *
+ * ⚠️ THE INVARIANT GAINS A THIRD EXCLUSION (s11 T9): **a declined
+ * `budget-overrun` is not negative feedback about the agent.** It joins
+ * `tookItMyself` and `needsInfo` outside the negative signal, and for a sharper
+ * reason than either: it is not a judgment about the agent's work AT ALL. The
+ * proposal says "this binding is out of money and N invocations are waiting" —
+ * declining says "not this month", which is a statement about the human's
+ * wallet. Training on it would teach an agent to stop proposing work the human
+ * WANTED but could not afford in August, which is reward poisoning with extra
+ * steps. Enforced structurally rather than documented: `NO_FAULT_KINDS` below
+ * refuses a reject `reason` on those kinds entirely, so the negative signal
+ * cannot be written in the first place — the same discipline that keeps
+ * `needsInfo` out of this enum. */
+const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "unsafe"]);
+
+/**
+ * s12 — the mid-band batch (services/agent `midBandProposal.ts` mints it under
+ * this exact string; the two packages do not share a module, so the kind is
+ * spelled here and pinned by `actionProposalHeldMail.test.ts`).
+ *
+ * Approve RELEASES the held messages to the Inbox as human rescues (ham
+ * labels); decline CONFIRMS the shunts (spam labels). Both are answers, and
+ * both clear the question from the queue — which is the whole point: what the
+ * doorman cannot decide becomes a decision, not a folder.
+ */
+const HELD_MAIL_REVIEW = "held-mail-review";
+
+/**
+ * Kinds whose DECLINE says nothing about the agent, and which therefore may not
+ * carry a reject reason (s11 T9; decline-taxonomy.md's excluded-from-negative-
+ * signal rule). A `budget-overrun` decline is "keep waiting" — the work is not
+ * cancelled, no invocation changes status, and `decision_json` records the
+ * decider and an optional note, never a fault.
+ *
+ * This is where the invariant is ENFORCED on the write path, so the first RL
+ * consumer inherits it whether or not it reads this comment: it cannot find a
+ * `reason` on one of these rows, because none can be written.
+ *
+ * ⚠️ A FOURTH EXCLUSION (s12): a declined `held-mail-review` is not negative
+ * feedback either — it is an ANSWER. The proposal asks "the boundary could not
+ * judge these; spam or not?", so declining says "yes, spam, confirm the shunt",
+ * which is the agent being RIGHT to ask. `wrongAction` on it would teach a
+ * doorman to stop asking about mail it cannot judge, i.e. to guess — the exact
+ * behaviour the mid-band proposal exists to replace.
+ */
+const NO_FAULT_KINDS = new Set(["budget-overrun", HELD_MAIL_REVIEW]);
 
 /**
  * The tier-2 post-approval retraction window. A tier-2 approve enters the hold
@@ -349,6 +430,45 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
               now,
             )
             .run();
+          // ⚠️ THE DEADLOCK s11 T9 FOUND, and it is not confined to T9's kind.
+          //
+          // The answer round is an ordinary invocation for the proposal's
+          // binding, so it goes through the ordinary eligibility gate — and if
+          // that binding's monthly budget is SPENT, the gate holds the paid
+          // cloud off it exactly as it holds off every other invocation. The
+          // round would sit unanswered until a free runtime appeared or the
+          // month rolled, with the human's decision clock paused the whole
+          // time. On a `budget-overrun` proposal that is absurd by
+          // construction: "what would it cost?" cannot be answered because
+          // there is no money to answer with, which is the dead end T9 exists
+          // to close, reappearing one level up.
+          //
+          // The fix reuses T3 rather than inventing anything: stamp the round
+          // past-due, and the overdue backstop — which claims OUTSIDE the
+          // policy gate precisely so budget exhaustion cannot strand work —
+          // picks it up on the next sweep. The answer handler is untouched, and
+          // so is the round's cost accounting (chronic needsInfo still shows up
+          // in $/approved-action, s10 T3).
+          //
+          // Guarded by the gate's OWN budget fragment, so the stamp lands only
+          // on the rounds that would actually deadlock and its arithmetic can
+          // never drift from the gate's: a binding under its cap (or covered by
+          // an approved overage) leaves `due_at` NULL and behaves exactly as it
+          // did before T9.
+          const gateNow = Date.now();
+          await ctx.env.DB.prepare(
+            `UPDATE agent_invocations SET due_at = ?
+              WHERE account_id = ? AND id = ?
+                AND ${budgetExhaustedSql("agent_invocations")}`,
+          )
+            .bind(
+              gateNow,
+              access.accountId,
+              answerInvId,
+              budgetMonthStartMs(gateNow),
+              budgetPeriodKey(gateNow),
+            )
+            .run();
           applyEntries.push({
             collection: "AgentInvocation",
             created: [answerInvId],
@@ -367,10 +487,37 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         if (editedPayload !== undefined && (editedPayload === null || typeof editedPayload !== "object")) {
           throw new SetErrorSignal("invalidProperties", "editedPayload must be an object", ["editedPayload"]);
         }
-        const decision = buildDecision(ctx, patch.decision);
+        const decision = buildDecision(ctx, patch.decision, row.kind);
 
         const now = Date.now();
         if (status === "rejected") {
+          // ---- decline = keep waiting (s11 T9, for a budget-overrun) ----
+          // THE TAXONOMY INVARIANT, at the decision site: declining a
+          // `budget-overrun` records the decision and NOTHING ELSE. The waiting
+          // invocations stay `pending` — no cancellation, no `failed`, no status
+          // change of any kind — because the answer was "not this month", not
+          // "you were wrong to ask". `NO_FAULT_KINDS` (above) has already
+          // refused any reject reason, so nothing negative about the agent can
+          // reach `decision_json`, and the first RL consumer inherits the
+          // exclusion as a property of the data rather than as advice:
+          // budget declines join tookItMyself/needsInfo outside the negative
+          // signal (decline-taxonomy.md's "the rule a learning pipeline must not
+          // break"). The work simply waits for the month to roll — which it was
+          // already doing when the proposal was raised.
+          //
+          // ---- decline = CONFIRM THE SHUNTS (s12 held-mail-review) ----
+          // The one kind whose decline is not "do nothing": here the verb is
+          // an answer ("yes, that is spam"), so it writes the judgment the
+          // hold never had — a 'shunted' chain row per message and a spam
+          // label per message. The mail does not move (it is already in the
+          // right place); what changes is that it is now DECIDED, which is
+          // what stops the sweep asking about it again.
+          if (row.kind === HELD_MAIL_REVIEW) {
+            const original = emailIdList(safeJson(row.payload_json).emailIds) ?? [];
+            applyEntries.push(
+              ...(await confirmHeldBatch(ctx, access, row, original)),
+            );
+          }
           await ctx.env.DB.prepare(
             `UPDATE agent_proposals SET status = 'rejected', decided_at = ?,
                decision_json = ?, edited_payload_json = COALESCE(?, edited_payload_json)
@@ -722,6 +869,168 @@ async function applyProposal(
       };
     }
 
+    case "budget-overrun": {
+      // s11 T9 — approve applies a BOUNDED OVERAGE, not a raised cap.
+      //
+      // The whole point of the kind: "spend a bit more this month" and "spend
+      // more every month" are different decisions, so this writes a
+      // period-scoped grant into `agent_budget_overages` and leaves
+      // `config_json.budgets.spendPerMonth` untouched. Raising the cap
+      // permanently is a CONFIG edit with its own route (`PATCH
+      // /agent-bindings/{id}`), which is what keeps one click from silently
+      // becoming standing policy.
+      //
+      // The gate reads this row directly: `budgetExhaustedSql` compares the
+      // period's spend against `cap + SUM(amount_micros)`, so the approval is a
+      // real widening of the claimant set the moment it lands — no cache, no
+      // second source of truth, and the pure `budgetExhausted()` twin agrees by
+      // test.
+      const bindingId = str(payload.bindingId);
+      const periodKey = str(payload.periodKey);
+      const amount = payload.overageMicros;
+      if (!bindingId || !periodKey || typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "a budget-overrun payload needs bindingId, periodKey and a positive overageMicros " +
+            "(the BOUND — an unbounded overage is a raised cap by another name)",
+          ["payload"],
+        );
+      }
+      // THE PERIOD BOUNDARY, said out loud. The proposal's `expiresAt` is the
+      // period end, so a pending one should never survive the roll — but the
+      // expiry sweep is a cron and this is the authoritative check. An overage
+      // keyed to a finished month would be inert (the gate only sums the
+      // CURRENT period), and silently writing an inert grant while reporting
+      // "approved" is exactly the kind of lie this codebase refuses.
+      if (periodKey !== budgetPeriodKey(Date.now())) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `this overage was asked for ${periodKey}, which has ended — the budget has since reset, ` +
+            "so there is nothing to lift. The work it was about is claimable again.",
+          ["payload"],
+        );
+      }
+      const binding = await ctx.env.DB.prepare(
+        `SELECT id FROM agent_bindings WHERE account_id = ? AND id = ?`,
+      )
+        .bind(access.accountId, bindingId)
+        .first<{ id: string }>();
+      if (!binding) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `binding "${bindingId}" not found in this account`,
+          ["payload"],
+        );
+      }
+      await ctx.env.DB.prepare(
+        `INSERT INTO agent_budget_overages
+           (account_id, binding_id, period_key, amount_micros, proposal_id, approved_by, approved_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (account_id, binding_id, period_key, proposal_id) DO NOTHING`,
+      )
+        .bind(
+          access.accountId,
+          bindingId,
+          periodKey,
+          Math.floor(amount),
+          row.id,
+          ctx.principal.username,
+          Date.now(),
+        )
+        .run();
+      // The grant is REVERSIBLE, which is what makes this tier 1 honest: the
+      // undo handle deletes the row and the cap snaps back. Money already spent
+      // under it is not recoverable — that asymmetry is precisely why the grant
+      // is bounded and period-scoped instead of a cap edit.
+      return {
+        entries: [],
+        undo: { action: "revoke-overage", bindingId, periodKey, proposalId: row.id },
+      };
+    }
+
+    case HELD_MAIL_REVIEW: {
+      // s12 — approve RELEASES the batch. Each release is a `rescueQuarantined`
+      // and not some new verb: a human pulling held mail into the inbox IS the
+      // rescue path (the move, the 'rescued' chain row naming what it was
+      // rescued from, the graduated-domain demotion, and the ham label that
+      // makes the escape hatch feed the filter). Reusing it means the human's
+      // answer here and the human's answer in bouncer@'s false-positive
+      // conversation are the same event, recorded the same way.
+      const asked = emailIdList(safeJson(row.payload_json).emailIds);
+      if (!asked || asked.length === 0) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "a held-mail-review payload needs a non-empty emailIds array",
+          ["payload"],
+        );
+      }
+      const chosen = emailIdList(payload.emailIds);
+      if (!chosen) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "a held-mail-review payload needs a non-empty emailIds array",
+          ["payload"],
+        );
+      }
+      // PARTIAL RELEASE, and it needs no new verb: an edited `emailIds` is the
+      // human saying "these ones". The edit may only NARROW the batch — this
+      // proposal is about the messages it named, and an id from outside it has
+      // no rationale, no evidence and no chain row behind it here.
+      const outside = chosen.filter((id) => !asked.includes(id));
+      if (outside.length > 0) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `held-mail-review emailIds may only NARROW the batch this proposal named; ` +
+            `${outside.slice(0, 3).join(", ")} ${outside.length === 1 ? "was" : "were"} not in it`,
+          ["payload"],
+        );
+      }
+
+      const releasedIds: string[] = [];
+      const touchedMailboxes = new Set<string>();
+      for (const emailId of chosen) {
+        const { rescued } = await store.rescueQuarantined(
+          access.accountId,
+          emailId,
+          ctx.principal.username,
+        );
+        // Not rescued = it is no longer held (a race, or an answer that landed
+        // first). The rescue path already refuses to write a second chain row;
+        // reporting only what actually moved keeps the changelog honest.
+        if (rescued) releasedIds.push(emailId);
+      }
+      // The complement is CONFIRMED, not left in limbo. A partial approve is
+      // one decision about the whole batch — "release these, the rest are
+      // spam" — so the messages the human did not pick get the same judgment a
+      // decline writes. Leaving them held-and-unanswered would rebuild the
+      // pile one edit at a time.
+      const confirmedIds = await confirmHeldEmails(
+        store,
+        access.accountId,
+        asked.filter((id) => !chosen.includes(id)),
+        ctx.principal.username,
+      );
+
+      for (const id of await roleMailboxIds(ctx, access.accountId)) touchedMailboxes.add(id);
+      const entries: ChangeEntry[] = [];
+      const touchedEmails = [...releasedIds, ...confirmedIds];
+      if (touchedEmails.length > 0) {
+        entries.push({ collection: "Email", created: [], updated: touchedEmails, destroyed: [] });
+        entries.push({
+          collection: "Mailbox",
+          created: [],
+          updated: [...touchedMailboxes],
+          destroyed: [],
+        });
+      }
+      // No `undo` handle. A released message is undone by moving it back — an
+      // ordinary Email/set the human can already make — and a handle naming an
+      // "un-release" nothing implements would be a promise this codebase
+      // cannot keep. The reversibility that makes this tier 1 is real; the
+      // machine affordance for it is `move`, not a proposal replay.
+      return { entries };
+    }
+
     default:
       throw new SetErrorSignal(
         "invalidProperties",
@@ -729,6 +1038,69 @@ async function applyProposal(
         ["kind"],
       );
   }
+}
+
+/** The two mailboxes a held-mail decision can touch, for the changelog. */
+async function roleMailboxIds(ctx: RequestContext, accountId: string): Promise<string[]> {
+  const { results } = await ctx.env.DB.prepare(
+    `SELECT id FROM mailboxes WHERE account_id = ? AND role IN ('inbox', ?)`,
+  )
+    .bind(accountId, QUARANTINE_ROLE)
+    .all<{ id: string }>();
+  return results.map((r) => r.id);
+}
+
+/** Confirm every still-held message in the list; returns the ones that moved
+ * from undecided to decided (a raced answer simply does not count twice). */
+async function confirmHeldEmails(
+  store: Mailstore,
+  accountId: string,
+  emailIds: string[],
+  actor: string,
+): Promise<string[]> {
+  const confirmed: string[] = [];
+  for (const emailId of emailIds) {
+    const res = await store.confirmQuarantined(accountId, emailId, actor);
+    if (res.confirmed) confirmed.push(emailId);
+  }
+  return confirmed;
+}
+
+/** The decline path's application: confirm the whole batch, and report the
+ * mailboxes for the caller's single commit. */
+async function confirmHeldBatch(
+  ctx: RequestContext,
+  access: { accountId: string; tenantId: string },
+  row: ProposalJoinRow,
+  emailIds: string[],
+): Promise<ChangeEntry[]> {
+  if (emailIds.length === 0) return [];
+  const store = storeFor({ ...ctx, agent: { binding: row.binding_name, invocation: row.id } });
+  const confirmed = await confirmHeldEmails(
+    store,
+    access.accountId,
+    emailIds,
+    ctx.principal.username,
+  );
+  if (confirmed.length === 0) return [];
+  return [
+    { collection: "Email", created: [], updated: confirmed, destroyed: [] },
+    {
+      collection: "Mailbox",
+      created: [],
+      updated: await roleMailboxIds(ctx, access.accountId),
+      destroyed: [],
+    },
+  ];
+}
+
+/** A payload `emailIds`: a non-empty array of strings, or null. Absent, empty
+ * and "a string that looks like a list" are all null — a decision that acts on
+ * nothing must be refused rather than silently succeed. */
+function emailIdList(v: unknown): string[] | null {
+  if (!Array.isArray(v) || v.length === 0) return null;
+  if (!v.every((x) => typeof x === "string" && x.length > 0)) return null;
+  return v as string[];
 }
 
 // ---- helpers --------------------------------------------------------------
@@ -817,16 +1189,32 @@ function parseDueAt(raw: unknown): number | null {
   );
 }
 
-/** The decision record (arch.md §3): who + reason enum + optional free text. */
-function buildDecision(ctx: RequestContext, raw: unknown): Record<string, unknown> {
+/** The decision record (arch.md §3): who + reason enum + optional free text.
+ *
+ * The WRITE path is strict — only the live enum lands, so a retired reason
+ * (`notNow`) is refused here and cannot enter a new record. The READ path
+ * (`proposalToJmap`) is deliberately not: history keeps whatever it was
+ * recorded with. Strict in, tolerant out. */
+function buildDecision(ctx: RequestContext, raw: unknown, kind: string): Record<string, unknown> {
   const decision: Record<string, unknown> = { by: ctx.principal.username };
   if (raw && typeof raw === "object") {
     const r = raw as Record<string, unknown>;
     if (r.reason !== undefined) {
+      if (NO_FAULT_KINDS.has(kind)) {
+        // s11 T9 — the invariant, enforced. See NO_FAULT_KINDS.
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `a "${kind}" decision carries no reject reason: declining it means "not this month", ` +
+            "not a judgment about the agent's work, and recording a fault here would poison any " +
+            "learning loop that later reads decisions (decline-taxonomy.md). Use decision.note " +
+            "for a free-text why.",
+          ["decision"],
+        );
+      }
       if (typeof r.reason !== "string" || !REJECT_REASONS.has(r.reason)) {
         throw new SetErrorSignal(
           "invalidProperties",
-          "decision.reason must be wrongContent | wrongAction | notNow",
+          "decision.reason must be wrongContent | wrongAction | unsafe",
           ["decision"],
         );
       }
@@ -854,6 +1242,11 @@ function proposalToJmap(r: ProposalJoinRow, dueAt: number | null = null): Record
     rationale: r.rationale,
     evidence: safeJsonArray(r.evidence_json),
     status: r.status,
+    // Projected VERBATIM and unvalidated, on purpose: a decision recorded
+    // under an older taxonomy (`reason: "notNow"`, retired — see
+    // REJECT_REASONS) must still read. The enum narrows what may be WRITTEN,
+    // never what may be read back; clients mark an unrecognized reason retired
+    // rather than dropping or remapping it.
     decision: r.decision_json ? safeJson(r.decision_json) : null,
     createdAt: new Date(r.created_at).toISOString(),
     decidedAt: r.decided_at ? new Date(r.decided_at).toISOString() : null,

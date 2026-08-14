@@ -30,11 +30,13 @@ import {
 } from "../lib/approvals/needsInfo";
 import {
   HOLD_UNWIRED_NOTE,
+  declineNeedsReason,
   REJECT_REASONS,
   TIER3_CAPABILITY_NOTE,
   approvalsAccountId,
   approvalsGate,
   approveVerb,
+  describeReason,
   payloadText,
   summarizeProposal,
   tierLabel,
@@ -345,7 +347,7 @@ function PendingRow(props: {
   panel: Panel | undefined;
   setPanel: (panel: Panel | undefined) => void;
   onApprove: () => void;
-  onDecline: (reason: RejectReason, note: string) => void;
+  onDecline: (reason: RejectReason | undefined, note: string) => void;
   onNeedsInfo: (question: string) => void;
   onSubmitEdit: (form: EditorForm) => void;
   onCorrectDue: (dueAt: string | null) => void;
@@ -408,8 +410,12 @@ function PendingRow(props: {
           reason={panel.reason}
           note={panel.note}
           busy={busy}
+          needsReason={declineNeedsReason(p.kind)}
           onChange={(reason, note) => setPanel({ id: p.id, kind: "decline", reason, note })}
-          onSubmit={() => panel.reason && props.onDecline(panel.reason, panel.note)}
+          onSubmit={() => {
+            if (declineNeedsReason(p.kind) && !panel.reason) return;
+            props.onDecline(panel.reason, panel.note);
+          }}
           onCancel={() => setPanel(undefined)}
         />
       ) : panel?.kind === "needs-info" ? (
@@ -531,7 +537,10 @@ function HistoryRow({ p, now }: { p: ActionProposal; now: number }) {
       {p.decision ? (
         <p class="apq-fine">
           {p.status} by {p.decision.by}
-          {p.decision.reason ? ` — ${p.decision.reason}` : ""}
+          {/* describeReason, not the raw value: a decision recorded under an
+              older taxonomy renders as itself and marked retired, because
+              history is not migrated (rows.ts, decline-taxonomy.md). */}
+          {p.decision.reason ? ` — ${describeReason(p.decision.reason)}` : ""}
           {p.decision.note ? ` — “${p.decision.note}”` : ""}
         </p>
       ) : null}
@@ -696,15 +705,22 @@ function DeclinePanel(props: {
   reason: RejectReason | undefined;
   note: string;
   busy: boolean;
+  /** False on a NO-FAULT kind: the server refuses a reason there, so asking
+   * for one would make the verb unsendable (`declineNeedsReason`). */
+  needsReason: boolean;
   onChange: (reason: RejectReason | undefined, note: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
 }) {
   return (
     <div class="apq-editor">
-      <p class="apq-fine">Why not? The reason trains different things (or nothing).</p>
-      {REJECT_REASONS.map((r) => (
-        <label key={r.reason} class="apq-reason">
+      <p class="apq-fine">
+        {props.needsReason
+          ? "Why not? Each reason steers a different correction — the last one is a hard stop, not a stronger no."
+          : "Declining this is an answer, not a complaint: nothing negative is recorded about the agent."}
+      </p>
+      {(props.needsReason ? REJECT_REASONS : []).map((r) => (
+        <label key={r.reason} class={r.severe ? "apq-reason apq-reason-severe" : "apq-reason"}>
           <input
             type="radio"
             name="decline-reason"
@@ -725,7 +741,12 @@ function DeclinePanel(props: {
         />
       </label>
       <div class="actions">
-        <button type="button" class="danger" disabled={props.busy || !props.reason} onClick={props.onSubmit}>
+        <button
+          type="button"
+          class="danger"
+          disabled={props.busy || (props.needsReason && !props.reason)}
+          onClick={props.onSubmit}
+        >
           Decline
         </button>
         <button type="button" disabled={props.busy} onClick={props.onCancel}>

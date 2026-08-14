@@ -81,8 +81,13 @@ export interface BudgetState {
   /**
    * The binding's `config_json.budgets.spendPerMonth` (micro-USD) is set to a
    * number AND the current UTC calendar month's summed `cost_micros` for the
-   * binding has reached it. No spendPerMonth configured → never exhausted.
-   * A spendPerMonth of 0 means "never spend paid" and is always exhausted.
+   * binding has reached the EFFECTIVE ceiling. No spendPerMonth configured →
+   * never exhausted. A spendPerMonth of 0 means "never spend paid" and is
+   * exhausted from the first moment.
+   *
+   * Fold it with `budgetExhausted()` below rather than by hand: since s11 T9
+   * the ceiling is `cap + approved overage`, and the overage term is the whole
+   * point of the T9 proposal.
    */
   budgetExhausted: boolean;
   /**
@@ -131,6 +136,35 @@ export function escalationWindowMs(pastDurationsMs: readonly number[]): number {
     ESCALATION_WINDOW_MAX_MS,
     Math.max(ESCALATION_WINDOW_MIN_MS, ESCALATION_RETRY_FACTOR * median),
   );
+}
+
+/**
+ * THE BUDGET TERM, pure (s11 T9) — the fold behind `BudgetState.budgetExhausted`
+ * and the twin of `budgetExhaustedSql`'s comparison.
+ *
+ *   exhausted  ⟺  cap is a number  ∧  spent ≥ cap + approvedOverage
+ *
+ * The overage is what an APPROVED `budget-overrun` proposal grants: this
+ * binding, this period, an AMOUNT (micro-USD, the same unit as the cap and as
+ * `cost_micros`). It raises the ceiling for one period and nothing else — the
+ * cap in config is untouched, which is what keeps "spend a bit more this month"
+ * from silently becoming standing policy (devPlan T9).
+ *
+ * Amount rather than count, and the arithmetic is why: a count bounds no money
+ * (one expensive invocation outspends ten cheap ones), and an amount composes
+ * with the comparison that already exists — one addition, on both sides of the
+ * pure/SQL agreement, instead of a second and differently-shaped predicate.
+ *
+ * `capMicros: null` = no cap configured (or a non-numeric one) → never
+ * exhausted, and an overage against no cap is inert rather than a licence.
+ */
+export function budgetExhausted(p: {
+  capMicros: number | null;
+  spentMicros: number;
+  overageMicros: number;
+}): boolean {
+  if (p.capMicros === null) return false;
+  return p.spentMicros >= p.capMicros + p.overageMicros;
 }
 
 /**

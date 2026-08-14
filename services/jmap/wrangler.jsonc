@@ -24,6 +24,12 @@
     { "pattern": "app.bullmoose.cc/.well-known/jmap", "zone_name": "bullmoose.cc" },
     { "pattern": "app.bullmoose.cc/api/*", "zone_name": "bullmoose.cc" },
     { "pattern": "app.bullmoose.cc/auth/*", "zone_name": "bullmoose.cc" },
+    // The agent console's read interface (s03.E, src/console.ts). Same-origin
+    // for the same reason as the rest: services/agent — which owns
+    // /vault/credentials — has no public route and sends no CORS headers, so a
+    // browser cannot read these there. Nothing in webmail/src/pages is named
+    // `console`, and sameOrigin.test.ts keeps it that way.
+    { "pattern": "app.bullmoose.cc/console/*", "zone_name": "bullmoose.cc" },
     // Share links are public-by-design URLs handed to people with no account.
     // They live here because this worker serves them and the API base is what
     // mints them; giving them their own hostname is a product decision, not a

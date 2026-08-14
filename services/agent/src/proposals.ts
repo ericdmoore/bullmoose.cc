@@ -36,6 +36,14 @@ export interface ProposalSpec {
   evidence: Array<{ realm: string; objectId: string; note?: string }>;
   /** Pre-decision deadline; the sweep flips `pending`→`expired` past it. */
   expiresInMs?: number;
+  /**
+   * The same deadline as an ABSOLUTE instant (epoch ms), for the kinds whose
+   * window is a calendar edge rather than a duration — s11 T9's
+   * `budget-overrun` expires exactly at the budget period's end, and computing
+   * `end − now` here would drift by however many milliseconds passed between
+   * the caller's clock and this one. Wins over `expiresInMs` when both are set.
+   */
+  expiresAt?: number;
 }
 
 /** How long a human has to decide before a proposal expires (default). */
@@ -75,7 +83,7 @@ export async function emitProposal(
       spec.rationale,
       JSON.stringify(spec.evidence),
       now,
-      now + (spec.expiresInMs ?? DEFAULT_EXPIRY_MS),
+      spec.expiresAt ?? now + (spec.expiresInMs ?? DEFAULT_EXPIRY_MS),
     )
     .run();
 

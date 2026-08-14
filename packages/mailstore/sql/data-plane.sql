@@ -59,7 +59,12 @@ CREATE TABLE IF NOT EXISTS mailboxes (
   account_id    TEXT NOT NULL,
   parent_id     TEXT,
   name          TEXT NOT NULL,
-  role          TEXT,                      -- inbox|sent|drafts|trash|junk|archive|quarantine
+  -- The IANA JMAP role registry (RFC 8621 §2), and ONLY it: an invented role
+  -- is rendered by a standards-native client as an ordinary folder with no
+  -- special handling. s12 held mail lives in the REGISTERED 'junk' role under
+  -- the display name 'Quarantined' — the role is the compatibility contract,
+  -- the name is our vocabulary (packages/mailstore QUARANTINE_ROLE/NAME).
+  role          TEXT,                      -- inbox|archive|drafts|junk|sent|trash|flagged|important
   sort_order    INTEGER NOT NULL DEFAULT 0,
   last_writer_principal   TEXT,             -- provenance (s03.A T1) — see header
   last_writer_binding     TEXT,
@@ -205,6 +210,45 @@ CREATE TABLE IF NOT EXISTS agent_bindings (
   PRIMARY KEY (account_id, id)
 );
 
+-- s10 T4 — append-only lifecycle log for the BINDING itself, on the
+-- grant_lifecycle model (control-plane.sql:197): no FK, because history has to
+-- outlive the binding row a `--destroy` removes.
+--
+-- Why this is not a `book_membership_log` row, since that is the s10 T2 chain
+-- for everything else about a governing book: that log's grain is
+-- (book_id, address, added|removed) and its fold MUST reproduce the book's
+-- current membership (`reconcileBookMembership` — divergence is an alarm, not a
+-- log line). Re-pointing a binding at a different book changes no address in
+-- either book, so there is no honest value for the NOT NULL `address` column;
+-- and writing "removed" rows on the old book plus "added" rows on the new one
+-- would make the fold disagree with both books and trip the reconciliation
+-- invariant as a false tamper alarm. The membership chain answers "who is in
+-- this book?"; this answers "which book governs this binding?" — two different
+-- questions, so two logs rather than one overloaded grain.
+--
+-- One event today (`recipients-book-changed`), written by
+-- `PATCH /agent-bindings/{id}` in the SAME db.batch as the UPDATE it describes.
+-- old_value/new_value are the previous and next `recipients_book_id`; NULL on
+-- either side is legible and load-bearing (NULL = unbound = cannot send).
+-- `via_proposal_id` is the WHY, exactly as in grant_lifecycle: NULL for a
+-- direct admin write, filled when a T3 proposal authorized the change.
+--
+-- New table, so a plain schema re-run creates it; listed in infra/migrations.mjs
+-- (binding-lifecycle-table) so `bootstrap migrate` accounts for it.
+CREATE TABLE IF NOT EXISTS binding_lifecycle (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id      TEXT NOT NULL,
+  binding_id      TEXT NOT NULL,             -- bind_xxxxxxxx (no FK — see above)
+  event           TEXT NOT NULL,             -- 'recipients-book-changed'
+  old_value       TEXT,                      -- previous recipients_book_id (NULL = was unbound)
+  new_value       TEXT,                      -- next recipients_book_id (NULL = unbound ⇒ cannot send)
+  actor           TEXT,                      -- acting principal, or 'admin' on the admin plane
+  via_proposal_id TEXT,                      -- the WHY (s10 T2/T3); NULL for direct admin writes
+  at              INTEGER NOT NULL           -- epoch ms
+);
+CREATE INDEX IF NOT EXISTS binding_lifecycle_binding
+  ON binding_lifecycle (account_id, binding_id, id);
+
 -- Agent invocations — a synced collection (the AccountDO changelog is
 -- collection-agnostic). Pull-based: runtimes watch for pending work.
 CREATE TABLE IF NOT EXISTS agent_invocations (
@@ -287,6 +331,41 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
   -- liveness subquery reads it, so a worker deployed first fails every claim.
   claimant_free      INTEGER,
   claimant_caps_json TEXT,
+  -- s11 T3 — the overdue backstop's ALERT marker. The invariant the watchdog
+  -- holds is "no invocation with a past due_at sits pending SILENTLY": past
+  -- due, the cloud claims outside the policy gate (budget exhaustion is not
+  -- allowed to strand work) — EXCEPT where it may not claim at all, and then
+  -- the human is told instead. Two cases reach here:
+  --   'overdue-pinned'  privacy = 'pinned' (devPlan decision 0: privacy beats
+  --                     liveness; the work sits for a private runtime)
+  --   'overdue-unfit'   the cloud's declared capability vector cannot satisfy
+  --                     requires_json — claiming it would only fail
+  -- Neither is an ActionProposal: there is no decision to make and no action to
+  -- approve, so a proposal row would be a second store of a fact the invocation
+  -- already holds (arch.md §1's read-model rule). It is a marker: DURABLE (a
+  -- row, not a log line), QUERYABLE (AgentInvocation/get projects it;
+  -- AgentInvocation/query filters on it), and raised ONCE — the sweep's UPDATE
+  -- guards on `alert_kind IS NULL`, so repeated sweeps over the same stuck row
+  -- cannot storm. It is never cleared: that a deadline passed with nobody able
+  -- to take the work is a FACT about this run, and it stays on the row after a
+  -- homelab eventually claims it.
+  --
+  -- s11 T9 adds a THIRD value with a different job, and the difference is the
+  -- rule "marker when nothing can be decided; proposal when something can":
+  --   'budget-stranded:<YYYY-MM>'  the binding is out of monthly budget and
+  --                     this row is waiting on it. Unlike the two above there
+  --                     IS a human choice here ("spend anyway?"), so this
+  --                     marker does not stand alone — it is the IDEMPOTENCE KEY
+  --                     of a `budget-overrun` proposal, raised on ONE
+  --                     representative invocation per binding so the sweep asks
+  --                     once per period instead of every cron tick.
+  -- It is PERIOD-SCOPED in its value (the two overdue kinds are not) because
+  -- the question genuinely recurs: a new month is a new budget and a new ask.
+  -- Its guarded UPDATE therefore also admits a row carrying a budget marker
+  -- from an EARLIER period, and never one carrying an overdue marker — a passed
+  -- deadline is permanent and must not be overwritten by a money problem.
+  alert_kind         TEXT,
+  alert_at           INTEGER,
   PRIMARY KEY (account_id, id)
 );
 CREATE INDEX IF NOT EXISTS invocations_status
@@ -338,7 +417,14 @@ CREATE INDEX IF NOT EXISTS invocations_status
 --                        NULL = not paused (or no deadline existed).
 -- needsInfo is an ACTION, not a reject reason: it never writes decision_json,
 -- so it can never be mistaken for negative feedback (the taxonomy's invariant:
--- tookItMyself/defer/needsInfo are excluded from the negative signal).
+-- tookItMyself/needsInfo are excluded from the negative signal, and `unsafe` is
+-- the categorically-separate HARD negative — decline-taxonomy.md).
+--
+-- decision_json.reason is stored as written and NEVER migrated. The live enum
+-- is {wrongContent, wrongAction, unsafe}; `notNow` is retired, so rows decided
+-- before the revision still carry it and are left exactly as recorded — a human
+-- decision is a fact, and a backfill would be an audit hole. Readers tolerate
+-- an unrecognized reason and render it as itself, marked retired.
 --
 -- New table, so a plain schema re-run (CREATE TABLE IF NOT EXISTS) DOES create it
 -- on an existing shard; it is still listed in infra/migrations.mjs
@@ -371,6 +457,57 @@ CREATE INDEX IF NOT EXISTS agent_proposals_status
   ON agent_proposals (account_id, status);
 CREATE INDEX IF NOT EXISTS agent_proposals_expires
   ON agent_proposals (account_id, expires_at);
+
+-- s11 T9 — an APPROVED, BOUNDED budget overage. One binding, one period, one
+-- amount; never a raised cap.
+--
+-- The hole T9 closes: a binding whose `config_json.budgets.spendPerMonth` is
+-- spent strands its pending work when no free runtime is live — the policy gate
+-- says "budget exhausted → free claimants only" and nobody free is listening.
+-- That is a QUESTION with a real answer ("spend anyway?"), so it earns the
+-- approvals queue as a `budget-overrun` proposal; approving it lands a row here.
+--
+-- Why this is a table and not a `config_json` key: raising `spendPerMonth` is a
+-- CONFIG edit with its own route (`PATCH /agent-bindings/{id}`), and one click
+-- must never silently become standing policy (devPlan T9). An approved overage
+-- is a DECISION — it has an approver, a proposal that argued for it, a
+-- timestamp and a bound — so it is stored as the record it is, not folded into
+-- the binding's configuration where the next config write would have to
+-- preserve it and an audit could not tell the two apart.
+--
+-- AMOUNT, not count (micro-USD, same unit as spendPerMonth and cost_micros).
+-- A count bounds nothing: one expensive invocation can outspend ten cheap ones,
+-- and "budget" is denominated in money everywhere else in this schema. The
+-- gate's arithmetic is therefore a single addition — the effective ceiling for
+-- a period is `spendPerMonth + SUM(amount_micros)` — which is why the pure
+-- `budgetExhausted()` and `budgetExhaustedSql()` can stay in provable
+-- agreement (packages/scheduling).
+--
+-- period_key is the UTC calendar month, 'YYYY-MM' (`budgetPeriodKey`), the SAME
+-- bucket the spend sum uses. It is what makes the grant expire by ARITHMETIC
+-- rather than by a sweep: at the month roll the spend resets AND the overage
+-- stops matching, both at the same instant, with no cleanup job and no row to
+-- delete. An overage never outlives the question it answered.
+--
+-- Keyed by proposal too, so two approvals (a re-ask in a later period, or a
+-- second grant a human deliberately made) are two auditable rows that SUM,
+-- rather than one silently overwriting the other.
+--
+-- New table, so a plain schema re-run (CREATE TABLE IF NOT EXISTS) DOES create
+-- it. Existing DBs: infra/migrations.mjs `budget-overage-table` — a DEPLOY
+-- BLOCKER, unlike most new tables, because the claim gate names it in EVERY
+-- claim statement's WHERE (budgetExhaustedSql), so a worker deployed against a
+-- database missing it fails every claim rather than one route.
+CREATE TABLE IF NOT EXISTS agent_budget_overages (
+  account_id    TEXT NOT NULL,
+  binding_id    TEXT NOT NULL,
+  period_key    TEXT NOT NULL,      -- 'YYYY-MM', UTC (budgetPeriodKey)
+  amount_micros INTEGER NOT NULL,   -- the BOUND, micro-USD; added to the cap
+  proposal_id   TEXT NOT NULL,      -- the budget-overrun proposal that argued it
+  approved_by   TEXT,               -- the deciding principal
+  approved_at   INTEGER NOT NULL,   -- epoch ms
+  PRIMARY KEY (account_id, binding_id, period_key, proposal_id)
+);
 
 -- Spend facts — the ledger behind analyst@ (agent ledger pipeline).
 -- One row per extracted receipt; SQL owns every aggregate. The dedup
@@ -658,10 +795,16 @@ CREATE TABLE IF NOT EXISTS deny_counters (
 -- 'blocked-book:personal', 'auth:dmarc', 'sieve:<ruleId>', 'bayes@0.97') so
 -- "why was this shunted?" is answerable by stage name, no archaeology.
 -- email_id is the stored message when there is one (REJECT-STORE keeps the
--- message rescuable in the quarantine mailbox; REJECT-AT-EDGE stores nothing
+-- message rescuable in the held mailbox; REJECT-AT-EDGE stores nothing
 -- and writes no chain row — counters only). actor carries the rescuing
 -- principal; via_message_id cites the authenticated directive (s10 decision-5
 -- pattern) when a conversation drove the event.
+--
+-- ⚠️ The table KEEPS this name although no mailbox carries a 'quarantine'
+-- role any more (s12: held mail lives in the registered 'junk' role, named
+-- 'Quarantined'). It is the CHAIN, not the folder — decisions about messages,
+-- which are the same events whatever the holding mailbox is called. Renaming
+-- it would churn history to rename something that was never the folder.
 --
 -- Events (s12 wave 2-C widened the vocabulary):
 --   'shunted'   a rejection stage held the message ('llm:spam' when the

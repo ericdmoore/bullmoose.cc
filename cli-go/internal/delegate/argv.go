@@ -52,10 +52,23 @@ var valueFlags = map[string]bool{
 	"calendar": true, "occurrence": true,
 	// ---- watch / agent ----
 	"sla": true, "allow": true, "reply-mode": true, "exec": true,
+	// ---- the agent config surface (s10 T4, Go-native `agents`) ----
+	// Go-native-only commands still declare their value flags on BOTH sides:
+	// this map's job is to know where a token ENDS, and a flag missing here
+	// makes Command() name a flag's value as the command. main.ts declares
+	// them for exactly that reason — there is no `agents` case in its switch.
+	"allow-sender": true, "recipients-book": true, "enabled": true,
+	"agent": true,
 	// ---- the I/O contract's own flags ----
 	"if-state": true, "as": true,
 	// ---- triage verbs (sVOL 019) ----
 	"add": true, "remove": true, "role": true,
+	// ---- approvals needs-info (s10 T3) ----
+	// `approvals` is Go-native, but the scanner still has to know `--question`
+	// takes a value or `bullmoose --question "why?" approvals …` would name the
+	// question text as the command. Declared on the TypeScript side too
+	// (packages/cli/src/main.ts), because argv_test.go checks BOTH directions.
+	"question": true,
 	// ---- paging ----
 	"n": true,
 }

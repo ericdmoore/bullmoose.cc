@@ -314,6 +314,28 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "binding-lifecycle-table",
+    why: "s10 T4's append-only provenance chain for the BINDING (which governing book, changed by whom, when). PATCH /agent-bindings/{id} appends a row in the same batch as a book re-point, so a provision worker deployed against a database missing it fails every re-point — but only that one route, so it is not a deploy blocker: reads, creates, the kill switch and delete are all untouched",
+    blocks: null,
+    check: tableExists("binding_lifecycle"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS binding_lifecycle (
+         id              INTEGER PRIMARY KEY AUTOINCREMENT,
+         account_id      TEXT NOT NULL,
+         binding_id      TEXT NOT NULL,
+         event           TEXT NOT NULL,
+         old_value       TEXT,
+         new_value       TEXT,
+         actor           TEXT,
+         via_proposal_id TEXT,
+         at              INTEGER NOT NULL
+       )`,
+      "CREATE INDEX IF NOT EXISTS binding_lifecycle_binding ON binding_lifecycle (account_id, binding_id, id)",
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
     id: "invocation-due-at",
     why: "s11 T1: the work's business deadline (third clock — distinct from expires_at and hold_until). Was a non-blocker in the T6 wave; since T2 the eligibility gate names due_at in EVERY claim statement's WHERE (jmap AgentInvocation/set and the agent worker's drain), so a worker deployed against a database missing it fails every claim and all agent mail stops",
     blocks: "deploy",
@@ -350,6 +372,41 @@ export const MIGRATIONS = [
       "ALTER TABLE agent_invocations ADD COLUMN claimant_caps_json TEXT",
     ],
     absent: ["CREATE TABLE agent_invocations (id TEXT NOT NULL, account_id TEXT NOT NULL)"],
+  },
+
+  {
+    id: "invocation-alert-columns",
+    why: "s11 T3: the overdue backstop's alert marker (pinned/unfit work past due_at — the 'not SILENTLY' half of the invariant). The agent worker's scheduled() sweep names alert_kind in its SELECT and its UPDATE, so a worker deployed against a database missing them throws in the cron hook and takes the retry-net drain down with it — the poke path survives, the sweeps do not",
+    blocks: "deploy",
+    needs: ["invocation-due-at"],
+    // alert_at is the last column applied — the group sentinel (precedent:
+    // invocation-cost-columns).
+    check: hasColumn("agent_invocations", "alert_at"),
+    up: [
+      "ALTER TABLE agent_invocations ADD COLUMN alert_kind TEXT",
+      "ALTER TABLE agent_invocations ADD COLUMN alert_at INTEGER",
+    ],
+    absent: ["CREATE TABLE agent_invocations (id TEXT NOT NULL, account_id TEXT NOT NULL)"],
+  },
+
+  {
+    id: "budget-overage-table",
+    why: "s11 T9: the approved, bounded budget overage a `budget-overrun` proposal grants. UNLIKE most new tables this IS a deploy blocker: the eligibility gate's budgetExhaustedSql names it in EVERY claim statement's WHERE (the effective ceiling is cap + SUM(amount_micros) for the period), so a jmap/agent worker deployed against a database missing it fails every claim and all agent mail stops — the same blast radius as invocation-claimant-columns, not the one-route failure a new table usually is",
+    blocks: "deploy",
+    check: tableExists("agent_budget_overages"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS agent_budget_overages (
+         account_id    TEXT NOT NULL,
+         binding_id    TEXT NOT NULL,
+         period_key    TEXT NOT NULL,
+         amount_micros INTEGER NOT NULL,
+         proposal_id   TEXT NOT NULL,
+         approved_by   TEXT,
+         approved_at   INTEGER NOT NULL,
+         PRIMARY KEY (account_id, binding_id, period_key, proposal_id)
+       )`,
+    ],
+    absent: [], // an empty database: the table simply is not there
   },
 
   {
@@ -440,6 +497,48 @@ export const MIGRATIONS = [
        )`,
     ],
     absent: [], // an empty database: the table simply is not there
+  },
+
+  {
+    id: "quarantined-mailbox-role",
+    why: "s12: held mail moves from the INVENTED role 'quarantine' to the REGISTERED 'junk' (RFC 8621 / IANA — an unregistered role is rendered by a standards client as an ordinary folder with no spam handling), displayed 'Quarantined'. Renames existing Junk mailboxes to the one vocabulary and drops the empty wave-1 quarantine mailboxes. NOT a deploy blocker: every reader looks up role='junk', so a shard that has not run this simply has an extra empty folder. ⚠️ The delete is GUARDED on the mailbox being empty — nothing has ever been shunted, so it should always be — and if one DOES hold mail the check stays failing and the deploy stops rather than moving a human's mail blind",
+    blocks: null,
+    check:
+      `SELECT CASE WHEN EXISTS (SELECT 1 FROM mailboxes WHERE role = 'quarantine')
+                     OR EXISTS (SELECT 1 FROM mailboxes WHERE role = 'junk' AND name = 'Junk')
+                   THEN 0 ELSE 1 END AS n`,
+    up: [
+      // Only the DEFAULT name is repainted. A human who renamed their junk
+      // folder chose that name, and a migration must not overrule a person.
+      `UPDATE mailboxes SET name = 'Quarantined' WHERE role = 'junk' AND name = 'Junk'`,
+      // Wave 1's second pile. Empty ones only: an account cannot hold two
+      // rows with the same role (mailboxes_role is UNIQUE), so a non-empty
+      // quarantine mailbox cannot simply be re-roled either — it needs a
+      // human to decide where its mail goes, and leaving the check failing is
+      // how this says so.
+      `DELETE FROM mailboxes
+        WHERE role = 'quarantine'
+          AND id NOT IN (SELECT mailbox_id FROM email_mailboxes)`,
+    ],
+    absent: [
+      `CREATE TABLE mailboxes (
+         id         TEXT NOT NULL,
+         account_id TEXT NOT NULL,
+         name       TEXT NOT NULL,
+         role       TEXT,
+         PRIMARY KEY (account_id, id)
+       )`,
+      `CREATE TABLE email_mailboxes (
+         account_id TEXT NOT NULL,
+         email_id   TEXT NOT NULL,
+         mailbox_id TEXT NOT NULL,
+         PRIMARY KEY (account_id, email_id, mailbox_id)
+       )`,
+      // The wave-1 world: a Junk folder AND a second pile beside it.
+      `INSERT INTO mailboxes (id, account_id, name, role)
+       VALUES ('mb_junk', 'a_1', 'Junk', 'junk'),
+              ('mb_quar', 'a_1', 'Quarantine', 'quarantine')`,
+    ],
   },
 
   {

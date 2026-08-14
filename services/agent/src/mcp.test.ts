@@ -365,3 +365,133 @@ describe("handleMcp — §6 auth gate", () => {
     expect(audit!.args).toContain("a_eric");
   });
 });
+
+// s02 T5 — the sleeper blocker. A third-party client has no way to learn a
+// bullmoose account id: they are `t_<tenant>__a_<uuid>`, they appear in no
+// discovery document, and the tool that would tell you used to need one to
+// answer. A model in that position guesses, fails, and gives up. These pin
+// the two halves of the fix — resolution is server-side, and the discovery
+// entry point takes no arguments — plus the thing that must NOT change: a
+// client-supplied id is still never trusted.
+describe("handleMcp — accountId resolves server-side (s02 T5)", () => {
+  const callTool = (args: Record<string, unknown>, fx: Fixture, id = 20) =>
+    call(
+      { jsonrpc: "2.0", id, method: "tools/call", params: { name: "spend_by_month", arguments: args, _meta: meta() } },
+      headers(),
+      fx,
+    );
+
+  it("20. omitting accountId defaults to the principal's single owned account", async () => {
+    const { res } = callTool({}, ericOwns());
+    const r = await res;
+    const b = (await r.json()) as any;
+    expect(r.status).toBe(200);
+    expect(b.error).toBeUndefined();
+    expect(b.result.isError).toBeUndefined();
+  });
+
+  it("21. two owned accounts refuse to be guessed at, and the error NAMES them", async () => {
+    // The point of naming: the next call can succeed. An error that says only
+    // "accountId is required" sends the model back to where it started.
+    const { res } = callTool({}, {
+      principalId: "p_eric",
+      accounts: [
+        { id: "a_eric", display_name: "Eric" },
+        { id: "a_work", display_name: "Work" },
+      ],
+      spend: [{ account_id: "a_eric" }],
+    });
+    const b = (await (await res).json()) as any;
+    expect(b.error.code).toBe(-32602);
+    expect(b.error.message).toContain("a_eric");
+    expect(b.error.message).toContain("a_work");
+  });
+
+  it("22. an owned account wins over a grant-reached one", async () => {
+    // Defaulting into someone else's mailbox because you hold a grant on it
+    // is the surprise this ordering exists to prevent.
+    const { res, writes } = callTool({}, {
+      principalId: "p_allen",
+      loginEmail: "allen@bullmoose.cc",
+      accounts: [{ id: "a_allen", display_name: "Allen" }],
+      otherAccounts: [{ id: "a_eric", display_name: "Eric" }],
+      grants: [{ id: "g1", grantee_account_id: "a_allen", target_account_id: "a_eric", scopes: ["read"] }],
+      spend: [{ account_id: "a_allen" }],
+    });
+    expect((await res).status).toBe(200);
+    // It resolved to the OWNED account, so no grant was traversed to get there.
+    expect(writes.some((w) => w.sql.includes("grant_audit"))).toBe(false);
+  });
+
+  it("23. with no owned account, a single grant-reached one is still resolvable", async () => {
+    const { res, writes } = callTool({}, {
+      principalId: "p_allen",
+      loginEmail: "allen@bullmoose.cc",
+      accounts: [{ id: "a_allen", display_name: "Allen" }],
+      otherAccounts: [{ id: "a_eric", display_name: "Eric" }],
+      grants: [{ id: "g1", grantee_account_id: "a_allen", target_account_id: "a_eric", scopes: ["read"] }],
+      spend: [{ account_id: "a_eric" }],
+    });
+    // a_allen is owned, so THIS fixture resolves to it — the grant-only case
+    // needs the principal to own nothing, which verifyBearer models as an
+    // accounts list containing only granted entries.
+    expect((await res).status).toBe(200);
+    expect(writes.some((w) => w.sql.includes("grant_audit"))).toBe(false);
+  });
+
+  it("24. a supplied accountId is STILL never trusted — the gate is unchanged", async () => {
+    // The defaulting is server-side resolution, not a relaxation. mcp.ts:347's
+    // rejection of a self-asserted id has to survive this task intact.
+    const { res } = callTool({ accountId: "a_stranger" }, ericOwns());
+    const r = await res;
+    const b = (await r.json()) as any;
+    expect(r.status).toBe(403);
+    expect(b.error.code).toBe(-32004);
+  });
+
+  it("25. whoami answers with NO arguments at all — it is the discovery entry point", async () => {
+    const { res } = call(
+      { jsonrpc: "2.0", id: 25, method: "tools/call", params: { name: "whoami", arguments: {}, _meta: meta() } },
+      headers(),
+      ericOwns(),
+    );
+    const r = await res;
+    const b = (await r.json()) as any;
+    expect(r.status).toBe(200);
+    expect(b.result.isError).toBeUndefined();
+    const answer = JSON.parse(b.result.content[0].text);
+    expect(answer.ownedAccounts.map((a: any) => a.accountId)).toEqual(["a_eric"]);
+  });
+
+  it("26. whoami works with several owned accounts — where the default would refuse", async () => {
+    // The case that makes `accountless` necessary rather than cosmetic: two
+    // owned accounts is exactly when defaulting refuses, and it is exactly
+    // when you most need the tool that lists them.
+    const { res } = call(
+      { jsonrpc: "2.0", id: 26, method: "tools/call", params: { name: "whoami", arguments: {}, _meta: meta() } },
+      headers(),
+      {
+        principalId: "p_eric",
+        accounts: [
+          { id: "a_eric", display_name: "Eric" },
+          { id: "a_work", display_name: "Work" },
+        ],
+      },
+    );
+    const b = (await (await res).json()) as any;
+    const answer = JSON.parse(b.result.content[0].text);
+    expect(answer.ownedAccounts).toHaveLength(2);
+  });
+
+  it("27. whoami is still scope-gated — accountless is not unauthenticated", async () => {
+    const { res } = call(
+      { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "whoami", arguments: {}, _meta: meta() } },
+      headers(),
+      { ...ericOwns(), tokenScopes: ["agent"] },
+    );
+    const r = await res;
+    const b = (await r.json()) as any;
+    expect(r.status).toBe(403);
+    expect(b.error.code).toBe(-32004);
+  });
+});

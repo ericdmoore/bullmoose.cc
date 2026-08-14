@@ -40,7 +40,10 @@ export async function loadQueue(client: JmapClient, accountId: string): Promise<
  */
 export type Verdict =
   | { status: "approved"; editedPayload?: Record<string, unknown>; note?: string }
-  | { status: "rejected"; reason: RejectReason; note?: string }
+  // `reason` is OPTIONAL because the server refuses one on the no-fault kinds
+  // (`NO_FAULT_KINDS` — a budget decline is about the wallet, a held-mail
+  // decline is an ANSWER). Requiring it here made those verbs unsendable.
+  | { status: "rejected"; reason?: RejectReason; note?: string }
   | { status: "info-requested"; question: string };
 
 export type DecideOutcome = { ok: true } | { ok: false; message: string };
@@ -53,7 +56,7 @@ export async function decide(
   opts: { ifInState?: string } = {},
 ): Promise<DecideOutcome> {
   const decision: Record<string, unknown> = {};
-  if (verdict.status === "rejected") decision.reason = verdict.reason;
+  if (verdict.status === "rejected" && verdict.reason) decision.reason = verdict.reason;
   if (verdict.status !== "info-requested" && verdict.note) decision.note = verdict.note;
 
   const patch: Record<string, unknown> = {

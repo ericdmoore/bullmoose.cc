@@ -2,6 +2,7 @@ import PostalMime from "postal-mime";
 import { commitChanges } from "@bullmoose/account-do";
 import {
   Mailstore,
+  QUARANTINE_ROLE,
   normalizeAddress,
   type ContactWriter,
   type EmailRow,
@@ -493,9 +494,9 @@ async function convFalsePositive(c: ConversationCtx, intent: "whyBlocked" | "pas
     }
     if (rescuedIds.length > 0) {
       const { results: boxes } = await c.env.DB.prepare(
-        `SELECT id FROM mailboxes WHERE account_id = ? AND role IN ('inbox', 'quarantine')`,
+        `SELECT id FROM mailboxes WHERE account_id = ? AND role IN ('inbox', ?)`,
       )
-        .bind(c.askerId)
+        .bind(c.askerId, QUARANTINE_ROLE)
         .all<{ id: string }>();
       await commitChanges(c.env.ACCOUNT_DO, c.askerId, [
         { collection: "Email", updated: rescuedIds },

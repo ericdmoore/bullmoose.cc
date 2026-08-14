@@ -93,7 +93,9 @@ describe("server-wart mirrors (actionProposal.ts)", () => {
       accountId: ACCOUNT,
       filter: { status: ["approved", "rejected"] },
     });
-    expect(set.ids).toEqual(["ap-edited-weekly", "ap-event-webinar"]);
+    // `ap-thread-vendor` is the oldest — a decline recorded under the retired
+    // `notNow`, kept in the fixtures exactly as decided (decline-taxonomy.md).
+    expect(set.ids).toEqual(["ap-edited-weekly", "ap-event-webinar", "ap-thread-vendor"]);
   });
 
   it("ActionProposal/queryChanges always throws, as the server's does", async () => {
@@ -121,7 +123,7 @@ describe("server-wart mirrors (actionProposal.ts)", () => {
       update: { "ap-reply-elk": { status: "rejected", decision: { reason: "meh" } } },
     });
     const err = (res.notUpdated as Record<string, { description?: string }>)["ap-reply-elk"];
-    expect(err?.description).toContain("wrongContent | wrongAction | notNow");
+    expect(err?.description).toContain("wrongContent | wrongAction | unsafe");
   });
 
   it("requires the draft scope for the whole method, like requireAccount does", async () => {

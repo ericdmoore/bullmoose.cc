@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/account"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
@@ -95,6 +96,30 @@ func RequireSettings(db *sql.DB) (*Settings, error) {
 		accounts = []account.Account{{AccountID: accountID}}
 	}
 	return &Settings{Base: base, Token: token, AccountID: accountID, Accounts: accounts}, nil
+}
+
+// Admin is the provision worker's admin API credential pair. It is a SECOND,
+// deliberately separate identity from Settings.Base/.Token: the mail token
+// authenticates a mailbox, the admin token authenticates an operator against
+// the control plane (packages/cli/src/admin.ts:20). Both live in the same
+// mirror `config` table, written by `bullmoose admin init` (admin.ts:130).
+type Admin struct {
+	URL   string
+	Token string
+}
+
+// RequireAdmin reads adminUrl/adminToken, or fails with the SAME usage error
+// admin.ts:528 raises — `agents` is a control-plane command, so an operator who
+// has only ever logged in to mail must be told which credential is missing
+// rather than shown a 401 from a URL they never configured.
+func RequireAdmin(db *sql.DB) (*Admin, error) {
+	url := getConfig(db, "adminUrl")
+	token := getConfig(db, "adminToken")
+	if url == "" || token == "" {
+		return nil, bmio.Usage(
+			"admin not configured — run: bullmoose admin init --url <provision-url> --token <admin-token>")
+	}
+	return &Admin{URL: strings.TrimRight(url, "/"), Token: token}, nil
 }
 
 // getConfig reads one config value, or "" — db.ts:118 getConfig. Any error

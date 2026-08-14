@@ -84,7 +84,11 @@ export function demoMailboxes(): Mailbox[] {
     { ...base, id: "mb-drafts", name: "Drafts", role: "drafts", sortOrder: 1 },
     { ...base, id: "mb-sent", name: "Sent", role: "sent", sortOrder: 2 },
     { ...base, id: "mb-archive", name: "Archive", role: "archive", sortOrder: 3 },
-    { ...base, id: "mb-junk", name: "Junk", role: "junk", sortOrder: 4 },
+    // The registered `junk` role, displayed with s12's vocabulary. The demo
+    // keeps it in the Mailbox/get list on purpose — a standards client would
+    // see it — and the sidebar filters it (`UNBROWSABLE_ROLES`), which is
+    // exactly the split being demonstrated.
+    { ...base, id: "mb-junk", name: "Quarantined", role: "junk", sortOrder: 4 },
     { ...base, id: "mb-trash", name: "Trash", role: "trash", sortOrder: 5 },
     {
       ...base,

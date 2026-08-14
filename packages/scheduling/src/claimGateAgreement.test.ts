@@ -2,15 +2,25 @@ import { describe, expect, it } from "vitest";
 import { fakeD1, type FakeD1 } from "@bullmoose/test-fakes";
 import {
   ESCALATION_WINDOW_NO_HISTORY_MS,
+  budgetExhausted,
   mayClaim,
   type BudgetState,
   type ClaimantIdentity,
 } from "./mayClaim.js";
 import {
   bindingEscalationWindowMs,
+  bindingMedianCostMicros,
   budgetMonthStartMs,
+  budgetPeriodEndMs,
+  budgetPeriodKey,
+  claimFitBinds,
+  claimFitSql,
   claimGateBinds,
   claimGateSql,
+  dueWindowBinds,
+  dueWindowSql,
+  medianMicros,
+  notPinnedSql,
 } from "./claimGate.js";
 
 /**
@@ -29,6 +39,7 @@ import {
 const NOW = Date.UTC(2026, 7, 13, 12, 0, 0);
 const HOUR = 60 * 60_000;
 const MONTH_START = budgetMonthStartMs(NOW);
+const PERIOD = budgetPeriodKey(NOW);
 
 // ---- case axes -------------------------------------------------------------
 
@@ -49,26 +60,48 @@ const PRIVACIES: Record<string, string | null> = {
   pinned: "pinned",
 };
 
-/** Budget variants: binding config + this-month spend rows + what the pure
- * side should be told. `spendPerMonth` in micro-USD. */
+/**
+ * Budget variants: binding config + this-month spend rows + any APPROVED
+ * OVERAGE rows (s11 T9) + what the pure side should be told.
+ *
+ * `exhausted` is DECLARED here and CHECKED against the pure fold
+ * `budgetExhausted({capMicros, spentMicros, overageMicros})` in its own case
+ * below — so the fixture cannot quietly teach the table a wrong expectation,
+ * and the T9 overage term is exercised on both sides of the agreement rather
+ * than only in the SQL. `capMicros: null` = no numeric cap the gate can read
+ * (absent, junk config, or a string) → never exhausted.
+ */
 const BUDGETS: Record<
   string,
-  { config: string; monthSpendMicros: number; lastMonthSpendMicros?: number; exhausted: boolean }
+  {
+    config: string;
+    capMicros: number | null;
+    monthSpendMicros: number;
+    lastMonthSpendMicros?: number;
+    /** Approved overage rows for THIS period, micro-USD (s11 T9). */
+    overageMicros?: number[];
+    /** An overage granted for a DIFFERENT period — must not count. */
+    otherPeriodOverageMicros?: number;
+    exhausted: boolean;
+  }
 > = {
-  "budget-none": { config: "{}", monthSpendMicros: 0, exhausted: false },
+  "budget-none": { config: "{}", capMicros: null, monthSpendMicros: 0, exhausted: false },
   "budget-under": {
     config: JSON.stringify({ budgets: { spendPerMonth: 5_000_000 } }),
+    capMicros: 5_000_000,
     monthSpendMicros: 1_000_000,
     exhausted: false,
   },
   "budget-over": {
     config: JSON.stringify({ budgets: { spendPerMonth: 5_000_000 } }),
+    capMicros: 5_000_000,
     monthSpendMicros: 5_000_000,
     exhausted: true,
   },
   // Only LAST month's spend exceeds the cap — proves the month bucketing.
   "budget-lastmonth": {
     config: JSON.stringify({ budgets: { spendPerMonth: 5_000_000 } }),
+    capMicros: 5_000_000,
     monthSpendMicros: 0,
     lastMonthSpendMicros: 9_000_000,
     exhausted: false,
@@ -76,14 +109,63 @@ const BUDGETS: Record<
   // A zero budget = "never spend paid": exhausted from the first moment.
   "budget-zero": {
     config: JSON.stringify({ budgets: { spendPerMonth: 0 } }),
+    capMicros: 0,
     monthSpendMicros: 0,
     exhausted: true,
   },
   // Garbage tolerance: junk config can only FAIL to constrain.
-  "budget-junk-config": { config: "not json {", monthSpendMicros: 9_000_000, exhausted: false },
+  "budget-junk-config": {
+    config: "not json {",
+    capMicros: null,
+    monthSpendMicros: 9_000_000,
+    exhausted: false,
+  },
   "budget-string-cap": {
     config: JSON.stringify({ budgets: { spendPerMonth: "5" } }),
+    capMicros: null,
     monthSpendMicros: 9_000_000,
+    exhausted: false,
+  },
+  // ---- s11 T9: the approved overage raises the ceiling, and only so far ----
+  // Over the cap, but an approved overage covers the gap: claimable again.
+  "budget-over-with-overage": {
+    config: JSON.stringify({ budgets: { spendPerMonth: 5_000_000 } }),
+    capMicros: 5_000_000,
+    monthSpendMicros: 5_000_000,
+    overageMicros: [2_000_000],
+    exhausted: false,
+  },
+  // THE BOUND IS REAL: the same overage, spent through. Exhausted again.
+  "budget-past-overage": {
+    config: JSON.stringify({ budgets: { spendPerMonth: 5_000_000 } }),
+    capMicros: 5_000_000,
+    monthSpendMicros: 7_000_000,
+    overageMicros: [2_000_000],
+    exhausted: true,
+  },
+  // Two grants SUM rather than one shadowing the other.
+  "budget-two-overages": {
+    config: JSON.stringify({ budgets: { spendPerMonth: 5_000_000 } }),
+    capMicros: 5_000_000,
+    monthSpendMicros: 7_000_000,
+    overageMicros: [2_000_000, 1_000_000],
+    exhausted: false,
+  },
+  // Last period's grant does NOT travel: the period_key stops matching at the
+  // month roll, which is how a T9 overage expires without a cleanup sweep.
+  "budget-stale-overage": {
+    config: JSON.stringify({ budgets: { spendPerMonth: 5_000_000 } }),
+    capMicros: 5_000_000,
+    monthSpendMicros: 5_000_000,
+    otherPeriodOverageMicros: 9_000_000,
+    exhausted: true,
+  },
+  // An overage against NO cap is inert, never a licence to spend.
+  "budget-overage-no-cap": {
+    config: "{}",
+    capMicros: null,
+    monthSpendMicros: 9_000_000,
+    overageMicros: [9_000_000],
     exhausted: false,
   },
 };
@@ -161,6 +243,26 @@ function seedCase(
       cost_micros: opts.budget.lastMonthSpendMicros,
     });
   }
+  // s11 T9 — the approved overage rows the gate adds to the cap.
+  let o = 0;
+  const overageRow = (periodKey: string, amount: number) => {
+    o += 1;
+    db.seed("agent_budget_overages", [
+      {
+        account_id: accountId,
+        binding_id: bindingId,
+        period_key: periodKey,
+        amount_micros: amount,
+        proposal_id: `${invId}_o${o}`,
+        approved_by: "eric",
+        approved_at: NOW - HOUR,
+      },
+    ]);
+  };
+  for (const amount of opts.budget.overageMicros ?? []) overageRow(PERIOD, amount);
+  if (opts.budget.otherPeriodOverageMicros) {
+    overageRow(budgetPeriodKey(MONTH_START - 1), opts.budget.otherPeriodOverageMicros);
+  }
   if (opts.liveness.claimedAgoMs !== null) {
     doneRow({ claimed_at: NOW - opts.liveness.claimedAgoMs, done_at: NOW - 1, claimant_free: 1 });
   }
@@ -234,6 +336,34 @@ describe("claim gate: SQL and mayClaim agree", () => {
       monthStartMs: MONTH_START,
     });
     expect(sql.split("?").length - 1).toBe(binds.length);
+  });
+
+  /**
+   * s11 T9 — the fixture table's `exhausted` column is not hand-wisdom: it is
+   * what `budgetExhausted()` folds from (cap, spend, overage). Proving that
+   * here is what makes the cross-product below an agreement test for the
+   * OVERAGE term too, rather than for the two terms that predate it. Drift on
+   * either side (a fixture that lies, or a fold that stops adding the overage)
+   * fails by name.
+   */
+  it("the pure fold derives every fixture's exhausted verdict, overage included", () => {
+    for (const [name, b] of Object.entries(BUDGETS)) {
+      const overageMicros = (b.overageMicros ?? []).reduce((a, x) => a + x, 0);
+      expect(
+        budgetExhausted({
+          capMicros: b.capMicros,
+          spentMicros: b.monthSpendMicros,
+          overageMicros,
+        }),
+        name,
+      ).toBe(b.exhausted);
+    }
+    // Anchors: a cap with no overage is the pre-T9 comparison; an overage
+    // against no cap grants nothing; the bound is `>=`, not `>`.
+    expect(budgetExhausted({ capMicros: 100, spentMicros: 100, overageMicros: 0 })).toBe(true);
+    expect(budgetExhausted({ capMicros: 100, spentMicros: 100, overageMicros: 1 })).toBe(false);
+    expect(budgetExhausted({ capMicros: 100, spentMicros: 101, overageMicros: 1 })).toBe(true);
+    expect(budgetExhausted({ capMicros: null, spentMicros: 1e9, overageMicros: 0 })).toBe(false);
   });
 
   it("the exhaustive policy cross-product (claimant × due × privacy × budget × liveness)", async () => {
@@ -334,6 +464,192 @@ describe("claim gate: SQL and mayClaim agree", () => {
     expect(disagreements).toEqual([]);
     // Anchor: the table exercises both refusals and admissions.
     expect(fitVerdicts).toEqual(new Set([true, false]));
+    db.close();
+  });
+
+  /**
+   * s11 T3 uses this module PIECEWISE: the overdue backstop claims outside
+   * `policy` (a gated claim would refuse the budget-exhausted overdue work it
+   * exists to rescue) while keeping fit and the privacy pin. That is only
+   * sound if the fragments are the same expressions the full gate folds — so
+   * this proves the subset is a strict WIDENING that keeps the pin.
+   */
+  it("the T3 subset (fit ∧ notPinned) admits what the full gate refuses — but never a pin", async () => {
+    const db = fakeD1();
+    const paid = CLAIMANTS.paid!;
+    const subsetSql =
+      `SELECT 1 AS hit FROM agent_invocations
+       WHERE account_id = ? AND id = ? AND status = 'pending'
+         AND ${notPinnedSql("agent_invocations")}
+         AND ${claimFitSql("agent_invocations")}`;
+    const subsetHit = async (s: Seeded) =>
+      (await db
+        .prepare(subsetSql)
+        .bind(s.accountId, s.invId, ...claimFitBinds(paid))
+        .first<{ hit: number }>()) !== null;
+
+    // Overdue AND out of budget: the full gate says no (exhaustion narrows the
+    // claimant set), the backstop says yes (that is the whole point).
+    const broke = {
+      dueAt: NOW - HOUR,
+      privacy: null,
+      requiresJson: null,
+      budget: BUDGETS["budget-over"]!,
+      liveness: LIVENESS["free-absent"]!,
+    };
+    const brokeCase = seedCase(db, broke);
+    const gated = await verdicts(db, brokeCase, {
+      ...broke,
+      claimant: paid,
+      windowMs: ESCALATION_WINDOW_NO_HISTORY_MS,
+    });
+    expect(gated).toEqual({ pure: false, sql: false });
+    expect(await subsetHit(brokeCase)).toBe(true);
+
+    // The pin survives the bypass: overdue, in budget, pinned — refused by both.
+    const pinned = { ...broke, privacy: "pinned", budget: BUDGETS["budget-none"]! };
+    const pinnedCase = seedCase(db, pinned);
+    expect(
+      await verdicts(db, pinnedCase, {
+        ...pinned,
+        claimant: paid,
+        windowMs: ESCALATION_WINDOW_NO_HISTORY_MS,
+      }),
+    ).toEqual({ pure: false, sql: false });
+    expect(await subsetHit(pinnedCase)).toBe(false);
+
+    // So does fit: a declared vector that cannot meet the requirement.
+    const unfit = { ...broke, requiresJson: JSON.stringify({ vision: true }) };
+    const unfitCase = seedCase(db, unfit);
+    const seeing: ClaimantIdentity = { isFree: false, capabilities: { vision: false } };
+    const seen = await db
+      .prepare(subsetSql)
+      .bind(unfitCase.accountId, unfitCase.invId, ...claimFitBinds(seeing))
+      .first<{ hit: number }>();
+    expect(seen).toBeNull();
+    // ...and an UNDECLARED vector still claims it (T2-FIT-CONTRACT).
+    expect(await subsetHit(unfitCase)).toBe(true);
+    db.close();
+  });
+
+  /**
+   * s11 T9 uses this module PIECEWISE too, and in the mirror image of T3's
+   * subset: the budget-stranding sweep asks "would a paid claimant take this
+   * row if the budget were not spent?" — fit ∧ notPinned ∧ dueWindow — AND
+   * budgetExhausted. That counterfactual is only honest if it is built from
+   * the SAME expressions the full gate folds, so this proves the decomposition:
+   * gate ⟺ fit ∧ (free ∨ (notPinned ∧ ¬exhausted ∧ dueWindow)).
+   */
+  it("the T9 decomposition: (stranded-shape ∧ exhausted) is exactly what the gate refuses", async () => {
+    const db = fakeD1();
+    const paid = CLAIMANTS.paid!;
+    const strandedShapeSql =
+      `SELECT 1 AS hit FROM agent_invocations
+       WHERE account_id = ? AND id = ? AND status = 'pending'
+         AND ${notPinnedSql("agent_invocations")}
+         AND ${claimFitSql("agent_invocations")}
+         AND ${dueWindowSql("agent_invocations")}`;
+    const strandedShape = async (s: Seeded) =>
+      (await db
+        .prepare(strandedShapeSql)
+        .bind(
+          s.accountId,
+          s.invId,
+          ...claimFitBinds(paid),
+          ...dueWindowBinds({ now: NOW, escalationWindowMs: ESCALATION_WINDOW_NO_HISTORY_MS }),
+        )
+        .first<{ hit: number }>()) !== null;
+
+    const mismatches: string[] = [];
+    let strandedCount = 0;
+    for (const [dName, dueAt] of Object.entries(DUES)) {
+      for (const [pName, privacy] of Object.entries(PRIVACIES)) {
+        for (const [bName, budget] of Object.entries(BUDGETS)) {
+          for (const [lName, liveness] of Object.entries(LIVENESS)) {
+            const opts = { dueAt, privacy, requiresJson: null, budget, liveness };
+            const seeded = seedCase(db, opts);
+            const v = await verdicts(db, seeded, {
+              ...opts,
+              claimant: paid,
+              windowMs: ESCALATION_WINDOW_NO_HISTORY_MS,
+            });
+            const shape = await strandedShape(seeded);
+            // The decomposition: a paid claimant is eligible exactly when the
+            // stranded SHAPE holds and the budget is NOT exhausted. So the
+            // budget-stranded set is (shape ∧ exhausted) — nothing else.
+            const name = `${dName}/${pName}/${bName}/${lName}`;
+            if (v.pure !== (shape && !budget.exhausted)) {
+              mismatches.push(`${name}: gate=${v.pure} shape=${shape} exhausted=${budget.exhausted}`);
+            }
+            if (shape && budget.exhausted) strandedCount += 1;
+          }
+        }
+      }
+    }
+    expect(mismatches).toEqual([]);
+    // Anchor: the stranded set is non-empty (otherwise T9 could never fire).
+    expect(strandedCount).toBeGreaterThan(0);
+    db.close();
+  });
+
+  it("the T9 period key and period end bracket the month the spend sum uses", () => {
+    expect(budgetPeriodKey(NOW)).toBe("2026-08");
+    // The key names the SAME month the spend bucket opens...
+    expect(budgetPeriodKey(budgetMonthStartMs(NOW))).toBe(budgetPeriodKey(NOW));
+    // ...and the period ends exactly where the next one's spend bucket begins,
+    // so an overage and the cap it lifts expire in the same instant.
+    expect(budgetPeriodEndMs(NOW)).toBe(budgetMonthStartMs(budgetPeriodEndMs(NOW)));
+    expect(budgetPeriodKey(budgetPeriodEndMs(NOW))).toBe("2026-09");
+    // December rolls the year, and the key is zero-padded so it sorts.
+    const dec = Date.UTC(2026, 11, 31, 23, 59, 59);
+    expect(budgetPeriodKey(dec)).toBe("2026-12");
+    expect(budgetPeriodKey(budgetPeriodEndMs(dec))).toBe("2027-01");
+    expect(budgetPeriodKey(Date.UTC(2026, 0, 5))).toBe("2026-01");
+  });
+
+  it("bindingMedianCostMicros reads paid history only, and says null when it has none", async () => {
+    const db = fakeD1();
+    const seeded = seedCase(db, {
+      dueAt: null,
+      privacy: null,
+      requiresJson: null,
+      budget: BUDGETS["budget-none"]!,
+      liveness: LIVENESS["free-absent"]!,
+    });
+    // No history at all → unknown, never a guessed number.
+    expect(await bindingMedianCostMicros(db, seeded.accountId, seeded.bindingId)).toBeNull();
+
+    let k = 0;
+    const costRow = (cost: number | null, status = "done") => {
+      k += 1;
+      db.seed("agent_invocations", [
+        {
+          id: `${seeded.invId}_c${k}`,
+          account_id: seeded.accountId,
+          binding_id: seeded.bindingId,
+          binding_name: "b",
+          status,
+          created_at: 1,
+          claimed_at: NOW - HOUR,
+          done_at: NOW - HOUR + k,
+          cost_micros: cost,
+        },
+      ]);
+    };
+    costRow(0); // genuinely free — predicts nothing about paid spend
+    costRow(null); // undetermined — not a zero
+    expect(await bindingMedianCostMicros(db, seeded.accountId, seeded.bindingId)).toBeNull();
+
+    costRow(100);
+    costRow(300);
+    costRow(200);
+    costRow(900, "failed"); // a crash is not a cost estimate
+    expect(await bindingMedianCostMicros(db, seeded.accountId, seeded.bindingId)).toBe(200);
+
+    // The pure fold, on its own.
+    expect(medianMicros([])).toBeNull();
+    expect(medianMicros([5])).toBe(5);
+    expect(medianMicros([4, 2])).toBe(3);
     db.close();
   });
 

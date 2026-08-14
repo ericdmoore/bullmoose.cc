@@ -6,6 +6,8 @@ import {
   Mailstore,
   normalizeMessageId,
   previewText,
+  QUARANTINE_NAME,
+  QUARANTINE_ROLE,
   type AttachmentMeta,
   type EmailAddress,
 } from "@bullmoose/mailstore";
@@ -23,6 +25,7 @@ import {
 import type { BoundaryMessage } from "./boundaryContract";
 import { sweepGraduations } from "./graduationSweep";
 import { extractDueAt } from "./dueDate";
+import { SIDESTEP_WRITER, sidestepAttachments, sidestepThreshold } from "./sidestep";
 import {
   composePrivacy,
   mechanicalRequires,
@@ -41,8 +44,10 @@ import {
  *      chain row, rescuable — never deleted)
  *   3. store raw RFC 5322 bytes in R2 (blobId = content hash)
  *   4. parse MIME and insert metadata into the account's D1 shard
- *   5. commit to AccountDO → state bump + WebSocket push to live clients
- *   6. evaluate delivery-armed responders (vacation, agent watchdogs) and
+ *   5. side-step large attachments into the Files realm as FileNodes
+ *      (s03.B T3, sidestep.ts) — additive and fail-open
+ *   6. commit to AccountDO → state bump + WebSocket push to live clients
+ *   7. evaluate delivery-armed responders (vacation, agent watchdogs) and
  *      create agent invocations for mailbox-delivery bindings
  */
 
@@ -56,6 +61,12 @@ export interface Env {
   /** "1" enables POST /dev/inject (guarded; local testing only). */
   DEV_INJECT?: string;
   INTERNAL_TOKEN?: string;
+  /**
+   * s03.B T3 — bytes at or above which an inbound attachment also becomes a
+   * FileNode. Deployment-wide; a route may override it per account. Unset uses
+   * `DEFAULT_SIDESTEP_MIN_BYTES`; "0" turns the sidestep off. See sidestep.ts.
+   */
+  ATTACHMENT_SIDESTEP_BYTES?: string;
 }
 
 /** Value shape stored under route:{domain}:{localpart} in KV. */
@@ -69,6 +80,13 @@ interface Route {
    * backup while trialing the platform).
    */
   forwardTo?: string[];
+  /**
+   * Per-account attachment-sidestep threshold in bytes (s03.B T3). The route
+   * is where a per-account policy value costs nothing: delivery has already
+   * read this key to find the recipient. Absent → the worker's env var, then
+   * the conservative default; `0` disables the sidestep for this address.
+   */
+  sidestepBytes?: number;
 }
 
 export default {
@@ -243,6 +261,12 @@ async function deliver(
   quarantined?: string;
   /** The mid-band stage, when the message is held pending the classifier. */
   screened?: string;
+  /**
+   * FileNode ids minted by the attachment sidestep (s03.B T3). Reported so a
+   * `/dev/inject` or curl drive — which `s03.B/devPlan.md` makes the real
+   * acceptance signal for this UI-free slice — can see that it fired.
+   */
+  fileNodes?: string[];
 }> {
   const [localpart = "", domain = ""] = envelopeTo.toLowerCase().split("@");
   const route = await resolveRoute(env.ROUTES, domain, localpart);
@@ -345,7 +369,25 @@ async function deliver(
   const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
   const inboxId = await store.ensureRoleMailbox(route.accountId, "inbox", "Inbox");
 
-  const attachments = await storeAttachments(store, route, parsed);
+  const stored = await storeAttachments(store, route, parsed);
+
+  // s03.B T3 — the attachment sidestep. A large attachment ALSO becomes a
+  // FileNode under the account's Attachments folder, so it is addressable as a
+  // file instead of only as a row inside this one message. Additive: the
+  // attachment metadata below is unchanged except for the `fileNodeId`
+  // cross-link, and `sidestepAttachments` is total (it never throws), so a
+  // Files failure cannot cost the recipient their mail.
+  //
+  // Its own Mailstore, because provenance differs: emails written by delivery
+  // carry NULL provenance (no acting principal), while a file this path
+  // creates records `system:ingest` as its writer.
+  const sidestep = await sidestepAttachments(
+    new Mailstore(env.DB, env.BLOBS, SIDESTEP_WRITER),
+    route.accountId,
+    stored,
+    sidestepThreshold(env, route),
+  );
+  const attachments = sidestep.attachments;
 
   const emailId = `e_${crypto.randomUUID()}`;
   await store.insertEmail(route.accountId, {
@@ -432,6 +474,14 @@ async function deliver(
     ...(invocationIds.length > 0
       ? [{ collection: "AgentInvocation", created: invocationIds }]
       : []),
+    // Side-stepped files ride the SAME commit — one DO round trip, and a
+    // client watching FileNode/changes learns about the file in the same push
+    // that announces the message it arrived on. A FileNode row that never
+    // reached the changelog would read back on a direct get and be invisible
+    // to sync (filenode.ts's write-choreography rule).
+    ...(sidestep.created.length > 0
+      ? [{ collection: "FileNode", created: sidestep.created }]
+      : []),
   ]);
 
   // Armed responders (vacation, watchdog). RFC 3834: never auto-respond
@@ -450,13 +500,15 @@ async function deliver(
     emailId,
     ...(route.forwardTo?.length ? { forwardTo: route.forwardTo } : {}),
     ...(invocationIds.length > 0 ? { invocations: invocationIds.length } : {}),
+    ...(sidestep.created.length > 0 ? { fileNodes: sidestep.created } : {}),
   };
 }
 
 /**
  * REJECT-STORE: the message is stored — full fidelity, rescuable, never
- * deleted — but in the QUARANTINE role mailbox, with its 'shunted' chain row
- * (message + chain commit atomically; see Mailstore.insertQuarantinedEmail).
+ * deleted — but in the HELD mailbox (the registered `junk` role, displayed
+ * 'Quarantined'), with its 'shunted' chain row (message + chain commit
+ * atomically; see Mailstore.insertQuarantinedEmail).
  *
  * Deliberately absent from this path: agent invocations (suspected spam must
  * not reach the lobby), armed responders (never auto-reply to judged spam),
@@ -478,9 +530,15 @@ async function quarantineDeliver(
   const blobId = await store.putBlob(route.tenantId, route.accountId, m.raw);
   const inReplyTo = normalizeMessageId(m.parsed.inReplyTo);
   const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
-  // Lazily ensured (the inbox precedent) so accounts that predate the
-  // 'quarantine' role in provisioning still get one on first shunt.
-  const quarantineId = await store.ensureRoleMailbox(route.accountId, "quarantine", "Quarantine");
+  // Lazily ensured (the inbox precedent) so an account provisioned before the
+  // seed existed still gets one on first shunt. The role is the REGISTERED
+  // 'junk' (RFC 8621) so standards clients treat it as spam; the NAME is
+  // 'Quarantined' — see @bullmoose/mailstore QUARANTINE_ROLE.
+  const quarantineId = await store.ensureRoleMailbox(
+    route.accountId,
+    QUARANTINE_ROLE,
+    QUARANTINE_NAME,
+  );
   const attachments = await storeAttachments(store, route, m.parsed);
 
   const emailId = `e_${crypto.randomUUID()}`;
@@ -527,11 +585,15 @@ async function quarantineDeliver(
 
 /**
  * The MID-BAND hold (s12 wave 2-C, cascade stage 5's doorway): store the
- * message in the QUARANTINE mailbox with a 'screened' chain row — distinct
+ * message in the HELD mailbox with a 'screened' chain row — distinct
  * from 'shunted', because nothing has judged it spam yet — and enqueue ONE
  * bouncer-classify invocation for the tenant's bouncer binding, all in the
  * SAME D1 batch: "held" and "a classifier is coming" commit together or not
  * at all (a hold with no classifier enqueued is mail nobody will ever free).
+ *
+ * The hold is bouncer's WORKING STATE, not a human destination: a message the
+ * classifier cannot decide becomes a batched PROPOSAL (services/agent
+ * midBandProposal.ts), never a pile someone is expected to go browse.
  *
  * Like quarantineDeliver, no mailbox-delivery invocations (nothing reaches
  * the lobby until it is judged clean), no armed responders, no
@@ -556,7 +618,11 @@ async function screenDeliver(
   const blobId = await store.putBlob(route.tenantId, route.accountId, m.raw);
   const inReplyTo = normalizeMessageId(m.parsed.inReplyTo);
   const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
-  const quarantineId = await store.ensureRoleMailbox(route.accountId, "quarantine", "Quarantine");
+  const quarantineId = await store.ensureRoleMailbox(
+    route.accountId,
+    QUARANTINE_ROLE,
+    QUARANTINE_NAME,
+  );
   const attachments = await storeAttachments(store, route, m.parsed);
 
   const emailId = `e_${crypto.randomUUID()}`;

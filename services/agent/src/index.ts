@@ -7,10 +7,17 @@ import {
   ESCALATION_WINDOW_NO_HISTORY_MS,
   bindingEscalationWindowMs,
   budgetMonthStartMs,
+  claimFitBinds,
+  claimFitSql,
   claimGateBinds,
   claimGateSql,
+  freeRuntimeLiveCutoff,
+  freeRuntimeLiveSql,
+  notPinnedSql,
   type ClaimantIdentity,
 } from "@bullmoose/scheduling";
+import { proposeBudgetOverruns } from "./budgetOverrun.js";
+import { proposeMidBandHolds } from "./midBandProposal.js";
 import { classifyScreened } from "./bouncerClassify.js";
 import { runBouncer } from "./bouncer.js";
 import { runLedger } from "./ledger.js";
@@ -38,8 +45,11 @@ import {
  * serve the same account and whoever claims first wins — within the s11 T2
  * eligibility gate: this drain is a PAID claimant, so pinned work, out-of-
  * budget bindings, far-from-due work, and NULL-due work while a free runtime
- * is live are all outside its set (see @bullmoose/scheduling). The SLA
- * watchdog responder (AccountDO alarm) backstops them both.
+ * is live are all outside its set (see @bullmoose/scheduling). Two watchdog
+ * triggers backstop that optimism: SLA silence (the AccountDO alarm's armed
+ * responder, agent-integration.md §8) and a passed `due_at` (`escalateOverdue`
+ * below, s11 T3 — it claims OUTSIDE the policy gate, keeping only the privacy
+ * pin and fit, and alerts on what it may not claim).
  *
  * Two pipelines, selected by the binding's config_json:
  *   reply  (default) — Emily-style: persona-driven reply to the sender.
@@ -67,6 +77,12 @@ headers, no signature placeholders.`;
 
 const DRAIN_BATCH = 5;
 const STALE_RUNNING_MS = 15 * 60_000;
+/** How many past-due rows one sweep may claim-and-run (s11 T3). Same bound as
+ * DRAIN_BATCH per round, for the same reason: model calls cost wall-clock. */
+const OVERDUE_BATCH = 5;
+/** How many stuck rows one sweep may MARK. Alerting is two cheap writes, so
+ * the cap is only there to bound a pathological backlog's cron. */
+const OVERDUE_ALERT_LIMIT = 100;
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -101,7 +117,23 @@ export default {
     await failStaleRunning(env);
     await expireStaleProposals(env);
     await drain(env, ctx);
+    // AFTER the drain, deliberately: the policy gate gets first refusal on
+    // every row, and the backstop only ever sees what optimism left behind.
+    await escalateOverdue(env);
     await reportHeldBacklog(env);
+    await reportPinnedStranded(env);
+    // LAST, and after the backstop: T9 asks a human about work that is stranded
+    // by BUDGET, and the backstop above has already rescued everything a passed
+    // deadline entitles it to rescue. What is left is the class where money is
+    // genuinely the only obstacle — the one place a human choice exists, and so
+    // the one place a proposal beats a marker (budgetOverrun.ts).
+    await proposeBudgetOverruns(env);
+    // s12 — the OTHER thing only a human can answer: mail the boundary held
+    // and the classifier could not judge. AFTER the drain for the same reason
+    // T9 is: the drain has just run every classify invocation it could, so
+    // what is left undecided is genuinely undecided rather than merely
+    // unprocessed. Batched per account, marked once (midBandProposal.ts).
+    await proposeMidBandHolds(env);
   },
 } satisfies ExportedHandler<Env>;
 
@@ -203,6 +235,220 @@ async function drain(env: Env, _ctx: ExecutionContext): Promise<number> {
     if (results.length < DRAIN_BATCH) break;
   }
   return handled;
+}
+
+// ---- the overdue backstop (s11 T3) -----------------------------------
+
+/**
+ * The watchdog's SECOND trigger, and the reason optimism cannot strand work.
+ *
+ * agent-integration.md §8 gives the cloud one liveness trigger: **SLA
+ * silence** — nobody claimed within the pickup SLA, so the AccountDO alarm
+ * fires an armed responder (that mechanism is untouched here; it lives in
+ * packages/account-do and is armed by ingest). s11 adds the second: **`due_at`
+ * passed with the invocation still `pending`**. Optimism ends at the deadline.
+ *
+ * The load-bearing detail is WHERE this claims from. The T2 policy gate holds
+ * the paid cloud off out-of-budget work *even past due* — deliberately, since
+ * exhaustion is meant to narrow the claimant set rather than fail the
+ * invocation, and this sweep is the "rather than" it was written against. So
+ * the backstop claims OUTSIDE `claimGateSql`: a gated claim here would refuse
+ * exactly the rows the backstop exists for, which would make it decorative.
+ *
+ * Two of the gate's terms survive that bypass, and they are composed from the
+ * SAME fragments the gate folds (@bullmoose/scheduling), never hand-copied:
+ *
+ *   notPinnedSql   devPlan decision 0, non-negotiable. Privacy is a hard
+ *                  constraint on the claimant set, not a preference: when the
+ *                  homelab is down and the deadline passes, the system must
+ *                  choose between violating privacy and violating liveness,
+ *                  and PRIVACY WINS. Pinned work sits.
+ *   claimFitSql    claiming work this runtime cannot satisfy (`requires_json`
+ *                  beyond its declared vector) does not rescue the deadline;
+ *                  it burns it on a run that must fail.
+ *
+ * Both exceptions land in the same place: the invariant is not "no past-due
+ * invocation sits pending" but "…sits pending SILENTLY". What cannot be
+ * claimed is MARKED (`alert_kind`/`alert_at` — durable, queryable, raised
+ * once) and the row goes on waiting for a runtime that may take it.
+ *
+ * Authority and existence are NOT bypassed: a disabled binding (the 008 kill
+ * switch) and a tombstoned account are excluded, exactly as in `drain`. A
+ * deadline is not a reason to run an agent an operator switched off — and the
+ * held queue behind a kill switch already has its own voice in
+ * `reportHeldBacklog`.
+ *
+ * @param claimant the runtime the backstop escalates TO. Defaults to this
+ *   worker's own identity (paid, no declared vector); a parameter because
+ *   `fit` is only meaningful against a claimant, and the day the cloud
+ *   declares a capability vector the unfit branch stops being dormant.
+ */
+export async function escalateOverdue(
+  env: Env,
+  claimant: ClaimantIdentity = CLOUD_CLAIMANT,
+): Promise<{ claimed: number; alerted: number }> {
+  const claimed = await claimOverdue(env, claimant);
+  const alerted = await alertStuckOverdue(env, claimant);
+  return { claimed, alerted };
+}
+
+/** Pass 1: claim-and-run everything past due that this runtime MAY take. */
+async function claimOverdue(env: Env, claimant: ClaimantIdentity): Promise<number> {
+  let claimed = 0;
+  for (let round = 0; round < 4; round++) {
+    const selectNow = Date.now();
+    const { results } = await env.DB.prepare(
+      `SELECT inv.id, inv.account_id, inv.binding_id, inv.binding_name, inv.email_id,
+              inv.context_json, inv.due_at, a.tenant_id, COALESCE(b.config_json, '{}') AS config_json
+       FROM agent_invocations inv
+       JOIN agent_bindings b ON b.account_id = inv.account_id AND b.id = inv.binding_id
+       JOIN accounts a ON a.id = inv.account_id
+       WHERE inv.status = 'pending' AND b.enabled = 1 AND a.deleted_at IS NULL
+         AND inv.due_at IS NOT NULL AND inv.due_at <= ?
+         AND ${notPinnedSql("inv")}
+         AND ${claimFitSql("inv")}
+       ORDER BY inv.due_at LIMIT ${OVERDUE_BATCH}`,
+    )
+      .bind(selectNow, ...claimFitBinds(claimant))
+      .all<Job>();
+
+    for (const job of results) {
+      // The guarded claim, with the two surviving terms folded in — the
+      // pending→running transition itself refuses a row that got stamped
+      // `pinned`, or had its requirements raised, between SELECT and UPDATE.
+      const now = Date.now();
+      const claim = await env.DB.prepare(
+        `UPDATE agent_invocations SET status = 'running', claimed_at = ?, claimant_free = ?, claimant_caps_json = ?
+         WHERE account_id = ? AND id = ? AND status = 'pending'
+           AND due_at IS NOT NULL AND due_at <= ?
+           AND ${notPinnedSql("agent_invocations")}
+           AND ${claimFitSql("agent_invocations")}`,
+      )
+        .bind(
+          now,
+          claimant.isFree ? 1 : 0,
+          claimant.capabilities !== null ? JSON.stringify(claimant.capabilities) : null,
+          job.account_id,
+          job.id,
+          now,
+          ...claimFitBinds(claimant),
+        )
+        .run();
+      if (claim.meta.changes !== 1) continue;
+
+      console.log(
+        `agent watchdog: escalating ${job.id} (${job.binding_name}) — due_at passed ` +
+          `${Math.round((now - (job.due_at ?? now)) / 60_000)} min ago, claimed outside the policy gate`,
+      );
+      try {
+        await runInvocation(env, job);
+      } catch (err) {
+        await finish(env, job, "failed", { note: String(err) });
+      }
+      claimed += 1;
+    }
+    if (results.length < OVERDUE_BATCH) break;
+  }
+  return claimed;
+}
+
+/**
+ * Pass 2: mark what pass 1 could not claim — pinned, or beyond this runtime's
+ * declared capabilities. Selected by the SAME two predicates pass 1 claims
+ * by, negated, so a row that merely fell outside pass 1's batch is never
+ * mislabelled "unfit"; and guarded on `alert_kind IS NULL` end to end, so
+ * repeated sweeps over the same stuck row raise the alert exactly once.
+ */
+async function alertStuckOverdue(env: Env, claimant: ClaimantIdentity): Promise<number> {
+  const now = Date.now();
+  const { results } = await env.DB.prepare(
+    `SELECT inv.id, inv.account_id, inv.binding_name, inv.due_at,
+            CASE WHEN ${notPinnedSql("inv")} THEN 'overdue-unfit' ELSE 'overdue-pinned' END AS kind
+     FROM agent_invocations inv
+     JOIN agent_bindings b ON b.account_id = inv.account_id AND b.id = inv.binding_id
+     JOIN accounts a ON a.id = inv.account_id
+     WHERE inv.status = 'pending' AND b.enabled = 1 AND a.deleted_at IS NULL
+       AND inv.due_at IS NOT NULL AND inv.due_at <= ?
+       AND inv.alert_kind IS NULL
+       AND (NOT ${notPinnedSql("inv")} OR NOT ${claimFitSql("inv")})
+     ORDER BY inv.due_at LIMIT ${OVERDUE_ALERT_LIMIT}`,
+  )
+    .bind(now, ...claimFitBinds(claimant))
+    .all<{ id: string; account_id: string; binding_name: string; due_at: number; kind: string }>();
+
+  const byAccount = new Map<string, string[]>();
+  let alerted = 0;
+  for (const row of results) {
+    const marked = await env.DB.prepare(
+      `UPDATE agent_invocations SET alert_kind = ?, alert_at = ?
+       WHERE account_id = ? AND id = ? AND status = 'pending' AND alert_kind IS NULL`,
+    )
+      .bind(row.kind, now, row.account_id, row.id)
+      .run();
+    // Zero changes = another sweep got there first, or the row was claimed
+    // between the SELECT and here. Either way there is nothing to announce.
+    if (marked.meta.changes !== 1) continue;
+    console.warn(
+      `agent watchdog: ${row.id} (${row.binding_name}) is ${row.kind} — due_at passed ` +
+        `${Math.round((now - row.due_at) / 60_000)} min ago and the cloud may not claim it; ` +
+        (row.kind === "overdue-pinned"
+          ? "privacy is pinned, so it waits for a private runtime (s11 decision 0)"
+          : "its requirements exceed this runtime's declared capabilities"),
+    );
+    byAccount.set(row.account_id, [...(byAccount.get(row.account_id) ?? []), row.id]);
+    alerted += 1;
+  }
+
+  // The marker is a change to a synced collection, so it rides the changelog
+  // like every other invocation write — a watching client learns about it by
+  // the same push it learns a claim by, not by polling for a new noun.
+  for (const [accountId, ids] of byAccount) {
+    await commitChanges(env.ACCOUNT_DO, accountId, [
+      { collection: "AgentInvocation", updated: ids },
+    ]);
+  }
+  return alerted;
+}
+
+/**
+ * "Your homelab is down", inferred rather than heartbeat — readme decision 3.
+ *
+ * The devPlan names the signal: `claimant_free = 1 AND claimed_at >= now −
+ * FREE_RUNTIME_LIVE_MS` per account is liveness; its absence with work piling
+ * up is an outage worth a human's attention. It is stated there as "NULL-due
+ * work piling up", and that literal reading is UNREACHABLE as built: the T2
+ * stranding guard means NULL-due work goes to the cloud immediately when no
+ * free runtime is live, so it does not pile up. The class that genuinely
+ * cannot move without a homelab is PINNED work — the cloud may never take it,
+ * by definition — so that is what this counts.
+ *
+ * Deliberately a log line and not an `alert_kind` marker: an outage is a
+ * TRANSIENT condition, and a durable per-row marker for it would need
+ * clear-on-recovery machinery plus a debounce threshold (a 16-minute reboot
+ * must not mark every pinned row) — neither of which falls out of the overdue
+ * marker. The overdue markers above are permanent because a passed deadline
+ * is permanent. This is the same operator surface, and the same shape, as
+ * `reportHeldBacklog`: cron-only, one aggregate, silent unless it has
+ * something to say.
+ */
+async function reportPinnedStranded(env: Env): Promise<void> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n, COUNT(DISTINCT inv.account_id) AS accounts
+     FROM agent_invocations inv
+     JOIN agent_bindings b ON b.account_id = inv.account_id AND b.id = inv.binding_id
+     JOIN accounts a ON a.id = inv.account_id
+     WHERE inv.status = 'pending' AND b.enabled = 1 AND a.deleted_at IS NULL
+       AND NOT ${notPinnedSql("inv")}
+       AND NOT ${freeRuntimeLiveSql("inv")}`,
+  )
+    .bind(freeRuntimeLiveCutoff(Date.now()))
+    .first<{ n: number; accounts: number }>();
+  if (!row || row.n === 0) return;
+  console.warn(
+    `agent watchdog: ${row.n} privacy-PINNED invocation(s) across ${row.accounts} account(s) are ` +
+      "pending with no free runtime seen in the last 15 min — the cloud may never claim pinned " +
+      "work, so this queue only moves when a homelab runtime comes back. Check `bullmoose agent serve`.",
+  );
 }
 
 /**

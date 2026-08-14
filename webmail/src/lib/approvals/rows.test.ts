@@ -6,10 +6,13 @@ import { parseProposal } from "./types";
 import {
   HOLD_UNWIRED_NOTE,
   REJECT_REASONS,
+  RETIRED_REJECT_REASONS,
   TIER3_CAPABILITY_NOTE,
   approvalsAccountId,
   approvalsGate,
   approveVerb,
+  declineNeedsReason,
+  describeReason,
   summarizeProposal,
   tierLabel,
 } from "./rows";
@@ -70,13 +73,32 @@ describe("tier rendering matches what approve DOES (arch.md §2)", () => {
   });
 });
 
-describe("the no-thanks reasons (arch.md §3)", () => {
-  it("offers exactly the server's enum, snooze last", () => {
-    expect(REJECT_REASONS.map((r) => r.reason)).toEqual(["wrongContent", "wrongAction", "notNow"]);
+describe("the no-thanks reasons (arch.md §3, decline-taxonomy.md)", () => {
+  it("offers exactly the server's enum — three, hard negative last", () => {
+    expect(REJECT_REASONS.map((r) => r.reason)).toEqual(["wrongContent", "wrongAction", "unsafe"]);
   });
 
-  it("marks notNow as counting against nothing", () => {
-    expect(REJECT_REASONS[2]?.hint).toContain("counts against nothing");
+  it("words `unsafe` as the categorically-separate hard stop, not another decline flavour", () => {
+    const unsafe = REJECT_REASONS.find((r) => r.reason === "unsafe")!;
+    // What it MEANS, in the human's own terms — the two things it covers.
+    expect(unsafe.label).toContain("leaked private information");
+    expect(unsafe.label).toContain("committed me");
+    // And that it is a different KIND of judgment, not a louder "no".
+    expect(unsafe.hint).toContain("hard stop");
+    expect(unsafe.hint).toContain("not a stronger no");
+    expect(unsafe.severe).toBe(true);
+    // The two quality reasons are NOT marked severe — the separation is the point.
+    expect(REJECT_REASONS.filter((r) => r.severe).map((r) => r.reason)).toEqual(["unsafe"]);
+  });
+
+  it("keeps the two quality reasons pointed at what each STEERS", () => {
+    expect(REJECT_REASONS[0]?.hint).toContain("trains the drafter");
+    expect(REJECT_REASONS[1]?.hint).toContain("trains the classifier");
+  });
+
+  it("NEVER offers a retired reason — notNow cannot be chosen again", () => {
+    expect(REJECT_REASONS.map((r) => r.reason)).not.toContain("notNow");
+    expect(RETIRED_REJECT_REASONS.has("notNow")).toBe(true);
   });
 
   it("NEVER offers needsInfo as a decline reason — it is an action, not a reject (decline-taxonomy.md)", () => {
@@ -84,6 +106,25 @@ describe("the no-thanks reasons (arch.md §3)", () => {
     // panel must not be able to record a needsInfo "rejection", because the
     // panel cannot offer one. The verb lives on its own button.
     expect(REJECT_REASONS.map((r) => r.reason)).not.toContain("needsInfo");
+  });
+});
+
+describe("describeReason — reading history the enum no longer writes", () => {
+  it("renders a live reason by its panel label", () => {
+    expect(describeReason("wrongContent")).toBe("Wrong content");
+    expect(describeReason("unsafe")).toContain("Unsafe");
+  });
+
+  it("renders a RETIRED reason as itself, marked — never remapped, never dropped", () => {
+    // The legacy-tolerance rule: a decision recorded as `notNow` is a fact. It
+    // must not silently become "Wrong action" (a judgment the human never
+    // made) and must not vanish (erasing why the proposal was declined).
+    expect(describeReason("notNow")).toBe("notNow (retired)");
+  });
+
+  it("renders an unrecognized reason verbatim rather than throwing", () => {
+    expect(describeReason("someFutureReason")).toBe("someFutureReason");
+    expect(() => describeReason("")).not.toThrow();
   });
 });
 
@@ -133,6 +174,88 @@ describe("summarizeProposal — one line per row, grant-request included", () =>
     const p = base({ kind: "mystery-verb", subject: { realm: "Email", objectId: "e-9" } });
     expect(summarizeProposal(p)).toBe("mystery-verb on Email e-9");
   });
+
+  // ---- s11 T9 — the numbers ARE the decision ----
+  it("leads a budget-overrun with the numbers, not the agent's name", () => {
+    const p = base({
+      kind: "budget-overrun",
+      tier: 1,
+      subject: { realm: "AgentBinding", objectId: "bind_photos" },
+      payload: {
+        bindingId: "bind_photos",
+        bindingName: "photos",
+        waitingCount: 12,
+        monthSpentMicros: 5_000_000,
+        capMicros: 5_000_000,
+        estimateMicros: 1_800_000,
+        overageMicros: 2_250_000,
+        periodKey: "2026-08",
+      },
+    });
+    expect(summarizeProposal(p)).toBe(
+      "12 waiting · $5.00 of $5.00 spent · ~$1.80 to clear — approve a $2.25 overage for photos",
+    );
+  });
+
+  it("says the cost is UNKNOWN rather than printing a guessed $0.00", () => {
+    // No paid history for the binding → the sweep reports null, and the row must
+    // carry that through. A plausible-looking $0.00 is the one lie that matters
+    // on a spend decision.
+    const p = base({
+      kind: "budget-overrun",
+      tier: 1,
+      subject: { realm: "AgentBinding", objectId: "bind_photos" },
+      payload: {
+        bindingId: "bind_photos",
+        bindingName: "photos",
+        waitingCount: 3,
+        monthSpentMicros: 1_000_000,
+        capMicros: 1_000_000,
+        estimateMicros: null,
+        overageMicros: 1_000_000,
+        periodKey: "2026-08",
+      },
+    });
+    expect(summarizeProposal(p)).toBe(
+      "3 waiting · $1.00 of $1.00 spent · cost unknown — approve a $1.00 overage for photos",
+    );
+  });
+
+  // ---- s12 — the held-mail batch ----
+  it("leads a held-mail-review with the count and names BOTH verbs", () => {
+    const p = base({
+      kind: "held-mail-review",
+      tier: 1,
+      subject: { realm: "Mailbox", objectId: "mb_q" },
+      payload: {
+        periodKey: "2026-08-13",
+        heldCount: 3,
+        emailIds: ["e1", "e2", "e3"],
+        messages: [
+          { emailId: "e1", sender: "a@x.test", subject: "one", stage: "bayes-mid@0.5" },
+          { emailId: "e2", sender: "b@x.test", subject: "two", stage: "bayes-mid@0.5" },
+          { emailId: "e3", sender: "a@x.test", subject: "three", stage: "bayes-mid@0.5" },
+        ],
+      },
+    });
+    // Both verbs, because neither is a no-op here: declining is the answer
+    // "yes, that is spam", not "never mind".
+    expect(summarizeProposal(p)).toBe(
+      "3 held messages from a@x.test, b@x.test — approve releases, decline confirms spam",
+    );
+  });
+
+  it("degrades to the subject when the payload is empty, and never throws", () => {
+    const p = base({
+      kind: "budget-overrun",
+      tier: 1,
+      subject: { realm: "AgentBinding", objectId: "bind_photos" },
+      payload: {},
+    });
+    expect(summarizeProposal(p)).toBe(
+      "? waiting · budget spent · cost unknown — approve an overage for bind_photos",
+    );
+  });
 });
 
 describe("parseProposal (types.ts)", () => {
@@ -145,5 +268,22 @@ describe("parseProposal (types.ts)", () => {
   it("fails an unknown tier CLOSED — unknown reversibility reads as irreversible", () => {
     expect(parseProposal({ id: "x", tier: 9 })?.tier).toBe(3);
     expect(parseProposal({ id: "x" })?.tier).toBe(3);
+  });
+});
+
+describe("declineNeedsReason — the no-fault kinds (the enum's mirror)", () => {
+  it("asks for a reason on kinds where declining IS feedback", () => {
+    for (const kind of ["reply-draft", "create-contact", "grant-request", "organize-files"]) {
+      expect(declineNeedsReason(kind)).toBe(true);
+    }
+  });
+
+  it("does NOT on the kinds the server refuses a reason for", () => {
+    // The server's `NO_FAULT_KINDS` rejects any reason on these, so a panel
+    // that demanded one made the verb unsendable — declining a budget-overrun
+    // was impossible from this client, and a held-mail decline would have
+    // inherited it. Mirrored here, once, next to the enum it qualifies.
+    expect(declineNeedsReason("budget-overrun")).toBe(false);
+    expect(declineNeedsReason("held-mail-review")).toBe(false);
   });
 });

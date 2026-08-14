@@ -23,20 +23,27 @@
 //     so anyone holding it reads every grant in the deployment. `015` refused to
 //     proxy them for that reason and so does this.
 //
-// So the read interface below is what the console **requests**. That is the line
+// So the read interface below is what the console **requested**. That is the line
 // `readme.md` draws — *"s03.E renders and requests; s04 decides and enforces"* —
 // and the shapes are `015`'s own render output (see `types.ts`), so serving it is
 // a projection of queries that already exist, not a new data model.
 //
-// Until it is served, `HttpConsoleClient` fails with `ConsoleUnavailable` and the
-// UI says which endpoint is missing. It does not fall back to sample data
-// wearing a live label: a governance screen that invents its contents is worse
-// than one that is honest about being empty.
+// It is now SERVED, by `services/jmap/src/console.ts` — same-origin with the app,
+// because the worker that owns `/vault/credentials` has no public route and no
+// CORS headers, so a browser cannot read anything there. `readBase` in
+// `origins.ts` is what keeps the two apart: `/vault/*` to the vault, everything
+// else to the site backend. The shapes below are unchanged; the client was the
+// contract and the server was written to it.
+//
+// Where a route is absent or refused, `HttpConsoleClient` still fails with
+// `ConsoleUnavailable` and the UI says which endpoint is missing. It does not
+// fall back to sample data wearing a live label: a governance screen that invents
+// its contents is worse than one that is honest about being empty.
 //
 // The credential surface is the exception — `GET /vault/credentials` is LIVE
 // today (`services/agent/src/vault.ts:282`) and this client calls it for real.
 
-import { resolveTarget, type ConsoleOrigins } from "./origins";
+import { readBase, resolveTarget, type ConsoleOrigins } from "./origins";
 import type {
   AgentDossier,
   ConsoleCredential,
@@ -102,8 +109,9 @@ export interface HttpConsoleClientOptions {
 
 /**
  * The read endpoints, in one table so the status doc and the error messages
- * cannot drift from the code. `/vault/credentials` is live; the rest are the
- * ask.
+ * cannot drift from the code. All five are live: the four `/console/*` on the
+ * site backend (`services/jmap/src/console.ts`), `/vault/credentials` on the
+ * agent worker.
  */
 export const CONSOLE_ENDPOINTS = {
   agents: "/console/agents",
@@ -125,9 +133,11 @@ export class HttpConsoleClient implements AgentConsoleClient {
   }
 
   /** Every read is `metadata` sensitivity — no read path carries a secret, and
-   *  none can return one (bureau.md invariant 1). */
+   *  none can return one (bureau.md invariant 1). `readBase` picks WHICH origin
+   *  answers: `/vault/*` is the agent worker's, `/console/*` the site backend's
+   *  (which serves it same-origin — see `origins.ts`). */
   private async get<T>(path: string): Promise<T> {
-    const url = resolveTarget(this.origins, path, "metadata");
+    const url = resolveTarget(readBase(this.origins, path), path, "metadata");
     const res = await this.doFetch(url, {
       headers: { authorization: `Bearer ${this.token}` },
     });

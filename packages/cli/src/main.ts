@@ -140,6 +140,17 @@ const parseCommandLine = () =>
       sla: { type: "string" },
       allow: { type: "string" },
       "reply-mode": { type: "string" },
+      // ---- the agent config surface (s10 T4): `agents` is GO-NATIVE and has
+      //      no case in the switch below, but its value-taking flags are
+      //      declared here anyway. `cli-go/internal/delegate/argv.go` mirrors
+      //      this spec to know where a token ends, and argv_test.go diffs the
+      //      two in both directions — an undeclared flag there would make the
+      //      Go front door read `--recipients-book`'s VALUE as the command.
+      "allow-sender": { type: "string", multiple: true },
+      "recipients-book": { type: "string" },
+      enabled: { type: "string" },
+      agent: { type: "string" },
+      destroy: { type: "boolean", default: false },
       raw: { type: "boolean", default: false },
       offline: { type: "boolean", default: false },
       exec: { type: "string" },
@@ -156,6 +167,14 @@ const parseCommandLine = () =>
       add: { type: "string", multiple: true },
       remove: { type: "string", multiple: true },
       role: { type: "string" },
+      // ---- approvals needs-info (s10 T3): the human's required question ----
+      // `approvals` is served natively by the Go binary and has no case in the
+      // switch below, but this spec is the DECLARATION both front doors read:
+      // cli-go/internal/delegate/argv.go mirrors every `type: "string"` entry so
+      // its scanner knows `--question <text>` consumes the next token rather
+      // than naming it as the command, and argv_test.go fails on drift in
+      // either direction.
+      question: { type: "string" },
       unset: { type: "boolean", default: false },
       "no-sync": { type: "boolean", default: false },
       n: { type: "string", short: "n", default: "20" },

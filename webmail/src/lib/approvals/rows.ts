@@ -99,15 +99,89 @@ export const HOLD_UNWIRED_NOTE = "commit / yank land with s03.D T2 — not wired
 // ── the no-thanks signal (arch.md §3) ─────────────────────────────────────
 
 /**
- * The three reasons, in the order the decline panel offers them. `notNow`
- * last and visually a snooze: it deliberately trains nothing and must not be
- * the reflex click.
+ * The three reasons, in the order the decline panel offers them, mirroring the
+ * server's enum exactly (actionProposal.ts `REJECT_REASONS`). A reason earns
+ * its place only if it changes what the agent does next, so the hints say what
+ * each one STEERS rather than how annoyed the human is (decline-taxonomy.md).
+ *
+ * `unsafe` is last and `severe`, and that is not a severity ranking of the
+ * other two: it is a different KIND of judgment. wrongContent and wrongAction
+ * are quality feedback — this was done badly, this should not have been done.
+ * `unsafe` says a boundary was crossed (private information left the account, or
+ * the agent committed the human to something), which is weighted heavily, is
+ * never tolerated twice, and is not a stronger way of saying "no". The panel
+ * words it as the hard stop it is so it is never the reflex click.
+ *
+ * `notNow` is gone (decline-taxonomy.md): it was a grab-bag — "I'll do it
+ * myself", "not due yet" (now a `dueAt` correction, which records nothing) and
+ * "meh, later". Rows decided under it still render; see `describeReason`.
  */
-export const REJECT_REASONS: ReadonlyArray<{ reason: RejectReason; label: string; hint: string }> = [
-  { reason: "wrongContent", label: "Wrong content", hint: "right action, badly done — trains the drafter" },
-  { reason: "wrongAction", label: "Wrong action", hint: "should not have been proposed — trains the classifier" },
-  { reason: "notNow", label: "Not now", hint: "a snooze; counts against nothing" },
+export const REJECT_REASONS: ReadonlyArray<{
+  reason: RejectReason;
+  label: string;
+  hint: string;
+  /** The categorically-separate hard negative — styled and worded apart. */
+  severe?: boolean;
+}> = [
+  { reason: "wrongContent", label: "Wrong content", hint: "right action, badly done — trains the drafter, keeps the trigger" },
+  { reason: "wrongAction", label: "Wrong action", hint: "should not have been proposed at all — trains the classifier; rare by design" },
+  {
+    reason: "unsafe",
+    label: "Unsafe — it leaked private information, or committed me to something",
+    hint: "a hard stop, not a stronger no: weighted heavily and never tolerated twice",
+    severe: true,
+  },
 ];
+
+/**
+ * Kinds whose DECLINE says nothing about the agent, mirroring the server's
+ * `NO_FAULT_KINDS` (actionProposal.ts) — which REFUSES a reject reason on
+ * them, so a client that insists on one makes the verb unreachable:
+ *
+ *   `budget-overrun`     declining says "not this month" — about the wallet.
+ *   `held-mail-review`   declining says "yes, that is spam" — an ANSWER, and
+ *                        the agent was right to ask.
+ *
+ * The panel drops the reason list for these rather than offering three
+ * choices the server will reject. (Found while wiring s12: the decline button
+ * required a reason for every kind, which made a `budget-overrun` impossible
+ * to decline from this client at all.)
+ */
+export const NO_FAULT_KINDS: ReadonlySet<string> = new Set([
+  "budget-overrun",
+  "held-mail-review",
+]);
+
+/** Whether the decline panel must collect a reason before it can submit. */
+export function declineNeedsReason(kind: string): boolean {
+  return !NO_FAULT_KINDS.has(kind);
+}
+
+/**
+ * Reasons the server once accepted and no longer does. Recorded decisions are
+ * NOT migrated — a human's decision is a fact, and rewriting one to fit a later
+ * taxonomy would be an audit hole — so the queue must still render them.
+ */
+export const RETIRED_REJECT_REASONS: ReadonlySet<string> = new Set(["notNow"]);
+
+/**
+ * How a RECORDED reason renders. Tolerant by construction: history is read, not
+ * validated, so this never throws and never remaps.
+ *
+ *   a live reason    → its panel label ("Wrong content")
+ *   a retired one    → itself, marked: "notNow (retired)"
+ *   anything else    → itself, verbatim
+ *
+ * Showing a retired reason as itself is the point: "notNow" silently becoming
+ * "Wrong action" would put a judgment in the human's mouth they never made, and
+ * dropping it would erase why a proposal was declined.
+ */
+export function describeReason(reason: string): string {
+  const known = REJECT_REASONS.find((r) => r.reason === reason);
+  if (known) return known.label;
+  if (RETIRED_REJECT_REASONS.has(reason)) return `${reason} (retired)`;
+  return reason;
+}
 
 // ── one-line summaries ────────────────────────────────────────────────────
 
@@ -135,6 +209,36 @@ export function summarizeProposal(p: ActionProposal): string {
       return `Unsubscribe from ${s(p.payload.listName) || s(p.payload.to) || p.subject.objectId}`;
     case "organize-files":
       return `Organize files under ${s(p.payload.target) || p.subject.objectId}`;
+    case "budget-overrun": {
+      // s11 T9 — LEAD WITH THE NUMBERS. This proposal is not a persuasion
+      // surface: the whole decision is "how much is waiting, how much has been
+      // spent, how much would it cost", so the row states those before it names
+      // anything. An unknown estimate says "cost unknown" rather than a
+      // plausible-looking zero — the agent has no paid history for this binding
+      // and a guessed dollar figure would be the one lie that matters here.
+      const n = num(p.payload.waitingCount);
+      const spent = usdOrNull(p.payload.monthSpentMicros);
+      const cap = usdOrNull(p.payload.capMicros);
+      const clear = usdOrNull(p.payload.estimateMicros);
+      const bound = usdOrNull(p.payload.overageMicros);
+      const who = s(p.payload.bindingName) || s(p.payload.bindingId) || p.subject.objectId;
+      const spend = spent && cap ? `${spent} of ${cap} spent` : "budget spent";
+      return (
+        `${n ?? "?"} waiting · ${spend} · ${clear ? `~${clear} to clear` : "cost unknown"}` +
+        ` — approve ${bound ? `a ${bound}` : "an"} overage for ${who}`
+      );
+    }
+    case "held-mail-review": {
+      // s12 — LEAD WITH THE COUNT and name the verbs, because both are real
+      // here: approve releases, decline confirms, and neither is a no-op. The
+      // senders are the evidence a human actually decides on, so the row shows
+      // the first couple rather than making them open the payload.
+      const n = num(p.payload.heldCount) ?? (Array.isArray(p.payload.emailIds) ? p.payload.emailIds.length : null);
+      const msgs = Array.isArray(p.payload.messages) ? (p.payload.messages as Array<{ sender?: unknown }>) : [];
+      const who = [...new Set(msgs.map((m) => s(m.sender)).filter(Boolean))];
+      const from = who.length > 0 ? ` from ${who.slice(0, 2).join(", ")}${who.length > 2 ? ` +${who.length - 2}` : ""}` : "";
+      return `${n ?? "?"} held message${n === 1 ? "" : "s"}${from} — approve releases, decline confirms spam`;
+    }
     case "grant-request": {
       // The allowlist widening (s10 T3): grantType "recipient" is "let me
       // email <address>" — approving APPLIES a contact write into the
@@ -151,6 +255,23 @@ export function summarizeProposal(p: ActionProposal): string {
     default:
       return `${p.kind} on ${p.subject.realm} ${p.subject.objectId}`;
   }
+}
+
+/** A payload number, or null when the field is absent or not a finite number.
+ * Absent is not zero — every reader here has to be able to say "unknown". */
+function num(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * micro-USD → "$1.23", or null when there is no honest number to print.
+ * micro-USD is the unit the whole budget path speaks (`cost_micros`,
+ * `spendPerMonth`, `amount_micros`); converting at the render edge keeps the
+ * integer money integral everywhere it is compared.
+ */
+export function usdOrNull(v: unknown): string | null {
+  const n = num(v);
+  return n === null ? null : `$${(n / 1_000_000).toFixed(2)}`;
 }
 
 /** The body preview a reply-shaped payload carries, if any. */

@@ -28,9 +28,16 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
   registry.register("AgentInvocation/query", async (args, ctx) => {
     const access = await requireAccount(ctx, args, "read");
     const status = typeof args.status === "string" ? args.status : "pending";
+    // s11 T3 — `alerted: true` narrows to invocations the watchdog MARKED
+    // (past due_at and unclaimable: pinned, or beyond the cloud's declared
+    // capabilities). The marker is what makes "no past-due invocation sits
+    // pending silently" a queryable fact rather than a log line someone has to
+    // have been watching for; it composes with `status`, which still applies.
+    const alerted = args.alerted === true;
     const { results } = await ctx.env.DB.prepare(
       `SELECT id FROM agent_invocations
-       WHERE account_id = ? AND status = ? ORDER BY created_at LIMIT 64`,
+       WHERE account_id = ? AND status = ?${alerted ? " AND alert_kind IS NOT NULL" : ""}
+       ORDER BY created_at LIMIT 64`,
     )
       .bind(access.accountId, status)
       .all<{ id: string }>();
@@ -85,6 +92,24 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
         // tighten, never strand). The fleet host's client-side narrowing
         // (packages/cli/src/agent.ts fitsRequirements) reads this field.
         requires: typeof r.requires_json === "string" ? JSON.parse(r.requires_json) : null,
+        // s11 T3, FEATURE-DETECTED the same way: the watchdog's alert marker.
+        // 'overdue-pinned' (privacy beats liveness, decision 0) and
+        // 'overdue-unfit' mean this invocation's due_at passed while nobody who
+        // could claim it was available. Those two are NOTICES: there is no verb,
+        // which is exactly why they are markers on the run and not
+        // ActionProposals. 's11 T9's 'budget-stranded:<YYYY-MM>' is the
+        // exception that proves the rule — a human choice DOES exist there
+        // ("spend anyway?"), so the marker rides beside a `budget-overrun`
+        // proposal as its once-per-period idempotence key rather than instead of
+        // one. Projected as an opaque string either way: this is a read model,
+        // and validating a marker here would only add a place to drift.
+        alert:
+          typeof r.alert_kind === "string"
+            ? {
+                kind: r.alert_kind,
+                at: typeof r.alert_at === "number" ? new Date(r.alert_at).toISOString() : null,
+              }
+            : null,
       })),
       notFound: ids.filter((id) => !found.has(id)),
     };
