@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/cmd"
 )
 
 func TestCommand(t *testing.T) {
@@ -106,6 +108,45 @@ func TestValueFlagsMatchTheTypeScript(t *testing.T) {
 	}
 	if extra := diff(shortValueFlags, wantShort); len(extra) > 0 {
 		t.Errorf("shortValueFlags has %v, no longer a value-taking short option", extra)
+	}
+}
+
+// TestOwnedValueFlagsAreDeclaredInTheSpec closes the third leg of the drift
+// check, and it is the one wave 4 needed.
+//
+// TestValueFlagsMatchTheTypeScript proves `valueFlags` ≡ main.ts's `type:
+// "string"` entries. This proves every value flag a NATIVE command claims is in
+// `valueFlags`. Together they mean: a ported command cannot grow a value flag
+// without main.ts declaring it too.
+//
+// Why that matters concretely — it is the trap `contacts` and `calendar` walked
+// into on the way in. The scanner in Command() uses `valueFlags` to know where a
+// token ENDS. A flag missing there makes
+//
+//	bullmoose calendar event create --title Standup --start …
+//
+// read `Standup` as the COMMAND, so the invocation delegates (or worse, routes
+// somewhere else) while every unit test still passes. cmd.Install is the source
+// here rather than a hand-copied list, so a new flag is checked the moment it is
+// registered.
+func TestOwnedValueFlagsAreDeclaredInTheSpec(t *testing.T) {
+	owned := map[string][]string{}
+	cmd.Install(
+		func(string, func([]string) int) {},
+		func(string) {},
+		func(command string, value, _, _ []string) { owned[command] = value },
+	)
+	if len(owned) == 0 {
+		t.Fatal("no native command registered its flags — has Install changed shape?")
+	}
+	for command, flags := range owned {
+		for _, f := range flags {
+			if !valueFlags[f] {
+				t.Errorf("%s owns --%s, but it is not in valueFlags — the argv scanner "+
+					"would not consume its value, so `bullmoose %s --%s <value> …` names "+
+					"the VALUE as the command", command, f, command, f)
+			}
+		}
 	}
 }
 

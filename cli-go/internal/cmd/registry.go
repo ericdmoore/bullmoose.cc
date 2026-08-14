@@ -127,6 +127,30 @@ var registry = map[string]spec{
 	"token": {json: true, run: runToken,
 		value:   []string{"db", "name", "scopes"},
 		boolean: []string{"json", "ids", "dry-run"}},
+	// ---- wave 4 (devPlan.md:150): the vendored codecs ----
+	//
+	// `contacts` and `calendar` are the two commands the plan told us to budget
+	// for, because each carries a codec the CLI cannot import at runtime and
+	// therefore vendors: vCard ⇄ JSContact (internal/vcard) and iCal/RRULE
+	// (internal/ical). Both have Node twins, so byte-identity applies and both
+	// declare every flag their native path consumes.
+	//
+	// `contacts` owns exactly cmdContacts's reads (contacts.ts:301): --account,
+	// --book, -n, --force, plus the four I/O-contract flags. Nothing is
+	// deliberately withheld here, unlike `send` — there is no half-ported branch
+	// behind a flag, so there is no flag a user can type that the native path
+	// would silently ignore.
+	"contacts": {json: true, run: runContacts,
+		value:   []string{"db", "account", "book", "n", "as", "if-state"},
+		boolean: []string{"json", "ids", "dry-run", "force"},
+		short:   []string{"n"}},
+	// `calendar`'s set is exactly cmdCalendar's reads (calendar.ts:310). Note
+	// --days is shared with `creds` in the TypeScript flag table; here it belongs
+	// to `agenda`, and per-command ownership is why that is not a problem.
+	"calendar": {json: true, run: runCalendar,
+		value: []string{"db", "account", "days", "title", "start", "duration", "tz",
+			"rrule", "calendar", "occurrence", "as", "if-state"},
+		boolean: []string{"json", "ids", "dry-run", "force", "all-day", "ics"}},
 	// watch has a Node twin, so byte-identity applies and it must declare every
 	// flag its native path consumes — `--exec` above all, since an undeclared one
 	// would silently delegate forever and the port would never run. It parses its
