@@ -1,0 +1,23 @@
+# JMAP autodiscovery (RFC 8620 §2.2).
+#
+# A client that knows only an email address resolves the server in two steps:
+# the _jmap._tcp SRV record, then — failing that — this well-known path on the
+# domain itself. Both were broken until 2026-08-13:
+#
+#   SRV        Cloudflare rewrites the target of any SRV pointing at a PROXIED
+#              hostname into `_dc-srv.<hash>._jmap._tcp.<domain>`. That name
+#              resolves, but no TLS certificate can cover a label containing
+#              underscores, so the handshake fails outright. app.bullmoose.cc is
+#              a proxied Pages domain, so no working SRV can be served for it —
+#              the record is removed rather than left as a trap, because a
+#              client that finds a SRV record and cannot connect may error
+#              instead of falling back to this path.
+#
+#   well-known The apex is this marketing site, whose catch-all answered
+#              /.well-known/jmap with 200 and the homepage HTML. A success
+#              status carrying a webpage is worse than a 404: it tells the
+#              client it found the server.
+#
+# So the apex now hands discovery to the app origin, which serves the real
+# session resource (401 JSON without credentials — an honest answer).
+/.well-known/jmap  https://app.bullmoose.cc/.well-known/jmap  302
