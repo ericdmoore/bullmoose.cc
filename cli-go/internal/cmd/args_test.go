@@ -24,7 +24,16 @@ func TestParse(t *testing.T) {
 		{"--n value", []string{"log", "--n", "5"},
 			args{N: "5", Positionals: []string{"log"}}},
 		{"--account value not swallowed as positional", []string{"search", "--account", "team", "invoice"},
-			args{N: "20", Account: "team", Positionals: []string{"search", "invoice"}}},
+			args{N: "20", Account: "team", HasAccount: true, Positionals: []string{"search", "invoice"}}},
+		// The credential flags record PRESENCE beside their value, because every
+		// main.ts read of them is `??` — nullish, not falsy (args.go's note).
+		{"--scopes empty is present, not absent", []string{"token", "create", "--scopes", ""},
+			args{N: "20", Scopes: "", HasScopes: true, Positionals: []string{"token", "create"}}},
+		{"--password empty is a password", []string{"login", "eric@x.cc", "--password", ""},
+			args{N: "20", Password: "", HasPassword: true, Positionals: []string{"login", "eric@x.cc"}}},
+		{"init's flags", []string{"init", "--base", "https://x", "--token", "bm_1", "--offline"},
+			args{N: "20", Base: "https://x", HasBase: true, Token: "bm_1", HasToken: true,
+				Offline: true, Positionals: []string{"init"}}},
 		{"--db=inline", []string{"log", "--db=/tmp/x.db"},
 			args{N: "20", DB: "/tmp/x.db", Positionals: []string{"log"}}},
 		{"-- ends options", []string{"search", "--", "--json"},

@@ -51,27 +51,18 @@ export function loadBootstrap(fileUrl: string): Bootstrap {
  * Local mailstore: the SAME SQLite schema as the server's D1 data plane
  * (packages/mailstore/sql/data-plane.sql), so local queries are the same
  * SQL you'd run server-side. On top of it, three CLI-only tables:
- * config, sync_state, and a populated FTS index.
+ * config, sync_state, and a populated FTS index (packages/cli/sql/local.sql).
+ *
+ * Both halves are FILES rather than string literals because a second CLI now
+ * creates the same mirror: `cli-go` embeds a copy of each at build time (a
+ * static binary cannot read a repo file at runtime) and byte-compares the two
+ * in `cli-go/internal/store/schema_test.go`. A literal here would have made
+ * that check a regex over TypeScript source instead of a byte comparison.
  */
 
-const LOCAL_SCHEMA = `
-CREATE TABLE IF NOT EXISTS config (
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS sync_state (
-  account_id    TEXT PRIMARY KEY,
-  email_state   TEXT,
-  mailbox_state TEXT,
-  last_sync     INTEGER
-);
--- Unlike the server's placeholder FTS table, this one is populated at
--- sync time, so \`bullmoose search\` works offline.
-CREATE VIRTUAL TABLE IF NOT EXISTS cli_fts USING fts5 (
-  email_id UNINDEXED, subject, from_text, to_text, preview,
-  tokenize='unicode61'
-);
-`;
+/** Same directory depth from src/ (dev, type-stripped) and dist/ (built). */
+const schemaFile = (relative: string) =>
+  readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");
 
 export function defaultDbPath(): string {
   return process.env.BULLMOOSE_DB ?? join(homedir(), ".bullmoose", "mail.db");
@@ -106,12 +97,8 @@ export function openDb(path: string): DatabaseSync {
     }
   }
 
-  // Same directory depth from src/ (dev, type-stripped) and dist/ (built).
-  const dataPlane = fileURLToPath(
-    new URL("../../mailstore/sql/data-plane.sql", import.meta.url),
-  );
-  db.exec(readFileSync(dataPlane, "utf8"));
-  db.exec(LOCAL_SCHEMA);
+  db.exec(schemaFile("../../mailstore/sql/data-plane.sql"));
+  db.exec(schemaFile("../sql/local.sql"));
   return db;
 }
 
