@@ -449,6 +449,9 @@ export const MIGRATIONS = [
       "ALTER TABLE agent_invocations ADD COLUMN needs_json TEXT",
       "ALTER TABLE agent_invocations ADD COLUMN depth INTEGER",
       "ALTER TABLE agent_invocations ADD COLUMN authority_json TEXT",
+      // The index belongs HERE, not in data-plane.sql: `schemas` runs before
+      // `migrate`, so an index over a column this migration adds cannot exist
+      // in the schema file without breaking every existing shard.
       "CREATE INDEX IF NOT EXISTS invocations_job ON agent_invocations (account_id, job_id)",
     ],
     absent: ["CREATE TABLE agent_invocations (id TEXT NOT NULL, account_id TEXT NOT NULL)"],

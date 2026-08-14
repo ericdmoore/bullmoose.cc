@@ -411,10 +411,12 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
 );
 CREATE INDEX IF NOT EXISTS invocations_status
   ON agent_invocations (account_id, status);
--- The whole-Job scan (progress view, node count, aggregate spend) and the
--- dependency lookup the claim gate's NOT EXISTS walks.
-CREATE INDEX IF NOT EXISTS invocations_job
-  ON agent_invocations (account_id, job_id);
+-- NOTE: the whole-Job index (account_id, job_id) is NOT here. `job_id` reaches
+-- an EXISTING database only through the `invocation-job-columns` migration, and
+-- bootstrap runs `schemas` BEFORE `migrate` — so an index over it in this file
+-- fails on every shard that predates the column while passing on every fresh
+-- one. It lives in that migration's `up`, the only place both orders are safe.
+-- `infra/indexOnMigratedColumn.test.ts` keeps it that way.
 
 -- s11 T7 — the Job row. It stores ONLY what cannot be derived from its nodes:
 -- the aggregate budget, the two runaway-planner caps, the originating binding,
