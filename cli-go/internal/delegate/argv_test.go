@@ -76,25 +76,30 @@ func TestValueFlagsMatchTheTypeScript(t *testing.T) {
 	short := regexp.MustCompile(`short:\s*"([A-Za-z])"`)
 
 	wantValue := map[string]bool{}
+	wantBoolean := map[string]bool{}
 	wantShort := map[string]bool{}
-	booleans := 0
+	wantShortBoolean := map[string]bool{}
 	for _, m := range spec.FindAllStringSubmatch(src, -1) {
 		name, kind := m[1], m[2]
+		s := short.FindStringSubmatch(m[3])
 		if kind == "string" {
 			wantValue[name] = true
-		} else {
-			booleans++
+			if s != nil {
+				wantShort[s[1]] = true
+			}
+			continue
 		}
-		if s := short.FindStringSubmatch(m[3]); s != nil && kind == "string" {
-			wantShort[s[1]] = true
+		wantBoolean[name] = true
+		if s != nil {
+			wantShortBoolean[s[1]] = true
 		}
 	}
 
 	// A regex that silently stopped matching would make every assertion below
 	// pass vacuously.
-	if len(wantValue) < 50 || booleans < 15 {
+	if len(wantValue) < 50 || len(wantBoolean) < 15 {
 		t.Fatalf("the parseArgs spec did not parse (%d string, %d boolean flags found) — has main.ts changed shape?",
-			len(wantValue), booleans)
+			len(wantValue), len(wantBoolean))
 	}
 
 	if missing := diff(wantValue, valueFlags); len(missing) > 0 {
@@ -108,6 +113,35 @@ func TestValueFlagsMatchTheTypeScript(t *testing.T) {
 	}
 	if extra := diff(shortValueFlags, wantShort); len(extra) > 0 {
 		t.Errorf("shortValueFlags has %v, no longer a value-taking short option", extra)
+	}
+
+	// The boolean half, which the help router (help.go) needs and Command() does
+	// not: to answer "would parseArgs accept this argv?" it has to tell a flag
+	// that exists and takes nothing from a flag that does not exist at all. A
+	// boolean missing here reads as an unknown option, so `bullmoose --force
+	// --help` would delegate instead of printing help; a boolean here that Node
+	// has dropped reads as accepted, so the Go binary would print help where Node
+	// prints a usage error.
+	if missing := diff(wantBoolean, booleanFlags); len(missing) > 0 {
+		t.Errorf("booleanFlags is missing %v — main.ts declares them `type: \"boolean\"`, so parseArgs accepts them and the help router must too", missing)
+	}
+	if extra := diff(booleanFlags, wantBoolean); len(extra) > 0 {
+		t.Errorf("booleanFlags has %v, which packages/cli/src/main.ts no longer declares as `type: \"boolean\"`", extra)
+	}
+	shortBooleans := map[string]bool{}
+	for s := range shortBooleanFlags {
+		shortBooleans[s] = true
+	}
+	if missing := diff(wantShortBoolean, shortBooleans); len(missing) > 0 {
+		t.Errorf("shortBooleanFlags is missing %v — `bullmoose log -h` would delegate instead of showing help", missing)
+	}
+	if extra := diff(shortBooleans, wantShortBoolean); len(extra) > 0 {
+		t.Errorf("shortBooleanFlags has %v, no longer a boolean short option", extra)
+	}
+	for s, long := range shortBooleanFlags {
+		if !wantBoolean[long] {
+			t.Errorf("shortBooleanFlags maps -%s to --%s, which main.ts does not declare as a boolean", s, long)
+		}
 	}
 }
 
