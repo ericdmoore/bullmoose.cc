@@ -21,6 +21,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
@@ -103,6 +105,18 @@ type Mailbox struct {
 	SortOrder int64   `json:"sortOrder"`
 }
 
+// Options is the one knob sync.ts:202 takes: `--blobs <dir>`, which mirrors the
+// RFC 5322 source of every message into a directory beside the metadata.
+//
+// It is a struct rather than a bare string so `watch` (which never downloads
+// blobs) reads as passing "no options" rather than an empty path, and so a later
+// sync option lands without touching every call site.
+type Options struct {
+	// Blobs is the directory `--blobs` names. Empty means no blob mirroring,
+	// which is what `watch` always passes.
+	Blobs string
+}
+
 // Cursor reads the account's stored Email state — the resume point. "" means
 // never synced, which sends the next pass down the full-resync path.
 func Cursor(db *sql.DB, accountID string) (string, error) {
@@ -125,7 +139,7 @@ func Cursor(db *sql.DB, accountID string) (string, error) {
 // leaves the old cursor in place, so the next pass replays the same window
 // rather than skipping it. Replaying is safe (INSERT OR REPLACE); skipping is
 // not recoverable.
-func Sync(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string) (*Stats, error) {
+func Sync(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string, opts Options) (*Stats, error) {
 	mailboxes, mailboxState, err := RefreshMailboxes(ctx, db, client, accountID)
 	if err != nil {
 		return nil, err
@@ -138,7 +152,7 @@ func Sync(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string
 	stats := &Stats{Mode: "full", Mailboxes: len(mailboxes), NewState: "0"}
 	if cursor != "" {
 		stats.Mode = "incremental"
-		if err := incremental(ctx, db, client, accountID, cursor, stats); err != nil {
+		if err := incremental(ctx, db, client, accountID, cursor, stats, opts); err != nil {
 			// cannotCalculateChanges is the server saying "your cursor is too old
 			// to replay" — the one error that is not a failure but an instruction
 			// (sync.ts:228).
@@ -148,11 +162,11 @@ func Sync(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string
 			stats.Mode = "full"
 			stats.CreatedIDs, stats.UpdatedIDs, stats.DestroyedIDs = nil, nil, nil
 			stats.Created, stats.Updated, stats.Destroyed = 0, 0, 0
-			if err := fullResync(ctx, db, client, accountID, stats); err != nil {
+			if err := fullResync(ctx, db, client, accountID, stats, opts); err != nil {
 				return nil, err
 			}
 		}
-	} else if err := fullResync(ctx, db, client, accountID, stats); err != nil {
+	} else if err := fullResync(ctx, db, client, accountID, stats, opts); err != nil {
 		return nil, err
 	}
 
@@ -166,7 +180,66 @@ func Sync(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string
 		accountID, stats.NewState, mailboxState, nowMillis()); err != nil {
 		return nil, err
 	}
+
+	// --blobs guarantees a COMPLETE local blob store, not just blobs for the rows
+	// this pass touched, so it backfills anything missing (sync.ts:251). The
+	// backfill runs AFTER the cursor is committed, exactly as the TypeScript does:
+	// a download failure must not cost the caller the metadata sync it already
+	// paid for, and content-hash filenames make the re-check cheap.
+	if opts.Blobs != "" {
+		rows, err := db.QueryContext(ctx,
+			"SELECT DISTINCT blob_id FROM emails WHERE account_id = ?", accountID)
+		if err != nil {
+			return nil, err
+		}
+		var blobIDs []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			blobIDs = append(blobIDs, id)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+		for _, id := range blobIDs {
+			if err := downloadBlob(ctx, client, accountID, id, opts.Blobs); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return stats, nil
+}
+
+// ReconcileEmails is sync.ts:186 — the narrow mirror write a CLI-originated
+// `Email/set` does after the server confirms it (sVOL 019).
+//
+// The contract, and why it is a separate entry point rather than a `sync`: call
+// it with ONLY the ids the server reported in `updated`/`destroyed`, and ONLY
+// after the write returns. A triage verb that reconciled optimistically — before
+// the server confirmed the change, or for ids the server refused — would
+// re-introduce exactly the mirror-vs-server divergence it exists to prevent.
+//
+// It reuses upsertEmails/deleteEmail, so the rows it writes are byte-for-byte the
+// ones a full sync would, and it deliberately does NOT touch sync_state: the
+// cursor stays put, so the next real sync replays these changes rather than
+// skipping them.
+func ReconcileEmails(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string, updated, destroyed []string) error {
+	if len(updated) > 0 {
+		if err := upsertEmails(ctx, db, client, accountID, updated, Options{}); err != nil {
+			return err
+		}
+	}
+	for _, id := range destroyed {
+		if err := deleteEmail(ctx, db, accountID, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // RefreshMailboxes rewrites the mailbox mirror in full — sync.ts:155. A blind
@@ -208,7 +281,7 @@ func RefreshMailboxes(ctx context.Context, db *sql.DB, client *jmap.Client, acco
 
 // incremental is sync.ts:261: page Email/changes from the cursor until the
 // server stops saying hasMoreChanges.
-func incremental(ctx context.Context, db *sql.DB, client *jmap.Client, accountID, cursor string, stats *Stats) error {
+func incremental(ctx context.Context, db *sql.DB, client *jmap.Client, accountID, cursor string, stats *Stats, opts Options) error {
 	since := cursor
 	for {
 		raw, err := client.One(ctx, "Email/changes", map[string]any{
@@ -229,7 +302,7 @@ func incremental(ctx context.Context, db *sql.DB, client *jmap.Client, accountID
 		if err := json.Unmarshal(raw, &ch); err != nil {
 			return err
 		}
-		if err := upsertEmails(ctx, db, client, accountID, append(append([]string{}, ch.Created...), ch.Updated...)); err != nil {
+		if err := upsertEmails(ctx, db, client, accountID, append(append([]string{}, ch.Created...), ch.Updated...), opts); err != nil {
 			return err
 		}
 		for _, id := range ch.Destroyed {
@@ -255,7 +328,7 @@ func incremental(ctx context.Context, db *sql.DB, client *jmap.Client, accountID
 // fullResync is sync.ts:296: drop this account's rows and re-page the whole
 // mailbox. The state is snapshotted BEFORE paging so concurrent changes are
 // caught by the next incremental pass instead of silently skipped.
-func fullResync(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string, stats *Stats) error {
+func fullResync(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string, stats *Stats, opts Options) error {
 	for _, stmt := range []string{
 		"DELETE FROM emails WHERE account_id = ?",
 		"DELETE FROM email_mailboxes WHERE account_id = ?",
@@ -301,7 +374,7 @@ func fullResync(ctx context.Context, db *sql.DB, client *jmap.Client, accountID 
 		if len(page.IDs) == 0 {
 			return nil
 		}
-		if err := upsertEmails(ctx, db, client, accountID, page.IDs); err != nil {
+		if err := upsertEmails(ctx, db, client, accountID, page.IDs, opts); err != nil {
 			return err
 		}
 		stats.Created += len(page.IDs)
@@ -312,7 +385,7 @@ func fullResync(ctx context.Context, db *sql.DB, client *jmap.Client, accountID 
 }
 
 // upsertEmails fetches ids in batches and writes their mirror rows — sync.ts:329.
-func upsertEmails(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string, ids []string) error {
+func upsertEmails(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string, ids []string, opts Options) error {
 	const batch = 100
 	for i := 0; i < len(ids); i += batch {
 		end := min(i+batch, len(ids))
@@ -334,9 +407,37 @@ func upsertEmails(ctx context.Context, db *sql.DB, client *jmap.Client, accountI
 			if err := upsertOne(ctx, db, accountID, e); err != nil {
 				return err
 			}
+			if opts.Blobs != "" {
+				if err := downloadBlob(ctx, client, accountID, e.BlobID, opts.Blobs); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
+}
+
+// downloadBlob writes one message's RFC 5322 source to <dir>/<blobId>.eml —
+// sync.ts:415. Blob ids are content hashes, so a file that already exists holds
+// identical bytes and the re-check costs a stat rather than a download.
+//
+// The directory is created 0700 and the file 0600: this is the whole of a
+// mailbox in plaintext, and `--blobs ~/mail-archive` on a shared machine should
+// not be world-readable. Node's mkdirSync/writeFileSync take the process umask
+// instead, which is the one deliberate divergence here and strictly tighter.
+func downloadBlob(ctx context.Context, client *jmap.Client, accountID, blobID, dir string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, blobID+".eml")
+	if _, err := os.Stat(path); err == nil {
+		return nil // content-hash ids: existing = identical
+	}
+	body, err := client.DownloadBlob(ctx, accountID, blobID)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, body, 0o600)
 }
 
 // upsertOne writes one message's rows — sync.ts:351. INSERT OR REPLACE, so a
