@@ -37,6 +37,19 @@ func Select(accounts []Account, defaultID, selector string) ([]Account, error) {
 	)
 }
 
+// Match is Select WITHOUT the refusal — packages/cli/src/db.ts:186
+// matchAccounts, where an unmatched selector is the empty set rather than an
+// error.
+//
+// Exported for its ONE caller, and db.ts:181 states why it has to exist
+// separately: `send --from` names an ADDRESS, which may be another account of
+// this login *or* an alias identity inside the default one. Making the account
+// lookup fatal there would break sending from an alias, so `send`'s strict check
+// moves to the identity instead (main.ts:591).
+func Match(accounts []Account, defaultID, selector string) []Account {
+	return match(accounts, defaultID, selector)
+}
+
 // match mirrors matchAccounts (db.ts:186): the ordered fall-through of
 // undefined→all, "default"→the default, exact id/address, "@suffix" domain, then
 // a loose substring over address (case-sensitive) / name (case-insensitive) / id.

@@ -41,6 +41,52 @@ func TestOwnedNatively(t *testing.T) {
 	}
 }
 
+// TestOwnedNativelyIsPerCommand pins the guard's per-command shape, and with it
+// the property that makes the wave-2 port safe: `send` owns exactly the flags its
+// native path reads, so anything else — above all `--expandMD`, the Markdown →
+// MIME pipeline that is NOT ported — reaches Node instead of being silently
+// dropped by a native path that cannot honour it.
+func TestOwnedNativelyIsPerCommand(t *testing.T) {
+	RegisterFlags("read", []string{"db", "account"}, []string{"json", "ids", "raw"}, nil)
+	RegisterFlags("send",
+		[]string{"db", "account", "from", "identity", "to", "cc", "bcc", "subject", "file", "body"},
+		[]string{"json"}, nil)
+	RegisterFlags("log", []string{"db", "account", "mailbox", "n"}, []string{"json", "ids"}, []string{"n"})
+	RegisterFlags("watch", []string{"db", "account", "exec"},
+		[]string{"json", "daemon", "status", "stop"}, nil)
+	defer func() { owned = map[string]flagSet{} }()
+
+	cases := []struct {
+		argv []string
+		want bool
+		why  string
+	}{
+		{[]string{"read", "em_1", "--raw"}, true, "read owns --raw"},
+		{[]string{"read", "--json", "--account", "work"}, true, "read owns --json/--account"},
+		{[]string{"read", "--to", "a@b.com"}, false, "--to is send's, not read's"},
+		{[]string{"send", "--to", "a@b.com", "--subject", "s", "--body", "b"}, true, "the plain-text send"},
+		{[]string{"send", "--to", "a@b.com", "--file", "-", "--json"}, true, "--file/-/--json are send's"},
+		{[]string{"send", "--to", "a@b.com", "--expandMD", "html"}, false,
+			"the Markdown pipeline is NOT ported — this MUST delegate or the wrong message is sent"},
+		{[]string{"send", "--to", "a@b.com", "--linkTTL", "7"}, false, "same pipeline, same rule"},
+		{[]string{"send", "--to", "a@b.com", "--dry-run"}, false, "cmdSend does not read --dry-run"},
+		{[]string{"send", "--to", "a@b.com", "--ids"}, false, "cmdSend does not read --ids"},
+		{[]string{"send", "--help"}, false, "help is still Node's"},
+		{[]string{"log", "-n", "5"}, true, "log owns the short -n"},
+		{[]string{"read", "-n", "5"}, false, "read does not"},
+		// The two directions that motivated per-command sets: too narrow and
+		// `watch --exec` delegates forever (the port never runs); too wide and
+		// `log --exec` runs natively, silently ignoring a flag Node rejects.
+		{[]string{"watch", "--exec", "notify"}, true, "watch owns --exec"},
+		{[]string{"log", "--exec", "rm -rf /"}, false, "log does NOT — Node must reject it"},
+	}
+	for _, c := range cases {
+		if got := ownedNatively(c.argv); got != c.want {
+			t.Errorf("ownedNatively(%q) = %v, want %v — %s", c.argv, got, c.want, c.why)
+		}
+	}
+}
+
 // TestRegisterPopulatesNative guards the wiring Register does for cmd.Install.
 func TestRegisterPopulatesNative(t *testing.T) {
 	before := len(native)

@@ -11,7 +11,7 @@ package account
 
 import (
 	"errors"
-	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -36,42 +36,87 @@ type Account struct {
 	Name      string
 }
 
-// Pick resolves an --account selector to EXACTLY ONE account, or an error —
-// packages/cli/src/db.ts:221 pickAccount, over the same matchAccounts
-// fall-through Select uses.
+// resolveError carries the TypeScript sentence VERBATIM while still wrapping the
+// sentinel a caller maps to an exit code.
+//
+// It exists because `read` and `send` have TypeScript twins, so their refusals
+// are held to byte-identity (arch.md §3) — a Go-phrased "--account selector
+// matches no account: …" would be a different sentence for the same event. The
+// sentinel travels via Unwrap so `errors.Is` still works and the exit-code
+// mapping is unchanged.
+type resolveError struct {
+	msg  string
+	kind error
+}
+
+func (e *resolveError) Error() string { return e.msg }
+func (e *resolveError) Unwrap() error { return e.kind }
+
+// One resolves an --account selector to EXACTLY ONE account — a transcription of
+// packages/cli/src/db.ts:221 pickAccount, including the fall-through to
+// selectAccounts (db.ts:169) for the refusals and their exact wording.
 //
 // The rule, applied identically everywhere (cli/009): a selector that matches
 // more than one account is an error, not a choice. `send` was in the old silent
 // half, so `--account @domain` on a multi-account login picked a sender by
 // enumeration order — and sending from the wrong identity is the one outcome you
-// cannot undo. No match → ErrNoMatch (exit 3); more than one → ErrAmbiguous
-// (exit 2); exactly one → that account.
+// cannot undo. No selector → the DEFAULT account (db.ts:222, and the reason
+// defaultID is a parameter rather than a caller's special case); no match →
+// ErrNoMatch (exit 3); more than one → ErrAmbiguous (exit 2).
 //
-// s08 T6 fills this seam the first time a SINGLE-ACCOUNT WRITE goes native
-// (devPlan.md:151). `approvals` is that write — a per-account decision surface —
-// so it routes here rather than duplicating account resolution and reintroducing
-// exactly the inconsistency cli/009 closed. The returned errors WRAP the
-// sentinels, so `errors.Is` still identifies them and the caller maps each to its
-// exit code (ambiguous → usage/2, no match → not found/3).
-func Pick(accounts []Account, selector string) (Account, error) {
-	// Pick is the selector-PRESENT resolver; the no-selector default belongs to
-	// the caller (db.ts:222), so an empty selector is treated as no match here.
-	matches := match(accounts, "", selector)
+// The two messages are quoted from db.ts rather than re-phrased:
+//
+//	no match   → `no account matches "x"; have: a, b`              (db.ts:174)
+//	ambiguous  → `--account "x" matches 2 accounts; name one of:\n  a\n  b`
+//	             prefixed `usage: ` by the caller's usage() (db.ts:225)
+func One(accounts []Account, defaultID, selector string) (Account, error) {
+	if selector == "" {
+		// db.ts:222 — the default account, or a bare ref when the accounts blob
+		// predates it.
+		for _, a := range accounts {
+			if a.AccountID == defaultID {
+				return a, nil
+			}
+		}
+		return Account{AccountID: defaultID}, nil
+	}
+	matches := match(accounts, defaultID, selector)
 	if len(matches) == 0 {
+		// db.ts:174, reached through selectAccounts: `a.address ?? a.accountId`,
+		// with NO name fallback (unlike Label).
 		have := make([]string, len(accounts))
 		for i, a := range accounts {
-			have[i] = Label(a)
+			have[i] = a.Address
+			if have[i] == "" {
+				have[i] = a.AccountID
+			}
 		}
-		return Account{}, fmt.Errorf("%w: --account %q (have: %s)",
-			ErrNoMatch, selector, strings.Join(have, ", "))
+		return Account{}, &resolveError{
+			kind: ErrNoMatch,
+			msg:  "no account matches \"" + selector + "\"; have: " + strings.Join(have, ", "),
+		}
 	}
 	if len(matches) > 1 {
-		named := make([]string, len(matches))
-		for i, a := range matches {
-			named[i] = Label(a)
+		// db.ts:225 — one candidate per line, two-space indented, so a long list
+		// stays readable. The caller adds the `usage: ` prefix (bmio.Usage).
+		var b strings.Builder
+		b.WriteString("--account \"" + selector + "\" matches " +
+			strconv.Itoa(len(matches)) + " accounts; name one of:")
+		for _, a := range matches {
+			label := a.Address
+			if label == "" {
+				label = a.AccountID
+			}
+			b.WriteString("\n  " + label)
 		}
-		return Account{}, fmt.Errorf("%w: --account %q matches %d accounts; name one of: %s",
-			ErrAmbiguous, selector, len(matches), strings.Join(named, ", "))
+		return Account{}, &resolveError{kind: ErrAmbiguous, msg: b.String()}
 	}
 	return matches[0], nil
+}
+
+// Pick is One without a default — the selector-PRESENT form the cli/009
+// regression test drives. It exists so there is exactly ONE resolver body; a
+// second implementation is precisely what cli/009 was.
+func Pick(accounts []Account, selector string) (Account, error) {
+	return One(accounts, "", selector)
 }

@@ -214,14 +214,14 @@ func Test_WatchIsRegisteredWithItsOwnFlags(t *testing.T) {
 		t.Error("watch honours --json (NDJSON events) and must claim it — cli/008")
 	}
 	want := map[string]bool{"exec": true}
-	for _, f := range s.valueFlags {
+	for _, f := range s.value {
 		delete(want, f)
 	}
 	if len(want) > 0 {
 		t.Errorf("watch does not declare value flag(s) %v", want)
 	}
 	wantBool := map[string]bool{"daemon": true, "status": true, "stop": true}
-	for _, f := range s.boolFlags {
+	for _, f := range s.boolean {
 		delete(wantBool, f)
 	}
 	if len(wantBool) > 0 {
