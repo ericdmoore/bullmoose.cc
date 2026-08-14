@@ -62,6 +62,17 @@ export interface AttachmentMeta {
   size: number;
   cid: string | null;
   disposition: string | null;
+  /**
+   * The FileNode this attachment ALSO lives in, when ingest side-stepped it
+   * into the Files realm (s03.B T3). The message keeps its attachment metadata
+   * either way — the blob is one content-addressed object with two references
+   * — so this is a cross-link, not a relocation: `null`/absent means the
+   * attachment is inline-only, exactly as every message stored before T3.
+   *
+   * Optional so existing `attachments_json` rows (which have no such key)
+   * parse unchanged, and so every non-ingest writer keeps compiling.
+   */
+  fileNodeId?: string | null;
 }
 
 /** One stored object, as blob enumeration reports it. */
@@ -3240,6 +3251,63 @@ export class Mailstore {
         ...this.provenanceValues(),
       )
       .run();
+  }
+
+  /**
+   * The account's directory for a FileNode `role`, created on first use.
+   *
+   * Mirrors `ensureRoleMailbox` (and `ensureDefaultBook`): a lazily
+   * materialized singleton row, so an account provisioned before Files existed
+   * grows its Attachments folder the first time delivery needs one, instead of
+   * requiring a provisioning backfill. This is the ONE tree invariant that has
+   * to live down here — it is a role lookup, not a tree rule — and it stays
+   * consistent with the method layer because it goes through `insertFileNode`,
+   * so provenance is stamped exactly like every other write.
+   *
+   * Racy in the same way `ensureRoleMailbox` is: two concurrent first-uses can
+   * both miss the SELECT and create two directories (top-level names are not
+   * DB-unique — `.feedback/common/030` §2). Delivery is serial per message and
+   * the loser is a duplicate folder, not lost data.
+   *
+   * Returns `created` because the caller owns the changelog: a directory that
+   * lands in D1 without a `commitChanges` entry leaves every syncing client
+   * with a file whose parent it has never been told about. `ensureRoleMailbox`
+   * gets away without this only because delivery commits the inbox as
+   * `updated` on every single message.
+   */
+  async ensureRoleDirectory(
+    accountId: string,
+    role: string,
+    name: string,
+  ): Promise<{ id: string; created: boolean }> {
+    const existing = await this.db
+      .prepare(
+        `SELECT id FROM file_nodes
+          WHERE account_id = ? AND role = ? AND node_type = 'directory' LIMIT 1`,
+      )
+      .bind(accountId, role)
+      .first<{ id: string }>();
+    if (existing) return { id: existing.id, created: false };
+
+    const now = Date.now();
+    const id = `fn_${crypto.randomUUID()}`;
+    await this.insertFileNode(accountId, {
+      id,
+      parentId: null,
+      name,
+      nodeType: "directory",
+      blobId: null,
+      size: null,
+      type: null,
+      created: now,
+      modified: now,
+      accessed: now,
+      changed: now,
+      executable: false,
+      isSubscribed: true,
+      role,
+    });
+    return { id, created: true };
   }
 
   async updateFileNode(accountId: string, id: string, patch: FileNodePatch): Promise<void> {

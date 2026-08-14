@@ -131,6 +131,14 @@ function emailToJmap(row: EmailRow): Record<string, unknown> {
       type: a.type,
       cid: a.cid,
       disposition: a.disposition,
+      // s03.B T3 — the attachment sidestep's cross-link, and the ONE property
+      // here that RFC 8621 §4.1.4 does not define. It is an extension of
+      // EmailBodyPart guarded by the `urn:ietf:params:jmap:filenode` capability
+      // this server advertises: a client that does not know Files ignores an
+      // unknown property, and a client that does gets the file's id without a
+      // second query. Always present (null when the attachment stayed
+      // inline-only) so the shape does not vary message to message.
+      fileNodeId: a.fileNodeId ?? null,
     })),
   };
 }
