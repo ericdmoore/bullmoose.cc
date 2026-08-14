@@ -96,9 +96,24 @@ Two views only, chosen because they answer the two questions a chief of staff is
 - **Cost is recorded per extraction** (tokens, model, per-message), because the readme
   names firehose economics as the standing risk and s11 T5 is starved for exactly this
   history.
-- Rendered as panels *inside the s07 T0 home view* — NOT new nav sections. If usage shows
-  people living in them, that is the noun earning its place, and THEN it gets nav.
-- Decisions (the third candidate view) is deferred until these two prove the pattern.
+- Rendered where they are NEEDED, which is three indexes and no nav item (Eric's question,
+  2026-08-14: do these deserve their own surface? — answered: they are ANSWERS, not
+  places):
+    * **time-indexed** — the s07 T0 home view / brief ("you promised Sergio by Friday");
+    * **person-indexed** — a context panel beside the open message: reading Bob's mail
+      shows the commitments and waits involving Bob ("you told him $750; his load calc is
+      overdue"). This is the conceptual-reorg readme's own strongest passage, and it is a
+      panel in the mail view, not a destination;
+    * **question-indexed** — Ask (T5), with citations, for "why did we choose X?".
+  One concession to auditability: each panel gets a "see all N" drill-down — the
+  inspection view, same rationale as the access log ("what does the system THINK I
+  promised?"), same tier as Mail → All Messages. If usage shows people living in that
+  drill-down, that is the noun earning nav, and only then.
+- Tasks get NO user-facing surface: an agent-doable task becomes a proposal (already in
+  the queue); a human-only task lands in the brief. A standalone Tasks pane competes with
+  every todo app the user already ignores — the trichotomy stays internal.
+- Decisions (the third candidate view) is deferred until these two prove the pattern; its
+  capture moment ("worth remembering why?") ships as an inline affordance regardless.
 
 **Done when:** the home view shows Waiting-on and Commitments with evidence links; a
 correction updates the row AND lands a training label; extraction cost is queryable.
