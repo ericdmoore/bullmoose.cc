@@ -107,6 +107,18 @@ type args struct {
 	// ---- contacts (sVOL 017) ----
 	Book string
 
+	// ---- mailbox CRUD (sVOL 004) ----
+	//
+	// Both record PRESENCE, and both need to: mailbox.ts:62 sets parentId iff
+	// `opts.parent !== undefined`, and `mailbox move` reads the same distinction
+	// as its required-argument check — so `--parent ""` is an explicit (and
+	// unresolvable) answer where a missing --parent is a usage error. `--sort ""`
+	// is likewise a value: `Number("")` is 0, a legal sortOrder.
+	Parent    string
+	HasParent bool
+	Sort      string
+	HasSort   bool
+
 	// ---- calendar (sVOL 018) ----
 	//
 	// Every value flag here records presence, because calendar.ts:528
@@ -256,6 +268,12 @@ func parse(argv []string) args {
 				a.HasIfState = true
 			case "book":
 				a.Book = value()
+			case "parent":
+				a.Parent = value()
+				a.HasParent = true
+			case "sort":
+				a.Sort = value()
+				a.HasSort = true
 			case "days":
 				a.Days = value()
 			case "title":

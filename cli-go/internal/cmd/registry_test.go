@@ -71,6 +71,8 @@ func TestRegistryOwnsOnlyDeclaredFlags(t *testing.T) {
 		"as", "if-state", "force", "book",
 		"days", "title", "start", "duration", "tz", "all-day", "rrule",
 		"calendar", "occurrence", "ics",
+		// wave 5, the folder surface: `mailbox`'s two own flags.
+		"parent", "sort",
 	}
 	sort.Strings(parsed)
 	for name, s := range registry {
