@@ -12,7 +12,7 @@ sVOL ledger, which is how T3 stayed quietly unstarted.
 |---|---|---|
 | **T1** — `file_nodes` schema + blob pinning | ✅ **done** | table live in the data plane; provenance columns land with s03.A |
 | **T2** — `FileNode/*` methods | ✅ **done** | all six registered in `services/jmap/src/methods/filenode.ts`; covered by `filenode.test.ts` |
-| **T3** — attachment sidestep | ❌ **not started** | `grep -rniE "sidestep\|ATTACHMENT_THRESHOLD\|large attachment" services/ packages/` returns **zero files**. `services/ingest/src/index.ts:219-254` stores attachment metadata inline with no size threshold and never creates a FileNode. |
+| **T3** — attachment sidestep | ✅ **done** (2026-08-13) | Inbound attachments over the threshold (default 5 MiB, non-inline) mint FileNodes in an `Attachments` role directory; content-addressed, so file and message share ONE R2 object. `services/ingest/src/sidestep.ts`. **The OUTBOUND half is not in this task** — `Email/set create` hardcodes `attachments: []`, so there is no compose path to side-step from (`.backlog/compose-attachments.md`). |
 
 **T3 is the gate for `s03.C` T3 (Files browser)** and for the attachment hole in
 compose/forward — `webmail` today renders attachment chips as inert `<span>`s
