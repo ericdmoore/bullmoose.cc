@@ -20,6 +20,7 @@ Ideally less but better emails to deal with.
             - 
 
 
+
 - _editor@_ (responder only)
     - an email workflow app
     - Need to bounce an idea off another writer - Emily is built just for that
@@ -65,10 +66,20 @@ Ideally less but better emails to deal with.
         - HumanCalendar
 
 
+
 - _news@_ (Workflow - discussion of interested news topics - gets )
     - Requires access to:
         - crawl4AI
         - feed.works?
+
+
+- _peter@_ (supports multiple workflows - respond-only, observe-and-propose)
+    - Peter tries to understand your business, takes notes about your various initiatives, themes of work going on, 
+    - Peter can look across the web for:
+        - segments & prospects
+        - vendor & partner companies
+        - ...then draft up proposed emails to send these researched groups
+            - noting their buyer behavior, problems-to-solve, willingness-to-pay, etc
 
 
 - _bouncer@_
