@@ -31,7 +31,7 @@
   // ⚠️ Free-plan ceiling: Workers KV allows 1,000 writes to DISTINCT keys per
   // day. Fine for personal use; the first thing to watch if this deployment
   // is ever shared, and another argument for CIMD over DCR.
-  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "PLACEHOLDER_OAUTH_KV_ID" }],
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "1c26cb3c92ef4ea8a118904131a49f08" }],
 
   // Control plane, for exactly one thing: resolving the human at the consent
   // screen to a principal (`verifyBearer`), so the grant records WHO
