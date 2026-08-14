@@ -304,7 +304,26 @@ const introspectHandler = {
 };
 
 export default new OAuthProvider<Env>({
-  apiRoute: ["/introspect"],
+  // Keyed to the MCP resource URI, not to a path on this host — which looks
+  // odd until you know what the provider does with it.
+  //
+  // On an apiRoute request the provider computes "which resource server am I"
+  // from the REQUEST URL (`oauth-provider.js:2694`) and refuses any token
+  // whose audience does not match it. Our tokens are audience-bound to
+  // `https://mcp.bullmoose.cc/mcp` — correctly, that is the whole point of
+  // RFC 8707 — so an introspection route at `auth.bullmoose.cc/introspect`
+  // could never accept one. Audience binding and introspection were in direct
+  // conflict, and the T7 harness is what surfaced it.
+  //
+  // A service binding routes to the bound worker regardless of the URL, and
+  // never touches DNS, so the agent worker calls us AT the canonical resource
+  // URI. The provider then computes the right resource server and the check
+  // passes on its merits rather than being disabled.
+  //
+  // `matchApiRoute` compares hostname + path prefix for a full-URL route, so
+  // a public request to auth.bullmoose.cc/mcp does NOT match this and falls
+  // through to the 404 below. The route is reachable over the binding only.
+  apiRoute: ["https://mcp.bullmoose.cc/mcp"],
   apiHandler: introspectHandler as never,
   defaultHandler: authorizeHandler as never,
   authorizeEndpoint: "/authorize",
