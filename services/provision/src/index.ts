@@ -29,6 +29,8 @@ import { BUREAU_VERBS, isBureauVerb } from "@bullmoose/auth-core/principal";
  *   DELETE /accounts/{id}         → SOFT (tombstone) + route/KV teardown
  *   POST   /agent-bindings/{id}/disable  → the agent kill switch
  *   POST   /agent-bindings/{id}/enable
+ *   POST   /agent-bindings/{id}/supervisor {ownerEmail?} → the supervisory
+ *                                 grant, minted after the fact (s10 T7)
  *   PATCH  /agent-bindings/{id}   → the TYPED CORE only (s10 T4)
  *   GET    /agent-bindings/{id}/lifecycle → the binding's provenance chain
  *   DELETE /agent-bindings/{id}   → refuses while invocations are queued
@@ -158,6 +160,17 @@ export default {
       const bindingVerb = url.pathname.match(/^\/agent-bindings\/([^/]+)\/(disable|enable)$/);
       if (request.method === "POST" && bindingVerb) {
         return setBindingEnabled(bindingVerb[1] as string, bindingVerb[2] === "enable", url, env);
+      }
+      // s10 T7 — the supervisory grant, after the fact. Idempotent; refuses
+      // when it cannot tell who owns the agent (see `superviseBinding`).
+      const bindingSupervisor = url.pathname.match(/^\/agent-bindings\/([^/]+)\/supervisor$/);
+      if (request.method === "POST" && bindingSupervisor) {
+        return superviseBinding(
+          bindingSupervisor[1] as string,
+          await readJson<{ ownerEmail?: string }>(request),
+          url,
+          env,
+        );
       }
       // The binding config write surface (s10 T4). Typed core ONLY — see
       // `patchAgentBinding`. It sits beside the two kill-switch verbs rather
@@ -1876,6 +1889,307 @@ async function accountByAddressAny(env: Env, email: string) {
     .first<{ id: string }>();
 }
 
+// ---- the supervisory grant (s10 T7) ------------------------------------
+//
+// THE BUG THIS EXISTS FOR, observed live on the first end-to-end run:
+// EditorEmily produced a real `pending` reply-draft proposal and `/approvals`
+// told Eric "Nothing is waiting on you." Every layer was individually correct.
+// Agents are separate PRINCIPALS by design (agent mailboxes, pattern B), the
+// invocation ran on Emily's binding, the proposal was written to the account
+// owning that binding, and the queue refused to show another principal's data.
+// The composition is what failed: the queue is human-scoped by intent and
+// account-scoped by implementation.
+//
+// Provisioning is one of the two halves. Creating an agent must, by default,
+// let its owner SEE what it proposes — and the grant is the right model rather
+// than a special case: supervising an agent is a capability, visible in
+// `GET /grants`, audited in `grant_audit`, and revocable like any other. The
+// other half is the multi-account queue (webmail + cli-go).
+
+/**
+ * The scope set a supervisory grant carries, and the whole of it.
+ *
+ * Read the two methods it must satisfy rather than reaching for a bundle:
+ *   `ActionProposal/get` + `/query` + `/changes` gate on `read`;
+ *   `ActionProposal/set` — approve, decline, needsInfo, the due-date
+ *   correction — gates on `draft`;
+ *   a tier-3 approve additionally runs the CAPABILITY WALL, which demands
+ *   `send` on the proposal's account (actionProposal.ts). A `reply-draft` is
+ *   tier 3 — it is precisely the kind that produced this bug — so an owner
+ *   granted read+draft alone would see the ask and be unable to answer it.
+ *   That is a worse queue than none: it shows you work and refuses the verb.
+ *
+ * And NOT `mail`, deliberately, though it is one word shorter. That bundle
+ * also carries `annotate`, `move` and `delete`, so the operator would silently
+ * gain the authority to reorganise and DELETE the agent's mailbox. Supervision
+ * is not custody. No realm scope either (`contacts`/`calendar`/`files`/
+ * `vault`): deciding proposals is no business of the agent's address book, and
+ * none of it in the credential store.
+ *
+ * Whole-account (`collection: NULL`) because the grant vocabulary has no
+ * mail-domain collection — `AddressBook`/`Calendar` scoping unlocks the
+ * contacts/calendar domains only (`grantCoversDomain`, principal.ts), so a
+ * collection-scoped grant could not carry the mail-domain queue at all.
+ */
+export const SUPERVISORY_GRANT_SCOPES = ["read", "draft", "send"] as const;
+
+/** What a provisioning response says about supervision — always present, so a
+ *  caller can never mistake "we did not try" for "there is nothing to see". */
+interface Supervision {
+  granted: boolean;
+  grantId?: string;
+  /** False when a live grant already covered it — the idempotency signal. */
+  created?: boolean;
+  scopes?: string[];
+  owner?: { email: string; accountId: string };
+  /** Present iff `granted` is false: why, in a sentence an operator can act on. */
+  reason?: string;
+}
+
+/**
+ * Mint (or adopt) the supervisory grant. IDEMPOTENT: a live grant covering
+ * this grantee/target tuple is REPORTED, never duplicated and never widened —
+ * re-running provisioning is a supported operation (it is how the three
+ * pre-T7 bindings are backfilled), and an operator who deliberately narrowed a
+ * supervisory grant must not have it silently restored by a re-run.
+ *
+ * Note it does not go through `createGrant`: that route answers a conflict
+ * with 409 + a hint to revoke, which is right for an operator typing a NEW
+ * grant and wrong for an idempotent provisioning step.
+ */
+async function ensureSupervisoryGrant(
+  env: Env,
+  args: { tenantId: string; ownerAccountId: string; agentAccountId: string; ownerEmail: string },
+): Promise<Supervision> {
+  const { tenantId, ownerAccountId, agentAccountId, ownerEmail } = args;
+  const owner = { email: ownerEmail, accountId: ownerAccountId };
+
+  // A live grant already covering the pair — including one an operator wrote
+  // by hand with different scopes. Reported as-is; see above.
+  const existing = await env.DB.prepare(
+    `SELECT id, scopes FROM grants
+      WHERE grantee_account_id = ? AND target_account_id = ?
+        AND collection IS NULL AND revoked_at IS NULL`,
+  )
+    .bind(ownerAccountId, agentAccountId)
+    .first<{ id: string; scopes: string }>();
+  if (existing) {
+    return {
+      granted: true,
+      grantId: existing.id,
+      created: false,
+      scopes: safeScopes(existing.scopes),
+      owner,
+    };
+  }
+
+  const id = `g_${crypto.randomUUID()}`;
+  const now = Date.now();
+  const res = await env.DB.prepare(
+    `INSERT INTO grants (id, tenant_id, grantee_account_id, target_account_id, scopes,
+       collection, collection_id, created_by, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, NULL, NULL, 'provision:supervisory', ?, NULL)
+     ON CONFLICT DO NOTHING`,
+  )
+    .bind(id, tenantId, ownerAccountId, agentAccountId, JSON.stringify(SUPERVISORY_GRANT_SCOPES), now)
+    .run();
+  if ((res.meta.changes ?? 0) === 0) {
+    // Lost a race with a concurrent provisioning run — the other row is the
+    // live one. Re-read rather than claim an id nothing carries (the lesson
+    // `createGrant`'s conflict branch already learned).
+    const raced = await env.DB.prepare(
+      `SELECT id, scopes FROM grants
+        WHERE grantee_account_id = ? AND target_account_id = ?
+          AND collection IS NULL AND revoked_at IS NULL`,
+    )
+      .bind(ownerAccountId, agentAccountId)
+      .first<{ id: string; scopes: string }>();
+    return raced
+      ? { granted: true, grantId: raced.id, created: false, scopes: safeScopes(raced.scopes), owner }
+      : { granted: false, reason: "the supervisory grant could not be written (conflicting row)" };
+  }
+  await logGrantLifecycle(env, id, "created", now);
+  return {
+    granted: true,
+    grantId: id,
+    created: true,
+    scopes: [...SUPERVISORY_GRANT_SCOPES],
+    owner,
+  };
+}
+
+function safeScopes(raw: string): string[] {
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? (v as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The account a principal is supervised THROUGH: grant resolution hangs off
+ *  the grantee's OWNED accounts (`reachableAccounts`), so the grantee must be a
+ *  real account, not a bare login. Prefer the one carrying the login address;
+ *  else the oldest. */
+async function principalSupervisorAccount(
+  env: Env,
+  loginEmail: string,
+): Promise<{ id: string; tenant_id: string } | null> {
+  const byAddress = await accountWithTenant(env, loginEmail);
+  if (byAddress) return byAddress;
+  return env.DB.prepare(
+    `SELECT a.id, a.tenant_id FROM accounts a JOIN principals p ON p.id = a.principal_id
+      WHERE p.login_email = ? AND a.deleted_at IS NULL
+      ORDER BY a.created_at LIMIT 1`,
+  )
+    .bind(loginEmail.toLowerCase())
+    .first<{ id: string; tenant_id: string }>();
+}
+
+/**
+ * WHO owns this agent — and a refusal when that cannot be established.
+ *
+ * Ownership is not a column anywhere: an agent account mints its own principal
+ * at create (`POST /accounts` with no `principalEmail`), so nothing in the
+ * schema records the human behind it. Two ways to answer, in order:
+ *
+ *  1. `ownerEmail` on the request — explicit, and it always wins.
+ *  2. The tenant's HUMAN principals, structurally: every principal of the
+ *     tenant none of whose accounts carries an agent binding (the same test
+ *     `provisionBouncer` already uses to find the household), minus the agent's
+ *     own principal. EXACTLY ONE ⇒ that is the owner; zero or several ⇒
+ *     ambiguous, and we refuse rather than guess. Inventing a supervisor is how
+ *     one household's agent ends up visible to the wrong human.
+ */
+async function resolveAgentOwner(
+  env: Env,
+  agentAccountId: string,
+  explicitEmail?: string,
+): Promise<
+  | { ok: true; accountId: string; email: string; tenantId: string }
+  | { ok: false; reason: string; self?: true }
+> {
+  const agent = await env.DB.prepare(
+    `SELECT a.tenant_id, a.principal_id, p.login_email
+       FROM accounts a JOIN principals p ON p.id = a.principal_id WHERE a.id = ?`,
+  )
+    .bind(agentAccountId)
+    .first<{ tenant_id: string; principal_id: string; login_email: string }>();
+  if (!agent) return { ok: false, reason: `account ${agentAccountId} not found` };
+
+  if (explicitEmail) {
+    const owner = await accountWithTenant(env, explicitEmail);
+    if (!owner) return { ok: false, reason: `no account for ${explicitEmail}` };
+    if (owner.id === agentAccountId) {
+      return {
+        ok: false,
+        self: true,
+        reason:
+          "the binding sits on its owner's own account — its proposals already land in that " +
+          "account's queue, so there is nothing to grant",
+      };
+    }
+    if (owner.tenant_id !== agent.tenant_id) {
+      return {
+        ok: false,
+        reason: `${explicitEmail} is in a different tenant — cross-tenant grants are not supported`,
+      };
+    }
+    return { ok: true, accountId: owner.id, email: explicitEmail.toLowerCase(), tenantId: agent.tenant_id };
+  }
+
+  const { results } = await env.DB.prepare(
+    `SELECT DISTINCT p.login_email FROM principals p
+      WHERE p.tenant_id = ?1 AND p.id != ?2
+        AND NOT EXISTS (
+          SELECT 1 FROM accounts a
+          JOIN agent_bindings b ON b.account_id = a.id
+          WHERE a.principal_id = p.id)
+      ORDER BY p.login_email`,
+  )
+    .bind(agent.tenant_id, agent.principal_id)
+    .all<{ login_email: string }>();
+  const humans = results.map((r) => r.login_email);
+  if (humans.length !== 1) {
+    return {
+      ok: false,
+      reason:
+        humans.length === 0
+          ? // Two shapes land here and the schema cannot tell them apart, so
+            // the sentence says both rather than picking one: an agent bound
+            // to its OWNER's own account needs no grant (its proposals are
+            // already in that account's queue), and an agent-only tenant needs
+            // a human named. Claiming either would be a guess.
+            `tenant ${agent.tenant_id} has no other human principal to supervise this agent. ` +
+            "If the binding sits on its owner's own account, its proposals already land in that " +
+            "account's queue and there is nothing to grant; otherwise name the owner with " +
+            '{"ownerEmail": "..."}'
+          : `tenant ${agent.tenant_id} has ${humans.length} human principals (${humans.join(", ")}), ` +
+            'so ownership is ambiguous — name one with {"ownerEmail": "..."}',
+    };
+  }
+  const ownerEmail = humans[0] as string;
+  const owner = await principalSupervisorAccount(env, ownerEmail);
+  if (!owner) {
+    return { ok: false, reason: `${ownerEmail} owns no live account to hold the grant` };
+  }
+  if (owner.id === agentAccountId) {
+    return {
+      ok: false,
+      self: true,
+      reason:
+        "the binding sits on its owner's own account — its proposals already land in that " +
+        "account's queue, so there is nothing to grant",
+    };
+  }
+  return { ok: true, accountId: owner.id, email: ownerEmail, tenantId: agent.tenant_id };
+}
+
+/**
+ * `POST /agent-bindings/{id}/supervisor` — the BACKFILL, and the one honest way
+ * to fix an agent that predates T7.
+ *
+ * Deliberately not a migration. A migration would have to decide who owns
+ * `editor@` from the schema alone, and the schema does not know: it would be
+ * inventing an authorization record, which is the one thing a grant may never
+ * be. This route makes an operator name the owner (or accepts the structural
+ * answer when the tenant has exactly one human), refuses when it cannot tell,
+ * and is idempotent so it can be run over every binding without thought.
+ */
+async function superviseBinding(id: string, body: { ownerEmail?: string }, url: URL, env: Env) {
+  const found = await resolveBinding(id, url, env);
+  if ("response" in found) return found.response;
+  const { binding } = found;
+
+  const owner = await resolveAgentOwner(env, binding.account_id, body.ownerEmail);
+  if (!owner.ok) {
+    // A refusal, said out loud — the alternative is a route that silently does
+    // nothing and reports 200, which is how the original bug felt.
+    return json(
+      {
+        error: owner.reason,
+        bindingId: binding.id,
+        accountId: binding.account_id,
+        ...(owner.self ? { supervision: { granted: false, reason: owner.reason } } : {}),
+      },
+      owner.self ? 200 : 422,
+    );
+  }
+  const supervision = await ensureSupervisoryGrant(env, {
+    tenantId: owner.tenantId,
+    ownerAccountId: owner.accountId,
+    agentAccountId: binding.account_id,
+    ownerEmail: owner.email,
+  });
+  return json({
+    ok: supervision.granted,
+    bindingId: binding.id,
+    name: binding.name,
+    accountId: binding.account_id,
+    supervision,
+  });
+}
+
 async function createAgentBinding(
   body: {
     email: string;
@@ -1886,12 +2200,30 @@ async function createAgentBinding(
      *  binding's outbound allowlist. Omitted ⇒ NULL ⇒ the binding cannot
      *  send (fail-closed) until an operator seeds one. */
     recipientsBookId?: string;
+    /** s10 T7 — the human who will supervise this agent. Omitted ⇒ derived
+     *  when the tenant has exactly one human principal, refused (reported, not
+     *  thrown) when ownership is ambiguous. */
+    ownerEmail?: string;
+    /** s10 T7, internal — `provisionBouncer` supervises the whole household
+     *  itself (bouncer@ has no single owner), so it opts this step out rather
+     *  than letting two writers report on the same grant. */
+    skipSupervision?: boolean;
   },
   env: Env,
 ) {
   if (!body.email || !body.name) return json({ error: "email and name required" }, 400);
   const account = await accountByAddress(env, body.email);
   if (!account) return json({ error: `no account for ${body.email}` }, 404);
+
+  // WHO owns it is resolved BEFORE the insert. The structural owner test is "a
+  // principal none of whose accounts carries a binding", and this call is about
+  // to give the agent's account one — asking afterwards would work for a fresh
+  // agent account and silently mis-answer for a second binding on an existing
+  // one. The grant itself is minted after the binding lands, so a failed create
+  // cannot leave a grant to an agent that does not exist.
+  const owner = body.skipSupervision
+    ? ({ ok: false, reason: "supervised at the household level" } as const)
+    : await resolveAgentOwner(env, account.id, body.ownerEmail);
 
   const id = `bind_${crypto.randomUUID().slice(0, 8)}`;
   await env.DB.prepare(
@@ -1928,7 +2260,25 @@ async function createAgentBinding(
       )
       .run();
   }
-  return json({ ok: true, bindingId: id, accountId: account.id, watchdog: !!body.slaSeconds });
+  const supervision: Supervision = owner.ok
+    ? await ensureSupervisoryGrant(env, {
+        tenantId: owner.tenantId,
+        ownerAccountId: owner.accountId,
+        agentAccountId: account.id,
+        ownerEmail: owner.email,
+      })
+    : { granted: false, reason: owner.reason };
+
+  return json({
+    ok: true,
+    bindingId: id,
+    accountId: account.id,
+    watchdog: !!body.slaSeconds,
+    // Always reported, granted or not: "every new agent is born invisible" was
+    // the T7 bug, and a silent field is how it stayed invisible. A false here
+    // carries the sentence and the fix (POST /agent-bindings/{id}/supervisor).
+    supervision,
+  });
 }
 
 /**
@@ -2002,13 +2352,27 @@ async function provisionBouncer(
 
   // Idempotency for the rest: an existing 'bouncer' binding on the account
   // means a previous run finished — report it, write nothing.
+  //
+  // Except the supervisory grants (s10 T7), which are re-checked on EVERY run.
+  // That is deliberate and it is the documented backfill path for bouncer@: a
+  // bouncer provisioned before T7 has no grant back to the household, so
+  // re-running this call is what makes its held-mail questions reachable. The
+  // step is idempotent in its own right (a live grant is adopted, never
+  // duplicated), so a re-run on an already-supervised bouncer writes nothing.
   const existing = await env.DB.prepare(
     `SELECT id FROM agent_bindings WHERE account_id = ? AND name = 'bouncer'`,
   )
     .bind(accountId)
     .first<{ id: string }>();
   if (existing) {
-    return json({ ok: true, created: false, accountId, address, bindingId: existing.id });
+    return json({
+      ok: true,
+      created: false,
+      accountId,
+      address,
+      bindingId: existing.id,
+      supervision: await superviseHousehold(env, tenantId, accountId, humans),
+    });
   }
 
   // 2 — the governing book + members + membership chain, one atomic batch.
@@ -2060,12 +2424,17 @@ async function provisionBouncer(
   await env.DB.batch(stmts);
 
   // 3 — the binding, through the same path POST /agent-bindings takes.
+  // `ownerEmail` is deliberately NOT passed: bouncer has no single owner, so
+  // the household gets supervision below (createAgentBinding's derivation will
+  // report ambiguity for any tenant with more than one human, which is the
+  // right answer for a per-owner grant and the wrong shape for this agent).
   const bindingRes = await createAgentBinding(
     {
       email: address,
       name: "bouncer",
       config: { pipeline: "bouncer", replyMode: "send", allowedSenders: humans },
       recipientsBookId: bookId,
+      skipSupervision: true,
     },
     env,
   );
@@ -2080,7 +2449,46 @@ async function provisionBouncer(
     bindingId: binding.bindingId,
     recipientsBookId: bookId,
     allowedSenders: humans,
+    supervision: await superviseHousehold(env, tenantId, accountId, humans),
   });
+}
+
+/**
+ * bouncer@'s supervisory grants (s10 T7): one per HUMAN PRINCIPAL of the
+ * household, not one owner.
+ *
+ * Every other agent has a single supervisor; bouncer does not, and pretending
+ * otherwise would be the guess this slice refuses elsewhere. The list is not
+ * invented: it is the same `humans` this function already computed and already
+ * wrote into the governing book and `allowedSenders` — the people bouncer@
+ * answers to. Its proposals are `held-mail-review` questions ("spam or not?"),
+ * which any of them can answer, and the alternative — picking one — would put
+ * the household's mail decisions behind whoever happened to sort first.
+ */
+async function superviseHousehold(
+  env: Env,
+  tenantId: string,
+  agentAccountId: string,
+  humans: string[],
+): Promise<Supervision[]> {
+  const out: Supervision[] = [];
+  for (const email of humans) {
+    const owner = await principalSupervisorAccount(env, email);
+    if (!owner) {
+      out.push({ granted: false, reason: `${email} owns no live account to hold the grant` });
+      continue;
+    }
+    if (owner.id === agentAccountId || owner.tenant_id !== tenantId) continue;
+    out.push(
+      await ensureSupervisoryGrant(env, {
+        tenantId,
+        ownerAccountId: owner.id,
+        agentAccountId,
+        ownerEmail: email,
+      }),
+    );
+  }
+  return out;
 }
 
 async function listAgentBindings(url: URL, env: Env) {

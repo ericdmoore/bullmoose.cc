@@ -13,7 +13,35 @@ import {
   mailCapability,
   type Session,
 } from "@bullmoose/jmap-core";
-import type { Principal } from "./auth";
+import { authorizeAccount, type Principal } from "./auth";
+
+/**
+ * The agent capability, PER ACCOUNT — and the two facts a multi-account
+ * approvals queue cannot render honestly without (s10 T7).
+ *
+ * The queue now spans every account the principal can reach (owned AND
+ * grant-reached: an agent lives on its own account under its own principal,
+ * so its proposals are only visible to its owner through a supervisory
+ * grant). Reach is not authority, though: `ActionProposal/set` demands
+ * `draft`, and a tier-3 approve additionally demands `send` — the capability
+ * wall (actionProposal.ts). A client that renders a decide button per row has
+ * no way to know either without asking, and guessing produces exactly the
+ * dishonesty this repo refuses: a button that fails at the round trip.
+ *
+ * So the SERVER answers it, with the same `authorizeAccount` call the method
+ * gate itself runs — one decision function, two readers, no second policy
+ * layer to drift. Both flags are computed for owned accounts too: a read-only
+ * TOKEN cannot decide on its own account either, and a client that assumed
+ * "mine ⇒ decidable" would be wrong there in exactly the same way.
+ */
+function agentAccountCapability(principal: Principal, accountId: string): Record<string, boolean> {
+  return {
+    /** `ActionProposal/set` — approve, decline, needsInfo, correct a due date. */
+    mayDecide: authorizeAccount(principal, accountId, "draft", "mail").ok,
+    /** The tier-3 wall: approving an irreversible egress needs `send`. */
+    mayApproveIrreversible: authorizeAccount(principal, accountId, "send", "mail").ok,
+  };
+}
 
 /** Build the RFC 8620 Session object for an authenticated principal. */
 export function buildSession(origin: string, principal: Principal): Session {
@@ -36,7 +64,7 @@ export function buildSession(origin: string, principal: Principal): Session {
               [CONTACTS_CAP]: contactsCapability,
               [CALENDARS_CAP]: {},
               [FILENODE_CAP]: {},
-              [AGENT_CAP]: {},
+              [AGENT_CAP]: agentAccountCapability(principal, a.accountId),
             }
           : { [CONTACTS_CAP]: contactsCapability },
       };
@@ -53,7 +81,7 @@ export function buildSession(origin: string, principal: Principal): Session {
         [CONTACTS_CAP]: contactsCapability,
         [CALENDARS_CAP]: {},
         [FILENODE_CAP]: {},
-        [AGENT_CAP]: {},
+        [AGENT_CAP]: agentAccountCapability(principal, a.accountId),
       },
     };
   }

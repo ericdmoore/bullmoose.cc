@@ -4,13 +4,25 @@
 // (../jmap/capabilities.ts:72-73), so `using[]` is right without this module
 // knowing about capabilities at all.
 
-import type { JmapClient } from "../jmap/JmapClient";
+import type { Invocation } from "../jmap/types";
+import { JmapRequestError, type JmapClient } from "../jmap/JmapClient";
 import { parseProposal, type ActionProposal, type RejectReason } from "./types";
 
 export interface QueueResult {
   proposals: ActionProposal[];
   /** The account state — the `ifInState` for the next decision. */
   state: string;
+}
+
+/** The merged queue: rows from every reachable account, and the per-account
+ *  state each row's decision must guard on (`ifInState` is per account — one
+ *  string could only ever be right for one of them). */
+export interface MergedQueueResult {
+  proposals: ActionProposal[];
+  states: Record<string, string>;
+  /** accountId → why its queue could not be read. Partial failure must be
+   *  VISIBLE: silently dropping an account reproduces the T7 bug exactly. */
+  failures: Record<string, string>;
 }
 
 /**
@@ -24,9 +36,77 @@ export async function loadQueue(client: JmapClient, accountId: string): Promise<
   const { get } = await client.queryThenGet(accountId, "ActionProposal/query", {}, "ActionProposal/get");
   const list = Array.isArray(get.list) ? (get.list as Record<string, unknown>[]) : [];
   return {
-    proposals: list.map(parseProposal).filter((p): p is ActionProposal => p !== null),
+    proposals: list
+      .map((raw) => parseProposal(raw, accountId))
+      .filter((p): p is ActionProposal => p !== null),
     state: typeof get.state === "string" ? get.state : "",
   };
+}
+
+/**
+ * The queue as a HUMAN has it (s10 T7): every account they can reach, in ONE
+ * round trip.
+ *
+ * A human's agents each live on their own account under their own principal,
+ * so a single-account queue can never show them their agents' work — that was
+ * the bug. The fix is a batch, not a loop of requests: 2N invocations
+ * (query→get per account, each `get` back-referencing its own `query` by call
+ * id) in one POST, which is what the batching client exists for.
+ *
+ * ONE ACCOUNT'S FAILURE MUST NOT TAKE THE QUEUE DOWN. A revoked grant, a
+ * tombstoned agent account or a server that refuses one account still leaves
+ * every other proposal decidable, so per-account errors are collected and
+ * reported beside the rows rather than thrown.
+ */
+export async function loadQueues(
+  client: JmapClient,
+  accountIds: string[],
+): Promise<MergedQueueResult> {
+  if (accountIds.length === 0) return { proposals: [], states: {}, failures: {} };
+
+  const calls: Invocation[] = [];
+  accountIds.forEach((accountId, i) => {
+    calls.push(["ActionProposal/query", { accountId }, `q${i}`]);
+    calls.push([
+      "ActionProposal/get",
+      { accountId, "#ids": { resultOf: `q${i}`, name: "ActionProposal/query", path: "/ids" } },
+      `g${i}`,
+    ]);
+  });
+
+  const responses = await client.request(calls);
+  const proposals: ActionProposal[] = [];
+  const states: Record<string, string> = {};
+  const failures: Record<string, string> = {};
+
+  accountIds.forEach((accountId, i) => {
+    const get = responses.find((r) => r[2] === `g${i}`);
+    const query = responses.find((r) => r[2] === `q${i}`);
+    if (!get || get[0] === "error") {
+      // Prefer the QUERY's refusal when the get merely failed to resolve its
+      // back-reference: the first error is the real one (`unsupportedFilter`
+      // upstream of an `invalidResultReference` is the shape that misleads).
+      const failed = query && query[0] === "error" ? query : get;
+      const detail = (failed?.[1] ?? {}) as { type?: string; description?: string };
+      failures[accountId] = detail.description ?? detail.type ?? "the server refused this account";
+      return;
+    }
+    const args = get[1] as Record<string, unknown>;
+    const list = Array.isArray(args.list) ? (args.list as Record<string, unknown>[]) : [];
+    for (const raw of list) {
+      // The row's own `accountId` wins; the request's is the pre-T7 fallback.
+      const p = parseProposal(raw, accountId);
+      if (p) proposals.push(p);
+    }
+    states[accountId] = typeof args.state === "string" ? args.state : "";
+  });
+
+  // Every account refused is a queue that shows nothing and explains nothing —
+  // the failure mode this task exists to end. Surface it as a hard error.
+  if (Object.keys(failures).length === accountIds.length) {
+    throw new JmapRequestError(Object.values(failures)[0] ?? "the approvals queue could not be read");
+  }
+  return { proposals, states, failures };
 }
 
 /**

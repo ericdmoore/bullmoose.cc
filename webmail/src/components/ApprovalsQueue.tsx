@@ -1,7 +1,7 @@
 /** @jsxImportSource preact */
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { resolveClient } from "../lib/app/client";
-import { correctDueAt, decide, loadQueue, type Verdict } from "../lib/approvals/api";
+import { correctDueAt, decide, loadQueues, type Verdict } from "../lib/approvals/api";
 import {
   dueFromInput,
   dueInputValue,
@@ -33,13 +33,16 @@ import {
   declineNeedsReason,
   REJECT_REASONS,
   TIER3_CAPABILITY_NOTE,
-  approvalsAccountId,
+  accountLabel,
+  approvalsAccounts,
   approvalsGate,
   approveVerb,
   describeReason,
   payloadText,
+  rowAuthority,
   summarizeProposal,
   tierLabel,
+  type ApprovalsAccount,
 } from "../lib/approvals/rows";
 import type { ActionProposal, RejectReason } from "../lib/approvals/types";
 import type { JmapClient } from "../lib/jmap/JmapClient";
@@ -79,8 +82,12 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
   const [loading, setLoading] = useState(true);
 
   const [proposals, setProposals] = useState<ActionProposal[]>([]);
-  /** Account state string — the `ifInState` guard on every decision. */
-  const [state, setState] = useState("");
+  /** Per-account state strings — the `ifInState` guard on every decision. One
+   *  per account, because the queue spans several and a state from account A
+   *  would fail (or worse, pass) against account B (s10 T7). */
+  const [states, setStates] = useState<Record<string, string>>({});
+  /** accountId → why its queue is missing. Shown, never swallowed. */
+  const [failures, setFailures] = useState<Record<string, string>>({});
   const [panel, setPanel] = useState<Panel | undefined>(undefined);
   const [busyId, setBusyId] = useState<string | undefined>(undefined);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
@@ -134,18 +141,24 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
   }, [injectedClient]);
 
   const gate = approvalsGate(session);
-  const accountId = session ? approvalsAccountId(session) : "";
+  // EVERY account the human can reach, not just the session's default (s10
+  // T7): an agent is its own principal, so its proposals live on its own
+  // account and reach it only through the supervisory grant provisioning
+  // mints. `accountKey` keeps the effect from re-firing on an equal array.
+  const accounts = useMemo(() => (session ? approvalsAccounts(session) : []), [session]);
+  const accountKey = accounts.map((a) => a.accountId).join(",");
 
   // ── the queue ───────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!client || !accountId || gate.state !== "open") return;
+    if (!client || accounts.length === 0 || gate.state !== "open") return;
     let cancelled = false;
     setLoading(true);
-    void loadQueue(client, accountId)
+    void loadQueues(client, accounts.map((a) => a.accountId))
       .then((res) => {
         if (cancelled) return;
         setProposals(res.proposals);
-        setState(res.state);
+        setStates(res.states);
+        setFailures(res.failures);
         setLoading(false);
       })
       .catch((err) => {
@@ -157,7 +170,7 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
     return () => {
       cancelled = true;
     };
-  }, [client, accountId, gate.state]);
+  }, [client, accountKey, gate.state]);
 
   const ordered = useMemo(() => orderQueue(proposals), [proposals]);
   const pending = ordered.filter((p) => p.status === "pending");
@@ -168,18 +181,23 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
   );
 
   async function reload(): Promise<void> {
-    if (!client || !accountId) return;
-    const res = await loadQueue(client, accountId);
+    if (!client || accounts.length === 0) return;
+    const res = await loadQueues(client, accounts.map((a) => a.accountId));
     setProposals(res.proposals);
-    setState(res.state);
+    setStates(res.states);
+    setFailures(res.failures);
   }
 
   async function act(id: string, verdict: Verdict): Promise<void> {
     if (!client || busyId) return;
+    const p = proposals.find((row) => row.id === id);
+    if (!p) return;
     setBusyId(id);
     setRowErrors((prev) => ({ ...prev, [id]: "" }));
-    const outcome = await decide(client, accountId, id, verdict, {
-      ...(state ? { ifInState: state } : {}),
+    // The proposal's OWN account — never the session default. A decision sent
+    // to the wrong account is a `notFound` at best (s10 T7).
+    const outcome = await decide(client, p.accountId, id, verdict, {
+      ...(states[p.accountId] ? { ifInState: states[p.accountId] as string } : {}),
     });
     if (!outcome.ok) {
       // The server's sentence, verbatim — the tier-3 capability refusal in
@@ -200,10 +218,12 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
   // not go through act(): the row stays pending, only the third clock moves.
   async function correctDue(id: string, dueAt: string | null): Promise<void> {
     if (!client || busyId) return;
+    const p = proposals.find((row) => row.id === id);
+    if (!p) return;
     setBusyId(id);
     setRowErrors((prev) => ({ ...prev, [id]: "" }));
-    const outcome = await correctDueAt(client, accountId, id, dueAt, {
-      ...(state ? { ifInState: state } : {}),
+    const outcome = await correctDueAt(client, p.accountId, id, dueAt, {
+      ...(states[p.accountId] ? { ifInState: states[p.accountId] as string } : {}),
     });
     if (!outcome.ok) {
       setRowErrors((prev) => ({ ...prev, [id]: outcome.message }));
@@ -271,7 +291,23 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
           What agents want to do, waiting on you. Approve, edit, or decline — an edit is kept
           beside the agent's original, so the difference is never lost.
         </p>
+        {/* The queue spans every account you can reach — yours, and each agent
+            account a supervisory grant opens (s10 T7). Saying so is what makes
+            a row labelled "editor@…" legible rather than surprising. */}
+        {accounts.length > 1 ? (
+          <p class="muted apq-fine">
+            Across {accounts.length} accounts: {accounts.map((a) => a.name).join(", ")}.
+          </p>
+        ) : null}
       </header>
+
+      {/* One account failing must not take the queue down, and must not vanish
+          either — "nothing is waiting on you" was the original lie. */}
+      {Object.entries(failures).map(([id, why]) => (
+        <p key={id} class="apq-error" role="alert">
+          {accountLabel(accounts, id)}: {why}
+        </p>
+      ))}
 
       {loading ? <p class="muted apq-pad">Loading the queue…</p> : null}
 
@@ -284,6 +320,8 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
           <PendingRow
             key={p.id}
             p={p}
+            account={accounts.find((a) => a.accountId === p.accountId)}
+            showAccount={accounts.length > 1}
             now={now}
             busy={busyId === p.id}
             error={rowErrors[p.id]}
@@ -308,7 +346,11 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
             attached, and its decision deadline is paused meanwhile.
           </p>
           {infoRequested.map((p) => (
-            <InfoRequestedRow key={p.id} p={p} />
+            <InfoRequestedRow
+              key={p.id}
+              p={p}
+              label={accounts.length > 1 ? accountLabel(accounts, p.accountId) : ""}
+            />
           ))}
         </section>
       ) : null}
@@ -320,7 +362,12 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
             Approved, retractable, not yet committed. Nothing here has been sent.
           </p>
           {held.map((p) => (
-            <HeldRow key={p.id} p={p} now={now} />
+            <HeldRow
+              key={p.id}
+              p={p}
+              now={now}
+              label={accounts.length > 1 ? accountLabel(accounts, p.accountId) : ""}
+            />
           ))}
         </section>
       ) : null}
@@ -329,7 +376,12 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
         <section aria-label="Decided">
           <h2 class="apq-h2">Decided</h2>
           {history.map((p) => (
-            <HistoryRow key={p.id} p={p} now={now} />
+            <HistoryRow
+              key={p.id}
+              p={p}
+              now={now}
+              label={accounts.length > 1 ? accountLabel(accounts, p.accountId) : ""}
+            />
           ))}
         </section>
       ) : null}
@@ -341,6 +393,10 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
 
 function PendingRow(props: {
   p: ActionProposal;
+  /** The account this row came off — absent means unreachable (rowAuthority). */
+  account: ApprovalsAccount | undefined;
+  /** Label the row with its account? Only worth the pill on a merged queue. */
+  showAccount: boolean;
   now: number;
   busy: boolean;
   error: string | undefined;
@@ -352,14 +408,19 @@ function PendingRow(props: {
   onSubmitEdit: (form: EditorForm) => void;
   onCorrectDue: (dueAt: string | null) => void;
 }) {
-  const { p, now, busy, error, panel, setPanel } = props;
+  const { p, account, now, busy, error, panel, setPanel } = props;
   const clocks = rowClocks(p, now);
   const editor = editorFor(p);
   const text = payloadText(p.payload);
+  // What this row may OFFER. A proposal on an account you merely READ must not
+  // show a decide button you cannot use (s10 T7) — and a tier-3 on an account
+  // whose access lacks `send` keeps decline/needsInfo, because the question is
+  // still genuinely waiting on you.
+  const authority = rowAuthority(p, account);
 
   return (
     <article class={`apq-row${isNearExpiry(clocks) ? " apq-urgent" : ""}`}>
-      <RowHead p={p} />
+      <RowHead p={p} label={props.showAccount ? (account?.name ?? p.accountId) : ""} />
       <p class="apq-summary">{summarizeProposal(p)}</p>
       <p class="apq-rationale">{p.rationale}</p>
       <Evidence evidence={p.evidence} />
@@ -437,33 +498,44 @@ function PendingRow(props: {
         />
       ) : (
         <div class="actions">
-          <button type="button" disabled={busy} onClick={props.onApprove}>
-            {approveVerb(p.tier)}
-          </button>
-          {editor ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setPanel({ id: p.id, kind: "edit", form: editor })}
-            >
-              Edit
-            </button>
+          {authority.canApprove ? (
+            <>
+              <button type="button" disabled={busy} onClick={props.onApprove}>
+                {approveVerb(p.tier)}
+              </button>
+              {editor ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setPanel({ id: p.id, kind: "edit", form: editor })}
+                >
+                  Edit
+                </button>
+              ) : null}
+            </>
           ) : null}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setPanel({ id: p.id, kind: "needs-info", question: "" })}
-          >
-            {NEEDS_INFO_VERB}
-          </button>
-          <button
-            type="button"
-            class="danger"
-            disabled={busy}
-            onClick={() => setPanel({ id: p.id, kind: "decline", note: "" })}
-          >
-            Decline
-          </button>
+          {authority.canDecline ? (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setPanel({ id: p.id, kind: "needs-info", question: "" })}
+              >
+                {NEEDS_INFO_VERB}
+              </button>
+              <button
+                type="button"
+                class="danger"
+                disabled={busy}
+                onClick={() => setPanel({ id: p.id, kind: "decline", note: "" })}
+              >
+                Decline
+              </button>
+            </>
+          ) : null}
+          {/* Withheld verbs are EXPLAINED, never silently missing: a row with
+              no buttons and no sentence reads as a broken screen. */}
+          {authority.note ? <span class="apq-fine apq-warn">{authority.note}</span> : null}
         </div>
       )}
     </article>
@@ -475,11 +547,11 @@ function PendingRow(props: {
  * running clocks — the decision deadline is paused server-side, and rendering
  * the question is the point: the row must say what is owed and by whom.
  */
-function InfoRequestedRow({ p }: { p: ActionProposal }) {
+function InfoRequestedRow({ p, label }: { p: ActionProposal; label: string }) {
   const open = openQuestion(p);
   return (
     <article class="apq-row apq-held">
-      <RowHead p={p} />
+      <RowHead p={p} label={label} />
       <p class="apq-summary">{summarizeProposal(p)}</p>
       <p class="apq-rationale">{p.rationale}</p>
       <Dialogue p={p} />
@@ -495,11 +567,11 @@ function InfoRequestedRow({ p }: { p: ActionProposal }) {
   );
 }
 
-function HeldRow({ p, now }: { p: ActionProposal; now: number }) {
+function HeldRow({ p, now, label }: { p: ActionProposal; now: number; label: string }) {
   const clocks = rowClocks(p, now);
   return (
     <article class="apq-row apq-held">
-      <RowHead p={p} />
+      <RowHead p={p} label={label} />
       <p class="apq-summary">{summarizeProposal(p)}</p>
       <p class="apq-clocks">
         <span class="apq-waited">{waitedLabel(p, clocks)}</span>
@@ -522,11 +594,11 @@ function HeldRow({ p, now }: { p: ActionProposal; now: number }) {
   );
 }
 
-function HistoryRow({ p, now }: { p: ActionProposal; now: number }) {
+function HistoryRow({ p, now, label }: { p: ActionProposal; now: number; label: string }) {
   const clocks = rowClocks(p, now);
   return (
     <article class="apq-row apq-done">
-      <RowHead p={p} />
+      <RowHead p={p} label={label} />
       <p class="apq-summary">{summarizeProposal(p)}</p>
       <p class="apq-clocks">
         <span class="apq-waited">{waitedLabel(p, clocks)}</span>
@@ -575,10 +647,14 @@ function Dialogue({ p }: { p: ActionProposal }) {
   );
 }
 
-function RowHead({ p }: { p: ActionProposal }) {
+/** `label` is the row's ACCOUNT, shown only on a merged queue — telling
+ *  Emily's ask from Allen's is the whole point of spanning accounts, and the
+ *  binding name alone does not say which account it ran on. */
+function RowHead({ p, label }: { p: ActionProposal; label: string }) {
   return (
     <header class="apq-rowhead">
       <span class="pill">{p.agent}</span>
+      {label ? <span class="pill apq-account">{label}</span> : null}
       <span class="pill">{p.kind}</span>
       <span class={`pill apq-tier-${p.tier}`}>{tierLabel(p.tier)}</span>
       {p.status !== "pending" ? <span class={`pill apq-status-${p.status}`}>{p.status}</span> : null}

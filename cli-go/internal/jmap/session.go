@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
@@ -35,11 +36,93 @@ import (
 // Mail capability URNs live in client.go (MailCap/SubmissionCap/MailUsing).
 
 // Session is the slice of the session resource the CLI reads —
-// packages/cli/src/jmap.ts Session.
+// packages/cli/src/jmap.ts Session, plus the account map `approvals` needs
+// (s10 T7).
 type Session struct {
-	APIURL      string `json:"apiUrl"`
-	DownloadURL string `json:"downloadUrl"`
-	Username    string `json:"username"`
+	APIURL      string                    `json:"apiUrl"`
+	DownloadURL string                    `json:"downloadUrl"`
+	Username    string                    `json:"username"`
+	Accounts    map[string]SessionAccount `json:"accounts"`
+}
+
+// SessionAccount is one entry of the RFC 8620 §2 `accounts` map. The CLI reads
+// it because a human's agents are separate PRINCIPALS on separate ACCOUNTS
+// (s10 T7): the mirror's account list is what this login synced mail for, and
+// the agent accounts a supervisory grant opens are not in it. The session is
+// the only live answer to "what can I reach right now" — it is recomputed from
+// grants on every request, so a revoked grant drops out of it immediately.
+type SessionAccount struct {
+	Name       string `json:"name"`
+	IsPersonal bool   `json:"isPersonal"`
+	IsReadOnly bool   `json:"isReadOnly"`
+	// Capability URN → its per-account object. Kept raw: this package parses
+	// only the agent capability, and re-marshalling the rest would invent a
+	// schema for capabilities the CLI does not read.
+	AccountCapabilities map[string]json.RawMessage `json:"accountCapabilities"`
+}
+
+// AgentAccount is one account the approvals queue spans, with the authority the
+// SERVER reported for it.
+type AgentAccount struct {
+	AccountID  string
+	Name       string
+	IsPersonal bool
+	// MayDecide gates ActionProposal/set (the `draft` scope); MayApproveIrreversible
+	// gates a tier-3 approve (the `send` scope — the capability wall).
+	MayDecide              bool
+	MayApproveIrreversible bool
+}
+
+// agentCapability is the per-account object session.ts publishes under AgentCap.
+// Pointers, so ABSENT and false are distinguishable: a server that predates T7
+// reports neither, and the honest default there is "let the server decide"
+// (true) — the client's flags are a courtesy, the server is the gate.
+type agentCapability struct {
+	MayDecide              *bool `json:"mayDecide"`
+	MayApproveIrreversible *bool `json:"mayApproveIrreversible"`
+}
+
+// AgentAccounts is every account in the session that advertises the agent
+// capability — owned first, then grant-reached, each sorted by name so the
+// queue's order does not depend on map iteration.
+func (s *Session) AgentAccounts() []AgentAccount {
+	out := make([]AgentAccount, 0, len(s.Accounts))
+	for id, acc := range s.Accounts {
+		raw, ok := acc.AccountCapabilities[AgentCap] // client.go
+		if !ok {
+			continue
+		}
+		cap := agentCapability{}
+		_ = json.Unmarshal(raw, &cap)
+		name := acc.Name
+		if name == "" {
+			name = id
+		}
+		out = append(out, AgentAccount{
+			AccountID:              id,
+			Name:                   name,
+			IsPersonal:             acc.IsPersonal,
+			MayDecide:              boolOrTrue(cap.MayDecide),
+			MayApproveIrreversible: boolOrTrue(cap.MayApproveIrreversible),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].IsPersonal != out[j].IsPersonal {
+			return out[i].IsPersonal // yours before your agents'
+		}
+		if out[i].Name != out[j].Name {
+			return out[i].Name < out[j].Name
+		}
+		return out[i].AccountID < out[j].AccountID
+	})
+	return out
+}
+
+func boolOrTrue(v *bool) bool {
+	if v == nil {
+		return true
+	}
+	return *v
 }
 
 // NewSessionClient builds a client that resolves its endpoints from the session

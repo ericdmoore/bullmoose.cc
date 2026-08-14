@@ -125,58 +125,92 @@ func runApprovals(s *bmio.Streams, argv []string) int {
 // a CLIENT concern (the server's query only knows created_at DESC), so the rows
 // are re-ordered by proposal.OrderQueue.
 func apList(s *bmio.Streams, a approvalsArgs) int {
-	db, client, acc, err := apConn(a)
+	db, client, accounts, err := apConn(a)
 	if err != nil {
 		return die(s, err)
 	}
 	defer db.Close()
 
-	queryArgs := map[string]any{"accountId": acc.AccountID}
-	switch a.Status {
-	case "": // default queue: pending only
-		queryArgs["filter"] = map[string]any{"status": "pending"}
-	case "all": // no filter — the server's default is everything, newest first
-	default:
-		queryArgs["filter"] = map[string]any{"status": a.Status}
+	filter := func(args map[string]any) map[string]any {
+		switch a.Status {
+		case "": // default queue: pending only
+			args["filter"] = map[string]any{"status": "pending"}
+		case "all": // no filter — the server's default is everything, newest first
+		default:
+			args["filter"] = map[string]any{"status": a.Status}
+		}
+		return args
 	}
 
-	resps, err := client.Call(context.Background(), jmap.AgentUsing, []jmap.Invocation{
-		{Name: "ActionProposal/query", Args: queryArgs, CallID: "q0"},
-		{Name: "ActionProposal/get", Args: map[string]any{
-			"accountId": acc.AccountID,
-			"#ids":      jmap.Ref("q0", "ActionProposal/query", "/ids"),
-		}, CallID: "g0"},
-	})
+	// 2N invocations, ONE round trip: query→get per account, each get
+	// back-referencing its own query by call id (s10 T7).
+	calls := make([]jmap.Invocation, 0, 2*len(accounts))
+	for i, acc := range accounts {
+		q := fmt.Sprintf("q%d", i)
+		calls = append(calls,
+			jmap.Invocation{
+				Name:   "ActionProposal/query",
+				Args:   filter(map[string]any{"accountId": acc.AccountID}),
+				CallID: q,
+			},
+			jmap.Invocation{
+				Name: "ActionProposal/get",
+				Args: map[string]any{
+					"accountId": acc.AccountID,
+					"#ids":      jmap.Ref(q, "ActionProposal/query", "/ids"),
+				},
+				CallID: fmt.Sprintf("g%d", i),
+			})
+	}
+	resps, err := client.Call(context.Background(), jmap.AgentUsing, calls)
 	if err != nil {
 		return die(s, err)
 	}
-	// A query-side refusal (e.g. unsupportedFilter) must surface, not be masked
-	// by a downstream invalidResultReference.
-	if q, ok := jmap.Find(resps, "q0"); ok {
-		if _, err := q.Result("ActionProposal/query"); err != nil {
+
+	proposals := make([]*proposal.Proposal, 0, 8)
+	refused := 0
+	for i, acc := range accounts {
+		// A query-side refusal (e.g. unsupportedFilter) must surface, not be
+		// masked by a downstream invalidResultReference.
+		var accErr error
+		if q, ok := jmap.Find(resps, fmt.Sprintf("q%d", i)); ok {
+			_, accErr = q.Result("ActionProposal/query")
+		}
+		g, ok := jmap.Find(resps, fmt.Sprintf("g%d", i))
+		if accErr == nil && !ok {
+			accErr = &bmio.CliError{Msg: "no ActionProposal/get response", Code: bmio.ExitFail}
+		}
+		var raw json.RawMessage
+		if accErr == nil {
+			raw, accErr = g.Result("ActionProposal/get")
+		}
+		if accErr != nil {
+			// ONE account's refusal must not take the queue down — a revoked
+			// grant would otherwise hide every other agent's work. Reported on
+			// stderr (chrome), not swallowed: silence here is the original bug.
+			refused++
+			s.Note("(" + acc.Name + ": " + accErr.Error() + ")")
+			continue
+		}
+		var got struct {
+			List []json.RawMessage `json:"list"`
+		}
+		if err := json.Unmarshal(raw, &got); err != nil {
 			return die(s, err)
 		}
-	}
-	g, ok := jmap.Find(resps, "g0")
-	if !ok {
-		return die(s, &bmio.CliError{Msg: "no ActionProposal/get response", Code: bmio.ExitFail})
-	}
-	raw, err := g.Result("ActionProposal/get")
-	if err != nil {
-		return die(s, err)
-	}
-	var got struct {
-		List []json.RawMessage `json:"list"`
-	}
-	if err := json.Unmarshal(raw, &got); err != nil {
-		return die(s, err)
-	}
-
-	proposals := make([]*proposal.Proposal, 0, len(got.List))
-	for _, rp := range got.List {
-		if p, ok := proposal.Parse(rp); ok {
+		for _, rp := range got.List {
+			p, ok := proposal.Parse(rp)
+			if !ok {
+				continue
+			}
+			if p.AccountID == "" { // pre-T7 server: stamp what we asked for
+				p.AccountID = acc.AccountID
+			}
 			proposals = append(proposals, p)
 		}
+	}
+	if refused == len(accounts) && refused > 0 {
+		return die(s, &bmio.CliError{Msg: "every account refused the approvals queue", Code: bmio.ExitFail})
 	}
 	// `--agent` is filtered CLIENT-SIDE, and deliberately so: ActionProposal/query
 	// refuses every filter key but `status` (actionProposal.ts:166 —
@@ -228,12 +262,48 @@ func apList(s *bmio.Streams, a approvalsArgs) int {
 			break
 		}
 	}
+	// The [ro] legend, on the same "explain an absence" rule: it appears only
+	// when a watch-only account has a row on screen (s10 T7).
+	labels := accountLabels(accounts)
+	for _, p := range proposals {
+		if strings.HasPrefix(labels[p.AccountID], roMark) {
+			s.Note(roMark + " accounts are visible to you but NOT decidable — " +
+				"the grant that shares them carries read, not the deciding scope")
+			break
+		}
+	}
 	s.Note(apHeader())
 	now := time.Now().UnixMilli()
 	for _, p := range proposals {
-		s.Out(renderRow(p, now))
+		s.Out(renderRow(p, labels[p.AccountID], now))
 	}
 	return 0
+}
+
+// roMark flags a watch-only account in the ACCOUNT column. Short on purpose —
+// it rides inside a fixed-width column — and always explained by a legend when
+// it is on screen. It is never truncated away: `truncAccount` elides the
+// account NAME instead, because the mark is the honesty signal.
+const roMark = "[ro]"
+
+// accountWidth is the ACCOUNT column. Wide enough for an ordinary
+// localpart@domain, and the mark survives whatever is left.
+const accountWidth = 22
+
+// accountLabels is accountId → what the ACCOUNT column prints: the account's
+// name, prefixed when the queue may only WATCH it. Telling Emily's ask from
+// Allen's is the point of a merged queue, and the binding name alone does not
+// say which account it ran on.
+func accountLabels(accounts []jmap.AgentAccount) map[string]string {
+	out := make(map[string]string, len(accounts))
+	for _, a := range accounts {
+		if a.MayDecide {
+			out[a.AccountID] = a.Name
+			continue
+		}
+		out[a.AccountID] = roMark + " " + a.Name
+	}
+	return out
 }
 
 // apShow runs ActionProposal/get for one id and prints the whole proposal:
@@ -244,13 +314,15 @@ func apShow(s *bmio.Streams, a approvalsArgs) int {
 	if id == "" {
 		return die(s, bmio.Usage("bullmoose approvals show <id> [--json]"))
 	}
-	db, client, acc, err := apConn(a)
+	db, client, accounts, err := apConn(a)
 	if err != nil {
 		return die(s, err)
 	}
 	defer db.Close()
 
-	p, raw, err := fetchProposal(client, acc.AccountID, id)
+	// The id is looked UP across the queue's reach — a human reading their
+	// agent's proposal should not have to know which account it lives on.
+	acc, p, raw, err := apLocate(client, accounts, id)
 	if err != nil {
 		return die(s, err)
 	}
@@ -258,6 +330,7 @@ func apShow(s *bmio.Streams, a approvalsArgs) int {
 		s.Out(compactLine(raw))
 		return 0
 	}
+	s.Note("account:   " + accountLabels(accounts)[acc.AccountID])
 	renderShow(s, p)
 	return 0
 }
@@ -270,11 +343,19 @@ func apApprove(s *bmio.Streams, a approvalsArgs) int {
 	if id == "" {
 		return die(s, bmio.Usage("bullmoose approvals approve <id> [--note t]"))
 	}
-	db, client, acc, err := apConn(a)
+	db, client, accounts, err := apConn(a)
 	if err != nil {
 		return die(s, err)
 	}
 	defer db.Close()
+
+	acc, _, _, err := apLocate(client, accounts, id)
+	if err != nil {
+		return die(s, err)
+	}
+	if err := apDecidable(acc, "approve"); err != nil {
+		return die(s, err)
+	}
 
 	patch := map[string]any{"status": "approved"}
 	if a.Note != "" {
@@ -306,11 +387,19 @@ func apDecline(s *bmio.Streams, a approvalsArgs) int {
 	if a.Reason != "" && !rejectReasons[a.Reason] {
 		return die(s, bmio.Usage("--reason must be one of: "+rejectReasonList))
 	}
-	db, client, acc, err := apConn(a)
+	db, client, accounts, err := apConn(a)
 	if err != nil {
 		return die(s, err)
 	}
 	defer db.Close()
+
+	acc, _, _, err := apLocate(client, accounts, id)
+	if err != nil {
+		return die(s, err)
+	}
+	if err := apDecidable(acc, "decline"); err != nil {
+		return die(s, err)
+	}
 
 	decision := map[string]any{}
 	if a.Reason != "" {
@@ -364,11 +453,19 @@ func apNeedsInfo(s *bmio.Streams, a approvalsArgs) int {
 	if problem := proposal.QuestionProblem(a.Question); problem != "" {
 		return die(s, bmio.Usage(problem+"\n"+needsInfoUsage(id)))
 	}
-	db, client, acc, err := apConn(a)
+	db, client, accounts, err := apConn(a)
 	if err != nil {
 		return die(s, err)
 	}
 	defer db.Close()
+
+	acc, _, _, err := apLocate(client, accounts, id)
+	if err != nil {
+		return die(s, err)
+	}
+	if err := apDecidable(acc, proposal.NeedsInfoVerb); err != nil {
+		return die(s, err)
+	}
 
 	// The whole patch. The server trims the question too; sending it trimmed
 	// keeps what the CLI displays and what the row stores the same bytes.
@@ -396,14 +493,17 @@ func apEdit(s *bmio.Streams, a approvalsArgs) int {
 	if id == "" {
 		return die(s, bmio.Usage("bullmoose approvals edit <id> [--body t|--file p] [--subject s] [--note t]"))
 	}
-	db, client, acc, err := apConn(a)
+	db, client, accounts, err := apConn(a)
 	if err != nil {
 		return die(s, err)
 	}
 	defer db.Close()
 
-	p, _, err := fetchProposal(client, acc.AccountID, id)
+	acc, p, _, err := apLocate(client, accounts, id)
 	if err != nil {
+		return die(s, err)
+	}
+	if err := apDecidable(acc, "edit"); err != nil {
 		return die(s, err)
 	}
 	if p.Status != "pending" {
@@ -615,24 +715,155 @@ func fetchProposal(client *jmap.Client, accountID, id string) (*proposal.Proposa
 // ---- connection -----------------------------------------------------------
 
 // apConn opens the mirror (for base+token+accounts config only — ActionProposal
-// is not in the mirror), builds the live JMAP client, and resolves the ONE
-// account this decision surface acts on. The caller closes db.
-func apConn(a approvalsArgs) (*sql.DB, *jmap.Client, account.Account, error) {
+// is not in the mirror), builds the live JMAP client, and resolves the accounts
+// this decision surface acts over. The caller closes db.
+//
+// PLURAL since s10 T7. A human's agents are separate PRINCIPALS on separate
+// ACCOUNTS by design, so a queue that read one account could never show them
+// their agents' work — `/approvals` said "Nothing is waiting on you" while a
+// real pending proposal sat on the agent's account. The reach comes from the
+// SESSION (every account the server resolves for this token, owned and
+// grant-reached), not from the mirror, whose account list is what this login
+// synced mail for.
+func apConn(a approvalsArgs) (*sql.DB, *jmap.Client, []jmap.AgentAccount, error) {
 	db, err := store.Open(store.DBPath(a.DB))
 	if err != nil {
-		return nil, nil, account.Account{}, err
+		return nil, nil, nil, err
 	}
 	settings, err := store.RequireSettings(db)
 	if err != nil {
 		_ = db.Close()
-		return nil, nil, account.Account{}, err
+		return nil, nil, nil, err
 	}
-	acc, err := resolveAccount(settings, a.Account)
+	client := jmap.NewClient(settings.Base, settings.Token)
+	accounts, err := apAccounts(client, settings, a.Account)
 	if err != nil {
 		_ = db.Close()
-		return nil, nil, account.Account{}, err
+		return nil, nil, nil, err
 	}
-	return db, jmap.NewClient(settings.Base, settings.Token), acc, nil
+	return db, client, accounts, nil
+}
+
+// apAccounts is the queue's reach: every session account advertising the agent
+// capability, narrowed by --account when one is given.
+//
+// Two fallbacks, both deliberate:
+//   - a session that cannot be fetched, or that lists no agent-capable account,
+//     falls back to the mirror's resolved account — the pre-T7 behaviour, which
+//     keeps `approvals` working against an older server and against the
+//     contract suite's stub rather than failing with an empty queue;
+//   - --account keeps cli/009 semantics (`account.One`): no selector → all;
+//     ambiguous → usage error; no match → not found. The mirror's addresses are
+//     folded in so `--account @bullmoose.cc` still matches by address, while an
+//     agent account the mirror has never seen is still selectable by name or id.
+func apAccounts(
+	client *jmap.Client, settings *store.Settings, selector string,
+) ([]jmap.AgentAccount, error) {
+	session, err := client.Session(context.Background())
+	var reachable []jmap.AgentAccount
+	if err == nil {
+		reachable = session.AgentAccounts()
+	}
+	if len(reachable) == 0 {
+		acc, err := resolveAccount(settings, selector)
+		if err != nil {
+			return nil, err
+		}
+		// Unreported authority is not "no authority" — the server is the gate.
+		return []jmap.AgentAccount{{
+			AccountID: acc.AccountID, Name: account.Label(acc),
+			IsPersonal: true, MayDecide: true, MayApproveIrreversible: true,
+		}}, nil
+	}
+	if selector == "" {
+		return reachable, nil
+	}
+
+	addresses := map[string]string{}
+	for _, a := range settings.Accounts {
+		addresses[a.AccountID] = a.Address
+	}
+	selectable := make([]account.Account, 0, len(reachable))
+	for _, r := range reachable {
+		selectable = append(selectable, account.Account{
+			AccountID: r.AccountID, Address: addresses[r.AccountID], Name: r.Name,
+		})
+	}
+	picked, err := resolveAccount(&store.Settings{Accounts: selectable, AccountID: settings.AccountID}, selector)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range reachable {
+		if r.AccountID == picked.AccountID {
+			return []jmap.AgentAccount{r}, nil
+		}
+	}
+	return nil, bmio.NotFound("no account matches \"" + selector + "\"")
+}
+
+// apLocate finds the ONE account a proposal id lives on, across the queue's
+// reach. With a single account it is free; across several it is one batched
+// `ActionProposal/get` per account in ONE round trip, so "which account is this
+// id on" never costs the human a flag they should not have to know.
+func apLocate(
+	client *jmap.Client, accounts []jmap.AgentAccount, id string,
+) (jmap.AgentAccount, *proposal.Proposal, json.RawMessage, error) {
+	if len(accounts) == 1 {
+		p, raw, err := fetchProposal(client, accounts[0].AccountID, id)
+		return accounts[0], p, raw, err
+	}
+	calls := make([]jmap.Invocation, 0, len(accounts))
+	for i, acc := range accounts {
+		calls = append(calls, jmap.Invocation{
+			Name:   "ActionProposal/get",
+			Args:   map[string]any{"accountId": acc.AccountID, "ids": []string{id}},
+			CallID: fmt.Sprintf("g%d", i),
+		})
+	}
+	resps, err := client.Call(context.Background(), jmap.AgentUsing, calls)
+	if err != nil {
+		return jmap.AgentAccount{}, nil, nil, err
+	}
+	for i, acc := range accounts {
+		r, ok := jmap.Find(resps, fmt.Sprintf("g%d", i))
+		if !ok {
+			continue
+		}
+		raw, err := r.Result("ActionProposal/get")
+		if err != nil {
+			// One account refusing (a revoked grant mid-flight) must not hide the
+			// id on another — keep looking, and report not-found if none has it.
+			continue
+		}
+		var got struct {
+			List []json.RawMessage `json:"list"`
+		}
+		if err := json.Unmarshal(raw, &got); err != nil || len(got.List) == 0 {
+			continue
+		}
+		if p, ok := proposal.Parse(got.List[0]); ok {
+			return acc, p, got.List[0], nil
+		}
+	}
+	return jmap.AgentAccount{}, nil, nil, bmio.NotFound("no proposal " + id)
+}
+
+// apDecidable refuses locally what the server would refuse remotely — with the
+// reason the server cannot know how to phrase: the account is reachable through
+// a grant that does not carry the deciding scope. Not a second policy layer:
+// the same `authorizeAccount` decision computed it, and it travels in the
+// session (services/jmap/src/session.ts).
+func apDecidable(acc jmap.AgentAccount, verb string) error {
+	if acc.MayDecide {
+		return nil
+	}
+	return &bmio.ServerError{
+		Msg: fmt.Sprintf(
+			"cannot %s on %s: this account is watch-only for you — the grant that shares it "+
+				"carries read, not the deciding scope. Ask its owner to widen the grant.",
+			verb, acc.Name),
+		JMAPType: "forbidden",
+	}
 }
 
 // resolveAccount picks the single account a command acts on — account.One, the
@@ -701,11 +932,24 @@ func readAllStdin() (string, error) {
 // filters on), so the column has to hold the longest one rather than smear the
 // table.
 func apHeader() string {
-	return fmt.Sprintf("%-14s  %-16s  %-13s  %-4s  %-13s  %-16s  %-24s  %s",
-		"STATUS", "AGENT", "KIND", "TIER", "WAITED", "CLOCK", "ID", "RATIONALE")
+	return fmt.Sprintf("%-14s  %-16s  %-22s  %-13s  %-4s  %-13s  %-16s  %-24s  %s",
+		"STATUS", "AGENT", "ACCOUNT", "KIND", "TIER", "WAITED", "CLOCK", "ID", "RATIONALE")
 }
 
-func renderRow(p *proposal.Proposal, now int64) string {
+// truncAccount fits an account label into the column WITHOUT ever losing the
+// watch-only mark: a row that quietly dropped its "[ro]" would offer the human
+// a verb the server will refuse, which is the failure this column exists to
+// prevent. The account name is elided instead.
+func truncAccount(label string) string {
+	if !strings.HasPrefix(label, roMark+" ") {
+		return trunc(label, accountWidth)
+	}
+	return roMark + " " + trunc(strings.TrimPrefix(label, roMark+" "), accountWidth-len(roMark)-1)
+}
+
+// renderRow prints one queue row. `account` is the label from `accountLabels` —
+// empty only when the row came off an account the session no longer lists.
+func renderRow(p *proposal.Proposal, account string, now int64) string {
 	c := p.Clocks(now)
 	clock := "—"
 	switch p.Status {
@@ -724,8 +968,11 @@ func renderRow(p *proposal.Proposal, now int64) string {
 	// (the agent's "why", first line only); for s11 T9's `budget-overrun` it is
 	// the numbers-first summary, because the numbers ARE the why there and a
 	// truncated prose sentence would bury them (proposal.RowSummary).
-	return fmt.Sprintf("%-14s  %-16s  %-13s  T%-3d  %-13s  %-16s  %-24s  %s",
-		p.Status, trunc(p.Agent, 16), trunc(p.Kind, 13), p.Tier,
+	if account == "" {
+		account = p.AccountID
+	}
+	return fmt.Sprintf("%-14s  %-16s  %-22s  %-13s  T%-3d  %-13s  %-16s  %-24s  %s",
+		p.Status, trunc(p.Agent, 16), truncAccount(account), trunc(p.Kind, 13), p.Tier,
 		proposal.FormatDuration(c.WaitedMs), trunc(clock, 16),
 		trunc(p.ID, 24), trunc(proposal.RowSummary(p), 60))
 }

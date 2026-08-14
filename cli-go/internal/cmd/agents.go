@@ -563,6 +563,21 @@ func agCreate(s *bmio.Streams, a agentsArgs) int {
 		BindingID string `json:"bindingId"`
 		AccountID string `json:"accountId"`
 		Watchdog  bool   `json:"watchdog"`
+		// s10 T7 — did the owner get a supervisory grant? Reported ALWAYS,
+		// because "every new agent is born invisible" was the bug: a create
+		// that silently produced an unsupervised agent is how a real pending
+		// proposal ended up waiting on a queue that could not see it.
+		Supervision struct {
+			Granted bool     `json:"granted"`
+			Created bool     `json:"created"`
+			GrantID string   `json:"grantId"`
+			Scopes  []string `json:"scopes"`
+			Reason  string   `json:"reason"`
+			Owner   struct {
+				Email     string `json:"email"`
+				AccountID string `json:"accountId"`
+			} `json:"owner"`
+		} `json:"supervision"`
 	}
 	if err := json.Unmarshal(raw, &res); err != nil {
 		return die(s, err)
@@ -574,6 +589,13 @@ func agCreate(s *bmio.Streams, a agentsArgs) int {
 			"kind": a.Kind, "replyMode": replyMode, "allowedSenders": senders,
 			"watchdog": res.Watchdog,
 			"outbound": outboundJSON(a.HasBook, a.RecipientsBook, true),
+			"supervision": map[string]any{
+				"granted": res.Supervision.Granted,
+				"owner":   res.Supervision.Owner.Email,
+				"grantId": res.Supervision.GrantID,
+				"scopes":  res.Supervision.Scopes,
+				"reason":  res.Supervision.Reason,
+			},
 		}
 		if err := s.EmitJSON(out); err != nil {
 			return die(s, err)
@@ -588,6 +610,22 @@ func agCreate(s *bmio.Streams, a agentsArgs) int {
 		s.Note("outbound bound: book " + a.RecipientsBook)
 	} else {
 		s.Note("outbound bound: NONE — this binding cannot send. Seed a governing book before it needs to.")
+	}
+	// Whether the human who owns this agent can SEE what it proposes. Without
+	// the grant the agent still runs and still queues work — it is simply
+	// invisible in `/approvals`, which is the failure this line exists to make
+	// impossible to miss.
+	if res.Supervision.Granted {
+		s.Note("supervision:    " + res.Supervision.Owner.Email + " can see and decide this agent's " +
+			"proposals (grant " + res.Supervision.GrantID + ", scopes " +
+			strings.Join(res.Supervision.Scopes, "+") + ")")
+	} else {
+		s.Note("supervision:    NONE — this agent's proposals will not appear in anyone's /approvals.")
+		if res.Supervision.Reason != "" {
+			s.Note("                " + res.Supervision.Reason)
+		}
+		s.Note("                fix: POST /agent-bindings/" + res.BindingID +
+			"/supervisor {\"ownerEmail\": \"...\"} on the provision worker")
 	}
 	s.Note("for activity, once it runs: " + activityPointer(name))
 	return 0
