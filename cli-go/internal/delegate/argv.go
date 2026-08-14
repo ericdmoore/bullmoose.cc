@@ -73,12 +73,29 @@ var valueFlags = map[string]bool{
 	"n": true,
 }
 
+// booleanFlags mirrors the `type: "boolean"` entries of the same spec. Command()
+// does not need it — a boolean consumes no token, so skipping it is already
+// right — but help.go does: to answer "would parseArgs accept this argv?" it has
+// to tell a flag that exists and takes nothing from a flag that does not exist
+// at all. `argv_test.go` diffs it against main.ts in both directions, exactly as
+// it does valueFlags.
+var booleanFlags = map[string]bool{
+	"force": true, "yes": true, "include-deleted": true, "clear": true,
+	"once": true, "all-day": true, "ics": true, "destroy": true, "raw": true,
+	"offline": true, "daemon": true, "status": true, "stop": true,
+	"json": true, "ids": true, "dry-run": true, "unset": true, "no-sync": true,
+	"help": true, "man": true, "markdown": true,
+}
+
 // shortValueFlags: the spec declares exactly two short options, and only one of
 // them takes a value — `-n` (`packages/cli/src/main.ts:159`); `-h` is boolean
 // (`:160`). Anything else beginning with `-` is left to consume nothing, which
 // is the conservative direction: it can only make Command stop *earlier*, never
 // swallow a command name.
 var shortValueFlags = map[string]bool{"n": true}
+
+// shortBooleanFlags: `-h`, and only `-h` (`packages/cli/src/main.ts:181`).
+var shortBooleanFlags = map[string]string{"h": "help"}
 
 // Command returns the subcommand named in argv, or "" when there is none —
 // `bullmoose`, `bullmoose --help`, `bullmoose --json` and friends, all of which

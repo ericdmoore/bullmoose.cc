@@ -13,7 +13,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
-    "gen:docs": "npm run build && mkdir -p man && node bin/bullmoose.mjs help --man > man/bullmoose.1 && node bin/bullmoose.mjs help --markdown > ../../docs/cli.md",
+    "gen:docs": "npm run build && mkdir -p man && node bin/bullmoose.mjs help --man > man/bullmoose.1 && node bin/bullmoose.mjs help --markdown > ../../docs/cli.md && node tools/gen-help-artifact.mjs",
     "smoke": "node smoke/contract.mjs"
   },
   "dependencies": {

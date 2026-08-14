@@ -48,7 +48,7 @@ func TestDelegateInheritsFileDescriptors(t *testing.T) {
 	}
 	defer errf.Close()
 
-	cmd := shimCmd(t, "@@stat", "@@stdin")
+	cmd := shimCmd(t, delegatedCommand, "@@stat", "@@stdin")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = in, out, errf
 	cmd.Env = append(cmd.Env, envTestFd+"=0="+inPath+";1="+outPath+";2="+errPath)
 	if code := exitCodeOf(t, cmd); code != 0 {
@@ -81,7 +81,7 @@ func TestDelegateInheritsFileDescriptors(t *testing.T) {
 // well-meaning clamp to the §1.5 range.
 func TestExitCodePropagatedExactly(t *testing.T) {
 	for _, want := range []int{0, 1, 2, 3, 4, 5, 42, 200} {
-		cmd := shimCmd(t, "@@exit="+strconv.Itoa(want))
+		cmd := shimCmd(t, delegatedCommand, "@@exit="+strconv.Itoa(want))
 		if got := exitCodeOf(t, cmd); got != want {
 			t.Errorf("exit code: want %d, got %d", want, got)
 		}
@@ -93,7 +93,7 @@ func TestExitCodePropagatedExactly(t *testing.T) {
 // seen with no shim in the way.
 func TestChildKilledBySignalDiesTheSameWay(t *testing.T) {
 	for _, name := range []string{"TERM", "INT"} {
-		cmd := shimCmd(t, "@@signal="+name)
+		cmd := shimCmd(t, delegatedCommand, "@@signal="+name)
 		_ = cmd.Run()
 		st := cmd.ProcessState
 		if st == nil {
@@ -119,7 +119,7 @@ func TestChildKilledBySignalDiesTheSameWay(t *testing.T) {
 // unchanged and the contract suite's early-close cases
 // (packages/cli/smoke/contract.mjs:118) cannot tell the difference.
 func TestSigpipeDeathReportsTheShellsCode(t *testing.T) {
-	cmd := shimCmd(t, "@@signal=PIPE")
+	cmd := shimCmd(t, delegatedCommand, "@@signal=PIPE")
 	if got := exitCodeOf(t, cmd); got != 128+int(syscall.SIGPIPE) {
 		t.Errorf("exit code: want %d, got %d", 128+int(syscall.SIGPIPE), got)
 	}
@@ -130,7 +130,7 @@ func TestSigpipeDeathReportsTheShellsCode(t *testing.T) {
 // and the child's chosen exit code must be what the caller sees. 42 rather than
 // the 143 this process would have produced by dying itself.
 func TestSignalsReachTheDelegate(t *testing.T) {
-	cmd := shimCmd(t, "@@onsignal=TERM:42")
+	cmd := shimCmd(t, delegatedCommand, "@@onsignal=TERM:42")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -196,7 +196,7 @@ func TestArgvForwardedVerbatim(t *testing.T) {
 // TestMissingNodeCLIIsNamedNotGuessed — `arch.md` §4: "Never a silent fallback
 // to 'command not found'."
 func TestMissingNodeCLIIsNamedNotGuessed(t *testing.T) {
-	cmd := shimCmd(t, "whoami")
+	cmd := shimCmd(t, delegatedCommand)
 	cmd.Env = withoutEnv(cmd.Env, envNodeCLI)
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -221,7 +221,7 @@ func TestMissingNodeCLIIsNamedNotGuessed(t *testing.T) {
 // an implementation other than the one named is the outcome that would make the
 // trace metric lie.
 func TestBadNodeCLIIsNotSilentlyIgnored(t *testing.T) {
-	cmd := shimCmd(t, "whoami")
+	cmd := shimCmd(t, delegatedCommand)
 	cmd.Env = append(cmd.Env, envNodeCLI+"="+filepath.Join(t.TempDir(), "nope.mjs"))
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
@@ -271,7 +271,7 @@ func TestTraceIsSilentByDefault(t *testing.T) {
 // from, because the contract suite runs most cases as `$BM … 2>/dev/null`.
 func TestTraceFileCountsInvocations(t *testing.T) {
 	log := filepath.Join(t.TempDir(), "split.log")
-	for _, command := range []string{"log", "mailboxes", "whoami"} {
+	for _, command := range []string{"log", "mailboxes", delegatedCommand} {
 		cmd := shimCmd(t, command)
 		cmd.Env = withoutEnv(cmd.Env, envTrace) // the file sink stands alone
 		cmd.Env = append(cmd.Env, envTraceFile+"="+log)

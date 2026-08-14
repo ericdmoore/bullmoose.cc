@@ -6,11 +6,15 @@ import "strings"
 // the native (T6) commands fully own.
 //
 // The point of the guard: a native command reproduces only its own happy path
-// and the error paths the contract exercises. The full flag grammar and the help
-// system (packages/cli/src/help.ts) stay in TypeScript for now, so any
-// invocation carrying `--help`/`-h` or a flag the native commands do not consume
-// is handed to Node — which produces those bytes exactly. That keeps the port
-// byte-identical on paths it has not ported, instead of approximating them.
+// and the error paths the contract exercises. Any invocation carrying a flag the
+// native commands do not consume is handed to Node — which produces those bytes
+// exactly. That keeps the port byte-identical on paths it has not ported,
+// instead of approximating them.
+//
+// `--help` and `-h` are still not in any command's owned set, and still must not
+// be: they are not that command's flags. They no longer delegate, though —
+// Dispatch routes them to internal/help BEFORE consulting this guard, exactly as
+// main.ts:205 answers help before its switch (help.go).
 
 // Register adds one native command handler. main.go calls it (via cmd.Install)
 // before Dispatch, so the routing map is populated from cmd's registry rather
@@ -67,7 +71,7 @@ func set(names []string) map[string]bool {
 var defaultOwned = flagSet{
 	value:   map[string]bool{"db": true, "account": true, "mailbox": true, "n": true},
 	boolean: map[string]bool{"json": true, "ids": true},
-	short:   map[string]bool{"n": true}, // -h is deliberately absent: help delegates
+	short:   map[string]bool{"n": true}, // -h is deliberately absent: help is routed, not owned
 }
 
 // ownedNatively reports whether every flag in argv is one the NAMED command's

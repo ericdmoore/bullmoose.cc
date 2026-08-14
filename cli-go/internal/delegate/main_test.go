@@ -77,6 +77,18 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// delegatedCommand is a command the Node CLI HAS and this binary has not
+// ported, so naming it reaches the delegate. Every test below that is about the
+// process boundary rather than about a command needs one.
+//
+// It has to be a real command. These tests used to say `whoami`, which is not a
+// bullmoose command at all; that worked while the front door forwarded anything
+// it did not recognise, and stopped working when it started answering `unknown
+// command` out of the embedded help spec itself (help.go) — an invented argv[0]
+// now never reaches Node. Naming a real unported command is also the more
+// faithful fixture: it is the shape a delegated invocation actually has.
+const delegatedCommand = "vacation"
+
 // shimCmd builds an invocation of the front door, pointed at this binary as
 // both the interpreter and (via the sentinel) the CLI. cmd.Dir is a scratch
 // directory so discovery can never wander into the real checkout.
