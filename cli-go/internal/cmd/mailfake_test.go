@@ -13,6 +13,7 @@ package cmd
 // same trap the contract suite's own stub sets (session.go).
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -87,11 +88,17 @@ func newMailFake() *mailFake {
 // It MUTATES the fixture, which is what makes the reconcile assertions real: the
 // Email/get the CLI issues after a write returns the message as it now is, so a
 // mirror row that disagrees is the port's fault and not the fake's.
-func (f *mailFake) applySet(update map[string]json.RawMessage, destroy []string) string {
+// updateOrder is the request's key order. A real server answers `updated` in the
+// order it processed the request (a JS object preserves insertion order), and the
+// CLI echoes that order verbatim to match Node byte for byte. Ranging a Go MAP
+// here instead made the fake's answer RANDOM — it passed locally and failed in
+// CI, which is the whole reason this parameter exists.
+func (f *mailFake) applySet(update map[string]json.RawMessage, updateOrder []string, destroy []string) string {
 	updated, notUpdated, destroyed, notDestroyed := []string{}, []string{}, []string{}, []string{}
 	mutated := false
 
-	for id, rawPatch := range update {
+	for _, id := range updateOrder {
+		rawPatch := update[id]
 		raw, ok := f.emails[id]
 		if !ok {
 			notUpdated = append(notUpdated, fmt.Sprintf(`%q:{"type":"notFound"}`, id))
@@ -383,7 +390,7 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 			return fail("stateMismatch", "")
 		}
 		if len(a.Update) > 0 || len(a.Destroy) > 0 {
-			return reply(f.applySet(a.Update, a.Destroy))
+			return reply(f.applySet(a.Update, updateKeyOrder(args), a.Destroy))
 		}
 		created := []string{}
 		for cid := range a.Create {
@@ -551,4 +558,36 @@ func withStdin(t *testing.T, content string) {
 		os.Stdin = prev
 		_ = f.Close()
 	})
+}
+
+// updateKeyOrder reads `update`'s keys in DOCUMENT order. json.Unmarshal into a
+// map discards that order and Go then randomises iteration, so the fake needs
+// the raw bytes to answer the way a real server does.
+func updateKeyOrder(args json.RawMessage) []string {
+	var envelope struct {
+		Update json.RawMessage `json:"update"`
+	}
+	if err := json.Unmarshal(args, &envelope); err != nil || len(envelope.Update) == 0 {
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(envelope.Update))
+	if tok, err := dec.Token(); err != nil {
+		return nil
+	} else if delim, ok := tok.(json.Delim); !ok || delim != '{' {
+		return nil
+	}
+	var keys []string
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return keys
+		}
+		key, _ := tok.(string)
+		keys = append(keys, key)
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return keys
+		}
+	}
+	return keys
 }
