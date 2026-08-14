@@ -57,6 +57,42 @@ shipped years ago — the same trust model `s12` stage 2 applies to the topmost
 Note the shape: **richness degrades by what the far end understands**, exactly like a JMAP
 capability a client does not declare. Extension without breakage, again.
 
+### 3b. The reply-above-the-line rung (Eric, 2026-08-13)
+
+The strongest rung on the ladder, and the one that needs **no software at the far end at
+all**: Alice should feel like she is *commenting on a body of text*, not receiving a
+notification about a document she cannot reach.
+
+So the mention mail carries the note body beneath a **sentinel** — the reply separator every
+mail client on earth already trains people to write above:
+
+```
+Eric mentioned you in a note. Reply above the line and your reply becomes your comment.
+---
+<the note text, quoted>
+```
+
+Alice replies above `---` in hey.com, Gmail, Outlook, anything. Her reply comes back as
+ordinary mail, we take everything above the sentinel, and it is **incorporated as her
+comment on the note** — attributed to her address, threaded to the mention.
+
+Why this is the right bottom rung:
+
+- **Zero far-end requirement.** Not "degrades to a notification" — she genuinely
+  participates, using the reply convention she already has muscle memory for.
+- **It reuses the trimming we need anyway.** Quoted-reply stripping is table stakes for any
+  mail system; here it is load-bearing rather than cosmetic.
+- **It sidesteps §4's access problem for the common case.** The note text travels *in the
+  mail*, so no share link and no access grant is required for her to read what she was
+  mentioned in — only for her to see the note's later history.
+- ⚠️ **But that is exactly why it needs the §4 consent moment**: quoting the body into an
+  outbound message IS the disclosure. The UI must say so before sending; there is no
+  un-sending it and no revoking it, unlike a share link.
+
+Ladder, restated bottom-up: **reply-above-the-line (any client) → structured header +
+share link (another bullmoose) → direct principal resolution (same instance)**. Each rung
+adds fidelity; none is required for the one below it to work.
+
 ## 4. The hard question is access, not transport
 
 Mentioning `alice@othercorp.com` in a *private* note: may she read it? Both defaults are
