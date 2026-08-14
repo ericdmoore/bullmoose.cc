@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { mintToken } from "@bullmoose/auth-core";
 import { fakeEnv } from "@bullmoose/test-fakes";
-import { handleMcp, TOOLS } from "./mcp";
+import { capResult, handleMcp, TOOLS } from "./mcp";
 
 // Handler-level conformance for the stateless-MCP (2026-07-28) surface +
 // the §6 auth gate. Per .plans/devPrinciples.md the D1 client is injected,
@@ -231,16 +231,23 @@ describe("handleMcp — MCP.2 transport conformance", () => {
     expect(b.error.data.supported).toEqual([V]);
   });
 
-  it("6. has no initialize handshake (MCP.v1 is gone)", async () => {
+  it("6. initialize is ALIVE and legacy (s02 T2 — this test inverted on purpose)", async () => {
+    // It asserted `initialize` was dead, which was correct for a server only
+    // we talked to and fatal for one claude.ai must reach: Claude clients
+    // open with `initialize`, so a -32601 there ends the connection before
+    // any tool is ever listed. The inversion of THIS test is the signal that
+    // T2 landed. What must NOT come back is the session machinery — see the
+    // legacy-lane suite below.
     const { res } = call(
-      { jsonrpc: "2.0", id: 6, method: "initialize", params: { _meta: meta() } },
-      headers(),
+      { jsonrpc: "2.0", id: 6, method: "initialize", params: { protocolVersion: "2025-11-25" } },
+      { Authorization: bearer() },
       ericOwns(),
     );
     const r = await res;
     const b = (await r.json()) as any;
-    expect(r.status).toBe(404);
-    expect(b.error.code).toBe(-32601);
+    expect(r.status).toBe(200);
+    expect(b.result.protocolVersion).toBe("2025-11-25");
+    expect(b.result.capabilities).toEqual({ tools: {} });
   });
 });
 
@@ -423,20 +430,33 @@ describe("handleMcp — accountId resolves server-side (s02 T5)", () => {
     expect(writes.some((w) => w.sql.includes("grant_audit"))).toBe(false);
   });
 
-  it("23. with no owned account, a single grant-reached one is still resolvable", async () => {
-    const { res, writes } = callTool({}, {
-      principalId: "p_allen",
-      loginEmail: "allen@bullmoose.cc",
-      accounts: [{ id: "a_allen", display_name: "Allen" }],
-      otherAccounts: [{ id: "a_eric", display_name: "Eric" }],
-      grants: [{ id: "g1", grantee_account_id: "a_allen", target_account_id: "a_eric", scopes: ["read"] }],
-      spend: [{ account_id: "a_eric" }],
-    });
-    // a_allen is owned, so THIS fixture resolves to it — the grant-only case
-    // needs the principal to own nothing, which verifyBearer models as an
-    // accounts list containing only granted entries.
-    expect((await res).status).toBe(200);
-    expect(writes.some((w) => w.sql.includes("grant_audit"))).toBe(false);
+  it("23. a token owning no account refuses rather than resolving to nothing", async () => {
+    // Structurally this is also a token with NO reach at all: principal.ts:149
+    // only resolves grants when the principal owns an account, because a
+    // grantee is an account. So "owns nothing" and "reaches nothing" are the
+    // same state, and the message says the actionable half.
+    //
+    // Reached the way production reaches it — a SOFT-DELETED account. The
+    // token and principal rows outlive it (the FK requires as much), and
+    // principal.ts:128's `deleted_at IS NULL` is what empties the list.
+    const w = world({ principalId: "p_eric", accounts: [{ id: "a_eric", display_name: "Eric" }] });
+    w.db.query(`UPDATE accounts SET deleted_at = 1 WHERE id = 'a_eric'`);
+    const res = await handleMcp(
+      new Request("https://agent/mcp/analytics", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers() },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 23,
+          method: "tools/call",
+          params: { name: "spend_by_month", arguments: {}, _meta: meta() },
+        }),
+      }),
+      w.env,
+    );
+    const b = (await res.json()) as any;
+    expect(b.error.code).toBe(-32602);
+    expect(b.error.message).toMatch(/owns no account/);
   });
 
   it("24. a supplied accountId is STILL never trusted — the gate is unchanged", async () => {
@@ -493,5 +513,266 @@ describe("handleMcp — accountId resolves server-side (s02 T5)", () => {
     const b = (await r.json()) as any;
     expect(r.status).toBe(403);
     expect(b.error.code).toBe(-32004);
+  });
+});
+
+// s02 T2 — the dual-era lane. Two things are being asserted at once, and the
+// second matters more than the first: that a 2025-era client can complete a
+// handshake, and that NONE of the old era's expensive machinery came back
+// with it. The parts 2026-07-28 removed — HTTP+SSE, session ids,
+// resumability — are exactly the parts this adapter must never grow.
+describe("handleMcp — the legacy lane (s02 T2)", () => {
+  const legacyHeaders = () => ({ Authorization: bearer() });
+
+  it("30. a 2025 client completes initialize → tools/list → tools/call", async () => {
+    // The end-to-end proof, in the order a real client does it. None of these
+    // three requests carries the modern per-request envelope.
+    const init = call(
+      { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25" } },
+      legacyHeaders(),
+      ericOwns(),
+    );
+    expect((await init.res).status).toBe(200);
+
+    const list = call({ jsonrpc: "2.0", id: 2, method: "tools/list" }, legacyHeaders(), ericOwns());
+    const listBody = (await (await list.res).json()) as any;
+    expect(Array.isArray(listBody.result.tools)).toBe(true);
+
+    const callRes = call(
+      { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "whoami", arguments: {} } },
+      legacyHeaders(),
+      ericOwns(),
+    );
+    const callBody = (await (await callRes.res).json()) as any;
+    expect(callBody.result.isError).toBeUndefined();
+  });
+
+  it("31. echoes back the protocol version the client asked for, when we serve it", async () => {
+    for (const v of ["2025-03-26", "2025-06-18", "2025-11-25"]) {
+      const { res } = call(
+        { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: v } },
+        legacyHeaders(),
+        ericOwns(),
+      );
+      expect(((await (await res).json()) as any).result.protocolVersion).toBe(v);
+    }
+  });
+
+  it("32. answers an unknown requested version with our preferred one", async () => {
+    const { res } = call(
+      { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "1999-01-01" } },
+      legacyHeaders(),
+      ericOwns(),
+    );
+    expect(((await (await res).json()) as any).result.protocolVersion).toBe("2025-11-25");
+  });
+
+  it("33. NEVER mints or echoes a session id — the whole point of the hedge", async () => {
+    // If this ever fails, the adapter has started becoming a second protocol
+    // implementation and the delete condition can no longer be met.
+    const { res } = call(
+      { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25" } },
+      { ...legacyHeaders(), "Mcp-Session-Id": "sess_client_invented_this" },
+      ericOwns(),
+    );
+    const r = await res;
+    expect(r.headers.get("Mcp-Session-Id")).toBeNull();
+    const b = (await r.json()) as any;
+    expect(JSON.stringify(b)).not.toContain("sess_client_invented_this");
+    expect(b.result.sessionId).toBeUndefined();
+  });
+
+  it("34. advertises tools ONLY — never a capability we do not implement", async () => {
+    const { res } = call(
+      { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25" } },
+      legacyHeaders(),
+      ericOwns(),
+    );
+    const caps = ((await (await res).json()) as any).result.capabilities;
+    expect(Object.keys(caps)).toEqual(["tools"]);
+    for (const never of ["resources", "prompts", "sampling", "roots", "logging"]) {
+      expect(caps[never]).toBeUndefined();
+    }
+  });
+
+  it("35. ping answers empty — keepalive, no state", async () => {
+    const { res } = call({ jsonrpc: "2.0", id: 9, method: "ping" }, legacyHeaders(), ericOwns());
+    const b = (await (await res).json()) as any;
+    expect(b.result).toEqual({});
+  });
+
+  it("36. notifications/initialized is a 202", async () => {
+    const { res } = call({ jsonrpc: "2.0", method: "notifications/initialized" }, legacyHeaders(), ericOwns());
+    expect((await res).status).toBe(202);
+  });
+
+  it("37. the legacy lane still authenticates — it is a protocol shim, not an auth bypass", async () => {
+    const { res } = call(
+      { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25" } },
+      {},
+      ericOwns(),
+    );
+    expect((await res).status).toBe(401);
+  });
+
+  it("38. and it still enforces the account gate", async () => {
+    const { res } = call(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "spend_by_month", arguments: { accountId: "a_stranger" } },
+      },
+      legacyHeaders(),
+      ericOwns(),
+    );
+    const r = await res;
+    expect(r.status).toBe(403);
+    expect(((await r.json()) as any).error.code).toBe(-32004);
+  });
+});
+
+// The three conformance defects T2 corrects on the MODERN lane. Each was a
+// generic JSON-RPC code where the spec assigns a specific one — the
+// difference matters because a client keys its retry on the code, and
+// "invalid request" is indistinguishable from a malformed body.
+describe("handleMcp — modern-lane conformance codes (s02 T2)", () => {
+  it("40. header/_meta mismatch is -32020 HeaderMismatch, not -32600", async () => {
+    const { res } = call(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: { _meta: meta({ "io.modelcontextprotocol/protocolVersion": "2026-07-28" }) },
+      },
+      headers({ "MCP-Protocol-Version": "2025-06-18" }),
+      ericOwns(),
+    );
+    const r = await res;
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as any).error.code).toBe(-32020);
+  });
+
+  it("41. missing clientCapabilities is -32021, not -32602", async () => {
+    const { res } = call(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: { _meta: { "io.modelcontextprotocol/protocolVersion": V } },
+      },
+      headers(),
+      ericOwns(),
+    );
+    const r = await res;
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as any).error.code).toBe(-32021);
+  });
+
+  it("42. an Mcp-Method header that disagrees with the body is refused", async () => {
+    // The header exists so an intermediary can route without parsing JSON,
+    // which only works if the two cannot disagree.
+    const { res } = call(
+      { jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: meta() } },
+      headers({ "Mcp-Method": "tools/call" }),
+      ericOwns(),
+    );
+    const r = await res;
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as any).error.code).toBe(-32020);
+  });
+
+  it("43. an Mcp-Method header that AGREES is accepted", async () => {
+    const { res } = call(
+      { jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: meta() } },
+      headers({ "Mcp-Method": "tools/list" }),
+      ericOwns(),
+    );
+    expect((await res).status).toBe(200);
+  });
+
+  it("44. -32022 unsupported-version still carries the supported set", async () => {
+    const { res } = call(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: { _meta: meta({ "io.modelcontextprotocol/protocolVersion": "2030-01-01" }) },
+      },
+      headers({ "MCP-Protocol-Version": "2030-01-01" }),
+      ericOwns(),
+    );
+    const b = (await (await res).json()) as any;
+    expect(b.error.code).toBe(-32022);
+    expect(b.error.data.supported).toEqual([V]);
+  });
+});
+
+// s02 T6. The MCP.2 surface exists primarily so bullmoose's OWN agents can
+// find facts across each other (Eric, 2026-08-13), and both groups below
+// serve that: an agent should learn what a tool requires without spending a
+// turn on a refusal, and should never mistake a truncated answer for a
+// complete one.
+describe("tools/list publishes what a caller needs to pre-filter (s02 T6)", () => {
+  const list = () =>
+    call({ jsonrpc: "2.0", id: 50, method: "tools/list", params: { _meta: meta() } }, headers(), ericOwns());
+
+  it("50. every tool carries its scope and domain", async () => {
+    // Stripped before T6, so a caller could only discover the requirement by
+    // calling and eating a -32004 — a wasted turn per tool, per agent.
+    const b = (await (await list().res).json()) as any;
+    expect(b.result.tools.length).toBeGreaterThan(0);
+    for (const t of b.result.tools) {
+      expect(typeof t.scope, t.name).toBe("string");
+      expect(typeof t.domain, t.name).toBe("string");
+    }
+  });
+
+  it("51. the published scope is the one the gate actually enforces", async () => {
+    // The coupling that matters: an advertised requirement differing from the
+    // enforced one is worse than none at all.
+    const b = (await (await list().res).json()) as any;
+    const published = new Map(b.result.tools.map((t: any) => [t.name, `${t.scope}:${t.domain}`]));
+    for (const t of TOOLS) {
+      expect(published.get(t.name), t.name).toBe(`${t.scope}:${t.domain}`);
+    }
+  });
+
+  it("52. marks the accountless tool, and only that one", async () => {
+    const b = (await (await list().res).json()) as any;
+    const flagged = b.result.tools.filter((t: any) => t.accountless).map((t: any) => t.name);
+    expect(flagged).toEqual(["whoami"]);
+  });
+
+  it("53. still carries the cache hint", async () => {
+    const b = (await (await list().res).json()) as any;
+    expect(b.result.ttlMs).toBeGreaterThan(0);
+  });
+});
+
+describe("oversized results are capped, and say so (s02 T6)", () => {
+  it("60. leaves a small result byte-identical", () => {
+    expect(capResult('{"a":1}')).toBe('{"a":1}');
+  });
+
+  it("61. truncates a huge one and announces it in prose a model will read", () => {
+    const capped = capResult("x".repeat(250_000));
+    expect(capped.length).toBeLessThan(250_000);
+    expect(capped).toContain("truncated by bullmoose");
+    expect(capped).toContain("INCOMPLETE");
+  });
+
+  it("62. says how much is missing, so the caller can judge the gap", () => {
+    expect(capResult("x".repeat(250_000))).toMatch(/150,000 of 250,000 characters omitted/);
+  });
+
+  it("63. tells the caller what to DO — a refusal with no next step wastes a turn", () => {
+    expect(capResult("x".repeat(250_000))).toMatch(/Narrow the request/);
+  });
+
+  it("64. warns the text is no longer parseable, rather than letting it look valid", () => {
+    // The failure this prevents: an agent parses a fragment, gets a shorter
+    // list than reality, and concludes something false about the account.
+    expect(capResult("x".repeat(250_000))).toMatch(/no longer valid JSON/);
   });
 });

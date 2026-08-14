@@ -12,7 +12,7 @@ import {
 import { isAgentPrincipal } from "@bullmoose/auth-core/principal";
 import type { Principal } from "./auth";
 import type { Env } from "./index";
-import { beginLoginAttempt } from "./loginThrottle";
+import { beginLoginAttempt } from "@bullmoose/auth-core/loginThrottle";
 
 /**
  * Self-service auth endpoints on the jmap worker:

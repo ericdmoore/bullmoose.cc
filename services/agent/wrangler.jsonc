@@ -8,6 +8,15 @@
   // after inserting invocations; the cron sweep is the retry net.
   "triggers": { "crons": ["*/5 * * * *"] },
 
+  // The public MCP front door (s02 T1). This worker was workers.dev-only;
+  // a third-party client needs a stable hostname because the RFC 8707
+  // resource URI it authorizes against MUST equal the URL the user typed,
+  // and a *.workers.dev name is not one anybody types.
+  //
+  // Only /mcp and /.well-known/oauth-protected-resource* are public on this
+  // hostname — /drain and /internal/* still require INTERNAL_TOKEN (index.ts).
+  "routes": [{ "pattern": "mcp.bullmoose.cc", "custom_domain": true }],
+
   // AccountDO is declared by bullmoose-jmap; bind it cross-script.
   "durable_objects": {
     "bindings": [
@@ -30,13 +39,34 @@
   // master key, so sealing and using a credential are both hops across this
   // binding. bullmoose-bureau must therefore deploy BEFORE this worker — same
   // class of dependency as agent-before-ingest (docs/DEPLOY.md §2).
+  // OAUTH validates OAuth access tokens (s02 T4). Same shape and same reason
+  // as BUREAU: OAUTH_KV holds every issued credential and is bound to the
+  // oauth worker ONLY, so this worker — which runs every MCP tool and reads
+  // untrusted email — asks rather than holds. bullmoose-oauth must therefore
+  // deploy BEFORE this worker, like bureau.
   "services": [
     { "binding": "SUBMIT", "service": "bullmoose-submit" },
-    { "binding": "BUREAU", "service": "bullmoose-bureau" }
+    { "binding": "BUREAU", "service": "bullmoose-bureau" },
+    { "binding": "OAUTH", "service": "bullmoose-oauth" }
   ],
 
   // Workers AI — the free-allocation "cheap" model tier.
-  "ai": { "binding": "AI" }
+  "ai": { "binding": "AI" },
+
+  "vars": {
+    // Both are stated rather than derived, on purpose (s02 T1). wellKnown.ts
+    // can infer them from the request origin, which is right for a dev deploy
+    // and wrong the moment the worker answers on more than one hostname —
+    // the *.workers.dev fallback URL is still live, and a client that
+    // discovers `https://bullmoose-agent.<acct>.workers.dev/mcp` as the
+    // resource would authorize against a URI nobody typed.
+    //
+    // RFC 8707: scheme required, no fragment, no trailing slash, and it must
+    // equal the URL the user pastes into their client EXACTLY.
+    "MCP_RESOURCE_URI": "https://mcp.bullmoose.cc/mcp",
+    // Claude reads authorization_servers[0] and never falls back.
+    "OAUTH_ISSUER": "https://auth.bullmoose.cc"
+  }
 
   // Secrets (wrangler secret put):
   //   INTERNAL_TOKEN      — shared with ingest (poke) and submit (relay)

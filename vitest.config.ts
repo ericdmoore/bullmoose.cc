@@ -17,6 +17,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@bullmoose/auth-core/principal": here("packages/auth-core/src/principal.ts"),
+      "@bullmoose/auth-core/loginThrottle": here("packages/auth-core/src/loginThrottle.ts"),
       "@bullmoose/auth-core": here("packages/auth-core/src/index.ts"),
       "@bullmoose/boundary": here("packages/boundary/src/index.ts"),
       "@bullmoose/contacts-core": here("packages/contacts-core/src/index.ts"),

@@ -1,4 +1,4 @@
-import { hasScope, MAIL_SCOPES, REALM_SCOPES } from "@bullmoose/auth-core";
+import { effectiveScopes, hasScope, MAIL_SCOPES, REALM_SCOPES } from "@bullmoose/auth-core";
 import {
   accountAccess,
   matchingGrants,
@@ -101,19 +101,19 @@ import type { ToolDef } from "./mcp.js";
 // ---- effective permissions -------------------------------------------------
 
 /**
- * Every scope that is a concrete permission rather than a bundle. `mail` is
- * excluded on purpose: it is the bundle, and expanding it is the point.
- */
-const CONCRETE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "admin"];
-
-/**
  * What a scope list ACTUALLY allows, derived by asking `hasScope` — the same
  * function every gate in the tree calls. Exported for `s03.E`, which has the
  * identical requirement on the WebUI (`s03.E/readme.md:41-43`).
+ *
+ * The body MOVED to `@bullmoose/auth-core` (s02 T3) and this is now a
+ * re-export, kept so the many `introspectTools` callers do not all have to
+ * change. It had been copied three times — here, `services/jmap/src/console.ts`
+ * and `webmail/src/lib/console/scopes.ts` — and the OAuth consent screen
+ * needed a fourth. Four independent expansions of what a permission MEANS,
+ * against one `hasScope` that decides what it DOES, is a drift waiting to
+ * mislead someone at exactly the moment they are granting access.
  */
-export function effectiveScopes(granted: string[]): string[] {
-  return CONCRETE_SCOPES.filter((s) => hasScope(granted, s));
-}
+export { effectiveScopes };
 
 /** Scopes that deserve a sentence rather than a chip. */
 const SCOPE_WARNINGS: Record<string, string> = {
@@ -150,6 +150,66 @@ function grantWarnings(scopes: string[], collection: string | null, expiresAt: n
     );
   }
   return out;
+}
+
+/**
+ * Third-party clients the OWNER of this account authorized (s02 T4).
+ *
+ * Read from the D1 mirror, never from the AS's KV: this worker deliberately
+ * does not hold the token store (see oauthBridge.ts), and a disclosure answer
+ * is exactly the wrong reason to give it one.
+ *
+ * The consent is per PRINCIPAL, not per account, because that is what the
+ * human authorized — a connected client acts as the owner and reaches every
+ * account the owner owns. Reporting it against each of those accounts is
+ * therefore accurate rather than over-broad, and hiding it from any of them
+ * would be the omission this branch exists to fix.
+ *
+ * Degrades to an empty list on a shard predating the migration, matching the
+ * write side. That is the one case where "no connected apps" may be a
+ * limitation rather than a fact, and it is why the note below says `unknown`
+ * rather than claiming none.
+ */
+async function connectedClients(
+  db: D1Database,
+  principal: Principal,
+  accountId: string,
+): Promise<Array<Record<string, unknown>>> {
+  // Only for an account the caller owns — `ownedAccount` already refused a
+  // grant-reached one before we get here, and this query is scoped to the
+  // caller's own principal, so it cannot report someone else's consents.
+  void accountId;
+  try {
+    const { results } = await db
+      .prepare(
+        `SELECT client_id, client_name, redirect_host, scopes, created_at
+         FROM oauth_consents
+         WHERE principal_id = (SELECT id FROM principals WHERE login_email = ?)
+           AND revoked_at IS NULL
+         ORDER BY created_at DESC`,
+      )
+      .bind(principal.username)
+      .all<{
+        client_id: string;
+        client_name: string | null;
+        redirect_host: string | null;
+        scopes: string;
+        created_at: number;
+      }>();
+    return results.map((r) => ({
+      clientId: r.client_id,
+      name: r.client_name ?? r.client_id,
+      // The anti-impersonation fact, kept where a human can see it after the
+      // fact: CIMD cannot prevent a local process claiming to be Claude Code,
+      // so where the codes went is the part worth remembering.
+      codesDeliveredTo: r.redirect_host,
+      scopes: JSON.parse(r.scopes) as string[],
+      allows: effectiveScopes(JSON.parse(r.scopes) as string[]),
+      connectedAt: r.created_at,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 // ---- the disclosure gate ---------------------------------------------------
@@ -893,14 +953,26 @@ const INTROSPECTION_TOOLS: ToolDef[] = [
             })
           : rows;
 
+      // Connected OAuth clients reach this account too (s02 T4). They are not
+      // grants — a client is not an account and has no row in `grants` — so
+      // without this branch the answer would be complete-looking and wrong:
+      // it would render as "nobody else", which is the one failure this tool
+      // must not have. See oauth_consents in control-plane.sql.
+      const clients = await connectedClients(env.DB, principal, accountId);
+
       return {
         accountId: access.accountId,
         filter: { domain: domain ?? null, scope: scope ?? null },
         grants: filtered.map((r) => renderGrant(r, "grantee")),
+        connectedApps: clients,
         notes: [
           "These are the OTHER principals who can reach this account, and their addresses. " +
             "You are entitled to know who can read your mail; it is still a disclosure, which " +
             "is why this tool works on owned accounts only.",
+          "`connectedApps` are third-party clients this account's owner authorized through " +
+            "the consent screen (claude.ai, Claude Code). They act AS the owner, so they do " +
+            "not appear as grants — but they can reach this account, and revoking one is a " +
+            "separate action from revoking a grant.",
           "This is who COULD reach the account. For who actually did, use access_log — and " +
             "expect the two to differ.",
           "Agents that act on this account without a grant do not appear here; they are " +

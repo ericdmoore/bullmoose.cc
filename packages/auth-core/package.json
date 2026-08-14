@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./principal": "./src/principal.ts"
+    "./principal": "./src/principal.ts",
+    "./loginThrottle": "./src/loginThrottle.ts"
   }
 }

@@ -171,6 +171,70 @@ export const SELF_SERVICE_SCOPES: readonly string[] = [
 ];
 
 /**
+ * Every scope that is a concrete permission rather than a bundle. `mail` is
+ * excluded on purpose: it is the bundle, and expanding it is the point.
+ */
+const CONCRETE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "admin"];
+
+/**
+ * What a scope list ACTUALLY allows, derived by asking `hasScope` — the same
+ * function every gate in the tree calls, which is the whole point: an
+ * explanation computed any other way can drift from the enforcement, and a
+ * consent screen that describes something other than what the gate allows is
+ * worse than no screen at all.
+ *
+ * It lives HERE, beside `hasScope`, because three copies had already grown
+ * (`services/agent/src/introspectTools.ts`, `services/jmap/src/console.ts`,
+ * `webmail/src/lib/console/scopes.ts`) and s02 T3 needed a fourth for the
+ * consent page. Adding one more copy to explain permissions to STRANGERS is
+ * how the explanation and the gate part ways.
+ */
+export function effectiveScopes(granted: readonly string[]): string[] {
+  return CONCRETE_SCOPES.filter((s) => hasScope([...granted], s));
+}
+
+/**
+ * What a THIRD PARTY may request through the OAuth consent screen (s02 T3).
+ *
+ * The fourth mint site, and the first one where the asker is a stranger. It
+ * is a strict subset of `SELF_SERVICE_SCOPES`, and the exclusions are the
+ * point:
+ *
+ *  - **`vault`** — the credential realm. Handing a third party the store of
+ *    provider credentials through a consent screen is not a thing to do by
+ *    default (s02 decision 4). `GRANTABLE_SCOPES` already omits it, so
+ *    account→account grants cannot confer it either; this keeps the two
+ *    paths agreeing.
+ *  - **`admin`** — control-plane only, and never reachable from a consent
+ *    screen for the same reason it is not self-service mintable.
+ *  - **`agent`** — the s10 marker, not a capability. It is minted onto
+ *    agent-runtime tokens by the operator plane; a client asking for it
+ *    would be claiming an identity rather than requesting a permission.
+ *  - **`send`** — there is no send TOOL on the MCP surface
+ *    (`emailTools.ts:68-90`, pinned by `mcpTools.test.ts:124-128`), and that
+ *    invariant gets MORE load-bearing when the caller is a third party, not
+ *    less. Advertising a scope no tool honours would be a promise the gate
+ *    then refuses.
+ *  - **`files`** — the realm is unbuilt (`s03.B` T3 unstarted); advertising
+ *    it would offer access to something that 500s.
+ *
+ * This is the one list an OAuth `scope` parameter validates against. The
+ * other three lists in this file answer different questions ("what may the
+ * operator plane mint", "what may a password-holder mint"), which is why
+ * this is a fourth list rather than a reuse of one of them.
+ */
+export const OAUTH_SCOPES: readonly string[] = [
+  "read",
+  "annotate",
+  "draft",
+  "move",
+  "delete",
+  "contacts",
+  "calendar",
+  "mail",
+];
+
+/**
  * The default for `/auth/login` ONLY, and the one default that survives.
  *
  * Every other mint site now requires scopes explicitly. Login cannot: it is

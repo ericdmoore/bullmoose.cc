@@ -8,6 +8,7 @@ import {
 import { EMAIL_TOOLS } from "./emailTools.js";
 import { INTROSPECT_TOOLS } from "./introspectTools.js";
 import { ToolError } from "./jmapBridge.js";
+import { initializeResult, isLegacyMethod } from "./mcpLegacy.js";
 import { NOUN_TOOLS } from "./mcpNouns.js";
 import type { Env } from "./models.js";
 
@@ -40,9 +41,16 @@ import type { Env } from "./models.js";
  * request carries its own protocol version (an HTTP header mirrored in
  * `_meta`) and its own identity: a bearer token resolved to a principal,
  * with every tool call authorized against the TARGET account (token ∩
- * grant) and audited — never a self-asserted accountId. The platform
- * `x-internal-token` remains as a coarse network ACL on the route (see
- * index.ts); the bearer is the identity. See .plans/s01-stateless-MCP/.
+ * grant) and audited — never a self-asserted accountId.
+ *
+ * As of s02 T1 this route is PUBLIC: the `x-internal-token` network ACL came
+ * off /mcp (it stays on /drain and /internal/*), because a third-party client
+ * cannot hold a secret only we have. The bearer was always the identity —
+ * the wrapper's removal takes away a second lock on the same door, not the
+ * lock itself. The unauthenticated case is answered by index.ts with a 401
+ * carrying `WWW-Authenticate: resource_metadata=…` rather than by the bare
+ * JSON-RPC error below, so a client learns where to authenticate.
+ * See .plans/s01-stateless-MCP/ and .plans/s02-mcp-facade/.
  */
 
 const PROTOCOL_VERSION = "2026-07-28";
@@ -50,8 +58,32 @@ const SUPPORTED_VERSIONS = [PROTOCOL_VERSION];
 /** Clients may cache tools/list this long (MCP.2 list cache hint). */
 const TOOLS_LIST_TTL_MS = 5 * 60_000;
 const UNSUPPORTED_PROTOCOL_VERSION = -32022;
+/** SEP-2575 assigns these two; we used to answer with the generic JSON-RPC
+ *  codes, which a client cannot tell apart from a malformed request (s02 T2). */
+const HEADER_MISMATCH = -32020;
+const MISSING_CLIENT_CAPABILITY = -32021;
 const PROTO_META = "io.modelcontextprotocol/protocolVersion";
 const CAPS_META = "io.modelcontextprotocol/clientCapabilities";
+
+/**
+ * Shared by `server/discover` (modern) and `initialize` (legacy) — one
+ * identity for the server rather than two that can drift.
+ *
+ * The name is an identifier clients pin config to, and it is the one
+ * "mailstore-analytics" spelling that four plan docs, the route
+ * (/mcp/analytics) and mcp-auth.md all share — so it stays, now historical
+ * rather than descriptive. The version moves instead.
+ */
+const SERVER_INFO = { name: "bullmoose-mailstore-analytics", version: "1.1.0" };
+
+const INSTRUCTIONS =
+  "bullmoose: read-only analytics over the message log and spend ledger, plus full " +
+  "calendar and contacts CRUD. Tools act on one account; call whoami first to learn " +
+  "which accounts this token reaches, and omit accountId when it reaches exactly one. " +
+  "Each tool is authorized separately — a token may be able to read a calendar and not " +
+  "write it. Creating, changing and deleting events and cards are real, immediate, " +
+  "un-undoable writes that the human's calendar and contacts apps will sync; confirm " +
+  "destructive ones first. List calendars and address books before guessing an id.";
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -124,17 +156,22 @@ export interface ToolDef {
  * candidates, so the next call succeeds instead of the model guessing.
  */
 function defaultAccountId(principal: Principal): { ok: true; accountId: string } | { ok: false; detail: string } {
+  // Owned only, and there is no fallback to grant-reached accounts on
+  // purpose. It would be unreachable anyway — `principal.ts:149` resolves
+  // grants only when the principal owns at least one account, because a
+  // grantee IS an account — so a principal with no owned accounts has no
+  // accounts at all. Writing the fallback would be dead code that reads
+  // like a policy.
   const owned = principal.accounts.filter((a) => !a.granted);
-  const pool = owned.length > 0 ? owned : principal.accounts;
-  if (pool.length === 1) return { ok: true, accountId: pool[0]!.accountId };
-  if (pool.length === 0) {
-    return { ok: false, detail: "this token reaches no accounts; ask the account owner for a grant" };
+  if (owned.length === 1) return { ok: true, accountId: owned[0]!.accountId };
+  if (owned.length === 0) {
+    return { ok: false, detail: "this token owns no account; pass accountId explicitly (see whoami)" };
   }
-  const names = pool.map((a) => `${a.accountId} (${a.name})`).join(", ");
+  const names = owned.map((a) => `${a.accountId} (${a.name})`).join(", ");
   return {
     ok: false,
     detail:
-      `accountId is required: this token reaches ${pool.length} accounts — pass one of ${names}. ` +
+      `accountId is required: this token owns ${owned.length} accounts — pass one of ${names}. ` +
       "Call whoami for the full picture.",
   };
 }
@@ -282,16 +319,33 @@ export const TOOLS: ToolDef[] = [
   ...INTROSPECT_TOOLS,
 ];
 
-export async function handleMcp(request: Request, env: Env): Promise<Response> {
+/**
+ * @param authenticated - A principal the CALLER already resolved (s02 T4).
+ *   Supplied when an OAuth access token authenticated the request: the
+ *   provider validated the token against its own store and handed back the
+ *   encrypted `props`, which the route turned into a principal. Absent for a
+ *   `bm_` bearer, which is resolved here as it always was.
+ *
+ *   Two credential systems, ONE authorization path: whichever way the
+ *   principal arrived, everything below — `authorizeAccount`, the per-tool
+ *   scope/domain gate, `grant_audit` — is identical and unaware of which
+ *   credential was used. That is the property that makes adopting an AS
+ *   cheap, and it is worth protecting: a future third credential type should
+ *   also land here as a `Principal` and nowhere else.
+ */
+export async function handleMcp(request: Request, env: Env, authenticated?: Principal): Promise<Response> {
   if (request.method !== "POST") {
     return json({ error: "MCP: POST JSON-RPC only" }, 405);
   }
 
   // Identity first: MCP.2 has no session to authenticate once, so every
   // request carries its own bearer. Resolve it to a principal up front.
-  const authz = request.headers.get("Authorization") ?? "";
-  const raw = authz.startsWith("Bearer ") ? authz.slice(7) : null;
-  const principal = raw ? await verifyBearer(env.DB, raw) : null;
+  let principal = authenticated ?? null;
+  if (!principal) {
+    const authz = request.headers.get("Authorization") ?? "";
+    const raw = authz.startsWith("Bearer ") ? authz.slice(7) : null;
+    principal = raw ? await verifyBearer(env.DB, raw) : null;
+  }
   if (!principal) return rpcError(null, -32001, "unauthorized", 401);
 
   let msg: JsonRpcRequest;
@@ -305,31 +359,64 @@ export async function handleMcp(request: Request, env: Env): Promise<Response> {
   }
 
   // Notifications carry no id and expect an empty 202 — no version gate.
+  // This already covers the legacy lane's `notifications/initialized`.
   if (msg.id === undefined || msg.method.startsWith("notifications/")) {
     return new Response(null, { status: 202 });
   }
 
-  // Per-request protocol negotiation (SEP-2575): the header MUST be present
-  // and MUST equal the _meta value; an unknown version returns a typed error
-  // carrying the supported set. No `initialize`, no `ping`.
+  // ---- era selection (s02 T2) -------------------------------------------
+  //
+  // Which era a request belongs to is decided by HOW THE CLIENT OPENS, not by
+  // a config flag: an `initialize` request selects legacy semantics, and a
+  // request carrying modern per-request `_meta` is served statelessly. A
+  // 2025-era client sends neither the MCP-Protocol-Version header nor
+  // `clientCapabilities` on each request, so those two requirements — which
+  // are correct and mandatory on the modern lane — must not apply here.
+  //
+  // No session is created and none is looked up. `Mcp-Session-Id` on the way
+  // in is ignored, and never minted or echoed on the way out.
   const meta = (msg.params?._meta ?? {}) as Record<string, unknown>;
-  const headerVersion = request.headers.get("MCP-Protocol-Version");
-  if (!headerVersion || headerVersion !== meta[PROTO_META]) {
-    return rpcError(
+  if (isLegacyMethod(msg.method)) {
+    if (msg.method === "ping") return rpcResult(msg.id, {});
+    return rpcResult(
       msg.id,
-      -32600,
-      "MCP-Protocol-Version header is required and must equal _meta protocolVersion",
-      400,
+      initializeResult((msg.params as { protocolVersion?: unknown } | undefined)?.protocolVersion, SERVER_INFO, INSTRUCTIONS),
     );
   }
-  if (!SUPPORTED_VERSIONS.includes(headerVersion)) {
-    return rpcError(msg.id, UNSUPPORTED_PROTOCOL_VERSION, `unsupported protocol version: ${headerVersion}`, 400, {
-      supported: SUPPORTED_VERSIONS,
-      requested: headerVersion,
-    });
-  }
-  if (typeof meta[CAPS_META] !== "object" || meta[CAPS_META] === null) {
-    return rpcError(msg.id, -32602, "_meta clientCapabilities is required per request", 400);
+
+  // Per-request protocol negotiation (SEP-2575): the header MUST be present
+  // and MUST equal the _meta value; an unknown version returns a typed error
+  // carrying the supported set.
+  const headerVersion = request.headers.get("MCP-Protocol-Version");
+  // A legacy client that got through `initialize` keeps calling tools without
+  // the modern per-request envelope. Recognize it by the ABSENCE of both
+  // modern signals and serve it on the legacy lane rather than failing it
+  // with a conformance error it cannot act on.
+  const legacyLane = !headerVersion && meta[PROTO_META] === undefined;
+  if (!legacyLane) {
+    if (!headerVersion || headerVersion !== meta[PROTO_META]) {
+      // -32020 HeaderMismatch, not -32600. The spec assigns this code and a
+      // client keys its retry on it; a generic "invalid request" is
+      // indistinguishable from a malformed body.
+      return rpcError(msg.id, HEADER_MISMATCH, "MCP-Protocol-Version header must equal _meta protocolVersion", 400);
+    }
+    if (!SUPPORTED_VERSIONS.includes(headerVersion)) {
+      return rpcError(msg.id, UNSUPPORTED_PROTOCOL_VERSION, `unsupported protocol version: ${headerVersion}`, 400, {
+        supported: SUPPORTED_VERSIONS,
+        requested: headerVersion,
+      });
+    }
+    if (typeof meta[CAPS_META] !== "object" || meta[CAPS_META] === null) {
+      // -32021 MissingRequiredClientCapability, not -32602.
+      return rpcError(msg.id, MISSING_CLIENT_CAPABILITY, "_meta clientCapabilities is required per request", 400);
+    }
+    // `Mcp-Method` is REQUIRED on the modern lane and must agree with the
+    // body. It exists so an intermediary can route without parsing JSON —
+    // which only works if the two cannot disagree.
+    const methodHeader = request.headers.get("Mcp-Method");
+    if (methodHeader && methodHeader !== msg.method) {
+      return rpcError(msg.id, HEADER_MISMATCH, "Mcp-Method header does not match the request method", 400);
+    }
   }
 
   switch (msg.method) {
@@ -337,22 +424,34 @@ export async function handleMcp(request: Request, env: Env): Promise<Response> {
       return rpcResult(msg.id, {
         supportedVersions: SUPPORTED_VERSIONS,
         capabilities: { tools: {} },
-        // The name is an identifier clients pin config to, and it is the
-        // one "mailstore-analytics" spelling that four plan docs, the route
-        // (/mcp/analytics) and mcp-auth.md all share — so it stays, now
-        // historical rather than descriptive. The version moves instead.
-        serverInfo: { name: "bullmoose-mailstore-analytics", version: "1.1.0" },
-        instructions:
-          "bullmoose: read-only analytics over the message log and spend ledger, plus full " +
-          "calendar and contacts CRUD. Every tool takes the accountId it should act on, and " +
-          "each is authorized separately — a token may be able to read a calendar and not " +
-          "write it. Creating, changing and deleting events and cards are real, immediate, " +
-          "un-undoable writes that the human's calendar and contacts apps will sync; confirm " +
-          "destructive ones first. List calendars and address books before guessing an id.",
+        serverInfo: SERVER_INFO,
+        instructions: INSTRUCTIONS,
       });
     case "tools/list":
       return rpcResult(msg.id, {
-        tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+        // `scope` and `domain` are PUBLISHED, not stripped (s02 T6).
+        //
+        // The primary consumer of this surface is bullmoose's own agents
+        // finding facts across each other — and an agent that cannot see what
+        // a tool requires can only discover it by calling and eating a -32004.
+        // That is a wasted turn per tool per agent, on the hot path of exactly
+        // the thing this surface is for. Publishing the requirement lets a
+        // caller pre-filter to the tools its token can actually use.
+        //
+        // This leaks nothing: the gate is enforced per call regardless, and
+        // "this tool needs the calendar scope" is not a secret — it is the
+        // same sentence the refusal would have said, delivered before the
+        // round trip instead of after it.
+        tools: TOOLS.map(({ name, description, inputSchema, scope, domain, accountless }) => ({
+          name,
+          description,
+          inputSchema,
+          scope,
+          domain,
+          // Absent rather than false for the 28 account-scoped tools, so the
+          // flag reads as the exception it is.
+          ...(accountless ? { accountless: true } : {}),
+        })),
         ttlMs: TOOLS_LIST_TTL_MS,
         cacheScope: "session",
       });
@@ -423,6 +522,35 @@ async function handleToolCall(
   return runTool(tool, msg, env, principal, args);
 }
 
+/**
+ * Tool results are capped, and the cap ANNOUNCES itself (s02 T6).
+ *
+ * Client limits are real — roughly 150,000 characters for claude.ai and
+ * Desktop, ~25,000 tokens for Code — and `email_get_body` on a large message
+ * clears them easily. What matters is not the truncation but the honesty of
+ * it: a result cut by the transport ends mid-JSON, so the caller sees
+ * malformed output and cannot tell whether the tool failed, the data is
+ * corrupt, or there is simply more. An agent doing fact-finding then draws a
+ * conclusion from a fragment it believes is complete, which is worse than
+ * getting nothing.
+ *
+ * So: cut on our terms, leave valid text, and say plainly what happened and
+ * how much is missing. The marker is prose because its reader is a model.
+ */
+const RESULT_CHAR_CAP = 100_000;
+
+export function capResult(text: string): string {
+  if (text.length <= RESULT_CHAR_CAP) return text;
+  const omitted = text.length - RESULT_CHAR_CAP;
+  return (
+    text.slice(0, RESULT_CHAR_CAP) +
+    `\n\n[truncated by bullmoose: ${omitted.toLocaleString("en-US")} of ` +
+    `${text.length.toLocaleString("en-US")} characters omitted. This output is INCOMPLETE and is ` +
+    `no longer valid JSON — do not parse it, and do not conclude anything from what is missing. ` +
+    `Narrow the request (fewer items, a smaller range, or a more specific id) and call again.]`
+  );
+}
+
 /** Dispatch past the gate. Both the account path and the accountless one land
  *  here, so a tool cannot acquire a second error convention by which route it
  *  was reached. */
@@ -436,7 +564,7 @@ async function runTool(
   try {
     const result = await tool.run({ env, principal }, args);
     return rpcResult(msg.id, {
-      content: [{ type: "text", text: JSON.stringify(result, null, 1) }],
+      content: [{ type: "text", text: capResult(JSON.stringify(result, null, 1)) }],
     });
   } catch (err) {
     // A ToolError is a refusal the agent can act on — a sentence saying what

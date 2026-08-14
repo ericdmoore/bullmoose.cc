@@ -1,0 +1,60 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bullmoose-oauth",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+
+  // The OAuth 2.1 authorization server (s02 T3).
+  //
+  // Its OWN worker, and not either of the two obvious hosts:
+  //   - not `provision`, which authenticates with a single deployment-wide
+  //     ADMIN_TOKEN and has no concept of a principal — the wrong blast
+  //     radius for the surface that mints third-party credentials;
+  //   - not `jmap`, which is the hot path. An AS outage should degrade
+  //     "connect a new client" and never "read your mail".
+  //
+  // Separate host too (s02 decision 2): `auth.bullmoose.cc`, distinct from
+  // `mcp.bullmoose.cc`. One more certificate, in exchange for the AS and the
+  // resource failing independently.
+  "routes": [{ "pattern": "auth.bullmoose.cc", "custom_domain": true }],
+
+  // REQUIRED for CIMD. Without this flag the provider will not advertise
+  // client_id_metadata_document_supported at all, and Claude silently falls
+  // back to DCR — which Anthropic themselves advise against, because it
+  // registers a fresh client on every connection.
+  "compatibility_flags": ["global_fetch_strictly_public"],
+
+  // The binding NAME is fixed by the library — it looks up `env.OAUTH_KV`.
+  // Every authorization code, token issuance, refresh rotation and DCR
+  // registration is a write here.
+  //
+  // ⚠️ Free-plan ceiling: Workers KV allows 1,000 writes to DISTINCT keys per
+  // day. Fine for personal use; the first thing to watch if this deployment
+  // is ever shared, and another argument for CIMD over DCR.
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "PLACEHOLDER_OAUTH_KV_ID" }],
+
+  // Control plane, for exactly one thing: resolving the human at the consent
+  // screen to a principal (`verifyBearer`), so the grant records WHO
+  // authorized the client. No R2, no DO, no service bindings — this worker
+  // issues credentials and must not also be able to spend them.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bullmoose-mail-shard0",
+      "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9"
+    }
+  ],
+
+  "vars": {
+    // The resource these tokens are FOR. Audience binding is ours to honour:
+    // the spec is explicit that RFC 8707 protects against replay only "when
+    // the Authorization Server supports the capability", and handleMcp
+    // rejects any token whose aud is not this exact URI.
+    "MCP_RESOURCE_URI": "https://mcp.bullmoose.cc/mcp",
+    "ISSUER": "https://auth.bullmoose.cc"
+  }
+
+  // No secrets of its own. The provider derives its key material from the
+  // OAUTH_KV contents; principal authentication at the consent screen reuses
+  // the existing bm_ token path against DB.
+}

@@ -38,6 +38,12 @@ const rel = (p) => resolve(ROOT, p);
 const D1_NAME = "bullmoose-mail-shard0"; // data plane; control plane shares it (MVP)
 const R2_NAME = "bullmoose-mail-blobs"; // raw messages, attachments, contact photos
 const KV_TITLE = "ROUTES"; // route table hot copy + suppression list
+// The OAuth AS's own namespace (s02 T3). SEPARATE from ROUTES on purpose: the
+// binding name is fixed by @cloudflare/workers-oauth-provider, and every
+// authorization code, token issuance, refresh rotation and DCR registration is
+// a write here. Sharing it with the route table would put minted credentials in
+// the same keyspace as cached routing data.
+const OAUTH_KV_TITLE = "OAUTH_KV";
 
 import { MIGRATIONS } from "./migrations.mjs";
 
@@ -64,7 +70,10 @@ const SCHEMAS = [
 // against a service that does not exist yet. Same class of dependency as
 // agent-before-ingest (infra/011); docs/DEPLOY.md §2 and
 // .github/workflows/deploy-mail.yml must stay in sync with this list.
-const DEPLOY_ORDER = ["submit", "jmap", "bureau", "agent", "ingest", "provision", "anglebrackets"];
+// `oauth` precedes `agent`, which binds OAUTH to validate access tokens —
+// the same edge, and the same failure if reversed (deploying against a
+// service that does not exist yet), as bureau-before-agent.
+const DEPLOY_ORDER = ["submit", "jmap", "bureau", "oauth", "agent", "ingest", "provision", "anglebrackets"];
 
 const cfg = (w) => `services/${w}/wrangler.jsonc`;
 // Configs that carry resource ids to wire. anglebrackets has no KV binding —
@@ -209,7 +218,7 @@ const firstOf = (obj, keys) => keys.map((k) => obj?.[k]).find((v) => typeof v ==
 // can't wander onto some other "id" field. A config lacking the block is left
 // untouched (returns changed:false for that field).
 
-export function wireText(text, d1Id, kvId) {
+export function wireText(text, d1Id, kvId, extraKv = {}) {
   let out = text;
   let changed = false;
   if (d1Id) {
@@ -219,11 +228,20 @@ export function wireText(text, d1Id, kvId) {
       return `${a}${d1Id}${b}`;
     });
   }
-  if (kvId) {
-    out = out.replace(/("kv_namespaces"[\s\S]*?"id"\s*:\s*")[^"]*(")/, (m, a, b) => {
-      if (m === `${a}${kvId}${b}`) return m;
+  // KV ids are written per BINDING NAME, not per file (s02 T3). The old
+  // regex anchored only on "kv_namespaces" and took the first "id" after it,
+  // which was correct while exactly one namespace existed anywhere in the
+  // tree — and silently wrong the moment a second appeared: the oauth
+  // worker's OAUTH_KV would have been wired to the ROUTES id, and an AS
+  // sharing the route table's namespace is a data-mixing bug that no test
+  // in this repo would have caught.
+  for (const [binding, id] of Object.entries({ ROUTES: kvId, ...extraKv })) {
+    if (!id) continue;
+    const re = new RegExp(`("binding"\\s*:\\s*"${binding}"[\\s\\S]{0,200}?"id"\\s*:\\s*")[^"]*(")`);
+    out = out.replace(re, (m, a, b) => {
+      if (m === `${a}${id}${b}`) return m;
       changed = true;
-      return `${a}${kvId}${b}`;
+      return `${a}${id}${b}`;
     });
   }
   return { text: out, changed };
@@ -331,17 +349,23 @@ function saveEnv(env) {
 // ─────────────────────────────── resolve ids ────────────────────────────────
 
 function resolveIds({ mustExist = true } = {}) {
-  if (DRY) return { d1Id: "‹d1-id›", kvId: "‹kv-id›" };
+  if (DRY) return { d1Id: "‹d1-id›", kvId: "‹kv-id›", oauthKvId: "‹oauth-kv-id›" };
   const d1s = parseJson(wrangler(["d1", "list", "--json"], { capture: true }).stdout, []);
   const kvs = parseJson(wrangler(["kv", "namespace", "list"], { capture: true }).stdout, []);
   const d1 = (Array.isArray(d1s) ? d1s : []).find((x) => x?.name === D1_NAME);
-  const kv = (Array.isArray(kvs) ? kvs : []).find((x) => x?.title === KV_TITLE || x?.title?.endsWith(KV_TITLE));
+  // Anchored with a "-" so OAUTH_KV cannot satisfy the ROUTES lookup and vice
+  // versa: `endsWith` is what tolerates wrangler's "<worker>-ROUTES" naming,
+  // and an unanchored match would happily return the wrong namespace.
+  const kvList = Array.isArray(kvs) ? kvs : [];
+  const matchKv = (title) => kvList.find((x) => x?.title === title || x?.title?.endsWith(`-${title}`));
+  const kv = matchKv(KV_TITLE);
   const d1Id = firstOf(d1, ["uuid", "database_id", "id"]);
   const kvId = firstOf(kv, ["id", "namespace_id"]);
+  const oauthKvId = firstOf(matchKv(OAUTH_KV_TITLE), ["id", "namespace_id"]);
   if (mustExist && (!d1Id || !kvId)) {
     die(`could not resolve ids (d1=${d1Id ?? "?"}, kv=${kvId ?? "?"}). Run the 'resources' phase first.`);
   }
-  return { d1Id, kvId };
+  return { d1Id, kvId, oauthKvId };
 }
 
 // ─────────────────────────────── the phases ─────────────────────────────────
@@ -359,18 +383,21 @@ function resources() {
   else ok(`R2 ${R2_NAME} (exists)`);
 
   const kvs = parseJson(wrangler(["kv", "namespace", "list"], { capture: true }).stdout, []);
-  if (DRY || !have(kvs, (x) => x?.title === KV_TITLE || x?.title?.endsWith(KV_TITLE))) wrangler(["kv", "namespace", "create", KV_TITLE]), ok(`KV ${KV_TITLE}`);
-  else ok(`KV ${KV_TITLE} (exists)`);
+  for (const title of [KV_TITLE, OAUTH_KV_TITLE]) {
+    if (DRY || !have(kvs, (x) => x?.title === title || x?.title?.endsWith(`-${title}`))) {
+      wrangler(["kv", "namespace", "create", title]), ok(`KV ${title}`);
+    } else ok(`KV ${title} (exists)`);
+  }
 }
 
 function wire() {
   step("wire — resource ids → services/*/wrangler.jsonc");
-  const { d1Id, kvId } = resolveIds();
-  info(`d1 ${paint(c.dim, d1Id)}   kv ${paint(c.dim, kvId)}`);
+  const { d1Id, kvId, oauthKvId } = resolveIds();
+  info(`d1 ${paint(c.dim, d1Id)}   kv ${paint(c.dim, kvId)}   oauth-kv ${paint(c.dim, oauthKvId ?? "—")}`);
   let n = 0;
   for (const path of CONFIGS) {
     const before = readFileSync(rel(path), "utf8");
-    const { text, changed } = wireText(before, d1Id, kvId);
+    const { text, changed } = wireText(before, d1Id, kvId, { OAUTH_KV: oauthKvId });
     if (!changed) {
       ok(`${path} (already wired)`);
       continue;
