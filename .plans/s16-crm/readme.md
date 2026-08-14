@@ -1,4 +1,4 @@
-# s14 — `crm@`: the agent that curates the address book
+# s16 — `crm@`: the agent that curates the address book
 
 > **Status: design** (2026-08-13, prompted by a real 3,559-card book with visible
 > duplicates). Eric: *"`CRM@` should propose de-dupe actions. That is the bread-and-butter

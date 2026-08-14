@@ -1,6 +1,6 @@
 # crm@ — contact curation (dedupe first)
 
-Design is written: `.plans/s14-crm/readme.md`. Backlogged 2026-08-13 — not scheduled.
+Design is written: `.plans/s16-crm/readme.md`. Backlogged 2026-08-13 — not scheduled.
 
 The prompt was a real 3,559-card book with visible duplicates (`Adam Naryka /
 anaryka@mail.smu.edu`, twice, adjacent). Dedupe is the first verb; enrichment,

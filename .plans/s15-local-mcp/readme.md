@@ -1,4 +1,4 @@
-# s13 — the CLI as a local MCP bridge
+# s15 — the CLI as a local MCP bridge
 
 > **Status: design** (2026-08-13 discussion). Eric's question: *"does the CLI (+ its
 > websocket) act as the bridge to offer the MCP auth etc for the working actor?"*
