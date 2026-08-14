@@ -112,12 +112,17 @@ export const SECTIONS: readonly Section[] = [
     id: "files",
     label: "Files",
     href: "/files",
-    status: "planned",
-    reason: "waiting on the attachment sidestep",
-    detail:
-      "s03.C T3, blocked on s03.B T3 (not started: no threshold, no FileNode on " +
-      "ingest), and .feedback common/030 (FileNode copy OOM) is still open. A nav item " +
-      "that 500s is worse than one that says why.",
+    // Live as of s03.C T3. The wait named here was s03.B T3, the attachment
+    // sidestep — it landed (`services/ingest/src/sidestep.ts`), so large
+    // incoming attachments become FileNodes under an `Attachments` role
+    // directory and the browser has a drive with something in it on day one.
+    // Its own caveats — the `draft` scope the upload route demands, the
+    // browser-side folders-first ordering, and the missing link back to the
+    // message an attachment came from — are rendered by the section itself
+    // (lib/files/scope.ts) rather than duplicated into the nav where they
+    // would drift. `.feedback common/030` stays open, but nothing this
+    // section does reaches `FileNode/copy`.
+    status: "live",
   },
   {
     id: "search",
