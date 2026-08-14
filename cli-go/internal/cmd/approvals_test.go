@@ -27,7 +27,11 @@ import (
 const day = int64(24 * 60 * 60 * 1000)
 
 type fakeProp struct {
-	id, kind, agent, status, rationale         string
+	id, kind, agent, status, rationale string
+	// account is the row's OWN account (s10 T7). Empty means "any account
+	// asks, this row answers" — the single-account fixtures every pre-T7 test
+	// uses, which must keep behaving exactly as they did.
+	account                                    string
 	tier                                       int
 	payload, editedPayload, subject, decision  map[string]any
 	evidence                                   []any
@@ -40,12 +44,29 @@ type fakeProp struct {
 	expiresRemainingMs int64
 }
 
+// fakeAccount is one entry of the session's `accounts` map (s10 T7): what the
+// server tells the CLI it can reach, and what it may DO there. Empty
+// `fakeServer.accounts` means the server serves NO account map — the pre-T7
+// shape, which the CLI must still drive off the mirror's single account.
+type fakeAccount struct {
+	id, name               string
+	personal               bool
+	mayDecide              bool
+	mayApproveIrreversible bool
+}
+
 type fakeServer struct {
-	mu      sync.Mutex
-	props   map[string]*fakeProp
-	hasSend bool         // does the caller's token carry the send capability?
-	sets    []setCapture // every update patch, for asserting what the CLI sent
-	egress  int          // tier-3 relays performed
+	mu       sync.Mutex
+	props    map[string]*fakeProp
+	accounts []fakeAccount
+	hasSend  bool         // does the caller's token carry the send capability?
+	sets     []setCapture // every update patch, for asserting what the CLI sent
+	// batches counts POSTs to the method endpoint (not the session GET), so a
+	// test can assert the multi-account queue is ONE round trip (s10 T7);
+	// lastSetAccount is the account the last /set was addressed to.
+	batches        int
+	lastSetAccount string
+	egress         int // tier-3 relays performed
 	// answer-info-request invocations enqueued — the costed round a needsInfo
 	// creates (actionProposal.ts). Zero for every other verb.
 	answerInvocations int
@@ -82,9 +103,54 @@ func (fs *fakeServer) add(p *fakeProp) {
 	fs.props[p.id] = p
 }
 
+// decidable reports what the session says about an account. An unknown account
+// (or a server with no account map) is decidable — the pre-T7 default, where
+// the client cannot know and the server is the gate.
+func (fs *fakeServer) decidable(accountID string) bool {
+	for _, a := range fs.accounts {
+		if a.id == accountID {
+			return a.mayDecide
+		}
+	}
+	return true
+}
+
+// owns reports whether a row belongs to the account being asked. A row with no
+// account belongs to every account (the single-account fixtures).
+func (p *fakeProp) owns(accountID string) bool {
+	return p.account == "" || p.account == accountID
+}
+
 func (fs *fakeServer) handle(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 		http.Error(w, `{"type":"unauthorized"}`, 401)
+		return
+	}
+	// The RFC 8620 §2 session resource — where `approvals` learns which
+	// accounts it can reach and what it may decide on each (s10 T7).
+	if r.URL.Path == "/.well-known/jmap" {
+		fs.mu.Lock()
+		accounts := map[string]any{}
+		for _, a := range fs.accounts {
+			accounts[a.id] = map[string]any{
+				"name": a.name, "isPersonal": a.personal,
+				"isReadOnly": !a.mayDecide,
+				"accountCapabilities": map[string]any{
+					"urn:ietf:params:jmap:mail": map[string]any{},
+					"urn:bullmoose:params:jmap:agent": map[string]any{
+						"mayDecide":              a.mayDecide,
+						"mayApproveIrreversible": a.mayApproveIrreversible,
+					},
+				},
+			}
+		}
+		fs.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"apiUrl":      "/api/jmap",
+			"downloadUrl": "/api/download/{accountId}/{blobId}/{name}?type={type}",
+			"username":    "eric@bullmoose.cc",
+			"accounts":    accounts,
+		})
 		return
 	}
 	// methodCalls is [name, args, callId]; decode loosely.
@@ -95,6 +161,7 @@ func (fs *fakeServer) handle(w http.ResponseWriter, r *http.Request) {
 
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
+	fs.batches++
 
 	// prior maps callId → result args, for resolving `#ids` back-references.
 	prior := map[string]map[string]any{}
@@ -129,9 +196,15 @@ func (fs *fakeServer) query(args map[string]any) map[string]any {
 	if f, ok := args["filter"].(map[string]any); ok {
 		want, _ = f["status"].(string)
 	}
+	accountID, _ := args["accountId"].(string)
 	var ids []string
-	// Newest-first by createdAt, as actionProposal.ts:156.
+	// Newest-first by createdAt, as actionProposal.ts:156. Scoped to the
+	// account asked for — the server's query is per account, which is exactly
+	// why the client has to ask each one (s10 T7).
 	for _, p := range fs.sortedByCreatedDesc() {
+		if !p.owns(accountID) {
+			continue
+		}
 		if want == "" || p.status == want {
 			ids = append(ids, p.id)
 		}
@@ -157,10 +230,11 @@ func (fs *fakeServer) get(args map[string]any, prior map[string]map[string]any) 
 			}
 		}
 	}
+	accountID, _ := args["accountId"].(string)
 	var list, notFound []any
 	for _, id := range ids {
-		if p, ok := fs.props[id]; ok {
-			list = append(list, p.toJMAP())
+		if p, ok := fs.props[id]; ok && p.owns(accountID) {
+			list = append(list, p.toJMAP(accountID))
 		} else {
 			notFound = append(notFound, id)
 		}
@@ -172,6 +246,24 @@ func (fs *fakeServer) set(args map[string]any) map[string]any {
 	updated := map[string]any{}
 	notUpdated := map[string]any{}
 	update, _ := args["update"].(map[string]any)
+	accountID, _ := args["accountId"].(string)
+	fs.lastSetAccount = accountID
+	if !fs.decidable(accountID) {
+		// The base gate: ActionProposal/set demands `draft`, which a watch-only
+		// grant does not carry (services/jmap requireAccount → forbidden).
+		for id, raw := range update {
+			patch, _ := raw.(map[string]any)
+			fs.sets = append(fs.sets, setCapture{id: id, patch: patch})
+			notUpdated[id] = map[string]any{"type": "forbidden",
+				"description": `no grant covers "draft" on this account`}
+		}
+		return map[string]any{
+			"accountId": accountID, "oldState": "s1", "newState": "s1",
+			"created": map[string]any{}, "notCreated": map[string]any{},
+			"updated": updated, "notUpdated": notUpdated,
+			"destroyed": []any{}, "notDestroyed": map[string]any{},
+		}
+	}
 	for id, raw := range update {
 		patch, _ := raw.(map[string]any)
 		fs.sets = append(fs.sets, setCapture{id: id, patch: patch})
@@ -324,9 +416,13 @@ func (fs *fakeServer) sortedByCreatedDesc() []*fakeProp {
 // toJMAP is proposalToJmap (actionProposal.ts:845) — every field the server
 // projects, including the needsInfo pair, so `--json` is asserted against the
 // shape the CLI will really meet.
-func (p *fakeProp) toJMAP() map[string]any {
+func (p *fakeProp) toJMAP(accountID string) map[string]any {
+	account := p.account
+	if account == "" {
+		account = accountID
+	}
 	return map[string]any{
-		"id": p.id, "agent": p.agent, "kind": p.kind, "tier": p.tier,
+		"id": p.id, "accountId": account, "agent": p.agent, "kind": p.kind, "tier": p.tier,
 		"subject": orEmptyMap(p.subject), "payload": orEmptyMap(p.payload),
 		"editedPayload":    nilableMap(p.editedPayload),
 		"rationale":        p.rationale,
@@ -1165,7 +1261,11 @@ func TestApprovals_NeedsInfo_JSONShapes(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("show --json exit %d", code)
 	}
-	const wantShow = `{"agent":"photos","amendments":[{"answer":"he is the vendor","answeredAt":"2023-11-14T22:13:22.000Z","askedAt":"2023-11-14T22:13:21.000Z","askedBy":"eric@login.example","question":"why bob@?"},{"answer":null,"answeredAt":null,"askedAt":"2023-11-14T22:13:23.000Z","askedBy":"eric@login.example","question":"and why now?"}],"claimedAt":null,"createdAt":"2023-11-14T22:13:20.000Z","decidedAt":null,"decision":null,"dueAt":null,"editedPayload":null,"evidence":[],"expiresAt":null,"holdUntil":null,"id":"j9","invocationStatus":"done","kind":"grant-request","payload":{"address":"bob@x.z"},"question":"why bob@?","rationale":"let me email bob@","status":"info-requested","subject":{},"tier":2}`
+	// `accountId` joined the projection in s10 T7 — ADDITIVE, and load-bearing:
+	// a merged multi-account queue emits one raw server line per proposal, and
+	// a line that cannot name its account is ambiguous the moment two agents
+	// are on screen. Every other field is byte-identical.
+	const wantShow = `{"accountId":"a_eric","agent":"photos","amendments":[{"answer":"he is the vendor","answeredAt":"2023-11-14T22:13:22.000Z","askedAt":"2023-11-14T22:13:21.000Z","askedBy":"eric@login.example","question":"why bob@?"},{"answer":null,"answeredAt":null,"askedAt":"2023-11-14T22:13:23.000Z","askedBy":"eric@login.example","question":"and why now?"}],"claimedAt":null,"createdAt":"2023-11-14T22:13:20.000Z","decidedAt":null,"decision":null,"dueAt":null,"editedPayload":null,"evidence":[],"expiresAt":null,"holdUntil":null,"id":"j9","invocationStatus":"done","kind":"grant-request","payload":{"address":"bob@x.z"},"question":"why bob@?","rationale":"let me email bob@","status":"info-requested","subject":{},"tier":2}`
 	if got := strings.TrimSpace(out); got != wantShow {
 		t.Errorf("show --json drifted.\n got: %s\nwant: %s", got, wantShow)
 	}

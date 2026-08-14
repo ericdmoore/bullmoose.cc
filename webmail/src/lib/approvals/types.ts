@@ -121,6 +121,14 @@ export interface ProposalAmendment {
 
 export interface ActionProposal {
   id: string;
+  /**
+   * WHICH account this row came off (s10 T7). The queue merges every account
+   * the human can reach — their own, plus each agent account a supervisory
+   * grant opens — so a row that does not carry its account cannot be decided
+   * (the `/set` needs one) and cannot be labelled. Served by the projection,
+   * never inferred here.
+   */
+  accountId: string;
   /** Binding name — Allen, Emily. Projected from the invocation (§8.5). */
   agent: string;
   kind: string;
@@ -163,11 +171,18 @@ export interface ActionProposal {
  * down, but `id` is required — a row with no id is not decidable and is
  * dropped by the caller.
  */
-export function parseProposal(raw: Record<string, unknown>): ActionProposal | null {
+export function parseProposal(
+  raw: Record<string, unknown>,
+  fallbackAccountId = "",
+): ActionProposal | null {
   if (typeof raw.id !== "string" || raw.id.length === 0) return null;
   const tierNum = typeof raw.tier === "number" ? raw.tier : 0;
   return {
     id: raw.id,
+    // Falls back to the response envelope's account (the caller passes it):
+    // a pre-T7 server does not project `accountId` on the row, and a queue
+    // that dropped those rows would reintroduce the bug it fixes.
+    accountId: str(raw.accountId) ?? fallbackAccountId,
     agent: str(raw.agent) ?? "unknown agent",
     kind: str(raw.kind) ?? "unknown",
     // An out-of-range tier reads as 3: when the reversibility of a row is not

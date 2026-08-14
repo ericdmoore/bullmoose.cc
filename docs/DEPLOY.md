@@ -722,6 +722,51 @@ npx wrangler d1 execute bullmoose-mail-shard0 --remote \
              WHERE binding_id='<binding-id>' AND status='pending'"
 ```
 
+### Runbook: an agent's proposals are not reaching you (s10 T7)
+
+Symptom: an agent produced a real `pending` proposal and `/approvals` (or
+`bullmoose approvals`) says **"Nothing is waiting on you."**
+
+Cause, if the agent was provisioned before this landed: an agent lives on its
+own account under its own **principal**, and the queue can only show accounts
+the logged-in principal reaches. Provisioning now mints a *supervisory grant*
+back to the owner at create time (`read`+`draft`+`send`, whole-account — enough
+to read the queue and decide it, including the tier-3 wall a `reply-draft`
+hits; deliberately **not** the `mail` bundle, which would also carry
+move/delete over the agent's mailbox). Agents created earlier have no such
+grant. Both fixes are idempotent — running them twice writes nothing new.
+
+```sh
+A=https://bullmoose-provision.<subdomain>.workers.dev
+H="Authorization: Bearer $BULLMOOSE_ADMIN_TOKEN"
+
+# 1. what exists
+curl -s -H "$H" "$A/agent-bindings" | jq '.bindings[] | {id, name, account_id}'
+
+# 2. per binding — the owner is derived when the tenant has exactly ONE human
+#    principal, otherwise name them. Ambiguous ownership is REFUSED (422), never
+#    guessed: a grant invented for the wrong human is a disclosure, not a fix.
+curl -s -X POST -H "$H" -H 'content-type: application/json' \
+  -d '{}' "$A/agent-bindings/<binding-id>/supervisor"
+curl -s -X POST -H "$H" -H 'content-type: application/json' \
+  -d '{"ownerEmail":"eric@bullmoose.cc"}' "$A/agent-bindings/<binding-id>/supervisor"
+
+# 3. bouncer@ has no single owner — it answers to the household, so re-running
+#    its own provisioning call grants every human principal (idempotent: the
+#    account, book and binding are untouched, `created` comes back false).
+curl -s -X POST -H "$H" -H 'content-type: application/json' \
+  -d '{"tenantId":"<tenant>","domain":"bullmoose.cc"}' "$A/bouncer"
+
+# 4. verify — and this is also how you REVOKE supervision later
+curl -s -H "$H" "$A/grants?email=eric@bullmoose.cc" | jq '.grants'
+curl -s -X DELETE -H "$H" "$A/grants/<grant-id>"     # takes effect next request
+```
+
+The response's `supervision` object is the authority on what happened:
+`{granted, created, grantId, scopes, owner}` — or `{granted:false, reason}`,
+which always names what to do next. A grant an operator **narrowed** by hand is
+reported as-is and never silently widened by a re-run.
+
 ### GHA repo secrets
 
 Set from a machine with `gh` authed to the repo (the remote sandbox's
