@@ -34,4 +34,11 @@
 
   // Secrets (wrangler secret put):
   //   INTERNAL_TOKEN — authenticates the agent poke (same shared secret)
+  //
+  // Optional var (deliberately UNSET, so the code's conservative default is
+  // the one place the number lives — see src/sidestep.ts):
+  //   ATTACHMENT_SIDESTEP_BYTES — bytes at or above which an inbound
+  //     attachment also becomes a FileNode (s03.B T3). Default 5 MiB; "0"
+  //     turns the sidestep off; a route's `sidestepBytes` overrides it per
+  //     account.
 }

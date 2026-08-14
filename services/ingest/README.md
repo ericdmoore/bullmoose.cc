@@ -21,6 +21,15 @@ Pipeline per message:
    individually downloadable blobs
 4. postal-mime parse → D1 metadata insert (threading via normalized
    Message-IDs)
+4b. **the attachment sidestep** (`sidestep.ts`, s03.B T3): a non-inline
+   attachment ≥ `N` bytes ALSO becomes a `FileNode` under the account's
+   `Attachments` folder, so a big file is addressable in the Files realm
+   and not only inside the one message. The message keeps its attachment
+   and gains a `fileNodeId` cross-link; the bytes are not copied (one
+   content-addressed blob, two references). `N` = the route's
+   `sidestepBytes` → the worker's `ATTACHMENT_SIDESTEP_BYTES` var → 5 MiB;
+   `0` disables. **Fail-open**: any Files failure logs and delivers the
+   message anyway. Quarantined and screened mail never side-steps
 5. agent bindings → `agent_invocations` rows (the envelope RCPT rides
    in `context_json` so the ledger pipeline can read plus-tags), then a
    fire-and-forget **poke** to the agent worker
