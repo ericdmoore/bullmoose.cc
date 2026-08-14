@@ -1,4 +1,5 @@
 // @ts-check
+import tailwind from "@tailwindcss/vite";
 import preact from "@astrojs/preact";
 import { defineConfig } from "astro/config";
 
@@ -8,6 +9,17 @@ import { defineConfig } from "astro/config";
 export default defineConfig({
   site: "https://mail.bullmoose.cc",
   integrations: [preact()],
+
+  // Tailwind v4 (s07 nav spike). A Vite plugin rather than an Astro
+  // integration — v4 dropped the integration in favour of this.
+  //
+  // It emits an EXTERNAL stylesheet, which matters for the CSP below: an
+  // external sheet from our own origin is covered by `default-src 'self'`
+  // and needs no policy change. That is most of why Tailwind is a safe
+  // adoption here and Headless UI is not — Headless UI sets inline `style`
+  // attributes for its transitions and positioning, which would force
+  // `'unsafe-inline'` into style-src on the authenticated surface.
+  vite: { plugins: [tailwind()] },
 
   // CSP is the second half of the XSS defence (arch.md §4): sanitization strips
   // the payload, and this makes sure a payload that somehow survived has no
