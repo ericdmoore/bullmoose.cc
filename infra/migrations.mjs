@@ -500,6 +500,48 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "quarantined-mailbox-role",
+    why: "s12: held mail moves from the INVENTED role 'quarantine' to the REGISTERED 'junk' (RFC 8621 / IANA — an unregistered role is rendered by a standards client as an ordinary folder with no spam handling), displayed 'Quarantined'. Renames existing Junk mailboxes to the one vocabulary and drops the empty wave-1 quarantine mailboxes. NOT a deploy blocker: every reader looks up role='junk', so a shard that has not run this simply has an extra empty folder. ⚠️ The delete is GUARDED on the mailbox being empty — nothing has ever been shunted, so it should always be — and if one DOES hold mail the check stays failing and the deploy stops rather than moving a human's mail blind",
+    blocks: null,
+    check:
+      `SELECT CASE WHEN EXISTS (SELECT 1 FROM mailboxes WHERE role = 'quarantine')
+                     OR EXISTS (SELECT 1 FROM mailboxes WHERE role = 'junk' AND name = 'Junk')
+                   THEN 0 ELSE 1 END AS n`,
+    up: [
+      // Only the DEFAULT name is repainted. A human who renamed their junk
+      // folder chose that name, and a migration must not overrule a person.
+      `UPDATE mailboxes SET name = 'Quarantined' WHERE role = 'junk' AND name = 'Junk'`,
+      // Wave 1's second pile. Empty ones only: an account cannot hold two
+      // rows with the same role (mailboxes_role is UNIQUE), so a non-empty
+      // quarantine mailbox cannot simply be re-roled either — it needs a
+      // human to decide where its mail goes, and leaving the check failing is
+      // how this says so.
+      `DELETE FROM mailboxes
+        WHERE role = 'quarantine'
+          AND id NOT IN (SELECT mailbox_id FROM email_mailboxes)`,
+    ],
+    absent: [
+      `CREATE TABLE mailboxes (
+         id         TEXT NOT NULL,
+         account_id TEXT NOT NULL,
+         name       TEXT NOT NULL,
+         role       TEXT,
+         PRIMARY KEY (account_id, id)
+       )`,
+      `CREATE TABLE email_mailboxes (
+         account_id TEXT NOT NULL,
+         email_id   TEXT NOT NULL,
+         mailbox_id TEXT NOT NULL,
+         PRIMARY KEY (account_id, email_id, mailbox_id)
+       )`,
+      // The wave-1 world: a Junk folder AND a second pile beside it.
+      `INSERT INTO mailboxes (id, account_id, name, role)
+       VALUES ('mb_junk', 'a_1', 'Junk', 'junk'),
+              ('mb_quar', 'a_1', 'Quarantine', 'quarantine')`,
+    ],
+  },
+
+  {
     id: "grant-lifecycle-via-proposal",
     why: "s10 T2: the WHY on the grant chain. provision's lifecycle writer names the column in its INSERT, so a provision worker deployed against a database missing it fails every grant mint and revoke",
     blocks: "deploy",

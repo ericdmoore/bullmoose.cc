@@ -54,7 +54,12 @@ export type ProposalKind =
   // s11 T9 — "this binding is out of budget and N invocations are waiting;
   // approve a bounded overage?" The one kind whose payload is entirely numbers,
   // which is why its summary leads with them (`summarizeProposal`).
-  | "budget-overrun";
+  | "budget-overrun"
+  // s12 — "the boundary held N messages it could not judge; release or
+  // confirm?" The mid-band is definitionally the band bouncer@ cannot decide,
+  // so it comes here as ONE batched question instead of accruing in a folder
+  // nobody owns.
+  | "held-mail-review";
 
 /** What the proposal acts on. */
 export interface ProposalSubject {

@@ -6,6 +6,8 @@ import {
   Mailstore,
   normalizeMessageId,
   previewText,
+  QUARANTINE_NAME,
+  QUARANTINE_ROLE,
   type AttachmentMeta,
   type EmailAddress,
 } from "@bullmoose/mailstore";
@@ -455,8 +457,9 @@ async function deliver(
 
 /**
  * REJECT-STORE: the message is stored — full fidelity, rescuable, never
- * deleted — but in the QUARANTINE role mailbox, with its 'shunted' chain row
- * (message + chain commit atomically; see Mailstore.insertQuarantinedEmail).
+ * deleted — but in the HELD mailbox (the registered `junk` role, displayed
+ * 'Quarantined'), with its 'shunted' chain row (message + chain commit
+ * atomically; see Mailstore.insertQuarantinedEmail).
  *
  * Deliberately absent from this path: agent invocations (suspected spam must
  * not reach the lobby), armed responders (never auto-reply to judged spam),
@@ -478,9 +481,15 @@ async function quarantineDeliver(
   const blobId = await store.putBlob(route.tenantId, route.accountId, m.raw);
   const inReplyTo = normalizeMessageId(m.parsed.inReplyTo);
   const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
-  // Lazily ensured (the inbox precedent) so accounts that predate the
-  // 'quarantine' role in provisioning still get one on first shunt.
-  const quarantineId = await store.ensureRoleMailbox(route.accountId, "quarantine", "Quarantine");
+  // Lazily ensured (the inbox precedent) so an account provisioned before the
+  // seed existed still gets one on first shunt. The role is the REGISTERED
+  // 'junk' (RFC 8621) so standards clients treat it as spam; the NAME is
+  // 'Quarantined' — see @bullmoose/mailstore QUARANTINE_ROLE.
+  const quarantineId = await store.ensureRoleMailbox(
+    route.accountId,
+    QUARANTINE_ROLE,
+    QUARANTINE_NAME,
+  );
   const attachments = await storeAttachments(store, route, m.parsed);
 
   const emailId = `e_${crypto.randomUUID()}`;
@@ -527,11 +536,15 @@ async function quarantineDeliver(
 
 /**
  * The MID-BAND hold (s12 wave 2-C, cascade stage 5's doorway): store the
- * message in the QUARANTINE mailbox with a 'screened' chain row — distinct
+ * message in the HELD mailbox with a 'screened' chain row — distinct
  * from 'shunted', because nothing has judged it spam yet — and enqueue ONE
  * bouncer-classify invocation for the tenant's bouncer binding, all in the
  * SAME D1 batch: "held" and "a classifier is coming" commit together or not
  * at all (a hold with no classifier enqueued is mail nobody will ever free).
+ *
+ * The hold is bouncer's WORKING STATE, not a human destination: a message the
+ * classifier cannot decide becomes a batched PROPOSAL (services/agent
+ * midBandProposal.ts), never a pile someone is expected to go browse.
  *
  * Like quarantineDeliver, no mailbox-delivery invocations (nothing reaches
  * the lobby until it is judged clean), no armed responders, no
@@ -556,7 +569,11 @@ async function screenDeliver(
   const blobId = await store.putBlob(route.tenantId, route.accountId, m.raw);
   const inReplyTo = normalizeMessageId(m.parsed.inReplyTo);
   const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
-  const quarantineId = await store.ensureRoleMailbox(route.accountId, "quarantine", "Quarantine");
+  const quarantineId = await store.ensureRoleMailbox(
+    route.accountId,
+    QUARANTINE_ROLE,
+    QUARANTINE_NAME,
+  );
   const attachments = await storeAttachments(store, route, m.parsed);
 
   const emailId = `e_${crypto.randomUUID()}`;

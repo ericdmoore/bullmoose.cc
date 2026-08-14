@@ -1,6 +1,6 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
-import type { ContactCardRow, JSContactCard } from "@bullmoose/mailstore";
+import { QUARANTINE_ROLE, type ContactCardRow, type JSContactCard, type Mailstore } from "@bullmoose/mailstore";
 import { budgetExhaustedSql, budgetMonthStartMs, budgetPeriodKey } from "@bullmoose/scheduling";
 import { authorizeAccount } from "../auth";
 import {
@@ -123,6 +123,18 @@ import {
 const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "unsafe"]);
 
 /**
+ * s12 — the mid-band batch (services/agent `midBandProposal.ts` mints it under
+ * this exact string; the two packages do not share a module, so the kind is
+ * spelled here and pinned by `actionProposalHeldMail.test.ts`).
+ *
+ * Approve RELEASES the held messages to the Inbox as human rescues (ham
+ * labels); decline CONFIRMS the shunts (spam labels). Both are answers, and
+ * both clear the question from the queue — which is the whole point: what the
+ * doorman cannot decide becomes a decision, not a folder.
+ */
+const HELD_MAIL_REVIEW = "held-mail-review";
+
+/**
  * Kinds whose DECLINE says nothing about the agent, and which therefore may not
  * carry a reject reason (s11 T9; decline-taxonomy.md's excluded-from-negative-
  * signal rule). A `budget-overrun` decline is "keep waiting" — the work is not
@@ -132,8 +144,15 @@ const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "unsafe"]);
  * This is where the invariant is ENFORCED on the write path, so the first RL
  * consumer inherits it whether or not it reads this comment: it cannot find a
  * `reason` on one of these rows, because none can be written.
+ *
+ * ⚠️ A FOURTH EXCLUSION (s12): a declined `held-mail-review` is not negative
+ * feedback either — it is an ANSWER. The proposal asks "the boundary could not
+ * judge these; spam or not?", so declining says "yes, spam, confirm the shunt",
+ * which is the agent being RIGHT to ask. `wrongAction` on it would teach a
+ * doorman to stop asking about mail it cannot judge, i.e. to guess — the exact
+ * behaviour the mid-band proposal exists to replace.
  */
-const NO_FAULT_KINDS = new Set(["budget-overrun"]);
+const NO_FAULT_KINDS = new Set(["budget-overrun", HELD_MAIL_REVIEW]);
 
 /**
  * The tier-2 post-approval retraction window. A tier-2 approve enters the hold
@@ -485,6 +504,20 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
           // signal (decline-taxonomy.md's "the rule a learning pipeline must not
           // break"). The work simply waits for the month to roll — which it was
           // already doing when the proposal was raised.
+          //
+          // ---- decline = CONFIRM THE SHUNTS (s12 held-mail-review) ----
+          // The one kind whose decline is not "do nothing": here the verb is
+          // an answer ("yes, that is spam"), so it writes the judgment the
+          // hold never had — a 'shunted' chain row per message and a spam
+          // label per message. The mail does not move (it is already in the
+          // right place); what changes is that it is now DECIDED, which is
+          // what stops the sweep asking about it again.
+          if (row.kind === HELD_MAIL_REVIEW) {
+            const original = emailIdList(safeJson(row.payload_json).emailIds) ?? [];
+            applyEntries.push(
+              ...(await confirmHeldBatch(ctx, access, row, original)),
+            );
+          }
           await ctx.env.DB.prepare(
             `UPDATE agent_proposals SET status = 'rejected', decided_at = ?,
                decision_json = ?, edited_payload_json = COALESCE(?, edited_payload_json)
@@ -915,6 +948,89 @@ async function applyProposal(
       };
     }
 
+    case HELD_MAIL_REVIEW: {
+      // s12 — approve RELEASES the batch. Each release is a `rescueQuarantined`
+      // and not some new verb: a human pulling held mail into the inbox IS the
+      // rescue path (the move, the 'rescued' chain row naming what it was
+      // rescued from, the graduated-domain demotion, and the ham label that
+      // makes the escape hatch feed the filter). Reusing it means the human's
+      // answer here and the human's answer in bouncer@'s false-positive
+      // conversation are the same event, recorded the same way.
+      const asked = emailIdList(safeJson(row.payload_json).emailIds);
+      if (!asked || asked.length === 0) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "a held-mail-review payload needs a non-empty emailIds array",
+          ["payload"],
+        );
+      }
+      const chosen = emailIdList(payload.emailIds);
+      if (!chosen) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "a held-mail-review payload needs a non-empty emailIds array",
+          ["payload"],
+        );
+      }
+      // PARTIAL RELEASE, and it needs no new verb: an edited `emailIds` is the
+      // human saying "these ones". The edit may only NARROW the batch — this
+      // proposal is about the messages it named, and an id from outside it has
+      // no rationale, no evidence and no chain row behind it here.
+      const outside = chosen.filter((id) => !asked.includes(id));
+      if (outside.length > 0) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `held-mail-review emailIds may only NARROW the batch this proposal named; ` +
+            `${outside.slice(0, 3).join(", ")} ${outside.length === 1 ? "was" : "were"} not in it`,
+          ["payload"],
+        );
+      }
+
+      const releasedIds: string[] = [];
+      const touchedMailboxes = new Set<string>();
+      for (const emailId of chosen) {
+        const { rescued } = await store.rescueQuarantined(
+          access.accountId,
+          emailId,
+          ctx.principal.username,
+        );
+        // Not rescued = it is no longer held (a race, or an answer that landed
+        // first). The rescue path already refuses to write a second chain row;
+        // reporting only what actually moved keeps the changelog honest.
+        if (rescued) releasedIds.push(emailId);
+      }
+      // The complement is CONFIRMED, not left in limbo. A partial approve is
+      // one decision about the whole batch — "release these, the rest are
+      // spam" — so the messages the human did not pick get the same judgment a
+      // decline writes. Leaving them held-and-unanswered would rebuild the
+      // pile one edit at a time.
+      const confirmedIds = await confirmHeldEmails(
+        store,
+        access.accountId,
+        asked.filter((id) => !chosen.includes(id)),
+        ctx.principal.username,
+      );
+
+      for (const id of await roleMailboxIds(ctx, access.accountId)) touchedMailboxes.add(id);
+      const entries: ChangeEntry[] = [];
+      const touchedEmails = [...releasedIds, ...confirmedIds];
+      if (touchedEmails.length > 0) {
+        entries.push({ collection: "Email", created: [], updated: touchedEmails, destroyed: [] });
+        entries.push({
+          collection: "Mailbox",
+          created: [],
+          updated: [...touchedMailboxes],
+          destroyed: [],
+        });
+      }
+      // No `undo` handle. A released message is undone by moving it back — an
+      // ordinary Email/set the human can already make — and a handle naming an
+      // "un-release" nothing implements would be a promise this codebase
+      // cannot keep. The reversibility that makes this tier 1 is real; the
+      // machine affordance for it is `move`, not a proposal replay.
+      return { entries };
+    }
+
     default:
       throw new SetErrorSignal(
         "invalidProperties",
@@ -922,6 +1038,69 @@ async function applyProposal(
         ["kind"],
       );
   }
+}
+
+/** The two mailboxes a held-mail decision can touch, for the changelog. */
+async function roleMailboxIds(ctx: RequestContext, accountId: string): Promise<string[]> {
+  const { results } = await ctx.env.DB.prepare(
+    `SELECT id FROM mailboxes WHERE account_id = ? AND role IN ('inbox', ?)`,
+  )
+    .bind(accountId, QUARANTINE_ROLE)
+    .all<{ id: string }>();
+  return results.map((r) => r.id);
+}
+
+/** Confirm every still-held message in the list; returns the ones that moved
+ * from undecided to decided (a raced answer simply does not count twice). */
+async function confirmHeldEmails(
+  store: Mailstore,
+  accountId: string,
+  emailIds: string[],
+  actor: string,
+): Promise<string[]> {
+  const confirmed: string[] = [];
+  for (const emailId of emailIds) {
+    const res = await store.confirmQuarantined(accountId, emailId, actor);
+    if (res.confirmed) confirmed.push(emailId);
+  }
+  return confirmed;
+}
+
+/** The decline path's application: confirm the whole batch, and report the
+ * mailboxes for the caller's single commit. */
+async function confirmHeldBatch(
+  ctx: RequestContext,
+  access: { accountId: string; tenantId: string },
+  row: ProposalJoinRow,
+  emailIds: string[],
+): Promise<ChangeEntry[]> {
+  if (emailIds.length === 0) return [];
+  const store = storeFor({ ...ctx, agent: { binding: row.binding_name, invocation: row.id } });
+  const confirmed = await confirmHeldEmails(
+    store,
+    access.accountId,
+    emailIds,
+    ctx.principal.username,
+  );
+  if (confirmed.length === 0) return [];
+  return [
+    { collection: "Email", created: [], updated: confirmed, destroyed: [] },
+    {
+      collection: "Mailbox",
+      created: [],
+      updated: await roleMailboxIds(ctx, access.accountId),
+      destroyed: [],
+    },
+  ];
+}
+
+/** A payload `emailIds`: a non-empty array of strings, or null. Absent, empty
+ * and "a string that looks like a list" are all null — a decision that acts on
+ * nothing must be refused rather than silently succeed. */
+function emailIdList(v: unknown): string[] | null {
+  if (!Array.isArray(v) || v.length === 0) return null;
+  if (!v.every((x) => typeof x === "string" && x.length > 0)) return null;
+  return v as string[];
 }
 
 // ---- helpers --------------------------------------------------------------
