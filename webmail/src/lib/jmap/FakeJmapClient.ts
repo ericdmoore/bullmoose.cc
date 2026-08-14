@@ -3,7 +3,7 @@
 // @bullmoose/test-fakes):
 //   • tests — assert UI/data flow without a server;
 //   • the UI — T2's mail surfaces shipped against this and still develop
-//     against it; T3's Files browser remains deferred on s03.B.
+//     against it, and so does T3's Files browser (`../files/demoFiles.ts`).
 //
 // It resolves RFC 8620 §3.7 back-references locally (a compact version of the
 // server's dispatch.ts) so `queryThenGet` and other batches behave like the
@@ -142,7 +142,23 @@ export class FakeJmapClient implements JmapClient {
         responses.push(["error", { type: "unknownMethod" }, callId]);
         continue;
       }
-      const args = resolveReferences(rawArgs, responses);
+      let args: Record<string, unknown>;
+      try {
+        args = resolveReferences(rawArgs, responses);
+      } catch (err) {
+        // Mirror `dispatch.ts`: an unresolvable back-reference fails THAT call
+        // with `invalidResultReference` and leaves the rest of the batch
+        // intact. Throwing out of the whole request — which this used to do —
+        // is harsher than the server and hides the real shape of a batch whose
+        // first call was refused (the second one errors; the request still
+        // returns 200 with an error response in it).
+        responses.push([
+          "error",
+          { type: "invalidResultReference", description: (err as Error).message },
+          callId,
+        ]);
+        continue;
+      }
       const result = handler(args);
       if (Array.isArray(result) && result[0] === "error") {
         responses.push(["error", result[1], callId]);
@@ -215,9 +231,13 @@ export class FakeJmapClient implements JmapClient {
     this.cursors.set(collection, state);
   }
 
-  async upload(_accountId: Id, bytes: Uint8Array, _type: string): Promise<UploadResult> {
+  async upload(_accountId: Id, body: Blob | Uint8Array, _type: string): Promise<UploadResult> {
     const blobId = `blob-${++this.uploadSeq}`;
-    this.blobs.set(blobId, new Uint8Array(bytes));
+    // Blob is accepted because the real client takes one (a browser `File`);
+    // storing the bytes keeps `download` round-tripping either way.
+    const bytes =
+      body instanceof Uint8Array ? new Uint8Array(body) : new Uint8Array(await body.arrayBuffer());
+    this.blobs.set(blobId, bytes);
     return { blobId, size: bytes.byteLength };
   }
 
