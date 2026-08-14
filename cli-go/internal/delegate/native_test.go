@@ -4,8 +4,14 @@ import "testing"
 
 // TestOwnedNatively pins the guard that decides whether an invocation stays with
 // a native command or falls through to Node. The rule: native owns it iff every
-// flag is one the wave-1 commands consume. Help and unowned/unknown flags must
-// delegate, so those paths stay byte-identical to the TypeScript CLI.
+// flag is one the wave-1 commands consume, so an unowned or unknown flag stays
+// byte-identical by reaching the TypeScript CLI.
+//
+// `--help`/`-h`/`--man` are false here and must stay false — they are not any
+// command's flags. That no longer means they delegate: Dispatch routes a help
+// invocation to internal/help before this guard is consulted (help.go), the way
+// main.ts answers help before its switch. This guard's answer is about the
+// COMMAND, and the command does not own help.
 func TestOwnedNatively(t *testing.T) {
 	cases := []struct {
 		argv []string
@@ -71,7 +77,7 @@ func TestOwnedNativelyIsPerCommand(t *testing.T) {
 		{[]string{"send", "--to", "a@b.com", "--linkTTL", "7"}, false, "same pipeline, same rule"},
 		{[]string{"send", "--to", "a@b.com", "--dry-run"}, false, "cmdSend does not read --dry-run"},
 		{[]string{"send", "--to", "a@b.com", "--ids"}, false, "cmdSend does not read --ids"},
-		{[]string{"send", "--help"}, false, "help is still Node's"},
+		{[]string{"send", "--help"}, false, "help is not send's flag — the router answers it"},
 		{[]string{"log", "-n", "5"}, true, "log owns the short -n"},
 		{[]string{"read", "-n", "5"}, false, "read does not"},
 		// The two directions that motivated per-command sets: too narrow and

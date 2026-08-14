@@ -5,7 +5,12 @@
 // enough of argv to name the subcommand.
 package delegate
 
-import "os"
+import (
+	"os"
+
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/help"
+	bmio "github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
+)
 
 // native holds the commands this binary serves itself.
 //
@@ -31,15 +36,44 @@ var native = map[string]func(argv []string) int{}
 // the first strictly-more-capable command) is the case. It runs native
 // unconditionally; delegating it would hit "command not found" in the Node CLI.
 //
+// HELP is routed before either, and for the same reason main.ts:205 checks it
+// before its switch and before it opens the database: `bullmoose log --help` is a
+// help invocation whose command is `log`, so a router that dispatched on the
+// command alone would hand `--help` to a native command that does not know it.
+// Its bytes come from an embedded artifact of Node's own output (internal/help),
+// so byte-identity there is structural rather than asserted. An argv parseArgs
+// would REFUSE is not a help invocation and still delegates — Node owns those
+// messages (help.go).
+//
 // Dispatch may not return at all: when the delegate dies by a signal, Run
 // re-raises that signal here so the parent reports the child's disposition rather
 // than its own (`arch.md` §4).
 func Dispatch(argv []string) int {
 	command := Command(argv)
 
-	if run, ok := native[command]; ok && (nativeOnly[command] || ownedNatively(argv)) {
+	// A Go-native-only command has no Node twin and therefore no help page in
+	// the spec either, so it answers its own `--help` rather than being told it
+	// does not exist. First, as before.
+	if run, ok := native[command]; ok && nativeOnly[command] {
 		Trace(os.Stderr, "native", command)
 		return run(argv)
+	}
+
+	if req, ok := helpRequest(argv); ok {
+		Trace(os.Stderr, "native", command)
+		return help.Serve(bmio.New(), req)
+	}
+
+	if run, ok := native[command]; ok && ownedNatively(argv) {
+		Trace(os.Stderr, "native", command)
+		return run(argv)
+	}
+
+	// A command neither binary has. Rendered from the same spec, so a typo does
+	// not need Node to be answered.
+	if name, ok := unknownCommand(argv); ok {
+		Trace(os.Stderr, "native", command)
+		return help.Serve(bmio.New(), help.Request{Mode: help.UnknownCommand, Topic: name})
 	}
 
 	Trace(os.Stderr, "delegated", command)
