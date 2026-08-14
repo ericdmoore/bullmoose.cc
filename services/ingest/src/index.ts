@@ -23,6 +23,7 @@ import {
 import type { BoundaryMessage } from "./boundaryContract";
 import { sweepGraduations } from "./graduationSweep";
 import { extractDueAt } from "./dueDate";
+import { SIDESTEP_WRITER, sidestepAttachments, sidestepThreshold } from "./sidestep";
 import {
   composePrivacy,
   mechanicalRequires,
@@ -41,8 +42,10 @@ import {
  *      chain row, rescuable — never deleted)
  *   3. store raw RFC 5322 bytes in R2 (blobId = content hash)
  *   4. parse MIME and insert metadata into the account's D1 shard
- *   5. commit to AccountDO → state bump + WebSocket push to live clients
- *   6. evaluate delivery-armed responders (vacation, agent watchdogs) and
+ *   5. side-step large attachments into the Files realm as FileNodes
+ *      (s03.B T3, sidestep.ts) — additive and fail-open
+ *   6. commit to AccountDO → state bump + WebSocket push to live clients
+ *   7. evaluate delivery-armed responders (vacation, agent watchdogs) and
  *      create agent invocations for mailbox-delivery bindings
  */
 
@@ -56,6 +59,12 @@ export interface Env {
   /** "1" enables POST /dev/inject (guarded; local testing only). */
   DEV_INJECT?: string;
   INTERNAL_TOKEN?: string;
+  /**
+   * s03.B T3 — bytes at or above which an inbound attachment also becomes a
+   * FileNode. Deployment-wide; a route may override it per account. Unset uses
+   * `DEFAULT_SIDESTEP_MIN_BYTES`; "0" turns the sidestep off. See sidestep.ts.
+   */
+  ATTACHMENT_SIDESTEP_BYTES?: string;
 }
 
 /** Value shape stored under route:{domain}:{localpart} in KV. */
@@ -69,6 +78,13 @@ interface Route {
    * backup while trialing the platform).
    */
   forwardTo?: string[];
+  /**
+   * Per-account attachment-sidestep threshold in bytes (s03.B T3). The route
+   * is where a per-account policy value costs nothing: delivery has already
+   * read this key to find the recipient. Absent → the worker's env var, then
+   * the conservative default; `0` disables the sidestep for this address.
+   */
+  sidestepBytes?: number;
 }
 
 export default {
@@ -243,6 +259,12 @@ async function deliver(
   quarantined?: string;
   /** The mid-band stage, when the message is held pending the classifier. */
   screened?: string;
+  /**
+   * FileNode ids minted by the attachment sidestep (s03.B T3). Reported so a
+   * `/dev/inject` or curl drive — which `s03.B/devPlan.md` makes the real
+   * acceptance signal for this UI-free slice — can see that it fired.
+   */
+  fileNodes?: string[];
 }> {
   const [localpart = "", domain = ""] = envelopeTo.toLowerCase().split("@");
   const route = await resolveRoute(env.ROUTES, domain, localpart);
@@ -345,7 +367,25 @@ async function deliver(
   const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
   const inboxId = await store.ensureRoleMailbox(route.accountId, "inbox", "Inbox");
 
-  const attachments = await storeAttachments(store, route, parsed);
+  const stored = await storeAttachments(store, route, parsed);
+
+  // s03.B T3 — the attachment sidestep. A large attachment ALSO becomes a
+  // FileNode under the account's Attachments folder, so it is addressable as a
+  // file instead of only as a row inside this one message. Additive: the
+  // attachment metadata below is unchanged except for the `fileNodeId`
+  // cross-link, and `sidestepAttachments` is total (it never throws), so a
+  // Files failure cannot cost the recipient their mail.
+  //
+  // Its own Mailstore, because provenance differs: emails written by delivery
+  // carry NULL provenance (no acting principal), while a file this path
+  // creates records `system:ingest` as its writer.
+  const sidestep = await sidestepAttachments(
+    new Mailstore(env.DB, env.BLOBS, SIDESTEP_WRITER),
+    route.accountId,
+    stored,
+    sidestepThreshold(env, route),
+  );
+  const attachments = sidestep.attachments;
 
   const emailId = `e_${crypto.randomUUID()}`;
   await store.insertEmail(route.accountId, {
@@ -432,6 +472,14 @@ async function deliver(
     ...(invocationIds.length > 0
       ? [{ collection: "AgentInvocation", created: invocationIds }]
       : []),
+    // Side-stepped files ride the SAME commit — one DO round trip, and a
+    // client watching FileNode/changes learns about the file in the same push
+    // that announces the message it arrived on. A FileNode row that never
+    // reached the changelog would read back on a direct get and be invisible
+    // to sync (filenode.ts's write-choreography rule).
+    ...(sidestep.created.length > 0
+      ? [{ collection: "FileNode", created: sidestep.created }]
+      : []),
   ]);
 
   // Armed responders (vacation, watchdog). RFC 3834: never auto-respond
@@ -450,6 +498,7 @@ async function deliver(
     emailId,
     ...(route.forwardTo?.length ? { forwardTo: route.forwardTo } : {}),
     ...(invocationIds.length > 0 ? { invocations: invocationIds.length } : {}),
+    ...(sidestep.created.length > 0 ? { fileNodes: sidestep.created } : {}),
   };
 }
 
