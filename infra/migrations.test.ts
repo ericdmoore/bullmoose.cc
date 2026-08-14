@@ -121,7 +121,12 @@ describe("infra/migrations — the DDL a schema re-run cannot perform", () => {
     // behind it never runs. s11 T9 adds the only NEW TABLE on this list: the
     // approved-overage table is named by the gate's budgetExhaustedSql, i.e. by
     // every claim statement, so its absence is a total claim failure rather
-    // than the one-route failure a new table usually causes.
+    // than the one-route failure a new table usually causes. s11 T7 adds two
+    // more of exactly that shape: claimability is `pending AND NOT EXISTS
+    // (unmet needs)` computed IN the claim query, so every claim statement now
+    // names needs_json and job_id (invocation-job-columns) and the `jobs` table
+    // (jobs-table, via jobBudgetExhaustedSql) — a worker deployed against a
+    // database missing either fails every claim, not one route.
     // Naming them in data keeps the runbook and the runner from drifting apart.
     const blockers = MIGRATIONS.filter((m) => m.blocks === "deploy").map((m) => m.id).sort();
     expect(blockers).toEqual([
@@ -136,6 +141,8 @@ describe("infra/migrations — the DDL a schema re-run cannot perform", () => {
       "invocation-cost-columns",
       "invocation-due-at",
       "invocation-facet-columns",
+      "invocation-job-columns",
+      "jobs-table",
       "proposal-needsinfo-columns",
     ]);
   });

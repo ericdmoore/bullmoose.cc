@@ -65,8 +65,12 @@ type fakeAdmin struct {
 	// noAccountFor makes POST /agent-bindings 404 the way the real worker does
 	// when the address has no account.
 	noAccountFor map[string]bool
+	// unsupervised makes the create answer with the s10 T7 refusal shape:
+	// the binding lands, but no owner could be established for it.
+	unsupervised bool
 }
 
+// unsupervised makes POST /agent-bindings answer with the T7 refusal shape.
 func newAdmin() *fakeAdmin {
 	return &fakeAdmin{
 		reportsBook:   true,
@@ -159,7 +163,22 @@ func (fa *fakeAdmin) handle(w http.ResponseWriter, r *http.Request) {
 		cfg, _ := body["config"].(map[string]any)
 		fa.add(&fakeBinding{id: id, name: name, enabled: 1, config: cfg, bookID: book})
 		_, hasSLA := body["slaSeconds"]
-		write(200, map[string]any{"ok": true, "bindingId": id, "accountId": "a_eric", "watchdog": hasSLA})
+		// s10 T7 — the provisioning response now always reports whether the
+		// owner got a supervisory grant. `unsupervised` flips it to the refusal
+		// shape (ambiguous ownership), which `create` must NOT hide.
+		supervision := map[string]any{
+			"granted": true, "created": true, "grantId": "g_" + id,
+			"scopes": []string{"read", "draft", "send"},
+			"owner":  map[string]any{"email": "eric@bullmoose.cc", "accountId": "a_eric"},
+		}
+		if fa.unsupervised {
+			supervision = map[string]any{
+				"granted": false,
+				"reason":  "tenant t_bm has 2 human principals, so ownership is ambiguous",
+			}
+		}
+		write(200, map[string]any{"ok": true, "bindingId": id, "accountId": "a_eric",
+			"watchdog": hasSLA, "supervision": supervision})
 
 	case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/disable"),
 		r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/enable"):
@@ -871,6 +890,48 @@ func TestAgents_Create_PhotosIsFailClosed(t *testing.T) {
 	// It must NOT claim the book is governed — no wire exposes write_policy.
 	if !strings.Contains(errOut, "NOT verified") {
 		t.Errorf("create must not claim a book is governed when it cannot check, got %q", errOut)
+	}
+}
+
+// s10 T7 — `create` says whether the agent's owner can SEE what it proposes.
+// A silent "supervision: none" is the whole bug: the agent runs, queues work,
+// and nobody's /approvals shows it.
+func TestAgents_Create_ReportsSupervision(t *testing.T) {
+	fa := newAdmin()
+	db := agEnv(t, fa)
+	out, errOut, code := runAG(t, db, "create", "--kind", "photos", "--email", "photos@bullmoose.cc", "--json")
+	if code != 0 {
+		t.Fatalf("create exit %d: %s", code, errOut)
+	}
+	var got struct {
+		Supervision struct {
+			Granted bool     `json:"granted"`
+			Owner   string   `json:"owner"`
+			Scopes  []string `json:"scopes"`
+		} `json:"supervision"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("create --json: %v (%s)", err, out)
+	}
+	if !got.Supervision.Granted || got.Supervision.Owner != "eric@bullmoose.cc" {
+		t.Errorf("--json must report who supervises the agent: %+v", got.Supervision)
+	}
+	if strings.Join(got.Supervision.Scopes, "+") != "read+draft+send" {
+		t.Errorf("supervisory scopes = %v", got.Supervision.Scopes)
+	}
+
+	// The refusal shape: loud, with the fix, and never mistakeable for success.
+	fa2 := newAdmin()
+	fa2.unsupervised = true
+	db2 := agEnv(t, fa2)
+	_, errOut, code = runAG(t, db2, "create", "--kind", "photos", "--email", "photos@bullmoose.cc")
+	if code != 0 {
+		t.Fatalf("create exit %d: %s", code, errOut)
+	}
+	for _, want := range []string{"supervision:    NONE", "ambiguous", "/supervisor"} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("an unsupervised create must say %q:\n%s", want, errOut)
+		}
 	}
 }
 

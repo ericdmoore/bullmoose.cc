@@ -62,10 +62,18 @@ export function isLocalToken(raw: string): boolean {
 export async function introspect(
   oauth: Fetcher,
   token: string,
+  resourceUri: string,
 ): Promise<{ props: GrantProps; scopes: string[] } | null> {
   let res: Response;
   try {
-    res = await oauth.fetch("https://oauth.internal/introspect", {
+    // Called AT the canonical resource URI, not at some path on the AS's own
+    // host. The provider decides "which resource server am I" from the request
+    // URL and refuses a token whose audience does not match it — so asking at
+    // `auth.bullmoose.cc/introspect` would refuse every token we mint, because
+    // ours are correctly bound to the MCP resource. The service binding routes
+    // to the AS regardless of the URL and never touches DNS, so we address it
+    // as the resource and the audience check passes on its merits.
+    res = await oauth.fetch(resourceUri, {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
     });

@@ -436,6 +436,51 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "invocation-job-columns",
+    why: "s11 T7: the Job DAG's five columns on the node (job_id, parent_id, needs_json, depth, authority_json). A DEPLOY BLOCKER because the claim gate names needs_json and job_id in EVERY claim statement's WHERE — claimability is `status='pending' AND NOT EXISTS (unmet needs)` computed in the claim query, never a stored flag — so a jmap/agent worker deployed against a database missing them fails every claim and all agent mail stops",
+    blocks: "deploy",
+    needs: ["invocation-due-at"],
+    // authority_json is the last column applied — the group sentinel
+    // (precedent: invocation-cost-columns, invocation-claimant-columns).
+    check: hasColumn("agent_invocations", "authority_json"),
+    up: [
+      "ALTER TABLE agent_invocations ADD COLUMN job_id TEXT",
+      "ALTER TABLE agent_invocations ADD COLUMN parent_id TEXT",
+      "ALTER TABLE agent_invocations ADD COLUMN needs_json TEXT",
+      "ALTER TABLE agent_invocations ADD COLUMN depth INTEGER",
+      "ALTER TABLE agent_invocations ADD COLUMN authority_json TEXT",
+      // The index belongs HERE, not in data-plane.sql: `schemas` runs before
+      // `migrate`, so an index over a column this migration adds cannot exist
+      // in the schema file without breaking every existing shard.
+      "CREATE INDEX IF NOT EXISTS invocations_job ON agent_invocations (account_id, job_id)",
+    ],
+    absent: ["CREATE TABLE agent_invocations (id TEXT NOT NULL, account_id TEXT NOT NULL)"],
+  },
+
+  {
+    id: "jobs-table",
+    why: "s11 T7: the Job row (aggregate budget, maxNodes/maxDepth, originating binding, facets) — everything about a Job that cannot be derived from its nodes, and NOT its status, which is a view. UNLIKE most new tables this IS a deploy blocker, for budget-overage-table's reason: the claim gate's jobBudgetExhaustedSql names `jobs` in EVERY claim statement's WHERE, so a worker deployed against a database missing it fails every claim rather than one route",
+    blocks: "deploy",
+    check: tableExists("jobs"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS jobs (
+         id                 TEXT NOT NULL,
+         account_id         TEXT NOT NULL,
+         binding_id         TEXT NOT NULL,
+         binding_name       TEXT NOT NULL,
+         root_invocation_id TEXT NOT NULL,
+         budget_micros      INTEGER,
+         max_nodes          INTEGER NOT NULL,
+         max_depth          INTEGER NOT NULL,
+         facets_json        TEXT,
+         created_at         INTEGER NOT NULL,
+         PRIMARY KEY (account_id, id)
+       )`,
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
     id: "domain-deny-list-table",
     why: "s12 1-A: the industrial deny tier (bouncer@'s working data). A plain schema re-run DOES create it; NOT a deploy blocker because the ingest cascade fails OPEN — a shard missing the table reads as an empty deny list (logged) and every message flows as today",
     blocks: null,

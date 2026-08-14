@@ -1,7 +1,7 @@
 /** @jsxImportSource preact */
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { resolveClient } from "../lib/app/client";
-import { decide, loadQueue, type Verdict } from "../lib/approvals/api";
+import { decide, loadQueues, type Verdict } from "../lib/approvals/api";
 import {
   expiryLabel,
   isNearExpiry,
@@ -13,12 +13,15 @@ import {
   declineNeedsReason,
   REJECT_REASONS,
   TIER3_CAPABILITY_NOTE,
-  approvalsAccountId,
+  accountLabel,
+  approvalsAccounts,
+  rowAuthority,
   approvalsGate,
   approveVerb,
   summarizeProposal,
   tierLabel,
 } from "../lib/approvals/rows";
+import type { ApprovalsAccount } from "../lib/approvals/rows";
 import type { ActionProposal, RejectReason } from "../lib/approvals/types";
 import { loadWindow } from "../lib/calendar/api";
 import { browserTimeZone } from "../lib/calendar/civil";
@@ -71,7 +74,9 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
 
   const [proposals, setProposals] = useState<ActionProposal[]>([]);
   const [occurrences, setOccurrences] = useState<Occurrence[]>([]);
-  const [state, setState] = useState("");
+  /** Per-account `ifInState` — the queue spans every reachable account (s10
+   *  T7), and each carries its own state string. */
+  const [states, setStates] = useState<Record<string, string>>({});
   const [loadingApprovals, setLoadingApprovals] = useState(true);
 
   const [panel, setPanel] = useState<Panel | undefined>(undefined);
@@ -130,7 +135,10 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
   }, [injectedClient]);
 
   const gate = approvalsGate(session);
-  const approvalsAcct = session ? approvalsAccountId(session) : "";
+  // Home answers "what needs me", so it must ask the same question the full
+  // queue does: every account this human can reach, agents included (s10 T7).
+  const approvalsAccts = useMemo(() => (session ? approvalsAccounts(session) : []), [session]);
+  const approvalsKey = approvalsAccts.map((a) => a.accountId).join(",");
   const hasCalendar = session ? hasCapability(session, CALENDARS_CAP) : false;
   const calendarAcct = session
     ? (session.primaryAccounts[CALENDARS_CAP] ?? Object.keys(session.accounts)[0] ?? "")
@@ -138,17 +146,17 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
 
   // ── Waiting Approvals — the pending queue, only when there is an agent ─────
   useEffect(() => {
-    if (!client || gate.state !== "open" || !approvalsAcct) {
+    if (!client || gate.state !== "open" || approvalsAccts.length === 0) {
       setLoadingApprovals(false);
       return;
     }
     let cancelled = false;
     setLoadingApprovals(true);
-    void loadQueue(client, approvalsAcct)
+    void loadQueues(client, approvalsAccts.map((a) => a.accountId))
       .then((res) => {
         if (cancelled) return;
         setProposals(res.proposals);
-        setState(res.state);
+        setStates(res.states);
         setLoadingApprovals(false);
       })
       .catch((err) => {
@@ -160,7 +168,7 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
     return () => {
       cancelled = true;
     };
-  }, [client, gate.state, approvalsAcct]);
+  }, [client, gate.state, approvalsKey]);
 
   // ── Looking Ahead — today/tomorrow occurrences (server-expanded) ──────────
   useEffect(() => {
@@ -187,18 +195,22 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
   );
 
   async function reload(): Promise<void> {
-    if (!client || gate.state !== "open" || !approvalsAcct) return;
-    const res = await loadQueue(client, approvalsAcct);
+    if (!client || gate.state !== "open" || approvalsAccts.length === 0) return;
+    const res = await loadQueues(client, approvalsAccts.map((a) => a.accountId));
     setProposals(res.proposals);
-    setState(res.state);
+    setStates(res.states);
   }
 
   async function act(id: string, verdict: Verdict): Promise<void> {
     if (!client || busyId) return;
     setBusyId(id);
     setRowErrors((prev) => ({ ...prev, [id]: "" }));
-    const outcome = await decide(client, approvalsAcct, id, verdict, {
-      ...(state ? { ifInState: state } : {}),
+    const row = proposals.find((r) => r.id === id);
+    if (!row) return;
+    // The proposal's OWN account, and its own state — never the session's
+    // default, which for an agent's proposal is the wrong account entirely.
+    const outcome = await decide(client, row.accountId, id, verdict, {
+      ...(states[row.accountId] ? { ifInState: states[row.accountId] as string } : {}),
     });
     if (!outcome.ok) {
       // The server's sentence, verbatim — a tier-3 capability refusal reads as
@@ -271,6 +283,10 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
               <WaitingRow
                 key={p.id}
                 p={p}
+                account={approvalsAccts.find((a) => a.accountId === p.accountId)}
+                label={
+                  approvalsAccts.length > 1 ? accountLabel(approvalsAccts, p.accountId) : ""
+                }
                 now={now}
                 busy={busyId === p.id}
                 error={rowErrors[p.id]}
@@ -317,6 +333,10 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
 
 function WaitingRow(props: {
   p: ActionProposal;
+  /** The account the row came off — its authority decides the verbs. */
+  account: ApprovalsAccount | undefined;
+  /** The account label, on a merged queue only. */
+  label: string;
   now: number;
   busy: boolean;
   error: string | undefined;
@@ -329,11 +349,15 @@ function WaitingRow(props: {
   const { p, now, busy, error, panel, setPanel } = props;
   const clocks = rowClocks(p, now);
   const editor = editorFor(p);
+  // Same honesty rule as the full queue: no verb is offered that the account's
+  // authority cannot carry (lib/approvals/accounts.ts).
+  const authority = rowAuthority(p, props.account);
 
   return (
     <article class={`home-row${isNearExpiry(clocks) ? " home-urgent" : ""}`}>
       <header class="home-rowhead">
         <span class="pill">{p.agent}</span>
+        {props.label ? <span class="pill home-account">{props.label}</span> : null}
         <span class="pill">{p.kind}</span>
         <span class={`pill home-tier-${p.tier}`}>{tierLabel(p.tier)}</span>
       </header>
@@ -382,26 +406,35 @@ function WaitingRow(props: {
         />
       ) : (
         <div class="home-actions">
-          <button type="button" disabled={busy} onClick={props.onApprove}>
-            {approveVerb(p.tier)}
-          </button>
-          {editor ? (
+          {authority.canApprove ? (
+            <>
+              <button type="button" disabled={busy} onClick={props.onApprove}>
+                {approveVerb(p.tier)}
+              </button>
+              {editor ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setPanel({ id: p.id, kind: "edit", form: editor })}
+                >
+                  Edit
+                </button>
+              ) : null}
+            </>
+          ) : null}
+          {authority.canDecline ? (
             <button
               type="button"
+              class="home-danger"
               disabled={busy}
-              onClick={() => setPanel({ id: p.id, kind: "edit", form: editor })}
+              onClick={() => setPanel({ id: p.id, kind: "decline", note: "" })}
             >
-              Edit
+              Decline
             </button>
           ) : null}
-          <button
-            type="button"
-            class="home-danger"
-            disabled={busy}
-            onClick={() => setPanel({ id: p.id, kind: "decline", note: "" })}
-          >
-            Decline
-          </button>
+          {/* A withheld verb is explained here too — the full queue's sentence,
+              so the two surfaces say the same thing about the same row. */}
+          {authority.note ? <span class="home-fine home-warn">{authority.note}</span> : null}
         </div>
       )}
     </article>

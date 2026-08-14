@@ -1,0 +1,547 @@
+import { commitChanges } from "@bullmoose/account-do";
+import {
+  JOB_MAX_DEPTH_CEILING,
+  JOB_MAX_NODES_CEILING,
+  attenuateChild,
+  attenuatePlan,
+  describeRefusals,
+  isPrivacyClass,
+  type AttenuatedChild,
+  type ChildRequest,
+  type NodeAuthority,
+  type NodeCeiling,
+  type Refusal,
+} from "@bullmoose/scheduling";
+import type { Env } from "./models.js";
+
+/**
+ * s11 T7 — THE JOB HARNESS: a Job's creation, and a planner's output becoming
+ * rows.
+ *
+ * The design in one line (jobs-and-facets.md §3): **nodes are ordinary
+ * invocations**. There is no execution machinery here at all — no dispatcher,
+ * no worker pool, no second queue. A Job is a `jobs` row plus `agent_invocations`
+ * rows carrying three columns; every unblocked node is simultaneously claimable
+ * by whichever runtime the s11 T2 gate lets take it, which is how "parallel
+ * subagents" falls out for free. Alpaca takes three cheap summarize nodes while
+ * the cloud takes the near-due synthesis node, and neither loop changed.
+ *
+ * This module owns exactly two things, and they are both about SAFETY:
+ *
+ *   startJob()    mints the Job and its root node, with the root's authority
+ *                 ATTENUATED against the binding's declared ceiling. The
+ *                 binding is the parent of the root — literally: it is passed
+ *                 to `attenuateChild` as a depth −1 ceiling, so the same
+ *                 function that guards every other level guards this one.
+ *   expandPlan()  takes a planner node's OUTPUT — untrusted data, today a
+ *                 fixed decomposition and tomorrow a model's — and creates the
+ *                 tasks it asked for, if and only if every one of them
+ *                 attenuates. This is the confused-deputy chokepoint that s17
+ *                 (CJ) needs to exist before `agents:invoke` can be un-deferred.
+ *
+ * PROGRESSIVE REVELATION, not front matter: a Job starts as ONE node carrying
+ * a goal. Its plan is produced at runtime, INSIDE the work, and `has_sub_steps`
+ * is not declared — it happens. Which is exactly why the plan is treated as
+ * data and validated on the way in.
+ *
+ * ── The two enforcement points, and why there are two ──────────────────────
+ * `attenuatePlan` (pure, in @bullmoose/scheduling) is the readable one: every
+ * axis, every refusal, fully table-tested. The guarded INSERT below re-checks
+ * maxNodes/maxDepth/budget IN SQL, in ONE statement, because the pure check
+ * reads state that a concurrently-expanding sibling planner could invalidate
+ * between the read and the write. Belt and braces, and the braces are the ones
+ * that hold under a race.
+ */
+
+/** A plan, as a planner node emits it. Every field is untrusted. */
+export interface PlanSpec {
+  tasks?: unknown;
+}
+
+export type ExpandResult =
+  | { ok: true; created: Array<{ key: string; id: string }> }
+  | { ok: false; refusals: Refusal[] };
+
+/** The node row the harness reads to know a parent's ceiling. */
+export interface JobNodeRow {
+  id: string;
+  account_id: string;
+  binding_id: string;
+  binding_name: string;
+  job_id: string | null;
+  parent_id: string | null;
+  needs_json: string | null;
+  depth: number | null;
+  authority_json: string | null;
+  privacy: string | null;
+  due_at: number | null;
+  context_json: string;
+  email_id: string | null;
+  status: string;
+}
+
+/** Read one node row by id — the whole graph slice, in one query. */
+export async function getJobNode(
+  env: Env,
+  accountId: string,
+  id: string,
+): Promise<JobNodeRow | null> {
+  return env.DB.prepare(
+    `SELECT id, account_id, binding_id, binding_name, job_id, parent_id, needs_json, depth,
+            authority_json, privacy, due_at, context_json, email_id, status
+       FROM agent_invocations WHERE account_id = ? AND id = ?`,
+  )
+    .bind(accountId, id)
+    .first<JobNodeRow>();
+}
+
+/**
+ * A node's stored envelope, parsed. A row with no envelope (an ordinary
+ * invocation, or one written before T7) reads as UNRESTRICTED tools and
+ * credentials with no money ceiling — DefaultCase: the Job columns tighten,
+ * they never strand, and the Bureau/governing-book checks are unchanged either
+ * way (rule 3: a ceiling is not a grant).
+ */
+export function parseAuthority(authorityJson: string | null): NodeAuthority {
+  if (!authorityJson) return { tools: null, credentials: null, budgetMicros: null };
+  try {
+    const v = JSON.parse(authorityJson) as Partial<NodeAuthority>;
+    return {
+      tools: Array.isArray(v.tools) ? v.tools.filter((t): t is string => typeof t === "string") : null,
+      credentials: Array.isArray(v.credentials)
+        ? v.credentials.filter((c): c is string => typeof c === "string")
+        : null,
+      budgetMicros: typeof v.budgetMicros === "number" ? v.budgetMicros : null,
+    };
+  } catch {
+    // A corrupt envelope is the one case where "unrestricted" would be wrong:
+    // it would turn corruption into amplification. Fail CLOSED — a node whose
+    // ceiling cannot be read may delegate nothing.
+    return { tools: [], credentials: [], budgetMicros: 0 };
+  }
+}
+
+/** The ceiling a row imposes on its children. */
+export function ceilingOf(row: JobNodeRow): NodeCeiling {
+  return {
+    accountId: row.account_id,
+    bindingId: row.binding_id,
+    jobId: row.job_id ?? "",
+    depth: row.depth ?? 0,
+    authority: parseAuthority(row.authority_json),
+    privacy: isPrivacyClass(row.privacy) ? row.privacy : null,
+    dueAt: row.due_at,
+  };
+}
+
+/**
+ * The BINDING's ceiling — the top of every chain (§5: "the Job's ceiling is the
+ * binding, and every level below only lowers it").
+ *
+ * Read from `config_json.jobs`, which is optional and additive:
+ *   { tools?: string[], credentials?: string[], budgetMicros?: number,
+ *     maxNodes?: number, maxDepth?: number }
+ * Absent keys mean UNSET, not empty — a binding that never heard of Jobs must
+ * not be unable to run one (the same DefaultCase reasoning as the facet
+ * columns). Present keys bind hard: a binding that declares two tools caps
+ * every node of every Job it originates at those two, root included.
+ */
+export interface BindingJobConfig {
+  tools?: unknown;
+  credentials?: unknown;
+  budgetMicros?: unknown;
+  maxNodes?: unknown;
+  maxDepth?: unknown;
+}
+
+export function bindingCeiling(
+  accountId: string,
+  bindingId: string,
+  jobId: string,
+  cfg: BindingJobConfig | undefined,
+  facets: { privacy?: string | null; dueAt?: number | null },
+): NodeCeiling {
+  const strings = (v: unknown): string[] | null =>
+    Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : null;
+  return {
+    accountId,
+    bindingId,
+    jobId,
+    // The binding sits at depth −1 so the root lands at 0 through exactly the
+    // same `parent.depth + 1` every other level uses.
+    depth: -1,
+    authority: {
+      tools: strings(cfg?.tools),
+      credentials: strings(cfg?.credentials),
+      budgetMicros: typeof cfg?.budgetMicros === "number" ? cfg.budgetMicros : null,
+    },
+    privacy: isPrivacyClass(facets.privacy) ? facets.privacy : null,
+    dueAt: typeof facets.dueAt === "number" ? facets.dueAt : null,
+  };
+}
+
+/** What a caller asks for when starting a Job. Server-side callers only. */
+export interface JobSpec {
+  accountId: string;
+  bindingId: string;
+  /** The aggregate spend cap for the whole DAG, micro-USD. null = none. */
+  budgetMicros?: number | null;
+  /** Fan-out cap. Clamped to JOB_MAX_NODES_CEILING and the binding's. */
+  maxNodes: number;
+  /** Chain-depth cap — s17/§4's condition. Clamped the same way. */
+  maxDepth: number;
+  /** The root node's requested authority (attenuated against the binding). */
+  authority?: Pick<ChildRequest, "tools" | "credentials" | "budgetMicros">;
+  /** Facets the Job (and therefore every node) is created with. */
+  facets?: { privacy?: string | null; dueAt?: number | null; requires?: unknown };
+  /** The root node's context — `{kind: "job-node", op: "plan", plan}` for a planner. */
+  rootContext: Record<string, unknown>;
+  emailId?: string | null;
+}
+
+export type StartJobResult =
+  | { ok: true; jobId: string; rootId: string }
+  | { ok: false; refusals: Refusal[] };
+
+/**
+ * Create a Job and its root node.
+ *
+ * Trusted-caller API: today the callers are server-side (a test harness, and
+ * whatever s17 builds on top). It is written as if the caller were not trusted
+ * anyway — the root goes through the same attenuation as any child — because
+ * the day a JMAP `Job/set` exists is the day that assumption changes, and a
+ * ceiling that only applies below the root is not a ceiling.
+ */
+export async function startJob(env: Env, spec: JobSpec): Promise<StartJobResult> {
+  const binding = await env.DB.prepare(
+    `SELECT id, name, enabled, COALESCE(config_json, '{}') AS config_json
+       FROM agent_bindings WHERE account_id = ? AND id = ?`,
+  )
+    .bind(spec.accountId, spec.bindingId)
+    .first<{ id: string; name: string; enabled: number; config_json: string }>();
+  if (!binding) {
+    return { ok: false, refusals: [refusal("identity", spec.bindingId, "(none)", "no such binding on this account")] };
+  }
+  // The 008 kill switch, honored at creation exactly as AgentInvocation/set
+  // honors it: a Job against a disabled binding would be a DAG of rows no
+  // drain will ever touch.
+  if (binding.enabled !== 1) {
+    return {
+      ok: false,
+      refusals: [refusal("identity", binding.name, "an enabled binding", "the binding is disabled (008 kill switch)")],
+    };
+  }
+
+  let cfg: { jobs?: BindingJobConfig } = {};
+  try {
+    cfg = JSON.parse(binding.config_json) as { jobs?: BindingJobConfig };
+  } catch {
+    /* an unparseable config is an unset ceiling — same as absent */
+  }
+
+  const jobId = `job_${crypto.randomUUID()}`;
+  const rootId = `inv_${crypto.randomUUID()}`;
+  const ceiling = bindingCeiling(spec.accountId, spec.bindingId, jobId, cfg.jobs, spec.facets ?? {});
+
+  // Caps: the caller's ask, narrowed by the binding's and by the absolute
+  // ceilings. `Math.min` and not a refusal, because these are the caller's own
+  // safety rails rather than a claim about authority — asking for 1000 nodes
+  // gets you JOB_MAX_NODES_CEILING, which is the answer that keeps the Job
+  // runnable AND bounded.
+  const maxNodes = Math.max(
+    1,
+    Math.min(spec.maxNodes, JOB_MAX_NODES_CEILING, numberOr(cfg.jobs?.maxNodes, JOB_MAX_NODES_CEILING)),
+  );
+  const maxDepth = Math.max(
+    0,
+    Math.min(spec.maxDepth, JOB_MAX_DEPTH_CEILING, numberOr(cfg.jobs?.maxDepth, JOB_MAX_DEPTH_CEILING)),
+  );
+  const budgetMicros =
+    spec.budgetMicros === undefined || spec.budgetMicros === null
+      ? typeof cfg.jobs?.budgetMicros === "number"
+        ? cfg.jobs.budgetMicros
+        : null
+      : typeof cfg.jobs?.budgetMicros === "number"
+        ? Math.min(spec.budgetMicros, cfg.jobs.budgetMicros)
+        : spec.budgetMicros;
+
+  // The root, attenuated against the binding. `key` and `context` ride the
+  // same request shape a planner's tasks use — one code path, one set of rules.
+  const rooted = attenuateChild(ceiling, {
+    key: "root",
+    ...(spec.authority ?? {}),
+    privacy: spec.facets?.privacy ?? undefined,
+    dueAt: spec.facets?.dueAt ?? undefined,
+    context: spec.rootContext,
+    ...(spec.emailId ? { emailId: spec.emailId } : {}),
+  });
+  if (!rooted.ok) return { ok: false, refusals: rooted.refusals };
+
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO jobs (id, account_id, binding_id, binding_name, root_invocation_id,
+                         budget_micros, max_nodes, max_depth, facets_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      jobId,
+      spec.accountId,
+      binding.id,
+      binding.name,
+      rootId,
+      budgetMicros,
+      maxNodes,
+      maxDepth,
+      JSON.stringify(spec.facets ?? {}),
+      now,
+    ),
+    env.DB.prepare(
+      `INSERT INTO agent_invocations
+         (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at,
+          due_at, privacy, requires_json, job_id, parent_id, needs_json, depth, authority_json)
+       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 0, ?)`,
+    ).bind(
+      rootId,
+      spec.accountId,
+      binding.id,
+      binding.name,
+      rooted.child.emailId,
+      JSON.stringify(rooted.child.context),
+      now,
+      rooted.child.dueAt,
+      rooted.child.privacy,
+      spec.facets?.requires !== undefined ? JSON.stringify(spec.facets.requires) : null,
+      jobId,
+      JSON.stringify(rooted.child.authority),
+    ),
+  ]);
+
+  await commitChanges(env.ACCOUNT_DO, spec.accountId, [
+    { collection: "AgentInvocation", created: [rootId], updated: [], destroyed: [] },
+  ]);
+  return { ok: true, jobId, rootId };
+}
+
+/**
+ * THE PLANNER'S OUTPUT BECOMES TASKS — the chokepoint.
+ *
+ * Every task is attenuated against the PLANNER NODE (not against the Job, not
+ * against the binding): the chain is what makes depth 3 as safe as depth 1,
+ * because a node that already gave up a tool cannot hand it to its child. Then
+ * one guarded INSERT creates them all or none.
+ *
+ * `needs` are plan-local keys and are rewritten here to the generated
+ * invocation ids — a planner never sees or names a row id, which is why it
+ * cannot wire a dependency onto an unrelated invocation, and why forward
+ * references (and therefore cycles) are unrepresentable.
+ *
+ * The children do NOT `need` their parent, deliberately: `parent_id` is context
+ * and authority, `needs` is execution ordering, and conflating the two is the
+ * mistake jobs-and-facets §5 names. A task is claimable the instant it exists —
+ * by a DIFFERENT runtime, while the planner is still writing its own result row.
+ */
+export async function expandPlan(env: Env, parent: JobNodeRow, plan: unknown): Promise<ExpandResult> {
+  if (!parent.job_id) {
+    return { ok: false, refusals: [refusal("job", "(none)", "a job id", "this invocation is not part of a Job")] };
+  }
+  const job = await env.DB.prepare(
+    `SELECT id, budget_micros, max_nodes, max_depth FROM jobs WHERE account_id = ? AND id = ?`,
+  )
+    .bind(parent.account_id, parent.job_id)
+    .first<{ id: string; budget_micros: number | null; max_nodes: number; max_depth: number }>();
+  if (!job) {
+    return { ok: false, refusals: [refusal("job", parent.job_id, "an existing Job", "no such Job row")] };
+  }
+
+  const tasks = (plan as PlanSpec | null)?.tasks;
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    return {
+      ok: false,
+      refusals: [refusal("needs", JSON.stringify(plan ?? null) ?? "null", "{ tasks: [...] }", "a plan must be a non-empty task list")],
+    };
+  }
+
+  // Usage: what the Job has already committed. `reservedMicros` sums the
+  // DECLARED budgets of existing nodes rather than their spend — a plan is
+  // refused for over-committing before a cent is spent, which is the only
+  // moment at which refusing it is free.
+  const usage = await env.DB.prepare(
+    `SELECT COUNT(*) AS n,
+            COALESCE(SUM(COALESCE(json_extract(authority_json, '$.budgetMicros'), 0)), 0) AS reserved
+       FROM agent_invocations WHERE account_id = ? AND job_id = ?`,
+  )
+    .bind(parent.account_id, parent.job_id)
+    .first<{ n: number; reserved: number }>();
+
+  const result = attenuatePlan(
+    ceilingOf(parent),
+    tasks as ChildRequest[],
+    { maxNodes: job.max_nodes, maxDepth: job.max_depth, budgetMicros: job.budget_micros },
+    { nodeCount: usage?.n ?? 0, reservedMicros: usage?.reserved ?? 0 },
+  );
+  if (!result.ok) return { ok: false, refusals: result.refusals };
+
+  const ids = new Map(result.children.map((c) => [c.key, `inv_${crypto.randomUUID()}`]));
+  const now = Date.now();
+  const changes = await insertChildren(env, parent, job, result.children, ids, now);
+  if (changes !== result.children.length) {
+    // The pure check passed and the SQL guard still refused: a sibling planner
+    // expanded the same Job between the two. Nothing was written (one
+    // statement, all-or-nothing), so this is a clean refusal, not a repair.
+    return {
+      ok: false,
+      refusals: [
+        refusal(
+          "fanout",
+          String((usage?.n ?? 0) + result.children.length),
+          `${job.max_nodes} nodes / depth ${job.max_depth} / ${job.budget_micros ?? "unbounded"}µ$`,
+          "the Job's caps were reached by a concurrent expansion; nothing was created",
+        ),
+      ],
+    };
+  }
+
+  const created = result.children.map((c) => ({ key: c.key, id: ids.get(c.key)! }));
+  await commitChanges(env.ACCOUNT_DO, parent.account_id, [
+    { collection: "AgentInvocation", created: created.map((c) => c.id), updated: [], destroyed: [] },
+  ]);
+  return { ok: true, created };
+}
+
+/**
+ * THE GUARDED INSERT — every child, or none, in ONE statement.
+ *
+ * Three guards ride the same WHERE, and they are the SQL twins of the caps
+ * `attenuatePlan` already checked:
+ *   node count + N ≤ max_nodes      the fan-out cap
+ *   child depth   ≤ max_depth       the chain-depth cap
+ *   reserved + Σ  ≤ budget_micros   the shared budget (a reservation, so it
+ *                                    bites before any money moves)
+ *
+ * One statement rather than N, deliberately: D1's `batch` is atomic on ERROR,
+ * but a guarded INSERT that matches nothing is not an error — it writes zero
+ * rows and returns success. N statements could therefore leave half a plan
+ * standing, with join nodes waiting forever on tasks that were never created.
+ * A single `INSERT … SELECT … WHERE` evaluates the guard once for the whole
+ * batch and inserts N rows or 0.
+ */
+async function insertChildren(
+  env: Env,
+  parent: JobNodeRow,
+  job: { id: string; budget_micros: number | null; max_nodes: number; max_depth: number },
+  children: readonly AttenuatedChild[],
+  ids: Map<string, string>,
+  now: number,
+): Promise<number> {
+  const COLUMNS = 15;
+  const rowSelect = `SELECT ${new Array(COLUMNS).fill("?").join(", ")}`;
+  const values: unknown[] = [];
+  for (const c of children) {
+    values.push(
+      ids.get(c.key)!,
+      c.accountId,
+      c.bindingId,
+      parent.binding_name,
+      "pending",
+      c.emailId,
+      // The plan-local key rides the context as `jobKey`: it is how a progress
+      // surface names a node ("summarize-b") without inventing a column, and
+      // the harness owns that field — a plan that sets its own is overwritten.
+      JSON.stringify({ ...c.context, jobKey: c.key }),
+      now,
+      c.dueAt,
+      c.privacy,
+      c.jobId,
+      parent.id,
+      JSON.stringify(c.needs.map((k) => ids.get(k)!)),
+      c.depth,
+      JSON.stringify(c.authority),
+    );
+  }
+  const reserving = children.reduce((sum, c) => sum + (c.authority.budgetMicros ?? 0), 0);
+
+  const res = await env.DB.prepare(
+    `INSERT INTO agent_invocations
+       (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at,
+        due_at, privacy, job_id, parent_id, needs_json, depth, authority_json)
+     SELECT * FROM (${children.map(() => rowSelect).join(" UNION ALL ")})
+      WHERE (SELECT COUNT(*) FROM agent_invocations n
+              WHERE n.account_id = ? AND n.job_id = ?) + ? <= (SELECT max_nodes FROM jobs WHERE account_id = ? AND id = ?)
+        AND ? <= (SELECT max_depth FROM jobs WHERE account_id = ? AND id = ?)
+        AND (SELECT COALESCE(SUM(COALESCE(json_extract(r.authority_json, '$.budgetMicros'), 0)), 0)
+               FROM agent_invocations r WHERE r.account_id = ? AND r.job_id = ?) + ?
+            <= COALESCE((SELECT budget_micros FROM jobs WHERE account_id = ? AND id = ?), 9e18)`,
+  )
+    .bind(
+      ...values,
+      parent.account_id,
+      job.id,
+      children.length,
+      parent.account_id,
+      job.id,
+      (parent.depth ?? 0) + 1,
+      parent.account_id,
+      job.id,
+      parent.account_id,
+      job.id,
+      reserving,
+      parent.account_id,
+      job.id,
+    )
+    .run();
+  return res.meta.changes ?? 0;
+}
+
+/**
+ * A node's dependency results, as CONTEXT — the join step (§3: "join nodes
+ * receive their dependencies' results as context").
+ *
+ * Ordered by the node's own `needs` array rather than by the database, so a
+ * synthesis reads its inputs in the order its planner listed them; a dependency
+ * whose row vanished is skipped rather than faked. Only `done` deps can be here
+ * at all — the claim gate would not have let this node be claimed otherwise.
+ */
+export async function joinContext(
+  env: Env,
+  node: JobNodeRow,
+): Promise<Array<{ id: string; result: unknown }>> {
+  let needs: string[] = [];
+  try {
+    const parsed = JSON.parse(node.needs_json ?? "[]") as unknown;
+    if (Array.isArray(parsed)) needs = parsed.filter((x): x is string => typeof x === "string");
+  } catch {
+    return [];
+  }
+  if (needs.length === 0) return [];
+  const marks = needs.map(() => "?").join(",");
+  const { results } = await env.DB.prepare(
+    `SELECT id, result_json FROM agent_invocations
+      WHERE account_id = ? AND id IN (${marks})`,
+  )
+    .bind(node.account_id, ...needs)
+    .all<{ id: string; result_json: string | null }>();
+  const byId = new Map(results.map((r) => [r.id, r.result_json]));
+  return needs
+    .filter((id) => byId.has(id))
+    .map((id) => {
+      const raw = byId.get(id) ?? null;
+      let result: unknown = null;
+      try {
+        result = raw ? JSON.parse(raw) : null;
+      } catch {
+        result = raw;
+      }
+      return { id, result };
+    });
+}
+
+/** A refusal from the harness itself, in the same shape the pure module emits. */
+function refusal(axis: Refusal["axis"], requested: string, ceiling: string, why: string): Refusal {
+  return { key: "(job)", axis, requested, ceiling, why };
+}
+
+function numberOr(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+
+export { describeRefusals };

@@ -26,6 +26,29 @@ node tools/e2e-calendar.mjs    # Phase 4: JSCalendar core — recurrence/DST/ove
 node tools/e2e-caldav.mjs      # Phase 5: anglebrackets CalDAV — iCalendar, time-range, sync
 ```
 
+`e2e-mcp-public.mjs` is the odd one out: it runs against a **deployed**
+origin, not local dev, because what it verifies is the discovery chain a
+stranger's client walks — hostnames, TLS, well-known paths and the
+agent→oauth hop, none of which a local `wrangler dev` has.
+
+```bash
+# Phase A only — discovery + refusals. No credentials, read-only, safe on prod.
+node tools/e2e-mcp-public.mjs
+
+# Phases A and B — the full PKCE dance, ending in a real tools/call.
+BM_E2E_EMAIL=you@example.com BM_E2E_PASSWORD='…' node tools/e2e-mcp-public.mjs
+
+# Point it somewhere else (a preview deploy, say):
+MCP_ORIGIN=https://mcp.example.com AUTH_ORIGIN=https://auth.example.com \
+  node tools/e2e-mcp-public.mjs
+```
+
+Phase B **writes** to whatever it runs against: dynamic client registration
+creates a client, and consent creates a grant plus an `oauth_consents` row.
+Both are revocable, and the run prints the `client_id` it made. Phase B is
+skipped with a notice when credentials are absent rather than passing quietly
+— a harness that proves less than it claims is worse than one that says so.
+
 `e2e-grants.mjs` needs three workers on one `--persist-to` state dir,
 seeded with `tools/fixtures/grants-e2e-seed.sql` on top of the schemas
 (fixed dev tokens for eric/carol/editor — local only):

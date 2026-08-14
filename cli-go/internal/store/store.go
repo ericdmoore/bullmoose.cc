@@ -7,7 +7,9 @@
 // The driver is pure-Go modernc.org/sqlite, NOT cgo mattn/go-sqlite3 —
 // devPlan.md:176 DECIDED this, because cgo forfeits the effortless cross-compile
 // that is most of the reason for the Go port (arch.md §1). The read-only wave-1
-// commands (mailboxes, search, log, accounts) sit on this.
+// commands (mailboxes, search, log, accounts) sit on this, as do wave 2's two
+// mirror touches: `read`'s owner lookup and `send`'s post-send reconcile
+// (emails.go).
 package store
 
 import (
@@ -40,11 +42,13 @@ func DBPath(dbFlag string) string {
 	return filepath.Join(home, ".bullmoose", "mail.db")
 }
 
-// Open opens the mirror. Reads only — the wave-1 commands never write — so it
-// does NOT recreate the schema (db.ts:80 openDb does, because it must also serve
-// first-run writers). On a not-yet-configured or absent file the config lookups
-// in RequireSettings simply come back empty and produce the usage error, which
-// is what db.ts:150 does too.
+// Open opens the mirror. It does NOT recreate the schema (db.ts:80 openDb does,
+// because it must also serve first-run writers) — reads are the overwhelming
+// majority, and the one writer (emails.go's post-send reconcile, wave 2) is
+// best-effort by contract: on a mirror whose tables do not exist yet, its write
+// fails silently and the next `bullmoose sync` catches up. On a not-yet-configured
+// or absent file the config lookups in RequireSettings simply come back empty and
+// produce the usage error, which is what db.ts:150 does too.
 func Open(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {

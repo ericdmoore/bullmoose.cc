@@ -8,26 +8,92 @@ import (
 
 // args is the parsed view a native command needs. It is intentionally NARROW:
 // delegate.Dispatch only routes an invocation here when every flag it carries is
-// one this set understands (delegate/native.go ownedNatively), so this parser
-// never has to reject an unknown flag or render help — those went to Node. That
-// keeps the whole flag grammar and the help system (packages/cli/src/help.ts,
-// ~1k lines) on the TypeScript side until a later wave.
+// one the TARGET command understands (delegate/native.go ownedNatively, fed from
+// this package's registry), so this parser never has to reject an unknown flag or
+// render help — those went to Node. That keeps the whole flag grammar and the
+// help system (packages/cli/src/help.ts, ~1k lines) on the TypeScript side until
+// a later wave.
 type args struct {
 	JSON        bool
 	IDs         bool
+	Raw         bool // `read --raw` — the RFC 5322 source
 	DB          string
 	Account     string
 	Mailbox     string
 	N           string // -n / --n, default "20" as main.ts:159
 	Positionals []string
+
+	// ---- compose (`send`, main.ts:86-93) ----
+	//
+	// To/CC/BCC are `multiple: true` in the parseArgs spec, so repetition
+	// ACCUMULATES rather than overwrites; each element may itself be a
+	// comma-separated list, which splitAddresses flattens (main.ts:767).
+	To       []string
+	CC       []string
+	BCC      []string
+	Subject  string
+	From     string
+	Identity string
+	File     string
+	Body     string
+	// HasBody records PRESENCE, not truthiness: main.ts:778 tests
+	// `opts.body !== undefined`, so `--body ""` is an explicit empty body and
+	// must NOT fall through to stdin.
+	HasBody bool
+
+	// ---- the credential gate (`login`, `init`, `token`) ----
+	//
+	// Every flag here records PRESENCE beside its value, for the same reason
+	// --body does, and here it is load-bearing repeatedly. All of main.ts's reads
+	// are `??`, which is nullish — NOT falsy — so an explicitly empty flag is a
+	// value:
+	//
+	//	--scopes ""    a usage error, not "the server default" (scopes.ts:57);
+	//	               absent-vs-empty is the whole of the cli/007 fix
+	//	--password ""  an explicit empty password (the vector has a case for it),
+	//	               not a reason to open a prompt the user did not ask for
+	//	--token ""     `init`'s `opts.token ?? boot.token` keeps the empty flag and
+	//	               refuses, rather than silently using the bootstrap file's
+	Base       string
+	HasBase    bool
+	URL        string // `init --url`, the documented alias for --base
+	Token      string
+	HasToken   bool
+	HasAccount bool
+	Name       string
+	Scopes     string
+	HasScopes  bool
+	// Password is never printed, never logged and never stored. It exists in this
+	// struct for the length of one derivation; what travels is the derived key.
+	Password    string
+	HasPassword bool
+	Offline     bool
+	DryRun      bool
 }
 
-// ownedValue mirrors the value-taking subset of main.ts:64-163 that the wave-1
-// commands actually read. Kept in lockstep with delegate's ownedNatively guard:
-// a flag parsed here as value-taking must also be skipped there, or the two
-// disagree about where a token ends.
-var ownedValue = map[string]bool{"db": true, "account": true, "mailbox": true, "n": true}
+// scopesFlag returns --scopes the way scopes.ParseFlag wants it: nil for absent,
+// a pointer to the (possibly empty) value for present.
+func (a args) scopesFlag() *string {
+	if !a.HasScopes {
+		return nil
+	}
+	return &a.Scopes
+}
 
+// at is positionals[n] or "" — main.ts reads a missing positional as undefined
+// and every consumer treats that as absent.
+func (a args) at(n int) string {
+	if n < len(a.Positionals) {
+		return a.Positionals[n]
+	}
+	return ""
+}
+
+// Which command owns which flag now lives in registry.go, one entry per command,
+// and is pushed to delegate.RegisterFlags from there — so the guard and the
+// parser below are fed from the same declaration rather than from two lists that
+// have to be kept level by hand.
+//
 // parse walks argv the way node:util parseArgs (main.ts:65) would for this
 // narrow flag set: `--flag value`, `--flag=value`, `-n value`, booleans, and a
 // `--` end-of-options marker. Positionals[0] is the command name (main.ts:183).
@@ -60,14 +126,54 @@ func parse(argv []string) args {
 				a.JSON = true
 			case "ids":
 				a.IDs = true
+			case "raw":
+				a.Raw = true
 			case "db":
 				a.DB = value()
 			case "account":
 				a.Account = value()
+				a.HasAccount = true
 			case "mailbox":
 				a.Mailbox = value()
 			case "n":
 				a.N = value()
+			case "to":
+				a.To = append(a.To, value())
+			case "cc":
+				a.CC = append(a.CC, value())
+			case "bcc":
+				a.BCC = append(a.BCC, value())
+			case "subject":
+				a.Subject = value()
+			case "from":
+				a.From = value()
+			case "identity":
+				a.Identity = value()
+			case "file":
+				a.File = value()
+			case "body":
+				a.Body = value()
+				a.HasBody = true
+			case "base":
+				a.Base = value()
+				a.HasBase = true
+			case "url":
+				a.URL = value()
+			case "token":
+				a.Token = value()
+				a.HasToken = true
+			case "name":
+				a.Name = value()
+			case "scopes":
+				a.Scopes = value()
+				a.HasScopes = true
+			case "password":
+				a.Password = value()
+				a.HasPassword = true
+			case "offline":
+				a.Offline = true
+			case "dry-run":
+				a.DryRun = true
 			}
 
 		case arg == "-n":

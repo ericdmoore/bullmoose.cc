@@ -1233,6 +1233,15 @@ function buildDecision(ctx: RequestContext, raw: unknown, kind: string): Record<
 function proposalToJmap(r: ProposalJoinRow, dueAt: number | null = null): Record<string, unknown> {
   return {
     id: r.id,
+    // s10 T7 — WHICH account this row came off. Redundant inside a single
+    // /get response (whose envelope already carries `accountId`) and
+    // load-bearing the moment a client merges the queues of every account a
+    // human can reach: a supervisor sees Emily's ask beside Allen's, and
+    // "which agent, on which account" must survive the merge. Carrying it on
+    // the ROW rather than reconstructing it client-side is what keeps the Go
+    // CLI's `--json` honest — one raw server line per proposal, no field the
+    // client invented.
+    accountId: r.account_id,
     agent: r.binding_name, // read from the invocation (§8.5), not stored twice
     kind: r.kind,
     tier: r.tier,

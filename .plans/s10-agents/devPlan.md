@@ -237,6 +237,38 @@ they do not exist yet, so the dossier shows no score today. s10 does not build t
 is named here so the agent area's completeness is not overstated. When s07 T5 lands, the score
 renders in the activity panel this section built the frame for.
 
+### T7 — Proposals must reach the human they wait on · *found live, 2026-08-13*
+
+**The bug**, observed on the first real end-to-end run: EditorEmily produced a `reply-draft`
+proposal, it was real and `pending` — and `/approvals` told Eric **"Nothing is waiting on
+you."** Every layer was individually correct. The invocation ran on Emily's binding, the
+proposal was written to the account owning that binding, and the UI refused to show another
+principal's data. The *composition* is what fails.
+
+```
+eric@bullmoose.cc   → account …850b74f3 → principal p_03f2bbe3
+editor@bullmoose.cc → account …ca58ac53 → principal p_9e016b64   ← the proposal lives here
+grants between them → none
+```
+
+Agents are separate principals **by design** (agent mailboxes, pattern B). So a
+single-account approvals queue can *never* show a human their agents' work: the queue is
+human-scoped by intent and account-scoped by implementation, and those do not match.
+
+Two halves, and they are not alternatives:
+
+- **Provisioning must mint a supervisory grant.** Creating an agent should, by default, let
+  its owner see what it proposes. `POST /agent-bindings` and `POST /bouncer` currently mint
+  an agent account with **no grant back to the operator** — so every new agent is born
+  invisible. The grant is the right model (not a special case): supervising an agent is a
+  capability, visible and revocable like any other.
+- **`/approvals` must query every reachable account**, not just the logged-in one — owned
+  *and* granted. The Go CLI's `approvals` has the same defect.
+
+**Done when:** a freshly provisioned agent's first proposal appears in its owner's
+`/approvals` and `bullmoose approvals` without a manual grant; revoking the supervisory
+grant removes it; another tenant's proposals never appear.
+
 ---
 
 ## Sequencing

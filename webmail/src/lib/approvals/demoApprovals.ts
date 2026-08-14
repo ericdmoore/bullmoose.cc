@@ -103,7 +103,10 @@ export function demoProposals(now: number): ActionProposal[] {
   const hour = 3600_000;
   const day = 24 * hour;
 
-  return [
+  // `accountId` is stamped once at the end rather than typed into eleven
+  // fixtures: the demo has ONE account, and a per-row literal would be eleven
+  // chances to drift from the account the fake backend answers as (s10 T7).
+  const rows: Omit<ActionProposal, "accountId">[] = [
     {
       // The marquee row: tier 2, editable, and NEAR EXPIRY — both clocks loud.
       id: "ap-reply-elk",
@@ -471,6 +474,7 @@ export function demoProposals(now: number): ActionProposal[] {
       claimedAt: null,
     },
   ];
+  return rows.map((r) => ({ ...r, accountId: ACCOUNT }));
 }
 
 // ── the backend ───────────────────────────────────────────────────────────

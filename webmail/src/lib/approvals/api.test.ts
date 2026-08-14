@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeJmapClient } from "../jmap/FakeJmapClient";
-import { correctDueAt, decide, loadQueue } from "./api";
+import { correctDueAt, decide, loadQueue, loadQueues } from "./api";
 import { installApprovalsDemo, type ApprovalsDemoBackend } from "./demoApprovals";
 import { describeReason } from "./rows";
 
@@ -38,6 +38,120 @@ describe("loadQueue", () => {
     const pending = proposals.filter((p) => p.status === "pending");
     expect(new Set(pending.map((p) => p.tier))).toEqual(new Set([1, 2, 3]));
     expect(pending.some((p) => p.kind === "grant-request")).toBe(true);
+  });
+});
+
+/**
+ * s10 T7 — the MERGED queue. An agent's proposals live on the agent's own
+ * account (its own principal), reachable only through the supervisory grant
+ * provisioning mints, so the queue must ask every account the human can reach.
+ * The fake server here answers per account, which is what makes the merge
+ * (and its failure modes) testable without a server.
+ */
+describe("loadQueues — every reachable account, one round trip", () => {
+  const OWN = "acct-fake";
+  const EMILY = "acct-emily";
+
+  /** Two accounts, each with one proposal, plus optional per-account refusal. */
+  function twoAccounts(opts: { refuse?: string } = {}): FakeJmapClient {
+    const rows: Record<string, Record<string, unknown>> = {
+      [OWN]: { id: "own-1", accountId: OWN, agent: "self-note", kind: "create-contact", tier: 1,
+        subject: {}, payload: {}, editedPayload: null, rationale: "mine", evidence: [],
+        status: "pending", decision: null, createdAt: new Date(NOW - 60_000).toISOString(),
+        decidedAt: null, holdUntil: null, expiresAt: null, dueAt: null, question: null,
+        amendments: [], invocationStatus: "done", claimedAt: null },
+      [EMILY]: { id: "emily-1", accountId: EMILY, agent: "editor-emily", kind: "reply-draft", tier: 3,
+        subject: {}, payload: {}, editedPayload: null, rationale: "hers", evidence: [],
+        status: "pending", decision: null, createdAt: new Date(NOW - 30_000).toISOString(),
+        decidedAt: null, holdUntil: null, expiresAt: null, dueAt: null, question: null,
+        amendments: [], invocationStatus: "done", claimedAt: null },
+    };
+    const refusal = (accountId: string) =>
+      opts.refuse === accountId
+        ? ([
+            "error",
+            { type: "accountNotFound", description: "the grant was revoked" },
+          ] as ReturnType<Parameters<FakeJmapClient["setHandler"]>[1]>)
+        : undefined;
+    return new FakeJmapClient({
+      handlers: {
+        "ActionProposal/query": (args) => {
+          const accountId = args.accountId as string;
+          return (
+            refusal(accountId) ?? {
+              accountId,
+              ids: [rows[accountId]!.id],
+              queryState: `state-${accountId}`,
+              position: 0,
+              canCalculateChanges: false,
+            }
+          );
+        },
+        "ActionProposal/get": (args) => {
+          const accountId = args.accountId as string;
+          return (
+            refusal(accountId) ?? {
+              accountId,
+              state: `state-${accountId}`,
+              list: [rows[accountId]],
+              notFound: [],
+            }
+          );
+        },
+      },
+    });
+  }
+
+  it("merges both accounts' proposals, each row keeping its own account", async () => {
+    const client = twoAccounts();
+    const res = await loadQueues(client, [OWN, EMILY]);
+    expect(res.proposals.map((p) => p.id)).toEqual(["own-1", "emily-1"]);
+    // The row that a single-account queue could never have shown.
+    const emily = res.proposals.find((p) => p.id === "emily-1")!;
+    expect(emily.accountId).toBe(EMILY);
+    expect(emily.agent).toBe("editor-emily");
+    // ONE batch: 2 invocations per account, not one request per account.
+    expect(client.sentBatches.length).toBe(1);
+    expect(client.sentBatches[0]!.length).toBe(4);
+  });
+
+  it("keeps the state strings PER account — one ifInState cannot serve both", async () => {
+    const res = await loadQueues(twoAccounts(), [OWN, EMILY]);
+    expect(res.states).toEqual({ [OWN]: `state-${OWN}`, [EMILY]: `state-${EMILY}` });
+  });
+
+  it("one account's refusal is reported, and the rest of the queue survives", async () => {
+    const res = await loadQueues(twoAccounts({ refuse: EMILY }), [OWN, EMILY]);
+    expect(res.proposals.map((p) => p.id)).toEqual(["own-1"]);
+    // Not swallowed: a silently dropped account is exactly the original bug.
+    expect(res.failures[EMILY]).toMatch(/revoked/);
+    expect(res.failures[OWN]).toBeUndefined();
+  });
+
+  it("throws only when EVERY account refused", async () => {
+    await expect(loadQueues(twoAccounts({ refuse: OWN }), [OWN])).rejects.toThrow(/revoked/);
+  });
+
+  it("asks nothing when there is nothing to ask", async () => {
+    const client = twoAccounts();
+    expect(await loadQueues(client, [])).toEqual({ proposals: [], states: {}, failures: {} });
+    expect(client.sentBatches.length).toBe(0);
+  });
+
+  it("stamps the requested account on a pre-T7 row that carries none", async () => {
+    const client = new FakeJmapClient({
+      handlers: {
+        "ActionProposal/query": (args) => ({ accountId: args.accountId, ids: ["legacy"] }),
+        "ActionProposal/get": (args) => ({
+          accountId: args.accountId,
+          state: "0",
+          list: [{ id: "legacy", agent: "emily", kind: "reply-draft", tier: 3, status: "pending" }],
+          notFound: [],
+        }),
+      },
+    });
+    const res = await loadQueues(client, [EMILY]);
+    expect(res.proposals[0]!.accountId).toBe(EMILY);
   });
 });
 

@@ -13,10 +13,12 @@ import {
   claimGateSql,
   freeRuntimeLiveCutoff,
   freeRuntimeLiveSql,
+  needsSatisfiedSql,
   notPinnedSql,
   type ClaimantIdentity,
 } from "@bullmoose/scheduling";
 import { proposeBudgetOverruns } from "./budgetOverrun.js";
+import { runJobNode } from "./jobNode.js";
 import { proposeMidBandHolds } from "./midBandProposal.js";
 import { classifyScreened } from "./bouncerClassify.js";
 import { runBouncer } from "./bouncer.js";
@@ -24,9 +26,10 @@ import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
 import { answerInfoRequest, proposeReply, expireStaleProposals } from "./proposals.js";
+import { docsResponse, MCP_DOCS } from "./docs.js";
 import { introspect, isLocalToken, principalFromProps } from "./oauthBridge.js";
 import { handleVault, handleVaultVerify } from "./vault.js";
-import { handleWellKnown, originAllowed, unauthorized } from "./wellKnown.js";
+import { handleWellKnown, originAllowed, resourceUri, unauthorized } from "./wellKnown.js";
 import type { Principal } from "@bullmoose/auth-core/principal";
 import {
   callWithFallback,
@@ -134,7 +137,7 @@ export default {
       const raw = authz.slice(7);
       let oauthPrincipal: Principal | undefined;
       if (!isLocalToken(raw)) {
-        const grant = await introspect(env.OAUTH, raw);
+        const grant = await introspect(env.OAUTH, raw, resourceUri(url, env));
         // A failed hop refuses. It must never fall through to the local
         // check — an AS outage turning into an authorization bypass is the
         // classic fail-open bug, and the local check would reject it anyway
@@ -169,7 +172,14 @@ export default {
     if (url.pathname === "/vault/credentials" || url.pathname.startsWith("/vault/credentials/")) {
       return handleVault(request, env);
     }
-    return new Response("bullmoose-agent", { status: url.pathname === "/" ? 200 : 404 });
+    // Documentation at the root and at /docs. The root used to return the
+    // 15-byte string `bullmoose-agent` — a fine health check, and useless to
+    // anyone who pasted the hostname into a browser, which is exactly what a
+    // developer wiring up a client does first. /health keeps that string for
+    // anything watching it.
+    if (url.pathname === "/" || url.pathname === "/docs") return docsResponse(MCP_DOCS);
+    if (url.pathname === "/health") return new Response("bullmoose-agent");
+    return new Response("bullmoose-agent", { status: 404 });
   },
 
   // Retry net: pokes can die mid-flight; the pending row cannot.
@@ -326,6 +336,14 @@ async function drain(env: Env, _ctx: ExecutionContext): Promise<number> {
  *   claimFitSql    claiming work this runtime cannot satisfy (`requires_json`
  *                  beyond its declared vector) does not rescue the deadline;
  *                  it burns it on a run that must fail.
+ *   needsSatisfied s11 T7, and the same argument as fit: a Job node whose
+ *                  dependencies have not finished has no inputs, so claiming it
+ *                  past due converts a late run into a failed one. Execution
+ *                  ORDER is structural — it is not a policy the deadline gets to
+ *                  overrule. Such a node is deliberately NOT marked by pass 2
+ *                  either: the thing that is stuck is its blocker, and that is
+ *                  the row the alert belongs on. Alerting the dependent too
+ *                  would report one stall N times.
  *
  * Both exceptions land in the same place: the invariant is not "no past-due
  * invocation sits pending" but "…sits pending SILENTLY". What cannot be
@@ -367,6 +385,7 @@ async function claimOverdue(env: Env, claimant: ClaimantIdentity): Promise<numbe
          AND inv.due_at IS NOT NULL AND inv.due_at <= ?
          AND ${notPinnedSql("inv")}
          AND ${claimFitSql("inv")}
+         AND ${needsSatisfiedSql("inv")}
        ORDER BY inv.due_at LIMIT ${OVERDUE_BATCH}`,
     )
       .bind(selectNow, ...claimFitBinds(claimant))
@@ -382,7 +401,8 @@ async function claimOverdue(env: Env, claimant: ClaimantIdentity): Promise<numbe
          WHERE account_id = ? AND id = ? AND status = 'pending'
            AND due_at IS NOT NULL AND due_at <= ?
            AND ${notPinnedSql("agent_invocations")}
-           AND ${claimFitSql("agent_invocations")}`,
+           AND ${claimFitSql("agent_invocations")}
+           AND ${needsSatisfiedSql("agent_invocations")}`,
       )
         .bind(
           now,
@@ -574,6 +594,16 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   // bouncer binding's — the context carries its coordinates.
   if (context.kind === "bouncer-classify") {
     return classifyScreened(env, job, cfg, context, done);
+  }
+  // s11 T7: a STRUCTURAL node of a Job — the planner that emits tasks, or the
+  // join that synthesizes its dependencies' results. Dispatched by context
+  // kind for the same reason the two above are, plus one of its own: these
+  // nodes have no email context at all, and the requirement below would fail
+  // them. Every OTHER node of a Job falls through to the ordinary pipelines —
+  // that is what "nodes are ordinary invocations" means, and it is why a Job
+  // reorganizes work without touching how it egresses (jobs-and-facets §8.3).
+  if (context.kind === "job-node") {
+    return runJobNode(env, job, context, done);
   }
 
   if (!job.email_id) return done("failed", { note: "no email context" });
