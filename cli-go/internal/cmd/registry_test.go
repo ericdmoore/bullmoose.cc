@@ -64,6 +64,8 @@ func TestRegistryOwnsOnlyDeclaredFlags(t *testing.T) {
 		"to", "cc", "bcc", "subject", "from", "identity", "file", "body",
 		// wave 3, the credential gate: login / init / token.
 		"base", "url", "token", "name", "scopes", "password", "offline", "dry-run",
+		// the triage verbs (sVOL 019) and `sync`.
+		"add", "remove", "role", "force", "unset", "no-sync", "if-state", "blobs",
 	}
 	sort.Strings(parsed)
 	for name, s := range registry {
