@@ -43,6 +43,23 @@ func jsonList(raw json.RawMessage) string {
 	return buf.String()
 }
 
+// stateString is `String(r.newState)` (sync.ts:113) — the probe compares the
+// server's state to the stored cursor, and the TypeScript stringifies whatever
+// came back rather than assuming a string. An ABSENT newState is "undefined",
+// which cannot equal a real cursor, so the account is dirty; that is the answer
+// this function has to keep giving.
+func stateString(raw json.RawMessage) string {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return "undefined"
+	}
+	var s string
+	if err := json.Unmarshal(trimmed, &s); err == nil {
+		return s
+	}
+	return string(trimmed) // a number, a bool or null prints as its literal
+}
+
 // ParseAddresses decodes an address-list column/field for rendering. A malformed
 // list is empty rather than fatal — the row is already stored; failing to print
 // a sender is not worth losing the message over.

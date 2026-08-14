@@ -317,7 +317,7 @@ func (w *Watcher) readLoop(ctx context.Context, ch *channel, conn Socket) {
 // A failed pass is reported and dropped — the cursor is untouched, so the next
 // pass (push, fallback or reconnect) covers the same window.
 func (w *Watcher) runSync(ctx context.Context, ch *channel, reason string) {
-	stats, err := mirror.Sync(ctx, w.opts.DB, w.opts.Client, ch.account.ID)
+	stats, err := mirror.Sync(ctx, w.opts.DB, w.opts.Client, ch.account.ID, mirror.Options{})
 	if err != nil {
 		if ctx.Err() != nil {
 			return // shutting down; not a failure worth printing

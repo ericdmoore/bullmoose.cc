@@ -69,6 +69,27 @@ type args struct {
 	HasPassword bool
 	Offline     bool
 	DryRun      bool
+
+	// ---- the triage verbs (sVOL 019, triage.ts) ----
+	//
+	// Add/Remove are `multiple: true` in the parseArgs spec (main.ts:167), so
+	// repetition ACCUMULATES rather than overwrites: `--add '$flagged' --add
+	// '$important'` is two keywords, and a port that assigned would silently drop
+	// the first. Unlike --to they are NOT comma-split — a keyword may legitimately
+	// contain one.
+	Add     []string
+	Remove  []string
+	Role    string
+	Force   bool
+	Unset   bool
+	NoSync  bool
+	IfState string
+
+	// ---- sync ----
+	//
+	// Blobs is `--blobs <dir>`: mirror every message's RFC 5322 source beside the
+	// metadata. Absent means metadata only.
+	Blobs string
 }
 
 // scopesFlag returns --scopes the way scopes.ParseFlag wants it: nil for absent,
@@ -174,6 +195,22 @@ func parse(argv []string) args {
 				a.Offline = true
 			case "dry-run":
 				a.DryRun = true
+			case "add":
+				a.Add = append(a.Add, value())
+			case "remove":
+				a.Remove = append(a.Remove, value())
+			case "role":
+				a.Role = value()
+			case "force":
+				a.Force = true
+			case "unset":
+				a.Unset = true
+			case "no-sync":
+				a.NoSync = true
+			case "if-state":
+				a.IfState = value()
+			case "blobs":
+				a.Blobs = value()
 			}
 
 		case arg == "-n":

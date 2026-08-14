@@ -127,6 +127,14 @@ var registry = map[string]spec{
 	"token": {json: true, run: runToken,
 		value:   []string{"db", "name", "scopes"},
 		boolean: []string{"json", "ids", "dry-run"}},
+	// `sync` is the one-shot counterpart to `watch`, over the SAME engine
+	// (internal/mirror). It owns --blobs: the blob mirror is ported (mirror's
+	// downloadBlob), so an invocation that asks for it runs natively rather than
+	// delegating a flag the native path would otherwise have to ignore.
+	// DELIBERATELY ABSENT: --ids, which cmdSync does not read.
+	"sync": {json: true, run: runSync,
+		value:   []string{"db", "account", "blobs"},
+		boolean: []string{"json"}},
 	// watch has a Node twin, so byte-identity applies and it must declare every
 	// flag its native path consumes — `--exec` above all, since an undeclared one
 	// would silently delegate forever and the port would never run. It parses its
@@ -138,6 +146,39 @@ var registry = map[string]spec{
 		boolean:    []string{"json", "daemon", "status", "stop"},
 		run:        runWatch,
 	},
+}
+
+// triageVerbs is every spelling of a triage verb main.ts:368-376 routes to
+// cmdTriage. They share one spec because they share one implementation and one
+// flag grammar — `flag` reads --add/--remove as keywords and `label` reads them
+// as mailboxes, but the PARSE is identical, and a per-verb subset would mean
+// `archive --unset` delegating while `seen --unset` did not for no reason a user
+// could predict.
+//
+// `delete` is here as well as `rm` because main.ts declares both cases; runTriage
+// folds the alias.
+var triageVerbs = []string{
+	"flag", "seen", "move", "label", "archive", "junk", "trash", "rm", "delete",
+}
+
+// The flags cmdTriage actually reads (main.ts:377 + triage.ts's TriageOpts).
+//
+// DELIBERATELY ABSENT: --ids. TriageOpts carries it — every command module gets
+// the whole IoOpts spread — but triage.ts's report() never reads it, because a
+// triage verb's stdout is ALREADY bare ids. Claiming it would be the cli/008
+// shape in reverse: a flag the native path accepts and ignores.
+var (
+	triageValueFlags   = []string{"db", "account", "add", "remove", "role", "mailbox", "if-state"}
+	triageBooleanFlags = []string{"json", "dry-run", "force", "unset", "no-sync"}
+)
+
+func init() {
+	for _, verb := range triageVerbs {
+		registry[verb] = spec{
+			json: true, run: runTriage,
+			value: triageValueFlags, boolean: triageBooleanFlags,
+		}
+	}
 }
 
 // SupportsJSON reports whether the NATIVE command honours --json, and whether it

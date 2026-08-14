@@ -362,6 +362,14 @@ func TestInitCreatesAMirrorTheGoReadCommandsCanRead(t *testing.T) {
 // against the schema NODE builds from the canonical .sql files (db.ts:113's two
 // execs). A drifted embedded copy, a table Go created differently, or an FTS
 // option that only one side sets all show up here as a diff.
+//
+// It covers the mirror's CONTENT as well as its shape. A schema both runtimes
+// agree on is worth nothing if the rows a Go `sync` writes are not the rows a
+// Node `log` reads, so a second mirror here is created AND SYNCED by the Go
+// binary, and the Node side runs main.ts:1065's own log query over it. That is
+// the half decision 4 ("same file, same schema") is actually about: a user
+// mid-migration keeps their local mail, and a machine with both binaries gets the
+// same answers from either.
 func TestNodeCanReadTheMirrorGoCreated(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
@@ -381,6 +389,21 @@ func TestNodeCanReadTheMirrorGoCreated(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
 
+	// The second mirror: created by `init` and FILLED by `sync`, both native, from
+	// a server that has actually delivered mail. Its account id is the syncFake's,
+	// which the node script reads out of the file rather than being told.
+	mail := newSyncFake(t, "a_you")
+	mail.deliver("a_you",
+		syncMail{"em_1", "first message"},
+		syncMail{"em_2", "second message"})
+	syncedMirror := filepath.Join(dir, "go-synced.db")
+	if _, errOut, code := runIni(t, "--base", mail.base, "--token", "bm_1", "--db", syncedMirror); code != 0 {
+		t.Fatalf("init for the synced mirror: exit %d: %s", code, errOut)
+	}
+	if _, errOut, code := runCmd(t, runSync, syncedMirror, "sync"); code != 0 {
+		t.Fatalf("sync: exit %d: %s", code, errOut)
+	}
+
 	// The node side: open the GO-created file with node:sqlite (proving the file
 	// is readable by the other runtime at all), read the config rows the Node CLI
 	// would read, and build a fresh mirror from the canonical schema for
@@ -388,7 +411,7 @@ func TestNodeCanReadTheMirrorGoCreated(t *testing.T) {
 	script := `
 const { DatabaseSync } = require("node:sqlite");
 const fs = require("node:fs");
-const [goPath, freshPath, dataPlane, local] = process.argv.slice(1);
+const [goPath, freshPath, dataPlane, local, syncedPath] = process.argv.slice(1);
 
 const go = new DatabaseSync(goPath);
 const config = Object.fromEntries(
@@ -406,13 +429,38 @@ fresh.exec(fs.readFileSync(local, "utf8"));
 const nodeSchema = fresh.prepare(
   "SELECT type, name, sql FROM sqlite_master ORDER BY type, name").all();
 
-process.stdout.write(JSON.stringify({ config, goSchema, nodeSchema }));
+// The GO-SYNCED mirror, read with the Node CLI's OWN queries: cmdLog
+// (main.ts:1065) and cmdSearch's FTS join (main.ts:1090). Verbatim, so this fails
+// if a Go-written row is shaped in a way the TypeScript's SQL cannot see.
+const synced = new DatabaseSync(syncedPath);
+const accountId = synced.prepare("SELECT value FROM config WHERE key = 'accountId'").get().value;
+const log = synced.prepare(
+  ` + "`" + `SELECT e.id, e.account_id, e.subject, e.from_json, e.preview, e.received_at,
+     EXISTS (SELECT 1 FROM email_keywords k WHERE k.account_id = e.account_id
+             AND k.email_id = e.id AND k.keyword = '$seen') AS seen,
+     (SELECT group_concat(COALESCE(m.role, m.name)) FROM email_mailboxes em
+        JOIN mailboxes m ON m.account_id = em.account_id AND m.id = em.mailbox_id
+      WHERE em.account_id = e.account_id AND em.email_id = e.id) AS mailboxes
+   FROM emails e WHERE e.account_id = ? ORDER BY e.received_at DESC LIMIT 20` + "`" + `).all(accountId);
+const found = synced.prepare(
+  ` + "`" + `SELECT e.id FROM cli_fts f JOIN emails e ON e.id = f.email_id
+   WHERE e.account_id = ? AND cli_fts MATCH ?` + "`" + `).all(accountId, "second");
+const cursor = synced.prepare(
+  "SELECT email_state FROM sync_state WHERE account_id = ?").get(accountId);
+
+process.stdout.write(JSON.stringify({
+  config, goSchema, nodeSchema,
+  log: log.map((r) => ({ ...r, from: JSON.parse(r.from_json), from_json: undefined })),
+  found: found.map((r) => r.id),
+  cursor: cursor ? cursor.email_state : null,
+}));
 `
 	// Output(), NOT CombinedOutput(): node 22 prints an ExperimentalWarning for
 	// node:sqlite on stderr, and folding that into stdout would make the JSON
 	// unparseable and this test red for a reason that has nothing to do with the
 	// schemas. CI runs node 22 (mail-typecheck.yml), so this is not hypothetical.
-	cmd := exec.Command(node, "-e", script, goMirror, filepath.Join(dir, "node.db"), dataPlane, local)
+	cmd := exec.Command(node, "-e", script, goMirror, filepath.Join(dir, "node.db"),
+		dataPlane, local, syncedMirror)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -422,6 +470,20 @@ process.stdout.write(JSON.stringify({ config, goSchema, nodeSchema }));
 	var answer struct {
 		Config               map[string]string `json:"config"`
 		GoSchema, NodeSchema []struct{ Type, Name, SQL string }
+		Log                  []struct {
+			ID        string  `json:"id"`
+			AccountID string  `json:"account_id"`
+			Subject   string  `json:"subject"`
+			Preview   string  `json:"preview"`
+			Seen      int     `json:"seen"`
+			Mailboxes *string `json:"mailboxes"`
+			From      []struct {
+				Name  *string `json:"name"`
+				Email string  `json:"email"`
+			} `json:"from"`
+		} `json:"log"`
+		Found  []string `json:"found"`
+		Cursor *string  `json:"cursor"`
 	}
 	if err := json.Unmarshal(out, &answer); err != nil {
 		t.Fatalf("node said: %s (%v)", out, err)
@@ -430,6 +492,67 @@ process.stdout.write(JSON.stringify({ config, goSchema, nodeSchema }));
 	if answer.Config["accountId"] != "t_1__a_2" || answer.Config["token"] != "bm_1" {
 		t.Errorf("node read back %v — the Node CLI would not consider this mirror configured",
 			answer.Config)
+	}
+
+	// ---- the rows a Go `sync` wrote, as the Node CLI sees them --------------
+	if len(answer.Log) != 2 {
+		t.Fatalf("the Node CLI's log query found %d rows in a Go-synced mirror, want 2: %+v",
+			len(answer.Log), answer.Log)
+	}
+	// Newest first, and every column the human/--json renderers read is populated:
+	// a NULL mailboxes would print `[]` and mean "the join found nothing", which is
+	// how a membership row written under the wrong account surfaces.
+	for _, r := range answer.Log {
+		if r.AccountID != "a_you" || r.Preview != "preview" {
+			t.Errorf("row %s = %+v", r.ID, r)
+		}
+		if r.Mailboxes == nil || *r.Mailboxes != "inbox" {
+			t.Errorf("row %s has mailboxes %v — Node's join over the Go-written membership "+
+				"rows found nothing", r.ID, r.Mailboxes)
+		}
+		if r.Seen != 0 {
+			t.Errorf("row %s reads as seen; the fixture has no keywords", r.ID)
+		}
+		if len(r.From) != 1 || r.From[0].Email != "s@stub.test" {
+			t.Errorf("row %s from = %+v — from_json must survive JSON.parse", r.ID, r.From)
+		}
+	}
+	// The FTS index Go wrote is queryable by Node's own MATCH.
+	if len(answer.Found) != 1 || answer.Found[0] != "em_2" {
+		t.Errorf("Node's `search` over a Go-written cli_fts found %v, want [em_2]", answer.Found)
+	}
+	// And the cursor: a Node `sync` against this mirror would resume where Go
+	// stopped rather than re-paging the mailbox.
+	if answer.Cursor == nil || *answer.Cursor != "2" {
+		t.Errorf("sync_state.email_state = %v, want \"2\" — Node would not resume from Go's cursor",
+			answer.Cursor)
+	}
+	// The same file, read by the GO log command, must say the same thing: the two
+	// implementations are interchangeable on identical state, not merely
+	// non-destructive to each other.
+	goLog, _, code := runCmd(t, runLog, syncedMirror, "log", "--json")
+	if code != 0 {
+		t.Fatalf("go log over its own mirror exited %d", code)
+	}
+	goLines := strings.Split(strings.TrimRight(goLog, "\n"), "\n")
+	if len(goLines) != len(answer.Log) {
+		t.Errorf("go log returned %d rows, node's query %d — the same file, two answers",
+			len(goLines), len(answer.Log))
+	}
+	for i, line := range goLines {
+		var row struct {
+			ID        string  `json:"id"`
+			Subject   string  `json:"subject"`
+			Seen      int     `json:"seen"`
+			Mailboxes *string `json:"mailboxes"`
+		}
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			t.Fatalf("go log line %d is not JSON: %s", i, line)
+		}
+		n := answer.Log[i]
+		if row.ID != n.ID || row.Subject != n.Subject || row.Seen != n.Seen {
+			t.Errorf("row %d: go=%+v node=%+v", i, row, n)
+		}
 	}
 	goNames, nodeNames := schemaIndex(answer.GoSchema), schemaIndex(answer.NodeSchema)
 	for name, sql := range nodeNames {
