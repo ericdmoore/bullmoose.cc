@@ -117,6 +117,41 @@ describe("buildMailboxTree", () => {
   });
 });
 
+describe("the held mailbox is not a destination in OUR surfaces (s12)", () => {
+  it("the sidebar does not list it — a decision replaces the pile", async () => {
+    const { client } = createDemoBackend();
+    const all = await loadMailboxes(client, ACCOUNT);
+    // The server DOES return it: the `junk` role is the registered one, and a
+    // standards-native client needs it to apply spam handling. What changes is
+    // that we stop presenting it as somewhere to go and look.
+    expect(all.map((m) => m.role)).toContain("junk");
+    expect(findByRole(all, "junk")?.name).toBe("Quarantined");
+
+    const tree = buildMailboxTree(all);
+    expect(tree.map((n) => n.role)).not.toContain("junk");
+    expect(flattenTree(tree).map((n) => n.name)).not.toContain("Quarantined");
+  });
+
+  it("nor as a move target — a folder you cannot open is a trapdoor", () => {
+    const list = [
+      mailbox({ id: "in", name: "Inbox", role: "inbox" }),
+      mailbox({ id: "q", name: "Quarantined", role: "junk" }),
+    ];
+    expect(moveTargets(list).map((m) => m.id)).toEqual(["in"]);
+  });
+
+  it("a child of it is promoted, not swallowed", () => {
+    // The orphan rule doing its job: hiding a folder must never hide mail
+    // filed underneath it, which would be unreachable rather than merely
+    // unlisted.
+    const tree = buildMailboxTree([
+      mailbox({ id: "q", name: "Quarantined", role: "junk" }),
+      mailbox({ id: "kid", name: "Kept", parentId: "q" }),
+    ]);
+    expect(tree.map((n) => n.id)).toEqual(["kid"]);
+  });
+});
+
 describe("roleRank", () => {
   it("ranks known roles ahead of user folders", () => {
     expect(roleRank("inbox")).toBeLessThan(roleRank("trash"));

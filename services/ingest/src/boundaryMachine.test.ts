@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { putSieveRules, saveBayesState, type BayesState } from "@bullmoose/mailstore";
+import {
+  putSieveRules,
+  QUARANTINE_ROLE,
+  saveBayesState,
+  type BayesState,
+} from "@bullmoose/mailstore";
 import { fakeEnv, type FakeWorker } from "@bullmoose/test-fakes";
 import { __resetBoundaryBloomCache, resolveBouncerBinding } from "./boundary";
 import worker, { type Env } from "./index";
@@ -133,7 +138,7 @@ describe("stage 3 — the account's stored sieve ruleset", () => {
 
     const res = await inject(w, mime({ subject: "You are a WINNER!!!" }));
     expect(res.quarantined).toBe("sieve:no-winners");
-    expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, "quarantine")]);
+    expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, QUARANTINE_ROLE)]);
     expect(
       w.db.query<{ stage: string }>(
         `SELECT stage FROM quarantine_events WHERE account_id = ?`,
@@ -180,7 +185,7 @@ describe("stage 4 — the account's trained Bayes state, two thresholds", () => 
 
     const res = await inject(w, mime({ body: "casino" }));
     expect(res.quarantined).toMatch(/^bayes@/);
-    expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, "quarantine")]);
+    expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, QUARANTINE_ROLE)]);
     expect(
       w.db.query<{ count: number }>(`SELECT count FROM deny_counters WHERE domain = ?`, "elsewhere.test")[0]
         ?.count,
@@ -221,7 +226,7 @@ describe("the mid-band (stage 5's doorway)", () => {
 
     // Held in the quarantine mailbox, chain row says SCREENED (not shunted:
     // nothing has judged it spam yet).
-    expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, "quarantine")]);
+    expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, QUARANTINE_ROLE)]);
     const events = w.db.query<{ event: string; stage: string; email_id: string }>(
       `SELECT event, stage, email_id FROM quarantine_events WHERE account_id = ?`,
       ACCOUNT,
@@ -262,7 +267,7 @@ describe("the mid-band (stage 5's doorway)", () => {
     expect(res.invocations).toBe(1); // emily's ordinary mailbox-delivery enqueue
     expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, "inbox")]);
     expect(w.db.count("quarantine_events")).toBe(0);
-    expect(roleMailboxId(w, "quarantine")).toBeNull();
+    expect(roleMailboxId(w, QUARANTINE_ROLE)).toBeNull();
   });
 
   it("the config marker `kind: 'bouncer'` nominates a binding regardless of name", async () => {

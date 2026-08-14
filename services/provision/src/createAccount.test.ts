@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { QUARANTINE_NAME, QUARANTINE_ROLE } from "@bullmoose/mailstore";
 import { fakeD1, fakeKV, type FakeD1, type FakeKV } from "@bullmoose/test-fakes";
 import worker from "./index";
 import type { Env } from "./index";
@@ -87,8 +88,26 @@ describe("POST /accounts — the address is unique as a delivery route", () => {
     expect(routeTarget(h.db)).toBe(body.accountId);
     expect(kvRoute(h.kv)).toEqual({ kind: "mailbox", accountId: body.accountId, tenantId: TENANT });
     expect(h.db.count("accounts")).toBe(1);
-    // 6 classic roles + the s12 quarantine mailbox.
-    expect(h.db.count("mailboxes", "account_id = ?", body.accountId)).toBe(7);
+    // SIX role mailboxes, not seven: wave 1 seeded a second pile beside Junk
+    // under an invented `role: 'quarantine'`. Held mail lives in the
+    // REGISTERED junk role now, so a standards client handles it as spam.
+    expect(h.db.count("mailboxes", "account_id = ?", body.accountId)).toBe(6);
+    expect(h.db.count("mailboxes", "account_id = ? AND role = 'quarantine'", body.accountId)).toBe(0);
+
+    // The seed and the mailstore's constants must agree — provision spells the
+    // pair out rather than importing it (that dependency would pull the whole
+    // store into this worker's bundle), so THIS is the link that keeps the two
+    // from drifting apart.
+    const held = h.db.query<{ role: string; name: string }>(
+      `SELECT role, name FROM mailboxes WHERE account_id = ? AND role = ?`,
+      body.accountId,
+      QUARANTINE_ROLE,
+    );
+    expect(held).toEqual([{ role: QUARANTINE_ROLE, name: QUARANTINE_NAME }]);
+    expect({ role: QUARANTINE_ROLE, name: QUARANTINE_NAME }).toEqual({
+      role: "junk",
+      name: "Quarantined",
+    });
   });
 
   // ── THE defect ────────────────────────────────────────────────────────
@@ -113,7 +132,7 @@ describe("POST /accounts — the address is unique as a delivery route", () => {
     // And no second account was built behind it.
     expect(h.db.count("accounts")).toBe(1);
     expect(h.db.count("identities", "email = ?", "eric@bullmoose.cc")).toBe(1);
-    expect(h.db.count("mailboxes")).toBe(7);
+    expect(h.db.count("mailboxes")).toBe(6);
     expect(h.db.count("routes")).toBe(1);
   });
 

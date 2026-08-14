@@ -17,6 +17,7 @@ import {
   type ClaimantIdentity,
 } from "@bullmoose/scheduling";
 import { proposeBudgetOverruns } from "./budgetOverrun.js";
+import { proposeMidBandHolds } from "./midBandProposal.js";
 import { classifyScreened } from "./bouncerClassify.js";
 import { runBouncer } from "./bouncer.js";
 import { runLedger } from "./ledger.js";
@@ -127,6 +128,12 @@ export default {
     // genuinely the only obstacle — the one place a human choice exists, and so
     // the one place a proposal beats a marker (budgetOverrun.ts).
     await proposeBudgetOverruns(env);
+    // s12 — the OTHER thing only a human can answer: mail the boundary held
+    // and the classifier could not judge. AFTER the drain for the same reason
+    // T9 is: the drain has just run every classify invocation it could, so
+    // what is left undecided is genuinely undecided rather than merely
+    // unprocessed. Batched per account, marked once (midBandProposal.ts).
+    await proposeMidBandHolds(env);
   },
 } satisfies ExportedHandler<Env>;
 

@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { bayesClassify, type BoundaryMessage } from "@bullmoose/boundary";
 import { fakeD1, fakeR2, type FakeD1 } from "@bullmoose/test-fakes";
-import { Mailstore, loadBayesState, type NewEmail } from "./index";
+import {
+  Mailstore,
+  QUARANTINE_NAME,
+  QUARANTINE_ROLE,
+  loadBayesState,
+  type NewEmail,
+} from "./index";
 
 /**
  * The s12 quarantine chain + the rescue write path (wave 1-A).
@@ -49,7 +55,7 @@ async function shunt(
   emailId = "e_q1",
   stage = "blocked-book:personal",
 ): Promise<{ emailId: string; quarantineId: string }> {
-  const quarantineId = await store.ensureRoleMailbox(ACCOUNT, "quarantine", "Quarantine");
+  const quarantineId = await store.ensureRoleMailbox(ACCOUNT, QUARANTINE_ROLE, QUARANTINE_NAME);
   await store.insertQuarantinedEmail(ACCOUNT, email(emailId, [quarantineId]), {
     event: "shunted",
     sender: SENDER,
@@ -186,7 +192,7 @@ describe("rescueQuarantined — the rescue write path", () => {
     });
     // Mailbox exists, message is elsewhere:
     const inboxId = await store.ensureRoleMailbox(ACCOUNT, "inbox", "Inbox");
-    await store.ensureRoleMailbox(ACCOUNT, "quarantine", "Quarantine");
+    await store.ensureRoleMailbox(ACCOUNT, QUARANTINE_ROLE, QUARANTINE_NAME);
     await store.insertEmail(ACCOUNT, email("e_inbox", [inboxId]));
     expect(await store.rescueQuarantined(ACCOUNT, "e_inbox", "eric@moore.coffee")).toEqual({
       rescued: false,
@@ -208,7 +214,7 @@ describe("rescueQuarantined — the rescue write path", () => {
   it("the sender-scoped audit query answers 'did you shunt mail from X?'", async () => {
     const { store } = harness();
     await shunt(store, "e_1");
-    const quarantineId = await store.ensureRoleMailbox(ACCOUNT, "quarantine", "Quarantine");
+    const quarantineId = await store.ensureRoleMailbox(ACCOUNT, QUARANTINE_ROLE, QUARANTINE_NAME);
     await store.insertQuarantinedEmail(ACCOUNT, email("e_2", [quarantineId]), {
       event: "shunted",
       sender: "other@elsewhere.test",
@@ -240,7 +246,7 @@ describe("rescueQuarantined trains the Bayes filter (rescue = ham label)", () =>
   async function shuntWithBlob(store: Mailstore): Promise<string> {
     const raw = new TextEncoder().encode(RAW_MIME);
     const blobId = await store.putBlob("t_bm", ACCOUNT, raw.buffer as ArrayBuffer);
-    const quarantineId = await store.ensureRoleMailbox(ACCOUNT, "quarantine", "Quarantine");
+    const quarantineId = await store.ensureRoleMailbox(ACCOUNT, QUARANTINE_ROLE, QUARANTINE_NAME);
     await store.insertQuarantinedEmail(
       ACCOUNT,
       { ...email("e_train", [quarantineId]), blobId, size: raw.byteLength },
@@ -301,7 +307,7 @@ describe("rescueQuarantined trains the Bayes filter (rescue = ham label)", () =>
 describe("releaseQuarantined — the classifier's exit (screened → released)", () => {
   /** One SCREENED message (the mid-band hold, not a judged shunt). */
   async function screen(store: Mailstore, emailId = "e_scr"): Promise<string> {
-    const quarantineId = await store.ensureRoleMailbox(ACCOUNT, "quarantine", "Quarantine");
+    const quarantineId = await store.ensureRoleMailbox(ACCOUNT, QUARANTINE_ROLE, QUARANTINE_NAME);
     await store.insertQuarantinedEmail(ACCOUNT, email(emailId, [quarantineId]), {
       event: "screened",
       sender: SENDER,
@@ -360,5 +366,115 @@ describe("releaseQuarantined — the classifier's exit (screened → released)",
     const emailId = await screen(store);
     await store.releaseQuarantined(ACCOUNT, emailId, "llm:unsure");
     expect(db.count("domain_deny_list", "domain = ?", DOMAIN)).toBe(1); // untouched
+  });
+
+  it("rescuing a SCREENED message names the screening stage, not 'unknown'", async () => {
+    // A mid-band hold never gets a 'shunted' row — nothing judged it — so a
+    // rescue that read only 'shunted' rows fell back to the header From and a
+    // stage of "unknown": the chain answering "rescued from what" with a
+    // shrug, on exactly the messages a human is now asked about.
+    const { store } = harness();
+    const emailId = await screen(store);
+    const out = await store.rescueQuarantined(ACCOUNT, emailId, "eric@moore.coffee");
+    expect(out.rescued).toBe(true);
+
+    const events = await store.quarantineEvents(ACCOUNT);
+    expect(events[1]).toMatchObject({
+      event: "rescued",
+      sender: SENDER, // the ENVELOPE sender the hold recorded
+      domain: DOMAIN,
+      stage: "bayes-mid@0.55",
+      actor: "eric@moore.coffee",
+    });
+  });
+});
+
+// ---- s12: the human CONFIRMING a hold (the decline half) --------------------
+
+describe("confirmQuarantined — 'yes, that is spam'", () => {
+  async function screened(store: Mailstore, emailId = "e_scr"): Promise<string> {
+    const quarantineId = await store.ensureRoleMailbox(ACCOUNT, QUARANTINE_ROLE, QUARANTINE_NAME);
+    await store.insertQuarantinedEmail(ACCOUNT, email(emailId, [quarantineId]), {
+      event: "screened",
+      sender: SENDER,
+      domain: DOMAIN,
+      stage: "bayes-mid@0.55",
+      emailId,
+      at: 1000,
+    });
+    return emailId;
+  }
+
+  it("leaves the message where it is and writes the judgment the hold never had", async () => {
+    const { db, store } = harness();
+    const emailId = await screened(store);
+    const quarantineId = await store.ensureRoleMailbox(ACCOUNT, QUARANTINE_ROLE, QUARANTINE_NAME);
+
+    expect(await store.confirmQuarantined(ACCOUNT, emailId, "eric@moore.coffee")).toEqual({
+      confirmed: true,
+    });
+    // No move: the boundary put it in the right place, and the human agreed.
+    expect(mailboxesOf(db, emailId)).toEqual([quarantineId]);
+    const events = await store.quarantineEvents(ACCOUNT);
+    expect(events.map((e) => e.event)).toEqual(["screened", "shunted"]);
+    expect(events[1]).toMatchObject({
+      event: "shunted",
+      sender: SENDER,
+      domain: DOMAIN,
+      stage: "human:spam",
+      actor: "eric@moore.coffee",
+    });
+    // The decider is stamped on the message, like a rescuer is.
+    expect(
+      db.query<{ p: string | null }>(
+        `SELECT last_writer_principal AS p FROM emails WHERE account_id = ? AND id = ?`,
+        ACCOUNT,
+        emailId,
+      )[0]!.p,
+    ).toBe("eric@moore.coffee");
+  });
+
+  it("is idempotent: a decided message cannot be confirmed twice", async () => {
+    const { store } = harness();
+    const emailId = await screened(store);
+    await store.confirmQuarantined(ACCOUNT, emailId, "eric@moore.coffee");
+    expect(await store.confirmQuarantined(ACCOUNT, emailId, "eric@moore.coffee")).toEqual({
+      confirmed: false,
+    });
+    expect((await store.quarantineEvents(ACCOUNT)).map((e) => e.event)).toEqual([
+      "screened",
+      "shunted",
+    ]);
+  });
+
+  it("refuses a message a human already rescued — their correction wins", async () => {
+    const { store } = harness();
+    const emailId = await screened(store);
+    await store.rescueQuarantined(ACCOUNT, emailId, "ada@example.test");
+    expect(await store.confirmQuarantined(ACCOUNT, emailId, "eric@moore.coffee")).toEqual({
+      confirmed: false,
+    });
+    expect((await store.quarantineEvents(ACCOUNT)).map((e) => e.event)).toEqual([
+      "screened",
+      "rescued",
+    ]);
+  });
+
+  it("trains the filter as SPAM from the stored raw message (the mirror of a rescue's ham)", async () => {
+    const { db, store } = harness();
+    const raw = new TextEncoder().encode(RAW_MIME);
+    const blobId = await store.putBlob("t_bm", ACCOUNT, raw.buffer as ArrayBuffer);
+    const quarantineId = await store.ensureRoleMailbox(ACCOUNT, QUARANTINE_ROLE, QUARANTINE_NAME);
+    await store.insertQuarantinedEmail(
+      ACCOUNT,
+      { ...email("e_conf", [quarantineId]), blobId, size: raw.byteLength },
+      { event: "screened", sender: SENDER, domain: DOMAIN, stage: "bayes-mid@0.55", emailId: "e_conf", at: 1000 },
+    );
+
+    await store.confirmQuarantined(ACCOUNT, "e_conf", "eric@moore.coffee");
+    const state = await loadBayesState(db, ACCOUNT);
+    expect(state!.spamCount).toBe(1);
+    expect(state!.hamCount).toBe(0);
+    expect(state!.tokens["quarterly"]).toEqual({ s: 1, h: 0 });
   });
 });

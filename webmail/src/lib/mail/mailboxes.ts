@@ -40,19 +40,45 @@ export interface MailboxNode extends Mailbox {
 }
 
 /**
+ * Roles our own surfaces do not present as browsable folders (s12).
+ *
+ * `junk` holds what the boundary shunted, displayed "Quarantined". The role is
+ * not going away — it is the REGISTERED JMAP role, which is what makes Apple
+ * Mail, himalaya and every other RFC 8621 client treat the mail correctly —
+ * but a folder you *maybe* need to manage is a pile with no completion state,
+ * and rendering it here is what makes it one. What the boundary could not
+ * decide reaches this client as a PROPOSAL in `/approvals` ("3 messages I
+ * couldn't judge"), which has an answer and then goes away; what it decided
+ * confidently needs no human at all.
+ *
+ * So: a decision, not a destination. Legacy clients keep the folder; we show
+ * the question.
+ */
+export const UNBROWSABLE_ROLES: ReadonlySet<string> = new Set(["junk"]);
+
+/** The mailboxes this client lists. Filtered ONCE, here, so the sidebar and
+ * the move targets cannot disagree — offering a move into a folder the
+ * sidebar hides would be a one-way door out of the UI. */
+export function browsableMailboxes(mailboxes: Mailbox[]): Mailbox[] {
+  return mailboxes.filter((m) => !UNBROWSABLE_ROLES.has(m.role ?? ""));
+}
+
+/**
  * Build the sidebar tree. Two properties worth stating:
  *
  * - **Orphans and cycles become roots.** A `parentId` pointing at a mailbox
  *   that was not returned (or at an ancestor of itself) would otherwise make
  *   folders vanish from the sidebar entirely — the worst possible failure for
  *   a folder list, because the mail is still there and simply unreachable.
+ *   (`UNBROWSABLE_ROLES` is filtered out first, and a child of one is promoted
+ *   to a root by that same rule rather than disappearing with its parent.)
  * - **Roles sort first, in the order a mail client shows them**, then
  *   `sortOrder`, then name. The server does not impose an order; the client
  *   owning it is what makes Inbox the first row.
  */
 export function buildMailboxTree(mailboxes: Mailbox[]): MailboxNode[] {
   const byId = new Map<string, MailboxNode>();
-  for (const m of mailboxes) byId.set(m.id, { ...m, children: [], depth: 0 });
+  for (const m of browsableMailboxes(mailboxes)) byId.set(m.id, { ...m, children: [], depth: 0 });
 
   const roots: MailboxNode[] = [];
   for (const node of byId.values()) {
@@ -129,10 +155,12 @@ export function inboxUnread(mailboxes: Mailbox[]): number {
 
 /**
  * The set of mailboxes a message may be MOVED to. Excludes the mailbox it is
- * already in and anything whose rights refuse new items.
+ * already in, anything whose rights refuse new items, and the roles this
+ * client does not browse — a destination you cannot then open is a trapdoor,
+ * not a folder.
  */
 export function moveTargets(mailboxes: Mailbox[], currentId?: string): Mailbox[] {
-  return mailboxes
+  return browsableMailboxes(mailboxes)
     .filter((m) => m.id !== currentId && m.myRights.mayAddItems !== false)
     .sort(compareMailboxes);
 }

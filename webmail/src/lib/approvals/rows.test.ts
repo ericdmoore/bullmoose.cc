@@ -11,6 +11,7 @@ import {
   approvalsAccountId,
   approvalsGate,
   approveVerb,
+  declineNeedsReason,
   describeReason,
   summarizeProposal,
   tierLabel,
@@ -220,6 +221,30 @@ describe("summarizeProposal — one line per row, grant-request included", () =>
     );
   });
 
+  // ---- s12 — the held-mail batch ----
+  it("leads a held-mail-review with the count and names BOTH verbs", () => {
+    const p = base({
+      kind: "held-mail-review",
+      tier: 1,
+      subject: { realm: "Mailbox", objectId: "mb_q" },
+      payload: {
+        periodKey: "2026-08-13",
+        heldCount: 3,
+        emailIds: ["e1", "e2", "e3"],
+        messages: [
+          { emailId: "e1", sender: "a@x.test", subject: "one", stage: "bayes-mid@0.5" },
+          { emailId: "e2", sender: "b@x.test", subject: "two", stage: "bayes-mid@0.5" },
+          { emailId: "e3", sender: "a@x.test", subject: "three", stage: "bayes-mid@0.5" },
+        ],
+      },
+    });
+    // Both verbs, because neither is a no-op here: declining is the answer
+    // "yes, that is spam", not "never mind".
+    expect(summarizeProposal(p)).toBe(
+      "3 held messages from a@x.test, b@x.test — approve releases, decline confirms spam",
+    );
+  });
+
   it("degrades to the subject when the payload is empty, and never throws", () => {
     const p = base({
       kind: "budget-overrun",
@@ -243,5 +268,22 @@ describe("parseProposal (types.ts)", () => {
   it("fails an unknown tier CLOSED — unknown reversibility reads as irreversible", () => {
     expect(parseProposal({ id: "x", tier: 9 })?.tier).toBe(3);
     expect(parseProposal({ id: "x" })?.tier).toBe(3);
+  });
+});
+
+describe("declineNeedsReason — the no-fault kinds (the enum's mirror)", () => {
+  it("asks for a reason on kinds where declining IS feedback", () => {
+    for (const kind of ["reply-draft", "create-contact", "grant-request", "organize-files"]) {
+      expect(declineNeedsReason(kind)).toBe(true);
+    }
+  });
+
+  it("does NOT on the kinds the server refuses a reason for", () => {
+    // The server's `NO_FAULT_KINDS` rejects any reason on these, so a panel
+    // that demanded one made the verb unsendable — declining a budget-overrun
+    // was impossible from this client, and a held-mail decline would have
+    // inherited it. Mirrored here, once, next to the enum it qualifies.
+    expect(declineNeedsReason("budget-overrun")).toBe(false);
+    expect(declineNeedsReason("held-mail-review")).toBe(false);
   });
 });
