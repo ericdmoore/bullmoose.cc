@@ -221,6 +221,44 @@ CREATE TABLE IF NOT EXISTS grant_audit (
 );
 CREATE INDEX IF NOT EXISTS grant_audit_account ON grant_audit (account_id, at);
 
+-- OAuth consents (s02 T4) — the D1 MIRROR of a grant the AS holds in KV.
+--
+-- WHY A NEW TABLE AND NOT COLUMNS ON `grants`. That table models account →
+-- account sharing: both `grantee_account_id` and `target_account_id` are NOT
+-- NULL and REFERENCE accounts(id). An OAuth consent has no grantee ACCOUNT —
+-- the grantee is a CLIENT (claude.ai, Claude Code), which is not an account
+-- and never will be. Widening those FKs to nullable to fit would weaken the
+-- constraint protecting every real sharing row, to model something that is
+-- not sharing.
+--
+-- WHY MIRROR AT ALL, when the provider already stores the grant in KV. The
+-- console (`s03.E`) and `who_can_access` read D1. Without this row a human who
+-- connects claude.ai sees NOTHING in the surface whose entire job is answering
+-- "who can reach my mail" — it would not be wrong, it would be silent, which
+-- is worse: an empty access list reads as "nobody", and the person checking is
+-- checking precisely because they want to know.
+--
+-- KV stays canonical for AUTHORIZATION — this table is never consulted to
+-- decide a request. It exists to be READ BY HUMANS. A row here with no live
+-- KV grant grants nothing; the reverse (a live grant with no row) is the bug
+-- this table exists to prevent, which is why the write is on the consent path
+-- rather than in a sweep.
+CREATE TABLE IF NOT EXISTS oauth_consents (
+  id            TEXT PRIMARY KEY,              -- oc_<uuid>
+  principal_id  TEXT NOT NULL REFERENCES principals(id),
+  client_id     TEXT NOT NULL,                 -- CIMD URL or DCR-issued id; NOT an account
+  client_name   TEXT,                          -- as displayed on the consent screen
+  redirect_host TEXT,                          -- where codes were delivered; the anti-impersonation fact
+  scopes        TEXT NOT NULL,                 -- JSON array — THIS grant's, not the human's authority
+  resource      TEXT,                          -- RFC 8707 audience the token is bound to
+  created_at    INTEGER NOT NULL,
+  -- Same tombstone bargain as grants.revoked_at: revoking sets this rather
+  -- than deleting, so "what did I have connected last Tuesday?" stays
+  -- answerable after the fact.
+  revoked_at    INTEGER
+);
+CREATE INDEX IF NOT EXISTS oauth_consents_principal ON oauth_consents (principal_id, created_at);
+
 -- Credential vault (Phase 3, Q2 "build it right"): per-principal
 -- third-party secrets, envelope-encrypted with the agent worker's
 -- master secret (see auth-core sealSecret: HKDF per row + AES-256-GCM,

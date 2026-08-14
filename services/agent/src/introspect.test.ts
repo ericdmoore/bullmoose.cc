@@ -942,3 +942,97 @@ describe("015 — the tools are declared and reachable", () => {
     expect(r.body.error.message).toMatch(/lacks the "read" scope/);
   });
 });
+
+// s02 T4 — the D1 consent mirror, read back.
+//
+// The failure this closes is SILENCE, not wrongness. Before the mirror, a
+// human who connected claude.ai and then asked "who can reach my mail?" got
+// an answer that looked complete and said nobody — from the one surface whose
+// entire job is answering that question. The plan's guiding constraint calls
+// that worse than having no public endpoint at all.
+describe("s02 T4 — who_can_access reports connected OAuth clients", () => {
+  const withConsent = (rows: Array<Record<string, unknown>>) => {
+    const fx = eric();
+    const w = world(fx);
+    w.db.seed("oauth_consents", rows);
+    return { fx, w };
+  };
+
+  const CLAUDE = {
+    id: "oc_1",
+    principal_id: "p_eric",
+    client_id: "https://claude.ai/mcp",
+    client_name: "Claude",
+    redirect_host: "claude.ai",
+    scopes: JSON.stringify(["read", "calendar"]),
+    resource: "https://mcp.bullmoose.cc/mcp",
+    created_at: 1000,
+    revoked_at: null,
+  };
+
+  it("40. a connected client APPEARS — the silence this exists to end", async () => {
+    const { fx, w } = withConsent([CLAUDE]);
+    const r = await callTool("who_can_access", { accountId: "a_eric" }, fx, w);
+    expect(r.out.connectedApps).toHaveLength(1);
+    expect(r.out.connectedApps[0].name).toBe("Claude");
+  });
+
+  it("41. reports what the grant ACTUALLY allows, through the gate's own expansion", async () => {
+    const { fx, w } = withConsent([{ ...CLAUDE, scopes: JSON.stringify(["mail"]) }]);
+    const r = await callTool("who_can_access", { accountId: "a_eric" }, fx, w);
+    // `mail` is a bundle; a human evaluating access needs the verbs.
+    expect(r.out.connectedApps[0].allows).toContain("delete");
+    expect(r.out.connectedApps[0].allows).not.toContain("contacts");
+  });
+
+  it("42. shows where the codes were delivered — CIMD cannot prevent impersonation", async () => {
+    const { fx, w } = withConsent([CLAUDE]);
+    const r = await callTool("who_can_access", { accountId: "a_eric" }, fx, w);
+    expect(r.out.connectedApps[0].codesDeliveredTo).toBe("claude.ai");
+  });
+
+  it("43. a REVOKED consent disappears from the answer", async () => {
+    const { fx, w } = withConsent([{ ...CLAUDE, revoked_at: 2000 }]);
+    const r = await callTool("who_can_access", { accountId: "a_eric" }, fx, w);
+    expect(r.out.connectedApps).toEqual([]);
+  });
+
+  it("44. never reports ANOTHER principal's connected apps", async () => {
+    // The disclosure boundary: this tool answers for the caller's own
+    // account, and a consent belongs to the human who granted it.
+    const fx = eric();
+    const w = world(fx);
+    // A real second human, so the FK on principal_id is satisfied honestly
+    // rather than by loosening it — the constraint is what stops a consent
+    // ever pointing at a principal that does not exist.
+    w.db.seedAccount({
+      accountId: "a_mom",
+      tenantId: "t_bm",
+      principalId: "p_mom",
+      loginEmail: "mom@bullmoose.cc",
+      displayName: "Mom",
+    });
+    w.db.seed("oauth_consents", [
+      CLAUDE,
+      { ...CLAUDE, id: "oc_2", principal_id: "p_mom", client_name: "Mom's Claude" },
+    ]);
+    const r = await callTool("who_can_access", { accountId: "a_eric" }, fx, w);
+    expect(r.out.connectedApps).toHaveLength(1);
+    expect(r.text).not.toContain("Mom's Claude");
+  });
+
+  it("45. says so in the notes — a connected app is not a grant", async () => {
+    // They reach the account by acting AS the owner, so they appear in no
+    // `grants` row, and revoking one is a different action.
+    const { fx, w } = withConsent([CLAUDE]);
+    const r = await callTool("who_can_access", { accountId: "a_eric" }, fx, w);
+    expect(JSON.stringify(r.out.notes)).toMatch(/connectedApps/);
+  });
+
+  it("46. an account with no connected apps still answers cleanly", async () => {
+    const { fx, w } = withConsent([]);
+    const r = await callTool("who_can_access", { accountId: "a_eric" }, fx, w);
+    expect(r.out.connectedApps).toEqual([]);
+    expect(r.isError).toBeFalsy();
+  });
+});

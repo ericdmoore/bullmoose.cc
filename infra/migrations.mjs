@@ -105,6 +105,32 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "oauth-consents-table",
+    why: "s02 T4's D1 mirror of OAuth grants; without it the console answers 'who can reach my mail' with silence for every connected client",
+    // Non-blocking: nothing AUTHORIZES against this table (KV stays canonical),
+    // so its absence degrades a human-facing answer rather than breaking a
+    // request path. The AS's write is guarded, so a shard that predates this
+    // migration keeps issuing tokens — it just cannot show them yet.
+    blocks: null,
+    check: tableExists("oauth_consents"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS oauth_consents (
+         id            TEXT PRIMARY KEY,
+         principal_id  TEXT NOT NULL,
+         client_id     TEXT NOT NULL,
+         client_name   TEXT,
+         redirect_host TEXT,
+         scopes        TEXT NOT NULL,
+         resource      TEXT,
+         created_at    INTEGER NOT NULL,
+         revoked_at    INTEGER
+       )`,
+      "CREATE INDEX IF NOT EXISTS oauth_consents_principal ON oauth_consents (principal_id, created_at)",
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
     id: "grants-tuple-partial",
     why: "a tombstoned grant occupies its tuple forever, so revoke-then-re-grant is a SILENT no-op that still returns 200 with a grantId no row carries",
     blocks: null,

@@ -2,7 +2,8 @@ import { hashLoginKey, isLoginKey, OAUTH_SCOPES, timingSafeEqualHex, unknownScop
 import { beginLoginAttempt } from "@bullmoose/auth-core/loginThrottle";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { consentPage, deriveScript, errorPage } from "./consent.js";
-import { anyRedirectMatches, CLAUDE_REDIRECT_URIS } from "./redirects.js";
+import { recordConsent } from "./consentMirror.js";
+import { anyRedirectMatches, CLAUDE_REDIRECT_URIS, redirectHost } from "./redirects.js";
 
 /**
  * bullmoose's OAuth 2.1 authorization server (s02 T3) — the front door proper.
@@ -201,6 +202,24 @@ async function decide(request: Request, env: Env): Promise<Response> {
   if (bad.length > 0) {
     return errorPage("Unavailable permissions were requested.", bad.join(", "));
   }
+
+  // Mirror the consent into D1 BEFORE handing back the redirect (s02 T4).
+  // Best-effort and never fatal — see consentMirror.ts — but on the consent
+  // path itself, because this is the one moment we are certain a consent
+  // happened. A reconciling sweep could fall behind silently, and silence is
+  // exactly the failure the mirror exists to prevent.
+  await recordConsent(
+    env.DB,
+    {
+      principalId: row.id,
+      clientId: authRequest.clientId as string,
+      clientName: typeof authRequest.clientName === "string" ? authRequest.clientName : undefined,
+      redirectHost: redirectHost(String(authRequest.redirectUri ?? "")),
+      scopes: scope,
+      resource: env.MCP_RESOURCE_URI,
+    },
+    Date.now(),
+  );
 
   const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
     request: authRequest,
