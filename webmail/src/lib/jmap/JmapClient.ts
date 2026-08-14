@@ -10,15 +10,15 @@
 //      session, so a surface whose capability is absent never sends a call
 //      that would 400.
 //
-// T2 (mail surfaces) SHIPPED and develops against this module alongside
-// FakeJmapClient. T3 (Files browser) is still deferred on s03.B's attachment
-// sidestep, so nothing here calls the FileNode methods yet.
+// T2 (mail surfaces) and T3 (the Files browser, `../files/`) both develop
+// against this module alongside FakeJmapClient. T3 is the surface that finally
+// CALLS `upload` — every file in the browser is `upload` then
+// `FileNode/set create`, in that order (`../files/api.ts`).
 //
-// Note that `sync`, `cursor`, `seedCursor`, `queryThenGet`, `upload` and
-// `download` are built and tested but reached by NO surface: AppShell syncs by
-// re-querying on a push notification rather than walking a /changes cursor, and
-// there is no attachment UI to call upload/download. Tested-but-unreached, which
-// is the opposite of dead code and worth knowing before assuming a gap is work.
+// Note that `sync`, `cursor` and `seedCursor` are built and tested but reached
+// by NO surface: every screen syncs by re-querying on a push notification
+// rather than walking a /changes cursor. Tested-but-unreached, which is the
+// opposite of dead code and worth knowing before assuming a gap is work.
 
 import {
   AGENT_CAP,
@@ -97,7 +97,15 @@ export interface JmapClient {
   sync(collection: string, sinceState?: string, accountId?: Id): Promise<ChangesResult>;
   cursor(collection: string): string | undefined;
   seedCursor(collection: string, state: string): void;
-  upload(accountId: Id, bytes: Uint8Array, type: string): Promise<UploadResult>;
+  /**
+   * `POST {uploadUrl}` with the bytes as the RAW body (RFC 8620 §6.1, and
+   * `services/jmap/src/index.ts:199-221` — the handler reads
+   * `request.arrayBuffer()`, so a multipart/FormData envelope would be stored
+   * verbatim AS the blob). A `Blob` is passed to `fetch` untouched so the
+   * browser streams it: a 40 MB upload must not be materialised in the tab's
+   * heap first. `Uint8Array` stays accepted for tests and the CLI-shaped path.
+   */
+  upload(accountId: Id, body: Blob | Uint8Array, type: string): Promise<UploadResult>;
   download(
     accountId: Id,
     blobId: string,
@@ -303,14 +311,16 @@ export class FetchJmapClient implements JmapClient {
     this.cursors.set(collection, state);
   }
 
-  async upload(accountId: Id, bytes: Uint8Array, type: string): Promise<UploadResult> {
+  async upload(accountId: Id, body: Blob | Uint8Array, type: string): Promise<UploadResult> {
     const url = this.uploadUrlFor(await this.session(), accountId);
     const res = await this.doFetch(url, {
       method: "POST",
       headers: this.authHeaders({ "content-type": type }),
-      // Copy into a fresh ArrayBuffer-backed view: fetch rejects
+      // A Blob (every browser `File` is one) goes through as-is so fetch
+      // streams it rather than buffering the whole file. A Uint8Array is
+      // copied into a fresh ArrayBuffer-backed view: fetch rejects
       // SharedArrayBuffer-typed views (mirrors the CLI client).
-      body: new Uint8Array(bytes),
+      body: body instanceof Uint8Array ? new Uint8Array(body) : body,
     });
     if (!res.ok) {
       throw new JmapRequestError(`upload failed: HTTP ${res.status}`, undefined, res.status);

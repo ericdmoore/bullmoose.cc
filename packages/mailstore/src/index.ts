@@ -3307,7 +3307,14 @@ export class Mailstore {
   // onDestroyRemoveChildren, blob pinning and the 010 revoke-on-destroy path
   // all live in the JMAP method layer (services/jmap/src/methods/filenode.ts).
 
+  /**
+   * `ids: undefined` means "every node"; `ids: []` means "none" — the same
+   * distinction `getEmailRows` draws, and the one JMAP callers rely on. An
+   * EMPTY list read as "no filter" is how an empty folder's back-reference
+   * came to render the entire drive as that folder's contents (s03.C T3).
+   */
   async getFileNodes(accountId: string, ids?: string[]): Promise<FileNodeRow[]> {
+    if (ids && ids.length === 0) return [];
     const results: FileNodeRawRow[] = [];
     if (ids && ids.length > 0) {
       for (const chunk of chunked(ids)) {
