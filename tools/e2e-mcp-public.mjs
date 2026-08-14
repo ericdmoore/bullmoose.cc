@@ -244,6 +244,7 @@ if (!EMAIL || !PASSWORD) {
 
   section("B3 — token exchange");
   let token = null;
+  let replayForm = null;
   if (code) {
     const form = new URLSearchParams({
       grant_type: "authorization_code",
@@ -259,23 +260,24 @@ if (!EMAIL || !PASSWORD) {
       body: form,
     });
     const body = await res.json().catch(() => null);
+    if (process.env.BM_E2E_DEBUG) {
+      // Deliberately not the token itself — a live credential does not belong
+      // in a terminal, even behind a debug flag.
+      console.log(`       DEBUG scope=${body?.scope} resource=${body?.resource} expires_in=${body?.expires_in}`);
+    }
     check(res.ok, "code exchanges for a token", `${res.status} ${JSON.stringify(body)}`);
     token = body?.access_token;
     check(!!token, "an access token comes back");
     check(!!body?.refresh_token, "and a refresh token");
     check(typeof body?.expires_in === "number" && body.expires_in <= 3600,
       "which expires — the first credential in bullmoose that does", String(body?.expires_in));
-
-    // Replay: an authorization code is single-use.
-    const again = await fetch(asMeta.token_endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: form,
-    });
-    check(!again.ok, "and the code cannot be replayed", `got ${again.status}`);
+    check(body?.resource === RESOURCE, "audience-bound to the canonical resource", body?.resource);
+    // The replay test moved to the END (B7) on purpose — see the note there.
+    replayForm = form;
   }
 
   section("B4 — the token works against /mcp");
+  if (token && process.env.BM_E2E_DEBUG) console.log(`       DEBUG token=${token}`);
   if (token) {
     const { res, json } = await rpc({
       jsonrpc: "2.0", id: 1, method: "tools/call",
@@ -329,6 +331,38 @@ if (!EMAIL || !PASSWORD) {
     // The property that keeps the adapter deletable rather than a second
     // implementation.
     check(!res.headers.get("mcp-session-id"), "and no session id is minted");
+  }
+
+  section("B7 — replaying the authorization code kills the whole grant");
+  // This runs LAST, and the ordering is the finding rather than a detail.
+  //
+  // It used to sit at the end of B3, where it quietly destroyed the token the
+  // rest of the run depended on: OAuth 2.1 says an AS SHOULD revoke every
+  // token issued from a replayed code, and this provider does exactly that
+  // (oauth-provider.js:1883 — `revokeGrant` before returning invalid_grant).
+  // So B4-B6 were testing a deliberately-revoked credential and reporting a
+  // server bug that did not exist. The harness was wrong; the server was
+  // right, and stricter than the harness assumed.
+  //
+  // Kept as the final act, where the destruction is the point: replay the
+  // code, then prove the previously-working token is now dead. That is a
+  // sharper assertion than "the replay 4xx'd" — it shows the blast radius of
+  // a stolen code is bounded by revoking everything it produced.
+  if (replayForm && token) {
+    const again = await fetch(asMeta.token_endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: replayForm,
+    });
+    check(!again.ok, "the code cannot be replayed", `got ${again.status}`);
+    const body = await again.json().catch(() => null);
+    check(body?.error === "invalid_grant", "and says invalid_grant", JSON.stringify(body));
+
+    const { res } = await rpc({
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name: "whoami", arguments: {}, _meta: meta() },
+    }, { token });
+    check(res.status === 401, "and the token issued from that code is now DEAD", `got ${res.status}`);
   }
 }
 

@@ -131,9 +131,27 @@ describe("credential dispatch", () => {
 
 describe("introspect — fails CLOSED, always", () => {
   it("30. returns the grant when the AS says the token is active", async () => {
-    const got = await introspect(okAS({ principalId: "p_eric", scope: ["read", "calendar"] }), "tok");
+    const got = await introspect(okAS({ principalId: "p_eric", scope: ["read", "calendar"] }), "tok", RESOURCE);
     expect(got?.props.principalId).toBe("p_eric");
     expect(got?.scopes).toEqual(["read", "calendar"]);
+  });
+
+  it("30b. addresses the AS AT the canonical resource URI — not at a path on its own host", async () => {
+    // Load-bearing, and it cost a production debugging session to learn.
+    // The provider decides "which resource server am I" from the REQUEST URL
+    // (oauth-provider.js:2694) and refuses a token whose audience does not
+    // match it. Our tokens are correctly bound to the MCP resource, so asking
+    // at auth.bullmoose.cc/introspect refused EVERY token we mint. The service
+    // binding routes to the AS whatever the URL says, so we address it as the
+    // resource and the audience check passes on its merits rather than being
+    // switched off. Change this URL and every OAuth call 401s.
+    let seen = null;
+    const as = fakeAS((req) => {
+      seen = req.url;
+      return new Response(JSON.stringify({ active: true, props: { principalId: "p" } }));
+    });
+    await introspect(as, "tok", RESOURCE);
+    expect(seen).toBe(RESOURCE);
   });
 
   it("31. forwards the token as a bearer, so the AS validates the real credential", async () => {
@@ -142,7 +160,7 @@ describe("introspect — fails CLOSED, always", () => {
       seen = req.headers.get("authorization");
       return new Response(JSON.stringify({ active: true, props: { principalId: "p" } }));
     });
-    await introspect(as, "tok-123");
+    await introspect(as, "tok-123", RESOURCE);
     expect(seen).toBe("Bearer tok-123");
   });
 
@@ -150,35 +168,35 @@ describe("introspect — fails CLOSED, always", () => {
     const as = fakeAS(() => {
       throw new Error("connection refused");
     });
-    expect(await introspect(as, "tok")).toBeNull();
+    expect(await introspect(as, "tok", RESOURCE)).toBeNull();
   });
 
   it("33. refuses on a non-2xx", async () => {
-    expect(await introspect(fakeAS(() => new Response("nope", { status: 401 })), "tok")).toBeNull();
-    expect(await introspect(fakeAS(() => new Response("boom", { status: 500 })), "tok")).toBeNull();
+    expect(await introspect(fakeAS(() => new Response("nope", { status: 401 })), "tok", RESOURCE)).toBeNull();
+    expect(await introspect(fakeAS(() => new Response("boom", { status: 500 })), "tok", RESOURCE)).toBeNull();
   });
 
   it("34. refuses on a malformed body rather than guessing", async () => {
-    expect(await introspect(fakeAS(() => new Response("not json")), "tok")).toBeNull();
+    expect(await introspect(fakeAS(() => new Response("not json")), "tok", RESOURCE)).toBeNull();
   });
 
   it("35. refuses when the AS says active:false", async () => {
     const as = fakeAS(() => new Response(JSON.stringify({ active: false, props: { principalId: "p_eric" } })));
-    expect(await introspect(as, "tok")).toBeNull();
+    expect(await introspect(as, "tok", RESOURCE)).toBeNull();
   });
 
   it("36. refuses a truthy-but-not-true active, rather than coercing", async () => {
     const as = fakeAS(() => new Response(JSON.stringify({ active: "yes", props: { principalId: "p_eric" } })));
-    expect(await introspect(as, "tok")).toBeNull();
+    expect(await introspect(as, "tok", RESOURCE)).toBeNull();
   });
 
   it("37. treats an absent scope list as an EMPTY grant, not an unlimited one", async () => {
-    const got = await introspect(okAS({ principalId: "p_eric" }), "tok");
+    const got = await introspect(okAS({ principalId: "p_eric" }), "tok", RESOURCE);
     expect(got?.scopes).toEqual([]);
   });
 
   it("38. drops non-string scope entries instead of passing them to the gate", async () => {
-    const got = await introspect(okAS({ principalId: "p_eric", scope: ["read", 42, null] }), "tok");
+    const got = await introspect(okAS({ principalId: "p_eric", scope: ["read", 42, null] }), "tok", RESOURCE);
     expect(got?.scopes).toEqual(["read"]);
   });
 
@@ -186,7 +204,7 @@ describe("introspect — fails CLOSED, always", () => {
     // Defence in depth: even a compromised AS answering active:true for a
     // made-up principal produces nothing, because the reach is D1's answer.
     const w = fakeEnv();
-    const grant = await introspect(okAS({ principalId: "p_ghost", scope: ["read"] }), "tok");
+    const grant = await introspect(okAS({ principalId: "p_ghost", scope: ["read"] }), "tok", RESOURCE);
     expect(await principalFromProps(w.env, grant!.props, grant!.scopes)).toBeNull();
   });
 });

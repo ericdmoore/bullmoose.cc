@@ -27,7 +27,7 @@ import { answerInfoRequest, proposeReply, expireStaleProposals } from "./proposa
 import { docsResponse, MCP_DOCS } from "./docs.js";
 import { introspect, isLocalToken, principalFromProps } from "./oauthBridge.js";
 import { handleVault, handleVaultVerify } from "./vault.js";
-import { handleWellKnown, originAllowed, unauthorized } from "./wellKnown.js";
+import { handleWellKnown, originAllowed, resourceUri, unauthorized } from "./wellKnown.js";
 import type { Principal } from "@bullmoose/auth-core/principal";
 import {
   callWithFallback,
@@ -135,7 +135,7 @@ export default {
       const raw = authz.slice(7);
       let oauthPrincipal: Principal | undefined;
       if (!isLocalToken(raw)) {
-        const grant = await introspect(env.OAUTH, raw);
+        const grant = await introspect(env.OAUTH, raw, resourceUri(url, env));
         // A failed hop refuses. It must never fall through to the local
         // check — an AS outage turning into an authorization bypass is the
         // classic fail-open bug, and the local check would reject it anyway
