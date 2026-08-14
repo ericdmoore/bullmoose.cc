@@ -12,6 +12,8 @@ import {
   claimFitSql,
   dueWindowBinds,
   dueWindowSql,
+  jobBudgetExhaustedSql,
+  needsSatisfiedSql,
   notPinnedSql,
   type ClaimantIdentity,
 } from "@bullmoose/scheduling";
@@ -58,6 +60,14 @@ import type { Env } from "./models.js";
  * row is sitting because it is early, not because of money; a pinned row is
  * T3's problem; and a NULL-due row with a live homelab is sitting on purpose.
  * `claimGateAgreement.test.ts` proves the decomposition.
+ *
+ * s11 T7 adds the two DAG terms to that counterfactual, and both are about not
+ * asking a human for money that would buy nothing. A Job node whose `needs` are
+ * unfinished is waiting on its SIBLING, not on the budget — approving an
+ * overage would not release it. A node whose JOB has spent its aggregate budget
+ * is held by a different ceiling than the binding's month, and the same
+ * approval would not release that either. Both are excluded, so every
+ * invocation this sweep counts is one an approval genuinely frees.
  *
  * THE ESTIMATE IS HISTORY, NOT A GUESS. Cost-to-clear = median past
  * `cost_micros` of this binding (s07 T5) × the waiting count. No paid history →
@@ -145,6 +155,8 @@ export async function proposeBudgetOverruns(
         AND ${notPinnedSql("inv")}
         AND ${claimFitSql("inv")}
         AND ${dueWindowSql("inv")}
+        AND ${needsSatisfiedSql("inv")}
+        AND NOT ${jobBudgetExhaustedSql("inv")}
         -- ALREADY ASKED THIS PERIOD? The marker is the key, and it is read
         -- WITHOUT a status filter on purpose: once the overage is approved the
         -- marked row gets claimed and completes, and a re-ask must still not
@@ -188,7 +200,9 @@ async function proposeOne(
       WHERE inv.account_id = ? AND inv.binding_id = ? AND inv.status = 'pending'
         AND ${notPinnedSql("inv")}
         AND ${claimFitSql("inv")}
-        AND ${dueWindowSql("inv")}`;
+        AND ${dueWindowSql("inv")}
+        AND ${needsSatisfiedSql("inv")}
+        AND NOT ${jobBudgetExhaustedSql("inv")}`;
   const strandedBinds = [
     c.account_id,
     c.binding_id,
