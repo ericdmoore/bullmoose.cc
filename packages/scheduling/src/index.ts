@@ -17,6 +17,38 @@ export {
   type PrivacyClass,
 } from "./mayClaim.js";
 export {
+  JOB_MAX_DEPTH_CEILING,
+  JOB_MAX_NODES_CEILING,
+  RESERVED_CONTEXT_KINDS,
+  attenuateChild,
+  attenuatePlan,
+  describeRefusals,
+  isPrivacyClass,
+  type AttenuatedChild,
+  type AttenuationResult,
+  type ChildRequest,
+  type JobCaps,
+  type JobUsage,
+  type NodeAuthority,
+  type NodeCeiling,
+  type Refusal,
+} from "./attenuation.js";
+export {
+  BLOCKED_SENTINEL,
+  deriveJobStatus,
+  jobBudgetExhausted,
+  jobBudgetExhaustedSql,
+  jobView,
+  needsSatisfied,
+  needsSatisfiedSql,
+  nodeSettledSql,
+  parseNeeds,
+  type JobNodeState,
+  type JobStatus,
+  type JobView,
+  type NodeStatus,
+} from "./jobGraph.js";
+export {
   bindingEscalationWindowMs,
   bindingMedianCostMicros,
   budgetExhaustedSql,
