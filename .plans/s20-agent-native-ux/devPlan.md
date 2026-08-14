@@ -80,9 +80,41 @@ tone resolved from the address book and history.
 
 ### T4 — Extracted views: Waiting-on and Commitments · *read models, uncertainty-first*
 
-**Files:** new `packages/mailstore/sql/` side tables (the `agent_proposals` pattern: a
-read model 1:1 over evidence, never a second store), an extractor pass in the agent
-worker, home-view panels in `webmail/src/lib/home/`.
+**Files:** the s18 Note entity (agent-authored, anchored — see below), an extractor pass
+in the agent worker, home-view panels in `webmail/src/lib/home/`, a margin-commentary
+rendering in the mail view.
+
+**The rendering and the store are one object: agent-commentary** (Eric, 2026-08-14 —
+medium.com-style margin comments, composed with the s18 notes sketch). An extraction is
+an s18 **Note** authored by an agent, carrying an anchor `(original message-id, span)`,
+a class (commitment | decision | task), status, and confidence. The brief and the
+person-panel are QUERIES over the commentary, not separate stores; the gutter, filtered
+and time-ordered, is the agent-log with a human-readable face.
+
+Why the margin is the right surface:
+  * **In-situ provenance** — the claim renders at its birthplace, anchored to the
+    sentence that produced it. "What does the system think I promised?" stops being an
+    audit query and becomes something you trip over while reading. This supersedes the
+    see-all drill-down as the primary auditability answer (the drill-down survives as
+    the panels' overflow).
+  * **The soft register IS the epistemics** — "sounds like a thing to remember" offers;
+    a structured chip asserts. Voice carries confidence. Marginalia is also the
+    chief-of-staff metaphor's native form: notes in the margin of the handed-back memo.
+  * **Replying in the margin closes two loops** — "that's not a promise" is the labeled
+    correction; and via s18's mention mechanic, "@remind — follow up Friday" in a reply
+    CREATES a Watch from the margin. The comment thread is the conversational surface
+    for the object it annotates.
+
+Two guards, named because each failure mode is fatal:
+  * **No comment without an object.** Every comment is the visible face of a durable
+    artifact (commitment, watch, decision, proposal). Free-floating agent observations
+    are banned by construction, not by prompt discipline — this is the anti-Clippy rule.
+    Collapsed gutter markers by default; per-class visibility dials; dismissals feed
+    repetition→policy so a class the human keeps waving off quiets itself.
+  * **Anchors bind to the ORIGINAL message.** Mail immutability makes anchoring
+    tractable (unlike editable-doc annotation, where anchors rot) — but the same
+    promised sentence appears in every quoted reply. One anchor on the original
+    message-id + span; quoted copies render a reference, never a duplicate comment.
 
 Two views only, chosen because they answer the two questions a chief of staff is FOR:
 *what am I waiting on?* and *what did I promise?*

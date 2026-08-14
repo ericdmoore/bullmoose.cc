@@ -97,4 +97,6 @@ down — sometimes you really do want to inspect the filesystem.
 - `../s07-app-surface/devPlan.md` — T0 home view: where the exception surface lives
 - `../s11-scheduling/devPlan.md` — due_at, the watchdogs, the free/paid claim split
 - `../s17-chief-of-staff/readme.md` — CJ: the delegation contract's natural first holder
+- `../s18-notes/readme.md` — the Note entity T4's agent-commentary is built on; its
+  mention→invocation mechanic makes a margin reply a delegation surface
 - `docs/architecture/mcp-auth.md` §6 — the authorization model Ask rides on
