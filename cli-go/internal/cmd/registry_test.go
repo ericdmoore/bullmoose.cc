@@ -66,6 +66,11 @@ func TestRegistryOwnsOnlyDeclaredFlags(t *testing.T) {
 		"base", "url", "token", "name", "scopes", "password", "offline", "dry-run",
 		// the triage verbs (sVOL 019) and `sync`.
 		"add", "remove", "role", "force", "unset", "no-sync", "if-state", "blobs",
+		// wave 4, contacts + calendar: the rest of the I/O contract's own flags,
+		// plus the two commands' own vocabularies.
+		"as", "if-state", "force", "book",
+		"days", "title", "start", "duration", "tz", "all-day", "rrule",
+		"calendar", "occurrence", "ics",
 	}
 	sort.Strings(parsed)
 	for name, s := range registry {
