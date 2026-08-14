@@ -1,6 +1,7 @@
 package jmap
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -40,6 +41,67 @@ type Session struct {
 	APIURL      string `json:"apiUrl"`
 	DownloadURL string `json:"downloadUrl"`
 	Username    string `json:"username"`
+	// PrimaryAccounts maps a capability URN to the account that serves it;
+	// `init` reads the mail URN to pick a default account (main.ts:476).
+	PrimaryAccounts map[string]string `json:"primaryAccounts"`
+	// RawAccounts is kept as raw JSON because ORDER MATTERS: main.ts:483 walks
+	// Object.entries(session.accounts), and a Go map would reorder them on every
+	// run — turning `init`'s stored account list, and the `--json` record, into
+	// something that differs between two identical invocations.
+	RawAccounts json.RawMessage `json:"accounts"`
+}
+
+// SessionAccount is one entry of the session's `accounts` object, in the order
+// the server sent it.
+type SessionAccount struct {
+	ID   string
+	Name string
+}
+
+// Accounts decodes RawAccounts preserving key order (see the field's note).
+func (s *Session) Accounts() ([]SessionAccount, error) {
+	if len(s.RawAccounts) == 0 {
+		return nil, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(s.RawAccounts))
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	if delim, ok := tok.(json.Delim); !ok || delim != '{' {
+		return nil, &bmio.CliError{Msg: "jmap: session accounts is not an object", Code: bmio.ExitFail}
+	}
+	var out []SessionAccount
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		id, _ := key.(string)
+		var value struct {
+			Name string `json:"name"`
+		}
+		if err := dec.Decode(&value); err != nil {
+			return nil, err
+		}
+		out = append(out, SessionAccount{ID: id, Name: value.Name})
+	}
+	return out, nil
+}
+
+// HasAccount reports whether the session serves this account — the check
+// main.ts:477 makes before storing an accountId it was handed.
+func (s *Session) HasAccount(id string) bool {
+	accounts, err := s.Accounts()
+	if err != nil {
+		return false
+	}
+	for _, a := range accounts {
+		if a.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // NewSessionClient builds a client that resolves its endpoints from the session
