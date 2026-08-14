@@ -1,3 +1,11 @@
+> **Status: reviewed and distilled into [`.plans/s20-agent-native-ux/`](../../.plans/s20-agent-native-ux/readme.md)**
+> (2026-08-14). The plan records what was adopted (the coda's conservative-nouns rule,
+> Watches, uncertainty-first extracted views, intent compose, Ask), what was deferred
+> (Situations as a shipped noun, the Gmail-connector wedge, monetization tiers), and the
+> review's key finding: most of this machinery already exists — the Gmail-feel is an empty
+> approvals queue, so the first fix is supply (s03.D T2–T5), not ontology. These four docs
+> stay as the source thinking.
+
 The fundamental noun shift is:
 
 > Message → Sythesize "The Situation" → A Desired Outcome → Agent Work → Human Approval
