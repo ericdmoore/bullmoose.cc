@@ -77,19 +77,58 @@ type args struct {
 	// '$important'` is two keywords, and a port that assigned would silently drop
 	// the first. Unlike --to they are NOT comma-split — a keyword may legitimately
 	// contain one.
-	Add     []string
-	Remove  []string
-	Role    string
-	Force   bool
-	Unset   bool
-	NoSync  bool
-	IfState string
+	Add    []string
+	Remove []string
+	Role   string
+	Unset  bool
+	NoSync bool
+	// Force and IfState are declared below with the I/O-contract flags: that pair
+	// also tracks PRESENCE (HasIfState), which the triage verbs do not need but
+	// which is a superset of what they read.
 
 	// ---- sync ----
 	//
 	// Blobs is `--blobs <dir>`: mirror every message's RFC 5322 source beside the
 	// metadata. Absent means metadata only.
 	Blobs string
+	// ---- the I/O contract's own remaining flags (arch.md §1.4 / §1.7) ----
+	//
+	// `--as` and `--if-state` record PRESENCE for the same reason --body does:
+	// io.ts:371 tests `opts.as` for undefined (an empty --as is a usage error, not
+	// "infer"), and contacts.ts:791 sends `ifInState` iff the flag is present.
+	As         string
+	HasAs      bool
+	IfState    string
+	HasIfState bool
+	// Force is `books rm`/`calendar rm`'s onDestroyRemove* and `contacts`' own
+	// non-empty-book confirmation. Distinct from `--yes`, which the admin verbs use.
+	Force bool
+
+	// ---- contacts (sVOL 017) ----
+	Book string
+
+	// ---- calendar (sVOL 018) ----
+	//
+	// Every value flag here records presence, because calendar.ts:528
+	// applyEventFlags overlays a field iff `opts.X !== undefined` — so
+	// `--title ""` clears a title and is NOT the same as omitting it, and
+	// `--occurrence ""` still hits the deferred-feature refusal.
+	Days          string
+	Title         string
+	HasTitle      bool
+	Start         string
+	HasStart      bool
+	Duration      string
+	HasDuration   bool
+	TZ            string
+	HasTZ         bool
+	AllDay        bool
+	RRule         string
+	HasRRule      bool
+	Calendar      string
+	Occurrence    string
+	HasOccurrence bool
+	ICS           bool
 }
 
 // scopesFlag returns --scopes the way scopes.ParseFlag wants it: nil for absent,
@@ -207,10 +246,42 @@ func parse(argv []string) args {
 				a.Unset = true
 			case "no-sync":
 				a.NoSync = true
-			case "if-state":
-				a.IfState = value()
 			case "blobs":
 				a.Blobs = value()
+			case "as":
+				a.As = value()
+				a.HasAs = true
+			case "if-state":
+				a.IfState = value()
+				a.HasIfState = true
+			case "book":
+				a.Book = value()
+			case "days":
+				a.Days = value()
+			case "title":
+				a.Title = value()
+				a.HasTitle = true
+			case "start":
+				a.Start = value()
+				a.HasStart = true
+			case "duration":
+				a.Duration = value()
+				a.HasDuration = true
+			case "tz":
+				a.TZ = value()
+				a.HasTZ = true
+			case "all-day":
+				a.AllDay = true
+			case "rrule":
+				a.RRule = value()
+				a.HasRRule = true
+			case "calendar":
+				a.Calendar = value()
+			case "occurrence":
+				a.Occurrence = value()
+				a.HasOccurrence = true
+			case "ics":
+				a.ICS = true
 			}
 
 		case arg == "-n":
