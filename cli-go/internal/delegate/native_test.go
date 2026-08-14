@@ -87,6 +87,50 @@ func TestOwnedNativelyIsPerCommand(t *testing.T) {
 	}
 }
 
+// TestOwnedNativelyRefusesWhatParseArgsRefuses pins the third reason an
+// invocation delegates: node:util's parseArgs itself rejects it.
+//
+// Found by diffing the two binaries on `mailbox create X --sort -1`. parseArgs
+// answers "Option '--sort' argument is ambiguous." and main.ts turns that into a
+// usage error plus the whole overview; the native parser had happily read "-1" as
+// the value and answered with a different sentence. The class is not `mailbox`'s
+// — `log -n -5` had it since wave 1 — so the guard, not one parser, is where it
+// belongs. Delegating is the byte-identical answer: Node prints its own refusal.
+func TestOwnedNativelyRefusesWhatParseArgsRefuses(t *testing.T) {
+	RegisterFlags("mailbox", []string{"db", "account", "parent", "sort", "if-state"},
+		[]string{"json", "ids", "dry-run", "force"}, nil)
+	RegisterFlags("log", []string{"db", "account", "mailbox", "n"}, []string{"json", "ids"}, []string{"n"})
+	defer func() { owned = map[string]flagSet{} }()
+
+	cases := []struct {
+		argv []string
+		want bool
+		why  string
+	}{
+		{[]string{"mailbox", "create", "X", "--sort", "3"}, true, "an ordinary value"},
+		{[]string{"mailbox", "create", "X", "--sort=-1"}, true,
+			"INLINE is unambiguous — parseArgs accepts it, and so must the native path"},
+		{[]string{"mailbox", "move", "X", "--parent", "-"}, true,
+			"a bare - is a legal value: it is how you say `top level`"},
+		{[]string{"mailbox", "create", "X", "--sort", "-1"}, false,
+			"parseArgs: \"Option '--sort' argument is ambiguous.\""},
+		{[]string{"mailbox", "create", "X", "--sort"}, false,
+			"parseArgs: \"Option '--sort <value>' argument missing\""},
+		{[]string{"mailbox", "create", "X", "--sort", "--json"}, false,
+			"a flag is not a value, however much it looks like one"},
+		{[]string{"mailbox", "create", "X", "--json=x"}, false,
+			"parseArgs: \"Option '--json' does not take an argument\""},
+		{[]string{"log", "-n", "-5"}, false, "the same rule for the short option"},
+		{[]string{"log", "-n"}, false, "…and for a missing short value"},
+		{[]string{"log", "-n", "5"}, true, "the ordinary case still runs natively"},
+	}
+	for _, c := range cases {
+		if got := ownedNatively(c.argv); got != c.want {
+			t.Errorf("ownedNatively(%q) = %v, want %v — %s", c.argv, got, c.want, c.why)
+		}
+	}
+}
+
 // TestRegisterPopulatesNative guards the wiring Register does for cmd.Install.
 func TestRegisterPopulatesNative(t *testing.T) {
 	before := len(native)

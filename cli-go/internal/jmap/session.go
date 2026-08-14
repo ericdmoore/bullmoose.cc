@@ -283,6 +283,63 @@ func (c *Client) DownloadBlob(ctx context.Context, accountID, blobID string) ([]
 	return io.ReadAll(resp.Body)
 }
 
+// ---- the non-JMAP REST endpoints (sVOL 010) --------------------------------
+//
+// `bullmoose blobs` reaches `/api/blobs/…` rather than a JMAP method, and
+// packages/cli/src/jmap.ts:218 records why in a comment worth not re-deciding:
+// RFC 8620 §2 defines a session template for DOWNLOAD only, so there is nothing
+// to resolve blob ENUMERATION or DELETE through. Those paths are therefore
+// hardcoded on `base` — exactly as `upload` and `createShareLink` already are —
+// and adding non-standard members to the session resource to invent a template
+// would be worse.
+//
+// The bytes come back RAW because `blobs rm --json` re-emits the server's object
+// verbatim (blobs.ts:68 `emitJson(res)`), and a decode → re-encode through a Go
+// map would sort its keys.
+
+// ListBlobs is `GET /api/blobs/{accountId}` — jmap.ts:228 listBlobs.
+func (c *Client) ListBlobs(ctx context.Context, accountID string) (json.RawMessage, error) {
+	return c.RESTJSON(ctx, http.MethodGet,
+		"/api/blobs/"+encodeURIComponent(accountID), "blobs list")
+}
+
+// DeleteBlob is `DELETE /api/blobs/{accountId}/{blobId}` — jmap.ts:233. The
+// server refuses (409) a blob that mail or a share still needs.
+func (c *Client) DeleteBlob(ctx context.Context, accountID, blobID string) (json.RawMessage, error) {
+	return c.RESTJSON(ctx, http.MethodDelete,
+		"/api/blobs/"+encodeURIComponent(accountID)+"/"+encodeURIComponent(blobID), "blobs rm")
+}
+
+// RESTJSON is jmap.ts:267 sendJson: one authenticated request to a path on the
+// base URL, the body returned verbatim on success and lifted into a ServerError
+// on a refusal.
+//
+// The refusal message is `<what> failed: HTTP <status> <body>` with the body
+// UNTRIMMED, because the server names the reason in it (`blob in use` plus the
+// message ids) and dropping that would leave a human with a bare status. The
+// `type`/`error` member of that body becomes JMAPType, so a 409 whose reason is
+// in no JMAP vocabulary still exits 5 from its STATUS (bmio.ExitCodeFor).
+func (c *Client) RESTJSON(ctx context.Context, method, path, what string) (json.RawMessage, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, &bmio.CliError{Msg: what + " failed: " + err.Error(), Code: bmio.ExitFail}
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, transportError(
+			fmt.Sprintf("%s failed: HTTP %d %s", what, resp.StatusCode, string(raw)),
+			resp.StatusCode, raw)
+	}
+	return json.RawMessage(raw), nil
+}
+
 // encodeURIComponent is JavaScript's, not Go's: net/url's escapers differ from
 // encodeURIComponent in both directions (QueryEscape turns a space into `+`;
 // PathEscape leaves `/` alone, and `{type}` expands to a media type that MUST

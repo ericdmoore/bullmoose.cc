@@ -1,7 +1,8 @@
 package cmd
 
-// The fake mail server `read` and `send` are tested against, plus the mirror seed
-// they read their base/token/accounts from.
+// The fake mail server `read`, `send`, the triage verbs, `mailbox`, `show` and
+// `blobs` are tested against, plus the mirror seed they read their base/token/
+// accounts from.
 //
 // It records every method call VERBATIM, in order, because for `send` the call
 // SEQUENCE is the thing under test: create the draft, then submit it, with the
@@ -28,6 +29,7 @@ import (
 	"testing"
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/jsobj"
 )
 
 // recordedCall is one method invocation the CLI sent.
@@ -36,9 +38,19 @@ type recordedCall struct {
 	Args json.RawMessage
 }
 
+// restCall is one request to a NON-JMAP endpoint. `blobs` reaches
+// `/api/blobs/…` rather than a method (jmap.ts:218 records why there is no
+// session template to resolve), so its "which request did we send" assertions —
+// and its zero-request refusals — need their own log.
+type restCall struct {
+	Method string
+	Path   string
+}
+
 type mailFake struct {
 	mu    sync.Mutex
 	calls []recordedCall
+	rest  []restCall
 	// downloads records blob-download paths (the `read --raw` path).
 	downloads []string
 
@@ -49,10 +61,32 @@ type mailFake struct {
 	emails     map[string]string // id → raw email object
 	queryIDs   []string
 
+	// boxes is the MUTABLE mailbox list, as ordered raw JSON objects — the
+	// `mailbox` verbs' subject. Nil means "serve the static `mailboxes` fixture
+	// instead", which is what the read/send tests want. Raw strings rather than
+	// structs because `mailbox --json` re-emits each object VERBATIM, so a test
+	// has to be able to pin an unusual key order and watch it survive.
+	boxes        []string
+	mailboxState string
+	// mailboxFull names the mailboxes that hold mail, so a destroy without
+	// onDestroyRemoveEmails is refused with `mailboxHasEmail` exactly as
+	// services/jmap/src/methods/mailbox.ts and smoke/server.mjs:168 do.
+	mailboxFull map[string]bool
+	newBoxes    int
+
+	// blobList is `GET /api/blobs/{accountId}`'s body, raw for the same reason.
+	blobList string
+	// blobRefusals maps a blobId to the status + body a DELETE answers with,
+	// mirroring smoke/server.mjs:457: `b_0` is a 409 whose reason word is in no
+	// JMAP vocabulary, `b_boom` a 500.
+	blobRefusals map[string]restRefusal
+
 	// Refusal knobs.
 	refuseSubmission string // "method" | "seterror" | ""
-	httpStatus       int    // non-zero → every JMAP POST answers this status
-	emptyMailbox     bool
+	// httpStatus, when non-zero, is the status EVERY JMAP POST and REST request
+	// answers — the rejected-token / no-access fixture.
+	httpStatus   int
+	emptyMailbox bool
 
 	// created holds the drafts Email/set made, so EmailSubmission/set can echo
 	// the right emailId back.
@@ -66,6 +100,12 @@ type mailFake struct {
 	base string
 }
 
+// restRefusal is one canned non-2xx answer from the REST surface.
+type restRefusal struct {
+	status int
+	body   string
+}
+
 func newMailFake() *mailFake {
 	return &mailFake{
 		mailboxes: `[{"id":"mb_inbox","name":"Inbox","role":"inbox"},` +
@@ -73,10 +113,28 @@ func newMailFake() *mailFake {
 			`{"id":"mb_sent","name":"Sent","role":"sent"}]`,
 		identities: `[{"id":"id_1","email":"you@stub.test","name":"You","textSignature":"Eric\nbullmoose"},` +
 			`{"id":"id_2","email":"alias@stub.test","name":"","textSignature":""}]`,
-		emails:  map[string]string{},
-		created: map[string]string{},
-		state:   "emstate-1",
+		emails:       map[string]string{},
+		created:      map[string]string{},
+		state:        "emstate-1",
+		mailboxState: "mbstate-1",
+		mailboxFull:  map[string]bool{},
+		blobRefusals: map[string]restRefusal{},
 	}
+}
+
+// withMailboxTree turns on the MUTABLE mailbox fixture the `mailbox` verbs need.
+// The key order below is deliberately NOT the CLI's own struct order — id last,
+// an extra property the CLI does not model — because `mailbox --json` re-emits
+// these objects and the test that matters is that they come back unchanged.
+func (f *mailFake) withMailboxTree() *mailFake {
+	f.boxes = []string{
+		`{"sortOrder":0,"name":"Inbox","role":"inbox","id":"mb_inbox","parentId":null,"totalEmails":3}`,
+		`{"sortOrder":1,"name":"Full","role":null,"id":"mb_full","parentId":null,"totalEmails":3}`,
+		`{"sortOrder":2,"name":"Empty","role":null,"id":"mb_empty","parentId":null,"totalEmails":0}`,
+		`{"sortOrder":3,"name":"Quarantined","role":"junk","id":"mb_junk","parentId":null,"totalEmails":0}`,
+	}
+	f.mailboxFull["mb_full"] = true
+	return f
 }
 
 // applySet is the triage half of Email/set: RFC 8620 PatchObject semantics over
@@ -169,6 +227,130 @@ func (f *mailFake) applySet(update map[string]json.RawMessage, updateOrder []str
 		`"destroyed":[%s],"notDestroyed":{%s}}`,
 		oldState, f.state, strings.Join(updated, ","), strings.Join(notUpdated, ","),
 		strings.Join(destroyed, ","), strings.Join(notDestroyed, ","))
+}
+
+// applyMailboxSet is the Mailbox/set half of the fake — see the call site for
+// why it models the server rather than echoing the request.
+//
+// Both key orders are passed IN because a Go map has none: `create` decides which
+// client id is answered first, and `update`'s patch is Object.assign'd in
+// insertion order. The same lesson as updateKeyOrder's note — a fake that ranged
+// a map here would answer randomly, pass locally, and fail in CI.
+func (f *mailFake) applyMailboxSet(create map[string]json.RawMessage, createOrder []string,
+	update map[string]json.RawMessage, updateOrder []string, destroy []string, removeEmails bool) string {
+	created, notCreated := []string{}, []string{}
+	updated, notUpdated := []string{}, []string{}
+	destroyed, notDestroyed := []string{}, []string{}
+	mutated := false
+
+	find := func(id string) (int, *jsobj.Object) {
+		for i, raw := range f.boxes {
+			box, err := jsobj.Parse([]byte(raw))
+			if err != nil {
+				continue
+			}
+			if got, _ := box.Str("id"); got == id {
+				return i, box
+			}
+		}
+		return -1, nil
+	}
+
+	for _, cid := range createOrder {
+		spec, err := jsobj.Parse(create[cid])
+		if err != nil {
+			notCreated = append(notCreated, fmt.Sprintf(`%q:{"type":"invalidProperties"}`, cid))
+			continue
+		}
+		f.newBoxes++
+		id := fmt.Sprintf("mb_new_%d", f.newBoxes)
+		parent := "null"
+		if raw, ok := spec.Raw("parentId"); ok {
+			parent = string(raw)
+		}
+		order := "0"
+		if raw, ok := spec.Raw("sortOrder"); ok {
+			order = string(raw)
+		}
+		name, _ := spec.Str("name")
+		f.boxes = append(f.boxes, fmt.Sprintf(
+			`{"id":%q,"parentId":%s,"name":%q,"role":null,"sortOrder":%s}`, id, parent, name, order))
+		created = append(created, fmt.Sprintf(`%q:{"id":%q,"role":null,"sortOrder":%s}`, cid, id, order))
+		mutated = true
+	}
+
+	for _, id := range updateOrder {
+		i, box := find(id)
+		if box == nil {
+			notUpdated = append(notUpdated, fmt.Sprintf(`%q:{"type":"notFound"}`, id))
+			continue
+		}
+		patch, err := jsobj.Parse(update[id])
+		if err != nil {
+			notUpdated = append(notUpdated, fmt.Sprintf(`%q:{"type":"invalidPatch"}`, id))
+			continue
+		}
+		// Object.assign(box, patch): an existing key keeps its position, a new
+		// one lands at the end.
+		for _, key := range patch.Keys() {
+			raw, _ := patch.Raw(key)
+			box.SetRaw(key, raw)
+		}
+		encoded, err := box.MarshalJSON()
+		if err != nil {
+			notUpdated = append(notUpdated, fmt.Sprintf(`%q:{"type":"serverFail"}`, id))
+			continue
+		}
+		f.boxes[i] = string(encoded)
+		updated = append(updated, fmt.Sprintf(`%q:null`, id))
+		mutated = true
+	}
+
+	for _, id := range destroy {
+		i, box := find(id)
+		if box == nil {
+			notDestroyed = append(notDestroyed, fmt.Sprintf(`%q:{"type":"notFound"}`, id))
+			continue
+		}
+		if f.mailboxFull[id] && !removeEmails {
+			notDestroyed = append(notDestroyed, fmt.Sprintf(
+				`%q:{"type":"mailboxHasEmail","description":"3 messages"}`, id))
+			continue
+		}
+		f.boxes = append(f.boxes[:i], f.boxes[i+1:]...)
+		destroyed = append(destroyed, fmt.Sprintf("%q", id))
+		mutated = true
+	}
+
+	oldState := f.mailboxState
+	if mutated {
+		n, _ := strconv.Atoi(strings.TrimPrefix(f.mailboxState, "mbstate-"))
+		f.mailboxState = "mbstate-" + strconv.Itoa(n+1)
+	}
+	return fmt.Sprintf(`{"accountId":"a_you","oldState":%q,"newState":%q,`+
+		`"created":{%s},"notCreated":{%s},"updated":{%s},"notUpdated":{%s},`+
+		`"destroyed":[%s],"notDestroyed":{%s}}`,
+		oldState, f.mailboxState,
+		strings.Join(created, ","), strings.Join(notCreated, ","),
+		strings.Join(updated, ","), strings.Join(notUpdated, ","),
+		strings.Join(destroyed, ","), strings.Join(notDestroyed, ","))
+}
+
+// boxNames is the fake's current mailbox list, by name, for the assertions that
+// a refused write changed NOTHING.
+func (f *mailFake) boxNames() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0, len(f.boxes))
+	for _, raw := range f.boxes {
+		box, err := jsobj.Parse([]byte(raw))
+		if err != nil {
+			continue
+		}
+		name, _ := box.Str("name")
+		out = append(out, name)
+	}
+	return out
 }
 
 // setOf reads a JMAP `{id: true}` set out of a decoded email object.
@@ -299,6 +481,43 @@ func (f *mailFake) handle(w http.ResponseWriter, r *http.Request) {
 			f.base+"/jmap-endpoint",
 			f.base+"/dl/{accountId}/{blobId}/{name}/{type}")
 		return
+	case strings.HasPrefix(r.URL.Path, "/api/blobs/"):
+		f.mu.Lock()
+		// EscapedPath, not Path: the assertion is about what encodeURIComponent
+		// produced, and net/http decodes %2F back to a slash in Path.
+		f.rest = append(f.rest, restCall{Method: r.Method, Path: r.URL.EscapedPath()})
+		status := f.httpStatus
+		f.mu.Unlock()
+		if status != 0 {
+			w.Header().Set("content-type", "application/json")
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"error":"forbidden"}`))
+			return
+		}
+		f.mu.Lock()
+		refusal, refused := restRefusal{}, false
+		if r.Method == http.MethodDelete {
+			segments := strings.Split(r.URL.Path, "/")
+			refusal, refused = f.blobRefusals[segments[len(segments)-1]]
+		}
+		list := f.blobList
+		f.mu.Unlock()
+		w.Header().Set("content-type", "application/json")
+		if refused {
+			w.WriteHeader(refusal.status)
+			_, _ = w.Write([]byte(refusal.body))
+			return
+		}
+		if r.Method == http.MethodDelete {
+			segments := strings.Split(r.URL.Path, "/")
+			fmt.Fprintf(w, `{"blobId":%q,"deleted":true}`, segments[len(segments)-1])
+			return
+		}
+		if list == "" {
+			list = `{"accountId":"a_you","blobs":[],"totalSize":0}`
+		}
+		_, _ = w.Write([]byte(list))
+		return
 	case strings.HasPrefix(r.URL.Path, "/dl/"):
 		f.mu.Lock()
 		// EscapedPath, not Path: the assertion is about what encodeURIComponent
@@ -349,7 +568,32 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 	}
 	switch name {
 	case "Mailbox/get":
+		if f.boxes != nil {
+			return reply(fmt.Sprintf(`{"accountId":"a_you","state":%q,"list":[%s]}`,
+				f.mailboxState, strings.Join(f.boxes, ",")))
+		}
 		return reply(`{"accountId":"a_you","state":"1","list":` + f.mailboxes + `}`)
+
+	case "Mailbox/set":
+		// The same model services/jmap/src/methods/mailbox.ts and
+		// packages/cli/smoke/server.mjs:120 run, so a `mailbox` test here and the
+		// contract suite are measuring the same server behaviour: ifInState
+		// refuses the WHOLE method before touching anything, a create mints an
+		// id, an update is Object.assign over the stored object, and a destroy of
+		// a folder that holds mail is refused unless onDestroyRemoveEmails.
+		var a struct {
+			IfInState             *string                    `json:"ifInState"`
+			Create                map[string]json.RawMessage `json:"create"`
+			Update                map[string]json.RawMessage `json:"update"`
+			Destroy               []string                   `json:"destroy"`
+			OnDestroyRemoveEmails bool                       `json:"onDestroyRemoveEmails"`
+		}
+		_ = json.Unmarshal(args, &a)
+		if a.IfInState != nil && *a.IfInState != f.mailboxState {
+			return fail("stateMismatch", "")
+		}
+		return reply(f.applyMailboxSet(a.Create, objectKeyOrder(args, "create"),
+			a.Update, objectKeyOrder(args, "update"), a.Destroy, a.OnDestroyRemoveEmails))
 	case "Identity/get":
 		return reply(`{"accountId":"a_you","state":"1","list":` + f.identities + `}`)
 	case "Email/query":
@@ -494,6 +738,13 @@ func seedMailMirror(t *testing.T, base, token string, accounts string) string {
 		   size INTEGER NOT NULL, received_at INTEGER NOT NULL,
 		   has_attachment INTEGER NOT NULL DEFAULT 0,
 		   attachments_json TEXT NOT NULL DEFAULT '[]',
+		   -- The provenance columns (s03.A T1) are here because show --json emits
+		   -- SELECT * — every column the mirror declares, in DECLARATION ORDER.
+		   -- A seed missing them would let a port pass while emitting a shorter
+		   -- object than the Node CLI does against a real mirror.
+		   last_writer_principal TEXT,
+		   last_writer_binding TEXT,
+		   last_writer_invocation TEXT,
 		   PRIMARY KEY (account_id, id))`,
 		`CREATE TABLE email_mailboxes (account_id TEXT, email_id TEXT, mailbox_id TEXT,
 		   PRIMARY KEY (account_id, email_id, mailbox_id))`,
@@ -563,14 +814,22 @@ func withStdin(t *testing.T, content string) {
 // updateKeyOrder reads `update`'s keys in DOCUMENT order. json.Unmarshal into a
 // map discards that order and Go then randomises iteration, so the fake needs
 // the raw bytes to answer the way a real server does.
-func updateKeyOrder(args json.RawMessage) []string {
-	var envelope struct {
-		Update json.RawMessage `json:"update"`
-	}
-	if err := json.Unmarshal(args, &envelope); err != nil || len(envelope.Update) == 0 {
+func updateKeyOrder(args json.RawMessage) []string { return objectKeyOrder(args, "update") }
+
+// objectKeyOrder is updateKeyOrder for any member — `create` needs the same
+// treatment, and so would any future id-keyed argument. Same lesson, stated once:
+// a Go map has no order, and ranging one made the fake's answer differ between
+// runs, which passed locally and failed in CI.
+func objectKeyOrder(args json.RawMessage, member string) []string {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(args, &envelope); err != nil {
 		return nil
 	}
-	dec := json.NewDecoder(bytes.NewReader(envelope.Update))
+	raw, ok := envelope[member]
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
 	if tok, err := dec.Token(); err != nil {
 		return nil
 	} else if delim, ok := tok.(json.Delim); !ok || delim != '{' {
