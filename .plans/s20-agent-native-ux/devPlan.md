@@ -165,6 +165,52 @@ answers; every access is authorized and audited by the machinery that already ex
 - **Done when:** a natural-language question over real mail returns a cited answer whose
   every read appears in the access log.
 
+### T6 — Goals: the delegation contract, with an approvable plan · *the Situation question, resolved*
+
+**Files:** `services/agent/src/jobNode.ts` (plan-proposal interception),
+`services/jmap` (goal CRUD as a thin face over `jobs` rows), webmail goal view,
+`services/agent` (contract enforcement is already attenuation + budget).
+
+Eric's reframing (2026-08-14): the durable object the conceptual-reorg called a
+Situation/Thread is not a CONTAINER of related stuff (about-ness — the storage-first
+instinct, deferred) but a CONTRACT with done-ness: a **Goal** that decomposes into a
+tentative workflow — several emails, follow-up watches, solicited feedback, a compiled
+summary — **with approval checkpoints along the way**. This is the docs' own Delegation
+primitive (Goal / may / may not / escalate when / done when), plus the piece the docs
+missed: **the workflow sketch is itself an approvable artifact.**
+
+The substrate landed with s11 T7 (jobs DAG, planner node, monotonic attenuation,
+aggregate budgets), whose design already commits the key sentence: *"side-effectful
+leaves still exit via /approvals — a Job reorganizes work, never its egress."* What this
+task adds on top:
+
+- **The plan-approval checkpoint — the new class.** Today approvals gate egress; this
+  gates EXECUTION: the planner's decomposition lands as a proposal whose payload is the
+  task list. Approve → tasks are created. Edit → the human redlines the workflow, and
+  the decline taxonomy learns from the redline. Cheap by construction: the planner
+  already emits the task list (`jobNode.ts`); this intercepts output that exists.
+- **The contract IS the authority envelope.** may/may-not/escalate/done-when compile to
+  the machinery that already enforces them: allowed tools and recipients, monotonic
+  attenuation (a sub-task can never exceed the goal — proven by test), aggregate budget,
+  and escalation as a Watch on the job itself.
+- **Checkpoints thin by CLASS, not globally.** Early, everything stops for approval —
+  the sketch, each email, the summary. repetition→policy graduates classes
+  ("scheduling emails to direct reports auto-send") per the trust ladder. The goal view
+  renders which checkpoint classes are still manual, because silently-widening autonomy
+  is the one failure the whole product exists to prevent.
+- **Milestones are derived.** A goal's timeline = its proposals + margin comments
+  (T4's second grouping axis), time-ordered. Job status stays a view over its tasks —
+  never store what can be derived.
+- Naming: **Goal** (working). Not "Situation" (container connotations, deferred), not
+  "Thread" (banned — collision), and "Topic" undersells it: topics have about-ness,
+  this has done-ness.
+
+**Done when:** "get three structural engineers willing to evaluate the attic" can be
+expressed as a goal with a $750 bound; the planner's sketch appears in the queue and is
+edited before approval; the resulting emails each appear as proposals; a join node's
+compiled summary appears as the final proposal; the goal view shows progress and which
+checkpoint classes have graduated to auto.
+
 ## Sequencing
 
 ```
@@ -177,7 +223,9 @@ T5 ask (independent of all) ─────────────────�
 
 T1 and T5 are independent of the gate and of each other — either is a safe first slice.
 T4 is the most speculative and rides behind the supply side deliberately: its correction
-loop needs the approvals/decline plumbing warm.
+loop needs the approvals/decline plumbing warm. T6 rides last: it composes T1 (watches as
+job nodes), T2's verbs (Delegate is its on-ramp), T4 (milestones), and the s11 T7 DAG —
+and its plan-approval checkpoint is only meaningful once approving things is a habit.
 
 ## Decisions needed
 

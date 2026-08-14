@@ -54,9 +54,13 @@ One noun is admitted immediately because it has already earned its place three t
 
 ## Rejected / deferred, and why (recorded so it is not re-litigated)
 
-- **"Situation"/"Thread" as a shipped durable object — deferred.** Let the S-D read-model
-  views prove which groupings users actually want first. And whatever this object is
-  eventually named, it is **not "Thread"** — that collides with fifteen years of user
+- **"Situation"/"Thread" as a shipped durable object — deferred as a CONTAINER, resolved
+  as a CONTRACT** (Eric, 2026-08-14, and devPlan T6). The container version — a folder of
+  related stuff — stays deferred; it is about-ness, the storage-first instinct. What ships
+  instead is the **Goal**: the docs' own Delegation primitive (goal / may / may-not /
+  escalate-when / done-when) decomposing into an approvable workflow over the s11 T7 jobs
+  DAG, with checkpoints that thin by class as trust grows. Done-ness, not about-ness.
+  Whatever else emerges, it is **not "Thread"** — that collides with fifteen years of user
   vocabulary and this codebase's own (`ThreadListView`, `fix/indexer-threads`).
 - **The Gmail-connector wedge — out of scope, and the tension is recorded.** The vs-Google
   doc argues the wedge is "the agent-native client for the email you already have"; the
