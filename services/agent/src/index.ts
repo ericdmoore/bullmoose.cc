@@ -24,6 +24,7 @@ import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
 import { answerInfoRequest, proposeReply, expireStaleProposals } from "./proposals.js";
+import { docsResponse, MCP_DOCS } from "./docs.js";
 import { introspect, isLocalToken, principalFromProps } from "./oauthBridge.js";
 import { handleVault, handleVaultVerify } from "./vault.js";
 import { handleWellKnown, originAllowed, unauthorized } from "./wellKnown.js";
@@ -169,7 +170,14 @@ export default {
     if (url.pathname === "/vault/credentials" || url.pathname.startsWith("/vault/credentials/")) {
       return handleVault(request, env);
     }
-    return new Response("bullmoose-agent", { status: url.pathname === "/" ? 200 : 404 });
+    // Documentation at the root and at /docs. The root used to return the
+    // 15-byte string `bullmoose-agent` — a fine health check, and useless to
+    // anyone who pasted the hostname into a browser, which is exactly what a
+    // developer wiring up a client does first. /health keeps that string for
+    // anything watching it.
+    if (url.pathname === "/" || url.pathname === "/docs") return docsResponse(MCP_DOCS);
+    if (url.pathname === "/health") return new Response("bullmoose-agent");
+    return new Response("bullmoose-agent", { status: 404 });
   },
 
   // Retry net: pokes can die mid-flight; the pending row cannot.

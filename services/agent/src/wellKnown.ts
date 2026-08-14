@@ -57,7 +57,14 @@ export function protectedResourceMetadata(url: URL, env: Env): Record<string, un
     authorization_servers: [issuer(url, env)],
     bearer_methods_supported: ["header"],
     scopes_supported: [...PUBLIC_SCOPES],
-    resource_documentation: "https://bullmoose.cc/docs/mcp",
+    // Points at the docs THIS worker serves, not at the marketing site. The
+    // first value here was `https://bullmoose.cc/docs/mcp`, which returned 200
+    // — and served the homepage, because the Astro site answers unknown paths
+    // with a catch-all. That is worse than a 404: a developer or agent
+    // following it lands on a plausible page, gets no answer, and nothing
+    // signals the mistake. A discovery document is a promise; this one now
+    // points somewhere that ships in the same upload as the behaviour.
+    resource_documentation: `${url.origin}/docs`,
   };
 }
 

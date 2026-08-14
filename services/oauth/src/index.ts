@@ -2,6 +2,7 @@ import { hashLoginKey, isLoginKey, OAUTH_SCOPES, timingSafeEqualHex, unknownScop
 import { beginLoginAttempt } from "@bullmoose/auth-core/loginThrottle";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { consentPage, deriveScript, errorPage } from "./consent.js";
+import { AUTH_DOCS, docsResponse } from "./docs.js";
 import { recordConsent } from "./consentMirror.js";
 import { anyRedirectMatches, CLAUDE_REDIRECT_URIS, redirectHost } from "./redirects.js";
 
@@ -83,9 +84,11 @@ const authorizeHandler = {
     // The client-side key derivation. A file rather than an inline script so
     // the password page's CSP can stay `script-src 'self'`.
     if (url.pathname === "/derive.js") return deriveScript();
-    if (url.pathname === "/" || url.pathname === "/health") {
-      return new Response("bullmoose-oauth", { status: url.pathname === "/" ? 200 : 404 });
-    }
+    // Documentation at the root and at /docs, for the same reason as the MCP
+    // surface: the first thing a developer does with a hostname is open it.
+    // /health keeps the bare identifier for anything watching it.
+    if (url.pathname === "/" || url.pathname === "/docs") return docsResponse(AUTH_DOCS);
+    if (url.pathname === "/health") return new Response("bullmoose-oauth");
     return new Response("not found", { status: 404 });
   },
 };
