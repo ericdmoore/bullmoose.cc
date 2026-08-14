@@ -246,37 +246,65 @@ func ReconcileEmails(ctx context.Context, db *sql.DB, client *jmap.Client, accou
 // DELETE + re-INSERT rather than a merge, because Mailbox/set can DESTROY a
 // mailbox and an incremental merge would leave the dead row behind.
 func RefreshMailboxes(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string) ([]Mailbox, string, error) {
+	_, boxes, state, err := RefreshMailboxesRaw(ctx, db, client, accountID)
+	return boxes, state, err
+}
+
+// RefreshMailboxesRaw is RefreshMailboxes keeping the SERVER's own bytes for each
+// mailbox alongside the decoded rows.
+//
+// `bullmoose mailbox`'s --json record ends `mailboxes: boxes`, where `boxes` is
+// `Mailbox/get`'s `list` cast to MirroredMailbox and NOT re-shaped
+// (mailbox.ts:218 → :227). In JavaScript that re-emits the server's object with
+// its own keys, its own key ORDER, and any property this CLI does not model. A Go
+// struct would silently drop the extras and impose its own field order, so the
+// command that has to match Node byte for byte reads the raw elements and the
+// mirror write reads the decoded ones.
+func RefreshMailboxesRaw(ctx context.Context, db *sql.DB, client *jmap.Client, accountID string) ([]json.RawMessage, []Mailbox, string, error) {
 	raw, err := client.One(ctx, "Mailbox/get",
 		map[string]any{"accountId": accountID, "ids": nil}, jmap.MailUsing)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 	var got struct {
-		List  []Mailbox `json:"list"`
-		State string    `json:"state"`
+		List  []json.RawMessage `json:"list"`
+		State string            `json:"state"`
 	}
 	if err := json.Unmarshal(raw, &got); err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
+	boxes := make([]Mailbox, 0, len(got.List))
+	for _, item := range got.List {
+		var m Mailbox
+		if err := json.Unmarshal(item, &m); err != nil {
+			return nil, nil, "", err
+		}
+		boxes = append(boxes, m)
+	}
+	if err := writeMailboxMirror(ctx, db, accountID, boxes); err != nil {
+		return nil, nil, "", err
+	}
+	return got.List, boxes, got.State, nil
+}
+
+// writeMailboxMirror is the DELETE + re-INSERT half of the refresh.
+func writeMailboxMirror(ctx context.Context, db *sql.DB, accountID string, boxes []Mailbox) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, "", err
+		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, "DELETE FROM mailboxes WHERE account_id = ?", accountID); err != nil {
-		return nil, "", err
+		return err
 	}
-	for _, m := range got.List {
+	for _, m := range boxes {
 		if _, err := tx.ExecContext(ctx,
 			"INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order) VALUES (?, ?, ?, ?, ?, ?)",
 			m.ID, accountID, m.ParentID, m.Name, m.Role, m.SortOrder); err != nil {
-			return nil, "", err
+			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, "", err
-	}
-	return got.List, got.State, nil
+	return tx.Commit()
 }
 
 // incremental is sync.ts:261: page Email/changes from the cursor until the

@@ -159,6 +159,27 @@ var registry = map[string]spec{
 		value: []string{"db", "account", "days", "title", "start", "duration", "tz",
 			"rrule", "calendar", "occurrence", "as", "if-state"},
 		boolean: []string{"json", "ids", "dry-run", "force", "all-day", "ics"}},
+	// ---- wave 5: the folder surface, one message, and the blob store ----
+	//
+	// `mailbox` owns exactly cmdMailbox's reads (main.ts:359 + mailbox.ts's
+	// MailboxOpts): --account, --parent, --sort, --force, plus --json/--ids/
+	// --dry-run/--if-state.
+	// DELIBERATELY ABSENT: --as. MailboxOpts extends IoOpts so the field exists,
+	// but nothing in mailbox.ts reads it — claiming it would be the cli/008 shape
+	// in reverse, a flag the native path accepts and ignores.
+	"mailbox": {json: true, run: runMailbox,
+		value:   []string{"db", "account", "parent", "sort", "if-state"},
+		boolean: []string{"json", "ids", "dry-run", "force"}},
+	// `show` is the mirror-resolved counterpart of `read`, and its flag set says
+	// so: main.ts:1106 reads --account (as a FAN-OUT selector), --json and --ids
+	// and nothing else. No --if-state (it writes nothing), no --raw (that is
+	// `read`'s), no --dry-run.
+	"show": {json: true, run: runShow,
+		value: []string{"db", "account"}, boolean: []string{"json", "ids"}},
+	// `blobs` owns cmdBlobs's reads (main.ts:401): --account plus the I/O flags.
+	// --dry-run is `rm`'s rehearsal; `list` ignores it, as in the TypeScript.
+	"blobs": {json: true, run: runBlobs,
+		value: []string{"db", "account"}, boolean: []string{"json", "ids", "dry-run"}},
 	// watch has a Node twin, so byte-identity applies and it must declare every
 	// flag its native path consumes — `--exec` above all, since an undeclared one
 	// would silently delegate forever and the port would never run. It parses its
