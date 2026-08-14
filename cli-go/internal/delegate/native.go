@@ -14,7 +14,8 @@ import "strings"
 
 // Register adds one native command handler. main.go calls it (via cmd.Install)
 // before Dispatch, so the routing map is populated from cmd's registry rather
-// than duplicated here.
+// than duplicated here. A ported command's owned FLAGS arrive alongside it,
+// through RegisterFlags, from the same registry entry.
 func Register(command string, run func(argv []string) int) {
 	native[command] = run
 }
@@ -31,63 +32,60 @@ func RegisterNativeOnly(command string) {
 	nativeOnly[command] = true
 }
 
-// ownedValueFlags: the value-taking flags the wave-1 native commands consume
-// (main.ts:64-163). Deliberately a SUBSET of the full parseArgs spec — under-
-// inclusion only over-delegates, and Node produces identical bytes for a
-// delegated command, whereas over-inclusion would run native on a flag Node
-// rejects. Kept in lockstep with cmd.ownedValue.
-var ownedValueFlags = map[string]bool{
-	"db": true, "account": true, "mailbox": true, "n": true,
+// flagSet is one command's owned flags: the value-taking, the boolean, and the
+// short options its NATIVE implementation reads.
+type flagSet struct {
+	value   map[string]bool
+	boolean map[string]bool
+	short   map[string]bool
 }
 
-// ownedBoolFlags: the boolean flags the wave-1 commands consume.
-var ownedBoolFlags = map[string]bool{"json": true, "ids": true}
+// owned maps command → the flags that command's native implementation consumes.
+// Populated by RegisterFlags from cmd's registry, so the guard and the
+// implementations cannot drift apart.
+var owned = map[string]flagSet{}
 
-// ownedShortFlags: -n is the only short option these commands read. -h (help) is
-// deliberately absent, so a `-h` invocation delegates to Node's help.
-var ownedShortFlags = map[string]bool{"n": true}
-
-// perCommandValueFlags / perCommandBoolFlags widen the guard for ONE command.
-//
-// The shared sets above are the wave-1 vocabulary, and widening them for a
-// later command would be wrong in a way that is hard to see: adding `--exec`
-// globally would make `bullmoose log --exec rm` run natively (and ignore the
-// flag) where Node rejects it. So `watch`'s four flags are owned by `watch`
-// alone. Populated by RegisterOwnedFlags from cmd's registry, which is the same
-// single source routing and the cli/008 capability table come from.
-var (
-	perCommandValueFlags = map[string]map[string]bool{}
-	perCommandBoolFlags  = map[string]map[string]bool{}
-)
-
-// RegisterOwnedFlags declares the extra flags one native command consumes.
-func RegisterOwnedFlags(command string, valueFlags, boolFlags []string) {
-	if len(valueFlags) > 0 {
-		set := map[string]bool{}
-		for _, f := range valueFlags {
-			set[f] = true
-		}
-		perCommandValueFlags[command] = set
-	}
-	if len(boolFlags) > 0 {
-		set := map[string]bool{}
-		for _, f := range boolFlags {
-			set[f] = true
-		}
-		perCommandBoolFlags[command] = set
-	}
+// RegisterFlags records one command's owned flag set. Called by cmd.Install
+// beside Register, from the same registry entry, so a command that grows a flag
+// grows its guard in the same edit.
+func RegisterFlags(command string, value, boolean, short []string) {
+	owned[command] = flagSet{value: set(value), boolean: set(boolean), short: set(short)}
 }
 
-// ownedNatively reports whether every flag in argv is one the native command
-// named by argv understands. A `--` ends option scanning (the rest are
+func set(names []string) map[string]bool {
+	m := make(map[string]bool, len(names))
+	for _, n := range names {
+		m[n] = true
+	}
+	return m
+}
+
+// defaultOwned is the fallback for a command with no registered set. It is only
+// reachable for a command that has no native handler either — where Dispatch
+// delegates regardless, so the answer is moot — and for this package's own
+// tests. It keeps the wave-1 vocabulary so those cases read as they always did.
+var defaultOwned = flagSet{
+	value:   map[string]bool{"db": true, "account": true, "mailbox": true, "n": true},
+	boolean: map[string]bool{"json": true, "ids": true},
+	short:   map[string]bool{"n": true}, // -h is deliberately absent: help delegates
+}
+
+// ownedNatively reports whether every flag in argv is one the NAMED command's
+// native implementation understands. A `--` ends option scanning (the rest are
 // positionals); a bare positional, including "-", is always fine. Any other long
-// or short flag — `--help`, `-h`, an unknown flag, or a known-but-unowned one
-// like `--force` — makes this false, so Dispatch delegates and Node owns the
+// or short flag — `--help`, `-h`, an unknown flag, or a flag that belongs to
+// another command — makes this false, so Dispatch delegates and Node owns the
 // outcome.
+//
+// Under-inclusion is the safe direction: it only over-delegates, and Node
+// produces identical bytes for a delegated command. Over-inclusion would run a
+// native path that silently ignores a flag the user typed — which on `send` means
+// mail leaving under the wrong assumptions.
 func ownedNatively(argv []string) bool {
-	command := Command(argv)
-	extraValue := perCommandValueFlags[command]
-	extraBool := perCommandBoolFlags[command]
+	flags, ok := owned[Command(argv)]
+	if !ok {
+		flags = defaultOwned
+	}
 	for i := 0; i < len(argv); i++ {
 		arg := argv[i]
 		switch {
@@ -96,17 +94,17 @@ func ownedNatively(argv []string) bool {
 		case strings.HasPrefix(arg, "--"):
 			name, _, inline := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
 			switch {
-			case ownedValueFlags[name] || extraValue[name]:
+			case flags.value[name]:
 				if !inline {
 					i++ // consume the value token so it is not read as a flag
 				}
-			case ownedBoolFlags[name] || extraBool[name]:
+			case flags.boolean[name]:
 				// owned boolean, nothing to consume
 			default:
 				return false
 			}
 		case len(arg) > 1 && strings.HasPrefix(arg, "-"):
-			if ownedShortFlags[strings.TrimPrefix(arg, "-")] {
+			if flags.short[strings.TrimPrefix(arg, "-")] {
 				i++ // -n VALUE
 			} else {
 				return false

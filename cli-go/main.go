@@ -34,10 +34,11 @@ func main() {
 	bmio.InstallSIGPIPE()
 
 	// Wire the native commands into the delegate's routing map. Derived from
-	// cmd's registry so routing and the cli/008 capability table stay one source
-	// (cmd.Install). Go-native-only commands (approvals, s08) are also registered
-	// as native-only so Dispatch never delegates a command Node does not have.
-	cmd.InstallWithFlags(delegate.Register, delegate.RegisterNativeOnly, delegate.RegisterOwnedFlags)
+	// cmd's registry so routing, the cli/008 capability table and the per-command
+	// owned-flag guard stay one source (cmd.Install). Go-native-only commands
+	// (approvals, s08) are also registered as native-only so Dispatch never
+	// delegates a command Node does not have.
+	cmd.Install(delegate.Register, delegate.RegisterNativeOnly, delegate.RegisterFlags)
 
 	// Dispatch does not always return: a child that died by a signal is
 	// reported by re-raising that signal here, so the parent's disposition is
