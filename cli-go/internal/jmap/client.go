@@ -54,6 +54,23 @@ const (
 // sync engine (internal/mirror) speaks the same request the Node CLI does.
 var MailUsing = []string{CoreCap, MailCap, SubmissionCap}
 
+// Contacts and calendars are separate capabilities and the server validates
+// `using` against SUPPORTED_CAPS, so a request that forgets one is refused with
+// `unknownCapability` rather than quietly working. These two lists are the ones
+// packages/cli/src/contacts.ts:371 and calendar.ts:47 send.
+const (
+	ContactsCap  = "urn:ietf:params:jmap:contacts"
+	CalendarsCap = "urn:ietf:params:jmap:calendars"
+)
+
+// ContactsUsing accompanies every AddressBook/* and ContactCard/* call.
+var ContactsUsing = []string{CoreCap, ContactsCap}
+
+// CalendarUsing accompanies every Calendar/* and CalendarEvent/* call. Calendar
+// writes rely on the server's flat ("calendar","calendar") scope check
+// (.feedback common/027 — no lattice implication is assumed client-side).
+var CalendarUsing = []string{CoreCap, CalendarsCap}
+
 // Invocation is one method call to SEND — the RFC 8620 §3.2 triple
 // [name, args, callId]. It marshals to that JSON array.
 //

@@ -16,6 +16,8 @@
   },
   "devDependencies": {
     "@bullmoose/auth-core": "*",
-    "@bullmoose/jmap-core": "*"
+    "@bullmoose/jmap-core": "*",
+    "@tailwindcss/vite": "^4.3.3",
+    "tailwindcss": "^4.3.3"
   }
 }

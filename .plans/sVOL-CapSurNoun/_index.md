@@ -91,7 +91,7 @@ queries, which today sit behind `x-internal-token` on the agent worker.
 | 008 | Admin lifecycle — update + delete | cap | **E3** ⁵ | **I3** ⁵ | sVOL | — | **✅ done** |
 | 009 | DAV collection creation (`MKCOL`/`MKCALENDAR`) | cap | E2 | I3 | sVOL | — | **✅ done** |
 | 010 | Blob lifecycle — enumerate, delete, revoke share | cap | E2 ⁸ | I1 | sVOL | — | **✅ done** |
-| 011 | The `FileNode` noun | cap | E4 | I3 | **s03.B** | s03.A | **T1+T2 done; T3 deferred** |
+| 011 | The `FileNode` noun | cap | E4 | I3 | **s03.B** | s03.A | **✅ done** ⁹ |
 | 012 | `AddressBook/query` + `Calendar/query` | cap | E1 | I1 ³ | sVOL | — | **wontfix** ³ — neither method exists in RFC 9610 §2 / draft-jmap-calendars-27 §4 |
 | 013 | **Calendar + Contacts CRUD over MCP** | proj | E2 | I3 | sVOL | 001, 002, 003 | **✅ done** |
 | 014 | **Email read + triage over MCP** | proj | E2 | I3 | sVOL | 001, 002 | **✅ done** |
@@ -101,11 +101,18 @@ queries, which today sit behind `x-internal-token` on the agent worker.
 | 018 | Calendar CRUD over CLI | proj | E2 | I3 | **s05** T3 | ~~016, 003~~ **unblocked** | **✅ done** ¹⁰ |
 | 019 | Email triage verbs over CLI | proj | E2 | I3 | sVOL | ~~016~~ **unblocked** | **✅ done** |
 | 020 | Creds mint-time fields | proj | E2 | I2 | **s05** T4 + **s04** | ~~s04 spec~~ **decomposed** | **✅ done** |
-| 021 | Email + Files over WebUI | proj | E4 | I3 | **s03.C** | s03.A, s03.B | todo |
-| 022 | Contacts + Calendar over WebUI | proj | E4 | I3 | sVOL | 021 | todo |
+| 021 | Email + Files over WebUI | proj | E4 | I3 | **s03.C** | s03.A, s03.B | **✅ done** ¹⁰ |
+| 022 | Contacts + Calendar over WebUI | proj | E4 | I3 | sVOL | 021 | **✅ done** ¹⁰ |
 | 023 | Agents + Secrets over WebUI | proj | E4 | **I1** ⁴ | **s03.E** | s04 spec, 021 | todo |
 | 024 | HumanSettings over WebUI | proj | E1 | I1 | sVOL | 006, 021 | todo |
-| 025 | GraphQL facade | proj | E4 | I2 | `common/022` | spike first | todo |
+
+> **023 and 024 are BLOCKED, not merely unstarted** (2026-08-14): a WebUI design rewrite on
+> Tailwind templates is in flight with a co-writer. Building the agents-config and settings
+> surfaces now would be building into a moving target — both are *new panels*, which is
+> exactly what a redesign replaces. Their server halves are ready and unblocked
+> (`/console/*` serves, `PATCH /agent-bindings/{id}` writes the typed core), so when the
+> redesign settles these are UI-only work.
+| 025 | GraphQL facade | proj | E4 | I2 | `common/022` | spike first | **wontfix** ¹¹ |
 | 026 | `queryChanges` for the four stubs | cap | E3 | **I0** ⁴ | sVOL | — | deferred |
 | 027 | `Thread/changes` | cap | E2 | I0 | sVOL | — | deferred |
 
@@ -275,6 +282,25 @@ the rubric is known to mislead*) and `019`'s `I3` (nothing lists it as a depende
 Both are cases where impact and priority genuinely diverge.
 
 ---
+
+⁹ **011 closed 2026-08-13.** T3 (the attachment sidestep) landed: inbound attachments
+over the threshold mint FileNodes in an `Attachments` role directory, content-addressed so
+file and message share one R2 object. The *outbound* half is NOT part of this unit — it is
+blocked on compose attachments (`Email/set create` hardcodes `attachments: []`), tracked in
+`.backlog/compose-attachments.md`.
+
+¹⁰ **021 and 022 closed 2026-08-13/14.** `webmail/src/pages/` now carries `mail`, `files`,
+`contacts` and `calendar`, all live against real routes rather than `?demo=1`. Verified by
+the pages existing and their libs being tested; **visual confirmation is still owed** — no
+human had looked at `/files` at time of writing.
+
+¹¹ **025 wontfix (Eric, 2026-08-13).** GraphQL is adopted for batching, cross-call
+references and incremental sync. **JMAP has all three natively**: a request is an array of
+method calls, `#ref` back-references chain them, and `/changes` is a real sync cursor. A
+facade would be a second vocabulary over the same data with its own auth surface to get
+wrong. Joins 012 as a deliberate non-goal. The integration path is JMAP — including for
+custom nouns, which ride a vendor capability URN (`urn:bullmoose:params:jmap:agent`) and are
+invisible to clients that do not declare it.
 
 ## 3. Sequencing
 

@@ -127,6 +127,59 @@ var registry = map[string]spec{
 	"token": {json: true, run: runToken,
 		value:   []string{"db", "name", "scopes"},
 		boolean: []string{"json", "ids", "dry-run"}},
+	// `sync` is the one-shot counterpart to `watch`, over the SAME engine
+	// (internal/mirror). It owns --blobs: the blob mirror is ported (mirror's
+	// downloadBlob), so an invocation that asks for it runs natively rather than
+	// delegating a flag the native path would otherwise have to ignore.
+	// DELIBERATELY ABSENT: --ids, which cmdSync does not read.
+	"sync": {json: true, run: runSync,
+		value:   []string{"db", "account", "blobs"},
+		boolean: []string{"json"}},
+	// ---- wave 4 (devPlan.md:150): the vendored codecs ----
+	//
+	// `contacts` and `calendar` are the two commands the plan told us to budget
+	// for, because each carries a codec the CLI cannot import at runtime and
+	// therefore vendors: vCard ⇄ JSContact (internal/vcard) and iCal/RRULE
+	// (internal/ical). Both have Node twins, so byte-identity applies and both
+	// declare every flag their native path consumes.
+	//
+	// `contacts` owns exactly cmdContacts's reads (contacts.ts:301): --account,
+	// --book, -n, --force, plus the four I/O-contract flags. Nothing is
+	// deliberately withheld here, unlike `send` — there is no half-ported branch
+	// behind a flag, so there is no flag a user can type that the native path
+	// would silently ignore.
+	"contacts": {json: true, run: runContacts,
+		value:   []string{"db", "account", "book", "n", "as", "if-state"},
+		boolean: []string{"json", "ids", "dry-run", "force"},
+		short:   []string{"n"}},
+	// `calendar`'s set is exactly cmdCalendar's reads (calendar.ts:310). Note
+	// --days is shared with `creds` in the TypeScript flag table; here it belongs
+	// to `agenda`, and per-command ownership is why that is not a problem.
+	"calendar": {json: true, run: runCalendar,
+		value: []string{"db", "account", "days", "title", "start", "duration", "tz",
+			"rrule", "calendar", "occurrence", "as", "if-state"},
+		boolean: []string{"json", "ids", "dry-run", "force", "all-day", "ics"}},
+	// ---- wave 5: the folder surface, one message, and the blob store ----
+	//
+	// `mailbox` owns exactly cmdMailbox's reads (main.ts:359 + mailbox.ts's
+	// MailboxOpts): --account, --parent, --sort, --force, plus --json/--ids/
+	// --dry-run/--if-state.
+	// DELIBERATELY ABSENT: --as. MailboxOpts extends IoOpts so the field exists,
+	// but nothing in mailbox.ts reads it — claiming it would be the cli/008 shape
+	// in reverse, a flag the native path accepts and ignores.
+	"mailbox": {json: true, run: runMailbox,
+		value:   []string{"db", "account", "parent", "sort", "if-state"},
+		boolean: []string{"json", "ids", "dry-run", "force"}},
+	// `show` is the mirror-resolved counterpart of `read`, and its flag set says
+	// so: main.ts:1106 reads --account (as a FAN-OUT selector), --json and --ids
+	// and nothing else. No --if-state (it writes nothing), no --raw (that is
+	// `read`'s), no --dry-run.
+	"show": {json: true, run: runShow,
+		value: []string{"db", "account"}, boolean: []string{"json", "ids"}},
+	// `blobs` owns cmdBlobs's reads (main.ts:401): --account plus the I/O flags.
+	// --dry-run is `rm`'s rehearsal; `list` ignores it, as in the TypeScript.
+	"blobs": {json: true, run: runBlobs,
+		value: []string{"db", "account"}, boolean: []string{"json", "ids", "dry-run"}},
 	// watch has a Node twin, so byte-identity applies and it must declare every
 	// flag its native path consumes — `--exec` above all, since an undeclared one
 	// would silently delegate forever and the port would never run. It parses its
@@ -138,6 +191,39 @@ var registry = map[string]spec{
 		boolean:    []string{"json", "daemon", "status", "stop"},
 		run:        runWatch,
 	},
+}
+
+// triageVerbs is every spelling of a triage verb main.ts:368-376 routes to
+// cmdTriage. They share one spec because they share one implementation and one
+// flag grammar — `flag` reads --add/--remove as keywords and `label` reads them
+// as mailboxes, but the PARSE is identical, and a per-verb subset would mean
+// `archive --unset` delegating while `seen --unset` did not for no reason a user
+// could predict.
+//
+// `delete` is here as well as `rm` because main.ts declares both cases; runTriage
+// folds the alias.
+var triageVerbs = []string{
+	"flag", "seen", "move", "label", "archive", "junk", "trash", "rm", "delete",
+}
+
+// The flags cmdTriage actually reads (main.ts:377 + triage.ts's TriageOpts).
+//
+// DELIBERATELY ABSENT: --ids. TriageOpts carries it — every command module gets
+// the whole IoOpts spread — but triage.ts's report() never reads it, because a
+// triage verb's stdout is ALREADY bare ids. Claiming it would be the cli/008
+// shape in reverse: a flag the native path accepts and ignores.
+var (
+	triageValueFlags   = []string{"db", "account", "add", "remove", "role", "mailbox", "if-state"}
+	triageBooleanFlags = []string{"json", "dry-run", "force", "unset", "no-sync"}
+)
+
+func init() {
+	for _, verb := range triageVerbs {
+		registry[verb] = spec{
+			json: true, run: runTriage,
+			value: triageValueFlags, boolean: triageBooleanFlags,
+		}
+	}
 }
 
 // SupportsJSON reports whether the NATIVE command honours --json, and whether it

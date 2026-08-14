@@ -72,6 +72,16 @@ func (s *Streams) OutRaw(chunk string) { s.write(s.out, chunk) }
 // (io.ts:216).
 func (s *Streams) Note(line string) { s.write(s.err, line+"\n") }
 
+// NoteRaw writes chrome with NO trailing newline — the stderr counterpart of
+// OutRaw. It exists for exactly one caller: `contacts import`'s in-place progress
+// counter, which is `process.stderr.write("\rimporting… 40/3559")` in the
+// TypeScript (contacts.ts:195). A carriage-returning progress line cannot go
+// through Note, which would turn every tick into a scrolled line.
+//
+// It shares Note's broken-pipe guard, so a `2>&1 | head` on an import still exits
+// 0 rather than dying mid-count.
+func (s *Streams) NoteRaw(chunk string) { s.write(s.err, chunk) }
+
 // Warn writes a warning, prefixed so it is greppable — stderr (io.ts:221).
 func (s *Streams) Warn(line string) { s.Note("warning: " + line) }
 

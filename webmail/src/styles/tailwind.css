@@ -1,0 +1,19 @@
+/* Tailwind v4 entry for the app shell (s07 nav spike).
+ *
+ * Imported only by the layouts that use it, so pages still on the hand-written
+ * `webmail.css` are unaffected and the spike stays reversible.
+ *
+ * v4 is configured in CSS rather than a JS config file — `@theme` below is the
+ * whole of it. */
+@import "tailwindcss";
+
+@theme {
+  /* One accent, borrowed from the existing hand-written chrome so the spike
+   * reads as the same product rather than a different one bolted on. */
+  --color-brand-50: oklch(0.97 0.014 254);
+  --color-brand-100: oklch(0.93 0.03 254);
+  --color-brand-400: oklch(0.7 0.15 254);
+  --color-brand-500: oklch(0.62 0.18 254);
+  --color-brand-600: oklch(0.55 0.2 254);
+  --color-brand-700: oklch(0.48 0.18 254);
+}

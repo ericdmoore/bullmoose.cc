@@ -96,15 +96,25 @@ func ownedNatively(argv []string) bool {
 			switch {
 			case flags.value[name]:
 				if !inline {
+					if !takesNextToken(argv, i) {
+						return false // parseArgs refuses it — let Node say so
+					}
 					i++ // consume the value token so it is not read as a flag
 				}
 			case flags.boolean[name]:
-				// owned boolean, nothing to consume
+				if inline {
+					// `--json=x`: ERR_PARSE_ARGS_INVALID_OPTION_VALUE, "Option
+					// '--json' does not take an argument".
+					return false
+				}
 			default:
 				return false
 			}
 		case len(arg) > 1 && strings.HasPrefix(arg, "-"):
 			if flags.short[strings.TrimPrefix(arg, "-")] {
+				if !takesNextToken(argv, i) {
+					return false
+				}
 				i++ // -n VALUE
 			} else {
 				return false
@@ -114,4 +124,29 @@ func ownedNatively(argv []string) bool {
 		}
 	}
 	return true
+}
+
+// takesNextToken reports whether `node:util`'s parseArgs would accept argv[i+1]
+// as the value of the option at argv[i]. It refuses in two cases, both of which
+// this guard turns into a delegation so NODE renders the refusal:
+//
+//	bullmoose mailbox create X --sort        ERR: "Option '--sort <value>' argument missing"
+//	bullmoose mailbox create X --sort -1     ERR: "Option '--sort' argument is ambiguous."
+//	bullmoose log -n -5                      ERR: "Option '-n, --n <value>' argument missing"
+//
+// A bare "-" IS a legal value (`mailbox move X --parent -` is how you say "top
+// level"), so the ambiguity rule is "starts with - AND is longer than one
+// character", exactly as parseArgs's isOptionLikeValue reads it.
+//
+// Without this, every ported command silently accepted argv the TypeScript CLI
+// refuses: `--sort -1` would have reached the native path as the string "-1" and
+// answered with a different sentence than Node's parse error plus the overview.
+// The class is not new to any one command — `log -n -5` had it since wave 1 —
+// which is why it belongs in the shared guard rather than in one parser.
+func takesNextToken(argv []string, i int) bool {
+	if i+1 >= len(argv) {
+		return false // "argument missing"
+	}
+	next := argv[i+1]
+	return !(len(next) > 1 && strings.HasPrefix(next, "-"))
 }

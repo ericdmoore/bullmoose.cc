@@ -147,3 +147,6 @@ packages/popcorn/popcorn
 
 # Go CLI build output
 cli-go/bin/
+
+# screenshots from infra/shots.mjs — local artefacts, never committed
+.shots/

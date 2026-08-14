@@ -12,8 +12,12 @@
 // browser rather than being rendered at build time. (A comment out here in the
 // template would land in the document ahead of <html>, so it lives in the
 // frontmatter.)
+// s07 nav spike: this ONE page renders inside the Tailwind sidebar+header
+// shell (AppTw.astro) while every other section stays on the hand-written
+// chrome (App.astro). That is the point of a spike — the two shells run in the
+// same app so the feel can be judged directly, and reverting is this import.
 import AppShell from "../components/AppShell.tsx";
-import App from "../layouts/App.astro";
+import App from "../layouts/AppTw.astro";
 ---
 
 <App title="bullmoose webmail" section="mail">

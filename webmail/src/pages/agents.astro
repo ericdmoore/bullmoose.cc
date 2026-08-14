@@ -14,11 +14,11 @@
 // and needs four `/console/*` routes that do not exist yet. What is here is
 // honest about that on its own (`AgentConsole.tsx:264`).
 //
-// The CSP note is in the layout (`layouts/App.astro`); `form-action 'none'` is
+// The CSP note is in the layout (`layouts/AppTw.astro`); `form-action 'none'` is
 // load-bearing on this page in particular, since the credential surfaces must
 // post with `fetch` to the vault origin and never as a form.
 import AgentConsole from "../components/AgentConsole.tsx";
-import App from "../layouts/App.astro";
+import App from "../layouts/AppTw.astro";
 ---
 
 <App title="bullmoose — agent console" section="agents">
