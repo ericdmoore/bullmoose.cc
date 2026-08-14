@@ -3,41 +3,63 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { SECTIONS, type Section, type SectionId } from "../lib/app/sections";
 
 /**
- * The two interactive pieces of the app shell (s07 nav spike): the mobile
- * drawer and the profile menu.
+ * The app shell's interactive chrome (s07 nav spike): a collapsible section
+ * rail, a right-hand mobile drawer, and the profile menu.
  *
  * ## Why this is hand-written and not Headless UI
  *
- * The Tailwind reference template uses `@headlessui/react` for exactly these
- * two widgets. Adopting it would cost more than it looks:
+ * The reference templates use `@headlessui/react` for the drawer and the menu.
+ * Adopting it would cost more than it looks: it is React-only, so it needs
+ * `preact/compat` aliasing, and it sets inline `style` attributes for
+ * transitions and positioning — which means `'unsafe-inline'` in `style-src`.
+ * This app's CSP is GENERATED with per-build hashes precisely to keep that
+ * out, and weakening it on the authenticated surface to get two widgets is a
+ * bad trade. Tailwind, which emits an external stylesheet, costs nothing.
  *
- *  - it is React-only, so it needs `preact/compat` aliasing, and Headless UI
- *    v2 leans on React internals hard enough that this is a known rough edge;
- *  - it sets inline `style` attributes for transitions and positioning, which
- *    means `'unsafe-inline'` in `style-src`. This app's CSP is GENERATED with
- *    per-build hashes precisely to keep that out, and weakening it on the
- *    authenticated surface to get a drawer is a bad trade.
- *
- * Both widgets are a few dozen lines each. Tailwind — which emits an external
- * stylesheet and needs no CSP change — is the part of that template worth
- * taking; its component library is not.
- *
- * ## What it still owes the user
- *
- * A drawer and a menu are exactly where hand-rolling usually loses to a
- * library: focus handling, Escape, click-outside, and `aria-*`. Those are
- * implemented below rather than skipped, because the reason for not taking
- * Headless UI was the CSP, not the accessibility work.
+ * The parts people actually reach for a library to get — focus handling,
+ * Escape, click-outside, `aria-*` — are implemented here rather than skipped,
+ * because the objection was the CSP, not the accessibility work.
  */
 
 interface Props {
-  /** Which nav entry is the current page. */
   section?: SectionId;
-  /** Shown in the profile menu; absent until a session exists. */
   email?: string;
 }
 
+const COLLAPSE_KEY = "bm.nav.collapsed";
+const WIDTH_KEY = "bm.nav.width";
 const isLive = (s: Section): boolean => s.status === "live";
+
+/**
+ * The rail's allowed widths, as CLASSES rather than a pixel value.
+ *
+ * A drag-resize would normally write `style="width:…"`, and inline `style`
+ * attributes are governed by `style-src` — which this app's generated CSP
+ * carries WITHOUT `'unsafe-inline'`, on purpose. Setting one would either be
+ * blocked or force the policy open, and forcing it open is exactly the
+ * objection that kept Headless UI out of this file. Discrete steps keep the
+ * drag feeling continuous enough while staying pure classes.
+ *
+ * `px` is only used to decide which step a drag has reached; nothing writes it
+ * to the DOM.
+ */
+const WIDTHS = [
+  { px: 208, rail: "lg:w-52", pad: "lg:pl-52" },
+  { px: 240, rail: "lg:w-60", pad: "lg:pl-60" },
+  { px: 288, rail: "lg:w-72", pad: "lg:pl-72" },
+  { px: 320, rail: "lg:w-80", pad: "lg:pl-80" },
+] as const;
+const DEFAULT_WIDTH = 2;
+/** Collapsed is its own step, not the narrow end of the range. */
+const COLLAPSED = { rail: "lg:w-20", pad: "lg:pl-20" };
+
+const nearestStep = (px: number): number => {
+  let best = 0;
+  for (let i = 1; i < WIDTHS.length; i++) {
+    if (Math.abs(WIDTHS[i]!.px - px) < Math.abs(WIDTHS[best]!.px - px)) best = i;
+  }
+  return best;
+};
 
 /** Heroicons 24/outline, inlined. Nine static paths do not need a dependency. */
 const ICONS: Record<SectionId, string> = {
@@ -53,62 +75,109 @@ const ICONS: Record<SectionId, string> = {
 
 function Icon({ id, className }: { id: SectionId; className: string }) {
   return (
-    <svg
-      class={className}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke-width={1.5}
-      stroke="currentColor"
-      aria-hidden="true"
-    >
+    <svg class={className} fill="none" viewBox="0 0 24 24" stroke-width={1.5} stroke="currentColor" aria-hidden="true">
       <path stroke-linecap="round" stroke-linejoin="round" d={ICONS[id]} />
     </svg>
   );
 }
 
-/** The nav list, shared by the desktop rail and the mobile drawer. */
-function NavList({ section, onNavigate }: { section?: SectionId; onNavigate?: () => void }) {
+/**
+ * The nav list. `compact` renders icons only — the label survives as the
+ * accessible name and the tooltip, so collapsing the rail hides the text
+ * without hiding the meaning from a screen reader.
+ */
+function NavList({
+  section,
+  compact,
+  onNavigate,
+  order,
+  onReorder,
+}: {
+  section?: SectionId;
+  compact?: boolean;
+  onNavigate?: () => void;
+  /** The user's own order, if they have set one. */
+  order?: SectionId[];
+  onReorder?: (from: SectionId, to: SectionId) => void;
+}) {
+  // A stored order is a PREFERENCE over the shipped one, not a replacement:
+  // ids it does not know about are appended rather than dropped, so a section
+  // added later appears for someone who reordered last year instead of
+  // silently vanishing for them alone.
+  const ordered = order?.length
+    ? [
+        ...order.map((id) => SECTIONS.find((s) => s.id === id)).filter((s): s is Section => !!s),
+        ...SECTIONS.filter((s) => !order.includes(s.id)),
+      ]
+    : SECTIONS;
+
   return (
     <ul role="list" class="-mx-2 space-y-1">
-      {SECTIONS.map((s) => {
+      {ordered.map((s) => {
         const current = s.id === section;
+        // ONE box in both states. Padding, rounding and the row gap are
+        // identical whether or not the label is showing, so collapsing the
+        // rail changes its width and nothing else — the icons keep their
+        // vertical rhythm instead of drifting apart. Only the horizontal
+        // alignment differs, because a left-aligned icon in a narrow rail
+        // reads as broken rather than as deliberate.
+        const shape =
+          "flex items-center rounded-md p-2 " + (compact ? "justify-center" : "gap-x-3");
+
         // A planned section is never a link and never a 404 — it renders
         // disabled WITH its reason, because a greyed-out word with no
         // explanation teaches that the product is broken rather than
-        // unfinished (sections.ts).
+        // unfinished (sections.ts). Collapsed, the reason moves into the
+        // tooltip rather than disappearing.
         if (!isLive(s)) {
           const planned = s as Extract<Section, { status: "planned" }>;
           return (
             <li key={s.id}>
               <span
-                class="group flex cursor-not-allowed gap-x-3 rounded-md p-2 text-sm/6 font-semibold text-gray-500"
-                title={planned.detail}
+                class={shape + " cursor-not-allowed text-sm/6 font-semibold text-gray-500"}
+                title={compact ? `${s.label} — ${planned.reason}` : planned.detail}
                 aria-disabled="true"
               >
                 <Icon id={s.id} className="size-6 shrink-0 opacity-40" />
-                <span class="flex flex-col">
-                  {s.label}
-                  <span class="text-xs font-normal text-gray-500">{planned.reason}</span>
-                </span>
+                {!compact && (
+                  <span class="flex flex-col">
+                    {s.label}
+                    <span class="text-xs font-normal text-gray-500">{planned.reason}</span>
+                  </span>
+                )}
               </span>
             </li>
           );
         }
+
         return (
-          <li key={s.id}>
+          <li
+            key={s.id}
+            draggable={!!onReorder}
+            onDragStart={(e) => e.dataTransfer?.setData("text/plain", s.id)}
+            // Without preventDefault the drop never fires — the browser's
+            // default for a dragover is "refuse this".
+            onDragOver={(e) => onReorder && e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const from = e.dataTransfer?.getData("text/plain") as SectionId | undefined;
+              if (from && from !== s.id) onReorder?.(from, s.id);
+            }}
+          >
             <a
               href={s.href}
               onClick={onNavigate}
+              title={compact ? s.label : undefined}
+              aria-label={compact ? s.label : undefined}
               aria-current={current ? "page" : undefined}
               class={
-                "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold " +
-                (current
-                  ? "bg-gray-800 text-white"
-                  : "text-gray-400 hover:bg-gray-800 hover:text-white")
+                shape +
+                " text-sm/6 font-semibold " +
+                (current ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white")
               }
             >
               <Icon id={s.id} className="size-6 shrink-0" />
-              {s.label}
+              {!compact && s.label}
             </a>
           </li>
         );
@@ -117,11 +186,13 @@ function NavList({ section, onNavigate }: { section?: SectionId; onNavigate?: ()
   );
 }
 
-function Brand() {
+/** The antler mark. A file rather than inlined markup so `img-src 'self'`
+ *  covers it and the 13KB of paths stay out of every page's HTML. */
+function Brand({ compact }: { compact?: boolean }) {
   return (
-    <a href="/" class="flex h-16 shrink-0 items-center gap-x-2 text-white">
-      <span aria-hidden="true" class="text-2xl">🫎</span>
-      <span class="font-semibold tracking-tight">bullmoose</span>
+    <a href="/" class={"flex h-16 shrink-0 items-center gap-x-2 " + (compact ? "justify-center" : "")}>
+      <img src="/antlerO.svg" alt="bullmoose" class="size-8" />
+      {!compact && <span class="font-semibold tracking-tight text-white">bullmoose</span>}
     </a>
   );
 }
@@ -129,12 +200,82 @@ function Brand() {
 export default function ShellNav({ section, email }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Starts wide, then adopts the stored preference on mount. Reading
+  // localStorage during render would break hydration and throw in private
+  // mode, so it happens in an effect.
+  const [collapsed, setCollapsed] = useState(false);
+  const [widthStep, setWidthStep] = useState(DEFAULT_WIDTH);
+  const [order, setOrder] = useState<SectionId[]>([]);
+  const [dragging, setDragging] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const drawerCloseRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
 
-  // Escape closes whichever is open. One listener, because two widgets that
-  // each own a global key handler is how you end up with one of them silently
-  // swallowing the other's Escape.
+  // Preferences are adopted on mount rather than read during render: reading
+  // localStorage while rendering breaks hydration and throws in private mode.
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
+      const w = Number(localStorage.getItem(WIDTH_KEY));
+      if (Number.isInteger(w) && w >= 0 && w < WIDTHS.length) setWidthStep(w);
+      const stored = localStorage.getItem("bm.nav.order");
+      if (stored) setOrder(JSON.parse(stored) as SectionId[]);
+    } catch {
+      /* private mode, or a stored value from an older shape — ship defaults */
+    }
+  }, []);
+
+  const persist = (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      /* a preference is a nicety, not a requirement */
+    }
+  };
+
+  const reorder = (from: SectionId, to: SectionId) => {
+    setOrder((prev) => {
+      const base = prev.length ? prev : SECTIONS.map((s) => s.id);
+      const next = base.filter((id) => id !== from);
+      next.splice(next.indexOf(to), 0, from);
+      persist("bm.nav.order", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // Drag-to-resize, snapped to the allowed steps. Pointer events rather than
+  // mouse events so a trackpad or touch drag behaves the same.
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: PointerEvent) => {
+      const step = nearestStep(e.clientX);
+      setWidthStep((cur) => {
+        if (cur !== step) persist(WIDTH_KEY, String(step));
+        return step;
+      });
+    };
+    const onUp = () => setDragging(false);
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+  }, [dragging]);
+
+  const toggleCollapsed = () => {
+    setCollapsed((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      } catch {
+        /* preference is a nicety, not a requirement */
+      }
+      return next;
+    });
+  };
+
+  // One Escape listener for both overlays. Two widgets each owning a global
+  // key handler is how one of them ends up silently swallowing the other's.
   useEffect(() => {
     if (!drawerOpen && !menuOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -146,85 +287,153 @@ export default function ShellNav({ section, email }: Props) {
     return () => document.removeEventListener("keydown", onKey);
   }, [drawerOpen, menuOpen]);
 
-  // Click-outside for the profile menu only. The drawer has a backdrop that
-  // handles its own dismissal.
+  // Click-outside. The drawer needs this too now that it has NO backdrop —
+  // without a scrim there is nothing to click on to dismiss it, and a panel
+  // you can only close from one small button is worse than the scrim was.
   useEffect(() => {
-    if (!menuOpen) return;
-    const onClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    if (!menuOpen && !drawerOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (menuOpen && menuRef.current && !menuRef.current.contains(t)) setMenuOpen(false);
+      if (drawerOpen && drawerRef.current && !drawerRef.current.contains(t)) setDrawerOpen(false);
     };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [menuOpen]);
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpen, drawerOpen]);
 
-  // Move focus into the drawer when it opens, so a keyboard user is not left
-  // behind on the toggle underneath it.
+  const size = collapsed ? COLLAPSED : WIDTHS[widthStep]!;
+
+  // Keep the content wrapper's left padding in step with the rail. It lives
+  // in the Astro layout, which is rendered before any preference is known, so
+  // the sync happens here — by swapping classes, never an inline style.
   useEffect(() => {
-    if (drawerOpen) drawerCloseRef.current?.focus();
-  }, [drawerOpen]);
+    const el = document.getElementById("app-content");
+    if (!el) return;
+    el.classList.remove(COLLAPSED.pad, ...WIDTHS.map((w) => w.pad));
+    el.classList.add(size.pad);
+  }, [size.pad]);
 
   return (
     <>
-      {/* Mobile drawer */}
-      {drawerOpen && (
-        <div class="relative z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Sections">
-          <div
-            class="fixed inset-0 bg-gray-900/80"
-            onClick={() => setDrawerOpen(false)}
-            aria-hidden="true"
-          />
-          <div class="fixed inset-0 flex">
-            <div class="relative mr-16 flex w-full max-w-xs flex-1">
-              <div class="absolute top-0 left-full flex w-16 justify-center pt-5">
-                <button
-                  ref={drawerCloseRef}
-                  type="button"
-                  onClick={() => setDrawerOpen(false)}
-                  class="-m-2.5 p-2.5 text-white"
-                >
-                  <span class="sr-only">Close sections</span>
-                  <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke-width={1.5} stroke="currentColor" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div class="flex grow flex-col gap-y-5 overflow-y-auto bg-gray-900 px-6 pb-4 ring-1 ring-white/10">
-                <Brand />
-                <nav class="flex flex-1 flex-col">
-                  <NavList section={section} onNavigate={() => setDrawerOpen(false)} />
-                </nav>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/*
+        Mobile drawer — slides in from the RIGHT, with no dimming scrim over
+        the content behind it. That is a deliberate departure from the
+        reference template, which drops a `bg-gray-900/80` backdrop over
+        everything: the point of this panel is to move between sections while
+        still seeing what you were reading, and a modal scrim actively fights
+        that. It is also narrower (w-64, not max-w-xs on a full-width flex).
 
-      {/* Desktop sidebar */}
-      <div class="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-72 lg:flex-col">
-        <div class="flex grow flex-col gap-y-5 overflow-y-auto bg-gray-900 px-6 pb-4">
-          <Brand />
+        Because there is no scrim it is NOT a modal, so it does not claim
+        `aria-modal` — the click-outside handler above is what dismisses it.
+      */}
+      <div
+        ref={drawerRef}
+        class={
+          "fixed inset-y-0 right-0 z-50 w-64 transform bg-gray-900 shadow-xl ring-1 ring-white/10 transition-transform duration-200 ease-out lg:hidden " +
+          (drawerOpen ? "translate-x-0" : "pointer-events-none translate-x-full")
+        }
+        aria-hidden={!drawerOpen}
+        aria-label="Sections"
+      >
+        <div class="flex h-full flex-col gap-y-5 overflow-y-auto px-4 pb-4">
+          <div class="flex h-16 shrink-0 items-center justify-between">
+            <Brand />
+            <button type="button" onClick={() => setDrawerOpen(false)} class="p-2 text-gray-400 hover:text-white">
+              <span class="sr-only">Close sections</span>
+              <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke-width={1.5} stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
           <nav class="flex flex-1 flex-col">
-            <NavList section={section} />
+            <NavList section={section} order={order} onNavigate={() => setDrawerOpen(false)} />
           </nav>
         </div>
       </div>
 
-      {/* Header */}
-      <div class="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-xs sm:gap-x-6 sm:px-6 lg:px-8 dark:border-white/10 dark:bg-gray-900">
-        <button
-          type="button"
-          onClick={() => setDrawerOpen(true)}
-          class="-m-2.5 p-2.5 text-gray-700 lg:hidden dark:text-gray-200"
-          aria-expanded={drawerOpen}
-        >
-          <span class="sr-only">Open sections</span>
-          <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke-width={1.5} stroke="currentColor" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-          </svg>
-        </button>
-        <div aria-hidden="true" class="h-6 w-px bg-gray-200 lg:hidden dark:bg-white/10" />
+      {/* Desktop rail — collapses to icons, and resizes between fixed steps */}
+      <div class={"hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:flex-col " + size.rail}>
+        <div class={"relative flex grow flex-col gap-y-5 overflow-y-auto bg-gray-900 pb-4 " + (collapsed ? "px-3" : "px-6")}>
+          {/* Brand and the collapse toggle share a row, so the toggle is
+              always in view — at the foot of a flex-1 nav it sat below the
+              fold on a short viewport, which read as missing. Icon only. */}
+          <div class={"flex h-16 shrink-0 items-center " + (collapsed ? "justify-center" : "justify-between")}>
+            <Brand compact={collapsed} />
+            {!collapsed && (
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                title="Collapse sidebar"
+                aria-label="Collapse sidebar"
+                aria-expanded={true}
+                class="rounded-md p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white"
+              >
+                <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width={1.5} stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                </svg>
+              </button>
+            )}
+          </div>
 
+          <nav class="flex flex-1 flex-col">
+            <NavList section={section} compact={collapsed} order={order} onReorder={reorder} />
+          </nav>
+
+          {collapsed && (
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              title="Expand sidebar"
+              aria-label="Expand sidebar"
+              aria-expanded={false}
+              class="-mx-2 flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-gray-800 hover:text-white"
+            >
+              <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke-width={1.5} stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* Resize handle. Keyboard-operable too, because a control that only
+            responds to a drag is unreachable for anyone who cannot make one. */}
+        {!collapsed && (
+          <button
+            type="button"
+            aria-label="Resize sidebar"
+            aria-valuenow={widthStep}
+            aria-valuemin={0}
+            aria-valuemax={WIDTHS.length - 1}
+            role="slider"
+            onPointerDown={() => setDragging(true)}
+            onKeyDown={(e) => {
+              const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+              if (!d) return;
+              e.preventDefault();
+              setWidthStep((cur) => {
+                const next = Math.min(WIDTHS.length - 1, Math.max(0, cur + d));
+                persist(WIDTH_KEY, String(next));
+                return next;
+              });
+            }}
+            class="absolute inset-y-0 right-0 w-1.5 cursor-col-resize bg-transparent hover:bg-white/20 focus:bg-white/30 focus:outline-none"
+          />
+        )}
+      </div>
+
+      {/* Header */}
+      <div
+        class={
+          "sticky top-0 z-40 flex h-16 shrink-0 items-center gap-x-4 border-b border-gray-200 bg-white px-4 shadow-xs sm:gap-x-6 sm:px-6 lg:px-8 dark:border-white/10 dark:bg-gray-900 " +
+          size.pad
+        }
+      >
         <div class="flex flex-1 justify-end gap-x-4 self-stretch lg:gap-x-6">
+          {/*
+            Everything the person can do about themselves lives on the avatar —
+            settings and sign-out included — rather than being scattered across
+            the header. One place to look for "me".
+          */}
           <div class="relative flex items-center" ref={menuRef}>
             <button
               type="button"
@@ -233,30 +442,33 @@ export default function ShellNav({ section, email }: Props) {
               aria-expanded={menuOpen}
               aria-haspopup="menu"
             >
+              <span class="sr-only">Open user menu</span>
               <span class="grid size-8 place-items-center rounded-full bg-gray-200 text-xs font-bold text-gray-700 dark:bg-white/10 dark:text-white">
                 {(email ?? "?").slice(0, 1).toUpperCase()}
               </span>
-              <span class="hidden lg:inline">{email ?? "Not signed in"}</span>
+              <span class="hidden lg:flex lg:items-center lg:gap-x-1">
+                {email ?? "Not signed in"}
+                <svg class="size-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+                </svg>
+              </span>
             </button>
             {menuOpen && (
               <div
                 role="menu"
-                class="absolute top-full right-0 z-10 mt-1 w-48 origin-top-right rounded-md bg-white py-2 shadow-lg ring-1 ring-gray-900/5 dark:bg-gray-800 dark:ring-white/10"
+                class="absolute top-full right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-2 shadow-lg ring-1 ring-gray-900/5 dark:bg-gray-800 dark:ring-white/10"
               >
-                <a
-                  role="menuitem"
-                  href="/settings"
-                  class="block px-3 py-1 text-sm/6 text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-white/5"
-                >
+                <a role="menuitem" href="/settings" class="block px-3 py-1 text-sm/6 text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-white/5">
                   Settings
+                </a>
+                <a role="menuitem" href="/agents" class="block px-3 py-1 text-sm/6 text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-white/5">
+                  Your agents
                 </a>
                 <button
                   role="menuitem"
                   type="button"
                   class="block w-full px-3 py-1 text-left text-sm/6 text-gray-900 hover:bg-gray-50 dark:text-white dark:hover:bg-white/5"
                   onClick={() => {
-                    // Same contract as the existing SessionBar: clear the
-                    // stored session and return to the door.
                     try {
                       localStorage.removeItem("bm.session");
                     } catch {
@@ -270,6 +482,20 @@ export default function ShellNav({ section, email }: Props) {
               </div>
             )}
           </div>
+
+          {/* Drawer toggle, right-hand side so it sits beside the panel it
+              opens rather than across the screen from it. */}
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            class="-m-2.5 p-2.5 text-gray-700 lg:hidden dark:text-gray-200"
+            aria-expanded={drawerOpen}
+          >
+            <span class="sr-only">Open sections</span>
+            <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke-width={1.5} stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
         </div>
       </div>
     </>

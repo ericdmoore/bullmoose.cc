@@ -26,6 +26,13 @@
 import ShellNav from "../components/ShellNav.tsx";
 import { type SectionId } from "../lib/app/sections";
 import "../styles/tailwind.css";
+// STILL IMPORTED, and this is the honest boundary of the port: the CHROME is
+// Tailwind, the nine islands inside it are not. Every one of them
+// (AppShell 756 lines, CalendarView, ContactsApp, ApprovalsQueue, …) is styled
+// by these 765 lines, so dropping the sheet would strip the interior of every
+// section while the frame around it looked immaculate. Converting the islands
+// is a separate job, several times this one; until then both sheets ship.
+import "../styles/webmail.css";
 
 interface Props {
   title: string;
@@ -58,7 +65,12 @@ const { title, section } = Astro.props;
     -->
     <ShellNav client:only="preact" section={section} />
 
-    <div class="lg:pl-72">
+    <!-- The left padding tracks the rail's width, which is a CLIENT
+         preference this server-rendered wrapper cannot know. ShellNav syncs
+         it by swapping classes on this id — classes rather than an inline
+         style, because `style-src` here carries no 'unsafe-inline'. The
+         lg:pl-72 below is the default the first paint uses. -->
+    <div id="app-content" class="lg:pl-72">
       <main class="py-6">
         <div class="px-4 sm:px-6 lg:px-8">
           <slot />

@@ -19,7 +19,19 @@ export default defineConfig({
   // adoption here and Headless UI is not — Headless UI sets inline `style`
   // attributes for its transitions and positioning, which would force
   // `'unsafe-inline'` into style-src on the authenticated surface.
-  vite: { plugins: [tailwind()] },
+  vite: {
+    plugins: [tailwind()],
+    // DEV ONLY — `server` has no effect on `astro build`, so none of this
+    // reaches the deployed site.
+    //
+    // Vite refuses any request whose Host header it does not recognize, which
+    // is why `astro dev --host` answers an IP but 403s the same machine by
+    // name. Listed so the spike can be reviewed from another box on the
+    // tailnet without a remote desktop.
+    server: {
+      allowedHosts: ["alpaca.local", "alpaca", "alpaca.tail-scale.ts.net"],
+    },
+  },
 
   // CSP is the second half of the XSS defence (arch.md §4): sanitization strips
   // the payload, and this makes sure a payload that somehow survived has no
