@@ -2,9 +2,23 @@
 // payload summarizes into one line, and the capability gate the whole section
 // hides behind. Pure, tested, and the reason the island can stay markup-only.
 
-import { hasAgentCapability, MAIL_CAP } from "../jmap/capabilities";
+import { hasAgentCapability } from "../jmap/capabilities";
 import type { Session } from "../jmap/types";
+
 import type { ActionProposal, ProposalTier, RejectReason } from "./types";
+
+// The queue's ACCOUNT rules live in `accounts.ts` (s10 T7) — which accounts it
+// spans and what each one may decide. Re-exported here because every caller
+// already imports this module for the row wording, and splitting the import
+// would be churn without a boundary behind it.
+export {
+  accountLabel,
+  approvalsAccountId,
+  approvalsAccounts,
+  rowAuthority,
+  type ApprovalsAccount,
+  type RowAuthority,
+} from "./accounts";
 
 // ── the gate ──────────────────────────────────────────────────────────────
 
@@ -36,16 +50,6 @@ export function approvalsGate(session: Pick<Session, "capabilities"> | undefined
     };
   }
   return { state: "open", reason: "agent capability advertised" };
-}
-
-/**
- * Which account the queue reads. The live session keys `primaryAccounts` by
- * the IETF capabilities only (services/jmap/src/session.ts:77-83 — no agent
- * entry), so the mail primary is the honest anchor, with the first account as
- * the fallback a grant-only session gets.
- */
-export function approvalsAccountId(session: Pick<Session, "primaryAccounts" | "accounts">): string {
-  return session.primaryAccounts[MAIL_CAP] ?? Object.keys(session.accounts)[0] ?? "";
 }
 
 // ── tiers at the buttons ──────────────────────────────────────────────────

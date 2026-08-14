@@ -22,6 +22,9 @@ const DAY = 24 * HOUR;
 
 function proposal(partial: Partial<ActionProposal> & Pick<ActionProposal, "id">): ActionProposal {
   return {
+    // s10 T7 — the row's own account; these fixtures are single-account, and
+    // the merged-queue behaviour is exercised in accounts.test.ts / api.test.ts.
+    accountId: "acct-fake",
     agent: "Emily",
     kind: "reply-draft",
     tier: 2,
