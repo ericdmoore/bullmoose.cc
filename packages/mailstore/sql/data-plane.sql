@@ -366,10 +366,105 @@ CREATE TABLE IF NOT EXISTS agent_invocations (
   -- deadline is permanent and must not be overwritten by a money problem.
   alert_kind         TEXT,
   alert_at           INTEGER,
+  -- s11 T7 — THE JOB DAG. A node of a Job is an ORDINARY invocation: same
+  -- table, same claim, same egress. Five columns carry the graph, and the
+  -- first three are three DIFFERENT relations that must never be conflated
+  -- (jobs-and-facets.md §5, "vocabulary settled"):
+  --   job_id        the root Job this node belongs to, DENORMALIZED onto every
+  --                 row so "everything in this Job" is one indexed scan rather
+  --                 than a recursive walk. NULL = not part of a Job = today.
+  --   parent_id     CONTEXT + AUTHORITY inheritance — the attenuation chain.
+  --                 A node's parent gives it its CEILING (tools, credentials,
+  --                 budget, privacy, urgency; see authority_json) and its
+  --                 context. NULL on the root node.
+  --   needs_json    EXECUTION ORDERING — a JSON array of invocation ids that
+  --                 must be `done` before this node may be claimed. Usually
+  --                 siblings. A node's parent gives it its ceiling; its NEEDS
+  --                 give it its start time. Claimability is computed IN the
+  --                 claim query (needsSatisfiedSql, @bullmoose/scheduling) —
+  --                 there is NO stored `blocked` flag and no second queue:
+  --                 stored derived state drifts, and the membership-chain
+  --                 lesson (fold-vs-book) applies verbatim.
+  --   depth         0 on the root, parent.depth + 1 on every child, capped by
+  --                 jobs.max_depth. Denormalized for the same reason job_id is
+  --                 (a depth check must not walk the chain on the hot path);
+  --                 the harness COMPUTES it and the guarded INSERT enforces it,
+  --                 so a planner that names its own depth is refused.
+  --   authority_json  THE ATTENUATION ENVELOPE: {tools: string[]|null,
+  --                 credentials: string[], budgetMicros: number|null} — what
+  --                 this node may use, always a SUBSET of its parent's
+  --                 (`attenuate()` in @bullmoose/scheduling; `tools: null` =
+  --                 unrestricted and is only ever producible by a binding-level
+  --                 ceiling, never by a child). It is a CEILING, never a grant:
+  --                 the Bureau still checks bureau_grants at use time, so this
+  --                 can only ever narrow what the binding's principal already
+  --                 holds. NULL = no envelope = an ordinary invocation.
+  -- Existing DBs: infra/migrations.mjs `invocation-job-columns` — a DEPLOY
+  -- BLOCKER, because the claim gate names needs_json and job_id in EVERY claim
+  -- statement's WHERE, so a worker deployed first fails every claim.
+  job_id             TEXT,
+  parent_id          TEXT,
+  needs_json         TEXT,
+  depth              INTEGER,
+  authority_json     TEXT,
   PRIMARY KEY (account_id, id)
 );
 CREATE INDEX IF NOT EXISTS invocations_status
   ON agent_invocations (account_id, status);
+-- The whole-Job scan (progress view, node count, aggregate spend) and the
+-- dependency lookup the claim gate's NOT EXISTS walks.
+CREATE INDEX IF NOT EXISTS invocations_job
+  ON agent_invocations (account_id, job_id);
+
+-- s11 T7 — the Job row. It stores ONLY what cannot be derived from its nodes:
+-- the aggregate budget, the two runaway-planner caps, the originating binding,
+-- and the facets the Job was created with.
+--
+-- THERE IS DELIBERATELY NO `status` COLUMN. Job status is a VIEW over the
+-- nodes (`deriveJobStatus` in @bullmoose/scheduling): all pending → pending;
+-- any done/running → in progress; all done → done; a failure among blockers →
+-- stalled; an open needsInfo question with nothing else able to move → paused.
+-- Storing it would be a second store of a fact the invocation rows already
+-- hold, and it would drift the first time a runner died mid-claim — the same
+-- argument that makes agent_proposals a read model over agent_invocations
+-- (arch.md §1) and the same lesson the membership chain taught. If a hot path
+-- ever hurts, materialize THEN, with the reconcile test materialization owes.
+--
+--   budget_micros  the AGGREGATE spend ceiling for the whole DAG, micro-USD.
+--                  Two enforcement points, both needed: the harness RESERVES
+--                  against it at expansion (Σ declared node budgets ≤ this —
+--                  which is what stops N nodes each spending the per-invocation
+--                  cap), and the claim gate refuses PAID claimants once actual
+--                  SUM(cost_micros) reaches it (jobBudgetExhaustedSql). Free
+--                  claimants still claim, exactly as with the binding's monthly
+--                  cap: exhaustion narrows the claimant set, it never fails the
+--                  work. NULL = no aggregate cap (the binding's monthly budget
+--                  is then the only money ceiling).
+--   max_nodes /    the runaway-planner backstop. Enforced in the guarded INSERT
+--   max_depth      itself (each child re-counts inside one transaction), so two
+--                  planner nodes expanding the same Job concurrently cannot
+--                  race past the cap.
+--   facets_json    the Job's facets at creation ({privacy?, dueAt?, requires?}),
+--                  the ceiling every node's facets are attenuated against.
+--
+-- New table, so a plain schema re-run (CREATE TABLE IF NOT EXISTS) DOES create
+-- it. Existing DBs: infra/migrations.mjs `jobs-table` — a DEPLOY BLOCKER for
+-- the same reason budget-overage-table is: the claim gate names `jobs` in
+-- EVERY claim statement's WHERE, so a worker deployed against a database
+-- missing it fails every claim rather than one route.
+CREATE TABLE IF NOT EXISTS jobs (
+  id                 TEXT NOT NULL,
+  account_id         TEXT NOT NULL,
+  binding_id         TEXT NOT NULL,     -- the originating binding: the Job's ceiling
+  binding_name       TEXT NOT NULL,
+  root_invocation_id TEXT NOT NULL,     -- the first node (usually the planner)
+  budget_micros      INTEGER,           -- aggregate spend cap, micro-USD; NULL = none
+  max_nodes          INTEGER NOT NULL,  -- fan-out cap (runaway planner)
+  max_depth          INTEGER NOT NULL,  -- chain-depth cap (s17's §4 condition)
+  facets_json        TEXT,              -- {privacy?, dueAt?, requires?} at creation
+  created_at         INTEGER NOT NULL,
+  PRIMARY KEY (account_id, id)
+);
 
 -- ActionProposal (s03.D T1) — a READ MODEL over agent_invocations, NOT a
 -- parallel store (arch.md §1). The invocation state machine
