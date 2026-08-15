@@ -8,6 +8,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@bullmoose/auth-core": "*"
+    "@bullmoose/auth-core": "*",
+    "@bullmoose/scheduling": "*"
   }
 }

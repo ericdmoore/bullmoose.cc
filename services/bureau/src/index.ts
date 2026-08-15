@@ -20,7 +20,17 @@ import type { Env } from "./models.js";
  * Reached only over the BUREAU service binding from `services/agent`; there is
  * no public route. `/bureau/use` still authenticates its caller with a real
  * bearer token rather than trusting the binding, because the binding proves
- * which worker and the token proves which agent (arch.md OQ1b).
+ * which worker and the token proves which agent (arch.md OQ1b). Since s17 (c)
+ * that bearer may be a `bmi_` PER-INVOCATION token, and when it is, the
+ * invocation's `credentials` envelope is intersected with the standing grant —
+ * see `grants.ts`, which holds the whole argument.
+ *
+ * Env is still `{DB, VAULT_MASTER_KEY, INTERNAL_TOKEN}` and must stay that way:
+ * the s17 gate reads `agent_invocations`/`agent_bindings` off the SAME D1
+ * handle (`effectiveNodeAuthority` takes an `AuthorityDb`, which is structurally
+ * one binding), so understanding invocations cost this worker no new capability.
+ * If a future gate here needs data D1 cannot reach, that is a reason to move the
+ * gate, not to widen `models.ts`.
  *
  * **T3a + T2 + T3: the key moved, the grant model exists, and the Class A verb
  * runs.** `/bureau/use` now authenticates, authorizes, audits, gates the verb by
@@ -111,6 +121,8 @@ async function handleSeal(request: Request, env: Env): Promise<Response> {
  *
  *   0. authenticate the caller          `authorizeUse` (T3a)
  *   1. authorize (principal, credRef, verb) + audit   `authorizeUse` (T2)
+ *  1b. ∧ the invocation's envelope, when a `bmi_` token
+ *      authenticated the call                        `authorizeUse` (s17 (c))
  *   2. gate the verb by the credential's KIND (§4.1)  ← here
  *   3. bind the destination (§6)                      ┐
  *   4. inject header-only (invariant 8)               ├ the verb runtime
