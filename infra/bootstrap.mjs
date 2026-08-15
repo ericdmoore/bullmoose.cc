@@ -77,7 +77,7 @@ const SCHEMAS = [
 // `oauth` precedes `agent`, which binds OAUTH to validate access tokens —
 // the same edge, and the same failure if reversed (deploying against a
 // service that does not exist yet), as bureau-before-agent.
-const DEPLOY_ORDER = ["submit", "jmap", "bureau", "oauth", "agent", "ingest", "provision", "anglebrackets"];
+export const DEPLOY_ORDER = ["submit", "jmap", "bureau", "oauth", "agent", "ingest", "provision", "anglebrackets"];
 
 const cfg = (w) => `services/${w}/wrangler.jsonc`;
 // Configs that carry resource ids to wire. anglebrackets has no KV binding —
