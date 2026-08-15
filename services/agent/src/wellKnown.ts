@@ -1,3 +1,4 @@
+import { OAUTH_SCOPES } from "@bullmoose/auth-core";
 import type { Env } from "./models.js";
 
 /**
@@ -44,12 +45,40 @@ export function issuer(url: URL, env: Env): string {
 }
 
 /**
- * Scopes a third party may ask for. Deliberately NOT the full internal scope
- * list: `vault` is absent because handing a stranger the credential realm
- * through a consent screen is not a default worth having (s02 decision 4),
- * and `admin` is absent for the obvious reason.
+ * Scopes a third party may ask for — the `scopes_supported` of the RFC 9728
+ * protected-resource document, which is how an agent LEARNS what it may
+ * request. Under-advertising is not a security bug (the AS validates every
+ * request against `OAUTH_SCOPES` regardless) but it is a discoverability one,
+ * and on a surface whose primary reader is a machine that is the same kind of
+ * defect as shipping prose where a schema belongs.
+ *
+ * Derived from `OAUTH_SCOPES` minus an explicit deny list, rather than
+ * hand-kept beside it. It was hand-kept, and it drifted: `files` shipped in
+ * #128 and never reached this list, so the metadata told every agent that the
+ * files realm did not exist.
+ *
+ * `vault` and `admin` are not here because they are not in `OAUTH_SCOPES` at
+ * all — the AS will not grant them through a consent screen (s02 decision 4).
+ * The deny list below is for scopes the AS *would* grant but that we decline
+ * to advertise to strangers; `wellKnown.test.ts` fails if an entry stops being
+ * real, so removing one is a decision rather than a deletion.
  */
-export const PUBLIC_SCOPES = ["read", "annotate", "draft", "move", "calendar", "contacts"] as const;
+const NOT_ADVERTISED: Record<string, string> = {
+  // The bundle, not a capability: it expands to the six mail verbs, so a
+  // stranger asking for it is asking for all of them without naming them.
+  // `/auth/login`'s default, deliberately not a connected-app request.
+  mail: "a bundle — a third party should name the verbs it wants",
+  // Irreversible and unattended. `delete` through a consent screen is the one
+  // grant whose mistake cannot be walked back by revoking the grant.
+  delete: "irreversible — revoking the grant does not restore the mail",
+};
+
+export const PUBLIC_SCOPES: readonly string[] = OAUTH_SCOPES.filter(
+  (s) => !(s in NOT_ADVERTISED),
+);
+
+/** Exported for the drift test, which asserts every entry is still a real scope. */
+export const NOT_ADVERTISED_SCOPES = NOT_ADVERTISED;
 
 export function protectedResourceMetadata(url: URL, env: Env): Record<string, unknown> {
   return {
