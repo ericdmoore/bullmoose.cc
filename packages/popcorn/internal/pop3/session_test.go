@@ -54,10 +54,14 @@ type jmapStub struct {
 	mu   sync.Mutex
 	reqs []recorded
 
-	roles      map[string]string
-	emails     []map[string]any  // newest-first, as a JMAP server sorts
-	blobs      map[string]string // blobId → raw RFC 5322 bytes
-	notUpdated []string          // ids Email/set refuses to move
+	roles  map[string]string
+	emails []map[string]any // newest-first, as a JMAP server sorts
+	// emailsLater, when set, is what every listing after the first returns —
+	// the server's view moving on between one login and the next.
+	emailsLater []map[string]any
+	listings    int
+	blobs       map[string]string // blobId → raw RFC 5322 bytes
+	notUpdated  []string          // ids Email/set refuses to move
 }
 
 func newStub() *jmapStub {
@@ -139,7 +143,12 @@ func (s *jmapStub) dispatch(body []byte) string {
 		case "Email/query":
 			responses = append(responses, []any{name, map[string]any{"ids": []string{}}, tag})
 		case "Email/get":
-			responses = append(responses, []any{name, map[string]any{"list": s.emails}, tag})
+			list := s.emails
+			if s.listings > 0 && s.emailsLater != nil {
+				list = s.emailsLater
+			}
+			s.listings++
+			responses = append(responses, []any{name, map[string]any{"list": list}, tag})
 		case "Email/set":
 			args := map[string]any{"updated": map[string]any{}}
 			if len(s.notUpdated) > 0 {
@@ -458,6 +467,87 @@ func TestAnOverlongCommandLineEndsTheSession(t *testing.T) {
 	case <-c.done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("session stayed open after an overlong line")
+	}
+}
+
+// RFC 1939 §5 makes USER and PASS AUTHORIZATION-state commands: a session that
+// has authenticated is in TRANSACTION state, where they are not valid. popcorn
+// accepted them anyway, and PASS re-snapshots the maildrop — so a second login
+// handed the client's existing message numbers a different list of messages.
+// QUIT then applied those numbers to the new snapshot and archived whatever now
+// sat at them: silent, unasked-for, and indistinguishable from mail loss to the
+// person it happens to. When the maildrop had shrunk instead, the same line
+// indexed past the end — a panic on a connection goroutine, which is the daemon
+// and every other session on it.
+func TestReauthenticationIsRefusedOnceTheTransactionHasStarted(t *testing.T) {
+	stub := newStub()
+	// The ordinary thing that happens to a maildrop between two logins:
+	// another client files the oldest message and new mail arrives. Every
+	// number shifts, so a re-snapshot points message 1 at a message the
+	// client has never mentioned.
+	stub.emailsLater = []map[string]any{
+		{"id": "em_brand_new", "blobId": "blob_9", "size": 90},
+		{"id": "em_newest", "blobId": "blob_3", "size": 30},
+		{"id": "em_middle", "blobId": "blob_2", "size": 20},
+	}
+	c := dial(t, testConfig(), stub)
+	c.authenticate()
+	c.ok("DELE 1") // em_oldest — the message *this* session numbered 1
+
+	if got := c.cmd("USER %s", testUser); got != "-ERR already authenticated" {
+		t.Errorf("USER in TRANSACTION state → %q, want -ERR", got)
+	}
+	if got := c.cmd("PASS %s", testToken); got != "-ERR already authenticated" {
+		t.Errorf("PASS in TRANSACTION state → %q, want -ERR", got)
+	}
+	// The maildrop the client was given is still the one it is talking about.
+	if got := c.ok("STAT"); got != "2 50" {
+		t.Errorf("STAT after a refused re-login = %q, want the original snapshot less the DELE", got)
+	}
+	if got := c.ok("QUIT"); got != "popcorn signing off" {
+		t.Fatalf("QUIT → %q", got)
+	}
+
+	args := stub.argsFor(t, "Email/set")
+	var update map[string]struct {
+		MailboxIDs map[string]bool `json:"mailboxIds"`
+	}
+	if err := json.Unmarshal(args["update"], &update); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if _, ok := update["em_oldest"]; len(update) != 1 || !ok {
+		t.Fatalf("QUIT archived %v, want exactly em_oldest — the message DELE 1 named", update)
+	}
+}
+
+// The snapshot and the deletion marks are one value: the marks are indices
+// into the snapshot, and pass() replaces it. Serve no longer lets a client
+// reach pass() twice, so this calls it directly — the pairing is the
+// invariant, and neither a relaxed state gate nor a second caller should be
+// able to leave old numbers pointing into a new list.
+func TestPassReplacesTheDeletionMarksAlongWithTheSnapshot(t *testing.T) {
+	old := http.DefaultTransport
+	http.DefaultTransport = newStub()
+	t.Cleanup(func() { http.DefaultTransport = old })
+
+	clientEnd, serverEnd := net.Pipe()
+	t.Cleanup(func() { clientEnd.Close(); serverEnd.Close() })
+	go func() { _, _ = io.Copy(io.Discard, clientEnd) }() // pass writes a +OK
+
+	s := &Session{
+		conn:    serverEnd,
+		r:       bufio.NewReaderSize(serverEnd, 4096),
+		cfg:     testConfig(),
+		user:    testUser,
+		deleted: map[int]bool{3: true}, // a mark against a maildrop being replaced
+	}
+	s.pass(testToken)
+
+	if s.client == nil {
+		t.Fatal("pass did not authenticate")
+	}
+	if len(s.deleted) != 0 {
+		t.Errorf("deleted = %v after a fresh snapshot, want empty — those numbers index the maildrop that was just thrown away", s.deleted)
 	}
 }
 

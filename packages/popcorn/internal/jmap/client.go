@@ -111,6 +111,10 @@ func (c *Client) APIURL() string { return c.apiURL }
 
 type methodCall [3]any
 
+// call returns the raw methodResponses array. It is positional and it is
+// remote input: a well-formed 200 may still carry fewer responses than the
+// request had calls, so every caller length-checks before indexing it. An
+// index-out-of-range here is an unrecovered panic on a connection goroutine.
 func (c *Client) call(using []string, calls []methodCall) ([]json.RawMessage, error) {
 	body, err := json.Marshal(map[string]any{"using": using, "methodCalls": calls})
 	if err != nil {
@@ -167,6 +171,9 @@ func (c *Client) Mailboxes() (map[string]string, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+	if len(resps) < 1 {
+		return nil, fmt.Errorf("short jmap response")
 	}
 	args, err := respArgs(resps[0], "Mailbox/get")
 	if err != nil {
@@ -269,6 +276,9 @@ func (c *Client) Identities() ([]Identity, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(resps) < 1 {
+		return nil, fmt.Errorf("short jmap response")
+	}
 	args, err := respArgs(resps[0], "Identity/get")
 	if err != nil {
 		return nil, err
@@ -352,6 +362,9 @@ func (c *Client) Send(raw []byte, mailFrom string, rcptTo []string, identityID s
 	if err != nil {
 		return "", err
 	}
+	if len(resps) < 1 {
+		return "", fmt.Errorf("short jmap response")
+	}
 	args, err := respArgs(resps[0], "Email/import")
 	if err != nil {
 		return "", err
@@ -399,6 +412,9 @@ func (c *Client) Send(raw []byte, mailFrom string, rcptTo []string, identityID s
 	if err != nil {
 		return "", err
 	}
+	if len(resps) < 1 {
+		return "", fmt.Errorf("short jmap response")
+	}
 	args, err = respArgs(resps[0], "EmailSubmission/set")
 	if err != nil {
 		return "", err
@@ -430,6 +446,9 @@ func (c *Client) Archive(ids []string, archiveID string) error {
 	})
 	if err != nil {
 		return err
+	}
+	if len(resps) < 1 {
+		return fmt.Errorf("short jmap response")
 	}
 	args, err := respArgs(resps[0], "Email/set")
 	if err != nil {

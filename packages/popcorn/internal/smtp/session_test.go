@@ -56,6 +56,7 @@ type jmapStub struct {
 	identities []map[string]any
 	notCreated bool // EmailSubmission/set refuses the submission
 	failWith   string
+	subID      string // the submission id the server returns (default "sub_1")
 }
 
 func newStub() *jmapStub {
@@ -133,7 +134,11 @@ func (s *jmapStub) dispatch(body []byte) string {
 				responses = append(responses, []any{name, map[string]any{"notCreated": map[string]any{"s": map[string]any{"type": reason}}}, tag})
 				continue
 			}
-			responses = append(responses, []any{name, map[string]any{"created": map[string]any{"s": map[string]any{"id": "sub_1"}}}, tag})
+			id := s.subID
+			if id == "" {
+				id = "sub_1"
+			}
+			responses = append(responses, []any{name, map[string]any{"created": map[string]any{"s": map[string]any{"id": id}}}, tag})
 		default:
 			responses = append(responses, []any{"error", map[string]any{"type": "unknownMethod"}, tag})
 		}
@@ -292,6 +297,19 @@ func (c *conn) cmd(format string, args ...any) string {
 	c.t.Helper()
 	c.send(format, args...)
 	return c.reply()[0]
+}
+
+// silence waits for a reply that must not arrive, and returns whatever did.
+// A desynced session then fails with the line it wrongly sent, which names
+// the bug, rather than with a timeout on some later write, which does not.
+func (c *conn) silence(d time.Duration) (string, bool) {
+	c.t.Helper()
+	_ = c.c.SetReadDeadline(time.Now().Add(d))
+	s, err := c.r.ReadString('\n')
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimRight(s, "\r\n"), true
 }
 
 // code sends a command and returns the three-digit status.
@@ -659,10 +677,8 @@ func TestSubmissionEnvelopeComesFromTheCommandsNotTheHeaders(t *testing.T) {
 // The size cap has to be enforced during the transfer, not after it, or the
 // cap is not a memory bound at all.
 //
-// Note what is NOT asserted: what the session does next. On a 552 the reader
-// returns without draining the rest of the body, so the remaining lines are
-// parsed as commands — see the report accompanying this suite. Pinning that
-// behaviour here would make it look intended.
+// What the session does *next* was the bug, and is now asserted two tests
+// down: the rest of the body is drained rather than parsed as commands.
 func TestOversizedMessagesAreRejectedDuringTransfer(t *testing.T) {
 	cfg := testConfig()
 	cfg.MaxSize = 64
@@ -683,6 +699,119 @@ func TestOversizedMessagesAreRejectedDuringTransfer(t *testing.T) {
 		if m == "EmailSubmission/set" {
 			t.Fatal("an oversized message was submitted anyway")
 		}
+	}
+}
+
+// The attack the 552 path made possible. DATA is the one place message content
+// and protocol share a channel, and the "." is the only thing separating them —
+// so a reply that abandons the body mid-transfer leaves the rest of somebody's
+// message queued up in front of the command reader. It was parsed as commands,
+// against an envelope that was still live: a "RCPT TO:" line sitting in a
+// message body — put there by whoever wrote the message, not by whoever is
+// sending it — was answered "250 2.1.5 recipient OK" and joined the envelope of
+// the next thing that client sent.
+func TestAnOversizedMessageCannotSmuggleCommandsOutOfItsBody(t *testing.T) {
+	cfg := testConfig()
+	cfg.MaxSize = 512
+	stub := newStub()
+	c := dial(t, cfg, stub)
+	c.authenticate()
+	c.code("MAIL FROM:<%s>", testUser)
+	c.code("RCPT TO:<someone@example.test>")
+	c.code("DATA")
+
+	c.send("Subject: over the limit")
+	c.send("")
+	c.send("%s", strings.Repeat("x", 600)) // trips the cap mid-message
+	if got := c.line(); !strings.HasPrefix(got, "552") {
+		t.Fatalf("oversized DATA → %q, want 552", got)
+	}
+
+	// Everything from here is still message body, and must be read as body.
+	c.send("RCPT TO:<attacker@evil.example>")
+	if got, spoke := c.silence(300 * time.Millisecond); spoke {
+		t.Fatalf("a line of the message body was executed as a command: the server answered %q", got)
+	}
+	c.send(".") // the real end of the body: back to command level
+
+	if got := c.code("NOOP"); got != "250" {
+		t.Fatalf("NOOP after a rejected message → %s; the session is out of step", got)
+	}
+	// The envelope went with the message it belonged to, so there is nothing
+	// left for a smuggled recipient to have been added to.
+	if got := c.code("RCPT TO:<someone@example.test>"); got != "503" {
+		t.Errorf("RCPT after a rejected message → %s, want 503 — the envelope must be gone", got)
+	}
+	for _, m := range stub.methods() {
+		if m == "EmailSubmission/set" {
+			t.Fatalf("something was submitted: %v", stub.methods())
+		}
+	}
+}
+
+// The drain finds the end of the body by looking at whole lines, and a line
+// longer than the read buffer arrives in more than one piece — so a body line
+// whose last bytes land as ".\r\n" on a fill boundary looks exactly like the
+// terminator. A drain that stops there hands the rest of the message back to
+// the command loop, which is the smuggling above with extra steps.
+func TestALineEndingInADotOnABufferBoundaryDoesNotEndTheDrain(t *testing.T) {
+	cfg := testConfig()
+	cfg.MaxSize = 8192
+	c := dial(t, cfg, newStub())
+	c.authenticate()
+	c.code("MAIL FROM:<%s>", testUser)
+	c.code("RCPT TO:<someone@example.test>")
+	c.code("DATA")
+
+	c.send("%s", strings.Repeat("x", 9000)) // trips the cap
+	if got := c.line(); !strings.HasPrefix(got, "552") {
+		t.Fatalf("oversized DATA → %q, want 552", got)
+	}
+
+	// One body line: a bufferful of filler, then the dot. The reader sees it
+	// as 4096 bytes with no newline followed by ".\r\n".
+	c.send("%s.", strings.Repeat("y", 4096))
+	c.send("RCPT TO:<attacker@evil.example>")
+	if got, spoke := c.silence(300 * time.Millisecond); spoke {
+		t.Fatalf("the drain stopped at a dot inside a line; the next line was executed as a command: %q", got)
+	}
+	c.send(".")
+	if got := c.code("NOOP"); got != "250" {
+		t.Fatalf("NOOP after the real end of the body → %s", got)
+	}
+}
+
+// Draining the body is itself a hazard: a client that never sends the
+// terminating dot would be read forever, which is a connection slot held open
+// for free. The budget is MaxSize — one DATA never reads more than twice what
+// the operator allowed — and a body that outlasts it costs its sender the
+// connection. Nothing is lost by hanging up: the 552 has already been sent.
+func TestABodyThatNeverEndsCostsTheConnectionNotTheProcess(t *testing.T) {
+	cfg := testConfig()
+	cfg.MaxSize = 512
+	c := dial(t, cfg, newStub())
+	c.authenticate()
+	c.code("MAIL FROM:<%s>", testUser)
+	c.code("RCPT TO:<someone@example.test>")
+	c.code("DATA")
+
+	c.send("%s", strings.Repeat("x", 600))
+	if got := c.line(); !strings.HasPrefix(got, "552") {
+		t.Fatalf("oversized DATA → %q, want 552", got)
+	}
+
+	// No dot, ever. These writes are raw because the server is meant to hang
+	// up partway through them, and the helper would fail the test on that.
+	for i := 0; i < 200; i++ {
+		_ = c.c.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		if _, err := io.WriteString(c.c, strings.Repeat("y", 100)+"\r\n"); err != nil {
+			break
+		}
+	}
+	select {
+	case <-c.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the session is still reading a body that never ends")
 	}
 }
 
@@ -710,6 +839,57 @@ func TestARejectedSubmissionIsReportedAsAFailure(t *testing.T) {
 	// rather than inheriting the failed one's recipients.
 	if got := c.code("DATA"); got != "503" {
 		t.Errorf("DATA after a failed submission → %s, want 503 (the envelope must be gone)", got)
+	}
+}
+
+// oneLine guards every interpolated value in a reply except, for a while, this
+// one — and this is the one that comes from the JMAP server rather than from
+// the client. A CRLF in the submission id let that server write its own reply
+// lines into this stream, and "250 2.0.0 queued" is the line you least want
+// forged: the client deletes its copy on the strength of it.
+func TestTheSubmissionIdCannotForgeAnExtraReplyLine(t *testing.T) {
+	stub := newStub()
+	stub.subID = "sub_1\r\n250 2.0.0 queued as a-message-that-was-never-sent"
+	c := dial(t, testConfig(), stub)
+	c.authenticate()
+	c.code("MAIL FROM:<%s>", testUser)
+	c.code("RCPT TO:<someone@example.test>")
+	c.code("DATA")
+	c.send("Subject: hi")
+	c.send("")
+	c.send("body")
+	c.send(".")
+
+	if got := c.line(); !strings.HasPrefix(got, "250 2.0.0 queued as ") {
+		t.Fatalf("end of DATA → %q, want a 250", got)
+	}
+	if extra, spoke := c.silence(300 * time.Millisecond); spoke {
+		t.Fatalf("the submission id forged a second reply line: %q", extra)
+	}
+}
+
+// The only bound on a single command line. bufio grows its buffer to fit
+// whatever arrives before a newline, so without the cap an unauthenticated
+// client can make popcorn allocate as much as it cares to send — on one of 64
+// shared connection slots. The session must end rather than resume, because
+// resuming means reading the tail of the flood as commands.
+func TestAnOverlongCommandLineEndsTheSession(t *testing.T) {
+	c := dial(t, testConfig(), newStub())
+
+	// Written from a goroutine: the server stops reading at the cap and hangs
+	// up, so the tail of this write never lands and the reply has to be read
+	// while it is still in flight.
+	go func() {
+		_ = c.c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = io.WriteString(c.c, "EHLO "+strings.Repeat("a", 3*maxCommandLine)+"\r\n")
+	}()
+	if got := c.line(); !strings.HasPrefix(got, "500") {
+		t.Fatalf("overlong command line → %q, want a 500", got)
+	}
+	select {
+	case <-c.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the session stayed open mid-line after an overlong command")
 	}
 }
 

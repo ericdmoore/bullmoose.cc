@@ -58,6 +58,8 @@ type jmapStub struct {
 	notUpdated    []string // ids Email/set refuses to update
 	notCreated    bool     // EmailSubmission/set refuses the submission
 	shortResponse bool     // return fewer methodResponses than methodCalls
+	shortFrom     int      // ...starting with this /api call (0 = the first)
+	apiCalls      int
 }
 
 func newStub() *jmapStub {
@@ -139,9 +141,12 @@ func (s *jmapStub) dispatch(body []byte) string {
 			responses = append(responses, []any{"error", map[string]any{"type": "unknownMethod"}, c.Tag})
 		}
 	}
-	if s.shortResponse {
+	// Send makes three /api calls, so truncating from a chosen one is how each
+	// of its indexed reads gets to meet a short response on its own.
+	if s.shortResponse && s.apiCalls >= s.shortFrom {
 		responses = responses[:0]
 	}
+	s.apiCalls++
 	out, _ := json.Marshal(map[string]any{"methodResponses": responses})
 	return string(out)
 }
@@ -580,6 +585,46 @@ func TestListMailboxRejectsAShortResponseInsteadOfPanicking(t *testing.T) {
 
 	if _, err := c.ListMailbox("mb_inbox", 200); err == nil {
 		t.Fatal("ListMailbox accepted a response with no method responses")
+	}
+}
+
+// The same hazard everywhere else it lives. methodResponses is positional and
+// it is remote input, so every method that reads resps[0] is one malformed —
+// or merely truncated — 200 away from an index-out-of-range. ListMailbox has
+// been guarded since it was written because it needs resps[1]; these four read
+// resps[0] and were not, and a panic here is not an error on one session but a
+// panic on a connection goroutine, which is the daemon and every other user's
+// connection on it.
+func TestAShortMethodResponseIsAnErrorNotAPanic(t *testing.T) {
+	send := func(c *Client) error {
+		_, err := c.Send([]byte("x"), "corny@example.test", []string{"a@example.test"}, "id_1")
+		return err
+	}
+	for _, tc := range []struct {
+		name  string
+		from  int // the /api call to start truncating at
+		which func(*Client) error
+	}{
+		{"Mailboxes", 0, func(c *Client) error { _, err := c.Mailboxes(); return err }},
+		{"Identities", 0, func(c *Client) error { _, err := c.Identities(); return err }},
+		{"Send, reading the import", 1, send},
+		{"Send, reading the submission", 2, send},
+		{"Archive", 0, func(c *Client) error { return c.Archive([]string{"em_1"}, "mb_archive") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newStub()
+			s.shortResponse = true
+			s.shortFrom = tc.from
+			c := login(t, s)
+
+			err := tc.which(c)
+			if err == nil {
+				t.Fatal("a response with no method responses was accepted")
+			}
+			if !strings.Contains(err.Error(), "short jmap response") {
+				t.Errorf("error = %q, want ListMailbox's wording for the same fault", err)
+			}
+		})
 	}
 }
 
