@@ -67,6 +67,34 @@ jobs:
         working-directory: cli-go
         run: go build -o bin/bullmoose .
 
+      # ── popcorn: the SECOND Go module, and it had no CI at all ───────────
+      # packages/popcorn is the live SMTP/POP3 submission shim. It was in no
+      # job here — not gofmt, not vet, not build — so two files had been
+      # sitting unformatted since the Go 1.19 doc-comment reflow and nothing
+      # said so. The steps above are scoped `working-directory: cli-go`, which
+      # reads like "the Go steps" and is actually "one of the two Go modules".
+      #
+      # It has no test files today; `go test` is here anyway so the first one
+      # added is covered on arrival rather than whenever someone remembers.
+      - name: gofmt (popcorn)
+        working-directory: packages/popcorn
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite these files — run 'gofmt -w packages/popcorn/':"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go vet (popcorn)
+        working-directory: packages/popcorn
+        run: go vet ./...
+      - name: go test (popcorn)
+        working-directory: packages/popcorn
+        run: go test ./...
+      - name: build popcorn
+        working-directory: packages/popcorn
+        run: go build ./...
+
       # ── The ratchet: one contract suite, both binaries ───────────────────
       # Node FIRST, then Go, on purpose. If a future port breaks a command, the
       # Node step stays green and the Go step goes red — so the red X sits on

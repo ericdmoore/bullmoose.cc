@@ -5,14 +5,15 @@
 // platform differences live in deploy/ (systemd vs launchd vs Docker).
 //
 // Configuration (environment):
-//   POPCORN_LISTEN        comma-separated addrs   (default ":995")
-//   POPCORN_TLS_CERT      PEM cert path — with KEY enables implicit TLS
-//   POPCORN_TLS_KEY       PEM key path
-//   POPCORN_JMAP_BASE     override JMAP origin; default: _jmap._tcp SRV
-//                         discovery from the login email's domain
-//   POPCORN_DELE_MODE     archive (default) | noop — popcorn NEVER destroys
-//   POPCORN_MAX_MESSAGES  maildrop window, newest N (default 200)
-//   POPCORN_IDLE_TIMEOUT  e.g. 5m (default; RFC minimum is 10m — we're corny)
+//
+//	POPCORN_LISTEN        comma-separated addrs   (default ":995")
+//	POPCORN_TLS_CERT      PEM cert path — with KEY enables implicit TLS
+//	POPCORN_TLS_KEY       PEM key path
+//	POPCORN_JMAP_BASE     override JMAP origin; default: _jmap._tcp SRV
+//	                      discovery from the login email's domain
+//	POPCORN_DELE_MODE     archive (default) | noop — popcorn NEVER destroys
+//	POPCORN_MAX_MESSAGES  maildrop window, newest N (default 200)
+//	POPCORN_IDLE_TIMEOUT  e.g. 5m (default; RFC minimum is 10m — we're corny)
 package main
 
 import (
