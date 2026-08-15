@@ -68,8 +68,11 @@ describe("tier rendering matches what approve DOES (arch.md §2)", () => {
   it("the tier-3 note names the capability wall, the hold note names T2", () => {
     expect(TIER3_CAPABILITY_NOTE).toContain("send capability");
     expect(TIER3_CAPABILITY_NOTE).toContain("agent token is refused");
-    expect(HOLD_UNWIRED_NOTE).toContain("not wired");
-    expect(HOLD_UNWIRED_NOTE).toContain("s03.D T2");
+    // s03.D T2 landed: commit is automatic, yank is API-only for now. The
+    // note must say what the tray actually does — an enabled-looking promise
+    // it cannot keep, or a stale "not wired", would both be lies about egress.
+    expect(HOLD_UNWIRED_NOTE).toContain("sends automatically");
+    expect(HOLD_UNWIRED_NOTE).toContain("yank");
   });
 });
 

@@ -883,3 +883,144 @@ describe("dueAt — the work's deadline rides the projection and is human-correc
     ).toBe(Date.UTC(2027, 0, 1)); // untouched
   });
 });
+
+// ---- s03.D T2: yank, and the commit that makes Approve mean send ----------
+//
+// The half the tray was waiting for. Found honestly: EditorEmily answered a
+// draft request in five seconds and the reply sat for two days — approving it
+// would only have parked it in a tray nothing ever emptied. These pin both
+// halves: the retraction verb, and the sweep that egresses what the window
+// releases.
+
+import { commitDueHeldProposals } from "./actionProposal";
+
+const HELD_PAYLOAD = {
+  to: "outside@example.com",
+  self: "emily@bullmoose.cc",
+  blobId: "b_draft",
+  subject: "re: please tighten this",
+  text: "Tightened. —E",
+};
+
+/** Seed a proposal already in the hold tray, window closing at `holdUntil`.
+ *  The sweep resolves the account's tenant per row (it crosses accounts), so
+ *  unlike the /set tests the account row itself must exist. */
+function seedHeld(h: ReturnType<typeof harness>, id: string, holdUntil: number, by = "eric@login.example") {
+  h.w.db.seedAccount({
+    accountId: ACCOUNT,
+    tenantId: TENANT,
+    principalId: "p_eric",
+    loginEmail: "eric@login.example",
+    displayName: "Eric",
+  });
+  seedProposal(h.w, { id, kind: "reply-draft", tier: 2, status: "held", payload: HELD_PAYLOAD });
+  h.w.db.query(
+    `UPDATE agent_proposals SET hold_until = ${holdUntil}, decided_at = 5,
+       decision_json = '${JSON.stringify({ by })}' WHERE id = '${id}'`,
+  );
+}
+
+describe("s03.D T2 — yank: the retraction the hold window exists for", () => {
+  it("yanks a held proposal while the window is open, and nothing egresses", async () => {
+    const h = harness();
+    seedHeld(h, "inv_y1", Date.now() + 60_000);
+    const res = await h.set({ update: { inv_y1: { status: "yanked" } } });
+    expect(res.updated).toHaveProperty("inv_y1");
+    const row = h.w.db.query<{ status: string }>(
+      `SELECT status FROM agent_proposals WHERE id = 'inv_y1'`,
+    )[0]!;
+    expect(row.status).toBe("yanked");
+    expect(h.w.submit.calls).toEqual([]);
+  });
+
+  it("a yank is visible to /changes — the choreography survives the new verb", async () => {
+    const h = harness();
+    seedHeld(h, "inv_y2", Date.now() + 60_000);
+    const before = (await h.call<{ state: string }>("ActionProposal/get", { ids: [] })).state;
+    await h.set({ update: { inv_y2: { status: "yanked" } } });
+    const changes = await h.call<{ updated: string[] }>("ActionProposal/changes", { sinceState: before });
+    expect(changes.updated).toContain("inv_y2");
+  });
+
+  it("refuses a yank after the window closes — the sweep owns it now", async () => {
+    const h = harness();
+    seedHeld(h, "inv_y3", Date.now() - 1_000);
+    const res = await h.set({ update: { inv_y3: { status: "yanked" } } });
+    expect(res.notUpdated.inv_y3?.description).toMatch(/too late to yank/);
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_y3'`)[0]!.status).toBe(
+      "held",
+    );
+  });
+
+  it("refuses to yank a pending proposal — that is a decline, not a yank", async () => {
+    const h = harness();
+    seedProposal(h.w, { id: "inv_y4", kind: "reply-draft", tier: 2 });
+    const res = await h.set({ update: { inv_y4: { status: "yanked" } } });
+    expect(res.notUpdated.inv_y4?.description).toMatch(/declined, not yanked/);
+  });
+
+  it("refuses to RE-decide a held proposal — the tray offers yank and nothing else", async () => {
+    const h = harness();
+    seedHeld(h, "inv_y5", Date.now() + 60_000);
+    const res = await h.set({ update: { inv_y5: { status: "approved" } } });
+    expect(res.notUpdated.inv_y5?.description).toMatch(/is held, not pending/);
+  });
+});
+
+describe("s03.D T2 — the commit sweep: Approve finally means send", () => {
+  it("commits a held proposal whose window has closed: relays, records Sent, flips status", async () => {
+    const h = harness();
+    seedHeld(h, "inv_c1", Date.now() - 1_000, "approver@login.example");
+    const { committed, failed } = await commitDueHeldProposals(h.ctx);
+    expect(failed).toEqual([]);
+    expect(committed).toEqual(["inv_c1"]);
+    // The egress actually happened.
+    expect(h.w.submit.calls).toEqual([{ mailFrom: "emily@bullmoose.cc", rcptTo: ["outside@example.com"] }]);
+    // The Sent copy exists and its provenance names the APPROVER — the write
+    // belongs to the human whose approval it executes, not to the sweep.
+    const email = h.w.db.query<{ last_writer_principal: string | null; last_writer_binding: string | null }>(
+      `SELECT last_writer_principal, last_writer_binding FROM emails WHERE account_id = '${ACCOUNT}'`,
+    )[0]!;
+    expect(email.last_writer_principal).toBe("approver@login.example");
+    expect(email.last_writer_binding).toBe("emily");
+    // Status flipped with the commit stamped into the decision.
+    const prop = h.w.db.query<{ status: string; decision_json: string }>(
+      `SELECT status, decision_json FROM agent_proposals WHERE id = 'inv_c1'`,
+    )[0]!;
+    expect(prop.status).toBe("approved");
+    expect(JSON.parse(prop.decision_json).committedAt).toBeGreaterThan(0);
+  });
+
+  it("the commit is visible to /changes — a sweep that skips the changelog is invisible to push", async () => {
+    const h = harness();
+    seedHeld(h, "inv_c2", Date.now() - 1_000);
+    const before = (await h.call<{ state: string }>("ActionProposal/get", { ids: [] })).state;
+    await commitDueHeldProposals(h.ctx);
+    const changes = await h.call<{ updated: string[] }>("ActionProposal/changes", { sinceState: before });
+    expect(changes.updated).toContain("inv_c2");
+  });
+
+  it("leaves a still-open window alone", async () => {
+    const h = harness();
+    seedHeld(h, "inv_c3", Date.now() + 60_000);
+    const { committed } = await commitDueHeldProposals(h.ctx);
+    expect(committed).toEqual([]);
+    expect(h.w.submit.calls).toEqual([]);
+  });
+
+  it("a failed relay stays HELD and reports — retried next sweep, never lost, never double-sent", async () => {
+    const h = harness();
+    seedHeld(h, "inv_c4", Date.now() - 1_000);
+    // Break the relay for this run.
+    (h.w.env as { SUBMIT: Fetcher }).SUBMIT = {
+      fetch: async () => new Response("boom", { status: 500 }),
+    } as unknown as Fetcher;
+    const { committed, failed } = await commitDueHeldProposals(h.ctx);
+    expect(committed).toEqual([]);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]!.error).toMatch(/submit relay failed/);
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_c4'`)[0]!.status).toBe(
+      "held",
+    );
+  });
+});
