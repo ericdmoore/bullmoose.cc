@@ -148,8 +148,7 @@ var selfParsers = map[string]struct{ file, fn string }{
 // packages/cli/src/help.ts, on the other side of the module boundary, and a
 // silent skip would let the list grow. Deleting an entry here is the last step
 // of fixing one; a stale entry fails this test too.
-var undocumentedByDesign = map[string]string{
-}
+var undocumentedByDesign = map[string]string{}
 
 // TestRegistryFlagsAreTheParsersOwn checks the registry against the parser's
 // AST rather than against the hand-copied list registry_test.go used to carry.
