@@ -34,6 +34,18 @@ export {
   type Refusal,
 } from "./attenuation.js";
 export {
+  NO_AUTHORITY,
+  describeDenial,
+  foldChain,
+  intersectAuthority,
+  mayUse,
+  parseEnvelope,
+  type AuthorityDenial,
+  type FoldResult,
+  type Use,
+  type UseResult,
+} from "./useAuthority.js";
+export {
   BLOCKED_SENTINEL,
   deriveJobStatus,
   jobBudgetExhausted,

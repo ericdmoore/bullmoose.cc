@@ -1,5 +1,6 @@
 import { describeRefusals } from "@bullmoose/scheduling";
-import { expandPlan, getJobNode, joinContext, type JobNodeRow } from "./jobs.js";
+import { expandPlan, getJobNode, joinContext } from "./jobs.js";
+import { effectiveNodeAuthority, type JobNodeRow } from "./useGate.js";
 import type { Env, InvocationCost } from "./models.js";
 
 /**
@@ -72,6 +73,34 @@ export async function runJobNode(
 ): Promise<void> {
   const node = await getJobNode(env, job.account_id, job.id);
   if (!node) return done("failed", { note: "job node vanished mid-claim" }, FREE);
+
+  // THE PRE-FLIGHT (s17). Before a delegated node does ANY work, its effective
+  // authority must be resolvable: `binding ∩ root ∩ … ∩ this node`, every hop
+  // present and readable (`useGate.ts`). A node whose chain cannot be read has
+  // an UNKNOWN bound, and an unknown bound is not a permissive one — so it
+  // fails here rather than running and discovering the problem only if it
+  // happened to try to delegate.
+  //
+  // This is the fail-closed edge, not a capability check: what it refuses is a
+  // corrupt, absent, grafted or cyclic delegation chain. The per-axis checks
+  // (may this node use THIS tool / THIS credential / THIS much money) are
+  // `authorizeNodeUse`, called by whichever consumer is spending — the same
+  // resolved authority, asked a narrower question.
+  const authority = await effectiveNodeAuthority(env, job.account_id, node);
+  if (!authority.ok) {
+    console.warn(`job ${node.job_id}: node ${node.id} refused — ${authority.note}`);
+    return done(
+      "failed",
+      {
+        kind: "job-node",
+        note: `authority refused: ${authority.note}`.slice(0, 500),
+        // Structured beside the sentence, for the same reason a planner's
+        // refusals are: an audit counts by axis, it does not grep prose.
+        denial: authority.denial,
+      },
+      FREE,
+    );
+  }
 
   const op = typeof context.op === "string" ? context.op : "";
   switch (op) {
