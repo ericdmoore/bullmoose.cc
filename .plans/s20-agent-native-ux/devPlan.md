@@ -18,6 +18,13 @@ already do; crm@ dedupe proposals — s16 — are the natural second source). **
 T2 below until a normal week produces a double-digit proposal count.** The metric is crude
 on purpose; it is a supply gauge, not a KPI.
 
+One reading note for s03.D T2, from readme principle 6: the queue screen it builds is the
+**index and bulk surface**, not the sole venue of consent. Proposals are portable — they
+also render and resolve on the object they would modify (a pending contact-field change
+on the contact card, T4's comment pattern) and inline in the flow that produced them
+(T6's sketch redlining). The queue holds what the human did not naturally encounter.
+In-place approval writes the identical ledger rows.
+
 ### T1 — Watches · *the one new noun*
 
 **Files:** `packages/mailstore/sql/control-plane.sql` (new `watches` table),
@@ -189,6 +196,12 @@ task adds on top:
   task list. Approve → tasks are created. Edit → the human redlines the workflow, and
   the decline taxonomy learns from the redline. Cheap by construction: the planner
   already emits the task list (`jobNode.ts`); this intercepts output that exists.
+  **And the approval is INLINE, not a queue round-trip** (readme principle 6): the
+  sketch is redlined in the conversation where the goal was expressed, and an edit that
+  leaves nothing unresolved IS the approval — no second "…and do you approve?" after a
+  hand-edit. An edit that leaves open questions is the needsInfo cycle, back to the
+  planner. Either way the SAME proposal/decision/provenance rows are written as if it
+  had gone through the queue — the venue moves, the ledger does not.
 - **The contract IS the authority envelope.** may/may-not/escalate/done-when compile to
   the machinery that already enforces them: allowed tools and recipients, monotonic
   attenuation (a sub-task can never exceed the goal — proven by test), aggregate budget,

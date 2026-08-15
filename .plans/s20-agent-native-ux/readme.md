@@ -51,6 +51,19 @@ One noun is admitted immediately because it has already earned its place three t
    happen?" routes through the existing proposal machinery; prose is the precision tool.
 5. **Task ≠ Commitment ≠ Obligation** — could-be-done vs. said-I'd-do-it vs.
    externally-imposed. Valuable *internally* even if Obligation never becomes user-facing.
+6. **Approval is an act, not a place** (Eric, 2026-08-14). The PROPOSAL — a record that
+   something needs consent, with provenance — is load-bearing; the queue SCREEN is not.
+   Consent happens where the work or the object already is: editing the agent's workflow
+   sketch until nothing is left over IS the approval (ceremonying "…and do you approve?"
+   after a hand-edit is asking twice); a proposed contact-field change renders ON the
+   contact card (T4's comment pattern on a different anchor) and is approvable there.
+   The queue survives as the INDEX of pending decisions you did not naturally encounter,
+   plus bulk and audit — which is a second, deeper answer to s03.D's named failure mode
+   ("the queue becomes a second inbox"): T5 thins it by automating; this thins it by
+   DISTRIBUTING. One invariant, non-negotiable: in-place approval writes the same ledger
+   rows — proposal, decision, provenance, chain — as queue approval. The venue moves;
+   the record does not. Otherwise inline consent is the silent-widening hole with
+   better UX.
 
 ## Rejected / deferred, and why (recorded so it is not re-litigated)
 
