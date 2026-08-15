@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { fakeEnv } from "@bullmoose/test-fakes";
 import worker from "./index";
+import { OAUTH_SCOPES } from "@bullmoose/auth-core";
 import {
+  NOT_ADVERTISED_SCOPES,
+  PUBLIC_SCOPES,
   handleWellKnown,
   originAllowed,
   protectedResourceMetadata,
@@ -285,5 +288,40 @@ describe("s02 T1 — the route is public, /drain and /internal/* are not", () =>
     );
     expect(res.status).toBe(200);
     expect((await res.json() as any).resource).toBe("https://mcp.bullmoose.cc/mcp");
+  });
+});
+
+describe("s02 T1 — the advertisement must not drift from what the AS will grant", () => {
+  // PUBLIC_SCOPES was hand-kept beside OAUTH_SCOPES and drifted: `files`
+  // shipped in #128 and never reached the advertisement, so the metadata told
+  // every agent the files realm did not exist. It is derived now, and these
+  // three assertions are what keep the derivation honest — the third is the
+  // one that matters, because a stale exemption reads exactly like a decision.
+
+  it("11. advertises every scope the AS will grant, except the named few", () => {
+    const missing = OAUTH_SCOPES.filter(
+      (s) => !PUBLIC_SCOPES.includes(s) && !(s in NOT_ADVERTISED_SCOPES),
+    );
+    expect(missing, `the AS grants these but nothing advertises them: ${missing.join(", ")}`).toEqual(
+      [],
+    );
+  });
+
+  it("12. advertises nothing the AS would refuse — under-promise, never over", () => {
+    const phantom = PUBLIC_SCOPES.filter((s) => !OAUTH_SCOPES.includes(s));
+    expect(phantom, `advertised but not grantable: ${phantom.join(", ")}`).toEqual([]);
+  });
+
+  it("13. every withheld scope is still a real one — a stale exemption fails here", () => {
+    const stale = Object.keys(NOT_ADVERTISED_SCOPES).filter((s) => !OAUTH_SCOPES.includes(s));
+    expect(
+      stale,
+      `NOT_ADVERTISED names ${stale.join(", ")}, which the AS no longer grants — ` +
+        `delete the entry rather than leaving a reason for a scope that is gone`,
+    ).toEqual([]);
+  });
+
+  it("14. `files` specifically is advertised — the regression that motivated this", () => {
+    expect(PUBLIC_SCOPES).toContain("files");
   });
 });
