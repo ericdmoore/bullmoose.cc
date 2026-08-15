@@ -80,7 +80,7 @@ export function approveVerb(tier: ProposalTier): string {
     case 1:
       return "Approve — applies now, undoable";
     case 2:
-      return "Approve — holds, nothing sent yet";
+      return "Approve — nothing sent yet; sends after a short hold (yankable)";
     case 3:
       return "Approve & send — irreversible";
   }

@@ -10,8 +10,8 @@ import { expireStaleProposals, type ProposalAmendment } from "./proposals";
  * driven through the REAL cloud worker on the same drain path a mail-triggered
  * invocation takes:
  *
- *   1. A `send`-mode reply no longer auto-egresses. The run EMITS a pending
- *      tier-2 `reply-draft` proposal — rationale + evidence present — instead of
+ *   1. THE RESPOND-ONLY RULE (2026-08-15): a `send`-mode reply to the requester
+ *      egresses DIRECTLY — solicitation is authorization. Proposals are for
  *      relaying, and the proposal is keyed to the invocation (the read model)
  *      and reaches the changelog (so /changes and push see it). Nothing is sent.
  *   2. The expiry sweep flips a `pending` proposal past its `expires_at` to
@@ -122,10 +122,17 @@ async function scaffold() {
   return { w, store, emailId, drain };
 }
 
-describe("a send-mode run emits a pending proposal instead of egressing", () => {
-  it("produces a tier-2 reply-draft with rationale + evidence, visible to /changes", async () => {
+describe("the respond-only rule: a send-mode run replies DIRECTLY to the requester", () => {
+  // Eric, 2026-08-15: solicitation is authorization. The s03.D tier gate that
+  // stood here routed EditorEmily's five-second answer into a proposal that
+  // sat two days — while the pipeline's own ERROR replies kept egressing
+  // through the same path to the same recipient. By the time this run reaches
+  // the model, four authorizations already exist (allowedSenders, to==[the
+  // requester], the outboundRefusal book check, replyMode: "send" opt-in);
+  // asking a fifth time was the systematic mistake. Proposals remain the rule
+  // for AGENT-INITIATED egress, which this pipeline never constructs.
+  it("egresses to the requester with no proposal — the ask was the approval", async () => {
     const s = await scaffold();
-    // Queue a mail-triggered invocation (ingest's shape).
     s.w.db.seed("agent_invocations", [
       {
         id: "inv_mail",
@@ -142,7 +149,7 @@ describe("a send-mode run emits a pending proposal instead of egressing", () => 
     const { handled } = await s.drain();
     expect(handled).toBe(1);
 
-    // The invocation completed by PROPOSING, not sending.
+    // The invocation completed by SENDING — to exactly the requester.
     const inv = s.w.db.query<{ status: string; result_json: string }>(
       "SELECT status, result_json FROM agent_invocations WHERE account_id = ? AND id = ?",
       ACCOUNT,
@@ -150,39 +157,20 @@ describe("a send-mode run emits a pending proposal instead of egressing", () => 
     )[0]!;
     expect(inv.status).toBe("done");
     const result = JSON.parse(inv.result_json);
-    expect(result).toMatchObject({ kind: "reply-draft", tier: 2, proposalId: "inv_mail" });
+    expect(result.solicited).toBe(true);
+    expect(result.replyId).toBeTruthy();
+    expect(result.kind).toBeUndefined();
 
-    // Nothing was relayed — the whole point of tier-2.
-    expect(s.w.submit.calls).toEqual([]);
+    // One relay, to the person who asked, and nobody else.
+    expect(s.w.submit.calls).toEqual([{ mailFrom: SELF, rcptTo: [SENDER] }]);
 
-    // The proposal is a read model keyed to the invocation, pending, with a
-    // NON-EMPTY rationale and the source message as evidence.
-    const prop = s.w.db.query<{
-      kind: string;
-      tier: number;
-      status: string;
-      rationale: string;
-      evidence_json: string;
-      payload_json: string;
-    }>(
-      "SELECT kind, tier, status, rationale, evidence_json, payload_json FROM agent_proposals WHERE account_id = ? AND id = ?",
+    // And NO proposal row — the queue holds agent-initiated work, not answers
+    // to questions the human asked.
+    const props = s.w.db.query<{ id: string }>(
+      "SELECT id FROM agent_proposals WHERE account_id = ?",
       ACCOUNT,
-      "inv_mail",
-    )[0]!;
-    expect(prop.kind).toBe("reply-draft");
-    expect(prop.tier).toBe(2);
-    expect(prop.status).toBe("pending");
-    expect(prop.rationale.length).toBeGreaterThan(0);
-    expect(JSON.parse(prop.evidence_json)).toEqual([
-      { realm: "Email", objectId: s.emailId, note: "the message being replied to" },
-    ]);
-    const payload = JSON.parse(prop.payload_json);
-    expect(payload).toMatchObject({ to: SENDER, self: SELF, mode: "send" });
-    expect(typeof payload.blobId).toBe("string");
-
-    // CHOREOGRAPHY: the proposal reached the changelog, so push sees it.
-    const changes = await s.w.accountDo.changes(ACCOUNT, "ActionProposal", "0");
-    expect(changes.created).toContain("inv_mail");
+    );
+    expect(props).toEqual([]);
   });
 });
 
