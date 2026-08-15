@@ -1,7 +1,44 @@
 # Per-invocation tokens — design, and one decision for Eric
 
-**Status: designed, NOT implemented. Blocked on a trust-model decision.**
-Written 2026-08-15, after #132/#134/#138 closed the delegation-side half.
+**Status: (a) and (b) SHIPPED in #143. (c) and (d) remain.**
+Written 2026-08-15 after #132/#134/#138 closed the delegation-side half; Eric
+approved all four decisions the same day and #143 built the first two steps.
+
+| step | state |
+|---|---|
+| (a) `bmi_` grammar, mint-on-claim, resolver | **shipped** (#143) |
+| (b) MCP `tools/list` + `tools/call` gated by `mayUse` | **shipped** (#143) — but see the correction below |
+| (c) Bureau credential gate | not started |
+| (d) the two mandatory rules | not started — **and until it lands the whole mechanism is voluntary** |
+
+> ### ⚠️ Correction: gap 1 closes for Job nodes only
+>
+> §Q6's table below says gap 1 (MCP visibility and dispatch) **closes**. That
+> was wrong, and #143 proved it.
+>
+> For an invocation with **no `job_id`** the envelope is `{tools: null, …}` and
+> every tool passes. `effectiveNodeAuthority` short-circuits before reading the
+> binding — `job_id IS NULL` is the DefaultCase, and denying there would strand
+> every ordinary agent. So for the common case, an ordinary mail-triggered
+> invocation, a `bmi_` token narrows the **account**, the **realm**, the
+> **verbs** and the **lifetime**, but **not the tool set**.
+>
+> Asserted as a test (`an ordinary non-Job invocation is NOT a delegation — the
+> tool axis is unbounded`) so it stays a boundary rather than becoming an
+> assumption.
+>
+> Closing it means intersecting with the binding's own ceiling — which
+> **redefines `config_json.jobs.tools` as bounding every invocation of the
+> binding, not only its Job nodes.** That is a second reading of a config key at
+> a consumer, exactly the drift `bindingCeiling`'s docstring exists to prevent.
+> It is a decision, not a patch, and it has not been taken.
+
+Also worth recording from #143: `INVOCATION_STANDING_SCOPES` had to be invented,
+because this document never said what standing scopes a `bmi_` token
+authenticates with. An invocation has none of its own — scopes live on `tokens`
+rows and the drain mints with no bearer in hand — so they are declared in code
+as the union of `ToolDef.scope` over the live surface plus the `agent` marker,
+explicitly excluding `vault`, `admin`, `send` and the `mail` bundle.
 
 ---
 
