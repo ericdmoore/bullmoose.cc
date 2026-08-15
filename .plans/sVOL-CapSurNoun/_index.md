@@ -113,8 +113,8 @@ queries, which today sit behind `x-internal-token` on the agent worker.
 > (`/console/*` serves, `PATCH /agent-bindings/{id}` writes the typed core), so when the
 > redesign settles these are UI-only work.
 | 025 | GraphQL facade | proj | E4 | I2 | `common/022` | spike first | **wontfix** ¹¹ |
-| 026 | `queryChanges` for the four stubs | cap | E3 | **I0** ⁴ | sVOL | — | deferred |
-| 027 | `Thread/changes` | cap | E2 | I0 | sVOL | — | deferred |
+| 026 | `queryChanges` for the four stubs | cap | E3 | **I0** ⁴ | sVOL | — | **✅ done** ¹² |
+| 027 | `Thread/changes` | cap | E2 | I0 | sVOL | — | **✅ done** ¹³ |
 
 ¹ **`002` was widened after review.** As first scoped it was "shared fake-D1 with `.batch()`",
 which is necessary but **not sufficient**: `storeFor` requires `env.BLOBS`
@@ -301,6 +301,24 @@ facade would be a second vocabulary over the same data with its own auth surface
 wrong. Joins 012 as a deliberate non-goal. The integration path is JMAP — including for
 custom nouns, which ride a vendor capability URN (`urn:bullmoose:params:jmap:agent`) and are
 invisible to clients that do not declare it.
+
+¹² **026 closed 2026-08-14 — it was already correct.** Every `queryChanges` throws
+`cannotCalculateChanges`, which is **RFC 8620 §5.2's sanctioned answer**, not a stub: the
+client falls back to a full re-query, a path the unit itself concedes is "mandatory
+regardless". Computing real deltas would need a per-query state table to serve consumers
+that do not exist. The cell is covered by the conformant answer. What would NOT be
+acceptable — and is not present anywhere — is returning an empty delta, a lie the client
+cannot detect (`filenode.ts:117`).
+
+¹³ **027 closed 2026-08-14, by registering the method rather than computing anything.** The
+grade assumed the work meant tracking thread state; it did not. `Thread/changes` was
+*absent*, so a client got `unknownMethod` — "this server does not speak RFC 8621 §3.2" —
+where the honest answer is the same `cannotCalculateChanges` above. Two lines and five
+tests, which pin that the three possible answers are not interchangeable.
+
+A conformance sweep at the same time checked `/changes` for every type carrying `/get`:
+`Thread` was the only real gap. **`VacationResponse` has none by design** — RFC 8621 §8
+defines a singleton with `get`/`set` only, so its absence is correct, not missing.
 
 ## 3. Sequencing
 
