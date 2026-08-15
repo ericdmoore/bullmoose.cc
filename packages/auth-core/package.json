@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./principal": "./src/principal.ts",
+    "./invocation": "./src/invocation.ts",
     "./loginThrottle": "./src/loginThrottle.ts"
   }
 }

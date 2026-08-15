@@ -468,6 +468,57 @@ CREATE TABLE IF NOT EXISTS jobs (
   PRIMARY KEY (account_id, id)
 );
 
+-- s17 — THE PER-INVOCATION TOKEN (.plans/s17-chief-of-staff/per-invocation-tokens.md).
+--
+-- The SECOND credential type in a system whose token model is deliberately one
+-- paragraph long, and the row is as small as it is because of what it must NOT
+-- carry: no envelope copy, no scope list. It says "the bearer is acting as
+-- invocation X" and nothing else. The authority — which tools, which
+-- credentials, how much money — is recomputed per request by
+-- `effectiveNodeAuthority` (@bullmoose/scheduling) from `agent_bindings.config_json`
+-- and the chain of `agent_invocations.authority_json`, none of which the holder
+-- can write. A copy here would be a ceiling that trusts whoever last wrote it,
+-- which is the exact bug the use-time gate exists to fix, and it would break
+-- `bullmoose admin agent` narrowing biting work already in flight.
+--
+-- CONTROL AND CONTROLLED ARE DIFFERENT OBJECTS. Nothing that consumes this
+-- token can write this table (the INSERT is on the claim path only) or
+-- `agent_bindings.config_json` (operator plane). If a consumer could influence
+-- what the resolver reads, the resolver would be decorative.
+--
+--   id            it_<12hex> — the public half, embedded in `bmi_<id>_<secret>`
+--   invocation_id the acting node. NOT a foreign key: data-plane declares none,
+--                 and the JOIN in `resolveInvocationToken` is what enforces
+--                 existence anyway (and, with `status='running'`, lifetime).
+--   account_id    the ONE account this token reaches. An invocation token is
+--                 not a sharing credential: grant-reached accounts are dropped
+--                 by `principalForInvocation`, not merely unused.
+--   principal_id  denormalized from accounts.principal_id at mint, so the
+--                 resolver's hot path stays on data-plane tables.
+--   secret_hash   SHA-256 of the secret half. Plaintext is returned ONCE, in
+--                 the `AgentInvocation/set` claim response.
+--   expires_at    issued_at + 15min. A BELT, not the control — the control is
+--                 the `status='running'` join, so `finish()` revokes with zero
+--                 bookkeeping. This bounds a row `failStaleRunning` never sweeps.
+--
+-- New table, so a plain schema re-run (CREATE TABLE IF NOT EXISTS) DOES create
+-- it. Existing DBs: infra/migrations.mjs `agent-invocation-tokens-table` — NOT
+-- a deploy blocker: no claim statement and no read path names it unless a
+-- `bmi_` token is presented, and none can exist on a shard that lacks the
+-- table. The mint degrades to `updated[id] = null`, which is exactly what the
+-- claim response carried before this shipped.
+CREATE TABLE IF NOT EXISTS agent_invocation_tokens (
+  id            TEXT PRIMARY KEY,          -- it_<12hex>
+  invocation_id TEXT NOT NULL,
+  account_id    TEXT NOT NULL,
+  principal_id  TEXT NOT NULL,
+  secret_hash   TEXT NOT NULL,
+  issued_at     INTEGER NOT NULL,
+  expires_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS agent_invocation_tokens_invocation
+  ON agent_invocation_tokens (account_id, invocation_id);
+
 -- ActionProposal (s03.D T1) — a READ MODEL over agent_invocations, NOT a
 -- parallel store (arch.md §1). The invocation state machine
 -- (pending→running→done→failed), its optimistic claim and its SLA watchdog are
