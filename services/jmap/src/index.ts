@@ -2,11 +2,18 @@ import { dispatch, RequestErrors, type JmapRequest } from "@bullmoose/jmap-core"
 import { AGENT_CAP, CALENDARS_CAP, CONTACTS_CAP, CORE_CAP, FILENODE_CAP, MAIL_CAP, SUBMISSION_CAP, VACATION_CAP, WEBSOCKET_CAP } from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
-import { authenticate, accountAccess, principalHasScope, type AuthEnv } from "./auth";
+import { authenticate, accountAccess, principalHasScope, type AuthEnv, type Principal } from "./auth";
 import { handleLogin, handleTokens } from "./authRoutes";
 import { handleConsole } from "./console";
 import { buildSession } from "./session";
 import { buildRegistry, type RequestContext } from "./methods";
+import { cookieAuthAllowed, isExploreHost } from "./explore/cookie";
+import {
+  exploreCookiePrincipal,
+  exploreUnauthenticated,
+  handleExplore,
+  signInPage,
+} from "./explore";
 import {
   getShareRecord,
   isLive,
@@ -37,6 +44,38 @@ export interface Env extends AuthEnv {
   INTERNAL_TOKEN: string;
   /** HMAC key for expiring public share links (/share/*). */
   SHARE_SIGNING_KEY?: string;
+
+  // ---- s20, the explorer: OFF BY DEFAULT ---------------------------------
+  //
+  // Every one of these is optional, and `EXPLORE_HOST` is the master switch:
+  // unset, `isExploreHost` is false for every request, no cookie is read
+  // anywhere in this worker, and none of `src/explore/` is reachable. A
+  // deployment that does not want a read-only mirror of everything omits the
+  // route, the DNS record and these vars, and serves nothing.
+
+  /**
+   * The hostname the explorer answers on (e.g. `explore.bullmoose.cc`).
+   * ⚠️ Also the value the `Host` header is compared against before a cookie is
+   * ever honoured — see `explore/cookie.ts`'s `cookieAuthAllowed`.
+   */
+  EXPLORE_HOST?: string;
+  /** HMAC key for the explore session cookie. */
+  EXPLORE_COOKIE_KEY?: string;
+  /** The OAuth client id the operator registered for the explorer. */
+  EXPLORE_CLIENT_ID?: string;
+  /** Only for a confidential registration; a public client needs none. */
+  EXPLORE_CLIENT_SECRET?: string;
+  /** Defaults to https://auth.bullmoose.cc. */
+  EXPLORE_ISSUER?: string;
+  /** RFC 8707 audience; defaults to https://mcp.bullmoose.cc/mcp. */
+  EXPLORE_RESOURCE?: string;
+  /**
+   * Service binding to bullmoose-oauth, used ONLY by the explorer's sign-in:
+   * the token store lives on the AS, so redeeming a code and asking who a
+   * token belongs to are both hops across this binding (the same shape as
+   * services/agent's OAUTH binding, and for the same reason).
+   */
+  OAUTH?: Fetcher;
 }
 
 const SUPPORTED_CAPS = new Set([CORE_CAP, MAIL_CAP, SUBMISSION_CAP, WEBSOCKET_CAP, VACATION_CAP, CONTACTS_CAP, CALENDARS_CAP, FILENODE_CAP, AGENT_CAP]);
@@ -45,26 +84,46 @@ const registry = buildRegistry();
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    // The `Host` header, not `url.host`: the explore rule is a check on what
+    // the client CLAIMED to be talking to, and it must be the same string the
+    // cookie decision is made from.
+    const hostHeader = request.headers.get("host") ?? url.host;
+    const onExplore = isExploreHost(hostHeader, env.EXPLORE_HOST);
 
-    // Public expiring share links — recipients are external, so this
-    // route authenticates by HMAC signature + expiry, not bearer token.
-    if (request.method === "GET" && url.pathname.startsWith("/share/")) {
-      return handleShareDownload(url, env);
+    if (onExplore) {
+      // Read-only refusal, the no-credential-in-a-URL refusal, and the OAuth
+      // dance — all before any credential is resolved.
+      const early = await exploreUnauthenticated(request, url, env);
+      if (early) return early;
+    } else {
+      // Public expiring share links — recipients are external, so this
+      // route authenticates by HMAC signature + expiry, not bearer token.
+      if (request.method === "GET" && url.pathname.startsWith("/share/")) {
+        return handleShareDownload(url, env);
+      }
+
+      // Password login mints the caller's first bearer token.
+      if (request.method === "POST" && url.pathname === "/auth/login") {
+        return handleLogin(request, env);
+      }
     }
 
-    // Password login mints the caller's first bearer token.
-    if (request.method === "POST" && url.pathname === "/auth/login") {
-      return handleLogin(request, env);
-    }
-
-    const principal = await authenticate(request, env);
+    const principal = await resolvePrincipal(request, hostHeader, env);
     if (!principal) {
+      // On the explore host a browser is the client, so the refusal is a page
+      // with a sign-in link rather than a JSON 401 it cannot act on. Same
+      // status, same absence of authority.
+      if (onExplore) return signInPage();
       return json({ error: "unauthorized" }, 401, {
         // Basic is advertised for third-party clients that only speak
         // user+password — the "password" is a minted bm_ token (app password).
         "www-authenticate": 'Basic realm="jmap", Bearer realm="jmap"',
       });
     }
+
+    // The explorer's read-only projection (s20). Everything past this point is
+    // the API surface, and it is unreachable on the explore hostname.
+    if (onExplore) return handleExplore(url, env, principal);
 
     // Self-service token management (list / mint-within-scopes / revoke).
     if (url.pathname === "/auth/tokens" || url.pathname.startsWith("/auth/tokens/")) {
@@ -156,6 +215,33 @@ export default {
     return json({ error: "not found" }, 404);
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * THE worker's single credential resolution, and the only place a cookie is
+ * ever consulted.
+ *
+ * ⚠️ Read `explore/cookie.ts`'s `cookieAuthAllowed` before touching this. The
+ * short version: a cookie is honoured only when the request arrived on the
+ * explore hostname AND is a GET. Drop either half and `app.bullmoose.cc/api/`
+ * gains an ambient credential — which is to say it becomes CSRF-able, trading
+ * a debugging convenience for a write primitive. **Bearer stays the only
+ * credential `app.bullmoose.cc/api/` accepts**, and `explore/csrf.test.ts`
+ * presents a valid explore cookie to the API origin, GET and POST, and
+ * requires a 401 from both.
+ *
+ * The order matters too: a presented bearer always wins, so the cookie can
+ * never widen what an explicit credential already decided.
+ */
+async function resolvePrincipal(
+  request: Request,
+  hostHeader: string,
+  env: Env,
+): Promise<Principal | null> {
+  const bearer = await authenticate(request, env);
+  if (bearer) return bearer;
+  if (!cookieAuthAllowed(hostHeader, request.method, env.EXPLORE_HOST)) return null;
+  return exploreCookiePrincipal(request, env);
+}
 
 async function handleApi(request: Request, env: Env, principal: RequestContext["principal"]) {
   let body: JmapRequest;
