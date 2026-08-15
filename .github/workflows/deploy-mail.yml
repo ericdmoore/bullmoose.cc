@@ -42,7 +42,8 @@ jobs:
       #   submit         no deps
       #   jmap           services: submit          · declares AccountDO
       #   bureau         no deps                   · holds VAULT_MASTER_KEY
-      #   agent          services: submit, bureau  · DO script_name: jmap
+      #   oauth          no deps                   · holds OAUTH_KV
+      #   agent          services: submit, bureau, oauth · DO script_name: jmap
       #   ingest         services: AGENT -> agent  · DO script_name: jmap
       #   provision      no deps
       #   anglebrackets  DO script_name: jmap      · serves dav.bullmoose.cc
@@ -66,6 +67,17 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       - name: Deploy bureau
         run: npx wrangler deploy -c services/bureau/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # oauth BEFORE agent: services/agent/wrangler.jsonc:50 binds
+      # `OAUTH` as a service, and a service binding to a worker that was
+      # never deployed fails the deploy that declares it. Same shape as
+      # bureau, and it was missing here while bureau was not — so every
+      # services/oauth change merged without CI ever deploying it, and
+      # auth.bullmoose.cc ran whatever was last pushed by hand.
+      - name: Deploy oauth
+        run: npx wrangler deploy -c services/oauth/wrangler.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
