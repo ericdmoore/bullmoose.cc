@@ -2,6 +2,7 @@ import {
   JOB_MAX_DEPTH_CEILING,
   describeDenial,
   foldChain,
+  intersectAuthority,
   isPrivacyClass,
   mayUse,
   type AuthorityDenial,
@@ -68,11 +69,25 @@ import type { Env } from "./models.js";
  * site is one that cannot name it and says so here.
  *
  * ── THE COMPUTATION ────────────────────────────────────────────────────────
- *   effective = binding.ceiling ∩ env(root) ∩ … ∩ env(this node)
- * folded root-first by `foldChain` (@bullmoose/scheduling). The binding is the
- * first term, so nothing below it can hold what it does not; every hop
+ *   effective = (⋂ bindings the chain passes through)
+ *               ∩ env(root) ∩ … ∩ env(this node)
+ * folded root-first by `foldChain` (@bullmoose/scheduling). The bindings are
+ * the first term, so nothing below them can hold what they do not; every hop
  * intersects, so no hop can widen what an ancestor gave up; and an unreadable
  * hop denies the fold outright.
+ *
+ * EVERY binding in the chain is a term, not just the acting node's. Today that
+ * distinction is invisible — `attenuateChild` (attenuation.ts §identity)
+ * refuses a child on any binding but its parent's, so every chain that exists
+ * is single-binding and the intersection has exactly one member. It stops
+ * being invisible the moment `agents:invoke` is un-deferred, because
+ * agent→agent delegation is precisely a chain that spans bindings: fold only
+ * the LEAF's binding and a chain A→B holds B's ceiling with A's silently
+ * dropped, which is the widest hop winning instead of the narrowest. A chain
+ * can only ever be as wide as the narrowest binding it passes through — that
+ * is the property that has to survive the un-deferring, and it has to be
+ * arithmetic here rather than a promise made by the write path, for the same
+ * reason the envelopes are re-folded rather than trusted.
  *
  * Recomputed from the rows on every call rather than trusted from the node's
  * own column. That is the point: the node's column is one term of the answer,
@@ -170,9 +185,33 @@ const MAX_CHAIN_HOPS = JOB_MAX_DEPTH_CEILING + 2;
 /** The columns the chain walk needs — a strict subset of `JobNodeRow`. */
 interface ChainRow {
   id: string;
+  binding_id: string;
   job_id: string | null;
   parent_id: string | null;
   authority_json: string | null;
+}
+
+/** One hop of the walk, as the fold needs it. */
+interface ChainHop {
+  id: string;
+  bindingId: string;
+  authorityJson: string | null;
+}
+
+/**
+ * A binding the chain passes through that is NOT the acting node's own —
+ * reachable only once `agents:invoke` allows a child on another binding.
+ *
+ * `hop`/`hops` use `foldChain`'s numbering (1-based, ROOT-FIRST) so a denial
+ * from this term and a denial from an envelope term point at the same row with
+ * the same words. `invocationId` is carried because "hop 2 of 4" locates the
+ * position and the id locates the ROW, and whoever is debugging wants both.
+ */
+interface ChainBinding {
+  bindingId: string;
+  hop: number;
+  hops: number;
+  invocationId: string;
 }
 
 /**
@@ -212,7 +251,17 @@ export async function effectiveNodeAuthority(
   const chain = await delegationChain(env, accountId, node);
   if (!chain.ok) return chain;
 
-  const folded = foldChain(await bindingAuthority(env, accountId, node.binding_id), chain.envelopes);
+  // The bindings first, the envelopes second. Intersection is commutative and
+  // associative, so collapsing every binding into `foldChain`'s single first
+  // term computes the same set as interleaving them hop by hop would — but it
+  // keeps `foldChain` pure and its "hop i of N" denials unchanged. Order does
+  // decide WHICH denial a doubly-broken chain reports, and a missing binding
+  // is reported ahead of a corrupt envelope on purpose: the structural fault
+  // is the one to fix first.
+  const bindings = await chainBindingAuthority(env, accountId, node, chain.crossings);
+  if (!bindings.ok) return bindings;
+
+  const folded = foldChain(bindings.authority, chain.envelopes);
   if (!folded.ok) {
     return {
       ok: false,
@@ -304,7 +353,8 @@ export async function effectiveNodeCeiling(
 }
 
 /**
- * Walk `parent_id` to the root and return the raw envelopes ROOT-FIRST.
+ * Walk `parent_id` to the root and return the raw envelopes ROOT-FIRST, plus
+ * the bindings the chain CROSSES on the way.
  *
  * Every hop is re-read from the database rather than trusted from the caller,
  * and three things are checked on the way up, each of which is an escape if it
@@ -326,8 +376,11 @@ export async function effectiveNodeCeiling(
 async function delegationChain(
   env: Env,
   accountId: string,
-  node: Pick<JobNodeRow, "id" | "job_id" | "parent_id" | "authority_json">,
-): Promise<{ ok: true; envelopes: Array<string | null> } | { ok: false; denial: AuthorityDenial; note: string }> {
+  node: Pick<JobNodeRow, "id" | "binding_id" | "job_id" | "parent_id" | "authority_json">,
+): Promise<
+  | { ok: true; envelopes: Array<string | null>; crossings: ChainBinding[] }
+  | { ok: false; denial: AuthorityDenial; note: string }
+> {
   const deny = (why: string, requested: string): { ok: false; denial: AuthorityDenial; note: string } => {
     const denial: AuthorityDenial = {
       axis: "envelope",
@@ -339,12 +392,14 @@ async function delegationChain(
   };
 
   // Leaf-first while walking; reversed once at the end.
-  const envelopes: Array<string | null> = [node.authority_json];
+  const hops: ChainHop[] = [
+    { id: node.id, bindingId: node.binding_id, authorityJson: node.authority_json },
+  ];
   const seen = new Set<string>([node.id]);
   let parentId = node.parent_id;
 
   while (parentId !== null) {
-    if (envelopes.length >= MAX_CHAIN_HOPS) {
+    if (hops.length >= MAX_CHAIN_HOPS) {
       return deny("the delegation chain is longer than the depth cap allows — parent_id is corrupt", node.id);
     }
     if (seen.has(parentId)) {
@@ -352,7 +407,7 @@ async function delegationChain(
     }
     seen.add(parentId);
     const row = await env.DB.prepare(
-      `SELECT id, job_id, parent_id, authority_json
+      `SELECT id, binding_id, job_id, parent_id, authority_json
          FROM agent_invocations WHERE account_id = ? AND id = ?`,
     )
       .bind(accountId, parentId)
@@ -366,12 +421,135 @@ async function delegationChain(
         parentId,
       );
     }
-    envelopes.push(row.authority_json);
+    hops.push({ id: row.id, bindingId: row.binding_id, authorityJson: row.authority_json });
     parentId = row.parent_id;
   }
 
-  envelopes.reverse();
-  return { ok: true, envelopes };
+  hops.reverse();
+
+  // The DISTINCT bindings the chain crosses, minus the acting node's own —
+  // which `chainBindingAuthority` reads anyway, and which keeps that read
+  // byte-for-byte the one this gate has always done. Distinct, because a
+  // binding contributes the same ceiling however many hops run under it and
+  // `x ∩ x = x`; first (highest) occurrence wins the label, because the
+  // ancestor is the hop whose authority is being questioned.
+  const crossings: ChainBinding[] = [];
+  const seenBinding = new Set<string>([node.binding_id]);
+  for (const [i, hop] of hops.entries()) {
+    if (seenBinding.has(hop.bindingId)) continue;
+    seenBinding.add(hop.bindingId);
+    crossings.push({ bindingId: hop.bindingId, hop: i + 1, hops: hops.length, invocationId: hop.id });
+  }
+
+  return { ok: true, envelopes: hops.map((h) => h.authorityJson), crossings };
+}
+
+/**
+ * THE BINDING TERM — every binding the chain passes through, intersected.
+ *
+ * ── WHY THE ACTING NODE'S BINDING IS READ ON DIFFERENT TERMS ───────────────
+ * It is the LENIENT one, exactly as it has always been: a missing row or an
+ * unparseable `config_json` reads as an UNSET ceiling (see `bindingAuthority`).
+ * That is not an oversight carried forward, it is where the enforcement lives:
+ * the drain will not CLAIM an invocation whose own binding is absent or
+ * disabled (`index.ts`, `… JOIN agent_bindings b … WHERE b.enabled = 1`), and
+ * `startJob` refuses to open a Job under one (`jobs.ts` §008 kill switch). The
+ * node's own binding is a checked precondition of getting here at all.
+ *
+ * NOTHING checks an ANCESTOR's binding. The drain joins the claimed row's
+ * `binding_id` and no other, so on a cross-binding chain the hop above is
+ * unexamined by every gate upstream of this one — which makes this the only
+ * place it can be examined, and therefore the place that must fail closed:
+ *
+ *   ABSENT   the binding was destroyed. Its ceiling is unknown, and an unknown
+ *            ceiling is not an absent one (`useAuthority.ts` rule 3's
+ *            corollary). Deny.
+ *   DISABLED the 008 kill switch was thrown on it. Contributing "no ceiling"
+ *            for a binding an operator has just revoked would make the kill
+ *            switch advice for exactly the delegated work it most needs to
+ *            stop. Deny.
+ *   UNREAD   the read itself failed. Same answer as everywhere else here.
+ *
+ * A CORRUPT `config_json` on an ancestor is deliberately NOT in that list: it
+ * reads as unset, the same as it does for the node's own binding and for
+ * `startJob`, because one reading of `config_json.jobs` in the tree is the
+ * whole reason `bindingCeiling` is shared. It also buys nothing — anyone who
+ * can corrupt that column can rewrite it to a WIDER ceiling instead, so
+ * denying on corruption defends against a strictly weaker adversary than the
+ * fold already assumes. Absence and the kill switch are different: they are
+ * things an OPERATOR does on purpose, and they have to bite.
+ *
+ * ── ONE ROUND TRIP ─────────────────────────────────────────────────────────
+ * The crossings are read with a single `id IN (…)`, not a read per hop: the
+ * set is distinct and bounded by `MAX_CHAIN_HOPS`, this runs inside a request
+ * that is already doing a model call, and N sequential D1 reads to compute one
+ * intersection is the wrong shape. Total cost is 1 binding query for the
+ * single-binding chains that exist today (unchanged), 2 for any chain that
+ * crosses, at any depth.
+ */
+async function chainBindingAuthority(
+  env: Env,
+  accountId: string,
+  node: Pick<JobNodeRow, "id" | "binding_id">,
+  crossings: readonly ChainBinding[],
+): Promise<{ ok: true; authority: NodeAuthority } | { ok: false; denial: AuthorityDenial; note: string }> {
+  let acc = await bindingAuthority(env, accountId, node.binding_id);
+  // Every chain alive today. Same one read, same result, no second query.
+  const [firstCrossing] = crossings;
+  if (firstCrossing === undefined) return { ok: true, authority: acc };
+
+  const deny = (
+    at: ChainBinding,
+    ceiling: string,
+    why: string,
+  ): { ok: false; denial: AuthorityDenial; note: string } => {
+    const denial: AuthorityDenial = {
+      axis: "envelope",
+      requested: `hop ${at.hop} of ${at.hops} — binding ${at.bindingId} (invocation ${at.invocationId})`,
+      ceiling,
+      why,
+    };
+    return { ok: false, denial, note: `invocation ${node.id}: ${describeDenial(denial)}` };
+  };
+
+  const marks = crossings.map(() => "?").join(",");
+  let rows: Array<{ id: string; enabled: number; config_json: string }>;
+  try {
+    const read = await env.DB.prepare(
+      `SELECT id, enabled, COALESCE(config_json, '{}') AS config_json
+         FROM agent_bindings WHERE account_id = ? AND id IN (${marks})`,
+    )
+      .bind(accountId, ...crossings.map((c) => c.bindingId))
+      .all<{ id: string; enabled: number; config_json: string }>();
+    rows = read.results;
+  } catch {
+    return deny(
+      firstCrossing,
+      "a readable agent_bindings row",
+      "the bindings this chain crosses could not be read — a ceiling that cannot be read is not an absent one",
+    );
+  }
+
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const crossing of crossings) {
+    const row = byId.get(crossing.bindingId);
+    if (!row) {
+      return deny(
+        crossing,
+        "a binding row on this account",
+        "an ancestor of this node runs under a binding that no longer exists — half a ceiling bounds nothing",
+      );
+    }
+    if (row.enabled !== 1) {
+      return deny(
+        crossing,
+        "an enabled binding",
+        "an ancestor of this node runs under a DISABLED binding (008 kill switch) — a revoked binding denies the chain, it does not contribute 'no ceiling'",
+      );
+    }
+    acc = intersectAuthority(acc, configAuthority(accountId, crossing.bindingId, row.config_json));
+  }
+  return { ok: true, authority: acc };
 }
 
 /**
@@ -396,9 +574,18 @@ async function bindingAuthority(env: Env, accountId: string, bindingId: string):
   )
     .bind(accountId, bindingId)
     .first<{ config_json: string }>();
+  return configAuthority(accountId, bindingId, row?.config_json);
+}
+
+/**
+ * `config_json` → the binding's authority ceiling. THE one reading, shared by
+ * the acting node's binding and by every binding its chain crosses, so the two
+ * cannot develop different ideas of what `jobs` means.
+ */
+function configAuthority(accountId: string, bindingId: string, configJson: string | undefined): NodeAuthority {
   let cfg: { jobs?: BindingJobConfig } = {};
   try {
-    cfg = JSON.parse(row?.config_json ?? "{}") as { jobs?: BindingJobConfig };
+    cfg = JSON.parse(configJson ?? "{}") as { jobs?: BindingJobConfig };
   } catch {
     /* an unparseable config is an unset ceiling — same as absent (startJob) */
   }
