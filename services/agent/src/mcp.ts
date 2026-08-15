@@ -1,5 +1,6 @@
 import {
   authorizeAccount,
+  isAgentPrincipal,
   principalHasScope,
   verifyBearer,
   type MethodDomain,
@@ -78,6 +79,14 @@ import type { Env } from "./models.js";
  * coarse standing scope set (`INVOCATION_STANDING_SCOPES` — no vault, no
  * admin, no send). The narrowing is the envelope, not the scopes.
  *
+ * And one MANDATORY rule, which is what makes the two above enforcement rather
+ * than etiquette: an `agent`-MARKED bearer may not reach `tools/list` or
+ * `tools/call` at all without an invocation token (see `TOOL_SURFACE_METHODS`
+ * and the gate before the dispatch switch). Until that rule existed the
+ * mechanism was voluntary — the harness holds a device token by architectural
+ * necessity (`packages/cli/src/agent.ts`), so presenting the narrow credential
+ * was a choice it made about itself. Unmarked principals are untouched.
+ *
  * ⚠️ **WHERE THIS STOPS, NAMED SO IT IS A BOUNDARY AND NOT AN OVERSIGHT.** An
  * invocation with no `job_id` is not a delegation: `effectiveNodeAuthority`
  * answers `{tools: null, …}` for it — the DefaultCase `data-plane.sql` states
@@ -119,6 +128,16 @@ const HEADER_MISMATCH = -32020;
 const MISSING_CLIENT_CAPABILITY = -32021;
 const PROTO_META = "io.modelcontextprotocol/protocolVersion";
 const CAPS_META = "io.modelcontextprotocol/clientCapabilities";
+
+/**
+ * THE TOOL SURFACE — what mandatory rule 1 (s17 (d)) gates, and nothing more.
+ *
+ * Visibility and dispatch, together: hiding a tool an agent may then call would
+ * be a UI, and refusing a call to a tool the same token was just shown would be
+ * a lie. Everything else `handleMcp` answers is handshake or negotiation and
+ * discloses no account data.
+ */
+const TOOL_SURFACE_METHODS = new Set(["tools/list", "tools/call"]);
 
 /**
  * Shared by `server/discover` (modern) and `initialize` (legacy) — one
@@ -520,6 +539,45 @@ export async function handleMcp(request: Request, env: Env, authenticated?: Prin
     if (methodHeader && methodHeader !== msg.method) {
       return rpcError(msg.id, HEADER_MISMATCH, "Mcp-Method header does not match the request method", 400);
     }
+  }
+
+  // ---- MANDATORY RULE 1 (s17 (d)) ---------------------------------------
+  //
+  // AN `agent`-MARKED BEARER MAY NOT USE THE TOOL SURFACE EXCEPT THROUGH AN
+  // INVOCATION TOKEN.
+  //
+  // This is the line that turns everything above from etiquette into
+  // enforcement. Without it the mechanism is VOLUNTARY: the harness holds both
+  // credentials — a device token and, after a claim, an invocation token — so
+  // narrowing is whichever one it happens to present, and a compromised model
+  // that can reach the harness's device token is back to the full surface with
+  // no envelope at all.
+  //
+  // `isAgentPrincipal` is the whole test, and it is the right test because the
+  // marker is STICKY: `authRoutes.ts` re-adds `agent` to any re-minted scope
+  // set, so an agent cannot mint itself an unmarked child token and shed this.
+  // `invocationToken.test.ts` re-asserts that rather than trusting the comment.
+  //
+  // ⚠️ UNMARKED PRINCIPALS ARE COMPLETELY UNTOUCHED — humans, third-party MCP
+  // clients, claude.ai, an OAuth-authenticated connected app. This surface is
+  // public (s02 T1) and its primary non-agent consumer authenticates with an
+  // ordinary token that has never seen an invocation. The predicate is
+  // "is this bearer marked as an agent", never "is there an invocation".
+  //
+  // Scoped to the TOOL surface, not the whole endpoint: `initialize`,
+  // `notifications/*` and `server/discover` are the handshake, and refusing
+  // there would leave a client unable to learn why it was refused while
+  // protecting nothing — discovery names the server, and the tools it lists are
+  // filtered by `visibleTools` for an invocation and gated per call regardless.
+  if (TOOL_SURFACE_METHODS.has(msg.method) && isAgentPrincipal(principal) && !invocation) {
+    return rpcError(
+      msg.id,
+      -32004,
+      "an agent-marked token may not use the tool surface directly — present the " +
+        "invocationToken minted by this invocation's claim (AgentInvocation/set, " +
+        "updated[id].invocationToken) as the bearer instead",
+      403,
+    );
   }
 
   // ---- the envelope (s17) -----------------------------------------------

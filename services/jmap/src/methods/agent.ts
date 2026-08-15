@@ -1,6 +1,11 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges } from "@bullmoose/account-do";
-import { issueInvocationToken } from "@bullmoose/auth-core/invocation";
+import {
+  issueInvocationToken,
+  resolveInvocationToken,
+  type InvocationIdentity,
+} from "@bullmoose/auth-core/invocation";
+import { isAgentPrincipal } from "@bullmoose/auth-core/principal";
 import {
   ESCALATION_WINDOW_NO_HISTORY_MS,
   bindingEscalationWindowMs,
@@ -145,6 +150,16 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
    * forever — a held black hole. Handing a human an on-demand trigger while
    * ignoring the off switch is the ordering hazard 007 was sequenced after 008
    * to avoid; the refusal is the interlock.
+   *
+   * MANDATORY RULE 2 (s17 (d)): an `agent`-marked bearer may not CREATE without
+   * presenting `invocationToken` — the credential its own claim returned — and
+   * the created row then inherits the presented node's `job_id`, `parent_id`,
+   * `depth`, `authority_json` and `privacy`. This is what closes gap 3: create
+   * COPIES an envelope rather than intersecting one, so it is the one surface
+   * where naming an invocation you do not hold would be an escalation rather
+   * than a further narrowing. See `resolveCausingNode` for the whole argument.
+   * Unmarked principals — humans, the `bullmoose agent invoke` CLI path,
+   * third-party clients — are untouched.
    */
   registry.register("AgentInvocation/set", async (args, ctx) => {
     const access = await requireAccount(ctx, args, "draft");
@@ -163,7 +178,19 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
 
     // ---- create: on-demand invocation ----
     const create = (args.create as Record<string, Record<string, unknown>> | undefined) ?? {};
+    // MANDATORY RULE 2 (s17 (d)) — resolved ONCE for the whole create batch,
+    // and only when there is a create (a claim-only call must cost no extra
+    // read). `causing` is the node this create is CAUSED BY; `causingRefusal`
+    // is why there isn't one, reported per-creation-id in the JMAP way.
+    const { causing, causingRefusal } =
+      Object.keys(create).length === 0
+        ? { causing: null, causingRefusal: null }
+        : await resolveCausingNode(ctx, args, access.accountId);
     for (const [cid, props] of Object.entries(create)) {
+      if (causingRefusal) {
+        notCreated[cid] = setError("forbidden", causingRefusal);
+        continue;
+      }
       const bindingId = typeof props.bindingId === "string" ? props.bindingId : undefined;
       const bindingName = typeof props.bindingName === "string" ? props.bindingName : undefined;
       if (!bindingId && !bindingName) {
@@ -198,6 +225,27 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
           "forbidden",
           `binding "${binding.name}" is disabled (008 kill switch) — ` +
             `re-enable it before invoking: bullmoose admin agent enable ${binding.id}`,
+        );
+        continue;
+      }
+      // SAME BINDING AS THE CAUSING NODE — `attenuateChild`'s identity rule
+      // (attenuation.ts §identity: a child may not run on a binding other than
+      // its parent's), enforced here because this path COPIES an envelope
+      // rather than going through `attenuateChild`.
+      //
+      // It is not decoration. `effectiveNodeAuthority` folds the acting node's
+      // OWN binding leniently (absent or corrupt config = unset ceiling) and
+      // every ANCESTOR's binding fail-closed, so a copied row on a different
+      // binding is bounded by its ancestors — EXCEPT when the causing node is
+      // the ROOT, where there are no ancestors and the fold becomes
+      // `ceiling(new binding) ∩ envelope`. A wider second binding on the same
+      // account would then hand the copy more than the node it came from had.
+      // One line closes it: the copy runs where the original ran.
+      if (causing && binding.id !== causing.node.binding_id) {
+        notCreated[cid] = setError(
+          "forbidden",
+          `this invocationToken acts for an invocation on binding ${causing.node.binding_id}; ` +
+            `an invocation it causes must run on the same binding, not "${binding.name}"`,
         );
         continue;
       }
@@ -241,13 +289,84 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
 
       const invId = `inv_${crypto.randomUUID()}`;
       const createdAt = Date.now();
-      await ctx.env.DB.prepare(
-        `INSERT INTO agent_invocations
-           (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at)
-         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
-      )
-        .bind(invId, access.accountId, binding.id, binding.name, emailId, JSON.stringify(context), createdAt)
-        .run();
+      if (causing) {
+        // THE INHERIT (s17 (d) rule 2) — byte-for-byte the shape
+        // `actionProposal.ts`'s needsInfo continuation uses, and for the same
+        // stated rule: an invocation CAUSED by a delegated node carries that
+        // node's envelope.
+        //
+        //   job_id        the round belongs to the same Job. Without it the row
+        //                 is `job_id IS NULL`, which is precisely how the fold
+        //                 is told "there is no delegation here" — attenuation
+        //                 SIDESTEPPED rather than exceeded, the harder failure
+        //                 to see.
+        //   parent_id     the node's own parent, so this is a SIBLING and not a
+        //                 descendant. A descendant at depth + 1 would let N
+        //                 creates buy N levels of `maxDepth`.
+        //   depth         copied for the same reason.
+        //   authority_json the same envelope. Never narrowed (this is the
+        //                 node's own work continuing) and never widened — the
+        //                 fold re-intersects it against every ancestor and
+        //                 every binding at USE time, so a copy can only ever
+        //                 restate what the chain already allows.
+        //   privacy       rides along on the facet axis: it narrows the
+        //                 claimant set and never widens it, so a pinned Job
+        //                 cannot spawn an unpinned sibling whose work the paid
+        //                 cloud may claim.
+        //
+        // Deliberately NOT copied, exactly as the needsInfo round does not:
+        // `due_at` (it WIDENS the claimant set — a past deadline is what lets
+        // the backstop claim outside the policy gate), `requires_json` (a fit
+        // vector for the node's own work; inheriting "needs vision" would
+        // strand this one) and `needs_json` (inheriting satisfied — or failed —
+        // dependencies would block it on work it does not consume).
+        //
+        // THE DEFAULTCASE SURVIVES BY CONSTRUCTION: for an ordinary,
+        // non-delegated causing node every one of these columns is NULL, so the
+        // copy yields NULL and this is exactly the ungated invocation create has
+        // always produced. There is no branch here to get wrong.
+        const res = await ctx.env.DB.prepare(
+          `INSERT INTO agent_invocations
+             (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at,
+              job_id, parent_id, depth, authority_json, privacy)
+           SELECT ?, ?, ?, ?, 'pending', ?, ?, ?,
+                  node.job_id, node.parent_id, node.depth, node.authority_json, node.privacy
+             FROM agent_invocations node
+            WHERE node.account_id = ? AND node.id = ?`,
+        )
+          .bind(
+            invId,
+            access.accountId,
+            binding.id,
+            binding.name,
+            emailId,
+            JSON.stringify(context),
+            createdAt,
+            access.accountId,
+            causing.invocationId,
+          )
+          .run();
+        if ((res.meta.changes ?? 0) !== 1) {
+          // The node vanished between `resolveInvocationToken` and here. Fail
+          // rather than fall back to an envelope-less INSERT: "I cannot read the
+          // thing that would bound this" is answered `no` everywhere else in
+          // s17, and the permissive fallback is exactly the bug.
+          notCreated[cid] = setError(
+            "forbidden",
+            "the causing invocation disappeared mid-request — refusing to create an " +
+              "invocation whose authority envelope cannot be inherited",
+          );
+          continue;
+        }
+      } else {
+        await ctx.env.DB.prepare(
+          `INSERT INTO agent_invocations
+             (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at)
+           VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        )
+          .bind(invId, access.accountId, binding.id, binding.name, emailId, JSON.stringify(context), createdAt)
+          .run();
+      }
       created[cid] = {
         id: invId,
         bindingId: binding.id,
@@ -446,4 +565,88 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
   registry.register("AgentInvocation/changes", async (args, ctx) =>
     proxyChanges(ctx, args, "AgentInvocation"),
   );
+}
+
+/**
+ * MANDATORY RULE 2 (s17 (d)) — WHICH NODE CAUSED THIS CREATE, AND MAY THIS
+ * CALLER CREATE AT ALL.
+ *
+ * ── WHY MINTING, AND NOT A SELF-ASSERTED ID ────────────────────────────────
+ * Every other s17 gate could have been built on a self-asserted `invocationId`,
+ * because the envelope only ever NARROWS: naming someone else's invocation at
+ * MCP or at the Bureau only intersects you with their envelope, and you already
+ * passed your own standing check. `create` is the one place that reasoning
+ * fails, because create **copies** the envelope onto a new row rather than
+ * intersecting it. An agent that could name a node it does not hold would name
+ * the ROOT PLANNER instead of its own leaf and mint a sibling carrying the
+ * root's wide envelope — intra-Job envelope-hopping, which is exactly the threat
+ * model a root-with-narrow-children design exists to stop. Possession of the
+ * minted token is what makes "the presented node" and "the caller's own node"
+ * the same sentence, and it is why gap 3 closes here and could not close by
+ * propagation.
+ *
+ * ── THE THREE ANSWERS ──────────────────────────────────────────────────────
+ *   token presented    → it must RESOLVE (live: `status='running'`, binding
+ *                        `enabled=1`, unexpired) and must be on THIS account.
+ *                        The create then inherits from it, whoever the caller
+ *                        is: presenting a token means "this create is caused by
+ *                        that node", and that is true for a human debugging a
+ *                        Job as much as for an agent.
+ *   no token, marked   → REFUSED. The rule.
+ *   no token, unmarked → today's behavior, byte for byte. Humans, the
+ *                        `bullmoose agent invoke` CLI path, third-party clients.
+ *
+ * The predicate is `isAgentPrincipal(ctx.principal)` — the BEARER's marker —
+ * and deliberately not `ctx.agent`, which is in-process provenance the trusted
+ * harness stamps on its own bridge calls (`jmapBridge.ts`, `commitHeld.ts`).
+ * Rule 2 is about what a credential may do, and provenance is not a credential.
+ *
+ * The account check is not redundant with `requireAccount`: that authorized the
+ * BEARER for the target account, and this authorizes the TOKEN, which is bound
+ * to exactly one account (the one its binding lives on). A runtime holding a
+ * grant on two accounts must not inherit account A's envelope into account B —
+ * where the row would be, and the fold's chain walk is `account_id`-scoped, so
+ * the copied `parent_id` would dangle and deny at use time. Refusing here says
+ * so at the create instead of stranding the row.
+ */
+async function resolveCausingNode(
+  ctx: RequestContext,
+  args: Record<string, unknown>,
+  accountId: string,
+): Promise<{ causing: InvocationIdentity | null; causingRefusal: string | null }> {
+  const presented = typeof args.invocationToken === "string" ? args.invocationToken : null;
+
+  if (!presented) {
+    if (isAgentPrincipal(ctx.principal)) {
+      return {
+        causing: null,
+        causingRefusal:
+          "an agent-marked token may not create an invocation on its own authority — pass " +
+          "`invocationToken`, the credential this invocation's claim returned in " +
+          "updated[id].invocationToken, so the new row inherits this node's authority envelope",
+      };
+    }
+    return { causing: null, causingRefusal: null };
+  }
+
+  const causing = await resolveInvocationToken(ctx.env.DB, presented);
+  if (!causing) {
+    // One refusal for every way it can fail — expired, finished, revoked
+    // binding, wrong secret, not a token at all. Distinguishing them would tell
+    // a prober which of those is true about a token they do not hold. Note the
+    // token itself is never echoed into a SetError.
+    return {
+      causing: null,
+      causingRefusal:
+        "invocationToken does not resolve — it is malformed, expired, or its invocation is " +
+        "no longer running (or its binding has been disabled)",
+    };
+  }
+  if (causing.accountId !== accountId) {
+    return {
+      causing: null,
+      causingRefusal: "invocationToken acts for an invocation on a different account",
+    };
+  }
+  return { causing, causingRefusal: null };
 }

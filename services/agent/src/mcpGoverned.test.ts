@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { mintToken } from "@bullmoose/auth-core";
+import { issueInvocationToken } from "@bullmoose/auth-core/invocation";
 import { fakeEnv, type FakeWorker } from "@bullmoose/test-fakes";
 import { handleMcp } from "./mcp";
 
@@ -15,6 +16,15 @@ import { handleMcp } from "./mcp";
  *     legible: a book that governs a binding's outbound reach is refused to
  *     MCP contact writes even when its write_policy was never flipped, so a
  *     misconfigured book is still not self-widenable.
+ *
+ * s17 (d) rule 1 changed HOW an agent reaches this surface, not what it finds
+ * there: an `agent`-marked bearer may no longer call a tool with its device
+ * token, so every call below authenticates with the `bmi_` token a claim
+ * minted. That is worth more than the old shape, not less — it proves the
+ * marker survives the invocation path (`INVOCATION_STANDING_SCOPES` carries
+ * `agent`, so `isAgentPrincipal` is true and the chokepoint fires) rather than
+ * riding on a device token's scope list. The agent-marked device token is still
+ * seeded, and `invocationToken.test.ts` asserts one is REFUSED at this surface.
  */
 
 const V = "2026-07-28";
@@ -29,7 +39,13 @@ beforeAll(async () => {
   minted = await mintToken();
 });
 
-function world(): FakeWorker {
+interface World {
+  w: FakeWorker;
+  /** The `bmi_` credential every call below presents (s17 (d) rule 1). */
+  token: string;
+}
+
+async function world(): Promise<World> {
   const w = fakeEnv();
   w.db.seedAccount({
     accountId: ACCOUNT,
@@ -90,11 +106,29 @@ function world(): FakeWorker {
       recipients_book_id: REFD,
     },
   ]);
-  return w;
+  // An ordinary (non-Job) invocation this binding is mid-flight on, claimed —
+  // which is exactly the state the mint requires and the only state in which an
+  // agent has a tool surface at all.
+  w.db.seed("agent_invocations", [
+    {
+      id: "inv_photos",
+      account_id: ACCOUNT,
+      binding_id: "bind_photos",
+      binding_name: "photos",
+      status: "running",
+      context_json: "{}",
+      created_at: 1,
+    },
+  ]);
+  const token = await issueInvocationToken(w.env.DB, {
+    invocationId: "inv_photos",
+    accountId: ACCOUNT,
+  });
+  return { w, token: token! };
 }
 
 async function callTool(
-  w: FakeWorker,
+  { w, token }: World,
   name: string,
   args: Record<string, unknown>,
 ): Promise<{ isError: boolean; text: string }> {
@@ -102,7 +136,7 @@ async function callTool(
     method: "POST",
     headers: {
       "content-type": "application/json",
-      Authorization: `Bearer ${minted.token}`,
+      Authorization: `Bearer ${token}`,
       "MCP-Protocol-Version": V,
     },
     body: JSON.stringify({
@@ -128,8 +162,8 @@ async function callTool(
 
 describe("MCP contact writes against governed books", () => {
   it("contacts_create_card into a write_policy 'governed' book is refused via the chokepoint", async () => {
-    const w = world();
-    const r = await callTool(w, "contacts_create_card", {
+    const s = await world();
+    const r = await callTool(s, "contacts_create_card", {
       accountId: ACCOUNT,
       addressBookId: GOV,
       name: "Eve",
@@ -137,12 +171,12 @@ describe("MCP contact writes against governed books", () => {
     });
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/proposal/i);
-    expect(w.db.count("contact_cards", "address_book_id = ?", GOV)).toBe(0);
+    expect(s.w.db.count("contact_cards", "address_book_id = ?", GOV)).toBe(0);
   });
 
   it("the SELF-WRITE rule: a recipients_book_id book is refused even though its policy is 'open'", async () => {
-    const w = world();
-    const r = await callTool(w, "contacts_create_card", {
+    const s = await world();
+    const r = await callTool(s, "contacts_create_card", {
       accountId: ACCOUNT,
       addressBookId: REFD,
       name: "Eve",
@@ -150,12 +184,12 @@ describe("MCP contact writes against governed books", () => {
     });
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/governs which recipients agent "photos" may email/);
-    expect(w.db.count("contact_cards", "address_book_id = ?", REFD)).toBe(1); // only the seed
+    expect(s.w.db.count("contact_cards", "address_book_id = ?", REFD)).toBe(1); // only the seed
   });
 
   it("update and delete of a card inside the governing book are refused the same way", async () => {
-    const w = world();
-    const upd = await callTool(w, "contacts_update_card", {
+    const s = await world();
+    const upd = await callTool(s, "contacts_update_card", {
       accountId: ACCOUNT,
       cardId: "cc_in_refd",
       emails: ["eve@evil.com"],
@@ -163,18 +197,18 @@ describe("MCP contact writes against governed books", () => {
     expect(upd.isError).toBe(true);
     expect(upd.text).toMatch(/governing book/);
 
-    const del = await callTool(w, "contacts_delete_card", {
+    const del = await callTool(s, "contacts_delete_card", {
       accountId: ACCOUNT,
       cardId: "cc_in_refd",
     });
     expect(del.isError).toBe(true);
-    expect(w.db.count("contact_cards", "id = 'cc_in_refd'")).toBe(1);
+    expect(s.w.db.count("contact_cards", "id = 'cc_in_refd'")).toBe(1);
   });
 
   it("moving a card INTO the governing book is refused too", async () => {
-    const w = world();
+    const s = await world();
     // A card in the plain book, then an update that names REFD as target.
-    const created = await callTool(w, "contacts_create_card", {
+    const created = await callTool(s, "contacts_create_card", {
       accountId: ACCOUNT,
       addressBookId: OPEN,
       name: "Pal",
@@ -182,7 +216,7 @@ describe("MCP contact writes against governed books", () => {
     });
     expect(created.isError).toBe(false);
     const id = (JSON.parse(created.text) as { id: string }).id;
-    const moved = await callTool(w, "contacts_update_card", {
+    const moved = await callTool(s, "contacts_update_card", {
       accountId: ACCOUNT,
       cardId: id,
       addressBookId: REFD,
@@ -192,14 +226,14 @@ describe("MCP contact writes against governed books", () => {
   });
 
   it("ordinary open books stay writable — the agent keeps its working contacts", async () => {
-    const w = world();
-    const r = await callTool(w, "contacts_create_card", {
+    const s = await world();
+    const r = await callTool(s, "contacts_create_card", {
       accountId: ACCOUNT,
       addressBookId: OPEN,
       name: "Pal",
       emails: ["pal@x.com"],
     });
     expect(r.isError).toBe(false);
-    expect(w.db.count("contact_cards", "address_book_id = ?", OPEN)).toBe(1);
+    expect(s.w.db.count("contact_cards", "address_book_id = ?", OPEN)).toBe(1);
   });
 });

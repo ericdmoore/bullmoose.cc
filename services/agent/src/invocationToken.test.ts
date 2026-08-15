@@ -28,6 +28,17 @@ import type { Env } from "./models";
  *     narrow to `mayUse(effective(node), …)` — recomputed live, ANDed after
  *     the standing check, and denying outright when the chain cannot be read.
  *
+ *  3. **THE TWO MANDATORY RULES (s17 (d))**, which are what make 1 and 2
+ *     enforcement rather than etiquette. Until they landed the whole mechanism
+ *     was VOLUNTARY: the harness holds a device token by architectural
+ *     necessity, so presenting the narrow credential was a choice it made about
+ *     itself, and a compromised model that reached the device token was back to
+ *     the full surface with no envelope at all. Both rules key on the `agent`
+ *     MARKER and nothing else, so unmarked principals — humans, third-party MCP
+ *     clients, claude.ai — are untouched, which is also asserted rather than
+ *     asserted-about.
+ *
+
  * Every chain below is hand-seeded with direct INSERTs rather than built
  * through `startJob`, and that is the threat model rather than a shortcut:
  * `authority_json` is an ordinary TEXT column, so a gate that is only correct
@@ -37,7 +48,9 @@ import type { Env } from "./models";
 const TENANT = "t_bm";
 const ACCOUNT = "t_bm__a_cj";
 const BINDING = "bind_cj";
+const OTHER_BINDING = "bind_wide";
 const PRINCIPAL = "p_cj";
+const EMAIL = "e_ctx";
 const V = "2026-07-28";
 
 /** Two real MCP tool names, one of which the leaf's delegation gave up. */
@@ -87,6 +100,11 @@ async function world() {
     parent_id: parent,
     depth: parent === null ? 0 : 1,
     authority_json: envelope(tools),
+    // The FACET axis. It rides on the copy for the same reason the needsInfo
+    // round carries it: privacy narrows the claimant set and never widens it,
+    // so a pinned node must not be able to spawn an unpinned sibling whose
+    // work the paid cloud may then claim.
+    privacy: "pinned",
   });
   w.db.seed("agent_invocations", [
     node("inv_root", null, [KEPT, DROPPED]),
@@ -102,6 +120,22 @@ async function world() {
       status: "pending",
       context_json: "{}",
       created_at: 1,
+    },
+  ]);
+  // A message for `AgentInvocation/set` create to act on — v1 requires one.
+  w.db.seed("emails", [
+    { id: EMAIL, account_id: ACCOUNT, blob_id: "b1", thread_id: "t1", size: 10, received_at: 1 },
+  ]);
+  // A SECOND binding on the same account, WIDER than `cj`. It is the prize in
+  // the cross-binding half of the create attack: copying a root's envelope onto
+  // a row whose own binding has a bigger ceiling would widen it.
+  w.db.seed("agent_bindings", [
+    {
+      id: OTHER_BINDING,
+      account_id: ACCOUNT,
+      name: "wide",
+      config_json: JSON.stringify({ ...JSON.parse(CONFIG), jobs: { tools: [KEPT, DROPPED, "whoami"] } }),
+      recipients_book_id: null,
     },
   ]);
 
@@ -516,6 +550,314 @@ describe("THE MINT is the claim, and only the claim", () => {
     );
     expect(res.status).toBe(200);
     expect(s.w.db.count("agent_invocation_tokens", "invocation_id = ?", "inv_leaf")).toBe(1); // the one from world()
+  });
+});
+
+// ---- (d) the two mandatory rules -----------------------------------------
+
+/** A real `bm_` device token for this principal, with whatever scopes. */
+async function device(
+  s: Awaited<ReturnType<typeof world>>,
+  scopes: string[],
+  name = "device",
+): Promise<string> {
+  const bm = await mintToken();
+  s.w.db.seed("tokens", [
+    {
+      id: bm.id,
+      principal_id: PRINCIPAL,
+      kind: "bearer",
+      secret_hash: bm.secretHash,
+      name,
+      scopes: JSON.stringify(scopes),
+      created_at: 1,
+      expires_at: null,
+      last_used_at: Date.now(),
+    },
+  ]);
+  return bm.token;
+}
+
+/** The fleet host's credential: agent-MARKED, exactly as `s10 T1` mints it. */
+const agentDevice = (s: Awaited<ReturnType<typeof world>>) =>
+  device(s, ["mail", "contacts", "calendar", "agent"], "fleet-host");
+
+/** A human's credential: the same reach, no marker. */
+const humanDevice = (s: Awaited<ReturnType<typeof world>>) =>
+  device(s, ["mail", "contacts", "calendar"], "laptop");
+
+interface SetResult {
+  created: Record<string, { id: string }>;
+  notCreated: Record<string, { type: string; description?: string }>;
+}
+
+/** `AgentInvocation/set` over the REAL jmap worker, as a real client sends it. */
+async function agentSet(
+  s: Awaited<ReturnType<typeof world>>,
+  token: string,
+  args: Record<string, unknown>,
+): Promise<SetResult> {
+  const res = await jmapWorker.fetch!(
+    new Request("https://jmap.bullmoose.cc/api/jmap", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        using: ["urn:ietf:params:jmap:core", "urn:bullmoose:params:jmap:agent"],
+        methodCalls: [["AgentInvocation/set", { accountId: ACCOUNT, ...args }, "0"]],
+      }),
+    }),
+    s.w.env as never,
+  );
+  const body = (await res.json()) as { methodResponses: Array<[string, SetResult, string]> };
+  return body.methodResponses[0]![1];
+}
+
+const invocationRow = (s: Awaited<ReturnType<typeof world>>, id: string) =>
+  s.w.db.query<{
+    binding_id: string;
+    job_id: string | null;
+    parent_id: string | null;
+    depth: number | null;
+    authority_json: string | null;
+    privacy: string | null;
+  }>(
+    `SELECT binding_id, job_id, parent_id, depth, authority_json, privacy
+       FROM agent_invocations WHERE account_id = ? AND id = ?`,
+    ACCOUNT,
+    id,
+  )[0]!;
+
+describe("RULE 1 — an agent-marked bearer has NO tool surface without an invocation token", () => {
+  it("a bare agent-marked device token is refused at tools/call AND at tools/list", async () => {
+    const s = await world();
+    const bare = await agentDevice(s);
+
+    const called = await callTool(s.env, bare, KEPT);
+    expect(called.status).toBe(403);
+    expect(JSON.stringify(await called.json())).toMatch(/invocationToken/);
+
+    // Visibility and dispatch together. Refusing the call while still listing
+    // the tools would be a gate with a menu attached.
+    const listed = await listTools(s.env, bare);
+    expect(Array.isArray(listed)).toBe(false);
+    expect((listed as { error: string }).error).toMatch(/agent-marked/);
+  });
+
+  it("…and the SAME principal, holding a live bmi_, is allowed", async () => {
+    const s = await world();
+    await agentDevice(s); // exists, and is not what authenticates below
+    // Nothing about the account, the scopes or the principal changed. The
+    // credential did.
+    expect((await callTool(s.env, s.leaf, KEPT)).status).toBe(200);
+    expect((await listTools(s.env, s.leaf)) as string[]).toEqual([KEPT]);
+  });
+
+  it("AN UNMARKED HUMAN TOKEN IS COMPLETELY UNTOUCHED — the marker is the whole predicate", async () => {
+    const s = await world();
+    const human = await humanDevice(s);
+    // ⚠️ THE MUTATION THIS TEST EXISTS FOR: drop `isAgentPrincipal` from rule 1
+    // and the predicate becomes "no invocation", which refuses every human,
+    // every third-party MCP client and claude.ai itself. The gate would be
+    // correct about agents and catastrophic about everyone else.
+    expect((await callTool(s.env, human, KEPT)).status).toBe(200);
+    expect((await listTools(s.env, human)) as string[]).toHaveLength(TOOLS.length);
+  });
+
+  it("the handshake is not the tool surface — discover still answers an agent-marked token", async () => {
+    const s = await world();
+    const bare = await agentDevice(s);
+    // Scoped deliberately: a client refused at `server/discover` cannot learn
+    // WHY it was refused, and discovery names the server, not the account.
+    const res = await mcp(s.env, bare, { jsonrpc: "2.0", id: 1, method: "server/discover" });
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(await res.json())).toMatch(/bullmoose-mailstore-analytics/);
+  });
+
+  it("THE ESCAPE THAT ISN'T: an agent cannot re-mint itself an UNMARKED token", async () => {
+    const s = await world();
+    const bare = await agentDevice(s);
+    // `authRoutes.ts` re-adds the marker to any re-minted scope set (s10 T1),
+    // which is the property rule 1 rests on: without it, "narrow yourself and
+    // drop `agent`" would be a two-line bypass any agent could self-serve.
+    const minted = await jmapWorker.fetch!(
+      new Request("https://jmap.bullmoose.cc/auth/tokens", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${bare}`, "content-type": "application/json" },
+        body: JSON.stringify({ name: "laundered", scopes: ["read", "contacts"] }),
+      }),
+      s.w.env as never,
+    );
+    expect(minted.status).toBe(200);
+    const { token, scopes } = (await minted.json()) as { token: string; scopes: string[] };
+    expect(scopes).toContain("agent");
+    // …and the laundered token is refused at the tool surface exactly as its
+    // parent was.
+    expect((await callTool(s.env, token, KEPT)).status).toBe(403);
+  });
+});
+
+describe("RULE 2 — an agent-marked bearer may not CREATE an invocation on its own authority", () => {
+  const create = (props: Record<string, unknown> = {}) => ({
+    create: { c: { bindingName: "cj", emailId: EMAIL, ...props } },
+  });
+
+  it("a bare agent-marked device token is refused, and lands no row", async () => {
+    const s = await world();
+    const bare = await agentDevice(s);
+    const before = s.w.db.count("agent_invocations");
+
+    const res = await agentSet(s, bare, create());
+    expect(res.notCreated.c!.type).toBe("forbidden");
+    expect(res.notCreated.c!.description).toMatch(/invocationToken/);
+    expect(s.w.db.count("agent_invocations")).toBe(before);
+  });
+
+  it("…and the same token WITH its invocationToken is allowed", async () => {
+    const s = await world();
+    const bare = await agentDevice(s);
+    const res = await agentSet(s, bare, { ...create(), invocationToken: s.leaf });
+    expect(res.notCreated.c).toBeUndefined();
+    expect(res.created.c!.id).toMatch(/^inv_/);
+  });
+
+  it("AN UNMARKED HUMAN TOKEN IS COMPLETELY UNTOUCHED — `bullmoose agent invoke` still works", async () => {
+    const s = await world();
+    const human = await humanDevice(s);
+    // The on-demand trigger (sVOL 007) is a HUMAN capability and always was.
+    // Rule 2 must not have quietly made it require a credential no human holds.
+    const res = await agentSet(s, human, create({ note: "take a look" }));
+    expect(res.notCreated.c).toBeUndefined();
+    const row = invocationRow(s, res.created.c!.id);
+    // …and, having presented no token, it inherits nothing: an ordinary,
+    // ungated, non-Job invocation, byte for byte what create produced before.
+    expect(row).toMatchObject({ job_id: null, parent_id: null, authority_json: null });
+  });
+
+  it("THE CREATED ROW INHERITS THE PRESENTED NODE'S ENVELOPE", async () => {
+    const s = await world();
+    const bare = await agentDevice(s);
+    const res = await agentSet(s, bare, { ...create(), invocationToken: s.leaf });
+    const row = invocationRow(s, res.created.c!.id);
+    const leafRow = invocationRow(s, "inv_leaf");
+
+    // A SIBLING of the leaf, not a descendant: same job, same parent, same
+    // depth, same envelope. Descending would let N creates buy N levels of
+    // `maxDepth`; a NULL job_id would sidestep the fold entirely, which is the
+    // bug PR #134 closed for the needsInfo round.
+    expect(row.job_id).toBe(leafRow.job_id);
+    expect(row.parent_id).toBe(leafRow.parent_id);
+    expect(row.depth).toBe(leafRow.depth);
+    expect(row.authority_json).toBe(leafRow.authority_json);
+    expect(JSON.parse(row.authority_json!).tools).toEqual([KEPT]);
+    // The facet rides along: a pinned node cannot spawn an unpinned sibling.
+    expect(row.privacy).toBe("pinned");
+
+    // And it is REAL narrowing, not a stored string: claim the new row and the
+    // token it mints sees exactly the leaf's tool set.
+    s.w.db.sqlite
+      .prepare(`UPDATE agent_invocations SET status = 'running' WHERE id = ?`)
+      .run(res.created.c!.id);
+    const child = await s.mint(res.created.c!.id);
+    expect((await listTools(s.env, child)) as string[]).toEqual([KEPT]);
+  });
+
+  /**
+   * ⚠️ THE ATTACK RULE 2 EXISTS FOR, AND THE REASON IT HAD TO BE THE MINTED
+   * FORM.
+   *
+   * Every other s17 gate could have run on a self-asserted `invocationId`,
+   * because the envelope only ever NARROWS. `create` is the exception: it
+   * COPIES the envelope onto a new row rather than intersecting it, so naming
+   * a node you do not hold is an escalation and not a further narrowing. The
+   * prize is the root — or here the sibling, which genuinely holds DROPPED.
+   */
+  it("cannot name a DIFFERENT node to widen: a self-asserted id is inert, a forged token is unauthenticated", async () => {
+    const s = await world();
+    const bare = await agentDevice(s);
+
+    // (a) Self-assertion, in every shape a caller could reach for. The gate
+    //     reads possession, never a name, so all of these are ignored.
+    const res = await agentSet(s, bare, {
+      ...create({ invocationId: "inv_sib", parentId: "inv_root", jobId: "job_1" }),
+      invocationToken: s.leaf,
+      causedBy: "inv_sib",
+    });
+    const widened = invocationRow(s, res.created.c!.id);
+    expect(JSON.parse(widened.authority_json!).tools).toEqual([KEPT]);
+    expect(JSON.parse(widened.authority_json!).tools).not.toContain(DROPPED);
+
+    // (b) The forgery: the SIBLING's public token id (ids are not secrets)
+    //     spliced onto the secret the attacker actually holds.
+    const sibId = parseInvocationToken(s.sibling)!.id.replace("it_", "");
+    const leafSecret = parseInvocationToken(s.leaf)!.secret;
+    const forged = await agentSet(s, bare, {
+      ...create(),
+      invocationToken: `bmi_${sibId}_${leafSecret}`,
+    });
+    expect(forged.notCreated.c!.type).toBe("forbidden");
+    expect(forged.notCreated.c!.description).toMatch(/does not resolve/);
+  });
+
+  it("cannot land the copy on a WIDER binding — the copy runs where the original ran", async () => {
+    const s = await world();
+    const bare = await agentDevice(s);
+    // `bind_wide` is enabled, on this account, and its `jobs.tools` ceiling is
+    // bigger than `cj`'s. Because `inv_leaf`'s chain reaches a root, the fold
+    // would still catch this one — but the root itself has no ancestors, so
+    // for a root-held token `ceiling(new binding) ∩ envelope` is all that is
+    // left and a wider binding wins. Refusing the cross-binding create closes
+    // both cases with one line.
+    const res = await agentSet(s, bare, {
+      create: { c: { bindingName: "wide", emailId: EMAIL } },
+      invocationToken: s.leaf,
+    });
+    expect(res.notCreated.c!.type).toBe("forbidden");
+    expect(res.notCreated.c!.description).toMatch(/same binding/);
+  });
+
+  it("a token for ANOTHER ACCOUNT is refused even when the bearer reaches both", async () => {
+    const s = await world();
+    const bare = await agentDevice(s);
+    // A second account the SAME principal owns, with its own binding and its
+    // own message — so everything the create needs is present and the ONLY
+    // thing wrong is which account the token acts for.
+    s.w.db.seedAccount({ accountId: "t_bm__a_second", tenantId: TENANT, principalId: PRINCIPAL });
+    s.w.db.seed("agent_bindings", [
+      { id: "bind_second", account_id: "t_bm__a_second", name: "cj", config_json: CONFIG },
+    ]);
+    s.w.db.seed("emails", [
+      { id: "e_second", account_id: "t_bm__a_second", blob_id: "b2", thread_id: "t2", size: 10, received_at: 1 },
+    ]);
+    // `requireAccount` authorized the BEARER for this account; the token is
+    // bound to a different one. The chain walk is account-scoped, so a copied
+    // `parent_id` would dangle — refuse at the create rather than strand a row
+    // that denies at use time.
+    const res = await agentSet(s, bare, {
+      create: { c: { bindingName: "cj", emailId: "e_second" } },
+      invocationToken: s.leaf,
+      accountId: "t_bm__a_second",
+    });
+    expect(res.created.c).toBeUndefined();
+    expect(res.notCreated.c!.description).toMatch(/different account/);
+  });
+
+  it("a FINISHED invocation's token creates nothing — the lifetime is the claim's", async () => {
+    const s = await world();
+    const bare = await agentDevice(s);
+    s.finish("inv_leaf");
+    const res = await agentSet(s, bare, { ...create(), invocationToken: s.leaf });
+    expect(res.notCreated.c!.type).toBe("forbidden");
+    expect(res.notCreated.c!.description).toMatch(/no longer running/);
+  });
+
+  it("a HUMAN who presents a token gets the inherit too — presenting means 'caused by'", async () => {
+    const s = await world();
+    const human = await humanDevice(s);
+    // The rule is about who may create WITHOUT a token. Presenting one is a
+    // claim about causation, and it is as true for a human debugging a Job as
+    // for the agent running it.
+    const res = await agentSet(s, human, { ...create(), invocationToken: s.leaf });
+    expect(JSON.parse(invocationRow(s, res.created.c!.id).authority_json!).tools).toEqual([KEPT]);
   });
 });
 
