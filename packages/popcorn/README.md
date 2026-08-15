@@ -86,7 +86,8 @@ behind Cloudflare's proxy; the HTTP edge can't pass raw POP3.
 cd packages/popcorn
 
 # macOS (launchd) or Linux (systemd) — auto-detected:
-sh deploy/install.sh
+sh deploy/install.sh --check    # what would change; writes nothing
+sh deploy/install.sh            # do it
 
 # Docker (linux/amd64 + arm64):
 docker buildx build --platform linux/amd64,linux/arm64 -f deploy/Dockerfile -t popcorn .
@@ -99,6 +100,40 @@ make all   # dist/popcorn-{darwin-arm64,linux-amd64,linux-arm64}
 
 TLS cert for `pop3.<domain>`: Let's Encrypt DNS-01 (the zone is already
 on Cloudflare — certbot's cloudflare plugin with a DNS-scoped token).
+
+### The installer on a machine that already runs popcorn
+
+`install.sh` treats the running configuration as the truth and the repo as a
+suggestion. Every setting resolves **your `--flag` → what this machine already
+runs → the template**, so re-running it on a live host is a binary refresh, not
+a reconfiguration; the plist or unit file is left byte-for-byte alone unless
+something genuinely differs, and even then it is refused (exit 3) with a
+rendered `<unit>.new` beside the original to diff. `--force` applies it after
+backing the old one up.
+
+Three things it will not do at all, `--force` or not — each one is a service
+outage or an exposure that leaves no error behind:
+
+- **widen a listen address.** Binds are ranked loopback < private/tailnet <
+  routable < every interface, and a plan may only move down that scale.
+  `--allow-widen` is the deliberate way past it.
+- **drop `POPCORN_SMTP_LISTEN`.** The submission face exists only while that
+  variable is set, so losing it deletes outgoing mail rather than degrading it.
+- **point TLS at a path that is not there.** popcorn `log.Fatalf`s on a cert it
+  cannot load, so a wrong path is a crash loop, and half a pair
+  (`_CERT` without `_KEY`) is silent plaintext.
+
+This is not hypothetical: the installer used to `cp` the template over
+`~/Library/LaunchAgents/` unconditionally, and on the host popcorn actually
+runs, that one line would have done all three at once and printed "installed".
+The decisions now live in `deploy/lib/plan.sh`, which writes nothing and is
+tested by `deploy/plan_test.go`; `--check` runs exactly them and stops.
+
+Fresh-machine defaults (macOS): binary in `~/bin` — no sudo, and launchd runs
+it as you regardless — POP3 on `127.0.0.1:9995`, SMTP on `127.0.0.1:9587`, TLS
+from `~/.popcorn/{cert,key}.pem` if those exist and unset if they do not, log
+in `~/.popcorn/`. Loopback is deliberate: widening is a decision, and the
+tailscale variant below makes it for you properly.
 
 ### Tailscale variant (no port-forward, no DDNS, nothing public)
 
