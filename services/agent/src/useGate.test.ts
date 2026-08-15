@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeEnv } from "@bullmoose/test-fakes";
+import { foldChain, type NodeAuthority } from "@bullmoose/scheduling";
 import agentWorker from "./index";
 import { expandPlan, getJobNode, startJob } from "./jobs";
 import { authorizeNodeUse, effectiveNodeAuthority } from "./useGate";
@@ -67,6 +68,7 @@ function scaffold(config = CONFIG(BINDING_JOBS)) {
     w.db.query<{
       id: string;
       status: string;
+      binding_id: string;
       context_json: string;
       result_json: string | null;
       parent_id: string | null;
@@ -74,7 +76,7 @@ function scaffold(config = CONFIG(BINDING_JOBS)) {
       depth: number | null;
       authority_json: string | null;
     }>(
-      `SELECT id, status, context_json, result_json, parent_id, job_id, depth, authority_json
+      `SELECT id, status, binding_id, context_json, result_json, parent_id, job_id, depth, authority_json
          FROM agent_invocations WHERE account_id = ? AND job_id IS NOT NULL ORDER BY created_at, id`,
       ACCOUNT,
     );
@@ -91,6 +93,35 @@ function scaffold(config = CONFIG(BINDING_JOBS)) {
       .prepare(`UPDATE agent_bindings SET config_json = ? WHERE account_id = ? AND id = ?`)
       .run(CONFIG(jobs), ACCOUNT, BINDING);
 
+  /** A SECOND binding on the account — what a cross-binding chain crosses INTO. */
+  const seedBinding = (id: string, jobs: Record<string, unknown> | null, enabled = 1) =>
+    w.db.seed("agent_bindings", [
+      { id, account_id: ACCOUNT, name: id, config_json: CONFIG(jobs), recipients_book_id: null, enabled },
+    ]);
+
+  /**
+   * Move ONE node of a chain onto another binding, behind the harness's back.
+   *
+   * This is the only way to build a cross-binding chain today, and that is the
+   * point rather than a shortcut: `attenuateChild` refuses a child on any
+   * binding but its parent's, so a direct UPDATE is exactly the shape
+   * `agents:invoke` — the second writer this whole module is built against —
+   * will have when it is un-deferred. Testing the fold now means the gate is
+   * already right on the day that write path exists.
+   */
+  const rebind = (invocationId: string, bindingId: string) =>
+    w.db.sqlite
+      .prepare(`UPDATE agent_invocations SET binding_id = ? WHERE account_id = ? AND id = ?`)
+      .run(bindingId, ACCOUNT, invocationId);
+
+  const destroyBinding = (id: string) =>
+    w.db.sqlite.prepare(`DELETE FROM agent_bindings WHERE account_id = ? AND id = ?`).run(ACCOUNT, id);
+
+  const gate = (id: string) => {
+    const row = nodes().find((r) => r.id === id)!;
+    return effectiveNodeAuthority(w.env as unknown as Env, ACCOUNT, row);
+  };
+
   const byKey = (key: string) =>
     nodes().find((r) => (JSON.parse(r.context_json) as { jobKey?: string }).jobKey === key);
 
@@ -104,6 +135,10 @@ function scaffold(config = CONFIG(BINDING_JOBS)) {
     nodes,
     tamper,
     narrowBinding,
+    seedBinding,
+    rebind,
+    destroyBinding,
+    gate,
     byKey,
     result,
     root: () => nodes().find((r) => r.parent_id === null)!,
@@ -131,6 +166,46 @@ async function start(env: Env, plan: unknown, over: Record<string, unknown> = {}
   });
   if (!started.ok) throw new Error(`job did not start: ${JSON.stringify(started.refusals)}`);
   return started;
+}
+
+/**
+ * root → mid → leaf, all on one binding, all through the real harness.
+ * Returns `mid`'s id — the hop the cross-binding tests re-point.
+ *
+ * `leafPlan` gives the leaf a plan of its own, so a test can prove it never
+ * got to expand it.
+ */
+async function threeDeep(s: ReturnType<typeof scaffold>, leafPlan?: unknown): Promise<string> {
+  await start(s.env, {
+    tasks: [
+      {
+        key: "mid",
+        tools: ["files.read"],
+        credentials: ["aws-mcp"],
+        budgetMicros: 200_000,
+        context: {
+          kind: "job-node",
+          op: "plan",
+          plan: {
+            tasks: [
+              {
+                key: "leaf",
+                tools: ["files.read"],
+                credentials: ["aws-mcp"],
+                budgetMicros: 50_000,
+                context: leafPlan
+                  ? { kind: "job-node", op: "plan", plan: leafPlan }
+                  : { kind: "job-node", op: "echo", text: "leaf" },
+              },
+            ],
+          },
+        },
+      },
+    ],
+  });
+  await s.drain(); // the root planner creates `mid`
+  await s.drain(); // `mid` expands into `leaf`
+  return s.byKey("mid")!.id;
 }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +286,209 @@ describe("THE BINDING BOUND — a delegation may not outlive the ceiling above i
     const r = await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "tool", name: "root.shell" });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.denial.axis).toBe("tools");
+  });
+});
+
+/**
+ * EVERY BINDING THE CHAIN CROSSES IS A TERM — not just the acting node's.
+ *
+ * Unreachable through the harness today: `attenuateChild` refuses a child on
+ * any binding but its parent's, so every chain in the product is
+ * single-binding and the intersection has one member. It stops being
+ * unreachable the moment `agents:invoke` is un-deferred, because agent→agent
+ * delegation IS a chain that spans bindings — and a gate that folds only the
+ * LEAF's binding would then hold B's ceiling with A's silently dropped. That
+ * is the widest hop winning instead of the narrowest, and it would break
+ * "narrowing a binding bites work already in the queue" for precisely the
+ * delegated work the invariant is for.
+ *
+ * So these chains are built the way that second writer will build them: a
+ * direct UPDATE of `binding_id`, the same threat model as `tamper` above.
+ */
+describe("CROSS-BINDING chains fold to the NARROWEST binding they pass through", () => {
+  it("ADVERSARIAL: the ANCESTOR holds the narrow binding — folding the leaf's alone re-grants what the ancestor gave up", async () => {
+    const s = scaffold();
+    // No tools, no credentials, and a money ceiling NO other term in this
+    // chain holds — so every axis below can only have come from here.
+    s.seedBinding("bind_narrow", { tools: [], credentials: [], budgetMicros: 25_000 });
+    await start(s.env, { tasks: [echo("a", { tools: ["files.read"], credentials: ["aws-mcp"] })] });
+    await s.drain();
+
+    const leaf = s.byKey("a")!;
+    // Everything the OLD fold consulted says yes: the leaf's own envelope
+    // genuinely carries `files.read`, and the leaf's own binding is the wide
+    // one. Only the ancestor's binding says no.
+    expect(JSON.parse(leaf.authority_json!).tools).toEqual(["files.read"]);
+    expect(leaf.binding_id).toBe(BINDING);
+
+    s.rebind(s.root().id, "bind_narrow");
+
+    const eff = await s.gate(leaf.id);
+    expect(eff.ok).toBe(true);
+    if (eff.ok) {
+      expect(eff.effective.tools).toEqual([]);
+      expect(eff.effective.credentials).toEqual([]);
+      // 25_000 is bind_narrow's and nothing else's — the envelopes say 100_000
+      // and 500_000, the leaf's binding says 1_000_000.
+      expect(eff.effective.budgetMicros).toBe(25_000);
+    }
+
+    const refused = await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.denial.axis).toBe("tools");
+  });
+
+  it("THREE HOPS with the narrowest in the MIDDLE — neither end of the chain is the answer", async () => {
+    const s = scaffold();
+    s.seedBinding("bind_mid", { tools: ["files.read"], credentials: [], budgetMicros: 7 });
+    await start(s.env, {
+      tasks: [
+        {
+          key: "mid",
+          tools: ["files.read"],
+          credentials: ["aws-mcp"],
+          budgetMicros: 200_000,
+          context: {
+            kind: "job-node",
+            op: "plan",
+            plan: {
+              tasks: [echo("leaf", { tools: ["files.read"], credentials: ["aws-mcp"], budgetMicros: 50_000 })],
+            },
+          },
+        },
+      ],
+    });
+    await s.drain(); // the root planner creates `mid`
+    await s.drain(); // `mid` expands into `leaf`
+
+    const leaf = s.byKey("leaf")!;
+    s.rebind(s.byKey("mid")!.id, "bind_mid");
+    // The two ENDS of the chain both still run under the wide binding.
+    expect(s.root().binding_id).toBe(BINDING);
+    expect(leaf.binding_id).toBe(BINDING);
+
+    // `aws-mcp` is in every envelope in this chain AND in both end bindings.
+    // Only the middle hop's binding drops it.
+    const cred = await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "credential", name: "aws-mcp" });
+    expect(cred.ok).toBe(false);
+    if (!cred.ok) expect(cred.denial.axis).toBe("credentials");
+
+    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" })).ok).toBe(true);
+    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "spend", micros: 7 })).ok).toBe(true);
+    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "spend", micros: 8 })).ok).toBe(false);
+
+    const eff = await s.gate(leaf.id);
+    if (eff.ok) expect(eff.effective).toEqual({ tools: ["files.read"], credentials: [], budgetMicros: 7 });
+  });
+
+  it("a DISABLED binding mid-chain DENIES — the kill switch is not 'no ceiling'", async () => {
+    const s = scaffold();
+    // Deliberately declares NO `jobs` ceiling. If `enabled` went unchecked
+    // this binding would contribute the identity element and the chain would
+    // fold to exactly what it folds to with no second binding at all — the
+    // revocation would be invisible rather than wrong, which is worse.
+    s.seedBinding("bind_off", null, 0);
+    const mid = await threeDeep(s);
+    s.rebind(mid, "bind_off");
+
+    const leaf = s.byKey("leaf")!;
+    const r = await s.gate(leaf.id);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.denial.axis).toBe("envelope");
+      expect(r.denial.requested).toContain("bind_off");
+      expect(r.denial.requested).toMatch(/hop 2 of 3/);
+      expect(r.denial.why).toMatch(/DISABLED/);
+      expect(r.note).toContain(leaf.id);
+    }
+    // And the per-axis gate refuses with it, rather than falling through.
+    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" })).ok).toBe(false);
+  });
+
+  it("a MISSING binding mid-chain DENIES — a destroyed ceiling is unknown, not absent", async () => {
+    const s = scaffold();
+    s.seedBinding("bind_gone", { tools: ["files.read"], credentials: ["aws-mcp"], budgetMicros: 1_000_000 });
+    const mid = await threeDeep(s);
+    s.rebind(mid, "bind_gone");
+
+    const leaf = s.byKey("leaf")!;
+    // While the row is there the chain folds fine — so the denial below is the
+    // ROW's absence and nothing else about the rebinding.
+    expect((await s.gate(leaf.id)).ok).toBe(true);
+
+    s.destroyBinding("bind_gone");
+    const r = await s.gate(leaf.id);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.denial.axis).toBe("envelope");
+      expect(r.denial.requested).toContain("bind_gone");
+      expect(r.denial.why).toMatch(/no longer exists/);
+    }
+  });
+
+  it("a node whose ANCESTOR's binding was revoked FAILS through the real drain instead of running", async () => {
+    const s = scaffold();
+    s.seedBinding("bind_off", null, 0);
+    const mid = await threeDeep(s, { tasks: [echo("tail")] });
+    s.rebind(mid, "bind_off");
+
+    await s.drain();
+    // `leaf` never expanded its own plan; it failed its pre-flight with the
+    // structured denial, exactly as an unreadable envelope does.
+    expect(s.byKey("tail")).toBeUndefined();
+    const leaf = s.byKey("leaf")!;
+    expect(leaf.status).toBe("failed");
+    expect(s.result(leaf.id).denial).toMatchObject({ axis: "envelope" });
+  });
+});
+
+/**
+ * THE REGRESSION NET. Every chain that exists in the product today is
+ * single-binding, so the new fold has to agree with the old one on all of
+ * them — not approximately, and not only on the ok/denied verdict.
+ */
+describe("SAME-BINDING chains fold to exactly what they folded to before", () => {
+  /** The pre-change first term: the acting node's binding, and only it. */
+  const ONLY_THE_LEAFS_BINDING: NodeAuthority = {
+    tools: BINDING_JOBS.tools,
+    credentials: BINDING_JOBS.credentials,
+    budgetMicros: BINDING_JOBS.budgetMicros,
+  };
+
+  it("every node of a three-deep Job matches the PRE-CHANGE formula, recomputed", async () => {
+    const s = scaffold();
+    await threeDeep(s);
+    const rows = s.nodes();
+    expect(rows).toHaveLength(3);
+
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    for (const row of rows) {
+      expect(row.binding_id).toBe(BINDING);
+      // The envelopes, ROOT-FIRST, walked the way the gate walks them.
+      const envelopes: Array<string | null> = [];
+      for (let cur = row; ; ) {
+        envelopes.unshift(cur.authority_json);
+        if (cur.parent_id === null) break;
+        cur = byId.get(cur.parent_id)!;
+      }
+      const oracle = foldChain(ONLY_THE_LEAFS_BINDING, envelopes);
+      expect(oracle.ok).toBe(true);
+      expect(await s.gate(row.id)).toEqual({
+        ok: true,
+        delegated: true,
+        effective: oracle.ok ? oracle.authority : undefined,
+      });
+    }
+  });
+
+  it("...and the leaf matches a FROZEN literal, so the oracle is not marking its own homework", async () => {
+    const s = scaffold();
+    await threeDeep(s);
+    const eff = await s.gate(s.byKey("leaf")!.id);
+    expect(eff.ok).toBe(true);
+    if (eff.ok) {
+      expect(eff.effective).toEqual({ tools: ["files.read"], credentials: ["aws-mcp"], budgetMicros: 50_000 });
+    }
   });
 });
 
