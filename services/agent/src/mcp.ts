@@ -9,6 +9,7 @@ import { EMAIL_TOOLS } from "./emailTools.js";
 import { INTROSPECT_TOOLS } from "./introspectTools.js";
 import { ToolError } from "./jmapBridge.js";
 import { initializeResult, isLegacyMethod } from "./mcpLegacy.js";
+import { REVOKE_APP_TOOL } from "./oauthBridge.js";
 import { NOUN_TOOLS } from "./mcpNouns.js";
 import type { Env } from "./models.js";
 
@@ -101,6 +102,18 @@ interface JsonRpcRequest {
 export interface ToolContext {
   env: Env;
   principal: Principal;
+  /**
+   * The caller's own `bm_` credential, present ONLY when that is how they
+   * authenticated (s02 T4 revocation). It exists for exactly one consumer:
+   * `revoke_app`, whose backing route on the AS authenticates the presented
+   * bearer itself rather than trusting a relayed identity — so the tool must
+   * forward the human's actual credential, and cannot for an OAuth caller
+   * (deliberately: a connected app must not manage the app roster).
+   *
+   * Absent for OAuth-authenticated requests. Do not grow new consumers
+   * without the same argument this one has.
+   */
+  rawBearer?: string;
 }
 
 export interface ToolDef {
@@ -317,6 +330,8 @@ export const TOOLS: ToolDef[] = [
   ...NOUN_TOOLS,
   ...EMAIL_TOOLS,
   ...INTROSPECT_TOOLS,
+  // AS interaction, not introspection — lives in oauthBridge (s02 T4).
+  REVOKE_APP_TOOL,
 ];
 
 /**
@@ -341,10 +356,14 @@ export async function handleMcp(request: Request, env: Env, authenticated?: Prin
   // Identity first: MCP.2 has no session to authenticate once, so every
   // request carries its own bearer. Resolve it to a principal up front.
   let principal = authenticated ?? null;
+  // Kept only when the caller authenticated with their own bm_ credential —
+  // see ToolContext.rawBearer for the single consumer and the rule.
+  let rawBearer: string | undefined;
   if (!principal) {
     const authz = request.headers.get("Authorization") ?? "";
     const raw = authz.startsWith("Bearer ") ? authz.slice(7) : null;
     principal = raw ? await verifyBearer(env.DB, raw) : null;
+    if (principal && raw) rawBearer = raw;
   }
   if (!principal) return rpcError(null, -32001, "unauthorized", 401);
 
@@ -456,7 +475,7 @@ export async function handleMcp(request: Request, env: Env, authenticated?: Prin
         cacheScope: "session",
       });
     case "tools/call":
-      return handleToolCall(msg, request, env, principal);
+      return handleToolCall(msg, request, env, principal, rawBearer);
     default:
       return rpcError(msg.id, -32601, `method not found: ${msg.method}`, 404);
   }
@@ -467,6 +486,7 @@ async function handleToolCall(
   request: Request,
   env: Env,
   principal: Principal,
+  rawBearer?: string,
 ): Promise<Response> {
   const params = (msg.params ?? {}) as { name?: string; arguments?: Record<string, unknown> };
   // The routable Mcp-Name header, when present, must agree with the body.
@@ -485,7 +505,7 @@ async function handleToolCall(
     if (!principalHasScope(principal, tool.scope)) {
       return rpcError(msg.id, -32004, `token lacks the "${tool.scope}" scope`, 403);
     }
-    return runTool(tool, msg, env, principal, args);
+    return runTool(tool, msg, env, principal, args, rawBearer);
   }
 
   // Omitted accountId resolves server-side (s02 T5); a supplied one is used
@@ -519,7 +539,7 @@ async function handleToolCall(
       .run();
   }
 
-  return runTool(tool, msg, env, principal, args);
+  return runTool(tool, msg, env, principal, args, rawBearer);
 }
 
 /**
@@ -560,9 +580,10 @@ async function runTool(
   env: Env,
   principal: Principal,
   args: Record<string, unknown>,
+  rawBearer?: string,
 ): Promise<Response> {
   try {
-    const result = await tool.run({ env, principal }, args);
+    const result = await tool.run({ env, principal, rawBearer }, args);
     return rpcResult(msg.id, {
       content: [{ type: "text", text: capResult(JSON.stringify(result, null, 1)) }],
     });

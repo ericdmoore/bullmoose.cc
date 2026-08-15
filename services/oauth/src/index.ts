@@ -4,6 +4,7 @@ import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { consentPage, deriveScript, errorPage } from "./consent.js";
 import { AUTH_DOCS, docsResponse } from "./docs.js";
 import { recordConsent } from "./consentMirror.js";
+import { revoke } from "./revoke.js";
 import { anyRedirectMatches, CLAUDE_REDIRECT_URIS, redirectHost } from "./redirects.js";
 
 /**
@@ -49,6 +50,11 @@ export interface Env {
     parseAuthRequest(request: Request): Promise<AuthRequestLike>;
     lookupClient(clientId: string): Promise<ClientLike | null>;
     completeAuthorization(options: Record<string, unknown>): Promise<{ redirectTo: string }>;
+    listUserGrants(
+      userId: string,
+      options?: { limit?: number; cursor?: string },
+    ): Promise<{ items: Array<{ id: string; clientId: string }>; cursor?: string }>;
+    revokeGrant(grantId: string, userId: string): Promise<void>;
   };
 }
 
@@ -75,7 +81,7 @@ interface ClientLike {
  * the authorization endpoint and its consent screen. The provider handles the
  * rest itself.
  */
-const authorizeHandler = {
+export const authorizeHandler = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/authorize") {
@@ -84,6 +90,8 @@ const authorizeHandler = {
     // The client-side key derivation. A file rather than an inline script so
     // the password page's CSP can stay `script-src 'self'`.
     if (url.pathname === "/derive.js") return deriveScript();
+    // Owner revocation: disconnect a connected app (s02 T4's second half).
+    if (url.pathname === "/revoke" && request.method === "POST") return revoke(request, env);
     // Documentation at the root and at /docs, for the same reason as the MCP
     // surface: the first thing a developer does with a hostname is open it.
     // /health keeps the bare identifier for anything watching it.

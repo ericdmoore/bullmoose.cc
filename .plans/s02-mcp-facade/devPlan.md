@@ -1,9 +1,25 @@
 # s02 — Public MCP façade: dev plan
 
-> **Status: T5 + T1 + T2 BUILT, not deployed** (2026-08-13). The route, the teaching 401,
-> PRM discovery, the legacy `initialize` lane and the server-side `accountId` default are
-> on main and green (2791 tests). **Nothing is live**: `mcp.bullmoose.cc` and
-> `auth.bullmoose.cc` do not resolve yet, and no deploy has been run. Build deltas:
+> **Status: T1–T6 LANDED and LIVE; T7 harness 51/51 against production** (2026-08-14,
+> PRs #108 #110 #112 + the revocation PR). `mcp.bullmoose.cc` and `auth.bullmoose.cc` are
+> deployed with custom domains; the full PKCE S256 dance runs headlessly end to end as the
+> e2e principal (`e2e@bullmoose.cc`, "Chewbacca"), ending in a real `tools/call` — and, as
+> of the revocation build, ending in a real DISCONNECT: `POST /revoke` on the AS (owner's
+> `bm_` credential only, self-authenticated, safe on the public hostname) kills every
+> token under the grant before the grant itself, mirrored to D1 in the same request, with
+> `revoke_app` as the conversational console's face for it. What remains OPEN:
+> - **A real Claude client completing a `tools/call`** — the one lane no harness walks
+>   (Claude prefers CIMD; the harness exercised DCR). Everything else in T7 is done.
+> - **Decision 1** (all tools public vs. trimming introspection) — left permissive on the
+>   fact-finding-across-agents rationale; needs Eric's sign-off.
+> - **`Mcp-Method` REQUIRED vs. validated-when-present** — still flagged, not decided.
+> - T3's "wrong-resource token rejected" is met by the provider pinning `resource` (a
+>   cross-resource token cannot be minted here) plus unit tests on `audienceMatches` —
+>   not by a live cross-resource presentation, which pinning makes impossible.
+> - T4's "console renders the consent" is the conversational console (`who_can_access` /
+>   `revoke_app`); the s03.E web view does not render `oauth_consents` yet.
+>
+> Build deltas from the first wave (2026-08-13), kept for the record:
 > - **The `initialize` test inverted**, exactly as this plan predicted — `mcp.test.ts` 6
 >   asserted the handshake was dead and now asserts it is alive and legacy. That inversion
 >   is the signal T2 landed.
