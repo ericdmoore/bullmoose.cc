@@ -168,6 +168,7 @@ export const COMMANDS: Command[] = [
       "Pastes an existing token instead of logging in. --base also accepts file:///path/to/bundle.json — a {base, token, accountId} bootstrap written by an operator. --offline stores it without validating against the server.",
     flags: [
       { flag: "--base <url>", desc: "JMAP base, or file:// path to a bootstrap bundle" },
+      { flag: "--url <url>", desc: "alias for --base (accepted so a pasted bundle's own key works)" },
       { flag: "--token <token>", desc: "a bm_… bearer token" },
       { flag: "--account <id>", desc: "account id, if the token covers several" },
       { flag: "--offline", desc: "store without validating" },
@@ -357,7 +358,7 @@ export const COMMANDS: Command[] = [
       { name: "rename", synopsis: "calendar rename <id-or-name> <new-name>", summary: "rename a calendar" },
       { name: "rm", synopsis: "calendar rm <id-or-name> [--force] [--dry-run]", summary: "delete a calendar; --force also removes its events" },
       { name: "event create", synopsis: "calendar event create [<file>|-] [--calendar <id-or-name>] [--title <t>] [--start <local>] [--duration <iso8601>] [--tz <iana>] [--all-day] [--rrule <RRULE>] [--as ical|json] [--dry-run]", summary: "create an event from flags, JSON, or iCal" },
-      { name: "event edit", synopsis: "calendar event edit <id> [--title …] [--start …] [--rrule …] [<patch.json>|-] [--if-state <s>]", summary: "edit the whole series (the master)" },
+      { name: "event edit", synopsis: "calendar event edit <id> [--title …] [--start …] [--rrule …] [--occurrence <recurrenceId>] [<patch.json>|-] [--if-state <s>]", summary: "edit the whole series (the master); --occurrence is accepted but refuses (exit 2)" },
       { name: "event rm", synopsis: "calendar event rm <id> [--dry-run]", summary: "delete an event" },
       { name: "export", synopsis: "calendar export [--ics] [--calendar <id-or-name>] [--json] [--ids]", summary: "dump events as iCalendar or NDJSON JSCalendar" },
     ],

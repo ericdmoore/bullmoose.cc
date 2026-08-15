@@ -157,6 +157,7 @@ Pastes an existing token instead of logging in. --base also accepts file:///path
 | flag | description |
 |---|---|
 | `--base <url>` | JMAP base, or file:// path to a bootstrap bundle |
+| `--url <url>` | alias for --base (accepted so a pasted bundle's own key works) |
 | `--token <token>` | a bm_… bearer token |
 | `--account <id>` | account id, if the token covers several |
 | `--offline` | store without validating |
@@ -462,8 +463,8 @@ Read verbs (`list`, `agenda`) and CRUD over the live JMAP methods. An event body
   `calendar rm <id-or-name> [--force] [--dry-run]`
 - **event create** — create an event from flags, JSON, or iCal  
   `calendar event create [<file>|-] [--calendar <id-or-name>] [--title <t>] [--start <local>] [--duration <iso8601>] [--tz <iana>] [--all-day] [--rrule <RRULE>] [--as ical|json] [--dry-run]`
-- **event edit** — edit the whole series (the master)  
-  `calendar event edit <id> [--title …] [--start …] [--rrule …] [<patch.json>|-] [--if-state <s>]`
+- **event edit** — edit the whole series (the master); --occurrence is accepted but refuses (exit 2)  
+  `calendar event edit <id> [--title …] [--start …] [--rrule …] [--occurrence <recurrenceId>] [<patch.json>|-] [--if-state <s>]`
 - **event rm** — delete an event  
   `calendar event rm <id> [--dry-run]`
 - **export** — dump events as iCalendar or NDJSON JSCalendar  
