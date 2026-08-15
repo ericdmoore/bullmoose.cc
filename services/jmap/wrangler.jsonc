@@ -52,39 +52,54 @@
     // construction, with no Path gymnastics to get wrong.
     //
     // TO TURN IT ON:
-    //   1. Create the DNS record. In the Cloudflare dashboard for the
-    //      bullmoose.cc zone, add a PROXIED (orange-cloud) record for
-    //      `explore` — an AAAA to 100:: or a CNAME to app.bullmoose.cc both
-    //      work; the origin is never contacted because a Worker route answers
-    //      first. Nothing resolves without this, so an uncommented route with
+    //
+    //     node infra/bootstrap.mjs explorer      (add --dry-run to preview)
+    //     node infra/bootstrap.mjs deploy
+    //
+    // and to withdraw it:
+    //
+    //     node infra/bootstrap.mjs explorer --off
+    //     node infra/bootstrap.mjs deploy
+    //
+    // The four manual steps that used to be written out here are that script's
+    // `explorer` phase, one function each and each idempotent — re-running is
+    // safe, and every step reports what it skipped:
+    //
+    //   1. DNS. A PROXIED AAAA for `explore` → 100:: in the bullmoose.cc zone.
+    //      (AAAA over a CNAME to app.bullmoose.cc because it fails CLOSED: with
+    //      no route, 100:: has no origin to fall through to, where a CNAME
+    //      would quietly serve the Pages app on this hostname. Both are equally
+    //      fine while the route exists — a proxied record never contacts its
+    //      origin.) Nothing resolves without this, so an uncommented route with
     //      no record still serves nothing.
-    //   2. Uncomment the route below (and the OAUTH service binding further
-    //      down) and redeploy.
-    //   3. Register the OAuth client, ONCE, against the live AS:
-    //        curl -sX POST https://auth.bullmoose.cc/register \
-    //          -H 'content-type: application/json' -d '{
-    //            "client_name": "bullmoose explorer",
-    //            "redirect_uris": ["https://explore.bullmoose.cc/oauth/callback"],
-    //            "grant_types": ["authorization_code","refresh_token"],
-    //            "response_types": ["code"],
-    //            "token_endpoint_auth_method": "none"
-    //          }'
-    //      Keep the `client_id` it returns. DCR is used exactly here, out of
-    //      band and once — see src/explore/oauth.ts for why the request path
+    //   2. This file: uncomment the route below and the OAUTH service binding
+    //      further down. The script EDITS THIS FILE rather than creating the
+    //      route over the API, because `wrangler deploy` reconciles routes from
+    //      config — an API-created route would be silently removed by the next
+    //      deploy of this worker. Commit the diff: the switch belongs in git.
+    //   3. The OAuth client, registered ONCE (a public client;
+    //      `token_endpoint_auth_method: "none"`, PKCE binds the code) and its
+    //      id persisted to .env. The script refuses to register again once
+    //      EXPLORE_CLIENT_ID is set — a second registration mints an orphan
+    //      client nobody can enumerate or revoke. DCR is used exactly here, out
+    //      of band and once; see src/explore/oauth.ts for why the request path
     //      uses a pre-registered client instead.
-    //   4. Set the configuration:
-    //        wrangler secret put EXPLORE_COOKIE_KEY   # openssl rand -hex 32
-    //        wrangler secret put EXPLORE_CLIENT_ID    # from step 3
-    //        wrangler secret put EXPLORE_HOST         # explore.bullmoose.cc
-    //        wrangler secret put EXPLORE_CLIENT_SECRET  # ONLY if step 3 was
-    //                                                   # run with a
-    //                                                   # confidential method
-    //      Only the first is actually a secret. The other two go through
+    //   4. The configuration: EXPLORE_COOKIE_KEY (generated, 32 bytes, and
+    //      never re-minted over a live one without --rotate — that would sign
+    //      out every session), EXPLORE_HOST, EXPLORE_CLIENT_ID, and
+    //      EXPLORE_CLIENT_SECRET only if step 3's AS returned one.
+    //      Only the first is actually a secret. The others go through
     //      `secret put` for a different reason: a `vars` entry would be
     //      COMMITTED, and committing the master switch is the same as turning
     //      the explorer on for every deployment of this repo. EXPLORE_HOST is
     //      that switch — with it unset the worker reads no cookie anywhere and
     //      none of src/explore/ is reachable, whatever the route says.
+    //
+    // No migration is needed and none should be added: the cookie is a
+    // stateless HMAC, PKCE state lives in the existing ROUTES KV, and the
+    // projection reads DB through the JMAP method registry. No new tables, no
+    // new resources. `node infra/bootstrap.mjs doctor` checks the result —
+    // and reports "explorer: off" without complaint when EXPLORE_HOST is unset.
     //
     // , { "pattern": "explore.bullmoose.cc/*", "zone_name": "bullmoose.cc" }
   ],
