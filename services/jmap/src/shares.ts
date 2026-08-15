@@ -10,14 +10,15 @@
  *
  * THE DECISION: KV, not a `shares` table.
  *
- *  1. A share record's useful life is EXACTLY the link's remaining life.
- *     `expirationTtl` reaps it at that instant, for free. A D1 table would
+ *  1. A share record's useful life is EXACTLY the link's remaining life. KV's
+ *     `expiration` reaps it at that instant, for free. A D1 table would
  *     need a sweeper — and this repo has no cron and no migration framework
  *     (`tools/README.md:10-11`), so the table is a migration plus a job that
- *     does not exist. KV's TTL is the whole lifecycle, already built.
+ *     does not exist. KV's expiry is the whole lifecycle, already built.
  *  2. It bounds growth without anyone maintaining it: at most
- *     `SHARE_MAX_TTL` (90 days) of records can be live, whatever the mint
- *     rate, because a record cannot outlive the link it describes.
+ *     `SHARE_MAX_TTL` (90 days) plus `KV_MIN_TTL` of records can be live,
+ *     whatever the mint rate, because a record outlives the link it describes
+ *     by at most KV's floor (see `shareTombstoneExpiry`).
  *  3. `GET /share/*` is public and unauthenticated — the one route in this
  *     worker an anonymous internet client can reach. A D1 read there puts the
  *     mail database on the hot path of an anonymous request. KV does not.
@@ -67,7 +68,7 @@ export interface ShareRecord {
 
 const PREFIX = "share:";
 
-/** KV's floor for `expirationTtl`; a shorter TTL is rejected outright. */
+/** KV's floor on expiry; anything sooner than this is rejected outright. */
 const KV_MIN_TTL = 60;
 
 export function shareKey(accountId: string, shareId: string): string {
@@ -88,19 +89,36 @@ export function newShareId(): string {
 /**
  * Write (or overwrite) a record, expiring it with the link.
  *
- * The TTL is derived from `exp` on every write, so a revoke tombstone
+ * The death date is derived from `exp` on every write, so a revoke tombstone
  * inherits the ORIGINAL link's death date rather than extending it: the
  * tombstone only has to outlive the thing it kills, which is exactly the
  * property that bounds this keyspace.
+ *
+ * ONE exception, and it is KV's, not ours: a link with less than KV_MIN_TTL
+ * left cannot be stored at its own death date, because KV rejects the write
+ * outright. Revoking a link with 5s to live still has to deny those 5s, so the
+ * record is floored to the minimum and the tombstone outlives the link by up
+ * to KV_MIN_TTL. `shareTombstoneExpiry` is that rule, written once — the
+ * keyspace stays bounded either way, just by 60s rather than by 0.
+ *
+ * Absolute `expiration` rather than relative `expirationTtl` on purpose: a TTL
+ * is resolved against the clock at WRITE time, which is a second read of a
+ * clock we already read to compute it. When a tick fell between the two reads
+ * the record outlived `exp` by a second — rare, real, and the cause of a
+ * genuinely confusing flake. An absolute instant is a pure function of `nowMs`.
  */
+export function shareTombstoneExpiry(exp: number, nowMs: number): number {
+  const floor = Math.floor(nowMs / 1000) + KV_MIN_TTL;
+  return Math.max(exp, floor);
+}
+
 export async function putShareRecord(
   kv: KVNamespace,
   rec: ShareRecord,
   nowMs: number = Date.now(),
 ): Promise<void> {
-  const remaining = rec.exp - Math.floor(nowMs / 1000);
   await kv.put(shareKey(rec.accountId, rec.shareId), JSON.stringify(rec), {
-    expirationTtl: Math.max(KV_MIN_TTL, remaining),
+    expiration: shareTombstoneExpiry(rec.exp, nowMs),
   });
 }
 
