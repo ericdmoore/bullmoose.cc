@@ -69,9 +69,32 @@ var valueFlags = map[string]bool{
 	// question text as the command. Declared on the TypeScript side too
 	// (packages/cli/src/main.ts), because argv_test.go checks BOTH directions.
 	"question": true,
+	// `--reason` is `--question`'s counterpart on the reject path and was
+	// missed when the above was added, so `bullmoose --reason "why" approvals
+	// reject <id>` named "why" as the command — the exact failure the comment
+	// above describes, one flag over. Found by the flag drift test.
+	"reason": true,
 	// ---- paging ----
 	"n": true,
 }
+
+// ⚠️ `--status` is NOT here, and must not be added.
+//
+// It is the one flag in the tree whose ARITY depends on the command:
+// `approvals --status <filter>` takes a value (cmd/approvals.go), while
+// `watch --status` is a boolean (cmd/watch.go). This scanner runs BEFORE the
+// command is known — deciding where a token ends is how it finds the command
+// in the first place — so there is no answer it can give that is right for
+// both. Adding it to valueFlags would make `bullmoose --status watch` swallow
+// `watch`; leaving it in booleanFlags means `bullmoose --status pending
+// approvals list` names `pending` as the command.
+//
+// Neither is a bug worth introducing, because both flags work in the position
+// people actually use — AFTER the command, where the command's own parser
+// owns the grammar. `argv_test.go` pins the collision so this stays a decision
+// rather than an oversight, and so that "fixing" one side has to confront the
+// other. If the pre-command position is ever needed, the fix is to rename one
+// of them, not to teach this map a lie.
 
 // booleanFlags mirrors the `type: "boolean"` entries of the same spec. Command()
 // does not need it — a boolean consumes no token, so skipping it is already

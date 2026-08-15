@@ -205,6 +205,9 @@ Pastes an existing token instead of logging in. \-\-base also accepts file:///pa
 .B \-\-base <url>
 JMAP base, or file:// path to a bootstrap bundle
 .TP
+.B \-\-url <url>
+alias for \-\-base (accepted so a pasted bundle's own key works)
+.TP
 .B \-\-token <token>
 a bm_… bearer token
 .TP
@@ -574,7 +577,7 @@ delete a calendar; \-\-force also removes its events \(em \f[CR]calendar rm <id\
 create an event from flags, JSON, or iCal \(em \f[CR]calendar event create [<file>|\-] [\-\-calendar <id\-or\-name>] [\-\-title <t>] [\-\-start <local>] [\-\-duration <iso8601>] [\-\-tz <iana>] [\-\-all\-day] [\-\-rrule <RRULE>] [\-\-as ical|json] [\-\-dry\-run]\fR
 .TP
 .B event edit
-edit the whole series (the master) \(em \f[CR]calendar event edit <id> [\-\-title …] [\-\-start …] [\-\-rrule …] [<patch.json>|\-] [\-\-if\-state <s>]\fR
+edit the whole series (the master); \-\-occurrence is accepted but refuses (exit 2) \(em \f[CR]calendar event edit <id> [\-\-title …] [\-\-start …] [\-\-rrule …] [\-\-occurrence <recurrenceId>] [<patch.json>|\-] [\-\-if\-state <s>]\fR
 .TP
 .B event rm
 delete an event \(em \f[CR]calendar event rm <id> [\-\-dry\-run]\fR

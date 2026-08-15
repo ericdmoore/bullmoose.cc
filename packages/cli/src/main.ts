@@ -175,6 +175,11 @@ const parseCommandLine = () =>
       // than naming it as the command, and argv_test.go fails on drift in
       // either direction.
       question: { type: "string" },
+      // …and `--reason`, the rejection's counterpart, for the same reason. It
+      // was missed when `--question` was added: `bullmoose --reason "why"
+      // approvals reject <id>` named "why" as the command. Found by the
+      // cli-go flag drift test, not by anyone running it.
+      reason: { type: "string" },
       unset: { type: "boolean", default: false },
       "no-sync": { type: "boolean", default: false },
       n: { type: "string", short: "n", default: "20" },

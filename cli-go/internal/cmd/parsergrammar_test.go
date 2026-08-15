@@ -149,15 +149,6 @@ var selfParsers = map[string]struct{ file, fn string }{
 // silent skip would let the list grow. Deleting an entry here is the last step
 // of fixing one; a stale entry fails this test too.
 var undocumentedByDesign = map[string]string{
-	"init/url": "`bullmoose init --url <base>` is the documented alias for --base " +
-		"(registry.go says so, main.ts accepts it, cli/010 §5 is about not discarding it) " +
-		"but help.ts's `init` entry lists only --base, so the alias is invisible to `help --json`",
-	"calendar/occurrence": "help.ts:352 mentions --occurrence in the calendar DESCRIPTION " +
-		"(\"single-occurrence editing (--occurrence) is not yet implemented and refuses " +
-		"cleanly\") and nowhere else — not in a flags entry, not in a synopsis. Prose is " +
-		"precisely what a machine cannot read, which is what this whole surface is for, so " +
-		"it counts as undocumented here. Scraping descriptions for `--x` would fix the " +
-		"symptom by re-introducing the disease",
 }
 
 // TestRegistryFlagsAreTheParsersOwn checks the registry against the parser's
@@ -416,10 +407,6 @@ func TestSelfParsingCommandsAreCovered(t *testing.T) {
 // parseArgs spec at the same time (argv_test.go diffs delegate against it in
 // both directions), which is outside this module.
 var scannerGapsByDesign = map[string]string{
-	"approvals/reason": "parseApprovals reads `--reason <text>` as a value, but neither " +
-		"delegate.valueFlags nor main.ts declares it, so `bullmoose --reason x approvals …` " +
-		"names x as the command — the exact failure approvals.go's own comment says --question " +
-		"was mirrored to avoid",
 	"approvals/status": "parseApprovals reads `--status <state>` as a value; delegate " +
 		"declares --status a BOOLEAN (it is `watch --status`), so the two disagree about " +
 		"whether the next token belongs to the flag",

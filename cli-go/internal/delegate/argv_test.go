@@ -28,6 +28,12 @@ func TestCommand(t *testing.T) {
 		{[]string{"--db=/tmp/mail.db", "mailboxes"}, "mailboxes"},
 		{[]string{"-n", "5", "log"}, "log"},
 
+		// `--reason` takes a value, so the command is what follows its text —
+		// not the text. Regression pin: this named "why" as the command until
+		// the flag drift test found it missing from valueFlags.
+		{[]string{"--reason", "why", "approvals", "reject", "inv_1"}, "approvals"},
+		{[]string{"--reason=why", "approvals", "reject", "inv_1"}, "approvals"},
+
 		// Boolean flags consume nothing, so the command follows immediately.
 		{[]string{"--json", "log"}, "log"},
 		{[]string{"--dry-run", "--force", "mailbox", "rm", "X"}, "mailbox"},
@@ -235,5 +241,34 @@ func TestTraceEnabled(t *testing.T) {
 		if !traceEnabled(v) {
 			t.Errorf("%q should be on", v)
 		}
+	}
+}
+
+// TestStatusArityCollisionIsKnown pins the one flag whose arity depends on the
+// command, so the scanner's treatment of it stays a decision instead of drifting
+// into an oversight.
+//
+// `approvals --status <filter>` takes a value; `watch --status` is a boolean.
+// Command() runs before the command is known, so no single answer is right for
+// both — and the pre-command position is not one either flag is used in. If this
+// test fails, someone moved `status` between the maps: read the comment above
+// valueFlags before deciding that is a fix, because it trades one broken argv
+// for a different one.
+func TestStatusArityCollisionIsKnown(t *testing.T) {
+	if valueFlags["status"] {
+		t.Errorf("status is in valueFlags: `bullmoose --status watch` now swallows " +
+			"`watch` and finds no command. See the collision note in argv.go.")
+	}
+	if !booleanFlags["status"] {
+		t.Errorf("status left booleanFlags: help.go can no longer tell " +
+			"`watch --status` from a flag that does not exist.")
+	}
+	// Both commands' own parsers keep owning the flag AFTER the command, which
+	// is the position that actually works and the one the help text documents.
+	if got := Command([]string{"approvals", "list", "--status", "pending"}); got != "approvals" {
+		t.Errorf("approvals list --status pending = %q, want approvals", got)
+	}
+	if got := Command([]string{"watch", "--status"}); got != "watch" {
+		t.Errorf("watch --status = %q, want watch", got)
 	}
 }
