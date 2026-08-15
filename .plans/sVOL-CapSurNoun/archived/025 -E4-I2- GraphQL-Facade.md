@@ -1,3 +1,16 @@
+> **ARCHIVED 2026-08-14 — wontfix.** Kept for the reasoning, not as pending work.
+> JMAP already provides the three things GraphQL is adopted for: batched multi-call
+> requests, `#ref` back-references chaining one call's output into the next, and
+> `/changes` as a real incremental-sync cursor. A facade would be a second vocabulary
+> over identical data, with its own schema to keep in sync and its own auth surface to
+> get wrong. **`.plans/s19-transports/readme.md` is the live document** — it records why
+> a `graphql` *scope* would be a category error, and why a facade (if one is ever
+> genuinely needed for a client that cannot speak JMAP) is resolvers over the existing
+> method registry rather than any new authorization.
+>
+> Revisit only on an external client that cannot speak JMAP — not on the merits of the
+> idea, which were settled.
+
 # 025 -E4-I2- GraphQL facade
 
 | | |

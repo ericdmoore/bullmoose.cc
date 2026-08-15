@@ -586,9 +586,136 @@ function deploy() {
   }
 }
 
+
+// ─────────────────────────────── doctor ─────────────────────────────────────
+//
+// Every phase above CHANGES the world. `doctor` only asks whether the world
+// still matches what we think we deployed — because three separate incidents in
+// one week were deployment-state drift rather than code, and each presented as
+// something else:
+//
+//   • ADMIN_TOKEN rotated → every cached admin credential silently invalid,
+//     surfacing as a bare 401 at some later moment.
+//   • the jmap worker moved to custom-domain routes → the _jmap._tcp SRV record
+//     kept pointing at a workers.dev host that had stopped serving, so
+//     autodiscovery handed clients a 404 HTML page.
+//   • the apex answered /.well-known/jmap with 200 and the homepage, which is
+//     worse than a 404: it tells a client it FOUND the server.
+//
+// None of those is visible in the code. All three are one line of output here.
+async function doctor() {
+  step("doctor — is the deployed world still the one we think we deployed?");
+  let bad = 0;
+  const fail = (what, detail) => {
+    bad++;
+    console.log(`  ✗ ${what}\n      ${detail}`);
+  };
+  const pass = (what, detail = "") => console.log(`  ✓ ${what}${detail ? `  ${detail}` : ""}`);
+
+  // loadEnv() rather than a module-level binding: doctor is read-only and must
+  // reflect what is in .env RIGHT NOW, not what was there when the module loaded.
+  const env = loadEnv();
+  const site = process.env.BULLMOOSE_APP_ORIGIN ?? "https://app.bullmoose.cc";
+  const apex = process.env.BULLMOOSE_APEX ?? "https://bullmoose.cc";
+
+  // ---- 1. autodiscovery: a client with only an address must find us --------
+  // RFC 8620 §2.2 is SRV then the well-known path. The failure that bit us was
+  // not "unreachable" — it was "reachable and wrong", so assert the CONTENT.
+  try {
+    const r = await fetch(`${apex}/.well-known/jmap`, { redirect: "manual" });
+    const loc = r.headers.get("location") ?? "";
+    if (r.status >= 300 && r.status < 400 && loc.includes("/.well-known/jmap")) {
+      pass("apex autodiscovery", `${r.status} → ${loc}`);
+    } else if (r.status === 200 && (r.headers.get("content-type") ?? "").includes("html")) {
+      fail("apex autodiscovery", `200 with HTML — a client reads that as "found the server". Expected a redirect to ${site}/.well-known/jmap`);
+    } else {
+      fail("apex autodiscovery", `${r.status} ${r.headers.get("content-type") ?? ""} — expected a redirect`);
+    }
+  } catch (e) {
+    fail("apex autodiscovery", String(e));
+  }
+
+  // ---- 2. the session resource answers as JSON, not as a page -------------
+  try {
+    const r = await fetch(`${site}/.well-known/jmap`);
+    const ct = r.headers.get("content-type") ?? "";
+    if (r.status === 401 && ct.includes("json")) pass("session endpoint", "401 JSON (unauthenticated, correct)");
+    else if (ct.includes("html")) fail("session endpoint", `${r.status} HTML — the worker route is not serving this path; Pages is`);
+    else pass("session endpoint", `${r.status} ${ct}`);
+  } catch (e) {
+    fail("session endpoint", String(e));
+  }
+
+  // ---- 3. every worker route actually reaches a worker --------------------
+  for (const path of ["/api/", "/auth/login", "/console/agents"]) {
+    try {
+      const r = await fetch(`${site}${path}`);
+      const ct = r.headers.get("content-type") ?? "";
+      if (ct.includes("html")) fail(`route ${path}`, `${r.status} HTML — falls through to Pages, so the worker route is missing`);
+      else pass(`route ${path}`, `${r.status} ${ct.split(";")[0]}`);
+    } catch (e) {
+      fail(`route ${path}`, String(e));
+    }
+  }
+
+  // ---- 4. the admin token in .env is the one the worker accepts -----------
+  // The rotation failure mode: .env and the worker disagree, and nothing says so
+  // until a human runs an admin command and reads a bare 401.
+  const adminUrl = process.env.BULLMOOSE_PROVISION_URL ?? env.BULLMOOSE_PROVISION_URL;
+  if (!env.ADMIN_TOKEN) console.log("  · admin token       not in " + ENV_FILE + " — skipped");
+  else if (!adminUrl) console.log("  · admin token       set BULLMOOSE_PROVISION_URL to check it — skipped");
+  else {
+    try {
+      const r = await fetch(`${adminUrl}/agent-bindings`, {
+        headers: { authorization: `Bearer ${env.ADMIN_TOKEN}` },
+      });
+      if (r.status === 401) fail("admin token", `401 — ${ENV_FILE}'s ADMIN_TOKEN is not the one provision holds. Rotated? Re-run \`bullmoose admin init\` on every machine that uses the admin API.`);
+      else pass("admin token", `${r.status}`);
+    } catch (e) {
+      fail("admin token", String(e));
+    }
+  }
+
+  // ---- 5. what the deployed workers are actually DOING --------------------
+  // Cloudflare's GraphQL analytics. The first signal in this script that is
+  // about behaviour rather than shape: a worker can be deployed, routed and
+  // reachable while erroring on every request.
+  const token = env.BULLMOOSE_RUNTIME_TOKEN ?? env.CLOUDFLARE_API_TOKEN;
+  const account = env.CLOUDFLARE_ACCOUNT_ID;
+  if (!token || !account) console.log("  · worker traffic    needs CLOUDFLARE_ACCOUNT_ID + a runtime token — skipped");
+  else {
+    const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    const query = `query { viewer { accounts(filter:{accountTag:"${account}"}) {
+      workersInvocationsAdaptive(limit:50, filter:{datetime_geq:"${since}"}) {
+        sum { requests errors } dimensions { scriptName } } } } }`;
+    try {
+      const r = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      const j = await r.json();
+      const rows = j?.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive ?? [];
+      const ours = rows.filter((x) => String(x.dimensions.scriptName).startsWith("bullmoose"));
+      if (!ours.length) console.log("  · worker traffic    no bullmoose requests in 24h");
+      for (const x of ours) {
+        const { requests, errors } = x.sum;
+        const line = `${String(x.dimensions.scriptName).padEnd(24)} ${requests} req, ${errors} err`;
+        if (errors > 0) fail("worker errors", line);
+        else pass("traffic", line);
+      }
+    } catch (e) {
+      console.log(`  · worker traffic    unavailable (${e})`);
+    }
+  }
+
+  console.log(bad === 0 ? "\ndone — doctor: nothing to report" : `\ndone — doctor: ${bad} problem(s) above`);
+  if (bad > 0) process.exitCode = 1;
+}
+
 // ───────────────────────────────── driver ───────────────────────────────────
 
-const PHASES = { resources, wire, schemas, migrate, secrets, deploy };
+const PHASES = { resources, wire, schemas, migrate, secrets, deploy, doctor };
 // migrate sits BETWEEN schemas and deploy, and that position is the point.
 // `schemas` cannot upgrade an existing database -- every DDL is IF NOT EXISTS,
 // which is idempotent for CREATING and silently declines to UPGRADE -- and two
@@ -602,7 +729,7 @@ function help() {
 
   node infra/bootstrap.mjs [phase] [--dry-run] [--yes]
 
-  phases:  ${ALL.join("  ")}   (default: all)
+  phases:  ${ALL.join("  ")}   (default: all)\n  doctor      read-only: is the DEPLOYED world still the one we think we deployed?\n              (not part of a default run — it changes nothing and asserts nothing about code)
   --dry-run   show every command/edit; touch nothing
   --yes       auto-confirm wrangler's d1-execute prompt
   --rotate    allow the secrets phase to REPLACE values already live.
