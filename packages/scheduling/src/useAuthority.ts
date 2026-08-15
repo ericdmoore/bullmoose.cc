@@ -51,7 +51,9 @@
 // answer.
 //
 // This module is pure. The chain walk and the binding read are the caller's
-// (`services/agent/src/useGate.ts`), for the same reason `attenuation.ts` is
+// (`nodeAuthority.ts`, next door — it moved out of `services/agent/src/useGate.ts`
+// when per-invocation tokens gave a second worker a way to name the acting
+// invocation), for the same reason `attenuation.ts` is
 // pure: every axis here is table-testable, and `useAuthority.test.ts` walks
 // them.
 

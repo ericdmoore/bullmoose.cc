@@ -481,6 +481,27 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "agent-invocation-tokens-table",
+    why: "s17 per-invocation tokens: the `bmi_` credential row (identity only — no envelope copy, no scope list; the authority is recomputed from rows the holder cannot write). NOT a deploy blocker, unlike jobs-table: no claim statement names it, and the only read path is `resolveInvocationToken`, which cannot be reached on a shard that lacks the table because no token can have been minted there. The mint degrades to `updated[id] = null` — exactly the claim response that shipped before it",
+    blocks: null,
+    check: tableExists("agent_invocation_tokens"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS agent_invocation_tokens (
+         id            TEXT PRIMARY KEY,
+         invocation_id TEXT NOT NULL,
+         account_id    TEXT NOT NULL,
+         principal_id  TEXT NOT NULL,
+         secret_hash   TEXT NOT NULL,
+         issued_at     INTEGER NOT NULL,
+         expires_at    INTEGER NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS agent_invocation_tokens_invocation
+         ON agent_invocation_tokens (account_id, invocation_id)`,
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
     id: "domain-deny-list-table",
     why: "s12 1-A: the industrial deny tier (bouncer@'s working data). A plain schema re-run DOES create it; NOT a deploy blocker because the ingest cascade fails OPEN — a shard missing the table reads as an empty deny list (logged) and every message flows as today",
     blocks: null,

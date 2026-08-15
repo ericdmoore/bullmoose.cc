@@ -4,12 +4,15 @@ import {
   JOB_MAX_NODES_CEILING,
   attenuateChild,
   attenuatePlan,
+  bindingCeiling,
   describeRefusals,
+  effectiveNodeCeiling,
   type AttenuatedChild,
+  type BindingJobConfig,
   type ChildRequest,
+  type JobNodeRow,
   type Refusal,
 } from "@bullmoose/scheduling";
-import { bindingCeiling, effectiveNodeCeiling, type BindingJobConfig, type JobNodeRow } from "./useGate.js";
 import type { Env } from "./models.js";
 
 export type { BindingJobConfig, JobNodeRow };
@@ -88,12 +91,12 @@ export async function getJobNode(
  * the binding above it or to any ancestor. That is a fair description of what
  * the harness wrote, and a bad bound on what the node may spend — a delegation
  * checked only where it is created is not a delegation. Everything that needs a
- * node's ceiling now goes through `effectiveNodeCeiling` (`useGate.ts`), which
+ * node's ceiling now goes through `effectiveNodeCeiling` (`nodeAuthority.ts` (@bullmoose/scheduling)), which
  * recomputes `binding ∩ root ∩ … ∩ node` from the rows on every use. If you
  * find yourself reaching for "just parse this row's envelope", that is the
  * mistake this comment exists to interrupt.
  *
- * `bindingCeiling` moved to `useGate.ts` because the binding is the FIRST TERM
+ * `bindingCeiling` moved to `nodeAuthority.ts` (@bullmoose/scheduling) because the binding is the FIRST TERM
  * of that fold — the top of every chain (jobs-and-facets §5) — and one reading
  * of `config_json.jobs` shared by the write path and the use path is the only
  * way the two cannot drift. It is re-exported above so this module's existing
@@ -284,7 +287,7 @@ export async function expandPlan(env: Env, parent: JobNodeRow, plan: unknown): P
   // THE USE-TIME BOUND, and it comes FIRST. Not `ceilingOf(parent)` — that read
   // the parent's stored envelope and believed it. Re-delegation is a USE of the
   // delegated authority, so the ceiling a plan is checked against is recomputed
-  // here from the binding down through every hop (`useGate.ts`):
+  // here from the binding down through every hop (`nodeAuthority.ts` (@bullmoose/scheduling)):
   // binding ∩ root ∩ … ∩ parent. A row that claims more than its ancestors held
   // delegates the intersection rather than the claim, and a binding narrowed
   // after this Job started bites the plan being expanded right now.
@@ -311,7 +314,7 @@ export async function expandPlan(env: Env, parent: JobNodeRow, plan: unknown): P
   // malformed JSON rather than returning NULL — so one corrupt envelope on any
   // sibling would take down the whole expansion with a SQLite error instead of
   // a refusal. A corrupt sibling reserves 0 here and is refused on its own
-  // account when IT tries to act (`useGate.ts`); it must not be able to make
+  // account when IT tries to act (`nodeAuthority.ts` (@bullmoose/scheduling)); it must not be able to make
   // another node's plan unanswerable.
   const usage = await env.DB.prepare(
     `SELECT COUNT(*) AS n,

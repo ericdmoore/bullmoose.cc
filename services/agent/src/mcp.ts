@@ -5,6 +5,17 @@ import {
   type MethodDomain,
   type Principal,
 } from "@bullmoose/auth-core/principal";
+import {
+  principalForInvocation,
+  resolveInvocationToken,
+  type InvocationIdentity,
+} from "@bullmoose/auth-core/invocation";
+import {
+  describeDenial,
+  effectiveNodeAuthority,
+  mayUse,
+  type NodeAuthority,
+} from "@bullmoose/scheduling";
 import { EMAIL_TOOLS } from "./emailTools.js";
 import { INTROSPECT_TOOLS } from "./introspectTools.js";
 import { ToolError } from "./jmapBridge.js";
@@ -43,6 +54,49 @@ import type { Env } from "./models.js";
  * `_meta`) and its own identity: a bearer token resolved to a principal,
  * with every tool call authorized against the TARGET account (token ∩
  * grant) and audited — never a self-asserted accountId.
+ *
+ * ## The third credential, and the gap it closes (s17)
+ *
+ * This surface used to gate on the BEARER'S PRINCIPAL and nothing else, which
+ * meant a delegated invocation's authority envelope — the `{tools,
+ * credentials, budgetMicros}` a Job's chain narrowed down to it — had no
+ * consumer here at all: MCP could not map a bearer to one invocation, so there
+ * was nothing to intersect with. A `bmi_` per-invocation token
+ * (`@bullmoose/auth-core/invocation`) names the invocation, and this file is
+ * its first consumer.
+ *
+ * Two rules, and neither is optional:
+ *
+ *  1. The envelope is **ANDed after** the standing check, never substituted
+ *     for it. `authorizeAccount` still decides which account and which scope;
+ *     `mayUse` can then only take things away. See `envelopeAllows`.
+ *  2. It is re-derived **live**, per request, from rows the holder cannot
+ *     write. Nothing is read off the token row but the invocation's id, so
+ *     narrowing a binding mid-flight bites a token that is already open.
+ *
+ * A `bmi_` token reaches exactly one account and carries a fixed, deliberately
+ * coarse standing scope set (`INVOCATION_STANDING_SCOPES` — no vault, no
+ * admin, no send). The narrowing is the envelope, not the scopes.
+ *
+ * ⚠️ **WHERE THIS STOPS, NAMED SO IT IS A BOUNDARY AND NOT AN OVERSIGHT.** An
+ * invocation with no `job_id` is not a delegation: `effectiveNodeAuthority`
+ * answers `{tools: null, …}` for it — the DefaultCase `data-plane.sql` states
+ * as "NULL = no envelope = an ordinary invocation" — and `mayUse` then admits
+ * every tool. So for an ORDINARY mail-triggered invocation this gate narrows
+ * the account (one, never the principal's whole reach), the realm (no vault),
+ * the verbs (no send, no admin) and the LIFETIME (the token dies with the
+ * work), and it does NOT narrow the tool set. Only a Job node carries an
+ * envelope for the tool axis to bite.
+ *
+ * Making the binding's `config_json.jobs.tools` bound every invocation of that
+ * binding — not only its Job nodes — would close that, and it is one
+ * `intersectAuthority` away. It is deliberately NOT done here, because
+ * `bindingCeiling` is documented as the top of a JOB's chain and a second
+ * reading of `config_json.jobs` invented at a consumer is exactly the drift
+ * that module exists to prevent. It is a decision about what that key MEANS,
+ * and it belongs with whoever owns the key.
+ * `invocationToken.test.ts` asserts this boundary rather than leaving it to
+ * be discovered.
  *
  * As of s02 T1 this route is PUBLIC: the `x-internal-token` network ACL came
  * off /mcp (it stays on /drain and /internal/*), because a third-party client
@@ -359,11 +413,25 @@ export async function handleMcp(request: Request, env: Env, authenticated?: Prin
   // Kept only when the caller authenticated with their own bm_ credential —
   // see ToolContext.rawBearer for the single consumer and the rule.
   let rawBearer: string | undefined;
+  // s17 — the THIRD credential this surface accepts, and the first one that
+  // names something narrower than a principal. Tried only after `verifyBearer`
+  // has already said no, which costs nothing: `parseToken` and
+  // `parseInvocationToken` are disjoint, so exactly one of them can match and
+  // the loser returns before touching D1.
+  let invocation: InvocationIdentity | null = null;
   if (!principal) {
     const authz = request.headers.get("Authorization") ?? "";
     const raw = authz.startsWith("Bearer ") ? authz.slice(7) : null;
     principal = raw ? await verifyBearer(env.DB, raw) : null;
     if (principal && raw) rawBearer = raw;
+    if (!principal && raw) {
+      invocation = await resolveInvocationToken(env.DB, raw);
+      // The invocation's own principal, reaching EXACTLY its own account. Note
+      // `rawBearer` stays undefined: `revoke_app` forwards the human's real
+      // credential to the AS, and an invocation is not a human.
+      principal = invocation ? await principalForInvocation(env.DB, invocation) : null;
+      if (!principal) invocation = null;
+    }
   }
   if (!principal) return rpcError(null, -32001, "unauthorized", 401);
 
@@ -454,6 +522,28 @@ export async function handleMcp(request: Request, env: Env, authenticated?: Prin
     }
   }
 
+  // ---- the envelope (s17) -----------------------------------------------
+  //
+  // Resolved ONCE per request, and LIVE: `effectiveNodeAuthority` re-derives
+  // `binding ∩ env(root) ∩ … ∩ env(this node)` from the rows every time, so an
+  // operator narrowing `config_json.jobs` — or an ancestor's binding being
+  // disabled — bites a token that is already open. Nothing is read from the
+  // token row but the invocation's identity.
+  //
+  // ⚠️ `!resolved.ok` is a DENIAL, never "no envelope". A corrupt, absent,
+  // grafted or cyclic chain means the bound is UNKNOWN, and an unknown bound is
+  // not a permissive one. Reading this as "nothing to enforce" is precisely the
+  // mistake that would make the gate decorative, so it refuses the whole
+  // request rather than each tool.
+  let envelope: { invocationId: string; effective: NodeAuthority } | null = null;
+  if (invocation) {
+    const resolved = await effectiveNodeAuthority(env, invocation.accountId, invocation.node);
+    if (!resolved.ok) {
+      return rpcError(msg.id, -32004, `invocation authority unresolvable: ${resolved.note}`, 403);
+    }
+    envelope = { invocationId: invocation.invocationId, effective: resolved.effective };
+  }
+
   switch (msg.method) {
     case "server/discover":
       return rpcResult(msg.id, {
@@ -477,24 +567,73 @@ export async function handleMcp(request: Request, env: Env, authenticated?: Prin
         // "this tool needs the calendar scope" is not a secret — it is the
         // same sentence the refusal would have said, delivered before the
         // round trip instead of after it.
-        tools: TOOLS.map(({ name, description, inputSchema, scope, domain, accountless }) => ({
-          name,
-          description,
-          inputSchema,
-          scope,
-          domain,
-          // Absent rather than false for the 28 account-scoped tools, so the
-          // flag reads as the exception it is.
-          ...(accountless ? { accountless: true } : {}),
-        })),
+        //
+        // s17: an INVOCATION token sees a narrower list. Visibility and
+        // dispatch are gated by the same two predicates in the same order —
+        // the standing scope check, then the envelope — so a tool that is
+        // listed is a tool that would run, and a tool that is hidden would
+        // have been refused. `tools/call` re-runs both; this is not the gate,
+        // it is the gate told early.
+        tools: visibleTools(principal, envelope).map(
+          ({ name, description, inputSchema, scope, domain, accountless }) => ({
+            name,
+            description,
+            inputSchema,
+            scope,
+            domain,
+            // Absent rather than false for the 28 account-scoped tools, so the
+            // flag reads as the exception it is.
+            ...(accountless ? { accountless: true } : {}),
+          }),
+        ),
         ttlMs: TOOLS_LIST_TTL_MS,
         cacheScope: "session",
       });
     case "tools/call":
-      return handleToolCall(msg, request, env, principal, rawBearer);
+      return handleToolCall(msg, request, env, principal, rawBearer, envelope);
     default:
       return rpcError(msg.id, -32601, `method not found: ${msg.method}`, 404);
   }
+}
+
+/**
+ * THE ENVELOPE, ANDed — never substituted for the standing check (s17).
+ *
+ * `mayUse` is a DENIAL function. `effective.tools === null` means "no level of
+ * this chain declared the tools axis", which is the DefaultCase the Job columns
+ * were built with — it is NOT a grant, and a caller that read it as one would
+ * hand an unfaceted invocation the whole surface. So this only ever narrows
+ * what the standing check already allowed, and every caller runs the standing
+ * check first.
+ *
+ * `envelope === null` means the caller is an ORDINARY bearer, which is a
+ * different thing again from `effective.tools === null`: there is no invocation
+ * in play, so there is no delegation to enforce and the surface behaves exactly
+ * as it did before s17. The two nulls are deliberately different types so they
+ * cannot be confused at a call site.
+ */
+function envelopeAllows(
+  envelope: { invocationId: string; effective: NodeAuthority } | null,
+  toolName: string,
+): { ok: true } | { ok: false; detail: string } {
+  if (!envelope) return { ok: true };
+  const verdict = mayUse(envelope.effective, { kind: "tool", name: toolName });
+  if (verdict.ok) return { ok: true };
+  return {
+    ok: false,
+    detail: `invocation ${envelope.invocationId}: ${describeDenial(verdict.denial)}`,
+  };
+}
+
+/** What `tools/list` shows: standing scope ∧ envelope, in that order. */
+function visibleTools(
+  principal: Principal,
+  envelope: { invocationId: string; effective: NodeAuthority } | null,
+): ToolDef[] {
+  if (!envelope) return TOOLS;
+  return TOOLS.filter(
+    (t) => principalHasScope(principal, t.scope) && envelopeAllows(envelope, t.name).ok,
+  );
 }
 
 async function handleToolCall(
@@ -503,6 +642,7 @@ async function handleToolCall(
   env: Env,
   principal: Principal,
   rawBearer?: string,
+  envelope: { invocationId: string; effective: NodeAuthority } | null = null,
 ): Promise<Response> {
   const params = (msg.params ?? {}) as { name?: string; arguments?: Record<string, unknown> };
   // The routable Mcp-Name header, when present, must agree with the body.
@@ -516,11 +656,16 @@ async function handleToolCall(
   let args = params.arguments ?? {};
 
   // A principal-scoped tool (whoami) has no account to gate on. Scope still
-  // applies; the token ∩ grant intersection does not.
+  // applies; the token ∩ grant intersection does not. The envelope applies to
+  // this branch too — an accountless tool is still a TOOL, and a delegation
+  // that did not carry it does not acquire it by the tool being about the
+  // principal.
   if (tool.accountless) {
     if (!principalHasScope(principal, tool.scope)) {
       return rpcError(msg.id, -32004, `token lacks the "${tool.scope}" scope`, 403);
     }
+    const allowed = envelopeAllows(envelope, tool.name);
+    if (!allowed.ok) return rpcError(msg.id, -32004, allowed.detail, 403);
     return runTool(tool, msg, env, principal, args, rawBearer);
   }
 
@@ -546,6 +691,12 @@ async function handleToolCall(
     const detail = decision.reason === "accountNotFound" ? "account not found" : decision.detail;
     return rpcError(msg.id, -32004, detail, 403);
   }
+  // …AND THEN the envelope (s17). Strictly after: `authorizeAccount` is the
+  // standing check the delegation narrows, and the order is the invariant —
+  // an envelope consulted INSTEAD of the standing check would let an
+  // invocation reach an account or a scope its principal never held.
+  const allowed = envelopeAllows(envelope, tool.name);
+  if (!allowed.ok) return rpcError(msg.id, -32004, allowed.detail, 403);
   if (decision.auditGrant) {
     await env.DB.prepare(
       `INSERT INTO grant_audit (grant_id, principal, account_id, method, at)

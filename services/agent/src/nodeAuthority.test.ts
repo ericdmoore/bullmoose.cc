@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { fakeEnv } from "@bullmoose/test-fakes";
-import { foldChain, type NodeAuthority } from "@bullmoose/scheduling";
+import {
+  authorizeNodeUse,
+  effectiveNodeAuthority,
+  foldChain,
+  type NodeAuthority,
+} from "@bullmoose/scheduling";
 import agentWorker from "./index";
 import { expandPlan, getJobNode, startJob } from "./jobs";
-import { authorizeNodeUse, effectiveNodeAuthority } from "./useGate";
 import type { Env } from "./models";
 
 /**
