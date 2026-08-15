@@ -239,6 +239,57 @@ describe("A bmi_ token is REFUSED by every surface that does not understand invo
     }
   });
 
+  /**
+   * THE GRAMMAR, ISOLATED AS THE THING DOING THE WORK.
+   *
+   * The test above would still pass if `parseToken` were relaxed to accept
+   * `bmi_`, because the id NAMESPACES differ too (`tk_` vs `it_`) so the
+   * lookup would find nothing. That is a real second barrier and worth having,
+   * but it means the test above does not, on its own, pin the regex.
+   *
+   * So: seed a `tokens` row whose id and secret are the invocation token's,
+   * making `bm_<id>_<secret>` a fully valid device credential with the `vault`
+   * scope. The only difference between the two strings is now one character of
+   * grammar — and it must be the whole difference.
+   */
+  it("one character of grammar is the whole difference — same id, same secret, opposite answers", async () => {
+    const s = await world();
+    const parsed = parseInvocationToken(s.leaf)!;
+    const twelveHex = parsed.id.replace("it_", "");
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(parsed.secret),
+    );
+    const secretHash = [...new Uint8Array(digest)]
+      .map((x) => x.toString(16).padStart(2, "0"))
+      .join("");
+    s.w.db.seed("tokens", [
+      {
+        id: `tk_${twelveHex}`,
+        principal_id: PRINCIPAL,
+        kind: "bearer",
+        secret_hash: secretHash,
+        name: "collision",
+        scopes: JSON.stringify(["mail", "vault"]),
+        created_at: 1,
+        expires_at: null,
+        last_used_at: Date.now(),
+      },
+    ]);
+
+    const vault = (token: string) =>
+      handleVault(
+        new Request("https://agent/vault/credentials", {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        s.env,
+      );
+    // `bm_` + these bytes: a real credential, and one that can read the vault.
+    expect((await vault(`bm_${twelveHex}_${parsed.secret}`)).status).toBe(200);
+    // `bmi_` + the SAME bytes: refused, by the regex and nothing else.
+    expect((await vault(s.leaf)).status).toBe(401);
+  });
+
   it("the invocation token is also refused as a Basic app password", async () => {
     const s = await world();
     const basic = btoa(`cj@bullmoose.cc:${s.leaf}`);
