@@ -2,14 +2,58 @@
  * Minimal RFC 5322 / MIME *builder* for drafts created via Email/set.
  * (Inbound parsing is postal-mime's job; this is the write side.)
  *
- * Supports text/plain, text/html, or multipart/alternative with both.
- * Bodies are base64-encoded — line-length safe for any content.
- * Attachment parts are future work (drafts with uploads reference blobs).
+ * Supports text/plain, text/html, or multipart/alternative with both, plus
+ * binary attachments — CID-referenced inline parts in a multipart/related,
+ * and ordinary file attachments in a multipart/mixed:
+ *
+ *   multipart/mixed
+ *   ├── multipart/related
+ *   │   ├── multipart/alternative
+ *   │   │   ├── text/plain
+ *   │   │   └── text/html      (references cid: parts)
+ *   │   └── inline parts       (Content-ID)
+ *   └── attachment parts
+ *
+ * Empty levels collapse: with no attachments at all the output is byte-for-byte
+ * what this builder emitted before they existed, which `index.test.ts` pins
+ * against golden strings. That equivalence is not luck — the node/multipart
+ * shape below is lifted from `packages/cli/src/mime.ts`, whose single-part and
+ * multipart/alternative serialization is already identical to the flat
+ * header-pushing version this replaced.
+ *
+ * Bodies and attachments are base64-encoded (RFC 2045 §6.8), wrapped at 76
+ * columns — line-length safe for any content, and no CTE guessing.
  */
 
 export interface MimeAddress {
   name?: string;
   email: string;
+}
+
+/**
+ * One attachment, with its bytes ALREADY resolved.
+ *
+ * The builder never fetches: a `blobId` is an authorization question (whose
+ * blob is it?) and this package has no store and no notion of an account, so
+ * resolving one here would put an access-control decision somewhere it cannot
+ * be made. Callers fetch under the caller's own account scope and hand over
+ * bytes — see `createDraft` in services/jmap/src/methods/email.ts.
+ */
+export interface MimeAttachment {
+  /** Media type, e.g. "application/pdf". Defaulted by the caller. */
+  type: string;
+  /** Raw bytes. Base64-encoded into the part. */
+  content: Uint8Array;
+  /** Filename for Content-Disposition; null/absent omits the parameter. */
+  name?: string | null;
+  /**
+   * Content-ID *without* angle brackets. Its presence — not the disposition —
+   * is what puts the part in a multipart/related next to the body, because
+   * `related` exists precisely to resolve `cid:` references from the HTML.
+   */
+  cid?: string | null;
+  /** RFC 2183 disposition. Defaults to "inline" with a cid, "attachment" without. */
+  disposition?: string | null;
 }
 
 export interface DraftMessage {
@@ -26,6 +70,7 @@ export interface DraftMessage {
   html?: string;
   /** Verbatim extra header lines, e.g. "Auto-Submitted: auto-replied". */
   extraHeaders?: string[];
+  attachments?: MimeAttachment[];
 }
 
 const CRLF = "\r\n";
@@ -49,45 +94,119 @@ export function buildMime(draft: DraftMessage): Uint8Array {
   for (const h of draft.extraHeaders ?? []) headers.push(stripCtl(h));
   headers.push("MIME-Version: 1.0");
 
-  let body: string;
-  const text = draft.text;
-  const html = draft.html;
+  const body = bodyNode(draft);
+  return new TextEncoder().encode(
+    headers.join(CRLF) + CRLF + body.headers + CRLF + CRLF + body.content,
+  );
+}
 
-  if (text !== undefined && html !== undefined) {
-    const boundary = `=_bm_${crypto.randomUUID().replaceAll("-", "")}`;
-    headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
-    body = [
-      `--${boundary}`,
-      ...textPart("text/plain", text),
-      `--${boundary}`,
-      ...textPart("text/html", html),
-      `--${boundary}--`,
-      "",
-    ].join(CRLF);
-  } else if (html !== undefined) {
-    const [typeHeader, encHeader, encoded] = inlinePart("text/html", html);
-    headers.push(typeHeader, encHeader);
-    body = encoded;
-  } else {
-    const [typeHeader, encHeader, encoded] = inlinePart("text/plain", text ?? "");
-    headers.push(typeHeader, encHeader);
-    body = encoded;
+interface Node {
+  /** Content-Type (+ transfer-encoding etc.) header lines, CRLF-joined, leading CRLF-free. */
+  headers: string;
+  content: string;
+}
+
+/**
+ * The body tree, innermost first. Each wrapper is added only if it has
+ * occupants, so a plain text draft is still a bare text/plain part with the
+ * Content-Type on the top-level header block.
+ */
+function bodyNode(draft: DraftMessage): Node {
+  let node = alternativeNode(draft);
+  const attachments = draft.attachments ?? [];
+  // `related` holds exactly the cid-referenced parts; everything else is a
+  // sibling of the body in `mixed`. See MimeAttachment.cid.
+  const related = attachments.filter((a) => cidOf(a) !== "");
+  const mixed = attachments.filter((a) => cidOf(a) === "");
+
+  if (related.length > 0) {
+    node = multipart("related", [node, ...related.map(attachmentNode)]);
   }
-
-  return new TextEncoder().encode(headers.join(CRLF) + CRLF + CRLF + body);
+  if (mixed.length > 0) {
+    node = multipart("mixed", [node, ...mixed.map(attachmentNode)]);
+  }
+  return node;
 }
 
-function textPart(type: string, content: string): string[] {
-  const [typeHeader, encHeader, encoded] = inlinePart(type, content);
-  return [typeHeader, encHeader, "", encoded];
+function alternativeNode(draft: DraftMessage): Node {
+  const parts: Node[] = [];
+  if (draft.text !== undefined) parts.push(textPart("text/plain", draft.text));
+  if (draft.html !== undefined) parts.push(textPart("text/html", draft.html));
+  if (parts.length === 0) parts.push(textPart("text/plain", ""));
+  if (parts.length === 1) return parts[0] as Node;
+  return multipart("alternative", parts);
 }
 
-function inlinePart(type: string, content: string): [string, string, string] {
-  return [
-    `Content-Type: ${type}; charset=utf-8`,
-    "Content-Transfer-Encoding: base64",
-    wrap76(base64Utf8(content)),
-  ];
+function multipart(subtype: string, parts: Node[]): Node {
+  const boundary = `=_bm_${crypto.randomUUID().replaceAll("-", "")}`;
+  const content = [
+    ...parts.flatMap((p) => [`--${boundary}`, p.headers, "", p.content]),
+    `--${boundary}--`,
+    "",
+  ].join(CRLF);
+  return {
+    headers: `Content-Type: multipart/${subtype}; boundary="${boundary}"`,
+    content,
+  };
+}
+
+function textPart(type: string, content: string): Node {
+  return {
+    headers: [`Content-Type: ${type}; charset=utf-8`, "Content-Transfer-Encoding: base64"].join(
+      CRLF,
+    ),
+    content: wrap76(base64Bytes(new TextEncoder().encode(content))),
+  };
+}
+
+/**
+ * A binary part. EVERY header value here is attacker-reachable through
+ * `Email/set create` — `type`, `name` and `cid` all arrive as client JSON —
+ * so each goes through the same sanitising chokepoint as the top-level
+ * headers (see `stripCtl`). A CRLF in `type` would otherwise forge part
+ * headers, and one in `name` would escape the quoted-string parameter.
+ */
+function attachmentNode(part: MimeAttachment): Node {
+  const cid = cidOf(part);
+  const disposition = dispositionOf(part);
+  const headers = [`Content-Type: ${stripCtl(part.type)}`, "Content-Transfer-Encoding: base64"];
+  if (cid !== "") headers.push(`Content-ID: <${cid}>`);
+  headers.push(`Content-Disposition: ${disposition}${filenameParam(part.name)}`);
+  return { headers: headers.join(CRLF), content: wrap76(base64Bytes(part.content)) };
+}
+
+/** Normalized Content-ID, or "" when the part is not cid-referenced. */
+function cidOf(part: MimeAttachment): string {
+  return part.cid ? msgId(part.cid) : "";
+}
+
+function dispositionOf(part: MimeAttachment): string {
+  const given = part.disposition ? stripCtl(part.disposition).trim() : "";
+  if (given !== "") return given.replaceAll(/[;\s]+/g, "");
+  return part.cid ? "inline" : "attachment";
+}
+
+/**
+ * `; filename=...` for a Content-Disposition, or "" when there is no name.
+ *
+ * ASCII names take the RFC 2183 quoted-string form. Non-ASCII takes RFC 2231's
+ * `filename*` extended value rather than raw UTF-8 in a quoted-string, which is
+ * what makes "rapport-café.pdf" survive the trip instead of arriving mojibake.
+ */
+function filenameParam(name: string | null | undefined): string {
+  if (!name) return "";
+  const safe = stripCtl(name).replaceAll(/["\\]/g, "");
+  if (safe === "") return "";
+  return isAscii(safe) ? `; filename="${safe}"` : `; filename*=utf-8''${rfc2231(safe)}`;
+}
+
+function rfc2231(value: string): string {
+  // encodeURIComponent leaves !'()*~ unescaped; the first four are outside
+  // RFC 2231's attribute-char, so escape them by hand.
+  return encodeURIComponent(value).replaceAll(
+    /['()*!]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
 }
 
 // ---- helpers ---------------------------------------------------------
@@ -121,10 +240,10 @@ export function formatAddress(a: MimeAddress): string {
  *
  * This is the header-injection chokepoint. Untrusted values reach header
  * lines from several directions — an inbound Subject echoed by the vacation
- * responder or an agent auto-reply, a display name, a Message-ID — and a
- * decoded CRLF in any of them ends the field and starts an attacker-chosen
- * one (`Bcc:` to exfiltrate, or a doubled CRLF to forge the whole body,
- * DKIM-signed by us).
+ * responder or an agent auto-reply, a display name, a Message-ID, and since
+ * attachments landed, a part's type/filename/Content-ID — and a decoded CRLF
+ * in any of them ends the field and starts an attacker-chosen one (`Bcc:` to
+ * exfiltrate, or a doubled CRLF to forge the whole body, DKIM-signed by us).
  *
  * Sanitising lives in the BUILDER rather than at each caller, so a new
  * caller cannot forget. Folding to a single space rather than deleting
@@ -141,7 +260,8 @@ function stripCtl(value: string): string {
 /**
  * A msg-id sits inside angle brackets, so `<`, `>` or whitespace would
  * terminate or split the field even without a CRLF. `inReplyTo` is copied
- * straight off inbound mail — treat it as hostile.
+ * straight off inbound mail — treat it as hostile. Same for an attachment's
+ * `cid`, which the client chooses.
  */
 function msgId(value: string): string {
   return stripCtl(value).replace(/[<>\s]+/g, "");
@@ -163,7 +283,14 @@ function isAscii(s: string): boolean {
 }
 
 function base64Utf8(s: string): string {
-  const bytes = new TextEncoder().encode(s);
+  return base64Bytes(new TextEncoder().encode(s));
+}
+
+/**
+ * `btoa` over a binary string, not `Buffer` — this package is bundled into
+ * Workers, where node:buffer is only present under nodejs_compat.
+ */
+function base64Bytes(bytes: Uint8Array): string {
   let bin = "";
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) {
