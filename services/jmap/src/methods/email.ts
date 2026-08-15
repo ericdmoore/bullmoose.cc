@@ -1,11 +1,16 @@
 import PostalMime from "postal-mime";
-import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
+import {
+  MAX_ATTACHMENT_BYTES_PER_EMAIL,
+  MethodError,
+  type MethodRegistry,
+} from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
-import { buildMime } from "@bullmoose/mime";
+import { buildMime, type MimeAttachment } from "@bullmoose/mime";
 import {
   htmlToIndexText,
   normalizeMessageId,
   previewText,
+  type AttachmentMeta,
   type EmailAddress,
   type EmailFilter,
   type EmailRow,
@@ -304,10 +309,7 @@ async function emailSet(
     try {
       r.created[cid] = await createDraft(store, access, spec, r);
     } catch (err) {
-      r.notCreated[cid] =
-        err instanceof MethodError
-          ? setError("invalidProperties", err.description ?? err.type)
-          : setError("serverFail", String(err));
+      r.notCreated[cid] = toCreateSetError(err);
     }
   }
 
@@ -484,6 +486,10 @@ async function createDraft(
   const text = resolveBodyPart(spec.textBody, bodyValues);
   const html = resolveBodyPart(spec.htmlBody, bodyValues);
 
+  // Attachments (RFC 8621 §4.1.4 EmailBodyPart[]). Resolved — and, crucially,
+  // AUTHORIZED — before a single byte reaches the builder.
+  const attachments = await resolveAttachments(store, access, spec.attachments);
+
   const messageId = `${crypto.randomUUID()}@${from[0]?.email.split("@")[1] ?? "localhost"}`;
   const raw = buildMime({
     from,
@@ -496,6 +502,10 @@ async function createDraft(
     date: new Date(),
     ...(text !== undefined ? { text } : {}),
     ...(html !== undefined ? { html } : {}),
+    // Absent, not empty, when there are none: `buildMime` collapses empty
+    // levels either way, but this keeps the no-attachment call byte-identical
+    // to the one it made before attachments existed.
+    ...(attachments.length > 0 ? { attachments: attachments.map((a) => a.mime) } : {}),
   });
 
   const rawBuf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
@@ -521,8 +531,11 @@ async function createDraft(
     bodyText: text && text.trim() !== "" ? text : htmlToIndexText(html),
     size: raw.byteLength,
     receivedAt,
-    hasAttachment: false,
-    attachments: [],
+    // Same rule as the INBOUND path (`importOne` below, and ingest): a CID
+    // image the HTML displays is not "an attachment" as a user means it, so it
+    // must not raise the paperclip. Disposition decides, not part count.
+    hasAttachment: attachments.some((a) => a.meta.disposition !== "inline"),
+    attachments: attachments.map((a) => a.meta),
     mailboxIds,
     keywords,
   });
@@ -531,6 +544,208 @@ async function createDraft(
   for (const mb of mailboxIds) r.mailboxesTouched.add(mb);
 
   return { id, blobId, threadId, size: raw.byteLength };
+}
+
+// ---- attachments on create -------------------------------------------
+
+interface ResolvedAttachment {
+  /** What the builder needs: bytes plus part headers. */
+  mime: MimeAttachment;
+  /** What `Email/get` reads back, so a create round-trips. */
+  meta: AttachmentMeta;
+}
+
+/** One `attachments` entry as the client sent it, after shape validation. */
+interface AttachmentSpec {
+  blobId: string;
+  type: string;
+  name: string | null;
+  cid: string | null;
+  disposition: string;
+}
+
+/**
+ * Turn `attachments: EmailBodyPart[]` from an `Email/set create` into bytes.
+ *
+ * ⚠️ THIS IS AN AUTHORIZATION BOUNDARY, not a lookup helper.
+ *
+ * A `blobId` is a client-supplied string, so it is attacker-CHOSEN. If a blob
+ * belonging to another account could be attached, `Email/set` would be a
+ * cross-account read primitive: compose a draft citing the victim's blobId,
+ * then read the victim's file out of the message you now own. There is no
+ * quota, rate limit or audit trail that makes that acceptable — it has to be
+ * impossible.
+ *
+ * It is made impossible structurally rather than by a comparison. R2 keys are
+ * `mail/{tenantId}/{accountId}/blobs/{blobId}` (`blobKey` in
+ * packages/mailstore), so `headBlob`/`getBlob` can only ever address objects
+ * inside ONE account's namespace — and the tenant and account passed here come
+ * from `access`, the AccountAccess that `requireAccountScopes` already
+ * authorized, never from the request body. A foreign blobId therefore does not
+ * resolve to a different object; it resolves to nothing.
+ *
+ * Note that `putBlob` is content-addressed, so two accounts holding identical
+ * bytes share a blobId under two different keys. That is not a leak: the
+ * caller reads their own copy, which they already had.
+ *
+ * A blob that does not resolve is a REFUSAL (`blobNotFound`), never a skip.
+ * Silently dropping the part would create the worst outcome available here —
+ * a user who believes they sent a document they did not send.
+ *
+ * Size is settled in a first pass over metadata only (`headBlob` transfers no
+ * body). Checking after the fetch would mean loading the bytes we are about to
+ * reject, i.e. OOMing the isolate on exactly the input the limit exists to
+ * refuse.
+ */
+async function resolveAttachments(
+  store: Mailstore,
+  access: { accountId: string; tenantId: string },
+  value: unknown,
+): Promise<ResolvedAttachment[]> {
+  const specs = parseAttachmentSpecs(value);
+  if (specs.length === 0) return [];
+
+  // Pass 1 — ownership + size. No bodies.
+  const sizes: number[] = [];
+  let total = 0;
+  for (const [i, spec] of specs.entries()) {
+    const head = await store.headBlob(access.tenantId, access.accountId, spec.blobId);
+    if (!head) {
+      throw new SetErrorSignal(
+        "blobNotFound",
+        `no such blob in this account: ${spec.blobId}`,
+        [`attachments/${i}/blobId`],
+      );
+    }
+    total += head.size;
+    if (total > MAX_ATTACHMENT_BYTES_PER_EMAIL) {
+      throw new SetErrorSignal(
+        "tooLarge",
+        `attachments exceed ${MAX_ATTACHMENT_BYTES_PER_EMAIL} bytes for one message`,
+        ["attachments"],
+      );
+    }
+    sizes.push(head.size);
+  }
+
+  // Pass 2 — bytes, from the same account-scoped keyspace.
+  const out: ResolvedAttachment[] = [];
+  for (const [i, spec] of specs.entries()) {
+    const obj = await store.getBlob(access.tenantId, access.accountId, spec.blobId);
+    if (!obj) {
+      // Only reachable if the blob was deleted between the two passes.
+      throw new SetErrorSignal("blobNotFound", `blob vanished mid-write: ${spec.blobId}`, [
+        `attachments/${i}/blobId`,
+      ]);
+    }
+    const content = new Uint8Array(await obj.arrayBuffer());
+    out.push({
+      mime: {
+        type: spec.type,
+        content,
+        name: spec.name,
+        cid: spec.cid,
+        disposition: spec.disposition,
+      },
+      meta: {
+        blobId: spec.blobId,
+        type: spec.type,
+        name: spec.name,
+        size: sizes[i] as number,
+        cid: spec.cid,
+        disposition: spec.disposition,
+        // The Files cross-link is ingest's to set (s03.B T3); a draft's
+        // attachment is not side-stepped into a FileNode.
+        fileNodeId: null,
+      },
+    });
+  }
+  return out;
+}
+
+function parseAttachmentSpecs(value: unknown): AttachmentSpec[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new SetErrorSignal("invalidProperties", "attachments must be an EmailBodyPart[]", [
+      "attachments",
+    ]);
+  }
+  return value.map((raw, i) => {
+    const at = (p: string) => [`attachments/${i}/${p}`];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new SetErrorSignal("invalidProperties", "each attachment must be an object", [
+        `attachments/${i}`,
+      ]);
+    }
+    const part = raw as Record<string, unknown>;
+    if (typeof part.blobId !== "string" || part.blobId === "") {
+      throw new SetErrorSignal("invalidProperties", "an attachment requires a blobId", at("blobId"));
+    }
+    if (part.type !== undefined && part.type !== null && typeof part.type !== "string") {
+      throw new SetErrorSignal("invalidProperties", "type must be a string", at("type"));
+    }
+    if (part.name !== undefined && part.name !== null && typeof part.name !== "string") {
+      throw new SetErrorSignal("invalidProperties", "name must be a string", at("name"));
+    }
+    if (part.cid !== undefined && part.cid !== null && typeof part.cid !== "string") {
+      throw new SetErrorSignal("invalidProperties", "cid must be a string", at("cid"));
+    }
+    if (
+      part.disposition !== undefined &&
+      part.disposition !== null &&
+      typeof part.disposition !== "string"
+    ) {
+      throw new SetErrorSignal("invalidProperties", "disposition must be a string", at("disposition"));
+    }
+    const cid = typeof part.cid === "string" && part.cid !== "" ? part.cid : null;
+    return {
+      blobId: part.blobId,
+      // RFC 8621 leaves `type` optional; octet-stream is the RFC 2046 §4.5.1
+      // default for "bytes of unknown kind".
+      type: typeof part.type === "string" && part.type !== "" ? part.type : "application/octet-stream",
+      name: typeof part.name === "string" && part.name !== "" ? part.name : null,
+      cid,
+      // A cid-carrying part is inline unless the client says otherwise; this
+      // is also the value `hasAttachment` is decided on, so it is stored, not
+      // just serialized.
+      disposition:
+        typeof part.disposition === "string" && part.disposition !== ""
+          ? part.disposition
+          : cid
+            ? "inline"
+            : "attachment",
+    };
+  });
+}
+
+/**
+ * A SetError raised from inside `createDraft`, carrying its REAL RFC 8621
+ * type. Without this every failure collapsed into `invalidProperties`, so a
+ * client could not tell "that blob is not yours" (`blobNotFound`) from "that
+ * is too big to send" (`tooLarge`) from a malformed argument — and only the
+ * middle one is fixed by attaching a smaller file. Same shape as the one in
+ * calendars.ts/filenode.ts.
+ */
+class SetErrorSignal extends Error {
+  constructor(
+    public type: string,
+    public description?: string,
+    public properties?: string[],
+  ) {
+    super(description ?? type);
+  }
+}
+
+function toCreateSetError(err: unknown): SetError {
+  if (err instanceof SetErrorSignal) {
+    return {
+      type: err.type,
+      ...(err.description ? { description: err.description } : {}),
+      ...(err.properties ? { properties: err.properties } : {}),
+    };
+  }
+  if (err instanceof MethodError) return setError("invalidProperties", err.description ?? err.type);
+  return setError("serverFail", String(err));
 }
 
 // ---- Email/import (RFC 8621 §4.8) --------------------------------------

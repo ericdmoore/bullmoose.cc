@@ -1,9 +1,16 @@
 /**
- * MIME builder for the CLI's send path — a superset of the server's
- * @bullmoose/mime (which the CLI can't import at runtime: the workspace
- * package exports TS source for wrangler's bundler). This one adds what
- * rich sends need: inline CID images (multipart/related) and file
- * attachments (multipart/mixed).
+ * MIME builder for the CLI's send path (which the CLI can't get from the
+ * server's @bullmoose/mime at runtime: that workspace package exports TS
+ * source for wrangler's bundler, and this is plain compiled Node). Inline CID
+ * images (multipart/related) and file attachments (multipart/mixed).
+ *
+ * No longer a superset: `@bullmoose/mime` grew the same nested-multipart
+ * structure when Email/set learned to attach blobs, and its node/multipart
+ * shape was lifted from here so the two emit the same bytes for the same
+ * input. What still differs is `extraHeaders` (there only), `Buffer` vs
+ * `btoa` base64 (here only), and the fact that this one takes no `disposition`
+ * — it infers one from which list a part is in. A structural fix means giving
+ * `@bullmoose/mime` a build step and dual exports; see its README.
  *
  *   multipart/mixed
  *   ├── multipart/related

@@ -48,12 +48,34 @@ export const contactsCapability = {
   mayCreateAddressBook: true,
 } as const;
 
+/**
+ * Ceiling on the TOTAL attachment bytes in one `Email/set` create, enforced in
+ * `services/jmap/src/methods/email.ts` and advertised below as
+ * `maxSizeAttachmentsPerEmail` — one constant so the promise and the guard
+ * cannot drift.
+ *
+ * A Worker isolate has a hard 128 MB memory limit, and an attachment is
+ * resident several times over on its way into a message: the raw bytes off R2
+ * (N), the base64 string (4N/3 characters — and a JS string is UTF-16, so 8N/3
+ * bytes), the 76-column line array plus its join (another ~8N/3), and finally
+ * the whole message re-encoded to UTF-8. Peak is roughly 6-8x the raw total,
+ * so 10 MB of attachments costs ~60-80 MB and anything much larger gets the
+ * isolate killed mid-write — which reaches the user as a draft that silently
+ * vanished, not as an error.
+ *
+ * This was 50_000_000, a number the isolate could never have honoured: a
+ * client that believed the advertisement and uploaded 50 MB got an OOM instead
+ * of a `tooLarge`. 10 MB is also close to the practical inbound ceiling of the
+ * MTAs on the other end, since base64 inflates it to ~13.3 MB on the wire.
+ */
+export const MAX_ATTACHMENT_BYTES_PER_EMAIL = 10_000_000;
+
 /** RFC 8621 §1.3 mail capability object (per-account). */
 export const mailCapability = {
   maxMailboxesPerEmail: null,
   maxMailboxDepth: 10,
   maxSizeMailboxName: 200,
-  maxSizeAttachmentsPerEmail: 50_000_000,
+  maxSizeAttachmentsPerEmail: MAX_ATTACHMENT_BYTES_PER_EMAIL,
   emailQuerySortOptions: ["receivedAt", "size", "from", "to", "subject"],
   mayCreateTopLevelMailbox: true,
 } as const;
