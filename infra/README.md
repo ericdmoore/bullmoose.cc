@@ -9,6 +9,21 @@ the source of truth for the resource names, schema list, deploy order, and
 secret→worker matrix. The sections below are the by-hand equivalent, for
 reference or partial runs.
 
+Two phases are **not** part of a default run, for opposite reasons:
+
+| | |
+|---|---|
+| `doctor` | read-only. Is the *deployed* world still the one we think we deployed? Asserts nothing about code. |
+| `explorer` | turns s20's read-only mirror on at `explore.bullmoose.cc` (`--off` withdraws it). It publishes a surface that mirrors everything the caller can see, so it is a decision, not a default. |
+
+`explorer` automates the runbook that used to live as a comment in
+`services/jmap/wrangler.jsonc`: DNS record, route + `OAUTH` binding, a one-time
+OAuth client registration, and the secrets — each idempotent, each skipping
+itself when already done. It needs **no migration and no new resources**; the
+session cookie is a stateless HMAC and PKCE state lives in the existing `ROUTES`
+KV. Both it and `--off` finish by telling you to run `deploy`, because the route
+lives in a config file and only a deploy publishes it.
+
 ## 1. Cloudflare resources
 
 ```sh
