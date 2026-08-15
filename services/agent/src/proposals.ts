@@ -1,7 +1,7 @@
 import { commitChanges } from "@bullmoose/account-do";
+import { effectiveNodeAuthority, type JobNodeRow } from "@bullmoose/scheduling";
 import { buildMime } from "@bullmoose/mime";
 import type { Mailstore } from "@bullmoose/mailstore";
-import { effectiveNodeAuthority, type JobNodeRow } from "./useGate.js";
 import {
   callWithFallback,
   invocationCost,

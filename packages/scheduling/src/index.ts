@@ -45,6 +45,20 @@ export {
   type Use,
   type UseResult,
 } from "./useAuthority.js";
+// The DB-backed half of the same question: `useAuthority.ts` is the arithmetic,
+// `nodeAuthority.ts` walks the rows it folds. It moved here out of
+// `services/agent/src/useGate.ts` when per-invocation tokens made more than one
+// worker able to name the acting invocation — see that module's header.
+export {
+  authorizeNodeUse,
+  bindingCeiling,
+  effectiveNodeAuthority,
+  effectiveNodeCeiling,
+  type AuthorityDb,
+  type BindingJobConfig,
+  type JobNodeRow,
+  type NodeUseDecision,
+} from "./nodeAuthority.js";
 export {
   BLOCKED_SENTINEL,
   deriveJobStatus,
