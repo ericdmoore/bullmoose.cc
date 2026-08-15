@@ -1,7 +1,14 @@
 # Architecture
 
 How bullmoose is wired, and — more importantly — **why** it's wired that
-way. Deep dives live alongside this file: `serverless-jmap.md` (the core
+way.
+
+**Start with `system-map.md`** if you want the picture rather than the
+reasoning: components and their bindings, the data model, and the flows that
+matter, as mermaid diagrams read out of the code rather than out of these
+docs. It ends with a table of the places the two currently disagree.
+
+Deep dives live alongside this file: `serverless-jmap.md` (the core
 design), `agent-integration.md` (agents), and
 `capacity-and-scaling.md` (what the free tier holds, the quotas that
 bind, and the shelved relief valves — blob compression and shard
