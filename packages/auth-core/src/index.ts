@@ -210,13 +210,28 @@ export function effectiveScopes(granted: readonly string[]): string[] {
  *  - **`agent`** — the s10 marker, not a capability. It is minted onto
  *    agent-runtime tokens by the operator plane; a client asking for it
  *    would be claiming an identity rather than requesting a permission.
- *  - **`send`** — there is no send TOOL on the MCP surface
- *    (`emailTools.ts:68-90`, pinned by `mcpTools.test.ts:124-128`), and that
- *    invariant gets MORE load-bearing when the caller is a third party, not
- *    less. Advertising a scope no tool honours would be a promise the gate
- *    then refuses.
- *  - **`files`** — the realm is unbuilt (`s03.B` T3 unstarted); advertising
- *    it would offer access to something that 500s.
+ *  - **`send`** — the one IRREVERSIBLE verb. There is also no send tool on the
+ *    MCP surface (`emailTools.ts:68-90`, pinned by `mcpTools.test.ts:124-128`),
+ *    but note that argument no longer covers every client (see `files` below):
+ *    what keeps `send` out is that a consent screen cannot meaningfully convey
+ *    "this app may mail people as you", and the outbound bound that makes agent
+ *    egress safe (`s10` T1's governing book) has no equivalent for an OAuth
+ *    client. Excluded on the merits, not merely for want of a tool.
+ *
+ * `files` WAS excluded on the grounds that "the realm is unbuilt (`s03.B` T3
+ * unstarted); advertising it would offer access to something that 500s." Both
+ * halves of that are now false: `s03.B` T3 (the attachment sidestep) and
+ * `s03.C` T3 (the Files browser) shipped, and `FileNode/*` is live —
+ * `get`/`query` gate on `read` in the `files` domain, `set`/`copy` on `files`
+ * itself (`filenode.ts:73,124,188,326`). Without the scope an OAuth client
+ * could READ files and never write one.
+ *
+ * ⚠️ Worth recording, because it is the assumption that expired rather than a
+ * detail: the tool-surface test above ("no MCP tool honours it") was written
+ * when an OAuth client MEANT an MCP client. `s20`'s explorer is an OAuth client
+ * that is not MCP — it speaks JMAP directly — so "no MCP tool honours it" no
+ * longer decides what the AS may advertise. There are still no file tools on
+ * the MCP surface; `files` is advertised for the clients that do not need one.
  *
  * This is the one list an OAuth `scope` parameter validates against. The
  * other three lists in this file answer different questions ("what may the
@@ -231,6 +246,7 @@ export const OAUTH_SCOPES: readonly string[] = [
   "delete",
   "contacts",
   "calendar",
+  "files",
   "mail",
 ];
 
