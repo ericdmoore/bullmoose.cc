@@ -890,10 +890,24 @@ async function applyProposal(
     }
 
     case "reply-draft": {
-      // The irreversible egress (tier 3, human-approved). Relay the drafted MIME
-      // through the submit worker, then record a Sent copy whose provenance the
-      // Mailstore stamps. There is no undo — that irreversibility is exactly why
-      // it is tier 3.
+      // The irreversible egress. Relay the drafted MIME through the submit
+      // worker, then record a Sent copy whose provenance the Mailstore stamps.
+      // There is no undo handle here, unlike the tier-1 cases around it.
+      //
+      // TIER 2, NOT TIER 3. The only producer emits tier 2 (services/agent
+      // `emitProposal`, proposals.ts:141), so an approve does not reach this
+      // function at all: it parks the row in the hold tray, and this runs later
+      // from `commitDueHeldProposals` when the retraction window closes. The
+      // yank window is what stands in for the missing undo.
+      //
+      // That leaves the tier-3 CAPABILITY WALL (in `set`, above) guarding a
+      // branch nothing currently produces — it is exercised only by a synthetic
+      // row in actionProposal.test.ts:237. DO NOT delete it as dead code. It is
+      // the structural guarantee that an agent token can never auto-commit
+      // irreversible egress, and it is what any future tier-3 kind — or a
+      // reclassification of this one — lands on. Costing nothing while unused is
+      // the point; re-deriving it later means deriving it under pressure, as
+      // policy rather than as capability.
       const to = str(payload.to);
       const self = str(payload.self);
       const blobId = str(payload.blobId);
