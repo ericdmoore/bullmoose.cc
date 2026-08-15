@@ -142,7 +142,14 @@ export interface Refusal {
     | "identity"
     | "job"
     | "needs"
-    | "context";
+    | "context"
+    /**
+     * s17 — the delegation CHAIN itself could not be read: an absent, corrupt,
+     * grafted or cyclic `authority_json` above this request (`useAuthority.ts`).
+     * Its own axis rather than "identity" because the fix is different: nothing
+     * about the plan is wrong, and rewriting it will not help.
+     */
+    | "envelope";
   requested: string;
   ceiling: string;
   why: string;

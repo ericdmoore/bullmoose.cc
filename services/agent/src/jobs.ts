@@ -5,14 +5,15 @@ import {
   attenuateChild,
   attenuatePlan,
   describeRefusals,
-  isPrivacyClass,
   type AttenuatedChild,
   type ChildRequest,
-  type NodeAuthority,
-  type NodeCeiling,
   type Refusal,
 } from "@bullmoose/scheduling";
+import { bindingCeiling, effectiveNodeCeiling, type BindingJobConfig, type JobNodeRow } from "./useGate.js";
 import type { Env } from "./models.js";
+
+export type { BindingJobConfig, JobNodeRow };
+export { bindingCeiling };
 
 /**
  * s11 T7 — THE JOB HARNESS: a Job's creation, and a planner's output becoming
@@ -62,24 +63,6 @@ export type ExpandResult =
   | { ok: true; created: Array<{ key: string; id: string }> }
   | { ok: false; refusals: Refusal[] };
 
-/** The node row the harness reads to know a parent's ceiling. */
-export interface JobNodeRow {
-  id: string;
-  account_id: string;
-  binding_id: string;
-  binding_name: string;
-  job_id: string | null;
-  parent_id: string | null;
-  needs_json: string | null;
-  depth: number | null;
-  authority_json: string | null;
-  privacy: string | null;
-  due_at: number | null;
-  context_json: string;
-  email_id: string | null;
-  status: string;
-}
-
 /** Read one node row by id — the whole graph slice, in one query. */
 export async function getJobNode(
   env: Env,
@@ -96,89 +79,26 @@ export async function getJobNode(
 }
 
 /**
- * A node's stored envelope, parsed. A row with no envelope (an ordinary
- * invocation, or one written before T7) reads as UNRESTRICTED tools and
- * credentials with no money ceiling — DefaultCase: the Job columns tighten,
- * they never strand, and the Bureau/governing-book checks are unchanged either
- * way (rule 3: a ceiling is not a grant).
- */
-export function parseAuthority(authorityJson: string | null): NodeAuthority {
-  if (!authorityJson) return { tools: null, credentials: null, budgetMicros: null };
-  try {
-    const v = JSON.parse(authorityJson) as Partial<NodeAuthority>;
-    return {
-      tools: Array.isArray(v.tools) ? v.tools.filter((t): t is string => typeof t === "string") : null,
-      credentials: Array.isArray(v.credentials)
-        ? v.credentials.filter((c): c is string => typeof c === "string")
-        : null,
-      budgetMicros: typeof v.budgetMicros === "number" ? v.budgetMicros : null,
-    };
-  } catch {
-    // A corrupt envelope is the one case where "unrestricted" would be wrong:
-    // it would turn corruption into amplification. Fail CLOSED — a node whose
-    // ceiling cannot be read may delegate nothing.
-    return { tools: [], credentials: [], budgetMicros: 0 };
-  }
-}
-
-/** The ceiling a row imposes on its children. */
-export function ceilingOf(row: JobNodeRow): NodeCeiling {
-  return {
-    accountId: row.account_id,
-    bindingId: row.binding_id,
-    jobId: row.job_id ?? "",
-    depth: row.depth ?? 0,
-    authority: parseAuthority(row.authority_json),
-    privacy: isPrivacyClass(row.privacy) ? row.privacy : null,
-    dueAt: row.due_at,
-  };
-}
-
-/**
- * The BINDING's ceiling — the top of every chain (§5: "the Job's ceiling is the
- * binding, and every level below only lowers it").
+ * NOTE — `parseAuthority`, `ceilingOf` and `bindingCeiling` used to live here.
+ * The first two are GONE and the third MOVED, and both facts are the point of
+ * the s17 use-time gate.
  *
- * Read from `config_json.jobs`, which is optional and additive:
- *   { tools?: string[], credentials?: string[], budgetMicros?: number,
- *     maxNodes?: number, maxDepth?: number }
- * Absent keys mean UNSET, not empty — a binding that never heard of Jobs must
- * not be unable to run one (the same DefaultCase reasoning as the facet
- * columns). Present keys bind hard: a binding that declares two tools caps
- * every node of every Job it originates at those two, root included.
+ * `parseAuthority`/`ceilingOf` read a node's OWN `authority_json` and returned
+ * it as that node's ceiling: the column believed verbatim, with no reference to
+ * the binding above it or to any ancestor. That is a fair description of what
+ * the harness wrote, and a bad bound on what the node may spend — a delegation
+ * checked only where it is created is not a delegation. Everything that needs a
+ * node's ceiling now goes through `effectiveNodeCeiling` (`useGate.ts`), which
+ * recomputes `binding ∩ root ∩ … ∩ node` from the rows on every use. If you
+ * find yourself reaching for "just parse this row's envelope", that is the
+ * mistake this comment exists to interrupt.
+ *
+ * `bindingCeiling` moved to `useGate.ts` because the binding is the FIRST TERM
+ * of that fold — the top of every chain (jobs-and-facets §5) — and one reading
+ * of `config_json.jobs` shared by the write path and the use path is the only
+ * way the two cannot drift. It is re-exported above so this module's existing
+ * callers are unchanged.
  */
-export interface BindingJobConfig {
-  tools?: unknown;
-  credentials?: unknown;
-  budgetMicros?: unknown;
-  maxNodes?: unknown;
-  maxDepth?: unknown;
-}
-
-export function bindingCeiling(
-  accountId: string,
-  bindingId: string,
-  jobId: string,
-  cfg: BindingJobConfig | undefined,
-  facets: { privacy?: string | null; dueAt?: number | null },
-): NodeCeiling {
-  const strings = (v: unknown): string[] | null =>
-    Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]) : null;
-  return {
-    accountId,
-    bindingId,
-    jobId,
-    // The binding sits at depth −1 so the root lands at 0 through exactly the
-    // same `parent.depth + 1` every other level uses.
-    depth: -1,
-    authority: {
-      tools: strings(cfg?.tools),
-      credentials: strings(cfg?.credentials),
-      budgetMicros: typeof cfg?.budgetMicros === "number" ? cfg.budgetMicros : null,
-    },
-    privacy: isPrivacyClass(facets.privacy) ? facets.privacy : null,
-    dueAt: typeof facets.dueAt === "number" ? facets.dueAt : null,
-  };
-}
 
 /** What a caller asks for when starting a Job. Server-side callers only. */
 export interface JobSpec {
@@ -361,20 +281,50 @@ export async function expandPlan(env: Env, parent: JobNodeRow, plan: unknown): P
     };
   }
 
+  // THE USE-TIME BOUND, and it comes FIRST. Not `ceilingOf(parent)` — that read
+  // the parent's stored envelope and believed it. Re-delegation is a USE of the
+  // delegated authority, so the ceiling a plan is checked against is recomputed
+  // here from the binding down through every hop (`useGate.ts`):
+  // binding ∩ root ∩ … ∩ parent. A row that claims more than its ancestors held
+  // delegates the intersection rather than the claim, and a binding narrowed
+  // after this Job started bites the plan being expanded right now.
+  //
+  // Before the usage read, deliberately — authorize, then measure. A caller
+  // whose delegation chain cannot be read gets a refusal without this function
+  // touching another row on its behalf.
+  const effective = await effectiveNodeCeiling(env, parent);
+  if (!effective.ok) {
+    return {
+      ok: false,
+      refusals: [
+        refusal(effective.denial.axis, effective.denial.requested, effective.denial.ceiling, effective.denial.why),
+      ],
+    };
+  }
+
   // Usage: what the Job has already committed. `reservedMicros` sums the
   // DECLARED budgets of existing nodes rather than their spend — a plan is
   // refused for over-committing before a cent is spent, which is the only
   // moment at which refusing it is free.
+  //
+  // `json_valid` guards the sum because SQLite's `json_extract` THROWS on
+  // malformed JSON rather than returning NULL — so one corrupt envelope on any
+  // sibling would take down the whole expansion with a SQLite error instead of
+  // a refusal. A corrupt sibling reserves 0 here and is refused on its own
+  // account when IT tries to act (`useGate.ts`); it must not be able to make
+  // another node's plan unanswerable.
   const usage = await env.DB.prepare(
     `SELECT COUNT(*) AS n,
-            COALESCE(SUM(COALESCE(json_extract(authority_json, '$.budgetMicros'), 0)), 0) AS reserved
+            COALESCE(SUM(CASE WHEN json_valid(authority_json)
+                              THEN COALESCE(json_extract(authority_json, '$.budgetMicros'), 0)
+                              ELSE 0 END), 0) AS reserved
        FROM agent_invocations WHERE account_id = ? AND job_id = ?`,
   )
     .bind(parent.account_id, parent.job_id)
     .first<{ n: number; reserved: number }>();
 
   const result = attenuatePlan(
-    ceilingOf(parent),
+    effective.ceiling,
     tasks as ChildRequest[],
     { maxNodes: job.max_nodes, maxDepth: job.max_depth, budgetMicros: job.budget_micros },
     { nodeCount: usage?.n ?? 0, reservedMicros: usage?.reserved ?? 0 },
@@ -468,7 +418,9 @@ async function insertChildren(
       WHERE (SELECT COUNT(*) FROM agent_invocations n
               WHERE n.account_id = ? AND n.job_id = ?) + ? <= (SELECT max_nodes FROM jobs WHERE account_id = ? AND id = ?)
         AND ? <= (SELECT max_depth FROM jobs WHERE account_id = ? AND id = ?)
-        AND (SELECT COALESCE(SUM(COALESCE(json_extract(r.authority_json, '$.budgetMicros'), 0)), 0)
+        AND (SELECT COALESCE(SUM(CASE WHEN json_valid(r.authority_json)
+                                      THEN COALESCE(json_extract(r.authority_json, '$.budgetMicros'), 0)
+                                      ELSE 0 END), 0)
                FROM agent_invocations r WHERE r.account_id = ? AND r.job_id = ?) + ?
             <= COALESCE((SELECT budget_micros FROM jobs WHERE account_id = ? AND id = ?), 9e18)`,
   )
