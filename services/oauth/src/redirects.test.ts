@@ -112,8 +112,20 @@ describe("OAUTH_SCOPES — what a stranger may ask for", () => {
     expect(OAUTH_SCOPES).not.toContain("agent");
   });
 
-  it("23. never offers send — there is no send tool, and that invariant hardens here", () => {
+  it("23. never offers send — the one IRREVERSIBLE verb", () => {
+    // The reason used to be "there is no send tool on the MCP surface". That
+    // argument stopped deciding when s20's explorer became an OAuth client that
+    // is NOT an MCP client, so the exclusion now rests on the merits: a consent
+    // screen cannot convey "this app may mail people as you", and the governing
+    // book that bounds agent egress (s10 T1) has no OAuth-client equivalent.
     expect(OAUTH_SCOPES).not.toContain("send");
+  });
+  it("23b. DOES offer files — the realm shipped, and reads alone cannot write one", () => {
+    // Excluded until 2026-08-15 on the grounds that the realm was unbuilt.
+    // s03.B T3 and s03.C T3 shipped: FileNode/get|query gate on `read` in the
+    // files domain, and set|copy gate on `files` itself — so without this a
+    // client could read every file and never create one.
+    expect(OAUTH_SCOPES).toContain("files");
   });
 
   it("24. is a strict subset of what self-service may mint", () => {
