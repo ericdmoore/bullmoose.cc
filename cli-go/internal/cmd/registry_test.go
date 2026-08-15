@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"sort"
 	"testing"
 )
 
@@ -52,41 +51,17 @@ func TestRegistryFlagsAreInstalled(t *testing.T) {
 	}
 }
 
-// TestRegistryOwnsOnlyDeclaredFlags is the drift check in the other direction: a
-// flag a command owns must be one the shared parser actually reads, or the native
-// path silently ignores a flag the user typed — which on `send` means mail
-// leaving under assumptions nobody made.
-func TestRegistryOwnsOnlyDeclaredFlags(t *testing.T) {
-	// The flags parse() understands (args.go). Kept here rather than derived,
-	// because a reflective check would pass vacuously if parse lost a case.
-	parsed := []string{
-		"db", "account", "mailbox", "n", "json", "ids", "raw",
-		"to", "cc", "bcc", "subject", "from", "identity", "file", "body",
-		// wave 3, the credential gate: login / init / token.
-		"base", "url", "token", "name", "scopes", "password", "offline", "dry-run",
-		// the triage verbs (sVOL 019) and `sync`.
-		"add", "remove", "role", "force", "unset", "no-sync", "if-state", "blobs",
-		// wave 4, contacts + calendar: the rest of the I/O contract's own flags,
-		// plus the two commands' own vocabularies.
-		"as", "if-state", "force", "book",
-		"days", "title", "start", "duration", "tz", "all-day", "rrule",
-		"calendar", "occurrence", "ics",
-		// wave 5, the folder surface: `mailbox`'s two own flags.
-		"parent", "sort",
-	}
-	sort.Strings(parsed)
-	for name, s := range registry {
-		if s.goNative || s.selfParses {
-			continue // owns its whole grammar in its own parser
-		}
-		for _, f := range append(append([]string{}, s.value...), s.boolean...) {
-			if !contains(parsed, f) {
-				t.Errorf("%s owns --%s but cmd.parse does not read it: the native path "+
-					"would accept the flag and silently ignore it", name, f)
-			}
-		}
-	}
-}
+// The drift check in the other direction — a flag a command owns must be one the
+// parser actually reads, at the arity it is declared at — now lives in
+// parsergrammar_test.go's TestRegistryFlagsAreTheParsersOwn, which reads the
+// `switch name` out of args.go's AST instead of comparing against a copy of it
+// kept here.
+//
+// The copy was the problem. It could only ever be as current as the last person
+// to edit both, and it could not see arity at all: a flag that changed from
+// `a.X = value()` to `a.X = true` in parse() left this list correct, this test
+// green, and the value the user typed silently reinterpreted as a positional.
+// It also covered neither the selfParses commands nor the goNative ones.
 
 func contains(haystack []string, needle string) bool {
 	for _, s := range haystack {
