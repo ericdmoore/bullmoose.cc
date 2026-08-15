@@ -81,10 +81,37 @@ write. That is what makes a cookie-authenticated surface tolerable at all.
 
 ## Open questions
 
-1. **Its own host, or a path?** `explore.bullmoose.cc` vs `app.bullmoose.cc/explore/`. *A
-   path is cheaper (same origin, same routes, the cookie cannot stray) — but a separate host
-   makes "this is a debugging surface, not the product" legible, and keeps its cookie off
-   the app origin. Lean path first; split if the cookie scope gets awkward.*
+1. ~~Its own host, or a path?~~ **RESOLVED: `explore.bullmoose.cc`.** (Eric asked directly;
+   I had leaned "path first" above and was wrong — working the cookie through settles it.)
+
+   **Why the separate host wins, and it is not aesthetics:**
+
+   - **Origin isolation of the credential.** `app.bullmoose.cc` keeps a device token in
+     `localStorage` and renders **email HTML** — attacker-controlled content by definition.
+     Same-origin means a bug in either surface reaches the other's credential. A separate
+     host means an explorer bug cannot touch the app's token, and an app XSS cannot ride the
+     explorer's cookie.
+   - **The cookie is host-only by construction.** A cookie set on `.bullmoose.cc` to be
+     shared between hosts would also be sent to the marketing apex and everything else —
+     exactly wrong for a read-everything credential. Set on `explore.bullmoose.cc` it goes
+     nowhere else, with no `Path` gymnastics to get wrong.
+   - **It can simply not exist.** A hostname is a route and a DNS record: a deployment that
+     does not want an explorer omits both, rather than trusting a flag inside a worker that
+     serves the product.
+   - **It is legible.** The URL says "this is a debugging surface, not the product."
+
+   **The auth flow works the same either way**, which is what makes this a free choice:
+   `auth.bullmoose.cc` cannot set a cookie for another host, so it never does. It issues an
+   authorization code, the **explorer redeems it and sets its own** host-only cookie — the
+   ordinary OAuth shape, with the explorer as an ordinary client.
+
+   ⚠️ **The rule that must not be missed if the explorer is served by the jmap worker**
+   (attractive, since that is where the method registry lives): **cookie auth is accepted
+   ONLY on the explore hostname, and ONLY for GET.** The worker must check the `Host` header
+   before honouring a cookie, not merely rely on the browser's host-only scoping. Otherwise
+   a cookie-authenticated path exists on the API origin and the JMAP endpoint becomes
+   CSRF-able — trading a debugging convenience for a write primitive. Bearer stays the only
+   credential `app.bullmoose.cc/api/` accepts.
 2. **Always on, or opt-in per deployment?** A read-only mirror of everything is a real
    surface. *Recommendation: a deploy-time flag, default OFF, so a tenant that never wants
    it never serves it.*
