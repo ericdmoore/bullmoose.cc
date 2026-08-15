@@ -26,7 +26,7 @@ import { runBouncer } from "./bouncer.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
-import { answerInfoRequest, proposeReply, expireStaleProposals } from "./proposals.js";
+import { answerInfoRequest, expireStaleProposals, proposeReply } from "./proposals.js";
 import { docsResponse, MCP_DOCS } from "./docs.js";
 import { introspect, isLocalToken, principalFromProps } from "./oauthBridge.js";
 import { handleVault, handleVaultVerify } from "./vault.js";
@@ -225,6 +225,10 @@ interface Job {
   email_id: string | null;
   context_json: string;
   due_at: number | null;
+  /** Non-NULL ⇒ this invocation is a node of a Job (s11 T7) — created by a
+   *  planner, not by inbound mail. The respond-only rule reads this: a job
+   *  node's egress is agent-INITIATED by definition and always proposes. */
+  job_id: string | null;
   tenant_id: string;
   config_json: string;
 }
@@ -256,7 +260,7 @@ async function drain(env: Env, _ctx: ExecutionContext): Promise<number> {
     const selectNow = Date.now();
     const { results } = await env.DB.prepare(
       `SELECT inv.id, inv.account_id, inv.binding_id, inv.binding_name, inv.email_id,
-              inv.context_json, inv.due_at, a.tenant_id, COALESCE(b.config_json, '{}') AS config_json
+              inv.context_json, inv.due_at, inv.job_id, a.tenant_id, COALESCE(b.config_json, '{}') AS config_json
        FROM agent_invocations inv
        JOIN agent_bindings b ON b.account_id = inv.account_id AND b.id = inv.binding_id
        JOIN accounts a ON a.id = inv.account_id
@@ -406,7 +410,7 @@ async function claimOverdue(env: Env, claimant: ClaimantIdentity): Promise<numbe
     const selectNow = Date.now();
     const { results } = await env.DB.prepare(
       `SELECT inv.id, inv.account_id, inv.binding_id, inv.binding_name, inv.email_id,
-              inv.context_json, inv.due_at, a.tenant_id, COALESCE(b.config_json, '{}') AS config_json
+              inv.context_json, inv.due_at, inv.job_id, a.tenant_id, COALESCE(b.config_json, '{}') AS config_json
        FROM agent_invocations inv
        JOIN agent_bindings b ON b.account_id = inv.account_id AND b.id = inv.binding_id
        JOIN accounts a ON a.id = inv.account_id
@@ -761,12 +765,33 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
     const cost = await invocationCost(env, used, usage);
     const replyText = `${output}\n\n— ${job.binding_name} · ${model} · bullmoose agent`;
 
-    // Tier gate (s03.D arch §2): sending a reply is a tier-2 (retractable)
-    // action, so a `send`-mode binding no longer auto-egresses — it EMITS a
-    // pending `reply-draft` proposal for the human to approve in the queue. The
-    // hold-tray commit is s03.D T2. `draft` mode is tier-1 (a draft is reversible)
-    // and is written directly, unchanged — the existing co-authoring path.
-    if ((cfg.replyMode ?? "draft") === "send") {
+    // THE RESPOND-ONLY RULE (Eric, 2026-08-15): solicitation is authorization.
+    // A `send`-mode reply to the REQUESTER egresses directly — no proposal —
+    // because by this point four independent authorizations already exist:
+    //
+    //   1. the sender passed `allowedSenders` (only allowlisted senders
+    //      invoke this pipeline at all);
+    //   2. the reply targets exactly [sender] — the person who asked;
+    //   3. `outboundRefusal` checked the governed allowedRecipients book,
+    //      fail-closed, at the top of the run;
+    //   4. the owner opted this binding into `replyMode: "send"`.
+    //
+    // The s03.D tier gate that stood here asked a FIFTH time, which put
+    // EditorEmily's five-second answer behind a two-day approval nobody knew
+    // to give — while the error replies above kept egressing directly through
+    // the very same path to the very same recipient. Asking "may she reply to
+    // me?" about a message that exists only because you wrote to her is a
+    // question the asking already answered.
+    //
+    // Proposals remain the rule for AGENT-INITIATED egress — and the
+    // discriminator is `job_id`. A JOB NODE reaching this pipeline was
+    // created by a planner, not by inbound mail from an allowlisted human:
+    // nobody asked it anything, so nothing pre-authorized its reply. T7's
+    // invariant ("a Job reorganizes work, never its egress") and the s17
+    // authority-laundering tests depend on job leaves still exiting through
+    // /approvals — the full suite caught the first cut of this rule missing
+    // exactly that. `draft` mode stays tier-1 co-authoring, unchanged.
+    if (job.job_id) {
       const proposalId = await proposeReply(env, store, job, {
         selfAddress,
         to: sender,
@@ -780,7 +805,7 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
     }
 
     const replyId = await reply(replyText, { model, alias: aliasName });
-    return done("done", { model, alias: aliasName, replyId }, cost);
+    return done("done", { model, alias: aliasName, replyId, solicited: true }, cost);
   } catch (err) {
     // Every route failed — say so (the sender is allowlisted; this is for Eric).
     const detail = String(err instanceof Error ? err.message : err);

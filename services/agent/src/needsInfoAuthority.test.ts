@@ -532,20 +532,40 @@ describe("THE DEADLOCK, one cap over — a Job that spent its purse can still be
 describe("DefaultCase — an ordinary proposal's round is still ungated", () => {
   it("a non-Job invocation's answer round carries no envelope and is not a delegation", async () => {
     const s = await scaffold();
-    // An ordinary invocation: no Job, exactly as ingest enqueues one.
+    // An ordinary DONE invocation with a pending proposal, seeded directly.
+    // This fixture used to manufacture its proposal by draining a send-mode
+    // reply run — which the respond-only rule (s20 principle 7, 2026-08-15)
+    // now correctly egresses instead of proposing. The subject under test —
+    // needsInfo rounds on a NON-Job proposal — is untouched by that rule;
+    // ordinary agent-initiated proposals (bouncer mid-band, budget, future
+    // crm@) still exist, so the substrate is seeded as one rather than
+    // riding a pipeline whose behavior legitimately changed.
     s.w.db.seed("agent_invocations", [
       {
         id: "inv_plain",
         account_id: ACCOUNT,
         binding_id: BINDING,
         binding_name: "cj",
-        status: "pending",
+        status: "done",
         email_id: "e_thread",
         context_json: JSON.stringify({ emailId: "e_thread", threadId: "t_1", envelopeTo: SELF }),
         created_at: 1,
       },
     ]);
-    await s.drain();
+    s.w.db.seed("agent_proposals", [
+      {
+        id: "inv_plain",
+        account_id: ACCOUNT,
+        kind: "reply-draft",
+        tier: 2,
+        subject_json: JSON.stringify({ realm: "Email", objectId: "e_thread" }),
+        payload_json: JSON.stringify({ to: SENDER, self: SELF, mode: "send", text: "draft" }),
+        rationale: "an agent-initiated draft awaiting a decision",
+        evidence_json: JSON.stringify([{ realm: "Email", objectId: "e_thread" }]),
+        status: "pending",
+        created_at: 1,
+      },
+    ]);
     expect(s.proposal("inv_plain").status).toBe("pending");
 
     await s.needsInfo("inv_plain", "why Bob?");

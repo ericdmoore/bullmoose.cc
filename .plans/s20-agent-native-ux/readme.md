@@ -64,6 +64,20 @@ One noun is admitted immediately because it has already earned its place three t
    rows — proposal, decision, provenance, chain — as queue approval. The venue moves;
    the record does not. Otherwise inline consent is the silent-widening hole with
    better UX.
+7. **Solicitation is authorization** (Eric, 2026-08-15, watching his own ask to
+   EditorEmily sit in the approvals queue behind a button named "Approve — holds,
+   nothing sent yet"). If a human writes TO an agent asking for something, the agent
+   replying TO that human needs no approval — the ask already answered it. The
+   respond-only workflow: the reply targets exactly the requester, who passed
+   `allowedSenders`, within the governed `allowedRecipients` book, on a binding the
+   owner opted into `send` — four authorizations that already exist; a proposal on
+   top asks a fifth time. **Approvals are for agent-INITIATED mutations**: new
+   threads, third-party recipients, watch-fired follow-ups, contact/calendar writes —
+   which is what the reply-draft kind, the hold tray and yank remain for. This is
+   principle 6's sibling: 6 says consent needs no particular VENUE; 7 says a
+   solicited response needs no additional consent at all. Same root: the ledger
+   records what was authorized and by whom, and a request in your own Sent folder is
+   as strong a record as a click.
 
 ## Rejected / deferred, and why (recorded so it is not re-litigated)
 

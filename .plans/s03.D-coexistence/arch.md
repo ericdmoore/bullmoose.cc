@@ -50,7 +50,15 @@ identically for permissions and for actions.
 | Tier | On approve | May graduate? |
 |---|---|---|
 | **1** reversible — move, label, classify, create contact, organize files | apply immediately, keep an undo handle | ✅ |
-| **2** retractable — send reply, start thread, invite-bearing event | enter **hold tray** (`holdUntil`), then commit | ✅ but only *into the tray* |
+| **2** retractable — *agent-initiated* send: start thread, third-party reply, invite-bearing event | enter **hold tray** (`holdUntil`), then commit (T2: the sweep egresses past-window rows; `yanked` retracts inside it) | ✅ |
+
+> ⚠️ **Tier-2 narrowed by the respond-only rule** (Eric, 2026-08-15; s20 principle 7):
+> a **solicited reply** — to exactly the requester, who passed `allowedSenders`,
+> within the `allowedRecipients` book, on a `send`-mode binding — egresses
+> **directly, no proposal**. Solicitation is authorization; the original tier
+> table asked a fifth time for something four gates had already granted, which
+> put a five-second answer behind a two-day approval. Tier 2 now means
+> agent-INITIATED retractable egress only.
 | **3** irreversible — anything already outside, data already read | human click, every time | ❌ **never** |
 
 **The guarantee is not the policy engine.** Agents lack the `send` scope, so tier-3
