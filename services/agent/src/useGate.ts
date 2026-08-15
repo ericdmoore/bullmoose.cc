@@ -42,6 +42,31 @@ import type { Env } from "./models.js";
  * the invocation, and the two that cannot are named here so the gap is a
  * documented boundary rather than an oversight.
  *
+ * A THIRD member of that family, added here because it is the same shape and
+ * was found the same way: `AgentInvocation/set` create
+ * (`services/jmap/src/methods/agent.ts`) mints a fresh `pending` invocation for
+ * any enabled binding on the account, gated on the `draft` scope alone. A
+ * delegated node that holds a `draft`-scoped token could therefore cause an
+ * invocation carrying no envelope. It is NOT fixable by propagation: nothing on
+ * that request names the causing invocation (`ctx.agent.invocation` is
+ * populated only where a proposal is applied), so there is no envelope to copy
+ * — it authorizes a BEARER, exactly like the two above, and closes with the
+ * same per-invocation tokens.
+ *
+ * ── WHAT IS NOT IN THAT FAMILY, AND SO WAS CLOSED ──────────────────────────
+ * The needsInfo answer round (`ActionProposal/set`, status `info-requested`)
+ * looked like the same gap and was not: the row it acts on IS the delegated
+ * node (a proposal's id is its invocation's id), so the causing invocation is
+ * nameable, and the round is now minted `INSERT … SELECT` FROM that node with
+ * `job_id`/`parent_id`/`depth`/`authority_json`/`privacy` inherited. Before
+ * that it copied `binding_id` and nothing else, which meant one human question
+ * turned a narrowed node into an ordinary, ungated invocation — the fold below
+ * never ran on it, because `job_id IS NULL` is precisely how this gate is told
+ * "there is no delegation here". Attenuation was not exceeded, it was
+ * SIDESTEPPED, and that is the harder failure to see. The rule the fix states:
+ * an invocation CAUSED by a delegated node carries that node's envelope, or the
+ * site is one that cannot name it and says so here.
+ *
  * ── THE COMPUTATION ────────────────────────────────────────────────────────
  *   effective = binding.ceiling ∩ env(root) ∩ … ∩ env(this node)
  * folded root-first by `foldChain` (@bullmoose/scheduling). The binding is the
@@ -166,6 +191,14 @@ interface ChainRow {
  * writes one on every node it creates (`startJob`, `expandPlan`), so a Job node
  * with a NULL `authority_json` is a row that did not come through the harness,
  * and that is precisely the case fail-closed exists for.
+ *
+ * The DefaultCase is only safe while nothing INSIDE a Job can produce a
+ * job-less invocation — otherwise "not a delegation" becomes a state a
+ * delegation can reach, and the branch above stops being a description of the
+ * world and becomes a bypass. That is a property of the WRITE sites, not of
+ * this function, which is why the header lists them: every site that can name
+ * its causing invocation propagates the envelope, and every site that cannot is
+ * named as an open boundary.
  */
 export async function effectiveNodeAuthority(
   env: Env,

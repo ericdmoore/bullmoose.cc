@@ -1,7 +1,12 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
 import { QUARANTINE_ROLE, type ContactCardRow, type JSContactCard, type Mailstore } from "@bullmoose/mailstore";
-import { budgetExhaustedSql, budgetMonthStartMs, budgetPeriodKey } from "@bullmoose/scheduling";
+import {
+  budgetExhaustedSql,
+  budgetMonthStartMs,
+  budgetPeriodKey,
+  jobBudgetExhaustedSql,
+} from "@bullmoose/scheduling";
 import { authorizeAccount } from "../auth";
 import {
   accountState,
@@ -460,11 +465,86 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
           // The answer round is a NEW invocation for the proposal's binding —
           // it goes through the ordinary drain (claim, run, finish) and is
           // COSTED, so chronic needsInfo rounds show up in $/approved-action.
+          //
+          // ── s17: THE ROUND IS A CONTINUATION, AND IT INHERITS THE ENVELOPE ──
+          //
+          // It is minted `INSERT … SELECT … FROM agent_invocations node`, i.e.
+          // FROM the very row it continues, because of the invariant s17's
+          // use-time gate exists to hold: **an invocation caused by a delegated
+          // node may never hold more authority than that node held.** This
+          // statement used to copy `binding_id`/`binding_name` and nothing else,
+          // so a node inside a Job — holding an envelope narrowed hop by hop —
+          // could cause a fresh invocation carrying NO envelope at all. That row
+          // read as `job_id IS NULL`, which `useGate.ts` correctly treats as
+          // "not a delegation, nothing to enforce" (the DefaultCase). Attenuation
+          // was not exceeded so much as SIDESTEPPED: one human question laundered
+          // a narrowed node back up to the bare binding.
+          //
+          // A CONTINUATION, NOT A RE-DELEGATION — which is exactly why the four
+          // graph columns are COPIED rather than computed:
+          //   job_id       the same Job. The round is that Job's work, so it
+          //                counts toward the Job's nodes and its aggregate
+          //                budget, and the chain walk engages at all (the walk
+          //                is keyed on job_id — an envelope on a job-less row
+          //                would be a column nobody reads).
+          //   parent_id    the continued node's OWN parent, so the round is its
+          //                SIBLING rather than its child. The chain above it is
+          //                then character-for-character the chain above the node
+          //                it continues, so `binding ∩ root ∩ … ∩ round`
+          //                collapses to exactly `effective(node)` — the same
+          //                envelope, provably, not a re-derived approximation of
+          //                it. It also keeps the chain LENGTH invariant: a
+          //                child-of-the-node would add a hop per round, and
+          //                enough rounds would trip MAX_CHAIN_HOPS and deny work
+          //                that did nothing wrong.
+          //   depth        the node's own depth, NOT depth + 1. A round answers
+          //                a question about the node's own proposal; nothing was
+          //                delegated, so there is no hop to count. Copying is
+          //                also the only choice that cannot be farmed: at
+          //                depth + 1 a chain of N questions would buy N levels
+          //                of `maxDepth` (`expandPlan` guards on
+          //                `parent.depth + 1`), and "ask your own agent a
+          //                question N times" would be a depth ceiling escape.
+          //                Copied, N rounds all sit at the node's depth and can
+          //                delegate exactly as deep as the node could — which
+          //                today is not at all, since a round dispatches to
+          //                `answerInfoRequest`, never to the Job harness.
+          //   authority_json  the same envelope. Never narrowed (the round is
+          //                the node's own work continuing, and a round that
+          //                could not afford to answer would wedge the proposal)
+          //                and never widened — the fold re-intersects it against
+          //                every ancestor and the binding at USE time, so a
+          //                copied envelope can only ever restate what the chain
+          //                already allows.
+          // `privacy` rides along for the same reason, on the facet axis: the
+          // round reads the proposal's rationale, evidence and payload — the
+          // OUTPUT of pinned work — so a round that lost the pin would hand
+          // exactly that text to the paid cloud. Privacy narrows the claimant
+          // set and never widens it, which is why it is safe to copy blind.
+          //
+          // Deliberately NOT copied: `due_at` (it WIDENS the claimant set — a
+          // past deadline is what lets the backstop claim outside the policy
+          // gate — so the T9 stamp below stays the only writer of it),
+          // `requires_json` (a fit vector for the node's own work; the round
+          // only reads text, and inheriting "needs vision" would strand it), and
+          // `needs_json` (the round's input is the proposal, which already
+          // exists; inheriting satisfied — or failed — dependencies would block
+          // it on work it does not consume).
+          //
+          // THE DEFAULTCASE SURVIVES BY CONSTRUCTION: for an ordinary,
+          // non-delegated proposal every one of those columns is NULL on the
+          // node, so copying them yields NULL and the round is exactly the
+          // ungated invocation it has always been. There is no branch here to
+          // get wrong.
           const answerInvId = `inv_${crypto.randomUUID()}`;
-          await ctx.env.DB.prepare(
+          const round = await ctx.env.DB.prepare(
             `INSERT INTO agent_invocations
-               (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at)
-             VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+               (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at,
+                job_id, parent_id, depth, authority_json, privacy)
+             SELECT ?, ?, ?, ?, 'pending', ?, ?, ?,
+                    node.job_id, node.parent_id, node.depth, node.authority_json, node.privacy
+               FROM agent_invocations node
+              WHERE node.account_id = ? AND node.id = ?`,
           )
             .bind(
               answerInvId,
@@ -474,8 +554,21 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
               row.email_id,
               JSON.stringify({ kind: "answer-info-request", proposalId: id, question }),
               now,
+              access.accountId,
+              id,
             )
             .run();
+          if ((round.meta.changes ?? 0) !== 1) {
+            // The node vanished between `loadProposal`'s JOIN and here. Fail
+            // rather than fall back to an envelope-less INSERT: "I cannot read
+            // the thing that would bound this" is answered `no` everywhere else
+            // in s17, and a proposal whose invocation is gone has already lost
+            // the row every surface projects it from.
+            throw new SetErrorSignal(
+              "notFound",
+              `the invocation behind proposal ${id} no longer exists — no answer round was enqueued`,
+            );
+          }
           // ⚠️ THE DEADLOCK s11 T9 FOUND, and it is not confined to T9's kind.
           //
           // The answer round is an ordinary invocation for the proposal's
@@ -501,11 +594,26 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
           // never drift from the gate's: a binding under its cap (or covered by
           // an approved overage) leaves `due_at` NULL and behaves exactly as it
           // did before T9.
+          //
+          // s17 — AND NOW THE SECOND MONEY TERM, for the same reason. The round
+          // inherits `job_id` above, so `claimGateSql` now also weighs the JOB's
+          // aggregate budget against it (`jobBudgetExhaustedSql`, folded in
+          // beside the binding's monthly cap). A Job that has spent its purse
+          // would therefore hold the paid cloud off its own answer rounds —
+          // T9's deadlock exactly, one cap over — so the guard is the OR of both
+          // money terms rather than the monthly one alone. Composed from the
+          // same exported fragments the gate folds, never hand-copied, so the
+          // stamp cannot come to disagree with the gate about what "out of
+          // money" means; `jobBudgetExhaustedSql` takes zero placeholders (the
+          // graph is entirely in the rows), so no bind order moves. On a
+          // job-less round the term is `EXISTS (… WHERE job.id = NULL)` = false,
+          // which is the DefaultCase reading itself.
           const gateNow = Date.now();
           await ctx.env.DB.prepare(
             `UPDATE agent_invocations SET due_at = ?
               WHERE account_id = ? AND id = ?
-                AND ${budgetExhaustedSql("agent_invocations")}`,
+                AND (${budgetExhaustedSql("agent_invocations")}
+                     OR ${jobBudgetExhaustedSql("agent_invocations")})`,
           )
             .bind(
               gateNow,

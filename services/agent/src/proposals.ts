@@ -1,6 +1,7 @@
 import { commitChanges } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
 import type { Mailstore } from "@bullmoose/mailstore";
+import { effectiveNodeAuthority, type JobNodeRow } from "./useGate.js";
 import {
   callWithFallback,
   invocationCost,
@@ -220,6 +221,47 @@ export async function answerInfoRequest(
 ): Promise<void> {
   const proposalId = typeof context.proposalId === "string" ? context.proposalId : null;
   if (!proposalId) return done("failed", { note: "answer-info-request without a proposalId" });
+
+  // THE PRE-FLIGHT (s17), the same one `runJobNode` runs and for the same
+  // reason. A round enqueued by `ActionProposal/set` INHERITS the envelope of
+  // the node it continues, and an envelope that is carried but never consulted
+  // is the disease the use-time gate was written to cure — "a capability
+  // checked once, at issue, is a capability the holder keeps forever". So
+  // before the round composes anything, its effective authority must be
+  // RESOLVABLE: `binding ∩ root ∩ … ∩ this round`, every hop present and
+  // readable. A corrupt, grafted or cyclic chain is an UNKNOWN bound, and an
+  // unknown bound is not a permissive one.
+  //
+  // DefaultCase: an ordinary round carries `job_id = NULL`, and the gate
+  // answers `ok, delegated: false` for it without reading a thing — so this
+  // costs one indexed primary-key read and changes nothing outside a Job.
+  //
+  // A refusal here does wedge the proposal in `info-requested` (only a
+  // completed round returns it to `pending`). That is the correct end of the
+  // trade: the alternative is answering a reviewer's question with work whose
+  // authority nobody can bound, and a wedged proposal is visible — the Job
+  // derives `stalled` off the failed round, which is exactly the honest
+  // reading of "the agent still owes an answer and cannot give one".
+  const node = await env.DB.prepare(
+    `SELECT id, binding_id, job_id, parent_id, authority_json
+       FROM agent_invocations WHERE account_id = ? AND id = ?`,
+  )
+    .bind(job.account_id, job.id)
+    .first<Pick<JobNodeRow, "id" | "binding_id" | "job_id" | "parent_id" | "authority_json">>();
+  if (node) {
+    const authority = await effectiveNodeAuthority(env, job.account_id, node);
+    if (!authority.ok) {
+      console.warn(`answer round ${job.id}: refused — ${authority.note}`);
+      return done("failed", {
+        kind: "answer-info-request",
+        proposalId,
+        note: `authority refused: ${authority.note}`.slice(0, 500),
+        // Structured beside the sentence, for the same reason a planner's
+        // refusals are: an audit counts by axis, it does not grep prose.
+        denial: authority.denial,
+      });
+    }
+  }
 
   const prop = await env.DB.prepare(
     `SELECT kind, status, question, rationale, evidence_json, payload_json,
