@@ -1,6 +1,6 @@
 # Per-invocation tokens — design, and one decision for Eric
 
-**Status: (a) and (b) SHIPPED in #143. (c) and (d) remain.**
+**Status: ALL FOUR STEPS SHIPPED — #143 (a,b) and #146 (c,d).**
 Written 2026-08-15 after #132/#134/#138 closed the delegation-side half; Eric
 approved all four decisions the same day and #143 built the first two steps.
 
@@ -8,8 +8,8 @@ approved all four decisions the same day and #143 built the first two steps.
 |---|---|
 | (a) `bmi_` grammar, mint-on-claim, resolver | **shipped** (#143) |
 | (b) MCP `tools/list` + `tools/call` gated by `mayUse` | **shipped** (#143) — but see the correction below |
-| (c) Bureau credential gate | not started |
-| (d) the two mandatory rules | not started — **and until it lands the whole mechanism is voluntary** |
+| (c) Bureau credential gate | **shipped** (#146) — correct but **inert**, see below |
+| (d) the two mandatory rules | **shipped** (#146) — the mechanism is no longer voluntary at MCP or create |
 
 > ### ⚠️ Correction: gap 1 closes for Job nodes only
 >
@@ -32,6 +32,40 @@ approved all four decisions the same day and #143 built the first two steps.
 > binding, not only its Job nodes.** That is a second reading of a config key at
 > a consumer, exactly the drift `bindingCeiling`'s docstring exists to prevent.
 > It is a decision, not a patch, and it has not been taken.
+
+> ### ⚠️ Two more corrections, from building (c) and (d) in #146
+>
+> **Rule 2 as specified below is an escalation at the root.** The spec says the
+> created row inherits `job_id`/`parent_id`/`depth`/`authority_json` and stops.
+> But `effectiveNodeAuthority` folds the acting node's OWN binding leniently and
+> every ANCESTOR's fail-closed — so when the causing node is the **root**, where
+> there are no ancestors, the fold collapses to `ceiling(new binding) ∩ envelope`.
+> Copying a root's envelope onto a row on a *wider* second binding on the same
+> account hands the copy **more than the node it came from had**. #146 adds a
+> same-binding constraint, reusing `attenuateChild`'s identity rule. It also
+> copies `privacy` — a fifth column this list omits but its own cited precedent
+> (the needsInfo continuation) includes, so a pinned Job cannot spawn an
+> unpinned sibling.
+>
+> **The claim below that (d) needs `packages/cli/src/agent.ts` changed is false.**
+> All three of that file's `AgentInvocation/set` call sites are `update` — claim,
+> done, failed; there is no `create:` key in it, and the CLI references MCP
+> nowhere. The create path is `agentInvoke.ts`, the human on-demand trigger on an
+> **unmarked** token, which rule 2 deliberately does not reach.
+>
+> ### (c) shipped but is INERT
+>
+> Nothing forces an agent to present a `bmi_` at `/bureau/use`: the two mandatory
+> rules cover MCP and create only. An agent-marked device token still reaches the
+> Bureau with full standing grants and no envelope — and `/bureau/use` has **no
+> production caller at all** (`services/agent` calls only `/internal/bureau/seal`
+> and `/internal/bureau/verify`). So the gate sits ahead of its first caller, and
+> whoever writes that caller chooses which credential to present.
+>
+> A symmetric **third rule** — *an agent-marked bearer may not use `/bureau/use`
+> except through an invocation token* — is what would make (c) enforcement rather
+> than availability. **Not built:** it changes what the `agent` marker means,
+> which is decision #3, ratified for two surfaces and not three. **Eric's call.**
 
 Also worth recording from #143: `INVOCATION_STANDING_SCOPES` had to be invented,
 because this document never said what standing scopes a `bmi_` token
