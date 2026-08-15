@@ -1,6 +1,6 @@
 # System map
 
-What bullmoose actually is, as of `feca9a7` — components, data, and the flows
+What bullmoose actually is, as of `b2f0589` — components, data, and the flows
 that matter. Every claim here was read out of the code, not out of the other
 docs; where the two disagree, §7 says so.
 
@@ -260,10 +260,14 @@ unparseable envelope all deny the whole fold rather than contributing "no
 ceiling". One asymmetry is deliberate — a *corrupt* `config_json` reads as
 unset, because anyone who can corrupt that column can rewrite it wider instead.
 
-**A documented open boundary:** three sites authorize a *bearer* and cannot name
-the invocation, so this gate cannot run there — MCP `authorizeAccount`, the
-Bureau's `resolveBureauGrant`, and `AgentInvocation/set create`. That is what
-`.plans/s17-chief-of-staff/per-invocation-tokens.md` exists to close.
+**Partly closed as of #143.** `bmi_` per-invocation tokens now let MCP name the
+invocation, so `tools/list` and `tools/call` are gated by the fold — **for Job
+nodes**. An ordinary invocation has no `job_id`, so its envelope is all-`null`
+and the tool axis stays unbounded; what a `bmi_` token narrows there is the
+account, the realm, the verbs and the lifetime. The Bureau's
+`resolveBureauGrant` and `AgentInvocation/set create` are still bearer-only.
+`.plans/s17-chief-of-staff/per-invocation-tokens.md` tracks the rest — and note
+the whole mechanism stays **voluntary** until its step (d) lands.
 
 ---
 
@@ -511,12 +515,14 @@ migrations.
 
 ## 7. Known drift — where the code and the docs disagree
 
-Found while writing this. All verified.
+Found while writing this. All verified. Struck-through rows have since been
+fixed; they stay listed because knowing a thing *was* wrong is how you know
+to check whether anything downstream still assumes it.
 
 | # | Drift | Consequence |
 |---|---|---|
 | 1 | **`services/oauth` is in no CI workflow.** `infra/bootstrap.mjs:76` deploys eight workers including it; `deploy-mail.yml` has seven steps and no oauth step | Nine commits' worth of AS changes — the whole s02 arc, including token revocation — have merged without CI deploying them. `auth.bullmoose.cc` runs whatever was last pushed by hand |
-| 2 | **`PUBLIC_SCOPES` (6) ⊂ `OAUTH_SCOPES` (9)** | MCP's protected-resource metadata advertises neither `files`, `delete` nor `mail`. Not a hole — the AS validates — but an agent reading the metadata cannot learn `files` exists |
+| 2 | ~~`PUBLIC_SCOPES` (6) ⊂ `OAUTH_SCOPES` (9)~~ — **fixed in #144** | Was: MCP advertised neither `files`, `delete` nor `mail`, so an agent reading the metadata could not learn the files realm existed. Now derived from `OAUTH_SCOPES` minus a deny list that carries its reasons, with a drift test that also fails on a *stale* exemption |
 | 3 | `actionProposal.ts:892` calls the `reply-draft` apply "tier 3, human-approved" | Its only producer emits **tier 2**. The tier-3 wall is real and tested but guards a branch nothing currently produces |
 | 4 | `/console/*` is a real jmap route, omitted from `deploy-app.yml:7` and from `wrangler.jsonc:8`'s "these four patterns" (there are five) | Provisioning routes from either comment loses the agent console to a Pages 404 |
 | 5 | popcorn's committed plist sets `POPCORN_LISTEN` only | The SMTP face is conditional on `POPCORN_SMTP_LISTEN`, which the plist never sets. Any SMTP submission is runtime config living outside this repo |
