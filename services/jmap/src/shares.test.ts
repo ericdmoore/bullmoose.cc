@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mintToken } from "@bullmoose/auth-core";
 import { fakeEnv, fakeKV } from "@bullmoose/test-fakes";
 import worker, { type Env } from "./index";
-import { listShareRecords, putShareRecord, shareKey, type ShareRecord } from "./shares";
+import {
+  listShareRecords,
+  putShareRecord,
+  shareKey,
+  shareTombstoneExpiry,
+  type ShareRecord,
+} from "./shares";
 
 /**
  * sVOL `010` — blob lifecycle: enumerate, delete, revoke.
@@ -179,16 +185,83 @@ describe("share revocation — the kill switch", () => {
     const minted = JSON.parse(h.w.kv.store.get(key)!.value) as ShareRecord;
     expect(minted.revokedAt).toBeUndefined();
     expect(minted.blobId).toMatch(/^b_/);
-    // The record must not outlive the link it describes — that is what bounds
-    // this keyspace and removes the need for a sweeper.
-    expect(h.w.kv.store.get(key)!.expiration).toBeLessThanOrEqual(minted.exp);
+    // The record dies WITH the link it describes — that is what bounds this
+    // keyspace and removes the need for a sweeper. Exact, not ≤: the expiry is
+    // an absolute instant computed from `exp`, so there is no clock to race.
+    // (This assertion used to be `toBeLessThanOrEqual` against a relative TTL
+    // and flaked whenever a second ticked between the two clock reads.)
+    expect(h.w.kv.store.get(key)!.expiration).toBe(minted.exp);
 
     await h.call("POST", `/api/shares/${ACCOUNT}/${share.shareId}/revoke`);
 
     const tombstone = JSON.parse(h.w.kv.store.get(key)!.value) as ShareRecord;
     expect(tombstone.revokedAt).toBeGreaterThan(0);
     // The tombstone inherits the link's death date rather than extending it.
-    expect(h.w.kv.store.get(key)!.expiration).toBeLessThanOrEqual(minted.exp);
+    expect(h.w.kv.store.get(key)!.expiration).toBe(minted.exp);
+  });
+
+  // The regime the assertion above cannot reach, because a mintable link is
+  // always longer-lived than KV's floor. Revoking a link with seconds to live
+  // still has to DENY those seconds, so the record is floored to KV_MIN_TTL
+  // and outlives the link — bounded, deliberate, and previously untested.
+  describe("shareTombstoneExpiry — the KV floor is the only thing that extends a record", () => {
+    const NOW_MS = 1_770_000_000_000; // pinned: the function must be pure in nowMs
+    const nowSec = Math.floor(NOW_MS / 1000);
+
+    it("a long-lived link dies exactly with the link", () => {
+      expect(shareTombstoneExpiry(nowSec + 3600, NOW_MS)).toBe(nowSec + 3600);
+    });
+
+    it("a link inside the floor is extended to the floor, never dropped", () => {
+      // 5s of life left: KV will not store that, and forgetting the record
+      // would silently UN-revoke the link for its last 5 seconds.
+      expect(shareTombstoneExpiry(nowSec + 5, NOW_MS)).toBe(nowSec + 60);
+    });
+
+    it("an already-expired link still gets the floor, not a past instant", () => {
+      // A past `expiration` is a write KV discards immediately — same
+      // un-revoke hazard, arrived at from the other side.
+      expect(shareTombstoneExpiry(nowSec - 300, NOW_MS)).toBe(nowSec + 60);
+    });
+
+    it("is pure in nowMs — the same inputs give the same instant", () => {
+      // The property that killed the flake: no second read of the clock.
+      const a = shareTombstoneExpiry(nowSec + 3600, NOW_MS);
+      const b = shareTombstoneExpiry(nowSec + 3600, NOW_MS + 999);
+      expect(a).toBe(b);
+    });
+
+    it("writes an ABSOLUTE expiration, never a relative TTL", async () => {
+      // Without this the fix is untestable and would rot straight back: the KV
+      // fake normalizes `expirationTtl` into an `expiration` on the way in, so
+      // a revert to the racing relative form is INVISIBLE in the store and
+      // passes every other assertion in this file. Only the options object as
+      // handed to `put` distinguishes them, so that is what gets asserted.
+      const seen: Array<Record<string, unknown> | undefined> = [];
+      const recorder = {
+        async put(_k: string, _v: string, o?: Record<string, unknown>) {
+          seen.push(o);
+        },
+      } as unknown as KVNamespace;
+
+      await putShareRecord(
+        recorder,
+        {
+          shareId: "sh_abs",
+          tenantId: "t_x",
+          accountId: ACCOUNT,
+          blobId: "b_1",
+          name: "n",
+          exp: nowSec + 3600,
+          createdAt: NOW_MS,
+        },
+        NOW_MS,
+      );
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toHaveProperty("expiration", nowSec + 3600);
+      expect(seen[0]).not.toHaveProperty("expirationTtl");
+    });
   });
 
   it("revoking twice is idempotent and still refuses", async () => {
