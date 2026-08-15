@@ -407,11 +407,27 @@ export async function handleMcp(request: Request, env: Env, authenticated?: Prin
   // and MUST equal the _meta value; an unknown version returns a typed error
   // carrying the supported set.
   const headerVersion = request.headers.get("MCP-Protocol-Version");
-  // A legacy client that got through `initialize` keeps calling tools without
-  // the modern per-request envelope. Recognize it by the ABSENCE of both
-  // modern signals and serve it on the legacy lane rather than failing it
-  // with a conformance error it cannot act on.
-  const legacyLane = !headerVersion && meta[PROTO_META] === undefined;
+  // Era selection, corrected by the FIRST REAL CLIENT (2026-08-14): the
+  // discriminator is the `_meta` mirror ALONE, never the header. The first
+  // cut required the header to be absent too — wrong, because the 2025
+  // streamable-HTTP spec ALSO mandates `MCP-Protocol-Version` on every
+  // post-initialize request. So the real Claude client authenticated fine
+  // and then died on tools/list with our own -32020: it sent
+  // `MCP-Protocol-Version: 2025-06-18` and (correctly, for its era) no
+  // `_meta.protocolVersion`, and we read "header without mirror" as a
+  // malformed MODERN request instead of a normal LEGACY one. The harness
+  // never caught it because its fake legacy client omitted the header —
+  // T7's own rationale ("a self-written client shares your assumptions"),
+  // demonstrated. What each era actually sends:
+  //
+  //           header   _meta mirror
+  //   2025:   yes      no            ← the case the first cut refused
+  //   2026:   yes      yes (equal)
+  //
+  // On the legacy lane the header is informational and unvalidated: the
+  // client echoes whatever `initialize` negotiated, and refusing an
+  // unexpected value would only manufacture a second version of this bug.
+  const legacyLane = meta[PROTO_META] === undefined;
   if (!legacyLane) {
     if (!headerVersion || headerVersion !== meta[PROTO_META]) {
       // -32020 HeaderMismatch, not -32600. The spec assigns this code and a
