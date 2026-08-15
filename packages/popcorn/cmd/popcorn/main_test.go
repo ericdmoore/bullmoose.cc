@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"log"
+	"net"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -112,4 +116,111 @@ func TestBadNumericSettingsFallBackInsteadOfDisablingTheBound(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ---- one bad session ---------------------------------------------------------
+
+// Every connection is served on its own goroutine, and a panic on any
+// goroutine ends the process — there is no outer frame that can catch it. So
+// without the recover in accept, one malformed session drops every other
+// user's connection with it, mid-download, for as long as it takes the service
+// manager to notice. This test states that literally: against code without the
+// recover, the panic escapes and takes the test binary down with it.
+//
+// It is defence in depth and not a licence — the panics it exists to survive
+// (a stale POP3 message number, a short JMAP response) are fixed where they
+// live, in internal/pop3 and internal/jmap.
+func TestOneSessionsPanicDoesNotTakeTheProcessDown(t *testing.T) {
+	var logs syncBuffer
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	ln := &handOverListener{conns: make(chan net.Conn)}
+	sem := make(chan struct{}, 64)
+	served := make(chan struct{})
+
+	var mu sync.Mutex
+	nth := 0
+	go accept(ln, sem, func(c net.Conn) {
+		defer c.Close()
+		mu.Lock()
+		nth++
+		first := nth == 1
+		mu.Unlock()
+		if first {
+			panic("a session that read something it should not have")
+		}
+		close(served)
+	})
+
+	first, firstPeer := net.Pipe()
+	second, secondPeer := net.Pipe()
+	t.Cleanup(func() { firstPeer.Close(); secondPeer.Close() })
+
+	ln.conns <- first
+	waitFor(t, "the panic to be logged", func() bool {
+		return strings.Contains(logs.String(), "read something it should not have")
+	})
+
+	// The daemon is still here, and the slot the dead session held came back.
+	ln.conns <- second
+	select {
+	case <-served:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the listener stopped serving after a panicking session")
+	}
+	waitFor(t, "the connection slot to be released", func() bool { return len(sem) == 0 })
+
+	l := logs.String()
+	if !strings.Contains(l, "panic serving") {
+		t.Errorf("the panic log %q does not say what happened", l)
+	}
+	// The stack is the only diagnostic left once the goroutine is gone.
+	if !strings.Contains(l, "goroutine") || !strings.Contains(l, "main.go") {
+		t.Errorf("the panic log %q carries no stack; there is nothing else to debug it from", l)
+	}
+}
+
+// handOverListener yields exactly the connections a test pushes into it, and
+// blocks in Accept in between — which is what a real listener does while
+// waiting for a client. It is never closed: a closed channel would make Accept
+// return (nil, nil) and send accept() into a loop over a nil conn. One parked
+// goroutine at the end of the test is the cheaper end of that trade.
+type handOverListener struct{ conns chan net.Conn }
+
+func (l *handOverListener) Accept() (net.Conn, error) { return <-l.conns, nil }
+func (l *handOverListener) Close() error              { return nil }
+func (l *handOverListener) Addr() net.Addr            { return pipeAddr{} }
+
+type pipeAddr struct{}
+
+func (pipeAddr) Network() string { return "pipe" }
+func (pipeAddr) String() string  { return "pipe" }
+
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+		if cond() {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
+
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }

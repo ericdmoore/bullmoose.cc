@@ -21,6 +21,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -96,6 +97,18 @@ func accept(ln net.Listener, sem chan struct{}, serve func(net.Conn)) {
 		sem <- struct{}{}
 		go func() {
 			defer func() { <-sem }()
+			// Defence in depth, not a licence: a panic on a connection
+			// goroutine is unrecoverable from anywhere else, so without this
+			// one malformed session ends the process and drops every other
+			// user's connection with it. Serve's own deferred Close runs
+			// while the stack unwinds, so this connection dies alone. The
+			// stack goes to the log because there is nothing else left to
+			// diagnose it from.
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("panic serving %v: %v\n%s", conn.RemoteAddr(), r, debug.Stack())
+				}
+			}()
 			serve(conn)
 		}()
 	}

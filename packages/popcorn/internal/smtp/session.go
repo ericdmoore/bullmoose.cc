@@ -14,6 +14,7 @@ package smtp
 import (
 	"bufio"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -42,6 +43,17 @@ type session struct {
 
 const maxRcpt = 100
 
+// maxCommandLine bounds one command or AUTH continuation line. RFC 5321
+// §4.5.3.1.4 caps commands at 512 octets and RFC 4954 §4 asks for room for
+// long AUTH exchanges; 4096 clears both and matches the read buffer, so a
+// conforming line never needs a second fill.
+const maxCommandLine = 4096
+
+// errLineTooLong means the cap was hit with the rest of the line still
+// unread. The session cannot resume from there — whatever follows the cut is
+// not a command — so every caller closes the connection.
+var errLineTooLong = errors.New("command line too long")
+
 func Serve(conn net.Conn, cfg Config) {
 	s := &session{conn: conn, r: bufio.NewReaderSize(conn, 4096), cfg: cfg}
 	defer conn.Close()
@@ -49,11 +61,15 @@ func Serve(conn net.Conn, cfg Config) {
 
 	for {
 		_ = conn.SetDeadline(time.Now().Add(cfg.IdleTimeout))
-		line, err := s.r.ReadString('\n')
+		line, err := s.readLine()
+		if errors.Is(err, errLineTooLong) {
+			s.reply("500 5.5.2 line too long")
+			return
+		}
 		if err != nil {
 			return
 		}
-		verb, arg := split(strings.TrimRight(line, "\r\n"))
+		verb, arg := split(line)
 
 		switch verb {
 		case "QUIT":
@@ -72,13 +88,17 @@ func Serve(conn net.Conn, cfg Config) {
 			s.mailFrom, s.rcptTo = "", nil
 			s.reply("250 2.0.0 flushed")
 		case "AUTH":
-			s.auth(arg)
+			if !s.auth(arg) {
+				return
+			}
 		case "MAIL":
 			s.mail(arg)
 		case "RCPT":
 			s.rcpt(arg)
 		case "DATA":
-			s.data()
+			if !s.data() {
+				return
+			}
 		case "STARTTLS":
 			s.reply("502 5.5.1 no STARTTLS here — connect with implicit TLS")
 		default:
@@ -89,10 +109,13 @@ func Serve(conn net.Conn, cfg Config) {
 
 // ---- AUTH --------------------------------------------------------------
 
-func (s *session) auth(arg string) {
+// auth reports whether the session may continue, on the same terms as data:
+// a continuation line that blew the length cap leaves the reader mid-line,
+// and there is no resuming from that.
+func (s *session) auth(arg string) bool {
 	if s.client != nil {
 		s.reply("503 5.5.1 already authenticated")
-		return
+		return true
 	}
 	mech, initial, _ := strings.Cut(arg, " ")
 	var user, pass string
@@ -100,24 +123,36 @@ func (s *session) auth(arg string) {
 	case "PLAIN":
 		if initial == "" {
 			s.reply("334 ")
-			initial = s.readLine()
+			line, err := s.readLine()
+			if err != nil {
+				return false
+			}
+			initial = line
 		}
 		raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(initial))
 		parts := strings.Split(string(raw), "\x00")
 		if err != nil || len(parts) != 3 {
 			s.reply("501 5.5.4 malformed AUTH PLAIN")
-			return
+			return true
 		}
 		user, pass = parts[1], parts[2]
 	case "LOGIN":
 		s.reply("334 VXNlcm5hbWU6") // "Username:"
-		u, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(s.readLine()))
+		uLine, err := s.readLine()
+		if err != nil {
+			return false
+		}
 		s.reply("334 UGFzc3dvcmQ6") // "Password:"
-		p, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(s.readLine()))
+		pLine, err := s.readLine()
+		if err != nil {
+			return false
+		}
+		u, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(uLine))
+		p, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(pLine))
 		user, pass = string(u), string(p)
 	default:
 		s.reply("504 5.5.4 only PLAIN and LOGIN")
-		return
+		return true
 	}
 
 	base, err := jmap.Discover(user, s.cfg.JMAPBase)
@@ -133,7 +168,7 @@ func (s *session) auth(arg string) {
 		log.Printf("smtp auth failed for %s: %v", user, err)
 		time.Sleep(time.Second)
 		s.reply("535 5.7.8 authentication failed")
-		return
+		return true
 	}
 	s.client, s.user = client, user
 	s.idByAddr = map[string]string{}
@@ -141,6 +176,7 @@ func (s *session) auth(arg string) {
 		s.idByAddr[strings.ToLower(id.Email)] = id.ID
 	}
 	s.reply("235 2.7.0 accepted")
+	return true
 }
 
 // ---- envelope ----------------------------------------------------------
@@ -184,10 +220,13 @@ func (s *session) rcpt(arg string) {
 	s.reply("250 2.1.5 recipient OK")
 }
 
-func (s *session) data() {
+// data runs one DATA transaction. It reports whether the session may
+// continue; false means the command stream can no longer be trusted and the
+// connection must be closed.
+func (s *session) data() bool {
 	if s.mailFrom == "" || len(s.rcptTo) == 0 {
 		s.reply("503 5.5.1 need MAIL and RCPT first")
-		return
+		return true
 	}
 	s.reply("354 end with <CRLF>.<CRLF>")
 
@@ -197,7 +236,7 @@ func (s *session) data() {
 	for {
 		line, err := s.r.ReadString('\n')
 		if err != nil {
-			return
+			return false
 		}
 		trimmed := strings.TrimRight(line, "\r\n")
 		if trimmed == "." {
@@ -206,7 +245,7 @@ func (s *session) data() {
 		trimmed = strings.TrimPrefix(trimmed, ".")
 		if raw.Len()+len(trimmed) > s.cfg.MaxSize {
 			s.reply(fmt.Sprintf("552 5.3.4 message exceeds %d bytes", s.cfg.MaxSize))
-			return
+			return s.discardBody()
 		}
 		raw.WriteString(trimmed)
 		raw.WriteString("\r\n")
@@ -218,19 +257,85 @@ func (s *session) data() {
 		log.Printf("smtp submit for %s failed: %v", s.user, err)
 		s.reply("554 5.0.0 submission failed: " + oneLine(err.Error()))
 	} else {
-		s.reply("250 2.0.0 queued as " + subID)
+		// The id comes from the JMAP server, so it is interpolated through
+		// oneLine like every other remote-controlled value: a CRLF in it
+		// would let that server write extra reply lines into this stream.
+		s.reply("250 2.0.0 queued as " + oneLine(subID))
 	}
 	s.mailFrom, s.rcptTo = "", nil
+	return true
+}
+
+// discardBody consumes the remainder of a DATA body that will not be
+// submitted, stopping at the terminating dot, and reports whether the
+// session may continue.
+//
+// Returning without it left the rest of the message in the reader, where
+// Serve read it as commands: a "RCPT TO:<attacker@evil.example>" line typed
+// into a message body was answered "250 recipient OK" and joined the
+// envelope, which was still live. So the envelope goes first, then the body.
+//
+// Draining is itself the hazard — a client that never sends the dot would
+// keep us reading — so it is bounded by the same byte count the message was
+// already allowed. One DATA therefore never reads more than 2×MaxSize, and a
+// body that outlasts that budget costs its sender the connection rather than
+// this process's attention. Nothing is lost by hanging up: the 552 has
+// already been sent, so the client has its answer.
+//
+// It reads through ReadSlice rather than ReadString because a drain that
+// grew a buffer to hold a line it is about to throw away would be its own
+// version of the problem it exists to fix.
+func (s *session) discardBody() bool {
+	s.mailFrom, s.rcptTo = "", nil
+	partial := false // mid-way through a line longer than the read buffer
+	for budget := s.cfg.MaxSize; budget > 0; {
+		chunk, err := s.r.ReadSlice('\n')
+		budget -= len(chunk)
+		if err == bufio.ErrBufferFull {
+			// Longer than the whole buffer, so not the terminator. The flag
+			// matters: without it a line ending in ".\r\n" on a fill
+			// boundary would arrive looking exactly like the end of the body.
+			partial = true
+			continue
+		}
+		if err != nil {
+			return false
+		}
+		if !partial && strings.TrimRight(string(chunk), "\r\n") == "." {
+			return true
+		}
+		partial = false
+	}
+	log.Printf("smtp: %s sent no end-of-DATA within %d bytes of a rejected message; closing", s.user, s.cfg.MaxSize)
+	return false
 }
 
 // ---- helpers -----------------------------------------------------------
 
-func (s *session) readLine() string {
-	line, err := s.r.ReadString('\n')
-	if err != nil {
-		return ""
+// readLine reads one command or AUTH continuation line, CRLF stripped, and
+// refuses to buffer more than maxCommandLine bytes of it.
+//
+// The bound is the point: ReadString grows bufio's buffer to hold whatever
+// arrives before a newline, so a client that opens a connection and streams
+// without ever sending one is an allocation it controls and popcorn does
+// not — before it has authenticated, on one of 64 shared slots. ReadSlice
+// keeps the buffer at its fixed size and the copy stops at the cap.
+func (s *session) readLine() (string, error) {
+	var line strings.Builder
+	for {
+		chunk, err := s.r.ReadSlice('\n')
+		if len(chunk) > maxCommandLine-line.Len() {
+			return "", errLineTooLong
+		}
+		line.Write(chunk) // copies; chunk aliases the buffer until the next read
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimRight(line.String(), "\r\n"), nil
 	}
-	return strings.TrimRight(line, "\r\n")
 }
 
 func (s *session) reply(line string) { fmt.Fprintf(s.conn, "%s\r\n", line) }

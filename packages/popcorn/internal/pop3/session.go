@@ -67,9 +67,25 @@ func Serve(conn net.Conn, cfg Config) {
 		case "NOOP":
 			s.ok("")
 		case "USER":
+			// RFC 1939 §5 puts USER and PASS in AUTHORIZATION state only; a
+			// session that has a client has already left it. Accepting them
+			// here re-snapshotted the maildrop underneath the message numbers
+			// the client had already been handed, so QUIT applied the old
+			// numbers to the new snapshot: it archived whichever message now
+			// sat at that index — silently, and looking to the user exactly
+			// like mail loss — or panicked on a maildrop that had shrunk,
+			// which on a connection goroutine is the whole daemon.
+			if s.client != nil {
+				s.err("already authenticated")
+				continue
+			}
 			s.user = arg
 			s.ok("send PASS (an app-password token, not your login password)")
 		case "PASS":
+			if s.client != nil { // see USER: AUTHORIZATION-state commands only
+				s.err("already authenticated")
+				continue
+			}
 			s.pass(arg)
 		case "STAT", "LIST", "UIDL", "RETR", "TOP", "DELE", "RSET":
 			if s.client == nil {
@@ -103,6 +119,13 @@ func (s *Session) pass(password string) {
 			// POP3 requires stable message numbers for the whole
 			// transaction — snapshot the maildrop at login.
 			s.msgs, err = s.client.ListMailbox(inbox, s.cfg.MaxMessages)
+			// The marks are indices into that snapshot, so the two are one
+			// value and are replaced together. Serve refuses USER/PASS once
+			// authenticated, so nothing can reach this twice today; the reset
+			// is here so that if something ever does, it re-snapshots with an
+			// empty maildrop rather than QUIT-ing the old numbers against the
+			// new list.
+			s.deleted = map[int]bool{}
 		}
 	}
 	if err != nil {
