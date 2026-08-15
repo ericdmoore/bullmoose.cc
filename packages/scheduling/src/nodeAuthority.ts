@@ -1,16 +1,21 @@
+import { JOB_MAX_DEPTH_CEILING, isPrivacyClass, type NodeAuthority, type NodeCeiling } from "./attenuation.js";
 import {
-  JOB_MAX_DEPTH_CEILING,
   describeDenial,
   foldChain,
   intersectAuthority,
-  isPrivacyClass,
   mayUse,
   type AuthorityDenial,
-  type NodeAuthority,
-  type NodeCeiling,
   type Use,
-} from "@bullmoose/scheduling";
-import type { Env } from "./models.js";
+} from "./useAuthority.js";
+
+/**
+ * The database handle this module reads. Structurally the `Env` of any worker
+ * that binds D1, which is why every caller passes its own `Env` unchanged —
+ * the module needs one binding and must not be able to reach a second.
+ */
+export interface AuthorityDb {
+  DB: D1Database;
+}
 
 /**
  * THE USE-TIME AUTHORITY GATE — one function, one answer, every axis.
@@ -29,30 +34,25 @@ import type { Env } from "./models.js";
  * a new consumer inherits the rule by calling one function rather than by
  * remembering a policy.
  *
- * It is in `services/agent` rather than somewhere more central because this is
- * the only worker that can answer the question at all. Enforcing a delegation
- * requires knowing WHICH INVOCATION IS ASKING, and today exactly one code path
- * knows: the drain, which claimed the row. The MCP tool surface
- * (`mcp.ts:544`, `authorizeAccount`) and the Bureau's credential gate
- * (`services/bureau/src/grants.ts:96`, `resolveBureauGrant`) both authorize a
- * BEARER — a principal, not an invocation — so neither can consult an envelope
- * it has no way to name. Closing those two requires per-invocation tokens
- * (`agent-integration.md` §4: "minted at invocation time, scoped to exactly the
- * context ∪ the agent's standing grants"), which is a token-minting change, not
- * a gate change. Until that exists, this gate covers every site that CAN name
- * the invocation, and the two that cannot are named here so the gap is a
- * documented boundary rather than an oversight.
+ * ── WHY IT LIVES IN A PACKAGE NOW ──────────────────────────────────────────
+ * It used to live in `services/agent/src/useGate.ts`, and the reason it gave
+ * was that the drain — which claimed the row — was the only code path that
+ * could name the acting invocation at all. The MCP tool surface
+ * (`mcp.ts`, `authorizeAccount`) and the Bureau's credential gate
+ * (`services/bureau/src/grants.ts`, `resolveBureauGrant`) both authorize a
+ * BEARER — a principal, not an invocation — so neither could consult an
+ * envelope it had no way to name, and a third site was the same shape:
+ * `AgentInvocation/set` create (`services/jmap/src/methods/agent.ts`).
  *
- * A THIRD member of that family, added here because it is the same shape and
- * was found the same way: `AgentInvocation/set` create
- * (`services/jmap/src/methods/agent.ts`) mints a fresh `pending` invocation for
- * any enabled binding on the account, gated on the `draft` scope alone. A
- * delegated node that holds a `draft`-scoped token could therefore cause an
- * invocation carrying no envelope. It is NOT fixable by propagation: nothing on
- * that request names the causing invocation (`ctx.agent.invocation` is
- * populated only where a proposal is applied), so there is no envelope to copy
- * — it authorizes a BEARER, exactly like the two above, and closes with the
- * same per-invocation tokens.
+ * Per-invocation tokens (`.plans/s17-chief-of-staff/per-invocation-tokens.md`)
+ * remove that rationale: a `bmi_` bearer NAMES its invocation, so more than one
+ * worker can now ask this question. The module moved verbatim into
+ * `@bullmoose/scheduling` — beside `foldChain`, whose arithmetic it feeds —
+ * rather than being copied, because two implementations of "what may this node
+ * do" is exactly the drift the one-choke-point rule above exists to prevent.
+ * The only edit the move made was the DB handle: `Env` became `AuthorityDb`,
+ * so a worker passes its own env unchanged and the module can reach one
+ * binding and no more.
  *
  * ── WHAT IS NOT IN THAT FAMILY, AND SO WAS CLOSED ──────────────────────────
  * The needsInfo answer round (`ActionProposal/set`, status `info-requested`)
@@ -71,7 +71,7 @@ import type { Env } from "./models.js";
  * ── THE COMPUTATION ────────────────────────────────────────────────────────
  *   effective = (⋂ bindings the chain passes through)
  *               ∩ env(root) ∩ … ∩ env(this node)
- * folded root-first by `foldChain` (@bullmoose/scheduling). The bindings are
+ * folded root-first by `foldChain` (`useAuthority.ts`). The bindings are
  * the first term, so nothing below them can hold what they do not; every hop
  * intersects, so no hop can widen what an ancestor gave up; and an unreadable
  * hop denies the fold outright.
@@ -240,7 +240,7 @@ interface ChainBinding {
  * named as an open boundary.
  */
 export async function effectiveNodeAuthority(
-  env: Env,
+  env: AuthorityDb,
   accountId: string,
   node: Pick<JobNodeRow, "id" | "binding_id" | "job_id" | "parent_id" | "authority_json">,
 ): Promise<NodeUseDecision> {
@@ -280,7 +280,7 @@ export async function effectiveNodeAuthority(
  * that names an axis — which is the entire reason it is one function.
  */
 export async function authorizeNodeUse(
-  env: Env,
+  env: AuthorityDb,
   accountId: string,
   invocationId: string,
   use: Use,
@@ -333,7 +333,7 @@ export async function authorizeNodeUse(
  * `attenuateChild` already enforces their own monotonicity down the chain.
  */
 export async function effectiveNodeCeiling(
-  env: Env,
+  env: AuthorityDb,
   parent: JobNodeRow,
 ): Promise<{ ok: true; ceiling: NodeCeiling } | { ok: false; denial: AuthorityDenial; note: string }> {
   const resolved = await effectiveNodeAuthority(env, parent.account_id, parent);
@@ -374,7 +374,7 @@ export async function effectiveNodeCeiling(
  * rest of this worker uses.
  */
 async function delegationChain(
-  env: Env,
+  env: AuthorityDb,
   accountId: string,
   node: Pick<JobNodeRow, "id" | "binding_id" | "job_id" | "parent_id" | "authority_json">,
 ): Promise<
@@ -488,7 +488,7 @@ async function delegationChain(
  * crosses, at any depth.
  */
 async function chainBindingAuthority(
-  env: Env,
+  env: AuthorityDb,
   accountId: string,
   node: Pick<JobNodeRow, "id" | "binding_id">,
   crossings: readonly ChainBinding[],
@@ -567,7 +567,7 @@ async function chainBindingAuthority(
  * own chain rather than stranded. A missing binding row is treated the same
  * way, because the drain has already refused to claim work for one.
  */
-async function bindingAuthority(env: Env, accountId: string, bindingId: string): Promise<NodeAuthority> {
+async function bindingAuthority(env: AuthorityDb, accountId: string, bindingId: string): Promise<NodeAuthority> {
   const row = await env.DB.prepare(
     `SELECT COALESCE(config_json, '{}') AS config_json
        FROM agent_bindings WHERE account_id = ? AND id = ?`,
@@ -591,5 +591,3 @@ function configAuthority(accountId: string, bindingId: string, configJson: strin
   }
   return bindingCeiling(accountId, bindingId, "", cfg.jobs, {}).authority;
 }
-
-export { describeDenial };

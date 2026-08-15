@@ -1,5 +1,6 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges } from "@bullmoose/account-do";
+import { issueInvocationToken } from "@bullmoose/auth-core/invocation";
 import {
   ESCALATION_WINDOW_NO_HISTORY_MS,
   bindingEscalationWindowMs,
@@ -150,7 +151,12 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
     const oldState = await accountState(ctx, access.accountId);
     const created: Record<string, Record<string, unknown>> = {};
     const notCreated: Record<string, SetError> = {};
-    const updated: Record<string, null> = {};
+    // `null` for every transition but the CLAIM, which now answers with the
+    // per-invocation token it just minted (s17). JMAP's `updated` map is
+    // "id → the properties the server set, or null if none" — the token IS a
+    // property the server set on this invocation, and it is the only place the
+    // plaintext ever appears. See `issueInvocationToken`.
+    const updated: Record<string, { invocationToken: string } | null> = {};
     const notUpdated: Record<string, SetError> = {};
     const destroyed: string[] = [];
     const notDestroyed: Record<string, SetError> = {};
@@ -340,7 +346,28 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
         )
         .run();
       if ((res.meta.changes ?? 0) > 0) {
-        updated[id] = null;
+        // THE MINT (s17). Guarded on `changes` alone, deliberately: the winner
+        // of an atomic `pending → running` UPDATE is by construction the only
+        // party entitled to act as this invocation, so "who may hold the
+        // token" needs no second check — it is the same predicate that already
+        // decided who may run the work. A loser of the race falls through to
+        // the `notUpdated` branch below and mints nothing.
+        //
+        // The plaintext is returned ONCE, here, and never stored. A shard that
+        // predates `agent_invocation_tokens` throws on the INSERT; the claim
+        // itself has already committed and must not be undone for it, so the
+        // mint degrades to the `null` this response carried before s17 rather
+        // than failing a claim the runtime is now responsible for finishing.
+        let invocationToken: string | null = null;
+        try {
+          invocationToken = await issueInvocationToken(ctx.env.DB, {
+            invocationId: id,
+            accountId: access.accountId,
+          });
+        } catch (err) {
+          console.warn(`invocation token mint failed for ${id}: ${String(err)}`);
+        }
+        updated[id] = invocationToken ? { invocationToken } : null;
         continue;
       }
       // Zero changes: raced/gone, or refused by the gate. Distinguish them —

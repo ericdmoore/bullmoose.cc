@@ -31,6 +31,7 @@ import { docsResponse, MCP_DOCS } from "./docs.js";
 import { introspect, isLocalToken, principalFromProps } from "./oauthBridge.js";
 import { handleVault, handleVaultVerify } from "./vault.js";
 import { handleWellKnown, originAllowed, resourceUri, unauthorized } from "./wellKnown.js";
+import { issueInvocationToken } from "@bullmoose/auth-core/invocation";
 import type { Principal } from "@bullmoose/auth-core/principal";
 import {
   callWithFallback,
@@ -301,6 +302,27 @@ async function drain(env: Env, _ctx: ExecutionContext): Promise<number> {
         )
         .run();
       if (claim.meta.changes !== 1) continue;
+
+      // THE MINT (s17), on the same predicate as the JMAP claim path's: exactly
+      // one claimant wins the guarded `pending → running` UPDATE, and that
+      // claimant is the only party entitled to act as this invocation.
+      //
+      // ⚠️ This runtime has NO consumer for the plaintext yet. It claims for
+      // itself and runs the pipeline in-process, so nothing here presents a
+      // bearer; the Bureau gate (step (c) of the design doc) is the first
+      // caller that will. Minting anyway is deliberate and cheap: the token's
+      // LIFETIME is a property of the claim, not of which runtime won it, so
+      // both paths writing the row is what keeps "a running invocation has a
+      // token, a finished one does not" true whoever claimed. The plaintext is
+      // dropped on the floor here rather than logged or stored.
+      try {
+        await issueInvocationToken(env.DB, { invocationId: job.id, accountId: job.account_id });
+      } catch (err) {
+        // Same degradation as the JMAP path: the claim has committed and the
+        // work is this runtime's responsibility now. A shard missing the table
+        // (the migration is not a deploy blocker) must not lose the claim.
+        console.warn(`invocation token mint failed for ${job.id}: ${String(err)}`);
+      }
 
       try {
         await runInvocation(env, job);

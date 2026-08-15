@@ -6,7 +6,7 @@ import { fakeEnv } from "@bullmoose/test-fakes";
 import { jobView } from "@bullmoose/scheduling";
 import agentWorker, { escalateOverdue } from "./index";
 import { startJob } from "./jobs";
-import { authorizeNodeUse } from "./useGate";
+import { authorizeNodeUse } from "@bullmoose/scheduling";
 import { registerActionProposalMethods } from "../../jmap/src/methods/actionProposal";
 import type { RequestContext } from "../../jmap/src/methods/common";
 import type { Env } from "./models";
@@ -24,7 +24,7 @@ import type { Env } from "./models";
  *      answer round that gets enqueued is a brand-new invocation.
  *
  * Before this file, step 3 minted that round with `binding_id` and nothing
- * else: no `job_id`, so `useGate.ts` read it as "not a delegation" and enforced
+ * else: no `job_id`, so `nodeAuthority.ts` read it as "not a delegation" and enforced
  * nothing — the DefaultCase, arrived at from INSIDE a Job. The narrowed node
  * could not exceed its envelope, but it could cause an invocation that had
  * never heard of one, on the same binding, with the binding's full reach.
@@ -33,7 +33,7 @@ import type { Env } from "./models";
  * Everything below runs through the REAL surfaces: the real `startJob`, the
  * real drain (`POST /drain`), the real JMAP `ActionProposal/set`, and the real
  * gate. The only direct SQL is the tampering, which is the threat model
- * (`useGate.test.ts`: "the adversary here is a row, not a planner").
+ * (`nodeAuthority.test.ts`: "the adversary here is a row, not a planner").
  */
 
 const ACCOUNT = "t_bm__a_ask";

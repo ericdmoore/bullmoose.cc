@@ -475,7 +475,7 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
           // statement used to copy `binding_id`/`binding_name` and nothing else,
           // so a node inside a Job — holding an envelope narrowed hop by hop —
           // could cause a fresh invocation carrying NO envelope at all. That row
-          // read as `job_id IS NULL`, which `useGate.ts` correctly treats as
+          // read as `job_id IS NULL`, which `nodeAuthority.ts` (@bullmoose/scheduling) correctly treats as
           // "not a delegation, nothing to enforce" (the DefaultCase). Attenuation
           // was not exceeded so much as SIDESTEPPED: one human question laundered
           // a narrowed node back up to the bare binding.

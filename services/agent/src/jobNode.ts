@@ -1,6 +1,5 @@
-import { describeRefusals } from "@bullmoose/scheduling";
+import { describeRefusals, effectiveNodeAuthority, type JobNodeRow } from "@bullmoose/scheduling";
 import { expandPlan, getJobNode, joinContext } from "./jobs.js";
-import { effectiveNodeAuthority, type JobNodeRow } from "./useGate.js";
 import type { Env, InvocationCost } from "./models.js";
 
 /**
@@ -76,7 +75,7 @@ export async function runJobNode(
 
   // THE PRE-FLIGHT (s17). Before a delegated node does ANY work, its effective
   // authority must be resolvable: `binding ∩ root ∩ … ∩ this node`, every hop
-  // present and readable (`useGate.ts`). A node whose chain cannot be read has
+  // present and readable (`nodeAuthority.ts`). A node whose chain cannot be read has
   // an UNKNOWN bound, and an unknown bound is not a permissive one — so it
   // fails here rather than running and discovering the problem only if it
   // happened to try to delegate.
