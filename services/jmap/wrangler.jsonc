@@ -35,6 +35,58 @@
     // mints them; giving them their own hostname is a product decision, not a
     // routing one.
     { "pattern": "app.bullmoose.cc/share/*", "zone_name": "bullmoose.cc" }
+
+    // ── s20, the explorer — DELIBERATELY COMMENTED OUT ────────────────────
+    //
+    // `explore.bullmoose.cc` is a read-only mirror of everything the caller can
+    // see. `.plans/s20-explorer` open question 2: a deployment that does not
+    // want it must serve NOTHING — "not a flag inside a worker that serves the
+    // product" — so the default is no route, no DNS record and no secrets, and
+    // the switch is three deliberate acts rather than one.
+    //
+    // It lives on its own hostname, not a path under app.bullmoose.cc, and
+    // that is not aesthetics (open question 1): app.bullmoose.cc keeps a device
+    // token in localStorage and renders attacker-authored email HTML, so
+    // same-origin would mean a bug in either surface reaches the other's
+    // credential. A separate host also makes the cookie host-only by
+    // construction, with no Path gymnastics to get wrong.
+    //
+    // TO TURN IT ON:
+    //   1. Create the DNS record. In the Cloudflare dashboard for the
+    //      bullmoose.cc zone, add a PROXIED (orange-cloud) record for
+    //      `explore` — an AAAA to 100:: or a CNAME to app.bullmoose.cc both
+    //      work; the origin is never contacted because a Worker route answers
+    //      first. Nothing resolves without this, so an uncommented route with
+    //      no record still serves nothing.
+    //   2. Uncomment the route below (and the OAUTH service binding further
+    //      down) and redeploy.
+    //   3. Register the OAuth client, ONCE, against the live AS:
+    //        curl -sX POST https://auth.bullmoose.cc/register \
+    //          -H 'content-type: application/json' -d '{
+    //            "client_name": "bullmoose explorer",
+    //            "redirect_uris": ["https://explore.bullmoose.cc/oauth/callback"],
+    //            "grant_types": ["authorization_code","refresh_token"],
+    //            "response_types": ["code"],
+    //            "token_endpoint_auth_method": "none"
+    //          }'
+    //      Keep the `client_id` it returns. DCR is used exactly here, out of
+    //      band and once — see src/explore/oauth.ts for why the request path
+    //      uses a pre-registered client instead.
+    //   4. Set the configuration:
+    //        wrangler secret put EXPLORE_COOKIE_KEY   # openssl rand -hex 32
+    //        wrangler secret put EXPLORE_CLIENT_ID    # from step 3
+    //        wrangler secret put EXPLORE_HOST         # explore.bullmoose.cc
+    //        wrangler secret put EXPLORE_CLIENT_SECRET  # ONLY if step 3 was
+    //                                                   # run with a
+    //                                                   # confidential method
+    //      Only the first is actually a secret. The other two go through
+    //      `secret put` for a different reason: a `vars` entry would be
+    //      COMMITTED, and committing the master switch is the same as turning
+    //      the explorer on for every deployment of this repo. EXPLORE_HOST is
+    //      that switch — with it unset the worker reads no cookie anywhere and
+    //      none of src/explore/ is reachable, whatever the route says.
+    //
+    // , { "pattern": "explore.bullmoose.cc/*", "zone_name": "bullmoose.cc" }
   ],
 
   // AccountDO lives in THIS worker; ingest/submit bind it via script_name.
@@ -58,7 +110,18 @@
   "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }],
 
   // Outbound sends go through the submit worker (which holds SES creds).
-  "services": [{ "binding": "SUBMIT", "service": "bullmoose-submit" }],
+  //
+  // The second entry is s20's, and is commented out with the explore route
+  // above — the two are turned on together. The explorer redeems an
+  // authorization code and asks who a token belongs to; OAUTH_KV is bound to
+  // services/oauth and nowhere else, so both are hops across this binding
+  // (services/agent's OAUTH binding has the same shape for the same reason).
+  // Leaving it out by default also keeps this worker's deploy graph unchanged
+  // for anyone not running an explorer.
+  "services": [
+    { "binding": "SUBMIT", "service": "bullmoose-submit" }
+    // , { "binding": "OAUTH", "service": "bullmoose-oauth" }
+  ],
 
   "vars": {
     // Dev-only single-account auth; replaced by OIDC (services/auth) later.
