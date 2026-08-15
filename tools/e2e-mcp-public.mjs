@@ -332,6 +332,28 @@ if (!EMAIL || !PASSWORD) {
     // implementation.
     check(!res.headers.get("mcp-session-id"), "and no session id is minted");
   }
+  if (token) {
+    // THE REAL CLIENT'S SHAPE, learned the hard way (2026-08-14): the 2025
+    // streamable-HTTP spec mandates the MCP-Protocol-Version HEADER on every
+    // post-initialize request, with no _meta mirror. The first era cut read
+    // "header without mirror" as a malformed modern request and refused it
+    // with -32020 — so the first real Claude client authenticated perfectly
+    // and then failed tools/list. This harness never caught it because its
+    // fake legacy client omitted the header. Now it sends what Claude sends.
+    const res = await fetch(`${MCP}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+        "MCP-Protocol-Version": "2025-06-18",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+    });
+    const body = await res.json().catch(() => null);
+    check(res.ok && Array.isArray(body?.result?.tools),
+      "post-initialize legacy shape works: MCP-Protocol-Version header, no _meta",
+      `${res.status} ${JSON.stringify(body?.error ?? body).slice(0, 160)}`);
+  }
 
   section("B7 — replaying the authorization code kills the whole grant");
   // This runs LAST, and the ordering is the finding rather than a detail.

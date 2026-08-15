@@ -615,6 +615,55 @@ describe("handleMcp — the legacy lane (s02 T2)", () => {
     expect((await res).status).toBe(401);
   });
 
+  it("39. REGRESSION — the real Claude client's exact shape: header, no _meta", async () => {
+    // The first real client (2026-08-14) authenticated, then died on
+    // tools/list with our own -32020. The 2025 streamable-HTTP spec mandates
+    // the MCP-Protocol-Version HEADER on every post-initialize request; what
+    // a 2025 client does not send is the _meta mirror. The first era cut
+    // required the header to be ABSENT for the legacy lane, so the one
+    // header every real 2025 client sends was read as a malformed modern
+    // request. The fake legacy client in tests 30-38 omitted the header,
+    // which is why they all passed — T7's rationale, demonstrated on us.
+    const { res } = call(
+      { jsonrpc: "2.0", id: 1, method: "tools/list" },
+      { Authorization: bearer(), "MCP-Protocol-Version": "2025-06-18" },
+      ericOwns(),
+    );
+    const r = await res;
+    const b = (await r.json()) as any;
+    expect(r.status).toBe(200);
+    expect(Array.isArray(b.result.tools)).toBe(true);
+  });
+
+  it("39b. and a tools/call in that shape works end to end", async () => {
+    const { res } = call(
+      { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "whoami", arguments: {} } },
+      { Authorization: bearer(), "MCP-Protocol-Version": "2025-11-25" },
+      ericOwns(),
+    );
+    const b = (await (await res).json()) as any;
+    expect(b.result.isError).toBeUndefined();
+    expect(JSON.parse(b.result.content[0].text).principal).toBe("eric@bullmoose.cc");
+  });
+
+  it("39c. the modern lane is untouched: _meta present + header mismatch is still -32020", async () => {
+    // The fix moved the era discriminator to the _meta mirror ALONE. The
+    // conformance codes the modern lane owes (T2) must survive it.
+    const { res } = call(
+      {
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/list",
+        params: { _meta: meta() },
+      },
+      { Authorization: bearer(), "MCP-Protocol-Version": "2025-06-18" },
+      ericOwns(),
+    );
+    const r = await res;
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as any).error.code).toBe(-32020);
+  });
+
   it("38. and it still enforces the account gate", async () => {
     const { res } = call(
       {
