@@ -21,6 +21,7 @@ import { proposeBudgetOverruns } from "./budgetOverrun.js";
 import { runJobNode } from "./jobNode.js";
 import { proposeMidBandHolds } from "./midBandProposal.js";
 import { classifyScreened } from "./bouncerClassify.js";
+import { commitHeldProposals } from "./commitHeld.js";
 import { runBouncer } from "./bouncer.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
@@ -204,6 +205,12 @@ export default {
     // what is left undecided is genuinely undecided rather than merely
     // unprocessed. Batched per account, marked once (midBandProposal.ts).
     await proposeMidBandHolds(env);
+    // s03.D T2 — commit tier-2 approvals out of the hold tray once their yank
+    // window closes. This is the sweep that makes Approve MEAN send: without
+    // it, a held reply sits in the tray forever (EditorEmily's did, for two
+    // days, while looking exactly like a dead agent). Failures stay held and
+    // retry; the loud per-row log is the operator's stuck-egress alarm.
+    await commitHeldProposals(env);
   },
 } satisfies ExportedHandler<Env>;
 

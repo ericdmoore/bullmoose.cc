@@ -319,9 +319,13 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
       try {
         const row = await loadProposal(ctx, access.accountId, id);
         if (!row) throw new NotFound();
-        // T1 decides only from `pending`. `held` (post-approval hold tray) and
-        // the terminal states are not re-decidable here — that is T2's yank.
-        if (row.status !== "pending") {
+        // Decisions happen from `pending` — with T2's one exception, now
+        // built: a `held` row (post-approval hold tray) accepts exactly ONE
+        // verb, `yanked`, while its window is open. Terminal states stay
+        // terminal, and a held row still cannot be re-approved, re-rejected
+        // or questioned — the human already decided; the tray only offers
+        // the chance to take it back.
+        if (row.status !== "pending" && !(row.status === "held" && patch.status === "yanked")) {
           throw new SetErrorSignal("invalidProperties", `proposal is ${row.status}, not pending`, ["status"]);
         }
 
@@ -358,12 +362,54 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         }
 
         const status = patch.status;
-        if (status !== "approved" && status !== "rejected" && status !== "info-requested") {
+        if (status !== "approved" && status !== "rejected" && status !== "info-requested" && status !== "yanked") {
           throw new SetErrorSignal(
             "invalidProperties",
-            'status must be "approved", "rejected" or "info-requested"',
+            'status must be "approved", "rejected", "info-requested" or "yanked"',
             ["status"],
           );
+        }
+
+        // ---- yank (s03.D T2): the retraction the hold window exists for ----
+        //
+        // Approving a tier-2 put it in the tray precisely so the human could
+        // change their mind before it egresses. Yank is that change of mind:
+        // legal ONLY from `held`, and only while the window is open — after
+        // `hold_until` the sweep may already have committed, and a yank that
+        // races a send must lose honestly rather than pretend it won.
+        // A yank is neither an approval nor a decline for the learning loop:
+        // the human approved the ACTION and retracted the MOMENT, so it
+        // carries no wrongAction signal (the decline taxonomy's rule that a
+        // reason earns its place only if it changes what the agent does next).
+        if (status === "yanked") {
+          if (row.status !== "held") {
+            // Reachable only for `pending` (the gate above blocks terminal
+            // states): yanking something not yet approved is a category
+            // error — decline it instead.
+            throw new SetErrorSignal(
+              "invalidPatch",
+              `only a held proposal can be yanked (this one is ${row.status}); a pending one is declined, not yanked`,
+              ["status"],
+            );
+          }
+          const yankNow = Date.now();
+          if (row.hold_until !== null && yankNow >= row.hold_until) {
+            throw new SetErrorSignal(
+              "invalidPatch",
+              "too late to yank — the hold window has closed; the commit sweep owns it now",
+              ["status"],
+            );
+          }
+          const yankDecision = buildDecision(ctx, patch.decision, row.kind);
+          await ctx.env.DB.prepare(
+            `UPDATE agent_proposals SET status = 'yanked', decided_at = ?, decision_json = ?
+             WHERE account_id = ? AND id = ? AND status = 'held'`,
+          )
+            .bind(yankNow, JSON.stringify({ ...yankDecision, yankedFromHold: true }), access.accountId, id)
+            .run();
+          propEntry.updated.push(id);
+          updated[id] = null;
+          continue;
         }
 
         // ---- needsInfo (s10 T3): an action, not a reject ----
@@ -1302,4 +1348,108 @@ function safeJsonArray(s: string): unknown[] {
 
 function str(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+// ---- the hold-tray commit sweep (s03.D T2) --------------------------------
+
+/**
+ * Commit every `held` proposal whose retraction window has closed.
+ *
+ * This is the other half of the tier-2 approve: `status='held'` was written
+ * with the note "commit-out-of-tray is s03.D T2 — deliberately NOT done here,
+ * so nothing egresses before the retraction UI exists". The retraction verb
+ * now exists (`yanked`, above), so this is that commit. Found the honest way:
+ * EditorEmily answered a draft request in five seconds and her reply sat
+ * `pending` for two days — and even approving it would only have parked it in
+ * a tray nothing ever emptied.
+ *
+ * ## Who runs it, and as whom
+ *
+ * The agent worker's cron calls this through the jmapBridge pattern (the
+ * method layer running in-process — one implementation of the choreography,
+ * never two). There is no acting human at sweep time, so provenance uses the
+ * decision's `by`: the applied write is attributable to "the human approved
+ * the agent's proposal", exactly as a direct tier-1/3 apply records it
+ * (.feedback common/033). The sweep's own ctx principal is never written.
+ *
+ * ## Failure posture
+ *
+ * A row whose apply fails (submit relay down, mailbox gone) STAYS `held` and
+ * is retried next sweep — the row, not the attempt, is the source of truth,
+ * the same posture as the drain. Failures are returned and logged loudly by
+ * the caller; a bounded batch keeps one poisoned row from starving the rest.
+ * Yank races commit at the `status='held'` guard on the UPDATE: whichever
+ * lands first wins, and the loser's UPDATE changes zero rows.
+ */
+export async function commitDueHeldProposals(
+  ctx: RequestContext,
+  opts: { now?: number; limit?: number } = {},
+): Promise<{ committed: string[]; failed: Array<{ id: string; error: string }> }> {
+  const now = opts.now ?? Date.now();
+  const limit = opts.limit ?? 25;
+  const committed: string[] = [];
+  const failed: Array<{ id: string; error: string }> = [];
+
+  const { results } = await ctx.env.DB.prepare(
+    `${SELECT_JOIN} WHERE p.status = 'held' AND p.hold_until IS NOT NULL AND p.hold_until <= ?
+     ORDER BY p.hold_until ASC LIMIT ?`,
+  )
+    .bind(now, limit)
+    .all<ProposalJoinRow & { tenant_id?: string }>();
+
+  for (const row of results) {
+    try {
+      // The account's tenant, for the submit envelope. Looked up per row —
+      // the sweep crosses accounts, so nothing about it may assume one.
+      const acct = await ctx.env.DB.prepare(`SELECT tenant_id FROM accounts WHERE id = ?`)
+        .bind(row.account_id)
+        .first<{ tenant_id: string }>();
+      if (!acct) throw new Error(`account ${row.account_id} not found`);
+      const access = { accountId: row.account_id, tenantId: acct.tenant_id };
+
+      // Provenance: the write belongs to the human whose approval it executes.
+      const decision = safeJson(row.decision_json ?? "{}");
+      const approver = typeof decision.by === "string" && decision.by ? decision.by : "system:hold-commit";
+      const commitCtx: RequestContext = {
+        ...ctx,
+        principal: { username: approver, scopes: [], accounts: [] },
+      };
+
+      const payload =
+        row.edited_payload_json !== null ? safeJson(row.edited_payload_json) : safeJson(row.payload_json);
+      const { entries } = await applyProposal(commitCtx, access, row, payload);
+
+      // Flip held → approved ONLY if a yank has not raced us; a zero-row
+      // UPDATE means the human won and the apply above must be treated as
+      // the bug it would be — which cannot happen for egress kinds, because
+      // the yank guard checks hold_until BEFORE now. Belt and braces: the
+      // status guard makes the race explicit rather than silent.
+      const res = await ctx.env.DB.prepare(
+        `UPDATE agent_proposals SET status = 'approved', decision_json = ?
+         WHERE account_id = ? AND id = ? AND status = 'held'`,
+      )
+        .bind(JSON.stringify({ ...decision, committedAt: now }), row.account_id, row.id)
+        .run();
+      if ((res.meta?.changes ?? 0) === 0) {
+        failed.push({ id: row.id, error: "yank raced the commit; status was no longer held" });
+        continue;
+      }
+
+      const allEntries = [
+        // "ActionProposal", exactly — the first draft wrote "AgentProposal"
+        // and the /changes test caught it: a wrong collection name commits
+        // fine, reads fine on /get, and is invisible to /changes and push.
+        { collection: "ActionProposal", created: [], updated: [row.id], destroyed: [] },
+        ...entries,
+      ].filter((e) => e.created.length + e.updated.length + e.destroyed.length > 0);
+      if (allEntries.length > 0) {
+        await commitChanges(ctx.env.ACCOUNT_DO, row.account_id, allEntries);
+      }
+      committed.push(row.id);
+    } catch (err) {
+      failed.push({ id: row.id, error: String(err).slice(0, 200) });
+    }
+  }
+
+  return { committed, failed };
 }

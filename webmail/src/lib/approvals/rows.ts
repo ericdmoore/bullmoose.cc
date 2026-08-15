@@ -93,12 +93,16 @@ export const TIER3_CAPABILITY_NOTE =
   "irreversible egress is a human click every time.";
 
 /**
- * The hold-tray affordances that are NOT wired: commit-now and yank are
- * s03.D T2 (actionProposal.ts:268-271). The buttons render disabled with this
- * text visible, because an enabled button here would be a lie about egress —
- * and no affordance at all would hide that the tray has an exit.
+ * The hold tray's honest label, updated as s03.D T2 lands (2026-08-15).
+ * COMMIT is wired: the agent cron sweeps held rows whose window has closed
+ * and egresses them (`commitDueHeldProposals`), so a held reply now sends
+ * within ~window + cron interval. YANK exists as an API verb
+ * (`status: "yanked"`, held-only, window-open-only) but this UI has no
+ * button for it yet — the note says so rather than hiding that the tray
+ * has a working exit and a keyboard-only escape hatch.
  */
-export const HOLD_UNWIRED_NOTE = "commit / yank land with s03.D T2 — not wired yet";
+export const HOLD_UNWIRED_NOTE =
+  "sends automatically when the hold window closes; yank via API — the button lands next";
 
 // ── the no-thanks signal (arch.md §3) ─────────────────────────────────────
 
