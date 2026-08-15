@@ -20,6 +20,14 @@
 // artifact.txt; this package looks them up. Byte-identity is not asserted here,
 // it is structural: the Go binary prints Node's own bytes.
 //
+// ONE mode is no longer a replay: `help --json`. It is a machine surface, not a
+// rendering, and it was missing the structure a machine needs (spec.go's header
+// says which and why), so the captured JSON is decoded, given a derived
+// `options`/`arguments` layer, and re-encoded. Every HUMAN mode above — the
+// overview, each command page, --man, --markdown — is still bytes-in-bytes-out,
+// and TestServeRendersTheCapturedBytes now checks every one of them rather than
+// a sample, precisely because one mode stopped being one.
+//
 // ── The failure mode this design has, and what covers it ────────────────────
 //
 // Essentially one: a STALE artifact — help.ts edited, artifact not regenerated.
@@ -216,7 +224,8 @@ const (
 	// Topic — `help <cmd>` / `<cmd> --help`.
 	Topic
 	// JSON — `help --json`: the whole spec, and the surface an agent should read
-	// rather than scraping the text.
+	// rather than scraping the text. The only mode Serve re-encodes rather than
+	// replays, so that flags and positionals arrive structured (spec.go).
 	JSON
 	// Man — `help --man`: roff, the source of man/bullmoose.1.
 	Man
@@ -256,6 +265,21 @@ func Serve(s *bmio.Streams, req Request) int {
 	spec := load()
 	if spec.err != nil {
 		return corrupt(s, spec.err.Error())
+	}
+
+	// `help --json` is the one mode that is not a replay. It is the surface
+	// agents read, and prose flags are not a surface a machine can read, so it is
+	// re-emitted with the derived structure spec.go describes. Enrichment is
+	// strictly additive and provably so (TestUnenrichedRoundTripIsByteIdentical);
+	// when it cannot be proved for these bytes, Structured says so and the
+	// captured JSON is replayed unchanged below.
+	if req.Mode == JSON {
+		if structured, ok := Structured(); ok {
+			if out, err := encodeSpec(structured); err == nil {
+				s.OutRaw(out)
+				return 0
+			}
+		}
 	}
 
 	key, topic := "", ""
