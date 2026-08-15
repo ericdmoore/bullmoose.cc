@@ -112,7 +112,7 @@ queries, which today sit behind `x-internal-token` on the agent worker.
 > exactly what a redesign replaces. Their server halves are ready and unblocked
 > (`/console/*` serves, `PATCH /agent-bindings/{id}` writes the typed core), so when the
 > redesign settles these are UI-only work.
-| 025 | GraphQL facade | proj | E4 | I2 | `common/022` | spike first | **wontfix** ¹¹ |
+| 025 | GraphQL facade | proj | E4 | I2 | `common/022` | spike first | **wontfix — archived** ¹¹ |
 | 026 | `queryChanges` for the four stubs | cap | E3 | **I0** ⁴ | sVOL | — | **✅ done** ¹² |
 | 027 | `Thread/changes` | cap | E2 | I0 | sVOL | — | **✅ done** ¹³ |
 
