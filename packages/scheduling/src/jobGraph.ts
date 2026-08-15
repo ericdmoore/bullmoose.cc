@@ -180,8 +180,15 @@ export function parseNeeds(needsJson: string | null | undefined): string[] | nul
  * (ids are `inv_<uuid>`), so a node that "needs" it is permanently unmet —
  * which is precisely what the SQL does with an invalid document, spelled in a
  * way the pure side can carry through a fold.
+ *
+ * WRITE THE NUL AS AN ESCAPE, never as a literal byte. The value is identical
+ * either way, but one literal NUL anywhere in a file makes `grep` classify the
+ * WHOLE file as binary and skip it silently — no match, no warning, exit 0.
+ * This file holds the claim gate and the budget SQL, so a reviewer grepping for
+ * `job_id` or `budget_micros` would have been told, convincingly, that neither
+ * appears here. `sourceIsGreppable.test.ts` keeps it that way.
  */
-export const BLOCKED_SENTINEL = " unparseable-needs";
+export const BLOCKED_SENTINEL = "\u0000unparseable-needs";
 
 // ---- the derived view ------------------------------------------------------
 
