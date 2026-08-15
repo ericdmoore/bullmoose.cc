@@ -47,7 +47,7 @@ export interface ExploreSession {
 }
 
 /**
- * ⚠️ THE RULE (`.plans/s20-explorer`, open question 1).
+ * ⚠️ THE RULE (`.plans/s21-explorer`, open question 1).
  *
  * Cookie auth is honoured **only** when the request arrived on the explore
  * hostname **and** the method is GET. The `Host` header is checked EXPLICITLY

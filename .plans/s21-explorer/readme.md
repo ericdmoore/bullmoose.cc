@@ -1,4 +1,4 @@
-# s20 — the explorer: navigable JSON without an app
+# s21 — the explorer: navigable JSON without an app
 
 > **Status: design** (2026-08-15). Eric, after declining a GraphQL facade:
 > *"I'm open to a JMAP explorer — I tend to require that of my JSON APIs anyway. HAL style

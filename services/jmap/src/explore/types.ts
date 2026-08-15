@@ -1,7 +1,7 @@
 import type { MethodDomain } from "../auth";
 
 /**
- * The explorer's type table and its `_links` derivation (s20).
+ * The explorer's type table and its `_links` derivation (s21).
  *
  * PURE — no env, no ctx, no I/O. Everything here is a rendering of a JMAP
  * payload that already exists, which is the whole argument for the explorer

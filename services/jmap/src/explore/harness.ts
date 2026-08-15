@@ -4,7 +4,7 @@ import worker, { type Env } from "../index";
 import { EXPLORE_COOKIE, mintExploreCookie } from "./cookie";
 
 /**
- * TEST-ONLY fixture for the explorer (s20).
+ * TEST-ONLY fixture for the explorer (s21).
  *
  * It drives the WORKER ENTRYPOINT (`worker.fetch`) over `@bullmoose/test-fakes`
  * — real `node:sqlite` on the live schema, real R2/KV fakes, the real

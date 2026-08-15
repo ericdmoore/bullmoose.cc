@@ -45,7 +45,7 @@ export interface Env extends AuthEnv {
   /** HMAC key for expiring public share links (/share/*). */
   SHARE_SIGNING_KEY?: string;
 
-  // ---- s20, the explorer: OFF BY DEFAULT ---------------------------------
+  // ---- s21, the explorer: OFF BY DEFAULT ---------------------------------
   //
   // Every one of these is optional, and `EXPLORE_HOST` is the master switch:
   // unset, `isExploreHost` is false for every request, no cookie is read

@@ -3,7 +3,7 @@ import { EXPLORE_COOKIE, b64urlBytes, b64urlDecode } from "./cookie";
 import { ERIC, EXPLORE_HOST, harness } from "./harness";
 
 /**
- * The explorer as an ordinary OAuth client (s20 step 3).
+ * The explorer as an ordinary OAuth client (s21 step 3).
  *
  * `services/oauth` is deployed and conformant, and NOTHING here changes it:
  * the explorer does the client's half — authorization code + PKCE S256,

@@ -13,7 +13,7 @@ import {
 } from "./harness";
 
 /**
- * s20 — the explorer, driven end to end through `worker.fetch`.
+ * s21 — the explorer, driven end to end through `worker.fetch`.
  *
  * Nothing is stubbed between the HTTP request and the JMAP method layer: the
  * fixture is real SQLite on the live schema and the real AccountDO, so a

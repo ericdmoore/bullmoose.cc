@@ -7,7 +7,7 @@ import { resolve } from "node:path";
 import { ALL, PHASES, exploreRegistrationPlan, exploreSwitch } from "./bootstrap.mjs";
 
 /**
- * `bootstrap explorer` turns s20 on. Three of its four steps talk to the
+ * `bootstrap explorer` turns s21 on. Three of its four steps talk to the
  * network and cannot be asserted here without a live account — so this file
  * tests the parts that are DECIDABLE, which happen to be the parts where a
  * mistake is silent:
@@ -40,7 +40,7 @@ describe("exploreSwitch — the route/binding toggle in services/jmap/wrangler.j
   it("1. the committed file is OFF, which is the whole design", () => {
     // If this ever fails, the explorer got committed in the on state and every
     // deployment of this repo publishes explore.bullmoose.cc on its next
-    // deploy. `.plans/s20-explorer` open question 2: off by default is not a
+    // deploy. `.plans/s21-explorer` open question 2: off by default is not a
     // preference, it is the reason a read-everything surface is tolerable.
     const parsed = JSON.parse(stripJsonc(committed));
     expect(JSON.stringify(parsed.routes)).not.toContain("explore.bullmoose.cc");

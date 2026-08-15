@@ -20,7 +20,7 @@
 //   deploy     `npm run -w services/<w> deploy` in binding-graph order
 //
 // Opt-in, NOT part of `all`:
-//   explorer   turn s20's read-only mirror on (`--off` withdraws it)
+//   explorer   turn s21's read-only mirror on (`--off` withdraws it)
 //   doctor     read-only: does the DEPLOYED world still match this file?
 //
 // Auth: uses your ambient wrangler credentials (`npx wrangler login`, or
@@ -107,7 +107,7 @@ export const EXTERNAL = {
   GATEWAY_TOKEN: { workers: ["agent"], required: false, note: "only if an AI Gateway alias exists" },
 };
 
-// ───────────────── s20, the explorer — opt-in, and NOT in ALL ───────────────
+// ───────────────── s21, the explorer — opt-in, and NOT in ALL ───────────────
 //
 // `node infra/bootstrap.mjs explorer` automates, step for step, the "TO TURN IT
 // ON" runbook in `services/jmap/wrangler.jsonc`. That comment is the
@@ -529,7 +529,7 @@ function saveEnv(env) {
   if (exploreKeys.length) {
     body.push(
       "",
-      "## ── EXPLORER (s20, opt-in) ───────────────────────────────────────────────",
+      "## ── EXPLORER (s21, opt-in) ───────────────────────────────────────────────",
       "## Written by `bootstrap explorer`. Do not hand-edit:",
       "##   EXPLORE_COOKIE_KEY  replacing it signs out every explorer session.",
       "##   EXPLORE_CLIENT_ID   registering a second client orphans the first on",
@@ -810,8 +810,8 @@ function deploy() {
 // migration, why the DNS record is an AAAA to 100::, and why this is not part
 // of `all`.
 //
-// s20's design is TWO switches, and neither alone is sufficient
-// (`.plans/s20-explorer` open question 2):
+// s21's design is TWO switches, and neither alone is sufficient
+// (`.plans/s21-explorer` open question 2):
 //
 //   switch 1  the route + the DNS record — without them nothing on the
 //             internet resolves to, or is routed to, explore.bullmoose.cc.
@@ -1075,7 +1075,7 @@ async function explorer() {
     return;
   }
 
-  step(`explorer — s20: ${EXPLORE_HOSTNAME}, read-only, off unless this runs`);
+  step(`explorer — s21: ${EXPLORE_HOSTNAME}, read-only, off unless this runs`);
   const dnsOk = await exploreDns(env, true);
   exploreConfigEdit(true);
   await exploreRegister(env);
@@ -1188,7 +1188,7 @@ async function doctor() {
     }
   }
 
-  // ---- 3b. the explorer (s20) — CONDITIONAL, because OFF is correct -------
+  // ---- 3b. the explorer (s21) — CONDITIONAL, because OFF is correct -------
   //
   // Most of this script asserts that something IS deployed. The explorer is the
   // one surface whose absence is a valid, and default, state — so an unset
@@ -1360,7 +1360,7 @@ export const PHASES = { resources, wire, schemas, migrate, secrets, deploy, expl
 //             no business also grading the deployment.
 //   explorer  changes something a default run must never change. It publishes
 //             a hostname that mirrors, read-only, everything the caller can
-//             see (`.plans/s20-explorer` open question 2: "a deployment that
+//             see (`.plans/s21-explorer` open question 2: "a deployment that
 //             does not want it must serve NOTHING"). Adding it here would turn
 //             that on for every deployment of this repo, and the person it
 //             surprised would be the one who ran the ordinary deploy command.
@@ -1373,7 +1373,7 @@ function help() {
   node infra/bootstrap.mjs [phase] [--dry-run] [--yes]
 
   phases:  ${ALL.join("  ")}   (default: all)\n  doctor      read-only: is the DEPLOYED world still the one we think we deployed?\n              (not part of a default run — it changes nothing and asserts nothing about code)
-  explorer    turn s20's read-only mirror on at ${EXPLORE_HOSTNAME}:
+  explorer    turn s21's read-only mirror on at ${EXPLORE_HOSTNAME}:
               DNS record, route + OAUTH binding in ${cfg(EXPLORE_WORKER)},
               a one-time OAuth client registration, and the secrets. Every
               step skips itself if already done. NOT part of a default run —

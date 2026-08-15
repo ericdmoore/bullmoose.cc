@@ -19,7 +19,7 @@ import {
 } from "./types";
 
 /**
- * s20 — the explorer: navigable read-only JSON, so a browser plus a
+ * s21 — the explorer: navigable read-only JSON, so a browser plus a
  * pretty-print extension is the entire client.
  *
  * ## The one rule it exists under
@@ -142,7 +142,7 @@ export async function exploreCookiePrincipal(request: Request, env: Env): Promis
 }
 
 /**
- * The ONE permitted scrap of HTML (`.plans/s20-explorer`, open question 3).
+ * The ONE permitted scrap of HTML (`.plans/s21-explorer`, open question 3).
  *
  * No stylesheet, no script, no image — `default-src 'none'` is satisfiable
  * because the page is a heading, two sentences and a link. If this ever grows

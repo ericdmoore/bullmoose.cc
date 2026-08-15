@@ -3,7 +3,7 @@ import type { Env } from "../index";
 import { b64urlBytes, mintExploreCookie, setCookieHeader } from "./cookie";
 
 /**
- * The explorer as an ORDINARY OAuth client (s20 step 3).
+ * The explorer as an ORDINARY OAuth client (s21 step 3).
  *
  * `auth.bullmoose.cc` is not a special-cased dependency here — it is the
  * authorization server and this is a client, doing the boring thing:
@@ -11,7 +11,7 @@ import { b64urlBytes, mintExploreCookie, setCookieHeader } from "./cookie";
  * credential of the client's own making. The AS cannot set a cookie for
  * another host, so it never tries; the explorer redeems the code and sets its
  * OWN host-only cookie. That asymmetry is the entire reason the separate
- * hostname costs nothing (`.plans/s20-explorer`, open question 1).
+ * hostname costs nothing (`.plans/s21-explorer`, open question 1).
  *
  * ## Pre-registered, not DCR
  *

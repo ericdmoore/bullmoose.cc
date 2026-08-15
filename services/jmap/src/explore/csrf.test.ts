@@ -6,7 +6,7 @@ import { EXPLORE_COOKIE, cookieAuthAllowed, hostOnly, isExploreHost } from "./co
 import { APP_HOST, ERIC, EXPLORE_HOST, harness } from "./harness";
 
 /**
- * ⚠️ THE GUARD (s20 / `.plans/s20-explorer` open question 1).
+ * ⚠️ THE GUARD (s20 / `.plans/s21-explorer` open question 1).
  *
  * The explorer and the API are the same worker — that is what makes the
  * explorer cheap, because the JMAP method registry lives here. It is also what

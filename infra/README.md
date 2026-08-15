@@ -14,7 +14,7 @@ Two phases are **not** part of a default run, for opposite reasons:
 | | |
 |---|---|
 | `doctor` | read-only. Is the *deployed* world still the one we think we deployed? Asserts nothing about code. |
-| `explorer` | turns s20's read-only mirror on at `explore.bullmoose.cc` (`--off` withdraws it). It publishes a surface that mirrors everything the caller can see, so it is a decision, not a default. |
+| `explorer` | turns s21's read-only mirror on at `explore.bullmoose.cc` (`--off` withdraws it). It publishes a surface that mirrors everything the caller can see, so it is a decision, not a default. |
 
 `explorer` automates the runbook that used to live as a comment in
 `services/jmap/wrangler.jsonc`: DNS record, route + `OAUTH` binding, a one-time

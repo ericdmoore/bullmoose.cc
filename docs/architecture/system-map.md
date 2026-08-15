@@ -108,7 +108,7 @@ inside no Cloudflare boundary on purpose.
 | `bullmoose-bureau` | Worker | no route — reached only via `BUREAU` | yes |
 | `bullmoose-provision` | Worker | `*.workers.dev`, admin bearer | yes |
 | `bullmoose-demo-keys` | Worker | routes commented out; KV id is a placeholder | **off** |
-| explorer (s20) | code inside jmap | `explore.bullmoose.cc` | **off ×3** |
+| explorer (s21) | code inside jmap | `explore.bullmoose.cc` | **off ×3** |
 | Pages ×2 | Pages | apex + `app.bullmoose.cc` | yes |
 | `packages/popcorn` | Go binary | POP3S; SMTP only if `POPCORN_SMTP_LISTEN` | local |
 | `cli-go`, `packages/cli` | binaries | — | local |
