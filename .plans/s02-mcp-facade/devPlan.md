@@ -20,9 +20,17 @@
 >   noticed an agent gone quiet, audited another agent's YoY claim against the raw
 >   ledger, and flagged the front-matter steering channel — unprompted. **s02 is
 >   functionally complete**; only the two decision sign-offs below remain.
-> - **Decision 1** (all tools public vs. trimming introspection) — left permissive on the
->   fact-finding-across-agents rationale; needs Eric's sign-off.
-> - **`Mcp-Method` REQUIRED vs. validated-when-present** — still flagged, not decided.
+> - **Decision 1 — DECIDED** (Eric, 2026-08-15): **all tools stay public**, introspection
+>   included. The surface's stated purpose is agent fact-finding across agents, and
+>   introspection is what fact-finding IS — the first real session proved it, using
+>   exactly those tools to notice a dead agent and audit another's claim. All are
+>   read-scoped, gated per-call, and `who_can_access` already refuses non-owned accounts.
+> - **`Mcp-Method` — DECIDED** (Eric, 2026-08-15): **validated-when-present**, not
+>   REQUIRED. Enforcing would break every existing caller (our own harness included) for
+>   an intermediary-routing benefit nothing here uses — and the era-detection bug is the
+>   standing warning against refusing requests over envelope strictness real clients do
+>   not share. If an intermediary ever needs it, enforcement is a two-line change made
+>   FOR that intermediary.
 > - T3's "wrong-resource token rejected" is met by the provider pinning `resource` (a
 >   cross-resource token cannot be minted here) plus unit tests on `audienceMatches` —
 >   not by a live cross-resource presentation, which pinning makes impossible.
