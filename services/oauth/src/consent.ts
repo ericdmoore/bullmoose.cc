@@ -52,14 +52,40 @@ interface ConsentInput {
 }
 
 /** What each scope actually permits, in a sentence a human can refuse. */
-const SCOPE_PROSE: Record<string, string> = {
-  read: "Read your mail, contacts and calendar",
+/**
+ * Every scope a client can be GRANTED must have prose here, and the coupling
+ * test holds this map to `OAUTH_SCOPES` — because this exact drift shipped
+ * once: #128 added `files` to the grantable set, and this screen, whose
+ * prose did not know the word, granted the scope while silently omitting it
+ * from "It is asking to:". A permission the human never saw is not consent.
+ * (`mail` is absent on purpose: the bundle is expanded through
+ * `effectiveScopes` into its verbs before rendering, so the bundle name
+ * itself never needs a line.)
+ */
+/**
+ * Scopes the expansion CONFERS but the screen deliberately does not list.
+ *
+ * `send` is here because the `mail` bundle expands to all six mail verbs —
+ * including send — yet no surface an OAuth token can reach exercises it:
+ * there is no send tool (the invariant `mcpTools.test.ts` pins), and OAuth
+ * tokens authenticate only at /mcp, never at JMAP where tier-3 approval
+ * lives. Listing "send mail as you" on the consent screen would claim a
+ * capability the app cannot use — overstatement is the mirror-image failure
+ * of the silent omission this file just fixed. ⚠️ If a send-requiring tool
+ * ever lands on the MCP surface, this exclusion MUST die with it, and the
+ * coupling test on tool scopes below is what will say so.
+ */
+const NEVER_DISPLAYED: ReadonlySet<string> = new Set(["send"]);
+
+export const SCOPE_PROSE: Record<string, string> = {
+  read: "Read your mail, contacts, calendar and files",
   annotate: "Mark your mail read, flagged or categorized",
   draft: "Write drafts in your mailbox (it cannot send them)",
   move: "File your mail into other mailboxes",
   delete: "Delete your mail",
   contacts: "Read and change your contacts",
   calendar: "Read and change your calendar, including creating and deleting events",
+  files: "Read and change your files, including uploading and deleting them",
 };
 
 function escape(s: string): string {
@@ -155,8 +181,26 @@ export function consentPage(input: ConsentInput): Response {
   const name = escape(client.clientName ?? client.clientId);
   // Expanded through the real gate vocabulary, so `mail` shows its verbs
   // rather than hiding them behind a bundle name.
-  const lines = effectiveScopes(authReq.scope)
-    .filter((s) => SCOPE_PROSE[s])
+  const effective = effectiveScopes(authReq.scope);
+  // FAIL LOUD on a scope this screen cannot explain. The silent version of
+  // this shipped once (#128 added `files`; the filter below just dropped it):
+  // the scope was GRANTED while missing from "It is asking to:" — a
+  // permission the human never saw is not consent. Refusing the whole page
+  // turns the next such drift into a visible outage of the consent flow,
+  // which someone fixes in an hour, instead of quiet uninformed consent,
+  // which nobody notices at all.
+  const unexplained = effective.filter((s) => !SCOPE_PROSE[s] && !NEVER_DISPLAYED.has(s));
+  if (unexplained.length > 0) {
+    return errorPage(
+      "This request asks for a permission this screen cannot explain yet.",
+      `Unexplained scope(s): ${unexplained.join(", ")}. Granting what cannot be described ` +
+        "would be uninformed consent, so the request is refused. This is a bullmoose bug — " +
+        "the scope list and the consent prose have drifted.",
+      500,
+    );
+  }
+  const lines = effective
+    .filter((s) => !NEVER_DISPLAYED.has(s))
     .map((s) => `<li>${escape(SCOPE_PROSE[s]!)}</li>`)
     .join("\n");
 

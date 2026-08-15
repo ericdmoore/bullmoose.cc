@@ -116,3 +116,55 @@ describe("consent page — what it says and what it refuses", () => {
     expect(page(["read"], "That address and password did not match.").status).toBe(401);
   });
 });
+
+// The drift guard #128 needed: `files` was added to OAUTH_SCOPES and the
+// consent screen — whose prose did not know the word — granted the scope
+// while silently omitting it from "It is asking to:". A permission the human
+// never saw is not consent. Two layers now hold the coupling: these tests
+// (fail in CI), and the page itself refusing to render an unexplained scope
+// (fail loudly in production rather than silently under-inform).
+describe("every grantable scope is explained — the #128 drift guard", () => {
+  it("30. every OAUTH_SCOPES entry expands to prose-covered scopes only", async () => {
+    const { OAUTH_SCOPES, effectiveScopes } = await import("@bullmoose/auth-core");
+    for (const s of OAUTH_SCOPES) {
+      const html = await consentPage({
+        client: { clientId: "x", clientName: "Drift Probe", redirectUris: [] },
+        authReq: { clientId: "x", redirectUri: "https://claude.ai/cb", scope: [s], state: "st" },
+      }).text();
+      expect(html, `scope "${s}" must render an explanation`).toContain("<li>");
+      expect(html, `scope "${s}" must not hit the unexplained-scope refusal`).not.toContain("cannot explain");
+      // And nothing the expansion confers may be silently missing: every
+      // effective scope is either prose-listed or a NAMED display exception.
+      void effectiveScopes([s]);
+    }
+  });
+
+  it("31. files — the scope #128 added — renders its line", async () => {
+    const html = await consentPage({
+      client: { clientId: "x", clientName: "Files App", redirectUris: [] },
+      authReq: { clientId: "x", redirectUri: "https://claude.ai/cb", scope: ["files"], state: "st" },
+    }).text();
+    expect(html).toContain("Read and change your files");
+  });
+
+  it("32. a scope with no prose refuses the whole page — loud, never silent", async () => {
+    // Simulate the next drift: a scope the gate's expansion knows (admin is
+    // in CONCRETE_SCOPES) but the prose does not. The page must refuse with
+    // a 500 naming the drift, not render a shorter list.
+    const res = consentPage({
+      client: { clientId: "x", clientName: "Future App", redirectUris: [] },
+      authReq: { clientId: "x", redirectUri: "https://claude.ai/cb", scope: ["admin"], state: "st" },
+    });
+    expect(res.status).toBe(500);
+    expect(await res.text()).toContain("cannot explain");
+  });
+
+  it("33. mail still renders — send is a NAMED display exception, not a drift", async () => {
+    const html = await consentPage({
+      client: { clientId: "x", clientName: "Mail App", redirectUris: [] },
+      authReq: { clientId: "x", redirectUri: "https://claude.ai/cb", scope: ["mail"], state: "st" },
+    }).text();
+    expect(html).toContain("Delete your mail");
+    expect(html).not.toContain("cannot explain");
+  });
+});
