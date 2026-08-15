@@ -148,6 +148,14 @@ func TestArtifactCoversEverySpecCommand(t *testing.T) {
 // TestServeRendersTheCapturedBytes pins the lookup itself: what Serve writes is
 // what was captured, on the stream it was captured from, with the exit code it
 // was captured with. Nothing here re-renders anything.
+//
+// Every HUMAN-facing mode is in this list, and that is the point: the overview,
+// each command page, the man page and the Markdown are byte-for-byte Node's, and
+// this is what says so. `help --json` is deliberately NOT here — it is the one
+// mode that is re-emitted with the derived argument structure (spec.go), and its
+// relationship to these bytes is pinned instead by spec_test.go's
+// TestUnenrichedRoundTripIsByteIdentical (the enrichment is additive) and
+// TestServeJSONIsASupersetOfTheCapture (nothing was lost).
 func TestServeRendersTheCapturedBytes(t *testing.T) {
 	spec := load()
 	for _, c := range []struct {
@@ -157,7 +165,6 @@ func TestServeRendersTheCapturedBytes(t *testing.T) {
 	}{
 		{"overview", Request{Mode: Overview}, "overview"},
 		{"no command", Request{Mode: OverviewUsage}, "overview-usage"},
-		{"json", Request{Mode: JSON}, "json"},
 		{"man", Request{Mode: Man}, "man"},
 		{"markdown", Request{Mode: Markdown}, "markdown"},
 		{"a command page", Request{Mode: Topic, Topic: "rm"}, "command:rm"},
@@ -176,6 +183,18 @@ func TestServeRendersTheCapturedBytes(t *testing.T) {
 				t.Errorf("stderr is not the captured bytes (%dB vs %dB)", err.Len(), len(want.stderr))
 			}
 		})
+	}
+
+	// And every per-command page, not just the one above: `help --json` grew a
+	// second renderer, so the promise that NOTHING ELSE did is worth checking
+	// exhaustively rather than by sample.
+	for _, name := range Commands() {
+		var out, err bytes.Buffer
+		Serve(bmio.NewTo(&out, &err), Request{Mode: Topic, Topic: name})
+		if want := spec.entries["command:"+name]; out.String() != want.stdout || err.String() != want.stderr {
+			t.Errorf("`help %s` is no longer the captured bytes (%dB vs %dB) — a human help "+
+				"page is being rendered rather than replayed", name, out.Len(), len(want.stdout))
+		}
 	}
 }
 
