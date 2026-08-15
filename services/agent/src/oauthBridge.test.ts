@@ -208,3 +208,65 @@ describe("introspect — fails CLOSED, always", () => {
     expect(await principalFromProps(w.env, grant!.props, grant!.scopes)).toBeNull();
   });
 });
+
+// s02 T4's second half from the agent side: revoke_app, the conversational
+// console's disconnect. The property under test is the credential rule — the
+// tool forwards the HUMAN's own bm_ bearer to a route that authenticates it
+// itself, and an OAuth-authenticated caller is refused by construction.
+describe("revoke_app — the console's disconnect", () => {
+  const call = async (env: Record<string, unknown>, args: Record<string, unknown>, rawBearer?: string) => {
+    const { TOOLS } = await import("./mcp");
+    const tool = TOOLS.find((t) => t.name === "revoke_app")!;
+    return tool.run(
+      { env: env as never, principal: { username: "eric@bullmoose.cc", scopes: ["read"], accounts: [] }, rawBearer },
+      args,
+    );
+  };
+
+  it("50. forwards the caller's own bearer to the AS and reports the kill", async () => {
+    let seenAuth: string | null = null;
+    let seenBody: unknown = null;
+    const env = {
+      OAUTH: {
+        fetch: async (_url: string, init: RequestInit) => {
+          seenAuth = new Headers(init.headers).get("authorization");
+          seenBody = JSON.parse(String(init.body));
+          return new Response(JSON.stringify({ ok: true, revokedGrants: 2, mirroredConsents: 1 }));
+        },
+      },
+    };
+    const out = (await call(env, { clientId: "https://claude.ai/mcp" }, "bm_the_humans_token")) as {
+      revokedGrants: number;
+    };
+    expect(seenAuth).toBe("Bearer bm_the_humans_token");
+    expect(seenBody).toEqual({ clientId: "https://claude.ai/mcp" });
+    expect(out.revokedGrants).toBe(2);
+  });
+
+  it("51. REFUSES an OAuth-authenticated caller — no rawBearer, no kill switch", async () => {
+    // A connected app must not manage the app roster, itself included. The
+    // refusal names the alternatives rather than just saying no.
+    const env = { OAUTH: { fetch: async () => { throw new Error("must not be called"); } } };
+    await expect(call(env, { clientId: "x" }, undefined)).rejects.toThrow(/device token/);
+  });
+
+  it("52. requires a clientId", async () => {
+    const env = { OAUTH: { fetch: async () => new Response("{}") } };
+    await expect(call(env, {}, "bm_t")).rejects.toThrow(/clientId/);
+  });
+
+  it("53. fails CLOSED when the AS is unreachable or refuses", async () => {
+    const down = { OAUTH: { fetch: async () => { throw new Error("connection refused"); } } };
+    await expect(call(down, { clientId: "x" }, "bm_t")).rejects.toThrow(/could not be reached/);
+    const denied = { OAUTH: { fetch: async () => new Response(JSON.stringify({ error: "nope" }), { status: 401 }) } };
+    await expect(call(denied, { clientId: "x" }, "bm_t")).rejects.toThrow(/Revocation failed \(401\)/);
+  });
+
+  it("54. zero matches reads as idempotent, with the check-the-id nudge", async () => {
+    const env = {
+      OAUTH: { fetch: async () => new Response(JSON.stringify({ ok: true, revokedGrants: 0, mirroredConsents: 0 })) },
+    };
+    const out = (await call(env, { clientId: "gone" }, "bm_t")) as { notes: string[] };
+    expect(out.notes.join(" ")).toMatch(/No live grants matched/);
+  });
+});

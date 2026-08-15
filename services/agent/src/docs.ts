@@ -105,7 +105,10 @@ parse it; narrow the request and call again.
 Every tool call is authorized against the target account and audited when it
 is reached through a grant. Ask \`who_can_access\` who else can reach an
 account you own — including connected OAuth clients — and \`access_log\` for
-who actually did.
+who actually did. \`revoke_app\` disconnects a connected client on the spot,
+killing its tokens immediately; it works only when you authenticated with
+your own device token, because a connected app may not manage the roster of
+connected apps.
 
 ## Example
 

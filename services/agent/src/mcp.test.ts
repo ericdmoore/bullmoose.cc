@@ -738,10 +738,14 @@ describe("tools/list publishes what a caller needs to pre-filter (s02 T6)", () =
     }
   });
 
-  it("52. marks the accountless tool, and only that one", async () => {
+  it("52. marks the accountless tools, and only those", async () => {
+    // The closed set: whoami (discovery — s02 T5) and revoke_app (the
+    // roster is principal property — s02 T4). A new name appearing here is
+    // a new tool skipping the account gate, which is exactly what this
+    // assertion exists to make deliberate rather than accidental.
     const b = (await (await list().res).json()) as any;
-    const flagged = b.result.tools.filter((t: any) => t.accountless).map((t: any) => t.name);
-    expect(flagged).toEqual(["whoami"]);
+    const flagged = b.result.tools.filter((t: any) => t.accountless).map((t: any) => t.name).sort();
+    expect(flagged).toEqual(["revoke_app", "whoami"]);
   });
 
   it("53. still carries the cache hint", async () => {

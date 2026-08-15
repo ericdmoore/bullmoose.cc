@@ -109,12 +109,25 @@ answer is identical for an unknown address and a wrong password.
 A refresh that fails returns \`invalid_grant\`. Access tokens are audience-
 bound; presenting one to a resource it was not minted for is refused.
 
-## What you granted, later
+## What you granted, later — and how to take it back
 
 Every consent is recorded and visible to the account owner: which client, what
 it may do, where its codes were delivered, and when you connected it. Revoking
 one is independent of every other client and of any account sharing you have
 set up.
+
+To disconnect an app, POST to \`/revoke\` with your own device token:
+
+    curl -X POST https://auth.bullmoose.cc/revoke \\
+      -H 'authorization: Bearer bm_…' \\
+      -H 'content-type: application/json' \\
+      -d '{"clientId":"<the client id shown in your connected-apps list>"}'
+
+The app's access and refresh tokens die immediately — not at their natural
+expiry — and it can only return by going through consent again. Your device
+token is required deliberately: a connected app cannot manage the roster of
+connected apps, itself included. An app that wants to revoke only its own
+token uses standard OAuth token revocation instead.
 
 bullmoose is self-hosted mail for people and agents. https://bullmoose.cc
 `;
