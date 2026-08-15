@@ -191,12 +191,17 @@ function NavList({
   );
 }
 
-/** The antler mark. A file rather than inlined markup so `img-src 'self'`
- *  covers it and the 13KB of paths stay out of every page's HTML. */
+/**
+ * The brand mark. `/mark.svg` is `art/stripped_favicon.svg` — the 128×128
+ * mark drawn FOR small sizes — not the 1024×1024 `antlerO.svg`, whose fine
+ * paths collapse into a flat pink/blue block at 32px (seen in the first
+ * Kitesurf screenshot of the shell). A file rather than inlined markup so
+ * `img-src 'self'` covers it and the paths stay out of every page's HTML.
+ */
 function Brand({ compact }: { compact?: boolean }) {
   return (
     <a href="/" class={"flex h-16 shrink-0 items-center gap-x-2 " + (compact ? "justify-center" : "")}>
-      <img src="/antlerO.svg" alt="bullmoose" class="size-8" />
+      <img src="/mark.svg" alt="bullmoose" class="size-8" />
       {!compact && <span class="font-semibold tracking-tight text-white">bullmoose</span>}
     </a>
   );
@@ -375,6 +380,11 @@ export default function ShellNav({ section, email }: Props) {
               fold on a short viewport, which read as missing. Icon only. */}
           <div class={"flex h-16 shrink-0 items-center " + (collapsed ? "justify-center" : "justify-between")}>
             <Brand compact={collapsed} />
+            {/* A visible control, not an artifact: the first cut was a bare
+                gray-400 chevron on the dark rail — at that contrast it read
+                as a rendering glitch (Eric's screenshot). A ring and a filled
+                hover give it button affordance, and the double-chevron reads
+                as "collapse" rather than "back". */}
             {!collapsed && (
               <button
                 type="button"
@@ -382,17 +392,21 @@ export default function ShellNav({ section, email }: Props) {
                 title="Collapse sidebar"
                 aria-label="Collapse sidebar"
                 aria-expanded={true}
-                class="rounded-md p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white"
+                class="rounded-md p-1.5 text-gray-300 ring-1 ring-white/15 hover:bg-gray-800 hover:text-white hover:ring-white/30"
               >
                 <svg
-                  class="size-5"
+                  class="size-4"
                   fill="none"
                   viewBox="0 0 24 24"
-                  stroke-width={1.5}
+                  stroke-width={2}
                   stroke="currentColor"
                   aria-hidden="true"
                 >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15L5.25 12l7.5 7.5"
+                  />
                 </svg>
               </button>
             )}
@@ -476,9 +490,12 @@ export default function ShellNav({ section, email }: Props) {
               <span class="grid size-8 place-items-center rounded-full bg-gray-200 text-xs font-bold text-gray-700 dark:bg-white/10 dark:text-white">
                 {(email ?? "?").slice(0, 1).toUpperCase()}
               </span>
-              <span class="hidden lg:flex lg:items-center lg:gap-x-1">
-                {email ?? "Not signed in"}
-                <svg class="size-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              {/* nowrap + truncate: "Not signed in" wrapped to three lines
+                  and blew the header open (second Kitesurf screenshot); a
+                  long address gets an ellipsis instead of a second line. */}
+              <span class="hidden max-w-56 lg:flex lg:items-center lg:gap-x-1 lg:whitespace-nowrap">
+                <span class="truncate">{email ?? "Not signed in"}</span>
+                <svg class="size-5 shrink-0 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path
                     fill-rule="evenodd"
                     d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
