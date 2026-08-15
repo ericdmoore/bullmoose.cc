@@ -8,8 +8,18 @@
 > `bm_` credential only, self-authenticated, safe on the public hostname) kills every
 > token under the grant before the grant itself, mirrored to D1 in the same request, with
 > `revoke_app` as the conversational console's face for it. What remains OPEN:
-> - **A real Claude client completing a `tools/call`** — the one lane no harness walks
->   (Claude prefers CIMD; the harness exercised DCR). Everything else in T7 is done.
+> - ~~**A real Claude client completing a `tools/call`**~~ **DONE, three times over**
+>   (2026-08-14/15): claude.ai (CIMD, web redirect), Claude Code on the homelab box (DCR,
+>   `127.0.0.1` paste-the-callback), and Claude Code on the laptop (CIMD, native
+>   `localhost:<ephemeral>` loopback) all completed real tool calls — every redirect
+>   policy and both client-identification methods proven by real clients. The first
+>   client also found a real bug the 51-check harness could not (the era-detection fix,
+>   PR #126): its fake legacy client omitted the header every real 2025 client sends —
+>   T7's "no harness substitutes for a real client" rationale, demonstrated on its
+>   author. First real use of the surface was agent fact-finding across agents: it
+>   noticed an agent gone quiet, audited another agent's YoY claim against the raw
+>   ledger, and flagged the front-matter steering channel — unprompted. **s02 is
+>   functionally complete**; only the two decision sign-offs below remain.
 > - **Decision 1** (all tools public vs. trimming introspection) — left permissive on the
 >   fact-finding-across-agents rationale; needs Eric's sign-off.
 > - **`Mcp-Method` REQUIRED vs. validated-when-present** — still flagged, not decided.
