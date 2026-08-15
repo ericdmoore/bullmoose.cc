@@ -1,6 +1,12 @@
 # systemd unit — Debian/Ubuntu VPS branch.
-#   install: cp popcorn.service /etc/systemd/system/ && systemctl enable --now popcorn
+#   install: sh deploy/install.sh          (writes this + /etc/popcorn/env,
+#            and refuses to overwrite either one behind your back)
+#   inspect: sh deploy/install.sh --check  # what would change
 #   config:  /etc/popcorn/env  (KEY=value lines; see README)
+#
+# ExecStart is the one line install.sh substitutes — from the ExecStart already
+# on the machine if there is one. Addresses and TLS paths live in the
+# EnvironmentFile, never here, so upgrading the unit cannot move a listener.
 [Unit]
 Description=popcorn — POP3 front-end for JMAP 🍿
 After=network-online.target
@@ -18,6 +24,19 @@ DynamicUser=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+
+# TLS + DynamicUser: the service runs as a transient UID that owns nothing, so
+# a 0600 root-owned /etc/popcorn/key.pem is unreadable to it — popcorn calls
+# log.Fatalf on the load error and systemd restarts it until the start limit
+# stops the unit. Two ways out, pick one before enabling TLS here:
+#   1. hand systemd the files and read them from $CREDENTIALS_DIRECTORY:
+#        LoadCredential=cert:/etc/popcorn/cert.pem
+#        LoadCredential=key:/etc/popcorn/key.pem
+#        Environment=POPCORN_TLS_CERT=%d/cert
+#        Environment=POPCORN_TLS_KEY=%d/key
+#      (Environment= must precede EnvironmentFile= for the file to override.)
+#   2. drop DynamicUser, run as a real account, and chown the key to it.
+# Certbot's live directory has the same problem for the same reason.
 
 [Install]
 WantedBy=multi-user.target

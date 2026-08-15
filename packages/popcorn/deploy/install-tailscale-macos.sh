@@ -12,10 +12,20 @@
 # usage: sh deploy/install-tailscale-macos.sh   (from packages/popcorn)
 set -eu
 
+HERE=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+. "$HERE/lib/plan.sh" # plist readers only; nothing in there writes
+
 TS=$(command -v tailscale || echo /opt/homebrew/bin/tailscale)
 [ -x "$TS" ] || { echo "tailscale CLI not found"; exit 1; }
 
 TS_IP=$($TS ip -4 | head -1)
+# `tailscale ip` failing is invisible in a pipeline — head still exits 0 — and
+# an empty TS_IP would write POPCORN_LISTEN=:9995, i.e. every interface on the
+# machine, which is the exact opposite of what this script is for.
+[ -n "$TS_IP" ] || {
+	echo "tailscale has no IPv4 address — is tailscaled running? (tailscale status)"
+	exit 1
+}
 DNS_NAME=$($TS status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')
 PORT="${POPCORN_PORT:-9995}"
 SMTP_PORT="${POPCORN_SMTP_PORT:-9587}"
@@ -36,8 +46,10 @@ fi
 
 # TLS via tailscale cert, if the tailnet allows it.
 TLS_ENV=""
+TLS_NOTE="none — WireGuard only"
 if $TS cert --cert-file "$CONF/cert.pem" --key-file "$CONF/key.pem" "$DNS_NAME" 2>/dev/null; then
   echo "TLS: minted cert for $DNS_NAME"
+  TLS_NOTE="ts.net cert (auto-renews weekly)"
   TLS_ENV="<key>POPCORN_TLS_CERT</key><string>$CONF/cert.pem</string>
         <key>POPCORN_TLS_KEY</key><string>$CONF/key.pem</string>"
   # Weekly renewal (certs last 90 days) + service restart.
@@ -48,8 +60,22 @@ $TS cert --cert-file "$CONF/cert.pem" --key-file "$CONF/key.pem" "$DNS_NAME" && 
 RENEW
   chmod +x "$CONF/renew.sh"
 else
-  echo "TLS: tailnet has HTTPS certs DISABLED — running plaintext-over-WireGuard."
-  echo "     Enable at https://login.tailscale.com/admin/dns then re-run this script."
+  # Minting can fail on a re-run for reasons that have nothing to do with the
+  # certs on disk — the HTTPS toggle got flipped off, tailscaled is mid-restart,
+  # the API is down. Rewriting the plist without TLS in that case would take a
+  # working TLS install quietly back to plaintext, so keep what is already
+  # there if it still resolves.
+  PREV_CERT=$(plist_env "$HOME/Library/LaunchAgents/cc.bullmoose.popcorn.plist" POPCORN_TLS_CERT)
+  PREV_KEY=$(plist_env "$HOME/Library/LaunchAgents/cc.bullmoose.popcorn.plist" POPCORN_TLS_KEY)
+  if [ -n "$PREV_CERT" ] && [ -e "$PREV_CERT" ] && [ -e "$PREV_KEY" ]; then
+    echo "TLS: could not mint a fresh cert — keeping the existing pair ($PREV_CERT)."
+    TLS_NOTE="existing pair kept — NOT renewed this run"
+    TLS_ENV="<key>POPCORN_TLS_CERT</key><string>$PREV_CERT</string>
+        <key>POPCORN_TLS_KEY</key><string>$PREV_KEY</string>"
+  else
+    echo "TLS: tailnet has HTTPS certs DISABLED — running plaintext-over-WireGuard."
+    echo "     Enable at https://login.tailscale.com/admin/dns then re-run this script."
+  fi
 fi
 
 PLIST="$HOME/Library/LaunchAgents/cc.bullmoose.popcorn.plist"
@@ -102,5 +128,5 @@ echo "popcorn (tailscale variant) is up:"
 echo "  server:   $DNS_NAME  (tailnet-only: $TS_IP)"
 echo "  POP3:     port $PORT   (incoming mail)"
 echo "  SMTP:     port $SMTP_PORT   (outgoing — kettle-corn mode)"
-echo "  TLS:      $([ -n "$TLS_ENV" ] && echo "ts.net cert (auto-renews weekly)" || echo "none — WireGuard only")"
+echo "  TLS:      $TLS_NOTE"
 echo "  logs:     $CONF/popcorn.log"
