@@ -277,7 +277,7 @@ func splitCommand(line string) (string, string) {
 	return strings.ToUpper(strings.TrimSpace(verb)), strings.TrimSpace(arg)
 }
 
-func (s *Session) ok(msg string) { fmt.Fprintf(s.conn, "+OK %s\r\n", msg) }
+func (s *Session) ok(msg string)  { fmt.Fprintf(s.conn, "+OK %s\r\n", msg) }
 func (s *Session) err(msg string) { fmt.Fprintf(s.conn, "-ERR %s\r\n", msg) }
 
 func (s *Session) multiline(lines []string) {
