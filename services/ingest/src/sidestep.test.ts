@@ -244,7 +244,7 @@ describe("names survive a hostile MIME filename", () => {
 
   it("strips path separators and control characters", () => {
     expect(fileNameFor(att("../../etc/passwd"))).toBe(".._.._etc_passwd");
-    expect(fileNameFor(att("in voice\r\n.pdf"))).toBe("in_voice_.pdf");
+    expect(fileNameFor(att("in\u0000voice\r\n.pdf"))).toBe("in_voice_.pdf");
   });
 
   it("falls back to a recognizable name when there is none", () => {
