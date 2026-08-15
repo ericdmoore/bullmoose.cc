@@ -66,7 +66,7 @@ refused.
 Requested with the \`scope\` parameter, space-separated. What each one lets a
 connected app do:
 
-    read       read your mail, contacts and calendar
+    read       read your mail, contacts, calendar and files
     annotate   mark mail read, flagged or categorized
     draft      write drafts in your mailbox (it cannot send them)
     move       file mail into other mailboxes
@@ -74,16 +74,17 @@ connected app do:
     contacts   read and change your contacts
     calendar   read and change your calendar, including creating and
                deleting events
+    files      read and change your files, including uploading and
+               deleting them
     mail       the bundle: read + annotate + draft + move + delete
 
-Four things a connected app can **never** be granted, whatever it asks for:
+Three things a connected app can **never** be granted, whatever it asks for:
 
     send    there is no send tool; an app that can read your mail and send
             from your address is a one-hop exfiltration path
     vault   the credential store — not something to hand over through a
             consent screen
     admin   control-plane only
-    files   the realm is not built yet, so it is not advertised
 
 The consent screen states what each requested scope *does*, in prose, computed
 from the same rule the server enforces — so the explanation cannot drift from
