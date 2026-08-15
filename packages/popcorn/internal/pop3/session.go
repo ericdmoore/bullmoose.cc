@@ -6,6 +6,7 @@ package pop3
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"bullmoose.cc/popcorn/internal/jmap"
+	"bullmoose.cc/popcorn/internal/wire"
 )
 
 type Config struct {
@@ -23,6 +25,20 @@ type Config struct {
 	MaxMessages int
 	IdleTimeout time.Duration
 }
+
+// maxCommandLine bounds one command line, counted in raw octets including the
+// CRLF — the same 2048 the old post-hoc check counted, so a line refused before
+// is refused now.
+//
+// It is deliberately not SMTP's 4096, and the gap is not an oversight to tidy
+// away. RFC 1939 §3 gives POP3 a keyword "three or four characters long" and
+// arguments "up to 40 characters long"; RFC 2449 §4 raises the whole command to
+// "255 octets, including the terminating CRLF". Nothing here is the long AUTH
+// exchange that buys SMTP its headroom — this face speaks USER and PASS and
+// has no SASL — so 2048 is already eight times the largest conforming command,
+// and raising it to match SMTP would only widen what an unauthenticated client
+// can make popcorn hold on the primary listener.
+const maxCommandLine = 2048
 
 type Session struct {
 	conn    net.Conn
@@ -47,15 +63,22 @@ func Serve(conn net.Conn, cfg Config) {
 
 	for {
 		_ = conn.SetDeadline(time.Now().Add(cfg.IdleTimeout))
-		line, err := s.r.ReadString('\n')
-		if err != nil {
-			return
-		}
-		if len(line) > 2048 {
+		// The cap is enforced while the line arrives, not once it is whole:
+		// this read used to be ReadString followed by a length check, which
+		// objected only after bufio had assembled every byte the client sent.
+		// That is the check without the bound, and this is the listener an
+		// unauthenticated stranger reaches first.
+		line, err := wire.ReadLine(s.r, maxCommandLine)
+		if errors.Is(err, wire.ErrTooLong) {
+			// Answer, then hang up: the reader is parked mid-line and the tail
+			// of the flood is not commands.
 			s.err("line too long")
 			return
 		}
-		verb, arg := splitCommand(strings.TrimRight(line, "\r\n"))
+		if err != nil {
+			return
+		}
+		verb, arg := splitCommand(line)
 
 		switch verb {
 		case "QUIT":

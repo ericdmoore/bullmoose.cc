@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"bullmoose.cc/popcorn/internal/jmap"
+	"bullmoose.cc/popcorn/internal/wire"
 )
 
 type Config struct {
@@ -43,16 +44,15 @@ type session struct {
 
 const maxRcpt = 100
 
-// maxCommandLine bounds one command or AUTH continuation line. RFC 5321
-// §4.5.3.1.4 caps commands at 512 octets and RFC 4954 §4 asks for room for
-// long AUTH exchanges; 4096 clears both and matches the read buffer, so a
+// maxCommandLine bounds one command or AUTH continuation line, counted in raw
+// octets including the CRLF. RFC 5321 §4.5.3.1.4 caps a command line at 512
+// octets, and RFC 4954 §4 exempts AUTH from that — base64 responses "may in
+// general be arbitrarily long", and it names 12288 as sufficient for deployed
+// mechanisms. 4096 clears the command limit outright and is far past what this
+// face's two mechanisms can produce: PLAIN and LOGIN carry an address and a
+// token, not a Kerberos ticket. It also matches the read buffer, so a
 // conforming line never needs a second fill.
 const maxCommandLine = 4096
-
-// errLineTooLong means the cap was hit with the rest of the line still
-// unread. The session cannot resume from there — whatever follows the cut is
-// not a command — so every caller closes the connection.
-var errLineTooLong = errors.New("command line too long")
 
 func Serve(conn net.Conn, cfg Config) {
 	s := &session{conn: conn, r: bufio.NewReaderSize(conn, 4096), cfg: cfg}
@@ -62,7 +62,7 @@ func Serve(conn net.Conn, cfg Config) {
 	for {
 		_ = conn.SetDeadline(time.Now().Add(cfg.IdleTimeout))
 		line, err := s.readLine()
-		if errors.Is(err, errLineTooLong) {
+		if errors.Is(err, wire.ErrTooLong) {
 			s.reply("500 5.5.2 line too long")
 			return
 		}
@@ -282,60 +282,29 @@ func (s *session) data() bool {
 // this process's attention. Nothing is lost by hanging up: the 552 has
 // already been sent, so the client has its answer.
 //
-// It reads through ReadSlice rather than ReadString because a drain that
-// grew a buffer to hold a line it is about to throw away would be its own
-// version of the problem it exists to fix.
+// The bounded read itself is wire.Drain, which is where the reason it does not
+// use ReadString lives, along with the fill-boundary case that makes a line
+// ending in ".\r\n" look exactly like the end of the body.
 func (s *session) discardBody() bool {
 	s.mailFrom, s.rcptTo = "", nil
-	partial := false // mid-way through a line longer than the read buffer
-	for budget := s.cfg.MaxSize; budget > 0; {
-		chunk, err := s.r.ReadSlice('\n')
-		budget -= len(chunk)
-		if err == bufio.ErrBufferFull {
-			// Longer than the whole buffer, so not the terminator. The flag
-			// matters: without it a line ending in ".\r\n" on a fill
-			// boundary would arrive looking exactly like the end of the body.
-			partial = true
-			continue
-		}
-		if err != nil {
-			return false
-		}
-		if !partial && strings.TrimRight(string(chunk), "\r\n") == "." {
-			return true
-		}
-		partial = false
+	found, err := wire.Drain(s.r, s.cfg.MaxSize, ".")
+	if err != nil {
+		return false
 	}
-	log.Printf("smtp: %s sent no end-of-DATA within %d bytes of a rejected message; closing", s.user, s.cfg.MaxSize)
-	return false
+	if !found {
+		log.Printf("smtp: %s sent no end-of-DATA within %d bytes of a rejected message; closing", s.user, s.cfg.MaxSize)
+	}
+	return found
 }
 
 // ---- helpers -----------------------------------------------------------
 
 // readLine reads one command or AUTH continuation line, CRLF stripped, and
-// refuses to buffer more than maxCommandLine bytes of it.
-//
-// The bound is the point: ReadString grows bufio's buffer to hold whatever
-// arrives before a newline, so a client that opens a connection and streams
-// without ever sending one is an allocation it controls and popcorn does
-// not — before it has authenticated, on one of 64 shared slots. ReadSlice
-// keeps the buffer at its fixed size and the copy stops at the cap.
+// refuses to buffer more than maxCommandLine bytes of it. The bound and the
+// reasoning behind it live in internal/wire, which the POP3 face reads through
+// too — this is the same hazard on a different port.
 func (s *session) readLine() (string, error) {
-	var line strings.Builder
-	for {
-		chunk, err := s.r.ReadSlice('\n')
-		if len(chunk) > maxCommandLine-line.Len() {
-			return "", errLineTooLong
-		}
-		line.Write(chunk) // copies; chunk aliases the buffer until the next read
-		if err == bufio.ErrBufferFull {
-			continue
-		}
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimRight(line.String(), "\r\n"), nil
-	}
+	return wire.ReadLine(s.r, maxCommandLine)
 }
 
 func (s *session) reply(line string) { fmt.Fprintf(s.conn, "%s\r\n", line) }

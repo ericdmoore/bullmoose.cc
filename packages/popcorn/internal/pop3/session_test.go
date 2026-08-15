@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -467,6 +468,62 @@ func TestAnOverlongCommandLineEndsTheSession(t *testing.T) {
 	case <-c.done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("session stayed open after an overlong line")
+	}
+}
+
+// Refusing the line and not holding it are different promises, and the test
+// above only makes the first — it passed just as well when the check ran after
+// bufio had already assembled every byte the client sent. This is the second.
+//
+// What it counts is how much of the flood the session was willing to read.
+// net.Pipe is unbuffered, so a Write returns only once the server has taken the
+// bytes: this counter is what popcorn actually consumed, which under the old
+// ReadString became memory one-for-one. That makes it a proxy for the
+// allocation and not a measurement of it — the measurement is in
+// internal/wire's TestReadLineBoundsWhatOneLineCanAllocate, on the code this
+// loop now reads through. What this test adds is the part that test cannot see:
+// that the live command loop on :995, before authentication, is what reads
+// through it.
+func TestAnOverlongCommandLineStopsBeingReadAtTheCap(t *testing.T) {
+	c := dial(t, testConfig(), newStub())
+
+	const flood = 4 << 20 // what an unauthenticated stranger offers to send
+	var consumed int64
+	// Written from a goroutine: the session stops mid-line and hangs up, so the
+	// reply has to be read while the rest of this is still in flight. A
+	// foreground write would deadlock the pipe against the server's reply.
+	go func() {
+		chunk := []byte(strings.Repeat("a", 512))
+		for sent := 0; sent < flood; sent += len(chunk) {
+			_ = c.c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			n, err := c.c.Write(chunk)
+			atomic.AddInt64(&consumed, int64(n))
+			if err != nil {
+				return
+			}
+		}
+		// A terminator at the end, so that a reader which insists on assembling
+		// the whole line still finishes and answers. This test must fail on its
+		// assertion, naming the bytes, rather than on a read timeout that names
+		// nothing.
+		_ = c.c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		n, _ := io.WriteString(c.c, "\r\n")
+		atomic.AddInt64(&consumed, int64(n))
+	}()
+
+	if got := c.line(); got != "-ERR line too long" {
+		t.Fatalf("overlong line → %q", got)
+	}
+	select {
+	case <-c.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("session stayed open after an overlong line")
+	}
+	// One read buffer of slack over the cap: the reader works in whole
+	// ReadSlice chunks, so it can hold up to a bufferful past the limit before
+	// it can tell it is past it.
+	if got := atomic.LoadInt64(&consumed); got > maxCommandLine+4096 {
+		t.Fatalf("the session read %d bytes of a line it had already decided was too long (cap %d) — the bound has to stop the reader, not just the parser", got, maxCommandLine)
 	}
 }
 
