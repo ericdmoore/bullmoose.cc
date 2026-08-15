@@ -1914,10 +1914,23 @@ async function accountByAddressAny(env: Env, email: string) {
  *   `ActionProposal/set` — approve, decline, needsInfo, the due-date
  *   correction — gates on `draft`;
  *   a tier-3 approve additionally runs the CAPABILITY WALL, which demands
- *   `send` on the proposal's account (actionProposal.ts). A `reply-draft` is
- *   tier 3 — it is precisely the kind that produced this bug — so an owner
- *   granted read+draft alone would see the ask and be unable to answer it.
- *   That is a worse queue than none: it shows you work and refuses the verb.
+ *   `send` on the proposal's account (actionProposal.ts).
+ *
+ * ⚠️ `send` IS NOT IN THIS SET, and the reason is worth reading before adding
+ * it back. An earlier version carried it, justified by "a `reply-draft` is
+ * tier 3 — precisely the kind that produced this bug". That premise is FALSE:
+ * `reply-draft` is emitted at tier 2 (`services/agent/src/proposals.ts`), so
+ * `if (row.tier === 3)` never fires for it and the wall is never reached. A
+ * tier-2 approve parks in the hold tray and is committed later, server-side,
+ * by the cron — not under the approver's token. So `draft` is sufficient, and
+ * `send` was a real widening bought with a wrong belief: it hands the
+ * supervising human the authority to send mail AS the agent, which supervision
+ * does not need.
+ *
+ * If a tier-3 KIND ever ships, this set needs `send` again — and the failure
+ * mode until then is loud and correct: the approver gets an explicit
+ * "requires the send capability" refusal naming the missing scope, rather than
+ * silently holding an authority nobody audited.
  *
  * And NOT `mail`, deliberately, though it is one word shorter. That bundle
  * also carries `annotate`, `move` and `delete`, so the operator would silently
@@ -1931,7 +1944,7 @@ async function accountByAddressAny(env: Env, email: string) {
  * contacts/calendar domains only (`grantCoversDomain`, principal.ts), so a
  * collection-scoped grant could not carry the mail-domain queue at all.
  */
-export const SUPERVISORY_GRANT_SCOPES = ["read", "draft", "send"] as const;
+export const SUPERVISORY_GRANT_SCOPES = ["read", "draft"] as const;
 
 /** What a provisioning response says about supervision — always present, so a
  *  caller can never mistake "we did not try" for "there is nothing to see". */
