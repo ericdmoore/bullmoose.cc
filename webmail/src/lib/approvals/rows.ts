@@ -213,6 +213,11 @@ export function summarizeProposal(p: ActionProposal): string {
     }
     case "create-event":
       return `Create event “${s(p.payload.title)}”`;
+    case "watch-followup":
+      // s20 T1 — a watch fired because someone did not reply in time.
+      return `Follow up with ${s(p.payload.to) || "(unknown)"} — a watch you set came due`;
+    case "watch-notify":
+      return `Reminder — a watch you set came due`;
     case "unsubscribe":
       return `Unsubscribe from ${s(p.payload.listName) || s(p.payload.to) || p.subject.objectId}`;
     case "organize-files":
