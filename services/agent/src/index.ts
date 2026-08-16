@@ -24,6 +24,7 @@ import { classifyScreened } from "./bouncerClassify.js";
 import { commitHeldProposals } from "./commitHeld.js";
 import { sweepWatches } from "./watches.js";
 import { runBouncer } from "./bouncer.js";
+import { runRemind } from "./remind.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
@@ -703,6 +704,31 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
       selfAddress,
       (text) =>
         sendReply(env, store, job, bouncerCfg, {
+          selfAddress,
+          to: sender,
+          origSubject: email.subject,
+          origMessageId: email.messageId,
+          text,
+        }),
+      done,
+    );
+  }
+
+  // s20 wave 2 — remind@'s mail-native Watches door. Like bouncer it is reached
+  // AFTER the humanOriginated + allowedSenders gates (only listed household
+  // humans get here — a stranger was skipped silently above) and BEFORE the
+  // general reply gate. It arms a Watch on the SENDER's account and confirms;
+  // its one reply targets `sender` and rides the same governed sendReply, so
+  // the s10 outbound bound applies unchanged. No model runs. See remind.ts.
+  if (cfg.pipeline === "remind") {
+    const remindCfg: BindingConfig = { ...cfg, replyMode: "send" };
+    return runRemind(
+      env,
+      job,
+      email,
+      parsed,
+      (text) =>
+        sendReply(env, store, job, remindCfg, {
           selfAddress,
           to: sender,
           origSubject: email.subject,

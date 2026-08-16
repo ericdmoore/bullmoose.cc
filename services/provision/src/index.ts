@@ -153,6 +153,15 @@ export default {
           env,
         );
       }
+      // s20 wave 2 — mint the remind@ account + reply-only binding for ONE
+      // tenant domain (the mail-native Watches door). Explicit per-tenant call,
+      // same shape as /bouncer; nothing is auto-provisioned.
+      if (route === "POST /remind") {
+        return provisionRemind(
+          (await request.json()) as { tenantId: string; domain: string; localpart?: string },
+          env,
+        );
+      }
       // The kill switch (`.feedback/fromClaude/agentic/023`). TWO EXPLICIT
       // VERBS rather than a general `PATCH {enabled}`: in an incident the
       // dangerous direction must be unambiguous in the audit log and
@@ -2463,6 +2472,151 @@ async function provisionBouncer(
     recipientsBookId: bookId,
     allowedSenders: humans,
     supervision: await superviseHousehold(env, tenantId, accountId, humans),
+  });
+}
+
+/**
+ * remind@'s account + reply-only binding for ONE tenant domain (s20 wave 2 —
+ * the mail-native Watches door, services/agent/src/remind.ts). Structurally a
+ * slimmer bouncer:
+ *
+ *   - SAME safety bounds — `allowedSenders` = the household's human principals
+ *     (a stranger is skipped silently by the agent gate), and a governing book
+ *     of those same humans bounds the ONE thing remind@ sends: a confirmation
+ *     back to whoever asked.
+ *   - NO persona and NO model menu — the remind pipeline is deterministic; it
+ *     parses a deadline and arms a Watch, spending no tokens.
+ *   - NO supervisory grants (the one real divergence). bouncer@ needs them
+ *     because its held-mail questions are proposals on bouncer's OWN account;
+ *     remind@ writes each Watch to the ASKER's account, so a fired reminder
+ *     already lands in that human's own queue. There is nothing on remind@'s
+ *     account for a human to supervise.
+ *
+ * Explicit per-tenant call; nothing is auto-provisioned for existing tenants.
+ */
+async function provisionRemind(
+  body: { tenantId: string; domain: string; localpart?: string },
+  env: Env,
+) {
+  const { tenantId, domain } = body;
+  if (!tenantId || !domain) return json({ error: "tenantId and domain required" }, 400);
+  const localpart = (body.localpart ?? "remind").toLowerCase();
+  const address = `${localpart}@${domain}`;
+  const now = Date.now();
+
+  // The humans, BEFORE any write (bouncer's precedent): an empty house leaves
+  // nothing behind, and a remind@ whose allowedSenders/book are empty could
+  // neither be used nor reply to anyone.
+  const { results: principalRows } = await env.DB.prepare(
+    `SELECT DISTINCT p.login_email FROM principals p
+     WHERE p.tenant_id = ?1 AND p.login_email != ?2
+       AND NOT EXISTS (
+         SELECT 1 FROM accounts a
+         JOIN agent_bindings b ON b.account_id = a.id
+         WHERE a.principal_id = p.id)
+     ORDER BY p.login_email`,
+  )
+    .bind(tenantId, address)
+    .all<{ login_email: string }>();
+  const humans = principalRows.map((r) => r.login_email.toLowerCase());
+  if (humans.length === 0) {
+    return json(
+      {
+        error: `tenant ${tenantId} has no human principals — provision the household first; ` +
+          "a remind@ with an empty allowedSenders list could remind nobody",
+      },
+      422,
+    );
+  }
+
+  // 1 — the account (idempotent through createAccount's adopt path).
+  const accountRes = await createAccount({ tenantId, domain, localpart, displayName: "Remind" }, env);
+  const account = (await accountRes.json()) as { ok?: boolean; accountId?: string; error?: string };
+  if (!account.ok || !account.accountId) {
+    return json({ error: `remind account: ${account.error ?? `HTTP ${accountRes.status}`}` }, 422);
+  }
+  const accountId = account.accountId;
+
+  // Idempotency: an existing 'remind' binding means a previous run finished.
+  const existing = await env.DB.prepare(
+    `SELECT id FROM agent_bindings WHERE account_id = ? AND name = 'remind'`,
+  )
+    .bind(accountId)
+    .first<{ id: string }>();
+  if (existing) {
+    return json({ ok: true, created: false, accountId, address, bindingId: existing.id });
+  }
+
+  // 2 — the governing book + members (bouncer's atomic-batch precedent): the
+  // household humans remind@ may confirm back to, and nobody else.
+  const bookId = `ab_${crypto.randomUUID()}`;
+  const stmts: D1PreparedStatement[] = [
+    env.DB
+      .prepare(
+        `INSERT INTO address_books
+           (id, account_id, name, description, sort_order, is_default, is_subscribed,
+            ctag, created_at, updated_at, write_policy)
+         VALUES (?, ?, 'Remind may reply', 'The household principals remind@ confirms reminders to — its reply-only outbound bound.',
+                 0, 0, 1, 0, ?, ?, 'governed')`,
+      )
+      .bind(bookId, accountId, now, now),
+  ];
+  for (const human of humans) {
+    const uid = `remind-reach-${crypto.randomUUID()}`;
+    const cardId = `cc_${crypto.randomUUID().slice(0, 8)}`;
+    stmts.push(
+      env.DB
+        .prepare(
+          `INSERT INTO contact_cards
+             (id, account_id, address_book_id, uid, card_json, name_full, dav_name,
+              created_at, updated_at, last_writer_principal)
+           VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 'provision')`,
+        )
+        .bind(
+          cardId,
+          accountId,
+          bookId,
+          uid,
+          JSON.stringify({ uid, kind: "individual", emails: { e0: { address: human } } }),
+          human,
+          now,
+          now,
+        ),
+      env.DB
+        .prepare(
+          `INSERT INTO book_membership_log
+             (account_id, book_id, event, address, card_id, uid, actor, via_proposal_id, at)
+           VALUES (?, ?, 'added', ?, ?, ?, 'provision', NULL, ?)`,
+        )
+        .bind(accountId, bookId, human, cardId, uid, now),
+    );
+  }
+  await env.DB.batch(stmts);
+
+  // 3 — the binding. skipSupervision: remind@ owns no proposals of its own, so
+  // there is nothing to supervise (see the header note); passing an ownerEmail
+  // would mint a grant to an agent account that never emits a question.
+  const bindingRes = await createAgentBinding(
+    {
+      email: address,
+      name: "remind",
+      config: { pipeline: "remind", replyMode: "send", allowedSenders: humans },
+      recipientsBookId: bookId,
+      skipSupervision: true,
+    },
+    env,
+  );
+  const binding = (await bindingRes.json()) as { ok?: boolean; bindingId?: string; error?: string };
+  if (!binding.ok) return json({ error: `remind binding: ${binding.error ?? "failed"}` }, 422);
+
+  return json({
+    ok: true,
+    created: true,
+    accountId,
+    address,
+    bindingId: binding.bindingId,
+    recipientsBookId: bookId,
+    allowedSenders: humans,
   });
 }
 

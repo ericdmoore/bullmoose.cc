@@ -93,3 +93,9 @@ export {
   notPinnedSql,
   type ClaimGateParams,
 } from "./claimGate.js";
+// Deterministic due-date extraction at the boundary (s11 T1): a `due_at` must
+// exist before any claim does, so it is stamped at enqueue, model-free. Now
+// shared — ingest stamps it on delivery, and the remind@ door (s20 wave 2)
+// reuses the SAME conservative parser so "by Friday" means the same instant on
+// both surfaces.
+export { EOD_UTC_HOUR, SCAN_LIMIT, extractDueAt, type DueExtractionInput } from "./dueDate.js";
