@@ -25,7 +25,19 @@ on the contact card, T4's comment pattern) and inline in the flow that produced 
 (T6's sketch redlining). The queue holds what the human did not naturally encounter.
 In-place approval writes the identical ledger rows.
 
-### T1 — Watches · *the one new noun*
+### T1 — Watches · *the one new noun* — ENGINE LANDED (2026-08-15)
+
+> **Wave 1 built**: the `watches` table + migration, `services/agent/src/watches.ts`
+> (the cron sweep — deterministic `deadline` and `no-reply-from` conditions, fire→proposal,
+> guarded no-double-fire, fail-open on a missing table), and `Watch/*` JMAP CRUD
+> (arm/cancel/list; a client cannot write `fired` — only the cron may; cancel is armed-only).
+> A `no-reply-from` watch EXPIRES CLEAN when the reply arrives — being answered is silence,
+> which is the whole trustworthiness of the feature. 18 tests. **Wave 2 (the doors)**:
+> `remind@` as the mail-native create path, the star on-ramp in webmail, the CLI surface,
+> and drafting the follow-up BODY at fire time (v1 carries the intent; a model-composed
+> draft waits on cost history, s11 T5). The proposal a fired watch produces flows through
+> the same approvals machinery as everything else, and — because a follow-up targets a
+> third party — the respond-only rule correctly routes it to the queue rather than sending.
 
 **Files:** `packages/mailstore/sql/control-plane.sql` (new `watches` table),
 `services/agent/src/watches.ts` (evaluation in the existing cron sweep),

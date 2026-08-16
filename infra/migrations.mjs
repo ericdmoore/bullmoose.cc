@@ -105,6 +105,37 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "watches-table",
+    why: "s20 T1 watches — condition+deadline+action; the cron sweep reads it, and a shard without it silently never fires any watch a human set",
+    // Non-blocking: the sweep degrades to a no-op on a shard missing the
+    // table (fail-open, logged), and no request path authorizes against it —
+    // a plain schema re-run creates it. Listed so `bootstrap migrate` owns
+    // the set and an existing shard is not left unable to fire watches.
+    blocks: null,
+    check: tableExists("watches"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS watches (
+         id             TEXT PRIMARY KEY,
+         account_id     TEXT NOT NULL,
+         owner          TEXT NOT NULL,
+         condition_type TEXT NOT NULL,
+         condition_json TEXT NOT NULL DEFAULT '{}',
+         deadline_at    INTEGER NOT NULL,
+         action_type    TEXT NOT NULL,
+         action_json    TEXT NOT NULL DEFAULT '{}',
+         status         TEXT NOT NULL DEFAULT 'armed',
+         source_ref     TEXT,
+         created_at     INTEGER NOT NULL,
+         fired_at       INTEGER,
+         proposal_id    TEXT
+       )`,
+      "CREATE INDEX IF NOT EXISTS watches_due ON watches (status, deadline_at)",
+      "CREATE INDEX IF NOT EXISTS watches_owner ON watches (account_id, status, created_at)",
+    ],
+    absent: [],
+  },
+
+  {
     id: "oauth-consents-table",
     why: "s02 T4's D1 mirror of OAuth grants; without it the console answers 'who can reach my mail' with silence for every connected client",
     // Non-blocking: nothing AUTHORIZES against this table (KV stays canonical),

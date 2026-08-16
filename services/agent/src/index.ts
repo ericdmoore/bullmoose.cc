@@ -22,6 +22,7 @@ import { runJobNode } from "./jobNode.js";
 import { proposeMidBandHolds } from "./midBandProposal.js";
 import { classifyScreened } from "./bouncerClassify.js";
 import { commitHeldProposals } from "./commitHeld.js";
+import { sweepWatches } from "./watches.js";
 import { runBouncer } from "./bouncer.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
@@ -212,6 +213,13 @@ export default {
     // days, while looking exactly like a dead agent). Failures stay held and
     // retry; the loud per-row log is the operator's stuck-egress alarm.
     await commitHeldProposals(env);
+    // s20 T1 — fire the watches whose deadline has passed. Last in the sweep:
+    // a watch's condition ("no reply from X since I asked") reads the same
+    // mailbox the drain above has just finished updating, so evaluating it
+    // here sees the freshest state. Fires produce proposals, which the NEXT
+    // sweep's commitHeldProposals will carry if approved — the cadence the
+    // whole exception-not-firehose model runs on.
+    await sweepWatches(env);
   },
 } satisfies ExportedHandler<Env>;
 

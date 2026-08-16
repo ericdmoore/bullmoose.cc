@@ -371,3 +371,41 @@ CREATE TABLE IF NOT EXISTS routes (
   target      TEXT NOT NULL,               -- accountId | JSON array | external addr
   PRIMARY KEY (domain, localpart)
 );
+
+-- Watches (s20 T1) — a star replaced by a contract:
+-- condition + deadline + action + escalation. The one new noun the plan
+-- admits immediately, because it had already earned its place three times
+-- (remind@, the SLA armed responder, s11 overdue escalation) — this table
+-- unifies them into one engine. Evaluated by the agent worker's 5-minute
+-- cron (`watches.ts`); firing produces a PROPOSAL, never a direct action, so
+-- the s03.D tier rules and the respond-only rule apply unchanged.
+CREATE TABLE IF NOT EXISTS watches (
+  id             TEXT PRIMARY KEY,          -- w_<uuid>
+  account_id     TEXT NOT NULL REFERENCES accounts(id),
+  owner          TEXT NOT NULL,             -- login email of the human who set it
+  -- The condition, deterministic in v1 (an LLM-judged condition is a v2
+  -- classifier feeding this same machine, never a free-running loop):
+  --   'deadline'          fires at deadline_at unconditionally (the reminder)
+  --   'no-reply-from'     fires at deadline_at ONLY IF no inbound message from
+  --                       `sender` (on `thread_id` if set) arrived since created_at
+  condition_type TEXT NOT NULL,
+  condition_json TEXT NOT NULL DEFAULT '{}',-- {sender?, threadId?, query?}
+  deadline_at    INTEGER NOT NULL,          -- epoch ms; the sweep only looks past this
+  -- The action on fire:
+  --   'notify'        an FYI proposal, no egress (severity FYI may skip the queue)
+  --   'draft-followup' draft a follow-up to `condition.sender` — a real
+  --                    proposal the human approves; agent-initiated egress
+  action_type    TEXT NOT NULL,
+  action_json    TEXT NOT NULL DEFAULT '{}',-- {to?, note?, bindingId?, bindingName?}
+  -- Lifecycle: armed → fired (produced its proposal) | cancelled (human) |
+  -- expired (a no-reply watch whose reply arrived — condition failed cleanly).
+  status         TEXT NOT NULL DEFAULT 'armed',
+  -- Provenance: where this watch came from — a message-id (star on-ramp,
+  -- remind@ forward) or NULL (manual). The proposal it fires cites this.
+  source_ref     TEXT,
+  created_at     INTEGER NOT NULL,
+  fired_at       INTEGER,
+  proposal_id    TEXT                       -- the invocation/proposal it produced
+);
+CREATE INDEX IF NOT EXISTS watches_due ON watches (status, deadline_at);
+CREATE INDEX IF NOT EXISTS watches_owner ON watches (account_id, status, created_at);
