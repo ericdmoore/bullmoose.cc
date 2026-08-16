@@ -5,7 +5,7 @@
   "compatibility_date": "2026-06-01",
 
   // SAME-ORIGIN API for app.bullmoose.cc (s07 T1). Pages serves the app's
-  // documents; these four patterns hand the API paths to this worker instead.
+  // documents; these five patterns hand the API paths to this worker instead.
   // Worker routes take precedence over Pages on a shared hostname, so the two
   // coexist on one name and the browser never makes a cross-origin request.
   //
@@ -139,7 +139,11 @@
   ],
 
   "vars": {
-    // Dev-only single-account auth; replaced by OIDC (services/auth) later.
+    // Dev-only single-account auth. The real front door is the OAuth 2.1
+    // authorization server in `services/oauth` (worker `bullmoose-oauth`),
+    // served at auth.bullmoose.cc — note the hostname and the directory differ,
+    // so grepping for "services/auth" finds nothing. Not OIDC: it is an
+    // OAuth 2.1 AS (services/oauth/src/index.ts:11).
     "DEV_ACCOUNT_ID": "t_dev__a_local",
     "DEV_TENANT_ID": "t_dev",
     "DEV_USERNAME": "dev@localhost"

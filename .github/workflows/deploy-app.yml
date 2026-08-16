@@ -4,7 +4,7 @@ name: Deploy app
 # app.bullmoose.cc. Plan: .plans/s07-app-surface/devPlan.md.
 #
 # SAME-ORIGIN BY DESIGN. The API is not a separate host: services/jmap owns
-# `app.bullmoose.cc/{api/*, auth/*, .well-known/jmap, share/*}` via Worker
+# `app.bullmoose.cc/{api/*, auth/*, .well-known/jmap, console/*, share/*}` via Worker
 # routes, and Pages serves everything else. Worker routes take precedence over
 # Pages on a shared hostname, so the two coexist on one name.
 #
