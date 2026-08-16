@@ -134,13 +134,18 @@ async function harness() {
   ]);
 
   w.db.seed("grants", [
-    // What `POST /agent-bindings` now mints, verbatim.
+    // A grant that DOES carry `send`, spelled out rather than borrowed from
+    // SUPERVISORY_GRANT_SCOPES. These tests are about the WALL — what it does
+    // given a grant with `send` and without — not about what provision happens
+    // to mint. Reusing the constant coupled the two, and narrowing the default
+    // (it no longer carries `send`; reply-draft is tier 2, so the wall never
+    // fires for it) broke a test that was never about the default at all.
     {
       id: "g_emily",
       tenant_id: TENANT,
       grantee_account_id: ERIC,
       target_account_id: EMILY,
-      scopes: JSON.stringify(SUPERVISORY_GRANT_SCOPES),
+      scopes: JSON.stringify(["read", "draft", "send"]),
       created_by: "provision:supervisory",
       created_at: 1,
     },
@@ -536,7 +541,12 @@ describe("provision → queue: an agent provisioned today is visible today", () 
       id: "inv_first",
       binding: "editor-emily",
       kind: "reply-draft",
-      tier: 3,
+      // TIER 2 — what `reply-draft` is actually emitted at
+      // (services/agent/src/proposals.ts). This said `tier: 3`, and the
+      // assertion below cited that as proof `send` "had to be" in the
+      // supervisory grant. Circular: the test manufactured a tier no
+      // producer emits, then used it to justify a scope.
+      tier: 2,
       payload: {
         to: "grace@example.test",
         self: "editor@bullmoose.cc",
@@ -564,15 +574,25 @@ describe("provision → queue: an agent provisioned today is visible today", () 
     expect(first!.agent).toBe("editor-emily");
     expect(first!.accountId).toBe(editor.accountId);
 
-    // And it is answerable: tier 3, so this also proves `send` had to be in the
-    // supervisory set — with read+draft alone the human could see it and not
-    // decide it.
+    // And it is answerable with the DEFAULT supervisory grant — read+draft, no
+    // `send`. That is the whole promise: a queue that shows you work AND lets
+    // you answer it.
     const decided = (await registry.get("ActionProposal/set")!(
       { accountId: editor.accountId, update: { inv_first: { status: "approved" } } },
       ctx,
     )) as unknown as SetResult;
     expect(decided.notUpdated).toEqual({});
-    expect(w.submit.calls.length).toBe(1);
+
+    // A tier-2 approve does NOT egress here — it parks in the hold tray, and
+    // the cron commits it later, server-side. That is exactly why `send` is not
+    // needed on the approver's token: nothing sends under it. This assertion
+    // used to read `toBe(1)` against a synthetic tier-3 row, which is what made
+    // the old `send` justification look sound.
+    expect(w.submit.calls.length, "a tier-2 approve must not send inline").toBe(0);
+    const held = w.db.query("SELECT status FROM agent_proposals WHERE id = ?", "inv_first") as
+      | Array<{ status: string }>
+      | undefined;
+    expect(held?.[0]?.status, "an approved tier-2 proposal waits in the hold tray").toBe("held");
 
     // Revoked, it vanishes — the same grant, the same tombstone contract.
     w.db.query("UPDATE grants SET revoked_at = ? WHERE id = ?", Date.now(), binding.supervision.grantId!);
