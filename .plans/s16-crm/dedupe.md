@@ -148,14 +148,115 @@ and a claim without its evidence cannot be audited or undone intelligently.
 
 ---
 
-## Open questions for Eric
+## Decisions — Eric, 2026-08-15
 
-1. **Plus-tags: merge or link?** They are often deliberately distinct. My
-   inclination is link-never-merge, but you may use them as pure aliases.
-2. **Default phone region** — US? And should a match that depended on the
-   assumption rank below one between two `+`-prefixed numbers? (I think yes.)
-3. **Is there an address dataset you would want to use**, or do we stay in the
-   "suffix-present only" tier and accept that some real duplicates are missed?
-   Missing a duplicate is cheap; merging two people is not.
-4. **Should crm@ ever auto-apply a merge**, even an exact-tier one that provably
-   cannot widen a governing book? The safe default is no.
+1. **Plus-tags: LINK, not merge.** *"In your tagged alias case link is fine."*
+   Two records, marked related, distinction preserved.
+2. **Phone: US default**, for now. A match that *depended* on that assumption
+   still ranks below one between two already-`+`-prefixed numbers.
+3. **Canonical form, with crm@ working toward conformance** — Eric's shape:
+   *"Use a canonical form? And the CRM agent attempts to ensure conformance — or
+   nudges human for more info to get to conformance."* Already half-built; see
+   below.
+4. **No auto-apply.** *"Not interested in auto apply yet."* crm@ proposes.
+
+Still open: whether to bring in a postal dataset, or stay suffix-present-only
+and accept missing some real duplicates. Missing a duplicate is cheap; merging
+two people is not.
+
+## Canonical form is already half-built
+
+`packages/contacts-core/src/index.ts:326` already stores addresses as
+**structured components** — `[{kind, value}]` over `locality`, region, postcode
+and friends (RFC 9553 JSContact). So "conformance" is not a new concept to
+invent: it is **populating the components instead of leaving a free-text
+string**, and the canonical form is what those components already are.
+
+- **Store both.** Raw as entered, plus the structured canonical. Never overwrite
+  what a human typed — the raw is evidence, and a canonicalization that turns out
+  wrong has to be walkable-back.
+- **Match on canonical.** The three noise examples then fall out as a consequence
+  rather than as three special cases.
+- **Ambiguity becomes a question, not a guess.** `7547 Midbury` with no suffix is
+  exactly where crm@ should ask rather than pick — the same needsInfo round the
+  approvals flow already has.
+
+## Linking needs `relatedTo` — the spec has it, we do not
+
+RFC 9553 (JSContact) defines **`relatedTo`**, a map of UIDs to relation types.
+That is the standards-native form of Apple's linked cards, and it is what
+decision 1 needs.
+
+**We do not implement it** — zero hits in `packages/contacts-core`. So linking is
+a build item, but not an invention: the vocabulary exists and is registered.
+
+## Auto-apply: the axis is reversibility, not risk
+
+Eric raised the two obvious ways to gate auto-apply — a deterministic policy
+engine, or an LLM self-assessment of risk — and then observed that *"if there are
+checkpoints in the data, then even an agent who makes a terrible error could be
+surrounded by supporting structure."*
+
+That last observation is the load-bearing one, and **the architecture already
+agrees with it.** `services/jmap/src/methods/actionProposal.ts:45`:
+
+```
+tier 1  reversible   → apply immediately, keep an undo handle
+tier 2  retractable  → enter the hold tray, yank window
+tier 3  irreversible → a human action every time
+```
+
+**Those are not risk levels. They are reversibility levels.** Nothing assesses
+how dangerous a tier-1 action is; it applies immediately *because it can be
+undone*.
+
+Which reframes the choice. What decides safety is not how good the assessor is —
+it is how contained the consequence is:
+
+- **Reversible** → auto-apply freely. Safety comes from the undo. An LLM
+  assessment is fine here precisely because being wrong is cheap.
+- **Irreversible** → *neither* approach suffices. A deterministic policy that is
+  wrong is exactly as unrecoverable as a model that is wrong. It needs a human,
+  or it needs to be made reversible first.
+
+**So the move for crm@ is not to pick an assessor — it is to remove the
+irreversibility.** A merge implemented as tombstone-plus-link (which `relatedTo`
+gives us anyway) is undoable in one operation. That makes it tier 1, where
+auto-apply would be safe *by construction* rather than by judgment. Don't assess
+the risk; delete it.
+
+### Division of labour, where a judgment is genuinely needed
+
+- **LLM for the part that requires judgment** — *"are these two records the same
+  person?"* Irreducibly fuzzy, well suited to a model, and a wrong answer on a
+  reversible merge costs one undo.
+- **Deterministic for the consequence** — *"does this widen a governing book?"*
+  is a set difference against `recipients_book_id`. Exact, instant, testable, and
+  it does not get more accurate with a better model.
+
+⚠️ The failure mode to avoid is asking the model that *proposed* a merge whether
+that merge is risky. Those are two draws from one distribution, and they fail in
+the **correlated** direction: the cases where it is most confidently wrong are
+the ones it will rate lowest-risk. Same shape as the confused-deputy problem the
+`bmi_` token arc exists to solve — assessor and proposer must not be the same
+reasoning process.
+
+### The best version is agent-authored policy
+
+Eric's third framing — *"perhaps the agent could even help author a policy for
+'these types of small changes are now auto approved'"* — is stronger than either
+option, because of **what the human reviews**. Per-instance LLM assessment asks
+you to trust a judgment you never see. Agent-authored policy asks you to review a
+**rule, once**, after which it runs deterministically, auditably and diffably.
+The model does what it is good at — noticing the pattern, drafting the rule — and
+the ratified artifact is testable, versionable and revocable.
+
+Per-instance assessment is easier to *build*. Its cost is deferred and
+asymmetric: a past decision cannot be explained, the boundary cannot be
+unit-tested, and it drifts silently when the model changes underneath it. A
+policy file has a diff.
+
+**Sequence that follows:** make merges reversible; keep everything proposal-only;
+let crm@ accumulate candidate rules from what Eric approves; offer the policy
+once a rule has evidence behind it. Auto-apply then arrives as something
+ratified, not something switched on.
