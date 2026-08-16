@@ -14,43 +14,78 @@ That framing sets the bar, and it is a low one on purpose: success is that the
 agent writes the sentence Eric would have written. Not a profile, not an
 inference engine, not a taxonomy.
 
-## The form, from Eric's own example
+## The core move: write down the thing that stays true
 
-Someone mentions a three-year-old daughter. The note reads:
+> *"People talk in terms of 'how old', but if you transform to rough DOB then
+> you have a permanent fact. So often times it's just looking for these little
+> transforms for fact writings."*
 
-```
-has daughter approx 3 year old as of 2026-08-16
-```
+This is the mechanic, and it is one sentence: **find the invariant behind what
+was said, and write that down instead.**
 
-Everything important about the design is already in that one line.
+"My daughter is 3" is a derived, decaying fact. **Born ≈ 2023** is permanent.
+Once the transform is done nothing decays at all — age is computed on demand,
+forever, and there is no staleness arithmetic because there is no stale fact.
 
-**It is anchored, not decayed.** The age is not stored as `3`. It is stored as an
-observation *with the date it was made*, and the reader does the arithmetic —
-two years on, she is about five, so you ask a five-year-old question. This is
-the whole answer to half-life, and it needs no decay function, no confidence
-score and no shelf-life field:
-
-| note | how the anchor is read |
+| what they said | what gets written |
 |---|---|
-| `daughter approx 3 as of 2026-08` | evolves predictably — compute forward |
-| `at Acme as of 2026-08` | the older it gets, the less you lean on it |
-| `likes Thai as of 2026-08` | probably still true; the date says how stale |
+| "my daughter is 3" | `daughter born ≈ 2023` |
+| "we just had our 10th anniversary" | `married ≈ 2016` |
+| "I've been at Acme five years" | `joined Acme ≈ 2021` |
+| "I turn 40 next month" | `born ≈ Sept 1986` |
+| "my son starts kindergarten this fall" | `son born ≈ 2021` |
 
-One mechanism, three behaviours. **Anchor it and let the reader compute.**
+### Two properties that follow, and they are the argument for doing it this way
 
-**It is squishy — prose, not schema.** `dietary_preference: thai` would be wrong.
-A schema requires anticipating every category worth remembering about a person,
-and you cannot. And it is unnecessary: **the consumer is a model, so prose is a
-fine encoding.** Structure is for readers that cannot read. (Same reasoning as
+**Invariants look forward; observations only look back.** `daughter born ≈ 2023`
+lets an agent notice *she turns 5 next month*. `daughter 3, as of two years ago`
+can only ever be recalled. That is the difference between remembering and being
+useful ahead of time — and it is most of the value.
+
+**Invariants sharpen; observations only stale.** `born ≈ 2023`, plus a later
+"her birthday's in March", refines to `≈ March 2023`. Evidence accumulates into
+precision. A decaying fact only accumulates error.
+
+### Where there is no invariant to find
+
+Some statements have no constant underneath — "likes Thai food" is a preference
+that may simply change. The transform still applies, one level down: **the
+statement-event is itself invariant.** `said they like Thai, Mar 2026` stays
+permanently true even if the preference does not.
+
+So it is one rule, applied at whatever depth it lands:
+
+> **Find the thing that will not change, and write *that* down.**
+
+Sometimes that is a birth year. Sometimes it is only "they said this, then."
+Either way what gets stored never needs revisiting.
+
+**This makes the harvest function's real work clear: it is not transcription, it
+is noticing the transform.** Someone says a relative thing; the note records the
+absolute one behind it. An agent that merely quotes the email has done the easy
+half.
+
+## The form of a note
+
+Everything else about the shape is in Eric's own phone-note habit.
+
+**Squishy — prose, not schema.** `dietary_preference: thai` would be wrong. A
+schema requires anticipating every category worth remembering about a person, and
+you cannot. It is also unnecessary: **the consumer is a model, so prose is a fine
+encoding.** Structure is for readers that cannot read. (Same reasoning as
 `help --json`: the flags needed a schema, the descriptions stayed English.)
 
-**Hedges live in the sentence.** "approx" is doing real work, and it is doing it
-in the prose rather than in a `confidence` column. Write it the way you would
-write it for yourself.
+**Hedges live in the sentence.** `≈` and "approx" do real work, in the prose
+rather than in a `confidence` column — and they survive the transform cleanly,
+because "born ≈ 2023" is an honest write when you genuinely do not know the
+month, not an apology.
 
-**It is deliberately incomplete.** Eric's next question is *"how's your daughter —
+**Deliberately incomplete.** Eric's next question is *"how's your daughter —
 what's her name again?"* The note never held the name, and that is fine. The bar
 is not a complete record; it is **enough to ask a good question.**
+
+**Provenance, always.** Which message, and the verbatim where it matters. That is
+what makes a note cheap to judge and cheap to overturn.
 
 ## How it gets used: incorporation, not reconfirmation
 
@@ -73,10 +108,15 @@ a human sends.
 
 ## What crm@ actually does
 
-1. Notice a durable fact in a message — *"my daughter just turned 3."*
-2. Write the sentence, anchored, hedged, in plain language.
-3. Link the source thread.
-4. Surface it when next in contact with that person.
+1. **Notice** a fact worth keeping in a message — *"my daughter just turned 3."*
+2. **Transform** it to the invariant behind it — `daughter born ≈ 2023` — or, if
+   there is none, to the statement-event: `said X, Aug 2026`. This is the step
+   that carries the value, and the step an agent can actually help with; steps
+   1, 3 and 4 are bookkeeping.
+3. **Link** the source thread, verbatim where the wording matters.
+4. **Surface** it at the point of action — drafting or scheduling with that
+   person — and, where the invariant permits, *ahead* of it: she turns 5 next
+   month.
 
 ## Sensitivity is Eric's read, not a system field
 
