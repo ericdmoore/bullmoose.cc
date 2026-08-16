@@ -7,6 +7,7 @@ import { registerIdentityMethods } from "./identity";
 import { registerSubmissionMethods } from "./submission";
 import { registerAgentMethods } from "./agent";
 import { registerActionProposalMethods } from "./actionProposal";
+import { registerWatchMethods } from "./watch";
 import { registerVacationMethods } from "./vacation";
 import { registerContactsMethods } from "./contacts";
 import { registerCalendarMethods } from "./calendars";
@@ -24,6 +25,7 @@ export function buildRegistry(): MethodRegistry<RequestContext> {
   registerSubmissionMethods(registry);
   registerAgentMethods(registry);
   registerActionProposalMethods(registry);
+  registerWatchMethods(registry);
   registerVacationMethods(registry);
   registerContactsMethods(registry);
   registerCalendarMethods(registry);

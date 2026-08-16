@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The LaunchDaemon variant (2026-08-15). The LaunchAgent version runs in the
+  user's gui/ domain, which EXISTS ONLY WHILE THAT USER HOLDS A GUI SESSION —
+  learned the hard way: popcorn crashed (~Jul 27, the protocol bugs #141
+  fixed), and by the time anyone looked, another family member held the
+  console, gui/501 was unreachable even to sudo-over-SSH, and the daemon had
+  been down for three weeks with nothing able to restart it remotely.
+
+  A daemon lives in the system domain: it survives logouts, console user
+  switches and headless reboots, and `sudo launchctl` reaches it from any SSH
+  session. UserName drops privileges to alpaca — same process, same identity,
+  different lifecycle. Note: at boot this may briefly crash-loop until
+  Tailscale brings up 100.96.149.53; KeepAlive rides through it.
+
+  Install:
+    sudo cp packages/popcorn/deploy/cc.bullmoose.popcorn.daemon.plist \
+      /Library/LaunchDaemons/cc.bullmoose.popcorn.plist
+    sudo launchctl bootstrap system /Library/LaunchDaemons/cc.bullmoose.popcorn.plist
+  Then retire the per-user agent so two listeners never race for the port:
+    mv ~/Library/LaunchAgents/cc.bullmoose.popcorn.plist ~/.popcorn/agent-plist.retired
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>cc.bullmoose.popcorn</string>
+    <key>ProgramArguments</key>
+    <array><string>/Users/alpaca/bin/popcorn</string></array>
+    <key>UserName</key><string>alpaca</string>
+    <key>GroupName</key><string>staff</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>POPCORN_LISTEN</key><string>100.96.149.53:9995</string>
+        <key>POPCORN_SMTP_LISTEN</key><string>100.96.149.53:9587</string>
+        <key>POPCORN_TLS_CERT</key><string>/Users/alpaca/.popcorn/cert.pem</string>
+        <key>POPCORN_TLS_KEY</key><string>/Users/alpaca/.popcorn/key.pem</string>
+    </dict>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>ThrottleInterval</key><integer>10</integer>
+    <key>StandardOutPath</key><string>/Users/alpaca/.popcorn/popcorn.log</string>
+    <key>StandardErrorPath</key><string>/Users/alpaca/.popcorn/popcorn.log</string>
+</dict>
+</plist>
