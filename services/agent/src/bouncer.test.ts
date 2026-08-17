@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { Mailstore, QUARANTINE_NAME, QUARANTINE_ROLE } from "@bullmoose/mailstore";
 import { fakeEnv, type FakeWorker } from "@bullmoose/test-fakes";
 import ingestWorker, { type Env as IngestEnv } from "../../ingest/src/index";

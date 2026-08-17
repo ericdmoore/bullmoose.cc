@@ -20,7 +20,7 @@
 // untouched.
 
 import { demoApprovalsOptions, installApprovalsDemo } from "../approvals/demoApprovals";
-import { addDays, formatCivilDateTime, type CivilDate } from "../calendar/civil";
+import { formatCivilDateTime, type CivilDate } from "../calendar/civil";
 import { installDemoCalendar } from "../calendar/demoCalendar";
 import type { CalendarEvent } from "../calendar/types";
 import type { FakeJmapClient } from "../jmap/FakeJmapClient";

@@ -515,6 +515,9 @@ interface UrlPolicy {
  */
 export function safeUrl(raw: string, policy: UrlPolicy): string | null {
   const value = decodeEntities(raw).trim();
+  // Stripping control characters IS the job here: they are how
+  // `java\u0000script:` sneaks past a scheme check.
+  // oxlint-disable-next-line no-control-regex
   const probe = value.replace(/[\u0000-\u0020\u007f\u00a0\u2028\u2029]/g, "").toLowerCase();
   if (probe === "") return null;
 

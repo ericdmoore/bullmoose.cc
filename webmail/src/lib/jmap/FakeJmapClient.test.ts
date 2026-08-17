@@ -81,6 +81,6 @@ describe("FakeJmapClient", () => {
     const fake = new FakeJmapClient();
     const [resp] = await fake.request([["Nope/get", {}, "c0"]]);
     expect(resp?.[0]).toBe("error");
-    expect((resp?.[1] as { type: string }).type).toBe("unknownMethod");
+    expect((resp![1] as { type: string }).type).toBe("unknownMethod");
   });
 });

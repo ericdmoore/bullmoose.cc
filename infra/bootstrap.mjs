@@ -579,17 +579,24 @@ function resources() {
   const have = (list, pred) => (Array.isArray(list) ? list : []).some(pred);
 
   const d1s = parseJson(wrangler(["d1", "list", "--json"], { capture: true }).stdout, []);
-  if (DRY || !have(d1s, (x) => x?.name === D1_NAME)) wrangler(["d1", "create", D1_NAME]), ok(`D1 ${D1_NAME}`);
+  if (DRY || !have(d1s, (x) => x?.name === D1_NAME)) {
+    wrangler(["d1", "create", D1_NAME]);
+    ok(`D1 ${D1_NAME}`);
+  }
   else ok(`D1 ${D1_NAME} (exists)`);
 
   const r2s = wrangler(["r2", "bucket", "list"], { capture: true }).stdout;
-  if (DRY || !r2s.includes(R2_NAME)) wrangler(["r2", "bucket", "create", R2_NAME]), ok(`R2 ${R2_NAME}`);
+  if (DRY || !r2s.includes(R2_NAME)) {
+    wrangler(["r2", "bucket", "create", R2_NAME]);
+    ok(`R2 ${R2_NAME}`);
+  }
   else ok(`R2 ${R2_NAME} (exists)`);
 
   const kvs = parseJson(wrangler(["kv", "namespace", "list"], { capture: true }).stdout, []);
   for (const title of [KV_TITLE, OAUTH_KV_TITLE]) {
     if (DRY || !have(kvs, (x) => x?.title === title || x?.title?.endsWith(`-${title}`))) {
-      wrangler(["kv", "namespace", "create", title]), ok(`KV ${title}`);
+      wrangler(["kv", "namespace", "create", title]);
+      ok(`KV ${title}`);
     } else ok(`KV ${title} (exists)`);
   }
 }

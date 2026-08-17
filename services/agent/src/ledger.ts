@@ -704,7 +704,8 @@ async function bootstrapCsv(
       category: categories.includes(category) ? category : "other",
       confidence: 1,
     });
-    ok ? imported++ : skipped++;
+    if (ok) imported++;
+    else skipped++;
   }
 
   const agg = await aggregates(env, job.account_id, {

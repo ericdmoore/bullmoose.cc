@@ -1,7 +1,6 @@
 import { commitChanges } from "@bullmoose/account-do";
 import {
   ESCALATION_WINDOW_MAX_MS,
-  ESCALATION_WINDOW_NO_HISTORY_MS,
   bindingEscalationWindowMs,
   bindingMedianCostMicros,
   budgetExhaustedSql,

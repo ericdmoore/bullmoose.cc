@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fakeD1, type FakeD1 } from "@bullmoose/test-fakes";
+import { fakeD1 } from "@bullmoose/test-fakes";
 import worker from "./index";
 import type { Env } from "./models";
 import { openCredential } from "./vault";

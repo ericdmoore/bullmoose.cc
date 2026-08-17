@@ -11,6 +11,10 @@ const msg = (over: Partial<BoundaryMessage> = {}): BoundaryMessage => ({
   headers: { "List-Id": "<staff.example.com>", "Reply-To": "alice@example.com" },
   sizeBytes: 2048,
   hasAttachments: true,
+  // `over` was accepted and then DROPPED — the doc above promised an override
+  // this helper never applied. No caller passed one, so nothing was silently
+  // wrong yet; the next one would have been.
+  ...over,
 });
 
 const reject = (id: string, all: SieveRule["all"]): SieveRule => ({ id, all, action: "reject" });

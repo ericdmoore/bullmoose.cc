@@ -1,4 +1,4 @@
-import { effectiveScopes, hasScope, MAIL_SCOPES, REALM_SCOPES } from "@bullmoose/auth-core";
+import { effectiveScopes, hasScope } from "@bullmoose/auth-core";
 import {
   accountAccess,
   matchingGrants,
@@ -8,7 +8,7 @@ import {
   type Principal,
 } from "@bullmoose/auth-core/principal";
 import { ToolError } from "./jmapBridge.js";
-import type { BindingConfig, Env } from "./models.js";
+import type { BindingConfig } from "./models.js";
 import type { ToolDef } from "./mcp.js";
 
 /**

@@ -1,0 +1,46 @@
+{
+  // Why oxlint, and why a linter and not a formatter.
+  //
+  // `verify` already fails on `gofmt -l` and `go vet`, so Go had two gates and
+  // TypeScript had none — the gap s06 named and never closed. This closes it.
+  // It lints the whole tree, 425 files and ~139k lines, in under three seconds,
+  // which is the difference between a check that runs on every commit and one
+  // people learn to skip.
+  //
+  // Deliberately NOT a formatter. A formatter would rewrite most of the tree in
+  // a single commit and conflict with every branch in flight, to fix nothing
+  // that is wrong. Rule names here are eslint-compatible, so moving to eslint
+  // later is a config translation rather than a rewrite.
+  //
+  // NOT ENABLED YET: type-aware rules — where `no-floating-promises` lives, the
+  // rule this codebase would most benefit from given how much it awaits D1. It
+  // needs the `oxlint-tsgolint` package AND a tsconfig change: all fourteen
+  // `paths` entries are non-relative (`packages/…` rather than `./packages/…`),
+  // which tsc accepts and oxlint rejects outright. That touches module
+  // resolution for the whole build, so it gets its own PR and its own green run.
+  "plugins": ["eslint", "typescript", "unicorn"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "eslint/no-unused-vars": "error",
+    "eslint/no-unsafe-optional-chaining": "error",
+    "eslint/no-unused-expressions": "error",
+
+    // The unicorn stylistic rules found 23 real instances and not one was a bug
+    // — useless spreads, `new Array(n)`, empty fallbacks. Enabling them means 23
+    // churn edits across files other people are working in, to fix nothing. Off
+    // on purpose rather than undiscovered: flip one to "warn" and re-run to see
+    // the list again.
+    "unicorn/no-useless-spread": "off",
+    "unicorn/no-useless-fallback-in-spread": "off",
+    "unicorn/no-new-array": "off"
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    ".claude/worktrees/**",
+    "**/*.d.ts",
+    "webmail/public/**"
+  ]
+}
