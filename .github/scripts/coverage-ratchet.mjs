@@ -13,11 +13,19 @@
 //    would vanish under any tolerance worth having. Nineteen small numbers
 //    catch "tests added to A while B rots"; one big number cannot.
 //
-// 2. LINES, NOT BRANCHES. Measured on this suite: two consecutive `npm run
-//    coverage` runs on an unchanged tree produced byte-identical LINE counts
-//    and *different* branch counts (auth-core/principal.ts 78/91 → 79/92,
-//    calendar-core/index.ts 220/267 → 219/266 — the denominators move, not
-//    just the numerators). Gating on branches would flap on an empty diff.
+// 2. LINES, NOT BRANCHES. Lines are the stabler signal: a branch denominator
+//    moves whenever a conditional is refactored, so branch % drifts on changes
+//    that alter no behaviour and remove no test. Line count tracks "is this
+//    executed" and is what a ratchet can hold steady.
+//
+//    ⚠️ An earlier draft of this comment claimed something stronger — that two
+//    consecutive runs on an UNCHANGED tree produced different branch counts
+//    (auth-core/principal.ts 78/91 → 79/92). That did not reproduce: three
+//    consecutive runs gave 79/92 every time. The observation may have come
+//    from a tree that was not in fact identical. The decision stands on the
+//    reasoning above, which is the ordinary case for preferring lines — not on
+//    a non-determinism claim that has not been demonstrated here.
+//
 //    Branches and functions are still reported; they just do not gate.
 //
 // 3. WHOLE PERCENT. Floors are integers and the comparison floors the current

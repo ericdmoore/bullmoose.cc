@@ -62,12 +62,18 @@ describe("the gate", () => {
   const base = { slack: 2, packages: { "packages/a": 80, "packages/b": 50 } };
 
   it("passes when every package sits on its floor", () => {
-    const got = evaluate({ "packages/a": { covered: 80, total: 100 }, "packages/b": { covered: 50, total: 100 } }, base);
+    const got = evaluate(
+      { "packages/a": { covered: 80, total: 100 }, "packages/b": { covered: 50, total: 100 } },
+      base,
+    );
     expect(got.ok).toBe(true);
   });
 
   it("fails when a package drops below its floor", () => {
-    const got = evaluate({ "packages/a": { covered: 79, total: 100 }, "packages/b": { covered: 50, total: 100 } }, base);
+    const got = evaluate(
+      { "packages/a": { covered: 79, total: 100 }, "packages/b": { covered: 50, total: 100 } },
+      base,
+    );
     expect(got.ok).toBe(false);
     expect(got.failures.map((f: { name: string; status: string }) => [f.name, f.status])).toEqual([
       ["packages/a", "regressed"],
@@ -85,14 +91,20 @@ describe("the gate", () => {
   });
 
   it("lets a modest gain land without touching the baseline", () => {
-    const got = evaluate({ "packages/a": { covered: 82, total: 100 }, "packages/b": { covered: 50, total: 100 } }, base);
+    const got = evaluate(
+      { "packages/a": { covered: 82, total: 100 }, "packages/b": { covered: 50, total: 100 } },
+      base,
+    );
     expect(got.ok).toBe(true);
   });
 
   it("asks for a gain beyond the slack to be recorded, so the floor advances", () => {
     // Without this the ratchet is only ever a floor: coverage climbs to 90,
     // nobody writes it down, and it is free to slide back to 80.
-    const got = evaluate({ "packages/a": { covered: 90, total: 100 }, "packages/b": { covered: 50, total: 100 } }, base);
+    const got = evaluate(
+      { "packages/a": { covered: 90, total: 100 }, "packages/b": { covered: 50, total: 100 } },
+      base,
+    );
     expect(got.ok).toBe(false);
     expect(got.failures[0]).toMatchObject({ name: "packages/a", status: "unrecorded", pct: 90 });
   });
