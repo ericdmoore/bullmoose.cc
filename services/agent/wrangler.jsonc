@@ -69,8 +69,11 @@
   }
 
   // Secrets (wrangler secret put):
-  //   INTERNAL_TOKEN      — shared with ingest (poke) and submit (relay)
-  //   GATEWAY_TOKEN       — AI Gateway auth, only when gateway aliases exist
+  //   INTERNAL_TOKEN       — shared with ingest (poke) and submit (relay)
+  //   GATEWAY_TOKEN        — AI Gateway auth, only when gateway aliases exist
+  //   OPENROUTER_API_TOKEN — OpenRouter key (s18 extractor); required for any
+  //                          `provider: "openrouter"` model candidate to run
   // Vars (set once the AI Gateway exists):
-  //   GATEWAY_COMPAT_URL  — https://gateway.ai.cloudflare.com/v1/<acct>/bullmoose/compat
+  //   GATEWAY_COMPAT_URL   — https://gateway.ai.cloudflare.com/v1/<acct>/bullmoose/compat
+  //   OPENROUTER_BASE_URL  — optional; defaults to https://openrouter.ai/api/v1
 }

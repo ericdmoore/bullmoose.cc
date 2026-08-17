@@ -156,6 +156,16 @@ export default {
       if (route === "POST /remind") {
         return provisionRemind((await request.json()) as { tenantId: string; domain: string; localpart?: string }, env);
       }
+      // s18 A2 — turn the extraction pass on for ONE human account. A binding on
+      // the account's OWN mailbox (it reads what is delivered), not a separate
+      // agent account: extraction writes Annotations, it sends nothing. Re-run
+      // to SWAP the model. This is the spend decision, made explicitly.
+      if (route === "POST /extractor") {
+        return provisionExtractor(
+          (await request.json()) as { email: string; model?: string; provider?: string; maxTokens?: number },
+          env,
+        );
+      }
       // The kill switch (`.feedback/fromClaude/agentic/023`). TWO EXPLICIT
       // VERBS rather than a general `PATCH {enabled}`: in an incident the
       // dangerous direction must be unambiguous in the audit log and
@@ -2532,6 +2542,66 @@ async function provisionRemind(body: { tenantId: string; domain: string; localpa
     recipientsBookId: bookId,
     allowedSenders: humans,
   });
+}
+
+/**
+ * Turn the extraction pass (s18 A2) on for ONE human account. Unlike bouncer@ /
+ * remind@ this is NOT a new agent account — the binding lives on the account's
+ * OWN mailbox, because the extractor reads what is delivered TO you and writes
+ * Annotations back to you. It sends nothing, so there is no governing book, no
+ * allowedSenders, and no supervisory grant.
+ *
+ * `model`/`provider` default to the OpenRouter MiniMax route (the paid model
+ * Eric chose); pass others to shop around. Re-running is the SWAP path: it
+ * UPDATEs the existing binding's model menu in place (config_json is otherwise
+ * read-only on the API — a re-provision is how you change it), so
+ * `POST /extractor {email, model:"qwen/..."}` is a one-liner model change.
+ *
+ * This is the spend decision, made explicitly and per-account: nothing here
+ * runs until mail is delivered to `email`, and it can be turned off instantly
+ * with `POST /agent-bindings/{id}/disable`.
+ */
+async function provisionExtractor(
+  body: { email: string; model?: string; provider?: string; maxTokens?: number },
+  env: Env,
+) {
+  const email = String(body.email ?? "").toLowerCase();
+  if (!email) return json({ error: "email required" }, 400);
+  const provider = typeof body.provider === "string" ? body.provider : "openrouter";
+  const model = typeof body.model === "string" ? body.model : "minimax/minimax-m3";
+  const config: Record<string, unknown> = {
+    pipeline: "extract",
+    modelAliases: { extract: [{ provider, model }] },
+    defaultModel: "extract",
+    ...(Number.isFinite(Number(body.maxTokens)) ? { maxTokens: Number(body.maxTokens) } : {}),
+  };
+
+  const account = await accountByAddress(env, email);
+  if (!account) return json({ error: `no live account for ${email}` }, 404);
+
+  // Re-provision UPDATES the model menu in place — the swap path (Llama → Qwen
+  // → minimax). config_json is read-only on PATCH by design, so this is where
+  // a shape change legitimately happens.
+  const existing = await env.DB.prepare(
+    `SELECT id FROM agent_bindings WHERE account_id = ? AND name = 'extractor'`,
+  )
+    .bind(account.id)
+    .first<{ id: string }>();
+  if (existing) {
+    await env.DB.prepare(`UPDATE agent_bindings SET config_json = ?, enabled = 1 WHERE id = ?`)
+      .bind(JSON.stringify(config), existing.id)
+      .run();
+    return json({ ok: true, created: false, updated: true, accountId: account.id, bindingId: existing.id, model: `${provider}/${model}` });
+  }
+
+  // A binding on the human's own account, reply-less. skipSupervision: nothing
+  // to supervise — the annotations land on this same account, which the human
+  // already sees; no cross-account grant is involved.
+  const bindingRes = await createAgentBinding({ email, name: "extractor", config, skipSupervision: true }, env);
+  const binding = (await bindingRes.json()) as { ok?: boolean; bindingId?: string; error?: string };
+  if (!binding.ok) return json({ error: `extractor binding: ${binding.error ?? "failed"}` }, 422);
+
+  return json({ ok: true, created: true, accountId: account.id, bindingId: binding.bindingId, model: `${provider}/${model}` });
 }
 
 /**
