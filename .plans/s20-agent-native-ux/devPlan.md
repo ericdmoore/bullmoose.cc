@@ -25,19 +25,34 @@ on the contact card, T4's comment pattern) and inline in the flow that produced 
 (T6's sketch redlining). The queue holds what the human did not naturally encounter.
 In-place approval writes the identical ledger rows.
 
-### T1 — Watches · *the one new noun* — ENGINE LANDED (2026-08-15)
+### T1 — Watches · *the one new noun* — ENGINE LANDED (2026-08-15) · remind@ DOOR LANDED (2026-08-16)
 
 > **Wave 1 built**: the `watches` table + migration, `services/agent/src/watches.ts`
 > (the cron sweep — deterministic `deadline` and `no-reply-from` conditions, fire→proposal,
 > guarded no-double-fire, fail-open on a missing table), and `Watch/*` JMAP CRUD
 > (arm/cancel/list; a client cannot write `fired` — only the cron may; cancel is armed-only).
 > A `no-reply-from` watch EXPIRES CLEAN when the reply arrives — being answered is silence,
-> which is the whole trustworthiness of the feature. 18 tests. **Wave 2 (the doors)**:
-> `remind@` as the mail-native create path, the star on-ramp in webmail, the CLI surface,
-> and drafting the follow-up BODY at fire time (v1 carries the intent; a model-composed
-> draft waits on cost history, s11 T5). The proposal a fired watch produces flows through
-> the same approvals machinery as everything else, and — because a follow-up targets a
-> third party — the respond-only rule correctly routes it to the queue rather than sending.
+> which is the whole trustworthiness of the feature. 18 tests.
+>
+> **Wave 2, slice 1 — the `remind@` mail-native door (LANDED)**: `services/agent/src/remind.ts`.
+> CC or write `remind@<your-domain>` with a deadline in plain words and a Watch is armed on
+> YOUR account (resolved from the sender), then confirmed by reply; when it comes due the
+> Wave-1 sweep fires it into your approvals. It is a **real provisioned agent account**
+> (Decision 3, resolved), `POST /remind` in the provision worker — structurally a slimmer
+> bouncer (allowedSenders + governing book = the household humans; **no** persona/model, and
+> **no** supervisory grant, because a fired reminder is a proposal on the ASKER's account,
+> not remind@'s). Deterministic and model-free: the deadline is read by the SAME conservative
+> parser ingest stamps `due_at` with (`extractDueAt`, moved to `@bullmoose/scheduling` so both
+> surfaces share one definition of "by Friday"), and a request it cannot pin gets a teaching
+> reply, never a guessed time. v1 arms a `deadline`/`notify` watch (a pure, reversible
+> reminder — nothing egresses); `no-reply-from` via remind@ and agent-composed follow-up
+> bodies are later slices. 8 + 3 tests.
+>
+> **Wave 2, still open**: the star on-ramp in webmail, the CLI surface, and drafting the
+> follow-up BODY at fire time (v1 carries the intent; a model-composed draft waits on cost
+> history, s11 T5). The proposal a fired watch produces flows through the same approvals
+> machinery as everything else, and — because a follow-up targets a third party — the
+> respond-only rule correctly routes it to the queue rather than sending.
 
 **Files:** `packages/mailstore/sql/control-plane.sql` (new `watches` table),
 `services/agent/src/watches.ts` (evaluation in the existing cron sweep),
@@ -258,8 +273,15 @@ and its plan-approval checkpoint is only meaningful once approving things is a h
    draft-vs-notify?). *Recommendation: +4bd, draft — a draft in the queue costs nothing.*
 2. **Extractor trigger** — every delivery, or batched in the cron sweep? *Recommendation:
    batched; the firehose-economics risk says start cheap and measure.*
-3. **Does remind@ ship as a real provisioned agent or a routing alias into the Watch
-   engine?** *Recommendation: alias first; promote if its conversational surface grows.*
+3. ~~**Does remind@ ship as a real provisioned agent or a routing alias into the Watch
+   engine?**~~ **RESOLVED (2026-08-16): a real provisioned agent account.** The alias
+   never actually saved work — the invocation still has to run *somewhere* to parse the
+   deadline and write the watch, and a dedicated account is what makes ONLY mail sent to
+   remind@ mint an invocation (a `+remind` tag on a human's own box would fire a pipeline
+   on every message they receive). It also inherits bouncer's safety composition for free:
+   `allowedSenders` + a governing book bound who may use it and who it may confirm to. The
+   conversational surface can still grow later without a migration — the account is already
+   there. See `provisionRemind` / `POST /remind`.
 
 ## Out of scope
 

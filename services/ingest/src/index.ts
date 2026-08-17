@@ -24,7 +24,7 @@ import {
 } from "./boundary";
 import type { BoundaryMessage } from "./boundaryContract";
 import { sweepGraduations } from "./graduationSweep";
-import { extractDueAt } from "./dueDate";
+import { extractDueAt } from "@bullmoose/scheduling";
 import { SIDESTEP_WRITER, sidestepAttachments, sidestepThreshold } from "./sidestep";
 import {
   composePrivacy,
