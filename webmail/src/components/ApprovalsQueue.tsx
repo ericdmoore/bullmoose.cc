@@ -180,6 +180,23 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
     (p) => p.status !== "pending" && p.status !== "info-requested" && p.status !== "held",
   );
 
+  // Master-detail (triple panel, s07 T10 / Eric 2026-08-15): the rail is the
+  // shell, this island owns the middle "headers" column and the right detail.
+  // `ordered` already sorts pending-first with the near-due at the top, so the
+  // first item is the one most wanting a decision — the right default focus.
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  const selected = ordered.find((p) => p.id === selectedId) ?? ordered[0];
+  // Keep a valid selection as the queue changes under us (a decided row leaves,
+  // a new proposal arrives) without yanking focus off something the human is
+  // mid-decision on.
+  useEffect(() => {
+    if (ordered.length === 0) {
+      if (selectedId !== undefined) setSelectedId(undefined);
+      return;
+    }
+    if (!ordered.some((p) => p.id === selectedId)) setSelectedId(ordered[0]!.id);
+  }, [ordered, selectedId]);
+
   async function reload(): Promise<void> {
     if (!client || accounts.length === 0) return;
     const res = await loadQueues(client, accounts.map((a) => a.accountId));
@@ -315,77 +332,116 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
         <p class="muted apq-pad">Nothing is waiting on you.</p>
       ) : null}
 
-      <section aria-label="Waiting on you">
-        {pending.map((p) => (
-          <PendingRow
-            key={p.id}
-            p={p}
-            account={accounts.find((a) => a.accountId === p.accountId)}
-            showAccount={accounts.length > 1}
-            now={now}
-            busy={busyId === p.id}
-            error={rowErrors[p.id]}
-            panel={panel && panel.id === p.id ? panel : undefined}
-            setPanel={setPanel}
-            onApprove={() => void act(p.id, { status: "approved" })}
-            onDecline={(reason, note) =>
-              void act(p.id, { status: "rejected", reason, ...(note ? { note } : {}) })
-            }
-            onNeedsInfo={(question) => void act(p.id, { status: "info-requested", question })}
-            onSubmitEdit={(form) => submitEdit(p, form)}
-            onCorrectDue={(dueAt) => void correctDue(p.id, dueAt)}
-          />
-        ))}
-      </section>
+      {ordered.length > 0 ? (
+        <div class="grid grid-cols-1 gap-x-6 lg:grid-cols-[22rem_1fr]">
+          {/* COLUMN 2 — the headers. A compact, grouped, selectable list:
+              what needs you first, then the secondary states. This is the
+              "second column" of the triple-panel; the rail is the first. */}
+          <nav aria-label="Proposals" class="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+            <HeaderGroup label="Waiting on you" tone="primary" items={pending} now={now}
+              accounts={accounts} selectedId={selected?.id} onSelect={setSelectedId} />
+            <HeaderGroup label="Waiting on the agent" items={infoRequested} now={now}
+              accounts={accounts} selectedId={selected?.id} onSelect={setSelectedId} />
+            <HeaderGroup label="Hold tray" items={held} now={now}
+              accounts={accounts} selectedId={selected?.id} onSelect={setSelectedId} />
+            <HeaderGroup label="Decided" items={history} now={now}
+              accounts={accounts} selectedId={selected?.id} onSelect={setSelectedId} muted />
+          </nav>
 
-      {infoRequested.length > 0 ? (
-        <section aria-label="Waiting on the agent">
-          <h2 class="apq-h2">Waiting on the agent</h2>
-          <p class="muted apq-fine">
-            You asked; the agent owes an answer. Each returns to the queue with its dialogue
-            attached, and its decision deadline is paused meanwhile.
-          </p>
-          {infoRequested.map((p) => (
-            <InfoRequestedRow
-              key={p.id}
-              p={p}
-              label={accounts.length > 1 ? accountLabel(accounts, p.accountId) : ""}
-            />
-          ))}
-        </section>
-      ) : null}
-
-      {held.length > 0 ? (
-        <section aria-label="Hold tray">
-          <h2 class="apq-h2">Hold tray</h2>
-          <p class="muted apq-fine">
-            Approved, retractable, not yet committed. Nothing here has been sent.
-          </p>
-          {held.map((p) => (
-            <HeldRow
-              key={p.id}
-              p={p}
-              now={now}
-              label={accounts.length > 1 ? accountLabel(accounts, p.accountId) : ""}
-            />
-          ))}
-        </section>
-      ) : null}
-
-      {history.length > 0 ? (
-        <section aria-label="Decided">
-          <h2 class="apq-h2">Decided</h2>
-          {history.map((p) => (
-            <HistoryRow
-              key={p.id}
-              p={p}
-              now={now}
-              label={accounts.length > 1 ? accountLabel(accounts, p.accountId) : ""}
-            />
-          ))}
-        </section>
+          {/* COLUMN 3 — the detail, subordinate to the header column: the full
+              row for whatever is selected, its actions intact. */}
+          <section aria-label="Detail" class="min-w-0">
+            {selected ? (
+              selected.status === "pending" ? (
+                <PendingRow
+                  key={selected.id}
+                  p={selected}
+                  account={accounts.find((a) => a.accountId === selected.accountId)}
+                  showAccount={accounts.length > 1}
+                  now={now}
+                  busy={busyId === selected.id}
+                  error={rowErrors[selected.id]}
+                  panel={panel && panel.id === selected.id ? panel : undefined}
+                  setPanel={setPanel}
+                  onApprove={() => void act(selected.id, { status: "approved" })}
+                  onDecline={(reason, note) =>
+                    void act(selected.id, { status: "rejected", reason, ...(note ? { note } : {}) })
+                  }
+                  onNeedsInfo={(question) => void act(selected.id, { status: "info-requested", question })}
+                  onSubmitEdit={(form) => submitEdit(selected, form)}
+                  onCorrectDue={(dueAt) => void correctDue(selected.id, dueAt)}
+                />
+              ) : selected.status === "info-requested" ? (
+                <InfoRequestedRow p={selected} label={accounts.length > 1 ? accountLabel(accounts, selected.accountId) : ""} />
+              ) : selected.status === "held" ? (
+                <HeldRow p={selected} now={now} label={accounts.length > 1 ? accountLabel(accounts, selected.accountId) : ""} />
+              ) : (
+                <HistoryRow p={selected} now={now} label={accounts.length > 1 ? accountLabel(accounts, selected.accountId) : ""} />
+              )
+            ) : null}
+          </section>
+        </div>
       ) : null}
     </main>
+  );
+}
+
+/**
+ * One group in the header column (s07 T10). Compact, selectable rows — sender/
+ * summary, a tier chip, and how long it has waited — under a small heading so
+ * "waiting on you" reads apart from "decided". Renders nothing when empty, so
+ * the column shows only the states that actually have items.
+ */
+function HeaderGroup(props: {
+  label: string;
+  items: ActionProposal[];
+  now: number;
+  accounts: ApprovalsAccount[];
+  selectedId: string | undefined;
+  onSelect: (id: string) => void;
+  tone?: "primary";
+  muted?: boolean;
+}) {
+  const { label, items, now, accounts, selectedId, onSelect, tone, muted } = props;
+  if (items.length === 0) return null;
+  return (
+    <div class="mb-4">
+      <h2 class={"px-2 pb-1 text-xs font-semibold tracking-wide uppercase " + (muted ? "text-gray-400" : "text-gray-500")}>
+        {label} <span class="ml-1 font-normal text-gray-400">{items.length}</span>
+      </h2>
+      <ul role="list" class="space-y-0.5">
+        {items.map((p) => {
+          const active = p.id === selectedId;
+          const waited = waitedLabel(p, rowClocks(p, now));
+          return (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => onSelect(p.id)}
+                aria-current={active ? "true" : undefined}
+                class={
+                  "flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left text-sm " +
+                  (active
+                    ? "bg-brand-50 ring-1 ring-brand-500/30 dark:bg-white/10"
+                    : "hover:bg-gray-50 dark:hover:bg-white/5")
+                }
+              >
+                <span class={"line-clamp-2 " + (muted ? "text-gray-500" : "font-medium text-gray-900 dark:text-white")}>
+                  {summarizeProposal(p)}
+                </span>
+                <span class="flex items-center gap-x-2 text-xs text-gray-500">
+                  <span class={"rounded px-1.5 py-0.5 " + (tone === "primary" ? "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100" : "bg-gray-100 dark:bg-white/10")}>
+                    {tierLabel(p.tier)}
+                  </span>
+                  {accounts.length > 1 ? <span>{accountLabel(accounts, p.accountId)}</span> : null}
+                  {waited ? <span class="truncate">· {waited}</span> : null}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
