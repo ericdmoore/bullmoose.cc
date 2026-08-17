@@ -261,37 +261,43 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
   }
 
   // ── shells ──────────────────────────────────────────────────────────────
+  // These are `div`, not `main`: AppTw.astro already renders the page's one
+  // `<main>` around the slot, so an island that renders its own nests a
+  // landmark inside a landmark — invalid HTML, and two "main" regions for a
+  // screen reader to choose between. The island owns the CONTENT; the layout
+  // owns the frame. (Every other island still does this — see the note in
+  // AppTw.astro.)
   if (fatal) {
     return (
-      <main class="shell shell-error">
+      <div class="shell shell-error">
         <h1>Approvals</h1>
         <p role="alert">Could not reach the server: {fatal}</p>
-      </main>
+      </div>
     );
   }
   if (!session) {
     return (
-      <main class="shell">
+      <div class="shell">
         <p class="muted">Connecting…</p>
-      </main>
+      </div>
     );
   }
   // The plain-client floor (arch.md §8.6): capability absent → an explanation,
   // not an error and not a dead region.
   if (gate.state !== "open") {
     return (
-      <main class="shell">
+      <div class="shell">
         <h1>Approvals</h1>
         <p class="muted">{gate.reason}</p>
         <p class="muted">
           <a href="/mail">← back to mail</a>
         </p>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main class="apq">
+    <div class="apq">
       {isDemo ? (
         <p class="banner">Sample data. Decisions here are kept in this browser tab and reach no server.</p>
       ) : null}
@@ -411,7 +417,7 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
           </section>
         </div>
       ) : null}
-    </main>
+    </div>
   );
 }
 
