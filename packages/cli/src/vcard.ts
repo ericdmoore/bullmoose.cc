@@ -280,32 +280,6 @@ const ADR_COMPONENT_KINDS = [
   "country",
 ] as const;
 
-/** Properties that map structurally (everything else → vCardProps). */
-const MAPPED = new Set([
-  "VERSION",
-  "UID",
-  "FN",
-  "N",
-  "NICKNAME",
-  "ORG",
-  "TITLE",
-  "ROLE",
-  "EMAIL",
-  "TEL",
-  "ADR",
-  "BDAY",
-  "ANNIVERSARY",
-  "NOTE",
-  "URL",
-  "PHOTO",
-  "CATEGORIES",
-  "IMPP",
-  "KIND",
-  "REV",
-  "PRODID",
-  "X-ABLABEL",
-  "X-ABSHOWAS",
-]);
 
 function cardFromBlock(props: VProp[], warnings: string[]): Card {
   const card: Card = { "@type": "Card", version: "1.0" };

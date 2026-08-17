@@ -7,7 +7,6 @@
 
 import PostalMime from "postal-mime";
 import {
-  BookWriteRefused,
   cardContribution,
   cardMemberUids,
   cardOwnEmails,

@@ -1,28 +1,30 @@
 {
   "name": "bullmoose-mail",
   "private": true,
-  "description": "Serverless JMAP mail platform — Cloudflare Workers + Durable Objects + D1 + R2, SES outbound",
+  "description": "Serverless JMAP mail platform \u2014 Cloudflare Workers + Durable Objects + D1 + R2, SES outbound",
   "workspaces": [
     "packages/*",
     "services/*",
     "webmail"
   ],
   "scripts": {
+    "build:cli": "npm run -w @bullmoose/cli build",
+    "coverage": "vitest run --coverage",
+    "dev:ingest": "npm run dev -w services/ingest",
+    "dev:jmap": "npm run dev -w services/jmap",
+    "dev:provision": "npm run dev -w services/provision",
+    "dev:submit": "npm run dev -w services/submit",
+    "gen:conformance": "UPDATE_CONFORMANCE=1 vitest run conformance",
+    "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit && npm run -w webmail typecheck && npm run -w @bullmoose/cli typecheck",
-    "build:cli": "npm run -w @bullmoose/cli build",
-    "gen:conformance": "UPDATE_CONFORMANCE=1 vitest run conformance",
-    "dev:jmap": "npm run dev -w services/jmap",
-    "dev:ingest": "npm run dev -w services/ingest",
-    "dev:submit": "npm run dev -w services/submit",
-    "dev:provision": "npm run dev -w services/provision"
+    "typecheck": "tsc --noEmit && npm run -w webmail typecheck && npm run -w @bullmoose/cli typecheck"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250620.0",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^3.2.7",
+    "oxlint": "^1.78.0",
     "typescript": "^5.5.4",
     "vitest": "^3.2.4",
     "wrangler": "^4.20.0"

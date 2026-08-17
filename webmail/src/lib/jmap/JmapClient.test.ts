@@ -79,7 +79,7 @@ describe("session bootstrap", () => {
     const session = await client.session();
     expect(session.apiUrl).toBe("https://mail.test/api/jmap");
     expect(session.primaryAccounts[MAIL_CAP]).toBe(ACCT);
-    expect((seen[0]?.headers as Record<string, string>).authorization).toBe("Bearer bm_secret");
+    expect((seen[0]!.headers as Record<string, string>).authorization).toBe("Bearer bm_secret");
   });
 
   it("caches the session — a second call makes no second fetch", async () => {

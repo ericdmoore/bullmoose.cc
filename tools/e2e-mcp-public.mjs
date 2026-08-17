@@ -76,7 +76,7 @@ section("A1 — the 401 that teaches");
   // friendly 200 here means no auth prompt ever appears.
   check(res.status !== 200, "and NOT a 200 — a 200 never triggers an auth prompt");
   const wa = res.headers.get("www-authenticate") ?? "";
-  check(/^Bearer/.test(wa), "carries a Bearer challenge", wa || "(absent)");
+  check(wa.startsWith("Bearer"), "carries a Bearer challenge", wa || "(absent)");
   const m = /resource_metadata="([^"]+)"/.exec(wa);
   check(!!m, "names resource_metadata", wa || "(absent)");
   check(json?.error?.code === -32001, "body is a JSON-RPC unauthorized", JSON.stringify(json));
@@ -91,7 +91,7 @@ section("A1 — the 401 that teaches");
     check(Array.isArray(prm?.authorization_servers) && prm.authorization_servers.length === 1,
       "PRM names exactly one authorization server", JSON.stringify(prm?.authorization_servers));
     check(prm?.authorization_servers?.[0] === AUTH, "and it is the expected one", prm?.authorization_servers?.[0]);
-    check(!/\/$/.test(prm?.resource ?? "/") && !(prm?.resource ?? "").includes("#"),
+    check(!(prm?.resource ?? "/").endsWith("/") && !(prm?.resource ?? "").includes("#"),
       "resource URI has no trailing slash and no fragment (RFC 8707)");
     // A doc URL that 200s with the wrong content is worse than a 404: the
     // reader gets a plausible page and no signal. This once pointed at the

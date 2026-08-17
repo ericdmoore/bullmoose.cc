@@ -87,7 +87,7 @@ const [ch2] = await jmap([['Email/changes', { accountId: ACCT, sinceState: state
 assert(ch2[1].newState !== state0 || ch2[1].created.length + ch2[1].updated.length >= 0, 'changes from state0 ok');
 
 // 10. Thread/get + Identity/get
-const [th] = await jmap([['Thread/get', { accountId: ACCT, ids: [got.id ? g[1].list[0].id : draftId] }, 't']]);
+await jmap([['Thread/get', { accountId: ACCT, ids: [got.id ? g[1].list[0].id : draftId] }, 't']]);
 const [[, idn]] = await jmap([['Identity/get', { accountId: ACCT, ids: null }, 'i']]);
 assert(idn.list[0].email === 'dev@localhost', 'synthesized identity');
 
