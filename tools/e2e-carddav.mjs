@@ -52,15 +52,9 @@ const extract = (xml, re) => {
 
 // 1. discovery + auth surface
 const opt = await fetch(`${DAV}/`, { method: "OPTIONS" });
-assert(
-  (opt.headers.get("dav") ?? "").includes("addressbook"),
-  `OPTIONS DAV header: ${opt.headers.get("dav")}`,
-);
+assert((opt.headers.get("dav") ?? "").includes("addressbook"), `OPTIONS DAV header: ${opt.headers.get("dav")}`);
 const wk = await fetch(`${DAV}/.well-known/carddav`, { redirect: "manual" });
-assert(
-  wk.status === 301 && wk.headers.get("location") === "/dav/",
-  "well-known redirects to /dav/",
-);
+assert(wk.status === 301 && wk.headers.get("location") === "/dav/", "well-known redirects to /dav/");
 const noAuth = await fetch(`${DAV}/dav/`, { method: "PROPFIND" });
 assert(
   noAuth.status === 401 && (noAuth.headers.get("www-authenticate") ?? "").includes("Basic"),
@@ -69,8 +63,7 @@ assert(
 const badPw = await fetch(`${DAV}/dav/`, {
   method: "PROPFIND",
   headers: {
-    Authorization:
-      "Basic " + Buffer.from(`${ERIC.email}:bm_aaaaaaaaaaaa_${"f".repeat(48)}`).toString("base64"),
+    Authorization: "Basic " + Buffer.from(`${ERIC.email}:bm_aaaaaaaaaaaa_${"f".repeat(48)}`).toString("base64"),
   },
 });
 assert(badPw.status === 401, "wrong app-password → 401");
@@ -82,20 +75,14 @@ const root = await dav(ERIC, "PROPFIND", "/dav/", {
 });
 assert(root.status === 207, `root PROPFIND: ${root.status}`);
 const principalHref = extract(root.text, /<D:current-user-principal><D:href>([^<]+)<\/D:href>/);
-assert(
-  principalHref === `/dav/principals/${encodeURIComponent(ERIC.acct)}/`,
-  `principal href: ${principalHref}`,
-);
+assert(principalHref === `/dav/principals/${encodeURIComponent(ERIC.acct)}/`, `principal href: ${principalHref}`);
 
 const prin = await dav(ERIC, "PROPFIND", principalHref, {
   headers: { Depth: "0" },
   body: `<?xml version="1.0"?><D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav"><D:prop><C:addressbook-home-set/><D:displayname/></D:prop></D:propfind>`,
 });
 const homeHref = extract(prin.text, /<C:addressbook-home-set><D:href>([^<]+)<\/D:href>/);
-assert(
-  homeHref === `/dav/addressbooks/${encodeURIComponent(ERIC.acct)}/`,
-  `home href: ${homeHref}`,
-);
+assert(homeHref === `/dav/addressbooks/${encodeURIComponent(ERIC.acct)}/`, `home href: ${homeHref}`);
 
 // 3. seed a card over JMAP; find the default book in the DAV home
 await jmap(ERIC, [["AddressBook/get", { accountId: ERIC.acct, ids: null }, "i"]]);
@@ -122,10 +109,7 @@ const home = await dav(ERIC, "PROPFIND", homeHref, {
   headers: { Depth: "1" },
   body: `<?xml version="1.0"?><D:propfind xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/"><D:prop><D:resourcetype/><D:displayname/><CS:getctag/><D:sync-token/></D:prop></D:propfind>`,
 });
-assert(
-  home.status === 207 && home.text.includes("<C:addressbook/>"),
-  "home lists an addressbook collection",
-);
+assert(home.status === 207 && home.text.includes("<C:addressbook/>"), "home lists an addressbook collection");
 const bookHref = extract(home.text, /<D:href>(\/dav\/addressbooks\/[^<]+\/ab_[^<]+\/)<\/D:href>/);
 assert(bookHref, `book href found: ${bookHref}`);
 const ctag0 = extract(home.text, /<CS:getctag>([^<]*)<\/CS:getctag>/);
@@ -158,18 +142,14 @@ const mg = await dav(ERIC, "REPORT", bookHref, {
   body: `<?xml version="1.0"?><C:addressbook-multiget xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav"><D:prop><D:getetag/><C:address-data/></D:prop><D:href>${bookHref}${adaId}.vcf</D:href></C:addressbook-multiget>`,
 });
 assert(
-  mg.text.includes("BEGIN:VCARD") &&
-    mg.text.includes("FN:Ada Lovelace") &&
-    mg.text.includes("UID:dav-e2e-ada"),
+  mg.text.includes("BEGIN:VCARD") && mg.text.includes("FN:Ada Lovelace") && mg.text.includes("UID:dav-e2e-ada"),
   "multiget carries serialized vCard",
 );
 
 // 7. GET single resource
 const got = await dav(ERIC, "GET", `${bookHref}${adaId}.vcf`);
 assert(
-  got.status === 200 &&
-    got.text.includes("EMAIL;TYPE=INTERNET:ada@dav.test") &&
-    got.headers.get("etag"),
+  got.status === 200 && got.text.includes("EMAIL;TYPE=INTERNET:ada@dav.test") && got.headers.get("etag"),
   `GET card: ${got.status}`,
 );
 
@@ -232,10 +212,7 @@ assert(got2.text.includes("FN:Chuck Babbage"), "update round-trips");
 const uidFlip = await dav(ERIC, "PUT", `${bookHref}ABC-123-APPLE.vcf`, {
   body: putVcf.replace("UID:dav-e2e-charles", "UID:dav-e2e-other"),
 });
-assert(
-  uidFlip.status === 409 && uidFlip.text.includes("no-uid-conflict"),
-  `uid flip → 409: ${uidFlip.status}`,
-);
+assert(uidFlip.status === 409 && uidFlip.text.includes("no-uid-conflict"), `uid flip → 409: ${uidFlip.status}`);
 
 // 13. DELETE + tombstoned sync 404 under the client name
 const del = await dav(ERIC, "DELETE", `${bookHref}ABC-123-APPLE.vcf`);
@@ -275,28 +252,19 @@ await jmap(ERIC, [["ContactCard/set", { accountId: ERIC.acct, destroy: [tmpId] }
 const sync3 = await dav(ERIC, "REPORT", bookHref, {
   body: `<?xml version="1.0"?><D:sync-collection xmlns:D="DAV:"><D:sync-token>${tokenMid}</D:sync-token><D:sync-level>1</D:sync-level><D:prop><D:getetag/></D:prop></D:sync-collection>`,
 });
-assert(
-  sync3.text.includes(`${tmpId}.vcf`) && sync3.text.includes("404"),
-  "JMAP destroy surfaces in DAV sync",
-);
+assert(sync3.text.includes(`${tmpId}.vcf`) && sync3.text.includes("404"), "JMAP destroy surfaces in DAV sync");
 
 // 15. bogus sync token → 409 valid-sync-token (client falls back to full sync)
 const badTok = await dav(ERIC, "REPORT", bookHref, {
   body: `<?xml version="1.0"?><D:sync-collection xmlns:D="DAV:"><D:sync-token>bm:sync:99999999</D:sync-token><D:sync-level>1</D:sync-level><D:prop><D:getetag/></D:prop></D:sync-collection>`,
 });
-assert(
-  badTok.status === 409 && badTok.text.includes("valid-sync-token"),
-  `bad token → 409: ${badTok.status}`,
-);
+assert(badTok.status === 409 && badTok.text.includes("valid-sync-token"), `bad token → 409: ${badTok.status}`);
 
 // 16. addressbook-query returns address-data
 const abq = await dav(ERIC, "REPORT", bookHref, {
   body: `<?xml version="1.0"?><C:addressbook-query xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav"><D:prop><D:getetag/><C:address-data/></D:prop></C:addressbook-query>`,
 });
-assert(
-  abq.status === 207 && abq.text.includes("FN:Ada Lovelace"),
-  "addressbook-query serves cards",
-);
+assert(abq.status === 207 && abq.text.includes("FN:Ada Lovelace"), "addressbook-query serves cards");
 
 // 17. sharing: carol's home-set spans both accounts; eric's home shows only the shared book
 const [[, fam]] = await jmap(ERIC, [
@@ -316,14 +284,9 @@ await jmap(ERIC, [
   ],
 ]);
 
-const carolPrin = await dav(
-  CAROL,
-  "PROPFIND",
-  `/dav/principals/${encodeURIComponent(CAROL.acct)}/`,
-  {
-    body: `<?xml version="1.0"?><D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav"><D:prop><C:addressbook-home-set/></D:prop></D:propfind>`,
-  },
-);
+const carolPrin = await dav(CAROL, "PROPFIND", `/dav/principals/${encodeURIComponent(CAROL.acct)}/`, {
+  body: `<?xml version="1.0"?><D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav"><D:prop><C:addressbook-home-set/></D:prop></D:propfind>`,
+});
 assert(
   carolPrin.text.includes(`/dav/addressbooks/${encodeURIComponent(CAROL.acct)}/`) &&
     carolPrin.text.includes(`/dav/addressbooks/${encodeURIComponent(ERIC.acct)}/`),
@@ -339,22 +302,13 @@ assert(
   "sharee sees only the shared book in the owner home",
 );
 
-const carolPut = await dav(
-  CAROL,
-  "PUT",
-  `/dav/addressbooks/${encodeURIComponent(ERIC.acct)}/${famId}/carol-card.vcf`,
-  {
-    body: ["BEGIN:VCARD", "VERSION:3.0", "UID:dav-e2e-ned", "FN:Nephew Ned", "END:VCARD", ""].join(
-      "\r\n",
-    ),
-    headers: { "content-type": "text/vcard" },
-  },
-);
+const carolPut = await dav(CAROL, "PUT", `/dav/addressbooks/${encodeURIComponent(ERIC.acct)}/${famId}/carol-card.vcf`, {
+  body: ["BEGIN:VCARD", "VERSION:3.0", "UID:dav-e2e-ned", "FN:Nephew Ned", "END:VCARD", ""].join("\r\n"),
+  headers: { "content-type": "text/vcard" },
+});
 assert(carolPut.status === 201, `sharee PUT into shared book: ${carolPut.status}`);
 const carolPutDenied = await dav(CAROL, "PUT", `${bookHref}sneaky.vcf`, {
-  body: ["BEGIN:VCARD", "VERSION:3.0", "UID:dav-e2e-sneak", "FN:Sneaky", "END:VCARD", ""].join(
-    "\r\n",
-  ),
+  body: ["BEGIN:VCARD", "VERSION:3.0", "UID:dav-e2e-sneak", "FN:Sneaky", "END:VCARD", ""].join("\r\n"),
 });
 assert(
   carolPutDenied.status === 403 || carolPutDenied.status === 404,
@@ -362,8 +316,7 @@ assert(
 );
 
 // 18. photo offload: data: URIs leave card_json for R2; DAV re-embeds
-const PNG =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const [[, photoSet]] = await jmap(ERIC, [
   [
     "ContactCard/set",
@@ -382,9 +335,7 @@ const [[, photoSet]] = await jmap(ERIC, [
 ]);
 const photoId = photoSet.created?.p?.id;
 assert(photoId, `photo card created: ${JSON.stringify(photoSet.notCreated)}`);
-const [[, photoGet]] = await jmap(ERIC, [
-  ["ContactCard/get", { accountId: ERIC.acct, ids: [photoId] }, "pg"],
-]);
+const [[, photoGet]] = await jmap(ERIC, [["ContactCard/get", { accountId: ERIC.acct, ids: [photoId] }, "pg"]]);
 const media = Object.values(photoGet.list[0].media)[0];
 assert(
   media.blobId?.startsWith("b_") && media.uri === undefined && media.mediaType === "image/png",
@@ -396,10 +347,7 @@ const photoLine = photoVcf.text
   .replace(/\r\n /g, "")
   .split("\r\n")
   .find((l) => l.startsWith("PHOTO"));
-assert(
-  photoLine?.includes("ENCODING=b") && photoLine.endsWith(PNG),
-  "DAV GET re-embeds identical photo bytes",
-);
+assert(photoLine?.includes("ENCODING=b") && photoLine.endsWith(PNG), "DAV GET re-embeds identical photo bytes");
 
 // PUT with an inline photo offloads too
 const putPhotoVcf = [
@@ -419,13 +367,9 @@ assert(putPhoto.status === 201, `photo PUT: ${putPhoto.status}`);
 const [[, putGet]] = await jmap(ERIC, [
   ["ContactCard/query", { accountId: ERIC.acct, filter: { uid: "dav-e2e-photo-put" } }, "pq"],
 ]);
-const [[, putCard]] = await jmap(ERIC, [
-  ["ContactCard/get", { accountId: ERIC.acct, ids: putGet.ids }, "pc"],
-]);
+const [[, putCard]] = await jmap(ERIC, [["ContactCard/get", { accountId: ERIC.acct, ids: putGet.ids }, "pc"]]);
 const putMedia = Object.values(putCard.list[0].media)[0];
 assert(putMedia.blobId?.startsWith("b_") && putMedia.uri === undefined, "DAV PUT photo offloaded");
 assert(putMedia.blobId === media.blobId, "identical photos dedupe to one content-hashed blob");
 
-console.log(
-  "E2E CARDDAV OK — discovery, sync, ETags, tombstones, shared books, and photo offload verified",
-);
+console.log("E2E CARDDAV OK — discovery, sync, ETags, tombstones, shared books, and photo offload verified");

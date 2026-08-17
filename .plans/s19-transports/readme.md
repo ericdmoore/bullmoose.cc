@@ -15,12 +15,12 @@
 
 Verified 2026-08-14 across the live transports:
 
-| transport                             | gates on                                           |
-| ------------------------------------- | -------------------------------------------------- |
+| transport | gates on |
+|---|---|
 | JMAP (`requireAccount(ctx, args, …)`) | `read`, `contacts`, `calendar`, `draft`, `send`, … |
-| MCP (`mcpNouns.ts` `scope:`)          | the **same words**                                 |
-| CardDAV / CalDAV (`anglebrackets`)    | the same words                                     |
-| blob upload (`/api/upload`)           | `draft`                                            |
+| MCP (`mcpNouns.ts` `scope:`) | the **same words** |
+| CardDAV / CalDAV (`anglebrackets`) | the same words |
+| blob upload (`/api/upload`) | `draft` |
 
 One vocabulary, four doors. A token minted for a phone works in the CLI; a token minted for
 an agent works over CardDAV; nothing about the credential knows which door it will be
@@ -50,11 +50,11 @@ them** (`registerContactsMethods`, `registerEmailMethods`, …). That is the rai
 
 > **The rule that makes shared rails safe: a facade calls the METHODS, never the store.**
 > A facade that reaches past JMAP into `mailstore` bypasses the authorization the methods
-> enforce — and _that_ is how a transport-specific hole appears. The scope check lives at
+> enforce — and *that* is how a transport-specific hole appears. The scope check lives at
 > the method layer precisely so no door can skip it.
 
 So a GraphQL facade would be resolvers over the existing registry: no new scopes, no new
-gate, no new auth surface. Cheap _because_ the principle holds.
+gate, no new auth surface. Cheap *because* the principle holds.
 
 ## Still wontfix, and for a different reason than the scope question
 
@@ -62,7 +62,7 @@ gate, no new auth surface. Cheap _because_ the principle holds.
 **JMAP already provides the three things GraphQL is adopted for**: batched multi-call
 requests, `#ref` back-references chaining one call's output into the next, and `/changes`
 as a real incremental-sync cursor. A facade would be a second vocabulary over identical
-data, with its own schema to keep in sync and its own bugs to find. _"It would be cheap"_ is
+data, with its own schema to keep in sync and its own bugs to find. *"It would be cheap"* is
 not a reason to build it.
 
 Revisit only if an external client genuinely cannot speak JMAP — at which point this
@@ -73,7 +73,7 @@ document says the work is resolvers, not authorization.
 Restricting a token **to** a transport ("this app-password may only be used over CardDAV")
 is a legitimate wish and a **different axis**: a property of the credential, not of the
 resource. It would be a field on `tokens` (an allowed-transport list), enforced at each
-door, orthogonal to scopes — narrowing _where_ a token works without changing _what_ it
+door, orthogonal to scopes — narrowing *where* a token works without changing *what* it
 means. Not built; named so it is not mistaken for a scope when someone wants it.
 
 ## References

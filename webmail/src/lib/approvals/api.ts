@@ -33,17 +33,10 @@ export interface MergedQueueResult {
  * filter — the server's query only knows `status`.
  */
 export async function loadQueue(client: JmapClient, accountId: string): Promise<QueueResult> {
-  const { get } = await client.queryThenGet(
-    accountId,
-    "ActionProposal/query",
-    {},
-    "ActionProposal/get",
-  );
+  const { get } = await client.queryThenGet(accountId, "ActionProposal/query", {}, "ActionProposal/get");
   const list = Array.isArray(get.list) ? (get.list as Record<string, unknown>[]) : [];
   return {
-    proposals: list
-      .map((raw) => parseProposal(raw, accountId))
-      .filter((p): p is ActionProposal => p !== null),
+    proposals: list.map((raw) => parseProposal(raw, accountId)).filter((p): p is ActionProposal => p !== null),
     state: typeof get.state === "string" ? get.state : "",
   };
 }
@@ -63,10 +56,7 @@ export async function loadQueue(client: JmapClient, accountId: string): Promise<
  * every other proposal decidable, so per-account errors are collected and
  * reported beside the rows rather than thrown.
  */
-export async function loadQueues(
-  client: JmapClient,
-  accountIds: string[],
-): Promise<MergedQueueResult> {
+export async function loadQueues(client: JmapClient, accountIds: string[]): Promise<MergedQueueResult> {
   if (accountIds.length === 0) return { proposals: [], states: {}, failures: {} };
 
   const calls: Invocation[] = [];
@@ -109,9 +99,7 @@ export async function loadQueues(
   // Every account refused is a queue that shows nothing and explains nothing —
   // the failure mode this task exists to end. Surface it as a hard error.
   if (Object.keys(failures).length === accountIds.length) {
-    throw new JmapRequestError(
-      Object.values(failures)[0] ?? "the approvals queue could not be read",
-    );
+    throw new JmapRequestError(Object.values(failures)[0] ?? "the approvals queue could not be read");
   }
   return { proposals, states, failures };
 }
@@ -172,15 +160,12 @@ export async function decide(
   const updated = result.updated as Record<string, unknown> | undefined;
   if (updated && id in updated) return { ok: true };
 
-  const notUpdated = (
-    result.notUpdated as Record<string, { type?: string; description?: string }>
-  )?.[id];
+  const notUpdated = (result.notUpdated as Record<string, { type?: string; description?: string }>)?.[id];
   return {
     ok: false,
     // Prefer the server's sentence — the tier-3 capability refusal, for one,
     // is worth showing verbatim rather than paraphrasing into something softer.
-    message:
-      notUpdated?.description ?? notUpdated?.type ?? "the server did not accept the decision",
+    message: notUpdated?.description ?? notUpdated?.type ?? "the server did not accept the decision",
   };
 }
 
@@ -214,12 +199,9 @@ export async function correctDueAt(
   }
   const updated = result.updated as Record<string, unknown> | undefined;
   if (updated && id in updated) return { ok: true };
-  const notUpdated = (
-    result.notUpdated as Record<string, { type?: string; description?: string }>
-  )?.[id];
+  const notUpdated = (result.notUpdated as Record<string, { type?: string; description?: string }>)?.[id];
   return {
     ok: false,
-    message:
-      notUpdated?.description ?? notUpdated?.type ?? "the server did not accept the correction",
+    message: notUpdated?.description ?? notUpdated?.type ?? "the server did not accept the correction",
   };
 }

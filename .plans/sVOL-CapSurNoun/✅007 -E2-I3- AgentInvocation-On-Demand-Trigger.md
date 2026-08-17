@@ -1,20 +1,19 @@
 # 007 -E2-I3- `AgentInvocation` on-demand trigger
 
-|                |                                                                                                                                                                                                                                             |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Kind**       | capability                                                                                                                                                                                                                                  |
-| **Effort**     | **E2** — `AgentInvocation/set` gains two branches, one guard moves in `services/agent`, one CLI subcommand. No schema change, no migration                                                                                                  |
-| **Impact**     | **I3** — unlocks _and_ human-verifiable                                                                                                                                                                                                     |
-| **Owner**      | `sVOL`                                                                                                                                                                                                                                      |
-| **Depends on** | `002` (fake-D1 `.batch()` — see Bread-crumbs for why the edge is softer than it looks)                                                                                                                                                      |
-| **Blocks**     | `s03.D` T3 (_"Human → agent invoke on a thread"_, `s03.D-coexistence/devPlan.md:44-45`)                                                                                                                                                     |
-| **Status**     | **✅ done** — `AgentInvocation/set create` queues an on-demand invocation (`services/jmap/src/methods/agent.ts:127-179`) + `bullmoose agent invoke` (`packages/cli/src/agentInvoke.ts`). The `008` kill switch landed first, as ⁵ required. |
+| | |
+|---|---|
+| **Kind** | capability |
+| **Effort** | **E2** — `AgentInvocation/set` gains two branches, one guard moves in `services/agent`, one CLI subcommand. No schema change, no migration |
+| **Impact** | **I3** — unlocks *and* human-verifiable |
+| **Owner** | `sVOL` |
+| **Depends on** | `002` (fake-D1 `.batch()` — see Bread-crumbs for why the edge is softer than it looks) |
+| **Blocks** | `s03.D` T3 (*"Human → agent invoke on a thread"*, `s03.D-coexistence/devPlan.md:44-45`) |
+| **Status** | **✅ done** — `AgentInvocation/set create` queues an on-demand invocation (`services/jmap/src/methods/agent.ts:127-179`) + `bullmoose agent invoke` (`packages/cli/src/agentInvoke.ts`). The `008` kill switch landed first, as ⁵ required. |
 
 > **Delivered.** `AgentInvocation/set` now honours `create` and `destroy`
 > (`services/jmap/src/methods/agent.ts`) — `created: {}` / `destroyed: []` are no
 > longer hardcoded. CLI surface `bullmoose agent invoke <binding> --email <id>` +
 > `invocations` + `rm` (`packages/cli/src/agentInvoke.ts`). Decisions:
->
 > - **Create acts on an emailId** (v1 requires it — the cloud runtime hard-requires
 >   email context). `context_json` mirrors ingest's shape but OMITS `envelopeTo`
 >   (no synthetic envelope → no ledger digest mis-steer); the human's reason rides
@@ -45,12 +44,12 @@
 
 Four cells — the `C` and `D` of the `Agents` row, which reads `-RU-` on both surfaces today.
 
-⚠️ **Scoping note the ledger does not make.** `config.yml` defines the `Agents` noun as _two_
+⚠️ **Scoping note the ledger does not make.** `config.yml` defines the `Agents` noun as *two*
 datatypes: `datatypes: [AgentInvocation, AgentBinding]`. They have different homes, different
 auth, and different owners — invocations live in `services/jmap` behind a principal bearer
 token; bindings live in `services/provision` behind the single `ADMIN_TOKEN`
 (`services/provision/src/index.ts:47`). **This unit owns invocation lifecycle only.** Binding
-update/delete is filed in `008`; the reasoning is at the end of _What to build_.
+update/delete is filed in `008`; the reasoning is at the end of *What to build*.
 
 ## Why these grades
 
@@ -69,13 +68,13 @@ moves. See Open Questions #4, where that could break.
 
 **I3, both factors:**
 
-- _Unlocks_ — `s03.D` T3 plans _"Human → agent invoke on a thread (`agent-integration.md` §C)
-  — the direction that makes this multiplayer rather than a review console"_
-  (`devPlan.md:44-45`), and its done-when is _"invoking an agent from the UI creates an
-  invocation that the runtime picks up"_ (`:46-47`). That sentence is this capability. `s03.D`
+- *Unlocks* — `s03.D` T3 plans *"Human → agent invoke on a thread (`agent-integration.md` §C)
+  — the direction that makes this multiplayer rather than a review console"*
+  (`devPlan.md:44-45`), and its done-when is *"invoking an agent from the UI creates an
+  invocation that the runtime picks up"* (`:46-47`). That sentence is this capability. `s03.D`
   cannot build it as UI work because **no surface can create an invocation at all**. Named
   edge, verified in the cited file.
-- _Human-verifiable_ — run `bullmoose agent invoke emily --email e_…` in one terminal with
+- *Human-verifiable* — run `bullmoose agent invoke emily --email e_…` in one terminal with
   `bullmoose agent serve` in another, then open a mail client and see the reply draft appear
   in Drafts. No engineer, no JSON.
 
@@ -124,8 +123,8 @@ intentional and that whoever claims first wins.
    pipeline branch. The column is nullable in the schema and the runtime is not. An invocation
    created with no `emailId` is marked `failed` within one drain cycle.
 2. **`drain` joins the binding row.** `JOIN agent_bindings b ON b.account_id = inv.account_id
-AND b.id = inv.binding_id` (`services/agent/src/index.ts:108`). An invocation naming a
-   nonexistent or disabled binding is invisible to the cloud runtime _forever_ — it never
+   AND b.id = inv.binding_id` (`services/agent/src/index.ts:108`). An invocation naming a
+   nonexistent or disabled binding is invisible to the cloud runtime *forever* — it never
    drains, never fails, just sits `pending`. Validate at create time.
 3. **`drain` does not filter on `trigger_on`.** The `WHERE` clause is status + `b.enabled`
    (`:110`). So an on-demand invocation is picked up against an existing
@@ -136,12 +135,12 @@ AND b.id = inv.binding_id` (`services/agent/src/index.ts:108`). An invocation na
    others yet.
 
 **The design doc is ahead of the code and agrees with this unit.**
-`docs/architecture/agent-integration.md:14` names Pattern C — _"invoke an agent on a
-draft/thread"_ — and `:16` states the unifying move: _"B is a special case of C — 'mail was
-delivered' is just another trigger type on the same binding table."_ The object model at
+`docs/architecture/agent-integration.md:14` names Pattern C — *"invoke an agent on a
+draft/thread"* — and `:16` states the unifying move: *"B is a special case of C — 'mail was
+delivered' is just another trigger type on the same binding table."* The object model at
 `:41-43` already specifies `context refs { draftId?, threadId?, emailId? }`, `note (L3)`,
 `params`, and `runAt?`. Build order step 5 (`:304`) names the CLI verb:
-`bullmoose actions run <id> --draft <id>` _(invoke Emily with no UI)_.
+`bullmoose actions run <id> --draft <id>` *(invoke Emily with no UI)*.
 
 ## What to build
 
@@ -188,8 +187,8 @@ grants table.
 
 Ingest pokes the cloud worker directly — `env.AGENT.fetch(".../drain")`
 (`services/ingest/src/index.ts:98-106`), guarded by `INTERNAL_TOKEN`. The jmap worker has no
-`AGENT` binding and should not get one. `agent-integration.md:62` states the invariant: _"The
-platform never calls into an agent runtime… the runtime watches for work."_ The changelog push
+`AGENT` binding and should not get one. `agent-integration.md:62` states the invariant: *"The
+platform never calls into an agent runtime… the runtime watches for work."* The changelog push
 covers the CLI runner immediately and the cron sweep (`services/agent/src/index.ts:80-83`)
 covers the cloud runtime within one tick. Adding a second poke path buys latency and costs an
 invariant. If someone measures the cron delay and hates it, that is a separate, arguable
@@ -215,7 +214,7 @@ bullmoose agent purge --status done [--older-than 30d]
 `016` I/O contract if it has landed; if not, match `packages/cli/src/admin.ts`'s `out()`
 shape (`:303-306`).
 
-### 6. Where agent _bindings_ go — the call
+### 6. Where agent *bindings* go — the call
 
 **Binding update/delete belongs in `008`, not here.** They are a different worker
 (`services/provision`), a different auth model (one shared `ADMIN_TOKEN` at `:47` vs a
@@ -227,7 +226,7 @@ Splitting on the `Agents` noun would put two unrelated auth surfaces in one comm
 ⚠️ **But there is a sequencing consequence, and it is real.** Today `agent_bindings.enabled`
 (`data-plane.sql:104`) is written `1` at creation (`provision:638`) and **never written
 again** — there is no route that flips it. Both drain paths filter on it (`agent:110`,
-`ingest:169`), so it _is_ the kill switch; it is simply unreachable. Shipping `007` gives a
+`ingest:169`), so it *is* the kill switch; it is simply unreachable. Shipping `007` gives a
 human a button that fires agents on demand, in a system where a misbehaving binding cannot be
 turned off through any API. **`008`'s binding-disable route should land before this unit**,
 even though the rest of `008` is wave-4 cleanup. That is a ledger correction, not a
@@ -236,7 +235,7 @@ preference — see `008`'s Open Questions #1.
 ## Done when
 
 1. With `bullmoose agent serve` running against an account, `bullmoose agent invoke emily
---email e_…` produces a reply draft in Drafts, **visible in a normal mail client**. A
+   --email e_…` produces a reply draft in Drafts, **visible in a normal mail client**. A
    non-engineer can do this and see the result.
 2. The runner picks it up **over the push channel**, not on the next poll — proving the
    `commitChanges` entry was written. Assert `AgentInvocation/changes` reports the new id.
@@ -260,7 +259,7 @@ preference — see `008`'s Open Questions #1.
   stop hardcoding is `:124-134`.
 - **Copy ingest's `context_json`, and read its comment.** `services/ingest/src/index.ts:190`
   writes `{ emailId, threadId, envelopeTo }`, and `:188-189` explains that `envelopeTo` keeps
-  the plus-tag because _"the ledger pipeline uses it to select a digest target."_ An on-demand
+  the plus-tag because *"the ledger pipeline uses it to select a digest target."* An on-demand
   invocation has no envelope. If the target binding runs the `ledger` pipeline
   (`services/agent/src/index.ts:157-159`), it will take a different branch than it does for
   delivered mail. Decide what `envelopeTo` should be for a synthetic invocation, or restrict
@@ -290,7 +289,7 @@ preference — see `008`'s Open Questions #1.
 1. **This may be work that `s03.D` T1 reshapes.** T1 turns `agent_invocations` into an
    `ActionProposal` read model with `tier`, `rationale` and `evidence[]`
    (`s03.D-coexistence/devPlan.md:12-16`). I believe create is orthogonal — T1 is about what an
-   agent _emits_, this is about what _starts_ it — but if T1 lands first and restructures the
+   agent *emits*, this is about what *starts* it — but if T1 lands first and restructures the
    collection, the create branch may need rewriting. It is the cheapest way this unit becomes
    wasted, and `s03.D` is currently unstarted (`_context.md` §6), so nobody will notice the
    collision until it happens.
@@ -299,7 +298,7 @@ preference — see `008`'s Open Questions #1.
    `s03.D` T3's exact framing so it satisfies the named dependency, but it is narrower than the
    filename. The alternative — teach `services/agent` a no-email pipeline — means a new
    pipeline branch, a new prompt shape, and a new output contract, which is E3 work in a
-   different unit. Separately: `agent-integration.md:304` says `--draft <id>`, and a draft _is_
+   different unit. Separately: `agent-integration.md:304` says `--draft <id>`, and a draft *is*
    an Email row, so `getEmailRow` (`services/agent/src/index.ts:143`) should resolve it — but
    the reply pipeline then computes `sender` from `email.from[0]` (`:161`), which on a draft is
    **you**. I have not traced whether the RFC 3834 self-reply guards downstream of `:163`
@@ -307,21 +306,21 @@ preference — see `008`'s Open Questions #1.
 
 3. **Is `I3` sound if the CLI is descoped?** The unlock half is solid — `s03.D` T3 names it.
    The human-verifiable half depends entirely on shipping `agent invoke`, per `readme.md:110`
-   (_pair a capability with its cheapest human-visible surface_). Without the CLI this is
+   (*pair a capability with its cheapest human-visible surface*). Without the CLI this is
    curl-verifiable only and drops to `I2`. If a reviewer moves the CLI to a separate projection
    unit, downgrade this one.
 
 4. **The watchdog disarm is a behaviour change I am not confident about.**
    `packages/account-do/src/index.ts:161-168`: a responder with `cancel_if =
-'invocation-active'` stands down if _any_ invocation for that `email_id` is `running` or
+   'invocation-active'` stands down if *any* invocation for that `email_id` is `running` or
    `done`. So a human invoking an agent on a thread silently suppresses the SLA auto-response
-   the external sender was going to get. I lean _"yes, disarm — a human took the thread, the
-   apology is wrong"_, but the watchdog exists precisely because agents fail
+   the external sender was going to get. I lean *"yes, disarm — a human took the thread, the
+   apology is wrong"*, but the watchdog exists precisely because agents fail
    (`agent-integration.md:212`, §8), and a human invoke that then fails leaves the sender with
    nothing. A reviewer may reasonably invert this.
 
 5. **Hard `DELETE` vs a tombstone is unresolved and affects the effort grade.**
-   `s03.A` T2 (`devPlan.md:42-50`) argues soft-delete for grants so _"history survives"_.
+   `s03.A` T2 (`devPlan.md:42-50`) argues soft-delete for grants so *"history survives"*.
    `agent_invocations` is a stronger case: it is the record of what an agent did, with
    `result_json` and `note`. If `destroy` should be a `purged_at` tombstone, this unit needs a
    new column — no migration framework (`readme.md:75-78`) — and becomes **E3**. I chose hard

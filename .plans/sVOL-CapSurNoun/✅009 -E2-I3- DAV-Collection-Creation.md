@@ -1,13 +1,13 @@
 # 009 -E2-I3- DAV collection creation (`MKCOL` / `MKCALENDAR`)
 
-|                |                                                                                                                                                                        |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Kind**       | capability                                                                                                                                                             |
-| **Effort**     | **E2** — three files in `services/anglebrackets`, no schema change, no new JMAP method. ⚠️ **E3 if the collection-id problem needs a column** — see _What to build_ §1 |
-| **Impact**     | **I3** — human-verifiable beyond argument; _unlocks_ is the weak half (Open Questions #1)                                                                              |
-| **Owner**      | `sVOL`                                                                                                                                                                 |
-| **Depends on** | —                                                                                                                                                                      |
-| **Status**     | **✅ done** — shipped as `E2`; §1 resolved as a fourth option, see _Resolution_                                                                                        |
+| | |
+|---|---|
+| **Kind** | capability |
+| **Effort** | **E2** — three files in `services/anglebrackets`, no schema change, no new JMAP method. ⚠️ **E3 if the collection-id problem needs a column** — see *What to build* §1 |
+| **Impact** | **I3** — human-verifiable beyond argument; *unlocks* is the weak half (Open Questions #1) |
+| **Owner** | `sVOL` |
+| **Depends on** | — |
+| **Status** | **✅ done** — shipped as `E2`; §1 resolved as a fourth option, see *Resolution* |
 
 ## Resolution (as built)
 
@@ -19,7 +19,7 @@ turned out to be unnecessary, because the premise behind it was wrong: **the DAV
 never calls the JMAP method layer at all.** `Calendar/set` lives in `services/jmap`;
 `services/anglebrackets` binds only `ACCOUNT_DO` cross-script (`wrangler.jsonc`), so there
 is no in-process path to those validators and no service binding either. Every existing DAV
-write — `handleResource` PUT, `handleEventResource` PUT/DELETE — already _replicates_ the
+write — `handleResource` PUT, `handleEventResource` PUT/DELETE — already *replicates* the
 choreography (Mailstore mutation → ctag bump → `commitChanges`) rather than delegating it.
 
 So the create path does the same, and constructs the row **in the DAV layer** with the
@@ -59,19 +59,19 @@ the sharpest edge in the unit and deserves its own review.
 re-`PROPFIND`. The account-wide sync-token churn the unit describes is unchanged and
 still pre-existing.
 
-**§3 — `calendar-timezone`** is accepted, dropped, and _reported_: a `403` propstat inside
+**§3 — `calendar-timezone`** is accepted, dropped, and *reported*: a `403` propstat inside
 the success body plus a `bullmoose-dav-warnings` response header, mirroring the PUT path's
 `bullmoose-ical-warnings`.
 
 **Open question #3 remains open.** No real client was driven and no packet was captured.
 The Apple-invents-a-UUID claim is still inferred; what changed is that the implementation no
-longer _depends_ on it, since any client-chosen segment matching the charset works. The
+longer *depends* on it, since any client-chosen segment matching the charset works. The
 `Done when` list is still the acceptance test and still needs a human with Calendar.app.
 
 **Tests.** `services/anglebrackets/src/dav.test.ts` — 29 tests, the first in this worker.
 Self-contained fakes (D1 + AccountDO + R2) per the note that `002` is consolidating the
 existing copies in parallel. Reverting only the source change fails 27 of 29; the 2 that
-survive are degenerate coincidences (MKCOL on an _existing_ path already 405s via
+survive are degenerate coincidences (MKCOL on an *existing* path already 405s via
 `notAllowed()`, and DELETE of an unknown collection already 404s at `requireCalendar`).
 
 **Not built — `PROPPATCH`.** Collections can now be created and deleted from a client but
@@ -89,7 +89,7 @@ Two cells — the only `-` left in the `AddressBook` and `Calendar` DAV columns,
 `-R--` today.
 
 This unit also argues for `AddressBook × Delete × DAV` and `Calendar × Delete × DAV` (two more
-cells the grid marks absent). Whether they ship together is _What to build_ §4; they are cheap
+cells the grid marks absent). Whether they ship together is *What to build* §4; they are cheap
 and symmetric, and a client that can create but not delete is a strange half-state.
 
 ## Why these grades
@@ -108,13 +108,13 @@ grade is a bet on the cheap resolution being acceptable.
 
 **I3:**
 
-- _Human-verifiable_ — the strongest case in the volume. Open Apple Calendar, `File → New
-Calendar → <account>`, name it, watch it appear. Then create an event in it and see it in
+- *Human-verifiable* — the strongest case in the volume. Open Apple Calendar, `File → New
+  Calendar → <account>`, name it, watch it appear. Then create an event in it and see it in
   `bullmoose calendar list`. `config.yml` marks the `AngleBracket` surface
   `human_verifiable: true` for exactly this.
-- _Unlocks_ — **this is the weak half and I do not want to oversell it.** No unit in
+- *Unlocks* — **this is the weak half and I do not want to oversell it.** No unit in
   `_index.md` names `009` as a dependency, and `grep -rn 'MKCOL\|MKCALENDAR' .plans docs`
-  returns only `sVOL`'s own files. What it removes is a _product_ blocker rather than a _work_
+  returns only `sVOL`'s own files. What it removes is a *product* blocker rather than a *work*
   blocker: today a new user cannot get to a usable multi-calendar setup without leaving their
   client for the CLI. Whether that satisfies `config.yml`'s "STATED blocker from at least one
   other unit" is a judgement call, and I think a strict reading says no. See Open Questions #1.
@@ -124,12 +124,12 @@ Calendar → <account>`, name it, watch it appear. Then create an event in it an
 **DAV is read-write at the resource level and read-only at the collection level.** That
 asymmetry is precise and worth stating exactly:
 
-|                         | PROPFIND     | REPORT | GET    | PUT    | DELETE  | MKCOL/MKCALENDAR |
-| ----------------------- | ------------ | ------ | ------ | ------ | ------- | ---------------- |
-| address book collection | `dav.ts:293` | `:314` | —      | —      | —       | **405** `:322`   |
-| card resource           | —            | —      | `:500` | `:514` | `:595`  | n/a              |
-| calendar collection     | `:709`       | `:729` | —      | —      | —       | **405** `:737`   |
-| event resource          | —            | —      | `:914` | `:927` | `:1005` | n/a              |
+| | PROPFIND | REPORT | GET | PUT | DELETE | MKCOL/MKCALENDAR |
+|---|---|---|---|---|---|---|
+| address book collection | `dav.ts:293` | `:314` | — | — | — | **405** `:322` |
+| card resource | — | — | `:500` | `:514` | `:595` | n/a |
+| calendar collection | `:709` | `:729` | — | — | — | **405** `:737` |
+| event resource | — | — | `:914` | `:927` | `:1005` | n/a |
 
 Resource writes are properly done — `If-Match` / `If-None-Match` ETag preconditions
 (`:522-529`, `:933-940`), UID-immutability enforcement (`:536-538`, `:959`), account-wide UID
@@ -143,9 +143,9 @@ uniqueness per RFC 9610 (`:564-567`, `:980-981`), ctag bumps (`:556`, `:588`, `:
 may offer a "New Calendar" menu item**, so this unit is not done until both strings change.
 
 **The module comment does not claim this is deliberate.**
-`services/anglebrackets/src/index.ts:10-14` says the worker is _"deliberately
-barely-conforming (locked decision Q4)"_ and lists what is intentionally absent:
-_"LOCK/UNLOCK, COPY/MOVE, and ACLs."_ `MKCOL` and `MKCALENDAR` are not on that list. This is an
+`services/anglebrackets/src/index.ts:10-14` says the worker is *"deliberately
+barely-conforming (locked decision Q4)"* and lists what is intentionally absent:
+*"LOCK/UNLOCK, COPY/MOVE, and ACLs."* `MKCOL` and `MKCALENDAR` are not on that list. This is an
 omission, not an overridden decision — which matters, because reversing a locked decision would
 be a different conversation.
 
@@ -164,8 +164,8 @@ that URI itself: it `MKCALENDAR`s to `/dav/calendars/{accountId}/{a-uuid-it-chos
 The JMAP create path **refuses to accept a client-supplied id**:
 
 ```ts
-const CAL_SERVER_SET = ["id", "isDefault", "myRights"] as const; // calendars.ts:45
-const BOOK_SERVER_SET = ["id", "isDefault", "myRights"] as const; // contacts.ts:63
+const CAL_SERVER_SET = ["id", "isDefault", "myRights"] as const;   // calendars.ts:45
+const BOOK_SERVER_SET = ["id", "isDefault", "myRights"] as const;  // contacts.ts:63
 ```
 
 `validateNewCalendar` (`calendars.ts:554-580`) throws `invalidProperties` if `spec.id` is set
@@ -200,13 +200,13 @@ the effort grade is `E3` and the ledger needs updating.
 `handleBook` resolves the collection **before** it branches on method:
 
 ```ts
-const book = await requireBook(store, access, bookId); // dav.ts:290
+const book = await requireBook(store, access, bookId);   // dav.ts:290
 ```
 
 `requireBook` (`:212-220`) throws `DavError(404, "no such address book")` when the id is
 unknown. `handleCalendar` does the same at `:706` via `requireCalendar` (`:625-633`).
 
-So a `MKCALENDAR` to a _new_ path — which by definition does not resolve — **404s at `:706`
+So a `MKCALENDAR` to a *new* path — which by definition does not resolve — **404s at `:706`
 and never reaches the `notAllowed()` at `:737`**. Anyone who patches the bottom of these
 functions will watch their new verb return 404 and go looking in the wrong place. The
 create branch must sit in the dispatcher at `dav.ts:111-116` / `:125-130`, or at the very top
@@ -216,13 +216,13 @@ of the handler, ahead of the `require*` call.
 
 Both verbs may carry a `<D:set><D:prop>` block. Map only what the tables hold:
 
-| DAV prop                                           | column        | note                                                                                                                                                                                      |
-| -------------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `displayname`                                      | `name`        | required by `validateNewCalendar` `:560-563` (1..255 chars); `validateNewBook` `:623-625` measures **octets** via `utf8Octets`, not chars                                                 |
-| `calendar-description` / `addressbook-description` | `description` |                                                                                                                                                                                           |
-| `calendar-color` (Apple)                           | `color`       | calendars only — `address_books` has no colour column (`:159-171`)                                                                                                                        |
-| `calendar-timezone`                                | —             | **no column.** Accept-and-drop, and say so in the response; silently discarding a client's default timezone is a data-loss surprise                                                       |
-| `supported-calendar-component-set`                 | —             | we serve `VEVENT` only (`dav.ts:658`). Reject a request asking for `VTODO`/`VJOURNAL` with `403` + a precondition element rather than creating a calendar that will refuse its own writes |
+| DAV prop | column | note |
+|---|---|---|
+| `displayname` | `name` | required by `validateNewCalendar` `:560-563` (1..255 chars); `validateNewBook` `:623-625` measures **octets** via `utf8Octets`, not chars |
+| `calendar-description` / `addressbook-description` | `description` | |
+| `calendar-color` (Apple) | `color` | calendars only — `address_books` has no colour column (`:159-171`) |
+| `calendar-timezone` | — | **no column.** Accept-and-drop, and say so in the response; silently discarding a client's default timezone is a data-loss surprise |
+| `supported-calendar-component-set` | — | we serve `VEVENT` only (`dav.ts:658`). Reject a request asking for `VTODO`/`VJOURNAL` with `403` + a precondition element rather than creating a calendar that will refuse its own writes |
 
 An empty body is legal and means "defaults" — handle it.
 
@@ -259,10 +259,10 @@ Two different things are in play and they behave differently:
   justifies at `index.ts:16-19`. A **new** collection starts at `ctag: 0`
   (`calendars.ts:576`), which is correct — the client has never seen it.
 - **`sync-token` is per-account, not per-collection.** `syncToken(await doState(env,
-access.accountId))` (`dav.ts:297`, `:712`) resolves one AccountDO state value
+  access.accountId))` (`dav.ts:297`, `:712`) resolves one AccountDO state value
   (`doState:1096-1100`) and stamps it on **every** collection resource, including inside
-  `handleHome` (`:252-253`). The schema comment says this explicitly: _"The JMAP sync-token
-  stays the AccountDO global state sequence; ctag is DAV-only"_ (`data-plane.sql:157-158`).
+  `handleHome` (`:252-253`). The schema comment says this explicitly: *"The JMAP sync-token
+  stays the AccountDO global state sequence; ctag is DAV-only"* (`data-plane.sql:157-158`).
 
 Consequence: **creating a collection bumps the account state, which changes the sync-token on
 every other collection**, so every subscribed client re-runs `sync-collection` against
@@ -319,8 +319,8 @@ conditional on what a given principal may do.
   (`dav.ts:302`, `:717`). That inconsistency is the whole of §1.
 - `visibleBooks` / `visibleCalendars` (`:616+`) are what `requireBook`/`requireCalendar` filter;
   they honour grants, so a **sharee** must not be able to `MKCOL` into the owner's home.
-  `AddressBook/set` already refuses this — `contacts.ts:118-122`, throw at `:121`: _"v1:
-  sharees edit contents (per mayWrite), never the books themselves"_; `Calendar/set` has the
+  `AddressBook/set` already refuses this — `contacts.ts:118-122`, throw at `:121`: *"v1:
+  sharees edit contents (per mayWrite), never the books themselves"*; `Calendar/set` has the
   twin at `calendars.ts:79`. Routing through the methods gives you the right answer for free.
   Do not reimplement the check.
 - Scope gates differ by realm: contacts writes go through `requireWrite` (used at `:515`,
@@ -340,10 +340,10 @@ conditional on what a given principal may do.
 ## Open questions / where this could be wrong
 
 1. **`I3` is probably half-earned, and the ledger should say so.** The human-verifiable factor
-   is the strongest in the volume. The _unlocks_ factor is the weakest `I3` in the volume: no
+   is the strongest in the volume. The *unlocks* factor is the weakest `I3` in the volume: no
    unit and no `sNN` section names DAV collection creation as a blocker — I grepped `.plans`
    and `docs` and the only hits are `sVOL`'s own files. Compare `013`, which earns its
-   _unlocks_ honestly because `014` and `015` inherit its tool-shape decisions. By a strict
+   *unlocks* honestly because `014` and `015` inherit its tool-shape decisions. By a strict
    reading of `config.yml`'s `impact_definitions.unlocks`, **this unit is `I1`**. I left it at
    `I3` because "a plain client can be the only client" is the product claim the whole DAV
    surface exists to make, and I would rather argue about it in the open than quietly regrade
@@ -371,7 +371,7 @@ conditional on what a given principal may do.
    them.
 
 5. **`DELETE` on a collection might belong in its own unit.** It is symmetric and cheap, but it
-   is also the only _destructive_ client-initiated operation on the DAV surface, and
+   is also the only *destructive* client-initiated operation on the DAV surface, and
    `AddressBook/set`'s destroy path cascades into cards **and deletes grants** (`:193-198`) —
    i.e. a CardDAV `DELETE` can silently unshare a book from another user. That deserves more
    scrutiny than "cheap and symmetric" gives it, and it is the sort of thing that should be

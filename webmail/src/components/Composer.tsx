@@ -42,10 +42,7 @@ export default function Composer({
 
       <label class="composer-field">
         <span>From</span>
-        <select
-          value={identityId}
-          onChange={(ev) => onIdentity((ev.currentTarget as HTMLSelectElement).value)}
-        >
+        <select value={identityId} onChange={(ev) => onIdentity((ev.currentTarget as HTMLSelectElement).value)}>
           {identities.map((identity) => (
             <option key={identity.id} value={identity.id}>
               {formatAddress({ name: identity.name || null, email: identity.email })}
@@ -110,9 +107,7 @@ export default function Composer({
         <input
           type="text"
           value={draft.subject}
-          onInput={(ev) =>
-            onChange({ ...draft, subject: (ev.currentTarget as HTMLInputElement).value })
-          }
+          onInput={(ev) => onChange({ ...draft, subject: (ev.currentTarget as HTMLInputElement).value })}
         />
       </label>
 
@@ -120,9 +115,7 @@ export default function Composer({
         class="composer-body"
         value={draft.text}
         rows={16}
-        onInput={(ev) =>
-          onChange({ ...draft, text: (ev.currentTarget as HTMLTextAreaElement).value })
-        }
+        onInput={(ev) => onChange({ ...draft, text: (ev.currentTarget as HTMLTextAreaElement).value })}
       />
 
       {draft.droppedAttachments && draft.droppedAttachments.length > 0 ? (
@@ -131,29 +124,20 @@ export default function Composer({
           {draft.droppedAttachments.length === 1 ? "" : "s"} from the original message will
           <strong> not </strong>
           be included — this server builds outgoing MIME from text only.
-          <span class="notice-detail">
-            {draft.droppedAttachments.map((a) => a.name ?? "attachment").join(", ")}
-          </span>
+          <span class="notice-detail">{draft.droppedAttachments.map((a) => a.name ?? "attachment").join(", ")}</span>
         </div>
       ) : null}
 
       {error ? <div class="notice notice-error">{error}</div> : null}
 
       <footer class="composer-actions">
-        <button
-          type="button"
-          class="primary"
-          disabled={sending || problems.length > 0}
-          onClick={onSend}
-        >
+        <button type="button" class="primary" disabled={sending || problems.length > 0} onClick={onSend}>
           {sending ? "Sending…" : "Send"}
         </button>
         <button type="button" onClick={onSaveDraft} disabled={sending}>
           Save draft
         </button>
-        <span class="composer-hint">
-          {problems.length > 0 ? problems[0] : "Cmd/Ctrl+Enter to send"}
-        </span>
+        <span class="composer-hint">{problems.length > 0 ? problems[0] : "Cmd/Ctrl+Enter to send"}</span>
       </footer>
     </section>
   );

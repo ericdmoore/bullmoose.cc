@@ -9,27 +9,26 @@ risk concentrates.
   union — the expander has a separate branch per `FREQ` and they do not read the
   same parts:
 
-  | `FREQ`    | rule parts the expander reads                                                     |
-  | --------- | --------------------------------------------------------------------------------- |
-  | `DAILY`   | `INTERVAL` `COUNT` `UNTIL`                                                        |
-  | `WEEKLY`  | `INTERVAL` `COUNT` `UNTIL` `BYDAY` — day only, **no** nth-of-period               |
+  | `FREQ` | rule parts the expander reads |
+  |---|---|
+  | `DAILY` | `INTERVAL` `COUNT` `UNTIL` |
+  | `WEEKLY` | `INTERVAL` `COUNT` `UNTIL` `BYDAY` — day only, **no** nth-of-period |
   | `MONTHLY` | `INTERVAL` `COUNT` `UNTIL` `BYDAY` (incl. `2MO` / `-1FR`) `BYMONTHDAY` `BYSETPOS` |
-  | `YEARLY`  | `INTERVAL` `COUNT` `UNTIL` `BYMONTH`                                              |
+  | `YEARLY` | `INTERVAL` `COUNT` `UNTIL` `BYMONTH` |
 
   Plus `recurrenceOverrides` (excluded, patched, and added occurrences).
 
 - **anything outside that table is refused, not approximated.** `SUPPORTED_PARTS`
-  - `unsupportedRuleReason` are the single source of truth; `eventSpan` throws
-    `UnsupportedRecurrenceError` (both write surfaces turn it into a 4xx) and
-    `rruleToRule` returns `null`. So `FREQ=YEARLY;BYMONTH=11;BYDAY=4TH` — US
-    Thanksgiving, which Apple Calendar emits — is **rejected** rather than
-    expanded to "the start day of every November". A rejected rule still yields
-    its own `DTSTART`: the event does not vanish, it stops repeating.
+  + `unsupportedRuleReason` are the single source of truth; `eventSpan` throws
+  `UnsupportedRecurrenceError` (both write surfaces turn it into a 4xx) and
+  `rruleToRule` returns `null`. So `FREQ=YEARLY;BYMONTH=11;BYDAY=4TH` — US
+  Thanksgiving, which Apple Calendar emits — is **rejected** rather than
+  expanded to "the start day of every November". A rejected rule still yields
+  its own `DTSTART`: the event does not vanish, it stops repeating.
 
   **If you add a branch to `expandRule`, add the part to `SUPPORTED_PARTS` in the
   same commit.** The table drifting from the code is the original defect
   ([`003 -P1-`](../../.feedback/fromClaude/common)).
-
 - **wall-clock correctness** — events carry a local `start` +
   IANA `timeZone`; recurrence steps in wall-clock (a 9am standup stays 9am
   across DST), converting each occurrence to UTC via the zone's offset at
@@ -56,7 +55,7 @@ cost, in order:
   or the CalDAV time-range `REPORT`. It deliberately does not throw: one bad row
   would otherwise fail every one of those calls for the whole collection.
 - **A stale `end_at` can only over-include.** A mis-expansion always produced
-  _extra, later_ occurrences on top of the seeded master start, so every stale
+  *extra, later* occurrences on top of the seeded master start, so every stale
   value is ≥ the correct one. `end_at` is used solely as the widening pre-filter
   `(end_at IS NULL OR end_at > ?)` in `queryCalendarEvents`, and both windowed
   read paths then re-check with a real expansion — so the over-inclusion is

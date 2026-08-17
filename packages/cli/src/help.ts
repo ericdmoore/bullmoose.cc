@@ -145,8 +145,7 @@ export const COMMANDS: Command[] = [
   },
   {
     name: "login",
-    synopsis:
-      "bullmoose login <email> [--base <url>] [--name <device-name>] [--password <pw>] [--scopes <a,b,c>]",
+    synopsis: "bullmoose login <email> [--base <url>] [--name <device-name>] [--password <pw>] [--scopes <a,b,c>]",
     summary: "log in and store a bearer token for this account",
     description:
       "Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw. --scopes sets what the minted token may do and is OPTIONAL here — this is the one command that must work before you hold any token, so omitting it takes the server default of `mail` (the six mail verbs; no contacts, calendar or vault). `login` is also the only self-service way to WIDEN scope, because `token create` can only narrow the token it is called with.",
@@ -257,16 +256,12 @@ export const COMMANDS: Command[] = [
       { flag: "--blobs <dir>", desc: "also download blobs into <dir>" },
       { flag: "--account <sel>", desc: "limit to one account" },
     ],
-    examples: [
-      { cmd: "bullmoose sync" },
-      { cmd: "bullmoose sync --account @example.com --blobs ./blobs" },
-    ],
+    examples: [{ cmd: "bullmoose sync" }, { cmd: "bullmoose sync --account @example.com --blobs ./blobs" }],
     seeAlso: ["watch", "log", "search"],
   },
   {
     name: "send",
-    synopsis:
-      "bullmoose send --to <addr>[,<addr>] --subject <s> [--cc ..] [--bcc ..] [--file <path> | --body <text>]",
+    synopsis: "bullmoose send --to <addr>[,<addr>] --subject <s> [--cc ..] [--bcc ..] [--file <path> | --body <text>]",
     summary: "compose and send mail (Markdown → MIME, inline images, big-file links)",
     description:
       "Body comes from --file, else --body, else piped stdin. With --expandMD html the body is treated as Markdown: rendered HTML becomes the displayed body (raw Markdown rides along as the plain-text fallback), local images inline as cid: parts, linked files attach, and anything over --linkMax is uploaded to R2 and rewritten to a signed link expiring after --linkTTL days.",
@@ -333,30 +328,25 @@ export const COMMANDS: Command[] = [
       { flag: "--subject <s> / --body <text>", desc: "the auto-reply content" },
       { flag: "--until <date>", desc: "auto-disable date" },
     ],
-    examples: [
-      { cmd: 'bullmoose vacation on --subject "Away" --body "Back Monday." --until 2026-07-15' },
-    ],
+    examples: [{ cmd: 'bullmoose vacation on --subject "Away" --body "Back Monday." --until 2026-07-15' }],
   },
   {
     name: "agent",
     synopsis:
       "bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId>",
-    summary:
-      "run the homelab agent runtime (single binding or fleet host), and trigger agents on demand",
+    summary: "run the homelab agent runtime (single binding or fleet host), and trigger agents on demand",
     description:
       "`serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config. --once drains and exits (cron-friendly). With --config the config's `binding` must match the server-side binding name (see `admin agent bind`).\n\n--fleet (s11 T8) turns the process into a FLEET HOST: ONE login as a runtime principal serving N bindings across N accounts. Which accounts it serves is DISCOVERED from grants, not declared — each agent account grants the runtime principal claim authority (a whole-account grant whose scopes cover `draft`), and the daemon serves whatever granted it. Adding an agent = minting a grant (no restart); revoking the grant stops that binding's claims without touching the rest. fleet.json maps binding name → {persona, model} and may declare host `capabilities` {vision, contextTokens, tools} — the daemon then skips invocations whose declared requirements it cannot satisfy. Model configs stay local: they describe the host's capability, never an agent's identity.\n\n`invoke` (sVOL 007) is the on-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.",
     subcommands: [
       {
         name: "serve",
         synopsis: "agent serve --config <agent.json>|--fleet <fleet.json> [--once]",
-        summary:
-          "run the homelab runtime; claims the queue (fleet: N bindings, one login, discovery from grants)",
+        summary: "run the homelab runtime; claims the queue (fleet: N bindings, one login, discovery from grants)",
       },
       {
         name: "invoke",
         synopsis: "agent invoke <binding> --email <emailId> [--note <text>]",
-        summary:
-          "queue an invocation for a binding on a message (refused if the binding is disabled)",
+        summary: "queue an invocation for a binding on a message (refused if the binding is disabled)",
       },
       {
         name: "invocations",
@@ -422,16 +412,14 @@ export const COMMANDS: Command[] = [
       { name: "show", synopsis: "contacts show <cardId> [--json]", summary: "show one card" },
       {
         name: "books",
-        synopsis:
-          "contacts books list | create <name> | rename <name-or-id> <new> | rm <name-or-id> [--force]",
+        synopsis: "contacts books list | create <name> | rename <name-or-id> <new> | rm <name-or-id> [--force]",
         summary:
           "address-book lifecycle; create/rename/rm are owner-only (exit 4 on delegated access); rm of a non-empty book needs --force (else exit 5)",
       },
       {
         name: "create",
         synopsis: "contacts create [<file>|-] [--book <name-or-id>] [--as vcard|json] [--dry-run]",
-        summary:
-          "create card(s) from a vCard or JSON body — no dedup; reads stdin with no path, or with `-`",
+        summary: "create card(s) from a vCard or JSON body — no dedup; reads stdin with no path, or with `-`",
       },
       {
         name: "edit",
@@ -507,8 +495,7 @@ export const COMMANDS: Command[] = [
         name: "event edit",
         synopsis:
           "calendar event edit <id> [--title …] [--start …] [--rrule …] [--occurrence <recurrenceId>] [<patch.json>|-] [--if-state <s>]",
-        summary:
-          "edit the whole series (the master); --occurrence is accepted but refuses (exit 2)",
+        summary: "edit the whole series (the master); --occurrence is accepted but refuses (exit 2)",
       },
       {
         name: "event rm",
@@ -541,8 +528,7 @@ export const COMMANDS: Command[] = [
   },
   {
     name: "creds",
-    synopsis:
-      "bullmoose creds init | set <name> | list | show <name> | rotate <name> | rm <name> | oauth <name> …",
+    synopsis: "bullmoose creds init | set <name> | list | show <name> | rotate <name> | rm <name> | oauth <name> …",
     summary: "manage the write-only, envelope-encrypted credential vault",
     description:
       "The vault stores third-party API keys, OAuth refresh tokens and signing keys for agents. It is WRITE-ONLY — secrets go in and are never returned (`show`/`list` are metadata only). Every credential carries the Bureau's mint-time contract (bureau.md §5): a `--kind` that gates which verbs may ever use it, and a `--allow` destination binding it fails closed without. NOTHING enforces the binding, verb set or redaction yet — the Bureau proxy is a later task; `--enforcement broad` records that only our code will, once it exists. `oauth` runs a browser + localhost PKCE flow and uploads only the refresh token.",
@@ -668,8 +654,7 @@ export const COMMANDS: Command[] = [
   },
   {
     name: "mailbox",
-    synopsis:
-      "bullmoose mailbox create <name> | rename <box> <new> | move <box> --parent <box|-> | rm <box> [--force]",
+    synopsis: "bullmoose mailbox create <name> | rename <box> <new> | move <box> --parent <box|-> | rm <box> [--force]",
     summary: "create, rename, move and remove folders (over JMAP)",
     description:
       "Folder management via Mailbox/set. A <box> is an id, a role (inbox, sent, drafts, trash, junk, archive), or a name — names are matched case-insensitively and an ambiguous one is refused. Folders nest: --parent puts a new or existing folder under another, up to the server's advertised maxMailboxDepth (10), and --parent - moves one back to the top level. Names must be unique among siblings. Role folders may be renamed but never removed, and `rm` refuses a folder that still holds mail or has children — `--force` removes the mail with it, destroying any message that is in no other folder. Every verb refreshes the local mirror on success, so `bullmoose mailboxes` is current immediately without a full `sync`.",
@@ -855,9 +840,7 @@ export const COMMANDS: Command[] = [
     summary: "alias for `rm` — PERMANENTLY destroy messages (no Trash, no undo)",
     description:
       "Identical to `bullmoose rm`: a hard, unrecoverable Email/set destroy that refuses without --force. See `bullmoose help rm`. To move to Trash reversibly, use `bullmoose trash`.",
-    examples: [
-      { cmd: "bullmoose search 'older_than:1y' --ids | xargs bullmoose delete --dry-run" },
-    ],
+    examples: [{ cmd: "bullmoose search 'older_than:1y' --ids | xargs bullmoose delete --dry-run" }],
     seeAlso: ["rm", "trash"],
   },
   {
@@ -900,8 +883,7 @@ export const COMMANDS: Command[] = [
   },
   {
     name: "identity",
-    synopsis:
-      "bullmoose identity list | show <id> | signature <id> [--text <file|->] | add <email> | rm <id>",
+    synopsis: "bullmoose identity list | show <id> | signature <id> [--text <file|->] | add <email> | rm <id>",
     summary: "send-as addresses and mail signatures (over JMAP)",
     description:
       "The addresses this account may put in From:, and the signature attached to each. An <id> is an identity id or its email address. `signature` reads the signature from --text (a file, or - for stdin), from --html for the HTML alternative, or from a bare pipe; --clear removes both. `send` inserts the signature itself, below the RFC 3676 \"-- \" separator, because RFC 8621 defines it as something the client inserts — a third-party JMAP client will not apply it. `add` refuses an address that is not on one of your tenant's active domains, and `rm` refuses the account's provisioned primary.",
@@ -975,8 +957,7 @@ export const COMMANDS: Command[] = [
       },
       {
         name: "tenant",
-        synopsis:
-          "admin tenant create <id> --name <n> | list | rename <id> --name <n> | delete <id> --yes",
+        synopsis: "admin tenant create <id> --name <n> | list | rename <id> --name <n> | delete <id> --yes",
         summary: "manage tenants (namespaces)",
       },
       {
@@ -1005,10 +986,8 @@ export const COMMANDS: Command[] = [
       },
       {
         name: "token",
-        synopsis:
-          "admin token create <email> --name <n> --scopes <a,b,c> | list [<email>] | revoke <id>",
-        summary:
-          "mint operator/agent tokens for any account (--scopes required; only this command may mint `admin`)",
+        synopsis: "admin token create <email> --name <n> --scopes <a,b,c> | list [<email>] | revoke <id>",
+        summary: "mint operator/agent tokens for any account (--scopes required; only this command may mint `admin`)",
       },
       {
         name: "grant",
@@ -1324,8 +1303,7 @@ export function renderMarkdown(): string {
       M.push("");
       M.push("**Subcommands**");
       M.push("");
-      for (const s of c.subcommands)
-        M.push(`- **${s.name}** — ${s.summary}  \n  \`${s.synopsis}\``);
+      for (const s of c.subcommands) M.push(`- **${s.name}** — ${s.summary}  \n  \`${s.synopsis}\``);
     }
     if (c.flags?.length) {
       M.push("");

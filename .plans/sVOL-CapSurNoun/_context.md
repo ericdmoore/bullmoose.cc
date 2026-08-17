@@ -3,9 +3,9 @@
 > # ⛔ 2026-08-17 — PARTIALLY CORRECTED, NOT RE-AUDITED. READ THIS FIRST.
 >
 > `readme.md` step 1 tells every contributor to trust this file over the plan docs, because
-> _"several plan docs are stale or overstate what exists."_ **This file became that.** It
-> contained, three paragraphs apart, both _"**Still true and still the point:** there is no
-> WebUI"_ and _"**WebUI: a working mail client.**"_ — two half-merged versions of one
+> *"several plan docs are stale or overstate what exists."* **This file became that.** It
+> contained, three paragraphs apart, both *"**Still true and still the point:** there is no
+> WebUI"* and *"**WebUI: a working mail client.**"* — two half-merged versions of one
 > paragraph, both left in place. There is a WebUI. It has eight pages.
 >
 > **What was corrected in this pass** — the falsified headline claims, each re-read from the
@@ -15,20 +15,20 @@
 > **What was NOT corrected, and what that means for you:**
 >
 > - **§2's noun × surface grid is not re-audited.** It still shows an empty WebUI column and
->   an `----` MCP column for Email. Use **`_index.md` §1** instead — that grid _was_ re-derived
+>   an `----` MCP column for Email. Use **`_index.md` §1** instead — that grid *was* re-derived
 >   from source on 2026-08-17, including six cells it had drifted on.
 > - **§5 test counts, §6 `sNN` status, and every line count are stale**, some by a factor of
->   three. The banner below says _"59 test files, 1338 tests"_; the suite is 187 files / 3694
+>   three. The banner below says *"59 test files, 1338 tests"*; the suite is 187 files / 3694
 >   tests on `main` at `d61b9ac`.
 > - **§7 "What I did NOT verify" is the one section that has aged well.** Read it.
 >
-> **The lesson this file is now evidence for:** a document that says _"do not re-derive this
-> from the docs"_ has taken on a duty to stay true, and nothing in the process discharged it.
-> `readme.md` step 1 already warned that this file _"went stale within one session of being
-> written"_ — and then it went stale again, the same way, and stayed that way.
+> **The lesson this file is now evidence for:** a document that says *"do not re-derive this
+> from the docs"* has taken on a duty to stay true, and nothing in the process discharged it.
+> `readme.md` step 1 already warned that this file *"went stale within one session of being
+> written"* — and then it went stale again, the same way, and stayed that way.
 >
-> The provenance is exact and worth reading: commit **`1d21fa7`** (2026-08-09), _"s03.C T2:
-> the webmail is a mail client"_, added the _"working mail client"_ paragraph **without
+> The provenance is exact and worth reading: commit **`1d21fa7`** (2026-08-09), *"s03.C T2:
+> the webmail is a mail client"*, added the *"working mail client"* paragraph **without
 > removing the "there is no WebUI" line four paragraphs above it.** The file has not been
 > touched since `6aa305e`, the same day. The contradiction was therefore committed by the
 > very change that falsified the old claim — the author updated the file and still left both
@@ -40,18 +40,18 @@
 > ## ⚠️ Changes since the original audit — read this first
 >
 > A single session of security work invalidated several claims below. They are corrected
-> inline, but the _shape_ of the change matters more than any one line:
+> inline, but the *shape* of the change matters more than any one line:
 >
-> | Was                                     | Now                                                                                  |
-> | --------------------------------------- | ------------------------------------------------------------------------------------ |
-> | 2 test files, 19 tests                  | **59 test files, 1338 tests**                                                        | >   | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
-> | RRULEs mis-expanded silently            | rejected at the `eventSpan` write boundary; reads degrade rather than throw          |
-> | CI never ran tests                      | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
-> | test files excluded from typecheck      | typechecked in both configs                                                          |
-> | `mail` satisfied every scope            | `mail` = exactly the six mail verbs; `contacts`/`calendar`/`vault` are independent   |
-> | `Email/set` gated everything on `draft` | per-operation: `draft`/`annotate`/`move`/`delete`                                    |
-> | MCP `ToolDef` had no scope/domain       | declared per tool; the gate reads it                                                 |
-> | CI deployed 4 of 7 workers, wrong order | 6 of 7, order derived from the binding graph                                         |
+> | Was | Now |
+> |---|---|
+> | 2 test files, 19 tests | **59 test files, 1338 tests** |> | `calendar-core` had zero tests | **100 tests**, oracle = python-dateutil, not this expander |
+> | RRULEs mis-expanded silently | rejected at the `eventSpan` write boundary; reads degrade rather than throw |
+> | CI never ran tests | `verify` job runs `npm test` on every push/PR, and it is a **required status check** |
+> | test files excluded from typecheck | typechecked in both configs |
+> | `mail` satisfied every scope | `mail` = exactly the six mail verbs; `contacts`/`calendar`/`vault` are independent |
+> | `Email/set` gated everything on `draft` | per-operation: `draft`/`annotate`/`move`/`delete` |
+> | MCP `ToolDef` had no scope/domain | declared per tool; the gate reads it |
+> | CI deployed 4 of 7 workers, wrong order | 6 of 7, order derived from the binding graph |
 >
 > **Eight P1s are closed** (`✅`-prefixed in `.feedback/`). The security posture this volume
 > was planned against is materially different — in particular, any unit reasoning about
@@ -59,10 +59,10 @@
 >
 > ~~**Still true and still the point:** there is no WebUI.~~ **False since 2026-08-10.**
 > See the banner at the top of this file and trap 4 below. This sentence sat three
-> paragraphs above another that called the WebUI _"a working mail client"_ — the two were
+> paragraphs above another that called the WebUI *"a working mail client"* — the two were
 > half-merged versions of one paragraph and both were left in the file.
 >
-> ⚠️ _"The MCP column is empty of noun CRUD"_ — the line this volume was built around — is
+> ⚠️ *"The MCP column is empty of noun CRUD"* — the line this volume was built around — is
 > **no longer true.** sVOL `013` landed Calendar + Contacts CRUD over MCP, routed through the
 > JMAP method layer in-process. ~~Email, vault and introspection over MCP are still absent
 > (`014`, `015`)~~ — **`014` and `015` have since landed too**: eight `email_*` tools and
@@ -102,15 +102,15 @@ Five things that are not what they look like:
 
    > ⚠️ **This entry was three half-merged paragraphs and contradicted itself twice**, in a
    > file whose whole job is to be the thing you trust instead of the plan docs. It
-   > simultaneously said the WebUI was _"a working mail client"_, that `webmail/` _"renders
-   > no mail/contacts/calendar"_, that it _"renders no nouns yet"_, and — three paragraphs
-   > higher — that _"there is no WebUI"_. Every merge left its predecessor in place. The
-   > sentence _"Every 'web' reference in `.plans/` is aspirational"_ is deleted rather than
+   > simultaneously said the WebUI was *"a working mail client"*, that `webmail/` *"renders
+   > no mail/contacts/calendar"*, that it *"renders no nouns yet"*, and — three paragraphs
+   > higher — that *"there is no WebUI"*. Every merge left its predecessor in place. The
+   > sentence *"Every 'web' reference in `.plans/` is aspirational"* is deleted rather than
    > struck: it is the exact inversion of the truth now.
 
-5. **MCP is no longer narrow — this trap has inverted.** It used to read _"Four read-only
+5. **MCP is no longer narrow — this trap has inverted.** It used to read *"Four read-only
    analytics tools. An agent on MCP today cannot read a message, send mail, or touch
-   contacts, calendar, or the vault."_ The count is now **29** (`services/agent/src/mcp.ts:401-406`):
+   contacts, calendar, or the vault."* The count is now **29** (`services/agent/src/mcp.ts:401-406`):
    4 analytics + 10 calendar/contacts (`013`) + 8 `email_*` (`014`) + 7 introspection (`015`).
    An agent on MCP **can** read a message, triage it, and write contacts and calendar.
 
@@ -124,20 +124,20 @@ Five things that are not what they look like:
 
 ## 1. Surface inventory
 
-| Surface                       | State                                                                             | Where                                               |
-| ----------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------- |
-| JMAP                          | ✅ live — ~~40~~ **more; recount before citing**                                  | `services/jmap`, registry at `src/methods/index.ts` |
-| CLI                           | ✅ live — ~~19~~ top-level commands                                               | `packages/cli`                                      |
-| MCP                           | ✅ live — ~~4 read-only tools~~ **29 tools, incl. writes**                        | `services/agent/src/mcp.ts:401-406`                 |
-| AngleBracket (CalDAV/CardDAV) | ✅ live — read-write at both _resource_ and _collection_ level, incl. `PROPPATCH` | `services/anglebrackets/src/dav.ts`                 |
-| WebUI                         | ~~❌ does not exist~~ ✅ **live — 8 noun pages**                                  | `webmail/src/pages/`                                |
-| GraphQL                       | ❌ does not exist, and **now never will**                                         | `025` wontfix — `_index.md` §2 fn 11                |
-| Transport (in/out)            | ✅ live                                                                           | `services/ingest`, `services/submit`                |
+| Surface | State | Where |
+|---|---|---|
+| JMAP | ✅ live — ~~40~~ **more; recount before citing** | `services/jmap`, registry at `src/methods/index.ts` |
+| CLI | ✅ live — ~~19~~ top-level commands | `packages/cli` |
+| MCP | ✅ live — ~~4 read-only tools~~ **29 tools, incl. writes** | `services/agent/src/mcp.ts:401-406` |
+| AngleBracket (CalDAV/CardDAV) | ✅ live — read-write at both *resource* and *collection* level, incl. `PROPPATCH` | `services/anglebrackets/src/dav.ts` |
+| WebUI | ~~❌ does not exist~~ ✅ **live — 8 noun pages** | `webmail/src/pages/` |
+| GraphQL | ❌ does not exist, and **now never will** | `025` wontfix — `_index.md` §2 fn 11 |
+| Transport (in/out) | ✅ live | `services/ingest`, `services/submit` |
 
 ⚠️ **The two struck counts are not replaced with new numbers on purpose.** `registerWatchMethods`
 landed the week this was corrected and `actionProposal.ts` was being edited at the same time, so
 any figure written here would be wrong within the day — which is precisely how "40 registered
-methods" came to sit in a file labelled _audited ground truth_. Count it when you need it:
+methods" came to sit in a file labelled *audited ground truth*. Count it when you need it:
 `grep -rhoE 'registry\.register\("[^"]+"' services/jmap/src/methods/*.ts | sort -u | wc -l`.
 
 **Full JMAP registry** — ⚠️ **this block is no longer complete.** It is kept as the shape of
@@ -164,7 +164,7 @@ FileNode        get changes query queryChanges set copy  ← 011
 ~~Four~~ **Six** `queryChanges` methods are **deliberate always-throw stubs** consistent with an
 advertised `canCalculateChanges: false` — `filenode.ts:119` and `actionProposal.ts:291` joined
 the original four. `026` closed on exactly this reasoning: `cannotCalculateChanges` is RFC 8620
-§5.2's _sanctioned_ answer, so these are conformant, not stubs awaiting work — `mailbox.ts:93`,
+§5.2's *sanctioned* answer, so these are conformant, not stubs awaiting work — `mailbox.ts:93`,
 `email.ts:54`, `contacts.ts:559`,
 `calendars.ts:392`. Spec-conformant; no client gets incremental query deltas.
 
@@ -175,22 +175,22 @@ the original four. `026` closed on exactly this reasoning: `cannotCalculateChang
 Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
 `~` = partial (footnoted).
 
-| Noun                | JMAP      | CLI       | MCP    | AngleBracket | WebUI  | GraphQL | Transport |
-| ------------------- | --------- | --------- | ------ | ------------ | ------ | ------- | --------- |
-| **Email**           | `CRUD`    | `-R~-` ¹  | `~` ²  | `----`       | `----` | `----`  | `C---` ³  |
-| **Mailbox**         | `CRUD` ⁴  | `CRUD` ⁴  | `----` | `----`       | `----` | `----`  | `~` ⁵     |
-| **Thread**          | `-R--`    | `----`    | `----` | `----`       | `----` | `----`  | n/a       |
-| **EmailSubmission** | `CR--` ⁶  | `C---`    | `----` | `----`       | `----` | `----`  | `C---`    |
-| **AddressBook**     | `CRUD` ⁷  | `~R--` ⁸  | `-R--` | `CRUD` ⁹     | `----` | `----`  | n/a       |
-| **ContactCard**     | `CRUD`    | `CR--` ¹⁰ | `CRUD` | `CRUD`       | `----` | `----`  | n/a       |
-| **Calendar**        | `CRUD` ⁷  | `-R--`    | `-R--` | `CRUD` ⁹     | `----` | `----`  | n/a       |
-| **CalendarEvent**   | `CRUD`    | `-R--` ¹¹ | `CRUD` | `CRUD`       | `----` | `----`  | n/a       |
-| **FileNode**        | `CRUD` ¹² | `----`    | `----` | `----`       | `----` | `----`  | n/a       |
-| **Agents**          | `-RU-` ¹³ | `-RU-`    | `----` | n/a          | `----` | `----`  | `C---` ¹⁴ |
-| **Secrets**         | n/a ¹⁵    | `CRUD` ¹⁶ | `----` | n/a          | `----` | `----`  | n/a       |
-| **HumanSettings**   | `~R~-` ¹⁷ | `-RU-`    | `----` | n/a          | `----` | `----`  | n/a       |
-| **IdentitySetup**   | `CRUD` ¹⁸ | `CRUD`    | `----` | `~` ¹⁹       | `----` | `----`  | n/a       |
-| **SystemAdmin**     | `CR~~` ²⁰ | `CR~~`    | `----` | n/a          | `----` | `----`  | n/a       |
+| Noun | JMAP | CLI | MCP | AngleBracket | WebUI | GraphQL | Transport |
+|---|---|---|---|---|---|---|---|
+| **Email** | `CRUD` | `-R~-` ¹ | `~` ² | `----` | `----` | `----` | `C---` ³ |
+| **Mailbox** | `CRUD` ⁴ | `CRUD` ⁴ | `----` | `----` | `----` | `----` | `~` ⁵ |
+| **Thread** | `-R--` | `----` | `----` | `----` | `----` | `----` | n/a |
+| **EmailSubmission** | `CR--` ⁶ | `C---` | `----` | `----` | `----` | `----` | `C---` |
+| **AddressBook** | `CRUD` ⁷ | `~R--` ⁸ | `-R--` | `CRUD` ⁹ | `----` | `----` | n/a |
+| **ContactCard** | `CRUD` | `CR--` ¹⁰ | `CRUD` | `CRUD` | `----` | `----` | n/a |
+| **Calendar** | `CRUD` ⁷ | `-R--` | `-R--` | `CRUD` ⁹ | `----` | `----` | n/a |
+| **CalendarEvent** | `CRUD` | `-R--` ¹¹ | `CRUD` | `CRUD` | `----` | `----` | n/a |
+| **FileNode** | `CRUD` ¹² | `----` | `----` | `----` | `----` | `----` | n/a |
+| **Agents** | `-RU-` ¹³ | `-RU-` | `----` | n/a | `----` | `----` | `C---` ¹⁴ |
+| **Secrets** | n/a ¹⁵ | `CRUD` ¹⁶ | `----` | n/a | `----` | `----` | n/a |
+| **HumanSettings** | `~R~-` ¹⁷ | `-RU-` | `----` | n/a | `----` | `----` | n/a |
+| **IdentitySetup** | `CRUD` ¹⁸ | `CRUD` | `----` | `~` ¹⁹ | `----` | `----` | n/a |
+| **SystemAdmin** | `CR~~` ²⁰ | `CR~~` | `----` | n/a | `----` | `----` | n/a |
 
 **Footnotes — the ones that matter:**
 
@@ -205,8 +205,8 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
 3. Inbound store to R2 + D1, `services/ingest/src/index.ts:48`.
 4. ✅ **CLOSED by sVOL `004`.** `Mailbox/set` is registered inside `registerMailboxMethods`
    (`mailbox.ts`), and `bullmoose mailbox create|rename|move|rm` is the CLI half. This entry
-   used to read _"`Mailbox/set` is not registered anywhere — folders are frozen at whatever
-   `services/provision/src/index.ts:390-401` seeds at account creation"_, and that was the
+   used to read *"`Mailbox/set` is not registered anywhere — folders are frozen at whatever
+   `services/provision/src/index.ts:390-401` seeds at account creation"*, and that was the
    largest capability gap in the repo.
 
    ⚠️ **The server used to advertise a policy it could not honour** — the sharpest instance of
@@ -219,9 +219,8 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
    `Mailbox/get`'s `myRights` and the destroy gate are single-sourced through one `rightsFor`.
 
    Still true: `mailbox.ts` fakes `totalThreads` as `totalEmails` (TODO in source), and
-   `isSubscribed` is still hardcoded `true` with no column — but `Mailbox/set` now _rejects_
+   `isSubscribed` is still hardcoded `true` with no column — but `Mailbox/set` now *rejects*
    `isSubscribed: false` instead of silently discarding it.
-
 5. Role mailboxes seeded at account creation only.
 6. Create only — `submission.ts:22`, `args.create` at `:48`. `args.update` and `args.destroy`
    are never read; `destroyed: []` is hardcoded `:101`. ~~`EmailSubmission/changes` is registered with no `/get`~~ (**closed by sVOL `005`**) — a client is told which ids changed and has no method to read
@@ -230,10 +229,10 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
 8. Implicit create only — `contacts import` auto-creates a missing book
    (`contacts.ts:337`). No explicit `books create`.
 9. ✅ **`MKCOL` / `MKCALENDAR` now exist** (sVOL `009`). Both branch in the `handleDav`
-   dispatcher _ahead_ of `requireBook`/`requireCalendar`, since those resolve the collection
+   dispatcher *ahead* of `requireBook`/`requireCalendar`, since those resolve the collection
    before looking at the method. Collection `DELETE` shipped with them. The collection id is
    the client-chosen URI segment — collections still have **no `dav_name` column**, so the id
-   _is_ the path. Reads `CR-D`: there is no `PROPPATCH`, so a client can create and delete a
+   *is* the path. Reads `CR-D`: there is no `PROPPATCH`, so a client can create and delete a
    collection but not rename one.
 10. `contacts import` is create-only, dedups by uid, skips existing (`contacts.ts:120`).
 11. `calendar list` (`calendar.ts:32`) and `calendar agenda` (`:45` → `getOccurrences` `:50`).
@@ -244,13 +243,12 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
     now (`GET/DELETE /api/blobs/…`, `GET/DELETE /api/share/…`). Share records live in KV with
     `expirationTtl`, so a record cannot outlive its own link and expiry needs no sweeper.
     Verification is **deny-by-default** — `shareId` is inside the HMAC payload, so a link with
-    no live record 403s. This entry used to read _"no enumeration, no delete, no share
-    revocation — a minted URL is valid until `exp` with no kill switch."_
+    no live record 403s. This entry used to read *"no enumeration, no delete, no share
+    revocation — a minted URL is valid until `exp` with no kill switch."*
 
     ⚠️ **`011` (FileNode) must call revoke on destroy.** `handleBlobDelete` refuses while a
     live share exists, but `FileNode/set {destroy}` does not travel that route — so the leak
     `010` warned about survives unless `011` wires it.
-
 13. `AgentInvocation/set` implements **update only** (`agent.ts:84`); `created: {}` `:128` and
     `destroyed: []` `:132` are hardcoded. Optimistic claim guard at `:92`.
     ❌ **REFUTED — do not re-report this.** An earlier revision of this footnote claimed
@@ -258,14 +256,13 @@ Legend: `C R U D` = implemented · `-` = absent · `n/a` = not meaningful ·
     "bypassing `commitChanges`", i.e. that §3's failure mode was already live. **That is
     false.** Read the whole function: the raw `UPDATE` is immediately followed by
     `commitChanges(env.ACCOUNT_DO, job.account_id, [{ collection: "AgentInvocation",
-updated: [job.id] }])`. The changelog invariant holds. Only `Mailstore` is bypassed,
+    updated: [job.id] }])`. The changelog invariant holds. Only `Mailstore` is bypassed,
     which is a consistency preference, not a defect.
 
     Recorded rather than deleted because **three independent agents have now reported it as a
     bug** — the first one's report is what put the false claim in this file, and the next two
     were reading it back out of here and re-deriving it in good faith. If you are about to
     file this, read `finish` in full first.
-
 14. **Inbound mail is the only creator of invocations** —
     `services/ingest/src/index.ts:178`. There is no way to trigger an agent on demand.
 15. Vault is a direct HTTP API on the agent worker, not JMAP: PUT `vault.ts:79`,
@@ -273,7 +270,7 @@ updated: [job.id] }])`. The changelog invariant holds. Only `Mailstore` is bypas
 16. Read returns **names/kind/meta only, never plaintext** — by design
     (`bureau.md` invariant 1). `creds set/list/rm/oauth` at `creds.ts:73,93,106,114`.
 17. `VacationResponse` get/set (`vacation.ts:11,32`), singleton upsert.
-    **No `Identity/set`** — and `identity.ts:11-16` _synthesizes_ `identity_default` from the
+    **No `Identity/set`** — and `identity.ts:11-16` *synthesizes* `identity_default` from the
     principal when the table is empty, with `replyTo`/`bcc`/`textSignature`/`htmlSignature`
     hardcoded null/empty at **`:26-29`** and `mayDelete: false` at **`:30`** (an earlier draft
     of this file cited `:31-34`/`:35` — the claim was right, the citation was off by five).
@@ -317,7 +314,7 @@ tools added by `013` route through the method layer in-process via
 `services/agent/src/jmapBridge.ts`.
 
 ⚠️ **`services/anglebrackets` CANNOT reach the method layer** — it binds only `ACCOUNT_DO`
-cross-script, and therefore _replicates_ the choreography in `dav.ts`. That is an instance of
+cross-script, and therefore *replicates* the choreography in `dav.ts`. That is an instance of
 this failure mode being survived by hand, **not a precedent to copy**. It is also the datum
 that settled `013`'s in-process-vs-service-binding question: `services/agent` already binds
 `DB`, `BLOBS` and `ACCOUNT_DO`, so the import costs no new deploy-graph edge.
@@ -326,7 +323,7 @@ that settled `013`'s in-process-vs-service-binding question: `services/agent` al
 neither `Mailstore` nor `calendar-core`. That is wrong for `Mailstore`: it is declared at
 `services/agent/package.json:12`, imported at `services/agent/src/index.ts:4`, and constructed
 at `:138`. Only **`calendar-core` is absent.** The raw-SQL habit in `mcp.ts` is therefore a
-_choice_, not a missing dependency — which makes it cheaper to fix than it first appears, and
+*choice*, not a missing dependency — which makes it cheaper to fix than it first appears, and
 weakens any argument that routing an MCP tool through the store is expensive plumbing.
 
 **Testing a write through the JMAP method layer needs more than a fake D1.** `storeFor`
@@ -344,32 +341,31 @@ is the only thing that catches this failure mode, and it is now cheap.
 
 ## 4. Auth gates
 
-- **JMAP** does it per-method — scope _and_ domain, on every call. The convention, verified
+- **JMAP** does it per-method — scope *and* domain, on every call. The convention, verified
   across all three realm modules:
 
-  |                 | scope      | domain               | sites                         |
-  | --------------- | ---------- | -------------------- | ----------------------------- |
-  | calendar reads  | `read`     | `calendar`           | `calendars.ts:58,171,345,403` |
-  | calendar writes | `calendar` | `calendar`           | `calendars.ts:77,200`         |
-  | contacts reads  | `read`     | `contacts`           | `contacts.ts:70,255,530`      |
-  | contacts writes | `contacts` | `contacts`           | `contacts.ts:117,318`         |
-  | mail reads      | `read`     | _(omitted → `mail`)_ | `email.ts:65,192`             |
-  | mail writes     | `draft`    | _(omitted → `mail`)_ | `email.ts:230,495`            |
+  | | scope | domain | sites |
+  |---|---|---|---|
+  | calendar reads | `read` | `calendar` | `calendars.ts:58,171,345,403` |
+  | calendar writes | `calendar` | `calendar` | `calendars.ts:77,200` |
+  | contacts reads | `read` | `contacts` | `contacts.ts:70,255,530` |
+  | contacts writes | `contacts` | `contacts` | `contacts.ts:117,318` |
+  | mail reads | `read` | *(omitted → `mail`)* | `email.ts:65,192` |
+  | mail writes | `draft` | *(omitted → `mail`)* | `email.ts:230,495` |
 
   ⚠️ **Calendar and contacts do NOT use the mail scope lattice.** One scope named after the
-  domain covers create, update, _and_ delete. Only mail uses
+  domain covers create, update, *and* delete. Only mail uses
   `read · annotate · draft · move · send · delete (flat; any write implies read — common/027 DECIDED)`. Any new surface must mirror this rather
   than invent a mapping — and note the consequence: an agent granted `calendar` in order to
-  _add_ events can also _destroy_ them, with no finer grant available.
+  *add* events can also *destroy* them, with no finer grant available.
 
   📄 **Doc drift, unfiled** — worth a `.feedback` issue. `packages/auth-core/src/index.ts:10-12`
   declares the vocabulary as `read · annotate · draft · move · send · delete (flat; any write implies read — common/027 DECIDED) ; "mail" = all of
-them` plus `admin`, and **omits `contacts` and `calendar` entirely**. Those two are real:
+  them` plus `admin`, and **omits `contacts` and `calendar` entirely**. Those two are real:
   `packages/cli/src/help.ts:105` documents the full list to users, `principal.ts:207` types
   `MethodDomain = "mail" | "contacts" | "calendar"`, and the methods pass them as live scope
   arguments. The code is correct; the header comment is stale. It is a load-bearing comment —
   it is the thing someone reads before adding a scope check.
-
 - ✅ **MCP now declares scope + domain PER TOOL** (`ToolDef` in `services/agent/src/mcp.ts`),
   and the gate reads them — sVOL unit `001`, shipped. All four existing tools declare
   `("read","mail")`, so runtime behaviour is unchanged; the value is that the next tool cannot
@@ -406,7 +402,7 @@ with an atomic `.batch()`), R2, KV, and `ACCOUNT_DO` — the last running the **
 class over in-memory storage.
 
 **What that changes for anyone planning a unit:** §3's write-choreography claim is now
-_assertable_. A test can drive a JMAP `/set` end to end and then ask `Foo/changes` whether the
+*assertable*. A test can drive a JMAP `/set` end to end and then ask `Foo/changes` whether the
 changelog recorded it, which is the only way to catch a write that lands the row and skips
 `commitChanges`. `services/jmap/src/methods/calendars.test.ts` is the worked example. The
 harness is deliberately **not** an npm workspace (no `package.json`), so it resolves only under
@@ -427,6 +423,7 @@ DAV collection verbs (`009`) are genuinely covered. Still at or near zero: `pack
 `services/submit`, and the DAV resource verbs / REPORTs / XML helpers. Those are the shell
 paths `002` makes cheap to reach, and **no unit owns them.**
 
+
 ⚠️ `common/003` is **CLOSED**. The RRULE parser/expander mismatch is fixed at the `eventSpan`
 write boundary — bad rules are refused on write and dropped (not thrown) on read, so one
 legacy row cannot break a whole collection's query. Stale `calendar_events.end_at` values can
@@ -435,17 +432,17 @@ self-correct at read time. Unit `003`'s data-integrity gate on `013`/`018` is di
 
 ## 6. Existing `sNN` status — verified from git and source, not from the docs
 
-| Section               | Real status                                                                                                                                                                                                                                                                                                                      | Evidence                                       |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `s01-stateless-MCP`   | **~90% shipped** (`c1cdc83`, `b8f1133`). T1–T4 done. Residue: `vault.ts` dedupe never done; the promised curl runbook script does not exist                                                                                                                                                                                      | source + git                                   |
-| `s02-mcp-facade`      | Not started, **deliberately** — "deferred stub", gated on "the first non-bullmoose client appears". 59 lines, no tasks                                                                                                                                                                                                           | `s02/readme.md:3-5`                            |
-| `s03.A-foundations`   | **shipped** — provenance columns on all 7 realms + grant tombstones (`revoked_at`+`grant_lifecycle`); `verifyBearer` filters revoked grants                                                                                                                                                                                      | source                                         |
-| `s03.B-files`         | Not started — zero `file_nodes` / `FileNode` in code                                                                                                                                                                                                                                                                             | grep                                           |
-| `s03.C-webmail-floor` | Not started — no `webmail/` workspace                                                                                                                                                                                                                                                                                            | filesystem                                     |
-| `s03.D-coexistence`   | Not started — zero `ActionProposal` / `urn:bullmoose:agent`                                                                                                                                                                                                                                                                      | grep                                           |
-| `s03.E-console`       | Not started **and blocked** on s04 being _specified_                                                                                                                                                                                                                                                                             | `s03.E/devPlan.md:6`                           |
-| `s04-AgentOS`         | ~~Docs only … **zero tasks**~~ **STALE as of Bureau T3.** `devPlan.md` now carries T1–T7, of which **T1 · T2 · T3a · T3 are done**: `services/bureau` is a live Worker enforcing destination binding (90 tests). T4–T7 remain. `readme.md` is still a 23-line napkin                                                             | `services/bureau/src/binding.ts`; `devPlan.md` |
-| `s05-cli-crud`        | **T1 done** (sVOL `016` — the I/O contract). T2/T3/T5 not started. ⚠️ Its headline claim _"No server work — every method this slice calls is already live"_ (`devPlan.md:4`) is **false for T4** — `--kind aws-sigv4` is hard-rejected at `vault.ts:89-91`, there is no `rotate` route, and `--allow`/`--header` have no columns | source                                         |
+| Section | Real status | Evidence |
+|---|---|---|
+| `s01-stateless-MCP` | **~90% shipped** (`c1cdc83`, `b8f1133`). T1–T4 done. Residue: `vault.ts` dedupe never done; the promised curl runbook script does not exist | source + git |
+| `s02-mcp-facade` | Not started, **deliberately** — "deferred stub", gated on "the first non-bullmoose client appears". 59 lines, no tasks | `s02/readme.md:3-5` |
+| `s03.A-foundations` | **shipped** — provenance columns on all 7 realms + grant tombstones (`revoked_at`+`grant_lifecycle`); `verifyBearer` filters revoked grants | source |
+| `s03.B-files` | Not started — zero `file_nodes` / `FileNode` in code | grep |
+| `s03.C-webmail-floor` | Not started — no `webmail/` workspace | filesystem |
+| `s03.D-coexistence` | Not started — zero `ActionProposal` / `urn:bullmoose:agent` | grep |
+| `s03.E-console` | Not started **and blocked** on s04 being *specified* | `s03.E/devPlan.md:6` |
+| `s04-AgentOS` | ~~Docs only … **zero tasks**~~ **STALE as of Bureau T3.** `devPlan.md` now carries T1–T7, of which **T1 · T2 · T3a · T3 are done**: `services/bureau` is a live Worker enforcing destination binding (90 tests). T4–T7 remain. `readme.md` is still a 23-line napkin | `services/bureau/src/binding.ts`; `devPlan.md` |
+| `s05-cli-crud` | **T1 done** (sVOL `016` — the I/O contract). T2/T3/T5 not started. ⚠️ Its headline claim *"No server work — every method this slice calls is already live"* (`devPlan.md:4`) is **false for T4** — `--kind aws-sigv4` is hard-rejected at `vault.ts:89-91`, there is no `rotate` route, and `--allow`/`--header` have no columns | source |
 
 **Ownership already claimed by existing sections** (do not duplicate in `sVOL`):
 `s03.B` → FileNode × CRUD × JMAP. `s03.C` → Email + FileNode × CRUD × WebUI.
@@ -454,8 +451,8 @@ self-correct at read time. Unit `003`'s data-integrity gate on `013`/`018` is di
 
 **Gaps owned by nobody** — these are what `sVOL` is for:
 `Identity/set` · any noun × MCP (s02 covers only
-_foreign_ clients) · Email triage verbs × CLI (s05 punted them: _"worth its own slice"_) ·
-ContactCard/CalendarEvent × WebUI (s03.C covers Email + Files only) · DAV collection _update_
+*foreign* clients) · Email triage verbs × CLI (s05 punted them: *"worth its own slice"*) ·
+ContactCard/CalendarEvent × WebUI (s03.C covers Email + Files only) · DAV collection *update*
 (`PROPPATCH` — `009` shipped create/delete only) · admin update/delete ·
 AgentInvocation create/destroy.
 
@@ -466,7 +463,7 @@ AgentInvocation create/destroy.
 Stated so a reviewer knows where to be suspicious:
 
 - **Nothing was run.** No `wrangler dev`, no deploy, no live JMAP or CalDAV request. All
-  claims are read from source. A method being _registered_ is not proof it _works_ — in
+  claims are read from source. A method being *registered* is not proof it *works* — in
   particular the CalDAV read-write claims are read from `dav.ts` handlers, not exercised
   against a real client.
 - **Effort grades are estimates**, anchored to observable scope but not measured. The E3/E4

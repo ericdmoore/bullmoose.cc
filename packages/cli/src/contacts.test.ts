@@ -73,10 +73,7 @@ describe("import → export → import round-trips without drift", () => {
     expect(phone?.number).toBe("+15550100");
     const org = Object.values(second.organizations as Record<string, { name?: string }>)[0];
     expect(org?.name).toBe("Analytical Engines");
-    expect(Object.keys(second.keywords as Record<string, boolean>).sort()).toEqual([
-      "math",
-      "pioneers",
-    ]);
+    expect(Object.keys(second.keywords as Record<string, boolean>).sort()).toEqual(["math", "pioneers"]);
   });
 
   it("is stable — a second export equals the first", () => {
@@ -114,8 +111,6 @@ describe("cardsFromInput", () => {
   });
 
   it("rejects a JSON array element that is not an object", () => {
-    expect(() => cardsFromInput(input('[{"uid":"a"}, 3]', "json"))).toThrow(
-      /must be a JSON object/,
-    );
+    expect(() => cardsFromInput(input('[{"uid":"a"}, 3]', "json"))).toThrow(/must be a JSON object/);
   });
 });

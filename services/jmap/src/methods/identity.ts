@@ -144,9 +144,7 @@ export function registerIdentityMethods(registry: MethodRegistry<RequestContext>
     const identities = await resolveIdentities(ctx, access, store);
 
     const requested = args.ids === null || args.ids === undefined ? null : (args.ids as string[]);
-    const list = identities
-      .filter((i) => requested === null || requested.includes(i.id))
-      .map(identityToJmap);
+    const list = identities.filter((i) => requested === null || requested.includes(i.id)).map(identityToJmap);
     const found = new Set(list.map((i) => i.id));
 
     return {
@@ -181,10 +179,7 @@ export function registerIdentityMethods(registry: MethodRegistry<RequestContext>
  * signatures, and no code path in the repository wrote an identity row after
  * account creation.
  */
-async function identitySet(
-  args: Record<string, unknown>,
-  ctx: RequestContext,
-): Promise<Record<string, unknown>> {
+async function identitySet(args: Record<string, unknown>, ctx: RequestContext): Promise<Record<string, unknown>> {
   const access = await requireAccountScopes(ctx, args, requiredScopesForIdentitySet(args));
   if (access.granted) {
     // Same refusal as Mailbox/set, AddressBook/set and Calendar/set: a sharee
@@ -301,10 +296,7 @@ async function identitySet(
         // EmailSubmission/set resolves against — destroying it would leave the
         // account unable to send, or (worse) fall back to synthesizing the
         // LOGIN email as a sender.
-        throw new SetErrorSignal(
-          "forbidden",
-          `identity ${id} is the account's primary and cannot be destroyed`,
-        );
+        throw new SetErrorSignal("forbidden", `identity ${id} is the account's primary and cannot be destroyed`);
       }
       await store.deleteIdentity(access.accountId, id);
       byId.delete(id);
@@ -339,11 +331,7 @@ async function identitySet(
  * changed, like `commitMailboxEntries` — a no-op /set should not burn a state
  * bump.
  */
-async function commitIdentityEntry(
-  ctx: RequestContext,
-  accountId: string,
-  entry: ChangeEntry,
-): Promise<string> {
+async function commitIdentityEntry(ctx: RequestContext, accountId: string, entry: ChangeEntry): Promise<string> {
   if (entry.created.length + entry.updated.length + entry.destroyed.length === 0) {
     return accountState(ctx, accountId);
   }
@@ -396,8 +384,7 @@ function invalid(description: string, properties?: string[]): never {
 /** RFC 8621 EmailAddress[]: `[{name?, email}]`, or null for "unset". */
 function addressListJson(value: unknown, property: string): string | null {
   if (value === null || value === undefined) return null;
-  if (!Array.isArray(value))
-    invalid(`${property} must be an array of EmailAddress or null`, [property]);
+  if (!Array.isArray(value)) invalid(`${property} must be an array of EmailAddress or null`, [property]);
   const out: EmailAddress[] = [];
   for (const item of value as unknown[]) {
     const addr = item as { email?: unknown; name?: unknown } | null;
@@ -427,9 +414,7 @@ function str(value: unknown, property: string): string {
 function rejectServerSet(spec: Record<string, unknown>): void {
   const offending = IDENTITY_SERVER_SET.filter((p) => p in spec);
   if (offending.length > 0) {
-    invalid(`${offending.join(", ")} ${offending.length > 1 ? "are" : "is"} set by the server`, [
-      ...offending,
-    ]);
+    invalid(`${offending.join(", ")} ${offending.length > 1 ? "are" : "is"} set by the server`, [...offending]);
   }
 }
 
@@ -466,10 +451,8 @@ async function validateNewIdentity(
     name: spec.name === undefined ? "" : str(spec.name, "name"),
     reply_to_json: addressListJson(spec.replyTo, "replyTo"),
     bcc_json: addressListJson(spec.bcc, "bcc"),
-    text_signature:
-      spec.textSignature === undefined ? "" : str(spec.textSignature, "textSignature"),
-    html_signature:
-      spec.htmlSignature === undefined ? "" : str(spec.htmlSignature, "htmlSignature"),
+    text_signature: spec.textSignature === undefined ? "" : str(spec.textSignature, "textSignature"),
+    html_signature: spec.htmlSignature === undefined ? "" : str(spec.htmlSignature, "htmlSignature"),
     may_delete: 1,
   };
 }
@@ -482,9 +465,7 @@ function validateIdentityPatch(patch: Record<string, unknown>): IdentityColumns 
     // that skipped the active-domain check.
     invalid("email is immutable; destroy the identity and create another", ["email"]);
   }
-  const unknown = Object.keys(patch).filter(
-    (k) => !(IDENTITY_WRITABLE as readonly string[]).includes(k),
-  );
+  const unknown = Object.keys(patch).filter((k) => !(IDENTITY_WRITABLE as readonly string[]).includes(k));
   if (unknown.length > 0) invalid(`unknown properties: ${unknown.join(", ")}`, unknown);
 
   const columns: IdentityColumns = {};
@@ -505,10 +486,7 @@ function applyColumns(row: IdentityRow, columns: IdentityColumns): IdentityRow {
     ...(columns.name !== undefined ? { name: columns.name } : {}),
     ...(columns.reply_to_json !== undefined
       ? {
-          replyTo:
-            columns.reply_to_json === null
-              ? null
-              : (JSON.parse(columns.reply_to_json) as EmailAddress[]),
+          replyTo: columns.reply_to_json === null ? null : (JSON.parse(columns.reply_to_json) as EmailAddress[]),
         }
       : {}),
     ...(columns.bcc_json !== undefined

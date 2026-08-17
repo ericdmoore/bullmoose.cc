@@ -1,13 +1,13 @@
 # 004 -E3-I3- `Mailbox/set` + CLI
 
-|                |                                                                             |
-| -------------- | --------------------------------------------------------------------------- |
-| **Kind**       | capability                                                                  |
-| **Effort**     | **E3** — new semantics every other write path must respect; tests mandatory |
-| **Impact**     | **I3** — unlocks _and_ human-verifiable                                     |
-| **Owner**      | `sVOL`                                                                      |
-| **Depends on** | `002` (shared fake-D1 with `.batch()`) — **not waited for**, see Status     |
-| **Status**     | **✅ done.** 44 tests added (284 → 328). No schema change.                  |
+| | |
+|---|---|
+| **Kind** | capability |
+| **Effort** | **E3** — new semantics every other write path must respect; tests mandatory |
+| **Impact** | **I3** — unlocks *and* human-verifiable |
+| **Owner** | `sVOL` |
+| **Depends on** | `002` (shared fake-D1 with `.batch()`) — **not waited for**, see Status |
+| **Status** | **✅ done.** 44 tests added (284 → 328). No schema change. |
 
 ## Status notes — what the build actually found
 
@@ -25,7 +25,7 @@ semantics were chosen so the assumptions stay true rather than patching the cons
   Inbox id can never change, so nothing is orphaned. It matches on `role`, not `name`, so
   renaming Inbox → "Bin" (which IS allowed) does not make it re-create anything either.
 - `email.ts:396-398` "an email must belong to at least one mailbox" — honoured by implementing
-  RFC 8621's actual `onDestroyRemoveEmails`: emails are _unfiled_, and destroyed only if that
+  RFC 8621's actual `onDestroyRemoveEmails`: emails are *unfiled*, and destroyed only if that
   leaves them in no mailbox. This unit file proposed destroying them all, which would have been
   wrong — `maxMailboxesPerEmail` is `null`, so a message can be in several folders.
 - `sync.ts:153-158` blind DELETE + re-INSERT — already destroy-correct (a full refresh drops a
@@ -35,7 +35,7 @@ semantics were chosen so the assumptions stay true rather than patching the cons
 - `main.ts:885-890` raw-SQL local read — addressed by having every write verb refresh the
   mirror inline, so `mailbox create` → `mailboxes` works with no `sync` in between.
 
-**Open questions, resolved:** (1) `isSubscribed` stays column-less, but `false` is _rejected_
+**Open questions, resolved:** (1) `isSubscribed` stays column-less, but `false` is *rejected*
 rather than silently dropped — the reviewer's objection was right and costs no migration.
 (2) Scope is `move` for create/update and `delete` for destroy, NOT `draft`: charging less than
 `Email/set`'s destroy for an operation that can permanently destroy mail would reopen exactly
@@ -57,7 +57,7 @@ whatever `services/provision/src/index.ts:390-405` seeds when the account is cre
 ## Why these grades
 
 **E3.** Not because of line count and not (necessarily) because of a migration — see below.
-Because of the third E3 limb in `readme.md:72`: _new semantics that other code must respect._
+Because of the third E3 limb in `readme.md:72`: *new semantics that other code must respect.*
 Today nothing in the repo can create, rename, reparent, or delete a mailbox, so nothing has
 ever had to answer "what happens to the mail inside a folder you delete", "may the Inbox be
 destroyed", or "does a folder tree deeper than the advertised limit get rejected". Four call
@@ -70,11 +70,11 @@ sites already assume mailboxes are immutable and permanent:
   mailbox" on patch. A mailbox destroy has to honour the same invariant or it leaves rows in
   `email_mailboxes` pointing at nothing.
 - `packages/cli/src/sync.ts:153-158` mirrors mailboxes with a blind `DELETE` + re-`INSERT`
-  from `Mailbox/get`. It has never had to reconcile a _destroy_.
+  from `Mailbox/get`. It has never had to reconcile a *destroy*.
 - `packages/cli/src/main.ts:884-890` (`bullmoose mailboxes`) reads the local mirror by raw
   SQL, not JMAP — so it is a second consumer of the same assumption.
 
-Whether it is _also_ a schema change is a judgement call. The `mailboxes` DDL
+Whether it is *also* a schema change is a judgement call. The `mailboxes` DDL
 (`packages/mailstore/sql/data-plane.sql:6-16`) carries `id, account_id, parent_id, name, role,
 sort_order` and nothing else — no `is_subscribed`, no `created_at`, no `updated_at`. You can
 ship without touching it by continuing to hardcode `isSubscribed: true` (`mailbox.ts:38`). If
@@ -83,13 +83,13 @@ and E3 is over-determined rather than arguable.
 
 **I3, both factors:**
 
-- _Unlocks_ — ⚠️ **contested, and an earlier draft of this line was factually wrong.** It
+- *Unlocks* — ⚠️ **contested, and an earlier draft of this line was factually wrong.** It
   claimed `019` and `014` have "no folders to move to," making this a hard precondition for
   triage. That is false: `services/provision/src/index.ts:391-397` seeds **six** role
   mailboxes including `archive`, which is the single most-used triage verb. So triage works
   today; this unit unlocks **custom** folders, not triage itself.
 
-  On the strict rubric — "removes a _named_ blocker" — no unit and no `sNN` section lists
+  On the strict rubric — "removes a *named* blocker" — no unit and no `sNN` section lists
   `Mailbox/set` as a dependency, which would make this `I1`, not `I3`.
 
   **That result is worth arguing with rather than accepting.** This is the largest capability
@@ -97,9 +97,8 @@ and E3 is over-determined rather than arguable.
   `mayCreateTopLevelMailbox`, `mayRename`, and `mayDelete` while providing no method to act on
   any of them), and the rubric grades it below a CLI flag. If `I1` is the honest answer here,
   the rubric is under-weighting "closes a glaring absence in the flagship noun" — see
-  `readme.md` § _Where the rubric is known to mislead_. **Left at `I3` pending that call.**
-
-- _Human-verifiable_ — **only because of the bundled CLI**. This is the `readme.md:110` design
+  `readme.md` § *Where the rubric is known to mislead*. **Left at `I3` pending that call.**
+- *Human-verifiable* — **only because of the bundled CLI**. This is the `readme.md:110` design
   rule doing real work: `Mailbox/set` alone is `I2` (a JMAP method with no surface; `curl`
   JSON is test-verifiable, `readme.md:96`). With `bullmoose mailbox create Receipts` in the
   same unit, a non-engineer runs one command, runs `bullmoose sync`, and reads the new folder
@@ -161,7 +160,7 @@ per-object errors via toSetError                    :579-590
 
 **Role-mailbox protection.** `mailbox.ts:35` already publishes `mayDelete: role === null`.
 Enforce it: destroying a mailbox with a non-null role returns a `forbidden` SetError, not a
-throw. Renaming one should be _allowed_ (a user may want "Bin" instead of "Trash"); the
+throw. Renaming one should be *allowed* (a user may want "Bin" instead of "Trash"); the
 `role` is the contract, the `name` is a label. **Setting or changing `role` on update must be
 rejected** — `role` is server-set, and the DB will not let you win the argument anyway (see
 next).
@@ -182,7 +181,7 @@ it does **not** have this problem to solve, because address books have no unique
 siblings. Nothing in the schema enforces it, and the `AddressBook` reference does not have the
 constraint at all (`validateNewBook`, `contacts.ts:617-647`, checks type, octet length, and
 `sortOrder` — never uniqueness). So this is a check you write, and it must run against the
-_post-mutation_ sibling set within one `/set` call, not just against what was in the table
+*post-mutation* sibling set within one `/set` call, not just against what was in the table
 when the method started.
 
 **Parent/child hierarchy.** `parent_id` exists (`data-plane.sql:9`) and is faithfully returned
@@ -196,7 +195,7 @@ when the method started.
   and `getMailboxes` will happily return the row while every tree-building client hangs.
 
 **`onDestroyRemoveEmails`.** RFC 8621 §2.5. Default `false` ⇒ destroying a non-empty mailbox
-fails with `mailboxHasEmail`. With `true`, the emails must be _destroyed_, not merely
+fails with `mailboxHasEmail`. With `true`, the emails must be *destroyed*, not merely
 unlinked — because `applyEmailPatch` already declares that an email with zero mailboxes is
 invalid (`email.ts:362-364`) and `Email/set` destroy is the only path that cleans up properly
 (`email.ts:281-291` → `store.destroyEmail`). Reuse it. A destroy that only runs
@@ -271,17 +270,17 @@ to discover it.
 
 1. `bullmoose mailbox create Receipts` then `bullmoose sync` then `bullmoose mailboxes` shows
    `Receipts`, run by someone who has not read this file.
-2. **`Mailbox/changes` with `sinceState` = the state captured _before_ the create reports the
+2. **`Mailbox/changes` with `sinceState` = the state captured *before* the create reports the
    new id.** This is the assertion that catches the raw-SQL / skipped-choreography shortcut —
    a passing `Mailbox/get` proves only that the row exists, which is exactly what the broken
    version also proves. The CLI half of this is the same claim from the other side: a second
    machine running `bullmoose sync` converges on the same folder list.
 3. Destroying a role mailbox is refused with a SetError naming the role, and the mailbox is
-   still there afterwards. Bonus assertion worth writing: after a _failed_ Inbox destroy,
+   still there afterwards. Bonus assertion worth writing: after a *failed* Inbox destroy,
    deliver a message and confirm `ensureRoleMailbox` (`services/ingest/src/index.ts:125`)
    returned the **same** inbox id it used before — i.e. nothing was half-deleted.
 4. Destroying a mailbox holding mail fails without `onDestroyRemoveEmails`; with it, the mails
-   are gone from `Email/get` _and_ reported destroyed in `Email/changes` _and_ leave no rows in
+   are gone from `Email/get` *and* reported destroyed in `Email/changes` *and* leave no rows in
    `email_mailboxes`.
 5. Creating a child under a parent that would exceed depth 10 fails; creating a sibling with a
    duplicate name fails; a reparent that would form a cycle fails. All three as SetErrors on
@@ -294,7 +293,7 @@ to discover it.
   inside `registerMailboxMethods` (`mailbox.ts:5`) like every other method in the file.
 - `requireAccount` is `common.ts:26-56`; `MethodDomain` is `"mail" | "contacts" | "calendar"`
   (`packages/auth-core/src/principal.ts:207`), so mailbox methods take the default `"mail"`
-  domain and only the _scope_ is a choice. `Email/set` uses `"draft"` for creates, moves **and
+  domain and only the *scope* is a choice. `Email/set` uses `"draft"` for creates, moves **and
   destroys** (`email.ts:230`) even though the lattice has `move` and `delete`
   (`packages/auth-core/src/index.ts:46`). Matching `Email/set` is the consistent call; see
   open question 2.
@@ -318,7 +317,7 @@ to discover it.
 ## Open questions / where this could be wrong
 
 1. **Is `isSubscribed` in scope?** `mailbox.ts:38` hardcodes `true` and there is no column. I
-   have scoped this unit to _not_ add one, which keeps the migration cliff out of the way but
+   have scoped this unit to *not* add one, which keeps the migration cliff out of the way but
    means a client that unsubscribes a folder gets a silent no-op — arguably worse than
    `invalidProperties`. If a reviewer thinks a write surface must not accept a property it
    discards, the column goes in and the "E3 without a migration" framing above collapses. I am
@@ -348,5 +347,5 @@ to discover it.
    himalaya — or any third-party JMAP client — is actually wired against this deployment, so
    done-when #1 leans entirely on the bullmoose CLI. There is **no IMAP or POP3 server in this
    repo** (grep finds the strings only in marketing copy at `packages/cli/src/help.ts` and
-   `services/demo-keys/src/index.ts`), so "see the folder in Apple Mail" is _not_ available as
+   `services/demo-keys/src/index.ts`), so "see the folder in Apple Mail" is *not* available as
    a verification path, and any plan doc implying otherwise is wrong.

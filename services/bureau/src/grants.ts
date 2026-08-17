@@ -1,9 +1,4 @@
-import {
-  isBureauVerb,
-  resolveBureauGrant,
-  verifyBearer,
-  type BureauGrant,
-} from "@bullmoose/auth-core/principal";
+import { isBureauVerb, resolveBureauGrant, verifyBearer, type BureauGrant } from "@bullmoose/auth-core/principal";
 import {
   principalForInvocation,
   resolveInvocationToken,
@@ -112,11 +107,7 @@ export interface UseRequest {
  * §5 metadata) on success and never the credential itself; unsealing is the verb
  * runtime's job (T3/T5), downstream of this decision.
  */
-export async function authorizeUse(
-  env: Env,
-  request: Request,
-  body: UseRequest,
-): Promise<UseDecision> {
+export async function authorizeUse(env: Env, request: Request, body: UseRequest): Promise<UseDecision> {
   const header = request.headers.get("Authorization") ?? "";
   if (!header.startsWith("Bearer ")) {
     return { ok: false, status: 401, error: "unauthorized" };
@@ -311,12 +302,6 @@ async function auditUse(
     `INSERT INTO grant_audit (grant_id, principal, account_id, method, at)
      VALUES (?, ?, ?, ?, ?)`,
   )
-    .bind(
-      grantId ?? "none",
-      principalEmail,
-      acct?.id ?? principalId,
-      `bureau:${verb}:${credRef}`,
-      Date.now(),
-    )
+    .bind(grantId ?? "none", principalEmail, acct?.id ?? principalId, `bureau:${verb}:${credRef}`, Date.now())
     .run();
 }

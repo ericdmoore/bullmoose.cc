@@ -1,13 +1,13 @@
 # 024 -E1-I1- HumanSettings over WebUI
 
-|                |                                                                                                                                                                                                                                            |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Kind**       | projection                                                                                                                                                                                                                                 |
-| **Effort**     | **E1** — one file: a form over two methods. No schema, no new method, no new dependency.                                                                                                                                                   |
-| **Impact**     | **I1** — human-verifiable, unlocks nothing                                                                                                                                                                                                 |
-| **Owner**      | **`sVOL`** — no `sNN` section has a settings screen                                                                                                                                                                                        |
-| **Depends on** | **`006`** (`Identity/set`) · `021` (the `s03.C` shell)                                                                                                                                                                                     |
-| **Status**     | **✅ done** — shipped as **`s07` T2**, not by sVOL: `webmail/src/pages/settings.astro` + `webmail/src/lib/settings/`, commit `f23ea39` (2026-08-10). `.plans/s07-app-surface/devPlan.md:220` carries the ✅ and cites this unit by number. |
+| | |
+|---|---|
+| **Kind** | projection |
+| **Effort** | **E1** — one file: a form over two methods. No schema, no new method, no new dependency. |
+| **Impact** | **I1** — human-verifiable, unlocks nothing |
+| **Owner** | **`sVOL`** — no `sNN` section has a settings screen |
+| **Depends on** | **`006`** (`Identity/set`) · `021` (the `s03.C` shell) |
+| **Status** | **✅ done** — shipped as **`s07` T2**, not by sVOL: `webmail/src/pages/settings.astro` + `webmail/src/lib/settings/`, commit `f23ea39` (2026-08-10). `.plans/s07-app-surface/devPlan.md:220` carries the ✅ and cites this unit by number. |
 
 ## Cells covered
 
@@ -20,33 +20,33 @@ and **`Identity`**. No create, no delete — both are effectively singletons.
 
 **E1.** Once `021`'s shell and `JmapClient` exist, this is a single settings route with
 two form sections calling four methods, two of which already exist. It clears the E1
-anchor (`readme.md:70`) exactly: one file, no schema change, no new method _in this unit_,
+anchor (`readme.md:70`) exactly: one file, no schema change, no new method *in this unit*,
 no new dependency. The new method (`Identity/set`) is `006`'s work, which is why `006` is
 a dependency rather than part of this unit — that is the capability/projection law
 (`readme.md:42`) applied literally.
 
 **I1, both factors:**
 
-- _Human-verifiable_ — **and unusually strongly so.** The vacation responder is wired end
+- *Human-verifiable* — **and unusually strongly so.** The vacation responder is wired end
   to end, not just stored: `services/ingest/src/index.ts:206` arms delivery-triggered
   responders behind an RFC 3834 gate, reading the same `responders` table at `:254`
   (`services/ingest/README.md:20`, step 6), and the AccountDO owns the alarms that fire
   them (`packages/account-do/src/index.ts:105,143`). So the verification is: tick the box
   in a browser, mail the account from an outside address, receive the auto-reply. No
   engineer, no JSON.
-- _Unlocks nothing_ — nothing in `_index.md` depends on `024`, and no `sNN` section names
+- *Unlocks nothing* — nothing in `_index.md` depends on `024`, and no `sNN` section names
   it. It is a leaf.
 
 ## What exists today
 
 **`VacationResponse` — complete, and reachable.**
 
-|                                    | Where                                                                       |
-| ---------------------------------- | --------------------------------------------------------------------------- |
-| `VacationResponse/get`             | `services/jmap/src/methods/vacation.ts:11`                                  |
-| `VacationResponse/set`             | `:32`                                                                       |
-| singleton upsert into `responders` | `:50-60` — `INSERT … ON CONFLICT (account_id, id) DO UPDATE`                |
-| requires the singleton key         | `:36-39` — throws `invalidArguments` when `args.update.singleton` is absent |
+| | Where |
+|---|---|
+| `VacationResponse/get` | `services/jmap/src/methods/vacation.ts:11` |
+| `VacationResponse/set` | `:32` |
+| singleton upsert into `responders` | `:50-60` — `INSERT … ON CONFLICT (account_id, id) DO UPDATE` |
+| requires the singleton key | `:36-39` — throws `invalidArguments` when `args.update.singleton` is absent |
 
 The id is `"singleton"` per RFC 8621 §8 (`vacation.ts:19`), and the whole datatype is a
 facade over one row of the armed-responder primitive (`vacation.ts:4-9`).
@@ -89,10 +89,10 @@ assumes settings exist and nobody builds them.
 
 One route in the `s03.C` shell, two sections:
 
-| Section           | Methods                                                                                  |
-| ----------------- | ---------------------------------------------------------------------------------------- |
+| Section | Methods |
+|---|---|
 | **Out of office** | `VacationResponse/get` → form → `VacationResponse/set` with `update: { singleton: {…} }` |
-| **Identity**      | `Identity/get` → form (name, replyTo, bcc, signatures) → `Identity/set` (**`006`**)      |
+| **Identity** | `Identity/get` → form (name, replyTo, bcc, signatures) → `Identity/set` (**`006`**) |
 
 Both are `Foo/set` calls that honour the account state string, so thread `state` into
 `ifInState` and get optimistic concurrency for free — the same pattern `013` and `022`
@@ -139,9 +139,9 @@ use.
 3. **Without `006`, half this screen is a read-only display of four permanently-empty
    fields**, which is arguably worse than not shipping it. If `021` lands long before
    `006`, ship the out-of-office section alone and leave Identity out; it is still `I1`
-   and still passes _Done when_ 1 and 2.
+   and still passes *Done when* 1 and 2.
 4. **Nothing here was run.** In particular I have not observed a vacation auto-reply
-   actually being sent — the end-to-end claim in _Done when_ 1 is read from
+   actually being sent — the end-to-end claim in *Done when* 1 is read from
    `ingest/src/index.ts:206,254` and the AccountDO alarm handler, not from a delivered
    message. This is the same caveat as `_context.md` §7 and it matters more here than
    usual, because the whole impact grade rests on that path working.

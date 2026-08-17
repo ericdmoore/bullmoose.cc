@@ -146,11 +146,7 @@ interface RpcReply {
   text: string;
 }
 
-async function callTool(
-  w: FakeWorker,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<RpcReply> {
+async function callTool(w: FakeWorker, name: string, args: Record<string, unknown>): Promise<RpcReply> {
   const req = new Request("https://agent/mcp/analytics", {
     method: "POST",
     headers: {
@@ -306,9 +302,9 @@ describe("calendar CRUD over MCP", () => {
     const delta = await changesSince(w, "CalendarEvent", mid);
     expect(delta.updated).toEqual([id]);
     expect(ctag(w, "calendars", CAL)).toBe(3);
-    expect(
-      w.db.query<{ title: string }>(`SELECT title FROM calendar_events WHERE id = ?`, id)[0]!.title,
-    ).toBe("Dentist (rescheduled)");
+    expect(w.db.query<{ title: string }>(`SELECT title FROM calendar_events WHERE id = ?`, id)[0]!.title).toBe(
+      "Dentist (rescheduled)",
+    );
   });
 
   it("deletes an event, and the delete reaches the changelog too", async () => {
@@ -472,8 +468,7 @@ describe("contacts CRUD over MCP", () => {
 
     // The extracted display-name column is what every contacts client lists.
     expect(
-      w.db.query<{ name_full: string }>(`SELECT name_full FROM contact_cards WHERE id = ?`, id)[0]!
-        .name_full,
+      w.db.query<{ name_full: string }>(`SELECT name_full FROM contact_cards WHERE id = ?`, id)[0]!.name_full,
     ).toBe("Ada Lovelace");
   });
 
@@ -493,22 +488,14 @@ describe("contacts CRUD over MCP", () => {
       note: "met at the fair",
     });
     const card = JSON.parse(
-      w.db.query<{ card_json: string }>(
-        `SELECT card_json FROM contact_cards WHERE id = ?`,
-        r.data.id,
-      )[0]!.card_json,
+      w.db.query<{ card_json: string }>(`SELECT card_json FROM contact_cards WHERE id = ?`, r.data.id)[0]!.card_json,
     ) as Record<string, any>;
 
     expect(card["@type"]).toBe("Card");
     expect(card.name.full).toBe("Ada Lovelace");
-    expect(Object.values(card.emails).map((e: any) => e.address)).toEqual([
-      "ada@example.com",
-      "ada@work.example",
-    ]);
+    expect(Object.values(card.emails).map((e: any) => e.address)).toEqual(["ada@example.com", "ada@work.example"]);
     expect(Object.values(card.phones).map((p: any) => p.number)).toEqual(["+1-555-0100"]);
-    expect(Object.values(card.organizations).map((o: any) => o.name)).toEqual([
-      "Analytical Engines",
-    ]);
+    expect(Object.values(card.organizations).map((o: any) => o.name)).toEqual(["Analytical Engines"]);
     expect(Object.values(card.titles).map((t: any) => t.name)).toEqual(["Programmer"]);
     expect(Object.values(card.nicknames).map((n: any) => n.name)).toEqual(["Ada"]);
     expect(Object.values(card.notes).map((n: any) => n.note)).toEqual(["met at the fair"]);
@@ -694,12 +681,10 @@ describe("the assertions above actually bite", () => {
       .run();
 
     // A direct read is perfectly happy.
-    const got = await callJmap<{ list: Array<{ id: string }> }>(
-      w.env,
-      principalFor([ACCOUNT]),
-      "CalendarEvent/get",
-      { accountId: ACCOUNT, ids: ["ev_smuggled"] },
-    );
+    const got = await callJmap<{ list: Array<{ id: string }> }>(w.env, principalFor([ACCOUNT]), "CalendarEvent/get", {
+      accountId: ACCOUNT,
+      ids: ["ev_smuggled"],
+    });
     expect(got.list.map((e) => e.id)).toEqual(["ev_smuggled"]);
 
     // And every incremental consumer is blind to it.

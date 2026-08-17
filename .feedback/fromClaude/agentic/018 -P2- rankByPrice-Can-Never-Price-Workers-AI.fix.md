@@ -3,13 +3,13 @@
 ## Proposal
 
 **Price `workers-ai` candidates at 0 in `rankByPrice`.** They run on the account's free allocation —
-that _is_ the honest blended price, and it makes the free route sort first, which is what every doc
+that *is* the honest blended price, and it makes the free route sort first, which is what every doc
 says happens.
 
 ```ts
 // services/agent/src/models.ts — in rankByPrice
 const priceOf = (c: ModelCandidate) => {
-  if (c.provider === "workers-ai") return 0; // free allocation
+  if (c.provider === "workers-ai") return 0;              // free allocation
   return cache.prices[c.model] ?? Number.POSITIVE_INFINITY;
 };
 ```
@@ -24,7 +24,7 @@ concatenated string. More correct, more work, and only matters once Workers AI h
 metered price. Not worth it now.
 
 ⚠️ **Caveat worth writing into the code comment:** "free" holds only within the account's Workers AI
-allocation. Past that it is metered. So `0` is a _policy_ choice ("prefer the free tier"), not a
+allocation. Past that it is metered. So `0` is a *policy* choice ("prefer the free tier"), not a
 fact — say so, or a future reader will treat it as a pricing bug.
 
 ## Bread-crumbs

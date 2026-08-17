@@ -108,8 +108,7 @@ describe("scope vocabularies", () => {
     // This is why ["mail"] is still an acceptable default: post-hasScope
     // fix it is a mail bundle, not a wildcard.
     for (const verb of MAIL_SCOPES) expect(hasScope([...DEFAULT_LOGIN_SCOPES], verb)).toBe(true);
-    for (const realm of REALM_SCOPES)
-      expect(hasScope([...DEFAULT_LOGIN_SCOPES], realm)).toBe(false);
+    for (const realm of REALM_SCOPES) expect(hasScope([...DEFAULT_LOGIN_SCOPES], realm)).toBe(false);
     expect(hasScope([...DEFAULT_LOGIN_SCOPES], "admin")).toBe(false);
   });
 });

@@ -29,10 +29,7 @@ describe("patch construction", () => {
   it("moves by adding the destination and removing every current mailbox at once", () => {
     // The server refuses a patch that would leave a message in no mailbox, so
     // the add and the removes have to travel together.
-    const email = { mailboxIds: { "mb-inbox": true, "mb-project": true } } as Pick<
-      Email,
-      "mailboxIds"
-    >;
+    const email = { mailboxIds: { "mb-inbox": true, "mb-project": true } } as Pick<Email, "mailboxIds">;
     expect(movePatch(email, "mb-archive")).toEqual({
       "mailboxIds/mb-archive": true,
       "mailboxIds/mb-inbox": null,
@@ -46,10 +43,7 @@ describe("patch construction", () => {
   });
 
   it("archives out of the Inbox while keeping other filing", () => {
-    const email = { mailboxIds: { "mb-inbox": true, "mb-project": true } } as Pick<
-      Email,
-      "mailboxIds"
-    >;
+    const email = { mailboxIds: { "mb-inbox": true, "mb-project": true } } as Pick<Email, "mailboxIds">;
     expect(archivePatch(email, "mb-inbox", "mb-archive")).toEqual({
       "mailboxIds/mb-archive": true,
       "mailboxIds/mb-inbox": null,
@@ -82,10 +76,7 @@ describe("scope prediction (mirror of requiredScopesForEmailSet)", () => {
   it("charges BOTH when a patch touches mailboxes and keywords", () => {
     // The server had this exact bug: a ternary charged only `move`, so a
     // move-scoped token could flip keywords for free by bundling them in.
-    expect(scopesForPatch({ "mailboxIds/x": true, "keywords/$seen": true }).sort()).toEqual([
-      "annotate",
-      "move",
-    ]);
+    expect(scopesForPatch({ "mailboxIds/x": true, "keywords/$seen": true }).sort()).toEqual(["annotate", "move"]);
   });
 
   it("fails closed on an empty patch", () => {
@@ -99,11 +90,7 @@ describe("applyTriage", () => {
     const ids = emails.slice(0, 3).map((e) => e.id);
     const before = client.sentBatches.length;
 
-    const result = await applyTriage(
-      client,
-      ACCOUNT,
-      Object.fromEntries(ids.map((id) => [id, seenPatch(true)])),
-    );
+    const result = await applyTriage(client, ACCOUNT, Object.fromEntries(ids.map((id) => [id, seenPatch(true)])));
 
     expect(client.sentBatches.length).toBe(before + 1);
     expect(client.sentBatches.at(-1)).toHaveLength(1);
@@ -165,12 +152,7 @@ describe("applyTriage", () => {
 
   it("passes ifInState through so a stale view cannot clobber a concurrent change", async () => {
     const { client, emails } = createDemoBackend();
-    await applyTriage(
-      client,
-      ACCOUNT,
-      { [(emails[0] as Email).id]: seenPatch(true) },
-      { ifInState: "0" },
-    );
+    await applyTriage(client, ACCOUNT, { [(emails[0] as Email).id]: seenPatch(true) }, { ifInState: "0" });
     const args = client.sentBatches.at(-1)?.[0]?.[1] as { ifInState?: string };
     expect(args.ifInState).toBe("0");
   });
@@ -206,8 +188,6 @@ describe("describeRefusal", () => {
   });
 
   it("falls back to the server's own description for anything else", () => {
-    expect(describeRefusal({ type: "serverFail", description: "disk on fire" }, []).message).toBe(
-      "disk on fire",
-    );
+    expect(describeRefusal({ type: "serverFail", description: "disk on fire" }, []).message).toBe("disk on fire");
   });
 });

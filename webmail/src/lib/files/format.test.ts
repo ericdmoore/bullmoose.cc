@@ -51,9 +51,7 @@ describe("formatType", () => {
   it("falls back to the subtype rather than inventing a name", () => {
     expect(formatType("image/png")).toBe("PNG image");
     expect(formatType("video/quicktime")).toBe("QUICKTIME video");
-    expect(formatType("application/vnd.oasis.opendocument.text")).toBe(
-      "VND.OASIS.OPENDOCUMENT.TEXT",
-    );
+    expect(formatType("application/vnd.oasis.opendocument.text")).toBe("VND.OASIS.OPENDOCUMENT.TEXT");
   });
 
   it("ignores parameters and case", () => {

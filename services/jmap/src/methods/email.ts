@@ -1,9 +1,5 @@
 import PostalMime from "postal-mime";
-import {
-  MAX_ATTACHMENT_BYTES_PER_EMAIL,
-  MethodError,
-  type MethodRegistry,
-} from "@bullmoose/jmap-core";
+import { MAX_ATTACHMENT_BYTES_PER_EMAIL, MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
 import { buildMime, type MimeAttachment } from "@bullmoose/mime";
 import {
@@ -66,10 +62,7 @@ export function registerEmailMethods(registry: MethodRegistry<RequestContext>): 
 
 // ---- Email/get -------------------------------------------------------
 
-async function emailGet(
-  args: Record<string, unknown>,
-  ctx: RequestContext,
-): Promise<Record<string, unknown>> {
+async function emailGet(args: Record<string, unknown>, ctx: RequestContext): Promise<Record<string, unknown>> {
   const access = await requireAccount(ctx, args, "read");
   if (!Array.isArray(args.ids)) {
     throw new MethodError("invalidArguments", "Email/get requires ids");
@@ -93,10 +86,7 @@ async function emailGet(
     if (!row) continue;
     const email = emailToJmap(row);
     if (wantBodies) {
-      Object.assign(
-        email,
-        await fetchBodies(store, access.tenantId, access.accountId, row, maxBodyBytes),
-      );
+      Object.assign(email, await fetchBodies(store, access.tenantId, access.accountId, row, maxBodyBytes));
     }
     list.push(pick(email, properties));
   }
@@ -201,10 +191,7 @@ function pick(obj: Record<string, unknown>, properties: string[]): Record<string
 
 // ---- Email/query -----------------------------------------------------
 
-async function emailQuery(
-  args: Record<string, unknown>,
-  ctx: RequestContext,
-): Promise<Record<string, unknown>> {
+async function emailQuery(args: Record<string, unknown>, ctx: RequestContext): Promise<Record<string, unknown>> {
   const access = await requireAccount(ctx, args, "read");
   const store = storeFor(ctx);
 
@@ -280,10 +267,7 @@ export function requiredScopesForEmailSet(args: Record<string, unknown>): string
   return [...need];
 }
 
-async function emailSet(
-  args: Record<string, unknown>,
-  ctx: RequestContext,
-): Promise<Record<string, unknown>> {
+async function emailSet(args: Record<string, unknown>, ctx: RequestContext): Promise<Record<string, unknown>> {
   const access = await requireAccountScopes(ctx, args, requiredScopesForEmailSet(args));
   const store = storeFor(ctx);
 
@@ -359,11 +343,7 @@ async function emailSet(
   };
 }
 
-async function commitEmailChanges(
-  ctx: RequestContext,
-  accountId: string,
-  r: EmailSetResult,
-): Promise<string> {
+async function commitEmailChanges(ctx: RequestContext, accountId: string, r: EmailSetResult): Promise<string> {
   const entries: Array<Partial<ChangeEntry> & { collection: string }> = [];
   const e = r.emailChanges;
   if (e.created.length + e.updated.length + e.destroyed.length > 0) entries.push(e);
@@ -474,9 +454,7 @@ async function createDraft(
   const bcc = fromJmapAddresses(spec.bcc);
   const subject = typeof spec.subject === "string" ? spec.subject : "";
   const inReplyTo = normalizeMessageId(
-    Array.isArray(spec.inReplyTo) && typeof spec.inReplyTo[0] === "string"
-      ? (spec.inReplyTo[0] as string)
-      : null,
+    Array.isArray(spec.inReplyTo) && typeof spec.inReplyTo[0] === "string" ? (spec.inReplyTo[0] as string) : null,
   );
 
   // Body: resolve textBody/htmlBody partId refs against bodyValues.
@@ -630,9 +608,7 @@ async function resolveAttachments(
     const obj = await store.getBlob(access.tenantId, access.accountId, spec.blobId);
     if (!obj) {
       // Only reachable if the blob was deleted between the two passes.
-      throw new SetErrorSignal("blobNotFound", `blob vanished mid-write: ${spec.blobId}`, [
-        `attachments/${i}/blobId`,
-      ]);
+      throw new SetErrorSignal("blobNotFound", `blob vanished mid-write: ${spec.blobId}`, [`attachments/${i}/blobId`]);
     }
     const content = new Uint8Array(await obj.arrayBuffer());
     out.push({
@@ -662,24 +638,16 @@ async function resolveAttachments(
 function parseAttachmentSpecs(value: unknown): AttachmentSpec[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) {
-    throw new SetErrorSignal("invalidProperties", "attachments must be an EmailBodyPart[]", [
-      "attachments",
-    ]);
+    throw new SetErrorSignal("invalidProperties", "attachments must be an EmailBodyPart[]", ["attachments"]);
   }
   return value.map((raw, i) => {
     const at = (p: string) => [`attachments/${i}/${p}`];
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      throw new SetErrorSignal("invalidProperties", "each attachment must be an object", [
-        `attachments/${i}`,
-      ]);
+      throw new SetErrorSignal("invalidProperties", "each attachment must be an object", [`attachments/${i}`]);
     }
     const part = raw as Record<string, unknown>;
     if (typeof part.blobId !== "string" || part.blobId === "") {
-      throw new SetErrorSignal(
-        "invalidProperties",
-        "an attachment requires a blobId",
-        at("blobId"),
-      );
+      throw new SetErrorSignal("invalidProperties", "an attachment requires a blobId", at("blobId"));
     }
     if (part.type !== undefined && part.type !== null && typeof part.type !== "string") {
       throw new SetErrorSignal("invalidProperties", "type must be a string", at("type"));
@@ -690,24 +658,15 @@ function parseAttachmentSpecs(value: unknown): AttachmentSpec[] {
     if (part.cid !== undefined && part.cid !== null && typeof part.cid !== "string") {
       throw new SetErrorSignal("invalidProperties", "cid must be a string", at("cid"));
     }
-    if (
-      part.disposition !== undefined &&
-      part.disposition !== null &&
-      typeof part.disposition !== "string"
-    ) {
-      throw new SetErrorSignal(
-        "invalidProperties",
-        "disposition must be a string",
-        at("disposition"),
-      );
+    if (part.disposition !== undefined && part.disposition !== null && typeof part.disposition !== "string") {
+      throw new SetErrorSignal("invalidProperties", "disposition must be a string", at("disposition"));
     }
     const cid = typeof part.cid === "string" && part.cid !== "" ? part.cid : null;
     return {
       blobId: part.blobId,
       // RFC 8621 leaves `type` optional; octet-stream is the RFC 2046 §4.5.1
       // default for "bytes of unknown kind".
-      type:
-        typeof part.type === "string" && part.type !== "" ? part.type : "application/octet-stream",
+      type: typeof part.type === "string" && part.type !== "" ? part.type : "application/octet-stream",
       name: typeof part.name === "string" && part.name !== "" ? part.name : null,
       cid,
       // A cid-carrying part is inline unless the client says otherwise; this
@@ -763,10 +722,7 @@ interface ImportSpec {
   receivedAt?: string;
 }
 
-async function emailImport(
-  args: Record<string, unknown>,
-  ctx: RequestContext,
-): Promise<Record<string, unknown>> {
+async function emailImport(args: Record<string, unknown>, ctx: RequestContext): Promise<Record<string, unknown>> {
   const access = await requireAccount(ctx, args, "draft");
   const store = storeFor(ctx);
 
@@ -789,10 +745,7 @@ async function emailImport(
     } catch (err) {
       notCreated[cid] =
         err instanceof MethodError
-          ? setError(
-              err.type === "invalidArguments" ? "invalidProperties" : err.type,
-              err.description,
-            )
+          ? setError(err.type === "invalidArguments" ? "invalidProperties" : err.type, err.description)
           : setError("serverFail", String(err));
     }
   }
@@ -836,13 +789,8 @@ async function importOne(
   // Attachments become individual content-hash blobs, same as ingest.
   const attachments = [];
   for (const att of parsed.attachments ?? []) {
-    const content =
-      typeof att.content === "string" ? new TextEncoder().encode(att.content).buffer : att.content;
-    const attBlobId = await store.putBlob(
-      access.tenantId,
-      access.accountId,
-      content as ArrayBuffer,
-    );
+    const content = typeof att.content === "string" ? new TextEncoder().encode(att.content).buffer : att.content;
+    const attBlobId = await store.putBlob(access.tenantId, access.accountId, content as ArrayBuffer);
     attachments.push({
       blobId: attBlobId,
       type: att.mimeType ?? "application/octet-stream",
@@ -854,11 +802,7 @@ async function importOne(
   }
 
   const id = `e_${crypto.randomUUID()}`;
-  const receivedAt = spec.receivedAt
-    ? Date.parse(spec.receivedAt)
-    : parsed.date
-      ? Date.parse(parsed.date)
-      : Date.now();
+  const receivedAt = spec.receivedAt ? Date.parse(spec.receivedAt) : parsed.date ? Date.parse(parsed.date) : Date.now();
 
   await store.insertEmail(access.accountId, {
     id,
@@ -893,10 +837,7 @@ function importAddresses(list: Array<{ name?: string; address?: string }>): Emai
     .map((a) => ({ ...(a.name ? { name: a.name } : {}), email: a.address as string }));
 }
 
-function resolveBodyPart(
-  partList: unknown,
-  bodyValues: Record<string, { value?: string }>,
-): string | undefined {
+function resolveBodyPart(partList: unknown, bodyValues: Record<string, { value?: string }>): string | undefined {
   if (!Array.isArray(partList) || partList.length === 0) return undefined;
   const partId = (partList[0] as { partId?: string }).partId;
   if (!partId) return undefined;

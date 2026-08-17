@@ -42,19 +42,13 @@ const x = (t, re) => t.match(re)?.[1] ?? null;
 const wk = await fetch(`${DAV}/.well-known/caldav`, { redirect: "manual" });
 assert(wk.status === 301, "well-known/caldav → 301");
 const opt = await fetch(`${DAV}/`, { method: "OPTIONS" });
-assert(
-  (opt.headers.get("dav") ?? "").includes("calendar-access"),
-  `DAV header: ${opt.headers.get("dav")}`,
-);
+assert((opt.headers.get("dav") ?? "").includes("calendar-access"), `DAV header: ${opt.headers.get("dav")}`);
 
 const prin = await dav("PROPFIND", `/dav/principals/${encodeURIComponent(ERIC.acct)}/`, {
   body: `<?xml version="1.0"?><D:propfind xmlns:D="DAV:" xmlns:CAL="urn:ietf:params:xml:ns:caldav"><D:prop><CAL:calendar-home-set/></D:prop></D:propfind>`,
 });
 const calHome = x(prin.text, /<CAL:calendar-home-set><D:href>([^<]+)<\/D:href>/);
-assert(
-  calHome === `/dav/calendars/${encodeURIComponent(ERIC.acct)}/`,
-  `calendar-home-set: ${calHome}`,
-);
+assert(calHome === `/dav/calendars/${encodeURIComponent(ERIC.acct)}/`, `calendar-home-set: ${calHome}`);
 
 // 2. seed events over JMAP (default calendar auto-creates)
 await jmap([["Calendar/get", { accountId: ERIC.acct, ids: null }, "i"]]);
@@ -94,10 +88,7 @@ const home = await dav("PROPFIND", calHome, {
   headers: { Depth: "1" },
   body: `<?xml version="1.0"?><D:propfind xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/"><D:prop><D:resourcetype/><D:displayname/><CS:getctag/><D:sync-token/></D:prop></D:propfind>`,
 });
-assert(
-  home.status === 207 && home.text.includes("<CAL:calendar/>"),
-  "home lists a calendar collection",
-);
+assert(home.status === 207 && home.text.includes("<CAL:calendar/>"), "home lists a calendar collection");
 const calHref = x(home.text, /<D:href>(\/dav\/calendars\/[^<]+\/cal_[^<]+\/)<\/D:href>/);
 const ctag0 = x(home.text, /<CS:getctag>([^<]*)<\/CS:getctag>/);
 assert(calHref && ctag0 !== null, `calendar found (ctag=${ctag0}): ${calHref}`);
@@ -107,18 +98,12 @@ const list = await dav("PROPFIND", calHref, {
   headers: { Depth: "1" },
   body: `<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:getetag/></D:prop></D:propfind>`,
 });
-assert(
-  list.text.includes(`${standupId}.ics`) && list.text.includes(`${reviewId}.ics`),
-  "events listed",
-);
+assert(list.text.includes(`${standupId}.ics`) && list.text.includes(`${reviewId}.ics`), "events listed");
 
 // 5. GET serializes iCalendar with VTIMEZONE + RRULE + EXDATE
 const got = await dav("GET", `${calHref}${standupId}.ics`);
 assert(got.status === 200 && got.headers.get("etag"), `GET: ${got.status}`);
-assert(
-  got.text.includes("BEGIN:VTIMEZONE") && got.text.includes("TZID:America/Chicago"),
-  "VTIMEZONE present",
-);
+assert(got.text.includes("BEGIN:VTIMEZONE") && got.text.includes("TZID:America/Chicago"), "VTIMEZONE present");
 assert(got.text.includes("RRULE:FREQ=WEEKLY;COUNT=6"), "RRULE serialized");
 assert(got.text.includes("EXDATE;TZID=America/Chicago:20261102T090000"), "EXDATE from override");
 assert(got.text.includes("DTSTART;TZID=America/Chicago:20261026T090000"), "TZID DTSTART");
@@ -128,9 +113,7 @@ const mg = await dav("REPORT", calHref, {
   body: `<?xml version="1.0"?><CAL:calendar-multiget xmlns:D="DAV:" xmlns:CAL="urn:ietf:params:xml:ns:caldav"><D:prop><D:getetag/><CAL:calendar-data/></D:prop><D:href>${calHref}${reviewId}.ics</D:href></CAL:calendar-multiget>`,
 });
 assert(
-  mg.status === 207 &&
-    mg.text.includes("SUMMARY:Review") &&
-    mg.text.includes("DTSTART:20260820T150000Z"),
+  mg.status === 207 && mg.text.includes("SUMMARY:Review") && mg.text.includes("DTSTART:20260820T150000Z"),
   "multiget carries calendar-data",
 );
 
@@ -209,10 +192,7 @@ assert(upd.status === 204, `conditional update: ${upd.status}`);
 const uidFlip = await dav("PUT", `${calHref}APPLE-EV-1.ics`, {
   body: putIcs.replace("UID:caldav-e2e-apple", "UID:other-uid"),
 });
-assert(
-  uidFlip.status === 409 && uidFlip.text.includes("no-uid-conflict"),
-  `uid flip → 409: ${uidFlip.status}`,
-);
+assert(uidFlip.status === 409 && uidFlip.text.includes("no-uid-conflict"), `uid flip → 409: ${uidFlip.status}`);
 
 // 12. DELETE + tombstoned 404 in delta sync
 const del = await dav("DELETE", `${calHref}APPLE-EV-1.ics`);
@@ -220,10 +200,7 @@ assert(del.status === 204, `DELETE: ${del.status}`);
 const sync2 = await dav("REPORT", calHref, {
   body: `<?xml version="1.0"?><D:sync-collection xmlns:D="DAV:"><D:sync-token>${token1}</D:sync-token><D:sync-level>1</D:sync-level><D:prop><D:getetag/></D:prop></D:sync-collection>`,
 });
-assert(
-  sync2.text.includes("APPLE-EV-1.ics") && sync2.text.includes("404"),
-  "deletion tombstoned under client name",
-);
+assert(sync2.text.includes("APPLE-EV-1.ics") && sync2.text.includes("404"), "deletion tombstoned under client name");
 
 // 13. JMAP-side destroy also tombstones for CalDAV sync
 const token2 = x(sync2.text, /<D:sync-token>([^<]+)<\/D:sync-token>/);
@@ -231,20 +208,12 @@ await jmap([["CalendarEvent/set", { accountId: ERIC.acct, destroy: [reviewId] },
 const sync3 = await dav("REPORT", calHref, {
   body: `<?xml version="1.0"?><D:sync-collection xmlns:D="DAV:"><D:sync-token>${token2}</D:sync-token><D:sync-level>1</D:sync-level><D:prop><D:getetag/></D:prop></D:sync-collection>`,
 });
-assert(
-  sync3.text.includes(`${reviewId}.ics`) && sync3.text.includes("404"),
-  "JMAP destroy reaches CalDAV sync",
-);
+assert(sync3.text.includes(`${reviewId}.ics`) && sync3.text.includes("404"), "JMAP destroy reaches CalDAV sync");
 
 // 14. bad sync token → 409 valid-sync-token
 const bad = await dav("REPORT", calHref, {
   body: `<?xml version="1.0"?><D:sync-collection xmlns:D="DAV:"><D:sync-token>bm:sync:999999999</D:sync-token><D:sync-level>1</D:sync-level><D:prop><D:getetag/></D:prop></D:sync-collection>`,
 });
-assert(
-  bad.status === 409 && bad.text.includes("valid-sync-token"),
-  `bad token → 409: ${bad.status}`,
-);
+assert(bad.status === 409 && bad.text.includes("valid-sync-token"), `bad token → 409: ${bad.status}`);
 
-console.log(
-  "E2E CALDAV OK — discovery, iCalendar round-trip, time-range, sync, and tombstones verified",
-);
+console.log("E2E CALDAV OK — discovery, iCalendar round-trip, time-range, sync, and tombstones verified");

@@ -1,35 +1,27 @@
-import {
-  Disclosure,
-  DisclosureButton,
-  DisclosurePanel,
-  Menu,
-  MenuButton,
-  MenuItem,
-  MenuItems,
-} from "@headlessui/react";
-import { Bars3Icon, BellIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { Disclosure, DisclosureButton, DisclosurePanel, Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import { Bars3Icon, BellIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 const user = {
-  name: "Tom Cook",
-  email: "tom@example.com",
+  name: 'Tom Cook',
+  email: 'tom@example.com',
   imageUrl:
-    "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-};
+    'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+}
 const navigation = [
-  { name: "Dashboard", href: "#", current: true },
-  { name: "Team", href: "#", current: false },
-  { name: "Projects", href: "#", current: false },
-  { name: "Calendar", href: "#", current: false },
-  { name: "Reports", href: "#", current: false },
-];
+  { name: 'Dashboard', href: '#', current: true },
+  { name: 'Team', href: '#', current: false },
+  { name: 'Projects', href: '#', current: false },
+  { name: 'Calendar', href: '#', current: false },
+  { name: 'Reports', href: '#', current: false },
+]
 const userNavigation = [
-  { name: "Your profile", href: "#" },
-  { name: "Settings", href: "#" },
-  { name: "Sign out", href: "#" },
-];
+  { name: 'Your profile', href: '#' },
+  { name: 'Settings', href: '#' },
+  { name: 'Sign out', href: '#' },
+]
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(" ");
+  return classes.filter(Boolean).join(' ')
 }
 
 export default function Example() {
@@ -61,12 +53,12 @@ export default function Example() {
                       <a
                         key={item.name}
                         href={item.href}
-                        aria-current={item.current ? "page" : undefined}
+                        aria-current={item.current ? 'page' : undefined}
                         className={classNames(
                           item.current
-                            ? "bg-indigo-700 text-white dark:bg-indigo-950/40"
-                            : "text-white hover:bg-indigo-500/75 dark:hover:bg-indigo-700/75",
-                          "rounded-md px-3 py-2 text-sm font-medium",
+                            ? 'bg-indigo-700 text-white dark:bg-indigo-950/40'
+                            : 'text-white hover:bg-indigo-500/75 dark:hover:bg-indigo-700/75',
+                          'rounded-md px-3 py-2 text-sm font-medium',
                         )}
                       >
                         {item.name}
@@ -135,12 +127,12 @@ export default function Example() {
                   key={item.name}
                   as="a"
                   href={item.href}
-                  aria-current={item.current ? "page" : undefined}
+                  aria-current={item.current ? 'page' : undefined}
                   className={classNames(
                     item.current
-                      ? "bg-indigo-700 text-white dark:bg-indigo-950/40"
-                      : "text-white hover:bg-indigo-500/75 dark:hover:bg-indigo-700/75",
-                    "block rounded-md px-3 py-2 text-base font-medium",
+                      ? 'bg-indigo-700 text-white dark:bg-indigo-950/40'
+                      : 'text-white hover:bg-indigo-500/75 dark:hover:bg-indigo-700/75',
+                    'block rounded-md px-3 py-2 text-base font-medium',
                   )}
                 >
                   {item.name}
@@ -187,9 +179,7 @@ export default function Example() {
 
         <header className="relative bg-white shadow-sm dark:bg-gray-800 dark:shadow-none dark:after:pointer-events-none dark:after:absolute dark:after:inset-x-0 dark:after:bottom-0 dark:after:h-px dark:after:bg-white/10">
           <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-            <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-              Dashboard
-            </h1>
+            <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Dashboard</h1>
           </div>
         </header>
         <main>
@@ -197,5 +187,5 @@ export default function Example() {
         </main>
       </div>
     </>
-  );
+  )
 }

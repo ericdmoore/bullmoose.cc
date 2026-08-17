@@ -38,10 +38,9 @@ describe("the mirror agrees with the gate", () => {
     let checked = 0;
     for (const granted of lists) {
       for (const required of universe) {
-        expect(
-          hasScope(granted, required),
-          `hasScope(${JSON.stringify(granted)}, ${required})`,
-        ).toBe(realHasScope(granted, required));
+        expect(hasScope(granted, required), `hasScope(${JSON.stringify(granted)}, ${required})`).toBe(
+          realHasScope(granted, required),
+        );
         checked++;
       }
     }
@@ -54,14 +53,7 @@ describe("effective permissions", () => {
   it("expands the `mail` bundle — the case a raw chip understates", () => {
     // readme.md §Non-obvious 1: a chip labelled "mail" reads as innocuous while
     // granting send and delete.
-    expect(effectiveScopes(["mail"])).toEqual([
-      "read",
-      "annotate",
-      "draft",
-      "move",
-      "send",
-      "delete",
-    ]);
+    expect(effectiveScopes(["mail"])).toEqual(["read", "annotate", "draft", "move", "send", "delete"]);
     expect(hiddenScopes(["mail"])).toContain("send");
     expect(hiddenScopes(["mail"])).toContain("delete");
   });
@@ -222,10 +214,7 @@ describe("dangerous combinations", () => {
     const out = dangerousCombinations({
       ...baseInput,
       credentials: [cred({ enforcement: "broad", allow: "https://*.amazonaws.com" })],
-      bureauGrants: [
-        bureau({ grantId: "bg_1", verb: "fetch" }),
-        bureau({ grantId: "bg_2", verb: "sign_sigv4" }),
-      ],
+      bureauGrants: [bureau({ grantId: "bg_1", verb: "fetch" }), bureau({ grantId: "bg_2", verb: "sign_sigv4" })],
     });
     expect(out.filter((c) => c.id === "broad-enforcement:aws-mcp")).toHaveLength(1);
     expect(new Set(out.map((c) => c.id)).size).toBe(out.length);

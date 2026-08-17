@@ -125,9 +125,7 @@ function harness(fx: Fixture = {}) {
   // a real relayed envelope rather than an inference.
   w.db.seed("mailboxes", [{ account_id: ACCOUNT, ...DRAFTS_MB }]);
   w.db.seed("emails", [{ account_id: ACCOUNT, ...draftRow }]);
-  w.db.seed("email_mailboxes", [
-    { account_id: ACCOUNT, email_id: "e_1", mailbox_id: DRAFTS_MB.id },
-  ]);
+  w.db.seed("email_mailboxes", [{ account_id: ACCOUNT, email_id: "e_1", mailbox_id: DRAFTS_MB.id }]);
   w.db.seed("email_keywords", [{ account_id: ACCOUNT, email_id: "e_1", keyword: "$draft" }]);
 
   const registry = new MethodRegistry<RequestContext>();
@@ -146,9 +144,7 @@ function harness(fx: Fixture = {}) {
           name: "Eric",
           ...(fx.granted
             ? {
-                granted: [
-                  { grantId: "g_1", scopes: ["mail"], collection: null, collectionId: null },
-                ],
+                granted: [{ grantId: "g_1", scopes: ["mail"], collection: null, collectionId: null }],
               }
             : {}),
         },
@@ -157,20 +153,18 @@ function harness(fx: Fixture = {}) {
   };
 
   const set = (args: Record<string, unknown>) =>
-    registry.get("Identity/set")!(
-      { accountId: ACCOUNT, ...args },
-      ctx,
-    ) as Promise<unknown> as Promise<SetResponse>;
+    registry.get("Identity/set")!({ accountId: ACCOUNT, ...args }, ctx) as Promise<unknown> as Promise<SetResponse>;
   const get = (args: Record<string, unknown> = {}) =>
     registry.get("Identity/get")!(
       { accountId: ACCOUNT, ids: null, ...args },
       ctx,
     ) as Promise<unknown> as Promise<GetResponse>;
   const changes = (sinceState: string) =>
-    registry.get("Identity/changes")!(
-      { accountId: ACCOUNT, sinceState },
-      ctx,
-    ) as Promise<unknown> as Promise<{ created: string[]; updated: string[]; destroyed: string[] }>;
+    registry.get("Identity/changes")!({ accountId: ACCOUNT, sinceState }, ctx) as Promise<unknown> as Promise<{
+      created: string[];
+      updated: string[];
+      destroyed: string[];
+    }>;
   /** Send the seeded draft as `identityId`. Returns the relayed envelopes. */
   const submit = async (identityId: string) => {
     const res = (await registry.get("EmailSubmission/set")!(
@@ -185,8 +179,7 @@ function harness(fx: Fixture = {}) {
     return res;
   };
 
-  const rows = () =>
-    w.db.query<Record<string, unknown>>(`SELECT * FROM identities WHERE account_id = ?`, ACCOUNT);
+  const rows = () => w.db.query<Record<string, unknown>>(`SELECT * FROM identities WHERE account_id = ?`, ACCOUNT);
 
   return { set, get, changes, submit, rows, relayCalls: w.submit.calls, w };
 }
@@ -243,9 +236,9 @@ describe("Identity/set commits the write choreography", () => {
 
   it("refuses the whole call on a stale ifInState, writing nothing", async () => {
     const h = harness({ identities: [primaryRow()] });
-    await expect(
-      h.set({ ifInState: "not-the-state", update: { id_primary: { name: "X" } } }),
-    ).rejects.toThrow(/stateMismatch/);
+    await expect(h.set({ ifInState: "not-the-state", update: { id_primary: { name: "X" } } })).rejects.toThrow(
+      /stateMismatch/,
+    );
     expect(h.rows()[0]!.name).toBe("Eric");
   });
 });
@@ -536,29 +529,21 @@ describe("requiredScopesForIdentitySet charges per operation", () => {
 
   it("a read-only token cannot set a signature", async () => {
     const h = harness({ identities: [primaryRow()], scopes: ["read"] });
-    await expect(h.set({ update: { id_primary: { textSignature: "x" } } })).rejects.toThrow(
-      /lacks the "draft" scope/,
-    );
+    await expect(h.set({ update: { id_primary: { textSignature: "x" } } })).rejects.toThrow(/lacks the "draft" scope/);
     expect(h.rows()[0]!.text_signature).toBe("");
   });
 
   it("a draft-scoped token may set a signature but may not mint a sender", async () => {
     const h = harness({ identities: [primaryRow()], scopes: ["draft"] });
-    expect((await h.set({ update: { id_primary: { textSignature: "x" } } })).notUpdated).toEqual(
-      {},
-    );
-    await expect(h.set({ create: { c1: { email: "sales@bullmoose.cc" } } })).rejects.toThrow(
-      /lacks the "send" scope/,
-    );
+    expect((await h.set({ update: { id_primary: { textSignature: "x" } } })).notUpdated).toEqual({});
+    await expect(h.set({ create: { c1: { email: "sales@bullmoose.cc" } } })).rejects.toThrow(/lacks the "send" scope/);
     expect(h.rows()).toHaveLength(1);
   });
 
   it("a send-scoped token may mint a sender but may not destroy one", async () => {
     const h = harness({ identities: [primaryRow()], scopes: ["send"] });
     const made = await h.set({ create: { c1: { email: "sales@bullmoose.cc" } } });
-    await expect(h.set({ destroy: [made.created.c1!.id as string] })).rejects.toThrow(
-      /lacks the "delete" scope/,
-    );
+    await expect(h.set({ destroy: [made.created.c1!.id as string] })).rejects.toThrow(/lacks the "delete" scope/);
     expect(h.rows()).toHaveLength(2);
   });
 });

@@ -106,9 +106,7 @@ describe("decision 4 — other people's shared realms are NOT searched", () => {
       reason: "reachable only through a grant — shared accounts are not searched",
     });
     // Mail really is unreachable — different fact, different sentence.
-    expect(plan.coverage.find((c) => c.realm === "mail")?.reason).toBe(
-      "this session has no access",
-    );
+    expect(plan.coverage.find((c) => c.realm === "mail")?.reason).toBe("this session has no access");
   });
 });
 

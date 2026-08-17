@@ -322,11 +322,7 @@ export function medianMicros(values: readonly number[]): number | null {
  * would drag the median toward "escalate late", the unsafe direction. 101
  * most recent keeps the median recency-weighted and the scan bounded.
  */
-export async function bindingEscalationWindowMs(
-  db: D1Database,
-  accountId: string,
-  bindingId: string,
-): Promise<number> {
+export async function bindingEscalationWindowMs(db: D1Database, accountId: string, bindingId: string): Promise<number> {
   const { results } = await db
     .prepare(
       `SELECT done_at - claimed_at AS d FROM agent_invocations

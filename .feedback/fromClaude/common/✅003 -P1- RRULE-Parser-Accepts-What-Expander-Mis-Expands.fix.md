@@ -3,15 +3,15 @@
 ## Proposal
 
 **One shared declaration of supported `(frequency, part)` pairs**, consulted by both the parser and
-the expander — so an unsupported combination fails at _parse_ time instead of mis-expanding.
+the expander — so an unsupported combination fails at *parse* time instead of mis-expanding.
 
 ```ts
 // packages/calendar-core/src/index.ts — single source of truth
 export const SUPPORTED_PARTS: Record<Frequency, ReadonlySet<RulePart>> = {
-  daily: new Set(["interval", "count", "until"]),
-  weekly: new Set(["interval", "count", "until", "byDay"]), // no nthOfPeriod
-  monthly: new Set(["interval", "count", "until", "byDay", "byMonthDay", "bySetPosition"]),
-  yearly: new Set(["interval", "count", "until", "byMonth"]), // today's real capability
+  daily:   new Set(["interval","count","until"]),
+  weekly:  new Set(["interval","count","until","byDay"]),        // no nthOfPeriod
+  monthly: new Set(["interval","count","until","byDay","byMonthDay","bySetPosition"]),
+  yearly:  new Set(["interval","count","until","byMonth"]),      // today's real capability
 };
 ```
 
@@ -40,7 +40,7 @@ Either way the guard is what prevents the class of bug; (b) just narrows what it
 - The `weekly` + `nthOfPeriod` case ("2nd Monday, weekly") is arguably meaningless in RFC 5545 terms;
   confirm against the spec before deciding whether it belongs in the supported set at all.
 - **Test shape:** a table of real-world RRULEs (Thanksgiving, "last Friday monthly", "every 2nd
-  Tuesday", `FREQ=YEARLY;BYDAY=…`) asserting each either expands to _correct_ dates or returns
+  Tuesday", `FREQ=YEARLY;BYDAY=…`) asserting each either expands to *correct* dates or returns
   `null`. No third outcome. That table is the regression net for any future expander work.
 - Coordinate with `.plans/s05-cli-crud` T3 — it plans calendar write commands and iCal round-trip
   tests; this guard should land first or the round-trip test will encode the bug.

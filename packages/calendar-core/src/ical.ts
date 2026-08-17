@@ -21,11 +21,7 @@ import {
 // ---- text escaping / folding -------------------------------------------
 
 function escapeIcs(s: string): string {
-  return s
-    .replaceAll("\\", "\\\\")
-    .replaceAll("\n", "\\n")
-    .replaceAll(",", "\\,")
-    .replaceAll(";", "\\;");
+  return s.replaceAll("\\", "\\\\").replaceAll("\n", "\\n").replaceAll(",", "\\,").replaceAll(";", "\\;");
 }
 
 function unescapeIcs(s: string): string {
@@ -61,8 +57,7 @@ function fold(line: string): string {
 
 const icsStamp = (dt: LocalDateTime) =>
   `${String(dt.year).padStart(4, "0")}${p2(dt.month)}${p2(dt.day)}T${p2(dt.hour)}${p2(dt.minute)}${p2(dt.second)}`;
-const icsDate = (dt: LocalDateTime) =>
-  `${String(dt.year).padStart(4, "0")}${p2(dt.month)}${p2(dt.day)}`;
+const icsDate = (dt: LocalDateTime) => `${String(dt.year).padStart(4, "0")}${p2(dt.month)}${p2(dt.day)}`;
 const p2 = (n: number) => String(n).padStart(2, "0");
 
 function utcStamp(ms: number): string {
@@ -108,8 +103,7 @@ export function ruleToRrule(rule: RecurrenceRule, timeZone: string): string {
         .join(",")}`,
     );
   }
-  if (rule.byMonthDay && rule.byMonthDay.length > 0)
-    parts.push(`BYMONTHDAY=${rule.byMonthDay.join(",")}`);
+  if (rule.byMonthDay && rule.byMonthDay.length > 0) parts.push(`BYMONTHDAY=${rule.byMonthDay.join(",")}`);
   if (rule.byMonth && rule.byMonth.length > 0) parts.push(`BYMONTH=${rule.byMonth.join(",")}`);
   if (rule.bySetPosition && rule.bySetPosition.length > 0) {
     parts.push(`BYSETPOS=${rule.bySetPosition.join(",")}`);
@@ -146,14 +140,7 @@ export function rruleToRule(body: string, timeZone: string): RecurrenceRule | nu
         if (m[7] === "Z") {
           // Convert the UTC instant into the event zone's wall clock so
           // the expander compares like with like.
-          const ms = Date.UTC(
-            +m[1]!,
-            +m[2]! - 1,
-            +m[3]!,
-            +(m[4] ?? "23"),
-            +(m[5] ?? "59"),
-            +(m[6] ?? "59"),
-          );
+          const ms = Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +(m[4] ?? "23"), +(m[5] ?? "59"), +(m[6] ?? "59"));
           rule.until = wallClockIso(ms, timeZone);
         } else {
           rule.until = `${m[1]}-${m[2]}-${m[3]}T${m[4] ?? "23"}:${m[5] ?? "59"}:${m[6] ?? "59"}`;
@@ -301,16 +288,13 @@ export function serializeICal(event: JSCalendarEvent): string {
   const durationMs = parseDuration(event.duration) || (allDay ? 86_400_000 : 0);
 
   const overrides = (event.recurrenceOverrides ?? {}) as Record<string, Record<string, unknown>>;
-  const rules = Array.isArray(event.recurrenceRules)
-    ? (event.recurrenceRules as RecurrenceRule[])
-    : [];
+  const rules = Array.isArray(event.recurrenceRules) ? (event.recurrenceRules as RecurrenceRule[]) : [];
 
   const ev: string[] = ["BEGIN:VEVENT", fold(`UID:${escapeIcs(uid)}`)];
   const updatedMs = typeof event.updated === "string" ? Date.parse(event.updated) : Date.now();
   ev.push(`DTSTAMP:${utcStamp(Number.isFinite(updatedMs) ? updatedMs : Date.now())}`);
   if (typeof event.title === "string") ev.push(fold(`SUMMARY:${escapeIcs(event.title)}`));
-  if (typeof event.description === "string")
-    ev.push(fold(`DESCRIPTION:${escapeIcs(event.description)}`));
+  if (typeof event.description === "string") ev.push(fold(`DESCRIPTION:${escapeIcs(event.description)}`));
   const loc = firstLocation(event);
   if (loc) ev.push(fold(`LOCATION:${escapeIcs(loc)}`));
 
@@ -319,9 +303,7 @@ export function serializeICal(event: JSCalendarEvent): string {
       ev.push(`DTSTART;VALUE=DATE:${icsDate(start)}`);
       const days = Math.max(1, Math.round(durationMs / 86_400_000));
       const endUtc = new Date(Date.UTC(start.year, start.month - 1, start.day + days));
-      ev.push(
-        `DTEND;VALUE=DATE:${endUtc.getUTCFullYear()}${p2(endUtc.getUTCMonth() + 1)}${p2(endUtc.getUTCDate())}`,
-      );
+      ev.push(`DTEND;VALUE=DATE:${endUtc.getUTCFullYear()}${p2(endUtc.getUTCMonth() + 1)}${p2(endUtc.getUTCDate())}`);
     } else if (timeZone === "Etc/UTC" || timeZone === "UTC") {
       const ms = zonedToUtc(start, timeZone);
       ev.push(`DTSTART:${utcStamp(ms)}`);
@@ -339,11 +321,7 @@ export function serializeICal(event: JSCalendarEvent): string {
     const ridDt = parseLocalDateTime(rid);
     if (!ridDt) continue;
     if (patch.excluded === true) {
-      ev.push(
-        allDay
-          ? `EXDATE;VALUE=DATE:${icsDate(ridDt)}`
-          : `EXDATE;TZID=${timeZone}:${icsStamp(ridDt)}`,
-      );
+      ev.push(allDay ? `EXDATE;VALUE=DATE:${icsDate(ridDt)}` : `EXDATE;TZID=${timeZone}:${icsStamp(ridDt)}`);
       continue;
     }
     // Patched occurrence → sibling VEVENT with RECURRENCE-ID.
@@ -446,9 +424,7 @@ function parseIcsLines(text: string): IcsProp[] {
   return props;
 }
 
-function parseIcsDt(
-  prop: IcsProp,
-): { local: LocalDateTime; timeZone: string | null; allDay: boolean } | null {
+function parseIcsDt(prop: IcsProp): { local: LocalDateTime; timeZone: string | null; allDay: boolean } | null {
   const v = prop.value.trim();
   if (prop.params.VALUE === "DATE" || /^\d{8}$/.test(v)) {
     const m = v.match(/^(\d{4})(\d{2})(\d{2})$/);
@@ -510,9 +486,7 @@ export function parseICal(text: string): ParsedICal {
 
   const event: JSCalendarEvent = {
     "@type": "Event",
-    uid: get(master, "UID")
-      ? unescapeIcs(get(master, "UID")!.value.trim())
-      : `urn:uuid:${crypto.randomUUID()}`,
+    uid: get(master, "UID") ? unescapeIcs(get(master, "UID")!.value.trim()) : `urn:uuid:${crypto.randomUUID()}`,
     start: formatLocalDateTime(startInfo.local),
     timeZone: startInfo.allDay ? "Etc/UTC" : timeZone,
   };
@@ -532,14 +506,8 @@ export function parseICal(text: string): ParsedICal {
   } else if (dtend) {
     const endInfo = parseIcsDt(dtend);
     if (endInfo) {
-      const startMs = zonedToUtc(
-        startInfo.local,
-        startInfo.allDay ? "Etc/UTC" : (endInfo.timeZone ?? timeZone),
-      );
-      const endMs = zonedToUtc(
-        endInfo.local,
-        endInfo.allDay ? "Etc/UTC" : (endInfo.timeZone ?? timeZone),
-      );
+      const startMs = zonedToUtc(startInfo.local, startInfo.allDay ? "Etc/UTC" : (endInfo.timeZone ?? timeZone));
+      const endMs = zonedToUtc(endInfo.local, endInfo.allDay ? "Etc/UTC" : (endInfo.timeZone ?? timeZone));
       const ms = endMs - startMs;
       if (ms > 0 && !(startInfo.allDay && ms === 86_400_000)) event.duration = msToDuration(ms);
     }

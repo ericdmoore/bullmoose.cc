@@ -11,5 +11,5 @@ export default function Example() {
         </button>
       </div>
     </div>
-  );
+  )
 }

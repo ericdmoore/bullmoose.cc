@@ -48,9 +48,7 @@ function seedGraph(db: FakeD1, needsJson: string | null, deps: readonly Dep[]): 
   n += 1;
   const bindingId = `b_${n}`;
   const nodeId = `inv_node_${n}`;
-  db.seed("agent_bindings", [
-    { id: bindingId, account_id: ACCOUNT, name: `bind${n}`, config_json: "{}" },
-  ]);
+  db.seed("agent_bindings", [{ id: bindingId, account_id: ACCOUNT, name: `bind${n}`, config_json: "{}" }]);
   for (const d of deps) {
     db.seed("agent_invocations", [
       {
@@ -226,9 +224,7 @@ describe("the Job's aggregate budget (SQL ≡ pure)", () => {
     n += 1;
     const jobId = `job_b_${n}`;
     const bindingId = `b_b_${n}`;
-    db.seed("agent_bindings", [
-      { id: bindingId, account_id: ACCOUNT, name: `bb${n}`, config_json: "{}" },
-    ]);
+    db.seed("agent_bindings", [{ id: bindingId, account_id: ACCOUNT, name: `bb${n}`, config_json: "{}" }]);
     db.seed("jobs", [
       {
         id: jobId,
@@ -344,9 +340,7 @@ describe("the Job's aggregate budget (SQL ≡ pure)", () => {
         .bind(ACCOUNT, seeded.id)
         .first<{ hit: number }>();
       const sql = row !== null;
-      const spent = c.nodes
-        .filter((x) => x.done && !x.otherJob)
-        .reduce((sum, x) => sum + (x.cost ?? 0), 0);
+      const spent = c.nodes.filter((x) => x.done && !x.otherJob).reduce((sum, x) => sum + (x.cost ?? 0), 0);
       expect(sql).toBe(c.expected);
       expect(jobBudgetExhausted({ budgetMicros: c.budget, spentMicros: spent })).toBe(sql);
     });
@@ -354,9 +348,7 @@ describe("the Job's aggregate budget (SQL ≡ pure)", () => {
 
   it("an invocation with no job_id is never job-budget-exhausted (DefaultCase)", async () => {
     const db = fakeD1();
-    db.seed("agent_bindings", [
-      { id: "b_plain", account_id: ACCOUNT, name: "plain", config_json: "{}" },
-    ]);
+    db.seed("agent_bindings", [{ id: "b_plain", account_id: ACCOUNT, name: "plain", config_json: "{}" }]);
     db.seed("agent_invocations", [
       {
         id: "inv_plain",
@@ -406,9 +398,7 @@ describe("the two DAG terms inside the whole claim gate", () => {
 
   it("a BLOCKED node is refused to BOTH runtimes — execution order is structural, not policy", async () => {
     const db = fakeD1();
-    const nodeId = seedGraph(db, '["inv_pending_dep"]', [
-      { id: "inv_pending_dep", status: "pending" },
-    ]);
+    const nodeId = seedGraph(db, '["inv_pending_dep"]', [{ id: "inv_pending_dep", status: "pending" }]);
     expect(await claimable(db, nodeId, PAID)).toBe(false);
     expect(await claimable(db, nodeId, FREE)).toBe(false);
   });
@@ -468,12 +458,7 @@ describe("the two DAG terms inside the whole claim gate", () => {
 // ---- the derived view ------------------------------------------------------
 
 describe("Job status is DERIVED from its nodes", () => {
-  const node = (
-    id: string,
-    status: string,
-    needs: string[] | null = null,
-    paused = false,
-  ): JobNodeState => ({
+  const node = (id: string, status: string, needs: string[] | null = null, paused = false): JobNodeState => ({
     id,
     status: status as JobNodeState["status"],
     needs,
@@ -554,12 +539,7 @@ describe("jobView — the progress surface reads the SAME rows, and drifts from 
         created_at: 1,
       },
     ]);
-    const seedNode = (
-      id: string,
-      status: string,
-      needs: string | null,
-      cost: number | null = null,
-    ) =>
+    const seedNode = (id: string, status: string, needs: string | null, cost: number | null = null) =>
       db.seed("agent_invocations", [
         {
           id,
@@ -592,11 +572,7 @@ describe("jobView — the progress surface reads the SAME rows, and drifts from 
 
   it("THE DERIVED-STATUS PROOF: finishing the nodes moves the view with ZERO writes to the jobs row", async () => {
     const { db } = await scaffold();
-    const jobsRowBefore = db.query(
-      "SELECT * FROM jobs WHERE account_id = ? AND id = ?",
-      ACCOUNT,
-      "job_v",
-    )[0];
+    const jobsRowBefore = db.query("SELECT * FROM jobs WHERE account_id = ? AND id = ?", ACCOUNT, "job_v")[0];
 
     await db
       .prepare(`UPDATE agent_invocations SET status = 'done', done_at = ?, cost_micros = 100000
@@ -609,9 +585,7 @@ describe("jobView — the progress surface reads the SAME rows, and drifts from 
     expect(mid.spentMicros).toBe(400_000);
 
     await db
-      .prepare(
-        `UPDATE agent_invocations SET status = 'done', done_at = ? WHERE account_id = ? AND id = 'inv_v_join'`,
-      )
+      .prepare(`UPDATE agent_invocations SET status = 'done', done_at = ? WHERE account_id = ? AND id = 'inv_v_join'`)
       .bind(NOW, ACCOUNT)
       .run();
     expect((await jobView(db, ACCOUNT, "job_v"))!.status).toBe("done");
@@ -620,20 +594,14 @@ describe("jobView — the progress surface reads the SAME rows, and drifts from 
     // written at creation, this assertion is what catches the drift: the row
     // says one thing and the nodes say another, and only one of them can be
     // the source of truth.
-    const jobsRowAfter = db.query(
-      "SELECT * FROM jobs WHERE account_id = ? AND id = ?",
-      ACCOUNT,
-      "job_v",
-    )[0];
+    const jobsRowAfter = db.query("SELECT * FROM jobs WHERE account_id = ? AND id = ?", ACCOUNT, "job_v")[0];
     expect(jobsRowAfter).toEqual(jobsRowBefore);
   });
 
   it("a failed node turns the view stalled — again with no write to the Job", async () => {
     const { db } = await scaffold();
     await db
-      .prepare(
-        `UPDATE agent_invocations SET status = 'failed', done_at = ? WHERE account_id = ? AND id = 'inv_v_a'`,
-      )
+      .prepare(`UPDATE agent_invocations SET status = 'failed', done_at = ? WHERE account_id = ? AND id = 'inv_v_a'`)
       .bind(NOW, ACCOUNT)
       .run();
     const view = (await jobView(db, ACCOUNT, "job_v"))!;

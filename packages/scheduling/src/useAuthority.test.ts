@@ -65,12 +65,8 @@ describe("intersection is the NARROWER of the two — in both directions", () =>
   });
 
   it("budget: the MINIMUM, whichever side is smaller", () => {
-    expect(intersectAuthority(A({ budgetMicros: 10 }), A({ budgetMicros: 4 })).budgetMicros).toBe(
-      4,
-    );
-    expect(intersectAuthority(A({ budgetMicros: 4 }), A({ budgetMicros: 10 })).budgetMicros).toBe(
-      4,
-    );
+    expect(intersectAuthority(A({ budgetMicros: 10 }), A({ budgetMicros: 4 })).budgetMicros).toBe(4);
+    expect(intersectAuthority(A({ budgetMicros: 4 }), A({ budgetMicros: 10 })).budgetMicros).toBe(4);
   });
 
   it("disjoint sets intersect to EMPTY — never to a union", () => {
@@ -155,9 +151,7 @@ describe("parseEnvelope is STRICT — anything it cannot vouch for is unreadable
   });
 
   it("an explicit `null` axis IS readable — that is a declared unset ceiling", () => {
-    expect(parseEnvelope(env({ tools: null, credentials: null, budgetMicros: null }))).toEqual(
-      UNSET,
-    );
+    expect(parseEnvelope(env({ tools: null, credentials: null, budgetMicros: null }))).toEqual(UNSET);
   });
 
   it("de-duplicates a set rather than refusing it", () => {
@@ -260,9 +254,7 @@ describe("a chain can only NARROW — hop 2 cannot widen what hop 1 gave up", ()
     // a Job is running. Every existing node still carries the old, wider
     // envelope — and every one of them is bounded anyway.
     const narrowedBinding = A({ tools: ["a"], credentials: [], budgetMicros: 10 });
-    const r = foldChain(narrowedBinding, [
-      env({ tools: ["a", "b"], credentials: ["c1"], budgetMicros: 1000 }),
-    ]);
+    const r = foldChain(narrowedBinding, [env({ tools: ["a", "b"], credentials: ["c1"], budgetMicros: 1000 })]);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.authority).toEqual({ tools: ["a"], credentials: [], budgetMicros: 10 });

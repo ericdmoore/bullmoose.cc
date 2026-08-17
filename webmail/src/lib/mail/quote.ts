@@ -20,15 +20,13 @@ export interface TextBodySplit {
 }
 
 /** `-----Original Message-----`, `---------- Forwarded message ----------`. */
-const BANNER =
-  /^\s*(-{2,}\s*original message\s*-{2,}|-{2,}\s*forwarded message\s*-{2,}|_{10,}|-{10,})\s*$/i;
+const BANNER = /^\s*(-{2,}\s*original message\s*-{2,}|-{2,}\s*forwarded message\s*-{2,}|_{10,}|-{10,})\s*$/i;
 
 /**
  * `On <date>, <person> wrote:` — possibly wrapped across up to three lines,
  * which is what every client does once the address is long enough.
  */
-const ATTRIBUTION =
-  /^(on|am|le|el)\b[\s\S]{0,300}?\b(wrote|schrieb|escribió|a écrit|writes|said):\s*$/i;
+const ATTRIBUTION = /^(on|am|le|el)\b[\s\S]{0,300}?\b(wrote|schrieb|escribió|a écrit|writes|said):\s*$/i;
 
 /** Outlook's localized header block, which has no `>` prefixes at all. */
 const OUTLOOK_HEADER = /^\s*(from|von|de):\s*.+$/i;

@@ -36,7 +36,7 @@ But `packages/mailstore/src/index.ts:1848-1853` — `SORT_COLUMNS` has only `rec
 Worse, `:452` does:
 
 ```ts
-SORT_COLUMNS[s.property] ?? "received_at";
+SORT_COLUMNS[s.property] ?? "received_at"
 ```
 
 So a client that asks to sort by `to` **gets a different order than it requested, with no error**.

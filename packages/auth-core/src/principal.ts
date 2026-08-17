@@ -73,9 +73,7 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Prin
     return {
       username: env.DEV_USERNAME,
       scopes: ["mail"],
-      accounts: [
-        { accountId: env.DEV_ACCOUNT_ID, tenantId: env.DEV_TENANT_ID, name: env.DEV_USERNAME },
-      ],
+      accounts: [{ accountId: env.DEV_ACCOUNT_ID, tenantId: env.DEV_TENANT_ID, name: env.DEV_USERNAME }],
     };
   }
 
@@ -146,10 +144,7 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
  * `tokens` row. What must NOT fork is which accounts that human reaches and
  * on what basis — so the reach is computed here, once, for both credentials.
  */
-export async function reachableAccounts(
-  db: D1Database,
-  principalId: string,
-): Promise<AccountAccess[]> {
+export async function reachableAccounts(db: D1Database, principalId: string): Promise<AccountAccess[]> {
   // `deleted_at IS NULL` is what makes `DELETE /accounts/{id}` mean anything:
   // the tombstone is a soft delete (sVOL 008), so without this filter a
   // "deleted" account keeps authenticating and keeps serving its mail.
@@ -293,11 +288,7 @@ function grantCoversDomain(g: GrantRef, domain: MethodDomain): boolean {
 }
 
 /** Grants on this access that satisfy scope+domain (empty for owners). */
-export function matchingGrants(
-  access: AccountAccess,
-  scope: string,
-  domain: MethodDomain,
-): GrantRef[] {
+export function matchingGrants(access: AccountAccess, scope: string, domain: MethodDomain): GrantRef[] {
   if (!access.granted) return [];
   return access.granted.filter((g) => grantCoversDomain(g, domain) && hasScope(g.scopes, scope));
 }
@@ -415,9 +406,5 @@ export function allowedBookIds(access: AccountAccess, scope: string): Set<string
   if (!access.granted) return null;
   const matching = matchingGrants(access, scope, "contacts");
   if (matching.some((g) => g.collection === null)) return null;
-  return new Set(
-    matching.flatMap((g) =>
-      g.collection === "AddressBook" && g.collectionId ? [g.collectionId] : [],
-    ),
-  );
+  return new Set(matching.flatMap((g) => (g.collection === "AddressBook" && g.collectionId ? [g.collectionId] : [])));
 }

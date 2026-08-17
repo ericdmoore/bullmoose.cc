@@ -58,11 +58,7 @@ export interface Truncation {
  * only so limit 2 above is OBSERVABLE. Without it a 300-event month would
  * render 256 events and look finished.
  */
-export function truncationOf(
-  total: number,
-  cap: number,
-  matchingEvents: number | undefined,
-): Truncation {
+export function truncationOf(total: number, cap: number, matchingEvents: number | undefined): Truncation {
   return {
     occurrences: total > cap,
     candidates: matchingEvents !== undefined && matchingEvents > CANDIDATE_EVENT_LIMIT,

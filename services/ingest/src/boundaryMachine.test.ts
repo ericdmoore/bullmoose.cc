@@ -1,10 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  putSieveRules,
-  QUARANTINE_ROLE,
-  saveBayesState,
-  type BayesState,
-} from "@bullmoose/mailstore";
+import { putSieveRules, QUARANTINE_ROLE, saveBayesState, type BayesState } from "@bullmoose/mailstore";
 import { fakeEnv, type FakeWorker } from "@bullmoose/test-fakes";
 import { __resetBoundaryBloomCache, resolveBouncerBinding } from "./boundary";
 import worker, { type Env } from "./index";
@@ -45,17 +40,12 @@ async function scaffold(): Promise<FakeWorker> {
   );
   // A live mailbox-delivery binding, so "no invocation" / "which invocation"
   // assertions are real (the boundary.test.ts precedent).
-  w.db.seed("agent_bindings", [
-    { id: "bind_emily", account_id: ACCOUNT, name: "emily", config_json: "{}" },
-  ]);
+  w.db.seed("agent_bindings", [{ id: "bind_emily", account_id: ACCOUNT, name: "emily", config_json: "{}" }]);
   return w;
 }
 
 /** Register the tenant's bouncer binding (accounts row + agent_bindings). */
-function seedBouncer(
-  w: FakeWorker,
-  opts: { name?: string; config?: Record<string, unknown> } = {},
-): void {
+function seedBouncer(w: FakeWorker, opts: { name?: string; config?: Record<string, unknown> } = {}): void {
   w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT });
   w.db.seed("agent_bindings", [
     {
@@ -88,10 +78,11 @@ interface InjectResult {
 
 async function inject(w: FakeWorker, raw: string, from = SENDER): Promise<InjectResult> {
   const res = await worker.fetch(
-    new Request(
-      `https://ingest.test/dev/inject?from=${encodeURIComponent(from)}&to=ada@example.test`,
-      { method: "POST", headers: { "x-internal-token": TOKEN }, body: raw },
-    ),
+    new Request(`https://ingest.test/dev/inject?from=${encodeURIComponent(from)}&to=ada@example.test`, {
+      method: "POST",
+      headers: { "x-internal-token": TOKEN },
+      body: raw,
+    }),
     { ...w.env, DEV_INJECT: "1" } as unknown as Env,
     ctx(),
   );
@@ -99,11 +90,8 @@ async function inject(w: FakeWorker, raw: string, from = SENDER): Promise<Inject
 }
 
 const roleMailboxId = (w: FakeWorker, role: string): string | null =>
-  w.db.query<{ id: string }>(
-    `SELECT id FROM mailboxes WHERE account_id = ? AND role = ?`,
-    ACCOUNT,
-    role,
-  )[0]?.id ?? null;
+  w.db.query<{ id: string }>(`SELECT id FROM mailboxes WHERE account_id = ? AND role = ?`, ACCOUNT, role)[0]?.id ??
+  null;
 
 const mailboxesOf = (w: FakeWorker, emailId: string): string[] =>
   w.db
@@ -146,18 +134,12 @@ describe("stage 3 — the account's stored sieve ruleset", () => {
     const res = await inject(w, mime({ subject: "You are a WINNER!!!" }));
     expect(res.quarantined).toBe("sieve:no-winners");
     expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, QUARANTINE_ROLE)]);
-    expect(
-      w.db.query<{ stage: string }>(
-        `SELECT stage FROM quarantine_events WHERE account_id = ?`,
-        ACCOUNT,
-      ),
-    ).toEqual([{ stage: "sieve:no-winners" }]);
+    expect(w.db.query<{ stage: string }>(`SELECT stage FROM quarantine_events WHERE account_id = ?`, ACCOUNT)).toEqual([
+      { stage: "sieve:no-winners" },
+    ]);
     // Sieve rejects are EXPENSIVE-stage rejects: the graduation counter bumps.
     expect(
-      w.db.query<{ count: number }>(
-        `SELECT count FROM deny_counters WHERE domain = ?`,
-        "elsewhere.test",
-      )[0]?.count,
+      w.db.query<{ count: number }>(`SELECT count FROM deny_counters WHERE domain = ?`, "elsewhere.test")[0]?.count,
     ).toBe(1);
 
     // A non-matching message still flows.
@@ -204,10 +186,7 @@ describe("stage 4 — the account's trained Bayes state, two thresholds", () => 
     expect(res.quarantined).toMatch(/^bayes@/);
     expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, QUARANTINE_ROLE)]);
     expect(
-      w.db.query<{ count: number }>(
-        `SELECT count FROM deny_counters WHERE domain = ?`,
-        "elsewhere.test",
-      )[0]?.count,
+      w.db.query<{ count: number }>(`SELECT count FROM deny_counters WHERE domain = ?`, "elsewhere.test")[0]?.count,
     ).toBe(1);
     expect(w.db.count("agent_invocations")).toBe(0); // judged spam never reaches the lobby
   });
@@ -250,9 +229,7 @@ describe("the mid-band (stage 5's doorway)", () => {
       `SELECT event, stage, email_id FROM quarantine_events WHERE account_id = ?`,
       ACCOUNT,
     );
-    expect(events).toEqual([
-      { event: "screened", stage: "bayes-mid@0.50", email_id: res.emailId! },
-    ]);
+    expect(events).toEqual([{ event: "screened", stage: "bayes-mid@0.50", email_id: res.emailId! }]);
 
     // Exactly ONE invocation — the classifier's, on the bouncer binding; the
     // mailbox-delivery binding (emily) gets nothing until the message is

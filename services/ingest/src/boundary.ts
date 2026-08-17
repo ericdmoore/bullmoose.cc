@@ -35,21 +35,8 @@
 // availability bruise in the SPAM direction only; it can never leak mail.
 
 import { Mailstore, listSieveRules, loadBayesState, normalizeAddress } from "@bullmoose/mailstore";
-import {
-  bayesClassify,
-  sieveVerdict,
-  type BayesState,
-  type BoundaryMessage,
-  type SieveRule,
-} from "./boundaryContract";
-import {
-  bloomAdd,
-  bloomCreate,
-  bloomDeserialize,
-  bloomHas,
-  bloomSerialize,
-  type BloomFilter,
-} from "./bloom";
+import { bayesClassify, sieveVerdict, type BayesState, type BoundaryMessage, type SieveRule } from "./boundaryContract";
+import { bloomAdd, bloomCreate, bloomDeserialize, bloomHas, bloomSerialize, type BloomFilter } from "./bloom";
 
 export interface BoundaryEnv {
   DB: D1Database;
@@ -162,9 +149,7 @@ async function loadBloom(kv: KVNamespace): Promise<BloomFilter | null> {
  * false negative, the one error class blooms cannot have. Removals can wait:
  * a stale POSSIBLY_YES falls through to the exact checks and costs nothing.
  */
-export async function rebuildBoundaryBloom(
-  env: BoundaryEnv,
-): Promise<{ version: number; entries: number }> {
+export async function rebuildBoundaryBloom(env: BoundaryEnv): Promise<{ version: number; entries: number }> {
   const store = new Mailstore(env.DB, env.BLOBS);
   const entries = new Set<string>();
 
@@ -182,8 +167,7 @@ export async function rebuildBoundaryBloom(
     const { results } = await env.DB.prepare(
       `SELECT account_id, id FROM address_books WHERE LOWER(name) = 'blocked'`,
     ).all<{ account_id: string; id: string }>();
-    for (const r of results)
-      books.set(`${r.account_id}/${r.id}`, { accountId: r.account_id, bookId: r.id });
+    for (const r of results) books.set(`${r.account_id}/${r.id}`, { accountId: r.account_id, bookId: r.id });
   } catch {
     /* no address_books on this shard */
   }
@@ -225,9 +209,7 @@ async function inDenyList(db: D1Database, tenantId: string, domain: string): Pro
     return row?.hit === 1;
   } catch (err) {
     // Pre-migration shard, or D1 hiccup: an empty deny list, said out loud.
-    console.error(
-      `deny-list check degraded to empty (${err instanceof Error ? err.message : err})`,
-    );
+    console.error(`deny-list check degraded to empty (${err instanceof Error ? err.message : err})`);
     return false;
   }
 }
@@ -245,11 +227,7 @@ async function inDenyList(db: D1Database, tenantId: string, domain: string): Pro
  *
  * Failure is logged and the reject stands.
  */
-export async function bumpDenyCounter(
-  db: D1Database,
-  domain: string,
-  now = Date.now(),
-): Promise<void> {
+export async function bumpDenyCounter(db: D1Database, domain: string, now = Date.now()): Promise<void> {
   const day = new Date(now).toISOString().slice(0, 10);
   try {
     await db
@@ -260,9 +238,7 @@ export async function bumpDenyCounter(
       .bind(domain, day)
       .run();
   } catch (err) {
-    console.error(
-      `deny counter bump failed for ${domain}: ${err instanceof Error ? err.message : err}`,
-    );
+    console.error(`deny counter bump failed for ${domain}: ${err instanceof Error ? err.message : err}`);
   }
 }
 
@@ -292,18 +268,11 @@ async function defaultBookId(db: D1Database, accountId: string): Promise<string 
   }
 }
 
-async function isBookMember(
-  store: Mailstore,
-  accountId: string,
-  bookId: string,
-  sender: string,
-): Promise<boolean> {
+async function isBookMember(store: Mailstore, accountId: string, bookId: string, sender: string): Promise<boolean> {
   try {
     return (await store.bookMembership(accountId, bookId)).has(sender);
   } catch (err) {
-    console.error(
-      `book membership check degraded to empty (${err instanceof Error ? err.message : err})`,
-    );
+    console.error(`book membership check degraded to empty (${err instanceof Error ? err.message : err})`);
     return false;
   }
 }
@@ -537,10 +506,7 @@ export interface BouncerBinding {
  * deterministic. NULL — including every load error — means the mid-band
  * DELIVERS normally: fail open, no held mail without a classifier coming.
  */
-export async function resolveBouncerBinding(
-  db: D1Database,
-  tenantId: string,
-): Promise<BouncerBinding | null> {
+export async function resolveBouncerBinding(db: D1Database, tenantId: string): Promise<BouncerBinding | null> {
   type Row = { id: string; account_id: string; name: string; config_json: string };
   let rows: Row[];
   try {
@@ -566,9 +532,7 @@ export async function resolveBouncerBinding(
         .all<Row>();
       rows = results.filter((r) => r.account_id.startsWith(`${tenantId}__`));
     } catch (err) {
-      console.error(
-        `bouncer binding lookup degraded to none (${err instanceof Error ? err.message : err})`,
-      );
+      console.error(`bouncer binding lookup degraded to none (${err instanceof Error ? err.message : err})`);
       return null;
     }
   }

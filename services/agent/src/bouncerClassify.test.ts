@@ -162,9 +162,7 @@ const invocation = (w: FakeWorker) =>
     result_json: string | null;
     provider: string | null;
     cost_micros: number | null;
-  }>(
-    `SELECT status, result_json, provider, cost_micros FROM agent_invocations WHERE id = 'inv_classify'`,
-  )[0]!;
+  }>(`SELECT status, result_json, provider, cost_micros FROM agent_invocations WHERE id = 'inv_classify'`)[0]!;
 
 describe("parseClassifierVerdict — the strict enum, defensively", () => {
   it("accepts exactly the enum (case/punctuation-insensitively), nothing else", () => {
@@ -178,9 +176,7 @@ describe("parseClassifierVerdict — the strict enum, defensively", () => {
 
   it("garbage → unsure: prose, empty, JSON, or a verdict buried in chatter", () => {
     expect(parseClassifierVerdict("")).toBe("unsure");
-    expect(parseClassifierVerdict("I think this is spam because it mentions a casino")).toBe(
-      "unsure",
-    );
+    expect(parseClassifierVerdict("I think this is spam because it mentions a casino")).toBe("unsure");
     expect(parseClassifierVerdict('{"verdict":"spam"}')).toBe("unsure");
     expect(parseClassifierVerdict("spammy")).toBe("unsure");
     expect(parseClassifierVerdict("definitely-not-spam-trust-me")).toBe("unsure");
@@ -222,10 +218,7 @@ describe("bouncer-classify through the real drain", () => {
     )[0]!.id;
     expect(mailboxesOf(w)).toEqual([inboxId]);
     expect(w.db.count("email_mailboxes", "mailbox_id = ?", quarantineId)).toBe(0);
-    expect(events(w).map((e) => `${e.event}:${e.stage}`)).toEqual([
-      "screened:bayes-mid@0.50",
-      "released:llm:notSpam",
-    ]);
+    expect(events(w).map((e) => `${e.event}:${e.stage}`)).toEqual(["screened:bayes-mid@0.50", "released:llm:notSpam"]);
     expect(w.db.count("bayes_state")).toBe(0);
     expect(JSON.parse(invocation(w).result_json!)).toMatchObject({
       verdict: "notSpam",
@@ -241,10 +234,7 @@ describe("bouncer-classify through the real drain", () => {
     // 'screened', not 'shunted'. An unsure classifier has not judged anything,
     // and the sweep asks a human precisely because nothing has.
     expect(mailboxesOf(w)).toEqual([quarantineId]);
-    expect(events(w).map((e) => `${e.event}:${e.stage}`)).toEqual([
-      "screened:bayes-mid@0.50",
-      "screened:llm:unsure",
-    ]);
+    expect(events(w).map((e) => `${e.event}:${e.stage}`)).toEqual(["screened:bayes-mid@0.50", "screened:llm:unsure"]);
     expect(w.db.count("bayes_state")).toBe(0);
     expect(JSON.parse(invocation(w).result_json!)).toMatchObject({
       verdict: "unsure",
@@ -260,10 +250,7 @@ describe("bouncer-classify through the real drain", () => {
     // A non-answer must never SHUNT mail either: it is held, undecided, and
     // becomes a human question — the model does not get to convict by prose.
     expect(mailboxesOf(w)).toEqual([quarantineId]);
-    expect(events(w).map((e) => `${e.event}:${e.stage}`)).toEqual([
-      "screened:bayes-mid@0.50",
-      "screened:llm:unsure",
-    ]);
+    expect(events(w).map((e) => `${e.event}:${e.stage}`)).toEqual(["screened:bayes-mid@0.50", "screened:llm:unsure"]);
     expect(JSON.parse(invocation(w).result_json!)).toMatchObject({ verdict: "unsure" });
   });
 
@@ -301,11 +288,7 @@ describe("bouncer-classify through the real drain", () => {
 describe("LLM_LABELS_TRAIN — the operator's switch, exercised via the override", () => {
   const done = () => {
     const calls: Array<{ status: string; result: Record<string, unknown> }> = [];
-    const fn = async (
-      status: "done" | "failed",
-      result: Record<string, unknown>,
-      _cost?: InvocationCost,
-    ) => {
+    const fn = async (status: "done" | "failed", result: Record<string, unknown>, _cost?: InvocationCost) => {
       calls.push({ status, result });
     };
     return { calls, fn };

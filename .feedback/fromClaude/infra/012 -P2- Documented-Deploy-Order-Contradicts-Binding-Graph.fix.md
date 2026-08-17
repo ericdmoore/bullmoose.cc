@@ -13,7 +13,7 @@ issue `011`).
 
 **3. Update the four narrations** — `infra/bootstrap.mjs:47-48`, `docs/DEPLOY.md:67-76`,
 `services/README.md:20-22`, `infra/README.md:32-33` — and specifically note that **ingest binds
-`AGENT`**, since the whole point of those paragraphs is to explain _why_ the order is what it is.
+`AGENT`**, since the whole point of those paragraphs is to explain *why* the order is what it is.
 `deploy-mail.yml:20-21`'s comment should say "(binds AccountDO + AGENT)".
 
 ## The stronger fix: derive the order instead of asserting it
@@ -23,8 +23,8 @@ The claim "deploy order **is** the binding graph" is checkable. `wrangler.jsonc`
 
 ```js
 // infra/bootstrap.mjs — sketch
-const deps = readAllConfigs(); // worker → [bound script names]
-const DEPLOY_ORDER = toposort(deps); // throws on a cycle
+const deps = readAllConfigs();                    // worker → [bound script names]
+const DEPLOY_ORDER = toposort(deps);              // throws on a cycle
 ```
 
 That turns a comment into an invariant, and it would have caught this. It also future-proofs the next

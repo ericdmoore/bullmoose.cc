@@ -20,14 +20,14 @@ The header taxonomy (`:11-21`) marks both as designed-not-built:
 
 Both are **implemented**, directly below in the same file:
 
-|                            |                        |
-| -------------------------- | ---------------------- |
-| `token create/list/revoke` | `admin.ts:230-261`     |
-| `agent bind/list`          | `admin.ts:147`, `:184` |
+| | |
+|---|---|
+| `token create/list/revoke` | `admin.ts:230-261` |
+| `agent bind/list` | `admin.ts:147`, `:184` |
 
 The file even disagrees with itself: the error message at `:279` lists
 `token create/list/revoke` under **implemented**, while `:280` still lists `agent` under
-_"designed (not yet built)"_.
+*"designed (not yet built)"*.
 
 So an operator reading the header concludes there is no way to mint a token from the CLI —
 and there has been all along. Fix: move `token` and `agent` to `✓` at `:19`/`:21`, and drop

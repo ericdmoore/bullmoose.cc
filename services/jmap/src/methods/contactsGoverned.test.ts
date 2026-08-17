@@ -109,10 +109,7 @@ describe("ContactCard/set against a governed book", () => {
 
   it("refuses the agent's update and destroy of an existing governed card", async () => {
     const h = harness();
-    const upd = await h.call(
-      { update: { cc_seed: { "emails/e/address": "eve@evil.com" } } },
-      AGENT_SCOPES,
-    );
+    const upd = await h.call({ update: { cc_seed: { "emails/e/address": "eve@evil.com" } } }, AGENT_SCOPES);
     expect(upd.notUpdated.cc_seed!.type).toBe("forbidden");
 
     const del = await h.call({ destroy: ["cc_seed"] }, AGENT_SCOPES);
@@ -128,9 +125,7 @@ describe("ContactCard/set against a governed book", () => {
       `SELECT event, address, actor FROM book_membership_log WHERE book_id = ?`,
       GOV,
     );
-    expect(log).toEqual([
-      { event: "added", address: "carol@good.com", actor: "someone@login.example" },
-    ]);
+    expect(log).toEqual([{ event: "added", address: "carol@good.com", actor: "someone@login.example" }]);
   });
 
   it("the agent still writes OPEN books freely — the bound is per-book, not per-writer", async () => {

@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FakeJmapClient } from "../jmap/FakeJmapClient";
 import { createDemoBackend } from "../jmap/demo";
-import {
-  defaultExpanded,
-  loadThread,
-  renderMessage,
-  threadAttachments,
-  ThreadViewError,
-} from "./threadView";
+import { defaultExpanded, loadThread, renderMessage, threadAttachments, ThreadViewError } from "./threadView";
 import type { Email } from "./types";
 
 const ACCOUNT = "acct-fake";

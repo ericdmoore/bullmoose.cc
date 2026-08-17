@@ -21,10 +21,7 @@ import { MIGRATIONS } from "./migrations.mjs";
  * `up`, which is the only place both orderings are safe.
  */
 
-const SCHEMAS = [
-  "../packages/mailstore/sql/data-plane.sql",
-  "../packages/mailstore/sql/control-plane.sql",
-];
+const SCHEMAS = ["../packages/mailstore/sql/data-plane.sql", "../packages/mailstore/sql/control-plane.sql"];
 
 /** `(table, column)` pairs every migration adds via ALTER TABLE … ADD COLUMN. */
 function migratedColumns(): Map<string, Set<string>> {
@@ -45,8 +42,7 @@ function migratedColumns(): Map<string, Set<string>> {
 /** `CREATE INDEX … ON <table> (<cols>)` from a schema file, newlines and all. */
 function schemaIndexes(sql: string): Array<{ name: string; table: string; columns: string[] }> {
   const out: Array<{ name: string; table: string; columns: string[] }> = [];
-  const re =
-    /CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+ON\s+(\w+)\s*\(([^)]*)\)/gis;
+  const re = /CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+ON\s+(\w+)\s*\(([^)]*)\)/gis;
   for (const m of sql.matchAll(re)) {
     const [, name, table, cols] = m;
     out.push({

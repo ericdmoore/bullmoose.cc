@@ -303,12 +303,7 @@ async function verdicts(
     freeRuntimeLive: opts.liveness.live,
     escalationWindowMs: opts.windowMs,
   };
-  const pure = mayClaim(
-    { dueAt: opts.dueAt, privacy: opts.privacy, requires },
-    opts.claimant,
-    budgetState,
-    NOW,
-  );
+  const pure = mayClaim({ dueAt: opts.dueAt, privacy: opts.privacy, requires }, opts.claimant, budgetState, NOW);
   const row = await db
     .prepare(
       `SELECT 1 AS hit FROM agent_invocations
@@ -581,9 +576,7 @@ describe("claim gate: SQL and mayClaim agree", () => {
             // budget-stranded set is (shape ∧ exhausted) — nothing else.
             const name = `${dName}/${pName}/${bName}/${lName}`;
             if (v.pure !== (shape && !budget.exhausted)) {
-              mismatches.push(
-                `${name}: gate=${v.pure} shape=${shape} exhausted=${budget.exhausted}`,
-              );
+              mismatches.push(`${name}: gate=${v.pure} shape=${shape} exhausted=${budget.exhausted}`);
             }
             if (shape && budget.exhausted) strandedCount += 1;
           }

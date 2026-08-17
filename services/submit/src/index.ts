@@ -1,11 +1,5 @@
 import { Mailstore } from "@bullmoose/mailstore";
-import {
-  CloudflareRelay,
-  MockRelay,
-  SesRelay,
-  type Envelope,
-  type OutboundRelay,
-} from "@bullmoose/outbound";
+import { CloudflareRelay, MockRelay, SesRelay, type Envelope, type OutboundRelay } from "@bullmoose/outbound";
 
 /**
  * Submit — outbound sends + delivery-event handling.

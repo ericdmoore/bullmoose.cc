@@ -34,7 +34,7 @@ never risks losing mail.
 - **talks to**: you, from any JMAP client / the CLI / popcorn
 - **runs on**: `jmap` + `ingest` workers (no agent)
 - **cloud config**: an Email Routing rule → `ingest`; a KV route whose
-  `forwardTo` lists a _verified_ Email Routing destination
+  `forwardTo` lists a *verified* Email Routing destination
 
 ```sh
 # account + login password
@@ -53,12 +53,8 @@ Deliver-and-forward is a property of the KV route value
 (`route:bullmoose.cc:eric`):
 
 ```jsonc
-{
-  "kind": "mailbox",
-  "accountId": "…",
-  "tenantId": "t_bullmoose",
-  "forwardTo": ["ericdmoore+bullmoose/eric@gmail.com"],
-} // Gmail keeps a copy
+{ "kind": "mailbox", "accountId": "…", "tenantId": "t_bullmoose",
+  "forwardTo": ["ericdmoore+bullmoose/eric@gmail.com"] }   // Gmail keeps a copy
 ```
 
 The ingest worker stores the message first, then `message.forward()`s the
@@ -190,11 +186,11 @@ agents (§2, §3) are unaffected.
 
 ## Client protocols
 
-| protocol        | endpoint                       | auth                    | notes                    |
-| --------------- | ------------------------------ | ----------------------- | ------------------------ |
-| JMAP            | `jmap.bullmoose.cc`            | Bearer or Basic (token) | modern clients, the CLI  |
-| POP3S           | `alpaca…ts.net:9995` (popcorn) | app-password            | legacy download clients  |
-| SMTP submission | `alpaca…ts.net:9587` (popcorn) | app-password            | legacy send; kettle-corn |
+| protocol | endpoint | auth | notes |
+|---|---|---|---|
+| JMAP | `jmap.bullmoose.cc` | Bearer or Basic (token) | modern clients, the CLI |
+| POP3S | `alpaca…ts.net:9995` (popcorn) | app-password | legacy download clients |
+| SMTP submission | `alpaca…ts.net:9587` (popcorn) | app-password | legacy send; kettle-corn |
 
 All three take a `bm_…` app-password from `bullmoose token create` —
 never the login password.

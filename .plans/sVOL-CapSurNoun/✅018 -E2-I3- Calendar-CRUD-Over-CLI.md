@@ -1,13 +1,13 @@
 # 018 -E2-I3- Calendar CRUD over CLI
 
-|                |                                                                          |
-| -------------- | ------------------------------------------------------------------------ |
-| **Kind**       | projection                                                               |
-| **Effort**     | **E2** — one CLI module over live methods; no schema, no new JMAP method |
-| **Impact**     | **I3** — unlocks _and_ human-verifiable                                  |
-| **Owner**      | **`s05-cli-crud`** T3                                                    |
-| **Depends on** | `016` (I/O contract) · `003` (recurrence correctness — see below)        |
-| **Status**     | ✅ done — `packages/cli/src/calendar.ts`                                 |
+| | |
+|---|---|
+| **Kind** | projection |
+| **Effort** | **E2** — one CLI module over live methods; no schema, no new JMAP method |
+| **Impact** | **I3** — unlocks *and* human-verifiable |
+| **Owner** | **`s05-cli-crud`** T3 |
+| **Depends on** | `016` (I/O contract) · `003` (recurrence correctness — see below) |
+| **Status** | ✅ done — `packages/cli/src/calendar.ts` |
 
 ## Delivery notes (build)
 
@@ -25,7 +25,7 @@ iCal bodies). Calendar writes send the `urn:…:calendars` capability and rely o
    The contradiction the unit flagged (§2) is resolved in favour of the escape hatch, per the
    build brief. The "refuse a bare edit against an occurrence id" clause is moot in this codebase:
    `CalendarEvent/getOccurrences` keys occurrences by `eventId`+`recurrenceId`, so there is no
-   standalone occurrence id a user could pass — the addressable id _is_ the master's.
+   standalone occurrence id a user could pass — the addressable id *is* the master's.
 
 2. **The `003` guard is enforced client-side.** `--rrule FREQ=YEARLY;BYMONTH=11;BYDAY=4TH`
    (Thanksgiving) is rejected up front with exit 2 naming `BYDAY`, before any write — so `agenda`
@@ -56,9 +56,9 @@ calls in the module.**
 conversion (`s05/arch.md:118-119`). The server side is live: `Calendar/set` at
 `services/jmap/src/methods/calendars.ts:76`, `CalendarEvent/set` at `:199`.
 
-**I3, both factors.** _Unlocks_ — T3 feeds T5 (`s05/devPlan.md:104-108`), and `_index.md` §3
+**I3, both factors.** *Unlocks* — T3 feeds T5 (`s05/devPlan.md:104-108`), and `_index.md` §3
 makes `018` half of the wave-2 acceptance moment: one write, three independent readers
-(MCP, `bullmoose calendar agenda`, CalDAV `PROPFIND`). _Human-verifiable_ — create an event
+(MCP, `bullmoose calendar agenda`, CalDAV `PROPFIND`). *Human-verifiable* — create an event
 in the CLI, open Apple Calendar, see it.
 
 ## Owned by
@@ -73,8 +73,8 @@ is refused. Command → method table at `s05/arch.md:121-128`; the recurrence re
 ## What sVOL adds
 
 **1. The `003` dependency, which s05 does not name.** `s05/devPlan.md:50-51` asserts the read
-model is "already decided _and built_" and scopes T3 to the write side only. That is true of
-the _storage_ model and false of the _expander_. `common/003` (P1, open) is a live
+model is "already decided *and built*" and scopes T3 to the write side only. That is true of
+the *storage* model and false of the *expander*. `common/003` (P1, open) is a live
 correctness bug: `calendar-core`'s RRULE parser accepts rules the expander silently
 mis-expands — `FREQ=YEARLY;BYMONTH=11;BYDAY=4TH` (Thanksgiving, **a shape Apple Calendar
 emits**) parses clean and expands to `start.day` of November every year (`_context.md` §5).
@@ -88,14 +88,14 @@ iCal → JMAP → iCal round-trip (`devPlan.md:56`) compares RRULE strings, not 
 passes either way.
 
 `rruleToRule` returning `null` on unsupported parts (`arch.md:143-144`) does not help here:
-these rules are _supported_ by the parser. Build `003` first, or accept that T3's tests
+these rules are *supported* by the parser. Build `003` first, or accept that T3's tests
 cannot distinguish a correct write from a wrong one on any repeating event.
 
 **2. T3 has two contradictory definitions of done.**
 
 - `devPlan.md:56-57` — "editing one occurrence leaves the other occurrences untouched
   (**asserted in a test, not assumed**)"
-- `devPlan.md:132-134`, under _Risk_ — "If it gets hard, ship create/delete plus whole-series
+- `devPlan.md:132-134`, under *Risk* — "If it gets hard, ship create/delete plus whole-series
   edit, and **defer single-occurrence editing** — a clear refusal is a perfectly good v1"
 
 Both verified verbatim. One task, two acceptance bars, and the escape hatch deletes the
@@ -113,7 +113,7 @@ its builder decides it was hard.
    Risk as the fallback. But `devPlan.md:56` says "asserted in a test, not assumed", which
    is not language you fall back from silently.
 3. **`Calendar/set` at `:76` and `CalendarEvent/set` at `:199` are registration lines.** The
-   refs circulating elsewhere in `sVOL` (`:101`, `:220`) point _inside_ those handlers, at
+   refs circulating elsewhere in `sVOL` (`:101`, `:220`) point *inside* those handlers, at
    the create phase. Both forms are real; the registration lines are the ones to grep for.
 4. **Nothing was run**, and no CalDAV request from a real Apple Calendar was made against
    this deployment — the human-verifiable claim rests on `dav.ts` handlers alone.

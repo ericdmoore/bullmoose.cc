@@ -154,11 +154,7 @@ export function bayesVerdict(
  * exactly 1 to its class count. If the vocabulary exceeds VOCAB_CAP after
  * the fold, it is pruned (see `prunedTokens`).
  */
-export function bayesTrain(
-  state: BayesState,
-  msg: BoundaryMessage,
-  label: "spam" | "ham",
-): BayesState {
+export function bayesTrain(state: BayesState, msg: BoundaryMessage, label: "spam" | "ham"): BayesState {
   const tokens: Record<string, TokenCounts> = { ...state.tokens };
   for (const tok of bayesTokens(msg)) {
     const prev = tokens[tok] ?? { s: 0, h: 0 };
@@ -181,10 +177,7 @@ export function bayesTrain(
  * risk while any hapax remains. Kept entries are returned in sorted-key
  * order, so a pruned state has one canonical serialization.
  */
-export function prunedTokens(
-  tokens: Record<string, TokenCounts>,
-  cap: number,
-): Record<string, TokenCounts> {
+export function prunedTokens(tokens: Record<string, TokenCounts>, cap: number): Record<string, TokenCounts> {
   const entries = Object.entries(tokens);
   if (entries.length <= cap) return tokens;
   entries.sort((a, b) => {

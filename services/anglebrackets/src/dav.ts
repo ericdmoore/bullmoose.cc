@@ -61,8 +61,7 @@ const CONFLICT_409 = "HTTP/1.1 409 Conflict";
  * (RFC 6352 §5.2) instead of needing a bespoke verb.
  */
 export const DAV_COMPLIANCE = "1, 3, addressbook, calendar-access, extended-mkcol";
-export const DAV_ALLOW =
-  "OPTIONS, GET, PUT, DELETE, PROPFIND, PROPPATCH, REPORT, MKCOL, MKCALENDAR";
+export const DAV_ALLOW = "OPTIONS, GET, PUT, DELETE, PROPFIND, PROPPATCH, REPORT, MKCOL, MKCALENDAR";
 
 /**
  * Client-chosen collection ids. Both specs create the collection AT the
@@ -76,12 +75,7 @@ export const DAV_ALLOW =
  */
 const COLLECTION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
-export async function handleDav(
-  request: Request,
-  url: URL,
-  env: Env,
-  principal: Principal,
-): Promise<Response> {
+export async function handleDav(request: Request, url: URL, env: Env, principal: Principal): Promise<Response> {
   const segments = url.pathname
     .replace(/^\/dav\/?/, "")
     .split("/")
@@ -155,15 +149,7 @@ export async function handleDav(
         // through the read-grant filter, and a rename is an owner-only
         // structural write with its own gate and its own audit string.
         if (request.method === "PROPPATCH") {
-          return await propPatchCollection(
-            env,
-            store,
-            principal,
-            access,
-            "addressbook",
-            bookId,
-            body,
-          );
+          return await propPatchCollection(env, store, principal, access, "addressbook", bookId, body);
         }
         return await handleBook(request, env, store, principal, access, bookId, body);
       }
@@ -193,15 +179,7 @@ export async function handleDav(
         return await handleCalendar(request, env, store, principal, access, calId, body);
       }
       if (segments.length === 4) {
-        return await handleEventResource(
-          request,
-          env,
-          store,
-          principal,
-          access,
-          calId,
-          segments[3]!,
-        );
+        return await handleEventResource(request, env, store, principal, access, calId, segments[3]!);
       }
     }
 
@@ -234,11 +212,7 @@ class DavError extends Error {
   }
 }
 
-function requireAccess(
-  principal: Principal,
-  accountId: string,
-  domain: MethodDomain,
-): AccountAccess {
+function requireAccess(principal: Principal, accountId: string, domain: MethodDomain): AccountAccess {
   const access = accountAccess(principal, accountId);
   if (!access) throw new DavError(404, "unknown account");
   if (!principalHasScope(principal, "read")) throw new DavError(403, "token lacks read");
@@ -248,12 +222,7 @@ function requireAccess(
   return access;
 }
 
-async function requireWrite(
-  env: Env,
-  principal: Principal,
-  access: AccountAccess,
-  bookId: string,
-): Promise<void> {
+async function requireWrite(env: Env, principal: Principal, access: AccountAccess, bookId: string): Promise<void> {
   if (!principalHasScope(principal, "contacts")) {
     throw new DavError(403, "token lacks the contacts scope");
   }
@@ -275,17 +244,10 @@ function davWriter(principal: Principal): ContactWriter {
 }
 
 /** grant_audit for granted principals (parity with the JMAP path). */
-async function audit(
-  env: Env,
-  principal: Principal,
-  access: AccountAccess,
-  method: string,
-): Promise<void> {
+async function audit(env: Env, principal: Principal, access: AccountAccess, method: string): Promise<void> {
   const grant = access.granted?.[0];
   if (!grant) return;
-  await env.DB.prepare(
-    `INSERT INTO grant_audit (grant_id, principal, account_id, method, at) VALUES (?, ?, ?, ?, ?)`,
-  )
+  await env.DB.prepare(`INSERT INTO grant_audit (grant_id, principal, account_id, method, at) VALUES (?, ?, ?, ?, ?)`)
     .bind(grant.grantId, principal.username, access.accountId, method, Date.now())
     .run();
 }
@@ -296,11 +258,7 @@ async function visibleBooks(store: Mailstore, access: AccountAccess): Promise<Ad
   return readable ? books.filter((b) => readable.has(b.id)) : books;
 }
 
-async function requireBook(
-  store: Mailstore,
-  access: AccountAccess,
-  bookId: string,
-): Promise<AddressBookRow> {
+async function requireBook(store: Mailstore, access: AccountAccess, bookId: string): Promise<AddressBookRow> {
   const book = (await visibleBooks(store, access)).find((b) => b.id === bookId);
   if (!book) throw new DavError(404, "no such address book");
   return book;
@@ -342,12 +300,7 @@ async function handleHome(
   return propfindResponse(body, resources);
 }
 
-function bookResource(
-  _env: Env,
-  access: AccountAccess,
-  book: AddressBookRow,
-  writable: boolean,
-): PropfindResource {
+function bookResource(_env: Env, access: AccountAccess, book: AddressBookRow, writable: boolean): PropfindResource {
   return {
     href: bookPath(access.accountId, book.id),
     props: {
@@ -671,21 +624,12 @@ async function multiget(
  * Apple syncs via sync-collection + multiget, not query). address-data
  * only when requested: inflating every photo from R2 for an etag-only
  * query would burn the CPU budget for nothing. */
-async function abQuery(
-  store: Mailstore,
-  access: AccountAccess,
-  book: AddressBookRow,
-  body: string,
-): Promise<Response> {
+async function abQuery(store: Mailstore, access: AccountAccess, book: AddressBookRow, body: string): Promise<Response> {
   const wantData = /address-data/i.test(body);
-  const rows = (await store.getContactCards(access.accountId)).filter(
-    (r) => r.addressBookId === book.id,
-  );
+  const rows = (await store.getContactCards(access.accountId)).filter((r) => r.addressBookId === book.id);
   const parts: string[] = [];
   for (const row of rows) {
-    const card = wantData
-      ? await store.inflateCardPhotos(access.tenantId, access.accountId, row.card)
-      : row.card;
+    const card = wantData ? await store.inflateCardPhotos(access.tenantId, access.accountId, row.card) : row.card;
     parts.push(
       response(cardPath(access.accountId, book.id, row.davName ?? row.id), {
         getetag: xmlEscape(etagOf(row.id, row.updatedAt)),
@@ -771,9 +715,7 @@ async function handleResource(
         davWriter(principal),
       );
       await store.bumpAddressBookCtags(access.accountId, [book.id]);
-      await commitChanges(env.ACCOUNT_DO, access.accountId, [
-        { collection: "ContactCard", updated: [existing.id] },
-      ]);
+      await commitChanges(env.ACCOUNT_DO, access.accountId, [{ collection: "ContactCard", updated: [existing.id] }]);
       return new Response(null, { status: 204, headers: { etag: etagOf(existing.id, now) } });
     }
 
@@ -807,9 +749,7 @@ async function handleResource(
       davWriter(principal),
     );
     await store.bumpAddressBookCtags(access.accountId, [book.id]);
-    await commitChanges(env.ACCOUNT_DO, access.accountId, [
-      { collection: "ContactCard", created: [id] },
-    ]);
+    await commitChanges(env.ACCOUNT_DO, access.accountId, [{ collection: "ContactCard", created: [id] }]);
     return new Response(null, { status: 201, headers: { etag: etagOf(id, now) } });
   }
 
@@ -823,9 +763,7 @@ async function handleResource(
     }
     await store.destroyContactCard(access.accountId, row.id, davWriter(principal));
     await store.bumpAddressBookCtags(access.accountId, [book.id]);
-    await commitChanges(env.ACCOUNT_DO, access.accountId, [
-      { collection: "ContactCard", destroyed: [row.id] },
-    ]);
+    await commitChanges(env.ACCOUNT_DO, access.accountId, [{ collection: "ContactCard", destroyed: [row.id] }]);
     return new Response(null, { status: 204 });
   }
 
@@ -840,21 +778,13 @@ async function visibleCalendars(store: Mailstore, access: AccountAccess): Promis
   return store.getCalendars(access.accountId);
 }
 
-async function requireCalendar(
-  store: Mailstore,
-  access: AccountAccess,
-  calId: string,
-): Promise<CalendarRow> {
+async function requireCalendar(store: Mailstore, access: AccountAccess, calId: string): Promise<CalendarRow> {
   const cal = (await visibleCalendars(store, access)).find((c) => c.id === calId);
   if (!cal) throw new DavError(404, "no such calendar");
   return cal;
 }
 
-async function requireCalWrite(
-  env: Env,
-  principal: Principal,
-  access: AccountAccess,
-): Promise<void> {
+async function requireCalWrite(env: Env, principal: Principal, access: AccountAccess): Promise<void> {
   if (!principalHasScope(principal, "calendar")) {
     throw new DavError(403, "token lacks the calendar scope");
   }
@@ -984,11 +914,7 @@ async function createCalendar(
 ): Promise<Response> {
   await requireCalOwner(env, principal, access, "dav:mkcalendar");
   if (!COLLECTION_ID_RE.test(calId)) {
-    throw precondition(
-      403,
-      "CAL:calendar-collection-location-ok",
-      `illegal collection name: ${calId}`,
-    );
+    throw precondition(403, "CAL:calendar-collection-location-ok", `illegal collection name: ${calId}`);
   }
 
   const props = parseMkcolProps(body);
@@ -997,11 +923,7 @@ async function createCalendar(
   // calendar that will reject its own writes.
   const unsupported = props.components.filter((c) => c.toUpperCase() !== "VEVENT");
   if (unsupported.length > 0) {
-    throw precondition(
-      403,
-      "CAL:supported-calendar-component",
-      `unsupported components: ${unsupported.join(", ")}`,
-    );
+    throw precondition(403, "CAL:supported-calendar-component", `unsupported components: ${unsupported.join(", ")}`);
   }
 
   const cals = await store.getCalendars(access.accountId);
@@ -1190,18 +1112,14 @@ async function propPatchCollection(
     if (isCal) {
       await store.updateCalendar(access.accountId, collectionId, patch);
       await store.bumpCalendarCtags(access.accountId, [collectionId]);
-      await commitChanges(env.ACCOUNT_DO, access.accountId, [
-        { collection: "Calendar", updated: [collectionId] },
-      ]);
+      await commitChanges(env.ACCOUNT_DO, access.accountId, [{ collection: "Calendar", updated: [collectionId] }]);
     } else {
       await store.updateAddressBook(access.accountId, collectionId, {
         name: patch.name,
         description: patch.description,
       });
       await store.bumpAddressBookCtags(access.accountId, [collectionId]);
-      await commitChanges(env.ACCOUNT_DO, access.accountId, [
-        { collection: "AddressBook", updated: [collectionId] },
-      ]);
+      await commitChanges(env.ACCOUNT_DO, access.accountId, [{ collection: "AddressBook", updated: [collectionId] }]);
     }
   }
 
@@ -1210,9 +1128,7 @@ async function propPatchCollection(
       .filter((v) => v.status === status)
       .map((v) => renderEmptyProp(v.op))
       .join("");
-  const href = isCal
-    ? calPath(access.accountId, collectionId)
-    : bookPath(access.accountId, collectionId);
+  const href = isCal ? calPath(access.accountId, collectionId) : bookPath(access.accountId, collectionId);
   return multistatus([
     responseXml(href, [
       { props: render(OK_200), status: OK_200 },
@@ -1316,12 +1232,7 @@ async function calSyncCollection(
   return multistatus(parts, `${SYNC_PREFIX}${since}`);
 }
 
-async function calMultiget(
-  store: Mailstore,
-  access: AccountAccess,
-  cal: CalendarRow,
-  body: string,
-): Promise<Response> {
+async function calMultiget(store: Mailstore, access: AccountAccess, cal: CalendarRow, body: string): Promise<Response> {
   const parts: string[] = [];
   for (const rawHref of hrefsOf(body)) {
     const name = decodeURIComponent(rawHref.split("/").filter(Boolean).pop() ?? "");
@@ -1345,12 +1256,7 @@ async function calMultiget(
 /** calendar-query: time-range filter honored via the occurrence expander;
  * other filters return the whole calendar (Apple syncs via
  * sync-collection + multiget — query is a fallback path). */
-async function calQuery(
-  store: Mailstore,
-  access: AccountAccess,
-  cal: CalendarRow,
-  body: string,
-): Promise<Response> {
+async function calQuery(store: Mailstore, access: AccountAccess, cal: CalendarRow, body: string): Promise<Response> {
   const tr = body.match(/<(?:[A-Za-z0-9_-]+:)?time-range([^>]*)\/?>/);
   let after: number | undefined;
   let before: number | undefined;
@@ -1367,9 +1273,7 @@ async function calQuery(
   }
 
   const wantData = /calendar-data/i.test(body);
-  const rows = (await store.getCalendarEvents(access.accountId)).filter(
-    (r) => r.calendarId === cal.id,
-  );
+  const rows = (await store.getCalendarEvents(access.accountId)).filter((r) => r.calendarId === cal.id);
   const parts: string[] = [];
   for (const row of rows) {
     if (after !== undefined || before !== undefined) {
@@ -1471,9 +1375,7 @@ async function handleEventResource(
         updatedAt: now,
       });
       await store.bumpCalendarCtags(access.accountId, [cal.id]);
-      await commitChanges(env.ACCOUNT_DO, access.accountId, [
-        { collection: "CalendarEvent", updated: [existing.id] },
-      ]);
+      await commitChanges(env.ACCOUNT_DO, access.accountId, [{ collection: "CalendarEvent", updated: [existing.id] }]);
       return new Response(null, {
         status: 204,
         headers: { etag: etagOf(existing.id, now), ...warned },
@@ -1499,9 +1401,7 @@ async function handleEventResource(
       },
     ]);
     await store.bumpCalendarCtags(access.accountId, [cal.id]);
-    await commitChanges(env.ACCOUNT_DO, access.accountId, [
-      { collection: "CalendarEvent", created: [id] },
-    ]);
+    await commitChanges(env.ACCOUNT_DO, access.accountId, [{ collection: "CalendarEvent", created: [id] }]);
     return new Response(null, { status: 201, headers: { etag: etagOf(id, now), ...warned } });
   }
 
@@ -1515,9 +1415,7 @@ async function handleEventResource(
     }
     await store.destroyCalendarEvents(access.accountId, [row.id]);
     await store.bumpCalendarCtags(access.accountId, [cal.id]);
-    await commitChanges(env.ACCOUNT_DO, access.accountId, [
-      { collection: "CalendarEvent", destroyed: [row.id] },
-    ]);
+    await commitChanges(env.ACCOUNT_DO, access.accountId, [{ collection: "CalendarEvent", destroyed: [row.id] }]);
     return new Response(null, { status: 204 });
   }
 
@@ -1533,10 +1431,8 @@ function calUidConflict(detail: string): DavError {
 }
 
 const calHomePath = (acct: string) => `/dav/calendars/${encodeURIComponent(acct)}/`;
-const calPath = (acct: string, cal: string) =>
-  `/dav/calendars/${encodeURIComponent(acct)}/${encodeURIComponent(cal)}/`;
-const eventPath = (acct: string, cal: string, name: string) =>
-  `${calPath(acct, cal)}${encodeURIComponent(name)}.ics`;
+const calPath = (acct: string, cal: string) => `/dav/calendars/${encodeURIComponent(acct)}/${encodeURIComponent(cal)}/`;
+const eventPath = (acct: string, cal: string, name: string) => `${calPath(acct, cal)}${encodeURIComponent(name)}.ics`;
 const stripIcs = (name: string) => name.replace(/\.ics$/i, "");
 
 function uidConflict(detail: string): DavError {
@@ -1580,8 +1476,7 @@ const principalPath = (acct: string) => `/dav/principals/${encodeURIComponent(ac
 const homePath = (acct: string) => `/dav/addressbooks/${encodeURIComponent(acct)}/`;
 const bookPath = (acct: string, book: string) =>
   `/dav/addressbooks/${encodeURIComponent(acct)}/${encodeURIComponent(book)}/`;
-const cardPath = (acct: string, book: string, name: string) =>
-  `${bookPath(acct, book)}${encodeURIComponent(name)}.vcf`;
+const cardPath = (acct: string, book: string, name: string) => `${bookPath(acct, book)}${encodeURIComponent(name)}.vcf`;
 
 const stripVcf = (name: string) => name.replace(/\.vcf$/i, "");
 
@@ -1672,9 +1567,7 @@ function responseXml(hrefPath: string, groups: Propstat[]): string {
       .map(
         (g) =>
           `<D:propstat><D:prop>${g.props}</D:prop><D:status>${g.status}</D:status>` +
-          (g.description
-            ? `<D:responsedescription>${xmlEscape(g.description)}</D:responsedescription>`
-            : "") +
+          (g.description ? `<D:responsedescription>${xmlEscape(g.description)}</D:responsedescription>` : "") +
           `</D:propstat>`,
       )
       .join("") +
@@ -1756,8 +1649,7 @@ function parseMkcolProps(body: string): MkcolProps {
 
   // address_books has no colour column (data-plane.sql); calendars does.
   const color = text(innerOf(body, "calendar-color"));
-  const description =
-    text(innerOf(body, "calendar-description")) ?? text(innerOf(body, "addressbook-description"));
+  const description = text(innerOf(body, "calendar-description")) ?? text(innerOf(body, "addressbook-description"));
 
   return {
     displayname: text(innerOf(body, "displayname")),
@@ -1804,8 +1696,7 @@ function namespaceBindings(body: string): Record<string, string> {
 function parsePropPatch(body: string): PropPatchOp[] {
   const ns = namespaceBindings(body);
   const ops: PropPatchOp[] = [];
-  const blockRe =
-    /<(?:[A-Za-z0-9_-]+:)?(set|remove)(?:\s[^>]*)?>([\s\S]*?)<\/(?:[A-Za-z0-9_-]+:)?\1\s*>/g;
+  const blockRe = /<(?:[A-Za-z0-9_-]+:)?(set|remove)(?:\s[^>]*)?>([\s\S]*?)<\/(?:[A-Za-z0-9_-]+:)?\1\s*>/g;
   let block;
   while ((block = blockRe.exec(body)) !== null) {
     const action = block[1] as "set" | "remove";
@@ -1817,9 +1708,7 @@ function parsePropPatch(body: string): PropPatchOp[] {
     while ((child = childRe.exec(propBlock)) !== null) {
       const prefix = child[1] ? child[1].slice(0, -1) : "";
       // A prefix bound on the element itself wins over the document map.
-      const local = new RegExp(`xmlns${prefix ? `:${prefix}` : ""}\\s*=\\s*"([^"]*)"`).exec(
-        child[3] ?? "",
-      );
+      const local = new RegExp(`xmlns${prefix ? `:${prefix}` : ""}\\s*=\\s*"([^"]*)"`).exec(child[3] ?? "");
       ops.push({
         action,
         name: child[2]!,
@@ -1855,15 +1744,12 @@ function renderEmptyProp(op: PropPatchOp): string {
 
 /** Raw inner XML of the first `localName` element, or null when absent. */
 function innerOf(body: string, localName: string): string | null {
-  const re = new RegExp(
-    `<(?:[A-Za-z0-9_-]+:)?${localName}[^>]*>([\\s\\S]*?)</(?:[A-Za-z0-9_-]+:)?${localName}>`,
-  );
+  const re = new RegExp(`<(?:[A-Za-z0-9_-]+:)?${localName}[^>]*>([\\s\\S]*?)</(?:[A-Za-z0-9_-]+:)?${localName}>`);
   const m = body.match(re);
   return m ? m[1]! : null;
 }
 
-const text = (raw: string | null): string | null =>
-  raw === null ? null : xmlUnescape(raw).trim() || null;
+const text = (raw: string | null): string | null => (raw === null ? null : xmlUnescape(raw).trim() || null);
 
 /** A DavError carrying a spec precondition element, not bare prose. */
 function precondition(status: number, element: string, detail: string): DavError {
@@ -1925,9 +1811,7 @@ function hrefsOf(body: string): string[] {
 }
 
 function textOf(body: string, localName: string): string {
-  const re = new RegExp(
-    `<(?:[A-Za-z0-9_-]+:)?${localName}[^>]*>([\\s\\S]*?)</(?:[A-Za-z0-9_-]+:)?${localName}>`,
-  );
+  const re = new RegExp(`<(?:[A-Za-z0-9_-]+:)?${localName}[^>]*>([\\s\\S]*?)</(?:[A-Za-z0-9_-]+:)?${localName}>`);
   const m = body.match(re);
   return m ? xmlUnescape(m[1]!) : "";
 }
@@ -1935,11 +1819,7 @@ function textOf(body: string, localName: string): string {
 const href = (path: string) => `<D:href>${xmlEscape(path)}</D:href>`;
 
 function xmlEscape(s: string): string {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 
 function xmlUnescape(s: string): string {

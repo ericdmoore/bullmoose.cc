@@ -28,9 +28,10 @@ jobs:
           cache: npm
       - run: npm ci
       # TypeScript's counterpart to the `gofmt -l` and `go vet` gates below.
-      # Go had two and TS had none (s06's open item). Lints the whole tree in
-      # ~3s, so it costs nothing beside the suite — and it is a LINTER, not a
-      # formatter: nothing in this step rewrites a file.
+      # Go had two and TS had none (s06's open item); TS now has both too.
+      # `--check` is the `gofmt -l` half: it reports and never rewrites, so CI
+      # stays read-only. Both run in well under a second on the whole tree.
+      - run: npm run fmt:check
       - run: npm run lint
       - run: npm run typecheck
       # `npm test` includes `src/contract.test.ts`, which runs the contract

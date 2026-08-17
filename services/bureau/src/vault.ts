@@ -49,16 +49,7 @@ export async function sealAndStore(
        kind = excluded.kind, enc_json = excluded.enc_json,
        meta_json = excluded.meta_json, updated_at = excluded.updated_at`,
   )
-    .bind(
-      `vc_${crypto.randomUUID()}`,
-      principalId,
-      name,
-      kind,
-      JSON.stringify(sealed),
-      metaJson,
-      now,
-      now,
-    )
+    .bind(`vc_${crypto.randomUUID()}`, principalId, name, kind, JSON.stringify(sealed), metaJson, now, now)
     .run();
 }
 
@@ -68,15 +59,8 @@ export async function sealAndStore(
  * re-attaches (bureau.md §5). Only `enc_json` + `updated_at` move — deliberately
  * NOT `meta_json`, which is the agent's to own.
  */
-export async function reseal(
-  env: Env,
-  principalId: string,
-  name: string,
-  secret: string,
-): Promise<boolean> {
-  const existing = await env.DB.prepare(
-    `SELECT id FROM vault_credentials WHERE principal_id = ? AND name = ?`,
-  )
+export async function reseal(env: Env, principalId: string, name: string, secret: string): Promise<boolean> {
+  const existing = await env.DB.prepare(`SELECT id FROM vault_credentials WHERE principal_id = ? AND name = ?`)
     .bind(principalId, name)
     .first<{ id: string }>();
   if (!existing) return false;
@@ -109,11 +93,7 @@ export async function verifyOpenable(
     .first<{ enc_json: string; principal_id: string }>();
   if (!row) return { ok: false, reason: "not found" };
   try {
-    await openSecret(
-      env.VAULT_MASTER_KEY,
-      JSON.parse(row.enc_json) as SealedSecret,
-      vaultAad(row.principal_id, name),
-    );
+    await openSecret(env.VAULT_MASTER_KEY, JSON.parse(row.enc_json) as SealedSecret, vaultAad(row.principal_id, name));
     return { ok: true };
   } catch {
     return { ok: false, reason: "cannot decrypt" };
@@ -156,9 +136,7 @@ export async function credentialContract(
   principalId: string,
   name: string,
 ): Promise<{ kind: string; meta: Record<string, unknown> } | null> {
-  const row = await env.DB.prepare(
-    `SELECT kind, meta_json FROM vault_credentials WHERE principal_id = ? AND name = ?`,
-  )
+  const row = await env.DB.prepare(`SELECT kind, meta_json FROM vault_credentials WHERE principal_id = ? AND name = ?`)
     .bind(principalId, name)
     .first<{ kind: string; meta_json: string }>();
   if (!row) return null;

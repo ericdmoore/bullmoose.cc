@@ -57,7 +57,7 @@ is frequently **deliberately distinct**. `eric+netflix@` exists precisely so it
 can be told apart from `eric+bank@`. Collapsing them destroys information the
 user created on purpose.
 
-**Therefore:** plus-tag stripping proposes a _link_, never an automatic merge,
+**Therefore:** plus-tag stripping proposes a *link*, never an automatic merge,
 and the proposal states which tag it dropped so a human can say "no, those are
 separate on purpose."
 
@@ -67,7 +67,7 @@ separate on purpose."
 not a normalization, and it is wrong for anyone with international contacts.
 
 **Therefore:** E.164 normalization takes a configured default region, and any
-match that _depended_ on that assumption records it on the proposal — "matched
+match that *depended* on that assumption records it on the proposal — "matched
 assuming US" — so the assumption is visible at the moment someone approves it.
 A match between two already-`+`-prefixed numbers carries no such caveat and is
 strictly stronger evidence.
@@ -86,7 +86,7 @@ Real canonicalization is a USPS/postal-dataset problem, and we do not have that
 dataset.
 
 **Therefore:** address matching is the **weakest** tier by construction. A
-suffix-present match is decent evidence; a suffix-absent match is a _hint_ that
+suffix-present match is decent evidence; a suffix-absent match is a *hint* that
 needs corroboration from another axis, never a merge on its own.
 
 ## 🔴 Trap 4 — a merge can widen an agent's outbound allowlist
@@ -96,7 +96,7 @@ feature.
 
 `agent_bindings.recipients_book_id` names the **governing book** that bounds who
 an agent may email (`services/agent/src/outbound.ts`), and `NULL` there means
-_cannot send at all_ — the book is an allowlist, fail-closed.
+*cannot send at all* — the book is an allowlist, fail-closed.
 
 So: **merging contact X (in the governing book) with contact Y (not in it) can
 carry Y's addresses into the allowlist.** An agent that could not email Y a
@@ -104,7 +104,7 @@ minute ago now can, and nothing about the merge looks like a permission change.
 That is precisely the self-grant shape s10 closed for direct book edits — and
 dedupe is a side door into the same room.
 
-**Therefore, non-negotiable:** a merge that changes the _effective membership_ of
+**Therefore, non-negotiable:** a merge that changes the *effective membership* of
 any governing book is a **book-membership change** and goes through the existing
 chain — an `ActionProposal`, a `book_membership_log` row with `via_proposal_id`,
 and the same human approval any other widening needs. crm@ **proposes**; it never
@@ -120,11 +120,11 @@ path stays quiet.
 **Confidence tiers, not a boolean.** Each axis emits evidence with a strength,
 ordered by how much noise it tolerated to match:
 
-| tier          | example                                                                                    | disposition                                                  |
-| ------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| **exact**     | byte-identical `+1` E.164; identical normalized email at a provider whose rules we know    | propose merge, high confidence                               |
-| **canonical** | phone matched via default region; email dot-stripped at Gmail; address with suffix present | propose merge, record the assumption                         |
-| **fuzzy**     | address with suffix absent; plus-tag collapse                                              | propose **link**, not merge — needs corroboration or a human |
+| tier | example | disposition |
+|---|---|---|
+| **exact** | byte-identical `+1` E.164; identical normalized email at a provider whose rules we know | propose merge, high confidence |
+| **canonical** | phone matched via default region; email dot-stripped at Gmail; address with suffix present | propose merge, record the assumption |
+| **fuzzy** | address with suffix absent; plus-tag collapse | propose **link**, not merge — needs corroboration or a human |
 
 Two independent fuzzy axes agreeing is stronger than one canonical axis alone;
 that combination rule should be explicit and tested rather than emergent.
@@ -150,15 +150,15 @@ and a claim without its evidence cannot be audited or undone intelligently.
 
 ## Decisions — Eric, 2026-08-15
 
-1. **Plus-tags: LINK, not merge.** _"In your tagged alias case link is fine."_
+1. **Plus-tags: LINK, not merge.** *"In your tagged alias case link is fine."*
    Two records, marked related, distinction preserved.
-2. **Phone: US default**, for now. A match that _depended_ on that assumption
+2. **Phone: US default**, for now. A match that *depended* on that assumption
    still ranks below one between two already-`+`-prefixed numbers.
 3. **Canonical form, with crm@ working toward conformance** — Eric's shape:
-   _"Use a canonical form? And the CRM agent attempts to ensure conformance — or
-   nudges human for more info to get to conformance."_ Already half-built; see
+   *"Use a canonical form? And the CRM agent attempts to ensure conformance — or
+   nudges human for more info to get to conformance."* Already half-built; see
    below.
-4. **No auto-apply.** _"Not interested in auto apply yet."_ crm@ proposes.
+4. **No auto-apply.** *"Not interested in auto apply yet."* crm@ proposes.
 
 Still open: whether to bring in a postal dataset, or stay suffix-present-only
 and accept missing some real duplicates. Missing a duplicate is cheap; merging
@@ -193,9 +193,9 @@ a build item, but not an invention: the vocabulary exists and is registered.
 ## Auto-apply: the axis is reversibility, not risk
 
 Eric raised the two obvious ways to gate auto-apply — a deterministic policy
-engine, or an LLM self-assessment of risk — and then observed that _"if there are
+engine, or an LLM self-assessment of risk — and then observed that *"if there are
 checkpoints in the data, then even an agent who makes a terrible error could be
-surrounded by supporting structure."_
+surrounded by supporting structure."*
 
 That last observation is the load-bearing one, and **the architecture already
 agrees with it.** `services/jmap/src/methods/actionProposal.ts:45`:
@@ -207,34 +207,34 @@ tier 3  irreversible → a human action every time
 ```
 
 **Those are not risk levels. They are reversibility levels.** Nothing assesses
-how dangerous a tier-1 action is; it applies immediately _because it can be
-undone_.
+how dangerous a tier-1 action is; it applies immediately *because it can be
+undone*.
 
 Which reframes the choice. What decides safety is not how good the assessor is —
 it is how contained the consequence is:
 
 - **Reversible** → auto-apply freely. Safety comes from the undo. An LLM
   assessment is fine here precisely because being wrong is cheap.
-- **Irreversible** → _neither_ approach suffices. A deterministic policy that is
+- **Irreversible** → *neither* approach suffices. A deterministic policy that is
   wrong is exactly as unrecoverable as a model that is wrong. It needs a human,
   or it needs to be made reversible first.
 
 **So the move for crm@ is not to pick an assessor — it is to remove the
 irreversibility.** A merge implemented as tombstone-plus-link (which `relatedTo`
 gives us anyway) is undoable in one operation. That makes it tier 1, where
-auto-apply would be safe _by construction_ rather than by judgment. Don't assess
+auto-apply would be safe *by construction* rather than by judgment. Don't assess
 the risk; delete it.
 
 ### Division of labour, where a judgment is genuinely needed
 
-- **LLM for the part that requires judgment** — _"are these two records the same
-  person?"_ Irreducibly fuzzy, well suited to a model, and a wrong answer on a
+- **LLM for the part that requires judgment** — *"are these two records the same
+  person?"* Irreducibly fuzzy, well suited to a model, and a wrong answer on a
   reversible merge costs one undo.
-- **Deterministic for the consequence** — _"does this widen a governing book?"_
+- **Deterministic for the consequence** — *"does this widen a governing book?"*
   is a set difference against `recipients_book_id`. Exact, instant, testable, and
   it does not get more accurate with a better model.
 
-⚠️ The failure mode to avoid is asking the model that _proposed_ a merge whether
+⚠️ The failure mode to avoid is asking the model that *proposed* a merge whether
 that merge is risky. Those are two draws from one distribution, and they fail in
 the **correlated** direction: the cases where it is most confidently wrong are
 the ones it will rate lowest-risk. Same shape as the confused-deputy problem the
@@ -243,15 +243,15 @@ reasoning process.
 
 ### The best version is agent-authored policy
 
-Eric's third framing — _"perhaps the agent could even help author a policy for
-'these types of small changes are now auto approved'"_ — is stronger than either
+Eric's third framing — *"perhaps the agent could even help author a policy for
+'these types of small changes are now auto approved'"* — is stronger than either
 option, because of **what the human reviews**. Per-instance LLM assessment asks
 you to trust a judgment you never see. Agent-authored policy asks you to review a
 **rule, once**, after which it runs deterministically, auditably and diffably.
 The model does what it is good at — noticing the pattern, drafting the rule — and
 the ratified artifact is testable, versionable and revocable.
 
-Per-instance assessment is easier to _build_. Its cost is deferred and
+Per-instance assessment is easier to *build*. Its cost is deferred and
 asymmetric: a past decision cannot be explained, the boundary cannot be
 unit-tested, and it drifts silently when the model changes underneath it. A
 policy file has a diff.

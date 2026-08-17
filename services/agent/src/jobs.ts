@@ -67,11 +67,7 @@ export type ExpandResult =
   | { ok: false; refusals: Refusal[] };
 
 /** Read one node row by id — the whole graph slice, in one query. */
-export async function getJobNode(
-  env: Env,
-  accountId: string,
-  id: string,
-): Promise<JobNodeRow | null> {
+export async function getJobNode(env: Env, accountId: string, id: string): Promise<JobNodeRow | null> {
   return env.DB.prepare(
     `SELECT id, account_id, binding_id, binding_name, job_id, parent_id, needs_json, depth,
             authority_json, privacy, due_at, context_json, email_id, status
@@ -122,9 +118,7 @@ export interface JobSpec {
   emailId?: string | null;
 }
 
-export type StartJobResult =
-  | { ok: true; jobId: string; rootId: string }
-  | { ok: false; refusals: Refusal[] };
+export type StartJobResult = { ok: true; jobId: string; rootId: string } | { ok: false; refusals: Refusal[] };
 
 /**
  * Create a Job and its root node.
@@ -154,14 +148,7 @@ export async function startJob(env: Env, spec: JobSpec): Promise<StartJobResult>
   if (binding.enabled !== 1) {
     return {
       ok: false,
-      refusals: [
-        refusal(
-          "identity",
-          binding.name,
-          "an enabled binding",
-          "the binding is disabled (008 kill switch)",
-        ),
-      ],
+      refusals: [refusal("identity", binding.name, "an enabled binding", "the binding is disabled (008 kill switch)")],
     };
   }
 
@@ -174,13 +161,7 @@ export async function startJob(env: Env, spec: JobSpec): Promise<StartJobResult>
 
   const jobId = `job_${crypto.randomUUID()}`;
   const rootId = `inv_${crypto.randomUUID()}`;
-  const ceiling = bindingCeiling(
-    spec.accountId,
-    spec.bindingId,
-    jobId,
-    cfg.jobs,
-    spec.facets ?? {},
-  );
+  const ceiling = bindingCeiling(spec.accountId, spec.bindingId, jobId, cfg.jobs, spec.facets ?? {});
 
   // Caps: the caller's ask, narrowed by the binding's and by the absolute
   // ceilings. `Math.min` and not a refusal, because these are the caller's own
@@ -189,19 +170,11 @@ export async function startJob(env: Env, spec: JobSpec): Promise<StartJobResult>
   // runnable AND bounded.
   const maxNodes = Math.max(
     1,
-    Math.min(
-      spec.maxNodes,
-      JOB_MAX_NODES_CEILING,
-      numberOr(cfg.jobs?.maxNodes, JOB_MAX_NODES_CEILING),
-    ),
+    Math.min(spec.maxNodes, JOB_MAX_NODES_CEILING, numberOr(cfg.jobs?.maxNodes, JOB_MAX_NODES_CEILING)),
   );
   const maxDepth = Math.max(
     0,
-    Math.min(
-      spec.maxDepth,
-      JOB_MAX_DEPTH_CEILING,
-      numberOr(cfg.jobs?.maxDepth, JOB_MAX_DEPTH_CEILING),
-    ),
+    Math.min(spec.maxDepth, JOB_MAX_DEPTH_CEILING, numberOr(cfg.jobs?.maxDepth, JOB_MAX_DEPTH_CEILING)),
   );
   const budgetMicros =
     spec.budgetMicros === undefined || spec.budgetMicros === null
@@ -287,11 +260,7 @@ export async function startJob(env: Env, spec: JobSpec): Promise<StartJobResult>
  * mistake jobs-and-facets §5 names. A task is claimable the instant it exists —
  * by a DIFFERENT runtime, while the planner is still writing its own result row.
  */
-export async function expandPlan(
-  env: Env,
-  parent: JobNodeRow,
-  plan: unknown,
-): Promise<ExpandResult> {
+export async function expandPlan(env: Env, parent: JobNodeRow, plan: unknown): Promise<ExpandResult> {
   if (!parent.job_id) {
     return {
       ok: false,
@@ -341,12 +310,7 @@ export async function expandPlan(
     return {
       ok: false,
       refusals: [
-        refusal(
-          effective.denial.axis,
-          effective.denial.requested,
-          effective.denial.ceiling,
-          effective.denial.why,
-        ),
+        refusal(effective.denial.axis, effective.denial.requested, effective.denial.ceiling, effective.denial.why),
       ],
     };
   }
@@ -507,10 +471,7 @@ async function insertChildren(
  * whose row vanished is skipped rather than faked. Only `done` deps can be here
  * at all — the claim gate would not have let this node be claimed otherwise.
  */
-export async function joinContext(
-  env: Env,
-  node: JobNodeRow,
-): Promise<Array<{ id: string; result: unknown }>> {
+export async function joinContext(env: Env, node: JobNodeRow): Promise<Array<{ id: string; result: unknown }>> {
   let needs: string[] = [];
   try {
     const parsed = JSON.parse(node.needs_json ?? "[]") as unknown;

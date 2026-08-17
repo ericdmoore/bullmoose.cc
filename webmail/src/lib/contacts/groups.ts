@@ -101,10 +101,7 @@ export function isMember(group: Pick<ContactCard, "members">, uid: string): bool
  * (vCard permits a URI uid), and an unescaped one would silently address the
  * wrong path (`pointerToken`, form.ts).
  */
-export function addMemberPatch(
-  group: Pick<ContactCard, "members" | "kind">,
-  uid: string,
-): CardPatch {
+export function addMemberPatch(group: Pick<ContactCard, "members" | "kind">, uid: string): CardPatch {
   const existing = memberUids(group);
   if (existing.length === 0) {
     // RFC 9553 §2.1.5: a card with `members` MUST have `kind: "group"`, so a
@@ -129,11 +126,7 @@ export function removeMemberPatch(group: Pick<ContactCard, "members">, uid: stri
 }
 
 /** A new group card. `members` and `kind` are set together, per RFC 9553. */
-export function groupCreateSpec(
-  name: string,
-  uids: string[] = [],
-  bookId?: string,
-): Record<string, unknown> {
+export function groupCreateSpec(name: string, uids: string[] = [], bookId?: string): Record<string, unknown> {
   return {
     kind: GROUP_KIND,
     name: { full: name.trim() },
@@ -205,11 +198,7 @@ export async function loadGroupMembers(
  * reverse index — rather than fetching every group and scanning its members
  * in the browser.
  */
-export async function loadGroupsContaining(
-  client: JmapClient,
-  accountId: string,
-  uid: string,
-): Promise<ContactCard[]> {
+export async function loadGroupsContaining(client: JmapClient, accountId: string, uid: string): Promise<ContactCard[]> {
   const page = await loadCards(client, accountId, {
     filter: groupsContainingFilter(uid),
     limit: 100,

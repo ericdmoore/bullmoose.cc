@@ -648,12 +648,8 @@ describe("GET /console/accounts/{accountId}/resources", () => {
 
   it("refuses a grant-reached account and is notFound for an unreachable one", async () => {
     const { env } = world();
-    expect((await get(env, "/console/accounts/acct_stranger/resources", full.token)).status).toBe(
-      403,
-    );
-    expect((await get(env, "/console/accounts/acct_nobody/resources", full.token)).status).toBe(
-      404,
-    );
+    expect((await get(env, "/console/accounts/acct_stranger/resources", full.token)).status).toBe(403);
+    expect((await get(env, "/console/accounts/acct_nobody/resources", full.token)).status).toBe(404);
   });
 });
 
@@ -664,11 +660,7 @@ const RESOURCE = (q: string): string => `/console/resources/AddressBook/ab_vendo
 describe("GET /console/resources/{collection}/{collectionId}", () => {
   it("returns who-could and who-did for the window, tombstones intact", async () => {
     const { env } = world();
-    const { status, body } = await get(
-      env,
-      RESOURCE(`accountId=acct_eric&at=${NOW}&since=${ago(90)}`),
-      full.token,
-    );
+    const { status, body } = await get(env, RESOURCE(`accountId=acct_eric&at=${NOW}&since=${ago(90)}`), full.token);
     expect(status).toBe(200);
     expect(body.resource).toEqual({
       collection: "AddressBook",
@@ -718,9 +710,7 @@ describe("GET /console/resources/{collection}/{collectionId}", () => {
 
     // The directory the forensic view renders audit principals through.
     expect(body.parties).toEqual(
-      expect.arrayContaining([
-        { accountId: "acct_stranger", name: "Dana (contractor)", address: "dana@example.com" },
-      ]),
+      expect.arrayContaining([{ accountId: "acct_stranger", name: "Dana (contractor)", address: "dana@example.com" }]),
     );
     // No credential is a resource this picker can name, so there is never a row.
     expect(body.bureauGrants).toEqual([]);
@@ -728,11 +718,7 @@ describe("GET /console/resources/{collection}/{collectionId}", () => {
 
   it("windows the trail — and only the trail", async () => {
     const { env } = world();
-    const { body } = await get(
-      env,
-      RESOURCE(`accountId=acct_eric&at=${NOW}&since=${ago(3)}`),
-      full.token,
-    );
+    const { body } = await get(env, RESOURCE(`accountId=acct_eric&at=${NOW}&since=${ago(3)}`), full.token);
     const audit = body.audit as Array<Record<string, unknown>>;
     expect(audit.map((a) => a.grantId)).toEqual(["none"]);
     // The grant set is NOT windowed: an earlier `at` must still be answerable.
@@ -741,11 +727,7 @@ describe("GET /console/resources/{collection}/{collectionId}", () => {
 
   it("respects `at` as an upper bound, not just `since`", async () => {
     const { env } = world();
-    const { body } = await get(
-      env,
-      RESOURCE(`accountId=acct_eric&at=${ago(5)}&since=${ago(90)}`),
-      full.token,
-    );
+    const { body } = await get(env, RESOURCE(`accountId=acct_eric&at=${ago(5)}&since=${ago(90)}`), full.token);
     const audit = body.audit as Array<Record<string, unknown>>;
     expect(audit.map((a) => a.at)).toEqual([ago(6), ago(9)]);
   });
@@ -775,9 +757,7 @@ describe("GET /console/resources/{collection}/{collectionId}", () => {
   it("400s a missing accountId and 404s a collection it does not serve", async () => {
     const { env } = world();
     expect((await get(env, RESOURCE(`at=${NOW}&since=0`), full.token)).status).toBe(400);
-    expect(
-      (await get(env, `/console/resources/tokens/x?accountId=acct_eric`, full.token)).status,
-    ).toBe(404);
+    expect((await get(env, `/console/resources/tokens/x?accountId=acct_eric`, full.token)).status).toBe(404);
   });
 
   it("400s a non-numeric instant rather than silently reading `now`", async () => {

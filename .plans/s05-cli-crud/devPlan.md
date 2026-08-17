@@ -5,7 +5,7 @@
 
 ---
 
-## T1 — The I/O contract _(first, and not negotiable)_
+## T1 — The I/O contract *(first, and not negotiable)*
 
 **Blocks:** `packages/cli/bin/bullmoose.mjs` · `src/main.ts` · every command module.
 
@@ -47,7 +47,7 @@ cheapest correctness test available); create/edit/rm work from both flags and st
 - `calendar create|rename|rm`
 - `calendar event create|edit|rm`, iCal or JSON via stdin
 - `calendar export [--ics]`
-- **Recurrence — write side only.** The read model is already decided _and built_
+- **Recurrence — write side only.** The read model is already decided *and built*
   (`arch.md` §3: master + rule, expand on demand, capped). T3 implements the write
   decision: bare `edit` hits the **master**; `--occurrence <recurrenceId>` writes a
   `recurrenceOverrides` entry; a bare edit aimed at an occurrence id is **refused** with a

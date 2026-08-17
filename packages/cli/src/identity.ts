@@ -77,11 +77,7 @@ export function appendTextSignature(body: string, signature: string): string {
  * set, so a text-only signature still travels on a multipart/alternative send
  * rather than appearing in one half of the message and not the other.
  */
-export function appendHtmlSignature(
-  html: string,
-  htmlSignature: string,
-  textSignature = "",
-): string {
+export function appendHtmlSignature(html: string, htmlSignature: string, textSignature = ""): string {
   const snippet = htmlSignature
     ? htmlSignature
     : textSignature
@@ -103,9 +99,7 @@ export function resolveIdentity(list: JmapIdentity[], selector: string): JmapIde
     list.find((i) => i.email === wanted) ??
     list.find((i) => i.email.toLowerCase() === wanted.toLowerCase());
   if (!found) {
-    notFound(
-      `identity ${selector} not found; available: ${list.map((i) => i.email).join(", ") || "(none)"}`,
-    );
+    notFound(`identity ${selector} not found; available: ${list.map((i) => i.email).join(", ") || "(none)"}`);
   }
   return found;
 }
@@ -122,11 +116,7 @@ export function renderIdentity(i: JmapIdentity): string {
   return `${i.id}\t${label}${marks.length > 0 ? `\t${marks.join(" ")}` : ""}`;
 }
 
-export async function cmdIdentity(
-  db: DatabaseSync,
-  positionals: string[],
-  opts: IdentityOpts,
-): Promise<void> {
+export async function cmdIdentity(db: DatabaseSync, positionals: string[], opts: IdentityOpts): Promise<void> {
   const [sub, arg] = positionals;
   const settings = requireSettings(db);
   const accountId = pickAccountId(settings, opts.account);
@@ -159,9 +149,7 @@ export async function cmdIdentity(
 
     case "signature": {
       if (!arg) {
-        usage(
-          "bullmoose identity signature <id-or-email> [--text <file|->] [--html <file>] [--clear]",
-        );
+        usage("bullmoose identity signature <id-or-email> [--text <file|->] [--html <file>] [--clear]");
       }
       const found = resolveIdentity(await listIdentities(client, accountId), arg);
       const patch = signaturePatch(opts);
@@ -178,8 +166,7 @@ export async function cmdIdentity(
     }
 
     case "add": {
-      if (!arg)
-        usage("bullmoose identity add <email> [--name <n>] [--reply-to <addr>] [--bcc <addr>]");
+      if (!arg) usage("bullmoose identity add <email> [--name <n>] [--reply-to <addr>] [--bcc <addr>]");
       const spec: Record<string, unknown> = { email: arg };
       if (opts.name !== undefined) spec.name = opts.name;
       if (opts["reply-to"] !== undefined) spec.replyTo = [{ email: opts["reply-to"] }];
@@ -256,12 +243,7 @@ function setIdentity(
 }
 
 /** arch.md §1.7: a write REPORTS the state it landed on, so a loop can chain. */
-function report(
-  opts: IdentityOpts,
-  res: Record<string, unknown>,
-  what: Record<string, unknown>,
-  line: string,
-): void {
+function report(opts: IdentityOpts, res: Record<string, unknown>, what: Record<string, unknown>, line: string): void {
   const state = (res.newState as string | undefined) ?? null;
   if (opts.ids) return emitIds([String(what.id)]);
   if (opts.json) return emitJson({ ...what, state });

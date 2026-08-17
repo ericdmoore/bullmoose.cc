@@ -159,10 +159,10 @@ export async function callJmap<T = Record<string, unknown>>(
     return (await handler(args, ctx)) as T;
   } catch (err) {
     if (err instanceof MethodError) {
-      throw new ToolError(
-        `${method} failed: ${err.type}${err.description ? ` — ${err.description}` : ""}`,
-        { jmapMethod: method, error: err.toArgs() },
-      );
+      throw new ToolError(`${method} failed: ${err.type}${err.description ? ` — ${err.description}` : ""}`, {
+        jmapMethod: method,
+        error: err.toArgs(),
+      });
     }
     throw err;
   }
@@ -186,8 +186,7 @@ const HINTS: Record<string, string> = {
     "weekly / monthly / yearly repeat, optionally with byMonthDay, count or until) " +
     "or create the occurrences as separate single events.",
   uid: "Choose a different uid, or update the existing object instead of creating a second one.",
-  calendarIds:
-    "Pass a calendarId that calendar_list returned. This server allows exactly one calendar per event.",
+  calendarIds: "Pass a calendarId that calendar_list returned. This server allows exactly one calendar per event.",
   addressBookIds:
     "Pass an addressBookId that contacts_list_books returned. This server allows exactly one address book per card.",
   start:
@@ -210,11 +209,7 @@ function rejected(what: string, e: JmapSetError): ToolError {
 }
 
 /** The single-object `create` half of a `/set` response, or a useful error. */
-export function tookCreate(
-  res: JmapSetResponse,
-  cid: string,
-  what: string,
-): Record<string, unknown> {
+export function tookCreate(res: JmapSetResponse, cid: string, what: string): Record<string, unknown> {
   const bad = res.notCreated[cid];
   if (bad) throw rejected(what, bad);
   const ok = res.created[cid];
@@ -223,11 +218,7 @@ export function tookCreate(
 }
 
 /** The single-object `update` half of a `/set` response, or a useful error. */
-export function tookUpdate(
-  res: JmapSetResponse,
-  id: string,
-  what: string,
-): Record<string, unknown> {
+export function tookUpdate(res: JmapSetResponse, id: string, what: string): Record<string, unknown> {
   const bad = res.notUpdated[id];
   if (bad) throw rejected(what, bad);
   if (!(id in res.updated)) {
@@ -237,11 +228,7 @@ export function tookUpdate(
 }
 
 /** The single-object `destroy` half of a `/set` response, or a useful error. */
-export function tookDestroy(
-  res: JmapSetResponse,
-  id: string,
-  what: string,
-): Record<string, unknown> {
+export function tookDestroy(res: JmapSetResponse, id: string, what: string): Record<string, unknown> {
   const bad = res.notDestroyed[id];
   if (bad) throw rejected(what, bad);
   if (!res.destroyed.includes(id)) {

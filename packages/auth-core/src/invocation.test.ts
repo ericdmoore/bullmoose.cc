@@ -56,9 +56,7 @@ function world() {
       .prepare(`UPDATE agent_invocations SET status = ? WHERE account_id = ? AND id = ?`)
       .run(status, ACCOUNT, id);
   const disableBinding = () =>
-    w.db.sqlite
-      .prepare(`UPDATE agent_bindings SET enabled = 0 WHERE account_id = ? AND id = ?`)
-      .run(ACCOUNT, BINDING);
+    w.db.sqlite.prepare(`UPDATE agent_bindings SET enabled = 0 WHERE account_id = ? AND id = ?`).run(ACCOUNT, BINDING);
   return { w, db: w.env.DB, seedInvocation, setStatus, disableBinding };
 }
 
@@ -164,9 +162,7 @@ describe("the mint", () => {
     const { w, db, seedInvocation } = world();
     seedInvocation("inv_1");
     w.db.sqlite.prepare(`UPDATE accounts SET deleted_at = 1 WHERE id = ?`).run(ACCOUNT);
-    expect(
-      await issueInvocationToken(db, { invocationId: "inv_1", accountId: ACCOUNT }),
-    ).toBeNull();
+    expect(await issueInvocationToken(db, { invocationId: "inv_1", accountId: ACCOUNT })).toBeNull();
     expect(w.db.count("agent_invocation_tokens")).toBe(0);
   });
 });

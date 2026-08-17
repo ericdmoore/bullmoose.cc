@@ -127,8 +127,7 @@ function makeEmail(partial: Partial<Email> & Pick<Email, "subject">): Email {
     mailboxIds: partial.mailboxIds ?? { "mb-inbox": true },
     keywords: partial.keywords ?? {},
     size: partial.size ?? 2048,
-    receivedAt:
-      partial.receivedAt ?? new Date(Date.UTC(2026, 6, 1, 9, 0, 0) + n * 3_600_000).toISOString(),
+    receivedAt: partial.receivedAt ?? new Date(Date.UTC(2026, 6, 1, 9, 0, 0) + n * 3_600_000).toISOString(),
     messageId: partial.messageId ?? [`${id}@bullmoose.test`],
     inReplyTo: partial.inReplyTo ?? null,
     from: partial.from ?? [{ name: "Ada Lovelace", email: "ada@example.test" }],
@@ -265,8 +264,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
       totalEmails: inBox.length,
       unreadEmails: inBox.filter((e) => e.keywords.$seen !== true).length,
       totalThreads: new Set(inBox.map((e) => e.threadId)).size,
-      unreadThreads: new Set(inBox.filter((e) => e.keywords.$seen !== true).map((e) => e.threadId))
-        .size,
+      unreadThreads: new Set(inBox.filter((e) => e.keywords.$seen !== true).map((e) => e.threadId)).size,
     };
   };
 
@@ -387,10 +385,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
       // fake that enforced a guard the server does not have would let a client
       // ship believing it was protected.
       if (!patch) {
-        return [
-          "error",
-          { type: "invalidArguments", description: "VacationResponse/set updates the singleton" },
-        ];
+        return ["error", { type: "invalidArguments", description: "VacationResponse/set updates the singleton" }];
       }
 
       // Merge exactly the five fields the server merges (vacation.ts:42-48),
@@ -425,9 +420,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
     "Email/query": (args) => {
       const filter = (args.filter as EmailFilter | null) ?? null;
       const matched = emails.filter((e) => matchesFilter(e, filter));
-      matched.sort(
-        sorter(args.sort as Array<{ property: string; isAscending: boolean }> | undefined),
-      );
+      matched.sort(sorter(args.sort as Array<{ property: string; isAscending: boolean }> | undefined));
       const position = typeof args.position === "number" ? args.position : 0;
       const limit = typeof args.limit === "number" ? args.limit : matched.length;
       return {
@@ -484,10 +477,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
       const needed = requiredScopes(args);
       const missing = needed.filter((s) => !scopes.has(s));
       if (missing.length > 0) {
-        return [
-          "error",
-          { type: "forbidden", description: `token lacks scope: ${missing.join(", ")}` },
-        ];
+        return ["error", { type: "forbidden", description: `token lacks scope: ${missing.join(", ")}` }];
       }
 
       const oldState = state();
@@ -498,16 +488,13 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
       const destroyed: string[] = [];
       const notDestroyed: Record<string, unknown> = {};
 
-      for (const [cid, spec] of Object.entries(
-        (args.create as Record<string, Record<string, unknown>>) ?? {},
-      )) {
+      for (const [cid, spec] of Object.entries((args.create as Record<string, Record<string, unknown>>) ?? {})) {
         const mailboxIds = truthyKeys(spec.mailboxIds);
         if (mailboxIds.length === 0) {
           notCreated[cid] = { type: "invalidProperties", description: "mailboxIds is required" };
           continue;
         }
-        const bodyValues =
-          (spec.bodyValues as Record<string, { value?: string }> | undefined) ?? {};
+        const bodyValues = (spec.bodyValues as Record<string, { value?: string }> | undefined) ?? {};
         const textPartId = (spec.textBody as Array<{ partId?: string }> | undefined)?.[0]?.partId;
         const text = textPartId ? (bodyValues[textPartId]?.value ?? "") : "";
         const email = makeEmail({
@@ -534,9 +521,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
         };
       }
 
-      for (const [id, patch] of Object.entries(
-        (args.update as Record<string, Record<string, unknown>>) ?? {},
-      )) {
+      for (const [id, patch] of Object.entries((args.update as Record<string, Record<string, unknown>>) ?? {})) {
         const email = findEmail(id);
         if (!email) {
           notUpdated[id] = { type: "notFound" };
@@ -556,8 +541,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
         }
       }
 
-      const touched =
-        Object.keys(created).length + Object.keys(updated).length + destroyed.length > 0;
+      const touched = Object.keys(created).length + Object.keys(updated).length + destroyed.length > 0;
       return {
         accountId: ACCOUNT,
         oldState,
@@ -605,8 +589,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
           continue;
         }
         const rcptTo =
-          spec.envelope?.rcptTo?.map((r) => r.email) ??
-          [...email.to, ...email.cc, ...email.bcc].map((a) => a.email);
+          spec.envelope?.rcptTo?.map((r) => r.email) ?? [...email.to, ...email.cc, ...email.bcc].map((a) => a.email);
         if (rcptTo.length === 0) {
           notCreated[cid] = { type: "invalidProperties", description: "no recipients" };
           continue;
@@ -700,8 +683,7 @@ function requiredScopes(args: Record<string, unknown>): string[] {
   if (update) {
     for (const patch of Object.values(update)) {
       const keys = Object.keys(patch ?? {});
-      const isMailboxKey = (k: string): boolean =>
-        k === "mailboxIds" || k.startsWith("mailboxIds/");
+      const isMailboxKey = (k: string): boolean => k === "mailboxIds" || k.startsWith("mailboxIds/");
       if (keys.some(isMailboxKey)) need.add("move");
       if (keys.length === 0 || keys.some((k) => !isMailboxKey(k))) need.add("annotate");
     }
@@ -761,10 +743,8 @@ function matchesFilter(email: Email, filter: EmailFilter | null): boolean {
   }
 
   const c = filter as EmailFilterCondition;
-  const like = (haystack: string, needle: string): boolean =>
-    haystack.toLowerCase().includes(needle.toLowerCase());
-  const addrText = (list: Email["from"]): string =>
-    list.map((a) => `${a.name ?? ""} ${a.email}`).join(" ");
+  const like = (haystack: string, needle: string): boolean => haystack.toLowerCase().includes(needle.toLowerCase());
+  const addrText = (list: Email["from"]): string => list.map((a) => `${a.name ?? ""} ${a.email}`).join(" ");
 
   if (c.inMailbox !== undefined && email.mailboxIds[c.inMailbox] !== true) return false;
   if (c.hasKeyword !== undefined && email.keywords[c.hasKeyword] !== true) return false;
@@ -815,8 +795,7 @@ function projectEmail(email: Email, properties: string[] | undefined, wantBodies
   }
   if (!properties) return full;
   const out: Record<string, unknown> = { id: full.id };
-  for (const p of properties)
-    if (p in full) out[p] = (full as unknown as Record<string, unknown>)[p];
+  for (const p of properties) if (p in full) out[p] = (full as unknown as Record<string, unknown>)[p];
   return out as unknown as Email;
 }
 

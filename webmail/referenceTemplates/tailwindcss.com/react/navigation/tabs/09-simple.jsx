@@ -1,11 +1,11 @@
-import { ChevronDownIcon } from "@heroicons/react/16/solid";
+import { ChevronDownIcon } from '@heroicons/react/16/solid'
 
 const tabs = [
-  { name: "My Account", href: "#", current: false },
-  { name: "Company", href: "#", current: false },
-  { name: "Team Members", href: "#", current: true },
-  { name: "Billing", href: "#", current: false },
-];
+  { name: 'My Account', href: '#', current: false },
+  { name: 'Company', href: '#', current: false },
+  { name: 'Team Members', href: '#', current: true },
+  { name: 'Billing', href: '#', current: false },
+]
 
 export default function Example() {
   return (
@@ -38,9 +38,7 @@ export default function Example() {
                   <a
                     href={tab.href}
                     className={
-                      tab.current
-                        ? "text-indigo-600 dark:text-indigo-400"
-                        : "hover:text-gray-700 dark:hover:text-white"
+                      tab.current ? 'text-indigo-600 dark:text-indigo-400' : 'hover:text-gray-700 dark:hover:text-white'
                     }
                   >
                     {tab.name}
@@ -52,5 +50,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  );
+  )
 }

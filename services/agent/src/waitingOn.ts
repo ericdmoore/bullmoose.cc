@@ -127,11 +127,7 @@ export async function sweepWaitingOn(env: Env, now: number = Date.now()): Promis
  *  thread is spoken for — an armed watch (don't duplicate) or a prior offer in
  *  ANY status (pending = already asked; terminal = already answered, including
  *  a decline we must honour). */
-async function threadAlreadyHandled(
-  env: Env,
-  accountId: string,
-  threadId: string,
-): Promise<boolean> {
+async function threadAlreadyHandled(env: Env, accountId: string, threadId: string): Promise<boolean> {
   const like = `%"threadId":"${threadId}"%`;
   const watch = await env.DB.prepare(
     `SELECT 1 AS hit FROM watches WHERE account_id = ? AND condition_json LIKE ? LIMIT 1`,
@@ -149,13 +145,7 @@ async function threadAlreadyHandled(
 
 /** Mint the carrier invocation (done-on-arrival, cost 0 — no model ran) and the
  *  `watch-offer` proposal, exactly as a fired watch does. */
-async function offer(
-  env: Env,
-  e: SentRow,
-  to: string,
-  self: string | null,
-  now: number,
-): Promise<void> {
+async function offer(env: Env, e: SentRow, to: string, self: string | null, now: number): Promise<void> {
   const carrierId = `inv_${crypto.randomUUID()}`;
   await env.DB.prepare(
     `INSERT INTO agent_invocations
@@ -203,9 +193,7 @@ async function offer(
         `day${days === 1 ? "" : "s"} ago and haven't heard back. Approve and I'll watch the ` +
         `thread and draft a follow-up if it's still quiet in a few days; if ${to} replies first, ` +
         `the watch closes itself and you hear nothing.`,
-      evidence: [
-        { realm: "Email", objectId: e.id, note: "the message you're waiting on a reply to" },
-      ],
+      evidence: [{ realm: "Email", objectId: e.id, note: "the message you're waiting on a reply to" }],
       expiresInMs: OFFER_EXPIRY_MS,
     },
   );

@@ -1,10 +1,10 @@
 const people = [
-  { id: 1, name: "Annette Black", selected: true },
-  { id: 2, name: "Cody Fisher", selected: true },
-  { id: 3, name: "Courtney Henry", selected: false },
-  { id: 4, name: "Kathryn Murphy", selected: false },
-  { id: 5, name: "Theresa Webb", selected: false },
-];
+  { id: 1, name: 'Annette Black', selected: true },
+  { id: 2, name: 'Cody Fisher', selected: true },
+  { id: 3, name: 'Courtney Henry', selected: false },
+  { id: 4, name: 'Kathryn Murphy', selected: false },
+  { id: 5, name: 'Theresa Webb', selected: false },
+]
 
 export default function Example() {
   return (
@@ -14,10 +14,7 @@ export default function Example() {
         {people.map((person, personIdx) => (
           <div key={personIdx} className="relative flex gap-3 py-4">
             <div className="min-w-0 flex-1 text-sm/6">
-              <label
-                htmlFor={`person-${person.id}`}
-                className="font-medium text-gray-900 select-none dark:text-white"
-              >
+              <label htmlFor={`person-${person.id}`} className="font-medium text-gray-900 select-none dark:text-white">
                 {person.name}
               </label>
             </div>
@@ -56,5 +53,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  );
+  )
 }

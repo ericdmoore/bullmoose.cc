@@ -20,16 +20,16 @@
   // AccountDO is declared by bullmoose-jmap; bind it cross-script.
   "durable_objects": {
     "bindings": [
-      { "name": "ACCOUNT_DO", "class_name": "AccountDO", "script_name": "bullmoose-jmap" },
-    ],
+      { "name": "ACCOUNT_DO", "class_name": "AccountDO", "script_name": "bullmoose-jmap" }
+    ]
   },
 
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "bullmoose-mail-shard0",
-      "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9",
-    },
+      "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9"
+    }
   ],
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "bullmoose-mail-blobs" }],
   "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }],
@@ -47,7 +47,7 @@
   "services": [
     { "binding": "SUBMIT", "service": "bullmoose-submit" },
     { "binding": "BUREAU", "service": "bullmoose-bureau" },
-    { "binding": "OAUTH", "service": "bullmoose-oauth" },
+    { "binding": "OAUTH", "service": "bullmoose-oauth" }
   ],
 
   // Workers AI — the free-allocation "cheap" model tier.
@@ -65,8 +65,8 @@
     // equal the URL the user pastes into their client EXACTLY.
     "MCP_RESOURCE_URI": "https://mcp.bullmoose.cc/mcp",
     // Claude reads authorization_servers[0] and never falls back.
-    "OAUTH_ISSUER": "https://auth.bullmoose.cc",
-  },
+    "OAUTH_ISSUER": "https://auth.bullmoose.cc"
+  }
 
   // Secrets (wrangler secret put):
   //   INTERNAL_TOKEN      — shared with ingest (poke) and submit (relay)

@@ -143,9 +143,7 @@ export async function hasInboundSince(
   const where = threadId
     ? `account_id = ? AND thread_id = ? AND received_at > ? AND from_json LIKE ?`
     : `account_id = ? AND received_at > ? AND from_json LIKE ?`;
-  const binds = threadId
-    ? [accountId, threadId, since, `%${sender}%`]
-    : [accountId, since, `%${sender}%`];
+  const binds = threadId ? [accountId, threadId, since, `%${sender}%`] : [accountId, since, `%${sender}%`];
   const row = await env.DB.prepare(`SELECT 1 AS hit FROM emails WHERE ${where} LIMIT 1`)
     .bind(...binds)
     .first<{ hit: number }>();
@@ -203,9 +201,7 @@ async function fire(env: Env, w: WatchRow, now: number): Promise<string> {
       // touches nothing in the world).
       kind: isFollowup ? "watch-followup" : "watch-notify",
       tier: isFollowup ? 2 : 1,
-      subject: w.source_ref
-        ? { realm: "Email", objectId: w.source_ref }
-        : { realm: "Watch", objectId: w.id },
+      subject: w.source_ref ? { realm: "Email", objectId: w.source_ref } : { realm: "Watch", objectId: w.id },
       payload: {
         watchId: w.id,
         conditionType: w.condition_type,
@@ -213,12 +209,7 @@ async function fire(env: Env, w: WatchRow, now: number): Promise<string> {
         // arming it. The actual draft text is composed at approval time or by
         // the human — v1 carries the intent, not a model-generated body
         // (drafting-on-fire is a v2 refinement once cost history exists).
-        to:
-          typeof action.to === "string"
-            ? action.to
-            : typeof cond.sender === "string"
-              ? cond.sender
-              : null,
+        to: typeof action.to === "string" ? action.to : typeof cond.sender === "string" ? cond.sender : null,
         note: typeof action.note === "string" ? action.note : null,
       },
       rationale: watchRationale(w, cond),
@@ -249,9 +240,7 @@ async function closeWatch(
 ): Promise<void> {
   // Guarded on 'armed': if a concurrent sweep already moved it, this changes
   // nothing and the double-fire is prevented at the write.
-  await env.DB.prepare(
-    `UPDATE watches SET status = ?, fired_at = ?, proposal_id = ? WHERE id = ? AND status = 'armed'`,
-  )
+  await env.DB.prepare(`UPDATE watches SET status = ?, fired_at = ?, proposal_id = ? WHERE id = ? AND status = 'armed'`)
     .bind(status, now, proposalId, id)
     .run();
 }

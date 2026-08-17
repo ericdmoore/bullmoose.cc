@@ -29,9 +29,7 @@ function harness(tenant = TENANT, domain = DOMAIN): Harness {
   const db = fakeD1();
   const kv = fakeKV();
   db.seed("tenants", [{ id: tenant, name: tenant, status: "active", created_at: 1 }]);
-  db.seed("domains", [
-    { domain, tenant_id: tenant, status: "active", cf_zone_id: "z1", created_at: 1 },
-  ]);
+  db.seed("domains", [{ domain, tenant_id: tenant, status: "active", cf_zone_id: "z1", created_at: 1 }]);
   const env: Env = {
     DB: db,
     ROUTES: kv.ns,
@@ -145,9 +143,7 @@ describe("POST /agent-bindings mints the supervisory grant", () => {
     expect(JSON.parse(rows[0]!.scopes)).toEqual(["read", "draft"]);
     expect(rows[0]!.collection).toBeNull();
     // …and its birth is in the lifecycle chain, like every other grant.
-    expect(h.db.count("grant_lifecycle", "grant_id = ? AND event = 'created'", rows[0]!.id)).toBe(
-      1,
-    );
+    expect(h.db.count("grant_lifecycle", "grant_id = ? AND event = 'created'", rows[0]!.id)).toBe(1);
   });
 
   it("an explicit ownerEmail wins over the structural guess", async () => {
@@ -250,25 +246,26 @@ describe("POST /agent-bindings/{id}/supervisor — the backfill for agents that 
     const emily = await account(h, "editor");
     // An agent as it exists TODAY: bound, with the grant deleted to simulate a
     // pre-T7 binding.
-    const created = (await (
-      await h.post("/agent-bindings", { email: `editor@${DOMAIN}`, name: "emily" })
-    ).json()) as { bindingId: string };
+    const created = (await (await h.post("/agent-bindings", { email: `editor@${DOMAIN}`, name: "emily" })).json()) as {
+      bindingId: string;
+    };
     h.db.query("DELETE FROM grants");
     h.db.query("DELETE FROM grant_lifecycle");
     expect(liveGrants(h, eric.accountId, emily.accountId).length).toBe(0);
 
-    const first = (await (
-      await h.post(`/agent-bindings/${created.bindingId}/supervisor`, {})
-    ).json()) as { ok: boolean; supervision: Supervision };
+    const first = (await (await h.post(`/agent-bindings/${created.bindingId}/supervisor`, {})).json()) as {
+      ok: boolean;
+      supervision: Supervision;
+    };
     expect(first.ok).toBe(true);
     expect(first.supervision.created).toBe(true);
     expect(first.supervision.scopes).toEqual(["read", "draft"]);
 
     // IDEMPOTENT: an operator must be able to run this over every binding
     // without thinking about which ones already have it.
-    const again = (await (
-      await h.post(`/agent-bindings/${created.bindingId}/supervisor`, {})
-    ).json()) as { supervision: Supervision };
+    const again = (await (await h.post(`/agent-bindings/${created.bindingId}/supervisor`, {})).json()) as {
+      supervision: Supervision;
+    };
     expect(again.supervision.granted).toBe(true);
     expect(again.supervision.created).toBe(false);
     expect(again.supervision.grantId).toBe(first.supervision.grantId);
@@ -281,9 +278,9 @@ describe("POST /agent-bindings/{id}/supervisor — the backfill for agents that 
     await account(h, "dad");
     const mom = await account(h, "mom");
     const emily = await account(h, "editor");
-    const created = (await (
-      await h.post("/agent-bindings", { email: `editor@${DOMAIN}`, name: "emily" })
-    ).json()) as { bindingId: string };
+    const created = (await (await h.post("/agent-bindings", { email: `editor@${DOMAIN}`, name: "emily" })).json()) as {
+      bindingId: string;
+    };
 
     const refused = await h.post(`/agent-bindings/${created.bindingId}/supervisor`, {});
     expect(refused.status).toBe(422);
@@ -301,9 +298,9 @@ describe("POST /agent-bindings/{id}/supervisor — the backfill for agents that 
     const h = harness();
     const eric = await account(h, "eric");
     const emily = await account(h, "editor");
-    const created = (await (
-      await h.post("/agent-bindings", { email: `editor@${DOMAIN}`, name: "emily" })
-    ).json()) as { bindingId: string };
+    const created = (await (await h.post("/agent-bindings", { email: `editor@${DOMAIN}`, name: "emily" })).json()) as {
+      bindingId: string;
+    };
     // The operator decides this one is watch-only.
     h.db.query(
       `UPDATE grants SET scopes = ? WHERE grantee_account_id = ? AND target_account_id = ?`,
@@ -312,9 +309,9 @@ describe("POST /agent-bindings/{id}/supervisor — the backfill for agents that 
       emily.accountId,
     );
 
-    const res = (await (
-      await h.post(`/agent-bindings/${created.bindingId}/supervisor`, {})
-    ).json()) as { supervision: Supervision };
+    const res = (await (await h.post(`/agent-bindings/${created.bindingId}/supervisor`, {})).json()) as {
+      supervision: Supervision;
+    };
     // Reported as it IS, not as provisioning would like it: a re-run must never
     // silently restore authority a human deliberately removed.
     expect(res.supervision.created).toBe(false);
@@ -332,9 +329,10 @@ describe("POST /agent-bindings/{id}/supervisor — the backfill for agents that 
     const h = harness();
     const eric = await account(h, "eric");
     const emily = await account(h, "editor");
-    const created = (await (
-      await h.post("/agent-bindings", { email: `editor@${DOMAIN}`, name: "emily" })
-    ).json()) as { bindingId: string; supervision: Supervision };
+    const created = (await (await h.post("/agent-bindings", { email: `editor@${DOMAIN}`, name: "emily" })).json()) as {
+      bindingId: string;
+      supervision: Supervision;
+    };
     const revoke = await worker.fetch(
       new Request(`https://provision.test/grants/${created.supervision.grantId}`, {
         method: "DELETE",
@@ -345,9 +343,9 @@ describe("POST /agent-bindings/{id}/supervisor — the backfill for agents that 
     expect(((await revoke.json()) as { revoked: boolean }).revoked).toBe(true);
     expect(liveGrants(h, eric.accountId, emily.accountId).length).toBe(0);
 
-    const again = (await (
-      await h.post(`/agent-bindings/${created.bindingId}/supervisor`, {})
-    ).json()) as { supervision: Supervision };
+    const again = (await (await h.post(`/agent-bindings/${created.bindingId}/supervisor`, {})).json()) as {
+      supervision: Supervision;
+    };
     expect(again.supervision.created).toBe(true);
     expect(again.supervision.grantId).not.toBe(created.supervision.grantId);
     expect(liveGrants(h, eric.accountId, emily.accountId).length).toBe(1);
@@ -384,17 +382,13 @@ describe("POST /bouncer supervises the whole household", () => {
       expect(JSON.parse(rows[0]!.scopes)).toEqual(["read", "draft"]);
     }
     // The agent account is NOT a supervisor of the bouncer.
-    expect(
-      h.db.count("grants", "grantee_account_id NOT IN (?, ?)", dad.accountId, mom.accountId),
-    ).toBe(0);
+    expect(h.db.count("grants", "grantee_account_id NOT IN (?, ?)", dad.accountId, mom.accountId)).toBe(0);
   });
 
   it("a re-run BACKFILLS a bouncer provisioned before T7, and duplicates nothing", async () => {
     const h = harness();
     const dad = await account(h, "dad");
-    const first = (await (
-      await h.post("/bouncer", { tenantId: TENANT, domain: DOMAIN })
-    ).json()) as {
+    const first = (await (await h.post("/bouncer", { tenantId: TENANT, domain: DOMAIN })).json()) as {
       accountId: string;
     };
     // Simulate the live pre-T7 bouncer: binding and book intact, no grant.
@@ -410,9 +404,7 @@ describe("POST /bouncer supervises the whole household", () => {
     expect(liveGrants(h, dad.accountId, first.accountId).length).toBe(1);
 
     // And a THIRD run writes nothing new.
-    const third = (await (
-      await h.post("/bouncer", { tenantId: TENANT, domain: DOMAIN })
-    ).json()) as {
+    const third = (await (await h.post("/bouncer", { tenantId: TENANT, domain: DOMAIN })).json()) as {
       supervision: Supervision[];
     };
     expect(third.supervision[0]!.created).toBe(false);

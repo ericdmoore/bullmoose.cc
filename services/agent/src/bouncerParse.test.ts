@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  evidenceSenderOf,
-  parseIntent,
-  parseModelIntent,
-  splitDirective,
-  wrapperAddresses,
-} from "./bouncerParse";
+import { evidenceSenderOf, parseIntent, parseModelIntent, splitDirective, wrapperAddresses } from "./bouncerParse";
 
 /**
  * The wrapper/evidence split and the intent grammar — the pure half of the
@@ -84,17 +78,13 @@ describe("splitDirective — the forwarded-message delimiters", () => {
 
 describe("evidenceSenderOf", () => {
   it("reads a From: header line, display name and all", () => {
-    expect(evidenceSenderOf("From: Crook <CROOK@Spam.Example>\nSubject: hi")).toBe(
-      "crook@spam.example",
-    );
+    expect(evidenceSenderOf("From: Crook <CROOK@Spam.Example>\nSubject: hi")).toBe("crook@spam.example");
   });
   it("reads a quoted From: line", () => {
     expect(evidenceSenderOf("> From: crook@spam.example\n> BUY")).toBe("crook@spam.example");
   });
   it("reads the 'On … wrote:' intro", () => {
-    expect(evidenceSenderOf("On Tue, Crook <crook@spam.example> wrote:\n> BUY")).toBe(
-      "crook@spam.example",
-    );
+    expect(evidenceSenderOf("On Tue, Crook <crook@spam.example> wrote:\n> BUY")).toBe("crook@spam.example");
   });
   it("null when the evidence names nobody", () => {
     expect(evidenceSenderOf("--------\nBUY NOW, NO SENDER HERE")).toBeNull();
@@ -108,9 +98,7 @@ describe("parseIntent — deterministic grammar over the wrapper only", () => {
 
   it("'add QWERTYUIOP.com … deny list' → blockDomain with the literal domain", () => {
     expect(
-      parseIntent(
-        "3rd message this week — add QWERTYUIOP.com to the deny list, I don't need this in my life",
-      ),
+      parseIntent("3rd message this week — add QWERTYUIOP.com to the deny list, I don't need this in my life"),
     ).toEqual({ kind: "blockDomain", domain: "qwertyuiop.com" });
   });
 
@@ -144,9 +132,7 @@ describe("parseIntent — deterministic grammar over the wrapper only", () => {
 
   it("'says she sent' → whyBlocked (explain+repair)", () => {
     expect(
-      parseIntent(
-        "Helen says she sent the contract on Monday. helen@herdomain.test — make sure it arrives.",
-      ),
+      parseIntent("Helen says she sent the contract on Monday. helen@herdomain.test — make sure it arrives."),
     ).toEqual({ kind: "whyBlocked" });
   });
 
@@ -205,8 +191,9 @@ describe("parseModelIntent — the model fallback's closed grammar", () => {
 
 describe("wrapperAddresses", () => {
   it("lists addresses in order, lowercased", () => {
-    expect(
-      wrapperAddresses("Helen (Helen@HerDomain.test) says she sent it to eric@family.test"),
-    ).toEqual(["helen@herdomain.test", "eric@family.test"]);
+    expect(wrapperAddresses("Helen (Helen@HerDomain.test) says she sent it to eric@family.test")).toEqual([
+      "helen@herdomain.test",
+      "eric@family.test",
+    ]);
   });
 });

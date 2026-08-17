@@ -45,8 +45,7 @@
 //           dropped while the index exists. Found by the round-trip test
 //           failing (`no such column: revoked_at`), not by reading.
 
-const hasColumn = (table, col) =>
-  `SELECT COUNT(*) AS n FROM pragma_table_info('${table}') WHERE name = '${col}'`;
+const hasColumn = (table, col) => `SELECT COUNT(*) AS n FROM pragma_table_info('${table}') WHERE name = '${col}'`;
 
 const objectSqlContains = (type, name, needle) =>
   `SELECT COUNT(*) AS n FROM sqlite_master
@@ -64,11 +63,7 @@ const PROVENANCE_TABLES = [
   "calendar_events",
   "file_nodes",
 ];
-const PROVENANCE_COLUMNS = [
-  "last_writer_principal",
-  "last_writer_binding",
-  "last_writer_invocation",
-];
+const PROVENANCE_COLUMNS = ["last_writer_principal", "last_writer_binding", "last_writer_invocation"];
 
 export const MIGRATIONS = [
   {
@@ -249,9 +244,7 @@ export const MIGRATIONS = [
     blocks: null,
     // file_nodes is last in the apply order, so its last column is the sentinel.
     check: hasColumn("file_nodes", "last_writer_invocation"),
-    up: PROVENANCE_TABLES.flatMap((t) =>
-      PROVENANCE_COLUMNS.map((c) => `ALTER TABLE ${t} ADD COLUMN ${c} TEXT`),
-    ),
+    up: PROVENANCE_TABLES.flatMap((t) => PROVENANCE_COLUMNS.map((c) => `ALTER TABLE ${t} ADD COLUMN ${c} TEXT`)),
     absent: PROVENANCE_TABLES.map((t) => `CREATE TABLE ${t} (id TEXT PRIMARY KEY)`),
   },
 

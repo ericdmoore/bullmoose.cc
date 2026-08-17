@@ -83,8 +83,7 @@ const draftFixture = (over: Fixture = {}): Fixture => ({
 function harness(fx: Fixture, scopes: string[] = ["mail"]) {
   const w = fakeEnv();
   w.db.seedAccount({ accountId: ACCOUNT, loginEmail: LOGIN_EMAIL, displayName: "Eric" });
-  const withAccount = <T extends object>(rows: T[]) =>
-    rows.map((r) => ({ account_id: ACCOUNT, ...r }));
+  const withAccount = <T extends object>(rows: T[]) => rows.map((r) => ({ account_id: ACCOUNT, ...r }));
   w.db.seed("emails", withAccount(fx.emails ?? []));
   w.db.seed("email_mailboxes", withAccount(fx.emailMailboxes ?? []));
   w.db.seed("email_keywords", withAccount(fx.emailKeywords ?? []));
@@ -170,9 +169,7 @@ describe("EmailSubmission/set — envelope.mailFrom is bound to the identity", (
     });
 
     expect(res.notCreated).toEqual({});
-    expect(h.relayCalls).toEqual([
-      { mailFrom: IDENTITY_EMAIL, rcptTo: ["to@example.com", "bcc@example.com"] },
-    ]);
+    expect(h.relayCalls).toEqual([{ mailFrom: IDENTITY_EMAIL, rcptTo: ["to@example.com", "bcc@example.com"] }]);
     expect(storedEnvelope(h.writes)?.mailFrom).toBe(IDENTITY_EMAIL);
   });
 
@@ -211,9 +208,7 @@ describe("EmailSubmission/set — envelope.mailFrom is bound to the identity", (
     const res = await h.call({ s: { emailId: "e_1", identityId: "id_1" } });
 
     expect(res.notCreated).toEqual({});
-    expect(h.relayCalls).toEqual([
-      { mailFrom: IDENTITY_EMAIL, rcptTo: ["to@example.com", "cc@example.com"] },
-    ]);
+    expect(h.relayCalls).toEqual([{ mailFrom: IDENTITY_EMAIL, rcptTo: ["to@example.com", "cc@example.com"] }]);
   });
 
   it("rejects an unknown identity", async () => {
@@ -502,9 +497,7 @@ describe("EmailSubmission/get — ids, accounts, and scope", () => {
   it("never returns another account's submission, and reports its id as notFound", async () => {
     const h = harness(draftFixture({ submissions: [submissionRow()] }));
     // Seeded straight past `withAccount` so it belongs to someone else.
-    h.w.db.seed("email_submissions", [
-      { account_id: "a_someone_else", ...submissionRow({ id: "es_theirs" }) },
-    ]);
+    h.w.db.seed("email_submissions", [{ account_id: "a_someone_else", ...submissionRow({ id: "es_theirs" }) }]);
 
     const got = await h.get({ ids: ["es_seeded", "es_theirs"] });
     expect(got.list.map((s) => s.id)).toEqual(["es_seeded"]);

@@ -61,9 +61,7 @@ describe("civil dates are wall-calendar values, not instants", () => {
         hour: 2,
         minute: 30,
       });
-      expect(formatCivilDateTime(parseCivilDateTime("2026-03-08T02:30:00")!)).toBe(
-        "2026-03-08T02:30:00",
-      );
+      expect(formatCivilDateTime(parseCivilDateTime("2026-03-08T02:30:00")!)).toBe("2026-03-08T02:30:00");
     } finally {
       if (original === undefined) delete process.env.TZ;
       else process.env.TZ = original;
@@ -101,9 +99,7 @@ describe("date arithmetic crosses months, years and leap days", () => {
     // day in the US, and a local-time `+86400000` would land on the same date.
     expect(dayKey(addDays({ year: 2026, month: 3, day: 7 }, 1))).toBe("2026-03-08");
     expect(dayKey(addDays({ year: 2026, month: 3, day: 8 }, 1))).toBe("2026-03-09");
-    expect(daysBetween({ year: 2026, month: 3, day: 1 }, { year: 2026, month: 3, day: 31 })).toBe(
-      30,
-    );
+    expect(daysBetween({ year: 2026, month: 3, day: 1 }, { year: 2026, month: 3, day: 31 })).toBe(30);
   });
 
   it("clamps rather than rolls when adding months", () => {

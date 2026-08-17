@@ -8,7 +8,7 @@
 
 ## Why this exists
 
-**Side-stepping attachment size limits.** Big file → Files realm → send a _link_, not an
+**Side-stepping attachment size limits.** Big file → Files realm → send a *link*, not an
 attachment. That clears SMTP's practical ~25 MB ceiling and is equally valuable to both
 audiences: you attaching a video, Allen attaching a generated chart or extracted CSV.
 
@@ -23,7 +23,8 @@ being live), so it completes the surface the whole arc is about.
    — the same thing Stalwart implements and Bulwark consumes. A private
    `urn:bullmoose:files` dialect would be one no client could ever speak.
 2. **We need a metadata layer, not a storage layer.** Blob upload, download, R2 paths,
-   expiring public links, and a non-mail realm already using blobs (contact photos, RFC 9610) are all **live**. The attachment sidestep is five steps and four already exist.
+   expiring public links, and a non-mail realm already using blobs (contact photos, RFC
+   9610) are all **live**. The attachment sidestep is five steps and four already exist.
 
 ## What it ships
 

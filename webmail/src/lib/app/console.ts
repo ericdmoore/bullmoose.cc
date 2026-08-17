@@ -33,8 +33,7 @@ export function resolveConsole(search = globalThis.location?.search ?? ""): Reso
   const params = new URLSearchParams(search);
   const site = globalThis.location?.origin ?? "";
 
-  const vaultOrigin =
-    normalizeOrigin(params.get("vault")) ?? normalizeOrigin(readStorage(VAULT_KEY)) ?? "";
+  const vaultOrigin = normalizeOrigin(params.get("vault")) ?? normalizeOrigin(readStorage(VAULT_KEY)) ?? "";
   const origins: ConsoleOrigins = { vault: vaultOrigin, site };
 
   if (params.get("demo") === "1") {

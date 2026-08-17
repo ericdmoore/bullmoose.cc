@@ -356,9 +356,7 @@ describe("Email/get round-trips what Email/set created", () => {
     const blobId = await h.seedBlob("REPORT");
     const created = ok(
       await h.draft({
-        attachments: [
-          { blobId, type: "application/pdf", name: "q3.pdf", disposition: "attachment" },
-        ],
+        attachments: [{ blobId, type: "application/pdf", name: "q3.pdf", disposition: "attachment" }],
       }),
     );
 
@@ -389,9 +387,7 @@ describe("Email/get round-trips what Email/set created", () => {
     );
     const email = (await h.get(created.id as string)).list[0]!;
     expect(email.hasAttachment).toBe(false);
-    expect(email.attachments).toMatchObject([
-      { blobId, cid: "logo@bm", disposition: "inline", type: "image/png" },
-    ]);
+    expect(email.attachments).toMatchObject([{ blobId, cid: "logo@bm", disposition: "inline", type: "image/png" }]);
   });
 
   it("defaults an omitted type to application/octet-stream and name to null", async () => {

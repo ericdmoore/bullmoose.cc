@@ -91,8 +91,7 @@ export function isInPeriod(spec: GridSpec, d: CivilDate): boolean {
  * DAY in a month view anyway, so nothing is lost.
  */
 export function shiftGrid(spec: GridSpec, delta: number): GridSpec {
-  if (spec.kind === "month")
-    return { ...spec, anchor: addMonths({ ...spec.anchor, day: 1 }, delta) };
+  if (spec.kind === "month") return { ...spec, anchor: addMonths({ ...spec.anchor, day: 1 }, delta) };
   return { ...spec, anchor: addDays(spec.anchor, delta * (spec.kind === "week" ? 7 : 1)) };
 }
 
@@ -150,8 +149,7 @@ export function windowKey(spec: GridSpec): string {
   if (spec.kind === "month") {
     return `month:${spec.anchor.year}-${String(spec.anchor.month).padStart(2, "0")}${suffix}`;
   }
-  if (spec.kind === "week")
-    return `week:${dayKey(startOfWeek(spec.anchor, spec.weekStartsOn))}${suffix}`;
+  if (spec.kind === "week") return `week:${dayKey(startOfWeek(spec.anchor, spec.weekStartsOn))}${suffix}`;
   return `day:${dayKey(spec.anchor)}${suffix}`;
 }
 

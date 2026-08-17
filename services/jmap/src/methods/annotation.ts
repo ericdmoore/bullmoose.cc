@@ -73,9 +73,7 @@ export function registerAnnotationMethods(registry: MethodRegistry<RequestContex
     let rows: AnnotationRow[];
     if (ids === undefined) {
       rows = (
-        await ctx.env.DB.prepare(
-          `SELECT * FROM annotations WHERE account_id = ? ORDER BY created_at DESC LIMIT 256`,
-        )
+        await ctx.env.DB.prepare(`SELECT * FROM annotations WHERE account_id = ? ORDER BY created_at DESC LIMIT 256`)
           .bind(access.accountId)
           .all<AnnotationRow>()
       ).results;
@@ -84,9 +82,7 @@ export function registerAnnotationMethods(registry: MethodRegistry<RequestContex
     } else {
       const marks = ids.map(() => "?").join(",");
       rows = (
-        await ctx.env.DB.prepare(
-          `SELECT * FROM annotations WHERE account_id = ? AND id IN (${marks})`,
-        )
+        await ctx.env.DB.prepare(`SELECT * FROM annotations WHERE account_id = ? AND id IN (${marks})`)
           .bind(access.accountId, ...ids)
           .all<AnnotationRow>()
       ).results;
@@ -102,9 +98,7 @@ export function registerAnnotationMethods(registry: MethodRegistry<RequestContex
 
   registry.register("Annotation/query", async (args, ctx) => {
     const access = await requireAccount(ctx, args, "read");
-    const filter =
-      (args.filter as { class?: string; status?: string; objectId?: string } | null | undefined) ??
-      null;
+    const filter = (args.filter as { class?: string; status?: string; objectId?: string } | null | undefined) ?? null;
     // Default view is OPEN claims — "what does the agent think is live", not a
     // graveyard of decided ones. A terminal status is asked for explicitly,
     // exactly as Watch/query defaults to armed.
@@ -169,8 +163,7 @@ export function registerAnnotationMethods(registry: MethodRegistry<RequestContex
       if (!anchor || typeof anchor.realm !== "string" || typeof anchor.objectId !== "string") {
         notCreated[cid] = {
           type: "invalidProperties",
-          description:
-            "anchor {realm, objectId} is required — an annotation is always about something",
+          description: "anchor {realm, objectId} is required — an annotation is always about something",
         };
         continue;
       }
@@ -190,8 +183,7 @@ export function registerAnnotationMethods(registry: MethodRegistry<RequestContex
         };
         continue;
       }
-      const confidence =
-        isAgent && Number.isFinite(Number(spec.confidence)) ? Number(spec.confidence) : null;
+      const confidence = isAgent && Number.isFinite(Number(spec.confidence)) ? Number(spec.confidence) : null;
       const id = `an_${crypto.randomUUID()}`;
       await ctx.env.DB.prepare(
         `INSERT INTO annotations

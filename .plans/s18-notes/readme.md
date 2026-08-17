@@ -1,7 +1,7 @@
 # s18 — private notes, mentions, and how a mention federates
 
 > **Status: design stub** (2026-08-13 bedtime sidebar). Eric: private notes whose
-> **address-mentions generate invocations** — _"largely UI work for humans"_ — and then the
+> **address-mentions generate invocations** — *"largely UI work for humans"* — and then the
 > real question: **can a mention federate**, to a hey.com user or, better, to another
 > bullmoose instance on someone else's Cloudflare account and domain?
 
@@ -43,11 +43,11 @@ C2S; Matrix needed a separate server-server API). There is no JMAP federation an
 not be one. bullmoose therefore has exactly one federation protocol, and it is the one the
 product is built on: **SMTP**.
 
-| far end                                        | what happens                                                                                                                                                                                                                                                                       |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **same instance** (`@allen@bullmoose.cc`)      | no wire protocol — resolve the principal, fire the invocation directly                                                                                                                                                                                                             |
+| far end | what happens |
+|---|---|
+| **same instance** (`@allen@bullmoose.cc`) | no wire protocol — resolve the principal, fire the invocation directly |
 | **another bullmoose** (`@alice@othermoose.cc`) | mail carrying a structured header (`X-Bullmoose-Mention: <note-ref>` + a share link, the `s12` outbound-stamping pattern). The receiver materialises a **first-class mention** — the remote agent can be triggered, the remote UI can render it as a mention rather than a message |
-| **hey.com / Gmail**                            | an ordinary email: "Eric mentioned you", with a link. Header ignored, nothing breaks                                                                                                                                                                                               |
+| **hey.com / Gmail** | an ordinary email: "Eric mentioned you", with a link. Header ignored, nothing breaks |
 
 **Authentication is already solved: DKIM.** Outbound mail is signed today, and a mention
 arriving DKIM-aligned on `bullmoose.cc` is authenticated federation using machinery that
@@ -60,7 +60,7 @@ capability a client does not declare. Extension without breakage, again.
 ### 3b. The reply-above-the-line rung (Eric, 2026-08-13)
 
 The strongest rung on the ladder, and the one that needs **no software at the far end at
-all**: Alice should feel like she is _commenting on a body of text_, not receiving a
+all**: Alice should feel like she is *commenting on a body of text*, not receiving a
 notification about a document she cannot reach.
 
 So the mention mail carries the note body beneath a **sentinel** — the reply separator every
@@ -82,8 +82,8 @@ Why this is the right bottom rung:
   participates, using the reply convention she already has muscle memory for.
 - **It reuses the trimming we need anyway.** Quoted-reply stripping is table stakes for any
   mail system; here it is load-bearing rather than cosmetic.
-- **It sidesteps §4's access problem for the common case.** The note text travels _in the
-  mail_, so no share link and no access grant is required for her to read what she was
+- **It sidesteps §4's access problem for the common case.** The note text travels *in the
+  mail*, so no share link and no access grant is required for her to read what she was
   mentioned in — only for her to see the note's later history.
 - ⚠️ **But that is exactly why it needs the §4 consent moment**: quoting the body into an
   outbound message IS the disclosure. The UI must say so before sending; there is no
@@ -95,12 +95,12 @@ adds fidelity; none is required for the one below it to work.
 
 ## 4. The hard question is access, not transport
 
-Mentioning `alice@othercorp.com` in a _private_ note: may she read it? Both defaults are
+Mentioning `alice@othercorp.com` in a *private* note: may she read it? Both defaults are
 wrong — silence is useless, and auto-sharing means a private document leaves the instance
 because someone typed an `@`.
 
 **Recommendation: the mention carries a share link whose scope is an explicit authoring
-decision**, stated in the UI _before_ sending ("mentioning Alice will let her read this
+decision**, stated in the UI *before* sending ("mentioning Alice will let her read this
 note"). Informed consent at write time, not a policy buried in settings. Federation is the
 moment private stops being private and it should feel like one.
 
@@ -110,12 +110,12 @@ book** (`s10` T1), unchanged. An agent cannot `@`-mention its way past its allow
 ## Open questions
 
 1. **Does a note live inline or as a blob?** Small notes inline; large ones want the FileNode
-   path. _Recommendation: inline first — a note that needs R2 is a document, and documents
-   already have a home (`/files`)._
+   path. *Recommendation: inline first — a note that needs R2 is a document, and documents
+   already have a home (`/files`).*
 2. **Do mentions of a GROUP expand?** Same transitive-widening hazard as `s10` T1's nested
-   groups. _Recommendation: forbid group mentions until the expansion is displayed._
-3. **What does the remote instance do with an unknown note-ref?** _Recommendation: render the
-   mention, let the share link 404 honestly; never synthesise content._
+   groups. *Recommendation: forbid group mentions until the expansion is displayed.*
+3. **What does the remote instance do with an unknown note-ref?** *Recommendation: render the
+   mention, let the share link 404 honestly; never synthesise content.*
 
 ## References
 

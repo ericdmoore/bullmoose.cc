@@ -59,9 +59,7 @@ describe("a session in Files, start to finish", () => {
     expect(page.children.map((n) => n.name)).toContain("Q3 board deck.pdf");
 
     // ── two levels down, with a full breadcrumb ─────────────────────────
-    const projects = (await loadDirectory(client, accountId, null)).children.find(
-      (n) => n.name === "Projects",
-    )!;
+    const projects = (await loadDirectory(client, accountId, null)).children.find((n) => n.name === "Projects")!;
     const roadmap = (await loadDirectory(client, accountId, projects.id)).children.find(
       (n) => n.name === "2026 roadmap",
     )!;
@@ -109,9 +107,7 @@ describe("a session in Files, start to finish", () => {
     expect(new TextDecoder().decode(got.bytes)).toBe("one");
 
     // ── rename ──────────────────────────────────────────────────────────
-    expect(
-      (await renameNode(client, accountId, first.id, "receipt-jan.pdf")).error,
-    ).toBeUndefined();
+    expect((await renameNode(client, accountId, first.id, "receipt-jan.pdf")).error).toBeUndefined();
     page = await loadDirectory(client, accountId, invoices.id);
     expect(page.children.map((n) => n.name)).toContain("receipt-jan.pdf");
 

@@ -18,15 +18,7 @@ const ACCOUNT = "a_eric";
 const TENANT = "t_bm";
 const GOV = "abgov";
 
-const VCF = [
-  "BEGIN:VCARD",
-  "VERSION:4.0",
-  "UID:u_eve",
-  "FN:Eve",
-  "EMAIL:eve@evil.com",
-  "END:VCARD",
-  "",
-].join("\r\n");
+const VCF = ["BEGIN:VCARD", "VERSION:4.0", "UID:u_eve", "FN:Eve", "EMAIL:eve@evil.com", "END:VCARD", ""].join("\r\n");
 
 function world() {
   const w = fakeEnv();
@@ -107,8 +99,6 @@ describe("CardDAV against a governed book", () => {
       `SELECT event, address, actor FROM book_membership_log WHERE book_id = ?`,
       GOV,
     );
-    expect(log).toEqual([
-      { event: "added", address: "eve@evil.com", actor: "someone@login.example" },
-    ]);
+    expect(log).toEqual([{ event: "added", address: "eve@evil.com", actor: "someone@login.example" }]);
   });
 });

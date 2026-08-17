@@ -67,10 +67,7 @@ export function effectiveScopes(granted: readonly string[]): string[] {
  * grant's scopes alone. A grant allowing `send` does nothing if the token
  * lacks it. (`introspectTools` whoami:746.)
  */
-export function intersectEffective(
-  tokenScopes: readonly string[],
-  grantScopes: readonly string[],
-): string[] {
+export function intersectEffective(tokenScopes: readonly string[], grantScopes: readonly string[]): string[] {
   return effectiveScopes(grantScopes).filter((s) => hasScope(tokenScopes, s));
 }
 
@@ -206,9 +203,7 @@ export function dangerousCombinations(input: CombinationInput): DangerousCombina
       consequence:
         "Read here, send there, in one hop. Each half is a normal capability; together they " +
         "are an egress channel that no approval step sits in front of." +
-        (input.readsUntrustedMail
-          ? " Because the trigger is untrusted email, a prompt injection is the request."
-          : ""),
+        (input.readsUntrustedMail ? " Because the trigger is untrusted email, a prompt injection is the request." : ""),
     });
   }
 

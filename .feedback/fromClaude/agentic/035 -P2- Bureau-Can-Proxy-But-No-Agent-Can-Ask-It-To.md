@@ -14,7 +14,7 @@ asserted on nine paths.
 `/bureau/use` with `verb: "fetch"`**. The proxy is reachable only from a test.
 
 T3's "done when" is written at the Bureau boundary, so this is not a missed requirement — it
-is the seam _between_ two done tasks that no task owns.
+is the seam *between* two done tasks that no task owns.
 
 ## What is actually unclaimed
 
@@ -29,8 +29,8 @@ Bureau docs do not answer:
   time? These are very different security postures. If the model chooses, prompt injection
   selects the credential. If the operator binds, one tool per credential.
 
-That second question is the same shape as the one settled for Class B verbs — _who chooses
-the scope_ — and it should be settled the same way, deliberately, before a tool ships.
+That second question is the same shape as the one settled for Class B verbs — *who chooses
+the scope* — and it should be settled the same way, deliberately, before a tool ships.
 
 ## Consequence
 

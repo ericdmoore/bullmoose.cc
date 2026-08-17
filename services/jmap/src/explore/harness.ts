@@ -40,10 +40,7 @@ export interface Harness {
   /** A valid explore cookie value for Eric. */
   cookie: string;
   /** GET on the explore host, authenticated by cookie unless told otherwise. */
-  explore(
-    path: string,
-    init?: { cookie?: string | null; bearer?: string; host?: string },
-  ): Promise<Response>;
+  explore(path: string, init?: { cookie?: string | null; bearer?: string; host?: string }): Promise<Response>;
   /** Any method on the explore host, carrying the valid cookie. */
   exploreWith(method: string, path: string): Promise<Response>;
   /** Any request to the API origin. */

@@ -197,9 +197,7 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
   return (
     <main class="settings">
       {mode === "demo" ? (
-        <p class="settings-banner">
-          Sample data. Changes here are kept in this browser tab and reach no server.
-        </p>
+        <p class="settings-banner">Sample data. Changes here are kept in this browser tab and reach no server.</p>
       ) : null}
 
       {/* ── identity ────────────────────────────────────────────────── */}
@@ -219,20 +217,13 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
                 refuses a patch that names `email` at all (identity.ts:478-483),
                 so accepting input would be collecting a change we must throw
                 away — the exact failure this screen was warned about. */}
-            <input
-              id="i-email"
-              class="settings-input"
-              type="text"
-              value={identity.email}
-              readonly
-            />
+            <input id="i-email" class="settings-input" type="text" value={identity.email} readonly />
             <p class="settings-help">{emailNote?.note}</p>
 
             {isSynthetic(identity) ? (
               <p class="settings-help settings-warn">
-                This identity has not been written yet — it is the default the server derives from
-                your login when the identity table is empty. Saving anything below creates the real
-                row, keeping this address.
+                This identity has not been written yet — it is the default the server derives from your login when the
+                identity table is empty. Saving anything below creates the real row, keeping this address.
               </p>
             ) : null}
 
@@ -282,8 +273,8 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
               onInput={(e) => patchForm({ textSignature: (e.target as HTMLTextAreaElement).value })}
             />
             <p class="settings-help">
-              Inserted when you compose from this address (RFC 8621 §6.1 — a hint to the client, not
-              something the server appends).
+              Inserted when you compose from this address (RFC 8621 §6.1 — a hint to the client, not something the
+              server appends).
             </p>
 
             <label class="settings-label" for="i-htmlsig">
@@ -328,9 +319,9 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
 
         {others.length > 0 ? (
           <p class="settings-help">
-            {others.length} other sending {others.length === 1 ? "address" : "addresses"} on this
-            account: {others.map((o) => o.email).join(", ")}. Editing additional identities is not
-            on this screen yet — <code>bullmoose identity</code> covers them.
+            {others.length} other sending {others.length === 1 ? "address" : "addresses"} on this account:{" "}
+            {others.map((o) => o.email).join(", ")}. Editing additional identities is not on this screen yet —{" "}
+            <code>bullmoose identity</code> covers them.
           </p>
         ) : null}
       </section>
@@ -356,9 +347,7 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
               <input
                 type="checkbox"
                 checked={vacForm.isEnabled}
-                onChange={(e) =>
-                  patchVacation({ isEnabled: (e.target as HTMLInputElement).checked })
-                }
+                onChange={(e) => patchVacation({ isEnabled: (e.target as HTMLInputElement).checked })}
               />
               Send an automatic reply
             </label>

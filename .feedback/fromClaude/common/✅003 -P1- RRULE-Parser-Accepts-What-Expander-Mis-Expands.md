@@ -16,7 +16,7 @@ with nothing keeping them in sync.
 
 ## Why this is worse than a missing feature
 
-`ical.ts:153-154` has an explicit _reject-what-we-can't-do_ rule (`default: return null`) — so the
+`ical.ts:153-154` has an explicit *reject-what-we-can't-do* rule (`default: return null`) — so the
 module already knows the right pattern. But because the BY* parts are parsed without checking
 `FREQ`, an unsupported combination parses **clean** and then expands to the wrong dates.
 

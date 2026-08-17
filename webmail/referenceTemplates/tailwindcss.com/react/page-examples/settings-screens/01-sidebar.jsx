@@ -1,7 +1,7 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import { Dialog, DialogBackdrop, DialogPanel, TransitionChild } from "@headlessui/react";
+import { useState } from 'react'
+import { Dialog, DialogBackdrop, DialogPanel, TransitionChild } from '@headlessui/react'
 import {
   ChartBarSquareIcon,
   Cog6ToothIcon,
@@ -10,37 +10,37 @@ import {
   ServerIcon,
   SignalIcon,
   XMarkIcon,
-} from "@heroicons/react/24/outline";
-import { Bars3Icon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import { ChevronDownIcon } from "@heroicons/react/16/solid";
+} from '@heroicons/react/24/outline'
+import { Bars3Icon, MagnifyingGlassIcon } from '@heroicons/react/20/solid'
+import { ChevronDownIcon } from '@heroicons/react/16/solid'
 
 const navigation = [
-  { name: "Projects", href: "#", icon: FolderIcon, current: false },
-  { name: "Deployments", href: "#", icon: ServerIcon, current: false },
-  { name: "Activity", href: "#", icon: SignalIcon, current: false },
-  { name: "Domains", href: "#", icon: GlobeAltIcon, current: false },
-  { name: "Usage", href: "#", icon: ChartBarSquareIcon, current: false },
-  { name: "Settings", href: "#", icon: Cog6ToothIcon, current: true },
-];
+  { name: 'Projects', href: '#', icon: FolderIcon, current: false },
+  { name: 'Deployments', href: '#', icon: ServerIcon, current: false },
+  { name: 'Activity', href: '#', icon: SignalIcon, current: false },
+  { name: 'Domains', href: '#', icon: GlobeAltIcon, current: false },
+  { name: 'Usage', href: '#', icon: ChartBarSquareIcon, current: false },
+  { name: 'Settings', href: '#', icon: Cog6ToothIcon, current: true },
+]
 const teams = [
-  { id: 1, name: "Planetaria", href: "#", initial: "P", current: false },
-  { id: 2, name: "Protocol", href: "#", initial: "P", current: false },
-  { id: 3, name: "Tailwind Labs", href: "#", initial: "T", current: false },
-];
+  { id: 1, name: 'Planetaria', href: '#', initial: 'P', current: false },
+  { id: 2, name: 'Protocol', href: '#', initial: 'P', current: false },
+  { id: 3, name: 'Tailwind Labs', href: '#', initial: 'T', current: false },
+]
 const secondaryNavigation = [
-  { name: "Account", href: "#", current: true },
-  { name: "Notifications", href: "#", current: false },
-  { name: "Billing", href: "#", current: false },
-  { name: "Teams", href: "#", current: false },
-  { name: "Integrations", href: "#", current: false },
-];
+  { name: 'Account', href: '#', current: true },
+  { name: 'Notifications', href: '#', current: false },
+  { name: 'Billing', href: '#', current: false },
+  { name: 'Teams', href: '#', current: false },
+  { name: 'Integrations', href: '#', current: false },
+]
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(" ");
+  return classes.filter(Boolean).join(' ')
 }
 
 export default function Example() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
     <>
@@ -66,11 +66,7 @@ export default function Example() {
             >
               <TransitionChild>
                 <div className="absolute top-0 left-full flex w-16 justify-center pt-5 duration-300 ease-in-out data-closed:opacity-0">
-                  <button
-                    type="button"
-                    onClick={() => setSidebarOpen(false)}
-                    className="-m-2.5 p-2.5"
-                  >
+                  <button type="button" onClick={() => setSidebarOpen(false)} className="-m-2.5 p-2.5">
                     <span className="sr-only">Close sidebar</span>
                     <XMarkIcon aria-hidden="true" className="size-6 text-white" />
                   </button>
@@ -101,18 +97,18 @@ export default function Example() {
                               href={item.href}
                               className={classNames(
                                 item.current
-                                  ? "bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white"
-                                  : "text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white",
-                                "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
+                                  ? 'bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white'
+                                  : 'text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
+                                'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
                               )}
                             >
                               <item.icon
                                 aria-hidden="true"
                                 className={classNames(
                                   item.current
-                                    ? "text-indigo-600 dark:text-white"
-                                    : "text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-white",
-                                  "size-6 shrink-0",
+                                    ? 'text-indigo-600 dark:text-white'
+                                    : 'text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-white',
+                                  'size-6 shrink-0',
                                 )}
                               />
                               {item.name}
@@ -130,17 +126,17 @@ export default function Example() {
                               href={team.href}
                               className={classNames(
                                 team.current
-                                  ? "bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white"
-                                  : "text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white",
-                                "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
+                                  ? 'bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white'
+                                  : 'text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
+                                'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
                               )}
                             >
                               <span
                                 className={classNames(
                                   team.current
-                                    ? "border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white"
-                                    : "border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white",
-                                  "flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5",
+                                    ? 'border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white'
+                                    : 'border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white',
+                                  'flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5',
                                 )}
                               >
                                 {team.initial}
@@ -198,18 +194,18 @@ export default function Example() {
                           href={item.href}
                           className={classNames(
                             item.current
-                              ? "bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white"
-                              : "text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white",
-                            "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
+                              ? 'bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white'
+                              : 'text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
+                            'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
                           )}
                         >
                           <item.icon
                             aria-hidden="true"
                             className={classNames(
                               item.current
-                                ? "text-indigo-600 dark:text-white"
-                                : "text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-white",
-                              "size-6 shrink-0",
+                                ? 'text-indigo-600 dark:text-white'
+                                : 'text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-white',
+                              'size-6 shrink-0',
                             )}
                           />
                           {item.name}
@@ -219,9 +215,7 @@ export default function Example() {
                   </ul>
                 </li>
                 <li>
-                  <div className="text-xs/6 font-semibold text-gray-500 dark:text-gray-400">
-                    Your teams
-                  </div>
+                  <div className="text-xs/6 font-semibold text-gray-500 dark:text-gray-400">Your teams</div>
                   <ul role="list" className="-mx-2 mt-2 space-y-1">
                     {teams.map((team) => (
                       <li key={team.name}>
@@ -229,17 +223,17 @@ export default function Example() {
                           href={team.href}
                           className={classNames(
                             team.current
-                              ? "bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white"
-                              : "text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white",
-                            "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
+                              ? 'bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white'
+                              : 'text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
+                            'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
                           )}
                         >
                           <span
                             className={classNames(
                               team.current
-                                ? "border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white"
-                                : "border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white",
-                              "flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5",
+                                ? 'border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white'
+                                : 'border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white',
+                              'flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5',
                             )}
                           >
                             {team.initial}
@@ -309,10 +303,7 @@ export default function Example() {
                 >
                   {secondaryNavigation.map((item) => (
                     <li key={item.name}>
-                      <a
-                        href={item.href}
-                        className={item.current ? "text-indigo-600 dark:text-indigo-400" : ""}
-                      >
+                      <a href={item.href} className={item.current ? 'text-indigo-600 dark:text-indigo-400' : ''}>
                         {item.name}
                       </a>
                     </li>
@@ -325,9 +316,7 @@ export default function Example() {
             <div className="divide-y divide-gray-200 dark:divide-white/10">
               <div className="grid max-w-7xl grid-cols-1 gap-x-8 gap-y-10 px-4 py-16 sm:px-6 md:grid-cols-3 lg:px-8">
                 <div>
-                  <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">
-                    Personal Information
-                  </h2>
+                  <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">Personal Information</h2>
                   <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
                     Use a permanent address where you can receive mail.
                   </p>
@@ -348,17 +337,12 @@ export default function Example() {
                         >
                           Change avatar
                         </button>
-                        <p className="mt-2 text-xs/5 text-gray-500 dark:text-gray-400">
-                          JPG, GIF or PNG. 1MB max.
-                        </p>
+                        <p className="mt-2 text-xs/5 text-gray-500 dark:text-gray-400">JPG, GIF or PNG. 1MB max.</p>
                       </div>
                     </div>
 
                     <div className="sm:col-span-3">
-                      <label
-                        htmlFor="first-name"
-                        className="block text-sm/6 font-medium text-gray-900 dark:text-white"
-                      >
+                      <label htmlFor="first-name" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
                         First name
                       </label>
                       <div className="mt-2">
@@ -373,10 +357,7 @@ export default function Example() {
                     </div>
 
                     <div className="sm:col-span-3">
-                      <label
-                        htmlFor="last-name"
-                        className="block text-sm/6 font-medium text-gray-900 dark:text-white"
-                      >
+                      <label htmlFor="last-name" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
                         Last name
                       </label>
                       <div className="mt-2">
@@ -391,10 +372,7 @@ export default function Example() {
                     </div>
 
                     <div className="col-span-full">
-                      <label
-                        htmlFor="email"
-                        className="block text-sm/6 font-medium text-gray-900 dark:text-white"
-                      >
+                      <label htmlFor="email" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
                         Email address
                       </label>
                       <div className="mt-2">
@@ -409,10 +387,7 @@ export default function Example() {
                     </div>
 
                     <div className="col-span-full">
-                      <label
-                        htmlFor="username"
-                        className="block text-sm/6 font-medium text-gray-900 dark:text-white"
-                      >
+                      <label htmlFor="username" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
                         Username
                       </label>
                       <div className="mt-2">
@@ -432,10 +407,7 @@ export default function Example() {
                     </div>
 
                     <div className="col-span-full">
-                      <label
-                        htmlFor="timezone"
-                        className="block text-sm/6 font-medium text-gray-900 dark:text-white"
-                      >
+                      <label htmlFor="timezone" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
                         Timezone
                       </label>
                       <div className="mt-2 grid grid-cols-1">
@@ -469,9 +441,7 @@ export default function Example() {
 
               <div className="grid max-w-7xl grid-cols-1 gap-x-8 gap-y-10 px-4 py-16 sm:px-6 md:grid-cols-3 lg:px-8">
                 <div>
-                  <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">
-                    Change password
-                  </h2>
+                  <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">Change password</h2>
                   <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
                     Update your password associated with your account.
                   </p>
@@ -547,12 +517,10 @@ export default function Example() {
 
               <div className="grid max-w-7xl grid-cols-1 gap-x-8 gap-y-10 px-4 py-16 sm:px-6 md:grid-cols-3 lg:px-8">
                 <div>
-                  <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">
-                    Log out other sessions
-                  </h2>
+                  <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">Log out other sessions</h2>
                   <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
-                    Please enter your password to confirm you would like to log out of your other
-                    sessions across all of your devices.
+                    Please enter your password to confirm you would like to log out of your other sessions across all of
+                    your devices.
                   </p>
                 </div>
 
@@ -590,13 +558,10 @@ export default function Example() {
 
               <div className="grid max-w-7xl grid-cols-1 gap-x-8 gap-y-10 px-4 py-16 sm:px-6 md:grid-cols-3 lg:px-8">
                 <div>
-                  <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">
-                    Delete account
-                  </h2>
+                  <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">Delete account</h2>
                   <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
-                    No longer want to use our service? You can delete your account here. This action
-                    is not reversible. All information related to this account will be deleted
-                    permanently.
+                    No longer want to use our service? You can delete your account here. This action is not reversible.
+                    All information related to this account will be deleted permanently.
                   </p>
                 </div>
 
@@ -614,5 +579,5 @@ export default function Example() {
         </div>
       </div>
     </>
-  );
+  )
 }

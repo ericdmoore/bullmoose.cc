@@ -41,9 +41,9 @@ exactly one place per account, and every worker is stateless around it.
 > way. Sections 5–9 keep their diagrams — the deploy-order DAG in §5 exists
 > nowhere else.
 
-**Why this shape.** One rule drives everything: _state changes go through
+**Why this shape.** One rule drives everything: *state changes go through
 a single writer per account (the Durable Object); everything else is
-stateless and horizontally trivial._ Reads (Email/get, downloads) hit
+stateless and horizontally trivial.* Reads (Email/get, downloads) hit
 D1/R2 directly and never touch the DO, so the single-writer bottleneck
 only applies to the rare write path. The workers are deliberately small
 and single-purpose because Cloudflare bills and rate-limits per worker
@@ -55,13 +55,13 @@ invocation, and because a circular service-binding graph can't deploy
 ## 2. Inbound: a message arriving
 
 **Why store-then-commit-then-push, in that order.** The raw blob and the
-metadata row must exist _before_ the DO announces the new state, or a
+metadata row must exist *before* the DO announces the new state, or a
 client woken by the push could fetch a message that isn't queryable yet.
 The forward-a-copy step (`forwardTo`) happens **last**, after delivery
 succeeds, so a forwarding failure can never bounce mail we've already
 accepted — the message is safe the instant it's in R2+D1.
 
-**Why a poke _and_ a cron.** The `/drain` poke gives sub-second agent
+**Why a poke *and* a cron.** The `/drain` poke gives sub-second agent
 latency, but pokes can die mid-flight. The `AgentInvocation` row in D1 is
 the real queue; a `*/5` cron sweep is the retry net. The row is the
 truth, the poke is just an optimization — so we never need Cloudflare
@@ -71,8 +71,8 @@ Queues (a paid feature).
 
 ## 3. The single-writer account (Durable Object)
 
-**Why a Durable Object at all.** JMAP's sync model needs a _monotonic
-per-account state_ and a changelog so clients can ask "what changed since
+**Why a Durable Object at all.** JMAP's sync model needs a *monotonic
+per-account state* and a changelog so clients can ask "what changed since
 state X." That demands a single serialization point per account — exactly
 what a Durable Object is (a single-threaded actor with storage). SQLite-
 backed DOs are free-tier eligible, so we get this for $0.
@@ -114,8 +114,8 @@ flowchart LR
   class SW,JW,IW,AW,PW d
 ```
 
-**Why order matters.** `jmap` _declares_ the `AccountDO` class (owns its
-migrations); `ingest` and `agent` _bind_ it cross-script by name — so
+**Why order matters.** `jmap` *declares* the `AccountDO` class (owns its
+migrations); `ingest` and `agent` *bind* it cross-script by name — so
 `jmap` must deploy first. `jmap` binds `submit` as a service, so `submit`
 deploys before `jmap`. The result is a strict dependency order
 (submit → jmap → ingest → agent → provision) and a graph with **no
@@ -141,12 +141,12 @@ flowchart TB
 
 **Why stretch the password on the client.** The Workers free tier caps
 CPU at 10ms per request — nowhere near enough for a 600k-iteration KDF.
-So the _client_ runs PBKDF2 and the server only ever sees (and does one
+So the *client* runs PBKDF2 and the server only ever sees (and does one
 cheap SHA-256 over) the derived key. The password never crosses the wire.
 
 **Why that forces a login throttle.** "Cheap to verify" is also "cheap
 to attack": one SHA-256 per guess, and a hit mints a bearer token
-immediately. `/auth/login` is therefore gated _before_ the credential
+immediately. `/auth/login` is therefore gated *before* the credential
 lookup and the hash — 5 failures per email and 20 per client IP, each in
 a 15-minute window, counted in KV (see `services/jmap/README.md`). Only
 the IP window returns 429; the email window returns the ordinary 401,
@@ -154,7 +154,7 @@ because a status code that varies by account would undo the uniform-401
 property that keeps this endpoint enumeration-resistant.
 
 **Why tokens double as app-passwords.** Legacy clients and third-party
-JMAP apps only speak username+password. A minted `bm_` token _is_ that
+JMAP apps only speak username+password. A minted `bm_` token *is* that
 password (HTTP Basic / POP3 PASS / SMTP AUTH), scoped and individually
 revocable — so a phone gets a throwaway credential, never the real one.
 
@@ -204,7 +204,7 @@ flowchart LR
 ```
 
 **Why popcorn is a homelab shim, not a worker.** POP3 and SMTP are raw
-TCP with a _server-speaks-first_ greeting; Cloudflare's edge only
+TCP with a *server-speaks-first* greeting; Cloudflare's edge only
 terminates HTTP(S)/WebSockets and waits for a request — so it can never
 answer a POP3 client. popcorn (a tiny Go daemon) runs anywhere with a
 real socket, holds zero state, and translates POP3/SMTP onto the same
@@ -257,7 +257,4 @@ while the cloud agents keep running.
 - **Fail-open, never lose mail.** Inbound that can't be processed is a
   temporary SMTP error (senders retry for days); forwards happen after
   durable storage; agent non-receipts forward rather than drop.
-
-```
-
 ```

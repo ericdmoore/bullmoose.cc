@@ -32,15 +32,7 @@
 // rather than from `utcEnd`'s calendar date, which has the identical off-by-one
 // hazard as its start.
 
-import {
-  addDays,
-  dayKey,
-  daysBetween,
-  minutesOfDay,
-  parseCivilDateTime,
-  zonedFields,
-  type CivilDate,
-} from "./civil";
+import { addDays, dayKey, daysBetween, minutesOfDay, parseCivilDateTime, zonedFields, type CivilDate } from "./civil";
 import type { Occurrence } from "./types";
 
 /** One occurrence as it appears on ONE day of the grid. */
@@ -166,10 +158,7 @@ function allDaySpan(occ: Occurrence): number {
  * A Map keyed by `dayKey` so a month grid looks each cell up in O(1) instead
  * of filtering the whole occurrence list 42 times.
  */
-export function segmentsByDay(
-  occurrences: Occurrence[],
-  viewerZone: string,
-): Map<string, DaySegment[]> {
+export function segmentsByDay(occurrences: Occurrence[], viewerZone: string): Map<string, DaySegment[]> {
   const out = new Map<string, DaySegment[]>();
   for (const occ of occurrences) {
     for (const seg of segmentsFor(occ, viewerZone)) {
@@ -235,9 +224,7 @@ export function layoutDay(segments: DaySegment[]): LaidOutSegment[] {
     // A gap: nothing still open can overlap what comes next, so the cluster's
     // width is settled.
     if (cluster.length > 0 && segment.fromMinute >= clusterEnd) flush();
-    const taken = new Set(
-      cluster.filter((c) => c.segment.toMinute > segment.fromMinute).map((c) => c.column),
-    );
+    const taken = new Set(cluster.filter((c) => c.segment.toMinute > segment.fromMinute).map((c) => c.column));
     let column = 0;
     while (taken.has(column)) column++;
     cluster.push({ segment, column, columns: 1 });

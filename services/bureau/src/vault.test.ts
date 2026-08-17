@@ -36,12 +36,7 @@ function harness(master = MASTER) {
   return { db, env, call };
 }
 
-const mint = (
-  h: { call: ReturnType<typeof harness>["call"] },
-  name: string,
-  secret: string,
-  kind = "api-key",
-) =>
+const mint = (h: { call: ReturnType<typeof harness>["call"] }, name: string, secret: string, kind = "api-key") =>
   h.call("/internal/bureau/seal", {
     mode: "mint",
     principalId: PRINCIPAL,
@@ -148,9 +143,7 @@ describe("the AAD still binds the row (auth-core vaultAad)", () => {
       loginEmail: "thief@bullmoose.cc",
     });
     await mint(h, "stripe", "bm-canary-DO-NOT-USE-vault-9f3d1c");
-    const stolen = h.db.query<{ enc_json: string }>(
-      `SELECT enc_json FROM vault_credentials WHERE name = 'stripe'`,
-    )[0]!;
+    const stolen = h.db.query<{ enc_json: string }>(`SELECT enc_json FROM vault_credentials WHERE name = 'stripe'`)[0]!;
     // The row-swap attack the AAD exists to stop: the ciphertext is copied
     // verbatim onto a row the attacker controls. Crypto, not a check, refuses.
     h.db.seed("vault_credentials", [
@@ -172,11 +165,7 @@ describe("the AAD still binds the row (auth-core vaultAad)", () => {
 describe("no route on this worker returns a credential", () => {
   it("gates every /internal path on the shared token", async () => {
     const h = harness();
-    const res = await h.call(
-      "/internal/bureau/verify",
-      { principalEmail: EMAIL, name: "x" },
-      "wrong",
-    );
+    const res = await h.call("/internal/bureau/verify", { principalEmail: EMAIL, name: "x" }, "wrong");
     expect(res.status).toBe(401);
   });
 

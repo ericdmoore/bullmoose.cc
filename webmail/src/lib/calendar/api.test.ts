@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeJmapClient } from "../jmap/FakeJmapClient";
-import {
-  createEvent,
-  destroyEvent,
-  loadCalendars,
-  loadWindow,
-  refusalOf,
-  searchEvents,
-  updateEvent,
-} from "./api";
+import { createEvent, destroyEvent, loadCalendars, loadWindow, refusalOf, searchEvents, updateEvent } from "./api";
 import { installDemoCalendar } from "./demoCalendar";
 import { gridDays, queryWindow } from "./grid";
 import { segmentsByDay } from "./place";
@@ -16,9 +8,7 @@ import { segmentsByDay } from "./place";
 const ACCOUNT = "acct-fake";
 /** A fixed "now" so the fixture month is stable: July 2026. */
 const NOW = Date.UTC(2026, 6, 15);
-const WINDOW = queryWindow(
-  gridDays({ kind: "month", anchor: { year: 2026, month: 7, day: 1 }, weekStartsOn: 0 }),
-);
+const WINDOW = queryWindow(gridDays({ kind: "month", anchor: { year: 2026, month: 7, day: 1 }, weekStartsOn: 0 }));
 
 function backed() {
   const client = new FakeJmapClient();
@@ -158,9 +148,7 @@ describe("loading a window", () => {
     await loadWindow(client, ACCOUNT, { ...WINDOW, inCalendar: "cal-elk" });
     const [occCall, queryCall] = client.sentBatches[0]!;
     expect((occCall![1] as { inCalendar?: string }).inCalendar).toBe("cal-elk");
-    expect((queryCall![1] as { filter: { inCalendar?: string } }).filter.inCalendar).toBe(
-      "cal-elk",
-    );
+    expect((queryCall![1] as { filter: { inCalendar?: string } }).filter.inCalendar).toBe("cal-elk");
   });
 });
 
@@ -248,9 +236,7 @@ describe("writes", () => {
     expect(outcome.updatedIds).toEqual(["ev-lastfriday"]);
     const row = backend.rows.find((r) => r.id === "ev-lastfriday")!;
     expect(row.event.title).toBe("Renamed");
-    expect(row.event.recurrenceRules).toEqual([
-      { frequency: "monthly", byDay: [{ day: "fr", nthOfPeriod: -1 }] },
-    ]);
+    expect(row.event.recurrenceRules).toEqual([{ frequency: "monthly", byDay: [{ day: "fr", nthOfPeriod: -1 }] }]);
   });
 
   it("reports per-id failures separately from a whole-call refusal", async () => {
@@ -302,9 +288,9 @@ describe("refusals become sentences", () => {
   });
 
   it("falls back to the server's own description", () => {
-    expect(
-      refusalOf({ type: "invalidArguments", description: "after < before required" }).message,
-    ).toBe("after < before required");
+    expect(refusalOf({ type: "invalidArguments", description: "after < before required" }).message).toBe(
+      "after < before required",
+    );
   });
 
   it("says something for an undefined detail rather than throwing", () => {

@@ -108,9 +108,9 @@ describe("ThreadListStore — sync WITHOUT Email/queryChanges", () => {
   it("refreshes correctly against a server whose queryChanges throws", async () => {
     const { client, emails } = createDemoBackend();
     // Prove the fake really does refuse, exactly as the server does.
-    await expect(
-      client.requestOne("Email/queryChanges", { accountId: ACCOUNT, sinceQueryState: "0" }),
-    ).rejects.toThrow(/cannotCalculateChanges/);
+    await expect(client.requestOne("Email/queryChanges", { accountId: ACCOUNT, sinceQueryState: "0" })).rejects.toThrow(
+      /cannotCalculateChanges/,
+    );
 
     const store = new ThreadListStore(client, ACCOUNT);
     await store.reload();

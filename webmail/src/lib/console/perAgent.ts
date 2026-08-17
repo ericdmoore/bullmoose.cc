@@ -59,10 +59,7 @@ export function grantState(grant: ConsoleGrant, now: number): "live" | "expired"
   return "live";
 }
 
-export function bureauGrantState(
-  grant: ConsoleBureauGrant,
-  now: number,
-): "live" | "expired" | "revoked" {
+export function bureauGrantState(grant: ConsoleBureauGrant, now: number): "live" | "expired" | "revoked" {
   if (grant.revokedAt !== null && grant.revokedAt <= now) return "revoked";
   if (grant.expiresAt !== null && grant.expiresAt <= now) return "expired";
   return "live";
@@ -155,8 +152,7 @@ export function answerCan(dossier: AgentDossier, permission: string, now = Date.
   return { permission, can, onOwnAccount: ownAccount, because, via, impliedOnly, meaning };
 }
 
-const fmt = (xs: readonly string[]): string =>
-  xs.length === 0 ? "(none)" : xs.map((x) => `\`${x}\``).join(", ");
+const fmt = (xs: readonly string[]): string => (xs.length === 0 ? "(none)" : xs.map((x) => `\`${x}\``).join(", "));
 
 // ── bindings ────────────────────────────────────────────────────────────────
 
@@ -292,25 +288,17 @@ export function buildAgentView(dossier: AgentDossier, now = Date.now()): AgentVi
     warnings: bindingWarnings(b),
     credentialRefs: b.credentialRefs ?? [],
   }));
-  const credentials = dossier.credentials.map((c) =>
-    describeCredential(c, dossier.bureauGrants, now),
-  );
+  const credentials = dossier.credentials.map((c) => describeCredential(c, dossier.bureauGrants, now));
   const tokenAllows = effectiveScopes(dossier.tokenScopes);
 
-  const enabledSending = bindings.filter(
-    (b) => b.binding.enabled && b.binding.config.replyMode === "send",
-  );
+  const enabledSending = bindings.filter((b) => b.binding.enabled && b.binding.config.replyMode === "send");
   const combinations = dangerousCombinations({
     allows: tokenAllows,
     credentials: dossier.credentials,
     bureauGrants: dossier.bureauGrants,
     sendsWithoutReview: enabledSending.length > 0,
-    unrestrictedSenders: enabledSending.some(
-      (b) => b.binding.config.senderAllowlist?.active === false,
-    ),
-    readsUntrustedMail: bindings.some(
-      (b) => b.binding.enabled && b.binding.triggerOn === "mailbox-delivery",
-    ),
+    unrestrictedSenders: enabledSending.some((b) => b.binding.config.senderAllowlist?.active === false),
+    readsUntrustedMail: bindings.some((b) => b.binding.enabled && b.binding.triggerOn === "mailbox-delivery"),
     now,
   });
 
@@ -347,9 +335,6 @@ function spendLine(dossier: AgentDossier): string | null {
   const s = dossier.spend;
   if (!s) return null;
   const amount = (s.totalCents / 100).toFixed(2);
-  const window =
-    s.since === null
-      ? "all recorded time"
-      : `since ${new Date(s.since).toISOString().slice(0, 10)}`;
+  const window = s.since === null ? "all recorded time" : `since ${new Date(s.since).toISOString().slice(0, 10)}`;
   return `${s.currency} ${amount} across ${s.rows} recorded ${s.rows === 1 ? "fact" : "facts"} (${window}). This is the ledger, not a budget — no limit is enforced here.`;
 }

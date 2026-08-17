@@ -154,12 +154,7 @@ describe("callModel returns the usage each provider already sends", () => {
 
   it("mock: deterministic pseudo-usage (chars in, chars out)", async () => {
     const w = fakeEnv();
-    const { output, usage } = await callModel(
-      w.env,
-      { provider: "mock", model: "m" },
-      messages,
-      64,
-    );
+    const { output, usage } = await callModel(w.env, { provider: "mock", model: "m" }, messages, 64);
     expect(usage).toEqual({
       tokensIn: "be brief".length + "hello there".length,
       tokensOut: output.length,

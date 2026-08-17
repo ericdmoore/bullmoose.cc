@@ -18,5 +18,5 @@ export default function Example() {
         We'll only use this for spam.
       </p>
     </div>
-  );
+  )
 }

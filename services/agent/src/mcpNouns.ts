@@ -1,11 +1,4 @@
-import {
-  callJmap,
-  tookCreate,
-  tookDestroy,
-  tookUpdate,
-  ToolError,
-  type JmapSetResponse,
-} from "./jmapBridge.js";
+import { callJmap, tookCreate, tookDestroy, tookUpdate, ToolError, type JmapSetResponse } from "./jmapBridge.js";
 import type { ToolDef } from "./mcp.js";
 import type { Env } from "./models.js";
 
@@ -49,8 +42,7 @@ import type { Env } from "./models.js";
  * descriptions say so.
  */
 
-const str = (v: unknown): string | undefined =>
-  typeof v === "string" && v.length > 0 ? v : undefined;
+const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
 
 function requireString(args: Record<string, unknown>, key: string): string {
   const v = args[key];
@@ -72,11 +64,7 @@ function requireString(args: Record<string, unknown>, key: string): string {
  * write_policy 'governed'. Widening flows through a grant-request proposal
  * (T3), never through this tool.
  */
-async function refuseGoverningBook(
-  env: Env,
-  accountId: string,
-  bookId: string | null | undefined,
-): Promise<void> {
+async function refuseGoverningBook(env: Env, accountId: string, bookId: string | null | undefined): Promise<void> {
   if (!bookId) return;
   const row = await env.DB.prepare(
     `SELECT name FROM agent_bindings WHERE account_id = ? AND recipients_book_id = ? LIMIT 1`,
@@ -92,24 +80,16 @@ async function refuseGoverningBook(
 }
 
 /** The book a write will land in: the named one, or the account default. */
-async function targetBookId(
-  env: Env,
-  accountId: string,
-  named: string | undefined,
-): Promise<string | null> {
+async function targetBookId(env: Env, accountId: string, named: string | undefined): Promise<string | null> {
   if (named) return named;
-  const row = await env.DB.prepare(
-    `SELECT id FROM address_books WHERE account_id = ? AND is_default = 1`,
-  )
+  const row = await env.DB.prepare(`SELECT id FROM address_books WHERE account_id = ? AND is_default = 1`)
     .bind(accountId)
     .first<{ id: string }>();
   return row?.id ?? null;
 }
 
 async function bookOfCard(env: Env, accountId: string, cardId: string): Promise<string | null> {
-  const row = await env.DB.prepare(
-    `SELECT address_book_id FROM contact_cards WHERE account_id = ? AND id = ?`,
-  )
+  const row = await env.DB.prepare(`SELECT address_book_id FROM contact_cards WHERE account_id = ? AND id = ?`)
     .bind(accountId, cardId)
     .first<{ address_book_id: string }>();
   return row?.address_book_id ?? null;
@@ -139,10 +119,7 @@ function eventFields(args: Record<string, unknown>, withUid: boolean): Record<st
   if (withUid && args.uid !== undefined) out.uid = args.uid;
   if (args.recurrenceRules !== undefined) out.recurrenceRules = args.recurrenceRules;
   if (args.location !== undefined) {
-    out.locations =
-      args.location === null
-        ? null
-        : { loc1: { "@type": "Location", name: String(args.location) } };
+    out.locations = args.location === null ? null : { loc1: { "@type": "Location", name: String(args.location) } };
   }
   if (args.calendarId !== undefined) {
     out.calendarIds = { [String(args.calendarId)]: true };
@@ -241,12 +218,10 @@ const CALENDAR_TOOLS: ToolDef[] = [
           calculateTotal: true,
         },
       );
-      const got = await callJmap<{ list: Record<string, unknown>[] }>(
-        env,
-        principal,
-        "CalendarEvent/get",
-        { accountId, ids: query.ids },
-      );
+      const got = await callJmap<{ list: Record<string, unknown>[] }>(env, principal, "CalendarEvent/get", {
+        accountId,
+        ids: query.ids,
+      });
       const windowed = str(args.after) && str(args.before);
       const occurrences = windowed
         ? await callJmap<{ list: Record<string, unknown>[]; total: number }>(
@@ -380,18 +355,14 @@ function cardFields(args: Record<string, unknown>, withUid: boolean): Record<str
     out.name = args.name === null ? null : { "@type": "Name", full: String(args.name) };
   }
   if (args.nickname !== undefined) {
-    out.nicknames =
-      args.nickname === null ? null : { n1: { "@type": "Nickname", name: String(args.nickname) } };
+    out.nicknames = args.nickname === null ? null : { n1: { "@type": "Nickname", name: String(args.nickname) } };
   }
   if (args.organization !== undefined) {
     out.organizations =
-      args.organization === null
-        ? null
-        : { o1: { "@type": "Organization", name: String(args.organization) } };
+      args.organization === null ? null : { o1: { "@type": "Organization", name: String(args.organization) } };
   }
   if (args.jobTitle !== undefined) {
-    out.titles =
-      args.jobTitle === null ? null : { t1: { "@type": "Title", name: String(args.jobTitle) } };
+    out.titles = args.jobTitle === null ? null : { t1: { "@type": "Title", name: String(args.jobTitle) } };
   }
   if (args.note !== undefined) {
     out.notes = args.note === null ? null : { no1: { "@type": "Note", note: String(args.note) } };
@@ -494,17 +465,7 @@ const CONTACT_TOOLS: ToolDef[] = [
     async run({ env, principal }, args) {
       const accountId = requireString(args, "accountId");
       const filter: Record<string, unknown> = {};
-      for (const k of [
-        "text",
-        "name",
-        "email",
-        "phone",
-        "organization",
-        "nickname",
-        "uid",
-        "inAddressBook",
-        "kind",
-      ]) {
+      for (const k of ["text", "name", "email", "phone", "organization", "nickname", "uid", "inAddressBook", "kind"]) {
         if (str(args[k])) filter[k] = args[k];
       }
       const query = await callJmap<{ ids: string[]; queryState: string; total?: number }>(
@@ -518,12 +479,10 @@ const CONTACT_TOOLS: ToolDef[] = [
           calculateTotal: true,
         },
       );
-      const got = await callJmap<{ list: Record<string, unknown>[] }>(
-        env,
-        principal,
-        "ContactCard/get",
-        { accountId, ids: query.ids },
-      );
+      const got = await callJmap<{ list: Record<string, unknown>[] }>(env, principal, "ContactCard/get", {
+        accountId,
+        ids: query.ids,
+      });
       return { accountId, queryState: query.queryState, total: query.total, cards: got.list };
     },
   },
@@ -560,11 +519,7 @@ const CONTACT_TOOLS: ToolDef[] = [
             "display name and will not appear in any contacts client.",
         );
       }
-      await refuseGoverningBook(
-        env,
-        accountId,
-        await targetBookId(env, accountId, str(args.addressBookId)),
-      );
+      await refuseGoverningBook(env, accountId, await targetBookId(env, accountId, str(args.addressBookId)));
       const res = await callJmap<JmapSetResponse>(env, principal, "ContactCard/set", {
         accountId,
         ...ifInState(args),
@@ -618,8 +573,7 @@ const CONTACT_TOOLS: ToolDef[] = [
     scope: "contacts",
     domain: "contacts",
     description:
-      "Delete one contact card permanently. There is no trash and no undo — confirm with the " +
-      "human first.",
+      "Delete one contact card permanently. There is no trash and no undo — confirm with the " + "human first.",
     inputSchema: {
       type: "object",
       properties: {

@@ -1,31 +1,13 @@
-import { ArrowDownIcon, ArrowUpIcon } from "@heroicons/react/20/solid";
+import { ArrowDownIcon, ArrowUpIcon } from '@heroicons/react/20/solid'
 
 const stats = [
-  {
-    name: "Total Subscribers",
-    stat: "71,897",
-    previousStat: "70,946",
-    change: "12%",
-    changeType: "increase",
-  },
-  {
-    name: "Avg. Open Rate",
-    stat: "58.16%",
-    previousStat: "56.14%",
-    change: "2.02%",
-    changeType: "increase",
-  },
-  {
-    name: "Avg. Click Rate",
-    stat: "24.57%",
-    previousStat: "28.62%",
-    change: "4.05%",
-    changeType: "decrease",
-  },
-];
+  { name: 'Total Subscribers', stat: '71,897', previousStat: '70,946', change: '12%', changeType: 'increase' },
+  { name: 'Avg. Open Rate', stat: '58.16%', previousStat: '56.14%', change: '2.02%', changeType: 'increase' },
+  { name: 'Avg. Click Rate', stat: '24.57%', previousStat: '28.62%', change: '4.05%', changeType: 'decrease' },
+]
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(" ");
+  return classes.filter(Boolean).join(' ')
 }
 
 export default function Example() {
@@ -46,13 +28,13 @@ export default function Example() {
 
               <div
                 className={classNames(
-                  item.changeType === "increase"
-                    ? "bg-green-100 text-green-800 dark:bg-green-400/10 dark:text-green-400"
-                    : "bg-red-100 text-red-800 dark:bg-red-400/10 dark:text-red-400",
-                  "inline-flex items-baseline rounded-full px-2.5 py-0.5 text-sm font-medium md:mt-2 lg:mt-0",
+                  item.changeType === 'increase'
+                    ? 'bg-green-100 text-green-800 dark:bg-green-400/10 dark:text-green-400'
+                    : 'bg-red-100 text-red-800 dark:bg-red-400/10 dark:text-red-400',
+                  'inline-flex items-baseline rounded-full px-2.5 py-0.5 text-sm font-medium md:mt-2 lg:mt-0',
                 )}
               >
-                {item.changeType === "increase" ? (
+                {item.changeType === 'increase' ? (
                   <ArrowUpIcon
                     aria-hidden="true"
                     className="mr-0.5 -ml-1 size-5 shrink-0 self-center text-green-500 dark:text-green-400"
@@ -64,10 +46,7 @@ export default function Example() {
                   />
                 )}
 
-                <span className="sr-only">
-                  {" "}
-                  {item.changeType === "increase" ? "Increased" : "Decreased"} by{" "}
-                </span>
+                <span className="sr-only"> {item.changeType === 'increase' ? 'Increased' : 'Decreased'} by </span>
                 {item.change}
               </div>
             </dd>
@@ -75,5 +54,5 @@ export default function Example() {
         ))}
       </dl>
     </div>
-  );
+  )
 }

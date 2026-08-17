@@ -223,10 +223,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
 
     // -- onSuccessSetIsDefault (only when every requested op succeeded) --
     const allSucceeded =
-      Object.keys(notCreated).length +
-        Object.keys(notUpdated).length +
-        Object.keys(notDestroyed).length ===
-      0;
+      Object.keys(notCreated).length + Object.keys(notUpdated).length + Object.keys(notDestroyed).length === 0;
     const onSuccessRaw = args.onSuccessSetIsDefault;
     let defaultApplied = false;
     if (allSucceeded && typeof onSuccessRaw === "string") {
@@ -280,18 +277,14 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
     // cards must not pay the blob cost (free-tier CPU budget).
     let list: Record<string, unknown>[];
     let found: Set<string>;
-    if (
-      properties &&
-      properties.every((p) => p === "id" || p === "uid" || p === "addressBookIds")
-    ) {
+    if (properties && properties.every((p) => p === "id" || p === "uid" || p === "addressBookIds")) {
       let refs = await store.getContactCardRefs(access.accountId, ids);
       if (readable) refs = refs.filter((r) => readable.has(r.addressBookId));
       found = new Set(refs.map((r) => r.id));
       list = refs.map((r) => {
         const picked: Record<string, unknown> = { id: r.id };
         if (properties.includes("uid")) picked.uid = r.uid;
-        if (properties.includes("addressBookIds"))
-          picked.addressBookIds = { [r.addressBookId]: true };
+        if (properties.includes("addressBookIds")) picked.addressBookIds = { [r.addressBookId]: true };
         return picked;
       });
     } else {
@@ -380,9 +373,7 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
           if (writable) {
             // Restricted writer with exactly one shared book: use it.
             if (writable.size !== 1) {
-              throw new SetErrorSignal("invalidProperties", "addressBookIds is required", [
-                "addressBookIds",
-              ]);
+              throw new SetErrorSignal("invalidProperties", "addressBookIds is required", ["addressBookIds"]);
             }
             bookId = [...writable][0]!;
           } else {
@@ -661,15 +652,11 @@ function validateNewBook(spec: Record<string, unknown>, becomeDefault: boolean):
   }
   const description = spec.description ?? null;
   if (description !== null && typeof description !== "string") {
-    throw new SetErrorSignal("invalidProperties", "description must be a string or null", [
-      "description",
-    ]);
+    throw new SetErrorSignal("invalidProperties", "description must be a string or null", ["description"]);
   }
   const sortOrder = spec.sortOrder ?? 0;
   if (typeof sortOrder !== "number" || !Number.isInteger(sortOrder) || sortOrder < 0) {
-    throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", [
-      "sortOrder",
-    ]);
+    throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", ["sortOrder"]);
   }
   const now = Date.now();
   return {
@@ -740,38 +727,26 @@ function validateBookPatch(patch: Record<string, unknown>): {
     }
     switch (path) {
       case "name":
-        if (
-          typeof value !== "string" ||
-          value.length === 0 ||
-          utf8Octets(value) > MAX_BOOK_NAME_OCTETS
-        ) {
-          throw new SetErrorSignal("invalidProperties", "name must be a 1..255-octet string", [
-            "name",
-          ]);
+        if (typeof value !== "string" || value.length === 0 || utf8Octets(value) > MAX_BOOK_NAME_OCTETS) {
+          throw new SetErrorSignal("invalidProperties", "name must be a 1..255-octet string", ["name"]);
         }
         columns.name = value;
         break;
       case "description":
         if (value !== null && typeof value !== "string") {
-          throw new SetErrorSignal("invalidProperties", "description must be a string or null", [
-            "description",
-          ]);
+          throw new SetErrorSignal("invalidProperties", "description must be a string or null", ["description"]);
         }
         columns.description = value as string | null;
         break;
       case "sortOrder":
         if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-          throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", [
-            "sortOrder",
-          ]);
+          throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", ["sortOrder"]);
         }
         columns.sortOrder = value;
         break;
       case "isSubscribed":
         if (typeof value !== "boolean") {
-          throw new SetErrorSignal("invalidProperties", "isSubscribed must be a boolean", [
-            "isSubscribed",
-          ]);
+          throw new SetErrorSignal("invalidProperties", "isSubscribed must be a boolean", ["isSubscribed"]);
         }
         columns.isSubscribed = value;
         break;
@@ -786,9 +761,7 @@ function validateBookPatch(patch: Record<string, unknown>): {
 
 function validateRights(raw: unknown): BookRights {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new SetErrorSignal("invalidProperties", "rights must be an AddressBookRights object", [
-      "shareWith",
-    ]);
+    throw new SetErrorSignal("invalidProperties", "rights must be an AddressBookRights object", ["shareWith"]);
   }
   const r = raw as Record<string, unknown>;
   const rights: BookRights = {
@@ -798,20 +771,14 @@ function validateRights(raw: unknown): BookRights {
     mayDelete: r.mayDelete === true,
   };
   if (rights.mayShare || rights.mayDelete) {
-    throw new SetErrorSignal("forbidden", "mayShare/mayDelete are owner-only on this server", [
-      "shareWith",
-    ]);
+    throw new SetErrorSignal("forbidden", "mayShare/mayDelete are owner-only on this server", ["shareWith"]);
   }
   return rights;
 }
 
 function validateShareWithObject(raw: unknown): Record<string, BookRights> {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new SetErrorSignal(
-      "invalidProperties",
-      "shareWith must be an Id[AddressBookRights] map",
-      ["shareWith"],
-    );
+    throw new SetErrorSignal("invalidProperties", "shareWith must be an Id[AddressBookRights] map", ["shareWith"]);
   }
   const out: Record<string, BookRights> = {};
   for (const [acct, rights] of Object.entries(raw as Record<string, unknown>)) {
@@ -830,10 +797,7 @@ const scopesToRights = (scopes: string[]): BookRights => ({
 const rightsToScopes = (r: BookRights): string[] => ["read", ...(r.mayWrite ? ["contacts"] : [])];
 
 /** Owner view: bookId → {granteeAccountId: rights} for every shared book. */
-async function loadShareWith(
-  ctx: RequestContext,
-  accountId: string,
-): Promise<Map<string, Record<string, BookRights>>> {
+async function loadShareWith(ctx: RequestContext, accountId: string): Promise<Map<string, Record<string, BookRights>>> {
   const { results } = await ctx.env.DB.prepare(
     `SELECT grantee_account_id, scopes, collection_id FROM grants
      WHERE target_account_id = ? AND collection = 'AddressBook'`,
@@ -889,15 +853,11 @@ async function applyShareWithPatch(
   for (const b of ops.bits) {
     const existing = desired.get(b.acct);
     if (!existing) {
-      throw new SetErrorSignal("invalidProperties", `no shareWith entry for ${b.acct}`, [
-        "shareWith",
-      ]);
+      throw new SetErrorSignal("invalidProperties", `no shareWith entry for ${b.acct}`, ["shareWith"]);
     }
     existing[b.right] = b.value;
     if (existing.mayShare || existing.mayDelete) {
-      throw new SetErrorSignal("forbidden", "mayShare/mayDelete are owner-only on this server", [
-        "shareWith",
-      ]);
+      throw new SetErrorSignal("forbidden", "mayShare/mayDelete are owner-only on this server", ["shareWith"]);
     }
     if (!existing.mayRead) desired.delete(b.acct); // no read = no access
   }
@@ -919,9 +879,7 @@ async function applyShareWithPatch(
     const known = new Map(acctRows.map((a) => [a.id, a.tenant_id]));
     for (const acct of grantees) {
       if (acct === access.accountId) {
-        throw new SetErrorSignal("invalidProperties", "cannot share a book with its owner", [
-          "shareWith",
-        ]);
+        throw new SetErrorSignal("invalidProperties", "cannot share a book with its owner", ["shareWith"]);
       }
       if (known.get(acct) !== access.tenantId) {
         throw new SetErrorSignal("invalidProperties", `unknown account: ${acct}`, ["shareWith"]);
@@ -941,9 +899,7 @@ async function applyShareWithPatch(
     const existing = current.get(acct);
     if (existing) {
       if (existing.scopes !== scopes) {
-        await ctx.env.DB.prepare(`UPDATE grants SET scopes = ? WHERE id = ?`)
-          .bind(scopes, existing.id)
-          .run();
+        await ctx.env.DB.prepare(`UPDATE grants SET scopes = ? WHERE id = ?`).bind(scopes, existing.id).run();
       }
     } else {
       await ctx.env.DB.prepare(
@@ -972,9 +928,7 @@ async function applyShareWithPatch(
  */
 function singleBookId(raw: unknown, books: Map<string, AddressBookRow>): string {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new SetErrorSignal("invalidProperties", "addressBookIds must be an Id[Boolean] object", [
-      "addressBookIds",
-    ]);
+    throw new SetErrorSignal("invalidProperties", "addressBookIds must be an Id[Boolean] object", ["addressBookIds"]);
   }
   const ids = Object.entries(raw as Record<string, unknown>)
     .filter(([, v]) => v === true)
@@ -988,9 +942,7 @@ function singleBookId(raw: unknown, books: Map<string, AddressBookRow>): string 
   }
   const id = ids[0]!;
   if (!books.has(id)) {
-    throw new SetErrorSignal("invalidProperties", `no such address book: ${id}`, [
-      "addressBookIds",
-    ]);
+    throw new SetErrorSignal("invalidProperties", `no such address book: ${id}`, ["addressBookIds"]);
   }
   return id;
 }
@@ -999,28 +951,16 @@ function singleBookId(raw: unknown, books: Map<string, AddressBookRow>): string 
  * Resolve the default book, creating/promoting on first touch; commits
  * the resulting change so /changes clients see it.
  */
-async function ensureDefaultBook(
-  ctx: RequestContext,
-  store: Mailstore,
-  accountId: string,
-): Promise<string> {
+async function ensureDefaultBook(ctx: RequestContext, store: Mailstore, accountId: string): Promise<string> {
   const { id, change } = await store.ensureDefaultAddressBook(accountId);
   if (change) {
-    await commitChanges(ctx.env.ACCOUNT_DO, accountId, [
-      { collection: "AddressBook", [change]: [id] },
-    ]);
+    await commitChanges(ctx.env.ACCOUNT_DO, accountId, [{ collection: "AddressBook", [change]: [id] }]);
   }
   return id;
 }
 
-async function commitContactEntries(
-  ctx: RequestContext,
-  accountId: string,
-  entries: ChangeEntry[],
-): Promise<string> {
-  const nonEmpty = entries.filter(
-    (e) => e.created.length + e.updated.length + e.destroyed.length > 0,
-  );
+async function commitContactEntries(ctx: RequestContext, accountId: string, entries: ChangeEntry[]): Promise<string> {
+  const nonEmpty = entries.filter((e) => e.created.length + e.updated.length + e.destroyed.length > 0);
   if (nonEmpty.length === 0) return accountState(ctx, accountId);
   const { newState } = await commitChanges(ctx.env.ACCOUNT_DO, accountId, nonEmpty);
   return newState;
@@ -1030,10 +970,7 @@ async function commitContactEntries(
  * Apply an RFC 8620 §5.3 PatchObject to the wire-shape card. Paths are
  * JSON pointers without the leading "/"; null removes the key.
  */
-function applyCardPatch(
-  obj: Record<string, unknown>,
-  patch: Record<string, unknown>,
-): Record<string, unknown> {
+function applyCardPatch(obj: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
   const out = structuredClone(obj);
   for (const [path, value] of Object.entries(patch)) {
     const tokens = path.split("/").map((t) => t.replaceAll("~1", "/").replaceAll("~0", "~"));
@@ -1044,9 +981,7 @@ function applyCardPatch(
     for (const t of tokens.slice(0, -1)) {
       const next = parent[t];
       if (next === null || typeof next !== "object" || Array.isArray(next)) {
-        throw new SetErrorSignal("invalidProperties", `patch path "${path}" does not exist`, [
-          path,
-        ]);
+        throw new SetErrorSignal("invalidProperties", `patch path "${path}" does not exist`, [path]);
       }
       parent = next as Record<string, unknown>;
     }

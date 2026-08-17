@@ -148,10 +148,7 @@ describe("POST /admin/fts/backfill", () => {
   it("re-indexes messages that predate the index, bodies and all", async () => {
     const w = fakeEnv();
     await route(w);
-    const id = await deliver(
-      w,
-      mime({ subject: "Old mail", body: `${"padding ".repeat(60)}pterodactyl` }),
-    );
+    const id = await deliver(w, mime({ subject: "Old mail", body: `${"padding ".repeat(60)}pterodactyl` }));
     await unindex(w);
     expect(await search(w, "pterodactyl")).toEqual([]);
 

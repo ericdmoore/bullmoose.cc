@@ -67,8 +67,7 @@ const CONFIG = JSON.stringify({
   jobs: { tools: [KEPT, DROPPED], credentials: [], budgetMicros: 1_000_000 },
 });
 
-const envelope = (tools: string[]) =>
-  JSON.stringify({ tools, credentials: [], budgetMicros: 100_000 });
+const envelope = (tools: string[]) => JSON.stringify({ tools, credentials: [], budgetMicros: 100_000 });
 
 /**
  * root ──┬── leaf     envelope [KEPT]        ← who we mint for
@@ -123,9 +122,7 @@ async function world() {
     },
   ]);
   // A message for `AgentInvocation/set` create to act on — v1 requires one.
-  w.db.seed("emails", [
-    { id: EMAIL, account_id: ACCOUNT, blob_id: "b1", thread_id: "t1", size: 10, received_at: 1 },
-  ]);
+  w.db.seed("emails", [{ id: EMAIL, account_id: ACCOUNT, blob_id: "b1", thread_id: "t1", size: 10, received_at: 1 }]);
   // A SECOND binding on the same account, WIDER than `cj`. It is the prize in
   // the cross-binding half of the create attack: copying a root's envelope onto
   // a row whose own binding has a bigger ceiling would widen it.
@@ -294,9 +291,7 @@ describe("A bmi_ token is REFUSED by every surface that does not understand invo
     const parsed = parseInvocationToken(s.leaf)!;
     const twelveHex = parsed.id.replace("it_", "");
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(parsed.secret));
-    const secretHash = [...new Uint8Array(digest)]
-      .map((x) => x.toString(16).padStart(2, "0"))
-      .join("");
+    const secretHash = [...new Uint8Array(digest)].map((x) => x.toString(16).padStart(2, "0")).join("");
     s.w.db.seed("tokens", [
       {
         id: `tk_${twelveHex}`,
@@ -429,21 +424,13 @@ describe("THE MINT is the claim, and only the claim", () => {
         headers: { Authorization: `Bearer ${token}`, "content-type": "application/json" },
         body: JSON.stringify({
           using: ["urn:ietf:params:jmap:core", "urn:bullmoose:params:jmap:agent"],
-          methodCalls: [
-            [
-              "AgentInvocation/set",
-              { accountId: ACCOUNT, update: { [id]: { status: "running" } } },
-              "0",
-            ],
-          ],
+          methodCalls: [["AgentInvocation/set", { accountId: ACCOUNT, update: { [id]: { status: "running" } } }, "0"]],
         }),
       }),
       s.w.env as never,
     );
     const body = (await res.json()) as {
-      methodResponses: Array<
-        [string, { updated: Record<string, { invocationToken?: string } | null> }, string]
-      >;
+      methodResponses: Array<[string, { updated: Record<string, { invocationToken?: string } | null> }, string]>;
     };
     return body.methodResponses[0]![1].updated[id];
   };
@@ -532,9 +519,7 @@ describe("THE MINT is the claim, and only the claim", () => {
     // …and the row is dead already, because the drain finished the work: the
     // lifetime is the claim's, not the token's.
     expect(
-      s.w.db.query<{ status: string }>(
-        `SELECT status FROM agent_invocations WHERE id = 'inv_pending'`,
-      )[0]!.status,
+      s.w.db.query<{ status: string }>(`SELECT status FROM agent_invocations WHERE id = 'inv_pending'`)[0]!.status,
     ).not.toBe("pending");
   });
 
@@ -547,13 +532,7 @@ describe("THE MINT is the claim, and only the claim", () => {
         headers: { Authorization: `Bearer ${device}`, "content-type": "application/json" },
         body: JSON.stringify({
           using: ["urn:ietf:params:jmap:core", "urn:bullmoose:params:jmap:agent"],
-          methodCalls: [
-            [
-              "AgentInvocation/set",
-              { accountId: ACCOUNT, update: { inv_leaf: { status: "done" } } },
-              "0",
-            ],
-          ],
+          methodCalls: [["AgentInvocation/set", { accountId: ACCOUNT, update: { inv_leaf: { status: "done" } } }, "0"]],
         }),
       }),
       s.w.env as never,
@@ -566,11 +545,7 @@ describe("THE MINT is the claim, and only the claim", () => {
 // ---- (d) the two mandatory rules -----------------------------------------
 
 /** A real `bm_` device token for this principal, with whatever scopes. */
-async function device(
-  s: Awaited<ReturnType<typeof world>>,
-  scopes: string[],
-  name = "device",
-): Promise<string> {
+async function device(s: Awaited<ReturnType<typeof world>>, scopes: string[], name = "device"): Promise<string> {
   const bm = await mintToken();
   s.w.db.seed("tokens", [
     {
@@ -593,8 +568,7 @@ const agentDevice = (s: Awaited<ReturnType<typeof world>>) =>
   device(s, ["mail", "contacts", "calendar", "agent"], "fleet-host");
 
 /** A human's credential: the same reach, no marker. */
-const humanDevice = (s: Awaited<ReturnType<typeof world>>) =>
-  device(s, ["mail", "contacts", "calendar"], "laptop");
+const humanDevice = (s: Awaited<ReturnType<typeof world>>) => device(s, ["mail", "contacts", "calendar"], "laptop");
 
 interface SetResult {
   created: Record<string, { id: string }>;
@@ -764,9 +738,7 @@ describe("RULE 2 — an agent-marked bearer may not CREATE an invocation on its 
 
     // And it is REAL narrowing, not a stored string: claim the new row and the
     // token it mints sees exactly the leaf's tool set.
-    s.w.db.sqlite
-      .prepare(`UPDATE agent_invocations SET status = 'running' WHERE id = ?`)
-      .run(res.created.c!.id);
+    s.w.db.sqlite.prepare(`UPDATE agent_invocations SET status = 'running' WHERE id = ?`).run(res.created.c!.id);
     const child = await s.mint(res.created.c!.id);
     expect((await listTools(s.env, child)) as string[]).toEqual([KEPT]);
   });

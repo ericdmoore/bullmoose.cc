@@ -306,12 +306,7 @@ describe("axis: identity — decomposition decides structure, never permission",
   it("naming its OWN account/binding/job is fine, and inheriting is the norm", () => {
     expect(axes(parent(), { accountId: "a_1", bindingId: "bind_1", jobId: "job_1" })).toEqual([]);
     const r = attenuateChild(parent(), { key: "t" });
-    if (r.ok)
-      expect([r.child.accountId, r.child.bindingId, r.child.jobId]).toEqual([
-        "a_1",
-        "bind_1",
-        "job_1",
-      ]);
+    if (r.ok) expect([r.child.accountId, r.child.bindingId, r.child.jobId]).toEqual(["a_1", "bind_1", "job_1"]);
   });
 });
 
@@ -346,9 +341,7 @@ describe("axis: needs — plan-local, backward-only, so a cycle is unrepresentab
 
 describe("axis: context — a plan may not mint a reserved harness kind", () => {
   it("REFUSES answer-info-request (hijacking a human's needsInfo round)", () => {
-    expect(axes(parent(), { context: { kind: "answer-info-request", proposalId: "p_1" } })).toEqual(
-      ["context"],
-    );
+    expect(axes(parent(), { context: { kind: "answer-info-request", proposalId: "p_1" } })).toEqual(["context"]);
   });
 
   it("REFUSES bouncer-classify (reaching into the boundary's machinery)", () => {
@@ -394,12 +387,8 @@ describe("the aggregate budget — the shared budget §4 asks for", () => {
 
   it("counts what earlier nodes already RESERVED, so a second planner cannot spend it twice", () => {
     const plan = [{ key: "a", budgetMicros: 400_000 }];
-    expect(attenuatePlan(parent(), plan, CAPS, { nodeCount: 3, reservedMicros: 500_000 }).ok).toBe(
-      true,
-    );
-    expect(attenuatePlan(parent(), plan, CAPS, { nodeCount: 3, reservedMicros: 700_000 }).ok).toBe(
-      false,
-    );
+    expect(attenuatePlan(parent(), plan, CAPS, { nodeCount: 3, reservedMicros: 500_000 }).ok).toBe(true);
+    expect(attenuatePlan(parent(), plan, CAPS, { nodeCount: 3, reservedMicros: 700_000 }).ok).toBe(false);
   });
 
   it("OMITTING a budget reserves the parent's FULL ceiling — so two silent children do not fit", () => {

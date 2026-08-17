@@ -55,20 +55,14 @@ type Finish = (status: "done" | "failed", result: Record<string, unknown>) => Pr
 /** Sends one reply-only message to the sender; returns the stored emailId. */
 type Reply = (text: string) => Promise<string>;
 
-export type RemindParse =
-  | { ok: true; deadlineAt: number; note: string }
-  | { ok: false; reason: "no-deadline" };
+export type RemindParse = { ok: true; deadlineAt: number; note: string } | { ok: false; reason: "no-deadline" };
 
 /**
  * Read a reminder request from a message: the deadline (via the shared
  * conservative parser) and the note — WHAT to be reminded of. Pure and
  * deterministic, so the whole parse is unit-testable without an env.
  */
-export function parseRemindRequest(input: {
-  subject: string;
-  text: string;
-  now: number;
-}): RemindParse {
+export function parseRemindRequest(input: { subject: string; text: string; now: number }): RemindParse {
   const deadlineAt = extractDueAt({ subject: input.subject, text: input.text, now: input.now });
   if (deadlineAt === null) return { ok: false, reason: "no-deadline" };
   return { ok: true, deadlineAt, note: deriveNote(input.subject, input.text) };

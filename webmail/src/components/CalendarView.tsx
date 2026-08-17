@@ -11,14 +11,7 @@ import {
   updateEvent,
   type CalendarRefusal,
 } from "../lib/calendar/api";
-import {
-  browserTimeZone,
-  dayKey,
-  formatClock,
-  parseDayKey,
-  sameDay,
-  type CivilDate,
-} from "../lib/calendar/civil";
+import { browserTimeZone, dayKey, formatClock, parseDayKey, sameDay, type CivilDate } from "../lib/calendar/civil";
 import {
   DAY_CODES,
   DAY_LABELS,
@@ -45,19 +38,8 @@ import {
   type GridSpec,
   type ViewKind,
 } from "../lib/calendar/grid";
-import {
-  MINUTES_PER_DAY,
-  layoutDay,
-  segmentsByDay,
-  segmentsOn,
-  type DaySegment,
-} from "../lib/calendar/place";
-import {
-  EVENT_SEARCH_SCOPE_NOTE,
-  describeTruncation,
-  isTruncated,
-  spillInNote,
-} from "../lib/calendar/scope";
+import { MINUTES_PER_DAY, layoutDay, segmentsByDay, segmentsOn, type DaySegment } from "../lib/calendar/place";
+import { EVENT_SEARCH_SCOPE_NOTE, describeTruncation, isTruncated, spillInNote } from "../lib/calendar/scope";
 import type { Calendar, CalendarEvent, Occurrence } from "../lib/calendar/types";
 import { CALENDARS_CAP, hasCapability } from "../lib/jmap/capabilities";
 import type { JmapClient } from "../lib/jmap/JmapClient";
@@ -211,11 +193,7 @@ export default function CalendarView({ client: injectedClient, now }: Props) {
       setOccurrences(res.occurrences);
       setEvents(res.events);
       setState(res.state);
-      setTruncNote(
-        isTruncated(res.truncation)
-          ? describeTruncation(res.truncation, res.occurrences.length)
-          : "",
-      );
+      setTruncNote(isTruncated(res.truncation) ? describeTruncation(res.truncation, res.occurrences.length) : "");
     } catch (err) {
       setFatal(message(err));
     } finally {
@@ -228,10 +206,7 @@ export default function CalendarView({ client: injectedClient, now }: Props) {
     // `key` rather than `spec`: paging to the same period must not refetch.
   }, [reload, key]);
 
-  const visible = useMemo(
-    () => occurrences.filter((o) => !hidden.has(o.calendarId)),
-    [occurrences, hidden],
-  );
+  const visible = useMemo(() => occurrences.filter((o) => !hidden.has(o.calendarId)), [occurrences, hidden]);
   const byDay = useMemo(() => segmentsByDay(visible, viewerZone), [visible, viewerZone]);
   const calendarById = useMemo(() => new Map(calendars.map((c) => [c.id, c])), [calendars]);
 
@@ -346,8 +321,8 @@ export default function CalendarView({ client: injectedClient, now }: Props) {
     return (
       <main class="cal">
         <p class="cal-fatal">
-          This account’s server does not advertise <code>{CALENDARS_CAP}</code>, so there is no
-          calendar to show. Nothing is broken — this build simply has no calendar realm.
+          This account’s server does not advertise <code>{CALENDARS_CAP}</code>, so there is no calendar to show.
+          Nothing is broken — this build simply has no calendar realm.
         </p>
       </main>
     );
@@ -452,9 +427,8 @@ export default function CalendarView({ client: injectedClient, now }: Props) {
           <p class="muted cal-fine">{spillInNote(MAX_SPILL_IN_DAYS)}</p>
           {isDemo ? (
             <p class="cal-warn cal-fine">
-              Demo data. The fake server returns canned occurrences and does not expand recurrence
-              rules — a repeating event you create here shows only its first occurrence. The real
-              server expands them.
+              Demo data. The fake server returns canned occurrences and does not expand recurrence rules — a repeating
+              event you create here shows only its first occurrence. The real server expands them.
             </p>
           ) : null}
         </aside>
@@ -567,9 +541,7 @@ function MonthGrid(props: {
                       style={{ borderLeftColor: colorOf(s.calendarId) ?? "var(--accent)" }}
                       onClick={() => onOpen(s.eventId)}
                     >
-                      {s.allDay ? null : (
-                        <span class="cal-chip-time">{formatClock(s.fromMinute)}</span>
-                      )}
+                      {s.allDay ? null : <span class="cal-chip-time">{formatClock(s.fromMinute)}</span>}
                       <span class="cal-chip-title">{s.title}</span>
                       {s.continuesAfter ? <span class="cal-chip-more">›</span> : null}
                     </button>
@@ -600,10 +572,7 @@ function TimeGrid(props: {
   const { days, today, byDay, colorOf, onOpen, onNew } = props;
   return (
     <div class="cal-time">
-      <div
-        class="cal-time-head"
-        style={{ gridTemplateColumns: `4rem repeat(${days.length}, 1fr)` }}
-      >
+      <div class="cal-time-head" style={{ gridTemplateColumns: `4rem repeat(${days.length}, 1fr)` }}>
         <div />
         {days.map((day) => (
           <button
@@ -639,10 +608,7 @@ function TimeGrid(props: {
         ))}
       </div>
 
-      <div
-        class="cal-time-body"
-        style={{ gridTemplateColumns: `4rem repeat(${days.length}, 1fr)` }}
-      >
+      <div class="cal-time-body" style={{ gridTemplateColumns: `4rem repeat(${days.length}, 1fr)` }}>
         <div class="cal-hours">
           {HOURS.map((h) => (
             <div class="cal-hour">
@@ -696,9 +662,7 @@ function SearchResults(props: { hits: CalendarEvent[]; onOpen: (id: string) => v
           <button type="button" onClick={() => props.onOpen(e.id)}>
             <strong>{typeof e.title === "string" && e.title ? e.title : "(no title)"}</strong>
             <span class="muted"> · {String(e.start ?? "")}</span>
-            {e.recurrenceRules ? (
-              <span class="muted"> · {describeRules(e.recurrenceRules)}</span>
-            ) : null}
+            {e.recurrenceRules ? <span class="muted"> · {describeRules(e.recurrenceRules)}</span> : null}
           </button>
         </li>
       ))}
@@ -720,12 +684,9 @@ function EventEditor(props: {
   onCancel: () => void;
 }) {
   const { draft, calendars, problems, refusal, saving, onChange } = props;
-  const set = <K extends keyof EventDraft>(k: K, v: EventDraft[K]): void =>
-    onChange({ ...draft, [k]: v });
-  const setRepeat = <K extends keyof EventDraft["repeat"]>(
-    k: K,
-    v: EventDraft["repeat"][K],
-  ): void => onChange({ ...draft, repeat: { ...draft.repeat, [k]: v } });
+  const set = <K extends keyof EventDraft>(k: K, v: EventDraft[K]): void => onChange({ ...draft, [k]: v });
+  const setRepeat = <K extends keyof EventDraft["repeat"]>(k: K, v: EventDraft["repeat"][K]): void =>
+    onChange({ ...draft, repeat: { ...draft.repeat, [k]: v } });
 
   return (
     <aside class="cal-editor" aria-label={draft.id ? "Edit event" : "New event"}>
@@ -812,9 +773,8 @@ function EventEditor(props: {
       <p class="muted cal-fine">
         {draft.allDay ? (
           <>
-            All-day events carry a date, not a moment — this one is stored floating (
-            <code>Etc/UTC</code>, the way CalDAV stores <code>VALUE=DATE</code>) and shows on the
-            same date in every timezone.
+            All-day events carry a date, not a moment — this one is stored floating (<code>Etc/UTC</code>, the way
+            CalDAV stores <code>VALUE=DATE</code>) and shows on the same date in every timezone.
           </>
         ) : (
           <>
@@ -850,8 +810,8 @@ function EventEditor(props: {
         <div class="cal-frozen">
           <strong>Repeats:</strong> {describeRules(draft.frozenRules)}
           <p class="muted cal-fine">
-            This repeat rule is more specific than this editor can express, so it is left exactly as
-            it is. Everything else here is still editable. Change the rule in a CalDAV client.
+            This repeat rule is more specific than this editor can express, so it is left exactly as it is. Everything
+            else here is still editable. Change the rule in a CalDAV client.
           </p>
         </div>
       ) : (
@@ -860,10 +820,7 @@ function EventEditor(props: {
           <select
             value={draft.repeat.frequency}
             onChange={(ev) =>
-              setRepeat(
-                "frequency",
-                (ev.currentTarget as HTMLSelectElement).value as EventDraft["repeat"]["frequency"],
-              )
+              setRepeat("frequency", (ev.currentTarget as HTMLSelectElement).value as EventDraft["repeat"]["frequency"])
             }
           >
             {REPEAT_CHOICES.map((c) => (
@@ -879,9 +836,7 @@ function EventEditor(props: {
                   type="number"
                   min={1}
                   value={draft.repeat.interval}
-                  onInput={(ev) =>
-                    setRepeat("interval", Number((ev.currentTarget as HTMLInputElement).value))
-                  }
+                  onInput={(ev) => setRepeat("interval", Number((ev.currentTarget as HTMLInputElement).value))}
                 />
               </label>
 
@@ -911,8 +866,7 @@ function EventEditor(props: {
                   onChange={(ev) =>
                     setRepeat(
                       "monthlyMode",
-                      (ev.currentTarget as HTMLSelectElement)
-                        .value as EventDraft["repeat"]["monthlyMode"],
+                      (ev.currentTarget as HTMLSelectElement).value as EventDraft["repeat"]["monthlyMode"],
                     )
                   }
                 >
@@ -924,10 +878,7 @@ function EventEditor(props: {
               <select
                 value={draft.repeat.ends}
                 onChange={(ev) =>
-                  setRepeat(
-                    "ends",
-                    (ev.currentTarget as HTMLSelectElement).value as EventDraft["repeat"]["ends"],
-                  )
+                  setRepeat("ends", (ev.currentTarget as HTMLSelectElement).value as EventDraft["repeat"]["ends"])
                 }
               >
                 <option value="never">forever</option>
@@ -939,9 +890,7 @@ function EventEditor(props: {
                   type="number"
                   min={1}
                   value={draft.repeat.count}
-                  onInput={(ev) =>
-                    setRepeat("count", Number((ev.currentTarget as HTMLInputElement).value))
-                  }
+                  onInput={(ev) => setRepeat("count", Number((ev.currentTarget as HTMLInputElement).value))}
                 />
               ) : null}
               {draft.repeat.ends === "until" ? (
@@ -955,9 +904,7 @@ function EventEditor(props: {
               {/* The form offers a strict subset of what the expander supports,
                   because the server REFUSES a rule it would mis-expand rather
                   than storing wrong dates (.feedback common/003). */}
-              <p class="muted cal-fine">
-                Only repeat patterns this server can expand exactly are offered here.
-              </p>
+              <p class="muted cal-fine">Only repeat patterns this server can expand exactly are offered here.</p>
             </>
           )}
         </fieldset>

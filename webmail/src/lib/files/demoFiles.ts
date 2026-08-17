@@ -60,15 +60,7 @@ const OWNER_RIGHTS = {
   mayShare: true,
 } as const;
 
-const CREATE_REJECTED = [
-  "id",
-  "myRights",
-  "shareWith",
-  "created",
-  "modified",
-  "accessed",
-  "changed",
-];
+const CREATE_REJECTED = ["id", "myRights", "shareWith", "created", "modified", "accessed", "changed"];
 const PATCH_REJECTED = new Set([
   "id",
   "nodeType",
@@ -192,10 +184,7 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
   const bump = (): string => String(++counter);
 
   const forbidden = (scope: string) =>
-    [
-      "error",
-      { type: "forbidden", description: `token lacks the "${scope}" scope` },
-    ] as ReturnType<MethodHandler>;
+    ["error", { type: "forbidden", description: `token lacks the "${scope}" scope` }] as ReturnType<MethodHandler>;
 
   const byId = (id: string): FileNode | undefined => nodes.find((n) => n.id === id);
   const iso = (ms: number): string => new Date(ms).toISOString();
@@ -214,18 +203,10 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
     return out;
   };
 
-  const nameTaken = (
-    parentId: string | null,
-    name: string,
-    ci: boolean,
-    exclude?: string,
-  ): boolean => {
+  const nameTaken = (parentId: string | null, name: string, ci: boolean, exclude?: string): boolean => {
     const norm = ci ? name.toLowerCase() : name;
     return nodes.some(
-      (n) =>
-        n.id !== exclude &&
-        n.parentId === parentId &&
-        (ci ? n.name.toLowerCase() : n.name) === norm,
+      (n) => n.id !== exclude && n.parentId === parentId && (ci ? n.name.toLowerCase() : n.name) === norm,
     );
   };
 
@@ -286,8 +267,7 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
       const filter = (args.filter ?? null) as Record<string, unknown> | null;
       let rows = nodes.slice();
       if (filter) {
-        if ("parentId" in filter)
-          rows = rows.filter((n) => n.parentId === (filter.parentId as string | null));
+        if ("parentId" in filter) rows = rows.filter((n) => n.parentId === (filter.parentId as string | null));
         if ("ancestorId" in filter) {
           const within = new Set(descendants(filter.ancestorId as string).map((n) => n.id));
           rows = rows.filter((n) => within.has(n.id));
@@ -295,12 +275,11 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
         if ("nodeType" in filter) rows = rows.filter((n) => n.nodeType === filter.nodeType);
         if ("role" in filter) rows = rows.filter((n) => n.role === filter.role);
         if ("name" in filter) rows = rows.filter((n) => n.name === filter.name);
-        if ("hasBlobId" in filter)
-          rows = rows.filter((n) => (n.blobId !== null) === filter.hasBlobId);
+        if ("hasBlobId" in filter) rows = rows.filter((n) => (n.blobId !== null) === filter.hasBlobId);
       }
-      const sort = (args.sort as
-        | Array<{ property: string; isAscending?: boolean }>
-        | undefined) ?? [{ property: "name", isAscending: true }];
+      const sort = (args.sort as Array<{ property: string; isAscending?: boolean }> | undefined) ?? [
+        { property: "name", isAscending: true },
+      ];
       rows.sort((a, b) => {
         for (const s of sort) {
           const av = (a as unknown as Record<string, unknown>)[s.property] ?? 0;
@@ -368,12 +347,7 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
           continue;
         }
         const name = spec.name;
-        if (
-          typeof name !== "string" ||
-          name.length === 0 ||
-          name.length > MAX_NAME ||
-          name.includes("/")
-        ) {
+        if (typeof name !== "string" || name.length === 0 || name.length > MAX_NAME || name.includes("/")) {
           notCreated[cid] = {
             type: "invalidProperties",
             description: `name must be a 1..${MAX_NAME}-char string without "/"`,
@@ -442,12 +416,7 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
           nodeType,
           blobId: nodeType === "file" ? (spec.blobId as string) : null,
           size: typeof spec.size === "number" ? spec.size : null,
-          type:
-            typeof spec.type === "string"
-              ? spec.type
-              : nodeType === "file"
-                ? "application/octet-stream"
-                : null,
+          type: typeof spec.type === "string" ? spec.type : nodeType === "file" ? "application/octet-stream" : null,
           created: at,
           modified: at,
           accessed: at,
@@ -495,12 +464,7 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
         let refusal: Record<string, unknown> | undefined;
         for (const [path, value] of Object.entries(patch ?? {})) {
           if (path === "name") {
-            if (
-              typeof value !== "string" ||
-              value.length === 0 ||
-              value.length > MAX_NAME ||
-              value.includes("/")
-            ) {
+            if (typeof value !== "string" || value.length === 0 || value.length > MAX_NAME || value.includes("/")) {
               refusal = {
                 type: "invalidProperties",
                 description: `name must be a 1..${MAX_NAME}-char string without "/"`,
@@ -605,8 +569,7 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
         if (kids.length > 0 && !removeChildren) {
           notDestroyed[id] = {
             type: "fileNodeHasChildren",
-            description:
-              "directory is not empty; pass onDestroyRemoveChildren: true to remove it and its contents",
+            description: "directory is not empty; pass onDestroyRemoveChildren: true to remove it and its contents",
           };
           continue;
         }
@@ -634,10 +597,7 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
 }
 
 /** Attach the realm to a client and hand back the backend for assertions. */
-export function installDemoFiles(
-  client: FakeJmapClient,
-  opts: DemoFilesOptions = {},
-): DemoFilesBackend {
+export function installDemoFiles(client: FakeJmapClient, opts: DemoFilesOptions = {}): DemoFilesBackend {
   const backend = createDemoFiles(opts);
   for (const [name, handler] of Object.entries(backend.handlers)) client.setHandler(name, handler);
   return backend;

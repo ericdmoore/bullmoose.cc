@@ -28,9 +28,7 @@ describe("resolveCalendar", () => {
 
   it("refuses an ambiguous name rather than guessing (exit 2)", () => {
     const dupes = [...CALS, cal("cal_w2", "Work")];
-    expect(() => resolveCalendar(dupes, "Work")).toThrowError(
-      expect.objectContaining({ exitCode: EXIT.USAGE }),
-    );
+    expect(() => resolveCalendar(dupes, "Work")).toThrowError(expect.objectContaining({ exitCode: EXIT.USAGE }));
   });
 
   it("a missing calendar is not-found (exit 3)", () => {
@@ -75,9 +73,7 @@ describe("the recurrence guard (common/003, client side)", () => {
 
   it("names a frequency with no expander branch, and an unknown part", () => {
     expect(rruleReason(parseRruleString("FREQ=HOURLY"))).toMatch(/no expander branch/);
-    expect(rruleReason(parseRruleString("FREQ=DAILY;BYHOUR=9"))).toMatch(
-      /unknown RRULE part BYHOUR/,
-    );
+    expect(rruleReason(parseRruleString("FREQ=DAILY;BYHOUR=9"))).toMatch(/unknown RRULE part BYHOUR/);
   });
 });
 
@@ -133,8 +129,6 @@ describe("iCal round-trip (create ↔ export)", () => {
     const ics =
       "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x\r\nDTSTART:20261126T090000Z\r\n" +
       "RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=4TH\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
-    expect(() => parseEventIcal(ics)).toThrowError(
-      expect.objectContaining({ exitCode: EXIT.USAGE }),
-    );
+    expect(() => parseEventIcal(ics)).toThrowError(expect.objectContaining({ exitCode: EXIT.USAGE }));
   });
 });

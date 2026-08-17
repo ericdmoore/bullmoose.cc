@@ -95,9 +95,7 @@ export async function introspect(
   // An unreadable or absent list is treated as an EMPTY grant — which
   // authorizes nothing rather than everything, and surfaces as a clean -32004
   // from the tool gate rather than as accidental authority.
-  const scopes = Array.isArray(props.scope)
-    ? props.scope.filter((s): s is string => typeof s === "string")
-    : [];
+  const scopes = Array.isArray(props.scope) ? props.scope.filter((s): s is string => typeof s === "string") : [];
   return { props, scopes };
 }
 
@@ -165,8 +163,7 @@ export const REVOKE_APP_TOOL: ToolDef = {
     properties: {
       clientId: {
         type: "string",
-        description:
-          "The client id shown in who_can_access's connectedApps (a URL for CIMD clients).",
+        description: "The client id shown in who_can_access's connectedApps (a URL for CIMD clients).",
       },
     },
     required: ["clientId"],
@@ -195,9 +192,7 @@ export const REVOKE_APP_TOOL: ToolDef = {
         body: JSON.stringify({ clientId }),
       });
     } catch (err) {
-      throw new ToolError(
-        `The authorization server could not be reached: ${String(err).slice(0, 120)}`,
-      );
+      throw new ToolError(`The authorization server could not be reached: ${String(err).slice(0, 120)}`);
     }
     const body = (await res.json().catch(() => null)) as {
       ok?: boolean;

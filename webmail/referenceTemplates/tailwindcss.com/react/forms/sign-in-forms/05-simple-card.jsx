@@ -30,10 +30,7 @@ export default function Example() {
           <div className="bg-white px-6 py-12 shadow-sm sm:rounded-lg sm:px-12 dark:bg-gray-800/50 dark:shadow-none dark:outline dark:-outline-offset-1 dark:outline-white/10">
             <form action="#" method="POST" className="space-y-6">
               <div>
-                <label
-                  htmlFor="email"
-                  className="block text-sm/6 font-medium text-gray-900 dark:text-white"
-                >
+                <label htmlFor="email" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
                   Email address
                 </label>
                 <div className="mt-2">
@@ -49,10 +46,7 @@ export default function Example() {
               </div>
 
               <div>
-                <label
-                  htmlFor="password"
-                  className="block text-sm/6 font-medium text-gray-900 dark:text-white"
-                >
+                <label htmlFor="password" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
                   Password
                 </label>
                 <div className="mt-2">
@@ -99,10 +93,7 @@ export default function Example() {
                       </svg>
                     </div>
                   </div>
-                  <label
-                    htmlFor="remember-me"
-                    className="block text-sm/6 text-gray-900 dark:text-white"
-                  >
+                  <label htmlFor="remember-me" className="block text-sm/6 text-gray-900 dark:text-white">
                     Remember me
                   </label>
                 </div>
@@ -130,9 +121,7 @@ export default function Example() {
             <div>
               <div className="mt-10 flex items-center gap-x-6">
                 <div className="w-full flex-1 border-t border-gray-200 dark:border-white/10" />
-                <p className="text-sm/6 font-medium text-nowrap text-gray-900 dark:text-white">
-                  Or continue with
-                </p>
+                <p className="text-sm/6 font-medium text-nowrap text-gray-900 dark:text-white">Or continue with</p>
                 <div className="w-full flex-1 border-t border-gray-200 dark:border-white/10" />
               </div>
 
@@ -185,7 +174,7 @@ export default function Example() {
           </div>
 
           <p className="mt-10 text-center text-sm/6 text-gray-500 dark:text-gray-400">
-            Not a member?{" "}
+            Not a member?{' '}
             <a
               href="#"
               className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
@@ -196,5 +185,5 @@ export default function Example() {
         </div>
       </div>
     </>
-  );
+  )
 }

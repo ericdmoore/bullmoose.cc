@@ -37,11 +37,12 @@ function loadEnv() {
 const env = loadEnv();
 
 function q(sql) {
-  const out = execFileSync(
-    "npx",
-    ["wrangler", "d1", "execute", DB, "--remote", "--json", "--command", sql],
-    { env, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] },
-  );
+  const out = execFileSync("npx", ["wrangler", "d1", "execute", DB, "--remote", "--json", "--command", sql], {
+    env,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
   return JSON.parse(out)[0].results;
 }
 
@@ -87,11 +88,7 @@ function traceOne(emailId) {
     SELECT m.name, m.role FROM email_mailboxes em
       JOIN mailboxes m ON m.id = em.mailbox_id AND m.account_id = em.account_id
      WHERE em.email_id = '${esc(e.id)}'`);
-  line(
-    "ok",
-    "stored",
-    boxes.map((b) => `${b.name}${b.role ? ` (${b.role})` : ""}`).join(", ") || "no mailbox",
-  );
+  line("ok", "stored", boxes.map((b) => `${b.name}${b.role ? ` (${b.role})` : ""}`).join(", ") || "no mailbox");
 
   // 2. the boundary cascade — quarantine events name the firing stage
   const qe = q(`

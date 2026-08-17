@@ -1,11 +1,11 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from "@headlessui/react";
-import { ExclamationTriangleIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { useState } from 'react'
+import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
+import { ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 export default function Example() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(true)
 
   return (
     <div>
@@ -39,22 +39,16 @@ export default function Example() {
               </div>
               <div className="sm:flex sm:items-start">
                 <div className="mx-auto flex size-12 shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:size-10 dark:bg-red-500/10">
-                  <ExclamationTriangleIcon
-                    aria-hidden="true"
-                    className="size-6 text-red-600 dark:text-red-400"
-                  />
+                  <ExclamationTriangleIcon aria-hidden="true" className="size-6 text-red-600 dark:text-red-400" />
                 </div>
                 <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                  <DialogTitle
-                    as="h3"
-                    className="text-base font-semibold text-gray-900 dark:text-white"
-                  >
+                  <DialogTitle as="h3" className="text-base font-semibold text-gray-900 dark:text-white">
                     Deactivate account
                   </DialogTitle>
                   <div className="mt-2">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Are you sure you want to deactivate your account? All of your data will be
-                      permanently removed from our servers forever. This action cannot be undone.
+                      Are you sure you want to deactivate your account? All of your data will be permanently removed
+                      from our servers forever. This action cannot be undone.
                     </p>
                   </div>
                 </div>
@@ -80,5 +74,5 @@ export default function Example() {
         </div>
       </Dialog>
     </div>
-  );
+  )
 }

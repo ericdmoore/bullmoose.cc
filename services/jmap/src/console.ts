@@ -1,11 +1,5 @@
 import { MAIL_SCOPES, REALM_SCOPES, hasScope } from "@bullmoose/auth-core";
-import {
-  accountAccess,
-  isAgentPrincipal,
-  principalHasScope,
-  type AccountAccess,
-  type Principal,
-} from "./auth";
+import { accountAccess, isAgentPrincipal, principalHasScope, type AccountAccess, type Principal } from "./auth";
 import type { Env } from "./index";
 
 /**
@@ -245,8 +239,7 @@ function effectiveScopes(granted: string[]): string[] {
 
 type Refusal = { status: number; error: string };
 
-const isRefusal = (v: unknown): v is Refusal =>
-  typeof v === "object" && v !== null && "status" in v && "error" in v;
+const isRefusal = (v: unknown): v is Refusal => typeof v === "object" && v !== null && "status" in v && "error" in v;
 
 /**
  * Rule 1 as one function: the access, but only when the caller OWNS the
@@ -277,12 +270,7 @@ const marks = (xs: readonly unknown[]): string => xs.map(() => "?").join(",");
 
 // ---- entry point ----------------------------------------------------------
 
-export async function handleConsole(
-  request: Request,
-  url: URL,
-  env: Env,
-  principal: Principal,
-): Promise<Response> {
+export async function handleConsole(request: Request, url: URL, env: Env, principal: Principal): Promise<Response> {
   // Read-only, in the dispatcher rather than per route: there is no console
   // write surface, and a POST that fell through to a GET handler would be one.
   if (request.method !== "GET") return json({ error: "method not allowed" }, 405);
@@ -398,25 +386,17 @@ async function agentDossier(env: Env, principal: Principal, accountId: string): 
   // from "none exist" — see the deploy note in the report.
   const mayReadVault = hasScope(principal.scopes, "vault");
 
-  const [
-    tokenScopes,
-    bindings,
-    credentials,
-    bureauGrants,
-    grantsHeld,
-    grantsGiven,
-    invocations,
-    spend,
-  ] = await Promise.all([
-    readTokenScopes(env, owner.principal_id),
-    readBindings(env, access.accountId),
-    mayReadVault ? readCredentials(env, owner.principal_id) : Promise.resolve([]),
-    mayReadVault ? readBureauGrants(env, owner.principal_id) : Promise.resolve([]),
-    readGrants(env, "grantee", access.accountId),
-    readGrants(env, "target", access.accountId),
-    readInvocations(env, access.accountId),
-    readSpend(env, access.accountId),
-  ]);
+  const [tokenScopes, bindings, credentials, bureauGrants, grantsHeld, grantsGiven, invocations, spend] =
+    await Promise.all([
+      readTokenScopes(env, owner.principal_id),
+      readBindings(env, access.accountId),
+      mayReadVault ? readCredentials(env, owner.principal_id) : Promise.resolve([]),
+      mayReadVault ? readBureauGrants(env, owner.principal_id) : Promise.resolve([]),
+      readGrants(env, "grantee", access.accountId),
+      readGrants(env, "target", access.accountId),
+      readInvocations(env, access.accountId),
+      readSpend(env, access.accountId),
+    ]);
 
   const dossier: AgentDossier = {
     accountId: access.accountId,
@@ -510,8 +490,7 @@ export function describeBindingConfig(configJson: string): ConsoleBindingConfig 
     pipeline: (cfg.pipeline as string | undefined) ?? "reply",
     replyMode: cfg.replyMode === "send" ? "send" : "draft",
     hasPersona: typeof cfg.persona === "string" && cfg.persona.length > 0,
-    senderAllowlist:
-      senders.length > 0 ? { active: true, count: senders.length } : { active: false },
+    senderAllowlist: senders.length > 0 ? { active: true, count: senders.length } : { active: false },
     modelAliasCount: Object.keys((cfg.modelAliases ?? {}) as Record<string, unknown>).length,
   };
 }
@@ -658,11 +637,7 @@ function renderGrant(r: GrantRow): ConsoleGrant {
  * per-agent view answers "what is live", and the point-in-time reconstruction
  * that NEEDS tombstones is the resource dossier's job (`readResourceGrants`).
  */
-async function readGrants(
-  env: Env,
-  side: "grantee" | "target",
-  accountId: string,
-): Promise<ConsoleGrant[]> {
+async function readGrants(env: Env, side: "grantee" | "target", accountId: string): Promise<ConsoleGrant[]> {
   const column = side === "grantee" ? "grantee_account_id" : "target_account_id";
   const { results } = await env.DB.prepare(
     `${GRANT_SELECT}
@@ -913,12 +888,7 @@ async function readResourceGrants(
  * rows, which is the honest resolution — dropping rows we cannot attribute to
  * the resource would hide exactly the access an operator is looking for.
  */
-async function readAudit(
-  env: Env,
-  accountId: string,
-  since: number,
-  at: number,
-): Promise<ConsoleAuditRow[]> {
+async function readAudit(env: Env, accountId: string, since: number, at: number): Promise<ConsoleAuditRow[]> {
   const { results } = await env.DB.prepare(
     `SELECT id, grant_id, principal, account_id, method, at
        FROM grant_audit

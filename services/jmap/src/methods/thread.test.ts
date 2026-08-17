@@ -83,15 +83,15 @@ describe("Thread/changes answers conformantly rather than being absent", () => {
     const { call } = harness();
     // Another account must not learn that this method would have said
     // cannotCalculateChanges — the gate runs first, so the answer differs.
-    expect(
-      await errorType(call("Thread/changes", { accountId: "t_other__a_nope", sinceState: "0" })),
-    ).not.toBe("cannotCalculateChanges");
+    expect(await errorType(call("Thread/changes", { accountId: "t_other__a_nope", sinceState: "0" }))).not.toBe(
+      "cannotCalculateChanges",
+    );
   });
 
   it("refuses a principal without the read scope", async () => {
     const { call } = harness([]);
-    expect(
-      await errorType(call("Thread/changes", { accountId: ACCOUNT, sinceState: "0" })),
-    ).not.toBe("cannotCalculateChanges");
+    expect(await errorType(call("Thread/changes", { accountId: ACCOUNT, sinceState: "0" }))).not.toBe(
+      "cannotCalculateChanges",
+    );
   });
 });

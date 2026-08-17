@@ -102,14 +102,7 @@ async function handleSeal(request: Request, env: Env): Promise<Response> {
   }
 
   if (!body.kind) return json({ error: "kind required" }, 400);
-  await sealAndStore(
-    env,
-    body.principalId,
-    body.name,
-    body.kind,
-    body.metaJson ?? "{}",
-    body.secret,
-  );
+  await sealAndStore(env, body.principalId, body.name, body.kind, body.metaJson ?? "{}", body.secret);
   return json({ ok: true, sealed: true });
 }
 
@@ -154,10 +147,7 @@ async function handleUse(request: Request, env: Env): Promise<Response> {
   // credential"; only the kind can say the verb makes sense against it. Both
   // must agree, and an operator's mis-grant is caught here.
   if (!verbPermittedForKind(decision.kind, verb)) {
-    return json(
-      { error: `verb "${verb}" is not permitted for a "${decision.kind}" credential` },
-      403,
-    );
+    return json({ error: `verb "${verb}" is not permitted for a "${decision.kind}" credential` }, 403);
   }
 
   // 3–5 — Class A. One verb, forever (§3): the destination binding lives on the

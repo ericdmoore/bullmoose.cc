@@ -21,15 +21,7 @@
 // dark" is data — one place to correct when a section ships, and something a
 // test can hold to the pages that actually exist.
 
-export type SectionId =
-  | "approvals"
-  | "agents"
-  | "calendar"
-  | "mail"
-  | "contacts"
-  | "files"
-  | "search"
-  | "settings";
+export type SectionId = "approvals" | "agents" | "calendar" | "mail" | "contacts" | "files" | "search" | "settings";
 
 interface SectionBase {
   id: SectionId;

@@ -14,9 +14,7 @@ const browserDerive = new Function(`${DERIVE_FN_SRC}; return deriveLoginKey;`)()
   password: string,
 ) => Promise<string>;
 
-const VECTORS = JSON.parse(
-  readFileSync(new URL("../../../conformance/login-key.json", import.meta.url), "utf8"),
-) as {
+const VECTORS = JSON.parse(readFileSync(new URL("../../../conformance/login-key.json", import.meta.url), "utf8")) as {
   iterations: number;
   saltLabel: string;
   vectors: Array<{ name: string; email: string; password: string; loginKey: string }>;
@@ -139,9 +137,7 @@ describe("every grantable scope is explained — the #128 drift guard", () => {
         authReq: { clientId: "x", redirectUri: "https://claude.ai/cb", scope: [s], state: "st" },
       }).text();
       expect(html, `scope "${s}" must render an explanation`).toContain("<li>");
-      expect(html, `scope "${s}" must not hit the unexplained-scope refusal`).not.toContain(
-        "cannot explain",
-      );
+      expect(html, `scope "${s}" must not hit the unexplained-scope refusal`).not.toContain("cannot explain");
       // And nothing the expansion confers may be silently missing: every
       // effective scope is either prose-listed or a NAMED display exception.
       void effectiveScopes([s]);

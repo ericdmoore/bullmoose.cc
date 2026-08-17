@@ -13,7 +13,7 @@ Both tasks landed. Nothing user-visible, as designed.
 
 - **T1 provenance** — `last_writer_{principal,binding,invocation}` on all seven
   mutable data-plane tables (`emails, mailboxes, address_books, contact_cards,
-calendars, calendar_events, file_nodes`), stamped in the **shared
+  calendars, calendar_events, file_nodes`), stamped in the **shared
   `packages/mailstore` write path** (every insert + primary update, plus the
   email flag/move path), never per JMAP method. `storeFor(ctx)` supplies the
   writer; `RequestContext.agent` carries binding/invocation when an agent acts.
@@ -38,12 +38,12 @@ Two data-model changes that are **cheap now and impossible retroactively**. Ever
 they're deferred is a month of records that can never be attributed and authorizations
 that can never be reconstructed.
 
-1. **Cross-realm provenance.** `grant_audit` only fires on _delegated_ access
+1. **Cross-realm provenance.** `grant_audit` only fires on *delegated* access
    (`requireAccount` writes it when `access.granted`), so an agent acting on **its own**
    account logs nothing. "Emily's agent scrambled Emily's VendorsBook" produces zero
    rows — exactly where you'd look first. `$agent` gives mail provenance; contacts,
    calendar, and files have no equivalent.
-2. **Grant tombstones.** "Who _could_ have done this last Tuesday?" is unanswerable
+2. **Grant tombstones.** "Who *could* have done this last Tuesday?" is unanswerable
    from today's `grants` table if a row was hard-deleted — and a grant that existed but
    was never exercised leaves no trace in `grant_audit` at all.
 
@@ -65,7 +65,7 @@ Nothing. Start here.
 
 ## Blocks
 
-All of s03.B–E. Any slice that writes data should land _after_ this one, or its writes
+All of s03.B–E. Any slice that writes data should land *after* this one, or its writes
 are unattributable forever.
 
 ## Acceptance
@@ -79,5 +79,5 @@ are unattributable forever.
 
 ## Out of scope
 
-The console screens that _consume_ this (s03.E) · the ACL/`shareWith` model · anything
+The console screens that *consume* this (s03.E) · the ACL/`shareWith` model · anything
 user-facing.

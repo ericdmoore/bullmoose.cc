@@ -55,8 +55,7 @@ function validateMatch(m: unknown, at: string): void {
       if (!SIEVE_FIELDS.has(match.field as string)) {
         throw new SieveRulesInvalid(`${at} names unknown field ${JSON.stringify(match.field)}`);
       }
-      if (typeof match.value !== "string")
-        throw new SieveRulesInvalid(`${at} value must be a string`);
+      if (typeof match.value !== "string") throw new SieveRulesInvalid(`${at} value must be a string`);
       return;
     case "headerPresent":
       if (typeof match.name !== "string" || match.name === "") {
@@ -68,8 +67,7 @@ function validateMatch(m: unknown, at: string): void {
       if (typeof match.name !== "string" || match.name === "") {
         throw new SieveRulesInvalid(`${at} header name must be a non-empty string`);
       }
-      if (typeof match.value !== "string")
-        throw new SieveRulesInvalid(`${at} value must be a string`);
+      if (typeof match.value !== "string") throw new SieveRulesInvalid(`${at} value must be a string`);
       return;
     default:
       throw new SieveRulesInvalid(`${at} has unknown kind ${JSON.stringify(match.kind)}`);
@@ -87,8 +85,7 @@ export function validateSieveRules(rules: unknown): SieveRule[] {
   const ids = new Set<string>();
   rules.forEach((rule, i) => {
     const at = `rules[${i}]`;
-    if (typeof rule !== "object" || rule === null)
-      throw new SieveRulesInvalid(`${at} is not an object`);
+    if (typeof rule !== "object" || rule === null) throw new SieveRulesInvalid(`${at} is not an object`);
     const r = rule as Record<string, unknown>;
     if (typeof r.id !== "string" || r.id === "") {
       throw new SieveRulesInvalid(`${at} id must be a non-empty string`);
@@ -120,9 +117,7 @@ export async function listSieveRules(db: D1Database, accountId: string): Promise
     if (!row) return [];
     return validateSieveRules(JSON.parse(row.rules_json));
   } catch (err) {
-    console.error(
-      `sieve rules for ${accountId} degraded to none (${err instanceof Error ? err.message : err})`,
-    );
+    console.error(`sieve rules for ${accountId} degraded to none (${err instanceof Error ? err.message : err})`);
     return [];
   }
 }
@@ -133,11 +128,7 @@ export async function listSieveRules(db: D1Database, accountId: string): Promise
  * intent and half-storing it would make stage 3 silently diverge from what the
  * author believes is configured. Storage errors also throw (writes are loud).
  */
-export async function putSieveRules(
-  db: D1Database,
-  accountId: string,
-  rules: SieveRule[],
-): Promise<void> {
+export async function putSieveRules(db: D1Database, accountId: string, rules: SieveRule[]): Promise<void> {
   const validated = validateSieveRules(rules);
   await db
     .prepare(
@@ -172,10 +163,7 @@ function isBayesState(v: unknown): v is BayesState {
  * buy a multi-MB JSON.parse on the delivery hot path). Null means stage 4
  * skips — fail open, logged when the cause is damage rather than absence.
  */
-export async function loadBayesState(
-  db: D1Database,
-  accountId: string,
-): Promise<BayesState | null> {
+export async function loadBayesState(db: D1Database, accountId: string): Promise<BayesState | null> {
   let json: string;
   try {
     const row = await db
@@ -185,9 +173,7 @@ export async function loadBayesState(
     if (!row) return null;
     json = row.state_json;
   } catch (err) {
-    console.error(
-      `bayes state for ${accountId} degraded to none (${err instanceof Error ? err.message : err})`,
-    );
+    console.error(`bayes state for ${accountId} degraded to none (${err instanceof Error ? err.message : err})`);
     return null;
   }
   if (json.length > BAYES_STATE_MAX_BYTES) {
@@ -199,9 +185,7 @@ export async function loadBayesState(
     if (!isBayesState(parsed)) throw new Error("not a BayesState shape");
     return parsed;
   } catch (err) {
-    console.error(
-      `bayes state for ${accountId} corrupt, loading null (${err instanceof Error ? err.message : err})`,
-    );
+    console.error(`bayes state for ${accountId} corrupt, loading null (${err instanceof Error ? err.message : err})`);
     return null;
   }
 }
@@ -213,11 +197,7 @@ export async function loadBayesState(
  * until it fits: deterministic, and strictly better than writing a row the
  * loader would refuse. Storage errors throw (writes are loud).
  */
-export async function saveBayesState(
-  db: D1Database,
-  accountId: string,
-  state: BayesState,
-): Promise<void> {
+export async function saveBayesState(db: D1Database, accountId: string, state: BayesState): Promise<void> {
   let cap = VOCAB_CAP;
   let tokens = prunedTokens(state.tokens, cap);
   let json = JSON.stringify({ spamCount: state.spamCount, hamCount: state.hamCount, tokens });

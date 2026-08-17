@@ -1,6 +1,6 @@
 # popcorn 🍿
 
-POP3, _"but way more corny."_ A barely-conforming POP3S front-end that
+POP3, *"but way more corny."* A barely-conforming POP3S front-end that
 translates onto a JMAP server. Legacy mail clients get their `RETR`; the
 serverless brain (bullmoose.cc) keeps every message — popcorn **archives,
 never destroys**.
@@ -46,7 +46,7 @@ covers every client we care about; "barely" is a feature.
 
 ## kettle-corn mode: SMTP submission (sending)
 
-POP3 only receives — legacy clients also want an _outgoing_ server.
+POP3 only receives — legacy clients also want an *outgoing* server.
 Set `POPCORN_SMTP_LISTEN` and the same daemon grows an RFC 6409
 submission face: `EHLO, AUTH PLAIN/LOGIN, MAIL, RCPT, DATA, RSET, NOOP,
 QUIT` over implicit TLS (no STARTTLS — downgrade attacks live there).
@@ -57,7 +57,7 @@ translation is direct: `MAIL FROM`/`RCPT TO` become the
 recipients live in the envelope, never the headers), `DATA` becomes an
 uploaded blob, and `Email/import` files the message so it lands in
 **Sent on every JMAP client**. No queue in the shim: a JMAP rejection
-returns 554 and the _client_ keeps SMTP's retry responsibility.
+returns 554 and the *client* keeps SMTP's retry responsibility.
 
 Guardrail: `MAIL FROM` must match an identity of the authenticated
 account (550 otherwise) — one token cannot spoof another hosted address.
@@ -65,16 +65,16 @@ While SES is sandboxed, recipients must be verified (same as any send).
 
 ## Configuration (environment)
 
-| var                         | default           | notes                                                          |
-| --------------------------- | ----------------- | -------------------------------------------------------------- |
-| `POPCORN_LISTEN`            | `:995`            | POP3; comma-separated; any port works (`:443` too — see below) |
-| `POPCORN_SMTP_LISTEN`       | _(off)_           | SMTP submission (kettle-corn); e.g. `:9587`                    |
-| `POPCORN_SMTP_MAX_SIZE`     | `26214400`        | DATA cap in bytes (25 MB)                                      |
-| `POPCORN_TLS_CERT` / `_KEY` | _(empty)_         | PEM paths; both unset = plaintext **dev only**                 |
-| `POPCORN_JMAP_BASE`         | _(SRV discovery)_ | e.g. `https://jmap.bullmoose.cc`                               |
-| `POPCORN_DELE_MODE`         | `archive`         | or `noop`                                                      |
-| `POPCORN_MAX_MESSAGES`      | `200`             | maildrop window, newest N                                      |
-| `POPCORN_IDLE_TIMEOUT`      | `5m`              | per-command deadline                                           |
+| var | default | notes |
+|---|---|---|
+| `POPCORN_LISTEN` | `:995` | POP3; comma-separated; any port works (`:443` too — see below) |
+| `POPCORN_SMTP_LISTEN` | *(off)* | SMTP submission (kettle-corn); e.g. `:9587` |
+| `POPCORN_SMTP_MAX_SIZE` | `26214400` | DATA cap in bytes (25 MB) |
+| `POPCORN_TLS_CERT` / `_KEY` | *(empty)* | PEM paths; both unset = plaintext **dev only** |
+| `POPCORN_JMAP_BASE` | *(SRV discovery)* | e.g. `https://jmap.bullmoose.cc` |
+| `POPCORN_DELE_MODE` | `archive` | or `noop` |
+| `POPCORN_MAX_MESSAGES` | `200` | maildrop window, newest N |
+| `POPCORN_IDLE_TIMEOUT` | `5m` | per-command deadline |
 
 **Port 443?** Sure — on a DNS-only (grey-cloud) hostname the port is
 yours, and most clients accept custom ports. Just don't put the record
@@ -152,7 +152,7 @@ sh deploy/install-tailscale-macos.sh    # macOS/launchd; idempotent
   ts.net name, auto-renewed weekly by a companion launchd job.
   Requires the tailnet's **HTTPS Certificates** toggle
   (admin console → DNS); until it's enabled the installer runs without
-  app-layer TLS, which is acceptable _only_ here because every tailnet
+  app-layer TLS, which is acceptable *only* here because every tailnet
   packet is already WireGuard-encrypted device-to-device — re-run the
   installer after flipping the toggle to upgrade in place
 - client setup: server `<node>.<tailnet>.ts.net`, port 9995, your
@@ -180,17 +180,17 @@ What actually matters when picking:
 
 Approximate entry tiers (prices drift — check current):
 
-| provider      | pick                                        | arch   | ~cost         | notes                                                        |
-| ------------- | ------------------------------------------- | ------ | ------------- | ------------------------------------------------------------ |
-| Hetzner       | CAX11                                       | arm64  | ~€4/mo        | best value; EU + US regions                                  |
-| DigitalOcean  | Basic Droplet 512 MB                        | amd64  | ~$4/mo        | simplest UX; regular CPU is fine                             |
-| AWS           | Lightsail 512 MB, or EC2 `t4g.nano`         | arm64  | ~$3.50–5/mo   | Lightsail bundles the IPv4; raw EC2 adds an IPv4 charge      |
-| Vultr         | Regular Cloud Compute 512 MB                | amd64  | ~$5/mo (IPv4) | the ~$2.50 tier is IPv6-only — mind the client caveat        |
-| Linode/Akamai | Nanode 1 GB                                 | amd64  | ~$5/mo        |                                                              |
-| GCP           | `e2-micro` (Always Free, select US regions) | amd64  | $0            | free-tier egress limits are far above popcorn's needs        |
-| Oracle Cloud  | Ampere A1 (Always Free)                     | arm64  | $0            | famously generous, famously fussy signup/reclaim policies    |
-| Fly.io        | `shared-cpu-1x` + TCP service               | either | ~$2–3/mo      | deploy the Dockerfile; Fly does raw-TCP passthrough natively |
-| your homelab  | alpaca et al.                               | any    | $0            | needs a router port-forward + DNS-01 cert                    |
+| provider | pick | arch | ~cost | notes |
+|---|---|---|---|---|
+| Hetzner | CAX11 | arm64 | ~€4/mo | best value; EU + US regions |
+| DigitalOcean | Basic Droplet 512 MB | amd64 | ~$4/mo | simplest UX; regular CPU is fine |
+| AWS | Lightsail 512 MB, or EC2 `t4g.nano` | arm64 | ~$3.50–5/mo | Lightsail bundles the IPv4; raw EC2 adds an IPv4 charge |
+| Vultr | Regular Cloud Compute 512 MB | amd64 | ~$5/mo (IPv4) | the ~$2.50 tier is IPv6-only — mind the client caveat |
+| Linode/Akamai | Nanode 1 GB | amd64 | ~$5/mo | |
+| GCP | `e2-micro` (Always Free, select US regions) | amd64 | $0 | free-tier egress limits are far above popcorn's needs |
+| Oracle Cloud | Ampere A1 (Always Free) | arm64 | $0 | famously generous, famously fussy signup/reclaim policies |
+| Fly.io | `shared-cpu-1x` + TCP service | either | ~$2–3/mo | deploy the Dockerfile; Fly does raw-TCP passthrough natively |
+| your homelab | alpaca et al. | any | $0 | needs a router port-forward + DNS-01 cert |
 
 Anti-recommendation: anything marketed for "mail servers" — popcorn
 sends nothing (port 25 never enters the picture), so blocked-SMTP
@@ -207,7 +207,7 @@ flatly invisible from any IPv4-only network your mail client sits on.**
 
 And v4-only networks hide where you least expect them. Field notes from
 this repo's own testing: an AT&T Fiber home network — full IPv6, both
-directions ✓ — while an AT&T 5G+ phone _on the same carrier_ scored
+directions ✓ — while an AT&T 5G+ phone *on the same carrier* scored
 0/10 on IPv6 (legacy v4-only APN provisioning; the handset was fine).
 Turning on a VPN (1.1.1.1/WARP) "fixed" it by tunneling to dual-stack —
 which just means the mail path now depends on a VPN toggle. That's a
@@ -215,13 +215,13 @@ bad failure mode to buy for ~$1.50/mo of savings.
 
 So, before choosing an IPv6-only tier, run [test-ipv6.com](https://test-ipv6.com)
 from **every network you actually read mail on** — home Wi-Fi, cellular
-_with any VPN off_, the office. All 10/10? The v6-only tier is a clean
+*with any VPN off*, the office. All 10/10? The v6-only tier is a clean
 buy, and arguably the more direct path (v6-native phones reach it with
 no carrier NAT64 in the way). Anything 0/10? Pay the lil' mo' money for
 dual-stack — it's the difference between "reachable from my networks"
 and "reachable from networks."
 
-(popcorn's _upstream_ leg is immune either way: Cloudflare publishes
+(popcorn's *upstream* leg is immune either way: Cloudflare publishes
 AAAA records, so a v6-only box reaches the JMAP API natively.)
 
 ## Client setup

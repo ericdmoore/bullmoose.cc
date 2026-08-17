@@ -11,7 +11,7 @@ on the login/marketing edges, which keeps the authenticated bundle honest.
 
 Rationale for not going full SPA framework: the marketing site is already Astro, the
 deploy path (Pages) is proven, and `@astrojs/preact` is already a dependency. Reuse beats
-novelty here — per `.plans/devPrinciples.md`, _leverage what exists when it makes sense_.
+novelty here — per `.plans/devPrinciples.md`, *leverage what exists when it makes sense*.
 
 ## 2. The JMAP client module — the one load-bearing abstraction
 
@@ -51,13 +51,13 @@ territory) and a different project — the server is the source of truth here.
 
 ## 4. Surface inventory (this slice)
 
-| Surface       | Notes                                                                |
-| ------------- | -------------------------------------------------------------------- |
-| Mailbox list  | roles, unread counts, `Mailbox/query`                                |
-| Thread list   | virtualized; `Email/query` + `queryChanges`                          |
-| Thread view   | message rendering, HTML sanitization, quoted-text collapsing         |
-| Compose       | reply/forward, drafts, attachments → s03.B link path for large files |
-| Search        | server-side `Email/query` with a `text` filter                       |
+| Surface | Notes |
+|---|---|
+| Mailbox list | roles, unread counts, `Mailbox/query` |
+| Thread list | virtualized; `Email/query` + `queryChanges` |
+| Thread view | message rendering, HTML sanitization, quoted-text collapsing |
+| Compose | reply/forward, drafts, attachments → s03.B link path for large files |
+| Search | server-side `Email/query` with a `text` filter |
 | Files browser | tree nav, upload (drag/drop + folder), move/rename/delete, copy-link |
 
 **HTML sanitization is a security surface, not a rendering detail.** Untrusted sender

@@ -1,15 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { pickAccount, requireSettings } from "./db.js";
-import {
-  emitIds,
-  emitJson,
-  emitNdjson,
-  failSetError,
-  note,
-  out,
-  usage,
-  type IoOpts,
-} from "./io.js";
+import { emitIds, emitJson, emitNdjson, failSetError, note, out, usage, type IoOpts } from "./io.js";
 import { JmapClient } from "./jmap.js";
 
 /**
@@ -44,11 +35,7 @@ export interface AgentInvokeOpts extends IoOpts {
   note?: string;
 }
 
-export async function cmdAgentInvoke(
-  db: DatabaseSync,
-  args: string[],
-  opts: AgentInvokeOpts,
-): Promise<void> {
+export async function cmdAgentInvoke(db: DatabaseSync, args: string[], opts: AgentInvokeOpts): Promise<void> {
   const [verb, arg] = args;
   const settings = requireSettings(db);
   const client = new JmapClient(settings.base, settings.token);

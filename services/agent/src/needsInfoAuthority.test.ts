@@ -190,9 +190,7 @@ async function scaffold() {
     invocations().find((r) => (JSON.parse(r.context_json) as { jobKey?: string }).jobKey === key);
   /** Every answer round enqueued so far, oldest first. */
   const rounds = () =>
-    invocations().filter(
-      (r) => (JSON.parse(r.context_json) as { kind?: string }).kind === "answer-info-request",
-    );
+    invocations().filter((r) => (JSON.parse(r.context_json) as { kind?: string }).kind === "answer-info-request");
   const proposal = (id: string) =>
     w.db.query<{ status: string; amendments_json: string | null }>(
       `SELECT status, amendments_json FROM agent_proposals WHERE account_id = ? AND id = ?`,
@@ -270,12 +268,8 @@ describe("THE ATTACK — a question must not launder a narrowed node back to its
 
     // Sanity: the leaf itself is properly bounded. `email.draft` is the
     // binding's, and the delegation dropped it.
-    expect(
-      (await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" })).ok,
-    ).toBe(true);
-    expect(
-      (await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "email.draft" })).ok,
-    ).toBe(false);
+    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" })).ok).toBe(true);
+    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "email.draft" })).ok).toBe(false);
 
     // The human asks a question. This is the whole exploit: one ordinary,
     // well-intentioned verb on the ordinary decision surface.
@@ -309,21 +303,12 @@ describe("THE ATTACK — a question must not launder a narrowed node back to its
 
     // Every other axis too — a fix that closed only the tool axis would be a
     // fix for the example rather than for the hole.
-    expect(
-      (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "credential", name: "stripe" })).ok,
-    ).toBe(false);
-    expect(
-      (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "credential", name: "aws-mcp" }))
-        .ok,
-    ).toBe(true);
+    expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "credential", name: "stripe" })).ok).toBe(false);
+    expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "credential", name: "aws-mcp" })).ok).toBe(true);
     // The binding would allow 1_000_000 and the Job 800_000; the NODE's
     // delegated ceiling is 100_000, and that is what the round inherits.
-    expect(
-      (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "spend", micros: 100_000 })).ok,
-    ).toBe(true);
-    expect(
-      (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "spend", micros: 100_001 })).ok,
-    ).toBe(false);
+    expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "spend", micros: 100_000 })).ok).toBe(true);
+    expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "spend", micros: 100_001 })).ok).toBe(false);
   });
 
   it("the round's effective authority is IDENTICAL to the node's — same envelope, not a re-derived one", async () => {
@@ -352,25 +337,21 @@ describe("THE ATTACK — a question must not launder a narrowed node back to its
     const leaf = await upToTheProposal(s);
     await s.needsInfo(leaf.id, "why?");
     const round = s.rounds()[0]!;
-    expect(
-      (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "files.read" })).ok,
-    ).toBe(true);
+    expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "files.read" })).ok).toBe(true);
 
     // The operator narrows the binding while the question is open. The round's
     // own column still says `files.read`; its EFFECTIVE authority does not,
     // because the binding is the first term of the fold and the fold is
     // recomputed on every call (s17). A round that carried a snapshot would
     // still say yes here.
-    s.w.db.sqlite
-      .prepare(`UPDATE agent_bindings SET config_json = ? WHERE account_id = ? AND id = ?`)
-      .run(
-        JSON.stringify({
-          ...JSON.parse(CONFIG),
-          jobs: { tools: [], credentials: [], budgetMicros: 10 },
-        }),
-        ACCOUNT,
-        BINDING,
-      );
+    s.w.db.sqlite.prepare(`UPDATE agent_bindings SET config_json = ? WHERE account_id = ? AND id = ?`).run(
+      JSON.stringify({
+        ...JSON.parse(CONFIG),
+        jobs: { tools: [], credentials: [], budgetMicros: 10 },
+      }),
+      ACCOUNT,
+      BINDING,
+    );
 
     const refused = await authorizeNodeUse(s.env, ACCOUNT, round.id, {
       kind: "tool",
@@ -426,13 +407,8 @@ describe("THE DEPTH CEILING — questions are not a way to buy levels", () => {
       expect(round.job_id).toBe(leaf.job_id);
       // And the chain LENGTH is invariant too, so a long conversation can never
       // walk itself past MAX_CHAIN_HOPS and start denying honest work.
-      expect(
-        (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "files.read" })).ok,
-      ).toBe(true);
-      expect(
-        (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "email.draft" }))
-          .ok,
-      ).toBe(false);
+      expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "files.read" })).ok).toBe(true);
+      expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "email.draft" })).ok).toBe(false);
     }
     // Both answers landed on the proposal's append-only record.
     const amendments = JSON.parse(s.proposal(leaf.id).amendments_json ?? "[]") as Array<{
@@ -480,9 +456,7 @@ describe("the round is real work, and the Job's accounting says so", () => {
     // no round that could ever return it to the queue — a cap turned into a
     // dead end. So the round is created, and the Job is honestly one node over
     // its cap, which the next expansion (guarded, in SQL) is what pays for.
-    s.w.db.sqlite
-      .prepare(`UPDATE jobs SET max_nodes = 2 WHERE account_id = ? AND id = ?`)
-      .run(ACCOUNT, leaf.job_id);
+    s.w.db.sqlite.prepare(`UPDATE jobs SET max_nodes = 2 WHERE account_id = ? AND id = ?`).run(ACCOUNT, leaf.job_id);
 
     const res = await s.needsInfo(leaf.id, "why?");
     expect(res.notUpdated).toEqual({});

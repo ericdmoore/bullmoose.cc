@@ -1,11 +1,11 @@
 # s16 — `crm@`: the agent that curates the address book
 
 > **Status: designed, not built.** readme 2026-08-13; `dedupe.md` and `notes-on-people.md` (2026-08-15/16) specify the work — confidence tiers, the transform-to-invariant note form, and four named traps including a privilege escalation through governing books. Two written sub-designs, zero code.
-> duplicates). Eric: _"`CRM@` should propose de-dupe actions. That is the bread-and-butter
-> behavior of someone looking at contacts."_
+> duplicates). Eric: *"`CRM@` should propose de-dupe actions. That is the bread-and-butter
+> behavior of someone looking at contacts."*
 >
 > The framing is the whole point. Dedupe is **not a button** and **not a batch job** — it is
-> what a colleague who looks after your contacts _notices and offers_. Tool-shaped answer:
+> what a colleague who looks after your contacts *notices and offers*. Tool-shaped answer:
 > a "Find duplicates" screen you must remember to visit. Space-shaped answer: an agent that
 > raises its hand.
 
@@ -13,11 +13,11 @@
 
 `s10 T1` gave books three write policies, and the middle one has had no occupant:
 
-| policy        | who writes                                          | for                                  |
-| ------------- | --------------------------------------------------- | ------------------------------------ |
-| `open`        | anyone with a grant                                 | an agent's own working books         |
-| **`propose`** | **humans directly; AGENTS file proposals**          | **human-owned books — this section** |
-| `governed`    | nobody but the owner; widening is a `grant-request` | allowlist books                      |
+| policy | who writes | for |
+|---|---|---|
+| `open` | anyone with a grant | an agent's own working books |
+| **`propose`** | **humans directly; AGENTS file proposals** | **human-owned books — this section** |
+| `governed` | nobody but the owner; widening is a `grant-request` | allowlist books |
 
 So `crm@` needs **no new authority mechanism**: it holds `contacts` scope, the human's book
 is `propose`, and every write it wants becomes a reviewable row in `/approvals` — chained,
@@ -47,11 +47,11 @@ A merge destroys information: two cards become one, and some field loses. So:
 
 - **The proposal carries the merged card as its payload**, and the human can **edit before
   approving** — the approve-after-edit diff the decline taxonomy calls the
-  highest-information event in the system. "Yes, but keep _her_ phone number" is a labeled
+  highest-information event in the system. "Yes, but keep *her* phone number" is a labeled
   correction, not a rejection.
 - **Rationale must say WHY these are the same** ("identical email"; "same surname, adjacent
-  import batch"). `needsInfo` then works as designed: _"why do you think these are the same
-  person?"_ is exactly the question, and it is answerable from the record.
+  import batch"). `needsInfo` then works as designed: *"why do you think these are the same
+  person?"* is exactly the question, and it is answerable from the record.
 - **Losers are tombstoned, not deleted**, and the membership chain records the merge — an
   undo needs the loser to still exist.
 - **Never merge across books without saying so.** A card in a `governed` book merging with
@@ -60,7 +60,7 @@ A merge destroys information: two cards become one, and some field loses. So:
 
 ## Beyond dedupe — the rest of "bread and butter"
 
-Named so the section is not mistaken for a one-verb agent; each is a _proposal_, never a
+Named so the section is not mistaken for a one-verb agent; each is a *proposal*, never a
 silent write:
 
 - **Missing contact** — "you have exchanged 40 messages with this address and it is in no
@@ -73,18 +73,18 @@ silent write:
 ## Open questions
 
 1. **When does `crm@` run?** A sweep (cron), or on-change (a new card triggers a match
-   against the book)? _Recommendation: on-change for the cheap exact tier — a duplicate is
-   most fixable the moment it arrives — plus a periodic sweep for the rest._
+   against the book)? *Recommendation: on-change for the cheap exact tier — a duplicate is
+   most fixable the moment it arrives — plus a periodic sweep for the rest.*
 2. **Does an import get special treatment?** 3,559 cards arrived in bulk and duplicates are
-   an import artifact. _Recommendation: yes — a post-import pass is the highest-yield
+   an import artifact. *Recommendation: yes — a post-import pass is the highest-yield
    moment, and "these 14 arrived twice in the same import" is a rationale no fuzzy matcher
-   can beat._
+   can beat.*
 3. **Is `merge-contacts` a new proposal kind, or a shape of `create-contact`?**
-   _Recommendation: new kind — the apply path is a merge+tombstone, not an insert, and the
-   surfaces must render a diff rather than a card._
-4. **Auto-approve for the exact tier?** Tempting at scale. _Recommendation: no, not at
+   *Recommendation: new kind — the apply path is a merge+tombstone, not an insert, and the
+   surfaces must render a diff rather than a card.*
+4. **Auto-approve for the exact tier?** Tempting at scale. *Recommendation: no, not at
    first. Let the queue prove the matcher's precision before spending the human's trust;
-   revisit once the approve rate is measurable (s07 T5's score is the input)._
+   revisit once the approve rate is measurable (s07 T5's score is the input).*
 
 ## References
 

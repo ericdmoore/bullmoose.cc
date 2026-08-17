@@ -73,11 +73,7 @@ describe("dates, which the server swallows rather than rejects", () => {
   it("rejects an unparseable date instead of letting the server drop it", () => {
     // dateMs falls back to the EXISTING value on anything unparseable
     // (vacation.ts:97-104) — success is reported and the old date survives.
-    const { problems, patch } = vacationPatch(
-      responder(),
-      goodForm({ toDate: "next tuesday" }),
-      NOW,
-    );
+    const { problems, patch } = vacationPatch(responder(), goodForm({ toDate: "next tuesday" }), NOW);
     expect(problems.some((p) => /End date/.test(p))).toBe(true);
     expect(patch).not.toHaveProperty("toDate");
   });
@@ -86,11 +82,7 @@ describe("dates, which the server swallows rather than rejects", () => {
     // `if (v === null) return null` (vacation.ts:98). Omitting the key would
     // keep the old bound and the window would silently outlive the edit.
     const current = responder({ isEnabled: true, toDate: "2026-08-01T00:00:00.000Z" });
-    const { patch } = vacationPatch(
-      current,
-      goodForm({ toDate: "", subject: current.subject ?? "" }),
-      NOW,
-    );
+    const { patch } = vacationPatch(current, goodForm({ toDate: "", subject: current.subject ?? "" }), NOW);
     expect(patch.toDate).toBeNull();
   });
 
@@ -137,11 +129,7 @@ describe("turning it on", () => {
   });
 
   it("allows an empty message while it is OFF — that is just an unfinished draft", () => {
-    const { problems } = vacationPatch(
-      responder(),
-      goodForm({ isEnabled: false, textBody: "", subject: "" }),
-      NOW,
-    );
+    const { problems } = vacationPatch(responder(), goodForm({ isEnabled: false, textBody: "", subject: "" }), NOW);
     expect(problems).toEqual([]);
   });
 
@@ -152,11 +140,7 @@ describe("turning it on", () => {
   });
 
   it("warns when the window has already closed", () => {
-    const { problems, warnings } = vacationPatch(
-      responder(),
-      goodForm({ toDate: "2026-07-01T09:00" }),
-      NOW,
-    );
+    const { problems, warnings } = vacationPatch(responder(), goodForm({ toDate: "2026-07-01T09:00" }), NOW);
     // Legitimate — someone may be recording a past absence — but not silent.
     expect(problems).toEqual([]);
     expect(warnings.some((w) => /already passed/.test(w))).toBe(true);
@@ -164,11 +148,7 @@ describe("turning it on", () => {
 
   it("clears a subject with null rather than an empty string", () => {
     const current = responder({ isEnabled: false, subject: "Away", textBody: "b" });
-    const { patch } = vacationPatch(
-      current,
-      goodForm({ isEnabled: false, subject: "", textBody: "b" }),
-      NOW,
-    );
+    const { patch } = vacationPatch(current, goodForm({ isEnabled: false, subject: "", textBody: "b" }), NOW);
     expect(patch.subject).toBeNull();
   });
 });
@@ -182,18 +162,12 @@ describe("vacationStatus answers what delivery will actually do", () => {
   it("is ended when the window closed, even though the checkbox says on", () => {
     // The case a naive screen gets wrong: `isEnabled` is true and no reply will
     // ever be sent (ingest/src/index.ts:361).
-    const status = vacationStatus(
-      responder({ isEnabled: true, toDate: "2026-07-01T00:00:00.000Z" }),
-      NOW,
-    );
+    const status = vacationStatus(responder({ isEnabled: true, toDate: "2026-07-01T00:00:00.000Z" }), NOW);
     expect(status.activity).toBe("ended");
   });
 
   it("is scheduled when the window has not opened", () => {
-    const status = vacationStatus(
-      responder({ isEnabled: true, fromDate: "2026-09-01T00:00:00.000Z" }),
-      NOW,
-    );
+    const status = vacationStatus(responder({ isEnabled: true, fromDate: "2026-09-01T00:00:00.000Z" }), NOW);
     expect(status.activity).toBe("scheduled");
   });
 

@@ -155,9 +155,7 @@ function readAddresses(map: unknown): CardFormAddress[] {
       postcode: owned("postcode"),
       country: owned("country"),
       context: readContext(entry),
-      otherComponents: components.filter(
-        (c) => !(OWNED_ADDRESS_KINDS as readonly string[]).includes(String(c.kind)),
-      ),
+      otherComponents: components.filter((c) => !(OWNED_ADDRESS_KINDS as readonly string[]).includes(String(c.kind))),
       rest: withoutKeys(entry, ["components", "contexts"]),
     };
   });
@@ -181,14 +179,7 @@ function readContext(entry: CardEntry): CardContext {
  * keys from this list, which is what makes "the form cannot delete what it
  * does not render" a property of the code rather than of the author's care.
  */
-export const OWNED_PROPERTIES = [
-  "name",
-  "organizations",
-  "notes",
-  "emails",
-  "phones",
-  "addresses",
-] as const;
+export const OWNED_PROPERTIES = ["name", "organizations", "notes", "emails", "phones", "addresses"] as const;
 
 /**
  * Build the owned properties from the form, starting from `base` (the card
@@ -266,11 +257,7 @@ function buildSingleton(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-function buildEntries(
-  rows: CardFormEntry[],
-  field: string,
-  prefix: string,
-): Record<string, CardEntry> | undefined {
+function buildEntries(rows: CardFormEntry[], field: string, prefix: string): Record<string, CardEntry> | undefined {
   const out: Record<string, CardEntry> = {};
   const used = rows.map((r) => r.key).filter((k) => k !== "");
   for (const row of rows) {
@@ -409,8 +396,7 @@ export function pointerToken(token: string): string {
 function mapEntries(map: unknown): Array<[string, CardEntry]> {
   if (map === null || typeof map !== "object" || Array.isArray(map)) return [];
   return Object.entries(map as Record<string, unknown>).filter(
-    (pair): pair is [string, CardEntry] =>
-      pair[1] !== null && typeof pair[1] === "object" && !Array.isArray(pair[1]),
+    (pair): pair is [string, CardEntry] => pair[1] !== null && typeof pair[1] === "object" && !Array.isArray(pair[1]),
   );
 }
 

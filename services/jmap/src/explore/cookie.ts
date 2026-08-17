@@ -70,11 +70,7 @@ export interface ExploreSession {
  * An unset `exploreHost` returns false: the explorer is OFF BY DEFAULT, and a
  * deployment that never configures it has no cookie path at all.
  */
-export function cookieAuthAllowed(
-  hostHeader: string | null,
-  method: string,
-  exploreHost: string | undefined,
-): boolean {
+export function cookieAuthAllowed(hostHeader: string | null, method: string, exploreHost: string | undefined): boolean {
   if (!exploreHost) return false;
   if (method !== "GET") return false;
   return hostOnly(hostHeader) === exploreHost.trim().toLowerCase();
@@ -162,10 +158,7 @@ export async function readExploreCookie(
  * own hostname).
  */
 export function setCookieHeader(value: string, ttlSeconds = EXPLORE_COOKIE_TTL_SECONDS): string {
-  return (
-    `${EXPLORE_COOKIE}=${value}; Path=/; Max-Age=${ttlSeconds}; ` +
-    "HttpOnly; Secure; SameSite=Strict"
-  );
+  return `${EXPLORE_COOKIE}=${value}; Path=/; Max-Age=${ttlSeconds}; ` + "HttpOnly; Secure; SameSite=Strict";
 }
 
 /** `Set-Cookie` that removes it. Same attributes, so the browser matches it. */

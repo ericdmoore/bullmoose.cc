@@ -1,4 +1,4 @@
-"use client";
+'use client'
 
 import {
   Combobox,
@@ -8,30 +8,30 @@ import {
   Dialog,
   DialogPanel,
   DialogBackdrop,
-} from "@headlessui/react";
-import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import { FaceFrownIcon, GlobeAmericasIcon } from "@heroicons/react/24/outline";
-import { useState } from "react";
+} from '@headlessui/react'
+import { MagnifyingGlassIcon } from '@heroicons/react/20/solid'
+import { FaceFrownIcon, GlobeAmericasIcon } from '@heroicons/react/24/outline'
+import { useState } from 'react'
 
 const items = [
-  { id: 1, name: "Workflow Inc.", category: "Clients", url: "#" },
+  { id: 1, name: 'Workflow Inc.', category: 'Clients', url: '#' },
   // More items...
-];
+]
 
 export default function Example() {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(true);
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(true)
 
   const filteredItems =
-    query === ""
+    query === ''
       ? []
       : items.filter((item) => {
-          return item.name.toLowerCase().includes(query.toLowerCase());
-        });
+          return item.name.toLowerCase().includes(query.toLowerCase())
+        })
 
   const groups = filteredItems.reduce((groups, item) => {
-    return { ...groups, [item.category]: [...(groups[item.category] || []), item] };
-  }, {});
+    return { ...groups, [item.category]: [...(groups[item.category] || []), item] }
+  }, {})
 
   return (
     <Dialog
@@ -39,8 +39,8 @@ export default function Example() {
       className="relative z-10"
       open={open}
       onClose={() => {
-        setOpen(false);
-        setQuery("");
+        setOpen(false)
+        setQuery('')
       }}
     >
       <DialogBackdrop
@@ -56,7 +56,7 @@ export default function Example() {
           <Combobox
             onChange={(item) => {
               if (item) {
-                window.location = item.url;
+                window.location = item.url
               }
             }}
           >
@@ -66,7 +66,7 @@ export default function Example() {
                 className="col-start-1 row-start-1 h-12 w-full pr-4 pl-11 text-base text-gray-900 outline-hidden placeholder:text-gray-400 sm:text-sm dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500"
                 placeholder="Search..."
                 onChange={(event) => setQuery(event.target.value)}
-                onBlur={() => setQuery("")}
+                onBlur={() => setQuery('')}
               />
               <MagnifyingGlassIcon
                 className="pointer-events-none col-start-1 row-start-1 ml-4 size-5 self-center text-gray-500"
@@ -74,15 +74,10 @@ export default function Example() {
               />
             </div>
 
-            {query === "" && (
+            {query === '' && (
               <div className="border-t border-gray-100 px-6 py-14 text-center text-sm sm:px-14 dark:border-white/10">
-                <GlobeAmericasIcon
-                  className="mx-auto size-6 text-gray-400 dark:text-gray-500"
-                  aria-hidden="true"
-                />
-                <p className="mt-4 font-semibold text-gray-900 dark:text-white">
-                  Search for clients and projects
-                </p>
+                <GlobeAmericasIcon className="mx-auto size-6 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                <p className="mt-4 font-semibold text-gray-900 dark:text-white">Search for clients and projects</p>
                 <p className="mt-2 text-gray-500 dark:text-gray-400">
                   Quickly access clients and projects by running a global search.
                 </p>
@@ -116,12 +111,9 @@ export default function Example() {
               </ComboboxOptions>
             )}
 
-            {query !== "" && filteredItems.length === 0 && (
+            {query !== '' && filteredItems.length === 0 && (
               <div className="border-t border-gray-100 px-6 py-14 text-center text-sm sm:px-14 dark:border-white/10">
-                <FaceFrownIcon
-                  className="mx-auto size-6 text-gray-400 dark:text-gray-500"
-                  aria-hidden="true"
-                />
+                <FaceFrownIcon className="mx-auto size-6 text-gray-400 dark:text-gray-500" aria-hidden="true" />
                 <p className="mt-4 font-semibold text-gray-900 dark:text-white">No results found</p>
                 <p className="mt-2 text-gray-500 dark:text-gray-400">
                   We couldn’t find anything with that term. Please try again.
@@ -132,5 +124,5 @@ export default function Example() {
         </DialogPanel>
       </div>
     </Dialog>
-  );
+  )
 }

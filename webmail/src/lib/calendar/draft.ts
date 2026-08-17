@@ -151,8 +151,7 @@ export interface EventDraft {
 
 export function parseDurationMs(raw: unknown): number {
   if (typeof raw !== "string") return 0;
-  const m =
-    /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(raw);
+  const m = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(raw);
   if (!m) return 0;
   const ms =
     (Number(m[2] ?? 0) * 7 + Number(m[3] ?? 0)) * 86_400_000 +
@@ -190,9 +189,7 @@ export function rulesFromRepeat(repeat: RepeatForm, start: CivilDate): Recurrenc
       .map((day) => ({ day }));
   }
   if (repeat.frequency === "monthly" && repeat.monthlyMode === "nthWeekday") {
-    rule.byDay = [
-      { day: DAY_CODE_FOR_WEEKDAY[weekday(start)]!, nthOfPeriod: nthWeekdayOfMonth(start) },
-    ];
+    rule.byDay = [{ day: DAY_CODE_FOR_WEEKDAY[weekday(start)]!, nthOfPeriod: nthWeekdayOfMonth(start) }];
   }
 
   if (repeat.ends === "count") rule.count = repeat.count;
@@ -211,10 +208,7 @@ export function rulesFromRepeat(repeat: RepeatForm, start: CivilDate): Recurrenc
  * form shows it read-only and the patch leaves it alone. Refusing to edit is
  * always safe; editing badly is not.
  */
-export function repeatFromRules(
-  rules: RecurrenceRule[] | undefined,
-  start: CivilDate,
-): RepeatForm | null {
+export function repeatFromRules(rules: RecurrenceRule[] | undefined, start: CivilDate): RepeatForm | null {
   if (!rules || rules.length === 0) return emptyRepeat();
   // Multiple rules are legal JSCalendar and the expander unions them; the form
   // has one frequency picker and cannot say that.
@@ -222,12 +216,7 @@ export function repeatFromRules(
   const rule = rules[0]!;
 
   const frequency = typeof rule.frequency === "string" ? rule.frequency.toLowerCase() : "";
-  if (
-    frequency !== "daily" &&
-    frequency !== "weekly" &&
-    frequency !== "monthly" &&
-    frequency !== "yearly"
-  ) {
+  if (frequency !== "daily" && frequency !== "weekly" && frequency !== "monthly" && frequency !== "yearly") {
     return null;
   }
 
@@ -301,8 +290,7 @@ export function describeRules(rules: RecurrenceRule[] | undefined): string {
   const rule = rules[0]!;
   const freq = typeof rule.frequency === "string" ? rule.frequency.toLowerCase() : "";
   const every = rule.interval && rule.interval > 1 ? `Every ${rule.interval} ` : "Every ";
-  const unit =
-    { daily: "day", weekly: "week", monthly: "month", yearly: "year" }[freq] ?? freq ?? "period";
+  const unit = { daily: "day", weekly: "week", monthly: "month", yearly: "year" }[freq] ?? freq ?? "period";
   const parts = [`${every}${unit}${rule.interval && rule.interval > 1 ? "s" : ""}`];
 
   const byDay = rule.byDay;
@@ -349,19 +337,14 @@ export function newDraft(day: CivilDate, calendarId: string, timeZone: string): 
   };
 }
 
-export function draftFromEvent(
-  event: CalendarEvent,
-  fallbackCalendarId: string,
-): EventDraft | null {
+export function draftFromEvent(event: CalendarEvent, fallbackCalendarId: string): EventDraft | null {
   const start = typeof event.start === "string" ? parseCivilDateTime(event.start) : null;
   if (!start) return null;
   const allDay = event.showWithoutTime === true;
   const durationMs = parseDurationMs(event.duration) || (allDay ? 86_400_000 : 0);
 
-  const calendarId =
-    Object.entries(event.calendarIds ?? {}).find(([, v]) => v === true)?.[0] ?? fallbackCalendarId;
-  const location =
-    Object.values(event.locations ?? {}).find((l) => typeof l?.name === "string")?.name ?? "";
+  const calendarId = Object.entries(event.calendarIds ?? {}).find(([, v]) => v === true)?.[0] ?? fallbackCalendarId;
+  const location = Object.values(event.locations ?? {}).find((l) => typeof l?.name === "string")?.name ?? "";
 
   let endDate: string;
   let endTime: string;
@@ -390,11 +373,7 @@ export function draftFromEvent(
     endTime,
     // An all-day event's stored zone is an artefact (see ALL_DAY_ZONE); do not
     // surface it as if the user had chosen it.
-    timeZone: allDay
-      ? ALL_DAY_ZONE
-      : typeof event.timeZone === "string"
-        ? event.timeZone
-        : "Etc/UTC",
+    timeZone: allDay ? ALL_DAY_ZONE : typeof event.timeZone === "string" ? event.timeZone : "Etc/UTC",
     repeat: repeat ?? emptyRepeat(),
     ...(repeat === null ? { frozenRules: event.recurrenceRules } : {}),
   };
@@ -410,16 +389,14 @@ export function validateDraft(draft: EventDraft): string[] {
   if (!end) problems.push("End date is not a real date.");
 
   if (draft.allDay) {
-    if (start && end && compareDays(end, start) < 0)
-      problems.push("The last day is before the first.");
+    if (start && end && compareDays(end, start) < 0) problems.push("The last day is before the first.");
   } else {
     const startMin = parseClock(draft.startTime);
     const endMin = parseClock(draft.endTime);
     if (startMin === null) problems.push("Start time is not a valid time.");
     if (endMin === null) problems.push("End time is not a valid time.");
     if (start && end && startMin !== null && endMin !== null) {
-      if (daysBetween(start, end) * 1440 + endMin < startMin)
-        problems.push("The end is before the start.");
+      if (daysBetween(start, end) * 1440 + endMin < startMin) problems.push("The end is before the start.");
     }
   }
 
@@ -514,8 +491,7 @@ export function draftToPatch(draft: EventDraft, original: CalendarEvent): Record
     if (!deepEqual(value, original[key] ?? null)) patch[key] = value;
   }
 
-  const originalCalendarId =
-    Object.entries(original.calendarIds ?? {}).find(([, v]) => v === true)?.[0] ?? "";
+  const originalCalendarId = Object.entries(original.calendarIds ?? {}).find(([, v]) => v === true)?.[0] ?? "";
   if (originalCalendarId !== draft.calendarId) {
     // Whole-object replace: `calendarIds/<old>: null` plus `/<new>: true` would
     // leave the event in zero calendars if the server applied them in that
@@ -539,7 +515,5 @@ function deepEqual(a: unknown, b: unknown): boolean {
   const ak = Object.keys(a as object);
   const bk = Object.keys(b as object);
   if (ak.length !== bk.length) return false;
-  return ak.every((k) =>
-    deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]),
-  );
+  return ak.every((k) => deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
 }

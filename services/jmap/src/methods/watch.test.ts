@@ -53,10 +53,9 @@ describe("Watch/set — arm", () => {
     expect(id).toMatch(/^w_/);
     expect(res.created.new1!.status).toBe("armed");
 
-    const got = await h.call<{ list: Array<{ id: string; status: string; deadlineAt: number }> }>(
-      "Watch/get",
-      { ids: null },
-    );
+    const got = await h.call<{ list: Array<{ id: string; status: string; deadlineAt: number }> }>("Watch/get", {
+      ids: null,
+    });
     expect(got.list).toHaveLength(1);
     expect(got.list[0]!.status).toBe("armed");
     expect(got.list[0]!.deadlineAt).toBe(999);
@@ -113,9 +112,9 @@ describe("Watch/set — cancel, and what a client may NOT do", () => {
     const id = await armOne(h);
     const res = await h.call<SetResult>("Watch/set", { update: { [id]: { status: "cancelled" } } });
     expect(res.updated).toHaveProperty(id);
-    expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM watches WHERE id = '${id}'`)[0]!.status,
-    ).toBe("cancelled");
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM watches WHERE id = '${id}'`)[0]!.status).toBe(
+      "cancelled",
+    );
   });
 
   it("REFUSES to write status 'fired' — only the cron may fire", async () => {
@@ -123,9 +122,7 @@ describe("Watch/set — cancel, and what a client may NOT do", () => {
     const id = await armOne(h);
     const res = await h.call<SetResult>("Watch/set", { update: { [id]: { status: "fired" } } });
     expect(res.notUpdated[id]?.description).toMatch(/firing is the cron/);
-    expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM watches WHERE id = '${id}'`)[0]!.status,
-    ).toBe("armed");
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM watches WHERE id = '${id}'`)[0]!.status).toBe("armed");
   });
 
   it("REFUSES to cancel a watch that already fired — no un-ringing the bell", async () => {

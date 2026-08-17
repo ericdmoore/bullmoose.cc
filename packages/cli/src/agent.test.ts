@@ -90,9 +90,7 @@ function fakeServer(invocations: FakeInvocation[]) {
         case "AgentInvocation/set": {
           setCalls.push(args);
           const updated: Record<string, null> = {};
-          for (const [id, patch] of Object.entries(
-            args.update as Record<string, Record<string, unknown>>,
-          )) {
+          for (const [id, patch] of Object.entries(args.update as Record<string, Record<string, unknown>>)) {
             const inv = mine.find((i) => i.id === id);
             if (!inv) continue;
             if (patch.status === "running" && inv.status !== "pending") continue; // claim guard
@@ -215,9 +213,7 @@ describe("fleetDrain drops a revoked account without a restart", () => {
   });
 
   it("recognizes both refusal shapes (jmapType from the wire, type from MethodError)", () => {
-    expect(isAuthzRefusal(Object.assign(new Error("x"), { jmapType: "accountNotFound" }))).toBe(
-      true,
-    );
+    expect(isAuthzRefusal(Object.assign(new Error("x"), { jmapType: "accountNotFound" }))).toBe(true);
     expect(isAuthzRefusal(Object.assign(new Error("x"), { jmapType: "forbidden" }))).toBe(true);
     expect(isAuthzRefusal({ type: "accountNotFound" })).toBe(true);
     expect(isAuthzRefusal(Object.assign(new Error("x"), { jmapType: "serverFail" }))).toBe(false);
@@ -244,10 +240,7 @@ describe("fleetDrain drops a revoked account without a restart", () => {
 
 describe("capability narrowing: unfit work is not claimed", () => {
   it("skips an invocation requiring vision on a no-vision fleet, claims its unfaceted sibling", async () => {
-    const rows = [
-      inv({ id: "inv_vision", requires: { vision: true } }),
-      inv({ id: "inv_plain", requires: null }),
-    ];
+    const rows = [inv({ id: "inv_vision", requires: { vision: true } }), inv({ id: "inv_plain", requires: null })];
     const s = fakeServer(rows);
     const handled = await fleetDrain(s.client, servedOf("a_hermes"), FLEET, quiet);
 
@@ -286,10 +279,7 @@ describe("capability narrowing: unfit work is not claimed", () => {
       [{ ...caps, vision: true }, { vision: true, contextTokens: 64_000 }, false],
     ];
     for (const [c, r, want] of cases) {
-      expect(
-        fitsRequirements(c, r),
-        `caps=${JSON.stringify(c)} requires=${JSON.stringify(r)}`,
-      ).toBe(want);
+      expect(fitsRequirements(c, r), `caps=${JSON.stringify(c)} requires=${JSON.stringify(r)}`).toBe(want);
     }
   });
 });
@@ -302,9 +292,7 @@ describe("the claim call carries the declared claimant identity", () => {
     const s = fakeServer(rows);
     await fleetDrain(s.client, servedOf("a_hermes"), FLEET, quiet);
 
-    const claim = s.setCalls.find(
-      (c) => (c.update as Record<string, { status: string }>).inv_h?.status === "running",
-    )!;
+    const claim = s.setCalls.find((c) => (c.update as Record<string, { status: string }>).inv_h?.status === "running")!;
     // The homelab daemon IS the free runtime; the vector is fleet.json's,
     // verbatim. The server records this declaration on the claim
     // (trust-but-audit) and enforces the same fit predicate server-side.
@@ -320,9 +308,7 @@ describe("the claim call carries the declared claimant identity", () => {
     const fleet: FleetConfig = { bindings: FLEET.bindings }; // fleetFromSingle's shape
     await fleetDrain(s.client, servedOf("a_hermes"), fleet, quiet);
 
-    const claim = s.setCalls.find(
-      (c) => (c.update as Record<string, { status: string }>).inv_h?.status === "running",
-    )!;
+    const claim = s.setCalls.find((c) => (c.update as Record<string, { status: string }>).inv_h?.status === "running")!;
     // No vector declared → the server's fit gate treats it as "claims as
     // today" (T2-FIT-CONTRACT); isFree still feeds policy + liveness.
     expect(claim.claimant).toEqual({ isFree: true });
@@ -333,9 +319,7 @@ describe("the claim call carries the declared claimant identity", () => {
     const s = fakeServer(rows);
     await fleetDrain(s.client, servedOf("a_hermes"), FLEET, quiet);
 
-    const done = s.setCalls.find(
-      (c) => (c.update as Record<string, { status: string }>).inv_h?.status === "done",
-    )!;
+    const done = s.setCalls.find((c) => (c.update as Record<string, { status: string }>).inv_h?.status === "done")!;
     expect(done.claimant).toBeUndefined();
   });
 });

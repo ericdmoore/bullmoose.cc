@@ -33,9 +33,7 @@ describe("the note is derived from coverage, so the data moves it", () => {
     const contacts = plan.coverage.find((c) => c.realm === "contacts");
     if (!contacts) throw new Error("contacts coverage missing");
     contacts.tier = "indexed";
-    expect(deriveScopeNote(plan).searchedLine).toBe(
-      "searched: mail bodies, contacts (indexed) · calendar (scanned)",
-    );
+    expect(deriveScopeNote(plan).searchedLine).toBe("searched: mail bodies, contacts (indexed) · calendar (scanned)");
   });
 
   it("drops the attachment line when the extraction index exists", () => {
@@ -66,8 +64,6 @@ describe("the note is derived from coverage, so the data moves it", () => {
       c.searched = false;
       if (c.reason === undefined) c.reason = "this session has no access";
     }
-    expect(deriveScopeNote(plan).searchedLine).toBe(
-      "searched: nothing — this session reaches no searchable realm",
-    );
+    expect(deriveScopeNote(plan).searchedLine).toBe("searched: nothing — this session reaches no searchable realm");
   });
 });

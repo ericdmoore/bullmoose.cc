@@ -40,9 +40,7 @@ function harness(): Harness {
   const db = fakeD1();
   const kv = fakeKV();
   db.seed("tenants", [{ id: TENANT, name: "Bullmoose", status: "active", created_at: 1 }]);
-  db.seed("domains", [
-    { domain: DOMAIN, tenant_id: TENANT, status: "active", cf_zone_id: "zone1", created_at: 1 },
-  ]);
+  db.seed("domains", [{ domain: DOMAIN, tenant_id: TENANT, status: "active", cf_zone_id: "zone1", created_at: 1 }]);
   const env: Env = {
     DB: db,
     ROUTES: kv.ns,
@@ -98,9 +96,7 @@ async function fixture(config: Record<string, unknown> = {}): Promise<Fixture> {
     localpart: "photos",
     displayName: "Photos",
   });
-  const accountId = (
-    await body<{ accounts: Array<{ id: string }> }>(await h.call("GET", "/accounts"))
-  ).accounts[0]!.id;
+  const accountId = (await body<{ accounts: Array<{ id: string }> }>(await h.call("GET", "/accounts"))).accounts[0]!.id;
 
   const now = Date.now();
   h.db.seed("address_books", [
@@ -170,8 +166,7 @@ function storedBinding(f: Fixture) {
   )[0] as { enabled: number; config_json: string; recipients_book_id: string | null };
 }
 
-const storedConfig = (f: Fixture) =>
-  JSON.parse(storedBinding(f).config_json) as Record<string, unknown>;
+const storedConfig = (f: Fixture) => JSON.parse(storedBinding(f).config_json) as Record<string, unknown>;
 
 const chain = (f: Fixture) =>
   f.h.db.query(
@@ -219,9 +214,7 @@ describe("PATCH /agent-bindings/{id} — each typed field", () => {
         f.accountId,
       );
     expect(armed()).toHaveLength(1);
-    const out = await body<{ enabled: boolean; pendingInvocations: number }>(
-      await patch(f, { enabled: false }),
-    );
+    const out = await body<{ enabled: boolean; pendingInvocations: number }>(await patch(f, { enabled: false }));
     expect(out.enabled).toBe(false);
     expect(out.pendingInvocations).toBe(0);
     expect(armed()).toHaveLength(0);
@@ -280,9 +273,7 @@ describe("the untyped remainder survives every edit", () => {
     // Every remainder key, value-for-value — this is the "do not CRUD a blob"
     // rule as an assertion: the route touched two keys and nothing else.
     for (const [k, v] of Object.entries(REMAINDER)) expect(cfg[k]).toEqual(v);
-    expect(Object.keys(cfg).sort()).toEqual(
-      [...Object.keys(REMAINDER), "replyMode", "allowedSenders"].sort(),
-    );
+    expect(Object.keys(cfg).sort()).toEqual([...Object.keys(REMAINDER), "replyMode", "allowedSenders"].sort());
   });
 
   it("names the preserved keys in the response, so the caller can see the blob survived", async () => {
@@ -293,9 +284,7 @@ describe("the untyped remainder survives every edit", () => {
 
   it("refuses an unparseable config_json rather than replacing it", async () => {
     const f = await fixture();
-    f.h.db.sqlite.exec(
-      `UPDATE agent_bindings SET config_json = '{not json' WHERE id = '${f.bindingId}'`,
-    );
+    f.h.db.sqlite.exec(`UPDATE agent_bindings SET config_json = '{not json' WHERE id = '${f.bindingId}'`);
     const res = await patch(f, { replyMode: "send" });
     expect(res.status).toBe(409);
     expect((await body<{ error: string }>(res)).error).toMatch(/cannot parse/);
@@ -407,9 +396,7 @@ describe("a book re-point appends a provenance row (s10 T2 discipline)", () => {
         write_policy: "governed",
       },
     ]);
-    const out = await body<{ provenance: Record<string, unknown> }>(
-      await patch(f, { recipientsBookId: "ab_next" }),
-    );
+    const out = await body<{ provenance: Record<string, unknown> }>(await patch(f, { recipientsBookId: "ab_next" }));
     expect(out.provenance).toMatchObject({
       record: "binding_lifecycle",
       event: "recipients-book-changed",
@@ -526,8 +513,7 @@ describe("concurrency", () => {
         if (!raced) {
           raced = true;
           db.sqlite.exec(
-            `UPDATE agent_bindings SET config_json = '{"persona":"the other writer"}' ` +
-              `WHERE id = '${f.bindingId}'`,
+            `UPDATE agent_bindings SET config_json = '{"persona":"the other writer"}' ` + `WHERE id = '${f.bindingId}'`,
           );
         }
         return db.batch(stmts);
@@ -546,9 +532,7 @@ describe("concurrency", () => {
       { ...f.h.env, DB: racing },
     );
     expect(res.status).toBe(409);
-    expect((await body<{ error: string }>(res)).error).toMatch(
-      /changed between the read and the write/,
-    );
+    expect((await body<{ error: string }>(res)).error).toMatch(/changed between the read and the write/);
     // The other writer's blob is intact, the book did not move, and — the half
     // that matters — no provenance row claims a change that never happened.
     expect(storedConfig(f)).toEqual({ persona: "the other writer" });

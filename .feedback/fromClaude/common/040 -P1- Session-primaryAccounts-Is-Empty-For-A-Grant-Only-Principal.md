@@ -40,7 +40,9 @@ owned account when one exists:
 
 ```ts
 const primary =
-  principal.accounts.find((a) => !a.granted)?.accountId ?? principal.accounts[0]?.accountId ?? "";
+  principal.accounts.find((a) => !a.granted)?.accountId ??
+  principal.accounts[0]?.accountId ??
+  "";
 ```
 
 And decide deliberately whether `""` should be possible at all — a principal with zero

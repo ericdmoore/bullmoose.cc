@@ -70,11 +70,7 @@ interface CalendarRef {
   isDefault?: boolean;
 }
 
-export async function cmdCalendar(
-  db: DatabaseSync,
-  positionals: string[],
-  opts: CalendarOpts,
-): Promise<void> {
+export async function cmdCalendar(db: DatabaseSync, positionals: string[], opts: CalendarOpts): Promise<void> {
   const [sub, arg, arg2] = positionals;
   const settings = requireSettings(db);
   const accountId = pickAccountId(settings, opts.account);
@@ -96,20 +92,13 @@ export async function cmdCalendar(
     case "event":
       return eventVerb(client, accountId, positionals.slice(1), opts);
     default:
-      usage(
-        `unknown calendar subcommand: ${sub ?? "(none)"} ` +
-          `(list|agenda|create|rename|rm|event|export)`,
-      );
+      usage(`unknown calendar subcommand: ${sub ?? "(none)"} ` + `(list|agenda|create|rename|rm|event|export)`);
   }
 }
 
 // ───────────────────────────── read (pre-existing) ──────────────────────────
 
-async function listCalendars(
-  client: JmapClient,
-  accountId: string,
-  opts: CalendarOpts,
-): Promise<void> {
+async function listCalendars(client: JmapClient, accountId: string, opts: CalendarOpts): Promise<void> {
   const res = await client.one("Calendar/get", { accountId, ids: null }, CAL_USING);
   const cals = (res.list as Array<Record<string, unknown>>) ?? [];
   if (opts.ids) return emitIds(cals.map((c) => String(c.id)));
@@ -157,9 +146,7 @@ async function agenda(client: JmapClient, accountId: string, opts: CalendarOpts)
         : `${start.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}–${new Date(
             String(o.utcEnd),
           ).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
-    out(
-      `  ${time.padEnd(16)} ${String(o.title ?? "(untitled)")}  ${String(o.eventId ?? o.id ?? "")}`,
-    );
+    out(`  ${time.padEnd(16)} ${String(o.title ?? "(untitled)")}  ${String(o.eventId ?? o.id ?? "")}`);
   }
 }
 
@@ -217,9 +204,7 @@ async function rmCalendar(
     ...(opts.force ? { onDestroyRemoveEvents: true } : {}),
   });
   if (!(res.destroyed as string[]).includes(target.id)) {
-    const err = (res.notDestroyed as Record<string, { type?: string; description?: string }>)[
-      target.id
-    ];
+    const err = (res.notDestroyed as Record<string, { type?: string; description?: string }>)[target.id];
     // `calendarHasEvents` is not in the 016 exit-code table (io.ts is not this
     // unit's to edit); map it here to the conflict class it belongs to, with
     // the --force hint, exactly like `mailbox rm` on a non-empty folder.
@@ -233,12 +218,7 @@ async function rmCalendar(
 
 // ───────────────────────────── CalendarEvent/set ────────────────────────────
 
-async function eventVerb(
-  client: JmapClient,
-  accountId: string,
-  rest: string[],
-  opts: CalendarOpts,
-): Promise<void> {
+async function eventVerb(client: JmapClient, accountId: string, rest: string[], opts: CalendarOpts): Promise<void> {
   const [verb, id] = rest;
   switch (verb) {
     case "create":
@@ -271,10 +251,7 @@ async function eventCreate(
       if (!parsed.event) fail(`no usable VEVENT in ${input.from}`, EXIT.USAGE);
       event = parsed.event;
     } else {
-      fail(
-        `${input.from} looks like ${input.type}, not an event — pass --as ical or --as json`,
-        EXIT.USAGE,
-      );
+      fail(`${input.from} looks like ${input.type}, not an event — pass --as ical or --as json`, EXIT.USAGE);
     }
   }
   applyEventFlags(event, opts); // flags win over the body
@@ -336,10 +313,7 @@ async function eventEdit(
   const input = readInput(undefined, { as: opts.as });
   if (input) {
     if (input.type !== "json") {
-      fail(
-        `edit takes a JSON patch on stdin (got ${input.type}); use flags for iCal-shaped edits`,
-        EXIT.USAGE,
-      );
+      fail(`edit takes a JSON patch on stdin (got ${input.type}); use flags for iCal-shaped edits`, EXIT.USAGE);
     }
     Object.assign(patch, parseJsonEvent(input.text, input.from));
   }
@@ -348,9 +322,7 @@ async function eventEdit(
   delete patch.uid; // immutable server-side; sending it only earns a rejection
 
   if (Object.keys(patch).length === 0) {
-    usage(
-      "calendar event edit needs something to change: --title, --start, --rrule, … or a JSON patch",
-    );
+    usage("calendar event edit needs something to change: --title, --start, --rrule, … or a JSON patch");
   }
 
   if (dryRun(opts, "edit", `event ${id}: ${Object.keys(patch).join(", ")}`)) return;
@@ -384,11 +356,7 @@ async function eventRm(
 
 // ───────────────────────────── export ───────────────────────────────────────
 
-async function exportEvents(
-  client: JmapClient,
-  accountId: string,
-  opts: CalendarOpts,
-): Promise<void> {
+async function exportEvents(client: JmapClient, accountId: string, opts: CalendarOpts): Promise<void> {
   let calId: string | undefined;
   if (opts.calendar) {
     calId = resolveCalendar(await getCalendars(client, accountId), opts.calendar).id;
@@ -403,11 +371,7 @@ async function exportEvents(
   const ids = (q.ids as string[]) ?? [];
   const events: JsEvent[] = [];
   for (let i = 0; i < ids.length; i += 256) {
-    const g = await client.one(
-      "CalendarEvent/get",
-      { accountId, ids: ids.slice(i, i + 256) },
-      CAL_USING,
-    );
+    const g = await client.one("CalendarEvent/get", { accountId, ids: ids.slice(i, i + 256) }, CAL_USING);
     events.push(...((g.list as JsEvent[]) ?? []));
   }
 
@@ -463,11 +427,7 @@ async function getCalendars(client: JmapClient, accountId: string): Promise<Cale
   return (res.list as CalendarRef[]) ?? [];
 }
 
-async function getEvent(
-  client: JmapClient,
-  accountId: string,
-  id: string,
-): Promise<JsEvent | undefined> {
+async function getEvent(client: JmapClient, accountId: string, id: string): Promise<JsEvent | undefined> {
   const g = await client.one("CalendarEvent/get", { accountId, ids: [id] }, CAL_USING);
   return ((g.list as JsEvent[]) ?? [])[0];
 }
@@ -483,10 +443,7 @@ export function resolveCalendar(cals: CalendarRef[], selector: string): Calendar
   const byName = cals.filter((c) => c.name.toLowerCase() === selector.toLowerCase());
   if (byName.length === 1) return byName[0]!;
   if (byName.length > 1) {
-    usage(
-      `"${selector}" matches ${byName.length} calendars; use an id: ` +
-        byName.map((c) => c.id).join(", "),
-    );
+    usage(`"${selector}" matches ${byName.length} calendars; use an id: ` + byName.map((c) => c.id).join(", "));
   }
   notFound(`no such calendar: ${selector}`);
 }
@@ -586,8 +543,7 @@ const stampUtc = (ms: number) =>
 /** ISO-8601 duration → ms (dates approximate: D=24h). Mirrors calendar-core. */
 export function parseDurationMs(raw: unknown): number {
   if (typeof raw !== "string") return 0;
-  const m =
-    /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(raw);
+  const m = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(raw);
   if (!m) return 0;
   const [, sign, w, d, h, min, s] = m;
   const ms =
@@ -762,15 +718,7 @@ export function rruleReason(rule: RuleObj): string | null {
   }
   if (rule.unknownPart) return `unknown RRULE part ${rule.unknownPart}`;
   const ok = SUPPORTED_PARTS[freq]!;
-  for (const part of [
-    "interval",
-    "count",
-    "until",
-    "byDay",
-    "byMonthDay",
-    "byMonth",
-    "bySetPosition",
-  ] as const) {
+  for (const part of ["interval", "count", "until", "byDay", "byMonthDay", "byMonth", "bySetPosition"] as const) {
     if (!present((rule as Record<string, unknown>)[part])) continue;
     if (!ok.has(part)) {
       return `${PART_LABEL[part]} is discarded by the FREQ=${freq.toUpperCase()} expander branch`;
@@ -789,8 +737,7 @@ export function rruleReason(rule: RuleObj): string | null {
   return null;
 }
 
-const present = (v: unknown) =>
-  v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);
+const present = (v: unknown) => v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);
 
 /**
  * Parse + guard an `--rrule` value, or abort with exit 2 naming the part. The
@@ -814,15 +761,11 @@ function ruleToRrule(rule: RuleObj): string {
     if (d) parts.push(`UNTIL=${stampLocal(d)}`);
   }
   if (rule.byDay && rule.byDay.length > 0) {
-    parts.push(
-      `BYDAY=${rule.byDay.map((b) => `${b.nthOfPeriod ?? ""}${DAY_UP[b.day] ?? "MO"}`).join(",")}`,
-    );
+    parts.push(`BYDAY=${rule.byDay.map((b) => `${b.nthOfPeriod ?? ""}${DAY_UP[b.day] ?? "MO"}`).join(",")}`);
   }
-  if (rule.byMonthDay && rule.byMonthDay.length > 0)
-    parts.push(`BYMONTHDAY=${rule.byMonthDay.join(",")}`);
+  if (rule.byMonthDay && rule.byMonthDay.length > 0) parts.push(`BYMONTHDAY=${rule.byMonthDay.join(",")}`);
   if (rule.byMonth && rule.byMonth.length > 0) parts.push(`BYMONTH=${rule.byMonth.join(",")}`);
-  if (rule.bySetPosition && rule.bySetPosition.length > 0)
-    parts.push(`BYSETPOS=${rule.bySetPosition.join(",")}`);
+  if (rule.bySetPosition && rule.bySetPosition.length > 0) parts.push(`BYSETPOS=${rule.bySetPosition.join(",")}`);
   if (rule.firstDayOfWeek) parts.push(`WKST=${DAY_UP[rule.firstDayOfWeek] ?? "MO"}`);
   return parts.join(";");
 }
@@ -842,14 +785,9 @@ export function serializeEventIcal(event: JsEvent): string {
   const uid = String(event.uid ?? `urn:uuid:${randomUUID()}`);
   const durationMs = parseDurationMs(event.duration) || (allDay ? 86_400_000 : 0);
 
-  const ev: string[] = [
-    "BEGIN:VEVENT",
-    fold(`UID:${escIcs(uid)}`),
-    `DTSTAMP:${stampUtc(Date.now())}`,
-  ];
+  const ev: string[] = ["BEGIN:VEVENT", fold(`UID:${escIcs(uid)}`), `DTSTAMP:${stampUtc(Date.now())}`];
   if (typeof event.title === "string") ev.push(fold(`SUMMARY:${escIcs(event.title)}`));
-  if (typeof event.description === "string")
-    ev.push(fold(`DESCRIPTION:${escIcs(event.description)}`));
+  if (typeof event.description === "string") ev.push(fold(`DESCRIPTION:${escIcs(event.description)}`));
   const loc = firstLocation(event);
   if (loc) ev.push(fold(`LOCATION:${escIcs(loc)}`));
 
@@ -858,18 +796,9 @@ export function serializeEventIcal(event: JsEvent): string {
       ev.push(`DTSTART;VALUE=DATE:${stampDate(start)}`);
       const days = Math.max(1, Math.round(durationMs / 86_400_000));
       const end = new Date(Date.UTC(start.year, start.month - 1, start.day + days));
-      ev.push(
-        `DTEND;VALUE=DATE:${end.getUTCFullYear()}${p2(end.getUTCMonth() + 1)}${p2(end.getUTCDate())}`,
-      );
+      ev.push(`DTEND;VALUE=DATE:${end.getUTCFullYear()}${p2(end.getUTCMonth() + 1)}${p2(end.getUTCDate())}`);
     } else if (isUtc) {
-      const ms = Date.UTC(
-        start.year,
-        start.month - 1,
-        start.day,
-        start.hour,
-        start.minute,
-        start.second,
-      );
+      const ms = Date.UTC(start.year, start.month - 1, start.day, start.hour, start.minute, start.second);
       ev.push(`DTSTART:${stampUtc(ms)}`);
       ev.push(`DTEND:${stampUtc(ms + durationMs)}`);
     } else {

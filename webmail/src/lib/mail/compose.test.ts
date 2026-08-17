@@ -75,10 +75,10 @@ describe("reply", () => {
   });
 
   it("does not put the same person in both To and Cc", () => {
-    const draft = buildReplyDraft(
-      original({ cc: [{ name: "Grace Hopper", email: "grace@example.test" }] }),
-      { identity, replyAll: true },
-    );
+    const draft = buildReplyDraft(original({ cc: [{ name: "Grace Hopper", email: "grace@example.test" }] }), {
+      identity,
+      replyAll: true,
+    });
     expect(draft.cc.map((a) => a.email)).not.toContain("grace@example.test");
   });
 
@@ -131,9 +131,7 @@ describe("forward", () => {
       }),
       { identity },
     );
-    expect(draft.droppedAttachments).toEqual([
-      { name: "spec.pdf", size: 1024, type: "application/pdf" },
-    ]);
+    expect(draft.droppedAttachments).toEqual([{ name: "spec.pdf", size: 1024, type: "application/pdf" }]);
   });
 
   it("does not warn about inline images, which are part of the body", () => {
@@ -206,13 +204,7 @@ describe("drafts", () => {
     const first = await saveDraft(client, ACCOUNT, "mb-drafts", draft);
 
     const before = client.sentBatches.length;
-    const second = await saveDraft(
-      client,
-      ACCOUNT,
-      "mb-drafts",
-      { ...draft, subject: "v2" },
-      { replaces: first.id },
-    );
+    const second = await saveDraft(client, ACCOUNT, "mb-drafts", { ...draft, subject: "v2" }, { replaces: first.id });
 
     expect(client.sentBatches.length).toBe(before + 1);
     expect(emails.find((e) => e.id === first.id)).toBeUndefined();
@@ -222,9 +214,7 @@ describe("drafts", () => {
   it("reports a refusal instead of pretending the draft saved", async () => {
     const { client } = createDemoBackend({ scopes: ["read"] });
     const draft = { ...newDraft({ identity }), to: parseAddressList("ada@x.test") };
-    await expect(saveDraft(client, ACCOUNT, "mb-drafts", draft)).rejects.toBeInstanceOf(
-      ComposeError,
-    );
+    await expect(saveDraft(client, ACCOUNT, "mb-drafts", draft)).rejects.toBeInstanceOf(ComposeError);
   });
 });
 

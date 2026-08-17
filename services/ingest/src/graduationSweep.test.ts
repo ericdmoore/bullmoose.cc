@@ -133,9 +133,7 @@ describe("sweepGraduations", () => {
 
   it("never repaints an existing entry: a 'feed' row keeps its source, no rebuild", async () => {
     const w = scaffold();
-    w.db.seed("domain_deny_list", [
-      { tenant_id: TENANT, domain: DOMAIN, added_at: 1, source: "feed", evidence: null },
-    ]);
+    w.db.seed("domain_deny_list", [{ tenant_id: TENANT, domain: DOMAIN, added_at: 1, source: "feed", evidence: null }]);
     seedRejects(w, DOMAIN, 50); // edge rejects keep bumping counters — fine
 
     const out = await sweepGraduations(env(w));

@@ -9,14 +9,14 @@ Sketch:
 ```ts
 const stale = await env.DB.prepare(
   `SELECT account_id, id FROM agent_invocations
-   WHERE status = 'running' AND claimed_at < ?`,
-)
-  .bind(cutoff)
-  .all();
+   WHERE status = 'running' AND claimed_at < ?`
+).bind(cutoff).all();
 
 // update by account/id, then:
 for (const [accountId, ids] of groupByAccount(stale.results)) {
-  await commitChanges(env.ACCOUNT_DO, accountId, [{ collection: "AgentInvocation", updated: ids }]);
+  await commitChanges(env.ACCOUNT_DO, accountId, [
+    { collection: "AgentInvocation", updated: ids },
+  ]);
 }
 ```
 

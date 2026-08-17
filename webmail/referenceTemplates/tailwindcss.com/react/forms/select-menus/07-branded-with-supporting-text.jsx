@@ -1,26 +1,26 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from "@headlessui/react";
-import { CheckIcon, ChevronDownIcon } from "@heroicons/react/20/solid";
+import { useState } from 'react'
+import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
+import { CheckIcon, ChevronDownIcon } from '@heroicons/react/20/solid'
 
 const publishingOptions = [
   {
-    value: "published",
-    title: "Published",
-    description: "This job posting can be viewed by anyone who has the link.",
+    value: 'published',
+    title: 'Published',
+    description: 'This job posting can be viewed by anyone who has the link.',
     current: true,
   },
   {
-    value: "draft",
-    title: "Draft",
-    description: "This job posting will no longer be publicly accessible.",
+    value: 'draft',
+    title: 'Draft',
+    description: 'This job posting will no longer be publicly accessible.',
     current: false,
   },
-];
+]
 
 export default function Example() {
-  const [selected, setSelected] = useState(publishingOptions[0]);
+  const [selected, setSelected] = useState(publishingOptions[0])
 
   return (
     <Listbox value={selected} onChange={setSelected}>
@@ -33,10 +33,7 @@ export default function Example() {
           </div>
           <ListboxButton className="inline-flex items-center rounded-l-none rounded-r-md bg-indigo-600 p-2 hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-indigo-400 dark:bg-indigo-500 dark:hover:bg-indigo-400 dark:focus-visible:outline-indigo-400">
             <span className="sr-only">Change published status</span>
-            <ChevronDownIcon
-              aria-hidden="true"
-              className="size-5 text-white forced-colors:text-[Highlight]"
-            />
+            <ChevronDownIcon aria-hidden="true" className="size-5 text-white forced-colors:text-[Highlight]" />
           </ListboxButton>
         </div>
 
@@ -66,5 +63,5 @@ export default function Example() {
         </ListboxOptions>
       </div>
     </Listbox>
-  );
+  )
 }

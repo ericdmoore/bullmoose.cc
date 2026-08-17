@@ -1,4 +1,4 @@
-"use client";
+'use client'
 
 import {
   Combobox,
@@ -8,42 +8,42 @@ import {
   Dialog,
   DialogPanel,
   DialogBackdrop,
-} from "@headlessui/react";
-import { ChevronRightIcon, MagnifyingGlassIcon } from "@heroicons/react/20/solid";
-import { UsersIcon } from "@heroicons/react/24/outline";
-import { useState } from "react";
+} from '@headlessui/react'
+import { ChevronRightIcon, MagnifyingGlassIcon } from '@heroicons/react/20/solid'
+import { UsersIcon } from '@heroicons/react/24/outline'
+import { useState } from 'react'
 
 const people = [
   {
     id: 1,
-    name: "Leslie Alexander",
-    phone: "1-493-747-9031",
-    email: "lesliealexander@example.com",
-    role: "Co-Founder / CEO",
-    url: "https://example.com",
-    profileUrl: "#",
+    name: 'Leslie Alexander',
+    phone: '1-493-747-9031',
+    email: 'lesliealexander@example.com',
+    role: 'Co-Founder / CEO',
+    url: 'https://example.com',
+    profileUrl: '#',
     imageUrl:
-      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
   },
   // More people...
-];
+]
 
-const recent = [people[5], people[4], people[2], people[10], people[16]];
+const recent = [people[5], people[4], people[2], people[10], people[16]]
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(" ");
+  return classes.filter(Boolean).join(' ')
 }
 
 export default function Example() {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(true);
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(true)
 
   const filteredPeople =
-    query === ""
+    query === ''
       ? []
       : people.filter((person) => {
-          return person.name.toLowerCase().includes(query.toLowerCase());
-        });
+          return person.name.toLowerCase().includes(query.toLowerCase())
+        })
 
   return (
     <>
@@ -51,8 +51,8 @@ export default function Example() {
         className="relative z-10"
         open={open}
         onClose={() => {
-          setOpen(false);
-          setQuery("");
+          setOpen(false)
+          setQuery('')
         }}
       >
         <DialogBackdrop
@@ -68,7 +68,7 @@ export default function Example() {
             <Combobox
               onChange={(person) => {
                 if (person) {
-                  window.location = person.url;
+                  window.location = person.url
                 }
               }}
             >
@@ -80,7 +80,7 @@ export default function Example() {
                       className="col-start-1 row-start-1 h-12 w-full pr-4 pl-11 text-base text-gray-900 outline-hidden placeholder:text-gray-400 sm:text-sm dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500"
                       placeholder="Search..."
                       onChange={(event) => setQuery(event.target.value)}
-                      onBlur={() => setQuery("")}
+                      onBlur={() => setQuery('')}
                     />
                     <MagnifyingGlassIcon
                       className="pointer-events-none col-start-1 row-start-1 ml-4 size-5 self-center text-gray-400 dark:text-gray-500"
@@ -88,7 +88,7 @@ export default function Example() {
                     />
                   </div>
 
-                  {(query === "" || filteredPeople.length > 0) && (
+                  {(query === '' || filteredPeople.length > 0) && (
                     <ComboboxOptions
                       as="div"
                       static
@@ -97,17 +97,17 @@ export default function Example() {
                     >
                       <div
                         className={classNames(
-                          "max-h-96 min-w-0 flex-auto scroll-py-4 overflow-y-auto px-6 py-4",
-                          activeOption && "sm:h-96",
+                          'max-h-96 min-w-0 flex-auto scroll-py-4 overflow-y-auto px-6 py-4',
+                          activeOption && 'sm:h-96',
                         )}
                       >
-                        {query === "" && (
+                        {query === '' && (
                           <h2 className="mt-2 mb-4 text-xs font-semibold text-gray-500 dark:text-gray-400">
                             Recent searches
                           </h2>
                         )}
                         <div className="-mx-2 text-sm text-gray-700 dark:text-gray-300">
-                          {(query === "" ? recent : filteredPeople).map((person) => (
+                          {(query === '' ? recent : filteredPeople).map((person) => (
                             <ComboboxOption
                               as="div"
                               key={person.id}
@@ -137,33 +137,20 @@ export default function Example() {
                               alt=""
                               className="mx-auto size-16 rounded-full bg-gray-100 outline -outline-offset-1 outline-black/5 dark:bg-gray-800 dark:outline-white/10"
                             />
-                            <h2 className="mt-3 font-semibold text-gray-900 dark:text-white">
-                              {activeOption.name}
-                            </h2>
-                            <p className="text-sm/6 text-gray-500 dark:text-gray-400">
-                              {activeOption.role}
-                            </p>
+                            <h2 className="mt-3 font-semibold text-gray-900 dark:text-white">{activeOption.name}</h2>
+                            <p className="text-sm/6 text-gray-500 dark:text-gray-400">{activeOption.role}</p>
                           </div>
                           <div className="flex flex-auto flex-col justify-between p-6">
                             <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm text-gray-700 dark:text-gray-300">
-                              <dt className="col-end-1 font-semibold text-gray-900 dark:text-white">
-                                Phone
-                              </dt>
+                              <dt className="col-end-1 font-semibold text-gray-900 dark:text-white">Phone</dt>
                               <dd>{activeOption.phone}</dd>
-                              <dt className="col-end-1 font-semibold text-gray-900 dark:text-white">
-                                URL
-                              </dt>
+                              <dt className="col-end-1 font-semibold text-gray-900 dark:text-white">URL</dt>
                               <dd className="truncate">
-                                <a
-                                  href={activeOption.url}
-                                  className="text-indigo-600 underline dark:text-indigo-400"
-                                >
+                                <a href={activeOption.url} className="text-indigo-600 underline dark:text-indigo-400">
                                   {activeOption.url}
                                 </a>
                               </dd>
-                              <dt className="col-end-1 font-semibold text-gray-900 dark:text-white">
-                                Email
-                              </dt>
+                              <dt className="col-end-1 font-semibold text-gray-900 dark:text-white">Email</dt>
                               <dd className="truncate">
                                 <a
                                   href={`mailto:${activeOption.email}`}
@@ -185,15 +172,10 @@ export default function Example() {
                     </ComboboxOptions>
                   )}
 
-                  {query !== "" && filteredPeople.length === 0 && (
+                  {query !== '' && filteredPeople.length === 0 && (
                     <div className="px-6 py-14 text-center text-sm sm:px-14">
-                      <UsersIcon
-                        className="mx-auto size-6 text-gray-400 dark:text-gray-500"
-                        aria-hidden="true"
-                      />
-                      <p className="mt-4 font-semibold text-gray-900 dark:text-white">
-                        No people found
-                      </p>
+                      <UsersIcon className="mx-auto size-6 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                      <p className="mt-4 font-semibold text-gray-900 dark:text-white">No people found</p>
                       <p className="mt-2 text-gray-500 dark:text-gray-400">
                         We couldn’t find anything with that term. Please try again.
                       </p>
@@ -206,5 +188,5 @@ export default function Example() {
         </div>
       </Dialog>
     </>
-  );
+  )
 }

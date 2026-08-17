@@ -291,8 +291,7 @@ const SAFE_CSS_PROPS = new Set([
 ]);
 
 /** Never allowed in a CSS *value*, whatever the property. */
-const CSS_VALUE_DENY =
-  /url\s*\(|expression\s*\(|javascript\s*:|vbscript\s*:|-moz-binding|behavior\s*:|@import|\\/i;
+const CSS_VALUE_DENY = /url\s*\(|expression\s*\(|javascript\s*:|vbscript\s*:|-moz-binding|behavior\s*:|@import|\\/i;
 
 /**
  * Markers a client uses to fence the quoted part of a reply. Matching one at
@@ -309,12 +308,7 @@ const QUOTE_CLASS_HINTS = [
   "zmail_extra",
   "quoted",
 ];
-const QUOTE_ID_HINTS = [
-  "divrplyfwdmsg",
-  "appendonsend",
-  "reply139",
-  "mail-editor-reference-message-container",
-];
+const QUOTE_ID_HINTS = ["divrplyfwdmsg", "appendonsend", "reply139", "mail-editor-reference-message-container"];
 
 // ── public API ────────────────────────────────────────────────────────────
 
@@ -374,9 +368,7 @@ export function textToSafeHtml(text: string): string {
   const escaped = escapeText(text);
   const linked = escaped.replace(/\b(https?:\/\/[^\s<>"']+)/gi, (url) => {
     const safe = safeUrl(url, { allowRemote: true, isResource: false });
-    return safe
-      ? `<a href="${escapeAttr(safe)}" target="_blank" rel="noopener noreferrer nofollow">${url}</a>`
-      : url;
+    return safe ? `<a href="${escapeAttr(safe)}" target="_blank" rel="noopener noreferrer nofollow">${url}</a>` : url;
   });
   return `<pre class="plain-body">${linked}</pre>`;
 }

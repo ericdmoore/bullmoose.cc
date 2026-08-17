@@ -176,9 +176,7 @@ export default function SearchApp({ client: injected }: Props) {
       ) : null}
 
       {mode === "demo" ? (
-        <p class="banner">
-          Demo data — nothing here is real{modeReason ? ` (${modeReason})` : ""}.
-        </p>
+        <p class="banner">Demo data — nothing here is real{modeReason ? ` (${modeReason})` : ""}.</p>
       ) : null}
 
       <div class="search-results">

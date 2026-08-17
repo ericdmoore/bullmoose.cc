@@ -14,9 +14,7 @@ const ACCOUNT = "a_eric";
 const TENANT = "t_bm";
 const ANCHOR = { realm: "Email", objectId: "e_1", span: [0, 12] };
 
-function harness(
-  opts: { scopes?: string[]; agent?: { binding?: string; invocation?: string } } = {},
-) {
+function harness(opts: { scopes?: string[]; agent?: { binding?: string; invocation?: string } } = {}) {
   const w = fakeEnv();
   w.db.seedAccount({
     accountId: ACCOUNT,
@@ -129,10 +127,9 @@ describe("Annotation/set — close forward, and what a client may NOT do", () =>
       update: { [id]: { status: "resolved" } },
     });
     expect(res.updated).toHaveProperty(id);
-    expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!
-        .status,
-    ).toBe("resolved");
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!.status).toBe(
+      "resolved",
+    );
   });
 
   it("dismisses an open annotation — the labeled negative", async () => {
@@ -142,10 +139,9 @@ describe("Annotation/set — close forward, and what a client may NOT do", () =>
       update: { [id]: { status: "dismissed" } },
     });
     expect(res.updated).toHaveProperty(id);
-    expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!
-        .status,
-    ).toBe("dismissed");
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!.status).toBe(
+      "dismissed",
+    );
   });
 
   it("REFUSES to rewrite the claim — the body is immutable, you move status", async () => {
@@ -155,9 +151,9 @@ describe("Annotation/set — close forward, and what a client may NOT do", () =>
       update: { [id]: { body: "actually, never mind" } },
     });
     expect(res.notUpdated[id]?.description).toMatch(/immutable/);
-    expect(
-      h.w.db.query<{ body: string }>(`SELECT body FROM annotations WHERE id = '${id}'`)[0]!.body,
-    ).toMatch(/load calc/);
+    expect(h.w.db.query<{ body: string }>(`SELECT body FROM annotations WHERE id = '${id}'`)[0]!.body).toMatch(
+      /load calc/,
+    );
   });
 
   it("REFUSES an unknown status, and re-deciding a closed one", async () => {
@@ -173,20 +169,17 @@ describe("Annotation/set — close forward, and what a client may NOT do", () =>
       update: { [id]: { status: "dismissed" } },
     });
     expect(again.notUpdated[id]?.description).toMatch(/no open annotation/);
-    expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!
-        .status,
-    ).toBe("resolved");
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!.status).toBe(
+      "resolved",
+    );
   });
 });
 
 describe("Annotation/query — the live claims, filterable", () => {
   it("defaults to open; a terminal status is asked for explicitly", async () => {
     const h = harness();
-    const a = (await h.call<SetResult>("Annotation/set", { create: { a: commitment() } })).created
-      .a!.id;
-    const b = (await h.call<SetResult>("Annotation/set", { create: { b: commitment() } })).created
-      .b!.id;
+    const a = (await h.call<SetResult>("Annotation/set", { create: { a: commitment() } })).created.a!.id;
+    const b = (await h.call<SetResult>("Annotation/set", { create: { b: commitment() } })).created.b!.id;
     await h.call<SetResult>("Annotation/set", { update: { [b]: { status: "dismissed" } } });
 
     const open = await h.call<{ ids: string[] }>("Annotation/query", {});

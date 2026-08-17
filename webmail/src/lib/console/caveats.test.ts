@@ -26,9 +26,7 @@ import {
  * `vault.test.ts`, which greps its source to prove the master key's name appears
  * nowhere in the worker.)
  */
-const INTROSPECT = fileURLToPath(
-  new URL("../../../../services/agent/src/introspectTools.ts", import.meta.url),
-);
+const INTROSPECT = fileURLToPath(new URL("../../../../services/agent/src/introspectTools.ts", import.meta.url));
 
 /**
  * Source-normalize: TypeScript string concatenation across lines
@@ -59,12 +57,9 @@ describe("the caveats are the ones 015 actually returns", () => {
     },
   );
 
-  it.each(SKIP_CAVEATS.map((c, i) => [i, c] as const))(
-    "skip caveat %i is mirrored verbatim",
-    (_i, caveat) => {
-      expect(source).toContain(norm(caveat));
-    },
-  );
+  it.each(SKIP_CAVEATS.map((c, i) => [i, c] as const))("skip caveat %i is mirrored verbatim", (_i, caveat) => {
+    expect(source).toContain(norm(caveat));
+  });
 });
 
 describe("all four grant_audit caveats are present and distinct", () => {
@@ -116,8 +111,6 @@ describe("the empty case", () => {
 describe("the point-in-time note", () => {
   it("credits the tombstone and admits what predates it", () => {
     expect(POINT_IN_TIME_NOTE).toContain("tombstones (s03.A)");
-    expect(POINT_IN_TIME_NOTE).toContain(
-      "hard-deleted before tombstones existed are unrecoverable",
-    );
+    expect(POINT_IN_TIME_NOTE).toContain("hard-deleted before tombstones existed are unrecoverable");
   });
 });

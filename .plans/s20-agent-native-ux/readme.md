@@ -1,23 +1,22 @@
 # s20 — agent-native UX: verbs first, nouns when they earn it
 
 > **Status: PARTIAL.** T1 Watches SHIPPED — engine (#152) plus the `remind@` door (#154) and the agent-offered anti-star (#157). Principle 7 (respond-only) is also code, not just a principle (#147). T1 remainder: the webmail star on-ramp, the CLI surface, the fire-time draft body. T2–T6 design.
-> bombshell — four docs asking the first-principles question: _"HOW IS AGENT-FIRST EMAIL
-> DIFFERENT from GMAIL?"_ — plus the review that followed. This readme records what was
+> bombshell — four docs asking the first-principles question: *"HOW IS AGENT-FIRST EMAIL
+> DIFFERENT from GMAIL?"* — plus the review that followed. This readme records what was
 > adopted, what was rejected, and why; [`devPlan.md`](./devPlan.md) is the ordered build.
 >
 > **The finding that frames everything: this is not a pivot.** The reorg re-derives the
 > product's own thesis — decision-first, not storage-first — and most of the machinery it
 > calls for already exists: the Proposals queue is `ActionProposal` (s03.D T1, landed), the
 > Needs Attention view is the s07 T0 home view, the Watch primitive is `.backlog/reminders.md`
->
-> - s11 `due_at` + the SLA armed responder, the authority envelope is the floor rule +
->   privacy pins + governed books, the trust ladder is s03.D T5's repetition→policy, and
->   "connections" is the Bureau. The docs are best read as the _why_ behind work already queued.
+> + s11 `due_at` + the SLA armed responder, the authority envelope is the floor rule +
+> privacy pins + governed books, the trust ladder is s03.D T5's repetition→policy, and
+> "connections" is the Bureau. The docs are best read as the *why* behind work already queued.
 >
 > **The Gmail-feel diagnosis, corrected.** The webmail feels like Gmail because the
 > approvals queue is empty — the UI renders the agent layer faithfully; the agent layer
 > isn't producing artifacts yet (only s03.D T1 landed; few agents propose). A "Needs
-> Attention" queue with nothing in it _is_ an inbox. The fix is supply, not ontology.
+> Attention" queue with nothing in it *is* an inbox. The fix is supply, not ontology.
 
 ## The governing rule: conservative nouns, radical verbs
 
@@ -29,7 +28,7 @@ nouns emerge only where repeated agent behavior proves them necessary.**
 Why this is the safe direction: traditional software needs nouns because the human operates
 the state machine; agentic software hides state behind intent. Shipping a new concept
 ("Situation") from a design meeting is the Google Wave failure mode. Letting "Waiting"
-become a noun _after_ users keep saying "remind me if they don't answer" is discovery.
+become a noun *after* users keep saying "remind me if they don't answer" is discovery.
 
 One noun is admitted immediately because it has already earned its place three times over
 (remind@, the SLA responder, s11 overdue escalation): the **Watch** —
@@ -39,19 +38,19 @@ One noun is admitted immediately because it has already earned its place three t
 ## Adopted principles (from the conceptual-reorg docs)
 
 1. **The agent consumes the firehose; the human gets exceptions.** Notifications say
-   _"2 things need you"_, never _"17 new emails"_. Unread stops mattering.
-2. **Uncertainty is first-class.** _"We chose Capri. I don't know why"_ beats a
+   *"2 things need you"*, never *"17 new emails"*. Unread stops mattering.
+2. **Uncertainty is first-class.** *"We chose Capri. I don't know why"* beats a
    compulsively-completed model. Extracted facts carry `explicit | implicit | unknown`
-   provenance and evidence refs, and the system may ask _"Worth remembering why?"_ —
+   provenance and evidence refs, and the system may ask *"Worth remembering why?"* —
    institutional memory as an offer, not a form.
-3. **Extracted views, not stores.** Waiting-on, Commitments, Decisions are _read models_
+3. **Extracted views, not stores.** Waiting-on, Commitments, Decisions are *read models*
    over mail — the `ActionProposal` pattern (a side-table view, never a second source of
    truth). A wrong extraction is corrected by the human, and the correction FEEDS the
    extractor, riding the same loop as quarantine rescues → Bayes.
 4. **Compose keeps the editor; intent becomes the front door.** "What do you want to
    happen?" routes through the existing proposal machinery; prose is the precision tool.
 5. **Task ≠ Commitment ≠ Obligation** — could-be-done vs. said-I'd-do-it vs.
-   externally-imposed. Valuable _internally_ even if Obligation never becomes user-facing.
+   externally-imposed. Valuable *internally* even if Obligation never becomes user-facing.
 6. **Approval is an act, not a place** (Eric, 2026-08-14). The PROPOSAL — a record that
    something needs consent, with provenance — is load-bearing; the queue SCREEN is not.
    Consent happens where the work or the object already is: editing the agent's workflow

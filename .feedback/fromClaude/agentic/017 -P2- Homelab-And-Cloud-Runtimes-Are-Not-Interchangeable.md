@@ -5,7 +5,7 @@
 ## The claim
 
 - `docs/agents/README.md:4-8` — "a runtime (the cloud worker, **or** a homelab `bullmoose agent
-serve`) claims the invocation … whoever claims first wins"
+  serve`) claims the invocation … whoever claims first wins"
 - `docs/architecture/agent-integration.md:61` — "A homelab hermes and a cloud Emily **implement the
   identical contract and are interchangeable**."
 
@@ -17,13 +17,13 @@ written as though it applies to both.
 `packages/cli/src/agent.ts:144-230` reads only its **local** `AgentConfig` file and **never fetches
 `agent_bindings.config_json`**. Compare:
 
-| Behaviour                                | Cloud (`services/agent/src/index.ts`) | Homelab (`packages/cli/src/agent.ts`) |
-| ---------------------------------------- | ------------------------------------- | ------------------------------------- |
-| RFC 3834 auto-sender skip                | `:164` (`humanOriginated`)            | ❌ none                               |
-| `allowedSenders` gate                    | `:168-171`                            | ❌ none                               |
-| Front-matter parse (`model:`, `prompt:`) | `:173`                                | ❌ none                               |
-| `replyMode` send vs draft                | `:273`                                | ❌ always drafts                      |
-| Persona / model source                   | binding `config_json`                 | local file                            |
+| Behaviour | Cloud (`services/agent/src/index.ts`) | Homelab (`packages/cli/src/agent.ts`) |
+|---|---|---|
+| RFC 3834 auto-sender skip | `:164` (`humanOriginated`) | ❌ none |
+| `allowedSenders` gate | `:168-171` | ❌ none |
+| Front-matter parse (`model:`, `prompt:`) | `:173` | ❌ none |
+| `replyMode` send vs draft | `:273` | ❌ always drafts |
+| Persona / model source | binding `config_json` | local file |
 
 `agent.ts:156` matches on `bindingName` alone.
 

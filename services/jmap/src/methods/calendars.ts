@@ -1,11 +1,6 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
-import {
-  expandOccurrences,
-  eventSpan,
-  parseLocalDateTime,
-  MAX_OCCURRENCES,
-} from "@bullmoose/calendar-core";
+import { expandOccurrences, eventSpan, parseLocalDateTime, MAX_OCCURRENCES } from "@bullmoose/calendar-core";
 import type {
   CalendarEventFilterCondition,
   CalendarEventRow,
@@ -202,9 +197,7 @@ export function registerCalendarMethods(registry: MethodRegistry<RequestContext>
     };
   });
 
-  registry.register("CalendarEvent/changes", async (args, ctx) =>
-    proxyChanges(ctx, args, "CalendarEvent"),
-  );
+  registry.register("CalendarEvent/changes", async (args, ctx) => proxyChanges(ctx, args, "CalendarEvent"));
 
   registry.register("CalendarEvent/set", async (args, ctx) => {
     const access = await requireAccount(ctx, args, "calendar", "calendar");
@@ -424,15 +417,9 @@ export function registerCalendarMethods(registry: MethodRegistry<RequestContext>
     const after = typeof args.after === "string" ? Date.parse(args.after) : NaN;
     const before = typeof args.before === "string" ? Date.parse(args.before) : NaN;
     if (!Number.isFinite(after) || !Number.isFinite(before) || before <= after) {
-      throw new MethodError(
-        "invalidArguments",
-        "after and before (UTCDates, after < before) required",
-      );
+      throw new MethodError("invalidArguments", "after and before (UTCDates, after < before) required");
     }
-    const cap = Math.min(
-      typeof args.maxOccurrences === "number" ? args.maxOccurrences : 200,
-      MAX_OCCURRENCES,
-    );
+    const cap = Math.min(typeof args.maxOccurrences === "number" ? args.maxOccurrences : 200, MAX_OCCURRENCES);
 
     let rows;
     if (Array.isArray(args.ids)) {
@@ -531,20 +518,10 @@ function buildEventRow(
     throw new SetErrorSignal("invalidProperties", "uid must be a non-empty string", ["uid"]);
   }
   if (typeof event.start !== "string" || !parseLocalDateTime(event.start)) {
-    throw new SetErrorSignal(
-      "invalidProperties",
-      'start must be a LocalDateTime ("2026-07-08T09:00:00")',
-      ["start"],
-    );
+    throw new SetErrorSignal("invalidProperties", 'start must be a LocalDateTime ("2026-07-08T09:00:00")', ["start"]);
   }
-  if (
-    event.timeZone !== undefined &&
-    event.timeZone !== null &&
-    typeof event.timeZone !== "string"
-  ) {
-    throw new SetErrorSignal("invalidProperties", "timeZone must be an IANA zone string", [
-      "timeZone",
-    ]);
+  if (event.timeZone !== undefined && event.timeZone !== null && typeof event.timeZone !== "string") {
+    throw new SetErrorSignal("invalidProperties", "timeZone must be an IANA zone string", ["timeZone"]);
   }
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
@@ -558,9 +535,7 @@ function buildEventRow(
   try {
     span = eventSpan(event);
   } catch (err) {
-    throw new SetErrorSignal("invalidProperties", `recurrence expansion failed: ${String(err)}`, [
-      "recurrenceRules",
-    ]);
+    throw new SetErrorSignal("invalidProperties", `recurrence expansion failed: ${String(err)}`, ["recurrenceRules"]);
   }
 
   return {
@@ -618,17 +593,13 @@ function validateCalendarPatch(patch: Record<string, unknown>): {
     switch (path) {
       case "name":
         if (typeof value !== "string" || value.length === 0 || value.length > 255) {
-          throw new SetErrorSignal("invalidProperties", "name must be a 1..255-char string", [
-            "name",
-          ]);
+          throw new SetErrorSignal("invalidProperties", "name must be a 1..255-char string", ["name"]);
         }
         out.name = value;
         break;
       case "description":
         if (value !== null && typeof value !== "string") {
-          throw new SetErrorSignal("invalidProperties", "description must be a string or null", [
-            path,
-          ]);
+          throw new SetErrorSignal("invalidProperties", "description must be a string or null", [path]);
         }
         out.description = value as string | null;
         break;
@@ -640,9 +611,7 @@ function validateCalendarPatch(patch: Record<string, unknown>): {
         break;
       case "sortOrder":
         if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-          throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", [
-            path,
-          ]);
+          throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", [path]);
         }
         out.sortOrder = value;
         break;
@@ -661,19 +630,15 @@ function validateCalendarPatch(patch: Record<string, unknown>): {
 
 function singleCalendarId(raw: unknown, cals: Map<string, CalendarRow>): string {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new SetErrorSignal("invalidProperties", "calendarIds must be an Id[Boolean] object", [
-      "calendarIds",
-    ]);
+    throw new SetErrorSignal("invalidProperties", "calendarIds must be an Id[Boolean] object", ["calendarIds"]);
   }
   const ids = Object.entries(raw as Record<string, unknown>)
     .filter(([, v]) => v === true)
     .map(([k]) => k);
   if (ids.length !== 1) {
-    throw new SetErrorSignal(
-      "invalidProperties",
-      "this server supports exactly one calendar per event",
-      ["calendarIds"],
-    );
+    throw new SetErrorSignal("invalidProperties", "this server supports exactly one calendar per event", [
+      "calendarIds",
+    ]);
   }
   const id = ids[0]!;
   if (!cals.has(id)) {
@@ -682,40 +647,25 @@ function singleCalendarId(raw: unknown, cals: Map<string, CalendarRow>): string 
   return id;
 }
 
-async function ensureDefaultCalendar(
-  ctx: RequestContext,
-  store: Mailstore,
-  accountId: string,
-): Promise<string> {
+async function ensureDefaultCalendar(ctx: RequestContext, store: Mailstore, accountId: string): Promise<string> {
   const { id, change } = await store.ensureDefaultCalendar(accountId);
   if (change) {
     const entry =
-      change === "created"
-        ? { collection: "Calendar", created: [id] }
-        : { collection: "Calendar", updated: [id] };
+      change === "created" ? { collection: "Calendar", created: [id] } : { collection: "Calendar", updated: [id] };
     await commitChanges(ctx.env.ACCOUNT_DO, accountId, [entry]);
   }
   return id;
 }
 
-async function commitCalendarEntries(
-  ctx: RequestContext,
-  accountId: string,
-  entries: ChangeEntry[],
-): Promise<string> {
-  const nonEmpty = entries.filter(
-    (e) => e.created.length + e.updated.length + e.destroyed.length > 0,
-  );
+async function commitCalendarEntries(ctx: RequestContext, accountId: string, entries: ChangeEntry[]): Promise<string> {
+  const nonEmpty = entries.filter((e) => e.created.length + e.updated.length + e.destroyed.length > 0);
   if (nonEmpty.length === 0) return accountState(ctx, accountId);
   const { newState } = await commitChanges(ctx.env.ACCOUNT_DO, accountId, nonEmpty);
   return newState;
 }
 
 /** RFC 8620 §5.3 PatchObject against the wire event shape. */
-function applyEventPatch(
-  obj: Record<string, unknown>,
-  patch: Record<string, unknown>,
-): Record<string, unknown> {
+function applyEventPatch(obj: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
   const out = structuredClone(obj);
   for (const [path, value] of Object.entries(patch)) {
     const tokens = path.split("/").map((t) => t.replaceAll("~1", "/").replaceAll("~0", "~"));
@@ -726,9 +676,7 @@ function applyEventPatch(
     for (const t of tokens.slice(0, -1)) {
       const next = parent[t];
       if (next === null || typeof next !== "object" || Array.isArray(next)) {
-        throw new SetErrorSignal("invalidProperties", `patch path "${path}" does not exist`, [
-          path,
-        ]);
+        throw new SetErrorSignal("invalidProperties", `patch path "${path}" does not exist`, [path]);
       }
       parent = next as Record<string, unknown>;
     }

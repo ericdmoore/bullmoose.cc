@@ -47,14 +47,7 @@ describe("policy — sit free, escalate near-due", () => {
   const rows: Row[] = [
     // ---- free claimants: policy never restricts them -----------------------
     ["free / far due → claims", NOW + 3 * HOUR, null, FREE, calm(), true],
-    [
-      "free / NULL due, free runtime live → claims",
-      null,
-      null,
-      FREE,
-      calm({ freeRuntimeLive: true }),
-      true,
-    ],
+    ["free / NULL due, free runtime live → claims", null, null, FREE, calm({ freeRuntimeLive: true }), true],
     ["free / pinned, past due → claims", NOW - HOUR, "pinned", FREE, calm(), true],
     [
       "free / budget exhausted, near due → claims",
@@ -67,22 +60,8 @@ describe("policy — sit free, escalate near-due", () => {
     // ---- paid vs due_at ----------------------------------------------------
     ["paid / far due → holds (sit free)", NOW + 3 * HOUR, null, PAID, calm(), false],
     ["paid / near due (inside window) → claims", NOW + 30 * 60_000, null, PAID, calm(), true],
-    [
-      "paid / at the window edge → claims (<=)",
-      NOW + ESCALATION_WINDOW_NO_HISTORY_MS,
-      null,
-      PAID,
-      calm(),
-      true,
-    ],
-    [
-      "paid / 1ms outside the edge → holds",
-      NOW + ESCALATION_WINDOW_NO_HISTORY_MS + 1,
-      null,
-      PAID,
-      calm(),
-      false,
-    ],
+    ["paid / at the window edge → claims (<=)", NOW + ESCALATION_WINDOW_NO_HISTORY_MS, null, PAID, calm(), true],
+    ["paid / 1ms outside the edge → holds", NOW + ESCALATION_WINDOW_NO_HISTORY_MS + 1, null, PAID, calm(), false],
     ["paid / past due → claims", NOW - HOUR, null, PAID, calm(), true],
     [
       "paid / wider window (history) widens eligibility",
@@ -93,40 +72,12 @@ describe("policy — sit free, escalate near-due", () => {
       true,
     ],
     // ---- paid vs NULL due: the sit-free rule under absence-inference -------
-    [
-      "paid / NULL due, NO free runtime live → claims NOW (STRANDING GUARD)",
-      null,
-      null,
-      PAID,
-      calm(),
-      true,
-    ],
-    [
-      "paid / NULL due, free runtime live → holds (sit free)",
-      null,
-      null,
-      PAID,
-      calm({ freeRuntimeLive: true }),
-      false,
-    ],
+    ["paid / NULL due, NO free runtime live → claims NOW (STRANDING GUARD)", null, null, PAID, calm(), true],
+    ["paid / NULL due, free runtime live → holds (sit free)", null, null, PAID, calm({ freeRuntimeLive: true }), false],
     // ---- the pin: hard, always ---------------------------------------------
     ["paid / pinned, past due → NEVER", NOW - HOUR, "pinned", PAID, calm(), false],
-    [
-      "paid / pinned, NULL due, no free runtime → NEVER (pinned MAY sit)",
-      null,
-      "pinned",
-      PAID,
-      calm(),
-      false,
-    ],
-    [
-      "paid / privacy=internal is not a pin → near due claims",
-      NOW + 10 * 60_000,
-      "internal",
-      PAID,
-      calm(),
-      true,
-    ],
+    ["paid / pinned, NULL due, no free runtime → NEVER (pinned MAY sit)", null, "pinned", PAID, calm(), false],
+    ["paid / privacy=internal is not a pin → near due claims", NOW + 10 * 60_000, "internal", PAID, calm(), true],
     ["paid / privacy=open is not a pin → past due claims", NOW - HOUR, "open", PAID, calm(), true],
     // ---- budget exhaustion: free only, regardless of due-ness --------------
     [
@@ -137,14 +88,7 @@ describe("policy — sit free, escalate near-due", () => {
       calm({ budgetExhausted: true }),
       false,
     ],
-    [
-      "paid / out of budget, NULL due, no free live → holds",
-      null,
-      null,
-      PAID,
-      calm({ budgetExhausted: true }),
-      false,
-    ],
+    ["paid / out of budget, NULL due, no free live → holds", null, null, PAID, calm({ budgetExhausted: true }), false],
     // ---- DefaultCase: no facets, default world = today ---------------------
     ["DefaultCase / paid, undeclared world → claims as today", null, null, PAID, calm(), true],
     ["DefaultCase / free → claims as today", null, null, FREE, calm(), true],
@@ -160,9 +104,7 @@ describe("policy — sit free, escalate near-due", () => {
     // claim RECORDS it (claimant_free = 1), which is what lets the score
     // catch a "free" claimant whose runs keep stamping nonzero cost_micros.
     // Blocking would require remote attestation, deliberately not attempted.
-    expect(policy({ dueAt: NOW + 3 * HOUR, privacy: null }, { isFree: true }, calm(), NOW)).toBe(
-      true,
-    );
+    expect(policy({ dueAt: NOW + 3 * HOUR, privacy: null }, { isFree: true }, calm(), NOW)).toBe(true);
   });
 });
 
@@ -194,25 +136,18 @@ describe("fit — identical semantics to the fleet host's fitsRequirements", () 
     // Combined: every axis must fit.
     [{ ...caps, vision: true }, { vision: true, contextTokens: 64_000 }, false],
   ];
-  it.each(rows.map((r, i) => [i, ...r] as const))(
-    "case %d: caps=%j requires=%j → %s",
-    (_i, c, r, want) => {
-      expect(fit(c, r)).toBe(want);
-    },
-  );
+  it.each(rows.map((r, i) => [i, ...r] as const))("case %d: caps=%j requires=%j → %s", (_i, c, r, want) => {
+    expect(fit(c, r)).toBe(want);
+  });
 
   it("mayClaim = fit ∧ policy", () => {
     const facets = { dueAt: null, privacy: null, requires: { vision: true } };
     // Policy passes (free) but fit fails (declared vector without vision).
     expect(mayClaim(facets, { isFree: true, capabilities: {} }, calm(), NOW)).toBe(false);
     // Fit passes (vision declared) and policy passes.
-    expect(mayClaim(facets, { isFree: true, capabilities: { vision: true } }, calm(), NOW)).toBe(
-      true,
-    );
+    expect(mayClaim(facets, { isFree: true, capabilities: { vision: true } }, calm(), NOW)).toBe(true);
     // Fit passes (no vector declared) but policy fails (paid, free live).
-    expect(
-      mayClaim(facets, { isFree: false, capabilities: null }, calm({ freeRuntimeLive: true }), NOW),
-    ).toBe(false);
+    expect(mayClaim(facets, { isFree: false, capabilities: null }, calm({ freeRuntimeLive: true }), NOW)).toBe(false);
   });
 });
 
@@ -228,9 +163,7 @@ describe("escalationWindowMs — clamp(3 × median duration, 15min, 4h); no hist
   });
   it("even count → mean of the two middles", () => {
     // medians 10 and 20 → 15min median → 45min window
-    expect(escalationWindowMs([5 * 60_000, 10 * 60_000, 20 * 60_000, 60 * 60_000])).toBe(
-      45 * 60_000,
-    );
+    expect(escalationWindowMs([5 * 60_000, 10 * 60_000, 20 * 60_000, 60 * 60_000])).toBe(45 * 60_000);
   });
   it("clamps up to the 15min floor (a 1min job still gets retry room)", () => {
     expect(escalationWindowMs([60_000])).toBe(ESCALATION_WINDOW_MIN_MS);

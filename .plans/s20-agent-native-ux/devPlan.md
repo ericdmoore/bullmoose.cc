@@ -4,13 +4,13 @@
 > [`readme.md`](./readme.md), which records what was adopted and rejected and why.
 >
 > **Gate: T0 is not owned here.** The supply side — s03.D T2–T5 — is what makes every
-> screen below non-empty, and it stays owned by s03.D. This plan sequences _after_ it on
+> screen below non-empty, and it stays owned by s03.D. This plan sequences *after* it on
 > purpose: re-nouning a UI over an empty queue produces a prettier Gmail, which is the
 > exact failure the conceptual-reorg docs diagnose.
 
 ## Tasks (in dependency order)
 
-### T0 — The supply side · _owned by s03.D, named here as the gate_
+### T0 — The supply side · *owned by s03.D, named here as the gate*
 
 s03.D T2 (approval queue UI + bulk), T4 (the brief), T5 (repetition→policy), plus enough
 agents actually producing proposals that the queue has traffic (bouncer FN/FP conversations
@@ -25,7 +25,7 @@ on the contact card, T4's comment pattern) and inline in the flow that produced 
 (T6's sketch redlining). The queue holds what the human did not naturally encounter.
 In-place approval writes the identical ledger rows.
 
-### T1 — Watches · _the one new noun_ — ENGINE LANDED (2026-08-15) · remind@ DOOR LANDED (2026-08-16)
+### T1 — Watches · *the one new noun* — ENGINE LANDED (2026-08-15) · remind@ DOOR LANDED (2026-08-16)
 
 > **Wave 1 built**: the `watches` table + migration, `services/agent/src/watches.ts`
 > (the cron sweep — deterministic `deadline` and `no-reply-from` conditions, fire→proposal,
@@ -65,8 +65,8 @@ the action wants to DO.
 
 - **Conditions, v1: deterministic only.** `no-reply-from(sender, since)`,
   `deadline(at)`, `no-message-matching(query, by)`. An LLM-judged condition ("tell me if
-  the shipment won't arrive by Friday") is v2, and it enters as a _classifier over new
-  mail_ feeding the same deterministic state machine — never a free-running loop.
+  the shipment won't arrive by Friday") is v2, and it enters as a *classifier over new
+  mail* feeding the same deterministic state machine — never a free-running loop.
 - **Firing produces a PROPOSAL, not an action.** "Draft a friendly follow-up" lands in the
   approvals queue like any other agent work. A Watch whose action is pure notification
   (severity: FYI) may skip the queue; anything that would touch the world may not. The
@@ -83,7 +83,7 @@ the action wants to DO.
 end — created from webmail, CLI, or a FWD to remind@; fires from the cron; the draft
 appears in the approvals queue citing the Watch; the Watch shows as fired.
 
-### T2 — Verbs on mail · _radical verbs, familiar surface_
+### T2 — Verbs on mail · *radical verbs, familiar surface*
 
 **Files:** `webmail/src/components/MessageView.tsx` (action bar), `AppShell.tsx`,
 `services/agent` (intent → proposal pipeline).
@@ -92,18 +92,18 @@ The message view grows agent verbs beside Reply/Forward: **Answer** (agent draft
 context), **Schedule**, **Watch** (T1's on-ramp), **Bring X into this** (the agent decides
 forward vs. summarize vs. CC — the doc's best verb), **Delegate** (hand to a named agent;
 CJ when s17 lands). Every verb compiles to an `AgentInvocation` whose output is a
-_proposal_ — the verbs are new doors into existing machinery, not new machinery.
+*proposal* — the verbs are new doors into existing machinery, not new machinery.
 
 - Reply/Forward/the full composer remain untouched. Prose is the escape hatch and the
   precision tool; the docs are explicit that removing it would be ideology.
 - **Done when:** each verb produces a correct proposal in the queue with the source
   message as evidence, and declining one feeds the s03.D decline taxonomy.
 
-### T3 — Compose → Intent · _the front door of writing_
+### T3 — Compose → Intent · *the front door of writing*
 
 **Files:** `webmail/src/components/Composer.tsx`.
 
-The composer gains an intent mode — _"What do you want to happen?"_ — that routes free
+The composer gains an intent mode — *"What do you want to happen?"* — that routes free
 text through the same pipeline as T2's verbs: recipients → context → tone → draft →
 send-policy, surfacing as a draft proposal the human edits or approves. One text box, two
 modes, the classic editor one keystroke away.
@@ -112,15 +112,15 @@ modes, the classic editor one keystroke away.
 supportive tone, no big commitment" yields an editable draft proposal with recipient and
 tone resolved from the address book and history.
 
-### T4 — Extracted views: Waiting-on and Commitments · _read models, uncertainty-first_
+### T4 — Extracted views: Waiting-on and Commitments · *read models, uncertainty-first*
 
 > **The T1↔T4 seam — agent-offered Watches (Waiting-on) — LANDED (2026-08-17)**, and it
 > is the answer to "where we're going we don't need stars" (Eric). A star made YOU the
 > classifier: notice, flag, come back. The sweep now does the noticing. `sweepWaitingOn`
 > (`services/agent/src/waitingOn.ts`) scans your Sent mail for a QUESTION you asked that
 > has gone unanswered past a silence window and emits a tier-1 `watch-offer` proposal —
-> _"you emailed Sergio 4 days ago and haven't heard back; watch it and draft a follow-up if
-> it stays quiet?"_ Approving arms an ordinary `no-reply-from` Watch (the `applyProposal`
+> *"you emailed Sergio 4 days ago and haven't heard back; watch it and draft a follow-up if
+> it stays quiet?"* Approving arms an ordinary `no-reply-from` Watch (the `applyProposal`
 > effect in `actionProposal.ts`, undo = cancel it), which the T1 sweep fires; a reply that
 > lands first closes it clean. Deterministic (a literal `?`, no model), dedup'd to one offer
 > per thread ever (a decline sticks), no-fault to decline. **Deliberately separated from the
@@ -143,38 +143,36 @@ person-panel are QUERIES over the commentary, not separate stores; the gutter, f
 and time-ordered, is the agent-log with a human-readable face.
 
 Why the margin is the right surface:
-
-- **In-situ provenance** — the claim renders at its birthplace, anchored to the
-  sentence that produced it. "What does the system think I promised?" stops being an
-  audit query and becomes something you trip over while reading. This supersedes the
-  see-all drill-down as the primary auditability answer (the drill-down survives as
-  the panels' overflow).
-- **The soft register IS the epistemics** — "sounds like a thing to remember" offers;
-  a structured chip asserts. Voice carries confidence. Marginalia is also the
-  chief-of-staff metaphor's native form: notes in the margin of the handed-back memo.
-- **Replying in the margin closes two loops** — "that's not a promise" is the labeled
-  correction; and via s18's mention mechanic, "@remind — follow up Friday" in a reply
-  CREATES a Watch from the margin. The comment thread is the conversational surface
-  for the object it annotates.
+  * **In-situ provenance** — the claim renders at its birthplace, anchored to the
+    sentence that produced it. "What does the system think I promised?" stops being an
+    audit query and becomes something you trip over while reading. This supersedes the
+    see-all drill-down as the primary auditability answer (the drill-down survives as
+    the panels' overflow).
+  * **The soft register IS the epistemics** — "sounds like a thing to remember" offers;
+    a structured chip asserts. Voice carries confidence. Marginalia is also the
+    chief-of-staff metaphor's native form: notes in the margin of the handed-back memo.
+  * **Replying in the margin closes two loops** — "that's not a promise" is the labeled
+    correction; and via s18's mention mechanic, "@remind — follow up Friday" in a reply
+    CREATES a Watch from the margin. The comment thread is the conversational surface
+    for the object it annotates.
 
 Two guards, named because each failure mode is fatal:
-
-- **No comment without an object.** Every comment is the visible face of a durable
-  artifact (commitment, watch, decision, proposal). Free-floating agent observations
-  are banned by construction, not by prompt discipline — this is the anti-Clippy rule.
-  Collapsed gutter markers by default; per-class visibility dials; dismissals feed
-  repetition→policy so a class the human keeps waving off quiets itself.
-- **Anchors bind to the ORIGINAL message.** Mail immutability makes anchoring
-  tractable (unlike editable-doc annotation, where anchors rot) — but the same
-  promised sentence appears in every quoted reply. One anchor on the original
-  message-id + span; quoted copies render a reference, never a duplicate comment.
+  * **No comment without an object.** Every comment is the visible face of a durable
+    artifact (commitment, watch, decision, proposal). Free-floating agent observations
+    are banned by construction, not by prompt discipline — this is the anti-Clippy rule.
+    Collapsed gutter markers by default; per-class visibility dials; dismissals feed
+    repetition→policy so a class the human keeps waving off quiets itself.
+  * **Anchors bind to the ORIGINAL message.** Mail immutability makes anchoring
+    tractable (unlike editable-doc annotation, where anchors rot) — but the same
+    promised sentence appears in every quoted reply. One anchor on the original
+    message-id + span; quoted copies render a reference, never a duplicate comment.
 
 Two views only, chosen because they answer the two questions a chief of staff is FOR:
-_what am I waiting on?_ and _what did I promise?_
+*what am I waiting on?* and *what did I promise?*
 
 - Every row carries `status: explicit | implicit`, evidence message-ids, and confidence.
   **An empty rationale renders as "Why: not stated"** — never invented. The system may
-  offer _"worth remembering why?"_ exactly once.
+  offer *"worth remembering why?"* exactly once.
 - **Corrections feed the extractor.** "Not a commitment" is a labeled negative riding the
   same human-correction-wins loop as quarantine rescues → Bayes. Without this, a wrong
   extraction is permanent embarrassment; with it, it is training data.
@@ -184,16 +182,16 @@ _what am I waiting on?_ and _what did I promise?_
 - Rendered where they are NEEDED, which is three indexes and no nav item (Eric's question,
   2026-08-14: do these deserve their own surface? — answered: they are ANSWERS, not
   places):
-  - **time-indexed** — the s07 T0 home view / brief ("you promised Sergio by Friday");
-  - **person-indexed** — a context panel beside the open message: reading Bob's mail
-    shows the commitments and waits involving Bob ("you told him $750; his load calc is
-    overdue"). This is the conceptual-reorg readme's own strongest passage, and it is a
-    panel in the mail view, not a destination;
-  - **question-indexed** — Ask (T5), with citations, for "why did we choose X?".
-    One concession to auditability: each panel gets a "see all N" drill-down — the
-    inspection view, same rationale as the access log ("what does the system THINK I
-    promised?"), same tier as Mail → All Messages. If usage shows people living in that
-    drill-down, that is the noun earning nav, and only then.
+    * **time-indexed** — the s07 T0 home view / brief ("you promised Sergio by Friday");
+    * **person-indexed** — a context panel beside the open message: reading Bob's mail
+      shows the commitments and waits involving Bob ("you told him $750; his load calc is
+      overdue"). This is the conceptual-reorg readme's own strongest passage, and it is a
+      panel in the mail view, not a destination;
+    * **question-indexed** — Ask (T5), with citations, for "why did we choose X?".
+  One concession to auditability: each panel gets a "see all N" drill-down — the
+  inspection view, same rationale as the access log ("what does the system THINK I
+  promised?"), same tier as Mail → All Messages. If usage shows people living in that
+  drill-down, that is the noun earning nav, and only then.
 - Tasks get NO user-facing surface: an agent-doable task becomes a proposal (already in
   the queue); a human-only task lands in the brief. A standalone Tasks pane competes with
   every todo app the user already ignores — the trichotomy stays internal.
@@ -203,12 +201,12 @@ _what am I waiting on?_ and _what did I promise?_
 **Done when:** the home view shows Waiting-on and Commitments with evidence links; a
 correction updates the row AND lands a training label; extraction cost is queryable.
 
-### T5 — Ask · _research over your own history_
+### T5 — Ask · *research over your own history*
 
 **Files:** `webmail/src/pages/search.astro` (mode toggle), a conversational surface over
 the **existing MCP tool layer** (`services/agent/src/mcp.ts`).
 
-Ask is the first _internal_ client of the s02 MCP surface — the "agent fact-finding"
+Ask is the first *internal* client of the s02 MCP surface — the "agent fact-finding"
 purpose it was built for, pointed at your own account. "What did Sergio originally say
 about commercial use?" becomes tool calls (search, email_get_body, calendar) with cited
 answers; every access is authorized and audited by the machinery that already exists.
@@ -218,7 +216,7 @@ answers; every access is authorized and audited by the machinery that already ex
 - **Done when:** a natural-language question over real mail returns a cited answer whose
   every read appears in the access log.
 
-### T6 — Goals: the delegation contract, with an approvable plan · _the Situation question, resolved_
+### T6 — Goals: the delegation contract, with an approvable plan · *the Situation question, resolved*
 
 **Files:** `services/agent/src/jobNode.ts` (plan-proposal interception),
 `services/jmap` (goal CRUD as a thin face over `jobs` rows), webmail goal view,
@@ -233,8 +231,8 @@ primitive (Goal / may / may not / escalate when / done when), plus the piece the
 missed: **the workflow sketch is itself an approvable artifact.**
 
 The substrate landed with s11 T7 (jobs DAG, planner node, monotonic attenuation,
-aggregate budgets), whose design already commits the key sentence: _"side-effectful
-leaves still exit via /approvals — a Job reorganizes work, never its egress."_ What this
+aggregate budgets), whose design already commits the key sentence: *"side-effectful
+leaves still exit via /approvals — a Job reorganizes work, never its egress."* What this
 task adds on top:
 
 - **The plan-approval checkpoint — the new class.** Today approvals gate egress; this
@@ -289,12 +287,12 @@ and its plan-approval checkpoint is only meaningful once approving things is a h
 ## Decisions needed
 
 1. **Watch defaults** — the follow-up contract a bare star offers (+4 business days?
-   draft-vs-notify?). _Recommendation: +4bd, draft — a draft in the queue costs nothing._
-2. **Extractor trigger** — every delivery, or batched in the cron sweep? _Recommendation:
-   batched; the firehose-economics risk says start cheap and measure._
+   draft-vs-notify?). *Recommendation: +4bd, draft — a draft in the queue costs nothing.*
+2. **Extractor trigger** — every delivery, or batched in the cron sweep? *Recommendation:
+   batched; the firehose-economics risk says start cheap and measure.*
 3. ~~**Does remind@ ship as a real provisioned agent or a routing alias into the Watch
    engine?**~~ **RESOLVED (2026-08-16): a real provisioned agent account.** The alias
-   never actually saved work — the invocation still has to run _somewhere_ to parse the
+   never actually saved work — the invocation still has to run *somewhere* to parse the
    deadline and write the watch, and a dedicated account is what makes ONLY mail sent to
    remind@ mint an invocation (a `+remind` tag on a human's own box would fire a pipeline
    on every message they receive). It also inherits bouncer's safety composition for free:

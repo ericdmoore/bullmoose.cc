@@ -106,9 +106,9 @@ describe("server-wart mirrors (actionProposal.ts)", () => {
 
   it("ActionProposal/queryChanges always throws, as the server's does", async () => {
     const { client } = harness();
-    await expect(
-      client.requestOne("ActionProposal/queryChanges", { accountId: ACCOUNT }),
-    ).rejects.toThrow(/cannotCalculateChanges/);
+    await expect(client.requestOne("ActionProposal/queryChanges", { accountId: ACCOUNT })).rejects.toThrow(
+      /cannotCalculateChanges/,
+    );
   });
 
   it("refuses to destroy a pending row — decide it, don't drop it", async () => {
@@ -117,9 +117,9 @@ describe("server-wart mirrors (actionProposal.ts)", () => {
       accountId: ACCOUNT,
       destroy: ["ap-reply-elk"],
     });
-    expect(
-      (res.notDestroyed as Record<string, { description?: string }>)["ap-reply-elk"]?.description,
-    ).toContain("decide a pending proposal");
+    expect((res.notDestroyed as Record<string, { description?: string }>)["ap-reply-elk"]?.description).toContain(
+      "decide a pending proposal",
+    );
     // A decided one purges fine (housekeeping).
     const ok = await client.requestOne("ActionProposal/set", {
       accountId: ACCOUNT,

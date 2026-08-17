@@ -165,9 +165,7 @@ function matchesEntry(url: URL, entry: AllowEntry): boolean {
  * human while parsing to something else, and no legitimate agent request needs
  * userinfo in a URL.
  */
-export function parseDestination(
-  raw: unknown,
-): { ok: true; url: URL } | { ok: false; reason: string } {
+export function parseDestination(raw: unknown): { ok: true; url: URL } | { ok: false; reason: string } {
   if (typeof raw !== "string" || raw.trim() === "") return { ok: false, reason: "url is required" };
   let url: URL;
   try {

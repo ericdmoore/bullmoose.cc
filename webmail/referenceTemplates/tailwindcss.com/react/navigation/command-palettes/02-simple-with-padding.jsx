@@ -1,4 +1,4 @@
-"use client";
+'use client'
 
 import {
   Combobox,
@@ -8,33 +8,33 @@ import {
   Dialog,
   DialogPanel,
   DialogBackdrop,
-} from "@headlessui/react";
-import { UsersIcon } from "@heroicons/react/24/outline";
-import { useState } from "react";
+} from '@headlessui/react'
+import { UsersIcon } from '@heroicons/react/24/outline'
+import { useState } from 'react'
 
 const people = [
-  { id: 1, name: "Leslie Alexander", url: "#" },
+  { id: 1, name: 'Leslie Alexander', url: '#' },
   // More people...
-];
+]
 
 export default function Example() {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(true);
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(true)
 
   const filteredPeople =
-    query === ""
+    query === ''
       ? []
       : people.filter((person) => {
-          return person.name.toLowerCase().includes(query.toLowerCase());
-        });
+          return person.name.toLowerCase().includes(query.toLowerCase())
+        })
 
   return (
     <Dialog
       className="relative z-10"
       open={open}
       onClose={() => {
-        setOpen(false);
-        setQuery("");
+        setOpen(false)
+        setQuery('')
       }}
     >
       <DialogBackdrop
@@ -50,7 +50,7 @@ export default function Example() {
           <Combobox
             onChange={(person) => {
               if (person) {
-                window.location = person.url;
+                window.location = person.url
               }
             }}
           >
@@ -59,7 +59,7 @@ export default function Example() {
               className="w-full rounded-md bg-gray-100 px-4 py-2.5 text-gray-900 outline-hidden placeholder:text-gray-500 sm:text-sm dark:bg-white/5 dark:text-white dark:placeholder:text-gray-400"
               placeholder="Search..."
               onChange={(event) => setQuery(event.target.value)}
-              onBlur={() => setQuery("")}
+              onBlur={() => setQuery('')}
             />
 
             {filteredPeople.length > 0 && (
@@ -79,20 +79,15 @@ export default function Example() {
               </ComboboxOptions>
             )}
 
-            {query !== "" && filteredPeople.length === 0 && (
+            {query !== '' && filteredPeople.length === 0 && (
               <div className="px-4 py-14 text-center sm:px-14">
-                <UsersIcon
-                  className="mx-auto size-6 text-gray-400 dark:text-gray-500"
-                  aria-hidden="true"
-                />
-                <p className="mt-4 text-sm text-gray-900 dark:text-gray-200">
-                  No people found using that search term.
-                </p>
+                <UsersIcon className="mx-auto size-6 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                <p className="mt-4 text-sm text-gray-900 dark:text-gray-200">No people found using that search term.</p>
               </div>
             )}
           </Combobox>
         </DialogPanel>
       </div>
     </Dialog>
-  );
+  )
 }

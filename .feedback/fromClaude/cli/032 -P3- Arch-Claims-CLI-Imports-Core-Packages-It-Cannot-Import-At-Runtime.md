@@ -24,8 +24,8 @@ Every CLI unit that needs core logic **vendors a compact copy**:
 - `packages/cli/src/scopes.ts` — the scope vocabulary, mirrored from `@bullmoose/auth-core`
   (guarded by a source-parsing drift test).
 
-Three copies now, three drift risks. The drift tests catch _vocabulary_ drift; they do not
-catch a _codec_ diverging from `calendar-core`'s expander — which matters, because
+Three copies now, three drift risks. The drift tests catch *vocabulary* drift; they do not
+catch a *codec* diverging from `calendar-core`'s expander — which matters, because
 `calendar-core` is exactly where `common/003`'s RRULE guard lives. A vendored CLI codec that
 accepts a rule the server rejects is a confusing round-trip.
 
@@ -42,11 +42,10 @@ Two honest options:
    permanently but adds a build tool this package has so far avoided.
 
 I lean (1) for now — the server-revalidates-everything property (which `common/003` and the
-`016` exit-code mapping already lean on) makes CLI-side codec drift _loud_, not silent — with
+`016` exit-code mapping already lean on) makes CLI-side codec drift *loud*, not silent — with
 (2) filed as the real fix when the vendored-copy count makes it worth the build tooling.
 
 ## Related
-
 - `common/027` — the scope model; `scopes.ts` is the third vendored copy.
 - `common/003` — the RRULE guard the vendored calendar codec must not diverge from.
 - sVOL `017`/`018` — the units that vendored `vcard`/`calendar` and flagged this.

@@ -130,11 +130,7 @@ const SCOPE_WARNINGS: Record<string, string> = {
  * conversational surface is arguably better at this than a UI, because it
  * can say so in a sentence.
  */
-function grantWarnings(
-  scopes: string[],
-  collection: string | null,
-  expiresAt: number | null,
-): string[] {
+function grantWarnings(scopes: string[], collection: string | null, expiresAt: number | null): string[] {
   const eff = effectiveScopes(scopes);
   const out: string[] = [];
   for (const s of eff) if (SCOPE_WARNINGS[s]) out.push(SCOPE_WARNINGS[s]!);
@@ -404,19 +400,14 @@ export function describeBinding(configJson: string) {
     hasPersona: typeof cfg.persona === "string" && cfg.persona.length > 0,
     // The COUNT, never the addresses: who is allowed to drive an agent is a
     // list of third parties.
-    senderAllowlist:
-      senders.length > 0 ? { active: true, count: senders.length } : { active: false },
+    senderAllowlist: senders.length > 0 ? { active: true, count: senders.length } : { active: false },
     modelAliasCount: Object.keys(cfg.modelAliases ?? {}).length,
   };
 }
 
-function bindingWarnings(
-  b: { enabled: number; trigger_on: string },
-  d: ReturnType<typeof describeBinding>,
-): string[] {
+function bindingWarnings(b: { enabled: number; trigger_on: string }, d: ReturnType<typeof describeBinding>): string[] {
   const out: string[] = [];
-  if (b.enabled !== 1)
-    out.push("disabled — it will not fire, and ingest creates no invocation for it");
+  if (b.enabled !== 1) out.push("disabled — it will not fire, and ingest creates no invocation for it");
   if (d.replyMode === "send") {
     out.push(
       "replyMode is SEND: this agent sends mail to the original sender itself. Nothing is " +
@@ -629,8 +620,7 @@ function verdict(binding: BindingRow, invs: InvocationRow[]): { outcome: string;
   return {
     outcome: "ran",
     because:
-      "It did not skip: the invocation completed." +
-      (latest.note ? ` The runtime recorded: "${latest.note}".` : ""),
+      "It did not skip: the invocation completed." + (latest.note ? ` The runtime recorded: "${latest.note}".` : ""),
   };
 }
 
@@ -755,8 +745,7 @@ function renderAudit(r: AuditRow) {
             // scopes cannot be recovered") described the pre-s03.A world and
             // would have told an auditor to stop looking.
             revokedAt: new Date(r.grant_revoked_at).toISOString(),
-            scopesAtAccess:
-              r.grant_scopes === null ? null : (JSON.parse(r.grant_scopes) as string[]),
+            scopesAtAccess: r.grant_scopes === null ? null : (JSON.parse(r.grant_scopes) as string[]),
             note:
               "This grant was revoked. The access below happened while it was live — " +
               "revocation does not retroactively un-do it. Because revocation is a " +
@@ -960,10 +949,7 @@ const INTROSPECTION_TOOLS: ToolDef[] = [
                 collection: r.collection,
                 collectionId: r.collection_id,
               };
-              return (
-                matchingGrants({ ...access, granted: [ref] }, scope ?? "read", domain ?? "mail")
-                  .length > 0
-              );
+              return matchingGrants({ ...access, granted: [ref] }, scope ?? "read", domain ?? "mail").length > 0;
             })
           : rows;
 
@@ -1096,9 +1082,7 @@ const INTROSPECTION_TOOLS: ToolDef[] = [
       if (!emailId) throw new ToolError("emailId is required and must be a non-empty string.");
       const only = typeof args.bindingName === "string" ? args.bindingName : undefined;
 
-      const bindings = (await listBindings(env.DB, access.accountId)).filter(
-        (b) => !only || b.name === only,
-      );
+      const bindings = (await listBindings(env.DB, access.accountId)).filter((b) => !only || b.name === only);
       const invocations = await listInvocations(env.DB, access.accountId, {
         emailId,
         limit: 200,
@@ -1136,8 +1120,7 @@ const INTROSPECTION_TOOLS: ToolDef[] = [
               note: only
                 ? `This account has no binding named "${only}". If it once did, it has been deleted — ` +
                   "binding deletion leaves no record."
-                : "This account has no agent bindings at all, so nothing could have acted on " +
-                  "the message.",
+                : "This account has no agent bindings at all, so nothing could have acted on " + "the message.",
             }
           : {}),
         limitations: SKIP_LIMITATIONS,

@@ -21,21 +21,15 @@ describe("requiredScopesForEmailSet", () => {
   });
 
   it("charges annotate for a keywords-only patch", () => {
-    expect(requiredScopesForEmailSet({ update: { e1: { "keywords/$seen": true } } })).toEqual([
-      "annotate",
-    ]);
+    expect(requiredScopesForEmailSet({ update: { e1: { "keywords/$seen": true } } })).toEqual(["annotate"]);
   });
 
   it("charges move when a patch touches mailboxIds", () => {
-    expect(requiredScopesForEmailSet({ update: { e1: { "mailboxIds/mb2": true } } })).toEqual([
-      "move",
-    ]);
+    expect(requiredScopesForEmailSet({ update: { e1: { "mailboxIds/mb2": true } } })).toEqual(["move"]);
   });
 
   it("charges move for a whole-property mailboxIds replacement", () => {
-    expect(requiredScopesForEmailSet({ update: { e1: { mailboxIds: { mb2: true } } } })).toEqual([
-      "move",
-    ]);
+    expect(requiredScopesForEmailSet({ update: { e1: { mailboxIds: { mb2: true } } } })).toEqual(["move"]);
   });
 
   it("charges both when one call mixes a flag patch and a move patch", () => {

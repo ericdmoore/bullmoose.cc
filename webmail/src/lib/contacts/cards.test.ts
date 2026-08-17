@@ -51,14 +51,7 @@ describe("the scope note is the honest one", () => {
   it("names the six property groups the server really matches", () => {
     // `buildContactFilter`'s `text` case (mailstore:1830-1841) ORs exactly
     // these six and nothing else.
-    expect(CONTACT_TEXT_FIELDS).toEqual([
-      "name",
-      "nickname",
-      "organization",
-      "email",
-      "phone",
-      "note",
-    ]);
+    expect(CONTACT_TEXT_FIELDS).toEqual(["name", "nickname", "organization", "email", "phone", "note"]);
     for (const field of CONTACT_TEXT_FIELDS) {
       expect(CONTACT_SEARCH_SCOPE_NOTE.toLowerCase()).toContain(field);
     }

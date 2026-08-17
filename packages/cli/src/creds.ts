@@ -3,16 +3,7 @@ import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import type { DatabaseSync } from "node:sqlite";
 import { getConfig, requireSettings, setConfig } from "./db.js";
-import {
-  emitJson,
-  emitNdjson,
-  exitCodeForHttpStatus,
-  fail,
-  note,
-  out,
-  usage,
-  type IoOpts,
-} from "./io.js";
+import { emitJson, emitNdjson, exitCodeForHttpStatus, fail, note, out, usage, type IoOpts } from "./io.js";
 import { promptHidden } from "./tokens.js";
 
 /**
@@ -68,11 +59,7 @@ export interface CredsOpts extends IoOpts {
   port?: string;
 }
 
-export async function cmdCreds(
-  db: DatabaseSync,
-  positionals: string[],
-  opts: CredsOpts,
-): Promise<void> {
+export async function cmdCreds(db: DatabaseSync, positionals: string[], opts: CredsOpts): Promise<void> {
   const [sub, name] = positionals;
 
   if (sub === "init") {
@@ -98,10 +85,7 @@ export async function cmdCreds(
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     if (!res.ok) {
-      fail(
-        `vault ${method} ${path} → HTTP ${res.status}: ${await res.text()}`,
-        exitCodeForHttpStatus(res.status),
-      );
+      fail(`vault ${method} ${path} → HTTP ${res.status}: ${await res.text()}`, exitCodeForHttpStatus(res.status));
     }
     return res.json();
   };
@@ -195,9 +179,7 @@ export async function cmdCreds(
       const res = await api("POST", `/vault/credentials/${encodeURIComponent(name)}/rotate`, {
         secret,
       });
-      report(res, opts, () =>
-        out(`rotated ${name} — re-sealed under the same name; downstream refs unchanged`),
-      );
+      report(res, opts, () => out(`rotated ${name} — re-sealed under the same name; downstream refs unchanged`));
       return;
     }
     case "rm": {
@@ -246,9 +228,7 @@ export async function cmdCreds(
         ...(opts.allow ? { allow: opts.allow } : {}),
         ...(opts.enforcement ? { enforcement: opts.enforcement } : {}),
       });
-      report(res, opts, () =>
-        out(`refresh token for ${name} uploaded to the vault — not kept locally`),
-      );
+      report(res, opts, () => out(`refresh token for ${name} uploaded to the vault — not kept locally`));
       return;
     }
     default:
@@ -325,12 +305,7 @@ async function runPkceFlow(flow: PkceFlow): Promise<string> {
     server.listen(flow.port, "127.0.0.1", () => {
       note(`listening on ${redirectUri} — opening browser…`);
       note(`if it doesn't open: ${authUrl.toString()}`);
-      const opener =
-        process.platform === "darwin"
-          ? "open"
-          : process.platform === "win32"
-            ? "start"
-            : "xdg-open";
+      const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
       spawn(opener, [authUrl.toString()], { stdio: "ignore", detached: true }).unref();
     });
     setTimeout(() => {
@@ -353,17 +328,11 @@ async function runPkceFlow(flow: PkceFlow): Promise<string> {
     body: body.toString(),
   });
   if (!res.ok) {
-    fail(
-      `token exchange failed: HTTP ${res.status}: ${await res.text()}`,
-      exitCodeForHttpStatus(res.status),
-    );
+    fail(`token exchange failed: HTTP ${res.status}: ${await res.text()}`, exitCodeForHttpStatus(res.status));
   }
   const tokens = (await res.json()) as { refresh_token?: string; access_token?: string };
   if (!tokens.refresh_token) {
-    fail(
-      "provider returned no refresh_token (check offline access / consent settings); " +
-        "nothing was stored",
-    );
+    fail("provider returned no refresh_token (check offline access / consent settings); " + "nothing was stored");
   }
   return tokens.refresh_token;
 }

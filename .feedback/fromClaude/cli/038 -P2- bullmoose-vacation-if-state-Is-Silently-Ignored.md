@@ -15,8 +15,8 @@ const res = await client.one("VacationResponse/set", {
 ```
 
 Every other `Foo/set` in the CLI does the same thing and means it. `sVOL 024:96-99` states the
-assumption directly: _"Both are `Foo/set` calls that honour the account state string, so thread
-`state` into `ifInState`."_
+assumption directly: *"Both are `Foo/set` calls that honour the account state string, so thread
+`state` into `ifInState`."*
 
 ## The defect
 

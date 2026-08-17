@@ -11,7 +11,7 @@ My preferred shape would be:
 > metered/plan-based agent execution + premium collaboration/enterprise
 > controls.**
 
-In other words: make the _new email model_ open enough that developers
+In other words: make the *new email model* open enough that developers
 can inspect it, extend it, self-host it, and build around it --- while
 charging for the difficult operational layer that most people do not
 actually want to run themselves.
@@ -30,7 +30,7 @@ Agent Actions**
 rather than spending its early life becoming an SMTP deliverability
 company.
 
----
+------------------------------------------------------------------------
 
 # Option 1: Traditional paid SaaS
 
@@ -43,30 +43,30 @@ For example:
 
 ### Free
 
-- One mailbox
-- Message and Conversation UI
-- Limited Thread creation
-- Basic semantic search
-- Small monthly AI allowance
+-   One mailbox
+-   Message and Conversation UI
+-   Limited Thread creation
+-   Basic semantic search
+-   Small monthly AI allowance
 
 ### Personal --- perhaps \$10--20/month
 
-- Unlimited Threads
-- Decision / Commitment / Task extraction
-- Inbox/attention prioritization
-- Agent-assisted compose
-- Watches and follow-ups
-- Larger AI allowance
+-   Unlimited Threads
+-   Decision / Commitment / Task extraction
+-   Inbox/attention prioritization
+-   Agent-assisted compose
+-   Watches and follow-ups
+-   Larger AI allowance
 
 ### Pro --- perhaps \$25--50/month
 
-- Multiple mailboxes
-- More autonomous agents
-- Calendar / files / contacts integration
-- Custom agent rules
-- Higher execution limits
-- Advanced models
-- Long-lived semantic memory
+-   Multiple mailboxes
+-   More autonomous agents
+-   Calendar / files / contacts integration
+-   Custom agent rules
+-   Higher execution limits
+-   Advanced models
+-   Long-lived semantic memory
 
 ### Family / Team
 
@@ -91,7 +91,7 @@ The consumer proposition is essentially:
 
 This is probably the easiest monetization model to explain and validate.
 
----
+------------------------------------------------------------------------
 
 # Option 2: Charge for agent work
 
@@ -129,7 +129,7 @@ Internally, pricing can map onto model and tool costs.
 
 Externally, it should map onto **work accomplished**.
 
----
+------------------------------------------------------------------------
 
 # Option 3: Run the whole email platform
 
@@ -139,17 +139,17 @@ Eventually you could offer:
 
 Now you control:
 
-- SMTP ingress/egress
-- storage
-- spam filtering
-- identity
-- search
-- push delivery
-- mailbox semantics
-- agents
-- APIs
-- retention
-- calendar/contact integration
+-   SMTP ingress/egress
+-   storage
+-   spam filtering
+-   identity
+-   search
+-   push delivery
+-   mailbox semantics
+-   agents
+-   APIs
+-   retention
+-   calendar/contact integration
 
 There are real advantages.
 
@@ -185,7 +185,7 @@ Not:
 Let Gmail and Microsoft solve transport until owning transport becomes
 strategically necessary.
 
----
+------------------------------------------------------------------------
 
 # Option 4: Open-core
 
@@ -199,18 +199,18 @@ sensitive digital archive they possess.
 
 Email contains:
 
-- financial information
-- relationships
-- account resets
-- contracts
-- private conversations
-- travel
-- work
-- family
-- identity
-- years or decades of personal history
+-   financial information
+-   relationships
+-   account resets
+-   contracts
+-   private conversations
+-   travel
+-   work
+-   family
+-   identity
+-   years or decades of personal history
 
-And now we are proposing not merely to _read_ that archive, but
+And now we are proposing not merely to *read* that archive, but
 eventually to **act from it**.
 
 Trust is therefore not a secondary marketing concern.
@@ -228,7 +228,7 @@ And:
 That could matter disproportionately for developers, privacy-conscious
 consumers and businesses.
 
----
+------------------------------------------------------------------------
 
 # What should actually be open?
 
@@ -244,14 +244,14 @@ The actual Message / Conversation / Thread UX.
 
 The definitions and storage model for:
 
-- Threads
-- Decisions
-- Commitments
-- Tasks
-- Obligations
-- agent actions
-- provenance
-- confidence
+-   Threads
+-   Decisions
+-   Commitments
+-   Tasks
+-   Obligations
+-   agent actions
+-   provenance
+-   confidence
 
 This is especially important.
 
@@ -271,26 +271,26 @@ without sending their entire mailbox to your servers.
 
 The basic machinery for:
 
-- tools
-- permissions
-- watches
-- actions
-- human approvals
-- model adapters
+-   tools
+-   permissions
+-   watches
+-   actions
+-   human approvals
+-   model adapters
 
 ### Bring-your-own-model
 
 A developer should be able to point it at:
 
-- local models
-- OpenAI
-- Anthropic
-- Gemini
-- whatever comes next
+-   local models
+-   OpenAI
+-   Anthropic
+-   Gemini
+-   whatever comes next
 
 That reduces fear of platform lock-in.
 
----
+------------------------------------------------------------------------
 
 # Then what is premium?
 
@@ -311,15 +311,15 @@ The obvious one.
 
 You operate:
 
-- encrypted sync
-- indexing
-- vector/search infrastructure
-- agent runtime
-- model routing
-- backups
-- push notifications
-- cross-device state
-- connector infrastructure
+-   encrypted sync
+-   indexing
+-   vector/search infrastructure
+-   agent runtime
+-   model routing
+-   backups
+-   push notifications
+-   cross-device state
+-   connector infrastructure
 
 That alone can support a subscription.
 
@@ -355,13 +355,13 @@ The open system might support email.
 
 Premium could provide polished managed integrations with:
 
-- calendars
-- cloud storage
-- business SaaS
-- travel systems
-- commerce
-- CRM
-- communications platforms
+-   calendars
+-   cloud storage
+-   business SaaS
+-   travel systems
+-   commerce
+-   CRM
+-   communications platforms
 
 The integration maintenance itself has real ongoing cost.
 
@@ -380,20 +380,20 @@ This feels naturally premium:
 
 Eventually:
 
-- SSO
-- audit logs
-- retention controls
-- compliance
-- admin policies
-- model governance
-- data residency
-- organization-wide agent permissions
-- private model endpoints
-- legal hold / discovery integrations
+-   SSO
+-   audit logs
+-   retention controls
+-   compliance
+-   admin policies
+-   model governance
+-   data residency
+-   organization-wide agent permissions
+-   private model endpoints
+-   legal hold / discovery integrations
 
 That is a completely different willingness-to-pay curve.
 
----
+------------------------------------------------------------------------
 
 # The particularly attractive boundary: intelligence is open, agency is hosted
 
@@ -440,7 +440,7 @@ It is providing **reliable agency**.
 
 That is a much healthier open-core boundary.
 
----
+------------------------------------------------------------------------
 
 # Why open-core might be strategically valuable beyond monetization
 
@@ -456,12 +456,12 @@ by having:
 > more users\
 > more AI researchers
 
-But you might create the model that developers decide email _should_
+But you might create the model that developers decide email *should*
 have.
 
 Suppose the open-source project establishes:
 
-```text
+``` text
 Message
    ↓
 Conversation
@@ -503,7 +503,7 @@ independent abstraction**.
 
 That could become the moat.
 
----
+------------------------------------------------------------------------
 
 # Open-core also attacks the trust problem
 
@@ -532,7 +532,7 @@ Users aren't entirely dependent on:
 
 For an agent product, transparency has product value.
 
----
+------------------------------------------------------------------------
 
 # But open-core creates real risks
 
@@ -583,12 +583,12 @@ There needs to be something developers actually want to extend.
 
 That probably means:
 
-- agent SDK
-- connector SDK
-- Thread schema
-- tool protocol
-- model adapters
-- event system
+-   agent SDK
+-   connector SDK
+-   Thread schema
+-   tool protocol
+-   model adapters
+-   event system
 
 If the repository is merely "here's our React email client," open-core
 isn't strategically meaningful.
@@ -610,7 +610,7 @@ source-available licensing.
 I would defer that decision until the intended ecosystem is clearer
 rather than letting ideology choose the license.
 
----
+------------------------------------------------------------------------
 
 # One complication: Gmail access
 
@@ -635,7 +635,7 @@ A desktop-first system that minimizes what leaves the user's device
 could have both privacy and architectural advantages, while managed
 cloud/agent functionality can be introduced deliberately.
 
----
+------------------------------------------------------------------------
 
 # Could you make the client completely free?
 
@@ -682,7 +682,7 @@ The company monetizes operating that system reliably.
 I find that strategically more interesting than putting the basic Thread
 view behind a \$12/month paywall.
 
----
+------------------------------------------------------------------------
 
 # Another option: usage marketplace
 
@@ -702,18 +702,18 @@ Thread/Decision/Commitment model.
 
 Revenue can come from:
 
-- marketplace take rate
-- execution fees
-- premium connectors
-- paid agents
-- enterprise distribution
+-   marketplace take rate
+-   execution fees
+-   premium connectors
+-   paid agents
+-   enterprise distribution
 
 I would consider this **Phase 3**, not part of the initial business
 model.
 
 You need a useful platform before you can have a marketplace.
 
----
+------------------------------------------------------------------------
 
 # What I would not do
 
@@ -758,7 +758,7 @@ The cleanest economic relationship is:
 
 That may be a major piece of positioning.
 
----
+------------------------------------------------------------------------
 
 # My preferred business architecture
 
@@ -772,14 +772,14 @@ Connect Gmail.
 
 Deliver:
 
-- Messages
-- Conversations
-- Threads
-- semantic search
-- Decisions
-- Commitments
-- Tasks
-- provenance
+-   Messages
+-   Conversations
+-   Threads
+-   semantic search
+-   Decisions
+-   Commitments
+-   Tasks
+-   provenance
 
 Minimal agency.
 
@@ -793,14 +793,14 @@ Launch the managed service:
 
 **Agent Cloud**
 
-- always-on watches
-- follow-ups
-- scheduling
-- managed model inference
-- multi-device sync
-- connectors
-- backups
-- push notifications
+-   always-on watches
+-   follow-ups
+-   scheduling
+-   managed model inference
+-   multi-device sync
+-   connectors
+-   backups
+-   push notifications
 
 This is where consumer subscriptions become meaningful.
 
@@ -834,7 +834,7 @@ strategic advantage to justify it.
 
 By then you have actual evidence.
 
----
+------------------------------------------------------------------------
 
 # The company isn't really selling email
 
@@ -857,15 +857,15 @@ It's closer to:
 Email happens to be the extraordinary wedge because email already
 contains:
 
-- identity
-- history
-- commitments
-- decisions
-- relationships
-- documents
-- transactions
-- plans
-- deadlines
+-   identity
+-   history
+-   commitments
+-   decisions
+-   relationships
+-   documents
+-   transactions
+-   plans
+-   deadlines
 
 It is an accidental event log of modern life.
 

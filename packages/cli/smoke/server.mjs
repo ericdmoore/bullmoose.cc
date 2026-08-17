@@ -30,10 +30,7 @@ const mailboxes = new Map([
   ["mb_sent", { id: "mb_sent", parentId: null, name: "Sent", role: "sent", sortOrder: 1 }],
   ["mb_full", { id: "mb_full", parentId: null, name: "Full", role: null, sortOrder: 2 }],
   ["mb_empty", { id: "mb_empty", parentId: null, name: "Empty", role: null, sortOrder: 3 }],
-  [
-    "mb_archive",
-    { id: "mb_archive", parentId: null, name: "Archive", role: "archive", sortOrder: 4 },
-  ],
+  ["mb_archive", { id: "mb_archive", parentId: null, name: "Archive", role: "archive", sortOrder: 4 }],
   ["mb_junk", { id: "mb_junk", parentId: null, name: "Junk", role: "junk", sortOrder: 5 }],
   ["mb_trash", { id: "mb_trash", parentId: null, name: "Trash", role: "trash", sortOrder: 6 }],
 ]);
@@ -45,9 +42,7 @@ let emailState = "emstate-1";
 /** Calendar CRUD (sVOL 018). getOccurrences stays unimplemented on purpose —
  * the exit-5/§1.5 case above drives `agenda` through it as an unknownMethod. */
 let calState = "calstate-1";
-const calendars = new Map([
-  ["cal_default", { id: "cal_default", name: "Personal", isDefault: true }],
-]);
+const calendars = new Map([["cal_default", { id: "cal_default", name: "Personal", isDefault: true }]]);
 const calEvents = new Map();
 let calSeq = 0;
 const bumpCal = (res) => {
@@ -363,8 +358,7 @@ function invoke([name, args, callId]) {
     }
 
     case "Calendar/set": {
-      if (typeof args.ifInState === "string" && args.ifInState !== calState)
-        return err("stateMismatch");
+      if (typeof args.ifInState === "string" && args.ifInState !== calState) return err("stateMismatch");
       const res = {
         accountId: ACCOUNT,
         oldState: calState,
@@ -413,8 +407,7 @@ function invoke([name, args, callId]) {
     }
 
     case "CalendarEvent/set": {
-      if (typeof args.ifInState === "string" && args.ifInState !== calState)
-        return err("stateMismatch");
+      if (typeof args.ifInState === "string" && args.ifInState !== calState) return err("stateMismatch");
       const res = {
         accountId: ACCOUNT,
         oldState: calState,
@@ -485,9 +478,7 @@ function invoke([name, args, callId]) {
 
     case "CalendarEvent/query": {
       const inCal = args.filter?.inCalendar;
-      const ids = [...calEvents.values()]
-        .filter((e) => !inCal || e.calendarId === inCal)
-        .map((e) => e.id);
+      const ids = [...calEvents.values()].filter((e) => !inCal || e.calendarId === inCal).map((e) => e.id);
       return reply({
         accountId: ACCOUNT,
         queryState: calState,

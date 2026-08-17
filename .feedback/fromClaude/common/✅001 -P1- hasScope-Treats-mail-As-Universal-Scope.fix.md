@@ -6,7 +6,7 @@
 
 ```ts
 // packages/auth-core/src/index.ts
-export const MAIL_SCOPES = ["read", "annotate", "draft", "move", "send", "delete"] as const;
+export const MAIL_SCOPES = ["read","annotate","draft","move","send","delete"] as const;
 const MAIL_COVERS: ReadonlySet<string> = new Set(MAIL_SCOPES);
 
 export function hasScope(granted: string[], required: string): boolean {
@@ -22,7 +22,7 @@ fix for free.
 ## Migration — this is a breaking change for live tokens
 
 Every existing `["mail"]` token loses contacts/calendar/vault access the moment this lands. That is
-the _point_, but it will break working setups (Apple Mail via anglebrackets, the CLI's own contacts
+the *point*, but it will break working setups (Apple Mail via anglebrackets, the CLI's own contacts
 commands) unless handled.
 
 **Recommended sequence:**
@@ -37,7 +37,7 @@ commands) unless handled.
 ## Bread-crumbs for the implementer
 
 - **Test first.** `packages/auth-core/src/principal.test.ts` already exercises scope logic
-  (`'treats "mail" as a superset of every mail verb'`) — that test asserts the _current_ behaviour
+  (`'treats "mail" as a superset of every mail verb'`) — that test asserts the *current* behaviour
   for `send` and stays green. Add cases asserting `mail` does **not** cover `vault`/`contacts`/
   `calendar`, and they should fail before the change.
 - **Call sites to re-check** after the change: `services/agent/src/vault.ts:75`,

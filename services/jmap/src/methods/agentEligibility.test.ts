@@ -65,10 +65,7 @@ function harness() {
     ) as unknown as Promise<SetResult>;
 
   const set = (args: Record<string, unknown>) =>
-    registry.get("AgentInvocation/set")!(
-      { accountId: ACCOUNT, ...args },
-      ctx,
-    ) as unknown as Promise<SetResult>;
+    registry.get("AgentInvocation/set")!({ accountId: ACCOUNT, ...args }, ctx) as unknown as Promise<SetResult>;
 
   const rowOf = (id: string) =>
     w.db.query<{ status: string; claimant_free: number | null; claimant_caps_json: string | null }>(

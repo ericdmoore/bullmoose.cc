@@ -1,43 +1,35 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import {
-  Dialog,
-  DialogBackdrop,
-  DialogPanel,
-  Menu,
-  MenuButton,
-  MenuItem,
-  MenuItems,
-} from "@headlessui/react";
-import { Bars3Icon, BellIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { MagnifyingGlassIcon } from "@heroicons/react/20/solid";
+import { useState } from 'react'
+import { Dialog, DialogBackdrop, DialogPanel, Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import { Bars3Icon, BellIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon } from '@heroicons/react/20/solid'
 
 const user = {
-  name: "Tom Cook",
-  email: "tom@example.com",
+  name: 'Tom Cook',
+  email: 'tom@example.com',
   imageUrl:
-    "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
-};
+    'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+}
 const navigation = [
-  { name: "Home", href: "#", current: true },
-  { name: "Profile", href: "#", current: false },
-  { name: "Resources", href: "#", current: false },
-  { name: "Company Directory", href: "#", current: false },
-  { name: "Openings", href: "#", current: false },
-];
+  { name: 'Home', href: '#', current: true },
+  { name: 'Profile', href: '#', current: false },
+  { name: 'Resources', href: '#', current: false },
+  { name: 'Company Directory', href: '#', current: false },
+  { name: 'Openings', href: '#', current: false },
+]
 const userNavigation = [
-  { name: "Your profile", href: "#" },
-  { name: "Settings", href: "#" },
-  { name: "Sign out", href: "#" },
-];
+  { name: 'Your profile', href: '#' },
+  { name: 'Settings', href: '#' },
+  { name: 'Sign out', href: '#' },
+]
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(" ");
+  return classes.filter(Boolean).join(' ')
 }
 
 export default function Example() {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false)
 
   return (
     <>
@@ -143,10 +135,10 @@ export default function Example() {
                       <a
                         key={item.name}
                         href={item.href}
-                        aria-current={item.current ? "page" : undefined}
+                        aria-current={item.current ? 'page' : undefined}
                         className={classNames(
-                          item.current ? "text-white" : "text-indigo-100",
-                          "rounded-md px-3 py-2 text-sm font-medium hover:bg-indigo-500/75 dark:hover:bg-indigo-700/75",
+                          item.current ? 'text-white' : 'text-indigo-100',
+                          'rounded-md px-3 py-2 text-sm font-medium hover:bg-indigo-500/75 dark:hover:bg-indigo-700/75',
                         )}
                       >
                         {item.name}
@@ -249,12 +241,8 @@ export default function Example() {
                       />
                     </div>
                     <div className="ml-3 min-w-0 flex-1">
-                      <div className="truncate text-base font-medium text-gray-800 dark:text-gray-200">
-                        {user.name}
-                      </div>
-                      <div className="truncate text-sm font-medium text-gray-500 dark:text-gray-400">
-                        {user.email}
-                      </div>
+                      <div className="truncate text-base font-medium text-gray-800 dark:text-gray-200">{user.name}</div>
+                      <div className="truncate text-sm font-medium text-gray-500 dark:text-gray-400">{user.email}</div>
                     </div>
                     <button
                       type="button"
@@ -315,12 +303,12 @@ export default function Example() {
         <footer>
           <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:max-w-7xl lg:px-8">
             <div className="border-t border-gray-200 py-8 text-center text-sm text-gray-500 sm:text-left dark:border-gray-700 dark:text-gray-400">
-              <span className="block sm:inline">&copy; 2021 Your Company, Inc.</span>{" "}
+              <span className="block sm:inline">&copy; 2021 Your Company, Inc.</span>{' '}
               <span className="block sm:inline">All rights reserved.</span>
             </div>
           </div>
         </footer>
       </div>
     </>
-  );
+  )
 }

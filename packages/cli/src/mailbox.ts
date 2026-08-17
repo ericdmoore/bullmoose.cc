@@ -1,17 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { pickAccountId, requireSettings } from "./db.js";
-import {
-  EXIT,
-  emitIds,
-  emitJson,
-  fail,
-  failSetError,
-  note,
-  notFound,
-  out,
-  usage,
-  type IoOpts,
-} from "./io.js";
+import { EXIT, emitIds, emitJson, fail, failSetError, note, notFound, out, usage, type IoOpts } from "./io.js";
 import { JmapClient } from "./jmap.js";
 import { refreshMailboxes, type MirroredMailbox } from "./sync.js";
 
@@ -44,11 +33,7 @@ interface JmapMailbox {
   sortOrder: number;
 }
 
-export async function cmdMailbox(
-  db: DatabaseSync,
-  positionals: string[],
-  opts: MailboxOpts,
-): Promise<void> {
+export async function cmdMailbox(db: DatabaseSync, positionals: string[], opts: MailboxOpts): Promise<void> {
   const [sub, arg, arg2] = positionals;
   const settings = requireSettings(db);
   const accountId = pickAccountId(settings, opts.account);
@@ -191,10 +176,7 @@ export function resolveMailbox<T extends { id: string; name: string; role: strin
   const byName = boxes.filter((m) => m.name.toLowerCase() === selector.toLowerCase());
   if (byName.length === 1) return byName[0]!;
   if (byName.length > 1) {
-    usage(
-      `"${selector}" matches ${byName.length} mailboxes; use an id: ` +
-        byName.map((m) => m.id).join(", "),
-    );
+    usage(`"${selector}" matches ${byName.length} mailboxes; use an id: ` + byName.map((m) => m.id).join(", "));
   }
   notFound(`no such mailbox: ${selector}`);
 }

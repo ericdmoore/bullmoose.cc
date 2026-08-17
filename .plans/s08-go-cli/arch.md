@@ -39,7 +39,7 @@ workspace TypeScript at runtime.
 
 So Go does not create a second implementation. It changes the language of one that is
 **already second**. That single fact is what moves this from romantic to feasible, and it
-also _resolves_ `.feedback` `cli/032` — the vendoring stops being an awkward Node
+also *resolves* `.feedback` `cli/032` — the vendoring stops being an awkward Node
 limitation and becomes deliberate architecture.
 
 ## 3. The acceptance gate already exists, and it is black-box
@@ -109,12 +109,12 @@ So the cross-language contract below is not a downgrade from a type-checked impo
 replaces a regex over another package's source with a generated artifact — which is
 strictly better, and would be worth doing even if the CLI stayed in TypeScript.
 
-| coupling                                | today                                                                           | as a contract                                                                                               |
-| --------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `deriveLoginKey`                        | CLI imports nothing; mirrors the algorithm                                      | ✅ `conformance/login-key.json` (T1)                                                                        |
-| scope vocabulary                        | `scopes.test.ts` **reads `auth-core/src/index.ts` as text** and regex-parses it | ✅ `conformance/scopes.json` exists (T1); ⏳ `scopes.test.ts` still regex-parses — swap to the vector in T5 |
-| `JMAP_EXIT`                             | `io.ts` constant                                                                | ✅ `conformance/exit-codes.json` (T1)                                                                       |
-| **argv flag spec** _(4th, found in T2)_ | `main.ts` flag table                                                            | mirrored in `cli-go/internal/delegate/argv.go` with a drift test; candidate for T1's generator              |
+| coupling | today | as a contract |
+|---|---|---|
+| `deriveLoginKey` | CLI imports nothing; mirrors the algorithm | ✅ `conformance/login-key.json` (T1) |
+| scope vocabulary | `scopes.test.ts` **reads `auth-core/src/index.ts` as text** and regex-parses it | ✅ `conformance/scopes.json` exists (T1); ⏳ `scopes.test.ts` still regex-parses — swap to the vector in T5 |
+| `JMAP_EXIT` | `io.ts` constant | ✅ `conformance/exit-codes.json` (T1) |
+| **argv flag spec** *(4th, found in T2)* | `main.ts` flag table | mirrored in `cli-go/internal/delegate/argv.go` with a drift test; candidate for T1's generator |
 
 ⚠️ **T1 also captured a Go-specific divergence worth reading before T6:** `strings.ToLower`
 vs JS full case mapping. `strings.ToLower("İ")` yields a bare `i`; JS yields `i` + U+0307.
@@ -147,18 +147,18 @@ does not give a browser argon2.
 So the derivation is a **cross-client contract, not a per-client choice.** A Go CLI can do
 argon2id natively; a browser cannot without shipping WASM. Ship both and one password
 yields two different keys depending on which client was used — login succeeds in one and
-silently fails in the other. `LOGIN_KEY_ALGO` is versioned, so the algorithm _could_ be
+silently fails in the other. `LOGIN_KEY_ALGO` is versioned, so the algorithm *could* be
 recorded per credential, but that makes the split explicit rather than removing it.
 
 Only the CLI derives a key today (the webmail door takes a pasted token), so the
-constraint is not binding _right now_. It binds the moment webmail grows a password login
+constraint is not binding *right now*. It binds the moment webmail grows a password login
 — which is `s02` T7's business, and a decision to make there rather than here.
 
 **What paid Workers buys here, honestly: very little.** A database leak already costs an
 attacker 600k PBKDF2 iterations per password guess, because the client-side stretch is in
 the chain — adding a server-side stretch does not change the dominant term. The design is
-already the right one; the plan change removes a _justification_ without changing the
-_conclusion_.
+already the right one; the plan change removes a *justification* without changing the
+*conclusion*.
 
 Where paid compute genuinely changes assumptions is elsewhere, and those are worth
 revisiting deliberately rather than inheriting: `s07`'s attachment-search tiering assumes
@@ -182,7 +182,7 @@ reintroduces them by default. Each becomes a Go test case up front, not a follow
 - `✅cli/008` — `--json` silently ignored on eight commands.
 - `✅cli/009` — account resolution inconsistent across commands.
 
-The open ones split cleanly: **`038`** (`vacation --if-state` ignored) is a _server_ bug
+The open ones split cleanly: **`038`** (`vacation --if-state` ignored) is a *server* bug
 and unaffected by the language; **`032`** is resolved by §2.
 
 ## 6a. Measured: Go-WASM cannot be the shared codec core (for the browser)
@@ -197,10 +197,10 @@ vocabulary alone exists in `auth-core`, the CLI mirror, and the webmail mirror, 
 Go does have a WASM target, so this looked available. **Measured, it is not** — for the
 browser:
 
-|                                                          | gzipped    |
-| -------------------------------------------------------- | ---------- |
-| entire webmail: 7 pages, every island, Preact, all of it | **83 KB**  |
-| one Go-WASM module — a _toy_ vCard parser                | **844 KB** |
+| | gzipped |
+|---|---|
+| entire webmail: 7 pages, every island, Preact, all of it | **83 KB** |
+| one Go-WASM module — a *toy* vCard parser | **844 KB** |
 
 Ten times the whole application, for a fraction of one codec. The bytes are Go's runtime —
 GC, scheduler, reflection — not the parser. `GOOS=js GOARCH=wasm`, `-ldflags="-s -w"`, plus
@@ -218,7 +218,7 @@ Consequences, in order:
 
 ⚠️ **Not measured, and it is the deciding number if this is ever revisited:** Rust has no
 runtime and no GC, so the same toy should be far smaller — plausibly under 150 KB gzipped.
-That is an _estimate from general knowledge, not a measurement_, and this whole section
+That is an *estimate from general knowledge, not a measurement*, and this whole section
 exists because an estimate was wrong by an order of magnitude once already. TinyGo is the
 other unmeasured option; its weak spot is `encoding/json` and reflection, which is exactly
 what a codec needs.

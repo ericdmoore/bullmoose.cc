@@ -68,10 +68,7 @@ const assert = (cond, msg) => {
   if (!cond) throw new Error(msg);
 };
 const eq = (actual, expected, what) =>
-  assert(
-    actual === expected,
-    `${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
-  );
+  assert(actual === expected, `${what}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 
 async function main() {
   // Build once — the smoke test drives dist/, not src/.
@@ -135,10 +132,7 @@ async function main() {
     check("§1.1", "`sync > /dev/null` shows progress but no records", () => {
       const r = sh("$BM sync > /dev/null", env);
       eq(r.code, 0, "exit code");
-      assert(
-        r.stderr.includes("clean") || /state/.test(r.stderr),
-        `no progress on stderr:\n${r.stderr}`,
-      );
+      assert(r.stderr.includes("clean") || /state/.test(r.stderr), `no progress on stderr:\n${r.stderr}`);
       eq(r.stdout, "", "stdout must be empty when redirected away");
     });
 
@@ -234,10 +228,7 @@ async function main() {
     check("§1.5", "2 — unknown flag, with a message and no Node stack", () => {
       const r = bm("log --no-such-flag");
       eq(r.code, 2, "exit code");
-      assert(
-        !/ERR_PARSE_ARGS|at parseArgs|node:internal/.test(r.stderr),
-        `raw trace:\n${r.stderr}`,
-      );
+      assert(!/ERR_PARSE_ARGS|at parseArgs|node:internal/.test(r.stderr), `raw trace:\n${r.stderr}`);
       assert(/no-such-flag/.test(r.stderr), "the offending flag should be named");
     });
 
@@ -321,10 +312,7 @@ async function main() {
 
     // ---- §1.4  stdin, `-`, and --as --------------------------------------
     check("§1.4", "a bare invocation reads piped stdin", () => {
-      writeFileSync(
-        join(dir, "one.vcf"),
-        "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:A\r\nUID:u1\r\nEND:VCARD\r\n",
-      );
+      writeFileSync(join(dir, "one.vcf"), "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:A\r\nUID:u1\r\nEND:VCARD\r\n");
       const r = sh(`cat ${join(dir, "one.vcf")} | $BM contacts import --dry-run`, env);
       // The stub has no contacts capability, so this exits non-zero — but it
       // must be the SERVER's refusal, not "no input".
@@ -376,10 +364,7 @@ async function main() {
       );
       eq(r.code, 2, "exit code");
       assert(/BYDAY/.test(r.stderr), `should name the discarded part:\n${r.stderr}`);
-      assert(
-        !/at Object|node:internal|UnsupportedRecurrence/.test(r.stderr),
-        `no stack trace:\n${r.stderr}`,
-      );
+      assert(!/at Object|node:internal|UnsupportedRecurrence/.test(r.stderr), `no stack trace:\n${r.stderr}`);
     });
 
     check("§018", "create → event create → export --ics composes end to end", () => {
@@ -390,25 +375,15 @@ async function main() {
       );
       eq(ev.code, 0, `event create failed: ${ev.stderr}`);
       const ics = sh("$BM calendar export --ics 2>/dev/null | grep SUMMARY", env);
-      assert(
-        /SUMMARY:Standup/.test(ics.stdout),
-        `exported iCal should carry the event:\n${ics.stdout}`,
-      );
+      assert(/SUMMARY:Standup/.test(ics.stdout), `exported iCal should carry the event:\n${ics.stdout}`);
     });
 
-    check(
-      "§018",
-      "export --ids feeds a pipe, and agenda still reports the unknownMethod cleanly",
-      () => {
-        const n = sh("$BM calendar export --ids 2>/dev/null | wc -l", env);
-        assert(
-          Number(n.stdout.trim()) >= 1,
-          `expected the event we created, got ${n.stdout.trim()}`,
-        );
-        // getOccurrences is unimplemented on the stub — the §1.5 case relies on it.
-        eq(bm("calendar agenda").code, 2, "agenda over an unimplemented method still exits 2");
-      },
-    );
+    check("§018", "export --ids feeds a pipe, and agenda still reports the unknownMethod cleanly", () => {
+      const n = sh("$BM calendar export --ids 2>/dev/null | wc -l", env);
+      assert(Number(n.stdout.trim()) >= 1, `expected the event we created, got ${n.stdout.trim()}`);
+      // getOccurrences is unimplemented on the stub — the §1.5 case relies on it.
+      eq(bm("calendar agenda").code, 2, "agenda over an unimplemented method still exits 2");
+    });
 
     // ---- the headline example from devPlan.md ----------------------------
     check("§1", "the devPlan's own pipeline runs end to end", () => {
@@ -447,10 +422,7 @@ async function main() {
     });
 
     check("017", "`contacts export --ids | xargs show` really composes", () => {
-      const r = sh(
-        "$BM contacts export --ids 2>/dev/null | xargs -n1 $BM contacts show 2>/dev/null",
-        env,
-      );
+      const r = sh("$BM contacts export --ids 2>/dev/null | xargs -n1 $BM contacts show 2>/dev/null", env);
       eq(r.code, 0, "pipeline exit code");
       eq((r.stdout.match(/"uid"/g) ?? []).length, 3, "one card rendered per id");
     });
@@ -459,10 +431,7 @@ async function main() {
       const only = sh("$BM contacts export --book Work --ids 2>/dev/null", env);
       eq(only.stdout.trim(), "cc_alan", "only the Work book's card");
       const books = sh("$BM contacts books list --ids 2>/dev/null", env);
-      assert(
-        books.stdout.includes("ab_personal"),
-        `books list --ids should print book ids:\n${books.stdout}`,
-      );
+      assert(books.stdout.includes("ab_personal"), `books list --ids should print book ids:\n${books.stdout}`);
     });
 
     // ═══ sVOL 019 — email triage verbs over the CLI ═══════════════════════
@@ -515,11 +484,7 @@ async function main() {
       // syncs from the server; if `archive` had only touched the first mirror,
       // the server would never have changed and this client would see inbox.
       const env2 = { ...env, BULLMOOSE_DB: join(dir, "mail2.db") };
-      eq(
-        sh(`$BM init --base ${base} --token ${token} --account ${account}`, env2).code,
-        0,
-        "init2",
-      );
+      eq(sh(`$BM init --base ${base} --token ${token} --account ${account}`, env2).code, 0, "init2");
       eq(sh("$BM sync", env2).code, 0, "sync2");
       const rows = sh("$BM log -n 100 --json 2>/dev/null", env2)
         .stdout.trimEnd()
@@ -549,10 +514,7 @@ async function main() {
       assert(mailboxesOf("em_006") === "inbox", "the rehearsal moved nothing");
       const run = sh("printf 'em_006\\nem_007\\n' | xargs $BM trash 2>/dev/null", env);
       eq(run.code, 0, "sweep exit code");
-      assert(
-        mailboxesOf("em_006") === "trash" && mailboxesOf("em_007") === "trash",
-        "both messages swept to Trash",
-      );
+      assert(mailboxesOf("em_006") === "trash" && mailboxesOf("em_007") === "trash", "both messages swept to Trash");
     });
 
     check("§019", "`delete` is an alias for `rm`, and --dry-run destroys nothing", () => {

@@ -1,18 +1,8 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
-import {
-  QUARANTINE_ROLE,
-  type ContactCardRow,
-  type JSContactCard,
-  type Mailstore,
-} from "@bullmoose/mailstore";
+import { QUARANTINE_ROLE, type ContactCardRow, type JSContactCard, type Mailstore } from "@bullmoose/mailstore";
 import { OutboundRefused, assertOutboundAllowed } from "@bullmoose/mailstore/outboundBound";
-import {
-  budgetExhaustedSql,
-  budgetMonthStartMs,
-  budgetPeriodKey,
-  jobBudgetExhaustedSql,
-} from "@bullmoose/scheduling";
+import { budgetExhaustedSql, budgetMonthStartMs, budgetPeriodKey, jobBudgetExhaustedSql } from "@bullmoose/scheduling";
 import { authorizeAccount } from "../auth";
 import {
   accountState,
@@ -240,9 +230,7 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
       rows = [];
     } else {
       const marks = ids.map(() => "?").join(",");
-      const { results } = await ctx.env.DB.prepare(
-        `${SELECT_JOIN} WHERE p.account_id = ? AND p.id IN (${marks})`,
-      )
+      const { results } = await ctx.env.DB.prepare(`${SELECT_JOIN} WHERE p.account_id = ? AND p.id IN (${marks})`)
         .bind(access.accountId, ...ids)
         .all<ProposalJoinRow>();
       rows = results;
@@ -301,9 +289,7 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
     };
   });
 
-  registry.register("ActionProposal/changes", async (args, ctx) =>
-    proxyChanges(ctx, args, "ActionProposal"),
-  );
+  registry.register("ActionProposal/changes", async (args, ctx) => proxyChanges(ctx, args, "ActionProposal"));
 
   // Advertised canCalculateChanges: false — conformant clients re-query.
   registry.register("ActionProposal/queryChanges", async () => {
@@ -354,9 +340,7 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         // or questioned — the human already decided; the tray only offers
         // the chance to take it back.
         if (row.status !== "pending" && !(row.status === "held" && patch.status === "yanked")) {
-          throw new SetErrorSignal("invalidProperties", `proposal is ${row.status}, not pending`, [
-            "status",
-          ]);
+          throw new SetErrorSignal("invalidProperties", `proposal is ${row.status}, not pending`, ["status"]);
         }
 
         // ---- s11 T1: due-date CORRECTION — not a decision ----
@@ -370,9 +354,7 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         // patch carrying BOTH is refused rather than half-applied.
         if (patch.dueAt !== undefined && patch.status === undefined) {
           const dueAtMs = parseDueAt(patch.dueAt);
-          await ctx.env.DB.prepare(
-            `UPDATE agent_invocations SET due_at = ? WHERE account_id = ? AND id = ?`,
-          )
+          await ctx.env.DB.prepare(`UPDATE agent_invocations SET due_at = ? WHERE account_id = ? AND id = ?`)
             .bind(dueAtMs, access.accountId, id)
             .run();
           // Both collections moved: the invocation carries the value, the
@@ -397,12 +379,7 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         }
 
         const status = patch.status;
-        if (
-          status !== "approved" &&
-          status !== "rejected" &&
-          status !== "info-requested" &&
-          status !== "yanked"
-        ) {
+        if (status !== "approved" && status !== "rejected" && status !== "info-requested" && status !== "yanked") {
           throw new SetErrorSignal(
             "invalidProperties",
             'status must be "approved", "rejected", "info-requested" or "yanked"',
@@ -445,12 +422,7 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
             `UPDATE agent_proposals SET status = 'yanked', decided_at = ?, decision_json = ?
              WHERE account_id = ? AND id = ? AND status = 'held'`,
           )
-            .bind(
-              yankNow,
-              JSON.stringify({ ...yankDecision, yankedFromHold: true }),
-              access.accountId,
-              id,
-            )
+            .bind(yankNow, JSON.stringify({ ...yankDecision, yankedFromHold: true }), access.accountId, id)
             .run();
           propEntry.updated.push(id);
           updated[id] = null;
@@ -472,11 +444,9 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
           }
           const question = typeof patch.question === "string" ? patch.question.trim() : "";
           if (question.length === 0) {
-            throw new SetErrorSignal(
-              "invalidProperties",
-              "needsInfo requires a non-empty human-authored question",
-              ["question"],
-            );
+            throw new SetErrorSignal("invalidProperties", "needsInfo requires a non-empty human-authored question", [
+              "question",
+            ]);
           }
           const now = Date.now();
           // PAUSE the pre-decision clock: bank the remaining window and NULL
@@ -655,13 +625,7 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
                 AND (${budgetExhaustedSql("agent_invocations")}
                      OR ${jobBudgetExhaustedSql("agent_invocations")})`,
           )
-            .bind(
-              gateNow,
-              access.accountId,
-              answerInvId,
-              budgetMonthStartMs(gateNow),
-              budgetPeriodKey(gateNow),
-            )
+            .bind(gateNow, access.accountId, answerInvId, budgetMonthStartMs(gateNow), budgetPeriodKey(gateNow))
             .run();
           applyEntries.push({
             collection: "AgentInvocation",
@@ -678,13 +642,8 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         // agent's original payload — that retention is what lets a later score
         // tell "approved clean" from "approved after edit" (s07 §T4).
         const editedPayload = patch.editedPayload;
-        if (
-          editedPayload !== undefined &&
-          (editedPayload === null || typeof editedPayload !== "object")
-        ) {
-          throw new SetErrorSignal("invalidProperties", "editedPayload must be an object", [
-            "editedPayload",
-          ]);
+        if (editedPayload !== undefined && (editedPayload === null || typeof editedPayload !== "object")) {
+          throw new SetErrorSignal("invalidProperties", "editedPayload must be an object", ["editedPayload"]);
         }
         const decision = buildDecision(ctx, patch.decision, row.kind);
 
@@ -794,9 +753,7 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         // apply now. The applied write stamps provenance (the approved-proposal
         // application is an agent write — .feedback common/033).
         const effectivePayload =
-          editedPayload !== undefined
-            ? (editedPayload as Record<string, unknown>)
-            : safeJson(row.payload_json);
+          editedPayload !== undefined ? (editedPayload as Record<string, unknown>) : safeJson(row.payload_json);
         const { entries, undo } = await applyProposal(ctx, access, row, effectivePayload);
         applyEntries.push(...entries);
 
@@ -827,10 +784,7 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         const row = await loadProposal(ctx, access.accountId, id);
         if (!row) throw new NotFound();
         if (row.status === "pending") {
-          throw new SetErrorSignal(
-            "forbidden",
-            "decide a pending proposal rather than destroying it",
-          );
+          throw new SetErrorSignal("forbidden", "decide a pending proposal rather than destroying it");
         }
         await ctx.env.DB.prepare(`DELETE FROM agent_proposals WHERE account_id = ? AND id = ?`)
           .bind(access.accountId, id)
@@ -893,9 +847,7 @@ async function applyProposal(
     case "create-contact": {
       const card = payload.card as JSContactCard | undefined;
       if (!card || typeof card !== "object") {
-        throw new SetErrorSignal("invalidProperties", "create-contact payload needs a `card`", [
-          "payload",
-        ]);
+        throw new SetErrorSignal("invalidProperties", "create-contact payload needs a `card`", ["payload"]);
       }
       const { id: bookId, change } = await store.ensureDefaultAddressBook(access.accountId);
       const now = Date.now();
@@ -927,9 +879,7 @@ async function applyProposal(
         invocation: row.id,
         authorization: { proposalId: row.id },
       });
-      const entries: ChangeEntry[] = [
-        { collection: "ContactCard", created: [cardRow.id], updated: [], destroyed: [] },
-      ];
+      const entries: ChangeEntry[] = [{ collection: "ContactCard", created: [cardRow.id], updated: [], destroyed: [] }];
       if (change) {
         entries.push({
           collection: "AddressBook",
@@ -967,9 +917,7 @@ async function applyProposal(
       const subject = str(payload.subject) ?? "";
       const text = str(payload.text) ?? "";
       if (!to || !self || !blobId) {
-        throw new SetErrorSignal("invalidProperties", "reply-draft payload needs to/self/blobId", [
-          "payload",
-        ]);
+        throw new SetErrorSignal("invalidProperties", "reply-draft payload needs to/self/blobId", ["payload"]);
       }
       // THE OUTBOUND BOUND, AT EGRESS (s10 T1 — the hardening gap its devPlan
       // left open). The agent checked its governing book when it DRAFTED this;
@@ -1000,11 +948,7 @@ async function applyProposal(
       // `forbidden` SetError naming the recipient, and a tier-2 row `held` and
       // retried next sweep with the reason logged (`commitHeld.ts`). Nothing is
       // dropped, and nothing egresses.
-      await assertOutboundAllowed(
-        ctx.env,
-        { account_id: access.accountId, binding_id: row.binding_id },
-        [to],
-      );
+      await assertOutboundAllowed(ctx.env, { account_id: access.accountId, binding_id: row.binding_id }, [to]);
       const res = await ctx.env.SUBMIT.fetch("https://submit.internal/internal/submit", {
         method: "POST",
         headers: { "content-type": "application/json", "x-internal-token": ctx.env.INTERNAL_TOKEN },
@@ -1025,8 +969,7 @@ async function applyProposal(
         id: emailId,
         blobId,
         threadId: await store.resolveThreadId(access.accountId, str(payload.inReplyTo) ?? null),
-        messageId:
-          str(payload.messageId) ?? `${crypto.randomUUID()}@${self.split("@")[1] ?? "localhost"}`,
+        messageId: str(payload.messageId) ?? `${crypto.randomUUID()}@${self.split("@")[1] ?? "localhost"}`,
         inReplyTo: str(payload.inReplyTo) ?? null,
         subject,
         from: [{ name: row.binding_name, email: self }],
@@ -1068,23 +1011,17 @@ async function applyProposal(
       const bookId = str(payload.bookId);
       const address = str(payload.address);
       if (!bookId || !address) {
-        throw new SetErrorSignal(
-          "invalidProperties",
-          "a recipient grant-request payload needs bookId + address",
-          ["payload"],
-        );
+        throw new SetErrorSignal("invalidProperties", "a recipient grant-request payload needs bookId + address", [
+          "payload",
+        ]);
       }
-      const book = await ctx.env.DB.prepare(
-        `SELECT id FROM address_books WHERE account_id = ? AND id = ?`,
-      )
+      const book = await ctx.env.DB.prepare(`SELECT id FROM address_books WHERE account_id = ? AND id = ?`)
         .bind(access.accountId, bookId)
         .first<{ id: string }>();
       if (!book) {
-        throw new SetErrorSignal(
-          "invalidProperties",
-          `address book "${bookId}" not found in this account`,
-          ["payload"],
-        );
+        throw new SetErrorSignal("invalidProperties", `address book "${bookId}" not found in this account`, [
+          "payload",
+        ]);
       }
       const now = Date.now();
       const nowIso = new Date(now).toISOString();
@@ -1146,13 +1083,7 @@ async function applyProposal(
       const bindingId = str(payload.bindingId);
       const periodKey = str(payload.periodKey);
       const amount = payload.overageMicros;
-      if (
-        !bindingId ||
-        !periodKey ||
-        typeof amount !== "number" ||
-        !Number.isFinite(amount) ||
-        amount <= 0
-      ) {
+      if (!bindingId || !periodKey || typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
         throw new SetErrorSignal(
           "invalidProperties",
           "a budget-overrun payload needs bindingId, periodKey and a positive overageMicros " +
@@ -1174,17 +1105,11 @@ async function applyProposal(
           ["payload"],
         );
       }
-      const binding = await ctx.env.DB.prepare(
-        `SELECT id FROM agent_bindings WHERE account_id = ? AND id = ?`,
-      )
+      const binding = await ctx.env.DB.prepare(`SELECT id FROM agent_bindings WHERE account_id = ? AND id = ?`)
         .bind(access.accountId, bindingId)
         .first<{ id: string }>();
       if (!binding) {
-        throw new SetErrorSignal(
-          "invalidProperties",
-          `binding "${bindingId}" not found in this account`,
-          ["payload"],
-        );
+        throw new SetErrorSignal("invalidProperties", `binding "${bindingId}" not found in this account`, ["payload"]);
       }
       await ctx.env.DB.prepare(
         `INSERT INTO agent_budget_overages
@@ -1192,15 +1117,7 @@ async function applyProposal(
          VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (account_id, binding_id, period_key, proposal_id) DO NOTHING`,
       )
-        .bind(
-          access.accountId,
-          bindingId,
-          periodKey,
-          Math.floor(amount),
-          row.id,
-          ctx.principal.username,
-          Date.now(),
-        )
+        .bind(access.accountId, bindingId, periodKey, Math.floor(amount), row.id, ctx.principal.username, Date.now())
         .run();
       // The grant is REVERSIBLE, which is what makes this tier 1 honest: the
       // undo handle deletes the row and the cap snaps back. Money already spent
@@ -1222,19 +1139,15 @@ async function applyProposal(
       // conversation are the same event, recorded the same way.
       const asked = emailIdList(safeJson(row.payload_json).emailIds);
       if (!asked || asked.length === 0) {
-        throw new SetErrorSignal(
-          "invalidProperties",
-          "a held-mail-review payload needs a non-empty emailIds array",
-          ["payload"],
-        );
+        throw new SetErrorSignal("invalidProperties", "a held-mail-review payload needs a non-empty emailIds array", [
+          "payload",
+        ]);
       }
       const chosen = emailIdList(payload.emailIds);
       if (!chosen) {
-        throw new SetErrorSignal(
-          "invalidProperties",
-          "a held-mail-review payload needs a non-empty emailIds array",
-          ["payload"],
-        );
+        throw new SetErrorSignal("invalidProperties", "a held-mail-review payload needs a non-empty emailIds array", [
+          "payload",
+        ]);
       }
       // PARTIAL RELEASE, and it needs no new verb: an edited `emailIds` is the
       // human saying "these ones". The edit may only NARROW the batch — this
@@ -1253,11 +1166,7 @@ async function applyProposal(
       const releasedIds: string[] = [];
       const touchedMailboxes = new Set<string>();
       for (const emailId of chosen) {
-        const { rescued } = await store.rescueQuarantined(
-          access.accountId,
-          emailId,
-          ctx.principal.username,
-        );
+        const { rescued } = await store.rescueQuarantined(access.accountId, emailId, ctx.principal.username);
         // Not rescued = it is no longer held (a race, or an answer that landed
         // first). The rescue path already refuses to write a second chain row;
         // reporting only what actually moved keeps the changelog honest.
@@ -1356,9 +1265,7 @@ async function applyProposal(
 
 /** The two mailboxes a held-mail decision can touch, for the changelog. */
 async function roleMailboxIds(ctx: RequestContext, accountId: string): Promise<string[]> {
-  const { results } = await ctx.env.DB.prepare(
-    `SELECT id FROM mailboxes WHERE account_id = ? AND role IN ('inbox', ?)`,
-  )
+  const { results } = await ctx.env.DB.prepare(`SELECT id FROM mailboxes WHERE account_id = ? AND role IN ('inbox', ?)`)
     .bind(accountId, QUARANTINE_ROLE)
     .all<{ id: string }>();
   return results.map((r) => r.id);
@@ -1390,12 +1297,7 @@ async function confirmHeldBatch(
 ): Promise<ChangeEntry[]> {
   if (emailIds.length === 0) return [];
   const store = storeFor({ ...ctx, agent: { binding: row.binding_name, invocation: row.id } });
-  const confirmed = await confirmHeldEmails(
-    store,
-    access.accountId,
-    emailIds,
-    ctx.principal.username,
-  );
+  const confirmed = await confirmHeldEmails(store, access.accountId, emailIds, ctx.principal.username);
   if (confirmed.length === 0) return [];
   return [
     { collection: "Email", created: [], updated: confirmed, destroyed: [] },
@@ -1447,11 +1349,7 @@ function toSetError(err: unknown): SetError {
   return setError("serverFail", String(err));
 }
 
-async function loadProposal(
-  ctx: RequestContext,
-  accountId: string,
-  id: string,
-): Promise<ProposalJoinRow | null> {
+async function loadProposal(ctx: RequestContext, accountId: string, id: string): Promise<ProposalJoinRow | null> {
   return (
     (await ctx.env.DB.prepare(`${SELECT_JOIN} WHERE p.account_id = ? AND p.id = ?`)
       .bind(accountId, id)
@@ -1467,11 +1365,7 @@ async function loadProposal(
  * than fail every proposal read. Contrast proposal-needsinfo-columns, whose
  * columns the JOIN names and which therefore IS a blocker.
  */
-async function invocationDueAt(
-  ctx: RequestContext,
-  accountId: string,
-  ids: string[],
-): Promise<Map<string, number>> {
+async function invocationDueAt(ctx: RequestContext, accountId: string, ids: string[]): Promise<Map<string, number>> {
   if (ids.length === 0) return new Map();
   try {
     const marks = ids.map(() => "?").join(",");
@@ -1497,11 +1391,9 @@ function parseDueAt(raw: unknown): number | null {
     const ms = Date.parse(raw);
     if (Number.isFinite(ms)) return ms;
   }
-  throw new SetErrorSignal(
-    "invalidProperties",
-    "dueAt must be null (no deadline) or an ISO 8601 date string",
-    ["dueAt"],
-  );
+  throw new SetErrorSignal("invalidProperties", "dueAt must be null (no deadline) or an ISO 8601 date string", [
+    "dueAt",
+  ]);
 }
 
 /** The decision record (arch.md §3): who + reason enum + optional free text.
@@ -1527,19 +1419,15 @@ function buildDecision(ctx: RequestContext, raw: unknown, kind: string): Record<
         );
       }
       if (typeof r.reason !== "string" || !REJECT_REASONS.has(r.reason)) {
-        throw new SetErrorSignal(
-          "invalidProperties",
-          "decision.reason must be wrongContent | wrongAction | unsafe",
-          ["decision"],
-        );
+        throw new SetErrorSignal("invalidProperties", "decision.reason must be wrongContent | wrongAction | unsafe", [
+          "decision",
+        ]);
       }
       decision.reason = r.reason;
     }
     if (r.note !== undefined) {
       if (typeof r.note !== "string") {
-        throw new SetErrorSignal("invalidProperties", "decision.note must be a string", [
-          "decision",
-        ]);
+        throw new SetErrorSignal("invalidProperties", "decision.note must be a string", ["decision"]);
       }
       decision.note = r.note;
     }
@@ -1592,10 +1480,7 @@ function proposalToJmap(r: ProposalJoinRow, dueAt: number | null = null): Record
   };
 }
 
-function pickProps(
-  full: Record<string, unknown>,
-  properties: string[] | null,
-): Record<string, unknown> {
+function pickProps(full: Record<string, unknown>, properties: string[] | null): Record<string, unknown> {
   if (!properties) return full;
   const picked: Record<string, unknown> = { id: full.id };
   for (const p of properties) if (p in full) picked[p] = full[p];
@@ -1687,17 +1572,13 @@ export async function commitDueHeldProposals(
 
       // Provenance: the write belongs to the human whose approval it executes.
       const decision = safeJson(row.decision_json ?? "{}");
-      const approver =
-        typeof decision.by === "string" && decision.by ? decision.by : "system:hold-commit";
+      const approver = typeof decision.by === "string" && decision.by ? decision.by : "system:hold-commit";
       const commitCtx: RequestContext = {
         ...ctx,
         principal: { username: approver, scopes: [], accounts: [] },
       };
 
-      const payload =
-        row.edited_payload_json !== null
-          ? safeJson(row.edited_payload_json)
-          : safeJson(row.payload_json);
+      const payload = row.edited_payload_json !== null ? safeJson(row.edited_payload_json) : safeJson(row.payload_json);
       const { entries } = await applyProposal(commitCtx, access, row, payload);
 
       // Flip held → approved ONLY if a yank has not raced us; a zero-row

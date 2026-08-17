@@ -4,7 +4,7 @@
 > the inbox is the stated goal, so this is no longer a deferred stub. See
 > [`devPlan.md`](./devPlan.md) for the ordered build.
 >
-> **Trigger (mcp-auth §7a):** _"the first non-bullmoose client appears"_ — claude.ai,
+> **Trigger (mcp-auth §7a):** *"the first non-bullmoose client appears"* — claude.ai,
 > Claude Desktop, a teammate's agent, another agent-native domain. Carrying OAuth
 > complexity with no consumer is wasted surface, so this waited for a real one.
 >
@@ -19,7 +19,7 @@
 
 ---
 
-## What s01 did _not_ cover (and why it lands here)
+## What s01 did *not* cover (and why it lands here)
 
 s01 ported the **internal** `mailstore-analytics` MCP to pure MCP.2 and closed the
 mcp-auth §6 auth gap. It stayed internal because bullmoose owns both ends there. s02 is

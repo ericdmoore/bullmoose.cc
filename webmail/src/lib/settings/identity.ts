@@ -44,13 +44,7 @@ import { formatAddress, type EmailAddress, type Identity } from "../mail/types";
  * Drift here shows up as a refused save with the offending property named, which
  * is ugly but not silent.
  */
-export const IDENTITY_WRITABLE = [
-  "name",
-  "replyTo",
-  "bcc",
-  "textSignature",
-  "htmlSignature",
-] as const;
+export const IDENTITY_WRITABLE = ["name", "replyTo", "bcc", "textSignature", "htmlSignature"] as const;
 
 export type IdentityWritable = (typeof IDENTITY_WRITABLE)[number];
 
@@ -309,10 +303,7 @@ export interface IdentitySettings {
  * `state`: a composer only reads, so it has nothing to guard. A settings screen
  * writes, so the state is half of what it came for.
  */
-export async function loadIdentitySettings(
-  client: JmapClient,
-  accountId: string,
-): Promise<IdentitySettings> {
+export async function loadIdentitySettings(client: JmapClient, accountId: string): Promise<IdentitySettings> {
   const result = await client.requestOne("Identity/get", { accountId, ids: null });
   return {
     identities: (result.list as Identity[] | undefined) ?? [],

@@ -1,11 +1,11 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from "@headlessui/react";
-import { CheckIcon } from "@heroicons/react/24/outline";
+import { useState } from 'react'
+import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react'
+import { CheckIcon } from '@heroicons/react/24/outline'
 
 export default function Example() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(true)
 
   return (
     <div>
@@ -29,23 +29,16 @@ export default function Example() {
             >
               <div>
                 <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-500/10">
-                  <CheckIcon
-                    aria-hidden="true"
-                    className="size-6 text-green-600 dark:text-green-400"
-                  />
+                  <CheckIcon aria-hidden="true" className="size-6 text-green-600 dark:text-green-400" />
                 </div>
                 <div className="mt-3 text-center sm:mt-5">
-                  <DialogTitle
-                    as="h3"
-                    className="text-base font-semibold text-gray-900 dark:text-white"
-                  >
+                  <DialogTitle as="h3" className="text-base font-semibold text-gray-900 dark:text-white">
                     Payment successful
                   </DialogTitle>
                   <div className="mt-2">
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      Lorem ipsum, dolor sit amet consectetur adipisicing elit. Eius aliquam
-                      laudantium explicabo pariatur iste dolorem animi vitae error totam. At
-                      sapiente aliquam accusamus facere veritatis.
+                      Lorem ipsum, dolor sit amet consectetur adipisicing elit. Eius aliquam laudantium explicabo
+                      pariatur iste dolorem animi vitae error totam. At sapiente aliquam accusamus facere veritatis.
                     </p>
                   </div>
                 </div>
@@ -72,5 +65,5 @@ export default function Example() {
         </div>
       </Dialog>
     </div>
-  );
+  )
 }

@@ -8,7 +8,6 @@
 > `bm_` credential only, self-authenticated, safe on the public hostname) kills every
 > token under the grant before the grant itself, mirrored to D1 in the same request, with
 > `revoke_app` as the conversational console's face for it. What remains OPEN:
->
 > - ~~**A real Claude client completing a `tools/call`**~~ **DONE, three times over**
 >   (2026-08-14/15): claude.ai (CIMD, web redirect), Claude Code on the homelab box (DCR,
 >   `127.0.0.1` paste-the-callback), and Claude Code on the laptop (CIMD, native
@@ -39,18 +38,17 @@
 >   `revoke_app`); the s03.E web view does not render `oauth_consents` yet.
 >
 > Build deltas from the first wave (2026-08-13), kept for the record:
->
 > - **The `initialize` test inverted**, exactly as this plan predicted — `mcp.test.ts` 6
 >   asserted the handshake was dead and now asserts it is alive and legacy. That inversion
 >   is the signal T2 landed.
 > - **T5 needed a dispatcher-level concept, not just a default.** `whoami` is the discovery
->   entry point, but the account gate ran _before_ the tool, so the tool that tells you your
+>   entry point, but the account gate ran *before* the tool, so the tool that tells you your
 >   account ids could not be called without one. `ToolDef.accountless` (whoami only) skips
 >   the token ∩ grant check while keeping the scope check. Without it, defaulting still
 >   refuses on a two-account principal — the exact case where you most need whoami.
 > - **The grant-reached fallback for the default is unreachable**, so it is not written:
 >   `principal.ts:149` resolves grants only when the principal already owns an account,
->   because a grantee _is_ an account. "Owns nothing" and "reaches nothing" are one state.
+>   because a grantee *is* an account. "Owns nothing" and "reaches nothing" are one state.
 > - **`MCP_RESOURCE_URI` / `OAUTH_ISSUER` are stated in `wrangler.jsonc`, not derived.**
 >   Deriving from the request origin is right for one hostname and wrong the moment the
 >   worker answers on two — the `*.workers.dev` URL stays live, and a client discovering
@@ -62,7 +60,7 @@
 > - **`auth.bullmoose.cc` IS the login** (Eric, 2026-08-13). `app.bullmoose.cc/login` was
 >   always interim: it asks a human to paste a `bm_` token, which is a credential they had
 >   to obtain some other way first. The AS takes email + password and the OAuth flow does
->   the translation into a system token — which is what an authorization server is _for_,
+>   the translation into a system token — which is what an authorization server is *for*,
 >   and why the interim door gets deleted (`s07` T7) rather than duplicated. The password
 >   never reaches the server: the browser derives a `loginKey` (auth-core's client-side
 >   600k-iteration PBKDF2) and the server compares one SHA-256, exactly as `/auth/login`
@@ -77,19 +75,19 @@
 > Ordered build for making `bullmoose-mcp` connectable by a client that is **not ours** —
 > claude.ai, Claude Desktop, Claude Code, Codex. Companion to [`readme.md`](./readme.md).
 >
-> **The trigger has fired.** `readme.md` gates this section on _"the first non-bullmoose
-> client appears."_ That is now the stated goal, so this plan is live.
+> **The trigger has fired.** `readme.md` gates this section on *"the first non-bullmoose
+> client appears."* That is now the stated goal, so this plan is live.
 >
-> **Guiding constraint:** the front door and the consent record ship _together_. A public
+> **Guiding constraint:** the front door and the consent record ship *together*. A public
 > MCP endpoint whose grants are invisible to `s03.E`'s console is worse than no public
-> endpoint, because the surface whose entire job is answering _"who can reach my mail"_
+> endpoint, because the surface whose entire job is answering *"who can reach my mail"*
 > would start lying by omission.
 
 ---
 
 ## The finding that reorders this plan
 
-`readme.md` scopes the `initialize` compat shim as a _courtesy_ — "a thin legacy responder
+`readme.md` scopes the `initialize` compat shim as a *courtesy* — "a thin legacy responder
 so pre-MCP.2 third-party clients still connect **during the 12-month offramp**", to be
 "dropped at offramp end."
 
@@ -104,8 +102,8 @@ and `initialize` falls to `default` → `-32601`/404 (`mcp.ts:320-321`, pinned b
 `mcp.test.ts:234-244`).
 
 So today **claude.ai cannot complete a handshake with this server at all.** The spec
-explicitly blesses serving both: _"A dual-era server MAY serve both eras concurrently on the
-same endpoint or process."_
+explicitly blesses serving both: *"A dual-era server MAY serve both eras concurrently on the
+same endpoint or process."*
 
 ### But MCP.2 stays the primary lane, and that is the right bet
 
@@ -115,19 +113,19 @@ deletable adapter** — not "support two protocols."
 That is not optimism, it is where the repo already is: s01 did the hard part. `mcp.ts` is
 already stateless, already per-request-authenticated, already has `server/discover`, already
 mints no session ids. Anthropic have shipped the spec and say support is "rolling out across
-Claude products soon." Building _toward_ the old era would be the strange decision.
+Claude products soon." Building *toward* the old era would be the strange decision.
 
 What makes the hedge cheap is that the two eras differ in almost nothing that costs us
 anything:
 
-| legacy needs                             | cost here                              |
-| ---------------------------------------- | -------------------------------------- |
-| `initialize` → capabilities              | return a canned object; **no session** |
-| `notifications/initialized`              | already 202 (`mcp.ts:267-269`)         |
-| `ping` → `{}`                            | three lines                            |
-| header/`_meta` mirroring optional        | one conditional                        |
-| `clientCapabilities` optional            | one conditional                        |
-| HTTP+SSE, `Mcp-Session-Id`, resumability | **refused — never build these**        |
+| legacy needs | cost here |
+|---|---|
+| `initialize` → capabilities | return a canned object; **no session** |
+| `notifications/initialized` | already 202 (`mcp.ts:267-269`) |
+| `ping` → `{}` | three lines |
+| header/`_meta` mirroring optional | one conditional |
+| `clientCapabilities` optional | one conditional |
+| HTTP+SSE, `Mcp-Session-Id`, resumability | **refused — never build these** |
 
 That last row is the whole discipline. The expensive parts of the old era are exactly the
 parts 2026-07-28 removed, and T2 does not build any of them: GET/DELETE stay `405`, a
@@ -142,7 +140,7 @@ is the signal it was built wrong.
 
 **Skip T2 entirely if** the first client is one you control (a custom Codex integration, the
 MCP SDK v2 client, anything built on `@modelcontextprotocol/client@2`). Those speak MCP.2
-today, and then the legacy lane buys nothing. It is _only_ required for claude.ai / Claude
+today, and then the legacy lane buys nothing. It is *only* required for claude.ai / Claude
 Desktop / Claude Code as they ship right now.
 
 > **Do not plan against a date, in either direction.** Anthropic's announcement says only
@@ -161,14 +159,14 @@ tool surface.
 s01 chose "extend the hand-roll" for a tiny internal surface, and that was right. It is not
 right here, because the audit found the OAuth primitives are **all** missing, not some:
 
-| needed                                               | exists today                                                                                        |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| client registration (`oauth_clients`, redirect URIs) | **nothing** — no table, no `client_id` anywhere                                                     |
-| authorization codes (short-lived, single-use)        | **nothing**                                                                                         |
-| refresh tokens                                       | **nothing** — `tokens.kind` has one live value, `'bearer'`                                          |
-| token expiry                                         | column exists; **both self-service mint sites omit it** (`authRoutes.ts:106`, `:178`)               |
-| consent record                                       | `grants` is account→account, both FKs `NOT NULL` — cannot express "principal P authorized client C" |
-| PRM / AS metadata / JWKS                             | **nothing**                                                                                         |
+| needed | exists today |
+|---|---|
+| client registration (`oauth_clients`, redirect URIs) | **nothing** — no table, no `client_id` anywhere |
+| authorization codes (short-lived, single-use) | **nothing** |
+| refresh tokens | **nothing** — `tokens.kind` has one live value, `'bearer'` |
+| token expiry | column exists; **both self-service mint sites omit it** (`authRoutes.ts:106`, `:178`) |
+| consent record | `grants` is account→account, both FKs `NOT NULL` — cannot express "principal P authorized client C" |
+| PRM / AS metadata / JWKS | **nothing** |
 
 `workers-oauth-provider` implements OAuth 2.1, PKCE (S256 default, plain rejected), RFC 9728
 PRM served automatically at both well-known paths, RFC 9207 `iss` always on, RFC 8707
@@ -186,7 +184,7 @@ does. Two token systems, deliberately — see T4.
 
 ## Tasks (in dependency order)
 
-### T1 — The public route, and a 401 that teaches · _front door_
+### T1 — The public route, and a 401 that teaches · *front door*
 
 **Files:** `services/agent/wrangler.jsonc`, `services/agent/src/index.ts:56-72`, new
 `services/agent/src/wellKnown.ts`.
@@ -217,7 +215,6 @@ does. Two token systems, deliberately — see T4.
   **The 401 is load-bearing:** Anthropic's docs state Claude does not honour
   `WWW-Authenticate` on a 200, and that a `200 {isError:true}` is read as an application
   error and passed to the model — no auth prompt, ever.
-
 - **Serve RFC 9728 PRM at BOTH paths** — `/.well-known/oauth-protected-resource/mcp` (path
   insertion, §3.1: the path is inserted between host and well-known suffix, not appended)
   and the root form. Clients probe path-suffixed first. Minimum body is `resource` +
@@ -226,10 +223,10 @@ does. Two token systems, deliberately — see T4.
   ⚠️ `resource` **must equal the URL the user types into Claude, exactly**, path and all.
   ⚠️ Claude uses the **first** `authorization_servers` entry and does not fall back — list one.
 - **`Origin`, not CORS.** claude.ai connects from Anthropic's cloud, not the user's browser,
-  so CORS is irrelevant and the documented trap is _overly strict_ `Origin` validation
+  so CORS is irrelevant and the documented trap is *overly strict* `Origin` validation
   rejecting them. This collides head-on with the MCP spec's "servers **MUST** validate the
   `Origin` header to prevent DNS rebinding." Resolve deliberately: validate `Origin` only
-  when present _and_ browser-shaped, and allowlist Anthropic egress `160.79.104.0/21` — on
+  when present *and* browser-shaped, and allowlist Anthropic egress `160.79.104.0/21` — on
   the AS as well as the MCP server, since a WAF in front of the AS breaks the flow while the
   MCP endpoint looks fine.
 
@@ -238,7 +235,7 @@ does. Two token systems, deliberately — see T4.
 request with a valid `bm_` bearer still works; `/drain` and `/internal/*` still 404 without
 the internal token.
 
-### T2 — The legacy `initialize` adapter · _a hedge with a delete condition_
+### T2 — The legacy `initialize` adapter · *a hedge with a delete condition*
 
 **Files:** `services/agent/src/mcp.ts`, new `services/agent/src/mcpLegacy.ts`.
 
@@ -251,28 +248,28 @@ per-request `_meta` is served statelessly; an `initialize` request selects legac
   the server is stateless either way, which is exactly why the shim is cheap.
 - **Relax the two non-standard per-request requirements on the legacy lane.** Today
   `mcp.ts:274-292` requires the `MCP-Protocol-Version` header to be **byte-equal** to
-  `params._meta[…protocolVersion]`, _and_ requires `clientCapabilities` on every request. A
+  `params._meta[…protocolVersion]`, *and* requires `clientCapabilities` on every request. A
   2025-era client sends neither. On the legacy lane both must be optional. On the modern lane
   both stay mandatory — that is the spec.
 - **Fix three conformance defects in the modern lane** (found while reading the spec against
   `mcp.ts`, all currently wrong):
-  | condition                                  | we return               | spec says                                           |
-  | ------------------------------------------ | ----------------------- | --------------------------------------------------- |
-  | header ≠ `_meta` version                   | `-32600` (`mcp.ts:279`) | **`-32020` HeaderMismatch**                         |
-  | missing `clientCapabilities`               | `-32602` (`mcp.ts:291`) | **`-32021` MissingRequiredClientCapability**        |
-  | `Mcp-Method` header                        | not read at all         | **REQUIRED**, validate against body, `400`/`-32020` |
-  | `-32022` is already correct (`mcp.ts:51`). |
+  | condition | we return | spec says |
+  |---|---|---|
+  | header ≠ `_meta` version | `-32600` (`mcp.ts:279`) | **`-32020` HeaderMismatch** |
+  | missing `clientCapabilities` | `-32602` (`mcp.ts:291`) | **`-32021` MissingRequiredClientCapability** |
+  | `Mcp-Method` header | not read at all | **REQUIRED**, validate against body, `400`/`-32020` |
+  `-32022` is already correct (`mcp.ts:51`).
 - **Never implement HTTP+SSE.** It has been deprecated since 2025-03-26 and 2026-07-28
   removed the GET stream entirely. GET/DELETE on the endpoint → `405`. An `Mcp-Session-Id` on
   a request → **ignore it, and never mint or echo one**. `Last-Event-ID` → ignore.
 
 **Done when:** a stock 2025-11-25 client completes `initialize` → `tools/list` →
 `tools/call` end to end; the modern `_meta` lane is byte-identical to today except the three
-corrected codes; `mcp.test.ts:234-244` (which currently asserts `initialize` is _dead_) is
-rewritten to assert it is _alive and legacy_ — that test inverting is the signal this task
+corrected codes; `mcp.test.ts:234-244` (which currently asserts `initialize` is *dead*) is
+rewritten to assert it is *alive and legacy* — that test inverting is the signal this task
 landed.
 
-### T3 — OAuth 2.1 authorization server · _the front door proper_
+### T3 — OAuth 2.1 authorization server · *the front door proper*
 
 **Files:** new `services/oauth/` (worker), `packages/mailstore/sql/control-plane.sql`,
 `infra/bootstrap.mjs` (`DEPLOY_ORDER`, `GENERATED`), `infra/migrations.mjs`.
@@ -293,7 +290,7 @@ landed.
   port. RFC 8252 §7.3 mandates port-agnostic matching for the IP-literal form; apply it to
   `localhost` too, which RFC 8252 §8.3 discourages but Claude Code requires.
 - **Audience binding.** Honour the `resource` parameter and set `aud` to it. Sending
-  `resource` is the client's obligation; _honouring_ it is ours, and the spec is explicit
+  `resource` is the client's obligation; *honouring* it is ours, and the spec is explicit
   that RFC 8707 protects against replay only "when the Authorization Server supports the
   capability." `handleMcp` must reject any token whose `aud` is not our canonical resource URI.
 - **One canonical scope list.** The audit found **four** divergent copies: `TOKEN_SCOPES` /
@@ -314,9 +311,9 @@ landed.
 
 **Done when:** `/.well-known/oauth-authorization-server` validates; a scripted PKCE S256
 authorization-code flow yields an access token; that token is accepted by `/mcp` and a token
-minted for a _different_ `resource` is rejected.
+minted for a *different* `resource` is rejected.
 
-### T4 — The principal bridge, and consent the console can see · _the trust seam_
+### T4 — The principal bridge, and consent the console can see · *the trust seam*
 
 **Files:** `services/oauth/src/consent.ts`, `services/agent/src/mcp.ts`,
 `packages/mailstore/sql/control-plane.sql`, `webmail/src/lib/console/`.
@@ -324,14 +321,14 @@ minted for a _different_ `resource` is rejected.
 **Two token systems, deliberately.** `bm_` tokens stay for CLI, webmail and JMAP; OAuth
 tokens are minted and stored by the provider in KV. They meet at one point: when consent is
 granted we know the principal, and we put `principalId` into the provider's encrypted
-`props`. `handleMcp` accepts _either_ a `bm_` bearer (today's path, unchanged) or a
+`props`. `handleMcp` accepts *either* a `bm_` bearer (today's path, unchanged) or a
 provider-validated principal from `props`. Everything downstream — `authorizeAccount`, the
 per-tool `scope`/`domain` gate, `grant_audit` — is untouched.
 
 This is what lets us adopt the AS without touching the token model, and it sidesteps every
 "no refresh concept / no code store / tokens never expire" blocker in one move.
 
-- **The consent screen is the product.** It must say what the scopes _do_, not name them.
+- **The consent screen is the product.** It must say what the scopes *do*, not name them.
   `s03.E` already built exactly this: `effectiveScopes` expands the `mail` bundle **through
   the real `hasScope`** so the explanation cannot drift from the gate, and the
   dangerous-combinations panel already knows that `send` + a live Bureau `fetch` grant is the
@@ -339,20 +336,20 @@ This is what lets us adopt the AS without touching the token model, and it sides
   ⚠️ Show the **redirect URI hostname** — the spec requires it, and CIMD cannot by itself
   prevent `localhost` impersonation.
 - **Mirror the consent into D1.** The provider stores grants in KV. `s03.E`'s console reads
-  D1. Left alone, a user who connects claude.ai sees _nothing_ in the surface built to answer
+  D1. Left alone, a user who connects claude.ai sees *nothing* in the surface built to answer
   "who can reach my mail" — the exact failure `.feedback` 037 was about, one layer up. A new
   `oauth_consents` table (new table, not new columns on `grants`, whose two `NOT NULL`
   account FKs cannot express client consent) written on grant and on revoke, and a
   `who_can_access` branch that reads it.
 - **`send` stays absent.** There is no send tool and that is an invariant, not an omission
-  (`emailTools.ts:68-90`, pinned by `mcpTools.test.ts:124-128`). It gets _more_ load-bearing
+  (`emailTools.ts:68-90`, pinned by `mcpTools.test.ts:124-128`). It gets *more* load-bearing
   the moment the caller is a third party, not less.
 
 **Done when:** consenting through claude.ai produces a row the console renders in the
 per-agent view; revoking in the console kills the OAuth token; a scope the token does not
 carry still yields `-32004` with the existing message.
 
-### T5 — `accountId`, the sleeper blocker · _usability, and it is not optional_
+### T5 — `accountId`, the sleeper blocker · *usability, and it is not optional*
 
 **Files:** `services/agent/src/mcp.ts:340-344`, `services/agent/src/introspectTools.ts:158`.
 
@@ -365,7 +362,7 @@ A third-party client has no way to learn a bullmoose account id — they are
 you needs one to answer. **A model will guess, fail, and give up.**
 
 - Default `accountId` to the principal's single owned account when omitted; error only when
-  the principal owns several, and _name them_ in the error so the next call can succeed.
+  the principal owns several, and *name them* in the error so the next call can succeed.
 - `whoami` must work with no arguments. It is the discovery entry point.
 - Keep the existing rejection of self-asserted account ids (`mcp.ts:347`) — defaulting is
   server-side resolution, never trusting a client-supplied id.
@@ -373,7 +370,7 @@ you needs one to answer. **A model will guess, fail, and give up.**
 **Done when:** a fresh client can call `whoami` with `{}`, learn its accounts, and every
 single-account principal can drive every tool without ever passing `accountId`.
 
-### T6 — Third-party tool surface · _decide what a stranger sees_
+### T6 — Third-party tool surface · *decide what a stranger sees*
 
 **Files:** `services/agent/src/mcp.ts:312-317`, `mcpTools.test.ts`.
 
@@ -390,7 +387,7 @@ single-account principal can drive every tool without ever passing `accountId`.
 **Done when:** `tools/list` carries `scope`; the published set is explicit in code with a
 test asserting exactly which tools a public token can see.
 
-### T7 — Conformance harness against a real client · _verification_
+### T7 — Conformance harness against a real client · *verification*
 
 **Files:** `tools/e2e-mcp-public.mjs`, extending the shape of `tools/e2e-grants.mjs`.
 
@@ -432,36 +429,36 @@ T2 legacy lane ──┘                   T5 accountId ────────
 
 1. **Which tools does a stranger get?** All 29, or mail+calendar+contacts minus the 7
    introspection tools? Introspection answers "who can reach my mail" — arguably a question
-   for the owner's console, not for a connected agent. _Recommendation: publish all but
+   for the owner's console, not for a connected agent. *Recommendation: publish all but
    `access_log`; being able to ask an agent "what have you been doing" is worth more than the
-   marginal exposure, and every one of them is read-scoped._
+   marginal exposure, and every one of them is read-scoped.*
 2. **Does `mcp.bullmoose.cc` serve the AS too, or a separate host?** Separate is cleaner for
    blast radius; same-host is one fewer certificate and one fewer thing to allowlist for
-   Anthropic egress. _Recommendation: separate worker, `auth.bullmoose.cc`._
+   Anthropic egress. *Recommendation: separate worker, `auth.bullmoose.cc`.*
 3. **Keep `/mcp/analytics` as a permanent alias or sunset it?** Nothing external pins it yet.
-   _Recommendation: keep it — it costs one line, and the e2e harness and four plan docs
-   reference it._
+   *Recommendation: keep it — it costs one line, and the e2e harness and four plan docs
+   reference it.*
 4. **Is `vault` ever an OAuth-grantable scope?** `GRANTABLE_SCOPES` already omits it, so
-   account→account grants cannot confer it today. _Recommendation: keep it un-grantable —
+   account→account grants cannot confer it today. *Recommendation: keep it un-grantable —
    handing a third party the credential realm through a consent screen is not a thing to do
-   by default._
+   by default.*
 
 ## Estimate
 
-| task                            | size    | note                                                                                         |
-| ------------------------------- | ------- | -------------------------------------------------------------------------------------------- |
-| T1 route + PRM + 401            | **S**   | mostly config; the PRM document is small                                                     |
-| T2 legacy adapter               | **S–M** | ~30 lines of adapter; the M is the care needed not to leak conditionals into the modern lane |
-| T3 OAuth AS                     | **L**   | new worker, new binding, new deploy step — but adopted, not written                          |
-| T4 bridge + consent + D1 mirror | **L**   | the consent UI is real product work                                                          |
-| T5 accountId                    | **S**   | small, and independently valuable                                                            |
-| T6 tool surface                 | **S**   | one judgement call, then mechanical                                                          |
-| T7 conformance                  | **M**   | the OAuth dance headless is fiddly                                                           |
+| task | size | note |
+|---|---|---|
+| T1 route + PRM + 401 | **S** | mostly config; the PRM document is small |
+| T2 legacy adapter | **S–M** | ~30 lines of adapter; the M is the care needed not to leak conditionals into the modern lane |
+| T3 OAuth AS | **L** | new worker, new binding, new deploy step — but adopted, not written |
+| T4 bridge + consent + D1 mirror | **L** | the consent UI is real product work |
+| T5 accountId | **S** | small, and independently valuable |
+| T6 tool surface | **S** | one judgement call, then mechanical |
+| T7 conformance | **M** | the OAuth dance headless is fiddly |
 
 ## Out of scope
 
 - **Elicitation / URL mode.** MCP auth covers client→our server; URL-mode elicitation is for
-  _our server → a third-party API_, and the spec is explicit that servers **MUST NOT** rely
+  *our server → a third-party API*, and the spec is explicit that servers **MUST NOT** rely
   on it to authorize users for themselves. If bullmoose needs it later that is Bureau
   territory (`s04`), not this.
 - **MRTR.** Only needed once a tool requires mid-call user input. No current tool does, and

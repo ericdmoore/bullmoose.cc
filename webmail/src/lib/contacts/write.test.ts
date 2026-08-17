@@ -73,13 +73,7 @@ describe("card writes", () => {
   it("refuses the whole call on a state mismatch, and says so in a sentence", async () => {
     const { client } = withDemo();
     await updateCard(client, "acct-fake", "cc-ada", { name: { full: "A" } });
-    const stale = await updateCard(
-      client,
-      "acct-fake",
-      "cc-ada",
-      { name: { full: "B" } },
-      { ifInState: "0" },
-    );
+    const stale = await updateCard(client, "acct-fake", "cc-ada", { name: { full: "B" } }, { ifInState: "0" });
     expect(stale.refusal?.type).toBe("stateMismatch");
     expect(stale.refusal?.message).toMatch(/Reload/);
   });
@@ -194,9 +188,7 @@ describe("a restricted session cannot reach outside its grant", () => {
     // Ada lives in ab-personal. Out of grant reads as ABSENT, not forbidden —
     // the server refuses to leak that the card exists (contacts.ts:459-460).
     expect(await loadCard(client, "acct-fake", "cc-ada")).toBeUndefined();
-    expect((await updateCard(client, "acct-fake", "cc-ada", { notes: null })).error?.type).toBe(
-      "notFound",
-    );
+    expect((await updateCard(client, "acct-fake", "cc-ada", { notes: null })).error?.type).toBe("notFound");
     expect((await destroyCard(client, "acct-fake", "cc-ada")).error?.type).toBe("notFound");
   });
 
@@ -214,9 +206,9 @@ describe("refusals are sentences, not JMAP types", () => {
   });
 
   it("falls back to the server's own description for anything unrecognised", () => {
-    expect(
-      describeContactRefusal({ type: "weird", description: "the disk is on fire" }, "card").message,
-    ).toBe("the disk is on fire");
+    expect(describeContactRefusal({ type: "weird", description: "the disk is on fire" }, "card").message).toBe(
+      "the disk is on fire",
+    );
     expect(describeContactRefusal({ type: "weird" }, "card").message).toContain("weird");
   });
 

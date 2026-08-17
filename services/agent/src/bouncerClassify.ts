@@ -7,13 +7,7 @@ import {
   recordBayesLabel,
   type BoundaryMessage,
 } from "@bullmoose/mailstore";
-import {
-  callWithFallback,
-  invocationCost,
-  type BindingConfig,
-  type Env,
-  type InvocationCost,
-} from "./models.js";
+import { callWithFallback, invocationCost, type BindingConfig, type Env, type InvocationCost } from "./models.js";
 
 /**
  * The mid-band classifier (s12 wave 2-C) — cascade stage 5, bouncer@'s ONE
@@ -151,11 +145,7 @@ export async function classifyScreened(
   job: ClassifyJob,
   cfg: BindingConfig,
   context: Record<string, unknown>,
-  done: (
-    status: "done" | "failed",
-    result: Record<string, unknown>,
-    cost?: InvocationCost,
-  ) => Promise<void>,
+  done: (status: "done" | "failed", result: Record<string, unknown>, cost?: InvocationCost) => Promise<void>,
   opts: { llmLabelsTrain?: boolean } = {},
 ): Promise<void> {
   const ctx = parseContext(context);
@@ -249,11 +239,7 @@ export async function classifyScreened(
     // already won, and a row over rescued mail would make the chain lie.
     const stillHeld = await isQuarantined(env, ctx.accountId, ctx.emailId);
     if (!stillHeld) {
-      return done(
-        "done",
-        { kind: "bouncer-classify", verdict, note: "already rescued/released — no action" },
-        cost,
-      );
+      return done("done", { kind: "bouncer-classify", verdict, note: "already rescued/released — no action" }, cost);
     }
     // The chain says which of the two happened, and the EVENT is the
     // difference that matters: 'shunted' is a judgment (a decision landed),
@@ -285,11 +271,7 @@ export async function classifyScreened(
   }
 
   // notSpam: the one verdict that releases. It may train (behind the flag).
-  const { released, mailboxIds } = await store.releaseQuarantined(
-    ctx.accountId,
-    ctx.emailId,
-    "llm:notSpam",
-  );
+  const { released, mailboxIds } = await store.releaseQuarantined(ctx.accountId, ctx.emailId, "llm:notSpam");
   if (released) {
     await commitChanges(env.ACCOUNT_DO, ctx.accountId, [
       { collection: "Email", updated: [ctx.emailId] },

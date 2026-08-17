@@ -23,14 +23,7 @@ import {
 } from "./capabilities";
 import type { JmapClient, RequestOptions, WatchOptions } from "./JmapClient";
 import { JmapRequestError } from "./JmapClient";
-import type {
-  ChangesResult,
-  Id,
-  Invocation,
-  ResultReference,
-  Session,
-  UploadResult,
-} from "./types";
+import type { ChangesResult, Id, Invocation, ResultReference, Session, UploadResult } from "./types";
 
 export type MethodHandler = (
   args: Record<string, unknown>,
@@ -152,11 +145,7 @@ export class FakeJmapClient implements JmapClient {
         // is harsher than the server and hides the real shape of a batch whose
         // first call was refused (the second one errors; the request still
         // returns 200 with an error response in it).
-        responses.push([
-          "error",
-          { type: "invalidResultReference", description: (err as Error).message },
-          callId,
-        ]);
+        responses.push(["error", { type: "invalidResultReference", description: (err as Error).message }, callId]);
         continue;
       }
       const result = handler(args);
@@ -232,8 +221,7 @@ export class FakeJmapClient implements JmapClient {
     const blobId = `blob-${++this.uploadSeq}`;
     // Blob is accepted because the real client takes one (a browser `File`);
     // storing the bytes keeps `download` round-tripping either way.
-    const bytes =
-      body instanceof Uint8Array ? new Uint8Array(body) : new Uint8Array(await body.arrayBuffer());
+    const bytes = body instanceof Uint8Array ? new Uint8Array(body) : new Uint8Array(await body.arrayBuffer());
     this.blobs.set(blobId, bytes);
     return { blobId, size: bytes.byteLength };
   }
@@ -263,10 +251,7 @@ export class FakeJmapClient implements JmapClient {
 // ── local back-reference resolver (compact mirror of dispatch.ts) ──────────
 
 /** Replace `#key` result-reference args with values from prior responses. */
-function resolveReferences(
-  args: Record<string, unknown>,
-  prior: Invocation[],
-): Record<string, unknown> {
+function resolveReferences(args: Record<string, unknown>, prior: Invocation[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args)) {
     if (!key.startsWith("#")) {

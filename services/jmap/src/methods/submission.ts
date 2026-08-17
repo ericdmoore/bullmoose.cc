@@ -26,9 +26,7 @@ import { resolveIdentities } from "./identity";
 export function registerSubmissionMethods(registry: MethodRegistry<RequestContext>): void {
   registry.register("EmailSubmission/set", emailSubmissionSet);
   registry.register("EmailSubmission/get", emailSubmissionGet);
-  registry.register("EmailSubmission/changes", async (args, ctx) =>
-    proxyChanges(ctx, args, "EmailSubmission"),
-  );
+  registry.register("EmailSubmission/changes", async (args, ctx) => proxyChanges(ctx, args, "EmailSubmission"));
 }
 
 /**
@@ -150,10 +148,7 @@ async function emailSubmissionSet(
     } catch (err) {
       notCreated[cid] =
         err instanceof MethodError
-          ? setError(
-              err.type === "invalidArguments" ? "invalidProperties" : err.type,
-              err.description,
-            )
+          ? setError(err.type === "invalidArguments" ? "invalidProperties" : err.type, err.description)
           : setError("serverFail", String(err));
     }
   }
@@ -162,8 +157,7 @@ async function emailSubmissionSet(
   // values are Email PatchObjects applied to the submission's email.
   const mailboxesTouched = new Set<string>();
   const emailsUpdated: string[] = [];
-  const onSuccess =
-    (args.onSuccessUpdateEmail as Record<string, Record<string, unknown>> | undefined) ?? {};
+  const onSuccess = (args.onSuccessUpdateEmail as Record<string, Record<string, unknown>> | undefined) ?? {};
   for (const [key, patch] of Object.entries(onSuccess)) {
     const ref = key.startsWith("#") ? byRef.get(key.slice(1)) : undefined;
     if (!ref) continue; // send failed or unknown ref — nothing to update
@@ -239,10 +233,7 @@ async function submitOne(
     typeof requestedMailFrom === "string" &&
     requestedMailFrom.trim().toLowerCase() !== identity.email.trim().toLowerCase()
   ) {
-    throw new MethodError(
-      "invalidArguments",
-      `envelope.mailFrom must match the identity's email (${identity.email})`,
-    );
+    throw new MethodError("invalidArguments", `envelope.mailFrom must match the identity's email (${identity.email})`);
   }
   const mailFrom = identity.email;
 

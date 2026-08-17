@@ -185,11 +185,7 @@ const echo = (key: string, text: string, extra: Record<string, unknown> = {}) =>
 });
 
 /** The Job every test starts from: root planner, aggregate budget, caps. */
-async function startPlannerJob(
-  env: Env,
-  plan: unknown,
-  over: Partial<Parameters<typeof startJob>[1]> = {},
-) {
+async function startPlannerJob(env: Env, plan: unknown, over: Partial<Parameters<typeof startJob>[1]> = {}) {
   return startJob(env, {
     accountId: ACCOUNT,
     bindingId: "bind_emily",
@@ -242,11 +238,7 @@ describe("a planner's output becomes claimable sibling tasks, and a join synthes
     expect(JSON.parse(join.needs_json!)).toEqual([a.id, b.id]);
     // Every child hangs off the planner (context + attenuation chain), while
     // `needs` — a DIFFERENT relation — orders execution among siblings.
-    expect([a.parent_id, b.parent_id, join.parent_id]).toEqual([
-      s.root().id,
-      s.root().id,
-      s.root().id,
-    ]);
+    expect([a.parent_id, b.parent_id, join.parent_id]).toEqual([s.root().id, s.root().id, s.root().id]);
     expect([a.depth, b.depth, join.depth]).toEqual([1, 1, 1]);
 
     await s.drain(); // the two unblocked siblings, in one pass
@@ -387,10 +379,7 @@ describe("ATTENUATION, enforced by the harness at every depth", () => {
   it("a task asking for a tool its planner does not hold refuses the whole plan", async () => {
     const s = await scaffold();
     const plan = {
-      tasks: [
-        echo("honest", "fine", { tools: ["files.read"] }),
-        echo("greedy", "nope", { tools: ["email.send"] }),
-      ],
+      tasks: [echo("honest", "fine", { tools: ["files.read"] }), echo("greedy", "nope", { tools: ["email.send"] })],
     };
     await startPlannerJob(s.env, plan);
     await s.drain();
@@ -634,9 +623,7 @@ describe("DefaultCase: an ordinary invocation is untouched by any of this", () =
 
   it("a Job against a DISABLED binding is refused at creation (the 008 interlock)", async () => {
     const s = await scaffold();
-    await s.w.env.DB.prepare(
-      `UPDATE agent_bindings SET enabled = 0 WHERE account_id = ? AND id = 'bind_emily'`,
-    )
+    await s.w.env.DB.prepare(`UPDATE agent_bindings SET enabled = 0 WHERE account_id = ? AND id = 'bind_emily'`)
       .bind(ACCOUNT)
       .run();
     const started = await startPlannerJob(s.env, { tasks: [echo("a", "alpha")] });
@@ -675,9 +662,7 @@ describe("the binding is the top of the chain", () => {
     });
     expect(started.ok).toBe(false);
     if (!started.ok) {
-      expect(new Set(started.refusals.map((r) => r.axis))).toEqual(
-        new Set(["tools", "credentials", "budget"]),
-      );
+      expect(new Set(started.refusals.map((r) => r.axis))).toEqual(new Set(["tools", "credentials", "budget"]));
     }
 
     // Within the binding's ceiling, the Job starts — with the caps narrowed to

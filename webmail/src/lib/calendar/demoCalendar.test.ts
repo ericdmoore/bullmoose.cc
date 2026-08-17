@@ -70,9 +70,7 @@ describe("the fake mirrors the server's semantics, warts included", () => {
     const client = new FakeJmapClient();
     installDemoCalendar(client, NOW);
     // `calendars.ts:392-394` registers it and always throws; sVOL 026 owns it.
-    await expect(call(client, "CalendarEvent/queryChanges", {})).rejects.toThrow(
-      /cannotCalculateChanges/,
-    );
+    await expect(call(client, "CalendarEvent/queryChanges", {})).rejects.toThrow(/cannotCalculateChanges/);
   });
 
   it("reports canCalculateChanges: false from query", async () => {

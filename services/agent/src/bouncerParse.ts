@@ -99,8 +99,7 @@ export function wrapperAddresses(wrapper: string): string[] {
 const DOMAIN = "[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+";
 
 const BLOCK_VERBS = /\b(block|deny|denylist|deny-list|ban|blacklist|blocklist)\b/i;
-const BLOCK_PHRASES =
-  /\b(never again|no more|don'?t (?:want|need)|stop (?:them|these|this)|add\b)/i;
+const BLOCK_PHRASES = /\b(never again|no more|don'?t (?:want|need)|stop (?:them|these|this)|add\b)/i;
 
 /**
  * Deterministic intent over the WRAPPER ONLY. Precedence:
@@ -121,9 +120,7 @@ export function parseIntent(wrapper: string): BouncerIntent {
   // 1 — the FP conversation. "why didn't/hasn't it arrive", "never arrived",
   // "says they sent", "where is my…".
   if (
-    /\bwhy\b.*\b(arriv|receiv|get through|deliver|come through|show(?:ed)? up|blocked|reject)/is.test(
-      w,
-    ) ||
+    /\bwhy\b.*\b(arriv|receiv|get through|deliver|come through|show(?:ed)? up|blocked|reject)/is.test(w) ||
     /\b(didn'?t|did not|never|hasn'?t|has not)\s+(arrive|arrived|come through|show(?:ed)? up|get here|get through|reach(?:ed)? (?:me|us))\b/i.test(
       w,
     ) ||
@@ -150,14 +147,8 @@ export function parseIntent(wrapper: string): BouncerIntent {
   // extracted from these narrow phrases — never from the wrapper at large,
   // where the asker's own signature address would match.
   const named =
-    new RegExp(
-      `\\b(?:add|block|deny|ban|blacklist)\\s+(?:the\\s+)?(?:domain\\s+)?(${DOMAIN})`,
-      "i",
-    ).exec(w) ??
-    new RegExp(
-      `(${DOMAIN})\\s+(?:to\\s+)?(?:the\\s+)?(?:domain[- ])?(?:deny|block)[- ]?list`,
-      "i",
-    ).exec(w);
+    new RegExp(`\\b(?:add|block|deny|ban|blacklist)\\s+(?:the\\s+)?(?:domain\\s+)?(${DOMAIN})`, "i").exec(w) ??
+    new RegExp(`(${DOMAIN})\\s+(?:to\\s+)?(?:the\\s+)?(?:domain[- ])?(?:deny|block)[- ]?list`, "i").exec(w);
   // "block bob@x.com" targets a SENDER; the matched phrase carrying a full
   // email address means the sender tier (5), not the domain tier.
   if (named && blocky && !ADDRESS_RE.test(named[0])) {

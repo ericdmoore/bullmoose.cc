@@ -87,19 +87,14 @@ function fakeD1(tables: Tables) {
       ];
       // data-plane.sql: CREATE UNIQUE INDEX mailboxes_role ON
       // mailboxes (account_id, role) WHERE role IS NOT NULL.
-      if (
-        role !== null &&
-        tables.mailboxes.some((m) => m.account_id === account_id && m.role === role)
-      ) {
+      if (role !== null && tables.mailboxes.some((m) => m.account_id === account_id && m.role === role)) {
         throw new Error("D1_ERROR: UNIQUE constraint failed: mailboxes.account_id, mailboxes.role");
       }
       tables.mailboxes.push({ id, account_id, parent_id, name, role, sort_order });
       return { results: [] };
     }
     if (sql.startsWith("UPDATE mailboxes SET")) {
-      const cols = (/SET ([\s\S]*?) WHERE/.exec(sql)?.[1] ?? "")
-        .split(",")
-        .map((c) => c.trim().split(" ")[0]!);
+      const cols = (/SET ([\s\S]*?) WHERE/.exec(sql)?.[1] ?? "").split(",").map((c) => c.trim().split(" ")[0]!);
       const id = args[args.length - 1] as string;
       const accountId = args[args.length - 2] as string;
       const row = tables.mailboxes.find((m) => m.account_id === accountId && m.id === id);
@@ -108,9 +103,7 @@ function fakeD1(tables: Tables) {
     }
     if (sql.startsWith("DELETE FROM mailboxes")) {
       const [accountId, id] = args as [string, string];
-      tables.mailboxes = tables.mailboxes.filter(
-        (m) => !(m.account_id === accountId && m.id === id),
-      );
+      tables.mailboxes = tables.mailboxes.filter((m) => !(m.account_id === accountId && m.id === id));
       return { results: [] };
     }
     if (sql.startsWith("INSERT INTO email_mailboxes")) {
@@ -189,9 +182,7 @@ function fakeD1(tables: Tables) {
     if (sql.includes("SELECT email_id, mailbox_id FROM email_mailboxes")) {
       const wanted = idsIn(sql, args, 1);
       return {
-        results: tables.email_mailboxes.filter(
-          (r) => r.account_id === acct && wanted.includes(r.email_id),
-        ),
+        results: tables.email_mailboxes.filter((r) => r.account_id === acct && wanted.includes(r.email_id)),
       };
     }
 
@@ -199,9 +190,7 @@ function fakeD1(tables: Tables) {
     if (sql.includes("SELECT email_id, keyword FROM email_keywords")) {
       const wanted = idsIn(sql, args, 1);
       return {
-        results: tables.email_keywords.filter(
-          (r) => r.account_id === acct && wanted.includes(r.email_id),
-        ),
+        results: tables.email_keywords.filter((r) => r.account_id === acct && wanted.includes(r.email_id)),
       };
     }
 
@@ -216,9 +205,7 @@ function fakeD1(tables: Tables) {
     // -- Mailbox/get counts --
     if (sql.includes("FROM email_mailboxes em")) {
       const [accountId, mailboxId] = args as [string, string];
-      const inBox = tables.email_mailboxes.filter(
-        (r) => r.account_id === accountId && r.mailbox_id === mailboxId,
-      );
+      const inBox = tables.email_mailboxes.filter((r) => r.account_id === accountId && r.mailbox_id === mailboxId);
       const isUnread = (emailId: string) =>
         !tables.email_keywords.some(
           (k) => k.account_id === accountId && k.email_id === emailId && k.keyword === "$seen",
@@ -228,8 +215,7 @@ function fakeD1(tables: Tables) {
       // COUNT(DISTINCT …) skips. Several destroy tests seed exactly that
       // shape, so getting this wrong would change totalEmails under them.
       const threadOf = (emailId: string) =>
-        tables.emails.find((e) => e.account_id === accountId && e.id === emailId)?.thread_id ??
-        null;
+        tables.emails.find((e) => e.account_id === accountId && e.id === emailId)?.thread_id ?? null;
       const distinctThreads = (rows: typeof inBox) =>
         new Set(rows.map((r) => threadOf(r.email_id)).filter((t) => t !== null)).size;
       return {
@@ -269,8 +255,7 @@ function fakeD1(tables: Tables) {
     };
   };
 
-  const batch = async (stmts: Array<{ _exec: () => { results: unknown[] } }>) =>
-    stmts.map((s) => s._exec());
+  const batch = async (stmts: Array<{ _exec: () => { results: unknown[] } }>) => stmts.map((s) => s._exec());
 
   return { prepare, batch };
 }
@@ -428,8 +413,7 @@ const errAt = (bag: unknown, key: string): Err => (bag as Record<string, Err>)[k
 const notCreated = (r: SetRes, cid: string): Err => errAt(r.notCreated, cid);
 const notUpdated = (r: SetRes, id: string): Err => errAt(r.notUpdated, id);
 const notDestroyed = (r: SetRes, id: string): Err => errAt(r.notDestroyed, id);
-const createdId = (r: SetRes, cid: string) =>
-  (r.created as Record<string, { id: string }>)[cid]?.id;
+const createdId = (r: SetRes, cid: string) => (r.created as Record<string, { id: string }>)[cid]?.id;
 
 // ---- the gap this unit closes -----------------------------------------
 
@@ -565,10 +549,7 @@ describe("Mailbox/set — the advertised limits are now enforced", () => {
     for (let i = 0; i < 9; i++) {
       rows.push(mb({ id: `mb_d${i}`, name: `d${i}`, parent_id: i === 0 ? null : `mb_d${i - 1}` }));
     }
-    rows.push(
-      mb({ id: "mb_top", name: "top" }),
-      mb({ id: "mb_kid", name: "kid", parent_id: "mb_top" }),
-    );
+    rows.push(mb({ id: "mb_top", name: "top" }), mb({ id: "mb_kid", name: "kid", parent_id: "mb_top" }));
     const h = harness({ mailboxes: rows });
 
     const res = await h.set({ update: { mb_top: { parentId: "mb_d8" } } });
@@ -700,17 +681,14 @@ describe("Mailbox/set — destroy", () => {
     expect(notDestroyed(res, "mb_inbox").description).toContain("inbox");
     expect(h.tables.mailboxes.find((m) => m.id === "mb_inbox")).toBeDefined();
 
-    const rights = (
-      (await h.get()).list as Array<{ id: string; myRights: { mayDelete: boolean } }>
-    ).find((m) => m.id === "mb_inbox")?.myRights;
+    const rights = ((await h.get()).list as Array<{ id: string; myRights: { mayDelete: boolean } }>).find(
+      (m) => m.id === "mb_inbox",
+    )?.myRights;
     expect(rights?.mayDelete).toBe(false);
   });
 
   it("refuses to destroy a mailbox that has children", async () => {
-    const rows = [
-      mb({ id: "mb_p", name: "Parent" }),
-      mb({ id: "mb_c", name: "Child", parent_id: "mb_p" }),
-    ];
+    const rows = [mb({ id: "mb_p", name: "Parent" }), mb({ id: "mb_c", name: "Child", parent_id: "mb_p" })];
     const h = harness({ mailboxes: rows });
     const res = await h.set({ destroy: ["mb_p"] });
 
@@ -784,9 +762,7 @@ describe("Mailbox/set — destroy", () => {
 
     expect(res.destroyed).toEqual(["mb_x"]);
     expect(h.tables.emails).toHaveLength(1);
-    expect(h.tables.email_mailboxes).toEqual([
-      { account_id: ACCOUNT, email_id: "e_1", mailbox_id: "mb_inbox" },
-    ]);
+    expect(h.tables.email_mailboxes).toEqual([{ account_id: ACCOUNT, email_id: "e_1", mailbox_id: "mb_inbox" }]);
   });
 });
 
@@ -811,9 +787,9 @@ describe("Mailbox/set — batch and state semantics", () => {
 
   it("honours ifInState", async () => {
     const h = harness();
-    await expect(
-      h.set({ ifInState: "not-the-state", create: { c1: { name: "X" } } }),
-    ).rejects.toMatchObject({ type: "stateMismatch" });
+    await expect(h.set({ ifInState: "not-the-state", create: { c1: { name: "X" } } })).rejects.toMatchObject({
+      type: "stateMismatch",
+    });
     expect(h.tables.mailboxes).toHaveLength(2);
   });
 
@@ -846,10 +822,7 @@ describe("requiredScopesForMailboxSet", () => {
   });
 
   it("charges both for a mixed call", () => {
-    expect(requiredScopesForMailboxSet({ create: { c1: {} }, destroy: ["mb_1"] }).sort()).toEqual([
-      "delete",
-      "move",
-    ]);
+    expect(requiredScopesForMailboxSet({ create: { c1: {} }, destroy: ["mb_1"] }).sort()).toEqual(["delete", "move"]);
   });
 
   it("asks for nothing on an empty call", () => {
@@ -876,9 +849,7 @@ describe("Mailbox/set — the gate bites", () => {
   });
 
   it("refuses a move-scoped token a DESTROY, which can remove mail", async () => {
-    const h = harness({ mailboxes: [{ ...INBOX }, mb({ id: "mb_x", name: "Receipts" })] }, [
-      "move",
-    ]);
+    const h = harness({ mailboxes: [{ ...INBOX }, mb({ id: "mb_x", name: "Receipts" })] }, ["move"]);
     await expect(h.set({ destroy: ["mb_x"] })).rejects.toMatchObject({ type: "forbidden" });
     expect(h.tables.mailboxes).toHaveLength(2);
 

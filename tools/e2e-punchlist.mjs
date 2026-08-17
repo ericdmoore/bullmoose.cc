@@ -14,11 +14,7 @@ const jmap = async (methodCalls) => {
     method: "POST",
     headers: H,
     body: JSON.stringify({
-      using: [
-        "urn:ietf:params:jmap:core",
-        "urn:ietf:params:jmap:mail",
-        "urn:ietf:params:jmap:submission",
-      ],
+      using: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"],
       methodCalls,
     }),
   });
@@ -34,30 +30,16 @@ const [q1] = await jmap([["Mailbox/query", { accountId: ACCT, calculateTotal: tr
 assert(q1[1].ids.length === 3 && q1[1].total === 3, `query all: ${JSON.stringify(q1[1])}`);
 const [q2] = await jmap([["Mailbox/query", { accountId: ACCT, filter: { role: "inbox" } }, "q"]]);
 assert(q2[1].ids.length === 1 && q2[1].ids[0] === "mb_inbox", "filter by role");
-const [q3] = await jmap([
-  ["Mailbox/query", { accountId: ACCT, filter: { hasAnyRole: false } }, "q"],
-]);
+const [q3] = await jmap([["Mailbox/query", { accountId: ACCT, filter: { hasAnyRole: false } }, "q"]]);
 assert(q3[1].ids.length === 0, "hasAnyRole:false → none (all seeded have roles)");
-const [q4] = await jmap([
-  ["Mailbox/query", { accountId: ACCT, sort: [{ property: "name", isAscending: true }] }, "q"],
-]);
+const [q4] = await jmap([["Mailbox/query", { accountId: ACCT, sort: [{ property: "name", isAscending: true }] }, "q"]]);
 assert(q4[1].ids[0] === "mb_drafts", `name sort: ${q4[1].ids}`);
 
 // queryChanges → cannotCalculateChanges (spec fallback)
-const [qc] = await jmap([
-  ["Mailbox/queryChanges", { accountId: ACCT, sinceQueryState: "0" }, "qc"],
-]);
-assert(
-  qc[0] === "error" && qc[1].type === "cannotCalculateChanges",
-  "Mailbox/queryChanges error type",
-);
-const [eqc] = await jmap([
-  ["Email/queryChanges", { accountId: ACCT, sinceQueryState: "0" }, "eqc"],
-]);
-assert(
-  eqc[0] === "error" && eqc[1].type === "cannotCalculateChanges",
-  "Email/queryChanges error type",
-);
+const [qc] = await jmap([["Mailbox/queryChanges", { accountId: ACCT, sinceQueryState: "0" }, "qc"]]);
+assert(qc[0] === "error" && qc[1].type === "cannotCalculateChanges", "Mailbox/queryChanges error type");
+const [eqc] = await jmap([["Email/queryChanges", { accountId: ACCT, sinceQueryState: "0" }, "eqc"]]);
+assert(eqc[0] === "error" && eqc[1].type === "cannotCalculateChanges", "Email/queryChanges error type");
 
 // The himalaya send path: Blob upload → Email/import → (submission would follow)
 const MIME = [
@@ -117,10 +99,7 @@ const e = g[1].list[0];
 assert(e.subject === "Imported via blob upload", "parsed subject");
 assert(e.from[0].email === "eric@moore.coffee" && e.from[0].name === "Eric", "parsed from");
 assert(e.receivedAt === "2026-07-06T12:00:00.000Z", `receivedAt from Date header: ${e.receivedAt}`);
-assert(
-  e.mailboxIds.mb_drafts === true && e.keywords["$draft"] === true,
-  "placed in drafts with $draft",
-);
+assert(e.mailboxIds.mb_drafts === true && e.keywords["$draft"] === true, "placed in drafts with $draft");
 assert(e.messageId[0] === "imported-1@moore.coffee", "messageId parsed");
 
 // import with a bogus blob → blobNotFound, not a crash
@@ -166,13 +145,8 @@ const [[, reply]] = await jmap([
   ],
 ]);
 assert(reply.created?.r1, `reply created: ${JSON.stringify(reply.notCreated)}`);
-const [tg] = await jmap([
-  ["Thread/get", { accountId: ACCT, ids: [reply.created.r1.threadId] }, "t"],
-]);
-assert(
-  tg[1].list[0].emailIds.length === 2,
-  `thread joined across import+set: ${JSON.stringify(tg[1].list)}`,
-);
+const [tg] = await jmap([["Thread/get", { accountId: ACCT, ids: [reply.created.r1.threadId] }, "t"]]);
+assert(tg[1].list[0].emailIds.length === 2, `thread joined across import+set: ${JSON.stringify(tg[1].list)}`);
 assert(tg[1].list[0].emailIds.includes(importedId), "thread contains imported message");
 
 console.log("E2E-2b OK — cross-path threading verified");

@@ -126,9 +126,7 @@ export function dueLabel(dueAt: string | null, now: number): string {
   if (dueAt === null) return "no due date";
   const due = Date.parse(dueAt);
   if (!Number.isFinite(due)) return "no due date";
-  return due - now >= 0
-    ? `work due in ${formatDuration(due - now)}`
-    : `work was due ${formatDuration(now - due)} ago`;
+  return due - now >= 0 ? `work due in ${formatDuration(due - now)}` : `work was due ${formatDuration(now - due)} ago`;
 }
 
 /**

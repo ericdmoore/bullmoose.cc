@@ -1,9 +1,9 @@
 const stats = [
-  { name: "Number of deploys", value: "405" },
-  { name: "Average deploy time", value: "3.65", unit: "mins" },
-  { name: "Number of servers", value: "3" },
-  { name: "Success rate", value: "98.5%" },
-];
+  { name: 'Number of deploys', value: '405' },
+  { name: 'Average deploy time', value: '3.65', unit: 'mins' },
+  { name: 'Number of servers', value: '3' },
+  { name: 'Success rate', value: '98.5%' },
+]
 
 export default function Example() {
   return (
@@ -17,14 +17,12 @@ export default function Example() {
                 <span className="text-4xl font-semibold tracking-tight text-gray-900 dark:text-white">
                   {stat.value}
                 </span>
-                {stat.unit ? (
-                  <span className="text-sm text-gray-500 dark:text-gray-400">{stat.unit}</span>
-                ) : null}
+                {stat.unit ? <span className="text-sm text-gray-500 dark:text-gray-400">{stat.unit}</span> : null}
               </p>
             </div>
           ))}
         </div>
       </div>
     </div>
-  );
+  )
 }

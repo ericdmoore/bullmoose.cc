@@ -34,16 +34,7 @@ interface SpendFact {
   confidence: number;
 }
 
-const DEFAULT_CATEGORIES = [
-  "saas",
-  "utilities",
-  "home",
-  "insurance",
-  "travel",
-  "food",
-  "health",
-  "other",
-];
+const DEFAULT_CATEGORIES = ["saas", "utilities", "home", "insurance", "travel", "food", "health", "other"];
 
 export async function runLedger(
   env: Env,
@@ -193,12 +184,7 @@ function authPasses(parsed: { headers?: Array<{ key: string; value: string }> })
 
 // ---- extraction --------------------------------------------------------
 
-async function extractFact(
-  env: Env,
-  cfg: BindingConfig,
-  text: string,
-  subject: string,
-): Promise<SpendFact | null> {
+async function extractFact(env: Env, cfg: BindingConfig, text: string, subject: string): Promise<SpendFact | null> {
   const categories = cfg.categories ?? DEFAULT_CATEGORIES;
   const system = `You extract purchase data from emails. Respond with ONLY minified JSON, no code fences, matching:
 {"is_receipt":boolean,"vendor":string,"amount":number,"currency":"USD"|string,"date":"YYYY-MM-DD","category":string,"confidence":number}
@@ -219,10 +205,7 @@ async function extractFact(
       { role: "system" as const, content: system },
       {
         role: "user" as const,
-        content:
-          attempt === 0
-            ? user
-            : `${user}\n\nYour previous output was invalid (${lastError}). JSON only.`,
+        content: attempt === 0 ? user : `${user}\n\nYour previous output was invalid (${lastError}). JSON only.`,
       },
     ];
     const { output } = await callWithFallback(env, candidates, prompt, 512);
@@ -234,10 +217,7 @@ async function extractFact(
   return null;
 }
 
-function parseFactJson(
-  output: string,
-  categories: string[],
-): SpendFact | "not-receipt" | "invalid" {
+function parseFactJson(output: string, categories: string[]): SpendFact | "not-receipt" | "invalid" {
   const jsonText = output.replace(/^```(?:json)?/m, "").replace(/```\s*$/m, "");
   const m = /\{[\s\S]*\}/.exec(jsonText);
   if (!m) return "invalid";
@@ -250,8 +230,7 @@ function parseFactJson(
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
-    if (o.is_receipt !== true || !vendor || !Number.isFinite(amount) || amount <= 0)
-      return "invalid";
+    if (o.is_receipt !== true || !vendor || !Number.isFinite(amount) || amount <= 0) return "invalid";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "invalid";
     const category = categories.includes(String(o.category)) ? String(o.category) : "other";
     return {
@@ -271,12 +250,7 @@ function parseFactJson(
 
 // ---- ledger writes -----------------------------------------------------
 
-async function insertFact(
-  env: Env,
-  accountId: string,
-  emailId: string | null,
-  f: SpendFact,
-): Promise<boolean> {
+async function insertFact(env: Env, accountId: string, emailId: string | null, f: SpendFact): Promise<boolean> {
   const dedup = await sha256Hex(`${f.vendor}|${f.amountCents}|${f.txnDate}`);
   const res = await env.DB.prepare(
     `INSERT OR IGNORE INTO spend_facts
@@ -367,11 +341,7 @@ async function aggregates(env: Env, accountId: string, f: SpendFact): Promise<Ag
     f.vendor,
     `${year}-01-01`,
   );
-  const points = await one(
-    `SELECT COUNT(*) v FROM spend_facts WHERE account_id = ? AND currency = ?`,
-    accountId,
-    cur,
-  );
+  const points = await one(`SELECT COUNT(*) v FROM spend_facts WHERE account_id = ? AND currency = ?`, accountId, cur);
 
   const { results } = await env.DB.prepare(
     `SELECT period_month, SUM(amount_cents) c FROM spend_facts
@@ -452,20 +422,7 @@ function digestSubject(f: SpendFact, agg: Aggregates): string {
   return `💰 ${money(f.amountCents)} ${f.vendor} — YTD ${money(agg.totalYtdCents)}${delta}`;
 }
 
-const MONTH_NAMES = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** Email-safe chart: table rows with inline-styled div bars. No SVG, no images. */
 export function chartHtml(agg: Aggregates): string {
@@ -521,24 +478,18 @@ async function sendDigest(
     lines.push(
       `${d.fact.vendor} — ${money(d.fact.amountCents)} ${d.fact.currency} (${d.fact.txnDate}, ${d.fact.category})${d.fact.confidence < 0.7 ? "  ⚠ low confidence — please verify" : ""}`,
     );
-    lines.push(
-      `YTD with them: ${money(agg.vendorYtdCents)} across ${agg.vendorYtdCount} charge(s).`,
-    );
+    lines.push(`YTD with them: ${money(agg.vendorYtdCents)} across ${agg.vendorYtdCount} charge(s).`);
   }
   if (d.extraText) lines.push(d.extraText);
   lines.push(
     `Total ${agg.year} YTD: ${money(agg.totalYtdCents)}${
-      agg.lastYearSamePeriodCents > 0
-        ? ` vs ${money(agg.lastYearSamePeriodCents)} by this date ${agg.lastYear}`
-        : ""
+      agg.lastYearSamePeriodCents > 0 ? ` vs ${money(agg.lastYearSamePeriodCents)} by this date ${agg.lastYear}` : ""
     }.`,
   );
   if (d.commentary) lines.push("", d.commentary);
 
   const hasChart = agg.points >= d.chartMinPoints;
-  const progress = hasChart
-    ? ""
-    : `\n\n${agg.points}/${d.chartMinPoints} data points toward your first chart.`;
+  const progress = hasChart ? "" : `\n\n${agg.points}/${d.chartMinPoints} data points toward your first chart.`;
 
   const text = lines.join("\n") + progress + `\n\n— ${job.binding_name} · bullmoose agent`;
   const html = `<div style="font:14px/1.5 sans-serif;max-width:520px">
@@ -725,9 +676,7 @@ async function bootstrapCsv(
   digestTo: string,
   finish: (status: "done" | "failed", result: Record<string, unknown>) => Promise<void>,
 ): Promise<void> {
-  const att = email.attachments.find(
-    (a) => a.type.includes("csv") || (a.name ?? "").toLowerCase().endsWith(".csv"),
-  );
+  const att = email.attachments.find((a) => a.type.includes("csv") || (a.name ?? "").toLowerCase().endsWith(".csv"));
   if (!att) {
     const fwdId = await forwardOriginal(env, store, job, {
       selfAddress,

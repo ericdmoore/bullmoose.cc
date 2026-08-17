@@ -8,13 +8,13 @@
 
 ## Why this task order
 
-`bureau.md` §10 frames the whole thing as a ladder — _a closed set of operations over
-a key you cannot extract._ The tasks climb it, and the ordering is forced by three
+`bureau.md` §10 frames the whole thing as a ladder — *a closed set of operations over
+a key you cannot extract.* The tasks climb it, and the ordering is forced by three
 dependencies, not by preference:
 
 1. **You cannot enforce a field you never minted.** The verb gate (§4.1) keys off
    `kind`; destination binding (§6) keys off `allow`. Both are meaningless until a
-   credential _carries_ them — so the mint-time contract (**T1**, sVOL 020) is first,
+   credential *carries* them — so the mint-time contract (**T1**, sVOL 020) is first,
    and is exactly the piece that is fully decided and independent of every open
    question. It records; it does not enforce.
 
@@ -25,16 +25,16 @@ dependencies, not by preference:
 
 3. **Enforcement is one chokepoint, built once, then reused.** The runtime (**T3**) is
    where authz, verb-gating, destination binding and header injection first actually
-   _bite_ — and it is built around the single Class-A `fetch` verb because that verb
+   *bite* — and it is built around the single Class-A `fetch` verb because that verb
    "covers every static-bearer / API-key service that will ever exist" (§3). Egress
-   redaction (**T4**) is a filter on _that_ runtime's response path, so it follows T3.
+   redaction (**T4**) is a filter on *that* runtime's response path, so it follows T3.
    The Class-B verbs (**T5** — `sign_sigv4`, `oauth_token`, `hmac_sha256`) are added
    last among the core work because each simply reuses T3's authz+binding and T4's
    redaction; adding them earlier would mean building those guarantees twice.
 
 Two tasks hang off the side rather than on the spine:
 
-- **T6 (AAD re-scoping, §9)** is deferred and sequenced late _on purpose_: it re-seals
+- **T6 (AAD re-scoping, §9)** is deferred and sequenced late *on purpose*: it re-seals
   **every** credential row under a new AAD, so it should run once, after a row's shape
   has settled — not in the middle of T1–T5. T1 already accepts `--scope` and refuses
   the non-`actor` values, so nothing blocks on it.
@@ -51,8 +51,8 @@ rungs in sequence.
 
 ## Open question 1 — Where does the Bureau run?
 
-> _Its own Worker, or inside the agent worker (which already holds
-> `VAULT_MASTER_KEY`)?_ (`bureau.md` §13.1)
+> *Its own Worker, or inside the agent worker (which already holds
+> `VAULT_MASTER_KEY`)?* (`bureau.md` §13.1)
 
 ## ✅ RESOLVED — isolated Worker. Ratified by the user, 2026-08-09.
 
@@ -62,8 +62,8 @@ discipline, by the platform.
 
 The governing principle, in the user's words:
 
-> _You can only compute with what you have. WebFetch, bullmoose MCP, etc. Anything else
-> needs the Bureau._
+> *You can only compute with what you have. WebFetch, bullmoose MCP, etc. Anything else
+> needs the Bureau.*
 
 That is the object-capability model, and isolation is what makes it true rather than
 aspirational. Embedded, the master key is **ambient** in the agent worker: every MCP tool
@@ -74,17 +74,17 @@ because the key is not in that environment.
 ### The argument for embedded was wrong, and here is precisely how
 
 An earlier revision of this section recommended embedding, on the grounds that a separate
-Worker forces either _a second copy of the master key_ or _plaintext crossing a boundary_.
+Worker forces either *a second copy of the master key* or *plaintext crossing a boundary*.
 **Both are false**, and they fail for the same reason: they conflate the key with the vault.
 
-- **No second copy.** The key lives in exactly one Worker — the Bureau. It is _moved_, not
+- **No second copy.** The key lives in exactly one Worker — the Bureau. It is *moved*, not
   duplicated. `services/agent` gives it up.
-- **No plaintext crossing.** §1's own contract is _"the Bureau applies the credential
-  itself, and returns only the result."_ A **name** (`credRef` + verb) goes in; a **result**
+- **No plaintext crossing.** §1's own contract is *"the Bureau applies the credential
+  itself, and returns only the result."* A **name** (`credRef` + verb) goes in; a **result**
   (an HTTP response, a signature) comes back. The secret never leaves.
 
-Recorded rather than deleted, because the mistake is instructive: it argued a _security_
-invariant from an assumption about _plumbing_. Isolation is the faithful implementation of
+Recorded rather than deleted, because the mistake is instructive: it argued a *security*
+invariant from an assumption about *plumbing*. Isolation is the faithful implementation of
 what §1 and §3 already say the Bureau does.
 
 ### What this costs (honestly)
@@ -97,15 +97,15 @@ crypto in the agent worker. Tracked as **T3a**.
 
 ---
 
-## Open question 1b — how does the Bureau know _which agent_ is calling?
+## Open question 1b — how does the Bureau know *which agent* is calling?
 
 Isolation stops the agent worker from reading the key. It does **not** answer this: all
 agents (`travel@`, `editor@`, `receipts@`) run inside the same agent worker and call the
-Bureau over the same service binding. Every call looks identical — _"a request from the
-agent worker."_ The binding proves which **worker**, never which **agent**.
+Bureau over the same service binding. Every call looks identical — *"a request from the
+agent worker."* The binding proves which **worker**, never which **agent**.
 
-That gap is live, not theoretical: sVOL `014` is the unit where an agent reads _untrusted
-email content_. A prompt-injected `editor@` calling `fetch(credRef: "aws-mcp")` must be
+That gap is live, not theoretical: sVOL `014` is the unit where an agent reads *untrusted
+email content*. A prompt-injected `editor@` calling `fetch(credRef: "aws-mcp")` must be
 refused, and a self-asserted principal id in the request body is exactly the antipattern
 this session removed from MCP.
 
@@ -124,7 +124,7 @@ A JWT here would be actively worse. Its value is offline verification by a third
 when issuer and verifier are the same service it buys nothing — and it **costs
 revocability**. A JWT is valid until it expires. This system now has two kill switches
 (sVOL `008`'s `agent_bindings.enabled`, `s03.A`'s `grants.revoked_at`), and both work by
-making a token _stop resolving on the next check_. A self-contained JWT routes around both:
+making a token *stop resolving on the next check*. A self-contained JWT routes around both:
 flip the kill switch, and the agent keeps acting until expiry.
 
 Using `verifyBearer` means Bureau authorization **inherits every revocation control already
@@ -136,15 +136,15 @@ call is about to make, and it is what makes revocation instant.
 
 Here the verifier **cannot call us**. `AssumeRoleWithWebIdentity` requires an OIDC token
 AWS validates offline against a published key. That is textbook JWT — and it is the unlock
-for open question 3, which stalled on _"Workers issues no federatable OIDC token."_ An
+for open question 3, which stalled on *"Workers issues no federatable OIDC token."* An
 isolated Bureau holding a private signing key and publishing a JWKS **is** an OIDC provider.
 
 The two keypairs point opposite ways, which is the easiest thing to confuse:
 
-|                                       | who holds private | who verifies                   |
-| ------------------------------------- | ----------------- | ------------------------------ |
-| agent proving identity to Bureau (v2) | the **agent**     | the Bureau (holds public only) |
-| Bureau proving identity to AWS        | the **Bureau**    | AWS (public via JWKS)          |
+| | who holds private | who verifies |
+|---|---|---|
+| agent proving identity to Bureau (v2) | the **agent** | the Bureau (holds public only) |
+| Bureau proving identity to AWS | the **Bureau** | AWS (public via JWKS) |
 
 ### End-to-end shape
 
@@ -169,8 +169,8 @@ later without a rewrite.
 
 ## Open question 2 — Class A: response streaming, or buffer-and-scan?
 
-> _Does Class A need response streaming, or is buffer-and-scan (§7) acceptable for all
-> realistic agent traffic?_ (`bureau.md` §13.2)
+> *Does Class A need response streaming, or is buffer-and-scan (§7) acceptable for all
+> realistic agent traffic?* (`bureau.md` §13.2)
 
 **Recommendation: buffer-and-scan for text-ish responses; stream-through with
 header-only inspection for binary/large. This is decidable now — no user needed.**
@@ -183,18 +183,18 @@ not redaction. So on the path that carries injected values, **buffering is not a
 performance choice — it is a correctness requirement.**
 
 And it costs nothing the consumer would have used, because **the sink that matters is
-the model's context** (§7), and an agent tool call consumes its result as a _complete
-value_ (a JSON/text tool result), not as a stream it renders incrementally. Realistic
+the model's context** (§7), and an agent tool call consumes its result as a *complete
+value* (a JSON/text tool result), not as a stream it renders incrementally. Realistic
 agent traffic is bounded API JSON — small, text-ish — where a full buffer-and-scan is
 cheap and invisible.
 
 The one real exception is **large binary** (file downloads): you cannot meaningfully
 scan a blob for text secrets, and buffering it would break large responses. §7 already
-carves this out — _"stream binary through with header inspection only."_ A verbatim
+carves this out — *"stream binary through with header inspection only."* A verbatim
 credential appearing inside a binary body is astronomically unlikely, and header
 inspection covers the realistic leak (a reflected auth header).
 
-So the answer to the literal question — _does Class A **need** streaming?_ — is **no,
+So the answer to the literal question — *does Class A **need** streaming?* — is **no,
 not on the redacted text path**, where buffer-and-scan is both sufficient and required.
 Streaming exists only for the binary pass-through, where there is nothing to scan.
 Follow-up detail, not a blocker: set a max-buffer cap on the text path and, above it,
@@ -205,13 +205,13 @@ that when T4 is built.
 
 ## Open question 3 — Federation feasibility for SES
 
-> _Needs a real investigation before it's planned work._ (`bureau.md` §13.3, §10)
+> *Needs a real investigation before it's planned work.* (`bureau.md` §13.3, §10)
 
 **Verdict: zero-secret-at-rest federation (rung 1) is NOT cleanly achievable today —
 keep it a spike, not a milestone (T7). Rung 2 — trade the SES key for a signing/cert
 key — IS achievable now, and is a real improvement, but it is not the "fewer secrets"
-endgame.** This is `bureau.md`'s own warning cashed out: _clean in principle, fiddly
-in practice._ Investigation done (light web research, AWS + Cloudflare docs).
+endgame.** This is `bureau.md`'s own warning cashed out: *clean in principle, fiddly
+in practice.* Investigation done (light web research, AWS + Cloudflare docs).
 
 **Everything on the AWS side is ready.** You can register an arbitrary external OIDC
 provider as an IAM OIDC identity provider (AWS trusts JWTs from its published `jwks_uri`
@@ -226,7 +226,7 @@ sign as today with the temporary key and add `X-Amz-Security-Token` — a header
 has **no first-class, runtime-issued, AWS-federatable workload identity** — there is no
 managed per-Worker OIDC issuer + JWKS the way GitHub Actions mints tokens for
 `AssumeRoleWithWebIdentity`. Native OIDC is still an open feature request even for the
-_deploy_ path (`workers-sdk` discussion #11434, open). To feed step 1, the Worker would
+*deploy* path (`workers-sdk` discussion #11434, open). To feed step 1, the Worker would
 have to **self-sign the JWT and host its own JWKS** — which means holding a signing
 private key (this is exactly what community projects like `cf-access-workers-oidc` do,
 key in KV). That signing key **is itself a secret at rest.** IAM Roles Anywhere is no
@@ -237,30 +237,29 @@ not expose the key for the app-layer signature Roles Anywhere needs.
 
 Mapped to the §10 ladder:
 
-| Rung                                                | For SES from Workers, today |                                                                                                                               |
-| --------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| **1** — no secret at rest                           | ✗ **not reachable**         | needs Cloudflare to ship a native per-Worker OIDC issuer + JWKS                                                               |
-| **2** — trade for a signing/cert key                | ✓ reachable as planned work | self-issued JWT → `AssumeRoleWithWebIdentity` → 1-hour SES creds; smaller blast radius, short-lived, but still one stored key |
-| **3** — vault-stored `aws-sigv4` key + `sign_sigv4` | ✓ today's baseline (T5)     | the fallback the plan already assumes                                                                                         |
+| Rung | For SES from Workers, today | |
+|---|---|---|
+| **1** — no secret at rest | ✗ **not reachable** | needs Cloudflare to ship a native per-Worker OIDC issuer + JWKS |
+| **2** — trade for a signing/cert key | ✓ reachable as planned work | self-issued JWT → `AssumeRoleWithWebIdentity` → 1-hour SES creds; smaller blast radius, short-lived, but still one stored key |
+| **3** — vault-stored `aws-sigv4` key + `sign_sigv4` | ✓ today's baseline (T5) | the fallback the plan already assumes |
 
 **Recommendation for the plan:**
-
 1. **Do not promise rung-1 federation.** Keep T7 a **time-boxed spike**, not scheduled
-   work — its "done when" is _either_ a Worker sending through SES with no long-lived
-   AWS secret, _or_ a written record that Cloudflare can't yet issue the token. Both
+   work — its "done when" is *either* a Worker sending through SES with no long-lived
+   AWS secret, *or* a written record that Cloudflare can't yet issue the token. Both
    close the question.
 2. **Keep T5's `sign_sigv4` over a vault-stored `aws-sigv4` credential as the baseline**
    — that is what the Bureau plans for anyway, and it is unaffected by this verdict.
 3. If a security win is wanted before Cloudflare closes the gap, **rung 2 is the move**:
    self-issued OIDC → `AssumeRoleWithWebIdentity` → **STS session policy** (§5.2 rung 1
    enforcement — the intersection of role + per-call policy, AWS-enforced, minutes-long).
-   You still store one signing key, but the SES _capability_ becomes short-lived and
+   You still store one signing key, but the SES *capability* becomes short-lived and
    provider-narrowed. File this as the concrete rung-2 option; do not commit it blind.
 4. **Watch `workers-sdk` #11434 / the "JWT OIDC in Workers" request.** The day Cloudflare
    ships native Workers OIDC, T7 flips from spike to clean planned work — the AWS half is
    already done.
 
-**Does it need the user?** No decision is needed to _proceed_ — the recommendation is
+**Does it need the user?** No decision is needed to *proceed* — the recommendation is
 "keep the baseline, spike the rest," which changes nothing committed. Surface the verdict
 so the user knows rung 1 is a platform-gap away, not a design choice, and can weigh the
 rung-2 trade if they want short-lived SES creds sooner.

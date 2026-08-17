@@ -1,11 +1,4 @@
-import {
-  callJmap,
-  tookCreate,
-  tookDestroy,
-  tookUpdate,
-  ToolError,
-  type JmapSetResponse,
-} from "./jmapBridge.js";
+import { callJmap, tookCreate, tookDestroy, tookUpdate, ToolError, type JmapSetResponse } from "./jmapBridge.js";
 import type { ToolDef } from "./mcp.js";
 
 /**
@@ -158,8 +151,7 @@ const untrusted = <T extends Record<string, unknown>>(payload: T): T & { warning
 
 // ---- shared helpers ---------------------------------------------------
 
-const str = (v: unknown): string | undefined =>
-  typeof v === "string" && v.length > 0 ? v : undefined;
+const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
 
 function requireString(args: Record<string, unknown>, key: string): string {
   const v = args[key];
@@ -443,12 +435,10 @@ const READ_TOOLS: ToolDef[] = [
         accountId,
         ...(Object.keys(filter).length > 0 ? { filter } : {}),
       });
-      const got = await callJmap<{ list: Record<string, unknown>[] }>(
-        env,
-        principal,
-        "Mailbox/get",
-        { accountId, ids: query.ids },
-      );
+      const got = await callJmap<{ list: Record<string, unknown>[] }>(env, principal, "Mailbox/get", {
+        accountId,
+        ids: query.ids,
+      });
       return { accountId, mailboxes: got.list };
     },
   },
@@ -608,9 +598,7 @@ const TRIAGE_TOOLS: ToolDef[] = [
       const mailboxId = requireString(args, "mailboxId");
       const addresses = (v: unknown): Array<{ email: string }> | undefined =>
         Array.isArray(v)
-          ? v
-              .filter((a): a is string => typeof a === "string" && a.length > 0)
-              .map((email) => ({ email }))
+          ? v.filter((a): a is string => typeof a === "string" && a.length > 0).map((email) => ({ email }))
           : undefined;
 
       const keywords: Record<string, boolean> = { $draft: true };
@@ -662,8 +650,7 @@ const TRIAGE_TOOLS: ToolDef[] = [
         emailId: { type: "string" },
         confirm: {
           type: "boolean",
-          description:
-            "must be true; set it only after the human has confirmed permanent destruction",
+          description: "must be true; set it only after the human has confirmed permanent destruction",
         },
         ifInState: { type: "string" },
       },

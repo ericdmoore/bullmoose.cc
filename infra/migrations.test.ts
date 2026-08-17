@@ -22,10 +22,7 @@ import { MIGRATIONS } from "./migrations.mjs";
  */
 
 const ROOT = resolve(import.meta.dirname, "..");
-const SCHEMAS = [
-  "packages/mailstore/sql/data-plane.sql",
-  "packages/mailstore/sql/control-plane.sql",
-];
+const SCHEMAS = ["packages/mailstore/sql/data-plane.sql", "packages/mailstore/sql/control-plane.sql"];
 
 /** A fresh database with the current schema, the way bootstrap `schemas` builds it. */
 function freshDb(): DatabaseSync {
@@ -78,9 +75,7 @@ describe("infra/migrations — the DDL a schema re-run cannot perform", () => {
         expect(order, `${m.id} needs unknown ${need}`).toContain(need);
         // The runner applies in list order, so a dependency listed later would
         // fail at apply time rather than at review time.
-        expect(order.indexOf(need), `${m.id} must follow ${need}`).toBeLessThan(
-          order.indexOf(m.id),
-        );
+        expect(order.indexOf(need), `${m.id} must follow ${need}`).toBeLessThan(order.indexOf(m.id));
       }
     }
   });
@@ -97,9 +92,7 @@ describe("infra/migrations — the DDL a schema re-run cannot perform", () => {
         try {
           db.exec(sql);
         } catch (err) {
-          expect((err as Error).message, `${m.id}: ${sql.slice(0, 60)}`).toMatch(
-            /duplicate column name/i,
-          );
+          expect((err as Error).message, `${m.id}: ${sql.slice(0, 60)}`).toMatch(/duplicate column name/i);
         }
       }
       expect(checkPasses(db, m.check), `${m.id} after re-run`).toBe(true);

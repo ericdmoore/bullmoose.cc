@@ -1,53 +1,53 @@
-import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { EllipsisVerticalIcon } from "@heroicons/react/20/solid";
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import { EllipsisVerticalIcon } from '@heroicons/react/20/solid'
 
 const projects = [
   {
     id: 1,
-    name: "GraphQL API",
-    href: "#",
-    status: "Complete",
-    createdBy: "Leslie Alexander",
-    dueDate: "March 17, 2023",
-    dueDateTime: "2023-03-17T00:00Z",
+    name: 'GraphQL API',
+    href: '#',
+    status: 'Complete',
+    createdBy: 'Leslie Alexander',
+    dueDate: 'March 17, 2023',
+    dueDateTime: '2023-03-17T00:00Z',
   },
   {
     id: 2,
-    name: "New benefits plan",
-    href: "#",
-    status: "In progress",
-    createdBy: "Leslie Alexander",
-    dueDate: "May 5, 2023",
-    dueDateTime: "2023-05-05T00:00Z",
+    name: 'New benefits plan',
+    href: '#',
+    status: 'In progress',
+    createdBy: 'Leslie Alexander',
+    dueDate: 'May 5, 2023',
+    dueDateTime: '2023-05-05T00:00Z',
   },
   {
     id: 3,
-    name: "Onboarding emails",
-    href: "#",
-    status: "In progress",
-    createdBy: "Courtney Henry",
-    dueDate: "May 25, 2023",
-    dueDateTime: "2023-05-25T00:00Z",
+    name: 'Onboarding emails',
+    href: '#',
+    status: 'In progress',
+    createdBy: 'Courtney Henry',
+    dueDate: 'May 25, 2023',
+    dueDateTime: '2023-05-25T00:00Z',
   },
   {
     id: 4,
-    name: "iOS app",
-    href: "#",
-    status: "In progress",
-    createdBy: "Leonard Krasner",
-    dueDate: "June 7, 2023",
-    dueDateTime: "2023-06-07T00:00Z",
+    name: 'iOS app',
+    href: '#',
+    status: 'In progress',
+    createdBy: 'Leonard Krasner',
+    dueDate: 'June 7, 2023',
+    dueDateTime: '2023-06-07T00:00Z',
   },
   {
     id: 5,
-    name: "Marketing site redesign",
-    href: "#",
-    status: "Archived",
-    createdBy: "Courtney Henry",
-    dueDate: "June 10, 2023",
-    dueDateTime: "2023-06-10T00:00Z",
+    name: 'Marketing site redesign',
+    href: '#',
+    status: 'Archived',
+    createdBy: 'Courtney Henry',
+    dueDate: 'June 10, 2023',
+    dueDateTime: '2023-06-10T00:00Z',
   },
-];
+]
 
 export default function Example() {
   return (
@@ -56,20 +56,18 @@ export default function Example() {
         <li key={project.id} className="flex items-center justify-between gap-x-6 py-5">
           <div className="min-w-0">
             <div className="flex items-start gap-x-3">
-              <p className="text-sm/6 font-semibold text-gray-900 dark:text-white">
-                {project.name}
-              </p>
-              {project.status === "In progress" ? (
+              <p className="text-sm/6 font-semibold text-gray-900 dark:text-white">{project.name}</p>
+              {project.status === 'In progress' ? (
                 <p className="mt-0.5 rounded-md bg-gray-50 px-1.5 py-0.5 text-xs font-medium text-gray-600 inset-ring inset-ring-gray-500/10 dark:bg-gray-400/10 dark:text-gray-400 dark:inset-ring-gray-400/20">
                   {project.status}
                 </p>
               ) : null}
-              {project.status === "Complete" ? (
+              {project.status === 'Complete' ? (
                 <p className="mt-0.5 rounded-md bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-700 inset-ring inset-ring-green-600/20 dark:bg-green-400/10 dark:text-green-400 dark:inset-ring-green-500/20">
                   {project.status}
                 </p>
               ) : null}
-              {project.status === "Archived" ? (
+              {project.status === 'Archived' ? (
                 <p className="mt-0.5 rounded-md bg-yellow-50 px-1.5 py-0.5 text-xs font-medium text-yellow-800 inset-ring inset-ring-yellow-600/20 dark:bg-yellow-400/10 dark:text-yellow-500 dark:inset-ring-yellow-400/20">
                   {project.status}
                 </p>
@@ -132,5 +130,5 @@ export default function Example() {
         </li>
       ))}
     </ul>
-  );
+  )
 }

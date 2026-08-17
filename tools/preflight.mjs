@@ -32,9 +32,7 @@ async function cf(path) {
   return { status: res.status, ...body };
 }
 
-console.log(
-  `pre-flight for ${DOMAIN} (zone ${ZONE.slice(0, 8)}…, account ${ACCOUNT.slice(0, 8)}…)\n`,
-);
+console.log(`pre-flight for ${DOMAIN} (zone ${ZONE.slice(0, 8)}…, account ${ACCOUNT.slice(0, 8)}…)\n`);
 
 // 1. Token is alive at all
 {
@@ -52,8 +50,7 @@ console.log(
   if (!r.success) fail(`zone lookup failed (${r.status}) — token missing Zone:Read?`);
   else {
     const z = r.result;
-    if (z.name !== DOMAIN)
-      fail(`zone is ${z.name}, expected ${DOMAIN} (set DOMAIN= if intentional)`);
+    if (z.name !== DOMAIN) fail(`zone is ${z.name}, expected ${DOMAIN} (set DOMAIN= if intentional)`);
     else ok(`zone ${z.name} found`);
     if (z.status === "active") ok(`zone status: active`);
     else fail(`zone status: ${z.status} — must be active before Email Routing works`);
@@ -94,8 +91,7 @@ console.log(
 // 5. workers.dev subdomain (first-light URLs live under it)
 {
   const r = await cf(`/accounts/${ACCOUNT}/workers/subdomain`);
-  if (!r.success)
-    skip(`workers subdomain read (${r.status}) — token missing Workers Scripts:Read?`);
+  if (!r.success) skip(`workers subdomain read (${r.status}) — token missing Workers Scripts:Read?`);
   else if (r.result?.subdomain) ok(`workers.dev subdomain: ${r.result.subdomain}.workers.dev`);
   else warn(`no workers.dev subdomain claimed — claim one in the dash before deploying`);
 }
@@ -108,8 +104,7 @@ console.log(
     const names = new Set((r.result ?? []).map((s) => s.id));
     const ours = ["bullmoose-jmap", "bullmoose-ingest", "bullmoose-submit", "bullmoose-provision"];
     const clash = ours.filter((n) => names.has(n));
-    if (clash.length > 0)
-      warn(`workers already deployed: ${clash.join(", ")} (re-deploy will overwrite)`);
+    if (clash.length > 0) warn(`workers already deployed: ${clash.join(", ")} (re-deploy will overwrite)`);
     else ok(`no existing bullmoose-* workers (${names.size} other scripts on account)`);
   }
 }
@@ -118,8 +113,7 @@ console.log(
   if (!r.success) skip(`D1 list (${r.status}) — token missing D1:Read?`);
   else {
     const hit = (r.result ?? []).find((d) => d.name === "bullmoose-mail-shard0");
-    if (hit)
-      warn(`D1 'bullmoose-mail-shard0' already exists (id ${hit.uuid}) — reuse it, don't recreate`);
+    if (hit) warn(`D1 'bullmoose-mail-shard0' already exists (id ${hit.uuid}) — reuse it, don't recreate`);
     else ok(`D1 name 'bullmoose-mail-shard0' is free`);
   }
 }

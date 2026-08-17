@@ -65,10 +65,7 @@ export function toEngineMessage(msg: BoundaryMessage): EngineMessage {
   };
 }
 
-export function sieveVerdict(
-  rules: SieveRule[],
-  msg: BoundaryMessage,
-): { verdict: "PASS" | "FAIL"; ruleId?: string } {
+export function sieveVerdict(rules: SieveRule[], msg: BoundaryMessage): { verdict: "PASS" | "FAIL"; ruleId?: string } {
   return engineSieveVerdict(rules, toEngineMessage(msg));
 }
 

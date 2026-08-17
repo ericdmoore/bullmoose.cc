@@ -103,10 +103,7 @@ describe("the write-only surface authenticates", () => {
   });
 
   it("401s without a valid bearer, 403s without the vault scope", async () => {
-    const anon = await handleVault(
-      req("GET", "/vault/credentials", undefined, "bm_deadbeefdead_x"),
-      world().env,
-    );
+    const anon = await handleVault(req("GET", "/vault/credentials", undefined, "bm_deadbeefdead_x"), world().env);
     expect(anon.status).toBe(401);
     const mailOnly = world(["mail"]);
     const denied = await handleVault(req("GET", "/vault/credentials"), mailOnly.env);
@@ -262,9 +259,7 @@ describe("mint-time validation refuses the deferred and the malformed", () => {
 
   it("rejects a non-http allow and a header with no {} slot", async () => {
     const { env } = world();
-    expect(
-      (await put(env, { name: "a", kind: "api-key", secret: "s", allow: "ftp://host" })).status,
-    ).toBe(400);
+    expect((await put(env, { name: "a", kind: "api-key", secret: "s", allow: "ftp://host" })).status).toBe(400);
     expect(
       (
         await put(env, {
@@ -341,16 +336,12 @@ describe("the agent worker genuinely cannot unseal", () => {
     // The ciphertext is right there in a table the agent worker CAN read. What
     // it lacks is the key, and that is the whole difference between isolation
     // and a naming convention.
-    const row = db.query<{ enc_json: string }>(
-      `SELECT enc_json FROM vault_credentials WHERE name = 'stripe'`,
-    )[0]!;
+    const row = db.query<{ enc_json: string }>(`SELECT enc_json FROM vault_credentials WHERE name = 'stripe'`)[0]!;
     expect(row.enc_json).not.toContain("bm-canary-DO-NOT-USE-vault-9f3d1c");
     expect(Object.keys(env)).not.toContain("VAULT_MASTER_KEY");
     // ...and with the key, in the Bureau, it opens. The value is recoverable —
     // just not here.
-    expect((await openCredential(bureauEnv, PRINCIPAL, "stripe"))?.secret).toBe(
-      "bm-canary-DO-NOT-USE-vault-9f3d1c",
-    );
+    expect((await openCredential(bureauEnv, PRINCIPAL, "stripe"))?.secret).toBe("bm-canary-DO-NOT-USE-vault-9f3d1c");
   });
 
   it("fails closed when the Bureau is unreachable rather than sealing locally", async () => {
@@ -388,10 +379,7 @@ describe("rotate re-seals under the same name (bureau.md §5)", () => {
       "SELECT updated_at, meta_json FROM vault_credentials WHERE name = 'rotate-me'",
     )[0]!;
 
-    const res = await handleVault(
-      req("POST", "/vault/credentials/rotate-me/rotate", { secret: "NEW" }),
-      env,
-    );
+    const res = await handleVault(req("POST", "/vault/credentials/rotate-me/rotate", { secret: "NEW" }), env);
     const body = (await res.json()) as { ok: boolean; rotated: boolean; kind: string };
     expect(res.status).toBe(200);
     expect(body).toMatchObject({ ok: true, rotated: true, kind: "api-key" });
@@ -415,10 +403,7 @@ describe("rotate re-seals under the same name (bureau.md §5)", () => {
 
   it("404s rotating a credential that does not exist", async () => {
     const { env } = world();
-    const res = await handleVault(
-      req("POST", "/vault/credentials/ghost/rotate", { secret: "x" }),
-      env,
-    );
+    const res = await handleVault(req("POST", "/vault/credentials/ghost/rotate", { secret: "x" }), env);
     expect(res.status).toBe(404);
   });
 

@@ -15,10 +15,8 @@ if (hasSqlite) {
 } else {
   const { spawnSync } = await import("node:child_process");
   const { fileURLToPath } = await import("node:url");
-  const res = spawnSync(
-    process.execPath,
-    ["--experimental-sqlite", fileURLToPath(entry), ...process.argv.slice(2)],
-    { stdio: "inherit" },
-  );
+  const res = spawnSync(process.execPath, ["--experimental-sqlite", fileURLToPath(entry), ...process.argv.slice(2)], {
+    stdio: "inherit",
+  });
   process.exit(res.status ?? 1);
 }

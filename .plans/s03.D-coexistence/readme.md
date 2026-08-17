@@ -21,7 +21,7 @@ human²; none of them solved human+agent.
 - **Approval queue** — drafted replies, unsubscribes, events, threads, contacts, file
   organization, **and permission requests**, in one surface.
 - **Ownership & collision** — "Allen is drafting", "handled by Emily, awaiting you".
-- **Today / Tomorrow brief** — one server-computed artifact, rendered natively _and_
+- **Today / Tomorrow brief** — one server-computed artifact, rendered natively *and*
   mailed by Allen for clients that can't show it.
 - **Promote-repetition-to-policy** prompts.
 
@@ -30,11 +30,11 @@ human²; none of them solved human+agent.
 **Promote repetition to policy** — the arc's through-line, and the mechanism by which
 every queue empties itself:
 
-| Repetition                       | Promoted to                                   |
-| -------------------------------- | --------------------------------------------- |
+| Repetition | Promoted to |
+|---|---|
 | approve the same unsubscribe 20× | raise the autonomy dial for that action class |
-| approve the same A2A request 3×  | write an `autoGrant` template                 |
-| bulk-apply the same filter       | create an ingest rule                         |
+| approve the same A2A request 3× | write an `autoGrant` template |
+| bulk-apply the same filter | create an ingest rule |
 
 **Graduation eligibility = reversibility.** Tier 1 (reversible) may graduate; tier 2
 (retractable) graduates only into a visible hold tray; **tier 3 (irreversible) never
@@ -59,7 +59,7 @@ Nothing. s03.E is independent of this slice (it depends on s04).
 1. An agent run produces a `pending` proposal carrying rationale **and** evidence.
 2. A day's output (~40 items) is dispatchable in a couple of gestures.
 3. A tier-2 approval lands in a hold tray and can still be yanked before commit.
-4. A tier-3 proposal cannot be auto-committed — by policy _or_ by bulk action.
+4. A tier-3 proposal cannot be auto-committed — by policy *or* by bulk action.
 5. `notNow` records as a snooze and does **not** decrement the agent's autonomy signal.
 6. The brief's UI and email renderings come from one artifact and agree.
 

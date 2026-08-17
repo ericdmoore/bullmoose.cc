@@ -27,13 +27,7 @@
 // because "she had a grant then, though not now" is the normal case rather than
 // an anomaly.
 
-import {
-  ACCESS_LOG_CAVEATS,
-  NOT_CAPTURED,
-  POINT_IN_TIME_NOTE,
-  PROVENANCE_CAVEATS,
-  emptyMeans,
-} from "./caveats";
+import { ACCESS_LOG_CAVEATS, NOT_CAPTURED, POINT_IN_TIME_NOTE, PROVENANCE_CAVEATS, emptyMeans } from "./caveats";
 import { effectiveScopes } from "./scopes";
 import type {
   ConsoleAuditRow,
@@ -54,10 +48,7 @@ export function coversResource(grant: ConsoleGrant, resource: ConsoleResource): 
 }
 
 /** Was this grant in force at `at`? Tombstone first, then expiry, then birth. */
-export function liveAt(
-  grant: Pick<ConsoleGrant, "createdAt" | "expiresAt" | "revokedAt">,
-  at: number,
-): boolean {
+export function liveAt(grant: Pick<ConsoleGrant, "createdAt" | "expiresAt" | "revokedAt">, at: number): boolean {
   if (grant.createdAt > at) return false;
   if (grant.revokedAt !== null && grant.revokedAt <= at) return false;
   if (grant.expiresAt !== null && grant.expiresAt <= at) return false;
@@ -226,12 +217,7 @@ export interface Finding {
  * between the two sources, rather than two tables and an exercise for the
  * reader.
  */
-export function reconcile(
-  dossier: ResourceDossier,
-  at: number,
-  did: DidEntry[],
-  could: CouldEntry[],
-): Finding[] {
+export function reconcile(dossier: ResourceDossier, at: number, did: DidEntry[], could: CouldEntry[]): Finding[] {
   const findings: Finding[] = [];
   const actedActors = new Set(did.map((d) => d.actor).filter((a): a is string => a !== null));
 
@@ -271,8 +257,7 @@ export function reconcile(
       });
       continue;
     }
-    const isRefusal =
-      d.source === "grant-audit" && (d.raw as ConsoleAuditRow | undefined)?.grantId === "none";
+    const isRefusal = d.source === "grant-audit" && (d.raw as ConsoleAuditRow | undefined)?.grantId === "none";
     if (isRefusal) {
       findings.push({
         kind: "refused-attempt",
@@ -390,9 +375,7 @@ function gapSummary(n: {
   refused: number;
   uncaptured: number;
 }): string {
-  const parts: string[] = [
-    `${n.could} could have; ${n.did} recorded ${n.did === 1 ? "action" : "actions"}.`,
-  ];
+  const parts: string[] = [`${n.could} could have; ${n.did} recorded ${n.did === 1 ? "action" : "actions"}.`];
   if (n.unexplained > 0) {
     parts.push(
       `${n.unexplained} acted with no covering grant — the gap that means something is broken, ` +
@@ -400,22 +383,16 @@ function gapSummary(n: {
     );
   }
   if (n.refused > 0) {
-    parts.push(
-      `${n.refused} refused ${n.refused === 1 ? "attempt" : "attempts"} with nothing authorizing them.`,
-    );
+    parts.push(`${n.refused} refused ${n.refused === 1 ? "attempt" : "attempts"} with nothing authorizing them.`);
   }
   if (n.over > 0) {
     parts.push(
-      `${n.over} held authorization with nothing recorded — over-permissioning to review, not ` +
-        "proof of inaction.",
+      `${n.over} held authorization with nothing recorded — over-permissioning to review, not ` + "proof of inaction.",
     );
   }
   if (n.uncaptured > 0) {
-    parts.push(
-      `${n.uncaptured} ${n.uncaptured === 1 ? "write" : "writes"} with no writer captured (common/033).`,
-    );
+    parts.push(`${n.uncaptured} ${n.uncaptured === 1 ? "write" : "writes"} with no writer captured (common/033).`);
   }
-  if (parts.length === 1)
-    parts.push("Every recorded action is explained by a grant in force at the time.");
+  if (parts.length === 1) parts.push("Every recorded action is explained by a grant in force at the time.");
   return parts.join(" ");
 }

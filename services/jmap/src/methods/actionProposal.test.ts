@@ -370,9 +370,7 @@ describe("a tier-3 approve requires a human and is refused to an agent token", (
     expect(res.updated.inv_3).toBeNull();
 
     // The egress happened, once, to the intended recipient.
-    expect(h.w.submit.calls).toEqual([
-      { mailFrom: "eric@bullmoose.cc", rcptTo: ["outside@example.com"] },
-    ]);
+    expect(h.w.submit.calls).toEqual([{ mailFrom: "eric@bullmoose.cc", rcptTo: ["outside@example.com"] }]);
     const prop = h.w.db.query<{ status: string }>(
       "SELECT status FROM agent_proposals WHERE account_id = ? AND id = ?",
       ACCOUNT,
@@ -482,9 +480,7 @@ describe("rejecting captures the no-thanks signal", () => {
       update: { inv_retired: { status: "rejected", decision: { reason: "notNow" } } },
     });
     expect(res.notUpdated.inv_retired!.type).toBe("invalidProperties");
-    expect(res.notUpdated.inv_retired!.description).toBe(
-      "decision.reason must be wrongContent | wrongAction | unsafe",
-    );
+    expect(res.notUpdated.inv_retired!.description).toBe("decision.reason must be wrongContent | wrongAction | unsafe");
     expect(res.notUpdated.inv_retired!.description).not.toContain("notNow");
     // Refused means refused: undecided, nothing recorded.
     expect(
@@ -536,9 +532,7 @@ describe("rejecting captures the no-thanks signal", () => {
 describe("ActionProposal/set has no create", () => {
   it("refuses create — proposals are produced by the agent worker", async () => {
     const h = harness(["mail"]);
-    await expect(h.set({ create: { c: { kind: "reply-draft", tier: 2 } } })).rejects.toThrow(
-      /create/i,
-    );
+    await expect(h.set({ create: { c: { kind: "reply-draft", tier: 2 } } })).rejects.toThrow(/create/i);
   });
 
   it("cannot re-decide an already-decided proposal", async () => {
@@ -836,9 +830,7 @@ describe("approving a recipient grant-request APPLIES the contact write", () => 
 
     const res = await h.set({ update: { inv_cj: { status: "approved" } } });
     expect(res.notUpdated).toEqual({});
-    expect(
-      h.w.db.query<{ id: string }>("SELECT id FROM contact_cards WHERE account_id = ?", ACCOUNT),
-    ).toHaveLength(1);
+    expect(h.w.db.query<{ id: string }>("SELECT id FROM contact_cards WHERE account_id = ?", ACCOUNT)).toHaveLength(1);
   });
 
   it("refuses a widening into a book this account does not have", async () => {
@@ -890,9 +882,7 @@ describe("the collection lives behind urn:bullmoose:agent", () => {
           accountId: "a_shared",
           tenantId: TENANT,
           name: "Shared",
-          granted: [
-            { grantId: "g1", scopes: ["read"], collection: "AddressBook", collectionId: "ab_1" },
-          ],
+          granted: [{ grantId: "g1", scopes: ["read"], collection: "AddressBook", collectionId: "ab_1" }],
         },
       ],
     };
@@ -1024,12 +1014,7 @@ const HELD_PAYLOAD = {
  *  unlike the /set tests the account row itself must exist. The binding is
  *  governed to reach exactly the held payload's recipient — the sweep egresses,
  *  so it sits behind the outbound bound like every other send. */
-function seedHeld(
-  h: ReturnType<typeof harness>,
-  id: string,
-  holdUntil: number,
-  by = "eric@login.example",
-) {
+function seedHeld(h: ReturnType<typeof harness>, id: string, holdUntil: number, by = "eric@login.example") {
   h.w.db.seedAccount({
     accountId: ACCOUNT,
     tenantId: TENANT,
@@ -1051,9 +1036,7 @@ describe("s03.D T2 — yank: the retraction the hold window exists for", () => {
     seedHeld(h, "inv_y1", Date.now() + 60_000);
     const res = await h.set({ update: { inv_y1: { status: "yanked" } } });
     expect(res.updated).toHaveProperty("inv_y1");
-    const row = h.w.db.query<{ status: string }>(
-      `SELECT status FROM agent_proposals WHERE id = 'inv_y1'`,
-    )[0]!;
+    const row = h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_y1'`)[0]!;
     expect(row.status).toBe("yanked");
     expect(h.w.submit.calls).toEqual([]);
   });
@@ -1074,10 +1057,9 @@ describe("s03.D T2 — yank: the retraction the hold window exists for", () => {
     seedHeld(h, "inv_y3", Date.now() - 1_000);
     const res = await h.set({ update: { inv_y3: { status: "yanked" } } });
     expect(res.notUpdated.inv_y3?.description).toMatch(/too late to yank/);
-    expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_y3'`)[0]!
-        .status,
-    ).toBe("held");
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_y3'`)[0]!.status).toBe(
+      "held",
+    );
   });
 
   it("refuses to yank a pending proposal — that is a decline, not a yank", async () => {
@@ -1103,17 +1085,13 @@ describe("s03.D T2 — the commit sweep: Approve finally means send", () => {
     expect(failed).toEqual([]);
     expect(committed).toEqual(["inv_c1"]);
     // The egress actually happened.
-    expect(h.w.submit.calls).toEqual([
-      { mailFrom: "emily@bullmoose.cc", rcptTo: ["outside@example.com"] },
-    ]);
+    expect(h.w.submit.calls).toEqual([{ mailFrom: "emily@bullmoose.cc", rcptTo: ["outside@example.com"] }]);
     // The Sent copy exists and its provenance names the APPROVER — the write
     // belongs to the human whose approval it executes, not to the sweep.
     const email = h.w.db.query<{
       last_writer_principal: string | null;
       last_writer_binding: string | null;
-    }>(
-      `SELECT last_writer_principal, last_writer_binding FROM emails WHERE account_id = '${ACCOUNT}'`,
-    )[0]!;
+    }>(`SELECT last_writer_principal, last_writer_binding FROM emails WHERE account_id = '${ACCOUNT}'`)[0]!;
     expect(email.last_writer_principal).toBe("approver@login.example");
     expect(email.last_writer_binding).toBe("emily");
     // Status flipped with the commit stamped into the decision.
@@ -1154,10 +1132,9 @@ describe("s03.D T2 — the commit sweep: Approve finally means send", () => {
     expect(committed).toEqual([]);
     expect(failed).toHaveLength(1);
     expect(failed[0]!.error).toMatch(/submit relay failed/);
-    expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_c4'`)[0]!
-        .status,
-    ).toBe("held");
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_c4'`)[0]!.status).toBe(
+      "held",
+    );
   });
 });
 
@@ -1189,10 +1166,7 @@ describe("ATTACK: a book narrowed after the draft still bites at approve", () =>
 
   it("narrowing between draft and approve refuses the tier-3 apply, and nothing egresses", async () => {
     const h = harness(["mail"]);
-    seedProposal(
-      h.w,
-      tier3({ to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" }),
-    );
+    seedProposal(h.w, tier3({ to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" }));
     governBinding(h.w, [OUT]);
 
     // …the human narrows the book while the proposal sits in the queue.
@@ -1207,20 +1181,16 @@ describe("ATTACK: a book narrowed after the draft still bites at approve", () =>
     // Nothing left, and the row is recoverable rather than dropped: still
     // pending, still decidable once the book is right.
     expect(h.w.submit.calls).toEqual([]);
-    expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_nb'`)[0]!
-        .status,
-    ).toBe("pending");
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_nb'`)[0]!.status).toBe(
+      "pending",
+    );
     // No Sent copy either — the refusal is BEFORE the relay, not after it.
     expect(h.w.db.count("emails")).toBe(0);
   });
 
   it("re-widening the book lets the very same queued proposal through", async () => {
     const h = harness(["mail"]);
-    seedProposal(
-      h.w,
-      tier3({ to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" }),
-    );
+    seedProposal(h.w, tier3({ to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" }));
     governBinding(h.w, [OUT]);
     narrowBook(h.w);
     await h.set({ update: { inv_nb: { status: "approved" } } });
@@ -1251,10 +1221,9 @@ describe("ATTACK: a book narrowed after APPROVE still bites at the hold-tray com
     expect(h.w.submit.calls).toEqual([]);
     // Held, not lost: `commitHeld.ts` logs the reason loudly and the row is
     // retried next sweep — it sends the moment the book allows it again.
-    expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_nh'`)[0]!
-        .status,
-    ).toBe("held");
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_nh'`)[0]!.status).toBe(
+      "held",
+    );
   });
 
   it("an in-book held proposal still commits — the guard refuses, it does not block", async () => {
@@ -1302,9 +1271,7 @@ describe("ATTACK: editedPayload cannot edit its way past the bound", () => {
     // The agent drafted to `outside@`; the envelope went to `elsewhere@`. The
     // approver, not the agent, chose the recipient — which is exactly why the
     // draft-time check could never have been enough.
-    expect(h.w.submit.calls).toEqual([
-      { mailFrom: "emily@bullmoose.cc", rcptTo: ["elsewhere@example.com"] },
-    ]);
+    expect(h.w.submit.calls).toEqual([{ mailFrom: "emily@bullmoose.cc", rcptTo: ["elsewhere@example.com"] }]);
     // And the agent's original is retained beside the edit, unrewritten.
     const prop = h.w.db.query<{ payload_json: string }>(
       `SELECT payload_json FROM agent_proposals WHERE id = 'inv_ed'`,
@@ -1322,14 +1289,11 @@ describe("ATTACK: editedPayload cannot edit its way past the bound", () => {
     });
     expect(res.updated).toEqual({});
     expect(res.notUpdated.inv_ed!.type).toBe("forbidden");
-    expect(res.notUpdated.inv_ed!.description).toMatch(
-      /not in the governing book: attacker@evil\.test/,
-    );
+    expect(res.notUpdated.inv_ed!.description).toMatch(/not in the governing book: attacker@evil\.test/);
     expect(h.w.submit.calls).toEqual([]);
-    expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_ed'`)[0]!
-        .status,
-    ).toBe("pending");
+    expect(h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_ed'`)[0]!.status).toBe(
+      "pending",
+    );
   });
 
   it("REFUSES an edited recipient at the hold-tray commit too — tier 2 gets the same answer", async () => {

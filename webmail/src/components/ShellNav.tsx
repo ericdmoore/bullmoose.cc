@@ -81,14 +81,7 @@ const ICONS: Record<SectionId, string> = {
 
 function Icon({ id, className }: { id: SectionId; className: string }) {
   return (
-    <svg
-      class={className}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke-width={1.5}
-      stroke="currentColor"
-      aria-hidden="true"
-    >
+    <svg class={className} fill="none" viewBox="0 0 24 24" stroke-width={1.5} stroke="currentColor" aria-hidden="true">
       <path stroke-linecap="round" stroke-linejoin="round" d={ICONS[id]} />
     </svg>
   );
@@ -134,8 +127,7 @@ function NavList({
         // vertical rhythm instead of drifting apart. Only the horizontal
         // alignment differs, because a left-aligned icon in a narrow rail
         // reads as broken rather than as deliberate.
-        const shape =
-          "flex items-center rounded-md p-2 " + (compact ? "justify-center" : "gap-x-3");
+        const shape = "flex items-center rounded-md p-2 " + (compact ? "justify-center" : "gap-x-3");
 
         // A planned section is never a link and never a 404 — it renders
         // disabled WITH its reason, because a greyed-out word with no
@@ -186,9 +178,7 @@ function NavList({
               class={
                 shape +
                 " text-sm/6 font-semibold " +
-                (current
-                  ? "bg-gray-800 text-white"
-                  : "text-gray-400 hover:bg-gray-800 hover:text-white")
+                (current ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white")
               }
             >
               <Icon id={s.id} className="size-6 shrink-0" />
@@ -205,10 +195,7 @@ function NavList({
  *  covers it and the 13KB of paths stay out of every page's HTML. */
 function Brand({ compact }: { compact?: boolean }) {
   return (
-    <a
-      href="/"
-      class={"flex h-16 shrink-0 items-center gap-x-2 " + (compact ? "justify-center" : "")}
-    >
+    <a href="/" class={"flex h-16 shrink-0 items-center gap-x-2 " + (compact ? "justify-center" : "")}>
       <img src="/antlerO.svg" alt="bullmoose" class="size-8" />
       {!compact && <span class="font-semibold tracking-tight text-white">bullmoose</span>}
     </a>
@@ -356,11 +343,7 @@ export default function ShellNav({ section, email }: Props) {
         <div class="flex h-full flex-col gap-y-5 overflow-y-auto px-4 pb-4">
           <div class="flex h-16 shrink-0 items-center justify-between">
             <Brand />
-            <button
-              type="button"
-              onClick={() => setDrawerOpen(false)}
-              class="p-2 text-gray-400 hover:text-white"
-            >
+            <button type="button" onClick={() => setDrawerOpen(false)} class="p-2 text-gray-400 hover:text-white">
               <span class="sr-only">Close sections</span>
               <svg
                 class="size-6"
@@ -384,19 +367,13 @@ export default function ShellNav({ section, email }: Props) {
       <div class={"hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:flex-col " + size.rail}>
         <div
           class={
-            "relative flex grow flex-col gap-y-5 overflow-y-auto bg-gray-900 pb-4 " +
-            (collapsed ? "px-3" : "px-6")
+            "relative flex grow flex-col gap-y-5 overflow-y-auto bg-gray-900 pb-4 " + (collapsed ? "px-3" : "px-6")
           }
         >
           {/* Brand and the collapse toggle share a row, so the toggle is
               always in view — at the foot of a flex-1 nav it sat below the
               fold on a short viewport, which read as missing. Icon only. */}
-          <div
-            class={
-              "flex h-16 shrink-0 items-center " +
-              (collapsed ? "justify-center" : "justify-between")
-            }
-          >
+          <div class={"flex h-16 shrink-0 items-center " + (collapsed ? "justify-center" : "justify-between")}>
             <Brand compact={collapsed} />
             {!collapsed && (
               <button
@@ -415,11 +392,7 @@ export default function ShellNav({ section, email }: Props) {
                   stroke="currentColor"
                   aria-hidden="true"
                 >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M15.75 19.5 8.25 12l7.5-7.5"
-                  />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
                 </svg>
               </button>
             )}
@@ -446,11 +419,7 @@ export default function ShellNav({ section, email }: Props) {
                 stroke="currentColor"
                 aria-hidden="true"
               >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M8.25 4.5l7.5 7.5-7.5 7.5"
-                />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>
             </button>
           )}
@@ -509,12 +478,7 @@ export default function ShellNav({ section, email }: Props) {
               </span>
               <span class="hidden lg:flex lg:items-center lg:gap-x-1">
                 {email ?? "Not signed in"}
-                <svg
-                  class="size-5 text-gray-400"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
+                <svg class="size-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path
                     fill-rule="evenodd"
                     d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
@@ -578,11 +542,7 @@ export default function ShellNav({ section, email }: Props) {
               stroke="currentColor"
               aria-hidden="true"
             >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
-              />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
             </svg>
           </button>
         </div>

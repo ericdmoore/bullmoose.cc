@@ -264,9 +264,7 @@ describe("bayes — corpus separation", () => {
       expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe("REJECT");
     }
     for (const m of HAM) {
-      expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe(
-        "CONTINUE_CLEAN",
-      );
+      expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe("CONTINUE_CLEAN");
     }
   });
 
@@ -294,11 +292,7 @@ describe("bayes — corpus separation", () => {
     // Balanced corpus (20/20): the prior is log(21/21)=0 and every unseen
     // token contributes log(1/22) − log(1/22) = 0. Without Laplace this is
     // log(0) − log(0) = NaN — the mutation this test exists to catch.
-    const stranger = bm(
-      "zork@qqfnord.example",
-      "Xylophone quandary",
-      "Grommet flange bezel widget sprocket.",
-    );
+    const stranger = bm("zork@qqfnord.example", "Xylophone quandary", "Grommet flange bezel widget sprocket.");
     const { score } = bayesClassify(state, stranger);
     expect(Number.isFinite(score)).toBe(true);
     expect(score).toBeCloseTo(0.5, 10);
@@ -446,9 +440,7 @@ describe("prunedTokens — the deterministic vocab cap", () => {
       expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe("REJECT");
     }
     for (const m of HAM) {
-      expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe(
-        "CONTINUE_CLEAN",
-      );
+      expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe("CONTINUE_CLEAN");
     }
   });
 });

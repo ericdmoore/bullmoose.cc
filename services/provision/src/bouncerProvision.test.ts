@@ -24,9 +24,7 @@ function harness(): Harness {
   const db = fakeD1();
   const kv = fakeKV();
   db.seed("tenants", [{ id: TENANT, name: "Family", status: "active", created_at: 1 }]);
-  db.seed("domains", [
-    { domain: DOMAIN, tenant_id: TENANT, status: "active", cf_zone_id: "z1", created_at: 1 },
-  ]);
+  db.seed("domains", [{ domain: DOMAIN, tenant_id: TENANT, status: "active", cf_zone_id: "z1", created_at: 1 }]);
   const env: Env = {
     DB: db,
     ROUTES: kv.ns,
@@ -128,20 +126,14 @@ describe("POST /bouncer", () => {
   it("is idempotent: a second call reports the existing binding, writes nothing new", async () => {
     const h = harness();
     await seedHousehold(h);
-    const first = (await (
-      await h.call("/bouncer", { tenantId: TENANT, domain: DOMAIN })
-    ).json()) as {
+    const first = (await (await h.call("/bouncer", { tenantId: TENANT, domain: DOMAIN })).json()) as {
       bindingId: string;
     };
     const res = await h.call("/bouncer", { tenantId: TENANT, domain: DOMAIN });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; created: boolean; bindingId: string };
     expect(body).toMatchObject({ ok: true, created: false, bindingId: first.bindingId });
-    expect(
-      h.db.query<{ n: number }>(
-        `SELECT COUNT(*) AS n FROM agent_bindings WHERE name = 'bouncer'`,
-      )[0]!.n,
-    ).toBe(1);
+    expect(h.db.query<{ n: number }>(`SELECT COUNT(*) AS n FROM agent_bindings WHERE name = 'bouncer'`)[0]!.n).toBe(1);
   });
 
   it("refuses a tenant with no human principals — an empty allowedSenders would gate nobody", async () => {

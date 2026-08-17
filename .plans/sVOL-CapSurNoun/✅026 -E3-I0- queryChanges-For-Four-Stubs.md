@@ -1,13 +1,13 @@
 # 026 -E3-I1- `queryChanges` for the four stubs
 
-|                |                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Kind**       | capability                                                                                                                                                                                                                                                                                                                                                                                                         |
-| **Effort**     | **E3** — a sync contract other code must respect, and probably a new table                                                                                                                                                                                                                                                                                                                                         |
-| **Impact**     | **I0** — neither factor holds. On completion this is a JMAP method with no surface emitting a JSON delta (the rubric's own example of _test_-verifiable), and `s03.C` `arch.md:57` names `queryChanges` without being blocked by it — the re-query fallback is mandatory regardless. Regraded from `I1` at review; the ledger now agrees. ⚠️ Low impact ≠ safe to ignore: see `readme.md` § _Where the rule fails_ |
-| **Owner**      | `sVOL`                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **Depends on** | `002` (shared fake-D1) if built — nothing blocks it today                                                                                                                                                                                                                                                                                                                                                          |
-| **Status**     | **✅ done** (closed 2026-08-14) — **it was already correct.** Every `queryChanges` throws `cannotCalculateChanges`, RFC 8620 §5.2's sanctioned answer. Nothing was built; the cell was covered by the conformant refusal.                                                                                                                                                                                          |
+| | |
+|---|---|
+| **Kind** | capability |
+| **Effort** | **E3** — a sync contract other code must respect, and probably a new table |
+| **Impact** | **I0** — neither factor holds. On completion this is a JMAP method with no surface emitting a JSON delta (the rubric's own example of *test*-verifiable), and `s03.C` `arch.md:57` names `queryChanges` without being blocked by it — the re-query fallback is mandatory regardless. Regraded from `I1` at review; the ledger now agrees. ⚠️ Low impact ≠ safe to ignore: see `readme.md` § *Where the rule fails* |
+| **Owner** | `sVOL` |
+| **Depends on** | `002` (shared fake-D1) if built — nothing blocks it today |
+| **Status** | **✅ done** (closed 2026-08-14) — **it was already correct.** Every `queryChanges` throws `cannotCalculateChanges`, RFC 8620 §5.2's sanctioned answer. Nothing was built; the cell was covered by the conformant refusal. |
 
 ## Cells covered
 
@@ -24,12 +24,12 @@ All four stubs are **deliberate and spec-conformant**. Each `Foo/query` advertis
 `cannotCalculateChanges` rather than `unknownMethod` — which is what RFC 8620 §5.6 asks
 for. Verified individually:
 
-| Method                       | stub                                         | advertised `canCalculateChanges: false` | comment  |
-| ---------------------------- | -------------------------------------------- | --------------------------------------- | -------- |
-| `Mailbox/queryChanges`       | `services/jmap/src/methods/mailbox.ts:93`    | `:84`                                   | `:91-92` |
-| `Email/queryChanges`         | `services/jmap/src/methods/email.ts:54`      | `:206`                                  | `:53`    |
-| `ContactCard/queryChanges`   | `services/jmap/src/methods/contacts.ts:559`  | `:551`                                  | `:558`   |
-| `CalendarEvent/queryChanges` | `services/jmap/src/methods/calendars.ts:392` | `:385`                                  | **none** |
+| Method | stub | advertised `canCalculateChanges: false` | comment |
+|---|---|---|---|
+| `Mailbox/queryChanges` | `services/jmap/src/methods/mailbox.ts:93` | `:84` | `:91-92` |
+| `Email/queryChanges` | `services/jmap/src/methods/email.ts:54` | `:206` | `:53` |
+| `ContactCard/queryChanges` | `services/jmap/src/methods/contacts.ts:559` | `:551` | `:558` |
+| `CalendarEvent/queryChanges` | `services/jmap/src/methods/calendars.ts:392` | `:385` | **none** |
 
 All four refs in the brief and in `_context.md:67-68` are correct. The only discrepancy is
 cosmetic: three carry an explanatory comment and `calendars.ts:392` does not, which is why
@@ -40,10 +40,10 @@ sees `canCalculateChanges: false` re-runs the query, and everything works.
 
 ## Why these grades
 
-**E3.** Not line count — semantics. To answer _"what entered and left this result set
-since state N"_ you must know the result set **at state N**. The changelog gives you the
+**E3.** Not line count — semantics. To answer *"what entered and left this result set
+since state N"* you must know the result set **at state N**. The changelog gives you the
 ids that changed (`services/jmap/src/methods/common.ts:69-104` → the AccountDO's
-`/changes`), but not whether each of those ids satisfied the filter _before_ the change.
+`/changes`), but not whether each of those ids satisfied the filter *before* the change.
 Two honest implementations, both E3:
 
 - **Store query-state snapshots.** A new table keyed by (account, query hash, state) →
@@ -54,17 +54,17 @@ Two honest implementations, both E3:
   must respect — E3 by the second clause of the anchor (`readme.md:72`), and tests
   mandatory.
 
-**Impact — the ledger says `I1`; I think both legs fail.** Argued in _Open questions_.
+**Impact — the ledger says `I1`; I think both legs fail.** Argued in *Open questions*.
 
 ## What it would unlock
 
 One named consumer, and it is already written down: `s03.C`'s architecture specifies the
-virtualized thread list as _"virtualized; `Email/query` + `queryChanges`"_
+virtualized thread list as *"virtualized; `Email/query` + `queryChanges`"*
 (`.plans/s03.C-webmail-floor/arch.md:57`). That plan is currently written against a method
 that always throws. Unit `022`'s contact and event lists would want the same thing.
 
 **But it is a soft unlock, and that is the crux of the deferral.** A client must implement
-the re-query fallback _anyway_, for reasons that have nothing to do with these stubs:
+the re-query fallback *anyway*, for reasons that have nothing to do with these stubs:
 
 - The AccountDO changelog is a bounded window — `LOG_WINDOW = 4096`
   (`packages/account-do/src/index.ts:39`) — and `/changes` returns **409
@@ -84,7 +84,7 @@ the re-query fallback _anyway_, for reasons that have nothing to do with these s
 3. **It has no human-visible surface and cannot cheaply be given one.** `readme.md:110`
    says to pair a capability with its cheapest human-visible surface. Here that surface is
    webmail, which does not exist — the pairing would make this `E4`. This is exactly the
-   case `readme.md:116-117` says _not_ to bundle.
+   case `readme.md:116-117` says *not* to bundle.
 4. **Correctness risk is asymmetric.** A wrong `queryChanges` produces a list view that
    silently drops or duplicates rows and is nearly impossible to reproduce. A missing one
    produces a re-query. The failure modes are not comparable.
@@ -93,7 +93,7 @@ the re-query fallback _anyway_, for reasons that have nothing to do with these s
 mailbox, and only then decide. If re-query is imperceptible — likely at personal scale —
 this unit stays deferred permanently, which is a fine outcome.
 
-## Done when _(if ever built)_
+## Done when *(if ever built)*
 
 1. `Email/query` advertises `canCalculateChanges: true` and `Email/queryChanges` returns
    correct `added`/`removed` for a filtered, sorted query across an arrival, a flag
@@ -113,7 +113,7 @@ this unit stays deferred permanently, which is a fine outcome.
   name at `:83-89`.
 - The changelog collapse rules (created→destroyed cancels, created→updated stays created)
   are already implemented in the DO at `packages/account-do/src/index.ts:291-299`. Query
-  deltas need the same collapse _plus_ filter membership, which is the part that isn't
+  deltas need the same collapse *plus* filter membership, which is the part that isn't
   there.
 - `CalendarEvent/query` supports only `inCalendar|uid|after|before|text|title` and sorts
   only on `start|updated|created` (`calendars.ts:344` and below). `ContactCard/query` is
@@ -126,22 +126,21 @@ this unit stays deferred permanently, which is a fine outcome.
 
 1. **⚠️ I think `I1` is wrong and the grade should be `I0`.** Apply the two factors
    (`readme.md:84-94`):
-   - _Human can verify?_ **No.** On completion this unit is a JMAP method with no surface.
+   - *Human can verify?* **No.** On completion this unit is a JMAP method with no surface.
      Its output is a JSON delta — the rubric's own example of test-verifiable rather than
      human-verifiable (`readme.md:96-97`), and `readme.md:93-94` forbids judging it
      hypothetically against a future webmail.
-   - _Unlocks other work?_ **Also no**, on the strict reading: `s03.C` names `queryChanges`
+   - *Unlocks other work?* **Also no**, on the strict reading: `s03.C` names `queryChanges`
      (`arch.md:57`) but is not blocked by it, because the re-query fallback is mandatory
-     anyway. It removes no _stated blocker_.
+     anyway. It removes no *stated blocker*.
 
    Neither leg holds ⇒ **`I0`**. If you accept the softer reading of "unlocks" it is
    `I2` — but `I1` is unreachable either way, since `I1` requires human-verifiability.
    **If accepted:** rename to `026 -E3-I0-` and update `_index.md:77`, the I0 note at
    `:173` (currently "1 | 027"), and the totals at `:171-173`. Left as filed per
    `readme.md:148-150`.
-
 2. **`E3` assumes the snapshot approach.** If the changelog-decidable-filters route turns
-   out to cover `Email/query`'s real usage with no new table, the _implementation_ could
+   out to cover `Email/query`'s real usage with no new table, the *implementation* could
    be E2-sized. It stays E3 because the sync contract is the expensive part, but a
    reviewer could reasonably push back.
 3. **I did not check what real clients do.** himalaya, Apple Mail, and Bulwark may never

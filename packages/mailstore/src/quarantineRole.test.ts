@@ -73,16 +73,7 @@ describe("the held mailbox is the registered role, under our name", () => {
     // The registry, verbatim (RFC 8621 §2 / IANA JMAP mailbox roles). Being IN
     // this list is the whole property: it is what makes a client's spam
     // handling apply to the mail we hold.
-    const IANA_ROLES = [
-      "inbox",
-      "archive",
-      "drafts",
-      "junk",
-      "sent",
-      "trash",
-      "flagged",
-      "important",
-    ];
+    const IANA_ROLES = ["inbox", "archive", "drafts", "junk", "sent", "trash", "flagged", "important"];
     expect(IANA_ROLES).toContain(QUARANTINE_ROLE);
     expect(QUARANTINE_ROLE).toBe("junk");
     // The past participle is load-bearing: "Quarantine" is a room you are
@@ -122,10 +113,7 @@ describe("the held mailbox is the registered role, under our name", () => {
     // those are the same events whatever the holding folder is called;
     // renaming it would churn history (a migration, every reader, every index)
     // for nothing. Asserted so a future tidy-up has to argue with a test.
-    const ddl = readFileSync(
-      fileURLToPath(new URL("packages/mailstore/sql/data-plane.sql", ROOT)),
-      "utf8",
-    );
+    const ddl = readFileSync(fileURLToPath(new URL("packages/mailstore/sql/data-plane.sql", ROOT)), "utf8");
     expect(ddl).toMatch(/CREATE TABLE IF NOT EXISTS quarantine_events/);
   });
 });

@@ -62,9 +62,7 @@ export function registerWatchMethods(registry: MethodRegistry<RequestContext>): 
     let rows: WatchRow[];
     if (ids === undefined) {
       rows = (
-        await ctx.env.DB.prepare(
-          `SELECT * FROM watches WHERE account_id = ? ORDER BY created_at DESC LIMIT 256`,
-        )
+        await ctx.env.DB.prepare(`SELECT * FROM watches WHERE account_id = ? ORDER BY created_at DESC LIMIT 256`)
           .bind(access.accountId)
           .all<WatchRow>()
       ).results;
@@ -194,8 +192,7 @@ export function registerWatchMethods(registry: MethodRegistry<RequestContext>): 
       if (patch.status !== "cancelled") {
         notUpdated[id] = {
           type: "invalidProperties",
-          description:
-            'the only update a client may make is status: "cancelled" — firing is the cron\'s job',
+          description: 'the only update a client may make is status: "cancelled" — firing is the cron\'s job',
         };
         continue;
       }

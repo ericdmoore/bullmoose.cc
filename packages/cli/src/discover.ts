@@ -65,10 +65,9 @@ function pickSrv(records: SrvRecord[]): SrvRecord | null {
 
 async function resolveSrvDoH(name: string): Promise<SrvRecord[] | null> {
   try {
-    const res = await fetch(
-      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=SRV`,
-      { headers: { accept: "application/dns-json" } },
-    );
+    const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=SRV`, {
+      headers: { accept: "application/dns-json" },
+    });
     if (!res.ok) return null;
     const data = (await res.json()) as { Answer?: Array<{ type: number; data: string }> };
     const records: SrvRecord[] = [];
@@ -91,9 +90,7 @@ async function resolveSrvDoH(name: string): Promise<SrvRecord[] | null> {
 }
 
 /** Probe the session resource: is there a JMAP server at this base? */
-export async function probeSession(
-  base: string,
-): Promise<{ ok: boolean; status: number; detail: string }> {
+export async function probeSession(base: string): Promise<{ ok: boolean; status: number; detail: string }> {
   try {
     const res = await fetch(`${base}/.well-known/jmap`, { redirect: "follow" });
     if (res.status === 401) {

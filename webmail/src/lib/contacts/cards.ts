@@ -76,14 +76,7 @@ export interface ContactSearchSpec {
  * links, online services, titles and any custom `vCardProps` — a card found
  * only by its street address will not be found at all.
  */
-export const CONTACT_TEXT_FIELDS = [
-  "name",
-  "nickname",
-  "organization",
-  "email",
-  "phone",
-  "note",
-] as const;
+export const CONTACT_TEXT_FIELDS = ["name", "nickname", "organization", "email", "phone", "note"] as const;
 
 /** The sentence the search box shows. Short, and true. */
 export const CONTACT_SEARCH_SCOPE_NOTE =
@@ -194,11 +187,7 @@ export interface LoadCardsOptions {
  * `packages/cli/src/contacts.ts:328-330`), so the ids from the query are the
  * ordering and the get is only a lookup.
  */
-export async function loadCards(
-  client: JmapClient,
-  accountId: string,
-  opts: LoadCardsOptions = {},
-): Promise<CardPage> {
+export async function loadCards(client: JmapClient, accountId: string, opts: LoadCardsOptions = {}): Promise<CardPage> {
   const queryArgs: Record<string, unknown> = {
     filter: opts.filter ?? null,
     sort: [{ property: opts.sort ?? "name", isAscending: opts.isAscending !== false }],
@@ -207,13 +196,9 @@ export async function loadCards(
   };
   if (opts.calculateTotal) queryArgs.calculateTotal = true;
 
-  const { query, get } = await client.queryThenGet(
-    accountId,
-    "ContactCard/query",
-    queryArgs,
-    "ContactCard/get",
-    [...CARD_LIST_PROPERTIES],
-  );
+  const { query, get } = await client.queryThenGet(accountId, "ContactCard/query", queryArgs, "ContactCard/get", [
+    ...CARD_LIST_PROPERTIES,
+  ]);
 
   const ids = (query.ids as string[] | undefined) ?? [];
   const list = (get.list as ContactCard[] | undefined) ?? [];
@@ -229,11 +214,7 @@ export async function loadCards(
 }
 
 /** The whole card, for the detail pane. One id, every property. */
-export async function loadCard(
-  client: JmapClient,
-  accountId: string,
-  id: string,
-): Promise<ContactCard | undefined> {
+export async function loadCard(client: JmapClient, accountId: string, id: string): Promise<ContactCard | undefined> {
   const result = await client.requestOne("ContactCard/get", { accountId, ids: [id] });
   return ((result.list as ContactCard[] | undefined) ?? [])[0];
 }

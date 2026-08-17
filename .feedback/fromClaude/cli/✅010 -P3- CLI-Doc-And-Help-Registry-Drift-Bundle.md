@@ -15,7 +15,7 @@ to the checked-in file, and every command in `help.ts`'s registry has a matching
    way. → **CHANGE-CODE**: derive the string from the switch.
 
 2. **Unknown flags produce a raw Node stack trace.** `parseArgs` runs at module scope
-   (`main.ts:30`), _outside_ the try/catch that formats every other error (`:121, 230-233`).
+   (`main.ts:30`), *outside* the try/catch that formats every other error (`:121, 230-233`).
    `bullmoose log --dry-run` prints `TypeError [ERR_PARSE_ARGS_UNKNOWN_OPTION]` + a ten-line internal
    stack. Given `--dry-run` doesn't exist yet, this is the first thing a cautious user types before a
    `send`. → **CHANGE-CODE**.
@@ -26,7 +26,7 @@ to the checked-in file, and every command in `help.ts`'s registry has a matching
    (`main.ts:84-85`) are likewise absent from `GLOBAL_OPTIONS`. → **CHANGE-CODE**.
 
 4. **`creds oauth --port` undocumented** — parsed at `main.ts:70`, defaulted 8976 at `creds.ts:127`,
-   printed in the command's _own_ usage string at `creds.ts:118`, but absent from `help.ts:251` /
+   printed in the command's *own* usage string at `creds.ts:118`, but absent from `help.ts:251` /
    `docs/cli.md:373`. `--meta` on `oauth` (`creds.ts:134`) likewise. → **UPDATE-DOC**.
 
 5. **`packages/cli/README.md:31` says `init --url`; the flag is `--base`.** `cmdInit` reads only

@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ACCESS_LOG_CAVEATS, PROVENANCE_CAVEATS } from "./caveats";
 import { DEMO_NOW, VENDORS_BOOK, demoConsoleData } from "./demoConsole";
-import {
-  buildResourceView,
-  coversResource,
-  liveAt,
-  parseAuditMethod,
-  whoCould,
-  whoDid,
-} from "./perResource";
+import { buildResourceView, coversResource, liveAt, parseAuditMethod, whoCould, whoDid } from "./perResource";
 import type { ConsoleGrant, ResourceDossier } from "./types";
 
 const DAY = 86_400_000;
@@ -47,15 +40,8 @@ describe("coversResource", () => {
     expect(coversResource(grant({ collection: null }), VENDORS_BOOK)).toBe(true);
   });
   it("does not let a grant on one collection reach another", () => {
-    expect(
-      coversResource(
-        grant({ collection: "AddressBook", collectionId: "ab_personal" }),
-        VENDORS_BOOK,
-      ),
-    ).toBe(false);
-    expect(
-      coversResource(grant({ collection: "Calendar", collectionId: "ab_vendors" }), VENDORS_BOOK),
-    ).toBe(false);
+    expect(coversResource(grant({ collection: "AddressBook", collectionId: "ab_personal" }), VENDORS_BOOK)).toBe(false);
+    expect(coversResource(grant({ collection: "Calendar", collectionId: "ab_vendors" }), VENDORS_BOOK)).toBe(false);
   });
 });
 

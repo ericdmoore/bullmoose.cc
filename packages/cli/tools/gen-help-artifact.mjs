@@ -123,8 +123,7 @@ export function buildArtifact() {
     fail(`help --json is not JSON (${e.message}) — the artifact would be useless to an agent`);
   }
   const commands = spec.commands.map((c) => c.name);
-  if (commands.length < 20)
-    fail(`only ${commands.length} commands in the spec — did help --json change shape?`);
+  if (commands.length < 20) fail(`only ${commands.length} commands in the spec — did help --json change shape?`);
 
   add("json", json);
   add("man", capture(["help", "--man"]));
@@ -141,9 +140,7 @@ export function buildArtifact() {
   for (const argv of [["--help"], ["-h"], ["help", "--help"]]) {
     const r = capture(argv);
     if (!same(overview, r)) {
-      fail(
-        `\`bullmoose ${argv.join(" ")}\` (${shape(r)}) is not the overview (${shape(overview)})`,
-      );
+      fail(`\`bullmoose ${argv.join(" ")}\` (${shape(r)}) is not the overview (${shape(overview)})`);
     }
   }
 
@@ -191,8 +188,7 @@ export function buildArtifact() {
     if (e.stdout !== "" && e.stderr !== "") {
       fail(`${e.key} wrote to BOTH streams — the lookup cannot reproduce the interleaving`);
     }
-    if (e.exit !== 0 && e.exit !== 2)
-      fail(`${e.key} exited ${e.exit}; help is only ever 0 or 2 (§1.5)`);
+    if (e.exit !== 0 && e.exit !== 2) fail(`${e.key} exited ${e.exit}; help is only ever 0 or 2 (§1.5)`);
     if (e.stdout === "" && e.stderr === "") fail(`${e.key} produced nothing`);
   }
 

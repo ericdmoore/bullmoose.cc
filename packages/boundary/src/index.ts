@@ -2,13 +2,7 @@
 // stage 3 (sieve rules), stage 4 (two-threshold Bayes), and the graduation
 // policy. No storage, no workers, no clocks — the ingest wiring calls these.
 export type { BoundaryMessage } from "./message.js";
-export {
-  globMatch,
-  sieveVerdict,
-  type SieveField,
-  type SieveMatch,
-  type SieveRule,
-} from "./sieve.js";
+export { globMatch, sieveVerdict, type SieveField, type SieveMatch, type SieveRule } from "./sieve.js";
 export {
   BAYES_HEADERS,
   DEFAULT_THRESHOLDS,

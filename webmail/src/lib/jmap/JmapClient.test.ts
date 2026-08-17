@@ -157,10 +157,7 @@ describe("batched requests", () => {
       }),
     });
 
-    const { query, get } = await client.queryThenGet(ACCT, "Email/query", {}, "Email/get", [
-      "id",
-      "subject",
-    ]);
+    const { query, get } = await client.queryThenGet(ACCT, "Email/query", {}, "Email/get", ["id", "subject"]);
 
     expect(query.ids).toEqual(["e1", "e2", "e3"]);
     expect((get.list as Array<{ id: string }>).map((m) => m.id)).toEqual(["e1", "e2", "e3"]);
@@ -180,8 +177,7 @@ describe("batched requests", () => {
       token: "t",
       fetch: routedFetch({
         "GET /.well-known/jmap": () => jsonResponse(makeSession()),
-        "POST /api/jmap": () =>
-          jsonResponse({ methodResponses: [["error", { type: "stateMismatch" }, "c0"]] }),
+        "POST /api/jmap": () => jsonResponse({ methodResponses: [["error", { type: "stateMismatch" }, "c0"]] }),
       }),
     });
     await expect(client.requestOne("Email/set", {})).rejects.toMatchObject({

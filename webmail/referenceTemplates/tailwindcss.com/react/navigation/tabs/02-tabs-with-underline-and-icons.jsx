@@ -1,15 +1,15 @@
-import { ChevronDownIcon } from "@heroicons/react/16/solid";
-import { BuildingOfficeIcon, CreditCardIcon, UserIcon, UsersIcon } from "@heroicons/react/20/solid";
+import { ChevronDownIcon } from '@heroicons/react/16/solid'
+import { BuildingOfficeIcon, CreditCardIcon, UserIcon, UsersIcon } from '@heroicons/react/20/solid'
 
 const tabs = [
-  { name: "My Account", href: "#", icon: UserIcon, current: false },
-  { name: "Company", href: "#", icon: BuildingOfficeIcon, current: false },
-  { name: "Team Members", href: "#", icon: UsersIcon, current: true },
-  { name: "Billing", href: "#", icon: CreditCardIcon, current: false },
-];
+  { name: 'My Account', href: '#', icon: UserIcon, current: false },
+  { name: 'Company', href: '#', icon: BuildingOfficeIcon, current: false },
+  { name: 'Team Members', href: '#', icon: UsersIcon, current: true },
+  { name: 'Billing', href: '#', icon: CreditCardIcon, current: false },
+]
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(" ");
+  return classes.filter(Boolean).join(' ')
 }
 
 export default function Example() {
@@ -38,21 +38,21 @@ export default function Example() {
               <a
                 key={tab.name}
                 href={tab.href}
-                aria-current={tab.current ? "page" : undefined}
+                aria-current={tab.current ? 'page' : undefined}
                 className={classNames(
                   tab.current
-                    ? "border-indigo-500 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
-                    : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-white/20 dark:hover:text-gray-300",
-                  "group inline-flex items-center border-b-2 px-1 py-4 text-sm font-medium",
+                    ? 'border-indigo-500 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-white/20 dark:hover:text-gray-300',
+                  'group inline-flex items-center border-b-2 px-1 py-4 text-sm font-medium',
                 )}
               >
                 <tab.icon
                   aria-hidden="true"
                   className={classNames(
                     tab.current
-                      ? "text-indigo-500 dark:text-indigo-400"
-                      : "text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400",
-                    "mr-2 -ml-0.5 size-5",
+                      ? 'text-indigo-500 dark:text-indigo-400'
+                      : 'text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400',
+                    'mr-2 -ml-0.5 size-5',
                   )}
                 />
                 <span>{tab.name}</span>
@@ -62,5 +62,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  );
+  )
 }

@@ -29,8 +29,7 @@ const allow = (...raw: string[]) => {
   return list.entries;
 };
 
-const permits = (entries: ReturnType<typeof allow>, url: string) =>
-  destinationAllowed(new URL(url), entries);
+const permits = (entries: ReturnType<typeof allow>, url: string) => destinationAllowed(new URL(url), entries);
 
 describe("§4.1 — a verb is permitted only if it matches the credential's kind", () => {
   it("types each kind to its documented verb set", () => {
@@ -127,9 +126,7 @@ describe("§6.2 — the allowlist matches scheme+host+port exactly, never substr
     // raw string would have accepted it.
     const entries = allow("https://api.stripe.com");
     expect(permits(entries, "https://api.stripe.com。evil.io/v1")).toBe(false);
-    expect(permits(allow("https://*.stripe.com"), "https://api.stripe.com。evil.io/v1")).toBe(
-      false,
-    );
+    expect(permits(allow("https://*.stripe.com"), "https://api.stripe.com。evil.io/v1")).toBe(false);
     // The same normalization the other way: a fullwidth spelling of the allowed
     // host IS the allowed host, and refusing it would be a bug, not a control.
     expect(permits(entries, "https://ＡＰＩ.stripe.com/v1")).toBe(true);
@@ -188,14 +185,7 @@ describe("§6.4 — wildcards are a deliberate widening, and only a suffix", () 
 
 describe("§6.5 / invariant 5 — no allowlist means unusable", () => {
   it("fails closed on absent, empty and blank allowlists", () => {
-    for (const meta of [
-      {},
-      { allow: undefined },
-      { allow: null },
-      { allow: "" },
-      { allow: [] },
-      { allow: "   " },
-    ]) {
+    for (const meta of [{}, { allow: undefined }, { allow: null }, { allow: "" }, { allow: [] }, { allow: "   " }]) {
       const list = readAllowlist(meta as Record<string, unknown>);
       expect(list.ok, JSON.stringify(meta)).toBe(false);
     }

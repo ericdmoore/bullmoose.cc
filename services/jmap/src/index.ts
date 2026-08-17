@@ -12,24 +12,13 @@ import {
 } from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
-import {
-  authenticate,
-  accountAccess,
-  principalHasScope,
-  type AuthEnv,
-  type Principal,
-} from "./auth";
+import { authenticate, accountAccess, principalHasScope, type AuthEnv, type Principal } from "./auth";
 import { handleLogin, handleTokens } from "./authRoutes";
 import { handleConsole } from "./console";
 import { buildSession } from "./session";
 import { buildRegistry, type RequestContext } from "./methods";
 import { cookieAuthAllowed, isExploreHost } from "./explore/cookie";
-import {
-  exploreCookiePrincipal,
-  exploreUnauthenticated,
-  handleExplore,
-  signInPage,
-} from "./explore";
+import { exploreCookiePrincipal, exploreUnauthenticated, handleExplore, signInPage } from "./explore";
 import {
   getShareRecord,
   isLive,
@@ -258,11 +247,7 @@ export default {
  * The order matters too: a presented bearer always wins, so the cookie can
  * never widen what an explicit credential already decided.
  */
-async function resolvePrincipal(
-  request: Request,
-  hostHeader: string,
-  env: Env,
-): Promise<Principal | null> {
+async function resolvePrincipal(request: Request, hostHeader: string, env: Env): Promise<Principal | null> {
   const bearer = await authenticate(request, env);
   if (bearer) return bearer;
   if (!cookieAuthAllowed(hostHeader, request.method, env.EXPLORE_HOST)) return null;
@@ -308,12 +293,7 @@ async function handleDownload(url: URL, env: Env, principal: RequestContext["pri
   });
 }
 
-async function handleUpload(
-  request: Request,
-  url: URL,
-  env: Env,
-  principal: RequestContext["principal"],
-) {
+async function handleUpload(request: Request, url: URL, env: Env, principal: RequestContext["principal"]) {
   const [, , , accountId] = url.pathname.split("/");
   if (!accountId) return json({ error: "bad upload path" }, 400);
   const access = accountAccess(principal, accountId);
@@ -398,15 +378,7 @@ async function handleShareCreate(
   const now = Date.now();
   const exp = Math.floor(now / 1000) + ttl;
   const shareId = newShareId();
-  const sig = await shareSignature(
-    env.SHARE_SIGNING_KEY,
-    access.tenantId,
-    accountId,
-    blobId,
-    name,
-    exp,
-    shareId,
-  );
+  const sig = await shareSignature(env.SHARE_SIGNING_KEY, access.tenantId, accountId, blobId, name, exp, shareId);
 
   // Record BEFORE returning the URL. If the KV write fails the mint fails,
   // and the caller gets no link — the alternative is handing out a URL that
@@ -447,15 +419,7 @@ async function handleShareDownload(url: URL, env: Env): Promise<Response> {
   }
   const name = decodeURIComponent(encodedName);
 
-  const expected = await shareSignature(
-    env.SHARE_SIGNING_KEY,
-    tenantId,
-    accountId,
-    blobId,
-    name,
-    exp,
-    shareId,
-  );
+  const expected = await shareSignature(env.SHARE_SIGNING_KEY, tenantId, accountId, blobId, name, exp, shareId);
   if (!timingSafeEqualHex(sig, expected)) return json({ error: "invalid signature" }, 403);
   if (exp * 1000 < Date.now()) return json({ error: "link expired" }, 410);
 
@@ -491,11 +455,7 @@ async function handleShareDownload(url: URL, env: Env): Promise<Response> {
 // like "you have no links".
 
 /** GET /api/shares/{accountId} */
-async function handleShareList(
-  url: URL,
-  env: Env,
-  principal: RequestContext["principal"],
-): Promise<Response> {
+async function handleShareList(url: URL, env: Env, principal: RequestContext["principal"]): Promise<Response> {
   if (!env.SHARE_SIGNING_KEY) return json({ error: "sharing not configured" }, 501);
   const [, , , accountId] = url.pathname.split("/");
   if (!accountId) return json({ error: "bad shares path" }, 400);
@@ -519,11 +479,7 @@ async function handleShareList(
 }
 
 /** POST /api/shares/{accountId}/{shareId}/revoke */
-async function handleShareRevoke(
-  url: URL,
-  env: Env,
-  principal: RequestContext["principal"],
-): Promise<Response> {
+async function handleShareRevoke(url: URL, env: Env, principal: RequestContext["principal"]): Promise<Response> {
   if (!env.SHARE_SIGNING_KEY) return json({ error: "sharing not configured" }, 501);
   const [, , , accountId, shareId, verb] = url.pathname.split("/");
   if (!accountId || !shareId || verb !== "revoke") {
@@ -547,11 +503,7 @@ async function handleShareRevoke(
 // ---- blob enumeration + delete -----------------------------------------
 
 /** GET /api/blobs/{accountId}?cursor&limit */
-async function handleBlobList(
-  url: URL,
-  env: Env,
-  principal: RequestContext["principal"],
-): Promise<Response> {
+async function handleBlobList(url: URL, env: Env, principal: RequestContext["principal"]): Promise<Response> {
   const [, , , accountId] = url.pathname.split("/");
   if (!accountId) return json({ error: "bad blobs path" }, 400);
   const access = accountAccess(principal, accountId);
@@ -593,11 +545,7 @@ async function handleBlobList(
  * 🚧 This is EXPLICIT delete only. The GC sweep is deliberately not here:
  * a sweep must respect the same three guards, and none exists yet.
  */
-async function handleBlobDelete(
-  url: URL,
-  env: Env,
-  principal: RequestContext["principal"],
-): Promise<Response> {
+async function handleBlobDelete(url: URL, env: Env, principal: RequestContext["principal"]): Promise<Response> {
   const [, , , accountId, blobId] = url.pathname.split("/");
   if (!accountId || !blobId) return json({ error: "bad blob path" }, 400);
   const access = accountAccess(principal, accountId);

@@ -159,9 +159,7 @@ export function planSearch(session: Session, rawQuery: string): SearchPlan {
       }
       coverage.push(entry(info, true));
     } else if (accountsWith(session, info.capability).length > 0) {
-      coverage.push(
-        entry(info, false, "reachable only through a grant — shared accounts are not searched"),
-      );
+      coverage.push(entry(info, false, "reachable only through a grant — shared accounts are not searched"));
     } else {
       coverage.push(entry(info, false, "this session has no access"));
     }
@@ -203,9 +201,7 @@ function entry(info: RealmInfo, searched: boolean, reason?: string): RealmCovera
 
 function accountsWith(session: Session, capability: string): string[] {
   return Object.entries(session.accounts)
-    .filter(([, account]) =>
-      hasCapability({ capabilities: account.accountCapabilities }, capability),
-    )
+    .filter(([, account]) => hasCapability({ capabilities: account.accountCapabilities }, capability))
     .map(([id]) => id);
 }
 

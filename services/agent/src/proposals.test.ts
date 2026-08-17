@@ -166,10 +166,7 @@ describe("the respond-only rule: a send-mode run replies DIRECTLY to the request
 
     // And NO proposal row — the queue holds agent-initiated work, not answers
     // to questions the human asked.
-    const props = s.w.db.query<{ id: string }>(
-      "SELECT id FROM agent_proposals WHERE account_id = ?",
-      ACCOUNT,
-    );
+    const props = s.w.db.query<{ id: string }>("SELECT id FROM agent_proposals WHERE account_id = ?", ACCOUNT);
     expect(props).toEqual([]);
   });
 });

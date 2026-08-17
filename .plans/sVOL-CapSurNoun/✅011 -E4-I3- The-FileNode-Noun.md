@@ -1,13 +1,13 @@
 # 011 -E4-I3- The FileNode noun
 
-|                |                                                                                                                                                                                                                                                                         |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Kind**       | capability                                                                                                                                                                                                                                                              |
-| **Effort**     | **E4** — a noun from zero: new table, new JMAP capability urn, new blob-lifecycle rule, changes in three services                                                                                                                                                       |
-| **Impact**     | **I3** — unlocks _and_ human-verifiable                                                                                                                                                                                                                                 |
-| **Owner**      | **`s03.B-files`**                                                                                                                                                                                                                                                       |
-| **Depends on** | `s03.A` (provenance columns — `file_nodes` should carry them from birth)                                                                                                                                                                                                |
-| **Status**     | **✅ done** (closed 2026-08-13). T1 + T2 + T3 all shipped — `services/jmap/src/methods/filenode.ts` (`get changes query queryChanges set copy`). The **outbound** attachment half is out of scope by design and tracked in `.backlog/compose-attachments.md`, not here. |
+| | |
+|---|---|
+| **Kind** | capability |
+| **Effort** | **E4** — a noun from zero: new table, new JMAP capability urn, new blob-lifecycle rule, changes in three services |
+| **Impact** | **I3** — unlocks *and* human-verifiable |
+| **Owner** | **`s03.B-files`** |
+| **Depends on** | `s03.A` (provenance columns — `file_nodes` should carry them from birth) |
+| **Status** | **✅ done** (closed 2026-08-13). T1 + T2 + T3 all shipped — `services/jmap/src/methods/filenode.ts` (`get changes query queryChanges set copy`). The **outbound** attachment half is out of scope by design and tracked in `.backlog/compose-attachments.md`, not here. |
 
 ## What shipped (T1 + T2)
 
@@ -63,8 +63,8 @@ in the session (`s03.B/devPlan.md:32`); and a new semantic other code must respe
 referenced by a live FileNode becomes **pinned** against GC (`s03.B/arch.md:56-61`), which is
 a rule the R2 collection path did not previously have.
 
-**I3, both factors.** _Unlocks_ — `s03.B/readme.md:39` names s03.C's Files browser as blocked
-on it; that is unit `021` in this ledger. _Human-verifiable_ — acceptance #3
+**I3, both factors.** *Unlocks* — `s03.B/readme.md:39` names s03.C's Files browser as blocked
+on it; that is unit `021` in this ledger. *Human-verifiable* — acceptance #3
 (`s03.B/readme.md:46`) is a >25 MB send that produces a working link and no attachment. A
 non-engineer sends the mail and the recipient clicks.
 
@@ -87,7 +87,7 @@ constant rather than invent `urn:bullmoose:files`. `shareWith` is always `null` 
 
 - s03.B says the slice is "Drivable by CLI/curl" (`readme.md:29`) and makes a CLI/curl run
   its real acceptance signal (`devPlan.md:71-73`) — but none of T1, T2 or T3 lists a single
-  `bullmoose` command. CLI is the _test harness_ there, not a deliverable.
+  `bullmoose` command. CLI is the *test harness* there, not a deliverable.
 - s05 excludes it explicitly and points back: "Files CLI surface (arrives with **s03.B**)"
   (`s05/devPlan.md:139`), and again at `s05/readme.md:96`.
 
@@ -107,7 +107,7 @@ unit `010`, and it becomes a data-leak path once Files exists rather than merely
    new capability urn commits us to a spec we do not control. Someone could reasonably call
    the whole slice E3 + a big T1.
 2. **The draft-churn risk is real and unpriced.** `arch.md:16-17` states it plainly: draft-14
-   expires 2026-11-16 and carries a _"create real-world clients to test this"_ TODO. If -15
+   expires 2026-11-16 and carries a *"create real-world clients to test this"* TODO. If -15
    lands mid-build the effort grade is wrong and nothing in the ledger notices.
 3. **I did not verify the s03.A dependency is load-bearing.** It is stated
    (`readme.md:33-36`) as "should carry it from birth rather than be retrofitted", which is

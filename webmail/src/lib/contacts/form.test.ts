@@ -89,15 +89,7 @@ describe("the patch names only what changed", () => {
     for (const key of Object.keys(patch)) {
       expect(OWNED_PROPERTIES as readonly string[]).toContain(key);
     }
-    for (const untouchable of [
-      "anniversaries",
-      "media",
-      "vCardProps",
-      "uid",
-      "id",
-      "kind",
-      "created",
-    ]) {
+    for (const untouchable of ["anniversaries", "media", "vCardProps", "uid", "id", "kind", "created"]) {
       expect(patch).not.toHaveProperty(untouchable);
     }
   });

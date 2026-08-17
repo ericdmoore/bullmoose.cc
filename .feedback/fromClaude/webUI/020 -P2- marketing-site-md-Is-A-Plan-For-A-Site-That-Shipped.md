@@ -17,14 +17,14 @@ anywhere in the tree.
 
 ## Specific claims that are now wrong
 
-| Claim                                                              | Reality                                                                                                                                                                                           |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:44-49` four routes (`/`, `/apps`, `/guides`, `/guides/<client>`) | **seven** — plus `/connectors`, `/recipes`, `/deploy`, all undocumented                                                                                                                           |
-| `:51` nav is "Apps · Guides · Docs(→GitHub) · Deploy(→GitHub)"     | `Nav.astro:2-9` is _What is it · Apps · Guides · Recipes · Connectors · Deploy_, and `/deploy` is an **in-site Preact wizard** (`DeployWizard.tsx`, 267 lines), not a GitHub link                 |
-| `:21-23, :95` "Astro + the `@astrojs/cloudflare` adapter"          | `src/package.json` has **no** `@astrojs/cloudflare`, no `wrangler`, and **no `devDependencies` block at all**; `astro.config.mjs:6-7,46` is static output, `integrations: [preact()]`, no adapter |
-| `:96` "wrangler is already a dev dep"                              | only at repo root, a different lockfile                                                                                                                                                           |
-| `:34-37` reuses `CLOUDFLARE_API_TOKEN`                             | `deploy.yml:42` uses `BULLMOOSE_SITE_DEPLOY_TOKEN` — a deliberate token split, documented at `deploy.yml:7-10`                                                                                    |
-| `:82-83` add front-matter to each playbook                         | implementation deliberately went the other way — `src/src/lib/guidesMeta.ts:1-2` keeps playbooks "frontmatter-free so GitHub renders them plainly"                                                |
+| Claim | Reality |
+|---|---|
+| `:44-49` four routes (`/`, `/apps`, `/guides`, `/guides/<client>`) | **seven** — plus `/connectors`, `/recipes`, `/deploy`, all undocumented |
+| `:51` nav is "Apps · Guides · Docs(→GitHub) · Deploy(→GitHub)" | `Nav.astro:2-9` is *What is it · Apps · Guides · Recipes · Connectors · Deploy*, and `/deploy` is an **in-site Preact wizard** (`DeployWizard.tsx`, 267 lines), not a GitHub link |
+| `:21-23, :95` "Astro + the `@astrojs/cloudflare` adapter" | `src/package.json` has **no** `@astrojs/cloudflare`, no `wrangler`, and **no `devDependencies` block at all**; `astro.config.mjs:6-7,46` is static output, `integrations: [preact()]`, no adapter |
+| `:96` "wrangler is already a dev dep" | only at repo root, a different lockfile |
+| `:34-37` reuses `CLOUDFLARE_API_TOKEN` | `deploy.yml:42` uses `BULLMOOSE_SITE_DEPLOY_TOKEN` — a deliberate token split, documented at `deploy.yml:7-10` |
+| `:82-83` add front-matter to each playbook | implementation deliberately went the other way — `src/src/lib/guidesMeta.ts:1-2` keeps playbooks "frontmatter-free so GitHub renders them plainly" |
 
 `src/README.md` is stale the same way: `:21` names a `guides.astro` that is a directory and omits
 four pages; `:26-28` says guides are "a later phase" — they shipped.

@@ -23,14 +23,14 @@ Copy the `bm_…` string; it is shown once.
 
 Contacts → **Settings → Accounts → Add Other Account… → CardDAV account**
 
-| field                       | value                                  |
-| --------------------------- | -------------------------------------- |
-| Account type                | Advanced (if asked; Manual also works) |
-| User name                   | `eric@bullmoose.cc`                    |
-| Password                    | the `bm_…` token                       |
-| Server address              | `dav.bullmoose.cc`                     |
-| Server path (Advanced only) | `/dav/`                                |
-| Port / SSL (Advanced only)  | 443, SSL on                            |
+| field | value |
+|---|---|
+| Account type | Advanced (if asked; Manual also works) |
+| User name | `eric@bullmoose.cc` |
+| Password | the `bm_…` token |
+| Server address | `dav.bullmoose.cc` |
+| Server path (Advanced only) | `/dav/` |
+| Port / SSL (Advanced only) | 443, SSL on |
 
 iOS: Settings → Contacts → Accounts → Add Account → Other → **Add
 CardDAV Account** with the same values.
@@ -39,14 +39,14 @@ CardDAV Account** with the same values.
 
 Calendar → **Settings → Accounts → Add Account… → Other CalDAV Account**
 
-| field                       | value                                                                                           |
-| --------------------------- | ----------------------------------------------------------------------------------------------- |
-| Account type                | Advanced (Manual also works)                                                                    |
-| User name                   | `eric@bullmoose.cc`                                                                             |
-| Password                    | a `bm_…` token (mint with `--scopes read,calendar`, or reuse one with both `contacts,calendar`) |
-| Server address              | `dav.bullmoose.cc`                                                                              |
-| Server path (Advanced only) | `/dav/`                                                                                         |
-| Port / SSL                  | 443, SSL on                                                                                     |
+| field | value |
+|---|---|
+| Account type | Advanced (Manual also works) |
+| User name | `eric@bullmoose.cc` |
+| Password | a `bm_…` token (mint with `--scopes read,calendar`, or reuse one with both `contacts,calendar`) |
+| Server address | `dav.bullmoose.cc` |
+| Server path (Advanced only) | `/dav/` |
+| Port / SSL | 443, SSL on |
 
 The default "Calendar" (with the imported Google events) appears;
 recurring events carry RRULE/EXDATE and a generated VTIMEZONE, so the

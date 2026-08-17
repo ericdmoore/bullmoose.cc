@@ -21,6 +21,6 @@ Internal HTTP API (worker → DO only): `GET /state`, `POST /commit`,
 `GET /changes`, `GET /ws`, `POST /arm`.
 
 Helpers for other workers: `accountStub()`, `commitChanges()`,
-`armResponder()`. The class is _declared_ by `services/jmap`
+`armResponder()`. The class is *declared* by `services/jmap`
 (migrations live there); ingest/agent bind it cross-script via
 `script_name`.
