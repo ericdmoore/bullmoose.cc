@@ -121,7 +121,7 @@ export default {
       });
     }
 
-    // The explorer's read-only projection (s20). Everything past this point is
+    // The explorer's read-only projection (s21). Everything past this point is
     // the API surface, and it is unreachable on the explore hostname.
     if (onExplore) return handleExplore(url, env, principal);
 
