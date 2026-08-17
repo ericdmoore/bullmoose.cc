@@ -41,6 +41,10 @@
     "**/dist/**",
     ".claude/worktrees/**",
     "**/*.d.ts",
-    "webmail/public/**"
+    "webmail/public/**",
+    // Licensed Tailwind UI templates, vendored verbatim (364 files). They are
+    // reference material we copy FROM, never source we edit — linting them
+    // would demand changes we are not entitled to make.
+    "webmail/referenceTemplates/**"
   ]
 }

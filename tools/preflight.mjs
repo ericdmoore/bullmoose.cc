@@ -68,7 +68,7 @@ console.log(`pre-flight for ${DOMAIN} (zone ${ZONE.slice(0, 8)}…, account ${AC
   else if (r.result.length === 0) ok(`no existing MX records — clean cutover`);
   else {
     const targets = r.result.map((rec) => `${rec.name}→${rec.content}`).join(", ");
-    if (r.result.every((rec) => /mx\.cloudflare\.net$/.test(rec.content))) {
+    if (r.result.every((rec) => rec.content.endsWith("mx.cloudflare.net"))) {
       ok(`MX already points at Cloudflare Email Routing (${r.result.length} records)`);
     } else {
       warn(`existing MX records found: ${targets}`);
