@@ -23,7 +23,7 @@ import ApprovalsQueue from "../components/ApprovalsQueue.tsx";
 import App from "../layouts/AppTw.astro";
 ---
 
-<App title="bullmoose — approvals" section="approvals">
+<App title="bullmoose — approvals" section="approvals" frame="surface">
   <ApprovalsQueue client:only="preact" />
 </App>
 
@@ -52,9 +52,41 @@ import App from "../layouts/AppTw.astro";
 
      Mail is the UX anchor: structural nav, then headers, then the linked
      detail beside them. That only reads as three adjacent panes if this one
-     is allowed the width. */
+     is allowed the width — and exactly one window of height. The page is
+     `frame="surface"` (AppTw.astro), so this column owns the viewport and the
+     PANES scroll, not the document. `min-height: 0` on both the column and
+     the grid is what actually permits that: a flex child will not shrink
+     below its content without it, so the panes would grow and the inner
+     `overflow-y` would never engage. */
   .apq {
     width: 100%;
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding-top: 16px;
+  }
+  /* The title block is fixed chrome; only the panes below it scroll. */
+  .apq-head,
+  .apq > .banner,
+  .apq > .apq-error {
+    flex: 0 0 auto;
+    padding-inline: 24px;
+  }
+  .apq-panes {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  /* Each pane is its own scroll region, the way Mail's list and message are.
+     Padding lives INSIDE the scroller so content clears the edges without
+     insetting the pane itself — an inset pane is what read as an iframe. */
+  .apq-pane {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 24px 24px;
+  }
+  .apq-pane + .apq-pane {
+    border-left: 1px solid var(--line);
   }
   .apq-head h1 { margin: 0 0 4px; font-size: 20px; }
   .apq-sub { margin: 0 0 16px; font-size: 13px; }

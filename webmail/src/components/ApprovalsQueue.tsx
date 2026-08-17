@@ -331,11 +331,17 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
       {!loading && pending.length === 0 ? <p class="muted apq-pad">Nothing is waiting on you.</p> : null}
 
       {ordered.length > 0 ? (
-        <div class="grid grid-cols-1 gap-x-6 lg:grid-cols-[22rem_1fr]">
+        <div class="apq-panes grid grid-cols-1 lg:grid-cols-[22rem_1fr]">
           {/* COLUMN 2 — the headers. A compact, grouped, selectable list:
               what needs you first, then the secondary states. This is the
-              "second column" of the triple-panel; the rail is the first. */}
-          <nav aria-label="Proposals" class="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+              "second column" of the triple-panel; the rail is the first.
+
+              It scrolls ITSELF (`apq-pane`) rather than sticking to the
+              viewport. Sticky was the right tool when the document scrolled;
+              now the page is exactly one window tall and each pane owns its
+              own overflow, which is what Mail does and why its list and
+              message move independently. */}
+          <nav aria-label="Proposals" class="apq-pane">
             <HeaderGroup
               label="Waiting on you"
               tone="primary"
@@ -373,8 +379,9 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
           </nav>
 
           {/* COLUMN 3 — the detail, subordinate to the header column: the full
-              row for whatever is selected, its actions intact. */}
-          <section aria-label="Detail" class="min-w-0">
+              row for whatever is selected, its actions intact. Scrolls itself,
+              so a long proposal never pushes the header list off-screen. */}
+          <section aria-label="Detail" class="apq-pane min-w-0">
             {selected ? (
               selected.status === "pending" ? (
                 <PendingRow
