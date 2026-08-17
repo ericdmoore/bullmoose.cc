@@ -31,6 +31,20 @@ import { normalizeAddress } from "./governance";
  * the package index (the `@bullmoose/auth-core/principal` pattern): this module
  * imports `Mailstore` FROM the index, so re-exporting it there would make the
  * cycle real instead of merely survivable.
+ *
+ * ## Why it must be re-derived AT EGRESS, never carried from the draft
+ *
+ * Same argument as `effectiveNodeAuthority` (@bullmoose/scheduling): a check
+ * performed at issue is a check the holder keeps forever. Between an agent
+ * DRAFTING a reply and a human APPROVING it — and, for tier 2, between that
+ * approval and the hold-tray sweep committing it — the governing book can be
+ * narrowed, the binding can be disabled or deleted, and the approver can amend
+ * the recipient (`agent_proposals.edited_payload_json`, which REPLACES the
+ * payload wholesale and is validated only as "an object"). Narrowing has to
+ * bite work already in the queue, and it only does if the binding and its book
+ * are resolved from the database at the moment of send. Every caller therefore
+ * passes the recipients it is ABOUT to hand the relay, not the ones the draft
+ * was written against.
  */
 
 /**
@@ -50,6 +64,21 @@ export interface OutboundBoundJob {
 }
 
 /**
+ * The typed refusal `assertOutboundAllowed` throws, on the `BookWriteRefused`
+ * model (governance.ts). The message carries the whole story; the TYPE is what
+ * lets each protocol map it to its own shape — JMAP surfaces it as a
+ * `forbidden` SetError instead of the `serverFail` a bare `Error` collapses
+ * into, so an approver is told their book refused the recipient rather than
+ * that the server broke.
+ */
+export class OutboundRefused extends Error {
+  constructor(public readonly refusal: string) {
+    super(`outbound bound: ${refusal}`);
+    this.name = "OutboundRefused";
+  }
+}
+
+/**
  * Why a send must not happen, or null when every recipient is in the book.
  * Callers refuse-and-note (the invocation-level skip, mirroring the
  * allowedSenders gate) or throw (the belt directly in front of the relay).
@@ -60,11 +89,23 @@ export async function outboundRefusal(
   recipients: string[],
 ): Promise<string | null> {
   const binding = await env.DB.prepare(
-    `SELECT recipients_book_id FROM agent_bindings WHERE account_id = ? AND id = ?`,
+    `SELECT recipients_book_id, enabled FROM agent_bindings WHERE account_id = ? AND id = ?`,
   )
     .bind(job.account_id, job.binding_id)
-    .first<{ recipients_book_id: string | null }>();
-  if (!binding || !binding.recipients_book_id) {
+    .first<{ recipients_book_id: string | null; enabled: number }>();
+  if (!binding) {
+    return `fail-closed: binding ${job.binding_id} does not exist`;
+  }
+  // A DISABLED binding is one whose reach has been revoked. The drain already
+  // filters `enabled = 1`, so on the agent's own paths this is belt to a
+  // brace — but the APPROVAL path never goes through the drain: a proposal
+  // drafted while the binding was live can be approved, or swept out of the
+  // hold tray, long after it was switched off. "Off" has to mean off at the
+  // relay too, or disabling a binding is advice rather than a control.
+  if (Number(binding.enabled) !== 1) {
+    return `fail-closed: binding ${job.binding_id} is disabled`;
+  }
+  if (!binding.recipients_book_id) {
     return "fail-closed: no governing book (agent_bindings.recipients_book_id is unset)";
   }
   const bookId = binding.recipients_book_id;
@@ -90,5 +131,5 @@ export async function assertOutboundAllowed(
   recipients: string[],
 ): Promise<void> {
   const refusal = await outboundRefusal(env, job, recipients);
-  if (refusal) throw new Error(`outbound bound: ${refusal}`);
+  if (refusal) throw new OutboundRefused(refusal);
 }
