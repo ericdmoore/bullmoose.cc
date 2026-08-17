@@ -67,7 +67,9 @@ describe("the command registry matches the runtime", () => {
 
 describe("admin's usage text is derived, not hand-written", () => {
   it("lists every implemented subcommand and no unbuilt one", () => {
-    const cases = [...read("admin.ts").matchAll(/^\s{4}case "([a-z]+ [a-z]+)":/gm)].map((m) => m[1]!);
+    const cases = [...read("admin.ts").matchAll(/^\s{4}case "([a-z]+ [a-z]+)":/gm)].map(
+      (m) => m[1]!,
+    );
     // `init` and `password` are handled outside the switch (init before the
     // admin API is configured; password as a noun with no verb).
     expect([...cases, "init", "password"].sort()).toEqual([...IMPLEMENTED].sort());

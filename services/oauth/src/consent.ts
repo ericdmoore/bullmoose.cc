@@ -154,7 +154,10 @@ form.addEventListener("submit", async (ev) => {
 });
 `;
   return new Response(js, {
-    headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=3600" },
+    headers: {
+      "content-type": "text/javascript; charset=utf-8",
+      "cache-control": "public, max-age=3600",
+    },
   });
 }
 
@@ -264,7 +267,8 @@ export function errorPage(headline: string, detail: string, status = 400): Respo
     status,
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+      "content-security-policy":
+        "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
       "cache-control": "no-store",
     },
   });

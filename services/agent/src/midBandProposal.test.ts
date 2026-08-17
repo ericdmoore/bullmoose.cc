@@ -179,7 +179,9 @@ async function stage(
         tier: number;
         status: string;
         account_id: string;
-      }>(`SELECT id, kind, payload_json, rationale, expires_at, tier, status, account_id FROM agent_proposals ORDER BY created_at, id`)
+      }>(
+        `SELECT id, kind, payload_json, rationale, expires_at, tier, status, account_id FROM agent_proposals ORDER BY created_at, id`,
+      )
       .map((r) => ({ ...r, payload: JSON.parse(r.payload_json) as Record<string, unknown> }));
 
   const markers = () =>
@@ -217,7 +219,12 @@ describe("undecided mail becomes ONE question", () => {
     // The row has to be decidable without opening the mail: who it is from,
     // what it says, and which stage held it.
     expect(p.payload.messages).toMatchObject([
-      { emailId: ids[0], sender: `sender1@${DOMAIN}`, subject: "maybe important 1", stage: "bayes-mid@0.50" },
+      {
+        emailId: ids[0],
+        sender: `sender1@${DOMAIN}`,
+        subject: "maybe important 1",
+        stage: "bayes-mid@0.50",
+      },
       { emailId: ids[1], sender: `sender2@${DOMAIN}` },
       { emailId: ids[2], sender: `sender3@${DOMAIN}` },
     ]);
@@ -226,11 +233,7 @@ describe("undecided mail becomes ONE question", () => {
     // The proposal expires at the PERIOD boundary (T9's discipline): an
     // unanswered ask is superseded by the next period's, never left to rot.
     expect(p.expires_at).toBe(
-      Date.UTC(
-        new Date().getUTCFullYear(),
-        new Date().getUTCMonth(),
-        new Date().getUTCDate() + 1,
-      ),
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1),
     );
 
     // THE IDEMPOTENCE BITE. Every candidate now carries this period's marker,
@@ -297,7 +300,12 @@ describe("undecided mail becomes ONE question", () => {
     expect(rows[0]!.account_id).toBe(ACCOUNT);
     // ...and the carrier invocation is on the same account, `done` on arrival
     // with no cost (nothing was asked of a model to raise the question).
-    const carrier = s.w.db.query<{ account_id: string; status: string; cost_micros: number | null; binding_name: string }>(
+    const carrier = s.w.db.query<{
+      account_id: string;
+      status: string;
+      cost_micros: number | null;
+      binding_name: string;
+    }>(
       `SELECT account_id, status, cost_micros, binding_name FROM agent_invocations WHERE id = ?`,
       rows[0]!.id,
     )[0]!;

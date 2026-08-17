@@ -64,7 +64,12 @@ function harness(scopes: string[] = ["read", "files"]) {
     return res.created.d.id as string;
   };
 
-  const mkfile = async (name: string, parentId: string | null, blobId: string, account = ACCOUNT) => {
+  const mkfile = async (
+    name: string,
+    parentId: string | null,
+    blobId: string,
+    account = ACCOUNT,
+  ) => {
     const res = await set({ create: { f: { name, nodeType: "file", parentId, blobId } } }, account);
     if (!res.created.f) throw new Error(`mkfile failed: ${JSON.stringify(res.notCreated)}`);
     return res.created.f.id as string;
@@ -114,7 +119,9 @@ describe("FileNode/set + get: the inode tree holds", () => {
 
   it("refuses a file whose blob does not exist (would create a dangling inode)", async () => {
     const h = harness();
-    const res = await h.set({ create: { f: { name: "ghost", nodeType: "file", blobId: "b_missing" } } });
+    const res = await h.set({
+      create: { f: { name: "ghost", nodeType: "file", blobId: "b_missing" } },
+    });
     expect(res.created).toEqual({});
     expect(res.notCreated.f!.type).toBe("blobNotFound");
     // nothing landed in the table
@@ -133,7 +140,9 @@ describe("FileNode/set + get: the inode tree holds", () => {
     const h = harness();
     const r1 = await h.set({ create: { x: { name: "a/b", nodeType: "directory" } } });
     expect(r1.notCreated.x!.properties).toEqual(["name"]);
-    const r2 = await h.set({ create: { x: { name: "ok", nodeType: "directory", id: "fn_forced" } } });
+    const r2 = await h.set({
+      create: { x: { name: "ok", nodeType: "directory", id: "fn_forced" } },
+    });
     expect(r2.notCreated.x!.properties).toEqual(["id"]);
   });
 });
@@ -156,8 +165,12 @@ describe("FileNode/set onExists: sibling names are unique", () => {
     const h = harness();
     const a = await h.mkdir("A");
     const b = await h.mkdir("B");
-    const r1 = await h.set({ create: { x: { name: "notes", nodeType: "directory", parentId: a } } });
-    const r2 = await h.set({ create: { x: { name: "notes", nodeType: "directory", parentId: b } } });
+    const r1 = await h.set({
+      create: { x: { name: "notes", nodeType: "directory", parentId: a } },
+    });
+    const r2 = await h.set({
+      create: { x: { name: "notes", nodeType: "directory", parentId: b } },
+    });
     expect(r1.created.x).toBeDefined();
     expect(r2.created.x).toBeDefined();
   });

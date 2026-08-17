@@ -1,13 +1,13 @@
 # 014 -E2-I3- Email read + triage over MCP
 
-| | |
-|---|---|
-| **Kind** | projection |
-| **Effort** | **E2** — several files in `services/agent`, no schema change, no migration |
-| **Impact** | **I3** — unlocks *and* human-verifiable |
-| **Owner** | `sVOL` |
-| **Depends on** | `001` (ToolDef scope+domain) · `002` (fake-D1 `.batch()`) |
-| **Status** | **shipped** — `services/agent/src/emailTools.ts` + `emailTools.test.ts` (33 tests) |
+|                |                                                                                    |
+| -------------- | ---------------------------------------------------------------------------------- |
+| **Kind**       | projection                                                                         |
+| **Effort**     | **E2** — several files in `services/agent`, no schema change, no migration         |
+| **Impact**     | **I3** — unlocks _and_ human-verifiable                                            |
+| **Owner**      | `sVOL`                                                                             |
+| **Depends on** | `001` (ToolDef scope+domain) · `002` (fake-D1 `.batch()`)                          |
+| **Status**     | **shipped** — `services/agent/src/emailTools.ts` + `emailTools.test.ts` (33 tests) |
 
 ## What actually shipped, and where this file was overtaken
 
@@ -23,7 +23,7 @@ now**; they are left in place per the readme's "argue with it, don't delete it" 
 1. **`common/003` is FIXED.** `Email/set` derives scope per operation via
    `requiredScopesForEmailSet` (`email.ts:241`) through `requireAccountScopes`. So the
    "declared scopes are stricter than the method" discussion, and the instruction to
-   *additionally* require `draft` on `email_move`/`email_set_keywords`, are both obsolete —
+   _additionally_ require `draft` on `email_move`/`email_set_keywords`, are both obsolete —
    doing that now would be strictly wrong. Tool and method charge the same verb.
    **Open question 3 is closed.**
 2. **`common/001` is FIXED**, so `mail` is a bundle of the six mail verbs rather than a
@@ -31,7 +31,7 @@ now**; they are left in place per the readme's "argue with it, don't delete it" 
 3. **`004` (`Mailbox/set`) has landed**, so the "this unit does not depend on 004" section is
    still correct but no longer load-bearing.
 
-Deviations from *What to build*, each deliberate:
+Deviations from _What to build_, each deliberate:
 
 - **No `thread_get`.** Open question 5 argues against it (a snapshot no client can
   incrementally refresh, since `Thread/changes` is unregistered) and the grid does not credit
@@ -56,7 +56,7 @@ knowing before anyone writes `<` in a doc again and expects it to behave like an
 `Email × CRUD × MCP` — the whole Email row under MCP — plus `Mailbox × Read × MCP`, which
 is not optional garnish: a move tool is useless without a way to name its destination.
 
-`Thread × Read × MCP` rides along free on `Thread/get` and is called out in *What to build*,
+`Thread × Read × MCP` rides along free on `Thread/get` and is called out in _What to build_,
 but the grid does not credit it here; if it ships, `_index.md` §4 should record it.
 
 ## Why these grades
@@ -69,11 +69,11 @@ scopes (below), which is real logic rather than a table of names.
 
 **I3, both factors:**
 
-- *Unlocks* — this is the surface `screener@` needs. `docs/agents/motivatingExamples.md:110-116`
+- _Unlocks_ — this is the surface `screener@` needs. `docs/agents/motivatingExamples.md:110-116`
   specifies it as "ReadAccess: inbound before delivery · **WriteAccess: move/hold**", and
   there is no other way for an agent to move a message. Also the first MCP tool that
   returns a **message body**, which every extraction agent in that document assumes exists.
-- *Human-verifiable* — ask Claude "file everything from Amazon into Archive", then open
+- _Human-verifiable_ — ask Claude "file everything from Amazon into Archive", then open
   any mail client and look at Archive. No engineer, no JSON.
 
 **Sequencing note.** `_index.md` §3 puts this in wave 3, after `013`. That ordering is
@@ -93,11 +93,11 @@ Email/import  :51      Email/changes :52    Email/queryChanges :54  ← always t
 
 `Email/set` (`:226`) carries all three write classes:
 
-| Operation | Where | Notes |
-|---|---|---|
-| create → drafts | `:250-260` → `createDraft` `:400` | builds MIME, stores blob + row |
+| Operation                | Where                                 | Notes                                             |
+| ------------------------ | ------------------------------------- | ------------------------------------------------- |
+| create → drafts          | `:250-260` → `createDraft` `:400`     | builds MIME, stores blob + row                    |
 | update — flags and moves | `:263-277` → `applyEmailPatch` `:332` | `keywords/*` and `mailboxIds/*` only (`:351-359`) |
-| destroy | `:280-291` → `store.destroyEmail` | **hard delete**, see below |
+| destroy                  | `:280-291` → `store.destroyEmail`     | **hard delete**, see below                        |
 
 `Email/get` will parse bodies out of the raw blob on demand (`fetchBodies` `:140`), honours
 `maxBodyValueBytes` truncation (`:166`), and defaults to a metadata-only property set
@@ -113,7 +113,7 @@ what any of them says.
 **Three structural facts that shape the work:**
 
 1. `ToolDef` (`mcp.ts:36-41`) has no scope or domain field, and `handleToolCall` hardcodes
-   `authorizeAccount(principal, accountId, "read", "mail")` at `:257` for *every* tool. A
+   `authorizeAccount(principal, accountId, "read", "mail")` at `:257` for _every_ tool. A
    triage tool added today would be authorized as a **read**. `001` is a hard dependency.
 2. All four existing tools go to `env.DB` with **raw SQL**. That idiom is correct for
    read-only analytics and wrong for every tool in this unit — see below.
@@ -122,7 +122,7 @@ what any of them says.
    internal runtime, not by claude.ai. Exposing them to a foreign client is `s02`, which is
    deliberately deferred (`s02/readme.md:3-5`).
 
-### This unit does *not* depend on `004` — and that is worth stating
+### This unit does _not_ depend on `004` — and that is worth stating
 
 A reviewer will reach for the edge `014 → 004` (`Mailbox/set`) because triage is about
 mailboxes and `Mailbox/set` does not exist on any surface. It is the wrong edge.
@@ -147,7 +147,7 @@ Filing `014` behind `004` would park an `E2` behind the volume's only `E3`, for 
 
 ### Route through the JMAP method layer — not `Mailstore`, not SQL
 
-Same rule as `013`, same reasoning (`_context.md` §3), and it bites *harder* here because
+Same rule as `013`, same reasoning (`_context.md` §3), and it bites _harder_ here because
 the mail write path has more incremental consumers than calendar does.
 
 `Mailstore` is a thin data layer that maintains no invariants. `replaceEmailSets`
@@ -170,7 +170,7 @@ Skip it and a move lands in `email_mailboxes`, reads back correctly on `Email/ge
 
 The nasty part is that `bullmoose sync --full` (`sync.ts:250`, deletes and repages) **masks
 it completely**. So does any direct `Email/get`. The bug only appears on the incremental
-path, days later, and reads like a sync bug. See *Done when* #2.
+path, days later, and reads like a sync bug. See _Done when_ #2.
 
 ### Tool set
 
@@ -202,15 +202,15 @@ The lattice is `read < annotate < draft < move < send < delete`
 it was **designed for exactly these operations**. So `013`'s "is `draft` really the right
 word" problem does not exist here — every tool has an obviously correct scope. Use them:
 
-| tool | scope | domain |
-|---|---|---|
-| `email_query`, `email_get`, `email_get_body`, `mailbox_list`, `thread_get` | `read` | `mail` |
-| `email_set_keywords` | `annotate` | `mail` |
-| `email_move` | `move` | `mail` |
-| `email_create_draft` | `draft` | `mail` |
-| `email_destroy` | `delete` | `mail` |
+| tool                                                                       | scope      | domain |
+| -------------------------------------------------------------------------- | ---------- | ------ |
+| `email_query`, `email_get`, `email_get_body`, `mailbox_list`, `thread_get` | `read`     | `mail` |
+| `email_set_keywords`                                                       | `annotate` | `mail` |
+| `email_move`                                                               | `move`     | `mail` |
+| `email_create_draft`                                                       | `draft`    | `mail` |
+| `email_destroy`                                                            | `delete`   | `mail` |
 
-⚠️ **The method underneath does not enforce this.** `Email/set` gates the *entire* method on
+⚠️ **The method underneath does not enforce this.** `Email/set` gates the _entire_ method on
 `draft` at `email.ts:230`, which is
 [`fromCodex/common/003` (P1, open)](../../.feedback/fromCodex/common/003%20-P1-%20Email-set-Draft-Scope-Can-Move-And-Destroy-Mail.md):
 
@@ -221,7 +221,7 @@ The consequence for this unit is precise and easy to get wrong in either directi
 
 - **A `move`-scoped or `annotate`-scoped token is refused by `Email/set` today**, because
   the method demands `draft`. So the declared MCP scopes are not merely advisory — they are
-  *stricter* than the method, and the strict ones fail closed. Good.
+  _stricter_ than the method, and the strict ones fail closed. Good.
 - **A `draft`-scoped token passes the MCP gate on `email_create_draft`, then reaches a
   method that would also have let it destroy.** The MCP tool boundary is what keeps it from
   doing so — which means the tool boundary is load-bearing security, not ergonomics.
@@ -248,8 +248,8 @@ P1, open. Declare correctly anyway; the declaration is what `001`'s fix makes re
 reclaimed (the comment at `:644-645` is explicit). There is **no tombstone** — `s03.A`'s
 provenance/tombstone work is not started (`_context.md` §6). Nothing is recoverable.
 
-So the tool description must not say "delete"; it must say *permanently destroys, not
-recoverable, not the Trash folder*. The Trash-folder gesture a human means by "delete this"
+So the tool description must not say "delete"; it must say _permanently destroys, not
+recoverable, not the Trash folder_. The Trash-folder gesture a human means by "delete this"
 is `email_move` to `role: trash`. If a model is going to confuse two operations, this is the
 pair, and the only defence is the tool description plus the `delete` scope wall.
 
@@ -264,18 +264,18 @@ prose** and, in the same session, offers tools that move and destroy mail. That 
 confused-deputy configuration, stated plainly in `bureau.md:250-256`:
 
 > "Our agents read **untrusted email by design**, so the confused-deputy case in §8 —
-> *'call the AWS tool, email the result to evil@'* — is a live risk, not a hypothetical."
+> _'call the AWS tool, email the result to evil@'_ — is a live risk, not a hypothetical."
 
 (That "§8" is `mcp-auth.md` §8, per the cross-reference at `bureau.md:263` — `bureau.md`'s
 own §8 is OAuth token lifetime.) `mcp-auth.md:325-342` is the control table, and its verdict
 is the one that governs this unit:
 
-> "It stops the model leaking a secret it *holds*. It does **not** stop the model being
-> *induced to misuse a tool it legitimately has*." (`:327-328`)
+> "It stops the model leaking a secret it _holds_. It does **not** stop the model being
+> _induced to misuse a tool it legitimately has_." (`:327-328`)
 
-with the row that applies directly: *"Model induced to exfiltrate returned data → **gate the
-action** — draft ≠ send"* (`:336`), and invariant 7 (`:856-858`): *"Actions are
-capability-gated, not prompt-gated."*
+with the row that applies directly: _"Model induced to exfiltrate returned data → **gate the
+action** — draft ≠ send"_ (`:336`), and invariant 7 (`:856-858`): _"Actions are
+capability-gated, not prompt-gated."_
 
 Three consequences for the build:
 
@@ -299,8 +299,8 @@ Three consequences for the build:
 declared by any tool here.** `email_create_draft` is where the agent's authority stops.
 
 The design record is unambiguous. `mcp-auth.md` §12's worked example is built to make
-exactly this point — step 10 of the eleven-step table is *"Try to SEND → DENIED · scope
-lattice wall · [live]"* (`:573`), glossed at `:589`:
+exactly this point — step 10 of the eleven-step table is _"Try to SEND → DENIED · scope
+lattice wall · [live]"_ (`:573`), glossed at `:589`:
 
 > "**Step 10** is the whole safety story: the capability granted `draft` and withheld
 > `send`; Allen physically cannot submit. **Sending stays a human click.**"
@@ -315,14 +315,14 @@ reply-only check. Worse, two open P1s sit on it:
 
 - [`fromCodex/common/002`](../../.feedback/fromCodex/common/002%20-P1-%20EmailSubmission-Trusts-Client-Envelope-MailFrom.md)
   — the caller can override envelope `mailFrom` (`submission.ts:130-151`), and `submitOne`
-  accepts *any* email id in the account, not just a draft (`002:30`). So a `send`-scoped
+  accepts _any_ email id in the account, not just a draft (`002:30`). So a `send`-scoped
   token can re-send stored inbound mail with an arbitrary envelope sender.
 - [`fromCodex/common/003`](../../.feedback/fromCodex/common/003%20-P1-%20Email-set-Draft-Scope-Can-Move-And-Destroy-Mail.md)
   §"Related path" — `onSuccessUpdateEmail` reaches `applyEmailPatch`
   (`submission.ts:73`) after only requiring `send` (`:38`), so a send tool would smuggle
   arbitrary mailbox and keyword edits past the `move`/`annotate` gates this unit just built.
 
-That last one is decisive for *this* unit specifically: adding a send tool would hand back,
+That last one is decisive for _this_ unit specifically: adding a send tool would hand back,
 through a side door, precisely the authority the scope table above spends its effort
 withholding. A send tool is not "one more row"; it is a hole in the other rows.
 
@@ -351,7 +351,7 @@ human a queue. That is a capability unit of its own, and it is not this one.
 3. Scope walls hold, each asserted separately: a `read` token is refused on `email_move`
    with `-32004`; a `read` token is refused on `email_destroy`; a token that can move
    cannot destroy. The `annotate`/`move` cases are expected to fail against the method
-   until `common/003` lands — the test should assert the *MCP* refusal, so it stays green
+   until `common/003` lands — the test should assert the _MCP_ refusal, so it stays green
    across that fix.
 4. No tool anywhere in `TOOLS` declares the `send` scope. Assert it as a test over the tool
    table, not as a convention — it is the invariant this unit is choosing.
@@ -377,7 +377,7 @@ human a queue. That is a capability unit of its own, and it is not this one.
   paths outright (`email.ts:347-359`). Do not expose a generic patch argument — the method
   will reject it and the model will retry blindly. Also `:362-364`: an email must belong to
   at least one mailbox, so "remove from Inbox" without naming a destination is an error, not
-  an archive. Tool descriptions must say *move*, never *remove*.
+  an archive. Tool descriptions must say _move_, never _remove_.
 - `applyEmailPatch` is exported and reused by `EmailSubmission/set` (`email.ts:330-331`,
   called at `submission.ts:73`). Any tightening here has a second caller.
 - `Email/queryChanges` always throws `cannotCalculateChanges` (`email.ts:54-56`). Do not
@@ -402,7 +402,7 @@ human a queue. That is a capability unit of its own, and it is not this one.
 ## Open questions / where this could be wrong
 
 1. **The `send` position is a judgement call dressed as a citation.** `mcp-auth.md` §12 is a
-   *worked example*, not a policy statement, and its "withheld `send`" is a property of that
+   _worked example_, not a policy statement, and its "withheld `send`" is a property of that
    scenario's capability, not a rule that no send tool may exist. My argument for "no" rests
    mainly on the `onSuccessUpdateEmail` hole (`submission.ts:73`) — which is a fixable bug,
    not a principle. If `common/002` and `common/003` both land, the honest position becomes
@@ -415,7 +415,7 @@ human a queue. That is a capability unit of its own, and it is not this one.
    would then show `Email × D × MCP` uncovered, which is a bad reason.
 3. **The `annotate`/`move` declarations are, today, decorative-plus-strict.** Because
    `Email/set` demands `draft` (`email.ts:230`), the real enforced behaviour until
-   `common/003` lands is "you need `draft` *and* the declared scope." That is safe but it is
+   `common/003` lands is "you need `draft` _and_ the declared scope." That is safe but it is
    not what the tool table appears to say, and someone reading only the table will be
    surprised. I chose the strict reading; a reviewer might reasonably require that the tools
    simply not ship until `003` is fixed, making `003` a hard dependency edge in `_index.md`.
@@ -429,9 +429,9 @@ human a queue. That is a capability unit of its own, and it is not this one.
    I would not defend it hard.
 6. **`E2` assumes `Email/set` is correct.** It has zero test coverage (`_context.md` §5).
    `applyEmailPatch`'s `mailboxesTouched` bookkeeping (`email.ts:371-377`) has a branch —
-   the keywords-only case adds only the *current* mailboxes — that looks right and is
+   the keywords-only case adds only the _current_ mailboxes — that looks right and is
    untested. If the mail write path has latent bugs, this unit finds them and becomes E3.
 7. **Nothing here was run.** All claims read from source at the tree `_context.md` audited.
    In particular I have not verified that an incremental `bullmoose sync` actually reflects
-   an `Email/set` move end-to-end; *Done when* #2 assumes the changelog wiring works, on the
+   an `Email/set` move end-to-end; _Done when_ #2 assumes the changelog wiring works, on the
    strength of `commitEmailChanges` (`email.ts:308-322`) and `sync.ts:225` alone.

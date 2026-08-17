@@ -652,9 +652,7 @@ export function serializeVcard(card: Card): string {
   }
 
   for (const ann of values(card.anniversaries)) {
-    const d = ann.date as
-      | { year?: number; month?: number; day?: number; utc?: string }
-      | undefined;
+    const d = ann.date as { year?: number; month?: number; day?: number; utc?: string } | undefined;
     if (!d) continue;
     let value: string | null = null;
     if (typeof d.utc === "string") value = d.utc.slice(0, 10);

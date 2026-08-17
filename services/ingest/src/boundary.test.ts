@@ -75,7 +75,11 @@ function seedBook(
       account_id: opts.accountId,
       address_book_id: id,
       uid: `${id}-u${i}`,
-      card_json: JSON.stringify({ uid: `${id}-u${i}`, kind: "individual", emails: { e0: { address } } }),
+      card_json: JSON.stringify({
+        uid: `${id}-u${i}`,
+        kind: "individual",
+        emails: { e0: { address } },
+      }),
       created_at: 1,
       updated_at: 1,
     })),
@@ -193,7 +197,13 @@ describe("stage 1 — REJECT-AT-EDGE (industrial tier)", () => {
   it("the deny list is tenant-scoped: another tenant's entry does not fire", async () => {
     const w = await scaffold();
     w.db.seed("domain_deny_list", [
-      { tenant_id: "t_other", domain: "elsewhere.test", added_at: 1, source: "feed", evidence: null },
+      {
+        tenant_id: "t_other",
+        domain: "elsewhere.test",
+        added_at: 1,
+        source: "feed",
+        evidence: null,
+      },
     ]);
     await rebuildBoundaryBloom(boundaryEnv(w)); // shard-wide bloom DOES contain it…
     const res = await inject(w, mime());
@@ -253,7 +263,10 @@ describe("stage 1 — REJECT-STORE (blocked books)", () => {
     expect(rejections).toEqual([]); // accepted at SMTP — rescuable, never bounced
     expect(forwards).toEqual([]);
 
-    const emailId = w.db.query<{ id: string }>(`SELECT id FROM emails WHERE account_id = ?`, ACCOUNT)[0]!.id;
+    const emailId = w.db.query<{ id: string }>(
+      `SELECT id FROM emails WHERE account_id = ?`,
+      ACCOUNT,
+    )[0]!.id;
     const quarantineId = roleMailboxId(w, QUARANTINE_ROLE);
     expect(quarantineId).not.toBeNull();
     expect(mailboxesOf(w, emailId)).toEqual([quarantineId]);
@@ -277,7 +290,10 @@ describe("stage 1 — REJECT-STORE (blocked books)", () => {
       stage: string;
       email_id: string;
       actor: string | null;
-    }>(`SELECT event, sender, domain, stage, email_id, actor FROM quarantine_events WHERE account_id = ?`, ACCOUNT);
+    }>(
+      `SELECT event, sender, domain, stage, email_id, actor FROM quarantine_events WHERE account_id = ?`,
+      ACCOUNT,
+    );
     expect(events).toEqual([
       {
         event: "shunted",
@@ -296,7 +312,11 @@ describe("stage 1 — REJECT-STORE (blocked books)", () => {
   it("tenant blocked book, named by KV config, fires for a recipient on another account", async () => {
     const w = await scaffold();
     const bouncerAccount = "t_bm__a_bouncer";
-    const bookId = seedBook(w, { accountId: bouncerAccount, name: "HouseBlocked", members: [SENDER] });
+    const bookId = seedBook(w, {
+      accountId: bouncerAccount,
+      name: "HouseBlocked",
+      members: [SENDER],
+    });
     await w.env.ROUTES.put(
       `boundary:tenant-blocked:${TENANT}`,
       JSON.stringify({ accountId: bouncerAccount, bookId }),
@@ -341,7 +361,12 @@ describe("stage 1 — known-good ACCEPT and the unknown CONTINUE", () => {
 
   it("a default book exists but the sender is not in it → delivered, sender_class='unknown'", async () => {
     const w = await scaffold();
-    seedBook(w, { accountId: ACCOUNT, name: "Contacts", isDefault: true, members: ["friend@known.test"] });
+    seedBook(w, {
+      accountId: ACCOUNT,
+      name: "Contacts",
+      isDefault: true,
+      members: ["friend@known.test"],
+    });
     const res = await inject(w, mime());
     expect(res.invocations).toBe(1);
     expect(
@@ -420,7 +445,10 @@ describe("DefaultCase — pinned against the real email() handler", () => {
     expect(forwards).toEqual([]);
 
     // Exactly one stored email, in exactly the inbox.
-    const emails = w.db.query<{ id: string }>(`SELECT id FROM emails WHERE account_id = ?`, ACCOUNT);
+    const emails = w.db.query<{ id: string }>(
+      `SELECT id FROM emails WHERE account_id = ?`,
+      ACCOUNT,
+    );
     expect(emails).toHaveLength(1);
     const inboxId = roleMailboxId(w, "inbox");
     expect(inboxId).not.toBeNull();
@@ -429,7 +457,9 @@ describe("DefaultCase — pinned against the real email() handler", () => {
     // The only mailbox is the inbox — no quarantine mailbox materializes
     // until a shunt actually happens.
     expect(
-      w.db.query<{ role: string }>(`SELECT role FROM mailboxes WHERE account_id = ?`, ACCOUNT).map((r) => r.role),
+      w.db
+        .query<{ role: string }>(`SELECT role FROM mailboxes WHERE account_id = ?`, ACCOUNT)
+        .map((r) => r.role),
     ).toEqual(["inbox"]);
 
     // The enqueue is today's enqueue: pending, and every s12-authored column

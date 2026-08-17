@@ -33,7 +33,7 @@ describe("audience binding (RFC 8707)", () => {
   });
 
   it("5. accepts a multi-audience token that includes us", () => {
-    expect(audienceMatches([ "https://other.example/mcp", RESOURCE ], RESOURCE)).toBe(true);
+    expect(audienceMatches(["https://other.example/mcp", RESOURCE], RESOURCE)).toBe(true);
   });
 
   it("6. ignores non-string entries rather than coercing them", () => {
@@ -78,7 +78,9 @@ describe("principalFromProps — what the grant may become", () => {
   it("13. refuses a non-string principalId rather than coercing it", async () => {
     const w = world();
     expect(await principalFromProps(w.env, { principalId: 42 }, ["read"])).toBeNull();
-    expect(await principalFromProps(w.env, { principalId: { toString: () => "p_eric" } }, ["read"])).toBeNull();
+    expect(
+      await principalFromProps(w.env, { principalId: { toString: () => "p_eric" } }, ["read"]),
+    ).toBeNull();
   });
 
   it("14. refuses a principal that no longer exists — deleting a human revokes their apps", async () => {
@@ -111,7 +113,8 @@ describe("principalFromProps — what the grant may become", () => {
 // stays invisible until someone goes looking for it.
 function fakeAS(handler: (req: Request) => Response): Fetcher {
   return {
-    fetch: (input: RequestInfo, init?: RequestInit) => Promise.resolve(handler(new Request(input as string, init))),
+    fetch: (input: RequestInfo, init?: RequestInit) =>
+      Promise.resolve(handler(new Request(input as string, init))),
   } as unknown as Fetcher;
 }
 
@@ -131,7 +134,11 @@ describe("credential dispatch", () => {
 
 describe("introspect — fails CLOSED, always", () => {
   it("30. returns the grant when the AS says the token is active", async () => {
-    const got = await introspect(okAS({ principalId: "p_eric", scope: ["read", "calendar"] }), "tok", RESOURCE);
+    const got = await introspect(
+      okAS({ principalId: "p_eric", scope: ["read", "calendar"] }),
+      "tok",
+      RESOURCE,
+    );
     expect(got?.props.principalId).toBe("p_eric");
     expect(got?.scopes).toEqual(["read", "calendar"]);
   });
@@ -172,21 +179,43 @@ describe("introspect — fails CLOSED, always", () => {
   });
 
   it("33. refuses on a non-2xx", async () => {
-    expect(await introspect(fakeAS(() => new Response("nope", { status: 401 })), "tok", RESOURCE)).toBeNull();
-    expect(await introspect(fakeAS(() => new Response("boom", { status: 500 })), "tok", RESOURCE)).toBeNull();
+    expect(
+      await introspect(
+        fakeAS(() => new Response("nope", { status: 401 })),
+        "tok",
+        RESOURCE,
+      ),
+    ).toBeNull();
+    expect(
+      await introspect(
+        fakeAS(() => new Response("boom", { status: 500 })),
+        "tok",
+        RESOURCE,
+      ),
+    ).toBeNull();
   });
 
   it("34. refuses on a malformed body rather than guessing", async () => {
-    expect(await introspect(fakeAS(() => new Response("not json")), "tok", RESOURCE)).toBeNull();
+    expect(
+      await introspect(
+        fakeAS(() => new Response("not json")),
+        "tok",
+        RESOURCE,
+      ),
+    ).toBeNull();
   });
 
   it("35. refuses when the AS says active:false", async () => {
-    const as = fakeAS(() => new Response(JSON.stringify({ active: false, props: { principalId: "p_eric" } })));
+    const as = fakeAS(
+      () => new Response(JSON.stringify({ active: false, props: { principalId: "p_eric" } })),
+    );
     expect(await introspect(as, "tok", RESOURCE)).toBeNull();
   });
 
   it("36. refuses a truthy-but-not-true active, rather than coercing", async () => {
-    const as = fakeAS(() => new Response(JSON.stringify({ active: "yes", props: { principalId: "p_eric" } })));
+    const as = fakeAS(
+      () => new Response(JSON.stringify({ active: "yes", props: { principalId: "p_eric" } })),
+    );
     expect(await introspect(as, "tok", RESOURCE)).toBeNull();
   });
 
@@ -196,7 +225,11 @@ describe("introspect — fails CLOSED, always", () => {
   });
 
   it("38. drops non-string scope entries instead of passing them to the gate", async () => {
-    const got = await introspect(okAS({ principalId: "p_eric", scope: ["read", 42, null] }), "tok", RESOURCE);
+    const got = await introspect(
+      okAS({ principalId: "p_eric", scope: ["read", 42, null] }),
+      "tok",
+      RESOURCE,
+    );
     expect(got?.scopes).toEqual(["read"]);
   });
 
@@ -204,7 +237,11 @@ describe("introspect — fails CLOSED, always", () => {
     // Defence in depth: even a compromised AS answering active:true for a
     // made-up principal produces nothing, because the reach is D1's answer.
     const w = fakeEnv();
-    const grant = await introspect(okAS({ principalId: "p_ghost", scope: ["read"] }), "tok", RESOURCE);
+    const grant = await introspect(
+      okAS({ principalId: "p_ghost", scope: ["read"] }),
+      "tok",
+      RESOURCE,
+    );
     expect(await principalFromProps(w.env, grant!.props, grant!.scopes)).toBeNull();
   });
 });
@@ -214,11 +251,19 @@ describe("introspect — fails CLOSED, always", () => {
 // tool forwards the HUMAN's own bm_ bearer to a route that authenticates it
 // itself, and an OAuth-authenticated caller is refused by construction.
 describe("revoke_app — the console's disconnect", () => {
-  const call = async (env: Record<string, unknown>, args: Record<string, unknown>, rawBearer?: string) => {
+  const call = async (
+    env: Record<string, unknown>,
+    args: Record<string, unknown>,
+    rawBearer?: string,
+  ) => {
     const { TOOLS } = await import("./mcp");
     const tool = TOOLS.find((t) => t.name === "revoke_app")!;
     return tool.run(
-      { env: env as never, principal: { username: "eric@bullmoose.cc", scopes: ["read"], accounts: [] }, rawBearer },
+      {
+        env: env as never,
+        principal: { username: "eric@bullmoose.cc", scopes: ["read"], accounts: [] },
+        rawBearer,
+      },
       args,
     );
   };
@@ -246,7 +291,13 @@ describe("revoke_app — the console's disconnect", () => {
   it("51. REFUSES an OAuth-authenticated caller — no rawBearer, no kill switch", async () => {
     // A connected app must not manage the app roster, itself included. The
     // refusal names the alternatives rather than just saying no.
-    const env = { OAUTH: { fetch: async () => { throw new Error("must not be called"); } } };
+    const env = {
+      OAUTH: {
+        fetch: async () => {
+          throw new Error("must not be called");
+        },
+      },
+    };
     await expect(call(env, { clientId: "x" }, undefined)).rejects.toThrow(/device token/);
   });
 
@@ -256,15 +307,30 @@ describe("revoke_app — the console's disconnect", () => {
   });
 
   it("53. fails CLOSED when the AS is unreachable or refuses", async () => {
-    const down = { OAUTH: { fetch: async () => { throw new Error("connection refused"); } } };
+    const down = {
+      OAUTH: {
+        fetch: async () => {
+          throw new Error("connection refused");
+        },
+      },
+    };
     await expect(call(down, { clientId: "x" }, "bm_t")).rejects.toThrow(/could not be reached/);
-    const denied = { OAUTH: { fetch: async () => new Response(JSON.stringify({ error: "nope" }), { status: 401 }) } };
-    await expect(call(denied, { clientId: "x" }, "bm_t")).rejects.toThrow(/Revocation failed \(401\)/);
+    const denied = {
+      OAUTH: {
+        fetch: async () => new Response(JSON.stringify({ error: "nope" }), { status: 401 }),
+      },
+    };
+    await expect(call(denied, { clientId: "x" }, "bm_t")).rejects.toThrow(
+      /Revocation failed \(401\)/,
+    );
   });
 
   it("54. zero matches reads as idempotent, with the check-the-id nudge", async () => {
     const env = {
-      OAUTH: { fetch: async () => new Response(JSON.stringify({ ok: true, revokedGrants: 0, mirroredConsents: 0 })) },
+      OAUTH: {
+        fetch: async () =>
+          new Response(JSON.stringify({ ok: true, revokedGrants: 0, mirroredConsents: 0 })),
+      },
     };
     const out = (await call(env, { clientId: "gone" }, "bm_t")) as { notes: string[] };
     expect(out.notes.join(" ")).toMatch(/No live grants matched/);

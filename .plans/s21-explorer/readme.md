@@ -1,9 +1,9 @@
 # s21 — the explorer: navigable JSON without an app
 
 > **Status: SHIPPED and deployed, deliberately OFF** (#125, 2026-08-14 — note that predates this file's own "design" date). Code at `services/jmap/src/explore/`, in the worker bundle but unreachable: no route, no DNS, `EXPLORE_HOST` unset. Turn on with `node infra/bootstrap.mjs explorer`. The Open Questions below are all RESOLVED by the implementation — read them as build notes, not decisions.
-> *"I'm open to a JMAP explorer — I tend to require that of my JSON APIs anyway. HAL style
+> _"I'm open to a JMAP explorer — I tend to require that of my JSON APIs anyway. HAL style
 > `_links`, `_meta`, `_self`, `_next` so the JSON APIs are clickable/navigable with just a
-> pretty-print extension."*
+> pretty-print extension."_
 >
 > The instinct is the good one: **if responses carry links, the browser IS the explorer.**
 > No app to build, no schema to maintain, no client software at all. But two structural
@@ -12,7 +12,7 @@
 
 ## Obstacle 1 — JMAP has no URLs to click
 
-HAL works because REST resources *are* URLs. **JMAP is one POST endpoint**: `/api/` takes an
+HAL works because REST resources _are_ URLs. **JMAP is one POST endpoint**: `/api/` takes an
 array of `[method, args, callId]` triples and returns an array of results. There is no
 `GET /Email/abc123` to link to, by design — batching and back-references (`#ref`) are what
 JMAP offers instead of navigation, and they serve a different purpose (round-trip economy,
@@ -22,19 +22,19 @@ So `_links` cannot simply be added to JMAP responses: there is nowhere for them 
 
 **What this actually implies: a read-only GET projection.** `GET /explore/Email/{id}` →
 the object JMAP would return, plus `_self`, `_links` and `_next`. That is a second surface,
-which `sVOL 025` rejected for GraphQL — but it is a *far* smaller one, and the difference is
+which `sVOL 025` rejected for GraphQL — but it is a _far_ smaller one, and the difference is
 worth being precise about:
 
-| | GraphQL facade (wontfix) | this |
-|---|---|---|
-| schema language to keep in sync | yes, forever | none |
-| mutation vocabulary | yes | **read-only** |
-| new authorization | no (s19) | no (s19) |
-| worst failure | a write under the wrong authority | a **leak** |
-| link data | invented | **already in the payloads** |
+|                                 | GraphQL facade (wontfix)          | this                        |
+| ------------------------------- | --------------------------------- | --------------------------- |
+| schema language to keep in sync | yes, forever                      | none                        |
+| mutation vocabulary             | yes                               | **read-only**               |
+| new authorization               | no (s19)                          | no (s19)                    |
+| worst failure                   | a write under the wrong authority | a **leak**                  |
+| link data                       | invented                          | **already in the payloads** |
 
 That last row is the crux: an `Email` already carries `threadId`, `mailboxIds`, `blobId`;
-a `FileNode` carries `parentId`. `_links` is a *rendering* of ids that already exist, not
+a `FileNode` carries `parentId`. `_links` is a _rendering_ of ids that already exist, not
 new information. `_next` is JMAP's own `position`/`limit` paging, re-expressed.
 
 ## Obstacle 2 — a browser will not send your bearer token
@@ -45,8 +45,8 @@ option here: it is forbidden by policy and pinned by `webmail/src/lib/app/tokenI
 in referrers, and on anyone's shoulder.
 
 The one sanctioned exception proves the rule: `watch` and `agent serve` put `access_token` in
-the **WebSocket** query string (`watch.ts:311`, `agent.ts:346`) *because the browser
-WebSocket API cannot set headers*. That is a documented concession to a protocol limitation,
+the **WebSocket** query string (`watch.ts:311`, `agent.ts:346`) _because the browser
+WebSocket API cannot set headers_. That is a documented concession to a protocol limitation,
 not a precedent to widen.
 
 So browser-native navigation needs a third auth mode: **a short-lived, narrowly-scoped
@@ -61,7 +61,7 @@ that makes the explorer possible.** The flow:
 2. The button opens the OAuth dialog at `auth.bullmoose.cc` (`s02`, deployed — the
    `bullmoose-oauth` worker is live and taking traffic).
 3. On success the dialog sets an `HttpOnly; Secure; SameSite=Strict` cookie, **scoped to the
-   explore path**, short-lived, carrying *read scopes only*.
+   explore path**, short-lived, carrying _read scopes only_.
 4. Every link is now an ordinary browser navigation. The pretty-printer does the rest.
 
 And it gives `s02` its **first real client** — one you control, on a surface where a
@@ -112,12 +112,13 @@ write. That is what makes a cookie-authenticated surface tolerable at all.
    a cookie-authenticated path exists on the API origin and the JMAP endpoint becomes
    CSRF-able — trading a debugging convenience for a write primitive. Bearer stays the only
    credential `app.bullmoose.cc/api/` accepts.
+
 2. **Always on, or opt-in per deployment?** A read-only mirror of everything is a real
-   surface. *Recommendation: a deploy-time flag, default OFF, so a tenant that never wants
-   it never serves it.*
+   surface. _Recommendation: a deploy-time flag, default OFF, so a tenant that never wants
+   it never serves it._
 3. **Does it render HTML or JSON?** JSON only, per the ask — the whole point is that a
-   pretty-print extension is the entire client. *If it ever renders HTML it has become an
-   app, and the argument for building it weakens.*
+   pretty-print extension is the entire client. _If it ever renders HTML it has become an
+   app, and the argument for building it weakens._
 4. **Cookie lifetime.** Minutes, not days. It is a debugging session, and a long-lived
    cookie on a read-everything surface is the thing that would make this a bad idea.
 

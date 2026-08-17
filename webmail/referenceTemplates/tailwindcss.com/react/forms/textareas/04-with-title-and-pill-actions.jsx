@@ -1,52 +1,52 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
-import { CalendarIcon, PaperClipIcon, TagIcon, UserCircleIcon } from '@heroicons/react/20/solid'
+import { useState } from "react";
+import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from "@headlessui/react";
+import { CalendarIcon, PaperClipIcon, TagIcon, UserCircleIcon } from "@heroicons/react/20/solid";
 
 const assignees = [
-  { name: 'Unassigned', value: null },
+  { name: "Unassigned", value: null },
   {
-    name: 'Wade Cooper',
-    value: 'wade-cooper',
+    name: "Wade Cooper",
+    value: "wade-cooper",
     avatar:
-      'https://images.unsplash.com/photo-1491528323818-fdd1faba62cc?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1491528323818-fdd1faba62cc?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
   {
-    name: 'Arlene Mccoy',
-    value: 'arlene-mccoy',
+    name: "Arlene Mccoy",
+    value: "arlene-mccoy",
     avatar:
-      'https://images.unsplash.com/photo-1550525811-e5869dd03032?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1550525811-e5869dd03032?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
   {
-    name: 'Devon Webb',
-    value: 'devon-webb',
+    name: "Devon Webb",
+    value: "devon-webb",
     avatar:
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2.25&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2.25&w=256&h=256&q=80",
   },
-]
+];
 const labels = [
-  { name: 'Unlabelled', value: null },
-  { name: 'Engineering', value: 'engineering' },
-  { name: 'Marketing', value: 'marketing' },
-  { name: 'Design', value: 'design' },
-  { name: 'Human Resources', value: 'human-resources' },
-]
+  { name: "Unlabelled", value: null },
+  { name: "Engineering", value: "engineering" },
+  { name: "Marketing", value: "marketing" },
+  { name: "Design", value: "design" },
+  { name: "Human Resources", value: "human-resources" },
+];
 const dueDates = [
-  { name: 'No due date', value: null },
-  { name: 'Today', value: 'today' },
-  { name: 'Tomorrow', value: 'tomorrow' },
-  { name: 'This week', value: 'this-week' },
-]
+  { name: "No due date", value: null },
+  { name: "Today", value: "today" },
+  { name: "Tomorrow", value: "tomorrow" },
+  { name: "This week", value: "this-week" },
+];
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
-  const [assigned, setAssigned] = useState(assignees[0])
-  const [labelled, setLabelled] = useState(labels[0])
-  const [dated, setDated] = useState(dueDates[0])
+  const [assigned, setAssigned] = useState(assignees[0]);
+  const [labelled, setLabelled] = useState(labels[0]);
+  const [dated, setDated] = useState(dueDates[0]);
 
   return (
     <form action="#" className="relative">
@@ -70,7 +70,7 @@ export default function Example() {
           rows={2}
           placeholder="Write a description..."
           className="block w-full resize-none px-3 py-1.5 text-base text-gray-900 placeholder:text-gray-400 focus:outline-none sm:text-sm/6 dark:text-white dark:placeholder:text-gray-500"
-          defaultValue={''}
+          defaultValue={""}
         />
 
         {/* Spacer element to match the height of the toolbar */}
@@ -105,11 +105,11 @@ export default function Example() {
 
                 <span
                   className={classNames(
-                    assigned.value === null ? '' : 'text-gray-900 dark:text-white',
-                    'hidden truncate sm:ml-2 sm:block',
+                    assigned.value === null ? "" : "text-gray-900 dark:text-white",
+                    "hidden truncate sm:ml-2 sm:block",
                   )}
                 >
-                  {assigned.value === null ? 'Assign' : assigned.name}
+                  {assigned.value === null ? "Assign" : assigned.name}
                 </span>
               </ListboxButton>
 
@@ -137,7 +137,9 @@ export default function Example() {
                         />
                       )}
 
-                      <span className="ml-3 block truncate font-medium dark:text-white">{assignee.name}</span>
+                      <span className="ml-3 block truncate font-medium dark:text-white">
+                        {assignee.name}
+                      </span>
                     </div>
                   </ListboxOption>
                 ))}
@@ -152,17 +154,19 @@ export default function Example() {
                 <TagIcon
                   aria-hidden="true"
                   className={classNames(
-                    labelled.value === null ? 'text-gray-300 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400',
-                    'size-5 shrink-0 sm:-ml-1',
+                    labelled.value === null
+                      ? "text-gray-300 dark:text-gray-500"
+                      : "text-gray-500 dark:text-gray-400",
+                    "size-5 shrink-0 sm:-ml-1",
                   )}
                 />
                 <span
                   className={classNames(
-                    labelled.value === null ? '' : 'text-gray-900 dark:text-white',
-                    'hidden truncate sm:ml-2 sm:block',
+                    labelled.value === null ? "" : "text-gray-900 dark:text-white",
+                    "hidden truncate sm:ml-2 sm:block",
                   )}
                 >
-                  {labelled.value === null ? 'Label' : labelled.name}
+                  {labelled.value === null ? "Label" : labelled.name}
                 </span>
               </ListboxButton>
 
@@ -177,7 +181,9 @@ export default function Example() {
                     className="cursor-default bg-white px-3 py-2 select-none data-focus:relative data-focus:bg-gray-100 data-focus:hover:outline-hidden dark:bg-gray-800 dark:data-focus:bg-white/5"
                   >
                     <div className="flex items-center">
-                      <span className="block truncate font-medium dark:text-white">{label.name}</span>
+                      <span className="block truncate font-medium dark:text-white">
+                        {label.name}
+                      </span>
                     </div>
                   </ListboxOption>
                 ))}
@@ -192,17 +198,19 @@ export default function Example() {
                 <CalendarIcon
                   aria-hidden="true"
                   className={classNames(
-                    dated.value === null ? 'text-gray-300 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400',
-                    'size-5 shrink-0 sm:-ml-1',
+                    dated.value === null
+                      ? "text-gray-300 dark:text-gray-500"
+                      : "text-gray-500 dark:text-gray-400",
+                    "size-5 shrink-0 sm:-ml-1",
                   )}
                 />
                 <span
                   className={classNames(
-                    dated.value === null ? '' : 'text-gray-900 dark:text-white',
-                    'hidden truncate sm:ml-2 sm:block',
+                    dated.value === null ? "" : "text-gray-900 dark:text-white",
+                    "hidden truncate sm:ml-2 sm:block",
                   )}
                 >
-                  {dated.value === null ? 'Due date' : dated.name}
+                  {dated.value === null ? "Due date" : dated.name}
                 </span>
               </ListboxButton>
 
@@ -217,7 +225,9 @@ export default function Example() {
                     className="cursor-default bg-white px-3 py-2 select-none data-focus:relative data-focus:bg-gray-100 data-focus:hover:outline-hidden dark:bg-gray-800 dark:data-focus:bg-white/5"
                   >
                     <div className="flex items-center">
-                      <span className="block truncate font-medium dark:text-white">{dueDate.name}</span>
+                      <span className="block truncate font-medium dark:text-white">
+                        {dueDate.name}
+                      </span>
                     </div>
                   </ListboxOption>
                 ))}
@@ -251,5 +261,5 @@ export default function Example() {
         </div>
       </div>
     </form>
-  )
+  );
 }

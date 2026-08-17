@@ -100,7 +100,14 @@ function scaffold(config = CONFIG(BINDING_JOBS)) {
   /** A SECOND binding on the account — what a cross-binding chain crosses INTO. */
   const seedBinding = (id: string, jobs: Record<string, unknown> | null, enabled = 1) =>
     w.db.seed("agent_bindings", [
-      { id, account_id: ACCOUNT, name: id, config_json: CONFIG(jobs), recipients_book_id: null, enabled },
+      {
+        id,
+        account_id: ACCOUNT,
+        name: id,
+        config_json: CONFIG(jobs),
+        recipients_book_id: null,
+        enabled,
+      },
     ]);
 
   /**
@@ -119,7 +126,9 @@ function scaffold(config = CONFIG(BINDING_JOBS)) {
       .run(bindingId, ACCOUNT, invocationId);
 
   const destroyBinding = (id: string) =>
-    w.db.sqlite.prepare(`DELETE FROM agent_bindings WHERE account_id = ? AND id = ?`).run(ACCOUNT, id);
+    w.db.sqlite
+      .prepare(`DELETE FROM agent_bindings WHERE account_id = ? AND id = ?`)
+      .run(ACCOUNT, id);
 
   const gate = (id: string) => {
     const row = nodes().find((r) => r.id === id)!;
@@ -221,10 +230,16 @@ describe("the gate DENIES at use time what the delegation dropped", () => {
 
     // The binding grants `email.draft`; the root's delegation did not take it.
     // Before this gate existed, nothing between the two was ever consulted.
-    const allowed = await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "tool", name: "files.read" });
+    const allowed = await authorizeNodeUse(s.env, ACCOUNT, rootId, {
+      kind: "tool",
+      name: "files.read",
+    });
     expect(allowed.ok).toBe(true);
 
-    const refused = await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "tool", name: "email.draft" });
+    const refused = await authorizeNodeUse(s.env, ACCOUNT, rootId, {
+      kind: "tool",
+      name: "email.draft",
+    });
     expect(refused.ok).toBe(false);
     if (!refused.ok) {
       expect(refused.denial.axis).toBe("tools");
@@ -237,9 +252,14 @@ describe("the gate DENIES at use time what the delegation dropped", () => {
   it("a credential the binding holds but the node's envelope omits is refused", async () => {
     const s = scaffold();
     const { rootId } = await start(s.env, { tasks: [echo("a")] });
-    expect((await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "credential", name: "aws-mcp" })).ok).toBe(true);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "credential", name: "aws-mcp" })).ok,
+    ).toBe(true);
 
-    const refused = await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "credential", name: "stripe" });
+    const refused = await authorizeNodeUse(s.env, ACCOUNT, rootId, {
+      kind: "credential",
+      name: "stripe",
+    });
     expect(refused.ok).toBe(false);
     if (!refused.ok) expect(refused.denial.axis).toBe("credentials");
   });
@@ -247,17 +267,25 @@ describe("the gate DENIES at use time what the delegation dropped", () => {
   it("a spend over the node's own ceiling is refused, under the Job's aggregate", async () => {
     const s = scaffold();
     const { rootId } = await start(s.env, { tasks: [echo("a")] });
-    expect((await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "spend", micros: 500_000 })).ok).toBe(true);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "spend", micros: 500_000 })).ok,
+    ).toBe(true);
     // The Job's aggregate is 1_000_000 and would have allowed this; the NODE's
     // own delegated ceiling is 500_000 and does not.
-    const refused = await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "spend", micros: 600_000 });
+    const refused = await authorizeNodeUse(s.env, ACCOUNT, rootId, {
+      kind: "spend",
+      micros: 600_000,
+    });
     expect(refused.ok).toBe(false);
     if (!refused.ok) expect(refused.denial.axis).toBe("budget");
   });
 
   it("an unknown invocation is DENIED, not waved through", async () => {
     const s = scaffold();
-    const r = await authorizeNodeUse(s.env, ACCOUNT, "inv_nope", { kind: "tool", name: "files.read" });
+    const r = await authorizeNodeUse(s.env, ACCOUNT, "inv_nope", {
+      kind: "tool",
+      name: "files.read",
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.denial.axis).toBe("envelope");
   });
@@ -267,17 +295,24 @@ describe("THE BINDING BOUND — a delegation may not outlive the ceiling above i
   it("narrowing the binding mid-flight bites work ALREADY in the queue", async () => {
     const s = scaffold();
     const { rootId } = await start(s.env, { tasks: [echo("a")] });
-    expect((await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "tool", name: "files.read" })).ok).toBe(true);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "tool", name: "files.read" })).ok,
+    ).toBe(true);
 
     // The operator narrows the binding. The root row's envelope still says
     // `files.read`; the effective authority no longer does.
     s.narrowBinding({ tools: ["email.draft"], credentials: [], budgetMicros: 10 });
 
-    const refused = await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "tool", name: "files.read" });
+    const refused = await authorizeNodeUse(s.env, ACCOUNT, rootId, {
+      kind: "tool",
+      name: "files.read",
+    });
     expect(refused.ok).toBe(false);
     if (!refused.ok) expect(refused.denial.axis).toBe("tools");
     // ...and the money ceiling narrows with it.
-    expect((await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "spend", micros: 100 })).ok).toBe(false);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "spend", micros: 100 })).ok,
+    ).toBe(false);
   });
 
   it("a TAMPERED envelope cannot mint a tool the binding never granted", async () => {
@@ -337,7 +372,10 @@ describe("CROSS-BINDING chains fold to the NARROWEST binding they pass through",
       expect(eff.effective.budgetMicros).toBe(25_000);
     }
 
-    const refused = await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" });
+    const refused = await authorizeNodeUse(s.env, ACCOUNT, leaf.id, {
+      kind: "tool",
+      name: "files.read",
+    });
     expect(refused.ok).toBe(false);
     if (!refused.ok) expect(refused.denial.axis).toBe("tools");
   });
@@ -356,7 +394,13 @@ describe("CROSS-BINDING chains fold to the NARROWEST binding they pass through",
             kind: "job-node",
             op: "plan",
             plan: {
-              tasks: [echo("leaf", { tools: ["files.read"], credentials: ["aws-mcp"], budgetMicros: 50_000 })],
+              tasks: [
+                echo("leaf", {
+                  tools: ["files.read"],
+                  credentials: ["aws-mcp"],
+                  budgetMicros: 50_000,
+                }),
+              ],
             },
           },
         },
@@ -373,16 +417,26 @@ describe("CROSS-BINDING chains fold to the NARROWEST binding they pass through",
 
     // `aws-mcp` is in every envelope in this chain AND in both end bindings.
     // Only the middle hop's binding drops it.
-    const cred = await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "credential", name: "aws-mcp" });
+    const cred = await authorizeNodeUse(s.env, ACCOUNT, leaf.id, {
+      kind: "credential",
+      name: "aws-mcp",
+    });
     expect(cred.ok).toBe(false);
     if (!cred.ok) expect(cred.denial.axis).toBe("credentials");
 
-    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" })).ok).toBe(true);
-    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "spend", micros: 7 })).ok).toBe(true);
-    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "spend", micros: 8 })).ok).toBe(false);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" })).ok,
+    ).toBe(true);
+    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "spend", micros: 7 })).ok).toBe(
+      true,
+    );
+    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "spend", micros: 8 })).ok).toBe(
+      false,
+    );
 
     const eff = await s.gate(leaf.id);
-    if (eff.ok) expect(eff.effective).toEqual({ tools: ["files.read"], credentials: [], budgetMicros: 7 });
+    if (eff.ok)
+      expect(eff.effective).toEqual({ tools: ["files.read"], credentials: [], budgetMicros: 7 });
   });
 
   it("a DISABLED binding mid-chain DENIES — the kill switch is not 'no ceiling'", async () => {
@@ -406,12 +460,18 @@ describe("CROSS-BINDING chains fold to the NARROWEST binding they pass through",
       expect(r.note).toContain(leaf.id);
     }
     // And the per-axis gate refuses with it, rather than falling through.
-    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" })).ok).toBe(false);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" })).ok,
+    ).toBe(false);
   });
 
   it("a MISSING binding mid-chain DENIES — a destroyed ceiling is unknown, not absent", async () => {
     const s = scaffold();
-    s.seedBinding("bind_gone", { tools: ["files.read"], credentials: ["aws-mcp"], budgetMicros: 1_000_000 });
+    s.seedBinding("bind_gone", {
+      tools: ["files.read"],
+      credentials: ["aws-mcp"],
+      budgetMicros: 1_000_000,
+    });
     const mid = await threeDeep(s);
     s.rebind(mid, "bind_gone");
 
@@ -470,7 +530,7 @@ describe("SAME-BINDING chains fold to exactly what they folded to before", () =>
       expect(row.binding_id).toBe(BINDING);
       // The envelopes, ROOT-FIRST, walked the way the gate walks them.
       const envelopes: Array<string | null> = [];
-      for (let cur = row; ; ) {
+      for (let cur = row; ;) {
         envelopes.unshift(cur.authority_json);
         if (cur.parent_id === null) break;
         cur = byId.get(cur.parent_id)!;
@@ -491,7 +551,11 @@ describe("SAME-BINDING chains fold to exactly what they folded to before", () =>
     const eff = await s.gate(s.byKey("leaf")!.id);
     expect(eff.ok).toBe(true);
     if (eff.ok) {
-      expect(eff.effective).toEqual({ tools: ["files.read"], credentials: ["aws-mcp"], budgetMicros: 50_000 });
+      expect(eff.effective).toEqual({
+        tools: ["files.read"],
+        credentials: ["aws-mcp"],
+        budgetMicros: 50_000,
+      });
     }
   });
 });
@@ -547,7 +611,10 @@ describe("FAIL CLOSED — an unreadable chain denies, and the node does not run"
       .prepare(`DELETE FROM agent_invocations WHERE account_id = ? AND id = ?`)
       .run(ACCOUNT, child.parent_id);
 
-    const r = await authorizeNodeUse(s.env, ACCOUNT, child.id, { kind: "tool", name: "files.read" });
+    const r = await authorizeNodeUse(s.env, ACCOUNT, child.id, {
+      kind: "tool",
+      name: "files.read",
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.denial.why).toMatch(/does not exist/);
   });
@@ -562,7 +629,10 @@ describe("FAIL CLOSED — an unreadable chain denies, and the node does not run"
       .prepare(`UPDATE agent_invocations SET parent_id = ? WHERE account_id = ? AND id = ?`)
       .run(child.id, ACCOUNT, rootId);
 
-    const r = await authorizeNodeUse(s.env, ACCOUNT, child.id, { kind: "tool", name: "files.read" });
+    const r = await authorizeNodeUse(s.env, ACCOUNT, child.id, {
+      kind: "tool",
+      name: "files.read",
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.denial.axis).toBe("envelope");
   });
@@ -578,7 +648,10 @@ describe("FAIL CLOSED — an unreadable chain denies, and the node does not run"
       .prepare(`UPDATE agent_invocations SET job_id = ? WHERE account_id = ? AND id = ?`)
       .run("job_elsewhere", ACCOUNT, first.rootId);
 
-    const r = await authorizeNodeUse(s.env, ACCOUNT, child.id, { kind: "tool", name: "files.read" });
+    const r = await authorizeNodeUse(s.env, ACCOUNT, child.id, {
+      kind: "tool",
+      name: "files.read",
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.denial.why).toMatch(/another Job's ceiling/);
   });
@@ -587,7 +660,19 @@ describe("FAIL CLOSED — an unreadable chain denies, and the node does not run"
 describe("RE-DELEGATION cannot widen — the chain is recomputed, not believed", () => {
   it("a two-hop chain: hop 2's TAMPERED row cannot re-grant what hop 1 dropped", async () => {
     const s = scaffold();
-    await start(s.env, { tasks: [{ key: "mid", budgetMicros: 200_000, context: { kind: "job-node", op: "plan", plan: { tasks: [echo("leaf", { tools: ["email.draft"] })] } } }] });
+    await start(s.env, {
+      tasks: [
+        {
+          key: "mid",
+          budgetMicros: 200_000,
+          context: {
+            kind: "job-node",
+            op: "plan",
+            plan: { tasks: [echo("leaf", { tools: ["email.draft"] })] },
+          },
+        },
+      ],
+    });
     await s.drain(); // hop 1: the root planner creates `mid`
 
     const mid = s.byKey("mid")!;
@@ -597,7 +682,14 @@ describe("RE-DELEGATION cannot widen — the chain is recomputed, not believed",
     // Now tamper: give `mid`'s row every tool the binding has. Its own plan
     // asks for `email.draft` — legal against the tampered row, illegal against
     // the chain, because the ROOT gave `email.draft` up.
-    s.tamper(mid.id, JSON.stringify({ tools: ["files.read", "email.draft"], credentials: [], budgetMicros: 200_000 }));
+    s.tamper(
+      mid.id,
+      JSON.stringify({
+        tools: ["files.read", "email.draft"],
+        credentials: [],
+        budgetMicros: 200_000,
+      }),
+    );
 
     await s.drain(); // hop 2: `mid` tries to expand
     expect(s.byKey("leaf")).toBeUndefined();
@@ -634,7 +726,14 @@ describe("RE-DELEGATION cannot widen — the chain is recomputed, not believed",
     });
     expect(eff.ok).toBe(true);
     if (eff.ok) expect(eff.effective.budgetMicros).toBe(50_000);
-    expect((await authorizeNodeUse(s.env, ACCOUNT, s.byKey("leaf")!.id, { kind: "tool", name: "email.draft" })).ok).toBe(false);
+    expect(
+      (
+        await authorizeNodeUse(s.env, ACCOUNT, s.byKey("leaf")!.id, {
+          kind: "tool",
+          name: "email.draft",
+        })
+      ).ok,
+    ).toBe(false);
   });
 
   it("expandPlan REFUSES on its own when the chain is unreadable — the chokepoint does not lean on its caller", async () => {
@@ -652,7 +751,21 @@ describe("RE-DELEGATION cannot widen — the chain is recomputed, not believed",
 
   it("a corrupt SIBLING cannot make another node's plan unanswerable", async () => {
     const s = scaffold();
-    await start(s.env, { tasks: [echo("a"), { key: "mid", tools: ["files.read"], budgetMicros: 200_000, context: { kind: "job-node", op: "plan", plan: { tasks: [echo("leaf", { budgetMicros: 10_000 })] } } }] });
+    await start(s.env, {
+      tasks: [
+        echo("a"),
+        {
+          key: "mid",
+          tools: ["files.read"],
+          budgetMicros: 200_000,
+          context: {
+            kind: "job-node",
+            op: "plan",
+            plan: { tasks: [echo("leaf", { budgetMicros: 10_000 })] },
+          },
+        },
+      ],
+    });
     await s.drain(); // the root planner creates `a` and `mid`
     // Corrupt an unrelated sibling's envelope. `json_extract` throws on
     // malformed JSON, so before the `json_valid` guard this took the whole
@@ -693,7 +806,10 @@ describe("DefaultCase — an ordinary invocation is untouched by any of it", () 
         created_at: 1,
       },
     ]);
-    const r = await authorizeNodeUse(s.env, ACCOUNT, "inv_plain", { kind: "tool", name: "anything" });
+    const r = await authorizeNodeUse(s.env, ACCOUNT, "inv_plain", {
+      kind: "tool",
+      name: "anything",
+    });
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.delegated).toBe(false);
@@ -708,8 +824,12 @@ describe("DefaultCase — an ordinary invocation is untouched by any of it", () 
     const s = scaffold(CONFIG(null));
     const { rootId } = await start(s.env, { tasks: [echo("a")] });
     // Unset binding ceiling widens nothing: the root's own delegation binds.
-    expect((await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "tool", name: "files.read" })).ok).toBe(true);
-    expect((await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "tool", name: "email.draft" })).ok).toBe(false);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "tool", name: "files.read" })).ok,
+    ).toBe(true);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, rootId, { kind: "tool", name: "email.draft" })).ok,
+    ).toBe(false);
   });
 
   it("a binding with an UNPARSEABLE config reads as unset, and narrows nothing below it", async () => {
@@ -735,7 +855,12 @@ describe("DefaultCase — an ordinary invocation is untouched by any of it", () 
       tasks: [
         echo("a"),
         echo("b"),
-        { key: "join", budgetMicros: 100_000, needs: ["a", "b"], context: { kind: "job-node", op: "join" } },
+        {
+          key: "join",
+          budgetMicros: 100_000,
+          needs: ["a", "b"],
+          context: { kind: "job-node", op: "join" },
+        },
       ],
     });
     await s.drain();

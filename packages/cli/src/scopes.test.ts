@@ -81,7 +81,7 @@ describe("parseScopeFlag — optional (login only)", () => {
     });
   });
 
-  it("still rejects an empty value — `--scopes \"\"` is a typo either way", () => {
+  it('still rejects an empty value — `--scopes ""` is a typo either way', () => {
     expect(parseScopeFlag("", SELF_SERVICE_SCOPES, false).ok).toBe(false);
   });
 

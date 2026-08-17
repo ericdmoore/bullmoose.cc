@@ -12,66 +12,66 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 
 ## Commands
 
-| command | what it does |
-|---|---|
-| [`help`](#help) | show help — for everything, one command, or as a machine-readable spec |
-| [`login`](#login) | log in and store a bearer token for this account |
-| [`discover`](#discover) | show what autodiscovery finds and probe the server |
-| [`init`](#init) | configure an account from an existing token (no password login) |
-| [`token`](#token) | mint / list / revoke device app-passwords for this account |
-| [`accounts`](#accounts) | list this login's accounts (★ = default; local counts shown) |
-| [`sync`](#sync) | pull mail into the local SQLite log (all accounts by default) |
-| [`send`](#send) | compose and send mail (Markdown → MIME, inline images, big-file links) |
-| [`read`](#read) | print a message (newest if no id) |
-| [`watch`](#watch) | push-triggered live sync: print new mail as it arrives |
-| [`vacation`](#vacation) | manage the RFC 8621 vacation responder |
-| [`agent`](#agent) | run the homelab agent runtime (single binding or fleet host), and trigger agents on demand |
-| [`contacts`](#contacts) | read and write the contacts core (vCard ⇄ JSContact) |
-| [`calendar`](#calendar) | browse and edit the calendar core (JSCalendar; recurrence expanded server-side) |
-| [`creds`](#creds) | manage the write-only, envelope-encrypted credential vault |
-| [`log`](#log) | list messages from the local log |
-| [`search`](#search) | full-text search the local log (SQLite FTS5) |
-| [`show`](#show) | show a message's metadata + structure |
-| [`mailboxes`](#mailboxes) | list mailboxes for the selected account |
-| [`mailbox`](#mailbox) | create, rename, move and remove folders (over JMAP) |
-| [`flag`](#flag) | set or clear message keywords (over JMAP) |
-| [`seen`](#seen) | mark messages read, or unread with --unset (sugar over flag $seen) |
-| [`move`](#move) | move messages into exactly one mailbox (replaces the set) |
-| [`label`](#label) | add or remove one mailbox without disturbing the others |
-| [`archive`](#archive) | move messages to the Archive folder (sugar over move --role archive) |
-| [`junk`](#junk) | move messages to the Junk folder (sugar over move --role junk) |
-| [`trash`](#trash) | move messages to Trash (sugar over move --role trash) — reversible, unlike rm |
-| [`rm`](#rm) | PERMANENTLY destroy messages — hard delete, no Trash, no undo |
-| [`delete`](#delete) | alias for `rm` — PERMANENTLY destroy messages (no Trash, no undo) |
-| [`blobs`](#blobs) | see and remove the objects this account stores in R2 |
-| [`share`](#share) | list and revoke the expiring public links this account has minted |
-| [`identity`](#identity) | send-as addresses and mail signatures (over JMAP) |
-| [`admin`](#admin) | operator surface — wraps the provision worker (separate credentials) |
+| command                   | what it does                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| [`help`](#help)           | show help — for everything, one command, or as a machine-readable spec                     |
+| [`login`](#login)         | log in and store a bearer token for this account                                           |
+| [`discover`](#discover)   | show what autodiscovery finds and probe the server                                         |
+| [`init`](#init)           | configure an account from an existing token (no password login)                            |
+| [`token`](#token)         | mint / list / revoke device app-passwords for this account                                 |
+| [`accounts`](#accounts)   | list this login's accounts (★ = default; local counts shown)                               |
+| [`sync`](#sync)           | pull mail into the local SQLite log (all accounts by default)                              |
+| [`send`](#send)           | compose and send mail (Markdown → MIME, inline images, big-file links)                     |
+| [`read`](#read)           | print a message (newest if no id)                                                          |
+| [`watch`](#watch)         | push-triggered live sync: print new mail as it arrives                                     |
+| [`vacation`](#vacation)   | manage the RFC 8621 vacation responder                                                     |
+| [`agent`](#agent)         | run the homelab agent runtime (single binding or fleet host), and trigger agents on demand |
+| [`contacts`](#contacts)   | read and write the contacts core (vCard ⇄ JSContact)                                       |
+| [`calendar`](#calendar)   | browse and edit the calendar core (JSCalendar; recurrence expanded server-side)            |
+| [`creds`](#creds)         | manage the write-only, envelope-encrypted credential vault                                 |
+| [`log`](#log)             | list messages from the local log                                                           |
+| [`search`](#search)       | full-text search the local log (SQLite FTS5)                                               |
+| [`show`](#show)           | show a message's metadata + structure                                                      |
+| [`mailboxes`](#mailboxes) | list mailboxes for the selected account                                                    |
+| [`mailbox`](#mailbox)     | create, rename, move and remove folders (over JMAP)                                        |
+| [`flag`](#flag)           | set or clear message keywords (over JMAP)                                                  |
+| [`seen`](#seen)           | mark messages read, or unread with --unset (sugar over flag $seen)                         |
+| [`move`](#move)           | move messages into exactly one mailbox (replaces the set)                                  |
+| [`label`](#label)         | add or remove one mailbox without disturbing the others                                    |
+| [`archive`](#archive)     | move messages to the Archive folder (sugar over move --role archive)                       |
+| [`junk`](#junk)           | move messages to the Junk folder (sugar over move --role junk)                             |
+| [`trash`](#trash)         | move messages to Trash (sugar over move --role trash) — reversible, unlike rm              |
+| [`rm`](#rm)               | PERMANENTLY destroy messages — hard delete, no Trash, no undo                              |
+| [`delete`](#delete)       | alias for `rm` — PERMANENTLY destroy messages (no Trash, no undo)                          |
+| [`blobs`](#blobs)         | see and remove the objects this account stores in R2                                       |
+| [`share`](#share)         | list and revoke the expiring public links this account has minted                          |
+| [`identity`](#identity)   | send-as addresses and mail signatures (over JMAP)                                          |
+| [`admin`](#admin)         | operator surface — wraps the provision worker (separate credentials)                       |
 
 ## Global options
 
-| flag | description |
-|---|---|
-| `--db <path>` | SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db) |
-| `--account <sel>` | account selector: accountId, address, @domain-suffix, name substring, or 'default'. For commands that act on ONE account a selector matching several is an error, not a choice — name one. Commands that legitimately fan out (log, search, sync, watch, mailboxes) still do. |
-| `--json` | machine-readable output: NDJSON — one complete JSON value per line — for collections, exactly one object for show-style commands. Never a wrapping array, so `\| head`, `\| wc -l` and `\| jq` all stream. (`help --json` dumps this whole spec.) |
-| `--ids` | print bare identifiers, one per line, and nothing else — the `\| xargs -n1` shape |
-| `--dry-run` | on destructive commands (move, trash, rm/delete, mailbox rm, blobs rm, share revoke, token revoke, creds rm, contacts import, vacation on\|off, admin *revoke): resolve everything, report what would happen, write nothing |
-| `--if-state <state>` | optimistic concurrency for writes: passed to JMAP as ifInState. If the server has moved on, the write is refused with exit 5 and nothing changes. The state to pass is printed by the previous write (and is in its --json output as `state`). |
-| `--as <type>` | force the input content type — vcard \| ical \| json \| text (default: inferred from the bytes) |
-| `-h, --help` | show help; `bullmoose <cmd> --help` shows help for one command |
-| `--man / --markdown` | render the whole spec as a man page / Markdown (used to generate the docs) |
+| flag                 | description                                                                                                                                                                                                                                                                   |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--db <path>`        | SQLite database path (default: $BULLMOOSE_DB or ~/.bullmoose/mail.db)                                                                                                                                                                                                         |
+| `--account <sel>`    | account selector: accountId, address, @domain-suffix, name substring, or 'default'. For commands that act on ONE account a selector matching several is an error, not a choice — name one. Commands that legitimately fan out (log, search, sync, watch, mailboxes) still do. |
+| `--json`             | machine-readable output: NDJSON — one complete JSON value per line — for collections, exactly one object for show-style commands. Never a wrapping array, so `\| head`, `\| wc -l` and `\| jq` all stream. (`help --json` dumps this whole spec.)                             |
+| `--ids`              | print bare identifiers, one per line, and nothing else — the `\| xargs -n1` shape                                                                                                                                                                                             |
+| `--dry-run`          | on destructive commands (move, trash, rm/delete, mailbox rm, blobs rm, share revoke, token revoke, creds rm, contacts import, vacation on\|off, admin *revoke): resolve everything, report what would happen, write nothing                                                   |
+| `--if-state <state>` | optimistic concurrency for writes: passed to JMAP as ifInState. If the server has moved on, the write is refused with exit 5 and nothing changes. The state to pass is printed by the previous write (and is in its --json output as `state`).                                |
+| `--as <type>`        | force the input content type — vcard \| ical \| json \| text (default: inferred from the bytes)                                                                                                                                                                               |
+| `-h, --help`         | show help; `bullmoose <cmd> --help` shows help for one command                                                                                                                                                                                                                |
+| `--man / --markdown` | render the whole spec as a man page / Markdown (used to generate the docs)                                                                                                                                                                                                    |
 
 ## Exit codes
 
-| code | meaning | when |
-|---|---|---|
-| 0 | success | the command did what it said |
-| 1 | generic failure | server error, quota, rate limit — nothing you can restate |
-| 2 | usage error | unknown flag or command, missing argument, ambiguous --account |
-| 3 | not found | no such message, mailbox, contact, account or blob |
-| 4 | auth / forbidden | the token is rejected or lacks the scope |
-| 5 | conflict | --if-state mismatch, or a precondition like a non-empty mailbox |
+| code | meaning          | when                                                            |
+| ---- | ---------------- | --------------------------------------------------------------- |
+| 0    | success          | the command did what it said                                    |
+| 1    | generic failure  | server error, quota, rate limit — nothing you can restate       |
+| 2    | usage error      | unknown flag or command, missing argument, ambiguous --account  |
+| 3    | not found        | no such message, mailbox, contact, account or blob              |
+| 4    | auth / forbidden | the token is rejected or lacks the scope                        |
+| 5    | conflict         | --if-state mismatch, or a precondition like a non-empty mailbox |
 
 ## help
 
@@ -83,11 +83,11 @@ bullmoose help [<command>] | --json | --man | --markdown
 
 With no argument, the command overview. With a command name, that command's synopsis, flags and examples (`bullmoose <cmd> --help` is the same thing). `--json` dumps this entire spec — commands, subcommands, flags, examples, global options, the exit-code table and the I/O contract notes — and is what an agent should read rather than scraping the text. `--man` and `--markdown` render the same spec as a man page and as Markdown; `docs/cli.md` and `man/bullmoose.1` are generated from them by `npm run -w @bullmoose/cli gen:docs` and must never be hand-edited.
 
-| flag | description |
-|---|---|
-| `--json` | the whole command spec, machine-readable |
-| `--man` | roff man page (→ man/bullmoose.1) |
-| `--markdown` | Markdown reference (→ docs/cli.md) |
+| flag         | description                              |
+| ------------ | ---------------------------------------- |
+| `--json`     | the whole command spec, machine-readable |
+| `--man`      | roff man page (→ man/bullmoose.1)        |
+| `--markdown` | Markdown reference (→ docs/cli.md)       |
 
 **Examples**
 
@@ -107,12 +107,12 @@ bullmoose login <email> [--base <url>] [--name <device-name>] [--password <pw>] 
 
 Authenticates to a JMAP server. With no --base, the server is autodiscovered from the email domain via the _jmap._tcp SRV record / .well-known/jmap fallback (RFC 8620 §2.2). The password comes from the prompt, $BULLMOOSE_PASSWORD, or --password; it is stretched locally, used once, and never stored or sent raw. --scopes sets what the minted token may do and is OPTIONAL here — this is the one command that must work before you hold any token, so omitting it takes the server default of `mail` (the six mail verbs; no contacts, calendar or vault). `login` is also the only self-service way to WIDEN scope, because `token create` can only narrow the token it is called with.
 
-| flag | description |
-|---|---|
-| `--base <url>` | JMAP server base; skip to autodiscover from the email domain |
-| `--name <device-name>` | label the minted token (shows in `token list`) |
-| `--password <pw>` | password (else prompt or $BULLMOOSE_PASSWORD) |
-| `--scopes <a,b,c>` | scopes for the minted token; omit for the server default (mail). Vocabulary (a flat set, not an ordering): read; the mail verbs annotate, draft, move, send, delete; the bundle mail; the realms contacts, calendar, vault, files. Any write implies read. |
+| flag                   | description                                                                                                                                                                                                                                                |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--base <url>`         | JMAP server base; skip to autodiscover from the email domain                                                                                                                                                                                               |
+| `--name <device-name>` | label the minted token (shows in `token list`)                                                                                                                                                                                                             |
+| `--password <pw>`      | password (else prompt or $BULLMOOSE_PASSWORD)                                                                                                                                                                                                              |
+| `--scopes <a,b,c>`     | scopes for the minted token; omit for the server default (mail). Vocabulary (a flat set, not an ordering): read; the mail verbs annotate, draft, move, send, delete; the bundle mail; the realms contacts, calendar, vault, files. Any write implies read. |
 
 **Examples**
 
@@ -154,13 +154,13 @@ bullmoose init --base <url> --token <token> [--account <id>] [--offline]
 
 Pastes an existing token instead of logging in. --base also accepts file:///path/to/bundle.json — a {base, token, accountId} bootstrap written by an operator. --offline stores it without validating against the server.
 
-| flag | description |
-|---|---|
-| `--base <url>` | JMAP base, or file:// path to a bootstrap bundle |
-| `--url <url>` | alias for --base (accepted so a pasted bundle's own key works) |
-| `--token <token>` | a bm_… bearer token |
-| `--account <id>` | account id, if the token covers several |
-| `--offline` | store without validating |
+| flag              | description                                                    |
+| ----------------- | -------------------------------------------------------------- |
+| `--base <url>`    | JMAP base, or file:// path to a bootstrap bundle               |
+| `--url <url>`     | alias for --base (accepted so a pasted bundle's own key works) |
+| `--token <token>` | a bm_… bearer token                                            |
+| `--account <id>`  | account id, if the token covers several                        |
+| `--offline`       | store without validating                                       |
 
 **Examples**
 
@@ -228,10 +228,10 @@ bullmoose sync [--blobs <dir>] [--account <sel>]
 
 Default syncs ALL accounts: clean ones are detected in one batched round-trip and skipped; only dirty inboxes fully sync. --blobs downloads message blobs into a directory.
 
-| flag | description |
-|---|---|
-| `--blobs <dir>` | also download blobs into <dir> |
-| `--account <sel>` | limit to one account |
+| flag              | description                    |
+| ----------------- | ------------------------------ |
+| `--blobs <dir>`   | also download blobs into <dir> |
+| `--account <sel>` | limit to one account           |
 
 **Examples**
 
@@ -252,16 +252,16 @@ bullmoose send --to <addr>[,<addr>] --subject <s> [--cc ..] [--bcc ..] [--file <
 
 Body comes from --file, else --body, else piped stdin. With --expandMD html the body is treated as Markdown: rendered HTML becomes the displayed body (raw Markdown rides along as the plain-text fallback), local images inline as cid: parts, linked files attach, and anything over --linkMax is uploaded to R2 and rewritten to a signed link expiring after --linkTTL days.
 
-| flag | description |
-|---|---|
-| `--to / --cc / --bcc <addr>` | recipients (repeatable or comma-separated) |
-| `--subject <s>` | subject line |
-| `--file <path> / --body <text>` | body source (else stdin) |
-| `--from <address>` | select the sending account + identity |
-| `--identity <id-or-email>` | pick a specific identity |
-| `--expandMD html\|no` | render Markdown to HTML (default: no) |
-| `--linkMax <MiB>` | big-file threshold (default 4) |
-| `--linkTTL <days>` | share-link lifetime (default 30) |
+| flag                            | description                                |
+| ------------------------------- | ------------------------------------------ |
+| `--to / --cc / --bcc <addr>`    | recipients (repeatable or comma-separated) |
+| `--subject <s>`                 | subject line                               |
+| `--file <path> / --body <text>` | body source (else stdin)                   |
+| `--from <address>`              | select the sending account + identity      |
+| `--identity <id-or-email>`      | pick a specific identity                   |
+| `--expandMD html\|no`           | render Markdown to HTML (default: no)      |
+| `--linkMax <MiB>`               | big-file threshold (default 4)             |
+| `--linkTTL <days>`              | share-link lifetime (default 30)           |
 
 **Examples**
 
@@ -281,10 +281,10 @@ print a message (newest if no id)
 bullmoose read [emailId] [--raw] [--json]
 ```
 
-| flag | description |
-|---|---|
-| `--raw` | print the raw RFC 5322 source |
-| `--json` | structured output |
+| flag     | description                   |
+| -------- | ----------------------------- |
+| `--raw`  | print the raw RFC 5322 source |
+| `--json` | structured output             |
 
 **Examples**
 
@@ -305,11 +305,11 @@ bullmoose watch [--json] [--exec <cmd>] [--daemon | --status | --stop]
 
 Holds a JMAP push channel and prints each new message. --json emits NDJSON events; --daemon detaches (prints a PID; logs beside the db file). --exec runs a shell command once per new message: the command is handed to `sh -c` verbatim and the message arrives in the environment as $BM_ID, $BM_ACCOUNT, $BM_FROM, $BM_SUBJECT and $BM_PREVIEW (preview truncated to 120 chars). Quote them — an inbound subject is attacker-controlled text, and unquoted it still word-splits inside your own command. BREAKING (was: substitution): the {id} {from} {subject} {preview} placeholders are no longer substituted — they were a shell-injection vector, since a stranger's subject line ended up parsed by your shell. A template still containing them gets a warning on stderr. The hook is fire-and-forget, gets no stdin, and under --json its stdout is redirected to stderr so it cannot corrupt the NDJSON stream.
 
-| flag | description |
-|---|---|
-| `--json` | emit NDJSON events |
-| `--exec <cmd>` | run `sh -c <cmd>` per new message; fields arrive as $BM_ID $BM_ACCOUNT $BM_FROM $BM_SUBJECT $BM_PREVIEW |
-| `--daemon / --status / --stop` | manage a detached watcher |
+| flag                           | description                                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `--json`                       | emit NDJSON events                                                                                      |
+| `--exec <cmd>`                 | run `sh -c <cmd>` per new message; fields arrive as $BM_ID $BM_ACCOUNT $BM_FROM $BM_SUBJECT $BM_PREVIEW |
+| `--daemon / --status / --stop` | manage a detached watcher                                                                               |
 
 **Examples**
 
@@ -331,10 +331,10 @@ bullmoose vacation on|off|status [--subject <s>] [--body <text>] [--until <date>
 
 An armed auto-responder (wait=0) with RFC 3834 suppression — once per sender per 7 days. `status` shows the current state.
 
-| flag | description |
-|---|---|
+| flag                            | description            |
+| ------------------------------- | ---------------------- |
 | `--subject <s> / --body <text>` | the auto-reply content |
-| `--until <date>` | auto-disable date |
+| `--until <date>`                | auto-disable date      |
 
 **Examples**
 
@@ -367,13 +367,13 @@ bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invo
 - **rm** — purge an invocation (a running one is refused)  
   `agent rm <invId>`
 
-| flag | description |
-|---|---|
-| `--config <agent.json>` | serve: one-binding agent definition (binding, persona, model{provider,baseURL,apiKeyEnv}) |
-| `--fleet <fleet.json>` | serve: fleet host definition ({capabilities?, bindings: {<name>: {persona, model}}}); accounts discovered from grants |
-| `--once` | serve: drain the queue once and exit |
-| `--email <emailId>` | invoke: the message the agent acts on (required) |
-| `--note <text>` | invoke: a human note stored in the invocation context |
+| flag                    | description                                                                                                           |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `--config <agent.json>` | serve: one-binding agent definition (binding, persona, model{provider,baseURL,apiKeyEnv})                             |
+| `--fleet <fleet.json>`  | serve: fleet host definition ({capabilities?, bindings: {<name>: {persona, model}}}); accounts discovered from grants |
+| `--once`                | serve: drain the queue once and exit                                                                                  |
+| `--email <emailId>`     | invoke: the message the agent acts on (required)                                                                      |
+| `--note <text>`         | invoke: a human note stored in the invocation context                                                                 |
 
 **Examples**
 
@@ -512,17 +512,17 @@ The vault stores third-party API keys, OAuth refresh tokens and signing keys for
 - **oauth** — PKCE flow; uploads only the refresh token  
   `creds oauth <name> --authorize-url <u> --token-url <u> --client-id <id> [--client-secret <s>] [--oauth-scopes "a b"] [--allow <origin>] [--meta k=v,…] [--port <n>]`
 
-| flag | description |
-|---|---|
-| `--kind api-key\|oauth-refresh\|aws-sigv4\|hmac-key` | what the credential is; gates which Bureau verbs may ever use it (bureau.md §4.1) |
-| `--allow <origin>` | destination binding — the primary control; an origin (https://host) or a *.wildcard. Required on `set`: fail closed (§6) |
-| `--header "Name: …{}…"` | injection recipe; the {} is where the value goes. Header-only, never a query param. Defaults to Authorization: Bearer {} for api-key |
-| `--scope actor` | who may open the row; only `actor` today — `inbox`/`global` need the AAD re-seal (§9), deferred |
-| `--enforcement federated\|narrow\|broad` | which §5.2 rung enforces the narrowing; `broad` (default) = only our code will, once the proxy exists |
-| `--secret <s> / --secret-env VAR` | the value, or the env var holding it (else a hidden prompt — never argv) |
-| `--meta k=v,…` | free-form metadata stored beside the credential (also accepted on `oauth`) |
-| `--port <n>` | localhost port for the `oauth` PKCE callback (default 8976) |
-| `--dry-run` | on `rm`/`rotate`: report what would happen, write nothing |
+| flag                                                 | description                                                                                                                          |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `--kind api-key\|oauth-refresh\|aws-sigv4\|hmac-key` | what the credential is; gates which Bureau verbs may ever use it (bureau.md §4.1)                                                    |
+| `--allow <origin>`                                   | destination binding — the primary control; an origin (https://host) or a *.wildcard. Required on `set`: fail closed (§6)             |
+| `--header "Name: …{}…"`                              | injection recipe; the {} is where the value goes. Header-only, never a query param. Defaults to Authorization: Bearer {} for api-key |
+| `--scope actor`                                      | who may open the row; only `actor` today — `inbox`/`global` need the AAD re-seal (§9), deferred                                      |
+| `--enforcement federated\|narrow\|broad`             | which §5.2 rung enforces the narrowing; `broad` (default) = only our code will, once the proxy exists                                |
+| `--secret <s> / --secret-env VAR`                    | the value, or the env var holding it (else a hidden prompt — never argv)                                                             |
+| `--meta k=v,…`                                       | free-form metadata stored beside the credential (also accepted on `oauth`)                                                           |
+| `--port <n>`                                         | localhost port for the `oauth` PKCE callback (default 8976)                                                                          |
+| `--dry-run`                                          | on `rm`/`rotate`: report what would happen, write nothing                                                                            |
 
 **Examples**
 
@@ -542,9 +542,9 @@ list messages from the local log
 bullmoose log [-n <count>] [--mailbox <role-or-id>] [--account <sel>] [--json]
 ```
 
-| flag | description |
-|---|---|
-| `-n <count>` | how many (default 20) |
+| flag                     | description                          |
+| ------------------------ | ------------------------------------ |
+| `-n <count>`             | how many (default 20)                |
 | `--mailbox <role-or-id>` | filter by mailbox (e.g. inbox, sent) |
 
 **Examples**
@@ -620,13 +620,13 @@ Folder management via Mailbox/set. A <box> is an id, a role (inbox, sent, drafts
 - **rm** — remove a folder; --force takes its mail too  
   `mailbox rm <box> [--force]`
 
-| flag | description |
-|---|---|
-| `--parent <box>` | parent folder for create/move; '-' means top level |
-| `--sort <n>` | sortOrder for create (unsigned integer, default 0) |
-| `--force` | on rm: onDestroyRemoveEmails — remove the mail inside it too |
+| flag                 | description                                                         |
+| -------------------- | ------------------------------------------------------------------- |
+| `--parent <box>`     | parent folder for create/move; '-' means top level                  |
+| `--sort <n>`         | sortOrder for create (unsigned integer, default 0)                  |
+| `--force`            | on rm: onDestroyRemoveEmails — remove the mail inside it too        |
 | `--if-state <state>` | refuse the write (exit 5) if the account has moved on since <state> |
-| `--dry-run` | resolve the folder and report; write nothing |
+| `--dry-run`          | resolve the folder and report; write nothing                        |
 
 **Examples**
 
@@ -656,12 +656,12 @@ bullmoose flag <id…> --add <keyword> [--remove <keyword>] [--if-state <s>]
 
 Adds and removes RFC 8621 keywords on one or more messages via Email/set. Keywords are a set: --add and --remove take system flags ($seen, $flagged, $answered, $forwarded, $draft) or custom labels, and both are repeatable. Quote system flags — $flagged is a shell variable unquoted. This is a keywords-only patch, so it needs the `annotate` scope alone (not `move` or `draft`). Ids come as arguments (the xargs shape) or on stdin, and stdout is the ids it changed, so verbs chain. The local mirror is reconciled on success unless --no-sync.
 
-| flag | description |
-|---|---|
-| `--add <keyword>` | keyword to set (repeatable); e.g. --add '$flagged' |
-| `--remove <keyword>` | keyword to clear (repeatable); e.g. --remove '$seen' |
-| `--no-sync` | skip reconciling the local mirror (batch, then sync once) |
-| `--if-state <state>` | refuse (exit 5) if the account moved on since <state> |
+| flag                 | description                                               |
+| -------------------- | --------------------------------------------------------- |
+| `--add <keyword>`    | keyword to set (repeatable); e.g. --add '$flagged'        |
+| `--remove <keyword>` | keyword to clear (repeatable); e.g. --remove '$seen'      |
+| `--no-sync`          | skip reconciling the local mirror (batch, then sync once) |
+| `--if-state <state>` | refuse (exit 5) if the account moved on since <state>     |
 
 **Examples**
 
@@ -683,8 +683,8 @@ bullmoose seen <id…> [--unset]
 
 Sugar for `flag --add '$seen'` (or `--remove` with --unset). `bullmoose read` does NOT mark a message read, so this is how a script or a human clears the unread dot. Ids come as arguments or on stdin.
 
-| flag | description |
-|---|---|
+| flag      | description                       |
+| --------- | --------------------------------- |
 | `--unset` | mark UNread instead (clear $seen) |
 
 **Examples**
@@ -705,13 +705,13 @@ bullmoose move <id…> --role <role> | --mailbox <id-or-name> [--if-state <s>]
 
 REPLACES a message's mailbox set with the single named target, via an Email/set mailboxIds patch (scope: `move`). --role names a seeded role folder (inbox, sent, drafts, trash, junk, archive); --mailbox names any folder by id or name. Contrast `label`, which ADDS or removes one mailbox without disturbing the others — getting this wrong is the classic mail-CLI bug. Ids come as arguments or on stdin; stdout is the ids it moved; the local mirror is reconciled unless --no-sync.
 
-| flag | description |
-|---|---|
-| `--role <role>` | target a seeded role folder (archive, junk, trash, inbox, …) |
-| `--mailbox <id-or-name>` | target any folder by id or name |
-| `--no-sync` | skip reconciling the local mirror |
-| `--if-state <state>` | refuse (exit 5) if the account moved on since <state> |
-| `--dry-run` | resolve the destination and report; write nothing |
+| flag                     | description                                                  |
+| ------------------------ | ------------------------------------------------------------ |
+| `--role <role>`          | target a seeded role folder (archive, junk, trash, inbox, …) |
+| `--mailbox <id-or-name>` | target any folder by id or name                              |
+| `--no-sync`              | skip reconciling the local mirror                            |
+| `--if-state <state>`     | refuse (exit 5) if the account moved on since <state>        |
+| `--dry-run`              | resolve the destination and report; write nothing            |
 
 **Examples**
 
@@ -732,11 +732,11 @@ bullmoose label <id…> --add <mailbox> [--remove <mailbox>]
 
 JMAP's mailboxIds is a SET — a message can live in several folders — so `label` adds and removes individual mailboxes with a per-key patch (scope: `move`), leaving the rest in place. This is what you want when `move` (which replaces the whole set) would unfile the message. A --remove that would leave a message in NO mailbox is refused client-side, naming `move`, rather than surfacing a server invalidProperties. Both flags take an id or name and are repeatable.
 
-| flag | description |
-|---|---|
-| `--add <mailbox>` | mailbox (id or name) to add (repeatable) |
+| flag                 | description                                          |
+| -------------------- | ---------------------------------------------------- |
+| `--add <mailbox>`    | mailbox (id or name) to add (repeatable)             |
 | `--remove <mailbox>` | mailbox to remove; refused if it would empty the set |
-| `--no-sync` | skip reconciling the local mirror |
+| `--no-sync`          | skip reconciling the local mirror                    |
 
 **Examples**
 
@@ -813,12 +813,12 @@ bullmoose rm <id…> --force  |  --dry-run
 
 Destroys messages via Email/set destroy (scope: `delete`). This is a HARD delete: the rows are removed, the R2 blob is orphaned, there is no tombstone and NOTHING is recoverable. It is not Trash. Because of that it REFUSES without --force; use --dry-run to see exactly what it would destroy first. If you meant "move to Trash", use `bullmoose trash`. `delete` is an alias for this command.
 
-| flag | description |
-|---|---|
-| `--force` | required: confirm the permanent, unrecoverable destroy |
-| `--dry-run` | list what would be destroyed; destroy nothing |
-| `--if-state <state>` | refuse (exit 5) if the account moved on since <state> |
-| `--no-sync` | skip reconciling the local mirror |
+| flag                 | description                                            |
+| -------------------- | ------------------------------------------------------ |
+| `--force`            | required: confirm the permanent, unrecoverable destroy |
+| `--dry-run`          | list what would be destroyed; destroy nothing          |
+| `--if-state <state>` | refuse (exit 5) if the account moved on since <state>  |
+| `--no-sync`          | skip reconciling the local mirror                      |
 
 **Examples**
 
@@ -866,15 +866,15 @@ Attachments and raw messages live in R2 under a per-account prefix. `list` is th
 - **rm** — delete one object; refused if referenced  
   `blobs rm <blobId>`
 
-| flag | description |
-|---|---|
+| flag              | description                                |
+| ----------------- | ------------------------------------------ |
 | `--account <sel>` | which account, when you have more than one |
 
 **Examples**
 
 ```sh
 bullmoose blobs list
-bullmoose blobs rm b_9f3c… 
+bullmoose blobs rm b_9f3c…
 # refused while any message or share needs it
 ```
 
@@ -897,8 +897,8 @@ bullmoose share list | revoke <shareId> [--account <sel>] [--json]
 - **revoke** — stop a link resolving  
   `share revoke <shareId>`
 
-| flag | description |
-|---|---|
+| flag              | description                                |
+| ----------------- | ------------------------------------------ |
 | `--account <sel>` | which account, when you have more than one |
 
 **Examples**
@@ -934,16 +934,16 @@ The addresses this account may put in From:, and the signature attached to each.
 - **rm** — remove a send-as address (never the primary)  
   `identity rm <id-or-email>`
 
-| flag | description |
-|---|---|
-| `--text <file\|->` | plain-text signature source; - is stdin |
-| `--html <file\|->` | HTML signature source (a snippet, not a document) |
-| `--clear` | on signature: remove both signatures |
-| `--name <n>` | display name for add |
-| `--reply-to <addr>` | Reply-To for mail sent from this identity |
-| `--bcc <addr>` | silent Bcc for mail sent from this identity |
+| flag                 | description                                                         |
+| -------------------- | ------------------------------------------------------------------- |
+| `--text <file\|->`   | plain-text signature source; - is stdin                             |
+| `--html <file\|->`   | HTML signature source (a snippet, not a document)                   |
+| `--clear`            | on signature: remove both signatures                                |
+| `--name <n>`         | display name for add                                                |
+| `--reply-to <addr>`  | Reply-To for mail sent from this identity                           |
+| `--bcc <addr>`       | silent Bcc for mail sent from this identity                         |
 | `--if-state <state>` | refuse the write (exit 5) if the account has moved on since <state> |
-| `--dry-run` | resolve the identity and report; write nothing |
+| `--dry-run`          | resolve the identity and report; write nothing                      |
 
 **Examples**
 
@@ -997,11 +997,11 @@ Lifecycle verbs come in two flavours. REVERSIBLE ones — `agent disable|enable`
 - **grant** — cross-account delegation (effective rights = token ∩ grant)  
   `admin grant create <grantee-email> <target-email> [--scopes read,contacts] [--book <id>] [--expires <days>] | list [<email>] | revoke <id>`
 
-| flag | description |
-|---|---|
-| `--yes` | confirm an irreversible verb (tenant/domain/account delete, agent unbind); nothing else needs it |
+| flag                | description                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `--yes`             | confirm an irreversible verb (tenant/domain/account delete, agent unbind); nothing else needs it                          |
 | `--account <email>` | on `agent disable\|enable\|unbind`, the binding's account — only needed if one binding id exists on more than one account |
-| `--include-deleted` | on `account list`, also show tombstoned accounts (the forensic view; they are hidden by default) |
+| `--include-deleted` | on `account list`, also show tombstoned accounts (the forensic view; they are hidden by default)                          |
 
 **Examples**
 
@@ -1025,4 +1025,3 @@ bullmoose admin grant create partner@example.com you@example.com --scopes read,c
 ```
 
 See also: [`token`](#token), [`agent`](#agent)
-

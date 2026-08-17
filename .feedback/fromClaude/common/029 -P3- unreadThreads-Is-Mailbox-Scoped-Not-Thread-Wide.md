@@ -14,7 +14,7 @@ RFC 8621 §2:
 > neither the `$seen` nor the `$draft` keyword, **and** at least one Email in the Thread is
 > in this Mailbox.
 
-Note what that does *not* say: the unread Email does not have to be the one in this
+Note what that does _not_ say: the unread Email does not have to be the one in this
 Mailbox. `mailboxCounts` currently counts threads with at least one unread email **in this
 mailbox**, so it undercounts when a thread's unread message lives elsewhere — a read
 original in Archive whose unread reply sits in Inbox leaves `Archive.unreadThreads` at 0
@@ -23,7 +23,7 @@ where the RFC says 1.
 ## Why it shipped that way
 
 The thread-wide clause travels with a refinement in the same section: mail that exists
-*only* in Trash is excluded from other mailboxes' unread counts, and vice versa.
+_only_ in Trash is excluded from other mailboxes' unread counts, and vice versa.
 Implementing the clause **without** the refinement is strictly worse than the current
 mailbox-scoped count for the mailbox list these numbers exist to feed — a thread whose only
 unread copy sits in the Trash would inflate the Inbox badge forever, with no user action

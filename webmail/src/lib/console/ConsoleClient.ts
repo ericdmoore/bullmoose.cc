@@ -44,12 +44,7 @@
 // today (`services/agent/src/vault.ts:282`) and this client calls it for real.
 
 import { readBase, resolveTarget, type ConsoleOrigins } from "./origins";
-import type {
-  AgentDossier,
-  ConsoleCredential,
-  ConsoleResource,
-  ResourceDossier,
-} from "./types";
+import type { AgentDossier, ConsoleCredential, ConsoleResource, ResourceDossier } from "./types";
 
 /** One row in the agent picker. */
 export interface AgentSummary {

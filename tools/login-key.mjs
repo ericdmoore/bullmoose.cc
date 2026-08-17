@@ -19,8 +19,13 @@ export const LOGIN_KEY_ITERATIONS = 600_000;
 
 export async function deriveLoginKey(email, password) {
   const enc = new TextEncoder();
-  const salt = await crypto.subtle.digest("SHA-256", enc.encode(LOGIN_SALT_LABEL + email.toLowerCase()));
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const salt = await crypto.subtle.digest(
+    "SHA-256",
+    enc.encode(LOGIN_SALT_LABEL + email.toLowerCase()),
+  );
+  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, [
+    "deriveBits",
+  ]);
   const bits = await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt, iterations: LOGIN_KEY_ITERATIONS },
     key,

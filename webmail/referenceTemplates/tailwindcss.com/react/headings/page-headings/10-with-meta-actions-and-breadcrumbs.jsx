@@ -8,8 +8,8 @@ import {
   LinkIcon,
   MapPinIcon,
   PencilIcon,
-} from '@heroicons/react/20/solid'
-import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+} from "@heroicons/react/20/solid";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 
 export default function Example() {
   return (
@@ -29,7 +29,10 @@ export default function Example() {
             </li>
             <li>
               <div className="flex items-center">
-                <ChevronRightIcon aria-hidden="true" className="size-5 shrink-0 text-gray-400 dark:text-gray-500" />
+                <ChevronRightIcon
+                  aria-hidden="true"
+                  className="size-5 shrink-0 text-gray-400 dark:text-gray-500"
+                />
                 <a
                   href="#"
                   className="ml-4 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
@@ -45,11 +48,17 @@ export default function Example() {
         </h2>
         <div className="mt-1 flex flex-col sm:mt-0 sm:flex-row sm:flex-wrap sm:space-x-6">
           <div className="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-            <BriefcaseIcon aria-hidden="true" className="mr-1.5 size-5 shrink-0 text-gray-400 dark:text-gray-500" />
+            <BriefcaseIcon
+              aria-hidden="true"
+              className="mr-1.5 size-5 shrink-0 text-gray-400 dark:text-gray-500"
+            />
             Full-time
           </div>
           <div className="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-            <MapPinIcon aria-hidden="true" className="mr-1.5 size-5 shrink-0 text-gray-400 dark:text-gray-500" />
+            <MapPinIcon
+              aria-hidden="true"
+              className="mr-1.5 size-5 shrink-0 text-gray-400 dark:text-gray-500"
+            />
             Remote
           </div>
           <div className="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
@@ -60,7 +69,10 @@ export default function Example() {
             $120k &ndash; $140k
           </div>
           <div className="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-            <CalendarIcon aria-hidden="true" className="mr-1.5 size-5 shrink-0 text-gray-400 dark:text-gray-500" />
+            <CalendarIcon
+              aria-hidden="true"
+              className="mr-1.5 size-5 shrink-0 text-gray-400 dark:text-gray-500"
+            />
             Closing on January 9, 2020
           </div>
         </div>
@@ -71,7 +83,10 @@ export default function Example() {
             type="button"
             className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xs inset-ring inset-ring-gray-300 hover:bg-gray-50 dark:bg-white/10 dark:text-white dark:shadow-none dark:inset-ring-white/5 dark:hover:bg-white/20"
           >
-            <PencilIcon aria-hidden="true" className="mr-1.5 -ml-0.5 size-5 text-gray-400 dark:text-white" />
+            <PencilIcon
+              aria-hidden="true"
+              className="mr-1.5 -ml-0.5 size-5 text-gray-400 dark:text-white"
+            />
             Edit
           </button>
         </span>
@@ -81,7 +96,10 @@ export default function Example() {
             type="button"
             className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xs inset-ring inset-ring-gray-300 hover:bg-gray-50 dark:bg-white/10 dark:text-white dark:shadow-none dark:inset-ring-white/5 dark:hover:bg-white/20"
           >
-            <LinkIcon aria-hidden="true" className="mr-1.5 -ml-0.5 size-5 text-gray-400 dark:text-white" />
+            <LinkIcon
+              aria-hidden="true"
+              className="mr-1.5 -ml-0.5 size-5 text-gray-400 dark:text-white"
+            />
             View
           </button>
         </span>
@@ -100,7 +118,10 @@ export default function Example() {
         <Menu as="div" className="relative ml-3 sm:hidden">
           <MenuButton className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xs inset-ring inset-ring-gray-300 hover:bg-gray-50 dark:bg-white/10 dark:text-white dark:shadow-none dark:inset-ring-white/5 dark:hover:bg-white/20">
             More
-            <ChevronDownIcon aria-hidden="true" className="-mr-1 ml-1.5 size-5 text-gray-400 dark:text-white" />
+            <ChevronDownIcon
+              aria-hidden="true"
+              className="-mr-1 ml-1.5 size-5 text-gray-400 dark:text-white"
+            />
           </MenuButton>
 
           <MenuItems
@@ -127,5 +148,5 @@ export default function Example() {
         </Menu>
       </div>
     </div>
-  )
+  );
 }

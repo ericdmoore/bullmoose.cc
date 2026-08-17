@@ -45,6 +45,8 @@ export class MethodError extends Error {
   }
 
   toArgs(): Record<string, unknown> {
-    return this.description ? { type: this.type, description: this.description } : { type: this.type };
+    return this.description
+      ? { type: this.type, description: this.description }
+      : { type: this.type };
   }
 }

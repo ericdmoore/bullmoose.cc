@@ -61,7 +61,10 @@ export default function Composer({
           value={draft.to.map(formatAddress).join(", ")}
           placeholder="someone@example.com"
           onInput={(ev) =>
-            onChange({ ...draft, to: parseAddressList((ev.currentTarget as HTMLInputElement).value) })
+            onChange({
+              ...draft,
+              to: parseAddressList((ev.currentTarget as HTMLInputElement).value),
+            })
           }
         />
         {!showCc ? (
@@ -117,7 +120,9 @@ export default function Composer({
         class="composer-body"
         value={draft.text}
         rows={16}
-        onInput={(ev) => onChange({ ...draft, text: (ev.currentTarget as HTMLTextAreaElement).value })}
+        onInput={(ev) =>
+          onChange({ ...draft, text: (ev.currentTarget as HTMLTextAreaElement).value })
+        }
       />
 
       {draft.droppedAttachments && draft.droppedAttachments.length > 0 ? (
@@ -135,7 +140,12 @@ export default function Composer({
       {error ? <div class="notice notice-error">{error}</div> : null}
 
       <footer class="composer-actions">
-        <button type="button" class="primary" disabled={sending || problems.length > 0} onClick={onSend}>
+        <button
+          type="button"
+          class="primary"
+          disabled={sending || problems.length > 0}
+          onClick={onSend}
+        >
           {sending ? "Sending…" : "Send"}
         </button>
         <button type="button" onClick={onSaveDraft} disabled={sending}>

@@ -1,13 +1,13 @@
 # 019 -E2-I3- Email triage verbs over CLI
 
-| | |
-|---|---|
-| **Kind** | projection |
-| **Effort** | **E2** — `packages/cli` only; no schema, no new JMAP method, no migration |
-| **Impact** | **I3** — human-verifiable; *unlocks* is contested, see below |
-| **Owner** | `sVOL` |
-| **Depends on** | `016` (CLI I/O contract, `s05` T1) |
-| **Status** | **✅ done** — `flag seen move label archive junk trash rm delete` (`packages/cli/src/main.ts:373-381`). Closes `Email × U/D × CLI`. |
+|                |                                                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Kind**       | projection                                                                                                                          |
+| **Effort**     | **E2** — `packages/cli` only; no schema, no new JMAP method, no migration                                                           |
+| **Impact**     | **I3** — human-verifiable; _unlocks_ is contested, see below                                                                        |
+| **Owner**      | `sVOL`                                                                                                                              |
+| **Depends on** | `016` (CLI I/O contract, `s05` T1)                                                                                                  |
+| **Status**     | **✅ done** — `flag seen move label archive junk trash rm delete` (`packages/cli/src/main.ts:373-381`). Closes `Email × U/D × CLI`. |
 
 ## Cells covered
 
@@ -24,20 +24,20 @@ already establishes. Not E1 — it is several commands plus a mirror-reconciliat
 the `--dry-run`/`--if-state` handling, across at least `main.ts` and a new triage module.
 Not E3 — no table, no column, no new semantics anyone outside `packages/cli` must respect.
 
-**I3 — and the *unlocks* half is the weakest claim in this file.**
+**I3 — and the _unlocks_ half is the weakest claim in this file.**
 
-- *Human-verifiable*: unambiguous. `bullmoose archive <id>` then look at any mail client, or
+- _Human-verifiable_: unambiguous. `bullmoose archive <id>` then look at any mail client, or
   `bullmoose sync && bullmoose mailboxes`. A non-engineer confirms it in one line.
-- *Unlocks*: **no unit in `_index.md` lists `019` in its `depends on` column, and no `sNN`
-  section names it as a blocker.** By the strict reading in `readme.md:89-90` — *"Not 'would
-  be nice to have first'; a named dependency"* — that is `I1`, not `I3`. The nearest thing to
-  a named dependency is `s05/readme.md:115-116` (*"a complete CLI is a behavioural reference
-  to build the UI against"*), which is explicitly a convenience. I have kept the ledger's
+- _Unlocks_: **no unit in `_index.md` lists `019` in its `depends on` column, and no `sNN`
+  section names it as a blocker.** By the strict reading in `readme.md:89-90` — _"Not 'would
+  be nice to have first'; a named dependency"_ — that is `I1`, not `I3`. The nearest thing to
+  a named dependency is `s05/readme.md:115-116` (_"a complete CLI is a behavioural reference
+  to build the UI against"_), which is explicitly a convenience. I have kept the ledger's
   `I3` because the filename is identity (`readme.md:26-27`) and renumbering grades mid-pile
   is worse than a documented disagreement — but see open question 1, and **a reviewer should
   probably move this to `I1`.**
 
-There is one substantive *unlocks* argument and it is worth stating so it can be judged
+There is one substantive _unlocks_ argument and it is worth stating so it can be judged
 rather than assumed: `014` gives an **agent** the ability to move and destroy mail. Today a
 human has no bulk undo for that on any surface — there is no `Email/set` caller in the CLI
 outside the agent worker loop. Shipping agent-side triage without human-side triage means the
@@ -59,11 +59,11 @@ and again in `.plans/s05-cli-crud/devPlan.md:138-139`:
 > Mail triage verbs (`move`/`label`/`flag`/`archive` — same class-(b) gap, deserves its own
 > slice) · Files CLI surface (arrives with **s03.B**) · …
 
-**This unit is that slice, and `sVOL` owns it** (`_context.md` §6: *"Gaps owned by nobody …
-Email triage verbs × CLI (s05 punted them: 'worth its own slice')"*).
+**This unit is that slice, and `sVOL` owns it** (`_context.md` §6: _"Gaps owned by nobody …
+Email triage verbs × CLI (s05 punted them: 'worth its own slice')"_).
 
-Note what "same class-(b) gap" asserts. `s05/readme.md:16-19` defines class (a) as *"the
-server can't do it either"* and class (b) as *"the server can, the CLI doesn't expose it"*.
+Note what "same class-(b) gap" asserts. `s05/readme.md:16-19` defines class (a) as _"the
+server can't do it either"_ and class (b) as _"the server can, the CLI doesn't expose it"_.
 Putting triage in class (b) is a claim about the server — and it is correct, verified below.
 That claim is exactly what `readme.md`'s capability/projection law requires before a unit may
 be filed as a projection.
@@ -72,15 +72,15 @@ be filed as a projection.
 
 **The CLI reads mail well and mutates nothing.** Verified command surface:
 
-| Command | Where | Source of truth |
-|---|---|---|
-| `read` | `main.ts:681` | live JMAP `Email/get` (`:728`) |
-| `show` | `main.ts:837` | local mirror row, then body |
-| `search` | `main.ts:810` | **local** `cli_fts` (`:828`) |
-| `log` | `main.ts:775` | local mirror |
-| `mailboxes` | `main.ts:879` | local mirror |
-| `sync` | `main.ts:294` → `sync.ts:138` | `Email/changes` (`:225`) or full resync (`:250`) |
-| `send` | `main.ts:338` | `Email/import` (`:432`) |
+| Command     | Where                         | Source of truth                                  |
+| ----------- | ----------------------------- | ------------------------------------------------ |
+| `read`      | `main.ts:681`                 | live JMAP `Email/get` (`:728`)                   |
+| `show`      | `main.ts:837`                 | local mirror row, then body                      |
+| `search`    | `main.ts:810`                 | **local** `cli_fts` (`:828`)                     |
+| `log`       | `main.ts:775`                 | local mirror                                     |
+| `mailboxes` | `main.ts:879`                 | local mirror                                     |
+| `sync`      | `main.ts:294` → `sync.ts:138` | `Email/changes` (`:225`) or full resync (`:250`) |
+| `send`      | `main.ts:338`                 | `Email/import` (`:432`)                          |
 
 **There is no flag, move, label, archive, or delete command.** The only `Email/set` call in
 the entire package is inside the agent worker loop (`packages/cli/src/agent.ts:196`), where
@@ -102,10 +102,10 @@ So this is pure projection and qualifies under `readme.md:42`.
 `inbox`, `sent`, `drafts`, `trash`, `junk`, `archive`
 (`services/provision/src/index.ts:391-397`) — and `Mailbox/query` filters on `role`
 (`mailbox.ts:54`, condition `:119`). ⚠️ `004` (`Mailbox/set + CLI`) states at its `:49-51`
-that this unit is blocked on it because *"there are no folders to move to beyond the six
-seeded roles."* **I disagree, and the disagreement is recorded rather than resolved.**
+that this unit is blocked on it because _"there are no folders to move to beyond the six
+seeded roles."_ **I disagree, and the disagreement is recorded rather than resolved.**
 `archive` is the single most-used triage verb in any mail client and it is one of the six.
-`004` unlocks *custom* folders — `bullmoose move --mailbox Receipts` — which is real value
+`004` unlocks _custom_ folders — `bullmoose move --mailbox Receipts` — which is real value
 and not a precondition. Filing an `E2` behind the volume's only `E3` on that basis would be
 a mis-sequencing, so `_index.md`'s edge (`019` depends on `016` only) is right as it stands.
 
@@ -135,7 +135,7 @@ bullmoose rm      <id…> --force                            Email/set destroy
 ```
 
 **`move` and `label` are genuinely different operations and both are needed.** JMAP's
-`mailboxIds` is a *set*, not a pointer — a message can be in several mailboxes at once
+`mailboxIds` is a _set_, not a pointer — a message can be in several mailboxes at once
 (`email.ts:109` maps the row's list into the JMAP object; `applySetPatch:380-397` handles
 both full replace and per-key add/remove). So `move` replaces the set and `label` adds to it,
 and the second is what `s05`'s word "label" was reaching for. Getting this wrong in either
@@ -143,7 +143,7 @@ direction is the classic mail-CLI bug: a `label` that silently unfiles the messa
 `move` that leaves it in Inbox too.
 
 ⚠️ `applyEmailPatch` refuses to leave a message in zero mailboxes (`email.ts:362-364`:
-*"an email must belong to at least one mailbox"*). So `label --remove` on the message's only
+_"an email must belong to at least one mailbox"_). So `label --remove` on the message's only
 mailbox is an error, not an archive. Catch it client-side with a message naming `move`,
 rather than letting it come back as a bare `invalidProperties`.
 
@@ -156,10 +156,10 @@ human means by "delete this message" is `bullmoose trash`.
 ### The I/O contract, clause by clause
 
 `016` conditions all of this (`s05/arch.md` §1, `:9-90`). The sub-clauses that are
-load-bearing *here*, as opposed to generally:
+load-bearing _here_, as opposed to generally:
 
-- **§1.8 `--ids`** (`arch.md:85-90`) — *"`--ids` prints one identifier per line and nothing
-  else — the `xargs` shape."* This is the clause that makes the whole unit compose. It has to
+- **§1.8 `--ids`** (`arch.md:85-90`) — _"`--ids` prints one identifier per line and nothing
+  else — the `xargs` shape."_ This is the clause that makes the whole unit compose. It has to
   land on `search` and `log`, which today go through `printRows` (`main.ts:909`) with no such
   mode; `--json` there emits a **whole pretty-printed array** (`:913-921`), which
   `arch.md:46-47` correctly calls out as defeating every line-oriented tool.
@@ -168,15 +168,15 @@ load-bearing *here*, as opposed to generally:
   `Email/set` already honours `ifInState` (`email.ts:234-236`), and `JmapClient.one` already
   surfaces the method error type: it attaches `jmapType` to the thrown `Error`
   (`packages/cli/src/jmap.ts:59-61`). So the exit-5 path is a two-line mapping, not a design.
-  *(This also answers `016`'s open question 3: `one()` returns the whole result record
+  _(This also answers `016`'s open question 3: `one()` returns the whole result record
   (`jmap.ts:63`), so `newState` is available to thread — `--if-state` does not need new
-  plumbing.)*
+  plumbing.)_
 - **§1.5 exit codes** (`arch.md:62-72`). The mapping this unit needs, which `016` notes is
   missing: `stateMismatch` → **5**; `notFound` (a `setError` in `notUpdated`/`notDestroyed`,
   `email.ts:273-274`, `:284`) → **3**; `forbidden` → **4**; `invalidProperties` → **2**.
   ⚠️ Partial failure is the interesting case: `Email/set` returns per-id results, so
   `bullmoose archive` over 40 ids can half-succeed. Report per-id outcomes on stderr, exit
-  non-zero if *any* id failed, and do not swallow the successes.
+  non-zero if _any_ id failed, and do not swallow the successes.
 - **§1.2 EPIPE** (`arch.md:23-33`) — without it `bullmoose search --ids | head` throws.
 - **§1.1 stdout is data** (`arch.md:14-21`) — a triage verb's stdout should be the ids it
   acted on, so verbs chain: `bullmoose archive $(…) | xargs bullmoose flag --add $seen`.
@@ -211,9 +211,9 @@ optimistically re-introduces exactly the divergence this is meant to prevent.
 
 ### Unix composition — the stated goal, with real pipelines
 
-`s05/readme.md:25-27` is explicit that this is a posture problem, not polish: *"The
+`s05/readme.md:25-27` is explicit that this is a posture problem, not polish: _"The
 agent-first audience drives the CLI … and agents compose tools with pipes. A CLI that can't
-be piped is a CLI agents use badly."* Concretely, after this unit:
+be piped is a CLI agents use badly."_ Concretely, after this unit:
 
 ```sh
 # file a sender's mail
@@ -235,14 +235,14 @@ bullmoose search "receipt" --ids | xargs bullmoose label --add mb_receipts | xar
 ```
 
 Those belong in `help.ts`'s registry entries — `s05/devPlan.md:92-95` requires every new
-command to carry *"examples that demonstrate composition"*, and `help --json` is described
-there as *"the machine-readable spec agents read."*
+command to carry _"examples that demonstrate composition"_, and `help --json` is described
+there as _"the machine-readable spec agents read."_
 
 ## Done when
 
 1. `bullmoose archive <id>` moves the message, and it shows up in Archive in a normal mail
    client. A person confirms it without reading JSON.
-2. **The choreography assertion.** After `bullmoose archive <id>` on one machine, a *second*
+2. **The choreography assertion.** After `bullmoose archive <id>` on one machine, a _second_
    client sees the move: either `bullmoose read <id> --json` (which goes live to JMAP,
    `main.ts:727`) or an **incremental** `bullmoose sync` on a different machine reports the
    id in its updated set (`sync.ts:225-236`). This is what catches the shortcut of writing to
@@ -323,7 +323,7 @@ there as *"the machine-readable spec agents read."*
    blocked because there are no folders to move to. I claim `archive`/`junk`/`trash` are
    folders and are seeded (`provision/src/index.ts:391-397`). One of us is wrong about what
    "most-used verb" means, and the ledger edge follows whoever is right. My position: `004`
-   unlocks *custom* folders and is a strict improvement, not a precondition.
+   unlocks _custom_ folders and is a strict improvement, not a precondition.
 3. **`move` versus `label` may be over-designed for a first cut.** Every real mail client
    exposes both, and JMAP's set semantics make both nearly free — but three of the eight
    commands above are sugar over `move`, and a reviewer could reasonably say ship
@@ -340,7 +340,7 @@ there as *"the machine-readable spec agents read."*
    only on stderr — is what some tools do and is friendlier in pipelines. Genuinely unsettled,
    and it should be settled in `016`, not here, so every multi-id command agrees.
 6. **`--if-state` may be unusable in practice for triage.** The state string is
-   account-global (`accountState`, `methods/common.ts:62`), so *any* concurrent change to the
+   account-global (`accountState`, `methods/common.ts:62`), so _any_ concurrent change to the
    account — an inbound message arriving — invalidates it. On a live mailbox a scripted
    read-modify-write may lose the race almost every time, making exit 5 the normal outcome
    rather than the exceptional one. I have not measured this. If it is true, `--if-state` is

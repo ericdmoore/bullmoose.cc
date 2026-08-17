@@ -10,7 +10,12 @@ import { renderTree, resolveMailbox } from "./mailbox.js";
  * folder by NAME rather than by `mb_9f3c…`, and reading the tree back.
  */
 
-const box = (id: string, name: string, role: string | null = null, parentId: string | null = null) => ({
+const box = (
+  id: string,
+  name: string,
+  role: string | null = null,
+  parentId: string | null = null,
+) => ({
   id,
   name,
   role,

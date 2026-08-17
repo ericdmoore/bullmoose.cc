@@ -52,8 +52,7 @@ const objectSqlContains = (type, name, needle) =>
   `SELECT COUNT(*) AS n FROM sqlite_master
     WHERE type = '${type}' AND name = '${name}' AND sql LIKE '%${needle}%'`;
 
-const tableExists = (name) =>
-  `SELECT COUNT(*) AS n FROM sqlite_master WHERE name = '${name}'`;
+const tableExists = (name) => `SELECT COUNT(*) AS n FROM sqlite_master WHERE name = '${name}'`;
 
 /** The 7 tables that carry s03.A provenance, and the 3 columns each. */
 const PROVENANCE_TABLES = [
@@ -65,7 +64,11 @@ const PROVENANCE_TABLES = [
   "calendar_events",
   "file_nodes",
 ];
-const PROVENANCE_COLUMNS = ["last_writer_principal", "last_writer_binding", "last_writer_invocation"];
+const PROVENANCE_COLUMNS = [
+  "last_writer_principal",
+  "last_writer_binding",
+  "last_writer_invocation",
+];
 
 export const MIGRATIONS = [
   {
@@ -83,7 +86,9 @@ export const MIGRATIONS = [
     blocks: "deploy",
     check: hasColumn("grants", "revoked_at"),
     up: ["ALTER TABLE grants ADD COLUMN revoked_at INTEGER"],
-    absent: ["CREATE TABLE grants (id TEXT PRIMARY KEY, grantee_account_id TEXT, target_account_id TEXT, collection TEXT, collection_id TEXT)"],
+    absent: [
+      "CREATE TABLE grants (id TEXT PRIMARY KEY, grantee_account_id TEXT, target_account_id TEXT, collection TEXT, collection_id TEXT)",
+    ],
   },
 
   {
@@ -657,8 +662,7 @@ export const MIGRATIONS = [
     id: "quarantined-mailbox-role",
     why: "s12: held mail moves from the INVENTED role 'quarantine' to the REGISTERED 'junk' (RFC 8621 / IANA — an unregistered role is rendered by a standards client as an ordinary folder with no spam handling), displayed 'Quarantined'. Renames existing Junk mailboxes to the one vocabulary and drops the empty wave-1 quarantine mailboxes. NOT a deploy blocker: every reader looks up role='junk', so a shard that has not run this simply has an extra empty folder. ⚠️ The delete is GUARDED on the mailbox being empty — nothing has ever been shunted, so it should always be — and if one DOES hold mail the check stays failing and the deploy stops rather than moving a human's mail blind",
     blocks: null,
-    check:
-      `SELECT CASE WHEN EXISTS (SELECT 1 FROM mailboxes WHERE role = 'quarantine')
+    check: `SELECT CASE WHEN EXISTS (SELECT 1 FROM mailboxes WHERE role = 'quarantine')
                      OR EXISTS (SELECT 1 FROM mailboxes WHERE role = 'junk' AND name = 'Junk')
                    THEN 0 ELSE 1 END AS n`,
     up: [

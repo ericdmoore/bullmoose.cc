@@ -7,12 +7,12 @@
 A group is a **ContactCard**, not an AddressBook and not a property on member cards,
 distinguished by two JSContact properties: `kind: "group"` and `members: { "<uid>": true }`.
 Confirmed three ways: the `kind`/`hasMember` filter conditions
-(`services/jmap/src/methods/contacts.ts:1033-1049`), `hasMember` implemented as *"`$.members`
-has this key"* (`packages/mailstore:1791-1794`), and `AddressBookRow` carrying no membership
+(`services/jmap/src/methods/contacts.ts:1033-1049`), `hasMember` implemented as _"`$.members`
+has this key"_ (`packages/mailstore:1791-1794`), and `AddressBookRow` carrying no membership
 at all (`packages/mailstore:154-164`).
 
-**The keys are `uid`s, not JMAP ids** — RFC 9553 §2.1.5: *"Each key in the set is the uid
-property value of the member"*, and a card with `members` MUST have `kind: "group"`. So
+**The keys are `uid`s, not JMAP ids** — RFC 9553 §2.1.5: _"Each key in the set is the uid
+property value of the member"_, and a card with `members` MUST have `kind: "group"`. So
 membership resolution needs a `uid`-filtered query and never a `/get`.
 
 This was an open question across several sessions. It is now answered and should be recorded
@@ -34,10 +34,10 @@ way **out**:
 
 ## Consequence — two disjoint group models over one dataset
 
-| made in | visible to JMAP `kind`/`hasMember` | visible in Apple Contacts |
-|---|---|---|
-| Apple Contacts / CardDAV | ❌ — survives only as opaque `vCardProps` | ✅ |
-| the web UI or CLI | ✅ | ❌ |
+| made in                  | visible to JMAP `kind`/`hasMember`        | visible in Apple Contacts |
+| ------------------------ | ----------------------------------------- | ------------------------- |
+| Apple Contacts / CardDAV | ❌ — survives only as opaque `vCardProps` | ✅                        |
+| the web UI or CLI        | ✅                                        | ❌                        |
 
 Nothing is lost and nothing errors, which is what makes it bad: both surfaces look correct
 in isolation and quietly disagree about what groups exist.

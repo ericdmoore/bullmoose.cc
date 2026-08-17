@@ -10,11 +10,11 @@
 > the grant model exists, and the Class A `fetch` runtime enforces the kind gate and
 > the destination binding on the wire. **The Bureau now applies a credential and
 > returns only the result**, which is `bureau.md` §1's whole sentence. What remains is
-> subordinate (T4 redaction, ranked *below* binding by §7) or additive (T5's Class B
+> subordinate (T4 redaction, ranked _below_ binding by §7) or additive (T5's Class B
 > verbs).
 
-The whole design is one ladder (`bureau.md` §10): *a closed set of operations over
-a key you cannot extract.* The tasks climb it. Each `T` cites the `bureau.md`
+The whole design is one ladder (`bureau.md` §10): _a closed set of operations over
+a key you cannot extract._ The tasks climb it. Each `T` cites the `bureau.md`
 sections it discharges and a single **done when** — the observable that says it is
 finished, not a description of the work.
 
@@ -23,7 +23,7 @@ finished, not a description of the work.
 ## T1 — Mint-time contract ✅ (sVOL 020, this worktree)
 
 Discharges **§5** (mint-time fields), **§4.1** (verb↔kind typing), part of **§6**
-(destination binding *recorded*, not yet enforced).
+(destination binding _recorded_, not yet enforced).
 
 The foundation, and deliberately first: nothing downstream can enforce `--kind` or
 `--allow` if they were never minted (sVOL 020's "unlocks"), and the s03.E console
@@ -43,14 +43,14 @@ yet (that is T3).
 
 **Done when:** a credential of each of the four kinds mints with its §5 contract,
 the fields read back via `creds show` (secret never returned), and `rotate`
-re-seals — all under test, with the tests proven to bite. *(Met: `vault.test.ts`,
-18 tests; suite 900→918; smoke 61/0.)*
+re-seals — all under test, with the tests proven to bite. _(Met: `vault.test.ts`,
+18 tests; suite 900→918; smoke 61/0.)_
 
 ---
 
 ## T2 — Mint ≠ authorize: the grant split ✅
 
-Discharges **§5.1**. Who may *use* a credential is not a mint-time field — it is a
+Discharges **§5.1**. Who may _use_ a credential is not a mint-time field — it is a
 separate, revocable grant over **`(principal, credRef, verb)`** ("`p_allen` may use
 `sign_sigv4` with `aws-mcp`"), capability-shaped, not access-shaped.
 
@@ -64,13 +64,13 @@ separate, revocable grant over **`(principal, credRef, verb)`** ("`p_allen` may 
 **Done when:** an admin can grant and revoke `(principal, credRef, verb)`
 independently of the credential; a revoked grant denies the verb while the
 credential and its other grants survive; every attempted use is in `grant_audit`.
-*(Met: `services/bureau/src/grants.test.ts`, 18 tests, proven to bite.)*
+_(Met: `services/bureau/src/grants.test.ts`, 18 tests, proven to bite.)_
 
 **Depends on:** T1 (a `credRef` and `kind` to grant a verb against).
 
 ### As built
 
-- **Its own table, `bureau_grants`** — not `grants`. The tombstone *contract* is
+- **Its own table, `bureau_grants`** — not `grants`. The tombstone _contract_ is
   reused; the table is not. `grants` is account→account
   (`grantee_account_id` → `target_account_id` + JMAP scopes + collection) and
   `verifyBearer` JOINs it to `accounts` on every authenticated request. A Bureau
@@ -89,11 +89,11 @@ credential and its other grants survive; every attempted use is in `grant_audit`
   `ON CONFLICT DO NOTHING` does. A tombstone must not make a capability
   ungrantable forever; the history is in `grant_lifecycle` either way.
 - **Admin surface on `services/provision`** (`POST`/`GET`/`DELETE
-  /bureau-grants`), beside the existing grant verbs and under the same
+/bureau-grants`), beside the existing grant verbs and under the same
   `ADMIN_TOKEN`. It refuses an unknown verb, an unknown principal, and an unknown
   `credRef` — a typo would otherwise mint a grant that authorizes nothing and
   looks live in the console forever.
-- **Audit:** the existing `grant_audit` path, one row per *attempted* use,
+- **Audit:** the existing `grant_audit` path, one row per _attempted_ use,
   `method = bureau:<verb>:<credRef>`, `grant_id = 'none'` on a refusal. Refusals
   are audited deliberately — an agent probing for capabilities it was never
   granted is the row a success-only log would drop.
@@ -106,9 +106,9 @@ Falls out of open question 1's resolution (`arch.md`). Structural only — no ne
 behaviour change for the vault API's callers.
 
 - Create `services/bureau` (a Worker). Bind **`VAULT_MASTER_KEY` to it and remove that
-  binding from `services/agent`** — the key is *moved*, never copied. That single fact is
+  binding from `services/agent`** — the key is _moved_, never copied. That single fact is
   what makes "you can only compute with what you have" true rather than aspirational: after
-  this, the agent worker *cannot* unseal a credential, by platform, not by rule.
+  this, the agent worker _cannot_ unseal a credential, by platform, not by rule.
 - **Split `services/agent/src/vault.ts`.** The metadata/reference layer (list, names,
   `meta_json`, the `creds` HTTP surface) stays; **all master-key crypto — `sealSecret`,
   `openVaultSecret` — moves to the Bureau.** Seal-on-mint moves too, or the agent worker
@@ -121,11 +121,11 @@ behaviour change for the vault API's callers.
 
 **Done when:** `grep VAULT_MASTER_KEY services/agent` returns nothing; minting and using a
 credential both still work end to end; deploying `agent` without `bureau` fails loudly
-rather than at runtime. *(Met: `services/bureau/src/vault.test.ts` 10 tests +
+rather than at runtime. _(Met: `services/bureau/src/vault.test.ts` 10 tests +
 `services/agent/src/vault.test.ts` 21, proven to bite. The grep is clean over all
 non-test source and config; `vault.test.ts` names the binding because it is the file
 that asserts its absence — and runs that sweep over the whole `src/` directory, so a
-future file cannot quietly reintroduce it.)*
+future file cannot quietly reintroduce it.)_
 
 **Depends on:** T1. **Blocks:** T3.
 
@@ -144,10 +144,10 @@ future file cannot quietly reintroduce it.)*
 - **Fail closed.** If the Bureau refuses a seal the agent answers 502 and writes no
   row — a credential that was never sealed must not appear in `creds list`.
 - **Deploy order** is now `submit → jmap → bureau → agent → ingest → provision →
-  anglebrackets`, in `infra/bootstrap.mjs` `DEPLOY_ORDER`, `docs/DEPLOY.md` §2,
+anglebrackets`, in `infra/bootstrap.mjs` `DEPLOY_ORDER`, `docs/DEPLOY.md` §2,
   `.github/workflows/deploy-mail.yml` and `services/README.md` (whose stale
   agent-after-ingest order was corrected in passing).
-- **Operator action on an existing deployment:** the key must be *moved*, not
+- **Operator action on an existing deployment:** the key must be _moved_, not
   regenerated — a fresh value cannot open rows already sealed. Runbook in
   `docs/DEPLOY.md` §2.
 
@@ -156,10 +156,10 @@ future file cannot quietly reintroduce it.)*
 ## T3 — The Bureau runtime: Class A `fetch` + destination binding ✅
 
 Discharges **§3** (Class A, the proxy-completing verb), **§4** (`bureau.fetch`),
-**§6** (destination binding as the *enforced* primary control), **invariants 1–6, 8**.
+**§6** (destination binding as the _enforced_ primary control), **invariants 1–6, 8**.
 **This is the load-bearing task** — the one verb that "covers every static-bearer /
 API-key service that will ever exist" (§3), and the first place anything is actually
-*enforced*.
+_enforced_.
 
 **Open question 1 is RESOLVED** (`arch.md`, ratified 2026-08-09): the Bureau is its **own
 Worker**, `VAULT_MASTER_KEY` bound only to it, and callers authenticate with an **opaque
@@ -170,12 +170,12 @@ controls. That makes **T3a a prerequisite of T3.**
 On every call the runtime, in order:
 
 0. ✅ **Verifies the caller** — `verifyBearer` on the presented invocation token, so identity
-   is *authenticated*, never self-asserted in the body. This is what stops a prompt-injected
+   is _authenticated_, never self-asserted in the body. This is what stops a prompt-injected
    `editor@` (sVOL `014` reads untrusted email) from exercising `travel@`'s grant: the
-   service binding proves which *worker*; only the token proves which *agent*.
-   *(Built in T3a — `services/bureau/src/grants.ts` `authorizeUse`.)*
+   service binding proves which _worker_; only the token proves which _agent_.
+   _(Built in T3a — `services/bureau/src/grants.ts` `authorizeUse`.)_
 1. ✅ **Authorizes** `(principal, credRef, verb)` against T2's grants, else refuse.
-   *(Built in T2, with the `grant_audit` write of invariant 6.)*
+   _(Built in T2, with the `grant_audit` write of invariant 6.)_
 2. ✅ **Gates the verb by kind** (§4.1): `fetch` is legal for `api-key`/`oauth-refresh`/
    `aws-sigv4`; a verb outside the kind's set is refused.
 3. ✅ **Binds the destination** (§6): parse the request URL, compare **scheme+host+port**
@@ -190,9 +190,9 @@ On every call the runtime, in order:
 allowlisted host with the credential injected server-side; a request to any other
 origin, a cross-origin redirect, an ungranted verb, or a credential with no
 allowlist are each refused; the caller receives a response and never the credential.
-*(Met: `services/bureau/src/binding.test.ts` 27 + `fetchVerb.test.ts` 35, driven
+_(Met: `services/bureau/src/binding.test.ts` 27 + `fetchVerb.test.ts` 35, driven
 through the real worker with a really-sealed credential, a really-minted bearer and a
-recording fake upstream. Proven to bite — see "Proven to bite" below.)*
+recording fake upstream. Proven to bite — see "Proven to bite" below.)_
 
 **Depends on:** T1 (kind + allow + header), T3a (the Worker + the key), T2 (authorization).
 
@@ -204,8 +204,8 @@ recording fake upstream. Proven to bite — see "Proven to bite" below.)*
   secret, so §6's adversarial cases are unit tests that run in microseconds.
   `services/bureau/src/fetchVerb.ts` is the shell that unseals, injects and sends.
 - **The kind gate lives in `handleUse`, not in the verb.** It is a property of the
-  *vocabulary*, so a Class B verb added in T5 inherits it by arriving after it. The
-  remaining 501 is now reached only from *behind* the gate.
+  _vocabulary_, so a Class B verb added in T5 inherits it by arriving after it. The
+  remaining 501 is now reached only from _behind_ the gate.
 - **Nothing is unsealed until the request is known to be legal.** Destination,
   allowlist, kind and recipe are all decided while the worker holds nothing;
   `openCredential` is called on the line before injection. Every refusal costs a
@@ -222,11 +222,11 @@ recording fake upstream. Proven to bite — see "Proven to bite" below.)*
   "follow it without the header" — that would make the Bureau a general-purpose
   relay fetching attacker-chosen URLs on an agent's behalf, which is a different
   hole in the same wall. This is the strict reading of invariant 4: a hop to
-  another *allowlisted* origin is refused too. The allowlist is re-checked on
+  another _allowlisted_ origin is refused too. The allowlist is re-checked on
   every hop even though a same-origin hop cannot fail it, because a control that
   holds by argument is one refactor away from not holding at all.
 - **The caller supplies a URL, a method, headers and a body — and no policy.**
-  Naming the injected header is *refused*, not stripped. `allow` / `header` fields
+  Naming the injected header is _refused_, not stripped. `allow` / `header` fields
   smuggled into the request body are inert (§2).
 - **`set-cookie` is dropped on the way out**: a session cookie minted for the
   Bureau by an allowlisted host is a bearer-shaped artifact the caller was never
@@ -234,7 +234,7 @@ recording fake upstream. Proven to bite — see "Proven to bite" below.)*
 - **Result envelope** `{ok, status, headers, body, bodyEncoding, redirects}`.
   Text-ish content types come back as text (what T4 will scan); everything else is
   base64 and passes through with header inspection only, per §7. An upstream 402
-  is reported as a *result*, not adopted as a Bureau refusal.
+  is reported as a _result_, not adopted as a Bureau refusal.
 
 **Proven to bite.** Reverting only the source drops `binding.test.ts` and
 `fetchVerb.test.ts` entirely (3 of 4 bureau files fail). Seven targeted mutations,
@@ -260,7 +260,7 @@ wiring, not by asking each caller (§7, `mcp-auth.md` §8).
 
 **Done when:** an injected value echoed by a (cooperative) endpoint is replaced by
 its marker before the response leaves the Bureau; binary passes through untouched;
-no pre-redaction body is logged. *(Adversarial echo is out of scope by design — §7.)*
+no pre-redaction body is logged. _(Adversarial echo is out of scope by design — §7.)_
 
 **Depends on:** T3 (the response path to filter).
 
@@ -270,8 +270,8 @@ defaulting to a passthrough; `renderResult` is the ONE place a Bureau result cro
 back to a caller, and it already receives the exact list of values the request put on
 the wire — so T4 replaces the default and changes nothing else. The text/binary split
 is already made there (`bodyEncoding`), so "scan text-ish, pass binary through" needs
-no new branch. `fetchVerb.test.ts`'s *"hands the egress filter the exact value that
-was injected"* drives that seam end to end today.
+no new branch. `fetchVerb.test.ts`'s _"hands the egress filter the exact value that
+was injected"_ drives that seam end to end today.
 
 ---
 
@@ -301,7 +301,7 @@ verb/kind mismatch is refused (invariant 3).
 
 ## T6 — Secret scoping: the AAD shift (§9) ⬚ — DEFERRED
 
-Discharges **§9**. Today `vaultAad(principalId, name)` makes the crypto *itself* the
+Discharges **§9**. Today `vaultAad(principalId, name)` makes the crypto _itself_ the
 access control — a row copied elsewhere cannot be decrypted, so no check is needed.
 The moment `global`/`inbox` scope exists, multiple principals legitimately open one
 row, so the crypto stops being access control and an **explicit authorization check
@@ -325,19 +325,19 @@ the re-seal runs once, after the schema of a credential row has settled.
 
 ## T7 — Federation for SES (§10) 🔬 — SPIKE, not a milestone
 
-Discharges **§10**. *"Federation is the way"* — every credential eliminated removes
+Discharges **§10**. _"Federation is the way"_ — every credential eliminated removes
 verb, audit, and console surface at once. SES is the one real SigV4 consumer today
 (`aws4fetch` in `packages/outbound` **[live]**); if it moves to federated short-lived
 credentials, `sign_sigv4` (T5) may never be needed for anything but third-party MCP.
 
 ⚠️ **Investigate, don't assume** (§10, §13.3). The concrete Workers→AWS trust path
-must be *verified* before it is promised — see `arch.md`'s open-question-3 verdict.
+must be _verified_ before it is promised — see `arch.md`'s open-question-3 verdict.
 Time-box a spike; do not schedule it as committed work until the spike returns green.
 
-**Open question 1's resolution changes this materially.** The spike stalled on *"Workers
-issues no AWS-federatable OIDC token."* That was framed as a platform gap; it is really a
+**Open question 1's resolution changes this materially.** The spike stalled on _"Workers
+issues no AWS-federatable OIDC token."_ That was framed as a platform gap; it is really a
 missing component we can supply. **An isolated Bureau holding a signing key and publishing a
-JWKS at a well-known URL *is* an OIDC provider** — the one place a JWT is correct, because
+JWKS at a well-known URL _is_ an OIDC provider** — the one place a JWT is correct, because
 the verifier (AWS) cannot call us and must verify offline:
 
 ```
@@ -347,7 +347,7 @@ AWS verifies against the published JWKS  ->  temporary STS credentials  ->  SES
 
 That reaches §10's top rung: **no long-lived AWS secret at rest** — only a signing key that
 never leaves the Bureau and which, unlike an SES key, grants nothing on its own. It is an
-honest *rung*, not rung zero: a signing key is still a secret at rest, but it is one secret,
+honest _rung_, not rung zero: a signing key is still a secret at rest, but it is one secret,
 in one Worker, exchangeable for narrowly-scoped short-lived creds via an STS session policy.
 
 Prerequisite: the JWKS must be publicly reachable and stably hosted — a route on the Bureau

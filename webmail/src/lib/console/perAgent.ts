@@ -332,8 +332,8 @@ export function buildAgentView(dossier: AgentDossier, now = Date.now()): AgentVi
         "grant list and its activity is never written to the delegated-access log.",
       "Binding config is a derived summary. The persona text, the model aliases and the " +
         "allowlisted addresses are deliberately not returned by any surface this console reads.",
-      "Bureau grants are capability-shaped — (principal, credential, verb). \"May use " +
-        "`sign_sigv4` with `aws-mcp`\" is the whole permission; there is no \"may read aws-mcp\".",
+      'Bureau grants are capability-shaped — (principal, credential, verb). "May use ' +
+        '`sign_sigv4` with `aws-mcp`" is the whole permission; there is no "may read aws-mcp".',
     ],
   };
 }
@@ -347,6 +347,9 @@ function spendLine(dossier: AgentDossier): string | null {
   const s = dossier.spend;
   if (!s) return null;
   const amount = (s.totalCents / 100).toFixed(2);
-  const window = s.since === null ? "all recorded time" : `since ${new Date(s.since).toISOString().slice(0, 10)}`;
+  const window =
+    s.since === null
+      ? "all recorded time"
+      : `since ${new Date(s.since).toISOString().slice(0, 10)}`;
   return `${s.currency} ${amount} across ${s.rows} recorded ${s.rows === 1 ? "fact" : "facts"} (${window}). This is the ledger, not a budget — no limit is enforced here.`;
 }

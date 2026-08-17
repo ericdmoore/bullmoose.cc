@@ -8,6 +8,7 @@ write paths do not go through that stamp, so they record **NULL provenance** —
 forensic query would look first.
 
 ## 1. DAV writes (`services/anglebrackets/src/dav.ts`)
+
 CardDAV/CalDAV writes construct `new Mailstore(env.DB, env.BLOBS)` and **replicate** the
 choreography rather than calling the JMAP method layer (anglebrackets binds only `ACCOUNT_DO`
 cross-script). So a contact edited from Apple Contacts, or an event from Apple Calendar, lands
@@ -16,6 +17,7 @@ mechanism supports it: build a `WriteProvenance` from the DAV principal and pass
 insert/update calls. This is the clearest follow-up from `s03.A`.
 
 ## 2. Agent MCP path records principal but not binding/invocation
+
 `services/agent`'s in-process `jmapBridge.callJmap` builds `RequestContext` without
 `ctx.agent`, so a noun write an agent makes over MCP stamps the **principal** but leaves
 `last_writer_binding`/`last_writer_invocation` NULL. That's the exact case provenance was
@@ -23,11 +25,13 @@ built for — "which agent invocation touched this?" Wire `handleToolCall`/`call
 `ctx.agent` from the active invocation.
 
 ## Why P2
+
 Provenance's whole point (`s03.A` readme) is that `grant_audit` misses owner-context and
 agent-scrambled-owner-data writes. These two gaps re-open a chunk of that: DAV is a common
-human write path, and the agent path is *the* motivating case. Not urgent (the columns exist
+human write path, and the agent path is _the_ motivating case. Not urgent (the columns exist
 and most writes populate them), but the coverage hole is precisely the interesting quadrant.
 
 ## Related
+
 - `.plans/s03.A-foundations` — shipped the columns; scoped itself to the mailstore path + `storeFor`.
 - `.plans/s03.E-console` — the forensic "who could / who did" view reads these columns; NULLs there are silent gaps.

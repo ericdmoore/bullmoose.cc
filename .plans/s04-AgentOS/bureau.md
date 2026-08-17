@@ -3,7 +3,7 @@
 > **What this is.** The design for how agents reach credentialed external services
 > without ever holding a credential. It is the concrete form of the **Gatekeeper**
 > bullet in [`readme.md`](./readme.md) (Governance), and the buildable version of
-> `docs/architecture/mcp-auth.md` §8's *"secrets never touch the model"* invariant.
+> `docs/architecture/mcp-auth.md` §8's _"secrets never touch the model"_ invariant.
 >
 > **Status legend:** **[live]** — exists today, `file:line` cited. **[proposed]** — this design.
 
@@ -17,25 +17,25 @@
 
 Prior art for the shape is deep and boring, which is a good sign: AWS **KMS**, HashiCorp
 **Vault Transit**, Cloudflare **Keyless SSL**, **PKCS#11**/HSM. All the same principle —
-*a closed set of operations over a key you cannot extract.*
+_a closed set of operations over a key you cannot extract._
 
 ---
 
 ## 2. The rejected design, and why it matters
 
-The tempting formulation is: *let the caller supply a closure; the Bureau injects the raw
-secret, runs it, returns the permuted output.* It handles arbitrary derivation chains
+The tempting formulation is: _let the caller supply a closure; the Bureau injects the raw
+secret, runs it, returns the permuted output._ It handles arbitrary derivation chains
 (SigV4's HMAC ladder) without the Bureau knowing every protocol.
 
-**Rejected, decisively.** Any API of the form *"return `f(secret)` where the caller
-supplies `f`"* **is equivalent to handing over the secret**, because `f = (s) => s` is a
+**Rejected, decisively.** Any API of the form _"return `f(secret)` where the caller
+supplies `f`"_ **is equivalent to handing over the secret**, because `f = (s) => s` is a
 legal, pure function. So is `(s) => s.slice(0,4)` called eight times.
 
 Purity analysis doesn't rescue it — a pure function is exactly what an exfiltration
-oracle looks like. Sandboxing (QuickJS-in-WASM, `mcp-auth.md` §17) protects the *host*,
+oracle looks like. Sandboxing (QuickJS-in-WASM, `mcp-auth.md` §17) protects the _host_,
 but cannot stop the closure returning what it was handed.
 
-**The rule this produces:** the Bureau implements the permutation; callers *name* it.
+**The rule this produces:** the Bureau implements the permutation; callers _name_ it.
 Verbs are a closed, server-implemented set.
 
 ---
@@ -44,14 +44,14 @@ Verbs are a closed, server-implemented set.
 
 The vocabulary splits by whether the caller ends up holding anything.
 
-| Class | Shape | Caller holds | Bureau on the data path |
-|---|---|---|---|
-| **A — proxy-completing** | `fetch(request, credRef) → response` | **nothing** | yes |
-| **B — artifact-minting** | `sign_sigv4(request, credRef) → signed request` | a scoped, expiring artifact | no |
+| Class                    | Shape                                           | Caller holds                | Bureau on the data path |
+| ------------------------ | ----------------------------------------------- | --------------------------- | ----------------------- |
+| **A — proxy-completing** | `fetch(request, credRef) → response`            | **nothing**                 | yes                     |
+| **B — artifact-minting** | `sign_sigv4(request, credRef) → signed request` | a scoped, expiring artifact | no                      |
 
 **Class A is strongest** and needs exactly **one verb, forever.** You do not need a verb
 per service — you need one proxy verb plus a **binding stored with the credential**
-(which host, which header, which scheme), *not supplied by the caller*. That single verb
+(which host, which header, which scheme), _not supplied by the caller_. That single verb
 covers every static-bearer / API-key service that will ever exist.
 
 **Class B is safe for a different reason**: the artifact is already scoped and expiring,
@@ -60,7 +60,7 @@ token dies on the provider's clock.
 
 ### Class B artifacts are often self-binding — and that decides which class to use
 
-- A **SigV4 signature** covers the canonical request *including host*. Replayed at
+- A **SigV4 signature** covers the canonical request _including host_. Replayed at
   `evil.com`, it is worthless. The protocol enforces the destination for you.
 - An **OAuth access token** is **not** self-binding. A bearer works anywhere that
   accepts it.
@@ -79,12 +79,12 @@ B:  bureau.sign_sigv4(request, credRef)     → signed request
     bureau.hmac_sha256(payload, credRef)    → mac   ⚠ see §4.1
 ```
 
-Realistic future additions — each only when a protocol genuinely *cannot* be expressed as
+Realistic future additions — each only when a protocol genuinely _cannot_ be expressed as
 "proxy the call": `sign_jwt` (GCP/Apple service accounts), `sign_http_message`
 (RFC 9421), `sign_webhook` (Stripe-style outbound).
 
 **Every verb is a new oracle surface, so the bar for adding one is high.** The vocabulary
-should get *narrower and better-typed*, not broader.
+should get _narrower and better-typed_, not broader.
 
 ### 4.1 ⚠️ Generic HMAC is the closure problem in miniature
 
@@ -94,15 +94,15 @@ that account. The verb is narrower than a closure; the defect is identical.
 
 **Therefore: verbs are typed to the credential's kind.**
 
-| `kind` | permitted verbs |
-|---|---|
-| `api-key` | `fetch` |
-| `oauth-refresh` | `oauth_token`, `fetch` |
-| `aws-sigv4` | `sign_sigv4`, `fetch` |
-| `hmac-key` | `hmac_sha256` (with a Bureau-controlled domain-separation prefix) |
+| `kind`          | permitted verbs                                                   |
+| --------------- | ----------------------------------------------------------------- |
+| `api-key`       | `fetch`                                                           |
+| `oauth-refresh` | `oauth_token`, `fetch`                                            |
+| `aws-sigv4`     | `sign_sigv4`, `fetch`                                             |
+| `hmac-key`      | `hmac_sha256` (with a Bureau-controlled domain-separation prefix) |
 
 Generic HMAC exists **only** for credentials minted as HMAC keys for a specific purpose —
-never as a universal primitive pointable at an AWS secret. This is what `kind` is *for*;
+never as a universal primitive pointable at an AWS secret. This is what `kind` is _for_;
 without it the typing has nothing to key off.
 
 ### 4.2 SigV4 needs no closure — its own design already solves this
@@ -133,14 +133,14 @@ creds set <name>
   # entropy: stdin / hidden prompt / --secret-env — NEVER argv
 ```
 
-| Field | Why mandatory |
-|---|---|
-| **entropy** | the thing itself |
-| **name** | the reference handle — what agent configs carry *instead of* the value |
-| **`--allow`** | destination binding — **the** primary control (§6). Fail closed |
-| **`--kind`** | gates the verb set (§4.1) — the field people forget, and it is load-bearing |
-| **`--header`** | where the value goes. Config, never caller-supplied — the model has no syntax for "the secret" |
-| **`--enforcement`** | records **who enforces the narrowing** (§5.2). `broad` means *only our code does* — surfaced in the console so that is visible, not tribal knowledge |
+| Field               | Why mandatory                                                                                                                                        |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **entropy**         | the thing itself                                                                                                                                     |
+| **name**            | the reference handle — what agent configs carry _instead of_ the value                                                                               |
+| **`--allow`**       | destination binding — **the** primary control (§6). Fail closed                                                                                      |
+| **`--kind`**        | gates the verb set (§4.1) — the field people forget, and it is load-bearing                                                                          |
+| **`--header`**      | where the value goes. Config, never caller-supplied — the model has no syntax for "the secret"                                                       |
+| **`--enforcement`** | records **who enforces the narrowing** (§5.2). `broad` means _only our code does_ — surfaced in the console so that is visible, not tribal knowledge |
 
 **Derive rather than type, where possible.** `--header` usually follows from `--kind`; for
 OAuth credentials `--allow` can default to the issuer origin already stored in `meta`
@@ -155,7 +155,7 @@ raw `--secret` as a legacy escape hatch and say so in the help text.
 
 **The name is a public handle.** It appears in committed agent configs
 (`credentialRef: "aws-mcp"`), so it carries no secret material and stays stable across
-rotations — `rotate` re-seals under the *same* name, so nothing downstream re-attaches.
+rotations — `rotate` re-seals under the _same_ name, so nothing downstream re-attaches.
 Existing validation `^[a-z0-9][a-z0-9._-]{0,63}$` **[live]** is the right shape.
 
 ### 5.1 Minting ≠ authorizing
@@ -165,34 +165,34 @@ over **`(principal, credRef, verb)`**:
 
 > `p_allen` may use **`sign_sigv4`** with **`aws-mcp`**
 
-— not *"p_allen may read aws-mcp."* Capability-shaped, not access-shaped.
+— not _"p_allen may read aws-mcp."_ Capability-shaped, not access-shaped.
 
 This separation makes revocation cheap (drop the grant, keep the credential), makes the
 console's two views work (per-agent reads grants; per-resource reads the credential), and
 makes "this agent holds a **signing** capability" legible in a way a scope string never is.
 Every use is auditable through the existing `grant_audit` path **[live]**.
 
-### 5.2 How narrow should the *provider-side* credential be?
+### 5.2 How narrow should the _provider-side_ credential be?
 
 One mega key that the Bureau scopes down, or many narrow keys from the provider? The
 question that settles it is **who enforces the narrowing, and does that enforcement trust
 our code?**
 
-| | One mega key + Bureau scoping | Many narrow keys |
-|---|---|---|
-| **Enforced by** | **our own code** | **the provider**, independently |
-| If the Bureau has a bug | the mega key's *entire* policy is reachable | still only that key's policy |
-| Blast radius on leak | everything | one capability |
-| Revocation | cut it → **everything stops** | cut one capability, others unaffected |
-| Provider-side audit | one identity in their logs | attribution per agent |
-| Management cost | 1 key, 1 rotation | N keys, N policies to drift |
+|                         | One mega key + Bureau scoping               | Many narrow keys                      |
+| ----------------------- | ------------------------------------------- | ------------------------------------- |
+| **Enforced by**         | **our own code**                            | **the provider**, independently       |
+| If the Bureau has a bug | the mega key's _entire_ policy is reachable | still only that key's policy          |
+| Blast radius on leak    | everything                                  | one capability                        |
+| Revocation              | cut it → **everything stops**               | cut one capability, others unaffected |
+| Provider-side audit     | one identity in their logs                  | attribution per agent                 |
+| Management cost         | 1 key, 1 rotation                           | N keys, N policies to drift           |
 
 The first row is the argument. It is the same principle this whole document rests on, one
 level up:
 
 > **Policy is our opinion. The capability wall is the guarantee.**
 
-Narrow provider keys *are* the wall; Bureau grants are policy. A missing check in the verb
+Narrow provider keys _are_ the wall; Bureau grants are policy. A missing check in the verb
 gate is a bug; a missing permission in an IAM policy is an impossibility.
 
 The last row is the honest counterargument — hand-maintaining a dozen policies is how you
@@ -202,7 +202,7 @@ end up with a dozen copies of `*`.
 
 Two mechanisms give **provider-enforced narrowing with single-key management**:
 
-1. **SigV4's own derivation** (§4.2). `kSigning` is scoped to *(date, region, service)* by
+1. **SigV4's own derivation** (§4.2). `kSigning` is scoped to _(date, region, service)_ by
    construction — one root key yields a signing key that only works for Cost Explorer, in
    one region, today. AWS enforces that, not us.
 2. **STS `AssumeRole` with a session policy** — the stronger one, and designed for exactly
@@ -219,16 +219,16 @@ Two mechanisms give **provider-enforced narrowing with single-key management**:
 
 #### The rule
 
-> **Prefer the narrowest thing the provider will enforce. Use Bureau scoping to go *finer*
+> **Prefer the narrowest thing the provider will enforce. Use Bureau scoping to go _finer_
 > than that — never as a substitute for it.**
 
 Ladder, best first (an extension of §10's):
 
-| Rung | Mechanism | Enforced by |
-|---|---|---|
+| Rung  | Mechanism                         | Enforced by                                     |
+| ----- | --------------------------------- | ----------------------------------------------- |
 | **1** | Federation / STS session policies | provider, per-invocation, no stored root secret |
-| **2** | Multiple narrow keys | provider, static |
-| **3** | One key + Bureau scoping only | **us alone** |
+| **2** | Multiple narrow keys              | provider, static                                |
+| **3** | One key + Bureau scoping only     | **us alone**                                    |
 
 Rung 3 is unavoidable for most SaaS APIs — one key, full access, no scoping story. That is
 acceptable; it must be **recorded on the credential** (§5) so "only our code enforces this"
@@ -236,7 +236,7 @@ is visible in the s03.E console rather than tribal knowledge.
 
 #### Split by blast radius, not by consumer
 
-The trap is one key per *agent*. That multiplies rotation work without reducing blast
+The trap is one key per _agent_. That multiplies rotation work without reducing blast
 radius — three agents needing identical access share a risk profile. The grant
 `(principal, credRef, verb)` already handles per-agent; **keys handle per-capability.**
 
@@ -250,7 +250,7 @@ Split a credential when:
 #### Why this matters more here than in a normal app
 
 Our agents read **untrusted email by design**, so the confused-deputy case in §8 —
-*"call the AWS tool, email the result to evil@"* — is a live risk, not a hypothetical. Under
+_"call the AWS tool, email the result to evil@"_ — is a live risk, not a hypothetical. Under
 a mega key a successful injection reaches the entire policy; under a narrow key it reaches
 one capability. For a system whose input is attacker-controlled as a matter of course, that
 shifts the calculus toward narrow harder than it would elsewhere.
@@ -260,7 +260,7 @@ shifts the calculus toward narrow harder than it would elsewhere.
 ## 6. Destination binding — the primary control
 
 A credential may only ever be attached to a request going to **its own allowlist**. This
-is `mcp-auth.md` §8's *"injected, host-matched, header-only"* rule, and the
+is `mcp-auth.md` §8's _"injected, host-matched, header-only"_ rule, and the
 password-manager analogy: autofills only on the exact registered origin, and there is no
 "reveal password" button.
 
@@ -281,7 +281,7 @@ Six details decide whether it actually holds:
 4. **Wildcards are unavoidable, so make them deliberate.** Real services span hosts
    (`ce.us-east-1.amazonaws.com`, `email.us-east-1.amazonaws.com`;
    `oauth2.googleapis.com`, `gmail.googleapis.com`). Support `*.amazonaws.com` and render
-   it in the console as the *widening* it is.
+   it in the console as the _widening_ it is.
 5. **Fail closed.** No allowlist → refuse to inject. A credential without a destination is
    unusable by design; if the default is "allow all," the dangerous case is what you get
    by forgetting.
@@ -293,27 +293,28 @@ Six details decide whether it actually holds:
 
 The Bureau scrubs from every response any value it injected on that request — the root
 secret **and** derived artifacts. It has an advantage no downstream layer has: it knows
-*exactly* what it put in, so it redacts against a precise value list rather than guessing.
+_exactly_ what it put in, so it redacts against a precise value list rather than guessing.
 
 **Rank this below destination binding, explicitly**, so nobody later trades the binding
 away because "we redact anyway":
 
-| Threat | Redaction helps? |
-|---|---|
-| Legit API echoes the key in an error message (common — many APIs do) | ✅ yes |
-| Sloppy debug/echo endpoint reflects headers | ✅ yes |
-| **Adversarial** endpoint | ❌ **no** — it returns `base64(secret)`, reversed, split across fields, or one character per request |
+| Threat                                                               | Redaction helps?                                                                                     |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Legit API echoes the key in an error message (common — many APIs do) | ✅ yes                                                                                               |
+| Sloppy debug/echo endpoint reflects headers                          | ✅ yes                                                                                               |
+| **Adversarial** endpoint                                             | ❌ **no** — it returns `base64(secret)`, reversed, split across fields, or one character per request |
 
 An attacker controls the encoding; you cannot pattern-match what you cannot predict.
 **Redaction is protection against accident. Destination binding is protection against
 adversaries.**
 
-Derived artifacts matter *more* here than the root secret — an OAuth access token echoed
+Derived artifacts matter _more_ here than the root secret — an OAuth access token echoed
 in a JSON body is a live bearer, and `kSigning` signs anything for its window.
 
 **Implementation notes**
-- **Redact in the Bureau, not in each caller** — `mcp-auth.md` §8's *"enforce by wiring,
-  not rule"*: a caller can forget; a chokepoint cannot.
+
+- **Redact in the Bureau, not in each caller** — `mcp-auth.md` §8's _"enforce by wiring,
+  not rule"_: a caller can forget; a chokepoint cannot.
 - Match injected values plus cheap encodings (base64, hex, URL-encoding).
 - Replace with a stable marker (`[redacted:aws-mcp]`) so failures stay debuggable.
 - **Never log the pre-redaction body** — §8 already says log the pre-injection intent,
@@ -329,28 +330,28 @@ the tool result is clean before it can get there.
 
 ## 7a. Credential-returning responses — who chooses the scope
 
-A real case, surfaced in review: *"an agent asks the AWS MCP to give it access to a new
-sandbox."* If that response carries **new** credentials (STS session creds), §7's redaction
+A real case, surfaced in review: _"an agent asks the AWS MCP to give it access to a new
+sandbox."_ If that response carries **new** credentials (STS session creds), §7's redaction
 will not catch them — it scrubs values the Bureau **injected**, matching "a precise value
 list", and a freshly-minted credential was never on that list.
 
 **An earlier note called this a violation of invariant 1. That was too strong**, and §3
-already says why: Class B *deliberately* hands the caller "a scoped, expiring artifact."
+already says why: Class B _deliberately_ hands the caller "a scoped, expiring artifact."
 An STS credential with a session policy is exactly that shape — the same category as
 `kSigning` (one service/region/day) and an OAuth access token (dies on the provider's
 clock). Invariant 1 protects the **root** credential. Bounded artifacts are the design's
 own escape hatch, not a breach of it.
 
-**The real control is who chooses the scope**, and that is a §5.2 question — *policy is our
-opinion; the capability wall is the guarantee*:
+**The real control is who chooses the scope**, and that is a §5.2 question — _policy is our
+opinion; the capability wall is the guarantee_:
 
-| route | who composes the request | who picks the blast radius |
-|---|---|---|
-| Class A `fetch` passthrough | **the agent** | **the agent** — asks for no session policy, gets the whole role |
-| a Bureau **verb** | the Bureau | **the Bureau** — the session policy is config, not caller input |
+| route                       | who composes the request | who picks the blast radius                                      |
+| --------------------------- | ------------------------ | --------------------------------------------------------------- |
+| Class A `fetch` passthrough | **the agent**            | **the agent** — asks for no session policy, gets the whole role |
+| a Bureau **verb**           | the Bureau               | **the Bureau** — the session policy is config, not caller input |
 
 So a credential-minting operation is **a verb, not a passthrough**. That is §2's rule
-applied unchanged: *the Bureau implements the permutation; callers name it.* The agent names
+applied unchanged: _the Bureau implements the permutation; callers name it._ The agent names
 the operation; scope is imposed. And `--allow` is what keeps a credential-minting endpoint
 from being reachable through plain `fetch` in the first place.
 
@@ -360,13 +361,14 @@ data, and you cannot regex for a value you have never seen. Declaration at mint 
 sniffing at runtime — the same reason `--header` is config rather than caller-supplied (§5).
 
 **Two open sub-questions**, neither blocking T3:
-1. When a verb *does* mint a new credential, should the Bureau **capture** it (seal it, hand
+
+1. When a verb _does_ mint a new credential, should the Bureau **capture** it (seal it, hand
    back a new `credRef` — another coat-tag) rather than return the value? That preserves
    invariant 1 fully and lets the agent's capability set grow without it ever holding a
    secret. Probably yes for anything long-lived; unnecessary for short-lived artifacts that
    are already bounded.
 2. **Does the sandbox case need AWS at all?** `mcp-auth.md` §17's Cloudflare update argues
-   not: a Dynamic Worker gets *"only the bindings you provide"*, so a native sandbox needs no
+   not: a Dynamic Worker gets _"only the bindings you provide"_, so a native sandbox needs no
    external credential — the problem stops existing rather than being solved. Prefer that
    route where the workload can run on-substrate.
 
@@ -389,7 +391,7 @@ new one.
 
 The floated axes are **Global / PerActor / PerInbox**. Today the vault is **per-principal
 by construction**: `vaultAad(principalId, name)` **[live]** binds the ciphertext to its
-principal, so a row copied elsewhere *cannot be decrypted*.
+principal, so a row copied elsewhere _cannot be decrypted_.
 
 **The consequence is not obvious and is the important part: today the AAD does double
 duty as access control.** Crypto enforces isolation; no check is required.
@@ -398,11 +400,11 @@ The moment Global or PerInbox exists, **multiple principals legitimately open th
 row** — so the crypto stops being the access control and an **explicit authorization
 check** is required where none exists today.
 
-| Scope | AAD | Who may open |
-|---|---|---|
-| actor | `actor:p_allen:aws-key` | that principal (today's behaviour) |
-| inbox | `inbox:a_eric:smtp-relay` | principals with a grant on that account |
-| global | `global::shared-key` | **explicit ACL** — highest blast radius in the system |
+| Scope  | AAD                       | Who may open                                          |
+| ------ | ------------------------- | ----------------------------------------------------- |
+| actor  | `actor:p_allen:aws-key`   | that principal (today's behaviour)                    |
+| inbox  | `inbox:a_eric:smtp-relay` | principals with a grant on that account               |
+| global | `global::shared-key`      | **explicit ACL** — highest blast radius in the system |
 
 Two consequences: global secrets should require `admin` to write and an explicit grant to
 read; and changing the AAD scheme means **re-sealing every existing row** (open with old,
@@ -413,12 +415,12 @@ the master key.
 
 ## 10. The ladder — fewer secrets beats better secrets
 
-| Rung | Mechanism | Secret at rest? |
-|---|---|---|
-| **1** | **Federation / workload identity** (OIDC, AWS IAM Roles Anywhere) | **none** |
-| **2** | **Bureau with a closed verb set** (proxy / sign / derive) | yes, never exposed |
-| **3** | Vault + inject-at-transport *(today)* **[live]** | yes, worker-only |
-| ✗ | Caller-supplied closure over a raw secret | equivalent to handing it over |
+| Rung  | Mechanism                                                         | Secret at rest?               |
+| ----- | ----------------------------------------------------------------- | ----------------------------- |
+| **1** | **Federation / workload identity** (OIDC, AWS IAM Roles Anywhere) | **none**                      |
+| **2** | **Bureau with a closed verb set** (proxy / sign / derive)         | yes, never exposed            |
+| **3** | Vault + inject-at-transport _(today)_ **[live]**                  | yes, worker-only              |
+| ✗     | Caller-supplied closure over a raw secret                         | equivalent to handing it over |
 
 **Federation is the way.** Every credential eliminated removes verb surface, audit
 surface, and console surface at once. `creds oauth` already lives in this spirit — it
@@ -427,12 +429,12 @@ stores only a refresh token, never a password **[live]**.
 **Highest-value target: SES**, the one real SigV4 consumer today (`aws4fetch` in
 `packages/outbound` **[live]**). If it can move to federated short-lived credentials,
 `sign_sigv4` may never be needed for anything but third-party MCP servers.
-⚠️ *Investigate, don't assume* — the concrete Workers→AWS trust path needs verifying
+⚠️ _Investigate, don't assume_ — the concrete Workers→AWS trust path needs verifying
 before it's promised; this is the class of thing that is clean in principle and fiddly in
 practice.
 
 **Passkeys/WebAuthn** are the hardware expression of the same principle (non-exportable
-key, signature over a challenge). They apply to the *human* login side —
+key, signature over a challenge). They apply to the _human_ login side —
 `serverless-jmap.md:183` already lists them for webmail — not to third-party service auth,
 where federation is the analogue.
 
@@ -453,11 +455,11 @@ where federation is the analogue.
 
 ## 12. Relationship to the rest of the plan
 
-- **`readme.md` (this folder)** — the Bureau *is* the Gatekeeper bullet under Governance.
+- **`readme.md` (this folder)** — the Bureau _is_ the Gatekeeper bullet under Governance.
 - **`mcp-auth.md` §8** — the invariant this implements; §7b's `credentialRef` is the
   reference this consumes; §17's `entitlements` are host-mediated proxies in the same
   shape.
-- **`s03.E-console`** — renders the Bureau's state: which agent holds which *verb* on
+- **`s03.E-console`** — renders the Bureau's state: which agent holds which _verb_ on
   which credential, and the allowlist as effective permissions.
 - **`s05-cli-crud`** — `creds` gains the mint-time fields in §5; the Global/PerInbox AAD
   change (§9) is specified there and built here.
@@ -467,11 +469,11 @@ where federation is the analogue.
 1. ✅ **RESOLVED (2026-08-09) — its own Worker.** The lean was right. Full reasoning in
    `arch.md` OQ1; in short: the key is **moved, not copied** (bound only to the Bureau,
    removed from `services/agent`), and no plaintext crosses the hop because §1's contract
-   already says a *name* goes in and a *result* comes back. Embedded would leave
+   already says a _name_ goes in and a _result_ comes back. Embedded would leave
    `VAULT_MASTER_KEY` ambient in a worker that also runs every MCP tool — security by
    discipline rather than by platform.
 
-   The follow-on question isolation *doesn't* answer — "which agent is calling, given they
+   The follow-on question isolation _doesn't_ answer — "which agent is calling, given they
    share one worker and one service binding?" — resolves as **opaque per-invocation bearer
    token inward** (verified by `verifyBearer`, inheriting the `008`/`s03.A` revocation
    controls; a JWT would route around them) and **JWT outward** for federation, where AWS
@@ -479,6 +481,7 @@ where federation is the analogue.
 
    Structural consequence: `services/agent/src/vault.ts` splits — reference layer stays,
    all master-key crypto moves. Tracked as **T3a**, a prerequisite of T3.
+
 2. **Does Class A need response streaming**, or is buffer-and-scan (§7) acceptable for
    all realistic agent traffic?
 3. **Federation feasibility for SES** (§10) — needs a real investigation before it's

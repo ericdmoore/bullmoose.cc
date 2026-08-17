@@ -29,7 +29,10 @@ describe("patch construction", () => {
   it("moves by adding the destination and removing every current mailbox at once", () => {
     // The server refuses a patch that would leave a message in no mailbox, so
     // the add and the removes have to travel together.
-    const email = { mailboxIds: { "mb-inbox": true, "mb-project": true } } as Pick<Email, "mailboxIds">;
+    const email = { mailboxIds: { "mb-inbox": true, "mb-project": true } } as Pick<
+      Email,
+      "mailboxIds"
+    >;
     expect(movePatch(email, "mb-archive")).toEqual({
       "mailboxIds/mb-archive": true,
       "mailboxIds/mb-inbox": null,
@@ -43,7 +46,10 @@ describe("patch construction", () => {
   });
 
   it("archives out of the Inbox while keeping other filing", () => {
-    const email = { mailboxIds: { "mb-inbox": true, "mb-project": true } } as Pick<Email, "mailboxIds">;
+    const email = { mailboxIds: { "mb-inbox": true, "mb-project": true } } as Pick<
+      Email,
+      "mailboxIds"
+    >;
     expect(archivePatch(email, "mb-inbox", "mb-archive")).toEqual({
       "mailboxIds/mb-archive": true,
       "mailboxIds/mb-inbox": null,

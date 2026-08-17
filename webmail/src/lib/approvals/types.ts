@@ -211,7 +211,9 @@ export function parseProposal(
     amendments: Array.isArray(raw.amendments)
       ? raw.amendments.filter(
           (a): a is ProposalAmendment =>
-            a !== null && typeof a === "object" && typeof (a as ProposalAmendment).question === "string",
+            a !== null &&
+            typeof a === "object" &&
+            typeof (a as ProposalAmendment).question === "string",
         )
       : [],
     invocationStatus: str(raw.invocationStatus) ?? "",

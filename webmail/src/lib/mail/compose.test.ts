@@ -184,7 +184,11 @@ describe("address parsing and validation", () => {
 describe("drafts", () => {
   it("creates the draft in the Drafts mailbox with $draft set", async () => {
     const { client, emails } = createDemoBackend();
-    const draft = { ...newDraft({ identity }), to: parseAddressList("ada@x.test"), subject: "Hello" };
+    const draft = {
+      ...newDraft({ identity }),
+      to: parseAddressList("ada@x.test"),
+      subject: "Hello",
+    };
     const saved = await saveDraft(client, ACCOUNT, "mb-drafts", draft);
 
     const stored = emails.find((e) => e.id === saved.id);
@@ -218,7 +222,9 @@ describe("drafts", () => {
   it("reports a refusal instead of pretending the draft saved", async () => {
     const { client } = createDemoBackend({ scopes: ["read"] });
     const draft = { ...newDraft({ identity }), to: parseAddressList("ada@x.test") };
-    await expect(saveDraft(client, ACCOUNT, "mb-drafts", draft)).rejects.toBeInstanceOf(ComposeError);
+    await expect(saveDraft(client, ACCOUNT, "mb-drafts", draft)).rejects.toBeInstanceOf(
+      ComposeError,
+    );
   });
 });
 

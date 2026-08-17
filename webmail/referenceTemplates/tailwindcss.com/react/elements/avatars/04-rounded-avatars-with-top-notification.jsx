@@ -55,5 +55,5 @@ export default function Example() {
         <span className="absolute top-0 right-0 block size-4 translate-x-1/2 -translate-y-1/2 transform rounded-full bg-green-400 ring-2 ring-white dark:bg-green-500 dark:ring-gray-900" />
       </span>
     </>
-  )
+  );
 }

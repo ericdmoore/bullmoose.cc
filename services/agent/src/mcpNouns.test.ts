@@ -331,7 +331,10 @@ describe("calendar CRUD over MCP", () => {
 
   it("refuses a delete of an id that is not there, and says so", async () => {
     const w = world();
-    const r = await callTool(w, "calendar_delete_event", { accountId: ACCOUNT, eventId: "ev_nope" });
+    const r = await callTool(w, "calendar_delete_event", {
+      accountId: ACCOUNT,
+      eventId: "ev_nope",
+    });
     expect(r.body.result!.isError).toBe(true);
     expect(r.text).toContain("notFound");
     expect(w.accountDo.commits).toEqual([]);

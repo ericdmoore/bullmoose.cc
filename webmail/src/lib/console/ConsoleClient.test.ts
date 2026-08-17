@@ -145,7 +145,9 @@ const session = (caps: Record<string, unknown>): Pick<Session, "capabilities"> =
 
 describe("the capability gate keeps the plain-client proof green", () => {
   it("is closed with the agent capability absent, and says so without erroring", () => {
-    const gate = consoleGate(session({ "urn:ietf:params:jmap:core": {}, "urn:ietf:params:jmap:mail": {} }));
+    const gate = consoleGate(
+      session({ "urn:ietf:params:jmap:core": {}, "urn:ietf:params:jmap:mail": {} }),
+    );
     expect(gate.state).toBe("no-capability");
     expect(gate.visible).toBe(false);
     // Not an error string: this is the supported configuration.

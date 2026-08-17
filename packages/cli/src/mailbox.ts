@@ -249,4 +249,3 @@ export function renderTree(boxes: MirroredMailbox[]): string {
   walk(null, "  ");
   return lines.join("\n");
 }
-

@@ -33,7 +33,7 @@ A deploy workflow that skips the suite it ships with is the deficiency, independ
 and the suite currently includes the MCP auth-gate regression tests (`services/agent/src/mcp.test.ts`
 cases 7–10) that guard a security boundary.
 
-## C. Tests are excluded from the only gate that *does* run
+## C. Tests are excluded from the only gate that _does_ run
 
 `tsconfig.json:33` excludes `**/*.test.ts`. Since `npm run typecheck` is the sole CI gate, **type
 errors in test files cannot fail anything** — and vitest does not typecheck.

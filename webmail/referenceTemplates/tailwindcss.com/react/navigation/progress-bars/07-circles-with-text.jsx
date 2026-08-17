@@ -1,20 +1,35 @@
-import { CheckIcon } from '@heroicons/react/20/solid'
+import { CheckIcon } from "@heroicons/react/20/solid";
 
 const steps = [
-  { name: 'Create account', description: 'Vitae sed mi luctus laoreet.', href: '#', status: 'complete' },
   {
-    name: 'Profile information',
-    description: 'Cursus semper viverra facilisis et et some more.',
-    href: '#',
-    status: 'current',
+    name: "Create account",
+    description: "Vitae sed mi luctus laoreet.",
+    href: "#",
+    status: "complete",
   },
-  { name: 'Business information', description: 'Penatibus eu quis ante.', href: '#', status: 'upcoming' },
-  { name: 'Theme', description: 'Faucibus nec enim leo et.', href: '#', status: 'upcoming' },
-  { name: 'Preview', description: 'Iusto et officia maiores porro ad non quas.', href: '#', status: 'upcoming' },
-]
+  {
+    name: "Profile information",
+    description: "Cursus semper viverra facilisis et et some more.",
+    href: "#",
+    status: "current",
+  },
+  {
+    name: "Business information",
+    description: "Penatibus eu quis ante.",
+    href: "#",
+    status: "upcoming",
+  },
+  { name: "Theme", description: "Faucibus nec enim leo et.", href: "#", status: "upcoming" },
+  {
+    name: "Preview",
+    description: "Iusto et officia maiores porro ad non quas.",
+    href: "#",
+    status: "upcoming",
+  },
+];
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -22,8 +37,11 @@ export default function Example() {
     <nav aria-label="Progress">
       <ol role="list" className="overflow-hidden">
         {steps.map((step, stepIdx) => (
-          <li key={step.name} className={classNames(stepIdx !== steps.length - 1 ? 'pb-10' : '', 'relative')}>
-            {step.status === 'complete' ? (
+          <li
+            key={step.name}
+            className={classNames(stepIdx !== steps.length - 1 ? "pb-10" : "", "relative")}
+          >
+            {step.status === "complete" ? (
               <>
                 {stepIdx !== steps.length - 1 ? (
                   <div
@@ -38,12 +56,16 @@ export default function Example() {
                     </span>
                   </span>
                   <span className="ml-4 flex min-w-0 flex-col">
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">{step.name}</span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">{step.description}</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-white">
+                      {step.name}
+                    </span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      {step.description}
+                    </span>
                   </span>
                 </a>
               </>
-            ) : step.status === 'current' ? (
+            ) : step.status === "current" ? (
               <>
                 {stepIdx !== steps.length - 1 ? (
                   <div
@@ -58,8 +80,12 @@ export default function Example() {
                     </span>
                   </span>
                   <span className="ml-4 flex min-w-0 flex-col">
-                    <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">{step.name}</span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">{step.description}</span>
+                    <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
+                      {step.name}
+                    </span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      {step.description}
+                    </span>
                   </span>
                 </a>
               </>
@@ -78,8 +104,12 @@ export default function Example() {
                     </span>
                   </span>
                   <span className="ml-4 flex min-w-0 flex-col">
-                    <span className="text-sm font-medium text-gray-500 dark:text-gray-400">{step.name}</span>
-                    <span className="text-sm text-gray-500 dark:text-gray-400">{step.description}</span>
+                    <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                      {step.name}
+                    </span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                      {step.description}
+                    </span>
                   </span>
                 </a>
               </>
@@ -88,5 +118,5 @@ export default function Example() {
         ))}
       </ol>
     </nav>
-  )
+  );
 }

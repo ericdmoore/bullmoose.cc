@@ -282,7 +282,9 @@ export async function answerInfoRequest(
   const amendments = parseAmendments(prop.amendments_json);
   const open = amendments[amendments.length - 1];
   if (!prop.question || !open || open.answer !== null) {
-    return done("failed", { note: `refused: proposal ${proposalId} has no open question to answer` });
+    return done("failed", {
+      note: `refused: proposal ${proposalId} has no open question to answer`,
+    });
   }
 
   const { answer, cost } = await composeAnswer(env, cfg, prop, open.question);
@@ -307,7 +309,9 @@ export async function answerInfoRequest(
     )
     .run();
   if (res.meta.changes !== 1) {
-    return done("failed", { note: `refused: proposal ${proposalId} left info-requested mid-answer` });
+    return done("failed", {
+      note: `refused: proposal ${proposalId} left info-requested mid-answer`,
+    });
   }
 
   await commitChanges(env.ACCOUNT_DO, job.account_id, [

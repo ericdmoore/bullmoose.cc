@@ -150,7 +150,10 @@ async function emailSubmissionSet(
     } catch (err) {
       notCreated[cid] =
         err instanceof MethodError
-          ? setError(err.type === "invalidArguments" ? "invalidProperties" : err.type, err.description)
+          ? setError(
+              err.type === "invalidArguments" ? "invalidProperties" : err.type,
+              err.description,
+            )
           : setError("serverFail", String(err));
     }
   }
@@ -245,9 +248,7 @@ async function submitOne(
 
   // Recipients: explicit (Bcc needs this), or derived from the message.
   const rcptTo =
-    spec.envelope?.rcptTo
-      ?.map((r) => r.email)
-      .filter((e): e is string => typeof e === "string") ??
+    spec.envelope?.rcptTo?.map((r) => r.email).filter((e): e is string => typeof e === "string") ??
     dedupe([...email.to, ...email.cc, ...email.bcc].map((a: EmailAddress) => a.email));
   if (rcptTo.length === 0) {
     throw new MethodError("invalidArguments", "no recipients");

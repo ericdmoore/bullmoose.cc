@@ -1,20 +1,32 @@
-import { CheckCircleIcon } from '@heroicons/react/20/solid'
+import { CheckCircleIcon } from "@heroicons/react/20/solid";
 
 const mailingLists = [
-  { id: 'newsletter', title: 'Newsletter', description: 'Last message sent an hour ago', users: '621 users' },
   {
-    id: 'existing-customers',
-    title: 'Existing customers',
-    description: 'Last message sent 2 weeks ago',
-    users: '1200 users',
+    id: "newsletter",
+    title: "Newsletter",
+    description: "Last message sent an hour ago",
+    users: "621 users",
   },
-  { id: 'trial-users', title: 'Trial users', description: 'Last message sent 4 days ago', users: '2740 users' },
-]
+  {
+    id: "existing-customers",
+    title: "Existing customers",
+    description: "Last message sent 2 weeks ago",
+    users: "1200 users",
+  },
+  {
+    id: "trial-users",
+    title: "Trial users",
+    description: "Last message sent 4 days ago",
+    users: "2740 users",
+  },
+];
 
 export default function Example() {
   return (
     <fieldset>
-      <legend className="text-sm/6 font-semibold text-gray-900 dark:text-white">Select a mailing list</legend>
+      <legend className="text-sm/6 font-semibold text-gray-900 dark:text-white">
+        Select a mailing list
+      </legend>
       <div className="mt-6 grid grid-cols-1 gap-y-6 sm:grid-cols-3 sm:gap-x-4">
         {mailingLists.map((mailingList) => (
           <label
@@ -31,9 +43,15 @@ export default function Example() {
               className="absolute inset-0 appearance-none focus:outline-none"
             />
             <div className="flex-1">
-              <span className="block text-sm font-medium text-gray-900 dark:text-white">{mailingList.title}</span>
-              <span className="mt-1 block text-sm text-gray-500 dark:text-gray-400">{mailingList.description}</span>
-              <span className="mt-6 block text-sm font-medium text-gray-900 dark:text-white">{mailingList.users}</span>
+              <span className="block text-sm font-medium text-gray-900 dark:text-white">
+                {mailingList.title}
+              </span>
+              <span className="mt-1 block text-sm text-gray-500 dark:text-gray-400">
+                {mailingList.description}
+              </span>
+              <span className="mt-6 block text-sm font-medium text-gray-900 dark:text-white">
+                {mailingList.users}
+              </span>
             </div>
             <CheckCircleIcon
               aria-hidden="true"
@@ -43,5 +61,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  )
+  );
 }

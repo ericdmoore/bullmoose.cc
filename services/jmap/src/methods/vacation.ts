@@ -56,7 +56,14 @@ export function registerVacationMethods(registry: MethodRegistry<RequestContext>
          text_body = excluded.text_body, from_date = excluded.from_date,
          to_date = excluded.to_date`,
     )
-      .bind(access.accountId, next.enabled, next.subject, next.text_body, next.from_date, next.to_date)
+      .bind(
+        access.accountId,
+        next.enabled,
+        next.subject,
+        next.text_body,
+        next.from_date,
+        next.to_date,
+      )
       .run();
 
     return {

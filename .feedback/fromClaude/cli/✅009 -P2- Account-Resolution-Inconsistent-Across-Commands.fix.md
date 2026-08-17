@@ -11,10 +11,12 @@ Lift it:
 // packages/cli/src/db.ts
 export function pickAccount(settings, selector) {
   const matches = selectAccounts(settings, selector);
-  if (matches.length === 0) fail(`no account matches "${selector}"`);           // exit 3
+  if (matches.length === 0) fail(`no account matches "${selector}"`); // exit 3
   if (matches.length > 1) {
-    fail(`--account "${selector}" matches ${matches.length} accounts:\n` +
-         matches.map(a => `  ${accountLabel(a)}`).join("\n"));                   // exit 2
+    fail(
+      `--account "${selector}" matches ${matches.length} accounts:\n` +
+        matches.map((a) => `  ${accountLabel(a)}`).join("\n"),
+    ); // exit 2
   }
   return matches[0];
 }
@@ -23,8 +25,8 @@ export function pickAccount(settings, selector) {
 Then replace the `[0]` takes at `main.ts:344-348` (send), `:688` (read), `:543` (vacation), and the
 `identities[0]` fallback at `:370-373`.
 
-**Rule to state in the help text:** *a selector that matches more than one account is an error, not a
-choice.* Only an explicit `--account default` (or a single-account login) resolves implicitly.
+**Rule to state in the help text:** _a selector that matches more than one account is an error, not a
+choice._ Only an explicit `--account default` (or a single-account login) resolves implicitly.
 
 ## For `show` specifically
 
@@ -33,7 +35,7 @@ and only then bind. Two commands one line apart in the docs should not disagree 
 means.
 
 While there, fix the error text at `main.ts:849` — "not in local db (run: bullmoose sync)" should
-distinguish *unknown id* from *id belongs to an account you didn't select*. The second case should
+distinguish _unknown id_ from _id belongs to an account you didn't select_. The second case should
 name the owning account.
 
 ## Breaking-change note

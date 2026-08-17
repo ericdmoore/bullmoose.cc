@@ -84,7 +84,9 @@ export function registerAnnotationMethods(registry: MethodRegistry<RequestContex
     } else {
       const marks = ids.map(() => "?").join(",");
       rows = (
-        await ctx.env.DB.prepare(`SELECT * FROM annotations WHERE account_id = ? AND id IN (${marks})`)
+        await ctx.env.DB.prepare(
+          `SELECT * FROM annotations WHERE account_id = ? AND id IN (${marks})`,
+        )
           .bind(access.accountId, ...ids)
           .all<AnnotationRow>()
       ).results;
@@ -100,7 +102,9 @@ export function registerAnnotationMethods(registry: MethodRegistry<RequestContex
 
   registry.register("Annotation/query", async (args, ctx) => {
     const access = await requireAccount(ctx, args, "read");
-    const filter = (args.filter as { class?: string; status?: string; objectId?: string } | null | undefined) ?? null;
+    const filter =
+      (args.filter as { class?: string; status?: string; objectId?: string } | null | undefined) ??
+      null;
     // Default view is OPEN claims — "what does the agent think is live", not a
     // graveyard of decided ones. A terminal status is asked for explicitly,
     // exactly as Watch/query defaults to armed.
@@ -149,7 +153,12 @@ export function registerAnnotationMethods(registry: MethodRegistry<RequestContex
     const notCreated: Record<string, { type: string; description?: string }> = {};
     const updated: Record<string, null> = {};
     const notUpdated: Record<string, { type: string; description?: string }> = {};
-    const entry: ChangeEntry = { collection: "Annotation", created: [], updated: [], destroyed: [] };
+    const entry: ChangeEntry = {
+      collection: "Annotation",
+      created: [],
+      updated: [],
+      destroyed: [],
+    };
     const now = Date.now();
 
     // ---- create ----
@@ -158,20 +167,31 @@ export function registerAnnotationMethods(registry: MethodRegistry<RequestContex
       const anchor = spec.anchor as { realm?: unknown; objectId?: unknown } | undefined;
       // The invariant, at the door: no anchor, no annotation.
       if (!anchor || typeof anchor.realm !== "string" || typeof anchor.objectId !== "string") {
-        notCreated[cid] = { type: "invalidProperties", description: "anchor {realm, objectId} is required — an annotation is always about something" };
+        notCreated[cid] = {
+          type: "invalidProperties",
+          description:
+            "anchor {realm, objectId} is required — an annotation is always about something",
+        };
         continue;
       }
       const cls = String(spec.class ?? "");
       if (!CLASS_TYPES.has(cls)) {
-        notCreated[cid] = { type: "invalidProperties", description: `class must be one of ${[...CLASS_TYPES].join(" | ")}` };
+        notCreated[cid] = {
+          type: "invalidProperties",
+          description: `class must be one of ${[...CLASS_TYPES].join(" | ")}`,
+        };
         continue;
       }
       const body = typeof spec.body === "string" ? spec.body.trim() : "";
       if (!body) {
-        notCreated[cid] = { type: "invalidProperties", description: "body (the claim) is required" };
+        notCreated[cid] = {
+          type: "invalidProperties",
+          description: "body (the claim) is required",
+        };
         continue;
       }
-      const confidence = isAgent && Number.isFinite(Number(spec.confidence)) ? Number(spec.confidence) : null;
+      const confidence =
+        isAgent && Number.isFinite(Number(spec.confidence)) ? Number(spec.confidence) : null;
       const id = `an_${crypto.randomUUID()}`;
       await ctx.env.DB.prepare(
         `INSERT INTO annotations
@@ -206,12 +226,19 @@ export function registerAnnotationMethods(registry: MethodRegistry<RequestContex
       // record. Any other field in the patch is refused rather than silently
       // dropped, so a client never believes it edited a body it did not.
       if (keys.some((k) => k !== "status")) {
-        notUpdated[id] = { type: "invalidProperties", description: "an annotation's claim is immutable — set `status` (resolved | dismissed); you do not rewrite it" };
+        notUpdated[id] = {
+          type: "invalidProperties",
+          description:
+            "an annotation's claim is immutable — set `status` (resolved | dismissed); you do not rewrite it",
+        };
         continue;
       }
       const status = String(patch.status ?? "");
       if (!CLOSE_STATUSES.has(status)) {
-        notUpdated[id] = { type: "invalidProperties", description: `status must be ${[...CLOSE_STATUSES].join(" | ")}` };
+        notUpdated[id] = {
+          type: "invalidProperties",
+          description: `status must be ${[...CLOSE_STATUSES].join(" | ")}`,
+        };
         continue;
       }
       // Guarded on 'open': a claim closes once. Re-deciding a resolved/dismissed
@@ -223,7 +250,10 @@ export function registerAnnotationMethods(registry: MethodRegistry<RequestContex
         .bind(status, now, access.accountId, id)
         .run();
       if ((res.meta?.changes ?? 0) === 0) {
-        notUpdated[id] = { type: "invalidProperties", description: "no open annotation with that id (already resolved, dismissed or unknown)" };
+        notUpdated[id] = {
+          type: "invalidProperties",
+          description: "no open annotation with that id (already resolved, dismissed or unknown)",
+        };
         continue;
       }
       updated[id] = null;

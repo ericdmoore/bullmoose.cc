@@ -43,7 +43,9 @@ describe("the explore cookie is refused on the API origin", () => {
   for (const path of API_GETS) {
     it(`GET ${path} with a valid explore cookie → 401`, async () => {
       const h = await harness();
-      const res = await h.api("GET", path, { headers: { cookie: `${EXPLORE_COOKIE}=${h.cookie}` } });
+      const res = await h.api("GET", path, {
+        headers: { cookie: `${EXPLORE_COOKIE}=${h.cookie}` },
+      });
       expect(res.status, `${path} honoured a cookie`).toBe(401);
       expect(res.headers.get("www-authenticate")).toContain("Bearer");
     });

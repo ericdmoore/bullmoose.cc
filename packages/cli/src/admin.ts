@@ -111,11 +111,7 @@ export interface AdminOpts extends IoOpts {
   includeDeleted?: boolean;
 }
 
-export async function cmdAdmin(
-  db: DatabaseSync,
-  args: string[],
-  opts: AdminOpts,
-): Promise<void> {
+export async function cmdAdmin(db: DatabaseSync, args: string[], opts: AdminOpts): Promise<void> {
   const [noun, verb, arg] = args;
 
   if (noun === "init") {
@@ -176,7 +172,11 @@ export async function cmdAdmin(
       };
       report(res, opts, () => {
         printSteps(res.steps);
-        note(res.ok ? `${arg} wired — poll: admin domain status ${arg}` : "some steps failed — re-run after fixing");
+        note(
+          res.ok
+            ? `${arg} wired — poll: admin domain status ${arg}`
+            : "some steps failed — re-run after fixing",
+        );
       });
       return;
     }
@@ -238,7 +238,9 @@ export async function cmdAdmin(
       // arg is local@domain
       const [localpart, domain] = (arg ?? "").split("@");
       if (!localpart || !domain || !opts.tenant) {
-        usage("bullmoose admin account create <local@domain> --tenant <tenantId> [--name <display>]");
+        usage(
+          "bullmoose admin account create <local@domain> --tenant <tenantId> [--name <display>]",
+        );
       }
       const res = (await api("POST", "/accounts", {
         tenantId: opts.tenant,
@@ -270,7 +272,9 @@ export async function cmdAdmin(
       };
       collection(res.accounts, opts, "id", () => {
         for (const a of res.accounts) {
-          const tomb = a.deleted_at ? `  DELETED ${new Date(a.deleted_at as number).toISOString().slice(0, 10)}` : "";
+          const tomb = a.deleted_at
+            ? `  DELETED ${new Date(a.deleted_at as number).toISOString().slice(0, 10)}`
+            : "";
           out(
             `${a.id}  ${a.addresses ?? "(no identity)"}  "${a.display_name}"  shard=${a.shard}${tomb}`,
           );
@@ -324,7 +328,8 @@ export async function cmdAdmin(
         : {};
       if (opts.allow) config.allowedSenders = opts.allow.split(",").map((s) => s.trim());
       if (opts.replyMode) {
-        if (opts.replyMode !== "send" && opts.replyMode !== "draft") usage("--reply-mode must be send or draft");
+        if (opts.replyMode !== "send" && opts.replyMode !== "draft")
+          usage("--reply-mode must be send or draft");
         config.replyMode = opts.replyMode;
       }
       const res = (await api("POST", "/agent-bindings", {
@@ -334,16 +339,22 @@ export async function cmdAdmin(
         ...(Object.keys(config).length > 0 ? { config } : {}),
       })) as { bindingId: string; watchdog: boolean };
       report(res, opts, () =>
-        out(`binding ${res.bindingId} (${opts.name}) on ${arg}${res.watchdog ? " + watchdog responder" : ""}`),
+        out(
+          `binding ${res.bindingId} (${opts.name}) on ${arg}${res.watchdog ? " + watchdog responder" : ""}`,
+        ),
       );
       return;
     }
     case "agent list": {
       const qs = arg ? `?email=${encodeURIComponent(arg)}` : "";
-      const res = (await api("GET", `/agent-bindings${qs}`)) as { bindings: Array<Record<string, unknown>> };
+      const res = (await api("GET", `/agent-bindings${qs}`)) as {
+        bindings: Array<Record<string, unknown>>;
+      };
       collection(res.bindings, opts, "id", () => {
         for (const b of res.bindings) {
-          out(`${b.id}  ${b.name}  trigger=${b.trigger_on}  sla=${b.sla_seconds ?? "-"}  ${b.enabled ? "enabled" : "disabled"}`);
+          out(
+            `${b.id}  ${b.name}  trigger=${b.trigger_on}  sla=${b.sla_seconds ?? "-"}  ${b.enabled ? "enabled" : "disabled"}`,
+          );
         }
         if (res.bindings.length === 0) note("(no bindings)");
       });
@@ -378,7 +389,8 @@ export async function cmdAdmin(
       return;
     }
     case "agent unbind": {
-      if (!arg) usage("bullmoose admin agent unbind <binding-id> [--account <account-email>] --yes");
+      if (!arg)
+        usage("bullmoose admin agent unbind <binding-id> [--account <account-email>] --yes");
       if (dryRun(opts, `unbind agent binding ${arg}`)) return;
       const res = (await api(
         "DELETE",
@@ -422,8 +434,12 @@ export async function cmdAdmin(
         for (const g of res.grants) {
           const scopes = JSON.parse(g.scopes as string).join(",");
           const scope = g.collection ? `${g.collection}:${g.collection_id}` : "account";
-          const exp = g.expires_at ? `  expires ${new Date(g.expires_at as number).toISOString().slice(0, 10)}` : "";
-          out(`${g.id}  ${g.grantee_email ?? g.grantee_account_id} → ${g.target_email ?? g.target_account_id}  [${scopes}]  ${scope}${exp}`);
+          const exp = g.expires_at
+            ? `  expires ${new Date(g.expires_at as number).toISOString().slice(0, 10)}`
+            : "";
+          out(
+            `${g.id}  ${g.grantee_email ?? g.grantee_account_id} → ${g.target_email ?? g.target_account_id}  [${scopes}]  ${scope}${exp}`,
+          );
         }
         if (res.grants.length === 0) note("(no grants)");
       });
@@ -440,7 +456,8 @@ export async function cmdAdmin(
       return;
     }
     case "token create": {
-      if (!arg || !opts.name) usage("bullmoose admin token create <email> --name <n> --scopes <a,b,c>");
+      if (!arg || !opts.name)
+        usage("bullmoose admin token create <email> --name <n> --scopes <a,b,c>");
       // REQUIRED, and the operator vocabulary (TOKEN_SCOPES) is the only one
       // that includes `admin`. An operator minting a token for someone
       // else's device is the last place a silent ["mail"] default belongs.
@@ -493,7 +510,9 @@ export async function cmdAdmin(
         const email = verb;
         if (!email) usage("bullmoose admin password <email> [--password <pw>]");
         const password =
-          opts.password ?? process.env.BULLMOOSE_PASSWORD ?? (await promptHidden(`new password for ${email}: `));
+          opts.password ??
+          process.env.BULLMOOSE_PASSWORD ??
+          (await promptHidden(`new password for ${email}: `));
         // Client-side stretching: the server (and the wire) only ever see
         // the derived key, and the KDF cost stays off the 10ms CPU cap.
         const loginKey = await deriveLoginKey(email, password);
@@ -525,7 +544,9 @@ function adminApi(db: DatabaseSync) {
   const url = getConfig(db, "adminUrl");
   const token = getConfig(db, "adminToken");
   if (!url || !token) {
-    usage("admin not configured — run: bullmoose admin init --url <provision-url> --token <admin-token>");
+    usage(
+      "admin not configured — run: bullmoose admin init --url <provision-url> --token <admin-token>",
+    );
   }
   return async (method: string, path: string, body?: unknown): Promise<unknown> => {
     const res = await fetch(`${url}${path}`, {

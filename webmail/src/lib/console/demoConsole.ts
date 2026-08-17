@@ -65,7 +65,11 @@ const grants: ConsoleGrant[] = [
   {
     // Narrow, and REVOKED four days ago — after it was used.
     grantId: "g_temp_vendors",
-    grantee: { accountId: "acct_contractor", name: "Dana (contractor)", address: "dana@example.com" },
+    grantee: {
+      accountId: "acct_contractor",
+      name: "Dana (contractor)",
+      address: "dana@example.com",
+    },
     target: { accountId: "acct_eric", name: "Eric", address: "eric@bullmoose.cc" },
     scopes: ["contacts"],
     allows: [],
@@ -124,7 +128,10 @@ const credentials: ConsoleCredential[] = [
     enforcement: "federated",
     createdAt: ago(45),
     updatedAt: ago(2),
-    meta: { token_url: "https://oauth2.googleapis.com/token", client_id: "demo.apps.googleusercontent.com" },
+    meta: {
+      token_url: "https://oauth2.googleapis.com/token",
+      client_id: "demo.apps.googleusercontent.com",
+    },
   },
   {
     name: "unbound-key",
@@ -166,7 +173,11 @@ const allen: AgentDossier = {
       triggerOn: "schedule",
       slaSeconds: null,
       enabled: false,
-      config: { pipeline: "ledger", replyMode: "draft", senderAllowlist: { active: true, count: 4 } },
+      config: {
+        pipeline: "ledger",
+        replyMode: "draft",
+        senderAllowlist: { active: true, count: 4 },
+      },
       credentialRefs: [],
     },
   ],
@@ -272,7 +283,11 @@ const analyst: AgentDossier = {
       triggerOn: "mailbox-delivery",
       slaSeconds: null,
       enabled: true,
-      config: { pipeline: "ledger", replyMode: "draft", senderAllowlist: { active: true, count: 2 } },
+      config: {
+        pipeline: "ledger",
+        replyMode: "draft",
+        senderAllowlist: { active: true, count: 2 },
+      },
       credentialRefs: [],
     },
   ],

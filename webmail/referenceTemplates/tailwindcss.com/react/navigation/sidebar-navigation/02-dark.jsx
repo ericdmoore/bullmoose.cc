@@ -5,24 +5,24 @@ import {
   FolderIcon,
   HomeIcon,
   UsersIcon,
-} from '@heroicons/react/24/outline'
+} from "@heroicons/react/24/outline";
 
 const navigation = [
-  { name: 'Dashboard', href: '#', icon: HomeIcon, count: '5', current: true },
-  { name: 'Team', href: '#', icon: UsersIcon, current: false },
-  { name: 'Projects', href: '#', icon: FolderIcon, count: '12', current: false },
-  { name: 'Calendar', href: '#', icon: CalendarIcon, count: '20+', current: false },
-  { name: 'Documents', href: '#', icon: DocumentDuplicateIcon, current: false },
-  { name: 'Reports', href: '#', icon: ChartPieIcon, current: false },
-]
+  { name: "Dashboard", href: "#", icon: HomeIcon, count: "5", current: true },
+  { name: "Team", href: "#", icon: UsersIcon, current: false },
+  { name: "Projects", href: "#", icon: FolderIcon, count: "12", current: false },
+  { name: "Calendar", href: "#", icon: CalendarIcon, count: "20+", current: false },
+  { name: "Documents", href: "#", icon: DocumentDuplicateIcon, current: false },
+  { name: "Reports", href: "#", icon: ChartPieIcon, current: false },
+];
 const teams = [
-  { id: 1, name: 'Heroicons', href: '#', initial: 'H', current: false },
-  { id: 2, name: 'Tailwind Labs', href: '#', initial: 'T', current: false },
-  { id: 3, name: 'Workcation', href: '#', initial: 'W', current: false },
-]
+  { id: 1, name: "Heroicons", href: "#", initial: "H", current: false },
+  { id: 2, name: "Tailwind Labs", href: "#", initial: "T", current: false },
+  { id: 3, name: "Workcation", href: "#", initial: "W", current: false },
+];
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -44,8 +44,10 @@ export default function Example() {
                   <a
                     href={item.href}
                     className={classNames(
-                      item.current ? 'bg-white/5 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white',
-                      'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
+                      item.current
+                        ? "bg-white/5 text-white"
+                        : "text-gray-400 hover:bg-white/5 hover:text-white",
+                      "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
                     )}
                   >
                     <item.icon aria-hidden="true" className="size-6 shrink-0" />
@@ -71,8 +73,10 @@ export default function Example() {
                   <a
                     href={team.href}
                     className={classNames(
-                      team.current ? 'bg-white/5 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white',
-                      'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
+                      team.current
+                        ? "bg-white/5 text-white"
+                        : "text-gray-400 hover:bg-white/5 hover:text-white",
+                      "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
                     )}
                   >
                     <span className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-[0.625rem] font-medium text-gray-400 group-hover:border-white/20 group-hover:text-white">
@@ -101,5 +105,5 @@ export default function Example() {
         </ul>
       </nav>
     </div>
-  )
+  );
 }

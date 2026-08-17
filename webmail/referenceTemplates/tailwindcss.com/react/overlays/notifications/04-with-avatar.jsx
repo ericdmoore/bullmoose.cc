@@ -1,10 +1,10 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Transition } from '@headlessui/react'
+import { useState } from "react";
+import { Transition } from "@headlessui/react";
 
 export default function Example() {
-  const [show, setShow] = useState(true)
+  const [show, setShow] = useState(true);
 
   return (
     <>
@@ -27,8 +27,12 @@ export default function Example() {
                     />
                   </div>
                   <div className="ml-3 w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">Emilia Gates</p>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Sure! 8:30pm works great!</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      Emilia Gates
+                    </p>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      Sure! 8:30pm works great!
+                    </p>
                   </div>
                 </div>
               </div>
@@ -36,7 +40,7 @@ export default function Example() {
                 <button
                   type="button"
                   onClick={() => {
-                    setShow(false)
+                    setShow(false);
                   }}
                   className="flex w-full items-center justify-center rounded-none rounded-r-lg p-4 text-sm font-medium text-indigo-600 hover:text-indigo-500 focus:outline-2 focus:outline-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300 dark:focus:outline-indigo-400"
                 >
@@ -48,5 +52,5 @@ export default function Example() {
         </div>
       </div>
     </>
-  )
+  );
 }

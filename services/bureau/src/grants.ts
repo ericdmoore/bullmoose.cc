@@ -1,4 +1,9 @@
-import { isBureauVerb, resolveBureauGrant, verifyBearer, type BureauGrant } from "@bullmoose/auth-core/principal";
+import {
+  isBureauVerb,
+  resolveBureauGrant,
+  verifyBearer,
+  type BureauGrant,
+} from "@bullmoose/auth-core/principal";
 import {
   principalForInvocation,
   resolveInvocationToken,

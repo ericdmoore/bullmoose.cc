@@ -215,7 +215,9 @@ describe("fleetDrain drops a revoked account without a restart", () => {
   });
 
   it("recognizes both refusal shapes (jmapType from the wire, type from MethodError)", () => {
-    expect(isAuthzRefusal(Object.assign(new Error("x"), { jmapType: "accountNotFound" }))).toBe(true);
+    expect(isAuthzRefusal(Object.assign(new Error("x"), { jmapType: "accountNotFound" }))).toBe(
+      true,
+    );
     expect(isAuthzRefusal(Object.assign(new Error("x"), { jmapType: "forbidden" }))).toBe(true);
     expect(isAuthzRefusal({ type: "accountNotFound" })).toBe(true);
     expect(isAuthzRefusal(Object.assign(new Error("x"), { jmapType: "serverFail" }))).toBe(false);
@@ -284,7 +286,10 @@ describe("capability narrowing: unfit work is not claimed", () => {
       [{ ...caps, vision: true }, { vision: true, contextTokens: 64_000 }, false],
     ];
     for (const [c, r, want] of cases) {
-      expect(fitsRequirements(c, r), `caps=${JSON.stringify(c)} requires=${JSON.stringify(r)}`).toBe(want);
+      expect(
+        fitsRequirements(c, r),
+        `caps=${JSON.stringify(c)} requires=${JSON.stringify(r)}`,
+      ).toBe(want);
     }
   });
 });
@@ -358,7 +363,11 @@ describe("discoverAccounts: the served set comes from grants, freshly", () => {
           a_daemon: { name: "daemon", isPersonal: true, accountCapabilities: { [AGENT_CAP]: {} } },
           a_hermes: { name: "hermes", isPersonal: false, accountCapabilities: { [AGENT_CAP]: {} } },
           // A contacts-sharing grant must NOT make the daemon serve mail claims.
-          a_book: { name: "book-share", isPersonal: false, accountCapabilities: { [CONTACTS_CAP]: {} } },
+          a_book: {
+            name: "book-share",
+            isPersonal: false,
+            accountCapabilities: { [CONTACTS_CAP]: {} },
+          },
         });
       },
     };

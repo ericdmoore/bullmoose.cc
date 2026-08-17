@@ -33,12 +33,14 @@ interface FakeAs {
   calls: Recorded[];
 }
 
-function fakeAs(opts: {
-  token?: Record<string, unknown> | null;
-  tokenStatus?: number;
-  introspect?: Record<string, unknown>;
-  introspectStatus?: number;
-} = {}): FakeAs {
+function fakeAs(
+  opts: {
+    token?: Record<string, unknown> | null;
+    tokenStatus?: number;
+    introspect?: Record<string, unknown>;
+    introspectStatus?: number;
+  } = {},
+): FakeAs {
   const calls: Recorded[] = [];
   const binding = {
     async fetch(input: RequestInfo | URL, init?: RequestInit) {
@@ -52,7 +54,10 @@ function fakeAs(opts: {
       });
       if (url === TOKEN) {
         const status = opts.tokenStatus ?? 200;
-        const body = opts.token === null ? {} : (opts.token ?? { access_token: "at_live", token_type: "Bearer" });
+        const body =
+          opts.token === null
+            ? {}
+            : (opts.token ?? { access_token: "at_live", token_type: "Bearer" });
         return new Response(JSON.stringify(body), {
           status,
           headers: { "content-type": "application/json" },
@@ -82,11 +87,15 @@ async function wired(overrides: Partial<Parameters<typeof fakeAs>[0]> = {}) {
 }
 
 /** Drive /oauth/start and hand back the state the AS would echo. */
-async function start(h: Awaited<ReturnType<typeof harness>>): Promise<{ res: Response; state: string; verifier: string }> {
+async function start(
+  h: Awaited<ReturnType<typeof harness>>,
+): Promise<{ res: Response; state: string; verifier: string }> {
   const res = await h.explore("/oauth/start", { cookie: null });
   const location = new URL(res.headers.get("location") ?? "");
   const state = location.searchParams.get("state") ?? "";
-  const stored = JSON.parse((h.w.kv.store.get(`explore:pkce:${state}`)?.value ?? "{}") as string) as {
+  const stored = JSON.parse(
+    (h.w.kv.store.get(`explore:pkce:${state}`)?.value ?? "{}") as string,
+  ) as {
     verifier?: string;
   };
   return { res, state, verifier: stored.verifier ?? "" };
@@ -195,7 +204,9 @@ describe("/oauth/callback", () => {
     const res = await h.explore(`/oauth/callback?code=ac_1&state=${state}`, { cookie: null });
     const setCookie = res.headers.get("set-cookie")!;
     expect(setCookie).not.toContain("at_live");
-    expect(b64urlDecode(setCookie.split(";")[0]!.split("=")[1]!.split(".")[0]!)).not.toContain("at_live");
+    expect(b64urlDecode(setCookie.split(";")[0]!.split("=")[1]!.split(".")[0]!)).not.toContain(
+      "at_live",
+    );
     expect(res.headers.get("location")).not.toContain("at_live");
   });
 
@@ -203,7 +214,10 @@ describe("/oauth/callback", () => {
     const { h } = await wired();
     const { state } = await start(h);
     const res = await h.explore(`/oauth/callback?code=ac_1&state=${state}`, { cookie: null });
-    const value = res.headers.get("set-cookie")!.split(";")[0]!.slice(EXPLORE_COOKIE.length + 1);
+    const value = res.headers
+      .get("set-cookie")!
+      .split(";")[0]!
+      .slice(EXPLORE_COOKIE.length + 1);
 
     const listed = await h.explore("/Email", { cookie: value });
     expect(listed.status).toBe(200);
@@ -213,7 +227,9 @@ describe("/oauth/callback", () => {
   it("a state is single-use: a replayed callback is refused", async () => {
     const { h } = await wired();
     const { state } = await start(h);
-    expect((await h.explore(`/oauth/callback?code=ac_1&state=${state}`, { cookie: null })).status).toBe(302);
+    expect(
+      (await h.explore(`/oauth/callback?code=ac_1&state=${state}`, { cookie: null })).status,
+    ).toBe(302);
     const replay = await h.explore(`/oauth/callback?code=ac_1&state=${state}`, { cookie: null });
     expect(replay.status).toBe(400);
     expect((await h.json<{ error: string }>(replay)).error).toBe("unknown_state");
@@ -259,7 +275,9 @@ describe("/oauth/callback", () => {
       cookie: null,
     });
     expect(res.status).toBe(400);
-    expect((await h.json<{ error: string; detail: string }>(res)).detail).toContain("access_denied");
+    expect((await h.json<{ error: string; detail: string }>(res)).detail).toContain(
+      "access_denied",
+    );
   });
 
   it("a confidential registration sends its secret; a public one has none to send", async () => {

@@ -58,16 +58,34 @@ export interface DueExtractionInput {
 const CUE = /\b(?:by|due|before|deadline|until|no\s+later\s+than)\b[\s:]+(?:on\s+|is\s+)?/i;
 
 const MONTHS: Record<string, number> = {
-  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
-  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+  jan: 0,
+  feb: 1,
+  mar: 2,
+  apr: 3,
+  may: 4,
+  jun: 5,
+  jul: 6,
+  aug: 7,
+  sep: 8,
+  oct: 9,
+  nov: 10,
+  dec: 11,
 };
 
 const WEEKDAYS: Record<string, number> = {
-  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
 };
 
-const MONTH_RE = "(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec)";
-const WEEKDAY_RE = "(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)";
+const MONTH_RE =
+  "(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec)";
+const WEEKDAY_RE =
+  "(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)";
 
 /**
  * Extract a business deadline, or NULL (= never-urgent).
@@ -115,7 +133,11 @@ function isoDate(haystack: string, now: number): number | null {
   );
   // Round-trip check rejects rolled-over dates (2026-02-30 → March 2).
   const check = new Date(due);
-  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== (mo as number) - 1 || check.getUTCDate() !== d) {
+  if (
+    check.getUTCFullYear() !== y ||
+    check.getUTCMonth() !== (mo as number) - 1 ||
+    check.getUTCDate() !== d
+  ) {
     return null;
   }
   return due > now ? due : null; // a past deadline is a mis-parse or moot
@@ -192,6 +214,12 @@ function weekdayEod(name: string, now: number): number | null {
   const d = new Date(now);
   const delta = (target - d.getUTCDay() + 7) % 7;
   if (delta === 0) return todayEod(now);
-  const due = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + delta, EOD_UTC_HOUR, 0);
+  const due = Date.UTC(
+    d.getUTCFullYear(),
+    d.getUTCMonth(),
+    d.getUTCDate() + delta,
+    EOD_UTC_HOUR,
+    0,
+  );
   return due;
 }

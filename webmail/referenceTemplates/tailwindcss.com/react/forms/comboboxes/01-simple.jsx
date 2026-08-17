@@ -1,40 +1,49 @@
-'use client'
+"use client";
 
-import { Combobox, ComboboxButton, ComboboxInput, ComboboxOption, ComboboxOptions, Label } from '@headlessui/react'
-import { ChevronDownIcon } from '@heroicons/react/20/solid'
-import { useState } from 'react'
+import {
+  Combobox,
+  ComboboxButton,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+  Label,
+} from "@headlessui/react";
+import { ChevronDownIcon } from "@heroicons/react/20/solid";
+import { useState } from "react";
 
 const people = [
-  { id: 1, name: 'Leslie Alexander' },
+  { id: 1, name: "Leslie Alexander" },
   // More users...
-]
+];
 
 export default function Example() {
-  const [query, setQuery] = useState('')
-  const [selectedPerson, setSelectedPerson] = useState(null)
+  const [query, setQuery] = useState("");
+  const [selectedPerson, setSelectedPerson] = useState(null);
 
   const filteredPeople =
-    query === ''
+    query === ""
       ? people
       : people.filter((person) => {
-          return person.name.toLowerCase().includes(query.toLowerCase())
-        })
+          return person.name.toLowerCase().includes(query.toLowerCase());
+        });
 
   return (
     <Combobox
       as="div"
       value={selectedPerson}
       onChange={(person) => {
-        setQuery('')
-        setSelectedPerson(person)
+        setQuery("");
+        setSelectedPerson(person);
       }}
     >
-      <Label className="block text-sm/6 font-medium text-gray-900 dark:text-white">Assigned to</Label>
+      <Label className="block text-sm/6 font-medium text-gray-900 dark:text-white">
+        Assigned to
+      </Label>
       <div className="relative mt-2">
         <ComboboxInput
           className="block w-full rounded-md bg-white py-1.5 pr-12 pl-3 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6 dark:bg-white/5 dark:text-white dark:outline-gray-700 dark:placeholder:text-gray-500 dark:focus:outline-indigo-500"
           onChange={(event) => setQuery(event.target.value)}
-          onBlur={() => setQuery('')}
+          onBlur={() => setQuery("")}
           displayValue={(person) => person?.name}
         />
         <ComboboxButton className="absolute inset-y-0 right-0 flex items-center rounded-r-md px-2 focus:outline-hidden">
@@ -65,5 +74,5 @@ export default function Example() {
         </ComboboxOptions>
       </div>
     </Combobox>
-  )
+  );
 }

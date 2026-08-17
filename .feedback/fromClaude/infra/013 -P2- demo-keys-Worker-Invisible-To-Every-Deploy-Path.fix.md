@@ -10,10 +10,10 @@ surface — so keeping it separate is a real choice, not neglect.
 step to `.github/workflows/deploy-mail.yml`, add it to `docs/DEPLOY.md` §2. Then fix the counts.
 
 **(b) Keep it out-of-band** — state that explicitly in `docs/DEPLOY.md` and `services/README.md`:
-*"`demo-keys` is deployed separately (`npm run -w services/demo-keys deploy`) because it has its own
-KV namespace, its own `INTERNAL_TOKEN`, and a public unauthenticated route. See its README."*
+_"`demo-keys` is deployed separately (`npm run -w services/demo-keys deploy`) because it has its own
+KV namespace, its own `INTERNAL_TOKEN`, and a public unauthenticated route. See its README."_
 
-I lean **(b)** — the isolation is a feature — but it must be *said*, because silence reads as an
+I lean **(b)** — the isolation is a feature — but it must be _said_, because silence reads as an
 oversight and invites (a) being done carelessly.
 
 ## Regardless of the choice, do these three

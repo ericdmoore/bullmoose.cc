@@ -1,9 +1,9 @@
-import { HomeIcon } from '@heroicons/react/20/solid'
+import { HomeIcon } from "@heroicons/react/20/solid";
 
 const pages = [
-  { name: 'Projects', href: '#', current: false },
-  { name: 'Project Nero', href: '#', current: true },
-]
+  { name: "Projects", href: "#", current: false },
+  { name: "Project Nero", href: "#", current: true },
+];
 
 export default function Example() {
   return (
@@ -11,7 +11,10 @@ export default function Example() {
       <ol role="list" className="flex items-center space-x-4">
         <li>
           <div>
-            <a href="#" className="text-gray-400 hover:text-gray-500 dark:text-gray-400 dark:hover:text-gray-300">
+            <a
+              href="#"
+              className="text-gray-400 hover:text-gray-500 dark:text-gray-400 dark:hover:text-gray-300"
+            >
               <HomeIcon aria-hidden="true" className="size-5 shrink-0" />
               <span className="sr-only">Home</span>
             </a>
@@ -30,7 +33,7 @@ export default function Example() {
               </svg>
               <a
                 href={page.href}
-                aria-current={page.current ? 'page' : undefined}
+                aria-current={page.current ? "page" : undefined}
                 className="ml-4 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
                 {page.name}
@@ -40,5 +43,5 @@ export default function Example() {
         ))}
       </ol>
     </nav>
-  )
+  );
 }

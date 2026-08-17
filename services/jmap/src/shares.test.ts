@@ -451,7 +451,11 @@ describe("share enumeration paginates", () => {
         const next = start + 2;
         return next >= all.length
           ? { keys: slice.map((name) => ({ name })), list_complete: true as const }
-          : { keys: slice.map((name) => ({ name })), list_complete: false as const, cursor: String(next) };
+          : {
+              keys: slice.map((name) => ({ name })),
+              list_complete: false as const,
+              cursor: String(next),
+            };
       },
     } as unknown as KVNamespace;
 
@@ -662,7 +666,9 @@ describe("scope gates — no new endpoint is ungated", () => {
   it("the `mail` bundle covers all four, so revoke is never harder than mint", async () => {
     const h = await harness(["mail"]);
     const share = await mintShare(h, await upload(h, "x"));
-    expect((await h.call("POST", `/api/shares/${ACCOUNT}/${share.shareId}/revoke`)).status).toBe(200);
+    expect((await h.call("POST", `/api/shares/${ACCOUNT}/${share.shareId}/revoke`)).status).toBe(
+      200,
+    );
   });
 
   it("an unauthenticated caller gets 401, not a listing", async () => {

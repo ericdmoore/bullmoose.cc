@@ -20,7 +20,7 @@ filing.
 > numbers are one sequence per provider. See `common/021` for the full defect list.
 >
 > Side effect worth knowing: `fromComposer/`, `fromEric/` and `fromGrok/` contained
-> *only* the duplicated script, so deleting it removed those (git cannot track empty
+> _only_ the duplicated script, so deleting it removed those (git cannot track empty
 > directories). Any `from*/` folder is picked up automatically when recreated.
 
 `readme.md:28`:
@@ -47,7 +47,7 @@ wouldn't work anyway. Worth fixing together.
 
 > **Shipped — computed, not omitted.** `mailboxCounts` (`packages/mailstore/src/index.ts`)
 > now returns all four counts from one aggregate: `COUNT(DISTINCT e.thread_id)` over a
-> `LEFT JOIN emails`, plus the unread variant reusing the *same* `$seen` predicate string
+> `LEFT JOIN emails`, plus the unread variant reusing the _same_ `$seen` predicate string
 > as `unreadEmails` so the two can never disagree on what unread means. No extra round
 > trip; `emails_thread (account_id, thread_id)` already indexes it.
 >

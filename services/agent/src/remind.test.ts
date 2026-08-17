@@ -24,13 +24,24 @@ function world() {
   const w = fakeEnv();
   // The human whose reminder this is — resolvable by identity email.
   w.db.seedAccount({ accountId: HUMAN_ACCOUNT, loginEmail: HUMAN, displayName: "Eric" });
-  w.db.seed("identities", [{ id: "id_eric", account_id: HUMAN_ACCOUNT, email: HUMAN, name: "Eric" }]);
+  w.db.seed("identities", [
+    { id: "id_eric", account_id: HUMAN_ACCOUNT, email: HUMAN, name: "Eric" },
+  ]);
   // remind@ itself (the invocation's account); no identity needed for the test.
-  w.db.seedAccount({ accountId: REMIND_ACCOUNT, principalId: "p_remind", loginEmail: "remind@bullmoose.cc" });
+  w.db.seedAccount({
+    accountId: REMIND_ACCOUNT,
+    principalId: "p_remind",
+    loginEmail: "remind@bullmoose.cc",
+  });
   return w;
 }
 
-const job: RemindJob = { id: "inv_abc", account_id: REMIND_ACCOUNT, binding_name: "remind@", tenant_id: "t_bm" };
+const job: RemindJob = {
+  id: "inv_abc",
+  account_id: REMIND_ACCOUNT,
+  binding_name: "remind@",
+  tenant_id: "t_bm",
+};
 
 function inbound(o: { from?: string; subject?: string; body?: string }): EmailRow {
   return {
@@ -67,7 +78,9 @@ describe("parseRemindRequest — the deterministic read", () => {
   });
 
   it("refuses a vague time rather than guess — a wrong reminder is worse than none", () => {
-    expect(parseRemindRequest({ subject: "ping me soon", text: "sometime next week?", now }).ok).toBe(false);
+    expect(
+      parseRemindRequest({ subject: "ping me soon", text: "sometime next week?", now }).ok,
+    ).toBe(false);
     expect(parseRemindRequest({ subject: "remind me tomorrow", text: "", now }).ok).toBe(false);
   });
 
@@ -75,7 +88,11 @@ describe("parseRemindRequest — the deterministic read", () => {
     const a = parseRemindRequest({ subject: `Re: Fwd: the invoice ${FUTURE_CUE}`, text: "", now });
     if (a.ok) expect(a.note).toBe(`the invoice ${FUTURE_CUE}`);
 
-    const b = parseRemindRequest({ subject: "", text: `\n\ncall the vet ${FUTURE_CUE}\nand book a slot`, now });
+    const b = parseRemindRequest({
+      subject: "",
+      text: `\n\ncall the vet ${FUTURE_CUE}\nand book a slot`,
+      now,
+    });
     if (b.ok) expect(b.note).toBe(`call the vet ${FUTURE_CUE}`);
   });
 });
@@ -85,7 +102,14 @@ describe("runRemind — arms a Watch on the human's account", () => {
     const w = world();
     const reply = vi.fn(async (_text: string) => "e_reply");
     const finish = vi.fn(async () => {});
-    await runRemind(w.env, job, inbound({ subject: `Follow up with Sergio ${FUTURE_CUE}` }), {}, reply, finish);
+    await runRemind(
+      w.env,
+      job,
+      inbound({ subject: `Follow up with Sergio ${FUTURE_CUE}` }),
+      {},
+      reply,
+      finish,
+    );
 
     const rows = armedWatches(w);
     expect(rows).toHaveLength(1);
@@ -106,7 +130,14 @@ describe("runRemind — arms a Watch on the human's account", () => {
 
   it("the armed watch is REAL: the sweep fires it into the human's approvals", async () => {
     const w = world();
-    await runRemind(w.env, job, inbound({ subject: `ship the taxes ${FUTURE_CUE}` }), {}, async () => "e", async () => {});
+    await runRemind(
+      w.env,
+      job,
+      inbound({ subject: `ship the taxes ${FUTURE_CUE}` }),
+      {},
+      async () => "e",
+      async () => {},
+    );
 
     // Sweep with a clock past the (far-future) deadline.
     await sweepWatches(w.env, FUTURE_AT + 1000);
@@ -127,12 +158,22 @@ describe("runRemind — arms a Watch on the human's account", () => {
     const w = world();
     const reply = vi.fn(async (_text: string) => "e_reply");
     const finish = vi.fn(async () => {});
-    await runRemind(w.env, job, inbound({ subject: "remind me about the thing", body: "soon-ish" }), {}, reply, finish);
+    await runRemind(
+      w.env,
+      job,
+      inbound({ subject: "remind me about the thing", body: "soon-ish" }),
+      {},
+      reply,
+      finish,
+    );
 
     expect(armedWatches(w)).toHaveLength(0);
     expect(reply).toHaveBeenCalledOnce();
     expect(reply.mock.calls[0]![0]).toMatch(/couldn't find a deadline/i);
-    expect(finish).toHaveBeenCalledWith("done", expect.objectContaining({ note: expect.stringContaining("teaching") }));
+    expect(finish).toHaveBeenCalledWith(
+      "done",
+      expect.objectContaining({ note: expect.stringContaining("teaching") }),
+    );
   });
 
   it("a sender with no bullmoose account is skipped SILENTLY — no watch, no reply (no oracle)", async () => {
@@ -150,7 +191,10 @@ describe("runRemind — arms a Watch on the human's account", () => {
 
     expect(armedWatches(w)).toHaveLength(0);
     expect(reply).not.toHaveBeenCalled();
-    expect(finish).toHaveBeenCalledWith("done", expect.objectContaining({ note: expect.stringContaining("not a live") }));
+    expect(finish).toHaveBeenCalledWith(
+      "done",
+      expect.objectContaining({ note: expect.stringContaining("not a live") }),
+    );
   });
 
   it("idempotent on retry: the same invocation arms one watch and confirms once", async () => {
@@ -164,6 +208,9 @@ describe("runRemind — arms a Watch on the human's account", () => {
 
     expect(armedWatches(w)).toHaveLength(1); // exactly one, ever
     expect(reply).toHaveBeenCalledOnce(); // no double confirmation
-    expect(finish).toHaveBeenLastCalledWith("done", expect.objectContaining({ note: expect.stringContaining("already armed") }));
+    expect(finish).toHaveBeenLastCalledWith(
+      "done",
+      expect.objectContaining({ note: expect.stringContaining("already armed") }),
+    );
   });
 });

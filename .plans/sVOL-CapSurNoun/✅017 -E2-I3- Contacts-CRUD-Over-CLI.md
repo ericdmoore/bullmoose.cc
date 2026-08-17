@@ -1,13 +1,13 @@
 # 017 -E2-I3- Contacts CRUD over CLI
 
-| | |
-|---|---|
-| **Kind** | projection |
-| **Effort** | **E2** — one CLI module over live methods; no schema, no new JMAP method |
-| **Impact** | **I3** — unlocks *and* human-verifiable |
-| **Owner** | **`s05-cli-crud`** T2 |
-| **Depends on** | `016` (the I/O contract — strictly first) |
-| **Status** | ✅ done |
+|                |                                                                          |
+| -------------- | ------------------------------------------------------------------------ |
+| **Kind**       | projection                                                               |
+| **Effort**     | **E2** — one CLI module over live methods; no schema, no new JMAP method |
+| **Impact**     | **I3** — unlocks _and_ human-verifiable                                  |
+| **Owner**      | **`s05-cli-crud`** T2                                                    |
+| **Depends on** | `016` (the I/O contract — strictly first)                                |
+| **Status**     | ✅ done                                                                  |
 
 ## Cells covered
 
@@ -24,8 +24,8 @@ lines** carrying vCard ⇄ JSContact both ways, and `packages/contacts-core` sit
 so this is wiring, not conversion work. No migration; the law in `readme.md` is satisfied
 because the capability is complete on JMAP.
 
-**I3, both factors.** *Unlocks* — `s05/devPlan.md:104-108` sequences T2 into T5 (help/docs
-regeneration), a named in-section dependency. *Human-verifiable* — a person edits a card in
+**I3, both factors.** _Unlocks_ — `s05/devPlan.md:104-108` sequences T2 into T5 (help/docs
+regeneration), a named in-section dependency. _Human-verifiable_ — a person edits a card in
 the CLI and watches it appear in Contacts.app over CardDAV, which is already read-write at
 resource level.
 
@@ -52,7 +52,7 @@ unit `012` is not a blocker here.
 Almost nothing — the owning section is sufficient. One constraint it does not name:
 
 **`AddressBook/set` refuses delegated access.** `contacts.ts:117-121` throws `forbidden` —
-*"only the account owner manages address books"* — whenever `access.granted` is true. So
+_"only the account owner manages address books"_ — whenever `access.granted` is true. So
 `contacts books create|rename|rm` works for the account owner and fails for any principal
 reaching the account through a grant, including an agent. s05's table
 (`arch.md:104`) lists these as plain "new" commands with no such caveat. It is correct
@@ -62,7 +62,7 @@ book lifecycle, or it will read as an auth misconfiguration the first time an ag
 ## Open questions / where this could be wrong
 
 1. **The I3 is the weakest of the three CLI units.** Nothing in `_index.md` depends on `017`;
-   the "unlocks" factor rests entirely on T5 *inside* s05, which is a real named edge but a
+   the "unlocks" factor rests entirely on T5 _inside_ s05, which is a real named edge but a
    thin one. By the strict reading in `readme.md` ("a named dependency, not 'would be nice
    to have first'"), a reviewer could put this at I1. I kept I3 for consistency with `018`,
    which has the stronger case.

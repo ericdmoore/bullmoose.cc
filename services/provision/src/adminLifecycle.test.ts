@@ -148,7 +148,9 @@ describe("both drain paths still honour agent_bindings.enabled", () => {
   it("ingest filters `enabled = 1` when it enqueues invocations", () => {
     const sql = source("../../ingest/src/index.ts");
     expect(sql).toContain("FROM agent_bindings");
-    expect(sql).toMatch(/WHERE account_id = \? AND enabled = 1 AND trigger_on = 'mailbox-delivery'/);
+    expect(sql).toMatch(
+      /WHERE account_id = \? AND enabled = 1 AND trigger_on = 'mailbox-delivery'/,
+    );
   });
 
   it("the agent drain filters `b.enabled = 1` and skips tombstoned accounts", () => {
@@ -199,9 +201,9 @@ describe("POST /agent-bindings/{id}/disable — the agent kill switch", () => {
   it("stops ingest enqueueing: the delivery-time binding query returns nothing", async () => {
     const h = harness();
     await makeAccount(h);
-    const accountId = (await body<{ accounts: Array<{ id: string }> }>(
-      await h.call("GET", "/accounts"),
-    )).accounts[0]!.id;
+    const accountId = (
+      await body<{ accounts: Array<{ id: string }> }>(await h.call("GET", "/accounts"))
+    ).accounts[0]!.id;
     const bindingId = await makeBinding(h, `editor@${DOMAIN}`);
 
     // Armed: a delivery right now would create an invocation.
@@ -221,9 +223,13 @@ describe("POST /agent-bindings/{id}/disable — the agent kill switch", () => {
     const bindingId = await makeBinding(h, `editor@${DOMAIN}`);
 
     await h.call("POST", `/agent-bindings/${bindingId}/disable`);
-    expect(h.db.query<{ enabled: unknown }>(`SELECT enabled FROM agent_bindings`)[0]?.enabled).toBe(0);
+    expect(h.db.query<{ enabled: unknown }>(`SELECT enabled FROM agent_bindings`)[0]?.enabled).toBe(
+      0,
+    );
     await h.call("POST", `/agent-bindings/${bindingId}/enable`);
-    expect(h.db.query<{ enabled: unknown }>(`SELECT enabled FROM agent_bindings`)[0]?.enabled).toBe(1);
+    expect(h.db.query<{ enabled: unknown }>(`SELECT enabled FROM agent_bindings`)[0]?.enabled).toBe(
+      1,
+    );
   });
 
   it("re-enabling puts it back — this is a pause, not a teardown", async () => {
@@ -314,10 +320,8 @@ describe("POST /agent-bindings/{id}/disable — the agent kill switch", () => {
     const accountId = await makeAccount(h, "one");
     await makeAccount(h, "two");
     const bindingId = await makeBinding(h, `one@${DOMAIN}`);
-    const other = h.db.query<{ id: string }>(
-      `SELECT id FROM accounts WHERE id != ?`,
-      accountId,
-    )[0]!.id;
+    const other = h.db.query<{ id: string }>(`SELECT id FROM accounts WHERE id != ?`, accountId)[0]!
+      .id;
     h.db.seed("agent_bindings", [
       {
         id: bindingId,
@@ -359,7 +363,9 @@ describe("DELETE /agent-bindings/{id}", () => {
     expect(res.status).toBe(409);
     expect(await res.text()).toContain("skips tombstoned accounts");
     // Still off — a refused enable must not half-apply.
-    expect(h.db.query<{ enabled: number }>(`SELECT enabled FROM agent_bindings`)[0]?.enabled).toBe(0);
+    expect(h.db.query<{ enabled: number }>(`SELECT enabled FROM agent_bindings`)[0]?.enabled).toBe(
+      0,
+    );
   });
 
   it("stays addressable by --account after its account is deleted, so cleanup is possible", async () => {
@@ -412,7 +418,9 @@ describe("PATCH — rename, the fix for a typo that used to be permanent", () =>
   it("renames an account", async () => {
     const h = harness();
     const accountId = await makeAccount(h);
-    expect((await h.call("PATCH", `/accounts/${accountId}`, { displayName: "Editor" })).status).toBe(200);
+    expect(
+      (await h.call("PATCH", `/accounts/${accountId}`, { displayName: "Editor" })).status,
+    ).toBe(200);
     expect(
       h.db.query<{ display_name: string }>(`SELECT display_name FROM accounts`)[0]?.display_name,
     ).toBe("Editor");
@@ -456,7 +464,9 @@ describe("PATCH /domains — suspend stops mail, resume puts it back", () => {
     // The status column alone is cosmetic — nothing in the tree reads it — so
     // this, not the column, is what makes "suspended" true.
     expect(h.kv.store.has(`route:${DOMAIN}:editor`)).toBe(false);
-    expect(h.db.query<{ status: string }>(`SELECT status FROM domains`)[0]?.status).toBe("suspended");
+    expect(h.db.query<{ status: string }>(`SELECT status FROM domains`)[0]?.status).toBe(
+      "suspended",
+    );
   });
 
   it("resume restores forwardTo, which lives ONLY in KV and cannot be rebuilt from D1", async () => {
@@ -467,8 +477,9 @@ describe("PATCH /domains — suspend stops mail, resume puts it back", () => {
       `route:${DOMAIN}:editor`,
       JSON.stringify({
         kind: "mailbox",
-        accountId: (await body<{ accounts: Array<{ id: string }> }>(await h.call("GET", "/accounts")))
-          .accounts[0]!.id,
+        accountId: (
+          await body<{ accounts: Array<{ id: string }> }>(await h.call("GET", "/accounts"))
+        ).accounts[0]!.id,
         tenantId: TENANT,
         forwardTo: ["editor@gmail.test"],
       }),
@@ -511,18 +522,22 @@ describe("PATCH /domains — suspend stops mail, resume puts it back", () => {
     // checkDomain writes status='active' when SES verifies — a read that
     // happens to write. Without a guard it reports the domain healthy while
     // every message still bounces off the parked keys.
-    vi.stubGlobal("fetch", async () =>
-      new Response(
-        JSON.stringify({ VerifiedForSendingStatus: true, DkimAttributes: { Status: "SUCCESS" } }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(
+          JSON.stringify({ VerifiedForSendingStatus: true, DkimAttributes: { Status: "SUCCESS" } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
     );
     try {
       await h.call("GET", `/domains/${DOMAIN}`);
     } finally {
       vi.unstubAllGlobals();
     }
-    expect(h.db.query<{ status: string }>(`SELECT status FROM domains`)[0]?.status).toBe("suspended");
+    expect(h.db.query<{ status: string }>(`SELECT status FROM domains`)[0]?.status).toBe(
+      "suspended",
+    );
     expect(h.kv.store.has(`route:${DOMAIN}:editor`)).toBe(false);
   });
 
@@ -664,7 +679,14 @@ describe("DELETE /tenants", () => {
       vi.unstubAllGlobals();
     }
     // Foreign-key order held: nothing is left dangling in either direction.
-    for (const table of ["tenants", "accounts", "principals", "identities", "tokens", "credentials"]) {
+    for (const table of [
+      "tenants",
+      "accounts",
+      "principals",
+      "identities",
+      "tokens",
+      "credentials",
+    ]) {
       expect(h.db.count(table), table).toBe(0);
     }
   });
@@ -783,8 +805,10 @@ describe("DELETE /accounts — soft delete, and the three things that must all m
     expect(second).not.toBe(first);
     // The new account hangs off the SAME principal — that is the mechanism.
     expect(
-      h.db.query<{ principal_id: string }>(`SELECT principal_id FROM accounts WHERE id = ?`, second)[0]
-        ?.principal_id,
+      h.db.query<{ principal_id: string }>(
+        `SELECT principal_id FROM accounts WHERE id = ?`,
+        second,
+      )[0]?.principal_id,
     ).toBe(principalId);
     // ...and the old credential is dead, so it cannot read the new mailbox.
     expect(await verifyBearer(h.db, minted.token)).toBeNull();
@@ -846,9 +870,7 @@ describe("DELETE /accounts — soft delete, and the three things that must all m
     const accountId = await makeAccount(h);
     // ingest's resolveRoute falls back to the catch-all, so one left behind
     // keeps delivering into the tombstone — and it would block domain delete.
-    h.db.seed("routes", [
-      { domain: DOMAIN, localpart: "*", kind: "catchall", target: accountId },
-    ]);
+    h.db.seed("routes", [{ domain: DOMAIN, localpart: "*", kind: "catchall", target: accountId }]);
     await h.kv.ns.put(`route:${DOMAIN}:*`, JSON.stringify({ kind: "catchall", accountId }));
 
     await h.call("DELETE", `/accounts/${accountId}`);
@@ -907,8 +929,10 @@ describe("DELETE /accounts — soft delete, and the three things that must all m
     expect(res.status).toBe(200);
     expect(await body(res)).toMatchObject({ deleted: false });
     expect(
-      h.db.query<{ deleted_at: number }>(`SELECT deleted_at FROM accounts WHERE id = ?`, accountId)[0]
-        ?.deleted_at,
+      h.db.query<{ deleted_at: number }>(
+        `SELECT deleted_at FROM accounts WHERE id = ?`,
+        accountId,
+      )[0]?.deleted_at,
     ).toBe(first);
   });
 
@@ -967,7 +991,9 @@ describe("DELETE /accounts — soft delete, and the three things that must all m
     await makeAccount(h, "other");
     await h.call("DELETE", `/accounts/${accountId}`);
 
-    expect((await h.call("POST", "/agent-bindings", { email: `editor@${DOMAIN}`, name: "x" })).status).toBe(404);
+    expect(
+      (await h.call("POST", "/agent-bindings", { email: `editor@${DOMAIN}`, name: "x" })).status,
+    ).toBe(404);
     const grant = await h.call("POST", "/grants", {
       granteeEmail: `other@${DOMAIN}`,
       targetEmail: `editor@${DOMAIN}`,
@@ -986,7 +1012,8 @@ describe("DELETE /accounts — soft delete, and the three things that must all m
     expect(h.db.count("accounts")).toBe(2);
     expect(h.db.count("accounts", "deleted_at IS NULL")).toBe(1);
     expect(
-      h.db.query<{ target: string }>(`SELECT target FROM routes WHERE localpart = 'editor'`)[0]?.target,
+      h.db.query<{ target: string }>(`SELECT target FROM routes WHERE localpart = 'editor'`)[0]
+        ?.target,
     ).toBe(second);
   });
 });

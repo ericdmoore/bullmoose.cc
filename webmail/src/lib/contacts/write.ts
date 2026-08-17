@@ -301,7 +301,10 @@ export async function destroyBook(
 }
 
 /** Explain a per-object SetError in the vocabulary of this screen. */
-export function describeSetError(error: SetError, subject: AddressBook | ContactCard | null): string {
+export function describeSetError(
+  error: SetError,
+  subject: AddressBook | ContactCard | null,
+): string {
   switch (error.type) {
     case "notFound":
       return "That contact is no longer there — it may have been deleted from another client.";

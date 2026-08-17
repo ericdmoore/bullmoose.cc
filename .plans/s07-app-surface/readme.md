@@ -30,12 +30,12 @@ optional collection scoping (`grants.collection` / `collection_id`), which is mu
 to Drive's sharing than to a mail ACL.
 
 **Right:** the realms genuinely are separate nouns with separate JMAP methods — Contacts
-and Calendar have full CRUD on JMAP *and* DAV today. The collection-view abstraction is
+and Calendar have full CRUD on JMAP _and_ DAV today. The collection-view abstraction is
 what stops eight nouns feeling like eight bolted-on apps. (This is the Nextcloud failure
 mode worth avoiding: every app technically present, none of them feeling like the same
 product.)
 
-**Misleading:** Drive has no notion of *an actor that proposes work you approve*. That is
+**Misleading:** Drive has no notion of _an actor that proposes work you approve_. That is
 the novel thing here, and it is the part with no prior art to copy. `/approvals` is not a
 Drive feature with a new name — it is the reason this product is different, and it should
 get design attention proportional to that rather than being treated as a notifications
@@ -43,16 +43,16 @@ panel.
 
 ## Relationship to existing sections
 
-| this section | absorbs / depends on |
-|---|---|
-| `/mail` | **`s03.C` T1–T2, shipped.** Move, don't rebuild. |
-| `/files` | `s03.C` T3 ⛔ blocked on `s03.B` T3 (attachment sidestep, unstarted) |
-| `/contacts`, `/calendar` | sVOL **`022`** — server side complete on JMAP *and* DAV; no screen exists |
-| `/settings` | sVOL **`024`** — E1, and its stated blocker (`006 Identity/set`) already shipped |
-| `/agents` | **`s03.E`, shipped client-side** — but 4 of its 5 endpoints are unserved |
-| `/approvals` | **`s03.D` T1–T5, unstarted.** `ActionProposal` is fully designed in `s03.D/arch.md` and built nowhere. |
-| `/search` | `common/004` gave mail FTS5; contacts and calendar are still full-scan `LIKE` |
-| the login | converges with **`s02` T3** — the OAuth AS being built for MCP is the same front door |
+| this section             | absorbs / depends on                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `/mail`                  | **`s03.C` T1–T2, shipped.** Move, don't rebuild.                                                       |
+| `/files`                 | `s03.C` T3 ⛔ blocked on `s03.B` T3 (attachment sidestep, unstarted)                                   |
+| `/contacts`, `/calendar` | sVOL **`022`** — server side complete on JMAP _and_ DAV; no screen exists                              |
+| `/settings`              | sVOL **`024`** — E1, and its stated blocker (`006 Identity/set`) already shipped                       |
+| `/agents`                | **`s03.E`, shipped client-side** — but 4 of its 5 endpoints are unserved                               |
+| `/approvals`             | **`s03.D` T1–T5, unstarted.** `ActionProposal` is fully designed in `s03.D/arch.md` and built nowhere. |
+| `/search`                | `common/004` gave mail FTS5; contacts and calendar are still full-scan `LIKE`                          |
+| the login                | converges with **`s02` T3** — the OAuth AS being built for MCP is the same front door                  |
 
 ## References
 

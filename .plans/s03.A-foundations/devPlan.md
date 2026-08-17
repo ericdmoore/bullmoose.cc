@@ -26,6 +26,7 @@ Tables: emails, mailboxes, address_books, contact_cards, calendars, calendar_eve
 (+ `file_nodes` when s03.B lands — its schema includes these from birth).
 
 **Done when**
+
 - Every `*/set` writes provenance; a fake-DB unit test asserts an agent-authored write
   records both binding and invocation.
 - "Who touched this card?" is answerable from the record alone, without joining
@@ -50,8 +51,9 @@ Grant resolution filters `revoked_at IS NULL` **in addition to** the existing
 `expires_at` check — so live behaviour is identical while history survives.
 
 **Done when**
+
 - Revoking removes access immediately (resolution excludes tombstoned rows).
-- A point-in-time query — *"which grants covered VendorsBook at time T?"* — returns the
+- A point-in-time query — _"which grants covered VendorsBook at time T?"_ — returns the
   historical set including since-revoked rows.
 - `authorizeAccount` is untouched and the s01 suite stays green (this is a resolution-
   layer change, not a decision-layer one).

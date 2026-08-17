@@ -30,7 +30,11 @@ describe("reading a JSContact card into a form", () => {
   it("reads keyed maps as rows that remember their key", () => {
     const form = readCardForm(grace());
     expect(form.emails).toHaveLength(1);
-    expect(form.emails[0]).toMatchObject({ key: "email1", value: "grace@example.test", context: "work" });
+    expect(form.emails[0]).toMatchObject({
+      key: "email1",
+      value: "grace@example.test",
+      context: "work",
+    });
     // `pref` and `label` are not the form's business, so they ride in `rest`.
     expect(form.emails[0]?.rest).toEqual({ pref: 1, label: "desk" });
   });
@@ -85,7 +89,15 @@ describe("the patch names only what changed", () => {
     for (const key of Object.keys(patch)) {
       expect(OWNED_PROPERTIES as readonly string[]).toContain(key);
     }
-    for (const untouchable of ["anniversaries", "media", "vCardProps", "uid", "id", "kind", "created"]) {
+    for (const untouchable of [
+      "anniversaries",
+      "media",
+      "vCardProps",
+      "uid",
+      "id",
+      "kind",
+      "created",
+    ]) {
       expect(patch).not.toHaveProperty(untouchable);
     }
   });
@@ -94,7 +106,9 @@ describe("the patch names only what changed", () => {
     const card = grace();
     const form = readCardForm(card);
     form.emails[0]!.value = "grace@navy.test";
-    const patch = cardUpdatePatch(card, form) as { emails: Record<string, Record<string, unknown>> };
+    const patch = cardUpdatePatch(card, form) as {
+      emails: Record<string, Record<string, unknown>>;
+    };
     // Same key — CardDAV round-trips Apple's itemN label grouping through it.
     expect(Object.keys(patch.emails)).toEqual(["email1"]);
     expect(patch.emails.email1).toEqual({
@@ -135,7 +149,9 @@ describe("the patch names only what changed", () => {
     const card = katherine();
     const form = readCardForm(card);
     form.organization = "Space Task Group";
-    const patch = cardUpdatePatch(card, form) as { organizations: Record<string, { name: string }> };
+    const patch = cardUpdatePatch(card, form) as {
+      organizations: Record<string, { name: string }>;
+    };
     expect(patch.organizations.org1?.name).toBe("Space Task Group");
     expect(patch.organizations.org2?.name).toBe("West Area Computers");
   });
@@ -170,7 +186,10 @@ describe("the patch names only what changed", () => {
       addresses: Record<string, { components: Array<{ kind: string; value: string }> }>;
     };
     expect(patch.addresses.addr1?.components).toContainEqual({ kind: "apartment", value: "4B" });
-    expect(patch.addresses.addr1?.components).toContainEqual({ kind: "locality", value: "Springfield" });
+    expect(patch.addresses.addr1?.components).toContainEqual({
+      kind: "locality",
+      value: "Springfield",
+    });
   });
 
   it("drops an address whose every field was cleared", () => {
@@ -183,7 +202,11 @@ describe("the patch names only what changed", () => {
 
 describe("creating a card", () => {
   it("leaves every server-set property to the server", () => {
-    const form = { ...blankForm(), full: "New Person", emails: [{ ...blankEntry(), value: "new@example.test" }] };
+    const form = {
+      ...blankForm(),
+      full: "New Person",
+      emails: [{ ...blankEntry(), value: "new@example.test" }],
+    };
     const spec = cardCreateSpec(form, "ab-personal");
     for (const serverSet of ["id", "uid", "created", "updated", "@type", "version"]) {
       expect(spec).not.toHaveProperty(serverSet);
@@ -229,7 +252,11 @@ describe("form validation", () => {
   });
 
   it("flags an email address that is not one", () => {
-    const form = { ...blankForm(), full: "X", emails: [{ ...blankEntry(), value: "not-an-address" }] };
+    const form = {
+      ...blankForm(),
+      full: "X",
+      emails: [{ ...blankEntry(), value: "not-an-address" }],
+    };
     expect(formProblems(form).join(" ")).toContain("not-an-address");
   });
 });

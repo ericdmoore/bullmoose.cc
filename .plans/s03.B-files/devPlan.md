@@ -8,11 +8,11 @@
 This file carried no status section until now; its state was only recoverable from the
 sVOL ledger, which is how T3 stayed quietly unstarted.
 
-| Task | State | Evidence |
-|---|---|---|
-| **T1** — `file_nodes` schema + blob pinning | ✅ **done** | table live in the data plane; provenance columns land with s03.A |
-| **T2** — `FileNode/*` methods | ✅ **done** | all six registered in `services/jmap/src/methods/filenode.ts`; covered by `filenode.test.ts` |
-| **T3** — attachment sidestep | ✅ **done** (2026-08-13) | Inbound attachments over the threshold (default 5 MiB, non-inline) mint FileNodes in an `Attachments` role directory; content-addressed, so file and message share ONE R2 object. `services/ingest/src/sidestep.ts`. **The OUTBOUND half is not in this task** — `Email/set create` hardcodes `attachments: []`, so there is no compose path to side-step from (`.backlog/compose-attachments.md`). |
+| Task                                        | State                    | Evidence                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **T1** — `file_nodes` schema + blob pinning | ✅ **done**              | table live in the data plane; provenance columns land with s03.A                                                                                                                                                                                                                                                                                                                                    |
+| **T2** — `FileNode/*` methods               | ✅ **done**              | all six registered in `services/jmap/src/methods/filenode.ts`; covered by `filenode.test.ts`                                                                                                                                                                                                                                                                                                        |
+| **T3** — attachment sidestep                | ✅ **done** (2026-08-13) | Inbound attachments over the threshold (default 5 MiB, non-inline) mint FileNodes in an `Attachments` role directory; content-addressed, so file and message share ONE R2 object. `services/ingest/src/sidestep.ts`. **The OUTBOUND half is not in this task** — `Email/set create` hardcodes `attachments: []`, so there is no compose path to side-step from (`.backlog/compose-attachments.md`). |
 
 **T3 is the gate for `s03.C` T3 (Files browser)** and for the attachment hole in
 compose/forward — `webmail` today renders attachment chips as inert `<span>`s
@@ -28,11 +28,11 @@ building a browser surface that makes copy easy to trigger.
 **Blocks:** D1 data plane · `packages/mailstore` · R2 GC path.
 
 - Inode table: `id, account_id, parent_id, name, node_type, blob_id, size, type,
-  created, modified, accessed, changed, executable, is_subscribed, role` +
+created, modified, accessed, changed, executable, is_subscribed, role` +
   the `last_writer_*` columns from s03.A.
 - **Sibling-name uniqueness as a DB constraint** — `UNIQUE(account_id, parent_id, name)`,
   with the case-insensitivity option handled at the method layer.
-- **Blob pinning** — a blob referenced by a live FileNode must survive GC. Lands *with*
+- **Blob pinning** — a blob referenced by a live FileNode must survive GC. Lands _with_
   the schema (`arch.md` §3).
 
 **Done when:** tree CRUD holds at the DB level; a pinned blob is not collectable;

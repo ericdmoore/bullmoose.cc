@@ -1,17 +1,36 @@
 <template>
   <div class="flex min-h-full flex-col">
-    <header class="relative shrink-0 border-b border-gray-200 bg-white dark:border-white/10 dark:bg-gray-900 dark:before:pointer-events-none dark:before:absolute dark:before:inset-0 dark:before:bg-black/10">
-      <div class="relative mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <img class="h-8 w-auto dark:hidden" src="https://tailwindcss.com/plus-assets/img/logos/mark.svg?color=indigo&shade=600" alt="Your Company" />
-        <img class="h-8 w-auto not-dark:hidden" src="https://tailwindcss.com/plus-assets/img/logos/mark.svg?color=indigo&shade=500" alt="Your Company" />
+    <header
+      class="relative shrink-0 border-b border-gray-200 bg-white dark:border-white/10 dark:bg-gray-900 dark:before:pointer-events-none dark:before:absolute dark:before:inset-0 dark:before:bg-black/10"
+    >
+      <div
+        class="relative mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
+      >
+        <img
+          class="h-8 w-auto dark:hidden"
+          src="https://tailwindcss.com/plus-assets/img/logos/mark.svg?color=indigo&shade=600"
+          alt="Your Company"
+        />
+        <img
+          class="h-8 w-auto not-dark:hidden"
+          src="https://tailwindcss.com/plus-assets/img/logos/mark.svg?color=indigo&shade=500"
+          alt="Your Company"
+        />
         <div class="flex items-center gap-x-8">
-          <button type="button" class="-m-2.5 p-2.5 text-gray-400 hover:text-gray-500 dark:hover:text-white">
+          <button
+            type="button"
+            class="-m-2.5 p-2.5 text-gray-400 hover:text-gray-500 dark:hover:text-white"
+          >
             <span class="sr-only">View notifications</span>
             <BellIcon class="size-6" aria-hidden="true" />
           </button>
           <a href="#" class="-m-1.5 p-1.5">
             <span class="sr-only">Your profile</span>
-            <img class="size-8 rounded-full bg-gray-800 outline -outline-offset-1 outline-black/5 dark:outline-white/10" src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="" />
+            <img
+              class="size-8 rounded-full bg-gray-800 outline -outline-offset-1 outline-black/5 dark:outline-white/10"
+              src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
+              alt=""
+            />
           </a>
         </div>
       </div>
@@ -34,5 +53,5 @@
 </template>
 
 <script setup>
-import { BellIcon } from '@heroicons/vue/24/outline'
+import { BellIcon } from "@heroicons/vue/24/outline";
 </script>

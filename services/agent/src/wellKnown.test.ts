@@ -82,7 +82,9 @@ describe("s02 T1 — RFC 9728 protected resource metadata", () => {
     // The escape hatch for a proxy that rewrites the origin: the value must
     // equal what the user typed, and only the operator knows that.
     const e = { ...env(), MCP_RESOURCE_URI: "https://mail.example.com/mcp" };
-    expect(resourceUri(new URL("https://internal.workers.dev/mcp"), e)).toBe("https://mail.example.com/mcp");
+    expect(resourceUri(new URL("https://internal.workers.dev/mcp"), e)).toBe(
+      "https://mail.example.com/mcp",
+    );
     const meta = protectedResourceMetadata(new URL("https://internal.workers.dev/mcp"), e);
     expect(meta.resource).toBe("https://mail.example.com/mcp");
   });
@@ -132,11 +134,15 @@ describe("s02 T1 — Origin, not CORS", () => {
   });
 
   it("13. accepts a same-origin browser request", () => {
-    expect(originAllowed(new Request(url, { headers: { Origin: "https://mcp.bullmoose.cc" } }), url)).toBe(true);
+    expect(
+      originAllowed(new Request(url, { headers: { Origin: "https://mcp.bullmoose.cc" } }), url),
+    ).toBe(true);
   });
 
   it("14. refuses a cross-site browser Origin — the rebinding case", () => {
-    expect(originAllowed(new Request(url, { headers: { Origin: "https://evil.example" } }), url)).toBe(false);
+    expect(
+      originAllowed(new Request(url, { headers: { Origin: "https://evil.example" } }), url),
+    ).toBe(false);
   });
 
   it("15. refuses a malformed Origin rather than parsing it loosely", () => {
@@ -151,7 +157,10 @@ describe("s02 T1 — the route is public, /drain and /internal/* are not", () =>
       headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
     });
-  const ctx = { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext;
+  const ctx = {
+    waitUntil: () => {},
+    passThroughOnException: () => {},
+  } as unknown as ExecutionContext;
 
   it("16. /mcp with NO internal token reaches the auth layer, not a 404", async () => {
     // Before T1 this fell past the x-internal-token wrapper to a bare 404 —
@@ -229,7 +238,9 @@ describe("s02 T1 — the route is public, /drain and /internal/* are not", () =>
     });
     (w.env as { OAUTH: Fetcher }).OAUTH = {
       fetch: async () =>
-        new Response(JSON.stringify({ active: true, props: { principalId: "p_eric", scope: ["read"] } })),
+        new Response(
+          JSON.stringify({ active: true, props: { principalId: "p_eric", scope: ["read"] } }),
+        ),
     } as unknown as Fetcher;
 
     const res = await worker.fetch!(
@@ -281,13 +292,9 @@ describe("s02 T1 — the route is public, /drain and /internal/* are not", () =>
 
   it("22. discovery is reachable with no credential of any kind", async () => {
     const w = fakeEnv();
-    const res = await worker.fetch!(
-      get("/.well-known/oauth-protected-resource/mcp"),
-      w.env,
-      ctx,
-    );
+    const res = await worker.fetch!(get("/.well-known/oauth-protected-resource/mcp"), w.env, ctx);
     expect(res.status).toBe(200);
-    expect((await res.json() as any).resource).toBe("https://mcp.bullmoose.cc/mcp");
+    expect(((await res.json()) as any).resource).toBe("https://mcp.bullmoose.cc/mcp");
   });
 });
 
@@ -302,9 +309,10 @@ describe("s02 T1 — the advertisement must not drift from what the AS will gran
     const missing = OAUTH_SCOPES.filter(
       (s) => !PUBLIC_SCOPES.includes(s) && !(s in NOT_ADVERTISED_SCOPES),
     );
-    expect(missing, `the AS grants these but nothing advertises them: ${missing.join(", ")}`).toEqual(
-      [],
-    );
+    expect(
+      missing,
+      `the AS grants these but nothing advertises them: ${missing.join(", ")}`,
+    ).toEqual([]);
   });
 
   it("12. advertises nothing the AS would refuse — under-promise, never over", () => {

@@ -5,8 +5,7 @@
 // Output goes to stdout; the workflow appends it to $GITHUB_STEP_SUMMARY.
 import { existsSync, readFileSync } from "node:fs";
 
-const totals = (path) =>
-  existsSync(path) ? JSON.parse(readFileSync(path, "utf8")).total : null;
+const totals = (path) => (existsSync(path) ? JSON.parse(readFileSync(path, "utf8")).total : null);
 
 const cur = totals("coverage/coverage-summary.json");
 if (!cur) {
@@ -29,7 +28,9 @@ const rows = metrics.map((k) => {
   return `| ${name} | ${prev ? cell(prev[k]) : "—"} | ${cell(cur[k])} | ${delta(cur[k], prev?.[k])} |`;
 });
 
-console.log(`## Coverage${prev ? " — vs. previous run" : " — baseline (no previous run to compare)"}`);
+console.log(
+  `## Coverage${prev ? " — vs. previous run" : " — baseline (no previous run to compare)"}`,
+);
 console.log("");
 console.log("| Metric | Previous | Current | Δ (pp) |");
 console.log("|---|---|---|---|");

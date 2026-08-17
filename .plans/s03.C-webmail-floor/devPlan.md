@@ -7,12 +7,12 @@
 
 ## Status — updated 2026-08-09
 
-| Task | State | Notes |
-|---|---|---|
-| **T1 — App shell + injected JmapClient** | ✅ **done** | `webmail/` workspace (Astro + Preact); `astro build` clean → static `dist/index.html` + island bundle. `JmapClient` (`FetchJmapClient`) + `FakeJmapClient` live and unit-tested (37 tests). |
-| **T2 — Mail surfaces** | ✅ **done** | Mailbox list · virtualized thread list · thread view (sanitized, remote content blocked, quotes collapsed) · compose/reply/forward + drafts + send · server-side search · keyboard triage. 208 new tests (374 in `webmail/` as of 2026-08-10). |
-| **T3 — Files browser** | ⏸ **deferred** | Needs s03.B's `FileNode` (partly built). |
-| **T4 — Capability gate + plain-client proof** | ✅ **built into T1, held by T2** | `hasAgentCapability` gate + `computeUsing` capability-awareness; still the only agent seam in the shell, still tested against a capability-less session. |
+| Task                                          | State                            | Notes                                                                                                                                                                                                                                          |
+| --------------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **T1 — App shell + injected JmapClient**      | ✅ **done**                      | `webmail/` workspace (Astro + Preact); `astro build` clean → static `dist/index.html` + island bundle. `JmapClient` (`FetchJmapClient`) + `FakeJmapClient` live and unit-tested (37 tests).                                                    |
+| **T2 — Mail surfaces**                        | ✅ **done**                      | Mailbox list · virtualized thread list · thread view (sanitized, remote content blocked, quotes collapsed) · compose/reply/forward + drafts + send · server-side search · keyboard triage. 208 new tests (374 in `webmail/` as of 2026-08-10). |
+| **T3 — Files browser**                        | ⏸ **deferred**                   | Needs s03.B's `FileNode` (partly built).                                                                                                                                                                                                       |
+| **T4 — Capability gate + plain-client proof** | ✅ **built into T1, held by T2** | `hasAgentCapability` gate + `computeUsing` capability-awareness; still the only agent seam in the shell, still tested against a capability-less session.                                                                                       |
 
 ---
 
@@ -23,19 +23,19 @@ plain Node against `FakeJmapClient`; the `.tsx` islands are thin and hold no
 rules. (vitest is `environment: "node"` with `include: webmail/**/*.test.ts`, so
 this split is what makes the surfaces testable at all without adding jsdom.)
 
-| Module | Surface |
-|---|---|
-| `mailboxes.ts` | `Mailbox/get`, role ordering, tree build (orphans/cycles become roots) |
-| `threadList.ts` | `Email/query` → `Email/get` in one batch; **re-query** sync; client-side threading |
-| `virtual.ts` | windowing math for the virtualized list |
-| `threadView.ts` | `Thread/get` + `Email/get` w/ bodies in **one** batch; render + sanitize |
-| `sanitize.ts` | the real allowlist sanitizer (was a fail-closed stub) |
-| `quote.ts` | text/plain quote + signature splitting |
-| `compose.ts` | reply/forward/draft/send, `EmailSubmission/set` + `onSuccessUpdateEmail` |
-| `search.ts` | filter building **plus the honesty strings** |
-| `triage.ts` | keyword/mailbox patches, batched `Email/set`, scoped-token refusals |
-| `keymap.ts` | key → action, chords, typing guard |
-| `../jmap/demo.ts` | in-memory bullmoose over `FakeJmapClient` — tests **and** `astro dev` |
+| Module            | Surface                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------- |
+| `mailboxes.ts`    | `Mailbox/get`, role ordering, tree build (orphans/cycles become roots)             |
+| `threadList.ts`   | `Email/query` → `Email/get` in one batch; **re-query** sync; client-side threading |
+| `virtual.ts`      | windowing math for the virtualized list                                            |
+| `threadView.ts`   | `Thread/get` + `Email/get` w/ bodies in **one** batch; render + sanitize           |
+| `sanitize.ts`     | the real allowlist sanitizer (was a fail-closed stub)                              |
+| `quote.ts`        | text/plain quote + signature splitting                                             |
+| `compose.ts`      | reply/forward/draft/send, `EmailSubmission/set` + `onSuccessUpdateEmail`           |
+| `search.ts`       | filter building **plus the honesty strings**                                       |
+| `triage.ts`       | keyword/mailbox patches, batched `Email/set`, scoped-token refusals                |
+| `keymap.ts`       | key → action, chords, typing guard                                                 |
+| `../jmap/demo.ts` | in-memory bullmoose over `FakeJmapClient` — tests **and** `astro dev`              |
 
 **Three server realities the UI had to be built around, not around-talked:**
 
@@ -99,6 +99,7 @@ web UI. `Thread`, `Identity` and `EmailSubmission` are exercised but have no
 dedicated screen. `FileNode`, contacts and calendars remain `----`.
 
 **T1 delivered:**
+
 - `webmail/` added to root `package.json` workspaces; typecheck chained
   (`npm run -w webmail typecheck`); vitest `test.include` picks up
   `webmail/**/*.test.ts`. The `vitest.config.ts` `resolve.alias` block was left
@@ -134,7 +135,7 @@ Pages deploy.
 - Astro shell + Preact island mount; auth (bearer, session bootstrap); routing.
 - The `JmapClient` module: session + `using[]` negotiation, batched `methodCalls`,
   `/changes` sync driven by `/api/ws` **[live]**, blob upload/download.
-- Injected everywhere; a `FakeJmapClient` for tests lands *with* it.
+- Injected everywhere; a `FakeJmapClient` for tests lands _with_ it.
 
 **Done when:** login → session → mailbox list works against a fake in unit tests **and**
 against `wrangler dev` by hand. Test suite performs no network I/O.
@@ -193,7 +194,7 @@ verified, not so it gets deferred.
 ## Verification
 
 Per `.claude` project practice: drive the real app, don't just pass tests. A green run
-here means *opening it and doing a day of mail*, including a large attachment send and a
+here means _opening it and doing a day of mail_, including a large attachment send and a
 Files round trip.
 
 ## Risk

@@ -34,7 +34,7 @@
     // They live here because this worker serves them and the API base is what
     // mints them; giving them their own hostname is a product decision, not a
     // routing one.
-    { "pattern": "app.bullmoose.cc/share/*", "zone_name": "bullmoose.cc" }
+    { "pattern": "app.bullmoose.cc/share/*", "zone_name": "bullmoose.cc" },
 
     // ── s21, the explorer — DELIBERATELY COMMENTED OUT ────────────────────
     //
@@ -106,7 +106,7 @@
 
   // AccountDO lives in THIS worker; ingest/submit bind it via script_name.
   "durable_objects": {
-    "bindings": [{ "name": "ACCOUNT_DO", "class_name": "AccountDO" }]
+    "bindings": [{ "name": "ACCOUNT_DO", "class_name": "AccountDO" }],
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AccountDO"] }],
 
@@ -114,8 +114,8 @@
     {
       "binding": "DB",
       "database_name": "bullmoose-mail-shard0",
-      "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9"
-    }
+      "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9",
+    },
   ],
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "bullmoose-mail-blobs" }],
   // ROUTES is the shared small-hot-state namespace. This worker also keeps the
@@ -134,7 +134,7 @@
   // Leaving it out by default also keeps this worker's deploy graph unchanged
   // for anyone not running an explorer.
   "services": [
-    { "binding": "SUBMIT", "service": "bullmoose-submit" }
+    { "binding": "SUBMIT", "service": "bullmoose-submit" },
     // , { "binding": "OAUTH", "service": "bullmoose-oauth" }
   ],
 
@@ -146,8 +146,8 @@
     // OAuth 2.1 AS (services/oauth/src/index.ts:11).
     "DEV_ACCOUNT_ID": "t_dev__a_local",
     "DEV_TENANT_ID": "t_dev",
-    "DEV_USERNAME": "dev@localhost"
-  }
+    "DEV_USERNAME": "dev@localhost",
+  },
   // Secrets (wrangler secret put):
   //   DEV_BEARER_TOKEN
   //   INTERNAL_TOKEN     — must match the submit worker's INTERNAL_TOKEN

@@ -138,7 +138,10 @@ describe("ordering and targets", () => {
 
   it("only offers writable books as a target", () => {
     const books = [
-      book({ id: "ro", myRights: { mayRead: true, mayWrite: false, mayShare: false, mayDelete: false } }),
+      book({
+        id: "ro",
+        myRights: { mayRead: true, mayWrite: false, mayShare: false, mayDelete: false },
+      }),
       book({ id: "rw", isDefault: true }),
     ];
     expect(writableBooks(books).map((b) => b.id)).toEqual(["rw"]);

@@ -74,7 +74,9 @@ export interface ExploreConfig {
  * values) and is the difference between "the explorer is broken" and "run
  * `wrangler secret put EXPLORE_COOKIE_KEY`".
  */
-export function exploreConfig(env: Env): { ok: true; config: ExploreConfig } | { ok: false; missing: string[] } {
+export function exploreConfig(
+  env: Env,
+): { ok: true; config: ExploreConfig } | { ok: false; missing: string[] } {
   const missing: string[] = [];
   if (!env.EXPLORE_HOST) missing.push("EXPLORE_HOST");
   if (!env.EXPLORE_CLIENT_ID) missing.push("EXPLORE_CLIENT_ID");
@@ -155,7 +157,11 @@ export async function exploreOauthCallback(url: URL, env: Env): Promise<Response
 
   const asError = url.searchParams.get("error");
   if (asError) {
-    return problem(400, "authorization_failed", `${asError}: ${url.searchParams.get("error_description") ?? ""}`.trim());
+    return problem(
+      400,
+      "authorization_failed",
+      `${asError}: ${url.searchParams.get("error_description") ?? ""}`.trim(),
+    );
   }
 
   const code = url.searchParams.get("code");
@@ -191,7 +197,11 @@ export async function exploreOauthCallback(url: URL, env: Env): Promise<Response
     return problem(502, "token_endpoint_unreachable", String(err).slice(0, 200));
   }
   if (!tokenRes.ok) {
-    return problem(502, "token_exchange_failed", `the authorization server returned ${tokenRes.status}`);
+    return problem(
+      502,
+      "token_exchange_failed",
+      `the authorization server returned ${tokenRes.status}`,
+    );
   }
   const token = (await tokenRes.json().catch(() => null)) as { access_token?: unknown } | null;
   const accessToken = typeof token?.access_token === "string" ? token.access_token : null;
@@ -208,11 +218,14 @@ export async function exploreOauthCallback(url: URL, env: Env): Promise<Response
   } catch (err) {
     return problem(502, "introspection_unreachable", String(err).slice(0, 200));
   }
-  if (!who.ok) return problem(502, "introspection_failed", `the authorization server returned ${who.status}`);
-  const body = (await who.json().catch(() => null)) as
-    | { active?: unknown; props?: { principalId?: unknown; scope?: unknown } }
-    | null;
-  if (body?.active !== true) return problem(403, "inactive_grant", "that authorization is not active");
+  if (!who.ok)
+    return problem(502, "introspection_failed", `the authorization server returned ${who.status}`);
+  const body = (await who.json().catch(() => null)) as {
+    active?: unknown;
+    props?: { principalId?: unknown; scope?: unknown };
+  } | null;
+  if (body?.active !== true)
+    return problem(403, "inactive_grant", "that authorization is not active");
 
   const principalId = body.props?.principalId;
   if (typeof principalId !== "string" || principalId.length === 0) {

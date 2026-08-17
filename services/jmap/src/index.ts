@@ -1,8 +1,24 @@
 import { dispatch, RequestErrors, type JmapRequest } from "@bullmoose/jmap-core";
-import { AGENT_CAP, CALENDARS_CAP, CONTACTS_CAP, CORE_CAP, FILENODE_CAP, MAIL_CAP, SUBMISSION_CAP, VACATION_CAP, WEBSOCKET_CAP } from "@bullmoose/jmap-core";
+import {
+  AGENT_CAP,
+  CALENDARS_CAP,
+  CONTACTS_CAP,
+  CORE_CAP,
+  FILENODE_CAP,
+  MAIL_CAP,
+  SUBMISSION_CAP,
+  VACATION_CAP,
+  WEBSOCKET_CAP,
+} from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
-import { authenticate, accountAccess, principalHasScope, type AuthEnv, type Principal } from "./auth";
+import {
+  authenticate,
+  accountAccess,
+  principalHasScope,
+  type AuthEnv,
+  type Principal,
+} from "./auth";
 import { handleLogin, handleTokens } from "./authRoutes";
 import { handleConsole } from "./console";
 import { buildSession } from "./session";
@@ -78,7 +94,17 @@ export interface Env extends AuthEnv {
   OAUTH?: Fetcher;
 }
 
-const SUPPORTED_CAPS = new Set([CORE_CAP, MAIL_CAP, SUBMISSION_CAP, WEBSOCKET_CAP, VACATION_CAP, CONTACTS_CAP, CALENDARS_CAP, FILENODE_CAP, AGENT_CAP]);
+const SUPPORTED_CAPS = new Set([
+  CORE_CAP,
+  MAIL_CAP,
+  SUBMISSION_CAP,
+  WEBSOCKET_CAP,
+  VACATION_CAP,
+  CONTACTS_CAP,
+  CALENDARS_CAP,
+  FILENODE_CAP,
+  AGENT_CAP,
+]);
 const registry = buildRegistry();
 
 export default {
@@ -486,9 +512,7 @@ async function handleShareList(
       ...(r.type ? { type: r.type } : {}),
       expiresAt: new Date(r.exp * 1000).toISOString(),
       createdAt: new Date(r.createdAt).toISOString(),
-      ...(r.revokedAt !== undefined
-        ? { revokedAt: new Date(r.revokedAt).toISOString() }
-        : {}),
+      ...(r.revokedAt !== undefined ? { revokedAt: new Date(r.revokedAt).toISOString() } : {}),
       live: isLive(r, now),
     })),
   });

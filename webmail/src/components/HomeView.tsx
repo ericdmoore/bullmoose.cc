@@ -2,12 +2,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { resolveClient } from "../lib/app/client";
 import { decide, loadQueues, type Verdict } from "../lib/approvals/api";
-import {
-  expiryLabel,
-  isNearExpiry,
-  rowClocks,
-  waitedLabel,
-} from "../lib/approvals/clocks";
+import { expiryLabel, isNearExpiry, rowClocks, waitedLabel } from "../lib/approvals/clocks";
 import { applyEdit, editorFor, type EditorForm } from "../lib/approvals/edit";
 import {
   declineNeedsReason,
@@ -152,7 +147,10 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
     }
     let cancelled = false;
     setLoadingApprovals(true);
-    void loadQueues(client, approvalsAccts.map((a) => a.accountId))
+    void loadQueues(
+      client,
+      approvalsAccts.map((a) => a.accountId),
+    )
       .then((res) => {
         if (cancelled) return;
         setProposals(res.proposals);
@@ -196,7 +194,10 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
 
   async function reload(): Promise<void> {
     if (!client || gate.state !== "open" || approvalsAccts.length === 0) return;
-    const res = await loadQueues(client, approvalsAccts.map((a) => a.accountId));
+    const res = await loadQueues(
+      client,
+      approvalsAccts.map((a) => a.accountId),
+    );
     setProposals(res.proposals);
     setStates(res.states);
   }
@@ -284,9 +285,7 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
                 key={p.id}
                 p={p}
                 account={approvalsAccts.find((a) => a.accountId === p.accountId)}
-                label={
-                  approvalsAccts.length > 1 ? accountLabel(approvalsAccts, p.accountId) : ""
-                }
+                label={approvalsAccts.length > 1 ? accountLabel(approvalsAccts, p.accountId) : ""}
                 now={now}
                 busy={busyId === p.id}
                 error={rowErrors[p.id]}
@@ -485,7 +484,9 @@ function EditPanel(props: {
             <input
               type="text"
               value={form.subject}
-              onInput={(e) => props.onChange({ ...form, subject: (e.target as HTMLInputElement).value })}
+              onInput={(e) =>
+                props.onChange({ ...form, subject: (e.target as HTMLInputElement).value })
+              }
             />
           </label>
           <label class="home-label">
@@ -493,7 +494,9 @@ function EditPanel(props: {
             <textarea
               rows={6}
               value={form.text}
-              onInput={(e) => props.onChange({ ...form, text: (e.target as HTMLTextAreaElement).value })}
+              onInput={(e) =>
+                props.onChange({ ...form, text: (e.target as HTMLTextAreaElement).value })
+              }
             />
           </label>
         </>
@@ -504,7 +507,9 @@ function EditPanel(props: {
             rows={8}
             spellcheck={false}
             value={form.json}
-            onInput={(e) => props.onChange({ ...form, json: (e.target as HTMLTextAreaElement).value })}
+            onInput={(e) =>
+              props.onChange({ ...form, json: (e.target as HTMLTextAreaElement).value })
+            }
           />
         </label>
       )}

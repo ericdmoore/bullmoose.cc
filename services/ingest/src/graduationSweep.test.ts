@@ -175,11 +175,7 @@ describe("sweepGraduations", () => {
   it("runs from the worker's scheduled hook (the agent worker's cron pattern)", async () => {
     const w = scaffold();
     seedRejects(w, DOMAIN, 10);
-    await worker.scheduled!(
-      {} as ScheduledController,
-      w.env as unknown as Env,
-      ctx(),
-    );
+    await worker.scheduled!({} as ScheduledController, w.env as unknown as Env, ctx());
     expect(denyRow(w, DOMAIN)).toMatchObject({ source: "graduated" });
   });
 });

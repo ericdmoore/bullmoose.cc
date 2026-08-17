@@ -88,11 +88,13 @@ async function shoot(name) {
       screenshotOptions: { type: "png", fullPage: true },
     }),
   });
-  if (!res.ok) return { name, ok: false, detail: `${res.status} ${(await res.text()).slice(0, 160)}` };
+  if (!res.ok)
+    return { name, ok: false, detail: `${res.status} ${(await res.text()).slice(0, 160)}` };
   const png = Buffer.from(await res.arrayBuffer());
   // A hydrated page is tens of KB; a blank 1440×900 PNG is a few. Cheap guard
   // against the failure mode above silently returning to green.
-  if (png.length < 10_000) return { name, ok: false, detail: `${png.length} bytes — blank? the wait did not hold` };
+  if (png.length < 10_000)
+    return { name, ok: false, detail: `${png.length} bytes — blank? the wait did not hold` };
   const file = `${out}/${name}${dark ? ".dark" : ""}.png`;
   writeFileSync(file, png);
   return { name, ok: true, detail: `${file} · ${(png.length / 1024).toFixed(0)} kB` };

@@ -22,12 +22,12 @@ What needs me?
 
 So the primary view might contain things like:
 
-* Decision required — “Sergio offered these two licensing structures.”
-* Approval required — “I drafted a response and need permission to send it.”
-* Waiting — “Structural engineer hasn’t replied in 4 business days.”
-* FYI — summarized and automatically cleared after reading.
-* Handled — agent completed it according to policy.
-* Potential problem — “Contractor’s new estimate is 31% above the previous quote.”
+- Decision required — “Sergio offered these two licensing structures.”
+- Approval required — “I drafted a response and need permission to send it.”
+- Waiting — “Structural engineer hasn’t replied in 4 business days.”
+- FYI — summarized and automatically cleared after reading.
+- Handled — agent completed it according to policy.
+- Potential problem — “Contractor’s new estimate is 31% above the previous quote.”
 
 The agent should be consuming the firehose. The human gets the exceptions.
 
@@ -45,14 +45,14 @@ Imagine:
 
 That situation could contain:
 
-* 3 email threads
-* structural engineer PDF
-* contractor estimate
-* wife’s forwarded email
-* calendar appointment
-* permit correspondence
-* previous decisions
-* notes from a phone call
+- 3 email threads
+- structural engineer PDF
+- contractor estimate
+- wife’s forwarded email
+- calendar appointment
+- permit correspondence
+- previous decisions
+- notes from a phone call
 
 The situation becomes the durable object.
 
@@ -61,17 +61,17 @@ Email is merely one event stream feeding it.
 This may be the biggest architectural/UX departure I’d make.
 
 Threads
-  ├── people (currently contacts) + new person
-  ├── messages (currently mail) what was prior called a thread is now a "conversation"
-  ├── files (exisitng),  document storage, attachments, scratch pad for agents, 
-  ├── commitments (new)
-  ├── decisions (new)
-  ├── tasks (new)
-  ├── calendar(existing) 
-  ├── ask(search) - chat interface: goal is find witihn my data someting im looking for or answer a question from my data.
-  ├── agents (existing)
-  ├── connections (MCP connections to the outside - would hold OAuth tokens etc)
-  └── agent-log (new)
+├── people (currently contacts) + new person
+├── messages (currently mail) what was prior called a thread is now a "conversation"
+├── files (exisitng), document storage, attachments, scratch pad for agents,
+├── commitments (new)
+├── decisions (new)
+├── tasks (new)
+├── calendar(existing)
+├── ask(search) - chat interface: goal is find witihn my data someting im looking for or answer a question from my data.
+├── agents (existing)
+├── connections (MCP connections to the outside - would hold OAuth tokens etc)
+└── agent-log (new)
 
 ⸻
 
@@ -175,6 +175,7 @@ Six months later:
 And the system reconstructs the decision from seven emails rather than making you find them.
 
 Decision lifecycle might be Something like:
+
 > Proposed → Detected → Accepted → Active → Superseded
 
 Maybe think of this akin to hermes deciding to add stuff to a MD file.. perhasp even to `MEMORY.md`
@@ -186,10 +187,10 @@ intercface IDecision {
   statement: string
   supersedes: string?
   rationale:
-    status: explicit | implicit | unknown 
+    status: explicit | implicit | unknown
     evidence: RefUri[]
 }
-  
+
 ```
 
 Be reluctant even to persist an inferred rationale as fact. Better:
@@ -236,8 +237,6 @@ Something external requires action.
 The county doesn’t care whether you committed to paying it. 😄
 
 That distinction could be valuable internally even if Obligation never appears as a consumer-facing noun.
-
-
 
 And then there is a fascinating transition:
 

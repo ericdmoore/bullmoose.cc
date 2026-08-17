@@ -112,7 +112,9 @@ describe("uniqueName — the sidestep's rule, so both paths agree", () => {
 
   it("suffixes BEFORE the extension so the file still opens", () => {
     expect(uniqueName("report.pdf", new Set(["report.pdf"]))).toBe("report (2).pdf");
-    expect(uniqueName("report.pdf", new Set(["report.pdf", "report (2).pdf"]))).toBe("report (3).pdf");
+    expect(uniqueName("report.pdf", new Set(["report.pdf", "report (2).pdf"]))).toBe(
+      "report (3).pdf",
+    );
   });
 
   it("treats a leading dot as a dotfile, not an extension", () => {

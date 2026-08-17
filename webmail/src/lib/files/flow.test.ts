@@ -109,7 +109,9 @@ describe("a session in Files, start to finish", () => {
     expect(new TextDecoder().decode(got.bytes)).toBe("one");
 
     // ── rename ──────────────────────────────────────────────────────────
-    expect((await renameNode(client, accountId, first.id, "receipt-jan.pdf")).error).toBeUndefined();
+    expect(
+      (await renameNode(client, accountId, first.id, "receipt-jan.pdf")).error,
+    ).toBeUndefined();
     page = await loadDirectory(client, accountId, invoices.id);
     expect(page.children.map((n) => n.name)).toContain("receipt-jan.pdf");
 

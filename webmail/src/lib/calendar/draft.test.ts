@@ -51,7 +51,9 @@ describe("all-day events are written the way CalDAV writes them", () => {
     // (`packages/calendar-core/src/ical.ts:473-475`). Matching it means an
     // all-day event created here and one synced from Apple Calendar produce
     // the same blob — and therefore the same placement.
-    const spec = draftToCreate(draft({ allDay: true, startDate: "2026-07-08", endDate: "2026-07-08" }));
+    const spec = draftToCreate(
+      draft({ allDay: true, startDate: "2026-07-08", endDate: "2026-07-08" }),
+    );
     expect(spec.start).toBe("2026-07-08T00:00:00");
     expect(spec.timeZone).toBe(ALL_DAY_ZONE);
     expect(spec.showWithoutTime).toBe(true);
@@ -60,18 +62,27 @@ describe("all-day events are written the way CalDAV writes them", () => {
   it("omits duration for a single all-day day, exactly as the ICS importer does", () => {
     // ical.ts:494 skips writing `P1D` for an all-day event; a create that added
     // one would be a second spelling of the same day.
-    const spec = draftToCreate(draft({ allDay: true, startDate: "2026-07-08", endDate: "2026-07-08" }));
+    const spec = draftToCreate(
+      draft({ allDay: true, startDate: "2026-07-08", endDate: "2026-07-08" }),
+    );
     expect(spec.duration).toBeUndefined();
   });
 
   it("writes an inclusive last day as a whole-day duration", () => {
-    const spec = draftToCreate(draft({ allDay: true, startDate: "2026-07-21", endDate: "2026-07-23" }));
+    const spec = draftToCreate(
+      draft({ allDay: true, startDate: "2026-07-21", endDate: "2026-07-23" }),
+    );
     expect(spec.duration).toBe("P3D");
   });
 
   it("never writes the browser's timezone onto an all-day event", () => {
     const spec = draftToCreate(
-      draft({ allDay: true, timeZone: "Asia/Tokyo", startDate: "2026-07-08", endDate: "2026-07-08" }),
+      draft({
+        allDay: true,
+        timeZone: "Asia/Tokyo",
+        startDate: "2026-07-08",
+        endDate: "2026-07-08",
+      }),
     );
     expect(spec.timeZone).toBe(ALL_DAY_ZONE);
   });
@@ -204,7 +215,12 @@ describe("reading rules back, and refusing to when they do not fit", () => {
       { ...emptyRepeat(), frequency: "weekly" as const, weekdays: ["mo", "fr"] as never },
       { ...emptyRepeat(), frequency: "monthly" as const, monthlyMode: "nthWeekday" as const },
       { ...emptyRepeat(), frequency: "yearly" as const, ends: "count" as const, count: 5 },
-      { ...emptyRepeat(), frequency: "weekly" as const, ends: "until" as const, until: "2026-09-30" },
+      {
+        ...emptyRepeat(),
+        frequency: "weekly" as const,
+        ends: "until" as const,
+        until: "2026-09-30",
+      },
     ]) {
       expect(roundTrip(form), JSON.stringify(form)).toEqual(form);
     }
@@ -216,11 +232,17 @@ describe("reading rules back, and refusing to when they do not fit", () => {
   });
 
   it.each([
-    ["a nth-weekday that is not the start day's", [{ frequency: "monthly", byDay: [{ day: "fr", nthOfPeriod: -1 }] }]],
+    [
+      "a nth-weekday that is not the start day's",
+      [{ frequency: "monthly", byDay: [{ day: "fr", nthOfPeriod: -1 }] }],
+    ],
     ["byMonthDay, which has no control", [{ frequency: "monthly", byMonthDay: [1, 15] }]],
     ["byMonth, which has no control", [{ frequency: "yearly", byMonth: ["11"] }]],
     ["bySetPosition", [{ frequency: "monthly", byDay: [{ day: "fr" }], bySetPosition: [-1] }]],
-    ["a weekly nthOfPeriod the server itself refuses", [{ frequency: "weekly", byDay: [{ day: "mo", nthOfPeriod: 2 }] }]],
+    [
+      "a weekly nthOfPeriod the server itself refuses",
+      [{ frequency: "weekly", byDay: [{ day: "mo", nthOfPeriod: 2 }] }],
+    ],
     ["an unexpandable frequency", [{ frequency: "hourly" }]],
     ["a missing frequency", [{ interval: 2 }]],
     ["two rules at once", [{ frequency: "daily" }, { frequency: "weekly" }]],

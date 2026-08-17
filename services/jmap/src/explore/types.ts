@@ -277,11 +277,7 @@ const BUILDERS: Readonly<Record<string, LinkFn>> = {
 };
 
 /** The `_links` for one projected object. `{}` when it carries no ids. */
-export function linksFor(
-  type: string,
-  obj: Record<string, unknown>,
-  b: LinkBuilder,
-): ExploreLinks {
+export function linksFor(type: string, obj: Record<string, unknown>, b: LinkBuilder): ExploreLinks {
   const fn = BUILDERS[type];
   return fn ? fn(obj, b) : {};
 }

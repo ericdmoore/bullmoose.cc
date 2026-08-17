@@ -185,11 +185,7 @@ describe("the chokepoint — one policy gate for every write path", () => {
 describe("the membership chain — card + chain commit together or neither", () => {
   it("insert, delta update, book move and destroy each append the right rows", async () => {
     const { w, store } = await world();
-    await store.insertContactCard(
-      ACCOUNT,
-      card("c1", "ab_gov", ["ann@x.com", "bob@x.com"]),
-      HUMAN,
-    );
+    await store.insertContactCard(ACCOUNT, card("c1", "ab_gov", ["ann@x.com", "bob@x.com"]), HUMAN);
     // Delta update: bob leaves, cat arrives; ann is untouched (no row).
     await store.updateContactCard(ACCOUNT, card("c1", "ab_gov", ["ann@x.com", "cat@x.com"]), HUMAN);
     expect(logOf(w, "ab_gov")).toEqual([
@@ -200,7 +196,11 @@ describe("the membership chain — card + chain commit together or neither", () 
     ]);
 
     // Move out of the governed book: removed rows for its whole contribution.
-    await store.updateContactCard(ACCOUNT, card("c1", "ab_open", ["ann@x.com", "cat@x.com"]), HUMAN);
+    await store.updateContactCard(
+      ACCOUNT,
+      card("c1", "ab_open", ["ann@x.com", "cat@x.com"]),
+      HUMAN,
+    );
     const afterMove = logOf(w, "ab_gov").slice(4);
     expect(afterMove).toEqual([
       { event: "removed", address: "ann@x.com", actor: "eric@bullmoose.cc", via_proposal_id: null },
@@ -293,7 +293,10 @@ describe("the fold-reconciliation invariant", () => {
         account_id: ACCOUNT,
         address_book_id: "ab_gov",
         uid: "u_smuggled",
-        card_json: JSON.stringify({ uid: "u_smuggled", emails: { e: { address: "eve@evil.com" } } }),
+        card_json: JSON.stringify({
+          uid: "u_smuggled",
+          emails: { e: { address: "eve@evil.com" } },
+        }),
         created_at: 1,
         updated_at: 1,
       },

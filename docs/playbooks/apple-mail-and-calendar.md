@@ -4,8 +4,8 @@ Goal: `you@example.com` as a normal person's mailbox, synced by the Apple
 apps on macOS/iOS — Mail, Calendar, and (free) Contacts.
 
 **Protocol reality up front.** Apple Calendar/Contacts speak CalDAV/CardDAV,
-which the `anglebrackets` worker serves *publicly* at `dav.<your-domain>` —
-nothing extra to run. Apple **Mail** speaks IMAP/POP3/SMTP, *not* JMAP, so
+which the `anglebrackets` worker serves _publicly_ at `dav.<your-domain>` —
+nothing extra to run. Apple **Mail** speaks IMAP/POP3/SMTP, _not_ JMAP, so
 its mail side rides the **popcorn** POP3S/SMTPS shim, which you run on any
 host with a real socket — **$0** on a homelab box reachable over Tailscale,
 or **~$5/mo** on a small VPS (see the cost caveat in §3, and
@@ -42,7 +42,8 @@ Copy the `bm_…` string. (Prefer separate tokens — `mail` for Mail,
 
 > **Cost caveat — this is the only part of bullmoose that isn't free.**
 > POP3/SMTP are raw-socket protocols that can't terminate on Cloudflare's
-> HTTP edge, so popcorn runs *somewhere with a real socket*. Two ways:
+> HTTP edge, so popcorn runs _somewhere with a real socket_. Two ways:
+>
 > - **$0 — homelab + Tailscale.** Run popcorn on a box you already own and
 >   reach it over your tailnet (the repo's `alpaca` reference: POP3S `:9995`,
 >   SMTPS `:9587`). No public IP, no cert hassle, no monthly bill.
@@ -62,18 +63,18 @@ tailnet host.
 macOS Mail → **Settings → Accounts → Add Other Mail Account… → Mail Account**,
 let it fail auto-setup, then **Manual**:
 
-| field | Incoming (POP) | Outgoing (SMTP) |
-|---|---|---|
-| Server | `pop.<your-domain>` | `pop.<your-domain>` |
-| Port / SSL | `995`, SSL **on** | `465` (or your `POPCORN_SMTP_LISTEN`), SSL **on** |
-| Authentication | Password | Password |
-| User name | `you@example.com` | `you@example.com` |
-| Password | the `bm_…` token | the same `bm_…` token |
+| field          | Incoming (POP)      | Outgoing (SMTP)                                   |
+| -------------- | ------------------- | ------------------------------------------------- |
+| Server         | `pop.<your-domain>` | `pop.<your-domain>`                               |
+| Port / SSL     | `995`, SSL **on**   | `465` (or your `POPCORN_SMTP_LISTEN`), SSL **on** |
+| Authentication | Password            | Password                                          |
+| User name      | `you@example.com`   | `you@example.com`                                 |
+| Password       | the `bm_…` token    | the same `bm_…` token                             |
 
 iOS: **Settings → Mail → Accounts → Add Account → Other → Add Mail Account**,
 then set POP with the same values.
 
-What to expect — POP3 is a download protocol, so this is the *legacy* face:
+What to expect — POP3 is a download protocol, so this is the _legacy_ face:
 one Inbox, no folders, no push. popcorn **archives, never destroys** — "remove
 copy from server after retrieving" just moves the message Inbox→Archive, so
 nothing is lost and it still shows in every JMAP client's Archive. Sent mail
@@ -89,12 +90,12 @@ Same credentials, the public DAV worker. This is covered field-by-field in
 Calendar → **Settings → Accounts → Add Account… → Other CalDAV Account**
 (and Contacts → **Add CardDAV Account**):
 
-| field | value |
-|---|---|
-| User name | `you@example.com` |
-| Password | the `bm_…` token (`calendar` / `contacts` scope) |
-| Server address | `dav.<your-domain>` |
-| Server path (Advanced) | `/dav/` · Port 443, SSL on |
+| field                  | value                                            |
+| ---------------------- | ------------------------------------------------ |
+| User name              | `you@example.com`                                |
+| Password               | the `bm_…` token (`calendar` / `contacts` scope) |
+| Server address         | `dav.<your-domain>`                              |
+| Server path (Advanced) | `/dav/` · Port 443, SSL on                       |
 
 Autodiscovery (`/.well-known/caldav`, `/.well-known/carddav`) is wired, so the
 hostname alone usually suffices. Recurring events carry RRULE/EXDATE + a
@@ -106,7 +107,7 @@ reverse reaches the Mac on its next poll). Idle polls are one O(1) PROPFIND.
 
 - **Mail won't connect** → popcorn must be reachable from the device
   (public host, or same tailnet). Check its port/TLS; `wrangler tail
-  bullmoose-jmap` shows the JMAP calls behind it.
+bullmoose-jmap` shows the JMAP calls behind it.
 - **Calendar/Contacts 401** → token lacks `calendar`/`contacts` or was
   revoked; mint a fresh one. Live log: `wrangler tail bullmoose-anglebrackets`.
 - **Wipe-and-resync** → remove the account on the device and re-add; the

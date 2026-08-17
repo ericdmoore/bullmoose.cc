@@ -164,7 +164,9 @@ describe("the mint", () => {
     const { w, db, seedInvocation } = world();
     seedInvocation("inv_1");
     w.db.sqlite.prepare(`UPDATE accounts SET deleted_at = 1 WHERE id = ?`).run(ACCOUNT);
-    expect(await issueInvocationToken(db, { invocationId: "inv_1", accountId: ACCOUNT })).toBeNull();
+    expect(
+      await issueInvocationToken(db, { invocationId: "inv_1", accountId: ACCOUNT }),
+    ).toBeNull();
     expect(w.db.count("agent_invocation_tokens")).toBe(0);
   });
 });

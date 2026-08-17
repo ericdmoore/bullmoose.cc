@@ -19,13 +19,13 @@ merged with GitGuardian red.
 ## Why this recurs
 
 GitGuardian's generic detector keys on **variable name plus value shape**: `const SECRET =`,
-`MASTER =`, `…token`. A test suite for a *credential vault* cannot avoid those identifiers —
+`MASTER =`, `…token`. A test suite for a _credential vault_ cannot avoid those identifiers —
 they are the subject matter.
 
 ## ⚠️ CORRECTION — the first version of this file recommended a fix that does not work
 
-This file originally said: *"Recommended: per-match ignores in `.gitguardian.yaml`
-(`secret.ignored-matches`, keyed by match hash)."* **That is wrong, and acting on it would
+This file originally said: _"Recommended: per-match ignores in `.gitguardian.yaml`
+(`secret.ignored-matches`, keyed by match hash)."_ **That is wrong, and acting on it would
 have wasted an afternoon.**
 
 `.gitguardian.yaml` is read **only by the `ggshield` CLI**. The red check here comes from the
@@ -40,17 +40,17 @@ is one-directional — dashboard → CLI, never the reverse:
 There is no ggshield step in any workflow in `.github/workflows/`, so **100% of the signal is
 the App** and no committed file can change it. Two further corrections to the original: the
 config keys use underscores (`ignored_matches`, not `ignored-matches`), and `match` accepts
-the literal string *or* a SHA256 — hashing was never required.
+the literal string _or_ a SHA256 — hashing was never required.
 
 ## What actually fixes it — all dashboard, Settings → Secrets → exclusion rules
 
 1. **Secret pattern exclusions** scoped to this repo. Preferred, because it stays narrow: a
-   *real* leaked key in a test file still alerts. Applies retroactively to open incidents.
+   _real_ leaked key in a test file still alerts. Applies retroactively to open incidents.
    - `bm-canary-DO-NOT-USE-[A-Za-z0-9._-]+`
    - `test-vault-master-key-[0-9a-f]+`
    - `internal-test-token`
-2. **Ignore the open incidents** with reason **"this is test credential"** — *Ignore*, not
-   *Resolve*. Resolved incidents regress and reopen on a new occurrence; ignored ones do not,
+2. **Ignore the open incidents** with reason **"this is test credential"** — _Ignore_, not
+   _Resolve_. Resolved incidents regress and reopen on a new occurrence; ignored ones do not,
    and closed incidents "will no longer be raised by GitHub checkruns."
 3. Only if 1 proves insufficient: filepath exclusions `**/*.test.ts`, `**/test-fakes/**`.
    This is the tempting and dangerous one — a real key pasted into a test is the likeliest

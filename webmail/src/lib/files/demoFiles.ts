@@ -60,7 +60,15 @@ const OWNER_RIGHTS = {
   mayShare: true,
 } as const;
 
-const CREATE_REJECTED = ["id", "myRights", "shareWith", "created", "modified", "accessed", "changed"];
+const CREATE_REJECTED = [
+  "id",
+  "myRights",
+  "shareWith",
+  "created",
+  "modified",
+  "accessed",
+  "changed",
+];
 const PATCH_REJECTED = new Set([
   "id",
   "nodeType",
@@ -184,7 +192,10 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
   const bump = (): string => String(++counter);
 
   const forbidden = (scope: string) =>
-    ["error", { type: "forbidden", description: `token lacks the "${scope}" scope` }] as ReturnType<MethodHandler>;
+    [
+      "error",
+      { type: "forbidden", description: `token lacks the "${scope}" scope` },
+    ] as ReturnType<MethodHandler>;
 
   const byId = (id: string): FileNode | undefined => nodes.find((n) => n.id === id);
   const iso = (ms: number): string => new Date(ms).toISOString();
@@ -203,10 +214,18 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
     return out;
   };
 
-  const nameTaken = (parentId: string | null, name: string, ci: boolean, exclude?: string): boolean => {
+  const nameTaken = (
+    parentId: string | null,
+    name: string,
+    ci: boolean,
+    exclude?: string,
+  ): boolean => {
     const norm = ci ? name.toLowerCase() : name;
     return nodes.some(
-      (n) => n.id !== exclude && n.parentId === parentId && (ci ? n.name.toLowerCase() : n.name) === norm,
+      (n) =>
+        n.id !== exclude &&
+        n.parentId === parentId &&
+        (ci ? n.name.toLowerCase() : n.name) === norm,
     );
   };
 
@@ -267,7 +286,8 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
       const filter = (args.filter ?? null) as Record<string, unknown> | null;
       let rows = nodes.slice();
       if (filter) {
-        if ("parentId" in filter) rows = rows.filter((n) => n.parentId === (filter.parentId as string | null));
+        if ("parentId" in filter)
+          rows = rows.filter((n) => n.parentId === (filter.parentId as string | null));
         if ("ancestorId" in filter) {
           const within = new Set(descendants(filter.ancestorId as string).map((n) => n.id));
           rows = rows.filter((n) => within.has(n.id));
@@ -275,11 +295,12 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
         if ("nodeType" in filter) rows = rows.filter((n) => n.nodeType === filter.nodeType);
         if ("role" in filter) rows = rows.filter((n) => n.role === filter.role);
         if ("name" in filter) rows = rows.filter((n) => n.name === filter.name);
-        if ("hasBlobId" in filter) rows = rows.filter((n) => (n.blobId !== null) === filter.hasBlobId);
+        if ("hasBlobId" in filter)
+          rows = rows.filter((n) => (n.blobId !== null) === filter.hasBlobId);
       }
-      const sort = (args.sort as Array<{ property: string; isAscending?: boolean }> | undefined) ?? [
-        { property: "name", isAscending: true },
-      ];
+      const sort = (args.sort as
+        | Array<{ property: string; isAscending?: boolean }>
+        | undefined) ?? [{ property: "name", isAscending: true }];
       rows.sort((a, b) => {
         for (const s of sort) {
           const av = (a as unknown as Record<string, unknown>)[s.property] ?? 0;
@@ -339,11 +360,20 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
         const spec = rawSpec ?? {};
         const rejected = CREATE_REJECTED.find((k) => spec[k] !== undefined);
         if (rejected) {
-          notCreated[cid] = { type: "invalidProperties", description: `${rejected} is server-set`, properties: [rejected] };
+          notCreated[cid] = {
+            type: "invalidProperties",
+            description: `${rejected} is server-set`,
+            properties: [rejected],
+          };
           continue;
         }
         const name = spec.name;
-        if (typeof name !== "string" || name.length === 0 || name.length > MAX_NAME || name.includes("/")) {
+        if (
+          typeof name !== "string" ||
+          name.length === 0 ||
+          name.length > MAX_NAME ||
+          name.includes("/")
+        ) {
           notCreated[cid] = {
             type: "invalidProperties",
             description: `name must be a 1..${MAX_NAME}-char string without "/"`,
@@ -364,16 +394,28 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
         if (parentId !== null) {
           const parent = byId(parentId);
           if (!parent) {
-            notCreated[cid] = { type: "invalidProperties", description: "parent does not exist", properties: ["parentId"] };
+            notCreated[cid] = {
+              type: "invalidProperties",
+              description: "parent does not exist",
+              properties: ["parentId"],
+            };
             continue;
           }
           if (parent.nodeType !== "directory") {
-            notCreated[cid] = { type: "invalidProperties", description: "parent is not a directory", properties: ["parentId"] };
+            notCreated[cid] = {
+              type: "invalidProperties",
+              description: "parent is not a directory",
+              properties: ["parentId"],
+            };
             continue;
           }
         }
         if (nodeType === "file" && (typeof spec.blobId !== "string" || spec.blobId.length === 0)) {
-          notCreated[cid] = { type: "invalidProperties", description: "a file requires a blobId", properties: ["blobId"] };
+          notCreated[cid] = {
+            type: "invalidProperties",
+            description: "a file requires a blobId",
+            properties: ["blobId"],
+          };
           continue;
         }
         if (nodeType !== "file" && spec.blobId !== undefined && spec.blobId !== null) {
@@ -400,7 +442,12 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
           nodeType,
           blobId: nodeType === "file" ? (spec.blobId as string) : null,
           size: typeof spec.size === "number" ? spec.size : null,
-          type: typeof spec.type === "string" ? spec.type : nodeType === "file" ? "application/octet-stream" : null,
+          type:
+            typeof spec.type === "string"
+              ? spec.type
+              : nodeType === "file"
+                ? "application/octet-stream"
+                : null,
           created: at,
           modified: at,
           accessed: at,
@@ -437,14 +484,23 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
         }
         const bad = Object.keys(patch ?? {}).find((p) => PATCH_REJECTED.has(p) || p.includes("/"));
         if (bad) {
-          notUpdated[id] = { type: "invalidProperties", description: `${bad} cannot be set`, properties: [bad] };
+          notUpdated[id] = {
+            type: "invalidProperties",
+            description: `${bad} cannot be set`,
+            properties: [bad],
+          };
           continue;
         }
         const next: FileNode = { ...current };
         let refusal: Record<string, unknown> | undefined;
         for (const [path, value] of Object.entries(patch ?? {})) {
           if (path === "name") {
-            if (typeof value !== "string" || value.length === 0 || value.length > MAX_NAME || value.includes("/")) {
+            if (
+              typeof value !== "string" ||
+              value.length === 0 ||
+              value.length > MAX_NAME ||
+              value.includes("/")
+            ) {
               refusal = {
                 type: "invalidProperties",
                 description: `name must be a 1..${MAX_NAME}-char string without "/"`,
@@ -455,25 +511,45 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
             next.name = value;
           } else if (path === "parentId") {
             if (value !== null && typeof value !== "string") {
-              refusal = { type: "invalidProperties", description: "parentId must be an id or null", properties: ["parentId"] };
+              refusal = {
+                type: "invalidProperties",
+                description: "parentId must be an id or null",
+                properties: ["parentId"],
+              };
               break;
             }
             if (typeof value === "string") {
               const parent = byId(value);
               if (value === id) {
-                refusal = { type: "invalidProperties", description: "a node cannot be its own parent", properties: ["parentId"] };
+                refusal = {
+                  type: "invalidProperties",
+                  description: "a node cannot be its own parent",
+                  properties: ["parentId"],
+                };
                 break;
               }
               if (!parent) {
-                refusal = { type: "invalidProperties", description: "parent does not exist", properties: ["parentId"] };
+                refusal = {
+                  type: "invalidProperties",
+                  description: "parent does not exist",
+                  properties: ["parentId"],
+                };
                 break;
               }
               if (parent.nodeType !== "directory") {
-                refusal = { type: "invalidProperties", description: "parent is not a directory", properties: ["parentId"] };
+                refusal = {
+                  type: "invalidProperties",
+                  description: "parent is not a directory",
+                  properties: ["parentId"],
+                };
                 break;
               }
               if (wouldCycle(id, value)) {
-                refusal = { type: "invalidProperties", description: "move would create a cycle", properties: ["parentId"] };
+                refusal = {
+                  type: "invalidProperties",
+                  description: "move would create a cycle",
+                  properties: ["parentId"],
+                };
                 break;
               }
             }
@@ -484,12 +560,20 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
             next[path] = value === true;
           } else if (path === "blobId") {
             if (current.nodeType !== "file") {
-              refusal = { type: "invalidProperties", description: "only file nodes have a blob", properties: ["blobId"] };
+              refusal = {
+                type: "invalidProperties",
+                description: "only file nodes have a blob",
+                properties: ["blobId"],
+              };
               break;
             }
             next.blobId = value as string;
           } else {
-            refusal = { type: "invalidProperties", description: `unsupported patch path "${path}"`, properties: [path] };
+            refusal = {
+              type: "invalidProperties",
+              description: `unsupported patch path "${path}"`,
+              properties: [path],
+            };
             break;
           }
         }
@@ -521,7 +605,8 @@ export function createDemoFiles(opts: DemoFilesOptions = {}): DemoFilesBackend {
         if (kids.length > 0 && !removeChildren) {
           notDestroyed[id] = {
             type: "fileNodeHasChildren",
-            description: "directory is not empty; pass onDestroyRemoveChildren: true to remove it and its contents",
+            description:
+              "directory is not empty; pass onDestroyRemoveChildren: true to remove it and its contents",
           };
           continue;
         }

@@ -131,8 +131,16 @@ export const REJECT_REASONS: ReadonlyArray<{
   /** The categorically-separate hard negative — styled and worded apart. */
   severe?: boolean;
 }> = [
-  { reason: "wrongContent", label: "Wrong content", hint: "right action, badly done — trains the drafter, keeps the trigger" },
-  { reason: "wrongAction", label: "Wrong action", hint: "should not have been proposed at all — trains the classifier; rare by design" },
+  {
+    reason: "wrongContent",
+    label: "Wrong content",
+    hint: "right action, badly done — trains the drafter, keeps the trigger",
+  },
+  {
+    reason: "wrongAction",
+    label: "Wrong action",
+    hint: "should not have been proposed at all — trains the classifier; rare by design",
+  },
   {
     reason: "unsafe",
     label: "Unsafe — it leaked private information, or committed me to something",
@@ -250,10 +258,17 @@ export function summarizeProposal(p: ActionProposal): string {
       // here: approve releases, decline confirms, and neither is a no-op. The
       // senders are the evidence a human actually decides on, so the row shows
       // the first couple rather than making them open the payload.
-      const n = num(p.payload.heldCount) ?? (Array.isArray(p.payload.emailIds) ? p.payload.emailIds.length : null);
-      const msgs = Array.isArray(p.payload.messages) ? (p.payload.messages as Array<{ sender?: unknown }>) : [];
+      const n =
+        num(p.payload.heldCount) ??
+        (Array.isArray(p.payload.emailIds) ? p.payload.emailIds.length : null);
+      const msgs = Array.isArray(p.payload.messages)
+        ? (p.payload.messages as Array<{ sender?: unknown }>)
+        : [];
       const who = [...new Set(msgs.map((m) => s(m.sender)).filter(Boolean))];
-      const from = who.length > 0 ? ` from ${who.slice(0, 2).join(", ")}${who.length > 2 ? ` +${who.length - 2}` : ""}` : "";
+      const from =
+        who.length > 0
+          ? ` from ${who.slice(0, 2).join(", ")}${who.length > 2 ? ` +${who.length - 2}` : ""}`
+          : "";
       return `${n ?? "?"} held message${n === 1 ? "" : "s"}${from} — approve releases, decline confirms spam`;
     }
     case "watch-offer": {
@@ -275,7 +290,8 @@ export function summarizeProposal(p: ActionProposal): string {
       }
       const scope = s(p.payload.scope) || "access";
       const target = s(p.payload.target) || s(p.payload.realm) || p.subject.realm;
-      const days = typeof p.payload.durationDays === "number" ? ` for ${p.payload.durationDays} days` : "";
+      const days =
+        typeof p.payload.durationDays === "number" ? ` for ${p.payload.durationDays} days` : "";
       return `Requests ${scope} on ${target}${days}`;
     }
     default:

@@ -52,7 +52,10 @@ async function scaffold(): Promise<FakeWorker> {
 }
 
 /** Register the tenant's bouncer binding (accounts row + agent_bindings). */
-function seedBouncer(w: FakeWorker, opts: { name?: string; config?: Record<string, unknown> } = {}): void {
+function seedBouncer(
+  w: FakeWorker,
+  opts: { name?: string; config?: Record<string, unknown> } = {},
+): void {
   w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT });
   w.db.seed("agent_bindings", [
     {
@@ -133,7 +136,11 @@ describe("stage 3 — the account's stored sieve ruleset", () => {
   it("a stored reject rule fires: quarantined with stage 'sieve:<ruleId>'", async () => {
     const w = await scaffold();
     await putSieveRules(w.env.DB, ACCOUNT, [
-      { id: "no-winners", all: [{ kind: "contains", field: "subject", value: "winner" }], action: "reject" },
+      {
+        id: "no-winners",
+        all: [{ kind: "contains", field: "subject", value: "winner" }],
+        action: "reject",
+      },
     ]);
 
     const res = await inject(w, mime({ subject: "You are a WINNER!!!" }));
@@ -147,8 +154,10 @@ describe("stage 3 — the account's stored sieve ruleset", () => {
     ).toEqual([{ stage: "sieve:no-winners" }]);
     // Sieve rejects are EXPENSIVE-stage rejects: the graduation counter bumps.
     expect(
-      w.db.query<{ count: number }>(`SELECT count FROM deny_counters WHERE domain = ?`, "elsewhere.test")[0]
-        ?.count,
+      w.db.query<{ count: number }>(
+        `SELECT count FROM deny_counters WHERE domain = ?`,
+        "elsewhere.test",
+      )[0]?.count,
     ).toBe(1);
 
     // A non-matching message still flows.
@@ -160,8 +169,16 @@ describe("stage 3 — the account's stored sieve ruleset", () => {
   it("an explicit PASS rule short-circuits later reject rules (first match wins)", async () => {
     const w = await scaffold();
     await putSieveRules(w.env.DB, ACCOUNT, [
-      { id: "allow-sender", all: [{ kind: "glob", field: "from", value: "*@elsewhere.test" }], action: "pass" },
-      { id: "no-winners", all: [{ kind: "contains", field: "subject", value: "winner" }], action: "reject" },
+      {
+        id: "allow-sender",
+        all: [{ kind: "glob", field: "from", value: "*@elsewhere.test" }],
+        action: "pass",
+      },
+      {
+        id: "no-winners",
+        all: [{ kind: "contains", field: "subject", value: "winner" }],
+        action: "reject",
+      },
     ]);
     const res = await inject(w, mime({ subject: "winner winner" }));
     expect(res.quarantined).toBeUndefined();
@@ -187,8 +204,10 @@ describe("stage 4 — the account's trained Bayes state, two thresholds", () => 
     expect(res.quarantined).toMatch(/^bayes@/);
     expect(mailboxesOf(w, res.emailId!)).toEqual([roleMailboxId(w, QUARANTINE_ROLE)]);
     expect(
-      w.db.query<{ count: number }>(`SELECT count FROM deny_counters WHERE domain = ?`, "elsewhere.test")[0]
-        ?.count,
+      w.db.query<{ count: number }>(
+        `SELECT count FROM deny_counters WHERE domain = ?`,
+        "elsewhere.test",
+      )[0]?.count,
     ).toBe(1);
     expect(w.db.count("agent_invocations")).toBe(0); // judged spam never reaches the lobby
   });
@@ -231,7 +250,9 @@ describe("the mid-band (stage 5's doorway)", () => {
       `SELECT event, stage, email_id FROM quarantine_events WHERE account_id = ?`,
       ACCOUNT,
     );
-    expect(events).toEqual([{ event: "screened", stage: "bayes-mid@0.50", email_id: res.emailId! }]);
+    expect(events).toEqual([
+      { event: "screened", stage: "bayes-mid@0.50", email_id: res.emailId! },
+    ]);
 
     // Exactly ONE invocation — the classifier's, on the bouncer binding; the
     // mailbox-delivery binding (emily) gets nothing until the message is

@@ -101,7 +101,10 @@ export function isMember(group: Pick<ContactCard, "members">, uid: string): bool
  * (vCard permits a URI uid), and an unescaped one would silently address the
  * wrong path (`pointerToken`, form.ts).
  */
-export function addMemberPatch(group: Pick<ContactCard, "members" | "kind">, uid: string): CardPatch {
+export function addMemberPatch(
+  group: Pick<ContactCard, "members" | "kind">,
+  uid: string,
+): CardPatch {
   const existing = memberUids(group);
   if (existing.length === 0) {
     // RFC 9553 §2.1.5: a card with `members` MUST have `kind: "group"`, so a
@@ -134,9 +137,7 @@ export function groupCreateSpec(
   return {
     kind: GROUP_KIND,
     name: { full: name.trim() },
-    ...(uids.length > 0
-      ? { members: Object.fromEntries(uids.map((uid) => [uid, true])) }
-      : {}),
+    ...(uids.length > 0 ? { members: Object.fromEntries(uids.map((uid) => [uid, true])) } : {}),
     ...(bookId ? { addressBookIds: { [bookId]: true } } : {}),
   };
 }

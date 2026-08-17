@@ -74,7 +74,14 @@ const routeTarget = (db: FakeD1, localpart = "eric"): string | undefined =>
 
 const kvRoute = (kv: FakeKV, localpart = "eric") => {
   const raw = kv.store.get(`route:${DOMAIN}:${localpart}`)?.value;
-  return raw ? (JSON.parse(raw) as { kind: string; accountId: string; tenantId: string; forwardTo?: string[] }) : undefined;
+  return raw
+    ? (JSON.parse(raw) as {
+        kind: string;
+        accountId: string;
+        tenantId: string;
+        forwardTo?: string[];
+      })
+    : undefined;
 };
 
 describe("POST /accounts — the address is unique as a delivery route", () => {
@@ -92,7 +99,9 @@ describe("POST /accounts — the address is unique as a delivery route", () => {
     // under an invented `role: 'quarantine'`. Held mail lives in the
     // REGISTERED junk role now, so a standards client handles it as spam.
     expect(h.db.count("mailboxes", "account_id = ?", body.accountId)).toBe(6);
-    expect(h.db.count("mailboxes", "account_id = ? AND role = 'quarantine'", body.accountId)).toBe(0);
+    expect(h.db.count("mailboxes", "account_id = ? AND role = 'quarantine'", body.accountId)).toBe(
+      0,
+    );
 
     // The seed and the mailstore's constants must agree — provision spells the
     // pair out rather than importing it (that dependency would pull the whole
@@ -230,7 +239,12 @@ describe("POST /accounts — the address is unique as a delivery route", () => {
     const first = (await (await create(h)).json()) as { accountId: string };
     // A second, unrelated login that the retry tries to attach the address to.
     h.db.seed("principals", [
-      { id: "p_someone_else", tenant_id: TENANT, login_email: "someone@bullmoose.cc", created_at: 1 },
+      {
+        id: "p_someone_else",
+        tenant_id: TENANT,
+        login_email: "someone@bullmoose.cc",
+        created_at: 1,
+      },
     ]);
 
     const res = await create(h, { principalEmail: "someone@bullmoose.cc" });
@@ -269,7 +283,11 @@ describe("POST /accounts — the ingest fast-path key stays consistent with `rou
       created: false,
       repairedRouteKey: "missing",
     });
-    expect(kvRoute(h.kv)).toEqual({ kind: "mailbox", accountId: first.accountId, tenantId: TENANT });
+    expect(kvRoute(h.kv)).toEqual({
+      kind: "mailbox",
+      accountId: first.accountId,
+      tenantId: TENANT,
+    });
   });
 
   it("leaves an already-correct key untouched, so a hand-set forwardTo survives the retry", async () => {
@@ -306,7 +324,9 @@ describe("POST /accounts — the ingest fast-path key stays consistent with `rou
     );
 
     const res = await create(h);
-    expect((await res.json()) as Record<string, unknown>).toMatchObject({ repairedRouteKey: "stale" });
+    expect((await res.json()) as Record<string, unknown>).toMatchObject({
+      repairedRouteKey: "stale",
+    });
     expect(kvRoute(h.kv)).toEqual({
       kind: "mailbox",
       accountId: first.accountId, // D1 is the durable record; KV follows it.
@@ -347,8 +367,7 @@ describe("POST /accounts — the primary key is the backstop the pre-check canno
         },
         run: () => stmt.run(),
         all: () => stmt.all(),
-        raw: (o?: { columnNames?: boolean }) =>
-          (stmt.raw as (x?: unknown) => Promise<unknown>)(o),
+        raw: (o?: { columnNames?: boolean }) => (stmt.raw as (x?: unknown) => Promise<unknown>)(o),
       }) as unknown as D1PreparedStatement;
 
     const realPrepare = h.db.prepare.bind(h.db);

@@ -22,7 +22,10 @@ import { MIGRATIONS } from "./migrations.mjs";
  */
 
 const ROOT = resolve(import.meta.dirname, "..");
-const SCHEMAS = ["packages/mailstore/sql/data-plane.sql", "packages/mailstore/sql/control-plane.sql"];
+const SCHEMAS = [
+  "packages/mailstore/sql/data-plane.sql",
+  "packages/mailstore/sql/control-plane.sql",
+];
 
 /** A fresh database with the current schema, the way bootstrap `schemas` builds it. */
 function freshDb(): DatabaseSync {
@@ -128,7 +131,9 @@ describe("infra/migrations — the DDL a schema re-run cannot perform", () => {
     // (jobs-table, via jobBudgetExhaustedSql) — a worker deployed against a
     // database missing either fails every claim, not one route.
     // Naming them in data keeps the runbook and the runner from drifting apart.
-    const blockers = MIGRATIONS.filter((m) => m.blocks === "deploy").map((m) => m.id).sort();
+    const blockers = MIGRATIONS.filter((m) => m.blocks === "deploy")
+      .map((m) => m.id)
+      .sort();
     expect(blockers).toEqual([
       "accounts-deleted-at",
       "address-books-write-policy",

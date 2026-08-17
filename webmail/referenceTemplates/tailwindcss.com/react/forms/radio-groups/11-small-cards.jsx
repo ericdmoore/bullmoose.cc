@@ -1,11 +1,11 @@
 const memoryOptions = [
-  { id: '4gb', name: '4 GB', inStock: true },
-  { id: '8gb', name: '8 GB', inStock: true },
-  { id: '16gb', name: '16 GB', inStock: true },
-  { id: '32gb', name: '32 GB', inStock: true },
-  { id: '64gb', name: '64 GB', inStock: true },
-  { id: '128gb', name: '128 GB', inStock: false },
-]
+  { id: "4gb", name: "4 GB", inStock: true },
+  { id: "8gb", name: "8 GB", inStock: true },
+  { id: "16gb", name: "16 GB", inStock: true },
+  { id: "32gb", name: "32 GB", inStock: true },
+  { id: "64gb", name: "64 GB", inStock: true },
+  { id: "128gb", name: "128 GB", inStock: false },
+];
 
 export default function Example() {
   return (
@@ -41,5 +41,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  )
+  );
 }

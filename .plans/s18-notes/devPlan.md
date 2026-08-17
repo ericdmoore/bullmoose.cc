@@ -2,36 +2,36 @@
 
 > Promotes the design stub (`readme.md`, 2026-08-13) into a buildable plan, and reconciles it
 > with the conception s20 T4 grew independently. Written 2026-08-17; **revised the same day**
-> after Eric read the first cut and said the two things sound like *different types of
-> entities* — which they are. This plan builds two.
+> after Eric read the first cut and said the two things sound like _different types of
+> entities_ — which they are. This plan builds two.
 
 ## The decision: two entities (resolved 2026-08-17)
 
 The first cut of this plan tried to make one entity with nullable columns carry both "a private
 note a human writes" and "an anchored margin-comment an agent makes about your mail." That was
 the **exact shortcut the readme §1 warns against** — "a draft is just a note that's never
-sent" — one level up: *these are shaped similarly, so make them one.* Applying the readme's own
-discriminator (**does it have its own lifecycle and query needs?**) not against *Email* but
-against *each other*, they fail it — so they are two nouns, not one wearing a trench coat.
+sent" — one level up: _these are shaped similarly, so make them one._ Applying the readme's own
+discriminator (**does it have its own lifecycle and query needs?**) not against _Email_ but
+against _each other_, they fail it — so they are two nouns, not one wearing a trench coat.
 
-| | **Note** | **Annotation** |
-|---|---|---|
-| what it *is* | a document **you author** | a **claim about your mail** you adjudicate |
-| anchor | **none** — it stands alone | **always** `{realm, objectId, span?}` |
-| carries | body, mentions | a **class**, a **confidence**, a **status** with a truth-value |
-| verbs | write, edit, @mention, share, federate | confirm, **correct**, dismiss, resolve |
-| author | a human | an **agent** (extraction) or a human (filing one) |
-| the loop | edited forever | correction → training (labeled negatives, s12 Bayes shape) |
+|              | **Note**                               | **Annotation**                                                 |
+| ------------ | -------------------------------------- | -------------------------------------------------------------- |
+| what it _is_ | a document **you author**              | a **claim about your mail** you adjudicate                     |
+| anchor       | **none** — it stands alone             | **always** `{realm, objectId, span?}`                          |
+| carries      | body, mentions                         | a **class**, a **confidence**, a **status** with a truth-value |
+| verbs        | write, edit, @mention, share, federate | confirm, **correct**, dismiss, resolve                         |
+| author       | a human                                | an **agent** (extraction) or a human (filing one)              |
+| the loop     | edited forever                         | correction → training (labeled negatives, s12 Bayes shape)     |
 
-The tell is the verbs. You don't *edit* the agent's claim that you promised Bob the calc by
+The tell is the verbs. You don't _edit_ the agent's claim that you promised Bob the calc by
 Friday — you **confirm it or say "not a commitment,"** and that correction is training data. A
 Note you own; an Annotation you judge. It is also what Eric's **medium.com** metaphor already
-encodes: a Medium *post* and a *highlight-comment on someone's text* are two objects with two
+encodes: a Medium _post_ and a _highlight-comment on someone's text_ are two objects with two
 UIs. The metaphor separated them; so does this plan.
 
-**The agent side does NOT fracture further** (resolved with Eric): a **Commitment** is *an
-Annotation with `class: commitment`*, not its own entity. `commitment | decision | task` differ
-only in *which view queries them*, and a view is a query, not a table. If commitments later grow
+**The agent side does NOT fracture further** (resolved with Eric): a **Commitment** is _an
+Annotation with `class: commitment`_, not its own entity. `commitment | decision | task` differ
+only in _which view queries them_, and a view is a query, not a table. If commitments later grow
 verbs of their own (snooze, mark-kept-vs-broken beyond the shared `status`), that is the moment
 to split them out — not before.
 
@@ -48,13 +48,13 @@ to split them out — not before.
 
 ## What already exists (so the plan doesn't re-derive it)
 
-- **The agent-offered Watch** (s20 T1↔T4, shipped) delivered T4's *behaviour* — the agent
+- **The agent-offered Watch** (s20 T1↔T4, shipped) delivered T4's _behaviour_ — the agent
   notices a waiting-on and offers — as a **proposal**, deliberately without this substrate.
   When **A2** below lands, that detector's output becomes a `task`-class **Annotation** anchored
   to the sent message, whose offered action is the existing `watch-offer` proposal. The proposal
-  is the *action*; the Annotation is the *commentary that faces it*. They compose.
+  is the _action_; the Annotation is the _commentary that faces it_. They compose.
 - **`trigger_on`** is a live vocabulary (`action-button | mailbox-delivery | rule-hook |
-  schedule`); `mention` is the fifth (readme §2). Only `mailbox-delivery` is wired today, so
+schedule`); `mention` is the fifth (readme §2). Only `mailbox-delivery` is wired today, so
   `mention` dispatch is net-new (**N2**).
 - **s11 T5 is starved for extraction cost history** — **A2** records cost per extraction, the
   same data that lets the Watch follow-up bodies stop being deferred.
@@ -63,9 +63,9 @@ to split them out — not before.
 
 ---
 
-## The Annotation track · *higher value — it composes with shipped work and feeds s11 T5*
+## The Annotation track · _higher value — it composes with shipped work and feeds s11 T5_
 
-### A1 — The Annotation entity + `Annotation/*` JMAP · *the substrate*
+### A1 — The Annotation entity + `Annotation/*` JMAP · _the substrate_
 
 **Files:** `packages/mailstore/sql/control-plane.sql` (new `annotations` table),
 `services/jmap/src/methods/annotation.ts` (+ registry), `infra/migrations.mjs` (non-blocking,
@@ -97,9 +97,9 @@ signal, so history survives (the s12 rescue→Bayes correction shape). Changes c
 
 **Done when:** an agent (via the bridge) writes an anchored, classed annotation at a confidence;
 a human corrects it in one write that records the negative without erasing the claim; and an
-`anchor`-less annotation is *refused*.
+`anchor`-less annotation is _refused_.
 
-### A2 — The extraction pass · *where the Watch detector graduates, and s11 T5 gets fed* — LANDED (2026-08-17)
+### A2 — The extraction pass · _where the Watch detector graduates, and s11 T5 gets fed_ — LANDED (2026-08-17)
 
 > **Built as a PIPELINE, not a cron sweep** (`services/agent/src/extract.ts`, `pipeline: "extract"`).
 > The plan first said "a cron pass beside sweepWaitingOn"; a pipeline is better, and it is the
@@ -130,13 +130,13 @@ that annotation's offered action rather than a free-floating queue row.
 the sentence, at a stated confidence, correctable in one click, and the shipped waiting-on
 detector emits its `task` annotation instead of a bare proposal.
 
-### A3 — Margin rendering · *the medium.com surface*
+### A3 — Margin rendering · _the medium.com surface_
 
 **Files:** `webmail/src/components/MessageView.tsx` (a gutter/rail — net-new; recon confirmed
 none exists), a `lib/annotations/` presentation module, an `Annotation` island.
 
 Anchors bind to the **original** message-id + span; mail immutability is what makes anchoring
-tractable — the same promised sentence in every quoted reply renders a *reference*, never a
+tractable — the same promised sentence in every quoted reply renders a _reference_, never a
 duplicate. Collapsed gutter markers by default; per-class visibility dials; a dismissal feeds
 repetition→policy so a class the human keeps waving off quiets itself (T4). **The soft register
 is the epistemics** — confidence is voice ("sounds like a thing to remember"), not a number on
@@ -145,12 +145,12 @@ screen; a NULL rationale renders **"Why: not stated,"** never invented.
 **Done when:** reading a message shows its annotations in the margin, class-styled, each with a
 one-click correct/dismiss that writes the A1 negative.
 
-### A4 — The two views · *read models over annotations, uncertainty-first*
+### A4 — The two views · _read models over annotations, uncertainty-first_
 
 **Files:** `webmail/src/lib/home/` (the brief/home panels), a person-panel beside the open
 message.
 
-Two views, the two questions a chief of staff is *for*: **what am I waiting on?** and **what did
+Two views, the two questions a chief of staff is _for_: **what am I waiting on?** and **what did
 I promise?** Both are **queries over `annotations`** (by `class`, `status`, `anchor.objectId`) —
 time-indexed (the s07 T0 brief), person-indexed (beside Bob's mail: "you told him $750; his load
 calc is overdue"). Every row carries `status`, evidence objectIds, and confidence; the see-all
@@ -161,7 +161,7 @@ person-panel renders the commitments and waits involving whoever's message is op
 
 ---
 
-## The Note track · *the readme's original arc — a private document that federates*
+## The Note track · _the readme's original arc — a private document that federates_
 
 ### N1 — The Note entity + `Note/*` JMAP
 
@@ -177,7 +177,7 @@ precisely the `quarantine`-role mistake s12 spent a day undoing (readme §1).
 
 **Done when:** a human writes a standalone note and edits it; it never appears in a mail folder.
 
-### N2 — The `@mention` mechanic · *`@` as the fifth trigger*
+### N2 — The `@mention` mechanic · _`@` as the fifth trigger_
 
 **Files:** the shared `@`-token parser, `mention` as the fifth `trigger_on`, dispatch in the
 agent worker.
@@ -192,7 +192,7 @@ dispatch).
 **Done when:** `@allen` in a note fires allen's binding once; `@remind by Friday` in a margin
 annotation on a thread arms a Watch citing it.
 
-### N3 — Federation · *mentions travel as email, because SMTP is the protocol we speak*
+### N3 — Federation · _mentions travel as email, because SMTP is the protocol we speak_
 
 **Files:** outbound mention-stamping (the s12 outbound-stamping pattern), inbound
 materialisation, the reply-above-the-line trimmer.
@@ -219,7 +219,7 @@ N1 note ─────────── N2 mentions ───── N3 federat
 ```
 
 The two tracks are **independent after their substrates**. Lead with **A1→A2**: A2 graduates the
-shipped waiting-on detector into annotations *and* unblocks s11 T5's cost history — the highest
+shipped waiting-on detector into annotations _and_ unblocks s11 T5's cost history — the highest
 leverage in the plan. A3/A4 are the rendering and the queries on top. The N-track is s18's
 original heart and is fully deferrable — a single household is completely served by the A-track
 without ever federating.
@@ -231,12 +231,12 @@ without ever federating.
 2. ~~Does the agent side fracture by class?~~ **RESOLVED: no** — a Commitment is an Annotation
    with `class: commitment`. Split only if commitment-specific verbs appear.
 3. **Class vocabulary, and who may set it** — is `commitment | decision | task` closed, and may a
-   human *file* one? *Recommendation: closed for v1; human-fileable — a human filing "this is a
-   commitment" is the same correction loop, positive instead of negative.*
-4. **Inline vs blob body** (readme open-Q1). *Recommendation: inline first; a note that needs R2
-   is a document, and `/files` already is one.*
-5. **Group mentions** (readme open-Q2). *Recommendation: forbid until the expansion is displayed
-   — the s10 T1 transitive-widening hazard.*
+   human _file_ one? _Recommendation: closed for v1; human-fileable — a human filing "this is a
+   commitment" is the same correction loop, positive instead of negative._
+4. **Inline vs blob body** (readme open-Q1). _Recommendation: inline first; a note that needs R2
+   is a document, and `/files` already is one._
+5. **Group mentions** (readme open-Q2). _Recommendation: forbid until the expansion is displayed
+   — the s10 T1 transitive-widening hazard._
 
 ## Out of scope
 

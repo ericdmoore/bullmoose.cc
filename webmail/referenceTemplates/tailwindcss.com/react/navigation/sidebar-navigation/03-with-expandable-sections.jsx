@@ -1,34 +1,34 @@
-import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/react'
-import { ChevronRightIcon } from '@heroicons/react/20/solid'
+import { Disclosure, DisclosureButton, DisclosurePanel } from "@headlessui/react";
+import { ChevronRightIcon } from "@heroicons/react/20/solid";
 
 const navigation = [
-  { name: 'Dashboard', href: '#', current: true },
+  { name: "Dashboard", href: "#", current: true },
   {
-    name: 'Teams',
+    name: "Teams",
     current: false,
     children: [
-      { name: 'Engineering', href: '#' },
-      { name: 'Human Resources', href: '#' },
-      { name: 'Customer Success', href: '#' },
+      { name: "Engineering", href: "#" },
+      { name: "Human Resources", href: "#" },
+      { name: "Customer Success", href: "#" },
     ],
   },
   {
-    name: 'Projects',
+    name: "Projects",
     current: false,
     children: [
-      { name: 'GraphQL API', href: '#' },
-      { name: 'iOS App', href: '#' },
-      { name: 'Android App', href: '#' },
-      { name: 'New Customer Portal', href: '#' },
+      { name: "GraphQL API", href: "#" },
+      { name: "iOS App", href: "#" },
+      { name: "Android App", href: "#" },
+      { name: "New Customer Portal", href: "#" },
     ],
   },
-  { name: 'Calendar', href: '#', current: false },
-  { name: 'Documents', href: '#', current: false },
-  { name: 'Reports', href: '#', current: false },
-]
+  { name: "Calendar", href: "#", current: false },
+  { name: "Documents", href: "#", current: false },
+  { name: "Reports", href: "#", current: false },
+];
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -56,8 +56,10 @@ export default function Example() {
                     <a
                       href={item.href}
                       className={classNames(
-                        item.current ? 'bg-gray-50 dark:bg-white/5' : 'hover:bg-gray-50 dark:hover:bg-white/5',
-                        'block rounded-md py-2 pr-2 pl-10 text-sm/6 font-semibold text-gray-700 dark:text-gray-400',
+                        item.current
+                          ? "bg-gray-50 dark:bg-white/5"
+                          : "hover:bg-gray-50 dark:hover:bg-white/5",
+                        "block rounded-md py-2 pr-2 pl-10 text-sm/6 font-semibold text-gray-700 dark:text-gray-400",
                       )}
                     >
                       {item.name}
@@ -66,8 +68,10 @@ export default function Example() {
                     <Disclosure as="div">
                       <DisclosureButton
                         className={classNames(
-                          item.current ? 'bg-gray-50 dark:bg-white/5' : 'hover:bg-gray-50 dark:hover:bg-white/5',
-                          'group flex w-full items-center gap-x-3 rounded-md p-2 text-left text-sm/6 font-semibold text-gray-700 dark:text-gray-400',
+                          item.current
+                            ? "bg-gray-50 dark:bg-white/5"
+                            : "hover:bg-gray-50 dark:hover:bg-white/5",
+                          "group flex w-full items-center gap-x-3 rounded-md p-2 text-left text-sm/6 font-semibold text-gray-700 dark:text-gray-400",
                         )}
                       >
                         <ChevronRightIcon
@@ -84,9 +88,9 @@ export default function Example() {
                               href={subItem.href}
                               className={classNames(
                                 subItem.current
-                                  ? 'bg-gray-50 dark:bg-white/5'
-                                  : 'hover:bg-gray-50 dark:hover:bg-white/5',
-                                'block rounded-md py-2 pr-2 pl-9 text-sm/6 text-gray-700 dark:text-gray-400',
+                                  ? "bg-gray-50 dark:bg-white/5"
+                                  : "hover:bg-gray-50 dark:hover:bg-white/5",
+                                "block rounded-md py-2 pr-2 pl-9 text-sm/6 text-gray-700 dark:text-gray-400",
                               )}
                             >
                               {subItem.name}
@@ -117,5 +121,5 @@ export default function Example() {
         </ul>
       </nav>
     </div>
-  )
+  );
 }

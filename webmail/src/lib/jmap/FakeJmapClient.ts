@@ -169,10 +169,7 @@ export class FakeJmapClient implements JmapClient {
     return responses;
   }
 
-  async requestOne(
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+  async requestOne(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const [resp] = await this.request([[name, args, "c0"]]);
     if (!resp) throw new JmapRequestError(`no response for ${name}`);
     if (resp[0] === "error") {

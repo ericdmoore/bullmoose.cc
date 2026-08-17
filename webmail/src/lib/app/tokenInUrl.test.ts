@@ -120,10 +120,7 @@ describe("no code path puts a token in a URL", () => {
   }
 
   it("the door's field is unnamed, and its submit is prevented", () => {
-    const door = readFileSync(
-      fileURLToPath(new URL("components/LoginForm.tsx", SRC)),
-      "utf8",
-    );
+    const door = readFileSync(fileURLToPath(new URL("components/LoginForm.tsx", SRC)), "utf8");
     expect(door).toMatch(/preventDefault/);
     // No `name` means the browser has nothing to serialize even if the submit
     // were ever allowed to happen — the third of three overlapping guards.

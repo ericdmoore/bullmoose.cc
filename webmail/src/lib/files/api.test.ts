@@ -38,7 +38,11 @@ class RecordingFake extends FakeJmapClient {
     return super.request(calls);
   }
 
-  override async upload(accountId: Id, body: Blob | Uint8Array, type: string): Promise<UploadResult> {
+  override async upload(
+    accountId: Id,
+    body: Blob | Uint8Array,
+    type: string,
+  ): Promise<UploadResult> {
     this.log.push("upload");
     if (this.uploadError) throw this.uploadError;
     return super.upload(accountId, body, type);
@@ -233,7 +237,9 @@ describe("createFolder", () => {
 
   it("refuses a name with a slash, and one over 255 characters, without asking", async () => {
     const { client } = harness();
-    expect((await createFolder(client, ACCOUNT, null, "a/b")).error?.type).toBe("invalidProperties");
+    expect((await createFolder(client, ACCOUNT, null, "a/b")).error?.type).toBe(
+      "invalidProperties",
+    );
     expect((await createFolder(client, ACCOUNT, null, "x".repeat(256))).error?.type).toBe(
       "invalidProperties",
     );
@@ -253,7 +259,10 @@ describe("createFolder", () => {
     expect(result.id).toBeUndefined();
     expect(result.error?.type).toBe("alreadyExists");
     expect(backend.nodes).toHaveLength(before);
-    const sentence = describeSetError(result.error!, backend.nodes.find((n) => n.name === "Projects")!);
+    const sentence = describeSetError(
+      result.error!,
+      backend.nodes.find((n) => n.name === "Projects")!,
+    );
     expect(sentence).toMatch(/already something called “Projects” here/);
   });
 
@@ -440,9 +449,12 @@ describe("renameNode / moveNode / destroyNode", () => {
     const refused = await destroyNode(client, ACCOUNT, "fn-projects");
     expect(refused.error?.type).toBe("fileNodeHasChildren");
     expect(backend.nodes.some((n) => n.id === "fn-projects")).toBe(true);
-    expect(describeSetError(refused.error!, backend.nodes.find((n) => n.id === "fn-projects")!)).toMatch(
-      /not empty/,
-    );
+    expect(
+      describeSetError(
+        refused.error!,
+        backend.nodes.find((n) => n.id === "fn-projects")!,
+      ),
+    ).toMatch(/not empty/);
 
     const done = await destroyNode(client, ACCOUNT, "fn-projects", true);
     expect(done.error).toBeUndefined();

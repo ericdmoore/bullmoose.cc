@@ -148,9 +148,15 @@ describe("the drain stamps invocation cost, frozen at capture", () => {
   });
 
   it("records an honest 0 for a free workers-ai run — not NULL", async () => {
-    const s = await scaffold({ provider: "workers-ai", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" });
+    const s = await scaffold({
+      provider: "workers-ai",
+      model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    });
     s.w.env.AI = {
-      run: async () => ({ response: "sure thing", usage: { prompt_tokens: 9, completion_tokens: 4 } }),
+      run: async () => ({
+        response: "sure thing",
+        usage: { prompt_tokens: 9, completion_tokens: 4 },
+      }),
     } as unknown as Ai;
 
     expect((await s.drain()).handled).toBe(1);

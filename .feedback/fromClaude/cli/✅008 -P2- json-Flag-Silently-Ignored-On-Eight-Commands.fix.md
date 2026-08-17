@@ -10,9 +10,9 @@ avoids touching the same 20 files twice.
 ## Two acceptable end states — pick one and make it uniform
 
 1. **Implement `--json` everywhere.** Every command emits a JSON object (or NDJSON stream) when
-   asked. Most useful for the agent audience, and the natural reading of a *global* flag.
+   asked. Most useful for the agent audience, and the natural reading of a _global_ flag.
 2. **Mark support per command in the spec.** `help.ts`'s `COMMANDS` entries gain a `json: true|false`
-   field, surfaced in `help --json` and rendered in `docs/cli.md`. Then an agent can *discover* what
+   field, surfaced in `help --json` and rendered in `docs/cli.md`. Then an agent can _discover_ what
    is supported instead of guessing.
 
 **(1) is the right target; (2) is the honest interim** and is worth doing regardless, because the

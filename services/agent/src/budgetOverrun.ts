@@ -194,8 +194,7 @@ async function proposeOne(
 ): Promise<boolean> {
   // ---- pass 2: the exact window, and the numbers -------------------------
   const windowMs = await bindingEscalationWindowMs(env.DB, c.account_id, c.binding_id);
-  const strandedSql =
-    `FROM agent_invocations inv
+  const strandedSql = `FROM agent_invocations inv
       WHERE inv.account_id = ? AND inv.binding_id = ? AND inv.status = 'pending'
         AND ${notPinnedSql("inv")}
         AND ${claimFitSql("inv")}
@@ -383,7 +382,12 @@ async function proposeOne(
   );
 
   await commitChanges(env.ACCOUNT_DO, c.account_id, [
-    { collection: "AgentInvocation", created: [carrierId], updated: [representative.id], destroyed: [] },
+    {
+      collection: "AgentInvocation",
+      created: [carrierId],
+      updated: [representative.id],
+      destroyed: [],
+    },
   ]);
 
   console.warn(

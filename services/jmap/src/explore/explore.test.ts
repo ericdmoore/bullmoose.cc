@@ -1,16 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mintExploreCookie } from "./cookie";
 import { TYPES, TYPE_NAMES } from "./types";
-import {
-  ALLEN,
-  COOKIE_KEY,
-  EMAIL_COUNT,
-  ERIC,
-  EXPLORE_HOST,
-  ZED,
-  harness,
-  ids,
-} from "./harness";
+import { ALLEN, COOKIE_KEY, EMAIL_COUNT, ERIC, EXPLORE_HOST, ZED, harness, ids } from "./harness";
 
 /**
  * s21 — the explorer, driven end to end through `worker.fetch`.
@@ -44,7 +35,11 @@ describe("the grammar", () => {
     const body = await h.json<{
       _self: string;
       _meta: { principal: string; readOnly: boolean; types: string[] };
-      accounts: Array<{ accountId: string; via: string; collections: Record<string, { href: string }> }>;
+      accounts: Array<{
+        accountId: string;
+        via: string;
+        collections: Record<string, { href: string }>;
+      }>;
     }>(res);
 
     expect(body._self).toBe(`https://${EXPLORE_HOST}/`);
@@ -227,7 +222,11 @@ describe("_links: a rendering of ids the payload already carries", () => {
       // and through an Email's `_links.thread` for the one that has none.
       const objects: Array<Record<string, unknown>> = spec.listable
         ? (await h.json<{ list: Array<Record<string, unknown>> }>(await h.explore(`/${type}`))).list
-        : [await h.json<Record<string, unknown>>(await h.explore(`/Thread/${ids.thread(ERIC, 1)}`))];
+        : [
+            await h.json<Record<string, unknown>>(
+              await h.explore(`/Thread/${ids.thread(ERIC, 1)}`),
+            ),
+          ];
 
       expect(objects.length, `${type} seeded nothing to walk`).toBeGreaterThan(0);
 
@@ -311,7 +310,9 @@ describe("isolation: another account, another tenant", () => {
         if (spec.listable) {
           const res = await h.explore(`/${type}?accountId=${other}`);
           expect(res.status, `${type} list leaked ${other}`).toBe(404);
-          expect((await h.json<{ error: { type: string } }>(res)).error.type).toBe("accountNotFound");
+          expect((await h.json<{ error: { type: string } }>(res)).error.type).toBe(
+            "accountNotFound",
+          );
         }
         const one = await h.explore(`/${type}/anything?accountId=${other}`);
         expect(one.status, `${type} object leaked ${other}`).toBe(404);
@@ -384,9 +385,9 @@ describe("a missing scope refuses exactly as JMAP would", () => {
         methodCalls: [["Email/get", { accountId: ERIC, ids: [ids.email(ERIC, 1)] }, "c0"]],
       }),
     });
-    const jmapBody = await h.json<{ methodResponses: Array<[string, { type: string; description: string }]> }>(
-      viaJmap,
-    );
+    const jmapBody = await h.json<{
+      methodResponses: Array<[string, { type: string; description: string }]>;
+    }>(viaJmap);
     const [name, args] = jmapBody.methodResponses[0]!;
 
     expect(name).toBe("error");
@@ -469,8 +470,10 @@ describe("off by default", () => {
 
   it("with EXPLORE_HOST unset no cookie is honoured anywhere", async () => {
     const h = await harness({ off: true });
-    expect((await h.api("GET", `/api/blobs/${ERIC}`, { headers: { cookie: `bm_explore=${h.cookie}` } })).status)
-      .toBe(401);
+    expect(
+      (await h.api("GET", `/api/blobs/${ERIC}`, { headers: { cookie: `bm_explore=${h.cookie}` } }))
+        .status,
+    ).toBe(401);
   });
 });
 

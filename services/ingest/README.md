@@ -21,7 +21,7 @@ Pipeline per message:
    individually downloadable blobs
 4. postal-mime parse → D1 metadata insert (threading via normalized
    Message-IDs)
-4b. **the attachment sidestep** (`sidestep.ts`, s03.B T3): a non-inline
+   4b. **the attachment sidestep** (`sidestep.ts`, s03.B T3): a non-inline
    attachment ≥ `N` bytes ALSO becomes a `FileNode` under the account's
    `Attachments` folder, so a big file is addressable in the Files realm
    and not only inside the one message. The message keeps its attachment

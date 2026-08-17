@@ -1,4 +1,10 @@
-import { hashLoginKey, isLoginKey, OAUTH_SCOPES, timingSafeEqualHex, unknownScopes } from "@bullmoose/auth-core";
+import {
+  hashLoginKey,
+  isLoginKey,
+  OAUTH_SCOPES,
+  timingSafeEqualHex,
+  unknownScopes,
+} from "@bullmoose/auth-core";
 import { beginLoginAttempt } from "@bullmoose/auth-core/loginThrottle";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { consentPage, deriveScript, errorPage } from "./consent.js";
@@ -111,7 +117,8 @@ async function present(request: Request, env: Env): Promise<Response> {
   }
 
   const client = await env.OAUTH_PROVIDER.lookupClient(authReq.clientId);
-  if (!client) return errorPage("Unknown client.", `No client is registered as ${authReq.clientId}.`);
+  if (!client)
+    return errorPage("Unknown client.", `No client is registered as ${authReq.clientId}.`);
 
   // The redirect URI is checked by the provider too; checking it HERE as well
   // means the consent screen never renders for a destination we would refuse
@@ -128,7 +135,10 @@ async function present(request: Request, env: Env): Promise<Response> {
   // client we expect here is public. Refusing early gives a clearer failure
   // than letting the token exchange reject it later.
   if (!authReq.codeChallenge) {
-    return errorPage("This client did not use PKCE.", "bullmoose requires PKCE (S256) on every authorization.");
+    return errorPage(
+      "This client did not use PKCE.",
+      "bullmoose requires PKCE (S256) on every authorization.",
+    );
   }
 
   const bad = unknownScopes(authReq.scope, OAUTH_SCOPES);
@@ -161,10 +171,15 @@ async function decide(request: Request, env: Env): Promise<Response> {
   const form = await request.formData();
   const authRequest = safeParse(String(form.get("authRequest") ?? "{}"));
   if (form.get("decision") !== "approve") {
-    return errorPage("Not connected.", "You declined, so nothing was shared and no access was granted.");
+    return errorPage(
+      "Not connected.",
+      "You declined, so nothing was shared and no access was granted.",
+    );
   }
 
-  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const email = String(form.get("email") ?? "")
+    .trim()
+    .toLowerCase();
   const loginKey = String(form.get("loginKey") ?? "");
   // A form post that skipped the client-side derivation (JS off, or a script
   // posting directly) must not be treated as a password attempt — we have no
@@ -178,7 +193,11 @@ async function decide(request: Request, env: Env): Promise<Response> {
   const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
   const attempt = await beginLoginAttempt(env.OAUTH_KV, email, ip);
   if (attempt.block === "ip") {
-    return errorPage("Too many attempts.", `Try again in ${attempt.retryAfterSeconds} seconds.`, 429);
+    return errorPage(
+      "Too many attempts.",
+      `Try again in ${attempt.retryAfterSeconds} seconds.`,
+      429,
+    );
   }
   if (attempt.block === "email") {
     await attempt.fail();
@@ -208,7 +227,9 @@ async function decide(request: Request, env: Env): Promise<Response> {
   // The scopes are re-validated here rather than trusted: this form is
   // attacker-reachable, so a hidden field claiming `vault` must die against
   // the same list the authorize endpoint checked.
-  const scope = String(form.get("scope") ?? "").split(/\s+/).filter(Boolean);
+  const scope = String(form.get("scope") ?? "")
+    .split(/\s+/)
+    .filter(Boolean);
   const bad = unknownScopes(scope, OAUTH_SCOPES);
   if (bad.length > 0) {
     return errorPage("Unavailable permissions were requested.", bad.join(", "));
@@ -303,7 +324,11 @@ function safeParse(text: string): Record<string, unknown> {
  * someone else's token would mean already holding it.
  */
 const introspectHandler = {
-  async fetch(_request: Request, _env: Env, ctx: ExecutionContext & { props?: Record<string, unknown> }) {
+  async fetch(
+    _request: Request,
+    _env: Env,
+    ctx: ExecutionContext & { props?: Record<string, unknown> },
+  ) {
     const props = ctx.props ?? {};
     return new Response(JSON.stringify({ active: true, props }), {
       headers: { "content-type": "application/json", "cache-control": "no-store" },

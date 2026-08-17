@@ -55,16 +55,52 @@ describe("loadQueues — every reachable account, one round trip", () => {
   /** Two accounts, each with one proposal, plus optional per-account refusal. */
   function twoAccounts(opts: { refuse?: string } = {}): FakeJmapClient {
     const rows: Record<string, Record<string, unknown>> = {
-      [OWN]: { id: "own-1", accountId: OWN, agent: "self-note", kind: "create-contact", tier: 1,
-        subject: {}, payload: {}, editedPayload: null, rationale: "mine", evidence: [],
-        status: "pending", decision: null, createdAt: new Date(NOW - 60_000).toISOString(),
-        decidedAt: null, holdUntil: null, expiresAt: null, dueAt: null, question: null,
-        amendments: [], invocationStatus: "done", claimedAt: null },
-      [EMILY]: { id: "emily-1", accountId: EMILY, agent: "editor-emily", kind: "reply-draft", tier: 3,
-        subject: {}, payload: {}, editedPayload: null, rationale: "hers", evidence: [],
-        status: "pending", decision: null, createdAt: new Date(NOW - 30_000).toISOString(),
-        decidedAt: null, holdUntil: null, expiresAt: null, dueAt: null, question: null,
-        amendments: [], invocationStatus: "done", claimedAt: null },
+      [OWN]: {
+        id: "own-1",
+        accountId: OWN,
+        agent: "self-note",
+        kind: "create-contact",
+        tier: 1,
+        subject: {},
+        payload: {},
+        editedPayload: null,
+        rationale: "mine",
+        evidence: [],
+        status: "pending",
+        decision: null,
+        createdAt: new Date(NOW - 60_000).toISOString(),
+        decidedAt: null,
+        holdUntil: null,
+        expiresAt: null,
+        dueAt: null,
+        question: null,
+        amendments: [],
+        invocationStatus: "done",
+        claimedAt: null,
+      },
+      [EMILY]: {
+        id: "emily-1",
+        accountId: EMILY,
+        agent: "editor-emily",
+        kind: "reply-draft",
+        tier: 3,
+        subject: {},
+        payload: {},
+        editedPayload: null,
+        rationale: "hers",
+        evidence: [],
+        status: "pending",
+        decision: null,
+        createdAt: new Date(NOW - 30_000).toISOString(),
+        decidedAt: null,
+        holdUntil: null,
+        expiresAt: null,
+        dueAt: null,
+        question: null,
+        amendments: [],
+        invocationStatus: "done",
+        claimedAt: null,
+      },
     };
     const refusal = (accountId: string) =>
       opts.refuse === accountId
@@ -203,7 +239,9 @@ describe("decide → ActionProposal/set", () => {
     });
     expect(outcome).toEqual({ ok: true });
     // What egressed is the human's version…
-    expect(backend.sent).toEqual([{ id: "ap-reply-invoice", to: "billing@example.test", subject: "Re: Invoice 0042 — paid" }]);
+    expect(backend.sent).toEqual([
+      { id: "ap-reply-invoice", to: "billing@example.test", subject: "Re: Invoice 0042 — paid" },
+    ]);
     // …and what is retained is still the agent's.
     const after = backend.proposals.find((p) => p.id === "ap-reply-invoice")!;
     expect(after.payload.subject).toBe(originalSubject);
@@ -216,7 +254,11 @@ describe("decide → ActionProposal/set", () => {
     expect(outcome).toEqual({ ok: true });
     expect(backend.proposals.find((p) => p.id === "ap-contact-dana")!.status).toBe("approved");
     expect(backend.applied).toEqual([
-      { id: "ap-contact-dana", kind: "create-contact", undo: { action: "destroy-contact", cardId: "cc-ap-contact-dana" } },
+      {
+        id: "ap-contact-dana",
+        kind: "create-contact",
+        undo: { action: "destroy-contact", cardId: "cc-ap-contact-dana" },
+      },
     ]);
   });
 
@@ -225,12 +267,18 @@ describe("decide → ActionProposal/set", () => {
     const outcome = await decide(client, ACCOUNT, "ap-reply-invoice", { status: "approved" });
     expect(outcome).toEqual({ ok: true });
     expect(backend.sent).toEqual([
-      { id: "ap-reply-invoice", to: "billing@example.test", subject: "Re: Invoice 0042 — payment confirmation" },
+      {
+        id: "ap-reply-invoice",
+        to: "billing@example.test",
+        subject: "Re: Invoice 0042 — payment confirmation",
+      },
     ]);
   });
 
   it("tier-3 approve WITHOUT send is refused with the server's capability-wall sentence", async () => {
-    const { client, backend } = harness({ scopes: ["read", "annotate", "draft", "move", "delete"] });
+    const { client, backend } = harness({
+      scopes: ["read", "annotate", "draft", "move", "delete"],
+    });
     const outcome = await decide(client, ACCOUNT, "ap-reply-invoice", { status: "approved" });
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
@@ -294,7 +342,10 @@ describe("decide → ActionProposal/set", () => {
 
   it("a decided row is not re-decidable (T1: only pending decides; yank is T2)", async () => {
     const { client } = harness();
-    const outcome = await decide(client, ACCOUNT, "ap-held-agenda", { status: "rejected", reason: "unsafe" });
+    const outcome = await decide(client, ACCOUNT, "ap-held-agenda", {
+      status: "rejected",
+      reason: "unsafe",
+    });
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.message).toContain("is held, not pending");
   });
@@ -302,7 +353,13 @@ describe("decide → ActionProposal/set", () => {
   it("surfaces a stateMismatch instead of silently overwriting a moved queue", async () => {
     const { client } = harness();
     await decide(client, ACCOUNT, "ap-contact-dana", { status: "approved" }); // moves state 0→1
-    const stale = await decide(client, ACCOUNT, "ap-reply-elk", { status: "approved" }, { ifInState: "0" });
+    const stale = await decide(
+      client,
+      ACCOUNT,
+      "ap-reply-elk",
+      { status: "approved" },
+      { ifInState: "0" },
+    );
     expect(stale.ok).toBe(false);
     if (!stale.ok) expect(stale.message).toContain("stateMismatch");
   });

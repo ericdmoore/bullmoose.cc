@@ -64,7 +64,11 @@ async function scaffold(): Promise<FakeWorker> {
       account_id: BOUNCER_ACC,
       address_book_id: BOOK,
       uid: "u_eric",
-      card_json: JSON.stringify({ uid: "u_eric", kind: "individual", emails: { e0: { address: ERIC } } }),
+      card_json: JSON.stringify({
+        uid: "u_eric",
+        kind: "individual",
+        emails: { e0: { address: ERIC } },
+      }),
       created_at: 1,
       updated_at: 1,
     },
@@ -84,13 +88,23 @@ async function scaffold(): Promise<FakeWorker> {
   ]);
 
   // The asker (a human principal of the same tenant).
-  w.db.seedAccount({ accountId: ASKER_ACC, tenantId: TENANT, loginEmail: ERIC, displayName: "Eric" });
+  w.db.seedAccount({
+    accountId: ASKER_ACC,
+    tenantId: TENANT,
+    loginEmail: ERIC,
+    displayName: "Eric",
+  });
   w.db.seed("identities", [{ id: "id_eric", account_id: ASKER_ACC, email: ERIC }]);
   return w;
 }
 
 /** Raw RFC 5322 directive. `topHeaders` sit where our MX's headers would. */
-function directiveRaw(opts: { from?: string; text: string; msgId: string; topHeaders?: string[] }): string {
+function directiveRaw(opts: {
+  from?: string;
+  text: string;
+  msgId: string;
+  topHeaders?: string[];
+}): string {
   return [
     ...(opts.topHeaders ?? []),
     `From: ${opts.from ?? ERIC}`,
@@ -241,9 +255,9 @@ describe("authenticatedDirective — what counts", () => {
     expect(authenticatedDirective([], "family.test")).toEqual({ ok: true, how: "internal" });
   });
   it("topmost dmarc=pass, no header.from named → authenticated", () => {
-    expect(authenticatedDirective([ar("mx.cloudflare.net; spf=pass; dmarc=pass")], "family.test")).toEqual(
-      { ok: true, how: "dmarc" },
-    );
+    expect(
+      authenticatedDirective([ar("mx.cloudflare.net; spf=pass; dmarc=pass")], "family.test"),
+    ).toEqual({ ok: true, how: "dmarc" });
   });
   it("topmost dmarc=pass ALIGNED with the asker's domain → authenticated", () => {
     expect(
@@ -251,14 +265,18 @@ describe("authenticatedDirective — what counts", () => {
     ).toEqual({ ok: true, how: "dmarc" });
   });
   it("dmarc=pass for some OTHER domain → refused (alignment is the point)", () => {
-    expect(authenticatedDirective([ar("mx; dmarc=pass header.from=evil.test")], "family.test")).toEqual({
+    expect(
+      authenticatedDirective([ar("mx; dmarc=pass header.from=evil.test")], "family.test"),
+    ).toEqual({
       ok: false,
     });
   });
   it("dmarc=fail → refused; dmarc=none → refused; unrecognized → refused", () => {
     expect(authenticatedDirective([ar("mx; dmarc=fail")], "family.test")).toEqual({ ok: false });
     expect(authenticatedDirective([ar("mx; dmarc=none")], "family.test")).toEqual({ ok: false });
-    expect(authenticatedDirective([ar("mx; something=else")], "family.test")).toEqual({ ok: false });
+    expect(authenticatedDirective([ar("mx; something=else")], "family.test")).toEqual({
+      ok: false,
+    });
   });
   it("only the TOPMOST header is consulted — a forged pass below ours is never read", () => {
     expect(
@@ -275,7 +293,11 @@ describe("the injection test — wrapper is instruction, payload is evidence", (
     const w = await scaffold();
     // An unrelated held message, so "rescue everything" has something it
     // WOULD rescue if the evidence could speak.
-    await seedQuarantined(w, { emailId: "e_held", sender: "other@elsewhere.test", stage: "bayes@0.98" });
+    await seedQuarantined(w, {
+      emailId: "e_held",
+      sender: "other@elsewhere.test",
+      stage: "bayes@0.98",
+    });
 
     const { msgId, invocation } = await driveDirective(w, {
       text: [
@@ -296,7 +318,11 @@ describe("the injection test — wrapper is instruction, payload is evidence", (
     // What the wrapper asked (a spam report): a spam label on the EVIDENCE +
     // the evidence's sender into the ASKER's personal Blocked book, chained.
     expect(__recordedBayesLabels).toEqual([
-      expect.objectContaining({ accountId: ASKER_ACC, label: "spam", sender: "crook@spamcorp.example" }),
+      expect.objectContaining({
+        accountId: ASKER_ACC,
+        label: "spam",
+        sender: "crook@spamcorp.example",
+      }),
     ]);
     const members = w.db.query<{ card_json: string }>(
       `SELECT c.card_json FROM contact_cards c
@@ -306,19 +332,30 @@ describe("the injection test — wrapper is instruction, payload is evidence", (
     );
     expect(members).toHaveLength(1);
     expect(members[0]!.card_json).toContain("crook@spamcorp.example");
-    const chain = w.db.query<{ address: string; via_proposal_id: string | null; actor: string | null }>(
+    const chain = w.db.query<{
+      address: string;
+      via_proposal_id: string | null;
+      actor: string | null;
+    }>(
       `SELECT address, via_proposal_id, actor FROM book_membership_log WHERE account_id = ?`,
       ASKER_ACC,
     );
     expect(chain).toEqual([
-      expect.objectContaining({ address: "crook@spamcorp.example", via_proposal_id: msgId, actor: ERIC }),
+      expect.objectContaining({
+        address: "crook@spamcorp.example",
+        via_proposal_id: msgId,
+        actor: ERIC,
+      }),
     ]);
 
     // What the PAYLOAD asked for: nothing. No deny-list entry (rival.com or
     // otherwise), no rescue — the held message stays held.
     expect(denyRows(w)).toEqual([]);
     expect(
-      w.db.query(`SELECT * FROM quarantine_events WHERE account_id = ? AND event = 'rescued'`, ASKER_ACC),
+      w.db.query(
+        `SELECT * FROM quarantine_events WHERE account_id = ? AND event = 'rescued'`,
+        ASKER_ACC,
+      ),
     ).toEqual([]);
     expect(inMailbox(w, ASKER_ACC, "e_held", QUARANTINE_ROLE)).toBe(true);
 
@@ -340,7 +377,9 @@ describe("the inbound gate", () => {
 
     expect(denyRows(w)).toEqual([]);
     expect(__recordedBayesLabels).toEqual([]);
-    expect(w.db.query(`SELECT * FROM book_membership_log WHERE account_id = ?`, ASKER_ACC)).toEqual([]);
+    expect(w.db.query(`SELECT * FROM book_membership_log WHERE account_id = ?`, ASKER_ACC)).toEqual(
+      [],
+    );
 
     const reply = replyTo(w, msgId);
     expect(reply?.to).toBe(ERIC);
@@ -401,7 +440,11 @@ describe("conversation 1 — the FN report", () => {
     // invalidated so the exact checks decide until the next rebuild.
     expect(await w.env.ROUTES.get("boundary:bloom:current")).toBeNull();
     expect(__recordedBayesLabels).toEqual([
-      expect.objectContaining({ accountId: ASKER_ACC, label: "spam", sender: "promo@qwertyuiop.com" }),
+      expect.objectContaining({
+        accountId: ASKER_ACC,
+        label: "spam",
+        sender: "promo@qwertyuiop.com",
+      }),
     ]);
 
     const reply = replyTo(w, msgId);
@@ -422,8 +465,12 @@ describe("conversation 1 — the FN report", () => {
 
   it("refuses to deny-list one of the tenant's own domains", async () => {
     const w = await scaffold();
-    w.db.seed("domains", [{ domain: "family.test", tenant_id: TENANT, status: "active", created_at: 1 }]);
-    const { msgId, invocation } = await driveDirective(w, { text: "add family.test to the deny list" });
+    w.db.seed("domains", [
+      { domain: "family.test", tenant_id: TENANT, status: "active", created_at: 1 },
+    ]);
+    const { msgId, invocation } = await driveDirective(w, {
+      text: "add family.test to the deny list",
+    });
     expect(invocation.status).toBe("done");
     expect(denyRows(w)).toEqual([]);
     expect(replyTo(w, msgId)?.preview).toContain("own domains");
@@ -467,7 +514,11 @@ describe("conversation 1 — the FN report", () => {
 describe("conversation 2 — the FP explain + repair", () => {
   it("found → cites the firing stage VERBATIM, rescues, chains via the directive, adds known-good", async () => {
     const w = await scaffold();
-    await seedQuarantined(w, { emailId: "e_helen", sender: "helen@herdomain.test", stage: "sieve:rule-7" });
+    await seedQuarantined(w, {
+      emailId: "e_helen",
+      sender: "helen@herdomain.test",
+      stage: "sieve:rule-7",
+    });
 
     const { msgId, invocation } = await driveDirective(w, {
       text: "Helen is on the phone, says she sent the contract — why didn't it arrive? helen@herdomain.test — make sure it does.",
@@ -481,7 +532,11 @@ describe("conversation 2 — the FP explain + repair", () => {
     // the directive (decision-5).
     expect(inMailbox(w, ASKER_ACC, "e_helen", "inbox")).toBe(true);
     expect(inMailbox(w, ASKER_ACC, "e_helen", QUARANTINE_ROLE)).toBe(false);
-    const rescued = w.db.query<{ stage: string; via_message_id: string | null; actor: string | null }>(
+    const rescued = w.db.query<{
+      stage: string;
+      via_message_id: string | null;
+      actor: string | null;
+    }>(
       `SELECT stage, via_message_id, actor FROM quarantine_events WHERE account_id = ? AND event = 'rescued'`,
       ASKER_ACC,
     );
@@ -501,7 +556,11 @@ describe("conversation 2 — the FP explain + repair", () => {
 
   it("a graduated deny entry for H's domain is demoted — the human correction wins", async () => {
     const w = await scaffold();
-    await seedQuarantined(w, { emailId: "e_h2", sender: "helen@herdomain.test", stage: "bayes@0.99" });
+    await seedQuarantined(w, {
+      emailId: "e_h2",
+      sender: "helen@herdomain.test",
+      stage: "bayes@0.99",
+    });
     w.db.seed("domain_deny_list", [
       {
         tenant_id: TENANT,
@@ -525,7 +584,13 @@ describe("conversation 2 — the FP explain + repair", () => {
   it("a directive/feed deny entry is reported with its provenance, NOT silently removed", async () => {
     const w = await scaffold();
     w.db.seed("domain_deny_list", [
-      { tenant_id: TENANT, domain: "herdomain.test", added_at: 1, source: "feed", evidence: "operator feed" },
+      {
+        tenant_id: TENANT,
+        domain: "herdomain.test",
+        added_at: 1,
+        source: "feed",
+        evidence: "operator feed",
+      },
     ]);
     const { msgId, invocation } = await driveDirective(w, {
       text: "why didn't helen@herdomain.test's mail arrive?",
@@ -548,7 +613,9 @@ describe("conversation 2 — the FP explain + repair", () => {
     const reply = replyTo(w, msgId);
     expect(reply?.preview).toContain("no record of mail from ghost@nowhere.test");
     expect(reply?.preview).toContain("30 days");
-    expect(w.db.query(`SELECT * FROM quarantine_events WHERE account_id = ?`, ASKER_ACC)).toEqual([]);
+    expect(w.db.query(`SELECT * FROM quarantine_events WHERE account_id = ?`, ASKER_ACC)).toEqual(
+      [],
+    );
   });
 
   it("no address to look up → asks, writes nothing", async () => {

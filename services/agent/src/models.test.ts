@@ -24,7 +24,10 @@ const PRICING_KEY = "cache:modelsdev:slim";
 // The exact mixed alias docs/architecture/ai-surface.md:76-77 tells people to
 // build — the config that triggered 018.
 const PAID: ModelCandidate = { provider: "gateway", model: "anthropic/claude-opus-4-8" };
-const FREE: ModelCandidate = { provider: "workers-ai", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" };
+const FREE: ModelCandidate = {
+  provider: "workers-ai",
+  model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+};
 
 function seedPricing(
   env: Env,
@@ -36,7 +39,11 @@ function seedPricing(
 ): Promise<void> {
   return env.ROUTES.put(
     PRICING_KEY,
-    JSON.stringify({ fetchedAt: cache.fetchedAt ?? Date.now(), prices: cache.prices ?? {}, ...cache }),
+    JSON.stringify({
+      fetchedAt: cache.fetchedAt ?? Date.now(),
+      prices: cache.prices ?? {},
+      ...cache,
+    }),
   );
 }
 
@@ -63,7 +70,10 @@ describe("rankByPrice — the free route sorts first (.feedback agentic/018)", (
 
   it("keeps config order when the cache is stale", async () => {
     const w = fakeEnv();
-    await seedPricing(w.env, { fetchedAt: Date.now() - 49 * 3600_000, prices: { [PAID.model]: 48 } });
+    await seedPricing(w.env, {
+      fetchedAt: Date.now() - 49 * 3600_000,
+      prices: { [PAID.model]: 48 },
+    });
     expect(await rankByPrice(w.env, [PAID, FREE])).toEqual([PAID, FREE]);
   });
 });
@@ -144,7 +154,12 @@ describe("callModel returns the usage each provider already sends", () => {
 
   it("mock: deterministic pseudo-usage (chars in, chars out)", async () => {
     const w = fakeEnv();
-    const { output, usage } = await callModel(w.env, { provider: "mock", model: "m" }, messages, 64);
+    const { output, usage } = await callModel(
+      w.env,
+      { provider: "mock", model: "m" },
+      messages,
+      64,
+    );
     expect(usage).toEqual({
       tokensIn: "be brief".length + "hello there".length,
       tokensOut: output.length,

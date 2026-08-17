@@ -148,10 +148,7 @@ export function fleetFromSingle(cfg: AgentConfig): FleetConfig {
  * booleans default to "cannot" (a host that can see says so), contextTokens
  * left unstated means no known limit.
  */
-export function fitsRequirements(
-  caps: HostCapabilities | undefined,
-  requires: unknown,
-): boolean {
+export function fitsRequirements(caps: HostCapabilities | undefined, requires: unknown): boolean {
   if (requires === null || requires === undefined || typeof requires !== "object") return true;
   if (!caps) return true;
   const r = requires as { vision?: unknown; tools?: unknown; contextTokens?: unknown };
@@ -230,9 +227,13 @@ export async function fleetDrain(
     } catch (err) {
       if (isAuthzRefusal(err)) {
         served.delete(account.accountId);
-        status(`${accountLabel(account)}: claim authority revoked — dropped (other bindings unaffected)`);
+        status(
+          `${accountLabel(account)}: claim authority revoked — dropped (other bindings unaffected)`,
+        );
       } else {
-        status(`${accountLabel(account)}: drain failed: ${err instanceof Error ? err.message : err}`);
+        status(
+          `${accountLabel(account)}: drain failed: ${err instanceof Error ? err.message : err}`,
+        );
       }
     }
   }

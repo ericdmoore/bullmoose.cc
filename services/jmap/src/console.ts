@@ -223,8 +223,7 @@ const MAX_WINDOW_MS = 365 * 86_400_000;
 const COLLECTIONS = ["AddressBook", "Calendar", "Mailbox", "FileNode"] as const;
 type Collection = (typeof COLLECTIONS)[number];
 
-const isCollection = (v: string): v is Collection =>
-  (COLLECTIONS as readonly string[]).includes(v);
+const isCollection = (v: string): v is Collection => (COLLECTIONS as readonly string[]).includes(v);
 
 // ---- effective permissions ------------------------------------------------
 
@@ -308,7 +307,10 @@ export async function handleConsole(
     );
   }
 
-  const seg = url.pathname.split("/").filter((s) => s.length > 0).map(decodeURIComponent);
+  const seg = url.pathname
+    .split("/")
+    .filter((s) => s.length > 0)
+    .map(decodeURIComponent);
   // /console/agents
   if (seg.length === 2 && seg[1] === "agents") {
     return listAgents(env, principal);
@@ -374,11 +376,7 @@ async function listAgents(env: Env, principal: Principal): Promise<Response> {
 
 // ---- GET /console/agents/{accountId} --------------------------------------
 
-async function agentDossier(
-  env: Env,
-  principal: Principal,
-  accountId: string,
-): Promise<Response> {
+async function agentDossier(env: Env, principal: Principal, accountId: string): Promise<Response> {
   const access = ownedAccount(principal, accountId);
   if (isRefusal(access)) return json({ error: access.error }, access.status);
 
@@ -400,17 +398,25 @@ async function agentDossier(
   // from "none exist" — see the deploy note in the report.
   const mayReadVault = hasScope(principal.scopes, "vault");
 
-  const [tokenScopes, bindings, credentials, bureauGrants, grantsHeld, grantsGiven, invocations, spend] =
-    await Promise.all([
-      readTokenScopes(env, owner.principal_id),
-      readBindings(env, access.accountId),
-      mayReadVault ? readCredentials(env, owner.principal_id) : Promise.resolve([]),
-      mayReadVault ? readBureauGrants(env, owner.principal_id) : Promise.resolve([]),
-      readGrants(env, "grantee", access.accountId),
-      readGrants(env, "target", access.accountId),
-      readInvocations(env, access.accountId),
-      readSpend(env, access.accountId),
-    ]);
+  const [
+    tokenScopes,
+    bindings,
+    credentials,
+    bureauGrants,
+    grantsHeld,
+    grantsGiven,
+    invocations,
+    spend,
+  ] = await Promise.all([
+    readTokenScopes(env, owner.principal_id),
+    readBindings(env, access.accountId),
+    mayReadVault ? readCredentials(env, owner.principal_id) : Promise.resolve([]),
+    mayReadVault ? readBureauGrants(env, owner.principal_id) : Promise.resolve([]),
+    readGrants(env, "grantee", access.accountId),
+    readGrants(env, "target", access.accountId),
+    readInvocations(env, access.accountId),
+    readSpend(env, access.accountId),
+  ]);
 
   const dossier: AgentDossier = {
     accountId: access.accountId,
@@ -605,8 +611,7 @@ interface GrantRow {
 }
 
 /** Rule 3: enumerated columns, plus the two parties resolved to name+address. */
-const GRANT_SELECT =
-  `SELECT g.id, g.grantee_account_id, g.target_account_id, g.scopes, g.collection,
+const GRANT_SELECT = `SELECT g.id, g.grantee_account_id, g.target_account_id, g.scopes, g.collection,
           g.collection_id, g.created_by, g.created_at, g.expires_at, g.revoked_at,
           (SELECT a.display_name FROM accounts a WHERE a.id = g.grantee_account_id) AS grantee_name,
           (SELECT i.email FROM identities i WHERE i.account_id = g.grantee_account_id LIMIT 1) AS grantee_email,
@@ -738,11 +743,7 @@ async function readSpend(env: Env, accountId: string): Promise<ConsoleSpend | nu
  * resource on a grant-reached account would put a row in the picker that 403s
  * when clicked.
  */
-async function listResources(
-  env: Env,
-  principal: Principal,
-  accountId: string,
-): Promise<Response> {
+async function listResources(env: Env, principal: Principal, accountId: string): Promise<Response> {
   const access = ownedAccount(principal, accountId);
   if (isRefusal(access)) return json({ error: access.error }, access.status);
 
@@ -872,9 +873,7 @@ async function readResource(
     Mailbox: "mailboxes",
     FileNode: "file_nodes",
   }[collection];
-  const row = await env.DB.prepare(
-    `SELECT name FROM ${table} WHERE account_id = ? AND id = ?`,
-  )
+  const row = await env.DB.prepare(`SELECT name FROM ${table} WHERE account_id = ? AND id = ?`)
     .bind(accountId, collectionId)
     .first<{ name: string }>();
   if (!row) return null;

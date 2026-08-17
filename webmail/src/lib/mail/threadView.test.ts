@@ -97,7 +97,7 @@ describe("renderMessage", () => {
       email({
         id: "a",
         htmlBody: [{ partId: "h", blobId: null, type: "text/html" }],
-        bodyValues: { h: { value: '<p>hi</p><script>alert(1)</script>' } },
+        bodyValues: { h: { value: "<p>hi</p><script>alert(1)</script>" } },
       }),
     );
     expect(rendered.isHtml).toBe(true);

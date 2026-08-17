@@ -130,8 +130,7 @@ export function escalationWindowMs(pastDurationsMs: readonly number[]): number {
   if (pastDurationsMs.length === 0) return ESCALATION_WINDOW_NO_HISTORY_MS;
   const sorted = [...pastDurationsMs].sort((a, b) => a - b);
   const mid = sorted.length >> 1;
-  const median =
-    sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+  const median = sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
   return Math.min(
     ESCALATION_WINDOW_MAX_MS,
     Math.max(ESCALATION_WINDOW_MIN_MS, ESCALATION_RETRY_FACTOR * median),
@@ -179,7 +178,11 @@ export function normalizeClaimant(raw: unknown): ClaimantIdentity {
   }
   const r = raw as { isFree?: unknown; capabilities?: unknown };
   let capabilities: ClaimCapabilities | null = null;
-  if (typeof r.capabilities === "object" && r.capabilities !== null && !Array.isArray(r.capabilities)) {
+  if (
+    typeof r.capabilities === "object" &&
+    r.capabilities !== null &&
+    !Array.isArray(r.capabilities)
+  ) {
     const c = r.capabilities as { vision?: unknown; contextTokens?: unknown; tools?: unknown };
     capabilities = {};
     if (typeof c.vision === "boolean") capabilities.vision = c.vision;
@@ -209,7 +212,10 @@ export function normalizeClaimant(raw: unknown): ClaimantIdentity {
  *   - within a declared vector: booleans default to "cannot"; an unstated
  *     contextTokens means "no known limit".
  */
-export function fit(capabilities: ClaimCapabilities | null | undefined, requires: unknown): boolean {
+export function fit(
+  capabilities: ClaimCapabilities | null | undefined,
+  requires: unknown,
+): boolean {
   if (requires === null || requires === undefined || typeof requires !== "object") return true;
   if (!capabilities) return true;
   const r = requires as { vision?: unknown; tools?: unknown; contextTokens?: unknown };

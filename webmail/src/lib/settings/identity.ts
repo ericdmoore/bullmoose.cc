@@ -154,7 +154,10 @@ export interface DeleteVerdict {
  */
 export function deleteVerdict(identity: Pick<Identity, "mayDelete">): DeleteVerdict {
   if (identity.mayDelete) {
-    return { allowed: true, reason: "This identity was added after provisioning and can be removed." };
+    return {
+      allowed: true,
+      reason: "This identity was added after provisioning and can be removed.",
+    };
   }
   return {
     allowed: false,
@@ -378,7 +381,11 @@ export async function saveIdentity(
     };
   }
   if (!(id in (result.updated ?? {}))) {
-    return { ok: false, kind: "error", message: "The server neither applied nor refused the change." };
+    return {
+      ok: false,
+      kind: "error",
+      message: "The server neither applied nor refused the change.",
+    };
   }
   return { ok: true, newState: result.newState ?? "", noop: false };
 }

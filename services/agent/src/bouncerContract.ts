@@ -119,6 +119,8 @@ export async function invalidateBoundaryBloom(routes: KVNamespace): Promise<void
   try {
     await routes.delete("boundary:bloom:current");
   } catch (err) {
-    console.error(`bloom invalidation failed (exact checks may miss new entries until rebuild): ${err}`);
+    console.error(
+      `bloom invalidation failed (exact checks may miss new entries until rebuild): ${err}`,
+    );
   }
 }

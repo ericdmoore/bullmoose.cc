@@ -1,6 +1,7 @@
 # Feedback
 
 The following are folders organized by the (agent-provider)
+
 - then organized into main top-level-sub-systems represented as nested folders.
 - use the [config.yml](config.yml) for the authoritative list of the TLCs
 - within each of those subfolders make a "pile of files".
@@ -11,14 +12,15 @@ So the shape on disk is `.feedback/from<Provider>/<subsystem>/<issue>.md`, e.g.
 provider folder if yours doesn't exist yet — the indexer picks up any `from*/` folder.
 
 ### PreProcessing
-First, if there are files in `~raw-input` /  `<name>.txt` then please read it,
+
+First, if there are files in `~raw-input` / `<name>.txt` then please read it,
 and break it down into file-issues using this naming template:
 
-  `{Issue Number} -P{priority} - {Issue-Name-with-dashes}.md`
+`{Issue Number} -P{priority} - {Issue-Name-with-dashes}.md`
 
 written with the spaces exactly as shown:
 
-  `026 -P3- Doc-And-Tooling-Drift-Bundle-Two.md`
+`026 -P3- Doc-And-Tooling-Drift-Bundle-Two.md`
 
 - **`-P{num}-` is PRIORITY**, P1 highest. P1 = drop what you're doing, P2 = should be
   fixed, P3 = worth doing / cleanup. It is not a phase or a pass number.
@@ -30,6 +32,7 @@ written with the spaces exactly as shown:
   and use that number.
 
 ## Main Process
+
 Then the task/process for each file is:
 
 - Create a proposal for how to fix it, and write the proposal in a `<total issue name >.fix.md` file
@@ -61,6 +64,7 @@ If an issue bundles several items, only mark it ✅ once **every** item is close
 the shipped ones in-file in the meantime, so the next agent doesn't redo them.
 
 ## Clean Up Process
+
 Regenerate the index so the closed item drops off the open list:
 
 ```bash

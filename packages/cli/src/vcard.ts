@@ -280,7 +280,6 @@ const ADR_COMPONENT_KINDS = [
   "country",
 ] as const;
 
-
 function cardFromBlock(props: VProp[], warnings: string[]): Card {
   const card: Card = { "@type": "Card", version: "1.0" };
   const vCardProps: unknown[] = [];

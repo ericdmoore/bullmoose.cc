@@ -70,9 +70,7 @@ const MAIL_COVERS: ReadonlySet<string> = new Set<string>(MAIL_SCOPES);
 
 /** The mail verbs that are writes — every mail verb except `read`. Holding
  * any of them satisfies `read` (you cannot change what you cannot see). */
-const WRITE_VERBS: ReadonlySet<string> = new Set<string>(
-  MAIL_SCOPES.filter((s) => s !== "read"),
-);
+const WRITE_VERBS: ReadonlySet<string> = new Set<string>(MAIL_SCOPES.filter((s) => s !== "read"));
 
 /** Realm scopes as a set, for the same `read`-implication test. */
 const REALMS: ReadonlySet<string> = new Set<string>(REALM_SCOPES);
@@ -496,4 +494,3 @@ async function sha256Hex(s: string): Promise<string> {
 function bytesToHex(b: Uint8Array): string {
   return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
-

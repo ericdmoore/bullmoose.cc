@@ -2,7 +2,10 @@ export default function Example() {
   return (
     <div className="-space-y-px">
       <div className="rounded-t-md bg-white px-3 pt-2.5 pb-1.5 outline-1 -outline-offset-1 outline-gray-300 focus-within:relative focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-indigo-600 dark:bg-white/5 dark:outline-gray-700 dark:focus-within:outline-indigo-500">
-        <label htmlFor="name" className="block text-xs font-medium text-gray-900 dark:text-gray-200">
+        <label
+          htmlFor="name"
+          className="block text-xs font-medium text-gray-900 dark:text-gray-200"
+        >
           Name
         </label>
         <input
@@ -14,7 +17,10 @@ export default function Example() {
         />
       </div>
       <div className="rounded-b-md bg-white px-3 pt-2.5 pb-1.5 outline-1 -outline-offset-1 outline-gray-300 focus-within:relative focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-indigo-600 dark:bg-white/5 dark:outline-gray-700 dark:focus-within:outline-indigo-500">
-        <label htmlFor="job-title" className="block text-xs font-medium text-gray-900 dark:text-gray-200">
+        <label
+          htmlFor="job-title"
+          className="block text-xs font-medium text-gray-900 dark:text-gray-200"
+        >
           Job title
         </label>
         <input
@@ -26,5 +32,5 @@ export default function Example() {
         />
       </div>
     </div>
-  )
+  );
 }

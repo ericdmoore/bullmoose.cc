@@ -34,10 +34,10 @@ beforeEach(() => {
   vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
     posted.push({ url: String(url), body: JSON.parse(String(init?.body ?? "null")) });
-    return new Response(
-      JSON.stringify({ token: "bm_new", tokenId: "tk_new", scopes: ["read"] }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ token: "bm_new", tokenId: "tk_new", scopes: ["read"] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   });
 });
 

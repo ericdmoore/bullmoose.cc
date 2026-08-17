@@ -1,6 +1,6 @@
 # `bullmoose-bureau` — the Bureau
 
-> *You can only compute with what you have.*
+> _You can only compute with what you have._
 
 The one worker that holds the credential vault's master key. Everything else in
 the platform can name a credential; only this worker can use one.
@@ -11,7 +11,7 @@ The two ratified calls behind its existence:
 
 ## Why it is its own worker
 
-`VAULT_MASTER_KEY` is bound here and **nowhere else**. It was *moved* out of
+`VAULT_MASTER_KEY` is bound here and **nowhere else**. It was _moved_ out of
 `services/agent`, not copied.
 
 Embedded in the agent worker, the key would be **ambient**: the same address
@@ -27,7 +27,7 @@ the same reason — they conflate the key with the vault. §1's contract is that
 
 ## What it is not
 
-- **Not a token issuer.** It *verifies* callers with `verifyBearer` and never
+- **Not a token issuer.** It _verifies_ callers with `verifyBearer` and never
   mints anything. Adding a token-issuing route here would route around the two
   kill switches (`008`'s `agent_bindings.enabled`, `s03.A`'s
   `grants.revoked_at`) that the whole authentication model is built to inherit.
@@ -39,11 +39,11 @@ the same reason — they conflate the key with the vault. §1's contract is that
 
 ## Surface
 
-| route | auth | what |
-|---|---|---|
-| `POST /internal/bureau/seal` | `x-internal-token` | seal-on-mint / rotate; writes `enc_json` |
-| `POST /internal/bureau/verify` | `x-internal-token` | decrypt-and-discard health check → `{ok}` |
-| `POST /bureau/use` | `Bearer` (invocation token) | authenticate → authorize `(principal, credRef, verb)` → audit → **run the verb** |
+| route                          | auth                        | what                                                                             |
+| ------------------------------ | --------------------------- | -------------------------------------------------------------------------------- |
+| `POST /internal/bureau/seal`   | `x-internal-token`          | seal-on-mint / rotate; writes `enc_json`                                         |
+| `POST /internal/bureau/verify` | `x-internal-token`          | decrypt-and-discard health check → `{ok}`                                        |
+| `POST /bureau/use`             | `Bearer` (invocation token) | authenticate → authorize `(principal, credRef, verb)` → audit → **run the verb** |
 
 ```jsonc
 // POST /bureau/use            Authorization: Bearer <invocation token>
@@ -75,10 +75,10 @@ into a relay fetching attacker-chosen URLs on an agent's behalf. Same-origin hop
 are followed, re-checking the allowlist each time.
 
 **Class B verbs** (`sign_sigv4`, `oauth_token`, `hmac_sha256`) still answer
-**501** — but from *behind* the kind gate, so an unimplemented verb pointed at
+**501** — but from _behind_ the kind gate, so an unimplemented verb pointed at
 the wrong kind is a 403 and not a 501. They are **T5**.
 
-**Egress redaction is not here yet** (§7, **T4**). §7 ranks it explicitly *below*
+**Egress redaction is not here yet** (§7, **T4**). §7 ranks it explicitly _below_
 destination binding — redaction stops accidents, binding stops adversaries — so
 it is the piece that may arrive second. The seam is wired:
 `fetchVerb.ts`'s `EgressFilter` receives the response text plus the exact values
@@ -95,8 +95,8 @@ that an attacker who reaches it does not inherit.
 Two records, both of which must say yes:
 
 1. **The token** — `verifyBearer` on the invocation's own bearer (sVOL `007`,
-   `mcp-auth.md` §15.2). The service binding proves which *worker* is calling;
-   only the token proves which *agent*. `travel@` and `editor@` share one worker
+   `mcp-auth.md` §15.2). The service binding proves which _worker_ is calling;
+   only the token proves which _agent_. `travel@` and `editor@` share one worker
    and one binding, so without this a prompt-injected `editor@` would inherit
    `travel@`'s capabilities.
 2. **The grant** — a `bureau_grants` row over `(principal, credRef, verb)`,

@@ -69,7 +69,13 @@ describe("breadcrumb", () => {
       node("d", "c", "deck.pdf"),
     ];
     const trail = breadcrumb(map(nodes), "d");
-    expect(trail.crumbs.map((c) => c.name)).toEqual(["Files", "Projects", "2026", "Q3", "deck.pdf"]);
+    expect(trail.crumbs.map((c) => c.name)).toEqual([
+      "Files",
+      "Projects",
+      "2026",
+      "Q3",
+      "deck.pdf",
+    ]);
     expect(ancestorIds(trail)).toEqual(["a", "b", "c", "d"]);
     expect(trail.truncated).toBe(false);
   });
@@ -113,7 +119,12 @@ describe("sortChildren", () => {
       node("f2", null, "Beta.txt"),
       node("d1", null, "apple", "directory"),
     ];
-    expect(sortChildren(rows).map((n) => n.name)).toEqual(["apple", "Zulu", "alpha.txt", "Beta.txt"]);
+    expect(sortChildren(rows).map((n) => n.name)).toEqual([
+      "apple",
+      "Zulu",
+      "alpha.txt",
+      "Beta.txt",
+    ]);
   });
 
   it("breaks ties on id, matching the server's own last resort", () => {

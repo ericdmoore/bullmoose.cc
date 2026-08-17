@@ -3,18 +3,18 @@
 The deployed workers — seven stateless Cloudflare Workers around one stateful
 actor (the `AccountDO`, declared by `bullmoose-jmap`). Each composes the
 reusable [`packages/`](../packages/README.md); each row links to that
-service's own README. For *why* it's wired this way, see
+service's own README. For _why_ it's wired this way, see
 [`docs/architecture/`](../docs/architecture/README.md).
 
-| worker | role |
-|---|---|
-| [`bullmoose-jmap`](jmap/README.md) | the JMAP server — mail/contacts/calendar methods, auth, blob up/download, push; **declares `AccountDO`** |
-| [`bullmoose-ingest`](ingest/README.md) | Email Routing target: parse inbound → R2/D1 → state bump; pokes the agent runtime |
-| [`bullmoose-submit`](submit/README.md) | outbound relay (SES) + bounce/complaint webhooks |
-| [`bullmoose-provision`](provision/README.md) | onboarding admin API: zones, DNS, SES identities, accounts, grants |
-| [`bullmoose-agent`](agent/README.md) | agent runtime (reply/ledger), credential vault metadata, MCP tool surface |
-| [`bullmoose-bureau`](bureau/README.md) | the Bureau — holds the vault master key; seals, authorizes and (T3) applies credentials |
-| [`bullmoose-anglebrackets`](anglebrackets/README.md) | CardDAV + CalDAV over the same core, at `dav.<domain>` |
+| worker                                               | role                                                                                                     |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [`bullmoose-jmap`](jmap/README.md)                   | the JMAP server — mail/contacts/calendar methods, auth, blob up/download, push; **declares `AccountDO`** |
+| [`bullmoose-ingest`](ingest/README.md)               | Email Routing target: parse inbound → R2/D1 → state bump; pokes the agent runtime                        |
+| [`bullmoose-submit`](submit/README.md)               | outbound relay (SES) + bounce/complaint webhooks                                                         |
+| [`bullmoose-provision`](provision/README.md)         | onboarding admin API: zones, DNS, SES identities, accounts, grants                                       |
+| [`bullmoose-agent`](agent/README.md)                 | agent runtime (reply/ledger), credential vault metadata, MCP tool surface                                |
+| [`bullmoose-bureau`](bureau/README.md)               | the Bureau — holds the vault master key; seals, authorizes and (T3) applies credentials                  |
+| [`bullmoose-anglebrackets`](anglebrackets/README.md) | CardDAV + CalDAV over the same core, at `dav.<domain>`                                                   |
 
 ## Deploy order = the binding graph
 

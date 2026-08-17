@@ -10,14 +10,26 @@ describe("graduationDue — thresholds", () => {
     expect(P).toEqual({ minRejects: 10, maxRescues: 0 });
   });
 
-  type Row = [name: string, rejects: number, rescues: number, policy: GraduationPolicy, due: boolean];
+  type Row = [
+    name: string,
+    rejects: number,
+    rescues: number,
+    policy: GraduationPolicy,
+    due: boolean,
+  ];
   const rows: Row[] = [
     ["exactly minRejects, no rescues → due (boundary equality)", 10, 0, P, true],
     ["one short of minRejects → not due", 9, 0, P, false],
     ["far past minRejects → due", 500, 0, P, true],
     ["zero rejects → not due", 0, 0, P, false],
     ["ONE rescue blocks graduation forever under maxRescues 0", 100, 1, P, false],
-    ["rescues at maxRescues → due (boundary equality)", 10, 2, { minRejects: 10, maxRescues: 2 }, true],
+    [
+      "rescues at maxRescues → due (boundary equality)",
+      10,
+      2,
+      { minRejects: 10, maxRescues: 2 },
+      true,
+    ],
     ["rescues past maxRescues → not due", 10, 3, { minRejects: 10, maxRescues: 2 }, false],
     ["higher minRejects raises the bar", 10, 0, { minRejects: 20, maxRescues: 0 }, false],
   ];

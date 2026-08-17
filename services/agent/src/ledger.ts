@@ -81,7 +81,13 @@ export async function runLedger(
   // Anything that isn't a bookable receipt still FORWARDS to the digest
   // target with a light note — the mailbox never silently eats mail.
   const passAlong = async (note: string, invNote: string) => {
-    const fwdId = await forwardOriginal(env, store, job, { selfAddress, to: digestTo, note, email, parsed });
+    const fwdId = await forwardOriginal(env, store, job, {
+      selfAddress,
+      to: digestTo,
+      note,
+      email,
+      parsed,
+    });
     return finish("done", { note: invNote, forwardedEmailId: fwdId });
   };
 
@@ -213,7 +219,10 @@ async function extractFact(
       { role: "system" as const, content: system },
       {
         role: "user" as const,
-        content: attempt === 0 ? user : `${user}\n\nYour previous output was invalid (${lastError}). JSON only.`,
+        content:
+          attempt === 0
+            ? user
+            : `${user}\n\nYour previous output was invalid (${lastError}). JSON only.`,
       },
     ];
     const { output } = await callWithFallback(env, candidates, prompt, 512);
@@ -241,13 +250,16 @@ function parseFactJson(
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
-    if (o.is_receipt !== true || !vendor || !Number.isFinite(amount) || amount <= 0) return "invalid";
+    if (o.is_receipt !== true || !vendor || !Number.isFinite(amount) || amount <= 0)
+      return "invalid";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "invalid";
     const category = categories.includes(String(o.category)) ? String(o.category) : "other";
     return {
       vendor,
       amountCents: Math.round(amount * 100),
-      currency: String(o.currency ?? "USD").toUpperCase().slice(0, 3),
+      currency: String(o.currency ?? "USD")
+        .toUpperCase()
+        .slice(0, 3),
       txnDate: date,
       category,
       confidence: Math.max(0, Math.min(1, Number(o.confidence) || 0.5)),
@@ -316,32 +328,49 @@ async function aggregates(env: Env, accountId: string, f: SpendFact): Promise<Ag
   const lyToday = `${lastYear}${today.slice(4)}`;
 
   const one = async (sql: string, ...binds: unknown[]) =>
-    (await env.DB.prepare(sql).bind(...binds).first<{ v: number }>())?.v ?? 0;
+    (
+      await env.DB.prepare(sql)
+        .bind(...binds)
+        .first<{ v: number }>()
+    )?.v ?? 0;
 
   const cur = f.currency;
   const totalYtdCents = await one(
     `SELECT COALESCE(SUM(amount_cents),0) v FROM spend_facts
      WHERE account_id = ? AND currency = ? AND txn_date >= ? AND txn_date <= ?`,
-    accountId, cur, `${year}-01-01`, today,
+    accountId,
+    cur,
+    `${year}-01-01`,
+    today,
   );
   const lastYearSamePeriodCents = await one(
     `SELECT COALESCE(SUM(amount_cents),0) v FROM spend_facts
      WHERE account_id = ? AND currency = ? AND txn_date >= ? AND txn_date <= ?`,
-    accountId, cur, `${lastYear}-01-01`, lyToday,
+    accountId,
+    cur,
+    `${lastYear}-01-01`,
+    lyToday,
   );
   const vendorYtdCents = await one(
     `SELECT COALESCE(SUM(amount_cents),0) v FROM spend_facts
      WHERE account_id = ? AND currency = ? AND vendor = ? AND txn_date >= ?`,
-    accountId, cur, f.vendor, `${year}-01-01`,
+    accountId,
+    cur,
+    f.vendor,
+    `${year}-01-01`,
   );
   const vendorYtdCount = await one(
     `SELECT COUNT(*) v FROM spend_facts
      WHERE account_id = ? AND currency = ? AND vendor = ? AND txn_date >= ?`,
-    accountId, cur, f.vendor, `${year}-01-01`,
+    accountId,
+    cur,
+    f.vendor,
+    `${year}-01-01`,
   );
   const points = await one(
     `SELECT COUNT(*) v FROM spend_facts WHERE account_id = ? AND currency = ?`,
-    accountId, cur,
+    accountId,
+    cur,
   );
 
   const { results } = await env.DB.prepare(
@@ -423,7 +452,20 @@ function digestSubject(f: SpendFact, agg: Aggregates): string {
   return `💰 ${money(f.amountCents)} ${f.vendor} — YTD ${money(agg.totalYtdCents)}${delta}`;
 }
 
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 /** Email-safe chart: table rows with inline-styled div bars. No SVG, no images. */
 export function chartHtml(agg: Aggregates): string {
@@ -455,7 +497,13 @@ ${rows}
 async function sendDigest(
   env: Env,
   store: Mailstore,
-  job: { id: string; account_id: string; binding_id: string; binding_name: string; tenant_id: string },
+  job: {
+    id: string;
+    account_id: string;
+    binding_id: string;
+    binding_name: string;
+    tenant_id: string;
+  },
   d: {
     selfAddress: string;
     to: string;
@@ -473,7 +521,9 @@ async function sendDigest(
     lines.push(
       `${d.fact.vendor} — ${money(d.fact.amountCents)} ${d.fact.currency} (${d.fact.txnDate}, ${d.fact.category})${d.fact.confidence < 0.7 ? "  ⚠ low confidence — please verify" : ""}`,
     );
-    lines.push(`YTD with them: ${money(agg.vendorYtdCents)} across ${agg.vendorYtdCount} charge(s).`);
+    lines.push(
+      `YTD with them: ${money(agg.vendorYtdCents)} across ${agg.vendorYtdCount} charge(s).`,
+    );
   }
   if (d.extraText) lines.push(d.extraText);
   lines.push(
@@ -544,7 +594,7 @@ ${hasChart ? chartHtml(agg) : `<p style="color:#777">${escapeHtml(progress.trim(
     cc: [],
     bcc: [],
     preview: text.slice(0, 256),
-    bodyText: text,   // full body into the FTS index (common/004)
+    bodyText: text, // full body into the FTS index (common/004)
     size: raw.byteLength,
     receivedAt: now,
     hasAttachment: false,
@@ -569,7 +619,13 @@ function escapeHtml(s: string): string {
 async function forwardOriginal(
   env: Env,
   store: Mailstore,
-  job: { id: string; account_id: string; binding_id: string; binding_name: string; tenant_id: string },
+  job: {
+    id: string;
+    account_id: string;
+    binding_id: string;
+    binding_name: string;
+    tenant_id: string;
+  },
   f: {
     selfAddress: string;
     to: string;
@@ -584,7 +640,7 @@ async function forwardOriginal(
   const text = `${f.note}
 
 ---------- Forwarded message ----------
-From: ${from?.name ? `${from.name} <${from.email}>` : from?.email ?? "(unknown)"}
+From: ${from?.name ? `${from.name} <${from.email}>` : (from?.email ?? "(unknown)")}
 Date: ${new Date(orig.receivedAt).toUTCString()}
 Subject: ${orig.subject}
 
@@ -636,7 +692,7 @@ ${f.parsed.text ?? orig.preview}`;
     cc: [],
     bcc: [],
     preview: text.slice(0, 256),
-    bodyText: text,   // full body into the FTS index (common/004)
+    bodyText: text, // full body into the FTS index (common/004)
     size: raw.byteLength,
     receivedAt: now,
     hasAttachment: false,
@@ -656,7 +712,13 @@ ${f.parsed.text ?? orig.preview}`;
 async function bootstrapCsv(
   env: Env,
   store: Mailstore,
-  job: { id: string; account_id: string; binding_id: string; binding_name: string; tenant_id: string },
+  job: {
+    id: string;
+    account_id: string;
+    binding_id: string;
+    binding_name: string;
+    tenant_id: string;
+  },
   cfg: BindingConfig,
   email: EmailRow,
   selfAddress: string,
@@ -697,7 +759,10 @@ async function bootstrapCsv(
       continue;
     }
     const ok = await insertFact(env, job.account_id, email.id, {
-      vendor: vendor.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+      vendor: vendor
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, ""),
       amountCents: cents,
       currency: currency.toUpperCase().slice(0, 3),
       txnDate: date,

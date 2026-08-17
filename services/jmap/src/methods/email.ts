@@ -457,9 +457,7 @@ async function createDraft(
   spec: Record<string, unknown>,
   r: EmailSetResult,
 ): Promise<Record<string, unknown>> {
-  const mailboxIds = Object.entries(
-    (spec.mailboxIds as Record<string, unknown> | undefined) ?? {},
-  )
+  const mailboxIds = Object.entries((spec.mailboxIds as Record<string, unknown> | undefined) ?? {})
     .filter(([, v]) => v === true)
     .map(([k]) => k);
   if (mailboxIds.length === 0) {
@@ -611,11 +609,9 @@ async function resolveAttachments(
   for (const [i, spec] of specs.entries()) {
     const head = await store.headBlob(access.tenantId, access.accountId, spec.blobId);
     if (!head) {
-      throw new SetErrorSignal(
-        "blobNotFound",
-        `no such blob in this account: ${spec.blobId}`,
-        [`attachments/${i}/blobId`],
-      );
+      throw new SetErrorSignal("blobNotFound", `no such blob in this account: ${spec.blobId}`, [
+        `attachments/${i}/blobId`,
+      ]);
     }
     total += head.size;
     if (total > MAX_ATTACHMENT_BYTES_PER_EMAIL) {
@@ -679,7 +675,11 @@ function parseAttachmentSpecs(value: unknown): AttachmentSpec[] {
     }
     const part = raw as Record<string, unknown>;
     if (typeof part.blobId !== "string" || part.blobId === "") {
-      throw new SetErrorSignal("invalidProperties", "an attachment requires a blobId", at("blobId"));
+      throw new SetErrorSignal(
+        "invalidProperties",
+        "an attachment requires a blobId",
+        at("blobId"),
+      );
     }
     if (part.type !== undefined && part.type !== null && typeof part.type !== "string") {
       throw new SetErrorSignal("invalidProperties", "type must be a string", at("type"));
@@ -695,14 +695,19 @@ function parseAttachmentSpecs(value: unknown): AttachmentSpec[] {
       part.disposition !== null &&
       typeof part.disposition !== "string"
     ) {
-      throw new SetErrorSignal("invalidProperties", "disposition must be a string", at("disposition"));
+      throw new SetErrorSignal(
+        "invalidProperties",
+        "disposition must be a string",
+        at("disposition"),
+      );
     }
     const cid = typeof part.cid === "string" && part.cid !== "" ? part.cid : null;
     return {
       blobId: part.blobId,
       // RFC 8621 leaves `type` optional; octet-stream is the RFC 2046 §4.5.1
       // default for "bytes of unknown kind".
-      type: typeof part.type === "string" && part.type !== "" ? part.type : "application/octet-stream",
+      type:
+        typeof part.type === "string" && part.type !== "" ? part.type : "application/octet-stream",
       name: typeof part.name === "string" && part.name !== "" ? part.name : null,
       cid,
       // A cid-carrying part is inline unless the client says otherwise; this
@@ -784,7 +789,10 @@ async function emailImport(
     } catch (err) {
       notCreated[cid] =
         err instanceof MethodError
-          ? setError(err.type === "invalidArguments" ? "invalidProperties" : err.type, err.description)
+          ? setError(
+              err.type === "invalidArguments" ? "invalidProperties" : err.type,
+              err.description,
+            )
           : setError("serverFail", String(err));
     }
   }
@@ -830,7 +838,11 @@ async function importOne(
   for (const att of parsed.attachments ?? []) {
     const content =
       typeof att.content === "string" ? new TextEncoder().encode(att.content).buffer : att.content;
-    const attBlobId = await store.putBlob(access.tenantId, access.accountId, content as ArrayBuffer);
+    const attBlobId = await store.putBlob(
+      access.tenantId,
+      access.accountId,
+      content as ArrayBuffer,
+    );
     attachments.push({
       blobId: attBlobId,
       type: att.mimeType ?? "application/octet-stream",
@@ -862,8 +874,7 @@ async function importOne(
     preview: previewText(parsed.text, parsed.html),
     // Imported mail is indexed on the same terms as delivered mail
     // (common/004) — an HTML-only message has no `.text` at all.
-    bodyText:
-      parsed.text && parsed.text.trim() !== "" ? parsed.text : htmlToIndexText(parsed.html),
+    bodyText: parsed.text && parsed.text.trim() !== "" ? parsed.text : htmlToIndexText(parsed.html),
     size: raw.byteLength,
     receivedAt: Number.isFinite(receivedAt) ? receivedAt : Date.now(),
     hasAttachment: attachments.some((a) => a.disposition !== "inline"),

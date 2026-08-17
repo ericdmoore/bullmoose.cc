@@ -17,7 +17,10 @@ describe("the fixture set covers what the task needs drivable", () => {
 
   it("has a near-expiry pending row — under the urgency line, still decidable", () => {
     const near = rows.filter(
-      (p) => p.status === "pending" && rowClocks(p, NOW).expiresInMs !== null && rowClocks(p, NOW).expiresInMs! < NEAR_EXPIRY_MS,
+      (p) =>
+        p.status === "pending" &&
+        rowClocks(p, NOW).expiresInMs !== null &&
+        rowClocks(p, NOW).expiresInMs! < NEAR_EXPIRY_MS,
     );
     expect(near.map((p) => p.id)).toEqual(["ap-reply-elk"]);
     expect(rowClocks(near[0]!, NOW).expiresInMs).toBeGreaterThan(0);
@@ -71,7 +74,10 @@ describe("server-wart mirrors (actionProposal.ts)", () => {
   it("refuses create with the server's sentence — the worker produces proposals", async () => {
     const { client } = harness();
     await expect(
-      client.requestOne("ActionProposal/set", { accountId: ACCOUNT, create: { c1: { kind: "reply-draft" } } }),
+      client.requestOne("ActionProposal/set", {
+        accountId: ACCOUNT,
+        create: { c1: { kind: "reply-draft" } },
+      }),
     ).rejects.toThrow(/invalidArguments/);
   });
 
@@ -100,19 +106,25 @@ describe("server-wart mirrors (actionProposal.ts)", () => {
 
   it("ActionProposal/queryChanges always throws, as the server's does", async () => {
     const { client } = harness();
-    await expect(client.requestOne("ActionProposal/queryChanges", { accountId: ACCOUNT })).rejects.toThrow(
-      /cannotCalculateChanges/,
-    );
+    await expect(
+      client.requestOne("ActionProposal/queryChanges", { accountId: ACCOUNT }),
+    ).rejects.toThrow(/cannotCalculateChanges/);
   });
 
   it("refuses to destroy a pending row — decide it, don't drop it", async () => {
     const { client } = harness();
-    const res = await client.requestOne("ActionProposal/set", { accountId: ACCOUNT, destroy: ["ap-reply-elk"] });
-    expect((res.notDestroyed as Record<string, { description?: string }>)["ap-reply-elk"]?.description).toContain(
-      "decide a pending proposal",
-    );
+    const res = await client.requestOne("ActionProposal/set", {
+      accountId: ACCOUNT,
+      destroy: ["ap-reply-elk"],
+    });
+    expect(
+      (res.notDestroyed as Record<string, { description?: string }>)["ap-reply-elk"]?.description,
+    ).toContain("decide a pending proposal");
     // A decided one purges fine (housekeeping).
-    const ok = await client.requestOne("ActionProposal/set", { accountId: ACCOUNT, destroy: ["ap-event-webinar"] });
+    const ok = await client.requestOne("ActionProposal/set", {
+      accountId: ACCOUNT,
+      destroy: ["ap-event-webinar"],
+    });
     expect(ok.destroyed).toEqual(["ap-event-webinar"]);
   });
 
@@ -141,10 +153,16 @@ describe("server-wart mirrors (actionProposal.ts)", () => {
     const past = NOW + 40 * 60_000; // past ap-reply-elk's 35-minute deadline
     // A read after the deadline still says pending: expiry is the worker
     // cron's job (services/agent/src/proposals.ts:153), not the read path's.
-    const before = await client.requestOne("ActionProposal/get", { accountId: ACCOUNT, ids: ["ap-reply-elk"] });
+    const before = await client.requestOne("ActionProposal/get", {
+      accountId: ACCOUNT,
+      ids: ["ap-reply-elk"],
+    });
     expect((before.list as Array<{ status: string }>)[0]?.status).toBe("pending");
     backend.sweep(past);
-    const after = await client.requestOne("ActionProposal/get", { accountId: ACCOUNT, ids: ["ap-reply-elk"] });
+    const after = await client.requestOne("ActionProposal/get", {
+      accountId: ACCOUNT,
+      ids: ["ap-reply-elk"],
+    });
     expect((after.list as Array<{ status: string }>)[0]?.status).toBe("expired");
   });
 });

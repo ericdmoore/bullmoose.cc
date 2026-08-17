@@ -313,12 +313,10 @@ const READ_TOOLS: ToolDef[] = [
           calculateTotal: true,
         },
       );
-      const got = await callJmap<{ list: Record<string, unknown>[] }>(
-        env,
-        principal,
-        "Email/get",
-        { accountId, ids: query.ids },
-      );
+      const got = await callJmap<{ list: Record<string, unknown>[] }>(env, principal, "Email/get", {
+        accountId,
+        ids: query.ids,
+      });
       return untrusted({
         accountId,
         queryState: query.queryState,
@@ -422,7 +420,7 @@ const READ_TOOLS: ToolDef[] = [
     description:
       "List the account's mailboxes: id, name, role, and message counts. Call this before " +
       "email_move to get a destination mailboxId, and before email_query to filter by " +
-      'inMailbox. The six seeded roles are inbox, sent, drafts, trash, junk and archive. ' +
+      "inMailbox. The six seeded roles are inbox, sent, drafts, trash, junk and archive. " +
       "totalThreads/unreadThreads are real thread counts and will be lower than " +
       "totalEmails/unreadEmails wherever a thread has more than one message in the mailbox; " +
       "unreadThreads counts threads holding unread mail in THIS mailbox.",
@@ -610,7 +608,9 @@ const TRIAGE_TOOLS: ToolDef[] = [
       const mailboxId = requireString(args, "mailboxId");
       const addresses = (v: unknown): Array<{ email: string }> | undefined =>
         Array.isArray(v)
-          ? v.filter((a): a is string => typeof a === "string" && a.length > 0).map((email) => ({ email }))
+          ? v
+              .filter((a): a is string => typeof a === "string" && a.length > 0)
+              .map((email) => ({ email }))
           : undefined;
 
       const keywords: Record<string, boolean> = { $draft: true };

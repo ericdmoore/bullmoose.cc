@@ -134,7 +134,10 @@ async function world() {
       id: OTHER_BINDING,
       account_id: ACCOUNT,
       name: "wide",
-      config_json: JSON.stringify({ ...JSON.parse(CONFIG), jobs: { tools: [KEPT, DROPPED, "whoami"] } }),
+      config_json: JSON.stringify({
+        ...JSON.parse(CONFIG),
+        jobs: { tools: [KEPT, DROPPED, "whoami"] },
+      }),
       recipients_book_id: null,
     },
   ]);
@@ -290,10 +293,7 @@ describe("A bmi_ token is REFUSED by every surface that does not understand invo
     const s = await world();
     const parsed = parseInvocationToken(s.leaf)!;
     const twelveHex = parsed.id.replace("it_", "");
-    const digest = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(parsed.secret),
-    );
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(parsed.secret));
     const secretHash = [...new Uint8Array(digest)]
       .map((x) => x.toString(16).padStart(2, "0"))
       .join("");
@@ -430,14 +430,20 @@ describe("THE MINT is the claim, and only the claim", () => {
         body: JSON.stringify({
           using: ["urn:ietf:params:jmap:core", "urn:bullmoose:params:jmap:agent"],
           methodCalls: [
-            ["AgentInvocation/set", { accountId: ACCOUNT, update: { [id]: { status: "running" } } }, "0"],
+            [
+              "AgentInvocation/set",
+              { accountId: ACCOUNT, update: { [id]: { status: "running" } } },
+              "0",
+            ],
           ],
         }),
       }),
       s.w.env as never,
     );
     const body = (await res.json()) as {
-      methodResponses: Array<[string, { updated: Record<string, { invocationToken?: string } | null> }, string]>;
+      methodResponses: Array<
+        [string, { updated: Record<string, { invocationToken?: string } | null> }, string]
+      >;
     };
     return body.methodResponses[0]![1].updated[id];
   };
@@ -542,7 +548,11 @@ describe("THE MINT is the claim, and only the claim", () => {
         body: JSON.stringify({
           using: ["urn:ietf:params:jmap:core", "urn:bullmoose:params:jmap:agent"],
           methodCalls: [
-            ["AgentInvocation/set", { accountId: ACCOUNT, update: { inv_leaf: { status: "done" } } }, "0"],
+            [
+              "AgentInvocation/set",
+              { accountId: ACCOUNT, update: { inv_leaf: { status: "done" } } },
+              "0",
+            ],
           ],
         }),
       }),
@@ -826,7 +836,14 @@ describe("RULE 2 — an agent-marked bearer may not CREATE an invocation on its 
       { id: "bind_second", account_id: "t_bm__a_second", name: "cj", config_json: CONFIG },
     ]);
     s.w.db.seed("emails", [
-      { id: "e_second", account_id: "t_bm__a_second", blob_id: "b2", thread_id: "t2", size: 10, received_at: 1 },
+      {
+        id: "e_second",
+        account_id: "t_bm__a_second",
+        blob_id: "b2",
+        thread_id: "t2",
+        size: 10,
+        received_at: 1,
+      },
     ]);
     // `requireAccount` authorized the BEARER for this account; the token is
     // bound to a different one. The chain walk is account-scoped, so a copied

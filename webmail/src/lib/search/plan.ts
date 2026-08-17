@@ -67,8 +67,20 @@ interface RealmInfo {
 /** Today's searchability table — the one place to edit when a tier changes. */
 export const REALMS: readonly RealmInfo[] = [
   { realm: "mail", title: "Mail", label: "mail bodies", tier: "indexed", capability: MAIL_CAP },
-  { realm: "contacts", title: "Contacts", label: "contacts", tier: "scanned", capability: CONTACTS_CAP },
-  { realm: "calendar", title: "Calendar", label: "calendar", tier: "scanned", capability: CALENDARS_CAP },
+  {
+    realm: "contacts",
+    title: "Contacts",
+    label: "contacts",
+    tier: "scanned",
+    capability: CONTACTS_CAP,
+  },
+  {
+    realm: "calendar",
+    title: "Calendar",
+    label: "calendar",
+    tier: "scanned",
+    capability: CALENDARS_CAP,
+  },
   { realm: "files", title: "Files", label: "files", tier: "none" },
 ];
 
@@ -147,7 +159,9 @@ export function planSearch(session: Session, rawQuery: string): SearchPlan {
       }
       coverage.push(entry(info, true));
     } else if (accountsWith(session, info.capability).length > 0) {
-      coverage.push(entry(info, false, "reachable only through a grant — shared accounts are not searched"));
+      coverage.push(
+        entry(info, false, "reachable only through a grant — shared accounts are not searched"),
+      );
     } else {
       coverage.push(entry(info, false, "this session has no access"));
     }
@@ -169,8 +183,7 @@ export function planSearch(session: Session, rawQuery: string): SearchPlan {
  * than disappearing (an absent group reads as "no matches", which is false).
  */
 export function orderRealms(coverage: RealmCoverage[]): RealmCoverage[] {
-  const rank = (c: RealmCoverage): number =>
-    !c.searched ? 2 : c.tier === "indexed" ? 0 : 1;
+  const rank = (c: RealmCoverage): number => (!c.searched ? 2 : c.tier === "indexed" ? 0 : 1);
   // Stable within a rank, so REALMS order breaks ties.
   return [...coverage].sort((a, b) => rank(a) - rank(b));
 }

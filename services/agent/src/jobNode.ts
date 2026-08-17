@@ -110,9 +110,17 @@ export async function runJobNode(
     case "echo":
       return done("done", { kind: "job-node", op, text: String(context.text ?? "") }, FREE);
     case "fail":
-      return done("failed", { kind: "job-node", op, note: String(context.note ?? "planned failure") }, FREE);
+      return done(
+        "failed",
+        { kind: "job-node", op, note: String(context.note ?? "planned failure") },
+        FREE,
+      );
     default:
-      return done("failed", { kind: "job-node", note: `unknown job-node op: ${op || "(none)"}` }, FREE);
+      return done(
+        "failed",
+        { kind: "job-node", note: `unknown job-node op: ${op || "(none)"}` },
+        FREE,
+      );
   }
 }
 
@@ -142,7 +150,12 @@ async function runPlanner(
   }
   return done(
     "done",
-    { kind: "job-node", op: "plan", created: expanded.created.map((c) => c.id), tasks: expanded.created },
+    {
+      kind: "job-node",
+      op: "plan",
+      created: expanded.created.map((c) => c.id),
+      tasks: expanded.created,
+    },
     FREE,
   );
 }

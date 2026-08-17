@@ -59,29 +59,43 @@ describe("computeWindow", () => {
 
 describe("scrollToIndex", () => {
   it("leaves the scroll alone when the row is already visible", () => {
-    expect(scrollToIndex(5, { scrollTop: 0, viewportHeight: 400, rowHeight: 40, count: 100 })).toBe(0);
+    expect(scrollToIndex(5, { scrollTop: 0, viewportHeight: 400, rowHeight: 40, count: 100 })).toBe(
+      0,
+    );
   });
 
   it("scrolls up by the minimum to reveal a row above the viewport", () => {
-    expect(scrollToIndex(2, { scrollTop: 400, viewportHeight: 400, rowHeight: 40, count: 100 })).toBe(80);
+    expect(
+      scrollToIndex(2, { scrollTop: 400, viewportHeight: 400, rowHeight: 40, count: 100 }),
+    ).toBe(80);
   });
 
   it("scrolls down by the minimum to reveal a row below the viewport", () => {
     // Row 12 ends at 520; the viewport shows 0–400, so scroll to 120.
-    expect(scrollToIndex(12, { scrollTop: 0, viewportHeight: 400, rowHeight: 40, count: 100 })).toBe(120);
+    expect(
+      scrollToIndex(12, { scrollTop: 0, viewportHeight: 400, rowHeight: 40, count: 100 }),
+    ).toBe(120);
   });
 
   it("never scrolls past the end", () => {
-    expect(scrollToIndex(99, { scrollTop: 0, viewportHeight: 400, rowHeight: 40, count: 100 })).toBe(3600);
+    expect(
+      scrollToIndex(99, { scrollTop: 0, viewportHeight: 400, rowHeight: 40, count: 100 }),
+    ).toBe(3600);
   });
 
   it("clamps an out-of-range index", () => {
-    expect(scrollToIndex(-5, { scrollTop: 200, viewportHeight: 400, rowHeight: 40, count: 100 })).toBe(0);
-    expect(scrollToIndex(500, { scrollTop: 0, viewportHeight: 400, rowHeight: 40, count: 100 })).toBe(3600);
+    expect(
+      scrollToIndex(-5, { scrollTop: 200, viewportHeight: 400, rowHeight: 40, count: 100 }),
+    ).toBe(0);
+    expect(
+      scrollToIndex(500, { scrollTop: 0, viewportHeight: 400, rowHeight: 40, count: 100 }),
+    ).toBe(3600);
   });
 
   it("returns 0 for an empty list", () => {
-    expect(scrollToIndex(0, { scrollTop: 0, viewportHeight: 400, rowHeight: 40, count: 0 })).toBe(0);
+    expect(scrollToIndex(0, { scrollTop: 0, viewportHeight: 400, rowHeight: 40, count: 0 })).toBe(
+      0,
+    );
   });
 });
 

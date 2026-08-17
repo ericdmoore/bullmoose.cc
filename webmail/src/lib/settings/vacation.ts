@@ -209,7 +209,9 @@ export function vacationPatch(
   // send one. An empty body on a DISABLED responder is just an unfinished draft.
   if (form.isEnabled) {
     if (form.textBody.trim() === "") {
-      problems.push("Write the message people will receive — an empty auto-reply is worse than none.");
+      problems.push(
+        "Write the message people will receive — an empty auto-reply is worse than none.",
+      );
     }
     if (form.subject.trim() === "") {
       warnings.push("With no subject, replies go out with an empty subject line.");
@@ -255,7 +257,8 @@ export interface VacationStatus {
  * at all, which is the question the settings screen is for.
  */
 export function vacationStatus(v: VacationResponse, now: Date = new Date()): VacationStatus {
-  if (!v.isEnabled) return { activity: "off", summary: "Off. Incoming mail gets no automatic reply." };
+  if (!v.isEnabled)
+    return { activity: "off", summary: "Off. Incoming mail gets no automatic reply." };
 
   const t = now.getTime();
   const from = v.fromDate ? Date.parse(v.fromDate) : null;
@@ -328,7 +331,8 @@ export async function saveVacation(
   const [response] = await client.request([
     ["VacationResponse/set", { accountId, update: { singleton: patch } }, "v0"],
   ]);
-  if (!response) return { ok: false, kind: "error", message: "VacationResponse/set returned nothing." };
+  if (!response)
+    return { ok: false, kind: "error", message: "VacationResponse/set returned nothing." };
 
   if (response[0] === "error") {
     const detail = response[1] as { type?: string; description?: string };

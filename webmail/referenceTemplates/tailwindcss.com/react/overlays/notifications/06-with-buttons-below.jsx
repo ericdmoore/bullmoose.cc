@@ -1,11 +1,11 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Transition } from '@headlessui/react'
-import { XMarkIcon } from '@heroicons/react/20/solid'
+import { useState } from "react";
+import { Transition } from "@headlessui/react";
+import { XMarkIcon } from "@heroicons/react/20/solid";
 
 export default function Example() {
-  const [show, setShow] = useState(true)
+  const [show, setShow] = useState(true);
 
   return (
     <>
@@ -28,8 +28,12 @@ export default function Example() {
                     />
                   </div>
                   <div className="ml-3 w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">Emilia Gates</p>
-                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Sent you an invite to connect.</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      Emilia Gates
+                    </p>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      Sent you an invite to connect.
+                    </p>
                     <div className="mt-4 flex">
                       <button
                         type="button"
@@ -49,7 +53,7 @@ export default function Example() {
                     <button
                       type="button"
                       onClick={() => {
-                        setShow(false)
+                        setShow(false);
                       }}
                       className="inline-flex rounded-md text-gray-400 hover:text-gray-500 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-600 dark:hover:text-white dark:focus:outline-indigo-500"
                     >
@@ -64,5 +68,5 @@ export default function Example() {
         </div>
       </div>
     </>
-  )
+  );
 }

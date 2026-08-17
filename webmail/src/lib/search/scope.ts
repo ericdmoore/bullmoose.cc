@@ -35,8 +35,7 @@ export interface ScopeNote {
 }
 
 /** Shared-accounts line (decision 4), appended only when the session HAS any. */
-export const SHARED_NOT_SEARCHED =
-  "other people's shared accounts — only your own are searched";
+export const SHARED_NOT_SEARCHED = "other people's shared accounts — only your own are searched";
 
 export function deriveScopeNote(plan: {
   coverage: RealmCoverage[];

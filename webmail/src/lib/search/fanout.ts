@@ -76,7 +76,9 @@ export async function runSearch(client: JmapClient, plan: SearchPlan): Promise<S
   }
 
   const outcomes = await Promise.all(
-    [...byRealm.entries()].map(([realm, accountIds]) => realmOutcome(client, realm, accountIds, plan.query)),
+    [...byRealm.entries()].map(([realm, accountIds]) =>
+      realmOutcome(client, realm, accountIds, plan.query),
+    ),
   );
 
   return {
@@ -143,7 +145,11 @@ async function mailPage(client: JmapClient, accountId: string, text: string): Pr
 }
 
 /** `ContactCard/query {text}` — a full-scan leg (`../contacts/cards.ts`). */
-async function contactsPage(client: JmapClient, accountId: string, text: string): Promise<RealmPage> {
+async function contactsPage(
+  client: JmapClient,
+  accountId: string,
+  text: string,
+): Promise<RealmPage> {
   const { query, get } = await client.queryThenGet(
     accountId,
     "ContactCard/query",
@@ -156,7 +162,11 @@ async function contactsPage(client: JmapClient, accountId: string, text: string)
 
 /** `CalendarEvent/query {text}` — the other full-scan leg, via the SAME
  *  `searchEvents` the calendar screen uses. */
-async function calendarPage(client: JmapClient, accountId: string, text: string): Promise<RealmPage> {
+async function calendarPage(
+  client: JmapClient,
+  accountId: string,
+  text: string,
+): Promise<RealmPage> {
   const { events, total } = await searchEvents(client, accountId, text, PER_REALM_LIMIT);
   return { hits: events.map(eventHit), total };
 }

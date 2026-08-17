@@ -139,7 +139,11 @@ export function fakeAccountDo(env: Record<string, unknown> = {}): FakeAccountDo 
     if (!existing) {
       const storage = new FakeDurableObjectStorage();
       const ctx = {
-        id: { toString: () => name, name, equals: (o: { toString(): string }) => String(o) === name },
+        id: {
+          toString: () => name,
+          name,
+          equals: (o: { toString(): string }) => String(o) === name,
+        },
         storage,
         waitUntil: () => {},
         blockConcurrencyWhile: <T>(cb: () => Promise<T>) => cb(),
@@ -186,7 +190,8 @@ export function fakeAccountDo(env: Record<string, unknown> = {}): FakeAccountDo 
     const plainInit = over ? null : (init as RequestInit | undefined);
 
     const url = from ? from.url : String(input);
-    const method = over?.method ?? (plainInit?.method as string | undefined) ?? from?.method ?? "GET";
+    const method =
+      over?.method ?? (plainInit?.method as string | undefined) ?? from?.method ?? "GET";
     const headers = new Headers(over?.headers ?? plainInit?.headers ?? from?.headers ?? undefined);
 
     let body: string | null = null;

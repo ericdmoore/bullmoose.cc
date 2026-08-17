@@ -254,7 +254,12 @@ function buildSingleton(
   const out: Record<string, CardEntry> = {};
 
   if (value) {
-    const key = first?.[0] ?? mintKey(prefix, entries.map(([k]) => k));
+    const key =
+      first?.[0] ??
+      mintKey(
+        prefix,
+        entries.map(([k]) => k),
+      );
     out[key] = { ...(first?.[1] ?? {}), [field]: value };
   }
   for (const [key, entry] of others) out[key] = entry;

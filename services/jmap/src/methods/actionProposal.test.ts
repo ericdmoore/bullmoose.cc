@@ -238,7 +238,9 @@ describe("approving a tier-1 proposal applies it and stamps provenance", () => {
       id: "inv_c",
       kind: "create-contact",
       tier: 1,
-      payload: { card: { name: { full: "Dana Vendor" }, emails: { work: { address: "dana@acme.test" } } } },
+      payload: {
+        card: { name: { full: "Dana Vendor" }, emails: { work: { address: "dana@acme.test" } } },
+      },
     });
 
     const res = await h.set({ update: { inv_c: { status: "approved" } } });
@@ -252,7 +254,10 @@ describe("approving a tier-1 proposal applies it and stamps provenance", () => {
       last_writer_principal: string;
       last_writer_binding: string;
       last_writer_invocation: string;
-    }>("SELECT id, name_full, last_writer_principal, last_writer_binding, last_writer_invocation FROM contact_cards WHERE account_id = ?", ACCOUNT)[0]!;
+    }>(
+      "SELECT id, name_full, last_writer_principal, last_writer_binding, last_writer_invocation FROM contact_cards WHERE account_id = ?",
+      ACCOUNT,
+    )[0]!;
     expect(card.name_full).toBe("Dana Vendor");
     // Provenance: the human approved (principal) an agent's proposed write
     // (binding + invocation) — the .feedback common/033 gap, closed.
@@ -267,7 +272,10 @@ describe("approving a tier-1 proposal applies it and stamps provenance", () => {
       "inv_c",
     )[0]!;
     expect(prop.status).toBe("approved");
-    expect(JSON.parse(prop.decision_json).undo).toMatchObject({ action: "destroy-contact", cardId: card.id });
+    expect(JSON.parse(prop.decision_json).undo).toMatchObject({
+      action: "destroy-contact",
+      cardId: card.id,
+    });
 
     // CHOREOGRAPHY: the transition reached the changelog (else push is blind).
     const propChanges = await h.w.accountDo.changes(ACCOUNT, "ActionProposal", "0");
@@ -290,7 +298,9 @@ describe("a human edit is captured separately and never overwrites the original"
     });
 
     await h.set({
-      update: { inv_e: { status: "approved", editedPayload: { card: { name: { full: "Human Fix" } } } } },
+      update: {
+        inv_e: { status: "approved", editedPayload: { card: { name: { full: "Human Fix" } } } },
+      },
     });
 
     // The APPLIED write used the human's version.
@@ -360,7 +370,9 @@ describe("a tier-3 approve requires a human and is refused to an agent token", (
     expect(res.updated.inv_3).toBeNull();
 
     // The egress happened, once, to the intended recipient.
-    expect(h.w.submit.calls).toEqual([{ mailFrom: "eric@bullmoose.cc", rcptTo: ["outside@example.com"] }]);
+    expect(h.w.submit.calls).toEqual([
+      { mailFrom: "eric@bullmoose.cc", rcptTo: ["outside@example.com"] },
+    ]);
     const prop = h.w.db.query<{ status: string }>(
       "SELECT status FROM agent_proposals WHERE account_id = ? AND id = ?",
       ACCOUNT,
@@ -399,7 +411,9 @@ describe("rejecting captures the no-thanks signal", () => {
     seedProposal(h.w, { id: "inv_r", kind: "reply-draft", tier: 2 });
 
     const res = await h.set({
-      update: { inv_r: { status: "rejected", decision: { reason: "wrongContent", note: "off tone" } } },
+      update: {
+        inv_r: { status: "rejected", decision: { reason: "wrongContent", note: "off tone" } },
+      },
     });
     expect(res.updated.inv_r).toBeNull();
 
@@ -422,7 +436,9 @@ describe("rejecting captures the no-thanks signal", () => {
   it("rejects an unknown decision reason", async () => {
     const h = harness(["mail"]);
     seedProposal(h.w, { id: "inv_bad", kind: "reply-draft", tier: 2 });
-    const res = await h.set({ update: { inv_bad: { status: "rejected", decision: { reason: "meh" } } } });
+    const res = await h.set({
+      update: { inv_bad: { status: "rejected", decision: { reason: "meh" } } },
+    });
     expect(res.notUpdated.inv_bad!.type).toBe("invalidProperties");
   });
 
@@ -435,7 +451,10 @@ describe("rejecting captures the no-thanks signal", () => {
     seedProposal(h.w, { id: "inv_unsafe", kind: "reply-draft", tier: 2 });
     const res = await h.set({
       update: {
-        inv_unsafe: { status: "rejected", decision: { reason: "unsafe", note: "quoted the contract terms" } },
+        inv_unsafe: {
+          status: "rejected",
+          decision: { reason: "unsafe", note: "quoted the contract terms" },
+        },
       },
     });
     expect(res.updated.inv_unsafe).toBeNull();
@@ -517,9 +536,9 @@ describe("rejecting captures the no-thanks signal", () => {
 describe("ActionProposal/set has no create", () => {
   it("refuses create — proposals are produced by the agent worker", async () => {
     const h = harness(["mail"]);
-    await expect(
-      h.set({ create: { c: { kind: "reply-draft", tier: 2 } } }),
-    ).rejects.toThrow(/create/i);
+    await expect(h.set({ create: { c: { kind: "reply-draft", tier: 2 } } })).rejects.toThrow(
+      /create/i,
+    );
   });
 
   it("cannot re-decide an already-decided proposal", async () => {
@@ -576,7 +595,9 @@ describe("needsInfo — status info-requested with a required question", () => {
     });
 
     const res = await h.set({
-      update: { "inv_ni": { status: "info-requested", question: "Why Bob, and not the alias you have?" } },
+      update: {
+        inv_ni: { status: "info-requested", question: "Why Bob, and not the alias you have?" },
+      },
     });
     expect(res.notUpdated).toEqual({});
     expect(res.updated.inv_ni).toBeNull();
@@ -619,7 +640,12 @@ describe("needsInfo — status info-requested with a required question", () => {
     expect(typeof amendments[0]!.askedAt).toBe("string");
 
     // The answer round is a NEW pending invocation for the proposal's binding.
-    const inv = h.w.db.query<{ id: string; binding_id: string; binding_name: string; context_json: string }>(
+    const inv = h.w.db.query<{
+      id: string;
+      binding_id: string;
+      binding_name: string;
+      context_json: string;
+    }>(
       "SELECT id, binding_id, binding_name, context_json FROM agent_invocations WHERE account_id = ? AND status = 'pending'",
       ACCOUNT,
     )[0]!;
@@ -772,7 +798,10 @@ describe("approving a recipient grant-request APPLIES the contact write", () => 
       "inv_w",
     )[0]!;
     expect(prop.status).toBe("approved");
-    expect(JSON.parse(prop.decision_json).undo).toMatchObject({ action: "destroy-contact", cardId: card.id });
+    expect(JSON.parse(prop.decision_json).undo).toMatchObject({
+      action: "destroy-contact",
+      cardId: card.id,
+    });
     const cardChanges = await h.w.accountDo.changes(ACCOUNT, "ContactCard", "0");
     expect(cardChanges.created).toContain(card.id);
   });
@@ -861,7 +890,9 @@ describe("the collection lives behind urn:bullmoose:agent", () => {
           accountId: "a_shared",
           tenantId: TENANT,
           name: "Shared",
-          granted: [{ grantId: "g1", scopes: ["read"], collection: "AddressBook", collectionId: "ab_1" }],
+          granted: [
+            { grantId: "g1", scopes: ["read"], collection: "AddressBook", collectionId: "ab_1" },
+          ],
         },
       ],
     };
@@ -923,7 +954,12 @@ describe("dueAt — the work's deadline rides the projection and is human-correc
 
   it("dueAt: null clears a mis-read deadline back to never-urgent", async () => {
     const h = harness();
-    seedProposal(h.w, { id: "inv_clear", kind: "reply-draft", tier: 2, dueAt: Date.UTC(2027, 0, 1) });
+    seedProposal(h.w, {
+      id: "inv_clear",
+      kind: "reply-draft",
+      tier: 2,
+      dueAt: Date.UTC(2027, 0, 1),
+    });
     const res = await h.set({ update: { inv_clear: { dueAt: null } } });
     expect(res.updated.inv_clear).toBeNull();
     expect(
@@ -988,7 +1024,12 @@ const HELD_PAYLOAD = {
  *  unlike the /set tests the account row itself must exist. The binding is
  *  governed to reach exactly the held payload's recipient — the sweep egresses,
  *  so it sits behind the outbound bound like every other send. */
-function seedHeld(h: ReturnType<typeof harness>, id: string, holdUntil: number, by = "eric@login.example") {
+function seedHeld(
+  h: ReturnType<typeof harness>,
+  id: string,
+  holdUntil: number,
+  by = "eric@login.example",
+) {
   h.w.db.seedAccount({
     accountId: ACCOUNT,
     tenantId: TENANT,
@@ -1022,7 +1063,9 @@ describe("s03.D T2 — yank: the retraction the hold window exists for", () => {
     seedHeld(h, "inv_y2", Date.now() + 60_000);
     const before = (await h.call<{ state: string }>("ActionProposal/get", { ids: [] })).state;
     await h.set({ update: { inv_y2: { status: "yanked" } } });
-    const changes = await h.call<{ updated: string[] }>("ActionProposal/changes", { sinceState: before });
+    const changes = await h.call<{ updated: string[] }>("ActionProposal/changes", {
+      sinceState: before,
+    });
     expect(changes.updated).toContain("inv_y2");
   });
 
@@ -1031,9 +1074,10 @@ describe("s03.D T2 — yank: the retraction the hold window exists for", () => {
     seedHeld(h, "inv_y3", Date.now() - 1_000);
     const res = await h.set({ update: { inv_y3: { status: "yanked" } } });
     expect(res.notUpdated.inv_y3?.description).toMatch(/too late to yank/);
-    expect(h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_y3'`)[0]!.status).toBe(
-      "held",
-    );
+    expect(
+      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_y3'`)[0]!
+        .status,
+    ).toBe("held");
   });
 
   it("refuses to yank a pending proposal — that is a decline, not a yank", async () => {
@@ -1059,10 +1103,15 @@ describe("s03.D T2 — the commit sweep: Approve finally means send", () => {
     expect(failed).toEqual([]);
     expect(committed).toEqual(["inv_c1"]);
     // The egress actually happened.
-    expect(h.w.submit.calls).toEqual([{ mailFrom: "emily@bullmoose.cc", rcptTo: ["outside@example.com"] }]);
+    expect(h.w.submit.calls).toEqual([
+      { mailFrom: "emily@bullmoose.cc", rcptTo: ["outside@example.com"] },
+    ]);
     // The Sent copy exists and its provenance names the APPROVER — the write
     // belongs to the human whose approval it executes, not to the sweep.
-    const email = h.w.db.query<{ last_writer_principal: string | null; last_writer_binding: string | null }>(
+    const email = h.w.db.query<{
+      last_writer_principal: string | null;
+      last_writer_binding: string | null;
+    }>(
       `SELECT last_writer_principal, last_writer_binding FROM emails WHERE account_id = '${ACCOUNT}'`,
     )[0]!;
     expect(email.last_writer_principal).toBe("approver@login.example");
@@ -1080,7 +1129,9 @@ describe("s03.D T2 — the commit sweep: Approve finally means send", () => {
     seedHeld(h, "inv_c2", Date.now() - 1_000);
     const before = (await h.call<{ state: string }>("ActionProposal/get", { ids: [] })).state;
     await commitDueHeldProposals(h.ctx);
-    const changes = await h.call<{ updated: string[] }>("ActionProposal/changes", { sinceState: before });
+    const changes = await h.call<{ updated: string[] }>("ActionProposal/changes", {
+      sinceState: before,
+    });
     expect(changes.updated).toContain("inv_c2");
   });
 
@@ -1103,9 +1154,10 @@ describe("s03.D T2 — the commit sweep: Approve finally means send", () => {
     expect(committed).toEqual([]);
     expect(failed).toHaveLength(1);
     expect(failed[0]!.error).toMatch(/submit relay failed/);
-    expect(h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_c4'`)[0]!.status).toBe(
-      "held",
-    );
+    expect(
+      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_c4'`)[0]!
+        .status,
+    ).toBe("held");
   });
 });
 
@@ -1137,7 +1189,10 @@ describe("ATTACK: a book narrowed after the draft still bites at approve", () =>
 
   it("narrowing between draft and approve refuses the tier-3 apply, and nothing egresses", async () => {
     const h = harness(["mail"]);
-    seedProposal(h.w, tier3({ to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" }));
+    seedProposal(
+      h.w,
+      tier3({ to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" }),
+    );
     governBinding(h.w, [OUT]);
 
     // …the human narrows the book while the proposal sits in the queue.
@@ -1146,12 +1201,15 @@ describe("ATTACK: a book narrowed after the draft still bites at approve", () =>
     const res = await h.set({ update: { inv_nb: { status: "approved" } } });
     expect(res.updated).toEqual({});
     expect(res.notUpdated.inv_nb!.type).toBe("forbidden");
-    expect(res.notUpdated.inv_nb!.description).toMatch(/outbound bound.*not in the governing book: outside@example\.com/);
+    expect(res.notUpdated.inv_nb!.description).toMatch(
+      /outbound bound.*not in the governing book: outside@example\.com/,
+    );
     // Nothing left, and the row is recoverable rather than dropped: still
     // pending, still decidable once the book is right.
     expect(h.w.submit.calls).toEqual([]);
     expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_nb'`)[0]!.status,
+      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_nb'`)[0]!
+        .status,
     ).toBe("pending");
     // No Sent copy either — the refusal is BEFORE the relay, not after it.
     expect(h.w.db.count("emails")).toBe(0);
@@ -1159,7 +1217,10 @@ describe("ATTACK: a book narrowed after the draft still bites at approve", () =>
 
   it("re-widening the book lets the very same queued proposal through", async () => {
     const h = harness(["mail"]);
-    seedProposal(h.w, tier3({ to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" }));
+    seedProposal(
+      h.w,
+      tier3({ to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" }),
+    );
     governBinding(h.w, [OUT]);
     narrowBook(h.w);
     await h.set({ update: { inv_nb: { status: "approved" } } });
@@ -1191,7 +1252,8 @@ describe("ATTACK: a book narrowed after APPROVE still bites at the hold-tray com
     // Held, not lost: `commitHeld.ts` logs the reason loudly and the row is
     // retried next sweep — it sends the moment the book allows it again.
     expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_nh'`)[0]!.status,
+      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_nh'`)[0]!
+        .status,
     ).toBe("held");
   });
 
@@ -1240,7 +1302,9 @@ describe("ATTACK: editedPayload cannot edit its way past the bound", () => {
     // The agent drafted to `outside@`; the envelope went to `elsewhere@`. The
     // approver, not the agent, chose the recipient — which is exactly why the
     // draft-time check could never have been enough.
-    expect(h.w.submit.calls).toEqual([{ mailFrom: "emily@bullmoose.cc", rcptTo: ["elsewhere@example.com"] }]);
+    expect(h.w.submit.calls).toEqual([
+      { mailFrom: "emily@bullmoose.cc", rcptTo: ["elsewhere@example.com"] },
+    ]);
     // And the agent's original is retained beside the edit, unrewritten.
     const prop = h.w.db.query<{ payload_json: string }>(
       `SELECT payload_json FROM agent_proposals WHERE id = 'inv_ed'`,
@@ -1258,10 +1322,13 @@ describe("ATTACK: editedPayload cannot edit its way past the bound", () => {
     });
     expect(res.updated).toEqual({});
     expect(res.notUpdated.inv_ed!.type).toBe("forbidden");
-    expect(res.notUpdated.inv_ed!.description).toMatch(/not in the governing book: attacker@evil\.test/);
+    expect(res.notUpdated.inv_ed!.description).toMatch(
+      /not in the governing book: attacker@evil\.test/,
+    );
     expect(h.w.submit.calls).toEqual([]);
     expect(
-      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_ed'`)[0]!.status,
+      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_ed'`)[0]!
+        .status,
     ).toBe("pending");
   });
 
@@ -1349,7 +1416,13 @@ describe("approving a watch-offer arms a no-reply-from Watch", () => {
   it("arms the watch (condition, action, source), backdating created_at to the send", async () => {
     const h = harness(["mail"]);
     h.w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT, loginEmail: "eric@bullmoose.cc" }); // watches FK → accounts
-    seedProposal(h.w, { id: "inv_wo", kind: "watch-offer", tier: 1, subject: { realm: "Email", objectId: "e_ask" }, payload: offerPayload });
+    seedProposal(h.w, {
+      id: "inv_wo",
+      kind: "watch-offer",
+      tier: 1,
+      subject: { realm: "Email", objectId: "e_ask" },
+      payload: offerPayload,
+    });
 
     const before = Date.now();
     const res = await h.set({ update: { inv_wo: { status: "approved" } } });
@@ -1371,7 +1444,10 @@ describe("approving a watch-offer arms a no-reply-from Watch", () => {
     }>(`SELECT * FROM watches`)[0]!;
     expect(watch.account_id).toBe(ACCOUNT);
     expect(watch.condition_type).toBe("no-reply-from");
-    expect(JSON.parse(watch.condition_json)).toEqual({ sender: "sergio@example.com", threadId: "th_x" });
+    expect(JSON.parse(watch.condition_json)).toEqual({
+      sender: "sergio@example.com",
+      threadId: "th_x",
+    });
     expect(watch.action_type).toBe("draft-followup");
     expect(JSON.parse(watch.action_json)).toEqual({ to: "sergio@example.com" });
     expect(watch.status).toBe("armed");
@@ -1386,7 +1462,10 @@ describe("approving a watch-offer arms a no-reply-from Watch", () => {
       `SELECT status, decision_json FROM agent_proposals WHERE id = 'inv_wo'`,
     )[0]!;
     expect(prop.status).toBe("approved");
-    expect(JSON.parse(prop.decision_json).undo).toEqual({ action: "cancel-watch", watchId: watch.id });
+    expect(JSON.parse(prop.decision_json).undo).toEqual({
+      action: "cancel-watch",
+      watchId: watch.id,
+    });
   });
 
   it("declining is no-fault: a reject reason is refused; a bare decline records it and arms nothing", async () => {
@@ -1395,7 +1474,9 @@ describe("approving a watch-offer arms a no-reply-from Watch", () => {
     seedProposal(h.w, { id: "inv_wo2", kind: "watch-offer", tier: 1, payload: offerPayload });
 
     // A fault reason is refused — the agent was right to notice you're waiting.
-    const bad = await h.set({ update: { inv_wo2: { status: "rejected", decision: { reason: "wrongAction" } } } });
+    const bad = await h.set({
+      update: { inv_wo2: { status: "rejected", decision: { reason: "wrongAction" } } },
+    });
     expect(bad.updated).toEqual({});
     expect(bad.notUpdated.inv_wo2!.type).toBe("invalidProperties");
 

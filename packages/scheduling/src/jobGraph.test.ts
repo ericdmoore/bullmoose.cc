@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fakeD1, type FakeD1 } from "@bullmoose/test-fakes";
-import {
-  budgetMonthStartMs,
-  claimGateBinds,
-  claimGateSql,
-} from "./claimGate.js";
+import { budgetMonthStartMs, claimGateBinds, claimGateSql } from "./claimGate.js";
 import {
   deriveJobStatus,
   jobBudgetExhausted,
@@ -52,7 +48,9 @@ function seedGraph(db: FakeD1, needsJson: string | null, deps: readonly Dep[]): 
   n += 1;
   const bindingId = `b_${n}`;
   const nodeId = `inv_node_${n}`;
-  db.seed("agent_bindings", [{ id: bindingId, account_id: ACCOUNT, name: `bind${n}`, config_json: "{}" }]);
+  db.seed("agent_bindings", [
+    { id: bindingId, account_id: ACCOUNT, name: `bind${n}`, config_json: "{}" },
+  ]);
   for (const d of deps) {
     db.seed("agent_invocations", [
       {
@@ -128,20 +126,70 @@ describe("claimability = pending AND every need settled (SQL ≡ pure)", () => {
   const FOREIGN: Dep = { id: "inv_g", status: "done", otherAccount: true };
 
   const CASES: Array<{ name: string; needs: string | null; deps: Dep[]; expected: boolean }> = [
-    { name: "DefaultCase — no needs at all (an ordinary invocation)", needs: null, deps: [], expected: true },
+    {
+      name: "DefaultCase — no needs at all (an ordinary invocation)",
+      needs: null,
+      deps: [],
+      expected: true,
+    },
     { name: "an empty needs array", needs: "[]", deps: [], expected: true },
     { name: "one done need", needs: '["inv_a"]', deps: [DONE], expected: true },
     { name: "one pending need", needs: '["inv_b"]', deps: [PENDING], expected: false },
     { name: "one running need", needs: '["inv_c"]', deps: [RUNNING], expected: false },
-    { name: "one FAILED need — a failed node blocks its dependents", needs: '["inv_d"]', deps: [FAILED], expected: false },
-    { name: "a need that does not exist at all", needs: '["inv_ghost"]', deps: [], expected: false },
-    { name: "two needs, one unfinished (a join waits for ALL)", needs: '["inv_a","inv_b"]', deps: [DONE, PENDING], expected: false },
-    { name: "two needs, both done (the join releases)", needs: '["inv_a","inv_f"]', deps: [DONE, AWAITING], expected: true },
-    { name: "a done need with an OPEN needsInfo question — paused", needs: '["inv_e"]', deps: [PAUSED], expected: false },
-    { name: "a done need with a merely PENDING proposal — not paused", needs: '["inv_f"]', deps: [AWAITING], expected: true },
-    { name: "a done need on ANOTHER account does not settle it", needs: '["inv_g"]', deps: [FOREIGN], expected: false },
-    { name: "malformed needs_json blocks (fail closed)", needs: "not json", deps: [], expected: false },
-    { name: "a JSON object rather than an array blocks", needs: '{"a":1}', deps: [], expected: false },
+    {
+      name: "one FAILED need — a failed node blocks its dependents",
+      needs: '["inv_d"]',
+      deps: [FAILED],
+      expected: false,
+    },
+    {
+      name: "a need that does not exist at all",
+      needs: '["inv_ghost"]',
+      deps: [],
+      expected: false,
+    },
+    {
+      name: "two needs, one unfinished (a join waits for ALL)",
+      needs: '["inv_a","inv_b"]',
+      deps: [DONE, PENDING],
+      expected: false,
+    },
+    {
+      name: "two needs, both done (the join releases)",
+      needs: '["inv_a","inv_f"]',
+      deps: [DONE, AWAITING],
+      expected: true,
+    },
+    {
+      name: "a done need with an OPEN needsInfo question — paused",
+      needs: '["inv_e"]',
+      deps: [PAUSED],
+      expected: false,
+    },
+    {
+      name: "a done need with a merely PENDING proposal — not paused",
+      needs: '["inv_f"]',
+      deps: [AWAITING],
+      expected: true,
+    },
+    {
+      name: "a done need on ANOTHER account does not settle it",
+      needs: '["inv_g"]',
+      deps: [FOREIGN],
+      expected: false,
+    },
+    {
+      name: "malformed needs_json blocks (fail closed)",
+      needs: "not json",
+      deps: [],
+      expected: false,
+    },
+    {
+      name: "a JSON object rather than an array blocks",
+      needs: '{"a":1}',
+      deps: [],
+      expected: false,
+    },
     { name: "a non-string element blocks", needs: "[1,2]", deps: [], expected: false },
   ];
 
@@ -178,7 +226,9 @@ describe("the Job's aggregate budget (SQL ≡ pure)", () => {
     n += 1;
     const jobId = `job_b_${n}`;
     const bindingId = `b_b_${n}`;
-    db.seed("agent_bindings", [{ id: bindingId, account_id: ACCOUNT, name: `bb${n}`, config_json: "{}" }]);
+    db.seed("agent_bindings", [
+      { id: bindingId, account_id: ACCOUNT, name: `bb${n}`, config_json: "{}" },
+    ]);
     db.seed("jobs", [
       {
         id: jobId,
@@ -223,15 +273,63 @@ describe("the Job's aggregate budget (SQL ≡ pure)", () => {
   }
 
   const CASES: Array<{ name: string; budget: number | null; nodes: Node[]; expected: boolean }> = [
-    { name: "no aggregate cap", budget: null, nodes: [{ cost: 9_000_000, done: true }], expected: false },
-    { name: "under the cap", budget: 1_000_000, nodes: [{ cost: 400_000, done: true }], expected: false },
-    { name: "one micro under", budget: 1_000_000, nodes: [{ cost: 999_999, done: true }], expected: false },
-    { name: "exactly at the cap", budget: 1_000_000, nodes: [{ cost: 1_000_000, done: true }], expected: true },
-    { name: "over, summed across nodes", budget: 1_000_000, nodes: [{ cost: 600_000, done: true }, { cost: 600_000, done: true }], expected: true },
-    { name: "an unfinished node's cost is not spend yet", budget: 1_000_000, nodes: [{ cost: 9_000_000, done: false }], expected: false },
-    { name: "a NULL cost counts as nothing (undetermined, not a zero claim)", budget: 1_000_000, nodes: [{ cost: null, done: true }], expected: false },
-    { name: "another Job's spend does not count", budget: 1_000_000, nodes: [{ cost: 9_000_000, done: true, otherJob: true }], expected: false },
-    { name: "a zero aggregate budget is exhausted from the first moment", budget: 0, nodes: [], expected: true },
+    {
+      name: "no aggregate cap",
+      budget: null,
+      nodes: [{ cost: 9_000_000, done: true }],
+      expected: false,
+    },
+    {
+      name: "under the cap",
+      budget: 1_000_000,
+      nodes: [{ cost: 400_000, done: true }],
+      expected: false,
+    },
+    {
+      name: "one micro under",
+      budget: 1_000_000,
+      nodes: [{ cost: 999_999, done: true }],
+      expected: false,
+    },
+    {
+      name: "exactly at the cap",
+      budget: 1_000_000,
+      nodes: [{ cost: 1_000_000, done: true }],
+      expected: true,
+    },
+    {
+      name: "over, summed across nodes",
+      budget: 1_000_000,
+      nodes: [
+        { cost: 600_000, done: true },
+        { cost: 600_000, done: true },
+      ],
+      expected: true,
+    },
+    {
+      name: "an unfinished node's cost is not spend yet",
+      budget: 1_000_000,
+      nodes: [{ cost: 9_000_000, done: false }],
+      expected: false,
+    },
+    {
+      name: "a NULL cost counts as nothing (undetermined, not a zero claim)",
+      budget: 1_000_000,
+      nodes: [{ cost: null, done: true }],
+      expected: false,
+    },
+    {
+      name: "another Job's spend does not count",
+      budget: 1_000_000,
+      nodes: [{ cost: 9_000_000, done: true, otherJob: true }],
+      expected: false,
+    },
+    {
+      name: "a zero aggregate budget is exhausted from the first moment",
+      budget: 0,
+      nodes: [],
+      expected: true,
+    },
   ];
 
   for (const c of CASES) {
@@ -256,9 +354,18 @@ describe("the Job's aggregate budget (SQL ≡ pure)", () => {
 
   it("an invocation with no job_id is never job-budget-exhausted (DefaultCase)", async () => {
     const db = fakeD1();
-    db.seed("agent_bindings", [{ id: "b_plain", account_id: ACCOUNT, name: "plain", config_json: "{}" }]);
+    db.seed("agent_bindings", [
+      { id: "b_plain", account_id: ACCOUNT, name: "plain", config_json: "{}" },
+    ]);
     db.seed("agent_invocations", [
-      { id: "inv_plain", account_id: ACCOUNT, binding_id: "b_plain", binding_name: "plain", status: "pending", created_at: 1 },
+      {
+        id: "inv_plain",
+        account_id: ACCOUNT,
+        binding_id: "b_plain",
+        binding_name: "plain",
+        status: "pending",
+        created_at: 1,
+      },
     ]);
     const row = await db
       .prepare(
@@ -299,7 +406,9 @@ describe("the two DAG terms inside the whole claim gate", () => {
 
   it("a BLOCKED node is refused to BOTH runtimes — execution order is structural, not policy", async () => {
     const db = fakeD1();
-    const nodeId = seedGraph(db, '["inv_pending_dep"]', [{ id: "inv_pending_dep", status: "pending" }]);
+    const nodeId = seedGraph(db, '["inv_pending_dep"]', [
+      { id: "inv_pending_dep", status: "pending" },
+    ]);
     expect(await claimable(db, nodeId, PAID)).toBe(false);
     expect(await claimable(db, nodeId, FREE)).toBe(false);
   });
@@ -330,8 +439,26 @@ describe("the two DAG terms inside the whole claim gate", () => {
       },
     ]);
     db.seed("agent_invocations", [
-      { id: "inv_x_root", account_id: ACCOUNT, binding_id: "b_x", binding_name: "bx", status: "done", created_at: 1, done_at: NOW - 1, cost_micros: 100, job_id: "job_x" },
-      { id: "inv_x_task", account_id: ACCOUNT, binding_id: "b_x", binding_name: "bx", status: "pending", created_at: 2, job_id: "job_x" },
+      {
+        id: "inv_x_root",
+        account_id: ACCOUNT,
+        binding_id: "b_x",
+        binding_name: "bx",
+        status: "done",
+        created_at: 1,
+        done_at: NOW - 1,
+        cost_micros: 100,
+        job_id: "job_x",
+      },
+      {
+        id: "inv_x_task",
+        account_id: ACCOUNT,
+        binding_id: "b_x",
+        binding_name: "bx",
+        status: "pending",
+        created_at: 2,
+        job_id: "job_x",
+      },
     ]);
     expect(await claimable(db, "inv_x_task", PAID)).toBe(false);
     expect(await claimable(db, "inv_x_task", FREE)).toBe(true);
@@ -341,7 +468,12 @@ describe("the two DAG terms inside the whole claim gate", () => {
 // ---- the derived view ------------------------------------------------------
 
 describe("Job status is DERIVED from its nodes", () => {
-  const node = (id: string, status: string, needs: string[] | null = null, paused = false): JobNodeState => ({
+  const node = (
+    id: string,
+    status: string,
+    needs: string[] | null = null,
+    paused = false,
+  ): JobNodeState => ({
     id,
     status: status as JobNodeState["status"],
     needs,
@@ -422,7 +554,12 @@ describe("jobView — the progress surface reads the SAME rows, and drifts from 
         created_at: 1,
       },
     ]);
-    const seedNode = (id: string, status: string, needs: string | null, cost: number | null = null) =>
+    const seedNode = (
+      id: string,
+      status: string,
+      needs: string | null,
+      cost: number | null = null,
+    ) =>
       db.seed("agent_invocations", [
         {
           id,
@@ -455,7 +592,11 @@ describe("jobView — the progress surface reads the SAME rows, and drifts from 
 
   it("THE DERIVED-STATUS PROOF: finishing the nodes moves the view with ZERO writes to the jobs row", async () => {
     const { db } = await scaffold();
-    const jobsRowBefore = db.query("SELECT * FROM jobs WHERE account_id = ? AND id = ?", ACCOUNT, "job_v")[0];
+    const jobsRowBefore = db.query(
+      "SELECT * FROM jobs WHERE account_id = ? AND id = ?",
+      ACCOUNT,
+      "job_v",
+    )[0];
 
     await db
       .prepare(`UPDATE agent_invocations SET status = 'done', done_at = ?, cost_micros = 100000
@@ -468,7 +609,9 @@ describe("jobView — the progress surface reads the SAME rows, and drifts from 
     expect(mid.spentMicros).toBe(400_000);
 
     await db
-      .prepare(`UPDATE agent_invocations SET status = 'done', done_at = ? WHERE account_id = ? AND id = 'inv_v_join'`)
+      .prepare(
+        `UPDATE agent_invocations SET status = 'done', done_at = ? WHERE account_id = ? AND id = 'inv_v_join'`,
+      )
       .bind(NOW, ACCOUNT)
       .run();
     expect((await jobView(db, ACCOUNT, "job_v"))!.status).toBe("done");
@@ -477,14 +620,20 @@ describe("jobView — the progress surface reads the SAME rows, and drifts from 
     // written at creation, this assertion is what catches the drift: the row
     // says one thing and the nodes say another, and only one of them can be
     // the source of truth.
-    const jobsRowAfter = db.query("SELECT * FROM jobs WHERE account_id = ? AND id = ?", ACCOUNT, "job_v")[0];
+    const jobsRowAfter = db.query(
+      "SELECT * FROM jobs WHERE account_id = ? AND id = ?",
+      ACCOUNT,
+      "job_v",
+    )[0];
     expect(jobsRowAfter).toEqual(jobsRowBefore);
   });
 
   it("a failed node turns the view stalled — again with no write to the Job", async () => {
     const { db } = await scaffold();
     await db
-      .prepare(`UPDATE agent_invocations SET status = 'failed', done_at = ? WHERE account_id = ? AND id = 'inv_v_a'`)
+      .prepare(
+        `UPDATE agent_invocations SET status = 'failed', done_at = ? WHERE account_id = ? AND id = 'inv_v_a'`,
+      )
       .bind(NOW, ACCOUNT)
       .run();
     const view = (await jobView(db, ACCOUNT, "job_v"))!;

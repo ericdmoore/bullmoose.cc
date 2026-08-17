@@ -8,13 +8,13 @@
 const child = spawn("sh", ["-c", template], {
   env: {
     ...process.env,
-    BM_ID:      row.id,
-    BM_FROM:    from,
+    BM_ID: row.id,
+    BM_FROM: from,
     BM_SUBJECT: row.subject,
     BM_PREVIEW: row.preview.slice(0, 120),
     BM_ACCOUNT: accountLabel(ch.account),
   },
-  stdio: ["ignore", "inherit", "inherit"],   // see below
+  stdio: ["ignore", "inherit", "inherit"], // see below
 });
 ```
 
@@ -24,7 +24,7 @@ Usage becomes:
 bullmoose watch --exec 'notify-send "$BM_FROM: $BM_SUBJECT"'
 ```
 
-The shell never *parses* attacker-controlled bytes — the value lands in the environment and the
+The shell never _parses_ attacker-controlled bytes — the value lands in the environment and the
 user's quoting governs how it is expanded. This is the same reason `xargs -0` and `git`'s hook
 environment work the way they do.
 
@@ -41,7 +41,7 @@ silent RCE.
   substitution path next release.
 - Cleaner but ruder: hard-switch and document it in the help text.
 
-Either way `docs/cli.md:244`'s example must change in the same commit, since it *is* the
+Either way `docs/cli.md:244`'s example must change in the same commit, since it _is_ the
 documentation people copy.
 
 ## Fix the stdio bleed at the same time
@@ -55,7 +55,7 @@ should arguably go to stderr or `/dev/null`, since stdout is a data stream. See 
 
 - The `--exec` hook is fire-and-forget (`watch.ts:189` has an `error` handler but no `await`) — that
   is intentional and should stay; a slow hook must not stall the watch loop.
-- **Test:** drive `runHook` with a subject of `` x; touch /tmp/pwned `` and assert the file is not
+- **Test:** drive `runHook` with a subject of `x; touch /tmp/pwned` and assert the file is not
   created. Cheap, and it is the regression that matters.
 - Check whether anything on the box already uses `--exec` with `{}` placeholders before choosing the
   hard-switch option — the hermes bridge is the likely consumer.

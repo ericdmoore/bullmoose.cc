@@ -27,17 +27,17 @@ deploy order, and the secret→worker matrix. Run one phase at a time by naming 
 phase does and the by-hand equivalent, if you'd rather drive it yourself.
 
 **`schemas` creates; `migrate` upgrades.** They are separate phases because the
-`.sql` files are all `CREATE … IF NOT EXISTS`, which is idempotent for *creating*
-and silently declines to *upgrade*. An existing database keeps its old columns,
+`.sql` files are all `CREATE … IF NOT EXISTS`, which is idempotent for _creating_
+and silently declines to _upgrade_. An existing database keeps its old columns,
 its old index definitions and its old virtual-table flags, and says nothing —
 so every failure in this class is silent and partial:
 
-| drift | what you see |
-|---|---|
-| `accounts.deleted_at` missing | `verifyBearer` throws — **nobody authenticates** |
-| `grants.revoked_at` missing | same, every grant lookup breaks |
-| `grants_tuple` not partial | revoke-then-re-grant is a no-op that still returns **200** with a `grantId` no row carries |
-| `emails_fts` without `contentless_delete` | delivery works; `Email/set destroy` throws and rolls back |
+| drift                                     | what you see                                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `accounts.deleted_at` missing             | `verifyBearer` throws — **nobody authenticates**                                           |
+| `grants.revoked_at` missing               | same, every grant lookup breaks                                                            |
+| `grants_tuple` not partial                | revoke-then-re-grant is a no-op that still returns **200** with a `grantId` no row carries |
+| `emails_fts` without `contentless_delete` | delivery works; `Email/set destroy` throws and rolls back                                  |
 
 `infra/migrations.mjs` is the machine-readable list, each entry carrying an
 executable `check`, so `migrate` skips what is already applied and **hard-stops**
@@ -65,7 +65,7 @@ level up. The sub-sections below remain as the by-hand equivalent.
       cutover, Email Routing state, workers.dev subdomain, and name
       collisions with the resources this runbook creates
 
-## 1. Create resources + wire ids  (bootstrap: `resources` + `wire`)
+## 1. Create resources + wire ids (bootstrap: `resources` + `wire`)
 
 ```sh
 npx wrangler d1 create bullmoose-mail-shard0
@@ -100,7 +100,7 @@ npx wrangler d1 execute bullmoose-mail-shard0 --remote \
 **Run it BEFORE deploying the workers, not after.** `deleted_at IS NULL` is now
 in the account-resolution path of `@bullmoose/auth-core` (`verifyBearer`), the
 jmap worker's `/auth/login`, the agent drain and every provision read — on a
-database without the column those queries fail and *nothing authenticates*.
+database without the column those queries fail and _nothing authenticates_.
 Adding a nullable column to SQLite is a metadata-only operation: it does not
 rewrite the table and it is safe to run while the workers are live, which is
 why the order is "column first, deploy second" rather than a maintenance
@@ -186,7 +186,7 @@ npx wrangler d1 execute bullmoose-mail-shard0 --remote --command "
 schema re-run.** The index is `CREATE UNIQUE INDEX IF NOT EXISTS`, so an
 existing database keeps its old **non-partial** definition and `IF NOT EXISTS`
 silently declines to replace it. The tombstone then occupies the tuple forever,
-which makes *revoke, then change your mind* impossible:
+which makes _revoke, then change your mind_ impossible:
 
 ```sh
 npx wrangler d1 execute bullmoose-mail-shard0 --remote --command "
@@ -304,14 +304,14 @@ looks un-indexed again and the backfill below rebuilds from scratch.
 still looks fine.** Skipping is nastier than it appears, because a plain schema
 re-run creates `emails_fts_map` (a normal `CREATE TABLE`) while leaving
 `emails_fts` on its old definition — so the two halves disagree and the failure
-is *partial*:
+is _partial_:
 
-| on an un-migrated database | |
-|---|---|
-| inbound delivery | **works** — the first index write for a message is an `INSERT`, which a contentless table allows |
-| free-text search of new mail | works |
-| **`Email/set destroy`** | **fails**, `cannot DELETE from contentless fts5 table` — and the destroy batch is atomic, so the message is not deleted at all |
-| **the backfill below** | **fails**, same error, on the second pass over any message |
+| on an un-migrated database   |                                                                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| inbound delivery             | **works** — the first index write for a message is an `INSERT`, which a contentless table allows                               |
+| free-text search of new mail | works                                                                                                                          |
+| **`Email/set destroy`**      | **fails**, `cannot DELETE from contentless fts5 table` — and the destroy batch is atomic, so the message is not deleted at all |
+| **the backfill below**       | **fails**, same error, on the second pass over any message                                                                     |
 
 Delivery keeping up while deletes throw is exactly the shape of failure that
 gets diagnosed slowly. Migrate first.
@@ -337,11 +337,11 @@ while :; do
 done
 ```
 
-| param | default | meaning |
-|---|---|---|
-| `limit` | 25 deep / 200 shallow | messages per call; `0` = status only |
-| `deep` | `1` | re-read each raw message from R2 and index the **full body** |
-| `account` | all | restrict to one `accountId` |
+| param     | default               | meaning                                                      |
+| --------- | --------------------- | ------------------------------------------------------------ |
+| `limit`   | 25 deep / 200 shallow | messages per call; `0` = status only                         |
+| `deep`    | `1`                   | re-read each raw message from R2 and index the **full body** |
+| `account` | all                   | restrict to one `accountId`                                  |
 
 `deep=1` costs one R2 GET plus one MIME parse per message, and CPU-per-invocation
 is the tightest free-tier budget — hence the small default `limit`. If a pass
@@ -371,7 +371,7 @@ of D1. That moves the single-shard ceiling from ~300K messages to ~200K. See
 `docs/architecture/capacity-and-scaling.md` §1. If you would rather not spend
 it, run the backfill with `deep=0` and leave `bodyText` unindexed for history.
 
-## 2. Deploy — order matters, binding graph  (bootstrap: `deploy`)
+## 2. Deploy — order matters, binding graph (bootstrap: `deploy`)
 
 ```sh
 npm run -w services/submit        deploy   # 1. no dependencies
@@ -384,8 +384,7 @@ npm run -w services/anglebrackets deploy   # 7. CardDAV/CalDAV face (binds Accou
 ```
 
 > **agent must precede ingest.** `services/ingest/wrangler.jsonc:28` binds
-> `bullmoose-agent`, so on a clean account the old order (ingest at 3, agent at
-> 5) deploys ingest against a service that does not exist yet. It only ever
+> `bullmoose-agent`, so on a clean account the old order (ingest at 3, agent at 5) deploys ingest against a service that does not exist yet. It only ever
 > worked because agent already existed from a prior run. Corrected in
 > `infra/bootstrap.mjs` `DEPLOY_ORDER` and `.github/workflows/deploy-mail.yml`
 > — all three must stay in sync.
@@ -405,7 +404,7 @@ services/bureau/wrangler.jsonc` (credential vault; `openssl rand -hex 32`).
 > to `services/agent`. It is now bound to `services/bureau` and to nothing else —
 > that single fact is what makes "the agent worker cannot unseal a credential" a
 > platform property rather than a coding convention. On an EXISTING deployment,
-> put the *same value* on bureau (a new random one cannot open the rows already
+> put the _same value_ on bureau (a new random one cannot open the rows already
 > sealed), then delete it from agent:
 >
 > ```sh
@@ -422,31 +421,31 @@ services/bureau/wrangler.jsonc` (credential vault; `openssl rand -hex 32`).
 > npx wrangler secret list -c services/agent/wrangler.jsonc
 > ```
 
-## 3. Secrets  (bootstrap: `secrets`)
+## 3. Secrets (bootstrap: `secrets`)
 
 `bootstrap.mjs secrets` generates the four random secrets (`INTERNAL_TOKEN`,
 `SHARE_SIGNING_KEY`, `ADMIN_TOKEN`, `VAULT_MASTER_KEY`) into `.env`
 
 > **Renamed from `.env.deploy`.** One file, at the repo root — a second dotfile is a
 > second place to look and a second thing to forget when moving machines. `bootstrap`
-> still *reads* `.env.deploy` if `.env` is absent, so an existing machine keeps working
+> still _reads_ `.env.deploy` if `.env` is absent, so an existing machine keeps working
 > and, more importantly, does not read as "no secrets present" — which is the state the
 > rotation guard turns into a refusal. Delete the old file once a run has written the new
 > one. `.env.example` is the committed, value-free copy of the shape.
-(gitignored, `chmod 600`) once — re-runs reuse them, no silent rotation — and
-installs each to the workers that read it. Paste the external creds (CF/SES
-rows below) into `.env` first so they install in the same pass; missing
-required ones are reported and skipped, so you can add them and re-run. The
-full matrix, by hand:
+> (gitignored, `chmod 600`) once — re-runs reuse them, no silent rotation — and
+> installs each to the workers that read it. Paste the external creds (CF/SES
+> rows below) into `.env` first so they install in the same pass; missing
+> required ones are reported and skipped, so you can add them and re-run. The
+> full matrix, by hand:
 
-| Secret | Worker | Value |
-|---|---|---|
-| `INTERNAL_TOKEN` | jmap, submit, ingest, agent (same value) | `openssl rand -hex 24` |
-| `SHARE_SIGNING_KEY` | jmap | `openssl rand -hex 32` |
-| `ADMIN_TOKEN` | provision | `openssl rand -hex 24` |
-| `CF_API_TOKEN` | provision | token #1 |
-| `SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY` | provision + submit | IAM user |
-| `CF_EMAIL_API_TOKEN` | submit — only if RELAY=cloudflare (requires Workers Paid) | CF sending token |
+| Secret                                        | Worker                                                    | Value                  |
+| --------------------------------------------- | --------------------------------------------------------- | ---------------------- |
+| `INTERNAL_TOKEN`                              | jmap, submit, ingest, agent (same value)                  | `openssl rand -hex 24` |
+| `SHARE_SIGNING_KEY`                           | jmap                                                      | `openssl rand -hex 32` |
+| `ADMIN_TOKEN`                                 | provision                                                 | `openssl rand -hex 24` |
+| `CF_API_TOKEN`                                | provision                                                 | token #1               |
+| `SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY` | provision + submit                                        | IAM user               |
+| `CF_EMAIL_API_TOKEN`                          | submit — only if RELAY=cloudflare (requires Workers Paid) | CF sending token       |
 
 ```sh
 npx wrangler secret put INTERNAL_TOKEN -c services/jmap/wrangler.jsonc
@@ -472,10 +471,10 @@ browser's preflight before reaching a single route. Same-origin removes the CORS
 surface rather than adding one to get wrong — and no credential crosses an
 origin boundary.
 
-| path | served by |
-|---|---|
+| path                                                               | served by               |
+| ------------------------------------------------------------------ | ----------------------- |
 | `/.well-known/jmap`, `/api/*`, `/auth/*`, `/share/*`, `/console/*` | `bullmoose-jmap` worker |
-| everything else (`/`, `/login`, `/mail`, `/calendar`, …) | `bullmoose-app` Pages |
+| everything else (`/`, `/login`, `/mail`, `/calendar`, …)           | `bullmoose-app` Pages   |
 
 `/console/*` is the agent console's read interface (s03.E, `services/jmap/src/console.ts`).
 It is here, and not on the worker that owns `/vault/credentials`, for the same
@@ -506,7 +505,7 @@ One-time human steps:
 2. Run `deploy-app.yml` once — it creates the `bullmoose-app` Pages project by
    direct upload — then map `app.bullmoose.cc` to it in the Pages dashboard.
 3. **No new token.** It reuses `BULLMOOSE_SITE_DEPLOY_TOKEN`; a token scoped
-   *Account > Cloudflare Pages: Edit* covers every Pages project in the account,
+   _Account > Cloudflare Pages: Edit_ covers every Pages project in the account,
    so a second project needs no widening. If a run 403s, that assumption was
    wrong — widen that one token rather than minting another.
 
@@ -534,9 +533,10 @@ family, reused by every `--tenant` flag; it is not a credential. `<ADMIN_TOKEN>`
 is, and lives in `.env` (`grep ADMIN_TOKEN .env`).
 
 Note: `domain add` wires Email Routing + catch-all→ingest + SES identity
-+ DKIM/MAIL FROM/DMARC. If skipping SES for now, expect the `ses:*`
-steps to report failures — re-run later; the Cloudflare steps are
-idempotent.
+
+- DKIM/MAIL FROM/DMARC. If skipping SES for now, expect the `ses:*`
+  steps to report failures — re-run later; the Cloudflare steps are
+  idempotent.
 
 ## 5. First light
 
@@ -571,11 +571,11 @@ SPF/DKIM/DMARC pass (Gmail: "show original").
 `--link-max` (default 4 MB), signed with `SHARE_SIGNING_KEY` and valid for up
 to 90 days. Three levers, escalating:
 
-| Reach | Command | Effect |
-|---|---|---|
-| one link | `bullmoose share revoke <shareId>` | that URL stops resolving |
-| audit first | `bullmoose share list` | every link the server still has a record of, live ones first |
-| **everything** | rotate `SHARE_SIGNING_KEY` | **every link, every account, instantly and irreversibly dead** |
+| Reach          | Command                            | Effect                                                         |
+| -------------- | ---------------------------------- | -------------------------------------------------------------- |
+| one link       | `bullmoose share revoke <shareId>` | that URL stops resolving                                       |
+| audit first    | `bullmoose share list`             | every link the server still has a record of, live ones first   |
+| **everything** | rotate `SHARE_SIGNING_KEY`         | **every link, every account, instantly and irreversibly dead** |
 
 ```sh
 # BREAK-GLASS — read the blast radius first.
@@ -597,7 +597,7 @@ Two things that are easy to get wrong:
   revoke can take up to ~60s to reach every edge. The CLI says so on success.
   Key rotation has no such delay — it is a secret change, not a data read.
 
-Share-link *records* live in KV under `share:` in the `ROUTES` namespace and
+Share-link _records_ live in KV under `share:` in the `ROUTES` namespace and
 expire with the link they describe, so nothing accumulates and there is no
 sweeper to run. Rotating the key does not clear them; they age out on their
 own, and `share list` will show links that the rotation has already killed
@@ -609,7 +609,7 @@ until they do. That is cosmetic, but know it before reading the output.
 has a mailbox returns the **existing** account (`created: false`) and touches
 nothing — safe to re-run a bootstrap, safe to retry after a timeout.
 
-It refuses, `409`, when the address routes somewhere that is *not* that mailbox:
+It refuses, `409`, when the address routes somewhere that is _not_ that mailbox:
 a forward/alias/catch-all row, another tenant's account, a target account that
 no longer exists, or a `--principal` that disagrees with who owns the account.
 The response carries `existingRoute` so you can see what is in the way. **The
@@ -617,7 +617,7 @@ The response carries `existingRoute` so you can see what is in the way. **The
 
 Before this was enforced, a second create for one address built a second
 account and repointed delivery onto it. If you are on a deployment that ran the
-old code, the symptom is *"mail stopped arriving"* with everything reporting
+old code, the symptom is _"mail stopped arriving"_ with everything reporting
 healthy, and the fix is to point the route back:
 
 ```sh
@@ -702,7 +702,7 @@ bullmoose admin domain resume  exmaple.com   # restored, deliver-and-forward inc
 ### Runbook: stop an agent, now
 
 An agent that is replying wrongly, looping, or spending is stopped by its
-binding, not by its token — revoking the token stops it *acting* while
+binding, not by its token — revoking the token stops it _acting_ while
 `services/ingest` keeps enqueueing a `pending` invocation on every delivery.
 
 ```sh
@@ -711,7 +711,7 @@ bullmoose admin agent disable <binding-id>          # no --yes: this is the safe
 ```
 
 Both the ingest enqueue path and the agent drain gate on `agent_bindings.enabled`,
-so this stops new invocations being created *and* stops queued ones running.
+so this stops new invocations being created _and_ stops queued ones running.
 Invocations already queued are **held, not cancelled** — the count is printed,
 and they resume on `bullmoose admin agent enable <binding-id>`. If they are
 stale by the time you re-enable, clear them first:
@@ -729,7 +729,7 @@ Symptom: an agent produced a real `pending` proposal and `/approvals` (or
 
 Cause, if the agent was provisioned before this landed: an agent lives on its
 own account under its own **principal**, and the queue can only show accounts
-the logged-in principal reaches. Provisioning now mints a *supervisory grant*
+the logged-in principal reaches. Provisioning now mints a _supervisory grant_
 back to the owner at create time (`read`+`draft`+`send`, whole-account — enough
 to read the queue and decide it, including the tier-3 wall a `reply-draft`
 hits; deliberately **not** the `mail` bundle, which would also carry
@@ -771,7 +771,7 @@ reported as-is and never silently widened by a re-run.
 
 Set from a machine with `gh` authed to the repo (the remote sandbox's
 GitHub proxy blocks the Actions-secrets API on purpose, so this step is
-manual). Worker *runtime* secrets (INTERNAL_TOKEN, SES runtime pair,
+manual). Worker _runtime_ secrets (INTERNAL_TOKEN, SES runtime pair,
 SHARE_SIGNING_KEY, …) live in Cloudflare via `wrangler secret put` and
 survive redeploys — they do NOT need to be mirrored into GHA. Only the
 deploy-time credentials do:

@@ -1,13 +1,13 @@
 # 005 -E1-I2- `EmailSubmission/get`
 
-| | |
-|---|---|
-| **Kind** | capability |
-| **Effort** | **E1** — one method over an existing table, no schema change, no migration |
-| **Impact** | **I2** — unlocks other work, **not** human-verifiable on completion |
-| **Owner** | `sVOL` |
-| **Depends on** | — |
-| **Status** | **✅ done** — shipped as spec conformance only; see *Status note*, below |
+|                |                                                                            |
+| -------------- | -------------------------------------------------------------------------- |
+| **Kind**       | capability                                                                 |
+| **Effort**     | **E1** — one method over an existing table, no schema change, no migration |
+| **Impact**     | **I2** — unlocks other work, **not** human-verifiable on completion        |
+| **Owner**      | `sVOL`                                                                     |
+| **Depends on** | —                                                                          |
+| **Status**     | **✅ done** — shipped as spec conformance only; see _Status note_, below   |
 
 ## Cells covered
 
@@ -22,22 +22,22 @@ submissions changed?" and has no method that answers "what is submission `es_…
 dependency". This is one new registration in `services/jmap/src/methods/submission.ts` plus
 one `SELECT` helper in `packages/mailstore/src/index.ts`, over a table that already exists
 (`packages/mailstore/sql/data-plane.sql:266-276`) and rows that are already written
-(`insertSubmission`, `packages/mailstore/src/index.ts:1750`). Strictly it is *two* files and it
-*is* a new method, so it fails the anchor's literal wording — but so does `012`, which the
+(`insertSubmission`, `packages/mailstore/src/index.ts:1750`). Strictly it is _two_ files and it
+_is_ a new method, so it fails the anchor's literal wording — but so does `012`, which the
 ledger also grades E1. The anchor's spirit is "no schema, no new semantics, no new dependency
 edge", and that holds exactly. It is the smallest real unit in the volume.
 
 **I2 — and this is the interesting half.** The rubric is two independent yes/no factors
 (`readme.md:84-88`), and this unit is the clean case where they split.
 
-*Unlocks other work: yes.* `EmailSubmission/changes` is registered (`submission.ts:23`) with no
+_Unlocks other work: yes._ `EmailSubmission/changes` is registered (`submission.ts:23`) with no
 `/get`. Any consumer that follows the standard JMAP sync loop — call `/changes`, then `/get`
 the returned ids — **dead-ends on the second call**. That includes `packages/cli/src/sync.ts`,
 which today does not mirror submissions at all, and it will include the sent-state column in
 `021` (Email over WebUI). Anything that wants to display "did it send?" needs this method
 first, and there is no route around it that does not read D1 directly.
 
-*Human can verify: no.* `readme.md:92-94` judges this **on completion of this unit**, not
+_Human can verify: no._ `readme.md:92-94` judges this **on completion of this unit**, not
 hypothetically once some future surface renders it, and `readme.md:96` is explicit that "`curl`
 returning correct JSON is **not** human-verifiable. It is test-verifiable." On completion,
 `EmailSubmission/get` returns correct JSON to nobody. No CLI command reads it, no DAV
@@ -50,11 +50,11 @@ substantive reason, not a lazy one: **there is nothing worth printing.** Every s
 is written with `undoStatus: "final"` (`submission.ts:169`, hardcoded at the one and only call
 site) and nothing in the repo ever updates it. A `bullmoose sent` command built on this method
 would print a list where the status column reads `final` on every row, forever. That is a
-worse outcome than no command — it *looks* like delivery status and is a constant.
+worse outcome than no command — it _looks_ like delivery status and is a constant.
 
-The design rule says *pair a capability with its cheapest human-visible surface*. Here the
+The design rule says _pair a capability with its cheapest human-visible surface_. Here the
 cheapest human-visible surface is not cheap: it requires `006`-style status plumbing that does
-not exist (see *What to build* → *the honest ceiling*). `I2` is the correct grade and the unit
+not exist (see _What to build_ → _the honest ceiling_). `I2` is the correct grade and the unit
 should be sequenced as the cheap enabler it is — `_index.md` §3 puts it in wave 4, which is
 right.
 
@@ -79,7 +79,7 @@ submission.ts:101   destroyed: [],
 submission.ts:102   notDestroyed: {},
 ```
 
-**Creates *are* committed to the changelog.** `submission.ts:83-85` pushes
+**Creates _are_ committed to the changelog.** `submission.ts:83-85` pushes
 `{ collection: "EmailSubmission", created: createdIds }` and `:90` calls `commitChanges`
 against the AccountDO. So `EmailSubmission/changes` genuinely reports ids — the choreography on
 the write side is already correct. It is the read side that is missing. **A client is told
@@ -136,17 +136,17 @@ optional-ids-with-`IN`-markers pattern.
 
 **Wire shape** (RFC 8621 §7.1 properties, mapped to the columns that exist):
 
-| JMAP property | source |
-|---|---|
-| `id` | `id` |
-| `identityId` | `identity_id` |
-| `emailId` | `email_id` |
-| `threadId` | join `emails.thread_id` on `email_id`, or omit — see below |
-| `envelope` | `JSON.parse(envelope_json)` |
-| `sendAt` | `new Date(send_at).toISOString()` — `/set` already returns it this way (`submission.ts:177`) |
-| `undoStatus` | `undo_status` |
-| `deliveryStatus` | `null` — nothing populates it (see *the honest ceiling*) |
-| `dsnBlobIds`, `mdnBlobIds` | `[]` |
+| JMAP property              | source                                                                                       |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| `id`                       | `id`                                                                                         |
+| `identityId`               | `identity_id`                                                                                |
+| `emailId`                  | `email_id`                                                                                   |
+| `threadId`                 | join `emails.thread_id` on `email_id`, or omit — see below                                   |
+| `envelope`                 | `JSON.parse(envelope_json)`                                                                  |
+| `sendAt`                   | `new Date(send_at).toISOString()` — `/set` already returns it this way (`submission.ts:177`) |
+| `undoStatus`               | `undo_status`                                                                                |
+| `deliveryStatus`           | `null` — nothing populates it (see _the honest ceiling_)                                     |
+| `dsnBlobIds`, `mdnBlobIds` | `[]`                                                                                         |
 
 `threadId` is the one that costs a join. `Email/get` already resolves it, and a client holding
 an `emailId` can ask. I would **omit the join and return `emailId` only**, and say so in the
@@ -212,7 +212,7 @@ consistent with `canCalculateChanges: false`.
    obstacle and I have not solved it.** If a reviewer thinks `005` should not ship without it,
    the answer is a new unit, not a bigger `005` — but I did not file that unit and I should
    have.
-2. **Is "unlocks other work" actually satisfied?** `readme.md:89-90` demands a *named*
+2. **Is "unlocks other work" actually satisfied?** `readme.md:89-90` demands a _named_
    dependency, not "would be nice first". My named consumers are `021` (Email over WebUI, whose
    sent-state column needs this) and a hypothetical submission mirror in `packages/cli/src/sync.ts`
    that nobody has filed. `021` is `E4` on a stack that does not exist. If a reviewer holds the
@@ -244,19 +244,19 @@ decision, not an omission, and the argument is below so a reviewer can attack it
 The file was written against a 183-line `submission.ts`; it is 219 lines at the time this unit
 was built (before this change) and the citations moved. Verified against source:
 
-| Claim in this file | Was | Actually |
-|---|---|---|
-| `registerSubmissionMethods` | `:21-26` | `:23-28` |
-| `EmailSubmission/set` registered | `:22` | `:24` |
-| `EmailSubmission/changes` registered | `:23` | `:25-27` |
-| `args.create` read | `:48` | `:50` |
-| the four hardcoded response halves | `:99-102` | `:101-104` |
-| changelog push + `commitChanges` | `:83-85`, `:90` | `:85-87`, `:92` |
-| `submitOne` insert, `undoStatus: "final"` | `:164-172`, `:169` | `:186-194`, `:191` |
-| `insertSubmission` | `mailstore/src/index.ts:1750` | `:1811` |
-| `SubmissionRow` interface | `:246` | `:246` ✅ (unchanged) |
-| `email_submissions` DDL | `data-plane.sql:266-276` | `:266-276` ✅ (unchanged) |
-| SNS handler / KV suppression writes | `submit/src/index.ts:108`, `:129-137` | ✅ both exact |
+| Claim in this file                        | Was                                   | Actually                  |
+| ----------------------------------------- | ------------------------------------- | ------------------------- |
+| `registerSubmissionMethods`               | `:21-26`                              | `:23-28`                  |
+| `EmailSubmission/set` registered          | `:22`                                 | `:24`                     |
+| `EmailSubmission/changes` registered      | `:23`                                 | `:25-27`                  |
+| `args.create` read                        | `:48`                                 | `:50`                     |
+| the four hardcoded response halves        | `:99-102`                             | `:101-104`                |
+| changelog push + `commitChanges`          | `:83-85`, `:90`                       | `:85-87`, `:92`           |
+| `submitOne` insert, `undoStatus: "final"` | `:164-172`, `:169`                    | `:186-194`, `:191`        |
+| `insertSubmission`                        | `mailstore/src/index.ts:1750`         | `:1811`                   |
+| `SubmissionRow` interface                 | `:246`                                | `:246` ✅ (unchanged)     |
+| `email_submissions` DDL                   | `data-plane.sql:266-276`              | `:266-276` ✅ (unchanged) |
+| SNS handler / KV suppression writes       | `submit/src/index.ts:108`, `:129-137` | ✅ both exact             |
 
 **One substantive correction, and it matters to the follow-up unit.** Open question 1 says
 populating `deliveryStatus` "means the submit worker needs a D1 binding and an AccountDO
@@ -289,10 +289,10 @@ order of how much they should worry you:
    writing it. Fixing that means restructuring the binding graph (the circularity at
    `services/submit/src/index.ts:96-99`), which is architecture, not a `/get`.
 3. **The webhook is unauthenticated.** `handleSesEvent` carries a live `TODO: verify the SNS
-   message signature before trusting payloads` (`:106`). Today an unverified payload can add a
+message signature before trusting payloads` (`:106`). Today an unverified payload can add a
    KV suppression key — bad, and bounded. Wiring the same payload into per-submission delivery
-   state would make attacker-controlled data render as *the server's own record of what
-   happened to your mail*. Shipping that on top of an open webhook would be worse than the gap
+   state would make attacker-controlled data render as _the server's own record of what
+   happened to your mail_. Shipping that on top of an open webhook would be worse than the gap
    it closes.
 
 So: **a separate unit, still unfiled.** Open question 1 says "I did not file that unit and I
@@ -303,25 +303,25 @@ first, then the column, then the binding topology.
 
 ### What `/get` returns, and why each value is honest
 
-| property | value | why it is not a lie |
-|---|---|---|
-| `undoStatus` | **echoed from the column** | Only ever `'final'` today — and `'final'` is *true*. The row is inserted only after the relay accepted (`submission.ts` `submitOne`), and `maxDelayedSend` is 0, so the send genuinely cannot be undone. RFC 8621 §7 defines `undoStatus` as a claim about **cancelability**, not delivery. Echoing rather than hardcoding also means a future `pending`/`canceled` reads back with no change here. |
-| `deliveryStatus` | **`null`** | The unit file's own argument, and it is right: a synthesized `{"<rcpt>": {delivered: "unknown", …}}` is spec-legal, so nothing would ever flag it, and a future surface would render "unknown" as though the server had checked. `null` is what RFC 8621 §7 prescribes when the information is unavailable. **Pinned by test** so a later patch cannot quietly upgrade it to a confident lie. |
-| `dsnBlobIds`, `mdnBlobIds` | `[]` | Nothing ingests DSNs or MDNs. Empty is accurate, not a placeholder. |
-| `relayMessageId` | **not exposed** | Not an RFC 8621 property. It is the correlation key the follow-up unit needs, and no client has a use for it. |
+| property                   | value                      | why it is not a lie                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `undoStatus`               | **echoed from the column** | Only ever `'final'` today — and `'final'` is _true_. The row is inserted only after the relay accepted (`submission.ts` `submitOne`), and `maxDelayedSend` is 0, so the send genuinely cannot be undone. RFC 8621 §7 defines `undoStatus` as a claim about **cancelability**, not delivery. Echoing rather than hardcoding also means a future `pending`/`canceled` reads back with no change here. |
+| `deliveryStatus`           | **`null`**                 | The unit file's own argument, and it is right: a synthesized `{"<rcpt>": {delivered: "unknown", …}}` is spec-legal, so nothing would ever flag it, and a future surface would render "unknown" as though the server had checked. `null` is what RFC 8621 §7 prescribes when the information is unavailable. **Pinned by test** so a later patch cannot quietly upgrade it to a confident lie.       |
+| `dsnBlobIds`, `mdnBlobIds` | `[]`                       | Nothing ingests DSNs or MDNs. Empty is accurate, not a placeholder.                                                                                                                                                                                                                                                                                                                                 |
+| `relayMessageId`           | **not exposed**            | Not an RFC 8621 property. It is the correlation key the follow-up unit needs, and no client has a use for it.                                                                                                                                                                                                                                                                                       |
 
 ### Open question 3 (`threadId`) — resolved AGAINST the file's own recommendation
 
 The file recommends omitting the join and returning `emailId` only. Shipped **with** the
 `LEFT JOIN emails`, and the claim is left standing above rather than edited out, per
-`readme.md`'s rule. The reasoning that changed the call: this unit is being justified *purely*
+`readme.md`'s rule. The reasoning that changed the call: this unit is being justified _purely_
 as spec conformance — that is the whole of its `I2` argument in open question 2 — and omitting
 a property RFC 8621 §7.1 lists while pleading conformance is inconsistent. The join is on
 `emails`' primary key, so it costs one index seek per row, and `LEFT` means a submission whose
 email was since destroyed reads back with `threadId: null` instead of disappearing. Tested
 both ways.
 
-### Deviations from *What to build*, and one latent bug not propagated
+### Deviations from _What to build_, and one latent bug not propagated
 
 - `properties` is honoured (`id` always included), following `ContactCard/get` rather than
   `Identity/get`. Free, and it lets a client that only wants `undoStatus` skip the join-shaped
@@ -339,13 +339,13 @@ both ways.
 
 ### Done-when — all five, with the caveat lifted
 
-| # | criterion | how |
-|---|---|---|
-| 1 | `/set` → `/changes` → `/get` round-trips; ids resolve, `notFound` empty, envelope matches | ✅ the first test in the `/get` suite, driven end to end through the **real** `AccountDO` |
-| 2 | `/get`'s `state` equals the `newState` from the creating `/set` | ✅ and asserts `!= oldState`, so it cannot pass by both being stale |
-| 3 | `ids: null` returns every submission for the account and nothing from another | ✅ two assertions, plus an `ids: []` case the criterion did not anticipate |
-| 4 | a foreign submission id lands in `notFound` | ✅ |
-| 5 | a `send`-only token is refused | ✅ **no longer caveated** — `common/001` is closed. The test also proves the same token *can* `/set`, so it is a read gate rather than an account gate |
+| #   | criterion                                                                                 | how                                                                                                                                                    |
+| --- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | `/set` → `/changes` → `/get` round-trips; ids resolve, `notFound` empty, envelope matches | ✅ the first test in the `/get` suite, driven end to end through the **real** `AccountDO`                                                              |
+| 2   | `/get`'s `state` equals the `newState` from the creating `/set`                           | ✅ and asserts `!= oldState`, so it cannot pass by both being stale                                                                                    |
+| 3   | `ids: null` returns every submission for the account and nothing from another             | ✅ two assertions, plus an `ids: []` case the criterion did not anticipate                                                                             |
+| 4   | a foreign submission id lands in `notFound`                                               | ✅                                                                                                                                                     |
+| 5   | a `send`-only token is refused                                                            | ✅ **no longer caveated** — `common/001` is closed. The test also proves the same token _can_ `/set`, so it is a read gate rather than an account gate |
 
 ### Grade after delivery — `I2` stands, and the file's reasoning is intact
 
@@ -358,7 +358,7 @@ and a non-engineer cannot tell.
 
 That is not a complaint about the rubric; it is the rubric working. This unit remains the
 volume's clean teaching case for the two-factor grade splitting, and open question 2 — that
-"the JMAP contract is itself the consumer" is *"an argument about spec conformance dressed as
-an argument about dependencies, and it is the weakest reasoning in this file"* — is still the
+"the JMAP contract is itself the consumer" is _"an argument about spec conformance dressed as
+an argument about dependencies, and it is the weakest reasoning in this file"_ — is still the
 most honest sentence in it. Nothing about building the unit made that argument stronger. A
 reviewer who collapses this to `I0` has a case.

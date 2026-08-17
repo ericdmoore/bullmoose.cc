@@ -34,9 +34,13 @@ const V = "2026-07-28";
 
 let failures = 0;
 let checks = 0;
-const ok = (msg) => { checks++; console.log(`  ok   ${msg}`); };
+const ok = (msg) => {
+  checks++;
+  console.log(`  ok   ${msg}`);
+};
 const fail = (msg, detail) => {
-  checks++; failures++;
+  checks++;
+  failures++;
   console.error(`  FAIL ${msg}${detail ? `\n       ${detail}` : ""}`);
 };
 const check = (cond, msg, detail) => (cond ? ok(msg) : fail(msg, detail));
@@ -61,7 +65,11 @@ async function rpc(body, { token, headers = {} } = {}) {
     body: JSON.stringify(body),
   });
   let json = null;
-  try { json = await res.json(); } catch { /* not every refusal is JSON */ }
+  try {
+    json = await res.json();
+  } catch {
+    /* not every refusal is JSON */
+  }
   return { res, json };
 }
 
@@ -69,7 +77,12 @@ async function rpc(body, { token, headers = {} } = {}) {
 
 section("A1 — the 401 that teaches");
 {
-  const { res, json } = await rpc({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: meta() } });
+  const { res, json } = await rpc({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/list",
+    params: { _meta: meta() },
+  });
   check(res.status === 401, "unauthenticated POST /mcp is 401", `got ${res.status}`);
   // Load-bearing: Claude does not honour WWW-Authenticate on a 200, and reads
   // a 200 {isError:true} as an application error handed to the model — so a
@@ -83,30 +96,51 @@ section("A1 — the 401 that teaches");
 
   if (m) {
     const prmUrl = m[1];
-    const prm = await fetch(prmUrl).then((r) => r.json()).catch(() => null);
+    const prm = await fetch(prmUrl)
+      .then((r) => r.json())
+      .catch(() => null);
     check(!!prm, "the advertised resource_metadata URL resolves", prmUrl);
-    check(prm?.resource === RESOURCE, "PRM resource equals the canonical URI", `${prm?.resource} !== ${RESOURCE}`);
+    check(
+      prm?.resource === RESOURCE,
+      "PRM resource equals the canonical URI",
+      `${prm?.resource} !== ${RESOURCE}`,
+    );
     // Claude uses the FIRST entry and does not fall back, so a list longer
     // than one is a silent single point of failure.
-    check(Array.isArray(prm?.authorization_servers) && prm.authorization_servers.length === 1,
-      "PRM names exactly one authorization server", JSON.stringify(prm?.authorization_servers));
-    check(prm?.authorization_servers?.[0] === AUTH, "and it is the expected one", prm?.authorization_servers?.[0]);
-    check(!(prm?.resource ?? "/").endsWith("/") && !(prm?.resource ?? "").includes("#"),
-      "resource URI has no trailing slash and no fragment (RFC 8707)");
+    check(
+      Array.isArray(prm?.authorization_servers) && prm.authorization_servers.length === 1,
+      "PRM names exactly one authorization server",
+      JSON.stringify(prm?.authorization_servers),
+    );
+    check(
+      prm?.authorization_servers?.[0] === AUTH,
+      "and it is the expected one",
+      prm?.authorization_servers?.[0],
+    );
+    check(
+      !(prm?.resource ?? "/").endsWith("/") && !(prm?.resource ?? "").includes("#"),
+      "resource URI has no trailing slash and no fragment (RFC 8707)",
+    );
     // A doc URL that 200s with the wrong content is worse than a 404: the
     // reader gets a plausible page and no signal. This once pointed at the
     // marketing homepage.
     if (prm?.resource_documentation) {
       const doc = await fetch(prm.resource_documentation).catch(() => null);
       check(doc?.ok === true, "resource_documentation resolves", prm.resource_documentation);
-      check((doc?.headers.get("content-type") ?? "").includes("markdown"),
-        "and is served as markdown", doc?.headers.get("content-type") ?? "(none)");
+      check(
+        (doc?.headers.get("content-type") ?? "").includes("markdown"),
+        "and is served as markdown",
+        doc?.headers.get("content-type") ?? "(none)",
+      );
     }
   }
 }
 
 section("A2 — protected resource metadata at both well-known paths");
-for (const path of ["/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-protected-resource"]) {
+for (const path of [
+  "/.well-known/oauth-protected-resource/mcp",
+  "/.well-known/oauth-protected-resource",
+]) {
   const res = await fetch(`${MCP}${path}`);
   // RFC 9728 §3.1 is path INSERTION, not suffixing; clients probe the
   // inserted form first and fall back to the root form.
@@ -120,30 +154,47 @@ let asMeta = null;
   check(res.ok, "AS metadata is served", `got ${res.status}`);
   asMeta = await res.json().catch(() => null);
   check(asMeta?.issuer === AUTH, "issuer matches the origin", asMeta?.issuer);
-  check(!!asMeta?.authorization_endpoint && !!asMeta?.token_endpoint, "authorize + token endpoints present");
+  check(
+    !!asMeta?.authorization_endpoint && !!asMeta?.token_endpoint,
+    "authorize + token endpoints present",
+  );
   // BOTH CIMD signals or Claude silently falls back to DCR, which registers a
   // fresh client on every connection.
-  check(asMeta?.client_id_metadata_document_supported === true,
-    "advertises client_id_metadata_document_supported");
-  check((asMeta?.token_endpoint_auth_methods_supported ?? []).includes("none"),
-    "advertises \"none\" auth method — the second CIMD signal");
+  check(
+    asMeta?.client_id_metadata_document_supported === true,
+    "advertises client_id_metadata_document_supported",
+  );
+  check(
+    (asMeta?.token_endpoint_auth_methods_supported ?? []).includes("none"),
+    'advertises "none" auth method — the second CIMD signal',
+  );
   check((asMeta?.code_challenge_methods_supported ?? []).includes("S256"), "advertises PKCE S256");
-  check(!(asMeta?.code_challenge_methods_supported ?? []).includes("plain"),
-    "and does NOT advertise plain PKCE");
+  check(
+    !(asMeta?.code_challenge_methods_supported ?? []).includes("plain"),
+    "and does NOT advertise plain PKCE",
+  );
 }
 
 section("A4 — refusals that do not need a credential");
 {
-  const { res } = await rpc({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: meta() } },
-    { token: "bm_not_a_real_token" });
+  const { res } = await rpc(
+    { jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: meta() } },
+    { token: "bm_not_a_real_token" },
+  );
   check(res.status === 401, "a bogus bearer is refused", `got ${res.status}`);
-  check((res.headers.get("www-authenticate") ?? "").includes("resource_metadata"),
-    "and still gets the teaching challenge — an expired token must be recoverable");
+  check(
+    (res.headers.get("www-authenticate") ?? "").includes("resource_metadata"),
+    "and still gets the teaching challenge — an expired token must be recoverable",
+  );
 }
 {
   const res = await fetch(`${MCP}/mcp`, { method: "GET" });
   // HTTP+SSE was removed in 2026-07-28 and is not implemented here.
-  check(res.status === 405, "GET /mcp is 405 — the SSE era is not implemented", `got ${res.status}`);
+  check(
+    res.status === 405,
+    "GET /mcp is 405 — the SSE era is not implemented",
+    `got ${res.status}`,
+  );
 }
 {
   const res = await fetch(`${MCP}/drain`, { method: "POST" });
@@ -189,9 +240,9 @@ if (!EMAIL || !PASSWORD) {
 
   section("B2 — authorization code with PKCE S256");
   const verifier = b64url(webcrypto.getRandomValues(new Uint8Array(32)));
-  const challenge = b64url(new Uint8Array(
-    await webcrypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
-  ));
+  const challenge = b64url(
+    new Uint8Array(await webcrypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))),
+  );
   const state = b64url(webcrypto.getRandomValues(new Uint8Array(16)));
   let code = null;
   if (clientId) {
@@ -228,8 +279,11 @@ if (!EMAIL || !PASSWORD) {
         body: form,
         redirect: "manual",
       });
-      check(res.status === 302 || res.status === 303, "approving redirects back to the client",
-        `got ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      check(
+        res.status === 302 || res.status === 303,
+        "approving redirects back to the client",
+        `got ${res.status}: ${(await res.text()).slice(0, 200)}`,
+      );
       const loc = res.headers.get("location") ?? "";
       const u = loc ? new URL(loc) : null;
       code = u?.searchParams.get("code") ?? null;
@@ -237,8 +291,11 @@ if (!EMAIL || !PASSWORD) {
       check(u?.searchParams.get("state") === state, "and the state we sent");
       // RFC 9207: the issuer must come back on the redirect so a client cannot
       // be tricked into exchanging a code at the wrong AS.
-      check(u?.searchParams.get("iss") === AUTH, "and RFC 9207 iss identifying the AS",
-        u?.searchParams.get("iss") ?? "(absent)");
+      check(
+        u?.searchParams.get("iss") === AUTH,
+        "and RFC 9207 iss identifying the AS",
+        u?.searchParams.get("iss") ?? "(absent)",
+      );
     }
   }
 
@@ -263,14 +320,19 @@ if (!EMAIL || !PASSWORD) {
     if (process.env.BM_E2E_DEBUG) {
       // Deliberately not the token itself — a live credential does not belong
       // in a terminal, even behind a debug flag.
-      console.log(`       DEBUG scope=${body?.scope} resource=${body?.resource} expires_in=${body?.expires_in}`);
+      console.log(
+        `       DEBUG scope=${body?.scope} resource=${body?.resource} expires_in=${body?.expires_in}`,
+      );
     }
     check(res.ok, "code exchanges for a token", `${res.status} ${JSON.stringify(body)}`);
     token = body?.access_token;
     check(!!token, "an access token comes back");
     check(!!body?.refresh_token, "and a refresh token");
-    check(typeof body?.expires_in === "number" && body.expires_in <= 3600,
-      "which expires — the first credential in bullmoose that does", String(body?.expires_in));
+    check(
+      typeof body?.expires_in === "number" && body.expires_in <= 3600,
+      "which expires — the first credential in bullmoose that does",
+      String(body?.expires_in),
+    );
     check(body?.resource === RESOURCE, "audience-bound to the canonical resource", body?.resource);
     // The replay test moved to the END (B7) on purpose — see the note there.
     replayForm = form;
@@ -279,42 +341,93 @@ if (!EMAIL || !PASSWORD) {
   section("B4 — the token works against /mcp");
   if (token && process.env.BM_E2E_DEBUG) console.log(`       DEBUG token=${token}`);
   if (token) {
-    const { res, json } = await rpc({
-      jsonrpc: "2.0", id: 1, method: "tools/call",
-      params: { name: "whoami", arguments: {}, _meta: meta() },
-    }, { token });
-    check(res.status === 200, "tools/call whoami succeeds with the OAuth token", `${res.status} ${JSON.stringify(json)}`);
-    const answer = (() => { try { return JSON.parse(json?.result?.content?.[0]?.text ?? "null"); } catch { return null; } })();
-    check(answer?.principal === EMAIL.toLowerCase(), "and it is the human who consented", answer?.principal);
+    const { res, json } = await rpc(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "whoami", arguments: {}, _meta: meta() },
+      },
+      { token },
+    );
+    check(
+      res.status === 200,
+      "tools/call whoami succeeds with the OAuth token",
+      `${res.status} ${JSON.stringify(json)}`,
+    );
+    const answer = (() => {
+      try {
+        return JSON.parse(json?.result?.content?.[0]?.text ?? "null");
+      } catch {
+        return null;
+      }
+    })();
+    check(
+      answer?.principal === EMAIL.toLowerCase(),
+      "and it is the human who consented",
+      answer?.principal,
+    );
     // The grant was `read`; the token must not carry the human's full authority.
-    check(Array.isArray(answer?.tokenScopes) && answer.tokenScopes.join() === "read",
-      "carrying THIS grant's scopes, not the account's", JSON.stringify(answer?.tokenScopes));
+    check(
+      Array.isArray(answer?.tokenScopes) && answer.tokenScopes.join() === "read",
+      "carrying THIS grant's scopes, not the account's",
+      JSON.stringify(answer?.tokenScopes),
+    );
   }
 
   section("B5 — refusals that need a token");
   if (token) {
-    const { res, json } = await rpc({
-      jsonrpc: "2.0", id: 1, method: "tools/list",
-      params: { _meta: meta({ "io.modelcontextprotocol/protocolVersion": "2026-07-28" }) },
-    }, { token, headers: { "MCP-Protocol-Version": "2025-06-18" } });
-    check(json?.error?.code === -32020, "header/_meta mismatch is -32020 HeaderMismatch",
-      JSON.stringify(json?.error));
+    const { res, json } = await rpc(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: { _meta: meta({ "io.modelcontextprotocol/protocolVersion": "2026-07-28" }) },
+      },
+      { token, headers: { "MCP-Protocol-Version": "2025-06-18" } },
+    );
+    check(
+      json?.error?.code === -32020,
+      "header/_meta mismatch is -32020 HeaderMismatch",
+      JSON.stringify(json?.error),
+    );
     check(res.status === 400, "with a 400");
   }
   if (token) {
-    const { json } = await rpc({
-      jsonrpc: "2.0", id: 1, method: "tools/list",
-      params: { _meta: { "io.modelcontextprotocol/protocolVersion": V } },
-    }, { token });
-    check(json?.error?.code === -32021, "missing clientCapabilities is -32021", JSON.stringify(json?.error));
+    const { json } = await rpc(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: { _meta: { "io.modelcontextprotocol/protocolVersion": V } },
+      },
+      { token },
+    );
+    check(
+      json?.error?.code === -32021,
+      "missing clientCapabilities is -32021",
+      JSON.stringify(json?.error),
+    );
   }
   if (token) {
-    const { json } = await rpc({
-      jsonrpc: "2.0", id: 1, method: "tools/call",
-      params: { name: "spend_by_month", arguments: { accountId: "t_nope__a_nope" }, _meta: meta() },
-    }, { token });
-    check(json?.error?.code === -32004, "an account the token cannot reach is -32004",
-      JSON.stringify(json?.error));
+    const { json } = await rpc(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "spend_by_month",
+          arguments: { accountId: "t_nope__a_nope" },
+          _meta: meta(),
+        },
+      },
+      { token },
+    );
+    check(
+      json?.error?.code === -32004,
+      "an account the token cannot reach is -32004",
+      JSON.stringify(json?.error),
+    );
   }
 
   section("B6 — both protocol eras on the same endpoint");
@@ -322,12 +435,19 @@ if (!EMAIL || !PASSWORD) {
     const res = await fetch(`${MCP}/mcp`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25" } }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2025-11-25" },
+      }),
     });
     const body = await res.json().catch(() => null);
-    check(res.ok && body?.result?.protocolVersion === "2025-11-25",
+    check(
+      res.ok && body?.result?.protocolVersion === "2025-11-25",
       "a 2025-era initialize is answered (no MCP-Protocol-Version header sent)",
-      JSON.stringify(body));
+      JSON.stringify(body),
+    );
     // The property that keeps the adapter deletable rather than a second
     // implementation.
     check(!res.headers.get("mcp-session-id"), "and no session id is minted");
@@ -350,9 +470,11 @@ if (!EMAIL || !PASSWORD) {
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
     });
     const body = await res.json().catch(() => null);
-    check(res.ok && Array.isArray(body?.result?.tools),
+    check(
+      res.ok && Array.isArray(body?.result?.tools),
       "post-initialize legacy shape works: MCP-Protocol-Version header, no _meta",
-      `${res.status} ${JSON.stringify(body?.error ?? body).slice(0, 160)}`);
+      `${res.status} ${JSON.stringify(body?.error ?? body).slice(0, 160)}`,
+    );
   }
 
   section("B7 — replaying the authorization code kills the whole grant");
@@ -380,11 +502,20 @@ if (!EMAIL || !PASSWORD) {
     const body = await again.json().catch(() => null);
     check(body?.error === "invalid_grant", "and says invalid_grant", JSON.stringify(body));
 
-    const { res } = await rpc({
-      jsonrpc: "2.0", id: 1, method: "tools/call",
-      params: { name: "whoami", arguments: {}, _meta: meta() },
-    }, { token });
-    check(res.status === 401, "and the token issued from that code is now DEAD", `got ${res.status}`);
+    const { res } = await rpc(
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "whoami", arguments: {}, _meta: meta() },
+      },
+      { token },
+    );
+    check(
+      res.status === 401,
+      "and the token issued from that code is now DEAD",
+      `got ${res.status}`,
+    );
   }
 }
 

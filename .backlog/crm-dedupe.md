@@ -12,11 +12,12 @@ occupant. `crm@` holds `contacts` scope, the human's book is `propose`, and the
 chokepoint turns every agent write into a reviewable, chained proposal.
 
 Two things not to lose when it is picked up:
+
 - **Batch by confidence tier.** Hundreds of pairs as hundreds of proposals would
   make `/approvals` useless (the s11 T9 lesson). Exact duplicates batch into one
   ask; only the ambiguous middle earns a proposal per cluster.
 - **A new `merge-contacts` kind, not `create-contact`.** The apply path is
-  merge+tombstone and the surface must render a *diff*, because
+  merge+tombstone and the surface must render a _diff_, because
   edit-before-approve is where the value is.
 
 Companion gap, same screenshot: contacts search is unindexed (every search reads

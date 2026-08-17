@@ -87,7 +87,10 @@ function fakeD1(tables: Tables) {
       ];
       // data-plane.sql: CREATE UNIQUE INDEX mailboxes_role ON
       // mailboxes (account_id, role) WHERE role IS NOT NULL.
-      if (role !== null && tables.mailboxes.some((m) => m.account_id === account_id && m.role === role)) {
+      if (
+        role !== null &&
+        tables.mailboxes.some((m) => m.account_id === account_id && m.role === role)
+      ) {
         throw new Error("D1_ERROR: UNIQUE constraint failed: mailboxes.account_id, mailboxes.role");
       }
       tables.mailboxes.push({ id, account_id, parent_id, name, role, sort_order });
@@ -205,7 +208,9 @@ function fakeD1(tables: Tables) {
     // -- emails --
     if (sql.includes("FROM emails WHERE account_id")) {
       const wanted = idsIn(sql, args, 1);
-      return { results: tables.emails.filter((e) => e.account_id === acct && wanted.includes(e.id)) };
+      return {
+        results: tables.emails.filter((e) => e.account_id === acct && wanted.includes(e.id)),
+      };
     }
 
     // -- Mailbox/get counts --
@@ -223,7 +228,8 @@ function fakeD1(tables: Tables) {
       // COUNT(DISTINCT …) skips. Several destroy tests seed exactly that
       // shape, so getting this wrong would change totalEmails under them.
       const threadOf = (emailId: string) =>
-        tables.emails.find((e) => e.account_id === accountId && e.id === emailId)?.thread_id ?? null;
+        tables.emails.find((e) => e.account_id === accountId && e.id === emailId)?.thread_id ??
+        null;
       const distinctThreads = (rows: typeof inBox) =>
         new Set(rows.map((r) => threadOf(r.email_id)).filter((t) => t !== null)).size;
       return {
@@ -537,9 +543,7 @@ describe("Mailbox/set — the advertised limits are now enforced", () => {
     // A legal chain exactly maxMailboxDepth deep, then one more.
     const chain: MailboxRec[] = [];
     for (let i = 0; i < mailCapability.maxMailboxDepth; i++) {
-      chain.push(
-        mb({ id: `mb_d${i}`, name: `d${i}`, parent_id: i === 0 ? null : `mb_d${i - 1}` }),
-      );
+      chain.push(mb({ id: `mb_d${i}`, name: `d${i}`, parent_id: i === 0 ? null : `mb_d${i - 1}` }));
     }
     const h = harness({ mailboxes: chain });
 
@@ -561,7 +565,10 @@ describe("Mailbox/set — the advertised limits are now enforced", () => {
     for (let i = 0; i < 9; i++) {
       rows.push(mb({ id: `mb_d${i}`, name: `d${i}`, parent_id: i === 0 ? null : `mb_d${i - 1}` }));
     }
-    rows.push(mb({ id: "mb_top", name: "top" }), mb({ id: "mb_kid", name: "kid", parent_id: "mb_top" }));
+    rows.push(
+      mb({ id: "mb_top", name: "top" }),
+      mb({ id: "mb_kid", name: "kid", parent_id: "mb_top" }),
+    );
     const h = harness({ mailboxes: rows });
 
     const res = await h.set({ update: { mb_top: { parentId: "mb_d8" } } });
@@ -693,8 +700,9 @@ describe("Mailbox/set — destroy", () => {
     expect(notDestroyed(res, "mb_inbox").description).toContain("inbox");
     expect(h.tables.mailboxes.find((m) => m.id === "mb_inbox")).toBeDefined();
 
-    const rights = ((await h.get()).list as Array<{ id: string; myRights: { mayDelete: boolean } }>)
-      .find((m) => m.id === "mb_inbox")?.myRights;
+    const rights = (
+      (await h.get()).list as Array<{ id: string; myRights: { mayDelete: boolean } }>
+    ).find((m) => m.id === "mb_inbox")?.myRights;
     expect(rights?.mayDelete).toBe(false);
   });
 
@@ -838,9 +846,10 @@ describe("requiredScopesForMailboxSet", () => {
   });
 
   it("charges both for a mixed call", () => {
-    expect(
-      requiredScopesForMailboxSet({ create: { c1: {} }, destroy: ["mb_1"] }).sort(),
-    ).toEqual(["delete", "move"]);
+    expect(requiredScopesForMailboxSet({ create: { c1: {} }, destroy: ["mb_1"] }).sort()).toEqual([
+      "delete",
+      "move",
+    ]);
   });
 
   it("asks for nothing on an empty call", () => {
@@ -867,7 +876,9 @@ describe("Mailbox/set — the gate bites", () => {
   });
 
   it("refuses a move-scoped token a DESTROY, which can remove mail", async () => {
-    const h = harness({ mailboxes: [{ ...INBOX }, mb({ id: "mb_x", name: "Receipts" })] }, ["move"]);
+    const h = harness({ mailboxes: [{ ...INBOX }, mb({ id: "mb_x", name: "Receipts" })] }, [
+      "move",
+    ]);
     await expect(h.set({ destroy: ["mb_x"] })).rejects.toMatchObject({ type: "forbidden" });
     expect(h.tables.mailboxes).toHaveLength(2);
 

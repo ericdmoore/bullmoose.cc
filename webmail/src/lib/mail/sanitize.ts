@@ -24,12 +24,68 @@
 
 /** Elements that render. Everything not here is unwrapped or dropped. */
 const ALLOWED = new Set([
-  "a", "abbr", "address", "b", "bdi", "bdo", "big", "blockquote", "br", "caption",
-  "center", "cite", "code", "col", "colgroup", "dd", "del", "dfn", "div", "dl",
-  "dt", "em", "figcaption", "figure", "font", "h1", "h2", "h3", "h4", "h5", "h6",
-  "hr", "i", "img", "ins", "kbd", "li", "mark", "ol", "p", "pre", "q", "s",
-  "samp", "small", "span", "strike", "strong", "sub", "sup", "table", "tbody",
-  "td", "tfoot", "th", "thead", "tr", "tt", "u", "ul", "var", "wbr",
+  "a",
+  "abbr",
+  "address",
+  "b",
+  "bdi",
+  "bdo",
+  "big",
+  "blockquote",
+  "br",
+  "caption",
+  "center",
+  "cite",
+  "code",
+  "col",
+  "colgroup",
+  "dd",
+  "del",
+  "dfn",
+  "div",
+  "dl",
+  "dt",
+  "em",
+  "figcaption",
+  "figure",
+  "font",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "hr",
+  "i",
+  "img",
+  "ins",
+  "kbd",
+  "li",
+  "mark",
+  "ol",
+  "p",
+  "pre",
+  "q",
+  "s",
+  "samp",
+  "small",
+  "span",
+  "strike",
+  "strong",
+  "sub",
+  "sup",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "tr",
+  "tt",
+  "u",
+  "ul",
+  "var",
+  "wbr",
 ]);
 
 /**
@@ -38,12 +94,47 @@ const ALLOWED = new Set([
  * every relative link) and form-control elements.
  */
 const DROP_SUBTREE = new Set([
-  "applet", "audio", "base", "body", "button", "canvas", "dialog", "embed",
-  "form", "frame", "frameset", "head", "html", "iframe", "input", "keygen",
-  "link", "map", "math", "meta", "noembed", "noframes", "noscript", "object",
-  "option", "optgroup", "param", "plaintext", "portal", "script", "select",
-  "slot", "source", "style", "svg", "template", "textarea", "title", "track",
-  "video", "xmp",
+  "applet",
+  "audio",
+  "base",
+  "body",
+  "button",
+  "canvas",
+  "dialog",
+  "embed",
+  "form",
+  "frame",
+  "frameset",
+  "head",
+  "html",
+  "iframe",
+  "input",
+  "keygen",
+  "link",
+  "map",
+  "math",
+  "meta",
+  "noembed",
+  "noframes",
+  "noscript",
+  "object",
+  "option",
+  "optgroup",
+  "param",
+  "plaintext",
+  "portal",
+  "script",
+  "select",
+  "slot",
+  "source",
+  "style",
+  "svg",
+  "template",
+  "textarea",
+  "title",
+  "track",
+  "video",
+  "xmp",
 ]);
 
 /**
@@ -52,14 +143,35 @@ const DROP_SUBTREE = new Set([
  * style smuggling works. All of them are in DROP_SUBTREE too.
  */
 const RAW_TEXT = new Set([
-  "script", "style", "textarea", "title", "xmp", "plaintext", "listing",
-  "noscript", "noembed", "noframes", "iframe",
+  "script",
+  "style",
+  "textarea",
+  "title",
+  "xmp",
+  "plaintext",
+  "listing",
+  "noscript",
+  "noembed",
+  "noframes",
+  "iframe",
 ]);
 
 /** No end tag; never pushed onto the open-element stack. */
 const VOID = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
-  "param", "source", "track", "wbr",
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
 ]);
 
 /**
@@ -106,26 +218,81 @@ const SAFE_DATA_IMAGE = /^data:image\/(png|jpeg|jpg|gif|webp|bmp|x-icon);base64,
  * real chrome, and `url()` is a tracking pixel the img-blocking never sees.
  */
 const SAFE_CSS_PROPS = new Set([
-  "background-color", "border", "border-bottom", "border-bottom-color",
-  "border-bottom-style", "border-bottom-width", "border-collapse", "border-color",
-  "border-left", "border-left-color", "border-left-style", "border-left-width",
-  "border-radius", "border-right", "border-right-color", "border-right-style",
-  "border-right-width", "border-spacing", "border-style", "border-top",
-  "border-top-color", "border-top-style", "border-top-width", "border-width",
-  "caption-side", "clear", "color", "direction", "display", "empty-cells",
-  "float", "font", "font-family", "font-size", "font-style", "font-variant",
-  "font-weight", "height", "letter-spacing", "line-height", "list-style",
-  "list-style-position", "list-style-type", "margin", "margin-bottom",
-  "margin-left", "margin-right", "margin-top", "max-height", "max-width",
-  "min-height", "min-width", "opacity", "overflow-wrap", "padding",
-  "padding-bottom", "padding-left", "padding-right", "padding-top",
-  "table-layout", "text-align", "text-decoration", "text-indent",
-  "text-transform", "vertical-align", "white-space", "width", "word-break",
-  "word-spacing", "word-wrap",
+  "background-color",
+  "border",
+  "border-bottom",
+  "border-bottom-color",
+  "border-bottom-style",
+  "border-bottom-width",
+  "border-collapse",
+  "border-color",
+  "border-left",
+  "border-left-color",
+  "border-left-style",
+  "border-left-width",
+  "border-radius",
+  "border-right",
+  "border-right-color",
+  "border-right-style",
+  "border-right-width",
+  "border-spacing",
+  "border-style",
+  "border-top",
+  "border-top-color",
+  "border-top-style",
+  "border-top-width",
+  "border-width",
+  "caption-side",
+  "clear",
+  "color",
+  "direction",
+  "display",
+  "empty-cells",
+  "float",
+  "font",
+  "font-family",
+  "font-size",
+  "font-style",
+  "font-variant",
+  "font-weight",
+  "height",
+  "letter-spacing",
+  "line-height",
+  "list-style",
+  "list-style-position",
+  "list-style-type",
+  "margin",
+  "margin-bottom",
+  "margin-left",
+  "margin-right",
+  "margin-top",
+  "max-height",
+  "max-width",
+  "min-height",
+  "min-width",
+  "opacity",
+  "overflow-wrap",
+  "padding",
+  "padding-bottom",
+  "padding-left",
+  "padding-right",
+  "padding-top",
+  "table-layout",
+  "text-align",
+  "text-decoration",
+  "text-indent",
+  "text-transform",
+  "vertical-align",
+  "white-space",
+  "width",
+  "word-break",
+  "word-spacing",
+  "word-wrap",
 ]);
 
 /** Never allowed in a CSS *value*, whatever the property. */
-const CSS_VALUE_DENY = /url\s*\(|expression\s*\(|javascript\s*:|vbscript\s*:|-moz-binding|behavior\s*:|@import|\\/i;
+const CSS_VALUE_DENY =
+  /url\s*\(|expression\s*\(|javascript\s*:|vbscript\s*:|-moz-binding|behavior\s*:|@import|\\/i;
 
 /**
  * Markers a client uses to fence the quoted part of a reply. Matching one at
@@ -133,10 +300,21 @@ const CSS_VALUE_DENY = /url\s*\(|expression\s*\(|javascript\s*:|vbscript\s*:|-mo
  * a quote never has to cut mid-element.
  */
 const QUOTE_CLASS_HINTS = [
-  "gmail_quote", "gmail_extra", "moz-cite-prefix", "yahoo_quoted",
-  "outlookmessageheader", "protonmail_quote", "zmail_extra", "quoted",
+  "gmail_quote",
+  "gmail_extra",
+  "moz-cite-prefix",
+  "yahoo_quoted",
+  "outlookmessageheader",
+  "protonmail_quote",
+  "zmail_extra",
+  "quoted",
 ];
-const QUOTE_ID_HINTS = ["divrplyfwdmsg", "appendonsend", "reply139", "mail-editor-reference-message-container"];
+const QUOTE_ID_HINTS = [
+  "divrplyfwdmsg",
+  "appendonsend",
+  "reply139",
+  "mail-editor-reference-message-container",
+];
 
 // ── public API ────────────────────────────────────────────────────────────
 
@@ -196,7 +374,9 @@ export function textToSafeHtml(text: string): string {
   const escaped = escapeText(text);
   const linked = escaped.replace(/\b(https?:\/\/[^\s<>"']+)/gi, (url) => {
     const safe = safeUrl(url, { allowRemote: true, isResource: false });
-    return safe ? `<a href="${escapeAttr(safe)}" target="_blank" rel="noopener noreferrer nofollow">${url}</a>` : url;
+    return safe
+      ? `<a href="${escapeAttr(safe)}" target="_blank" rel="noopener noreferrer nofollow">${url}</a>`
+      : url;
   });
   return `<pre class="plain-body">${linked}</pre>`;
 }
@@ -577,8 +757,18 @@ function isSafeAttrValue(value: string): boolean {
 }
 
 const NAMED_ENTITIES: Record<string, string> = {
-  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
-  colon: ":", tab: "\t", newline: "\n", sol: "/", lpar: "(", rpar: ")",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  colon: ":",
+  tab: "\t",
+  newline: "\n",
+  sol: "/",
+  lpar: "(",
+  rpar: ")",
 };
 
 /**

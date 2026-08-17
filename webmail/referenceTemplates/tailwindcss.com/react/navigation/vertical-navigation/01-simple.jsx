@@ -1,14 +1,14 @@
 const navigation = [
-  { name: 'Dashboard', href: '#', current: true },
-  { name: 'Team', href: '#', current: false },
-  { name: 'Projects', href: '#', current: false },
-  { name: 'Calendar', href: '#', current: false },
-  { name: 'Documents', href: '#', current: false },
-  { name: 'Reports', href: '#', current: false },
-]
+  { name: "Dashboard", href: "#", current: true },
+  { name: "Team", href: "#", current: false },
+  { name: "Projects", href: "#", current: false },
+  { name: "Calendar", href: "#", current: false },
+  { name: "Documents", href: "#", current: false },
+  { name: "Reports", href: "#", current: false },
+];
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -21,9 +21,9 @@ export default function Example() {
               href={item.href}
               className={classNames(
                 item.current
-                  ? 'bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white'
-                  : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white',
-                'group flex gap-x-3 rounded-md p-2 pl-3 text-sm/6 font-semibold',
+                  ? "bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white"
+                  : "text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white",
+                "group flex gap-x-3 rounded-md p-2 pl-3 text-sm/6 font-semibold",
               )}
             >
               {item.name}
@@ -32,5 +32,5 @@ export default function Example() {
         ))}
       </ul>
     </nav>
-  )
+  );
 }

@@ -27,7 +27,11 @@ const INTERNAL = "internal-test-token";
 const SECRET = "bm-canary-DO-NOT-USE-leakprobe-9f3d1c";
 const ALLEN = { principalId: "p_allen", email: "allen@bullmoose.cc", accountId: "a_allen" };
 
-const STRIPE_ONLY = { allow: "https://api.stripe.com", header: "Authorization: Bearer {}", scope: "actor" };
+const STRIPE_ONLY = {
+  allow: "https://api.stripe.com",
+  header: "Authorization: Bearer {}",
+  scope: "actor",
+};
 
 let allenToken: { id: string; token: string; secretHash: string };
 beforeAll(async () => {
@@ -92,7 +96,11 @@ async function harness(
   const kind = opts.kind ?? "api-key";
   const verb = opts.verb ?? "fetch";
   const db = fakeD1();
-  db.seedAccount({ accountId: ALLEN.accountId, principalId: ALLEN.principalId, loginEmail: ALLEN.email });
+  db.seedAccount({
+    accountId: ALLEN.accountId,
+    principalId: ALLEN.principalId,
+    loginEmail: ALLEN.email,
+  });
   db.seed("tokens", [
     {
       id: allenToken.id,
@@ -144,7 +152,10 @@ async function harness(
     worker.fetch(
       new Request("https://bureau.internal/bureau/use", {
         method: "POST",
-        headers: { authorization: `Bearer ${allenToken.token}`, "content-type": "application/json" },
+        headers: {
+          authorization: `Bearer ${allenToken.token}`,
+          "content-type": "application/json",
+        },
         body: JSON.stringify(body),
       }),
       env,
@@ -352,7 +363,11 @@ describe("invariant 4 — the credential is never carried across an origin chang
     );
     const h = await harness();
 
-    const res = await h.use({ url: "https://api.stripe.com/v1/charges", method: "POST", body: "amount=1" });
+    const res = await h.use({
+      url: "https://api.stripe.com/v1/charges",
+      method: "POST",
+      body: "amount=1",
+    });
 
     expect(res.status).toBe(200);
     expect(await envelope(res).then((e) => e.redirects)).toBe(1);
@@ -461,7 +476,9 @@ describe("invariant 1 — the credential never reaches the caller", () => {
     // policy refusal, an argument error, an upstream refusal — none of it
     // contains the value, in body, in headers, or in any cheap encoding of it.
     const seen = upstream((req) =>
-      req.url.includes("/redirect") ? redirectTo("https://evil.io/x") : ok(JSON.stringify({ id: "ch_1" })),
+      req.url.includes("/redirect")
+        ? redirectTo("https://evil.io/x")
+        : ok(JSON.stringify({ id: "ch_1" })),
     );
     const h = await harness();
 
@@ -574,7 +591,5 @@ describe("the response path is a clean seam for T4 (§7 redaction)", () => {
 });
 
 function hex(value: string): string {
-  return [...new TextEncoder().encode(value)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return [...new TextEncoder().encode(value)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }

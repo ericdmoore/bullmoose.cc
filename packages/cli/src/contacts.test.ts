@@ -114,6 +114,8 @@ describe("cardsFromInput", () => {
   });
 
   it("rejects a JSON array element that is not an object", () => {
-    expect(() => cardsFromInput(input('[{"uid":"a"}, 3]', "json"))).toThrow(/must be a JSON object/);
+    expect(() => cardsFromInput(input('[{"uid":"a"}, 3]', "json"))).toThrow(
+      /must be a JSON object/,
+    );
   });
 });

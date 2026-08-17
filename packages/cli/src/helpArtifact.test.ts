@@ -35,7 +35,9 @@ import {
  * Go router has to reproduce.
  */
 
-const ARTIFACT = fileURLToPath(new URL("../../../cli-go/internal/help/artifact.txt", import.meta.url));
+const ARTIFACT = fileURLToPath(
+  new URL("../../../cli-go/internal/help/artifact.txt", import.meta.url),
+);
 const SPEC = fileURLToPath(new URL("./help.ts", import.meta.url));
 const REGENERATE = "npm run -w @bullmoose/cli gen:docs";
 const PLACEHOLDER = "__BM_TOPIC__";
@@ -132,7 +134,8 @@ describe("the embedded help artifact", () => {
     const keys = new Set(expectedEntries().map((e) => e.key));
     for (const c of COMMANDS) expect(keys).toContain(`command:${c.name}`);
     // The four invocations with no command of their own.
-    for (const k of ["overview", "overview-usage", "json", "man", "markdown"]) expect(keys).toContain(k);
+    for (const k of ["overview", "overview-usage", "json", "man", "markdown"])
+      expect(keys).toContain(k);
   });
 
   it("keeps help that was asked for on stdout and help-as-refusal on stderr (§1.1)", () => {

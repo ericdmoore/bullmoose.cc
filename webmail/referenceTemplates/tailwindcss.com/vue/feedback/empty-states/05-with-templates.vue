@@ -1,12 +1,22 @@
 <template>
   <div class="mx-auto max-w-lg">
     <h2 class="text-base font-semibold text-gray-900 dark:text-white">Create your first project</h2>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Get started by selecting a template or start from an empty project.</p>
-    <ul role="list" class="mt-6 divide-y divide-gray-200 border-y border-gray-200 dark:divide-white/10 dark:border-white/10">
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      Get started by selecting a template or start from an empty project.
+    </p>
+    <ul
+      role="list"
+      class="mt-6 divide-y divide-gray-200 border-y border-gray-200 dark:divide-white/10 dark:border-white/10"
+    >
       <li v-for="(item, itemIdx) in items" :key="itemIdx">
         <div class="group relative flex items-start space-x-3 py-4">
           <div class="shrink-0">
-            <span :class="[item.iconColor, 'inline-flex size-10 items-center justify-center rounded-lg']">
+            <span
+              :class="[
+                item.iconColor,
+                'inline-flex size-10 items-center justify-center rounded-lg',
+              ]"
+            >
               <component :is="item.icon" class="size-6 text-white" aria-hidden="true" />
             </span>
           </div>
@@ -20,13 +30,19 @@
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ item.description }}</p>
           </div>
           <div class="shrink-0 self-center">
-            <ChevronRightIcon class="size-5 text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400" aria-hidden="true" />
+            <ChevronRightIcon
+              class="size-5 text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400"
+              aria-hidden="true"
+            />
           </div>
         </div>
       </li>
     </ul>
     <div class="mt-6 flex">
-      <a href="#" class="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
+      <a
+        href="#"
+        class="text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+      >
         Or start from an empty project
         <span aria-hidden="true"> &rarr;</span>
       </a>
@@ -35,30 +51,30 @@
 </template>
 
 <script setup>
-import { ChevronRightIcon } from '@heroicons/vue/20/solid'
-import { CalendarIcon, CommandLineIcon, MegaphoneIcon } from '@heroicons/vue/24/outline'
+import { ChevronRightIcon } from "@heroicons/vue/20/solid";
+import { CalendarIcon, CommandLineIcon, MegaphoneIcon } from "@heroicons/vue/24/outline";
 
 const items = [
   {
-    name: 'Marketing Campaign',
-    description: 'I think the kids call these memes these days.',
-    href: '#',
-    iconColor: 'bg-pink-500',
+    name: "Marketing Campaign",
+    description: "I think the kids call these memes these days.",
+    href: "#",
+    iconColor: "bg-pink-500",
     icon: MegaphoneIcon,
   },
   {
-    name: 'Engineering Project',
-    description: 'Something really expensive that will ultimately get cancelled.',
-    href: '#',
-    iconColor: 'bg-purple-500',
+    name: "Engineering Project",
+    description: "Something really expensive that will ultimately get cancelled.",
+    href: "#",
+    iconColor: "bg-purple-500",
     icon: CommandLineIcon,
   },
   {
-    name: 'Event',
-    description: 'Like a conference all about you that no one will care about.',
-    href: '#',
-    iconColor: 'bg-yellow-500',
+    name: "Event",
+    description: "Like a conference all about you that no one will care about.",
+    href: "#",
+    iconColor: "bg-yellow-500",
     icon: CalendarIcon,
   },
-]
+];
 </script>

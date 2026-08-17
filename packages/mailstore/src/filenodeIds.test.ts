@@ -12,8 +12,26 @@ describe("getFileNodes distinguishes 'no ids' from 'every id'", () => {
   const seed = () => {
     const w = fakeEnv();
     w.db.seed("file_nodes", [
-      { id: "fn_a", account_id: ACCOUNT, node_type: "directory", name: "A", created: 1, modified: 1, accessed: 1, changed: 1 },
-      { id: "fn_b", account_id: ACCOUNT, node_type: "directory", name: "B", created: 1, modified: 1, accessed: 1, changed: 1 },
+      {
+        id: "fn_a",
+        account_id: ACCOUNT,
+        node_type: "directory",
+        name: "A",
+        created: 1,
+        modified: 1,
+        accessed: 1,
+        changed: 1,
+      },
+      {
+        id: "fn_b",
+        account_id: ACCOUNT,
+        node_type: "directory",
+        name: "B",
+        created: 1,
+        modified: 1,
+        accessed: 1,
+        changed: 1,
+      },
     ]);
     return new Mailstore(w.env.DB, w.env.BLOBS);
   };

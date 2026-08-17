@@ -266,7 +266,12 @@ export function attenuateChild(
 
   // ---- identity: the same account, the same binding, the same Job ----------
   if (req.accountId !== undefined && req.accountId !== parent.accountId) {
-    refuse("identity", String(req.accountId), parent.accountId, "a child runs on its parent's account");
+    refuse(
+      "identity",
+      String(req.accountId),
+      parent.accountId,
+      "a child runs on its parent's account",
+    );
   }
   if (req.bindingId !== undefined && req.bindingId !== parent.bindingId) {
     refuse(
@@ -295,11 +300,24 @@ export function attenuateChild(
   if (req.tools !== undefined) {
     const asked = asStringSet(req.tools);
     if (asked === null) {
-      refuse("tools", JSON.stringify(req.tools) ?? "?", list(parent.authority.tools), "tools must be an array of non-empty strings");
+      refuse(
+        "tools",
+        JSON.stringify(req.tools) ?? "?",
+        list(parent.authority.tools),
+        "tools must be an array of non-empty strings",
+      );
     } else {
-      const over = parent.authority.tools === null ? [] : asked.filter((t) => !parent.authority.tools!.includes(t));
+      const over =
+        parent.authority.tools === null
+          ? []
+          : asked.filter((t) => !parent.authority.tools!.includes(t));
       if (over.length > 0) {
-        refuse("tools", list(asked), list(parent.authority.tools), `not held by the parent: ${over.join(", ")}`);
+        refuse(
+          "tools",
+          list(asked),
+          list(parent.authority.tools),
+          `not held by the parent: ${over.join(", ")}`,
+        );
       } else {
         tools = asked;
       }
@@ -311,12 +329,22 @@ export function attenuateChild(
   if (req.credentials !== undefined) {
     const asked = asStringSet(req.credentials);
     if (asked === null) {
-      refuse("credentials", JSON.stringify(req.credentials) ?? "?", list(parent.authority.credentials), "credentials must be an array of non-empty handles");
+      refuse(
+        "credentials",
+        JSON.stringify(req.credentials) ?? "?",
+        list(parent.authority.credentials),
+        "credentials must be an array of non-empty handles",
+      );
     } else {
       const held = parent.authority.credentials;
       const over = held === null ? [] : asked.filter((c) => !held.includes(c));
       if (over.length > 0) {
-        refuse("credentials", list(asked), list(parent.authority.credentials), `not held by the parent: ${over.join(", ")}`);
+        refuse(
+          "credentials",
+          list(asked),
+          list(parent.authority.credentials),
+          `not held by the parent: ${over.join(", ")}`,
+        );
       } else {
         credentials = asked;
       }
@@ -331,19 +359,34 @@ export function attenuateChild(
   if (req.budgetMicros !== undefined) {
     if (req.budgetMicros === null) {
       if (parent.authority.budgetMicros !== null) {
-        refuse("budget", "unbounded", money(parent.authority.budgetMicros), "a child may not drop a ceiling its parent carries");
+        refuse(
+          "budget",
+          "unbounded",
+          money(parent.authority.budgetMicros),
+          "a child may not drop a ceiling its parent carries",
+        );
       }
     } else if (
       typeof req.budgetMicros !== "number" ||
       !Number.isFinite(req.budgetMicros) ||
       req.budgetMicros < 0
     ) {
-      refuse("budget", String(req.budgetMicros), money(parent.authority.budgetMicros), "budgetMicros must be a non-negative finite number of micro-USD");
+      refuse(
+        "budget",
+        String(req.budgetMicros),
+        money(parent.authority.budgetMicros),
+        "budgetMicros must be a non-negative finite number of micro-USD",
+      );
     } else if (
       parent.authority.budgetMicros !== null &&
       req.budgetMicros > parent.authority.budgetMicros
     ) {
-      refuse("budget", money(req.budgetMicros), money(parent.authority.budgetMicros), "a child may not spend more than its parent");
+      refuse(
+        "budget",
+        money(req.budgetMicros),
+        money(parent.authority.budgetMicros),
+        "a child may not spend more than its parent",
+      );
     } else {
       budgetMicros = req.budgetMicros;
     }
@@ -353,9 +396,22 @@ export function attenuateChild(
   let privacy: PrivacyClass | null = parent.privacy;
   if (req.privacy !== undefined && req.privacy !== null) {
     if (!isPrivacyClass(req.privacy)) {
-      refuse("privacy", String(req.privacy), parent.privacy ?? "(unstamped)", "privacy is a class: open | internal | pinned");
-    } else if (parent.privacy !== null && PRIVACY_RANK[req.privacy] < PRIVACY_RANK[parent.privacy]) {
-      refuse("privacy", req.privacy, parent.privacy, "a child may raise the privacy class, never lower it");
+      refuse(
+        "privacy",
+        String(req.privacy),
+        parent.privacy ?? "(unstamped)",
+        "privacy is a class: open | internal | pinned",
+      );
+    } else if (
+      parent.privacy !== null &&
+      PRIVACY_RANK[req.privacy] < PRIVACY_RANK[parent.privacy]
+    ) {
+      refuse(
+        "privacy",
+        req.privacy,
+        parent.privacy,
+        "a child may raise the privacy class, never lower it",
+      );
     } else {
       privacy = req.privacy;
     }
@@ -365,11 +421,26 @@ export function attenuateChild(
   let dueAt: number | null = parent.dueAt;
   if (req.dueAt !== undefined && req.dueAt !== null) {
     if (typeof req.dueAt !== "number" || !Number.isFinite(req.dueAt)) {
-      refuse("urgency", String(req.dueAt), parent.dueAt === null ? "never-urgent" : String(parent.dueAt), "dueAt is epoch ms");
+      refuse(
+        "urgency",
+        String(req.dueAt),
+        parent.dueAt === null ? "never-urgent" : String(parent.dueAt),
+        "dueAt is epoch ms",
+      );
     } else if (parent.dueAt === null) {
-      refuse("urgency", String(req.dueAt), "never-urgent", "a child of never-urgent work cannot invent a deadline (urgency buys the paid cloud)");
+      refuse(
+        "urgency",
+        String(req.dueAt),
+        "never-urgent",
+        "a child of never-urgent work cannot invent a deadline (urgency buys the paid cloud)",
+      );
     } else if (req.dueAt < parent.dueAt) {
-      refuse("urgency", String(req.dueAt), String(parent.dueAt), "a child may not be due before its parent (urgency buys the paid cloud)");
+      refuse(
+        "urgency",
+        String(req.dueAt),
+        String(parent.dueAt),
+        "a child may not be due before its parent (urgency buys the paid cloud)",
+      );
     } else {
       dueAt = req.dueAt;
     }
@@ -380,7 +451,12 @@ export function attenuateChild(
   if (req.needs !== undefined) {
     const asked = asStringSet(req.needs);
     if (asked === null) {
-      refuse("needs", JSON.stringify(req.needs) ?? "?", "[plan-local keys]", "needs must be an array of plan-local keys");
+      refuse(
+        "needs",
+        JSON.stringify(req.needs) ?? "?",
+        "[plan-local keys]",
+        "needs must be an array of plan-local keys",
+      );
     } else {
       for (const n of asked) {
         if (n === key) {
@@ -407,15 +483,28 @@ export function attenuateChild(
     } else {
       context = req.context as Record<string, unknown>;
       const kind = context.kind;
-      if (typeof kind === "string" && (RESERVED_CONTEXT_KINDS as readonly string[]).includes(kind)) {
-        refuse("context", kind, `not ${RESERVED_CONTEXT_KINDS.join(" | ")}`, "a plan may not mint a reserved harness context kind");
+      if (
+        typeof kind === "string" &&
+        (RESERVED_CONTEXT_KINDS as readonly string[]).includes(kind)
+      ) {
+        refuse(
+          "context",
+          kind,
+          `not ${RESERVED_CONTEXT_KINDS.join(" | ")}`,
+          "a plan may not mint a reserved harness context kind",
+        );
       }
     }
   }
 
   const emailId = typeof req.emailId === "string" && req.emailId.length > 0 ? req.emailId : null;
   if (req.emailId !== undefined && emailId === null) {
-    refuse("context", String(req.emailId), "an email id", "emailId must be a non-empty string when present");
+    refuse(
+      "context",
+      String(req.emailId),
+      "an email id",
+      "emailId must be a non-empty string when present",
+    );
   }
 
   if (refusals.length > 0) return { ok: false, refusals };

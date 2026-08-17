@@ -37,7 +37,13 @@ const TENANT = "t_bm";
 const LOGIN_EMAIL = "eric@login.example";
 const PRIMARY = "eric@bullmoose.cc";
 
-const DRAFTS_MB = { id: "mb_drafts", parent_id: null, name: "Drafts", role: "drafts", sort_order: 1 };
+const DRAFTS_MB = {
+  id: "mb_drafts",
+  parent_id: null,
+  name: "Drafts",
+  role: "drafts",
+  sort_order: 1,
+};
 
 const draftRow = {
   id: "e_1",
@@ -86,7 +92,12 @@ interface GetResponse {
 
 function harness(fx: Fixture = {}) {
   const w = fakeEnv();
-  w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT, loginEmail: LOGIN_EMAIL, displayName: "Eric" });
+  w.db.seedAccount({
+    accountId: ACCOUNT,
+    tenantId: TENANT,
+    loginEmail: LOGIN_EMAIL,
+    displayName: "Eric",
+  });
   const domains = fx.domains ?? [{ domain: "bullmoose.cc", status: "active" }];
   // domains.tenant_id REFERENCES tenants(id) and foreign keys are enforced, so
   // a rival tenant has to exist before its domain can.
@@ -114,7 +125,9 @@ function harness(fx: Fixture = {}) {
   // a real relayed envelope rather than an inference.
   w.db.seed("mailboxes", [{ account_id: ACCOUNT, ...DRAFTS_MB }]);
   w.db.seed("emails", [{ account_id: ACCOUNT, ...draftRow }]);
-  w.db.seed("email_mailboxes", [{ account_id: ACCOUNT, email_id: "e_1", mailbox_id: DRAFTS_MB.id }]);
+  w.db.seed("email_mailboxes", [
+    { account_id: ACCOUNT, email_id: "e_1", mailbox_id: DRAFTS_MB.id },
+  ]);
   w.db.seed("email_keywords", [{ account_id: ACCOUNT, email_id: "e_1", keyword: "$draft" }]);
 
   const registry = new MethodRegistry<RequestContext>();
@@ -132,7 +145,11 @@ function harness(fx: Fixture = {}) {
           tenantId: TENANT,
           name: "Eric",
           ...(fx.granted
-            ? { granted: [{ grantId: "g_1", scopes: ["mail"], collection: null, collectionId: null }] }
+            ? {
+                granted: [
+                  { grantId: "g_1", scopes: ["mail"], collection: null, collectionId: null },
+                ],
+              }
             : {}),
         },
       ],
@@ -140,23 +157,28 @@ function harness(fx: Fixture = {}) {
   };
 
   const set = (args: Record<string, unknown>) =>
-    registry.get("Identity/set")!({ accountId: ACCOUNT, ...args }, ctx) as Promise<
-      unknown
-    > as Promise<SetResponse>;
+    registry.get("Identity/set")!(
+      { accountId: ACCOUNT, ...args },
+      ctx,
+    ) as Promise<unknown> as Promise<SetResponse>;
   const get = (args: Record<string, unknown> = {}) =>
-    registry.get("Identity/get")!({ accountId: ACCOUNT, ids: null, ...args }, ctx) as Promise<
-      unknown
-    > as Promise<GetResponse>;
+    registry.get("Identity/get")!(
+      { accountId: ACCOUNT, ids: null, ...args },
+      ctx,
+    ) as Promise<unknown> as Promise<GetResponse>;
   const changes = (sinceState: string) =>
-    registry.get("Identity/changes")!({ accountId: ACCOUNT, sinceState }, ctx) as Promise<
-      unknown
-    > as Promise<{ created: string[]; updated: string[]; destroyed: string[] }>;
+    registry.get("Identity/changes")!(
+      { accountId: ACCOUNT, sinceState },
+      ctx,
+    ) as Promise<unknown> as Promise<{ created: string[]; updated: string[]; destroyed: string[] }>;
   /** Send the seeded draft as `identityId`. Returns the relayed envelopes. */
   const submit = async (identityId: string) => {
     const res = (await registry.get("EmailSubmission/set")!(
       {
         accountId: ACCOUNT,
-        create: { s: { emailId: "e_1", identityId, envelope: { rcptTo: [{ email: "x@example.com" }] } } },
+        create: {
+          s: { emailId: "e_1", identityId, envelope: { rcptTo: [{ email: "x@example.com" }] } },
+        },
       },
       ctx,
     )) as unknown as SetResponse;
@@ -221,9 +243,9 @@ describe("Identity/set commits the write choreography", () => {
 
   it("refuses the whole call on a stale ifInState, writing nothing", async () => {
     const h = harness({ identities: [primaryRow()] });
-    await expect(h.set({ ifInState: "not-the-state", update: { id_primary: { name: "X" } } })).rejects.toThrow(
-      /stateMismatch/,
-    );
+    await expect(
+      h.set({ ifInState: "not-the-state", update: { id_primary: { name: "X" } } }),
+    ).rejects.toThrow(/stateMismatch/);
     expect(h.rows()[0]!.name).toBe("Eric");
   });
 });
@@ -296,7 +318,10 @@ describe("the synthesized identity_default is materialised, not forked", () => {
       // The account's only sender must not become deletable by being written.
       may_delete: 0,
     });
-    expect((await h.get()).list[0]).toMatchObject({ id: "identity_default", textSignature: "-- Eric" });
+    expect((await h.get()).list[0]).toMatchObject({
+      id: "identity_default",
+      textSignature: "-- Eric",
+    });
   });
 
   it("materialising keeps EmailSubmission/set resolving identity_default", async () => {
@@ -496,7 +521,11 @@ describe("requiredScopesForIdentitySet charges per operation", () => {
     // hasScope is a FLAT SET (.feedback/fromClaude/common/027) — `send` does
     // not imply `draft` — so bundling must not buy an operation for free.
     expect(
-      requiredScopesForIdentitySet({ create: { c1: {} }, update: { x: {} }, destroy: ["y"] }).sort(),
+      requiredScopesForIdentitySet({
+        create: { c1: {} },
+        update: { x: {} },
+        destroy: ["y"],
+      }).sort(),
     ).toEqual(["delete", "draft", "send"]);
   });
 
@@ -515,7 +544,9 @@ describe("requiredScopesForIdentitySet charges per operation", () => {
 
   it("a draft-scoped token may set a signature but may not mint a sender", async () => {
     const h = harness({ identities: [primaryRow()], scopes: ["draft"] });
-    expect((await h.set({ update: { id_primary: { textSignature: "x" } } })).notUpdated).toEqual({});
+    expect((await h.set({ update: { id_primary: { textSignature: "x" } } })).notUpdated).toEqual(
+      {},
+    );
     await expect(h.set({ create: { c1: { email: "sales@bullmoose.cc" } } })).rejects.toThrow(
       /lacks the "send" scope/,
     );

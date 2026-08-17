@@ -12,13 +12,20 @@ import { parseExtraction, runExtract, type ExtractJob } from "./extract";
 const ACCOUNT = "t_bm__a_eric";
 const job: ExtractJob = { id: "inv_x", account_id: ACCOUNT, binding_name: "scribe" };
 
-const CFG = { pipeline: "extract" as const, modelAliases: { extract: [{ provider: "workers-ai" as const, model: "@cf/x" }] }, defaultModel: "extract" };
+const CFG = {
+  pipeline: "extract" as const,
+  modelAliases: { extract: [{ provider: "workers-ai" as const, model: "@cf/x" }] },
+  defaultModel: "extract",
+};
 
 function world(modelResponse: string) {
   const w = fakeEnv();
   w.db.seedAccount({ accountId: ACCOUNT, loginEmail: "eric@bullmoose.cc", displayName: "Eric" });
   // The fake Workers AI answers with our chosen text (bouncerClassify pattern).
-  const run = vi.fn(async () => ({ response: modelResponse, usage: { prompt_tokens: 100, completion_tokens: 20 } }));
+  const run = vi.fn(async () => ({
+    response: modelResponse,
+    usage: { prompt_tokens: 100, completion_tokens: 20 },
+  }));
   (w.env as { AI?: unknown }).AI = { run };
   return { w, run };
 }
@@ -33,14 +40,25 @@ function inbound(o: { subject?: string; body?: string }): EmailRow {
 }
 
 const annotations = (w: ReturnType<typeof fakeEnv>) =>
-  w.db.query<{ author_kind: string; author: string; class: string; body: string; confidence: number | null; status: string; anchor_json: string; source_ref: string }>(
-    `SELECT * FROM annotations`,
-  );
+  w.db.query<{
+    author_kind: string;
+    author: string;
+    class: string;
+    body: string;
+    confidence: number | null;
+    status: string;
+    anchor_json: string;
+    source_ref: string;
+  }>(`SELECT * FROM annotations`);
 
 describe("parseExtraction — defensive by construction", () => {
   it("pulls well-formed items and clamps confidence", () => {
-    const items = parseExtraction('[{"class":"commitment","body":"I\'ll send the calc Friday","confidence":1.4}]');
-    expect(items).toEqual([{ class: "commitment", body: "I'll send the calc Friday", confidence: 1 }]);
+    const items = parseExtraction(
+      '[{"class":"commitment","body":"I\'ll send the calc Friday","confidence":1.4}]',
+    );
+    expect(items).toEqual([
+      { class: "commitment", body: "I'll send the calc Friday", confidence: 1 },
+    ]);
   });
   it("finds the array inside a chatty/fenced answer", () => {
     const items = parseExtraction('Sure!\n```json\n[{"class":"task","body":"review the PR"}]\n```');
@@ -49,15 +67,26 @@ describe("parseExtraction — defensive by construction", () => {
   it("returns [] for garbage, a non-array, and unknown classes / empty bodies", () => {
     expect(parseExtraction("no json here")).toEqual([]);
     expect(parseExtraction('{"class":"task"}')).toEqual([]);
-    expect(parseExtraction('[{"class":"vibe","body":"x"},{"class":"task","body":"  "}]')).toEqual([]);
+    expect(parseExtraction('[{"class":"vibe","body":"x"},{"class":"task","body":"  "}]')).toEqual(
+      [],
+    );
   });
 });
 
 describe("runExtract — writes Annotations from a delivered message", () => {
   it("extracts, anchors to the message, authors by the binding, and stamps cost", async () => {
-    const { w, run } = world('[{"class":"commitment","body":"You promised Bob the load calc by Friday","confidence":0.8}]');
+    const { w, run } = world(
+      '[{"class":"commitment","body":"You promised Bob the load calc by Friday","confidence":0.8}]',
+    );
     const done = vi.fn(async () => {});
-    await runExtract(w.env, job, CFG, inbound({ subject: "the calc", body: "I'll send it by Friday" }), {}, done);
+    await runExtract(
+      w.env,
+      job,
+      CFG,
+      inbound({ subject: "the calc", body: "I'll send it by Friday" }),
+      {},
+      done,
+    );
 
     const rows = annotations(w);
     expect(rows).toHaveLength(1);
@@ -73,23 +102,44 @@ describe("runExtract — writes Annotations from a delivered message", () => {
 
     expect(run).toHaveBeenCalledOnce();
     // Cost was stamped and passed to finish (workers-ai → genuinely free, 0).
-    expect(done).toHaveBeenCalledWith("done", expect.objectContaining({ count: 1 }), expect.objectContaining({ costMicros: 0 }));
+    expect(done).toHaveBeenCalledWith(
+      "done",
+      expect.objectContaining({ count: 1 }),
+      expect.objectContaining({ costMicros: 0 }),
+    );
   });
 
   it("PRE-FILTER: a cue-less message spends NO model call and writes nothing", async () => {
     const { w, run } = world("[]");
     const done = vi.fn(async () => {});
-    await runExtract(w.env, job, CFG, inbound({ subject: "hello", body: "just saying hi, nice weather" }), {}, done);
+    await runExtract(
+      w.env,
+      job,
+      CFG,
+      inbound({ subject: "hello", body: "just saying hi, nice weather" }),
+      {},
+      done,
+    );
 
     expect(run).not.toHaveBeenCalled(); // the whole point — no spend on a newsletter
     expect(annotations(w)).toEqual([]);
-    expect(done).toHaveBeenCalledWith("done", expect.objectContaining({ note: expect.stringContaining("no extraction cues") }));
+    expect(done).toHaveBeenCalledWith(
+      "done",
+      expect.objectContaining({ note: expect.stringContaining("no extraction cues") }),
+    );
   });
 
   it("finds nothing when the model returns [] — a model call, but no invented claim", async () => {
     const { w, run } = world("[]");
     const done = vi.fn(async () => {});
-    await runExtract(w.env, job, CFG, inbound({ subject: "re: plans", body: "let's circle back" }), {}, done);
+    await runExtract(
+      w.env,
+      job,
+      CFG,
+      inbound({ subject: "re: plans", body: "let's circle back" }),
+      {},
+      done,
+    );
     expect(run).toHaveBeenCalledOnce();
     expect(annotations(w)).toEqual([]);
   });
@@ -106,7 +156,17 @@ describe("runExtract — writes Annotations from a delivered message", () => {
   it("fails cleanly when the binding has no model menu", async () => {
     const { w } = world("[]");
     const done = vi.fn(async () => {});
-    await runExtract(w.env, job, { pipeline: "extract" }, inbound({ body: "I'll send it Friday" }), {}, done);
-    expect(done).toHaveBeenCalledWith("failed", expect.objectContaining({ note: expect.stringContaining("model menu") }));
+    await runExtract(
+      w.env,
+      job,
+      { pipeline: "extract" },
+      inbound({ body: "I'll send it Friday" }),
+      {},
+      done,
+    );
+    expect(done).toHaveBeenCalledWith(
+      "failed",
+      expect.objectContaining({ note: expect.stringContaining("model menu") }),
+    );
   });
 });

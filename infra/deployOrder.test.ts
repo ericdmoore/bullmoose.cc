@@ -35,8 +35,10 @@ function ciDeployOrder(): string[] {
 describe("the deploy order is the same in both places that declare it", () => {
   it("CI deploys exactly the workers bootstrap deploys, in the same order", () => {
     const ci = ciDeployOrder();
-    expect(ci.length, "found no `- name: Deploy <worker>` steps — did the workflow move?").
-      toBeGreaterThan(0);
+    expect(
+      ci.length,
+      "found no `- name: Deploy <worker>` steps — did the workflow move?",
+    ).toBeGreaterThan(0);
     expect(
       ci,
       `deploy-mail.yml and infra/bootstrap.mjs disagree.\n` +
@@ -51,7 +53,10 @@ describe("the deploy order is the same in both places that declare it", () => {
   it("every deployed worker has a wrangler config where the step says it does", () => {
     for (const w of DEPLOY_ORDER) {
       const cfg = join(ROOT, "services", w, "wrangler.jsonc");
-      expect(() => readFileSync(cfg, "utf8"), `${w} is deployed but ${cfg} is missing`).not.toThrow();
+      expect(
+        () => readFileSync(cfg, "utf8"),
+        `${w} is deployed but ${cfg} is missing`,
+      ).not.toThrow();
     }
   });
 

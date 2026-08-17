@@ -53,7 +53,10 @@ describe("ThreadListStore — batching", () => {
         "Email/query": () => ({ ids: ["c", "a", "b"], queryState: "1", total: 3 }),
         "Email/get": (args) => ({
           // Deliberately reversed: `Email/get` promises no order.
-          list: (args.ids as string[]).slice().reverse().map((id) => email({ id })),
+          list: (args.ids as string[])
+            .slice()
+            .reverse()
+            .map((id) => email({ id })),
           notFound: [],
         }),
       },
@@ -114,7 +117,12 @@ describe("ThreadListStore — sync WITHOUT Email/queryChanges", () => {
     const before = store.getRows().length;
 
     emails.push(
-      email({ id: "e-new", threadId: "t-new", subject: "New", receivedAt: "2027-01-01T00:00:00.000Z" }),
+      email({
+        id: "e-new",
+        threadId: "t-new",
+        subject: "New",
+        receivedAt: "2027-01-01T00:00:00.000Z",
+      }),
     );
     const result = await store.refresh();
 

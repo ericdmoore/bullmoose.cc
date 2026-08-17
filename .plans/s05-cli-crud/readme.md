@@ -13,10 +13,10 @@
 Two different kinds of gap turned up when auditing the CLI's command surface, and only
 one of them is real platform work:
 
-| Class | Meaning | Example | Cost |
-|---|---|---|---|
-| **(a)** the server can't do it either | Files / FileNode | real design + build → **s03.B** |
-| **(b)** the server *can*, the CLI doesn't expose it | `Calendar/set`, `CalendarEvent/set`, per-card contact CRUD | **cheap catch-up against a working server** |
+| Class                                               | Meaning                                                    | Example                                     | Cost |
+| --------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------- | ---- |
+| **(a)** the server can't do it either               | Files / FileNode                                           | real design + build → **s03.B**             |
+| **(b)** the server _can_, the CLI doesn't expose it | `Calendar/set`, `CalendarEvent/set`, per-card contact CRUD | **cheap catch-up against a working server** |
 
 **s05 is class (b).** The methods are implemented, tested, and reachable over JMAP
 today — the CLI simply never calls them. That makes this the highest value-per-effort
@@ -28,36 +28,36 @@ that can't be piped is a CLI agents use badly.
 
 ## 2. What's actually missing
 
-| Realm | Read | Create | Update | Delete |
-|---|---|---|---|---|
-| **Contacts** | `list`, `show` **[live]** | `import` (bulk only) **[live]** | ❌ | ❌ |
-| **Calendar** | `list`, `agenda` **[live]** | ❌ | ❌ | ❌ |
-| **Creds** | `list` **[live]** | `set` / `oauth` **[live]** | ✓ (upsert) **[live]** | `rm` **[live]** |
+| Realm        | Read                        | Create                          | Update                | Delete          |
+| ------------ | --------------------------- | ------------------------------- | --------------------- | --------------- |
+| **Contacts** | `list`, `show` **[live]**   | `import` (bulk only) **[live]** | ❌                    | ❌              |
+| **Calendar** | `list`, `agenda` **[live]** | ❌                              | ❌                    | ❌              |
+| **Creds**    | `list` **[live]**           | `set` / `oauth` **[live]**      | ✓ (upsert) **[live]** | `rm` **[live]** |
 
 - **Contacts** can be seeded in bulk but not edited one card at a time, and address books
   have no lifecycle commands.
 - **Calendar is entirely read-only** — the CLI never issues a single `Calendar/set` or
   `CalendarEvent/set`, despite both being live server-side.
-- **Creds** is nearly complete; what it lacks is *scoping* (see §4).
+- **Creds** is nearly complete; what it lacks is _scoping_ (see §4).
 
 ## 3. Unix composition — a first-class requirement, not polish
 
 Current state, audited:
 
-| Property | Today |
-|---|---|
-| stdin as input | **partially** — `send` body reads stdin, with a good stated rule: *"explicit flags beat implicit stdin"* (`main.ts:526-534`) **[live]** |
-| `--json` | exists as a global flag **[live]**, but emits whole-array JSON, not line-per-record |
-| **EPIPE handling** | ❌ **none** — `bullmoose log \| head` throws an unhandled error |
-| stdout/stderr split | **inconsistent** — 101 `console.log` vs 62 `console.error`; progress correctly goes to stderr in `contacts.ts`, but the discipline isn't uniform |
-| TTY / `NO_COLOR` detection | ❌ only `stdin.isTTY` is checked, never `stdout` |
-| exit codes | generic 0/1 |
+| Property                   | Today                                                                                                                                            |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| stdin as input             | **partially** — `send` body reads stdin, with a good stated rule: _"explicit flags beat implicit stdin"_ (`main.ts:526-534`) **[live]**          |
+| `--json`                   | exists as a global flag **[live]**, but emits whole-array JSON, not line-per-record                                                              |
+| **EPIPE handling**         | ❌ **none** — `bullmoose log \| head` throws an unhandled error                                                                                  |
+| stdout/stderr split        | **inconsistent** — 101 `console.log` vs 62 `console.error`; progress correctly goes to stderr in `contacts.ts`, but the discipline isn't uniform |
+| TTY / `NO_COLOR` detection | ❌ only `stdin.isTTY` is checked, never `stdout`                                                                                                 |
+| exit codes                 | generic 0/1                                                                                                                                      |
 
 The EPIPE gap is the sharpest: piping any list command into `head` produces a Node
 stack trace instead of clean output. That single fix makes half the composition story
 work.
 
-## 4. Creds: the CLI *is* the ingestion path
+## 4. Creds: the CLI _is_ the ingestion path
 
 **The CLI is how secrets get in — and per `mcp-auth.md` §9 it is the only safe path**,
 because plaintext must never transit a web tier. So s05 owns the **mint-time surface**
@@ -73,9 +73,9 @@ creds set <name>
   # entropy: stdin / hidden prompt / --secret-env — never argv
 ```
 
-**What s05 does *not* do is implement the scoping.** The vault is **per-principal by
+**What s05 does _not_ do is implement the scoping.** The vault is **per-principal by
 construction**: `vaultAad(principalId, name)` binds the ciphertext to its principal, so a
-row copied elsewhere *cannot be opened* — the deliberate row-swap defense in `auth-core`.
+row copied elsewhere _cannot be opened_ — the deliberate row-swap defense in `auth-core`.
 
 The non-obvious consequence: **today the AAD does double duty as access control.** Global
 and PerInbox mean multiple principals legitimately open the same row, so the crypto stops

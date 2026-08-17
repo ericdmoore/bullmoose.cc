@@ -162,8 +162,7 @@ export function bayesTrain(
   const tokens: Record<string, TokenCounts> = { ...state.tokens };
   for (const tok of bayesTokens(msg)) {
     const prev = tokens[tok] ?? { s: 0, h: 0 };
-    tokens[tok] =
-      label === "spam" ? { s: prev.s + 1, h: prev.h } : { s: prev.s, h: prev.h + 1 };
+    tokens[tok] = label === "spam" ? { s: prev.s + 1, h: prev.h } : { s: prev.s, h: prev.h + 1 };
   }
   return {
     spamCount: state.spamCount + (label === "spam" ? 1 : 0),

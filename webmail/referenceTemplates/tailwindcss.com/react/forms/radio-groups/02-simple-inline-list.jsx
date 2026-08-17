@@ -1,19 +1,23 @@
 const notificationMethods = [
-  { id: 'email', title: 'Email' },
-  { id: 'sms', title: 'Phone (SMS)' },
-  { id: 'push', title: 'Push notification' },
-]
+  { id: "email", title: "Email" },
+  { id: "sms", title: "Phone (SMS)" },
+  { id: "push", title: "Push notification" },
+];
 
 export default function Example() {
   return (
     <fieldset>
-      <legend className="text-sm/6 font-semibold text-gray-900 dark:text-white">Notifications</legend>
-      <p className="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">How do you prefer to receive notifications?</p>
+      <legend className="text-sm/6 font-semibold text-gray-900 dark:text-white">
+        Notifications
+      </legend>
+      <p className="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">
+        How do you prefer to receive notifications?
+      </p>
       <div className="mt-6 space-y-6 sm:flex sm:items-center sm:space-y-0 sm:space-x-10">
         {notificationMethods.map((notificationMethod) => (
           <div key={notificationMethod.id} className="flex items-center">
             <input
-              defaultChecked={notificationMethod.id === 'email'}
+              defaultChecked={notificationMethod.id === "email"}
               id={notificationMethod.id}
               name="notification-method"
               type="radio"
@@ -29,5 +33,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  )
+  );
 }

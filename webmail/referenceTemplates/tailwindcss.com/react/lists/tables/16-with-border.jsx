@@ -1,44 +1,44 @@
 const plans = [
   {
     id: 1,
-    name: 'Hobby',
-    memory: '4 GB RAM',
-    cpu: '4 CPUs',
-    storage: '128 GB SSD disk',
-    price: '$40',
+    name: "Hobby",
+    memory: "4 GB RAM",
+    cpu: "4 CPUs",
+    storage: "128 GB SSD disk",
+    price: "$40",
     isCurrent: false,
   },
   {
     id: 2,
-    name: 'Startup',
-    memory: '8 GB RAM',
-    cpu: '6 CPUs',
-    storage: '256 GB SSD disk',
-    price: '$80',
+    name: "Startup",
+    memory: "8 GB RAM",
+    cpu: "6 CPUs",
+    storage: "256 GB SSD disk",
+    price: "$80",
     isCurrent: true,
   },
   {
     id: 3,
-    name: 'Business',
-    memory: '16 GB RAM',
-    cpu: '8 CPUs',
-    storage: '512 GB SSD disk',
-    price: '$160',
+    name: "Business",
+    memory: "16 GB RAM",
+    cpu: "8 CPUs",
+    storage: "512 GB SSD disk",
+    price: "$160",
     isCurrent: false,
   },
   {
     id: 4,
-    name: 'Enterprise',
-    memory: '1024 GB RAM',
-    cpu: '12 CPUs',
-    storage: '128 GB SSD disk',
-    price: '$240',
+    name: "Enterprise",
+    memory: "1024 GB RAM",
+    cpu: "12 CPUs",
+    storage: "128 GB SSD disk",
+    price: "$240",
     isCurrent: false,
   },
-]
+];
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -48,7 +48,8 @@ export default function Example() {
         <div className="sm:flex-auto">
           <h1 className="text-base font-semibold text-gray-900 dark:text-white">Plans</h1>
           <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
-            Your team is on the <strong className="font-semibold text-gray-900 dark:text-white">Startup</strong> plan.
+            Your team is on the{" "}
+            <strong className="font-semibold text-gray-900 dark:text-white">Startup</strong> plan.
             The next payment of $80 will be due on August 4, 2022.
           </p>
         </div>
@@ -89,7 +90,10 @@ export default function Example() {
               >
                 Storage
               </th>
-              <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
+              <th
+                scope="col"
+                className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white"
+              >
                 Price
               </th>
               <th scope="col" className="py-3.5 pr-4 pl-3 sm:pr-6">
@@ -102,14 +106,16 @@ export default function Example() {
               <tr key={plan.id}>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-transparent',
-                    'relative py-4 pr-3 pl-4 text-sm sm:pl-6',
+                    planIdx === 0 ? "" : "border-t border-transparent",
+                    "relative py-4 pr-3 pl-4 text-sm sm:pl-6",
                   )}
                 >
                   <div className="font-medium text-gray-900 dark:text-white">
                     {plan.name}
                     {plan.isCurrent ? (
-                      <span className="ml-1 text-indigo-600 dark:text-indigo-400">(Current Plan)</span>
+                      <span className="ml-1 text-indigo-600 dark:text-indigo-400">
+                        (Current Plan)
+                      </span>
                     ) : null}
                   </div>
                   <div className="mt-1 flex flex-col text-gray-500 sm:block lg:hidden dark:text-gray-400">
@@ -125,32 +131,32 @@ export default function Example() {
                 </td>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-gray-200 dark:border-white/10',
-                    'hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400',
+                    planIdx === 0 ? "" : "border-t border-gray-200 dark:border-white/10",
+                    "hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400",
                   )}
                 >
                   {plan.memory}
                 </td>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-gray-200 dark:border-white/10',
-                    'hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400',
+                    planIdx === 0 ? "" : "border-t border-gray-200 dark:border-white/10",
+                    "hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400",
                   )}
                 >
                   {plan.cpu}
                 </td>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-gray-200 dark:border-white/10',
-                    'hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400',
+                    planIdx === 0 ? "" : "border-t border-gray-200 dark:border-white/10",
+                    "hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400",
                   )}
                 >
                   {plan.storage}
                 </td>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-gray-200 dark:border-white/10',
-                    'px-3 py-3.5 text-sm text-gray-500 dark:text-gray-400',
+                    planIdx === 0 ? "" : "border-t border-gray-200 dark:border-white/10",
+                    "px-3 py-3.5 text-sm text-gray-500 dark:text-gray-400",
                   )}
                 >
                   <div className="sm:hidden">{plan.price}/mo</div>
@@ -158,8 +164,8 @@ export default function Example() {
                 </td>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-transparent',
-                    'relative py-3.5 pr-4 pl-3 text-right text-sm font-medium sm:pr-6',
+                    planIdx === 0 ? "" : "border-t border-transparent",
+                    "relative py-3.5 pr-4 pl-3 text-right text-sm font-medium sm:pr-6",
                   )}
                 >
                   <button
@@ -179,5 +185,5 @@ export default function Example() {
         </table>
       </div>
     </div>
-  )
+  );
 }

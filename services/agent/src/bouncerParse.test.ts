@@ -108,7 +108,9 @@ describe("parseIntent — deterministic grammar over the wrapper only", () => {
 
   it("'add QWERTYUIOP.com … deny list' → blockDomain with the literal domain", () => {
     expect(
-      parseIntent("3rd message this week — add QWERTYUIOP.com to the deny list, I don't need this in my life"),
+      parseIntent(
+        "3rd message this week — add QWERTYUIOP.com to the deny list, I don't need this in my life",
+      ),
     ).toEqual({ kind: "blockDomain", domain: "qwertyuiop.com" });
   });
 
@@ -120,7 +122,10 @@ describe("parseIntent — deterministic grammar over the wrapper only", () => {
   });
 
   it("'block them, the whole domain' → blockDomain(null): the domain must come from evidence", () => {
-    expect(parseIntent("block them, the whole domain")).toEqual({ kind: "blockDomain", domain: null });
+    expect(parseIntent("block them, the whole domain")).toEqual({
+      kind: "blockDomain",
+      domain: null,
+    });
   });
 
   it("'block bob@spam.example' targets a SENDER, not a domain", () => {
@@ -139,7 +144,9 @@ describe("parseIntent — deterministic grammar over the wrapper only", () => {
 
   it("'says she sent' → whyBlocked (explain+repair)", () => {
     expect(
-      parseIntent("Helen says she sent the contract on Monday. helen@herdomain.test — make sure it arrives."),
+      parseIntent(
+        "Helen says she sent the contract on Monday. helen@herdomain.test — make sure it arrives.",
+      ),
     ).toEqual({ kind: "whyBlocked" });
   });
 
@@ -148,7 +155,9 @@ describe("parseIntent — deterministic grammar over the wrapper only", () => {
   });
 
   it("'rescue' → passSender", () => {
-    expect(parseIntent("please rescue whatever you held from helen")).toEqual({ kind: "passSender" });
+    expect(parseIntent("please rescue whatever you held from helen")).toEqual({
+      kind: "passSender",
+    });
   });
 
   it("small talk → unclear", () => {
@@ -186,7 +195,9 @@ describe("parseModelIntent — the model fallback's closed grammar", () => {
   });
 
   it("prose, fences, empty → unclear", () => {
-    expect(parseModelIntent("[mock markup of your draft]\nreportSpam", "x")).toEqual({ kind: "unclear" });
+    expect(parseModelIntent("[mock markup of your draft]\nreportSpam", "x")).toEqual({
+      kind: "unclear",
+    });
     expect(parseModelIntent("Sure! I think this is reportSpam.", "x")).toEqual({ kind: "unclear" });
     expect(parseModelIntent("", "x")).toEqual({ kind: "unclear" });
   });
@@ -194,9 +205,8 @@ describe("parseModelIntent — the model fallback's closed grammar", () => {
 
 describe("wrapperAddresses", () => {
   it("lists addresses in order, lowercased", () => {
-    expect(wrapperAddresses("Helen (Helen@HerDomain.test) says she sent it to eric@family.test")).toEqual([
-      "helen@herdomain.test",
-      "eric@family.test",
-    ]);
+    expect(
+      wrapperAddresses("Helen (Helen@HerDomain.test) says she sent it to eric@family.test"),
+    ).toEqual(["helen@herdomain.test", "eric@family.test"]);
   });
 });

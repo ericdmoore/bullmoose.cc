@@ -6,7 +6,7 @@
 
 `bureau.md` §6 makes destination binding **the** primary control: a credential is usable
 only against origins the operator named. The design leans on that allowlist so hard that
-nothing downstream re-checks the destination's *nature* — only its spelling.
+nothing downstream re-checks the destination's _nature_ — only its spelling.
 
 ## The defect
 
@@ -23,7 +23,7 @@ So all of these are mintable via `vault.ts` `normalizeAllow` and enforceable as 
 The allowlist is **operator-minted**, not agent-chosen. An agent cannot widen its own
 binding, so reaching metadata requires a human to have typed the metadata address into
 `--allow`. And Cloudflare Workers expose no IMDS at `169.254.169.254`, so the classic
-cloud-credential-theft payoff is absent *on the current runtime*.
+cloud-credential-theft payoff is absent _on the current runtime_.
 
 That is a defensible position. The problem is it is currently an **omission** rather than a
 decision — nothing in code or docs says "we considered private ranges and chose to permit

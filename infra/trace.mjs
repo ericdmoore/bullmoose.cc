@@ -87,7 +87,11 @@ function traceOne(emailId) {
     SELECT m.name, m.role FROM email_mailboxes em
       JOIN mailboxes m ON m.id = em.mailbox_id AND m.account_id = em.account_id
      WHERE em.email_id = '${esc(e.id)}'`);
-  line("ok", "stored", boxes.map((b) => `${b.name}${b.role ? ` (${b.role})` : ""}`).join(", ") || "no mailbox");
+  line(
+    "ok",
+    "stored",
+    boxes.map((b) => `${b.name}${b.role ? ` (${b.role})` : ""}`).join(", ") || "no mailbox",
+  );
 
   // 2. the boundary cascade — quarantine events name the firing stage
   const qe = q(`
@@ -96,8 +100,12 @@ function traceOne(emailId) {
   if (qe.length === 0) {
     line("ok", "boundary cascade", "passed (no quarantine event)");
   } else {
-    for (const r of qe) line(r.event === "rescued" || r.event === "released" ? "ok" : "stop",
-      "boundary cascade", `${r.event} @ ${r.stage ?? "?"}  ${when(r.at)}`);
+    for (const r of qe)
+      line(
+        r.event === "rescued" || r.event === "released" ? "ok" : "stop",
+        "boundary cascade",
+        `${r.event} @ ${r.stage ?? "?"}  ${when(r.at)}`,
+      );
   }
 
   // 3. invocations — the facets ingest stamped, and whether anyone claimed
@@ -148,7 +156,11 @@ function traceOne(emailId) {
      WHERE account_id = '${esc(e.account_id)}' AND at >= ${Number(e.received_at) || 0}
      ORDER BY at`);
   for (const c of chain) {
-    line("ok", "book chain", `${c.event} ${c.address} by ${c.actor}${c.via_proposal_id ? ` via ${c.via_proposal_id}` : ""}`);
+    line(
+      "ok",
+      "book chain",
+      `${c.event} ${c.address} by ${c.actor}${c.via_proposal_id ? ` via ${c.via_proposal_id}` : ""}`,
+    );
   }
   console.log("");
 }

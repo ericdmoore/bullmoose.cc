@@ -165,7 +165,7 @@ describe("the fake mirrors the server's semantics, warts included", () => {
     const client = new FakeJmapClient();
     const backend = installDemoCalendar(client, NOW);
     const before = backend.state();
-    await call(client, "CalendarEvent/set", { update: { "nope": { title: "x" } } });
+    await call(client, "CalendarEvent/set", { update: { nope: { title: "x" } } });
     expect(backend.state()).toBe(before);
     await call(client, "CalendarEvent/set", { update: { "ev-holiday": { title: "x" } } });
     expect(backend.state()).not.toBe(before);

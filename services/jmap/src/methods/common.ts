@@ -2,12 +2,7 @@ import { MethodError } from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
 import { Mailstore, type ContactWriter } from "@bullmoose/mailstore";
 import { isAgentPrincipal } from "@bullmoose/auth-core/principal";
-import {
-  authorizeAccount,
-  type AccountAccess,
-  type MethodDomain,
-  type Principal,
-} from "../auth";
+import { authorizeAccount, type AccountAccess, type MethodDomain, type Principal } from "../auth";
 import type { Env } from "../index";
 
 export interface RequestContext {

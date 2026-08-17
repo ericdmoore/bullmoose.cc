@@ -75,7 +75,9 @@ describe("the recurrence guard (common/003, client side)", () => {
 
   it("names a frequency with no expander branch, and an unknown part", () => {
     expect(rruleReason(parseRruleString("FREQ=HOURLY"))).toMatch(/no expander branch/);
-    expect(rruleReason(parseRruleString("FREQ=DAILY;BYHOUR=9"))).toMatch(/unknown RRULE part BYHOUR/);
+    expect(rruleReason(parseRruleString("FREQ=DAILY;BYHOUR=9"))).toMatch(
+      /unknown RRULE part BYHOUR/,
+    );
   });
 });
 

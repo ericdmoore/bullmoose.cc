@@ -26,7 +26,9 @@ function harness(): Harness {
   const db = fakeD1();
   const kv = fakeKV();
   db.seed("tenants", [{ id: TENANT, name: "Family", status: "active", created_at: 1 }]);
-  db.seed("domains", [{ domain: DOMAIN, tenant_id: TENANT, status: "active", cf_zone_id: "z1", created_at: 1 }]);
+  db.seed("domains", [
+    { domain: DOMAIN, tenant_id: TENANT, status: "active", cf_zone_id: "z1", created_at: 1 },
+  ]);
   const env: Env = {
     DB: db,
     ROUTES: kv.ns,
@@ -52,7 +54,12 @@ function harness(): Harness {
 /** Two human accounts + one agent account (analyst@, which has a binding). */
 async function seedHousehold(h: Harness): Promise<void> {
   for (const localpart of ["dad", "mom", "analyst"]) {
-    const res = await h.call("/accounts", { tenantId: TENANT, domain: DOMAIN, localpart, displayName: localpart });
+    const res = await h.call("/accounts", {
+      tenantId: TENANT,
+      domain: DOMAIN,
+      localpart,
+      displayName: localpart,
+    });
     expect(res.status).toBe(200);
   }
   const res = await h.call("/agent-bindings", { email: `analyst@${DOMAIN}`, name: "allen" });
@@ -79,13 +86,21 @@ describe("POST /remind", () => {
     // Humans only: the agent principal (analyst@) is excluded structurally.
     expect(body.allowedSenders).toEqual([`dad@${DOMAIN}`, `mom@${DOMAIN}`]);
 
-    const binding = h.db.query<{ trigger_on: string; config_json: string; recipients_book_id: string }>(
+    const binding = h.db.query<{
+      trigger_on: string;
+      config_json: string;
+      recipients_book_id: string;
+    }>(
       `SELECT trigger_on, config_json, recipients_book_id FROM agent_bindings WHERE account_id = ? AND name = 'remind'`,
       body.accountId,
     )[0]!;
     expect(binding.trigger_on).toBe("mailbox-delivery"); // ingest's fan-out will mint invocations
     expect(binding.recipients_book_id).toBe(body.recipientsBookId);
-    const cfg = JSON.parse(binding.config_json) as { pipeline: string; replyMode: string; allowedSenders: string[] };
+    const cfg = JSON.parse(binding.config_json) as {
+      pipeline: string;
+      replyMode: string;
+      allowedSenders: string[];
+    };
     expect(cfg.pipeline).toBe("remind");
     expect(cfg.replyMode).toBe("send");
     expect(cfg.allowedSenders).toEqual(body.allowedSenders);
@@ -124,17 +139,28 @@ describe("POST /remind", () => {
   it("is idempotent: a second call reports the existing binding, writes nothing new", async () => {
     const h = harness();
     await seedHousehold(h);
-    const first = (await (await h.call("/remind", { tenantId: TENANT, domain: DOMAIN })).json()) as { bindingId: string };
+    const first = (await (
+      await h.call("/remind", { tenantId: TENANT, domain: DOMAIN })
+    ).json()) as { bindingId: string };
     const res = await h.call("/remind", { tenantId: TENANT, domain: DOMAIN });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; created: boolean; bindingId: string };
     expect(body).toMatchObject({ ok: true, created: false, bindingId: first.bindingId });
-    expect(h.db.query<{ n: number }>(`SELECT COUNT(*) AS n FROM agent_bindings WHERE name = 'remind'`)[0]!.n).toBe(1);
+    expect(
+      h.db.query<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM agent_bindings WHERE name = 'remind'`,
+      )[0]!.n,
+    ).toBe(1);
   });
 
   it("refuses a tenant with no human principals — a remind@ that could remind nobody", async () => {
     const h = harness();
-    await h.call("/accounts", { tenantId: TENANT, domain: DOMAIN, localpart: "analyst", displayName: "A" });
+    await h.call("/accounts", {
+      tenantId: TENANT,
+      domain: DOMAIN,
+      localpart: "analyst",
+      displayName: "A",
+    });
     await h.call("/agent-bindings", { email: `analyst@${DOMAIN}`, name: "allen" });
 
     const res = await h.call("/remind", { tenantId: TENANT, domain: DOMAIN });

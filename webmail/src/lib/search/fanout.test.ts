@@ -33,9 +33,7 @@ describe("the fan-out over the demo backend", () => {
 
     // Contacts: Grace's organization and the "Project Elk" group card.
     const contacts = byRealm.get("contacts");
-    expect(contacts?.hits.map((h) => h.id)).toEqual(
-      expect.arrayContaining(["cc-grace", "cc-elk"]),
-    );
+    expect(contacts?.hits.map((h) => h.id)).toEqual(expect.arrayContaining(["cc-grace", "cc-elk"]));
 
     // Calendar: the "Elk standup" series.
     const calendar = byRealm.get("calendar");
@@ -117,7 +115,13 @@ describe("hit shaping", () => {
   });
 
   it("never renders an empty title", () => {
-    const email = { id: "em-2", subject: "", from: [], receivedAt: "", preview: "" } as unknown as Email;
+    const email = {
+      id: "em-2",
+      subject: "",
+      from: [],
+      receivedAt: "",
+      preview: "",
+    } as unknown as Email;
     expect(emailHit(email).title).toBe("(no subject)");
     expect(eventHit({ id: "ev-x" } as CalendarEvent).title).toBe("(untitled event)");
   });

@@ -16,7 +16,6 @@ localparts stay reserved for actual humans.
 
 ## Categories
 
-
 |            | reply (Emily-class)           | ledger (Allen-class)                              | armed responder             |
 | ---------- | ----------------------------- | ------------------------------------------------- | --------------------------- |
 | example    | `editor@bullmoose.cc`         | `analyst@bullmoose.cc`                            | vacation, watchdog          |
@@ -25,9 +24,6 @@ localparts stay reserved for actual humans.
 | LLM use    | persona reply                 | extract one fact + narrate computed numbers       | none (template)             |
 | trust gate | `allowedSenders` + RFC 3834   | SPF/DKIM pass + receipt prefilter + dedup         | RFC 3834 + suppression      |
 | config     | `pipeline: "reply"` (default) | `pipeline: "ledger"`                              | `responders` table          |
-
-
-
 
 ### Reply agents (`pipeline: "reply"`)
 
@@ -64,12 +60,12 @@ Non-receipts are never eaten: anything that fails a gate (no auth pass,
 no receipt vocabulary, extraction says not-a-receipt, duplicate) is
 **forwarded to the digest target intact** with a one-line note ("Could
 not discover spending metrics in this message — forwarding it along.").
-The agent still never replies to the *sender* — receipts come from
+The agent still never replies to the _sender_ — receipts come from
 `noreply@` addresses and answering them is backscatter.
 
 **Plus-tag routing:** give a vendor `analyst+eric@bullmoose.cc`; the tag
 selects a target from `digestTargets` (`eric` → `eric@bullmoose.cc`).
-The tag is a *selector*, never an address — unknown tags fall back to
+The tag is a _selector_, never an address — unknown tags fall back to
 `digestTo`, so mail content can never steer digests to a stranger.
 
 **Bootstrap:** email a CSV (subject starting `bootstrap`, attachment
@@ -133,15 +129,12 @@ free allocation; `gateway` needs an AI Gateway (`GATEWAY_COMPAT_URL` var
 
 - `GATEWAY_TOKEN` secret) with provider keys stored BYOK.
 
-
-
 ## Operational notes
 
 - Replies/digests carry `Auto-Submitted` + `X-Auto-Response-Suppress`
-(RFC 3834), `X-Bullmoose-Model`, `X-Bullmoose-Invocation`, and a
-model-attribution footer — auditable from the recipient's inbox.
+  (RFC 3834), `X-Bullmoose-Model`, `X-Bullmoose-Invocation`, and a
+  model-attribution footer — auditable from the recipient's inbox.
 - Ingest pokes the agent worker after invocation inserts; a `*/5` cron
-sweep retries anything a poke missed and fails stale claims (15 min).
+  sweep retries anything a poke missed and fails stale claims (15 min).
 - Inspect work: `SELECT id, status, note, result_json FROM agent_invocations ORDER BY created_at DESC` — every drop states why.
 - While SES is sandboxed, digest/reply targets must be SES-verified.
-

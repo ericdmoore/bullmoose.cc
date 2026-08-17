@@ -2,12 +2,14 @@ export default function Example() {
   return (
     <div className="bg-white shadow-sm sm:rounded-lg dark:bg-gray-800/50 dark:shadow-none dark:outline dark:-outline-offset-1 dark:outline-white/10">
       <div className="px-4 py-5 sm:p-6">
-        <h3 className="text-base font-semibold text-gray-900 dark:text-white">Renew subscription automatically</h3>
+        <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+          Renew subscription automatically
+        </h3>
         <div className="mt-2 sm:flex sm:items-start sm:justify-between">
           <div className="max-w-xl text-sm text-gray-500 dark:text-gray-400">
             <p id="renew-subscription-description">
-              Lorem ipsum dolor sit amet consectetur adipisicing elit. Explicabo totam non cumque deserunt officiis ex
-              maiores nostrum.
+              Lorem ipsum dolor sit amet consectetur adipisicing elit. Explicabo totam non cumque
+              deserunt officiis ex maiores nostrum.
             </p>
           </div>
           <div className="mt-5 sm:mt-0 sm:ml-6 sm:flex sm:shrink-0 sm:items-center">
@@ -25,5 +27,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -73,9 +73,7 @@ const NOT_ADVERTISED: Record<string, string> = {
   delete: "irreversible — revoking the grant does not restore the mail",
 };
 
-export const PUBLIC_SCOPES: readonly string[] = OAUTH_SCOPES.filter(
-  (s) => !(s in NOT_ADVERTISED),
-);
+export const PUBLIC_SCOPES: readonly string[] = OAUTH_SCOPES.filter((s) => !(s in NOT_ADVERTISED));
 
 /** Exported for the drift test, which asserts every entry is still a real scope. */
 export const NOT_ADVERTISED_SCOPES = NOT_ADVERTISED;

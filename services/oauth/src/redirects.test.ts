@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { OAUTH_SCOPES, SELF_SERVICE_SCOPES, TOKEN_SCOPES, effectiveScopes } from "@bullmoose/auth-core";
+import {
+  OAUTH_SCOPES,
+  SELF_SERVICE_SCOPES,
+  TOKEN_SCOPES,
+  effectiveScopes,
+} from "@bullmoose/auth-core";
 import {
   anyRedirectMatches,
   CLAUDE_REDIRECT_URIS,
@@ -24,43 +29,62 @@ describe("redirect URI matching", () => {
   });
 
   it("3. refuses a lookalike host", () => {
-    expect(redirectUriMatches("https://claude.ai.evil.com/api/mcp/auth_callback", CLAUDE_WEB_REDIRECT)).toBe(false);
+    expect(
+      redirectUriMatches("https://claude.ai.evil.com/api/mcp/auth_callback", CLAUDE_WEB_REDIRECT),
+    ).toBe(false);
   });
 
   it("4. refuses a prefix-extended host", () => {
-    expect(redirectUriMatches("https://notclaude.ai/api/mcp/auth_callback", CLAUDE_WEB_REDIRECT)).toBe(false);
+    expect(
+      redirectUriMatches("https://notclaude.ai/api/mcp/auth_callback", CLAUDE_WEB_REDIRECT),
+    ).toBe(false);
   });
 
   it("5. IGNORES the port on loopback — RFC 8252 §7.3, and Claude Code needs it", () => {
     // Claude Code binds an ephemeral port and its CIMD declares none, so an
     // exact match is impossible by construction.
-    expect(redirectUriMatches("http://127.0.0.1:53821/callback", "http://127.0.0.1/callback")).toBe(true);
-    expect(redirectUriMatches("http://localhost:9999/callback", "http://localhost/callback")).toBe(true);
+    expect(redirectUriMatches("http://127.0.0.1:53821/callback", "http://127.0.0.1/callback")).toBe(
+      true,
+    );
+    expect(redirectUriMatches("http://localhost:9999/callback", "http://localhost/callback")).toBe(
+      true,
+    );
   });
 
   it("6. relaxes ONLY the port — path still matters on loopback", () => {
-    expect(redirectUriMatches("http://127.0.0.1:53821/stolen", "http://127.0.0.1/callback")).toBe(false);
+    expect(redirectUriMatches("http://127.0.0.1:53821/stolen", "http://127.0.0.1/callback")).toBe(
+      false,
+    );
   });
 
   it("7. does NOT treat localhost and 127.0.0.1 as interchangeable", () => {
     // They resolve differently; conflating them would let a resolver-level
     // attacker substitute one for the other.
-    expect(redirectUriMatches("http://localhost:1234/callback", "http://127.0.0.1/callback")).toBe(false);
+    expect(redirectUriMatches("http://localhost:1234/callback", "http://127.0.0.1/callback")).toBe(
+      false,
+    );
   });
 
   it("8. never extends the port relaxation off-loopback", () => {
-    expect(redirectUriMatches("https://claude.ai:8443/api/mcp/auth_callback", CLAUDE_WEB_REDIRECT)).toBe(false);
+    expect(
+      redirectUriMatches("https://claude.ai:8443/api/mcp/auth_callback", CLAUDE_WEB_REDIRECT),
+    ).toBe(false);
     expect(redirectUriMatches("https://evil.com:1/cb", "https://evil.com/cb")).toBe(false);
   });
 
   it("9. requires the scheme to agree even on loopback", () => {
-    expect(redirectUriMatches("https://127.0.0.1:8080/callback", "http://127.0.0.1/callback")).toBe(false);
+    expect(redirectUriMatches("https://127.0.0.1:8080/callback", "http://127.0.0.1/callback")).toBe(
+      false,
+    );
   });
 
   it("10. refuses a query string smuggled onto a loopback redirect", () => {
-    expect(redirectUriMatches("http://127.0.0.1:80/callback?next=https://evil.com", "http://127.0.0.1/callback")).toBe(
-      false,
-    );
+    expect(
+      redirectUriMatches(
+        "http://127.0.0.1:80/callback?next=https://evil.com",
+        "http://127.0.0.1/callback",
+      ),
+    ).toBe(false);
   });
 
   it("11. refuses garbage rather than throwing", () => {

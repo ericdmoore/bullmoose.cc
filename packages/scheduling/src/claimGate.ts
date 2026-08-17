@@ -18,11 +18,7 @@
 // one table of cases and requires identical verdicts — the two formulations
 // are kept in PROVABLE agreement, not comment-level agreement.
 
-import {
-  FREE_RUNTIME_LIVE_MS,
-  escalationWindowMs,
-  type ClaimantIdentity,
-} from "./mayClaim.js";
+import { FREE_RUNTIME_LIVE_MS, escalationWindowMs, type ClaimantIdentity } from "./mayClaim.js";
 import { jobBudgetExhaustedSql, needsSatisfiedSql } from "./jobGraph.js";
 
 // ── The fragments, and why they are exported one by one ────────────────────

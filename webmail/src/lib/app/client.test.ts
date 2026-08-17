@@ -213,9 +213,7 @@ describe("homeTarget", () => {
 
 describe("urlWithoutToken", () => {
   it("removes only the token", () => {
-    expect(urlWithoutToken(`${ORIGIN}/mail?a=1&token=${TOKEN}&b=2`)).toBe(
-      `${ORIGIN}/mail?a=1&b=2`,
-    );
+    expect(urlWithoutToken(`${ORIGIN}/mail?a=1&token=${TOKEN}&b=2`)).toBe(`${ORIGIN}/mail?a=1&b=2`);
   });
 
   it("returns null when there is nothing to strip, so no history is touched", () => {

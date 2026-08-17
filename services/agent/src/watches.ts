@@ -185,7 +185,13 @@ async function fire(env: Env, w: WatchRow, now: number): Promise<string> {
   const isFollowup = w.action_type === "draft-followup";
   const cond = safeJson(w.condition_json);
   const evidence = w.source_ref
-    ? [{ realm: "Email" as const, objectId: w.source_ref, note: "the message this watch was set on" }]
+    ? [
+        {
+          realm: "Email" as const,
+          objectId: w.source_ref,
+          note: "the message this watch was set on",
+        },
+      ]
     : [];
 
   await emitProposal(
@@ -207,7 +213,12 @@ async function fire(env: Env, w: WatchRow, now: number): Promise<string> {
         // arming it. The actual draft text is composed at approval time or by
         // the human — v1 carries the intent, not a model-generated body
         // (drafting-on-fire is a v2 refinement once cost history exists).
-        to: typeof action.to === "string" ? action.to : (typeof cond.sender === "string" ? cond.sender : null),
+        to:
+          typeof action.to === "string"
+            ? action.to
+            : typeof cond.sender === "string"
+              ? cond.sender
+              : null,
         note: typeof action.note === "string" ? action.note : null,
       },
       rationale: watchRationale(w, cond),

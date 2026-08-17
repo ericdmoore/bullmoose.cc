@@ -70,13 +70,15 @@ describe("fakeD1 — the live schema, not a fixture table", () => {
     const db = fakeD1();
     db.seedAccount({ accountId: "a_x" });
     await expect(
-      db.prepare(`INSERT INTO identities (id, account_id, email, name) VALUES (?, ?, ?, ?)`)
+      db
+        .prepare(`INSERT INTO identities (id, account_id, email, name) VALUES (?, ?, ?, ?)`)
         .bind("i_1", "a_x", undefined, "x")
         .run(),
     ).rejects.toThrow(/cannot bind undefined/);
 
     await expect(
-      db.prepare(`INSERT INTO calendars
+      db
+        .prepare(`INSERT INTO calendars
                     (id, account_id, name, description, color, sort_order,
                      is_default, is_subscribed, ctag, created_at, updated_at)
                   VALUES (?, ?, ?, ?, ?, 0, 0, 1, 0, 1, 1)`)
@@ -217,7 +219,9 @@ describe("fakeAccountDo — the real AccountDO, so /changes is real", () => {
 
   it("filters by collection — a Calendar commit is not a CalendarEvent change", async () => {
     const w = fakeEnv();
-    await commitChanges(w.env.ACCOUNT_DO, ACCOUNT, [{ collection: "Calendar", updated: ["cal_1"] }]);
+    await commitChanges(w.env.ACCOUNT_DO, ACCOUNT, [
+      { collection: "Calendar", updated: ["cal_1"] },
+    ]);
 
     expect((await w.accountDo.changes(ACCOUNT, "CalendarEvent")).updated).toEqual([]);
     expect((await w.accountDo.changes(ACCOUNT, "Calendar")).updated).toEqual(["cal_1"]);

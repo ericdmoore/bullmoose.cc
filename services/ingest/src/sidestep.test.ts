@@ -103,7 +103,13 @@ function mimeWithAttachment(opts: {
   extra?: { bytes: number; filename: string; fill: string };
 }): string {
   const filename = opts.filename ?? "big.pdf";
-  const part = (o: { bytes: number; filename: string; fill: string; type?: string; disposition?: string }) => [
+  const part = (o: {
+    bytes: number;
+    filename: string;
+    fill: string;
+    type?: string;
+    disposition?: string;
+  }) => [
     "--BOUND",
     `Content-Type: ${o.type ?? "application/pdf"}; name="${o.filename}"`,
     `Content-Disposition: ${o.disposition ?? "attachment"}; filename="${o.filename}"`,
@@ -182,12 +188,16 @@ function jmap(w: FakeWorker, opts: { scopes?: string[]; accounts?: string[] } = 
 describe("the threshold is a policy value, resolved route → env → default", () => {
   it("defaults conservatively when nothing is configured", () => {
     expect(sidestepThreshold({}, {})).toBe(DEFAULT_SIDESTEP_MIN_BYTES);
-    expect(sidestepThreshold({ ATTACHMENT_SIDESTEP_BYTES: "" }, {})).toBe(DEFAULT_SIDESTEP_MIN_BYTES);
+    expect(sidestepThreshold({ ATTACHMENT_SIDESTEP_BYTES: "" }, {})).toBe(
+      DEFAULT_SIDESTEP_MIN_BYTES,
+    );
   });
 
   it("takes the deployment env var, and the per-account route value over it", () => {
     expect(sidestepThreshold({ ATTACHMENT_SIDESTEP_BYTES: "2048" }, {})).toBe(2048);
-    expect(sidestepThreshold({ ATTACHMENT_SIDESTEP_BYTES: "2048" }, { sidestepBytes: 99 })).toBe(99);
+    expect(sidestepThreshold({ ATTACHMENT_SIDESTEP_BYTES: "2048" }, { sidestepBytes: 99 })).toBe(
+      99,
+    );
   });
 
   it("treats 0 — and a typo — as OFF rather than as the default", () => {
@@ -218,9 +228,13 @@ describe("the candidate rule is size, plus the inline exclusion", () => {
   });
 
   it("fires at the real default for a genuinely large attachment only", () => {
-    expect(isSidestepCandidate(att({ size: 6 * 1024 * 1024 }), DEFAULT_SIDESTEP_MIN_BYTES)).toBe(true);
+    expect(isSidestepCandidate(att({ size: 6 * 1024 * 1024 }), DEFAULT_SIDESTEP_MIN_BYTES)).toBe(
+      true,
+    );
     // A 2 MB phone photo stays where it is.
-    expect(isSidestepCandidate(att({ size: 2 * 1024 * 1024 }), DEFAULT_SIDESTEP_MIN_BYTES)).toBe(false);
+    expect(isSidestepCandidate(att({ size: 2 * 1024 * 1024 }), DEFAULT_SIDESTEP_MIN_BYTES)).toBe(
+      false,
+    );
   });
 
   it("is off entirely at threshold 0", () => {
@@ -334,7 +348,12 @@ describe("delivery side-steps a large attachment into Files", () => {
 
     const res = await deliver(
       w,
-      mimeWithAttachment({ bytes: 4096, filename: "banner.png", type: "image/png", disposition: "inline" }),
+      mimeWithAttachment({
+        bytes: 4096,
+        filename: "banner.png",
+        type: "image/png",
+        disposition: "inline",
+      }),
     );
 
     expect(w.db.count("file_nodes")).toBe(0);
@@ -368,7 +387,10 @@ describe("delivery side-steps a large attachment into Files", () => {
     await deliver(w, mimeWithAttachment({ bytes: 2048, filename: "big.pdf", fill: "B" }));
     // Same name, SAME bytes → content addressing makes it one object, so the
     // existing node is cross-linked rather than a third "big (3).pdf" minted.
-    const third = await deliver(w, mimeWithAttachment({ bytes: 2048, filename: "big.pdf", fill: "A" }));
+    const third = await deliver(
+      w,
+      mimeWithAttachment({ bytes: 2048, filename: "big.pdf", fill: "A" }),
+    );
 
     const store = new Mailstore(w.env.DB, w.env.BLOBS);
     const files = (await store.getFileNodes(ACCOUNT)).filter((n) => n.nodeType === "file");
@@ -391,8 +413,11 @@ describe("delivery side-steps a large attachment into Files", () => {
       last_writer_principal: string | null;
       last_writer_binding: string | null;
       last_writer_invocation: string | null;
-    }>(`SELECT node_type, ${"last_writer_principal, last_writer_binding, last_writer_invocation"}
-        FROM file_nodes WHERE account_id = ?`, ACCOUNT);
+    }>(
+      `SELECT node_type, ${"last_writer_principal, last_writer_binding, last_writer_invocation"}
+        FROM file_nodes WHERE account_id = ?`,
+      ACCOUNT,
+    );
     expect(rows).toHaveLength(2); // the folder and the file
     for (const r of rows) {
       expect(r.last_writer_principal).toBe("system:ingest");
@@ -479,7 +504,10 @@ describe("a side-stepped file is an ordinary FileNode", () => {
 
     // (a) a principal who cannot see this account at all
     await expect(
-      jmap(w, { accounts: [OTHER_ACCOUNT] })("FileNode/get", { accountId: ACCOUNT, ids: [file.id] }),
+      jmap(w, { accounts: [OTHER_ACCOUNT] })("FileNode/get", {
+        accountId: ACCOUNT,
+        ids: [file.id],
+      }),
     ).rejects.toMatchObject({ type: "accountNotFound" });
 
     // (b) a principal who owns BOTH accounts, asking the OTHER one for the id.

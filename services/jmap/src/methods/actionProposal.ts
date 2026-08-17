@@ -1,6 +1,11 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
-import { QUARANTINE_ROLE, type ContactCardRow, type JSContactCard, type Mailstore } from "@bullmoose/mailstore";
+import {
+  QUARANTINE_ROLE,
+  type ContactCardRow,
+  type JSContactCard,
+  type Mailstore,
+} from "@bullmoose/mailstore";
 import { OutboundRefused, assertOutboundAllowed } from "@bullmoose/mailstore/outboundBound";
 import {
   budgetExhaustedSql,
@@ -243,7 +248,11 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
       rows = results;
     }
     const found = new Set(rows.map((r) => r.id));
-    const dueAt = await invocationDueAt(ctx, access.accountId, rows.map((r) => r.id));
+    const dueAt = await invocationDueAt(
+      ctx,
+      access.accountId,
+      rows.map((r) => r.id),
+    );
 
     return {
       accountId: access.accountId,
@@ -325,7 +334,12 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
     const notUpdated: Record<string, SetError> = {};
     const destroyed: string[] = [];
     const notDestroyed: Record<string, SetError> = {};
-    const propEntry: ChangeEntry = { collection: "ActionProposal", created: [], updated: [], destroyed: [] };
+    const propEntry: ChangeEntry = {
+      collection: "ActionProposal",
+      created: [],
+      updated: [],
+      destroyed: [],
+    };
     const applyEntries: ChangeEntry[] = [];
 
     const updateSpecs = (args.update as Record<string, Record<string, unknown>> | undefined) ?? {};
@@ -340,7 +354,9 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         // or questioned — the human already decided; the tray only offers
         // the chance to take it back.
         if (row.status !== "pending" && !(row.status === "held" && patch.status === "yanked")) {
-          throw new SetErrorSignal("invalidProperties", `proposal is ${row.status}, not pending`, ["status"]);
+          throw new SetErrorSignal("invalidProperties", `proposal is ${row.status}, not pending`, [
+            "status",
+          ]);
         }
 
         // ---- s11 T1: due-date CORRECTION — not a decision ----
@@ -362,7 +378,12 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
           // Both collections moved: the invocation carries the value, the
           // proposal projects it — commit choreography or the correction is
           // invisible to /changes (this file's header).
-          applyEntries.push({ collection: "AgentInvocation", created: [], updated: [id], destroyed: [] });
+          applyEntries.push({
+            collection: "AgentInvocation",
+            created: [],
+            updated: [id],
+            destroyed: [],
+          });
           propEntry.updated.push(id);
           updated[id] = null;
           continue;
@@ -376,7 +397,12 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         }
 
         const status = patch.status;
-        if (status !== "approved" && status !== "rejected" && status !== "info-requested" && status !== "yanked") {
+        if (
+          status !== "approved" &&
+          status !== "rejected" &&
+          status !== "info-requested" &&
+          status !== "yanked"
+        ) {
           throw new SetErrorSignal(
             "invalidProperties",
             'status must be "approved", "rejected", "info-requested" or "yanked"',
@@ -419,7 +445,12 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
             `UPDATE agent_proposals SET status = 'yanked', decided_at = ?, decision_json = ?
              WHERE account_id = ? AND id = ? AND status = 'held'`,
           )
-            .bind(yankNow, JSON.stringify({ ...yankDecision, yankedFromHold: true }), access.accountId, id)
+            .bind(
+              yankNow,
+              JSON.stringify({ ...yankDecision, yankedFromHold: true }),
+              access.accountId,
+              id,
+            )
             .run();
           propEntry.updated.push(id);
           updated[id] = null;
@@ -647,8 +678,13 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         // agent's original payload — that retention is what lets a later score
         // tell "approved clean" from "approved after edit" (s07 §T4).
         const editedPayload = patch.editedPayload;
-        if (editedPayload !== undefined && (editedPayload === null || typeof editedPayload !== "object")) {
-          throw new SetErrorSignal("invalidProperties", "editedPayload must be an object", ["editedPayload"]);
+        if (
+          editedPayload !== undefined &&
+          (editedPayload === null || typeof editedPayload !== "object")
+        ) {
+          throw new SetErrorSignal("invalidProperties", "editedPayload must be an object", [
+            "editedPayload",
+          ]);
         }
         const decision = buildDecision(ctx, patch.decision, row.kind);
 
@@ -677,9 +713,7 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
           // what stops the sweep asking about it again.
           if (row.kind === HELD_MAIL_REVIEW) {
             const original = emailIdList(safeJson(row.payload_json).emailIds) ?? [];
-            applyEntries.push(
-              ...(await confirmHeldBatch(ctx, access, row, original)),
-            );
+            applyEntries.push(...(await confirmHeldBatch(ctx, access, row, original)));
           }
           await ctx.env.DB.prepare(
             `UPDATE agent_proposals SET status = 'rejected', decided_at = ?,
@@ -793,7 +827,10 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         const row = await loadProposal(ctx, access.accountId, id);
         if (!row) throw new NotFound();
         if (row.status === "pending") {
-          throw new SetErrorSignal("forbidden", "decide a pending proposal rather than destroying it");
+          throw new SetErrorSignal(
+            "forbidden",
+            "decide a pending proposal rather than destroying it",
+          );
         }
         await ctx.env.DB.prepare(`DELETE FROM agent_proposals WHERE account_id = ? AND id = ?`)
           .bind(access.accountId, id)
@@ -856,7 +893,9 @@ async function applyProposal(
     case "create-contact": {
       const card = payload.card as JSContactCard | undefined;
       if (!card || typeof card !== "object") {
-        throw new SetErrorSignal("invalidProperties", "create-contact payload needs a `card`", ["payload"]);
+        throw new SetErrorSignal("invalidProperties", "create-contact payload needs a `card`", [
+          "payload",
+        ]);
       }
       const { id: bookId, change } = await store.ensureDefaultAddressBook(access.accountId);
       const now = Date.now();
@@ -892,7 +931,12 @@ async function applyProposal(
         { collection: "ContactCard", created: [cardRow.id], updated: [], destroyed: [] },
       ];
       if (change) {
-        entries.push({ collection: "AddressBook", created: change === "created" ? [bookId] : [], updated: change === "updated" ? [bookId] : [], destroyed: [] });
+        entries.push({
+          collection: "AddressBook",
+          created: change === "created" ? [bookId] : [],
+          updated: change === "updated" ? [bookId] : [],
+          destroyed: [],
+        });
       }
       // The undo handle a tier-1 application keeps (arch.md §2).
       return { entries, undo: { action: "destroy-contact", cardId: cardRow.id } };
@@ -923,7 +967,9 @@ async function applyProposal(
       const subject = str(payload.subject) ?? "";
       const text = str(payload.text) ?? "";
       if (!to || !self || !blobId) {
-        throw new SetErrorSignal("invalidProperties", "reply-draft payload needs to/self/blobId", ["payload"]);
+        throw new SetErrorSignal("invalidProperties", "reply-draft payload needs to/self/blobId", [
+          "payload",
+        ]);
       }
       // THE OUTBOUND BOUND, AT EGRESS (s10 T1 — the hardening gap its devPlan
       // left open). The agent checked its governing book when it DRAFTED this;
@@ -979,7 +1025,8 @@ async function applyProposal(
         id: emailId,
         blobId,
         threadId: await store.resolveThreadId(access.accountId, str(payload.inReplyTo) ?? null),
-        messageId: str(payload.messageId) ?? `${crypto.randomUUID()}@${self.split("@")[1] ?? "localhost"}`,
+        messageId:
+          str(payload.messageId) ?? `${crypto.randomUUID()}@${self.split("@")[1] ?? "localhost"}`,
         inReplyTo: str(payload.inReplyTo) ?? null,
         subject,
         from: [{ name: row.binding_name, email: self }],
@@ -1099,7 +1146,13 @@ async function applyProposal(
       const bindingId = str(payload.bindingId);
       const periodKey = str(payload.periodKey);
       const amount = payload.overageMicros;
-      if (!bindingId || !periodKey || typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+      if (
+        !bindingId ||
+        !periodKey ||
+        typeof amount !== "number" ||
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
         throw new SetErrorSignal(
           "invalidProperties",
           "a budget-overrun payload needs bindingId, periodKey and a positive overageMicros " +
@@ -1427,9 +1480,7 @@ async function invocationDueAt(
     )
       .bind(accountId, ...ids)
       .all<{ id: string; due_at: number | null }>();
-    return new Map(
-      results.filter((r) => r.due_at !== null).map((r) => [r.id, r.due_at as number]),
-    );
+    return new Map(results.filter((r) => r.due_at !== null).map((r) => [r.id, r.due_at as number]));
   } catch {
     return new Map(); // pre-migration shard: every row reads "no deadline"
   }
@@ -1486,7 +1537,9 @@ function buildDecision(ctx: RequestContext, raw: unknown, kind: string): Record<
     }
     if (r.note !== undefined) {
       if (typeof r.note !== "string") {
-        throw new SetErrorSignal("invalidProperties", "decision.note must be a string", ["decision"]);
+        throw new SetErrorSignal("invalidProperties", "decision.note must be a string", [
+          "decision",
+        ]);
       }
       decision.note = r.note;
     }
@@ -1539,7 +1592,10 @@ function proposalToJmap(r: ProposalJoinRow, dueAt: number | null = null): Record
   };
 }
 
-function pickProps(full: Record<string, unknown>, properties: string[] | null): Record<string, unknown> {
+function pickProps(
+  full: Record<string, unknown>,
+  properties: string[] | null,
+): Record<string, unknown> {
   if (!properties) return full;
   const picked: Record<string, unknown> = { id: full.id };
   for (const p of properties) if (p in full) picked[p] = full[p];
@@ -1631,14 +1687,17 @@ export async function commitDueHeldProposals(
 
       // Provenance: the write belongs to the human whose approval it executes.
       const decision = safeJson(row.decision_json ?? "{}");
-      const approver = typeof decision.by === "string" && decision.by ? decision.by : "system:hold-commit";
+      const approver =
+        typeof decision.by === "string" && decision.by ? decision.by : "system:hold-commit";
       const commitCtx: RequestContext = {
         ...ctx,
         principal: { username: approver, scopes: [], accounts: [] },
       };
 
       const payload =
-        row.edited_payload_json !== null ? safeJson(row.edited_payload_json) : safeJson(row.payload_json);
+        row.edited_payload_json !== null
+          ? safeJson(row.edited_payload_json)
+          : safeJson(row.payload_json);
       const { entries } = await applyProposal(commitCtx, access, row, payload);
 
       // Flip held → approved ONLY if a yank has not raced us; a zero-row

@@ -1,9 +1,12 @@
-import { QuestionMarkCircleIcon } from '@heroicons/react/16/solid'
+import { QuestionMarkCircleIcon } from "@heroicons/react/16/solid";
 
 export default function Example() {
   return (
     <div>
-      <label htmlFor="account-number" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
+      <label
+        htmlFor="account-number"
+        className="block text-sm/6 font-medium text-gray-900 dark:text-white"
+      >
         Account number
       </label>
       <div className="mt-2 grid grid-cols-1">
@@ -20,5 +23,5 @@ export default function Example() {
         />
       </div>
     </div>
-  )
+  );
 }

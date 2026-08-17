@@ -71,7 +71,7 @@ bullmoose admin token revoke <tokenId>
 ## 4. What to expect
 
 - **Isolation by default.** Accounts see only their own data until a grant
-  says otherwise; a grant is the *only* cross-account path, and its effective
+  says otherwise; a grant is the _only_ cross-account path, and its effective
   rights are `token ∩ grant` — a `read`-only grant can never write even if the
   device token holds `mail`.
 - **Audited.** Every access through a grant is logged.

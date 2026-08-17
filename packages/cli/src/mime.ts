@@ -78,7 +78,9 @@ export function buildMime(msg: OutgoingMessage): Uint8Array {
   headers.push("MIME-Version: 1.0");
 
   const body = bodyNode(msg);
-  return new TextEncoder().encode(headers.join(CRLF) + CRLF + body.headers + CRLF + CRLF + body.content);
+  return new TextEncoder().encode(
+    headers.join(CRLF) + CRLF + body.headers + CRLF + CRLF + body.content,
+  );
 }
 
 interface Node {
@@ -137,21 +139,18 @@ function multipart(subtype: string, parts: Node[]): Node {
 
 function textPart(type: string, content: string): Node {
   return {
-    headers: [
-      `Content-Type: ${type}; charset=utf-8`,
-      "Content-Transfer-Encoding: base64",
-    ].join(CRLF),
+    headers: [`Content-Type: ${type}; charset=utf-8`, "Content-Transfer-Encoding: base64"].join(
+      CRLF,
+    ),
     content: wrap76(base64Bytes(new TextEncoder().encode(content))),
   };
 }
 
 function binaryPart(type: string, content: Uint8Array, extraHeaders: string[]): Node {
   return {
-    headers: [
-      `Content-Type: ${type}`,
-      "Content-Transfer-Encoding: base64",
-      ...extraHeaders,
-    ].join(CRLF),
+    headers: [`Content-Type: ${type}`, "Content-Transfer-Encoding: base64", ...extraHeaders].join(
+      CRLF,
+    ),
     content: wrap76(base64Bytes(content)),
   };
 }

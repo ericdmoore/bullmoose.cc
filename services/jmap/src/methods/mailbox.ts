@@ -91,9 +91,9 @@ export function registerMailboxMethods(registry: MethodRegistry<RequestContext>)
 
     const filtered = applyMailboxFilter(rows, args.filter);
 
-    const sortSpecs = (args.sort as Array<{ property?: string; isAscending?: boolean }> | undefined) ?? [
-      { property: "sortOrder", isAscending: true },
-    ];
+    const sortSpecs = (args.sort as
+      | Array<{ property?: string; isAscending?: boolean }>
+      | undefined) ?? [{ property: "sortOrder", isAscending: true }];
     filtered.sort((a, b) => {
       for (const s of sortSpecs) {
         const dir = s.isAscending === false ? -1 : 1;
@@ -266,7 +266,10 @@ async function mailboxSet(
         // keeps ingest's ensureRoleMailbox from silently re-creating the
         // Inbox under a NEW id on the next delivery, orphaning every client
         // that cached the old one.
-        throw new SetErrorSignal("forbidden", `mailbox has the "${row.role}" role and cannot be destroyed`);
+        throw new SetErrorSignal(
+          "forbidden",
+          `mailbox has the "${row.role}" role and cannot be destroyed`,
+        );
       }
       if ([...tree.values()].some((m) => m.parentId === id)) {
         throw new SetErrorSignal("mailboxHasChild");
@@ -428,7 +431,11 @@ function depthOf(tree: Map<string, MailboxRow>, id: string | null): number {
  * is not the only thing that has ever written parent_id, and an unbounded
  * recursion here would hang the request rather than fail it.
  */
-function subtreeHeight(tree: Map<string, MailboxRow>, id: string, seen = new Set<string>()): number {
+function subtreeHeight(
+  tree: Map<string, MailboxRow>,
+  id: string,
+  seen = new Set<string>(),
+): number {
   if (seen.has(id)) return 1;
   seen.add(id);
   const children = [...tree.values()].filter((m) => m.parentId === id);
@@ -482,14 +489,13 @@ function checkSiblingName(
   selfId: string | null,
 ): void {
   const clash = [...tree.values()].some(
-    (m) => m.id !== selfId && m.parentId === parentId && m.name.toLowerCase() === name.toLowerCase(),
+    (m) =>
+      m.id !== selfId && m.parentId === parentId && m.name.toLowerCase() === name.toLowerCase(),
   );
   if (clash) {
-    throw new SetErrorSignal(
-      "invalidProperties",
-      `a mailbox named "${name}" already exists here`,
-      ["name"],
-    );
+    throw new SetErrorSignal("invalidProperties", `a mailbox named "${name}" already exists here`, [
+      "name",
+    ]);
   }
 }
 
@@ -506,7 +512,9 @@ function checkDepth(tree: Map<string, MailboxRow>, parentId: string | null, heig
 
 function validateSortOrder(raw: unknown): number {
   if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
-    throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", ["sortOrder"]);
+    throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", [
+      "sortOrder",
+    ]);
   }
   return raw;
 }
@@ -611,9 +619,11 @@ function validateMailboxPatch(
     // A self-parent is one typo away, and getMailboxes would happily return
     // the row while every tree-building client spins. Walk to the root.
     const seen = new Set<string>();
-    for (let cursor: string | null = out.parentId; cursor !== null; ) {
+    for (let cursor: string | null = out.parentId; cursor !== null;) {
       if (cursor === row.id) {
-        throw new SetErrorSignal("invalidProperties", "parentId would create a cycle", ["parentId"]);
+        throw new SetErrorSignal("invalidProperties", "parentId would create a cycle", [
+          "parentId",
+        ]);
       }
       if (seen.has(cursor)) break; // pre-existing cycle; not this patch's doing
       seen.add(cursor);
@@ -653,7 +663,10 @@ function applyMailboxFilter(rows: MailboxRow[], filter: unknown): MailboxRow[] {
   if (typeof filter === "object" && "operator" in (filter as object)) {
     const op = filter as { operator: string; conditions: unknown[] };
     if (op.operator !== "AND") {
-      throw new MethodError("invalidArguments", `Mailbox/query operator ${op.operator} unsupported`);
+      throw new MethodError(
+        "invalidArguments",
+        `Mailbox/query operator ${op.operator} unsupported`,
+      );
     }
     return op.conditions.reduce<MailboxRow[]>((acc, c) => applyMailboxFilter(acc, c), [...rows]);
   }

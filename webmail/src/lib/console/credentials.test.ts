@@ -54,7 +54,10 @@ describe("no secret transits the site backend", () => {
     // entropy. If a new route is added without going through `resolveTarget`,
     // it lands in `seen` and the origin assertion below catches it.
     await v.list();
-    await v.mintDirect({ name: "stripe-key", kind: "api-key", allow: "https://api.stripe.com" }, SECRET);
+    await v.mintDirect(
+      { name: "stripe-key", kind: "api-key", allow: "https://api.stripe.com" },
+      SECRET,
+    );
     await v.rotate("stripe-key", SECRET);
     await v.revoke("stripe-key");
     await v.beginOAuth({

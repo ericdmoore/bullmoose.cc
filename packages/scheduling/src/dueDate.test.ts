@@ -152,6 +152,8 @@ describe("extractDueAt — near-misses and ambiguity return NULL (never-urgent)"
     const buried = `${"x".repeat(SCAN_LIMIT)} reply by 2026-08-20`;
     expect(extract(buried)).toBeNull();
     // …while the same text inside the window extracts.
-    expect(extract(`reply by 2026-08-20 ${"x".repeat(SCAN_LIMIT)}`)).toBe(at("2026-08-20T17:00:00Z"));
+    expect(extract(`reply by 2026-08-20 ${"x".repeat(SCAN_LIMIT)}`)).toBe(
+      at("2026-08-20T17:00:00Z"),
+    );
   });
 });

@@ -563,7 +563,9 @@ export default function FilesApp({ client: injected, search }: Props) {
       ) : null}
 
       {readRefusal ? <p class="banner banner-warn">{readRefusal.message}</p> : null}
-      {!readRefusal && writeRefused ? <p class="banner banner-warn">{NO_WRITE_SCOPE_NOTE}</p> : null}
+      {!readRefusal && writeRefused ? (
+        <p class="banner banner-warn">{NO_WRITE_SCOPE_NOTE}</p>
+      ) : null}
 
       <div class="body">
         <aside class="sidebar">
@@ -748,7 +750,9 @@ export default function FilesApp({ client: injected, search }: Props) {
                     disabled={loading}
                     onClick={() => setLimit((n) => n + CHILD_PAGE_SIZE)}
                   >
-                    {loading ? "Loading…" : `Load more (${(page?.total ?? 0) - children.length} left)`}
+                    {loading
+                      ? "Loading…"
+                      : `Load more (${(page?.total ?? 0) - children.length} left)`}
                   </button>
                 </li>
               ) : null}
@@ -759,7 +763,9 @@ export default function FilesApp({ client: injected, search }: Props) {
                 <article class="panel">
                   <h2>
                     {selected.name}
-                    {selected.role === ATTACHMENTS_ROLE ? <span class="pill">from mail</span> : null}
+                    {selected.role === ATTACHMENTS_ROLE ? (
+                      <span class="pill">from mail</span>
+                    ) : null}
                   </h2>
 
                   <div class="row">
@@ -817,7 +823,11 @@ export default function FilesApp({ client: injected, search }: Props) {
                           <button type="submit" disabled={busy || !!nameProblem(renameValue)}>
                             Save
                           </button>
-                          <button type="button" class="link-button" onClick={() => setRenaming(false)}>
+                          <button
+                            type="button"
+                            class="link-button"
+                            onClick={() => setRenaming(false)}
+                          >
                             Cancel
                           </button>
                           {nameProblem(renameValue) ? (

@@ -9,7 +9,7 @@ authoritative list:
 ```js
 // read ../config.yml relative to the script, tolerate being run from the repo root
 const cfg = parseConfig(path.join(SCRIPT_DIR, "..", "config.yml"));
-const CATEGORIES = cfg.components.map(c => (c.label ?? c.name).trim());   // trailing-space safe
+const CATEGORIES = cfg.components.map((c) => (c.label ?? c.name).trim()); // trailing-space safe
 const isCategoryDir = (name) => CATEGORIES.includes(name);
 ```
 

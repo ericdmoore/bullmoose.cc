@@ -145,7 +145,10 @@ describe("identityPatch sends a diff, never a snapshot", () => {
 
   it("does not trim signatures — a trailing newline is part of one", () => {
     const original = stored({ textSignature: "Eric" });
-    const { patch } = identityPatch(original, { ...identityToForm(original), textSignature: "Eric\n" });
+    const { patch } = identityPatch(original, {
+      ...identityToForm(original),
+      textSignature: "Eric\n",
+    });
     expect(patch).toEqual({ textSignature: "Eric\n" });
   });
 
@@ -266,13 +269,25 @@ describe("saveIdentity", () => {
       updated: { id_primary: null },
       notUpdated: {},
     }));
-    const result = await saveIdentity(client, ACCOUNT, "id_primary", { name: "E" }, { ifInState: "s1" });
+    const result = await saveIdentity(
+      client,
+      ACCOUNT,
+      "id_primary",
+      { name: "E" },
+      { ifInState: "s1" },
+    );
     expect(result).toEqual({ ok: true, newState: "s2", noop: false });
   });
 
   it("turns a stale state into an instruction, not a stack trace", async () => {
     const client = clientWith(() => ["error", { type: "stateMismatch" }] as never);
-    const result = await saveIdentity(client, ACCOUNT, "id_primary", { name: "E" }, { ifInState: "s0" });
+    const result = await saveIdentity(
+      client,
+      ACCOUNT,
+      "id_primary",
+      { name: "E" },
+      { ifInState: "s0" },
+    );
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("unreachable");
     expect(result.kind).toBe("stale");

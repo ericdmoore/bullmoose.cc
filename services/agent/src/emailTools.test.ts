@@ -307,7 +307,10 @@ describe("reading mail over MCP", () => {
 
   it("reads a real message body out of the blob", async () => {
     const w = world();
-    const blobId = await putBody(w, mimeMessage("amazon@example.com", "Order", "Your order shipped.\r\n"));
+    const blobId = await putBody(
+      w,
+      mimeMessage("amazon@example.com", "Order", "Your order shipped.\r\n"),
+    );
     w.db.query(`UPDATE emails SET blob_id = ? WHERE id = 'e_1'`, blobId);
 
     const r = await callTool(w, "email_get_body", { accountId: ACCOUNT, ids: ["e_1"] });
@@ -351,7 +354,9 @@ describe("reading mail over MCP", () => {
     expect(boxes.map((b) => b.role).sort()).toEqual(["archive", "drafts", "inbox", "trash"]);
 
     const justArchive = await callTool(w, "mailbox_list", { accountId: ACCOUNT, role: "archive" });
-    expect((justArchive.data.mailboxes as Array<{ id: string }>).map((b) => b.id)).toEqual([ARCHIVE]);
+    expect((justArchive.data.mailboxes as Array<{ id: string }>).map((b) => b.id)).toEqual([
+      ARCHIVE,
+    ]);
   });
 });
 
@@ -550,7 +555,9 @@ describe("the per-tool scope gate refuses the specific verb", () => {
 
   it("refuses email_move to a read-only token", async () => {
     const w = world({ scopes: ["read"] });
-    refused(await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }));
+    refused(
+      await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }),
+    );
     expect(mailboxesOf(w, "e_1")).toEqual([INBOX]);
     expect(w.accountDo.commits).toEqual([]);
   });
@@ -582,7 +589,13 @@ describe("the per-tool scope gate refuses the specific verb", () => {
 
   it("a token that can move cannot annotate", async () => {
     const w = world({ scopes: ["read", "move"] });
-    refused(await callTool(w, "email_set_keywords", { accountId: ACCOUNT, emailId: "e_1", add: ["$seen"] }));
+    refused(
+      await callTool(w, "email_set_keywords", {
+        accountId: ACCOUNT,
+        emailId: "e_1",
+        add: ["$seen"],
+      }),
+    );
     expect(keywordsOf(w, "e_1")).toEqual([]);
   });
 
@@ -595,7 +608,9 @@ describe("the per-tool scope gate refuses the specific verb", () => {
     });
     expect(flagged.body.result!.isError).toBeUndefined();
 
-    refused(await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }));
+    refused(
+      await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }),
+    );
     expect(mailboxesOf(w, "e_1")).toEqual([INBOX]);
   });
 
@@ -610,7 +625,9 @@ describe("the per-tool scope gate refuses the specific verb", () => {
     });
     expect(drafted.body.result!.isError).toBeUndefined();
 
-    refused(await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }));
+    refused(
+      await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }),
+    );
     refused(
       await callTool(w, "email_destroy", { accountId: ACCOUNT, emailId: "e_1", confirm: true }),
     );
@@ -632,7 +649,9 @@ describe("the per-tool scope gate refuses the specific verb", () => {
     const r = await callTool(w, "email_query", { accountId: ACCOUNT });
     expect(r.status).toBe(200);
     expect(r.body.result!.isError).toBeUndefined();
-    refused(await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }));
+    refused(
+      await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }),
+    );
     refused(
       await callTool(w, "email_destroy", { accountId: ACCOUNT, emailId: "e_1", confirm: true }),
     );
@@ -642,7 +661,9 @@ describe("the per-tool scope gate refuses the specific verb", () => {
     // done-when #5, first half.
     const w = world({ owns: ["a_allen"], others: [ACCOUNT] });
     refused(await callTool(w, "email_query", { accountId: ACCOUNT }));
-    refused(await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }));
+    refused(
+      await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }),
+    );
     expect(mailboxesOf(w, "e_1")).toEqual([INBOX]);
   });
 
@@ -773,12 +794,9 @@ describe("the assertions above actually bite", () => {
 
     // The row moved, and a direct read is perfectly happy.
     expect(mailboxesOf(w, "e_1")).toEqual([ARCHIVE]);
-    const got = await callJmap<{ list: Array<{ id: string; mailboxIds: Record<string, boolean> }> }>(
-      w.env,
-      principalFor([ACCOUNT]),
-      "Email/get",
-      { accountId: ACCOUNT, ids: ["e_1"] },
-    );
+    const got = await callJmap<{
+      list: Array<{ id: string; mailboxIds: Record<string, boolean> }>;
+    }>(w.env, principalFor([ACCOUNT]), "Email/get", { accountId: ACCOUNT, ids: ["e_1"] });
     expect(got.list[0]!.mailboxIds).toEqual({ [ARCHIVE]: true });
 
     // And every incremental consumer is blind to it. This is what an agent's

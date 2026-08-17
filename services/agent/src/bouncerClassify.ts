@@ -97,7 +97,10 @@ export type ClassifierVerdict = "spam" | "notSpam" | "unsure";
  * output contract, and a non-answer must never shunt mail.
  */
 export function parseClassifierVerdict(raw: string): ClassifierVerdict {
-  const norm = raw.trim().toLowerCase().replace(/[^a-z]/g, "");
+  const norm = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
   if (norm === "spam") return "spam";
   if (norm === "notspam") return "notSpam";
   if (norm === "unsure") return "unsure";
@@ -294,11 +297,7 @@ export async function classifyScreened(
     ]);
     await recordLabel("ham");
   }
-  return done(
-    "done",
-    { kind: "bouncer-classify", verdict, emailId: ctx.emailId, released },
-    cost,
-  );
+  return done("done", { kind: "bouncer-classify", verdict, emailId: ctx.emailId, released }, cost);
 }
 
 async function isQuarantined(env: Env, accountId: string, emailId: string): Promise<boolean> {

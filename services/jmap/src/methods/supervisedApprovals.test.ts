@@ -316,9 +316,7 @@ describe("another tenant's proposals never appear", () => {
   it("a live supervisory grant INSIDE the other tenant does not reach across", async () => {
     const h = await harness();
     // The control: that grant is real and live.
-    expect(
-      h.w.db.count("grants", "id = ? AND revoked_at IS NULL", "g_otto"),
-    ).toBe(1);
+    expect(h.w.db.count("grants", "id = ? AND revoked_at IS NULL", "g_otto")).toBe(1);
 
     const rows = await h.queue();
     expect(rows.map((r) => r.id)).not.toContain("inv_otto");
@@ -331,7 +329,10 @@ describe("another tenant's proposals never appear", () => {
       type: "accountNotFound",
     });
     await expect(
-      h.call("ActionProposal/set", { accountId: OTTO, update: { inv_otto: { status: "approved" } } }),
+      h.call("ActionProposal/set", {
+        accountId: OTTO,
+        update: { inv_otto: { status: "approved" } },
+      }),
     ).rejects.toMatchObject({ type: "accountNotFound" });
     expect(
       h.w.db.query<{ status: string }>(
@@ -419,7 +420,10 @@ describe("deciding a granted account's proposal", () => {
     // does not carry. The refusal is method-level (the base gate), so it is a
     // thrown MethodError rather than a per-object SetError.
     await expect(
-      h.call("ActionProposal/set", { accountId: ALLEN, update: { inv_allen: { status: "approved" } } }),
+      h.call("ActionProposal/set", {
+        accountId: ALLEN,
+        update: { inv_allen: { status: "approved" } },
+      }),
     ).rejects.toMatchObject({ type: "forbidden" });
     expect(
       h.w.db.query<{ status: string }>(
@@ -543,7 +547,13 @@ describe("provision → queue: an agent provisioned today is visible today", () 
 
     w.db.seed("tenants", [{ id: TENANT, name: "bullmoose", status: "active", created_at: 1 }]);
     w.db.seed("domains", [
-      { domain: "bullmoose.cc", tenant_id: TENANT, status: "active", cf_zone_id: "z1", created_at: 1 },
+      {
+        domain: "bullmoose.cc",
+        tenant_id: TENANT,
+        status: "active",
+        cf_zone_id: "z1",
+        created_at: 1,
+      },
     ]);
 
     // The household, exactly as an operator provisions it.
@@ -621,7 +631,10 @@ describe("provision → queue: an agent provisioned today is visible today", () 
       rows.push(...res.list);
     }
     const first = rows.find((r) => r.id === "inv_first");
-    expect(first, "the freshly provisioned agent's proposal is NOT in its owner's queue").toBeTruthy();
+    expect(
+      first,
+      "the freshly provisioned agent's proposal is NOT in its owner's queue",
+    ).toBeTruthy();
     expect(first!.agent).toBe("editor-emily");
     expect(first!.accountId).toBe(editor.accountId);
 
@@ -646,7 +659,11 @@ describe("provision → queue: an agent provisioned today is visible today", () 
     expect(held?.[0]?.status, "an approved tier-2 proposal waits in the hold tray").toBe("held");
 
     // Revoked, it vanishes — the same grant, the same tombstone contract.
-    w.db.query("UPDATE grants SET revoked_at = ? WHERE id = ?", Date.now(), binding.supervision.grantId!);
+    w.db.query(
+      "UPDATE grants SET revoked_at = ? WHERE id = ?",
+      Date.now(),
+      binding.supervision.grantId!,
+    );
     const after = await verifyBearer(w.env.DB, minted.token);
     expect(after!.accounts.map((a) => a.accountId)).not.toContain(editor.accountId);
   });

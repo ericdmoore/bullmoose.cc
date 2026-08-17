@@ -47,7 +47,10 @@ describe("sieveVerdict — ordering, first match wins", () => {
   });
 
   it("no rule matches → PASS with NO ruleId", () => {
-    const out = sieveVerdict([reject("r", [{ kind: "contains", field: "subject", value: "zzz" }])], m);
+    const out = sieveVerdict(
+      [reject("r", [{ kind: "contains", field: "subject", value: "zzz" }])],
+      m,
+    );
     expect(out).toEqual({ verdict: "PASS" });
     expect("ruleId" in out).toBe(false);
   });
@@ -64,19 +67,84 @@ describe("sieveVerdict — ordering, first match wins", () => {
 describe("sieveVerdict — every matcher kind", () => {
   type Row = [name: string, rule: SieveRule, m: BoundaryMessage, want: "PASS" | "FAIL"];
   const rows: Row[] = [
-    ["contains/from hits", reject("r", [{ kind: "contains", field: "from", value: "ALICE" }]), msg(), "FAIL"],
-    ["contains/from misses", reject("r", [{ kind: "contains", field: "from", value: "bob" }]), msg(), "PASS"],
-    ["contains/fromDomain hits", reject("r", [{ kind: "contains", field: "fromDomain", value: "example" }]), msg(), "FAIL"],
-    ["contains/subject hits case-insensitively", reject("r", [{ kind: "contains", field: "subject", value: "quarterly REPORT" }]), msg(), "FAIL"],
-    ["glob/from anchored hit", reject("r", [{ kind: "glob", field: "from", value: "*@example.com" }]), msg(), "FAIL"],
-    ["glob/fromDomain ? hit", reject("r", [{ kind: "glob", field: "fromDomain", value: "example.co?" }]), msg(), "FAIL"],
-    ["glob/subject hit", reject("r", [{ kind: "glob", field: "subject", value: "quarterly*" }]), msg(), "FAIL"],
-    ["headerPresent hits (name case-insensitive)", reject("r", [{ kind: "headerPresent", name: "list-id" }]), msg(), "FAIL"],
-    ["headerPresent misses", reject("r", [{ kind: "headerPresent", name: "x-mailer" }]), msg(), "PASS"],
-    ["headerContains hits", reject("r", [{ kind: "headerContains", name: "LIST-ID", value: "staff" }]), msg(), "FAIL"],
-    ["headerContains on an absent header misses", reject("r", [{ kind: "headerContains", name: "x-mailer", value: "bulk" }]), msg(), "PASS"],
-    ["headerGlob hits", reject("r", [{ kind: "headerGlob", name: "list-id", value: "<staff.*>" }]), msg(), "FAIL"],
-    ["headerGlob on an absent header misses", reject("r", [{ kind: "headerGlob", name: "x-mailer", value: "*" }]), msg(), "PASS"],
+    [
+      "contains/from hits",
+      reject("r", [{ kind: "contains", field: "from", value: "ALICE" }]),
+      msg(),
+      "FAIL",
+    ],
+    [
+      "contains/from misses",
+      reject("r", [{ kind: "contains", field: "from", value: "bob" }]),
+      msg(),
+      "PASS",
+    ],
+    [
+      "contains/fromDomain hits",
+      reject("r", [{ kind: "contains", field: "fromDomain", value: "example" }]),
+      msg(),
+      "FAIL",
+    ],
+    [
+      "contains/subject hits case-insensitively",
+      reject("r", [{ kind: "contains", field: "subject", value: "quarterly REPORT" }]),
+      msg(),
+      "FAIL",
+    ],
+    [
+      "glob/from anchored hit",
+      reject("r", [{ kind: "glob", field: "from", value: "*@example.com" }]),
+      msg(),
+      "FAIL",
+    ],
+    [
+      "glob/fromDomain ? hit",
+      reject("r", [{ kind: "glob", field: "fromDomain", value: "example.co?" }]),
+      msg(),
+      "FAIL",
+    ],
+    [
+      "glob/subject hit",
+      reject("r", [{ kind: "glob", field: "subject", value: "quarterly*" }]),
+      msg(),
+      "FAIL",
+    ],
+    [
+      "headerPresent hits (name case-insensitive)",
+      reject("r", [{ kind: "headerPresent", name: "list-id" }]),
+      msg(),
+      "FAIL",
+    ],
+    [
+      "headerPresent misses",
+      reject("r", [{ kind: "headerPresent", name: "x-mailer" }]),
+      msg(),
+      "PASS",
+    ],
+    [
+      "headerContains hits",
+      reject("r", [{ kind: "headerContains", name: "LIST-ID", value: "staff" }]),
+      msg(),
+      "FAIL",
+    ],
+    [
+      "headerContains on an absent header misses",
+      reject("r", [{ kind: "headerContains", name: "x-mailer", value: "bulk" }]),
+      msg(),
+      "PASS",
+    ],
+    [
+      "headerGlob hits",
+      reject("r", [{ kind: "headerGlob", name: "list-id", value: "<staff.*>" }]),
+      msg(),
+      "FAIL",
+    ],
+    [
+      "headerGlob on an absent header misses",
+      reject("r", [{ kind: "headerGlob", name: "x-mailer", value: "*" }]),
+      msg(),
+      "PASS",
+    ],
     [
       "conjunction: ALL matchers must hit",
       reject("r", [

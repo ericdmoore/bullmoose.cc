@@ -1,4 +1,9 @@
-import { JOB_MAX_DEPTH_CEILING, isPrivacyClass, type NodeAuthority, type NodeCeiling } from "./attenuation.js";
+import {
+  JOB_MAX_DEPTH_CEILING,
+  isPrivacyClass,
+  type NodeAuthority,
+  type NodeCeiling,
+} from "./attenuation.js";
 import {
   describeDenial,
   foldChain,
@@ -245,7 +250,11 @@ export async function effectiveNodeAuthority(
   node: Pick<JobNodeRow, "id" | "binding_id" | "job_id" | "parent_id" | "authority_json">,
 ): Promise<NodeUseDecision> {
   if (!node.job_id) {
-    return { ok: true, delegated: false, effective: { tools: null, credentials: null, budgetMicros: null } };
+    return {
+      ok: true,
+      delegated: false,
+      effective: { tools: null, credentials: null, budgetMicros: null },
+    };
   }
 
   const chain = await delegationChain(env, accountId, node);
@@ -335,7 +344,9 @@ export async function authorizeNodeUse(
 export async function effectiveNodeCeiling(
   env: AuthorityDb,
   parent: JobNodeRow,
-): Promise<{ ok: true; ceiling: NodeCeiling } | { ok: false; denial: AuthorityDenial; note: string }> {
+): Promise<
+  { ok: true; ceiling: NodeCeiling } | { ok: false; denial: AuthorityDenial; note: string }
+> {
   const resolved = await effectiveNodeAuthority(env, parent.account_id, parent);
   if (!resolved.ok) return resolved;
   return {
@@ -381,7 +392,10 @@ async function delegationChain(
   | { ok: true; envelopes: Array<string | null>; crossings: ChainBinding[] }
   | { ok: false; denial: AuthorityDenial; note: string }
 > {
-  const deny = (why: string, requested: string): { ok: false; denial: AuthorityDenial; note: string } => {
+  const deny = (
+    why: string,
+    requested: string,
+  ): { ok: false; denial: AuthorityDenial; note: string } => {
     const denial: AuthorityDenial = {
       axis: "envelope",
       requested,
@@ -400,7 +414,10 @@ async function delegationChain(
 
   while (parentId !== null) {
     if (hops.length >= MAX_CHAIN_HOPS) {
-      return deny("the delegation chain is longer than the depth cap allows — parent_id is corrupt", node.id);
+      return deny(
+        "the delegation chain is longer than the depth cap allows — parent_id is corrupt",
+        node.id,
+      );
     }
     if (seen.has(parentId)) {
       return deny(`parent_id cycles back to ${parentId}`, node.id);
@@ -413,7 +430,10 @@ async function delegationChain(
       .bind(accountId, parentId)
       .first<ChainRow>();
     if (!row) {
-      return deny(`parent ${parentId} does not exist — the chain's upper bound is unknown`, parentId);
+      return deny(
+        `parent ${parentId} does not exist — the chain's upper bound is unknown`,
+        parentId,
+      );
     }
     if (row.job_id !== node.job_id) {
       return deny(
@@ -438,7 +458,12 @@ async function delegationChain(
   for (const [i, hop] of hops.entries()) {
     if (seenBinding.has(hop.bindingId)) continue;
     seenBinding.add(hop.bindingId);
-    crossings.push({ bindingId: hop.bindingId, hop: i + 1, hops: hops.length, invocationId: hop.id });
+    crossings.push({
+      bindingId: hop.bindingId,
+      hop: i + 1,
+      hops: hops.length,
+      invocationId: hop.id,
+    });
   }
 
   return { ok: true, envelopes: hops.map((h) => h.authorityJson), crossings };
@@ -492,7 +517,9 @@ async function chainBindingAuthority(
   accountId: string,
   node: Pick<JobNodeRow, "id" | "binding_id">,
   crossings: readonly ChainBinding[],
-): Promise<{ ok: true; authority: NodeAuthority } | { ok: false; denial: AuthorityDenial; note: string }> {
+): Promise<
+  { ok: true; authority: NodeAuthority } | { ok: false; denial: AuthorityDenial; note: string }
+> {
   let acc = await bindingAuthority(env, accountId, node.binding_id);
   // Every chain alive today. Same one read, same result, no second query.
   const [firstCrossing] = crossings;
@@ -567,7 +594,11 @@ async function chainBindingAuthority(
  * own chain rather than stranded. A missing binding row is treated the same
  * way, because the drain has already refused to claim work for one.
  */
-async function bindingAuthority(env: AuthorityDb, accountId: string, bindingId: string): Promise<NodeAuthority> {
+async function bindingAuthority(
+  env: AuthorityDb,
+  accountId: string,
+  bindingId: string,
+): Promise<NodeAuthority> {
   const row = await env.DB.prepare(
     `SELECT COALESCE(config_json, '{}') AS config_json
        FROM agent_bindings WHERE account_id = ? AND id = ?`,
@@ -582,7 +613,11 @@ async function bindingAuthority(env: AuthorityDb, accountId: string, bindingId: 
  * the acting node's binding and by every binding its chain crosses, so the two
  * cannot develop different ideas of what `jobs` means.
  */
-function configAuthority(accountId: string, bindingId: string, configJson: string | undefined): NodeAuthority {
+function configAuthority(
+  accountId: string,
+  bindingId: string,
+  configJson: string | undefined,
+): NodeAuthority {
   let cfg: { jobs?: BindingJobConfig } = {};
   try {
     cfg = JSON.parse(configJson ?? "{}") as { jobs?: BindingJobConfig };

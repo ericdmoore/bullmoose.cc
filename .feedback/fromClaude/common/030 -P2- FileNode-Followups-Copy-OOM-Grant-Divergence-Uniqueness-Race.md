@@ -46,6 +46,7 @@ differently. Pick one policy or document why they differ. Ties into `common/027`
 model is already under review).
 
 ## Also noted, lower stakes
+
 - Whole account tree loaded into memory per `set`/`copy`/`fetchParents` — O(nodes), fine for a
   personal drive, not for a large one.
 - `compareCaseInsensitively` is a per-call `set` arg, not the per-directory property the draft
@@ -54,11 +55,13 @@ model is already under review).
   disabled" acceptance is unmet. Mitigated by the pinned `draft-ietf-jmap-filenode-14` version.
 
 ## Deferred by the unit (not defects — scope)
+
 T3 attachment sidestep · s03.A `last_writer_*` provenance columns · CLI `files` verbs ·
 named-principal `shareWith` (ACL epic). `packages/cli/src/help.ts` still omits `files` from
 its scope vocabulary — the CLI files-verbs unit should fix the wording.
 
 ## Related
+
 - `.plans/sVOL-CapSurNoun/011` — the unit; its Status block lists what shipped vs deferred.
 - `010` — the share-revoke obligation `011` discharges on destroy.
 - `common/027` — the scope-model decision that item 4 depends on.

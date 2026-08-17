@@ -34,7 +34,13 @@ describe("all-day events land on the same DATE in every timezone", () => {
   // This is the bug the module exists to prevent. `utcStart` for an all-day
   // event is midnight resolved through Etc/UTC; converting it into a viewer's
   // zone moves New Year's Day to 31 December for the whole of the Americas.
-  const zones = ["Etc/UTC", "America/Los_Angeles", "America/New_York", "Asia/Tokyo", "Pacific/Kiritimati"];
+  const zones = [
+    "Etc/UTC",
+    "America/Los_Angeles",
+    "America/New_York",
+    "Asia/Tokyo",
+    "Pacific/Kiritimati",
+  ];
 
   it.each(zones)("places 2026-01-01 on 2026-01-01 in %s", (zone) => {
     const segments = segmentsFor(allDay("2026-01-01"), zone);
@@ -79,7 +85,9 @@ describe("all-day events land on the same DATE in every timezone", () => {
       showWithoutTime: true,
     });
     expect(segmentsFor(dst, "America/New_York").map((s) => s.day)).toEqual([
-      "2026-03-07", "2026-03-08", "2026-03-09",
+      "2026-03-07",
+      "2026-03-08",
+      "2026-03-09",
     ]);
   });
 
@@ -115,7 +123,11 @@ describe("timed events are converted into the viewer's zone", () => {
     const overnight = occ({ utcStart: "2026-07-08T22:00:00Z", utcEnd: "2026-07-09T02:00:00Z" });
     const segments = segmentsFor(overnight, "Etc/UTC");
     expect(segments.map((s) => s.day)).toEqual(["2026-07-08", "2026-07-09"]);
-    expect(segments[0]).toMatchObject({ fromMinute: 22 * 60, toMinute: 1440, continuesAfter: true });
+    expect(segments[0]).toMatchObject({
+      fromMinute: 22 * 60,
+      toMinute: 1440,
+      continuesAfter: true,
+    });
     expect(segments[1]).toMatchObject({ fromMinute: 0, toMinute: 120, continuesBefore: true });
   });
 

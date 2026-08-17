@@ -30,7 +30,12 @@ interface Fixture {
   /** Accounts this principal owns. */
   accounts?: Array<{ id: string; display_name: string }>;
   /** Cross-account grants reaching the principal's accounts. */
-  grants?: Array<{ id: string; grantee_account_id: string; target_account_id: string; scopes: string[] }>;
+  grants?: Array<{
+    id: string;
+    grantee_account_id: string;
+    target_account_id: string;
+    scopes: string[];
+  }>;
   /** Accounts that exist but belong to someone else (grant targets). */
   otherAccounts?: Array<{ id: string; display_name: string }>;
   /** Rows the analytics tools read. */
@@ -319,7 +324,13 @@ describe("handleMcp — §6 auth gate", () => {
           { account_id: "a_eric", id: "sf_1", amount_cents: 4200, dedup_hash: "h1" },
           { account_id: "a_eric", id: "sf_2", amount_cents: 800, dedup_hash: "h2" },
           // Different month → its own bucket.
-          { account_id: "a_eric", id: "sf_3", amount_cents: 100, period_month: "2026-07", dedup_hash: "h3" },
+          {
+            account_id: "a_eric",
+            id: "sf_3",
+            amount_cents: 100,
+            period_month: "2026-07",
+            dedup_hash: "h3",
+          },
           // Another account's receipt must not be summed into Eric's total.
           { account_id: "a_other", id: "sf_4", amount_cents: 9999, dedup_hash: "h4" },
         ],
@@ -383,7 +394,12 @@ describe("handleMcp — §6 auth gate", () => {
 describe("handleMcp — accountId resolves server-side (s02 T5)", () => {
   const callTool = (args: Record<string, unknown>, fx: Fixture, id = 20) =>
     call(
-      { jsonrpc: "2.0", id, method: "tools/call", params: { name: "spend_by_month", arguments: args, _meta: meta() } },
+      {
+        jsonrpc: "2.0",
+        id,
+        method: "tools/call",
+        params: { name: "spend_by_month", arguments: args, _meta: meta() },
+      },
       headers(),
       fx,
     );
@@ -400,14 +416,17 @@ describe("handleMcp — accountId resolves server-side (s02 T5)", () => {
   it("21. two owned accounts refuse to be guessed at, and the error NAMES them", async () => {
     // The point of naming: the next call can succeed. An error that says only
     // "accountId is required" sends the model back to where it started.
-    const { res } = callTool({}, {
-      principalId: "p_eric",
-      accounts: [
-        { id: "a_eric", display_name: "Eric" },
-        { id: "a_work", display_name: "Work" },
-      ],
-      spend: [{ account_id: "a_eric" }],
-    });
+    const { res } = callTool(
+      {},
+      {
+        principalId: "p_eric",
+        accounts: [
+          { id: "a_eric", display_name: "Eric" },
+          { id: "a_work", display_name: "Work" },
+        ],
+        spend: [{ account_id: "a_eric" }],
+      },
+    );
     const b = (await (await res).json()) as any;
     expect(b.error.code).toBe(-32602);
     expect(b.error.message).toContain("a_eric");
@@ -417,14 +436,24 @@ describe("handleMcp — accountId resolves server-side (s02 T5)", () => {
   it("22. an owned account wins over a grant-reached one", async () => {
     // Defaulting into someone else's mailbox because you hold a grant on it
     // is the surprise this ordering exists to prevent.
-    const { res, writes } = callTool({}, {
-      principalId: "p_allen",
-      loginEmail: "allen@bullmoose.cc",
-      accounts: [{ id: "a_allen", display_name: "Allen" }],
-      otherAccounts: [{ id: "a_eric", display_name: "Eric" }],
-      grants: [{ id: "g1", grantee_account_id: "a_allen", target_account_id: "a_eric", scopes: ["read"] }],
-      spend: [{ account_id: "a_allen" }],
-    });
+    const { res, writes } = callTool(
+      {},
+      {
+        principalId: "p_allen",
+        loginEmail: "allen@bullmoose.cc",
+        accounts: [{ id: "a_allen", display_name: "Allen" }],
+        otherAccounts: [{ id: "a_eric", display_name: "Eric" }],
+        grants: [
+          {
+            id: "g1",
+            grantee_account_id: "a_allen",
+            target_account_id: "a_eric",
+            scopes: ["read"],
+          },
+        ],
+        spend: [{ account_id: "a_allen" }],
+      },
+    );
     expect((await res).status).toBe(200);
     // It resolved to the OWNED account, so no grant was traversed to get there.
     expect(writes.some((w) => w.sql.includes("grant_audit"))).toBe(false);
@@ -471,7 +500,12 @@ describe("handleMcp — accountId resolves server-side (s02 T5)", () => {
 
   it("25. whoami answers with NO arguments at all — it is the discovery entry point", async () => {
     const { res } = call(
-      { jsonrpc: "2.0", id: 25, method: "tools/call", params: { name: "whoami", arguments: {}, _meta: meta() } },
+      {
+        jsonrpc: "2.0",
+        id: 25,
+        method: "tools/call",
+        params: { name: "whoami", arguments: {}, _meta: meta() },
+      },
       headers(),
       ericOwns(),
     );
@@ -488,7 +522,12 @@ describe("handleMcp — accountId resolves server-side (s02 T5)", () => {
     // owned accounts is exactly when defaulting refuses, and it is exactly
     // when you most need the tool that lists them.
     const { res } = call(
-      { jsonrpc: "2.0", id: 26, method: "tools/call", params: { name: "whoami", arguments: {}, _meta: meta() } },
+      {
+        jsonrpc: "2.0",
+        id: 26,
+        method: "tools/call",
+        params: { name: "whoami", arguments: {}, _meta: meta() },
+      },
       headers(),
       {
         principalId: "p_eric",
@@ -505,7 +544,12 @@ describe("handleMcp — accountId resolves server-side (s02 T5)", () => {
 
   it("27. whoami is still scope-gated — accountless is not unauthenticated", async () => {
     const { res } = call(
-      { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "whoami", arguments: {}, _meta: meta() } },
+      {
+        jsonrpc: "2.0",
+        id: 27,
+        method: "tools/call",
+        params: { name: "whoami", arguments: {}, _meta: meta() },
+      },
       headers(),
       { ...ericOwns(), tokenScopes: ["agent"] },
     );
@@ -602,7 +646,11 @@ describe("handleMcp — the legacy lane (s02 T2)", () => {
   });
 
   it("36. notifications/initialized is a 202", async () => {
-    const { res } = call({ jsonrpc: "2.0", method: "notifications/initialized" }, legacyHeaders(), ericOwns());
+    const { res } = call(
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      legacyHeaders(),
+      ericOwns(),
+    );
     expect((await res).status).toBe(202);
   });
 
@@ -764,7 +812,11 @@ describe("handleMcp — modern-lane conformance codes (s02 T2)", () => {
 // complete one.
 describe("tools/list publishes what a caller needs to pre-filter (s02 T6)", () => {
   const list = () =>
-    call({ jsonrpc: "2.0", id: 50, method: "tools/list", params: { _meta: meta() } }, headers(), ericOwns());
+    call(
+      { jsonrpc: "2.0", id: 50, method: "tools/list", params: { _meta: meta() } },
+      headers(),
+      ericOwns(),
+    );
 
   it("50. every tool carries its scope and domain", async () => {
     // Stripped before T6, so a caller could only discover the requirement by
@@ -793,7 +845,10 @@ describe("tools/list publishes what a caller needs to pre-filter (s02 T6)", () =
     // a new tool skipping the account gate, which is exactly what this
     // assertion exists to make deliberate rather than accidental.
     const b = (await (await list().res).json()) as any;
-    const flagged = b.result.tools.filter((t: any) => t.accountless).map((t: any) => t.name).sort();
+    const flagged = b.result.tools
+      .filter((t: any) => t.accountless)
+      .map((t: any) => t.name)
+      .sort();
     expect(flagged).toEqual(["revoke_app", "whoami"]);
   });
 

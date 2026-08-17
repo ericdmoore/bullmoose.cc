@@ -1,12 +1,20 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Dialog, DialogPanel, DialogTitle, Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { XMarkIcon } from '@heroicons/react/24/outline'
-import { EllipsisVerticalIcon } from '@heroicons/react/20/solid'
+import { useState } from "react";
+import {
+  Dialog,
+  DialogPanel,
+  DialogTitle,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuItems,
+} from "@headlessui/react";
+import { XMarkIcon } from "@heroicons/react/24/outline";
+import { EllipsisVerticalIcon } from "@heroicons/react/20/solid";
 
 export default function Example() {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(true);
 
   return (
     <div>
@@ -71,7 +79,9 @@ export default function Example() {
                                 <span className="sr-only">Online</span>
                               </span>
                             </div>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">@ashleyporter</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              @ashleyporter
+                            </p>
                           </div>
                           <div className="mt-5 flex flex-wrap space-y-3 sm:space-y-0 sm:space-x-3">
                             <button
@@ -130,9 +140,9 @@ export default function Example() {
                           </dt>
                           <dd className="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0 sm:ml-6 dark:text-white">
                             <p>
-                              Enim feugiat ut ipsum, neque ut. Tristique mi id elementum praesent. Gravida in tempus
-                              feugiat netus enim aliquet a, quam scelerisque. Dictumst in convallis nec in bibendum
-                              aenean arcu.
+                              Enim feugiat ut ipsum, neque ut. Tristique mi id elementum praesent.
+                              Gravida in tempus feugiat netus enim aliquet a, quam scelerisque.
+                              Dictumst in convallis nec in bibendum aenean arcu.
                             </p>
                           </dd>
                         </div>
@@ -170,5 +180,5 @@ export default function Example() {
         </div>
       </Dialog>
     </div>
-  )
+  );
 }

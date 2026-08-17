@@ -36,7 +36,12 @@ function harness(master = MASTER) {
   return { db, env, call };
 }
 
-const mint = (h: { call: ReturnType<typeof harness>["call"] }, name: string, secret: string, kind = "api-key") =>
+const mint = (
+  h: { call: ReturnType<typeof harness>["call"] },
+  name: string,
+  secret: string,
+  kind = "api-key",
+) =>
   h.call("/internal/bureau/seal", {
     mode: "mint",
     principalId: PRINCIPAL,
@@ -137,7 +142,11 @@ describe("the decrypt-and-discard health check", () => {
 describe("the AAD still binds the row (auth-core vaultAad)", () => {
   it("refuses to open a sealed value copied onto another principal's row", async () => {
     const h = harness();
-    h.db.seedAccount({ accountId: "a_thief", principalId: "p_thief", loginEmail: "thief@bullmoose.cc" });
+    h.db.seedAccount({
+      accountId: "a_thief",
+      principalId: "p_thief",
+      loginEmail: "thief@bullmoose.cc",
+    });
     await mint(h, "stripe", "bm-canary-DO-NOT-USE-vault-9f3d1c");
     const stolen = h.db.query<{ enc_json: string }>(
       `SELECT enc_json FROM vault_credentials WHERE name = 'stripe'`,
@@ -163,7 +172,11 @@ describe("the AAD still binds the row (auth-core vaultAad)", () => {
 describe("no route on this worker returns a credential", () => {
   it("gates every /internal path on the shared token", async () => {
     const h = harness();
-    const res = await h.call("/internal/bureau/verify", { principalEmail: EMAIL, name: "x" }, "wrong");
+    const res = await h.call(
+      "/internal/bureau/verify",
+      { principalEmail: EMAIL, name: "x" },
+      "wrong",
+    );
     expect(res.status).toBe(401);
   });
 
@@ -174,7 +187,12 @@ describe("no route on this worker returns a credential", () => {
     // whatever these routes answer, none of it is the secret. `/bureau/use` is
     // included because it is the one route DESIGNED to act on a credential.
     for (const path of ["/", "/internal/bureau/seal", "/internal/bureau/verify", "/bureau/use"]) {
-      const res = await h.call(path, { principalId: PRINCIPAL, name: "stripe", credRef: "stripe", verb: "fetch" });
+      const res = await h.call(path, {
+        principalId: PRINCIPAL,
+        name: "stripe",
+        credRef: "stripe",
+        verb: "fetch",
+      });
       expect(await res.text(), path).not.toContain("bm-canary-DO-NOT-USE-vault-9f3d1c");
     }
   });

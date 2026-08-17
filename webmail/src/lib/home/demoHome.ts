@@ -50,7 +50,8 @@ interface HorizonEventRow {
 /** One timed event today and one all-day event tomorrow — the horizon's calendar half. */
 export function horizonEventRows(now: number, viewerZone: string): HorizonEventRow[] {
   const [today, tomorrow] = horizonDays(now, viewerZone);
-  const at = (d: CivilDate, hour: number): string => formatCivilDateTime({ ...d, hour, minute: 0, second: 0 });
+  const at = (d: CivilDate, hour: number): string =>
+    formatCivilDateTime({ ...d, hour, minute: 0, second: 0 });
   return [
     {
       // Timed, in the viewer's OWN zone so the placement is exact regardless of

@@ -134,10 +134,16 @@ export default function ThreadListView({
                 <span class="row-date">{formatDate(row.receivedAt)}</span>
               </div>
               <div class="row-subject">
-                {row.flagged ? <span class="row-flag" aria-label="Flagged">{"★"}</span> : null}
+                {row.flagged ? (
+                  <span class="row-flag" aria-label="Flagged">
+                    {"★"}
+                  </span>
+                ) : null}
                 {row.subject}
                 {row.hasAttachment ? (
-                  <span class="row-clip" aria-label="Has attachment">{"\u{1F4CE}"}</span>
+                  <span class="row-clip" aria-label="Has attachment">
+                    {"\u{1F4CE}"}
+                  </span>
                 ) : null}
               </div>
               <div class="row-preview">{row.latest.preview}</div>

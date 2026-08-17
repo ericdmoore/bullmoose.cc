@@ -8,12 +8,12 @@ system that no longer exists — and points the next build effort at a solved pr
 
 ## §4 "Where we are today" is the most misleading paragraph in the subsystem
 
-| Doc claim | Reality |
-|---|---|
-| `:161` "has **no caller identity at all**" | `mcp.ts:168-171` resolves a per-request bearer via `verifyBearer` |
+| Doc claim                                                                                                                                                 | Reality                                                                                            |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `:161` "has **no caller identity at all**"                                                                                                                | `mcp.ts:168-171` resolves a per-request bearer via `verifyBearer`                                  |
 | `:166-168` "`accountId` as a **self-asserted argument** … no ownership check … Any holder of the platform secret can read **any** account's spend ledger" | `mcp.ts:257-261` runs `authorizeAccount(principal, accountId, "read", "mail")` and 403s on failure |
-| `:169` "The handler threads no principal" | `mcp.ts:228,238` threads `Principal` into `handleToolCall` |
-| `:180-181` "identity (layer 2) and capability (layer 3) … **absent on MCP**" | both live; `grant_audit` written at `:262-269` |
+| `:169` "The handler threads no principal"                                                                                                                 | `mcp.ts:228,238` threads `Principal` into `handleToolCall`                                         |
+| `:180-181` "identity (layer 2) and capability (layer 3) … **absent on MCP**"                                                                              | both live; `grant_audit` written at `:262-269`                                                     |
 
 The cited `requireAccountId` moved to `mcp.ts:48-53` and is now a redundant inner check behind the
 real gate.

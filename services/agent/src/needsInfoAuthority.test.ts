@@ -200,7 +200,16 @@ async function scaffold() {
       id,
     )[0]!;
 
-  return { w, env: w.env as unknown as Env, drain, needsInfo, invocations, byKey, rounds, proposal };
+  return {
+    w,
+    env: w.env as unknown as Env,
+    drain,
+    needsInfo,
+    invocations,
+    byKey,
+    rounds,
+    proposal,
+  };
 }
 
 /**
@@ -261,8 +270,12 @@ describe("THE ATTACK — a question must not launder a narrowed node back to its
 
     // Sanity: the leaf itself is properly bounded. `email.draft` is the
     // binding's, and the delegation dropped it.
-    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" })).ok).toBe(true);
-    expect((await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "email.draft" })).ok).toBe(false);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "files.read" })).ok,
+    ).toBe(true);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, leaf.id, { kind: "tool", name: "email.draft" })).ok,
+    ).toBe(false);
 
     // The human asks a question. This is the whole exploit: one ordinary,
     // well-intentioned verb on the ordinary decision surface.
@@ -277,25 +290,40 @@ describe("THE ATTACK — a question must not launder a narrowed node back to its
     // The round is a DELEGATION, not an ordinary invocation, and it is bounded
     // by the same chain the leaf was: it may still read files, and it still may
     // not draft email — even though its binding may.
-    const draft = await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "email.draft" });
+    const draft = await authorizeNodeUse(s.env, ACCOUNT, round.id, {
+      kind: "tool",
+      name: "email.draft",
+    });
     expect(draft.ok).toBe(false);
     if (!draft.ok) {
       expect(draft.denial.axis).toBe("tools");
       expect(draft.denial.requested).toBe("email.draft");
       expect(draft.note).toContain(round.id);
     }
-    const read = await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "files.read" });
+    const read = await authorizeNodeUse(s.env, ACCOUNT, round.id, {
+      kind: "tool",
+      name: "files.read",
+    });
     expect(read.ok).toBe(true);
     if (read.ok) expect(read.delegated).toBe(true);
 
     // Every other axis too — a fix that closed only the tool axis would be a
     // fix for the example rather than for the hole.
-    expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "credential", name: "stripe" })).ok).toBe(false);
-    expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "credential", name: "aws-mcp" })).ok).toBe(true);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "credential", name: "stripe" })).ok,
+    ).toBe(false);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "credential", name: "aws-mcp" }))
+        .ok,
+    ).toBe(true);
     // The binding would allow 1_000_000 and the Job 800_000; the NODE's
     // delegated ceiling is 100_000, and that is what the round inherits.
-    expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "spend", micros: 100_000 })).ok).toBe(true);
-    expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "spend", micros: 100_001 })).ok).toBe(false);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "spend", micros: 100_000 })).ok,
+    ).toBe(true);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "spend", micros: 100_001 })).ok,
+    ).toBe(false);
   });
 
   it("the round's effective authority is IDENTICAL to the node's — same envelope, not a re-derived one", async () => {
@@ -324,7 +352,9 @@ describe("THE ATTACK — a question must not launder a narrowed node back to its
     const leaf = await upToTheProposal(s);
     await s.needsInfo(leaf.id, "why?");
     const round = s.rounds()[0]!;
-    expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "files.read" })).ok).toBe(true);
+    expect(
+      (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "files.read" })).ok,
+    ).toBe(true);
 
     // The operator narrows the binding while the question is open. The round's
     // own column still says `files.read`; its EFFECTIVE authority does not,
@@ -334,12 +364,18 @@ describe("THE ATTACK — a question must not launder a narrowed node back to its
     s.w.db.sqlite
       .prepare(`UPDATE agent_bindings SET config_json = ? WHERE account_id = ? AND id = ?`)
       .run(
-        JSON.stringify({ ...JSON.parse(CONFIG), jobs: { tools: [], credentials: [], budgetMicros: 10 } }),
+        JSON.stringify({
+          ...JSON.parse(CONFIG),
+          jobs: { tools: [], credentials: [], budgetMicros: 10 },
+        }),
         ACCOUNT,
         BINDING,
       );
 
-    const refused = await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "files.read" });
+    const refused = await authorizeNodeUse(s.env, ACCOUNT, round.id, {
+      kind: "tool",
+      name: "files.read",
+    });
     expect(refused.ok).toBe(false);
     if (!refused.ok) expect(refused.denial.axis).toBe("tools");
   });
@@ -354,7 +390,10 @@ describe("THE ATTACK — a question must not launder a narrowed node back to its
       .prepare(`UPDATE agent_invocations SET authority_json = ? WHERE account_id = ? AND id = ?`)
       .run(JSON.stringify(BINDING_JOBS), ACCOUNT, round.id);
 
-    const r = await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "email.draft" });
+    const r = await authorizeNodeUse(s.env, ACCOUNT, round.id, {
+      kind: "tool",
+      name: "email.draft",
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.denial.axis).toBe("tools");
   });
@@ -387,11 +426,18 @@ describe("THE DEPTH CEILING — questions are not a way to buy levels", () => {
       expect(round.job_id).toBe(leaf.job_id);
       // And the chain LENGTH is invariant too, so a long conversation can never
       // walk itself past MAX_CHAIN_HOPS and start denying honest work.
-      expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "files.read" })).ok).toBe(true);
-      expect((await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "email.draft" })).ok).toBe(false);
+      expect(
+        (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "files.read" })).ok,
+      ).toBe(true);
+      expect(
+        (await authorizeNodeUse(s.env, ACCOUNT, round.id, { kind: "tool", name: "email.draft" }))
+          .ok,
+      ).toBe(false);
     }
     // Both answers landed on the proposal's append-only record.
-    const amendments = JSON.parse(s.proposal(leaf.id).amendments_json ?? "[]") as Array<{ answer: string | null }>;
+    const amendments = JSON.parse(s.proposal(leaf.id).amendments_json ?? "[]") as Array<{
+      answer: string | null;
+    }>;
     expect(amendments).toHaveLength(2);
     expect(amendments.every((a) => a.answer !== null)).toBe(true);
   });

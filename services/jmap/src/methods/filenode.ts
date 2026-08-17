@@ -52,7 +52,15 @@ const OWNER_RIGHTS = {
 } as const;
 
 /** Server-set / immutable on a create spec. */
-const CREATE_REJECTED = ["id", "myRights", "shareWith", "created", "modified", "accessed", "changed"];
+const CREATE_REJECTED = [
+  "id",
+  "myRights",
+  "shareWith",
+  "created",
+  "modified",
+  "accessed",
+  "changed",
+];
 /** Patch paths that can never be set on update. */
 const PATCH_REJECTED = new Set([
   "id",
@@ -153,7 +161,9 @@ export function registerFileNodeMethods(registry: MethodRegistry<RequestContext>
       }
       sortNodes(out, sort);
       total = out.length;
-      ids = out.slice(position, limit !== undefined ? position + limit : undefined).map((n) => n.id);
+      ids = out
+        .slice(position, limit !== undefined ? position + limit : undefined)
+        .map((n) => n.id);
     } else {
       const res = await store.queryFileNodes(access.accountId, {
         filter: filter
@@ -207,7 +217,12 @@ export function registerFileNodeMethods(registry: MethodRegistry<RequestContext>
     const notUpdated: Record<string, SetError> = {};
     const destroyed: string[] = [];
     const notDestroyed: Record<string, SetError> = {};
-    const fnEntry: ChangeEntry = { collection: "FileNode", created: [], updated: [], destroyed: [] };
+    const fnEntry: ChangeEntry = {
+      collection: "FileNode",
+      created: [],
+      updated: [],
+      destroyed: [],
+    };
 
     const nameTaken = (parentId: string | null, name: string, excludeId?: string): boolean => {
       const norm = compareCI ? name.toLowerCase() : name;
@@ -230,7 +245,11 @@ export function registerFileNodeMethods(registry: MethodRegistry<RequestContext>
       try {
         const row = await buildNewNode(spec, store, access.tenantId, access.accountId, byId);
         if (nameTaken(row.parentId, row.name)) {
-          throw new SetErrorSignal("alreadyExists", `a node named "${row.name}" already exists here`, ["name"]);
+          throw new SetErrorSignal(
+            "alreadyExists",
+            `a node named "${row.name}" already exists here`,
+            ["name"],
+          );
         }
         await store.insertFileNode(access.accountId, row);
         byId.set(row.id, row);
@@ -262,8 +281,15 @@ export function registerFileNodeMethods(registry: MethodRegistry<RequestContext>
 
         const newParent = p.parentId !== undefined ? p.parentId : cur.parentId;
         const newName = p.name !== undefined ? p.name : cur.name;
-        if ((p.name !== undefined || p.parentId !== undefined) && nameTaken(newParent, newName, id)) {
-          throw new SetErrorSignal("alreadyExists", `a node named "${newName}" already exists here`, ["name"]);
+        if (
+          (p.name !== undefined || p.parentId !== undefined) &&
+          nameTaken(newParent, newName, id)
+        ) {
+          throw new SetErrorSignal(
+            "alreadyExists",
+            `a node named "${newName}" already exists here`,
+            ["name"],
+          );
         }
 
         p.changed = Date.now();
@@ -292,7 +318,10 @@ export function registerFileNodeMethods(registry: MethodRegistry<RequestContext>
         // 010 obligation: revoke any live share links for every removed file's
         // blob BEFORE the row is gone, or the public link outlives the file.
         for (const n of toRemove) if (n.nodeType === "file") await revokeSharesFor(n.blobId);
-        await store.deleteFileNodes(access.accountId, toRemove.map((n) => n.id));
+        await store.deleteFileNodes(
+          access.accountId,
+          toRemove.map((n) => n.id),
+        );
         for (const n of toRemove) byId.delete(n.id);
         fnEntry.destroyed.push(...toRemove.map((n) => n.id));
         destroyed.push(id);
@@ -337,11 +366,19 @@ export function registerFileNodeMethods(registry: MethodRegistry<RequestContext>
 
     const created: Record<string, Record<string, unknown>> = {};
     const notCreated: Record<string, SetError> = {};
-    const fnEntry: ChangeEntry = { collection: "FileNode", created: [], updated: [], destroyed: [] };
+    const fnEntry: ChangeEntry = {
+      collection: "FileNode",
+      created: [],
+      updated: [],
+      destroyed: [],
+    };
 
-    const targetById = new Map((await store.getFileNodes(toAccess.accountId)).map((n) => [n.id, n]));
+    const targetById = new Map(
+      (await store.getFileNodes(toAccess.accountId)).map((n) => [n.id, n]),
+    );
     const nameTaken = (parentId: string | null, name: string): boolean => {
-      for (const n of targetById.values()) if (n.parentId === parentId && n.name === name) return true;
+      for (const n of targetById.values())
+        if (n.parentId === parentId && n.name === name) return true;
       return false;
     };
 
@@ -351,7 +388,9 @@ export function registerFileNodeMethods(registry: MethodRegistry<RequestContext>
       try {
         const srcId = spec.id;
         if (typeof srcId !== "string") {
-          throw new SetErrorSignal("invalidProperties", "each copy needs the source node id", ["id"]);
+          throw new SetErrorSignal("invalidProperties", "each copy needs the source node id", [
+            "id",
+          ]);
         }
         const [src] = await store.getFileNodes(fromAccess.accountId, [srcId]);
         if (!src) throw new SetErrorSignal("notFound", `no such source node: ${srcId}`);
@@ -361,13 +400,20 @@ export function registerFileNodeMethods(registry: MethodRegistry<RequestContext>
           spec.parentId === null ? null : typeof spec.parentId === "string" ? spec.parentId : null;
         if (parentId !== null) {
           const np = targetById.get(parentId);
-          if (!np) throw new SetErrorSignal("invalidProperties", "target parent does not exist", ["parentId"]);
+          if (!np)
+            throw new SetErrorSignal("invalidProperties", "target parent does not exist", [
+              "parentId",
+            ]);
           if (np.nodeType !== "directory") {
-            throw new SetErrorSignal("invalidProperties", "target parent is not a directory", ["parentId"]);
+            throw new SetErrorSignal("invalidProperties", "target parent is not a directory", [
+              "parentId",
+            ]);
           }
         }
         if (nameTaken(parentId, name)) {
-          throw new SetErrorSignal("alreadyExists", `a node named "${name}" already exists here`, ["name"]);
+          throw new SetErrorSignal("alreadyExists", `a node named "${name}" already exists here`, [
+            "name",
+          ]);
         }
 
         // For files, copy the bytes into the TARGET account's R2 prefix.
@@ -377,7 +423,11 @@ export function registerFileNodeMethods(registry: MethodRegistry<RequestContext>
         if (src.nodeType === "file" && src.blobId) {
           const obj = await store.getBlob(fromAccess.tenantId, fromAccess.accountId, src.blobId);
           if (!obj) throw new SetErrorSignal("blobNotFound", "source blob is missing");
-          blobId = await store.putBlob(toAccess.tenantId, toAccess.accountId, await obj.arrayBuffer());
+          blobId = await store.putBlob(
+            toAccess.tenantId,
+            toAccess.accountId,
+            await obj.arrayBuffer(),
+          );
         }
 
         const now = Date.now();
@@ -424,7 +474,11 @@ export function registerFileNodeMethods(registry: MethodRegistry<RequestContext>
     if (sourceDestroyIds.length > 0) {
       const setHandler = registry.get("FileNode/set")!;
       await setHandler(
-        { accountId: fromAccess.accountId, destroy: sourceDestroyIds, onDestroyRemoveChildren: true },
+        {
+          accountId: fromAccess.accountId,
+          destroy: sourceDestroyIds,
+          onDestroyRemoveChildren: true,
+        },
         ctx,
       );
     }
@@ -518,13 +572,26 @@ async function buildNewNode(
   }
 
   const name = spec.name;
-  if (typeof name !== "string" || name.length === 0 || name.length > MAX_NAME || name.includes("/")) {
-    throw new SetErrorSignal("invalidProperties", `name must be a 1..${MAX_NAME}-char string without "/"`, ["name"]);
+  if (
+    typeof name !== "string" ||
+    name.length === 0 ||
+    name.length > MAX_NAME ||
+    name.includes("/")
+  ) {
+    throw new SetErrorSignal(
+      "invalidProperties",
+      `name must be a 1..${MAX_NAME}-char string without "/"`,
+      ["name"],
+    );
   }
 
   const nodeType = spec.nodeType;
   if (typeof nodeType !== "string" || !NODE_TYPES.has(nodeType as FileNodeType)) {
-    throw new SetErrorSignal("invalidProperties", 'nodeType must be "file", "directory" or "symlink"', ["nodeType"]);
+    throw new SetErrorSignal(
+      "invalidProperties",
+      'nodeType must be "file", "directory" or "symlink"',
+      ["nodeType"],
+    );
   }
 
   let parentId: string | null = null;
@@ -533,7 +600,8 @@ async function buildNewNode(
       throw new SetErrorSignal("invalidProperties", "parentId must be an id or null", ["parentId"]);
     }
     const parent = byId.get(spec.parentId);
-    if (!parent) throw new SetErrorSignal("invalidProperties", "parent does not exist", ["parentId"]);
+    if (!parent)
+      throw new SetErrorSignal("invalidProperties", "parent does not exist", ["parentId"]);
     if (parent.nodeType !== "directory") {
       throw new SetErrorSignal("invalidProperties", "parent is not a directory", ["parentId"]);
     }
@@ -553,7 +621,9 @@ async function buildNewNode(
     if (size === null) size = head.size;
     if (type === null) type = "application/octet-stream";
   } else if (spec.blobId !== undefined && spec.blobId !== null) {
-    throw new SetErrorSignal("invalidProperties", `${nodeType} nodes cannot carry a blobId`, ["blobId"]);
+    throw new SetErrorSignal("invalidProperties", `${nodeType} nodes cannot carry a blobId`, [
+      "blobId",
+    ]);
   }
 
   const now = Date.now();
@@ -595,26 +665,44 @@ async function validatePatch(
     }
     switch (path) {
       case "name":
-        if (typeof value !== "string" || value.length === 0 || value.length > MAX_NAME || value.includes("/")) {
-          throw new SetErrorSignal("invalidProperties", `name must be a 1..${MAX_NAME}-char string without "/"`, ["name"]);
+        if (
+          typeof value !== "string" ||
+          value.length === 0 ||
+          value.length > MAX_NAME ||
+          value.includes("/")
+        ) {
+          throw new SetErrorSignal(
+            "invalidProperties",
+            `name must be a 1..${MAX_NAME}-char string without "/"`,
+            ["name"],
+          );
         }
         out.name = value;
         break;
       case "parentId": {
         if (value !== null && typeof value !== "string") {
-          throw new SetErrorSignal("invalidProperties", "parentId must be an id or null", ["parentId"]);
+          throw new SetErrorSignal("invalidProperties", "parentId must be an id or null", [
+            "parentId",
+          ]);
         }
         if (value !== null) {
           if (value === cur.id) {
-            throw new SetErrorSignal("invalidProperties", "a node cannot be its own parent", ["parentId"]);
+            throw new SetErrorSignal("invalidProperties", "a node cannot be its own parent", [
+              "parentId",
+            ]);
           }
           const np = byId.get(value);
-          if (!np) throw new SetErrorSignal("invalidProperties", "parent does not exist", ["parentId"]);
+          if (!np)
+            throw new SetErrorSignal("invalidProperties", "parent does not exist", ["parentId"]);
           if (np.nodeType !== "directory") {
-            throw new SetErrorSignal("invalidProperties", "parent is not a directory", ["parentId"]);
+            throw new SetErrorSignal("invalidProperties", "parent is not a directory", [
+              "parentId",
+            ]);
           }
           if (wouldCycle(cur.id, value, byId)) {
-            throw new SetErrorSignal("invalidProperties", "move would create a cycle", ["parentId"]);
+            throw new SetErrorSignal("invalidProperties", "move would create a cycle", [
+              "parentId",
+            ]);
           }
         }
         out.parentId = value;
@@ -625,7 +713,9 @@ async function validatePatch(
           throw new SetErrorSignal("invalidProperties", "only file nodes have a blob", ["blobId"]);
         }
         if (typeof value !== "string" || value.length === 0) {
-          throw new SetErrorSignal("invalidProperties", "blobId must be a non-empty id", ["blobId"]);
+          throw new SetErrorSignal("invalidProperties", "blobId must be a non-empty id", [
+            "blobId",
+          ]);
         }
         const head = await store.headBlob(tenantId, accountId, value);
         if (!head) throw new SetErrorSignal("blobNotFound", `no such blob: ${value}`, ["blobId"]);
@@ -642,13 +732,17 @@ async function validatePatch(
         break;
       case "executable":
         if (typeof value !== "boolean") {
-          throw new SetErrorSignal("invalidProperties", "executable must be a boolean", ["executable"]);
+          throw new SetErrorSignal("invalidProperties", "executable must be a boolean", [
+            "executable",
+          ]);
         }
         out.executable = value;
         break;
       case "isSubscribed":
         if (typeof value !== "boolean") {
-          throw new SetErrorSignal("invalidProperties", "isSubscribed must be a boolean", ["isSubscribed"]);
+          throw new SetErrorSignal("invalidProperties", "isSubscribed must be a boolean", [
+            "isSubscribed",
+          ]);
         }
         out.isSubscribed = value;
         break;
@@ -726,11 +820,13 @@ interface FileNodeQueryFilter {
 
 function validateFilter(raw: unknown): FileNodeQueryFilter | null {
   if (raw === null || raw === undefined) return null;
-  if (typeof raw !== "object") throw new MethodError("unsupportedFilter", "filter must be an object");
+  if (typeof raw !== "object")
+    throw new MethodError("unsupportedFilter", "filter must be an object");
   const f = raw as Record<string, unknown>;
   const allowed = new Set(["parentId", "ancestorId", "nodeType", "role", "name", "hasBlobId"]);
   for (const k of Object.keys(f)) {
-    if (!allowed.has(k)) throw new MethodError("unsupportedFilter", `unknown filter property "${k}"`);
+    if (!allowed.has(k))
+      throw new MethodError("unsupportedFilter", `unknown filter property "${k}"`);
   }
   const out: FileNodeQueryFilter = {};
   if ("parentId" in f) {
@@ -740,7 +836,8 @@ function validateFilter(raw: unknown): FileNodeQueryFilter | null {
     out.parentId = f.parentId as string | null;
   }
   if ("ancestorId" in f) {
-    if (typeof f.ancestorId !== "string") throw new MethodError("unsupportedFilter", "ancestorId must be an id");
+    if (typeof f.ancestorId !== "string")
+      throw new MethodError("unsupportedFilter", "ancestorId must be an id");
     out.ancestorId = f.ancestorId;
   }
   if ("nodeType" in f) {
@@ -750,15 +847,18 @@ function validateFilter(raw: unknown): FileNodeQueryFilter | null {
     out.nodeType = f.nodeType as FileNodeType;
   }
   if ("role" in f) {
-    if (typeof f.role !== "string") throw new MethodError("unsupportedFilter", "role must be a string");
+    if (typeof f.role !== "string")
+      throw new MethodError("unsupportedFilter", "role must be a string");
     out.role = f.role;
   }
   if ("name" in f) {
-    if (typeof f.name !== "string") throw new MethodError("unsupportedFilter", "name must be a string");
+    if (typeof f.name !== "string")
+      throw new MethodError("unsupportedFilter", "name must be a string");
     out.name = f.name;
   }
   if ("hasBlobId" in f) {
-    if (typeof f.hasBlobId !== "boolean") throw new MethodError("unsupportedFilter", "hasBlobId must be a boolean");
+    if (typeof f.hasBlobId !== "boolean")
+      throw new MethodError("unsupportedFilter", "hasBlobId must be a boolean");
     out.hasBlobId = f.hasBlobId;
   }
   return out;
@@ -772,7 +872,10 @@ function matchesFilter(n: FileNodeRow, f: FileNodeQueryFilter): boolean {
   return true;
 }
 
-type FileNodeSort = Array<{ property: "name" | "created" | "modified" | "changed" | "size"; isAscending: boolean }>;
+type FileNodeSort = Array<{
+  property: "name" | "created" | "modified" | "changed" | "size";
+  isAscending: boolean;
+}>;
 
 function validateSort(raw: unknown): FileNodeSort | undefined {
   if (raw === undefined || raw === null) return undefined;
@@ -797,7 +900,8 @@ function sortNodes(nodes: FileNodeRow[], sort: FileNodeSort | undefined): void {
       const av = a[s.property] ?? 0;
       const bv = b[s.property] ?? 0;
       let cmp: number;
-      if (typeof av === "string" || typeof bv === "string") cmp = String(av).localeCompare(String(bv));
+      if (typeof av === "string" || typeof bv === "string")
+        cmp = String(av).localeCompare(String(bv));
       else cmp = (av as number) - (bv as number);
       if (cmp !== 0) return s.isAscending ? cmp : -cmp;
     }

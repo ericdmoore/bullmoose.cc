@@ -152,7 +152,11 @@ export default {
   // expireStaleProposals / drain). Here: the s12 graduation sweep — repeat
   // spam domains graduate into the deny list so their future mail exits at
   // the SMTP edge instead of paying Bayes compute.
-  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+  async scheduled(
+    _controller: ScheduledController,
+    env: Env,
+    _ctx: ExecutionContext,
+  ): Promise<void> {
     await sweepGraduations(env);
   },
 } satisfies ExportedHandler<Env>;
@@ -171,7 +175,10 @@ export default {
  * honest choice if you only want the scan-to-index speedup and can live with
  * old bodies being searchable to 256 characters.
  */
-async function backfillFts(env: Env, params: URLSearchParams): Promise<{
+async function backfillFts(
+  env: Env,
+  params: URLSearchParams,
+): Promise<{
   scanned: number;
   indexed: number;
   failed: number;
@@ -204,7 +211,11 @@ async function backfillFts(env: Env, params: URLSearchParams): Promise<{
     let bodyText = row.preview;
     if (deep) {
       try {
-        const blob = await store.getBlob(await tenantOf(env, tenants, accountId), accountId, row.blobId);
+        const blob = await store.getBlob(
+          await tenantOf(env, tenants, accountId),
+          accountId,
+          row.blobId,
+        );
         if (blob) {
           const parsed = await PostalMime.parse(await blob.arrayBuffer());
           bodyText = bodyTextOf(parsed) || row.preview;
@@ -230,11 +241,7 @@ async function backfillFts(env: Env, params: URLSearchParams): Promise<{
 }
 
 /** Fast-path wake for the cloud agent runtime; the cron sweep is the net. */
-function pokeAgent(
-  env: Env,
-  ctx: ExecutionContext,
-  result: { invocations?: number },
-): void {
+function pokeAgent(env: Env, ctx: ExecutionContext, result: { invocations?: number }): void {
   if (!env.AGENT || !result.invocations) return;
   ctx.waitUntil(
     env.AGENT.fetch("https://agent.internal/drain", {
@@ -479,9 +486,7 @@ async function deliver(
     // that announces the message it arrived on. A FileNode row that never
     // reached the changelog would read back on a direct get and be invisible
     // to sync (filenode.ts's write-choreography rule).
-    ...(sidestep.created.length > 0
-      ? [{ collection: "FileNode", created: sidestep.created }]
-      : []),
+    ...(sidestep.created.length > 0 ? [{ collection: "FileNode", created: sidestep.created }] : []),
   ]);
 
   // Armed responders (vacation, watchdog). RFC 3834: never auto-respond
@@ -839,9 +844,7 @@ async function resolveRoute(
   );
 }
 
-function toAddresses(
-  list: Array<{ name?: string; address?: string }>,
-): EmailAddress[] {
+function toAddresses(list: Array<{ name?: string; address?: string }>): EmailAddress[] {
   return list
     .filter((a) => a.address)
     .map((a) => ({ ...(a.name ? { name: a.name } : {}), email: a.address as string }));

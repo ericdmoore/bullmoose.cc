@@ -329,7 +329,10 @@ export class AccountDO implements DurableObject {
   private broadcast(body: CommitBody, seq: number): void {
     const collections: Record<string, string> = {};
     for (const entry of body.entries) collections[entry.collection] = String(seq);
-    const push: StateChange = { "@type": "StateChange", changed: { [body.accountId]: collections } };
+    const push: StateChange = {
+      "@type": "StateChange",
+      changed: { [body.accountId]: collections },
+    };
     const message = JSON.stringify(push);
     for (const ws of this.ctx.getWebSockets()) {
       try {
@@ -343,10 +346,17 @@ export class AccountDO implements DurableObject {
   // Hibernatable WebSocket callbacks. Full JMAP-over-WS (RFC 8887) request
   // handling is future work; for now the socket is push-only.
   async webSocketMessage(ws: WebSocket, _message: string | ArrayBuffer): Promise<void> {
-    ws.send(JSON.stringify({ "@type": "RequestError", type: "urn:ietf:params:jmap:error:notRequest" }));
+    ws.send(
+      JSON.stringify({ "@type": "RequestError", type: "urn:ietf:params:jmap:error:notRequest" }),
+    );
   }
 
-  async webSocketClose(ws: WebSocket, code: number, _reason: string, _clean: boolean): Promise<void> {
+  async webSocketClose(
+    ws: WebSocket,
+    code: number,
+    _reason: string,
+    _clean: boolean,
+  ): Promise<void> {
     ws.close(code === 1005 ? 1000 : code);
   }
 }

@@ -204,7 +204,9 @@ export function demoProposals(now: number): ActionProposal[] {
         "Accounts asked for written confirmation before releasing the order. " +
         "This commits a payment reference to an external party — tier 3: once read it cannot be " +
         "retracted, so there is no hold window and approval is a human send every time.",
-      evidence: [{ realm: "Email", objectId: "e-invoice", note: "the invoice requesting confirmation" }],
+      evidence: [
+        { realm: "Email", objectId: "e-invoice", note: "the invoice requesting confirmation" },
+      ],
       status: "pending",
       decision: null,
       createdAt: iso(now - 4 * hour),
@@ -225,7 +227,12 @@ export function demoProposals(now: number): ActionProposal[] {
       kind: "grant-request",
       tier: 1,
       subject: { realm: "FileNode", objectId: "folder-fair" },
-      payload: { scope: "read", realm: "files", target: "Events/2026-08 Midbury Fair", durationDays: 30 },
+      payload: {
+        scope: "read",
+        realm: "files",
+        target: "Events/2026-08 Midbury Fair",
+        durationDays: 30,
+      },
       editedPayload: null,
       rationale:
         "I was CC'd into the fair folder to collect arrivals. I need read on that folder for the " +
@@ -338,8 +345,11 @@ export function demoProposals(now: number): ActionProposal[] {
         mode: "send",
       },
       editedPayload: null,
-      rationale: "You asked me Monday to set Thursday's agenda thread once the quote arrived. It has.",
-      evidence: [{ realm: "Email", objectId: "e-invoice", note: "the quote that unblocked the agenda" }],
+      rationale:
+        "You asked me Monday to set Thursday's agenda thread once the quote arrived. It has.",
+      evidence: [
+        { realm: "Email", objectId: "e-invoice", note: "the quote that unblocked the agenda" },
+      ],
       status: "held",
       decision: { by: USERNAME },
       createdAt: iso(now - 90 * min),
@@ -433,7 +443,11 @@ export function demoProposals(now: number): ActionProposal[] {
       kind: "start-thread",
       tier: 3,
       subject: { realm: "Email", objectId: "new" },
-      payload: { to: "vendor@example.test", subject: "Spring order", text: "Following up on the quote." },
+      payload: {
+        to: "vendor@example.test",
+        subject: "Spring order",
+        text: "Following up on the quote.",
+      },
       editedPayload: null,
       rationale: "The quote expires Friday and nobody has replied to it.",
       evidence: [{ realm: "Email", objectId: "e-quote", note: "the quote" }],
@@ -459,7 +473,8 @@ export function demoProposals(now: number): ActionProposal[] {
       subject: { realm: "FileNode", objectId: "folder-receipts" },
       payload: { target: "Receipts/2026", moves: 14 },
       editedPayload: null,
-      rationale: "Fourteen receipt PDFs are loose in the inbox folder; they match last year's filing scheme.",
+      rationale:
+        "Fourteen receipt PDFs are loose in the inbox folder; they match last year's filing scheme.",
       evidence: [{ realm: "FileNode", objectId: "folder-receipts", note: "the existing scheme" }],
       status: "expired",
       decision: null,
@@ -522,15 +537,24 @@ export function installApprovalsDemo(
         for (const key of Object.keys(filter)) {
           if (key !== "status") {
             // The server's filter knows exactly one property (:134-139).
-            return ["error", { type: "unsupportedFilter", description: `unknown filter property "${key}"` }];
+            return [
+              "error",
+              { type: "unsupportedFilter", description: `unknown filter property "${key}"` },
+            ];
           }
         }
       }
       const wanted =
         filter && filter.status !== undefined
-          ? new Set(Array.isArray(filter.status) ? (filter.status as string[]) : [filter.status as string])
+          ? new Set(
+              Array.isArray(filter.status)
+                ? (filter.status as string[])
+                : [filter.status as string],
+            )
           : null;
-      const rows = [...proposals].filter((p) => !wanted || wanted.has(p.status)).sort(byCreatedDesc);
+      const rows = [...proposals]
+        .filter((p) => !wanted || wanted.has(p.status))
+        .sort(byCreatedDesc);
       return {
         accountId: ACCOUNT,
         queryState: state(),
@@ -592,7 +616,10 @@ export function installApprovalsDemo(
         // status-free { dueAt } patch fixes the boundary's read and leaves
         // the row pending; riding it on a decision is refused whole.
         if (patch.dueAt !== undefined && patch.status === undefined) {
-          if (patch.dueAt !== null && (typeof patch.dueAt !== "string" || !Number.isFinite(Date.parse(patch.dueAt)))) {
+          if (
+            patch.dueAt !== null &&
+            (typeof patch.dueAt !== "string" || !Number.isFinite(Date.parse(patch.dueAt)))
+          ) {
             notUpdated[id] = {
               type: "invalidProperties",
               description: "dueAt must be null (no deadline) or an ISO 8601 date string",
@@ -607,7 +634,8 @@ export function installApprovalsDemo(
         if (patch.dueAt !== undefined) {
           notUpdated[id] = {
             type: "invalidProperties",
-            description: "dueAt is a correction, not part of a decision — send it in its own update, without status",
+            description:
+              "dueAt is a correction, not part of a decision — send it in its own update, without status",
             properties: ["dueAt"],
           };
           continue;
@@ -667,7 +695,10 @@ export function installApprovalsDemo(
           continue;
         }
         const editedPayload = patch.editedPayload;
-        if (editedPayload !== undefined && (editedPayload === null || typeof editedPayload !== "object")) {
+        if (
+          editedPayload !== undefined &&
+          (editedPayload === null || typeof editedPayload !== "object")
+        ) {
           notUpdated[id] = {
             type: "invalidProperties",
             description: "editedPayload must be an object",
@@ -685,7 +716,8 @@ export function installApprovalsDemo(
           row.status = "rejected";
           row.decidedAt = new Date(now).toISOString();
           row.decision = decision.value;
-          if (editedPayload !== undefined) row.editedPayload = editedPayload as Record<string, unknown>;
+          if (editedPayload !== undefined)
+            row.editedPayload = editedPayload as Record<string, unknown>;
           updated[id] = null;
           continue;
         }
@@ -710,7 +742,8 @@ export function installApprovalsDemo(
           row.decidedAt = new Date(now).toISOString();
           row.holdUntil = new Date(now + HOLD_WINDOW_MS).toISOString();
           row.decision = decision.value;
-          if (editedPayload !== undefined) row.editedPayload = editedPayload as Record<string, unknown>;
+          if (editedPayload !== undefined)
+            row.editedPayload = editedPayload as Record<string, unknown>;
           updated[id] = null;
           continue;
         }
@@ -725,7 +758,8 @@ export function installApprovalsDemo(
         row.status = "approved";
         row.decidedAt = new Date(now).toISOString();
         row.decision = decision.value;
-        if (editedPayload !== undefined) row.editedPayload = editedPayload as Record<string, unknown>;
+        if (editedPayload !== undefined)
+          row.editedPayload = editedPayload as Record<string, unknown>;
         updated[id] = null;
       }
 
@@ -787,17 +821,16 @@ export function installApprovalsDemo(
       const open = row.amendments[row.amendments.length - 1];
       if (!open || open.answer !== null) return;
       const nowMs = Date.now();
-      open.answer =
-        text ??
-        `(demo answer) The recorded rationale stands: ${row.rationale}`;
+      open.answer = text ?? `(demo answer) The recorded rationale stands: ${row.rationale}`;
       open.answeredAt = new Date(nowMs).toISOString();
       row.status = "pending";
       row.question = null;
       // RESUME the banked clock — the remainder from the moment of the ask.
       const remaining = pausedRemaining.get(row.id);
-      row.expiresAt = remaining !== null && remaining !== undefined
-        ? new Date(nowMs + remaining).toISOString()
-        : null;
+      row.expiresAt =
+        remaining !== null && remaining !== undefined
+          ? new Date(nowMs + remaining).toISOString()
+          : null;
       pausedRemaining.delete(row.id);
       bump();
     },
@@ -855,9 +888,17 @@ function applyDemo(
   switch (row.kind) {
     case "create-contact": {
       if (!payload.card || typeof payload.card !== "object") {
-        return { type: "invalidProperties", description: "create-contact payload needs a `card`", properties: ["payload"] };
+        return {
+          type: "invalidProperties",
+          description: "create-contact payload needs a `card`",
+          properties: ["payload"],
+        };
       }
-      applied.push({ id: row.id, kind: row.kind, undo: { action: "destroy-contact", cardId: `cc-${row.id}` } });
+      applied.push({
+        id: row.id,
+        kind: row.kind,
+        undo: { action: "destroy-contact", cardId: `cc-${row.id}` },
+      });
       return null;
     }
     case "reply-draft": {
@@ -865,9 +906,17 @@ function applyDemo(
       const self = typeof payload.self === "string" ? payload.self : "";
       const blobId = typeof payload.blobId === "string" ? payload.blobId : "";
       if (!to || !self || !blobId) {
-        return { type: "invalidProperties", description: "reply-draft payload needs to/self/blobId", properties: ["payload"] };
+        return {
+          type: "invalidProperties",
+          description: "reply-draft payload needs to/self/blobId",
+          properties: ["payload"],
+        };
       }
-      sent.push({ id: row.id, to, subject: typeof payload.subject === "string" ? payload.subject : "" });
+      sent.push({
+        id: row.id,
+        to,
+        subject: typeof payload.subject === "string" ? payload.subject : "",
+      });
       return null;
     }
     case "grant-request":
@@ -882,7 +931,10 @@ function applyDemo(
   }
 }
 
-function pickProps(full: Record<string, unknown>, properties: string[] | null): Record<string, unknown> {
+function pickProps(
+  full: Record<string, unknown>,
+  properties: string[] | null,
+): Record<string, unknown> {
   if (!properties) return { ...full };
   const picked: Record<string, unknown> = { id: full.id };
   for (const p of properties) if (p in full) picked[p] = full[p];

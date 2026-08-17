@@ -1,18 +1,33 @@
 const plans = [
-  { id: 'startup', name: 'Startup', priceMonthly: '$29', priceYearly: '$290', limit: 'Up to 5 active job postings' },
-  { id: 'business', name: 'Business', priceMonthly: '$99', priceYearly: '$990', limit: 'Up to 25 active job postings' },
   {
-    id: 'enterprise',
-    name: 'Enterprise',
-    priceMonthly: '$249',
-    priceYearly: '$2490',
-    limit: 'Unlimited active job postings',
+    id: "startup",
+    name: "Startup",
+    priceMonthly: "$29",
+    priceYearly: "$290",
+    limit: "Up to 5 active job postings",
   },
-]
+  {
+    id: "business",
+    name: "Business",
+    priceMonthly: "$99",
+    priceYearly: "$990",
+    limit: "Up to 25 active job postings",
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    priceMonthly: "$249",
+    priceYearly: "$2490",
+    limit: "Unlimited active job postings",
+  },
+];
 
 export default function Example() {
   return (
-    <fieldset aria-label="Pricing plans" className="relative -space-y-px rounded-md bg-white dark:bg-gray-800/50">
+    <fieldset
+      aria-label="Pricing plans"
+      className="relative -space-y-px rounded-md bg-white dark:bg-gray-800/50"
+    >
       {plans.map((plan) => (
         <label
           key={plan.id}
@@ -23,7 +38,7 @@ export default function Example() {
           <span className="flex items-center gap-3 text-sm">
             <input
               defaultValue={plan.id}
-              defaultChecked={plan.id === 'startup'}
+              defaultChecked={plan.id === "startup"}
               name="pricing-plan"
               type="radio"
               className="relative size-4 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white not-checked:before:hidden checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 dark:border-white/10 dark:bg-white/5 dark:checked:border-indigo-500 dark:checked:bg-indigo-500 dark:focus-visible:outline-indigo-500 dark:disabled:border-white/5 dark:disabled:bg-white/10 dark:disabled:before:bg-white/20 forced-colors:appearance-auto forced-colors:before:hidden"
@@ -35,7 +50,7 @@ export default function Example() {
           <span className="ml-6 pl-1 text-sm md:ml-0 md:pl-0 md:text-center">
             <span className="font-medium text-gray-900 group-has-checked:text-indigo-900 dark:text-white dark:group-has-checked:text-indigo-300">
               {plan.priceMonthly} / mo
-            </span>{' '}
+            </span>{" "}
             <span className="text-gray-500 group-has-checked:text-indigo-700 dark:text-gray-400 dark:group-has-checked:text-indigo-300/75">
               ({plan.priceYearly} / yr)
             </span>
@@ -46,5 +61,5 @@ export default function Example() {
         </label>
       ))}
     </fieldset>
-  )
+  );
 }

@@ -151,17 +151,20 @@ function eventFields(args: Record<string, unknown>, withUid: boolean): Record<st
 }
 
 const EVENT_PROPS = {
-  title: { type: "string", description: "Event summary, e.g. \"Dentist\"." },
+  title: { type: "string", description: 'Event summary, e.g. "Dentist".' },
   start: { type: "string", description: `Local start time — ${LOCAL_DATE_TIME}.` },
   duration: { type: "string", description: 'ISO 8601 duration, e.g. "PT1H" or "P1D".' },
-  timeZone: { type: "string", description: 'IANA zone, e.g. "America/New_York". Omit for a floating time.' },
+  timeZone: {
+    type: "string",
+    description: 'IANA zone, e.g. "America/New_York". Omit for a floating time.',
+  },
   description: { type: "string", description: "Longer notes on the event." },
   location: { type: "string", description: "A single named location." },
   showWithoutTime: { type: "boolean", description: "true for an all-day event." },
   recurrenceRules: {
     type: "array",
     description:
-      "JSCalendar recurrence rules, e.g. [{\"frequency\":\"weekly\"}]. This server refuses any " +
+      'JSCalendar recurrence rules, e.g. [{"frequency":"weekly"}]. This server refuses any ' +
       "rule it cannot expand exactly (it will not store approximate dates), so keep them simple: " +
       "frequency plus optional interval, byMonthDay, count or until.",
     items: { type: "object" },
@@ -180,7 +183,11 @@ const CALENDAR_TOOLS: ToolDef[] = [
       type: "object",
       properties: {
         accountId: { type: "string", description: "bullmoose account id" },
-        ids: { type: "array", items: { type: "string" }, description: "restrict to these calendar ids" },
+        ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "restrict to these calendar ids",
+        },
       },
       required: ["accountId"],
     },
@@ -199,7 +206,7 @@ const CALENDAR_TOOLS: ToolDef[] = [
       "Find events and read them back in full. Filters: inCalendar, uid, after/before (UTC " +
       'ISO instants, e.g. "2026-11-01T00:00:00Z"), text, title — no others are accepted. ' +
       "When both after and before are given the reply also carries `occurrences`: the concrete " +
-      "expanded occurrences in that window, which is what to read for \"what is on my calendar\" " +
+      'expanded occurrences in that window, which is what to read for "what is on my calendar" ' +
       "questions, because a recurring event appears in `events` only once. (Occurrence expansion " +
       "is a bullmoose extension — CalendarEvent/getOccurrences — not portable JMAP.)",
     inputSchema: {
@@ -270,7 +277,10 @@ const CALENDAR_TOOLS: ToolDef[] = [
       type: "object",
       properties: {
         accountId: { type: "string" },
-        calendarId: { type: "string", description: "from calendar_list; omit for the default calendar" },
+        calendarId: {
+          type: "string",
+          description: "from calendar_list; omit for the default calendar",
+        },
         ...EVENT_PROPS,
         uid: { type: "string", description: "iCalendar UID; omit and the server assigns one" },
         ifInState: { type: "string", description: "state string from a previous call" },
@@ -371,9 +381,7 @@ function cardFields(args: Record<string, unknown>, withUid: boolean): Record<str
   }
   if (args.nickname !== undefined) {
     out.nicknames =
-      args.nickname === null
-        ? null
-        : { n1: { "@type": "Nickname", name: String(args.nickname) } };
+      args.nickname === null ? null : { n1: { "@type": "Nickname", name: String(args.nickname) } };
   }
   if (args.organization !== undefined) {
     out.organizations =
@@ -422,8 +430,16 @@ const CARD_PROPS = {
   nickname: { type: "string" },
   organization: { type: "string", description: "Company or organisation name." },
   jobTitle: { type: "string" },
-  emails: { type: "array", items: { type: "string" }, description: "Email addresses, most-used first." },
-  phones: { type: "array", items: { type: "string" }, description: "Phone numbers, most-used first." },
+  emails: {
+    type: "array",
+    items: { type: "string" },
+    description: "Email addresses, most-used first.",
+  },
+  phones: {
+    type: "array",
+    items: { type: "string" },
+    description: "Phone numbers, most-used first.",
+  },
   note: { type: "string" },
 } as const;
 
@@ -522,9 +538,15 @@ const CONTACT_TOOLS: ToolDef[] = [
       type: "object",
       properties: {
         accountId: { type: "string" },
-        addressBookId: { type: "string", description: "from contacts_list_books; omit for the default book" },
+        addressBookId: {
+          type: "string",
+          description: "from contacts_list_books; omit for the default book",
+        },
         ...CARD_PROPS,
-        kind: { type: "string", description: '"individual" (default), "group", "org", "location", "device"' },
+        kind: {
+          type: "string",
+          description: '"individual" (default), "group", "org", "location", "device"',
+        },
         uid: { type: "string", description: "vCard UID; omit and the server assigns one" },
         ifInState: { type: "string" },
       },
@@ -538,7 +560,11 @@ const CONTACT_TOOLS: ToolDef[] = [
             "display name and will not appear in any contacts client.",
         );
       }
-      await refuseGoverningBook(env, accountId, await targetBookId(env, accountId, str(args.addressBookId)));
+      await refuseGoverningBook(
+        env,
+        accountId,
+        await targetBookId(env, accountId, str(args.addressBookId)),
+      );
       const res = await callJmap<JmapSetResponse>(env, principal, "ContactCard/set", {
         accountId,
         ...ifInState(args),

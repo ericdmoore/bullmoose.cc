@@ -40,7 +40,10 @@ export interface Harness {
   /** A valid explore cookie value for Eric. */
   cookie: string;
   /** GET on the explore host, authenticated by cookie unless told otherwise. */
-  explore(path: string, init?: { cookie?: string | null; bearer?: string; host?: string }): Promise<Response>;
+  explore(
+    path: string,
+    init?: { cookie?: string | null; bearer?: string; host?: string },
+  ): Promise<Response>;
   /** Any method on the explore host, carrying the valid cookie. */
   exploreWith(method: string, path: string): Promise<Response>;
   /** Any request to the API origin. */
@@ -168,7 +171,14 @@ function seedAll(w: FakeWorker, account: string): void {
   // Mailboxes: one root, one child, so `_links.parent` has something to point
   // at and `?parentId=` has something to filter on.
   w.db.seed("mailboxes", [
-    { id: ids.inbox(account), account_id: account, parent_id: null, name: "Inbox", role: "inbox", sort_order: 0 },
+    {
+      id: ids.inbox(account),
+      account_id: account,
+      parent_id: null,
+      name: "Inbox",
+      role: "inbox",
+      sort_order: 0,
+    },
     {
       id: ids.archive(account),
       account_id: account,

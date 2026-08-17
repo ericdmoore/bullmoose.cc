@@ -1,8 +1,8 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { PaperClipIcon } from '@heroicons/react/24/outline'
-import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from '@headlessui/react'
+import { useState } from "react";
+import { PaperClipIcon } from "@heroicons/react/24/outline";
+import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from "@headlessui/react";
 import {
   FaceFrownIcon,
   FaceSmileIcon,
@@ -10,29 +10,59 @@ import {
   HandThumbUpIcon,
   HeartIcon,
   XMarkIcon,
-} from '@heroicons/react/20/solid'
+} from "@heroicons/react/20/solid";
 
 const moods = [
-  { name: 'Excited', value: 'excited', icon: FireIcon, iconColor: 'text-white', bgColor: 'bg-red-500' },
-  { name: 'Loved', value: 'loved', icon: HeartIcon, iconColor: 'text-white', bgColor: 'bg-pink-400' },
-  { name: 'Happy', value: 'happy', icon: FaceSmileIcon, iconColor: 'text-white', bgColor: 'bg-green-400' },
-  { name: 'Sad', value: 'sad', icon: FaceFrownIcon, iconColor: 'text-white', bgColor: 'bg-yellow-400' },
-  { name: 'Thumbsy', value: 'thumbsy', icon: HandThumbUpIcon, iconColor: 'text-white', bgColor: 'bg-blue-500' },
   {
-    name: 'I feel nothing',
+    name: "Excited",
+    value: "excited",
+    icon: FireIcon,
+    iconColor: "text-white",
+    bgColor: "bg-red-500",
+  },
+  {
+    name: "Loved",
+    value: "loved",
+    icon: HeartIcon,
+    iconColor: "text-white",
+    bgColor: "bg-pink-400",
+  },
+  {
+    name: "Happy",
+    value: "happy",
+    icon: FaceSmileIcon,
+    iconColor: "text-white",
+    bgColor: "bg-green-400",
+  },
+  {
+    name: "Sad",
+    value: "sad",
+    icon: FaceFrownIcon,
+    iconColor: "text-white",
+    bgColor: "bg-yellow-400",
+  },
+  {
+    name: "Thumbsy",
+    value: "thumbsy",
+    icon: HandThumbUpIcon,
+    iconColor: "text-white",
+    bgColor: "bg-blue-500",
+  },
+  {
+    name: "I feel nothing",
     value: null,
     icon: XMarkIcon,
-    iconColor: 'text-gray-400 dark:text-gray-500',
-    bgColor: 'bg-transparent',
+    iconColor: "text-gray-400 dark:text-gray-500",
+    bgColor: "bg-transparent",
   },
-]
+];
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
-  const [selected, setSelected] = useState(moods[5])
+  const [selected, setSelected] = useState(moods[5]);
 
   return (
     <div className="flex items-start space-x-4">
@@ -55,7 +85,7 @@ export default function Example() {
               rows={3}
               placeholder="Add your comment..."
               className="block w-full resize-none text-base text-gray-900 placeholder:text-gray-400 focus:outline-none sm:text-sm/6 dark:text-white dark:placeholder:text-gray-500"
-              defaultValue={''}
+              defaultValue={""}
             />
           </div>
           <div className="flex justify-between pt-2">
@@ -85,10 +115,13 @@ export default function Example() {
                             <span
                               className={classNames(
                                 selected.bgColor,
-                                'flex size-8 items-center justify-center rounded-full',
+                                "flex size-8 items-center justify-center rounded-full",
                               )}
                             >
-                              <selected.icon aria-hidden="true" className="size-5 shrink-0 text-white" />
+                              <selected.icon
+                                aria-hidden="true"
+                                className="size-5 shrink-0 text-white"
+                              />
                             </span>
                             <span className="sr-only">{selected.name}</span>
                           </span>
@@ -110,10 +143,13 @@ export default function Example() {
                             <div
                               className={classNames(
                                 mood.bgColor,
-                                'flex size-8 items-center justify-center rounded-full',
+                                "flex size-8 items-center justify-center rounded-full",
                               )}
                             >
-                              <mood.icon aria-hidden="true" className={classNames(mood.iconColor, 'size-5 shrink-0')} />
+                              <mood.icon
+                                aria-hidden="true"
+                                className={classNames(mood.iconColor, "size-5 shrink-0")}
+                              />
                             </div>
                             <span className="ml-3 block truncate font-medium">{mood.name}</span>
                           </div>
@@ -136,5 +172,5 @@ export default function Example() {
         </form>
       </div>
     </div>
-  )
+  );
 }

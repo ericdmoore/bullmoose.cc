@@ -74,9 +74,11 @@ function harness(scopes: string[] = ["calendar"]) {
       notCreated: Record<string, { type: string; description?: string; properties?: string[] }>;
     }>;
 
-  const insertedEvents = () => w.db.writes.filter((x) => x.sql.includes("INSERT INTO calendar_events"));
+  const insertedEvents = () =>
+    w.db.writes.filter((x) => x.sql.includes("INSERT INTO calendar_events"));
   /** What actually landed in the table — the assertion the old fake could not make. */
-  const storedEvents = () => w.db.query(`SELECT * FROM calendar_events WHERE account_id = ?`, ACCOUNT);
+  const storedEvents = () =>
+    w.db.query(`SELECT * FROM calendar_events WHERE account_id = ?`, ACCOUNT);
   const eventChanges = (sinceState: string) =>
     changes({ accountId: ACCOUNT, sinceState }, ctx) as Promise<{
       created: string[];
@@ -126,9 +128,15 @@ describe("CalendarEvent/set refuses rules the expander would mis-expand", () => 
   });
 
   it.each([
-    ["FREQ=MONTHLY;BYMONTH=11;BYDAY=4TH", { frequency: "monthly", byMonth: ["11"], byDay: [{ day: "th", nthOfPeriod: 4 }] }],
+    [
+      "FREQ=MONTHLY;BYMONTH=11;BYDAY=4TH",
+      { frequency: "monthly", byMonth: ["11"], byDay: [{ day: "th", nthOfPeriod: 4 }] },
+    ],
     ["FREQ=DAILY;BYDAY=MO", { frequency: "daily", byDay: [{ day: "mo" }] }],
-    ["FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=25", { frequency: "yearly", byMonth: ["12"], byMonthDay: [25] }],
+    [
+      "FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=25",
+      { frequency: "yearly", byMonth: ["12"], byMonthDay: [25] },
+    ],
     ["FREQ=HOURLY", { frequency: "hourly" }],
   ])("rejects %s and writes nothing", async (_label, rule) => {
     const { create, insertedEvents } = harness();
@@ -147,9 +155,7 @@ describe("CalendarEvent/set refuses rules the expander would mis-expand", () => 
       start: "2026-01-15T09:00:00",
       timeZone: "Etc/UTC",
       duration: "PT1H",
-      recurrenceRules: [
-        { frequency: "monthly", byMonthDay: [15], until: "2026-05-15T09:00:00" },
-      ],
+      recurrenceRules: [{ frequency: "monthly", byMonthDay: [15], until: "2026-05-15T09:00:00" }],
     });
     expect(res.notCreated).toEqual({});
     expect(Object.keys(res.created)).toEqual(["c1"]);
@@ -211,11 +217,15 @@ describe("CalendarEvent/set completes the write choreography", () => {
     // The other half of the choreography (calendars.ts:329). A stale ctag makes
     // an Apple Calendar sync silently skip the collection.
     const h = harness();
-    expect(h.w.db.query<{ ctag: number }>(`SELECT ctag FROM calendars WHERE id = ?`, CAL)[0]!.ctag).toBe(1);
+    expect(
+      h.w.db.query<{ ctag: number }>(`SELECT ctag FROM calendars WHERE id = ?`, CAL)[0]!.ctag,
+    ).toBe(1);
 
     await h.create({ ...base, uid: "urn:uuid:oneoff" });
 
-    expect(h.w.db.query<{ ctag: number }>(`SELECT ctag FROM calendars WHERE id = ?`, CAL)[0]!.ctag).toBe(2);
+    expect(
+      h.w.db.query<{ ctag: number }>(`SELECT ctag FROM calendars WHERE id = ?`, CAL)[0]!.ctag,
+    ).toBe(2);
   });
 
   it("does not commit anything when the write is rejected", async () => {

@@ -8,13 +8,13 @@ conflict with each other.
 - `:19` — `○ token` → `✓ token       create | list | revoke`
 - `:21` — `○ agent` → `✓ agent       bind | list`
 - `:280` — drop `agent` from the `designed (not yet built)` list; leave `route, identity,
-  policy, share, suppression`.
+policy, share, suppression`.
 
 Verify against the switch statement before editing rather than trusting this list — the whole
 point of the issue is that the summary drifted from the implementation once already.
 
 **Do not** regenerate `docs/cli.md` for this; `admin.ts`'s header is a source comment, not
-part of the help registry. (`docs/cli.md` *is* generated — from `packages/cli/src/help.ts`,
+part of the help registry. (`docs/cli.md` _is_ generated — from `packages/cli/src/help.ts`,
 per its own line 5 — but that is a different surface. See item 3 of `cli/010`.)
 
 ## 2. `packages/auth-core/src/index.ts:10-12` + `packages/auth-core/README.md:10-12`

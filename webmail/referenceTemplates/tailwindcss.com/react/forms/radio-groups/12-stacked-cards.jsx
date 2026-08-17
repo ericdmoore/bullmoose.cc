@@ -1,9 +1,30 @@
 const plans = [
-  { id: 'hobby', name: 'Hobby', ram: '8GB', cpus: '4 CPUs', disk: '160 GB SSD disk', price: '$40' },
-  { id: 'startup', name: 'Startup', ram: '12GB', cpus: '6 CPUs', disk: '256 GB SSD disk', price: '$80' },
-  { id: 'business', name: 'Business', ram: '16GB', cpus: '8 CPUs', disk: '512 GB SSD disk', price: '$160' },
-  { id: 'enterprise', name: 'Enterprise', ram: '32GB', cpus: '12 CPUs', disk: '1024 GB SSD disk', price: '$240' },
-]
+  { id: "hobby", name: "Hobby", ram: "8GB", cpus: "4 CPUs", disk: "160 GB SSD disk", price: "$40" },
+  {
+    id: "startup",
+    name: "Startup",
+    ram: "12GB",
+    cpus: "6 CPUs",
+    disk: "256 GB SSD disk",
+    price: "$80",
+  },
+  {
+    id: "business",
+    name: "Business",
+    ram: "16GB",
+    cpus: "8 CPUs",
+    disk: "512 GB SSD disk",
+    price: "$160",
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    ram: "32GB",
+    cpus: "12 CPUs",
+    disk: "1024 GB SSD disk",
+    price: "$240",
+  },
+];
 
 export default function Example() {
   return (
@@ -18,7 +39,7 @@ export default function Example() {
           >
             <input
               defaultValue={plan.id}
-              defaultChecked={plan.id === 'hobby'}
+              defaultChecked={plan.id === "hobby"}
               name="plan"
               type="radio"
               className="absolute inset-0 appearance-none focus:outline-none"
@@ -29,10 +50,10 @@ export default function Example() {
                 <span className="text-gray-500 dark:text-gray-400">
                   <span className="block sm:inline">
                     {plan.ram} / {plan.cpus}
-                  </span>{' '}
+                  </span>{" "}
                   <span aria-hidden="true" className="hidden sm:mx-1 sm:inline">
                     &middot;
-                  </span>{' '}
+                  </span>{" "}
                   <span className="block sm:inline">{plan.disk}</span>
                 </span>
               </span>
@@ -45,5 +66,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  )
+  );
 }

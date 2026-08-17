@@ -41,14 +41,15 @@ describe(".env.example covers every secret bootstrap knows", () => {
     const known = new Set([...Object.keys(GENERATED), ...Object.keys(EXTERNAL)]);
     const localOnly = new Set(["CLOUDFLARE_ACCOUNT_ID", "INGEST"]);
     const orphans = [...declared].filter((k) => !known.has(k) && !localOnly.has(k));
-    expect(orphans, `not a bootstrap secret and not documented as local-only: ${orphans.join(", ")}`).toEqual([]);
+    expect(
+      orphans,
+      `not a bootstrap secret and not documented as local-only: ${orphans.join(", ")}`,
+    ).toEqual([]);
   });
 
   it("holds no values — it is committed", () => {
     // The whole reason this file can be in git.
-    const withValues = example
-      .split("\n")
-      .filter((l) => /^[A-Z][A-Z0-9_]*=.+/.test(l.trim()));
+    const withValues = example.split("\n").filter((l) => /^[A-Z][A-Z0-9_]*=.+/.test(l.trim()));
     expect(withValues, `.env.example must not carry values: ${withValues.join(" | ")}`).toEqual([]);
   });
 });

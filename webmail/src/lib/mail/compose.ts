@@ -16,13 +16,7 @@
 
 import type { JmapClient } from "../jmap/JmapClient";
 import { quoteLines, splitQuotedText } from "./quote";
-import {
-  KEYWORD,
-  formatAddress,
-  type Email,
-  type EmailAddress,
-  type Identity,
-} from "./types";
+import { KEYWORD, formatAddress, type Email, type EmailAddress, type Identity } from "./types";
 
 export interface DraftSpec {
   from: EmailAddress[];
@@ -79,15 +73,15 @@ export function buildReplyDraft(
 ): DraftSpec {
   const self = opts.identity.email.toLowerCase();
   const to = dedupeAddresses(original.from ?? []);
-  const cc = opts.replyAll
-    ? dedupeAddresses([...(original.to ?? []), ...(original.cc ?? [])])
-    : [];
+  const cc = opts.replyAll ? dedupeAddresses([...(original.to ?? []), ...(original.cc ?? [])]) : [];
 
   return {
     from: [identityAddress(opts.identity)],
     to: to.filter((a) => a.email.toLowerCase() !== self),
     cc: cc.filter(
-      (a) => a.email.toLowerCase() !== self && !to.some((t) => t.email.toLowerCase() === a.email.toLowerCase()),
+      (a) =>
+        a.email.toLowerCase() !== self &&
+        !to.some((t) => t.email.toLowerCase() === a.email.toLowerCase()),
     ),
     bcc: [],
     subject: prefixSubject(original.subject, "Re:"),
@@ -202,7 +196,8 @@ export function validateDraft(spec: DraftSpec): string[] {
   const recipients = [...spec.to, ...spec.cc, ...spec.bcc];
   if (recipients.length === 0) problems.push("Add at least one recipient.");
   for (const a of recipients) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a.email)) problems.push(`“${a.email}” is not an email address.`);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a.email))
+      problems.push(`“${a.email}” is not an email address.`);
   }
   if (spec.from.length === 0) problems.push("Choose an identity to send from.");
   return problems;
@@ -364,7 +359,10 @@ export async function sendDraft(
   const created = result.created?.s0;
   if (!created?.id) {
     const err = result.notCreated?.s0;
-    throw new ComposeError(`Send failed: ${err?.description ?? err?.type ?? "unknown reason"}`, err?.type);
+    throw new ComposeError(
+      `Send failed: ${err?.description ?? err?.type ?? "unknown reason"}`,
+      err?.type,
+    );
   }
   return { submissionId: created.id, emailId: params.emailId, filed: true };
 }

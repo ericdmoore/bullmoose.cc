@@ -1,4 +1,4 @@
-import { CheckCircleIcon } from '@heroicons/react/20/solid'
+import { CheckCircleIcon } from "@heroicons/react/20/solid";
 
 export default function Example() {
   return (
@@ -8,9 +8,14 @@ export default function Example() {
           <CheckCircleIcon aria-hidden="true" className="size-5 text-green-400" />
         </div>
         <div className="ml-3">
-          <h3 className="text-sm font-medium text-green-800 dark:text-green-200">Order completed</h3>
+          <h3 className="text-sm font-medium text-green-800 dark:text-green-200">
+            Order completed
+          </h3>
           <div className="mt-2 text-sm text-green-700 dark:text-green-200/85">
-            <p>Lorem ipsum dolor sit amet consectetur adipisicing elit. Aliquid pariatur, ipsum similique veniam.</p>
+            <p>
+              Lorem ipsum dolor sit amet consectetur adipisicing elit. Aliquid pariatur, ipsum
+              similique veniam.
+            </p>
           </div>
           <div className="mt-4">
             <div className="-mx-2 -my-1.5 flex">
@@ -31,5 +36,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

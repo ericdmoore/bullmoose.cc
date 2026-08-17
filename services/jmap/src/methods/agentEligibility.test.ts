@@ -279,7 +279,9 @@ describe("fit in the UPDATE: requires_json vs the declared vector", () => {
 
   it("T2-FIT-CONTRACT: a claimant sending NO vector claims requires-stamped work exactly as today", async () => {
     const h = harness();
-    h.seedInv("inv_vis", { requires_json: JSON.stringify({ vision: true, contextTokens: 900_000 }) });
+    h.seedInv("inv_vis", {
+      requires_json: JSON.stringify({ vision: true, contextTokens: 900_000 }),
+    });
     // No claimant argument at all — the pre-T2 claim shape.
     expect((await h.claim("inv_vis")).updated).toEqual({ inv_vis: null });
   });

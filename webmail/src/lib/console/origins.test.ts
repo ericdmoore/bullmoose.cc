@@ -14,7 +14,9 @@ const VAULT = "https://agent.bullmoose.cc";
 describe("normalizeOrigin", () => {
   it("reduces a base to its origin", () => {
     expect(normalizeOrigin("https://agent.bullmoose.cc/vault/")).toBe(VAULT);
-    expect(normalizeOrigin("https://agent.bullmoose.cc:8443")).toBe("https://agent.bullmoose.cc:8443");
+    expect(normalizeOrigin("https://agent.bullmoose.cc:8443")).toBe(
+      "https://agent.bullmoose.cc:8443",
+    );
   });
 
   it("reads blank/garbage as NOT CONFIGURED rather than falling back", () => {
@@ -104,9 +106,9 @@ describe("readBase — which worker answers, as distinct from what may travel", 
   const origins = { vault: VAULT, site: SITE };
 
   it("sends /vault/* to the vault, always", () => {
-    expect(resolveTarget(readBase(origins, "/vault/credentials"), "/vault/credentials", "metadata")).toBe(
-      `${VAULT}/vault/credentials`,
-    );
+    expect(
+      resolveTarget(readBase(origins, "/vault/credentials"), "/vault/credentials", "metadata"),
+    ).toBe(`${VAULT}/vault/credentials`);
   });
 
   it("sends the four /console/* reads to the SITE backend even with a vault configured", () => {

@@ -5,7 +5,7 @@
 ## The drift
 
 `docs/cli.md:41` lists `--json` under global options: "machine-readable output where supported."
-Nothing says *which* commands support it — and the entire stated purpose of the help spec
+Nothing says _which_ commands support it — and the entire stated purpose of the help spec
 (`packages/cli/src/help.ts:9-12`) is agent consumption.
 
 ## Where it is ignored
@@ -17,7 +17,7 @@ Nothing says *which* commands support it — and the entire stated purpose of th
 **Worst case is `login`:** `main.ts:131` threads `json: opts.json` into `LoginOpts` (`tokens.ts:15`)
 and `cmdLogin` never reads it — dead plumbing that looks implemented.
 
-**Inconsistent within one noun:** `token list` (`tokens.ts:121`) *does* honour `--json`, while
+**Inconsistent within one noun:** `token list` (`tokens.ts:121`) _does_ honour `--json`, while
 `token create` and `token revoke` do not.
 
 ## Why it matters
@@ -33,4 +33,4 @@ JSON and has no signal that it asked for something unsupported.
 ## Related but distinct
 
 `.plans/s05-cli-crud` already covers `--json` emitting **arrays instead of NDJSON**. This issue is
-about the flag being *absent* on commands that advertise it. Both should be fixed in the same pass.
+about the flag being _absent_ on commands that advertise it. Both should be fixed in the same pass.

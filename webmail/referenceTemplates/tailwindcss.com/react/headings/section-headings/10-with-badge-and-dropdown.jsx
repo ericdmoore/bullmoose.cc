@@ -1,15 +1,20 @@
-import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { EllipsisVerticalIcon } from '@heroicons/react/20/solid'
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import { EllipsisVerticalIcon } from "@heroicons/react/20/solid";
 
 export default function Example() {
   return (
     <div className="border-b border-gray-200 pb-5 dark:border-white/10">
       <div className="sm:flex sm:items-baseline sm:justify-between">
         <div className="sm:w-0 sm:flex-1">
-          <h1 id="message-heading" className="text-base font-semibold text-gray-900 dark:text-white">
+          <h1
+            id="message-heading"
+            className="text-base font-semibold text-gray-900 dark:text-white"
+          >
             Full-Stack Developer
           </h1>
-          <p className="mt-1 truncate text-sm text-gray-500 dark:text-gray-400">Checkout and Payments Team</p>
+          <p className="mt-1 truncate text-sm text-gray-500 dark:text-gray-400">
+            Checkout and Payments Team
+          </p>
         </div>
 
         <div className="mt-4 flex items-center justify-between sm:mt-0 sm:ml-6 sm:shrink-0 sm:justify-start">
@@ -59,5 +64,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

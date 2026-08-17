@@ -20,5 +20,5 @@ export default function Example() {
         Days
       </button>
     </span>
-  )
+  );
 }

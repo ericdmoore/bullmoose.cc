@@ -86,9 +86,7 @@ export class SesRelay implements OutboundRelay {
  * path would be their SMTP endpoint via cloudflare:sockets — future.
  */
 export class CloudflareRelay implements OutboundRelay {
-  constructor(
-    private opts: { accountId: string; apiToken: string },
-  ) {}
+  constructor(private opts: { accountId: string; apiToken: string }) {}
 
   async send(rawMessage: Uint8Array, envelope: Envelope): Promise<SendResult> {
     const { default: PostalMime } = await import("postal-mime");
@@ -140,7 +138,7 @@ export class CloudflareRelay implements OutboundRelay {
       console.warn(`CloudflareRelay: permanent bounces for ${bounced.join(", ")}`);
     }
     return {
-      relayMessageId: `cf-${(data.result?.delivered?.length ?? 0)}d-${(data.result?.queued?.length ?? 0)}q-${crypto.randomUUID()}`,
+      relayMessageId: `cf-${data.result?.delivered?.length ?? 0}d-${data.result?.queued?.length ?? 0}q-${crypto.randomUUID()}`,
     };
   }
 }

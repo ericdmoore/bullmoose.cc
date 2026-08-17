@@ -27,7 +27,10 @@ export const RECIPES: Recipe[] = [
       "Grant it read access to your mail and it keeps a quiet CRM — who's who, birthdays, kids' names — inferred from what people already tell you.",
     example: [
       { role: "you", text: "Can't make it — it's little Timmy's 3rd birthday." },
-      { role: "agent", text: "Noted: Sarah's son Timothy, DOB this week (±3d, from her Mar 2 email). I'll surface gift ideas next year." },
+      {
+        role: "agent",
+        text: "Noted: Sarah's son Timothy, DOB this week (±3d, from her Mar 2 email). I'll surface gift ideas next year.",
+      },
     ],
   },
   {
@@ -47,7 +50,12 @@ export const RECIPES: Recipe[] = [
     purpose: "watch for openings",
     blurb:
       "It watches the hard-to-get spots (OpenTable, Resy, recreation.gov) and emails a direct booking link the moment something opens.",
-    example: [{ role: "agent", text: "6:45 opened at Tatsu tonight — book: [link]. Yosemite permits open in 5 months; I'll remind you." }],
+    example: [
+      {
+        role: "agent",
+        text: "6:45 opened at Tatsu tonight — book: [link]. Yosemite permits open in 5 months; I'll remind you.",
+      },
+    ],
   },
   {
     addr: "news",
@@ -63,7 +71,12 @@ export const RECIPES: Recipe[] = [
     purpose: "screen cold senders",
     blurb:
       "Front your main inbox: unsolicited senders get a polite human-check first. No reply, no pass — and the address gets filtered.",
-    example: [{ role: "agent", text: "Eric's assistant here — I couldn't tell if a human sent this. Mind sharing your name?" }],
+    example: [
+      {
+        role: "agent",
+        text: "Eric's assistant here — I couldn't tell if a human sent this. Mind sharing your name?",
+      },
+    ],
   },
   {
     addr: "newsletters",

@@ -27,5 +27,5 @@ export default function Example() {
         className="inline-block size-14 rounded-full outline -outline-offset-1 outline-black/5 dark:outline-white/10"
       />
     </>
-  )
+  );
 }

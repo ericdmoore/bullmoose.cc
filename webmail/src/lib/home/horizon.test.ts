@@ -86,7 +86,9 @@ describe("the two clocks stay DISTINCT (s07 §T0)", () => {
 
   it("a PENDING proposal is an 'expiring' item — its deadline clock, never the hold", () => {
     const p = proposal({ id: "pb", status: "pending", ...both });
-    expect(expiringItems([p], NOW, horizonEnd(NOW), ZONE).map((i) => i.id)).toEqual(["expiring:pb"]);
+    expect(expiringItems([p], NOW, horizonEnd(NOW), ZONE).map((i) => i.id)).toEqual([
+      "expiring:pb",
+    ]);
     expect(holdItems([p], NOW, horizonEnd(NOW), ZONE)).toEqual([]);
     const item = expiringItems([p], NOW, horizonEnd(NOW), ZONE)[0]!;
     expect(item.clockLabel).toBe("expires in 35m");
@@ -94,7 +96,12 @@ describe("the two clocks stay DISTINCT (s07 §T0)", () => {
   });
 
   it("a HELD proposal is a 'hold' item — its retraction clock, never the deadline", () => {
-    const p = proposal({ id: "hb", status: "held", decidedAt: new Date(NOW - 2 * MIN).toISOString(), ...both });
+    const p = proposal({
+      id: "hb",
+      status: "held",
+      decidedAt: new Date(NOW - 2 * MIN).toISOString(),
+      ...both,
+    });
     expect(holdItems([p], NOW, horizonEnd(NOW), ZONE).map((i) => i.id)).toEqual(["hold:hb"]);
     expect(expiringItems([p], NOW, horizonEnd(NOW), ZONE)).toEqual([]);
     const item = holdItems([p], NOW, horizonEnd(NOW), ZONE)[0]!;
@@ -104,7 +111,12 @@ describe("the two clocks stay DISTINCT (s07 §T0)", () => {
   });
 
   it("a hold item's label never claims a send even once the window has lapsed", () => {
-    const p = proposal({ id: "lapsed", status: "held", decidedAt: new Date(NOW - 6 * MIN).toISOString(), holdUntil: new Date(NOW - MIN).toISOString() });
+    const p = proposal({
+      id: "lapsed",
+      status: "held",
+      decidedAt: new Date(NOW - 6 * MIN).toISOString(),
+      holdUntil: new Date(NOW - MIN).toISOString(),
+    });
     const item = holdItems([p], NOW, horizonEnd(NOW), ZONE)[0]!;
     expect(item.clockLabel).toContain("still not sent");
     expect(item.clockLabel).toContain("s03.D T2");
@@ -113,13 +125,23 @@ describe("the two clocks stay DISTINCT (s07 §T0)", () => {
 
 describe("horizon windowing", () => {
   it("excludes a pending proposal whose deadline is beyond the horizon", () => {
-    const far = proposal({ id: "far", status: "pending", expiresAt: new Date(NOW + 5 * DAY).toISOString() });
+    const far = proposal({
+      id: "far",
+      status: "pending",
+      expiresAt: new Date(NOW + 5 * DAY).toISOString(),
+    });
     expect(expiringItems([far], NOW, horizonEnd(NOW), ZONE)).toEqual([]);
   });
 
   it("includes a pending proposal expiring inside the horizon", () => {
-    const near = proposal({ id: "near", status: "pending", expiresAt: new Date(NOW + 6 * HOUR).toISOString() });
-    expect(expiringItems([near], NOW, horizonEnd(NOW), ZONE).map((i) => i.id)).toEqual(["expiring:near"]);
+    const near = proposal({
+      id: "near",
+      status: "pending",
+      expiresAt: new Date(NOW + 6 * HOUR).toISOString(),
+    });
+    expect(expiringItems([near], NOW, horizonEnd(NOW), ZONE).map((i) => i.id)).toEqual([
+      "expiring:near",
+    ]);
   });
 
   it("ignores proposals with no deadline at all — no invented clock", () => {
@@ -180,8 +202,17 @@ describe("lookingAhead — one chronological list across realms", () => {
       } satisfies Occurrence,
     ];
     const proposals = [
-      proposal({ id: "expiring-soon", status: "pending", expiresAt: new Date(NOW + 2 * HOUR).toISOString() }),
-      proposal({ id: "held-now", status: "held", decidedAt: new Date(NOW - MIN).toISOString(), holdUntil: new Date(NOW + 4 * MIN).toISOString() }),
+      proposal({
+        id: "expiring-soon",
+        status: "pending",
+        expiresAt: new Date(NOW + 2 * HOUR).toISOString(),
+      }),
+      proposal({
+        id: "held-now",
+        status: "held",
+        decidedAt: new Date(NOW - MIN).toISOString(),
+        holdUntil: new Date(NOW + 4 * MIN).toISOString(),
+      }),
     ];
     const items = lookingAhead({ proposals, occurrences, viewerZone: ZONE, now: NOW });
     // 08-11: hold (12:04), expiring (14:00), event (15:00); then 08-12 all-day.

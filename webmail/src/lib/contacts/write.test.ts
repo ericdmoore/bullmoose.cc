@@ -25,7 +25,11 @@ const withDemo = (opts = {}) => {
 describe("card writes", () => {
   it("creates a card and hands back its server-minted id", async () => {
     const { client, backend } = withDemo();
-    const form = { ...blankForm(), full: "New Person", emails: [{ ...blankEntry(), value: "new@x.test" }] };
+    const form = {
+      ...blankForm(),
+      full: "New Person",
+      emails: [{ ...blankEntry(), value: "new@x.test" }],
+    };
     const result = await createCard(client, "acct-fake", cardCreateSpec(form, "ab-personal"));
     expect(result.error).toBeUndefined();
     expect(result.id).toBeTruthy();

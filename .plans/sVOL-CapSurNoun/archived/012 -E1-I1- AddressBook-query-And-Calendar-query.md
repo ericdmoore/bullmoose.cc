@@ -1,19 +1,19 @@
 # 012 -E1-I1- `AddressBook/query` + `Calendar/query`
 
-| | |
-|---|---|
-| **Kind** | capability |
-| **Effort** | **E1** — two in-memory methods over reads that already exist, no schema change |
-| **Impact** | **I1** — human-verifiable, unlocks nothing (contested — see *Why these grades*) |
-| **Owner** | `sVOL` |
-| **Depends on** | — |
-| **Status** | **wontfix** — the specs define neither method (see *Resolution* below) |
+|                |                                                                                 |
+| -------------- | ------------------------------------------------------------------------------- |
+| **Kind**       | capability                                                                      |
+| **Effort**     | **E1** — two in-memory methods over reads that already exist, no schema change  |
+| **Impact**     | **I1** — human-verifiable, unlocks nothing (contested — see _Why these grades_) |
+| **Owner**      | `sVOL`                                                                          |
+| **Depends on** | —                                                                               |
+| **Status**     | **wontfix** — the specs define neither method (see _Resolution_ below)          |
 
 ## Resolution (2026-08 — verified against the RFC text)
 
 **Both `/query` methods are wontfix. Neither noun's `/query` exists in the specification,
 so building it would invent non-standard JMAP surface — not close a gap.** Open Question #1
-(*"these methods may not exist in the specs"*) was the single blocking check and it is now
+(_"these methods may not exist in the specs"_) was the single blocking check and it is now
 answered from the authoritative source, confirming the doubt the author recorded from
 `contacts.ts:25-26`.
 
@@ -41,14 +41,15 @@ There is no `Calendar/query`. The item type does have one: §5.11 `CalendarEvent
 deliberate in the specs, not an accidental omission: both specs give the high-cardinality item
 type (`ContactCard`, `CalendarEvent`) a `/query` and withhold it from the low-cardinality
 container (`AddressBook`, `Calendar`). The repo's existing surface — `AddressBook/get·set·changes`
-+ `ContactCard/query`, and the exact mirror on the calendar side — is therefore already the
-complete, conformant set. `Mailbox/query` is not a counter-precedent: it exists because RFC 8621
-§2.3 explicitly defines it. No spec defines these two.
+
+- `ContactCard/query`, and the exact mirror on the calendar side — is therefore already the
+  complete, conformant set. `Mailbox/query` is not a counter-precedent: it exists because RFC 8621
+  §2.3 explicitly defines it. No spec defines these two.
 
 **Decision, per noun (the unit file split them deliberately):**
 
 - **`AddressBook/query`: do not build.** Not in RFC 9610. The grant-filtering concern in
-  *What to build* is moot — there is no method to attach it to.
+  _What to build_ is moot — there is no method to attach it to.
 - **`Calendar/query`: do not build.** Not in calendars-27.
 
 No code was written. No `methods/index.ts` registration was added. `services/jmap` is unchanged;
@@ -73,7 +74,7 @@ grid is meant to be exhaustive, and an exhaustive grid surfaces cells that are g
 pattern-completion sense without being gaps in the something-is-broken sense. An account has one
 address book and one calendar unless the user goes out of their way; `/get` with `ids: null`
 returns the whole set in one call, and both existing clients already filter that set in
-JavaScript. Nothing is blocked. Nothing is slow. Read *What to build → When it would matter*
+JavaScript. Nothing is blocked. Nothing is slow. Read _What to build → When it would matter_
 before picking this up; if none of those conditions hold, leave the unit in the ledger as
 evidence that the cell was considered and rejected.
 
@@ -88,16 +89,16 @@ they are one unit because they are the same 36 lines twice.
 
 **I1 — and I am not confident.** The rubric's two factors (`readme.md:84-88`):
 
-- *Unlocks other work: **no**.* No unit in `_index.md` depends on `012`, and I could not
+- _Unlocks other work: **no**._ No unit in `_index.md` depends on `012`, and I could not
   construct a plausible future one. Both container sets are already reachable. This is the
   clear half of the grade.
-- *Human can verify: **arguably not**, which would make this `I0`.* `readme.md:92-96` is harsh
+- _Human can verify: **arguably not**, which would make this `I0`._ `readme.md:92-96` is harsh
   on purpose: verification means a non-engineer confirming it through a normal interface, and
   "`curl` returning correct JSON is **not** human-verifiable." Shipped alone, `AddressBook/query`
   is observable only by an engineer with a JMAP client. Rewiring `bullmoose contacts list` to
   call `/query` instead of `/get` changes nothing a human sees — same books, same order.
 
-  The `I1` grade survives only if the unit ships a filter a human can actually *drive* — e.g.
+  The `I1` grade survives only if the unit ships a filter a human can actually _drive_ — e.g.
   `bullmoose contacts books --shared` or `--name <substring>`, where the person types a
   constraint and watches the list shrink. That is one more CLI flag, in the spirit of
   `readme.md:110`. **Without it, grade this `I0`.** I left the ledger at `I1` on the assumption
@@ -184,7 +185,7 @@ return { accountId, queryState, canCalculateChanges: false, position, ids, [tota
 (`packages/mailstore/sql/data-plane.sql:159-171` and `:206-219`): `name` (substring,
 case-insensitive), `isSubscribed`, `isDefault`. `AddressBook` additionally has the sharing
 facade — a `isShared` / `hasShareWith` condition is the one filter with genuine value, because
-it is the only property a client cannot cheaply derive from `/get` for a *sharee* (they read
+it is the only property a client cannot cheaply derive from `/get` for a _sharee_ (they read
 `shareWith` as `null` per RFC 9670, enforced at `contacts.ts:81`).
 
 **Sort properties**: `name`, `sortOrder`. Both are columns; the calendar row also has `color`
@@ -197,8 +198,8 @@ precedent for doing the same here rather than writing a general filter evaluator
 
 **Mirror the grant restriction on the contacts side.** `AddressBook/get` filters to
 `allowedBookIds(access, "read")` (`contacts.ts:72,77`) and `ContactCard/query` passes
-`restrictToBooks` (`contacts.ts:545`). A `/query` that skips this leaks the *existence and
-names* of books a sharee cannot read. **This is the only place in this unit where a mistake has
+`restrictToBooks` (`contacts.ts:545`). A `/query` that skips this leaks the _existence and
+names_ of books a sharee cannot read. **This is the only place in this unit where a mistake has
 a security consequence**, and it is the reason not to treat the two halves as symmetric —
 `Calendar` has no equivalent grant filter in `Calendar/get` (`calendars.ts:57-72`) today.
 
@@ -239,7 +240,7 @@ wrote down get rediscovered expensively.
 1. `bullmoose contacts books --name work` (or whatever the driving flag ends up being) prints a
    filtered list a person typed the constraint for. Without a human-drivable filter this unit
    has no done-when that satisfies `readme.md:92-96`, and should be regraded `I0` — see
-   *Why these grades*.
+   _Why these grades_.
 2. `queryState` returned by both new methods **equals** the `state` returned by the
    corresponding `/get` on the same unchanged account, and **changes** after an
    `AddressBook/set` / `Calendar/set` write. This is the read-side form of the choreography
@@ -280,14 +281,14 @@ wrote down get rediscovered expensively.
 
 ## Open questions / where this could be wrong
 
-1. **✅ RESOLVED — CONFIRMED, and it decides the unit (see *Resolution* at top).** The methods
+1. **✅ RESOLVED — CONFIRMED, and it decides the unit (see _Resolution_ at top).** The methods
    do **not** exist in the specs: RFC 9610 §2 defines no `AddressBook/query`,
    `draft-ietf-jmap-calendars-27` §4 defines no `Calendar/query`. This is a vendor extension,
    not a gap, so the unit is **wontfix**. The rest of this question, preserved below, is what
    prompted the check. **⚠️ These methods may not exist in the specs, which would make this a
    vendor extension rather than a gap.** The repo's own doc comment at
    `services/jmap/src/methods/contacts.ts:25-26`
-   enumerates the RFC 9610 surface as *"AddressBook/get·set·changes, ContactCard/get·set·query·changes"*
+   enumerates the RFC 9610 surface as _"AddressBook/get·set·changes, ContactCard/get·set·query·changes"_
    — i.e. **the author's reading is that RFC 9610 defines no `AddressBook/query`**, and the same
    omission pattern holds for `Calendar` under draft-ietf-jmap-calendars. `Mailbox/query` exists
    because RFC 8621 §2.3 defines it; containers in the newer specs may deliberately not have
@@ -298,14 +299,14 @@ wrote down get rediscovered expensively.
    most important thing for a reviewer with spec access to check, and it should be checked
    before any code is written.**
 2. **The `I1` grade leans entirely on a CLI flag I described in one sentence.** See
-   *Why these grades*. If the unit ships as two JMAP methods and nothing else, it is `I0` by the
+   _Why these grades_. If the unit ships as two JMAP methods and nothing else, it is `I0` by the
    `readme.md:96` line, and I would not argue.
 3. **The two halves are not really one unit.** `AddressBook/query` has a grant-filtering
    requirement (`contacts.ts:72,77`) that `Calendar/query` has no analogue for — `Calendar/get`
    applies no book-style restriction at `calendars.ts:57-72`. I bundled them because the code is
    the same shape, but they have different risk profiles and a reviewer could reasonably split
    them, or build only the contacts half.
-4. **I did not check whether `Calendar` *should* have a grant filter.** `Calendar/get`
+4. **I did not check whether `Calendar` _should_ have a grant filter.** `Calendar/get`
    (`calendars.ts:57-72`) does not call anything like `allowedBookIds`, while `AddressBook/get`
    does. That is either correct (calendar sharing is not implemented yet) or a pre-existing
    hole. Either way it is **not this unit's job**, but if it is a hole, adding `Calendar/query`

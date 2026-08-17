@@ -153,10 +153,7 @@ export async function getShareRecord(
  *    links — and "the listing quietly omitted the leaked one" is the specific
  *    way this feature would be worse than useless.
  */
-export async function listShareRecords(
-  kv: KVNamespace,
-  accountId: string,
-): Promise<ShareRecord[]> {
+export async function listShareRecords(kv: KVNamespace, accountId: string): Promise<ShareRecord[]> {
   const prefix = accountPrefix(accountId);
   const out: ShareRecord[] = [];
   let cursor: string | undefined;

@@ -1,16 +1,27 @@
 const settings = [
-  { id: 'public', name: 'Public access', description: 'This project would be available to anyone who has the link' },
   {
-    id: 'private-to-project-members',
-    name: 'Private to project members',
-    description: 'Only members of this project would be able to access',
+    id: "public",
+    name: "Public access",
+    description: "This project would be available to anyone who has the link",
   },
-  { id: 'private-to-you', name: 'Private to you', description: 'You are the only one able to access this project' },
-]
+  {
+    id: "private-to-project-members",
+    name: "Private to project members",
+    description: "Only members of this project would be able to access",
+  },
+  {
+    id: "private-to-you",
+    name: "Private to you",
+    description: "You are the only one able to access this project",
+  },
+];
 
 export default function Example() {
   return (
-    <fieldset aria-label="Privacy setting" className="-space-y-px rounded-md bg-white dark:bg-gray-800/50">
+    <fieldset
+      aria-label="Privacy setting"
+      className="-space-y-px rounded-md bg-white dark:bg-gray-800/50"
+    >
       {settings.map((setting) => (
         <label
           key={setting.id}
@@ -20,7 +31,7 @@ export default function Example() {
         >
           <input
             defaultValue={setting.id}
-            defaultChecked={setting.id === 'public'}
+            defaultChecked={setting.id === "public"}
             name="privacy-setting"
             type="radio"
             className="relative mt-0.5 size-4 shrink-0 appearance-none rounded-full border border-gray-300 bg-white before:absolute before:inset-1 before:rounded-full before:bg-white not-checked:before:hidden checked:border-indigo-600 checked:bg-indigo-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:border-gray-300 disabled:bg-gray-100 disabled:before:bg-gray-400 dark:border-white/10 dark:bg-white/5 dark:checked:border-indigo-500 dark:checked:bg-indigo-500 dark:focus-visible:outline-indigo-500 dark:disabled:border-white/5 dark:disabled:bg-white/10 dark:disabled:before:bg-white/20 forced-colors:appearance-auto forced-colors:before:hidden"
@@ -36,5 +47,5 @@ export default function Example() {
         </label>
       ))}
     </fieldset>
-  )
+  );
 }

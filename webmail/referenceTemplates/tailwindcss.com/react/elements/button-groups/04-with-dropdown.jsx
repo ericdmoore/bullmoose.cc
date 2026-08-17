@@ -1,11 +1,11 @@
-import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { ChevronDownIcon } from '@heroicons/react/20/solid'
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import { ChevronDownIcon } from "@heroicons/react/20/solid";
 
 const items = [
-  { name: 'Save and schedule', href: '#' },
-  { name: 'Save and publish', href: '#' },
-  { name: 'Export PDF', href: '#' },
-]
+  { name: "Save and schedule", href: "#" },
+  { name: "Save and publish", href: "#" },
+  { name: "Export PDF", href: "#" },
+];
 
 export default function Example() {
   return (
@@ -40,5 +40,5 @@ export default function Example() {
         </MenuItems>
       </Menu>
     </div>
-  )
+  );
 }

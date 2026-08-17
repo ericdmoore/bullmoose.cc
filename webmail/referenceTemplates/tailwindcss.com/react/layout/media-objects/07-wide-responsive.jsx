@@ -16,10 +16,10 @@ export default function Example() {
       <div>
         <h4 className="text-lg font-bold text-gray-900 dark:text-white">Lorem ipsum</h4>
         <p className="mt-1 text-gray-500 dark:text-gray-400">
-          Repudiandae sint consequuntur vel. Amet ut nobis explicabo numquam expedita quia omnis voluptatem. Minus
-          quidem ipsam quia iusto.
+          Repudiandae sint consequuntur vel. Amet ut nobis explicabo numquam expedita quia omnis
+          voluptatem. Minus quidem ipsam quia iusto.
         </p>
       </div>
     </div>
-  )
+  );
 }

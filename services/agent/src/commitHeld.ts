@@ -27,7 +27,9 @@ export async function commitHeldProposals(env: Env): Promise<void> {
   };
   const { committed, failed } = await commitDueHeldProposals(ctx);
   if (committed.length > 0) {
-    console.log(`hold-tray commit: ${committed.length} proposal(s) egressed — ${committed.join(", ")}`);
+    console.log(
+      `hold-tray commit: ${committed.length} proposal(s) egressed — ${committed.join(", ")}`,
+    );
   }
   for (const f of failed) {
     // Loud, per row: a failed commit stays `held` and retries next sweep, so

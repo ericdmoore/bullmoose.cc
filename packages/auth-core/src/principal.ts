@@ -101,12 +101,13 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
   const parsed = parseToken(raw);
   if (!parsed) return null;
 
-  const row = await db.prepare(
-    `SELECT t.secret_hash, t.scopes, t.expires_at, t.last_used_at,
+  const row = await db
+    .prepare(
+      `SELECT t.secret_hash, t.scopes, t.expires_at, t.last_used_at,
             t.principal_id, p.login_email
      FROM tokens t JOIN principals p ON p.id = t.principal_id
      WHERE t.id = ? AND t.kind = 'bearer'`,
-  )
+    )
     .bind(parsed.id)
     .first<{
       secret_hash: string;
@@ -126,9 +127,7 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
   // Throttled liveness bookkeeping — one small write per token per window.
   const now = Date.now();
   if (!row.last_used_at || now - row.last_used_at > LAST_USED_WRITE_INTERVAL_MS) {
-    await db.prepare(`UPDATE tokens SET last_used_at = ? WHERE id = ?`)
-      .bind(now, parsed.id)
-      .run();
+    await db.prepare(`UPDATE tokens SET last_used_at = ? WHERE id = ?`).bind(now, parsed.id).run();
   }
 
   return {
@@ -147,14 +146,18 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
  * `tokens` row. What must NOT fork is which accounts that human reaches and
  * on what basis — so the reach is computed here, once, for both credentials.
  */
-export async function reachableAccounts(db: D1Database, principalId: string): Promise<AccountAccess[]> {
+export async function reachableAccounts(
+  db: D1Database,
+  principalId: string,
+): Promise<AccountAccess[]> {
   // `deleted_at IS NULL` is what makes `DELETE /accounts/{id}` mean anything:
   // the tombstone is a soft delete (sVOL 008), so without this filter a
   // "deleted" account keeps authenticating and keeps serving its mail.
-  const { results: accountRows } = await db.prepare(
-    `SELECT id, tenant_id, display_name FROM accounts
+  const { results: accountRows } = await db
+    .prepare(
+      `SELECT id, tenant_id, display_name FROM accounts
      WHERE principal_id = ? AND deleted_at IS NULL ORDER BY created_at`,
-  )
+    )
     .bind(principalId)
     .all<{ id: string; tenant_id: string; display_name: string }>();
 
@@ -175,15 +178,16 @@ export async function reachableAccounts(db: D1Database, principalId: string): Pr
     // query can still reconstruct who could reach this account last Tuesday. This
     // is a resolution-layer change only — `authorizeAccount` is untouched, so the
     // authz DECISION is identical.
-    const { results: grantRows } = await db.prepare(
-      `SELECT g.id, g.target_account_id, g.scopes, g.collection, g.collection_id,
+    const { results: grantRows } = await db
+      .prepare(
+        `SELECT g.id, g.target_account_id, g.scopes, g.collection, g.collection_id,
               a.tenant_id, a.display_name
        FROM grants g JOIN accounts a ON a.id = g.target_account_id
        WHERE g.grantee_account_id IN (${marks})
          AND a.deleted_at IS NULL
          AND g.revoked_at IS NULL
          AND (g.expires_at IS NULL OR g.expires_at > ?)`,
-    )
+      )
       .bind(...accounts.map((a) => a.accountId), now)
       .all<{
         id: string;
@@ -245,7 +249,8 @@ export async function principalFromGrant(
   principalId: string,
   scopes: string[],
 ): Promise<Principal | null> {
-  const row = await db.prepare(`SELECT id, login_email FROM principals WHERE id = ?`)
+  const row = await db
+    .prepare(`SELECT id, login_email FROM principals WHERE id = ?`)
     .bind(principalId)
     .first<{ id: string; login_email: string }>();
   if (!row) return null;
@@ -326,7 +331,11 @@ export function authorizeAccount(
   if (access.granted) {
     const matching = matchingGrants(access, scope, domain);
     if (matching.length === 0) {
-      return { ok: false, reason: "forbidden", detail: `no grant covers "${scope}" on this account` };
+      return {
+        ok: false,
+        reason: "forbidden",
+        detail: `no grant covers "${scope}" on this account`,
+      };
     }
     return { ok: true, access, auditGrant: matching[0]! };
   }
@@ -384,12 +393,13 @@ export async function resolveBureauGrant(
   now = Date.now(),
 ): Promise<BureauGrant | null> {
   if (!isBureauVerb(verb)) return null;
-  const row = await db.prepare(
-    `SELECT id, expires_at FROM bureau_grants
+  const row = await db
+    .prepare(
+      `SELECT id, expires_at FROM bureau_grants
      WHERE principal_id = ? AND cred_name = ? AND verb = ?
        AND revoked_at IS NULL
        AND (expires_at IS NULL OR expires_at > ?)`,
-  )
+    )
     .bind(principalId, credRef, verb, now)
     .first<{ id: string; expires_at: number | null }>();
   if (!row) return null;

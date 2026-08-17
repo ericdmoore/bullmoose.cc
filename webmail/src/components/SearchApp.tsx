@@ -185,8 +185,7 @@ export default function SearchApp({ client: injected }: Props) {
         {busy ? <p class="muted">Searching…</p> : null}
         {!busy && !response ? (
           <p class="muted search-hint">
-            Results appear per realm — the note above says what each realm can and
-            cannot answer.
+            Results appear per realm — the note above says what each realm can and cannot answer.
           </p>
         ) : null}
         {!busy && response

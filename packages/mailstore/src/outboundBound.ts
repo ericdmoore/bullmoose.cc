@@ -109,9 +109,7 @@ export async function outboundRefusal(
     return "fail-closed: no governing book (agent_bindings.recipients_book_id is unset)";
   }
   const bookId = binding.recipients_book_id;
-  const book = await env.DB.prepare(
-    `SELECT id FROM address_books WHERE account_id = ? AND id = ?`,
-  )
+  const book = await env.DB.prepare(`SELECT id FROM address_books WHERE account_id = ? AND id = ?`)
     .bind(job.account_id, bookId)
     .first<{ id: string }>();
   if (!book) return `fail-closed: governing book ${bookId} does not exist`;

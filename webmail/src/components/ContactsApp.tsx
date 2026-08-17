@@ -349,7 +349,11 @@ export default function ContactsApp({ client: injected }: Props) {
     setBusy(true);
     try {
       if (view === "new") {
-        const result = await createCard(client, accountId, cardCreateSpec(form, formBook || undefined));
+        const result = await createCard(
+          client,
+          accountId,
+          cardCreateSpec(form, formBook || undefined),
+        );
         if (report(result, null, "Contact created.") && result.id) {
           setSelectedId(result.id);
           setView("detail");
@@ -408,7 +412,11 @@ export default function ContactsApp({ client: injected }: Props) {
     if (!name) return;
     setBusy(true);
     try {
-      const result = await createCard(client, accountId, groupCreateSpec(name, [], defaultTargetBook(books)?.id));
+      const result = await createCard(
+        client,
+        accountId,
+        groupCreateSpec(name, [], defaultTargetBook(books)?.id),
+      );
       if (report(result, null, `Group “${name}” created.`) && result.id) {
         setSelectedId(result.id);
         refresh();
@@ -558,9 +566,7 @@ export default function ContactsApp({ client: injected }: Props) {
       </p>
 
       {mode === "demo" ? (
-        <p class="banner">
-          Demo data — nobody here is real{modeReason ? ` (${modeReason})` : ""}.
-        </p>
+        <p class="banner">Demo data — nobody here is real{modeReason ? ` (${modeReason})` : ""}.</p>
       ) : null}
 
       {scopeNote ? <p class="banner banner-warn">{scopeNote}</p> : null}
@@ -772,7 +778,6 @@ export default function ContactsApp({ client: injected }: Props) {
               )}
             </section>
           </div>
-
         </main>
       </div>
 
@@ -884,7 +889,8 @@ function CardDetail(props: {
               class="join-group"
               onSubmit={(ev) => {
                 ev.preventDefault();
-                const id = (ev.currentTarget.elements.namedItem("group") as HTMLSelectElement).value;
+                const id = (ev.currentTarget.elements.namedItem("group") as HTMLSelectElement)
+                  .value;
                 const target = joinable.find((g) => g.id === id);
                 if (target) props.onJoinGroup(target);
               }}
@@ -1094,7 +1100,11 @@ function ContactForm(props: {
           ))}
         </fieldset>
       ))}
-      <button type="button" class="link-button" onClick={() => set({ addresses: [...form.addresses, blankAddress()] })}>
+      <button
+        type="button"
+        class="link-button"
+        onClick={() => set({ addresses: [...form.addresses, blankAddress()] })}
+      >
         Add address
       </button>
 

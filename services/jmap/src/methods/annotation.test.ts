@@ -14,14 +14,26 @@ const ACCOUNT = "a_eric";
 const TENANT = "t_bm";
 const ANCHOR = { realm: "Email", objectId: "e_1", span: [0, 12] };
 
-function harness(opts: { scopes?: string[]; agent?: { binding?: string; invocation?: string } } = {}) {
+function harness(
+  opts: { scopes?: string[]; agent?: { binding?: string; invocation?: string } } = {},
+) {
   const w = fakeEnv();
-  w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT, principalId: "p_eric", loginEmail: "eric@bullmoose.cc", displayName: "Eric" });
+  w.db.seedAccount({
+    accountId: ACCOUNT,
+    tenantId: TENANT,
+    principalId: "p_eric",
+    loginEmail: "eric@bullmoose.cc",
+    displayName: "Eric",
+  });
   const registry = new MethodRegistry<RequestContext>();
   registerAnnotationMethods(registry);
   const ctx: RequestContext = {
     env: w.env,
-    principal: { username: "eric@bullmoose.cc", scopes: opts.scopes ?? ["mail"], accounts: [{ accountId: ACCOUNT, tenantId: TENANT, name: "Eric" }] },
+    principal: {
+      username: "eric@bullmoose.cc",
+      scopes: opts.scopes ?? ["mail"],
+      accounts: [{ accountId: ACCOUNT, tenantId: TENANT, name: "Eric" }],
+    },
     ...(opts.agent ? { agent: opts.agent } : {}),
   };
   const call = <T = Record<string, unknown>>(method: string, args: Record<string, unknown>) =>
@@ -51,7 +63,9 @@ describe("Annotation/set — file a claim", () => {
     expect(id).toMatch(/^an_/);
     expect(res.created.c1!.status).toBe("open");
 
-    const got = await h.call<{ list: Array<Record<string, unknown>> }>("Annotation/get", { ids: null });
+    const got = await h.call<{ list: Array<Record<string, unknown>> }>("Annotation/get", {
+      ids: null,
+    });
     expect(got.list).toHaveLength(1);
     const a = got.list[0]!;
     expect(a.authorKind).toBe("human");
@@ -67,7 +81,9 @@ describe("Annotation/set — file a claim", () => {
     const res = await h.call<SetResult>("Annotation/set", {
       create: { e: commitment({ confidence: 0.8, rationale: "‘I’ll get it to you Friday’" }) },
     });
-    const got = await h.call<{ list: Array<Record<string, unknown>> }>("Annotation/get", { ids: [res.created.e!.id] });
+    const got = await h.call<{ list: Array<Record<string, unknown>> }>("Annotation/get", {
+      ids: [res.created.e!.id],
+    });
     const a = got.list[0]!;
     expect(a.authorKind).toBe("agent");
     expect(a.author).toBe("emily");
@@ -77,7 +93,9 @@ describe("Annotation/set — file a claim", () => {
 
   it("REFUSES an un-anchored claim — no comment without an object", async () => {
     const h = harness();
-    const res = await h.call<SetResult>("Annotation/set", { create: { bad: commitment({ anchor: undefined }) } });
+    const res = await h.call<SetResult>("Annotation/set", {
+      create: { bad: commitment({ anchor: undefined }) },
+    });
     expect(res.notCreated.bad?.description).toMatch(/anchor .* is required/);
     expect(Object.keys(res.created)).toEqual([]);
   });
@@ -107,62 +125,97 @@ describe("Annotation/set — close forward, and what a client may NOT do", () =>
   it("resolves an open annotation (it came true)", async () => {
     const h = harness();
     const id = await fileOne(h);
-    const res = await h.call<SetResult>("Annotation/set", { update: { [id]: { status: "resolved" } } });
+    const res = await h.call<SetResult>("Annotation/set", {
+      update: { [id]: { status: "resolved" } },
+    });
     expect(res.updated).toHaveProperty(id);
-    expect(h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!.status).toBe("resolved");
+    expect(
+      h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!
+        .status,
+    ).toBe("resolved");
   });
 
   it("dismisses an open annotation — the labeled negative", async () => {
     const h = harness();
     const id = await fileOne(h);
-    const res = await h.call<SetResult>("Annotation/set", { update: { [id]: { status: "dismissed" } } });
+    const res = await h.call<SetResult>("Annotation/set", {
+      update: { [id]: { status: "dismissed" } },
+    });
     expect(res.updated).toHaveProperty(id);
-    expect(h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!.status).toBe("dismissed");
+    expect(
+      h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!
+        .status,
+    ).toBe("dismissed");
   });
 
   it("REFUSES to rewrite the claim — the body is immutable, you move status", async () => {
     const h = harness();
     const id = await fileOne(h);
-    const res = await h.call<SetResult>("Annotation/set", { update: { [id]: { body: "actually, never mind" } } });
+    const res = await h.call<SetResult>("Annotation/set", {
+      update: { [id]: { body: "actually, never mind" } },
+    });
     expect(res.notUpdated[id]?.description).toMatch(/immutable/);
-    expect(h.w.db.query<{ body: string }>(`SELECT body FROM annotations WHERE id = '${id}'`)[0]!.body).toMatch(/load calc/);
+    expect(
+      h.w.db.query<{ body: string }>(`SELECT body FROM annotations WHERE id = '${id}'`)[0]!.body,
+    ).toMatch(/load calc/);
   });
 
   it("REFUSES an unknown status, and re-deciding a closed one", async () => {
     const h = harness();
     const id = await fileOne(h);
-    const bad = await h.call<SetResult>("Annotation/set", { update: { [id]: { status: "maybe" } } });
+    const bad = await h.call<SetResult>("Annotation/set", {
+      update: { [id]: { status: "maybe" } },
+    });
     expect(bad.notUpdated[id]?.description).toMatch(/status must be/);
 
     await h.call<SetResult>("Annotation/set", { update: { [id]: { status: "resolved" } } });
-    const again = await h.call<SetResult>("Annotation/set", { update: { [id]: { status: "dismissed" } } });
+    const again = await h.call<SetResult>("Annotation/set", {
+      update: { [id]: { status: "dismissed" } },
+    });
     expect(again.notUpdated[id]?.description).toMatch(/no open annotation/);
-    expect(h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!.status).toBe("resolved");
+    expect(
+      h.w.db.query<{ status: string }>(`SELECT status FROM annotations WHERE id = '${id}'`)[0]!
+        .status,
+    ).toBe("resolved");
   });
 });
 
 describe("Annotation/query — the live claims, filterable", () => {
   it("defaults to open; a terminal status is asked for explicitly", async () => {
     const h = harness();
-    const a = (await h.call<SetResult>("Annotation/set", { create: { a: commitment() } })).created.a!.id;
-    const b = (await h.call<SetResult>("Annotation/set", { create: { b: commitment() } })).created.b!.id;
+    const a = (await h.call<SetResult>("Annotation/set", { create: { a: commitment() } })).created
+      .a!.id;
+    const b = (await h.call<SetResult>("Annotation/set", { create: { b: commitment() } })).created
+      .b!.id;
     await h.call<SetResult>("Annotation/set", { update: { [b]: { status: "dismissed" } } });
 
     const open = await h.call<{ ids: string[] }>("Annotation/query", {});
     expect(open.ids).toEqual([a]);
-    const dismissed = await h.call<{ ids: string[] }>("Annotation/query", { filter: { status: "dismissed" } });
+    const dismissed = await h.call<{ ids: string[] }>("Annotation/query", {
+      filter: { status: "dismissed" },
+    });
     expect(dismissed.ids).toEqual([b]);
   });
 
   it("filters by class and by anchored objectId", async () => {
     const h = harness();
-    const c = (await h.call<SetResult>("Annotation/set", { create: { c: commitment({ class: "commitment" }) } })).created.c!.id;
-    await h.call<SetResult>("Annotation/set", { create: { t: commitment({ class: "task", anchor: { realm: "Email", objectId: "e_2" } }) } });
+    const c = (
+      await h.call<SetResult>("Annotation/set", {
+        create: { c: commitment({ class: "commitment" }) },
+      })
+    ).created.c!.id;
+    await h.call<SetResult>("Annotation/set", {
+      create: { t: commitment({ class: "task", anchor: { realm: "Email", objectId: "e_2" } }) },
+    });
 
-    const commitments = await h.call<{ ids: string[] }>("Annotation/query", { filter: { class: "commitment" } });
+    const commitments = await h.call<{ ids: string[] }>("Annotation/query", {
+      filter: { class: "commitment" },
+    });
     expect(commitments.ids).toEqual([c]);
 
-    const onE1 = await h.call<{ ids: string[] }>("Annotation/query", { filter: { objectId: "e_1" } });
+    const onE1 = await h.call<{ ids: string[] }>("Annotation/query", {
+      filter: { objectId: "e_1" },
+    });
     expect(onE1.ids).toEqual([c]);
   });
 });

@@ -165,9 +165,7 @@ export async function proposeMidBandHolds(env: Env): Promise<{ asked: number }> 
     // A shard that predates the alert columns, or any read failure: no ask.
     // The mail stays held and the next sweep tries again — this runs on a
     // cron, so degrading to silence costs a cycle, never a message.
-    console.error(
-      `mid-band sweep degraded to none (${err instanceof Error ? err.message : err})`,
-    );
+    console.error(`mid-band sweep degraded to none (${err instanceof Error ? err.message : err})`);
     return { asked: 0 };
   }
 
@@ -208,10 +206,7 @@ export async function proposeMidBandHolds(env: Env): Promise<{ asked: number }> 
 
 /** The bouncer binding the batch's holds came from — the carrier invocation
  * has to name one, and every hold in a tenant comes from the same doorman. */
-function bindingOf(
-  candidates: CandidateRow[],
-  held: HeldMessage[],
-): { id: string; name: string } {
+function bindingOf(candidates: CandidateRow[], held: HeldMessage[]): { id: string; name: string } {
   const first = candidates.find((c) => c.id === held[0]?.invocationId);
   return { id: first?.binding_id ?? "bouncer", name: first?.binding_name ?? "bouncer" };
 }
@@ -395,7 +390,12 @@ async function holdState(
   env: Env,
   accountId: string,
   emailId: string,
-): Promise<{ held: boolean; lastEvent: string | null; subject: string; receivedAt: number | null }> {
+): Promise<{
+  held: boolean;
+  lastEvent: string | null;
+  subject: string;
+  receivedAt: number | null;
+}> {
   try {
     const row = await env.DB.prepare(
       `SELECT
@@ -418,7 +418,12 @@ async function holdState(
         accountId,
         emailId,
       )
-      .first<{ held: number; last_event: string | null; subject: string | null; received_at: number | null }>();
+      .first<{
+        held: number;
+        last_event: string | null;
+        subject: string | null;
+        received_at: number | null;
+      }>();
     return {
       held: (row?.held ?? 0) > 0,
       lastEvent: row?.last_event ?? null,
@@ -426,15 +431,15 @@ async function holdState(
       receivedAt: row?.received_at ?? null,
     };
   } catch (err) {
-    console.error(`mid-band hold check failed for ${emailId}: ${err instanceof Error ? err.message : err}`);
+    console.error(
+      `mid-band hold check failed for ${emailId}: ${err instanceof Error ? err.message : err}`,
+    );
     return { held: false, lastEvent: null, subject: "", receivedAt: null };
   }
 }
 
 async function heldMailboxId(env: Env, accountId: string): Promise<string | null> {
-  const row = await env.DB.prepare(
-    `SELECT id FROM mailboxes WHERE account_id = ? AND role = ?`,
-  )
+  const row = await env.DB.prepare(`SELECT id FROM mailboxes WHERE account_id = ? AND role = ?`)
     .bind(accountId, QUARANTINE_ROLE)
     .first<{ id: string }>();
   return row?.id ?? null;

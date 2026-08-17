@@ -44,7 +44,11 @@ function id(): string {
  * happen — including on a shard whose schema predates this table, which must
  * keep issuing tokens rather than refusing to log in.
  */
-export async function recordConsent(db: MaybeDb, rec: ConsentRecord, now: number): Promise<string | null> {
+export async function recordConsent(
+  db: MaybeDb,
+  rec: ConsentRecord,
+  now: number,
+): Promise<string | null> {
   const rowId = id();
   try {
     await db

@@ -6,8 +6,8 @@ The claim is a **safety** claim, not just an accuracy one — someone reading it
 with `--allow` and believe the allowlist holds regardless of runtime.
 
 1. `docs/architecture/agent-integration.md:61` — soften "identical contract and are interchangeable"
-   to: *"both implement the same **claim protocol**; they do not currently honour the same binding
-   config — see `docs/agents/README.md`."*
+   to: _"both implement the same **claim protocol**; they do not currently honour the same binding
+   config — see `docs/agents/README.md`."_
 2. `docs/agents/README.md` — add an explicit block:
 
    > **What `bullmoose agent serve` does not honour.** The homelab runtime reads its own local
@@ -40,4 +40,4 @@ shipping. A projection (just the gates, not the prompt) may be the safer shape.
 - `agent.ts:156` matches on `bindingName` only; after this change it should also verify the binding
   is `enabled`.
 - The claim race itself is fine and well-designed (`services/agent/src/index.ts:116-122`) — this
-  issue is only about what happens *after* the claim.
+  issue is only about what happens _after_ the claim.

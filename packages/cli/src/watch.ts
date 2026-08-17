@@ -219,7 +219,9 @@ export async function watch(
     try {
       const stats = await sync(db, client, ch.account.accountId);
       if (stats.mode === "full") {
-        status(`${tag(ch)}full sync (${reason}): ${stats.created} messages, state ${stats.newState}`);
+        status(
+          `${tag(ch)}full sync (${reason}): ${stats.created} messages, state ${stats.newState}`,
+        );
       } else if (stats.created + stats.updated + stats.destroyed > 0) {
         status(
           `${tag(ch)}sync (${reason}): +${stats.created} ~${stats.updated} -${stats.destroyed}, state ${stats.newState}`,

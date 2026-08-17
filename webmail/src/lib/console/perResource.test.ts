@@ -101,9 +101,7 @@ describe("whoCould — the authorization set, reconstructed", () => {
 describe("parseAuditMethod covers all four shapes", () => {
   it("matches `bureau:` BEFORE the generic domain:scope fallthrough", () => {
     // Otherwise a credential use renders as a scope literally named "fetch:aws-mcp".
-    expect(parseAuditMethod("bureau:fetch:aws-mcp")).toBe(
-      "Bureau `fetch` on credential `aws-mcp`",
-    );
+    expect(parseAuditMethod("bureau:fetch:aws-mcp")).toBe("Bureau `fetch` on credential `aws-mcp`");
     expect(parseAuditMethod("bureau:oauth_token")).toBe("Bureau verb `oauth_token`");
   });
   it("handles mcp, jmap, and the multi-scope jmap form", () => {

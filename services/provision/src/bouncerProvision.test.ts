@@ -84,7 +84,11 @@ describe("POST /bouncer", () => {
     // Humans only: the agent principal (analyst@) is excluded structurally.
     expect(body.allowedSenders).toEqual([`dad@${DOMAIN}`, `mom@${DOMAIN}`]);
 
-    const binding = h.db.query<{ trigger_on: string; config_json: string; recipients_book_id: string }>(
+    const binding = h.db.query<{
+      trigger_on: string;
+      config_json: string;
+      recipients_book_id: string;
+    }>(
       `SELECT trigger_on, config_json, recipients_book_id FROM agent_bindings WHERE account_id = ? AND name = 'bouncer'`,
       body.accountId,
     )[0]!;
@@ -124,7 +128,9 @@ describe("POST /bouncer", () => {
   it("is idempotent: a second call reports the existing binding, writes nothing new", async () => {
     const h = harness();
     await seedHousehold(h);
-    const first = (await (await h.call("/bouncer", { tenantId: TENANT, domain: DOMAIN })).json()) as {
+    const first = (await (
+      await h.call("/bouncer", { tenantId: TENANT, domain: DOMAIN })
+    ).json()) as {
       bindingId: string;
     };
     const res = await h.call("/bouncer", { tenantId: TENANT, domain: DOMAIN });
@@ -141,7 +147,12 @@ describe("POST /bouncer", () => {
   it("refuses a tenant with no human principals — an empty allowedSenders would gate nobody", async () => {
     const h = harness();
     // Only an agent account exists.
-    await h.call("/accounts", { tenantId: TENANT, domain: DOMAIN, localpart: "analyst", displayName: "A" });
+    await h.call("/accounts", {
+      tenantId: TENANT,
+      domain: DOMAIN,
+      localpart: "analyst",
+      displayName: "A",
+    });
     await h.call("/agent-bindings", { email: `analyst@${DOMAIN}`, name: "allen" });
 
     const res = await h.call("/bouncer", { tenantId: TENANT, domain: DOMAIN });

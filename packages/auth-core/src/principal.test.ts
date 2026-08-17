@@ -42,12 +42,7 @@ describe("authorizeAccount — owned accounts", () => {
   });
 
   it('treats "mail" as a superset of every mail verb', () => {
-    const d = authorizeAccount(
-      principal({ scopes: ["mail"] }),
-      "a_eric",
-      "send",
-      "mail",
-    );
+    const d = authorizeAccount(principal({ scopes: ["mail"] }), "a_eric", "send", "mail");
     expect(d.ok).toBe(true);
   });
 
@@ -82,7 +77,12 @@ describe("authorizeAccount — grant-reached accounts", () => {
 
   it("forbids when the token has the scope but no grant covers it", () => {
     // token has draft; grant only read → token ∩ grant excludes draft.
-    const d = authorizeAccount(granted([grantRef({ scopes: ["read"] })]), "a_eric", "draft", "mail");
+    const d = authorizeAccount(
+      granted([grantRef({ scopes: ["read"] })]),
+      "a_eric",
+      "draft",
+      "mail",
+    );
     expect(d).toEqual({
       ok: false,
       reason: "forbidden",
@@ -141,7 +141,11 @@ describe("verifyBearer — a revoked grant stops resolving but its history survi
   /** Two accounts, a token for the grantee, and one grant onto the target. */
   async function seed(revokedAt: number | null) {
     const db = fakeD1();
-    db.seedAccount({ accountId: GRANTEE, principalId: "p_allen", loginEmail: "allen@bullmoose.cc" });
+    db.seedAccount({
+      accountId: GRANTEE,
+      principalId: "p_allen",
+      loginEmail: "allen@bullmoose.cc",
+    });
     db.seedAccount({ accountId: TARGET, principalId: "p_eric", loginEmail: "eric@bullmoose.cc" });
     const minted = await mintToken();
     db.seed("tokens", [

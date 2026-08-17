@@ -29,7 +29,9 @@ describe("the demo mirrors the server's refusals", () => {
     installContactsDemo(client);
     const result = (await client.requestOne("ContactCard/set", {
       accountId: "acct-fake",
-      create: { c0: { name: { full: "X" }, addressBookIds: { "ab-personal": true, "ab-work": true } } },
+      create: {
+        c0: { name: { full: "X" }, addressBookIds: { "ab-personal": true, "ab-work": true } },
+      },
     })) as { notCreated: Record<string, { properties?: string[] }> };
     expect(result.notCreated.c0?.properties).toEqual(["addressBookIds"]);
   });

@@ -3,7 +3,13 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HOOK_PREVIEW_MAX, hookPlan, legacyPlaceholders, runHook, type HookFields } from "./watch.js";
+import {
+  HOOK_PREVIEW_MAX,
+  hookPlan,
+  legacyPlaceholders,
+  runHook,
+  type HookFields,
+} from "./watch.js";
 
 /**
  * Regression suite for 006 -P1- `watch --exec` shell injection.
@@ -117,8 +123,12 @@ describe("hookPlan", () => {
 
   it("keeps the hook's stdout off the NDJSON stream under --json", () => {
     // 2 = the parent's stderr; stdout is a data stream when --json is on.
-    expect((hookPlan("true", fields(), { env: {}, json: true }).options.stdio as unknown[])[1]).toBe(2);
-    expect((hookPlan("true", fields(), { env: {}, json: false }).options.stdio as unknown[])[1]).toBe("inherit");
+    expect(
+      (hookPlan("true", fields(), { env: {}, json: true }).options.stdio as unknown[])[1],
+    ).toBe(2);
+    expect(
+      (hookPlan("true", fields(), { env: {}, json: false }).options.stdio as unknown[])[1],
+    ).toBe("inherit");
   });
 });
 

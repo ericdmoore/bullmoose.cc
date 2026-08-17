@@ -157,6 +157,9 @@ function bump(win: Window | null, now: number): Window {
  * demo-keys worker documents on its record writes).
  */
 function write(kv: KVNamespace, key: string, win: Window, now: number): Promise<void> {
-  const expiration = Math.max(Math.ceil(win.resetAt / 1000), Math.floor(now / 1000) + KV_MIN_EXPIRY_S);
+  const expiration = Math.max(
+    Math.ceil(win.resetAt / 1000),
+    Math.floor(now / 1000) + KV_MIN_EXPIRY_S,
+  );
   return kv.put(key, JSON.stringify(win), { expiration });
 }

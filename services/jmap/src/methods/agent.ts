@@ -364,7 +364,15 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
              (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at)
            VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
         )
-          .bind(invId, access.accountId, binding.id, binding.name, emailId, JSON.stringify(context), createdAt)
+          .bind(
+            invId,
+            access.accountId,
+            binding.id,
+            binding.name,
+            emailId,
+            JSON.stringify(context),
+            createdAt,
+          )
           .run();
       }
       created[cid] = {
@@ -528,9 +536,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
         );
         continue;
       }
-      await ctx.env.DB.prepare(
-        `DELETE FROM agent_invocations WHERE account_id = ? AND id = ?`,
-      )
+      await ctx.env.DB.prepare(`DELETE FROM agent_invocations WHERE account_id = ? AND id = ?`)
         .bind(access.accountId, id)
         .run();
       destroyed.push(id);

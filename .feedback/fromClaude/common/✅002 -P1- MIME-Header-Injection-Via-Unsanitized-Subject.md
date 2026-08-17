@@ -12,6 +12,7 @@ So a value containing `\r\n` injects arbitrary additional headers — or, with a
 forged body.
 
 Same shape in two more places:
+
 - `formatAddress` (`:101-109`) interpolates `a.email` unescaped.
 - `extraHeaders` (`:46`) is verbatim by design.
 

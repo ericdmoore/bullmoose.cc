@@ -1,26 +1,41 @@
-import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { EllipsisHorizontalIcon } from '@heroicons/react/20/solid'
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import { EllipsisHorizontalIcon } from "@heroicons/react/20/solid";
 
 const clients = [
   {
     id: 1,
-    name: 'Tuple',
-    imageUrl: 'https://tailwindcss.com/plus-assets/img/logos/48x48/tuple.svg',
-    lastInvoice: { date: 'December 13, 2022', dateTime: '2022-12-13', amount: '$2,000.00', status: 'Overdue' },
+    name: "Tuple",
+    imageUrl: "https://tailwindcss.com/plus-assets/img/logos/48x48/tuple.svg",
+    lastInvoice: {
+      date: "December 13, 2022",
+      dateTime: "2022-12-13",
+      amount: "$2,000.00",
+      status: "Overdue",
+    },
   },
   {
     id: 2,
-    name: 'SavvyCal',
-    imageUrl: 'https://tailwindcss.com/plus-assets/img/logos/48x48/savvycal.svg',
-    lastInvoice: { date: 'January 22, 2023', dateTime: '2023-01-22', amount: '$14,000.00', status: 'Paid' },
+    name: "SavvyCal",
+    imageUrl: "https://tailwindcss.com/plus-assets/img/logos/48x48/savvycal.svg",
+    lastInvoice: {
+      date: "January 22, 2023",
+      dateTime: "2023-01-22",
+      amount: "$14,000.00",
+      status: "Paid",
+    },
   },
   {
     id: 3,
-    name: 'Reform',
-    imageUrl: 'https://tailwindcss.com/plus-assets/img/logos/48x48/reform.svg',
-    lastInvoice: { date: 'January 23, 2023', dateTime: '2023-01-23', amount: '$7,600.00', status: 'Paid' },
+    name: "Reform",
+    imageUrl: "https://tailwindcss.com/plus-assets/img/logos/48x48/reform.svg",
+    lastInvoice: {
+      date: "January 23, 2023",
+      dateTime: "2023-01-23",
+      amount: "$7,600.00",
+      status: "Paid",
+    },
   },
-]
+];
 
 export default function Example() {
   return (
@@ -76,18 +91,20 @@ export default function Example() {
             <div className="flex justify-between gap-x-4 py-3">
               <dt className="text-gray-500 dark:text-gray-400">Amount</dt>
               <dd className="flex items-start gap-x-2">
-                <div className="font-medium text-gray-900 dark:text-white">{client.lastInvoice.amount}</div>
-                {client.lastInvoice.status == 'Paid' ? (
+                <div className="font-medium text-gray-900 dark:text-white">
+                  {client.lastInvoice.amount}
+                </div>
+                {client.lastInvoice.status == "Paid" ? (
                   <div className="rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-600/20 ring-inset dark:bg-green-500/10 dark:text-green-500 dark:ring-green-500/10">
                     {client.lastInvoice.status}
                   </div>
                 ) : null}
-                {client.lastInvoice.status == 'Withdraw' ? (
+                {client.lastInvoice.status == "Withdraw" ? (
                   <div className="rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-500/10 ring-inset dark:bg-white/5 dark:text-gray-400 dark:ring-white/10">
                     {client.lastInvoice.status}
                   </div>
                 ) : null}
-                {client.lastInvoice.status == 'Overdue' ? (
+                {client.lastInvoice.status == "Overdue" ? (
                   <div className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-red-600/10 ring-inset dark:bg-red-500/10 dark:text-red-400 dark:ring-red-500/10">
                     {client.lastInvoice.status}
                   </div>
@@ -98,5 +115,5 @@ export default function Example() {
         </li>
       ))}
     </ul>
-  )
+  );
 }

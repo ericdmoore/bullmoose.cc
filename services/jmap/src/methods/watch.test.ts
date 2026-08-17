@@ -14,12 +14,22 @@ const TENANT = "t_bm";
 
 function harness(scopes: string[] = ["mail"]) {
   const w = fakeEnv();
-  w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT, principalId: "p_eric", loginEmail: "eric@bullmoose.cc", displayName: "Eric" });
+  w.db.seedAccount({
+    accountId: ACCOUNT,
+    tenantId: TENANT,
+    principalId: "p_eric",
+    loginEmail: "eric@bullmoose.cc",
+    displayName: "Eric",
+  });
   const registry = new MethodRegistry<RequestContext>();
   registerWatchMethods(registry);
   const ctx: RequestContext = {
     env: w.env,
-    principal: { username: "eric@bullmoose.cc", scopes, accounts: [{ accountId: ACCOUNT, tenantId: TENANT, name: "Eric" }] },
+    principal: {
+      username: "eric@bullmoose.cc",
+      scopes,
+      accounts: [{ accountId: ACCOUNT, tenantId: TENANT, name: "Eric" }],
+    },
   };
   const call = <T = Record<string, unknown>>(method: string, args: Record<string, unknown>) =>
     registry.get(method)!({ accountId: ACCOUNT, ...args }, ctx) as Promise<T>;
@@ -43,7 +53,10 @@ describe("Watch/set — arm", () => {
     expect(id).toMatch(/^w_/);
     expect(res.created.new1!.status).toBe("armed");
 
-    const got = await h.call<{ list: Array<{ id: string; status: string; deadlineAt: number }> }>("Watch/get", { ids: null });
+    const got = await h.call<{ list: Array<{ id: string; status: string; deadlineAt: number }> }>(
+      "Watch/get",
+      { ids: null },
+    );
     expect(got.list).toHaveLength(1);
     expect(got.list[0]!.status).toBe("armed");
     expect(got.list[0]!.deadlineAt).toBe(999);
@@ -52,7 +65,14 @@ describe("Watch/set — arm", () => {
   it("refuses a no-reply-from watch with no sender to wait on", async () => {
     const h = harness();
     const res = await h.call<SetResult>("Watch/set", {
-      create: { bad: { conditionType: "no-reply-from", deadlineAt: 999, actionType: "draft-followup", condition: {} } },
+      create: {
+        bad: {
+          conditionType: "no-reply-from",
+          deadlineAt: 999,
+          actionType: "draft-followup",
+          condition: {},
+        },
+      },
     });
     expect(res.notCreated.bad?.description).toMatch(/needs condition.sender/);
     expect(Object.keys(res.created)).toEqual([]);
@@ -73,7 +93,9 @@ describe("Watch/set — arm", () => {
   it("requires a write scope — a read-only token cannot arm a watch", async () => {
     const h = harness(["read"]);
     await expect(
-      h.call("Watch/set", { create: { x: { conditionType: "deadline", deadlineAt: 9, actionType: "notify" } } }),
+      h.call("Watch/set", {
+        create: { x: { conditionType: "deadline", deadlineAt: 9, actionType: "notify" } },
+      }),
     ).rejects.toThrow();
   });
 });
@@ -91,7 +113,9 @@ describe("Watch/set — cancel, and what a client may NOT do", () => {
     const id = await armOne(h);
     const res = await h.call<SetResult>("Watch/set", { update: { [id]: { status: "cancelled" } } });
     expect(res.updated).toHaveProperty(id);
-    expect(h.w.db.query<{ status: string }>(`SELECT status FROM watches WHERE id = '${id}'`)[0]!.status).toBe("cancelled");
+    expect(
+      h.w.db.query<{ status: string }>(`SELECT status FROM watches WHERE id = '${id}'`)[0]!.status,
+    ).toBe("cancelled");
   });
 
   it("REFUSES to write status 'fired' — only the cron may fire", async () => {
@@ -99,7 +123,9 @@ describe("Watch/set — cancel, and what a client may NOT do", () => {
     const id = await armOne(h);
     const res = await h.call<SetResult>("Watch/set", { update: { [id]: { status: "fired" } } });
     expect(res.notUpdated[id]?.description).toMatch(/firing is the cron/);
-    expect(h.w.db.query<{ status: string }>(`SELECT status FROM watches WHERE id = '${id}'`)[0]!.status).toBe("armed");
+    expect(
+      h.w.db.query<{ status: string }>(`SELECT status FROM watches WHERE id = '${id}'`)[0]!.status,
+    ).toBe("armed");
   });
 
   it("REFUSES to cancel a watch that already fired — no un-ringing the bell", async () => {
@@ -114,8 +140,16 @@ describe("Watch/set — cancel, and what a client may NOT do", () => {
 describe("Watch/query — the roster is what you're waiting on", () => {
   it("defaults to armed only; a terminal status is asked for explicitly", async () => {
     const h = harness();
-    const a = (await h.call<SetResult>("Watch/set", { create: { a: { conditionType: "deadline", deadlineAt: 1, actionType: "notify" } } })).created.a!.id;
-    const b = (await h.call<SetResult>("Watch/set", { create: { b: { conditionType: "deadline", deadlineAt: 2, actionType: "notify" } } })).created.b!.id;
+    const a = (
+      await h.call<SetResult>("Watch/set", {
+        create: { a: { conditionType: "deadline", deadlineAt: 1, actionType: "notify" } },
+      })
+    ).created.a!.id;
+    const b = (
+      await h.call<SetResult>("Watch/set", {
+        create: { b: { conditionType: "deadline", deadlineAt: 2, actionType: "notify" } },
+      })
+    ).created.b!.id;
     h.w.db.query(`UPDATE watches SET status = 'fired' WHERE id = '${b}'`);
 
     const armed = await h.call<{ ids: string[] }>("Watch/query", {});

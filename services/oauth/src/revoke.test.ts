@@ -135,12 +135,16 @@ describe("POST /revoke", () => {
     // longer act — and the person who just revoked it is exactly the person
     // looking.
     const { w, env } = world({ grants: [{ id: "g1", clientId: "c" }] });
-    await recordConsent(w.env.DB, {
-      principalId: "p_eric",
-      clientId: "c",
-      clientName: "Test App",
-      scopes: ["read"],
-    }, 1000);
+    await recordConsent(
+      w.env.DB,
+      {
+        principalId: "p_eric",
+        clientId: "c",
+        clientName: "Test App",
+        scopes: ["read"],
+      },
+      1000,
+    );
     await post(env, { clientId: "c" }, minted.token);
     const rows = w.db.query<{ revoked_at: number | null }>(
       `SELECT revoked_at FROM oauth_consents WHERE client_id = 'c'`,

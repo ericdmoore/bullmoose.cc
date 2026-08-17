@@ -84,7 +84,13 @@ describe("links come from the payload, or not at all", () => {
   });
 
   it("a garbled payload produces no links rather than broken ones", () => {
-    for (const junk of [{}, { id: 1 }, { threadId: 42 }, { mailboxIds: [] }, { attachments: "x" }]) {
+    for (const junk of [
+      {},
+      { id: 1 },
+      { threadId: 42 },
+      { mailboxIds: [] },
+      { attachments: "x" },
+    ]) {
       expect(flattenLinks(linksFor("Email", junk as Record<string, unknown>, b))).toEqual([]);
     }
     expect(linksFor("Thread", { id: "t", emailIds: [null, 3, ""] }, b)).toEqual({});

@@ -65,8 +65,12 @@ describe("intersection is the NARROWER of the two — in both directions", () =>
   });
 
   it("budget: the MINIMUM, whichever side is smaller", () => {
-    expect(intersectAuthority(A({ budgetMicros: 10 }), A({ budgetMicros: 4 })).budgetMicros).toBe(4);
-    expect(intersectAuthority(A({ budgetMicros: 4 }), A({ budgetMicros: 10 })).budgetMicros).toBe(4);
+    expect(intersectAuthority(A({ budgetMicros: 10 }), A({ budgetMicros: 4 })).budgetMicros).toBe(
+      4,
+    );
+    expect(intersectAuthority(A({ budgetMicros: 4 }), A({ budgetMicros: 10 })).budgetMicros).toBe(
+      4,
+    );
   });
 
   it("disjoint sets intersect to EMPTY — never to a union", () => {
@@ -120,14 +124,14 @@ describe("parseEnvelope is STRICT — anything it cannot vouch for is unreadable
 
   it("a JSON PARSE FAILURE is unreadable — never a default", () => {
     expect(parseEnvelope("{not json")).toBeNull();
-    expect(parseEnvelope("{\"tools\": [\"a\"], ")).toBeNull();
+    expect(parseEnvelope('{"tools": ["a"], ')).toBeNull();
   });
 
   it("a non-object envelope is unreadable", () => {
     expect(parseEnvelope("null")).toBeNull();
     expect(parseEnvelope("42")).toBeNull();
-    expect(parseEnvelope("\"tools\"")).toBeNull();
-    expect(parseEnvelope("[\"a\"]")).toBeNull();
+    expect(parseEnvelope('"tools"')).toBeNull();
+    expect(parseEnvelope('["a"]')).toBeNull();
   });
 
   it("a MISSING key is unreadable — every envelope this system writes has all three", () => {
@@ -151,7 +155,9 @@ describe("parseEnvelope is STRICT — anything it cannot vouch for is unreadable
   });
 
   it("an explicit `null` axis IS readable — that is a declared unset ceiling", () => {
-    expect(parseEnvelope(env({ tools: null, credentials: null, budgetMicros: null }))).toEqual(UNSET);
+    expect(parseEnvelope(env({ tools: null, credentials: null, budgetMicros: null }))).toEqual(
+      UNSET,
+    );
   });
 
   it("de-duplicates a set rather than refusing it", () => {

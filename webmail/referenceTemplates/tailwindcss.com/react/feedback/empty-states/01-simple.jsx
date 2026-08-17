@@ -1,4 +1,4 @@
-import { PlusIcon } from '@heroicons/react/20/solid'
+import { PlusIcon } from "@heroicons/react/20/solid";
 
 export default function Example() {
   return (
@@ -19,7 +19,9 @@ export default function Example() {
         />
       </svg>
       <h3 className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">No projects</h3>
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Get started by creating a new project.</p>
+      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        Get started by creating a new project.
+      </p>
       <div className="mt-6">
         <button
           type="button"
@@ -30,5 +32,5 @@ export default function Example() {
         </button>
       </div>
     </div>
-  )
+  );
 }

@@ -1,14 +1,14 @@
 # 016 -E2-I3- CLI I/O contract
 
-| | |
-|---|---|
-| **Kind** | projection (prerequisite in practice — it is the shape of every CLI cell) |
-| **Effort** | **E2** — `packages/cli` only; no schema, no new JMAP method, no migration |
-| **Impact** | **I3** — unlocks *and* human-verifiable |
-| **Owner** | **`s05-cli-crud`** T1 |
-| **Depends on** | — |
-| **Blocks** | `017` · `018` · `019` |
-| **Status** | **✅ done** |
+|                |                                                                           |
+| -------------- | ------------------------------------------------------------------------- |
+| **Kind**       | projection (prerequisite in practice — it is the shape of every CLI cell) |
+| **Effort**     | **E2** — `packages/cli` only; no schema, no new JMAP method, no migration |
+| **Impact**     | **I3** — unlocks _and_ human-verifiable                                   |
+| **Owner**      | **`s05-cli-crud`** T1                                                     |
+| **Depends on** | —                                                                         |
+| **Blocks**     | `017` · `018` · `019`                                                     |
+| **Status**     | **✅ done**                                                               |
 
 ## Cells covered
 
@@ -21,9 +21,9 @@
 101 `console.log` sites (`s05/readme.md:52`, `devPlan.md:16`) and the entry point. Not E1;
 not E3 either, because nothing outside `packages/cli` has to respect it.
 
-**I3, both factors.** *Unlocks* — `s05/devPlan.md:110-111` states it as hard ordering ("T1
+**I3, both factors.** _Unlocks_ — `s05/devPlan.md:110-111` states it as hard ordering ("T1
 first, strictly … building T2–T4 before it means writing every command twice"), and this
-ledger hangs three units off it. *Human-verifiable* — `bullmoose log | head` currently
+ledger hangs three units off it. _Human-verifiable_ — `bullmoose log | head` currently
 produces a Node stack trace (`s05/readme.md:51`); after T1 it exits 0 silently. Anyone with a
 terminal can see the difference.
 
@@ -67,16 +67,16 @@ table is unit-testable without a database or a process. Every command module wri
 it; `io.test.ts` greps the package and fails if any module other than `io.ts` calls
 `console.log`, which is the only mechanism that survives the next fifty commands.
 
-| clause | where |
-|---|---|
-| §1.1 stdout = data | `out` / `note` / `warn`; all 116 `console.*` sites audited and moved |
-| §1.2 EPIPE | `installEpipeGuard()`, first statement of `main.ts` |
-| §1.3 NDJSON | `emitJson` / `emitNdjson`; under `--json` every stdout line is a complete JSON value |
-| §1.4 stdin, `-`, `--as` | `readInput` / `inferType`; `send` and `contacts import` use it |
-| §1.5 exit codes | `EXIT` + `JMAP_EXIT` + `exitCodeFor`; one `die(err)` at the entry point |
-| §1.6 no TTY assumptions | `colorEnabled` (NO_COLOR, `TERM=dumb`, `isTTY`); no pager anywhere, asserted |
-| §1.7 `--if-state` / `--dry-run` | `ifInState` on `Mailbox/set`; `--dry-run` on every destructive verb |
-| §1.8 `--ids` | `emitIds`; honoured by every list command |
+| clause                          | where                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------ |
+| §1.1 stdout = data              | `out` / `note` / `warn`; all 116 `console.*` sites audited and moved                 |
+| §1.2 EPIPE                      | `installEpipeGuard()`, first statement of `main.ts`                                  |
+| §1.3 NDJSON                     | `emitJson` / `emitNdjson`; under `--json` every stdout line is a complete JSON value |
+| §1.4 stdin, `-`, `--as`         | `readInput` / `inferType`; `send` and `contacts import` use it                       |
+| §1.5 exit codes                 | `EXIT` + `JMAP_EXIT` + `exitCodeFor`; one `die(err)` at the entry point              |
+| §1.6 no TTY assumptions         | `colorEnabled` (NO_COLOR, `TERM=dumb`, `isTTY`); no pager anywhere, asserted         |
+| §1.7 `--if-state` / `--dry-run` | `ifInState` on `Mailbox/set`; `--dry-run` on every destructive verb                  |
+| §1.8 `--ids`                    | `emitIds`; honoured by every list command                                            |
 
 **Both gaps this file flagged are closed.**
 
@@ -122,7 +122,7 @@ pipeline composition, which is exactly why unit tests could not have held this.
 **Also folded in** (their `.fix.md` files said to): `.feedback/fromClaude/cli/008`
 (`--json` a silent no-op on eight commands — implemented everywhere, and `login`'s dead
 `json` plumbing now reads), `009` (`pickAccount` in `db.ts` refuses an ambiguous
-selector instead of silently taking `[0]` on the *send* path; `show` resolves like
+selector instead of silently taking `[0]` on the _send_ path; `show` resolves like
 `read` and distinguishes "no such id" from "not in the account you selected"), `010`
 (unknown flags exit 2 instead of printing a Node stack; `help` has a registry entry;
 `admin`'s usage text is derived from `IMPLEMENTED`; Markdown table cells escape `|`;

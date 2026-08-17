@@ -41,9 +41,7 @@ export default function MessageView({
         <h1>{subject}</h1>
         <p class="thread-meta">
           {detail.emails.length} message{detail.emails.length === 1 ? "" : "s"}
-          {detail.notFound.length > 0
-            ? ` · ${detail.notFound.length} could not be loaded`
-            : ""}
+          {detail.notFound.length > 0 ? ` · ${detail.notFound.length} could not be loaded` : ""}
         </p>
       </header>
 
@@ -159,7 +157,10 @@ function MessageCard({
                 {quoteVisible ? "Hide quoted text" : "··· Show quoted text"}
               </button>
               {quoteVisible ? (
-                <div class="message-quote" dangerouslySetInnerHTML={{ __html: rendered.quotedHtml }} />
+                <div
+                  class="message-quote"
+                  dangerouslySetInnerHTML={{ __html: rendered.quotedHtml }}
+                />
               ) : null}
             </div>
           ) : null}

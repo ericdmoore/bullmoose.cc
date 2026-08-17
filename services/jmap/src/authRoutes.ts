@@ -186,7 +186,14 @@ export async function handleTokens(
       `INSERT INTO tokens (id, principal_id, secret_hash, name, scopes, created_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
     )
-      .bind(minted.id, p.id, minted.secretHash, body.name ?? "token", JSON.stringify(scopes), Date.now())
+      .bind(
+        minted.id,
+        p.id,
+        minted.secretHash,
+        body.name ?? "token",
+        JSON.stringify(scopes),
+        Date.now(),
+      )
       .run();
     return json({ token: minted.token, tokenId: minted.id, scopes });
   }

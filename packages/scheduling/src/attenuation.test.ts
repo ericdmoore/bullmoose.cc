@@ -39,7 +39,11 @@ function parent(over: Partial<NodeCeiling> = {}): NodeCeiling {
     bindingId: "bind_1",
     jobId: "job_1",
     depth: 0,
-    authority: { tools: ["email.draft", "files.read"], credentials: ["aws-mcp"], budgetMicros: 1_000_000 },
+    authority: {
+      tools: ["email.draft", "files.read"],
+      credentials: ["aws-mcp"],
+      budgetMicros: 1_000_000,
+    },
     privacy: "internal",
     dueAt: NOW + 3_600_000,
     ...over,
@@ -90,7 +94,11 @@ describe("axis: tools — a child may hold a SUBSET, never more", () => {
   });
 
   it("a parent holding NO tools admits no child that asks for one", () => {
-    expect(axes(parent({ authority: { tools: [], credentials: [], budgetMicros: 1 } }), { tools: ["x"] })).toEqual(["tools"]);
+    expect(
+      axes(parent({ authority: { tools: [], credentials: [], budgetMicros: 1 } }), {
+        tools: ["x"],
+      }),
+    ).toEqual(["tools"]);
   });
 
   it("an UNRESTRICTED ceiling (binding with no jobs config) admits any named subset", () => {
@@ -199,12 +207,18 @@ describe("axis: fan-out — maxNodes counts what already exists", () => {
   const cheap = (key: string) => ({ key, budgetMicros: 100_000 });
 
   it("allows a plan that fits", () => {
-    const r = attenuatePlan(parent(), [cheap("a"), cheap("b")], CAPS, { nodeCount: 6, reservedMicros: 0 });
+    const r = attenuatePlan(parent(), [cheap("a"), cheap("b")], CAPS, {
+      nodeCount: 6,
+      reservedMicros: 0,
+    });
     expect(r.ok).toBe(true);
   });
 
   it("REFUSES the plan that would cross maxNodes, counting existing nodes", () => {
-    const r = attenuatePlan(parent(), [cheap("a"), cheap("b")], CAPS, { nodeCount: 7, reservedMicros: 0 });
+    const r = attenuatePlan(parent(), [cheap("a"), cheap("b")], CAPS, {
+      nodeCount: 7,
+      reservedMicros: 0,
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.refusals[0]!.axis).toBe("fanout");
@@ -292,7 +306,12 @@ describe("axis: identity — decomposition decides structure, never permission",
   it("naming its OWN account/binding/job is fine, and inheriting is the norm", () => {
     expect(axes(parent(), { accountId: "a_1", bindingId: "bind_1", jobId: "job_1" })).toEqual([]);
     const r = attenuateChild(parent(), { key: "t" });
-    if (r.ok) expect([r.child.accountId, r.child.bindingId, r.child.jobId]).toEqual(["a_1", "bind_1", "job_1"]);
+    if (r.ok)
+      expect([r.child.accountId, r.child.bindingId, r.child.jobId]).toEqual([
+        "a_1",
+        "bind_1",
+        "job_1",
+      ]);
   });
 });
 
@@ -327,7 +346,9 @@ describe("axis: needs — plan-local, backward-only, so a cycle is unrepresentab
 
 describe("axis: context — a plan may not mint a reserved harness kind", () => {
   it("REFUSES answer-info-request (hijacking a human's needsInfo round)", () => {
-    expect(axes(parent(), { context: { kind: "answer-info-request", proposalId: "p_1" } })).toEqual(["context"]);
+    expect(axes(parent(), { context: { kind: "answer-info-request", proposalId: "p_1" } })).toEqual(
+      ["context"],
+    );
   });
 
   it("REFUSES bouncer-classify (reaching into the boundary's machinery)", () => {
@@ -373,8 +394,12 @@ describe("the aggregate budget — the shared budget §4 asks for", () => {
 
   it("counts what earlier nodes already RESERVED, so a second planner cannot spend it twice", () => {
     const plan = [{ key: "a", budgetMicros: 400_000 }];
-    expect(attenuatePlan(parent(), plan, CAPS, { nodeCount: 3, reservedMicros: 500_000 }).ok).toBe(true);
-    expect(attenuatePlan(parent(), plan, CAPS, { nodeCount: 3, reservedMicros: 700_000 }).ok).toBe(false);
+    expect(attenuatePlan(parent(), plan, CAPS, { nodeCount: 3, reservedMicros: 500_000 }).ok).toBe(
+      true,
+    );
+    expect(attenuatePlan(parent(), plan, CAPS, { nodeCount: 3, reservedMicros: 700_000 }).ok).toBe(
+      false,
+    );
   });
 
   it("OMITTING a budget reserves the parent's FULL ceiling — so two silent children do not fit", () => {
@@ -443,7 +468,11 @@ describe("MONOTONIC DOWN THE CHAIN: what an ancestor gave up cannot come back", 
   }
 
   it("a grandchild cannot regain a tool its parent dropped", () => {
-    const child = delegate(parent(), { tools: ["files.read"], credentials: [], budgetMicros: 500_000 });
+    const child = delegate(parent(), {
+      tools: ["files.read"],
+      credentials: [],
+      budgetMicros: 500_000,
+    });
     expect(child.authority.tools).toEqual(["files.read"]);
     // `email.draft` is still the GRANDparent's; the child never held it.
     expect(axes(child, { tools: ["email.draft"] })).toEqual(["tools"]);

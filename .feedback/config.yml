@@ -2,9 +2,9 @@ components:
   - name: common
   - name: cli
   - name: cloud-infra
-    label: 'infra'
+    label: "infra"
   - name: agentic-components
-    label: 'agentic'
+    label: "agentic"
   - name: webUI
 
 sources:

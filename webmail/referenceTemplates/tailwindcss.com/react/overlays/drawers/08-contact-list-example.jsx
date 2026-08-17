@@ -1,168 +1,176 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Dialog, DialogPanel, DialogTitle, Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { XMarkIcon } from '@heroicons/react/24/outline'
-import { EllipsisVerticalIcon } from '@heroicons/react/20/solid'
+import { useState } from "react";
+import {
+  Dialog,
+  DialogPanel,
+  DialogTitle,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuItems,
+} from "@headlessui/react";
+import { XMarkIcon } from "@heroicons/react/24/outline";
+import { EllipsisVerticalIcon } from "@heroicons/react/20/solid";
 
 const tabs = [
-  { name: 'All', href: '#', current: true },
-  { name: 'Online', href: '#', current: false },
-  { name: 'Offline', href: '#', current: false },
-]
+  { name: "All", href: "#", current: true },
+  { name: "Online", href: "#", current: false },
+  { name: "Offline", href: "#", current: false },
+];
 const team = [
   {
-    name: 'Leslie Alexander',
-    handle: 'lesliealexander',
-    href: '#',
+    name: "Leslie Alexander",
+    handle: "lesliealexander",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'online',
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "online",
   },
   {
-    name: 'Michael Foster',
-    handle: 'michaelfoster',
-    href: '#',
+    name: "Michael Foster",
+    handle: "michaelfoster",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'online',
+      "https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "online",
   },
   {
-    name: 'Dries Vincent',
-    handle: 'driesvincent',
-    href: '#',
+    name: "Dries Vincent",
+    handle: "driesvincent",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'online',
+      "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "online",
   },
   {
-    name: 'Lindsay Walton',
-    handle: 'lindsaywalton',
-    href: '#',
+    name: "Lindsay Walton",
+    handle: "lindsaywalton",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'offline',
+      "https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "offline",
   },
   {
-    name: 'Courtney Henry',
-    handle: 'courtneyhenry',
-    href: '#',
+    name: "Courtney Henry",
+    handle: "courtneyhenry",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'offline',
+      "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "offline",
   },
   {
-    name: 'Tom Cook',
-    handle: 'tomcook',
-    href: '#',
+    name: "Tom Cook",
+    handle: "tomcook",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'offline',
+      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "offline",
   },
   {
-    name: 'Whitney Francis',
-    handle: 'whitneyfrancis',
-    href: '#',
+    name: "Whitney Francis",
+    handle: "whitneyfrancis",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1517365830460-955ce3ccd263?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'online',
+      "https://images.unsplash.com/photo-1517365830460-955ce3ccd263?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "online",
   },
   {
-    name: 'Leonard Krasner',
-    handle: 'leonardkrasner',
-    href: '#',
+    name: "Leonard Krasner",
+    handle: "leonardkrasner",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1519345182560-3f2917c472ef?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'online',
+      "https://images.unsplash.com/photo-1519345182560-3f2917c472ef?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "online",
   },
   {
-    name: 'Floyd Miles',
-    handle: 'floydmiles',
-    href: '#',
+    name: "Floyd Miles",
+    handle: "floydmiles",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1463453091185-61582044d556?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'offline',
+      "https://images.unsplash.com/photo-1463453091185-61582044d556?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "offline",
   },
   {
-    name: 'Emily Selman',
-    handle: 'emilyselman',
-    href: '#',
+    name: "Emily Selman",
+    handle: "emilyselman",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1502685104226-ee32379fefbe?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'online',
+      "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "online",
   },
   {
-    name: 'Kristin Watson',
-    handle: 'kristinwatson',
-    href: '#',
+    name: "Kristin Watson",
+    handle: "kristinwatson",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1500917293891-ef795e70e1f6?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'offline',
+      "https://images.unsplash.com/photo-1500917293891-ef795e70e1f6?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "offline",
   },
   {
-    name: 'Emma Dorsey',
-    handle: 'emmadorsey',
-    href: '#',
+    name: "Emma Dorsey",
+    handle: "emmadorsey",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1505840717430-882ce147ef2d?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'offline',
+      "https://images.unsplash.com/photo-1505840717430-882ce147ef2d?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "offline",
   },
   {
-    name: 'Alicia Bell',
-    handle: 'aliciabell',
-    href: '#',
+    name: "Alicia Bell",
+    handle: "aliciabell",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1509783236416-c9ad59bae472?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'online',
+      "https://images.unsplash.com/photo-1509783236416-c9ad59bae472?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "online",
   },
   {
-    name: 'Jenny Wilson',
-    handle: 'jennywilson',
-    href: '#',
+    name: "Jenny Wilson",
+    handle: "jennywilson",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1507101105822-7472b28e22ac?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'online',
+      "https://images.unsplash.com/photo-1507101105822-7472b28e22ac?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "online",
   },
   {
-    name: 'Anna Roberts',
-    handle: 'annaroberts',
-    href: '#',
+    name: "Anna Roberts",
+    handle: "annaroberts",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'offline',
+      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "offline",
   },
   {
-    name: 'Benjamin Russel',
-    handle: 'benjaminrussel',
-    href: '#',
+    name: "Benjamin Russel",
+    handle: "benjaminrussel",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1531427186611-ecfd6d936c79?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'online',
+      "https://images.unsplash.com/photo-1531427186611-ecfd6d936c79?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "online",
   },
   {
-    name: 'Jeffrey Webb',
-    handle: 'jeffreywebb',
-    href: '#',
+    name: "Jeffrey Webb",
+    handle: "jeffreywebb",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1517070208541-6ddc4d3efbcb?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'offline',
+      "https://images.unsplash.com/photo-1517070208541-6ddc4d3efbcb?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "offline",
   },
   {
-    name: 'Kathryn Murphy',
-    handle: 'kathrynmurphy',
-    href: '#',
+    name: "Kathryn Murphy",
+    handle: "kathrynmurphy",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    status: 'offline',
+      "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    status: "offline",
   },
-]
+];
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(true);
 
   return (
     <div>
@@ -185,7 +193,9 @@ export default function Example() {
                 <div className="relative flex h-full flex-col overflow-y-auto bg-white shadow-xl dark:bg-gray-800 dark:after:absolute dark:after:inset-y-0 dark:after:left-0 dark:after:w-px dark:after:bg-white/10">
                   <div className="p-6">
                     <div className="flex items-start justify-between">
-                      <DialogTitle className="text-base font-semibold text-gray-900 dark:text-white">Team</DialogTitle>
+                      <DialogTitle className="text-base font-semibold text-gray-900 dark:text-white">
+                        Team
+                      </DialogTitle>
                       <div className="ml-3 flex h-7 items-center">
                         <button
                           type="button"
@@ -208,9 +218,9 @@ export default function Example() {
                             href={tab.href}
                             className={classNames(
                               tab.current
-                                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                                : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-white/20 dark:hover:text-white',
-                              'border-b-2 px-1 pb-4 text-sm font-medium whitespace-nowrap',
+                                ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
+                                : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-white/20 dark:hover:text-white",
+                              "border-b-2 px-1 pb-4 text-sm font-medium whitespace-nowrap",
                             )}
                           >
                             {tab.name}
@@ -219,7 +229,10 @@ export default function Example() {
                       </nav>
                     </div>
                   </div>
-                  <ul role="list" className="flex-1 divide-y divide-gray-200 overflow-y-auto dark:divide-white/10">
+                  <ul
+                    role="list"
+                    className="flex-1 divide-y divide-gray-200 overflow-y-auto dark:divide-white/10"
+                  >
                     {team.map((person) => (
                       <li key={person.handle}>
                         <div className="group relative flex items-center px-5 py-6">
@@ -238,8 +251,10 @@ export default function Example() {
                                 <span
                                   aria-hidden="true"
                                   className={classNames(
-                                    person.status === 'online' ? 'bg-green-400' : 'bg-gray-300 dark:bg-gray-500',
-                                    'absolute top-0 right-0 block size-2.5 rounded-full ring-2 ring-white dark:ring-gray-800',
+                                    person.status === "online"
+                                      ? "bg-green-400"
+                                      : "bg-gray-300 dark:bg-gray-500",
+                                    "absolute top-0 right-0 block size-2.5 rounded-full ring-2 ring-white dark:ring-gray-800",
                                   )}
                                 />
                               </span>
@@ -248,7 +263,7 @@ export default function Example() {
                                   {person.name}
                                 </p>
                                 <p className="truncate text-sm text-gray-500 dark:text-gray-400">
-                                  {'@' + person.handle}
+                                  {"@" + person.handle}
                                 </p>
                               </div>
                             </div>
@@ -299,5 +314,5 @@ export default function Example() {
         </div>
       </Dialog>
     </div>
-  )
+  );
 }

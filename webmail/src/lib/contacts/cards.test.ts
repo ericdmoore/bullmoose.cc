@@ -137,7 +137,9 @@ describe("loading a page of cards", () => {
 
   it("searches the fields it claims to and misses the ones it does not", async () => {
     const { client } = withDemo();
-    const byNote = await loadCards(client, "acct-fake", { filter: buildContactFilter({ text: "algorithm" }) });
+    const byNote = await loadCards(client, "acct-fake", {
+      filter: buildContactFilter({ text: "algorithm" }),
+    });
     expect(byNote.cards.map((c) => c.id)).toEqual(["cc-ada"]);
 
     // Ada's street address is on the card and NOT reachable by `text` — the

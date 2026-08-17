@@ -21,7 +21,8 @@ const EMAIL = "hermes@bullmoose.cc";
 // tokens row's foreign key to principals is actually enforced.
 function harness(principalExists = true) {
   const db = fakeD1();
-  if (principalExists) db.seedAccount({ accountId: "a_hermes", principalId: "p_hermes", loginEmail: EMAIL });
+  if (principalExists)
+    db.seedAccount({ accountId: "a_hermes", principalId: "p_hermes", loginEmail: EMAIL });
 
   const env: Env = {
     DB: db,

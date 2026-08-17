@@ -1,12 +1,12 @@
 # s11 — the optimistic work scheduler: sit free, escalate near-due
 
 > **Status: T1–T3, T6, T8, T9 SHIPPED and wired.** `packages/scheduling` is real, the gate is folded into every claim UPDATE in both workers, and the overdue/budget sweeps run off the 5-minute cron. ⚠️ T7 (Jobs) shipped but has NO production entry point — `startJob` is called only from tests. T4 retired, T5 deferred.
-> section makes it claim-**smart**: let work sit hoping a *free* runtime picks it up, and spend
+> section makes it claim-**smart**: let work sit hoping a _free_ runtime picks it up, and spend
 > paid cloud budget only as a deadline approaches. The `feed.works` pattern, applied to agent
 > inference.
 >
 > **Sits on `s07` T5** (just merged): you cannot preserve budget for near-due work without
-> knowing what work *costs*. This is the second consumer of the cost facts, after the score.
+> knowing what work _costs_. This is the second consumer of the cost facts, after the score.
 
 ---
 
@@ -15,12 +15,12 @@
 `docs/architecture/agent-integration.md` already specifies the runtime model, and most of it is
 built:
 
-- **Pull-based queue** (§2): the platform never calls a runtime; runtimes *watch for work* over
+- **Pull-based queue** (§2): the platform never calls a runtime; runtimes _watch for work_ over
   the same WS/changes machinery as mail. `agent_invocations.claimed_at` is the optimistic claim.
 - **`runtime: cloud | homelab`** — a first-class field on the binding.
 - **`bullmoose agent serve`** — the homelab daemon (Node, sibling of `watch`); `agent.ts`
   already claims and runs work.
-- **Inference is an independent axis** (§6): *"any `baseURL` — Ollama on LAN, or cloud APIs."*
+- **Inference is an independent axis** (§6): _"any `baseURL` — Ollama on LAN, or cloud APIs."_
   A homelab runtime firing at LiteLLM/Ollama on alpaca, with the binding's model = `@local/…`,
   is the intended shape — and free.
 - **The cloud is the watchdog** (§8): if no runtime claims within the pickup SLA, the cloud
@@ -34,29 +34,31 @@ things that ship today.
 
 The queue is **claim-when-seen**. Nothing schedules. Two specific holes:
 
-### 1. No *business* due-date on the invocation
-`budgets.deadlineMs` is a **loop** deadline — kill a runaway turn. It is not *"this reply is due
-Friday."* The scheduling this section needs is driven by a **`due_at`** the agent infers from the
-work itself (the *implied-due-date-from-the-email-body*): "can you review this by EOD Thursday"
+### 1. No _business_ due-date on the invocation
+
+`budgets.deadlineMs` is a **loop** deadline — kill a runaway turn. It is not _"this reply is due
+Friday."_ The scheduling this section needs is driven by a **`due_at`** the agent infers from the
+work itself (the _implied-due-date-from-the-email-body_): "can you review this by EOD Thursday"
 → `due_at = Thu 17:00`. That field does not exist; T1 adds it.
 
 ### 2. No deadline-and-budget-aware policy
+
 Today the first runtime to see a `pending` invocation claims it. This section adds a scheduling
 function over `(due_at, cost estimate, remaining budget, which runtimes are free)` that decides
-**whether a given runtime may claim it *yet*.** The policy:
+**whether a given runtime may claim it _yet_.** The policy:
 
 - **Far from due → free runtimes only.** A `@local` homelab daemon may claim; the paid cloud
-  runtime holds off. The work sits *optimistically*, hoping alpaca picks it up for $0.
+  runtime holds off. The work sits _optimistically_, hoping alpaca picks it up for $0.
 - **Near due → escalate.** As `due_at` approaches and no free runtime has claimed, the paid
   cloud runtime becomes eligible — spend now, because the deadline is real.
 - **Out of budget → assigned, but free-claimable only.** `spendPerMonth` exhausted does not fail
-  the invocation; it *narrows who may claim it* to free runtimes until budget resets or a
+  the invocation; it _narrows who may claim it_ to free runtimes until budget resets or a
   `@local` runtime grabs it. The pull model already supports "assigned but unrun"; this is the
-  policy that says *why* it sits.
+  policy that says _why_ it sits.
 
 This is the `feed.works` insight exactly: cheap/free capacity is best-effort and patient; paid
-capacity is reserved for what is actually due. The scheduler spends the *last* dollar on the
-*next* deadline, not the first job it sees.
+capacity is reserved for what is actually due. The scheduler spends the _last_ dollar on the
+_next_ deadline, not the first job it sees.
 
 ## The human override — editing `due_at`, not a `defer` verb (revised 2026-08-13)
 
@@ -64,7 +66,7 @@ There is **no `defer` verb** (retired before it was built — devPlan T4). The h
 machine still share one signal, from two directions:
 
 - **Human**: corrects/extends `due_at` on the approval row (T1 makes it editable). Setting
-  it to tomorrow *is* deferring — a field edit, recording nothing a learning loop could
+  it to tomorrow _is_ deferring — a field edit, recording nothing a learning loop could
   misread.
 - **Scheduler**: reads `due_at` — "not due yet, wait for a free runtime."
 
@@ -77,8 +79,8 @@ The escalation decision — "is it worth spending paid budget now, or wait for f
 **cost** decision, and it is impossible without a cost estimate. `s07` T5 gave the queue:
 
 - `cost_micros` per past invocation of this `kind` → an **estimate** for the next one.
-- `provider` → which runtimes are *free* (`@local`/`workers-ai` → 0) vs paid.
-- the token facts → the `$/work` optimisation that decides *which* model a deadline-pressed run
+- `provider` → which runtimes are _free_ (`@local`/`workers-ai` → 0) vs paid.
+- the token facts → the `$/work` optimisation that decides _which_ model a deadline-pressed run
   should escalate to (cheapest that meets the quality bar).
 
 The scheduler is where the `$/work` job (flagged in T5) actually lives: **tokens/work × $/token,
@@ -86,13 +88,13 @@ spent against a deadline.** T5 recorded the facts; s11 spends them.
 
 ## Non-goals / cautions
 
-- **Not a general job queue.** This schedules *agent invocations* against *inference budget and
-  deadlines*. It is not a cron, not a task runner.
-- **The watchdog still wins on liveness.** §8's cloud-watchdog guarantee is about *"did anyone
-  claim it"*; s11's optimism must never let a `due_at`-passed invocation sit unclaimed — near-due
+- **Not a general job queue.** This schedules _agent invocations_ against _inference budget and
+  deadlines_. It is not a cron, not a task runner.
+- **The watchdog still wins on liveness.** §8's cloud-watchdog guarantee is about _"did anyone
+  claim it"_; s11's optimism must never let a `due_at`-passed invocation sit unclaimed — near-due
   escalation and the watchdog are complementary, and the watchdog is the backstop.
-- **Do not infer `due_at` silently and wrongly.** A mis-extracted deadline that reads *"due in an
-  hour"* would burn budget on non-urgent work. `due_at` extraction is a proposal the human can
+- **Do not infer `due_at` silently and wrongly.** A mis-extracted deadline that reads _"due in an
+  hour"_ would burn budget on non-urgent work. `due_at` extraction is a proposal the human can
   see and correct, not a hidden field — surface it on the approval row next to the two clocks.
 
 ## Extension: Jobs, facets, and the fleet host

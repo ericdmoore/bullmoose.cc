@@ -119,9 +119,8 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
           if (resolved.mode === "demo") {
             // Demo-only and loaded on demand, so the fixtures and the fake
             // `/set` never reach a live bundle (the demoCalendar.ts pattern).
-            const { demoApprovalsOptions, installApprovalsDemo } = await import(
-              "../lib/approvals/demoApprovals"
-            );
+            const { demoApprovalsOptions, installApprovalsDemo } =
+              await import("../lib/approvals/demoApprovals");
             installApprovalsDemo(resolved.demo.client, demoApprovalsOptions(location.search));
             if (!cancelled) setIsDemo(true);
           }
@@ -153,7 +152,10 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
     if (!client || accounts.length === 0 || gate.state !== "open") return;
     let cancelled = false;
     setLoading(true);
-    void loadQueues(client, accounts.map((a) => a.accountId))
+    void loadQueues(
+      client,
+      accounts.map((a) => a.accountId),
+    )
       .then((res) => {
         if (cancelled) return;
         setProposals(res.proposals);
@@ -199,7 +201,10 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
 
   async function reload(): Promise<void> {
     if (!client || accounts.length === 0) return;
-    const res = await loadQueues(client, accounts.map((a) => a.accountId));
+    const res = await loadQueues(
+      client,
+      accounts.map((a) => a.accountId),
+    );
     setProposals(res.proposals);
     setStates(res.states);
     setFailures(res.failures);
@@ -305,8 +310,8 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
       <header class="apq-head">
         <h1>Approvals</h1>
         <p class="muted apq-sub">
-          What agents want to do, waiting on you. Approve, edit, or decline — an edit is kept
-          beside the agent's original, so the difference is never lost.
+          What agents want to do, waiting on you. Approve, edit, or decline — an edit is kept beside
+          the agent's original, so the difference is never lost.
         </p>
         {/* The queue spans every account you can reach — yours, and each agent
             account a supervisory grant opens (s10 T7). Saying so is what makes
@@ -337,15 +342,44 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
           {/* COLUMN 2 — the headers. A compact, grouped, selectable list:
               what needs you first, then the secondary states. This is the
               "second column" of the triple-panel; the rail is the first. */}
-          <nav aria-label="Proposals" class="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
-            <HeaderGroup label="Waiting on you" tone="primary" items={pending} now={now}
-              accounts={accounts} selectedId={selected?.id} onSelect={setSelectedId} />
-            <HeaderGroup label="Waiting on the agent" items={infoRequested} now={now}
-              accounts={accounts} selectedId={selected?.id} onSelect={setSelectedId} />
-            <HeaderGroup label="Hold tray" items={held} now={now}
-              accounts={accounts} selectedId={selected?.id} onSelect={setSelectedId} />
-            <HeaderGroup label="Decided" items={history} now={now}
-              accounts={accounts} selectedId={selected?.id} onSelect={setSelectedId} muted />
+          <nav
+            aria-label="Proposals"
+            class="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
+          >
+            <HeaderGroup
+              label="Waiting on you"
+              tone="primary"
+              items={pending}
+              now={now}
+              accounts={accounts}
+              selectedId={selected?.id}
+              onSelect={setSelectedId}
+            />
+            <HeaderGroup
+              label="Waiting on the agent"
+              items={infoRequested}
+              now={now}
+              accounts={accounts}
+              selectedId={selected?.id}
+              onSelect={setSelectedId}
+            />
+            <HeaderGroup
+              label="Hold tray"
+              items={held}
+              now={now}
+              accounts={accounts}
+              selectedId={selected?.id}
+              onSelect={setSelectedId}
+            />
+            <HeaderGroup
+              label="Decided"
+              items={history}
+              now={now}
+              accounts={accounts}
+              selectedId={selected?.id}
+              onSelect={setSelectedId}
+              muted
+            />
           </nav>
 
           {/* COLUMN 3 — the detail, subordinate to the header column: the full
@@ -367,16 +401,29 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
                   onDecline={(reason, note) =>
                     void act(selected.id, { status: "rejected", reason, ...(note ? { note } : {}) })
                   }
-                  onNeedsInfo={(question) => void act(selected.id, { status: "info-requested", question })}
+                  onNeedsInfo={(question) =>
+                    void act(selected.id, { status: "info-requested", question })
+                  }
                   onSubmitEdit={(form) => submitEdit(selected, form)}
                   onCorrectDue={(dueAt) => void correctDue(selected.id, dueAt)}
                 />
               ) : selected.status === "info-requested" ? (
-                <InfoRequestedRow p={selected} label={accounts.length > 1 ? accountLabel(accounts, selected.accountId) : ""} />
+                <InfoRequestedRow
+                  p={selected}
+                  label={accounts.length > 1 ? accountLabel(accounts, selected.accountId) : ""}
+                />
               ) : selected.status === "held" ? (
-                <HeldRow p={selected} now={now} label={accounts.length > 1 ? accountLabel(accounts, selected.accountId) : ""} />
+                <HeldRow
+                  p={selected}
+                  now={now}
+                  label={accounts.length > 1 ? accountLabel(accounts, selected.accountId) : ""}
+                />
               ) : (
-                <HistoryRow p={selected} now={now} label={accounts.length > 1 ? accountLabel(accounts, selected.accountId) : ""} />
+                <HistoryRow
+                  p={selected}
+                  now={now}
+                  label={accounts.length > 1 ? accountLabel(accounts, selected.accountId) : ""}
+                />
               )
             ) : null}
           </section>
@@ -406,7 +453,12 @@ function HeaderGroup(props: {
   if (items.length === 0) return null;
   return (
     <div class="mb-4">
-      <h2 class={"px-2 pb-1 text-xs font-semibold tracking-wide uppercase " + (muted ? "text-gray-400" : "text-gray-500")}>
+      <h2
+        class={
+          "px-2 pb-1 text-xs font-semibold tracking-wide uppercase " +
+          (muted ? "text-gray-400" : "text-gray-500")
+        }
+      >
         {label} <span class="ml-1 font-normal text-gray-400">{items.length}</span>
       </h2>
       <ul role="list" class="space-y-0.5">
@@ -426,11 +478,23 @@ function HeaderGroup(props: {
                     : "hover:bg-gray-50 dark:hover:bg-white/5")
                 }
               >
-                <span class={"line-clamp-2 " + (muted ? "text-gray-500" : "font-medium text-gray-900 dark:text-white")}>
+                <span
+                  class={
+                    "line-clamp-2 " +
+                    (muted ? "text-gray-500" : "font-medium text-gray-900 dark:text-white")
+                  }
+                >
                   {summarizeProposal(p)}
                 </span>
                 <span class="flex items-center gap-x-2 text-xs text-gray-500">
-                  <span class={"rounded px-1.5 py-0.5 " + (tone === "primary" ? "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100" : "bg-gray-100 dark:bg-white/10")}>
+                  <span
+                    class={
+                      "rounded px-1.5 py-0.5 " +
+                      (tone === "primary"
+                        ? "bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100"
+                        : "bg-gray-100 dark:bg-white/10")
+                    }
+                  >
                     {tierLabel(p.tier)}
                   </span>
                   {accounts.length > 1 ? <span>{accountLabel(accounts, p.accountId)}</span> : null}
@@ -713,7 +777,9 @@ function RowHead({ p, label }: { p: ActionProposal; label: string }) {
       {label ? <span class="pill apq-account">{label}</span> : null}
       <span class="pill">{p.kind}</span>
       <span class={`pill apq-tier-${p.tier}`}>{tierLabel(p.tier)}</span>
-      {p.status !== "pending" ? <span class={`pill apq-status-${p.status}`}>{p.status}</span> : null}
+      {p.status !== "pending" ? (
+        <span class={`pill apq-status-${p.status}`}>{p.status}</span>
+      ) : null}
     </header>
   );
 }
@@ -759,7 +825,8 @@ function EditedDiff({ p }: { p: ActionProposal }) {
           </pre>
         ) : (
           <p key={f.key} class="apq-fine">
-            <code>{f.key}</code>: {JSON.stringify(f.before ?? null)} → {JSON.stringify(f.after ?? null)}
+            <code>{f.key}</code>: {JSON.stringify(f.before ?? null)} →{" "}
+            {JSON.stringify(f.after ?? null)}
           </p>
         ),
       )}
@@ -810,7 +877,9 @@ function EditPanel(props: {
             rows={10}
             spellcheck={false}
             value={form.json}
-            onInput={(e) => props.onChange({ ...form, json: (e.target as HTMLTextAreaElement).value })}
+            onInput={(e) =>
+              props.onChange({ ...form, json: (e.target as HTMLTextAreaElement).value })
+            }
           />
         </label>
       )}
@@ -905,9 +974,8 @@ function DuePanel(props: {
   return (
     <div class="apq-editor">
       <p class="apq-fine">
-        When the work itself is due — the agent read it out of the message, so
-        fix it if the reading is wrong. Clearing it means "no deadline": the
-        work is never treated as urgent.
+        When the work itself is due — the agent read it out of the message, so fix it if the reading
+        is wrong. Clearing it means "no deadline": the work is never treated as urgent.
       </p>
       <label class="apq-label">
         Due (your local time)
@@ -918,7 +986,11 @@ function DuePanel(props: {
         />
       </label>
       <div class="actions">
-        <button type="button" disabled={props.busy || props.value.trim().length === 0} onClick={props.onSubmit}>
+        <button
+          type="button"
+          disabled={props.busy || props.value.trim().length === 0}
+          onClick={props.onSubmit}
+        >
           Save due date
         </button>
         <button type="button" disabled={props.busy} onClick={props.onClear}>

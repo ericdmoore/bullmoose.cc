@@ -1,34 +1,79 @@
-import { Fragment } from 'react'
+import { Fragment } from "react";
 
 const locations = [
   {
-    name: 'Edinburgh',
+    name: "Edinburgh",
     people: [
-      { name: 'Lindsay Walton', title: 'Front-end Developer', email: 'lindsay.walton@example.com', role: 'Member' },
-      { name: 'Courtney Henry', title: 'Designer', email: 'courtney.henry@example.com', role: 'Admin' },
+      {
+        name: "Lindsay Walton",
+        title: "Front-end Developer",
+        email: "lindsay.walton@example.com",
+        role: "Member",
+      },
+      {
+        name: "Courtney Henry",
+        title: "Designer",
+        email: "courtney.henry@example.com",
+        role: "Admin",
+      },
     ],
   },
   {
-    name: 'London',
+    name: "London",
     people: [
-      { name: 'Tom Cook', title: 'Director of Product', email: 'tom.cook@example.com', role: 'Member' },
-      { name: 'Whitney Francis', title: 'Copywriter', email: 'whitney.francis@example.com', role: 'Admin' },
-      { name: 'Leonard Krasner', title: 'Senior Designer', email: 'leonard.krasner@example.com', role: 'Owner' },
-      { name: 'Floyd Miles', title: 'Principal Designer', email: 'floyd.miles@example.com', role: 'Member' },
+      {
+        name: "Tom Cook",
+        title: "Director of Product",
+        email: "tom.cook@example.com",
+        role: "Member",
+      },
+      {
+        name: "Whitney Francis",
+        title: "Copywriter",
+        email: "whitney.francis@example.com",
+        role: "Admin",
+      },
+      {
+        name: "Leonard Krasner",
+        title: "Senior Designer",
+        email: "leonard.krasner@example.com",
+        role: "Owner",
+      },
+      {
+        name: "Floyd Miles",
+        title: "Principal Designer",
+        email: "floyd.miles@example.com",
+        role: "Member",
+      },
     ],
   },
   {
-    name: 'Leeds',
+    name: "Leeds",
     people: [
-      { name: 'Emily Selman', title: 'VP, User Experience', email: 'emily.selman@example.com', role: 'Member' },
-      { name: 'Kristin Watson', title: 'VP, Human Resources', email: 'kristin.watson@example.com', role: 'Admin' },
-      { name: 'Emma Dorsey', title: 'Senior Developer', email: 'emma.dorsey@example.com', role: 'Member' },
+      {
+        name: "Emily Selman",
+        title: "VP, User Experience",
+        email: "emily.selman@example.com",
+        role: "Member",
+      },
+      {
+        name: "Kristin Watson",
+        title: "VP, Human Resources",
+        email: "kristin.watson@example.com",
+        role: "Admin",
+      },
+      {
+        name: "Emma Dorsey",
+        title: "Senior Developer",
+        email: "emma.dorsey@example.com",
+        role: "Member",
+      },
     ],
   },
-]
+];
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -62,13 +107,22 @@ export default function Example() {
                   >
                     Name
                   </th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
+                  <th
+                    scope="col"
+                    className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white"
+                  >
                     Title
                   </th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
+                  <th
+                    scope="col"
+                    className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white"
+                  >
                     Email
                   </th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">
+                  <th
+                    scope="col"
+                    className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white"
+                  >
                     Role
                   </th>
                   <th scope="col" className="py-3.5 pr-4 pl-3 sm:pr-3">
@@ -93,9 +147,9 @@ export default function Example() {
                         key={person.email}
                         className={classNames(
                           personIdx === 0
-                            ? 'border-gray-300 dark:border-white/15'
-                            : 'border-gray-200 dark:border-white/10',
-                          'border-t',
+                            ? "border-gray-300 dark:border-white/15"
+                            : "border-gray-200 dark:border-white/10",
+                          "border-t",
                         )}
                       >
                         <td className="py-4 pr-3 pl-4 text-sm font-medium whitespace-nowrap text-gray-900 sm:pl-3 dark:text-white">
@@ -128,5 +182,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

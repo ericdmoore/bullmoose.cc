@@ -46,7 +46,11 @@ async function harness() {
   registerAgentMethods(registry);
 
   w.db
-    .seedAccount({ accountId: DAEMON, principalId: "p_daemon", loginEmail: "alpaca-daemon@bullmoose.cc" })
+    .seedAccount({
+      accountId: DAEMON,
+      principalId: "p_daemon",
+      loginEmail: "alpaca-daemon@bullmoose.cc",
+    })
     .seedAccount({ accountId: HERMES, principalId: "p_hermes" })
     .seedAccount({ accountId: ALLEN, principalId: "p_allen" });
 
@@ -100,7 +104,14 @@ async function harness() {
   ] as const) {
     w.db.seed("agent_bindings", [{ id: `bind_${binding}`, account_id: account, name: binding }]);
     w.db.seed("emails", [
-      { id: `e_${account}`, account_id: account, blob_id: "b1", thread_id: "t1", size: 10, received_at: 1 },
+      {
+        id: `e_${account}`,
+        account_id: account,
+        blob_id: "b1",
+        thread_id: "t1",
+        size: 10,
+        received_at: 1,
+      },
     ]);
     w.db.seed("agent_invocations", [
       {

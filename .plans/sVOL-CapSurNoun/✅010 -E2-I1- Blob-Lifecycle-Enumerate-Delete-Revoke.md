@@ -1,14 +1,14 @@
 # 010 -E2-I1- Blob lifecycle — enumerate, delete, revoke share
 
-| | |
-|---|---|
-| **Kind** | capability |
-| **Effort** | **E2** — routes in `services/jmap/src/index.ts`, two methods on `Mailstore`, CLI verbs in `packages/cli`. New KV namespace binding, **no D1 migration** — see *What to build* §2 |
-| **Impact** | **I1** — human-verifiable (revoke a link, it stops working), unlocks nothing on its own |
-| **Owner** | `sVOL` |
-| **Depends on** | — |
-| **Related** | `011` / `s03.B` T1 owns **blob pinning + GC**; this unit must not build that |
-| **Status** | ✅ **shipped** — KV (§2 option a), so the unit held at **E2**. 42 tests. |
+|                |                                                                                                                                                                                  |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Kind**       | capability                                                                                                                                                                       |
+| **Effort**     | **E2** — routes in `services/jmap/src/index.ts`, two methods on `Mailstore`, CLI verbs in `packages/cli`. New KV namespace binding, **no D1 migration** — see _What to build_ §2 |
+| **Impact**     | **I1** — human-verifiable (revoke a link, it stops working), unlocks nothing on its own                                                                                          |
+| **Owner**      | `sVOL`                                                                                                                                                                           |
+| **Depends on** | —                                                                                                                                                                                |
+| **Related**    | `011` / `s03.B` T1 owns **blob pinning + GC**; this unit must not build that                                                                                                     |
+| **Status**     | ✅ **shipped** — KV (§2 option a), so the unit held at **E2**. 42 tests.                                                                                                         |
 
 ## What shipped, and the decision behind it
 
@@ -35,7 +35,7 @@ Open Question #2 worried that "the cheaper option preserves my effort grade" is
 a suspicious reason to prefer a design. Agreed — so the tie-break was (1) and
 (3), both of which point the same way independently of cost, and the counter-
 argument from `admin.ts:18` is answered rather than ignored: that line is now
-corrected in place, because the join it anticipated is a *reporting* need that
+corrected in place, because the join it anticipated is a _reporting_ need that
 `s03.B` can serve from `file_nodes` when it exists, not a revocation need.
 
 **Four things the unit did not anticipate, all decided here:**
@@ -63,7 +63,7 @@ corrected in place, because the join it anticipated is a *reporting* need that
   Files ships.
 
 ⚠️ **`s03.B` interaction, unchanged and still live.** `s03.B` T3 makes this
-path the *standard* attachment route. A `FileNode` destroy that leaves a live
+path the _standard_ attachment route. A `FileNode` destroy that leaves a live
 share URL is a data leak, and nothing in this unit prevents that: `011` must
 call the revoke path (or `liveSharesForBlob`) on destroy. `handleBlobDelete`
 refuses while a live share exists, which turns the silent leak into a visible
@@ -72,14 +72,14 @@ refuses while a live share exists, which turns the silent leak into a visible
 
 ### Where to look
 
-| | |
-|---|---|
-| Record model + KV ops, with the decision written where it is executed | `services/jmap/src/shares.ts` |
-| Routes, signature change, download gate | `services/jmap/src/index.ts` |
-| `listBlobs` / `headBlob` / `blobReferences` / `deleteBlob` | `packages/mailstore/src/index.ts` |
-| `bullmoose blobs list\|rm`, `bullmoose share list\|revoke` | `packages/cli/src/blobs.ts` |
-| 33 worker tests + 9 CLI render tests | `services/jmap/src/shares.test.ts`, `packages/cli/src/blobs.test.ts` |
-| Break-glass runbook (Done-when #7) | `docs/DEPLOY.md` § *Runbook: revoking share links* |
+|                                                                       |                                                                      |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Record model + KV ops, with the decision written where it is executed | `services/jmap/src/shares.ts`                                        |
+| Routes, signature change, download gate                               | `services/jmap/src/index.ts`                                         |
+| `listBlobs` / `headBlob` / `blobReferences` / `deleteBlob`            | `packages/mailstore/src/index.ts`                                    |
+| `bullmoose blobs list\|rm`, `bullmoose share list\|revoke`            | `packages/cli/src/blobs.ts`                                          |
+| 33 worker tests + 9 CLI render tests                                  | `services/jmap/src/shares.test.ts`, `packages/cli/src/blobs.test.ts` |
+| Break-glass runbook (Done-when #7)                                    | `docs/DEPLOY.md` § _Runbook: revoking share links_                   |
 
 **The tests were verified to catch the gap**: with `services/jmap/src/index.ts`
 and `packages/mailstore/src/index.ts` reverted to their pre-unit state (the
@@ -118,19 +118,19 @@ either — which is the honest content of its `I1`.
 
 **E2.** Three small route handlers alongside four that already exist in a 268-line file, two
 methods on `Mailstore` beside the two blob methods it already has, and CLI verbs. The one
-piece of real design is share revocation, which is genuinely hard *only* because the current
+piece of real design is share revocation, which is genuinely hard _only_ because the current
 scheme is stateless (§2). No new service. **No D1 migration** if §2's KV design is taken; a
 `shares` table instead makes this E3.
 
 **I1, and the honest reading of both factors:**
 
-- *Human-verifiable* — yes, and crisply. Send a big-file link to yourself, open it in a
+- _Human-verifiable_ — yes, and crisply. Send a big-file link to yourself, open it in a
   browser, run `bullmoose share revoke <id>`, reload, get a 403. A non-engineer can do the
   whole loop.
-- *Unlocks nothing* — no unit names this as a dependency. `011` names it, but as a *warning*,
-  not an edge: `011:62-65` says a destroyed FileNode's minted share URL *"stays valid until
+- _Unlocks nothing_ — no unit names this as a dependency. `011` names it, but as a _warning_,
+  not an edge: `011:62-65` says a destroyed FileNode's minted share URL _"stays valid until
   `exp` with no kill switch… That is unit `010`, and it becomes a data-leak path once Files
-  exists rather than merely untidy."* `011`'s own **Depends on** line is `s03.A` only. So the
+  exists rather than merely untidy."_ `011`'s own **Depends on** line is `s03.A` only. So the
   relationship is de-risking, not unblocking, and `I1` is correct.
 
 **But this is the one unit in the volume with a real security edge**, and the impact rubric
@@ -142,12 +142,12 @@ Questions #1.
 
 **Four blob routes on the jmap worker** (`services/jmap/src/index.ts`):
 
-| route | line | handler | gate |
-|---|---|---|---|
-| `GET /share/{tenant}/{account}/{blob}/{name}?exp&sig` | `:36` | `handleShareDownload` `:220` | **none** — HMAC + expiry only, checked *before* `authenticate` at `:45` |
-| `GET /api/download/{accountId}/{blobId}` | `:70` | `handleDownload` `:122` | `principalHasScope(principal, "read")` `:71` |
-| `POST /api/upload/{accountId}` | `:76` | `handleUpload` `:141` | `"draft"` `:77` |
-| `POST /api/share/{accountId}/{blobId}` | `:83` | `handleShareCreate` `:190` | `"draft"` `:84` |
+| route                                                 | line  | handler                      | gate                                                                    |
+| ----------------------------------------------------- | ----- | ---------------------------- | ----------------------------------------------------------------------- |
+| `GET /share/{tenant}/{account}/{blob}/{name}?exp&sig` | `:36` | `handleShareDownload` `:220` | **none** — HMAC + expiry only, checked _before_ `authenticate` at `:45` |
+| `GET /api/download/{accountId}/{blobId}`              | `:70` | `handleDownload` `:122`      | `principalHasScope(principal, "read")` `:71`                            |
+| `POST /api/upload/{accountId}`                        | `:76` | `handleUpload` `:141`        | `"draft"` `:77`                                                         |
+| `POST /api/share/{accountId}/{blobId}`                | `:83` | `handleShareCreate` `:190`   | `"draft"` `:84`                                                         |
 
 **`Mailstore` exposes exactly two blob operations**, both at the bottom of a 1,912-line file:
 
@@ -168,8 +168,8 @@ So there is **no enumeration, no delete, and no revocation**:
    they?" — not the CLI, not JMAP, not an operator. R2 charges for storage nobody can see.
 2. **No delete.** `destroyEmail` (`packages/mailstore/src/index.ts:643-655`) deletes the D1
    rows and leaves the object, with a source comment saying exactly why:
-   *"Blob is retained in R2 for now — content-hash blobs may be shared; garbage collection is
-   a separate sweep (TODO)"* (`:644-645`). Content addressing means two identical attachments
+   _"Blob is retained in R2 for now — content-hash blobs may be shared; garbage collection is
+   a separate sweep (TODO)"_ (`:644-645`). Content addressing means two identical attachments
    in two messages are **one object**, so naive delete is a correctness bug, not just a policy
    choice.
 3. **No revocation, and the scheme structurally forbids it.** `shareSignature`
@@ -181,7 +181,7 @@ So there is **no enumeration, no delete, and no revocation**:
    and streams the object.
 
    **Nothing is written down at mint time.** No row, no key, no log line. The system does not
-   know the link exists. There is nothing to revoke *and nothing to enumerate*, and a leaked
+   know the link exists. There is nothing to revoke _and nothing to enumerate_, and a leaked
    URL is valid for up to `SHARE_MAX_TTL` = **90 days** (`:168`), default 30 (`:167`).
 
 **This is not a hypothetical path — it is the send path.** `packages/cli/src/main.ts:407-408`
@@ -191,8 +191,8 @@ already mints share links during a normal markdown send: assets over `--link-max
 Every big attachment anyone has ever sent is already a live, unrevocable URL.
 
 **And it gets worse with use.** `s03.B` T3 (`s03.B-files/devPlan.md:57-60`) makes this the
-*standard* attachment path — *"Outbound: upload → `FileNode/set` → `/api/share` → link in body.
-Four of five steps already exist"* — plus an inbound rule that files large attachments the same
+_standard_ attachment path — _"Outbound: upload → `FileNode/set` → `/api/share` → link in body.
+Four of five steps already exist"_ — plus an inbound rule that files large attachments the same
 way. Every send after that lands one more permanent URL.
 
 **Two structural notes:**
@@ -222,7 +222,7 @@ only way anyone will ever find out what is actually stored.
 ### 2. Share revocation — the design decision
 
 **Revocation requires state at mint time.** A stateless HMAC cannot be un-signed. Note that
-this is also what makes enumeration of *shares* impossible today, so both problems have one
+this is also what makes enumeration of _shares_ impossible today, so both problems have one
 answer: record something when a link is minted.
 
 Minimal record: `{ shareId, accountId, blobId, name, exp, createdAt, revokedAt? }`, with
@@ -249,8 +249,8 @@ Where to put it:
 
 ⚠️ **KV is eventually consistent.** A revocation may take up to ~60s to be visible at every
 edge. For a kill switch on a leaked link that is probably acceptable and it is certainly better
-than "never" — but it must be stated in the CLI output (*"revoked; may take up to a minute to
-take effect everywhere"*) rather than discovered. This is the honest cost of (a) over (b), and
+than "never" — but it must be stated in the CLI output (_"revoked; may take up to a minute to
+take effect everywhere"_) rather than discovered. This is the honest cost of (a) over (b), and
 Open Questions #2 argues the other side.
 
 Wire it into `handleShareDownload` after the signature check (`:231`) and before the R2 read
@@ -267,13 +267,13 @@ scope `delete`.
 
 **It must refcount before deleting.** Content addressing (`:1837-1838`) means the object may
 back several messages. References live in `emails.attachments_json`
-(`packages/mailstore/sql/data-plane.sql:34`) — *"JSON `AttachmentMeta[]`"* — plus `emails.blob_id`
+(`packages/mailstore/sql/data-plane.sql:34`) — _"JSON `AttachmentMeta[]`"_ — plus `emails.blob_id`
 for the raw RFC 5322 bytes. So the check is a `blob_id` equality scan **and** a JSON scan over
 the account's emails: no index, O(messages). Acceptable for an explicit single-blob delete;
 unacceptable as a sweep, which is the next point.
 
-🚧 **Do not build the GC sweep here.** `s03.B` T1 owns blob pinning — *"a blob referenced by a
-live FileNode must survive GC. Lands with the schema"* (`s03.B-files/devPlan.md:15-17`). A GC
+🚧 **Do not build the GC sweep here.** `s03.B` T1 owns blob pinning — _"a blob referenced by a
+live FileNode must survive GC. Lands with the schema"_ (`s03.B-files/devPlan.md:15-17`). A GC
 pass built now would have no concept of pinning and would delete FileNode-backed blobs the
 moment Files ships. Explicit delete only; leave the sweep to the unit that owns the pin.
 
@@ -330,10 +330,10 @@ refusing.
 
 ## Open questions / where this could be wrong
 
-1. **`I1` is right by the rubric and wrong by the stomach.** The rubric's axes are *unlocks*
-   and *human-verifiable*; there is no *risk* axis, so a live data-exposure path with no kill
+1. **`I1` is right by the rubric and wrong by the stomach.** The rubric's axes are _unlocks_
+   and _human-verifiable_; there is no _risk_ axis, so a live data-exposure path with no kill
    switch grades identically to a missing convenience command. I did not inflate the grade —
-   `011` names this as a warning, not a dependency, so *unlocks* is genuinely false — but if
+   `011` names this as a warning, not a dependency, so _unlocks_ is genuinely false — but if
    this volume ever gets a third axis, this is the unit that motivates it. Meanwhile the
    sequencing is what needs to change, not the letter: `_index.md` §3 puts `010` in **wave 4,
    "cheap cleanup, any time"**, and I think that is wrong. The break-glass in §2(c) costs
@@ -342,13 +342,13 @@ refusing.
 2. **KV vs a `shares` table is a real fork and I may have picked the wrong side.** I chose KV
    to hold the unit at E2 and to get TTL-based reaping for free, and I am aware that
    "the cheaper option preserves my effort grade" is a suspicious reason to prefer a design.
-   The counter-arguments are strong: `admin.ts:18` says *"needs the shares table"*, so the
+   The counter-arguments are strong: `admin.ts:18` says _"needs the shares table"_, so the
    original intent was D1; eventual consistency on a **security** control is an uncomfortable
    property; and a table joins against `emails`/`file_nodes` for the reporting `s03.B` will
    want. If the reviewer picks D1, this is **E3** and should be built in the same migration
    pass as `008`'s tombstones and `s03.A` T2's `revoked_at`.
 
-3. **`s03.B` T1 may subsume the delete half entirely.** T1 lands `file_nodes` *and* blob
+3. **`s03.B` T1 may subsume the delete half entirely.** T1 lands `file_nodes` _and_ blob
    pinning together (`devPlan.md:15-17`), which means it must define blob reachability anyway
    — and once it has, `deleteBlob` is a trivial consequence of it rather than its own work.
    A reasonable position: build only enumeration + revocation here, and let delete arrive with
@@ -367,7 +367,7 @@ refusing.
 
 5. **Adding `shareId` to the signed payload breaks every existing link.** `shareSignature:185`
    would change shape, so links minted before the change fail verification. That is arguably
-   *desirable* — it is a one-time revoke-all — but it is a user-visible break and this unit
+   _desirable_ — it is a one-time revoke-all — but it is a user-visible break and this unit
    should decide it deliberately: either accept both payload shapes during a transition window,
    or announce it as the intended flush. I lean **flush**, on the grounds that not knowing what
    is out there is the actual problem.

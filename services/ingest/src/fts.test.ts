@@ -235,9 +235,10 @@ describe("POST /admin/fts/backfill", () => {
       },
     ]);
 
-    const scoped = (await (
-      await backfill(w, `?account=${ACCOUNT}&deep=0`)
-    ).json()) as { indexed: number; remaining: number };
+    const scoped = (await (await backfill(w, `?account=${ACCOUNT}&deep=0`)).json()) as {
+      indexed: number;
+      remaining: number;
+    };
     expect(scoped).toMatchObject({ indexed: 1, remaining: 0 });
 
     // The other account's message is untouched. `limit=0` is the status call:

@@ -49,7 +49,9 @@ describe("sanitizeEmailHtml — script execution", () => {
   });
 
   it("drops svg and math wholesale — foreign content is where mXSS lives", () => {
-    const r = sanitizeEmailHtml("<svg><script>alert(1)</script></svg><math><mi>x</mi></math><p>after</p>");
+    const r = sanitizeEmailHtml(
+      "<svg><script>alert(1)</script></svg><math><mi>x</mi></math><p>after</p>",
+    );
     expect(r.html).toBe("<p>after</p>");
     expectInert(r.html);
   });
@@ -63,7 +65,7 @@ describe("sanitizeEmailHtml — script execution", () => {
   });
 
   it("drops <noscript>, which many strippers treat as inert", () => {
-    const r = sanitizeEmailHtml('<noscript><img src=x onerror=alert(1)></noscript><p>ok</p>');
+    const r = sanitizeEmailHtml("<noscript><img src=x onerror=alert(1)></noscript><p>ok</p>");
     expect(r.html).toBe("<p>ok</p>");
     expectInert(r.html);
   });
@@ -167,7 +169,9 @@ describe("sanitizeEmailHtml — javascript: URLs", () => {
   });
 
   it("drops relative URLs, which would resolve against the WEBMAIL origin", () => {
-    expect(safeUrl("/settings/delete-account", { allowRemote: true, isResource: false })).toBeNull();
+    expect(
+      safeUrl("/settings/delete-account", { allowRemote: true, isResource: false }),
+    ).toBeNull();
     expect(safeUrl("#section", { allowRemote: true, isResource: false })).toBe("#section");
   });
 });
@@ -200,7 +204,9 @@ describe("sanitizeEmailHtml — remote content (tracking pixels)", () => {
   it("still keeps LINKS when remote content is blocked — blocking is about auto-fetch", () => {
     // Gating href on the remote-content switch would strip every link out of
     // every message by default: privacy theatre that breaks the client.
-    const r = sanitizeEmailHtml('<a href="https://ok.test/x">go</a><img src="https://t.test/p.gif">');
+    const r = sanitizeEmailHtml(
+      '<a href="https://ok.test/x">go</a><img src="https://t.test/p.gif">',
+    );
     expect(r.html).toContain('href="https://ok.test/x"');
     expect(r.blockedRemoteCount).toBe(1);
   });
@@ -238,7 +244,9 @@ describe("sanitizeEmailHtml — CSS policy", () => {
   });
 
   it("drops position so sender CSS cannot overlay the app's own chrome", () => {
-    const r = sanitizeEmailHtml('<div style="position:fixed;top:0;left:0;width:100%;height:100%">x</div>');
+    const r = sanitizeEmailHtml(
+      '<div style="position:fixed;top:0;left:0;width:100%;height:100%">x</div>',
+    );
     expect(r.html).not.toContain("position");
     expect(r.html).toContain("width: 100%");
   });
@@ -322,7 +330,7 @@ describe("sanitizeEmailHtml — quoted-reply collapsing", () => {
   });
 
   it("sanitizes the quoted half too", () => {
-    const r = sanitizeEmailHtml('<p>a</p><blockquote><script>alert(1)</script>old</blockquote>');
+    const r = sanitizeEmailHtml("<p>a</p><blockquote><script>alert(1)</script>old</blockquote>");
     expect(r.quotedHtml).not.toContain("script");
     expectInert(r.quotedHtml);
   });

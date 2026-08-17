@@ -17,12 +17,12 @@ D1 rows stay small on purpose.
 Real numbers from the production shard (July 2026), after photo
 offload:
 
-| collection | effective size per row |
-|---|---|
-| contact card (photo in R2) | ~0.7 KB |
-| calendar event (recurring = ONE row, never expanded to storage) | ~0.8 KB |
-| email metadata (body in R2) | ~1.2 KB with indexes |
-| **+ full-text index** (`emails_fts`, since `common/004`) | **~0.6 KB** |
+| collection                                                      | effective size per row |
+| --------------------------------------------------------------- | ---------------------- |
+| contact card (photo in R2)                                      | ~0.7 KB                |
+| calendar event (recurring = ONE row, never expanded to storage) | ~0.8 KB                |
+| email metadata (body in R2)                                     | ~1.2 KB with indexes   |
+| **+ full-text index** (`emails_fts`, since `common/004`)        | **~0.6 KB**            |
 
 A shard carrying 3,559 real contacts, 50 events, and mail metadata
 occupies **6.8 MB of the 500 MB** free-tier database cap. Back of the
@@ -160,7 +160,7 @@ Read-path consequences, all bounded:
 
 Ceiling with rotation: the free tier's **5 GB total** D1 storage ≈ ten
 shards ≈ **3–4 million messages of metadata for $0**. Note what rotation
-does *not* extend: the pooled 5M rows-read/day — archives even spend
+does _not_ extend: the pooled 5M rows-read/day — archives even spend
 extra reads on fall-through. Storage-stingy and read-chatty are
 different problems; rotation only solves the first.
 

@@ -217,7 +217,11 @@ async function send(plan: SendPlan): Promise<SendOutcome> {
 
   for (let hops = 0; hops <= MAX_REDIRECTS; hops += 1) {
     if (!destinationAllowed(url, plan.entries)) {
-      return { ok: false, status: 403, reason: `destination ${url.origin} is not in the allowlist` };
+      return {
+        ok: false,
+        status: 403,
+        reason: `destination ${url.origin} is not in the allowlist`,
+      };
     }
 
     const headers = new Headers(plan.headers);
@@ -243,7 +247,11 @@ async function send(plan: SendPlan): Promise<SendOutcome> {
     try {
       next = new URL(location, url);
     } catch {
-      return { ok: false, status: 502, reason: `upstream sent an unparseable Location: ${location}` };
+      return {
+        ok: false,
+        status: 502,
+        reason: `upstream sent an unparseable Location: ${location}`,
+      };
     }
     if (next.protocol !== "https:" && next.protocol !== "http:") {
       return { ok: false, status: 502, reason: `refusing a redirect to scheme ${next.protocol}` };
@@ -259,7 +267,10 @@ async function send(plan: SendPlan): Promise<SendOutcome> {
     }
 
     // 303 always, and 301/302 by long-standing practice, degrade to GET.
-    if (response.status === 303 || ((response.status === 301 || response.status === 302) && method !== "HEAD")) {
+    if (
+      response.status === 303 ||
+      ((response.status === 301 || response.status === 302) && method !== "HEAD")
+    ) {
       method = "GET";
       body = undefined;
     }

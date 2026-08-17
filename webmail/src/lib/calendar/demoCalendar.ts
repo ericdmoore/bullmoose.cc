@@ -391,8 +391,12 @@ export function createDemoCalendar(nowMs: number = Date.now()): DemoCalendarBack
         const needle = filter.text.toLowerCase();
         matched = matched.filter(
           (r) =>
-            String(r.event.title ?? "").toLowerCase().includes(needle) ||
-            String(r.event.description ?? "").toLowerCase().includes(needle),
+            String(r.event.title ?? "")
+              .toLowerCase()
+              .includes(needle) ||
+            String(r.event.description ?? "")
+              .toLowerCase()
+              .includes(needle),
         );
       }
       const position = typeof args.position === "number" ? args.position : 0;
@@ -421,7 +425,10 @@ export function createDemoCalendar(nowMs: number = Date.now()): DemoCalendarBack
           },
         ];
       }
-      const cap = Math.min(typeof args.maxOccurrences === "number" ? args.maxOccurrences : 200, 1000);
+      const cap = Math.min(
+        typeof args.maxOccurrences === "number" ? args.maxOccurrences : 200,
+        1000,
+      );
       const inCalendar = typeof args.inCalendar === "string" ? args.inCalendar : undefined;
       const ids = Array.isArray(args.ids) ? (args.ids as string[]) : undefined;
 
@@ -476,7 +483,14 @@ export function createDemoCalendar(nowMs: number = Date.now()): DemoCalendarBack
           id,
           calendarId,
           uid,
-          event: { ...(rest as CalendarEvent), "@type": "Event", id, uid, created: nowIso, updated: nowIso },
+          event: {
+            ...(rest as CalendarEvent),
+            "@type": "Event",
+            id,
+            uid,
+            created: nowIso,
+            updated: nowIso,
+          },
         });
         created[cid] = { id, uid, created: nowIso, updated: nowIso };
       }

@@ -233,7 +233,9 @@ export default function AppShell({ client: injected }: Props) {
       }
       setSelected(new Set());
       syncStore(store);
-      void loadMailboxes(client, accountId).then(setMailboxes).catch(() => undefined);
+      void loadMailboxes(client, accountId)
+        .then(setMailboxes)
+        .catch(() => undefined);
     },
     [client, accountId, targetRows, syncStore],
   );
@@ -257,7 +259,10 @@ export default function AppShell({ client: injected }: Props) {
           if (store) syncStore(store);
           const result = await applyTriage(client, accountId, patches);
           if (result.refusal) setToast(result.refusal.message);
-          else void loadMailboxes(client, accountId).then(setMailboxes).catch(() => undefined);
+          else
+            void loadMailboxes(client, accountId)
+              .then(setMailboxes)
+              .catch(() => undefined);
         }
       } catch (err) {
         setToast(String(err instanceof Error ? err.message : err));
@@ -267,15 +272,12 @@ export default function AppShell({ client: injected }: Props) {
     [client, accountId, syncStore],
   );
 
-  const startCompose = useCallback(
-    (spec: DraftSpec) => {
-      setDraft(spec);
-      setDraftId(undefined);
-      setComposeError(undefined);
-      setView("compose");
-    },
-    [],
-  );
+  const startCompose = useCallback((spec: DraftSpec) => {
+    setDraft(spec);
+    setDraftId(undefined);
+    setComposeError(undefined);
+    setView("compose");
+  }, []);
 
   const currentIdentity = useMemo(
     () => identities.find((i) => i.id === identityId) ?? identities[0],
@@ -343,7 +345,8 @@ export default function AppShell({ client: injected }: Props) {
   }, [mailboxes, mailbox?.id, runTriage]);
 
   // ── keyboard ────────────────────────────────────────────────────────────
-  const context: KeyContext = view === "compose" ? "compose" : view === "thread" ? "thread" : "list";
+  const context: KeyContext =
+    view === "compose" ? "compose" : view === "thread" ? "thread" : "list";
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent): void => {
@@ -439,14 +442,18 @@ export default function AppShell({ client: injected }: Props) {
           const email = detail?.emails.at(-1);
           if (email && currentIdentity) {
             startCompose(
-              buildReplyDraft(email, { identity: currentIdentity, replyAll: action === "replyAll" }),
+              buildReplyDraft(email, {
+                identity: currentIdentity,
+                replyAll: action === "replyAll",
+              }),
             );
           }
           break;
         }
         case "forward": {
           const email = detail?.emails.at(-1);
-          if (email && currentIdentity) startCompose(buildForwardDraft(email, { identity: currentIdentity }));
+          if (email && currentIdentity)
+            startCompose(buildForwardDraft(email, { identity: currentIdentity }));
           break;
         }
         case "search":
@@ -521,8 +528,7 @@ export default function AppShell({ client: injected }: Props) {
             exists to close (lib/app/tokenInUrl.test.ts). The door does the
             same job without the URL ever seeing it. */}
         <p class="muted">
-          <a href="/login">Sign in again</a>, or append <code>?demo=1</code> to browse sample
-          data.
+          <a href="/login">Sign in again</a>, or append <code>?demo=1</code> to browse sample data.
         </p>
       </main>
     );
@@ -621,9 +627,7 @@ export default function AppShell({ client: injected }: Props) {
         />
 
         <main class="content">
-          {!isEmptySpec(searchSpec) ? (
-            <p class="scope-line">{describeSearchScope(spec)}</p>
-          ) : null}
+          {!isEmptySpec(searchSpec) ? <p class="scope-line">{describeSearchScope(spec)}</p> : null}
 
           {view === "compose" && draft ? (
             <Composer
@@ -659,11 +663,14 @@ export default function AppShell({ client: injected }: Props) {
               onToggleQuotes={() => setShowQuotes((v) => !v)}
               onReply={(email, all) => {
                 if (currentIdentity) {
-                  startCompose(buildReplyDraft(email, { identity: currentIdentity, replyAll: all }));
+                  startCompose(
+                    buildReplyDraft(email, { identity: currentIdentity, replyAll: all }),
+                  );
                 }
               }}
               onForward={(email) => {
-                if (currentIdentity) startCompose(buildForwardDraft(email, { identity: currentIdentity }));
+                if (currentIdentity)
+                  startCompose(buildForwardDraft(email, { identity: currentIdentity }));
               }}
               onBack={() => {
                 setView("list");
@@ -718,7 +725,12 @@ export default function AppShell({ client: injected }: Props) {
       ) : null}
 
       {helpOpen ? (
-        <div class="help-overlay" role="dialog" aria-label="Keyboard shortcuts" onClick={() => setHelpOpen(false)}>
+        <div
+          class="help-overlay"
+          role="dialog"
+          aria-label="Keyboard shortcuts"
+          onClick={() => setHelpOpen(false)}
+        >
           <div class="help-card">
             <h2>Keyboard</h2>
             <dl>

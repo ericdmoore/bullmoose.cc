@@ -1,9 +1,12 @@
-import { ChevronDownIcon } from '@heroicons/react/16/solid'
+import { ChevronDownIcon } from "@heroicons/react/16/solid";
 
 export default function Example() {
   return (
     <>
-      <label htmlFor="location" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
+      <label
+        htmlFor="location"
+        className="block text-sm/6 font-medium text-gray-900 dark:text-white"
+      >
         Location
       </label>
       <div className="mt-2 grid grid-cols-1">
@@ -23,5 +26,5 @@ export default function Example() {
         />
       </div>
     </>
-  )
+  );
 }

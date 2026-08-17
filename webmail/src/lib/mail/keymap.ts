@@ -182,7 +182,11 @@ export const KEY_HELP: Array<{ keys: string; description: string; context: KeyCo
   { keys: "i", description: "Load blocked images", context: ["thread"] },
   { keys: "/", description: "Search", context: ["list", "thread"] },
   { keys: ".", description: "Refresh", context: ["list"] },
-  { keys: "g then i/a/s/d/t", description: "Go to Inbox/Archive/Sent/Drafts/Trash", context: ["list", "thread"] },
+  {
+    keys: "g then i/a/s/d/t",
+    description: "Go to Inbox/Archive/Sent/Drafts/Trash",
+    context: ["list", "thread"],
+  },
   { keys: "Cmd/Ctrl+Enter", description: "Send", context: ["compose"] },
   { keys: "?", description: "This help", context: ["list", "thread"] },
 ];

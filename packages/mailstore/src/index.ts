@@ -351,7 +351,10 @@ export interface FileNodeFilterCondition {
 
 export interface FileNodeQuery {
   filter?: FileNodeFilterCondition | null;
-  sort?: Array<{ property: "name" | "created" | "modified" | "changed" | "size"; isAscending: boolean }>;
+  sort?: Array<{
+    property: "name" | "created" | "modified" | "changed" | "size";
+    isAscending: boolean;
+  }>;
   position?: number;
   limit?: number;
   calculateTotal?: boolean;
@@ -439,8 +442,7 @@ export interface WriteProvenance {
 }
 
 /** The SQL column list for the provenance trio, in bind order. */
-const PROVENANCE_COLUMNS =
-  "last_writer_principal, last_writer_binding, last_writer_invocation";
+const PROVENANCE_COLUMNS = "last_writer_principal, last_writer_binding, last_writer_invocation";
 
 const blobKey = (tenantId: string, accountId: string, blobId: string) =>
   `mail/${tenantId}/${accountId}/blobs/${blobId}`;
@@ -705,11 +707,7 @@ export class Mailstore {
    * provenance-only write.
    */
   private appendProvenance(sets: string[], params: unknown[]): void {
-    sets.push(
-      "last_writer_principal = ?",
-      "last_writer_binding = ?",
-      "last_writer_invocation = ?",
-    );
+    sets.push("last_writer_principal = ?", "last_writer_binding = ?", "last_writer_invocation = ?");
     params.push(...this.provenanceValues());
   }
 
@@ -786,7 +784,15 @@ export class Mailstore {
         `INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order, ${PROVENANCE_COLUMNS})
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(row.id, accountId, row.parentId, row.name, row.role, row.sortOrder, ...this.provenanceValues())
+      .bind(
+        row.id,
+        accountId,
+        row.parentId,
+        row.name,
+        row.role,
+        row.sortOrder,
+        ...this.provenanceValues(),
+      )
       .run();
   }
 
@@ -828,9 +834,7 @@ export class Mailstore {
   /** Every email filed in a mailbox — the onDestroyRemoveEmails input. */
   async emailIdsInMailbox(accountId: string, mailboxId: string): Promise<string[]> {
     const { results } = await this.db
-      .prepare(
-        `SELECT email_id FROM email_mailboxes WHERE account_id = ? AND mailbox_id = ?`,
-      )
+      .prepare(`SELECT email_id FROM email_mailboxes WHERE account_id = ? AND mailbox_id = ?`)
       .bind(accountId, mailboxId)
       .all<{ email_id: string }>();
     return results.map((r) => r.email_id);
@@ -935,7 +939,10 @@ export class Mailstore {
           .bind(accountId, ...chunk),
       ]);
       emailRows.push(...((emails?.results ?? []) as Array<Record<string, unknown>>));
-      for (const r of (mailboxes?.results ?? []) as Array<{ email_id: string; mailbox_id: string }>) {
+      for (const r of (mailboxes?.results ?? []) as Array<{
+        email_id: string;
+        mailbox_id: string;
+      }>) {
         (mbByEmail.get(r.email_id) ?? mbByEmail.set(r.email_id, []).get(r.email_id)!).push(
           r.mailbox_id,
         );
@@ -1227,11 +1234,7 @@ export class Mailstore {
    * `services/ingest` `POST /admin/fts/backfill`) — nothing in the request
    * path needs it, because `insertEmail` indexes as it writes.
    */
-  async reindexEmailText(
-    accountId: string,
-    emailId: string,
-    text: EmailFtsText,
-  ): Promise<void> {
+  async reindexEmailText(accountId: string, emailId: string, text: EmailFtsText): Promise<void> {
     await this.db.batch(this.ftsIndexStatements(accountId, emailId, text));
   }
 
@@ -1342,7 +1345,9 @@ export class Mailstore {
       // is a search result pointing at nothing, and the id could later be
       // matched against a different account's row.
       ...this.ftsDeleteStatements(accountId, emailId),
-      this.db.prepare(`DELETE FROM emails WHERE account_id = ? AND id = ?`).bind(accountId, emailId),
+      this.db
+        .prepare(`DELETE FROM emails WHERE account_id = ? AND id = ?`)
+        .bind(accountId, emailId),
     ]);
   }
 
@@ -1384,7 +1389,10 @@ export class Mailstore {
   // called. Renaming it would churn history — a migration, every reader, every
   // index — to rename a thing that was never the folder in the first place.
 
-  private quarantineEventStatement(accountId: string, e: QuarantineEventInput): D1PreparedStatement {
+  private quarantineEventStatement(
+    accountId: string,
+    e: QuarantineEventInput,
+  ): D1PreparedStatement {
     return this.db
       .prepare(
         `INSERT INTO quarantine_events
@@ -1534,7 +1542,7 @@ export class Mailstore {
       ? normalizeAddress((JSON.parse(fromRow.from_json) as EmailAddress[])[0]?.email ?? "")
       : "";
     const sender = shunt?.sender ?? headerFrom;
-    const domain = shunt?.domain ?? (sender.split("@")[1] ?? "");
+    const domain = shunt?.domain ?? sender.split("@")[1] ?? "";
     const stage = shunt?.stage ?? "unknown";
 
     const inboxId = await this.ensureRoleMailbox(accountId, "inbox", "Inbox");
@@ -1939,7 +1947,12 @@ export class Mailstore {
   async updateAddressBook(
     accountId: string,
     id: string,
-    patch: { name?: string; description?: string | null; sortOrder?: number; isSubscribed?: boolean },
+    patch: {
+      name?: string;
+      description?: string | null;
+      sortOrder?: number;
+      isSubscribed?: boolean;
+    },
   ): Promise<void> {
     const sets: string[] = ["updated_at = ?"];
     const params: unknown[] = [Date.now()];
@@ -2001,9 +2014,7 @@ export class Mailstore {
     if (existing) return { id: existing.id, change: null };
 
     const oldest = await this.db
-      .prepare(
-        `SELECT id FROM address_books WHERE account_id = ? ORDER BY created_at LIMIT 1`,
-      )
+      .prepare(`SELECT id FROM address_books WHERE account_id = ? ORDER BY created_at LIMIT 1`)
       .bind(accountId)
       .first<{ id: string }>();
     if (oldest) {
@@ -2122,7 +2133,13 @@ export class Mailstore {
     accountId: string,
     ids?: string[],
   ): Promise<
-    Array<{ id: string; addressBookId: string; uid: string; davName: string | null; updatedAt: number }>
+    Array<{
+      id: string;
+      addressBookId: string;
+      uid: string;
+      davName: string | null;
+      updatedAt: number;
+    }>
   > {
     type Row = {
       id: string;
@@ -2201,7 +2218,11 @@ export class Mailstore {
     return out;
   }
 
-  async insertContactCard(accountId: string, row: ContactCardRow, writer: ContactWriter): Promise<void> {
+  async insertContactCard(
+    accountId: string,
+    row: ContactCardRow,
+    writer: ContactWriter,
+  ): Promise<void> {
     await this.insertContactCards(accountId, [row], writer);
   }
 
@@ -2258,9 +2279,7 @@ export class Mailstore {
     row: ContactCardRow,
     writer: ContactWriter,
   ): Promise<void> {
-    const chain = await this.governContactWrites(accountId, writer, [
-      { op: "update", next: row },
-    ]);
+    const chain = await this.governContactWrites(accountId, writer, [{ op: "update", next: row }]);
     await this.db.batch([
       this.db
         .prepare(
@@ -2491,8 +2510,12 @@ export class Mailstore {
       }
 
       // -- chain rows: the card's own contribution to its book(s) --
-      const prevContribution = prev ? await this.contributionOf(accountId, prev.card) : new Set<string>();
-      const nextContribution = next ? await this.contributionOf(accountId, next.card) : new Set<string>();
+      const prevContribution = prev
+        ? await this.contributionOf(accountId, prev.card)
+        : new Set<string>();
+      const nextContribution = next
+        ? await this.contributionOf(accountId, next.card)
+        : new Set<string>();
       const prevBook = prev && policies.has(prev.addressBookId) ? prev.addressBookId : null;
       const nextBook = next && policies.has(next.addressBookId) ? next.addressBookId : null;
       if (prevBook !== null && prevBook === nextBook) {
@@ -2550,7 +2573,10 @@ export class Mailstore {
   }
 
   /** uid → card for a set of uids (member resolution, chunked). */
-  private async cardsByUids(accountId: string, uids: string[]): Promise<Map<string, JSContactCard>> {
+  private async cardsByUids(
+    accountId: string,
+    uids: string[],
+  ): Promise<Map<string, JSContactCard>> {
     const out = new Map<string, JSContactCard>();
     for (const chunk of chunked([...new Set(uids)])) {
       const marks = chunk.map(() => "?").join(",");
@@ -2578,7 +2604,9 @@ export class Mailstore {
   ): Promise<Set<string>> {
     const memberUids = cardMemberUids(card);
     const resolved =
-      memberUids.length > 0 ? await this.cardsByUids(accountId, memberUids) : new Map<string, JSContactCard>();
+      memberUids.length > 0
+        ? await this.cardsByUids(accountId, memberUids)
+        : new Map<string, JSContactCard>();
     if (override) {
       if (override.card === null) resolved.delete(override.uid);
       else resolved.set(override.uid, override.card);
@@ -2702,7 +2730,8 @@ export class Mailstore {
     let where = query.filter ? this.buildContactFilter(query.filter, params) : "1=1";
     if (query.restrictToBooks) {
       const books = query.restrictToBooks.slice(0, MAX_BINDS);
-      if (books.length === 0) return { ids: [], position: 0, ...(query.calculateTotal ? { total: 0 } : {}) };
+      if (books.length === 0)
+        return { ids: [], position: 0, ...(query.calculateTotal ? { total: 0 } : {}) };
       where = `(${where}) AND c.address_book_id IN (${books.map(() => "?").join(",")})`;
       params.push(...books);
     }
@@ -3184,7 +3213,12 @@ export class Mailstore {
     accountId: string,
     ids: string[],
   ): Promise<Array<{ id: string; calendarId: string; davName: string | null; updatedAt: number }>> {
-    const out: Array<{ id: string; calendarId: string; davName: string | null; updatedAt: number }> = [];
+    const out: Array<{
+      id: string;
+      calendarId: string;
+      davName: string | null;
+      updatedAt: number;
+    }> = [];
     for (const chunk of chunked(ids)) {
       const marks = chunk.map(() => "?").join(",");
       const { results } = await this.db
@@ -3291,7 +3325,9 @@ export class Mailstore {
     };
     if (query.calculateTotal) {
       const row = await this.db
-        .prepare(`SELECT COUNT(*) AS n FROM calendar_events e WHERE e.account_id = ? AND (${where})`)
+        .prepare(
+          `SELECT COUNT(*) AS n FROM calendar_events e WHERE e.account_id = ? AND (${where})`,
+        )
         .bind(...params)
         .first<{ n: number }>();
       out.total = row?.n ?? 0;
@@ -3319,7 +3355,9 @@ export class Mailstore {
       for (const chunk of chunked(ids)) {
         const marks = chunk.map(() => "?").join(",");
         const { results: r } = await this.db
-          .prepare(`SELECT ${FILE_NODE_COLS} FROM file_nodes WHERE account_id = ? AND id IN (${marks})`)
+          .prepare(
+            `SELECT ${FILE_NODE_COLS} FROM file_nodes WHERE account_id = ? AND id IN (${marks})`,
+          )
           .bind(accountId, ...chunk)
           .all<FileNodeRawRow>();
         results.push(...r);
@@ -3339,7 +3377,9 @@ export class Mailstore {
     const clause = parentId === null ? "parent_id IS NULL" : "parent_id = ?";
     const binds = parentId === null ? [accountId] : [accountId, parentId];
     const { results } = await this.db
-      .prepare(`SELECT ${FILE_NODE_COLS} FROM file_nodes WHERE account_id = ? AND ${clause} ORDER BY name`)
+      .prepare(
+        `SELECT ${FILE_NODE_COLS} FROM file_nodes WHERE account_id = ? AND ${clause} ORDER BY name`,
+      )
       .bind(...binds)
       .all<FileNodeRawRow>();
     return results.map(rowToFileNode);
@@ -3612,11 +3652,7 @@ export class Mailstore {
       .run();
   }
 
-  async updateIdentity(
-    accountId: string,
-    id: string,
-    columns: IdentityColumns,
-  ): Promise<void> {
+  async updateIdentity(accountId: string, id: string, columns: IdentityColumns): Promise<void> {
     const entries = Object.entries(columns);
     if (entries.length === 0) return;
     const set = entries.map(([c]) => `${c} = ?`).join(", ");
@@ -3640,7 +3676,9 @@ export class Mailstore {
    */
   async isActiveDomain(tenantId: string, domain: string): Promise<boolean> {
     const row = await this.db
-      .prepare(`SELECT 1 AS ok FROM domains WHERE domain = ? AND tenant_id = ? AND status = 'active'`)
+      .prepare(
+        `SELECT 1 AS ok FROM domains WHERE domain = ? AND tenant_id = ? AND status = 'active'`,
+      )
       .bind(domain.toLowerCase(), tenantId)
       .first<{ ok: number }>();
     return row?.ok === 1;

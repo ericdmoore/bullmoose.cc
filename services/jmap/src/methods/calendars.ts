@@ -91,8 +91,18 @@ export function registerCalendarMethods(registry: MethodRegistry<RequestContext>
     const notUpdated: Record<string, SetError> = {};
     const destroyed: string[] = [];
     const notDestroyed: Record<string, SetError> = {};
-    const calEntry: ChangeEntry = { collection: "Calendar", created: [], updated: [], destroyed: [] };
-    const evEntry: ChangeEntry = { collection: "CalendarEvent", created: [], updated: [], destroyed: [] };
+    const calEntry: ChangeEntry = {
+      collection: "Calendar",
+      created: [],
+      updated: [],
+      destroyed: [],
+    };
+    const evEntry: ChangeEntry = {
+      collection: "CalendarEvent",
+      created: [],
+      updated: [],
+      destroyed: [],
+    };
 
     const cals = await store.getCalendars(access.accountId);
     const byId = new Map(cals.map((c) => [c.id, c]));
@@ -211,7 +221,12 @@ export function registerCalendarMethods(registry: MethodRegistry<RequestContext>
     const notUpdated: Record<string, SetError> = {};
     const destroyed: string[] = [];
     const notDestroyed: Record<string, SetError> = {};
-    const evEntry: ChangeEntry = { collection: "CalendarEvent", created: [], updated: [], destroyed: [] };
+    const evEntry: ChangeEntry = {
+      collection: "CalendarEvent",
+      created: [],
+      updated: [],
+      destroyed: [],
+    };
     const ctags = new Set<string>();
 
     const cals = new Map((await store.getCalendars(access.accountId)).map((c) => [c.id, c]));
@@ -261,7 +276,10 @@ export function registerCalendarMethods(registry: MethodRegistry<RequestContext>
       });
       let inserted = toInsert;
       try {
-        await store.insertCalendarEvents(access.accountId, inserted.map((p) => p.row));
+        await store.insertCalendarEvents(
+          access.accountId,
+          inserted.map((p) => p.row),
+        );
       } catch {
         inserted = [];
         for (const p of toInsert) {
@@ -406,7 +424,10 @@ export function registerCalendarMethods(registry: MethodRegistry<RequestContext>
     const after = typeof args.after === "string" ? Date.parse(args.after) : NaN;
     const before = typeof args.before === "string" ? Date.parse(args.before) : NaN;
     if (!Number.isFinite(after) || !Number.isFinite(before) || before <= after) {
-      throw new MethodError("invalidArguments", "after and before (UTCDates, after < before) required");
+      throw new MethodError(
+        "invalidArguments",
+        "after and before (UTCDates, after < before) required",
+      );
     }
     const cap = Math.min(
       typeof args.maxOccurrences === "number" ? args.maxOccurrences : 200,
@@ -516,8 +537,14 @@ function buildEventRow(
       ["start"],
     );
   }
-  if (event.timeZone !== undefined && event.timeZone !== null && typeof event.timeZone !== "string") {
-    throw new SetErrorSignal("invalidProperties", "timeZone must be an IANA zone string", ["timeZone"]);
+  if (
+    event.timeZone !== undefined &&
+    event.timeZone !== null &&
+    typeof event.timeZone !== "string"
+  ) {
+    throw new SetErrorSignal("invalidProperties", "timeZone must be an IANA zone string", [
+      "timeZone",
+    ]);
   }
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
@@ -591,13 +618,17 @@ function validateCalendarPatch(patch: Record<string, unknown>): {
     switch (path) {
       case "name":
         if (typeof value !== "string" || value.length === 0 || value.length > 255) {
-          throw new SetErrorSignal("invalidProperties", "name must be a 1..255-char string", ["name"]);
+          throw new SetErrorSignal("invalidProperties", "name must be a 1..255-char string", [
+            "name",
+          ]);
         }
         out.name = value;
         break;
       case "description":
         if (value !== null && typeof value !== "string") {
-          throw new SetErrorSignal("invalidProperties", "description must be a string or null", [path]);
+          throw new SetErrorSignal("invalidProperties", "description must be a string or null", [
+            path,
+          ]);
         }
         out.description = value as string | null;
         break;
@@ -609,7 +640,9 @@ function validateCalendarPatch(patch: Record<string, unknown>): {
         break;
       case "sortOrder":
         if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-          throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", [path]);
+          throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", [
+            path,
+          ]);
         }
         out.sortOrder = value;
         break;
@@ -670,7 +703,9 @@ async function commitCalendarEntries(
   accountId: string,
   entries: ChangeEntry[],
 ): Promise<string> {
-  const nonEmpty = entries.filter((e) => e.created.length + e.updated.length + e.destroyed.length > 0);
+  const nonEmpty = entries.filter(
+    (e) => e.created.length + e.updated.length + e.destroyed.length > 0,
+  );
   if (nonEmpty.length === 0) return accountState(ctx, accountId);
   const { newState } = await commitChanges(ctx.env.ACCOUNT_DO, accountId, nonEmpty);
   return newState;
@@ -691,7 +726,9 @@ function applyEventPatch(
     for (const t of tokens.slice(0, -1)) {
       const next = parent[t];
       if (next === null || typeof next !== "object" || Array.isArray(next)) {
-        throw new SetErrorSignal("invalidProperties", `patch path "${path}" does not exist`, [path]);
+        throw new SetErrorSignal("invalidProperties", `patch path "${path}" does not exist`, [
+          path,
+        ]);
       }
       parent = next as Record<string, unknown>;
     }

@@ -11,7 +11,10 @@ import { protectedResourceMetadata } from "./wellKnown";
 // That is worse than a 404 — the reader lands on a plausible page, gets no
 // answer, and nothing signals the mistake.
 
-const ctx = { waitUntil: () => {}, passThroughOnException: () => {} } as unknown as ExecutionContext;
+const ctx = {
+  waitUntil: () => {},
+  passThroughOnException: () => {},
+} as unknown as ExecutionContext;
 const get = (path: string) => new Request(`https://mcp.bullmoose.cc${path}`, { method: "GET" });
 
 describe("the docs the PRM points at actually exist", () => {

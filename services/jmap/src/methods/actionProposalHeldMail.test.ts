@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MethodRegistry } from "@bullmoose/jmap-core";
-import {
-  Mailstore,
-  QUARANTINE_NAME,
-  QUARANTINE_ROLE,
-  loadBayesState,
-} from "@bullmoose/mailstore";
+import { Mailstore, QUARANTINE_NAME, QUARANTINE_ROLE, loadBayesState } from "@bullmoose/mailstore";
 import { fakeEnv, type FakeWorker } from "@bullmoose/test-fakes";
 import { registerActionProposalMethods } from "./actionProposal";
 import type { RequestContext } from "./common";
@@ -181,7 +176,12 @@ async function harness(heldCount: number) {
       .map((e) => `${e.event}:${e.stage}${e.actor ? `:${e.actor}` : ""}`);
 
   const proposalRow = (id: string) =>
-    w.db.query<{ status: string; decision_json: string | null; edited_payload_json: string | null; payload_json: string }>(
+    w.db.query<{
+      status: string;
+      decision_json: string | null;
+      edited_payload_json: string | null;
+      payload_json: string;
+    }>(
       `SELECT status, decision_json, edited_payload_json, payload_json FROM agent_proposals WHERE id = ?`,
       id,
     )[0]!;
@@ -279,7 +279,9 @@ describe("approve RELEASES the held mail — and teaches the filter", () => {
     const h: Harness = await harness(2);
     const id = h.ask();
     const res = await h.call<SetResult>("ActionProposal/set", {
-      update: { [id]: { status: "approved", editedPayload: { emailIds: ["e_held_1", "e_other"] } } },
+      update: {
+        [id]: { status: "approved", editedPayload: { emailIds: ["e_held_1", "e_other"] } },
+      },
     });
     expect(res.notUpdated[id]!.type).toBe("invalidProperties");
     expect(res.notUpdated[id]!.description).toMatch(/only NARROW/);

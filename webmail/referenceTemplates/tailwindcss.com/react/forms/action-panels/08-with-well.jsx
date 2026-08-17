@@ -15,7 +15,9 @@ export default function Example() {
                 />
               </svg>
               <div className="mt-3 sm:mt-0 sm:ml-4">
-                <div className="text-sm font-medium text-gray-900 dark:text-white">Ending with 4242</div>
+                <div className="text-sm font-medium text-gray-900 dark:text-white">
+                  Ending with 4242
+                </div>
                 <div className="mt-1 text-sm text-gray-600 sm:flex sm:items-center dark:text-gray-400">
                   <div>Expires 12/20</div>
                   <span aria-hidden="true" className="hidden sm:mx-2 sm:inline">
@@ -37,5 +39,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

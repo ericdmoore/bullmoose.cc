@@ -29,7 +29,10 @@ export default function Example() {
         <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
           <form action="#" method="POST" className="space-y-6">
             <div>
-              <label htmlFor="email" className="block text-sm/6 font-medium text-gray-900 dark:text-gray-100">
+              <label
+                htmlFor="email"
+                className="block text-sm/6 font-medium text-gray-900 dark:text-gray-100"
+              >
                 Email address
               </label>
               <div className="mt-2">
@@ -46,7 +49,10 @@ export default function Example() {
 
             <div>
               <div className="flex items-center justify-between">
-                <label htmlFor="password" className="block text-sm/6 font-medium text-gray-900 dark:text-gray-100">
+                <label
+                  htmlFor="password"
+                  className="block text-sm/6 font-medium text-gray-900 dark:text-gray-100"
+                >
                   Password
                 </label>
                 <div className="text-sm">
@@ -81,7 +87,7 @@ export default function Example() {
           </form>
 
           <p className="mt-10 text-center text-sm/6 text-gray-500 dark:text-gray-400">
-            Not a member?{' '}
+            Not a member?{" "}
             <a
               href="#"
               className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
@@ -92,5 +98,5 @@ export default function Example() {
         </div>
       </div>
     </>
-  )
+  );
 }

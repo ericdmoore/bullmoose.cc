@@ -111,9 +111,7 @@ describe("no regression for legitimate values", () => {
 
   it("still quotes a display name needing it, and leaves a simple one bare", () => {
     expect(formatAddress({ name: "Bob Smith", email: "b@e.com" })).toBe("Bob Smith <b@e.com>");
-    expect(formatAddress({ name: "Smith, Bob", email: "b@e.com" })).toBe(
-      '"Smith, Bob" <b@e.com>',
-    );
+    expect(formatAddress({ name: "Smith, Bob", email: "b@e.com" })).toBe('"Smith, Bob" <b@e.com>');
     expect(formatAddress({ email: "b@e.com" })).toBe("b@e.com");
   });
 

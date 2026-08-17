@@ -219,7 +219,13 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
                 refuses a patch that names `email` at all (identity.ts:478-483),
                 so accepting input would be collecting a change we must throw
                 away — the exact failure this screen was warned about. */}
-            <input id="i-email" class="settings-input" type="text" value={identity.email} readonly />
+            <input
+              id="i-email"
+              class="settings-input"
+              type="text"
+              value={identity.email}
+              readonly
+            />
             <p class="settings-help">{emailNote?.note}</p>
 
             {isSynthetic(identity) ? (
@@ -276,8 +282,8 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
               onInput={(e) => patchForm({ textSignature: (e.target as HTMLTextAreaElement).value })}
             />
             <p class="settings-help">
-              Inserted when you compose from this address (RFC 8621 §6.1 — a hint to the client,
-              not something the server appends).
+              Inserted when you compose from this address (RFC 8621 §6.1 — a hint to the client, not
+              something the server appends).
             </p>
 
             <label class="settings-label" for="i-htmlsig">

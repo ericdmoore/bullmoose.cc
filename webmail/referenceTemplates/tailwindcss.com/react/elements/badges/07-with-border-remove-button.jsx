@@ -130,5 +130,5 @@ export default function Example() {
         </button>
       </span>
     </>
-  )
+  );
 }

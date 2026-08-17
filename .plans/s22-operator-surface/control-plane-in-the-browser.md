@@ -9,7 +9,7 @@ simple "add a page" — each moves a boundary, and the two move it different
 amounts.
 
 `/settings` already exists and is done (s07 T2 — `Identity`, `VacationResponse`).
-It is the natural home for the first of these and the *link target* for the
+It is the natural home for the first of these and the _link target_ for the
 second.
 
 ---
@@ -22,11 +22,11 @@ second.
 accounts with `isPersonal: false`, `isReadOnly`, and per-account `mayDecide` /
 `mayApproveIrreversible`. Its header states the pattern worth following:
 
-> *"the SERVER answers it, with the same `authorizeAccount` call the method gate
+> _"the SERVER answers it, with the same `authorizeAccount` call the method gate
 > itself runs — one decision function, two readers, no second policy layer to
 > drift. A client that renders a decide button per row has no way to know…
 > and guessing produces exactly the dishonesty this repo refuses: **a button
-> that fails at the round trip.**"*
+> that fails at the round trip.**"_
 
 Grant records themselves — who, what scopes, when, expiring, via which proposal
 — are exposed on **no** surface a browser can reach. `bullmoose admin grant list`
@@ -43,11 +43,11 @@ without the admin CLI.
 
 ### Three operations, three different answers
 
-| operation | verdict | why |
-|---|---|---|
-| **read** — grants on my account, and grants I hold | **yes** | it is my own ACL; needs a surface, not new authority |
-| **revoke** — where I am the target | **yes** | narrowing, fail-closed, already tombstoned and logged in `grant_lifecycle`. The tier-1 shape: safe because being wrong costs access, not data |
-| **create** | **no — stays CLI/admin** | the widening direction, and it would drag the control plane onto the mail surface |
+| operation                                          | verdict                  | why                                                                                                                                           |
+| -------------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **read** — grants on my account, and grants I hold | **yes**                  | it is my own ACL; needs a surface, not new authority                                                                                          |
+| **revoke** — where I am the target                 | **yes**                  | narrowing, fail-closed, already tombstoned and logged in `grant_lifecycle`. The tier-1 shape: safe because being wrong costs access, not data |
+| **create**                                         | **no — stays CLI/admin** | the widening direction, and it would drag the control plane onto the mail surface                                                             |
 
 That last one is the boundary worth keeping: `bullmoose-provision` has **no
 public route**, and the thing that decides who may read whose mail is not
@@ -57,8 +57,8 @@ reachable from the thing that reads mail.
 
 Two options; the first is cheaper and probably right.
 
-**Extend `/console/*`** — already on the jmap worker as *"the agent console's
-read interface"*, same-origin with the app for the same reasons `/api/*` is. A
+**Extend `/console/*`** — already on the jmap worker as _"the agent console's
+read interface"_, same-origin with the app for the same reasons `/api/*` is. A
 grants read needs no new capability URN and no JMAP type.
 
 **Or a vendor JMAP type.** `urn:bullmoose:params:jmap:agent` already carries
@@ -71,8 +71,8 @@ Either way the gate is the same `authorizeAccount` the session already calls.
 ### Show the provenance
 
 `grant_lifecycle` records the actor and `via_proposal_id`. A row reading
-*"partner@ can read your contacts — granted by you, 3 March"* is a different
-fact from *"…granted via a proposal CJ made"*, and the difference is exactly the
+_"partner@ can read your contacts — granted by you, 3 March"_ is a different
+fact from _"…granted via a proposal CJ made"_, and the difference is exactly the
 material a human should be judging rather than a system classifying.
 
 ---
@@ -94,9 +94,9 @@ visible in `ps aux` and shell history.
 
 From `services/agent/src/vault.ts`:
 
-> *"a plaintext secret goes IN once, at mint and at rotate, on its way to being
+> _"a plaintext secret goes IN once, at mint and at rotate, on its way to being
 > sealed. Nothing comes back… The agent worker therefore **cannot** unseal a
-> credential: not by rule, by [construction]."*
+> credential: not by rule, by [construction]."_
 
 The plaintext's whole life is: input → one HTTPS request → the agent worker (in
 transit only) → the `BUREAU` service binding → sealed under a key only bureau
@@ -133,7 +133,7 @@ running PBKDF2 in the browser so the raw value never posts. If that is trusted
 for a login password, a scoped API key is a smaller ask.
 
 **So:** `creds set` becomes available in the browser, but the form itself is
-served by a worker at its own path with the consent-page CSP — *not* a Preact
+served by a worker at its own path with the consent-page CSP — _not_ a Preact
 component inside the mail app. `/settings` **links** to it; it does not embed it.
 
 `--secret-env` stays CLI-only. It exists for automation and has no browser
@@ -156,6 +156,6 @@ operations getting a second client**, and in both cases the server-side
 authorization is unchanged — `authorizeAccount` for grants, the bureau seal for
 credentials. The work is surface, not policy.
 
-The one place policy *does* move: revoking a grant from settings means a browser
+The one place policy _does_ move: revoking a grant from settings means a browser
 session can narrow an ACL. That is the safe direction, but it should still leave
 a `grant_lifecycle` row naming the actor, exactly as the admin path does.

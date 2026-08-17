@@ -1,10 +1,28 @@
-import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/20/solid'
+import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 
 const items = [
-  { id: 1, title: 'Back End Developer', department: 'Engineering', type: 'Full-time', location: 'Remote' },
-  { id: 2, title: 'Front End Developer', department: 'Engineering', type: 'Full-time', location: 'Remote' },
-  { id: 3, title: 'User Interface Designer', department: 'Design', type: 'Full-time', location: 'Remote' },
-]
+  {
+    id: 1,
+    title: "Back End Developer",
+    department: "Engineering",
+    type: "Full-time",
+    location: "Remote",
+  },
+  {
+    id: 2,
+    title: "Front End Developer",
+    department: "Engineering",
+    type: "Full-time",
+    location: "Remote",
+  },
+  {
+    id: 3,
+    title: "User Interface Designer",
+    department: "Design",
+    type: "Full-time",
+    location: "Remote",
+  },
+];
 
 export default function Example() {
   return (
@@ -26,8 +44,9 @@ export default function Example() {
       <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-gray-700 dark:text-gray-300">
-            Showing <span className="font-medium">1</span> to <span className="font-medium">10</span> of{' '}
-            <span className="font-medium">97</span> results
+            Showing <span className="font-medium">1</span> to{" "}
+            <span className="font-medium">10</span> of <span className="font-medium">97</span>{" "}
+            results
           </p>
         </div>
         <div>
@@ -94,5 +113,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

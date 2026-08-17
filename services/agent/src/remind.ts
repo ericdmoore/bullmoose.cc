@@ -64,7 +64,11 @@ export type RemindParse =
  * conservative parser) and the note — WHAT to be reminded of. Pure and
  * deterministic, so the whole parse is unit-testable without an env.
  */
-export function parseRemindRequest(input: { subject: string; text: string; now: number }): RemindParse {
+export function parseRemindRequest(input: {
+  subject: string;
+  text: string;
+  now: number;
+}): RemindParse {
   const deadlineAt = extractDueAt({ subject: input.subject, text: input.text, now: input.now });
   if (deadlineAt === null) return { ok: false, reason: "no-deadline" };
   return { ok: true, deadlineAt, note: deriveNote(input.subject, input.text) };
@@ -140,7 +144,7 @@ export async function runRemind(
     await reply(
       "I couldn't find a deadline I'm sure about, so I didn't set a reminder.\n\n" +
         'Tell me *when* with a cue like "by Friday", "by end of day", or ' +
-        '"by 2026-08-20", and I\'ll set it. I don\'t guess at vague times ' +
+        "\"by 2026-08-20\", and I'll set it. I don't guess at vague times " +
         '("soon", "next week", a bare "tomorrow") — a wrong reminder is worse ' +
         "than none.",
     );
@@ -181,5 +185,10 @@ export async function runRemind(
       `When it comes due I'll surface it in your approvals as:\n  "${parse.note}"\n\n` +
       "Nothing was sent to anyone — a reminder just nudges you.",
   );
-  return finish("done", { note: "watch armed", watchId, deadlineAt: parse.deadlineAt, account: account.id });
+  return finish("done", {
+    note: "watch armed",
+    watchId,
+    deadlineAt: parse.deadlineAt,
+    account: account.id,
+  });
 }

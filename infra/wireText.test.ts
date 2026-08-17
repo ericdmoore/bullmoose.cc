@@ -44,7 +44,9 @@ describe("wireText — resource ids by binding, not by position", () => {
   });
 
   it("4. writes the OAUTH_KV id when it is supplied", () => {
-    const { text, changed } = wireText(OAUTH_CFG, "NEW_D1", "NEW_ROUTES", { OAUTH_KV: "NEW_OAUTH" });
+    const { text, changed } = wireText(OAUTH_CFG, "NEW_D1", "NEW_ROUTES", {
+      OAUTH_KV: "NEW_OAUTH",
+    });
     expect(changed).toBe(true);
     expect(text).toContain('"binding": "OAUTH_KV", "id": "NEW_OAUTH"');
     expect(text).toContain('"database_id": "NEW_D1"');

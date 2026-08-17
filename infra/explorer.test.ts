@@ -176,7 +176,13 @@ describe("--dry-run touches nothing", () => {
 
     const out = execFileSync(
       process.execPath,
-      ["--import", `file://${preload}`, resolve(ROOT, "infra/bootstrap.mjs"), "explorer", "--dry-run"],
+      [
+        "--import",
+        `file://${preload}`,
+        resolve(ROOT, "infra/bootstrap.mjs"),
+        "explorer",
+        "--dry-run",
+      ],
       { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     );
 

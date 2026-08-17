@@ -23,8 +23,9 @@ provision workers call.
     only `read` — never `move`/`delete`/`annotate`.
 
   `hasScope` / `scopesWithin` (a token can only mint tokens ⊆ its own
-  scopes, so `login --scopes` is the only way to *widen*). Unknown scope
+  scopes, so `login --scopes` is the only way to _widen_). Unknown scope
   strings are denied unless held verbatim.
+
 - **Login keys** (client-side stretching): `deriveLoginKey` =
   PBKDF2-SHA256, 600k iterations (OWASP), salt =
   SHA-256(`"bullmoose-login-v1:" + lowercase(email)`). The server (and

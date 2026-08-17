@@ -157,7 +157,12 @@ function harness(opts: { capMicros?: number } = {}) {
     );
 
   const proposalRow = (id: string) =>
-    w.db.query<{ status: string; decision_json: string | null; payload_json: string; edited_payload_json: string | null }>(
+    w.db.query<{
+      status: string;
+      decision_json: string | null;
+      payload_json: string;
+      edited_payload_json: string | null;
+    }>(
       "SELECT status, decision_json, payload_json, edited_payload_json FROM agent_proposals WHERE account_id = ? AND id = ?",
       ACCOUNT,
       id,
@@ -177,7 +182,19 @@ function harness(opts: { capMicros?: number } = {}) {
       "bind_photos",
     )[0]!.config_json;
 
-  return { w, call, spend, waiting, seedAsk, askPayload, paidClaim, overages, proposalRow, invRow, bindingConfig };
+  return {
+    w,
+    call,
+    spend,
+    waiting,
+    seedAsk,
+    askPayload,
+    paidClaim,
+    overages,
+    proposalRow,
+    invRow,
+    bindingConfig,
+  };
 }
 
 // ---- approve: a bounded overage the gate honors ----------------------------
@@ -275,7 +292,9 @@ describe("approve applies a BOUNDED overage, and the claim gate honors it", () =
 
     // "Fine, but only fifty cents." The edit is the human's ceiling.
     await h.call("ActionProposal/set", {
-      update: { [ask]: { status: "approved", editedPayload: { ...h.askPayload(), overageMicros: 500_000 } } },
+      update: {
+        [ask]: { status: "approved", editedPayload: { ...h.askPayload(), overageMicros: 500_000 } },
+      },
     });
     expect(h.overages()[0]!.amount_micros).toBe(500_000);
     // The agent's original payload is NEVER overwritten (the editedPayload
@@ -393,7 +412,14 @@ describe("decline means KEEP WAITING — and records nothing against the agent",
     // The same reasons remain perfectly valid on a kind that IS about the
     // agent's work — this narrows one kind, not the enum.
     h.w.db.seed("agent_invocations", [
-      { id: "inv_reply", account_id: ACCOUNT, binding_id: "bind_photos", binding_name: "photos", status: "done", created_at: 4 },
+      {
+        id: "inv_reply",
+        account_id: ACCOUNT,
+        binding_id: "bind_photos",
+        binding_name: "photos",
+        status: "done",
+        created_at: 4,
+      },
     ]);
     h.w.db.seed("agent_proposals", [
       {
@@ -425,7 +451,9 @@ describe("needsInfo works on this kind unchanged (s10 T3)", () => {
     const ask = h.seedAsk("inv_ask", h.askPayload());
 
     const res = await h.call<SetResult>("ActionProposal/set", {
-      update: { [ask]: { status: "info-requested", question: "What would finishing the queue cost?" } },
+      update: {
+        [ask]: { status: "info-requested", question: "What would finishing the queue cost?" },
+      },
     });
     expect(res.updated).toEqual({ [ask]: null });
 

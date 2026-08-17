@@ -1,4 +1,4 @@
-import { CheckCircleIcon } from '@heroicons/react/20/solid'
+import { CheckCircleIcon } from "@heroicons/react/20/solid";
 
 export default function Example() {
   return (
@@ -25,5 +25,5 @@ export default function Example() {
         <CheckCircleIcon aria-hidden="true" className="-mr-0.5 size-5" />
       </button>
     </>
-  )
+  );
 }

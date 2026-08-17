@@ -41,12 +41,25 @@ describe("waitingApprovals — the condensed pending glance", () => {
   // `orderQueue` and merely filtered the input would produce a different order
   // and the reuse test below would bite.
   const rows: ActionProposal[] = [
-    proposal({ id: "no-deadline", createdAt: new Date(NOW - 3 * DAY).toISOString(), expiresAt: null }),
+    proposal({
+      id: "no-deadline",
+      createdAt: new Date(NOW - 3 * DAY).toISOString(),
+      expiresAt: null,
+    }),
     proposal({ id: "later", expiresAt: new Date(NOW + 2 * DAY).toISOString() }),
-    proposal({ id: "approved", status: "approved", decidedAt: new Date(NOW - 26 * HOUR).toISOString() }),
+    proposal({
+      id: "approved",
+      status: "approved",
+      decidedAt: new Date(NOW - 26 * HOUR).toISOString(),
+    }),
     proposal({ id: "soon", expiresAt: new Date(NOW + 35 * MIN).toISOString() }),
     proposal({ id: "expired", status: "expired", expiresAt: new Date(NOW - DAY).toISOString() }),
-    proposal({ id: "held", status: "held", decidedAt: new Date(NOW - 2 * MIN).toISOString(), holdUntil: new Date(NOW + 3 * MIN).toISOString() }),
+    proposal({
+      id: "held",
+      status: "held",
+      decidedAt: new Date(NOW - 2 * MIN).toISOString(),
+      holdUntil: new Date(NOW + 3 * MIN).toISOString(),
+    }),
   ];
 
   it("shows PENDING only — held rows and history are not here", () => {

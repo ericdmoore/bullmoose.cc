@@ -1,10 +1,10 @@
 # Dev plan handoff — personal-data + delegation layer
 
-**Purpose.** This doc is a self-contained handoff so a *fresh context
-window* can execute the next workstream without re-deriving decisions.
+**Purpose.** This doc is a self-contained handoff so a _fresh context
+window_ can execute the next workstream without re-deriving decisions.
 It records the locked decisions, the phased plan, the cross-cutting
-design, and what's explicitly deferred. Design *rationale* lives in
-`architecture/capability-roadmap.md`; this is the *execution* plan.
+design, and what's explicitly deferred. Design _rationale_ lives in
+`architecture/capability-roadmap.md`; this is the _execution_ plan.
 
 Read first: this doc, then `architecture/capability-roadmap.md`
 (the WHY), then `architecture/README.md` (system map). Current
@@ -54,22 +54,22 @@ Live on the Cloudflare **free tier**, five workers
   until production access is granted.
 
 **Key reuse fact:** the AccountDO changelog is already collection-agnostic,
-so `Contact`/`CalendarEvent` become new collections with *no new DO state
-machinery* — the same commit/`/changes`/push path mail uses.
+so `Contact`/`CalendarEvent` become new collections with _no new DO state
+machinery_ — the same commit/`/changes`/push path mail uses.
 
 ---
 
 ## 3. Locked decisions
 
-| # | decision | ruling |
-|---|---|---|
-| Storage | JSON blob (lossless source of truth) **+** only the indexed columns needed for queries now (uid, updated, addressBookId; events: start/end). More extracted columns later = free backfill, not a migration. | **hybrid** |
-| Recurrence | store master + recurrence rule; **expand on demand** within a bounded window (cap the pre-compute). Lives entirely in the calendar phase. | on-demand, capped |
-| Convergence (Q1) | the bullmoose core is the **destination / source of truth**. Agents use it natively — **zero Google dependency**. External MCP (Google, …) is an *optional connector, never required*. Import is how the destination gets populated (see §6, §7). | **destination** |
-| Grants + creds (Q2) | build the grant model **and** the credential subsystem **correctly, no shortcut** — this is open source and must be internally consistent / correct-by-construction. Sharing (family) and delegation both depend on it. | **build it right** |
-| Multi-tenant (Q3) | **schema stays multi-tenant** (already keyed by account/tenant — one column, free); *management/ops surfaces* stay single-user for now. | multi-tenant schema, single-user ops |
-| DAV scope (Q4) | implement the **minimal WebDAV verb subset** CalDAV/CardDAV need (`PROPFIND`/`REPORT`/`PUT`/`GET`/`DELETE` + ETags + ctag + `.well-known`); **skip** LOCK/UNLOCK, COPY/MOVE, free/busy, and scheduling inbox-outbox (iTIP/iMIP). Concurrency via **ETags** in v1; **CRDTs are the target for shared multi-writer collections** (§7). | barely-conforming |
-| ctag / sync-token (§5 prior) | **sync-token backbone = the DO global state sequence** (filter changelog results per collection); **ctag = a per-collection counter** bumped on member change (keeps idle polls silent). Bake `addressBookId`/`calendarId` + collection `ctag` into the schema day one. | locked |
+| #                            | decision                                                                                                                                                                                                                                                                                                                             | ruling                               |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------ |
+| Storage                      | JSON blob (lossless source of truth) **+** only the indexed columns needed for queries now (uid, updated, addressBookId; events: start/end). More extracted columns later = free backfill, not a migration.                                                                                                                          | **hybrid**                           |
+| Recurrence                   | store master + recurrence rule; **expand on demand** within a bounded window (cap the pre-compute). Lives entirely in the calendar phase.                                                                                                                                                                                            | on-demand, capped                    |
+| Convergence (Q1)             | the bullmoose core is the **destination / source of truth**. Agents use it natively — **zero Google dependency**. External MCP (Google, …) is an _optional connector, never required_. Import is how the destination gets populated (see §6, §7).                                                                                    | **destination**                      |
+| Grants + creds (Q2)          | build the grant model **and** the credential subsystem **correctly, no shortcut** — this is open source and must be internally consistent / correct-by-construction. Sharing (family) and delegation both depend on it.                                                                                                              | **build it right**                   |
+| Multi-tenant (Q3)            | **schema stays multi-tenant** (already keyed by account/tenant — one column, free); _management/ops surfaces_ stay single-user for now.                                                                                                                                                                                              | multi-tenant schema, single-user ops |
+| DAV scope (Q4)               | implement the **minimal WebDAV verb subset** CalDAV/CardDAV need (`PROPFIND`/`REPORT`/`PUT`/`GET`/`DELETE` + ETags + ctag + `.well-known`); **skip** LOCK/UNLOCK, COPY/MOVE, free/busy, and scheduling inbox-outbox (iTIP/iMIP). Concurrency via **ETags** in v1; **CRDTs are the target for shared multi-writer collections** (§7). | barely-conforming                    |
+| ctag / sync-token (§5 prior) | **sync-token backbone = the DO global state sequence** (filter changelog results per collection); **ctag = a per-collection counter** bumped on member change (keeps idle polls silent). Bake `addressBookId`/`calendarId` + collection `ctag` into the schema day one.                                                              | locked                               |
 
 Principles that follow: **one source of truth**, **correct-by-construction**,
 **no external dependency for core function**, **reuse the existing DO /
@@ -79,16 +79,16 @@ changelog / auth rather than parallel machinery**.
 
 ## 4. Standards reference
 
-| layer | contacts | calendar |
-|---|---|---|
-| JSON format | JSContact — RFC 9553 | JSCalendar — RFC 8984 |
-| JMAP methods | JMAP for Contacts — RFC 9610 (published) | JMAP for Calendars — draft-ietf-jmap-calendars |
-| DAV wire format | vCard — RFC 6350 | iCalendar — RFC 5545 |
-| DAV protocol | CardDAV — RFC 6352 (over WebDAV RFC 4918) | CalDAV — RFC 4791 |
-| translation | JSContact↔vCard — RFC 9555 | JSCalendar↔iCalendar — draft-ietf-calext-jscalendar-icalendar |
+| layer           | contacts                                  | calendar                                                      |
+| --------------- | ----------------------------------------- | ------------------------------------------------------------- |
+| JSON format     | JSContact — RFC 9553                      | JSCalendar — RFC 8984                                         |
+| JMAP methods    | JMAP for Contacts — RFC 9610 (published)  | JMAP for Calendars — draft-ietf-jmap-calendars                |
+| DAV wire format | vCard — RFC 6350                          | iCalendar — RFC 5545                                          |
+| DAV protocol    | CardDAV — RFC 6352 (over WebDAV RFC 4918) | CalDAV — RFC 4791                                             |
+| translation     | JSContact↔vCard — RFC 9555                | JSCalendar↔iCalendar — draft-ietf-calext-jscalendar-icalendar |
 
 Contacts is a finished RFC; calendar is still a draft — the IETF shipped
-contacts first *because calendar is harder* (recurrence/timezones/
+contacts first _because calendar is harder_ (recurrence/timezones/
 scheduling). We follow the same order.
 
 ---
@@ -106,10 +106,11 @@ flowchart LR
 ```
 
 Why **3 before 2**: grants land before the native sync face, so when
-CardDAV ships, *sharing already exists* — the family shared-address-book
+CardDAV ships, _sharing already exists_ — the family shared-address-book
 (caroline@) works through CardDAV from day one of Phase 2.
 
 ### Phase 1 — JSContact-on-JMAP core + CLI import
+
 - **Data model** (data-plane.sql): `address_books` (id, account_id, name,
   description, sort_order, is_default, **ctag** counter, shareWith later,
   timestamps) and `contact_cards` (id, account_id, **address_book_id**
@@ -123,17 +124,18 @@ CardDAV ships, *sharing already exists* — the family shared-address-book
 - **Commits** route through the DO with collections `AddressBook` /
   `ContactCard`; bump the addressbook `ctag` on any member change.
 - **CLI import (convergence/bootstrap):** `bullmoose contacts import
-  <file.vcf>` → parse vCard → `ContactCard/set`. This is *how the
-  destination gets populated* and the first step of the "bundle up
+<file.vcf>` → parse vCard → `ContactCard/set`. This is _how the
+  destination gets populated_ and the first step of the "bundle up
   on-disk data" idea (§7). Also add read/list for verification.
 - **Verify**: e2e against the deployed worker (create addressbook, import
   vCards, query, `/changes` delta) — pattern of `tools/e2e-jmap.mjs`.
 
 ### Phase 3 — Grants + credential subsystem (built correctly)
+
 - **Grant model**: `agent_grants` (grantee_account_id,
   target_account_id, scopes ⊆ read/query/annotate/draft, created_by,
   expires_at?, audit). Owner-minted only (`bullmoose admin grant …`).
-  Runtime resolves grants → tools operate on the *target's* store,
+  Runtime resolves grants → tools operate on the _target's_ store,
   scope-filtered; every cross-account access is audited.
 - **Sharing** = the same primitive surfaced on collections: JMAP Contacts
   `AddressBook.shareWith`/`myRights` (RFC 9610) backed by grants → this is
@@ -144,8 +146,8 @@ CardDAV ships, *sharing already exists* — the family shared-address-book
   (API-key + OAuth refresh-token). Keyed by principal.
 - **bullmoose's own MCP servers**: a read-only **mailstore-analytics**
   MCP (bounded queries over the message log) authenticated by the
-  internal token — this is Benedict-lite's safe tool surface, *no
-  external creds needed*.
+  internal token — this is Benedict-lite's safe tool surface, _no
+  external creds needed_.
 - **External MCP** is an optional connector on top of the vault; the CLI
   runs the OAuth browser+localhost-callback flow and uploads the
   refresh token (CLI is the conduit, the cloud stores it).
@@ -153,11 +155,12 @@ CardDAV ships, *sharing already exists* — the family shared-address-book
   (internal tool | external public API).
 
 ### Phase 2 — anglebrackets CardDAV (native contact sync)
+
 - New **stateless HTTP worker** `anglebrackets` (binds AccountDO
   cross-script, D1, R2 — structurally the jmap worker wearing DAV).
 - Minimal WebDAV subset: `.well-known/carddav` → principal discovery →
   `PROPFIND` (collections), `REPORT` (`sync-collection` + `addressbook-
-  query` + `addressbook-multiget`), `PUT`/`GET`/`DELETE`. **ETags** for
+query` + `addressbook-multiget`), `PUT`/`GET`/`DELETE`. **ETags** for
   concurrency; **ctag** + **sync-token** map to the per-collection
   counter + DO state (§3). vCard serialization via JSContact↔vCard
   (RFC 9555). App-password Basic auth (same as popcorn).
@@ -166,6 +169,7 @@ CardDAV ships, *sharing already exists* — the family shared-address-book
   testing loop, not just spec-reading).
 
 ### Phase 4 — JSCalendar-on-JMAP core
+
 - `calendars` + `calendar_events` (JSCalendar blob + indexed
   start/end/calendar_id/updated + per-calendar ctag). JMAP
   `Calendar/*`, `CalendarEvent/*`.
@@ -176,6 +180,7 @@ CardDAV ships, *sharing already exists* — the family shared-address-book
   one dataset (this is the payoff of Q1).
 
 ### Phase 5 — anglebrackets CalDAV (native calendar sync)
+
 - Add CalDAV to the anglebrackets worker: `.well-known/caldav`,
   `calendar-query`/`calendar-multiget` REPORTs (time-range → the
   recurrence expander), iCalendar via JSCalendar↔iCalendar.
@@ -215,14 +220,14 @@ CardDAV ships, *sharing already exists* — the family shared-address-book
   you already have. Worth a `bullmoose contacts import` in Phase 1 and a
   richer `bundle` later.
 - **Family sharing (caroline@).** A shared contact list between, e.g.,
-  `eric@` and a future `caroline@`, synced to *both* households' native
+  `eric@` and a future `caroline@`, synced to _both_ households' native
   apps. Mechanism: a shared `AddressBook` (JMAP `shareWith`/`myRights`
   backed by the Phase-3 grant model) surfaced through CardDAV. This is a
   **native-apps context** and a **multi-writer** one — which is exactly
   where **CRDTs** earn their keep (offline edits on two devices merging
   without a lock). v1: ETag concurrency + last-writer-wins on the shared
   book; **explore CRDTs for conflict-free shared-collection merge** as
-  the real solution. This use case is *the* reason the grant model is
+  the real solution. This use case is _the_ reason the grant model is
   built correctly in Phase 3.
 - **Per-principal external OAuth at scale** — the vault is built in
   Phase 3; multi-user onboarding UX (hosted consent flow, per-user
@@ -250,4 +255,7 @@ CardDAV ships, *sharing already exists* — the family shared-address-book
   patterns, and the models.ts model-routing already exist — extend them.
 - Production credentials/IDs and the alpaca/hermes/popcorn operational
   state are in the memory files; read them before touching prod.
+
+```
+
 ```

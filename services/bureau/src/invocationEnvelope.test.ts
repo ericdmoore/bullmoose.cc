@@ -361,9 +361,7 @@ describe("the envelope is LIVE, and an unreadable one denies", () => {
     const leaf = await h.mint("inv_leaf");
     expect((await h.use(leaf, { verb: VERB, credRef: KEPT })).status).toBe(AUTHORIZED);
 
-    h.db.sqlite
-      .prepare(`UPDATE agent_invocations SET status = 'done' WHERE id = 'inv_leaf'`)
-      .run();
+    h.db.sqlite.prepare(`UPDATE agent_invocations SET status = 'done' WHERE id = 'inv_leaf'`).run();
     const dead = await h.use(leaf, { verb: VERB, credRef: KEPT });
     // AUTHENTICATION fails, not authorization: the lifetime is a JOIN condition
     // on the resolver, so a finished invocation's token is not a refused

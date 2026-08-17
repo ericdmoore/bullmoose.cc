@@ -10,5 +10,5 @@ export default function Example() {
         className="absolute inset-0 size-full appearance-none focus:outline-hidden"
       />
     </div>
-  )
+  );
 }

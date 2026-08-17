@@ -103,7 +103,11 @@ export async function probeSession(
       const type = res.headers.get("content-type") ?? "";
       return type.includes("json")
         ? { ok: true, status: res.status, detail: "JMAP session served" }
-        : { ok: false, status: res.status, detail: `responds, but not with a JMAP session (${type})` };
+        : {
+            ok: false,
+            status: res.status,
+            detail: `responds, but not with a JMAP session (${type})`,
+          };
     }
     return { ok: false, status: res.status, detail: `HTTP ${res.status}` };
   } catch (err) {

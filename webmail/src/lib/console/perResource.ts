@@ -50,9 +50,7 @@ export function coversResource(grant: ConsoleGrant, resource: ConsoleResource): 
   // A whole-account grant covers every collection its scopes allow — the
   // agent-delegation shape, and the one most often mistaken for narrow.
   if (grant.collection === null) return true;
-  return (
-    grant.collection === resource.collection && grant.collectionId === resource.collectionId
-  );
+  return grant.collection === resource.collection && grant.collectionId === resource.collectionId;
 }
 
 /** Was this grant in force at `at`? Tombstone first, then expiry, then birth. */
@@ -369,7 +367,14 @@ export function buildResourceView(
     could,
     did,
     findings,
-    gapSummary: gapSummary({ could: could.length, did: did.length, over, unexplained, refused, uncaptured }),
+    gapSummary: gapSummary({
+      could: could.length,
+      did: did.length,
+      over,
+      unexplained,
+      refused,
+      uncaptured,
+    }),
     accessLogCaveats: ACCESS_LOG_CAVEATS,
     provenanceCaveats: PROVENANCE_CAVEATS,
     pointInTimeNote: POINT_IN_TIME_NOTE,
@@ -395,7 +400,9 @@ function gapSummary(n: {
     );
   }
   if (n.refused > 0) {
-    parts.push(`${n.refused} refused ${n.refused === 1 ? "attempt" : "attempts"} with nothing authorizing them.`);
+    parts.push(
+      `${n.refused} refused ${n.refused === 1 ? "attempt" : "attempts"} with nothing authorizing them.`,
+    );
   }
   if (n.over > 0) {
     parts.push(
@@ -404,8 +411,11 @@ function gapSummary(n: {
     );
   }
   if (n.uncaptured > 0) {
-    parts.push(`${n.uncaptured} ${n.uncaptured === 1 ? "write" : "writes"} with no writer captured (common/033).`);
+    parts.push(
+      `${n.uncaptured} ${n.uncaptured === 1 ? "write" : "writes"} with no writer captured (common/033).`,
+    );
   }
-  if (parts.length === 1) parts.push("Every recorded action is explained by a grant in force at the time.");
+  if (parts.length === 1)
+    parts.push("Every recorded action is explained by a grant in force at the time.");
   return parts.join(" ");
 }

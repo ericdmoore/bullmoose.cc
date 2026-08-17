@@ -137,8 +137,18 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
     const destroyed: string[] = [];
     const notDestroyed: Record<string, SetError> = {};
 
-    const bookEntry: ChangeEntry = { collection: "AddressBook", created: [], updated: [], destroyed: [] };
-    const cardEntry: ChangeEntry = { collection: "ContactCard", created: [], updated: [], destroyed: [] };
+    const bookEntry: ChangeEntry = {
+      collection: "AddressBook",
+      created: [],
+      updated: [],
+      destroyed: [],
+    };
+    const cardEntry: ChangeEntry = {
+      collection: "ContactCard",
+      created: [],
+      updated: [],
+      destroyed: [],
+    };
 
     const books = await store.getAddressBooks(access.accountId);
     const byId = new Map(books.map((b) => [b.id, b]));
@@ -213,7 +223,10 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
 
     // -- onSuccessSetIsDefault (only when every requested op succeeded) --
     const allSucceeded =
-      Object.keys(notCreated).length + Object.keys(notUpdated).length + Object.keys(notDestroyed).length === 0;
+      Object.keys(notCreated).length +
+        Object.keys(notUpdated).length +
+        Object.keys(notDestroyed).length ===
+      0;
     const onSuccessRaw = args.onSuccessSetIsDefault;
     let defaultApplied = false;
     if (allSucceeded && typeof onSuccessRaw === "string") {
@@ -267,14 +280,18 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
     // cards must not pay the blob cost (free-tier CPU budget).
     let list: Record<string, unknown>[];
     let found: Set<string>;
-    if (properties && properties.every((p) => p === "id" || p === "uid" || p === "addressBookIds")) {
+    if (
+      properties &&
+      properties.every((p) => p === "id" || p === "uid" || p === "addressBookIds")
+    ) {
       let refs = await store.getContactCardRefs(access.accountId, ids);
       if (readable) refs = refs.filter((r) => readable.has(r.addressBookId));
       found = new Set(refs.map((r) => r.id));
       list = refs.map((r) => {
         const picked: Record<string, unknown> = { id: r.id };
         if (properties.includes("uid")) picked.uid = r.uid;
-        if (properties.includes("addressBookIds")) picked.addressBookIds = { [r.addressBookId]: true };
+        if (properties.includes("addressBookIds"))
+          picked.addressBookIds = { [r.addressBookId]: true };
         return picked;
       });
     } else {
@@ -336,12 +353,15 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
     const destroyed: string[] = [];
     const notDestroyed: Record<string, SetError> = {};
 
-    const cardEntry: ChangeEntry = { collection: "ContactCard", created: [], updated: [], destroyed: [] };
+    const cardEntry: ChangeEntry = {
+      collection: "ContactCard",
+      created: [],
+      updated: [],
+      destroyed: [],
+    };
     const ctagBooks = new Set<string>();
 
-    const books = new Map(
-      (await store.getAddressBooks(access.accountId)).map((b) => [b.id, b]),
-    );
+    const books = new Map((await store.getAddressBooks(access.accountId)).map((b) => [b.id, b]));
 
     // -- create (two-phase: validate everything, then do the D1 work in
     //    two batched calls — a 25-card import chunk must not pay ~50
@@ -430,7 +450,11 @@ export function registerContactsMethods(registry: MethodRegistry<RequestContext>
       });
       let inserted = toInsert;
       try {
-        await store.insertContactCards(access.accountId, inserted.map((p) => p.row), writer);
+        await store.insertContactCards(
+          access.accountId,
+          inserted.map((p) => p.row),
+          writer,
+        );
       } catch {
         // Batch is transactional; isolate the failing card(s) per-card.
         inserted = [];
@@ -637,11 +661,15 @@ function validateNewBook(spec: Record<string, unknown>, becomeDefault: boolean):
   }
   const description = spec.description ?? null;
   if (description !== null && typeof description !== "string") {
-    throw new SetErrorSignal("invalidProperties", "description must be a string or null", ["description"]);
+    throw new SetErrorSignal("invalidProperties", "description must be a string or null", [
+      "description",
+    ]);
   }
   const sortOrder = spec.sortOrder ?? 0;
   if (typeof sortOrder !== "number" || !Number.isInteger(sortOrder) || sortOrder < 0) {
-    throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", ["sortOrder"]);
+    throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", [
+      "sortOrder",
+    ]);
   }
   const now = Date.now();
   return {
@@ -671,7 +699,12 @@ interface ShareOps {
 }
 
 function validateBookPatch(patch: Record<string, unknown>): {
-  columns: { name?: string; description?: string | null; sortOrder?: number; isSubscribed?: boolean };
+  columns: {
+    name?: string;
+    description?: string | null;
+    sortOrder?: number;
+    isSubscribed?: boolean;
+  };
   share: ShareOps | null;
 } {
   const columns: {
@@ -707,26 +740,38 @@ function validateBookPatch(patch: Record<string, unknown>): {
     }
     switch (path) {
       case "name":
-        if (typeof value !== "string" || value.length === 0 || utf8Octets(value) > MAX_BOOK_NAME_OCTETS) {
-          throw new SetErrorSignal("invalidProperties", "name must be a 1..255-octet string", ["name"]);
+        if (
+          typeof value !== "string" ||
+          value.length === 0 ||
+          utf8Octets(value) > MAX_BOOK_NAME_OCTETS
+        ) {
+          throw new SetErrorSignal("invalidProperties", "name must be a 1..255-octet string", [
+            "name",
+          ]);
         }
         columns.name = value;
         break;
       case "description":
         if (value !== null && typeof value !== "string") {
-          throw new SetErrorSignal("invalidProperties", "description must be a string or null", ["description"]);
+          throw new SetErrorSignal("invalidProperties", "description must be a string or null", [
+            "description",
+          ]);
         }
         columns.description = value as string | null;
         break;
       case "sortOrder":
         if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-          throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", ["sortOrder"]);
+          throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", [
+            "sortOrder",
+          ]);
         }
         columns.sortOrder = value;
         break;
       case "isSubscribed":
         if (typeof value !== "boolean") {
-          throw new SetErrorSignal("invalidProperties", "isSubscribed must be a boolean", ["isSubscribed"]);
+          throw new SetErrorSignal("invalidProperties", "isSubscribed must be a boolean", [
+            "isSubscribed",
+          ]);
         }
         columns.isSubscribed = value;
         break;
@@ -753,20 +798,20 @@ function validateRights(raw: unknown): BookRights {
     mayDelete: r.mayDelete === true,
   };
   if (rights.mayShare || rights.mayDelete) {
-    throw new SetErrorSignal(
-      "forbidden",
-      "mayShare/mayDelete are owner-only on this server",
-      ["shareWith"],
-    );
+    throw new SetErrorSignal("forbidden", "mayShare/mayDelete are owner-only on this server", [
+      "shareWith",
+    ]);
   }
   return rights;
 }
 
 function validateShareWithObject(raw: unknown): Record<string, BookRights> {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-    throw new SetErrorSignal("invalidProperties", "shareWith must be an Id[AddressBookRights] map", [
-      "shareWith",
-    ]);
+    throw new SetErrorSignal(
+      "invalidProperties",
+      "shareWith must be an Id[AddressBookRights] map",
+      ["shareWith"],
+    );
   }
   const out: Record<string, BookRights> = {};
   for (const [acct, rights] of Object.entries(raw as Record<string, unknown>)) {
@@ -782,10 +827,7 @@ const scopesToRights = (scopes: string[]): BookRights => ({
   mayDelete: false,
 });
 
-const rightsToScopes = (r: BookRights): string[] => [
-  "read",
-  ...(r.mayWrite ? ["contacts"] : []),
-];
+const rightsToScopes = (r: BookRights): string[] => ["read", ...(r.mayWrite ? ["contacts"] : [])];
 
 /** Owner view: bookId → {granteeAccountId: rights} for every shared book. */
 async function loadShareWith(
@@ -946,7 +988,9 @@ function singleBookId(raw: unknown, books: Map<string, AddressBookRow>): string 
   }
   const id = ids[0]!;
   if (!books.has(id)) {
-    throw new SetErrorSignal("invalidProperties", `no such address book: ${id}`, ["addressBookIds"]);
+    throw new SetErrorSignal("invalidProperties", `no such address book: ${id}`, [
+      "addressBookIds",
+    ]);
   }
   return id;
 }
@@ -992,9 +1036,7 @@ function applyCardPatch(
 ): Record<string, unknown> {
   const out = structuredClone(obj);
   for (const [path, value] of Object.entries(patch)) {
-    const tokens = path
-      .split("/")
-      .map((t) => t.replaceAll("~1", "/").replaceAll("~0", "~"));
+    const tokens = path.split("/").map((t) => t.replaceAll("~1", "/").replaceAll("~0", "~"));
     if (tokens.length === 0 || tokens.some((t) => t.length === 0)) {
       throw new SetErrorSignal("invalidProperties", `bad patch path "${path}"`, [path]);
     }
@@ -1002,11 +1044,9 @@ function applyCardPatch(
     for (const t of tokens.slice(0, -1)) {
       const next = parent[t];
       if (next === null || typeof next !== "object" || Array.isArray(next)) {
-        throw new SetErrorSignal(
-          "invalidProperties",
-          `patch path "${path}" does not exist`,
-          [path],
-        );
+        throw new SetErrorSignal("invalidProperties", `patch path "${path}" does not exist`, [
+          path,
+        ]);
       }
       parent = next as Record<string, unknown>;
     }

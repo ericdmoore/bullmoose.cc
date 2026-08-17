@@ -1,10 +1,12 @@
-import { ChevronDownIcon } from '@heroicons/react/16/solid'
+import { ChevronDownIcon } from "@heroicons/react/16/solid";
 
 export default function Example() {
   return (
     <div>
       <fieldset>
-        <legend className="block text-sm/6 font-medium text-gray-900 dark:text-white">Card details</legend>
+        <legend className="block text-sm/6 font-medium text-gray-900 dark:text-white">
+          Card details
+        </legend>
         <div className="mt-2 grid grid-cols-2">
           <div className="col-span-2">
             <input
@@ -39,7 +41,9 @@ export default function Example() {
         </div>
       </fieldset>
       <fieldset className="mt-6">
-        <legend className="block text-sm/6 font-medium text-gray-900 dark:text-white">Billing address</legend>
+        <legend className="block text-sm/6 font-medium text-gray-900 dark:text-white">
+          Billing address
+        </legend>
         <div className="mt-2">
           <div className="grid grid-cols-1 focus-within:relative">
             <select
@@ -72,5 +76,5 @@ export default function Example() {
         </div>
       </fieldset>
     </div>
-  )
+  );
 }

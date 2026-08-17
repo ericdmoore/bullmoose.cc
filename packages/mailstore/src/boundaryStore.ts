@@ -55,7 +55,8 @@ function validateMatch(m: unknown, at: string): void {
       if (!SIEVE_FIELDS.has(match.field as string)) {
         throw new SieveRulesInvalid(`${at} names unknown field ${JSON.stringify(match.field)}`);
       }
-      if (typeof match.value !== "string") throw new SieveRulesInvalid(`${at} value must be a string`);
+      if (typeof match.value !== "string")
+        throw new SieveRulesInvalid(`${at} value must be a string`);
       return;
     case "headerPresent":
       if (typeof match.name !== "string" || match.name === "") {
@@ -67,7 +68,8 @@ function validateMatch(m: unknown, at: string): void {
       if (typeof match.name !== "string" || match.name === "") {
         throw new SieveRulesInvalid(`${at} header name must be a non-empty string`);
       }
-      if (typeof match.value !== "string") throw new SieveRulesInvalid(`${at} value must be a string`);
+      if (typeof match.value !== "string")
+        throw new SieveRulesInvalid(`${at} value must be a string`);
       return;
     default:
       throw new SieveRulesInvalid(`${at} has unknown kind ${JSON.stringify(match.kind)}`);
@@ -85,7 +87,8 @@ export function validateSieveRules(rules: unknown): SieveRule[] {
   const ids = new Set<string>();
   rules.forEach((rule, i) => {
     const at = `rules[${i}]`;
-    if (typeof rule !== "object" || rule === null) throw new SieveRulesInvalid(`${at} is not an object`);
+    if (typeof rule !== "object" || rule === null)
+      throw new SieveRulesInvalid(`${at} is not an object`);
     const r = rule as Record<string, unknown>;
     if (typeof r.id !== "string" || r.id === "") {
       throw new SieveRulesInvalid(`${at} id must be a non-empty string`);
@@ -169,7 +172,10 @@ function isBayesState(v: unknown): v is BayesState {
  * buy a multi-MB JSON.parse on the delivery hot path). Null means stage 4
  * skips — fail open, logged when the cause is damage rather than absence.
  */
-export async function loadBayesState(db: D1Database, accountId: string): Promise<BayesState | null> {
+export async function loadBayesState(
+  db: D1Database,
+  accountId: string,
+): Promise<BayesState | null> {
   let json: string;
   try {
     const row = await db

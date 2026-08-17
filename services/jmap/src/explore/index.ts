@@ -2,12 +2,7 @@ import { MethodError } from "@bullmoose/jmap-core";
 import { principalFromGrant, type Principal } from "@bullmoose/auth-core/principal";
 import { buildRegistry, type RequestContext } from "../methods";
 import type { Env } from "../index";
-import {
-  EXPLORE_COOKIE,
-  clearCookieHeader,
-  parseCookies,
-  readExploreCookie,
-} from "./cookie";
+import { EXPLORE_COOKIE, clearCookieHeader, parseCookies, readExploreCookie } from "./cookie";
 import { exploreOauthCallback, exploreOauthStart } from "./oauth";
 import {
   TYPES,
@@ -133,7 +128,10 @@ export async function exploreUnauthenticated(
  * grant or a deleted account takes effect immediately rather than whenever the
  * cookie happens to expire.
  */
-export async function exploreCookiePrincipal(request: Request, env: Env): Promise<Principal | null> {
+export async function exploreCookiePrincipal(
+  request: Request,
+  env: Env,
+): Promise<Principal | null> {
   if (!env.EXPLORE_COOKIE_KEY) return null;
   const raw = parseCookies(request.headers.get("cookie"))[EXPLORE_COOKIE];
   const session = await readExploreCookie(env.EXPLORE_COOKIE_KEY, raw, Date.now());

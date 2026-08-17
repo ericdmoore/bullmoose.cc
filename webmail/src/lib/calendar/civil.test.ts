@@ -23,7 +23,12 @@ describe("civil dates are wall-calendar values, not instants", () => {
     // `new Date("2026-07-08T09:00:00")` would mean 09:00 wherever the machine
     // is; these fields must be the same under any TZ.
     expect(parseCivilDateTime("2026-07-08T09:30:15")).toEqual({
-      year: 2026, month: 7, day: 8, hour: 9, minute: 30, second: 15,
+      year: 2026,
+      month: 7,
+      day: 8,
+      hour: 9,
+      minute: 30,
+      second: 15,
     });
   });
 
@@ -50,7 +55,11 @@ describe("civil dates are wall-calendar values, not instants", () => {
       process.env.TZ = "America/New_York";
       expect(new Date("2026-03-08T02:30:00").getHours()).toBe(3); // the trap
       expect(parseCivilDateTime("2026-03-08T02:30:00")).toMatchObject({
-        year: 2026, month: 3, day: 8, hour: 2, minute: 30,
+        year: 2026,
+        month: 3,
+        day: 8,
+        hour: 2,
+        minute: 30,
       });
       expect(formatCivilDateTime(parseCivilDateTime("2026-03-08T02:30:00")!)).toBe(
         "2026-03-08T02:30:00",
@@ -92,7 +101,9 @@ describe("date arithmetic crosses months, years and leap days", () => {
     // day in the US, and a local-time `+86400000` would land on the same date.
     expect(dayKey(addDays({ year: 2026, month: 3, day: 7 }, 1))).toBe("2026-03-08");
     expect(dayKey(addDays({ year: 2026, month: 3, day: 8 }, 1))).toBe("2026-03-09");
-    expect(daysBetween({ year: 2026, month: 3, day: 1 }, { year: 2026, month: 3, day: 31 })).toBe(30);
+    expect(daysBetween({ year: 2026, month: 3, day: 1 }, { year: 2026, month: 3, day: 31 })).toBe(
+      30,
+    );
   });
 
   it("clamps rather than rolls when adding months", () => {

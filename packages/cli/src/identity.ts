@@ -77,7 +77,11 @@ export function appendTextSignature(body: string, signature: string): string {
  * set, so a text-only signature still travels on a multipart/alternative send
  * rather than appearing in one half of the message and not the other.
  */
-export function appendHtmlSignature(html: string, htmlSignature: string, textSignature = ""): string {
+export function appendHtmlSignature(
+  html: string,
+  htmlSignature: string,
+  textSignature = "",
+): string {
   const snippet = htmlSignature
     ? htmlSignature
     : textSignature
@@ -88,10 +92,7 @@ export function appendHtmlSignature(html: string, htmlSignature: string, textSig
 }
 
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /** id first, then exact email, then case-insensitive email. */
@@ -158,7 +159,9 @@ export async function cmdIdentity(
 
     case "signature": {
       if (!arg) {
-        usage("bullmoose identity signature <id-or-email> [--text <file|->] [--html <file>] [--clear]");
+        usage(
+          "bullmoose identity signature <id-or-email> [--text <file|->] [--html <file>] [--clear]",
+        );
       }
       const found = resolveIdentity(await listIdentities(client, accountId), arg);
       const patch = signaturePatch(opts);
@@ -175,7 +178,8 @@ export async function cmdIdentity(
     }
 
     case "add": {
-      if (!arg) usage("bullmoose identity add <email> [--name <n>] [--reply-to <addr>] [--bcc <addr>]");
+      if (!arg)
+        usage("bullmoose identity add <email> [--name <n>] [--reply-to <addr>] [--bcc <addr>]");
       const spec: Record<string, unknown> = { email: arg };
       if (opts.name !== undefined) spec.name = opts.name;
       if (opts["reply-to"] !== undefined) spec.replyTo = [{ email: opts["reply-to"] }];

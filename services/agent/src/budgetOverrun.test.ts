@@ -570,7 +570,13 @@ describe('needsInfo — "what would it cost?" is answered from the record', () =
     s.w.db.sqlite.exec(
       `UPDATE agent_proposals SET status = 'info-requested', question = '${question}',
          amendments_json = '${JSON.stringify([
-           { question, answer: null, askedAt: new Date(1).toISOString(), answeredAt: null, askedBy: "eric" },
+           {
+             question,
+             answer: null,
+             askedAt: new Date(1).toISOString(),
+             answeredAt: null,
+             askedBy: "eric",
+           },
          ])}',
          expires_at = NULL, expires_remaining_ms = 3600000
        WHERE id = '${proposalId}'`,
@@ -595,7 +601,9 @@ describe('needsInfo — "what would it cost?" is answered from the record', () =
     // round past-due (guarded by the gate's own budget fragment), and T3's
     // backstop — which claims outside the policy gate for exactly this reason —
     // runs it on the next sweep.
-    s.w.db.sqlite.exec(`UPDATE agent_invocations SET due_at = ${Date.now()} WHERE id = 'inv_answer'`);
+    s.w.db.sqlite.exec(
+      `UPDATE agent_invocations SET due_at = ${Date.now()} WHERE id = 'inv_answer'`,
+    );
     expect(await drainOnly(s.w)).toBe(0); // the gated path refuses it, as designed
     await s.cron();
 

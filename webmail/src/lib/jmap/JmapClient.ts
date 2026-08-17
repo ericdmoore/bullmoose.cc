@@ -20,12 +20,7 @@
 // rather than walking a /changes cursor. Tested-but-unreached, which is the
 // opposite of dead code and worth knowing before assuming a gap is work.
 
-import {
-  AGENT_CAP,
-  CORE_CAP,
-  capabilityForMethod,
-  hasCapability,
-} from "./capabilities";
+import { AGENT_CAP, CORE_CAP, capabilityForMethod, hasCapability } from "./capabilities";
 import type {
   ChangesResult,
   Id,
@@ -146,7 +141,8 @@ export class FetchJmapClient implements JmapClient {
     this.doFetch = (opts.fetch ?? globalThis.fetch).bind(globalThis);
     this.makeSocket =
       opts.webSocketFactory ??
-      ((url: string) => new (globalThis as { WebSocket: new (u: string) => WebSocketLike }).WebSocket(url));
+      ((url: string) =>
+        new (globalThis as { WebSocket: new (u: string) => WebSocketLike }).WebSocket(url));
   }
 
   private authHeaders(extra: Record<string, string> = {}): Record<string, string> {
@@ -159,11 +155,7 @@ export class FetchJmapClient implements JmapClient {
       headers: this.authHeaders(),
     });
     if (!res.ok) {
-      throw new JmapRequestError(
-        `session fetch failed: HTTP ${res.status}`,
-        undefined,
-        res.status,
-      );
+      throw new JmapRequestError(`session fetch failed: HTTP ${res.status}`, undefined, res.status);
     }
     this.sessionCache = (await res.json()) as Session;
     return this.sessionCache;
@@ -214,21 +206,14 @@ export class FetchJmapClient implements JmapClient {
       body: JSON.stringify({ using, methodCalls }),
     });
     if (!res.ok) {
-      throw new JmapRequestError(
-        `JMAP request failed: HTTP ${res.status}`,
-        undefined,
-        res.status,
-      );
+      throw new JmapRequestError(`JMAP request failed: HTTP ${res.status}`, undefined, res.status);
     }
     const body = (await res.json()) as { methodResponses: Invocation[] };
     return body.methodResponses;
   }
 
   /** One method call; throws on a method-level `error` response. */
-  async requestOne(
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+  async requestOne(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
     const [resp] = await this.request([[name, args, "c0"]]);
     if (!resp) throw new JmapRequestError(`no response for ${name}`);
     if (resp[0] === "error") {
@@ -270,10 +255,7 @@ export class FetchJmapClient implements JmapClient {
     const query = responses.find((r) => r[2] === "q");
     const get = responses.find((r) => r[2] === "g");
     if (!query || query[0] === "error") {
-      throw new JmapRequestError(
-        `${queryMethod} failed`,
-        (query?.[1] as { type?: string })?.type,
-      );
+      throw new JmapRequestError(`${queryMethod} failed`, (query?.[1] as { type?: string })?.type);
     }
     if (!get || get[0] === "error") {
       throw new JmapRequestError(`${getMethod} failed`, (get?.[1] as { type?: string })?.type);

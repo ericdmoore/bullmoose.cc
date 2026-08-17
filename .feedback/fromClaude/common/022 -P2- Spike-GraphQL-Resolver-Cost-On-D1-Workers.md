@@ -14,7 +14,7 @@ What's left is **one operational unknown**, and it is the actual gate on the dec
 > **Where is the ceiling?** How deep a traversal, over how many rows, before a resolver
 > graph on D1 exceeds a Worker's CPU budget?
 
-**Framing matters here.** Resolver overhead at personal-mailbox scale is a *utility tax* —
+**Framing matters here.** Resolver overhead at personal-mailbox scale is a _utility tax_ —
 a fine price for better-shaped data, and not worth optimizing. The reason to measure at
 all is that **Workers' CPU limit is a cliff, not a gradient**: an over-budget request is
 **killed**, not slowed. So the risk isn't slowness — it's a traversal that works on a
@@ -39,14 +39,26 @@ attractive. If it's close, that's the honest reason to decline — not §14.1's 
 A throwaway Worker (not merged) implementing **one** realistic agent traversal:
 
 ```graphql
-{ email(id: $id) {
+{
+  email(id: $id) {
     subject
-    from { contactCard { name, emails } }        # → contacts
-    from { upcomingEvents(limit: 3) { start } }  # → calendar
-} }
+    from {
+      contactCard {
+        name
+        emails
+      }
+    } # → contacts
+    from {
+      upcomingEvents(limit: 3) {
+        start
+      }
+    } # → calendar
+  }
+}
 ```
 
 Measure, batched and unbatched:
+
 - **D1 statements executed** (the number that actually matters)
 - **CPU ms** against the Workers limit
 - **wall-clock** vs the equivalent 3–4 JMAP calls it replaces

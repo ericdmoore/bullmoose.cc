@@ -141,7 +141,9 @@ const binding = (over: Partial<ConsoleBinding>): ConsoleBinding => ({
 describe("bindingWarnings", () => {
   it("flags a sending binding with no allowlist as the exfiltration shape", () => {
     const w = bindingWarnings(
-      binding({ config: { pipeline: "reply", replyMode: "send", senderAllowlist: { active: false } } }),
+      binding({
+        config: { pipeline: "reply", replyMode: "send", senderAllowlist: { active: false } },
+      }),
     );
     expect(w.join(" ")).toContain("replyMode is SEND");
     expect(w.join(" ")).toContain("anyone who can get a human-looking message");
@@ -155,7 +157,9 @@ describe("bindingWarnings", () => {
   });
 
   it("admits when the config could not be parsed", () => {
-    const w = bindingWarnings(binding({ config: { pipeline: null, replyMode: null, configUnparseable: true } }));
+    const w = bindingWarnings(
+      binding({ config: { pipeline: null, replyMode: null, configUnparseable: true } }),
+    );
     expect(w.join(" ")).toContain("could not be parsed");
   });
 });

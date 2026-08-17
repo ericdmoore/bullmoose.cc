@@ -24,7 +24,7 @@ gets an id to quote back, and nothing exists.
 
 ## Why it survived review
 
-The author *knew* about the no-op case — `grant_lifecycle` is already guarded on
+The author _knew_ about the no-op case — `grant_lifecycle` is already guarded on
 `res.meta.changes > 0`, with a comment explaining that a duplicate tuple is a silent no-op.
 The guard was applied to the audit log and not to the response. So the system's own record
 was honest while the answer to the caller was not, which is the inversion that made it
@@ -43,9 +43,9 @@ I assumed `bureau_grants_tuple` had the identical bug and made it partial too. I
 that table's writer **upserts** (`ON CONFLICT (principal_id, cred_name, verb) DO UPDATE SET
 revoked_at = NULL`), resurrecting its own tombstone. SQLite matches a conflict target against
 a unique index, so a partial index there breaks every Bureau grant write; 14 tests failed to
-even *prepare*. Two tables, same tombstone concept, two correct-but-different answers.
+even _prepare_. Two tables, same tombstone concept, two correct-but-different answers.
 
-**Generalisation:** when a schema changes what a row *means* (present → present-or-tombstoned),
+**Generalisation:** when a schema changes what a row _means_ (present → present-or-tombstoned),
 every unique index over that table, and every `ON CONFLICT` clause naming one, is part of the
 change. Grep for both. See [[034-bureau-allowlist-accepts-link-local-and-metadata-ips]] for
 the other case where an omission looked like a decision.

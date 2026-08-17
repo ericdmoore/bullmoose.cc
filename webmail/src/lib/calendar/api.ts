@@ -26,7 +26,12 @@
 
 import { backReference, type JmapClient } from "../jmap/JmapClient";
 import type { Invocation } from "../jmap/types";
-import { CANDIDATE_EVENT_LIMIT, DEFAULT_OCCURRENCE_CAP, truncationOf, type Truncation } from "./scope";
+import {
+  CANDIDATE_EVENT_LIMIT,
+  DEFAULT_OCCURRENCE_CAP,
+  truncationOf,
+  type Truncation,
+} from "./scope";
 import type { Calendar, CalendarEvent, Occurrence } from "./types";
 
 export const CALENDAR_ACCOUNT_CAP = "urn:ietf:params:jmap:calendars";
@@ -175,7 +180,7 @@ export async function searchEvents(
   );
   const total = (query as { total?: number }).total ?? 0;
   return {
-    events: ((get as { list?: CalendarEvent[] }).list ?? []),
+    events: (get as { list?: CalendarEvent[] }).list ?? [],
     total,
     clamped: total > limit,
   };
@@ -307,7 +312,9 @@ function flattenErrors(
  * writes need the `calendar` scope (`calendars.ts:200`) and there is no
  * per-operation split to name.
  */
-export function refusalOf(detail: { type?: string; description?: string } | undefined): CalendarRefusal {
+export function refusalOf(
+  detail: { type?: string; description?: string } | undefined,
+): CalendarRefusal {
   const type = detail?.type ?? "error";
   const message =
     type === "forbidden"

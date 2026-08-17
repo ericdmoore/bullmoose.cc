@@ -260,11 +260,17 @@ describe("revoking a grant leaves the credential and its sibling grants intact",
     expect((await h.admin("DELETE", `/bureau-grants/${signing}`)).status).toBe(200);
 
     // The revoked capability is gone...
-    expect((await h.use(allenToken.token, { verb: "sign_sigv4", credRef: "aws-mcp" })).status).toBe(403);
+    expect((await h.use(allenToken.token, { verb: "sign_sigv4", credRef: "aws-mcp" })).status).toBe(
+      403,
+    );
     // ...its sibling on the same credential survives...
-    await expectAuthorizedFetch(await h.use(allenToken.token, { verb: "fetch", credRef: "aws-mcp" }));
+    await expectAuthorizedFetch(
+      await h.use(allenToken.token, { verb: "fetch", credRef: "aws-mcp" }),
+    );
     // ...as does the grant on the other credential...
-    await expectAuthorizedFetch(await h.use(allenToken.token, { verb: "fetch", credRef: "stripe" }));
+    await expectAuthorizedFetch(
+      await h.use(allenToken.token, { verb: "fetch", credRef: "stripe" }),
+    );
     // ...and the credential row itself is untouched. Revocation drops a
     // capability, never a secret (bureau.md §5.1).
     expect(h.db.count("vault_credentials", "principal_id = ?", ALLEN.principalId)).toBe(2);
@@ -286,23 +292,33 @@ describe("revoking a grant leaves the credential and its sibling grants intact",
   it("is idempotent, and a re-grant reinstates the capability", async () => {
     const h = harness();
     const id = await grant(h, ALLEN.email, "aws-mcp", "sign_sigv4");
-    expect(await jsonBody(await h.admin("DELETE", `/bureau-grants/${id}`))).toEqual({ revoked: true });
-    expect(await jsonBody(await h.admin("DELETE", `/bureau-grants/${id}`))).toEqual({ revoked: false });
+    expect(await jsonBody(await h.admin("DELETE", `/bureau-grants/${id}`))).toEqual({
+      revoked: true,
+    });
+    expect(await jsonBody(await h.admin("DELETE", `/bureau-grants/${id}`))).toEqual({
+      revoked: false,
+    });
     expect(h.db.count("grant_lifecycle", "grant_id = ? AND event = 'revoked'", id)).toBe(1);
 
     // A tombstone must not make a capability ungrantable forever.
     const again = await grant(h, ALLEN.email, "aws-mcp", "sign_sigv4");
     expect(again).toBe(id); // the row is reinstated, not duplicated
-    expect((await h.use(allenToken.token, { verb: "sign_sigv4", credRef: "aws-mcp" })).status).toBe(AUTHORIZED);
+    expect((await h.use(allenToken.token, { verb: "sign_sigv4", credRef: "aws-mcp" })).status).toBe(
+      AUTHORIZED,
+    );
     expect(h.db.count("grant_lifecycle", "grant_id = ? AND event = 'created'", id)).toBe(2);
   });
 
   it("stops resolving once expired, without being revoked", async () => {
     const h = harness();
     const id = await grant(h, ALLEN.email, "aws-mcp", "sign_sigv4", { expiresDays: 1 });
-    expect((await h.use(allenToken.token, { verb: "sign_sigv4", credRef: "aws-mcp" })).status).toBe(AUTHORIZED);
+    expect((await h.use(allenToken.token, { verb: "sign_sigv4", credRef: "aws-mcp" })).status).toBe(
+      AUTHORIZED,
+    );
     h.db.query(`UPDATE bureau_grants SET expires_at = ? WHERE id = ?`, Date.now() - 1000, id);
-    expect((await h.use(allenToken.token, { verb: "sign_sigv4", credRef: "aws-mcp" })).status).toBe(403);
+    expect((await h.use(allenToken.token, { verb: "sign_sigv4", credRef: "aws-mcp" })).status).toBe(
+      403,
+    );
   });
 });
 
@@ -312,9 +328,12 @@ describe("every attempted use is in grant_audit (invariant 6)", () => {
     const id = await grant(h, ALLEN.email, "aws-mcp", "sign_sigv4");
     await h.use(allenToken.token, { verb: "sign_sigv4", credRef: "aws-mcp" });
 
-    const rows = h.db.query<{ grant_id: string; principal: string; account_id: string; method: string }>(
-      `SELECT grant_id, principal, account_id, method FROM grant_audit`,
-    );
+    const rows = h.db.query<{
+      grant_id: string;
+      principal: string;
+      account_id: string;
+      method: string;
+    }>(`SELECT grant_id, principal, account_id, method FROM grant_audit`);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       grant_id: id,
@@ -363,20 +382,24 @@ describe("the admin surface refuses what it cannot honour", () => {
   it("404s on an unknown principal or an unknown credential", async () => {
     const h = harness();
     expect(
-      (await h.admin("POST", "/bureau-grants", {
-        principalEmail: "nobody@bullmoose.cc",
-        credRef: "aws-mcp",
-        verb: "fetch",
-      })).status,
+      (
+        await h.admin("POST", "/bureau-grants", {
+          principalEmail: "nobody@bullmoose.cc",
+          credRef: "aws-mcp",
+          verb: "fetch",
+        })
+      ).status,
     ).toBe(404);
     // A typo in credRef would otherwise mint a grant that authorizes nothing
     // and looks live in the console forever.
     expect(
-      (await h.admin("POST", "/bureau-grants", {
-        principalEmail: ALLEN.email,
-        credRef: "typo-mcp",
-        verb: "fetch",
-      })).status,
+      (
+        await h.admin("POST", "/bureau-grants", {
+          principalEmail: ALLEN.email,
+          credRef: "typo-mcp",
+          verb: "fetch",
+        })
+      ).status,
     ).toBe(404);
   });
 
@@ -399,10 +422,7 @@ describe("the admin surface refuses what it cannot honour", () => {
     );
     expect(byCred.bureauGrants).toHaveLength(1);
     const byEmail = await jsonBody<{ bureauGrants: unknown[] }>(
-      await h.admin(
-        "GET",
-        `/bureau-grants?email=${encodeURIComponent(EDITOR.email)}`,
-      ),
+      await h.admin("GET", `/bureau-grants?email=${encodeURIComponent(EDITOR.email)}`),
     );
     expect(byEmail.bureauGrants).toHaveLength(0);
   });

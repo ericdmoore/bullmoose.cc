@@ -183,7 +183,8 @@ export function parseEnvelope(raw: string | null | undefined): NodeAuthority | n
   const budget = o.budgetMicros;
   let budgetMicros: number | null;
   if (budget === null) budgetMicros = null;
-  else if (typeof budget === "number" && Number.isFinite(budget) && budget >= 0) budgetMicros = budget;
+  else if (typeof budget === "number" && Number.isFinite(budget) && budget >= 0)
+    budgetMicros = budget;
   else return null;
 
   return { tools, credentials, budgetMicros };
@@ -219,10 +220,7 @@ function strictSet(v: unknown): readonly string[] | null | typeof INVALID {
  * chain was legitimate. Keeping that decision out here keeps the arithmetic
  * pure.
  */
-export function foldChain(
-  binding: NodeAuthority,
-  chain: readonly (string | null)[],
-): FoldResult {
+export function foldChain(binding: NodeAuthority, chain: readonly (string | null)[]): FoldResult {
   let acc = binding;
   for (let i = 0; i < chain.length; i++) {
     const env = parseEnvelope(chain[i]);
@@ -299,7 +297,12 @@ function inSet(
   if (typeof name !== "string" || name.length === 0) {
     return {
       ok: false,
-      denial: { axis, requested: String(name), ceiling: list(held), why: `a ${noun} name is required` },
+      denial: {
+        axis,
+        requested: String(name),
+        ceiling: list(held),
+        why: `a ${noun} name is required`,
+      },
     };
   }
   if (held === null || held.includes(name)) return { ok: true };

@@ -3,7 +3,7 @@
 ## Shape
 
 Smallest possible change that makes the existing control operable. Do **not** fold this into
-a general "agent binding CRUD" epic — the value is having a disable route *now*, and a
+a general "agent binding CRUD" epic — the value is having a disable route _now_, and a
 general update route is a bigger design (rename, retrigger, reconfigure all raise questions
 this does not).
 
@@ -48,7 +48,7 @@ an hour on it.
 ## Bread-crumbs
 
 - **Check whether disabling should also drain the queue.** `services/ingest/src/index.ts:169`
-  filters on `enabled = 1` at *enqueue* time, so disabling stops new rows. But rows already
+  filters on `enabled = 1` at _enqueue_ time, so disabling stops new rows. But rows already
   `pending` stay pending forever — `services/agent/src/index.ts:110` filters them out too, so
   they are neither run nor cleaned up. Decide: leave them (resume on re-enable) or mark them
   cancelled. Leaving them is probably right, but it should be a decision, not an accident.

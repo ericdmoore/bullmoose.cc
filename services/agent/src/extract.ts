@@ -1,6 +1,12 @@
 import { commitChanges } from "@bullmoose/account-do";
 import type { EmailRow } from "@bullmoose/mailstore";
-import { callWithFallback, invocationCost, type BindingConfig, type Env, type InvocationCost } from "./models.js";
+import {
+  callWithFallback,
+  invocationCost,
+  type BindingConfig,
+  type Env,
+  type InvocationCost,
+} from "./models.js";
 
 /**
  * Extraction (s18 A2) — the pass that reads a delivered message and writes
@@ -38,7 +44,11 @@ export interface ExtractJob {
   binding_name: string;
 }
 
-type Finish = (status: "done" | "failed", result: Record<string, unknown>, cost?: InvocationCost) => Promise<void>;
+type Finish = (
+  status: "done" | "failed",
+  result: Record<string, unknown>,
+  cost?: InvocationCost,
+) => Promise<void>;
 
 const CLASS_TYPES = new Set(["commitment", "decision", "task"]);
 /** One message cannot spawn an unbounded pile of claims. */
@@ -87,7 +97,11 @@ export function parseExtraction(output: string): ExtractedItem[] {
     const body = typeof r.body === "string" ? r.body.trim() : "";
     if (!CLASS_TYPES.has(cls) || !body) continue;
     const c = Number(r.confidence);
-    out.push({ class: cls, body: body.slice(0, 400), confidence: Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : null });
+    out.push({
+      class: cls,
+      body: body.slice(0, 400),
+      confidence: Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : null,
+    });
   }
   return out;
 }
@@ -131,7 +145,12 @@ export async function runExtract(
     },
   ];
 
-  const { output, usage, used } = await callWithFallback(env, candidates, prompt, cfg.maxTokens ?? 1024);
+  const { output, usage, used } = await callWithFallback(
+    env,
+    candidates,
+    prompt,
+    cfg.maxTokens ?? 1024,
+  );
   // Freeze the cost at capture (s07 T5) — this is the per-extraction history
   // s11 T5 needs. NULL = undetermined; 0 = genuinely free.
   const cost = await invocationCost(env, used, usage);
@@ -153,7 +172,18 @@ export async function runExtract(
           confidence, status, rationale, source_ref, created_at, updated_at)
        VALUES (?, ?, 'agent', ?, ?, ?, ?, ?, 'open', NULL, ?, ?, ?)`,
     )
-      .bind(id, job.account_id, job.binding_name, anchor, it.class, it.body, it.confidence, email.id, now, now)
+      .bind(
+        id,
+        job.account_id,
+        job.binding_name,
+        anchor,
+        it.class,
+        it.body,
+        it.confidence,
+        email.id,
+        now,
+        now,
+      )
       .run();
     ids.push(id);
   }

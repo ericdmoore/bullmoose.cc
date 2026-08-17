@@ -19,7 +19,7 @@ nouns:
   - name: Thread
     realm: mail
     datatypes: [Thread]
-    derived: true            # no independent CRUD; computed from Email
+    derived: true # no independent CRUD; computed from Email
   - name: EmailSubmission
     realm: mail
     datatypes: [EmailSubmission]
@@ -40,14 +40,14 @@ nouns:
   - name: FileNode
     realm: files
     datatypes: [FileNode]
-    status: does-not-exist   # the noun itself is unbuilt — see s03.B
+    status: does-not-exist # the noun itself is unbuilt — see s03.B
   - name: Agents
     realm: agentic
     datatypes: [AgentInvocation, AgentBinding]
   - name: Secrets
     realm: agentic
     datatypes: [VaultCredential]
-    no_read_by_design: true  # bureau.md invariant 1 — no "reveal password" button
+    no_read_by_design: true # bureau.md invariant 1 — no "reveal password" button
   - name: HumanSettings
     realm: settings
     datatypes: [VacationResponse, Identity]
@@ -65,23 +65,23 @@ surfaces:
   - name: JMAP
     dir: services/jmap
     status: live
-    human_verifiable: false   # curl + JSON is test-verifiable, not human-verifiable
+    human_verifiable: false # curl + JSON is test-verifiable, not human-verifiable
   - name: CLI
     dir: packages/cli
     status: live
     human_verifiable: true
   - name: MCP
     dir: services/agent
-    status: live-but-narrow   # 4 read-only analytics tools; no noun tools
-    human_verifiable: true    # a human drives it through Claude/Codex and reads the answer
+    status: live-but-narrow # 4 read-only analytics tools; no noun tools
+    human_verifiable: true # a human drives it through Claude/Codex and reads the answer
   - name: AngleBracket
     dir: services/anglebrackets
     label: CalDAV/CardDAV
     status: live
-    human_verifiable: true    # Apple Calendar / Contacts.app
+    human_verifiable: true # Apple Calendar / Contacts.app
   - name: WebUI
     dir: null
-    status: does-not-exist    # src/ is the Astro marketing site; no webmail workspace
+    status: does-not-exist # src/ is the Astro marketing site; no webmail workspace
     human_verifiable: true
   - name: GraphQL
     dir: null

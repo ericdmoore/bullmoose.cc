@@ -1,4 +1,4 @@
-import { PlusSmallIcon } from '@heroicons/react/20/solid'
+import { PlusSmallIcon } from "@heroicons/react/20/solid";
 
 export default function Example() {
   return (
@@ -25,5 +25,5 @@ export default function Example() {
         </a>
       </div>
     </div>
-  )
+  );
 }

@@ -240,7 +240,12 @@ describe("the console client, against the real routes", () => {
     const couldThen = back.could.map((c2) => c2.grant.grantId).sort();
     expect(couldThen).toEqual(["g_allen_mail", "g_temp_vendors"]);
     expect(back.could.find((c2) => c2.grant.grantId === "g_temp_vendors")!.stillLive).toBe(false);
-    expect(liveAt(then.grants.find((g) => g.grantId === "g_temp_vendors")!, ago(3))).toBe(false);
+    expect(
+      liveAt(
+        then.grants.find((g) => g.grantId === "g_temp_vendors")!,
+        ago(3),
+      ),
+    ).toBe(false);
 
     // Now: it is gone from the who-could set, without having vanished from the
     // wire — the distinction the tombstone exists to make.

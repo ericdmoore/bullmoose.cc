@@ -91,7 +91,12 @@ describe("expiresAt and holdUntil are DIFFERENT clocks (s07 §T0)", () => {
   };
 
   it("a HELD row renders the retraction window and NOT the decision deadline", () => {
-    const held = proposal({ id: "h", status: "held", decidedAt: new Date(NOW - 2 * MIN).toISOString(), ...both });
+    const held = proposal({
+      id: "h",
+      status: "held",
+      decidedAt: new Date(NOW - 2 * MIN).toISOString(),
+      ...both,
+    });
     const clocks = rowClocks(held, NOW);
     expect(clocks.holdRemainingMs).toBe(3 * MIN); // from holdUntil…
     expect(clocks.expiresInMs).toBeNull(); // …never from expiresAt
@@ -140,7 +145,12 @@ describe("waited-for freezes when it stops sitting on the human", () => {
   it("labels present tense while pending, past tense after", () => {
     const p = proposal({ id: "p", createdAt: new Date(NOW - 2 * HOUR).toISOString() });
     expect(waitedLabel(p, rowClocks(p, NOW))).toBe("waiting on you 2h 0m");
-    const done = proposal({ ...p, id: "q", status: "approved", decidedAt: new Date(NOW).toISOString() });
+    const done = proposal({
+      ...p,
+      id: "q",
+      status: "approved",
+      decidedAt: new Date(NOW).toISOString(),
+    });
     expect(waitedLabel(done, rowClocks(done, NOW))).toBe("sat with you 2h 0m");
   });
 });
@@ -148,28 +158,67 @@ describe("waited-for freezes when it stops sitting on the human", () => {
 describe("urgency", () => {
   it("flags near-expiry under the one-hour line, on the expiry clock only", () => {
     const near = proposal({ id: "n", expiresAt: new Date(NOW + 35 * MIN).toISOString() });
-    const far = proposal({ id: "f", expiresAt: new Date(NOW + NEAR_EXPIRY_MS + MIN).toISOString() });
+    const far = proposal({
+      id: "f",
+      expiresAt: new Date(NOW + NEAR_EXPIRY_MS + MIN).toISOString(),
+    });
     expect(isNearExpiry(rowClocks(near, NOW))).toBe(true);
     expect(isNearExpiry(rowClocks(far, NOW))).toBe(false);
     // A held row's shrinking hold window is NOT expiry urgency.
-    const held = proposal({ id: "h", status: "held", holdUntil: new Date(NOW + MIN).toISOString() });
+    const held = proposal({
+      id: "h",
+      status: "held",
+      holdUntil: new Date(NOW + MIN).toISOString(),
+    });
     expect(isNearExpiry(rowClocks(held, NOW))).toBe(false);
   });
 });
 
 describe("orderQueue — pending first, by urgency", () => {
   const rows: ActionProposal[] = [
-    proposal({ id: "expired", status: "expired", decidedAt: null, expiresAt: new Date(NOW - DAY).toISOString() }),
-    proposal({ id: "held", status: "held", decidedAt: new Date(NOW - 2 * MIN).toISOString(), holdUntil: new Date(NOW + 3 * MIN).toISOString() }),
-    proposal({ id: "no-deadline", createdAt: new Date(NOW - 3 * DAY).toISOString(), expiresAt: null }),
+    proposal({
+      id: "expired",
+      status: "expired",
+      decidedAt: null,
+      expiresAt: new Date(NOW - DAY).toISOString(),
+    }),
+    proposal({
+      id: "held",
+      status: "held",
+      decidedAt: new Date(NOW - 2 * MIN).toISOString(),
+      holdUntil: new Date(NOW + 3 * MIN).toISOString(),
+    }),
+    proposal({
+      id: "no-deadline",
+      createdAt: new Date(NOW - 3 * DAY).toISOString(),
+      expiresAt: null,
+    }),
     proposal({ id: "soon", expiresAt: new Date(NOW + 35 * MIN).toISOString() }),
     proposal({ id: "later", expiresAt: new Date(NOW + 2 * DAY).toISOString() }),
-    proposal({ id: "approved", status: "approved", decidedAt: new Date(NOW - 26 * HOUR).toISOString() }),
-    proposal({ id: "rejected", status: "rejected", decidedAt: new Date(NOW - 2 * DAY).toISOString() }),
+    proposal({
+      id: "approved",
+      status: "approved",
+      decidedAt: new Date(NOW - 26 * HOUR).toISOString(),
+    }),
+    proposal({
+      id: "rejected",
+      status: "rejected",
+      decidedAt: new Date(NOW - 2 * DAY).toISOString(),
+    }),
     // s10 T3: waiting on the AGENT — after everything decidable, before the
     // hold tray; expiresAt is null because the server banked it (paused).
-    proposal({ id: "asked-late", status: "info-requested", createdAt: new Date(NOW - HOUR).toISOString(), expiresAt: null }),
-    proposal({ id: "asked-early", status: "info-requested", createdAt: new Date(NOW - 5 * HOUR).toISOString(), expiresAt: null }),
+    proposal({
+      id: "asked-late",
+      status: "info-requested",
+      createdAt: new Date(NOW - HOUR).toISOString(),
+      expiresAt: null,
+    }),
+    proposal({
+      id: "asked-early",
+      status: "info-requested",
+      createdAt: new Date(NOW - 5 * HOUR).toISOString(),
+      expiresAt: null,
+    }),
   ];
 
   it("orders pending by soonest deadline, deadline-less last; then info-requested oldest-ask first; then held; then history newest-decided first", () => {
@@ -188,8 +237,16 @@ describe("orderQueue — pending first, by urgency", () => {
 
   it("breaks pending deadline ties by the longest-waiting row", () => {
     const deadline = new Date(NOW + DAY).toISOString();
-    const older = proposal({ id: "older", createdAt: new Date(NOW - 2 * DAY).toISOString(), expiresAt: deadline });
-    const newer = proposal({ id: "newer", createdAt: new Date(NOW - HOUR).toISOString(), expiresAt: deadline });
+    const older = proposal({
+      id: "older",
+      createdAt: new Date(NOW - 2 * DAY).toISOString(),
+      expiresAt: deadline,
+    });
+    const newer = proposal({
+      id: "newer",
+      createdAt: new Date(NOW - HOUR).toISOString(),
+      expiresAt: deadline,
+    });
     expect(orderQueue([newer, older]).map((p) => p.id)).toEqual(["older", "newer"]);
   });
 

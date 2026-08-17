@@ -73,7 +73,11 @@ describe("dates, which the server swallows rather than rejects", () => {
   it("rejects an unparseable date instead of letting the server drop it", () => {
     // dateMs falls back to the EXISTING value on anything unparseable
     // (vacation.ts:97-104) — success is reported and the old date survives.
-    const { problems, patch } = vacationPatch(responder(), goodForm({ toDate: "next tuesday" }), NOW);
+    const { problems, patch } = vacationPatch(
+      responder(),
+      goodForm({ toDate: "next tuesday" }),
+      NOW,
+    );
     expect(problems.some((p) => /End date/.test(p))).toBe(true);
     expect(patch).not.toHaveProperty("toDate");
   });
@@ -103,7 +107,12 @@ describe("dates, which the server swallows rather than rejects", () => {
   });
 
   it("does not re-send a date that only changed spelling", () => {
-    const current = responder({ isEnabled: true, subject: "s", textBody: "b", toDate: "2026-08-15T09:30:00.000Z" });
+    const current = responder({
+      isEnabled: true,
+      subject: "s",
+      textBody: "b",
+      toDate: "2026-08-15T09:30:00.000Z",
+    });
     const form = vacationToForm(current);
     expect(vacationPatch(current, form, NOW).patch).toEqual({});
   });
@@ -155,7 +164,11 @@ describe("turning it on", () => {
 
   it("clears a subject with null rather than an empty string", () => {
     const current = responder({ isEnabled: false, subject: "Away", textBody: "b" });
-    const { patch } = vacationPatch(current, goodForm({ isEnabled: false, subject: "", textBody: "b" }), NOW);
+    const { patch } = vacationPatch(
+      current,
+      goodForm({ isEnabled: false, subject: "", textBody: "b" }),
+      NOW,
+    );
     expect(patch.subject).toBeNull();
   });
 });

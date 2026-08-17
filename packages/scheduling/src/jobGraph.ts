@@ -360,7 +360,8 @@ export async function jobView(
       done: nodes.filter((n) => n.status === "done").length,
       failed: nodes.filter((n) => n.status === "failed").length,
       paused: nodes.filter((n) => n.paused && n.status === "done").length,
-      blocked: nodes.filter((n) => n.status === "pending" && !needsSatisfied(n.needs, settled)).length,
+      blocked: nodes.filter((n) => n.status === "pending" && !needsSatisfied(n.needs, settled))
+        .length,
     },
     spentMicros: results.reduce((sum, r) => sum + (r.cost_micros ?? 0), 0),
     budgetMicros: job.budget_micros,

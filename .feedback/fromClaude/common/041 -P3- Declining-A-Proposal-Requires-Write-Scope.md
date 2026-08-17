@@ -4,7 +4,7 @@
 
 ## The claim
 
-`services/jmap/src/methods/actionProposal.ts:183` gates *every* decision — approve **and
+`services/jmap/src/methods/actionProposal.ts:183` gates _every_ decision — approve **and
 reject** — behind the same scope:
 
 ```ts
@@ -17,7 +17,7 @@ const access = await requireAccount(ctx, args, "draft", "mail");
 Approving a proposal does something — it writes a card, holds a reply, eventually sends — so
 requiring `draft` (a write verb) to approve is correct. **Rejecting does nothing but say
 "no."** Requiring a write scope to record a refusal is backwards: a human with a read-only
-token can *see* what an agent proposes but cannot decline it, so their only options are
+token can _see_ what an agent proposes but cannot decline it, so their only options are
 approve (which they also can't, lacking scope) or leave it pending until it expires.
 
 Recording "no" should need less authority than "yes," not the same.
@@ -27,7 +27,7 @@ Recording "no" should need less authority than "yes," not the same.
 The approvals surface already requires the agent capability and is aimed at an account owner,
 so a pure read-only reviewer is an edge case today. But it is exactly the shape that matters
 for the multi-player premise — a delegate given read access to another account's mailbox
-should be able to *decline* on the owner's behalf without being handed write scope.
+should be able to _decline_ on the owner's behalf without being handed write scope.
 
 ## Suggested fix
 

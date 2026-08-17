@@ -17,9 +17,9 @@
 
 **bullmoose is a self-hosted personal-data platform — email, contacts,
 calendar, and email-native agents — that runs serverless on
-[Cloudflare's free tier](https://developers.cloudflare.com/workers/platform/pricing/).** 
-Your domain, your data, one core: modern clients speak JMAP, Apple devices sync over 
-CardDAV/CalDAV, legacy apps reach mail through a POP3/SMTP shim, and agents are 
+[Cloudflare's free tier](https://developers.cloudflare.com/workers/platform/pricing/).**
+Your domain, your data, one core: modern clients speak JMAP, Apple devices sync over
+CardDAV/CalDAV, legacy apps reach mail through a POP3/SMTP shim, and agents are
 simply mailboxes with a runtime attached. A typical personal deployment costs **$0/month**
 (excluding your domain costs).
 
@@ -87,21 +87,21 @@ simply mailboxes with a runtime attached. A typical personal deployment costs **
 
 ## The stack, standard by standard
 
-| layer | contacts | calendar | mail |
-|---|---|---|---|
-| JSON model | [JSContact](https://jmap.io/spec/rfc9610/) — RFC 9553 | [JSCalendar](https://jmap.io/spec/calendars-draft/) — RFC 8984 | [JMAP Mail](https://jmap.io/) - RFC 8621 |
-| JMAP methods | RFC 9610 | draft-ietf-jmap-calendars (pragmatic core) | RFC 8620/8621 |
-| Compat APIs | [vCard 6350](https://datatracker.ietf.org/doc/html/rfc6350) over [CardDAV 6352](https://datatracker.ietf.org/doc/html/rfc6352) | [iCalendar 5545](https://datatracker.ietf.org/doc/html/rfc5545) over [CalDAV 4791](https://datatracker.ietf.org/doc/html/rfc4791) | POP3/SMTP via the popcorn shim |
-| translation | [RFC 9555](https://datatracker.ietf.org/doc/html/rfc9555) | JSCalendar ⇄ iCalendar | [RFC 5322](https://datatracker.ietf.org/doc/html/rfc5322) MIME |
+| layer        | contacts                                                                                                                       | calendar                                                                                                                          | mail                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| JSON model   | [JSContact](https://jmap.io/spec/rfc9610/) — RFC 9553                                                                          | [JSCalendar](https://jmap.io/spec/calendars-draft/) — RFC 8984                                                                    | [JMAP Mail](https://jmap.io/) - RFC 8621                       |
+| JMAP methods | RFC 9610                                                                                                                       | draft-ietf-jmap-calendars (pragmatic core)                                                                                        | RFC 8620/8621                                                  |
+| Compat APIs  | [vCard 6350](https://datatracker.ietf.org/doc/html/rfc6350) over [CardDAV 6352](https://datatracker.ietf.org/doc/html/rfc6352) | [iCalendar 5545](https://datatracker.ietf.org/doc/html/rfc5545) over [CalDAV 4791](https://datatracker.ietf.org/doc/html/rfc4791) | POP3/SMTP via the popcorn shim                                 |
+| translation  | [RFC 9555](https://datatracker.ietf.org/doc/html/rfc9555)                                                                      | JSCalendar ⇄ iCalendar                                                                                                            | [RFC 5322](https://datatracker.ietf.org/doc/html/rfc5322) MIME |
 
 ## How it's built
 
 Five stateless [workers](https://developers.cloudflare.com/workers/) around
 one stateful actor: each account has a **[Durable Object](https://developers.cloudflare.com/durable-objects/)**
-owning a monotonic state sequence and a collection-agnostic changelog 
-— mail, contacts, calendar, and agent queues all sync through the same 
+owning a monotonic state sequence and a collection-agnostic changelog
+— mail, contacts, calendar, and agent queues all sync through the same
 commit/`/changes`/push machinery. [D1](https://www.cloudflare.com/products/d1/)
-holds metadata and JSON documents; [R2](https://www.cloudflare.com/products/r2/) 
+holds metadata and JSON documents; [R2](https://www.cloudflare.com/products/r2/)
 holds bytes (raw messages, attachments, contact photos). Rationale, diagrams, and the free-tier
 capacity story live in [`docs/architecture/`](docs/architecture/README.md).
 
@@ -141,7 +141,7 @@ bullmoose login you@example.com
 ```
 
 The full checklist — SES identity verification, first-light testing, and what
-each phase does under the hood — is [`docs/DEPLOY.md`](docs/DEPLOY.md). 
+each phase does under the hood — is [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 Then: [`docs/playbooks/`](docs/playbooks/README.md) are step-by-step client
 setups (Apple Mail + Calendar, a JMAP client like Mailtemi, family sharing),
@@ -157,7 +157,7 @@ runtime to it, and every delivery enqueues an `AgentInvocation`; `--sla` arms a
 watchdog that answers if the agent goes quiet. The cloud worker and any homelab
 runner claim from that **same** queue — whoever claims first wins, the watchdog
 backstops both. So the account and binding are made identically; what differs is
-*which runtime claims the work*.
+_which runtime claims the work_.
 
 **Cloud-backed** — the deployed `agent` worker runs the binding (ingest poke +
 5-minute sweep). Persona, `defaultModel`, and `modelAliases` (Workers AI, or
@@ -172,7 +172,7 @@ bullmoose admin agent bind emily@example.com --name editor --reply-mode draft \
 
 **Homelab-backed** — you run the runtime on your own box; it logs in as the
 account, watches the queue over JMAP push, and calls a local or self-hosted
-model (API keys by env *reference*, never in the file). Same account + binding,
+model (API keys by env _reference_, never in the file). Same account + binding,
 plus a long-running serve:
 
 ```sh
@@ -202,10 +202,10 @@ pattern. Deeper:
 
 Live and e2e-tested: the full mail surface, contacts + CardDAV,
 calendar + CalDAV, grants/sharing, the credential vault, agent
-pipelines, and the CLI. 
+pipelines, and the CLI.
 
-Deliberately out of scope for now: calendar scheduling (iTIP/iMIP), 
-WebDAV LOCK/COPY/MOVE, and CRDT merge for shared collections (ETags carry v1). 
+Deliberately out of scope for now: calendar scheduling (iTIP/iMIP),
+WebDAV LOCK/COPY/MOVE, and CRDT merge for shared collections (ETags carry v1).
 
 Capacity headroom and the shelved scaling valves are documented in
 [`docs/architecture/capacity-and-scaling.md`](docs/architecture/capacity-and-scaling.md).

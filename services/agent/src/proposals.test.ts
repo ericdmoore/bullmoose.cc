@@ -206,14 +206,29 @@ function answerScaffold(opts: {
   ]);
   // The original invocation the proposal projects over (done long ago)...
   w.db.seed("agent_invocations", [
-    { id: "inv_orig", account_id: ACCOUNT, binding_id: "bind_emily", binding_name: "emily", status: "done", created_at: 1 },
+    {
+      id: "inv_orig",
+      account_id: ACCOUNT,
+      binding_id: "bind_emily",
+      binding_name: "emily",
+      status: "done",
+      created_at: 1,
+    },
   ]);
   // ...its 1:1 proposal row, mid-needsInfo unless told otherwise...
   const question = opts.question === undefined ? "Why Bob?" : opts.question;
   const amendments =
     opts.amendments ??
     (question
-      ? [{ question, answer: null, askedAt: new Date(1_000).toISOString(), answeredAt: null, askedBy: "eric@login.example" }]
+      ? [
+          {
+            question,
+            answer: null,
+            askedAt: new Date(1_000).toISOString(),
+            answeredAt: null,
+            askedBy: "eric@login.example",
+          },
+        ]
       : []);
   w.db.seed("agent_proposals", [
     {
@@ -221,7 +236,11 @@ function answerScaffold(opts: {
       account_id: ACCOUNT,
       kind: "grant-request",
       tier: 1,
-      payload_json: JSON.stringify({ grantType: "recipient", bookId: "ab_gov", address: "bob@example.com" }),
+      payload_json: JSON.stringify({
+        grantType: "recipient",
+        bookId: "ab_gov",
+        address: "bob@example.com",
+      }),
       rationale: "Bob signed both invoices; he is not in my allowlist.",
       evidence_json: JSON.stringify([{ realm: "Email", objectId: "e_1" }]),
       status: opts.proposalStatus ?? "info-requested",
@@ -242,7 +261,11 @@ function answerScaffold(opts: {
       binding_name: "emily",
       status: "pending",
       email_id: null,
-      context_json: JSON.stringify({ kind: "answer-info-request", proposalId: "inv_orig", question }),
+      context_json: JSON.stringify({
+        kind: "answer-info-request",
+        proposalId: "inv_orig",
+        question,
+      }),
       created_at: 2,
     },
   ]);
@@ -273,7 +296,14 @@ function answerScaffold(opts: {
       "inv_orig",
     )[0]!;
   const invocationRow = (id = invId) =>
-    w.db.query<{ status: string; result_json: string | null; note: string | null; provider: string | null; tokens_in: number | null; cost_micros: number | null }>(
+    w.db.query<{
+      status: string;
+      result_json: string | null;
+      note: string | null;
+      provider: string | null;
+      tokens_in: number | null;
+      cost_micros: number | null;
+    }>(
       "SELECT status, result_json, note, provider, tokens_in, cost_micros FROM agent_invocations WHERE account_id = ? AND id = ?",
       ACCOUNT,
       id,
@@ -344,7 +374,13 @@ describe("an answer-info-request invocation answers the open round", () => {
       question: "And why Bob too?",
       amendments: [
         first,
-        { question: "And why Bob too?", answer: null, askedAt: new Date(1_000).toISOString(), answeredAt: null, askedBy: "eric@login.example" },
+        {
+          question: "And why Bob too?",
+          answer: null,
+          askedAt: new Date(1_000).toISOString(),
+          answeredAt: null,
+          askedBy: "eric@login.example",
+        },
       ],
     });
     await s.drain();
@@ -370,7 +406,11 @@ describe("an answer-info-request invocation answers the open round", () => {
         binding_id: "bind_emily",
         binding_name: "emily",
         status: "pending",
-        context_json: JSON.stringify({ kind: "answer-info-request", proposalId: "inv_orig", question: "Why Bob?" }),
+        context_json: JSON.stringify({
+          kind: "answer-info-request",
+          proposalId: "inv_orig",
+          question: "Why Bob?",
+        }),
         created_at: 3,
       },
     ]);
@@ -423,7 +463,14 @@ describe("the expiry sweep flips stale pending proposals to expired", () => {
   it("expires a pending proposal past its expires_at and commits /changes", async () => {
     const w = fakeEnv();
     w.db.seed("agent_invocations", [
-      { id: "inv_x", account_id: ACCOUNT, binding_id: "b", binding_name: "emily", status: "done", created_at: 1 },
+      {
+        id: "inv_x",
+        account_id: ACCOUNT,
+        binding_id: "b",
+        binding_name: "emily",
+        status: "done",
+        created_at: 1,
+      },
     ]);
     w.db.seed("agent_proposals", [
       {
@@ -454,7 +501,14 @@ describe("the expiry sweep flips stale pending proposals to expired", () => {
   it("leaves a proposal whose expires_at is still in the future", async () => {
     const w = fakeEnv();
     w.db.seed("agent_invocations", [
-      { id: "inv_f", account_id: ACCOUNT, binding_id: "b", binding_name: "emily", status: "done", created_at: 1 },
+      {
+        id: "inv_f",
+        account_id: ACCOUNT,
+        binding_id: "b",
+        binding_name: "emily",
+        status: "done",
+        created_at: 1,
+      },
     ]);
     w.db.seed("agent_proposals", [
       {

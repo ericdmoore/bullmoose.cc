@@ -1,8 +1,8 @@
 const plans = [
-  { id: 'small', name: 'Small', description: '4 GB RAM / 2 CPUS / 80 GB SSD Storage' },
-  { id: 'medium', name: 'Medium', description: '8 GB RAM / 4 CPUS / 160 GB SSD Storage' },
-  { id: 'large', name: 'Large', description: '16 GB RAM / 8 CPUS / 320 GB SSD Storage' },
-]
+  { id: "small", name: "Small", description: "4 GB RAM / 2 CPUS / 80 GB SSD Storage" },
+  { id: "medium", name: "Medium", description: "8 GB RAM / 4 CPUS / 160 GB SSD Storage" },
+  { id: "large", name: "Large", description: "16 GB RAM / 8 CPUS / 320 GB SSD Storage" },
+];
 
 export default function Example() {
   return (
@@ -12,7 +12,7 @@ export default function Example() {
           <div key={plan.id} className="relative flex items-start">
             <div className="flex h-6 items-center">
               <input
-                defaultChecked={plan.id === 'small'}
+                defaultChecked={plan.id === "small"}
                 id={plan.id}
                 name="plan"
                 type="radio"
@@ -23,7 +23,7 @@ export default function Example() {
             <div className="ml-3 text-sm/6">
               <label htmlFor={plan.id} className="font-medium text-gray-900 dark:text-white">
                 {plan.name}
-              </label>{' '}
+              </label>{" "}
               <span id={`${plan.id}-description`} className="text-gray-500 dark:text-gray-400">
                 {plan.description}
               </span>
@@ -32,5 +32,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  )
+  );
 }

@@ -1,13 +1,13 @@
 # 008 -E3-I3- Admin lifecycle — update + delete
 
-| | |
-|---|---|
-| **Kind** | capability |
-| **Effort** | **E3** — regraded on delivery. The tombstone design was adopted, so this crossed the migration cliff: one hand-run `ALTER TABLE`. See *Status* |
-| **Impact** | **I3** — regraded on delivery. Footnote 5's own argument: the binding-disable route is a named de-risking dependency of `007`, and it shipped here rather than being split out |
-| **Owner** | `sVOL` |
-| **Depends on** | — |
-| **Status** | **✅ done** — shipped with `.feedback/fromClaude/agentic/023` (P1). See below |
+|                |                                                                                                                                                                                |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Kind**       | capability                                                                                                                                                                     |
+| **Effort**     | **E3** — regraded on delivery. The tombstone design was adopted, so this crossed the migration cliff: one hand-run `ALTER TABLE`. See _Status_                                 |
+| **Impact**     | **I3** — regraded on delivery. Footnote 5's own argument: the binding-disable route is a named de-risking dependency of `007`, and it shipped here rather than being split out |
+| **Owner**      | `sVOL`                                                                                                                                                                         |
+| **Depends on** | —                                                                                                                                                                              |
+| **Status**     | **✅ done** — shipped with `.feedback/fromClaude/agentic/023` (P1). See below                                                                                                  |
 
 ---
 
@@ -19,29 +19,29 @@ of this unit are the same two files (`services/provision/src/index.ts`,
 
 **Both grades moved, and both were flagged in advance by this file.**
 
-- **`E2` → `E3`** (Open Question #2 resolved *for* tombstones). `accounts`
+- **`E2` → `E3`** (Open Question #2 resolved _for_ tombstones). `accounts`
   gains `deleted_at`. Operators run, by hand, before deploying:
   `ALTER TABLE accounts ADD COLUMN deleted_at INTEGER;` — documented in
   `control-plane.sql` beside the column (the `contact_cards.dav_name`
   precedent) and in `docs/DEPLOY.md` §1 with the ordering constraint spelled
   out, because `deleted_at IS NULL` is now in the auth path and a worker
   deployed ahead of the column authenticates nobody.
-- **`I1` → `I3`** (Open Question #1 resolved by *shipping*, not splitting).
+- **`I1` → `I3`** (Open Question #1 resolved by _shipping_, not splitting).
   The ledger's footnote 5 is right that binding-disable is `I3`; the answer was
   to land it here in wave 3 rather than to file a second unit for one `UPDATE`.
 
 **Scope actually built** — tier 1 whole, tier 2 for accounts only, tier 3
 narrowly, tier 4 whole:
 
-| | route | note |
-|---|---|---|
-| **U** | `POST /agent-bindings/{id}/disable` · `/enable` | the kill switch; `?email=` narrows an ambiguous id |
-| | `PATCH /tenants/{id} {name}` · `PATCH /accounts/{id} {displayName}` | rename |
-| | `PATCH /domains/{domain} {status}` | `active` \| `suspended`, allow-listed |
-| **D** | `DELETE /accounts/{id}` | **soft** — tombstone + route/KV teardown |
-| | `DELETE /domains/{domain}` | hard; 409 while any route/identity is on it |
-| | `DELETE /tenants/{id}` | hard; 409 while anything references it |
-| | `DELETE /agent-bindings/{id}` | hard; 409 while invocations are queued |
+|       | route                                                               | note                                               |
+| ----- | ------------------------------------------------------------------- | -------------------------------------------------- |
+| **U** | `POST /agent-bindings/{id}/disable` · `/enable`                     | the kill switch; `?email=` narrows an ambiguous id |
+|       | `PATCH /tenants/{id} {name}` · `PATCH /accounts/{id} {displayName}` | rename                                             |
+|       | `PATCH /domains/{domain} {status}`                                  | `active` \| `suspended`, allow-listed              |
+| **D** | `DELETE /accounts/{id}`                                             | **soft** — tombstone + route/KV teardown           |
+|       | `DELETE /domains/{domain}`                                          | hard; 409 while any route/identity is on it        |
+|       | `DELETE /tenants/{id}`                                              | hard; 409 while anything references it             |
+|       | `DELETE /agent-bindings/{id}`                                       | hard; 409 while invocations are queued             |
 
 CLI: `admin tenant rename|delete` · `domain suspend|resume|delete` ·
 `account rename|delete` · `agent disable|enable|unbind` ·
@@ -61,7 +61,7 @@ CLI: `admin tenant rename|delete` · `domain suspend|resume|delete` ·
 
 2. **`tokens` and `grants` keep their hard `DELETE`.** Done-when #4 asked for
    `revoked_at` on them. Declined, and this is the one done-when not met:
-   `s03.A` T2 owns grant tombstones *and* a `grant_lifecycle` log, and doing
+   `s03.A` T2 owns grant tombstones _and_ a `grant_lifecycle` log, and doing
    the column half here buys the repo the two hand-run schema events this
    file's own tier-2 warning says to avoid. Deferred deliberately, not missed.
 
@@ -70,7 +70,7 @@ CLI: `admin tenant rename|delete` · `domain suspend|resume|delete` ·
    ingest resolves through KV with no D1 fallback — so as specified it was
    cosmetic, and a suspend that does not stop mail is worse than no suspend.
    It now moves the KV keys aside (mail bounces `550` immediately) and
-   `resume` puts them back. They are *parked*, not deleted, because `forwardTo`
+   `resume` puts them back. They are _parked_, not deleted, because `forwardTo`
    is a KV-only field D1 cannot rebuild; resume restores the parked copy
    verbatim and falls back to `routes` only for keys with no parked copy.
 
@@ -84,7 +84,7 @@ CLI: `admin tenant rename|delete` · `domain suspend|resume|delete` ·
 
 5. **Bare `bind_xxxxxxxx` in the route, not `/accounts/{id}/…`.** The fix note
    proposed the account-scoped path. `agent_bindings` is `PRIMARY KEY
-   (account_id, id)` so an id alone is not formally a key — but every other
+(account_id, id)` so an id alone is not formally a key — but every other
    route here speaks in email addresses, `agent bind` hands the operator a bare
    binding id, and requiring `t_home__a_3f2a1b9c` at 3am is the friction the
    kill switch exists to remove. The route resolves the id to its account and
@@ -93,17 +93,17 @@ CLI: `admin tenant rename|delete` · `domain suspend|resume|delete` ·
 
 ### Six things review caught that the design as written got wrong
 
-Recorded because each was a *design* hole, not a typo, and the corrected rule
+Recorded because each was a _design_ hole, not a typo, and the corrected rule
 is the interesting part. All six are pinned by tests.
 
 1. **Soft delete made hard delete unreachable.** `DELETE /domains` refused
    while any identity sat on the domain, and `DELETE /tenants` counted
    tombstoned accounts and principals — but `deleteAccount` deliberately
-   *retains* `identities`, and nothing in the tree deletes an `identities` or
+   _retains_ `identities`, and nothing in the tree deletes an `identities` or
    `principals` row. So a domain or tenant that ever held one account was
    permanently undeletable, with a 409 whose own advice could never be
    satisfied. **This defeated the unit's headline use case.**
-   *Rule now:* blockers count **live** accounts only, and
+   _Rule now:_ blockers count **live** accounts only, and
    **`DELETE /tenants` is the terminal purge** — it drops the tenant's
    tombstones and their principals/identities/tokens/credentials in
    foreign-key order. Delete has to have a bottom.
@@ -114,7 +114,7 @@ is the interesting part. All six are pinned by tests.
    principal** — every token and the password that could read the old mailbox
    silently become live credentials for whoever gets the address next. Exactly
    backwards for the delete-a-compromised-mailbox case.
-   *Rule now:* if the tombstone leaves the principal owning no live account,
+   _Rule now:_ if the tombstone leaves the principal owning no live account,
    its tokens and password go with it. If it still owns one, they stay — a
    principal legitimately owns `eric@a.com` and `eric@b.com`, and deleting one
    must not log the other out.
@@ -128,7 +128,7 @@ is the interesting part. All six are pinned by tests.
 
 4. **Suspend was leaky in two directions.** `POST /accounts` on a suspended
    domain wrote a live route key (a partial suspension with no read path that
-   showed it), and `GET /domains/{d}` — a *read* that happens to write
+   showed it), and `GET /domains/{d}` — a _read_ that happens to write
    `status='active'` — silently un-suspended the domain while its keys stayed
    parked. Both now refuse. Also: `parkDomainRoutes` enumerated keys with
    `KV.list`, which lags writes by up to a minute, so an account provisioned
@@ -143,7 +143,7 @@ is the interesting part. All six are pinned by tests.
 6. **Public share links outlived the account.** They resolve from KV on no
    credential at all, so tombstoning changed nothing: anyone holding a minted
    URL kept pulling R2 blobs for up to 90 days. `deleteAccount` now revokes
-   them (absence denies, so deleting the key *is* the revocation).
+   them (absence denies, so deleting the key _is_ the revocation).
 
 The through-line: **a soft delete is only as good as the set of things that
 check the tombstone**, and the first draft checked resolution paths while
@@ -153,10 +153,10 @@ missing every path that grants access without one.
 
 1. ✅ mistyped domain — `admin domain delete <typo>` unwinds the Cloudflare
    catch-all and the SES identity, and reports DNS records and Email Routing
-   itself as *not* unwound, in `addDomain`'s own `steps[]` shape.
+   itself as _not_ unwound, in `addDomain`'s own `steps[]` shape.
 2. ✅ `admin agent disable <bindingId>` — proved with ingest's enqueue query,
    copied verbatim, returning zero rows.
-3. ✅ deleting an account drops the KV key *and* the `routes` row, KV first
+3. ✅ deleting an account drops the KV key _and_ the `routes` row, KV first
    (the mirror of create's D1-first order, so a crash between them bounces mail
    for a live account rather than delivering into a tombstone).
 4. ⚠️ **not met, deliberately** — see call #2. Revoked tokens still hard-delete.
@@ -205,17 +205,17 @@ these two units and the ledger.
 tables that already exist. The CLI mirror is a `switch` case per verb in one 311-line file.
 No new service, no new dependency.
 
-It is **not E1** because doing it *correctly* is not a SQL statement. `POST /accounts` writes
+It is **not E1** because doing it _correctly_ is not a SQL statement. `POST /accounts` writes
 five places including a **KV** hot copy (`:409`), and `POST /domains` mutates **two external
 systems** — Cloudflare and AWS SES. Delete is not the mirror image of create here; it is a
 teardown across three systems, only one of which is transactional. Full inventory below.
 
 **I1, and I want to be blunt about it:**
 
-- *Human-verifiable* — yes, straightforwardly. An operator runs `bullmoose admin domain delete
-  <typo>`, `admin domain list` no longer shows it, and mail to it bounces. That is CLI output
+- _Human-verifiable_ — yes, straightforwardly. An operator runs `bullmoose admin domain delete
+<typo>`, `admin domain list` no longer shows it, and mail to it bounces. That is CLI output
   a person reads.
-- *Unlocks nothing* — no unit in `_index.md` and no `sNN` section names admin delete as a
+- _Unlocks nothing_ — no unit in `_index.md` and no `sNN` section names admin delete as a
   blocker. I checked. **This unit exists because provisioning is one-way and a mistyped domain
   is permanent via the API**, which is a real operational complaint (the repo's own recent
   history is demo/deploy iteration — `demo-keys: … deploy runbook`) and not a feature.
@@ -232,21 +232,21 @@ if (request.headers.get("Authorization") !== `Bearer ${env.ADMIN_TOKEN}`) …
 
 A single shared string. No per-operator identity — which is why `createGrant` records
 `created_by` as the literal `'admin'` (`:556`). Whatever this unit tombstones, it cannot
-record *who*.
+record _who_.
 
 **The route table, verbatim** (`:55-120`):
 
-| | route | handler |
-|---|---|---|
-| **C** | `POST /tenants` `:55` | `createTenant` `:131` |
-| | `POST /domains` `:61` | `addDomain` `:170` |
-| | `POST /accounts` `:67` | `createAccount` `:324` |
-| | `POST /tokens` `:82` | `mintPrincipalToken` `:459` |
-| | `POST /agent-bindings` `:94` | `createAgentBinding` `:627` |
-| | `POST /grants` `:104` | `createGrant` `:519` |
-| **R** | `GET /tenants` `:58` · `GET /domains` `:59` · `GET /accounts` `:60` · `GET /domains/{d}` `:64` · `GET /tokens` `:93` · `GET /agent-bindings` `:100` · `GET /grants` `:117` | |
-| **U** | `POST /principals/password` `:79` | `setPassword` `:425` — **the only update in the API** |
-| **D** | `DELETE /tokens/{id}` `:101` · `DELETE /grants/{id}` `:118` | `revokeToken` `:498` · `revokeGrant` `:602` — **the only deletes** |
+|       | route                                                                                                                                                                      | handler                                                            |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **C** | `POST /tenants` `:55`                                                                                                                                                      | `createTenant` `:131`                                              |
+|       | `POST /domains` `:61`                                                                                                                                                      | `addDomain` `:170`                                                 |
+|       | `POST /accounts` `:67`                                                                                                                                                     | `createAccount` `:324`                                             |
+|       | `POST /tokens` `:82`                                                                                                                                                       | `mintPrincipalToken` `:459`                                        |
+|       | `POST /agent-bindings` `:94`                                                                                                                                               | `createAgentBinding` `:627`                                        |
+|       | `POST /grants` `:104`                                                                                                                                                      | `createGrant` `:519`                                               |
+| **R** | `GET /tenants` `:58` · `GET /domains` `:59` · `GET /accounts` `:60` · `GET /domains/{d}` `:64` · `GET /tokens` `:93` · `GET /agent-bindings` `:100` · `GET /grants` `:117` |                                                                    |
+| **U** | `POST /principals/password` `:79`                                                                                                                                          | `setPassword` `:425` — **the only update in the API**              |
+| **D** | `DELETE /tokens/{id}` `:101` · `DELETE /grants/{id}` `:118`                                                                                                                | `revokeToken` `:498` · `revokeGrant` `:602` — **the only deletes** |
 
 Both deletes are hard: `DELETE FROM tokens` (`:499`), `DELETE FROM grants` (`:603`). Nothing
 exists for tenant, domain, account, or agent-binding.
@@ -258,7 +258,7 @@ exists for tenant, domain, account, or agent-binding.
 / `revoke` `:256` · `password <email>` `:264`.
 
 ⚠️ **The CLI's own help is wrong today.** The error text at `:278-280` tells the user that
-`token` and `agent` are *"designed (not yet built)"* while both are implemented directly above
+`token` and `agent` are _"designed (not yet built)"_ while both are implemented directly above
 it, and the module taxonomy at `:11-21` marks them `○`. Fix that in this unit — it is one edit
 and it is actively misleading operators.
 
@@ -278,23 +278,23 @@ the platform no longer knows about.
 
 **`createAgentBinding` also arms a responder.** When `slaSeconds` is set it inserts
 `watchdog_{id}` into `responders` (`:646-660`). Deleting the binding without that row leaves
-an armed auto-responder telling senders an agent is *"temporarily unavailable"* forever.
+an armed auto-responder telling senders an agent is _"temporarily unavailable"_ forever.
 
 **The data plane is a different database.** `accounts.shard` (`control-plane.sql:36`, default
 `'shard0'`) selects it, and this worker's `DB` binding is the control plane. Emails, calendars,
 contacts and R2 blobs are unreachable from here. Account deletion is inherently cross-plane.
 
-### Integrity footguns that argue for *update* before *delete*
+### Integrity footguns that argue for _update_ before _delete_
 
 - `createTenant` is `INSERT OR IGNORE` (`:133`). Re-POSTing with a corrected name **silently
   no-ops** and returns `ok: true`. There is no rename.
 - `identities` is `UNIQUE (account_id, email)` (`control-plane.sql:46`) — **not** unique per
-  email. So `POST /accounts` twice for the same address creates a *second* account, repoints
+  email. So `POST /accounts` twice for the same address creates a _second_ account, repoints
   `routes` (`INSERT OR REPLACE` `:387`) and the KV key (`:409`), and orphans the first
   account's mail. No error, no warning.
 - `agent_bindings.enabled` (`data-plane.sql:104`) is written `1` at creation (`:638`) and never
   written again. Both drain paths filter on it (`services/agent/src/index.ts:110`,
-  `services/ingest/src/index.ts:169`), so it *is* a kill switch — with no route to reach it.
+  `services/ingest/src/index.ts:169`), so it _is_ a kill switch — with no route to reach it.
 - No `revoked_at` on `tokens` (`control-plane.sql:62-72`) or `grants` (`:84-95`). Revocation
   destroys the evidence along with the access.
 - Everything throws into one `catch` that returns `{ error: String(err) }` with **500**
@@ -321,13 +321,14 @@ of the value.
 
 `s03.A-foundations/devPlan.md:42-50` specifies the shape: a `revoked_at` tombstone plus a
 lifecycle log, with resolution filtering `revoked_at IS NULL` **in addition to** the existing
-`expires_at` check *"so live behaviour is identical while history survives."*
+`expires_at` check _"so live behaviour is identical while history survives."_
 
 Apply the same to `accounts` and `domains` (`deleted_at`), and **retrofit `tokens` and
 `grants`**, which hard-delete today (`:499`, `:603`). A compromised token's usage history
 should outlive its revocation.
 
 Consequences to wire, not skip:
+
 - `listAccounts` `:154` / `listDomains` `:147` filter the tombstone.
 - Auth resolution filters it — otherwise a "deleted" account still authenticates.
 - The KV route key must go at tombstone time, not at hard-delete time, or a soft-deleted
@@ -341,7 +342,7 @@ hand-run schema events instead of one.
 ### Tier 3 — hard delete, narrowly and last
 
 - **`DELETE /accounts/{id}`** — KV route key, `routes` row, `identities`, `mailboxes`,
-  `accounts`, and any `grants` naming it as grantee or target. Recommend it explicitly *not*
+  `accounts`, and any `grants` naming it as grantee or target. Recommend it explicitly _not_
   touch the data-plane shard or R2, and **say so in the response body**, so the caller knows
   what remains.
 - **`DELETE /domains/{domain}`** — refuse with **409** while any account exists on it. Unwind
@@ -408,16 +409,16 @@ in the same commit.**
 1. **One slice of this unit is not `I1`, and the ledger's wave-4 placement is wrong for it.**
    `agent_bindings.enabled` is the only off switch for an agent, and `007` gives a human a way
    to fire agents on demand. Shipping `007` first means a runaway binding can only be stopped
-   from a D1 console. By `config.yml`'s own definition — *"removes a STATED blocker from at
-   least one other unit"* — binding-disable is a named de-risking dependency of `007`, which
+   from a D1 console. By `config.yml`'s own definition — _"removes a STATED blocker from at
+   least one other unit"_ — binding-disable is a named de-risking dependency of `007`, which
    makes it `I3`, not `I1`, and puts it in wave 3. The honest fix is to split one route out of
    this unit. I did not split it because the split is a single `UPDATE` statement and a
    two-unit ledger entry for one SQL line is its own kind of dishonesty. **A reviewer should
    decide this; it changes the build order.**
 
 2. **`E2` holds only for hard delete.** The tombstone design I recommend in tier 2 adds columns
-   to four tables, which is `E3` by `config.yml`'s own anchor (*"New table or column +
-   migration"*) and by `readme.md:75-78`'s migration-cliff argument. I left the filename at
+   to four tables, which is `E3` by `config.yml`'s own anchor (_"New table or column +
+   migration"_) and by `readme.md:75-78`'s migration-cliff argument. I left the filename at
    `E2` to match the ledger, but I believe **the ledger is wrong if the recommendation is
    accepted**, and I would rather flag the contradiction than quietly pick the cheaper design
    to protect a grade. Decide the design first, then regrade.
@@ -426,15 +427,15 @@ in the same commit.**
    and drifts; a `DELETE /domains` that half-unwinds is arguably worse than none, because it
    leaves an operator believing the domain is gone. A defensible alternative: ship tier 1 only
    (rename + suspend + disable), and do real deletion by hand against a runbook. That version
-   is `E1`/`I1` and nearly free. I did not choose it because *"a mistyped domain is permanent"*
+   is `E1`/`I1` and nearly free. I did not choose it because _"a mistyped domain is permanent"_
    is the actual complaint — but it is close, and a reviewer who values the blast radius over
    the ergonomics should win this argument.
 
 4. **Account teardown is genuinely unowned, and this unit does not fix that.** The control
    plane and data plane are separate D1 databases (`accounts.shard`, `control-plane.sql:36`),
    and R2 blobs have **no GC path at all** — `packages/mailstore/src/index.ts:644` says so in
-   a source comment: *"Blob is retained in R2 for now… garbage collection is a separate sweep
-   (TODO)."* `s03.B` T1 owns blob pinning; `010` owns explicit blob delete; **nobody owns
+   a source comment: _"Blob is retained in R2 for now… garbage collection is a separate sweep
+   (TODO)."_ `s03.B` T1 owns blob pinning; `010` owns explicit blob delete; **nobody owns
    deleting an account's data**. Whatever ships here, "delete account" will leave rows and
    objects behind. That gap probably deserves its own unit and does not have one.
 

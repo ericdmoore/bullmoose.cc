@@ -61,7 +61,13 @@ const emailRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const DRAFTS_MB = { id: "mb_drafts", parent_id: null, name: "Drafts", role: "drafts", sort_order: 1 };
+const DRAFTS_MB = {
+  id: "mb_drafts",
+  parent_id: null,
+  name: "Drafts",
+  role: "drafts",
+  sort_order: 1,
+};
 const INBOX_MB = { id: "mb_inbox", parent_id: null, name: "Inbox", role: "inbox", sort_order: 0 };
 
 /** A well-formed draft: `$draft` + filed in the drafts role mailbox. */
@@ -77,7 +83,8 @@ const draftFixture = (over: Fixture = {}): Fixture => ({
 function harness(fx: Fixture, scopes: string[] = ["mail"]) {
   const w = fakeEnv();
   w.db.seedAccount({ accountId: ACCOUNT, loginEmail: LOGIN_EMAIL, displayName: "Eric" });
-  const withAccount = <T extends object>(rows: T[]) => rows.map((r) => ({ account_id: ACCOUNT, ...r }));
+  const withAccount = <T extends object>(rows: T[]) =>
+    rows.map((r) => ({ account_id: ACCOUNT, ...r }));
   w.db.seed("emails", withAccount(fx.emails ?? []));
   w.db.seed("email_mailboxes", withAccount(fx.emailMailboxes ?? []));
   w.db.seed("email_keywords", withAccount(fx.emailKeywords ?? []));
@@ -100,8 +107,7 @@ function harness(fx: Fixture, scopes: string[] = ["mail"]) {
     },
   };
 
-  const call = (create: Record<string, unknown>) =>
-    handler({ accountId: ACCOUNT, create }, ctx);
+  const call = (create: Record<string, unknown>) => handler({ accountId: ACCOUNT, create }, ctx);
   const get = async (args: Record<string, unknown> = {}) =>
     (await getHandler({ accountId: ACCOUNT, ...args }, ctx)) as unknown as GetResponse;
   const changes = async (sinceState: string) =>
@@ -177,7 +183,10 @@ describe("EmailSubmission/set — envelope.mailFrom is bound to the identity", (
       s: {
         emailId: "e_1",
         identityId: "id_1",
-        envelope: { mailFrom: { email: IDENTITY_EMAIL.toUpperCase() }, rcptTo: [{ email: "x@y.z" }] },
+        envelope: {
+          mailFrom: { email: IDENTITY_EMAIL.toUpperCase() },
+          rcptTo: [{ email: "x@y.z" }],
+        },
       },
     });
 
@@ -278,7 +287,10 @@ describe("EmailSubmission/set — only drafts may be submitted", () => {
       s: {
         emailId: "e_1",
         identityId: "id_1",
-        envelope: { mailFrom: { email: IDENTITY_EMAIL }, rcptTo: [{ email: "victim@example.com" }] },
+        envelope: {
+          mailFrom: { email: IDENTITY_EMAIL },
+          rcptTo: [{ email: "victim@example.com" }],
+        },
       },
     });
 
@@ -470,10 +482,7 @@ describe("EmailSubmission/get — ids, accounts, and scope", () => {
   it("returns every submission for the account when ids is null", async () => {
     const h = harness(
       draftFixture({
-        submissions: [
-          submissionRow(),
-          submissionRow({ id: "es_2", send_at: 1_700_000_005_000 }),
-        ],
+        submissions: [submissionRow(), submissionRow({ id: "es_2", send_at: 1_700_000_005_000 })],
       }),
     );
 

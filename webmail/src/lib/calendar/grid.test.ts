@@ -60,8 +60,13 @@ describe("week and day grids", () => {
   it("gives a week seven days from the configured start", () => {
     const days = gridDays({ kind: "week", anchor: july(8), weekStartsOn: 0 });
     expect(days.map(dayKey)).toEqual([
-      "2026-07-05", "2026-07-06", "2026-07-07", "2026-07-08",
-      "2026-07-09", "2026-07-10", "2026-07-11",
+      "2026-07-05",
+      "2026-07-06",
+      "2026-07-07",
+      "2026-07-08",
+      "2026-07-09",
+      "2026-07-10",
+      "2026-07-11",
     ]);
   });
 
@@ -182,9 +187,9 @@ describe("labels", () => {
     expect(gridTitle({ kind: "week", anchor: july(1), weekStartsOn: 0 })).toBe(
       "June 28 – July 4, 2026",
     );
-    expect(gridTitle({ kind: "week", anchor: { year: 2025, month: 12, day: 31 }, weekStartsOn: 0 })).toBe(
-      "December 28, 2025 – January 3, 2026",
-    );
+    expect(
+      gridTitle({ kind: "week", anchor: { year: 2025, month: 12, day: 31 }, weekStartsOn: 0 }),
+    ).toBe("December 28, 2025 – January 3, 2026");
   });
 
   it("rotates the weekday headings with the first day of the week", () => {

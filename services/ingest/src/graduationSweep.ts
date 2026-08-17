@@ -85,9 +85,7 @@ export async function sweepGraduations(
       }
     } catch (err) {
       // One domain's write failing must not starve the rest of the sweep.
-      console.error(
-        `graduation of ${domain} failed (${err instanceof Error ? err.message : err})`,
-      );
+      console.error(`graduation of ${domain} failed (${err instanceof Error ? err.message : err})`);
     }
   }
 

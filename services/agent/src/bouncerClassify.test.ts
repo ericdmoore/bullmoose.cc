@@ -96,7 +96,14 @@ async function scaffold(
       mailboxIds: [quarantineId],
       keywords: [],
     },
-    { event: "screened", sender: SENDER, domain: DOMAIN, stage: "bayes-mid@0.50", emailId: EMAIL_ID, at: 1000 },
+    {
+      event: "screened",
+      sender: SENDER,
+      domain: DOMAIN,
+      stage: "bayes-mid@0.50",
+      emailId: EMAIL_ID,
+      at: 1000,
+    },
   );
   w.db.seed("agent_invocations", [
     {
@@ -171,7 +178,9 @@ describe("parseClassifierVerdict — the strict enum, defensively", () => {
 
   it("garbage → unsure: prose, empty, JSON, or a verdict buried in chatter", () => {
     expect(parseClassifierVerdict("")).toBe("unsure");
-    expect(parseClassifierVerdict("I think this is spam because it mentions a casino")).toBe("unsure");
+    expect(parseClassifierVerdict("I think this is spam because it mentions a casino")).toBe(
+      "unsure",
+    );
     expect(parseClassifierVerdict('{"verdict":"spam"}')).toBe("unsure");
     expect(parseClassifierVerdict("spammy")).toBe("unsure");
     expect(parseClassifierVerdict("definitely-not-spam-trust-me")).toBe("unsure");
@@ -192,7 +201,10 @@ describe("bouncer-classify through the real drain", () => {
     ]);
     const inv = invocation(w);
     expect(inv.status).toBe("done");
-    expect(JSON.parse(inv.result_json!)).toMatchObject({ kind: "bouncer-classify", verdict: "spam" });
+    expect(JSON.parse(inv.result_json!)).toMatchObject({
+      kind: "bouncer-classify",
+      verdict: "spam",
+    });
     // s07 T5 machinery, free on workers-ai: 0, not NULL.
     expect(inv.provider).toBe("workers-ai");
     expect(inv.cost_micros).toBe(0);
@@ -215,7 +227,10 @@ describe("bouncer-classify through the real drain", () => {
       "released:llm:notSpam",
     ]);
     expect(w.db.count("bayes_state")).toBe(0);
-    expect(JSON.parse(invocation(w).result_json!)).toMatchObject({ verdict: "notSpam", released: true });
+    expect(JSON.parse(invocation(w).result_json!)).toMatchObject({
+      verdict: "notSpam",
+      released: true,
+    });
   });
 
   it("unsure: STAYS held with a 'screened' row 'llm:unsure', and records NO label — never train on a shrug", async () => {
@@ -286,7 +301,11 @@ describe("bouncer-classify through the real drain", () => {
 describe("LLM_LABELS_TRAIN — the operator's switch, exercised via the override", () => {
   const done = () => {
     const calls: Array<{ status: string; result: Record<string, unknown> }> = [];
-    const fn = async (status: "done" | "failed", result: Record<string, unknown>, _cost?: InvocationCost) => {
+    const fn = async (
+      status: "done" | "failed",
+      result: Record<string, unknown>,
+      _cost?: InvocationCost,
+    ) => {
       calls.push({ status, result });
     };
     return { calls, fn };

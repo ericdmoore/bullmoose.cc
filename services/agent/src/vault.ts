@@ -225,7 +225,10 @@ export async function handleVault(request: Request, env: Env): Promise<Response>
     if (body.header !== undefined) {
       const h = normalizeHeader(body.header);
       if (!h) {
-        return json({ error: 'header must be "Header-Name: …{}…" (the {} is the value slot)' }, 400);
+        return json(
+          { error: 'header must be "Header-Name: …{}…" (the {} is the value slot)' },
+          400,
+        );
       }
       meta.header = h;
     } else if (kind === "api-key" && meta.header === undefined) {
@@ -254,7 +257,9 @@ export async function handleVault(request: Request, env: Env): Promise<Response>
       const norm = normalizeAllow(allow);
       if (!norm) {
         return json(
-          { error: `allow must be an origin (https://host[:port]) or wildcard (*.host); got ${allow}` },
+          {
+            error: `allow must be an origin (https://host[:port]) or wildcard (*.host); got ${allow}`,
+          },
           400,
         );
       }
@@ -291,7 +296,13 @@ export async function handleVault(request: Request, env: Env): Promise<Response>
        FROM vault_credentials WHERE principal_id = ? ORDER BY name`,
     )
       .bind(principal.principalId)
-      .all<{ name: string; kind: string; meta_json: string; created_at: number; updated_at: number }>();
+      .all<{
+        name: string;
+        kind: string;
+        meta_json: string;
+        created_at: number;
+        updated_at: number;
+      }>();
     return json({ credentials: results.map((r) => credentialView(r)) });
   }
 

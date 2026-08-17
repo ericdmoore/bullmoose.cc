@@ -234,7 +234,11 @@ function seedCase(
     ]);
   };
   if (opts.budget.monthSpendMicros > 0) {
-    doneRow({ claimed_at: NOW - HOUR, done_at: NOW - HOUR + 1, cost_micros: opts.budget.monthSpendMicros });
+    doneRow({
+      claimed_at: NOW - HOUR,
+      done_at: NOW - HOUR + 1,
+      cost_micros: opts.budget.monthSpendMicros,
+    });
   }
   if (opts.budget.lastMonthSpendMicros) {
     doneRow({
@@ -477,8 +481,7 @@ describe("claim gate: SQL and mayClaim agree", () => {
   it("the T3 subset (fit ∧ notPinned) admits what the full gate refuses — but never a pin", async () => {
     const db = fakeD1();
     const paid = CLAIMANTS.paid!;
-    const subsetSql =
-      `SELECT 1 AS hit FROM agent_invocations
+    const subsetSql = `SELECT 1 AS hit FROM agent_invocations
        WHERE account_id = ? AND id = ? AND status = 'pending'
          AND ${notPinnedSql("agent_invocations")}
          AND ${claimFitSql("agent_invocations")}`;
@@ -543,8 +546,7 @@ describe("claim gate: SQL and mayClaim agree", () => {
   it("the T9 decomposition: (stranded-shape ∧ exhausted) is exactly what the gate refuses", async () => {
     const db = fakeD1();
     const paid = CLAIMANTS.paid!;
-    const strandedShapeSql =
-      `SELECT 1 AS hit FROM agent_invocations
+    const strandedShapeSql = `SELECT 1 AS hit FROM agent_invocations
        WHERE account_id = ? AND id = ? AND status = 'pending'
          AND ${notPinnedSql("agent_invocations")}
          AND ${claimFitSql("agent_invocations")}
@@ -579,7 +581,9 @@ describe("claim gate: SQL and mayClaim agree", () => {
             // budget-stranded set is (shape ∧ exhausted) — nothing else.
             const name = `${dName}/${pName}/${bName}/${lName}`;
             if (v.pure !== (shape && !budget.exhausted)) {
-              mismatches.push(`${name}: gate=${v.pure} shape=${shape} exhausted=${budget.exhausted}`);
+              mismatches.push(
+                `${name}: gate=${v.pure} shape=${shape} exhausted=${budget.exhausted}`,
+              );
             }
             if (shape && budget.exhausted) strandedCount += 1;
           }
@@ -670,7 +674,15 @@ describe("claim gate: SQL and mayClaim agree", () => {
     const windowMs = await bindingEscalationWindowMs(db, seeded.accountId, seeded.bindingId);
     expect(windowMs).toBe(60 * 60_000);
     const paid = CLAIMANTS.paid!;
-    const outside = await verdicts(db, seeded, { claimant: paid, dueAt, privacy: null, requiresJson: null, budget, liveness, windowMs });
+    const outside = await verdicts(db, seeded, {
+      claimant: paid,
+      dueAt,
+      privacy: null,
+      requiresJson: null,
+      budget,
+      liveness,
+      windowMs,
+    });
     expect(outside).toEqual({ pure: false, sql: false });
 
     // Same history, due 50min out: inside the 60min window — both flip.
@@ -684,11 +696,25 @@ describe("claim gate: SQL and mayClaim agree", () => {
     });
     const windowMs2 = await bindingEscalationWindowMs(db, seeded2.accountId, seeded2.bindingId);
     expect(windowMs2).toBe(60 * 60_000);
-    const inside = await verdicts(db, seeded2, { claimant: paid, dueAt: NOW + 50 * 60_000, privacy: null, requiresJson: null, budget, liveness, windowMs: windowMs2 });
+    const inside = await verdicts(db, seeded2, {
+      claimant: paid,
+      dueAt: NOW + 50 * 60_000,
+      privacy: null,
+      requiresJson: null,
+      budget,
+      liveness,
+      windowMs: windowMs2,
+    });
     expect(inside).toEqual({ pure: true, sql: true });
 
     // No history at all → the 1h default.
-    const seeded3 = seedCase(db, { dueAt: null, privacy: null, requiresJson: null, budget, liveness });
+    const seeded3 = seedCase(db, {
+      dueAt: null,
+      privacy: null,
+      requiresJson: null,
+      budget,
+      liveness,
+    });
     expect(await bindingEscalationWindowMs(db, seeded3.accountId, seeded3.bindingId)).toBe(
       ESCALATION_WINDOW_NO_HISTORY_MS,
     );

@@ -68,7 +68,9 @@ const MAX_ITERATIONS = 20000;
 /** "PT1H30M" | "P1D" | "PT45M" → milliseconds (dates approximate: D=24h). */
 export function parseDuration(raw: unknown): number {
   if (typeof raw !== "string") return 0;
-  const m = raw.match(/^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);
+  const m = raw.match(
+    /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/,
+  );
   if (!m) return 0;
   const [, sign, w, d, h, min, s] = m;
   const ms =
@@ -165,7 +167,8 @@ export function zonedToUtc(dt: LocalDateTime, timeZone: string): number {
 
 // ---- date field arithmetic (calendar-safe) -----------------------------
 
-const daysInMonth = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+const daysInMonth = (year: number, month: number) =>
+  new Date(Date.UTC(year, month, 0)).getUTCDate();
 
 function addDays(dt: LocalDateTime, days: number): LocalDateTime {
   const d = new Date(asUtcMs(dt) + days * 86_400_000);
@@ -310,7 +313,10 @@ export function unsupportedRuleReason(rule: RecurrenceRule): string | null {
   if (isPresent(rule.count) && !isPosInt(rule.count)) {
     return `count must be a positive integer, got ${String(rule.count)}`;
   }
-  if (isPresent(rule.until) && (typeof rule.until !== "string" || !parseLocalDateTime(rule.until))) {
+  if (
+    isPresent(rule.until) &&
+    (typeof rule.until !== "string" || !parseLocalDateTime(rule.until))
+  ) {
     // An unparseable UNTIL is dropped by the expander, turning a bounded
     // series into an unbounded one (end_at written as NULL).
     return `until must be a LocalDateTime ("2026-12-31T23:59:59"), got ${JSON.stringify(rule.until)}`;
@@ -553,7 +559,8 @@ function expandRule(
     if (skipToMs !== null) {
       const stepMs = interval * 7 * 86_400_000;
       const behind = skipToMs - asUtcMs(weekStart) - 2 * stepMs;
-      if (behind > stepMs) weekStart = addDays(weekStart, Math.floor(behind / stepMs) * interval * 7);
+      if (behind > stepMs)
+        weekStart = addDays(weekStart, Math.floor(behind / stepMs) * interval * 7);
     }
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       let done = false;
@@ -591,7 +598,8 @@ function expandRule(
           const nth = spec.nthOfPeriod;
           if (nth === undefined || nth === 0) candidates.push(...matches);
           else if (nth > 0 && matches[nth - 1]) candidates.push(matches[nth - 1]!);
-          else if (nth < 0 && matches[matches.length + nth]) candidates.push(matches[matches.length + nth]!);
+          else if (nth < 0 && matches[matches.length + nth])
+            candidates.push(matches[matches.length + nth]!);
         }
       } else if (byMonthDay.length > 0) {
         for (const md of byMonthDay) {

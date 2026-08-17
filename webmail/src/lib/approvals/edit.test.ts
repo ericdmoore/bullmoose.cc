@@ -15,7 +15,11 @@ const replyPayload = {
 describe("editorFor — what Edit opens", () => {
   it("gives reply-shaped kinds a subject/text form seeded from the payload", () => {
     const form = editorFor({ kind: "reply-draft", payload: replyPayload });
-    expect(form).toEqual({ shape: "reply", subject: "Re: Project Elk kickoff", text: replyPayload.text });
+    expect(form).toEqual({
+      shape: "reply",
+      subject: "Re: Project Elk kickoff",
+      text: replyPayload.text,
+    });
     expect(editorFor({ kind: "start-thread", payload: replyPayload })?.shape).toBe("reply");
   });
 
@@ -72,8 +76,12 @@ describe("applyEdit — the retained-diff contract", () => {
   it("refuses bad JSON and non-object JSON without sending anything", () => {
     expect(applyEdit({}, { shape: "json", json: "{nope" }).problem).toContain("not valid JSON");
     // Mirrors the server's own guard: `editedPayload must be an object`.
-    expect(applyEdit({}, { shape: "json", json: "[1,2]" }).problem).toContain("must be a JSON object");
-    expect(applyEdit({}, { shape: "json", json: "null" }).problem).toContain("must be a JSON object");
+    expect(applyEdit({}, { shape: "json", json: "[1,2]" }).problem).toContain(
+      "must be a JSON object",
+    );
+    expect(applyEdit({}, { shape: "json", json: "null" }).problem).toContain(
+      "must be a JSON object",
+    );
   });
 });
 

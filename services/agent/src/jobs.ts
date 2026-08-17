@@ -143,7 +143,10 @@ export async function startJob(env: Env, spec: JobSpec): Promise<StartJobResult>
     .bind(spec.accountId, spec.bindingId)
     .first<{ id: string; name: string; enabled: number; config_json: string }>();
   if (!binding) {
-    return { ok: false, refusals: [refusal("identity", spec.bindingId, "(none)", "no such binding on this account")] };
+    return {
+      ok: false,
+      refusals: [refusal("identity", spec.bindingId, "(none)", "no such binding on this account")],
+    };
   }
   // The 008 kill switch, honored at creation exactly as AgentInvocation/set
   // honors it: a Job against a disabled binding would be a DAG of rows no
@@ -151,7 +154,14 @@ export async function startJob(env: Env, spec: JobSpec): Promise<StartJobResult>
   if (binding.enabled !== 1) {
     return {
       ok: false,
-      refusals: [refusal("identity", binding.name, "an enabled binding", "the binding is disabled (008 kill switch)")],
+      refusals: [
+        refusal(
+          "identity",
+          binding.name,
+          "an enabled binding",
+          "the binding is disabled (008 kill switch)",
+        ),
+      ],
     };
   }
 
@@ -164,7 +174,13 @@ export async function startJob(env: Env, spec: JobSpec): Promise<StartJobResult>
 
   const jobId = `job_${crypto.randomUUID()}`;
   const rootId = `inv_${crypto.randomUUID()}`;
-  const ceiling = bindingCeiling(spec.accountId, spec.bindingId, jobId, cfg.jobs, spec.facets ?? {});
+  const ceiling = bindingCeiling(
+    spec.accountId,
+    spec.bindingId,
+    jobId,
+    cfg.jobs,
+    spec.facets ?? {},
+  );
 
   // Caps: the caller's ask, narrowed by the binding's and by the absolute
   // ceilings. `Math.min` and not a refusal, because these are the caller's own
@@ -173,11 +189,19 @@ export async function startJob(env: Env, spec: JobSpec): Promise<StartJobResult>
   // runnable AND bounded.
   const maxNodes = Math.max(
     1,
-    Math.min(spec.maxNodes, JOB_MAX_NODES_CEILING, numberOr(cfg.jobs?.maxNodes, JOB_MAX_NODES_CEILING)),
+    Math.min(
+      spec.maxNodes,
+      JOB_MAX_NODES_CEILING,
+      numberOr(cfg.jobs?.maxNodes, JOB_MAX_NODES_CEILING),
+    ),
   );
   const maxDepth = Math.max(
     0,
-    Math.min(spec.maxDepth, JOB_MAX_DEPTH_CEILING, numberOr(cfg.jobs?.maxDepth, JOB_MAX_DEPTH_CEILING)),
+    Math.min(
+      spec.maxDepth,
+      JOB_MAX_DEPTH_CEILING,
+      numberOr(cfg.jobs?.maxDepth, JOB_MAX_DEPTH_CEILING),
+    ),
   );
   const budgetMicros =
     spec.budgetMicros === undefined || spec.budgetMicros === null
@@ -263,9 +287,16 @@ export async function startJob(env: Env, spec: JobSpec): Promise<StartJobResult>
  * mistake jobs-and-facets §5 names. A task is claimable the instant it exists —
  * by a DIFFERENT runtime, while the planner is still writing its own result row.
  */
-export async function expandPlan(env: Env, parent: JobNodeRow, plan: unknown): Promise<ExpandResult> {
+export async function expandPlan(
+  env: Env,
+  parent: JobNodeRow,
+  plan: unknown,
+): Promise<ExpandResult> {
   if (!parent.job_id) {
-    return { ok: false, refusals: [refusal("job", "(none)", "a job id", "this invocation is not part of a Job")] };
+    return {
+      ok: false,
+      refusals: [refusal("job", "(none)", "a job id", "this invocation is not part of a Job")],
+    };
   }
   const job = await env.DB.prepare(
     `SELECT id, budget_micros, max_nodes, max_depth FROM jobs WHERE account_id = ? AND id = ?`,
@@ -273,14 +304,24 @@ export async function expandPlan(env: Env, parent: JobNodeRow, plan: unknown): P
     .bind(parent.account_id, parent.job_id)
     .first<{ id: string; budget_micros: number | null; max_nodes: number; max_depth: number }>();
   if (!job) {
-    return { ok: false, refusals: [refusal("job", parent.job_id, "an existing Job", "no such Job row")] };
+    return {
+      ok: false,
+      refusals: [refusal("job", parent.job_id, "an existing Job", "no such Job row")],
+    };
   }
 
   const tasks = (plan as PlanSpec | null)?.tasks;
   if (!Array.isArray(tasks) || tasks.length === 0) {
     return {
       ok: false,
-      refusals: [refusal("needs", JSON.stringify(plan ?? null) ?? "null", "{ tasks: [...] }", "a plan must be a non-empty task list")],
+      refusals: [
+        refusal(
+          "needs",
+          JSON.stringify(plan ?? null) ?? "null",
+          "{ tasks: [...] }",
+          "a plan must be a non-empty task list",
+        ),
+      ],
     };
   }
 
@@ -300,7 +341,12 @@ export async function expandPlan(env: Env, parent: JobNodeRow, plan: unknown): P
     return {
       ok: false,
       refusals: [
-        refusal(effective.denial.axis, effective.denial.requested, effective.denial.ceiling, effective.denial.why),
+        refusal(
+          effective.denial.axis,
+          effective.denial.requested,
+          effective.denial.ceiling,
+          effective.denial.why,
+        ),
       ],
     };
   }
@@ -356,7 +402,12 @@ export async function expandPlan(env: Env, parent: JobNodeRow, plan: unknown): P
 
   const created = result.children.map((c) => ({ key: c.key, id: ids.get(c.key)! }));
   await commitChanges(env.ACCOUNT_DO, parent.account_id, [
-    { collection: "AgentInvocation", created: created.map((c) => c.id), updated: [], destroyed: [] },
+    {
+      collection: "AgentInvocation",
+      created: created.map((c) => c.id),
+      updated: [],
+      destroyed: [],
+    },
   ]);
   return { ok: true, created };
 }

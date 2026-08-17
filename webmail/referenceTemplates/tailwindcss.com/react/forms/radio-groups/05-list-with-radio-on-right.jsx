@@ -1,28 +1,38 @@
 const accounts = [
-  { id: 'checking', name: 'Checking', description: 'CIBC ••••6610' },
-  { id: 'savings', name: 'Savings', description: 'Bank of America ••••0149' },
-  { id: 'mastercard', name: 'Mastercard', description: 'Capital One ••••7877' },
-]
+  { id: "checking", name: "Checking", description: "CIBC ••••6610" },
+  { id: "savings", name: "Savings", description: "Bank of America ••••0149" },
+  { id: "mastercard", name: "Mastercard", description: "Capital One ••••7877" },
+];
 
 export default function Example() {
   return (
     <fieldset>
-      <legend className="text-sm/6 font-semibold text-gray-900 dark:text-white">Transfer funds</legend>
-      <p className="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">Transfer your balance to your bank account.</p>
+      <legend className="text-sm/6 font-semibold text-gray-900 dark:text-white">
+        Transfer funds
+      </legend>
+      <p className="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">
+        Transfer your balance to your bank account.
+      </p>
       <div className="mt-2.5 divide-y divide-gray-200 dark:divide-white/10">
         {accounts.map((account, accountIdx) => (
           <div key={accountIdx} className="relative flex items-start pt-3.5 pb-4">
             <div className="min-w-0 flex-1 text-sm/6">
-              <label htmlFor={`account-${account.id}`} className="font-medium text-gray-900 dark:text-white">
+              <label
+                htmlFor={`account-${account.id}`}
+                className="font-medium text-gray-900 dark:text-white"
+              >
                 {account.name}
               </label>
-              <p id={`account-${account.id}-description`} className="text-gray-500 dark:text-gray-400">
+              <p
+                id={`account-${account.id}-description`}
+                className="text-gray-500 dark:text-gray-400"
+              >
                 {account.description}
               </p>
             </div>
             <div className="ml-3 flex h-6 items-center">
               <input
-                defaultChecked={account.id === 'checking'}
+                defaultChecked={account.id === "checking"}
                 id={`account-${account.id}`}
                 name="account"
                 type="radio"
@@ -34,5 +44,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  )
+  );
 }

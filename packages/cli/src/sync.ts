@@ -407,7 +407,10 @@ function upsertOne(db: DatabaseSync, accountId: string, e: JmapEmail): void {
 
 function deleteEmail(db: DatabaseSync, accountId: string, id: string): void {
   db.prepare("DELETE FROM emails WHERE account_id = ? AND id = ?").run(accountId, id);
-  db.prepare("DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ?").run(accountId, id);
+  db.prepare("DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ?").run(
+    accountId,
+    id,
+  );
   db.prepare("DELETE FROM email_keywords WHERE account_id = ? AND email_id = ?").run(accountId, id);
   db.prepare("DELETE FROM cli_fts WHERE email_id = ?").run(id);
 }

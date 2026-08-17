@@ -1,13 +1,13 @@
 # 027 -E2-I0- `Thread/changes`
 
-| | |
-|---|---|
-| **Kind** | capability |
-| **Effort** | **E2** — two lines to register, several files to make it *true* |
-| **Impact** | **I0** — not human-verifiable, unlocks nothing. Correct as graded. |
-| **Owner** | `sVOL` |
-| **Depends on** | — |
-| **Status** | **✅ done** (closed 2026-08-14) — registered, not computed: `services/jmap/src/methods/thread.ts:24` answers `cannotCalculateChanges` instead of `unknownMethod`. Two lines, five tests. |
+|                |                                                                                                                                                                                          |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Kind**       | capability                                                                                                                                                                               |
+| **Effort**     | **E2** — two lines to register, several files to make it _true_                                                                                                                          |
+| **Impact**     | **I0** — not human-verifiable, unlocks nothing. Correct as graded.                                                                                                                       |
+| **Owner**      | `sVOL`                                                                                                                                                                                   |
+| **Depends on** | —                                                                                                                                                                                        |
+| **Status**     | **✅ done** (closed 2026-08-14) — registered, not computed: `services/jmap/src/methods/thread.ts:24` answers `cannotCalculateChanges` instead of `unknownMethod`. Two lines, five tests. |
 
 ## Cells covered
 
@@ -18,7 +18,7 @@ Not a CRUD cell. `Thread` is a derived noun with no independent CRUD by design
 
 ## What exists today
 
-`Thread/get` is registered at `services/jmap/src/methods/thread.ts:5` and is the *only*
+`Thread/get` is registered at `services/jmap/src/methods/thread.ts:5` and is the _only_
 `Thread` method. It maps thread id → `emailIds` via `store.getThreadEmailIds`
 (`thread.ts:16`). There is no `Thread/changes`, which RFC 8621 §3.2 defines.
 
@@ -60,8 +60,8 @@ writers.
 
 **I0, both factors, and I agree with the ledger here:**
 
-- *Not human-verifiable* — the output is a JSON delta with no surface on any client.
-- *Unlocks nothing* — nothing in `_index.md` depends on it; no `sNN` section mentions
+- _Not human-verifiable_ — the output is a JSON delta with no surface on any client.
+- _Unlocks nothing_ — nothing in `_index.md` depends on it; no `sNN` section mentions
   `Thread/changes`.
 
 This is the only `I0` in the volume (`_index.md:173`), and it is the honest grade rather
@@ -82,14 +82,14 @@ something it just computed. And a thread cannot change without one of its emails
 changing — the derivation is total, not approximate.
 
 The only client this would help is one that renders a threaded list and wants to know a
-thread changed *without* fetching its emails. No such client exists here, and it is not
+thread changed _without_ fetching its emails. No such client exists here, and it is not
 obvious one ever should: `Thread/get` returns only `emailIds`, so knowing a thread changed
 without the emails tells you almost nothing renderable.
 
 **What would change my mind:** a strict RFC 8621 conformance suite, or a third-party
 client that hard-requires the method. Both are plausible one day; neither is true now.
 
-## Done when *(if ever built)*
+## Done when _(if ever built)_
 
 1. `Thread/changes` returns a real delta after a new message arrives in an existing
    thread, after a thread's last message is destroyed, and after an `Email/set` that

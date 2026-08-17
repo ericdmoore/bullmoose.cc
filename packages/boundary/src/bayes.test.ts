@@ -32,49 +32,209 @@ const bm = (
 // gives naive Bayes its evidence) and barely crosses classes.
 
 const SPAM: BoundaryMessage[] = [
-  bm("prize@win-big.biz", "You are our WINNER — claim your prize now", "Congratulations winner! Click the link to claim your free prize money today. Act now, offer expires."),
-  bm("promo@win-big.biz", "Claim your FREE prize money", "You won the lottery jackpot! Claim the prize now with one click. Free money guaranteed."),
-  bm("alerts@crypto-moon.io", "Double your bitcoin in 24 hours", "Guaranteed bitcoin profits. Send crypto now and double your money fast. Limited offer."),
-  bm("invest@crypto-moon.io", "Urgent: exclusive crypto investment offer", "Guaranteed returns on bitcoin investment. Act now, limited spots. Double your money."),
-  bm("meds@cheap-pills.net", "Cheap pills no prescription", "Buy discount pills online. No prescription needed. Cheap miracle supplements shipped discreet."),
-  bm("sales@cheap-pills.net", "Miracle weight loss pills — 80% off", "Lose weight fast with miracle pills. Discount offer, no prescription. Order now."),
-  bm("prince@wire-now.biz", "Urgent business proposal", "I am a prince with ten million dollars. Send your bank account details for urgent wire transfer. Strictly confidential."),
-  bm("barrister@wire-now.biz", "Inheritance funds — reply urgent", "Unclaimed inheritance of five million dollars awaits. Send bank details now for the wire transfer."),
-  bm("deals@mega-offers.info", "80% OFF everything — today only", "Massive discount deals. Click now, free shipping, offer expires today."),
-  bm("promo@mega-offers.info", "FREE gift card waiting for you", "Claim your free gift card now. Click the link, limited offer, act fast."),
-  bm("winner@lotto-int.net", "International lottery final notice", "Your email won the international lottery jackpot. Claim the prize money now. Send processing fee."),
-  bm("claims@lotto-int.net", "Second notice: unclaimed jackpot", "Final notice for your unclaimed lottery prize. Claim now or forfeit the jackpot money."),
-  bm("support@account-verify.net", "Your account will be suspended", "Verify your account now. Click the link and confirm your password or the account will be suspended."),
-  bm("security@account-verify.net", "Password expires today — verify now", "Urgent: confirm your password now. Click to verify the account or lose access today."),
-  bm("offers@hot-singles.date", "Hot singles in your area", "Meet hot singles tonight. Click now, free registration, no strings."),
-  bm("dating@hot-singles.date", "She is waiting for your reply", "Lonely singles want to meet you tonight. Free chat, click the link now."),
-  bm("billing@fake-invoice.biz", "Invoice overdue — pay immediately", "Your invoice is overdue. Pay now by wire transfer or face legal action immediately."),
-  bm("collections@fake-invoice.biz", "FINAL WARNING: unpaid invoice", "Final warning: unpaid invoice. Immediate wire transfer required or legal action follows."),
-  bm("bonus@casino-win.vip", "500 free spins waiting", "Exclusive casino bonus: free spins, guaranteed winnings. Deposit now and win big jackpot."),
-  bm("vip@casino-win.vip", "You qualify for VIP casino bonus", "Claim your casino bonus now. Guaranteed jackpot winnings, free spins, act fast."),
+  bm(
+    "prize@win-big.biz",
+    "You are our WINNER — claim your prize now",
+    "Congratulations winner! Click the link to claim your free prize money today. Act now, offer expires.",
+  ),
+  bm(
+    "promo@win-big.biz",
+    "Claim your FREE prize money",
+    "You won the lottery jackpot! Claim the prize now with one click. Free money guaranteed.",
+  ),
+  bm(
+    "alerts@crypto-moon.io",
+    "Double your bitcoin in 24 hours",
+    "Guaranteed bitcoin profits. Send crypto now and double your money fast. Limited offer.",
+  ),
+  bm(
+    "invest@crypto-moon.io",
+    "Urgent: exclusive crypto investment offer",
+    "Guaranteed returns on bitcoin investment. Act now, limited spots. Double your money.",
+  ),
+  bm(
+    "meds@cheap-pills.net",
+    "Cheap pills no prescription",
+    "Buy discount pills online. No prescription needed. Cheap miracle supplements shipped discreet.",
+  ),
+  bm(
+    "sales@cheap-pills.net",
+    "Miracle weight loss pills — 80% off",
+    "Lose weight fast with miracle pills. Discount offer, no prescription. Order now.",
+  ),
+  bm(
+    "prince@wire-now.biz",
+    "Urgent business proposal",
+    "I am a prince with ten million dollars. Send your bank account details for urgent wire transfer. Strictly confidential.",
+  ),
+  bm(
+    "barrister@wire-now.biz",
+    "Inheritance funds — reply urgent",
+    "Unclaimed inheritance of five million dollars awaits. Send bank details now for the wire transfer.",
+  ),
+  bm(
+    "deals@mega-offers.info",
+    "80% OFF everything — today only",
+    "Massive discount deals. Click now, free shipping, offer expires today.",
+  ),
+  bm(
+    "promo@mega-offers.info",
+    "FREE gift card waiting for you",
+    "Claim your free gift card now. Click the link, limited offer, act fast.",
+  ),
+  bm(
+    "winner@lotto-int.net",
+    "International lottery final notice",
+    "Your email won the international lottery jackpot. Claim the prize money now. Send processing fee.",
+  ),
+  bm(
+    "claims@lotto-int.net",
+    "Second notice: unclaimed jackpot",
+    "Final notice for your unclaimed lottery prize. Claim now or forfeit the jackpot money.",
+  ),
+  bm(
+    "support@account-verify.net",
+    "Your account will be suspended",
+    "Verify your account now. Click the link and confirm your password or the account will be suspended.",
+  ),
+  bm(
+    "security@account-verify.net",
+    "Password expires today — verify now",
+    "Urgent: confirm your password now. Click to verify the account or lose access today.",
+  ),
+  bm(
+    "offers@hot-singles.date",
+    "Hot singles in your area",
+    "Meet hot singles tonight. Click now, free registration, no strings.",
+  ),
+  bm(
+    "dating@hot-singles.date",
+    "She is waiting for your reply",
+    "Lonely singles want to meet you tonight. Free chat, click the link now.",
+  ),
+  bm(
+    "billing@fake-invoice.biz",
+    "Invoice overdue — pay immediately",
+    "Your invoice is overdue. Pay now by wire transfer or face legal action immediately.",
+  ),
+  bm(
+    "collections@fake-invoice.biz",
+    "FINAL WARNING: unpaid invoice",
+    "Final warning: unpaid invoice. Immediate wire transfer required or legal action follows.",
+  ),
+  bm(
+    "bonus@casino-win.vip",
+    "500 free spins waiting",
+    "Exclusive casino bonus: free spins, guaranteed winnings. Deposit now and win big jackpot.",
+  ),
+  bm(
+    "vip@casino-win.vip",
+    "You qualify for VIP casino bonus",
+    "Claim your casino bonus now. Guaranteed jackpot winnings, free spins, act fast.",
+  ),
 ];
 
 const HAM: BoundaryMessage[] = [
-  bm("sarah@acme-corp.com", "Team meeting moved to Thursday", "Hi all, the weekly team meeting moves to Thursday at ten. Agenda notes attached. Thanks, Sarah."),
-  bm("mike@acme-corp.com", "Q3 project status notes", "Here are the project status notes from the standup. Review before Thursday's meeting. Thanks, Mike."),
-  bm("sarah@acme-corp.com", "Lunch after the design review?", "Want to grab lunch after the design review tomorrow? The new place near the office. Sarah"),
-  bm("hr@acme-corp.com", "Benefits enrollment reminder", "Friendly reminder: benefits enrollment closes Friday. See the intranet page for details. HR team."),
-  bm("grandma@gardner.family", "Sunday dinner at our place", "We would love to have everyone for Sunday dinner. Bring the kids and the famous salad. Love, Grandma."),
-  bm("dad@gardner.family", "Cabin weekend packing list", "Packing list for the cabin weekend: boots, rain jackets, board games. Leaving Saturday morning. Dad"),
-  bm("aunt.june@gardner.family", "Photos from the reunion", "Sharing photos from the family reunion. The kids grew so much! See the album link. June"),
-  bm("office@lakeside-school.org", "Field trip permission slip due", "The science museum field trip is next week. Permission slips due Wednesday. Thank you, front office."),
-  bm("coach@rivertown.club", "Practice moved to 5pm", "Soccer practice moves to five pm this week because of field maintenance. See everyone Tuesday. Coach"),
-  bm("office@lakeside-school.org", "Early dismissal Friday", "Reminder: early dismissal Friday for teacher conferences. Pickup at noon. Front office."),
-  bm("mike@acme-corp.com", "Code review feedback", "Left feedback on your merge request. Mostly small naming things, one question about the migration. Mike"),
-  bm("anna@bookclub.example", "Next book: chapters one to five", "For next month we are reading chapters one through five. Meeting at Anna's, snacks provided."),
-  bm("dr.patel@rivertown-dental.com", "Appointment reminder Tuesday", "Your cleaning appointment is Tuesday at nine. Reply to reschedule. Rivertown Dental."),
-  bm("no-reply@utility-coop.com", "Your monthly statement is ready", "Your monthly statement is ready in the portal. Autopay drafts on the fifteenth. Utility cooperative."),
-  bm("sarah@acme-corp.com", "Draft agenda for the offsite", "Draft agenda for the offsite attached. Add topics by Wednesday please. Sarah"),
-  bm("neighbor.tom@rivertown.club", "Borrowing the ladder this weekend", "Mind if I borrow the ladder this weekend? Gutters again. Happy to help with the fence after. Tom"),
-  bm("grandma@gardner.family", "Recipe for the apple pie", "Here is the apple pie recipe you asked about. The trick is cold butter. Love, Grandma"),
-  bm("coach@rivertown.club", "Snack schedule for Saturday games", "Snack schedule for Saturday: oranges first half, granola after. Thanks for volunteering. Coach"),
-  bm("mike@acme-corp.com", "Standup moved to 9:30", "Standup moves to nine thirty tomorrow so the platform team can join. Same room. Mike"),
-  bm("library@rivertown.club", "Hold ready for pickup", "Your hold is ready for pickup at the front desk. We will keep it through next Friday. Library"),
+  bm(
+    "sarah@acme-corp.com",
+    "Team meeting moved to Thursday",
+    "Hi all, the weekly team meeting moves to Thursday at ten. Agenda notes attached. Thanks, Sarah.",
+  ),
+  bm(
+    "mike@acme-corp.com",
+    "Q3 project status notes",
+    "Here are the project status notes from the standup. Review before Thursday's meeting. Thanks, Mike.",
+  ),
+  bm(
+    "sarah@acme-corp.com",
+    "Lunch after the design review?",
+    "Want to grab lunch after the design review tomorrow? The new place near the office. Sarah",
+  ),
+  bm(
+    "hr@acme-corp.com",
+    "Benefits enrollment reminder",
+    "Friendly reminder: benefits enrollment closes Friday. See the intranet page for details. HR team.",
+  ),
+  bm(
+    "grandma@gardner.family",
+    "Sunday dinner at our place",
+    "We would love to have everyone for Sunday dinner. Bring the kids and the famous salad. Love, Grandma.",
+  ),
+  bm(
+    "dad@gardner.family",
+    "Cabin weekend packing list",
+    "Packing list for the cabin weekend: boots, rain jackets, board games. Leaving Saturday morning. Dad",
+  ),
+  bm(
+    "aunt.june@gardner.family",
+    "Photos from the reunion",
+    "Sharing photos from the family reunion. The kids grew so much! See the album link. June",
+  ),
+  bm(
+    "office@lakeside-school.org",
+    "Field trip permission slip due",
+    "The science museum field trip is next week. Permission slips due Wednesday. Thank you, front office.",
+  ),
+  bm(
+    "coach@rivertown.club",
+    "Practice moved to 5pm",
+    "Soccer practice moves to five pm this week because of field maintenance. See everyone Tuesday. Coach",
+  ),
+  bm(
+    "office@lakeside-school.org",
+    "Early dismissal Friday",
+    "Reminder: early dismissal Friday for teacher conferences. Pickup at noon. Front office.",
+  ),
+  bm(
+    "mike@acme-corp.com",
+    "Code review feedback",
+    "Left feedback on your merge request. Mostly small naming things, one question about the migration. Mike",
+  ),
+  bm(
+    "anna@bookclub.example",
+    "Next book: chapters one to five",
+    "For next month we are reading chapters one through five. Meeting at Anna's, snacks provided.",
+  ),
+  bm(
+    "dr.patel@rivertown-dental.com",
+    "Appointment reminder Tuesday",
+    "Your cleaning appointment is Tuesday at nine. Reply to reschedule. Rivertown Dental.",
+  ),
+  bm(
+    "no-reply@utility-coop.com",
+    "Your monthly statement is ready",
+    "Your monthly statement is ready in the portal. Autopay drafts on the fifteenth. Utility cooperative.",
+  ),
+  bm(
+    "sarah@acme-corp.com",
+    "Draft agenda for the offsite",
+    "Draft agenda for the offsite attached. Add topics by Wednesday please. Sarah",
+  ),
+  bm(
+    "neighbor.tom@rivertown.club",
+    "Borrowing the ladder this weekend",
+    "Mind if I borrow the ladder this weekend? Gutters again. Happy to help with the fence after. Tom",
+  ),
+  bm(
+    "grandma@gardner.family",
+    "Recipe for the apple pie",
+    "Here is the apple pie recipe you asked about. The trick is cold butter. Love, Grandma",
+  ),
+  bm(
+    "coach@rivertown.club",
+    "Snack schedule for Saturday games",
+    "Snack schedule for Saturday: oranges first half, granola after. Thanks for volunteering. Coach",
+  ),
+  bm(
+    "mike@acme-corp.com",
+    "Standup moved to 9:30",
+    "Standup moves to nine thirty tomorrow so the platform team can join. Same room. Mike",
+  ),
+  bm(
+    "library@rivertown.club",
+    "Hold ready for pickup",
+    "Your hold is ready for pickup at the front desk. We will keep it through next Friday. Library",
+  ),
 ];
 
 /** Corpus, folded. Alternating order (spam, ham, spam, …) so no class is
@@ -104,7 +264,9 @@ describe("bayes — corpus separation", () => {
       expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe("REJECT");
     }
     for (const m of HAM) {
-      expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe("CONTINUE_CLEAN");
+      expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe(
+        "CONTINUE_CLEAN",
+      );
     }
   });
 
@@ -132,7 +294,11 @@ describe("bayes — corpus separation", () => {
     // Balanced corpus (20/20): the prior is log(21/21)=0 and every unseen
     // token contributes log(1/22) − log(1/22) = 0. Without Laplace this is
     // log(0) − log(0) = NaN — the mutation this test exists to catch.
-    const stranger = bm("zork@qqfnord.example", "Xylophone quandary", "Grommet flange bezel widget sprocket.");
+    const stranger = bm(
+      "zork@qqfnord.example",
+      "Xylophone quandary",
+      "Grommet flange bezel widget sprocket.",
+    );
     const { score } = bayesClassify(state, stranger);
     expect(Number.isFinite(score)).toBe(true);
     expect(score).toBeCloseTo(0.5, 10);
@@ -179,12 +345,9 @@ describe("bayes — tokenizer shape (via the public state)", () => {
   it("prefixes subject/header tokens, keeps domains whole, counts unique-per-message", () => {
     const state = bayesTrain(
       emptyBayesState(),
-      bm(
-        "promo@win-big.biz",
-        "Hello offer",
-        "pills pills pills",
-        { "List-Id": "<deals.mega.example>" },
-      ),
+      bm("promo@win-big.biz", "Hello offer", "pills pills pills", {
+        "List-Id": "<deals.mega.example>",
+      }),
       "spam",
     );
     expect(state.tokens["from:promo@win-big.biz"]).toEqual({ s: 1, h: 0 });
@@ -283,7 +446,9 @@ describe("prunedTokens — the deterministic vocab cap", () => {
       expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe("REJECT");
     }
     for (const m of HAM) {
-      expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe("CONTINUE_CLEAN");
+      expect(bayesVerdict(bayesClassify(state, m).score, DEFAULT_THRESHOLDS)).toBe(
+        "CONTINUE_CLEAN",
+      );
     }
   });
 });

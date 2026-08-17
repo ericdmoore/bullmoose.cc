@@ -1,50 +1,50 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react'
-import { XMarkIcon } from '@heroicons/react/24/outline'
-import { LinkIcon, PlusIcon, QuestionMarkCircleIcon } from '@heroicons/react/20/solid'
+import { useState } from "react";
+import { Dialog, DialogPanel, DialogTitle } from "@headlessui/react";
+import { XMarkIcon } from "@heroicons/react/24/outline";
+import { LinkIcon, PlusIcon, QuestionMarkCircleIcon } from "@heroicons/react/20/solid";
 
 const team = [
   {
-    name: 'Tom Cook',
-    email: 'tom.cook@example.com',
-    href: '#',
+    name: "Tom Cook",
+    email: "tom.cook@example.com",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
   {
-    name: 'Whitney Francis',
-    email: 'whitney.francis@example.com',
-    href: '#',
+    name: "Whitney Francis",
+    email: "whitney.francis@example.com",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1517365830460-955ce3ccd263?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1517365830460-955ce3ccd263?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
   {
-    name: 'Leonard Krasner',
-    email: 'leonard.krasner@example.com',
-    href: '#',
+    name: "Leonard Krasner",
+    email: "leonard.krasner@example.com",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1519345182560-3f2917c472ef?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1519345182560-3f2917c472ef?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
   {
-    name: 'Floyd Miles',
-    email: 'floyd.miles@example.com',
-    href: '#',
+    name: "Floyd Miles",
+    email: "floyd.miles@example.com",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1463453091185-61582044d556?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1463453091185-61582044d556?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
   {
-    name: 'Emily Selman',
-    email: 'emily.selman@example.com',
-    href: '#',
+    name: "Emily Selman",
+    email: "emily.selman@example.com",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1502685104226-ee32379fefbe?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
-]
+];
 
 export default function Example() {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(true);
 
   return (
     <div>
@@ -68,7 +68,9 @@ export default function Example() {
                   <div className="h-0 flex-1 overflow-y-auto">
                     <div className="bg-indigo-700 px-4 py-6 sm:px-6 dark:bg-indigo-800">
                       <div className="flex items-center justify-between">
-                        <DialogTitle className="text-base font-semibold text-white">New project</DialogTitle>
+                        <DialogTitle className="text-base font-semibold text-white">
+                          New project
+                        </DialogTitle>
                         <div className="ml-3 flex h-7 items-center">
                           <button
                             type="button"
@@ -83,7 +85,8 @@ export default function Example() {
                       </div>
                       <div className="mt-1">
                         <p className="text-sm text-indigo-300">
-                          Get started by filling in the information below to create your new project.
+                          Get started by filling in the information below to create your new
+                          project.
                         </p>
                       </div>
                     </div>
@@ -119,12 +122,14 @@ export default function Example() {
                                 name="project-description"
                                 rows={3}
                                 className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-600 sm:text-sm/6 dark:bg-white/5 dark:text-white dark:outline-white/10 dark:placeholder:text-gray-500 dark:focus:outline-indigo-500"
-                                defaultValue={''}
+                                defaultValue={""}
                               />
                             </div>
                           </div>
                           <div>
-                            <h3 className="text-sm/6 font-medium text-gray-900 dark:text-gray-100">Team Members</h3>
+                            <h3 className="text-sm/6 font-medium text-gray-900 dark:text-gray-100">
+                              Team Members
+                            </h3>
                             <div className="mt-2">
                               <div className="flex space-x-2">
                                 {team.map((person) => (
@@ -152,7 +157,9 @@ export default function Example() {
                             </div>
                           </div>
                           <fieldset>
-                            <legend className="text-sm/6 font-medium text-gray-900 dark:text-gray-100">Privacy</legend>
+                            <legend className="text-sm/6 font-medium text-gray-900 dark:text-gray-100">
+                              Privacy
+                            </legend>
                             <div className="mt-2 space-y-4">
                               <div className="relative flex items-start">
                                 <div className="absolute flex h-6 items-center">
@@ -173,7 +180,10 @@ export default function Example() {
                                   >
                                     Public access
                                   </label>
-                                  <p id="privacy-public-description" className="text-gray-500 dark:text-gray-400">
+                                  <p
+                                    id="privacy-public-description"
+                                    className="text-gray-500 dark:text-gray-400"
+                                  >
                                     Everyone with the link will see this project.
                                   </p>
                                 </div>
@@ -225,7 +235,10 @@ export default function Example() {
                                     >
                                       Private to you
                                     </label>
-                                    <p id="privacy-private-description" className="text-gray-500 dark:text-gray-400">
+                                    <p
+                                      id="privacy-private-description"
+                                      className="text-gray-500 dark:text-gray-400"
+                                    >
                                       You are the only one able to access this project.
                                     </p>
                                   </div>
@@ -285,5 +298,5 @@ export default function Example() {
         </div>
       </Dialog>
     </div>
-  )
+  );
 }

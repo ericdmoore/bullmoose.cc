@@ -27,7 +27,8 @@ const BANNER =
  * `On <date>, <person> wrote:` — possibly wrapped across up to three lines,
  * which is what every client does once the address is long enough.
  */
-const ATTRIBUTION = /^(on|am|le|el)\b[\s\S]{0,300}?\b(wrote|schrieb|escribió|a écrit|writes|said):\s*$/i;
+const ATTRIBUTION =
+  /^(on|am|le|el)\b[\s\S]{0,300}?\b(wrote|schrieb|escribió|a écrit|writes|said):\s*$/i;
 
 /** Outlook's localized header block, which has no `>` prefixes at all. */
 const OUTLOOK_HEADER = /^\s*(from|von|de):\s*.+$/i;
@@ -73,7 +74,10 @@ function findQuoteStart(lines: string[]): number {
  */
 function isAttribution(lines: string[], i: number): boolean {
   for (let span = 1; span <= 3 && i + span <= lines.length; span++) {
-    const joined = lines.slice(i, i + span).join(" ").trim();
+    const joined = lines
+      .slice(i, i + span)
+      .join(" ")
+      .trim();
     if (joined === "") continue;
     if (ATTRIBUTION.test(joined)) return true;
   }

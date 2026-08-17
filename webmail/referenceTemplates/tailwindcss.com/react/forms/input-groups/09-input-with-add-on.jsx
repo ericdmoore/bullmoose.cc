@@ -1,7 +1,10 @@
 export default function Example() {
   return (
     <div>
-      <label htmlFor="company-website" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
+      <label
+        htmlFor="company-website"
+        className="block text-sm/6 font-medium text-gray-900 dark:text-white"
+      >
         Company website
       </label>
       <div className="mt-2 flex">
@@ -17,5 +20,5 @@ export default function Example() {
         />
       </div>
     </div>
-  )
+  );
 }

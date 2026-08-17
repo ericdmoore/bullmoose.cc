@@ -47,7 +47,9 @@ export async function cmdBlobs(
       if (opts.json) {
         // §1.3 — the COLLECTION streams; the totals below are a summary, and
         // a summary is chrome. `| head` on a 10k-object account still works.
-        emitNdjson([...res.blobs].sort((a, b) => b.size - a.size).map((b) => ({ accountId, ...b })));
+        emitNdjson(
+          [...res.blobs].sort((a, b) => b.size - a.size).map((b) => ({ accountId, ...b })),
+        );
         note(`${res.blobs.length} object(s), ${formatSize(res.totalSize)} total`);
         if (res.cursor) note("(more — listing is paginated)");
         return;
@@ -138,10 +140,7 @@ export function renderBlobs(blobs: BlobEntry[]): string {
   if (blobs.length === 0) return "  (no blobs)";
   return [...blobs]
     .sort((a, b) => b.size - a.size)
-    .map(
-      (b) =>
-        `  ${b.blobId}  ${formatSize(b.size).padStart(9)}  ${b.uploaded.slice(0, 10)}`,
-    )
+    .map((b) => `  ${b.blobId}  ${formatSize(b.size).padStart(9)}  ${b.uploaded.slice(0, 10)}`)
     .join("\n");
 }
 
@@ -174,5 +173,3 @@ export function formatSize(bytes: number): string {
   }
   return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
 }
-
-

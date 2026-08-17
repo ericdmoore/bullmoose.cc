@@ -14,7 +14,9 @@ const browserDerive = new Function(`${DERIVE_FN_SRC}; return deriveLoginKey;`)()
   password: string,
 ) => Promise<string>;
 
-const VECTORS = JSON.parse(readFileSync(new URL("../../../conformance/login-key.json", import.meta.url), "utf8")) as {
+const VECTORS = JSON.parse(
+  readFileSync(new URL("../../../conformance/login-key.json", import.meta.url), "utf8"),
+) as {
   iterations: number;
   saltLabel: string;
   vectors: Array<{ name: string; email: string; password: string; loginKey: string }>;
@@ -77,7 +79,12 @@ describe("consent page — what it says and what it refuses", () => {
   const page = (scope: string[], error?: string) =>
     consentPage({
       client: { clientId: "https://claude.ai/mcp", clientName: "Claude", redirectUris: [] },
-      authReq: { clientId: "https://claude.ai/mcp", redirectUri: "https://claude.ai/api/mcp/auth_callback", scope, state: "s" },
+      authReq: {
+        clientId: "https://claude.ai/mcp",
+        redirectUri: "https://claude.ai/api/mcp/auth_callback",
+        scope,
+        state: "s",
+      },
       error,
     });
 
@@ -132,7 +139,9 @@ describe("every grantable scope is explained — the #128 drift guard", () => {
         authReq: { clientId: "x", redirectUri: "https://claude.ai/cb", scope: [s], state: "st" },
       }).text();
       expect(html, `scope "${s}" must render an explanation`).toContain("<li>");
-      expect(html, `scope "${s}" must not hit the unexplained-scope refusal`).not.toContain("cannot explain");
+      expect(html, `scope "${s}" must not hit the unexplained-scope refusal`).not.toContain(
+        "cannot explain",
+      );
       // And nothing the expansion confers may be silently missing: every
       // effective scope is either prose-listed or a NAMED display exception.
       void effectiveScopes([s]);
@@ -142,7 +151,12 @@ describe("every grantable scope is explained — the #128 drift guard", () => {
   it("31. files — the scope #128 added — renders its line", async () => {
     const html = await consentPage({
       client: { clientId: "x", clientName: "Files App", redirectUris: [] },
-      authReq: { clientId: "x", redirectUri: "https://claude.ai/cb", scope: ["files"], state: "st" },
+      authReq: {
+        clientId: "x",
+        redirectUri: "https://claude.ai/cb",
+        scope: ["files"],
+        state: "st",
+      },
     }).text();
     expect(html).toContain("Read and change your files");
   });
@@ -153,7 +167,12 @@ describe("every grantable scope is explained — the #128 drift guard", () => {
     // a 500 naming the drift, not render a shorter list.
     const res = consentPage({
       client: { clientId: "x", clientName: "Future App", redirectUris: [] },
-      authReq: { clientId: "x", redirectUri: "https://claude.ai/cb", scope: ["admin"], state: "st" },
+      authReq: {
+        clientId: "x",
+        redirectUri: "https://claude.ai/cb",
+        scope: ["admin"],
+        state: "st",
+      },
     });
     expect(res.status).toBe(500);
     expect(await res.text()).toContain("cannot explain");

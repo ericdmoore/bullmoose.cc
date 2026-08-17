@@ -1,20 +1,20 @@
 # 001 -E1-I2- MCP `ToolDef` scope + domain
 
-| | |
-|---|---|
-| **Kind** | prerequisite |
-| **Effort** | **E1** — one file (`services/agent/src/mcp.ts`), no schema change, no new method, no new dependency |
-| **Impact** | **I2** — unlocks, not human-verifiable (a security gate; only a test can see it) |
-| **Owner** | `sVOL` |
-| **Depends on** | — |
-| **Blocks** | `013` (Calendar + Contacts over MCP) · `014` (Email over MCP) · `015` (self-introspection over MCP) |
-| **Status** | **✅ done** — `ToolDef` carries `scope` + `domain` per tool (`services/agent/src/mcp.ts:192-216`); the gate reads them. Unblocked 013/014/015. |
+|                |                                                                                                                                                |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Kind**       | prerequisite                                                                                                                                   |
+| **Effort**     | **E1** — one file (`services/agent/src/mcp.ts`), no schema change, no new method, no new dependency                                            |
+| **Impact**     | **I2** — unlocks, not human-verifiable (a security gate; only a test can see it)                                                               |
+| **Owner**      | `sVOL`                                                                                                                                         |
+| **Depends on** | —                                                                                                                                              |
+| **Blocks**     | `013` (Calendar + Contacts over MCP) · `014` (Email over MCP) · `015` (self-introspection over MCP)                                            |
+| **Status**     | **✅ done** — `ToolDef` carries `scope` + `domain` per tool (`services/agent/src/mcp.ts:192-216`); the gate reads them. Unblocked 013/014/015. |
 
 ## Cells covered
 
-**None.** This unit occupies no cell in the grid — it is the auth plane *beneath* the MCP
-column, the same way `s01`'s wire contract sits under every cell (`readme.md` §*Relationship to
-the sNN sections*).
+**None.** This unit occupies no cell in the grid — it is the auth plane _beneath_ the MCP
+column, the same way `s01`'s wire contract sits under every cell (`readme.md` §_Relationship to
+the sNN sections_).
 
 It **gates** every cell those three units claim:
 
@@ -35,9 +35,9 @@ volume that still matters.
 
 **I2, both factors:**
 
-- *Unlocks* — `013`, `014`, and `015` each name it as a hard dependency, and each is
+- _Unlocks_ — `013`, `014`, and `015` each name it as a hard dependency, and each is
   unbuildable-as-written without it (below). Named edge, not a preference.
-- *Not human-verifiable* — the observable behaviour after this unit is **identical**. All four
+- _Not human-verifiable_ — the observable behaviour after this unit is **identical**. All four
   live tools are reads on mail; declaring `read`/`mail` explicitly changes nothing a person can
   see. Only a test asserting a refusal proves it works, and that test needs a tool that isn't a
   read on mail — see Open Questions #1, which is the sharpest problem in this unit.
@@ -80,30 +80,30 @@ Nothing fails loudly. The tool runs.
 `domain: MethodDomain = "mail"` (`:30`) and forwards both to the same pure
 `authorizeAccount` (`:36`). Every registered method declares its own pair at the call site:
 
-| method | call site | scope | domain |
-|---|---|---|---|
-| `Calendar/get` | `calendars.ts:58` | `read` | `calendar` |
-| `Calendar/set` | `calendars.ts:77` | **`calendar`** | `calendar` |
-| `CalendarEvent/get` | `calendars.ts:171` | `read` | `calendar` |
-| `CalendarEvent/set` | `calendars.ts:200` | **`calendar`** | `calendar` |
-| `CalendarEvent/query` | `calendars.ts:345` | `read` | `calendar` |
-| `CalendarEvent/getOccurrences` | `calendars.ts:403` | `read` | `calendar` |
-| `AddressBook/set` | `contacts.ts:117` | **`contacts`** | `contacts` |
-| `ContactCard/set` | `contacts.ts:318` | **`contacts`** | `contacts` |
-| `Email/set`, `Email/import` | `email.ts:230,495` | `draft` | `mail` (default) |
-| `EmailSubmission/set` | `submission.ts:38` | `send` | `mail` (default) |
-| `AgentInvocation/set` | `agent.ts:79` | `draft` | `mail` (default) |
-| `VacationResponse/set` | `vacation.ts:33` | `draft` | `mail` (default) |
+| method                         | call site          | scope          | domain           |
+| ------------------------------ | ------------------ | -------------- | ---------------- |
+| `Calendar/get`                 | `calendars.ts:58`  | `read`         | `calendar`       |
+| `Calendar/set`                 | `calendars.ts:77`  | **`calendar`** | `calendar`       |
+| `CalendarEvent/get`            | `calendars.ts:171` | `read`         | `calendar`       |
+| `CalendarEvent/set`            | `calendars.ts:200` | **`calendar`** | `calendar`       |
+| `CalendarEvent/query`          | `calendars.ts:345` | `read`         | `calendar`       |
+| `CalendarEvent/getOccurrences` | `calendars.ts:403` | `read`         | `calendar`       |
+| `AddressBook/set`              | `contacts.ts:117`  | **`contacts`** | `contacts`       |
+| `ContactCard/set`              | `contacts.ts:318`  | **`contacts`** | `contacts`       |
+| `Email/set`, `Email/import`    | `email.ts:230,495` | `draft`        | `mail` (default) |
+| `EmailSubmission/set`          | `submission.ts:38` | `send`         | `mail` (default) |
+| `AgentInvocation/set`          | `agent.ts:79`      | `draft`        | `mail` (default) |
+| `VacationResponse/set`         | `vacation.ts:33`   | `draft`        | `mail` (default) |
 
 MCP has 26 such declarations to mirror and currently has one constant.
 
 ⚠️ **Read the bolded rows.** Calendar and contact writes gate on scope **`calendar`** and
-**`contacts`** — *not* `draft`. Those two strings are outside the vocabulary the module header
+**`contacts`** — _not_ `draft`. Those two strings are outside the vocabulary the module header
 declares (`packages/auth-core/src/index.ts:10-12`: `read < annotate < draft < move < send <
 delete ; "mail" = all of them`). The live code has already extended the vocabulary past its own
 documentation. This matters for `013`, whose proposed scope table (`013:96-99`) assigns `draft`
-to calendar and contact writes — that would make the MCP gate *narrower in name and different
-in kind* from the JMAP gate on the same underlying method. **Mirror the JMAP call sites.** If
+to calendar and contact writes — that would make the MCP gate _narrower in name and different
+in kind_ from the JMAP gate on the same underlying method. **Mirror the JMAP call sites.** If
 the vocabulary should be reformed, reform it in one place for both surfaces, not by having MCP
 guess differently.
 
@@ -147,8 +147,8 @@ interface ToolDef {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  scope: string;          // "read" | "draft" | "send" | "calendar" | "contacts" | "delete" | …
-  domain: MethodDomain;   // "mail" | "contacts" | "calendar"  — principal.ts:207
+  scope: string; // "read" | "draft" | "send" | "calendar" | "contacts" | "delete" | …
+  domain: MethodDomain; // "mail" | "contacts" | "calendar"  — principal.ts:207
   run: (env: Env, args: Record<string, unknown>) => Promise<unknown>;
 }
 ```
@@ -197,7 +197,7 @@ The gate is untestable as written: with four read-on-mail tools, `tool.scope` an
 Add an injection seam so a test can supply a tool table:
 
 ```ts
-export async function handleMcp(request: Request, env: Env, tools: ToolDef[] = TOOLS)
+export async function handleMcp(request: Request, env: Env, tools: ToolDef[] = TOOLS);
 ```
 
 threaded through to `handleToolCall`. This follows `.plans/devPrinciples.md` ("clients are
@@ -225,7 +225,7 @@ tool body, so `002` is **not** a dependency of this unit.
    pass **unmodified** — this is the proof the change is behaviour-preserving.
 4. A fixture tool declaring `domain: "calendar"` is refused for a principal whose only reach is
    an `AddressBook`-collection grant, and the same principal is allowed a `domain: "contacts"`
-   tool. Both assert on the response code *and* on the absence/presence of the `grant_audit`
+   tool. Both assert on the response code _and_ on the absence/presence of the `grant_audit`
    write.
 5. A source comment at the call site names `common/001` and states that the scope axis is
    advisory until it is fixed. If someone reads this gate in six months and believes it, that
@@ -236,8 +236,8 @@ tool body, so `002` is **not** a dependency of this unit.
 - `tools/list` projects only `{name, description, inputSchema}` (`mcp.ts:223`). The new fields
   are server-side and never cross the wire — no MCP protocol implication, no client change,
   nothing to negotiate.
-- `server/discover`'s `instructions` string (`mcp.ts:217-219`) says *"Read-only analytics over
-  the bullmoose message log and spend ledger."* It stops being true the moment `013` lands.
+- `server/discover`'s `instructions` string (`mcp.ts:217-219`) says _"Read-only analytics over
+  the bullmoose message log and spend ledger."_ It stops being true the moment `013` lands.
   Not this unit's job; `013` must not forget it.
 - **`decision.access` is computed and thrown away.** `authorizeAccount` returns
   `{ok, access, auditGrant}` (`principal.ts:236-239`), and `handleToolCall` uses only `.ok` and
@@ -261,8 +261,8 @@ tool body, so `002` is **not** a dependency of this unit.
 ## Open questions / where this could be wrong
 
 1. **The unit may not be independently verifiable, which would break its own `I2` premise.**
-   `I2` requires "not human-verifiable" *and* "unlocks" — it does not require test-verifiable,
-   but `readme.md`'s framing assumes a unit is *confirmable* somehow. With no non-read tool in
+   `I2` requires "not human-verifiable" _and_ "unlocks" — it does not require test-verifiable,
+   but `readme.md`'s framing assumes a unit is _confirmable_ somehow. With no non-read tool in
    the tree, the only honest test is against an injected fixture tool, which tests the
    mechanism rather than any shipped behaviour. A reviewer could reasonably say: fold `001`
    into `013`, where a real write tool exists and the gate can be tested for real. I kept it
@@ -272,12 +272,12 @@ tool body, so `002` is **not** a dependency of this unit.
 
 2. **I am recommending scope strings that contradict `013`.** `013:96-99` proposes `draft` for
    calendar/contact writes and `delete` for deletes. The live JMAP methods use `calendar` and
-   `contacts` for *both* create and destroy — `Calendar/set`, `CalendarEvent/set`,
+   `contacts` for _both_ create and destroy — `Calendar/set`, `CalendarEvent/set`,
    `AddressBook/set` and `ContactCard/set` each handle create, update and destroy behind a
    single scope check (`calendars.ts:77,200`; `contacts.ts:117,318`), so JMAP has **no separate
    delete scope on these nouns at all**. Mirroring JMAP means MCP also cannot distinguish
    create from delete by scope. That is a real loss of expressiveness and `013`'s table is the
-   better design *in isolation* — but two surfaces disagreeing about what authorizes the same
+   better design _in isolation_ — but two surfaces disagreeing about what authorizes the same
    write is worse than either design. I chose consistency. Someone should decide this
    deliberately rather than let it fall out of whichever unit ships first.
 

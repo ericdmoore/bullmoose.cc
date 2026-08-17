@@ -110,9 +110,7 @@ export async function handleDav(
       if (request.method !== "PROPFIND") return notAllowed();
       const access = requireAccess(principal, segments[1]!, "contacts");
       const own = principal.accounts.find((a) => !a.granted);
-      const homes = principal.accounts
-        .map((a) => href(homePath(a.accountId)))
-        .join("");
+      const homes = principal.accounts.map((a) => href(homePath(a.accountId))).join("");
       // Calendar homes: whole-account access only (no calendar-collection
       // grants yet), so book-scoped sharees don't get one for the target.
       const calHomes = principal.accounts
@@ -195,7 +193,15 @@ export async function handleDav(
         return await handleCalendar(request, env, store, principal, access, calId, body);
       }
       if (segments.length === 4) {
-        return await handleEventResource(request, env, store, principal, access, calId, segments[3]!);
+        return await handleEventResource(
+          request,
+          env,
+          store,
+          principal,
+          access,
+          calId,
+          segments[3]!,
+        );
       }
     }
 
@@ -284,10 +290,7 @@ async function audit(
     .run();
 }
 
-async function visibleBooks(
-  store: Mailstore,
-  access: AccountAccess,
-): Promise<AddressBookRow[]> {
+async function visibleBooks(store: Mailstore, access: AccountAccess): Promise<AddressBookRow[]> {
   const books = await store.getAddressBooks(access.accountId);
   const readable = allowedBookIds(access, "read");
   return readable ? books.filter((b) => readable.has(b.id)) : books;
@@ -350,9 +353,7 @@ function bookResource(
     props: {
       resourcetype: `<D:collection/><C:addressbook/>`,
       displayname: xmlEscape(book.name),
-      ...(book.description
-        ? { "addressbook-description": xmlEscape(book.description) }
-        : {}),
+      ...(book.description ? { "addressbook-description": xmlEscape(book.description) } : {}),
       getctag: xmlEscape(String(book.ctag)),
       "supported-address-data": `<C:address-data-type content-type="text/vcard" version="3.0"/>`,
       "current-user-privilege-set": writable
@@ -833,10 +834,7 @@ async function handleResource(
 
 // ---- CalDAV: calendars ---------------------------------------------------
 
-async function visibleCalendars(
-  store: Mailstore,
-  access: AccountAccess,
-): Promise<CalendarRow[]> {
+async function visibleCalendars(store: Mailstore, access: AccountAccess): Promise<CalendarRow[]> {
   // No calendar-collection grants yet: requireAccess(domain "calendar")
   // already gated whole-account access, so everything is visible.
   return store.getCalendars(access.accountId);
@@ -986,7 +984,11 @@ async function createCalendar(
 ): Promise<Response> {
   await requireCalOwner(env, principal, access, "dav:mkcalendar");
   if (!COLLECTION_ID_RE.test(calId)) {
-    throw precondition(403, "CAL:calendar-collection-location-ok", `illegal collection name: ${calId}`);
+    throw precondition(
+      403,
+      "CAL:calendar-collection-location-ok",
+      `illegal collection name: ${calId}`,
+    );
   }
 
   const props = parseMkcolProps(body);
@@ -1815,9 +1817,9 @@ function parsePropPatch(body: string): PropPatchOp[] {
     while ((child = childRe.exec(propBlock)) !== null) {
       const prefix = child[1] ? child[1].slice(0, -1) : "";
       // A prefix bound on the element itself wins over the document map.
-      const local = new RegExp(
-        `xmlns${prefix ? `:${prefix}` : ""}\\s*=\\s*"([^"]*)"`,
-      ).exec(child[3] ?? "");
+      const local = new RegExp(`xmlns${prefix ? `:${prefix}` : ""}\\s*=\\s*"([^"]*)"`).exec(
+        child[3] ?? "",
+      );
       ops.push({
         action,
         name: child[2]!,
@@ -1882,9 +1884,7 @@ function precondition(status: number, element: string, detail: string): DavError
  * (RFC 5689 §5.2) permit exactly this shape.
  */
 function mkcolResponse(root: string, state: string, dropped: string[]): Response {
-  const failed = dropped
-    .map((p) => renderProp(p, ""))
-    .join("");
+  const failed = dropped.map((p) => renderProp(p, "")).join("");
   const xml =
     `<?xml version="1.0" encoding="utf-8"?>` +
     `<${root} xmlns:D="${D}" xmlns:C="${C}" xmlns:CAL="${CAL}" xmlns:CS="${CS}"` +

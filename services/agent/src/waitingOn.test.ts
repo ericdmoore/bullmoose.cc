@@ -18,14 +18,23 @@ function world() {
   const w = fakeEnv();
   w.db.seedAccount({ accountId: ACCOUNT, loginEmail: SELF, displayName: "Eric" });
   // The Sent mailbox — `mb.role='sent'` is what scopes the scan to sent mail.
-  w.db.seed("mailboxes", [{ id: "mb_sent", account_id: ACCOUNT, name: "Sent", role: "sent", sort_order: 0 }]);
+  w.db.seed("mailboxes", [
+    { id: "mb_sent", account_id: ACCOUNT, name: "Sent", role: "sent", sort_order: 0 },
+  ]);
   return w;
 }
 
 /** Seed a message in the Sent mailbox: something YOU sent. */
 function seedSent(
   w: ReturnType<typeof fakeEnv>,
-  o: { id: string; to: string; subject: string; sentAt: number; threadId?: string; preview?: string },
+  o: {
+    id: string;
+    to: string;
+    subject: string;
+    sentAt: number;
+    threadId?: string;
+    preview?: string;
+  },
 ) {
   const threadId = o.threadId ?? `th_${o.id}`;
   w.db.seed("emails", [
@@ -49,7 +58,12 @@ function seedSent(
 }
 
 /** A reply landing in the account (any mailbox) from `sender` on `threadId`. */
-function seedReply(w: ReturnType<typeof fakeEnv>, sender: string, threadId: string, receivedAt: number) {
+function seedReply(
+  w: ReturnType<typeof fakeEnv>,
+  sender: string,
+  threadId: string,
+  receivedAt: number,
+) {
   w.db.seed("emails", [
     {
       id: `re_${receivedAt}`,
@@ -69,14 +83,27 @@ function seedReply(w: ReturnType<typeof fakeEnv>, sender: string, threadId: stri
 }
 
 const offers = (w: ReturnType<typeof fakeEnv>) =>
-  w.db.query<{ id: string; kind: string; tier: number; account_id: string; payload_json: string; subject_json: string; evidence_json: string }>(
+  w.db.query<{
+    id: string;
+    kind: string;
+    tier: number;
+    account_id: string;
+    payload_json: string;
+    subject_json: string;
+    evidence_json: string;
+  }>(
     `SELECT id, kind, tier, account_id, payload_json, subject_json, evidence_json FROM agent_proposals WHERE kind = 'watch-offer'`,
   );
 
 describe("sweepWaitingOn — offers a watch on an unanswered question", () => {
   it("offers a tier-1 watch-offer for a sent question gone quiet, citing the message", async () => {
     const w = world();
-    seedSent(w, { id: "e_ask", to: "sergio@example.com", subject: "are you free Thursday?", sentAt: NOW - 5 * DAY });
+    seedSent(w, {
+      id: "e_ask",
+      to: "sergio@example.com",
+      subject: "are you free Thursday?",
+      sentAt: NOW - 5 * DAY,
+    });
     await sweepWaitingOn(w.env, NOW);
 
     const rows = offers(w);
@@ -104,12 +131,24 @@ describe("sweepWaitingOn — offers a watch on an unanswered question", () => {
 
   it("graduates the finding into a `task` Annotation anchored to the sent message (s18 A2)", async () => {
     const w = world();
-    seedSent(w, { id: "e_ask", to: "sergio@example.com", subject: "Re: free Thursday?", sentAt: NOW - 5 * DAY });
+    seedSent(w, {
+      id: "e_ask",
+      to: "sergio@example.com",
+      subject: "Re: free Thursday?",
+      sentAt: NOW - 5 * DAY,
+    });
     await sweepWaitingOn(w.env, NOW);
 
-    const ann = w.db.query<{ author_kind: string; author: string; class: string; body: string; confidence: number | null; status: string; anchor_json: string; source_ref: string }>(
-      `SELECT * FROM annotations`,
-    );
+    const ann = w.db.query<{
+      author_kind: string;
+      author: string;
+      class: string;
+      body: string;
+      confidence: number | null;
+      status: string;
+      anchor_json: string;
+      source_ref: string;
+    }>(`SELECT * FROM annotations`);
     expect(ann).toHaveLength(1);
     const a = ann[0]!;
     expect(a.author_kind).toBe("agent");
@@ -124,7 +163,12 @@ describe("sweepWaitingOn — offers a watch on an unanswered question", () => {
 
   it("says nothing when the reply already arrived — being answered is silence", async () => {
     const w = world();
-    const thread = seedSent(w, { id: "e_ask", to: "sergio@example.com", subject: "free Thursday?", sentAt: NOW - 5 * DAY });
+    const thread = seedSent(w, {
+      id: "e_ask",
+      to: "sergio@example.com",
+      subject: "free Thursday?",
+      sentAt: NOW - 5 * DAY,
+    });
     seedReply(w, "sergio@example.com", thread, NOW - 2 * DAY); // Sergio replied
     await sweepWaitingOn(w.env, NOW);
     expect(offers(w)).toEqual([]);
@@ -132,7 +176,13 @@ describe("sweepWaitingOn — offers a watch on an unanswered question", () => {
 
   it("does not offer a thread that already has a watch (human- or agent-armed)", async () => {
     const w = world();
-    seedSent(w, { id: "e_ask", to: "sergio@example.com", subject: "free Thursday?", sentAt: NOW - 5 * DAY, threadId: "th_x" });
+    seedSent(w, {
+      id: "e_ask",
+      to: "sergio@example.com",
+      subject: "free Thursday?",
+      sentAt: NOW - 5 * DAY,
+      threadId: "th_x",
+    });
     w.db.seed("watches", [
       {
         id: "w_existing",
@@ -154,7 +204,12 @@ describe("sweepWaitingOn — offers a watch on an unanswered question", () => {
 
   it("offers a thread at most once — a second sweep adds nothing (a decline stays declined)", async () => {
     const w = world();
-    seedSent(w, { id: "e_ask", to: "sergio@example.com", subject: "free Thursday?", sentAt: NOW - 5 * DAY });
+    seedSent(w, {
+      id: "e_ask",
+      to: "sergio@example.com",
+      subject: "free Thursday?",
+      sentAt: NOW - 5 * DAY,
+    });
     await sweepWaitingOn(w.env, NOW);
     await sweepWaitingOn(w.env, NOW + 60_000);
     expect(offers(w)).toHaveLength(1);
@@ -162,8 +217,18 @@ describe("sweepWaitingOn — offers a watch on an unanswered question", () => {
 
   it("respects the silence window: too recent and too old both stay quiet", async () => {
     const w = world();
-    seedSent(w, { id: "e_recent", to: "a@example.com", subject: "quick q?", sentAt: NOW - 1 * DAY }); // < 3d
-    seedSent(w, { id: "e_ancient", to: "b@example.com", subject: "old q?", sentAt: NOW - 40 * DAY }); // > 30d
+    seedSent(w, {
+      id: "e_recent",
+      to: "a@example.com",
+      subject: "quick q?",
+      sentAt: NOW - 1 * DAY,
+    }); // < 3d
+    seedSent(w, {
+      id: "e_ancient",
+      to: "b@example.com",
+      subject: "old q?",
+      sentAt: NOW - 40 * DAY,
+    }); // > 30d
     await sweepWaitingOn(w.env, NOW);
     expect(offers(w)).toEqual([]);
   });
@@ -171,7 +236,13 @@ describe("sweepWaitingOn — offers a watch on an unanswered question", () => {
   it("ignores a note to yourself, and a sent message with no question mark", async () => {
     const w = world();
     seedSent(w, { id: "e_self", to: SELF, subject: "remember this?", sentAt: NOW - 5 * DAY });
-    seedSent(w, { id: "e_stmt", to: "c@example.com", subject: "here is the file", preview: "no question here", sentAt: NOW - 5 * DAY });
+    seedSent(w, {
+      id: "e_stmt",
+      to: "c@example.com",
+      subject: "here is the file",
+      preview: "no question here",
+      sentAt: NOW - 5 * DAY,
+    });
     await sweepWaitingOn(w.env, NOW);
     expect(offers(w)).toEqual([]);
   });

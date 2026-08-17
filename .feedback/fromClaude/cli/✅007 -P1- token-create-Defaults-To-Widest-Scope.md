@@ -2,15 +2,15 @@
 
 **Subsystem:** cli (`packages/cli/src/tokens.ts`, `admin.ts`) · **Severity:** HIGH · **Fix class:** CHANGE-CODE + UPDATE-DOC
 
-Companion to `common/001` (the `hasScope` root cause). That issue is *why* `mail` is dangerous; this
-one is *why every token gets it*.
+Companion to `common/001` (the `hasScope` root cause). That issue is _why_ `mail` is dangerous; this
+one is _why every token gets it_.
 
 ## The defect
 
 `packages/cli/src/tokens.ts:101`:
 
 ```ts
-const scopes = opts.scopes ? opts.scopes.split(",").map(s => s.trim()) : ["mail"];
+const scopes = opts.scopes ? opts.scopes.split(",").map((s) => s.trim()) : ["mail"];
 ```
 
 Same at `packages/cli/src/admin.ts:232` for `admin token create`.

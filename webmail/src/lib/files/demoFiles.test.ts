@@ -61,14 +61,19 @@ describe("the fake mirrors the server's warts", () => {
 
   it("throws cannotCalculateChanges on queryChanges, exactly as the server does", async () => {
     const { client } = harness();
-    const [response] = await client.request([["FileNode/queryChanges", { accountId: ACCOUNT }, "c"]]);
+    const [response] = await client.request([
+      ["FileNode/queryChanges", { accountId: ACCOUNT }, "c"],
+    ]);
     expect(response![0]).toBe("error");
     expect((response![1] as { type: string }).type).toBe("cannotCalculateChanges");
   });
 
   it("reports canCalculateChanges: false on query", async () => {
     const { client } = harness();
-    const result = await client.requestOne("FileNode/query", { accountId: ACCOUNT, filter: { parentId: null } });
+    const result = await client.requestOne("FileNode/query", {
+      accountId: ACCOUNT,
+      filter: { parentId: null },
+    });
     expect(result.canCalculateChanges).toBe(false);
   });
 
@@ -98,7 +103,9 @@ describe("the fake mirrors the server's warts", () => {
       accountId: ACCOUNT,
       create: { a: { name: "x", nodeType: "directory", myRights: {} } },
     });
-    expect((result.notCreated as Record<string, { type: string }>).a?.type).toBe("invalidProperties");
+    expect((result.notCreated as Record<string, { type: string }>).a?.type).toBe(
+      "invalidProperties",
+    );
   });
 
   it("refuses an update to an immutable path", async () => {
@@ -125,7 +132,9 @@ describe("the fake mirrors the server's warts", () => {
       compareCaseInsensitively: true,
       create: { b: { name: "PROJECTS", nodeType: "directory", parentId: null } },
     });
-    expect((insensitive.notCreated as Record<string, { type: string }>).b?.type).toBe("alreadyExists");
+    expect((insensitive.notCreated as Record<string, { type: string }>).b?.type).toBe(
+      "alreadyExists",
+    );
   });
 
   it("advances its state only when something actually changed", async () => {
@@ -157,7 +166,9 @@ describe("sessionWithoutFiles / filesDemoClient", () => {
     const session = sessionWithoutFiles();
     expect(hasCapability(session, FILENODE_CAP)).toBe(false);
     for (const account of Object.values(session.accounts)) {
-      expect(hasCapability({ capabilities: account.accountCapabilities }, FILENODE_CAP)).toBe(false);
+      expect(hasCapability({ capabilities: account.accountCapabilities }, FILENODE_CAP)).toBe(
+        false,
+      );
     }
     expect(session.primaryAccounts[FILENODE_CAP]).toBeUndefined();
   });

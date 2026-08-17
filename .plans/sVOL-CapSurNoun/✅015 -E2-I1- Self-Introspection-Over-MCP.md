@@ -1,23 +1,23 @@
 # 015 -E2-I1- Self-introspection over MCP (`help@`)
 
-| | |
-|---|---|
-| **Kind** | projection |
-| **Effort** | **E2** — `services/agent`, plus one widening in `auth-core`; no schema change, no migration |
-| **Impact** | **I1** — human-verifiable, unlocks nothing named |
-| **Owner** | `sVOL` |
-| **Depends on** | `001` (ToolDef scope+domain) |
-| **Status** | **done** — `services/agent/src/introspectTools.ts` + `introspect.test.ts` (38 tests). See *Shipped* at the bottom. |
+|                |                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Kind**       | projection                                                                                                         |
+| **Effort**     | **E2** — `services/agent`, plus one widening in `auth-core`; no schema change, no migration                        |
+| **Impact**     | **I1** — human-verifiable, unlocks nothing named                                                                   |
+| **Owner**      | `sVOL`                                                                                                             |
+| **Depends on** | `001` (ToolDef scope+domain)                                                                                       |
+| **Status**     | **done** — `services/agent/src/introspectTools.ts` + `introspect.test.ts` (38 tests). See _Shipped_ at the bottom. |
 
 ## Cells covered
 
 `Agents × Read × MCP` — bindings and invocation history.
 `SystemAdmin × Read × MCP` — grants and the `grant_audit` trail, **narrowed to the caller's
-own accounts** (see *What to build*; the noun is `SystemAdmin` but the tool is emphatically
+own accounts** (see _What to build_; the noun is `SystemAdmin` but the tool is emphatically
 not an admin tool).
 
 `Secrets × Read` is **not** covered and never will be: `bureau.md` invariant 1 — there is no
-"reveal password" button (`_index.md` §4). Credential *names and metadata* are a different
+"reveal password" button (`_index.md` §4). Credential _names and metadata_ are a different
 thing and are discussed below.
 
 ## Why these grades
@@ -27,7 +27,7 @@ in `mcp.ts` — that reads like E1. Three things push it over:
 
 1. `handleToolCall` **requires** a self-asserted `accountId` on every call
    (`services/agent/src/mcp.ts:250-253`) and authorizes exactly that one account at `:257`.
-   Introspection's most natural question — *"what can I reach?"* — is inherently
+   Introspection's most natural question — _"what can I reach?"_ — is inherently
    cross-account, and cannot be expressed under the current dispatcher. That gate has to
    grow a path for account-less tools, which is a change to shared dispatch, not a new row
    in `TOOLS`.
@@ -41,28 +41,28 @@ in `mcp.ts` — that reads like E1. Three things push it over:
 
 **I1 — human-verifiable, unlocks nothing.**
 
-- *Human-verifiable*: you ask *"which agents can read my contacts?"* and read the answer.
+- _Human-verifiable_: you ask _"which agents can read my contacts?"_ and read the answer.
   That is the literal acceptance test, and it is the literal example in the source document
   (`docs/agents/motivatingExamples.md:218`).
-- *Unlocks nothing*: no unit in `_index.md` and no `sNN` section names this as a blocker.
+- _Unlocks nothing_: no unit in `_index.md` and no `sNN` section names this as a blocker.
   `s03.E` renders the same data but is gated on `s03.A`, `s03.C`, and an `s04` spec — not on
   this. See open question 1; this is the grade I am least sure of.
 
 **Sequencing.** `_index.md` §3 puts it in wave 4 ("cheap cleanup, any time"), which is right
-— it is the only wave-4 unit that produces something a person can *ask a question of*, so it
+— it is the only wave-4 unit that produces something a person can _ask a question of_, so it
 is a good one to do when you want a visible win cheaply.
 
 ## What exists today
 
-**This is `help@`.** From `docs/agents/motivatingExamples.md:215-221`, under *Meta*:
+**This is `help@`.** From `docs/agents/motivatingExamples.md:215-221`, under _Meta_:
 
-> - _help@_ (answers questions about *your own* bullmoose)
->     - "Which agents can read my contacts?" · "Why did editor@ skip that email?"
->     - Requires
->         - ReadAccess: agent bindings, grants, invocation history
->     - Self-documenting, and it's the natural conversational face of the s03.E console
+> - _help@_ (answers questions about _your own_ bullmoose)
+>   - "Which agents can read my contacts?" · "Why did editor@ skip that email?"
+>   - Requires
+>     - ReadAccess: agent bindings, grants, invocation history
+>   - Self-documenting, and it's the natural conversational face of the s03.E console
 
-Two things in that entry are load-bearing and easy to skim past. **"*your own*"** is the
+Two things in that entry are load-bearing and easy to skim past. **"_your own_"** is the
 whole security design, italicised in the source. And `:230` classifies `help@` as
 **on-demand (ask)** rather than on-delivery — which is why MCP is the right surface for it:
 the mail-delivery trigger (`services/ingest/src/index.ts:178`) is the only trigger that
@@ -71,12 +71,12 @@ not a queue.
 
 **The data all exists, in the same database the MCP worker already binds.**
 
-| Data | Read path today | Schema |
-|---|---|---|
-| Invocations | `AgentInvocation/query` (`services/jmap/src/methods/agent.ts:20`), `/get` (`:38`), `/changes` (`:137`) | `data-plane.sql:113-129` |
-| Bindings | `GET /agent-bindings` (`services/provision/src/index.ts:100` → `listAgentBindings:665`) | `data-plane.sql:98-109` |
-| Grants | `GET /grants` (`provision/src/index.ts:117` → `listGrants:581`) | `control-plane.sql:84-99` |
-| Audit trail | written, never read back by anything | `control-plane.sql:103-111` |
+| Data        | Read path today                                                                                        | Schema                      |
+| ----------- | ------------------------------------------------------------------------------------------------------ | --------------------------- |
+| Invocations | `AgentInvocation/query` (`services/jmap/src/methods/agent.ts:20`), `/get` (`:38`), `/changes` (`:137`) | `data-plane.sql:113-129`    |
+| Bindings    | `GET /agent-bindings` (`services/provision/src/index.ts:100` → `listAgentBindings:665`)                | `data-plane.sql:98-109`     |
+| Grants      | `GET /grants` (`provision/src/index.ts:117` → `listGrants:581`)                                        | `control-plane.sql:84-99`   |
+| Audit trail | written, never read back by anything                                                                   | `control-plane.sql:103-111` |
 
 `grant_audit` is written from **both** surfaces, with the same statement shape but different
 `method` strings: JMAP writes `"${domain}:${scope}"` (`services/jmap/src/methods/common.ts:41-53`,
@@ -96,7 +96,7 @@ first reader.
 **⚠️ The two provision routes are the wrong plumbing, and it matters.** `GET /grants` and
 `GET /agent-bindings` are gated by a single shared `ADMIN_TOKEN`
 (`provision/src/index.ts:47`) and are **not filtered by caller** — `listGrants` (`:581-600`)
-narrows only by an *optional* `?email=` query parameter that the caller supplies. Anyone
+narrows only by an _optional_ `?email=` query parameter that the caller supplies. Anyone
 holding the admin token reads every grant in the deployment. Proxying those routes from an
 MCP tool would hand an agent admin-plane reach through a `read`-shaped door. **Do not proxy
 provision. Query D1 directly, filtered by the principal.** This is the single most important
@@ -108,12 +108,12 @@ implementation note in the unit.
 
 This tool reads **authorization state**. Every other tool in `TOOLS` reads user data, where
 the gate answers "may you see this account?" once and the rest follows. Here the gate has to
-answer a second question the existing dispatcher never asks: *may you see this **fact about
-who else** can see this account?*
+answer a second question the existing dispatcher never asks: _may you see this **fact about
+who else** can see this account?_
 
 Make it a first-class constraint, not a filter bolted on at the end:
 
-**Rule 1 — every returned row is justified by an account the caller *owns*.**
+**Rule 1 — every returned row is justified by an account the caller _owns_.**
 Not "can reach". `AccountAccess.granted` is present **iff** access came through a grant
 rather than ownership (`packages/auth-core/src/principal.ts:24-26`), so
 `decision.access.granted === undefined` is an exact, already-available ownership test. Use
@@ -122,25 +122,25 @@ it. It costs one line and is the difference between the two designs.
 Why ownership and not the usual gate: `authorizeAccount(principal, accountId, "read", …)`
 returns `ok` for a **grant-reached** account (`principal.ts:253-259`). So under the normal
 MCP gate, `analyst@` — holding a read grant on Eric's account for one job — could ask
-*"who can read Eric's account?"* and enumerate Eric's entire grant table, learning every
+_"who can read Eric's account?"_ and enumerate Eric's entire grant table, learning every
 other agent's binding and every other grantee's login email. Each of those rows is about a
 **third party who never granted anything to `analyst@`**. The delegation Eric authorised was
 "read my mail", not "read my org chart". Refuse it.
 
-**Rule 2 — "what can *I* do" is always answerable; "what can *others* do" only about
+**Rule 2 — "what can _I_ do" is always answerable; "what can _others_ do" only about
 accounts I own.** Two different questions, and the split is clean:
 
-| Question | Row source | Allowed |
-|---|---|---|
-| *What can I reach?* | `grants WHERE grantee_account_id ∈ my accounts` | always — this is self-description |
-| *Who can reach me?* | `grants WHERE target_account_id ∈ my **owned** accounts` | owner only |
-| *Who can reach account X?* where X is grant-reached | — | **refused**, with a message that says why |
+| Question                                            | Row source                                               | Allowed                                   |
+| --------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------- |
+| _What can I reach?_                                 | `grants WHERE grantee_account_id ∈ my accounts`          | always — this is self-description         |
+| _Who can reach me?_                                 | `grants WHERE target_account_id ∈ my **owned** accounts` | owner only                                |
+| _Who can reach account X?_ where X is grant-reached | —                                                        | **refused**, with a message that says why |
 
 Note the asymmetry that falls out and should be stated rather than discovered: answering
-*"who can reach me"* necessarily discloses **other principals' login emails**
+_"who can reach me"_ necessarily discloses **other principals' login emails**
 (`listGrants:591-592` resolves both sides to an identity). That is correct — you are
 entitled to know who can read your mail — but it is a disclosure, and it is the reason
-Rule 1 says *own*.
+Rule 1 says _own_.
 
 **Rule 3 — never `SELECT *` from a control-plane table.** Enumerate columns. `tokens`
 carries `secret_hash` (`control-plane.sql:66`); `agent_bindings` carries `config_json`
@@ -175,8 +175,8 @@ access_log                 grant_audit for an owned account, windowed — "who r
                            account, under what scope, when"
 ```
 
-`who_can_access` is the tool that answers the document's headline question. *"Which agents
-can read my contacts?"* is `grants WHERE target_account_id = mine AND (collection IS NULL OR
+`who_can_access` is the tool that answers the document's headline question. _"Which agents
+can read my contacts?"_ is `grants WHERE target_account_id = mine AND (collection IS NULL OR
 collection = 'AddressBook') AND scopes ⊇ read` — `grantCoversDomain` (`principal.ts:209-214`)
 already encodes exactly that mapping, so reuse it rather than re-deriving the SQL.
 
@@ -185,10 +185,10 @@ already encodes exactly that mapping, so reuse it rather than re-deriving the SQ
 
 > "`hasScope` treats `mail` as a superset of everything except `admin` (`auth-core:50-53`).
 > A chip labeled 'mail' reads as innocuous while granting `send` and `delete`. Show what it
-> *allows*."
+> _allows_."
 
 Verified at `packages/auth-core/src/index.ts:50-53`. So a grant whose `scopes` column reads
-`["mail"]` must be reported as *"read, annotate, draft, move, send, delete"* — expand it
+`["mail"]` must be reported as _"read, annotate, draft, move, send, delete"_ — expand it
 through `MAIL_SCOPES` (`index.ts:46`). Reporting the literal string is the failure mode: the
 one tool whose job is to explain authorization would be the tool that misrepresents it.
 Carry `fromClaude/common/001` (P1, open) as a note in the tool description too — until it
@@ -196,12 +196,12 @@ lands, `mail` really does satisfy `contacts`, `calendar`, and `vault`.
 
 Second `s03.E` requirement worth importing (`readme.md:44-45`): **surface dangerous
 combinations**. `send` + external MCP + WebFetch is an exfiltration path even though each
-part looks fine alone. A conversational surface is arguably *better* at this than a UI,
+part looks fine alone. A conversational surface is arguably _better_ at this than a UI,
 because it can say so in a sentence.
 
 ### The dispatcher change
 
-`whoami` has no `accountId` and cannot get one — it is the tool you call to *find out* your
+`whoami` has no `accountId` and cannot get one — it is the tool you call to _find out_ your
 account ids. `handleToolCall` rejects it at `:250-253` before dispatch. Options:
 
 - add `requiresAccount?: boolean` to `ToolDef` alongside `001`'s scope/domain fields, and
@@ -216,11 +216,11 @@ Take the first. Keep the change to `ToolDef` in `001` so there is one shape, not
 ### Relationship to `s03.E` — same data, different face
 
 `.plans/s03.E-console` owns this data on the WebUI and states the two views precisely
-(`s03.E/readme.md:16-17`): *"can Allen even do that?"* (per-agent, forward-looking) versus
-*"who could have messed up VendorsBook?"* (per-resource, forensic). The forensic view splits
+(`s03.E/readme.md:16-17`): _"can Allen even do that?"_ (per-agent, forward-looking) versus
+_"who could have messed up VendorsBook?"_ (per-resource, forensic). The forensic view splits
 again (`:24-31`) into **who could** (grants at the time) and **who did** (`grant_audit` plus
-`s03.A` provenance), shown side by side, because *"the gap between them is itself the
-finding"* (`:29`).
+`s03.A` provenance), shown side by side, because _"the gap between them is itself the
+finding"_ (`:29`).
 
 **This unit is the conversational face of the same questions**, exactly as
 `motivatingExamples.md:221` says. Two honest consequences:
@@ -228,7 +228,7 @@ finding"* (`:29`).
 1. **It is not blocked by `s03.E`, and does not unblock it.** `s03.E` is blocked on `s03.A`
    (tombstones + provenance), `s03.C` (the shell), and an `s04` spec
    (`s03.E/readme.md:64-65`), and it "should not start until s04's model is at least
-   *specified*" (`:59-60`). None of that gates a read-only MCP tool. This unit can ship years
+   _specified_" (`:59-60`). None of that gates a read-only MCP tool. This unit can ship years
    earlier.
 2. **It cannot be point-in-time correct, and must not pretend to be.** `s03.E`'s acceptance
    criterion 2 requires that "a since-revoked grant still appears for the window it was
@@ -245,10 +245,10 @@ queries in a small shared module rather than inline in `mcp.ts` costs nothing no
 
 ## Done when
 
-1. A person asks Claude *"which agents can read my contacts?"* and gets a correct,
+1. A person asks Claude _"which agents can read my contacts?"_ and gets a correct,
    readable answer naming the agents and the scope each holds. That is the acceptance test
    from `motivatingExamples.md:218`, verbatim, and it needs no engineer to judge.
-2. **The disclosure assertion.** A principal holding a *grant* on another account calls
+2. **The disclosure assertion.** A principal holding a _grant_ on another account calls
    `who_can_access` and `access_log` against that account and is **refused** — while the
    same token still succeeds on `email_query`-class tools for the same account. This is the
    test that catches the shortcut of reusing `authorizeAccount`'s `ok` as the gate; the
@@ -282,8 +282,8 @@ queries in a small shared module rather than inline in `mcp.ts` costs nothing no
   note the index is `(account_id, at)` (`control-plane.sql:111`) — window queries on
   `account_id` are cheap, anything else is a scan.
 - `agent_invocations` carries `status`, `email_id`, `context_json`, `result_json`, `note`,
-  `created_at`, `claimed_at`, `done_at` (`data-plane.sql:113-127`). *"Why did editor@ skip
-  that email?"* is answerable only to the extent that `note`/`result_json` were populated —
+  `created_at`, `claimed_at`, `done_at` (`data-plane.sql:113-127`). _"Why did editor@ skip
+  that email?"_ is answerable only to the extent that `note`/`result_json` were populated —
   the failure path writes `{error: …}` (`packages/cli/src/agent.ts:224`), and there is **no
   row at all** for an email that never matched a binding (`ingest/src/index.ts:175-190`
   inserts only for matching bindings). "Skipped" is often the absence of evidence; the tool
@@ -295,7 +295,7 @@ queries in a small shared module rather than inline in `mcp.ts` costs nothing no
   (`agent.ts:128-132`). Do not offer a create/cancel tool here — that is `007`.
 - `mcp.test.ts` (`:93-255`) has the auth-gate test shape with real `mintToken()` crypto
   (`:50`) and a grant-reached case (`:221`). The grant fixture there is the one to extend
-  for *Done when* #2.
+  for _Done when_ #2.
 - `002` (fake-D1 `.batch()`) is **not** a dependency — everything here is a read. That is
   why this unit can be picked up when `013`/`014` are blocked.
 
@@ -303,7 +303,7 @@ queries in a small shared module rather than inline in `mcp.ts` costs nothing no
 
 1. **`I1` versus `I2`, and whether "unlocks" is being read too strictly.** This unit
    produces the principal-filtered authorization queries, the effective-permission
-   expansion, and the revoked-grant rendering that `s03.E` needs — arguably it *does* unlock
+   expansion, and the revoked-grant rendering that `s03.E` needs — arguably it _does_ unlock
    work. I graded `I1` because `readme.md` requires a **stated, named** dependency and no
    section names this one. If a reviewer thinks "s03.E will reuse this query layer" is
    enough, the grade is `I3` (both factors), not `I2`, since human-verifiability is not in
@@ -325,7 +325,7 @@ queries in a small shared module rather than inline in `mcp.ts` costs nothing no
    therefore has no domain — may be the honest answer for all six tools, not just `whoami`.
    Unresolved.
 4. **`config_json` is an information-disclosure question I punted on.** `my_agents` returning
-   an agent's persona is *useful* ("why did editor@ reply like that?") and is arguably the
+   an agent's persona is _useful_ ("why did editor@ reply like that?") and is arguably the
    most valuable field on the row. I excluded it because `BindingConfig`
    (`services/agent/src/models.ts:29-49`) also carries `modelAliases`, `digestTargets`, and
    `allowedSenders`, and I would rather under-disclose by default. A field-level allowlist is
@@ -364,31 +364,30 @@ to be **wrong**, see below.
 
 **5 — "Why did editor@ skip that email?" IS answerable, and the unit stays a projection.**
 This was filed as the claim most likely to break the unit's classification. It does not. The
-*cloud* runtime already writes a decision log: `runInvocation` finishes a filtered message with
+_cloud_ runtime already writes a decision log: `runInvocation` finishes a filtered message with
 `done("done", { note: \`skipped: ${sender} not in allowedSenders\` })`
-(`services/agent/src/index.ts:172`, and `:167` for the RFC 3834 auto-sender case), and
-`finish()` copies that string into `agent_invocations.note` (`:330-335`). The fact *and* the
-reason are on a row. The unit's premise — "`allowedSenders` filtering lives in the runtime's
-binding config, not in a logged decision" — was read from `packages/cli/src/agent.ts` (the
-homelab runtime) and generalised to both; `services/agent/src/index.ts` was not checked. No
+(`services/agent/src/index.ts:172`, and `:167`for the RFC 3834 auto-sender case), and`finish()`copies that string into`agent_invocations.note` (`:330-335`). The fact *and* the
+reason are on a row. The unit's premise — "`allowedSenders`filtering lives in the runtime's
+binding config, not in a logged decision" — was read from`packages/cli/src/agent.ts`(the
+homelab runtime) and generalised to both;`services/agent/src/index.ts` was not checked. No
 capability is needed and nothing new is written.
 
 Where it is genuinely unanswerable, `explain_skip` says so instead of guessing, and returns a
 `limitations` array with every answer:
 
-| Case | Verdict | Evidence |
-|---|---|---|
-| sender/auto-submitted filtered, cloud runtime | `skipped` | the runtime's own `note` |
-| binding disabled, or `trigger_on ≠ mailbox-delivery` | `never-ran` | ingest filters on exactly those two columns (`ingest/src/index.ts:167-172`), so no row provably means not queued |
-| still queued | `not-skipped` | status |
-| homelab runtime name-mismatch | **no evidence** | `packages/cli/src/agent.ts:156` is a bare `return false` — no note, row left `pending` |
-| never delivered / predates the binding | **no evidence** | nothing records a delivery that matched no binding |
+| Case                                                 | Verdict         | Evidence                                                                                                         |
+| ---------------------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------- |
+| sender/auto-submitted filtered, cloud runtime        | `skipped`       | the runtime's own `note`                                                                                         |
+| binding disabled, or `trigger_on ≠ mailbox-delivery` | `never-ran`     | ingest filters on exactly those two columns (`ingest/src/index.ts:167-172`), so no row provably means not queued |
+| still queued                                         | `not-skipped`   | status                                                                                                           |
+| homelab runtime name-mismatch                        | **no evidence** | `packages/cli/src/agent.ts:156` is a bare `return false` — no note, row left `pending`                           |
+| never delivered / predates the binding               | **no evidence** | nothing records a delivery that matched no binding                                                               |
 
 **3 — `MethodDomain` was NOT widened, and the stated reason for widening it does not hold.**
 The unit argued that riding on `mail` is "a lie the audit log then records". It is not: MCP
 writes `mcp:${tool.name}` as the audit `method` (`mcp.ts:350`), never the domain. `domain` is
 consumed only by `grantCoversDomain`, i.e. which grants could unlock the tool for a
-*grant-reached* caller — and Rule 1 refuses every one of those. Widening a shared type for a
+_grant-reached_ caller — and Rule 1 refuses every one of those. Widening a shared type for a
 label nothing records would be a change with no behaviour. Also decisive: `mcpTools.test.ts:19`
 pins `VALID_DOMAINS` to the closed union, so widening is a two-package change, not a one-line one.
 
@@ -400,22 +399,22 @@ Test 22 asserts the projected key set exactly, so a new `BindingConfig` field ca
 passthrough.
 
 **6 — `grant_audit` was in fact never read, and its columns only partly support the questions.**
-This unit is its first reader. What it supports: *who* (acting login email), *which account*,
-*what method label*, *when*, *under which grant*. What it does not, all now returned as an
+This unit is its first reader. What it supports: _who_ (acting login email), _which account_,
+_what method label_, _when_, _under which grant_. What it does not, all now returned as an
 explicit `limitations` array on every `access_log` answer rather than left to be misread:
 
 - **only DELEGATED access is recorded.** The write is conditional on `decision.auditGrant`, which
   is `null` for an owned account (`principal.ts:259`). An owner's own reads are never logged, so
   an empty `access_log` means "nobody reached this through a grant", not "nothing happened".
   This is the single most misreadable thing about the table.
-- **rows are attempts, not outcomes.** The insert happens *before* the tool or method runs
+- **rows are attempts, not outcomes.** The insert happens _before_ the tool or method runs
   (`mcp.ts:345-352`) and there is no status column, so a refused call is indistinguishable from
-  a successful one. (This is also what makes *Done when* #6 work for free.)
+  a successful one. (This is also what makes _Done when_ #6 work for free.)
 - **no row says what was read** — no object id, count or collection.
 - **a revoked grant's scopes are unrecoverable.** `revokeGrant` is a hard `DELETE`
   (`provision/src/index.ts:603`) and `s03.A`'s tombstones do not exist, so the `grant_id`
   dangles. Rendered as `grantStatus: "revoked-or-deleted"` with the explaining sentence, per
-  *Done when* #5.
+  _Done when_ #5.
 
 One shape the bread-crumbs missed: `method` has **three** forms, not two.
 `requireAccountScopes` writes `${domain}:${scopes.join("+")}` (`methods/common.ts:76`), e.g.
@@ -424,10 +423,10 @@ One shape the bread-crumbs missed: `method` has **three** forms, not two.
 
 ### Not done
 
-**`whoami` still takes an `accountId`** and therefore does not satisfy *Done when* #7's
+**`whoami` still takes an `accountId`** and therefore does not satisfy _Done when_ #7's
 account-less form — only its substance (owned and grant-reached accounts, listed separately and
 distinguished). Skipping the account gate needs `requiresAccount?: boolean` on `ToolDef` plus a
 branch in `handleToolCall`, which is a change to shared dispatch. This unit's brief was to touch
 `mcp.ts` in one line while `014` was in flight, and the unit itself says the `ToolDef` change
 belongs in `001` "so there is one shape, not two". Filed there, not done here. Everything else
-in *Done when* is covered by `introspect.test.ts`.
+in _Done when_ is covered by `introspect.test.ts`.

@@ -306,7 +306,12 @@ const DEFECTS: Defect[] = [
     label: "FREQ=YEARLY;BYMONTH=11;BYDAY=4TH — US Thanksgiving, as Apple emits it",
     start: "2026-11-26T17:00:00",
     timeZone: "America/New_York",
-    rule: { frequency: "yearly", byMonth: ["11"], byDay: [{ day: "th", nthOfPeriod: 4 }], count: 4 },
+    rule: {
+      frequency: "yearly",
+      byMonth: ["11"],
+      byDay: [{ day: "th", nthOfPeriod: 4 }],
+      count: 4,
+    },
     rrule: "FREQ=YEARLY;BYMONTH=11;BYDAY=4TH;COUNT=4",
     correct: [
       "2026-11-26T17:00:00",
@@ -322,7 +327,12 @@ const DEFECTS: Defect[] = [
     label: "FREQ=MONTHLY;BYMONTH=11;BYDAY=4TH — monthly branch never reads byMonth",
     start: "2026-11-26T17:00:00",
     timeZone: "America/New_York",
-    rule: { frequency: "monthly", byMonth: ["11"], byDay: [{ day: "th", nthOfPeriod: 4 }], count: 4 },
+    rule: {
+      frequency: "monthly",
+      byMonth: ["11"],
+      byDay: [{ day: "th", nthOfPeriod: 4 }],
+      count: 4,
+    },
     rrule: "FREQ=MONTHLY;BYMONTH=11;BYDAY=4TH;COUNT=4",
     correct: [
       "2026-11-26T17:00:00",
@@ -561,11 +571,20 @@ describe("the guard does not over-reject", () => {
     ["an explicit gregorian rscale", { frequency: "daily", rscale: "gregorian" }],
     ["skip=omit", { frequency: "monthly", byMonthDay: [31], skip: "omit" }],
     // Google Calendar emits WKST=SU on nearly every RRULE it writes.
-    ["WKST=SU when INTERVAL is 1", { frequency: "weekly", byDay: [{ day: "mo" }], firstDayOfWeek: "su" }],
-    ["WKST=SU on a non-weekly rule", { frequency: "monthly", byMonthDay: [1], firstDayOfWeek: "su" }],
+    [
+      "WKST=SU when INTERVAL is 1",
+      { frequency: "weekly", byDay: [{ day: "mo" }], firstDayOfWeek: "su" },
+    ],
+    [
+      "WKST=SU on a non-weekly rule",
+      { frequency: "monthly", byMonthDay: [1], firstDayOfWeek: "su" },
+    ],
     ["empty BY arrays (a no-op here)", { frequency: "yearly", byDay: [], byMonthDay: [] }],
     ["COUNT and UNTIL together", { frequency: "daily", count: 5, until: "2026-12-31T23:59:59" }],
-    ["BYMONTH as numbers rather than strings", { frequency: "yearly", byMonth: [3, 9] as unknown as string[] }],
+    [
+      "BYMONTH as numbers rather than strings",
+      { frequency: "yearly", byMonth: [3, 9] as unknown as string[] },
+    ],
     ["BYMONTHDAY=-31", { frequency: "monthly", byMonthDay: [-31] }],
   ];
   for (const [label, rule] of ok) {
@@ -574,7 +593,11 @@ describe("the guard does not over-reject", () => {
 
   it("a non-recurring event is untouched", () => {
     const span = eventSpan({ start: "2026-03-05T09:00:00", timeZone: "Etc/UTC", duration: "PT1H" });
-    expect(span).toEqual({ startMs: 1772701200000, endMs: 1772701200000 + HOUR, isRecurring: false });
+    expect(span).toEqual({
+      startMs: 1772701200000,
+      endMs: 1772701200000 + HOUR,
+      isRecurring: false,
+    });
   });
 });
 
@@ -602,9 +625,11 @@ describe("eventSpan", () => {
     // check has to run ahead of that branch or an unbounded bad rule slips
     // through with endMs null and no complaint.
     expect(() =>
-      eventSpan(event("2026-11-26T17:00:00", "America/New_York", [
-        { frequency: "yearly", byMonth: ["11"], byDay: [{ day: "th", nthOfPeriod: 4 }] },
-      ])),
+      eventSpan(
+        event("2026-11-26T17:00:00", "America/New_York", [
+          { frequency: "yearly", byMonth: ["11"], byDay: [{ day: "th", nthOfPeriod: 4 }] },
+        ]),
+      ),
     ).toThrow(UnsupportedRecurrenceError);
   });
 });
@@ -653,7 +678,11 @@ describe("iCalendar codec agrees with the same table", () => {
   });
 
   it("round-trips WKST rather than silently dropping it", () => {
-    const rule: RecurrenceRule = { frequency: "weekly", byDay: [{ day: "mo" }], firstDayOfWeek: "su" };
+    const rule: RecurrenceRule = {
+      frequency: "weekly",
+      byDay: [{ day: "mo" }],
+      firstDayOfWeek: "su",
+    };
     expect(ruleToRrule(rule, "Etc/UTC")).toContain("WKST=SU");
     expect(rruleToRule("FREQ=WEEKLY;BYDAY=MO;WKST=SU", "Etc/UTC")).toEqual(rule);
   });
@@ -684,9 +713,12 @@ describe("SUPPORTED_PARTS is the single source of truth", () => {
   });
 
   it("caps expansion regardless", () => {
-    const occ = expandOccurrences(event("2026-01-01T09:00:00", "Etc/UTC", [{ frequency: "daily" }]), {
-      before: Date.UTC(2100, 0, 1),
-    });
+    const occ = expandOccurrences(
+      event("2026-01-01T09:00:00", "Etc/UTC", [{ frequency: "daily" }]),
+      {
+        before: Date.UTC(2100, 0, 1),
+      },
+    );
     expect(occ.length).toBeLessThanOrEqual(MAX_OCCURRENCES);
   });
 });

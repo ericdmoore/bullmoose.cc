@@ -92,7 +92,12 @@ function world(fx: Fixture): FakeWorker {
 
   const seedIdentity = (accountId: string, address: string | undefined, n: number) => {
     w.db.seed("identities", [
-      { id: `id_${accountId}`, account_id: accountId, email: address ?? `${accountId}@bullmoose.cc`, name: `n${n}` },
+      {
+        id: `id_${accountId}`,
+        account_id: accountId,
+        email: address ?? `${accountId}@bullmoose.cc`,
+        name: `n${n}`,
+      },
     ]);
   };
 
@@ -240,7 +245,12 @@ async function callTool(
   const req = new Request("https://agent/mcp/analytics", {
     method: "POST",
     headers: headers(),
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args, _meta: meta() } }),
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name, arguments: args, _meta: meta() },
+    }),
   });
   const res = await handleMcp(req, w.env);
   const body = (await res.json()) as any;
@@ -394,7 +404,7 @@ describe("015 — the disclosure boundary", () => {
   });
 });
 
-describe("015 — \"which agents can read my contacts?\"", () => {
+describe('015 — "which agents can read my contacts?"', () => {
   // The literal acceptance test from docs/agents/motivatingExamples.md:298.
   const ericWithGrantees = (): Fixture =>
     eric({
@@ -407,9 +417,23 @@ describe("015 — \"which agents can read my contacts?\"", () => {
         // Whole-account, stored as the mail bundle.
         { id: "g_editor", grantee: "a_editor", target: "a_eric", scopes: ["mail"] },
         // Calendar-only: must NOT answer a contacts question.
-        { id: "g_sched", grantee: "a_sched", target: "a_eric", scopes: ["calendar"], collection: "Calendar", collectionId: "cal_1" },
+        {
+          id: "g_sched",
+          grantee: "a_sched",
+          target: "a_eric",
+          scopes: ["calendar"],
+          collection: "Calendar",
+          collectionId: "cal_1",
+        },
         // One shared address book, read-only.
-        { id: "g_book", grantee: "a_book", target: "a_eric", scopes: ["read"], collection: "AddressBook", collectionId: "ab_1" },
+        {
+          id: "g_book",
+          grantee: "a_book",
+          target: "a_eric",
+          scopes: ["read"],
+          collection: "AddressBook",
+          collectionId: "ab_1",
+        },
       ],
     });
 
@@ -490,7 +514,7 @@ describe("015 — effective permissions, not raw scopes", () => {
     expect(effectiveScopes(["mail"])).not.toContain("admin");
   });
 
-  it("15. a grant stored as [\"mail\"] is REPORTED as the six verbs", async () => {
+  it('15. a grant stored as ["mail"] is REPORTED as the six verbs', async () => {
     const r = await callTool(
       "who_can_access",
       { accountId: "a_eric" },
@@ -670,7 +694,7 @@ describe("015 — never SELECT * from a control-plane table", () => {
   });
 });
 
-describe("015 — \"why did editor@ skip that email?\"", () => {
+describe('015 — "why did editor@ skip that email?"', () => {
   it("27. reports the runtime's own recorded reason for a sender-filtered skip", async () => {
     // The cloud runtime records this as a real row:
     //   done("done", { note: `skipped: ${sender} not in allowedSenders` })
@@ -770,7 +794,13 @@ describe("015 — \"why did editor@ skip that email?\"", () => {
       eric({
         bindings: [{ id: "b_editor", accountId: "a_eric", name: "editor" }],
         invocations: [
-          { id: "inv_1", accountId: "a_eric", bindingId: "b_editor", bindingName: "editor", emailId: "em_1" },
+          {
+            id: "inv_1",
+            accountId: "a_eric",
+            bindingId: "b_editor",
+            bindingName: "editor",
+            emailId: "em_1",
+          },
         ],
       }),
     );
@@ -807,16 +837,41 @@ describe("015 — access_log is grant_audit's first reader", () => {
         },
       ],
       audit: [
-        { grantId: "g_live", principal: "allen@bullmoose.cc", accountId: "a_eric", method: "mcp:contacts_search" },
-        { grantId: "g_live", principal: "allen@bullmoose.cc", accountId: "a_eric", method: "mail:read" },
+        {
+          grantId: "g_live",
+          principal: "allen@bullmoose.cc",
+          accountId: "a_eric",
+          method: "mcp:contacts_search",
+        },
+        {
+          grantId: "g_live",
+          principal: "allen@bullmoose.cc",
+          accountId: "a_eric",
+          method: "mail:read",
+        },
         // requireAccountScopes writes several scopes joined with "+"
         // (methods/common.ts:76) — a shape 015's bread-crumbs did not list.
-        { grantId: "g_live", principal: "allen@bullmoose.cc", accountId: "a_eric", method: "mail:draft+delete" },
+        {
+          grantId: "g_live",
+          principal: "allen@bullmoose.cc",
+          accountId: "a_eric",
+          method: "mail:draft+delete",
+        },
         // Two DIFFERENT ways a grant stops being live, which this fixture
         // could not tell apart before s03.A. `g_gone` has no row at all;
         // `g_revoked` has a row carrying a tombstone.
-        { grantId: "g_gone", principal: "mallory@bullmoose.cc", accountId: "a_eric", method: "contacts:read" },
-        { grantId: "g_revoked", principal: "trent@bullmoose.cc", accountId: "a_eric", method: "mail:read" },
+        {
+          grantId: "g_gone",
+          principal: "mallory@bullmoose.cc",
+          accountId: "a_eric",
+          method: "contacts:read",
+        },
+        {
+          grantId: "g_revoked",
+          principal: "trent@bullmoose.cc",
+          accountId: "a_eric",
+          method: "mail:read",
+        },
       ],
       ...over,
     });
@@ -867,7 +922,7 @@ describe("015 — access_log is grant_audit's first reader", () => {
     expect(r.out.summary.underRevokedGrants).toBe(2);
   });
 
-  it("34b. a revoked grant is not an answer to \"who can reach me\"", async () => {
+  it('34b. a revoked grant is not an answer to "who can reach me"', async () => {
     // The defect the s03.E console found and pinned. Enforcement was always
     // right — auth-core's principal.ts filters `revoked_at IS NULL` on the
     // resolution path — so a revoked grant really had stopped working. This
@@ -886,11 +941,27 @@ describe("015 — access_log is grant_audit's first reader", () => {
       { accountId: "a_eric" },
       withAudit({
         audit: [
-          { grantId: "g_live", principal: "allen@bullmoose.cc", accountId: "a_eric", method: "mail:read" },
+          {
+            grantId: "g_live",
+            principal: "allen@bullmoose.cc",
+            accountId: "a_eric",
+            method: "mail:read",
+          },
           // Another account's audit row must not appear.
-          { grantId: "g_other", principal: "eve@bullmoose.cc", accountId: "a_someone", method: "mail:read" },
+          {
+            grantId: "g_other",
+            principal: "eve@bullmoose.cc",
+            accountId: "a_someone",
+            method: "mail:read",
+          },
           // Outside the window.
-          { grantId: "g_live", principal: "old@bullmoose.cc", accountId: "a_eric", method: "mail:read", at: Date.now() - 400 * 86_400_000 },
+          {
+            grantId: "g_live",
+            principal: "old@bullmoose.cc",
+            accountId: "a_eric",
+            method: "mail:read",
+            at: Date.now() - 400 * 86_400_000,
+          },
         ],
       }),
     );
@@ -915,7 +986,12 @@ describe("015 — the tools are declared and reachable", () => {
     const req = new Request("https://agent/mcp/analytics", {
       method: "POST",
       headers: headers(),
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: meta() } }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: { _meta: meta() },
+      }),
     });
     const body = (await (await handleMcp(req, world(eric()).env)).json()) as any;
     const names = body.result.tools.map((t: any) => t.name);

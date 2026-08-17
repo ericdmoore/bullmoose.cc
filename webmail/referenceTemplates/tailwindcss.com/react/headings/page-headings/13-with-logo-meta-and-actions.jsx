@@ -1,5 +1,5 @@
-import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { EllipsisVerticalIcon } from '@heroicons/react/20/solid'
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import { EllipsisVerticalIcon } from "@heroicons/react/20/solid";
 
 export default function Example() {
   return (
@@ -15,14 +15,22 @@ export default function Example() {
             <div className="text-sm/6 text-gray-500 dark:text-gray-400">
               Invoice <span className="text-gray-700 dark:text-gray-300">#00011</span>
             </div>
-            <div className="mt-1 text-base font-semibold text-gray-900 dark:text-white">Tuple, Inc</div>
+            <div className="mt-1 text-base font-semibold text-gray-900 dark:text-white">
+              Tuple, Inc
+            </div>
           </h1>
         </div>
         <div className="flex items-center gap-x-4 sm:gap-x-6">
-          <button type="button" className="hidden text-sm/6 font-semibold text-gray-900 sm:block dark:text-white">
+          <button
+            type="button"
+            className="hidden text-sm/6 font-semibold text-gray-900 sm:block dark:text-white"
+          >
             Copy URL
           </button>
-          <a href="#" className="hidden text-sm/6 font-semibold text-gray-900 sm:block dark:text-white">
+          <a
+            href="#"
+            className="hidden text-sm/6 font-semibold text-gray-900 sm:block dark:text-white"
+          >
             Edit
           </a>
           <a
@@ -36,7 +44,10 @@ export default function Example() {
             <MenuButton className="relative block">
               <span className="absolute -inset-3" />
               <span className="sr-only">More</span>
-              <EllipsisVerticalIcon aria-hidden="true" className="size-5 text-gray-500 dark:text-gray-400" />
+              <EllipsisVerticalIcon
+                aria-hidden="true"
+                className="size-5 text-gray-500 dark:text-gray-400"
+              />
             </MenuButton>
 
             <MenuItems
@@ -64,5 +75,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

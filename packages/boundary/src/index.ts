@@ -22,8 +22,4 @@ export {
   type BayesState,
   type TokenCounts,
 } from "./bayes.js";
-export {
-  DEFAULT_GRADUATION_POLICY,
-  graduationDue,
-  type GraduationPolicy,
-} from "./graduation.js";
+export { DEFAULT_GRADUATION_POLICY, graduationDue, type GraduationPolicy } from "./graduation.js";

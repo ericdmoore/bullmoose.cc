@@ -16,7 +16,7 @@
 - `services/agent/src/models.ts:155` builds pricing cache keys as `` `${providerId}/${modelId}` ``
 - `models.ts:134` looks up **bare** `cache.prices[c.model]`
 
-A `gateway` candidate's `model` is *already* `provider/model` (e.g. `"anthropic/claude-opus-4-8"`,
+A `gateway` candidate's `model` is _already_ `provider/model` (e.g. `"anthropic/claude-opus-4-8"`,
 `docs/examples/editor-emily.config.json:14`) — so it **can** hit the cache.
 
 A `workers-ai` candidate's `model` is `"@cf/meta/llama-3.3-70b-instruct-fp8-fast"` — it can **never**
@@ -32,5 +32,5 @@ It is invisible today because the only aliases shipped in `docs/examples/` are s
 candidates tie at Infinity and config order is preserved. It bites the moment someone follows
 `ai-surface.md:76-77`'s own advice.
 
-The comment at `models.ts:132` ("unknown pricing sorts last") documents the *intent* — it does not
+The comment at `models.ts:132` ("unknown pricing sorts last") documents the _intent_ — it does not
 anticipate that one whole provider can never be priced.

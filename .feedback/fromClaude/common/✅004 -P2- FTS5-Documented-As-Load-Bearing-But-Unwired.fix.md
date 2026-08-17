@@ -9,7 +9,7 @@
 ## Proposal: UPDATE-DOC now, and file the build work separately
 
 The doc is the thing currently lying, and it is a one-paragraph fix. The underlying capability gap
-is real but is a *feature*, not a correction — conflating them is how this drifted in the first
+is real but is a _feature_, not a correction — conflating them is how this drifted in the first
 place.
 
 ### 1. Mark the doc as designed-not-built

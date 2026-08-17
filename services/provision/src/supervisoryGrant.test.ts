@@ -145,9 +145,9 @@ describe("POST /agent-bindings mints the supervisory grant", () => {
     expect(JSON.parse(rows[0]!.scopes)).toEqual(["read", "draft"]);
     expect(rows[0]!.collection).toBeNull();
     // …and its birth is in the lifecycle chain, like every other grant.
-    expect(
-      h.db.count("grant_lifecycle", "grant_id = ? AND event = 'created'", rows[0]!.id),
-    ).toBe(1);
+    expect(h.db.count("grant_lifecycle", "grant_id = ? AND event = 'created'", rows[0]!.id)).toBe(
+      1,
+    );
   });
 
   it("an explicit ownerEmail wins over the structural guess", async () => {
@@ -218,7 +218,13 @@ describe("POST /agent-bindings mints the supervisory grant", () => {
     // A second tenant with its own domain and human.
     h.db.seed("tenants", [{ id: "t_other", name: "other", status: "active", created_at: 1 }]);
     h.db.seed("domains", [
-      { domain: "other.test", tenant_id: "t_other", status: "active", cf_zone_id: "z2", created_at: 1 },
+      {
+        domain: "other.test",
+        tenant_id: "t_other",
+        status: "active",
+        cf_zone_id: "z2",
+        created_at: 1,
+      },
     ]);
     const stranger = await account(h, "sam", "other.test", "t_other");
     const emily = await account(h, "editor");
@@ -378,13 +384,17 @@ describe("POST /bouncer supervises the whole household", () => {
       expect(JSON.parse(rows[0]!.scopes)).toEqual(["read", "draft"]);
     }
     // The agent account is NOT a supervisor of the bouncer.
-    expect(h.db.count("grants", "grantee_account_id NOT IN (?, ?)", dad.accountId, mom.accountId)).toBe(0);
+    expect(
+      h.db.count("grants", "grantee_account_id NOT IN (?, ?)", dad.accountId, mom.accountId),
+    ).toBe(0);
   });
 
   it("a re-run BACKFILLS a bouncer provisioned before T7, and duplicates nothing", async () => {
     const h = harness();
     const dad = await account(h, "dad");
-    const first = (await (await h.post("/bouncer", { tenantId: TENANT, domain: DOMAIN })).json()) as {
+    const first = (await (
+      await h.post("/bouncer", { tenantId: TENANT, domain: DOMAIN })
+    ).json()) as {
       accountId: string;
     };
     // Simulate the live pre-T7 bouncer: binding and book intact, no grant.
@@ -400,7 +410,9 @@ describe("POST /bouncer supervises the whole household", () => {
     expect(liveGrants(h, dad.accountId, first.accountId).length).toBe(1);
 
     // And a THIRD run writes nothing new.
-    const third = (await (await h.post("/bouncer", { tenantId: TENANT, domain: DOMAIN })).json()) as {
+    const third = (await (
+      await h.post("/bouncer", { tenantId: TENANT, domain: DOMAIN })
+    ).json()) as {
       supervision: Supervision[];
     };
     expect(third.supervision[0]!.created).toBe(false);

@@ -147,7 +147,12 @@ async function fixture(config: Record<string, unknown> = {}): Promise<Fixture> {
       await h.call("POST", "/agent-bindings", {
         email: `photos@${DOMAIN}`,
         name: "photos",
-        config: { replyMode: "draft", allowedSenders: ["eric@bullmoose.cc"], ...REMAINDER, ...config },
+        config: {
+          replyMode: "draft",
+          allowedSenders: ["eric@bullmoose.cc"],
+          ...REMAINDER,
+          ...config,
+        },
         recipientsBookId: "ab_governed",
       }),
     )
@@ -176,8 +181,7 @@ const chain = (f: Fixture) =>
     f.bindingId,
   ) as Array<Record<string, unknown>>;
 
-const patch = (f: Fixture, b: unknown) =>
-  f.h.call("PATCH", `/agent-bindings/${f.bindingId}`, b);
+const patch = (f: Fixture, b: unknown) => f.h.call("PATCH", `/agent-bindings/${f.bindingId}`, b);
 
 // ── the typed core writes ────────────────────────────────────────────────
 
@@ -196,7 +200,9 @@ describe("PATCH /agent-bindings/{id} — each typed field", () => {
   it("writes allowedSenders, normalized and de-duplicated", async () => {
     const f = await fixture();
     const out = await body<{ allowedSenders: string[] }>(
-      await patch(f, { allowedSenders: ["  Bob@Example.COM ", "bob@example.com", "kid@school.test"] }),
+      await patch(f, {
+        allowedSenders: ["  Bob@Example.COM ", "bob@example.com", "kid@school.test"],
+      }),
     );
     // Normalized EXACT match is the gate's rule, so the stored list has to be
     // normalized: an unnormalized entry never matches and silently narrows.
@@ -238,9 +244,9 @@ describe("PATCH /agent-bindings/{id} — each typed field", () => {
         write_policy: "governed",
       },
     ]);
-    const out = await body<{ outbound: { state: string; governingBookId: string; failClosed: boolean } }>(
-      await patch(f, { recipientsBookId: "ab_second" }),
-    );
+    const out = await body<{
+      outbound: { state: string; governingBookId: string; failClosed: boolean };
+    }>(await patch(f, { recipientsBookId: "ab_second" }));
     expect(out.outbound).toMatchObject({
       state: "book",
       governingBookId: "ab_second",
@@ -460,7 +466,11 @@ describe("a book re-point appends a provenance row (s10 T2 discipline)", () => {
       await f.h.call("GET", `/agent-bindings/${f.bindingId}/lifecycle`),
     );
     expect(out.events).toHaveLength(1);
-    expect(out.events[0]).toMatchObject({ old_value: "ab_governed", new_value: null, actor: "admin" });
+    expect(out.events[0]).toMatchObject({
+      old_value: "ab_governed",
+      new_value: null,
+      actor: "admin",
+    });
   });
 
   it("appends NOTHING when the book did not move", async () => {
@@ -536,7 +546,9 @@ describe("concurrency", () => {
       { ...f.h.env, DB: racing },
     );
     expect(res.status).toBe(409);
-    expect((await body<{ error: string }>(res)).error).toMatch(/changed between the read and the write/);
+    expect((await body<{ error: string }>(res)).error).toMatch(
+      /changed between the read and the write/,
+    );
     // The other writer's blob is intact, the book did not move, and — the half
     // that matters — no provenance row claims a change that never happened.
     expect(storedConfig(f)).toEqual({ persona: "the other writer" });

@@ -34,12 +34,7 @@
 // error, never a bounce. The deny tiers are deny-only, so failing open is an
 // availability bruise in the SPAM direction only; it can never leak mail.
 
-import {
-  Mailstore,
-  listSieveRules,
-  loadBayesState,
-  normalizeAddress,
-} from "@bullmoose/mailstore";
+import { Mailstore, listSieveRules, loadBayesState, normalizeAddress } from "@bullmoose/mailstore";
 import {
   bayesClassify,
   sieveVerdict,
@@ -187,7 +182,8 @@ export async function rebuildBoundaryBloom(
     const { results } = await env.DB.prepare(
       `SELECT account_id, id FROM address_books WHERE LOWER(name) = 'blocked'`,
     ).all<{ account_id: string; id: string }>();
-    for (const r of results) books.set(`${r.account_id}/${r.id}`, { accountId: r.account_id, bookId: r.id });
+    for (const r of results)
+      books.set(`${r.account_id}/${r.id}`, { accountId: r.account_id, bookId: r.id });
   } catch {
     /* no address_books on this shard */
   }
@@ -229,7 +225,9 @@ async function inDenyList(db: D1Database, tenantId: string, domain: string): Pro
     return row?.hit === 1;
   } catch (err) {
     // Pre-migration shard, or D1 hiccup: an empty deny list, said out loud.
-    console.error(`deny-list check degraded to empty (${err instanceof Error ? err.message : err})`);
+    console.error(
+      `deny-list check degraded to empty (${err instanceof Error ? err.message : err})`,
+    );
     return false;
   }
 }
@@ -262,7 +260,9 @@ export async function bumpDenyCounter(
       .bind(domain, day)
       .run();
   } catch (err) {
-    console.error(`deny counter bump failed for ${domain}: ${err instanceof Error ? err.message : err}`);
+    console.error(
+      `deny counter bump failed for ${domain}: ${err instanceof Error ? err.message : err}`,
+    );
   }
 }
 
@@ -292,11 +292,18 @@ async function defaultBookId(db: D1Database, accountId: string): Promise<string 
   }
 }
 
-async function isBookMember(store: Mailstore, accountId: string, bookId: string, sender: string): Promise<boolean> {
+async function isBookMember(
+  store: Mailstore,
+  accountId: string,
+  bookId: string,
+  sender: string,
+): Promise<boolean> {
   try {
     return (await store.bookMembership(accountId, bookId)).has(sender);
   } catch (err) {
-    console.error(`book membership check degraded to empty (${err instanceof Error ? err.message : err})`);
+    console.error(
+      `book membership check degraded to empty (${err instanceof Error ? err.message : err})`,
+    );
     return false;
   }
 }
@@ -559,7 +566,9 @@ export async function resolveBouncerBinding(
         .all<Row>();
       rows = results.filter((r) => r.account_id.startsWith(`${tenantId}__`));
     } catch (err) {
-      console.error(`bouncer binding lookup degraded to none (${err instanceof Error ? err.message : err})`);
+      console.error(
+        `bouncer binding lookup degraded to none (${err instanceof Error ? err.message : err})`,
+      );
       return null;
     }
   }

@@ -16,7 +16,9 @@ import { segmentsByDay } from "./place";
 const ACCOUNT = "acct-fake";
 /** A fixed "now" so the fixture month is stable: July 2026. */
 const NOW = Date.UTC(2026, 6, 15);
-const WINDOW = queryWindow(gridDays({ kind: "month", anchor: { year: 2026, month: 7, day: 1 }, weekStartsOn: 0 }));
+const WINDOW = queryWindow(
+  gridDays({ kind: "month", anchor: { year: 2026, month: 7, day: 1 }, weekStartsOn: 0 }),
+);
 
 function backed() {
   const client = new FakeJmapClient();
@@ -156,7 +158,9 @@ describe("loading a window", () => {
     await loadWindow(client, ACCOUNT, { ...WINDOW, inCalendar: "cal-elk" });
     const [occCall, queryCall] = client.sentBatches[0]!;
     expect((occCall![1] as { inCalendar?: string }).inCalendar).toBe("cal-elk");
-    expect((queryCall![1] as { filter: { inCalendar?: string } }).filter.inCalendar).toBe("cal-elk");
+    expect((queryCall![1] as { filter: { inCalendar?: string } }).filter.inCalendar).toBe(
+      "cal-elk",
+    );
   });
 });
 
@@ -298,9 +302,9 @@ describe("refusals become sentences", () => {
   });
 
   it("falls back to the server's own description", () => {
-    expect(refusalOf({ type: "invalidArguments", description: "after < before required" }).message).toBe(
-      "after < before required",
-    );
+    expect(
+      refusalOf({ type: "invalidArguments", description: "after < before required" }).message,
+    ).toBe("after < before required");
   });
 
   it("says something for an undefined detail rather than throwing", () => {

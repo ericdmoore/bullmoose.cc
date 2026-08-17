@@ -14,7 +14,13 @@ const OWNER = "eric@bullmoose.cc";
 
 function world() {
   const w = fakeEnv();
-  w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT, principalId: "p_eric", loginEmail: OWNER, displayName: "Eric" });
+  w.db.seedAccount({
+    accountId: ACCOUNT,
+    tenantId: TENANT,
+    principalId: "p_eric",
+    loginEmail: OWNER,
+    displayName: "Eric",
+  });
   return w;
 }
 
@@ -79,7 +85,12 @@ describe("sweepWatches — the deadline reminder", () => {
 
   it("leaves a watch whose deadline is still in the future", async () => {
     const w = world();
-    armWatch(w, { id: "w_future", condition_type: "deadline", deadline_at: 5_000, action_type: "notify" });
+    armWatch(w, {
+      id: "w_future",
+      condition_type: "deadline",
+      deadline_at: 5_000,
+      action_type: "notify",
+    });
     await sweepWatches(w.env, 1_000);
     expect(watchRow(w, "w_future").status).toBe("armed");
     expect(w.db.query(`SELECT id FROM agent_proposals`)).toEqual([]);
@@ -87,7 +98,12 @@ describe("sweepWatches — the deadline reminder", () => {
 });
 
 describe("sweepWatches — no-reply-from: the one that must not cry wolf", () => {
-  function seedInbound(w: ReturnType<typeof fakeEnv>, from: string, receivedAt: number, threadId = "t_x") {
+  function seedInbound(
+    w: ReturnType<typeof fakeEnv>,
+    from: string,
+    receivedAt: number,
+    threadId = "t_x",
+  ) {
     w.db.seed("emails", [
       {
         id: `e_${receivedAt}`,
@@ -122,7 +138,12 @@ describe("sweepWatches — no-reply-from: the one that must not cry wolf", () =>
 
     const watch = watchRow(w, "w_nr");
     expect(watch.status).toBe("fired");
-    const prop = w.db.query<{ kind: string; tier: number; evidence_json: string; payload_json: string }>(
+    const prop = w.db.query<{
+      kind: string;
+      tier: number;
+      evidence_json: string;
+      payload_json: string;
+    }>(
       `SELECT kind, tier, evidence_json, payload_json FROM agent_proposals WHERE id = '${watch.proposal_id}'`,
     )[0]!;
     expect(prop.kind).toBe("watch-followup");
@@ -189,7 +210,12 @@ describe("sweepWatches — no-reply-from: the one that must not cry wolf", () =>
 describe("sweepWatches — safety posture", () => {
   it("never double-fires: a second sweep finds the watch already fired and does nothing", async () => {
     const w = world();
-    armWatch(w, { id: "w_once", condition_type: "deadline", deadline_at: 500, action_type: "notify" });
+    armWatch(w, {
+      id: "w_once",
+      condition_type: "deadline",
+      deadline_at: 500,
+      action_type: "notify",
+    });
     await sweepWatches(w.env, 1_000);
     await sweepWatches(w.env, 2_000);
     // Exactly one proposal, ever.
@@ -198,7 +224,12 @@ describe("sweepWatches — safety posture", () => {
 
   it("expires an unknown condition rather than firing it — the safe default", async () => {
     const w = world();
-    armWatch(w, { id: "w_future_kind", condition_type: "shipment-late", deadline_at: 500, action_type: "notify" });
+    armWatch(w, {
+      id: "w_future_kind",
+      condition_type: "shipment-late",
+      deadline_at: 500,
+      action_type: "notify",
+    });
     await sweepWatches(w.env, 1_000);
     expect(watchRow(w, "w_future_kind").status).toBe("expired");
     expect(w.db.query(`SELECT id FROM agent_proposals`)).toEqual([]);
@@ -212,7 +243,12 @@ describe("sweepWatches — safety posture", () => {
 
   it("the proposal reaches the changelog, so push sees a fired watch", async () => {
     const w = world();
-    armWatch(w, { id: "w_changes", condition_type: "deadline", deadline_at: 500, action_type: "notify" });
+    armWatch(w, {
+      id: "w_changes",
+      condition_type: "deadline",
+      deadline_at: 500,
+      action_type: "notify",
+    });
     await sweepWatches(w.env, 1_000);
     const pid = watchRow(w, "w_changes").proposal_id!;
     const changes = await w.accountDo.changes(ACCOUNT, "ActionProposal", "0");

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { VOCAB_CAP, bayesClassify, type BoundaryMessage, type SieveRule } from "@bullmoose/boundary";
+import {
+  VOCAB_CAP,
+  bayesClassify,
+  type BoundaryMessage,
+  type SieveRule,
+} from "@bullmoose/boundary";
 import { fakeD1 } from "@bullmoose/test-fakes";
 import {
   BAYES_STATE_MAX_BYTES,
@@ -23,7 +28,11 @@ import {
 const ACCOUNT = "t_bm__a_bstore";
 
 const RULES: SieveRule[] = [
-  { id: "no-winners", all: [{ kind: "contains", field: "subject", value: "winner" }], action: "reject" },
+  {
+    id: "no-winners",
+    all: [{ kind: "contains", field: "subject", value: "winner" }],
+    action: "reject",
+  },
   { id: "allow-hr", all: [{ kind: "glob", field: "from", value: "*@hr.example" }], action: "pass" },
 ];
 
@@ -57,19 +66,36 @@ describe("sieve rules — round-trip and refusal", () => {
       ["not an array", { id: "x" }],
       ["missing id", [{ all: [], action: "reject" }]],
       ["empty id", [{ id: "", all: [], action: "reject" }]],
-      ["duplicate ids", [{ id: "a", all: [], action: "pass" }, { id: "a", all: [], action: "pass" }]],
+      [
+        "duplicate ids",
+        [
+          { id: "a", all: [], action: "pass" },
+          { id: "a", all: [], action: "pass" },
+        ],
+      ],
       ["bad action", [{ id: "a", all: [], action: "discard" }]],
       ["all not an array", [{ id: "a", all: "everything", action: "reject" }]],
-      ["unknown matcher kind", [{ id: "a", all: [{ kind: "regex", field: "subject", value: ".*" }], action: "reject" }]],
-      ["unknown field", [{ id: "a", all: [{ kind: "contains", field: "body", value: "x" }], action: "reject" }]],
-      ["non-string value", [{ id: "a", all: [{ kind: "contains", field: "subject", value: 7 }], action: "reject" }]],
-      ["empty header name", [{ id: "a", all: [{ kind: "headerPresent", name: "" }], action: "reject" }]],
+      [
+        "unknown matcher kind",
+        [{ id: "a", all: [{ kind: "regex", field: "subject", value: ".*" }], action: "reject" }],
+      ],
+      [
+        "unknown field",
+        [{ id: "a", all: [{ kind: "contains", field: "body", value: "x" }], action: "reject" }],
+      ],
+      [
+        "non-string value",
+        [{ id: "a", all: [{ kind: "contains", field: "subject", value: 7 }], action: "reject" }],
+      ],
+      [
+        "empty header name",
+        [{ id: "a", all: [{ kind: "headerPresent", name: "" }], action: "reject" }],
+      ],
     ];
     for (const [label, rules] of garbage) {
-      await expect(
-        putSieveRules(db, ACCOUNT, rules as SieveRule[]),
-        label,
-      ).rejects.toThrow(SieveRulesInvalid);
+      await expect(putSieveRules(db, ACCOUNT, rules as SieveRule[]), label).rejects.toThrow(
+        SieveRulesInvalid,
+      );
     }
     expect(await listSieveRules(db, ACCOUNT)).toEqual(RULES); // untouched
   });
@@ -89,7 +115,11 @@ describe("sieve rules — round-trip and refusal", () => {
   it("a stored row that parses but is not a ruleset also reads as no rules", async () => {
     const db = fakeD1();
     db.seed("sieve_rules", [
-      { account_id: ACCOUNT, rules_json: JSON.stringify([{ id: "a", all: [], action: "discard" }]), updated_at: 1 },
+      {
+        account_id: ACCOUNT,
+        rules_json: JSON.stringify([{ id: "a", all: [], action: "discard" }]),
+        updated_at: 1,
+      },
     ]);
     expect(await listSieveRules(db, ACCOUNT)).toEqual([]);
   });
@@ -105,7 +135,11 @@ describe("bayes state — load/save honesty", () => {
 
     db.sqlite.exec("DELETE FROM bayes_state");
     db.seed("bayes_state", [
-      { account_id: ACCOUNT, state_json: JSON.stringify({ spamCount: "many", hamCount: 0, tokens: {} }), updated_at: 1 },
+      {
+        account_id: ACCOUNT,
+        state_json: JSON.stringify({ spamCount: "many", hamCount: 0, tokens: {} }),
+        updated_at: 1,
+      },
     ]);
     expect(await loadBayesState(db, ACCOUNT)).toBeNull(); // wrong shape
 

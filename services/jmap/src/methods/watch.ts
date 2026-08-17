@@ -135,21 +135,33 @@ export function registerWatchMethods(registry: MethodRegistry<RequestContext>): 
       const actionType = String(spec.actionType ?? "");
       const deadlineAt = Number(spec.deadlineAt);
       if (!CONDITION_TYPES.has(conditionType)) {
-        notCreated[cid] = { type: "invalidProperties", description: `unknown conditionType "${conditionType}"` };
+        notCreated[cid] = {
+          type: "invalidProperties",
+          description: `unknown conditionType "${conditionType}"`,
+        };
         continue;
       }
       if (!ACTION_TYPES.has(actionType)) {
-        notCreated[cid] = { type: "invalidProperties", description: `unknown actionType "${actionType}"` };
+        notCreated[cid] = {
+          type: "invalidProperties",
+          description: `unknown actionType "${actionType}"`,
+        };
         continue;
       }
       if (!Number.isFinite(deadlineAt) || deadlineAt <= 0) {
-        notCreated[cid] = { type: "invalidProperties", description: "deadlineAt (epoch ms) is required" };
+        notCreated[cid] = {
+          type: "invalidProperties",
+          description: "deadlineAt (epoch ms) is required",
+        };
         continue;
       }
       // A no-reply watch is meaningless without someone to wait on.
       const condition = (spec.condition as Record<string, unknown>) ?? {};
       if (conditionType === "no-reply-from" && typeof condition.sender !== "string") {
-        notCreated[cid] = { type: "invalidProperties", description: "no-reply-from needs condition.sender" };
+        notCreated[cid] = {
+          type: "invalidProperties",
+          description: "no-reply-from needs condition.sender",
+        };
         continue;
       }
       const id = `w_${crypto.randomUUID()}`;
@@ -182,7 +194,8 @@ export function registerWatchMethods(registry: MethodRegistry<RequestContext>): 
       if (patch.status !== "cancelled") {
         notUpdated[id] = {
           type: "invalidProperties",
-          description: 'the only update a client may make is status: "cancelled" — firing is the cron\'s job',
+          description:
+            'the only update a client may make is status: "cancelled" — firing is the cron\'s job',
         };
         continue;
       }
@@ -195,7 +208,10 @@ export function registerWatchMethods(registry: MethodRegistry<RequestContext>): 
         .bind(access.accountId, id)
         .run();
       if ((res.meta?.changes ?? 0) === 0) {
-        notUpdated[id] = { type: "invalidProperties", description: "no armed watch with that id (already fired, cancelled or unknown)" };
+        notUpdated[id] = {
+          type: "invalidProperties",
+          description: "no armed watch with that id (already fired, cancelled or unknown)",
+        };
         continue;
       }
       updated[id] = null;

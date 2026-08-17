@@ -169,7 +169,10 @@ describe("summarizeProposal — one line per row, grant-request included", () =>
   });
 
   it("headlines a create-contact by the card's name", () => {
-    const p = base({ kind: "create-contact", payload: { card: { name: { full: "Dana Calloway" } } } });
+    const p = base({
+      kind: "create-contact",
+      payload: { card: { name: { full: "Dana Calloway" } } },
+    });
     expect(summarizeProposal(p)).toBe("Add contact Dana Calloway");
   });
 

@@ -18,7 +18,7 @@ leaves them and says so in the delete response, but:
 
 - **nobody owns the teardown.** There is no unit, no route, and no job that removes a deleted
   account's data-plane rows or blobs.
-- soft delete was chosen *specifically because* the data is unreachable from here — dropping
+- soft delete was chosen _specifically because_ the data is unreachable from here — dropping
   the `accounts` row would strand the data unattributable, which is worse. So the soft delete
   is correct **and** it is the thing that guarantees the data lingers.
 
@@ -51,6 +51,7 @@ the whole architecture is organized around. It should be sequenced with `s03.A` 
 introduces `deleted_at`/tombstone thinking) rather than bolted onto `008`.
 
 ## Related
+
 - sVOL `008` — shipped the control-plane half; its open question #4 is this.
 - `common/024` — address reuse after delete; the adopt-or-409 path that makes shard-namespace
   overlap reachable.

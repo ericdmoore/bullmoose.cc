@@ -275,7 +275,16 @@ describe("widen → send → narrow is fully reconstructable", () => {
     expect(s.w.submit.calls).toHaveLength(1);
 
     // Re-widen: allowed once more.
-    await s.store.insertContactCard(ACCOUNT, { ...bob, id: "cc_bob2", uid: "u_bob2", card: { uid: "u_bob2", emails: { e: { address: "bob@good.com" } } } }, HUMAN);
+    await s.store.insertContactCard(
+      ACCOUNT,
+      {
+        ...bob,
+        id: "cc_bob2",
+        uid: "u_bob2",
+        card: { uid: "u_bob2", emails: { e: { address: "bob@good.com" } } },
+      },
+      HUMAN,
+    );
     expect((await s.invoke()).note).not.toMatch(/outbound bound/);
     expect(s.w.submit.calls).toHaveLength(2);
 

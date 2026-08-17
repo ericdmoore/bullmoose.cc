@@ -157,7 +157,9 @@ async function agenda(client: JmapClient, accountId: string, opts: CalendarOpts)
         : `${start.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}–${new Date(
             String(o.utcEnd),
           ).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
-    out(`  ${time.padEnd(16)} ${String(o.title ?? "(untitled)")}  ${String(o.eventId ?? o.id ?? "")}`);
+    out(
+      `  ${time.padEnd(16)} ${String(o.title ?? "(untitled)")}  ${String(o.eventId ?? o.id ?? "")}`,
+    );
   }
 }
 
@@ -278,9 +280,7 @@ async function eventCreate(
   applyEventFlags(event, opts); // flags win over the body
 
   if (typeof event.start !== "string" || !parseLdt(event.start)) {
-    usage(
-      "calendar event create needs a start: --start 2026-07-08T09:00:00, or a JSON/iCal body",
-    );
+    usage("calendar event create needs a start: --start 2026-07-08T09:00:00, or a JSON/iCal body");
   }
 
   // Target calendar: --calendar names it; otherwise the server's default.
@@ -336,7 +336,10 @@ async function eventEdit(
   const input = readInput(undefined, { as: opts.as });
   if (input) {
     if (input.type !== "json") {
-      fail(`edit takes a JSON patch on stdin (got ${input.type}); use flags for iCal-shaped edits`, EXIT.USAGE);
+      fail(
+        `edit takes a JSON patch on stdin (got ${input.type}); use flags for iCal-shaped edits`,
+        EXIT.USAGE,
+      );
     }
     Object.assign(patch, parseJsonEvent(input.text, input.from));
   }
@@ -345,7 +348,9 @@ async function eventEdit(
   delete patch.uid; // immutable server-side; sending it only earns a rejection
 
   if (Object.keys(patch).length === 0) {
-    usage("calendar event edit needs something to change: --title, --start, --rrule, … or a JSON patch");
+    usage(
+      "calendar event edit needs something to change: --title, --start, --rrule, … or a JSON patch",
+    );
   }
 
   if (dryRun(opts, "edit", `event ${id}: ${Object.keys(patch).join(", ")}`)) return;
@@ -572,12 +577,17 @@ const fmtLdt = (d: Ldt) =>
 const stampLocal = (d: Ldt) =>
   `${String(d.year).padStart(4, "0")}${p2(d.month)}${p2(d.day)}T${p2(d.hour)}${p2(d.minute)}${p2(d.second)}`;
 const stampDate = (d: Ldt) => `${String(d.year).padStart(4, "0")}${p2(d.month)}${p2(d.day)}`;
-const stampUtc = (ms: number) => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+const stampUtc = (ms: number) =>
+  new Date(ms)
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
 
 /** ISO-8601 duration → ms (dates approximate: D=24h). Mirrors calendar-core. */
 export function parseDurationMs(raw: unknown): number {
   if (typeof raw !== "string") return 0;
-  const m = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(raw);
+  const m =
+    /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/.exec(raw);
   if (!m) return 0;
   const [, sign, w, d, h, min, s] = m;
   const ms =
@@ -625,8 +635,24 @@ function fold(line: string): string {
 
 // ---- RRULE strings -------------------------------------------------------
 
-const DAY_UP: Record<string, string> = { mo: "MO", tu: "TU", we: "WE", th: "TH", fr: "FR", sa: "SA", su: "SU" };
-const DAY_DOWN: Record<string, string> = { MO: "mo", TU: "tu", WE: "we", TH: "th", FR: "fr", SA: "sa", SU: "su" };
+const DAY_UP: Record<string, string> = {
+  mo: "MO",
+  tu: "TU",
+  we: "WE",
+  th: "TH",
+  fr: "FR",
+  sa: "SA",
+  su: "SU",
+};
+const DAY_DOWN: Record<string, string> = {
+  MO: "mo",
+  TU: "tu",
+  WE: "we",
+  TH: "th",
+  FR: "fr",
+  SA: "sa",
+  SU: "su",
+};
 
 interface RuleObj {
   frequency?: string;
@@ -692,7 +718,10 @@ export function parseRruleString(body: string): RuleObj {
         rule.byDay = v.split(",").map((tok) => {
           const m = /^(-?\d+)?(MO|TU|WE|TH|FR|SA|SU)$/i.exec(tok.trim());
           if (!m) return { day: tok.trim().toLowerCase() }; // invalid → caught by guard
-          return { day: DAY_DOWN[m[2]!.toUpperCase()]!, ...(m[1] ? { nthOfPeriod: Number(m[1]) } : {}) };
+          return {
+            day: DAY_DOWN[m[2]!.toUpperCase()]!,
+            ...(m[1] ? { nthOfPeriod: Number(m[1]) } : {}),
+          };
         });
         break;
       case "BYMONTHDAY":
@@ -733,7 +762,15 @@ export function rruleReason(rule: RuleObj): string | null {
   }
   if (rule.unknownPart) return `unknown RRULE part ${rule.unknownPart}`;
   const ok = SUPPORTED_PARTS[freq]!;
-  for (const part of ["interval", "count", "until", "byDay", "byMonthDay", "byMonth", "bySetPosition"] as const) {
+  for (const part of [
+    "interval",
+    "count",
+    "until",
+    "byDay",
+    "byMonthDay",
+    "byMonth",
+    "bySetPosition",
+  ] as const) {
     if (!present((rule as Record<string, unknown>)[part])) continue;
     if (!ok.has(part)) {
       return `${PART_LABEL[part]} is discarded by the FREQ=${freq.toUpperCase()} expander branch`;
@@ -752,7 +789,8 @@ export function rruleReason(rule: RuleObj): string | null {
   return null;
 }
 
-const present = (v: unknown) => v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);
+const present = (v: unknown) =>
+  v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);
 
 /**
  * Parse + guard an `--rrule` value, or abort with exit 2 naming the part. The
@@ -776,11 +814,15 @@ function ruleToRrule(rule: RuleObj): string {
     if (d) parts.push(`UNTIL=${stampLocal(d)}`);
   }
   if (rule.byDay && rule.byDay.length > 0) {
-    parts.push(`BYDAY=${rule.byDay.map((b) => `${b.nthOfPeriod ?? ""}${DAY_UP[b.day] ?? "MO"}`).join(",")}`);
+    parts.push(
+      `BYDAY=${rule.byDay.map((b) => `${b.nthOfPeriod ?? ""}${DAY_UP[b.day] ?? "MO"}`).join(",")}`,
+    );
   }
-  if (rule.byMonthDay && rule.byMonthDay.length > 0) parts.push(`BYMONTHDAY=${rule.byMonthDay.join(",")}`);
+  if (rule.byMonthDay && rule.byMonthDay.length > 0)
+    parts.push(`BYMONTHDAY=${rule.byMonthDay.join(",")}`);
   if (rule.byMonth && rule.byMonth.length > 0) parts.push(`BYMONTH=${rule.byMonth.join(",")}`);
-  if (rule.bySetPosition && rule.bySetPosition.length > 0) parts.push(`BYSETPOS=${rule.bySetPosition.join(",")}`);
+  if (rule.bySetPosition && rule.bySetPosition.length > 0)
+    parts.push(`BYSETPOS=${rule.bySetPosition.join(",")}`);
   if (rule.firstDayOfWeek) parts.push(`WKST=${DAY_UP[rule.firstDayOfWeek] ?? "MO"}`);
   return parts.join(";");
 }
@@ -800,9 +842,14 @@ export function serializeEventIcal(event: JsEvent): string {
   const uid = String(event.uid ?? `urn:uuid:${randomUUID()}`);
   const durationMs = parseDurationMs(event.duration) || (allDay ? 86_400_000 : 0);
 
-  const ev: string[] = ["BEGIN:VEVENT", fold(`UID:${escIcs(uid)}`), `DTSTAMP:${stampUtc(Date.now())}`];
+  const ev: string[] = [
+    "BEGIN:VEVENT",
+    fold(`UID:${escIcs(uid)}`),
+    `DTSTAMP:${stampUtc(Date.now())}`,
+  ];
   if (typeof event.title === "string") ev.push(fold(`SUMMARY:${escIcs(event.title)}`));
-  if (typeof event.description === "string") ev.push(fold(`DESCRIPTION:${escIcs(event.description)}`));
+  if (typeof event.description === "string")
+    ev.push(fold(`DESCRIPTION:${escIcs(event.description)}`));
   const loc = firstLocation(event);
   if (loc) ev.push(fold(`LOCATION:${escIcs(loc)}`));
 
@@ -811,9 +858,18 @@ export function serializeEventIcal(event: JsEvent): string {
       ev.push(`DTSTART;VALUE=DATE:${stampDate(start)}`);
       const days = Math.max(1, Math.round(durationMs / 86_400_000));
       const end = new Date(Date.UTC(start.year, start.month - 1, start.day + days));
-      ev.push(`DTEND;VALUE=DATE:${end.getUTCFullYear()}${p2(end.getUTCMonth() + 1)}${p2(end.getUTCDate())}`);
+      ev.push(
+        `DTEND;VALUE=DATE:${end.getUTCFullYear()}${p2(end.getUTCMonth() + 1)}${p2(end.getUTCDate())}`,
+      );
     } else if (isUtc) {
-      const ms = Date.UTC(start.year, start.month - 1, start.day, start.hour, start.minute, start.second);
+      const ms = Date.UTC(
+        start.year,
+        start.month - 1,
+        start.day,
+        start.hour,
+        start.minute,
+        start.second,
+      );
       ev.push(`DTSTART:${stampUtc(ms)}`);
       ev.push(`DTEND:${stampUtc(ms + durationMs)}`);
     } else {
@@ -912,7 +968,7 @@ export function parseEventIcal(text: string): ParsedEvent {
     "@type": "Event",
     uid: get("UID") ? unescIcs(get("UID")!.value.trim()) : `urn:uuid:${randomUUID()}`,
     start: fmtLdt(startInfo.local),
-    timeZone: startInfo.allDay ? "Etc/UTC" : startInfo.timeZone ?? "Etc/UTC",
+    timeZone: startInfo.allDay ? "Etc/UTC" : (startInfo.timeZone ?? "Etc/UTC"),
   };
   if (startInfo.allDay) event.showWithoutTime = true;
   if (get("SUMMARY")) event.title = unescIcs(get("SUMMARY")!.value);
@@ -979,7 +1035,14 @@ function parseIcsDt(prop: IcsProp): IcsDt | null {
   }
   const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/.exec(v);
   if (!m) return null;
-  const local = { year: +m[1]!, month: +m[2]!, day: +m[3]!, hour: +m[4]!, minute: +m[5]!, second: +m[6]! };
+  const local = {
+    year: +m[1]!,
+    month: +m[2]!,
+    day: +m[3]!,
+    hour: +m[4]!,
+    minute: +m[5]!,
+    second: +m[6]!,
+  };
   if (m[7] === "Z") return { local, timeZone: "Etc/UTC", allDay: false };
   return { local, timeZone: prop.params.TZID ?? null, allDay: false };
 }

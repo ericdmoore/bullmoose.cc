@@ -30,7 +30,10 @@ const mailboxes = new Map([
   ["mb_sent", { id: "mb_sent", parentId: null, name: "Sent", role: "sent", sortOrder: 1 }],
   ["mb_full", { id: "mb_full", parentId: null, name: "Full", role: null, sortOrder: 2 }],
   ["mb_empty", { id: "mb_empty", parentId: null, name: "Empty", role: null, sortOrder: 3 }],
-  ["mb_archive", { id: "mb_archive", parentId: null, name: "Archive", role: "archive", sortOrder: 4 }],
+  [
+    "mb_archive",
+    { id: "mb_archive", parentId: null, name: "Archive", role: "archive", sortOrder: 4 },
+  ],
   ["mb_junk", { id: "mb_junk", parentId: null, name: "Junk", role: "junk", sortOrder: 5 }],
   ["mb_trash", { id: "mb_trash", parentId: null, name: "Trash", role: "trash", sortOrder: 6 }],
 ]);
@@ -42,7 +45,9 @@ let emailState = "emstate-1";
 /** Calendar CRUD (sVOL 018). getOccurrences stays unimplemented on purpose —
  * the exit-5/§1.5 case above drives `agenda` through it as an unknownMethod. */
 let calState = "calstate-1";
-const calendars = new Map([["cal_default", { id: "cal_default", name: "Personal", isDefault: true }]]);
+const calendars = new Map([
+  ["cal_default", { id: "cal_default", name: "Personal", isDefault: true }],
+]);
 const calEvents = new Map();
 let calSeq = 0;
 const bumpCal = (res) => {
@@ -85,15 +90,33 @@ const addressBooks = [
   { id: "ab_work", name: "Work", isDefault: false, myRights: { mayWrite: true } },
 ];
 const contactCards = [
-  { id: "cc_ada", "@type": "Card", version: "1.0", uid: "urn:uuid:ada",
-    name: { full: "Ada Lovelace" }, emails: { e1: { address: "ada@smoke.test" } },
-    addressBookIds: { ab_personal: true } },
-  { id: "cc_grace", "@type": "Card", version: "1.0", uid: "urn:uuid:grace",
-    name: { full: "Grace Hopper" }, emails: { e1: { address: "grace@smoke.test" } },
-    addressBookIds: { ab_personal: true } },
-  { id: "cc_alan", "@type": "Card", version: "1.0", uid: "urn:uuid:alan",
-    name: { full: "Alan Turing" }, emails: { e1: { address: "alan@smoke.test" } },
-    addressBookIds: { ab_work: true } },
+  {
+    id: "cc_ada",
+    "@type": "Card",
+    version: "1.0",
+    uid: "urn:uuid:ada",
+    name: { full: "Ada Lovelace" },
+    emails: { e1: { address: "ada@smoke.test" } },
+    addressBookIds: { ab_personal: true },
+  },
+  {
+    id: "cc_grace",
+    "@type": "Card",
+    version: "1.0",
+    uid: "urn:uuid:grace",
+    name: { full: "Grace Hopper" },
+    emails: { e1: { address: "grace@smoke.test" } },
+    addressBookIds: { ab_personal: true },
+  },
+  {
+    id: "cc_alan",
+    "@type": "Card",
+    version: "1.0",
+    uid: "urn:uuid:alan",
+    name: { full: "Alan Turing" },
+    emails: { e1: { address: "alan@smoke.test" } },
+    addressBookIds: { ab_work: true },
+  },
 ];
 
 const err = (type, description) => ["error", description ? { type, description } : { type }, "c0"];
@@ -306,9 +329,7 @@ function invoke([name, args, callId]) {
 
     case "ContactCard/query": {
       const bookId = args.filter?.inAddressBook;
-      const matched = bookId
-        ? contactCards.filter((c) => c.addressBookIds[bookId])
-        : contactCards;
+      const matched = bookId ? contactCards.filter((c) => c.addressBookIds[bookId]) : contactCards;
       const position = args.position ?? 0;
       const limit = args.limit ?? 256;
       return reply({
@@ -333,12 +354,28 @@ function invoke([name, args, callId]) {
     case "Calendar/get": {
       const ids = args.ids == null ? null : args.ids;
       const list = [...calendars.values()].filter((c) => !ids || ids.includes(c.id));
-      return reply({ accountId: ACCOUNT, state: calState, list, notFound: (ids ?? []).filter((id) => !calendars.has(id)) });
+      return reply({
+        accountId: ACCOUNT,
+        state: calState,
+        list,
+        notFound: (ids ?? []).filter((id) => !calendars.has(id)),
+      });
     }
 
     case "Calendar/set": {
-      if (typeof args.ifInState === "string" && args.ifInState !== calState) return err("stateMismatch");
-      const res = { accountId: ACCOUNT, oldState: calState, newState: calState, created: {}, updated: {}, destroyed: [], notCreated: {}, notUpdated: {}, notDestroyed: {} };
+      if (typeof args.ifInState === "string" && args.ifInState !== calState)
+        return err("stateMismatch");
+      const res = {
+        accountId: ACCOUNT,
+        oldState: calState,
+        newState: calState,
+        created: {},
+        updated: {},
+        destroyed: [],
+        notCreated: {},
+        notUpdated: {},
+        notDestroyed: {},
+      };
       let mutated = false;
       for (const [cid, spec] of Object.entries(args.create ?? {})) {
         const id = `cal_new_${++calSeq}`;
@@ -348,13 +385,19 @@ function invoke([name, args, callId]) {
       }
       for (const [id, patch] of Object.entries(args.update ?? {})) {
         const c = calendars.get(id);
-        if (!c) { res.notUpdated[id] = { type: "notFound" }; continue; }
+        if (!c) {
+          res.notUpdated[id] = { type: "notFound" };
+          continue;
+        }
         Object.assign(c, patch);
         res.updated[id] = null;
         mutated = true;
       }
       for (const id of args.destroy ?? []) {
-        if (!calendars.has(id)) { res.notDestroyed[id] = { type: "notFound" }; continue; }
+        if (!calendars.has(id)) {
+          res.notDestroyed[id] = { type: "notFound" };
+          continue;
+        }
         const hasEvents = [...calEvents.values()].some((e) => e.calendarId === id);
         if (hasEvents && args.onDestroyRemoveEvents !== true) {
           res.notDestroyed[id] = { type: "calendarHasEvents", description: "has events" };
@@ -370,14 +413,31 @@ function invoke([name, args, callId]) {
     }
 
     case "CalendarEvent/set": {
-      if (typeof args.ifInState === "string" && args.ifInState !== calState) return err("stateMismatch");
-      const res = { accountId: ACCOUNT, oldState: calState, newState: calState, created: {}, updated: {}, destroyed: [], notCreated: {}, notUpdated: {}, notDestroyed: {} };
+      if (typeof args.ifInState === "string" && args.ifInState !== calState)
+        return err("stateMismatch");
+      const res = {
+        accountId: ACCOUNT,
+        oldState: calState,
+        newState: calState,
+        created: {},
+        updated: {},
+        destroyed: [],
+        notCreated: {},
+        notUpdated: {},
+        notDestroyed: {},
+      };
       let mutated = false;
       const defaultCal = [...calendars.values()].find((c) => c.isDefault)?.id ?? "cal_default";
       for (const [cid, spec] of Object.entries(args.create ?? {})) {
         const { calendarIds, ...event } = spec;
         const calId = calendarIds ? Object.keys(calendarIds)[0] : defaultCal;
-        if (!calendars.has(calId)) { res.notCreated[cid] = { type: "invalidProperties", description: `no such calendar: ${calId}` }; continue; }
+        if (!calendars.has(calId)) {
+          res.notCreated[cid] = {
+            type: "invalidProperties",
+            description: `no such calendar: ${calId}`,
+          };
+          continue;
+        }
         const id = `ev_new_${++calSeq}`;
         const uid = event.uid ?? `urn:uuid:${id}`;
         calEvents.set(id, { id, calendarId: calId, uid, event: { ...event, uid } });
@@ -386,13 +446,19 @@ function invoke([name, args, callId]) {
       }
       for (const [id, patch] of Object.entries(args.update ?? {})) {
         const e = calEvents.get(id);
-        if (!e) { res.notUpdated[id] = { type: "notFound" }; continue; }
+        if (!e) {
+          res.notUpdated[id] = { type: "notFound" };
+          continue;
+        }
         Object.assign(e.event, patch); // top-level PatchObject is all the CLI sends
         res.updated[id] = null;
         mutated = true;
       }
       for (const id of args.destroy ?? []) {
-        if (!calEvents.has(id)) { res.notDestroyed[id] = { type: "notFound" }; continue; }
+        if (!calEvents.has(id)) {
+          res.notDestroyed[id] = { type: "notFound" };
+          continue;
+        }
         calEvents.delete(id);
         res.destroyed.push(id);
         mutated = true;
@@ -405,14 +471,30 @@ function invoke([name, args, callId]) {
       const ids = args.ids == null ? [...calEvents.keys()] : args.ids;
       const list = ids
         .filter((id) => calEvents.has(id))
-        .map((id) => { const e = calEvents.get(id); return { ...e.event, id: e.id, calendarIds: { [e.calendarId]: true } }; });
-      return reply({ accountId: ACCOUNT, state: calState, list, notFound: (args.ids ?? []).filter((id) => !calEvents.has(id)) });
+        .map((id) => {
+          const e = calEvents.get(id);
+          return { ...e.event, id: e.id, calendarIds: { [e.calendarId]: true } };
+        });
+      return reply({
+        accountId: ACCOUNT,
+        state: calState,
+        list,
+        notFound: (args.ids ?? []).filter((id) => !calEvents.has(id)),
+      });
     }
 
     case "CalendarEvent/query": {
       const inCal = args.filter?.inCalendar;
-      const ids = [...calEvents.values()].filter((e) => !inCal || e.calendarId === inCal).map((e) => e.id);
-      return reply({ accountId: ACCOUNT, queryState: calState, canCalculateChanges: false, position: 0, ids });
+      const ids = [...calEvents.values()]
+        .filter((e) => !inCal || e.calendarId === inCal)
+        .map((e) => e.id);
+      return reply({
+        accountId: ACCOUNT,
+        queryState: calState,
+        canCalculateChanges: false,
+        position: 0,
+        ids,
+      });
     }
 
     // Deliberately unimplemented, to exercise the method-error → exit-code path.

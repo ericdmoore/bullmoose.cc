@@ -1,7 +1,7 @@
 {
   "name": "bullmoose-mail",
   "private": true,
-  "description": "Serverless JMAP mail platform \u2014 Cloudflare Workers + Durable Objects + D1 + R2, SES outbound",
+  "description": "Serverless JMAP mail platform — Cloudflare Workers + Durable Objects + D1 + R2, SES outbound",
   "workspaces": [
     "packages/*",
     "services/*",
@@ -15,6 +15,7 @@
     "dev:provision": "npm run dev -w services/provision",
     "dev:submit": "npm run dev -w services/submit",
     "gen:conformance": "UPDATE_CONFORMANCE=1 vitest run conformance",
+    "fmt": "oxfmt",
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -24,6 +25,7 @@
     "@cloudflare/workers-types": "^4.20250620.0",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^3.2.7",
+    "oxfmt": "^0.63.0",
     "oxlint": "^1.78.0",
     "typescript": "^5.5.4",
     "vitest": "^3.2.4",

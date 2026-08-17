@@ -7,11 +7,11 @@ Worker's `/demo/verify` to check phrases.
 
 ## Endpoints
 
-| Method | Path | Who | Purpose |
-|---|---|---|---|
-| GET | `/demo` | public | Turnstile-gated page; click to mint a phrase, copy it, open a prefilled email |
-| POST | `/demo/request` | public | mint a phrase (Turnstile + per-IP daily cap; **fails closed** if `TURNSTILE_SECRET` unset) |
-| POST | `/demo/verify` | the bridge | validate + record use (`INTERNAL_TOKEN` bearer) |
+| Method | Path            | Who        | Purpose                                                                                    |
+| ------ | --------------- | ---------- | ------------------------------------------------------------------------------------------ |
+| GET    | `/demo`         | public     | Turnstile-gated page; click to mint a phrase, copy it, open a prefilled email              |
+| POST   | `/demo/request` | public     | mint a phrase (Turnstile + per-IP daily cap; **fails closed** if `TURNSTILE_SECRET` unset) |
+| POST   | `/demo/verify`  | the bridge | validate + record use (`INTERNAL_TOKEN` bearer)                                            |
 
 The bridge holds **only** the `/demo/verify` bearer token — it cannot mint phrases or
 read the namespace.
@@ -20,7 +20,7 @@ read the namespace.
 
 Generated, not enumerated: 4 words from a 4096-word list (`words.ts`) = 2^48. The list
 is public; security is the size of the space. Multi-use (so quoted replies keep a thread
-alive), 30-day expiry (enforced logically *and* pinned as the KV record's collection
+alive), 30-day expiry (enforced logically _and_ pinned as the KV record's collection
 time), auto-revoked if seen from more than 3 sender addresses — leak detection instead of
 one-time-use. A leaked key dies when it spreads, not when it's used.
 
@@ -30,9 +30,11 @@ All from the repo root. Needs `wrangler` auth to the Cloudflare account and one 
 widget created in the dashboard.
 
 1. **KV namespace**
+
    ```
    wrangler kv namespace create DEMO_KEYS
    ```
+
    Put the returned id into `wrangler.jsonc` → `kv_namespaces[0].id`.
 
 2. **Turnstile widget** (Cloudflare dash → Turnstile → Add widget, hostname `bullmoose.cc`)
@@ -44,6 +46,7 @@ widget created in the dashboard.
 
 3. **Internal token** — shared secret the box uses to call `/demo/verify`. Generate one,
    set it here, and keep the SAME value for the box's `.verify_token` (step 5):
+
    ```
    openssl rand -hex 32        # copy this
    wrangler secret put INTERNAL_TOKEN -c services/demo-keys/wrangler.jsonc
@@ -86,6 +89,7 @@ cd services/demo-keys
 printf 'INTERNAL_TOKEN=dev\nTURNSTILE_SECRET=1x0000000000000000000000000000000AA\nTURNSTILE_SITEKEY=1x00000000000000000000AA\n' > .dev.vars
 npx wrangler dev
 ```
+
 `1x…` are Cloudflare's always-passes Turnstile test keys (`2x…` always fails). `.dev.vars`
 is gitignored. Miniflare persists KV under `.wrangler/` — delete it to reset the per-IP
 mint cap between test runs.
@@ -93,7 +97,7 @@ mint cap between test runs.
 ## Known limitations (acceptable for a demo)
 
 - **KV is eventually consistent** (~60s global) with no compare-and-swap. Concurrent
-  verifies of the *same* phrase can lose an update, so leak detection and the `uses`
+  verifies of the _same_ phrase can lose an update, so leak detection and the `uses`
   counter are best-effort. In practice verify is driven by serialized inbound mail, so
   same-phrase concurrency is near zero. Not worth a Durable Object for a demo.
 - A freshly minted phrase may need a few seconds to be verifiable at a different edge

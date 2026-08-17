@@ -326,7 +326,11 @@ async function runPkceFlow(flow: PkceFlow): Promise<string> {
       note(`listening on ${redirectUri} — opening browser…`);
       note(`if it doesn't open: ${authUrl.toString()}`);
       const opener =
-        process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+        process.platform === "darwin"
+          ? "open"
+          : process.platform === "win32"
+            ? "start"
+            : "xdg-open";
       spawn(opener, [authUrl.toString()], { stdio: "ignore", detached: true }).unref();
     });
     setTimeout(() => {

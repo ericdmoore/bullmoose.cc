@@ -33,7 +33,7 @@ through it.
 ### The narrower guard, if you want defence in depth
 
 Change `:387` from `INSERT OR REPLACE INTO routes` to `INSERT INTO routes` and let the PK
-conflict throw. That single-word change removes the *silent* part even if the pre-check is
+conflict throw. That single-word change removes the _silent_ part even if the pre-check is
 skipped or races — a 500 is vastly better than vanished mail. Worth doing regardless of the
 route-check above, because it converts the failure mode from silent to loud at zero cost.
 
@@ -55,4 +55,4 @@ conflict will not fire.
   (`.plans/sVOL-CapSurNoun/008`).
 - No test infrastructure covers `services/provision`. The cheapest proving assertion is a
   two-call integration test: create the same address twice, assert the second returns 409 (or
-  200 with the *same* account id) and that `SELECT target FROM routes` is unchanged.
+  200 with the _same_ account id) and that `SELECT target FROM routes` is unchanged.

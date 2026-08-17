@@ -26,5 +26,5 @@ export default function Example() {
         </form>
       </div>
     </div>
-  )
+  );
 }

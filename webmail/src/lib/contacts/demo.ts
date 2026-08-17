@@ -291,7 +291,10 @@ export function installContactsDemo(
       // The whole method, refused — not per object. A sharee manages cards,
       // never books (contacts.ts:117-122).
       if (!mayManageBooks) {
-        return ["error", { type: "forbidden", description: "only the account owner manages address books" }];
+        return [
+          "error",
+          { type: "forbidden", description: "only the account owner manages address books" },
+        ];
       }
       if (guardState(args)) return ["error", { type: "stateMismatch" }];
 
@@ -387,7 +390,9 @@ export function installContactsDemo(
     "ContactCard/query": (args) => {
       const filter = (args.filter as DemoFilter | null) ?? null;
       const matched = visibleCards().filter((c) => matches(c, filter));
-      matched.sort(sorter(args.sort as Array<{ property: string; isAscending: boolean }> | undefined));
+      matched.sort(
+        sorter(args.sort as Array<{ property: string; isAscending: boolean }> | undefined),
+      );
       const position = Math.max(0, typeof args.position === "number" ? args.position : 0);
       const limit = Math.min(Math.max(1, typeof args.limit === "number" ? args.limit : 100), 256);
       return {
@@ -419,7 +424,11 @@ export function installContactsDemo(
         (args.create as Record<string, Record<string, unknown>>) ?? {},
       )) {
         if (spec.id !== undefined) {
-          notCreated[cid] = { type: "invalidProperties", description: "id is server-set", properties: ["id"] };
+          notCreated[cid] = {
+            type: "invalidProperties",
+            description: "id is server-set",
+            properties: ["id"],
+          };
           continue;
         }
         const { addressBookIds, ...rest } = spec;
@@ -454,7 +463,10 @@ export function installContactsDemo(
           bookId = truthy[0];
         }
         if (!canSee(bookId) || !visibleBooks().find((b) => b.id === bookId)?.myRights.mayWrite) {
-          notCreated[cid] = { type: "forbidden", description: "no write grant on this address book" };
+          notCreated[cid] = {
+            type: "forbidden",
+            description: "no write grant on this address book",
+          };
           continue;
         }
         const now = new Date().toISOString();
@@ -576,7 +588,9 @@ interface DemoFilterCondition {
   phone?: string;
   note?: string;
 }
-type DemoFilter = DemoFilterCondition | { operator: "AND" | "OR" | "NOT"; conditions: DemoFilter[] };
+type DemoFilter =
+  | DemoFilterCondition
+  | { operator: "AND" | "OR" | "NOT"; conditions: DemoFilter[] };
 
 /** Mirrors `buildContactFilter` (mailstore:1762-1843). */
 function matches(card: ContactCard, filter: DemoFilter | null): boolean {
@@ -630,8 +644,10 @@ function sorter(sort: Array<{ property: string; isAscending: boolean }> | undefi
       const dir = s.isAscending ? 1 : -1;
       let cmp = 0;
       if (s.property === "name") cmp = displayName(a).localeCompare(displayName(b));
-      else if (s.property === "created") cmp = Date.parse(a.created ?? "") - Date.parse(b.created ?? "");
-      else if (s.property === "updated") cmp = Date.parse(a.updated ?? "") - Date.parse(b.updated ?? "");
+      else if (s.property === "created")
+        cmp = Date.parse(a.created ?? "") - Date.parse(b.created ?? "");
+      else if (s.property === "updated")
+        cmp = Date.parse(a.updated ?? "") - Date.parse(b.updated ?? "");
       if (cmp !== 0) return cmp * dir;
     }
     return a.id.localeCompare(b.id);

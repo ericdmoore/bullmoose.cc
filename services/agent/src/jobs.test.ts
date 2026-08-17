@@ -207,7 +207,12 @@ describe("a planner's output becomes claimable sibling tasks, and a join synthes
     tasks: [
       echo("a", "alpha"),
       echo("b", "beta"),
-      { key: "join", budgetMicros: 100_000, needs: ["a", "b"], context: { kind: "job-node", op: "join" } },
+      {
+        key: "join",
+        budgetMicros: 100_000,
+        needs: ["a", "b"],
+        context: { kind: "job-node", op: "join" },
+      },
     ],
   };
 
@@ -237,7 +242,11 @@ describe("a planner's output becomes claimable sibling tasks, and a join synthes
     expect(JSON.parse(join.needs_json!)).toEqual([a.id, b.id]);
     // Every child hangs off the planner (context + attenuation chain), while
     // `needs` — a DIFFERENT relation — orders execution among siblings.
-    expect([a.parent_id, b.parent_id, join.parent_id]).toEqual([s.root().id, s.root().id, s.root().id]);
+    expect([a.parent_id, b.parent_id, join.parent_id]).toEqual([
+      s.root().id,
+      s.root().id,
+      s.root().id,
+    ]);
     expect([a.depth, b.depth, join.depth]).toEqual([1, 1, 1]);
 
     await s.drain(); // the two unblocked siblings, in one pass
@@ -285,7 +294,9 @@ describe("the caps stop a runaway planner, and nothing is created", () => {
     const s = await scaffold();
     // Ten tasks × 200_000µ$ = $2.00 against a $1.00 Job budget. Each one is a
     // legal delegation on its own (200_000 ≤ the root's 500_000).
-    const plan = { tasks: Array.from({ length: 10 }, (_, i) => echo(`t${i}`, "x", { budgetMicros: 200_000 })) };
+    const plan = {
+      tasks: Array.from({ length: 10 }, (_, i) => echo(`t${i}`, "x", { budgetMicros: 200_000 })),
+    };
     const started = await startPlannerJob(s.env, plan, { maxNodes: 16 });
     if (!started.ok) throw new Error("job did not start");
     await s.drain();
@@ -314,7 +325,11 @@ describe("the caps stop a runaway planner, and nothing is created", () => {
     const nested = { tasks: [echo("leaf", "too deep")] };
     const plan = {
       tasks: [
-        { key: "sub", budgetMicros: 100_000, context: { kind: "job-node", op: "plan", plan: nested } },
+        {
+          key: "sub",
+          budgetMicros: 100_000,
+          context: { kind: "job-node", op: "plan", plan: nested },
+        },
       ],
     };
     const started = await startPlannerJob(s.env, plan, { maxDepth: 1 });
@@ -372,7 +387,10 @@ describe("ATTENUATION, enforced by the harness at every depth", () => {
   it("a task asking for a tool its planner does not hold refuses the whole plan", async () => {
     const s = await scaffold();
     const plan = {
-      tasks: [echo("honest", "fine", { tools: ["files.read"] }), echo("greedy", "nope", { tools: ["email.send"] })],
+      tasks: [
+        echo("honest", "fine", { tools: ["files.read"] }),
+        echo("greedy", "nope", { tools: ["email.send"] }),
+      ],
     };
     await startPlannerJob(s.env, plan);
     await s.drain();
@@ -383,12 +401,17 @@ describe("ATTENUATION, enforced by the harness at every depth", () => {
 
   it("a child's stored envelope is a SUBSET of its parent's, and the row proves it", async () => {
     const s = await scaffold();
-    const plan = { tasks: [echo("a", "alpha", { tools: ["files.read"], credentials: [], budgetMicros: 50_000 })] };
+    const plan = {
+      tasks: [echo("a", "alpha", { tools: ["files.read"], credentials: [], budgetMicros: 50_000 })],
+    };
     await startPlannerJob(s.env, plan);
     await s.drain();
     const child = JSON.parse(s.byKey("a")!.authority_json!) as Record<string, unknown>;
     expect(child).toEqual({ tools: ["files.read"], credentials: [], budgetMicros: 50_000 });
-    const rootAuthority = JSON.parse(s.root().authority_json!) as { tools: string[]; budgetMicros: number };
+    const rootAuthority = JSON.parse(s.root().authority_json!) as {
+      tools: string[];
+      budgetMicros: number;
+    };
     expect(rootAuthority.tools).toEqual(["files.read"]);
     expect(rootAuthority.budgetMicros).toBe(500_000);
   });
@@ -397,7 +420,9 @@ describe("ATTENUATION, enforced by the harness at every depth", () => {
     const s = await scaffold();
     // The depth-1 planner drops `files.read` and keeps no credentials; its own
     // child then asks for both back.
-    const nested = { tasks: [echo("grand", "x", { tools: ["files.read"], credentials: ["aws-mcp"] })] };
+    const nested = {
+      tasks: [echo("grand", "x", { tools: ["files.read"], credentials: ["aws-mcp"] })],
+    };
     const plan = {
       tasks: [
         {
@@ -433,7 +458,13 @@ describe("ATTENUATION, enforced by the harness at every depth", () => {
   it("a task minting a RESERVED context kind is refused", async () => {
     const s = await scaffold();
     const plan = {
-      tasks: [{ key: "hijack", budgetMicros: 10, context: { kind: "answer-info-request", proposalId: "p_x" } }],
+      tasks: [
+        {
+          key: "hijack",
+          budgetMicros: 10,
+          context: { kind: "answer-info-request", proposalId: "p_x" },
+        },
+      ],
     };
     await startPlannerJob(s.env, plan);
     await s.drain();
@@ -448,9 +479,18 @@ describe("composition: failure, and questions", () => {
     const s = await scaffold();
     const plan = {
       tasks: [
-        { key: "boom", budgetMicros: 100_000, context: { kind: "job-node", op: "fail", note: "provider down" } },
+        {
+          key: "boom",
+          budgetMicros: 100_000,
+          context: { kind: "job-node", op: "fail", note: "provider down" },
+        },
         echo("sibling", "unaffected"),
-        { key: "after", budgetMicros: 100_000, needs: ["boom"], context: { kind: "job-node", op: "echo", text: "never" } },
+        {
+          key: "after",
+          budgetMicros: 100_000,
+          needs: ["boom"],
+          context: { kind: "job-node", op: "echo", text: "never" },
+        },
       ],
     };
     const started = await startPlannerJob(s.env, plan);
@@ -475,9 +515,19 @@ describe("composition: failure, and questions", () => {
     const plan = {
       tasks: [
         echo("asked", "answered later"),
-        { key: "afterAsked", budgetMicros: 100_000, needs: ["asked"], context: { kind: "job-node", op: "echo", text: "downstream" } },
+        {
+          key: "afterAsked",
+          budgetMicros: 100_000,
+          needs: ["asked"],
+          context: { kind: "job-node", op: "echo", text: "downstream" },
+        },
         echo("other", "independent"),
-        { key: "afterOther", budgetMicros: 100_000, needs: ["other"], context: { kind: "job-node", op: "echo", text: "elsewhere" } },
+        {
+          key: "afterOther",
+          budgetMicros: 100_000,
+          needs: ["other"],
+          context: { kind: "job-node", op: "echo", text: "elsewhere" },
+        },
       ],
     };
     const started = await startPlannerJob(s.env, plan);
@@ -569,7 +619,12 @@ describe("DefaultCase: an ordinary invocation is untouched by any of this", () =
     await s.drain();
     await s.drain();
 
-    const plain = s.w.db.query<{ status: string; job_id: string | null; needs_json: string | null; depth: number | null }>(
+    const plain = s.w.db.query<{
+      status: string;
+      job_id: string | null;
+      needs_json: string | null;
+      depth: number | null;
+    }>(
       `SELECT status, job_id, needs_json, depth FROM agent_invocations WHERE account_id = ? AND id = 'inv_plain'`,
       ACCOUNT,
     )[0]!;
@@ -579,7 +634,9 @@ describe("DefaultCase: an ordinary invocation is untouched by any of this", () =
 
   it("a Job against a DISABLED binding is refused at creation (the 008 interlock)", async () => {
     const s = await scaffold();
-    await s.w.env.DB.prepare(`UPDATE agent_bindings SET enabled = 0 WHERE account_id = ? AND id = 'bind_emily'`)
+    await s.w.env.DB.prepare(
+      `UPDATE agent_bindings SET enabled = 0 WHERE account_id = ? AND id = 'bind_emily'`,
+    )
       .bind(ACCOUNT)
       .run();
     const started = await startPlannerJob(s.env, { tasks: [echo("a", "alpha")] });
@@ -593,7 +650,13 @@ describe("the binding is the top of the chain", () => {
     const s = await scaffold({
       config: JSON.stringify({
         ...JSON.parse(REPLY_CONFIG),
-        jobs: { tools: ["files.read"], credentials: [], budgetMicros: 200_000, maxNodes: 4, maxDepth: 1 },
+        jobs: {
+          tools: ["files.read"],
+          credentials: [],
+          budgetMicros: 200_000,
+          maxNodes: 4,
+          maxDepth: 1,
+        },
       }),
     });
     const started = await startJob(s.env, {
@@ -603,12 +666,18 @@ describe("the binding is the top of the chain", () => {
       maxNodes: 8,
       maxDepth: 3,
       // The caller asks for more than the binding allows on every axis.
-      authority: { tools: ["files.read", "email.send"], credentials: ["aws-mcp"], budgetMicros: 900_000 },
+      authority: {
+        tools: ["files.read", "email.send"],
+        credentials: ["aws-mcp"],
+        budgetMicros: 900_000,
+      },
       rootContext: { kind: "job-node", op: "plan", plan: { tasks: [] } },
     });
     expect(started.ok).toBe(false);
     if (!started.ok) {
-      expect(new Set(started.refusals.map((r) => r.axis))).toEqual(new Set(["tools", "credentials", "budget"]));
+      expect(new Set(started.refusals.map((r) => r.axis))).toEqual(
+        new Set(["tools", "credentials", "budget"]),
+      );
     }
 
     // Within the binding's ceiling, the Job starts — with the caps narrowed to

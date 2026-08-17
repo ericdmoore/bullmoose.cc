@@ -1,8 +1,8 @@
 {
   "name": "webmail",
-  "type": "module",
   "private": true,
   "description": "bullmoose webmail — Astro shell + Preact islands over the injected JmapClient (s03.C)",
+  "type": "module",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",

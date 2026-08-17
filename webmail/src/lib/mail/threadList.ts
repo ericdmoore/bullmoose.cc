@@ -244,14 +244,22 @@ export class ThreadListStore {
   /** Cheap identity of the rendered state — id + keywords, which is what shows. */
   private signature(): string {
     return this.emails
-      .map((e) => `${e.id}:${Object.keys(e.keywords ?? {}).sort().join(",")}`)
+      .map(
+        (e) =>
+          `${e.id}:${Object.keys(e.keywords ?? {})
+            .sort()
+            .join(",")}`,
+      )
       .join("|");
   }
 
   // ── optimistic local edits (keyboard triage repaints before the server) ──
 
   /** Apply a keyword/mailbox change locally so the UI does not wait on a round trip. */
-  patchLocal(emailId: string, patch: { keywords?: Record<string, boolean>; mailboxIds?: Record<string, boolean> }): void {
+  patchLocal(
+    emailId: string,
+    patch: { keywords?: Record<string, boolean>; mailboxIds?: Record<string, boolean> },
+  ): void {
     const idx = this.emails.findIndex((e) => e.id === emailId);
     if (idx < 0) return;
     const email = this.emails[idx] as Email;

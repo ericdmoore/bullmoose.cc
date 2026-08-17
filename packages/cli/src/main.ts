@@ -43,11 +43,22 @@ import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
 import { cmdCalendar } from "./calendar.js";
 import { cmdMailbox } from "./mailbox.js";
-import { appendHtmlSignature, appendTextSignature, cmdIdentity, type JmapIdentity } from "./identity.js";
+import {
+  appendHtmlSignature,
+  appendTextSignature,
+  cmdIdentity,
+  type JmapIdentity,
+} from "./identity.js";
 import { cmdBlobs, cmdShare } from "./blobs.js";
 import { cmdTriage } from "./triage.js";
-import { findCommand, helpJson, renderCommand, renderMan, renderMarkdown, renderOverview } from "./help.js";
-
+import {
+  findCommand,
+  helpJson,
+  renderCommand,
+  renderMan,
+  renderMarkdown,
+  renderOverview,
+} from "./help.js";
 
 // §1.2, and it has to be the FIRST thing that happens: every line below is a
 // write to a pipe that a `| head` may already have closed. `.plans/s05-cli-crud/
@@ -558,7 +569,9 @@ function cmdAccounts(): void {
     return;
   }
   for (const r of rows) {
-    const synced = r.lastSync ? `synced ${r.lastSync.slice(0, 16).replace("T", " ")}` : "never synced";
+    const synced = r.lastSync
+      ? `synced ${r.lastSync.slice(0, 16).replace("T", " ")}`
+      : "never synced";
     const label = r.address ?? r.name ?? r.accountId.slice(-8);
     out(
       `${r.isDefault ? "★" : " "} ${label.padEnd(28)} ${String(r.messages).padStart(6)} msgs  ` +
@@ -846,10 +859,14 @@ async function cmdAgent(): Promise<void> {
     return;
   }
   if (verb !== "serve") {
-    usage("bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations | rm <invId>");
+    usage(
+      "bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations | rm <invId>",
+    );
   }
   if (!opts.config && !opts.fleet) {
-    usage("agent serve requires --config <agent.json> (one binding) or --fleet <fleet.json> (fleet host)");
+    usage(
+      "agent serve requires --config <agent.json> (one binding) or --fleet <fleet.json> (fleet host)",
+    );
   }
   if (opts.config && opts.fleet) usage("agent serve takes --config OR --fleet, not both");
   const settings = requireSettings(db);
@@ -874,10 +891,18 @@ async function cmdDiscover(): Promise<void> {
   const found = await resolveJmapBase(target);
   const probe = await probeSession(found.base);
   if (io.json) {
-    emitJson({ domain: found.domain, via: found.via, base: found.base, ok: probe.ok, detail: probe.detail });
+    emitJson({
+      domain: found.domain,
+      via: found.via,
+      base: found.base,
+      ok: probe.ok,
+      detail: probe.detail,
+    });
   } else {
     out(`domain:  ${found.domain}`);
-    out(`method:  ${found.via === "fallback" ? "no SRV record — well-known fallback" : `SRV _jmap._tcp (${found.via})`}`);
+    out(
+      `method:  ${found.via === "fallback" ? "no SRV record — well-known fallback" : `SRV _jmap._tcp (${found.via})`}`,
+    );
     out(`base:    ${found.base}`);
     out(`session: ${probe.ok ? "✓" : "✗"} ${probe.detail}`);
   }

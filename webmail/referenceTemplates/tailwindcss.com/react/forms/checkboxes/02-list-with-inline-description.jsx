@@ -39,7 +39,7 @@ export default function Example() {
           <div className="text-sm/6">
             <label htmlFor="comments" className="font-medium text-gray-900 dark:text-white">
               New comments
-            </label>{' '}
+            </label>{" "}
             <span id="comments-description" className="text-gray-500 dark:text-gray-400">
               <span className="sr-only">New comments </span>so you always know what's happening.
             </span>
@@ -80,7 +80,7 @@ export default function Example() {
           <div className="text-sm/6">
             <label htmlFor="candidates" className="font-medium text-gray-900 dark:text-white">
               New candidates
-            </label>{' '}
+            </label>{" "}
             <span id="candidates-description" className="text-gray-500 dark:text-gray-400">
               <span className="sr-only">New candidates </span>who apply for any open postings.
             </span>
@@ -121,13 +121,14 @@ export default function Example() {
           <div className="text-sm/6">
             <label htmlFor="offers" className="font-medium text-gray-900 dark:text-white">
               Offers
-            </label>{' '}
+            </label>{" "}
             <span id="offers-description" className="text-gray-500 dark:text-gray-400">
-              <span className="sr-only">Offers </span>when they are accepted or rejected by candidates.
+              <span className="sr-only">Offers </span>when they are accepted or rejected by
+              candidates.
             </span>
           </div>
         </div>
       </div>
     </fieldset>
-  )
+  );
 }

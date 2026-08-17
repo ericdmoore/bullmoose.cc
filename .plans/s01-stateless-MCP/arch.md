@@ -17,11 +17,12 @@ authorized, audited. **Out (→ s02):** the public JMAP façade, OAuth 2.1 / CIM
 bullmoose's own runtime, so we own both ends and can make a clean break.
 
 Two changes travel together and neither ships alone:
+
 - **Transport:** 2025-06-18-with-`initialize` → 2026-07-28 stateless.
 - **Auth:** shared-secret + self-asserted `accountId` → per-request bearer ∩ grant.
 
-The second is forced by the first: MCP.2 removes the handshake, so *"every request
-must be independently authenticated and authorized"* (SEP-2575, Security
+The second is forced by the first: MCP.2 removes the handshake, so _"every request
+must be independently authenticated and authorized"_ (SEP-2575, Security
 Implications). The auth gap stops being optional the moment the session is gone.
 
 ---
@@ -32,6 +33,7 @@ One endpoint, `POST /mcp/analytics`, JSON-RPC 2.0, **one response per request, n
 stream** (as today, `mcp.ts:11`).
 
 **Request headers**
+
 ```
 Authorization: Bearer bm_<id>_<secret>      # identity — NEW, mandatory
 MCP-Protocol-Version: 2026-07-28            # mandatory; MUST equal _meta below
@@ -41,19 +43,26 @@ Content-Type: application/json
 ```
 
 **Body** — JSON-RPC with per-request metadata:
+
 ```jsonc
-{ "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
   "params": {
     "name": "spend_by_month",
     "arguments": { "accountId": "a_eric", "months": 6 },
     "_meta": {
-      "io.modelcontextprotocol/protocolVersion": "2026-07-28",   // MUST match header
-      "io.modelcontextprotocol/clientCapabilities": {},          // required
-      "io.modelcontextprotocol/clientInfo": { "name": "bullmoose-harness", "version": "1" }
-    } } }
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28", // MUST match header
+      "io.modelcontextprotocol/clientCapabilities": {}, // required
+      "io.modelcontextprotocol/clientInfo": { "name": "bullmoose-harness", "version": "1" },
+    },
+  },
+}
 ```
 
 **Server MUST**
+
 - Reject header/`_meta` version mismatch → `400`.
 - Reject unknown/unsupported version → `400`, JSON-RPC error `-32022`
   (`UNSUPPORTED_PROTOCOL_VERSION`) with `data.supported = ["2026-07-28"]`.
@@ -67,13 +76,13 @@ Content-Type: application/json
 
 ### Method set
 
-| Method | Notes |
-|---|---|
-| `server/discover` | **MUST** — returns `supportedVersions:["2026-07-28"]`, `capabilities:{tools:{}}`, `serverInfo`, `instructions` |
-| `tools/list` | as today + `ttlMs`/`cacheScope`; `tools` array unchanged |
-| `tools/call` | as today + auth gate (§3); `Mcp-Name` MUST match `params.name` |
-| *(notifications/\*)* | `202` |
-| ~~`initialize`~~ ~~`ping`~~ | **removed** |
+| Method                      | Notes                                                                                                          |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `server/discover`           | **MUST** — returns `supportedVersions:["2026-07-28"]`, `capabilities:{tools:{}}`, `serverInfo`, `instructions` |
+| `tools/list`                | as today + `ttlMs`/`cacheScope`; `tools` array unchanged                                                       |
+| `tools/call`                | as today + auth gate (§3); `Mcp-Name` MUST match `params.name`                                                 |
+| _(notifications/\*)_        | `202`                                                                                                          |
+| ~~`initialize`~~ ~~`ping`~~ | **removed**                                                                                                    |
 
 ---
 
@@ -100,16 +109,16 @@ POST /mcp/analytics  (Authorization: Bearer …)
 `authorizeAccount` is `requireAccount` (`services/jmap/src/methods/common.ts:28-62`)
 re-homed so the agent worker can call it: `accountAccess` → `principalHasScope` →
 `matchingGrants` → **write `grant_audit`** (identical INSERT to `common.ts:48-59`).
-`accountId` stays an argument but becomes *authorized*, never *trusted*.
+`accountId` stays an argument but becomes _authorized_, never _trusted_.
 
 **Scope:** analytics reads the message log + spend ledger → require **`read`**. Mind
 the trap (`mcp-auth §6.3`): `hasScope` treats `mail` as a superset of everything but
 `admin` (`auth-core:50-53`), so a `mail` token already satisfies `read` — fine here;
 only special-case if we later want a separable `analytics` scope.
 
-**`x-internal-token`:** demoted from *identity* to an optional coarse **network ACL**
+**`x-internal-token`:** demoted from _identity_ to an optional coarse **network ACL**
 (defence-in-depth for an internal-only route). Identity + authorization now come from
-the bearer. *(Decision D2 — keep it or drop it.)*
+the bearer. _(Decision D2 — keep it or drop it.)_
 
 This makes `mcp-auth §16` invariant #4 ("MCP calls are principal-scoped") true.
 
@@ -133,10 +142,10 @@ The authz primitives live in the **jmap** worker; the MCP lives in the **agent**
 worker. To enforce identically without a cross-worker hop, lift into shared code
 (`mcp-auth §6.1`):
 
-| Move | From | To |
-|---|---|---|
+| Move                                                          | From                                          | To                                                      |
+| ------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------- |
 | `verifyBearer(db, raw) → {principalId,email,scopes,accounts}` | dup'd `jmap/auth.ts:44` + `agent/vault.ts:41` | `@bullmoose/auth-core` (new export beside `parseToken`) |
-| `accountAccess`, `matchingGrants`, `requireAccount` | `jmap/src/auth.ts` + `methods/common.ts` | a shared authz module both workers import |
+| `accountAccess`, `matchingGrants`, `requireAccount`           | `jmap/src/auth.ts` + `methods/common.ts`      | a shared authz module both workers import               |
 
 Net: **one** bearer→principal→grant path, used by JMAP and MCP alike. Removes the
 existing duplication as a bonus.

@@ -240,10 +240,7 @@ export class JmapClient {
 
   /** Every share link the server still has a record of, live or revoked. */
   async listShares(accountId: string): Promise<ShareListing> {
-    return this.getJson<ShareListing>(
-      `/api/shares/${encodeURIComponent(accountId)}`,
-      "share list",
-    );
+    return this.getJson<ShareListing>(`/api/shares/${encodeURIComponent(accountId)}`, "share list");
   }
 
   /** The kill switch. Eventually consistent — see the note in the response. */
@@ -267,7 +264,8 @@ export class JmapClient {
   private async sendJson<T>(method: string, path: string, what: string): Promise<T> {
     const res = await fetch(`${this.base}${path}`, { method, headers: this.headers() });
     const text = await res.text();
-    if (!res.ok) throw transportError(`${what} failed: HTTP ${res.status} ${text}`, res.status, text);
+    if (!res.ok)
+      throw transportError(`${what} failed: HTTP ${res.status} ${text}`, res.status, text);
     return JSON.parse(text) as T;
   }
 

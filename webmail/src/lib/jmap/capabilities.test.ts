@@ -80,9 +80,9 @@ describe("createDemoBackend can drop the agent capability", () => {
     expect(Object.prototype.hasOwnProperty.call(session.capabilities, AGENT_CAP)).toBe(false);
     // …including on the account, which is where a surface would look next.
     for (const account of Object.values(session.accounts)) {
-      expect(
-        Object.prototype.hasOwnProperty.call(account.accountCapabilities, AGENT_CAP),
-      ).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(account.accountCapabilities, AGENT_CAP)).toBe(
+        false,
+      );
     }
     // Everything else is untouched: the mail client is unaffected.
     expect(hasCapability(session, MAIL_CAP)).toBe(true);

@@ -162,7 +162,10 @@ export default {
       return res;
     }
 
-    if (request.method === "POST" && request.headers.get("x-internal-token") === env.INTERNAL_TOKEN) {
+    if (
+      request.method === "POST" &&
+      request.headers.get("x-internal-token") === env.INTERNAL_TOKEN
+    ) {
       if (url.pathname === "/drain") {
         const handled = await drain(env, ctx);
         return json({ handled });
@@ -189,7 +192,11 @@ export default {
   },
 
   // Retry net: pokes can die mid-flight; the pending row cannot.
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(
+    _controller: ScheduledController,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
     await failStaleRunning(env);
     await expireStaleProposals(env);
     await drain(env, ctx);
@@ -622,8 +629,11 @@ async function reportHeldBacklog(env: Env): Promise<void> {
 async function runInvocation(env: Env, job: Job): Promise<void> {
   const cfg = JSON.parse(job.config_json) as BindingConfig;
   const store = new Mailstore(env.DB, env.BLOBS);
-  const done = (status: "done" | "failed", result: Record<string, unknown>, cost?: InvocationCost) =>
-    finish(env, job, status, result, cost);
+  const done = (
+    status: "done" | "failed",
+    result: Record<string, unknown>,
+    cost?: InvocationCost,
+  ) => finish(env, job, status, result, cost);
 
   // s10 T3: an `answer-info-request` invocation (enqueued by ActionProposal/set
   // when a human asks needsInfo) acts on a PROPOSAL, not on a message —
@@ -805,12 +815,20 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
     : body;
 
   const prompt = [
-    { role: "system" as const, content: `${L0}\n\n${cfg.persona ?? "You are a helpful email assistant."}` },
+    {
+      role: "system" as const,
+      content: `${L0}\n\n${cfg.persona ?? "You are a helpful email assistant."}`,
+    },
     { role: "user" as const, content: userContent },
   ];
 
   try {
-    const { output, usage, used } = await callWithFallback(env, candidates, prompt, cfg.maxTokens ?? 2048);
+    const { output, usage, used } = await callWithFallback(
+      env,
+      candidates,
+      prompt,
+      cfg.maxTokens ?? 2048,
+    );
     const model = `${used.provider}/${used.model}`;
     // Freeze the cost NOW, at capture (s07 T5) — priced against today's map,
     // never recomputed when models.dev moves. NULL = undetermined; 0 = free.
@@ -853,7 +871,11 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
         model,
         sourceEmailId: email.id,
       });
-      return done("done", { kind: "reply-draft", tier: 2, proposalId, model, alias: aliasName }, cost);
+      return done(
+        "done",
+        { kind: "reply-draft", tier: 2, proposalId, model, alias: aliasName },
+        cost,
+      );
     }
 
     const replyId = await reply(replyText, { model, alias: aliasName });
@@ -928,7 +950,7 @@ async function sendReply(
     cc: [],
     bcc: [],
     preview: r.text.slice(0, 256),
-    bodyText: r.text,   // full body into the FTS index (common/004)
+    bodyText: r.text, // full body into the FTS index (common/004)
     size: raw.byteLength,
     receivedAt: now,
     hasAttachment: false,

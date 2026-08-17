@@ -5,7 +5,9 @@
         <XCircleIcon class="size-5 text-red-400" aria-hidden="true" />
       </div>
       <div class="ml-3">
-        <h3 class="text-sm font-medium text-red-800 dark:text-red-200">There were 2 errors with your submission</h3>
+        <h3 class="text-sm font-medium text-red-800 dark:text-red-200">
+          There were 2 errors with your submission
+        </h3>
         <div class="mt-2 text-sm text-red-700 dark:text-red-200/80">
           <ul role="list" class="list-disc space-y-1 pl-5">
             <li>Your password must be at least 8 characters</li>
@@ -18,5 +20,5 @@
 </template>
 
 <script setup>
-import { XCircleIcon } from '@heroicons/vue/20/solid'
+import { XCircleIcon } from "@heroicons/vue/20/solid";
 </script>

@@ -39,18 +39,18 @@ ActionProposal {
 ```
 
 **Why `grant-request` shares the queue:** an agent asking for a permission and an agent
-proposing a reply are the same interaction — *what, why, approve/deny*. Unifying them
+proposing a reply are the same interaction — _what, why, approve/deny_. Unifying them
 means one review surface instead of two, and it means the graduation mechanism (§4) works
 identically for permissions and for actions.
 
 ## 2. Tiers drive behaviour, not labels
 
-`tier` is a property of `kind` and decides what the system is permitted to do. (Note: it is *stored* as a per-proposal column, not re-derived from `kind` at read time — the producer sets it, so a future `kind` could carry a variable tier without a schema change.)
+`tier` is a property of `kind` and decides what the system is permitted to do. (Note: it is _stored_ as a per-proposal column, not re-derived from `kind` at read time — the producer sets it, so a future `kind` could carry a variable tier without a schema change.)
 
-| Tier | On approve | May graduate? |
-|---|---|---|
-| **1** reversible — move, label, classify, create contact, organize files | apply immediately, keep an undo handle | ✅ |
-| **2** retractable — *agent-initiated* send: start thread, third-party reply, invite-bearing event | enter **hold tray** (`holdUntil`), then commit (T2: the sweep egresses past-window rows; `yanked` retracts inside it) | ✅ |
+| Tier                                                                                              | On approve                                                                                                            | May graduate? |
+| ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------- |
+| **1** reversible — move, label, classify, create contact, organize files                          | apply immediately, keep an undo handle                                                                                | ✅            |
+| **2** retractable — _agent-initiated_ send: start thread, third-party reply, invite-bearing event | enter **hold tray** (`holdUntil`), then commit (T2: the sweep egresses past-window rows; `yanked` retracts inside it) | ✅            |
 
 > ⚠️ **Tier-2 narrowed by the respond-only rule** (Eric, 2026-08-15; s20 principle 7):
 > a **solicited reply** — to exactly the requester, who passed `allowedSenders`,
@@ -59,7 +59,7 @@ identically for permissions and for actions.
 > table asked a fifth time for something four gates had already granted, which
 > put a five-second answer behind a two-day approval. Tier 2 now means
 > agent-INITIATED retractable egress only.
-| **3** irreversible — anything already outside, data already read | human click, every time | ❌ **never** |
+> | **3** irreversible — anything already outside, data already read | human click, every time | ❌ **never** |
 
 **The guarantee is not the policy engine.** Agents lack the `send` scope, so tier-3
 egress cannot be auto-committed even if a policy bug said otherwise. T1 implements this
@@ -67,7 +67,7 @@ literally: the tier-3 approve path calls `authorizeAccount(principal, accountId,
 "mail")` (`services/jmap/src/methods/actionProposal.ts:257`), the same gate the real send
 path uses — an agent token is refused, a human token permits.
 (`mcp-auth.md` §12 step 10). Policy is the UI's opinion; the capability wall is the
-enforcement. Design accordingly — a policy bug must be a *nuisance*, not a breach.
+enforcement. Design accordingly — a policy bug must be a _nuisance_, not a breach.
 
 ## 3. Capturing the no-thanks signal
 
@@ -75,11 +75,11 @@ A rejection is the highest-signal data in the system — stronger than `ai-surfa
 "moving a message out of a bucket is a labeled example." Capture the reason as a small
 enum plus optional free text:
 
-| Reason | Trains | Counts against the agent? |
-|---|---|---|
-| `wrongContent` | the drafter | yes |
-| `wrongAction` | the classifier | yes |
-| `notNow` | nothing — it's a snooze | **no** |
+| Reason         | Trains                  | Counts against the agent? |
+| -------------- | ----------------------- | ------------------------- |
+| `wrongContent` | the drafter             | yes                       |
+| `wrongAction`  | the classifier          | yes                       |
+| `notNow`       | nothing — it's a snooze | **no**                    |
 
 Conflating `notNow` with a real rejection would poison both the training signal and the
 autonomy dial. Pure free-text is unusable as signal; pure canned loses the nuance —
@@ -88,7 +88,7 @@ hence both.
 ## 4. Policy: promote repetition, but s04 owns the semantics
 
 The autonomy dial, `autoGrant` templates, and ingest rules are three faces of one thing:
-a per-`kind` (optionally per-subject) rule saying *auto-approve within these bounds*.
+a per-`kind` (optionally per-subject) rule saying _auto-approve within these bounds_.
 
 **This slice detects repetition, offers the promotion, and writes through a narrow
 interface. s04 owns what a policy means** — budgets, gatekeepers, enforcement. If this
@@ -101,7 +101,7 @@ Tier-3 kinds are never offered for promotion, at any repetition count.
 The primitive exists: the optimistic `pending → running` claim **[live]**
 (`services/agent/src/index.ts:116-122`) is already collision detection — first claimer
 wins, others back off cleanly. Expose `assignee` + `claimedAt` on the thread projection
-and webmail can render *"Allen is drafting"*. No new mechanism.
+and webmail can render _"Allen is drafting"_. No new mechanism.
 
 ## 6. The brief: one artifact, two renderers
 
@@ -114,7 +114,7 @@ Computed server-side on the agent worker's existing `scheduled` hook **[live]**,
 with an `asOf` stamp.
 
 **Why not client-side:** if webmail assembled the brief itself, the mailed version would
-drift and the two would disagree — and the email is the *only* rendering for a client
+drift and the two would disagree — and the email is the _only_ rendering for a client
 that can't show the native section. One artifact keeps them honest. The email is a
 point-in-time snapshot and must say so; the UI is live.
 

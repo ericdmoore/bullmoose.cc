@@ -26,7 +26,10 @@ export const CLAUDE_WEB_REDIRECT = "https://claude.ai/api/mcp/auth_callback";
  * where "the attacker can bind a port on the user's own machine" already
  * implies a compromise that no redirect check would survive.
  */
-export const LOOPBACK_REDIRECTS = ["http://localhost/callback", "http://127.0.0.1/callback"] as const;
+export const LOOPBACK_REDIRECTS = [
+  "http://localhost/callback",
+  "http://127.0.0.1/callback",
+] as const;
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 

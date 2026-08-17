@@ -29,7 +29,14 @@
 import { expiryLabel, holdLabel, rowClocks } from "../approvals/clocks";
 import { summarizeProposal } from "../approvals/rows";
 import type { ActionProposal } from "../approvals/types";
-import { addDays, dayKey, formatClock, minutesOfDay, zonedFields, type CivilDate } from "../calendar/civil";
+import {
+  addDays,
+  dayKey,
+  formatClock,
+  minutesOfDay,
+  zonedFields,
+  type CivilDate,
+} from "../calendar/civil";
 import { segmentsByDay, segmentsOn } from "../calendar/place";
 import type { Occurrence } from "../calendar/types";
 
@@ -93,7 +100,11 @@ export function eventItems(
         // No countdown on an event: it is when it is. The label is the time of
         // day, or "continues" when the occurrence spilled in from an earlier
         // day (its `fromMinute` is a clipped 0, not a real start).
-        clockLabel: seg.allDay ? "all day" : seg.continuesBefore ? "continues" : formatClock(seg.fromMinute),
+        clockLabel: seg.allDay
+          ? "all day"
+          : seg.continuesBefore
+            ? "continues"
+            : formatClock(seg.fromMinute),
         href: "/calendar",
         dayKey: seg.day,
         allDay: seg.allDay,

@@ -68,7 +68,9 @@ describe("FakeJmapClient", () => {
 
   it("models a capability-less session with the agent cap dropped", async () => {
     const fake = new FakeJmapClient({
-      session: { capabilities: { "urn:ietf:params:jmap:core": {}, "urn:ietf:params:jmap:mail": {} } },
+      session: {
+        capabilities: { "urn:ietf:params:jmap:core": {}, "urn:ietf:params:jmap:mail": {} },
+      },
     });
     expect(await fake.hasCapability(AGENT_CAP)).toBe(false);
     expect(await fake.hasAgentCapability()).toBe(false);

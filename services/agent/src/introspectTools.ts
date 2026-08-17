@@ -130,7 +130,11 @@ const SCOPE_WARNINGS: Record<string, string> = {
  * conversational surface is arguably better at this than a UI, because it
  * can say so in a sentence.
  */
-function grantWarnings(scopes: string[], collection: string | null, expiresAt: number | null): string[] {
+function grantWarnings(
+  scopes: string[],
+  collection: string | null,
+  expiresAt: number | null,
+): string[] {
   const eff = effectiveScopes(scopes);
   const out: string[] = [];
   for (const s of eff) if (SCOPE_WARNINGS[s]) out.push(SCOPE_WARNINGS[s]!);
@@ -299,8 +303,7 @@ function renderGrant(r: GrantRow, side: "grantee" | "target") {
   // What was wrong was this surface SAYING it was still live, which is worse
   // than it sounds: the entire point of these tools is letting a human check
   // who can reach their mail.
-  const live =
-    r.revoked_at === null && (r.expires_at === null || r.expires_at > Date.now());
+  const live = r.revoked_at === null && (r.expires_at === null || r.expires_at > Date.now());
   return {
     grantId: r.id,
     [side === "grantee" ? "grantee" : "target"]: {
@@ -328,15 +331,16 @@ function renderGrant(r: GrantRow, side: "grantee" | "target") {
  */
 export async function grantsAsGrantee(db: D1Database, accountIds: string[]): Promise<GrantRow[]> {
   if (accountIds.length === 0) return [];
-  const { results } = await db.prepare(
-    `SELECT ${GRANT_COLUMNS},
+  const { results } = await db
+    .prepare(
+      `SELECT ${GRANT_COLUMNS},
             (SELECT a.display_name FROM accounts a WHERE a.id = g.target_account_id) AS other_name,
             (SELECT i.email FROM identities i WHERE i.account_id = g.target_account_id LIMIT 1) AS other_email
      FROM grants g
      WHERE g.grantee_account_id IN (${marksFor(accountIds)})
        AND g.revoked_at IS NULL
      ORDER BY g.created_at DESC`,
-  )
+    )
     .bind(...accountIds)
     .all<GrantRow>();
   return results;
@@ -348,15 +352,16 @@ export async function grantsAsGrantee(db: D1Database, accountIds: string[]): Pro
  * discloses other principals' addresses.
  */
 export async function grantsAsTarget(db: D1Database, accountId: string): Promise<GrantRow[]> {
-  const { results } = await db.prepare(
-    `SELECT ${GRANT_COLUMNS},
+  const { results } = await db
+    .prepare(
+      `SELECT ${GRANT_COLUMNS},
             (SELECT a.display_name FROM accounts a WHERE a.id = g.grantee_account_id) AS other_name,
             (SELECT i.email FROM identities i WHERE i.account_id = g.grantee_account_id LIMIT 1) AS other_email
      FROM grants g
      WHERE g.target_account_id = ?
        AND g.revoked_at IS NULL
      ORDER BY g.created_at DESC`,
-  )
+    )
     .bind(accountId)
     .all<GrantRow>();
   return results;
@@ -399,14 +404,19 @@ export function describeBinding(configJson: string) {
     hasPersona: typeof cfg.persona === "string" && cfg.persona.length > 0,
     // The COUNT, never the addresses: who is allowed to drive an agent is a
     // list of third parties.
-    senderAllowlist: senders.length > 0 ? { active: true, count: senders.length } : { active: false },
+    senderAllowlist:
+      senders.length > 0 ? { active: true, count: senders.length } : { active: false },
     modelAliasCount: Object.keys(cfg.modelAliases ?? {}).length,
   };
 }
 
-function bindingWarnings(b: { enabled: number; trigger_on: string }, d: ReturnType<typeof describeBinding>): string[] {
+function bindingWarnings(
+  b: { enabled: number; trigger_on: string },
+  d: ReturnType<typeof describeBinding>,
+): string[] {
   const out: string[] = [];
-  if (b.enabled !== 1) out.push("disabled — it will not fire, and ingest creates no invocation for it");
+  if (b.enabled !== 1)
+    out.push("disabled — it will not fire, and ingest creates no invocation for it");
   if (d.replyMode === "send") {
     out.push(
       "replyMode is SEND: this agent sends mail to the original sender itself. Nothing is " +
@@ -440,10 +450,11 @@ interface BindingRow {
 
 /** Rule 3: enumerated columns. `config_json` is read but never returned raw. */
 export async function listBindings(db: D1Database, accountId: string): Promise<BindingRow[]> {
-  const { results } = await db.prepare(
-    `SELECT id, name, trigger_on, sla_seconds, enabled, config_json
+  const { results } = await db
+    .prepare(
+      `SELECT id, name, trigger_on, sla_seconds, enabled, config_json
      FROM agent_bindings WHERE account_id = ? ORDER BY name`,
-  )
+    )
     .bind(accountId)
     .all<BindingRow>();
   return results;
@@ -507,10 +518,11 @@ export async function listInvocations(
     where.push("status = ?");
     binds.push(filter.status);
   }
-  const { results } = await db.prepare(
-    `SELECT ${INVOCATION_COLUMNS} FROM agent_invocations
+  const { results } = await db
+    .prepare(
+      `SELECT ${INVOCATION_COLUMNS} FROM agent_invocations
      WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT ?`,
-  )
+    )
     .bind(...binds, filter.limit)
     .all<InvocationRow>();
   return results;
@@ -670,8 +682,9 @@ export async function readAccessLog(
   since: number,
   limit: number,
 ): Promise<AuditRow[]> {
-  const { results } = await db.prepare(
-    `SELECT ga.id, ga.grant_id, ga.principal, ga.method, ga.at,
+  const { results } = await db
+    .prepare(
+      `SELECT ga.id, ga.grant_id, ga.principal, ga.method, ga.at,
             -- COUNT(*) alone counted the TOMBSTONE: since s03.A revocation is
             -- an UPDATE, not a DELETE, so the row survives and this was always
             -- >= 1. Every historical access rendered "live" and the
@@ -683,7 +696,7 @@ export async function readAccessLog(
      FROM grant_audit ga
      WHERE ga.account_id = ? AND ga.at >= ?
      ORDER BY ga.at DESC LIMIT ?`,
-  )
+    )
     .bind(accountId, since, limit)
     .all<AuditRow>();
   return results;
@@ -742,7 +755,8 @@ function renderAudit(r: AuditRow) {
             // scopes cannot be recovered") described the pre-s03.A world and
             // would have told an auditor to stop looking.
             revokedAt: new Date(r.grant_revoked_at).toISOString(),
-            scopesAtAccess: r.grant_scopes === null ? null : (JSON.parse(r.grant_scopes) as string[]),
+            scopesAtAccess:
+              r.grant_scopes === null ? null : (JSON.parse(r.grant_scopes) as string[]),
             note:
               "This grant was revoked. The access below happened while it was live — " +
               "revocation does not retroactively un-do it. Because revocation is a " +
@@ -815,7 +829,7 @@ const INTROSPECTION_TOOLS: ToolDef[] = [
     description:
       "Who this token is, what it can actually do, and every account it reaches — owned " +
       "accounts and grant-reached accounts listed separately. Scopes are reported as the " +
-      "permissions they confer, not as the raw strings: a token scoped \"mail\" is reported " +
+      'permissions they confer, not as the raw strings: a token scoped "mail" is reported ' +
       "as read/annotate/draft/move/send/delete, because that is what it allows. Takes no " +
       "arguments. Start here — every other tool takes an accountId this one gives you, and " +
       "you may omit that argument when the answer below lists exactly one account.",

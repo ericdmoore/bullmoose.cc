@@ -18,8 +18,7 @@ import sharp from "sharp";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, ".."); // src/
 const scratch = process.env.OG_SCRATCH || "/tmp";
-const CHROMIUM =
-  process.env.CHROMIUM || "/Applications/Chromium.app/Contents/MacOS/Chromium";
+const CHROMIUM = process.env.CHROMIUM || "/Applications/Chromium.app/Contents/MacOS/Chromium";
 
 const font = (pkg, file) =>
   `url(data:font/woff2;base64,${readFileSync(

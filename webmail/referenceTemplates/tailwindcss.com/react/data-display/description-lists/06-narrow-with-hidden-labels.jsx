@@ -1,4 +1,4 @@
-import { CalendarDaysIcon, CreditCardIcon, UserCircleIcon } from '@heroicons/react/20/solid'
+import { CalendarDaysIcon, CreditCardIcon, UserCircleIcon } from "@heroicons/react/20/solid";
 
 export default function Example() {
   return (
@@ -8,7 +8,9 @@ export default function Example() {
         <dl className="flex flex-wrap">
           <div className="flex-auto pt-6 pl-6">
             <dt className="text-sm/6 font-semibold text-gray-900 dark:text-gray-100">Amount</dt>
-            <dd className="mt-1 text-base font-semibold text-gray-900 dark:text-white">$10,560.00</dd>
+            <dd className="mt-1 text-base font-semibold text-gray-900 dark:text-white">
+              $10,560.00
+            </dd>
           </div>
           <div className="flex-none self-end px-6 pt-4">
             <dt className="sr-only">Status</dt>
@@ -50,5 +52,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

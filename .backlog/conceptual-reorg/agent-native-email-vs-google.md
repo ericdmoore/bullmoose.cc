@@ -6,16 +6,16 @@ Google absolutely could build much of this.
 
 It already owns an extraordinary set of advantages:
 
--   Gmail
--   identity and contacts
--   Calendar
--   Drive and Docs
--   Android
--   Chrome
--   Gemini
--   decades of user communication history
--   spam and security infrastructure
--   massive inference infrastructure
+- Gmail
+- identity and contacts
+- Calendar
+- Drive and Docs
+- Android
+- Chrome
+- Gemini
+- decades of user communication history
+- spam and security infrastructure
+- massive inference infrastructure
 
 So the startup thesis cannot be:
 
@@ -30,21 +30,21 @@ The more interesting bet is:
 
 That creates a potential opening.
 
-------------------------------------------------------------------------
+---
 
 # Google can make Gmail dramatically smarter
 
 The obvious evolutionary path is already clear:
 
--   summarize conversations
--   answer natural-language questions about the inbox
--   draft replies
--   prioritize important messages
--   identify to-dos
--   surface related documents
--   schedule meetings
--   follow up
--   perform bounded actions
+- summarize conversations
+- answer natural-language questions about the inbox
+- draft replies
+- prioritize important messages
+- identify to-dos
+- surface related documents
+- schedule meetings
+- follow up
+- perform bounded actions
 
 Google has enormous structural advantages for all of this.
 
@@ -64,7 +64,7 @@ So **data access is not the startup moat**.
 
 Google wins that fight.
 
-------------------------------------------------------------------------
+---
 
 # The opportunity is not "better AI inside Gmail"
 
@@ -80,15 +80,15 @@ An agent-native system could instead develop a semantic hierarchy:
 
 A Thread might accumulate:
 
--   Decisions
--   Commitments
--   Tasks
--   People
--   Files
--   Dates
--   agent actions
--   rationale
--   provenance
+- Decisions
+- Commitments
+- Tasks
+- People
+- Files
+- Dates
+- agent actions
+- rationale
+- provenance
 
 That isn't merely:
 
@@ -101,7 +101,7 @@ It begins to say:
 
 That is a much more disruptive product decision.
 
-------------------------------------------------------------------------
+---
 
 # Why Google might resist that transition
 
@@ -110,13 +110,13 @@ working.
 
 Billions of people understand:
 
--   Inbox
--   Sent
--   Drafts
--   Archive
--   Search
--   Labels
--   email conversations
+- Inbox
+- Sent
+- Drafts
+- Archive
+- Search
+- Labels
+- email conversations
 
 Changing the underlying ontology is different from adding Gemini to
 those concepts.
@@ -152,7 +152,7 @@ A newcomer can ask:
 
 That is the opening.
 
-------------------------------------------------------------------------
+---
 
 # Agency makes Google's problem harder
 
@@ -178,17 +178,17 @@ Users gradually increase the agent's authority.
 
 A Thread might eventually have its own authority envelope:
 
--   may read everything
--   may draft responses
--   may follow up with these people
--   may schedule inside these constraints
--   ask before spending money
--   never make contractual commitments
+- may read everything
+- may draft responses
+- may follow up with these people
+- may schedule inside these constraints
+- ask before spending money
+- never make contractual commitments
 
 Agency therefore becomes a first-class UX concept rather than merely a
 Gemini button.
 
-------------------------------------------------------------------------
+---
 
 # Someone else can build this on top of existing email
 
@@ -245,7 +245,7 @@ It is:
 
 > **Keep your email. Let us make it understand what is going on.**
 
-------------------------------------------------------------------------
+---
 
 # Memory may be the best initial wedge
 
@@ -265,13 +265,13 @@ A more interesting initial proposition might be:
 
 The system remembers:
 
--   what was decided
--   why it was decided
--   what you promised
--   what others promised
--   what you're waiting for
--   what changed
--   what remains unresolved
+- what was decided
+- why it was decided
+- what you promised
+- what others promised
+- what you're waiting for
+- what changed
+- what remains unresolved
 
 That creates value before the user needs to trust autonomous agents.
 
@@ -296,7 +296,7 @@ agency**
 
 without needing to make the conceptual leap all at once.
 
-------------------------------------------------------------------------
+---
 
 # Three plausible competitive futures
 
@@ -309,7 +309,7 @@ This is a real risk and should not be hand-waved away.
 
 Google has extraordinary distribution, data access and infrastructure.
 
-------------------------------------------------------------------------
+---
 
 ## 2. Google builds "AI Gmail"; someone else builds "agent-native email"
 
@@ -327,7 +327,7 @@ The newcomer isn't necessarily better at AI.
 
 It has permission to be more radical about **what the application is**.
 
-------------------------------------------------------------------------
+---
 
 ## 3. The new abstraction becomes bigger than email
 
@@ -341,16 +341,16 @@ Initially that Thread contains email conversations.
 
 Eventually it might also contain:
 
--   text messages
--   PDFs
--   calendar events
--   phone-call notes
--   contractor quotes
--   decisions
--   commitments
--   agent actions
--   payments
--   web research
+- text messages
+- PDFs
+- calendar events
+- phone-call notes
+- contractor quotes
+- decisions
+- commitments
+- agent actions
+- payments
+- web research
 
 At that point, why is this an email client?
 
@@ -360,7 +360,7 @@ The Thread becomes the persistent object.
 
 Conceptually:
 
-``` text
+```text
                     THREAD
                       │
        ┌──────────────┼──────────────┐
@@ -394,7 +394,7 @@ It is organized around:
 
 > **What should happen next?**
 
-------------------------------------------------------------------------
+---
 
 # That may be where Google is structurally vulnerable
 
@@ -428,7 +428,7 @@ A new company has no such obligation.
 It can begin with the Thread as the primary semantic object and treat
 Gmail, Calendar, Drive, SMS and other systems as **sources and tools**.
 
-------------------------------------------------------------------------
+---
 
 # The competitive thesis
 
@@ -469,7 +469,7 @@ And within Threads:
 The system begins maintaining continuity instead of merely storing
 correspondence.
 
-------------------------------------------------------------------------
+---
 
 # Email may simply be the wedge
 
@@ -478,18 +478,18 @@ This is ultimately the most ambitious version of the thesis.
 Email is extraordinarily valuable because it already contains an
 accidental event log of modern life:
 
--   identity
--   relationships
--   purchases
--   travel
--   school
--   work
--   contracts
--   appointments
--   commitments
--   decisions
--   documents
--   deadlines
+- identity
+- relationships
+- purchases
+- travel
+- school
+- work
+- contracts
+- appointments
+- commitments
+- decisions
+- documents
+- deadlines
 
 That makes email perhaps the richest existing substrate from which an
 agent can begin understanding what is happening.

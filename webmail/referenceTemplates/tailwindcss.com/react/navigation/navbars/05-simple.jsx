@@ -1,5 +1,13 @@
-import { Disclosure, DisclosureButton, DisclosurePanel, Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
-import { Bars3Icon, BellIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import {
+  Disclosure,
+  DisclosureButton,
+  DisclosurePanel,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuItems,
+} from "@headlessui/react";
+import { Bars3Icon, BellIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
 export default function Example() {
   return (
@@ -158,7 +166,9 @@ export default function Example() {
             </div>
             <div className="ml-3">
               <div className="text-base font-medium text-gray-800 dark:text-white">Tom Cook</div>
-              <div className="text-sm font-medium text-gray-500 dark:text-gray-400">tom@example.com</div>
+              <div className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                tom@example.com
+              </div>
             </div>
             <button
               type="button"
@@ -195,5 +205,5 @@ export default function Example() {
         </div>
       </DisclosurePanel>
     </Disclosure>
-  )
+  );
 }

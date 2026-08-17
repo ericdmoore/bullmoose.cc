@@ -233,10 +233,15 @@ async function cmdImport(
     }
   };
   const sendChunk0 = async (card: Card): Promise<void> => {
-    const res = await client.one("ContactCard/set", { accountId, create: { c0: card } }, CONTACTS_USING);
+    const res = await client.one(
+      "ContactCard/set",
+      { accountId, create: { c0: card } },
+      CONTACTS_USING,
+    );
     created += Object.keys((res.created as object) ?? {}).length;
     const err = (res.notCreated as Record<string, { type?: string; description?: string }>)?.c0;
-    if (err) failed.push({ uid: String(card.uid), error: err.description ?? err.type ?? "unknown" });
+    if (err)
+      failed.push({ uid: String(card.uid), error: err.description ?? err.type ?? "unknown" });
     done += 1;
     progress();
   };
@@ -405,7 +410,10 @@ async function resolveBook(
   );
   const createdId = (set.created as Record<string, { id?: string }>)?.b0?.id;
   if (!createdId) {
-    failSetError(`create address book "${selector}"`, (set.notCreated as Record<string, unknown>)?.b0);
+    failSetError(
+      `create address book "${selector}"`,
+      (set.notCreated as Record<string, unknown>)?.b0,
+    );
   }
   note(`created address book "${selector}" (${createdId})`);
   return { id: createdId, name: selector, isDefault: false };
@@ -632,7 +640,11 @@ async function cmdCreate(
       keys.map((k) =>
         created[k]
           ? { id: created[k]!.id, uid: create[k]!.uid ?? null, created: true }
-          : { uid: create[k]!.uid ?? null, created: false, error: notCreated[k]?.type ?? "unknown" },
+          : {
+              uid: create[k]!.uid ?? null,
+              created: false,
+              error: notCreated[k]?.type ?? "unknown",
+            },
       ),
     );
   } else {
@@ -728,11 +740,7 @@ async function cmdRm(
  * round-trips a book. `--json` emits the JSContact cards as NDJSON; `--ids`
  * emits the card ids for `| xargs`.
  */
-async function cmdExport(
-  client: JmapClient,
-  accountId: string,
-  opts: ContactsOpts,
-): Promise<void> {
+async function cmdExport(client: JmapClient, accountId: string, opts: ContactsOpts): Promise<void> {
   const book = opts.book ? await resolveBook(client, accountId, opts.book, {}) : null;
   const cards = await listAllCards(client, accountId, book ? { bookId: book.id } : {});
   if (opts.ids) {
@@ -989,9 +997,7 @@ export function serializeVcard(card: Card): string {
   }
 
   for (const ann of values(card.anniversaries)) {
-    const d = ann.date as
-      | { year?: number; month?: number; day?: number; utc?: string }
-      | undefined;
+    const d = ann.date as { year?: number; month?: number; day?: number; utc?: string } | undefined;
     if (!d) continue;
     let value: string | null = null;
     if (typeof d.utc === "string") value = d.utc.slice(0, 10);

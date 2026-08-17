@@ -1,38 +1,38 @@
-'use client'
+"use client";
 
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from "react";
 
 const people = [
   {
-    name: 'Lindsay Walton',
-    title: 'Front-end Developer',
-    email: 'lindsay.walton@example.com',
-    role: 'Member',
+    name: "Lindsay Walton",
+    title: "Front-end Developer",
+    email: "lindsay.walton@example.com",
+    role: "Member",
   },
   // More people...
-]
+];
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
-  const checkbox = useRef()
-  const [checked, setChecked] = useState(false)
-  const [indeterminate, setIndeterminate] = useState(false)
-  const [selectedPeople, setSelectedPeople] = useState([])
+  const checkbox = useRef();
+  const [checked, setChecked] = useState(false);
+  const [indeterminate, setIndeterminate] = useState(false);
+  const [selectedPeople, setSelectedPeople] = useState([]);
 
   useLayoutEffect(() => {
-    const isIndeterminate = selectedPeople.length > 0 && selectedPeople.length < people.length
-    setChecked(selectedPeople.length === people.length)
-    setIndeterminate(isIndeterminate)
-    checkbox.current.indeterminate = isIndeterminate
-  }, [selectedPeople])
+    const isIndeterminate = selectedPeople.length > 0 && selectedPeople.length < people.length;
+    setChecked(selectedPeople.length === people.length);
+    setIndeterminate(isIndeterminate);
+    checkbox.current.indeterminate = isIndeterminate;
+  }, [selectedPeople]);
 
   function toggleAll() {
-    setSelectedPeople(checked || indeterminate ? [] : people)
-    setChecked(!checked && !indeterminate)
-    setIndeterminate(false)
+    setSelectedPeople(checked || indeterminate ? [] : people);
+    setChecked(!checked && !indeterminate);
+    setIndeterminate(false);
   }
 
   return (
@@ -136,7 +136,10 @@ export default function Example() {
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white dark:divide-white/10 dark:bg-gray-900">
                   {people.map((person) => (
-                    <tr key={person.email} className="group has-checked:bg-gray-50 dark:has-checked:bg-gray-800/50">
+                    <tr
+                      key={person.email}
+                      className="group has-checked:bg-gray-50 dark:has-checked:bg-gray-800/50"
+                    >
                       <td className="relative px-7 sm:w-12 sm:px-6">
                         <div className="absolute inset-y-0 left-0 hidden w-0.5 bg-indigo-600 group-has-checked:block dark:bg-indigo-500" />
 
@@ -205,5 +208,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

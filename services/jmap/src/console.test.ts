@@ -317,7 +317,13 @@ function world(): { w: FakeWorker; env: Env } {
     },
   ]);
   w.db.seed("calendars", [
-    { id: "cal_1", account_id: "acct_allen", name: "Allen's calendar", created_at: 1, updated_at: 1 },
+    {
+      id: "cal_1",
+      account_id: "acct_allen",
+      name: "Allen's calendar",
+      created_at: 1,
+      updated_at: 1,
+    },
   ]);
   w.db.seed("mailboxes", [{ id: "mb_1", account_id: "acct_allen", name: "Inbox", role: "inbox" }]);
   w.db.seed("file_nodes", [
@@ -642,8 +648,12 @@ describe("GET /console/accounts/{accountId}/resources", () => {
 
   it("refuses a grant-reached account and is notFound for an unreachable one", async () => {
     const { env } = world();
-    expect((await get(env, "/console/accounts/acct_stranger/resources", full.token)).status).toBe(403);
-    expect((await get(env, "/console/accounts/acct_nobody/resources", full.token)).status).toBe(404);
+    expect((await get(env, "/console/accounts/acct_stranger/resources", full.token)).status).toBe(
+      403,
+    );
+    expect((await get(env, "/console/accounts/acct_nobody/resources", full.token)).status).toBe(
+      404,
+    );
   });
 });
 

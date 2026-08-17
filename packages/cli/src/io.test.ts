@@ -203,7 +203,9 @@ describe("§1.1 — the stdout/stderr discipline, enforced at the source", () =>
 
   it("never spawns a pager (§1.6 — the user pipes to less themselves)", () => {
     for (const [file, source] of modules) {
-      expect(source, `${file} must not invoke a pager`).not.toMatch(/\b(PAGER|less -|\bmore\b\s*\()/);
+      expect(source, `${file} must not invoke a pager`).not.toMatch(
+        /\b(PAGER|less -|\bmore\b\s*\()/,
+      );
     }
   });
 });

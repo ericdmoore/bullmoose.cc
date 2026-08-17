@@ -116,6 +116,8 @@ describe("the empty case", () => {
 describe("the point-in-time note", () => {
   it("credits the tombstone and admits what predates it", () => {
     expect(POINT_IN_TIME_NOTE).toContain("tombstones (s03.A)");
-    expect(POINT_IN_TIME_NOTE).toContain("hard-deleted before tombstones existed are unrecoverable");
+    expect(POINT_IN_TIME_NOTE).toContain(
+      "hard-deleted before tombstones existed are unrecoverable",
+    );
   });
 });

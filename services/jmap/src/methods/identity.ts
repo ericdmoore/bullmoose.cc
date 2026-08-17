@@ -30,13 +30,7 @@ export const SYNTHETIC_IDENTITY_ID = "identity_default";
  */
 const IDENTITY_SERVER_SET = ["id", "mayDelete"] as const;
 
-const IDENTITY_WRITABLE = [
-  "name",
-  "replyTo",
-  "bcc",
-  "textSignature",
-  "htmlSignature",
-] as const;
+const IDENTITY_WRITABLE = ["name", "replyTo", "bcc", "textSignature", "htmlSignature"] as const;
 
 /**
  * The account's sending identities — the single authoritative answer to
@@ -149,8 +143,7 @@ export function registerIdentityMethods(registry: MethodRegistry<RequestContext>
 
     const identities = await resolveIdentities(ctx, access, store);
 
-    const requested =
-      args.ids === null || args.ids === undefined ? null : (args.ids as string[]);
+    const requested = args.ids === null || args.ids === undefined ? null : (args.ids as string[]);
     const list = identities
       .filter((i) => requested === null || requested.includes(i.id))
       .map(identityToJmap);
@@ -308,7 +301,10 @@ async function identitySet(
         // EmailSubmission/set resolves against — destroying it would leave the
         // account unable to send, or (worse) fall back to synthesizing the
         // LOGIN email as a sender.
-        throw new SetErrorSignal("forbidden", `identity ${id} is the account's primary and cannot be destroyed`);
+        throw new SetErrorSignal(
+          "forbidden",
+          `identity ${id} is the account's primary and cannot be destroyed`,
+        );
       }
       await store.deleteIdentity(access.accountId, id);
       byId.delete(id);
@@ -400,7 +396,8 @@ function invalid(description: string, properties?: string[]): never {
 /** RFC 8621 EmailAddress[]: `[{name?, email}]`, or null for "unset". */
 function addressListJson(value: unknown, property: string): string | null {
   if (value === null || value === undefined) return null;
-  if (!Array.isArray(value)) invalid(`${property} must be an array of EmailAddress or null`, [property]);
+  if (!Array.isArray(value))
+    invalid(`${property} must be an array of EmailAddress or null`, [property]);
   const out: EmailAddress[] = [];
   for (const item of value as unknown[]) {
     const addr = item as { email?: unknown; name?: unknown } | null;
@@ -447,7 +444,9 @@ async function validateNewIdentity(
   );
   if (unknown.length > 0) invalid(`unknown properties: ${unknown.join(", ")}`, unknown);
 
-  const email = str(spec.email ?? "", "email").trim().toLowerCase();
+  const email = str(spec.email ?? "", "email")
+    .trim()
+    .toLowerCase();
   if (!isEmail(email)) invalid("email is required and must be an address", ["email"]);
 
   // The DDL has said "must be on an active domain" since day one and nothing
@@ -467,8 +466,10 @@ async function validateNewIdentity(
     name: spec.name === undefined ? "" : str(spec.name, "name"),
     reply_to_json: addressListJson(spec.replyTo, "replyTo"),
     bcc_json: addressListJson(spec.bcc, "bcc"),
-    text_signature: spec.textSignature === undefined ? "" : str(spec.textSignature, "textSignature"),
-    html_signature: spec.htmlSignature === undefined ? "" : str(spec.htmlSignature, "htmlSignature"),
+    text_signature:
+      spec.textSignature === undefined ? "" : str(spec.textSignature, "textSignature"),
+    html_signature:
+      spec.htmlSignature === undefined ? "" : str(spec.htmlSignature, "htmlSignature"),
     may_delete: 1,
   };
 }
@@ -503,7 +504,12 @@ function applyColumns(row: IdentityRow, columns: IdentityColumns): IdentityRow {
     ...row,
     ...(columns.name !== undefined ? { name: columns.name } : {}),
     ...(columns.reply_to_json !== undefined
-      ? { replyTo: columns.reply_to_json === null ? null : (JSON.parse(columns.reply_to_json) as EmailAddress[]) }
+      ? {
+          replyTo:
+            columns.reply_to_json === null
+              ? null
+              : (JSON.parse(columns.reply_to_json) as EmailAddress[]),
+        }
       : {}),
     ...(columns.bcc_json !== undefined
       ? { bcc: columns.bcc_json === null ? null : (JSON.parse(columns.bcc_json) as EmailAddress[]) }

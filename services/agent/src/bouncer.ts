@@ -329,9 +329,13 @@ async function convFalseNegativeSender(c: ConversationCtx): Promise<void> {
     const quarantinedId = await matchingQuarantinedEmailId(c);
     await recordBayesLabel(c.env.DB, c.askerId, evidenceMessage(c, quarantinedId), "spam");
     result.bayesLabel = "spam";
-    lines.push("Recorded the forwarded message as a spam example for your filter — it trains on exactly these corrections.");
+    lines.push(
+      "Recorded the forwarded message as a spam example for your filter — it trains on exactly these corrections.",
+    );
     if (quarantinedId) {
-      lines.push("(That message matches one already sitting in your quarantine, so the boundary had flagged it too.)");
+      lines.push(
+        "(That message matches one already sitting in your quarantine, so the boundary had flagged it too.)",
+      );
     }
   }
 
@@ -355,7 +359,9 @@ async function convFalseNegativeSender(c: ConversationCtx): Promise<void> {
           `Future mail from them is held in your quarantine, rescuable${citeDirective(c.directiveMsgId)}.`,
       );
     } else {
-      lines.push(`${c.evidenceSender} was already in your Blocked book — nothing more to add there.`);
+      lines.push(
+        `${c.evidenceSender} was already in your Blocked book — nothing more to add there.`,
+      );
     }
   } else {
     lines.push(
@@ -374,18 +380,24 @@ async function convFalseNegativeDomain(c: ConversationCtx, named: string | null)
   // 'them' / 'this domain' resolves against the EVIDENCE's sender — and when
   // there is no evidence, nothing resolves: ask, never guess. (A mis-split
   // that demoted instruction to evidence lands here too — the fail-safe.)
-  const domain = named ?? (c.evidenceSender ? normalizeDomain(c.evidenceSender.split("@")[1] ?? "") : null);
+  const domain =
+    named ?? (c.evidenceSender ? normalizeDomain(c.evidenceSender.split("@")[1] ?? "") : null);
   if (!domain) {
     const replyId = await c.reply(
       "I can deny-list a domain house-wide, but I won't guess which one: name it " +
         '("add example-spam.com to the deny list") or forward one of their messages so I can read it off the sender.',
     );
-    return c.finish("done", { note: "clarification: block intent without a resolvable domain", replyId });
+    return c.finish("done", {
+      note: "clarification: block intent without a resolvable domain",
+      replyId,
+    });
   }
 
   // Refuse to deny-list a domain this tenant hosts — that would bounce the
   // house's own mail at its own door.
-  const own = await c.env.DB.prepare(`SELECT 1 AS hit FROM domains WHERE domain = ? AND tenant_id = ?`)
+  const own = await c.env.DB.prepare(
+    `SELECT 1 AS hit FROM domains WHERE domain = ? AND tenant_id = ?`,
+  )
     .bind(domain, c.job.tenant_id)
     .first<{ hit: number }>();
   if (own?.hit === 1) {
@@ -408,7 +420,11 @@ async function convFalseNegativeDomain(c: ConversationCtx, named: string | null)
     `Added ${domain} to the deny list — house-wide: future mail from ${domain} is refused at the SMTP edge, ` +
       `costing the house nothing${citeDirective(c.directiveMsgId)}. If it turns out wrong, say so — the entry names you as its authority and a human can reverse it.`,
   ];
-  const result: Record<string, unknown> = { kind: "bouncer", intent: "blockDomain", denyDomain: domain };
+  const result: Record<string, unknown> = {
+    kind: "bouncer",
+    intent: "blockDomain",
+    denyDomain: domain,
+  };
 
   if (c.askerId && (c.evidenceSender !== null || c.evidenceText.trim() !== "")) {
     const quarantinedId = await matchingQuarantinedEmailId(c);
@@ -424,7 +440,10 @@ async function convFalseNegativeDomain(c: ConversationCtx, named: string | null)
 // ---------------------------------------------------------------------------
 // Conversation 2 — false positive: explain-yourself + repair in one pass.
 
-async function convFalsePositive(c: ConversationCtx, intent: "whyBlocked" | "passSender"): Promise<void> {
+async function convFalsePositive(
+  c: ConversationCtx,
+  intent: "whyBlocked" | "passSender",
+): Promise<void> {
   // H: an address the asker typed in their OWN words; the evidence's sender
   // is the fallback. Neither → ask.
   const others = wrapperAddresses(c.wrapper).filter(
@@ -481,7 +500,9 @@ async function convFalsePositive(c: ConversationCtx, intent: "whyBlocked" | "pas
   // -- repair 1: rescue what is still held --------------------------------
   const demotedByRescue: string[] = [];
   if (shunts.length > 0) {
-    const heldIds = [...new Set(shunts.map((e) => e.emailId).filter((id): id is string => id !== null))];
+    const heldIds = [
+      ...new Set(shunts.map((e) => e.emailId).filter((id): id is string => id !== null)),
+    ];
     const rescuedIds: string[] = [];
     for (const emailId of heldIds) {
       const r = await c.askerStore.rescueQuarantined(c.askerId, emailId, c.sender, {
@@ -510,7 +531,9 @@ async function convFalsePositive(c: ConversationCtx, intent: "whyBlocked" | "pas
           "The rescue also counts as a labeled correction for your filter.",
       );
     } else {
-      lines.push("Those messages had already been moved out of quarantine, so there was nothing left to rescue.");
+      lines.push(
+        "Those messages had already been moved out of quarantine, so there was nothing left to rescue.",
+      );
     }
   }
 
@@ -551,9 +574,13 @@ async function convFalsePositive(c: ConversationCtx, intent: "whyBlocked" | "pas
   if (h.includes("@")) {
     const kg = await c.askerStore.ensureDefaultAddressBook(c.askerId);
     if (kg.change === "created") {
-      await commitChanges(c.env.ACCOUNT_DO, c.askerId, [{ collection: "AddressBook", created: [kg.id] }]);
+      await commitChanges(c.env.ACCOUNT_DO, c.askerId, [
+        { collection: "AddressBook", created: [kg.id] },
+      ]);
     } else if (kg.change === "updated") {
-      await commitChanges(c.env.ACCOUNT_DO, c.askerId, [{ collection: "AddressBook", updated: [kg.id] }]);
+      await commitChanges(c.env.ACCOUNT_DO, c.askerId, [
+        { collection: "AddressBook", updated: [kg.id] },
+      ]);
     }
     const add = await addBookMember(c, c.askerId, kg.id, h);
     if (add.added) {
@@ -617,7 +644,8 @@ async function ensurePersonalBlockedBook(
   await c.askerStore.insertAddressBook(askerId, {
     id,
     name: "Blocked",
-    description: "Senders this mailbox never wants to hear from — the boundary quarantines matches.",
+    description:
+      "Senders this mailbox never wants to hear from — the boundary quarantines matches.",
     sortOrder: 0,
     isDefault: false,
     isSubscribed: true,

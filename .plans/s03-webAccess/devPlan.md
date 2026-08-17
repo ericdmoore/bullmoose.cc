@@ -12,13 +12,13 @@
 
 ## The slices
 
-| Slice | Scope | Ships on its own | Gated on |
-|---|---|---|---|
-| **[s03.A — Foundations](../s03.A-foundations/)** | cross-realm provenance · grant tombstones | *nothing user-visible* — pure enabler | — |
-| **[s03.B — Files](../s03.B-files/)** | `file_nodes` + blob pinning · `FileNode/*` · attachment sidestep | **the attachment sidestep**, UI-free | s03.A |
-| **[s03.C — Webmail floor](../s03.C-webmail-floor/)** | shell + injected JMAP client · mail surfaces · Files browser | **a usable mail client** | s03.A, s03.B |
-| **[s03.D — Co-existence](../s03.D-coexistence/)** | `ActionProposal` · approval queue + bulk · ownership · brief · promotion | **the multiplayer layer** | s03.A, s03.C |
-| **[s03.E — Console](../s03.E-console/)** | per-agent view · credential lifecycle · per-resource forensics | **agent governance UI** | s03.A, s03.C, **s04** |
+| Slice                                                | Scope                                                                    | Ships on its own                      | Gated on              |
+| ---------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------- | --------------------- |
+| **[s03.A — Foundations](../s03.A-foundations/)**     | cross-realm provenance · grant tombstones                                | _nothing user-visible_ — pure enabler | —                     |
+| **[s03.B — Files](../s03.B-files/)**                 | `file_nodes` + blob pinning · `FileNode/*` · attachment sidestep         | **the attachment sidestep**, UI-free  | s03.A                 |
+| **[s03.C — Webmail floor](../s03.C-webmail-floor/)** | shell + injected JMAP client · mail surfaces · Files browser             | **a usable mail client**              | s03.A, s03.B          |
+| **[s03.D — Co-existence](../s03.D-coexistence/)**    | `ActionProposal` · approval queue + bulk · ownership · brief · promotion | **the multiplayer layer**             | s03.A, s03.C          |
+| **[s03.E — Console](../s03.E-console/)**             | per-agent view · credential lifecycle · per-resource forensics           | **agent governance UI**               | s03.A, s03.C, **s04** |
 
 ## Sequencing
 

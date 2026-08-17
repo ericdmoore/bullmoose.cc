@@ -1,12 +1,7 @@
 import { MethodRegistry, dispatch } from "@bullmoose/jmap-core";
 import { describe, expect, it, vi } from "vitest";
 import { AGENT_CAP, CORE_CAP, MAIL_CAP } from "./capabilities";
-import {
-  FetchJmapClient,
-  JmapRequestError,
-  backReference,
-  type WebSocketLike,
-} from "./JmapClient";
+import { FetchJmapClient, JmapRequestError, backReference, type WebSocketLike } from "./JmapClient";
 import type { Invocation, Session } from "./types";
 
 // ── fixtures ───────────────────────────────────────────────────────────────

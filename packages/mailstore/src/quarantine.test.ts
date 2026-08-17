@@ -142,7 +142,13 @@ describe("rescueQuarantined — the rescue write path", () => {
     // The authoritative tenant lookup path, not just the id-prefix fallback.
     db.seedAccount({ accountId: ACCOUNT, tenantId: "t_bm" });
     db.seed("domain_deny_list", [
-      { tenant_id: "t_bm", domain: DOMAIN, added_at: 1, source: "graduated", evidence: "20×bayes@0.99, 0 rescues" },
+      {
+        tenant_id: "t_bm",
+        domain: DOMAIN,
+        added_at: 1,
+        source: "graduated",
+        evidence: "20×bayes@0.99, 0 rescues",
+      },
     ]);
     db.seed("deny_counters", [
       { domain: DOMAIN, day: "2026-08-12", count: 41 },
@@ -250,7 +256,14 @@ describe("rescueQuarantined trains the Bayes filter (rescue = ham label)", () =>
     await store.insertQuarantinedEmail(
       ACCOUNT,
       { ...email("e_train", [quarantineId]), blobId, size: raw.byteLength },
-      { event: "shunted", sender: SENDER, domain: DOMAIN, stage: "bayes@0.99", emailId: "e_train", at: 1000 },
+      {
+        event: "shunted",
+        sender: SENDER,
+        domain: DOMAIN,
+        stage: "bayes@0.99",
+        emailId: "e_train",
+        at: 1000,
+      },
     );
     return "e_train";
   }
@@ -361,7 +374,13 @@ describe("releaseQuarantined — the classifier's exit (screened → released)",
     const { db, store } = harness();
     db.seedAccount({ accountId: ACCOUNT, tenantId: "t_bm" });
     db.seed("domain_deny_list", [
-      { tenant_id: "t_bm", domain: DOMAIN, added_at: 1, source: "graduated", evidence: "10×rejects, 0 rescues" },
+      {
+        tenant_id: "t_bm",
+        domain: DOMAIN,
+        added_at: 1,
+        source: "graduated",
+        evidence: "10×rejects, 0 rescues",
+      },
     ]);
     const emailId = await screen(store);
     await store.releaseQuarantined(ACCOUNT, emailId, "llm:unsure");
@@ -468,7 +487,14 @@ describe("confirmQuarantined — 'yes, that is spam'", () => {
     await store.insertQuarantinedEmail(
       ACCOUNT,
       { ...email("e_conf", [quarantineId]), blobId, size: raw.byteLength },
-      { event: "screened", sender: SENDER, domain: DOMAIN, stage: "bayes-mid@0.55", emailId: "e_conf", at: 1000 },
+      {
+        event: "screened",
+        sender: SENDER,
+        domain: DOMAIN,
+        stage: "bayes-mid@0.55",
+        emailId: "e_conf",
+        at: 1000,
+      },
     );
 
     await store.confirmQuarantined(ACCOUNT, "e_conf", "eric@moore.coffee");
