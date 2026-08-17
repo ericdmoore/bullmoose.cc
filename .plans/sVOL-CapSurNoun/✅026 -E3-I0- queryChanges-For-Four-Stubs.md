@@ -7,7 +7,7 @@
 | **Impact** | **I0** — neither factor holds. On completion this is a JMAP method with no surface emitting a JSON delta (the rubric's own example of *test*-verifiable), and `s03.C` `arch.md:57` names `queryChanges` without being blocked by it — the re-query fallback is mandatory regardless. Regraded from `I1` at review; the ledger now agrees. ⚠️ Low impact ≠ safe to ignore: see `readme.md` § *Where the rule fails* |
 | **Owner** | `sVOL` |
 | **Depends on** | `002` (shared fake-D1) if built — nothing blocks it today |
-| **Status** | **deferred**, and I believe correctly so |
+| **Status** | **✅ done** (closed 2026-08-14) — **it was already correct.** Every `queryChanges` throws `cannotCalculateChanges`, RFC 8620 §5.2's sanctioned answer. Nothing was built; the cell was covered by the conformant refusal. |
 
 ## Cells covered
 

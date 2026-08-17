@@ -7,7 +7,7 @@
 | **Impact** | **I3** — unlocks *and* human-verifiable |
 | **Owner** | **`sVOL`** — unowned by any `sNN` section |
 | **Depends on** | `021` (the `s03.C` shell + `JmapClient`) · optionally `012` for list filtering |
-| **Status** | todo |
+| **Status** | **✅ done** (closed 2026-08-14) — `webmail/src/pages/{contacts,calendar}.astro` over `webmail/src/lib/{contacts,calendar}/`, live against real routes rather than `?demo=1`. |
 
 ## Cells covered
 

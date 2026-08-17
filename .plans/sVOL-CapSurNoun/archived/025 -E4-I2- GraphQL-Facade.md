@@ -20,7 +20,7 @@
 | **Impact** | **I2** per the ledger — unlocks, not human-verifiable. The *unlocks* leg is thin; see *Open questions*. |
 | **Owner** | **`.feedback/fromClaude/common/022`** (P2, INVESTIGATE) + `docs/architecture/mcp-auth.md` §14 |
 | **Depends on** | **the spike returning a number.** Nothing else. |
-| **Status** | todo — **pointer only**, and gated on a measurement |
+| **Status** | **wontfix — archived** (Eric, 2026-08-13). The `common/022` spike was never needed: JMAP already has all three properties GraphQL would be adopted for — batching (a request is an array of method calls), cross-call references (`#ref`), and incremental sync (`/changes`). A facade would be a second vocabulary over the same data with its own auth surface to get wrong. See `_index.md` §2 fn 11. |
 
 ## Cells covered
 

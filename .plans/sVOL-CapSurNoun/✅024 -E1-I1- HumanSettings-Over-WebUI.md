@@ -7,7 +7,7 @@
 | **Impact** | **I1** — human-verifiable, unlocks nothing |
 | **Owner** | **`sVOL`** — no `sNN` section has a settings screen |
 | **Depends on** | **`006`** (`Identity/set`) · `021` (the `s03.C` shell) |
-| **Status** | todo |
+| **Status** | **✅ done** — shipped as **`s07` T2**, not by sVOL: `webmail/src/pages/settings.astro` + `webmail/src/lib/settings/`, commit `f23ea39` (2026-08-10). `.plans/s07-app-surface/devPlan.md:220` carries the ✅ and cites this unit by number. |
 
 ## Cells covered
 

@@ -7,7 +7,7 @@
 | **Impact** | **I3** — human-verifiable; *unlocks* is contested, see below |
 | **Owner** | `sVOL` |
 | **Depends on** | `016` (CLI I/O contract, `s05` T1) |
-| **Status** | done |
+| **Status** | **✅ done** — `flag seen move label archive junk trash rm delete` (`packages/cli/src/main.ts:373-381`). Closes `Email × U/D × CLI`. |
 
 ## Cells covered
 

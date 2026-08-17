@@ -16,6 +16,29 @@
 # read the label.
 #
 # -----------------------------------------------------------------------------
+# ⚠️ 2026-08-17 — THAT MECHANISM DID NOT WORK, and it is worth understanding why
+# before trusting this file again.
+#
+# The design is sound and the decay signal is real, but it is only emitted when
+# the script RUNS, and this script requires a live BM_TOKEN against a deployed
+# account. There is no CI job for it, no fixture mode, and no record of it ever
+# having been executed. So five assertions quietly went wrong and stayed wrong:
+#
+#   Thread/changes ABSENT      (027 landed 2026-08-14)
+#   FileNode/get   ABSENT      (011 landed 2026-08-13)
+#   FileNode/set   ABSENT      (   "                 )
+#   MCP has NO email tool      (014 landed)
+#   MCP tools/list returns 14  (was 29)
+#
+# "Designed to decay loudly" is a property of the assertions; being RUN is a
+# property of the process, and only the first one was ever built. If you are
+# adding to this file, the highest-value change is not another assertion — it is
+# a way to run the ones that exist. Until then these lines are reviewed prose
+# that happens to be executable, and they must be re-derived from the source by
+# hand, which is what 2026-08-17 did.
+# -----------------------------------------------------------------------------
+#
+# -----------------------------------------------------------------------------
 # Usage
 #   BM_TOKEN=bm_... BM_ACCOUNT=acc_... ./_verify.sh
 #   ./_verify.sh calendar              # only labels containing "calendar"
@@ -165,9 +188,19 @@ check "Mailbox/query        present"        ok           jmap_outcome "Mailbox/q
 # ↓ WAS the headline gap; 004 landed and this flipped from unknownMethod to ok.
 check "Mailbox/set          present  ← 004" ok           jmap_outcome "Mailbox/set"  "$SET_NOOP"
 
-section "Thread — derived, read only (unit 027)"
+section "Thread — derived, read only (unit 027 closed)"
 check "Thread/get           present"        ok            jmap_outcome "Thread/get"     "$GET_NOOP"
-check "Thread/changes       ABSENT  ← 027"  unknownMethod jmap_outcome "Thread/changes" "{\"accountId\":$ACC,\"sinceState\":\"0\"}"
+# 027 landed 2026-08-14 (services/jmap/src/methods/thread.ts:24). This line used to
+# expect `unknownMethod` and was WRONG for three days without anyone noticing,
+# because the script needs a live token and was never run. The three answers are
+# NOT interchangeable and that distinction is the whole unit:
+#   unknownMethod          → "this server does not speak RFC 8621 §3.2"
+#   cannotCalculateChanges → RFC 8620 §5.2's sanctioned "I cannot compute it"  ← correct
+#   an empty delta         → a lie the client cannot detect (never acceptable)
+# If this ever returns `ok` with a real delta, someone built thread-state tracking
+# and the grid gained a cell.
+check "Thread/changes       cannotCalculateChanges ← 027" cannotCalculateChanges \
+      jmap_outcome "Thread/changes" "{\"accountId\":$ACC,\"sinceState\":\"0\"}"
 
 section "EmailSubmission — set+get+changes all registered (005 closed the /get hole)"
 check "EmailSubmission/set     present"     ok            jmap_outcome "EmailSubmission/set" "$SET_NOOP"
@@ -211,9 +244,35 @@ check "CalendarEvent/getOccurrences present" ok           jmap_outcome "Calendar
 # =============================================================================
 # Grid — everything else
 # =============================================================================
-section "Files — the noun does not exist (unit 011 / s03.B)"
-check "FileNode/get         ABSENT ← 011"   unknownMethod jmap_outcome "FileNode/get" "$GET_NOOP"
-check "FileNode/set         ABSENT ← 011"   unknownMethod jmap_outcome "FileNode/set" "$SET_NOOP"
+section "Files — the noun EXISTS (unit 011 / s03.B closed)"
+# 011 closed 2026-08-13; the family is registered in services/jmap/src/methods/filenode.ts
+# (get :72, changes :114, queryChanges :119, query :123, set :187, copy :318) and wired
+# into the registry via registerFileNodeMethods (methods/index.ts). These two lines used
+# to expect `unknownMethod` — the same never-run decay as Thread/changes above.
+#
+# ⚠️ `FileNode/get` is sent `ids: []` here on purpose, matching every other /get row.
+# webmail's client warns NEVER to send an empty array in application code
+# (webmail/src/lib/files/api.ts:29) because the demo store reads it as "the whole
+# account" — that is a client-side hazard, not a server one. This asserts dispatch.
+check "FileNode/get         present ← 011"  ok            jmap_outcome "FileNode/get" "$GET_NOOP"
+check "FileNode/set         present ← 011"  ok            jmap_outcome "FileNode/set" "$SET_NOOP"
+
+# ---------------------------------------------------------------------------
+# The agent console's read interface (unit 023 / s03.E). Not JMAP methods —
+# plain GET routes on the jmap worker, so this asserts HTTP status.
+#
+# One line, not four: `handleConsole` gates the whole family before it routes
+# (console.ts:288-307), so if the family is unreachable this fails, and if it is
+# reachable the remaining three differ only in their path parsing. It returns
+# `{"agents":[]}` with a 200 for a caller who owns no agent bindings, so this is
+# safe against any account.
+#
+# ⚠️ BM_TOKEN must be a HUMAN session token. An agent-marked token gets a
+# deliberate 403 here (console.ts:298) — that is the s10 boundary working, not a
+# regression. Mint with `bullmoose token create`, not from an agent binding.
+# ---------------------------------------------------------------------------
+section "Agent console read routes (unit 023)"
+check "GET /console/agents  served ← 023"   200  http_status GET "$BM_BASE/console/agents"
 
 # -----------------------------------------------------------------------------
 # Blob + share lifecycle — unit 010. Not JMAP methods: plain routes on the jmap
@@ -309,7 +368,8 @@ check "collection DELETE removes it ← 009" 204 \
       http_status DELETE "$BM_DAV/dav/calendars/$BM_ACCOUNT/verify-probe/"
 
 # =============================================================================
-# MCP — the noun column was EMPTY until 013; 014/015 are still absent
+# MCP — the noun column was EMPTY until 013. 014 and 015 have since landed too,
+# so this section's assertions were re-derived from the source on 2026-08-17.
 # =============================================================================
 section "MCP tool surface"
 # MCP.2 negotiates PER REQUEST: the MCP-Protocol-Version header must be present
@@ -341,16 +401,30 @@ mcp_noun_tools() {
     (.result.tools // []) | map(select(.name | test("^(calendar|contacts)_"))) | length' \
     2>/dev/null || echo "UNPARSEABLE"
 }
-mcp_has_email_tool() {   # 014, still absent
+mcp_has_email_tool() {   # 014 — landed; email_* tools are PRESENT
   printf '%s' "$(mcp_list)" | jq -r '
     if ((.result.tools // []) | map(select(.name | test("^email_"))) | length) > 0
     then "present" else "none" end' 2>/dev/null || echo "UNPARSEABLE"
 }
-# 4 read-only analytics tools (spend_by_month, spend_by_vendor, top_senders,
-# message_volume) + the 10 noun tools 013 landed.
-check "MCP tools/list returns 14 tools"          14 mcp_tools
+# TOOLS = ANALYTICS + NOUN + EMAIL + INTROSPECT (services/agent/src/mcp.ts:401-406):
+#    4  analytics   spend_by_month, spend_by_vendor, top_senders, message_volume
+#   10  013 nouns   mcpNouns.ts — calendar_* ×5, contacts_* ×5
+#    8  014 email   emailTools.ts — EMAIL_TOOLS = READ_TOOLS + TRIAGE_TOOLS
+#    7  015 intro   introspectTools.ts — INTROSPECT_TOOLS
+#   --
+#   29
+#
+# ⚠️ This exact-count row is the most fragile assertion in the file, and it has
+# already decayed once: it said 14 (the pre-014 total) while the surface carried
+# 29. It is kept exact rather than `>=` because the count IS the grid fact — but
+# if you land a tool, THIS is the line that fails, and updating it is the job.
+# Same failure mode the summary block at the foot of this file warns about.
+#
+# `tools/list` is unfiltered for a plain human token; it narrows only inside an
+# invocation envelope (mcp.ts:689-695), which this script never enters.
+check "MCP tools/list returns 29 tools"          29 mcp_tools
 check "MCP HAS 10 calendar/contact tools ← 013"  10 mcp_noun_tools
-check "MCP has NO email tool ← 014"            none mcp_has_email_tool
+check "MCP HAS email tools ← 014"           present mcp_has_email_tool
 # MCP.2 removed `initialize` entirely (s01 T2).
 check "MCP initialize removed (s01)" "-32601" \
       bash -c 'curl -sS -m 20 -X POST "'"$BM_MCP"'/mcp" \

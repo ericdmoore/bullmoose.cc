@@ -7,7 +7,7 @@
 | **Impact** | **I0** — not human-verifiable, unlocks nothing. Correct as graded. |
 | **Owner** | `sVOL` |
 | **Depends on** | — |
-| **Status** | **deferred**, and this may never be worth building |
+| **Status** | **✅ done** (closed 2026-08-14) — registered, not computed: `services/jmap/src/methods/thread.ts:24` answers `cannotCalculateChanges` instead of `unknownMethod`. Two lines, five tests. |
 
 ## Cells covered
 

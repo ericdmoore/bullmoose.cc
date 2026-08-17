@@ -7,7 +7,7 @@
 | **Impact** | **I3** — unlocks *and* human-verifiable |
 | **Owner** | **`s03.B-files`** |
 | **Depends on** | `s03.A` (provenance columns — `file_nodes` should carry them from birth) |
-| **Status** | **T1 + T2 shipped.** T3 (attachment sidestep) and s03.A provenance deferred — see below. |
+| **Status** | **✅ done** (closed 2026-08-13). T1 + T2 + T3 all shipped — `services/jmap/src/methods/filenode.ts` (`get changes query queryChanges set copy`). The **outbound** attachment half is out of scope by design and tracked in `.backlog/compose-attachments.md`, not here. |
 
 ## What shipped (T1 + T2)
 
