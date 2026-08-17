@@ -213,4 +213,26 @@ import App from "../layouts/AppTw.astro";
     flex: 0 0 auto;
   }
   .home-hz-clock { font-size: 11.5px; color: var(--fg-muted); flex: 0 0 auto; }
+
+  /* s18 A4 — the Waiting-on / Commitments glances. A claim is a sentence, so
+     the body WRAPS (unlike the one-line horizon rows); the confidence badge, if
+     any, sits to its right. */
+  .home-annos { list-style: none; margin: 0; padding: 0; }
+  .home-anno {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 8px;
+    border-left: 2px solid var(--line);
+    margin-bottom: 6px;
+    border-radius: 0 6px 6px 0;
+  }
+  .home-anno:hover { background: var(--bg-alt); }
+  .home-anno-body { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.35; }
+  .home-anno-conf {
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: var(--fg-muted);
+    font-variant-numeric: tabular-nums;
+  }
 </style>

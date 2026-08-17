@@ -24,6 +24,7 @@ import { formatCivilDateTime, type CivilDate } from "../calendar/civil";
 import { installDemoCalendar } from "../calendar/demoCalendar";
 import type { CalendarEvent } from "../calendar/types";
 import type { FakeJmapClient } from "../jmap/FakeJmapClient";
+import { installAnnotationsDemo } from "./demoAnnotations";
 import { horizonDays } from "./horizon";
 
 export interface HomeDemoOptions {
@@ -95,4 +96,5 @@ export function installHomeDemo(client: FakeJmapClient, opts: HomeDemoOptions = 
   installApprovalsDemo(client, demoApprovalsOptions(opts.search ?? ""));
   const calendar = installDemoCalendar(client, now);
   calendar.rows.push(...horizonEventRows(now, viewerZone));
+  installAnnotationsDemo(client, now); // s18 A4 — the Waiting-on / Commitments glances
 }

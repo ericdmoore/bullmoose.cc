@@ -145,10 +145,22 @@ screen; a NULL rationale renders **"Why: not stated,"** never invented.
 **Done when:** reading a message shows its annotations in the margin, class-styled, each with a
 one-click correct/dismiss that writes the A1 negative.
 
-### A4 — The two views · *read models over annotations, uncertainty-first*
+### A4 — The two views · *read models over annotations, uncertainty-first* — HOME GLANCES LANDED (2026-08-17)
 
-**Files:** `webmail/src/lib/home/` (the brief/home panels), a person-panel beside the open
-message.
+> **The two home panels shipped.** `Waiting on` (the detector's `author:'waiting-on'` items) and
+> `Commitments` (open `class:'commitment'`) render on `/` as pure queries over the annotations
+> table — a new webmail annotations client (`lib/annotations/{types,api}`, mirroring
+> `lib/approvals/{types,api}`), a pure partition module (`lib/home/commitments.ts`), and two
+> agent-cap-gated panels in `HomeView.tsx`. Ambient, not a queue: a refused account leaves an
+> empty glance, never the hard error the approvals queue throws (a home panel must not take the
+> page down). Confidence renders as a small badge for an agent extraction, nothing for a
+> human-filed claim (true because a human said so). **Waiting-on has live data now** (from the
+> graduated detector); **Commitments fills once the extractor is provisioned** (A2, still off).
+> Deferred to a later slice: the **person-panel** beside an open message ("the commitments and
+> waits involving Bob") — that is the A3 margin's neighbour and rides with it. 16 new tests.
+
+**Files:** `webmail/src/lib/annotations/{types,api}.ts`, `webmail/src/lib/home/commitments.ts`,
+`HomeView.tsx` (two panels), `demoAnnotations.ts`; later, a person-panel beside the open message.
 
 Two views, the two questions a chief of staff is *for*: **what am I waiting on?** and **what did
 I promise?** Both are **queries over `annotations`** (by `class`, `status`, `anchor.objectId`) —
