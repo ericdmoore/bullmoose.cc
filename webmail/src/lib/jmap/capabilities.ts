@@ -70,6 +70,8 @@ export function capabilityForMethod(methodName: string): string {
       return FILENODE_CAP;
     case "AgentInvocation":
     case "ActionProposal":
+    case "Watch":
+    case "Annotation":
       return AGENT_CAP;
     default:
       // Unknown method — fall back to core; the server will reject the method

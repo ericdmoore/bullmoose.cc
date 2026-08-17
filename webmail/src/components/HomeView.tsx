@@ -24,6 +24,9 @@ import { queryWindow } from "../lib/calendar/grid";
 import type { Occurrence } from "../lib/calendar/types";
 import { horizonDays, lookingAhead, type HorizonItem } from "../lib/home/horizon";
 import { waitingApprovals } from "../lib/home/waiting";
+import { commitments, waitingOn } from "../lib/home/commitments";
+import { loadAnnotations } from "../lib/annotations/api";
+import type { Annotation } from "../lib/annotations/types";
 import { CALENDARS_CAP, hasCapability } from "../lib/jmap/capabilities";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
@@ -73,6 +76,10 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
    *  T7), and each carries its own state string. */
   const [states, setStates] = useState<Record<string, string>>({});
   const [loadingApprovals, setLoadingApprovals] = useState(true);
+
+  // s18 A4 — the two chief-of-staff glances, queried over the annotations table.
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [loadingAnnotations, setLoadingAnnotations] = useState(true);
 
   const [panel, setPanel] = useState<Panel | undefined>(undefined);
   const [busyId, setBusyId] = useState<string | undefined>(undefined);
@@ -168,6 +175,33 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
     };
   }, [client, gate.state, approvalsKey]);
 
+  // ── Waiting-on / Commitments — the annotation glances (s18 A4) ────────────
+  // Same account set and gate as the queue (both are agent-cap surfaces), but
+  // AMBIENT: a failed fetch leaves the glances empty, it never takes home down.
+  useEffect(() => {
+    if (!client || gate.state !== "open" || approvalsAccts.length === 0) {
+      setLoadingAnnotations(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingAnnotations(true);
+    void loadAnnotations(
+      client,
+      approvalsAccts.map((a) => a.accountId),
+    )
+      .then((res) => {
+        if (cancelled) return;
+        setAnnotations(res.annotations);
+        setLoadingAnnotations(false);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadingAnnotations(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, gate.state, approvalsKey]);
+
   // ── Looking Ahead — today/tomorrow occurrences (server-expanded) ──────────
   useEffect(() => {
     if (!client || !hasCalendar || !calendarAcct) return;
@@ -187,6 +221,8 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
   }, [client, hasCalendar, calendarAcct]);
 
   const waiting = useMemo(() => waitingApprovals(proposals), [proposals]);
+  const waits = useMemo(() => waitingOn(annotations), [annotations]);
+  const promised = useMemo(() => commitments(annotations), [annotations]);
   const horizon = useMemo(
     () => lookingAhead({ proposals, occurrences, viewerZone, now }),
     [proposals, occurrences, viewerZone, now],
@@ -319,8 +355,72 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
             </ul>
           )}
         </section>
+
+        {/* The two chief-of-staff questions (s18 A4), each a query over the
+            annotations table. Agent-cap gated like the queue: no agent, no
+            commentary, no dead region. */}
+        {gate.state === "open" ? (
+          <section class="home-stack" aria-label="Waiting on">
+            <header class="home-stack-head">
+              <h2 class="home-h2">Waiting on</h2>
+              <span class="muted home-fine">replies you're expecting</span>
+            </header>
+            {loadingAnnotations ? <p class="muted home-pad">Loading…</p> : null}
+            {!loadingAnnotations && waits.rows.length === 0 ? (
+              <p class="muted home-pad">You're not waiting on anyone right now.</p>
+            ) : null}
+            {waits.rows.length > 0 ? (
+              <ul class="home-annos">
+                {waits.rows.map((a) => (
+                  <AnnotationRow key={a.id} a={a} />
+                ))}
+              </ul>
+            ) : null}
+            {waits.more > 0 ? <p class="muted home-pad home-fine">+{waits.more} more</p> : null}
+          </section>
+        ) : null}
+
+        {gate.state === "open" ? (
+          <section class="home-stack" aria-label="Commitments">
+            <header class="home-stack-head">
+              <h2 class="home-h2">Commitments</h2>
+              <span class="muted home-fine">what you promised</span>
+            </header>
+            {loadingAnnotations ? <p class="muted home-pad">Loading…</p> : null}
+            {!loadingAnnotations && promised.rows.length === 0 ? (
+              <p class="muted home-pad">No open commitments — nothing you've promised is outstanding.</p>
+            ) : null}
+            {promised.rows.length > 0 ? (
+              <ul class="home-annos">
+                {promised.rows.map((a) => (
+                  <AnnotationRow key={a.id} a={a} />
+                ))}
+              </ul>
+            ) : null}
+            {promised.more > 0 ? <p class="muted home-pad home-fine">+{promised.more} more</p> : null}
+          </section>
+        ) : null}
       </div>
     </main>
+  );
+}
+
+// ── An annotation glance row (s18 A4) ───────────────────────────────────────
+// Display-only: the click-through to the anchored message is A3's margin, not
+// here. The panel header carries the category, so the row shows the claim and
+// — for an agent extraction — how sure it was. A human-filed claim (confidence
+// null) shows no badge: it is true because a human said so.
+function AnnotationRow({ a }: { a: Annotation }) {
+  const pct = a.confidence != null ? `${Math.round(a.confidence * 100)}%` : null;
+  return (
+    <li class="home-anno">
+      <span class="home-anno-body">{a.body}</span>
+      {pct ? (
+        <span class="home-anno-conf" title="the agent's confidence in this reading">
+          {pct}
+        </span>
+      ) : null}
+    </li>
   );
 }
 
