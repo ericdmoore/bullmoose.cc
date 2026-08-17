@@ -28,7 +28,7 @@ import { runBouncer } from "./bouncer.js";
 import { runRemind } from "./remind.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
-import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
+import { assertOutboundAllowed, outboundRefusal } from "@bullmoose/mailstore/outboundBound";
 import { answerInfoRequest, expireStaleProposals, proposeReply } from "./proposals.js";
 import { docsResponse, MCP_DOCS } from "./docs.js";
 import { introspect, isLocalToken, principalFromProps } from "./oauthBridge.js";

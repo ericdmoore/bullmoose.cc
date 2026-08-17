@@ -1,6 +1,7 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
 import { QUARANTINE_ROLE, type ContactCardRow, type JSContactCard, type Mailstore } from "@bullmoose/mailstore";
+import { OutboundRefused, assertOutboundAllowed } from "@bullmoose/mailstore/outboundBound";
 import {
   budgetExhaustedSql,
   budgetMonthStartMs,
@@ -51,6 +52,14 @@ import {
  *                          structurally lack (mcp-auth.md §12 step 10; there is
  *                          no send tool, `mcpTools.test.ts:124-128`). A policy
  *                          bug is then a nuisance, never a breach.
+ *
+ * The capability wall says WHO may commit an egress. It says nothing about WHERE
+ * the mail may go — that is the outbound bound (s10 T1,
+ * @bullmoose/mailstore/outboundBound), re-derived from the binding's current
+ * governing book inside `applyProposal` immediately before the relay, on both
+ * the immediate-apply path and the hold-tray sweep. It is deliberately NOT
+ * checked at decision time: the whole point is that it binds the send, and the
+ * approver's own `editedPayload` is one of the things it has to bind.
  *
  * needsInfo (s10 T3, decline-taxonomy.md) — the third verb, an ACTION and not
  * a reject: judgment cannot yet be rendered, the missing input is information,
@@ -916,6 +925,40 @@ async function applyProposal(
       if (!to || !self || !blobId) {
         throw new SetErrorSignal("invalidProperties", "reply-draft payload needs to/self/blobId", ["payload"]);
       }
+      // THE OUTBOUND BOUND, AT EGRESS (s10 T1 — the hardening gap its devPlan
+      // left open). The agent checked its governing book when it DRAFTED this;
+      // that check is worthless here, because everything it depended on can
+      // have changed since:
+      //
+      //   • the book can have been NARROWED between draft and approve, or
+      //     between approve and the hold-tray sweep that commits it (~5 min
+      //     of window plus up to a cron interval);
+      //   • the binding can have been disabled or deleted;
+      //   • `editedPayload` can have REWRITTEN `to`. An approver may amend a
+      //     proposal before approving it, the amendment replaces the payload
+      //     wholesale, and `to` is just another key in it — so the human who
+      //     retypes the recipient is, without the line below, editing their
+      //     way straight past the agent's bound.
+      //
+      // So the binding's CURRENT `recipients_book_id` and its CURRENT
+      // membership are re-derived here, against the recipient actually about
+      // to be handed to the relay (`to` comes from the EFFECTIVE payload —
+      // edited if edited), by the same one decision function the agent's own
+      // three relay sites sit behind. Same reasoning as
+      // `effectiveNodeAuthority`: narrowing must bite work already in the
+      // queue, and a check performed at issue is a check the holder keeps
+      // forever.
+      //
+      // Fail-closed and RECOVERABLE: this throws before the relay and before
+      // any status write, so a refusal leaves a tier-1/3 row `pending` with a
+      // `forbidden` SetError naming the recipient, and a tier-2 row `held` and
+      // retried next sweep with the reason logged (`commitHeld.ts`). Nothing is
+      // dropped, and nothing egresses.
+      await assertOutboundAllowed(
+        ctx.env,
+        { account_id: access.accountId, binding_id: row.binding_id },
+        [to],
+      );
       const res = await ctx.env.SUBMIT.fetch("https://submit.internal/internal/submit", {
         method: "POST",
         headers: { "content-type": "application/json", "x-internal-token": ctx.env.INTERNAL_TOKEN },
@@ -1337,6 +1380,9 @@ class SetErrorSignal extends Error {
 
 function toSetError(err: unknown): SetError {
   if (err instanceof NotFound) return setError("notFound");
+  // The outbound bound refused this send. `forbidden`, not `serverFail`: the
+  // approver's book said no, the server is fine, and the tray should say so.
+  if (err instanceof OutboundRefused) return setError("forbidden", err.message);
   if (err instanceof SetErrorSignal) {
     return {
       type: err.type,
@@ -1546,10 +1592,14 @@ function str(v: unknown): string | null {
  *
  * ## Failure posture
  *
- * A row whose apply fails (submit relay down, mailbox gone) STAYS `held` and
- * is retried next sweep — the row, not the attempt, is the source of truth,
- * the same posture as the drain. Failures are returned and logged loudly by
- * the caller; a bounded batch keeps one poisoned row from starving the rest.
+ * A row whose apply fails (submit relay down, mailbox gone, the governing book
+ * narrowed since the approval — `applyProposal` re-derives the outbound bound
+ * at the relay, so this sweep is a full egress and gets the full gate) STAYS
+ * `held` and is retried next sweep — the row, not the attempt, is the source of
+ * truth, the same posture as the drain. Failures are returned and logged loudly
+ * by the caller; a bounded batch keeps one poisoned row from starving the rest.
+ * A book-refusal therefore parks rather than drops: re-widen the book and the
+ * next sweep sends it; leave it narrowed and a human yanks it.
  * Yank races commit at the `status='held'` guard on the UPDATE: whichever
  * lands first wins, and the loser's UPDATE changes zero rows.
  */

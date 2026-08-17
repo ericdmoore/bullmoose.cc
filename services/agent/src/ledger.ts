@@ -2,7 +2,7 @@ import { commitChanges } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
 import type { EmailRow, Mailstore } from "@bullmoose/mailstore";
 import { callWithFallback, type BindingConfig, type Env } from "./models.js";
-import { assertOutboundAllowed, outboundRefusal } from "./outbound.js";
+import { assertOutboundAllowed, outboundRefusal } from "@bullmoose/mailstore/outboundBound";
 
 /**
  * Ledger pipeline — "Allen the Analyst" (analyst@bullmoose.cc).

@@ -22,7 +22,7 @@ import {
   wrapperAddresses,
   type BouncerIntent,
 } from "./bouncerParse.js";
-import { outboundRefusal } from "./outbound.js";
+import { outboundRefusal } from "@bullmoose/mailstore/outboundBound";
 import { callWithFallback, type BindingConfig, type Env } from "./models.js";
 
 /**

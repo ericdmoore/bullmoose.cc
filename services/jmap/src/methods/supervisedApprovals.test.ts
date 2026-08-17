@@ -93,6 +93,52 @@ function seedProposal(w: FakeWorker, s: SeedSpec): void {
   ]);
 }
 
+/**
+ * Give one account's binding a governing book reaching `members` (s10 T1).
+ * The outbound bound is fail-closed, so any fixture that expects mail to leave
+ * must state the reach it is claiming — see actionProposal.test.ts's twin.
+ */
+function governBinding(w: FakeWorker, account: string, binding: string, members: string[]): void {
+  const bookId = `ab_${binding}`;
+  w.db.seed("agent_bindings", [
+    {
+      id: `bind_${binding}`,
+      account_id: account,
+      name: binding,
+      recipients_book_id: bookId,
+      enabled: 1,
+    },
+  ]);
+  w.db.seed("address_books", [
+    {
+      id: bookId,
+      account_id: account,
+      name: `${binding} may email`,
+      sort_order: 0,
+      is_default: 0,
+      is_subscribed: 1,
+      ctag: 0,
+      created_at: 1,
+      updated_at: 1,
+      write_policy: "governed",
+    },
+  ]);
+  w.db.seed(
+    "contact_cards",
+    members.map((address, i) => ({
+      id: `cc_${binding}${i}`,
+      account_id: account,
+      address_book_id: bookId,
+      uid: `u_${binding}${i}`,
+      card_json: JSON.stringify({ uid: `u_${binding}${i}`, emails: { e: { address } } }),
+      name_full: address,
+      dav_name: null,
+      created_at: 1,
+      updated_at: 1,
+    })),
+  );
+}
+
 async function harness() {
   const w = fakeEnv();
   const registry = new MethodRegistry<RequestContext>();
@@ -415,6 +461,11 @@ describe("deciding a granted account's proposal", () => {
     // bug. Without `send` the owner would see the ask and be unable to answer.
     const full = await harness();
     seedProposal(full.w, { account: EMILY, id: "inv_emily3", binding: "editor-emily", ...reply });
+    // The capability wall is not the only gate in front of an egress: the
+    // outbound bound (s10 T1) resolves the binding's governing book at the
+    // relay. Grant the reach this send needs, or the wall's PERMIT case would
+    // be indistinguishable from the bound's refusal.
+    governBinding(full.w, EMILY, "editor-emily", ["outside@example.com"]);
     const approved = await full.call<SetResult>("ActionProposal/set", {
       accountId: EMILY,
       update: { inv_emily3: { status: "approved" } },

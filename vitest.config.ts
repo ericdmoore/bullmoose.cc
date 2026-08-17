@@ -25,6 +25,10 @@ export default defineConfig({
       "@bullmoose/calendar-core": here("packages/calendar-core/src/index.ts"),
       "@bullmoose/jmap-core": here("packages/jmap-core/src/index.ts"),
       "@bullmoose/account-do": here("packages/account-do/src/index.ts"),
+      // Subpath BEFORE the bare specifier: vite alias keys are matched as
+      // prefixes in order, so `@bullmoose/mailstore` would otherwise swallow
+      // `@bullmoose/mailstore/outboundBound` and resolve it to index.ts/…
+      "@bullmoose/mailstore/outboundBound": here("packages/mailstore/src/outboundBound.ts"),
       "@bullmoose/mailstore": here("packages/mailstore/src/index.ts"),
       "@bullmoose/mime": here("packages/mime/src/index.ts"),
       "@bullmoose/outbound": here("packages/outbound/src/index.ts"),

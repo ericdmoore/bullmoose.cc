@@ -114,6 +114,86 @@ function seedProposal(w: ReturnType<typeof fakeEnv>, s: SeedSpec): void {
   ]);
 }
 
+const BOOK = "ab_reach";
+
+/**
+ * Give the proposal's binding a governing book reaching `members` (s10 T1).
+ *
+ * Every egress in this file now sits behind the outbound bound, and the bound
+ * is fail-closed: with no `agent_bindings` row and no book, EVERY send refuses.
+ * So a fixture that expects mail to leave has to say who the binding is
+ * ALLOWED to email — which is the production posture stated as a fixture, not
+ * a concession to the test.
+ */
+function governBinding(
+  w: ReturnType<typeof fakeEnv>,
+  members: string[],
+  opts: { bookId?: string | null; enabled?: number; account?: string } = {},
+): void {
+  const account = opts.account ?? ACCOUNT;
+  const bookId = opts.bookId === undefined ? BOOK : opts.bookId;
+  w.db.seed("agent_bindings", [
+    {
+      id: "bind_x",
+      account_id: account,
+      name: "emily",
+      recipients_book_id: bookId,
+      enabled: opts.enabled ?? 1,
+    },
+  ]);
+  if (bookId === null) return;
+  w.db.seed("address_books", [
+    {
+      id: bookId,
+      account_id: account,
+      name: "the binding may email",
+      sort_order: 0,
+      is_default: 0,
+      is_subscribed: 1,
+      ctag: 0,
+      created_at: 1,
+      updated_at: 1,
+      write_policy: "governed",
+    },
+  ]);
+  w.db.seed(
+    "contact_cards",
+    members.map((address, i) => ({
+      id: `cc_gb${i}`,
+      account_id: account,
+      address_book_id: bookId,
+      uid: `u_gb${i}`,
+      card_json: JSON.stringify({ uid: `u_gb${i}`, emails: { e: { address } } }),
+      name_full: address,
+      dav_name: null,
+      created_at: 1,
+      updated_at: 1,
+    })),
+  );
+}
+
+/** Narrow the book to nothing — the "revoked between draft and send" move. */
+function narrowBook(w: ReturnType<typeof fakeEnv>): void {
+  w.db.query(`DELETE FROM contact_cards WHERE address_book_id = '${BOOK}'`);
+}
+
+/** Put an address back into the governing book — narrowing's inverse. */
+function widenBook(w: ReturnType<typeof fakeEnv>, address: string): void {
+  w.db.seed("contact_cards", [
+    {
+      id: `cc_w_${address}`,
+      account_id: ACCOUNT,
+      address_book_id: BOOK,
+      uid: `u_w_${address}`,
+      card_json: JSON.stringify({ uid: `u_w_${address}`, emails: { e: { address } } }),
+      name_full: address,
+      dav_name: null,
+      created_at: 2,
+      updated_at: 2,
+    },
+  ]);
+}
+
 // ---- read model -----------------------------------------------------------
 
 describe("ActionProposal projects over the invocation, not a second store", () => {
@@ -273,6 +353,7 @@ describe("a tier-3 approve requires a human and is refused to an agent token", (
   it("PERMITS a human (send scope): relays and marks approved", async () => {
     const h = harness(["mail"]); // a human token — `mail` covers `send`
     seedProposal(h.w, tier3());
+    governBinding(h.w, ["outside@example.com"]);
 
     const res = await h.set({ update: { inv_3: { status: "approved" } } });
     expect(res.notUpdated).toEqual({});
@@ -904,7 +985,9 @@ const HELD_PAYLOAD = {
 
 /** Seed a proposal already in the hold tray, window closing at `holdUntil`.
  *  The sweep resolves the account's tenant per row (it crosses accounts), so
- *  unlike the /set tests the account row itself must exist. */
+ *  unlike the /set tests the account row itself must exist. The binding is
+ *  governed to reach exactly the held payload's recipient — the sweep egresses,
+ *  so it sits behind the outbound bound like every other send. */
 function seedHeld(h: ReturnType<typeof harness>, id: string, holdUntil: number, by = "eric@login.example") {
   h.w.db.seedAccount({
     accountId: ACCOUNT,
@@ -913,6 +996,7 @@ function seedHeld(h: ReturnType<typeof harness>, id: string, holdUntil: number, 
     loginEmail: "eric@login.example",
     displayName: "Eric",
   });
+  if (h.w.db.count("agent_bindings") === 0) governBinding(h.w, [HELD_PAYLOAD.to]);
   seedProposal(h.w, { id, kind: "reply-draft", tier: 2, status: "held", payload: HELD_PAYLOAD });
   h.w.db.query(
     `UPDATE agent_proposals SET hold_until = ${holdUntil}, decided_at = 5,
@@ -1025,6 +1109,230 @@ describe("s03.D T2 — the commit sweep: Approve finally means send", () => {
   });
 });
 
+// ---- the governing book, enforced AT EGRESS -------------------------------
+//
+// s10 T1 shipped `assertOutboundAllowed` and wired it into the agent worker's
+// three relay sites. It was never wired into THIS worker — and the approval
+// path egresses from here. The whole gap in one sentence: the book was checked
+// when the agent DRAFTED, and never when the proposal SENT.
+//
+// These are written as the attacks they close, not as coverage. Each one is a
+// sequence a real operator can perform with no special access: narrow a book,
+// disable a binding, retype a recipient in the approve dialog.
+//
+// Deleting the `assertOutboundAllowed` call in `applyProposal` fails the first
+// two and the edited-recipient one. Checking `row.payload_json` instead of the
+// effective payload fails the edited-recipient one. Checking the book at draft
+// time instead of at the relay fails all three.
+
+const OUT = "outside@example.com";
+
+describe("ATTACK: a book narrowed after the draft still bites at approve", () => {
+  const tier3 = (payload: Record<string, unknown>) => ({
+    id: "inv_nb",
+    kind: "reply-draft",
+    tier: 3,
+    payload,
+  });
+
+  it("narrowing between draft and approve refuses the tier-3 apply, and nothing egresses", async () => {
+    const h = harness(["mail"]);
+    seedProposal(h.w, tier3({ to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" }));
+    governBinding(h.w, [OUT]);
+
+    // …the human narrows the book while the proposal sits in the queue.
+    narrowBook(h.w);
+
+    const res = await h.set({ update: { inv_nb: { status: "approved" } } });
+    expect(res.updated).toEqual({});
+    expect(res.notUpdated.inv_nb!.type).toBe("forbidden");
+    expect(res.notUpdated.inv_nb!.description).toMatch(/outbound bound.*not in the governing book: outside@example\.com/);
+    // Nothing left, and the row is recoverable rather than dropped: still
+    // pending, still decidable once the book is right.
+    expect(h.w.submit.calls).toEqual([]);
+    expect(
+      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_nb'`)[0]!.status,
+    ).toBe("pending");
+    // No Sent copy either — the refusal is BEFORE the relay, not after it.
+    expect(h.w.db.count("emails")).toBe(0);
+  });
+
+  it("re-widening the book lets the very same queued proposal through", async () => {
+    const h = harness(["mail"]);
+    seedProposal(h.w, tier3({ to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" }));
+    governBinding(h.w, [OUT]);
+    narrowBook(h.w);
+    await h.set({ update: { inv_nb: { status: "approved" } } });
+    expect(h.w.submit.calls).toEqual([]);
+
+    // The bound is a live question, not a verdict: put the address back and
+    // the identical row sends.
+    widenBook(h.w, OUT);
+    const res = await h.set({ update: { inv_nb: { status: "approved" } } });
+    expect(res.notUpdated).toEqual({});
+    expect(h.w.submit.calls).toEqual([{ mailFrom: "emily@bullmoose.cc", rcptTo: [OUT] }]);
+  });
+});
+
+describe("ATTACK: a book narrowed after APPROVE still bites at the hold-tray commit", () => {
+  it("the sweep refuses, the row stays held with a legible reason, and no mail leaves", async () => {
+    const h = harness();
+    seedHeld(h, "inv_nh", Date.now() - 1_000);
+    // Approved, window closed, sweep about to run — and the book is narrowed
+    // in that gap. This is the tier-2 twin of the case above, and the one the
+    // 5-minute retraction window makes easy to hit.
+    narrowBook(h.w);
+
+    const { committed, failed } = await commitDueHeldProposals(h.ctx);
+    expect(committed).toEqual([]);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]!.error).toMatch(/outbound bound.*not in the governing book/);
+    expect(h.w.submit.calls).toEqual([]);
+    // Held, not lost: `commitHeld.ts` logs the reason loudly and the row is
+    // retried next sweep — it sends the moment the book allows it again.
+    expect(
+      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_nh'`)[0]!.status,
+    ).toBe("held");
+  });
+
+  it("an in-book held proposal still commits — the guard refuses, it does not block", async () => {
+    const h = harness();
+    seedHeld(h, "inv_ok", Date.now() - 1_000);
+    const { committed, failed } = await commitDueHeldProposals(h.ctx);
+    expect(failed).toEqual([]);
+    expect(committed).toEqual(["inv_ok"]);
+    expect(h.w.submit.calls).toEqual([{ mailFrom: "emily@bullmoose.cc", rcptTo: [OUT] }]);
+  });
+});
+
+describe("ATTACK: editedPayload cannot edit its way past the bound", () => {
+  // `editedPayload` is validated ONLY as `typeof === "object"` and then
+  // REPLACES the payload wholesale for the apply (`effectivePayload`). Every
+  // key is editable, `to` included — so before the egress check existed, the
+  // approve dialog was a recipient-rewrite primitive. The first test proves
+  // recipients really are editable (the hole is real); the second proves the
+  // rewrite is now bounded by the same book.
+  const seedEditable = (h: ReturnType<typeof harness>) =>
+    seedProposal(h.w, {
+      id: "inv_ed",
+      kind: "reply-draft",
+      tier: 3,
+      payload: { to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" },
+    });
+
+  const edited = (to: string) => ({
+    to,
+    self: "emily@bullmoose.cc",
+    blobId: "b_r",
+    subject: "s",
+    text: "t",
+  });
+
+  it("PROOF the hole is real: editedPayload.to redirects the actual envelope", async () => {
+    const h = harness(["mail"]);
+    seedEditable(h);
+    governBinding(h.w, [OUT, "elsewhere@example.com"]);
+
+    const res = await h.set({
+      update: { inv_ed: { status: "approved", editedPayload: edited("elsewhere@example.com") } },
+    });
+    expect(res.notUpdated).toEqual({});
+    // The agent drafted to `outside@`; the envelope went to `elsewhere@`. The
+    // approver, not the agent, chose the recipient — which is exactly why the
+    // draft-time check could never have been enough.
+    expect(h.w.submit.calls).toEqual([{ mailFrom: "emily@bullmoose.cc", rcptTo: ["elsewhere@example.com"] }]);
+    // And the agent's original is retained beside the edit, unrewritten.
+    const prop = h.w.db.query<{ payload_json: string }>(
+      `SELECT payload_json FROM agent_proposals WHERE id = 'inv_ed'`,
+    )[0]!;
+    expect(JSON.parse(prop.payload_json).to).toBe(OUT);
+  });
+
+  it("REFUSES an edited recipient outside the book — the human cannot widen the bound by retyping", async () => {
+    const h = harness(["mail"]);
+    seedEditable(h);
+    governBinding(h.w, [OUT]); // `attacker@` is NOT in the book
+
+    const res = await h.set({
+      update: { inv_ed: { status: "approved", editedPayload: edited("attacker@evil.test") } },
+    });
+    expect(res.updated).toEqual({});
+    expect(res.notUpdated.inv_ed!.type).toBe("forbidden");
+    expect(res.notUpdated.inv_ed!.description).toMatch(/not in the governing book: attacker@evil\.test/);
+    expect(h.w.submit.calls).toEqual([]);
+    expect(
+      h.w.db.query<{ status: string }>(`SELECT status FROM agent_proposals WHERE id = 'inv_ed'`)[0]!.status,
+    ).toBe("pending");
+  });
+
+  it("REFUSES an edited recipient at the hold-tray commit too — tier 2 gets the same answer", async () => {
+    const h = harness(["mail"]);
+    seedHeld(h, "inv_eh", Date.now() - 1_000);
+    // The approver edited the recipient on the way into the tray; the sweep
+    // reads `edited_payload_json` in preference to `payload_json`, so this is
+    // the address that would actually be relayed.
+    h.w.db.query(
+      `UPDATE agent_proposals SET edited_payload_json = '${JSON.stringify(edited("attacker@evil.test"))}'
+       WHERE id = 'inv_eh'`,
+    );
+    const { committed, failed } = await commitDueHeldProposals(h.ctx);
+    expect(committed).toEqual([]);
+    expect(failed[0]!.error).toMatch(/not in the governing book: attacker@evil\.test/);
+    expect(h.w.submit.calls).toEqual([]);
+  });
+});
+
+describe("ATTACK: fail-closed — an unbound or revoked binding cannot send at all", () => {
+  const seedTier3 = (h: ReturnType<typeof harness>, id: string) =>
+    seedProposal(h.w, {
+      id,
+      kind: "reply-draft",
+      tier: 3,
+      payload: { to: OUT, self: "emily@bullmoose.cc", blobId: "b_r", subject: "s", text: "t" },
+    });
+
+  it("a NULL governing book refuses — unbound means CANNOT SEND, never unrestricted", async () => {
+    const h = harness(["mail"]);
+    seedTier3(h, "inv_null");
+    governBinding(h.w, [], { bookId: null });
+
+    const res = await h.set({ update: { inv_null: { status: "approved" } } });
+    expect(res.notUpdated.inv_null!.type).toBe("forbidden");
+    expect(res.notUpdated.inv_null!.description).toMatch(/no governing book/);
+    expect(h.w.submit.calls).toEqual([]);
+  });
+
+  it("a DISABLED binding refuses even with the recipient in its book", async () => {
+    const h = harness(["mail"]);
+    seedTier3(h, "inv_off");
+    governBinding(h.w, [OUT], { enabled: 0 });
+
+    const res = await h.set({ update: { inv_off: { status: "approved" } } });
+    expect(res.notUpdated.inv_off!.type).toBe("forbidden");
+    expect(res.notUpdated.inv_off!.description).toMatch(/is disabled/);
+    expect(h.w.submit.calls).toEqual([]);
+  });
+
+  it("a MISSING binding row refuses — an invocation whose binding was destroyed cannot egress", async () => {
+    const h = harness(["mail"]);
+    seedTier3(h, "inv_gone"); // no `agent_bindings` row seeded at all
+
+    const res = await h.set({ update: { inv_gone: { status: "approved" } } });
+    expect(res.notUpdated.inv_gone!.type).toBe("forbidden");
+    expect(res.notUpdated.inv_gone!.description).toMatch(/binding bind_x does not exist/);
+    expect(h.w.submit.calls).toEqual([]);
+  });
+
+  it("an EMPTY governing book refuses — a book is an allowlist, not a formality", async () => {
+    const h = harness(["mail"]);
+    seedTier3(h, "inv_empty");
+    governBinding(h.w, []);
+
+    const res = await h.set({ update: { inv_empty: { status: "approved" } } });
+    expect(res.notUpdated.inv_empty!.type).toBe("forbidden");
+    expect(h.w.submit.calls).toEqual([]);
+  });
+});
 // ---- s20 T1↔T4: the agent-offered Watch (watch-offer) ---------------------
 
 describe("approving a watch-offer arms a no-reply-from Watch", () => {
