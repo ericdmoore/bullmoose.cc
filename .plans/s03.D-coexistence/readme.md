@@ -1,5 +1,7 @@
 # s03.D — Co-existence: the multiplayer layer
 
+> **Status: T1 + most of T2 SHIPPED; T3–T5 not started.** ⚠️ The "Nothing built" claim below is wrong — `/approvals` is live (`ApprovalsQueue.tsx`, 915 lines; 15 modules), including the hold-tray commit and yank (#127). Also drifted architecturally: approvals shipped as a SEPARATE route, not the in-shell seam described here, and acceptance #5 tests `notNow`, a value the server now refuses.
+
 > **Slice of the s03 web-access arc.** Shared context:
 > [`../s03-webAccess/readme.md`](../s03-webAccess/readme.md) ·
 > [`../s03-webAccess/arch.md`](../s03-webAccess/arch.md) §4–5.

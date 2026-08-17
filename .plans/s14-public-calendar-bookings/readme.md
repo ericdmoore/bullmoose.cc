@@ -2,6 +2,8 @@ Public Calendar Booking
 ======================
 
 
+> **Status: raw notes, not started (2026-08-13).** No code — no free/busy surface, no `corey@`. Sibling note: `.backlog/bookings.md`.
+
 @ref: See "Notion Calendar" where the public sees some set of your calenar 
 - that "set" might be somewhere in-between the `empty-set`, and the `universal-set`
 - pending on the humans privacy preferences and nature of their business.

@@ -1,6 +1,6 @@
 # s11 — the optimistic work scheduler: sit free, escalate near-due
 
-> **Status: design.** The invocation queue exists and is claim-**first-available**. This
+> **Status: T1–T3, T6, T8, T9 SHIPPED and wired.** `packages/scheduling` is real, the gate is folded into every claim UPDATE in both workers, and the overdue/budget sweeps run off the 5-minute cron. ⚠️ T7 (Jobs) shipped but has NO production entry point — `startJob` is called only from tests. T4 retired, T5 deferred.
 > section makes it claim-**smart**: let work sit hoping a *free* runtime picks it up, and spend
 > paid cloud budget only as a deadline approaches. The `feed.works` pattern, applied to agent
 > inference.

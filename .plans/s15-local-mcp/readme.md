@@ -1,6 +1,6 @@
 # s15 — the CLI as a local MCP bridge
 
-> **Status: design** (2026-08-13 discussion). Eric's question: *"does the CLI (+ its
+> **Status: design (2026-08-13; premise re-verified 2026-08-17).** Still no MCP in either CLI. ⚠️ The framing below is stale in one place: it says the only MCP surface is `x-internal-token`-gated and unreachable locally. `/mcp` has been PUBLIC since s02 T1 — the ACL now covers only `/drain` and `/internal/*`. The argument for a local MCP survives; that premise does not.
 > websocket) act as the bridge to offer the MCP auth etc for the working actor?"*
 >
 > **Today: no.** There is no MCP in either CLI. The only MCP surface that exists is

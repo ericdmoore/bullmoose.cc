@@ -1,6 +1,8 @@
 Blogging Agent + Engine
 =================
 
+> **Status: raw notes, not started (2026-08-13).** No code — zero hits for `blog@`/`blogging` outside `node_modules`. The requirements below are open questions, not a spec.
+
 # Converational requirements:
 
 - Send in Blog Content

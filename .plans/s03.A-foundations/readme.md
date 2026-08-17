@@ -1,5 +1,7 @@
 # s03.A — Foundations: provenance & tombstones
 
+> **Status: SHIPPED (T1 + T2), with one known hole.** Provenance on all seven realms and grant tombstones are live. Acceptance #1 does NOT hold for CardDAV/CalDAV: `services/anglebrackets/src/dav.ts` never calls `storeFor()`, so DAV writes land NULL provenance (`.feedback/…/common/033`).
+
 > **Slice of the s03 web-access arc.** Shared design context lives in
 > [`../s03-webAccess/readme.md`](../s03-webAccess/readme.md) (the thinking) and
 > [`../s03-webAccess/arch.md`](../s03-webAccess/arch.md) (the system architecture).

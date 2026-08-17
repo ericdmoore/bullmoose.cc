@@ -1,6 +1,6 @@
 # s10 — the Agents area: configuration, not just a CRUD grid
 
-> **Status: design.** Owns the agent **configuration** surface — CLI and WebUI — and the two
+> **Status: T1–T4 + T7 SHIPPED (code); T5 and T6 unbuilt.** `write_policy`, `book_membership_log`, the governing book and the Go `agents` command are live. T5 (WebUI config panel) and T6 (the score) are not. The "Known hardening gap" is CLOSED as of #158 — and its stated mitigation was unsound, because it assumed a proposal's recipient is fixed once minted.
 > controls the config depends on that do not exist yet. The agent **activity** surface
 > (queue, dossier, score) is mostly built elsewhere; this section deliberately does not
 > re-own it.

@@ -1,6 +1,6 @@
 # s20 — agent-native UX: verbs first, nouns when they earn it
 
-> **Status: design** (2026-08-14). Distilled from Eric's `.backlog/conceptual-reorg/`
+> **Status: PARTIAL.** T1 Watches SHIPPED — engine (#152) plus the `remind@` door (#154) and the agent-offered anti-star (#157). Principle 7 (respond-only) is also code, not just a principle (#147). T1 remainder: the webmail star on-ramp, the CLI surface, the fire-time draft body. T2–T6 design.
 > bombshell — four docs asking the first-principles question: *"HOW IS AGENT-FIRST EMAIL
 > DIFFERENT from GMAIL?"* — plus the review that followed. This readme records what was
 > adopted, what was rejected, and why; [`devPlan.md`](./devPlan.md) is the ordered build.

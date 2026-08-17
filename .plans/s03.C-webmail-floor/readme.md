@@ -1,5 +1,7 @@
 # s03.C — Webmail floor: a mail client worth using
 
+> **Status: T1–T4 SHIPPED and deployed** at `app.bullmoose.cc`. ⚠️ T3 (the Files browser) is marked "⏸ deferred" below and is NOT — it shipped (`webmail/src/components/FilesApp.tsx`, 910 lines). Outstanding from T3: copy-link via `/api/share`, and the large-attachment compose path.
+
 > **Slice of the s03 web-access arc.** Shared context:
 > [`../s03-webAccess/readme.md`](../s03-webAccess/readme.md) ·
 > [`../s03-webAccess/arch.md`](../s03-webAccess/arch.md) §7.

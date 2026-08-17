@@ -1,5 +1,7 @@
 # s03.E — Agent console: "can Allen do that?" / "who could have?"
 
+> **Status: SHIPPED and live.** Two of this plan's own caveats are now closed: the read interface IS served (`services/jmap/src/console.ts`), and the `introspectTools` tombstone delta is fixed.
+
 > **Slice of the s03 web-access arc.** Shared context:
 > [`../s03-webAccess/readme.md`](../s03-webAccess/readme.md) ·
 > [`../s03-webAccess/arch.md`](../s03-webAccess/arch.md) §6.

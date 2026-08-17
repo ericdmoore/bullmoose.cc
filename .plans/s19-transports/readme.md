@@ -1,6 +1,6 @@
 # s19 — resources, not transports: what a token means
 
-> **Status: principle, already realized** (2026-08-14). Eric: *"ideally tokens carry access
+> **Status: principle, verified true (2026-08-14; re-verified 2026-08-17).** All four claims re-checked against the code. Now FIVE doors, not four — the explorer (s21) added one and required no new scope, which is this document's own falsifiable test passing.
 > to **resources** independent of transport. A resource could be accessed over MCP, GraphQL,
 > JSON-RPC — they all have their own idioms, but fundamentally you get access to the same
 > resources."*

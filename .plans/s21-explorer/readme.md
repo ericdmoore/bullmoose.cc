@@ -1,6 +1,6 @@
 # s21 — the explorer: navigable JSON without an app
 
-> **Status: design** (2026-08-15). Eric, after declining a GraphQL facade:
+> **Status: SHIPPED and deployed, deliberately OFF** (#125, 2026-08-14 — note that predates this file's own "design" date). Code at `services/jmap/src/explore/`, in the worker bundle but unreachable: no route, no DNS, `EXPLORE_HOST` unset. Turn on with `node infra/bootstrap.mjs explorer`. The Open Questions below are all RESOLVED by the implementation — read them as build notes, not decisions.
 > *"I'm open to a JMAP explorer — I tend to require that of my JSON APIs anyway. HAL style
 > `_links`, `_meta`, `_self`, `_next` so the JSON APIs are clickable/navigable with just a
 > pretty-print extension."*

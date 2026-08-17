@@ -1,5 +1,7 @@
 # s03.B — Files: the fourth realm
 
+> **Status: T1–T3 SHIPPED (inbound).** Schema, `FileNode/*` and the inbound sidestep are live. Missing: the OUTBOUND sidestep — acceptance #3 is unmet. ⚠️ Its stated blocker is gone: `Email/set create` carries attachments as of #133.
+
 > **Slice of the s03 web-access arc.** Shared context:
 > [`../s03-webAccess/readme.md`](../s03-webAccess/readme.md) ·
 > [`../s03-webAccess/arch.md`](../s03-webAccess/arch.md) §3.

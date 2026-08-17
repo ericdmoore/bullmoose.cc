@@ -1,5 +1,7 @@
 # sVOL — Capability × Surface × Noun
 
+> **Status: CLOSED (#159, 2026-08-17).** 25 units shipped, 2 wontfix, none outstanding. Five residues are recorded in § Closing — they are real but are not units.
+
 The volume of work implied by asking, for every **noun** in bullmoose, on every **surface**
 we expose: *can you create, read, update, and delete it?*
 

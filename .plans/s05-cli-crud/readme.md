@@ -4,7 +4,7 @@
 > what the CLI actually exposes — for **contacts**, **calendar**, and **creds** — and
 > make the whole CLI compose properly with `|`, `head`, `less`, `xargs`, and stdin.
 >
-> **Status legend:** **[live]** — exists today, `file:line` cited. **[proposed]** — this plan.
+> **Status: T1, T2, T4, T5 SHIPPED; T3 shipped minus single-occurrence editing.** The full I/O contract (EPIPE, NDJSON, exit codes, stdout/stderr split) plus contacts, calendar and creds CRUD, under a real-pipe contract test. `--occurrence` refuses with a clear message — the devPlan's pre-authorised v1.
 
 ---
 

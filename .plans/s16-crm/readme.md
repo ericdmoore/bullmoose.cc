@@ -1,6 +1,6 @@
 # s16 — `crm@`: the agent that curates the address book
 
-> **Status: design** (2026-08-13, prompted by a real 3,559-card book with visible
+> **Status: designed, not built.** readme 2026-08-13; `dedupe.md` and `notes-on-people.md` (2026-08-15/16) specify the work — confidence tiers, the transform-to-invariant note form, and four named traps including a privilege escalation through governing books. Two written sub-designs, zero code.
 > duplicates). Eric: *"`CRM@` should propose de-dupe actions. That is the bread-and-butter
 > behavior of someone looking at contacts."*
 >

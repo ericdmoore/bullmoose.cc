@@ -1,6 +1,6 @@
 # s07 — `app.bullmoose.cc`: one surface over every realm
 
-> **Status: design, not started.** Successor to `s03.C` (the mail floor) and `s03.E` (the
+> **Status: T0–T6 SHIPPED and deployed; T7 (OAuth login) not started.** Ten pages and eleven lib directories under `webmail/`, deployed to `app.bullmoose.cc` on every push to main — this is the only surface in the repo CI ships automatically. Remaining: T7, the `/agents` dossier, and the three-number score. ⚠️ Decision 1 below ("public, but only after T7 — the interim door should not face the internet") was REVERSED in practice: the paste-a-token door is the live front door today. `/files` is also no longer excluded — s03.B T3 landed.
 > console), which shipped two disconnected pages. This is the section that makes them one
 > product.
 

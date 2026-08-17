@@ -13,7 +13,7 @@
 > and the spec is one week old. The right move is **stateless-core, split by
 > surface** — pure MCP.2 where we own the client, a thin legacy shim where we don't.
 >
-> **Status legend:** **[live]** code exists (`file:line`); **[proposed]** design.
+> **Status: SHIPPED (T1–T4), superseded on one point.** The MCP.2 port, shared `verifyBearer`/`authorizeAccount` and the §6 auth gate are live. Its two signed-off decisions were later REVERSED by s02: `initialize`/`ping` were restored, and `/mcp` is now public rather than `x-internal-token`-gated. See `services/agent/src/mcp.test.ts` — the test that proved decision 1 is now titled "inverted on purpose".
 
 ---
 

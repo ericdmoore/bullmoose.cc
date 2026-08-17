@@ -1,6 +1,6 @@
 # s17 — CJ, the chief of staff
 
-> **Status: design stub.** Eric, 2026-08-13: *"don't lose sight of getting CJ as useful /
+> **Status: PARTIAL.** The spine SHIPPED: Jobs + attenuation (s11 T7) and per-invocation `bmi_` tokens, all four steps (#143, #146 — see `per-invocation-tokens.md`). Step 2 (`agents:invoke`) is still deferred at `attenuation.ts`, blocked on the identity-substitution question in `agents-invoke.md`. Step 3 (CJ herself) is not started.
 > powerful as she can be."* Until now CJ has existed only as a character — she is named in
 > `s10`, in `motivatingExamples.md`, and, tellingly, in `actionProposal.ts` **only as the
 > thing a rule protects against**: the gate is literally called *CJ-cannot-self-approve*.
