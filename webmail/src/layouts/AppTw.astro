@@ -2,10 +2,16 @@
 // The Tailwind app shell (s07 nav spike) — sidebar + header, ported from the
 // `full-width-with-narrow-sidebar-and-header` reference template.
 //
-// SPIKE, deliberately parallel to `App.astro` rather than replacing it. Only
-// `/mail` uses this; every other section still renders the hand-written
-// chrome, so the two can be compared side by side in the same running app and
-// the whole thing reverts by changing one import back.
+// NO LONGER A SPIKE. This began parallel to `App.astro` so the two could be
+// compared side by side, and the note here said "only `/mail` uses this" long
+// after that stopped being true: today NINE of the ten pages render this
+// layout, and `App.astro` survives for `/login` alone — correctly, since the
+// signed-out page should not show a nav rail for sections you cannot reach.
+//
+// ⚠️ THIS LAYOUT OWNS THE PAGE'S ONE `<main>` (below). Islands must render a
+// `div`, not a `main`, or the page nests a landmark inside a landmark. Only
+// ApprovalsQueue has been corrected so far; the other eight still nest one,
+// which is invalid HTML and gives a screen reader two "main" regions.
 //
 // What was taken from the template and what was not:
 //
