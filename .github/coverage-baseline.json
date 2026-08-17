@@ -1,0 +1,25 @@
+{
+  "note": "Per-package LINE coverage floors, whole percent. CI fails if a package drops below its floor, or climbs more than `slack` points above it without recording the gain here. To move a floor: `npm run coverage:baseline`, or paste the block the failing CI run prints. Lowering one is allowed and deliberate — say why in the PR. See .github/scripts/coverage-ratchet.mjs.",
+  "slack": 2,
+  "packages": {
+    "packages/account-do": 85,
+    "packages/auth-core": 95,
+    "packages/boundary": 100,
+    "packages/calendar-core": 82,
+    "packages/contacts-core": 28,
+    "packages/jmap-core": 81,
+    "packages/mailstore": 87,
+    "packages/mime": 99,
+    "packages/outbound": 0,
+    "packages/scheduling": 98,
+    "services/agent": 85,
+    "services/anglebrackets": 49,
+    "services/bureau": 96,
+    "services/demo-keys": 0,
+    "services/ingest": 93,
+    "services/jmap": 83,
+    "services/oauth": 53,
+    "services/provision": 88,
+    "services/submit": 0
+  }
+}
