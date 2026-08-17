@@ -8,7 +8,7 @@
 | **Owner** | `sVOL` |
 | **Depends on** | `002` (fake-D1 `.batch()` — see Bread-crumbs for why the edge is softer than it looks) |
 | **Blocks** | `s03.D` T3 (*"Human → agent invoke on a thread"*, `s03.D-coexistence/devPlan.md:44-45`) |
-| **Status** | done |
+| **Status** | **✅ done** — `AgentInvocation/set create` queues an on-demand invocation (`services/jmap/src/methods/agent.ts:127-179`) + `bullmoose agent invoke` (`packages/cli/src/agentInvoke.ts`). The `008` kill switch landed first, as ⁵ required. |
 
 > **Delivered.** `AgentInvocation/set` now honours `create` and `destroy`
 > (`services/jmap/src/methods/agent.ts`) — `created: {}` / `destroyed: []` are no

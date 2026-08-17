@@ -6,6 +6,14 @@ we expose: *can you create, read, update, and delete it?*
 This folder is a **ledger of record**, not a competing plan. It enumerates every cell. Cells
 already owned by an existing `sNN` section point there instead of restating the work.
 
+> ## ✅ CLOSED 2026-08-17 — 25 shipped, 2 wontfix, nothing outstanding
+>
+> Jump to **§ Closing** at the foot of this file for what the section delivered, what is
+> genuinely still open (none of it a unit), and why the bookkeeping drifted so far from the
+> work. The process notes below are kept as written; several are now historical — in
+> particular the `E4` grade's *"stacks that do not exist yet (WebUI, GraphQL)"* is half
+> false, because the WebUI exists.
+
 ---
 
 ## Layout
@@ -245,3 +253,92 @@ cell to live in:
 | `s04-AgentOS/bureau.md` | egress credential brokerage | a 4th axis — outbound, third-party; no bullmoose noun on either side |
 
 Those stay where they are. `sVOL` references them where they gate a cell.
+
+---
+
+## Closing — 2026-08-17
+
+**This section is closed. 27 units: 25 shipped, 2 wontfix. Nothing is outstanding.**
+
+Opened `784b38e` (2026-08-08), last unit closed 2026-08-14, bookkeeping reconciled 2026-08-17.
+Nine days.
+
+| | |
+|---|---|
+| **Shipped** | 25 — `001`–`011`, `013`–`024`, `026`, `027` |
+| **Wontfix** | 2 — `012` (neither `/query` method exists in RFC 9610 §2 or draft-calendars-27 §4) and `025` (GraphQL: JMAP already has batching, back-references and a sync cursor). Both archived in `archived/`. |
+| **Built by `sVOL`** | 18 |
+| **Built elsewhere, pointed at from here** | 9 — `003`, `011`, `016`, `017`, `018`, `020`, `021`, `023`, `025` |
+
+### What it delivered
+
+The volume was opened to answer one question — *for every noun, on every surface, can you
+create, read, update and delete it?* — and the honest summary is that it closed the two
+columns it was built around and outlived its own framing of a third.
+
+- **`Mailbox` stopped being immutable.** `004` landed `Mailbox/set` plus CLI verbs; the
+  session had been advertising `mayRename`/`mayDelete` with no method behind them.
+- **The MCP column went from 4 read-only analytics tools to 29**, including MCP's first
+  writes — `013` (calendar + contacts), `014` (email read + triage, and deliberately **no
+  send tool**), `015` (introspection). All routed through the JMAP method layer in-process,
+  so DAV and the CLI mirror the same choreography rather than a second implementation.
+- **The CLI column filled in** — `016` set the I/O contract, then `017`/`018`/`019` gave
+  contacts, calendar and email triage full CRUD.
+- **DAV became read-write at the collection level** — `009` (`MKCALENDAR`, extended `MKCOL`,
+  collection `DELETE`) with `PROPPATCH` from `common/026`.
+- **`FileNode` went from a proposed noun to a shipped one** (`011`) with a browser on top
+  of it (`021`).
+- **The WebUI stopped being hypothetical.** `readme.md` above still grades WebUI cells `E4`
+  *"because the surfaces don't exist"*; `webmail/` now serves eight noun pages. That
+  sentence is the single most-dated claim in this section and is left standing as evidence.
+
+### What is genuinely still open — none of it a unit
+
+The section is closable because every *unit* is resolved, not because the matrix is full.
+Five residues, all recorded where they live and none of them owned here:
+
+1. **`Secrets × C/U × WebUI`** — `POST /vault/oauth/start` is still unserved. Half of this
+   cell is an invariant, not a gap: raw-key create bounces to the CLI on purpose.
+2. **`AddressBook`/`Calendar` collection C/U/D over MCP** — unfiled from the beginning, and
+   §4 always said so.
+3. **`021`'s visual confirmation** — the pages and their libs are tested; no human had
+   looked at `/files`.
+4. **Delivery status for `EmailSubmission`** — scoped and rejected as a separate `E3` in
+   `005`, still unfiled, deliberately.
+5. **`023`'s pre-ship ask** — `services/agent/src/vault.ts:124-131` still hand-rolls the
+   `tokens ⋈ principals` join it was asked to fix first. It shipped anyway.
+
+### The part worth learning from
+
+**Zero units were outstanding, and the section did not know it.** The audit that closed this
+found the work finished and the records wrong in every direction at once:
+
+- **15 of 27 files never got their `✅`** (step 4a). Step 4b — updating `_index.md` — had
+  mostly happened, so the two halves of one instruction diverged.
+- **10 unit files still said `todo` or `deferred`** in their own Status line (step 3) while
+  the ledger called them done.
+- **`023` and `024` carried a "BLOCKED, not merely unstarted" banner** written *after* both
+  had shipped — `024` by four days, `023`'s server half by one.
+- **Six grid cells understated what was built**, always in the direction of more work
+  appearing to remain.
+- **`_context.md` — the file step 1 calls ground truth — contradicted itself**, holding both
+  *"there is no WebUI"* and *"WebUI: a working mail client"* four paragraphs apart. The
+  commit that falsified the first added the second and deleted neither.
+- **Every `_index.md:NN` line reference in a unit file is stale**, and most were stale
+  before this pass — `_index.md` has been appended to a dozen times and every hand-written
+  line number into it rotted silently. They are left alone rather than mass-corrected,
+  because correcting them restarts the same clock. Cite section numbers, not line numbers,
+  in a file you expect to grow.
+- **`_verify.sh` asserted five things that were false.** It was built to *"decay loudly
+  rather than rot quietly"*, and the assertions did decay correctly — but decay is only
+  audible if something runs it, and nothing ever did. It needs a live `BM_TOKEN` against a
+  deployed account and has no CI job.
+
+The common cause is not laziness; it is that **every one of these records is updated by hand
+by whoever shipped, and half these units were shipped by another section.** `024` closed as
+`s07` T2 — that section's dev plan cites *"sVOL `024`"* by number, correctly, and sVOL still
+never learned. A cross-reference is only a link if something walks it.
+
+**If this process is reused, the cheapest fix is not more discipline — it is making one of
+these records derivable rather than asserted.** The filename `✅`, the ledger status column,
+and the unit Status line are three hand-maintained copies of one fact.

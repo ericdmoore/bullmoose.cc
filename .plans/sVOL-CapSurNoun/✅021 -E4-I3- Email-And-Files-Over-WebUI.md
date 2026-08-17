@@ -7,7 +7,7 @@
 | **Impact** | **I3** — unlocks *and* human-verifiable |
 | **Owner** | **`s03.C`** — `.plans/s03.C-webmail-floor/{readme,arch,devPlan}.md` |
 | **Depends on** | `s03.A` (provenance) · `s03.B` = unit **`011`** (the `FileNode` noun) |
-| **Status** | todo — **pointer only**, `s03.C` owns the work |
+| **Status** | **✅ done** (closed 2026-08-13) — pointer only; `s03.C` built it. `webmail/src/pages/{mail,files}.astro` over `webmail/src/lib/{mail,files}/`. ⚠️ Visual confirmation still owed — see `_index.md` ¹⁰. |
 
 ## Cells covered
 

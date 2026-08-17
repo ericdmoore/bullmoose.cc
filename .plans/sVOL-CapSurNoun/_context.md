@@ -1,5 +1,39 @@
 # _context — audited ground truth
 
+> # ⛔ 2026-08-17 — PARTIALLY CORRECTED, NOT RE-AUDITED. READ THIS FIRST.
+>
+> `readme.md` step 1 tells every contributor to trust this file over the plan docs, because
+> *"several plan docs are stale or overstate what exists."* **This file became that.** It
+> contained, three paragraphs apart, both *"**Still true and still the point:** there is no
+> WebUI"* and *"**WebUI: a working mail client.**"* — two half-merged versions of one
+> paragraph, both left in place. There is a WebUI. It has eight pages.
+>
+> **What was corrected in this pass** — the falsified headline claims, each re-read from the
+> source: the WebUI contradiction (trap 4), the MCP narrowness trap (trap 5), the §1 surface
+> inventory, the JMAP registry block, and the `queryChanges` count.
+>
+> **What was NOT corrected, and what that means for you:**
+>
+> - **§2's noun × surface grid is not re-audited.** It still shows an empty WebUI column and
+>   an `----` MCP column for Email. Use **`_index.md` §1** instead — that grid *was* re-derived
+>   from source on 2026-08-17, including six cells it had drifted on.
+> - **§5 test counts, §6 `sNN` status, and every line count are stale**, some by a factor of
+>   three. The banner below says *"59 test files, 1338 tests"*; the suite is 187 files / 3694
+>   tests on `main` at `d61b9ac`.
+> - **§7 "What I did NOT verify" is the one section that has aged well.** Read it.
+>
+> **The lesson this file is now evidence for:** a document that says *"do not re-derive this
+> from the docs"* has taken on a duty to stay true, and nothing in the process discharged it.
+> `readme.md` step 1 already warned that this file *"went stale within one session of being
+> written"* — and then it went stale again, the same way, and stayed that way.
+>
+> The provenance is exact and worth reading: commit **`1d21fa7`** (2026-08-09), *"s03.C T2:
+> the webmail is a mail client"*, added the *"working mail client"* paragraph **without
+> removing the "there is no WebUI" line four paragraphs above it.** The file has not been
+> touched since `6aa305e`, the same day. The contradiction was therefore committed by the
+> very change that falsified the old claim — the author updated the file and still left both
+> readings in it. Prefer `git log` and the source over any number on this page.
+
 **Originally audited against `8ba3fe3`. Refreshed after the P1 security backlog landed
 (PRs #12, #13, #15).** Everything here was read out of the source, not out of the plan docs.
 
@@ -23,13 +57,18 @@
 > was planned against is materially different — in particular, any unit reasoning about
 > scopes must re-read §4 rather than trusting a memory of it.
 >
-> **Still true and still the point:** there is no WebUI.
+> ~~**Still true and still the point:** there is no WebUI.~~ **False since 2026-08-10.**
+> See the banner at the top of this file and trap 4 below. This sentence sat three
+> paragraphs above another that called the WebUI *"a working mail client"* — the two were
+> half-merged versions of one paragraph and both were left in the file.
 >
 > ⚠️ *"The MCP column is empty of noun CRUD"* — the line this volume was built around — is
 > **no longer true.** sVOL `013` landed Calendar + Contacts CRUD over MCP, routed through the
-> JMAP method layer in-process. Email, vault and introspection over MCP are still absent
-> (`014`, `015`), as is `Calendar`/`AddressBook` **collection** C/U/D — `013` shipped those
-> as `/get` only.
+> JMAP method layer in-process. ~~Email, vault and introspection over MCP are still absent
+> (`014`, `015`)~~ — **`014` and `015` have since landed too**: eight `email_*` tools and
+> seven read-only introspection tools, `29` in `TOOLS` total (`services/agent/src/mcp.ts:401-406`).
+> What genuinely remains is `Calendar`/`AddressBook` **collection** C/U/D — `013` shipped those
+> as `/get` only, and it is still unfiled.
 >
 > ⚠️ Two items left this list in one batch — **DAV collection creation** (`009`) and
 > **`Mailbox/set`** (`004`, with the CLI `mailbox` verbs). Both were headline gaps in the
@@ -55,13 +94,31 @@ Five things that are not what they look like:
 3. **"SMTP" is a misnomer in this repo.** No SMTP server, no SMTP client. Inbound is the
    Cloudflare Email Routing `email()` handler (`services/ingest/src/index.ts:48`); outbound is
    SES v2 over **HTTPS** SigV4 (`services/submit/src/index.ts:46`).
-4. **WebUI: a working mail client.** s03.C T2 landed Email + Mailbox surfaces (list, read, compose/send, search, keyboard triage) on T1's injected JmapClient. Contacts, calendar and Files remain unrendered. `src/` is the Astro **marketing site**; `webmail/` (s03.C T1) is a bootable Astro+Preact shell with a tested JmapClient but renders no mail/contacts/calendar. `src/`
-   (`src/src/pages/{index,apps,connectors,deploy,recipes}.astro`). `webmail/` now exists (s03.C T1 — Astro+Preact shell + injected JmapClient); it renders no nouns yet. Every "web" reference in `.plans/` is
-   aspirational.
-5. **MCP is far narrower than its docs suggest.** Four read-only analytics tools. An agent on
-   MCP today cannot read a message, send mail, or touch contacts, calendar, or the vault —
-   despite the vault's metadata layer living in the same worker (its crypto moved to services/bureau in Bureau T3a). The agent's real capability comes from the
-   **CLI polling JMAP** (`packages/cli/src/agent.ts`), not from MCP.
+4. **There are two web trees, and only one of them is the WebUI.** `src/` is the Astro
+   **marketing site** (`src/src/pages/{index,apps,connectors,deploy,recipes}.astro`).
+   `webmail/` is the actual client, and it renders nouns — eight pages, all live against
+   real routes rather than `?demo=1`:
+   `webmail/src/pages/{mail,files,contacts,calendar,settings,agents,search,approvals}.astro`.
+
+   > ⚠️ **This entry was three half-merged paragraphs and contradicted itself twice**, in a
+   > file whose whole job is to be the thing you trust instead of the plan docs. It
+   > simultaneously said the WebUI was *"a working mail client"*, that `webmail/` *"renders
+   > no mail/contacts/calendar"*, that it *"renders no nouns yet"*, and — three paragraphs
+   > higher — that *"there is no WebUI"*. Every merge left its predecessor in place. The
+   > sentence *"Every 'web' reference in `.plans/` is aspirational"* is deleted rather than
+   > struck: it is the exact inversion of the truth now.
+
+5. **MCP is no longer narrow — this trap has inverted.** It used to read *"Four read-only
+   analytics tools. An agent on MCP today cannot read a message, send mail, or touch
+   contacts, calendar, or the vault."* The count is now **29** (`services/agent/src/mcp.ts:401-406`):
+   4 analytics + 10 calendar/contacts (`013`) + 8 `email_*` (`014`) + 7 introspection (`015`).
+   An agent on MCP **can** read a message, triage it, and write contacts and calendar.
+
+   Two parts of the old trap survive and are the ones to keep:
+   - **There is deliberately no send tool** over MCP — an invariant `014` asserts over the
+     tool table, not an omission.
+   - **The vault is still not on MCP**, by `bureau.md` invariant 1. `Secrets × Read` is
+     forbidden by design, not missing (its crypto moved to `services/bureau` in Bureau T3a).
 
 ---
 
@@ -69,33 +126,46 @@ Five things that are not what they look like:
 
 | Surface | State | Where |
 |---|---|---|
-| JMAP | ✅ live — 40 registered methods | `services/jmap`, registry at `src/methods/index.ts:15-30` |
-| CLI | ✅ live — 19 top-level commands, ~5,012 lines | `packages/cli` |
-| MCP | ⚠️ live but narrow — 4 read-only tools | `services/agent/src/mcp.ts:55` |
+| JMAP | ✅ live — ~~40~~ **more; recount before citing** | `services/jmap`, registry at `src/methods/index.ts` |
+| CLI | ✅ live — ~~19~~ top-level commands | `packages/cli` |
+| MCP | ✅ live — ~~4 read-only tools~~ **29 tools, incl. writes** | `services/agent/src/mcp.ts:401-406` |
 | AngleBracket (CalDAV/CardDAV) | ✅ live — read-write at both *resource* and *collection* level, incl. `PROPPATCH` | `services/anglebrackets/src/dav.ts` |
-| WebUI | ❌ does not exist | — |
-| GraphQL | ❌ does not exist | design discussion only, `docs/architecture/mcp-auth.md` §14 |
+| WebUI | ~~❌ does not exist~~ ✅ **live — 8 noun pages** | `webmail/src/pages/` |
+| GraphQL | ❌ does not exist, and **now never will** | `025` wontfix — `_index.md` §2 fn 11 |
 | Transport (in/out) | ✅ live | `services/ingest`, `services/submit` |
 
-**Full JMAP registry** (`services/jmap/src/methods/index.ts:15-30`) — this is the complete list:
+⚠️ **The two struck counts are not replaced with new numbers on purpose.** `registerWatchMethods`
+landed the week this was corrected and `actionProposal.ts` was being edited at the same time, so
+any figure written here would be wrong within the day — which is precisely how "40 registered
+methods" came to sit in a file labelled *audited ground truth*. Count it when you need it:
+`grep -rhoE 'registry\.register\("[^"]+"' services/jmap/src/methods/*.ts | sort -u | wc -l`.
+
+**Full JMAP registry** — ⚠️ **this block is no longer complete.** It is kept as the shape of
+the registry, not as an inventory. Three families have been added since and are missing below:
+**`FileNode`** (`011` — `get changes query queryChanges set copy`), **`ActionProposal`**, and
+**`Watch`** (`s20`). `services/jmap/src/methods/index.ts` is the list; read it there.
 
 ```
 Core/echo
 Mailbox         get changes query queryChanges set
 Email           get query set import changes queryChanges
-Thread          get                                      ← no changes
+Thread          get changes                              ← 027 registered /changes
 Identity        get set changes
 EmailSubmission set get changes
 AgentInvocation query get set changes
 VacationResponse get set
-AddressBook     get changes set                          ← no query
+AddressBook     get changes set                          ← no query (012 wontfix: none in RFC 9610)
 ContactCard     get changes set query queryChanges
-Calendar        get changes set                          ← no query
+Calendar        get changes set                          ← no query (012 wontfix: none in calendars-27)
 CalendarEvent   get changes set query queryChanges getOccurrences
+FileNode        get changes query queryChanges set copy  ← 011
 ```
 
-Four `queryChanges` methods are **deliberate always-throw stubs** consistent with an
-advertised `canCalculateChanges: false` — `mailbox.ts:93`, `email.ts:54`, `contacts.ts:559`,
+~~Four~~ **Six** `queryChanges` methods are **deliberate always-throw stubs** consistent with an
+advertised `canCalculateChanges: false` — `filenode.ts:119` and `actionProposal.ts:291` joined
+the original four. `026` closed on exactly this reasoning: `cannotCalculateChanges` is RFC 8620
+§5.2's *sanctioned* answer, so these are conformant, not stubs awaiting work — `mailbox.ts:93`,
+`email.ts:54`, `contacts.ts:559`,
 `calendars.ts:392`. Spec-conformant; no client gets incremental query deltas.
 
 ---

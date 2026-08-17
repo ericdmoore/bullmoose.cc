@@ -1,7 +1,16 @@
 # _index — the grid and the ledger
 
-**Start here.** `_context.md` is the audited evidence behind every claim on this page.
+**Start here.** ~~`_context.md` is the audited evidence behind every claim on this page.~~
 `readme.md` defines the grades and the capability/projection law.
+
+> ## ✅ SECTION CLOSED 2026-08-17 — 25 shipped, 2 wontfix, nothing outstanding
+>
+> See `readme.md` § **Closing**. Every status in §2 below was re-derived from the source on
+> that date, and six cells in the §1 grid were corrected (footnote ᵃ).
+>
+> ⚠️ **`_context.md` is no longer the evidence behind this page.** It contradicted itself on
+> whether a WebUI exists and was only partially corrected; **§1 of this file is now the more
+> current grid.** Read `_context.md`'s own banner before citing anything in it.
 
 ---
 
@@ -12,34 +21,83 @@ Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful 
 
 | Noun | JMAP | CLI | MCP | DAV | WebUI | GraphQL | Transport |
 |---|---|---|---|---|---|---|---|
-| Email | `CRUD` | `-R~-` | `CRUD` | `----` | `CRUD` | `----` | `C---` |
+| Email | `CRUD` | `-RUD` ᵃ | `CRUD` | `----` | `CRUD` | `----` | `C---` |
 | Mailbox | `CRUD` | `CRUD` | `-R--` | `----` | `-R--` | `----` | `~` |
 | Thread | `-R--` | `----` | `----` | `----` | `-R--` | `----` | n/a |
 | EmailSubmission | `CR--` | `C---` | `----` | `----` | `C---` | `----` | `C---` |
-| AddressBook | `CRUD` | `~R--` | `-R--` | `CRUD` | `-R--` | `----` | n/a |
-| ContactCard | `CRUD` | `CR--` | `CRUD` | `CRUD` | `CRUD` | `----` | n/a |
-| Calendar | `CRUD` | `-R--` | `-R--` | `CRUD` | `-R--` | `----` | n/a |
-| CalendarEvent | `CRUD` | `-R--` | `CRUD` | `CRUD` | `CRUD` | `----` | n/a |
-| **FileNode** | `CRUD` | `----` | `----` | `----` | `----` | `----` | n/a |
+| AddressBook | `CRUD` | `CRUD` ᵃ | `-R--` | `CRUD` | `-R--` | `----` | n/a |
+| ContactCard | `CRUD` | `CRUD` ᵃ | `CRUD` | `CRUD` | `CRUD` | `----` | n/a |
+| Calendar | `CRUD` | `CRUD` ᵃ | `-R--` | `CRUD` | `-R--` | `----` | n/a |
+| CalendarEvent | `CRUD` | `CRUD` ᵃ | `CRUD` | `CRUD` | `CRUD` | `----` | n/a |
+| **FileNode** | `CRUD` | `----` | `----` | `----` | `CRUD` ᵃ | `----` | n/a |
 | Agents | `-RU-` | `-RU-` | `----` | n/a | `-R--`† | `----` | `C---` |
 | Secrets | n/a | `CRUD` | `----` | n/a | `-R-D`† | `----` | n/a |
 | HumanSettings | `~R~-` | `-RU-` | `----` | n/a | `-RU-` | `----` | n/a |
 | IdentitySetup | `CRUD` | `CRUD` | `----` | `~` | `----` | `----` | n/a |
 | SystemAdmin | `CRUD` | `CRUD` | `----` | n/a | `----` | `----` | n/a |
 
-† **Agents and Secrets render, but only against `?demo=1`.** `s03.E` shipped both screens
-with 128 tests, and the client code is real — but four of the five endpoints it reads
-(`/console/agents`, `/console/agents/{id}`, `/console/accounts/{id}/resources`,
-`/console/resources/{c}/{id}`) are **requested, not served**. Only `GET /vault/credentials`
-is live, which is why Secrets shows `-R-D` and Agents only `-R--`. Against a real token the
-per-resource view is an "unavailable" panel naming the missing route rather than invented
-data. The remaining cost is a browser-reachable projection of sVOL `015`'s introspection
-queries, which today sit behind `x-internal-token` on the agent worker.
+† **Agents and Secrets render against a real token. The markers below are still `-R--` and
+`-R-D`, but for entirely different reasons than this footnote used to give.**
+
+*This footnote previously read "Agents and Secrets render, but only against `?demo=1` … four
+of the five endpoints it reads are **requested, not served** … only `GET /vault/credentials`
+is live." Every clause of that is now false. `8813423` falsified it on 2026-08-13 and it stood
+here unchanged until 2026-08-17 — see `readme.md` § Closing.*
+
+- **All four `/console/*` routes are served** — `services/jmap/src/console.ts`, dispatched at
+  `services/jmap/src/index.ts:136`, commit `8813423` ("Serve the console's four `/console/*`
+  read routes"). `webmail/src/lib/console/ConsoleClient.ts:112-113` names all five endpoints
+  and says so in one line: *"All five are live."* The per-resource view renders real data;
+  the "unavailable" panel is now an error path, not the steady state.
+- **The projection this footnote said was still owed is the thing that shipped.** `console.ts`
+  *is* the browser-reachable projection of `015`'s introspection queries — that was `8813423`'s
+  stated purpose, and `015`'s `x-internal-token` gate is no longer what stands between the
+  browser and the answers.
+- **`Agents` stays `-R--` because the console is deliberately read-only**, not because
+  anything is missing: `handleConsole` refuses every non-`GET` with a 405, on the reasoning
+  that *"there is no console write surface, and a POST that fell through to a GET handler
+  would be one"* (`console.ts:288-289`). Agent **configuration** writes are `s10-agents`, a
+  different unit; `023` is the *activity* surface and always was.
+- **`Secrets` stays `-R-D`, and `GET /vault/credentials` is no longer the reason.** All four
+  vault routes are served — `PUT` (`vault.ts:175`), `GET` (`:288`), rotate (`:298`), `DELETE`
+  (`:326`). The two missing letters are a UI choice plus one genuinely unserved route:
+  - **`C`** — `entryPlan` (`credentials.ts:292`) routes every raw-key kind to the **CLI on
+    purpose** (*"a browser form is the worst place for it to pass through"*), and the one kind
+    the browser will mint itself, `oauth-refresh`, needs `POST /vault/oauth/start`, which is
+    **still not served** (`services/agent/src/index.ts:177` routes only `/vault/credentials*`).
+  - **`U`** — the UI renders `rotateCommandFor(name)` as a copyable CLI line
+    (`AgentConsole.tsx:649`) rather than calling `vault.rotate()`. The client method exists and
+    the route is live; the screen deliberately does not drive it.
+  - **`D`** is real and browser-driven: `vault.revoke(name)` (`AgentConsole.tsx:179`).
+
+  So `Secrets × C/U × WebUI` is the one cell in this row that is genuinely open, and it is
+  **half by design**. Only the OAuth-start route is an actual gap; the raw-key bounce is an
+  invariant, not a todo.
+
+ᵃ **Six cells corrected 2026-08-17 — the grid had drifted behind its own ledger.** These are
+not new work; they are cells whose units this table already marked ✅ while the marker still
+read as absent. Read out of the source, not out of the unit files:
+
+| Cell | Was | Is | Evidence | Unit |
+|---|---|---|---|---|
+| Email × CLI | `-R~-` | `-RUD` | `packages/cli/src/main.ts:373-381` — `flag seen move label archive junk trash rm delete` | `019` |
+| AddressBook × CLI | `~R--` | `CRUD` | `packages/cli/src/contacts.ts:480,500,518,538` — `books list/create/rename/rm` | `017` |
+| ContactCard × CLI | `CR--` | `CRUD` | `packages/cli/src/contacts.ts:84-110` — `list show create edit rm import export` | `017` |
+| Calendar × CLI | `-R--` | `CRUD` | `packages/cli/src/calendar.ts:84-94` — `list create rename rm export` | `018` |
+| CalendarEvent × CLI | `-R--` | `CRUD` | `packages/cli/src/calendar.ts:242-246` — `event create/edit/rm` | `018` |
+| FileNode × WebUI | `----` | `CRUD` | `webmail/src/lib/files/api.ts:277,329,370,408` — `createFolder uploadFile renameNode destroyNode` | `021` |
+
+Email × CLI keeps its `-` on Create deliberately: composing is `EmailSubmission × C`
+(`bullmoose send`), which the row below already carries. The point of listing these is that
+**every one of them was already claimed done in §2** — the drift was one-directional, always
+understating, and always in the direction of more work appearing to remain.
 
 **What the grid says at a glance:**
 
-- **Contacts and Calendar are finished at the expensive layer** — full CRUD on JMAP, DAV and
-  now MCP. What remains for them is the CLI and WebUI columns, plus collection C/U/D over MCP.
+- **Contacts and Calendar are finished on every surface they have.** Full CRUD on JMAP, DAV,
+  MCP (items) and now CLI. This bullet used to end *"what remains for them is the CLI and
+  WebUI columns"* — `017` and `018` closed the CLI half and `022` the WebUI half. What is
+  genuinely left is **collection C/U/D over MCP**, which is unfiled (see §4) and always was.
 - **`Mailbox` was the outlier and no longer is.** It used to read *"mail is the flagship noun
   and the least mutable thing in the system — no create, rename, move or delete on any
   surface."* `004` shipped `Mailbox/set` plus the CLI verbs.
@@ -64,8 +122,14 @@ queries, which today sit behind `x-internal-token` on the agent worker.
   built binding delete; `007` owns *invocation* create/delete. `config.yml` files both under
   `Agents`, which is the disagreement `✅008`'s own header records — resolving it is a ledger
   decision, not a code one.
-- **The WebUI and GraphQL columns are empty because the surfaces don't exist.** Every cell
-  there is `E4` by definition.
+- ~~**The WebUI and GraphQL columns are empty because the surfaces don't exist.** Every cell
+  there is `E4` by definition.~~ **Half of this is now wrong, and it was the volume's single
+  largest assumption.** The WebUI column is the *most* populated column in the grid after
+  JMAP: `webmail/` carries `mail`, `files`, `contacts`, `calendar`, `settings`, `agents`,
+  `search` and `approvals` pages. GraphQL is still empty and now permanently so — `025` is
+  wontfix (footnote ¹¹), so that column is a deliberate blank rather than a backlog.
+  The `E4` rationale in `readme.md` § Grades (*"anything on a stack that does not exist yet
+  (WebUI, GraphQL)"*) should be read as historical.
 - **DAV is read-write end to end, at both levels.** Cards and events PUT/DELETE with proper
   ETags; collections gained create/delete in `009` (`MKCALENDAR` / extended `MKCOL` /
   collection `DELETE`) and update in `common/026` item 3 (`PROPPATCH`). Both DAV collection
@@ -103,15 +167,28 @@ queries, which today sit behind `x-internal-token` on the agent worker.
 | 020 | Creds mint-time fields | proj | E2 | I2 | **s05** T4 + **s04** | ~~s04 spec~~ **decomposed** | **✅ done** |
 | 021 | Email + Files over WebUI | proj | E4 | I3 | **s03.C** | s03.A, s03.B | **✅ done** ¹⁰ |
 | 022 | Contacts + Calendar over WebUI | proj | E4 | I3 | sVOL | 021 | **✅ done** ¹⁰ |
-| 023 | Agents + Secrets over WebUI | proj | E4 | **I1** ⁴ | **s03.E** | s04 spec, 021 | todo |
-| 024 | HumanSettings over WebUI | proj | E1 | I1 | sVOL | 006, 021 | todo |
+| 023 | Agents + Secrets over WebUI | proj | E4 | **I1** ⁴ | **s03.E** | s04 spec, 021 | **✅ done** ¹⁴ |
+| 024 | HumanSettings over WebUI | proj | E1 | I1 | sVOL | 006, 021 | **✅ done** ¹⁵ |
 
-> **023 and 024 are BLOCKED, not merely unstarted** (2026-08-14): a WebUI design rewrite on
+> ~~**023 and 024 are BLOCKED, not merely unstarted** (2026-08-14): a WebUI design rewrite on
 > Tailwind templates is in flight with a co-writer. Building the agents-config and settings
 > surfaces now would be building into a moving target — both are *new panels*, which is
 > exactly what a redesign replaces. Their server halves are ready and unblocked
 > (`/console/*` serves, `PATCH /agent-bindings/{id}` writes the typed core), so when the
-> redesign settles these are UI-only work.
+> redesign settles these are UI-only work.~~
+>
+> **Struck 2026-08-17. Neither was blocked, and by this banner's own evidence.** The banner
+> conceded *"`/console/*` serves"* — i.e. the server half was already done — and then blocked
+> the units on a *redesign*, which is a reason to defer a repaint, not a reason to call a
+> shipped surface unstarted. Both had in fact already shipped when it was written: `024` as
+> `s07` T2 (three days earlier) and `023` as `s03.E` T1–T3. The redesign landed on top of
+> them — `AppTw.astro` is the Tailwind layout both pages now use — rather than being blocked
+> by them.
+>
+> The dates are the sharpest part. Banner: **2026-08-14**. `024` shipped `f23ea39`
+> **2026-08-10**, four days before. `023`'s screens shipped `6f9be2d` **2026-08-09** and the
+> four `/console/*` routes `8813423` **2026-08-13** — the day before. Nothing was blocked;
+> the ledger was simply not read against the tree. See ¹⁴ and ¹⁵.
 | 025 | GraphQL facade | proj | E4 | I2 | `common/022` | spike first | **wontfix — archived** ¹¹ |
 | 026 | `queryChanges` for the four stubs | cap | E3 | **I0** ⁴ | sVOL | — | **✅ done** ¹² |
 | 027 | `Thread/changes` | cap | E2 | I0 | sVOL | — | **✅ done** ¹³ |
@@ -320,6 +397,25 @@ A conformance sweep at the same time checked `/changes` for every type carrying 
 `Thread` was the only real gap. **`VacationResponse` has none by design** — RFC 8621 §8
 defines a singleton with `get`/`set` only, so its absence is correct, not missing.
 
+¹⁴ **023 closed — it shipped in two halves and neither half was ever recorded here.** The
+screens landed as `s03.E` T1/T2/T3, all three marked ✅ in `.plans/s03.E-console/devPlan.md:16-18`
+(`webmail/src/components/AgentConsole.tsx` over `webmail/src/lib/console/{perAgent,perResource,credentials,scopes}.ts`).
+The server half — the *one thing that slice requested rather than built*
+(`devPlan.md:38`) — landed as `8813423`. `Agents × Read × WebUI` is covered; `Secrets × C/U`
+is the residue described in §1 †, and is half invariant rather than half todo.
+
+¹⁵ **024 closed as `s07` T2, in the section that built it rather than this one.**
+`webmail/src/pages/settings.astro` + `webmail/src/lib/settings/{identity,vacation}.ts`,
+commit `f23ea39`. `.plans/s07-app-surface/devPlan.md:220` carries the ✅ and names this unit
+by number: *"sVOL **`024`**, graded **E1**."* Both `HumanSettings` datatypes over the four
+live methods, no server work — exactly the `E1` the unit predicted. Its stated blocker
+(`006` `Identity/set`) had shipped; the unit file already carried a ⚠️ STALE note saying so.
+
+**The shape of this miss is worth keeping.** `024` was closed by a *different section* that
+correctly cited the sVOL unit number, and sVOL still did not learn. A cross-reference is only
+a link if something walks it — `readme.md` step 4 assumes the person who ships is the person
+who updates the ledger, and neither of these units was shipped by that person.
+
 ## 3. Sequencing
 
 Grade is not priority. `001` is `I2` and goes first because it blocks four `I3` units.
@@ -328,30 +424,37 @@ Grade is not priority. `001` is `I2` and goes first because it blocks four `I3` 
 wave 1 — unblock everything, cheap
   001  MCP ToolDef scope+domain       E1  ← blocks 013,014,015          ✅
   002  shared fake-D1 + .batch()      E2  ← blocks every write-path test ✅
-  016  CLI I/O contract (s05 T1)      E2  ← blocks 017,018,019
+  016  CLI I/O contract (s05 T1)      E2  ← blocks 017,018,019          ✅
 
 wave 2 — the first thing a human can see
   013  Calendar+Contacts over MCP     E2  I3   ← ✅ done (MCP's first write surface)
   003  recurrence correctness         E2  I3   ← ✅ done
-  018  Calendar CRUD over CLI         E2  I3
-  017  Contacts CRUD over CLI         E2  I3
+  018  Calendar CRUD over CLI         E2  I3   ← ✅ done
+  017  Contacts CRUD over CLI         E2  I3   ← ✅ done
 
 wave 3 — close the capability holes
   004  Mailbox/set + CLI              E3  I3   ← ✅ done (was the biggest single gap)
-  019  Email triage over CLI          E2  I3
+  019  Email triage over CLI          E2  I3   ← ✅ done
   014  Email over MCP                 E2  I3   ← ✅ done (read + triage; no send tool)
-  009  DAV collection creation        E2  I3   ← DONE
+  009  DAV collection creation        E2  I3   ← ✅ done
   006  Identity/set + signatures      E3  I3   ← ✅ done (+ Identity/changes)
   008  admin lifecycle + kill switch  E3  I3   ← ✅ done; 008a/008b never split — see ⁵
-  007  AgentInvocation trigger        E2  I3   ← unblocked: the off switch exists now
+  007  AgentInvocation trigger        E2  I3   ← ✅ done (the off switch landed first)
 
 wave 4 — cheap cleanup, any time
-  005 · ~~008b~~ (folded into 008) · 010 ← ✅ DONE, pulled forward · 012
+  005 ✅ · ~~008b~~ (folded into 008) · 010 ✅ DONE, pulled forward · 012 ✗ wontfix
   015  self-introspection over MCP    E2  I1   ← ✅ done, pulled forward
-wave 5 — the unbuilt stacks
-  011 (s03.B) → 021 (s03.C) → 022 → 024 → 023 (s03.E)
-  025 GraphQL — only after the common/022 spike returns a number
+  026  queryChanges for four stubs    E3  I0   ← ✅ done (already conformant)
+  027  Thread/changes                 E2  I0   ← ✅ done
+wave 5 — the unbuilt stacks (they exist now)
+  011 (s03.B) ✅ → 021 (s03.C) ✅ → 022 ✅ → 024 (s07 T2) ✅ → 023 (s03.E) ✅
+  025 GraphQL — ✗ wontfix, archived; the common/022 spike was never needed
 ```
+
+**Every wave is closed.** Waves 1–3 as planned; wave 4 with two wontfixes (`012`, `025`) that
+are non-goals rather than debts; wave 5 — *"the unbuilt stacks"* — built. The volume's own
+framing is the thing that dated fastest: `readme.md` still says WebUI and GraphQL cells are
+`E4` *"because the surfaces don't exist"*, and one of those two surfaces now does.
 
 **Wave 2 is the acceptance moment for the whole volume.** `013` + `018` together produce the
 demo that motivated this: Claude creates a calendar event over MCP; Codex reads it back;
@@ -375,26 +478,26 @@ Every non-`n/a` gap cell in §1 maps to at least one unit:
 
 | Gap | Unit |
 |---|---|
-| Email × U/D × CLI | 019 |
+| Email × U/D × CLI | 019 ✅ |
 | Email × CRUD × MCP | 014 ✅ |
-| Mailbox × C/U/D × all | 004 |
-| Thread × changes | 027 |
+| Mailbox × C/U/D × all | 004 ✅ |
+| Thread × changes | 027 ✅ |
 | EmailSubmission × R | 005 ✅ |
 | AddressBook/Calendar × query | 012 — **wontfix**: no such method in RFC 9610 §2 / calendars-27 §4 (see §2 fn 3) |
-| ContactCard/CalendarEvent × C/U/D × CLI | 017, 018 |
+| ContactCard/CalendarEvent × C/U/D × CLI | 017 ✅, 018 ✅ |
 | ContactCard/CalendarEvent × CRUD × MCP | 013 ✅ |
 | AddressBook/Calendar × C/U/D × MCP | — (unfiled; `013` shipped Read only) |
 | AddressBook/Calendar × C × DAV | 009 ✅ |
 | AddressBook/Calendar × U × DAV (`PROPPATCH`) | ✅ done — `common/026` item 3 |
-| FileNode × everything | 011 → 021 |
+| FileNode × everything | 011 ✅ → 021 ✅ |
 | Blob delete / share revoke | 010 ✅ |
-| Agents × C/D | 007 |
+| Agents × C/D | 007 ✅ |
 | Agents/Secrets × MCP | 015 ✅ (Agents × Read + SystemAdmin × Read; `Secrets × Read` is out of scope by `bureau.md` invariant 1 and always will be) |
-| HumanSettings × U (`Identity/set`) | 006 |
+| HumanSettings × U (`Identity/set`) | 006 ✅ |
 | SystemAdmin × U/D | 008 ✅ (⚠️ `_verify.sh` asserts nothing here — `services/provision` is not JMAP, so this row is invisible to the executable grid in both directions) |
-| every noun × WebUI | 021, 022, 023, 024 |
-| every noun × GraphQL | 025 |
-| `queryChanges` × 4 | 026 |
+| every noun × WebUI | 021 ✅, 022 ✅, 023 ✅, 024 ✅ |
+| every noun × GraphQL | 025 — **wontfix, archived** (see §2 fn 11) |
+| `queryChanges` × 4 | 026 ✅ |
 
 **Deliberately uncovered** — not gaps:
 - `Secrets × Read` is **forbidden by design**, not missing (`bureau.md` invariant 1 — there is

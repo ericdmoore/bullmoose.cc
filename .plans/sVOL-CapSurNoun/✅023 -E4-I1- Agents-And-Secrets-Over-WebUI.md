@@ -8,7 +8,31 @@
 | **Owner** | **`s03.E`** (activity/console) — `.plans/s03.E-console/{readme,devPlan}.md` |
 | **Config half** | **`s10-agents`** — this unit is the *activity* surface (who can do what, what they've done). The agent **configuration** surface (list/show/edit/create/remove, `allowedRecipients`, the typed config core) is `.plans/s10-agents/`. Do not build config CRUD here. |
 | **Depends on** | **`s04` governance model, specified** · `021` (the shell) · `s03.A` (provenance) |
-| **Status** | todo — **pointer only**, and gated. `s03.E` owns the work. |
+| **Status** | **✅ done** — pointer only; `s03.E` built it. Screens: T1/T2/T3 all ✅ (`devPlan.md:16-18`), `webmail/src/components/AgentConsole.tsx`. Server half: `8813423` serves all four `/console/*`. ⚠️ The **gate this file describes never lifted** — see the Status note below. |
+
+## Status on delivery (2026-08-17)
+
+**Shipped, and the gate this file spends a whole section on is no longer the state of the
+world.** Recorded rather than deleted, because the gate reasoning was sound when written.
+
+| This file says | Now |
+|---|---|
+| *"`s04` is docs-only — `bureau.md` is a 429-line design with **zero tasks**"* | `s04-AgentOS/devPlan.md` carries **8 tasks**, and Bureau T2/T3/T3a shipped (`c5b91f3`, `d7e7f11`) |
+| *"`HttpConsoleClient` names a browser-reachable projection … until it is served the UI says which endpoint is missing"* | All four `/console/*` routes served — `8813423`, `services/jmap/src/console.ts` |
+| *"no `webmail/` workspace (`tsconfig.json:33` excludes a path that has never existed)"* | `webmail/` exists and carries eight noun pages |
+
+**What actually shipped:** `s03.E` T1/T2/T3, all three ✅ in `.plans/s03.E-console/devPlan.md:16-18`
+— `webmail/src/components/AgentConsole.tsx` over `lib/console/{perAgent,perResource,credentials,scopes,caveats}.ts`.
+
+**Two things this unit asked for that did NOT ship, both still open and neither a blocker:**
+
+1. **`POST /vault/oauth/start` + its callback are still unserved** (`services/agent/src/index.ts:177`
+   routes only `/vault/credentials*`). This is the one genuine hole in `Secrets × C × WebUI`;
+   raw-key create bounces to the CLI *deliberately* (`credentials.ts:292`), so only the OAuth
+   path is missing rather than the whole cell. Unfiled.
+2. **§"What sVOL adds" item 2 — `services/agent/src/vault.ts` hand-rolling its own bearer
+   verification — was flagged as *"fix it before this ships."*** It shipped. Worth re-checking
+   against `s01` T1 rather than assuming it was handled.
 
 ## Cells covered
 

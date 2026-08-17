@@ -8,7 +8,7 @@
 | **Owner** | `sVOL` |
 | **Depends on** | — |
 | **Blocks** | `013` (Calendar + Contacts over MCP) · `014` (Email over MCP) · `015` (self-introspection over MCP) |
-| **Status** | todo |
+| **Status** | **✅ done** — `ToolDef` carries `scope` + `domain` per tool (`services/agent/src/mcp.ts:192-216`); the gate reads them. Unblocked 013/014/015. |
 
 ## Cells covered
 
