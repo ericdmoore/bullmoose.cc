@@ -136,6 +136,37 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "annotations-table",
+    why: "s18 A1 annotations — the agent-commentary noun (anchored claim about a message); the extractor (A2) and the Waiting-on/Commitments views (A4) read it, and a shard without it silently holds no commentary",
+    // Non-blocking, the watches-table precedent: no request path AUTHORIZES
+    // against this table, so its absence degrades a human-facing answer rather
+    // than breaking a path — a plain schema re-run creates it. Listed so
+    // `bootstrap migrate` owns the set on an existing shard.
+    blocks: null,
+    check: tableExists("annotations"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS annotations (
+         id           TEXT PRIMARY KEY,
+         account_id   TEXT NOT NULL,
+         author_kind  TEXT NOT NULL,
+         author       TEXT NOT NULL,
+         anchor_json  TEXT NOT NULL,
+         class        TEXT NOT NULL,
+         body         TEXT NOT NULL,
+         confidence   REAL,
+         status       TEXT NOT NULL DEFAULT 'open',
+         rationale    TEXT,
+         source_ref   TEXT,
+         created_at   INTEGER NOT NULL,
+         updated_at   INTEGER NOT NULL
+       )`,
+      "CREATE INDEX IF NOT EXISTS annotations_class ON annotations (account_id, class, status)",
+      "CREATE INDEX IF NOT EXISTS annotations_recent ON annotations (account_id, status, created_at)",
+    ],
+    absent: [],
+  },
+
+  {
     id: "oauth-consents-table",
     why: "s02 T4's D1 mirror of OAuth grants; without it the console answers 'who can reach my mail' with silence for every connected client",
     // Non-blocking: nothing AUTHORIZES against this table (KV stays canonical),

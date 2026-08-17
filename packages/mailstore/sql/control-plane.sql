@@ -409,3 +409,32 @@ CREATE TABLE IF NOT EXISTS watches (
 );
 CREATE INDEX IF NOT EXISTS watches_due ON watches (status, deadline_at);
 CREATE INDEX IF NOT EXISTS watches_owner ON watches (account_id, status, created_at);
+
+-- Annotations (s18 A1) — the agent-commentary noun: a CLAIM about a message
+-- that a human adjudicates (the medium.com margin comment). Sibling of the
+-- (human, standalone) Note; the split is the point — you edit a Note you own,
+-- you confirm/dismiss an Annotation you judge (s18 devPlan).
+CREATE TABLE IF NOT EXISTS annotations (
+  id           TEXT PRIMARY KEY,           -- an_<uuid>
+  account_id   TEXT NOT NULL REFERENCES accounts(id),
+  author_kind  TEXT NOT NULL,              -- 'agent' (an extraction) | 'human' (filed one)
+  author       TEXT NOT NULL,              -- binding name, or principal login
+  -- The anchor is NOT NULL, by definition: an un-anchored claim is the
+  -- anti-Clippy failure ("no comment without an object", s20 T4). {realm,
+  -- objectId, span?} — the proposal machinery's subject shape, plus a span.
+  anchor_json  TEXT NOT NULL,
+  class        TEXT NOT NULL,              -- 'commitment' | 'decision' | 'task'
+  body         TEXT NOT NULL,              -- the claim, in the soft register
+  confidence   REAL,                       -- 0..1 for an extraction; NULL when a human filed it
+  -- Lifecycle: open → resolved (came true / handled) | dismissed ("not a real
+  -- one" — the LABELED NEGATIVE the extractor learns from, s12 rescue→Bayes).
+  -- A claim closes once and does not reopen; a correction moves status, it
+  -- never rewrites the body — so "the agent was wrong" survives as history.
+  status       TEXT NOT NULL DEFAULT 'open',
+  rationale    TEXT,                        -- "why the agent thinks so"; NULL renders "not stated"
+  source_ref   TEXT,                        -- the invocation/proposal that wrote it
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS annotations_class ON annotations (account_id, class, status);
+CREATE INDEX IF NOT EXISTS annotations_recent ON annotations (account_id, status, created_at);

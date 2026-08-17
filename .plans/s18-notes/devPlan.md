@@ -80,7 +80,7 @@ anchor_json   TEXT NOT NULL              -- {realm, objectId, span?} — NEVER n
 class         TEXT NOT NULL              -- 'commitment' | 'decision' | 'task'
 body          TEXT NOT NULL              -- the claim, in the soft register
 confidence    REAL                       -- 0..1 (agent extractions); NULL when a human filed it
-status        TEXT NOT NULL DEFAULT 'open' -- open | resolved | retracted | corrected
+status        TEXT NOT NULL DEFAULT 'open' -- open | resolved (came true) | dismissed (the negative)
 rationale     TEXT                       -- "why the agent thinks so"; NULL renders "not stated"
 source_ref    TEXT                       -- the invocation/proposal that wrote it
 created_at    INTEGER NOT NULL
@@ -91,7 +91,7 @@ updated_at    INTEGER NOT NULL
 contradiction (this is T4's anti-Clippy "no comment without an object", now enforced by the
 schema, not by prompt discipline). `query` filters by `class`, `status`, and `anchor.objectId` —
 the person/time views (A4) are exactly these queries. A human `set` **corrects**: it does not
-rewrite the agent's `body`, it writes a new `status` (`corrected`/`retracted`) + a labeled
+rewrite the agent's `body`, it writes a new `status` (`dismissed`) + a labeled
 signal, so history survives (the s12 rescue→Bayes correction shape). Changes commit through
 `commitChanges` on an `Annotation` collection, as `Watch/set` does.
 
