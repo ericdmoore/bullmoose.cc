@@ -1,5 +1,6 @@
 /** @jsxImportSource preact */
 import { useEffect, useRef, useState } from "preact/hooks";
+import { resolveClient } from "../lib/app/client";
 import { SECTIONS, type Section, type SectionId } from "../lib/app/sections";
 
 /**
@@ -207,9 +208,26 @@ function Brand({ compact }: { compact?: boolean }) {
   );
 }
 
-export default function ShellNav({ section, email }: Props) {
+export default function ShellNav({ section, email: emailProp }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // WHO IS SIGNED IN — sourced here, not passed in.
+  //
+  // `email` was a prop with no caller: AppTw.astro renders
+  // `<ShellNav section={section} />` and nothing ever supplied it, so the
+  // header read "Not signed in" on every page for every signed-in user while
+  // their own mail was on screen (Eric's screenshot, 2026-08-17). The prop
+  // survives for tests and for anyone who already knows the address.
+  //
+  // The layout CANNOT supply it: AppTw.astro is server-rendered and the
+  // session is a browser-only bearer token, which is exactly why the shell is
+  // `client:only`. So the chrome resolves it the same way every island does.
+  //
+  // Fails soft, and deliberately does NOT redirect: an unresolved session
+  // leaves the chrome intact and lets the ISLAND route to /login. A nav bar
+  // that navigates on its own would race the page it is framing.
+  const [sessionEmail, setSessionEmail] = useState<string | undefined>(undefined);
+  const email = emailProp ?? sessionEmail;
   // Starts wide, then adopts the stored preference on mount. Reading
   // localStorage during render would break hydration and throw in private
   // mode, so it happens in an effect.
@@ -233,6 +251,26 @@ export default function ShellNav({ section, email }: Props) {
       /* private mode, or a stored value from an older shape — ship defaults */
     }
   }, []);
+
+  useEffect(() => {
+    if (emailProp) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const resolved = resolveClient();
+        if (resolved.mode === "unauthenticated") return;
+        const live = await resolved.client.session();
+        if (!cancelled) setSessionEmail(live.username);
+      } catch {
+        /* offline, expired token, unreachable server — the chrome still
+           renders and the island owns the error. Saying nothing is better
+           than the header claiming "Not signed in" about a live session. */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [emailProp]);
 
   const persist = (key: string, value: string) => {
     try {

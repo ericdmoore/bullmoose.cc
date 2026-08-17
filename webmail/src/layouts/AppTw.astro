@@ -43,9 +43,38 @@ import "../styles/webmail.css";
 interface Props {
   title: string;
   section?: SectionId;
+  /**
+   * How the slot is framed. Two genuinely different things share this layout.
+   *
+   * `document` (default) — a page you READ, top to bottom: settings, login
+   * copy, a single form. Gets the reading padding and grows as tall as its
+   * content, with the window doing the scrolling.
+   *
+   * `surface` — a multi-pane APP you operate: mail, contacts, approvals,
+   * agents, files. Full-bleed and exactly one viewport tall, with the panes
+   * inside scrolling themselves.
+   *
+   * Why this had to become a choice: every section was getting `py-6` plus
+   * `px-4 sm:px-6 lg:px-8`, which is correct for prose and wrong for panes.
+   * Contacts' four columns ended up inset from the rail AND stopping partway
+   * down the window, borders terminating in mid-air over a white void —
+   * "a very bad app-iFrame" (Eric, 2026-08-17). The padding said document
+   * while the content was an app.
+   *
+   * Default stays `document` deliberately: pages opt IN, so nothing changes
+   * for a page nobody has looked at yet.
+   */
+  frame?: "document" | "surface";
 }
 
-const { title, section } = Astro.props;
+const { title, section, frame = "document" } = Astro.props;
+// h-16 is ShellNav's sticky header, so a surface is the window minus that.
+// `min-h-0` matters more than it looks: without it a flex/grid child refuses
+// to shrink below its content and the inner `overflow-y-auto` never engages —
+// the pane grows instead of scrolling, which is the whole bug.
+const frameClass =
+  frame === "surface" ? "h-[calc(100vh-4rem)] min-h-0 overflow-hidden" : "py-6";
+const innerClass = frame === "surface" ? "h-full min-h-0" : "px-4 sm:px-6 lg:px-8";
 ---
 
 <!doctype html>
@@ -77,8 +106,8 @@ const { title, section } = Astro.props;
          style, because `style-src` here carries no 'unsafe-inline'. The
          lg:pl-72 below is the default the first paint uses. -->
     <div id="app-content" class="lg:pl-72">
-      <main class="py-6">
-        <div class="px-4 sm:px-6 lg:px-8">
+      <main class={frameClass}>
+        <div class={innerClass}>
           <slot />
         </div>
       </main>
