@@ -1,5 +1,5 @@
-import { Mailstore, normalizeAddress } from "@bullmoose/mailstore";
-import type { Env } from "./models.js";
+import { Mailstore } from "./index";
+import { normalizeAddress } from "./governance";
 
 /**
  * The outbound bound (s10 T1) — `allowedSenders`' twin, one gate for EVERY
@@ -15,7 +15,39 @@ import type { Env } from "./models.js";
  * both sides, no LIKE, no substring, no plus-tag folding — `bob+x@` does NOT
  * match `bob@` (devPlan s10 T1). Contact search may scan loosely; an
  * allowlist must not.
+ *
+ * ## Why this lives in a package rather than in `services/agent`
+ *
+ * It was born in `services/agent/src/outbound.ts`, next to its only caller.
+ * It is not agent-only: the approval path egresses from `services/jmap`
+ * (`actionProposal.ts` → `applyProposal` → SUBMIT), and that is a DIFFERENT
+ * worker. A second copy of the decision is how two enforcement points come to
+ * disagree, so the decision lives here — beside `bookMembership`, the thing it
+ * actually asks about — and both workers import the one function. Its whole
+ * dependency surface is `DB` + `BLOBS` (see `OutboundBoundEnv`), so nothing
+ * agent-shaped rides along into jmap.
+ *
+ * Reached through the `@bullmoose/mailstore/outboundBound` subpath rather than
+ * the package index (the `@bullmoose/auth-core/principal` pattern): this module
+ * imports `Mailstore` FROM the index, so re-exporting it there would make the
+ * cycle real instead of merely survivable.
  */
+
+/**
+ * The bindings this decision needs, and nothing else. Both
+ * `services/agent`'s and `services/jmap`'s `Env` satisfy it structurally, so
+ * neither worker has to widen anything to call in.
+ */
+export interface OutboundBoundEnv {
+  DB: D1Database;
+  BLOBS: R2Bucket;
+}
+
+/** The binding whose reach is being asked about. */
+export interface OutboundBoundJob {
+  account_id: string;
+  binding_id: string;
+}
 
 /**
  * Why a send must not happen, or null when every recipient is in the book.
@@ -23,8 +55,8 @@ import type { Env } from "./models.js";
  * allowedSenders gate) or throw (the belt directly in front of the relay).
  */
 export async function outboundRefusal(
-  env: Env,
-  job: { account_id: string; binding_id: string },
+  env: OutboundBoundEnv,
+  job: OutboundBoundJob,
   recipients: string[],
 ): Promise<string | null> {
   const binding = await env.DB.prepare(
@@ -53,8 +85,8 @@ export async function outboundRefusal(
 
 /** The belt in front of the relay: every SUBMIT call sits behind this. */
 export async function assertOutboundAllowed(
-  env: Env,
-  job: { account_id: string; binding_id: string },
+  env: OutboundBoundEnv,
+  job: OutboundBoundJob,
   recipients: string[],
 ): Promise<void> {
   const refusal = await outboundRefusal(env, job, recipients);

@@ -2918,7 +2918,7 @@ function sameJson(a: unknown, b: unknown): boolean {
  * control and controlled become the same writable object, which is the exact
  * confused-deputy shape s10 T1 exists to close. The book must also live on the
  * BINDING'S OWN ACCOUNT, because that is the lookup the send gate itself runs
- * (`services/agent/src/outbound.ts` — `address_books WHERE account_id = ? AND
+ * (`packages/mailstore/src/outboundBound.ts` — `address_books WHERE account_id = ? AND
  * id = ?`); a book anywhere else reads as "bounded" in a config surface and is
  * fail-closed at send time, which is a config surface telling a lie.
  *
@@ -3086,7 +3086,7 @@ async function patchAgentBinding(
     : binding.recipients_book_id;
   if (wantsBook && nextBook !== null && nextBook !== binding.recipients_book_id) {
     const book = await env.DB.prepare(
-      // The send gate's own lookup (services/agent/src/outbound.ts), account
+      // The send gate's own lookup (packages/mailstore/src/outboundBound.ts), account
       // and all: a book that this SELECT cannot see is fail-closed at send
       // time, whatever a config surface renders.
       `SELECT id, name, write_policy FROM address_books WHERE account_id = ? AND id = ?`,
@@ -3099,7 +3099,7 @@ async function patchAgentBinding(
           error:
             `no address book ${nextBook} on account ${binding.account_id}. The governing book must ` +
             `live on the BINDING'S OWN account — that is the lookup the send gate runs ` +
-            `(services/agent outboundRefusal), so a book elsewhere would render as a bound here and ` +
+            `(@bullmoose/mailstore outboundRefusal), so a book elsewhere would render as a bound here and ` +
             `refuse every send in production`,
           bindingId: binding.id,
           accountId: binding.account_id,
@@ -3304,7 +3304,7 @@ function bindingConfigView(
       note:
         bookId === null
           ? "FAIL-CLOSED: with no governing book this binding CANNOT SEND — every send is refused " +
-            "server-side (services/agent outboundRefusal). That is safe, not unrestricted"
+            "server-side (@bullmoose/mailstore outboundRefusal). That is safe, not unrestricted"
           : "membership is resolved server-side on every send, normalized exact match; the agent " +
             "cannot write this book (write_policy 'governed') — it asks with a grant-request proposal",
     },
