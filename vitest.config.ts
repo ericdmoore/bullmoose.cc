@@ -60,6 +60,13 @@ export default defineConfig({
       "infra/**/*.test.ts",
       "tools/**/*.test.ts",
       "conformance/**/*.test.ts",
+      // The coverage ratchet lives in .github/scripts and gates every PR, so
+      // its own logic needs a test — and the test belongs next to the script,
+      // the way tools/login-key.test.ts sits next to tools/login-key.mjs.
+      // Adding this glob does NOT widen the coverage denominator: `include`
+      // below is a separate list and still only names packages/*/src and
+      // services/*/src.
+      ".github/scripts/**/*.test.ts",
     ],
     // Still exclude the marketing site (src/) and any build output; webmail/dist
     // and webmail/node_modules are covered by the two globs that precede them.
@@ -70,7 +77,8 @@ export default defineConfig({
       reportsDirectory: "coverage",
       // text → the CLI table locally; html → a browsable report (open
       // coverage/index.html); json-summary → coverage/coverage-summary.json,
-      // which the CI workflow diffs across runs.
+      // which .github/scripts/coverage-ratchet.mjs folds up per package and
+      // compares against the floors in .github/coverage-baseline.json.
       reporter: ["text", "html", "json-summary"],
       // Report against the whole worker/package source tree — untested
       // files show as 0% so coverage reflects reality, not just what the

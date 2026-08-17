@@ -1,16 +1,39 @@
 name: Coverage
-# Optional, manual-only: does NOT gate pushes or PRs. Runs the vitest suite
-# with coverage, publishes a browsable HTML report as an artifact, and diffs
-# the totals against the previous successful run (rendered in the run summary).
+
+# A RATCHET, not a report. It was manual-only and self-documented as
+# non-gating, which is the worst of both worlds: a coverage number existed, so
+# coverage read as "handled", and nothing enforced anything (s06 asked for a
+# ratchet; what shipped was a report nobody ran).
+#
+# It now runs on every PR and fails when a package drops below the floor
+# recorded in .github/coverage-baseline.json. The floors are per package and in
+# whole percent, and legitimate drops are expected to land by lowering a floor
+# in the same PR — the reasoning for all of that is at the top of
+# .github/scripts/coverage-ratchet.mjs.
+#
+# This is a SEPARATE job from `verify` on purpose. Folding it into `verify`
+# would make it a required check by construction, and whether coverage should
+# block a merge is a call for a human to make in .github/rulesets/ — not a side
+# effect of where a step was pasted. Until that ruleset changes, this is a
+# visible red X rather than a hard block.
+#
+# The whole suite with v8 instrumentation takes ~9s locally, so running it here
+# in addition to `npm test` in `verify` costs essentially nothing.
+
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  actions: read # list + download the previous run's summary artifact
 
 jobs:
+  # If this is ever promoted to a required check, the context is this job id.
+  # Same warning as `verify`: renaming it silently detaches the gate.
   coverage:
+    name: Coverage ratchet
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,33 +46,36 @@ jobs:
       - name: Run coverage
         run: npm run coverage
 
-      - name: Fetch previous run's summary (for comparison)
+      # A PR is allowed to lower a floor — some coverage drops are correct. It
+      # should not be able to do it QUIETLY, so fetch the base branch's copy and
+      # let the ratchet call out any floor this branch moved down. Best-effort:
+      # every step here is `|| true`, because a missing base blob should make
+      # the banner absent, not the build red.
+      - name: Baseline as of the base branch
+        if: github.event_name == 'pull_request'
         env:
-          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          prev=$(gh run list --workflow=coverage.yml --status=success --limit=1 \
-                   --json databaseId -q '.[0].databaseId' 2>/dev/null || true)
-          if [ -n "$prev" ]; then
-            echo "Comparing against run $prev"
-            gh run download "$prev" --name coverage-summary --dir prev-cov \
-              || echo "previous run had no coverage-summary artifact"
+          before="$RUNNER_TEMP/coverage-baseline-before.json"
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" >/dev/null 2>&1 || true
+          git show "$BASE_SHA:.github/coverage-baseline.json" > "$before" 2>/dev/null || true
+          if [ -s "$before" ]; then
+            echo "BASELINE_BEFORE=$before" >> "$GITHUB_ENV"
           else
-            echo "No previous successful run to compare against (baseline)."
+            echo "No baseline on the base branch — nothing to compare floors against."
           fi
 
-      - name: Render report into the run summary
-        run: node .github/scripts/coverage-report.mjs >> "$GITHUB_STEP_SUMMARY"
+      # Writes the table to the run summary and fails on a regression. Reasons
+      # are echoed to the log as ::error::/::warning:: too, so the failure is
+      # readable without opening the summary tab.
+      - name: Ratchet
+        run: node .github/scripts/coverage-ratchet.mjs
 
+      # `always()`: the browsable report is most wanted on the run that failed.
       - name: Upload HTML report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-html
           path: coverage/
           retention-days: 30
-
-      - name: Upload summary (source for the next run's diff)
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-summary
-          path: coverage/coverage-summary.json
-          retention-days: 90
