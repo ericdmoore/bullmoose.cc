@@ -2582,16 +2582,21 @@ async function provisionExtractor(
   // Re-provision UPDATES the model menu in place — the swap path (Llama → Qwen
   // → minimax). config_json is read-only on PATCH by design, so this is where
   // a shape change legitimately happens.
-  const existing = await env.DB.prepare(
-    `SELECT id FROM agent_bindings WHERE account_id = ? AND name = 'extractor'`,
-  )
+  const existing = await env.DB.prepare(`SELECT id FROM agent_bindings WHERE account_id = ? AND name = 'extractor'`)
     .bind(account.id)
     .first<{ id: string }>();
   if (existing) {
     await env.DB.prepare(`UPDATE agent_bindings SET config_json = ?, enabled = 1 WHERE id = ?`)
       .bind(JSON.stringify(config), existing.id)
       .run();
-    return json({ ok: true, created: false, updated: true, accountId: account.id, bindingId: existing.id, model: `${provider}/${model}` });
+    return json({
+      ok: true,
+      created: false,
+      updated: true,
+      accountId: account.id,
+      bindingId: existing.id,
+      model: `${provider}/${model}`,
+    });
   }
 
   // A binding on the human's own account, reply-less. skipSupervision: nothing
@@ -2601,7 +2606,13 @@ async function provisionExtractor(
   const binding = (await bindingRes.json()) as { ok?: boolean; bindingId?: string; error?: string };
   if (!binding.ok) return json({ error: `extractor binding: ${binding.error ?? "failed"}` }, 422);
 
-  return json({ ok: true, created: true, accountId: account.id, bindingId: binding.bindingId, model: `${provider}/${model}` });
+  return json({
+    ok: true,
+    created: true,
+    accountId: account.id,
+    bindingId: binding.bindingId,
+    model: `${provider}/${model}`,
+  });
 }
 
 /**

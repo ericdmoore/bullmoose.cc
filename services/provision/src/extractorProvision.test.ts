@@ -72,7 +72,11 @@ describe("POST /extractor", () => {
     const b = rows[0]!;
     expect(b.trigger_on).toBe("mailbox-delivery"); // fires on the human's inbound mail
     expect(b.recipients_book_id).toBeNull(); // reply-less: it sends nothing
-    const cfg = JSON.parse(b.config_json) as { pipeline: string; defaultModel: string; modelAliases: Record<string, Array<{ provider: string; model: string }>> };
+    const cfg = JSON.parse(b.config_json) as {
+      pipeline: string;
+      defaultModel: string;
+      modelAliases: Record<string, Array<{ provider: string; model: string }>>;
+    };
     expect(cfg.pipeline).toBe("extract");
     expect(cfg.defaultModel).toBe("extract");
     expect(cfg.modelAliases.extract).toEqual([{ provider: "openrouter", model: "minimax/minimax-m3" }]);
@@ -81,9 +85,15 @@ describe("POST /extractor", () => {
   it("accepts an explicit model/provider — shop around", async () => {
     const h = harness();
     await seedHuman(h);
-    const res = await h.call("/extractor", { email: `dad@${DOMAIN}`, provider: "workers-ai", model: "@cf/qwen/qwen1.5-14b-chat-awq" });
+    const res = await h.call("/extractor", {
+      email: `dad@${DOMAIN}`,
+      provider: "workers-ai",
+      model: "@cf/qwen/qwen1.5-14b-chat-awq",
+    });
     expect(res.status).toBe(200);
-    const cfg = JSON.parse(extractorBinding(h)[0]!.config_json) as { modelAliases: Record<string, Array<{ provider: string; model: string }>> };
+    const cfg = JSON.parse(extractorBinding(h)[0]!.config_json) as {
+      modelAliases: Record<string, Array<{ provider: string; model: string }>>;
+    };
     expect(cfg.modelAliases.extract).toEqual([{ provider: "workers-ai", model: "@cf/qwen/qwen1.5-14b-chat-awq" }]);
   });
 
@@ -91,13 +101,19 @@ describe("POST /extractor", () => {
     const h = harness();
     await seedHuman(h);
     await h.call("/extractor", { email: `dad@${DOMAIN}` }); // minimax
-    const res = await h.call("/extractor", { email: `dad@${DOMAIN}`, provider: "openrouter", model: "qwen/qwen-2.5-72b-instruct" });
+    const res = await h.call("/extractor", {
+      email: `dad@${DOMAIN}`,
+      provider: "openrouter",
+      model: "qwen/qwen-2.5-72b-instruct",
+    });
     expect(res.status).toBe(200);
-    expect((await res.json() as { updated: boolean }).updated).toBe(true);
+    expect(((await res.json()) as { updated: boolean }).updated).toBe(true);
 
     const rows = extractorBinding(h);
     expect(rows).toHaveLength(1); // one binding, ever
-    const cfg = JSON.parse(rows[0]!.config_json) as { modelAliases: Record<string, Array<{ provider: string; model: string }>> };
+    const cfg = JSON.parse(rows[0]!.config_json) as {
+      modelAliases: Record<string, Array<{ provider: string; model: string }>>;
+    };
     expect(cfg.modelAliases.extract).toEqual([{ provider: "openrouter", model: "qwen/qwen-2.5-72b-instruct" }]);
   });
 

@@ -210,7 +210,12 @@ describe("callModel returns the usage each provider already sends", () => {
         usage: { prompt_tokens: 40, completion_tokens: 3 },
       });
     });
-    const { output, usage } = await callModel(w.env, { provider: "openrouter", model: "minimax/minimax-m3" }, messages, 64);
+    const { output, usage } = await callModel(
+      w.env,
+      { provider: "openrouter", model: "minimax/minimax-m3" },
+      messages,
+      64,
+    );
     expect(output).toBe("extracted []");
     expect(usage).toEqual({ tokensIn: 40, tokensOut: 3 });
     expect(seen!.url).toBe("https://openrouter.ai/api/v1/chat/completions");
