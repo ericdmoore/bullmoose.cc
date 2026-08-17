@@ -30,58 +30,16 @@ exactly one place per account, and every worker is stateless around it.
 
 ## 1. System topology
 
-```mermaid
-flowchart TB
-  subgraph clients [Clients]
-    JC[JMAP client / CLI]
-    LC[Legacy POP3/SMTP client]
-  end
-
-  subgraph cf [Cloudflare -- free tier]
-    ER[Email Routing]
-    JW[jmap worker]
-    IW[ingest worker]
-    SW[submit worker]
-    PW[provision worker]
-    AW[agent worker]
-    DO[AccountDO -- Durable Object]
-    D1[(D1 -- metadata)]
-    R2[(R2 -- raw blobs)]
-    KV[(KV -- routes + suppression)]
-  end
-
-  subgraph homelab [alpaca -- homelab]
-    PC[popcorn -- POP3S/SMTPS]
-    HB[hermes bridge]
-    HA[hermes agent]
-  end
-
-  SES[AWS SES]
-  WORLD[the internet]
-
-  JC -->|HTTPS JMAP| JW
-  LC -->|POP3S / SMTPS| PC
-  PC -->|JMAP| JW
-
-  WORLD -->|inbound SMTP| ER --> IW
-  IW --> R2 & D1
-  IW --> DO
-  IW -->|poke| AW
-  JW --> DO
-  JW --> D1 & R2
-  DO -->|StateChange push| JC
-  AW --> D1 & R2 --> DO
-  JW -->|submission| SW
-  AW -->|submission| SW
-  DO -->|armed responder| SW
-  SW -->|SigV4| SES --> WORLD
-  PW -->|DNS + SES setup| KV
-  IW -.->|route lookup| KV
-
-  HB -->|watch + read| JW
-  HB -->|invoke| HA
-  HB -->|reply via SMTPS| PC
-```
+> Sections 1–4 used to open with their own diagrams. `system-map.md` now draws
+> the same four things more completely — components and every binding between
+> them, the data model across all three planes, and five end-to-end sequences —
+> read out of the code rather than out of these docs. **Two drawings of one
+> system drift**, and drift in a diagram is invisible until it has misled
+> someone, so there is now one.
+>
+> What stays here is the part a picture cannot carry: **why** it is shaped this
+> way. Sections 5–9 keep their diagrams — the deploy-order DAG in §5 exists
+> nowhere else.
 
 **Why this shape.** One rule drives everything: *state changes go through
 a single writer per account (the Durable Object); everything else is
@@ -95,29 +53,6 @@ invocation, and because a circular service-binding graph can't deploy
 ---
 
 ## 2. Inbound: a message arriving
-
-```mermaid
-sequenceDiagram
-  participant W as Sender (world)
-  participant ER as Email Routing
-  participant IW as ingest worker
-  participant R2 as R2
-  participant D1 as D1
-  participant DO as AccountDO
-  participant AW as agent worker
-  participant C as Live client (watch)
-
-  W->>ER: SMTP to eric@bullmoose.cc
-  ER->>IW: deliver (catch-all / literal rule)
-  IW->>D1: KV route lookup (exact->plus-strip->catch-all)
-  IW->>R2: store raw RFC5322 (content-hash blobId)
-  IW->>D1: insert metadata (normalized Message-ID)
-  IW->>D1: create AgentInvocation (if bound)
-  IW->>DO: commit(Email created, Mailbox updated)
-  DO-->>C: StateChange push (WebSocket)
-  IW->>AW: poke /drain (fire-and-forget)
-  IW-->>ER: 250, then forward verified copies
-```
 
 **Why store-then-commit-then-push, in that order.** The raw blob and the
 metadata row must exist *before* the DO announces the new state, or a
@@ -136,25 +71,6 @@ Queues (a paid feature).
 
 ## 3. The single-writer account (Durable Object)
 
-```mermaid
-flowchart LR
-  subgraph DO [AccountDO -- one per account]
-    SEQ[state sequence]
-    LOG[bounded changelog -- 4096]
-    WS[hibernatable WebSockets]
-    AL[alarm -- armed responders]
-  end
-
-  IW[ingest] -->|POST /commit| SEQ
-  JW[jmap Email/set] -->|POST /commit| SEQ
-  AW[agent] -->|POST /commit| SEQ
-  SEQ --> LOG
-  SEQ --> WS
-  LOG -->|GET /changes| JW
-  WS -->|StateChange| CL[clients]
-  AL -->|fire| SUB[submit worker]
-```
-
 **Why a Durable Object at all.** JMAP's sync model needs a *monotonic
 per-account state* and a changelog so clients can ask "what changed since
 state X." That demands a single serialization point per account — exactly
@@ -171,25 +87,6 @@ watchdogs) fire without any always-on process.
 ---
 
 ## 4. Outbound: sending
-
-```mermaid
-sequenceDiagram
-  participant C as Client / CLI / agent
-  participant JW as jmap worker
-  participant DO as AccountDO
-  participant SW as submit worker
-  participant KV as KV suppression
-  participant SES as AWS SES
-  participant W as Recipient
-
-  C->>JW: EmailSubmission/set (envelope + emailId)
-  JW->>SW: POST /internal/submit (shared secret)
-  SW->>KV: suppression check per rcpt
-  SW->>SES: SendRawEmail (SigV4)
-  SES->>W: deliver (DKIM-signed, SPF/DMARC aligned)
-  SW-->>JW: submission id
-  JW->>DO: commit (move Drafts -> Sent)
-```
 
 **Why a separate submit worker with no DO binding.** Cloudflare can't
 originate SMTP, so outbound must egress through a cloud relay (SES). We
