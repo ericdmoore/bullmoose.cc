@@ -1024,3 +1024,76 @@ describe("s03.D T2 — the commit sweep: Approve finally means send", () => {
     );
   });
 });
+
+// ---- s20 T1↔T4: the agent-offered Watch (watch-offer) ---------------------
+
+describe("approving a watch-offer arms a no-reply-from Watch", () => {
+  const sentAt = 5_000;
+  const durationMs = 4 * 24 * 3600_000;
+  const offerPayload = {
+    to: "sergio@example.com",
+    threadId: "th_x",
+    emailId: "e_ask",
+    sentAt,
+    watchDurationMs: durationMs,
+  };
+
+  it("arms the watch (condition, action, source), backdating created_at to the send", async () => {
+    const h = harness(["mail"]);
+    h.w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT, loginEmail: "eric@bullmoose.cc" }); // watches FK → accounts
+    seedProposal(h.w, { id: "inv_wo", kind: "watch-offer", tier: 1, subject: { realm: "Email", objectId: "e_ask" }, payload: offerPayload });
+
+    const before = Date.now();
+    const res = await h.set({ update: { inv_wo: { status: "approved" } } });
+    expect(res.notUpdated).toEqual({});
+    expect(res.updated.inv_wo).toBeNull();
+
+    const watch = h.w.db.query<{
+      account_id: string;
+      owner: string;
+      condition_type: string;
+      condition_json: string;
+      action_type: string;
+      action_json: string;
+      status: string;
+      source_ref: string | null;
+      created_at: number;
+      deadline_at: number;
+      id: string;
+    }>(`SELECT * FROM watches`)[0]!;
+    expect(watch.account_id).toBe(ACCOUNT);
+    expect(watch.condition_type).toBe("no-reply-from");
+    expect(JSON.parse(watch.condition_json)).toEqual({ sender: "sergio@example.com", threadId: "th_x" });
+    expect(watch.action_type).toBe("draft-followup");
+    expect(JSON.parse(watch.action_json)).toEqual({ to: "sergio@example.com" });
+    expect(watch.status).toBe("armed");
+    expect(watch.source_ref).toBe("e_ask");
+    // Backdated: "no reply SINCE I sent it", not since I approved the offer.
+    expect(watch.created_at).toBe(sentAt);
+    // Deadline measured from approval, not from the (older) offer.
+    expect(watch.deadline_at).toBeGreaterThanOrEqual(before + durationMs);
+
+    // Approved, with the tier-1 undo handle that cancels the very watch armed.
+    const prop = h.w.db.query<{ status: string; decision_json: string }>(
+      `SELECT status, decision_json FROM agent_proposals WHERE id = 'inv_wo'`,
+    )[0]!;
+    expect(prop.status).toBe("approved");
+    expect(JSON.parse(prop.decision_json).undo).toEqual({ action: "cancel-watch", watchId: watch.id });
+  });
+
+  it("declining is no-fault: a reject reason is refused; a bare decline records it and arms nothing", async () => {
+    const h = harness(["mail"]);
+    h.w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT, loginEmail: "eric@bullmoose.cc" });
+    seedProposal(h.w, { id: "inv_wo2", kind: "watch-offer", tier: 1, payload: offerPayload });
+
+    // A fault reason is refused — the agent was right to notice you're waiting.
+    const bad = await h.set({ update: { inv_wo2: { status: "rejected", decision: { reason: "wrongAction" } } } });
+    expect(bad.updated).toEqual({});
+    expect(bad.notUpdated.inv_wo2!.type).toBe("invalidProperties");
+
+    // A bare decline is accepted; no watch is armed.
+    const ok = await h.set({ update: { inv_wo2: { status: "rejected" } } });
+    expect(ok.updated.inv_wo2).toBeNull();
+    expect(h.w.db.query(`SELECT * FROM watches`)).toEqual([]);
+  });
+});
