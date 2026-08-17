@@ -114,6 +114,23 @@ tone resolved from the address book and history.
 
 ### T4 — Extracted views: Waiting-on and Commitments · *read models, uncertainty-first*
 
+> **The T1↔T4 seam — agent-offered Watches (Waiting-on) — LANDED (2026-08-17)**, and it
+> is the answer to "where we're going we don't need stars" (Eric). A star made YOU the
+> classifier: notice, flag, come back. The sweep now does the noticing. `sweepWaitingOn`
+> (`services/agent/src/waitingOn.ts`) scans your Sent mail for a QUESTION you asked that
+> has gone unanswered past a silence window and emits a tier-1 `watch-offer` proposal —
+> *"you emailed Sergio 4 days ago and haven't heard back; watch it and draft a follow-up if
+> it stays quiet?"* Approving arms an ordinary `no-reply-from` Watch (the `applyProposal`
+> effect in `actionProposal.ts`, undo = cancel it), which the T1 sweep fires; a reply that
+> lands first closes it clean. Deterministic (a literal `?`, no model), dedup'd to one offer
+> per thread ever (a decline sticks), no-fault to decline. **Deliberately separated from the
+> rest of T4**: the recon confirmed the s18 Note substrate (the anchored `(message-id, span)`
+> margin comment) is entirely unbuilt, and the offer needs none of it — it renders in the
+> existing approvals queue. What remains below (the ambient Waiting-on/Commitments PANELS
+> and the in-margin commentary) is the s18-dependent rendering, and stays deferred. The
+> "never even confirm — just watch" variant is this same detector with the offer step
+> removed: a policy flip to graduate to once the offer has earned trust.
+
 **Files:** the s18 Note entity (agent-authored, anchored — see below), an extractor pass
 in the agent worker, home-view panels in `webmail/src/lib/home/`, a margin-commentary
 rendering in the mail view.

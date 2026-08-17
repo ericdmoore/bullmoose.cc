@@ -126,8 +126,10 @@ async function evaluate(env: Env, w: WatchRow): Promise<Verdict> {
 }
 
 /** Did a message from `sender` (optionally on `threadId`) land in an inbound
- *  mailbox after `since`? Read-only, deterministic. */
-async function hasInboundSince(
+ *  mailbox after `since`? Read-only, deterministic. Exported so the Waiting-on
+ *  detector (waitingOn.ts) reuses the SAME "has a reply arrived" predicate the
+ *  fire path uses — one definition of "answered", two callers. */
+export async function hasInboundSince(
   env: Env,
   accountId: string,
   sender: string,

@@ -158,6 +158,10 @@ export const REJECT_REASONS: ReadonlyArray<{
 export const NO_FAULT_KINDS: ReadonlySet<string> = new Set([
   "budget-overrun",
   "held-mail-review",
+  // s20 T1↔T4 — declining a watch-offer says "no, not this thread", a
+  // preference about your own follow-ups, never "you were wrong to notice I'm
+  // waiting". No fault reaches the agent.
+  "watch-offer",
 ]);
 
 /** Whether the decline panel must collect a reason before it can submit. */
@@ -251,6 +255,15 @@ export function summarizeProposal(p: ActionProposal): string {
       const who = [...new Set(msgs.map((m) => s(m.sender)).filter(Boolean))];
       const from = who.length > 0 ? ` from ${who.slice(0, 2).join(", ")}${who.length > 2 ? ` +${who.length - 2}` : ""}` : "";
       return `${n ?? "?"} held message${n === 1 ? "" : "s"}${from} — approve releases, decline confirms spam`;
+    }
+    case "watch-offer": {
+      // s20 T1↔T4 — the anti-star. The agent noticed a question you sent that
+      // went unanswered and offers to watch it. Lead with WHO and HOW LONG,
+      // because that is the whole decision; approving arms a no-reply-from
+      // Watch that closes itself if the reply lands first.
+      const who = s(p.payload.to) || "(unknown recipient)";
+      const about = s(p.payload.sentSubject);
+      return `Waiting on ${who}${about ? ` — “${about}”` : ""} — watch & follow up?`;
     }
     case "grant-request": {
       // The allowlist widening (s10 T3): grantType "recipient" is "let me
