@@ -36,10 +36,10 @@
     // routing one.
     { "pattern": "app.bullmoose.cc/share/*", "zone_name": "bullmoose.cc" }
 
-    // ── s20, the explorer — DELIBERATELY COMMENTED OUT ────────────────────
+    // ── s21, the explorer — DELIBERATELY COMMENTED OUT ────────────────────
     //
     // `explore.bullmoose.cc` is a read-only mirror of everything the caller can
-    // see. `.plans/s20-explorer` open question 2: a deployment that does not
+    // see. `.plans/s21-explorer` open question 2: a deployment that does not
     // want it must serve NOTHING — "not a flag inside a worker that serves the
     // product" — so the default is no route, no DNS record and no secrets, and
     // the switch is three deliberate acts rather than one.
@@ -126,7 +126,7 @@
 
   // Outbound sends go through the submit worker (which holds SES creds).
   //
-  // The second entry is s20's, and is commented out with the explore route
+  // The second entry is s21's, and is commented out with the explore route
   // above — the two are turned on together. The explorer redeems an
   // authorization code and asks who a token belongs to; OAUTH_KV is bound to
   // services/oauth and nowhere else, so both are hops across this binding
