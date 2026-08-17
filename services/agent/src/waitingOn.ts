@@ -1,3 +1,4 @@
+import { commitChanges } from "@bullmoose/account-do";
 import { emitProposal } from "./proposals.js";
 import { hasInboundSince } from "./watches.js";
 import type { Env } from "./models.js";
@@ -196,6 +197,33 @@ async function offer(env: Env, e: SentRow, to: string, self: string | null, now:
       expiresInMs: OFFER_EXPIRY_MS,
     },
   );
+
+  // s18 A2 — graduate the detector into an Annotation. The waiting-on is not
+  // just a queue row; it is a `task` claim about the sent message ("you're
+  // waiting on a reply"), so the Commitments/Waiting-on views (A4) and the
+  // margin (A3) see it. Confidence NULL: this is a DETERMINISTIC finding, not a
+  // model estimate — it is true because the mailbox says so. source_ref ties it
+  // to the same message the offer cites.
+  const annId = `an_${crypto.randomUUID()}`;
+  await env.DB.prepare(
+    `INSERT INTO annotations
+       (id, account_id, author_kind, author, anchor_json, class, body,
+        confidence, status, rationale, source_ref, created_at, updated_at)
+     VALUES (?, ?, 'agent', 'waiting-on', ?, 'task', ?, NULL, 'open', NULL, ?, ?, ?)`,
+  )
+    .bind(
+      annId,
+      e.account_id,
+      JSON.stringify({ realm: "Email", objectId: e.id }),
+      `Waiting on ${to}'s reply${subjectLine ? ` to "${subjectLine}"` : ""}`,
+      e.id,
+      now,
+      now,
+    )
+    .run();
+  await commitChanges(env.ACCOUNT_DO, e.account_id, [
+    { collection: "Annotation", created: [annId], updated: [], destroyed: [] },
+  ]);
 }
 
 /** First address of a JSON EmailAddress[] column, lowercased, or null. */

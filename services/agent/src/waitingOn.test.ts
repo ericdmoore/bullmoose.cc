@@ -102,6 +102,26 @@ describe("sweepWaitingOn — offers a watch on an unanswered question", () => {
     expect(inv.cost_micros).toBe(0);
   });
 
+  it("graduates the finding into a `task` Annotation anchored to the sent message (s18 A2)", async () => {
+    const w = world();
+    seedSent(w, { id: "e_ask", to: "sergio@example.com", subject: "Re: free Thursday?", sentAt: NOW - 5 * DAY });
+    await sweepWaitingOn(w.env, NOW);
+
+    const ann = w.db.query<{ author_kind: string; author: string; class: string; body: string; confidence: number | null; status: string; anchor_json: string; source_ref: string }>(
+      `SELECT * FROM annotations`,
+    );
+    expect(ann).toHaveLength(1);
+    const a = ann[0]!;
+    expect(a.author_kind).toBe("agent");
+    expect(a.author).toBe("waiting-on");
+    expect(a.class).toBe("task");
+    expect(a.confidence).toBeNull(); // deterministic finding — certain, not estimated
+    expect(a.status).toBe("open");
+    expect(a.body).toContain("sergio@example.com");
+    expect(JSON.parse(a.anchor_json)).toEqual({ realm: "Email", objectId: "e_ask" });
+    expect(a.source_ref).toBe("e_ask");
+  });
+
   it("says nothing when the reply already arrived — being answered is silence", async () => {
     const w = world();
     const thread = seedSent(w, { id: "e_ask", to: "sergio@example.com", subject: "free Thursday?", sentAt: NOW - 5 * DAY });
