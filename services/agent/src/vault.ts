@@ -225,10 +225,7 @@ export async function handleVault(request: Request, env: Env): Promise<Response>
     if (body.header !== undefined) {
       const h = normalizeHeader(body.header);
       if (!h) {
-        return json(
-          { error: 'header must be "Header-Name: …{}…" (the {} is the value slot)' },
-          400,
-        );
+        return json({ error: 'header must be "Header-Name: …{}…" (the {} is the value slot)' }, 400);
       }
       meta.header = h;
     } else if (kind === "api-key" && meta.header === undefined) {
@@ -316,9 +313,7 @@ export async function handleVault(request: Request, env: Env): Promise<Response>
     // and every other mint-time field are unchanged and nothing downstream
     // re-attaches (bureau.md §5). The Bureau moves enc_json + updated_at and
     // nothing else; `kind` is read here only to echo it back.
-    const existing = await env.DB.prepare(
-      `SELECT kind FROM vault_credentials WHERE principal_id = ? AND name = ?`,
-    )
+    const existing = await env.DB.prepare(`SELECT kind FROM vault_credentials WHERE principal_id = ? AND name = ?`)
       .bind(principal.principalId, name)
       .first<{ kind: string }>();
     if (!existing) return json({ error: "not found" }, 404);
@@ -336,9 +331,7 @@ export async function handleVault(request: Request, env: Env): Promise<Response>
 
   if (request.method === "DELETE" && url.pathname.startsWith("/vault/credentials/")) {
     const name = decodeURIComponent(url.pathname.split("/")[3] ?? "");
-    const res = await env.DB.prepare(
-      `DELETE FROM vault_credentials WHERE principal_id = ? AND name = ?`,
-    )
+    const res = await env.DB.prepare(`DELETE FROM vault_credentials WHERE principal_id = ? AND name = ?`)
       .bind(principal.principalId, name)
       .run();
     return json({ deleted: (res.meta.changes ?? 0) > 0 });
@@ -370,13 +363,7 @@ export async function handleVaultVerify(request: Request, env: Env): Promise<Res
  * user meta with the reserved keys stripped so they are not shown twice.
  * NEVER touches enc_json — invariant 1: no read path returns a value.
  */
-function credentialView(r: {
-  name: string;
-  kind: string;
-  meta_json: string;
-  created_at: number;
-  updated_at: number;
-}) {
+function credentialView(r: { name: string; kind: string; meta_json: string; created_at: number; updated_at: number }) {
   const meta = JSON.parse(r.meta_json) as Record<string, unknown>;
   const userMeta = { ...meta };
   for (const k of RESERVED_META_KEYS) delete userMeta[k];

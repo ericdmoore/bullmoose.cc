@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bayesClassify, type BoundaryMessage } from "@bullmoose/boundary";
 import { fakeD1, fakeR2, type FakeD1 } from "@bullmoose/test-fakes";
-import {
-  Mailstore,
-  QUARANTINE_NAME,
-  QUARANTINE_ROLE,
-  loadBayesState,
-  type NewEmail,
-} from "./index";
+import { Mailstore, QUARANTINE_NAME, QUARANTINE_ROLE, loadBayesState, type NewEmail } from "./index";
 
 /**
  * The s12 quarantine chain + the rescue write path (wave 1-A).
@@ -166,9 +160,7 @@ describe("rescueQuarantined — the rescue write path", () => {
 
   it("does NOT demote 'feed' or 'directive' entries — a single rescue cannot overrule intent", async () => {
     const { db, store } = harness();
-    db.seed("domain_deny_list", [
-      { tenant_id: "t_bm", domain: DOMAIN, added_at: 1, source: "feed", evidence: null },
-    ]);
+    db.seed("domain_deny_list", [{ tenant_id: "t_bm", domain: DOMAIN, added_at: 1, source: "feed", evidence: null }]);
     const { emailId } = await shunt(store);
 
     const out = await store.rescueQuarantined(ACCOUNT, emailId, "eric@moore.coffee");
@@ -183,10 +175,7 @@ describe("rescueQuarantined — the rescue write path", () => {
 
     const again = await store.rescueQuarantined(ACCOUNT, emailId, "eric@moore.coffee");
     expect(again).toEqual({ rescued: false, demotedDomain: null });
-    expect((await store.quarantineEvents(ACCOUNT)).map((e) => e.event)).toEqual([
-      "shunted",
-      "rescued",
-    ]);
+    expect((await store.quarantineEvents(ACCOUNT)).map((e) => e.event)).toEqual(["shunted", "rescued"]);
   });
 
   it("refuses a message that was never quarantined (and an account with no quarantine mailbox)", async () => {
@@ -460,10 +449,7 @@ describe("confirmQuarantined — 'yes, that is spam'", () => {
     expect(await store.confirmQuarantined(ACCOUNT, emailId, "eric@moore.coffee")).toEqual({
       confirmed: false,
     });
-    expect((await store.quarantineEvents(ACCOUNT)).map((e) => e.event)).toEqual([
-      "screened",
-      "shunted",
-    ]);
+    expect((await store.quarantineEvents(ACCOUNT)).map((e) => e.event)).toEqual(["screened", "shunted"]);
   });
 
   it("refuses a message a human already rescued — their correction wins", async () => {
@@ -473,10 +459,7 @@ describe("confirmQuarantined — 'yes, that is spam'", () => {
     expect(await store.confirmQuarantined(ACCOUNT, emailId, "eric@moore.coffee")).toEqual({
       confirmed: false,
     });
-    expect((await store.quarantineEvents(ACCOUNT)).map((e) => e.event)).toEqual([
-      "screened",
-      "rescued",
-    ]);
+    expect((await store.quarantineEvents(ACCOUNT)).map((e) => e.event)).toEqual(["screened", "rescued"]);
   });
 
   it("trains the filter as SPAM from the stored raw message (the mirror of a rescue's ham)", async () => {

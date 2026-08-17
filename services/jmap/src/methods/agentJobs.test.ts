@@ -81,10 +81,7 @@ function harness(jobBudgetMicros: number | null = null) {
     ]);
 
   const call = (args: Record<string, unknown>) =>
-    registry.get("AgentInvocation/set")!(
-      { accountId: ACCOUNT, ...args },
-      ctx,
-    ) as unknown as Promise<SetResult>;
+    registry.get("AgentInvocation/set")!({ accountId: ACCOUNT, ...args }, ctx) as unknown as Promise<SetResult>;
 
   const claim = (id: string, claimant: Record<string, unknown>) =>
     call({ claimant, update: { [id]: { status: "running" } } });
@@ -108,10 +105,7 @@ describe("two different runtimes process a planner's siblings in parallel", () =
     h.seedNode("inv_a", { needs_json: "[]" });
     h.seedNode("inv_b", { needs_json: "[]" });
 
-    const [byFleet, byCloud] = await Promise.all([
-      h.claim("inv_a", FLEET),
-      h.claim("inv_b", CLOUD),
-    ]);
+    const [byFleet, byCloud] = await Promise.all([h.claim("inv_a", FLEET), h.claim("inv_b", CLOUD)]);
     expect(byFleet.updated).toEqual({ inv_a: null });
     expect(byCloud.updated).toEqual({ inv_b: null });
     // Trust-but-audit: each row records who took it (s11 T2).

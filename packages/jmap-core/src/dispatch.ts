@@ -5,10 +5,7 @@ import { MethodError } from "./errors";
  * A JMAP method handler. `Ctx` is whatever per-request context the host
  * worker wants to thread through (env bindings, authed principal, ...).
  */
-export type MethodHandler<Ctx> = (
-  args: Record<string, unknown>,
-  ctx: Ctx,
-) => Promise<Record<string, unknown>>;
+export type MethodHandler<Ctx> = (args: Record<string, unknown>, ctx: Ctx) => Promise<Record<string, unknown>>;
 
 export class MethodRegistry<Ctx> {
   private handlers = new Map<string, MethodHandler<Ctx>>();
@@ -61,10 +58,7 @@ export async function dispatch<Ctx>(
 }
 
 /** Replace `#key` result-reference args with values from prior responses. */
-function resolveReferences(
-  args: Record<string, unknown>,
-  prior: Invocation[],
-): Record<string, unknown> {
+function resolveReferences(args: Record<string, unknown>, prior: Invocation[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args)) {
     if (!key.startsWith("#")) {
@@ -78,10 +72,7 @@ function resolveReferences(
     const ref = value as ResultReference;
     const source = prior.find(([n, , id]) => id === ref.resultOf && n === ref.name);
     if (!source) {
-      throw new MethodError(
-        "invalidResultReference",
-        `no prior ${ref.name} response with callId "${ref.resultOf}"`,
-      );
+      throw new MethodError("invalidResultReference", `no prior ${ref.name} response with callId "${ref.resultOf}"`);
     }
     out[realKey] = evalPointer(source[1], ref.path);
   }

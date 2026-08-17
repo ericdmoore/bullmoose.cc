@@ -71,11 +71,7 @@ function unescapeText(value: string): string {
 
 /** vCard TEXT escaping (RFC 6350 §3.4 / 2426 §5). */
 function escapeText(value: string): string {
-  return value
-    .replaceAll("\\", "\\\\")
-    .replaceAll("\n", "\\n")
-    .replaceAll(",", "\\,")
-    .replaceAll(";", "\\;");
+  return value.replaceAll("\\", "\\\\").replaceAll("\n", "\\n").replaceAll(",", "\\,").replaceAll(";", "\\;");
 }
 
 /** Escaping for one component of a structured value (N/ADR/ORG). */
@@ -290,8 +286,7 @@ function cardFromBlock(props: VProp[], warnings: string[]): Card {
       groupLabels.set(p.group, cleanLabel(unescapeText(p.value)));
     }
   }
-  const labelOf = (p: VProp): string | undefined =>
-    p.group ? groupLabels.get(p.group) : undefined;
+  const labelOf = (p: VProp): string | undefined => (p.group ? groupLabels.get(p.group) : undefined);
 
   const emails: Record<string, unknown> = {};
   const phones: Record<string, unknown> = {};
@@ -347,9 +342,7 @@ function cardFromBlock(props: VProp[], warnings: string[]): Card {
         const [orgName, ...units] = parts;
         organizations[nextId("org")] = {
           ...(orgName ? { name: orgName } : {}),
-          ...(units.filter(Boolean).length > 0
-            ? { units: units.filter(Boolean).map((u) => ({ name: u })) }
-            : {}),
+          ...(units.filter(Boolean).length > 0 ? { units: units.filter(Boolean).map((u) => ({ name: u })) } : {}),
         };
         break;
       }
@@ -543,9 +536,7 @@ export function serializeVcard(card: Card): string {
     push({ group, name: "X-ABLABEL", value: escapeText(label) });
   };
 
-  const name = card.name as
-    | { full?: string; components?: Array<{ kind?: string; value?: string }> }
-    | undefined;
+  const name = card.name as { full?: string; components?: Array<{ kind?: string; value?: string }> } | undefined;
 
   // FN is mandatory in 3.0.
   const fn =
@@ -579,9 +570,7 @@ export function serializeVcard(card: Card): string {
   }
 
   for (const org of values(card.organizations)) {
-    const units = Array.isArray(org.units)
-      ? (org.units as Array<{ name?: string }>).map((u) => u.name ?? "")
-      : [];
+    const units = Array.isArray(org.units) ? (org.units as Array<{ name?: string }>).map((u) => u.name ?? "") : [];
     push({
       name: "ORG",
       value: [org.name ?? "", ...units].map((v) => escapeComponent(String(v))).join(";"),

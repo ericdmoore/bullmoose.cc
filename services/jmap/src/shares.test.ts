@@ -2,13 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mintToken } from "@bullmoose/auth-core";
 import { fakeEnv, fakeKV } from "@bullmoose/test-fakes";
 import worker, { type Env } from "./index";
-import {
-  listShareRecords,
-  putShareRecord,
-  shareKey,
-  shareTombstoneExpiry,
-  type ShareRecord,
-} from "./shares";
+import { listShareRecords, putShareRecord, shareKey, shareTombstoneExpiry, type ShareRecord } from "./shares";
 
 /**
  * sVOL `010` — blob lifecycle: enumerate, delete, revoke.
@@ -114,10 +108,7 @@ async function mintShare(
 }
 
 /** An email row referencing a blob — the thing that makes a delete refusable. */
-function seedEmail(
-  h: Harness,
-  opts: { id: string; rawBlobId: string; attachments?: Array<{ blobId: string }> },
-): void {
+function seedEmail(h: Harness, opts: { id: string; rawBlobId: string; attachments?: Array<{ blobId: string }> }): void {
   h.w.db.seed("emails", [
     {
       id: opts.id,
@@ -666,18 +657,13 @@ describe("scope gates — no new endpoint is ungated", () => {
   it("the `mail` bundle covers all four, so revoke is never harder than mint", async () => {
     const h = await harness(["mail"]);
     const share = await mintShare(h, await upload(h, "x"));
-    expect((await h.call("POST", `/api/shares/${ACCOUNT}/${share.shareId}/revoke`)).status).toBe(
-      200,
-    );
+    expect((await h.call("POST", `/api/shares/${ACCOUNT}/${share.shareId}/revoke`)).status).toBe(200);
   });
 
   it("an unauthenticated caller gets 401, not a listing", async () => {
     const h = await harness();
     await mintShare(h, await upload(h, "x")); // there IS something to leak
-    const res = await worker.fetch(
-      new Request(`https://jmap.bullmoose.cc/api/shares/${ACCOUNT}`),
-      h.env,
-    );
+    const res = await worker.fetch(new Request(`https://jmap.bullmoose.cc/api/shares/${ACCOUNT}`), h.env);
     expect(res.status).toBe(401);
     expect(await res.text()).not.toContain("shareId");
     // Paired with the authenticated call so the 401 means "auth runs before

@@ -104,10 +104,9 @@ describe("loadQueues — every reachable account, one round trip", () => {
     };
     const refusal = (accountId: string) =>
       opts.refuse === accountId
-        ? ([
-            "error",
-            { type: "accountNotFound", description: "the grant was revoked" },
-          ] as ReturnType<Parameters<FakeJmapClient["setHandler"]>[1]>)
+        ? (["error", { type: "accountNotFound", description: "the grant was revoked" }] as ReturnType<
+            Parameters<FakeJmapClient["setHandler"]>[1]
+          >)
         : undefined;
     return new FakeJmapClient({
       handlers: {
@@ -353,13 +352,7 @@ describe("decide → ActionProposal/set", () => {
   it("surfaces a stateMismatch instead of silently overwriting a moved queue", async () => {
     const { client } = harness();
     await decide(client, ACCOUNT, "ap-contact-dana", { status: "approved" }); // moves state 0→1
-    const stale = await decide(
-      client,
-      ACCOUNT,
-      "ap-reply-elk",
-      { status: "approved" },
-      { ifInState: "0" },
-    );
+    const stale = await decide(client, ACCOUNT, "ap-reply-elk", { status: "approved" }, { ifInState: "0" });
     expect(stale.ok).toBe(false);
     if (!stale.ok) expect(stale.message).toContain("stateMismatch");
   });

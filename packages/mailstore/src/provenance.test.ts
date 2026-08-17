@@ -191,22 +191,19 @@ describe("provenance — every realm's insert stamps the writer", () => {
     },
   );
 
-  it.each(INSERTS)(
-    "an AGENT write to $table records binding AND invocation",
-    async ({ table, insert }) => {
-      const { db, store } = storeWith({
-        principal: "emily@bullmoose.cc",
-        binding: "editor",
-        invocation: "inv_42",
-      });
-      await insert(store, "x2");
-      expect(provenanceOf(db, table, "x2")).toEqual({
-        principal: "emily@bullmoose.cc",
-        binding: "editor",
-        invocation: "inv_42",
-      });
-    },
-  );
+  it.each(INSERTS)("an AGENT write to $table records binding AND invocation", async ({ table, insert }) => {
+    const { db, store } = storeWith({
+      principal: "emily@bullmoose.cc",
+      binding: "editor",
+      invocation: "inv_42",
+    });
+    await insert(store, "x2");
+    expect(provenanceOf(db, table, "x2")).toEqual({
+      principal: "emily@bullmoose.cc",
+      binding: "editor",
+      invocation: "inv_42",
+    });
+  });
 
   it.each(INSERTS)(
     "a writerless store (system path) writes NULL provenance to $table, a valid row",

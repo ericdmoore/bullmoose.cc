@@ -59,9 +59,7 @@ export function fakeKV(): FakeKV {
     ) {
       const expiration =
         options?.expiration ??
-        (options?.expirationTtl !== undefined
-          ? Math.floor(Date.now() / 1000) + options.expirationTtl
-          : undefined);
+        (options?.expirationTtl !== undefined ? Math.floor(Date.now() / 1000) + options.expirationTtl : undefined);
       store.set(key, { value, expiration, metadata: options?.metadata });
     },
     async delete(key: string) {

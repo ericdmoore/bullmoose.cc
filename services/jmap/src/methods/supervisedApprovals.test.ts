@@ -3,10 +3,7 @@ import { MethodRegistry, AGENT_CAP } from "@bullmoose/jmap-core";
 import { fakeEnv, fakeKV, type FakeWorker } from "@bullmoose/test-fakes";
 import { mintToken } from "@bullmoose/auth-core";
 import { verifyBearer } from "@bullmoose/auth-core/principal";
-import provisionWorker, {
-  SUPERVISORY_GRANT_SCOPES,
-  type Env as ProvisionEnv,
-} from "../../../provision/src/index";
+import provisionWorker, { SUPERVISORY_GRANT_SCOPES, type Env as ProvisionEnv } from "../../../provision/src/index";
 import { registerActionProposalMethods } from "./actionProposal";
 import { buildSession } from "../session";
 import type { RequestContext } from "./common";
@@ -243,10 +240,7 @@ async function harness() {
     if (!principal) throw new Error("token failed to resolve — fixture bug");
     return principal;
   };
-  const call = async <T = Record<string, unknown>>(
-    method: string,
-    args: Record<string, unknown>,
-  ): Promise<T> => {
+  const call = async <T = Record<string, unknown>>(method: string, args: Record<string, unknown>): Promise<T> => {
     const ctx: RequestContext = { env: w.env, principal: await resolve() };
     return registry.get(method)!(args, ctx) as Promise<T>;
   };
@@ -383,9 +377,7 @@ describe("deciding a granted account's proposal", () => {
     ).toBe("approved");
     // The cross-account decision is AUDITED — that is what makes supervision
     // visible rather than ambient.
-    expect(
-      h.w.db.count("grant_audit", "grant_id = ? AND account_id = ?", "g_emily", EMILY),
-    ).toBeGreaterThan(0);
+    expect(h.w.db.count("grant_audit", "grant_id = ? AND account_id = ?", "g_emily", EMILY)).toBeGreaterThan(0);
   });
 
   it("declines and asks for information through the grant", async () => {
@@ -631,10 +623,7 @@ describe("provision → queue: an agent provisioned today is visible today", () 
       rows.push(...res.list);
     }
     const first = rows.find((r) => r.id === "inv_first");
-    expect(
-      first,
-      "the freshly provisioned agent's proposal is NOT in its owner's queue",
-    ).toBeTruthy();
+    expect(first, "the freshly provisioned agent's proposal is NOT in its owner's queue").toBeTruthy();
     expect(first!.agent).toBe("editor-emily");
     expect(first!.accountId).toBe(editor.accountId);
 
@@ -659,11 +648,7 @@ describe("provision → queue: an agent provisioned today is visible today", () 
     expect(held?.[0]?.status, "an approved tier-2 proposal waits in the hold tray").toBe("held");
 
     // Revoked, it vanishes — the same grant, the same tombstone contract.
-    w.db.query(
-      "UPDATE grants SET revoked_at = ? WHERE id = ?",
-      Date.now(),
-      binding.supervision.grantId!,
-    );
+    w.db.query("UPDATE grants SET revoked_at = ? WHERE id = ?", Date.now(), binding.supervision.grantId!);
     const after = await verifyBearer(w.env.DB, minted.token);
     expect(after!.accounts.map((a) => a.accountId)).not.toContain(editor.accountId);
   });

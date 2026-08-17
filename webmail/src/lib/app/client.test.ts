@@ -1,13 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  defaultBase,
-  homeTarget,
-  readApiBase,
-  resolveClient,
-  signOut,
-  storeSession,
-  urlWithoutToken,
-} from "./client";
+import { defaultBase, homeTarget, readApiBase, resolveClient, signOut, storeSession, urlWithoutToken } from "./client";
 
 // The resolver reads three browser globals and Node has none of them, so each
 // test builds the browser it wants. `location` is a plain object rather than a

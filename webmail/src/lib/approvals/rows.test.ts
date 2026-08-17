@@ -258,9 +258,7 @@ describe("summarizeProposal — one line per row, grant-request included", () =>
       subject: { realm: "AgentBinding", objectId: "bind_photos" },
       payload: {},
     });
-    expect(summarizeProposal(p)).toBe(
-      "? waiting · budget spent · cost unknown — approve an overage for bind_photos",
-    );
+    expect(summarizeProposal(p)).toBe("? waiting · budget spent · cost unknown — approve an overage for bind_photos");
   });
 });
 

@@ -66,9 +66,7 @@ describe("the grammar", () => {
     expect(body.mailboxIds).toEqual({ [ids.inbox(ERIC)]: true });
     expect(body.blobId).toBe(`blob_${ERIC}`);
 
-    expect(body._self).toBe(
-      `https://${EXPLORE_HOST}/Email/${ids.email(ERIC, 1)}?accountId=${ERIC}`,
-    );
+    expect(body._self).toBe(`https://${EXPLORE_HOST}/Email/${ids.email(ERIC, 1)}?accountId=${ERIC}`);
     expect(body._meta).toMatchObject({
       accountId: ERIC,
       type: "Email",
@@ -101,9 +99,7 @@ describe("the grammar", () => {
 
   it("a type with no JMAP /query is served whole, and says so", async () => {
     const h = await harness();
-    const body = await h.json<{ _meta: Record<string, unknown>; list: unknown[] }>(
-      await h.explore("/AddressBook"),
-    );
+    const body = await h.json<{ _meta: Record<string, unknown>; list: unknown[] }>(await h.explore("/AddressBook"));
     expect(body._meta.methods).toEqual(["AddressBook/get"]);
     expect(body._meta.note).toContain("no AddressBook/query");
     expect(body._meta).not.toHaveProperty("position");
@@ -148,13 +144,9 @@ describe("the grammar", () => {
 
   it("filters map 1:1 onto JMAP filter conditions", async () => {
     const h = await harness();
-    const inInbox = await h.json<{ ids: string[] }>(
-      await h.explore(`/Email?inMailbox=${ids.inbox(ERIC)}`),
-    );
+    const inInbox = await h.json<{ ids: string[] }>(await h.explore(`/Email?inMailbox=${ids.inbox(ERIC)}`));
     expect(inInbox.ids).toHaveLength(EMAIL_COUNT);
-    const inArchive = await h.json<{ ids: string[] }>(
-      await h.explore(`/Email?inMailbox=${ids.archive(ERIC)}`),
-    );
+    const inArchive = await h.json<{ ids: string[] }>(await h.explore(`/Email?inMailbox=${ids.archive(ERIC)}`));
     expect(inArchive.ids).toHaveLength(0);
 
     // An empty value is the null parent — the top of a tree.
@@ -183,9 +175,7 @@ function claims(links: unknown): Claim[] {
 describe("_links: a rendering of ids the payload already carries", () => {
   it("an Email links to its thread, its mailboxes and its attachment's FileNode", async () => {
     const h = await harness();
-    const body = await h.json<{ _links: Record<string, unknown> }>(
-      await h.explore(`/Email/${ids.email(ERIC, 1)}`),
-    );
+    const body = await h.json<{ _links: Record<string, unknown> }>(await h.explore(`/Email/${ids.email(ERIC, 1)}`));
     const byRel = body._links;
     expect((byRel.thread as Claim).id).toBe(ids.thread(ERIC, 1));
     expect((byRel.mailboxes as Claim[]).map((l) => l.id)).toEqual([ids.inbox(ERIC)]);
@@ -206,9 +196,7 @@ describe("_links: a rendering of ids the payload already carries", () => {
 
   it("an email with no attachments emits no files link — absence, not a null link", async () => {
     const h = await harness();
-    const body = await h.json<{ _links: Record<string, unknown> }>(
-      await h.explore(`/Email/${ids.email(ERIC, 3)}`),
-    );
+    const body = await h.json<{ _links: Record<string, unknown> }>(await h.explore(`/Email/${ids.email(ERIC, 3)}`));
     expect(body._links).not.toHaveProperty("files");
   });
 
@@ -222,11 +210,7 @@ describe("_links: a rendering of ids the payload already carries", () => {
       // and through an Email's `_links.thread` for the one that has none.
       const objects: Array<Record<string, unknown>> = spec.listable
         ? (await h.json<{ list: Array<Record<string, unknown>> }>(await h.explore(`/${type}`))).list
-        : [
-            await h.json<Record<string, unknown>>(
-              await h.explore(`/Thread/${ids.thread(ERIC, 1)}`),
-            ),
-          ];
+        : [await h.json<Record<string, unknown>>(await h.explore(`/Thread/${ids.thread(ERIC, 1)}`))];
 
       expect(objects.length, `${type} seeded nothing to walk`).toBeGreaterThan(0);
 
@@ -285,9 +269,7 @@ describe("_next: JMAP's own paging, re-expressed as a URL", () => {
 
   it("_next preserves the filter it was paging under", async () => {
     const h = await harness();
-    const body = await h.json<{ _next: string }>(
-      await h.explore(`/Email?limit=2&inMailbox=${ids.inbox(ERIC)}`),
-    );
+    const body = await h.json<{ _next: string }>(await h.explore(`/Email?limit=2&inMailbox=${ids.inbox(ERIC)}`));
     expect(body._next).toContain(`inMailbox=${ids.inbox(ERIC)}`);
     expect(body._next).toContain("position=2");
   });
@@ -310,9 +292,7 @@ describe("isolation: another account, another tenant", () => {
         if (spec.listable) {
           const res = await h.explore(`/${type}?accountId=${other}`);
           expect(res.status, `${type} list leaked ${other}`).toBe(404);
-          expect((await h.json<{ error: { type: string } }>(res)).error.type).toBe(
-            "accountNotFound",
-          );
+          expect((await h.json<{ error: { type: string } }>(res)).error.type).toBe("accountNotFound");
         }
         const one = await h.explore(`/${type}/anything?accountId=${other}`);
         expect(one.status, `${type} object leaked ${other}`).toBe(404);
@@ -470,10 +450,9 @@ describe("off by default", () => {
 
   it("with EXPLORE_HOST unset no cookie is honoured anywhere", async () => {
     const h = await harness({ off: true });
-    expect(
-      (await h.api("GET", `/api/blobs/${ERIC}`, { headers: { cookie: `bm_explore=${h.cookie}` } }))
-        .status,
-    ).toBe(401);
+    expect((await h.api("GET", `/api/blobs/${ERIC}`, { headers: { cookie: `bm_explore=${h.cookie}` } })).status).toBe(
+      401,
+    );
   });
 });
 

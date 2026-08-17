@@ -608,10 +608,7 @@ export function htmlToIndexText(html: string | null | undefined): string {
  * either. Cut happens after collapsing, so 256 characters means 256 visible
  * ones rather than 256 mostly-newlines.
  */
-export function previewText(
-  text: string | null | undefined,
-  html: string | null | undefined,
-): string {
+export function previewText(text: string | null | undefined, html: string | null | undefined): string {
   const plain = text && text.trim() !== "" ? text : htmlToIndexText(html);
   return plain.replace(/\s+/g, " ").trim().slice(0, 256);
 }
@@ -784,15 +781,7 @@ export class Mailstore {
         `INSERT INTO mailboxes (id, account_id, parent_id, name, role, sort_order, ${PROVENANCE_COLUMNS})
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .bind(
-        row.id,
-        accountId,
-        row.parentId,
-        row.name,
-        row.role,
-        row.sortOrder,
-        ...this.provenanceValues(),
-      )
+      .bind(row.id, accountId, row.parentId, row.name, row.role, row.sortOrder, ...this.provenanceValues())
       .run();
   }
 
@@ -825,10 +814,7 @@ export class Mailstore {
   }
 
   async deleteMailbox(accountId: string, id: string): Promise<void> {
-    await this.db
-      .prepare(`DELETE FROM mailboxes WHERE account_id = ? AND id = ?`)
-      .bind(accountId, id)
-      .run();
+    await this.db.prepare(`DELETE FROM mailboxes WHERE account_id = ? AND id = ?`).bind(accountId, id).run();
   }
 
   /** Every email filed in a mailbox — the onDestroyRemoveEmails input. */
@@ -922,9 +908,7 @@ export class Mailstore {
     for (const chunk of chunked(ids)) {
       const marks = chunk.map(() => "?").join(",");
       const [emails, mailboxes, keywords] = await this.db.batch<Record<string, unknown>>([
-        this.db
-          .prepare(`SELECT * FROM emails WHERE account_id = ? AND id IN (${marks})`)
-          .bind(accountId, ...chunk),
+        this.db.prepare(`SELECT * FROM emails WHERE account_id = ? AND id IN (${marks})`).bind(accountId, ...chunk),
         this.db
           .prepare(
             `SELECT email_id, mailbox_id FROM email_mailboxes
@@ -943,14 +927,10 @@ export class Mailstore {
         email_id: string;
         mailbox_id: string;
       }>) {
-        (mbByEmail.get(r.email_id) ?? mbByEmail.set(r.email_id, []).get(r.email_id)!).push(
-          r.mailbox_id,
-        );
+        (mbByEmail.get(r.email_id) ?? mbByEmail.set(r.email_id, []).get(r.email_id)!).push(r.mailbox_id);
       }
       for (const r of (keywords?.results ?? []) as Array<{ email_id: string; keyword: string }>) {
-        (kwByEmail.get(r.email_id) ?? kwByEmail.set(r.email_id, []).get(r.email_id)!).push(
-          r.keyword,
-        );
+        (kwByEmail.get(r.email_id) ?? kwByEmail.set(r.email_id, []).get(r.email_id)!).push(r.keyword);
       }
     }
 
@@ -1161,9 +1141,7 @@ export class Mailstore {
         ),
       ...email.mailboxIds.map((mb) =>
         this.db
-          .prepare(
-            `INSERT INTO email_mailboxes (account_id, email_id, mailbox_id) VALUES (?, ?, ?)`,
-          )
+          .prepare(`INSERT INTO email_mailboxes (account_id, email_id, mailbox_id) VALUES (?, ?, ?)`)
           .bind(accountId, email.id, mb),
       ),
       ...email.keywords.map((kw) =>
@@ -1189,11 +1167,7 @@ export class Mailstore {
    * Idempotent by construction, which is what makes the backfill safe to
    * re-run over a database that is already partly indexed.
    */
-  private ftsIndexStatements(
-    accountId: string,
-    emailId: string,
-    text: EmailFtsText,
-  ): D1PreparedStatement[] {
+  private ftsIndexStatements(accountId: string, emailId: string, text: EmailFtsText): D1PreparedStatement[] {
     return [
       this.db
         .prepare(`INSERT OR IGNORE INTO emails_fts_map (account_id, email_id) VALUES (?, ?)`)
@@ -1223,9 +1197,7 @@ export class Mailstore {
              (SELECT docid FROM emails_fts_map WHERE account_id = ? AND email_id = ?)`,
         )
         .bind(accountId, emailId),
-      this.db
-        .prepare(`DELETE FROM emails_fts_map WHERE account_id = ? AND email_id = ?`)
-        .bind(accountId, emailId),
+      this.db.prepare(`DELETE FROM emails_fts_map WHERE account_id = ? AND email_id = ?`).bind(accountId, emailId),
     ];
   }
 
@@ -1246,10 +1218,7 @@ export class Mailstore {
    * interrupted run loses nothing. Ordered by `received_at DESC` so a run that
    * never finishes has still made the newest mail searchable.
    */
-  async unindexedEmailIds(
-    accountId: string | null,
-    limit: number,
-  ): Promise<Array<{ accountId: string; id: string }>> {
+  async unindexedEmailIds(accountId: string | null, limit: number): Promise<Array<{ accountId: string; id: string }>> {
     const scope = accountId === null ? "" : "AND e.account_id = ?";
     const binds = accountId === null ? [limit] : [accountId, limit];
     const { results } = await this.db
@@ -1290,23 +1259,17 @@ export class Mailstore {
     const statements: D1PreparedStatement[] = [];
     if (sets.mailboxIds) {
       statements.push(
-        this.db
-          .prepare(`DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ?`)
-          .bind(accountId, emailId),
+        this.db.prepare(`DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ?`).bind(accountId, emailId),
         ...sets.mailboxIds.map((mb) =>
           this.db
-            .prepare(
-              `INSERT INTO email_mailboxes (account_id, email_id, mailbox_id) VALUES (?, ?, ?)`,
-            )
+            .prepare(`INSERT INTO email_mailboxes (account_id, email_id, mailbox_id) VALUES (?, ?, ?)`)
             .bind(accountId, emailId, mb),
         ),
       );
     }
     if (sets.keywords) {
       statements.push(
-        this.db
-          .prepare(`DELETE FROM email_keywords WHERE account_id = ? AND email_id = ?`)
-          .bind(accountId, emailId),
+        this.db.prepare(`DELETE FROM email_keywords WHERE account_id = ? AND email_id = ?`).bind(accountId, emailId),
         ...sets.keywords.map((kw) =>
           this.db
             .prepare(`INSERT INTO email_keywords (account_id, email_id, keyword) VALUES (?, ?, ?)`)
@@ -1335,19 +1298,13 @@ export class Mailstore {
     // Blob is retained in R2 for now — content-hash blobs may be shared;
     // garbage collection is a separate sweep (TODO).
     await this.db.batch([
-      this.db
-        .prepare(`DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ?`)
-        .bind(accountId, emailId),
-      this.db
-        .prepare(`DELETE FROM email_keywords WHERE account_id = ? AND email_id = ?`)
-        .bind(accountId, emailId),
+      this.db.prepare(`DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ?`).bind(accountId, emailId),
+      this.db.prepare(`DELETE FROM email_keywords WHERE account_id = ? AND email_id = ?`).bind(accountId, emailId),
       // Before the `emails` row goes: an index entry that outlives its message
       // is a search result pointing at nothing, and the id could later be
       // matched against a different account's row.
       ...this.ftsDeleteStatements(accountId, emailId),
-      this.db
-        .prepare(`DELETE FROM emails WHERE account_id = ? AND id = ?`)
-        .bind(accountId, emailId),
+      this.db.prepare(`DELETE FROM emails WHERE account_id = ? AND id = ?`).bind(accountId, emailId),
     ]);
   }
 
@@ -1389,10 +1346,7 @@ export class Mailstore {
   // called. Renaming it would churn history — a migration, every reader, every
   // index — to rename a thing that was never the folder in the first place.
 
-  private quarantineEventStatement(
-    accountId: string,
-    e: QuarantineEventInput,
-  ): D1PreparedStatement {
+  private quarantineEventStatement(accountId: string, e: QuarantineEventInput): D1PreparedStatement {
     return this.db
       .prepare(
         `INSERT INTO quarantine_events
@@ -1548,9 +1502,7 @@ export class Mailstore {
     const inboxId = await this.ensureRoleMailbox(accountId, "inbox", "Inbox");
     await this.db.batch([
       this.db
-        .prepare(
-          `DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ? AND mailbox_id = ?`,
-        )
+        .prepare(`DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ? AND mailbox_id = ?`)
         .bind(accountId, emailId, quarantineId),
       this.db
         .prepare(
@@ -1597,9 +1549,7 @@ export class Mailstore {
         .first<{ source: string }>();
       if (deny?.source === "graduated") {
         await this.db.batch([
-          this.db
-            .prepare(`DELETE FROM domain_deny_list WHERE tenant_id = ? AND domain = ?`)
-            .bind(tenantId, domain),
+          this.db.prepare(`DELETE FROM domain_deny_list WHERE tenant_id = ? AND domain = ?`).bind(tenantId, domain),
           this.db.prepare(`DELETE FROM deny_counters WHERE domain = ?`).bind(domain),
         ]);
         demotedDomain = domain;
@@ -1749,9 +1699,7 @@ export class Mailstore {
         label,
       );
     } catch (err) {
-      console.error(
-        `${label} label skipped for ${emailId}: ${err instanceof Error ? err.message : err}`,
-      );
+      console.error(`${label} label skipped for ${emailId}: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -1800,9 +1748,7 @@ export class Mailstore {
     const inboxId = await this.ensureRoleMailbox(accountId, "inbox", "Inbox");
     await this.db.batch([
       this.db
-        .prepare(
-          `DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ? AND mailbox_id = ?`,
-        )
+        .prepare(`DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ? AND mailbox_id = ?`)
         .bind(accountId, emailId, quarantineId),
       this.db
         .prepare(
@@ -1933,11 +1879,7 @@ export class Mailstore {
    * slice — governing books are marked by provisioning/operator tooling; the
    * chokepoint below is what makes the mark mean something.
    */
-  async setAddressBookWritePolicy(
-    accountId: string,
-    id: string,
-    policy: BookWritePolicy,
-  ): Promise<void> {
+  async setAddressBookWritePolicy(accountId: string, id: string, policy: BookWritePolicy): Promise<void> {
     await this.db
       .prepare(`UPDATE address_books SET write_policy = ? WHERE account_id = ? AND id = ?`)
       .bind(policy, accountId, id)
@@ -1980,10 +1922,7 @@ export class Mailstore {
   }
 
   async deleteAddressBook(accountId: string, id: string): Promise<void> {
-    await this.db
-      .prepare(`DELETE FROM address_books WHERE account_id = ? AND id = ?`)
-      .bind(accountId, id)
-      .run();
+    await this.db.prepare(`DELETE FROM address_books WHERE account_id = ? AND id = ?`).bind(accountId, id).run();
   }
 
   /** Make `id` the account's default book (clearing any previous default). */
@@ -1992,9 +1931,7 @@ export class Mailstore {
       this.db
         .prepare(`UPDATE address_books SET is_default = 0 WHERE account_id = ? AND is_default = 1`)
         .bind(accountId),
-      this.db
-        .prepare(`UPDATE address_books SET is_default = 1 WHERE account_id = ? AND id = ?`)
-        .bind(accountId, id),
+      this.db.prepare(`UPDATE address_books SET is_default = 1 WHERE account_id = ? AND id = ?`).bind(accountId, id),
     ]);
   }
 
@@ -2004,9 +1941,7 @@ export class Mailstore {
    * e.g. the default was destroyed — the oldest is promoted.
    * Callers must commit the returned change to the account changelog.
    */
-  async ensureDefaultAddressBook(
-    accountId: string,
-  ): Promise<{ id: string; change: "created" | "updated" | null }> {
+  async ensureDefaultAddressBook(accountId: string): Promise<{ id: string; change: "created" | "updated" | null }> {
     const existing = await this.db
       .prepare(`SELECT id FROM address_books WHERE account_id = ? AND is_default = 1`)
       .bind(accountId)
@@ -2047,9 +1982,7 @@ export class Mailstore {
     for (const chunk of chunked([...new Set(ids)])) {
       const marks = chunk.map(() => "?").join(",");
       await this.db
-        .prepare(
-          `UPDATE address_books SET ctag = ctag + 1 WHERE account_id = ? AND id IN (${marks})`,
-        )
+        .prepare(`UPDATE address_books SET ctag = ctag + 1 WHERE account_id = ? AND id IN (${marks})`)
         .bind(accountId, ...chunk)
         .run();
     }
@@ -2107,11 +2040,7 @@ export class Mailstore {
   }
 
   /** Resolve a CardDAV resource inside a book: dav_name first, id fallback. */
-  async getCardByDavName(
-    accountId: string,
-    bookId: string,
-    resourceName: string,
-  ): Promise<ContactCardRow | null> {
+  async getCardByDavName(accountId: string, bookId: string, resourceName: string): Promise<ContactCardRow | null> {
     const row = await this.db
       .prepare(
         `SELECT id FROM contact_cards
@@ -2218,11 +2147,7 @@ export class Mailstore {
     return out;
   }
 
-  async insertContactCard(
-    accountId: string,
-    row: ContactCardRow,
-    writer: ContactWriter,
-  ): Promise<void> {
+  async insertContactCard(accountId: string, row: ContactCardRow, writer: ContactWriter): Promise<void> {
     await this.insertContactCards(accountId, [row], writer);
   }
 
@@ -2237,11 +2162,7 @@ export class Mailstore {
    * ride IN THE SAME batch as the card write — card + chain commit together or
    * neither.
    */
-  async insertContactCards(
-    accountId: string,
-    rows: ContactCardRow[],
-    writer: ContactWriter,
-  ): Promise<void> {
+  async insertContactCards(accountId: string, rows: ContactCardRow[], writer: ContactWriter): Promise<void> {
     if (rows.length === 0) return;
     const chain = await this.governContactWrites(
       accountId,
@@ -2274,11 +2195,7 @@ export class Mailstore {
     ]);
   }
 
-  async updateContactCard(
-    accountId: string,
-    row: ContactCardRow,
-    writer: ContactWriter,
-  ): Promise<void> {
+  async updateContactCard(accountId: string, row: ContactCardRow, writer: ContactWriter): Promise<void> {
     const chain = await this.governContactWrites(accountId, writer, [{ op: "update", next: row }]);
     await this.db.batch([
       this.db
@@ -2314,11 +2231,7 @@ export class Mailstore {
    * remove puts a hole in the membership chain exactly where someone
    * would want one, so the `removed` rows commit with the DELETE.
    */
-  async destroyContactCards(
-    accountId: string,
-    ids: string[],
-    writer: ContactWriter,
-  ): Promise<void> {
+  async destroyContactCards(accountId: string, ids: string[], writer: ContactWriter): Promise<void> {
     const now = Date.now();
     for (const chunk of chunked(ids)) {
       const marks = chunk.map(() => "?").join(",");
@@ -2352,11 +2265,7 @@ export class Mailstore {
             .bind(accountId, r.address_book_id, r.id, r.dav_name ?? r.id, now),
         ),
         this.db
-          .prepare(
-            `DELETE FROM contact_cards WHERE account_id = ? AND id IN (${results
-              .map(() => "?")
-              .join(",")})`,
-          )
+          .prepare(`DELETE FROM contact_cards WHERE account_id = ? AND id IN (${results.map(() => "?").join(",")})`)
           .bind(accountId, ...results.map((r) => r.id)),
         ...chain,
       ]);
@@ -2373,9 +2282,7 @@ export class Mailstore {
    * activate the engine — an unknown value written by a future version does
    * not half-run today's rules.
    */
-  private async nonOpenBookPolicies(
-    accountId: string,
-  ): Promise<Map<string, Exclude<BookWritePolicy, "open">>> {
+  private async nonOpenBookPolicies(accountId: string): Promise<Map<string, Exclude<BookWritePolicy, "open">>> {
     const { results } = await this.db
       .prepare(
         `SELECT id, write_policy FROM address_books
@@ -2420,8 +2327,7 @@ export class Mailstore {
 
     const now = Date.now();
     const authorized =
-      typeof writer.authorization?.proposalId === "string" &&
-      writer.authorization.proposalId.length > 0;
+      typeof writer.authorization?.proposalId === "string" && writer.authorization.proposalId.length > 0;
     const stmts: D1PreparedStatement[] = [];
 
     // One `uid → old card` read for the update ops (the delta needs it).
@@ -2510,12 +2416,8 @@ export class Mailstore {
       }
 
       // -- chain rows: the card's own contribution to its book(s) --
-      const prevContribution = prev
-        ? await this.contributionOf(accountId, prev.card)
-        : new Set<string>();
-      const nextContribution = next
-        ? await this.contributionOf(accountId, next.card)
-        : new Set<string>();
+      const prevContribution = prev ? await this.contributionOf(accountId, prev.card) : new Set<string>();
+      const nextContribution = next ? await this.contributionOf(accountId, next.card) : new Set<string>();
       const prevBook = prev && policies.has(prev.addressBookId) ? prev.addressBookId : null;
       const nextBook = next && policies.has(next.addressBookId) ? next.addressBookId : null;
       if (prevBook !== null && prevBook === nextBook) {
@@ -2573,17 +2475,12 @@ export class Mailstore {
   }
 
   /** uid → card for a set of uids (member resolution, chunked). */
-  private async cardsByUids(
-    accountId: string,
-    uids: string[],
-  ): Promise<Map<string, JSContactCard>> {
+  private async cardsByUids(accountId: string, uids: string[]): Promise<Map<string, JSContactCard>> {
     const out = new Map<string, JSContactCard>();
     for (const chunk of chunked([...new Set(uids)])) {
       const marks = chunk.map(() => "?").join(",");
       const { results } = await this.db
-        .prepare(
-          `SELECT uid, card_json FROM contact_cards WHERE account_id = ? AND uid IN (${marks})`,
-        )
+        .prepare(`SELECT uid, card_json FROM contact_cards WHERE account_id = ? AND uid IN (${marks})`)
         .bind(accountId, ...chunk)
         .all<{ uid: string; card_json: string }>();
       for (const r of results) out.set(r.uid, JSON.parse(r.card_json) as JSContactCard);
@@ -2604,9 +2501,7 @@ export class Mailstore {
   ): Promise<Set<string>> {
     const memberUids = cardMemberUids(card);
     const resolved =
-      memberUids.length > 0
-        ? await this.cardsByUids(accountId, memberUids)
-        : new Map<string, JSContactCard>();
+      memberUids.length > 0 ? await this.cardsByUids(accountId, memberUids) : new Map<string, JSContactCard>();
     if (override) {
       if (override.card === null) resolved.delete(override.uid);
       else resolved.set(override.uid, override.card);
@@ -2730,17 +2625,13 @@ export class Mailstore {
     let where = query.filter ? this.buildContactFilter(query.filter, params) : "1=1";
     if (query.restrictToBooks) {
       const books = query.restrictToBooks.slice(0, MAX_BINDS);
-      if (books.length === 0)
-        return { ids: [], position: 0, ...(query.calculateTotal ? { total: 0 } : {}) };
+      if (books.length === 0) return { ids: [], position: 0, ...(query.calculateTotal ? { total: 0 } : {}) };
       where = `(${where}) AND c.address_book_id IN (${books.map(() => "?").join(",")})`;
       params.push(...books);
     }
 
     const sort = (query.sort ?? [{ property: "name", isAscending: true }])
-      .map(
-        (s) =>
-          `${CONTACT_SORT_COLUMNS[s.property] ?? "c.name_full"} ${s.isAscending ? "ASC" : "DESC"}`,
-      )
+      .map((s) => `${CONTACT_SORT_COLUMNS[s.property] ?? "c.name_full"} ${s.isAscending ? "ASC" : "DESC"}`)
       .join(", ");
 
     const position = Math.max(0, query.position ?? 0);
@@ -2966,27 +2857,18 @@ export class Mailstore {
   }
 
   async deleteCalendar(accountId: string, id: string): Promise<void> {
-    await this.db
-      .prepare(`DELETE FROM calendars WHERE account_id = ? AND id = ?`)
-      .bind(accountId, id)
-      .run();
+    await this.db.prepare(`DELETE FROM calendars WHERE account_id = ? AND id = ?`).bind(accountId, id).run();
   }
 
   async setDefaultCalendar(accountId: string, id: string): Promise<void> {
     await this.db.batch([
-      this.db
-        .prepare(`UPDATE calendars SET is_default = 0 WHERE account_id = ? AND is_default = 1`)
-        .bind(accountId),
-      this.db
-        .prepare(`UPDATE calendars SET is_default = 1 WHERE account_id = ? AND id = ?`)
-        .bind(accountId, id),
+      this.db.prepare(`UPDATE calendars SET is_default = 0 WHERE account_id = ? AND is_default = 1`).bind(accountId),
+      this.db.prepare(`UPDATE calendars SET is_default = 1 WHERE account_id = ? AND id = ?`).bind(accountId, id),
     ]);
   }
 
   /** Resolve the default calendar, creating "Calendar" on first touch. */
-  async ensureDefaultCalendar(
-    accountId: string,
-  ): Promise<{ id: string; change: "created" | "updated" | null }> {
+  async ensureDefaultCalendar(accountId: string): Promise<{ id: string; change: "created" | "updated" | null }> {
     const existing = await this.db
       .prepare(`SELECT id FROM calendars WHERE account_id = ? AND is_default = 1`)
       .bind(accountId)
@@ -3178,11 +3060,7 @@ export class Mailstore {
             .bind(accountId, r.calendar_id, r.id, r.dav_name ?? r.id, now),
         ),
         this.db
-          .prepare(
-            `DELETE FROM calendar_events WHERE account_id = ? AND id IN (${results
-              .map(() => "?")
-              .join(",")})`,
-          )
+          .prepare(`DELETE FROM calendar_events WHERE account_id = ? AND id IN (${results.map(() => "?").join(",")})`)
           .bind(accountId, ...results.map((r) => r.id)),
       ]);
     }
@@ -3325,9 +3203,7 @@ export class Mailstore {
     };
     if (query.calculateTotal) {
       const row = await this.db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM calendar_events e WHERE e.account_id = ? AND (${where})`,
-        )
+        .prepare(`SELECT COUNT(*) AS n FROM calendar_events e WHERE e.account_id = ? AND (${where})`)
         .bind(...params)
         .first<{ n: number }>();
       out.total = row?.n ?? 0;
@@ -3355,9 +3231,7 @@ export class Mailstore {
       for (const chunk of chunked(ids)) {
         const marks = chunk.map(() => "?").join(",");
         const { results: r } = await this.db
-          .prepare(
-            `SELECT ${FILE_NODE_COLS} FROM file_nodes WHERE account_id = ? AND id IN (${marks})`,
-          )
+          .prepare(`SELECT ${FILE_NODE_COLS} FROM file_nodes WHERE account_id = ? AND id IN (${marks})`)
           .bind(accountId, ...chunk)
           .all<FileNodeRawRow>();
         results.push(...r);
@@ -3377,9 +3251,7 @@ export class Mailstore {
     const clause = parentId === null ? "parent_id IS NULL" : "parent_id = ?";
     const binds = parentId === null ? [accountId] : [accountId, parentId];
     const { results } = await this.db
-      .prepare(
-        `SELECT ${FILE_NODE_COLS} FROM file_nodes WHERE account_id = ? AND ${clause} ORDER BY name`,
-      )
+      .prepare(`SELECT ${FILE_NODE_COLS} FROM file_nodes WHERE account_id = ? AND ${clause} ORDER BY name`)
       .bind(...binds)
       .all<FileNodeRawRow>();
     return results.map(rowToFileNode);
@@ -3437,11 +3309,7 @@ export class Mailstore {
    * gets away without this only because delivery commits the inbox as
    * `updated` on every single message.
    */
-  async ensureRoleDirectory(
-    accountId: string,
-    role: string,
-    name: string,
-  ): Promise<{ id: string; created: boolean }> {
+  async ensureRoleDirectory(accountId: string, role: string, name: string): Promise<{ id: string; created: boolean }> {
     const existing = await this.db
       .prepare(
         `SELECT id FROM file_nodes
@@ -3560,16 +3428,12 @@ export class Mailstore {
     };
     const order =
       query.sort && query.sort.length > 0
-        ? query.sort
-            .map((s) => `${sortCols[s.property] ?? "name"} ${s.isAscending ? "ASC" : "DESC"}`)
-            .join(", ")
+        ? query.sort.map((s) => `${sortCols[s.property] ?? "name"} ${s.isAscending ? "ASC" : "DESC"}`).join(", ")
         : "name ASC";
     const position = query.position ?? 0;
     const limit = query.limit ?? 256;
     const { results } = await this.db
-      .prepare(
-        `SELECT id FROM file_nodes WHERE ${whereSql} ORDER BY ${order}, id ASC LIMIT ? OFFSET ?`,
-      )
+      .prepare(`SELECT id FROM file_nodes WHERE ${whereSql} ORDER BY ${order}, id ASC LIMIT ? OFFSET ?`)
       .bind(...params, limit, position)
       .all<{ id: string }>();
     return { ids: results.map((r) => r.id), position, ...(total !== undefined ? { total } : {}) };
@@ -3663,10 +3527,7 @@ export class Mailstore {
   }
 
   async deleteIdentity(accountId: string, id: string): Promise<void> {
-    await this.db
-      .prepare(`DELETE FROM identities WHERE account_id = ? AND id = ?`)
-      .bind(accountId, id)
-      .run();
+    await this.db.prepare(`DELETE FROM identities WHERE account_id = ? AND id = ?`).bind(accountId, id).run();
   }
 
   /**
@@ -3676,9 +3537,7 @@ export class Mailstore {
    */
   async isActiveDomain(tenantId: string, domain: string): Promise<boolean> {
     const row = await this.db
-      .prepare(
-        `SELECT 1 AS ok FROM domains WHERE domain = ? AND tenant_id = ? AND status = 'active'`,
-      )
+      .prepare(`SELECT 1 AS ok FROM domains WHERE domain = ? AND tenant_id = ? AND status = 'active'`)
       .bind(domain.toLowerCase(), tenantId)
       .first<{ ok: number }>();
     return row?.ok === 1;
@@ -3774,11 +3633,7 @@ export class Mailstore {
 
   /** Replace data: URIs in card.media with R2 blobIds. Mutates card;
    * returns bytes moved (0 = nothing to do). */
-  async offloadCardPhotos(
-    tenantId: string,
-    accountId: string,
-    card: JSContactCard,
-  ): Promise<number> {
+  async offloadCardPhotos(tenantId: string, accountId: string, card: JSContactCard): Promise<number> {
     const media = card.media as Record<string, Record<string, unknown>> | undefined;
     if (!media || typeof media !== "object") return 0;
     let moved = 0;
@@ -3802,11 +3657,7 @@ export class Mailstore {
   /** Resolve blobId media back to data: URIs (DAV serialization).
    * Returns a clone when inflation happened; missing blobs are skipped
    * (the card serializes without that photo rather than failing). */
-  async inflateCardPhotos(
-    tenantId: string,
-    accountId: string,
-    card: JSContactCard,
-  ): Promise<JSContactCard> {
+  async inflateCardPhotos(tenantId: string, accountId: string, card: JSContactCard): Promise<JSContactCard> {
     const media = card.media as Record<string, Record<string, unknown>> | undefined;
     if (!media || typeof media !== "object") return card;
     const needs = Object.values(media).some(

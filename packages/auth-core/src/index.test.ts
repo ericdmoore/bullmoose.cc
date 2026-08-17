@@ -58,12 +58,9 @@ describe("scopes held verbatim still satisfy themselves", () => {
 // stranger is irreversible) but, like every write, does imply `read`.
 
 describe("any write capability implies read (common/027)", () => {
-  it.each([...MAIL_SCOPES.filter((s) => s !== "read")])(
-    "the %s mail verb satisfies read",
-    (verb) => {
-      expect(hasScope([verb], "read")).toBe(true);
-    },
-  );
+  it.each([...MAIL_SCOPES.filter((s) => s !== "read")])("the %s mail verb satisfies read", (verb) => {
+    expect(hasScope([verb], "read")).toBe(true);
+  });
 
   it.each([...REALM_SCOPES])("the %s realm scope satisfies read", (realm) => {
     expect(hasScope([realm], "read")).toBe(true);

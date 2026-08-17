@@ -3,10 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isLoginKey } from "@bullmoose/auth-core";
 // @ts-expect-error — plain .mjs debugging aid, deliberately not part of the TS program
-import {
-  deriveLoginKey as toolDerive,
-  LOGIN_SALT_LABEL as toolLabel,
-} from "../tools/login-key.mjs";
+import { deriveLoginKey as toolDerive, LOGIN_SALT_LABEL as toolLabel } from "../tools/login-key.mjs";
 import { FILES, buildVectors, type VectorFile } from "./vectors";
 
 /**
@@ -45,8 +42,7 @@ function firstDrift(a: string, b: string): string {
   const right = b.split("\n");
   for (let i = 0; i < Math.max(left.length, right.length); i++) {
     if (left[i] !== right[i]) {
-      const clip = (s: string | undefined) =>
-        s === undefined ? "<end of file>" : s.trim().slice(0, 160);
+      const clip = (s: string | undefined) => (s === undefined ? "<end of file>" : s.trim().slice(0, 160));
       return `line ${i + 1}\n  committed: ${clip(left[i])}\n  generated: ${clip(right[i])}`;
     }
   }

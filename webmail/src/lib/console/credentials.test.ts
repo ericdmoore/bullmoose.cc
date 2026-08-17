@@ -54,10 +54,7 @@ describe("no secret transits the site backend", () => {
     // entropy. If a new route is added without going through `resolveTarget`,
     // it lands in `seen` and the origin assertion below catches it.
     await v.list();
-    await v.mintDirect(
-      { name: "stripe-key", kind: "api-key", allow: "https://api.stripe.com" },
-      SECRET,
-    );
+    await v.mintDirect({ name: "stripe-key", kind: "api-key", allow: "https://api.stripe.com" }, SECRET);
     await v.rotate("stripe-key", SECRET);
     await v.revoke("stripe-key");
     await v.beginOAuth({
@@ -97,9 +94,7 @@ describe("no secret transits the site backend", () => {
     const { seen, fetchImpl } = recorder();
     const v = vault(fetchImpl, { vault: SITE, site: SITE });
 
-    await expect(v.mintDirect({ name: "k", kind: "api-key" }, SECRET)).rejects.toThrow(
-      OriginRefusal,
-    );
+    await expect(v.mintDirect({ name: "k", kind: "api-key" }, SECRET)).rejects.toThrow(OriginRefusal);
     await expect(v.rotate("k", SECRET)).rejects.toThrow(OriginRefusal);
     // The request was never made — a refusal, not a redirect.
     expect(seen).toHaveLength(0);
@@ -108,9 +103,7 @@ describe("no secret transits the site backend", () => {
   it("refuses when no vault origin is configured at all", async () => {
     const { seen, fetchImpl } = recorder();
     const v = vault(fetchImpl, { vault: "", site: SITE });
-    await expect(v.mintDirect({ name: "k", kind: "api-key" }, SECRET)).rejects.toThrow(
-      OriginRefusal,
-    );
+    await expect(v.mintDirect({ name: "k", kind: "api-key" }, SECRET)).rejects.toThrow(OriginRefusal);
     expect(seen).toHaveLength(0);
   });
 
@@ -248,9 +241,7 @@ describe("vault errors", () => {
 
   it("refuses an empty secret before it reaches the wire", async () => {
     const { seen, fetchImpl } = recorder();
-    await expect(vault(fetchImpl).mintDirect({ name: "k", kind: "api-key" }, "")).rejects.toThrow(
-      VaultError,
-    );
+    await expect(vault(fetchImpl).mintDirect({ name: "k", kind: "api-key" }, "")).rejects.toThrow(VaultError);
     await expect(vault(fetchImpl).rotate("k", "")).rejects.toThrow(VaultError);
     expect(seen).toHaveLength(0);
   });

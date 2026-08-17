@@ -1,10 +1,6 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges } from "@bullmoose/account-do";
-import {
-  issueInvocationToken,
-  resolveInvocationToken,
-  type InvocationIdentity,
-} from "@bullmoose/auth-core/invocation";
+import { issueInvocationToken, resolveInvocationToken, type InvocationIdentity } from "@bullmoose/auth-core/invocation";
 import { isAgentPrincipal } from "@bullmoose/auth-core/principal";
 import {
   ESCALATION_WINDOW_NO_HISTORY_MS,
@@ -14,14 +10,7 @@ import {
   claimGateSql,
   normalizeClaimant,
 } from "@bullmoose/scheduling";
-import {
-  accountState,
-  proxyChanges,
-  requireAccount,
-  setError,
-  type RequestContext,
-  type SetError,
-} from "./common";
+import { accountState, proxyChanges, requireAccount, setError, type RequestContext, type SetError } from "./common";
 
 /**
  * AgentInvocation methods (urn:bullmoose:params:jmap:agent) — the
@@ -212,10 +201,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
         .bind(access.accountId, bindingId ?? bindingName)
         .first<{ id: string; name: string; enabled: number }>();
       if (!binding) {
-        notCreated[cid] = setError(
-          "notFound",
-          `no such binding "${bindingId ?? bindingName}" on this account`,
-        );
+        notCreated[cid] = setError("notFound", `no such binding "${bindingId ?? bindingName}" on this account`);
         continue;
       }
       // THE INTERLOCK. A disabled binding is a clean refusal, distinct from
@@ -263,9 +249,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
         };
         continue;
       }
-      const email = await ctx.env.DB.prepare(
-        `SELECT id FROM emails WHERE account_id = ? AND id = ?`,
-      )
+      const email = await ctx.env.DB.prepare(`SELECT id FROM emails WHERE account_id = ? AND id = ?`)
         .bind(access.accountId, emailId)
         .first<{ id: string }>();
       if (!email) {
@@ -364,15 +348,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
              (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at)
            VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
         )
-          .bind(
-            invId,
-            access.accountId,
-            binding.id,
-            binding.name,
-            emailId,
-            JSON.stringify(context),
-            createdAt,
-          )
+          .bind(invId, access.accountId, binding.id, binding.name, emailId, JSON.stringify(context), createdAt)
           .run();
       }
       created[cid] = {
@@ -500,26 +476,19 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
       // Zero changes: raced/gone, or refused by the gate. Distinguish them —
       // a still-pending row means the gate said no, and telling the claimant
       // "notFound" would send it chasing a phantom race.
-      const still = await ctx.env.DB.prepare(
-        `SELECT status FROM agent_invocations WHERE account_id = ? AND id = ?`,
-      )
+      const still = await ctx.env.DB.prepare(`SELECT status FROM agent_invocations WHERE account_id = ? AND id = ?`)
         .bind(access.accountId, id)
         .first<{ status: string }>();
       notUpdated[id] =
         still?.status === "pending"
-          ? setError(
-              "forbidden",
-              "claim refused: this claimant is not eligible for this invocation yet (fit/policy)",
-            )
+          ? setError("forbidden", "claim refused: this claimant is not eligible for this invocation yet (fit/policy)")
           : setError("notFound", "no such invocation (or already claimed)");
     }
 
     // ---- destroy: purge an invocation ----
     const destroy = Array.isArray(args.destroy) ? (args.destroy as string[]) : [];
     for (const id of destroy) {
-      const row = await ctx.env.DB.prepare(
-        `SELECT status FROM agent_invocations WHERE account_id = ? AND id = ?`,
-      )
+      const row = await ctx.env.DB.prepare(`SELECT status FROM agent_invocations WHERE account_id = ? AND id = ?`)
         .bind(access.accountId, id)
         .first<{ status: string }>();
       if (!row) {
@@ -530,10 +499,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
       // would then hit zero rows and log nothing — and `failStaleRunning` only
       // sweeps rows that still exist. Refuse; let it reach a terminal state.
       if (row.status === "running") {
-        notDestroyed[id] = setError(
-          "forbidden",
-          "cannot destroy a running invocation — wait for it to finish or fail",
-        );
+        notDestroyed[id] = setError("forbidden", "cannot destroy a running invocation — wait for it to finish or fail");
         continue;
       }
       await ctx.env.DB.prepare(`DELETE FROM agent_invocations WHERE account_id = ? AND id = ?`)
@@ -568,9 +534,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
     };
   });
 
-  registry.register("AgentInvocation/changes", async (args, ctx) =>
-    proxyChanges(ctx, args, "AgentInvocation"),
-  );
+  registry.register("AgentInvocation/changes", async (args, ctx) => proxyChanges(ctx, args, "AgentInvocation"));
 }
 
 /**

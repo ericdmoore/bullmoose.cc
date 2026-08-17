@@ -11,10 +11,10 @@ deep-dives: [`agents-sdk.md`](agents-sdk.md) and
 ## 1. Two principles that decide everything below
 
 **Provider trust is a boundary you cross once.** Choosing Cloudflare to
-run the platform _is_ the trust decision. Adopting more of Cloudflare's
+run the platform *is* the trust decision. Adopting more of Cloudflare's
 product surface — Gateway, Vectorize, AutoRAG — moves data no further than
 the Workers/D1/R2 it already lives on. So these are **not** evaluated as
-privacy trade-offs; they're evaluated on _fit, coherence, and cost_. We do
+privacy trade-offs; they're evaluated on *fit, coherence, and cost*. We do
 not add metadata-only-logging ceremony to placate a boundary we already
 crossed.
 
@@ -32,19 +32,19 @@ to become the one path that reads across it.** This is the whole reason
 ## 2. The composition test
 
 `capability-roadmap.md` §1 holds that every workflow is one point in a
-four-axis space (data · trigger · runtime · output), and _"if a proposed
+four-axis space (data · trigger · runtime · output), and *"if a proposed
 feature can't be expressed as a composition of axis-values, that's the
-signal it would make the architecture incoherent."_ Applying it:
+signal it would make the architecture incoherent."* Applying it:
 
-| product                    | expressible as…                                                                 | verdict                                          |
-| -------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------ |
-| **AI Gateway**             | the `model.baseURL` axis-value agents already carry (`agent-integration.md` §2) | **adopt now** — already coded, just unconfigured |
-| **AI Search / AutoRAG**    | a new **data** value (_semantic archive_) + a `tools[]` MCP server              | **opt-in, roadmap** — isolation-first            |
-| **Agents SDK patterns**    | a sharper **trigger** value (per-agent alarms) + a new interactive surface      | **cherry-pick**                                  |
-| **Agents SDK (framework)** | _not expressible_ — it wants to own the DO and replace the axes                 | **reject wholesale**                             |
+| product | expressible as… | verdict |
+|---|---|---|
+| **AI Gateway** | the `model.baseURL` axis-value agents already carry (`agent-integration.md` §2) | **adopt now** — already coded, just unconfigured |
+| **AI Search / AutoRAG** | a new **data** value (*semantic archive*) + a `tools[]` MCP server | **opt-in, roadmap** — isolation-first |
+| **Agents SDK patterns** | a sharper **trigger** value (per-agent alarms) + a new interactive surface | **cherry-pick** |
+| **Agents SDK (framework)** | *not expressible* — it wants to own the DO and replace the axes | **reject wholesale** |
 
 The reject falls out of the test itself: the SDK isn't a value on an axis,
-it's a _different coordinate system_. Details in `agents-sdk.md`.
+it's a *different coordinate system*. Details in `agents-sdk.md`.
 
 ## 3. AI Gateway — adopt now (no separate doc needed)
 
@@ -58,11 +58,11 @@ us maps cleanly onto code we hand-rolled:
   prompts across similar mail; a cache hit is zero model latency and zero
   wall-clock, which is exactly the 10ms-CPU / $0-month discipline of
   [`capacity-and-scaling.md`](capacity-and-scaling.md).
-- **Provider-level retry/fallback** — _complements_ our app-level
-  `callWithFallback` (`models.ts:102`): the gateway retries _within_ a
+- **Provider-level retry/fallback** — *complements* our app-level
+  `callWithFallback` (`models.ts:102`): the gateway retries *within* a
   provider before our loop ever sees an error and swaps aliases.
 - **Real spend/latency logs** — we approximate pricing from models.dev
-  (`rankByPrice`, `models.ts:125`); the gateway reports _actual_ per-request
+  (`rankByPrice`, `models.ts:125`); the gateway reports *actual* per-request
   cost, which can validate or replace that cache and feed the analytics MCP.
 - **Rate limiting** — a guardrail on a runaway SLA loop burning quota.
 
@@ -70,18 +70,18 @@ us maps cleanly onto code we hand-rolled:
 
 1. Create a gateway named `bullmoose` (dashboard or API).
 2. Set on the agent worker: var `GATEWAY_COMPAT_URL =
-https://gateway.ai.cloudflare.com/v1/<acct>/bullmoose/compat`, secret
+   https://gateway.ai.cloudflare.com/v1/<acct>/bullmoose/compat`, secret
    `GATEWAY_TOKEN` (gateway auth). Promote `GATEWAY_COMPAT_URL` into
    `bootstrap.mjs`'s external-secret matrix so it installs in the same pass.
 3. Add `{ provider: "gateway", model: "<provider>/<model>" }` candidates to
    an agent's `modelAliases`; ranked fallback picks them up for free.
 4. Optional: route the `workers-ai` fast path through the gateway too by
    passing `{ gateway: { id: "bullmoose" } }` to `env.AI.run(...)` — one
-   observability pane over _both_ providers.
+   observability pane over *both* providers.
 
 Provider keys: the gateway's BYOK store owns **LLM-provider** keys (it needs
 them at call time); the envelope vault (`vault.ts`) keeps owning everything
-agents use _as tools_ (OAuth refresh tokens, third-party API keys). Don't
+agents use *as tools* (OAuth refresh tokens, third-party API keys). Don't
 split-brain a single key across both.
 
 ## 4. Sequencing

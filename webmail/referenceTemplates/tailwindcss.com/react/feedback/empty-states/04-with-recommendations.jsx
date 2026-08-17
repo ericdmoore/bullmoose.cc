@@ -1,25 +1,25 @@
-import { PlusIcon } from "@heroicons/react/20/solid";
+import { PlusIcon } from '@heroicons/react/20/solid'
 
 const people = [
   {
-    name: "Lindsay Walton",
-    role: "Front-end Developer",
+    name: 'Lindsay Walton',
+    role: 'Front-end Developer',
     imageUrl:
-      "https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+      'https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
   },
   {
-    name: "Courtney Henry",
-    role: "Designer",
+    name: 'Courtney Henry',
+    role: 'Designer',
     imageUrl:
-      "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
   },
   {
-    name: "Tom Cook",
-    role: "Director of Product",
+    name: 'Tom Cook',
+    role: 'Director of Product',
     imageUrl:
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
   },
-];
+]
 
 export default function Example() {
   return (
@@ -40,12 +40,10 @@ export default function Example() {
               strokeLinejoin="round"
             />
           </svg>
-          <h2 className="mt-2 text-base font-semibold text-gray-900 dark:text-white">
-            Add team members
-          </h2>
+          <h2 className="mt-2 text-base font-semibold text-gray-900 dark:text-white">Add team members</h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            You haven’t added any team members to your project yet. As the owner of this project,
-            you can manage team member permissions.
+            You haven’t added any team members to your project yet. As the owner of this project, you can manage team
+            member permissions.
           </p>
         </div>
         <form action="#" className="mt-6 flex">
@@ -83,12 +81,8 @@ export default function Example() {
                   />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
-                    {person.name}
-                  </p>
-                  <p className="truncate text-sm font-medium text-gray-500 dark:text-gray-400">
-                    {person.role}
-                  </p>
+                  <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{person.name}</p>
+                  <p className="truncate text-sm font-medium text-gray-500 dark:text-gray-400">{person.role}</p>
                 </div>
               </div>
               <div className="shrink-0">
@@ -96,10 +90,7 @@ export default function Example() {
                   type="button"
                   className="inline-flex items-center gap-x-1.5 text-sm/6 font-semibold text-gray-900 dark:text-white"
                 >
-                  <PlusIcon
-                    aria-hidden="true"
-                    className="size-5 text-gray-400 dark:text-gray-500"
-                  />
+                  <PlusIcon aria-hidden="true" className="size-5 text-gray-400 dark:text-gray-500" />
                   Invite <span className="sr-only">{person.name}</span>
                 </button>
               </div>
@@ -108,5 +99,5 @@ export default function Example() {
         </ul>
       </div>
     </div>
-  );
+  )
 }

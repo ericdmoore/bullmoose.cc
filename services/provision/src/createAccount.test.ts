@@ -34,9 +34,7 @@ function harness(): Harness {
   const db = fakeD1();
   const kv = fakeKV();
   db.seed("tenants", [{ id: TENANT, name: "Bullmoose", status: "active", created_at: 1 }]);
-  db.seed("domains", [
-    { domain: DOMAIN, tenant_id: TENANT, status: "active", cf_zone_id: "z1", created_at: 1 },
-  ]);
+  db.seed("domains", [{ domain: DOMAIN, tenant_id: TENANT, status: "active", cf_zone_id: "z1", created_at: 1 }]);
 
   const env: Env = {
     DB: db,
@@ -66,11 +64,8 @@ const create = (h: Harness, over: Record<string, unknown> = {}) =>
 
 /** Where `routes` currently says mail for eric@bullmoose.cc should land. */
 const routeTarget = (db: FakeD1, localpart = "eric"): string | undefined =>
-  db.query<{ target: string }>(
-    `SELECT target FROM routes WHERE domain = ? AND localpart = ?`,
-    DOMAIN,
-    localpart,
-  )[0]?.target;
+  db.query<{ target: string }>(`SELECT target FROM routes WHERE domain = ? AND localpart = ?`, DOMAIN, localpart)[0]
+    ?.target;
 
 const kvRoute = (kv: FakeKV, localpart = "eric") => {
   const raw = kv.store.get(`route:${DOMAIN}:${localpart}`)?.value;
@@ -99,9 +94,7 @@ describe("POST /accounts — the address is unique as a delivery route", () => {
     // under an invented `role: 'quarantine'`. Held mail lives in the
     // REGISTERED junk role now, so a standards client handles it as spam.
     expect(h.db.count("mailboxes", "account_id = ?", body.accountId)).toBe(6);
-    expect(h.db.count("mailboxes", "account_id = ? AND role = 'quarantine'", body.accountId)).toBe(
-      0,
-    );
+    expect(h.db.count("mailboxes", "account_id = ? AND role = 'quarantine'", body.accountId)).toBe(0);
 
     // The seed and the mailstore's constants must agree — provision spells the
     // pair out rather than importing it (that dependency would pull the whole
@@ -173,9 +166,7 @@ describe("POST /accounts — the address is unique as a delivery route", () => {
 
   it("409s when the address already routes to a NON-mailbox, and repoints nothing", async () => {
     const h = harness();
-    h.db.seed("routes", [
-      { domain: DOMAIN, localpart: "team", kind: "forward", target: "ops@example.com" },
-    ]);
+    h.db.seed("routes", [{ domain: DOMAIN, localpart: "team", kind: "forward", target: "ops@example.com" }]);
 
     const res = await create(h, { localpart: "team" });
     expect(res.status).toBe(409);
@@ -195,12 +186,8 @@ describe("POST /accounts — the address is unique as a delivery route", () => {
   it("409s when the route points at another tenant's account", async () => {
     const h = harness();
     h.db.seedAccount({ accountId: "other__a_1", tenantId: "t_other", loginEmail: "x@other.test" });
-    h.db.seed("identities", [
-      { id: "i_other", account_id: "other__a_1", email: "eric@bullmoose.cc", name: "Eric" },
-    ]);
-    h.db.seed("routes", [
-      { domain: DOMAIN, localpart: "eric", kind: "mailbox", target: "other__a_1" },
-    ]);
+    h.db.seed("identities", [{ id: "i_other", account_id: "other__a_1", email: "eric@bullmoose.cc", name: "Eric" }]);
+    h.db.seed("routes", [{ domain: DOMAIN, localpart: "eric", kind: "mailbox", target: "other__a_1" }]);
 
     const res = await create(h);
     expect(res.status).toBe(409);
@@ -212,9 +199,7 @@ describe("POST /accounts — the address is unique as a delivery route", () => {
   it("409s when the route points at a mailbox that does not carry this address", async () => {
     const h = harness();
     h.db.seedAccount({ accountId: `${TENANT}__a_squatter`, tenantId: TENANT });
-    h.db.seed("routes", [
-      { domain: DOMAIN, localpart: "eric", kind: "mailbox", target: `${TENANT}__a_squatter` },
-    ]);
+    h.db.seed("routes", [{ domain: DOMAIN, localpart: "eric", kind: "mailbox", target: `${TENANT}__a_squatter` }]);
 
     const res = await create(h);
     expect(res.status).toBe(409);
@@ -224,9 +209,7 @@ describe("POST /accounts — the address is unique as a delivery route", () => {
 
   it("409s when the route target account has vanished, rather than taking the row over", async () => {
     const h = harness();
-    h.db.seed("routes", [
-      { domain: DOMAIN, localpart: "eric", kind: "mailbox", target: `${TENANT}__a_ghost` },
-    ]);
+    h.db.seed("routes", [{ domain: DOMAIN, localpart: "eric", kind: "mailbox", target: `${TENANT}__a_ghost` }]);
 
     const res = await create(h);
     expect(res.status).toBe(409);
@@ -353,9 +336,7 @@ describe("POST /accounts — the primary key is the backstop the pre-check canno
       if (!armed) return;
       armed = false;
       h.db.seedAccount({ accountId: `${TENANT}__a_winner`, tenantId: TENANT });
-      h.db.seed("routes", [
-        { domain: DOMAIN, localpart: "eric", kind: "mailbox", target: `${TENANT}__a_winner` },
-      ]);
+      h.db.seed("routes", [{ domain: DOMAIN, localpart: "eric", kind: "mailbox", target: `${TENANT}__a_winner` }]);
     };
     const hook = (stmt: D1PreparedStatement): D1PreparedStatement =>
       ({

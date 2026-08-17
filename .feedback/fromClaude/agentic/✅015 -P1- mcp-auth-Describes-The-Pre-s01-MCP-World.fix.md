@@ -19,7 +19,7 @@ Replace the "no caller identity" framing with the current posture:
 > (`packages/cli/src/agent.ts:39-50`) has no `tools`/`mcpServers`, and `callModel` (`:234-284`) is a
 > single non-looping call. So the tool-injection layer (§8) is still greenfield.
 
-Keep `:175-178` — it is the part that is still true, and it is now the _whole_ of the gap.
+Keep `:175-178` — it is the part that is still true, and it is now the *whole* of the gap.
 
 ### 2. Retag downstream
 

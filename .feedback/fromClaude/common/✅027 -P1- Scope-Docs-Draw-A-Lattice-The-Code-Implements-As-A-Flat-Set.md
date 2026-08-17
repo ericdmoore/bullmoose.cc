@@ -11,7 +11,7 @@ read < annotate < draft < move < send < delete
 ```
 
 `packages/auth-core/src/index.ts`, `packages/auth-core/README.md`, `packages/cli/src/help.ts`,
-and `docs/` all use that notation. `<` reads as _implies_.
+and `docs/` all use that notation. `<` reads as *implies*.
 
 `hasScope` implements **flat set membership**:
 
@@ -67,7 +67,7 @@ necessary.
 
 Two independent agents hit it from opposite directions within one batch, and both initially
 read the ordered notation as the contract. **The notation is actively teaching the wrong
-model**, and the code fails _closed_ in ways that look like bugs and _open_ in ways nobody has
+model**, and the code fails *closed* in ways that look like bugs and *open* in ways nobody has
 audited — `common/001` is only three commits old and its consequences are still surfacing.
 
 ## The decision this needs

@@ -8,7 +8,7 @@ The site sources its guides from **outside** `src/`:
 
 ```ts
 // src/src/content.config.ts:8
-base: "../docs/playbooks";
+base: "../docs/playbooks"
 ```
 
 But the deploy workflow only triggers on changes **inside** `src/`:
@@ -23,10 +23,10 @@ page keeps the old content indefinitely — until some unrelated `src/**` change
 
 ## The site asserts the opposite, on the page itself
 
-- `src/src/pages/guides/[slug].astro:27` renders: _"Source: `docs/playbooks/<id>.md` — **edit it in
-  the repo and this page updates**."_
-- `src/src/pages/guides/index.astro:23-24` — _"rendered straight from the repo playbooks — same
-  source, so **they never drift**."_
+- `src/src/pages/guides/[slug].astro:27` renders: *"Source: `docs/playbooks/<id>.md` — **edit it in
+  the repo and this page updates**."*
+- `src/src/pages/guides/index.astro:23-24` — *"rendered straight from the repo playbooks — same
+  source, so **they never drift**."*
 
 Both statements are currently false, and they're the kind of claim a reader will rely on rather than
 verify.

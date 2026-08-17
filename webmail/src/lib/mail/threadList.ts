@@ -175,11 +175,7 @@ export class ThreadListStore {
    * One round trip: `Email/query` then `Email/get` of exactly the ids it
    * returned, joined by an RFC 8620 §3.7 back-reference (invariant §6.5).
    */
-  private async load(
-    position: number,
-    limit: number,
-    opts: { replace?: boolean } = {},
-  ): Promise<LoadResult> {
+  private async load(position: number, limit: number, opts: { replace?: boolean } = {}): Promise<LoadResult> {
     const calls: Invocation[] = [
       [
         "Email/query",

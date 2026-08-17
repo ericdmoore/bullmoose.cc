@@ -56,9 +56,7 @@ function harness(scopes: string[] = ["read", "draft"]) {
     { id: "bind_allen", account_id: ACCOUNT2, name: "allen" }, // another account
   ]);
   // A message to act on — the create validates it exists.
-  w.db.seed("emails", [
-    { id: EMAIL, account_id: ACCOUNT, blob_id: "b1", thread_id: "t1", size: 10, received_at: 1 },
-  ]);
+  w.db.seed("emails", [{ id: EMAIL, account_id: ACCOUNT, blob_id: "b1", thread_id: "t1", size: 10, received_at: 1 }]);
 
   const call = <T = Record<string, unknown>>(method: string, args: Record<string, unknown>) =>
     registry.get(method)!(args, ctx) as Promise<T>;
@@ -224,9 +222,9 @@ describe("AgentInvocation/set destroy purges an invocation", () => {
 describe("AgentInvocation/set create gates on the draft scope", () => {
   it("a read-only token cannot create (draft is not implied by read — common/027)", async () => {
     const h = harness(["read"]);
-    await expect(
-      h.set({ create: { c: { bindingName: "emily", emailId: EMAIL } } }),
-    ).rejects.toThrow(/forbidden|draft/i);
+    await expect(h.set({ create: { c: { bindingName: "emily", emailId: EMAIL } } })).rejects.toThrow(
+      /forbidden|draft/i,
+    );
   });
 });
 

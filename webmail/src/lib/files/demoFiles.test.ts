@@ -2,13 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FakeJmapClient } from "../jmap/FakeJmapClient";
 import { FILENODE_CAP, hasCapability } from "../jmap/capabilities";
 import { loadDirectory } from "./api";
-import {
-  createDemoFiles,
-  demoFileNodes,
-  filesDemoClient,
-  installDemoFiles,
-  sessionWithoutFiles,
-} from "./demoFiles";
+import { createDemoFiles, demoFileNodes, filesDemoClient, installDemoFiles, sessionWithoutFiles } from "./demoFiles";
 import { ATTACHMENTS_ROLE } from "./scope";
 
 const ACCOUNT = "acct-fake";
@@ -61,9 +55,7 @@ describe("the fake mirrors the server's warts", () => {
 
   it("throws cannotCalculateChanges on queryChanges, exactly as the server does", async () => {
     const { client } = harness();
-    const [response] = await client.request([
-      ["FileNode/queryChanges", { accountId: ACCOUNT }, "c"],
-    ]);
+    const [response] = await client.request([["FileNode/queryChanges", { accountId: ACCOUNT }, "c"]]);
     expect(response![0]).toBe("error");
     expect((response![1] as { type: string }).type).toBe("cannotCalculateChanges");
   });
@@ -103,9 +95,7 @@ describe("the fake mirrors the server's warts", () => {
       accountId: ACCOUNT,
       create: { a: { name: "x", nodeType: "directory", myRights: {} } },
     });
-    expect((result.notCreated as Record<string, { type: string }>).a?.type).toBe(
-      "invalidProperties",
-    );
+    expect((result.notCreated as Record<string, { type: string }>).a?.type).toBe("invalidProperties");
   });
 
   it("refuses an update to an immutable path", async () => {
@@ -114,9 +104,7 @@ describe("the fake mirrors the server's warts", () => {
       accountId: ACCOUNT,
       update: { "fn-readme": { size: 5 } },
     });
-    expect((result.notUpdated as Record<string, { type: string }>)["fn-readme"]?.type).toBe(
-      "invalidProperties",
-    );
+    expect((result.notUpdated as Record<string, { type: string }>)["fn-readme"]?.type).toBe("invalidProperties");
   });
 
   it("collides case-SENSITIVELY by default and case-insensitively on request", async () => {
@@ -132,9 +120,7 @@ describe("the fake mirrors the server's warts", () => {
       compareCaseInsensitively: true,
       create: { b: { name: "PROJECTS", nodeType: "directory", parentId: null } },
     });
-    expect((insensitive.notCreated as Record<string, { type: string }>).b?.type).toBe(
-      "alreadyExists",
-    );
+    expect((insensitive.notCreated as Record<string, { type: string }>).b?.type).toBe("alreadyExists");
   });
 
   it("advances its state only when something actually changed", async () => {
@@ -166,9 +152,7 @@ describe("sessionWithoutFiles / filesDemoClient", () => {
     const session = sessionWithoutFiles();
     expect(hasCapability(session, FILENODE_CAP)).toBe(false);
     for (const account of Object.values(session.accounts)) {
-      expect(hasCapability({ capabilities: account.accountCapabilities }, FILENODE_CAP)).toBe(
-        false,
-      );
+      expect(hasCapability({ capabilities: account.accountCapabilities }, FILENODE_CAP)).toBe(false);
     }
     expect(session.primaryAccounts[FILENODE_CAP]).toBeUndefined();
   });

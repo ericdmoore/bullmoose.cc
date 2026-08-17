@@ -227,13 +227,9 @@ export async function fleetDrain(
     } catch (err) {
       if (isAuthzRefusal(err)) {
         served.delete(account.accountId);
-        status(
-          `${accountLabel(account)}: claim authority revoked — dropped (other bindings unaffected)`,
-        );
+        status(`${accountLabel(account)}: claim authority revoked — dropped (other bindings unaffected)`);
       } else {
-        status(
-          `${accountLabel(account)}: drain failed: ${err instanceof Error ? err.message : err}`,
-        );
+        status(`${accountLabel(account)}: drain failed: ${err instanceof Error ? err.message : err}`);
       }
     }
   }
@@ -500,11 +496,7 @@ async function handleInvocation(
 
 // ---- provider adapters (template mode: one call, no tools) --------------
 
-async function callModel(
-  model: AgentConfig["model"],
-  system: string,
-  user: string,
-): Promise<string> {
+async function callModel(model: AgentConfig["model"], system: string, user: string): Promise<string> {
   if (model.provider === "mock") {
     // Deterministic — lets the whole loop be verified without an API key.
     const subject = /Subject: (.*)/.exec(user)?.[1] ?? "";

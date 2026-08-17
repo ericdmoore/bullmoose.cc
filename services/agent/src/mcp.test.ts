@@ -360,9 +360,7 @@ describe("handleMcp — §6 auth gate", () => {
       // reaches it, and the tenant/display_name now come from the real
       // grants ⋈ accounts join rather than being pasted into the grant row.
       otherAccounts: [{ id: "a_eric", display_name: "Eric" }],
-      grants: [
-        { id: "g1", grantee_account_id: "a_allen", target_account_id: "a_eric", scopes: ["read"] },
-      ],
+      grants: [{ id: "g1", grantee_account_id: "a_allen", target_account_id: "a_eric", scopes: ["read"] }],
       spend: [{ account_id: "a_eric", amount_cents: 1 }],
     };
     const { res, writes } = call(
@@ -646,11 +644,7 @@ describe("handleMcp — the legacy lane (s02 T2)", () => {
   });
 
   it("36. notifications/initialized is a 202", async () => {
-    const { res } = call(
-      { jsonrpc: "2.0", method: "notifications/initialized" },
-      legacyHeaders(),
-      ericOwns(),
-    );
+    const { res } = call({ jsonrpc: "2.0", method: "notifications/initialized" }, legacyHeaders(), ericOwns());
     expect((await res).status).toBe(202);
   });
 
@@ -812,11 +806,7 @@ describe("handleMcp — modern-lane conformance codes (s02 T2)", () => {
 // complete one.
 describe("tools/list publishes what a caller needs to pre-filter (s02 T6)", () => {
   const list = () =>
-    call(
-      { jsonrpc: "2.0", id: 50, method: "tools/list", params: { _meta: meta() } },
-      headers(),
-      ericOwns(),
-    );
+    call({ jsonrpc: "2.0", id: 50, method: "tools/list", params: { _meta: meta() } }, headers(), ericOwns());
 
   it("50. every tool carries its scope and domain", async () => {
     // Stripped before T6, so a caller could only discover the requirement by

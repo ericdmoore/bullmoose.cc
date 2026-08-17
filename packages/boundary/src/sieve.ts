@@ -137,10 +137,7 @@ function matches(m: SieveMatch, msg: BoundaryMessage): boolean {
  * from an explicit allow rule is auditable too). No rule fires → PASS with
  * no ruleId — the sieve stage is CONTINUE-by-default, rejection is opt-in.
  */
-export function sieveVerdict(
-  rules: SieveRule[],
-  msg: BoundaryMessage,
-): { verdict: "PASS" | "FAIL"; ruleId?: string } {
+export function sieveVerdict(rules: SieveRule[], msg: BoundaryMessage): { verdict: "PASS" | "FAIL"; ruleId?: string } {
   for (const rule of rules) {
     if (rule.all.length === 0) continue; // empty conjunction never fires
     if (rule.all.every((m) => matches(m, msg))) {

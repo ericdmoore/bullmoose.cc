@@ -267,8 +267,7 @@ export function errorPage(headline: string, detail: string, status = 400): Respo
     status,
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "content-security-policy":
-        "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
       "cache-control": "no-store",
     },
   });

@@ -102,10 +102,7 @@ const PRICING_MAX_AGE_MS = 48 * 3600_000;
  * partial counts map to `undefined`, never to 0: absent usage must land as
  * NULL cost downstream (s07 T5), not as a flattering zero.
  */
-function toUsage(u?: {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-}): TokenUsage | undefined {
+function toUsage(u?: { prompt_tokens?: number; completion_tokens?: number }): TokenUsage | undefined {
   return typeof u?.prompt_tokens === "number" && typeof u?.completion_tokens === "number"
     ? { tokensIn: u.prompt_tokens, tokensOut: u.completion_tokens }
     : undefined;
@@ -213,10 +210,7 @@ interface PricingCache {
   legs?: Record<string, PriceLegs>;
 }
 
-export async function rankByPrice(
-  env: Env,
-  candidates: ModelCandidate[],
-): Promise<ModelCandidate[]> {
+export async function rankByPrice(env: Env, candidates: ModelCandidate[]): Promise<ModelCandidate[]> {
   if (candidates.length < 2) return candidates;
   const cache = await env.ROUTES.get<PricingCache>(PRICING_KEY, "json");
   if (!cache || Date.now() - cache.fetchedAt > PRICING_MAX_AGE_MS) return candidates;

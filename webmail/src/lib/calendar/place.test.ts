@@ -34,13 +34,7 @@ describe("all-day events land on the same DATE in every timezone", () => {
   // This is the bug the module exists to prevent. `utcStart` for an all-day
   // event is midnight resolved through Etc/UTC; converting it into a viewer's
   // zone moves New Year's Day to 31 December for the whole of the Americas.
-  const zones = [
-    "Etc/UTC",
-    "America/Los_Angeles",
-    "America/New_York",
-    "Asia/Tokyo",
-    "Pacific/Kiritimati",
-  ];
+  const zones = ["Etc/UTC", "America/Los_Angeles", "America/New_York", "Asia/Tokyo", "Pacific/Kiritimati"];
 
   it.each(zones)("places 2026-01-01 on 2026-01-01 in %s", (zone) => {
     const segments = segmentsFor(allDay("2026-01-01"), zone);
@@ -84,11 +78,7 @@ describe("all-day events land on the same DATE in every timezone", () => {
       utcEnd: "2026-03-10T00:00:00Z",
       showWithoutTime: true,
     });
-    expect(segmentsFor(dst, "America/New_York").map((s) => s.day)).toEqual([
-      "2026-03-07",
-      "2026-03-08",
-      "2026-03-09",
-    ]);
+    expect(segmentsFor(dst, "America/New_York").map((s) => s.day)).toEqual(["2026-03-07", "2026-03-08", "2026-03-09"]);
   });
 
   it("survives a malformed occurrence rather than rendering a wrong day", () => {

@@ -13,7 +13,7 @@ useful (Bulwark speaks FileNode); the draft's inode model is the right shape any
 it makes a future conformance probe meaningful.
 
 **The risk, stated plainly:** draft-14 is **not an RFC**. Fourteen revisions, expires
-2026-11-16, and it carries a _"create real-world clients to test this"_ TODO.
+2026-11-16, and it carries a *"create real-world clients to test this"* TODO.
 
 **Mitigation.** Pin the targeted version in a constant. Keep FileNode behind the same
 method-registry indirection every other collection uses. **Do not leak FileNode shapes
@@ -45,17 +45,17 @@ Methods: `/get` (+`fetchParents`), `/set` (+`onDestroyRemoveChildren`, `onExists
 
 ## 3. Mapping onto our substrate
 
-| Concern         | Where                                                                                              |
-| --------------- | -------------------------------------------------------------------------------------------------- |
-| Inode metadata  | **D1** — `file_nodes` in the data plane; sibling-name uniqueness is a DB constraint, not app logic |
-| Content bytes   | **R2** — existing blob path + `Mailstore` put/get. **No new storage code.**                        |
-| Change tracking | **AccountDO** — `commitChanges` with `collection: "FileNode"` gives `/changes` + push for free     |
-| Provenance      | inherited from s03.A — the table carries `last_writer_*` from birth                                |
+| Concern | Where |
+|---|---|
+| Inode metadata | **D1** — `file_nodes` in the data plane; sibling-name uniqueness is a DB constraint, not app logic |
+| Content bytes | **R2** — existing blob path + `Mailstore` put/get. **No new storage code.** |
+| Change tracking | **AccountDO** — `commitChanges` with `collection: "FileNode"` gives `/changes` + push for free |
+| Provenance | inherited from s03.A — the table carries `last_writer_*` from birth |
 
 ### The blob-pinning hazard
 
-The draft is explicit: _"A blob referenced by a FileNode MUST NOT be expired or garbage
-collected by the server while the FileNode exists."_
+The draft is explicit: *"A blob referenced by a FileNode MUST NOT be expired or garbage
+collected by the server while the FileNode exists."*
 
 Uploaded blobs today are **transient by intent**. A referenced blob becomes **pinned**.
 This is the one non-obvious storage change, and it must land **with** the schema — not
@@ -63,11 +63,11 @@ after — or the first GC pass eats live files.
 
 ## 4. Sharing: three tiers, two in this slice
 
-| Tier            | Mechanism                                                                | Here?            |
-| --------------- | ------------------------------------------------------------------------ | ---------------- |
-| Private         | owner-only; `myRights` from ownership                                    | ✅               |
+| Tier | Mechanism | Here? |
+|---|---|---|
+| Private | owner-only; `myRights` from ownership | ✅ |
 | **Link-shared** | `POST /api/share/{accountId}/{blobId}` **[live]** — expiring public link | ✅ already built |
-| Named-principal | draft's `shareWith` + hierarchical `FilesRights` inheritance             | ❌ → ACL epic    |
+| Named-principal | draft's `shareWith` + hierarchical `FilesRights` inheritance | ❌ → ACL epic |
 
 `shareWith` is a genuine multi-principal ACL that partly overlaps our `grants` model —
 that's the "teams" epic, not this. Returning `shareWith: null` with owner `myRights` is a
@@ -76,7 +76,6 @@ that's the "teams" epic, not this. Returning `shareWith: null` with owner `myRig
 ## 5. The attachment sidestep
 
 **Outbound** — the motivating flow; only one step is new:
-
 ```
 compose → attach 400 MB
   → POST /api/upload/{account}          [live]  → blobId
@@ -86,8 +85,8 @@ compose → attach 400 MB
 ```
 
 **Inbound** — symmetry, nearly free. Ingest already writes attachments to R2; add a rule:
-_attachment ≥ N bytes → create a FileNode under the Attachments role, keep the link in
-the message._ This is what makes Files useful on day one instead of an empty drive.
+*attachment ≥ N bytes → create a FileNode under the Attachments role, keep the link in
+the message.* This is what makes Files useful on day one instead of an empty drive.
 
 **Threshold `N` is a policy value**, not a constant — default it conservatively and make
 it configurable per account.

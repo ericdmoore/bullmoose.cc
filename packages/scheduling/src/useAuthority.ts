@@ -85,9 +85,7 @@ export interface AuthorityDenial {
   why: string;
 }
 
-export type FoldResult =
-  | { ok: true; authority: NodeAuthority }
-  | { ok: false; denial: AuthorityDenial };
+export type FoldResult = { ok: true; authority: NodeAuthority } | { ok: false; denial: AuthorityDenial };
 
 export type UseResult = { ok: true } | { ok: false; denial: AuthorityDenial };
 
@@ -123,10 +121,7 @@ export function intersectAuthority(a: NodeAuthority, b: NodeAuthority): NodeAuth
   };
 }
 
-function intersectSets(
-  a: readonly string[] | null,
-  b: readonly string[] | null,
-): readonly string[] | null {
+function intersectSets(a: readonly string[] | null, b: readonly string[] | null): readonly string[] | null {
   if (a === null) return b;
   if (b === null) return a;
   // `a`'s order is kept so the result is deterministic and diffable; both sides
@@ -183,8 +178,7 @@ export function parseEnvelope(raw: string | null | undefined): NodeAuthority | n
   const budget = o.budgetMicros;
   let budgetMicros: number | null;
   if (budget === null) budgetMicros = null;
-  else if (typeof budget === "number" && Number.isFinite(budget) && budget >= 0)
-    budgetMicros = budget;
+  else if (typeof budget === "number" && Number.isFinite(budget) && budget >= 0) budgetMicros = budget;
   else return null;
 
   return { tools, credentials, budgetMicros };
@@ -288,12 +282,7 @@ export function mayUse(effective: NodeAuthority, use: Use): UseResult {
   }
 }
 
-function inSet(
-  held: readonly string[] | null,
-  name: string,
-  axis: "tools" | "credentials",
-  noun: string,
-): UseResult {
+function inSet(held: readonly string[] | null, name: string, axis: "tools" | "credentials", noun: string): UseResult {
   if (typeof name !== "string" || name.length === 0) {
     return {
       ok: false,

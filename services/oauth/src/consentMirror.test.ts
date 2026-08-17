@@ -80,15 +80,9 @@ describe("revokeConsent", () => {
   it("11. is scoped to ONE client — revoking Code must not disconnect claude.ai", async () => {
     const w = db();
     await recordConsent(w.env.DB, REC, 1000);
-    await recordConsent(
-      w.env.DB,
-      { ...REC, clientId: "http://localhost/callback", clientName: "Claude Code" },
-      1001,
-    );
+    await recordConsent(w.env.DB, { ...REC, clientId: "http://localhost/callback", clientName: "Claude Code" }, 1001);
     await revokeConsent(w.env.DB, "p_eric", "http://localhost/callback", 2000);
-    const live = w.db.query<{ client_id: string }>(
-      `SELECT client_id FROM oauth_consents WHERE revoked_at IS NULL`,
-    );
+    const live = w.db.query<{ client_id: string }>(`SELECT client_id FROM oauth_consents WHERE revoked_at IS NULL`);
     expect(live.map((r) => r.client_id)).toEqual(["https://claude.ai/mcp"]);
   });
 

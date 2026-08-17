@@ -47,7 +47,7 @@ So **the app password pasted into Apple Mail can write the credential vault.**
 - `packages/auth-core/README.md:10-12` and `src/index.ts:10-12` describe a closed 6-verb
   vocabulary where `"mail" = all of them` — but scopes live outside that union in production.
 - `docs/architecture/mcp-auth.md:219-222` names this exact behaviour "the trap" — but only warns
-  about it for _future_ MCP scopes, not for the vault, which is the higher-value target.
+  about it for *future* MCP scopes, not for the vault, which is the higher-value target.
 - `docs/architecture/mcp-auth.md:197` states "Write-only HTTP API needs `vault` scope" as though it
   were a guarantee. It is not.
 - `docs/cli.md:123` describes `mail` as "all verbs", understating it.

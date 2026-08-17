@@ -38,11 +38,7 @@ class RecordingFake extends FakeJmapClient {
     return super.request(calls);
   }
 
-  override async upload(
-    accountId: Id,
-    body: Blob | Uint8Array,
-    type: string,
-  ): Promise<UploadResult> {
+  override async upload(accountId: Id, body: Blob | Uint8Array, type: string): Promise<UploadResult> {
     this.log.push("upload");
     if (this.uploadError) throw this.uploadError;
     return super.upload(accountId, body, type);
@@ -82,11 +78,7 @@ describe("loadDirectory", () => {
     // One request carrying three calls — invariant §6.5. `sentBatches` is the
     // batch list, so length 1 is the assertion that matters.
     expect(client.sentBatches).toHaveLength(1);
-    expect(client.sentBatches[0]?.map((c) => c[0])).toEqual([
-      "FileNode/get",
-      "FileNode/query",
-      "FileNode/get",
-    ]);
+    expect(client.sentBatches[0]?.map((c) => c[0])).toEqual(["FileNode/get", "FileNode/query", "FileNode/get"]);
     expect(page.dir?.name).toBe("2026 roadmap");
     expect(page.trail.crumbs.map((c) => c.name)).toEqual(["Files", "Projects", "2026 roadmap"]);
     expect(page.trail.truncated).toBe(false);
@@ -184,12 +176,7 @@ describe("loadDirectories (move destinations)", () => {
   it("fetches every directory in one query→get and flags no truncation", async () => {
     const { client } = harness();
     const { directories, truncated } = await loadDirectories(client, ACCOUNT);
-    expect(directories.map((d) => d.name).sort()).toEqual([
-      "2026 roadmap",
-      "Attachments",
-      "Projects",
-      "Scratch",
-    ]);
+    expect(directories.map((d) => d.name).sort()).toEqual(["2026 roadmap", "Attachments", "Projects", "Scratch"]);
     expect(truncated).toBe(false);
     expect(client.sentBatches).toHaveLength(1);
   });
@@ -209,9 +196,7 @@ describe("createFolder", () => {
       create: { d0: { name: "Invoices", nodeType: "directory", parentId: "fn-projects" } },
     });
     // …and a directory create carries NO blobId: the server refuses one that does.
-    expect(Object.keys((call![1] as { create: Record<string, object> }).create.d0!)).not.toContain(
-      "blobId",
-    );
+    expect(Object.keys((call![1] as { create: Record<string, object> }).create.d0!)).not.toContain("blobId");
 
     const made = backend.nodes.find((n) => n.id === result.id)!;
     expect(made.nodeType).toBe("directory");
@@ -237,12 +222,8 @@ describe("createFolder", () => {
 
   it("refuses a name with a slash, and one over 255 characters, without asking", async () => {
     const { client } = harness();
-    expect((await createFolder(client, ACCOUNT, null, "a/b")).error?.type).toBe(
-      "invalidProperties",
-    );
-    expect((await createFolder(client, ACCOUNT, null, "x".repeat(256))).error?.type).toBe(
-      "invalidProperties",
-    );
+    expect((await createFolder(client, ACCOUNT, null, "a/b")).error?.type).toBe("invalidProperties");
+    expect((await createFolder(client, ACCOUNT, null, "x".repeat(256))).error?.type).toBe("invalidProperties");
     expect(client.sentBatches).toHaveLength(0);
   });
 
@@ -368,10 +349,7 @@ describe("uploadFile — the ordering that is not a preference", () => {
 });
 
 describe("planUploads", () => {
-  const siblings = [
-    { id: "x", name: "report.pdf" } as FileNode,
-    { id: "y", name: "notes.txt" } as FileNode,
-  ];
+  const siblings = [{ id: "x", name: "report.pdf" } as FileNode, { id: "y", name: "notes.txt" } as FileNode];
 
   it("leaves free names alone", () => {
     const planned = planUploads([{ name: "fresh.pdf", size: 1, type: "" }], siblings);
@@ -466,9 +444,7 @@ describe("renameNode / moveNode / destroyNode", () => {
 describe("describeUploadFailure", () => {
   it("maps the statuses that mean something specific", () => {
     expect(describeUploadFailure(new JmapRequestError("x", undefined, 403)).type).toBe("forbidden");
-    expect(describeUploadFailure(new JmapRequestError("x", undefined, 404)).type).toBe(
-      "accountNotFound",
-    );
+    expect(describeUploadFailure(new JmapRequestError("x", undefined, 404)).type).toBe("accountNotFound");
     expect(describeUploadFailure(new JmapRequestError("x", undefined, 413)).type).toBe("tooLarge");
   });
 

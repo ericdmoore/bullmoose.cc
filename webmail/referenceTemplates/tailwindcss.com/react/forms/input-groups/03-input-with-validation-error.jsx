@@ -1,4 +1,4 @@
-import { ExclamationCircleIcon } from "@heroicons/react/16/solid";
+import { ExclamationCircleIcon } from '@heroicons/react/16/solid'
 
 export default function Example() {
   return (
@@ -26,5 +26,5 @@ export default function Example() {
         Not a valid email address.
       </p>
     </div>
-  );
+  )
 }

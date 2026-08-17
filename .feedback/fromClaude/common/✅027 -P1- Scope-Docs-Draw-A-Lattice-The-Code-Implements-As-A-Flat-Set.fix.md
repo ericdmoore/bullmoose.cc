@@ -33,7 +33,7 @@ every operator granting a scope, forever.
 Sketch:
 
 ```ts
-const WRITE_VERBS: ReadonlySet<string> = new Set(["annotate", "draft", "move", "send", "delete"]);
+const WRITE_VERBS: ReadonlySet<string> = new Set(["annotate","draft","move","send","delete"]);
 const REALMS: ReadonlySet<string> = new Set(REALM_SCOPES);
 
 export function hasScope(granted: string[], required: string): boolean {
@@ -59,14 +59,14 @@ today (`grep hasScope(…, "admin")` → nothing; the provision worker uses a sh
 - **`packages/auth-core/src/index.test.ts` already has the table.** Extend the
   `it.each([...REALM_SCOPES])` blocks rather than adding a parallel suite. The existing
   `mail → send` case at `principal.test.ts` must stay green.
-- **Pin the _negative_ cases too**, or the next fix reopens the wildcard: `delete` must not
+- **Pin the *negative* cases too**, or the next fix reopens the wildcard: `delete` must not
   imply `send`; `contacts` must not imply `calendar`; `admin` must not imply anything.
 - **`scopesWithin` rides on `hasScope`**, so widening it also widens what a token may mint.
   `/auth/tokens` gates on `scopesWithin(requested, thisToken.scopes)` — check that a
   `move`-only token gaining implied `read` cannot now mint a `read` token it could not before.
   It can, and that is probably fine, but it should be a decision.
 - **`matchingGrants` also rides on it** (`principal.ts`), so grants widen identically.
-- After changing it, re-run the sVOL `015` test that pins symptom 1 — it asserts the _current_
+- After changing it, re-run the sVOL `015` test that pins symptom 1 — it asserts the *current*
   broken behaviour deliberately, so it should flip, and its comment needs rewriting rather than
   the assertion being deleted.
 

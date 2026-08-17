@@ -36,9 +36,7 @@ export function questionProblem(question: string): string | null {
  * the agent owes an answer to; the server also mirrors it in `question`, but
  * the amendments list is the durable record so it is the source read here.
  */
-export function openQuestion(
-  p: Pick<ActionProposal, "question" | "amendments">,
-): ProposalAmendment | null {
+export function openQuestion(p: Pick<ActionProposal, "question" | "amendments">): ProposalAmendment | null {
   const last = p.amendments[p.amendments.length - 1];
   return last && last.answer === null ? last : null;
 }
@@ -60,5 +58,4 @@ export const NEEDS_INFO_HINT =
   "the ball is in the agent's court.";
 
 /** The waiting state an `info-requested` row renders instead of clocks. */
-export const WAITING_ON_AGENT_NOTE =
-  "waiting on the agent to answer — the decision clock is paused";
+export const WAITING_ON_AGENT_NOTE = "waiting on the agent to answer — the decision clock is paused";

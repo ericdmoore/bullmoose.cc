@@ -141,13 +141,7 @@ export const AGENT_MARKER_SCOPE = "agent";
 /** Everything the operator plane (provision, behind ADMIN_TOKEN) may mint.
  * NB: the CLI's drift guard parses these array literals out of this source
  * (packages/cli/src/scopes.test.ts) — string literals only, comments outside. */
-export const TOKEN_SCOPES: readonly string[] = [
-  ...MAIL_SCOPES,
-  ...REALM_SCOPES,
-  "mail",
-  "admin",
-  "agent",
-];
+export const TOKEN_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "mail", "admin", "agent"];
 
 /**
  * What a self-service caller may mint — `/auth/login` (password-authenticated)
@@ -161,12 +155,7 @@ export const TOKEN_SCOPES: readonly string[] = [
 // The agent marker is self-service-requestable because holding it only ever
 // NARROWS a token; what self-service must never allow is SHEDDING it — the
 // mint route forces it onto anything a marked token mints.
-export const SELF_SERVICE_SCOPES: readonly string[] = [
-  ...MAIL_SCOPES,
-  ...REALM_SCOPES,
-  "mail",
-  "agent",
-];
+export const SELF_SERVICE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "mail", "agent"];
 
 /**
  * Every scope that is a concrete permission rather than a bundle. `mail` is
@@ -339,17 +328,8 @@ export function isLoginKey(value: unknown): value is string {
 
 /** Runs on the CLIENT. ~200-400ms of local CPU by design. */
 export async function deriveLoginKey(email: string, password: string): Promise<string> {
-  const salt = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(LOGIN_SALT_LABEL + email.toLowerCase()),
-  );
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
+  const salt = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(LOGIN_SALT_LABEL + email.toLowerCase()));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
     { name: "PBKDF2", hash: "SHA-256", salt, iterations: LOGIN_KEY_ITERATIONS },
     key,
@@ -397,13 +377,9 @@ export interface SealedSecret {
 const VAULT_HKDF_SALT = "bullmoose-vault-v1";
 
 async function vaultKey(masterSecret: string, aad: string): Promise<CryptoKey> {
-  const ikm = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(masterSecret),
-    "HKDF",
-    false,
-    ["deriveKey"],
-  );
+  const ikm = await crypto.subtle.importKey("raw", new TextEncoder().encode(masterSecret), "HKDF", false, [
+    "deriveKey",
+  ]);
   return crypto.subtle.deriveKey(
     {
       name: "HKDF",
@@ -418,11 +394,7 @@ async function vaultKey(masterSecret: string, aad: string): Promise<CryptoKey> {
   );
 }
 
-export async function sealSecret(
-  masterSecret: string,
-  plaintext: string,
-  aad: string,
-): Promise<SealedSecret> {
+export async function sealSecret(masterSecret: string, plaintext: string, aad: string): Promise<SealedSecret> {
   const key = await vaultKey(masterSecret, aad);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt(
@@ -434,11 +406,7 @@ export async function sealSecret(
 }
 
 /** Throws on tamper/wrong-row/wrong-master. Keep the return value in-process. */
-export async function openSecret(
-  masterSecret: string,
-  sealed: SealedSecret,
-  aad: string,
-): Promise<string> {
+export async function openSecret(masterSecret: string, sealed: SealedSecret, aad: string): Promise<string> {
   if (sealed.v !== 1) throw new Error(`unknown vault envelope version: ${String(sealed.v)}`);
   const key = await vaultKey(masterSecret, aad);
   const pt = await crypto.subtle.decrypt(

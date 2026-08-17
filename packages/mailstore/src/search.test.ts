@@ -125,9 +125,7 @@ describe("index consistency", () => {
     expect(await search(s, "manuscript")).toEqual([]);
     // Not merely filtered out by the join — the rows are gone.
     expect(db.count("emails_fts_map", "email_id = ?", e.id)).toBe(0);
-    expect(
-      db.query(`SELECT rowid FROM emails_fts WHERE emails_fts MATCH 'manuscript'`),
-    ).toHaveLength(0);
+    expect(db.query(`SELECT rowid FROM emails_fts WHERE emails_fts MATCH 'manuscript'`)).toHaveLength(0);
   });
 
   it("re-indexing a message replaces its entry instead of duplicating it", async () => {
@@ -215,9 +213,7 @@ describe("query contract", () => {
     const other = email({ bodyText: "buffalo", hasAttachment: true });
     for (const e of [hit, noAttachment, other]) await s.insertEmail(ACCOUNT, e);
 
-    expect(
-      (await s.queryEmails(ACCOUNT, { filter: { text: "aardvark", hasAttachment: true } })).ids,
-    ).toEqual([hit.id]);
+    expect((await s.queryEmails(ACCOUNT, { filter: { text: "aardvark", hasAttachment: true } })).ids).toEqual([hit.id]);
 
     expect(
       (
@@ -235,9 +231,9 @@ describe("query contract", () => {
       ).ids,
     ).toEqual([other.id]);
 
-    expect(
-      (await s.queryEmails(ACCOUNT, { filter: { text: "aardvark", hasKeyword: "$flagged" } })).ids,
-    ).toEqual([hit.id]);
+    expect((await s.queryEmails(ACCOUNT, { filter: { text: "aardvark", hasKeyword: "$flagged" } })).ids).toEqual([
+      hit.id,
+    ]);
   });
 
   it("leaves the non-text conditions on their original columns", async () => {
@@ -338,9 +334,7 @@ describe("backfill support", () => {
     ]);
 
     expect(await s.unindexedEmailCount(ACCOUNT)).toBe(1);
-    expect(await s.unindexedEmailIds(ACCOUNT, 10)).toEqual([
-      { accountId: ACCOUNT, id: "e_legacy" },
-    ]);
+    expect(await s.unindexedEmailIds(ACCOUNT, 10)).toEqual([{ accountId: ACCOUNT, id: "e_legacy" }]);
     expect(await search(s, "Ancient")).toEqual([]);
 
     await s.reindexEmailText(ACCOUNT, "e_legacy", {

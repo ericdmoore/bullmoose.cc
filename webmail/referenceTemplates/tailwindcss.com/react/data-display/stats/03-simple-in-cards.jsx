@@ -1,8 +1,8 @@
 const stats = [
-  { name: "Total Subscribers", stat: "71,897" },
-  { name: "Avg. Open Rate", stat: "58.16%" },
-  { name: "Avg. Click Rate", stat: "24.57%" },
-];
+  { name: 'Total Subscribers', stat: '71,897' },
+  { name: 'Avg. Open Rate', stat: '58.16%' },
+  { name: 'Avg. Click Rate', stat: '24.57%' },
+]
 
 export default function Example() {
   return (
@@ -14,15 +14,11 @@ export default function Example() {
             key={item.name}
             className="overflow-hidden rounded-lg bg-white px-4 py-5 shadow-sm sm:p-6 dark:bg-gray-800/75 dark:inset-ring dark:inset-ring-white/10"
           >
-            <dt className="truncate text-sm font-medium text-gray-500 dark:text-gray-400">
-              {item.name}
-            </dt>
-            <dd className="mt-1 text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">
-              {item.stat}
-            </dd>
+            <dt className="truncate text-sm font-medium text-gray-500 dark:text-gray-400">{item.name}</dt>
+            <dd className="mt-1 text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">{item.stat}</dd>
           </div>
         ))}
       </dl>
     </div>
-  );
+  )
 }

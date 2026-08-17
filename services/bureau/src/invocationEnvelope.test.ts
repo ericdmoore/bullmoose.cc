@@ -63,8 +63,7 @@ const CONFIG = JSON.stringify({
   jobs: { tools: [], credentials: [KEPT, DROPPED], budgetMicros: 1_000_000 },
 });
 
-const envelope = (credentials: string[]) =>
-  JSON.stringify({ tools: [], credentials, budgetMicros: 100_000 });
+const envelope = (credentials: string[]) => JSON.stringify({ tools: [], credentials, budgetMicros: 100_000 });
 
 let allenToken: { id: string; token: string; secretHash: string };
 beforeAll(async () => {
@@ -195,8 +194,7 @@ function harness(): Harness {
         }),
         provisionEnv,
       ),
-    mint: async (invocationId) =>
-      (await issueInvocationToken(db, { invocationId, accountId: ALLEN.accountId }))!,
+    mint: async (invocationId) => (await issueInvocationToken(db, { invocationId, accountId: ALLEN.accountId }))!,
     corrupt: (id, authorityJson) => {
       db.sqlite
         .prepare(`UPDATE agent_invocations SET authority_json = ? WHERE account_id = ? AND id = ?`)
@@ -234,9 +232,7 @@ describe("the envelope's credentials axis finally bites at /bureau/use", () => {
     // DROPPED is untouched and still resolves. The 403 above is the ENVELOPE
     // and nothing else — an ordinary `bm_` bearer for the same principal, the
     // same credential and the same verb goes straight through.
-    expect((await h.use(allenToken.token, { verb: VERB, credRef: DROPPED })).status).toBe(
-      AUTHORIZED,
-    );
+    expect((await h.use(allenToken.token, { verb: VERB, credRef: DROPPED })).status).toBe(AUTHORIZED);
   });
 
   it("the two vocabularies are ONE vocabulary — provision's cred_name IS the envelope's handle", async () => {
@@ -249,9 +245,7 @@ describe("the envelope's credentials axis finally bites at /bureau/use", () => {
     await grant(h, KEPT);
     const leaf = await h.mint("inv_leaf");
     expect((await h.use(leaf, { verb: VERB, credRef: "aws-mcp" })).status).toBe(AUTHORIZED);
-    expect(
-      h.db.query<{ cred_name: string }>(`SELECT cred_name FROM bureau_grants`)[0]!.cred_name,
-    ).toBe("aws-mcp");
+    expect(h.db.query<{ cred_name: string }>(`SELECT cred_name FROM bureau_grants`)[0]!.cred_name).toBe("aws-mcp");
   });
 
   it("a refused use is AUDITED — invariant 6 counts attempts, not successes", async () => {
@@ -415,8 +409,6 @@ describe("what this does NOT narrow, asserted so it is a boundary and not an ove
     // narrowed away from. s17 changed what an INVOCATION may do, not what a
     // principal may do.
     expect((await h.use(allenToken.token, { verb: VERB, credRef: KEPT })).status).toBe(AUTHORIZED);
-    expect((await h.use(allenToken.token, { verb: VERB, credRef: DROPPED })).status).toBe(
-      AUTHORIZED,
-    );
+    expect((await h.use(allenToken.token, { verb: VERB, credRef: DROPPED })).status).toBe(AUTHORIZED);
   });
 });

@@ -79,11 +79,7 @@ export function normalizeName(raw: string): string {
  * and nothing in this section passes it. A client that predicted
  * case-insensitively would refuse names the server would have accepted.
  */
-export function nameTaken(
-  siblings: readonly FileNode[],
-  name: string,
-  excludeId?: string,
-): boolean {
+export function nameTaken(siblings: readonly FileNode[], name: string, excludeId?: string): boolean {
   const target = normalizeName(name);
   return siblings.some((n) => n.id !== excludeId && n.name === target);
 }

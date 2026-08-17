@@ -22,7 +22,7 @@
 But `DEPLOY_ORDER` (`infra/bootstrap.mjs:49`) is:
 
 ```js
-["submit", "jmap", "ingest", "provision", "agent", "anglebrackets"];
+["submit", "jmap", "ingest", "provision", "agent", "anglebrackets"]
 ```
 
 `ingest` is index 2; `agent` is index 4. **On a clean account, the first `wrangler deploy` of
@@ -36,7 +36,7 @@ I did not verify whether the Cloudflare API **hard-rejects** a service binding t
 script or accepts a dangling one. Runtime is fail-soft either way: `services/ingest/src/index.ts:28`
 types it `AGENT?: Fetcher` and `:97` does `if (!env.AGENT || !result.invocations) return`.
 
-So the worst case is a failed _first_ deploy, not data loss. **The certain defect is that four
+So the worst case is a failed *first* deploy, not data loss. **The certain defect is that four
 documents state a rationale that is factually incomplete** — and the stated rationale is exactly what
 a reader would use to place a new worker in the order.
 

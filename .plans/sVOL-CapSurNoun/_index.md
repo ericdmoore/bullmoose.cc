@@ -19,50 +19,50 @@
 Every noun × surface. `CRUD` = built · `-` = absent · `n/a` = not meaningful ·
 `~` = partial. Footnotes and `file:line` evidence live in `_context.md` §2.
 
-| Noun            | JMAP   | CLI      | MCP    | DAV    | WebUI    | GraphQL | Transport |
-| --------------- | ------ | -------- | ------ | ------ | -------- | ------- | --------- |
-| Email           | `CRUD` | `-RUD` ᵃ | `CRUD` | `----` | `CRUD`   | `----`  | `C---`    |
-| Mailbox         | `CRUD` | `CRUD`   | `-R--` | `----` | `-R--`   | `----`  | `~`       |
-| Thread          | `-R--` | `----`   | `----` | `----` | `-R--`   | `----`  | n/a       |
-| EmailSubmission | `CR--` | `C---`   | `----` | `----` | `C---`   | `----`  | `C---`    |
-| AddressBook     | `CRUD` | `CRUD` ᵃ | `-R--` | `CRUD` | `-R--`   | `----`  | n/a       |
-| ContactCard     | `CRUD` | `CRUD` ᵃ | `CRUD` | `CRUD` | `CRUD`   | `----`  | n/a       |
-| Calendar        | `CRUD` | `CRUD` ᵃ | `-R--` | `CRUD` | `-R--`   | `----`  | n/a       |
-| CalendarEvent   | `CRUD` | `CRUD` ᵃ | `CRUD` | `CRUD` | `CRUD`   | `----`  | n/a       |
-| **FileNode**    | `CRUD` | `----`   | `----` | `----` | `CRUD` ᵃ | `----`  | n/a       |
-| Agents          | `-RU-` | `-RU-`   | `----` | n/a    | `-R--`†  | `----`  | `C---`    |
-| Secrets         | n/a    | `CRUD`   | `----` | n/a    | `-R-D`†  | `----`  | n/a       |
-| HumanSettings   | `~R~-` | `-RU-`   | `----` | n/a    | `-RU-`   | `----`  | n/a       |
-| IdentitySetup   | `CRUD` | `CRUD`   | `----` | `~`    | `----`   | `----`  | n/a       |
-| SystemAdmin     | `CRUD` | `CRUD`   | `----` | n/a    | `----`   | `----`  | n/a       |
+| Noun | JMAP | CLI | MCP | DAV | WebUI | GraphQL | Transport |
+|---|---|---|---|---|---|---|---|
+| Email | `CRUD` | `-RUD` ᵃ | `CRUD` | `----` | `CRUD` | `----` | `C---` |
+| Mailbox | `CRUD` | `CRUD` | `-R--` | `----` | `-R--` | `----` | `~` |
+| Thread | `-R--` | `----` | `----` | `----` | `-R--` | `----` | n/a |
+| EmailSubmission | `CR--` | `C---` | `----` | `----` | `C---` | `----` | `C---` |
+| AddressBook | `CRUD` | `CRUD` ᵃ | `-R--` | `CRUD` | `-R--` | `----` | n/a |
+| ContactCard | `CRUD` | `CRUD` ᵃ | `CRUD` | `CRUD` | `CRUD` | `----` | n/a |
+| Calendar | `CRUD` | `CRUD` ᵃ | `-R--` | `CRUD` | `-R--` | `----` | n/a |
+| CalendarEvent | `CRUD` | `CRUD` ᵃ | `CRUD` | `CRUD` | `CRUD` | `----` | n/a |
+| **FileNode** | `CRUD` | `----` | `----` | `----` | `CRUD` ᵃ | `----` | n/a |
+| Agents | `-RU-` | `-RU-` | `----` | n/a | `-R--`† | `----` | `C---` |
+| Secrets | n/a | `CRUD` | `----` | n/a | `-R-D`† | `----` | n/a |
+| HumanSettings | `~R~-` | `-RU-` | `----` | n/a | `-RU-` | `----` | n/a |
+| IdentitySetup | `CRUD` | `CRUD` | `----` | `~` | `----` | `----` | n/a |
+| SystemAdmin | `CRUD` | `CRUD` | `----` | n/a | `----` | `----` | n/a |
 
 † **Agents and Secrets render against a real token. The markers below are still `-R--` and
 `-R-D`, but for entirely different reasons than this footnote used to give.**
 
-_This footnote previously read "Agents and Secrets render, but only against `?demo=1` … four
+*This footnote previously read "Agents and Secrets render, but only against `?demo=1` … four
 of the five endpoints it reads are **requested, not served** … only `GET /vault/credentials`
 is live." Every clause of that is now false. `8813423` falsified it on 2026-08-13 and it stood
-here unchanged until 2026-08-17 — see `readme.md` § Closing._
+here unchanged until 2026-08-17 — see `readme.md` § Closing.*
 
 - **All four `/console/*` routes are served** — `services/jmap/src/console.ts`, dispatched at
   `services/jmap/src/index.ts:136`, commit `8813423` ("Serve the console's four `/console/*`
   read routes"). `webmail/src/lib/console/ConsoleClient.ts:112-113` names all five endpoints
-  and says so in one line: _"All five are live."_ The per-resource view renders real data;
+  and says so in one line: *"All five are live."* The per-resource view renders real data;
   the "unavailable" panel is now an error path, not the steady state.
 - **The projection this footnote said was still owed is the thing that shipped.** `console.ts`
-  _is_ the browser-reachable projection of `015`'s introspection queries — that was `8813423`'s
+  *is* the browser-reachable projection of `015`'s introspection queries — that was `8813423`'s
   stated purpose, and `015`'s `x-internal-token` gate is no longer what stands between the
   browser and the answers.
 - **`Agents` stays `-R--` because the console is deliberately read-only**, not because
   anything is missing: `handleConsole` refuses every non-`GET` with a 405, on the reasoning
-  that _"there is no console write surface, and a POST that fell through to a GET handler
-  would be one"_ (`console.ts:288-289`). Agent **configuration** writes are `s10-agents`, a
-  different unit; `023` is the _activity_ surface and always was.
+  that *"there is no console write surface, and a POST that fell through to a GET handler
+  would be one"* (`console.ts:288-289`). Agent **configuration** writes are `s10-agents`, a
+  different unit; `023` is the *activity* surface and always was.
 - **`Secrets` stays `-R-D`, and `GET /vault/credentials` is no longer the reason.** All four
   vault routes are served — `PUT` (`vault.ts:175`), `GET` (`:288`), rotate (`:298`), `DELETE`
   (`:326`). The two missing letters are a UI choice plus one genuinely unserved route:
   - **`C`** — `entryPlan` (`credentials.ts:292`) routes every raw-key kind to the **CLI on
-    purpose** (_"a browser form is the worst place for it to pass through"_), and the one kind
+    purpose** (*"a browser form is the worst place for it to pass through"*), and the one kind
     the browser will mint itself, `oauth-refresh`, needs `POST /vault/oauth/start`, which is
     **still not served** (`services/agent/src/index.ts:177` routes only `/vault/credentials*`).
   - **`U`** — the UI renders `rotateCommandFor(name)` as a copyable CLI line
@@ -78,14 +78,14 @@ here unchanged until 2026-08-17 — see `readme.md` § Closing._
 not new work; they are cells whose units this table already marked ✅ while the marker still
 read as absent. Read out of the source, not out of the unit files:
 
-| Cell                | Was    | Is     | Evidence                                                                                          | Unit  |
-| ------------------- | ------ | ------ | ------------------------------------------------------------------------------------------------- | ----- |
-| Email × CLI         | `-R~-` | `-RUD` | `packages/cli/src/main.ts:373-381` — `flag seen move label archive junk trash rm delete`          | `019` |
-| AddressBook × CLI   | `~R--` | `CRUD` | `packages/cli/src/contacts.ts:480,500,518,538` — `books list/create/rename/rm`                    | `017` |
-| ContactCard × CLI   | `CR--` | `CRUD` | `packages/cli/src/contacts.ts:84-110` — `list show create edit rm import export`                  | `017` |
-| Calendar × CLI      | `-R--` | `CRUD` | `packages/cli/src/calendar.ts:84-94` — `list create rename rm export`                             | `018` |
-| CalendarEvent × CLI | `-R--` | `CRUD` | `packages/cli/src/calendar.ts:242-246` — `event create/edit/rm`                                   | `018` |
-| FileNode × WebUI    | `----` | `CRUD` | `webmail/src/lib/files/api.ts:277,329,370,408` — `createFolder uploadFile renameNode destroyNode` | `021` |
+| Cell | Was | Is | Evidence | Unit |
+|---|---|---|---|---|
+| Email × CLI | `-R~-` | `-RUD` | `packages/cli/src/main.ts:373-381` — `flag seen move label archive junk trash rm delete` | `019` |
+| AddressBook × CLI | `~R--` | `CRUD` | `packages/cli/src/contacts.ts:480,500,518,538` — `books list/create/rename/rm` | `017` |
+| ContactCard × CLI | `CR--` | `CRUD` | `packages/cli/src/contacts.ts:84-110` — `list show create edit rm import export` | `017` |
+| Calendar × CLI | `-R--` | `CRUD` | `packages/cli/src/calendar.ts:84-94` — `list create rename rm export` | `018` |
+| CalendarEvent × CLI | `-R--` | `CRUD` | `packages/cli/src/calendar.ts:242-246` — `event create/edit/rm` | `018` |
+| FileNode × WebUI | `----` | `CRUD` | `webmail/src/lib/files/api.ts:277,329,370,408` — `createFolder uploadFile renameNode destroyNode` | `021` |
 
 Email × CLI keeps its `-` on Create deliberately: composing is `EmailSubmission × C`
 (`bullmoose send`), which the row below already carries. The point of listing these is that
@@ -95,12 +95,12 @@ understating, and always in the direction of more work appearing to remain.
 **What the grid says at a glance:**
 
 - **Contacts and Calendar are finished on every surface they have.** Full CRUD on JMAP, DAV,
-  MCP (items) and now CLI. This bullet used to end _"what remains for them is the CLI and
-  WebUI columns"_ — `017` and `018` closed the CLI half and `022` the WebUI half. What is
+  MCP (items) and now CLI. This bullet used to end *"what remains for them is the CLI and
+  WebUI columns"* — `017` and `018` closed the CLI half and `022` the WebUI half. What is
   genuinely left is **collection C/U/D over MCP**, which is unfiled (see §4) and always was.
-- **`Mailbox` was the outlier and no longer is.** It used to read _"mail is the flagship noun
+- **`Mailbox` was the outlier and no longer is.** It used to read *"mail is the flagship noun
   and the least mutable thing in the system — no create, rename, move or delete on any
-  surface."_ `004` shipped `Mailbox/set` plus the CLI verbs.
+  surface."* `004` shipped `Mailbox/set` plus the CLI verbs.
 - **The MCP column is no longer empty.** `013` landed ten tools and MCP's first WRITE of any
   kind: full CRUD on `CalendarEvent` and `ContactCard`, Read on `Calendar` and `AddressBook`.
   `014` then added eight Email tools — read, search, body, and triage (flag / move / destroy)
@@ -108,7 +108,7 @@ understating, and always in the direction of more work appearing to remain.
   table. `015` added seven read-only introspection tools over the authorization state itself
   (`Agents × Read`, `SystemAdmin × Read`), narrowed to accounts the caller **owns**. Note the
   shape of what
-  shipped — the two _collection_ nouns are `R` only, because the unit's own tool list maps
+  shipped — the two *collection* nouns are `R` only, because the unit's own tool list maps
   `calendar_list` → `Calendar/get` and `contacts_list_books` → `AddressBook/get` and stops
   there; creating and deleting calendars and address books over MCP is unfiled (see §4).
 - **`SystemAdmin` closed its `~~` on both surfaces, with two asterisks worth keeping.** `008`
@@ -116,25 +116,25 @@ understating, and always in the direction of more work appearing to remain.
   Account delete is **soft** (a `deleted_at` tombstone plus a route/KV teardown — the mail is
   on a shard this worker cannot reach), and `principals`, `credentials` and `identities` still
   have no delete of their own; they go when their tenant does. Also note the row's **`agent
-disable`** — the one route here that is a safety control rather than an ergonomic one, and
+  disable`** — the one route here that is a safety control rather than an ergonomic one, and
   the reason this unit moved from wave 4 to wave 3 (footnote ⁵).
 - **`Agents × D` is deliberately still open in §4 even though `agent unbind` shipped.** `008`
-  built binding delete; `007` owns _invocation_ create/delete. `config.yml` files both under
+  built binding delete; `007` owns *invocation* create/delete. `config.yml` files both under
   `Agents`, which is the disagreement `✅008`'s own header records — resolving it is a ledger
   decision, not a code one.
 - ~~**The WebUI and GraphQL columns are empty because the surfaces don't exist.** Every cell
   there is `E4` by definition.~~ **Half of this is now wrong, and it was the volume's single
-  largest assumption.** The WebUI column is the _most_ populated column in the grid after
+  largest assumption.** The WebUI column is the *most* populated column in the grid after
   JMAP: `webmail/` carries `mail`, `files`, `contacts`, `calendar`, `settings`, `agents`,
   `search` and `approvals` pages. GraphQL is still empty and now permanently so — `025` is
   wontfix (footnote ¹¹), so that column is a deliberate blank rather than a backlog.
-  The `E4` rationale in `readme.md` § Grades (_"anything on a stack that does not exist yet
-  (WebUI, GraphQL)"_) should be read as historical.
+  The `E4` rationale in `readme.md` § Grades (*"anything on a stack that does not exist yet
+  (WebUI, GraphQL)"*) should be read as historical.
 - **DAV is read-write end to end, at both levels.** Cards and events PUT/DELETE with proper
   ETags; collections gained create/delete in `009` (`MKCALENDAR` / extended `MKCOL` /
   collection `DELETE`) and update in `common/026` item 3 (`PROPPATCH`). Both DAV collection
   columns now read `CRUD` — a client can create, rename, recolour and delete a calendar or
-  address book. This bullet used to end _"the one remaining `-` is Update"_.
+  address book. This bullet used to end *"the one remaining `-` is Update"*.
 
 ---
 
@@ -143,43 +143,43 @@ disable`** — the one route here that is a safety control rather than an ergono
 `kind`: **cap** = capability · **proj** = projection · **pre** = prerequisite.
 `owner`: `sVOL` = this volume owns it · otherwise the section that already does.
 
-| #   | Unit                                                         | kind   | E        | I        | owner                | depends on                  | status                                                                            |
-| --- | ------------------------------------------------------------ | ------ | -------- | -------- | -------------------- | --------------------------- | --------------------------------------------------------------------------------- |
-| 001 | MCP `ToolDef` scope + domain                                 | pre    | E1       | I2       | sVOL                 | —                           | **✅ done**                                                                       |
-| 002 | Shared test harness — fake D1 (`.batch()`) + DO/blob stubs ¹ | pre    | E2       | I2       | sVOL                 | —                           | **✅ done**                                                                       |
-| 003 | Recurrence correctness before calendar writes                | pre    | **E3** ⁶ | I3       | `common/003`         | —                           | **✅ done**                                                                       |
-| 004 | `Mailbox/set` + CLI                                          | cap    | E3       | I3       | sVOL                 | 002 ⁷                       | **✅ done**                                                                       |
-| 005 | `EmailSubmission/get`                                        | cap    | E1       | I2       | sVOL                 | —                           | **✅ done** ⁸                                                                     |
-| 006 | `Identity/set` + CLI signatures                              | cap    | **E3** ² | I3       | sVOL                 | 002                         | **✅ done**                                                                       |
-| 007 | `AgentInvocation` on-demand trigger                          | cap    | E2       | I3       | sVOL                 | 002                         | **✅ done**                                                                       |
-| 008 | Admin lifecycle — update + delete                            | cap    | **E3** ⁵ | **I3** ⁵ | sVOL                 | —                           | **✅ done**                                                                       |
-| 009 | DAV collection creation (`MKCOL`/`MKCALENDAR`)               | cap    | E2       | I3       | sVOL                 | —                           | **✅ done**                                                                       |
-| 010 | Blob lifecycle — enumerate, delete, revoke share             | cap    | E2 ⁸     | I1       | sVOL                 | —                           | **✅ done**                                                                       |
-| 011 | The `FileNode` noun                                          | cap    | E4       | I3       | **s03.B**            | s03.A                       | **✅ done** ⁹                                                                     |
-| 012 | `AddressBook/query` + `Calendar/query`                       | cap    | E1       | I1 ³     | sVOL                 | —                           | **wontfix** ³ — neither method exists in RFC 9610 §2 / draft-jmap-calendars-27 §4 |
-| 013 | **Calendar + Contacts CRUD over MCP**                        | proj   | E2       | I3       | sVOL                 | 001, 002, 003               | **✅ done**                                                                       |
-| 014 | **Email read + triage over MCP**                             | proj   | E2       | I3       | sVOL                 | 001, 002                    | **✅ done**                                                                       |
-| 015 | **Self-introspection over MCP (`help@`)**                    | proj   | E2       | I1       | sVOL                 | 001                         | **✅ done**                                                                       |
-| 016 | **CLI I/O contract**                                         | proj ⁹ | E2       | I3       | **s05** T1           | —                           | **✅ done**                                                                       |
-| 017 | Contacts CRUD over CLI                                       | proj   | E2       | I3       | **s05** T2           | ~~016~~ **unblocked**       | **✅ done**                                                                       |
-| 018 | Calendar CRUD over CLI                                       | proj   | E2       | I3       | **s05** T3           | ~~016, 003~~ **unblocked**  | **✅ done** ¹⁰                                                                    |
-| 019 | Email triage verbs over CLI                                  | proj   | E2       | I3       | sVOL                 | ~~016~~ **unblocked**       | **✅ done**                                                                       |
-| 020 | Creds mint-time fields                                       | proj   | E2       | I2       | **s05** T4 + **s04** | ~~s04 spec~~ **decomposed** | **✅ done**                                                                       |
-| 021 | Email + Files over WebUI                                     | proj   | E4       | I3       | **s03.C**            | s03.A, s03.B                | **✅ done** ¹⁰                                                                    |
-| 022 | Contacts + Calendar over WebUI                               | proj   | E4       | I3       | sVOL                 | 021                         | **✅ done** ¹⁰                                                                    |
-| 023 | Agents + Secrets over WebUI                                  | proj   | E4       | **I1** ⁴ | **s03.E**            | s04 spec, 021               | **✅ done** ¹⁴                                                                    |
-| 024 | HumanSettings over WebUI                                     | proj   | E1       | I1       | sVOL                 | 006, 021                    | **✅ done** ¹⁵                                                                    |
+| # | Unit | kind | E | I | owner | depends on | status |
+|---|---|---|---|---|---|---|---|
+| 001 | MCP `ToolDef` scope + domain | pre | E1 | I2 | sVOL | — | **✅ done** |
+| 002 | Shared test harness — fake D1 (`.batch()`) + DO/blob stubs ¹ | pre | E2 | I2 | sVOL | — | **✅ done** |
+| 003 | Recurrence correctness before calendar writes | pre | **E3** ⁶ | I3 | `common/003` | — | **✅ done** |
+| 004 | `Mailbox/set` + CLI | cap | E3 | I3 | sVOL | 002 ⁷ | **✅ done** |
+| 005 | `EmailSubmission/get` | cap | E1 | I2 | sVOL | — | **✅ done** ⁸ |
+| 006 | `Identity/set` + CLI signatures | cap | **E3** ² | I3 | sVOL | 002 | **✅ done** |
+| 007 | `AgentInvocation` on-demand trigger | cap | E2 | I3 | sVOL | 002 | **✅ done** |
+| 008 | Admin lifecycle — update + delete | cap | **E3** ⁵ | **I3** ⁵ | sVOL | — | **✅ done** |
+| 009 | DAV collection creation (`MKCOL`/`MKCALENDAR`) | cap | E2 | I3 | sVOL | — | **✅ done** |
+| 010 | Blob lifecycle — enumerate, delete, revoke share | cap | E2 ⁸ | I1 | sVOL | — | **✅ done** |
+| 011 | The `FileNode` noun | cap | E4 | I3 | **s03.B** | s03.A | **✅ done** ⁹ |
+| 012 | `AddressBook/query` + `Calendar/query` | cap | E1 | I1 ³ | sVOL | — | **wontfix** ³ — neither method exists in RFC 9610 §2 / draft-jmap-calendars-27 §4 |
+| 013 | **Calendar + Contacts CRUD over MCP** | proj | E2 | I3 | sVOL | 001, 002, 003 | **✅ done** |
+| 014 | **Email read + triage over MCP** | proj | E2 | I3 | sVOL | 001, 002 | **✅ done** |
+| 015 | **Self-introspection over MCP (`help@`)** | proj | E2 | I1 | sVOL | 001 | **✅ done** |
+| 016 | **CLI I/O contract** | proj ⁹ | E2 | I3 | **s05** T1 | — | **✅ done** |
+| 017 | Contacts CRUD over CLI | proj | E2 | I3 | **s05** T2 | ~~016~~ **unblocked** | **✅ done** |
+| 018 | Calendar CRUD over CLI | proj | E2 | I3 | **s05** T3 | ~~016, 003~~ **unblocked** | **✅ done** ¹⁰ |
+| 019 | Email triage verbs over CLI | proj | E2 | I3 | sVOL | ~~016~~ **unblocked** | **✅ done** |
+| 020 | Creds mint-time fields | proj | E2 | I2 | **s05** T4 + **s04** | ~~s04 spec~~ **decomposed** | **✅ done** |
+| 021 | Email + Files over WebUI | proj | E4 | I3 | **s03.C** | s03.A, s03.B | **✅ done** ¹⁰ |
+| 022 | Contacts + Calendar over WebUI | proj | E4 | I3 | sVOL | 021 | **✅ done** ¹⁰ |
+| 023 | Agents + Secrets over WebUI | proj | E4 | **I1** ⁴ | **s03.E** | s04 spec, 021 | **✅ done** ¹⁴ |
+| 024 | HumanSettings over WebUI | proj | E1 | I1 | sVOL | 006, 021 | **✅ done** ¹⁵ |
 
 > ~~**023 and 024 are BLOCKED, not merely unstarted** (2026-08-14): a WebUI design rewrite on
 > Tailwind templates is in flight with a co-writer. Building the agents-config and settings
-> surfaces now would be building into a moving target — both are _new panels_, which is
+> surfaces now would be building into a moving target — both are *new panels*, which is
 > exactly what a redesign replaces. Their server halves are ready and unblocked
 > (`/console/*` serves, `PATCH /agent-bindings/{id}` writes the typed core), so when the
 > redesign settles these are UI-only work.~~
 >
 > **Struck 2026-08-17. Neither was blocked, and by this banner's own evidence.** The banner
-> conceded _"`/console/*` serves"_ — i.e. the server half was already done — and then blocked
-> the units on a _redesign_, which is a reason to defer a repaint, not a reason to call a
+> conceded *"`/console/*` serves"* — i.e. the server half was already done — and then blocked
+> the units on a *redesign*, which is a reason to defer a repaint, not a reason to call a
 > shipped surface unstarted. Both had in fact already shipped when it was written: `024` as
 > `s07` T2 (three days earlier) and `023` as `s03.E` T1–T3. The redesign landed on top of
 > them — `AppTw.astro` is the Tailwind layout both pages now use — rather than being blocked
@@ -189,24 +189,24 @@ disable`** — the one route here that is a safety control rather than an ergono
 > **2026-08-10**, four days before. `023`'s screens shipped `6f9be2d` **2026-08-09** and the
 > four `/console/*` routes `8813423` **2026-08-13** — the day before. Nothing was blocked;
 > the ledger was simply not read against the tree. See ¹⁴ and ¹⁵.
-> | 025 | GraphQL facade | proj | E4 | I2 | `common/022` | spike first | **wontfix — archived** ¹¹ |
-> | 026 | `queryChanges` for the four stubs | cap | E3 | **I0** ⁴ | sVOL | — | **✅ done** ¹² |
-> | 027 | `Thread/changes` | cap | E2 | I0 | sVOL | — | **✅ done** ¹³ |
+| 025 | GraphQL facade | proj | E4 | I2 | `common/022` | spike first | **wontfix — archived** ¹¹ |
+| 026 | `queryChanges` for the four stubs | cap | E3 | **I0** ⁴ | sVOL | — | **✅ done** ¹² |
+| 027 | `Thread/changes` | cap | E2 | I0 | sVOL | — | **✅ done** ¹³ |
 
 ¹ **`002` was widened after review.** As first scoped it was "shared fake-D1 with `.batch()`",
 which is necessary but **not sufficient**: `storeFor` requires `env.BLOBS`
 (`services/jmap/src/methods/common.ts:58`) and the changelog commit requires `env.ACCOUNT_DO`
-(`common.ts:62-63`). Any acceptance criterion of the form _"…and the write appears in
-`Foo/changes`"_ — which is the criterion that catches the skipped-choreography bug — is
+(`common.ts:62-63`). Any acceptance criterion of the form *"…and the write appears in
+`Foo/changes`"* — which is the criterion that catches the skipped-choreography bug — is
 untestable without DO stubs too. The unit file still carries the narrower title; its Open
 Questions section owns the discrepancy.
 
-**Shipped as `@bullmoose/test-fakes`.** The widened scope was built: D1 (real SQLite on the
-live schema, atomic `.batch()`), R2, KV, and `ACCOUNT_DO` — the last running the **real**
-`AccountDO` class over in-memory storage, so `Foo/changes` is answered by the deployed
-changelog rather than a canned `{newState}`. Six local fakes were consolidated, not one: the
-count grew to `services/provision/src/mintScopes.test.ts` as well. `013`'s done-when #2 is now
-a supported assertion, and `services/jmap/src/methods/calendars.test.ts` demonstrates it.
+  **Shipped as `@bullmoose/test-fakes`.** The widened scope was built: D1 (real SQLite on the
+  live schema, atomic `.batch()`), R2, KV, and `ACCOUNT_DO` — the last running the **real**
+  `AccountDO` class over in-memory storage, so `Foo/changes` is answered by the deployed
+  changelog rather than a canned `{newState}`. Six local fakes were consolidated, not one: the
+  count grew to `services/provision/src/mintScopes.test.ts` as well. `013`'s done-when #2 is now
+  a supported assertion, and `services/jmap/src/methods/calendars.test.ts` demonstrates it.
 
 ² **`006` was regraded `E2` → `E3` after review.** `identities`
 (`packages/mailstore/sql/control-plane.sql:41-47`) has exactly four columns —
@@ -216,7 +216,7 @@ The mitigating precedent — `contact_cards.dav_name` (`data-plane.sql:187-190`)
 column with its `ALTER TABLE` written in a comment — is real but thin.
 
 **The same review inverted the schema attribution on `004`.** `mailboxes`
-(`data-plane.sql:6-16`) _already_ has `parent_id`, `name`, `role`, and `sort_order` — every
+(`data-plane.sql:6-16`) *already* has `parent_id`, `name`, `role`, and `sort_order` — every
 column `Mailbox/set` writes. `004` needs a schema change only if `isSubscribed` (hardcoded
 `true` at `mailbox.ts:38`) must become real. It stays `E3`, but on the **"new semantics other
 code must respect"** limb, not the migration limb: four call sites currently assume mailboxes
@@ -224,12 +224,12 @@ are immutable (`ingest/src/index.ts:125`, `email.ts:362-364`, `cli/src/sync.ts:1
 `cli/src/main.ts:884`).
 
 **Confirmed on delivery.** `004` shipped with no schema change: `isSubscribed` stayed hardcoded
-and the write path _rejects_ `isSubscribed: false` rather than accepting a property it discards,
+and the write path *rejects* `isSubscribed: false` rather than accepting a property it discards,
 which was the open question's worry and costs no column. All four call sites turned out to need
 no edit — see the unit file's Status note.
 
 ⁷ **`004` did NOT wait for `002`.** The dependency was on a shared fake-D1 with `.batch()`;
-`004` carries a local, self-contained one (a _stateful_ one — the destroy assertions need reads
+`004` carries a local, self-contained one (a *stateful* one — the destroy assertions need reads
 to see prior writes, which a write-recording fake cannot express) so as not to conflict with
 `002` consolidating the others in parallel. `002`'s scope grows by one more implementation to
 absorb; the edge was soft, not hard.
@@ -238,7 +238,7 @@ absorb; the edge was soft, not hard.
 observable only by an engineer — which `readme.md`'s verifiability bar disqualifies, making it
 `I0`. `I1` survives only if a human-drivable CLI filter ships alongside. Left at `I1` because
 nothing downstream depends on the difference; the unit file argues it. A sharper doubt is
-recorded there too: `contacts.ts:25-26` enumerates RFC 9610 as _"AddressBook/get·set·changes"_,
+recorded there too: `contacts.ts:25-26` enumerates RFC 9610 as *"AddressBook/get·set·changes"*,
 implying the spec may define **no** `AddressBook/query` at all — in which case this unit is not
 low-value but ill-formed. **Verified 2026-08 against the RFC text and the doubt is confirmed:**
 RFC 9610 §2 defines only `AddressBook/get` (§2.1), `AddressBook/changes` (§2.2), `AddressBook/set`
@@ -250,42 +250,42 @@ non-standard surface, so the unit is **wontfix**, not `todo`. The unit file carr
 citation and per-noun verdict.
 
 ⁴ **`023` and `026` were regraded down at review, on the reviewers' own argument.**
-`023` (`I2` → `I1`): it _is_ human-verifiable (the rubric names "a browser" — revoke a grant,
+`023` (`I2` → `I1`): it *is* human-verifiable (the rubric names "a browser" — revoke a grant,
 reload, watch the answer change) and it unlocks nothing, because `s03.E` is the terminal leaf
 of the arc: `s03.C` blocks it, `s04` gates it, nothing follows.
 `026` (`I1` → `I0`): `I1` requires human-verifiability, and on completion this is a JMAP method
-with no surface emitting a JSON delta — the rubric's own example of _test_-verifiable. Its
-"unlocks" leg also fails strictly: `s03.C` `arch.md:57` _names_ `queryChanges` but is not
+with no surface emitting a JSON delta — the rubric's own example of *test*-verifiable. Its
+"unlocks" leg also fails strictly: `s03.C` `arch.md:57` *names* `queryChanges` but is not
 blocked by it, since the re-query fallback is mandatory anyway (the changelog window 409s below
 the floor, `account-do:274-278`).
 
 ⁵ **`008` contains one route that is not `I1` and must not wait for wave 4.**
 `agent_bindings.enabled` (`data-plane.sql:104`) is written `1` at creation
 (`provision/src/index.ts:638`) and **never written again** — no route reaches it. Both drain
-paths filter on it (`agent/src/index.ts:110`, `ingest/src/index.ts:169`), so it _is_ the agent
+paths filter on it (`agent/src/index.ts:110`, `ingest/src/index.ts:169`), so it *is* the agent
 kill switch, merely unreachable. `007` hands a human an on-demand agent trigger into a system
 with no off switch, which makes binding-disable a named de-risking dependency of `007` — `I3`,
 wave 3. The rest of `008` (tenant/domain/account lifecycle) stays `I1`/wave 4.
 
-**Resolved by shipping, not by splitting — and BOTH grades moved.** `008` and
-`.feedback/fromClaude/✅023` landed as one commit, because the kill switch and the rest of the
-unit are the same two files (`services/provision/src/index.ts`, `packages/cli/src/admin.ts`)
-and the split this footnote proposed would have put two agents in one file. So `008a` never
-became a separate ledger row; the wave-3 sequencing this footnote asked for was honoured by
-moving the _whole_ unit forward.
+  **Resolved by shipping, not by splitting — and BOTH grades moved.** `008` and
+  `.feedback/fromClaude/✅023` landed as one commit, because the kill switch and the rest of the
+  unit are the same two files (`services/provision/src/index.ts`, `packages/cli/src/admin.ts`)
+  and the split this footnote proposed would have put two agents in one file. So `008a` never
+  became a separate ledger row; the wave-3 sequencing this footnote asked for was honoured by
+  moving the *whole* unit forward.
 
-- **`I1` → `I3`**, on this footnote's own argument. `007`'s named de-risking dependency is met.
-- **`E2` → `E3`**, on the unit file's Open Question #2. The tombstone design was adopted for
-  `accounts` (`deleted_at`), which is the literal `E3` anchor: one hand-run
-  `ALTER TABLE accounts ADD COLUMN deleted_at INTEGER` (`docs/DEPLOY.md` §1), and it must run
-  **before** the workers deploy — `deleted_at IS NULL` is now in `verifyBearer`'s account
-  resolution, so a worker ahead of the column authenticates nobody.
+  - **`I1` → `I3`**, on this footnote's own argument. `007`'s named de-risking dependency is met.
+  - **`E2` → `E3`**, on the unit file's Open Question #2. The tombstone design was adopted for
+    `accounts` (`deleted_at`), which is the literal `E3` anchor: one hand-run
+    `ALTER TABLE accounts ADD COLUMN deleted_at INTEGER` (`docs/DEPLOY.md` §1), and it must run
+    **before** the workers deploy — `deleted_at IS NULL` is now in `verifyBearer`'s account
+    resolution, so a worker ahead of the column authenticates nobody.
 
-Scope note: `tokens` and `grants` deliberately keep their hard `DELETE`. `s03.A` T2 owns their
-tombstones _and_ the `grant_lifecycle` log; doing the column half here would have bought this
-repo two hand-run schema events instead of one, which is the exact thing the unit's tier-2
-warning says to avoid. **`s03.A` T2 is therefore still the only outstanding schema event**, and
-it now has a precedent to follow rather than a coordination problem to solve.
+  Scope note: `tokens` and `grants` deliberately keep their hard `DELETE`. `s03.A` T2 owns their
+  tombstones *and* the `grant_lifecycle` log; doing the column half here would have bought this
+  repo two hand-run schema events instead of one, which is the exact thing the unit's tier-2
+  warning says to avoid. **`s03.A` T2 is therefore still the only outstanding schema event**, and
+  it now has a precedent to follow rather than a coordination problem to solve.
 
 ⁶ **`003` shipped as `E3`, not the `E2` the ledger predicted** — and the earlier note that
 this grade was "contestable" was right. The guard had to move to `eventSpan` (the parser was
@@ -321,19 +321,19 @@ link is valid, so `expirationTtl` reaps it at that instant and Done-when #6 ("ex
 disappear on their own — no sweeper, no cron") is the storage engine's default rather than a
 cron job this repo has nowhere to put. The `shares` table would also have put a D1 read on the
 hot path of `GET /share/*`, the one route in the jmap worker an anonymous client can reach.
-`packages/cli/src/admin.ts:18`'s _"needs the shares table"_ is corrected in place.
+`packages/cli/src/admin.ts:18`'s *"needs the shares table"* is corrected in place.
 
-Two calls the unit file did not anticipate. §2(a)'s advice to bind a **separate** KV
-namespace is not available: `infra/bootstrap.mjs`'s `wireText` (`:160`) rewrites only the
-first `"id"` after `"kv_namespaces"`, so a second binding deploys unwired — records live in
-`ROUTES` under `share:`, as `login:` already does. And Open Question #5 resolved as **flush**:
-`shareId` is inside the signed payload, so every link minted before this change 403s, by
-design.
+  Two calls the unit file did not anticipate. §2(a)'s advice to bind a **separate** KV
+  namespace is not available: `infra/bootstrap.mjs`'s `wireText` (`:160`) rewrites only the
+  first `"id"` after `"kv_namespaces"`, so a second binding deploys unwired — records live in
+  `ROUTES` under `share:`, as `login:` already does. And Open Question #5 resolved as **flush**:
+  `shareId` is inside the signed payload, so every link minted before this change 403s, by
+  design.
 
-⚠️ **The `s03.B` edge in `011:62-65` is narrowed, not closed.** `handleBlobDelete` now
-refuses while a live share points at the blob, but `FileNode/set {destroy}` will not travel
-through that route — `011` must call revoke on destroy or the leak `011` warned about
-survives this unit.
+  ⚠️ **The `s03.B` edge in `011:62-65` is narrowed, not closed.** `handleBlobDelete` now
+  refuses while a live share points at the blob, but `FileNode/set {destroy}` will not travel
+  through that route — `011` must call revoke on destroy or the leak `011` warned about
+  survives this unit.
 
 ⁹ **`016` is filed as a projection and isn't one.** It projects no capability onto a new
 surface — it is a prerequisite that reshapes an existing one, and `017`/`018`/`019` all
@@ -354,15 +354,15 @@ existing section or filed issue rather than restating the work. Their files here
 cell mapping, the grades, and the dependency edges — nothing else.
 
 ⚠️ **Two more grades are contested in their unit files and left as filed:** `004`'s `I3` (no
-unit names `Mailbox/set` as a blocker, so the strict test says `I1` — see `readme.md` § _Where
-the rubric is known to mislead_) and `019`'s `I3` (nothing lists it as a dependency either).
+unit names `Mailbox/set` as a blocker, so the strict test says `I1` — see `readme.md` § *Where
+the rubric is known to mislead*) and `019`'s `I3` (nothing lists it as a dependency either).
 Both are cases where impact and priority genuinely diverge.
 
 ---
 
 ⁹ **011 closed 2026-08-13.** T3 (the attachment sidestep) landed: inbound attachments
 over the threshold mint FileNodes in an `Attachments` role directory, content-addressed so
-file and message share one R2 object. The _outbound_ half is NOT part of this unit — it is
+file and message share one R2 object. The *outbound* half is NOT part of this unit — it is
 blocked on compose attachments (`Email/set create` hardcodes `attachments: []`), tracked in
 `.backlog/compose-attachments.md`.
 
@@ -389,7 +389,7 @@ cannot detect (`filenode.ts:117`).
 
 ¹³ **027 closed 2026-08-14, by registering the method rather than computing anything.** The
 grade assumed the work meant tracking thread state; it did not. `Thread/changes` was
-_absent_, so a client got `unknownMethod` — "this server does not speak RFC 8621 §3.2" —
+*absent*, so a client got `unknownMethod` — "this server does not speak RFC 8621 §3.2" —
 where the honest answer is the same `cannotCalculateChanges` above. Two lines and five
 tests, which pin that the three possible answers are not interchangeable.
 
@@ -400,18 +400,18 @@ defines a singleton with `get`/`set` only, so its absence is correct, not missin
 ¹⁴ **023 closed — it shipped in two halves and neither half was ever recorded here.** The
 screens landed as `s03.E` T1/T2/T3, all three marked ✅ in `.plans/s03.E-console/devPlan.md:16-18`
 (`webmail/src/components/AgentConsole.tsx` over `webmail/src/lib/console/{perAgent,perResource,credentials,scopes}.ts`).
-The server half — the _one thing that slice requested rather than built_
+The server half — the *one thing that slice requested rather than built*
 (`devPlan.md:38`) — landed as `8813423`. `Agents × Read × WebUI` is covered; `Secrets × C/U`
 is the residue described in §1 †, and is half invariant rather than half todo.
 
 ¹⁵ **024 closed as `s07` T2, in the section that built it rather than this one.**
 `webmail/src/pages/settings.astro` + `webmail/src/lib/settings/{identity,vacation}.ts`,
 commit `f23ea39`. `.plans/s07-app-surface/devPlan.md:220` carries the ✅ and names this unit
-by number: _"sVOL **`024`**, graded **E1**."_ Both `HumanSettings` datatypes over the four
+by number: *"sVOL **`024`**, graded **E1**."* Both `HumanSettings` datatypes over the four
 live methods, no server work — exactly the `E1` the unit predicted. Its stated blocker
 (`006` `Identity/set`) had shipped; the unit file already carried a ⚠️ STALE note saying so.
 
-**The shape of this miss is worth keeping.** `024` was closed by a _different section_ that
+**The shape of this miss is worth keeping.** `024` was closed by a *different section* that
 correctly cited the sVOL unit number, and sVOL still did not learn. A cross-reference is only
 a link if something walks it — `readme.md` step 4 assumes the person who ships is the person
 who updates the ledger, and neither of these units was shipped by that person.
@@ -452,22 +452,22 @@ wave 5 — the unbuilt stacks (they exist now)
 ```
 
 **Every wave is closed.** Waves 1–3 as planned; wave 4 with two wontfixes (`012`, `025`) that
-are non-goals rather than debts; wave 5 — _"the unbuilt stacks"_ — built. The volume's own
+are non-goals rather than debts; wave 5 — *"the unbuilt stacks"* — built. The volume's own
 framing is the thing that dated fastest: `readme.md` still says WebUI and GraphQL cells are
-`E4` _"because the surfaces don't exist"_, and one of those two surfaces now does.
+`E4` *"because the surfaces don't exist"*, and one of those two surfaces now does.
 
 **Wave 2 is the acceptance moment for the whole volume.** `013` + `018` together produce the
 demo that motivated this: Claude creates a calendar event over MCP; Codex reads it back;
 `bullmoose calendar agenda` and a CalDAV `PROPFIND` from Apple Calendar both agree. Three
-independent projections over one write — the difference between _self-consistent_ and
-_correct_.
+independent projections over one write — the difference between *self-consistent* and
+*correct*.
 
 **Half of it has landed.** `013` shipped the write, and the reason the triangulation should
 hold is structural rather than lucky: the MCP tools do not write — they call
 `CalendarEvent/set` and `ContactCard/set` in process (`services/agent/src/jmapBridge.ts`), so
-the ctag bump and the changelog commit that CalDAV and the CLI mirror depend on are the _same
-code path_ the JMAP worker runs, not a second implementation of it. What is still unproven is
-the _live_ leg: the tests drive real SQLite and the real `AccountDO`, but nothing has been run
+the ctag bump and the changelog commit that CalDAV and the CLI mirror depend on are the *same
+code path* the JMAP worker runs, not a second implementation of it. What is still unproven is
+the *live* leg: the tests drive real SQLite and the real `AccountDO`, but nothing has been run
 against `wrangler dev` or a real Apple Calendar. `018` closes the CLI third of the triangle.
 
 ---
@@ -476,38 +476,37 @@ against `wrangler dev` or a real Apple Calendar. `018` closes the CLI third of t
 
 Every non-`n/a` gap cell in §1 maps to at least one unit:
 
-| Gap                                          | Unit                                                                                                                                                 |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Email × U/D × CLI                            | 019 ✅                                                                                                                                               |
-| Email × CRUD × MCP                           | 014 ✅                                                                                                                                               |
-| Mailbox × C/U/D × all                        | 004 ✅                                                                                                                                               |
-| Thread × changes                             | 027 ✅                                                                                                                                               |
-| EmailSubmission × R                          | 005 ✅                                                                                                                                               |
-| AddressBook/Calendar × query                 | 012 — **wontfix**: no such method in RFC 9610 §2 / calendars-27 §4 (see §2 fn 3)                                                                     |
-| ContactCard/CalendarEvent × C/U/D × CLI      | 017 ✅, 018 ✅                                                                                                                                       |
-| ContactCard/CalendarEvent × CRUD × MCP       | 013 ✅                                                                                                                                               |
-| AddressBook/Calendar × C/U/D × MCP           | — (unfiled; `013` shipped Read only)                                                                                                                 |
-| AddressBook/Calendar × C × DAV               | 009 ✅                                                                                                                                               |
-| AddressBook/Calendar × U × DAV (`PROPPATCH`) | ✅ done — `common/026` item 3                                                                                                                        |
-| FileNode × everything                        | 011 ✅ → 021 ✅                                                                                                                                      |
-| Blob delete / share revoke                   | 010 ✅                                                                                                                                               |
-| Agents × C/D                                 | 007 ✅                                                                                                                                               |
-| Agents/Secrets × MCP                         | 015 ✅ (Agents × Read + SystemAdmin × Read; `Secrets × Read` is out of scope by `bureau.md` invariant 1 and always will be)                          |
-| HumanSettings × U (`Identity/set`)           | 006 ✅                                                                                                                                               |
-| SystemAdmin × U/D                            | 008 ✅ (⚠️ `_verify.sh` asserts nothing here — `services/provision` is not JMAP, so this row is invisible to the executable grid in both directions) |
-| every noun × WebUI                           | 021 ✅, 022 ✅, 023 ✅, 024 ✅                                                                                                                       |
-| every noun × GraphQL                         | 025 — **wontfix, archived** (see §2 fn 11)                                                                                                           |
-| `queryChanges` × 4                           | 026 ✅                                                                                                                                               |
+| Gap | Unit |
+|---|---|
+| Email × U/D × CLI | 019 ✅ |
+| Email × CRUD × MCP | 014 ✅ |
+| Mailbox × C/U/D × all | 004 ✅ |
+| Thread × changes | 027 ✅ |
+| EmailSubmission × R | 005 ✅ |
+| AddressBook/Calendar × query | 012 — **wontfix**: no such method in RFC 9610 §2 / calendars-27 §4 (see §2 fn 3) |
+| ContactCard/CalendarEvent × C/U/D × CLI | 017 ✅, 018 ✅ |
+| ContactCard/CalendarEvent × CRUD × MCP | 013 ✅ |
+| AddressBook/Calendar × C/U/D × MCP | — (unfiled; `013` shipped Read only) |
+| AddressBook/Calendar × C × DAV | 009 ✅ |
+| AddressBook/Calendar × U × DAV (`PROPPATCH`) | ✅ done — `common/026` item 3 |
+| FileNode × everything | 011 ✅ → 021 ✅ |
+| Blob delete / share revoke | 010 ✅ |
+| Agents × C/D | 007 ✅ |
+| Agents/Secrets × MCP | 015 ✅ (Agents × Read + SystemAdmin × Read; `Secrets × Read` is out of scope by `bureau.md` invariant 1 and always will be) |
+| HumanSettings × U (`Identity/set`) | 006 ✅ |
+| SystemAdmin × U/D | 008 ✅ (⚠️ `_verify.sh` asserts nothing here — `services/provision` is not JMAP, so this row is invisible to the executable grid in both directions) |
+| every noun × WebUI | 021 ✅, 022 ✅, 023 ✅, 024 ✅ |
+| every noun × GraphQL | 025 — **wontfix, archived** (see §2 fn 11) |
+| `queryChanges` × 4 | 026 ✅ |
 
 **Deliberately uncovered** — not gaps:
-
 - `Secrets × Read` is **forbidden by design**, not missing (`bureau.md` invariant 1 — there is
   no "reveal password" button). Marked `n/a`, never `todo`.
 - `Thread × C/U/D` — derived from Email; no independent CRUD exists or should.
 - `* × Transport` beyond delivery — inbound/outbound are pipelines, not CRUD surfaces.
 - The **egress** axis (`s04`/Bureau), the **provenance** plane (`s03.A`), the **protocol**
   axis (`s01`), and **approval semantics** (`s03.D`) have no cell in this grid at all. See
-  `readme.md` § _Relationship to the sNN sections_.
+  `readme.md` § *Relationship to the sNN sections*.
 
 ---
 
@@ -515,18 +514,18 @@ Every non-`n/a` gap cell in §1 maps to at least one unit:
 
 Recounted from the ledger above — an earlier draft of this table was arithmetically wrong.
 
-|                 | count  | notes                                                      |
-| --------------- | ------ | ---------------------------------------------------------- |
-| E1              | 4      | 001, 005, 012, 024                                         |
-| E2              | 14     | the bulk — mostly projection over live capability          |
-| E3              | 4      | 004, 006, 026, **008** (regraded on delivery — footnote ⁵) |
-| E4              | 5      | 011, 021, 022, 023, 025 — all on stacks that don't exist   |
-| **I3**          | **15** | **008** joined them on delivery — footnote ⁵               |
-| I2              | 5      |                                                            |
-| I1              | 5      |                                                            |
-| I0              | 2      | 026, 027                                                   |
-| owned by `sVOL` | 18     |                                                            |
-| owned elsewhere | 9      | pointers only                                              |
+| | count | notes |
+|---|---|---|
+| E1 | 4 | 001, 005, 012, 024 |
+| E2 | 14 | the bulk — mostly projection over live capability |
+| E3 | 4 | 004, 006, 026, **008** (regraded on delivery — footnote ⁵) |
+| E4 | 5 | 011, 021, 022, 023, 025 — all on stacks that don't exist |
+| **I3** | **15** | **008** joined them on delivery — footnote ⁵ |
+| I2 | 5 | |
+| I1 | 5 | |
+| I0 | 2 | 026, 027 |
+| owned by `sVOL` | 18 | |
+| owned elsewhere | 9 | pointers only |
 
 **Read on the shape:** 19 of 27 units are `E1`/`E2`, because Contacts, Calendar, and Email
 already have their expensive layer built. The volume is front-loaded with cheap, visible wins

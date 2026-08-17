@@ -123,10 +123,7 @@ export async function runFetchVerb(
 
   // 3 — §6, the primary control.
   if (!destinationAllowed(dest.url, allow.entries)) {
-    return refuse(
-      403,
-      `destination ${dest.url.origin} is not in the allowlist for "${cred.credRef}"`,
-    );
+    return refuse(403, `destination ${dest.url.origin} is not in the allowlist for "${cred.credRef}"`);
   }
 
   // 4 — where the value goes. A credential with no recipe cannot be injected
@@ -183,9 +180,7 @@ interface SendPlan {
   entries: readonly AllowEntry[];
 }
 
-type SendOutcome =
-  | { ok: true; response: Response; hops: number }
-  | { ok: false; status: 403 | 502; reason: string };
+type SendOutcome = { ok: true; response: Response; hops: number } | { ok: false; status: 403 | 502; reason: string };
 
 /**
  * **Invariant 4 — the sharp edge (§6.3).**
@@ -267,10 +262,7 @@ async function send(plan: SendPlan): Promise<SendOutcome> {
     }
 
     // 303 always, and 301/302 by long-standing practice, degrade to GET.
-    if (
-      response.status === 303 ||
-      ((response.status === 301 || response.status === 302) && method !== "HEAD")
-    ) {
+    if (response.status === 303 || ((response.status === 301 || response.status === 302) && method !== "HEAD")) {
       method = "GET";
       body = undefined;
     }

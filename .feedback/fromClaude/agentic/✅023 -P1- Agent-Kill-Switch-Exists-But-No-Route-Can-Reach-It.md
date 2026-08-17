@@ -14,16 +14,16 @@
 >   looking identical from outside.
 > - **The queue question, decided: HELD, not cancelled.** Disable is a pause with a matching
 >   enable, those rows are the evidence of what the agent was about to do, and they are inert
->   while disabled. The cost — an invisible backlog — is paid down by _reporting_ rather than
+>   while disabled. The cost — an invisible backlog — is paid down by *reporting* rather than
 >   by deleting: both verbs return `pendingInvocations`, the CLI prints it, the drain logs it,
 >   and `docs/DEPLOY.md` carries the SQL to clear them if they go stale.
 >   The refinement review forced: **a pause holds, a terminal verb terminates.** `disable`
->   holds the queue, but `DELETE /accounts` _cancels_ it — the drain skips tombstoned
+>   holds the queue, but `DELETE /accounts` *cancels* it — the drain skips tombstoned
 >   accounts, so rows left `pending` there could never reach a terminal status, which would
 >   have blocked `agent unbind` forever and inflated the held-backlog log with work nobody
 >   could act on.
 > - Deviation from the fix note: the route takes a **bare binding id**, not
->   `/accounts/{accountId}/agent-bindings/{id}`. Reasoning in `✅008` § _judgement call 5_.
+>   `/accounts/{accountId}/agent-bindings/{id}`. Reasoning in `✅008` § *judgement call 5*.
 > - Proved by `services/provision/src/adminLifecycle.test.ts`: create a binding, disable it,
 >   assert **ingest's own enqueue query** returns zero rows — plus a source-level assertion
 >   that both drain paths still carry the `enabled = 1` gate the switch rides on.
@@ -42,10 +42,10 @@ control you want at 3am.
 **No code path can set it to 0.** `agent_bindings` appears in exactly two SQL statements in
 the entire repo:
 
-|                                       |                                              |
-| ------------------------------------- | -------------------------------------------- |
+| | |
+|---|---|
 | `services/provision/src/index.ts:637` | `INSERT INTO agent_bindings (…, enabled, …)` |
-| `services/provision/src/index.ts:674` | `SELECT … FROM agent_bindings`               |
+| `services/provision/src/index.ts:674` | `SELECT … FROM agent_bindings` |
 
 No `UPDATE`. No `DELETE`. The value is written `true` at creation
 (`services/provision/src/index.ts:191`) and is immutable thereafter.

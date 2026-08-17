@@ -1,0 +1,18 @@
+# Commits that only moved whitespace. `git blame` should skip straight past
+# them to the commit that last changed the code's meaning.
+#
+# Enable locally (once, per clone):
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub reads this file automatically and needs no configuration.
+#
+# Only ever add a commit here that changed formatting and NOTHING else. A
+# commit with real edits hidden inside it becomes invisible to blame, which
+# is the one way this file can do harm.
+
+# oxfmt on defaults, across the whole tree.
+867610eebeacdc96bb54408f21d46ba4734c1f98
+
+# The follow-up that scoped oxfmt to source and set printWidth to 120, so
+# most of the tree moved a second time.
+7e9ff060c6c579104fa83134dca8201157222611

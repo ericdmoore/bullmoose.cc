@@ -4,12 +4,14 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-06-01",
 
-  "kv_namespaces": [{ "binding": "DEMO_KEYS", "id": "REPLACE_AFTER_wrangler_kv_create" }],
+  "kv_namespaces": [
+    { "binding": "DEMO_KEYS", "id": "REPLACE_AFTER_wrangler_kv_create" }
+  ],
 
   "vars": {
     // Public Turnstile site key — safe to commit; it's embedded in the page anyway.
     // Pair it with the TURNSTILE_SECRET below (same widget in the Cloudflare dash).
-    "TURNSTILE_SITEKEY": "REPLACE_WITH_TURNSTILE_SITEKEY",
+    "TURNSTILE_SITEKEY": "REPLACE_WITH_TURNSTILE_SITEKEY"
   },
 
   // The mail bridge on alpaca defaults DEMO_VERIFY_URL to https://bullmoose.cc/demo/verify

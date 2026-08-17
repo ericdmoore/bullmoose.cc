@@ -1,20 +1,20 @@
 # 006 -E2-I3- `Identity/set` + CLI signatures
 
-|                |                                                                                                                                                                                                                                                                                                                                                      |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Kind**       | capability                                                                                                                                                                                                                                                                                                                                           |
-| **Effort**     | **E3** — `identities` (`control-plane.sql:41-47`) has exactly four columns (`id, account_id, email, name`); signatures/`replyTo`/`bcc` need new ones, and this repo has no migration framework. Regraded from `E2` at review; open question 1 argues the `E2` case (column additions riding the documented `ALTER` convention) and it is not settled |
-| **Impact**     | **I3** — unlocks _and_ human-verifiable                                                                                                                                                                                                                                                                                                              |
-| **Owner**      | `sVOL`                                                                                                                                                                                                                                                                                                                                               |
-| **Depends on** | `002` (shared fake-D1 with `.batch()`)                                                                                                                                                                                                                                                                                                               |
-| **Status**     | **✅ done** — `Identity/set` + `Identity/changes` + `bullmoose identity` (see § Resolutions)                                                                                                                                                                                                                                                         |
+| | |
+|---|---|
+| **Kind** | capability |
+| **Effort** | **E3** — `identities` (`control-plane.sql:41-47`) has exactly four columns (`id, account_id, email, name`); signatures/`replyTo`/`bcc` need new ones, and this repo has no migration framework. Regraded from `E2` at review; open question 1 argues the `E2` case (column additions riding the documented `ALTER` convention) and it is not settled |
+| **Impact** | **I3** — unlocks *and* human-verifiable |
+| **Owner** | `sVOL` |
+| **Depends on** | `002` (shared fake-D1 with `.batch()`) |
+| **Status** | **✅ done** — `Identity/set` + `Identity/changes` + `bullmoose identity` (see § Resolutions) |
 
 ## Cells covered
 
 `IdentitySetup × Update × JMAP` · `IdentitySetup × Create/Delete × JMAP` ·
 `IdentitySetup × Update × CLI` · `HumanSettings × Update` (the signature half)
 
-The `_index.md` §4 coverage table maps _"HumanSettings × U (`Identity/set`)"_ to this unit.
+The `_index.md` §4 coverage table maps *"HumanSettings × U (`Identity/set`)"* to this unit.
 
 **Signatures and send-as/alternate-from are unreachable on every surface today.** Not "thin",
 not "partial" — there is no code path in this repository, on any protocol, that can set a mail
@@ -31,11 +31,11 @@ ledger and I am not fully convinced.
 
 **I3, both factors:**
 
-- _Unlocks_ — `024` (HumanSettings over WebUI) lists `006` as a dependency in the ledger
+- *Unlocks* — `024` (HumanSettings over WebUI) lists `006` as a dependency in the ledger
   (`_index.md:75`). That is a named edge, not a preference. Secondarily, a real `Identity` table
   is what lets `EmailSubmission/set`'s identity check (`submission.ts:120-128`) stop leaning on
   a synthesized fallback.
-- _Human-verifiable_ — **because of the bundled CLI**, exactly as `readme.md:110-114` describes
+- *Human-verifiable* — **because of the bundled CLI**, exactly as `readme.md:110-114` describes
   (that passage uses `Identity/set` as its worked example, and this is the unit it was written
   about). Set a signature, send yourself mail, read the mail: the signature is at the bottom.
   Any mail client on earth will show it, because it is just text in the body. No engineer, no
@@ -153,7 +153,7 @@ may_delete      INTEGER NOT NULL DEFAULT 1  -- 0 for the provisioned primary
 (`emails.from_json` etc., `data-plane.sql:26-29`) and what `Identity/get` returns.
 
 **Follow the repo's documented column-addition convention.** There is no migration framework
-(`_context.md` §0.2), but there _is_ a precedent, and it is in the schema files themselves —
+(`_context.md` §0.2), but there *is* a precedent, and it is in the schema files themselves —
 `packages/mailstore/sql/data-plane.sql:187-190`:
 
 ```sql
@@ -208,7 +208,7 @@ columns. Bare SQL, no invariants — the validation belongs in the method
 
 ⚠️ `getIdentities` reads `identities`, a **control-plane** table, through the same
 `Mailstore` instance that reads data-plane tables. The source comment says so:
-`packages/mailstore/src/index.ts:1738` — _"Identities (control plane, same shard for MVP)"_.
+`packages/mailstore/src/index.ts:1738` — *"Identities (control plane, same shard for MVP)"*.
 That works because the jmap worker binds one `DB` (`common.ts:58-60`). If the planes are ever
 split, every method added here moves with them.
 
@@ -292,9 +292,9 @@ signature". Without it this unit is `I2` with extra steps.
    error in the four files I wrote.
 2. **Does `services/submit` need to apply the signature, or is it a client concern?**
    Unresolved, and it is the real design question in this unit.
-   _Client (my lean):_ the CLI already builds the MIME (`main.ts:419-435`); the submit worker
+   *Client (my lean):* the CLI already builds the MIME (`main.ts:419-435`); the submit worker
    deliberately never parses it (`services/submit/src/index.ts:72,94`) and would need a full
-   MIME parse/rebuild to inject anything. _Server:_ if signatures are client-applied, then every
+   MIME parse/rebuild to inject anything. *Server:* if signatures are client-applied, then every
    surface has to reimplement them — the CLI, the future WebUI, MCP, and any third-party JMAP
    client — and third-party clients will simply ignore `textSignature`, so the user's signature
    silently vanishes depending on which surface they sent from. That is a bad outcome and it is
@@ -315,7 +315,7 @@ signature". Without it this unit is `I2` with extra steps.
    for a feature nobody has asked for, and the unit is `I3` on signatures alone. The argument
    for keeping them: they are hardcoded `null` in the same `.map()` block (`identity.ts:26-27`),
    so they are the same edit, and coming back to `ALTER` this table a second time is exactly the
-   cost `_context.md` §0.2 warns about. Cutting them is defensible; cutting them and _then_
+   cost `_context.md` §0.2 warns about. Cutting them is defensible; cutting them and *then*
    needing them is not.
 5. **Nothing was run** (`_context.md` §7). The claim that signatures are unreachable is from
    source only. In particular I did not verify that `services/anglebrackets` has no identity
@@ -331,8 +331,8 @@ methods, `bullmoose identity {list,show,signature,add,rm}`, and client-side sign
 application in `bullmoose send`. 46 new tests (32 JMAP + 14 CLI); suite 715 → 763.
 
 **Open question 1 — E2 or E3?** Built as **E3**, and the review's regrade was right. The
-column additions themselves were cheap; what was not cheap was the _semantics the columns
-forced_: `may_delete` created an undeletable-primary rule that `EmailSubmission/set` depends
+column additions themselves were cheap; what was not cheap was the *semantics the columns
+forced*: `may_delete` created an undeletable-primary rule that `EmailSubmission/set` depends
 on, and the active-domain check turned `create` into an outbound-identity gate. That is the E3
 anchor's "new semantics that other code must respect", independent of the migration argument.
 
@@ -344,7 +344,7 @@ Three reasons, in order of force:
    the `<body></body>` section". `replyTo` and `bcc` are the same shape. The protocol already
    assigned this job.
 2. **Server-side injection would make `Sent` a lie.** `cmdSend` uploads a blob and
-   `Email/import`s it; `EmailSubmission/set` hands the submit worker that _blob id_; the worker
+   `Email/import`s it; `EmailSubmission/set` hands the submit worker that *blob id*; the worker
    fetches those exact R2 bytes and relays them. For the server to add a signature it would
    have to re-encode the message **and rewrite the stored blob, size and preview** — otherwise
    the copy in Sent, which `Email/get` returns, is not the message the recipient received. That
@@ -364,7 +364,7 @@ offering and `may_delete = 0`. Consequences:
 
 - Every client that cached `identity_default` keeps working — it is now a real row with that id.
 - `resolveIdentities` is untouched and unforked. `/set` calls a new sibling,
-  `resolveIdentitySet`, which returns the same list _plus_ the one bit `/set` needs
+  `resolveIdentitySet`, which returns the same list *plus* the one bit `/set` needs
   (`synthesized: boolean`); `resolveIdentities` is now a one-line projection of it. Both
   existing readers (`Identity/get`, `submitOne`) go through the same query as before.
 - **Materialisation is mandatory before ANY write on an empty table, including a `create`.**
@@ -387,7 +387,7 @@ cost worth avoiding.
 trap.** `027` warns that registering `Thread/changes` today returns an eternally empty delta
 because `"Thread"` sits in `proxyChanges`' union with no producer — worse than `unknownMethod`,
 since a client cannot tell "no changes" from "not implemented". Here the producer and the
-consumer ship in the same commit: `"Identity"` was added to the union _and_ `identitySet`
+consumer ship in the same commit: `"Identity"` was added to the union *and* `identitySet`
 commits an entry for every write, so `Identity/changes` reports real ids from its first call.
 It is also not optional in practice — `Identity/get` returns the ACCOUNT state, so without the
 commit a state-caching client never re-reads and the signature is set but never seen.

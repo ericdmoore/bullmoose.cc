@@ -191,9 +191,7 @@ export function isEmptySpec(spec: SearchSpec): boolean {
 export function describeSearchScope(spec: SearchSpec): string {
   const parts: string[] = [];
   if (nonEmpty(spec.text)) {
-    parts.push(
-      `“${spec.text.trim()}” as whole words in subject, sender, recipients and message bodies`,
-    );
+    parts.push(`“${spec.text.trim()}” as whole words in subject, sender, recipients and message bodies`);
   }
   if (nonEmpty(spec.from)) parts.push(`sender containing “${spec.from.trim()}”`);
   if (nonEmpty(spec.to)) parts.push(`recipient containing “${spec.to.trim()}”`);

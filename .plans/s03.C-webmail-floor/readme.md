@@ -8,7 +8,7 @@
 
 ## Why this exists
 
-Before webmail can be _multiplayer_, it has to be **a mail client**. This slice builds
+Before webmail can be *multiplayer*, it has to be **a mail client**. This slice builds
 the floor: Gmail-grade single-player mail, with **zero agent features**.
 
 Two reasons that ordering is deliberate:
@@ -20,8 +20,8 @@ Two reasons that ordering is deliberate:
    rendering, compose, search, sync — is the largest piece of net-new work in the whole
    arc. Better to find out early.
 
-It also satisfies the arc's stated floor: _a user who ignores every agent feature should
-still have a good mail client._
+It also satisfies the arc's stated floor: *a user who ignores every agent feature should
+still have a good mail client.*
 
 ## What it ships
 

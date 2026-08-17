@@ -41,13 +41,7 @@ describe("which fields a person may actually edit", () => {
   it("mirrors the server's writable list exactly", () => {
     // IDENTITY_WRITABLE at services/jmap/src/methods/identity.ts:33-39. If the
     // server gains a property this is the test that says so.
-    expect([...IDENTITY_WRITABLE]).toEqual([
-      "name",
-      "replyTo",
-      "bcc",
-      "textSignature",
-      "htmlSignature",
-    ]);
+    expect([...IDENTITY_WRITABLE]).toEqual(["name", "replyTo", "bcc", "textSignature", "htmlSignature"]);
   });
 
   it("marks email immutable, because the server refuses to change it", () => {
@@ -269,25 +263,13 @@ describe("saveIdentity", () => {
       updated: { id_primary: null },
       notUpdated: {},
     }));
-    const result = await saveIdentity(
-      client,
-      ACCOUNT,
-      "id_primary",
-      { name: "E" },
-      { ifInState: "s1" },
-    );
+    const result = await saveIdentity(client, ACCOUNT, "id_primary", { name: "E" }, { ifInState: "s1" });
     expect(result).toEqual({ ok: true, newState: "s2", noop: false });
   });
 
   it("turns a stale state into an instruction, not a stack trace", async () => {
     const client = clientWith(() => ["error", { type: "stateMismatch" }] as never);
-    const result = await saveIdentity(
-      client,
-      ACCOUNT,
-      "id_primary",
-      { name: "E" },
-      { ifInState: "s0" },
-    );
+    const result = await saveIdentity(client, ACCOUNT, "id_primary", { name: "E" }, { ifInState: "s0" });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("unreachable");
     expect(result.kind).toBe("stale");

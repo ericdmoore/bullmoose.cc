@@ -28,15 +28,7 @@ const AXES: [string, string][] = [
 ];
 const BLOCK = new Set(["direct", "confident"]); // trim a couple that can read cold in excess
 
-const PROVIDERS = [
-  "cloudflare",
-  "anthropic",
-  "openai",
-  "google",
-  "xai",
-  "mistral",
-  "local (ollama)",
-];
+const PROVIDERS = ["cloudflare", "anthropic", "openai", "google", "xai", "mistral", "local (ollama)"];
 
 const TIER = (iq: number) => (iq <= 3 ? 0 : iq <= 7 ? 1 : 2);
 const MODELS: Record<string, [string, string][]> = {
@@ -160,8 +152,7 @@ const prompt = (i: number, a: Answers): string => {
   ][i];
 };
 
-const reduce =
-  typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reduce = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 export default function DeployWizard() {
   const [step, setStep] = useState(0);
@@ -263,9 +254,7 @@ export default function DeployWizard() {
                 )}
                 {key === "provider" && (
                   <div class="wiz__opts">
-                    <button onClick={() => commit("provider", "cloudflare")}>
-                      ↵ no preference
-                    </button>
+                    <button onClick={() => commit("provider", "cloudflare")}>↵ no preference</button>
                     {PROVIDERS.map((p) => (
                       <button onClick={() => commit("provider", p)}>{p}</button>
                     ))}
@@ -291,10 +280,7 @@ export default function DeployWizard() {
                   <div>
                     <div class="wiz__cards">
                       {RECIPES.map((r) => (
-                        <button
-                          class="wiz__card"
-                          onClick={() => setText((t) => (t ? t + "; " : "") + r.purpose)}
-                        >
+                        <button class="wiz__card" onClick={() => setText((t) => (t ? t + "; " : "") + r.purpose)}>
                           <code>{r.addr}@</code> {r.purpose}
                         </button>
                       ))}
@@ -330,9 +316,7 @@ export default function DeployWizard() {
                               min="0"
                               max="100"
                               value={vals[i]}
-                              onInput={(e: any) =>
-                                setVals((v) => v.map((x, k) => (k === i ? +e.target.value : x)))
-                              }
+                              onInput={(e: any) => setVals((v) => v.map((x, k) => (k === i ? +e.target.value : x)))}
                             />
                             <span>{ax[1]}</span>
                           </label>
@@ -346,11 +330,7 @@ export default function DeployWizard() {
                               onClick={() =>
                                 commit(
                                   "persona",
-                                  personaString(
-                                    answers.name || "your agent",
-                                    answers.purpose || "",
-                                    tone,
-                                  ),
+                                  personaString(answers.name || "your agent", answers.purpose || "", tone),
                                 )
                               }
                             >
@@ -365,11 +345,7 @@ export default function DeployWizard() {
                           e.preventDefault();
                           commit(
                             "persona",
-                            personaString(
-                              answers.name || "your agent",
-                              answers.purpose || "",
-                              text.trim(),
-                            ),
+                            personaString(answers.name || "your agent", answers.purpose || "", text.trim()),
                           );
                         }}
                       >

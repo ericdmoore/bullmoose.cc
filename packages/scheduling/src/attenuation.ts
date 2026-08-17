@@ -185,9 +185,7 @@ export interface JobUsage {
   reservedMicros: number;
 }
 
-export type AttenuationResult =
-  | { ok: true; children: AttenuatedChild[] }
-  | { ok: false; refusals: Refusal[] };
+export type AttenuationResult = { ok: true; children: AttenuatedChild[] } | { ok: false; refusals: Refusal[] };
 
 const list = (v: readonly string[] | null): string => (v === null ? "*" : `[${v.join(", ")}]`);
 const money = (v: number | null): string => (v === null ? "unbounded" : `${v}µ$`);
@@ -266,12 +264,7 @@ export function attenuateChild(
 
   // ---- identity: the same account, the same binding, the same Job ----------
   if (req.accountId !== undefined && req.accountId !== parent.accountId) {
-    refuse(
-      "identity",
-      String(req.accountId),
-      parent.accountId,
-      "a child runs on its parent's account",
-    );
+    refuse("identity", String(req.accountId), parent.accountId, "a child runs on its parent's account");
   }
   if (req.bindingId !== undefined && req.bindingId !== parent.bindingId) {
     refuse(
@@ -307,17 +300,9 @@ export function attenuateChild(
         "tools must be an array of non-empty strings",
       );
     } else {
-      const over =
-        parent.authority.tools === null
-          ? []
-          : asked.filter((t) => !parent.authority.tools!.includes(t));
+      const over = parent.authority.tools === null ? [] : asked.filter((t) => !parent.authority.tools!.includes(t));
       if (over.length > 0) {
-        refuse(
-          "tools",
-          list(asked),
-          list(parent.authority.tools),
-          `not held by the parent: ${over.join(", ")}`,
-        );
+        refuse("tools", list(asked), list(parent.authority.tools), `not held by the parent: ${over.join(", ")}`);
       } else {
         tools = asked;
       }
@@ -366,21 +351,14 @@ export function attenuateChild(
           "a child may not drop a ceiling its parent carries",
         );
       }
-    } else if (
-      typeof req.budgetMicros !== "number" ||
-      !Number.isFinite(req.budgetMicros) ||
-      req.budgetMicros < 0
-    ) {
+    } else if (typeof req.budgetMicros !== "number" || !Number.isFinite(req.budgetMicros) || req.budgetMicros < 0) {
       refuse(
         "budget",
         String(req.budgetMicros),
         money(parent.authority.budgetMicros),
         "budgetMicros must be a non-negative finite number of micro-USD",
       );
-    } else if (
-      parent.authority.budgetMicros !== null &&
-      req.budgetMicros > parent.authority.budgetMicros
-    ) {
+    } else if (parent.authority.budgetMicros !== null && req.budgetMicros > parent.authority.budgetMicros) {
       refuse(
         "budget",
         money(req.budgetMicros),
@@ -402,16 +380,8 @@ export function attenuateChild(
         parent.privacy ?? "(unstamped)",
         "privacy is a class: open | internal | pinned",
       );
-    } else if (
-      parent.privacy !== null &&
-      PRIVACY_RANK[req.privacy] < PRIVACY_RANK[parent.privacy]
-    ) {
-      refuse(
-        "privacy",
-        req.privacy,
-        parent.privacy,
-        "a child may raise the privacy class, never lower it",
-      );
+    } else if (parent.privacy !== null && PRIVACY_RANK[req.privacy] < PRIVACY_RANK[parent.privacy]) {
+      refuse("privacy", req.privacy, parent.privacy, "a child may raise the privacy class, never lower it");
     } else {
       privacy = req.privacy;
     }
@@ -483,10 +453,7 @@ export function attenuateChild(
     } else {
       context = req.context as Record<string, unknown>;
       const kind = context.kind;
-      if (
-        typeof kind === "string" &&
-        (RESERVED_CONTEXT_KINDS as readonly string[]).includes(kind)
-      ) {
+      if (typeof kind === "string" && (RESERVED_CONTEXT_KINDS as readonly string[]).includes(kind)) {
         refuse(
           "context",
           kind,
@@ -499,12 +466,7 @@ export function attenuateChild(
 
   const emailId = typeof req.emailId === "string" && req.emailId.length > 0 ? req.emailId : null;
   if (req.emailId !== undefined && emailId === null) {
-    refuse(
-      "context",
-      String(req.emailId),
-      "an email id",
-      "emailId must be a non-empty string when present",
-    );
+    refuse("context", String(req.emailId), "an email id", "emailId must be a non-empty string when present");
   }
 
   if (refusals.length > 0) return { ok: false, refusals };
@@ -619,7 +581,5 @@ export function attenuatePlan(
 
 /** A refusal list, rendered for a result row / a log line / a test message. */
 export function describeRefusals(refusals: readonly Refusal[]): string {
-  return refusals
-    .map((r) => `${r.key}: ${r.axis} — asked ${r.requested}, ceiling ${r.ceiling} (${r.why})`)
-    .join("; ");
+  return refusals.map((r) => `${r.key}: ${r.axis} — asked ${r.requested}, ceiling ${r.ceiling} (${r.why})`).join("; ");
 }

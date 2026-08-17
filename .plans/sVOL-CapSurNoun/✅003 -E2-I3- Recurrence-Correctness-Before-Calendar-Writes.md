@@ -1,14 +1,14 @@
 # 003 -E2-I3- Recurrence correctness before calendar writes
 
-|                |                                                                                                                                                                                                  |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Kind**       | prerequisite                                                                                                                                                                                     |
-| **Effort**     | **E2** — two files in `packages/calendar-core` plus its first test file; no schema change, no migration                                                                                          |
-| **Impact**     | **I3** — unlocks _and_ human-verifiable (a Thanksgiving event lands on the right date in Apple Calendar)                                                                                         |
-| **Owner**      | **`.feedback/fromClaude/common/003`** — the defect and the fix are filed there; this file carries the cell mapping, the grades, the dependency edges, and the test work the issue does not cover |
-| **Depends on** | —                                                                                                                                                                                                |
-| **Blocks**     | `013` (Calendar + Contacts over MCP — recurring events only) · `018` (Calendar CRUD over CLI — s05 T3)                                                                                           |
-| **Status**     | ✅ done — `.feedback/fromClaude/common/✅003…` is closed and `_index.md:86` marks it done                                                                                                        |
+| | |
+|---|---|
+| **Kind** | prerequisite |
+| **Effort** | **E2** — two files in `packages/calendar-core` plus its first test file; no schema change, no migration |
+| **Impact** | **I3** — unlocks *and* human-verifiable (a Thanksgiving event lands on the right date in Apple Calendar) |
+| **Owner** | **`.feedback/fromClaude/common/003`** — the defect and the fix are filed there; this file carries the cell mapping, the grades, the dependency edges, and the test work the issue does not cover |
+| **Depends on** | — |
+| **Blocks** | `013` (Calendar + Contacts over MCP — recurring events only) · `018` (Calendar CRUD over CLI — s05 T3) |
+| **Status** | ✅ done — `.feedback/fromClaude/common/✅003…` is closed and `_index.md:86` marks it done |
 
 ## Cells covered
 
@@ -36,8 +36,8 @@ be rebuilt or re-wired.
 
 **I3, both factors:**
 
-- _Unlocks_ — `013` and `018` both name it. `013` is explicitly reduced in scope until it lands.
-- _Human-verifiable_, and unusually cleanly so: create a Thanksgiving event in Apple Calendar,
+- *Unlocks* — `013` and `018` both name it. `013` is explicitly reduced in scope until it lands.
+- *Human-verifiable*, and unusually cleanly so: create a Thanksgiving event in Apple Calendar,
   let it sync, and look at what the next four years show. A non-engineer can do that and can
   tell the difference. Contrast most `I3` claims in this volume, which need a CLI reader.
 
@@ -53,8 +53,8 @@ and its `.fix.md` sibling. This section does not restate them. The one-line vers
 
 The `.fix.md` proposes one shared `SUPPORTED_PARTS: Record<Frequency, ReadonlySet<RulePart>>`
 consulted by both sides, with `rruleToRule` returning its existing `null` signal
-(`ical.ts:153-154` already has a `default: return null` for unknown _keys_; this extends the
-same convention to unsupported _combinations_). It recommends **(a) reject now, extend later**
+(`ical.ts:153-154` already has a `default: return null` for unknown *keys*; this extends the
+same convention to unsupported *combinations*). It recommends **(a) reject now, extend later**
 over (b) implementing yearly `BYDAY` first. I agree with (a) and have nothing to add to the
 reasoning.
 
@@ -79,16 +79,16 @@ Calendar emits**. The `byDay` field is parsed, stored, serialized back out by `r
 
 **Three cases the filed issue does not name.** Same method, same run:
 
-| RRULE                                                      | expands to                                                           | should be     |
-| ---------------------------------------------------------- | -------------------------------------------------------------------- | ------------- |
-| `FREQ=MONTHLY;BYMONTH=11;BYDAY=4TH`                        | 4th Thursday of **every** month — Nov 26, **Dec 24, Jan 28, Feb 25** | November only |
-| `FREQ=DAILY;BYDAY=MO`                                      | every single day                                                     | Mondays       |
-| `FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=25` from a Dec 20 start | Dec **20** every year                                                | Dec 25        |
+| RRULE | expands to | should be |
+|---|---|---|
+| `FREQ=MONTHLY;BYMONTH=11;BYDAY=4TH` | 4th Thursday of **every** month — Nov 26, **Dec 24, Jan 28, Feb 25** | November only |
+| `FREQ=DAILY;BYDAY=MO` | every single day | Mondays |
+| `FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=25` from a Dec 20 start | Dec **20** every year | Dec 25 |
 
 The monthly branch (`index.ts:347-391`) reads `byDay`, `byMonthDay` and `bySetPosition` but
 **never references `rule.byMonth`** — so `byMonth` is a no-op on the one frequency where
 `applySetPos` works. The daily branch (`index.ts:303-316`) references no `BY*` part at all. The
-third row is the dangerous direction: the wrong date is _earlier_ than the true one.
+third row is the dangerous direction: the wrong date is *earlier* than the true one.
 
 `FREQ=WEEKLY;BYDAY=2MO` → every Monday, `nthOfPeriod` dropped. That one **is** in the filed
 issue (`:14`).
@@ -106,7 +106,7 @@ eventSpan().endMs  →  Nov 26, 2028        truth: Nov 23, 2028
 
 `Mailstore.queryCalendarEvents` filters candidates on those columns
 (`packages/mailstore/src/index.ts:1682-1689`) under a documented invariant
-(`:1662-1666`): _"the span can over-include, never miss."_ A mis-computed span can miss. And
+(`:1662-1666`): *"the span can over-include, never miss."* A mis-computed span can miss. And
 because the value is written into an indexed column at write time in a repo with **no migration
 framework** (`tools/README.md:10-11`), every event written before the fix carries a wrong
 `end_at` that a code fix does not correct. Landing this after `013`/`018` means a backfill with
@@ -115,8 +115,8 @@ no backfill mechanism.
 ### Why the volume's own acceptance test cannot catch this
 
 `_index.md:118-122` names the wave-2 acceptance moment: an event created over MCP, read back by
-Codex over MCP, by `bullmoose calendar agenda`, and by a CalDAV `PROPFIND` — _"three
-independent projections over one write — the difference between self-consistent and correct."_
+Codex over MCP, by `bullmoose calendar agenda`, and by a CalDAV `PROPFIND` — *"three
+independent projections over one write — the difference between self-consistent and correct."*
 
 For recurrence, those three projections are **not** independent. All three call the same
 `expandOccurrences`: `calendars.ts:378` and `:433` (JMAP query + `getOccurrences`), and
@@ -132,7 +132,7 @@ rather than the triangulation.
 project's own docs single out as the concentrated risk.
 
 It is also the **cheapest test target in the repo**, by some distance (`README.md:3-5` calls it
-_"where the calendar risk concentrates"_):
+*"where the calendar risk concentrates"*):
 
 - Pure functions. `expandOccurrences`, `eventSpan`, `rruleToRule`, `ruleToRrule`, `parseICal`,
   `serializeICal` take data and return data.
@@ -157,7 +157,7 @@ cases above:
 - `daily` must list only `interval`/`count`/`until` — which the fix already has right.
 
 `parseICal` already handles a `null` from `rruleToRule` by dropping the rule with a warning
-(`ical.ts:485-489`: _"unsupported RRULE kept out"_), so the rejection path exists and is wired.
+(`ical.ts:485-489`: *"unsupported RRULE kept out"*), so the rejection path exists and is wired.
 Confirm the warning actually surfaces to a CalDAV `PUT` rather than being discarded — I did not
 trace `ParsedICal.warnings` past `dav.ts`.
 
@@ -173,17 +173,17 @@ RRULEs, each asserting **exactly one of two outcomes**:
 
 Minimum table, all five reproduced above plus the shapes that currently work:
 
-| RRULE                                   | after the fix                          |
-| --------------------------------------- | -------------------------------------- |
-| `FREQ=YEARLY;BYMONTH=11;BYDAY=4TH`      | `null` (Thanksgiving — Apple emits it) |
-| `FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=25`  | `null`                                 |
-| `FREQ=MONTHLY;BYMONTH=11;BYDAY=4TH`     | `null`                                 |
-| `FREQ=DAILY;BYDAY=MO`                   | `null`                                 |
-| `FREQ=WEEKLY;BYDAY=2MO`                 | `null`                                 |
-| `FREQ=MONTHLY;BYDAY=-1FR`               | expands — last Friday, dates asserted  |
-| `FREQ=MONTHLY;BYDAY=TU;BYSETPOS=2`      | expands — 2nd Tuesday, dates asserted  |
-| `FREQ=WEEKLY;BYDAY=MO,WE,FR;INTERVAL=2` | expands                                |
-| `FREQ=DAILY;COUNT=10` / `;UNTIL=…Z`     | expands, both bounds honoured          |
+| RRULE | after the fix |
+|---|---|
+| `FREQ=YEARLY;BYMONTH=11;BYDAY=4TH` | `null` (Thanksgiving — Apple emits it) |
+| `FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=25` | `null` |
+| `FREQ=MONTHLY;BYMONTH=11;BYDAY=4TH` | `null` |
+| `FREQ=DAILY;BYDAY=MO` | `null` |
+| `FREQ=WEEKLY;BYDAY=2MO` | `null` |
+| `FREQ=MONTHLY;BYDAY=-1FR` | expands — last Friday, dates asserted |
+| `FREQ=MONTHLY;BYDAY=TU;BYSETPOS=2` | expands — 2nd Tuesday, dates asserted |
+| `FREQ=WEEKLY;BYDAY=MO,WE,FR;INTERVAL=2` | expands |
+| `FREQ=DAILY;COUNT=10` / `;UNTIL=…Z` | expands, both bounds honoured |
 
 Expected dates must come from **outside this codebase** — a hand-checked calendar, or `python3
 -c "from dateutil.rrule import …"`. Generating them from `expandOccurrences` and pasting them in
@@ -222,14 +222,14 @@ drift again.
 1. `FREQ=YEARLY;BYMONTH=11;BYDAY=4TH` returns `null` from `rruleToRule`, and `parseICal` on a
    VCALENDAR containing it produces an event with no `recurrenceRules` and a warning.
 2. The RRULE table passes, with every expected date sourced from outside this codebase.
-3. Every combination the table declares unsupported is _rejected_, not silently mis-expanded —
+3. Every combination the table declares unsupported is *rejected*, not silently mis-expanded —
    assert on `null`, never on "no exception thrown".
 4. `packages/calendar-core` coverage goes from 0% to a number worth reporting. `npm run
-coverage` writes `coverage/coverage-summary.json` (`vitest.config.ts:18`), which CI diffs
+   coverage` writes `coverage/coverage-summary.json` (`vitest.config.ts:18`), which CI diffs
    across runs; this is the first entry in it that means anything.
 5. **The human check.** Create a repeating Thanksgiving event in Apple Calendar against a real
    bullmoose account, sync, and confirm the next four years land on Nov 25 2027, Nov 23 2028,
-   Nov 22 2029, Nov 28 2030 — _or_ that the client is told the rule was refused. Both are
+   Nov 22 2029, Nov 28 2030 — *or* that the client is told the rule was refused. Both are
    acceptable outcomes of option (a); silently showing Nov 26 is not.
 6. `README.md` and the `index.ts` header describe supported parts **per frequency**, generated
    from or checked against `SUPPORTED_PARTS`.
@@ -238,7 +238,7 @@ coverage` writes `coverage/coverage-summary.json` (`vitest.config.ts:18`), which
 
 - The parse path is `rruleToRule` (`ical.ts:99-158`). It is a flat `switch` over `;`-separated
   parts (`:106`) with no cross-part validation; the only check is `return rule.frequency ? rule
-: null` at `:157`. The guard belongs after the loop, where `frequency` is finally known —
+  : null` at `:157`. The guard belongs after the loop, where `frequency` is finally known —
   parts can appear before `FREQ` in the string.
 - `expandOccurrences` always seeds the master start into `baseStarts` (`index.ts:217`) before
   any rule runs. So a rejected or mis-expanded rule still yields **one** occurrence at the
@@ -264,18 +264,18 @@ coverage` writes `coverage/coverage-summary.json` (`vitest.config.ts:18`), which
 ## Open questions / where this could be wrong
 
 1. **The ledger contradicts itself on this unit's effort.** `_index.md:54` grades it `E2`;
-   `_index.md:169` writes _"E3 | 3 | 004, 026 — plus 003's test work"_ — which counts it as `E3`
+   `_index.md:169` writes *"E3 | 3 | 004, 026 — plus 003's test work"* — which counts it as `E3`
    and is how the totals reach 3. Both cannot be right. I kept `E2` in the filename because the
    change is two files in one package with no migration and no new table, and because §5 is
    arithmetic rather than a grade. But the `E3` case is real: `readme.md`'s `E3` anchor includes
-   _"new semantics that other code must respect"_, and `SUPPORTED_PARTS` is exactly a contract
-   the parser, the expander, and the README must all respect, with _"Tests mandatory"_ attached.
+   *"new semantics that other code must respect"*, and `SUPPORTED_PARTS` is exactly a contract
+   the parser, the expander, and the README must all respect, with *"Tests mandatory"* attached.
    Someone should pick one. **This affects the totals table either way** — see the report.
 
 2. **Option (a) breaks a working-looking import, and I am recommending it on the fix note's
    authority rather than my own evidence.** After the guard, an Apple Calendar Thanksgiving event
    stops syncing instead of syncing wrong. That is correct, and I believe it. But I do not know
-   what Apple Calendar _does_ with a `PUT` whose RRULE the server drops — silently accept the
+   what Apple Calendar *does* with a `PUT` whose RRULE the server drops — silently accept the
    truncated event, retry, show an error, or fall out of sync in a way the user cannot recover
    from. That behaviour determines whether (a) is acceptable or whether (b) is forced, and I
    could not determine it by reading. **This is the largest unverified thing in the unit.**

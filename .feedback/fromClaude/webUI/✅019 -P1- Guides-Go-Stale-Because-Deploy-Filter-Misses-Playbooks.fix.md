@@ -6,10 +6,10 @@ One line:
 
 ```yaml
 # .github/workflows/deploy.yml:17-19
-paths:
-  - "src/**"
-  - "docs/playbooks/**" # ← the guides content source
-  - ".github/workflows/deploy.yml"
+    paths:
+      - "src/**"
+      - "docs/playbooks/**"          # ← the guides content source
+      - ".github/workflows/deploy.yml"
 ```
 
 ## The general rule worth extracting

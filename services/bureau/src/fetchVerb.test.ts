@@ -79,8 +79,7 @@ function upstream(handler: (seen: Seen) => Response): Seen[] {
 const ok = (body: string, contentType = "application/json") =>
   new Response(body, { status: 200, headers: { "content-type": contentType } });
 
-const redirectTo = (location: string, status = 302) =>
-  new Response(null, { status, headers: { location } });
+const redirectTo = (location: string, status = 302) => new Response(null, { status, headers: { location } });
 
 interface Harness {
   env: Env;
@@ -320,9 +319,7 @@ describe("invariant 4 — the credential is never carried across an origin chang
     // origin", not "never carried outside the allowlist". The strict reading is
     // the one implemented: a cross-origin hop ends the call regardless.
     const seen = upstream((req) =>
-      req.url.startsWith("https://api.stripe.com")
-        ? redirectTo("https://files.stripe.com/v1/f")
-        : ok("{}"),
+      req.url.startsWith("https://api.stripe.com") ? redirectTo("https://files.stripe.com/v1/f") : ok("{}"),
     );
     const h = await harness({
       meta: {
@@ -357,9 +354,7 @@ describe("invariant 4 — the credential is never carried across an origin chang
     // The positive control for the four refusals above: without it, "refuses
     // every redirect" would pass every one of them and be wrong.
     const seen = upstream((req) =>
-      req.url.endsWith("/v1/charges")
-        ? redirectTo("/v1/charges/ch_1")
-        : ok(JSON.stringify({ id: "ch_1" })),
+      req.url.endsWith("/v1/charges") ? redirectTo("/v1/charges/ch_1") : ok(JSON.stringify({ id: "ch_1" })),
     );
     const h = await harness();
 
@@ -476,9 +471,7 @@ describe("invariant 1 — the credential never reaches the caller", () => {
     // policy refusal, an argument error, an upstream refusal — none of it
     // contains the value, in body, in headers, or in any cheap encoding of it.
     const seen = upstream((req) =>
-      req.url.includes("/redirect")
-        ? redirectTo("https://evil.io/x")
-        : ok(JSON.stringify({ id: "ch_1" })),
+      req.url.includes("/redirect") ? redirectTo("https://evil.io/x") : ok(JSON.stringify({ id: "ch_1" })),
     );
     const h = await harness();
 

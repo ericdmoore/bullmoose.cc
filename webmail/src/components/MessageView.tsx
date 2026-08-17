@@ -98,10 +98,7 @@ function MessageCard({
   onForward,
 }: CardProps) {
   const [quoteOpen, setQuoteOpen] = useState(false);
-  const rendered = useMemo(
-    () => renderMessage(email, { allowRemoteContent: allowImages }),
-    [email, allowImages],
-  );
+  const rendered = useMemo(() => renderMessage(email, { allowRemoteContent: allowImages }), [email, allowImages]);
   const quoteVisible = quoteOpen || showQuotes;
 
   return (
@@ -126,8 +123,8 @@ function MessageCard({
             <div class="notice notice-blocked">
               <span>
                 {rendered.blockedRemoteCount} remote image
-                {rendered.blockedRemoteCount === 1 ? "" : "s"} blocked. Loading them tells the
-                sender you opened this message.
+                {rendered.blockedRemoteCount === 1 ? "" : "s"} blocked. Loading them tells the sender you opened this
+                message.
               </span>
               <button type="button" onClick={onAllowImages}>
                 Show images
@@ -135,9 +132,7 @@ function MessageCard({
             </div>
           ) : null}
 
-          {rendered.truncated ? (
-            <div class="notice">This message was truncated by the server.</div>
-          ) : null}
+          {rendered.truncated ? <div class="notice">This message was truncated by the server.</div> : null}
 
           {/* Sanitized in `renderMessage` — this is the ONLY place sender HTML
               reaches the DOM, and it never arrives unsanitized (invariant §6.3). */}
@@ -157,10 +152,7 @@ function MessageCard({
                 {quoteVisible ? "Hide quoted text" : "··· Show quoted text"}
               </button>
               {quoteVisible ? (
-                <div
-                  class="message-quote"
-                  dangerouslySetInnerHTML={{ __html: rendered.quotedHtml }}
-                />
+                <div class="message-quote" dangerouslySetInnerHTML={{ __html: rendered.quotedHtml }} />
               ) : null}
             </div>
           ) : null}

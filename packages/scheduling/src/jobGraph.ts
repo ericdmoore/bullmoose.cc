@@ -146,19 +146,13 @@ export function jobBudgetExhaustedSql(inv: string): string {
  * from whatever it has (a map in a test, a query in a surface). An id the
  * callback does not know is UNMET, matching the SQL's fail-closed reading.
  */
-export function needsSatisfied(
-  needs: readonly string[] | null | undefined,
-  settled: (id: string) => boolean,
-): boolean {
+export function needsSatisfied(needs: readonly string[] | null | undefined, settled: (id: string) => boolean): boolean {
   if (needs === null || needs === undefined) return true;
   return needs.every((id) => settled(id));
 }
 
 /** Pure twin of `jobBudgetExhaustedSql`. No aggregate cap → never exhausted. */
-export function jobBudgetExhausted(p: {
-  budgetMicros: number | null;
-  spentMicros: number;
-}): boolean {
+export function jobBudgetExhausted(p: { budgetMicros: number | null; spentMicros: number }): boolean {
   if (p.budgetMicros === null) return false;
   return p.spentMicros >= p.budgetMicros;
 }
@@ -310,11 +304,7 @@ export interface JobView {
  * indexed `(account_id, job_id)` scan, and the reconcile test a materialization
  * would owe costs more than the scan does.
  */
-export async function jobView(
-  db: D1Database,
-  accountId: string,
-  jobId: string,
-): Promise<JobView | null> {
+export async function jobView(db: D1Database, accountId: string, jobId: string): Promise<JobView | null> {
   const job = await db
     .prepare(`SELECT id, budget_micros FROM jobs WHERE account_id = ? AND id = ?`)
     .bind(accountId, jobId)
@@ -360,8 +350,7 @@ export async function jobView(
       done: nodes.filter((n) => n.status === "done").length,
       failed: nodes.filter((n) => n.status === "failed").length,
       paused: nodes.filter((n) => n.paused && n.status === "done").length,
-      blocked: nodes.filter((n) => n.status === "pending" && !needsSatisfied(n.needs, settled))
-        .length,
+      blocked: nodes.filter((n) => n.status === "pending" && !needsSatisfied(n.needs, settled)).length,
     },
     spentMicros: results.reduce((sum, r) => sum + (r.cost_micros ?? 0), 0),
     budgetMicros: job.budget_micros,

@@ -64,12 +64,7 @@ function harness(scopes: string[] = ["read", "files"]) {
     return res.created.d.id as string;
   };
 
-  const mkfile = async (
-    name: string,
-    parentId: string | null,
-    blobId: string,
-    account = ACCOUNT,
-  ) => {
+  const mkfile = async (name: string, parentId: string | null, blobId: string, account = ACCOUNT) => {
     const res = await set({ create: { f: { name, nodeType: "file", parentId, blobId } } }, account);
     if (!res.created.f) throw new Error(`mkfile failed: ${JSON.stringify(res.notCreated)}`);
     return res.created.f.id as string;
@@ -85,10 +80,10 @@ describe("FileNode/set + get: the inode tree holds", () => {
     const h = harness();
     const id = await h.mkdir("Documents");
 
-    const res = await h.call<{ list: Array<Record<string, unknown>>; notFound: string[] }>(
-      "FileNode/get",
-      { accountId: ACCOUNT, ids: [id] },
-    );
+    const res = await h.call<{ list: Array<Record<string, unknown>>; notFound: string[] }>("FileNode/get", {
+      accountId: ACCOUNT,
+      ids: [id],
+    });
     expect(res.notFound).toEqual([]);
     const node = res.list[0]!;
     expect(node).toMatchObject({
@@ -287,10 +282,10 @@ describe("FileNode/set completes the write choreography", () => {
     const before = await h.w.accountDo.state(ACCOUNT);
     const id = await h.mkdir("Docs");
 
-    const delta = await h.call<{ created: string[]; updated: string[]; destroyed: string[] }>(
-      "FileNode/changes",
-      { accountId: ACCOUNT, sinceState: before },
-    );
+    const delta = await h.call<{ created: string[]; updated: string[]; destroyed: string[] }>("FileNode/changes", {
+      accountId: ACCOUNT,
+      sinceState: before,
+    });
     expect(delta.created).toEqual([id]);
   });
 
@@ -513,8 +508,8 @@ describe("FileNode/copy", () => {
 describe("FileNode/queryChanges", () => {
   it("always throws cannotCalculateChanges (consistent with canCalculateChanges:false)", async () => {
     const h = harness();
-    await expect(
-      h.call("FileNode/queryChanges", { accountId: ACCOUNT, sinceQueryState: "0" }),
-    ).rejects.toMatchObject({ type: "cannotCalculateChanges" });
+    await expect(h.call("FileNode/queryChanges", { accountId: ACCOUNT, sinceQueryState: "0" })).rejects.toMatchObject({
+      type: "cannotCalculateChanges",
+    });
   });
 });

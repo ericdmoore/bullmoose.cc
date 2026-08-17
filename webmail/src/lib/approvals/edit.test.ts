@@ -76,12 +76,8 @@ describe("applyEdit — the retained-diff contract", () => {
   it("refuses bad JSON and non-object JSON without sending anything", () => {
     expect(applyEdit({}, { shape: "json", json: "{nope" }).problem).toContain("not valid JSON");
     // Mirrors the server's own guard: `editedPayload must be an object`.
-    expect(applyEdit({}, { shape: "json", json: "[1,2]" }).problem).toContain(
-      "must be a JSON object",
-    );
-    expect(applyEdit({}, { shape: "json", json: "null" }).problem).toContain(
-      "must be a JSON object",
-    );
+    expect(applyEdit({}, { shape: "json", json: "[1,2]" }).problem).toContain("must be a JSON object");
+    expect(applyEdit({}, { shape: "json", json: "null" }).problem).toContain("must be a JSON object");
   });
 });
 

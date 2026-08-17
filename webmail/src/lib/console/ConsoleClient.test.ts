@@ -42,9 +42,7 @@ describe("HttpConsoleClient", () => {
     // the vault worker has no public route and sends no CORS headers, so a
     // console read addressed there is unreachable from a browser even now that
     // the routes exist. `readBase` is what keeps them apart.
-    const { seen, fetchImpl } = recorder(() =>
-      json({ agents: [], resources: [], credentials: [] }),
-    );
+    const { seen, fetchImpl } = recorder(() => json({ agents: [], resources: [], credentials: [] }));
     const c = http(fetchImpl);
     await c.listAgents();
     await c.listResources("acct_allen");
@@ -102,10 +100,7 @@ describe("FakeConsoleClient", () => {
   const fake = createDemoConsole();
 
   it("implements the same interface the UI receives", async () => {
-    expect((await fake.listAgents()).map((a) => a.principal)).toEqual([
-      "allen@bullmoose.cc",
-      "analyst@bullmoose.cc",
-    ]);
+    expect((await fake.listAgents()).map((a) => a.principal)).toEqual(["allen@bullmoose.cc", "analyst@bullmoose.cc"]);
     expect((await fake.listCredentials()).map((c) => c.name)).toContain("aws-mcp");
     expect((await fake.listResources("acct_allen"))[0]?.name).toBe("VendorsBook");
   });
@@ -145,9 +140,7 @@ const session = (caps: Record<string, unknown>): Pick<Session, "capabilities"> =
 
 describe("the capability gate keeps the plain-client proof green", () => {
   it("is closed with the agent capability absent, and says so without erroring", () => {
-    const gate = consoleGate(
-      session({ "urn:ietf:params:jmap:core": {}, "urn:ietf:params:jmap:mail": {} }),
-    );
+    const gate = consoleGate(session({ "urn:ietf:params:jmap:core": {}, "urn:ietf:params:jmap:mail": {} }));
     expect(gate.state).toBe("no-capability");
     expect(gate.visible).toBe(false);
     // Not an error string: this is the supported configuration.

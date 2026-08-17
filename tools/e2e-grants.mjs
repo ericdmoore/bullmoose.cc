@@ -31,11 +31,7 @@ const assert = (cond, msg) => {
     process.exit(1);
   }
 };
-const USING = [
-  "urn:ietf:params:jmap:core",
-  "urn:ietf:params:jmap:mail",
-  "urn:ietf:params:jmap:contacts",
-];
+const USING = ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:contacts"];
 const jmap = async (who, methodCalls) => {
   const res = await fetch(`${JMAP}/api/jmap`, {
     method: "POST",
@@ -49,16 +45,12 @@ const jmap = async (who, methodCalls) => {
   return (await res.json()).methodResponses;
 };
 const session = async (who) =>
-  (
-    await fetch(`${JMAP}/.well-known/jmap`, { headers: { Authorization: `Bearer ${who.token}` } })
-  ).json();
+  (await fetch(`${JMAP}/.well-known/jmap`, { headers: { Authorization: `Bearer ${who.token}` } })).json();
 
 // ---- 1. owner setup: Family book + one private, one shared card -------
 // First touch auto-creates the default "Contacts" book, so Family below
 // is NOT the default and private cards stay out of it.
-const [[, abInit]] = await jmap(ERIC, [
-  ["AddressBook/get", { accountId: ERIC.acct, ids: null }, "i0"],
-]);
+const [[, abInit]] = await jmap(ERIC, [["AddressBook/get", { accountId: ERIC.acct, ids: null }, "i0"]]);
 assert(
   abInit.list.some((b) => b.isDefault && b.name === "Contacts"),
   "owner default book exists",
@@ -117,14 +109,9 @@ const [[, shareRes]] = await jmap(ERIC, [
     "c2",
   ],
 ]);
-assert(
-  shareRes.updated && famId in shareRes.updated,
-  `share applied: ${JSON.stringify(shareRes.notUpdated)}`,
-);
+assert(shareRes.updated && famId in shareRes.updated, `share applied: ${JSON.stringify(shareRes.notUpdated)}`);
 
-const [[, abOwner]] = await jmap(ERIC, [
-  ["AddressBook/get", { accountId: ERIC.acct, ids: [famId] }, "c3"],
-]);
+const [[, abOwner]] = await jmap(ERIC, [["AddressBook/get", { accountId: ERIC.acct, ids: [famId] }, "c3"]]);
 const ownerView = abOwner.list[0];
 assert(
   ownerView.shareWith?.[CAROL.acct]?.mayWrite === true,
@@ -137,19 +124,11 @@ const carolSess = await session(CAROL);
 const carolEric = carolSess.accounts[ERIC.acct];
 assert(carolEric, "granted account appears in carol session");
 assert(carolEric.isPersonal === false, "granted account is not personal");
-assert(
-  carolEric.accountCapabilities["urn:ietf:params:jmap:contacts"],
-  "contacts capability granted",
-);
-assert(
-  !carolEric.accountCapabilities["urn:ietf:params:jmap:mail"],
-  "book-scoped grant exposes NO mail capability",
-);
+assert(carolEric.accountCapabilities["urn:ietf:params:jmap:contacts"], "contacts capability granted");
+assert(!carolEric.accountCapabilities["urn:ietf:params:jmap:mail"], "book-scoped grant exposes NO mail capability");
 
 // ---- 5. carol sees exactly the shared book ----------------------------
-const [[, abCarol]] = await jmap(CAROL, [
-  ["AddressBook/get", { accountId: ERIC.acct, ids: null }, "c4"],
-]);
+const [[, abCarol]] = await jmap(CAROL, [["AddressBook/get", { accountId: ERIC.acct, ids: null }, "c4"]]);
 assert(
   abCarol.list.length === 1 && abCarol.list[0].id === famId,
   `carol sees only Family: ${JSON.stringify(abCarol.list.map((b) => b.name))}`,
@@ -161,16 +140,9 @@ assert(
 assert(abCarol.list[0].shareWith === null, "sharee sees shareWith null");
 
 // ---- 6. card visibility is book-scoped --------------------------------
-const [[, qCarol]] = await jmap(CAROL, [
-  ["ContactCard/query", { accountId: ERIC.acct, calculateTotal: true }, "c5"],
-]);
-assert(
-  qCarol.total === 1 && qCarol.ids[0] === grandmaId,
-  `carol queries only shared cards: ${JSON.stringify(qCarol)}`,
-);
-const [[, gPriv]] = await jmap(CAROL, [
-  ["ContactCard/get", { accountId: ERIC.acct, ids: [privateId] }, "c6"],
-]);
+const [[, qCarol]] = await jmap(CAROL, [["ContactCard/query", { accountId: ERIC.acct, calculateTotal: true }, "c5"]]);
+assert(qCarol.total === 1 && qCarol.ids[0] === grandmaId, `carol queries only shared cards: ${JSON.stringify(qCarol)}`);
+const [[, gPriv]] = await jmap(CAROL, [["ContactCard/get", { accountId: ERIC.acct, ids: [privateId] }, "c6"]]);
 assert(gPriv.notFound.includes(privateId), "private card reads as notFound for carol");
 
 // ---- 7. carol writes into the shared book -----------------------------
@@ -188,9 +160,7 @@ const [[, cCreate]] = await jmap(CAROL, [
 ]);
 const nedId = cCreate.created?.n?.id;
 assert(nedId, `carol created in shared book: ${JSON.stringify(cCreate.notCreated)}`);
-const [[, gNed]] = await jmap(ERIC, [
-  ["ContactCard/get", { accountId: ERIC.acct, ids: [nedId] }, "c8"],
-]);
+const [[, gNed]] = await jmap(ERIC, [["ContactCard/get", { accountId: ERIC.acct, ids: [nedId] }, "c8"]]);
 assert(gNed.list[0]?.addressBookIds?.[famId] === true, "owner sees carol-created card in Family");
 
 // ---- 8. the grant does NOT unlock mail or book management -------------
@@ -257,10 +227,7 @@ await jmap(ERIC, [
   ],
 ]);
 const [gone] = await jmap(CAROL, [["AddressBook/get", { accountId: ERIC.acct, ids: null }, "c16"]]);
-assert(
-  gone[0] === "error" && gone[1].type === "accountNotFound",
-  "unshared: account vanishes for carol",
-);
+assert(gone[0] === "error" && gone[1].type === "accountNotFound", "unshared: account vanishes for carol");
 const carolPost = await session(CAROL);
 assert(!carolPost.accounts[ERIC.acct], "session no longer lists eric");
 
@@ -271,8 +238,7 @@ const prov = async (method, path, body) => {
     headers: { Authorization: `Bearer ${ADMIN}`, "content-type": "application/json" },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
-  if (!res.ok)
-    assert(false, `provision ${method} ${path} → HTTP ${res.status}: ${await res.text()}`);
+  if (!res.ok) assert(false, `provision ${method} ${path} → HTTP ${res.status}: ${await res.text()}`);
   return res.json();
 };
 const grant = await prov("POST", "/grants", {
@@ -288,9 +254,7 @@ assert(
   "whole-account grant exposes mail capability",
 );
 
-const [[, edQuery]] = await jmap(EDITOR, [
-  ["Email/query", { accountId: ERIC.acct, calculateTotal: true }, "c17"],
-]);
+const [[, edQuery]] = await jmap(EDITOR, [["Email/query", { accountId: ERIC.acct, calculateTotal: true }, "c17"]]);
 assert(edQuery.total === 1, `editor reads eric mail: ${JSON.stringify(edQuery)}`);
 const [[, edContacts]] = await jmap(EDITOR, [
   ["ContactCard/query", { accountId: ERIC.acct, calculateTotal: true }, "c18"],
@@ -309,10 +273,7 @@ assert(
 const revoked = await prov("DELETE", `/grants/${grant.grantId}`);
 assert(revoked.revoked === true, "grant revoked");
 const [edGone] = await jmap(EDITOR, [["Email/query", { accountId: ERIC.acct }, "c20"]]);
-assert(
-  edGone[0] === "error" && edGone[1].type === "accountNotFound",
-  "revoked grant removes access",
-);
+assert(edGone[0] === "error" && edGone[1].type === "accountNotFound", "revoked grant removes access");
 
 // ---- 13. credential vault ------------------------------------------------
 const vault = async (who, method, path, body) => {
@@ -407,9 +368,7 @@ assert(
 const tools = await mcp({ method: "tools/list" }, ERIC.token);
 const toolNames = (tools.body?.result?.tools ?? []).map((t) => t.name);
 assert(
-  ["spend_by_month", "spend_by_vendor", "top_senders", "message_volume"].every((n) =>
-    toolNames.includes(n),
-  ),
+  ["spend_by_month", "spend_by_vendor", "top_senders", "message_volume"].every((n) => toolNames.includes(n)),
   `MCP lists the analytics tools: ${JSON.stringify(toolNames)}`,
 );
 assert(
@@ -444,10 +403,7 @@ const senders = await mcp(
   },
   ERIC.token,
 );
-assert(
-  JSON.parse(senders.body.result.content[0].text)[0]?.sender === "cfo@example.com",
-  "top_senders",
-);
+assert(JSON.parse(senders.body.result.content[0].text)[0]?.sender === "cfo@example.com", "top_senders");
 
 // cross-account denial: CAROL holds no grant on ERIC's account (unshared back in
 // §11) → 403 and ZERO rows leak (authorizeAccount fails before the tool runs).
@@ -517,9 +473,7 @@ const badVer = await fetch(`${AGENT}/mcp/analytics`, {
 });
 const badVerBody = await badVer.json();
 assert(
-  badVer.status === 400 &&
-    badVerBody.error?.code === -32022 &&
-    Array.isArray(badVerBody.error?.data?.supported),
+  badVer.status === 400 && badVerBody.error?.code === -32022 && Array.isArray(badVerBody.error?.data?.supported),
   `unsupported version rejected with supported[]: ${badVer.status} ${JSON.stringify(badVerBody)}`,
 );
 

@@ -28,8 +28,7 @@ import {
 //    Anthropic's cloud rather than from anyone's browser.
 
 const env = () => fakeEnv().env;
-const get = (path: string, origin = "https://mcp.bullmoose.cc") =>
-  new Request(`${origin}${path}`, { method: "GET" });
+const get = (path: string, origin = "https://mcp.bullmoose.cc") => new Request(`${origin}${path}`, { method: "GET" });
 
 describe("s02 T1 — RFC 9728 protected resource metadata", () => {
   it("1. is served at the PATH-INSERTED well-known, which clients probe first", async () => {
@@ -82,9 +81,7 @@ describe("s02 T1 — RFC 9728 protected resource metadata", () => {
     // The escape hatch for a proxy that rewrites the origin: the value must
     // equal what the user typed, and only the operator knows that.
     const e = { ...env(), MCP_RESOURCE_URI: "https://mail.example.com/mcp" };
-    expect(resourceUri(new URL("https://internal.workers.dev/mcp"), e)).toBe(
-      "https://mail.example.com/mcp",
-    );
+    expect(resourceUri(new URL("https://internal.workers.dev/mcp"), e)).toBe("https://mail.example.com/mcp");
     const meta = protectedResourceMetadata(new URL("https://internal.workers.dev/mcp"), e);
     expect(meta.resource).toBe("https://mail.example.com/mcp");
   });
@@ -105,9 +102,7 @@ describe("s02 T1 — the 401 that teaches", () => {
     const res = unauthorized(new URL("https://mcp.bullmoose.cc/mcp"), env());
     const header = res.headers.get("www-authenticate")!;
     expect(header).toContain("Bearer");
-    expect(header).toContain(
-      'resource_metadata="https://mcp.bullmoose.cc/.well-known/oauth-protected-resource/mcp"',
-    );
+    expect(header).toContain('resource_metadata="https://mcp.bullmoose.cc/.well-known/oauth-protected-resource/mcp"');
   });
 
   it("11. the pointer it emits actually resolves to the PRM document", async () => {
@@ -134,15 +129,11 @@ describe("s02 T1 — Origin, not CORS", () => {
   });
 
   it("13. accepts a same-origin browser request", () => {
-    expect(
-      originAllowed(new Request(url, { headers: { Origin: "https://mcp.bullmoose.cc" } }), url),
-    ).toBe(true);
+    expect(originAllowed(new Request(url, { headers: { Origin: "https://mcp.bullmoose.cc" } }), url)).toBe(true);
   });
 
   it("14. refuses a cross-site browser Origin — the rebinding case", () => {
-    expect(
-      originAllowed(new Request(url, { headers: { Origin: "https://evil.example" } }), url),
-    ).toBe(false);
+    expect(originAllowed(new Request(url, { headers: { Origin: "https://evil.example" } }), url)).toBe(false);
   });
 
   it("15. refuses a malformed Origin rather than parsing it loosely", () => {
@@ -189,11 +180,7 @@ describe("s02 T1 — the route is public, /drain and /internal/* are not", () =>
 
   it("19. GET /mcp is 405 — the SSE era's transport is not implemented", async () => {
     const w = fakeEnv();
-    const res = await worker.fetch!(
-      new Request("https://mcp.bullmoose.cc/mcp", { method: "GET" }),
-      w.env,
-      ctx,
-    );
+    const res = await worker.fetch!(new Request("https://mcp.bullmoose.cc/mcp", { method: "GET" }), w.env, ctx);
     expect(res.status).toBe(405);
     expect(res.headers.get("allow")).toBe("POST");
   });
@@ -215,11 +202,7 @@ describe("s02 T1 — the route is public, /drain and /internal/* are not", () =>
     // remaining internal routes had to keep working, and "they 404 without a
     // token" is only half the proof.
     const w = fakeEnv();
-    const res = await worker.fetch!(
-      post("/drain", { "x-internal-token": w.env.INTERNAL_TOKEN }),
-      w.env,
-      ctx,
-    );
+    const res = await worker.fetch!(post("/drain", { "x-internal-token": w.env.INTERNAL_TOKEN }), w.env, ctx);
     expect(res.status).toBe(200);
     expect((await res.json()) as any).toHaveProperty("handled");
   });
@@ -238,9 +221,7 @@ describe("s02 T1 — the route is public, /drain and /internal/* are not", () =>
     });
     (w.env as { OAUTH: Fetcher }).OAUTH = {
       fetch: async () =>
-        new Response(
-          JSON.stringify({ active: true, props: { principalId: "p_eric", scope: ["read"] } }),
-        ),
+        new Response(JSON.stringify({ active: true, props: { principalId: "p_eric", scope: ["read"] } })),
     } as unknown as Fetcher;
 
     const res = await worker.fetch!(
@@ -281,11 +262,7 @@ describe("s02 T1 — the route is public, /drain and /internal/* are not", () =>
     (w.env as { OAUTH: Fetcher }).OAUTH = {
       fetch: async () => new Response("no", { status: 401 }),
     } as unknown as Fetcher;
-    const res = await worker.fetch!(
-      post("/mcp", { Authorization: "Bearer some-oauth-token" }),
-      w.env,
-      ctx,
-    );
+    const res = await worker.fetch!(post("/mcp", { Authorization: "Bearer some-oauth-token" }), w.env, ctx);
     expect(res.status).toBe(401);
     expect(res.headers.get("www-authenticate")).toContain("resource_metadata=");
   });
@@ -306,13 +283,8 @@ describe("s02 T1 — the advertisement must not drift from what the AS will gran
   // one that matters, because a stale exemption reads exactly like a decision.
 
   it("11. advertises every scope the AS will grant, except the named few", () => {
-    const missing = OAUTH_SCOPES.filter(
-      (s) => !PUBLIC_SCOPES.includes(s) && !(s in NOT_ADVERTISED_SCOPES),
-    );
-    expect(
-      missing,
-      `the AS grants these but nothing advertises them: ${missing.join(", ")}`,
-    ).toEqual([]);
+    const missing = OAUTH_SCOPES.filter((s) => !PUBLIC_SCOPES.includes(s) && !(s in NOT_ADVERTISED_SCOPES));
+    expect(missing, `the AS grants these but nothing advertises them: ${missing.join(", ")}`).toEqual([]);
   });
 
   it("12. advertises nothing the AS would refuse — under-promise, never over", () => {

@@ -21,13 +21,7 @@
 
 import type { FakeConsoleData } from "./ConsoleClient";
 import { FakeConsoleClient } from "./ConsoleClient";
-import type {
-  AgentDossier,
-  ConsoleCredential,
-  ConsoleGrant,
-  ConsoleResource,
-  ResourceDossier,
-} from "./types";
+import type { AgentDossier, ConsoleCredential, ConsoleGrant, ConsoleResource, ResourceDossier } from "./types";
 
 const DAY = 86_400_000;
 /** A fixed "now" so the demo is deterministic across runs and screenshots. */

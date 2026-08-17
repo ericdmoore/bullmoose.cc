@@ -135,10 +135,7 @@ async function harness() {
     return principal;
   };
 
-  const call = async <T = Record<string, unknown>>(
-    method: string,
-    args: Record<string, unknown>,
-  ): Promise<T> => {
+  const call = async <T = Record<string, unknown>>(method: string, args: Record<string, unknown>): Promise<T> => {
     const ctx: RequestContext = { env: w.env, principal: await resolve() };
     return registry.get(method)!(args, ctx) as Promise<T>;
   };

@@ -40,10 +40,7 @@ export function loadBootstrap(fileUrl: string): Bootstrap {
   try {
     return JSON.parse(readFileSync(path, "utf8")) as Bootstrap;
   } catch (err) {
-    fail(
-      `bootstrap file is not valid JSON: ${path} (${err instanceof Error ? err.message : err})`,
-      EXIT.USAGE,
-    );
+    fail(`bootstrap file is not valid JSON: ${path} (${err instanceof Error ? err.message : err})`, EXIT.USAGE);
   }
 }
 
@@ -61,8 +58,7 @@ export function loadBootstrap(fileUrl: string): Bootstrap {
  */
 
 /** Same directory depth from src/ (dev, type-stripped) and dist/ (built). */
-const schemaFile = (relative: string) =>
-  readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");
+const schemaFile = (relative: string) => readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");
 
 export function defaultDbPath(): string {
   return process.env.BULLMOOSE_DB ?? join(homedir(), ".bullmoose", "mail.db");
@@ -103,9 +99,7 @@ export function openDb(path: string): DatabaseSync {
 }
 
 export function getConfig(db: DatabaseSync, key: string): string | undefined {
-  const row = db.prepare("SELECT value FROM config WHERE key = ?").get(key) as
-    | { value: string }
-    | undefined;
+  const row = db.prepare("SELECT value FROM config WHERE key = ?").get(key) as { value: string } | undefined;
   return row?.value;
 }
 
@@ -157,8 +151,7 @@ export function selectAccounts(settings: Settings, selector?: string): AccountRe
   const matches = matchAccounts(settings, selector);
   if (matches.length > 0) return matches;
   notFound(
-    `no account matches "${selector}"; have: ` +
-      settings.accounts.map((a) => a.address ?? a.accountId).join(", "),
+    `no account matches "${selector}"; have: ` + settings.accounts.map((a) => a.address ?? a.accountId).join(", "),
   );
 }
 

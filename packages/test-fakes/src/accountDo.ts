@@ -180,18 +180,13 @@ export function fakeAccountDo(env: Record<string, unknown> = {}): FakeAccountDo 
    * ReadableStream into `new Request` needs `duplex: "half"`, and text keeps
    * the body replayable for the `commits` log.
    */
-  const call = async (
-    name: string,
-    input: RequestInfo | URL,
-    init?: RequestInit | Request,
-  ): Promise<Response> => {
+  const call = async (name: string, input: RequestInfo | URL, init?: RequestInit | Request): Promise<Response> => {
     const from = input instanceof Request ? input : null;
     const over = init instanceof Request ? init : null;
     const plainInit = over ? null : (init as RequestInit | undefined);
 
     const url = from ? from.url : String(input);
-    const method =
-      over?.method ?? (plainInit?.method as string | undefined) ?? from?.method ?? "GET";
+    const method = over?.method ?? (plainInit?.method as string | undefined) ?? from?.method ?? "GET";
     const headers = new Headers(over?.headers ?? plainInit?.headers ?? from?.headers ?? undefined);
 
     let body: string | null = null;

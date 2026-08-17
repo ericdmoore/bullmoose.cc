@@ -1,18 +1,7 @@
 import PostalMime from "postal-mime";
 import { commitChanges } from "@bullmoose/account-do";
-import {
-  Mailstore,
-  QUARANTINE_ROLE,
-  normalizeAddress,
-  type ContactWriter,
-  type EmailRow,
-} from "@bullmoose/mailstore";
-import {
-  addDenyDomain,
-  invalidateBoundaryBloom,
-  recordBayesLabel,
-  type BayesLabelMessage,
-} from "./bouncerContract.js";
+import { Mailstore, QUARANTINE_ROLE, normalizeAddress, type ContactWriter, type EmailRow } from "@bullmoose/mailstore";
+import { addDenyDomain, invalidateBoundaryBloom, recordBayesLabel, type BayesLabelMessage } from "./bouncerContract.js";
 import {
   evidenceSenderOf,
   normalizeDomain,
@@ -205,9 +194,7 @@ export async function runBouncer(
   let evidenceText = "";
   let evidenceSender: string | null = null;
   let evidenceSubject = "";
-  const rfc822 = (parsed.attachments ?? []).find((a) =>
-    (a.mimeType ?? "").toLowerCase().startsWith("message/rfc822"),
-  );
+  const rfc822 = (parsed.attachments ?? []).find((a) => (a.mimeType ?? "").toLowerCase().startsWith("message/rfc822"));
   if (rfc822 && rfc822.content !== undefined) {
     try {
       const inner = await PostalMime.parse(rfc822.content as string | ArrayBuffer);
@@ -333,9 +320,7 @@ async function convFalseNegativeSender(c: ConversationCtx): Promise<void> {
       "Recorded the forwarded message as a spam example for your filter — it trains on exactly these corrections.",
     );
     if (quarantinedId) {
-      lines.push(
-        "(That message matches one already sitting in your quarantine, so the boundary had flagged it too.)",
-      );
+      lines.push("(That message matches one already sitting in your quarantine, so the boundary had flagged it too.)");
     }
   }
 
@@ -359,9 +344,7 @@ async function convFalseNegativeSender(c: ConversationCtx): Promise<void> {
           `Future mail from them is held in your quarantine, rescuable${citeDirective(c.directiveMsgId)}.`,
       );
     } else {
-      lines.push(
-        `${c.evidenceSender} was already in your Blocked book — nothing more to add there.`,
-      );
+      lines.push(`${c.evidenceSender} was already in your Blocked book — nothing more to add there.`);
     }
   } else {
     lines.push(
@@ -380,8 +363,7 @@ async function convFalseNegativeDomain(c: ConversationCtx, named: string | null)
   // 'them' / 'this domain' resolves against the EVIDENCE's sender — and when
   // there is no evidence, nothing resolves: ask, never guess. (A mis-split
   // that demoted instruction to evidence lands here too — the fail-safe.)
-  const domain =
-    named ?? (c.evidenceSender ? normalizeDomain(c.evidenceSender.split("@")[1] ?? "") : null);
+  const domain = named ?? (c.evidenceSender ? normalizeDomain(c.evidenceSender.split("@")[1] ?? "") : null);
   if (!domain) {
     const replyId = await c.reply(
       "I can deny-list a domain house-wide, but I won't guess which one: name it " +
@@ -395,9 +377,7 @@ async function convFalseNegativeDomain(c: ConversationCtx, named: string | null)
 
   // Refuse to deny-list a domain this tenant hosts — that would bounce the
   // house's own mail at its own door.
-  const own = await c.env.DB.prepare(
-    `SELECT 1 AS hit FROM domains WHERE domain = ? AND tenant_id = ?`,
-  )
+  const own = await c.env.DB.prepare(`SELECT 1 AS hit FROM domains WHERE domain = ? AND tenant_id = ?`)
     .bind(domain, c.job.tenant_id)
     .first<{ hit: number }>();
   if (own?.hit === 1) {
@@ -408,13 +388,7 @@ async function convFalseNegativeDomain(c: ConversationCtx, named: string | null)
     return c.finish("done", { note: `refused: ${domain} is a tenant domain`, replyId });
   }
 
-  await addDenyDomain(
-    { DB: c.env.DB, ROUTES: c.env.ROUTES },
-    c.job.tenant_id,
-    domain,
-    "directive",
-    c.directiveMsgId,
-  );
+  await addDenyDomain({ DB: c.env.DB, ROUTES: c.env.ROUTES }, c.job.tenant_id, domain, "directive", c.directiveMsgId);
 
   const lines: string[] = [
     `Added ${domain} to the deny list — house-wide: future mail from ${domain} is refused at the SMTP edge, ` +
@@ -440,15 +414,10 @@ async function convFalseNegativeDomain(c: ConversationCtx, named: string | null)
 // ---------------------------------------------------------------------------
 // Conversation 2 — false positive: explain-yourself + repair in one pass.
 
-async function convFalsePositive(
-  c: ConversationCtx,
-  intent: "whyBlocked" | "passSender",
-): Promise<void> {
+async function convFalsePositive(c: ConversationCtx, intent: "whyBlocked" | "passSender"): Promise<void> {
   // H: an address the asker typed in their OWN words; the evidence's sender
   // is the fallback. Neither → ask.
-  const others = wrapperAddresses(c.wrapper).filter(
-    (a) => a !== c.sender && a !== normalizeAddress(c.selfAddress),
-  );
+  const others = wrapperAddresses(c.wrapper).filter((a) => a !== c.sender && a !== normalizeAddress(c.selfAddress));
   const h = others[0] ?? c.evidenceSender ?? null;
   if (!h) {
     const replyId = await c.reply(
@@ -500,9 +469,7 @@ async function convFalsePositive(
   // -- repair 1: rescue what is still held --------------------------------
   const demotedByRescue: string[] = [];
   if (shunts.length > 0) {
-    const heldIds = [
-      ...new Set(shunts.map((e) => e.emailId).filter((id): id is string => id !== null)),
-    ];
+    const heldIds = [...new Set(shunts.map((e) => e.emailId).filter((id): id is string => id !== null))];
     const rescuedIds: string[] = [];
     for (const emailId of heldIds) {
       const r = await c.askerStore.rescueQuarantined(c.askerId, emailId, c.sender, {
@@ -531,9 +498,7 @@ async function convFalsePositive(
           "The rescue also counts as a labeled correction for your filter.",
       );
     } else {
-      lines.push(
-        "Those messages had already been moved out of quarantine, so there was nothing left to rescue.",
-      );
+      lines.push("Those messages had already been moved out of quarantine, so there was nothing left to rescue.");
     }
   }
 
@@ -574,13 +539,9 @@ async function convFalsePositive(
   if (h.includes("@")) {
     const kg = await c.askerStore.ensureDefaultAddressBook(c.askerId);
     if (kg.change === "created") {
-      await commitChanges(c.env.ACCOUNT_DO, c.askerId, [
-        { collection: "AddressBook", created: [kg.id] },
-      ]);
+      await commitChanges(c.env.ACCOUNT_DO, c.askerId, [{ collection: "AddressBook", created: [kg.id] }]);
     } else if (kg.change === "updated") {
-      await commitChanges(c.env.ACCOUNT_DO, c.askerId, [
-        { collection: "AddressBook", updated: [kg.id] },
-      ]);
+      await commitChanges(c.env.ACCOUNT_DO, c.askerId, [{ collection: "AddressBook", updated: [kg.id] }]);
     }
     const add = await addBookMember(c, c.askerId, kg.id, h);
     if (add.added) {
@@ -629,13 +590,9 @@ async function matchingQuarantinedEmailId(c: ConversationCtx): Promise<string | 
 /** The asker's personal Blocked book, by the stage-1 naming convention;
  * created on first use with write_policy 'propose' (owner writes through,
  * agents must propose — the s12 readme's personal-tier row). */
-async function ensurePersonalBlockedBook(
-  c: ConversationCtx,
-): Promise<{ id: string; created: boolean }> {
+async function ensurePersonalBlockedBook(c: ConversationCtx): Promise<{ id: string; created: boolean }> {
   const askerId = c.askerId as string;
-  const row = await c.env.DB.prepare(
-    `SELECT id FROM address_books WHERE account_id = ? AND LOWER(name) = 'blocked'`,
-  )
+  const row = await c.env.DB.prepare(`SELECT id FROM address_books WHERE account_id = ? AND LOWER(name) = 'blocked'`)
     .bind(askerId)
     .first<{ id: string }>();
   if (row) return { id: row.id, created: false };
@@ -644,8 +601,7 @@ async function ensurePersonalBlockedBook(
   await c.askerStore.insertAddressBook(askerId, {
     id,
     name: "Blocked",
-    description:
-      "Senders this mailbox never wants to hear from — the boundary quarantines matches.",
+    description: "Senders this mailbox never wants to hear from — the boundary quarantines matches.",
     sortOrder: 0,
     isDefault: false,
     isSubscribed: true,

@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEMO_NOW, demoConsoleData } from "./demoConsole";
-import {
-  answerCan,
-  bindingWarnings,
-  buildAgentView,
-  describeCredential,
-  describeGrant,
-  grantState,
-} from "./perAgent";
+import { answerCan, bindingWarnings, buildAgentView, describeCredential, describeGrant, grantState } from "./perAgent";
 import type { AgentDossier, ConsoleBinding, ConsoleGrant } from "./types";
 
 const data = demoConsoleData();
@@ -151,15 +144,11 @@ describe("bindingWarnings", () => {
 
   it("explains a binding that cannot fire", () => {
     expect(bindingWarnings(binding({ enabled: false })).join(" ")).toContain("disabled");
-    expect(bindingWarnings(binding({ triggerOn: "schedule" })).join(" ")).toContain(
-      "nothing fires this binding today",
-    );
+    expect(bindingWarnings(binding({ triggerOn: "schedule" })).join(" ")).toContain("nothing fires this binding today");
   });
 
   it("admits when the config could not be parsed", () => {
-    const w = bindingWarnings(
-      binding({ config: { pipeline: null, replyMode: null, configUnparseable: true } }),
-    );
+    const w = bindingWarnings(binding({ config: { pipeline: null, replyMode: null, configUnparseable: true } }));
     expect(w.join(" ")).toContain("could not be parsed");
   });
 });

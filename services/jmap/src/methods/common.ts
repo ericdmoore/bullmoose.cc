@@ -77,13 +77,7 @@ export async function requireAccountScopes(
       `INSERT INTO grant_audit (grant_id, principal, account_id, method, at)
        VALUES (?, ?, ?, ?, ?)`,
     )
-      .bind(
-        auditGrant.grantId,
-        ctx.principal.username,
-        access.accountId,
-        `${domain}:${required.join("+")}`,
-        Date.now(),
-      )
+      .bind(auditGrant.grantId, ctx.principal.username, access.accountId, `${domain}:${required.join("+")}`, Date.now())
       .run();
   }
   return access!;
@@ -144,10 +138,7 @@ export function storeFor(ctx: RequestContext): Mailstore {
  * scope); human otherwise. `authorization` is the T3 hook: only the approved-
  * proposal executor passes it.
  */
-export function contactWriterFor(
-  ctx: RequestContext,
-  authorization?: { proposalId: string },
-): ContactWriter {
+export function contactWriterFor(ctx: RequestContext, authorization?: { proposalId: string }): ContactWriter {
   return {
     principal: ctx.principal.username,
     kind: ctx.agent || isAgentPrincipal(ctx.principal) ? "agent" : "human",

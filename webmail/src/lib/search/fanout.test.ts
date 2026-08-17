@@ -44,19 +44,12 @@ describe("the fan-out over the demo backend", () => {
     // Refinement 4: coverage is declared in the response, never implied by
     // which endpoint answered — so no consumer can show hits without scope.
     const response = await searchDemo("elk");
-    expect(response.coverage.map((c) => c.realm)).toEqual([
-      "mail",
-      "contacts",
-      "calendar",
-      "files",
-    ]);
+    expect(response.coverage.map((c) => c.realm)).toEqual(["mail", "contacts", "calendar", "files"]);
     expect(response.coverage.find((c) => c.realm === "files")).toMatchObject({
       searched: false,
       reason: "no search path yet",
     });
-    expect(response.gaps).toEqual([
-      { label: "attachment contents", reason: "requires the extraction index" },
-    ]);
+    expect(response.gaps).toEqual([{ label: "attachment contents", reason: "requires the extraction index" }]);
   });
 
   it("tags every hit with its realm, and finds nothing for a nonsense term", async () => {

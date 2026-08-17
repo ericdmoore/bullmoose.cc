@@ -1,10 +1,10 @@
 const tabs = [
-  { name: "Open", href: "#", current: true },
-  { name: "Closed", href: "#", current: false },
-];
+  { name: 'Open', href: '#', current: true },
+  { name: 'Closed', href: '#', current: false },
+]
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(" ");
+  return classes.filter(Boolean).join(' ')
 }
 
 export default function Example() {
@@ -18,12 +18,12 @@ export default function Example() {
               <a
                 key={tab.name}
                 href={tab.href}
-                aria-current={tab.current ? "page" : undefined}
+                aria-current={tab.current ? 'page' : undefined}
                 className={classNames(
                   tab.current
-                    ? "border-indigo-500 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
-                    : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-white/20 dark:hover:text-white",
-                  "border-b-2 px-1 pb-4 text-sm font-medium whitespace-nowrap",
+                    ? 'border-indigo-500 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-white/20 dark:hover:text-white',
+                  'border-b-2 px-1 pb-4 text-sm font-medium whitespace-nowrap',
                 )}
               >
                 {tab.name}
@@ -33,5 +33,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  );
+  )
 }

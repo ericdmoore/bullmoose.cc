@@ -97,10 +97,7 @@ export function cliCommandFor(spec: MintSpec): string {
 }
 
 export function rotateCommandFor(name: string): string {
-  return (
-    `bullmoose creds rotate ${name}\n` +
-    "# re-seals under the SAME name, so nothing downstream re-attaches"
-  );
+  return `bullmoose creds rotate ${name}\n` + "# re-seals under the SAME name, so nothing downstream re-attaches";
 }
 
 // ── PKCE ────────────────────────────────────────────────────────────────────
@@ -128,10 +125,7 @@ export interface Pkce {
  *  can read back, and never in a request to the site's own origin. */
 export async function createPkce(): Promise<Pkce> {
   const verifier = randomB64Url(32);
-  const digest = await globalThis.crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(verifier),
-  );
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
   return { verifier, challenge: b64url(new Uint8Array(digest)), state: randomB64Url(16) };
 }
 
@@ -167,11 +161,7 @@ export class CredentialVault {
    * declaration beats sniffing, and a caller that could label its own request
    * "metadata" is a caller that can forget.
    */
-  private async send(
-    method: string,
-    path: string,
-    body?: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+  private async send(method: string, path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> {
     const sensitivity = carriesSecret(body) ? "secret" : "metadata";
     const url = resolveTarget(this.origins, path, sensitivity);
     const res = await this.doFetch(url, {

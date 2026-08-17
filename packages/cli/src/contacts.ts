@@ -64,11 +64,7 @@ const CREATE_CHUNK = 20;
 const CREATE_CHUNK_BYTES = 600_000;
 const PAGE = 256;
 
-export async function cmdContacts(
-  db: DatabaseSync,
-  positionals: string[],
-  opts: ContactsOpts,
-): Promise<void> {
+export async function cmdContacts(db: DatabaseSync, positionals: string[], opts: ContactsOpts): Promise<void> {
   const [sub, arg, arg2] = positionals;
   const settings = requireSettings(db);
   const accountId = pickAccountId(settings, opts.account);
@@ -111,10 +107,7 @@ export async function cmdContacts(
       await cmdExport(client, accountId, opts);
       break;
     default:
-      usage(
-        `unknown contacts subcommand: ${sub ?? "(none)"} ` +
-          `(import|list|show|books|create|edit|rm|export)`,
-      );
+      usage(`unknown contacts subcommand: ${sub ?? "(none)"} ` + `(import|list|show|books|create|edit|rm|export)`);
   }
 }
 
@@ -128,10 +121,7 @@ async function cmdImport(
 ): Promise<void> {
   const input = readInput(file, { as: opts.as, required: true, what: "vCard" })!;
   if (input.type !== "vcard") {
-    fail(
-      `${input.from} looks like ${input.type}, not vCard — pass --as vcard to force it`,
-      EXIT.USAGE,
-    );
+    fail(`${input.from} looks like ${input.type}, not vCard — pass --as vcard to force it`, EXIT.USAGE);
   }
   const { cards, warnings } = parseVcf(input.text);
   for (const w of warnings) warn(w);
@@ -233,15 +223,10 @@ async function cmdImport(
     }
   };
   const sendChunk0 = async (card: Card): Promise<void> => {
-    const res = await client.one(
-      "ContactCard/set",
-      { accountId, create: { c0: card } },
-      CONTACTS_USING,
-    );
+    const res = await client.one("ContactCard/set", { accountId, create: { c0: card } }, CONTACTS_USING);
     created += Object.keys((res.created as object) ?? {}).length;
     const err = (res.notCreated as Record<string, { type?: string; description?: string }>)?.c0;
-    if (err)
-      failed.push({ uid: String(card.uid), error: err.description ?? err.type ?? "unknown" });
+    if (err) failed.push({ uid: String(card.uid), error: err.description ?? err.type ?? "unknown" });
     done += 1;
     progress();
   };
@@ -352,12 +337,7 @@ async function cmdList(client: JmapClient, accountId: string, opts: ContactsOpts
   }
 }
 
-async function cmdShow(
-  client: JmapClient,
-  accountId: string,
-  id: string,
-  opts: ContactsOpts,
-): Promise<void> {
+async function cmdShow(client: JmapClient, accountId: string, id: string, opts: ContactsOpts): Promise<void> {
   const g = await client.one("ContactCard/get", { accountId, ids: [id] }, CONTACTS_USING);
   const card = ((g.list as Card[]) ?? [])[0];
   if (!card) notFound(`no such contact: ${id}`);
@@ -396,24 +376,15 @@ async function resolveBook(
     notFound("no address book on the account");
   }
 
-  const match = books.find(
-    (b) => b.id === selector || b.name.toLowerCase() === selector.toLowerCase(),
-  );
+  const match = books.find((b) => b.id === selector || b.name.toLowerCase() === selector.toLowerCase());
   if (match) return match;
   if (!createMissing) {
     notFound(`no address book "${selector}"; have: ${books.map((b) => b.name).join(", ")}`);
   }
-  const set = await client.one(
-    "AddressBook/set",
-    { accountId, create: { b0: { name: selector } } },
-    CONTACTS_USING,
-  );
+  const set = await client.one("AddressBook/set", { accountId, create: { b0: { name: selector } } }, CONTACTS_USING);
   const createdId = (set.created as Record<string, { id?: string }>)?.b0?.id;
   if (!createdId) {
-    failSetError(
-      `create address book "${selector}"`,
-      (set.notCreated as Record<string, unknown>)?.b0,
-    );
+    failSetError(`create address book "${selector}"`, (set.notCreated as Record<string, unknown>)?.b0);
   }
   note(`created address book "${selector}" (${createdId})`);
   return { id: createdId, name: selector, isDefault: false };
@@ -559,8 +530,7 @@ async function cmdBooks(
       if (dryRun(opts, "remove book", detail)) return;
       if (contents.length > 0 && !opts.force) {
         conflict(
-          `address book "${book.name}" holds ${contents.length} contact(s); ` +
-            `pass --force to remove them too`,
+          `address book "${book.name}" holds ${contents.length} contact(s); ` + `pass --force to remove them too`,
         );
       }
       const res = await client.one(
@@ -618,14 +588,9 @@ async function cmdCreate(
     delete rest.id; // id is server-set
     create[`c${i}`] = book ? { ...rest, addressBookIds: { [book.id]: true } } : rest;
   });
-  const res = await client.one(
-    "ContactCard/set",
-    { accountId, ...ifInState(opts), create },
-    CONTACTS_USING,
-  );
+  const res = await client.one("ContactCard/set", { accountId, ...ifInState(opts), create }, CONTACTS_USING);
   const created = (res.created as Record<string, { id: string }>) ?? {};
-  const notCreated =
-    (res.notCreated as Record<string, { type?: string; description?: string }>) ?? {};
+  const notCreated = (res.notCreated as Record<string, { type?: string; description?: string }>) ?? {};
   const keys = Object.keys(create);
   const madeIds = keys.filter((k) => created[k]).map((k) => created[k]!.id);
   const fails = keys.filter((k) => notCreated[k]);
@@ -706,12 +671,7 @@ async function cmdEdit(
 }
 
 /** `contacts rm <cardId> [--dry-run]`. Resolves the target for real first. */
-async function cmdRm(
-  client: JmapClient,
-  accountId: string,
-  id: string,
-  opts: ContactsOpts,
-): Promise<void> {
+async function cmdRm(client: JmapClient, accountId: string, id: string, opts: ContactsOpts): Promise<void> {
   const g = await client.one(
     "ContactCard/get",
     { accountId, ids: [id], properties: ["id", "name", "organizations", "emails"] },
@@ -721,11 +681,7 @@ async function cmdRm(
   if (!card) notFound(`no such contact: ${id}`);
   const name = displayName(card);
   if (dryRun(opts, "remove", `${name} (${id})`)) return;
-  const res = await client.one(
-    "ContactCard/set",
-    { accountId, ...ifInState(opts), destroy: [id] },
-    CONTACTS_USING,
-  );
+  const res = await client.one("ContactCard/set", { accountId, ...ifInState(opts), destroy: [id] }, CONTACTS_USING);
   if (!((res.destroyed as string[]) ?? []).includes(id)) {
     failSetError("remove", (res.notDestroyed as Record<string, unknown>)?.[id]);
   }
@@ -788,8 +744,7 @@ export function cardsFromInput(input: Input): Card[] {
     return arr as Card[];
   }
   fail(
-    `${input.from} looks like ${input.type}, not a contact — ` +
-      `pass --as vcard or --as json to force it`,
+    `${input.from} looks like ${input.type}, not a contact — ` + `pass --as vcard or --as json to force it`,
     EXIT.USAGE,
   );
 }
@@ -829,11 +784,7 @@ function reportWrite(
   if (what.state) note(`state ${what.state}  (pass to --if-state on the next write)`);
 }
 
-async function queryIdsInBook(
-  client: JmapClient,
-  accountId: string,
-  bookId: string,
-): Promise<string[]> {
+async function queryIdsInBook(client: JmapClient, accountId: string, bookId: string): Promise<string[]> {
   const ids: string[] = [];
   let position = 0;
   for (;;) {
@@ -891,9 +842,7 @@ export function serializeVcard(card: Card): string {
     push({ group, name: "X-ABLABEL", value: escapeText(label) });
   };
 
-  const name = card.name as
-    | { full?: string; components?: Array<{ kind?: string; value?: string }> }
-    | undefined;
+  const name = card.name as { full?: string; components?: Array<{ kind?: string; value?: string }> } | undefined;
 
   // FN is mandatory in 3.0.
   const fn =
@@ -927,9 +876,7 @@ export function serializeVcard(card: Card): string {
   }
 
   for (const org of values(card.organizations)) {
-    const units = Array.isArray(org.units)
-      ? (org.units as Array<{ name?: string }>).map((u) => u.name ?? "")
-      : [];
+    const units = Array.isArray(org.units) ? (org.units as Array<{ name?: string }>).map((u) => u.name ?? "") : [];
     push({
       name: "ORG",
       value: [org.name ?? "", ...units].map((v) => escapeComponent(String(v))).join(";"),
@@ -1081,11 +1028,7 @@ export function serializeVcard(card: Card): string {
 }
 
 function escapeText(value: string): string {
-  return value
-    .replaceAll("\\", "\\\\")
-    .replaceAll("\n", "\\n")
-    .replaceAll(",", "\\,")
-    .replaceAll(";", "\\;");
+  return value.replaceAll("\\", "\\\\").replaceAll("\n", "\\n").replaceAll(",", "\\,").replaceAll(";", "\\;");
 }
 
 /** Escaping for one component of a structured value (N/ADR/ORG). */

@@ -256,9 +256,7 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
   return (
     <main class="home">
       {isDemo ? (
-        <p class="home-banner">
-          Sample data. Decisions here are kept in this browser tab and reach no server.
-        </p>
+        <p class="home-banner">Sample data. Decisions here are kept in this browser tab and reach no server.</p>
       ) : null}
 
       <div class="home-cols">
@@ -292,9 +290,7 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
                 panel={panel && panel.id === p.id ? panel : undefined}
                 setPanel={setPanel}
                 onApprove={() => void act(p.id, { status: "approved" })}
-                onDecline={(reason, note) =>
-                  void act(p.id, { status: "rejected", reason, ...(note ? { note } : {}) })
-                }
+                onDecline={(reason, note) => void act(p.id, { status: "rejected", reason, ...(note ? { note } : {}) })}
                 onSubmitEdit={(form) => submitEdit(p, form)}
               />
             ))}
@@ -484,9 +480,7 @@ function EditPanel(props: {
             <input
               type="text"
               value={form.subject}
-              onInput={(e) =>
-                props.onChange({ ...form, subject: (e.target as HTMLInputElement).value })
-              }
+              onInput={(e) => props.onChange({ ...form, subject: (e.target as HTMLInputElement).value })}
             />
           </label>
           <label class="home-label">
@@ -494,9 +488,7 @@ function EditPanel(props: {
             <textarea
               rows={6}
               value={form.text}
-              onInput={(e) =>
-                props.onChange({ ...form, text: (e.target as HTMLTextAreaElement).value })
-              }
+              onInput={(e) => props.onChange({ ...form, text: (e.target as HTMLTextAreaElement).value })}
             />
           </label>
         </>
@@ -507,9 +499,7 @@ function EditPanel(props: {
             rows={8}
             spellcheck={false}
             value={form.json}
-            onInput={(e) =>
-              props.onChange({ ...form, json: (e.target as HTMLTextAreaElement).value })
-            }
+            onInput={(e) => props.onChange({ ...form, json: (e.target as HTMLTextAreaElement).value })}
           />
         </label>
       )}

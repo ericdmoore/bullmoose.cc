@@ -69,10 +69,7 @@ export class BookWriteRefused extends Error {
   }
 }
 
-export const refusedDirectWrite = (
-  policy: Exclude<BookWritePolicy, "open">,
-  bookId: string,
-): BookWriteRefused =>
+export const refusedDirectWrite = (policy: Exclude<BookWritePolicy, "open">, bookId: string): BookWriteRefused =>
   new BookWriteRefused(
     policy,
     bookId,
@@ -127,10 +124,7 @@ export function cardMemberUids(card: JSContactCard): string[] {
  * uid, ONE level deep. A member that is itself a group contributes nothing
  * (fail-closed; the chokepoint refuses nesting into governed books anyway).
  */
-export function cardContribution(
-  card: JSContactCard,
-  resolveUid: (uid: string) => JSContactCard | null,
-): Set<string> {
+export function cardContribution(card: JSContactCard, resolveUid: (uid: string) => JSContactCard | null): Set<string> {
   const out = cardOwnEmails(card);
   for (const uid of cardMemberUids(card)) {
     const member = resolveUid(uid);

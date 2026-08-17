@@ -407,17 +407,7 @@ async function holdState(
          (SELECT subject FROM emails WHERE account_id = ? AND id = ?) AS subject,
          (SELECT received_at FROM emails WHERE account_id = ? AND id = ?) AS received_at`,
     )
-      .bind(
-        accountId,
-        emailId,
-        QUARANTINE_ROLE,
-        accountId,
-        emailId,
-        accountId,
-        emailId,
-        accountId,
-        emailId,
-      )
+      .bind(accountId, emailId, QUARANTINE_ROLE, accountId, emailId, accountId, emailId, accountId, emailId)
       .first<{
         held: number;
         last_event: string | null;
@@ -431,9 +421,7 @@ async function holdState(
       receivedAt: row?.received_at ?? null,
     };
   } catch (err) {
-    console.error(
-      `mid-band hold check failed for ${emailId}: ${err instanceof Error ? err.message : err}`,
-    );
+    console.error(`mid-band hold check failed for ${emailId}: ${err instanceof Error ? err.message : err}`);
     return { held: false, lastEvent: null, subject: "", receivedAt: null };
   }
 }

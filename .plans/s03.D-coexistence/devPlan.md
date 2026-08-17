@@ -8,10 +8,10 @@
 **Nothing built. Not blocked either** — both stated dependencies are done, so this is
 unstarted by choice rather than by gate.
 
-| Task                                                         | State          | Evidence                                                                                                                                                                                 |
-| ------------------------------------------------------------ | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **T1** — `urn:bullmoose:agent` capability + `ActionProposal` | ✅ **done**    | side table `agent_proposals` 1:1 over `agent_invocations`; JMAP collection + producer + capability gate + migration. tier-3 wall = the `send` scope (`actionProposal.ts:257`). +17 tests |
-| **T2–T5**                                                    | ❌ not started | gated on T1                                                                                                                                                                              |
+| Task | State | Evidence |
+|---|---|---|
+| **T1** — `urn:bullmoose:agent` capability + `ActionProposal` | ✅ **done** | side table `agent_proposals` 1:1 over `agent_invocations`; JMAP collection + producer + capability gate + migration. tier-3 wall = the `send` scope (`actionProposal.ts:257`). +17 tests |
+| **T2–T5** | ❌ not started | gated on T1 |
 
 The seam is already cut and empty: `webmail/src/components/AppShell.tsx:688` renders
 `{agentSeam ? <aside class="agent-seam" aria-label="Agent" /> : null}` — an empty `<aside>`,

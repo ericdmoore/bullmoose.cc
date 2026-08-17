@@ -148,9 +148,7 @@ export default function ContactsApp({ client: injected }: Props) {
             return;
           }
           active =
-            resolved.mode === "demo"
-              ? contactsDemoClient(resolved.demo.client, location.search)
-              : resolved.client;
+            resolved.mode === "demo" ? contactsDemoClient(resolved.demo.client, location.search) : resolved.client;
           if (!cancelled) {
             setMode(resolved.mode);
             setModeReason(resolved.reason);
@@ -349,11 +347,7 @@ export default function ContactsApp({ client: injected }: Props) {
     setBusy(true);
     try {
       if (view === "new") {
-        const result = await createCard(
-          client,
-          accountId,
-          cardCreateSpec(form, formBook || undefined),
-        );
+        const result = await createCard(client, accountId, cardCreateSpec(form, formBook || undefined));
         if (report(result, null, "Contact created.") && result.id) {
           setSelectedId(result.id);
           setView("detail");
@@ -412,11 +406,7 @@ export default function ContactsApp({ client: injected }: Props) {
     if (!name) return;
     setBusy(true);
     try {
-      const result = await createCard(
-        client,
-        accountId,
-        groupCreateSpec(name, [], defaultTargetBook(books)?.id),
-      );
+      const result = await createCard(client, accountId, groupCreateSpec(name, [], defaultTargetBook(books)?.id));
       if (report(result, null, `Group “${name}” created.`) && result.id) {
         setSelectedId(result.id);
         refresh();
@@ -432,9 +422,7 @@ export default function ContactsApp({ client: injected }: Props) {
       if (!client || !accountId || !subject.uid) return;
       setBusy(true);
       try {
-        const patch = join
-          ? addMemberPatch(group, subject.uid)
-          : removeMemberPatch(group, subject.uid);
+        const patch = join ? addMemberPatch(group, subject.uid) : removeMemberPatch(group, subject.uid);
         const result = await saveCardEdit(client, accountId, group, patch);
         if (result.conflict) {
           setToast("That group changed while you were looking at it — reloaded.");
@@ -491,9 +479,8 @@ export default function ContactsApp({ client: injected }: Props) {
             advertises the contacts capability at all, which is a different
             thing and a different fix (session.ts:22-42). */}
         <p class="empty-means">
-          This session reaches no account with contacts. A token scoped to mail only, or a grant
-          that shares a mailbox but no address book, both land here — the contacts are not missing,
-          they are out of reach.
+          This session reaches no account with contacts. A token scoped to mail only, or a grant that shares a mailbox
+          but no address book, both land here — the contacts are not missing, they are out of reach.
         </p>
       </main>
     );
@@ -760,9 +747,7 @@ export default function ContactsApp({ client: injected }: Props) {
                   members={members}
                   missingMembers={missingMembers}
                   memberOf={memberOf}
-                  joinable={allGroups.filter(
-                    (g) => g.id !== card.id && !memberOf.some((m) => m.id === g.id),
-                  )}
+                  joinable={allGroups.filter((g) => g.id !== card.id && !memberOf.some((m) => m.id === g.id))}
                   busy={busy}
                   onEdit={startEdit}
                   onDelete={() => void remove()}
@@ -847,8 +832,7 @@ function CardDetail(props: {
               {missingMembers.length === 1
                 ? "1 member no longer exists"
                 : `${missingMembers.length} members no longer exist`}{" "}
-              — the contact was deleted but the group still names it:{" "}
-              <code>{missingMembers.join(", ")}</code>
+              — the contact was deleted but the group still names it: <code>{missingMembers.join(", ")}</code>
             </p>
           ) : null}
           <p class="caveats">{GROUP_SYNC_CAVEAT}</p>
@@ -889,8 +873,7 @@ function CardDetail(props: {
               class="join-group"
               onSubmit={(ev) => {
                 ev.preventDefault();
-                const id = (ev.currentTarget.elements.namedItem("group") as HTMLSelectElement)
-                  .value;
+                const id = (ev.currentTarget.elements.namedItem("group") as HTMLSelectElement).value;
                 const target = joinable.find((g) => g.id === id);
                 if (target) props.onJoinGroup(target);
               }}
@@ -1090,9 +1073,7 @@ function ContactForm(props: {
                 value={address[field]}
                 onInput={(ev) =>
                   set({
-                    addresses: form.addresses.map((a, i) =>
-                      i === index ? { ...a, [field]: value(ev) } : a,
-                    ),
+                    addresses: form.addresses.map((a, i) => (i === index ? { ...a, [field]: value(ev) } : a)),
                   })
                 }
               />
@@ -1100,11 +1081,7 @@ function ContactForm(props: {
           ))}
         </fieldset>
       ))}
-      <button
-        type="button"
-        class="link-button"
-        onClick={() => set({ addresses: [...form.addresses, blankAddress()] })}
-      >
+      <button type="button" class="link-button" onClick={() => set({ addresses: [...form.addresses, blankAddress()] })}>
         Add address
       </button>
 
@@ -1116,10 +1093,7 @@ function ContactForm(props: {
       {props.books.length > 1 ? (
         <label>
           Address book
-          <select
-            value={props.bookId}
-            onChange={(ev) => props.onBook((ev.currentTarget as HTMLSelectElement).value)}
-          >
+          <select value={props.bookId} onChange={(ev) => props.onBook((ev.currentTarget as HTMLSelectElement).value)}>
             {props.books.map((b) => (
               <option value={b.id}>{b.name}</option>
             ))}
@@ -1130,8 +1104,8 @@ function ContactForm(props: {
       {/* The honest note about what this editor will NOT touch. Everything
           else on the card survives untouched by construction (form.ts). */}
       <p class="caveats">
-        Photos, birthdays and anything synced from another client that this form does not show are
-        kept exactly as they are — an edit here only writes the fields above.
+        Photos, birthdays and anything synced from another client that this form does not show are kept exactly as they
+        are — an edit here only writes the fields above.
       </p>
 
       <div class="actions">

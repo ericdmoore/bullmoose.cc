@@ -166,10 +166,7 @@ export function renderMessage(email: Email, opts: RenderOptions = {}): RenderedM
   };
 }
 
-function firstBodyValue(
-  email: Email,
-  parts: Email["htmlBody"],
-): { value: string; isTruncated?: boolean } | undefined {
+function firstBodyValue(email: Email, parts: Email["htmlBody"]): { value: string; isTruncated?: boolean } | undefined {
   const partId = parts?.[0]?.partId;
   if (!partId) return undefined;
   const value = email.bodyValues?.[partId];
@@ -191,9 +188,7 @@ export function defaultExpanded(emails: Email[]): Set<string> {
 }
 
 /** Attachments across the thread, deduped by blobId — the thread-level tray. */
-export function threadAttachments(
-  emails: Email[],
-): Array<Email["attachments"][number] & { emailId: string }> {
+export function threadAttachments(emails: Email[]): Array<Email["attachments"][number] & { emailId: string }> {
   const seen = new Set<string>();
   const out: Array<Email["attachments"][number] & { emailId: string }> = [];
   for (const email of emails) {

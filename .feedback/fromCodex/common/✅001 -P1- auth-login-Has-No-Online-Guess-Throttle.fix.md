@@ -35,7 +35,7 @@ Shipped as `services/jmap/src/loginThrottle.ts` + the gate in `handleLogin`, wit
 recommended steps were **not** followed, deliberately:
 
 1. **Step 3 contradicts step 2's own constraint.** "Return the same 401 body until the threshold
-   flips to 429" makes the status code depend on the _email_ window. Since the email window is the
+   flips to 429" makes the status code depend on the *email* window. Since the email window is the
    one that trips first (5 vs 20), an attacker gets 429 on an email they have hammered and 401 on
    one they have not — the transition itself is an enumeration signal, and it undoes the uniform-401
    property the issue text correctly praises. Implemented instead: **only the IP window may change
@@ -58,12 +58,12 @@ Also worth recording:
 - The gate runs **before** the credentials `SELECT` and before `hashLoginKey` — the tests assert on
   call counts, not status codes, because a status assertion passes with the ordering reversed.
 - A window starts at its first failure and is **never** extended, so a third party cannot hold a
-  victim's login shut indefinitely. The blast radius of a tripped email window is _token minting_;
+  victim's login shut indefinitely. The blast radius of a tripped email window is *token minting*;
   existing bearer tokens keep working, so nobody loses access to their mail.
 - KV is eventually consistent (~60s edge cache, ~1 write/s per key), so these windows bound the
   guess rate rather than counting exactly. Documented in `loginThrottle.ts`; the upgrade path is a
   Durable Object or the native rate-limiting binding behind the same `beginLoginAttempt` interface.
-- Still open, filed separately: on success `authRoutes.ts` returns the token _plus_ a full
+- Still open, filed separately: on success `authRoutes.ts` returns the token *plus* a full
   enumeration of the principal's accounts, tenant ids and addresses, and the token defaults to
   `["mail"]` (Claude issue 001). The throttle bounds how many guesses reach that payload; it does not
   shrink it.

@@ -51,9 +51,7 @@ const seedCalendar = (db: ReturnType<typeof fakeD1>) =>
 describe("fakeD1 — the live schema, not a fixture table", () => {
   it("loads both plane schemas that wrangler applies", () => {
     const db = fakeD1();
-    const tables = db
-      .query<{ name: string }>(`SELECT name FROM sqlite_master WHERE type = 'table'`)
-      .map((r) => r.name);
+    const tables = db.query<{ name: string }>(`SELECT name FROM sqlite_master WHERE type = 'table'`).map((r) => r.name);
     // Control plane AND data plane, in one database — which is what the jmap
     // worker's single DB binding looks like from the method layer.
     expect(tables).toContain("principals"); // control-plane.sql
@@ -207,9 +205,7 @@ describe("fakeAccountDo — the real AccountDO, so /changes is real", () => {
     const w = fakeEnv();
     const before = await w.accountDo.state(ACCOUNT);
 
-    await commitChanges(w.env.ACCOUNT_DO, ACCOUNT, [
-      { collection: "CalendarEvent", created: ["ce_1"] },
-    ]);
+    await commitChanges(w.env.ACCOUNT_DO, ACCOUNT, [{ collection: "CalendarEvent", created: ["ce_1"] }]);
 
     const delta = await w.accountDo.changes(ACCOUNT, "CalendarEvent", before);
     expect(delta.created).toEqual(["ce_1"]);
@@ -219,9 +215,7 @@ describe("fakeAccountDo — the real AccountDO, so /changes is real", () => {
 
   it("filters by collection — a Calendar commit is not a CalendarEvent change", async () => {
     const w = fakeEnv();
-    await commitChanges(w.env.ACCOUNT_DO, ACCOUNT, [
-      { collection: "Calendar", updated: ["cal_1"] },
-    ]);
+    await commitChanges(w.env.ACCOUNT_DO, ACCOUNT, [{ collection: "Calendar", updated: ["cal_1"] }]);
 
     expect((await w.accountDo.changes(ACCOUNT, "CalendarEvent")).updated).toEqual([]);
     expect((await w.accountDo.changes(ACCOUNT, "Calendar")).updated).toEqual(["cal_1"]);
@@ -231,12 +225,8 @@ describe("fakeAccountDo — the real AccountDO, so /changes is real", () => {
     // Nothing here re-implements the changelog: this is the shipped class over
     // in-memory storage, so a canned {newState:"s2"} stub cannot substitute.
     const w = fakeEnv();
-    await commitChanges(w.env.ACCOUNT_DO, ACCOUNT, [
-      { collection: "ContactCard", created: ["cc_1"] },
-    ]);
-    await commitChanges(w.env.ACCOUNT_DO, ACCOUNT, [
-      { collection: "ContactCard", destroyed: ["cc_1"] },
-    ]);
+    await commitChanges(w.env.ACCOUNT_DO, ACCOUNT, [{ collection: "ContactCard", created: ["cc_1"] }]);
+    await commitChanges(w.env.ACCOUNT_DO, ACCOUNT, [{ collection: "ContactCard", destroyed: ["cc_1"] }]);
 
     const delta = await w.accountDo.changes(ACCOUNT, "ContactCard");
     expect(delta.created).toEqual([]);

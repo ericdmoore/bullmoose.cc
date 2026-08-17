@@ -46,11 +46,7 @@ interface DrainJob {
   binding_name: string;
 }
 
-type Done = (
-  status: "done" | "failed",
-  result: Record<string, unknown>,
-  cost?: InvocationCost,
-) => Promise<void>;
+type Done = (status: "done" | "failed", result: Record<string, unknown>, cost?: InvocationCost) => Promise<void>;
 
 /**
  * Run one structural node. Four ops, each the minimum that makes a DAG
@@ -64,12 +60,7 @@ type Done = (
  *   fail   a leaf that fails, so "a failed node blocks its dependents" can be
  *          proven rather than asserted.
  */
-export async function runJobNode(
-  env: Env,
-  job: DrainJob,
-  context: Record<string, unknown>,
-  done: Done,
-): Promise<void> {
+export async function runJobNode(env: Env, job: DrainJob, context: Record<string, unknown>, done: Done): Promise<void> {
   const node = await getJobNode(env, job.account_id, job.id);
   if (!node) return done("failed", { note: "job node vanished mid-claim" }, FREE);
 
@@ -110,31 +101,16 @@ export async function runJobNode(
     case "echo":
       return done("done", { kind: "job-node", op, text: String(context.text ?? "") }, FREE);
     case "fail":
-      return done(
-        "failed",
-        { kind: "job-node", op, note: String(context.note ?? "planned failure") },
-        FREE,
-      );
+      return done("failed", { kind: "job-node", op, note: String(context.note ?? "planned failure") }, FREE);
     default:
-      return done(
-        "failed",
-        { kind: "job-node", note: `unknown job-node op: ${op || "(none)"}` },
-        FREE,
-      );
+      return done("failed", { kind: "job-node", note: `unknown job-node op: ${op || "(none)"}` }, FREE);
   }
 }
 
-async function runPlanner(
-  env: Env,
-  node: JobNodeRow,
-  context: Record<string, unknown>,
-  done: Done,
-): Promise<void> {
+async function runPlanner(env: Env, node: JobNodeRow, context: Record<string, unknown>, done: Done): Promise<void> {
   const expanded = await expandPlan(env, node, context.plan);
   if (!expanded.ok) {
-    console.warn(
-      `job ${node.job_id}: planner ${node.id} refused — ${describeRefusals(expanded.refusals)}`,
-    );
+    console.warn(`job ${node.job_id}: planner ${node.id} refused — ${describeRefusals(expanded.refusals)}`);
     return done(
       "failed",
       {
@@ -160,12 +136,7 @@ async function runPlanner(
   );
 }
 
-async function runJoin(
-  env: Env,
-  node: JobNodeRow,
-  context: Record<string, unknown>,
-  done: Done,
-): Promise<void> {
+async function runJoin(env: Env, node: JobNodeRow, context: Record<string, unknown>, done: Done): Promise<void> {
   const inputs = await joinContext(env, node);
   const texts = inputs.map((i) => {
     const r = i.result as { text?: unknown } | null;

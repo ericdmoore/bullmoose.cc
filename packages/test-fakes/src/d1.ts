@@ -361,11 +361,7 @@ export class FakeD1 implements D1Database {
     const ignore = (sql: string, ...args: unknown[]) =>
       this.sqlite.prepare(sql).run(...args.map((v) => toSqlValue(v, sql)));
 
-    ignore(
-      `INSERT OR IGNORE INTO tenants (id, name, created_at) VALUES (?, ?, 1)`,
-      tenantId,
-      tenantId,
-    );
+    ignore(`INSERT OR IGNORE INTO tenants (id, name, created_at) VALUES (?, ?, 1)`, tenantId, tenantId);
     ignore(
       `INSERT OR IGNORE INTO principals (id, tenant_id, login_email, created_at) VALUES (?, ?, ?, 1)`,
       principalId,
@@ -393,10 +389,7 @@ export class FakeD1 implements D1Database {
 
   /** `SELECT COUNT(*)` — the honest form of "nothing was written". */
   count(table: string, where = "1=1", ...args: unknown[]): number {
-    const row = this.query<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`,
-      ...args,
-    );
+    const row = this.query<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`, ...args);
     return row[0]?.n ?? 0;
   }
 

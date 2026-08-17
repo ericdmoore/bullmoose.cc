@@ -1,12 +1,12 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import { Dialog, DialogPanel, Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { XMarkIcon } from "@heroicons/react/24/outline";
-import { EllipsisVerticalIcon } from "@heroicons/react/20/solid";
+import { useState } from 'react'
+import { Dialog, DialogPanel, Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import { XMarkIcon } from '@heroicons/react/24/outline'
+import { EllipsisVerticalIcon } from '@heroicons/react/20/solid'
 
 export default function Example() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(true)
 
   return (
     <div>
@@ -29,10 +29,7 @@ export default function Example() {
                 <div className="relative flex h-full flex-col overflow-y-auto bg-white shadow-xl dark:bg-gray-800 dark:after:absolute dark:after:inset-y-0 dark:after:left-0 dark:after:w-px dark:after:bg-white/10">
                   <div className="px-4 py-6 sm:px-6">
                     <div className="flex items-start justify-between">
-                      <h2
-                        id="slide-over-heading"
-                        className="text-base font-semibold text-gray-900 dark:text-white"
-                      >
+                      <h2 id="slide-over-heading" className="text-base font-semibold text-gray-900 dark:text-white">
                         Profile
                       </h2>
                       <div className="ml-3 flex h-7 items-center">
@@ -70,9 +67,7 @@ export default function Example() {
                                   <span className="sr-only">Online</span>
                                 </span>
                               </div>
-                              <p className="text-sm text-gray-500 dark:text-gray-400">
-                                @ashleyporter
-                              </p>
+                              <p className="text-sm text-gray-500 dark:text-gray-400">@ashleyporter</p>
                             </div>
                             <div className="mt-5 flex flex-wrap space-y-3 sm:space-y-0 sm:space-x-3">
                               <button
@@ -132,9 +127,9 @@ export default function Example() {
                           </dt>
                           <dd className="mt-1 text-sm text-gray-900 sm:col-span-2 dark:text-white">
                             <p>
-                              Enim feugiat ut ipsum, neque ut. Tristique mi id elementum praesent.
-                              Gravida in tempus feugiat netus enim aliquet a, quam scelerisque.
-                              Dictumst in convallis nec in bibendum aenean arcu.
+                              Enim feugiat ut ipsum, neque ut. Tristique mi id elementum praesent. Gravida in tempus
+                              feugiat netus enim aliquet a, quam scelerisque. Dictumst in convallis nec in bibendum
+                              aenean arcu.
                             </p>
                           </dd>
                         </div>
@@ -150,9 +145,7 @@ export default function Example() {
                           <dt className="text-sm font-medium text-gray-500 sm:w-40 sm:shrink-0 dark:text-gray-400">
                             Website
                           </dt>
-                          <dd className="mt-1 text-sm text-gray-900 sm:col-span-2 dark:text-white">
-                            ashleyporter.com
-                          </dd>
+                          <dd className="mt-1 text-sm text-gray-900 sm:col-span-2 dark:text-white">ashleyporter.com</dd>
                         </div>
                         <div>
                           <dt className="text-sm font-medium text-gray-500 sm:w-40 sm:shrink-0 dark:text-gray-400">
@@ -172,5 +165,5 @@ export default function Example() {
         </div>
       </Dialog>
     </div>
-  );
+  )
 }

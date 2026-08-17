@@ -25,8 +25,7 @@ const BOOK = "ab_reach";
 
 const HUMAN: ContactWriter = { principal: "eric@bullmoose.cc", kind: "human" };
 
-const ledgerConfig = (digestTo: string) =>
-  JSON.stringify({ pipeline: "ledger", requireAuth: false, digestTo });
+const ledgerConfig = (digestTo: string) => JSON.stringify({ pipeline: "ledger", requireAuth: false, digestTo });
 
 interface ScaffoldOpts {
   digestTo: string;

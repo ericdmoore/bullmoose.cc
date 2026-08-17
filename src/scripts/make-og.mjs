@@ -21,9 +21,9 @@ const scratch = process.env.OG_SCRATCH || "/tmp";
 const CHROMIUM = process.env.CHROMIUM || "/Applications/Chromium.app/Contents/MacOS/Chromium";
 
 const font = (pkg, file) =>
-  `url(data:font/woff2;base64,${readFileSync(
-    resolve(root, "node_modules/@fontsource", pkg, "files", file),
-  ).toString("base64")}) format("woff2")`;
+  `url(data:font/woff2;base64,${readFileSync(resolve(root, "node_modules/@fontsource", pkg, "files", file)).toString(
+    "base64",
+  )}) format("woff2")`;
 
 const bigShoulders = font("big-shoulders-display", "big-shoulders-display-latin-800-normal.woff2");
 const spaceMono = font("space-mono", "space-mono-latin-700-normal.woff2");

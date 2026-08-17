@@ -71,8 +71,7 @@ export function describeContactRefusal(
         : "This session is not allowed to change contacts. The action needs the " +
           "“contacts” permission on a book you can write to."
       : type === "stateMismatch"
-        ? "Something else in this account changed while you were editing. " +
-          "Reload and try again."
+        ? "Something else in this account changed while you were editing. " + "Reload and try again."
         : type === "accountNotFound"
           ? "That account is no longer reachable from this session."
           : detail.description || `The server refused: ${type}.`;
@@ -163,14 +162,7 @@ export async function destroyCard(
   id: string,
   opts: WriteOptions = {},
 ): Promise<CardWriteResult> {
-  return setOne(
-    client,
-    "ContactCard/set",
-    { accountId, ...ifInState(opts), destroy: [id] },
-    "destroy",
-    id,
-    "card",
-  );
+  return setOne(client, "ContactCard/set", { accountId, ...ifInState(opts), destroy: [id] }, "destroy", id, "card");
 }
 
 /** A conflict `saveCardEdit` refused to resolve on the user's behalf. */
@@ -301,10 +293,7 @@ export async function destroyBook(
 }
 
 /** Explain a per-object SetError in the vocabulary of this screen. */
-export function describeSetError(
-  error: SetError,
-  subject: AddressBook | ContactCard | null,
-): string {
+export function describeSetError(error: SetError, subject: AddressBook | ContactCard | null): string {
   switch (error.type) {
     case "notFound":
       return "That contact is no longer there — it may have been deleted from another client.";

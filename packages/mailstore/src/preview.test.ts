@@ -17,9 +17,7 @@ describe("previewText", () => {
 
   it("falls back to HTML when there is no text part — the bug", () => {
     // Before: "" for every message shaped like this.
-    expect(previewText(undefined, "<p>Your receipt for <b>$12.00</b></p>")).toBe(
-      "Your receipt for $12.00",
-    );
+    expect(previewText(undefined, "<p>Your receipt for <b>$12.00</b></p>")).toBe("Your receipt for $12.00");
     expect(previewText(null, "<div>hello</div>")).toBe("hello");
   });
 
@@ -64,16 +62,12 @@ describe("previewText", () => {
     // Our own client is safe by construction -- MessageView.tsx renders
     // `{email.preview}` and Preact escapes. A third-party JMAP client is
     // responsible for its own escaping.
-    expect(previewText(null, "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>")).toBe(
-      "<script>alert(1)</script>",
-    );
+    expect(previewText(null, "<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>")).toBe("<script>alert(1)</script>");
     expect(previewText(null, "<p>Tom &amp; Jerry</p>")).toBe("Tom & Jerry");
     expect(previewText(null, "<p>a&nbsp;b</p>")).toBe("a b");
   });
 
   it("does not let an HTML comment leak into the preview", () => {
-    expect(previewText(null, "<!-- tracking id 91af --><p>Sale ends today</p>")).toBe(
-      "Sale ends today",
-    );
+    expect(previewText(null, "<!-- tracking id 91af --><p>Sale ends today</p>")).toBe("Sale ends today");
   });
 });

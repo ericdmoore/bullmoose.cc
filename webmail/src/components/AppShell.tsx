@@ -184,10 +184,7 @@ export default function AppShell({ client: injected }: Props) {
 
   // ── actions ─────────────────────────────────────────────────────────────
 
-  const roleId = useCallback(
-    (role: Parameters<typeof findByRole>[1]) => findByRole(mailboxes, role)?.id,
-    [mailboxes],
-  );
+  const roleId = useCallback((role: Parameters<typeof findByRole>[1]) => findByRole(mailboxes, role)?.id, [mailboxes]);
 
   const targetRows = useCallback((): ThreadRow[] => {
     if (selected.size > 0) return rows.filter((r) => selected.has(r.threadId));
@@ -345,8 +342,7 @@ export default function AppShell({ client: injected }: Props) {
   }, [mailboxes, mailbox?.id, runTriage]);
 
   // ── keyboard ────────────────────────────────────────────────────────────
-  const context: KeyContext =
-    view === "compose" ? "compose" : view === "thread" ? "thread" : "list";
+  const context: KeyContext = view === "compose" ? "compose" : view === "thread" ? "thread" : "list";
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent): void => {
@@ -452,8 +448,7 @@ export default function AppShell({ client: injected }: Props) {
         }
         case "forward": {
           const email = detail?.emails.at(-1);
-          if (email && currentIdentity)
-            startCompose(buildForwardDraft(email, { identity: currentIdentity }));
+          if (email && currentIdentity) startCompose(buildForwardDraft(email, { identity: currentIdentity }));
           break;
         }
         case "search":
@@ -608,9 +603,7 @@ export default function AppShell({ client: injected }: Props) {
       </p>
 
       {mode === "demo" ? (
-        <p class="banner">
-          Demo data — nothing here is real mail{modeReason ? ` (${modeReason})` : ""}.
-        </p>
+        <p class="banner">Demo data — nothing here is real mail{modeReason ? ` (${modeReason})` : ""}.</p>
       ) : null}
 
       <div class="body">
@@ -663,14 +656,11 @@ export default function AppShell({ client: injected }: Props) {
               onToggleQuotes={() => setShowQuotes((v) => !v)}
               onReply={(email, all) => {
                 if (currentIdentity) {
-                  startCompose(
-                    buildReplyDraft(email, { identity: currentIdentity, replyAll: all }),
-                  );
+                  startCompose(buildReplyDraft(email, { identity: currentIdentity, replyAll: all }));
                 }
               }}
               onForward={(email) => {
-                if (currentIdentity)
-                  startCompose(buildForwardDraft(email, { identity: currentIdentity }));
+                if (currentIdentity) startCompose(buildForwardDraft(email, { identity: currentIdentity }));
               }}
               onBack={() => {
                 setView("list");
@@ -725,12 +715,7 @@ export default function AppShell({ client: injected }: Props) {
       ) : null}
 
       {helpOpen ? (
-        <div
-          class="help-overlay"
-          role="dialog"
-          aria-label="Keyboard shortcuts"
-          onClick={() => setHelpOpen(false)}
-        >
+        <div class="help-overlay" role="dialog" aria-label="Keyboard shortcuts" onClick={() => setHelpOpen(false)}>
           <div class="help-card">
             <h2>Keyboard</h2>
             <dl>

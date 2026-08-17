@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  VOCAB_CAP,
-  bayesClassify,
-  type BoundaryMessage,
-  type SieveRule,
-} from "@bullmoose/boundary";
+import { VOCAB_CAP, bayesClassify, type BoundaryMessage, type SieveRule } from "@bullmoose/boundary";
 import { fakeD1 } from "@bullmoose/test-fakes";
 import {
   BAYES_STATE_MAX_BYTES,
@@ -79,23 +74,12 @@ describe("sieve rules — round-trip and refusal", () => {
         "unknown matcher kind",
         [{ id: "a", all: [{ kind: "regex", field: "subject", value: ".*" }], action: "reject" }],
       ],
-      [
-        "unknown field",
-        [{ id: "a", all: [{ kind: "contains", field: "body", value: "x" }], action: "reject" }],
-      ],
-      [
-        "non-string value",
-        [{ id: "a", all: [{ kind: "contains", field: "subject", value: 7 }], action: "reject" }],
-      ],
-      [
-        "empty header name",
-        [{ id: "a", all: [{ kind: "headerPresent", name: "" }], action: "reject" }],
-      ],
+      ["unknown field", [{ id: "a", all: [{ kind: "contains", field: "body", value: "x" }], action: "reject" }]],
+      ["non-string value", [{ id: "a", all: [{ kind: "contains", field: "subject", value: 7 }], action: "reject" }]],
+      ["empty header name", [{ id: "a", all: [{ kind: "headerPresent", name: "" }], action: "reject" }]],
     ];
     for (const [label, rules] of garbage) {
-      await expect(putSieveRules(db, ACCOUNT, rules as SieveRule[]), label).rejects.toThrow(
-        SieveRulesInvalid,
-      );
+      await expect(putSieveRules(db, ACCOUNT, rules as SieveRule[]), label).rejects.toThrow(SieveRulesInvalid);
     }
     expect(await listSieveRules(db, ACCOUNT)).toEqual(RULES); // untouched
   });

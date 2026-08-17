@@ -105,20 +105,12 @@ export function extractDueAt(input: DueExtractionInput): number | null {
   const haystack = `${input.subject}\n${input.text.slice(0, SCAN_LIMIT)}`;
   const { now } = input;
 
-  return (
-    isoDate(haystack, now) ??
-    monthDay(haystack, now) ??
-    endOfDay(haystack, now) ??
-    weekday(haystack, now)
-  );
+  return isoDate(haystack, now) ?? monthDay(haystack, now) ?? endOfDay(haystack, now) ?? weekday(haystack, now);
 }
 
 /** cue + YYYY-MM-DD, optionally with HH:MM (space or T separator). */
 function isoDate(haystack: string, now: number): number | null {
-  const re = new RegExp(
-    CUE.source + String.raw`(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?\b`,
-    "i",
-  );
+  const re = new RegExp(CUE.source + String.raw`(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?\b`, "i");
   const m = re.exec(haystack);
   if (!m) return null;
   const [, y, mo, d, hh, mm] = m.map(Number) as number[];
@@ -133,11 +125,7 @@ function isoDate(haystack: string, now: number): number | null {
   );
   // Round-trip check rejects rolled-over dates (2026-02-30 → March 2).
   const check = new Date(due);
-  if (
-    check.getUTCFullYear() !== y ||
-    check.getUTCMonth() !== (mo as number) - 1 ||
-    check.getUTCDate() !== d
-  ) {
+  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== (mo as number) - 1 || check.getUTCDate() !== d) {
     return null;
   }
   return due > now ? due : null; // a past deadline is a mis-parse or moot
@@ -145,10 +133,7 @@ function isoDate(haystack: string, now: number): number | null {
 
 /** cue + Month day [, year] — "by August 20", "due Aug 20 2026", "by Sep 3rd". */
 function monthDay(haystack: string, now: number): number | null {
-  const re = new RegExp(
-    CUE.source + MONTH_RE + String.raw`\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b`,
-    "i",
-  );
+  const re = new RegExp(CUE.source + MONTH_RE + String.raw`\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b`, "i");
   const m = re.exec(haystack);
   if (!m) return null;
   const month = MONTHS[(m[1] as string).slice(0, 3).toLowerCase()];
@@ -173,10 +158,7 @@ function monthDay(haystack: string, now: number): number | null {
 /** cue + EOD / end of day / COB / close of business, optionally + weekday. */
 function endOfDay(haystack: string, now: number): number | null {
   const re = new RegExp(
-    CUE.source +
-      String.raw`(?:eod|cob|end of (?:the )?day|close of business)\b(?:\s+` +
-      WEEKDAY_RE +
-      String.raw`\b)?`,
+    CUE.source + String.raw`(?:eod|cob|end of (?:the )?day|close of business)\b(?:\s+` + WEEKDAY_RE + String.raw`\b)?`,
     "i",
   );
   const m = re.exec(haystack);
@@ -214,12 +196,6 @@ function weekdayEod(name: string, now: number): number | null {
   const d = new Date(now);
   const delta = (target - d.getUTCDay() + 7) % 7;
   if (delta === 0) return todayEod(now);
-  const due = Date.UTC(
-    d.getUTCFullYear(),
-    d.getUTCMonth(),
-    d.getUTCDate() + delta,
-    EOD_UTC_HOUR,
-    0,
-  );
+  const due = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + delta, EOD_UTC_HOUR, 0);
   return due;
 }

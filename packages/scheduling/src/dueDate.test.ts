@@ -77,9 +77,7 @@ describe("extractDueAt — hits land on the instant the sender named", () => {
   it("prefers the most explicit form when several match", () => {
     // Pattern precedence (ISO > month-day > EOD > weekday), then position:
     // the vague restatement must not shadow the dated one.
-    expect(extract("by Friday at the latest, hard deadline: 2026-08-21")).toBe(
-      at("2026-08-21T17:00:00Z"),
-    );
+    expect(extract("by Friday at the latest, hard deadline: 2026-08-21")).toBe(at("2026-08-21T17:00:00Z"));
   });
 
   it("pins end-of-day to 17:00 UTC — the no-account-timezone delta, stated", () => {
@@ -152,8 +150,6 @@ describe("extractDueAt — near-misses and ambiguity return NULL (never-urgent)"
     const buried = `${"x".repeat(SCAN_LIMIT)} reply by 2026-08-20`;
     expect(extract(buried)).toBeNull();
     // …while the same text inside the window extracts.
-    expect(extract(`reply by 2026-08-20 ${"x".repeat(SCAN_LIMIT)}`)).toBe(
-      at("2026-08-20T17:00:00Z"),
-    );
+    expect(extract(`reply by 2026-08-20 ${"x".repeat(SCAN_LIMIT)}`)).toBe(at("2026-08-20T17:00:00Z"));
   });
 });

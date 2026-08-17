@@ -19,7 +19,7 @@ pictures will mislead you.
    collocation.
 3. **Effective authority is computed, never stored.** There is no
    `effective_authority` column and adding one would be the bug. See §4.
-4. **`NULL` means four different things** and three of them are the _strict_
+4. **`NULL` means four different things** and three of them are the *strict*
    reading. See §5, item "they read NULL as unrestricted".
 5. **Schema files never upgrade an existing database.** They are
    `CREATE TABLE IF NOT EXISTS` throughout, so a column added later reaches a
@@ -97,22 +97,22 @@ inside no Cloudflare boundary on purpose.
 
 ## 2. Components
 
-| Unit                      | Kind             | Surface                                                                                 | Live?                |
-| ------------------------- | ---------------- | --------------------------------------------------------------------------------------- | -------------------- |
-| `bullmoose-jmap`          | Worker           | `app.bullmoose.cc` — `/api/*`, `/auth/*`, `/console/*`, `/share/*`, `/.well-known/jmap` | yes                  |
-| `bullmoose-oauth`         | Worker           | `auth.bullmoose.cc`                                                                     | yes — **but see §7** |
-| `bullmoose-agent`         | Worker           | `mcp.bullmoose.cc`, cron `*/5`                                                          | yes                  |
-| `bullmoose-ingest`        | Worker           | no route — Email Routing target, cron `17 * * * *`                                      | yes                  |
-| `bullmoose-anglebrackets` | Worker           | `dav.bullmoose.cc` — CalDAV/CardDAV                                                     | yes                  |
-| `bullmoose-submit`        | Worker           | no route — reached only via `SUBMIT`                                                    | yes                  |
-| `bullmoose-bureau`        | Worker           | no route — reached only via `BUREAU`                                                    | yes                  |
-| `bullmoose-provision`     | Worker           | `*.workers.dev`, admin bearer                                                           | yes                  |
-| `bullmoose-demo-keys`     | Worker           | routes commented out; KV id is a placeholder                                            | **off**              |
-| explorer (s21)            | code inside jmap | `explore.bullmoose.cc`                                                                  | **off ×3**           |
-| Pages ×2                  | Pages            | apex + `app.bullmoose.cc`                                                               | yes                  |
-| `packages/popcorn`        | Go binary        | POP3S; SMTP only if `POPCORN_SMTP_LISTEN`                                               | local                |
-| `cli-go`, `packages/cli`  | binaries         | —                                                                                       | local                |
-| `packages/*` (10 others)  | TS libraries     | —                                                                                       | library              |
+| Unit | Kind | Surface | Live? |
+|---|---|---|---|
+| `bullmoose-jmap` | Worker | `app.bullmoose.cc` — `/api/*`, `/auth/*`, `/console/*`, `/share/*`, `/.well-known/jmap` | yes |
+| `bullmoose-oauth` | Worker | `auth.bullmoose.cc` | yes — **but see §7** |
+| `bullmoose-agent` | Worker | `mcp.bullmoose.cc`, cron `*/5` | yes |
+| `bullmoose-ingest` | Worker | no route — Email Routing target, cron `17 * * * *` | yes |
+| `bullmoose-anglebrackets` | Worker | `dav.bullmoose.cc` — CalDAV/CardDAV | yes |
+| `bullmoose-submit` | Worker | no route — reached only via `SUBMIT` | yes |
+| `bullmoose-bureau` | Worker | no route — reached only via `BUREAU` | yes |
+| `bullmoose-provision` | Worker | `*.workers.dev`, admin bearer | yes |
+| `bullmoose-demo-keys` | Worker | routes commented out; KV id is a placeholder | **off** |
+| explorer (s21) | code inside jmap | `explore.bullmoose.cc` | **off ×3** |
+| Pages ×2 | Pages | apex + `app.bullmoose.cc` | yes |
+| `packages/popcorn` | Go binary | POP3S; SMTP only if `POPCORN_SMTP_LISTEN` | local |
+| `cli-go`, `packages/cli` | binaries | — | local |
+| `packages/*` (10 others) | TS libraries | — | library |
 
 ### Shared state is where the coupling actually lives
 
@@ -211,7 +211,7 @@ erDiagram
 ```
 
 Effective rights on an account are **token scopes ∩ grant scopes**.
-`bureau_grants` joins `vault_credentials` by _public handle_, not row id, so
+`bureau_grants` joins `vault_credentials` by *public handle*, not row id, so
 rotating a credential keeps the grant.
 
 **There is no `oauth_clients` table.** Client registrations, authorization
@@ -221,11 +221,11 @@ authorize**.
 
 ### Not relational
 
-`ROUTES` KV carries mail routes (no D1 fallback — the KV _is_ the lookup),
+`ROUTES` KV carries mail routes (no D1 fallback — the KV *is* the lookup),
 share-link records, login throttles, explorer PKCE state, bounce suppression and
 the boundary bloom filter. R2 carries every blob under
 `mail/{tenant}/{account}/blobs/{blobId}`, with **no GC sweep**. `AccountDO` — one
-per account — holds the JMAP change log and _is_ the sync state, bounded to a
+per account — holds the JMAP change log and *is* the sync state, bounded to a
 4096-entry window, which is why `/changes` returns 409 outside it.
 
 ---
@@ -241,7 +241,7 @@ effective(node) = (⋂ bindings the chain crosses) ∩ env(root) ∩ … ∩ env
 ```
 
 recomputed from the rows on every call. That is what makes narrowing a binding
-bite work _already in the queue_, and what makes a hand-edited `authority_json`
+bite work *already in the queue*, and what makes a hand-edited `authority_json`
 unable to widen anything.
 
 ```mermaid
@@ -257,7 +257,7 @@ flowchart LR
 Every "cannot read" answer is **no**: a missing parent, a cycle, a graft onto
 another Job, a destroyed or disabled ancestor binding, and an absent or
 unparseable envelope all deny the whole fold rather than contributing "no
-ceiling". One asymmetry is deliberate — a _corrupt_ `config_json` reads as
+ceiling". One asymmetry is deliberate — a *corrupt* `config_json` reads as
 unset, because anyone who can corrupt that column can rewrite it wider instead.
 
 **Partly closed as of #143.** `bmi_` per-invocation tokens now let MCP name the
@@ -278,7 +278,7 @@ the whole mechanism stays **voluntary** until its step (d) lands.
 The cascade is cost-ordered, and it fails open in one direction and closed in
 the other **on purpose**. Stage 1 runs on the bare SMTP envelope before the MIME
 parse, so a deny-listed domain is refused having stored nothing. Everything past
-it that rejects is _stored anyway_ in a quarantine mailbox with a chain row,
+it that rejects is *stored anyway* in a quarantine mailbox with a chain row,
 never deleted. Every D1 read the cascade adds is wrapped: an unreadable ruleset,
 a missing `bayes_state` or a shard predating the s12 migrations degrades to
 ordinary inbox delivery. The deny tiers are deny-only, so failing open is an
@@ -358,9 +358,9 @@ sequenceDiagram
 ### Delegation and the fold
 
 Authority is checked **twice, on different sides**. `attenuateChild` refuses on
-the _write_ side when a plan over-reaches — returning every violated axis, not
+the *write* side when a plan over-reaches — returning every violated axis, not
 the first. `effectiveNodeAuthority` recomputes the ceiling from the rows on the
-_use_ side, because a capability checked only at issue is one the holder keeps
+*use* side, because a capability checked only at issue is one the holder keeps
 forever.
 
 ```mermaid
@@ -404,11 +404,11 @@ sequenceDiagram
 ### Human approval
 
 Two things to watch. **The capability wall**: approving a tier-3 proposal reuses
-the exact `send` gate the real send path uses, and _no tool anywhere declares
-the `send` scope_, so an agent token structurally cannot auto-commit irreversible
+the exact `send` gate the real send path uses, and *no tool anywhere declares
+the `send` scope*, so an agent token structurally cannot auto-commit irreversible
 egress. And **the needsInfo round is a continuation, not a re-delegation** — minted
 `INSERT … SELECT` from the node it continues, copying `job_id`, `parent_id`,
-`depth` and `authority_json`. Same parent makes it the node's _sibling_, so the
+`depth` and `authority_json`. Same parent makes it the node's *sibling*, so the
 chain above is identical and the fold collapses to exactly `effective(node)`;
 copying `depth` rather than incrementing means N questions cannot buy N levels
 of `maxDepth`.
@@ -490,16 +490,16 @@ sequenceDiagram
 relation in §3's first two diagrams is application-enforced convention.
 
 **They look for `agent_proposals.invocation_id`.** There isn't one — the
-proposal's primary key _is_ the invocation's. That is deliberate: the proposal
+proposal's primary key *is* the invocation's. That is deliberate: the proposal
 cannot contradict the invocation because it doesn't store its state. This
 mistake has a scar in the tree — the needsInfo round once copied `binding_id`
 and nothing else, silently turning a narrowed delegated node into an ungated
 ordinary one, because `job_id IS NULL` is how the gate is told "no delegation".
 
 **They read `NULL` as "unrestricted".** It means four things and three are the
-strict reading: `recipients_book_id IS NULL` means _cannot send_;
-`authority_json IS NULL` inside a Job means _deny the fold_; `cost_micros IS
-NULL` means _unknown_, not free. Only `job_id IS NULL` is permissive, and only
+strict reading: `recipients_book_id IS NULL` means *cannot send*;
+`authority_json IS NULL` inside a Job means *deny the fold*; `cost_micros IS
+NULL` means *unknown*, not free. Only `job_id IS NULL` is permissive, and only
 because it means the machinery was never engaged.
 
 **They look for the effective-authority column.** See §4. Adding one is the bug.
@@ -516,16 +516,16 @@ migrations.
 ## 7. Known drift — where the code and the docs disagree
 
 Found while writing this. All verified. Struck-through rows have since been
-fixed; they stay listed because knowing a thing _was_ wrong is how you know
+fixed; they stay listed because knowing a thing *was* wrong is how you know
 to check whether anything downstream still assumes it.
 
-| #   | Drift                                                                                                                                                                                                                                      | Consequence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | ~~`services/oauth` is in no CI workflow~~ — **fixed in #145**                                                                                                                                                                              | Was: `infra/bootstrap.mjs:76` deployed eight workers including it while `deploy-mail.yml` had seven steps and no oauth step, so nine commits' worth of AS changes — the whole s02 arc, including token revocation — merged without CI ever deploying them. Now `deploy-mail.yml` has a "Deploy oauth" step, ordered _before_ agent because `services/agent/wrangler.jsonc:50` binds it                                                                                                                                    |
-| 2   | ~~`PUBLIC_SCOPES` (6) ⊂ `OAUTH_SCOPES` (9)~~ — **fixed in #144**                                                                                                                                                                           | Was: MCP advertised neither `files`, `delete` nor `mail`, so an agent reading the metadata could not learn the files realm existed. Now derived from `OAUTH_SCOPES` minus a deny list that carries its reasons, with a drift test that also fails on a _stale_ exemption                                                                                                                                                                                                                                                  |
-| 3   | ~~`actionProposal.ts:892` calls the `reply-draft` apply "tier 3, human-approved"~~ — **fixed in #148**                                                                                                                                     | Was: its only producer emits **tier 2** (`services/agent/src/proposals.ts:141`), so an approve never reaches `applyProposal` directly — it parks in the hold tray and arrives via `commitDueHeldProposals`. The comment now says that, and says why the tier-3 wall is kept anyway: it is real and tested (`actionProposal.test.ts:237`) but guards a branch nothing produces, and a reader learning only the second half would delete it as dead code. See row 7 for the copy of this claim that is _not_ just a comment |
-| 4   | ~~`/console/*` is a real jmap route, omitted from `deploy-app.yml:7` and from `wrangler.jsonc:8`'s "these four patterns" (there are five)~~ — **fixed in #148**                                                                            | Was: provisioning routes from either comment lost the agent console to a Pages 404. Both enumerations now list all five, and `wrangler.jsonc` says "five"                                                                                                                                                                                                                                                                                                                                                                 |
-| 5   | popcorn's committed plist sets `POPCORN_LISTEN` only                                                                                                                                                                                       | The SMTP face is conditional on `POPCORN_SMTP_LISTEN`, which the plist never sets. Any SMTP submission is runtime config living outside this repo                                                                                                                                                                                                                                                                                                                                                                         |
-| 6   | ~~`services/jmap/wrangler.jsonc:142` refers to "services/auth"~~ — **fixed in #148**                                                                                                                                                       | Was: no such directory. The AS is `services/oauth` (worker `bullmoose-oauth`), served at `auth.bullmoose.cc` — hostname and directory do not match, which is what made it read as a missing component, so the comment now says so. It also called the AS "OIDC"; it is OAuth 2.1 (`services/oauth/src/index.ts:11`)                                                                                                                                                                                                       |
-| 7   | **The tier-3 claim in row 3 has a second, load-bearing copy.** `services/provision/src/index.ts:1917` also states "A `reply-draft` is tier 3" — and there it is the stated _reason_ `SUPERVISORY_GRANT_SCOPES` includes `send` (line 1934) | reply-draft is tier 2, so the capability wall never fires for it and `send` is currently unjustified by its own argument — while being a real widening: the owner gets send on the agent's account. Unlike row 3 this is not a comment fix. Either `send` stays for a future tier-3 kind and the comment must say _that_, or the grant narrows to `read`+`draft`. Needs a decision                                                                                                                                        |
-| 8   | Demo mode teaches the wrong tier. `webmail/src/lib/approvals/demoApprovals.ts:188,362` ship `reply-draft` fixtures at `tier: 3` (the one at :115 is tier 2), and the comment at :183-184 cites `actionProposal.ts:424-427`                 | That line range is stale too — the case is at :892. The demo is the first thing a newcomer sees, and two thirds of its reply-drafts contradict the only real producer                                                                                                                                                                                                                                                                                                                                                     |
+| # | Drift | Consequence |
+|---|---|---|
+| 1 | ~~`services/oauth` is in no CI workflow~~ — **fixed in #145** | Was: `infra/bootstrap.mjs:76` deployed eight workers including it while `deploy-mail.yml` had seven steps and no oauth step, so nine commits' worth of AS changes — the whole s02 arc, including token revocation — merged without CI ever deploying them. Now `deploy-mail.yml` has a "Deploy oauth" step, ordered *before* agent because `services/agent/wrangler.jsonc:50` binds it |
+| 2 | ~~`PUBLIC_SCOPES` (6) ⊂ `OAUTH_SCOPES` (9)~~ — **fixed in #144** | Was: MCP advertised neither `files`, `delete` nor `mail`, so an agent reading the metadata could not learn the files realm existed. Now derived from `OAUTH_SCOPES` minus a deny list that carries its reasons, with a drift test that also fails on a *stale* exemption |
+| 3 | ~~`actionProposal.ts:892` calls the `reply-draft` apply "tier 3, human-approved"~~ — **fixed in #148** | Was: its only producer emits **tier 2** (`services/agent/src/proposals.ts:141`), so an approve never reaches `applyProposal` directly — it parks in the hold tray and arrives via `commitDueHeldProposals`. The comment now says that, and says why the tier-3 wall is kept anyway: it is real and tested (`actionProposal.test.ts:237`) but guards a branch nothing produces, and a reader learning only the second half would delete it as dead code. See row 7 for the copy of this claim that is *not* just a comment |
+| 4 | ~~`/console/*` is a real jmap route, omitted from `deploy-app.yml:7` and from `wrangler.jsonc:8`'s "these four patterns" (there are five)~~ — **fixed in #148** | Was: provisioning routes from either comment lost the agent console to a Pages 404. Both enumerations now list all five, and `wrangler.jsonc` says "five" |
+| 5 | popcorn's committed plist sets `POPCORN_LISTEN` only | The SMTP face is conditional on `POPCORN_SMTP_LISTEN`, which the plist never sets. Any SMTP submission is runtime config living outside this repo |
+| 6 | ~~`services/jmap/wrangler.jsonc:142` refers to "services/auth"~~ — **fixed in #148** | Was: no such directory. The AS is `services/oauth` (worker `bullmoose-oauth`), served at `auth.bullmoose.cc` — hostname and directory do not match, which is what made it read as a missing component, so the comment now says so. It also called the AS "OIDC"; it is OAuth 2.1 (`services/oauth/src/index.ts:11`) |
+| 7 | **The tier-3 claim in row 3 has a second, load-bearing copy.** `services/provision/src/index.ts:1917` also states "A `reply-draft` is tier 3" — and there it is the stated *reason* `SUPERVISORY_GRANT_SCOPES` includes `send` (line 1934) | reply-draft is tier 2, so the capability wall never fires for it and `send` is currently unjustified by its own argument — while being a real widening: the owner gets send on the agent's account. Unlike row 3 this is not a comment fix. Either `send` stays for a future tier-3 kind and the comment must say *that*, or the grant narrows to `read`+`draft`. Needs a decision |
+| 8 | Demo mode teaches the wrong tier. `webmail/src/lib/approvals/demoApprovals.ts:188,362` ship `reply-draft` fixtures at `tier: 3` (the one at :115 is tier 2), and the comment at :183-184 cites `actionProposal.ts:424-427` | That line range is stale too — the case is at :892. The demo is the first thing a newcomer sees, and two thirds of its reply-drafts contradict the only real producer |

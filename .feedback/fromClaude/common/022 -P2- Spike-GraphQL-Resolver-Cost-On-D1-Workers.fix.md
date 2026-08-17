@@ -25,13 +25,13 @@ Batching on Workers: collect ids within a single resolution tick, issue one
 
 ### 3. Measure — find the ceiling, not the average
 
-| Metric                           | Why                                                                   |
-| -------------------------------- | --------------------------------------------------------------------- |
-| **the breaking point**           | _the deliverable_ — depth × row count at which a request is killed    |
-| **D1 statements per query**      | the cost driver behind that ceiling                                   |
-| **CPU ms**                       | the binding constraint (a 10ms tier limit informed `auth-core:60-66`) |
-| same traversal as 3–4 JMAP calls | the comparison, for the agent case                                    |
-| wall-clock                       | secondary                                                             |
+| Metric | Why |
+|---|---|
+| **the breaking point** | *the deliverable* — depth × row count at which a request is killed |
+| **D1 statements per query** | the cost driver behind that ceiling |
+| **CPU ms** | the binding constraint (a 10ms tier limit informed `auth-core:60-66`) |
+| same traversal as 3–4 JMAP calls | the comparison, for the agent case |
+| wall-clock | secondary |
 
 Run against a **seeded, realistic dataset and then push past it** — a few thousand emails,
 then tens of thousands. N+1 is invisible at toy scale, and the whole point is to locate the
@@ -39,7 +39,7 @@ wall rather than to report a comfortable average.
 
 **Do not optimize during the spike.** Overhead at personal scale is a utility tax and a
 fine trade. Batching is a known remedy that can be added later without changing the schema
-or any caller — so measure the naive path _first_, and only add batching to see how much
+or any caller — so measure the naive path *first*, and only add batching to see how much
 further out it pushes the ceiling.
 
 ### 4. Decide, and write it down

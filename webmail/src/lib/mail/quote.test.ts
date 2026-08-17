@@ -46,9 +46,7 @@ describe("splitQuotedText", () => {
 
   it("does NOT collapse an inline quote the sender is replying around", () => {
     // Hiding text the sender wrote is worse than showing a quote already read.
-    const { body, quoted } = splitQuotedText(
-      "> you asked this\n\nAnd here is my answer, written after it.",
-    );
+    const { body, quoted } = splitQuotedText("> you asked this\n\nAnd here is my answer, written after it.");
     expect(quoted).toBe("");
     expect(body).toContain("here is my answer");
   });
@@ -60,9 +58,7 @@ describe("splitQuotedText", () => {
   });
 
   it("keeps the signature out of the quoted section", () => {
-    const { body, quoted, signature } = splitQuotedText(
-      "Reply.\n\nOn Tue, Grace wrote:\n> old\n\n-- \nEric",
-    );
+    const { body, quoted, signature } = splitQuotedText("Reply.\n\nOn Tue, Grace wrote:\n> old\n\n-- \nEric");
     expect(body).toBe("Reply.");
     expect(quoted).toContain("> old");
     expect(quoted).not.toContain("Eric");

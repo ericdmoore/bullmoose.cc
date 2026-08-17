@@ -1,13 +1,13 @@
 # 013 -E2-I3- Calendar + Contacts CRUD over MCP
 
-|                |                                                                                                           |
-| -------------- | --------------------------------------------------------------------------------------------------------- |
-| **Kind**       | projection                                                                                                |
-| **Effort**     | **E2** — several files in `services/agent`, no schema change, no migration                                |
-| **Impact**     | **I3** — unlocks _and_ human-verifiable                                                                   |
-| **Owner**      | `sVOL`                                                                                                    |
+| | |
+|---|---|
+| **Kind** | projection |
+| **Effort** | **E2** — several files in `services/agent`, no schema change, no migration |
+| **Impact** | **I3** — unlocks *and* human-verifiable |
+| **Owner** | `sVOL` |
 | **Depends on** | `001` (ToolDef scope+domain) · `002` (fake-D1 `.batch()`) · `003` (recurrence, for recurring events only) |
-| **Status**     | ✅ **done** — see _Status on delivery_ at the foot of this file                                           |
+| **Status** | ✅ **done** — see *Status on delivery* at the foot of this file |
 
 ## Cells covered
 
@@ -26,11 +26,10 @@ dependency edge from `services/agent` to the JMAP method layer that does not exi
 needs real tests.
 
 **I3, both factors:**
-
-- _Unlocks_ — it is the first write surface on MCP at all. `014` (Email over MCP) and `015`
+- *Unlocks* — it is the first write surface on MCP at all. `014` (Email over MCP) and `015`
   (introspection) inherit the tool-shape and dispatch decisions made here. Named dependency,
   not a preference.
-- _Human-verifiable_ — a person asks Claude to put something on the calendar, then opens
+- *Human-verifiable* — a person asks Claude to put something on the calendar, then opens
   Apple Calendar and sees it. No engineer required, no JSON read.
 
 ## What exists today
@@ -45,7 +44,7 @@ hits. `TOOLS` (`mcp.ts:55`) holds exactly four read-only analytics tools — `sp
 **Two structural facts that shape the work:**
 
 1. `ToolDef` (`mcp.ts:36-41`) has no scope or domain field, and `handleToolCall` hardcodes
-   `authorizeAccount(principal, accountId, "read", "mail")` at `:257` — for _every_ tool. A
+   `authorizeAccount(principal, accountId, "read", "mail")` at `:257` — for *every* tool. A
    write tool added today would be authorized as a **read** on **mail**. That is why `001`
    is a hard dependency and not a cleanup.
 2. All four existing tools query `env.DB` with **raw SQL**. `services/agent` does not depend
@@ -94,19 +93,19 @@ contacts_delete_card          ContactCard/set      (destroy)
 Per-tool scope and domain, from `001`. **Mirror the live JMAP convention exactly** — do not
 invent a parallel vocabulary:
 
-| tool                                                        | scope      | domain     |
-| ----------------------------------------------------------- | ---------- | ---------- |
-| `calendar_list`, `calendar_query_events`                    | `read`     | `calendar` |
+| tool | scope | domain |
+|---|---|---|
+| `calendar_list`, `calendar_query_events` | `read` | `calendar` |
 | `calendar_create_event` · `_update_event` · `_delete_event` | `calendar` | `calendar` |
-| `contacts_list_books`, `contacts_search`                    | `read`     | `contacts` |
-| `contacts_create_card` · `_update_card` · `_delete_card`    | `contacts` | `contacts` |
+| `contacts_list_books`, `contacts_search` | `read` | `contacts` |
+| `contacts_create_card` · `_update_card` · `_delete_card` | `contacts` | `contacts` |
 
 Verified against the methods this unit projects: reads take `("read", "<domain>")`
 (`calendars.ts:58,171,345,403` · `contacts.ts:70,255,530`) and **every write takes
 `("<domain>", "<domain>")`** (`calendars.ts:77,200` · `contacts.ts:117,318`).
 
 Note what that implies: **calendar and contacts do not use the mail scope lattice.** A single
-scope named after the domain covers create, update, _and_ delete. Only mail uses
+scope named after the domain covers create, update, *and* delete. Only mail uses
 `read < annotate < draft < move < send < delete` — `email.ts:230,495` take a bare `("draft")`
 with no domain argument, defaulting to `mail`. Unit `014` inherits that lattice; this unit
 must not.
@@ -179,20 +178,19 @@ in the expander.
    unit.**
 2. **The write scope is coarse — and that limitation lands here first.**
 
-   _Correction, recorded rather than deleted:_ an earlier draft of this file proposed mapping
+   *Correction, recorded rather than deleted:* an earlier draft of this file proposed mapping
    calendar/contact writes onto the mail lattice (`draft` to create, `delete` to destroy) and
    listed "invent a per-domain vocabulary" as the costly alternative. **That was wrong.** The
    per-domain vocabulary already exists and is used consistently — `("calendar","calendar")`
    at `calendars.ts:77,200`, `("contacts","contacts")` at `contacts.ts:117,318`. The question
    was already settled in code; I proposed re-deciding it, and picked the losing side.
 
-   The _real_ question it exposes: **one scope covers create, update, and delete.** An agent
+   The *real* question it exposes: **one scope covers create, update, and delete.** An agent
    granted `calendar` so it can add events can also destroy them, and no finer grant exists.
    `travel@` and `schedule@` in `docs/agents/motivatingExamples.md` both want
    create-without-delete. Fixing that means extending the scope vocabulary — out of scope for
    this unit, but this unit is what makes the gap load-bearing, because it is the first time
    an **agent** rather than a human holds these scopes.
-
 3. **Tool granularity.** I split create/update/delete into separate tools rather than one
    `calendar_set` mirroring JMAP's `/set`. Separate tools give the model clearer affordances
    and let each carry its own scope — but they diverge from the JMAP shape, and a batching
@@ -227,21 +225,21 @@ services/agent/package.json         mod  jmap-core / calendar-core / auth-core d
 The unit leaned service binding, on the stated grounds that it "matches how
 `services/anglebrackets` already projects off shared state". **That premise is false.**
 `services/anglebrackets/wrangler.jsonc` has no service binding to the jmap worker at all — it
-binds `ACCOUNT_DO` cross-script and therefore _replicates_ the ctag + changelog choreography
+binds `ACCOUNT_DO` cross-script and therefore *replicates* the ctag + changelog choreography
 inside `dav.ts`. The cited precedent is an instance of the failure mode `_context.md` §3
 warns about, not a model to copy.
 
 `services/agent/wrangler.jsonc` binds `DB`, `BLOBS`, `ROUTES`, `ACCOUNT_DO` (cross-script) and
 `SUBMIT` — which is already every binding the calendar and contacts methods read. So:
 
-|                                       | in-process                                                              | service binding                        |
-| ------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------- |
-| wrangler / CI deploy-graph change     | none                                                                    | new `services` entry + new deploy edge |
-| implementations of the choreography   | **one**                                                                 | one, plus a hop                        |
-| auth passes per tool call             | 2 (tool gate + method gate)                                             | 3 (+ the jmap worker's own)            |
-| testable with `@bullmoose/test-fakes` | yes                                                                     | no — needs a Fetcher fake running jmap |
-| latency inside an agent loop          | none added                                                              | one round trip per tool call           |
-| cost                                  | **build-time coupling; +95 KiB raw / +20 KiB gzip on the agent bundle** | none                                   |
+| | in-process | service binding |
+|---|---|---|
+| wrangler / CI deploy-graph change | none | new `services` entry + new deploy edge |
+| implementations of the choreography | **one** | one, plus a hop |
+| auth passes per tool call | 2 (tool gate + method gate) | 3 (+ the jmap worker's own) |
+| testable with `@bullmoose/test-fakes` | yes | no — needs a Fetcher fake running jmap |
+| latency inside an agent loop | none added | one round trip per tool call |
+| cost | **build-time coupling; +95 KiB raw / +20 KiB gzip on the agent bundle** | none |
 
 The bundle number is measured: `wrangler deploy --dry-run` goes 212.14 KiB → 307.48 KiB raw,
 50.09 → 69.78 KiB gzipped. `node:sqlite` and `@bullmoose/test-fakes` are confirmed absent from
@@ -261,7 +259,7 @@ stands but nothing needs it yet.
 ### What was NOT built
 
 - **`Calendar` and `AddressBook` are Read-only over MCP.** The unit header claims "16 cells —
-  the entire Calendar and Contacts columns", but its own _Tool set_ section lists ten tools, of
+  the entire Calendar and Contacts columns", but its own *Tool set* section lists ten tools, of
   which the two collection tools are `Calendar/get` and `AddressBook/get`. `_index.md` §4's
   coverage row agrees with the tool list (`ContactCard/CalendarEvent × CRUD × MCP`). Built the
   tool list; the header's cell count was aspirational. Creating/renaming/deleting calendars and
@@ -276,6 +274,6 @@ stands but nothing needs it yet.
 `003`'s guard rejects rather than throws, so a naive tool would have returned
 `{"created":{},"notCreated":{…}}` with `isError` unset and the model would have read it as
 success. Single-object write tools now convert a `notCreated`/`notUpdated`/`notDestroyed`
-entry into an MCP tool error carrying the SetError, a plain sentence, and a _what to do
-instead_ hint keyed off the offending property — for `recurrenceRules`, explicitly that
+entry into an MCP tool error carrying the SetError, a plain sentence, and a *what to do
+instead* hint keyed off the offending property — for `recurrenceRules`, explicitly that
 retrying the same rule will fail the same way.

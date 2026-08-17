@@ -277,10 +277,7 @@ describe("MKCALENDAR", () => {
 
   it("403s when the client asks for a component set we cannot serve", async () => {
     const { call, written } = harness({ calendars: [calRow()] });
-    const body = MKCALENDAR_BODY.replace(
-      `<B:comp name="VEVENT"/>`,
-      `<B:comp name="VEVENT"/><B:comp name="VTODO"/>`,
-    );
+    const body = MKCALENDAR_BODY.replace(`<B:comp name="VEVENT"/>`, `<B:comp name="VEVENT"/><B:comp name="VTODO"/>`);
     const res = await call("MKCALENDAR", calUrl(CLIENT_UUID), owner(), body);
     expect(res.status).toBe(403);
     expect(await res.text()).toContain("supported-calendar-component");
@@ -366,15 +363,11 @@ describe("MKCOL", () => {
 
   it("403s without the contacts scope, and for a sharee", async () => {
     const noScope = harness({ address_books: [bookRow()] });
-    expect(
-      (await noScope.call("MKCOL", bookUrl(CLIENT_UUID), owner(["read"]), MKCOL_BODY)).status,
-    ).toBe(403);
+    expect((await noScope.call("MKCOL", bookUrl(CLIENT_UUID), owner(["read"]), MKCOL_BODY)).status).toBe(403);
     expect(noScope.written("INSERT INTO address_books")).toEqual([]);
 
     const shared = harness({ address_books: [bookRow()] });
-    expect((await shared.call("MKCOL", bookUrl(CLIENT_UUID), sharee(), MKCOL_BODY)).status).toBe(
-      403,
-    );
+    expect((await shared.call("MKCOL", bookUrl(CLIENT_UUID), sharee(), MKCOL_BODY)).status).toBe(403);
     expect(shared.written("INSERT INTO address_books")).toEqual([]);
   });
 });
@@ -471,9 +464,7 @@ function propstats(xml: string): Record<string, string[]> {
   const re = /<D:propstat><D:prop>([\s\S]*?)<\/D:prop><D:status>([^<]+)<\/D:status>/g;
   let m;
   while ((m = re.exec(xml)) !== null) {
-    out[m[2]!] = [...m[1]!.matchAll(/<(?:[A-Za-z0-9_-]+:)?([A-Za-z0-9_-]+)[^>]*\/>/g)].map(
-      (x) => x[1]!,
-    );
+    out[m[2]!] = [...m[1]!.matchAll(/<(?:[A-Za-z0-9_-]+:)?([A-Za-z0-9_-]+)[^>]*\/>/g)].map((x) => x[1]!);
   }
   return out;
 }
@@ -547,8 +538,7 @@ describe("PROPPATCH on a calendar", () => {
     // is the original defect back again — so this asserts the deviation.
     const { call, writes, commits } = harness({ calendars: [calRow({ id: "cal_work" })] });
     const body = propertyupdate(
-      `<A:displayname>Renamed</A:displayname>` +
-        `<B:calendar-order xmlns:B="${ICAL}">2</B:calendar-order>`,
+      `<A:displayname>Renamed</A:displayname>` + `<B:calendar-order xmlns:B="${ICAL}">2</B:calendar-order>`,
     );
     const res = await call("PROPPATCH", calUrl("cal_work"), owner(), body);
 
@@ -647,9 +637,7 @@ describe("PROPPATCH on a calendar", () => {
   it("403s the whole request without the calendar scope, and for a sharee", async () => {
     // Authorization is not a per-property matter: it fails the request.
     const noScope = harness({ calendars: [calRow({ id: "cal_work" })] });
-    expect(
-      (await noScope.call("PROPPATCH", calUrl("cal_work"), owner(["read"]), RENAME)).status,
-    ).toBe(403);
+    expect((await noScope.call("PROPPATCH", calUrl("cal_work"), owner(["read"]), RENAME)).status).toBe(403);
     expect(noScope.writes.filter((w) => w.sql.startsWith("UPDATE calendars"))).toEqual([]);
 
     const shared = harness({ calendars: [calRow({ id: "cal_work" })] });
@@ -708,14 +696,14 @@ describe("PROPPATCH on an address book", () => {
     const body = propertyupdate(`<A:displayname>${name}</A:displayname>`);
 
     const book = harness({ address_books: [bookRow({ id: "ab_work" })] });
-    expect(
-      propstats(await (await book.call("PROPPATCH", bookUrl("ab_work"), owner(), body)).text()),
-    ).toEqual({ [CONFLICT]: ["displayname"] });
+    expect(propstats(await (await book.call("PROPPATCH", bookUrl("ab_work"), owner(), body)).text())).toEqual({
+      [CONFLICT]: ["displayname"],
+    });
 
     const cal = harness({ calendars: [calRow({ id: "cal_work" })] });
-    expect(
-      propstats(await (await cal.call("PROPPATCH", calUrl("cal_work"), owner(), body)).text()),
-    ).toEqual({ [OK]: ["displayname"] });
+    expect(propstats(await (await cal.call("PROPPATCH", calUrl("cal_work"), owner(), body)).text())).toEqual({
+      [OK]: ["displayname"],
+    });
   });
 
   it("403s for a sharee — only the owner renames a book", async () => {
@@ -739,10 +727,7 @@ describe("PROPPATCH on an address book", () => {
 
 describe("verb advertisement", () => {
   it("OPTIONS names MKCOL and MKCALENDAR, and claims extended-mkcol", async () => {
-    const res = await worker.fetch(
-      new Request("https://dav.example/dav/", { method: "OPTIONS" }),
-      {} as Env,
-    );
+    const res = await worker.fetch(new Request("https://dav.example/dav/", { method: "OPTIONS" }), {} as Env);
     expect(res.headers.get("Allow")).toContain("MKCOL");
     expect(res.headers.get("Allow")).toContain("MKCALENDAR");
     expect(res.headers.get("Allow")).toContain("PROPPATCH");

@@ -112,21 +112,13 @@ export function shareTombstoneExpiry(exp: number, nowMs: number): number {
   return Math.max(exp, floor);
 }
 
-export async function putShareRecord(
-  kv: KVNamespace,
-  rec: ShareRecord,
-  nowMs: number = Date.now(),
-): Promise<void> {
+export async function putShareRecord(kv: KVNamespace, rec: ShareRecord, nowMs: number = Date.now()): Promise<void> {
   await kv.put(shareKey(rec.accountId, rec.shareId), JSON.stringify(rec), {
     expiration: shareTombstoneExpiry(rec.exp, nowMs),
   });
 }
 
-export async function getShareRecord(
-  kv: KVNamespace,
-  accountId: string,
-  shareId: string,
-): Promise<ShareRecord | null> {
+export async function getShareRecord(kv: KVNamespace, accountId: string, shareId: string): Promise<ShareRecord | null> {
   if (!shareId) return null;
   const raw = await kv.get(shareKey(accountId, shareId));
   if (!raw) return null;

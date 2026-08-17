@@ -122,13 +122,7 @@ describe("cookieAuthAllowed — the rule, in isolation", () => {
   });
 
   it("compares hostnames, not substrings — no suffix or prefix gets in", () => {
-    for (const impostor of [
-      `evil-${EXPLORE_HOST}`,
-      `${EXPLORE_HOST}.evil.example`,
-      `x.${EXPLORE_HOST}`,
-      "",
-      null,
-    ]) {
+    for (const impostor of [`evil-${EXPLORE_HOST}`, `${EXPLORE_HOST}.evil.example`, `x.${EXPLORE_HOST}`, "", null]) {
       expect(cookieAuthAllowed(impostor, "GET", EXPLORE_HOST), String(impostor)).toBe(false);
     }
   });

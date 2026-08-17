@@ -4,12 +4,12 @@
 Written 2026-08-15 after #132/#134/#138 closed the delegation-side half; Eric
 approved all four decisions the same day and #143 built the first two steps.
 
-| step                                                  | state                                                                      |
-| ----------------------------------------------------- | -------------------------------------------------------------------------- |
-| (a) `bmi_` grammar, mint-on-claim, resolver           | **shipped** (#143)                                                         |
-| (b) MCP `tools/list` + `tools/call` gated by `mayUse` | **shipped** (#143) — but see the correction below                          |
-| (c) Bureau credential gate                            | **shipped** (#146) — correct but **inert**, see below                      |
-| (d) the two mandatory rules                           | **shipped** (#146) — the mechanism is no longer voluntary at MCP or create |
+| step | state |
+|---|---|
+| (a) `bmi_` grammar, mint-on-claim, resolver | **shipped** (#143) |
+| (b) MCP `tools/list` + `tools/call` gated by `mayUse` | **shipped** (#143) — but see the correction below |
+| (c) Bureau credential gate | **shipped** (#146) — correct but **inert**, see below |
+| (d) the two mandatory rules | **shipped** (#146) — the mechanism is no longer voluntary at MCP or create |
 
 > ### ⚠️ Correction: gap 1 closes for Job nodes only
 >
@@ -24,7 +24,7 @@ approved all four decisions the same day and #143 built the first two steps.
 > **verbs** and the **lifetime**, but **not the tool set**.
 >
 > Asserted as a test (`an ordinary non-Job invocation is NOT a delegation — the
-tool axis is unbounded`) so it stays a boundary rather than becoming an
+> tool axis is unbounded`) so it stays a boundary rather than becoming an
 > assumption.
 >
 > Closing it means intersecting with the binding's own ceiling — which
@@ -40,7 +40,7 @@ tool axis is unbounded`) so it stays a boundary rather than becoming an
 > But `effectiveNodeAuthority` folds the acting node's OWN binding leniently and
 > every ANCESTOR's fail-closed — so when the causing node is the **root**, where
 > there are no ancestors, the fold collapses to `ceiling(new binding) ∩ envelope`.
-> Copying a root's envelope onto a row on a _wider_ second binding on the same
+> Copying a root's envelope onto a row on a *wider* second binding on the same
 > account hands the copy **more than the node it came from had**. #146 adds a
 > same-binding constraint, reusing `attenuateChild`'s identity rule. It also
 > copies `privacy` — a fifth column this list omits but its own cited precedent
@@ -62,8 +62,8 @@ tool axis is unbounded`) so it stays a boundary rather than becoming an
 > and `/internal/bureau/verify`). So the gate sits ahead of its first caller, and
 > whoever writes that caller chooses which credential to present.
 >
-> A symmetric **third rule** — _an agent-marked bearer may not use `/bureau/use`
-> except through an invocation token_ — is what would make (c) enforcement rather
+> A symmetric **third rule** — *an agent-marked bearer may not use `/bureau/use`
+> except through an invocation token* — is what would make (c) enforcement rather
 > than availability. **Not built:** it changes what the `agent` marker means,
 > which is decision #3, ratified for two surfaces and not three. **Eric's call.**
 
@@ -81,20 +81,20 @@ explicitly excluding `vault`, `admin`, `send` and the `mail` bundle.
 Four gaps close with one mechanism. Three were found and documented in this
 session's PRs and are recorded in code:
 
-|     | gap                            | why it is open                                                                                                                                                |
-| --- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | MCP tool visibility + dispatch | gates on the **bearer's principal**. `mcpNouns.ts:74`: _"MCP cannot map a bearer to one binding."_                                                            |
-| 2   | Bureau credential use          | `resolveBureauGrant(db, principalId, credRef, verb)` — `UseRequest` has no invocation, so the envelope's `credentials` axis has no consumer                   |
-| 3   | `AgentInvocation/set` create   | a `draft`-scoped token mints a `pending` invocation with **no envelope**; not fixable by propagation, since nothing on the request names a causing invocation |
-| 4   | `agents:invoke`                | deferred at `attenuation.ts`, partly on this                                                                                                                  |
+| | gap | why it is open |
+|---|---|---|
+| 1 | MCP tool visibility + dispatch | gates on the **bearer's principal**. `mcpNouns.ts:74`: *"MCP cannot map a bearer to one binding."* |
+| 2 | Bureau credential use | `resolveBureauGrant(db, principalId, credRef, verb)` — `UseRequest` has no invocation, so the envelope's `credentials` axis has no consumer |
+| 3 | `AgentInvocation/set` create | a `draft`-scoped token mints a `pending` invocation with **no envelope**; not fixable by propagation, since nothing on the request names a causing invocation |
+| 4 | `agents:invoke` | deferred at `attenuation.ts`, partly on this |
 
 `authorizeNodeUse` (`services/agent/src/useGate.ts`) already computes
 `effective(node) = (⋂ bindings crossed) ∩ env(root) ∩ … ∩ env(node)`, is fully
 tested, and **has no production caller**. The gate exists. The identity does not.
 
-> Precise version of "no caller": `effectiveNodeAuthority` _does_ run in
+> Precise version of "no caller": `effectiveNodeAuthority` *does* run in
 > production (`jobNode.ts:89`, `proposals.ts:252`) — but only as a fail-closed
-> pre-flight asking _is the chain readable?_ `mayUse`'s three axes have no
+> pre-flight asking *is the chain readable?* `mayUse`'s three axes have no
 > consumer. The chain walk is exercised; the gate is not.
 
 ---
@@ -113,7 +113,7 @@ CLAIM (pending→running) ─mints─► bmi_<12hex>_<48hex>
 
 Row `agent_invocation_tokens`: `id, invocation_id, account_id, principal_id,
 secret_hash, issued_at, expires_at`. **No envelope copy, no scope list.** It
-carries an _identity_ — "I am acting as invocation X". The _authority_ is
+carries an *identity* — "I am acting as invocation X". The *authority* is
 computed from rows the holder cannot write.
 
 **Who mints:** the claim, `pending → running`, which happens in exactly two
@@ -132,7 +132,7 @@ property the whole s04 resolution rests on. `expires_at = issued_at + 15min` is 
 belt against a row `failStaleRunning` never sweeps.
 
 **Composition — the invariant that makes it safe:** the envelope is **ANDed after**
-the standing check, never substituted for it. `mayUse` is a _denial_ function;
+the standing check, never substituted for it. `mayUse` is a *denial* function;
 `tools: null` means "no level declared this axis", never "granted". A consumer
 that reads `effective` as a grant re-opens everything.
 
@@ -186,7 +186,7 @@ being written. Fail-closed on unknown readers, for free, by construction.
 
 ### Why this is narrower than "overturning the decision"
 
-The ratified passage's _argument_ (`arch.md:123-133`) is entirely **JWT vs
+The ratified passage's *argument* (`arch.md:123-133`) is entirely **JWT vs
 opaque**, and it is about revocability: a JWT routes around both kill switches.
 
 A `bmi_` token concedes that argument completely. It is opaque, DB-resolved, and
@@ -223,10 +223,10 @@ so each earlier step is independently green. (d) needs
 
 ## What self-assertion would and would not buy
 
-Worth recording, because it is the cheap alternative and it _almost_ works.
+Worth recording, because it is the cheap alternative and it *almost* works.
 
 Because the envelope only ever **narrows** (it is ANDed after the standing
-check), a _self-asserted_ `invocationId` on the request cannot escalate at MCP or
+check), a *self-asserted* `invocationId` on the request cannot escalate at MCP or
 Bureau — naming someone else's invocation only intersects you with their
 envelope, and you already passed your own standing checks. That closes gaps 1 and
 2 for ~150 lines and no new credential.
@@ -250,12 +250,12 @@ the one property self-assertion cannot provide and minting can.**
   envelope's axes are tools/credentials/budget. The delivered thing narrows a
   **different dimension** than §4 promises. Correct the doc rather than quietly
   under-deliver against it.
-- `docs/architecture/mcp-auth.md` §15–16 gains: _"an invocation token is refused
-  by every surface that does not understand invocations."_
-- `agent-integration.md` §9's _"A fully compromised template-mode agent writes a
-  weird draft. That's the bar."_ will read, after this ships, as if the bar were
+- `docs/architecture/mcp-auth.md` §15–16 gains: *"an invocation token is refused
+  by every surface that does not understand invocations."*
+- `agent-integration.md` §9's *"A fully compromised template-mode agent writes a
+  weird draft. That's the bar."* will read, after this ships, as if the bar were
   met for agentic mode. **It is not.** A per-invocation token defends against a
-  compromised _model_, by narrowing the trusted harness's own dispatch path. It
-  does not defend against a compromised _runtime_ — the fleet host holds a device
+  compromised *model*, by narrowing the trusted harness's own dispatch path. It
+  does not defend against a compromised *runtime* — the fleet host holds a device
   token by architectural necessity (`packages/cli/src/agent.ts:36-44`). That
   sentence needs a qualifier in the same commit that ships this.

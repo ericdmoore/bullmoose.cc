@@ -2,13 +2,7 @@ import { commitChanges } from "@bullmoose/account-do";
 import { effectiveNodeAuthority, type JobNodeRow } from "@bullmoose/scheduling";
 import { buildMime } from "@bullmoose/mime";
 import type { Mailstore } from "@bullmoose/mailstore";
-import {
-  callWithFallback,
-  invocationCost,
-  type BindingConfig,
-  type Env,
-  type InvocationCost,
-} from "./models.js";
+import { callWithFallback, invocationCost, type BindingConfig, type Env, type InvocationCost } from "./models.js";
 
 /**
  * The proposal producer (s03.D T1, arch.md §1–2).
@@ -213,11 +207,7 @@ export async function answerInfoRequest(
   job: Pick<ProposalJob, "id" | "account_id">,
   cfg: BindingConfig,
   context: Record<string, unknown>,
-  done: (
-    status: "done" | "failed",
-    result: Record<string, unknown>,
-    cost?: InvocationCost,
-  ) => Promise<void>,
+  done: (status: "done" | "failed", result: Record<string, unknown>, cost?: InvocationCost) => Promise<void>,
 ): Promise<void> {
   const proposalId = typeof context.proposalId === "string" ? context.proposalId : null;
   if (!proposalId) return done("failed", { note: "answer-info-request without a proposalId" });
@@ -365,9 +355,7 @@ async function composeAnswer(
     }
   }
   return {
-    answer:
-      "(no model route was reachable to compose an answer) " +
-      `The recorded rationale stands: ${prop.rationale}`,
+    answer: "(no model route was reachable to compose an answer) " + `The recorded rationale stands: ${prop.rationale}`,
   };
 }
 

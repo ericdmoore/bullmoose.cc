@@ -173,9 +173,7 @@ export default function FilesApp({ client: injected, search }: Props) {
         if (cancelled) return;
         setPage(result);
         // Selection survives a refresh only if the item is still here.
-        setSelectedId((current) =>
-          current && result.children.some((n) => n.id === current) ? current : undefined,
-        );
+        setSelectedId((current) => (current && result.children.some((n) => n.id === current) ? current : undefined));
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -219,23 +217,20 @@ export default function FilesApp({ client: injected, search }: Props) {
   const canWrite = !readRefusal && !writeRefused;
 
   // ── reporting a write ───────────────────────────────────────────────────
-  const report = useCallback(
-    (result: FileWriteResult, subject: FileNode | null, ok: string): boolean => {
-      if (result.refusal) {
-        setToast(result.refusal.message);
-        // A scope refusal is not transient: stop offering what cannot be done.
-        if (result.refusal.type === "forbidden") setWriteRefused(true);
-        return false;
-      }
-      if (result.error) {
-        setToast(describeSetError(result.error, subject));
-        return false;
-      }
-      setToast(ok);
-      return true;
-    },
-    [],
-  );
+  const report = useCallback((result: FileWriteResult, subject: FileNode | null, ok: string): boolean => {
+    if (result.refusal) {
+      setToast(result.refusal.message);
+      // A scope refusal is not transient: stop offering what cannot be done.
+      if (result.refusal.type === "forbidden") setWriteRefused(true);
+      return false;
+    }
+    if (result.error) {
+      setToast(describeSetError(result.error, subject));
+      return false;
+    }
+    setToast(ok);
+    return true;
+  }, []);
 
   // ── new folder ──────────────────────────────────────────────────────────
   const submitFolder = useCallback(async () => {
@@ -481,9 +476,8 @@ export default function FilesApp({ client: injected, search }: Props) {
             advertises the Files capability at all, which is a different thing
             and a different fix (session.ts:22-58). */}
         <p class="empty-means">
-          This session reaches no account with a Files realm. A token scoped to mail only, or a
-          grant that shares a mailbox but not the account, both land here — the files are not
-          missing, they are out of reach.
+          This session reaches no account with a Files realm. A token scoped to mail only, or a grant that shares a
+          mailbox but not the account, both land here — the files are not missing, they are out of reach.
         </p>
       </main>
     );
@@ -550,22 +544,17 @@ export default function FilesApp({ client: injected, search }: Props) {
       </header>
 
       {mode === "demo" ? (
-        <p class="banner">
-          Demo data — none of these files are real{modeReason ? ` (${modeReason})` : ""}.
-        </p>
+        <p class="banner">Demo data — none of these files are real{modeReason ? ` (${modeReason})` : ""}.</p>
       ) : null}
 
       {page?.trail.truncated ? (
         <p class="banner banner-warn">
-          The trail above is incomplete — a parent folder of this one could not be read, so this is
-          not the full path.
+          The trail above is incomplete — a parent folder of this one could not be read, so this is not the full path.
         </p>
       ) : null}
 
       {readRefusal ? <p class="banner banner-warn">{readRefusal.message}</p> : null}
-      {!readRefusal && writeRefused ? (
-        <p class="banner banner-warn">{NO_WRITE_SCOPE_NOTE}</p>
-      ) : null}
+      {!readRefusal && writeRefused ? <p class="banner banner-warn">{NO_WRITE_SCOPE_NOTE}</p> : null}
 
       <div class="body">
         <aside class="sidebar">
@@ -627,9 +616,7 @@ export default function FilesApp({ client: injected, search }: Props) {
             </>
           ) : (
             <p class="muted files-hint">
-              {readRefusal
-                ? "Nothing can be changed here while files cannot be read."
-                : NO_WRITE_SCOPE_NOTE}
+              {readRefusal ? "Nothing can be changed here while files cannot be read." : NO_WRITE_SCOPE_NOTE}
             </p>
           )}
 
@@ -642,9 +629,7 @@ export default function FilesApp({ client: injected, search }: Props) {
                     <span class="files-queue-name">{row.name}</span>
                     <span class="pill">{statusLabel(row.status)}</span>
                     {row.renamedFrom ? (
-                      <span class="muted files-queue-note">
-                        renamed from “{row.renamedFrom}” — that name was taken
-                      </span>
+                      <span class="muted files-queue-note">renamed from “{row.renamedFrom}” — that name was taken</span>
                     ) : null}
                     {row.message ? <span class="files-queue-note">{row.message}</span> : null}
                   </li>
@@ -745,14 +730,8 @@ export default function FilesApp({ client: injected, search }: Props) {
 
               {hasMore ? (
                 <li class="files-pager">
-                  <button
-                    class="link-button"
-                    disabled={loading}
-                    onClick={() => setLimit((n) => n + CHILD_PAGE_SIZE)}
-                  >
-                    {loading
-                      ? "Loading…"
-                      : `Load more (${(page?.total ?? 0) - children.length} left)`}
+                  <button class="link-button" disabled={loading} onClick={() => setLimit((n) => n + CHILD_PAGE_SIZE)}>
+                    {loading ? "Loading…" : `Load more (${(page?.total ?? 0) - children.length} left)`}
                   </button>
                 </li>
               ) : null}
@@ -763,9 +742,7 @@ export default function FilesApp({ client: injected, search }: Props) {
                 <article class="panel">
                   <h2>
                     {selected.name}
-                    {selected.role === ATTACHMENTS_ROLE ? (
-                      <span class="pill">from mail</span>
-                    ) : null}
+                    {selected.role === ATTACHMENTS_ROLE ? <span class="pill">from mail</span> : null}
                   </h2>
 
                   <div class="row">
@@ -785,12 +762,8 @@ export default function FilesApp({ client: injected, search }: Props) {
                     </p>
                   </div>
 
-                  {selected.role === ATTACHMENTS_ROLE ? (
-                    <p class="caveats">{ATTACHMENTS_ROLE_NOTE}</p>
-                  ) : null}
-                  {inAttachments && selected.nodeType === "file" ? (
-                    <p class="caveats">{NO_SOURCE_LINK_NOTE}</p>
-                  ) : null}
+                  {selected.role === ATTACHMENTS_ROLE ? <p class="caveats">{ATTACHMENTS_ROLE_NOTE}</p> : null}
+                  {inAttachments && selected.nodeType === "file" ? <p class="caveats">{NO_SOURCE_LINK_NOTE}</p> : null}
 
                   {/* Outside the write gate on purpose: reading the bytes back
                       needs `read`, which anyone who can see this row already
@@ -816,23 +789,15 @@ export default function FilesApp({ client: injected, search }: Props) {
                           <input
                             type="text"
                             value={renameValue}
-                            onInput={(ev) =>
-                              setRenameValue((ev.currentTarget as HTMLInputElement).value)
-                            }
+                            onInput={(ev) => setRenameValue((ev.currentTarget as HTMLInputElement).value)}
                           />
                           <button type="submit" disabled={busy || !!nameProblem(renameValue)}>
                             Save
                           </button>
-                          <button
-                            type="button"
-                            class="link-button"
-                            onClick={() => setRenaming(false)}
-                          >
+                          <button type="button" class="link-button" onClick={() => setRenaming(false)}>
                             Cancel
                           </button>
-                          {nameProblem(renameValue) ? (
-                            <p class="files-problem">{nameProblem(renameValue)}</p>
-                          ) : null}
+                          {nameProblem(renameValue) ? <p class="files-problem">{nameProblem(renameValue)}</p> : null}
                         </form>
                       ) : (
                         <div class="actions">
@@ -857,16 +822,13 @@ export default function FilesApp({ client: injected, search }: Props) {
                           {directories === undefined ? (
                             <p class="muted">Loading folders…</p>
                           ) : targets.length === 0 ? (
-                            <p class="muted">
-                              There is nowhere else to put this — make another folder first.
-                            </p>
+                            <p class="muted">There is nowhere else to put this — make another folder first.</p>
                           ) : (
                             <form
                               onSubmit={(ev) => {
                                 ev.preventDefault();
-                                const value = (
-                                  ev.currentTarget.elements.namedItem("target") as HTMLSelectElement
-                                ).value;
+                                const value = (ev.currentTarget.elements.namedItem("target") as HTMLSelectElement)
+                                  .value;
                                 void submitMove(value);
                               }}
                             >

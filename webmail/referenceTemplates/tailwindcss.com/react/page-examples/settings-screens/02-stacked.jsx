@@ -1,8 +1,8 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import { Dialog, DialogPanel } from "@headlessui/react";
-import { Bars3Icon } from "@heroicons/react/20/solid";
+import { useState } from 'react'
+import { Dialog, DialogPanel } from '@headlessui/react'
+import { Bars3Icon } from '@heroicons/react/20/solid'
 import {
   BellIcon,
   CreditCardIcon,
@@ -11,40 +11,36 @@ import {
   UserCircleIcon,
   UsersIcon,
   XMarkIcon,
-} from "@heroicons/react/24/outline";
+} from '@heroicons/react/24/outline'
 
 const navigation = [
-  { name: "Home", href: "#" },
-  { name: "Invoices", href: "#" },
-  { name: "Clients", href: "#" },
-  { name: "Expenses", href: "#" },
-];
+  { name: 'Home', href: '#' },
+  { name: 'Invoices', href: '#' },
+  { name: 'Clients', href: '#' },
+  { name: 'Expenses', href: '#' },
+]
 const secondaryNavigation = [
-  { name: "General", href: "#", icon: UserCircleIcon, current: true },
-  { name: "Security", href: "#", icon: FingerPrintIcon, current: false },
-  { name: "Notifications", href: "#", icon: BellIcon, current: false },
-  { name: "Plan", href: "#", icon: CubeIcon, current: false },
-  { name: "Billing", href: "#", icon: CreditCardIcon, current: false },
-  { name: "Team members", href: "#", icon: UsersIcon, current: false },
-];
+  { name: 'General', href: '#', icon: UserCircleIcon, current: true },
+  { name: 'Security', href: '#', icon: FingerPrintIcon, current: false },
+  { name: 'Notifications', href: '#', icon: BellIcon, current: false },
+  { name: 'Plan', href: '#', icon: CubeIcon, current: false },
+  { name: 'Billing', href: '#', icon: CreditCardIcon, current: false },
+  { name: 'Team members', href: '#', icon: UsersIcon, current: false },
+]
 
 function classNames(...classes) {
-  return classes.filter(Boolean).join(" ");
+  return classes.filter(Boolean).join(' ')
 }
 
 export default function Example() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
     <>
       <header className="absolute inset-x-0 top-0 z-50 flex h-16 border-b border-gray-900/10 dark:border-white/10 dark:bg-black/10">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex flex-1 items-center gap-x-6">
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="-m-3 p-3 md:hidden"
-            >
+            <button type="button" onClick={() => setMobileMenuOpen(true)} className="-m-3 p-3 md:hidden">
               <span className="sr-only">Open main menu</span>
               <Bars3Icon aria-hidden="true" className="size-5 text-gray-900 dark:text-white" />
             </button>
@@ -139,18 +135,18 @@ export default function Example() {
                     href={item.href}
                     className={classNames(
                       item.current
-                        ? "bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white"
-                        : "text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white",
-                      "group flex gap-x-3 rounded-md py-2 pr-3 pl-2 text-sm/6 font-semibold",
+                        ? 'bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white'
+                        : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white',
+                      'group flex gap-x-3 rounded-md py-2 pr-3 pl-2 text-sm/6 font-semibold',
                     )}
                   >
                     <item.icon
                       aria-hidden="true"
                       className={classNames(
                         item.current
-                          ? "text-indigo-600 dark:text-white"
-                          : "text-gray-400 group-hover:text-indigo-600 dark:text-gray-500 dark:group-hover:text-white",
-                        "size-6 shrink-0",
+                          ? 'text-indigo-600 dark:text-white'
+                          : 'text-gray-400 group-hover:text-indigo-600 dark:text-gray-500 dark:group-hover:text-white',
+                        'size-6 shrink-0',
                       )}
                     />
                     {item.name}
@@ -171,9 +167,7 @@ export default function Example() {
 
               <dl className="mt-6 divide-y divide-gray-100 border-t border-gray-200 text-sm/6 dark:divide-white/5 dark:border-white/5">
                 <div className="py-6 sm:flex">
-                  <dt className="font-medium text-gray-900 sm:w-64 sm:flex-none sm:pr-6 dark:text-white">
-                    Full name
-                  </dt>
+                  <dt className="font-medium text-gray-900 sm:w-64 sm:flex-none sm:pr-6 dark:text-white">Full name</dt>
                   <dd className="mt-1 flex justify-between gap-x-6 sm:mt-0 sm:flex-auto">
                     <div className="text-gray-900 dark:text-gray-300">Tom Cook</div>
                     <button
@@ -199,9 +193,7 @@ export default function Example() {
                   </dd>
                 </div>
                 <div className="py-6 sm:flex">
-                  <dt className="font-medium text-gray-900 sm:w-64 sm:flex-none sm:pr-6 dark:text-white">
-                    Title
-                  </dt>
+                  <dt className="font-medium text-gray-900 sm:w-64 sm:flex-none sm:pr-6 dark:text-white">Title</dt>
                   <dd className="mt-1 flex justify-between gap-x-6 sm:mt-0 sm:flex-auto">
                     <div className="text-gray-900 dark:text-gray-300">Human Resources Manager</div>
                     <button
@@ -216,12 +208,8 @@ export default function Example() {
             </div>
 
             <div>
-              <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">
-                Bank accounts
-              </h2>
-              <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
-                Connect bank accounts to your account.
-              </p>
+              <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">Bank accounts</h2>
+              <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">Connect bank accounts to your account.</p>
 
               <ul
                 role="list"
@@ -237,9 +225,7 @@ export default function Example() {
                   </button>
                 </li>
                 <li className="flex justify-between gap-x-6 py-6">
-                  <div className="font-medium text-gray-900 dark:text-white">
-                    Royal Bank of Canada
-                  </div>
+                  <div className="font-medium text-gray-900 dark:text-white">Royal Bank of Canada</div>
                   <button
                     type="button"
                     className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
@@ -260,12 +246,8 @@ export default function Example() {
             </div>
 
             <div>
-              <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">
-                Integrations
-              </h2>
-              <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
-                Connect applications to your account.
-              </p>
+              <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">Integrations</h2>
+              <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">Connect applications to your account.</p>
 
               <ul
                 role="list"
@@ -293,18 +275,14 @@ export default function Example() {
             </div>
 
             <div>
-              <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">
-                Language and dates
-              </h2>
+              <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">Language and dates</h2>
               <p className="mt-1 text-sm/6 text-gray-500 dark:text-gray-400">
                 Choose what language and date format to use throughout your account.
               </p>
 
               <dl className="mt-6 divide-y divide-gray-100 border-t border-gray-200 text-sm/6 dark:divide-white/5 dark:border-white/5">
                 <div className="py-6 sm:flex">
-                  <dt className="font-medium text-gray-900 sm:w-64 sm:flex-none sm:pr-6 dark:text-white">
-                    Language
-                  </dt>
+                  <dt className="font-medium text-gray-900 sm:w-64 sm:flex-none sm:pr-6 dark:text-white">Language</dt>
                   <dd className="mt-1 flex justify-between gap-x-6 sm:mt-0 sm:flex-auto">
                     <div className="text-gray-900 dark:text-gray-300">English</div>
                     <button
@@ -352,5 +330,5 @@ export default function Example() {
         </main>
       </div>
     </>
-  );
+  )
 }

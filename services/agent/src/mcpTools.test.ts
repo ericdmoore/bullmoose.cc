@@ -29,15 +29,12 @@ describe("every MCP tool declares its own gate", () => {
     expect(typeof tool.domain).toBe("string");
   });
 
-  it.each(TOOLS.map((t) => [t.name, t] as const))(
-    "%s uses a scope from the real vocabulary",
-    (_name, tool) => {
-      // Catches a typo like "calender" or "readonly", which `authorizeAccount`
-      // would simply deny — a tool nobody can call, failing closed but silently.
-      expect(VALID_SCOPES.has(tool.scope)).toBe(true);
-      expect(VALID_DOMAINS.has(tool.domain)).toBe(true);
-    },
-  );
+  it.each(TOOLS.map((t) => [t.name, t] as const))("%s uses a scope from the real vocabulary", (_name, tool) => {
+    // Catches a typo like "calender" or "readonly", which `authorizeAccount`
+    // would simply deny — a tool nobody can call, failing closed but silently.
+    expect(VALID_SCOPES.has(tool.scope)).toBe(true);
+    expect(VALID_DOMAINS.has(tool.domain)).toBe(true);
+  });
 
   it("declares no tool more permissive than the mail bundle", () => {
     // Nothing on this surface should require "mail" wholesale, and nothing
@@ -133,9 +130,7 @@ describe("every MCP tool declares its own gate", () => {
       expect(tool.scope).toBe("read");
     }
     // And the read/write split covers every noun domain, not just one.
-    expect(new Set(writeTools.map((t) => t.domain))).toEqual(
-      new Set(["calendar", "contacts", "mail"]),
-    );
+    expect(new Set(writeTools.map((t) => t.domain))).toEqual(new Set(["calendar", "contacts", "mail"]));
   });
 });
 

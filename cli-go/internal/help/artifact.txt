@@ -1,5 +1,5 @@
 bullmoose-help-artifact 1
-spec packages/cli/src/help.ts sha256=505ccf261133f32bff4bf35f823c1a0be2fe2985212a8c39950dd4e903f5c581
+spec packages/cli/src/help.ts sha256=346437fe8119067ef097dca70dee4e62599ad88e58225f0ad0a0ea6f2fc6d14c
 body sha256=d3db93acade4beca4fbca3c82cf763aa80624ff4f0ae7944134cd2daeff69355
 placeholder __BM_TOPIC__
 commands help login discover init token accounts sync send read watch vacation agent contacts calendar creds log search show mailboxes mailbox flag seen move label archive junk trash rm delete blobs share identity admin

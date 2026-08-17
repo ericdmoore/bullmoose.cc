@@ -54,10 +54,7 @@ function fakeAs(
       });
       if (url === TOKEN) {
         const status = opts.tokenStatus ?? 200;
-        const body =
-          opts.token === null
-            ? {}
-            : (opts.token ?? { access_token: "at_live", token_type: "Bearer" });
+        const body = opts.token === null ? {} : (opts.token ?? { access_token: "at_live", token_type: "Bearer" });
         return new Response(JSON.stringify(body), {
           status,
           headers: { "content-type": "application/json" },
@@ -93,9 +90,7 @@ async function start(
   const res = await h.explore("/oauth/start", { cookie: null });
   const location = new URL(res.headers.get("location") ?? "");
   const state = location.searchParams.get("state") ?? "";
-  const stored = JSON.parse(
-    (h.w.kv.store.get(`explore:pkce:${state}`)?.value ?? "{}") as string,
-  ) as {
+  const stored = JSON.parse((h.w.kv.store.get(`explore:pkce:${state}`)?.value ?? "{}") as string) as {
     verifier?: string;
   };
   return { res, state, verifier: stored.verifier ?? "" };
@@ -204,9 +199,7 @@ describe("/oauth/callback", () => {
     const res = await h.explore(`/oauth/callback?code=ac_1&state=${state}`, { cookie: null });
     const setCookie = res.headers.get("set-cookie")!;
     expect(setCookie).not.toContain("at_live");
-    expect(b64urlDecode(setCookie.split(";")[0]!.split("=")[1]!.split(".")[0]!)).not.toContain(
-      "at_live",
-    );
+    expect(b64urlDecode(setCookie.split(";")[0]!.split("=")[1]!.split(".")[0]!)).not.toContain("at_live");
     expect(res.headers.get("location")).not.toContain("at_live");
   });
 
@@ -227,9 +220,7 @@ describe("/oauth/callback", () => {
   it("a state is single-use: a replayed callback is refused", async () => {
     const { h } = await wired();
     const { state } = await start(h);
-    expect(
-      (await h.explore(`/oauth/callback?code=ac_1&state=${state}`, { cookie: null })).status,
-    ).toBe(302);
+    expect((await h.explore(`/oauth/callback?code=ac_1&state=${state}`, { cookie: null })).status).toBe(302);
     const replay = await h.explore(`/oauth/callback?code=ac_1&state=${state}`, { cookie: null });
     expect(replay.status).toBe(400);
     expect((await h.json<{ error: string }>(replay)).error).toBe("unknown_state");
@@ -256,11 +247,7 @@ describe("/oauth/callback", () => {
   });
 
   it("a validation hop that fails REFUSES — it never falls through to a weaker check", async () => {
-    for (const broken of [
-      { tokenStatus: 500 },
-      { token: null },
-      { introspectStatus: 500 },
-    ] as const) {
+    for (const broken of [{ tokenStatus: 500 }, { token: null }, { introspectStatus: 500 }] as const) {
       const { h } = await wired(broken);
       const { state } = await start(h);
       const res = await h.explore(`/oauth/callback?code=ac_1&state=${state}`, { cookie: null });
@@ -275,9 +262,7 @@ describe("/oauth/callback", () => {
       cookie: null,
     });
     expect(res.status).toBe(400);
-    expect((await h.json<{ error: string; detail: string }>(res)).detail).toContain(
-      "access_denied",
-    );
+    expect((await h.json<{ error: string; detail: string }>(res)).detail).toContain("access_denied");
   });
 
   it("a confidential registration sends its secret; a public one has none to send", async () => {

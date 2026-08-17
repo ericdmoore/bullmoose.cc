@@ -103,13 +103,7 @@ function mimeWithAttachment(opts: {
   extra?: { bytes: number; filename: string; fill: string };
 }): string {
   const filename = opts.filename ?? "big.pdf";
-  const part = (o: {
-    bytes: number;
-    filename: string;
-    fill: string;
-    type?: string;
-    disposition?: string;
-  }) => [
+  const part = (o: { bytes: number; filename: string; fill: string; type?: string; disposition?: string }) => [
     "--BOUND",
     `Content-Type: ${o.type ?? "application/pdf"}; name="${o.filename}"`,
     `Content-Disposition: ${o.disposition ?? "attachment"}; filename="${o.filename}"`,
@@ -188,16 +182,12 @@ function jmap(w: FakeWorker, opts: { scopes?: string[]; accounts?: string[] } = 
 describe("the threshold is a policy value, resolved route → env → default", () => {
   it("defaults conservatively when nothing is configured", () => {
     expect(sidestepThreshold({}, {})).toBe(DEFAULT_SIDESTEP_MIN_BYTES);
-    expect(sidestepThreshold({ ATTACHMENT_SIDESTEP_BYTES: "" }, {})).toBe(
-      DEFAULT_SIDESTEP_MIN_BYTES,
-    );
+    expect(sidestepThreshold({ ATTACHMENT_SIDESTEP_BYTES: "" }, {})).toBe(DEFAULT_SIDESTEP_MIN_BYTES);
   });
 
   it("takes the deployment env var, and the per-account route value over it", () => {
     expect(sidestepThreshold({ ATTACHMENT_SIDESTEP_BYTES: "2048" }, {})).toBe(2048);
-    expect(sidestepThreshold({ ATTACHMENT_SIDESTEP_BYTES: "2048" }, { sidestepBytes: 99 })).toBe(
-      99,
-    );
+    expect(sidestepThreshold({ ATTACHMENT_SIDESTEP_BYTES: "2048" }, { sidestepBytes: 99 })).toBe(99);
   });
 
   it("treats 0 — and a typo — as OFF rather than as the default", () => {
@@ -228,13 +218,9 @@ describe("the candidate rule is size, plus the inline exclusion", () => {
   });
 
   it("fires at the real default for a genuinely large attachment only", () => {
-    expect(isSidestepCandidate(att({ size: 6 * 1024 * 1024 }), DEFAULT_SIDESTEP_MIN_BYTES)).toBe(
-      true,
-    );
+    expect(isSidestepCandidate(att({ size: 6 * 1024 * 1024 }), DEFAULT_SIDESTEP_MIN_BYTES)).toBe(true);
     // A 2 MB phone photo stays where it is.
-    expect(isSidestepCandidate(att({ size: 2 * 1024 * 1024 }), DEFAULT_SIDESTEP_MIN_BYTES)).toBe(
-      false,
-    );
+    expect(isSidestepCandidate(att({ size: 2 * 1024 * 1024 }), DEFAULT_SIDESTEP_MIN_BYTES)).toBe(false);
   });
 
   it("is off entirely at threshold 0", () => {
@@ -387,18 +373,13 @@ describe("delivery side-steps a large attachment into Files", () => {
     await deliver(w, mimeWithAttachment({ bytes: 2048, filename: "big.pdf", fill: "B" }));
     // Same name, SAME bytes → content addressing makes it one object, so the
     // existing node is cross-linked rather than a third "big (3).pdf" minted.
-    const third = await deliver(
-      w,
-      mimeWithAttachment({ bytes: 2048, filename: "big.pdf", fill: "A" }),
-    );
+    const third = await deliver(w, mimeWithAttachment({ bytes: 2048, filename: "big.pdf", fill: "A" }));
 
     const store = new Mailstore(w.env.DB, w.env.BLOBS);
     const files = (await store.getFileNodes(ACCOUNT)).filter((n) => n.nodeType === "file");
     expect(files.map((f) => f.name).sort()).toEqual(["big (2).pdf", "big.pdf"]);
     expect(third.fileNodes).toBeUndefined(); // nothing NEW was created
-    expect(storedAttachments(w, third.emailId!)[0]!.fileNodeId).toBe(
-      files.find((f) => f.name === "big.pdf")!.id,
-    );
+    expect(storedAttachments(w, third.emailId!)[0]!.fileNodeId).toBe(files.find((f) => f.name === "big.pdf")!.id);
     // One Attachments folder, not one per message.
     expect(w.db.count("file_nodes", "role = ?", ATTACHMENTS_ROLE)).toBe(1);
   });
@@ -449,10 +430,10 @@ describe("a side-stepped file is an ordinary FileNode", () => {
     const w = fakeEnv();
     const { file } = await deliverOne(w);
 
-    const got = await jmap(w)<{ list: Array<Record<string, unknown>>; notFound: string[] }>(
-      "FileNode/get",
-      { accountId: ACCOUNT, ids: [file.id] },
-    );
+    const got = await jmap(w)<{ list: Array<Record<string, unknown>>; notFound: string[] }>("FileNode/get", {
+      accountId: ACCOUNT,
+      ids: [file.id],
+    });
     expect(got.notFound).toEqual([]);
     expect(got.list[0]).toMatchObject({
       id: file.id,
@@ -485,8 +466,7 @@ describe("a side-stepped file is an ordinary FileNode", () => {
   it("obeys the SAME scope gate as every other FileNode — no new authority path", async () => {
     const w = fakeEnv();
     const { file } = await deliverOne(w);
-    const get = (scopes: string[]) =>
-      jmap(w, { scopes })("FileNode/get", { accountId: ACCOUNT, ids: [file.id] });
+    const get = (scopes: string[]) => jmap(w, { scopes })("FileNode/get", { accountId: ACCOUNT, ids: [file.id] });
 
     // `filenode.ts` gates reads on ("read","files"), and since common/027 the
     // `files` realm scope satisfies `read` on its own. Both spellings work; a
@@ -551,11 +531,7 @@ describe("the sidestep fails OPEN — mail is never the price of a Files failure
     expect(attachments).toHaveLength(1);
     expect(attachments[0]).toMatchObject({ name: "big.pdf", size: 2048 });
     expect(attachments[0]!.fileNodeId ?? null).toBeNull();
-    const blob = await new Mailstore(w.env.DB, w.env.BLOBS).getBlob(
-      TENANT,
-      ACCOUNT,
-      attachments[0]!.blobId,
-    );
+    const blob = await new Mailstore(w.env.DB, w.env.BLOBS).getBlob(TENANT, ACCOUNT, attachments[0]!.blobId);
     expect(blob).not.toBeNull();
   });
 
@@ -627,10 +603,10 @@ describe("DefaultCase: mail with no attachments is unchanged", () => {
 
     expect(res.fileNodes).toBeUndefined();
     expect(w.db.count("file_nodes")).toBe(0);
-    const changes = await call<{ created: string[]; updated: string[]; destroyed: string[] }>(
-      "FileNode/changes",
-      { accountId: ACCOUNT, sinceState: before },
-    );
+    const changes = await call<{ created: string[]; updated: string[]; destroyed: string[] }>("FileNode/changes", {
+      accountId: ACCOUNT,
+      sinceState: before,
+    });
     expect(changes).toMatchObject({ created: [], updated: [], destroyed: [] });
   });
 });

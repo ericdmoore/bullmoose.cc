@@ -1,5 +1,5 @@
-import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { ChevronDownIcon } from "@heroicons/react/20/solid";
+import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react'
+import { ChevronDownIcon } from '@heroicons/react/20/solid'
 
 export default function Example() {
   return (
@@ -15,9 +15,7 @@ export default function Example() {
       >
         <div className="px-4 py-3">
           <p className="text-sm text-gray-700 dark:text-gray-400">Signed in as</p>
-          <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
-            tom@example.com
-          </p>
+          <p className="truncate text-sm font-medium text-gray-900 dark:text-white">tom@example.com</p>
         </div>
         <div className="py-1">
           <MenuItem>
@@ -59,5 +57,5 @@ export default function Example() {
         </div>
       </MenuItems>
     </Menu>
-  );
+  )
 }

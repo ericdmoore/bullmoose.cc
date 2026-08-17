@@ -6,32 +6,25 @@ Port §14 of `tools/e2e-grants.mjs` to MCP.2. The file already provisions tokens
 the pieces are in hand.
 
 ```js
-const mcp = (body, token) =>
-  fetch(`${AGENT}/mcp/analytics`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-internal-token": INTERNAL_TOKEN, // still required at the router
-      Authorization: `Bearer ${token}`, // NEW — identity
-      "MCP-Protocol-Version": "2026-07-28", // NEW — must equal _meta
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      ...body,
-      params: {
-        ...body.params,
-        _meta: {
-          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-          "io.modelcontextprotocol/clientCapabilities": {},
-        },
-      },
-    }),
-  });
+const mcp = (body, token) => fetch(`${AGENT}/mcp/analytics`, {
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    "x-internal-token": INTERNAL_TOKEN,          // still required at the router
+    "Authorization": `Bearer ${token}`,          // NEW — identity
+    "MCP-Protocol-Version": "2026-07-28",        // NEW — must equal _meta
+  },
+  body: JSON.stringify({
+    jsonrpc: "2.0", id: 1, ...body,
+    params: { ...body.params, _meta: {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientCapabilities": {},
+    }},
+  }),
+});
 ```
 
 Then:
-
 - swap `initialize` → **`server/discover`**, asserting `supportedVersions: ["2026-07-28"]`
 - keep `tools/list`, and additionally assert `ttlMs` is present
 - `tools/call` with ERIC's bearer against ERIC's account → 200 with rows
@@ -44,7 +37,7 @@ The value of an e2e over `mcp.test.ts` is that it runs against **real D1**, so a
    grant** → 403, **and assert zero rows come back** (not just a non-200).
 2. **Granted read + audit:** create a grant ALLEN→ERIC, repeat the call → 200, then **query
    `grant_audit`** and assert exactly one new row with the right `grant_id`/`account_id`. That is the
-   invariant (`mcp-auth.md` §16.4) and the fake-D1 test can only assert the _intent_ to write.
+   invariant (`mcp-auth.md` §16.4) and the fake-D1 test can only assert the *intent* to write.
 3. **Version rejection:** send `2025-06-18` → 400 with `-32022` and a `supported[]` array.
 
 ## Bread-crumbs

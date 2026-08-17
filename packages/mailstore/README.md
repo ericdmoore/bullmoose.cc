@@ -23,7 +23,7 @@ The storage layer: one `Mailstore` class over D1 (metadata) + R2
   fork threads (regression-tested)
 - **Identities / submissions**: `getIdentities`, `insertSubmission`,
   `getSubmissions` (LEFT JOINs `emails` for RFC 8621's `threadId`;
-  `ids: []` means _nothing_, unlike `getMailboxes`)
+  `ids: []` means *nothing*, unlike `getMailboxes`)
 
 `sql/data-plane.sql` — per-account tables: emails, mailboxes,
 junctions, FTS, responders, responder_log, agent_bindings (with

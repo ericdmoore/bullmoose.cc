@@ -131,11 +131,7 @@ export async function loadDirectory(
     },
     "q",
   ]);
-  calls.push([
-    "FileNode/get",
-    { accountId, "#ids": backReference("q", "FileNode/query", "/ids") },
-    "g",
-  ]);
+  calls.push(["FileNode/get", { accountId, "#ids": backReference("q", "FileNode/query", "/ids") }, "g"]);
 
   const responses = await client.request(calls);
   const refused = (detail: unknown): DirectoryPage => ({
@@ -382,12 +378,7 @@ export async function renameNode(
   if (problem) {
     return { error: { type: "invalidProperties", description: problem, properties: ["name"] } };
   }
-  return setOne(
-    client,
-    { accountId, update: { [id]: { name: normalizeName(rawName) } } },
-    "update",
-    id,
-  );
+  return setOne(client, { accountId, update: { [id]: { name: normalizeName(rawName) } } }, "update", id);
 }
 
 /**
@@ -529,14 +520,12 @@ export function describeFilesRefusal(
 export function describeUploadFailure(err: unknown): FilesRefusal {
   const status = (err as { httpStatus?: number } | null)?.httpStatus;
   const text = err instanceof Error ? err.message : String(err);
-  if (status === 403)
-    return { type: "forbidden", description: text, message: NO_UPLOAD_SCOPE_NOTE };
+  if (status === 403) return { type: "forbidden", description: text, message: NO_UPLOAD_SCOPE_NOTE };
   if (status === 404) {
     return {
       type: "accountNotFound",
       description: text,
-      message:
-        "That account is not reachable from this session, so there is nowhere to put the file.",
+      message: "That account is not reachable from this session, so there is nowhere to put the file.",
     };
   }
   if (status === 413) {

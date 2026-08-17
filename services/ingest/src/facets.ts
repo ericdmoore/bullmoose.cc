@@ -161,12 +161,7 @@ export async function stampInvocationFacets(
   invocationId: string,
   stamp: FacetStamp,
 ): Promise<void> {
-  if (
-    stamp.dueAt === null &&
-    stamp.privacy === null &&
-    stamp.requires === null &&
-    stamp.senderClass === null
-  ) {
+  if (stamp.dueAt === null && stamp.privacy === null && stamp.requires === null && stamp.senderClass === null) {
     return;
   }
   try {

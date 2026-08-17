@@ -88,9 +88,9 @@ export async function syncAll(
 ): Promise<MultiSyncResult> {
   const cursors = new Map<string, string | null>();
   for (const a of accounts) {
-    const row = db
-      .prepare("SELECT email_state FROM sync_state WHERE account_id = ?")
-      .get(a.accountId) as { email_state: string | null } | undefined;
+    const row = db.prepare("SELECT email_state FROM sync_state WHERE account_id = ?").get(a.accountId) as
+      | { email_state: string | null }
+      | undefined;
     cursors.set(a.accountId, row?.email_state ?? null);
   }
 
@@ -204,9 +204,9 @@ export async function sync(
   // Mailboxes: small set — always refresh in full.
   const { mailboxes, state: mailboxState } = await refreshMailboxes(db, client, accountId);
 
-  const cursorRow = db
-    .prepare("SELECT email_state FROM sync_state WHERE account_id = ?")
-    .get(accountId) as { email_state: string | null } | undefined;
+  const cursorRow = db.prepare("SELECT email_state FROM sync_state WHERE account_id = ?").get(accountId) as
+    | { email_state: string | null }
+    | undefined;
   const cursor = cursorRow?.email_state ?? null;
 
   const stats: SyncStats = {
@@ -249,9 +249,9 @@ export async function sync(
   // rows touched this pass — backfill anything missing (content-hash
   // filenames make re-checks cheap: existing file = identical content).
   if (opts.blobs) {
-    const rows = db
-      .prepare("SELECT DISTINCT blob_id FROM emails WHERE account_id = ?")
-      .all(accountId) as Array<{ blob_id: string }>;
+    const rows = db.prepare("SELECT DISTINCT blob_id FROM emails WHERE account_id = ?").all(accountId) as Array<{
+      blob_id: string;
+    }>;
     for (const r of rows) await downloadBlob(client, accountId, r.blob_id, opts.blobs);
   }
 
@@ -375,28 +375,16 @@ function upsertOne(db: DatabaseSync, accountId: string, e: JmapEmail): void {
     JSON.stringify(e.attachments ?? []),
   );
 
-  db.prepare("DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ?").run(
-    accountId,
-    e.id,
-  );
-  const insMb = db.prepare(
-    "INSERT INTO email_mailboxes (account_id, email_id, mailbox_id) VALUES (?, ?, ?)",
-  );
+  db.prepare("DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ?").run(accountId, e.id);
+  const insMb = db.prepare("INSERT INTO email_mailboxes (account_id, email_id, mailbox_id) VALUES (?, ?, ?)");
   for (const mb of Object.keys(e.mailboxIds ?? {})) insMb.run(accountId, e.id, mb);
 
-  db.prepare("DELETE FROM email_keywords WHERE account_id = ? AND email_id = ?").run(
-    accountId,
-    e.id,
-  );
-  const insKw = db.prepare(
-    "INSERT INTO email_keywords (account_id, email_id, keyword) VALUES (?, ?, ?)",
-  );
+  db.prepare("DELETE FROM email_keywords WHERE account_id = ? AND email_id = ?").run(accountId, e.id);
+  const insKw = db.prepare("INSERT INTO email_keywords (account_id, email_id, keyword) VALUES (?, ?, ?)");
   for (const kw of Object.keys(e.keywords ?? {})) insKw.run(accountId, e.id, kw);
 
   db.prepare("DELETE FROM cli_fts WHERE email_id = ?").run(e.id);
-  db.prepare(
-    "INSERT INTO cli_fts (email_id, subject, from_text, to_text, preview) VALUES (?, ?, ?, ?, ?)",
-  ).run(
+  db.prepare("INSERT INTO cli_fts (email_id, subject, from_text, to_text, preview) VALUES (?, ?, ?, ?, ?)").run(
     e.id,
     e.subject ?? "",
     from.map((a) => `${a.name ?? ""} ${a.email}`).join(" "),
@@ -407,20 +395,12 @@ function upsertOne(db: DatabaseSync, accountId: string, e: JmapEmail): void {
 
 function deleteEmail(db: DatabaseSync, accountId: string, id: string): void {
   db.prepare("DELETE FROM emails WHERE account_id = ? AND id = ?").run(accountId, id);
-  db.prepare("DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ?").run(
-    accountId,
-    id,
-  );
+  db.prepare("DELETE FROM email_mailboxes WHERE account_id = ? AND email_id = ?").run(accountId, id);
   db.prepare("DELETE FROM email_keywords WHERE account_id = ? AND email_id = ?").run(accountId, id);
   db.prepare("DELETE FROM cli_fts WHERE email_id = ?").run(id);
 }
 
-async function downloadBlob(
-  client: JmapClient,
-  accountId: string,
-  blobId: string,
-  dir: string,
-): Promise<void> {
+async function downloadBlob(client: JmapClient, accountId: string, blobId: string, dir: string): Promise<void> {
   mkdirSync(dir, { recursive: true });
   const path = join(dir, `${blobId}.eml`);
   if (existsSync(path)) return; // content-hash ids: existing = identical

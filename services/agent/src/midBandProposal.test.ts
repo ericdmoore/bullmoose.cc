@@ -2,12 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Mailstore, QUARANTINE_NAME, QUARANTINE_ROLE } from "@bullmoose/mailstore";
 import { fakeEnv, type FakeWorker } from "@bullmoose/test-fakes";
 import agentWorker from "./index";
-import {
-  MID_BAND_KIND,
-  midBandMarkerKind,
-  midBandPeriodKey,
-  proposeMidBandHolds,
-} from "./midBandProposal";
+import { MID_BAND_KIND, midBandMarkerKind, midBandPeriodKey, proposeMidBandHolds } from "./midBandProposal";
 import type { Env } from "./models";
 
 /**
@@ -75,10 +70,7 @@ interface Stage {
 
 /** The whole stage: an account, a bouncer binding, and a fake model that
  * answers `response` to every classify call. */
-async function stage(
-  response: string,
-  opts: { bouncerAccount?: string; noModelMenu?: boolean } = {},
-): Promise<Stage> {
+async function stage(response: string, opts: { bouncerAccount?: string; noModelMenu?: boolean } = {}): Promise<Stage> {
   const w = fakeEnv();
   const bouncerAccount = opts.bouncerAccount ?? ACCOUNT;
   w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT });
@@ -259,9 +251,7 @@ describe("undecided mail becomes ONE question", () => {
     const p = s.proposals()[0]!;
     expect(p.rationale).toMatch(/None of these got a real classifier verdict/);
     expect(p.rationale).toMatch(/our plumbing, not about the mail/);
-    expect((p.payload.messages as Array<{ note?: string }>)[0]!.note).toMatch(
-      /no model candidates/,
-    );
+    expect((p.payload.messages as Array<{ note?: string }>)[0]!.note).toMatch(/no model candidates/);
   });
 
   it("a hold that arrives AFTER the ask is a new question, not a re-ask", async () => {
@@ -305,10 +295,7 @@ describe("undecided mail becomes ONE question", () => {
       status: string;
       cost_micros: number | null;
       binding_name: string;
-    }>(
-      `SELECT account_id, status, cost_micros, binding_name FROM agent_invocations WHERE id = ?`,
-      rows[0]!.id,
-    )[0]!;
+    }>(`SELECT account_id, status, cost_micros, binding_name FROM agent_invocations WHERE id = ?`, rows[0]!.id)[0]!;
     expect(carrier).toMatchObject({
       account_id: ACCOUNT,
       status: "done",

@@ -26,12 +26,7 @@ import type { BoundaryMessage } from "./boundaryContract";
 import { sweepGraduations } from "./graduationSweep";
 import { extractDueAt } from "@bullmoose/scheduling";
 import { SIDESTEP_WRITER, sidestepAttachments, sidestepThreshold } from "./sidestep";
-import {
-  composePrivacy,
-  mechanicalRequires,
-  privacyFloorOf,
-  stampInvocationFacets,
-} from "./facets";
+import { composePrivacy, mechanicalRequires, privacyFloorOf, stampInvocationFacets } from "./facets";
 
 /**
  * Ingest — the Email Routing target for every hosted domain.
@@ -152,11 +147,7 @@ export default {
   // expireStaleProposals / drain). Here: the s12 graduation sweep — repeat
   // spam domains graduate into the deny list so their future mail exits at
   // the SMTP edge instead of paying Bayes compute.
-  async scheduled(
-    _controller: ScheduledController,
-    env: Env,
-    _ctx: ExecutionContext,
-  ): Promise<void> {
+  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     await sweepGraduations(env);
   },
 } satisfies ExportedHandler<Env>;
@@ -211,11 +202,7 @@ async function backfillFts(
     let bodyText = row.preview;
     if (deep) {
       try {
-        const blob = await store.getBlob(
-          await tenantOf(env, tenants, accountId),
-          accountId,
-          row.blobId,
-        );
+        const blob = await store.getBlob(await tenantOf(env, tenants, accountId), accountId, row.blobId);
         if (blob) {
           const parsed = await PostalMime.parse(await blob.arrayBuffer());
           bodyText = bodyTextOf(parsed) || row.preview;
@@ -478,9 +465,7 @@ async function deliver(
   await commitChanges(env.ACCOUNT_DO, route.accountId, [
     { collection: "Email", created: [emailId] },
     { collection: "Mailbox", updated: [inboxId] },
-    ...(invocationIds.length > 0
-      ? [{ collection: "AgentInvocation", created: invocationIds }]
-      : []),
+    ...(invocationIds.length > 0 ? [{ collection: "AgentInvocation", created: invocationIds }] : []),
     // Side-stepped files ride the SAME commit — one DO round trip, and a
     // client watching FileNode/changes learns about the file in the same push
     // that announces the message it arrived on. A FileNode row that never
@@ -539,11 +524,7 @@ async function quarantineDeliver(
   // seed existed still gets one on first shunt. The role is the REGISTERED
   // 'junk' (RFC 8621) so standards clients treat it as spam; the NAME is
   // 'Quarantined' — see @bullmoose/mailstore QUARANTINE_ROLE.
-  const quarantineId = await store.ensureRoleMailbox(
-    route.accountId,
-    QUARANTINE_ROLE,
-    QUARANTINE_NAME,
-  );
+  const quarantineId = await store.ensureRoleMailbox(route.accountId, QUARANTINE_ROLE, QUARANTINE_NAME);
   const attachments = await storeAttachments(store, route, m.parsed);
 
   const emailId = `e_${crypto.randomUUID()}`;
@@ -623,11 +604,7 @@ async function screenDeliver(
   const blobId = await store.putBlob(route.tenantId, route.accountId, m.raw);
   const inReplyTo = normalizeMessageId(m.parsed.inReplyTo);
   const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
-  const quarantineId = await store.ensureRoleMailbox(
-    route.accountId,
-    QUARANTINE_ROLE,
-    QUARANTINE_NAME,
-  );
+  const quarantineId = await store.ensureRoleMailbox(route.accountId, QUARANTINE_ROLE, QUARANTINE_NAME);
   const attachments = await storeAttachments(store, route, m.parsed);
 
   const emailId = `e_${crypto.randomUUID()}`;
@@ -698,9 +675,7 @@ async function screenDeliver(
     { collection: "Email", created: [emailId] },
     { collection: "Mailbox", updated: [quarantineId] },
   ]);
-  await commitChanges(env.ACCOUNT_DO, bouncer.accountId, [
-    { collection: "AgentInvocation", created: [invId] },
-  ]);
+  await commitChanges(env.ACCOUNT_DO, bouncer.accountId, [{ collection: "AgentInvocation", created: [invId] }]);
 
   // invocations: 1 → the caller pokes the agent worker, same as any enqueue.
   return { emailId, screened: stage, invocations: 1 };
@@ -719,8 +694,7 @@ async function storeAttachments(
 ): Promise<AttachmentMeta[]> {
   const attachments: AttachmentMeta[] = [];
   for (const att of parsed.attachments ?? []) {
-    const content =
-      typeof att.content === "string" ? new TextEncoder().encode(att.content).buffer : att.content;
+    const content = typeof att.content === "string" ? new TextEncoder().encode(att.content).buffer : att.content;
     const attBlobId = await store.putBlob(route.tenantId, route.accountId, content as ArrayBuffer);
     attachments.push({
       blobId: attBlobId,
@@ -739,8 +713,7 @@ function autoResponseEligible(
   parsed: { headers?: Array<{ key: string; value: string }>; from?: { address?: string } },
 ): boolean {
   if (!envelopeFrom || envelopeFrom === "<>") return false; // null sender = bounce
-  const h = (key: string) =>
-    parsed.headers?.find((x) => x.key.toLowerCase() === key)?.value?.toLowerCase();
+  const h = (key: string) => parsed.headers?.find((x) => x.key.toLowerCase() === key)?.value?.toLowerCase();
   const auto = h("auto-submitted");
   if (auto && auto !== "no") return false;
   const precedence = h("precedence");
@@ -831,11 +804,7 @@ function bodyTextOf(parsed: { text?: string; html?: string }): string {
 }
 
 /** exact match → plus-tag stripped → catch-all. Alias fan-out is TODO. */
-async function resolveRoute(
-  kv: KVNamespace,
-  domain: string,
-  localpart: string,
-): Promise<Route | null> {
+async function resolveRoute(kv: KVNamespace, domain: string, localpart: string): Promise<Route | null> {
   const base = localpart.split("+")[0] ?? localpart;
   return (
     (await kv.get<Route>(`route:${domain}:${localpart}`, "json")) ??

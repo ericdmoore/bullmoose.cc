@@ -48,9 +48,7 @@ describe("header injection", () => {
     // inside the Subject value. Assert on the raw bytes instead — the risk is
     // that a downstream MTA disagrees with us about what ends a line
     // (the SMTP-smuggling class of bug).
-    const raw = new TextDecoder().decode(
-      buildMime({ ...base, subject: "hi\nBcc: evil@example.com" }),
-    );
+    const raw = new TextDecoder().decode(buildMime({ ...base, subject: "hi\nBcc: evil@example.com" }));
     // Strip the LEGITIMATE CRLF field separators first; whatever CR or LF
     // survives that is by definition a bare one we emitted.
     const residue = raw.split("\r\n\r\n")[0]!.replaceAll("\r\n", "");
@@ -213,20 +211,12 @@ describe("a draft with no attachments is byte-identical to before attachments ex
 
   it("no body at all — still an empty text/plain, not a zero-part multipart", () => {
     expect(raw(rich)).toBe(
-      crlf(
-        ...TOP_HEADERS,
-        "Content-Type: text/plain; charset=utf-8",
-        "Content-Transfer-Encoding: base64",
-        "",
-        "",
-      ),
+      crlf(...TOP_HEADERS, "Content-Type: text/plain; charset=utf-8", "Content-Transfer-Encoding: base64", "", ""),
     );
   });
 
   it("an empty attachments array changes nothing either", () => {
-    expect(raw({ ...rich, text: "body text", attachments: [] })).toBe(
-      raw({ ...rich, text: "body text" }),
-    );
+    expect(raw({ ...rich, text: "body text", attachments: [] })).toBe(raw({ ...rich, text: "body text" }));
   });
 });
 
@@ -287,9 +277,7 @@ describe("attachment structure", () => {
       raw({
         ...rich,
         html: '<img src="cid:logo@bm">',
-        attachments: [
-          { type: "image/png", name: "logo.png", content: bytes("PNG"), cid: "logo@bm" },
-        ],
+        attachments: [{ type: "image/png", name: "logo.png", content: bytes("PNG"), cid: "logo@bm" }],
       }),
     );
     expect(out).toContain('Content-Type: multipart/related; boundary="BOUNDARY"');
@@ -367,9 +355,7 @@ describe("attachment structure", () => {
     const out = raw({
       ...rich,
       text: "x",
-      attachments: [
-        { type: "application/octet-stream", name: "big.bin", content: new Uint8Array(600) },
-      ],
+      attachments: [{ type: "application/octet-stream", name: "big.bin", content: new Uint8Array(600) }],
     });
     // The 76-column rule is about the ENCODED BODY, not headers (a
     // Content-Type carrying a boundary is legitimately longer), so measure
@@ -388,9 +374,7 @@ describe("attachment part headers are the same injection surface as the top bloc
     const out = raw({
       ...rich,
       text: "x",
-      attachments: [
-        { type: "text/plain\r\nContent-Disposition: inline", name: "a.txt", content: bytes("A") },
-      ],
+      attachments: [{ type: "text/plain\r\nContent-Disposition: inline", name: "a.txt", content: bytes("A") }],
     });
     // The forged disposition would make the part render in place; the only
     // Content-Disposition in the message must be the one we chose.
@@ -402,9 +386,7 @@ describe("attachment part headers are the same injection surface as the top bloc
     const out = raw({
       ...rich,
       text: "x",
-      attachments: [
-        { type: "text/plain", name: 'a.txt"\r\nContent-ID: <forged@x>', content: bytes("A") },
-      ],
+      attachments: [{ type: "text/plain", name: 'a.txt"\r\nContent-ID: <forged@x>', content: bytes("A") }],
     });
     // The payload survives as inert text INSIDE the quoted string; what must
     // not exist is a Content-ID header line, i.e. one at the start of a line.
@@ -416,9 +398,7 @@ describe("attachment part headers are the same injection surface as the top bloc
     const out = raw({
       ...rich,
       html: "x",
-      attachments: [
-        { type: "image/png", name: "a.png", content: bytes("A"), cid: "a@bm>\r\nBcc: evil@x" },
-      ],
+      attachments: [{ type: "image/png", name: "a.png", content: bytes("A"), cid: "a@bm>\r\nBcc: evil@x" }],
     });
     expect(out.split("\r\n").filter((l) => /^Bcc:/i.test(l))).toEqual([]);
     expect(out).toContain("Content-ID: <a@bmBcc:evil@x>");

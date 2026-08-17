@@ -53,12 +53,8 @@ const annotations = (w: ReturnType<typeof fakeEnv>) =>
 
 describe("parseExtraction — defensive by construction", () => {
   it("pulls well-formed items and clamps confidence", () => {
-    const items = parseExtraction(
-      '[{"class":"commitment","body":"I\'ll send the calc Friday","confidence":1.4}]',
-    );
-    expect(items).toEqual([
-      { class: "commitment", body: "I'll send the calc Friday", confidence: 1 },
-    ]);
+    const items = parseExtraction('[{"class":"commitment","body":"I\'ll send the calc Friday","confidence":1.4}]');
+    expect(items).toEqual([{ class: "commitment", body: "I'll send the calc Friday", confidence: 1 }]);
   });
   it("finds the array inside a chatty/fenced answer", () => {
     const items = parseExtraction('Sure!\n```json\n[{"class":"task","body":"review the PR"}]\n```');
@@ -67,9 +63,7 @@ describe("parseExtraction — defensive by construction", () => {
   it("returns [] for garbage, a non-array, and unknown classes / empty bodies", () => {
     expect(parseExtraction("no json here")).toEqual([]);
     expect(parseExtraction('{"class":"task"}')).toEqual([]);
-    expect(parseExtraction('[{"class":"vibe","body":"x"},{"class":"task","body":"  "}]')).toEqual(
-      [],
-    );
+    expect(parseExtraction('[{"class":"vibe","body":"x"},{"class":"task","body":"  "}]')).toEqual([]);
   });
 });
 
@@ -79,14 +73,7 @@ describe("runExtract — writes Annotations from a delivered message", () => {
       '[{"class":"commitment","body":"You promised Bob the load calc by Friday","confidence":0.8}]',
     );
     const done = vi.fn(async () => {});
-    await runExtract(
-      w.env,
-      job,
-      CFG,
-      inbound({ subject: "the calc", body: "I'll send it by Friday" }),
-      {},
-      done,
-    );
+    await runExtract(w.env, job, CFG, inbound({ subject: "the calc", body: "I'll send it by Friday" }), {}, done);
 
     const rows = annotations(w);
     expect(rows).toHaveLength(1);
@@ -112,14 +99,7 @@ describe("runExtract — writes Annotations from a delivered message", () => {
   it("PRE-FILTER: a cue-less message spends NO model call and writes nothing", async () => {
     const { w, run } = world("[]");
     const done = vi.fn(async () => {});
-    await runExtract(
-      w.env,
-      job,
-      CFG,
-      inbound({ subject: "hello", body: "just saying hi, nice weather" }),
-      {},
-      done,
-    );
+    await runExtract(w.env, job, CFG, inbound({ subject: "hello", body: "just saying hi, nice weather" }), {}, done);
 
     expect(run).not.toHaveBeenCalled(); // the whole point — no spend on a newsletter
     expect(annotations(w)).toEqual([]);
@@ -132,14 +112,7 @@ describe("runExtract — writes Annotations from a delivered message", () => {
   it("finds nothing when the model returns [] — a model call, but no invented claim", async () => {
     const { w, run } = world("[]");
     const done = vi.fn(async () => {});
-    await runExtract(
-      w.env,
-      job,
-      CFG,
-      inbound({ subject: "re: plans", body: "let's circle back" }),
-      {},
-      done,
-    );
+    await runExtract(w.env, job, CFG, inbound({ subject: "re: plans", body: "let's circle back" }), {}, done);
     expect(run).toHaveBeenCalledOnce();
     expect(annotations(w)).toEqual([]);
   });
@@ -156,14 +129,7 @@ describe("runExtract — writes Annotations from a delivered message", () => {
   it("fails cleanly when the binding has no model menu", async () => {
     const { w } = world("[]");
     const done = vi.fn(async () => {});
-    await runExtract(
-      w.env,
-      job,
-      { pipeline: "extract" },
-      inbound({ body: "I'll send it Friday" }),
-      {},
-      done,
-    );
+    await runExtract(w.env, job, { pipeline: "extract" }, inbound({ body: "I'll send it Friday" }), {}, done);
     expect(done).toHaveBeenCalledWith(
       "failed",
       expect.objectContaining({ note: expect.stringContaining("model menu") }),

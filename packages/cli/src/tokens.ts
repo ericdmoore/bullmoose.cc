@@ -38,11 +38,7 @@ export interface LoginOpts extends IoOpts {
   scopes?: string;
 }
 
-export async function cmdLogin(
-  db: DatabaseSync,
-  email: string | undefined,
-  opts: LoginOpts,
-): Promise<void> {
+export async function cmdLogin(db: DatabaseSync, email: string | undefined, opts: LoginOpts): Promise<void> {
   // A file:// base is a bootstrap bundle carrying the real server URL
   // (login still goes over the network — it exists to mint a token).
   if (isFileUrl(opts.base)) {
@@ -63,8 +59,7 @@ export async function cmdLogin(
     opts.base = found.base;
     note(`discovered ${found.base} (via ${found.via})`);
   }
-  const password =
-    opts.password ?? process.env.BULLMOOSE_PASSWORD ?? (await promptHidden("password: "));
+  const password = opts.password ?? process.env.BULLMOOSE_PASSWORD ?? (await promptHidden("password: "));
   // Stretching happens HERE — the raw password never leaves this process.
   const loginKey = await deriveLoginKey(email, password);
 
@@ -88,8 +83,7 @@ export async function cmdLogin(
     accounts: Array<{ accountId: string; tenantId: string; name: string; address: string | null }>;
   };
 
-  const primary =
-    body.accounts.find((a) => a.address?.toLowerCase() === email.toLowerCase()) ?? body.accounts[0];
+  const primary = body.accounts.find((a) => a.address?.toLowerCase() === email.toLowerCase()) ?? body.accounts[0];
   if (!primary) fail(`login ok but ${email} has no accounts — provision one first`, EXIT.NOT_FOUND);
   setConfig(db, "base", opts.base);
   setConfig(db, "token", body.token);
@@ -168,10 +162,7 @@ export async function cmdToken(
       body: JSON.stringify({ name: opts.name ?? "token", scopes }),
     });
     if (!res.ok) {
-      fail(
-        `token create failed: HTTP ${res.status} ${await res.text()}`,
-        exitCodeForHttpStatus(res.status),
-      );
+      fail(`token create failed: HTTP ${res.status} ${await res.text()}`, exitCodeForHttpStatus(res.status));
     }
     const body = (await res.json()) as { token: string; tokenId: string; scopes: string[] };
     if (opts.json) {
@@ -192,10 +183,7 @@ export async function cmdToken(
   if (verb === "list") {
     const res = await fetch(`${settings.base}/auth/tokens`, { headers });
     if (!res.ok) {
-      fail(
-        `token list failed: HTTP ${res.status} ${await res.text()}`,
-        exitCodeForHttpStatus(res.status),
-      );
+      fail(`token list failed: HTTP ${res.status} ${await res.text()}`, exitCodeForHttpStatus(res.status));
     }
     const body = (await res.json()) as {
       tokens: Array<{
@@ -215,12 +203,8 @@ export async function cmdToken(
       return;
     }
     for (const t of body.tokens) {
-      const lastUsed = t.last_used_at
-        ? new Date(t.last_used_at).toISOString().slice(0, 10)
-        : "never";
-      out(
-        `${t.id}  ${JSON.parse(t.scopes).join(",").padEnd(20)}  last-used=${lastUsed}  ${t.name}`,
-      );
+      const lastUsed = t.last_used_at ? new Date(t.last_used_at).toISOString().slice(0, 10) : "never";
+      out(`${t.id}  ${JSON.parse(t.scopes).join(",").padEnd(20)}  last-used=${lastUsed}  ${t.name}`);
     }
     if (body.tokens.length === 0) note("(no tokens)");
     return;
@@ -235,10 +219,7 @@ export async function cmdToken(
     }
     const res = await fetch(`${settings.base}/auth/tokens/${arg}`, { method: "DELETE", headers });
     if (!res.ok) {
-      fail(
-        `revoke failed: HTTP ${res.status} ${await res.text()}`,
-        exitCodeForHttpStatus(res.status),
-      );
+      fail(`revoke failed: HTTP ${res.status} ${await res.text()}`, exitCodeForHttpStatus(res.status));
     }
     const body = (await res.json()) as { revoked: boolean };
     if (opts.json) {
@@ -268,18 +249,9 @@ function deviceName(): string {
  */
 export async function deriveLoginKey(email: string, password: string): Promise<string> {
   const enc = new TextEncoder();
-  const salt = await crypto.subtle.digest(
-    "SHA-256",
-    enc.encode(`bullmoose-login-v1:${email.toLowerCase()}`),
-  );
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, [
-    "deriveBits",
-  ]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 600_000 },
-    key,
-    256,
-  );
+  const salt = await crypto.subtle.digest("SHA-256", enc.encode(`bullmoose-login-v1:${email.toLowerCase()}`));
+  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 600_000 }, key, 256);
   return [...new Uint8Array(bits)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 

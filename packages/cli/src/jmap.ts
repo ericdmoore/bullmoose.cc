@@ -62,11 +62,7 @@ export interface RevokeResult {
   note: string;
 }
 
-const USING = [
-  "urn:ietf:params:jmap:core",
-  "urn:ietf:params:jmap:mail",
-  "urn:ietf:params:jmap:submission",
-];
+const USING = ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"];
 
 /**
  * Every error this client throws carries the machine-readable half of what the
@@ -156,11 +152,7 @@ export class JmapClient {
    * `ifInState` mismatch comes back as a method-level `stateMismatch`, whose
    * type lands on `jmapType` below and maps to exit 5.
    */
-  async one(
-    name: string,
-    args: Record<string, unknown>,
-    using?: string[],
-  ): Promise<Record<string, unknown>> {
+  async one(name: string, args: Record<string, unknown>, using?: string[]): Promise<Record<string, unknown>> {
     const [resp] = await this.call([[name, args, "c0"]], using);
     if (!resp) throw new Error(`no response for ${name}`);
     if (resp[0] === "error") {
@@ -175,11 +167,7 @@ export class JmapClient {
   }
 
   /** RFC 8620 §6.1 blob upload; returns the content-hash blobId. */
-  async upload(
-    accountId: string,
-    content: Uint8Array,
-    type: string,
-  ): Promise<{ blobId: string; size: number }> {
+  async upload(accountId: string, content: Uint8Array, type: string): Promise<{ blobId: string; size: number }> {
     const res = await fetch(`${this.base}/api/upload/${encodeURIComponent(accountId)}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${this.token}`, "content-type": type },
@@ -200,14 +188,11 @@ export class JmapClient {
     blobId: string,
     opts: { name: string; type?: string; ttlSeconds?: number },
   ): Promise<{ url: string; expiresAt: string }> {
-    const res = await fetch(
-      `${this.base}/api/share/${encodeURIComponent(accountId)}/${encodeURIComponent(blobId)}`,
-      {
-        method: "POST",
-        headers: this.headers(),
-        body: JSON.stringify(opts),
-      },
-    );
+    const res = await fetch(`${this.base}/api/share/${encodeURIComponent(accountId)}/${encodeURIComponent(blobId)}`, {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(opts),
+    });
     if (!res.ok) {
       const body = await res.text();
       throw transportError(`share link failed: HTTP ${res.status} ${body}`, res.status, body);
@@ -264,8 +249,7 @@ export class JmapClient {
   private async sendJson<T>(method: string, path: string, what: string): Promise<T> {
     const res = await fetch(`${this.base}${path}`, { method, headers: this.headers() });
     const text = await res.text();
-    if (!res.ok)
-      throw transportError(`${what} failed: HTTP ${res.status} ${text}`, res.status, text);
+    if (!res.ok) throw transportError(`${what} failed: HTTP ${res.status} ${text}`, res.status, text);
     return JSON.parse(text) as T;
   }
 

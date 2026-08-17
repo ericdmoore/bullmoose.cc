@@ -162,10 +162,7 @@ export default {
       return res;
     }
 
-    if (
-      request.method === "POST" &&
-      request.headers.get("x-internal-token") === env.INTERNAL_TOKEN
-    ) {
+    if (request.method === "POST" && request.headers.get("x-internal-token") === env.INTERNAL_TOKEN) {
       if (url.pathname === "/drain") {
         const handled = await drain(env, ctx);
         return json({ handled });
@@ -192,11 +189,7 @@ export default {
   },
 
   // Retry net: pokes can die mid-flight; the pending row cannot.
-  async scheduled(
-    _controller: ScheduledController,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<void> {
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await failStaleRunning(env);
     await expireStaleProposals(env);
     await drain(env, ctx);
@@ -540,9 +533,7 @@ async function alertStuckOverdue(env: Env, claimant: ClaimantIdentity): Promise<
   // like every other invocation write — a watching client learns about it by
   // the same push it learns a claim by, not by polling for a new noun.
   for (const [accountId, ids] of byAccount) {
-    await commitChanges(env.ACCOUNT_DO, accountId, [
-      { collection: "AgentInvocation", updated: ids },
-    ]);
+    await commitChanges(env.ACCOUNT_DO, accountId, [{ collection: "AgentInvocation", updated: ids }]);
   }
   return alerted;
 }
@@ -629,11 +620,8 @@ async function reportHeldBacklog(env: Env): Promise<void> {
 async function runInvocation(env: Env, job: Job): Promise<void> {
   const cfg = JSON.parse(job.config_json) as BindingConfig;
   const store = new Mailstore(env.DB, env.BLOBS);
-  const done = (
-    status: "done" | "failed",
-    result: Record<string, unknown>,
-    cost?: InvocationCost,
-  ) => finish(env, job, status, result, cost);
+  const done = (status: "done" | "failed", result: Record<string, unknown>, cost?: InvocationCost) =>
+    finish(env, job, status, result, cost);
 
   // s10 T3: an `answer-info-request` invocation (enqueued by ActionProposal/set
   // when a human asks needsInfo) acts on a PROPOSAL, not on a message —
@@ -823,12 +811,7 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   ];
 
   try {
-    const { output, usage, used } = await callWithFallback(
-      env,
-      candidates,
-      prompt,
-      cfg.maxTokens ?? 2048,
-    );
+    const { output, usage, used } = await callWithFallback(env, candidates, prompt, cfg.maxTokens ?? 2048);
     const model = `${used.provider}/${used.model}`;
     // Freeze the cost NOW, at capture (s07 T5) — priced against today's map,
     // never recomputed when models.dev moves. NULL = undetermined; 0 = free.
@@ -871,11 +854,7 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
         model,
         sourceEmailId: email.id,
       });
-      return done(
-        "done",
-        { kind: "reply-draft", tier: 2, proposalId, model, alias: aliasName },
-        cost,
-      );
+      return done("done", { kind: "reply-draft", tier: 2, proposalId, model, alias: aliasName }, cost);
     }
 
     const replyId = await reply(replyText, { model, alias: aliasName });
@@ -1016,9 +995,7 @@ async function finish(
       job.id,
     )
     .run();
-  await commitChanges(env.ACCOUNT_DO, job.account_id, [
-    { collection: "AgentInvocation", updated: [job.id] },
-  ]);
+  await commitChanges(env.ACCOUNT_DO, job.account_id, [{ collection: "AgentInvocation", updated: [job.id] }]);
 }
 
 async function failStaleRunning(env: Env): Promise<void> {
@@ -1080,13 +1057,9 @@ function editDistance(a: string, b: string): number {
   return dp[a.length]![b.length]!;
 }
 
-function humanOriginated(
-  sender: string,
-  parsed: { headers?: Array<{ key: string; value: string }> },
-): boolean {
+function humanOriginated(sender: string, parsed: { headers?: Array<{ key: string; value: string }> }): boolean {
   if (!sender || sender === "<>" || sender.startsWith("mailer-daemon")) return false;
-  const h = (key: string) =>
-    parsed.headers?.find((x) => x.key.toLowerCase() === key)?.value?.toLowerCase();
+  const h = (key: string) => parsed.headers?.find((x) => x.key.toLowerCase() === key)?.value?.toLowerCase();
   const auto = h("auto-submitted");
   if (auto && auto !== "no") return false;
   const precedence = h("precedence");

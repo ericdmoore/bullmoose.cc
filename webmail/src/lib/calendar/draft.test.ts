@@ -51,9 +51,7 @@ describe("all-day events are written the way CalDAV writes them", () => {
     // (`packages/calendar-core/src/ical.ts:473-475`). Matching it means an
     // all-day event created here and one synced from Apple Calendar produce
     // the same blob — and therefore the same placement.
-    const spec = draftToCreate(
-      draft({ allDay: true, startDate: "2026-07-08", endDate: "2026-07-08" }),
-    );
+    const spec = draftToCreate(draft({ allDay: true, startDate: "2026-07-08", endDate: "2026-07-08" }));
     expect(spec.start).toBe("2026-07-08T00:00:00");
     expect(spec.timeZone).toBe(ALL_DAY_ZONE);
     expect(spec.showWithoutTime).toBe(true);
@@ -62,16 +60,12 @@ describe("all-day events are written the way CalDAV writes them", () => {
   it("omits duration for a single all-day day, exactly as the ICS importer does", () => {
     // ical.ts:494 skips writing `P1D` for an all-day event; a create that added
     // one would be a second spelling of the same day.
-    const spec = draftToCreate(
-      draft({ allDay: true, startDate: "2026-07-08", endDate: "2026-07-08" }),
-    );
+    const spec = draftToCreate(draft({ allDay: true, startDate: "2026-07-08", endDate: "2026-07-08" }));
     expect(spec.duration).toBeUndefined();
   });
 
   it("writes an inclusive last day as a whole-day duration", () => {
-    const spec = draftToCreate(
-      draft({ allDay: true, startDate: "2026-07-21", endDate: "2026-07-23" }),
-    );
+    const spec = draftToCreate(draft({ allDay: true, startDate: "2026-07-21", endDate: "2026-07-23" }));
     expect(spec.duration).toBe("P3D");
   });
 
@@ -98,9 +92,7 @@ describe("timed events carry the wall clock the user typed, plus their zone", ()
   });
 
   it("handles an event running past midnight", () => {
-    const spec = draftToCreate(
-      draft({ startTime: "22:00", endDate: "2026-07-09", endTime: "01:30" }),
-    );
+    const spec = draftToCreate(draft({ startTime: "22:00", endDate: "2026-07-09", endTime: "01:30" }));
     expect(spec.duration).toBe("PT3H30M");
   });
 
@@ -115,21 +107,17 @@ describe("validation refuses in the form what the server would refuse on the wir
   });
 
   it("catches an end before its start", () => {
-    expect(validateDraft(draft({ startTime: "10:00", endTime: "09:00" }))).toContain(
-      "The end is before the start.",
-    );
+    expect(validateDraft(draft({ startTime: "10:00", endTime: "09:00" }))).toContain("The end is before the start.");
   });
 
   it("catches an all-day last day before its first", () => {
-    expect(
-      validateDraft(draft({ allDay: true, startDate: "2026-07-10", endDate: "2026-07-08" })),
-    ).toContain("The last day is before the first.");
+    expect(validateDraft(draft({ allDay: true, startDate: "2026-07-10", endDate: "2026-07-08" }))).toContain(
+      "The last day is before the first.",
+    );
   });
 
   it("catches a date that names no real day", () => {
-    expect(validateDraft(draft({ startDate: "2026-02-31" }))).toContain(
-      "Start date is not a real date.",
-    );
+    expect(validateDraft(draft({ startDate: "2026-02-31" }))).toContain("Start date is not a real date.");
   });
 
   it("mirrors the server's interval and count checks", () => {
@@ -159,21 +147,16 @@ describe("the repeat form speaks a strict subset of what the expander supports",
   });
 
   it("builds a weekly rule with plain byDay, never an nth", () => {
-    expect(
-      rulesFromRepeat({ ...emptyRepeat(), frequency: "weekly", weekdays: ["we", "mo"] }, july8),
-    ).toEqual([{ frequency: "weekly", byDay: [{ day: "mo" }, { day: "we" }] }]);
+    expect(rulesFromRepeat({ ...emptyRepeat(), frequency: "weekly", weekdays: ["we", "mo"] }, july8)).toEqual([
+      { frequency: "weekly", byDay: [{ day: "mo" }, { day: "we" }] },
+    ]);
   });
 
   it("builds monthly two ways, and never both at once", () => {
     // The monthly branch is `if (byDay) … else if (byMonthDay)`, so a rule
     // carrying both drops one and is refused (`calendar-core:395-400`).
-    expect(rulesFromRepeat({ ...emptyRepeat(), frequency: "monthly" }, july8)).toEqual([
-      { frequency: "monthly" },
-    ]);
-    const nth = rulesFromRepeat(
-      { ...emptyRepeat(), frequency: "monthly", monthlyMode: "nthWeekday" },
-      july8,
-    );
+    expect(rulesFromRepeat({ ...emptyRepeat(), frequency: "monthly" }, july8)).toEqual([{ frequency: "monthly" }]);
+    const nth = rulesFromRepeat({ ...emptyRepeat(), frequency: "monthly", monthlyMode: "nthWeekday" }, july8);
     // 8 July 2026 is the second Wednesday.
     expect(nth).toEqual([{ frequency: "monthly", byDay: [{ day: "we", nthOfPeriod: 2 }] }]);
     expect(nth[0]!.byMonthDay).toBeUndefined();
@@ -183,9 +166,7 @@ describe("the repeat form speaks a strict subset of what the expander supports",
     // FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=25 is refused: the yearly branch reads
     // byMonth and carries `start.day` through, so the December date would come
     // out as the start day. The form cannot express it.
-    expect(rulesFromRepeat({ ...emptyRepeat(), frequency: "yearly" }, july8)).toEqual([
-      { frequency: "yearly" },
-    ]);
+    expect(rulesFromRepeat({ ...emptyRepeat(), frequency: "yearly" }, july8)).toEqual([{ frequency: "yearly" }]);
   });
 
   it("writes an end-of-day LocalDateTime for `until`, so the last day counts", () => {
@@ -232,10 +213,7 @@ describe("reading rules back, and refusing to when they do not fit", () => {
   });
 
   it.each([
-    [
-      "a nth-weekday that is not the start day's",
-      [{ frequency: "monthly", byDay: [{ day: "fr", nthOfPeriod: -1 }] }],
-    ],
+    ["a nth-weekday that is not the start day's", [{ frequency: "monthly", byDay: [{ day: "fr", nthOfPeriod: -1 }] }]],
     ["byMonthDay, which has no control", [{ frequency: "monthly", byMonthDay: [1, 15] }]],
     ["byMonth, which has no control", [{ frequency: "yearly", byMonth: ["11"] }]],
     ["bySetPosition", [{ frequency: "monthly", byDay: [{ day: "fr" }], bySetPosition: [-1] }]],
@@ -389,10 +367,7 @@ describe("reading an event into the form", () => {
   });
 
   it("treats a single all-day day with no duration as one day", () => {
-    const d = draftFromEvent(
-      { id: "e", start: "2026-07-08T00:00:00", showWithoutTime: true },
-      "cal-1",
-    )!;
+    const d = draftFromEvent({ id: "e", start: "2026-07-08T00:00:00", showWithoutTime: true }, "cal-1")!;
     expect(d.endDate).toBe("2026-07-08");
   });
 
@@ -423,14 +398,8 @@ describe("describing a rule the form cannot edit", () => {
     expect(describeRules([{ frequency: "monthly", byDay: [{ day: "fr", nthOfPeriod: -1 }] }])).toBe(
       "Every month on last Fri",
     );
-    expect(describeRules([{ frequency: "daily", interval: 3, count: 10 }])).toBe(
-      "Every 3 days, 10 times",
-    );
-    expect(describeRules([{ frequency: "yearly", byMonth: ["11"] }])).toBe(
-      "Every year in month 11",
-    );
-    expect(describeRules([{ frequency: "daily", until: "2026-09-30T23:59:59" }])).toBe(
-      "Every day, until 2026-09-30",
-    );
+    expect(describeRules([{ frequency: "daily", interval: 3, count: 10 }])).toBe("Every 3 days, 10 times");
+    expect(describeRules([{ frequency: "yearly", byMonth: ["11"] }])).toBe("Every year in month 11");
+    expect(describeRules([{ frequency: "daily", until: "2026-09-30T23:59:59" }])).toBe("Every day, until 2026-09-30");
   });
 });

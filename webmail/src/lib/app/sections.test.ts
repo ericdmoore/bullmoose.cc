@@ -17,16 +17,7 @@ const at = (id: SectionId) => ids().indexOf(id);
 describe("the eight sections", () => {
   it("is exactly the eight nouns", () => {
     expect(new Set(ids())).toEqual(
-      new Set([
-        "approvals",
-        "agents",
-        "calendar",
-        "mail",
-        "contacts",
-        "files",
-        "search",
-        "settings",
-      ]),
+      new Set(["approvals", "agents", "calendar", "mail", "contacts", "files", "search", "settings"]),
     );
     expect(SECTIONS).toHaveLength(8);
   });

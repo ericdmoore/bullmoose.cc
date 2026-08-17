@@ -7,7 +7,7 @@
 > **Guiding constraint:** never ship a section that renders convincingly against data it
 > cannot actually reach. `s03.E` is the cautionary case — two complete screens, 128 tests,
 > and four of five endpoints unserved, so it only fully renders under `?demo=1`. Every task
-> here states which server routes must be live _before_ the screen counts as done.
+> here states which server routes must be live *before* the screen counts as done.
 
 ---
 
@@ -17,8 +17,8 @@
 agents," and the Drive analogy is load-bearing in the wrong direction.
 
 Drive is **storage-centric and passive**: here are your things, go browse them. You arrive to
-_find_ something. This product is **decision-centric and temporal**: here is what is about to
-happen and what needs you. You arrive to _decide_ something.
+*find* something. This product is **decision-centric and temporal**: here is what is about to
+happen and what needs you. You arrive to *decide* something.
 
 Reaching for the familiar shape imports Drive's home page, its nav ordering, and its
 assumption that the user is a librarian. Drive has no notion of an actor that proposes work
@@ -29,11 +29,11 @@ because Drive has it? The second answer is the signal to stop.
 
 **The concrete consequences, all of which fall out of this and none of which are cosmetic:**
 
-- **Home is a view, not a section.** `/` is _Looking Ahead_ + _Waiting Approvals_ — see T0.
+- **Home is a view, not a section.** `/` is *Looking Ahead* + *Waiting Approvals* — see T0.
   The eight nouns are where you drill down, never where you land.
 - **Nav order is a claim about what this is.** Put `/mail` first and you have built a mail
   client with extras.
-- **The queue is co-authoring, not a gate.** _Approve / Edit / Decline_, and **Edit is the
+- **The queue is co-authoring, not a gate.** *Approve / Edit / Decline*, and **Edit is the
   one that matters** — see T4.
 - **Sharing is a first-class verb**, not a per-object menu item. It is currently unbuilt
   (T7) and it is the largest unclaimed piece of the premise.
@@ -48,7 +48,7 @@ The sketch was: a front page where you paste a token, which form-redirects to
 `/mail?token=…`. **Don't do the redirect.** A credential in a query string lands in browser
 history, in the `Referer` header of every outbound link, in any access log along the path,
 and in whatever the user copies out of the address bar. OAuth 2.1 discourages it explicitly,
-and it would be a _new_ leak — today you only get a token in a URL if you deliberately put
+and it would be a *new* leak — today you only get a token in a URL if you deliberately put
 it there.
 
 The fix costs nothing and keeps the UX identical. The login page is client-side already:
@@ -73,8 +73,8 @@ not a login system — see T7.
   bundles; a single SPA means everyone downloads everything.
 - **The CSP story already works this way.** `astro.config.mjs` emits per-build sha256
   hashes (7 script, 2 style, identical across both current pages). Hand-writing that policy
-  once already broke hydration so the page rendered empty _while `astro build` and the whole
-  suite reported success_ — see `s03.C/devPlan.md:69-74`. Do not re-open that.
+  once already broke hydration so the page rendered empty *while `astro build` and the whole
+  suite reported success* — see `s03.C/devPlan.md:69-74`. Do not re-open that.
 
 The "app" feel comes from the islands being interactive and the chrome being shared, not
 from client-side routing. Shared nav is an Astro layout.
@@ -86,20 +86,20 @@ The proposal was a single score, roughly `approved / total tokens`. Two problems
 **It has no denominator today.** `agent_invocations` (`data-plane.sql:202-216`) records
 `status`, `context_json`, `result_json`, `note` and three timestamps — and **no tokens, no
 cost, no model**. Nothing anywhere records what an invocation cost.
-`spend_facts` is unrelated: that is Allen the Analyst extracting spend from _receipt emails_
+`spend_facts` is unrelated: that is Allen the Analyst extracting spend from *receipt emails*
 (`services/agent/src/ledger.ts:5-14`), not agent token spend. So the score requires schema
 work that appears in no plan. T5 adds it.
 
-**One number answers two questions badly.** `approved / tokens` conflates _did the human
-want this_ with _how expensive was it_, and it degenerates: an agent that proposes nothing
+**One number answers two questions badly.** `approved / tokens` conflates *did the human
+want this* with *how expensive was it*, and it degenerates: an agent that proposes nothing
 scores perfectly, and one that proposes 100 trivial things at 99% approval beats one that
 proposes 3 hard things at 67%. Three numbers, shown together:
 
-| number                                                  | question it answers                                                                |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| **acceptance rate** = approved ÷ proposed               | is its judgment aligned with mine?                                                 |
-| **cost of declined work** = spend on rejected proposals | _the waste number_ — the one to make prominent, since it is the money already gone |
-| **cost per approved action** = total spend ÷ approved   | is it efficient at the things I do want?                                           |
+| number | question it answers |
+|---|---|
+| **acceptance rate** = approved ÷ proposed | is its judgment aligned with mine? |
+| **cost of declined work** = spend on rejected proposals | *the waste number* — the one to make prominent, since it is the money already gone |
+| **cost per approved action** = total spend ÷ approved | is it efficient at the things I do want? |
 
 **On "$ generated or saved":** the system cannot compute this, and it should not pretend
 to. The honest version is an **optional value estimate the human attaches at approval
@@ -117,14 +117,14 @@ scans, OCR — which is CPU-bound work that a request-scoped Worker is the wrong
 
 So the tiering is real, and it lands exactly where the `$0/mo` line already is:
 
-| tier                | index                                       | infra                                                      |
-| ------------------- | ------------------------------------------- | ---------------------------------------------------------- |
-| **free**            | subject, sender, recipients, message body   | D1 + FTS5, serverless, already built                       |
+| tier | index | infra |
+|---|---|---|
+| **free** | subject, sender, recipients, message body | D1 + FTS5, serverless, already built |
 | **premium, opt-in** | + attachment text, OCR, possibly embeddings | always-on: extraction queue + durable worker or Containers |
 
 **The constraint that makes this work: the premium tier is an INDEX, not a different API.**
 `/search` and the MCP `search` tool must have one shape whether or not the extra index
-exists — the same query, the same result envelope, with coverage _declared_ in the response
+exists — the same query, the same result envelope, with coverage *declared* in the response
 rather than implied by which endpoint you called. If upgrading changes the API, every
 consumer has to learn about tiers, and the MCP tool would need two versions.
 
@@ -141,14 +141,14 @@ not searched: attachment contents — requires the extraction index
 - **This is where sharding by year earns its keep.** Extraction is a per-object one-time
   cost; storage is forever. Recent years in the rich index, cold years body-only, is a much
   better default than all-or-nothing.
-- The free tier must never _degrade_ when the premium one is off. Today's mail search stays
+- The free tier must never *degrade* when the premium one is off. Today's mail search stays
   exactly as it is.
 
 ---
 
 ## Tasks (in dependency order)
 
-### T0 — The home view · ✅ **DONE** — _the thing that makes this not a file manager_
+### T0 — The home view · ✅ **DONE** — *the thing that makes this not a file manager*
 
 **Files:** `webmail/src/pages/index.astro`, `webmail/src/lib/home/`.
 
@@ -156,14 +156,14 @@ not searched: attachment contents — requires the extraction index
 
 - **Waiting Approvals** — the queue, newest-urgent first, each row acting inline:
   **Approve · Edit · Decline**. Two subtle marks per row, and they are opposites:
-  - **waited for** — how long this has sat on _you_. Grows. Shames the human.
+  - **waited for** — how long this has sat on *you*. Grows. Shames the human.
   - **expires in** — how long it has left. Shrinks. Shames the clock.
 - **Looking Ahead** — the next horizon across realms: today's events, things due, holds
   about to commit, proposals about to expire.
 
 ⚠️ **`expires in` has nothing to compute from today.** `ActionProposal` carries
 `status: expired` but no `expiresAt` (`s03.D/arch.md:29-30`). And do **not** reach for
-`holdUntil` — that is a different clock entirely: the tier-2 _post-approval_ retraction
+`holdUntil` — that is a different clock entirely: the tier-2 *post-approval* retraction
 window (`arch.md:47`), a window in which an approved action can still be pulled back.
 Conflating "how long until I lose the chance to decide" with "how long until my decision
 becomes irreversible" would be a genuine bug. T4 adds `expiresAt`.
@@ -187,13 +187,13 @@ today without clicking anything, and nothing on this page is a file browser.
 - **Write the domain map down before it collides.** Five hostnames are now in play across
   three plans:
 
-  | host                | serves                           | status   |
-  | ------------------- | -------------------------------- | -------- |
-  | `bullmoose.cc`      | marketing site (`src/`)          | live     |
-  | `dav.bullmoose.cc`  | `anglebrackets` (CalDAV/CardDAV) | live     |
-  | `app.bullmoose.cc`  | this section                     | **new**  |
-  | `mcp.bullmoose.cc`  | MCP façade                       | `s02` T1 |
-  | `auth.bullmoose.cc` | OAuth AS                         | `s02` T3 |
+  | host | serves | status |
+  |---|---|---|
+  | `bullmoose.cc` | marketing site (`src/`) | live |
+  | `dav.bullmoose.cc` | `anglebrackets` (CalDAV/CardDAV) | live |
+  | `app.bullmoose.cc` | this section | **new** |
+  | `mcp.bullmoose.cc` | MCP façade | `s02` T1 |
+  | `auth.bullmoose.cc` | OAuth AS | `s02` T3 |
 
 - **A shared layout** with the eight-section nav, one island per page.
 - ~~**Tighten `connect-src`.**~~ ⚠️ **NOT DONE, and cannot be done as written.** The
@@ -240,28 +240,28 @@ the unit file's claim that `grep -r "Identity/set"` returns zero hits is stale
 > Agents have no send tool, and that is an invariant rather than an omission
 > (`emailTools.ts:68-90`). But a vacation responder **already sends without a human click** —
 > it is automated outbound mail by definition. It is safe today for exactly one reason: the
-> content is a fixed string the human wrote in advance. **The human pre-approved a _string_.**
-> Model-generated content means pre-approving a _**policy**_, which is a categorically
+> content is a fixed string the human wrote in advance. **The human pre-approved a *string*.**
+> Model-generated content means pre-approving a ***policy***, which is a categorically
 > different act, and the human is by definition unavailable to supervise it.
 >
 > The three risks are not equally hard, and two of them should not be the model's job at all:
 >
-> | risk                             | difficulty                                                      | control                                      |
-> | -------------------------------- | --------------------------------------------------------------- | -------------------------------------------- |
-> | perfunctory vs substantive       | **cheap to get wrong** — failure is a missing or needless reply | this is the part that actually wants a model |
-> | leaking private info             | expensive                                                       | **structural, and mechanically checkable**   |
-> | committing on the human's behalf | expensive                                                       | **structural — remove the slot**             |
+> | risk | difficulty | control |
+> |---|---|---|
+> | perfunctory vs substantive | **cheap to get wrong** — failure is a missing or needless reply | this is the part that actually wants a model |
+> | leaking private info | expensive | **structural, and mechanically checkable** |
+> | committing on the human's behalf | expensive | **structural — remove the slot** |
 >
 > - **Leaking:** constrain the reply so its factual content is a **subset of the incoming
 >   message**. The model may quote back what the sender said and nothing from the mailbox.
 >   That is checkable rather than judged — verify no substantive token appears outside
->   _(incoming message ∪ fixed template)_. Same shape as the Bureau's egress filter, one realm
+>   *(incoming message ∪ fixed template)*. Same shape as the Bureau's egress filter, one realm
 >   over.
-> - **Committing:** the model fills exactly **one** slot — _the questions I understand you to
->   be asking_. The expectation sentence ("she will get to it, slower than usual") stays
+> - **Committing:** the model fills exactly **one** slot — *the questions I understand you to
+>   be asking*. The expectation sentence ("she will get to it, slower than usual") stays
 >   human-written and fixed. Never give the model a slot a commitment could fit in.
-> - **Prefer quotation to paraphrase.** _"You asked: ‹quote›"_ delivers most of the value of
->   _"I understand you to be asking ‹paraphrase›"_ at a fraction of the risk. A confidently
+> - **Prefer quotation to paraphrase.** *"You asked: ‹quote›"* delivers most of the value of
+>   *"I understand you to be asking ‹paraphrase›"* at a fraction of the risk. A confidently
 >   wrong summary of someone's question is worse than saying nothing at all.
 >
 > **The mechanism is already built, and it is better than a naive auto-reply.** `responders`
@@ -298,7 +298,7 @@ Both realms have full CRUD on **JMAP and DAV** already.
 
 **Server routes needed:** none.
 
-### T4 — `/approvals` ✅ **DONE** · `/agents` ⛔ (needs `/console/*` served) · _the part with no prior art_
+### T4 — `/approvals` ✅ **DONE** · `/agents` ⛔ (needs `/console/*` served) · *the part with no prior art*
 
 **Files:** `webmail/src/pages/approvals.astro`, `agents.astro`, plus `s03.D` T1 server work.
 
@@ -311,25 +311,25 @@ honestly:
 
 **The `reply-draft` kind already half-exists, and drafts are its legacy transport.**
 
-The motivating case — _an agent drafts replies to things I should respond to_ — is already
+The motivating case — *an agent drafts replies to things I should respond to* — is already
 the shipped architecture at the MCP layer: `email_create_draft` exists with scope `draft`
 (`services/agent/src/emailTools.ts:577-579`), and there is deliberately **no send tool**,
-asserted over the whole `TOOLS` table (`mcpTools.test.ts:124-128`). _Agent drafts, human
-sends_ is an invariant, not a gap. What is missing is the review surface and the signal.
+asserted over the whole `TOOLS` table (`mcpTools.test.ts:124-128`). *Agent drafts, human
+sends* is an invariant, not a gap. What is missing is the review surface and the signal.
 
 And the verbs are isomorphic — which is why a draft is the cleanest thing to shim into an
 old-world client:
 
-| draft               | proposal |
-| ------------------- | -------- |
-| edit before sending | amend    |
-| send                | approve  |
-| delete              | decline  |
+| draft | proposal |
+|---|---|
+| edit before sending | amend |
+| send | approve |
+| delete | decline |
 
 **But the mapping leaks in two places, and both lose exactly the signal worth having:**
 
 1. **A deleted draft leaves no trace.** "I deleted it" and "I never saw it" are
-   indistinguishable — so _decline_, the outcome that most tells you the agent misread the
+   indistinguishable — so *decline*, the outcome that most tells you the agent misread the
    job, evaporates silently.
 2. **A draft edited in place overwrites itself.** The diff is gone unless the agent's
    original was kept somewhere else.
@@ -346,21 +346,21 @@ gracefully in both directions: old clients see an ordinary subfolder (universall
 new clients filter on the keyword, and nobody's abandoned thoughts get lost among proposals.
 
 **Backwards compatibility is a digest, and the pattern already exists.** A periodic summary —
-_N threads drafted_, then per thread: datetime, subject, to, first ~100 characters — is
+*N threads drafted*, then per thread: datetime, subject, to, first ~100 characters — is
 exactly the shape `analyst@` already ships (`services/agent/src/ledger.ts`: receipts in,
 digest out to configured targets). Reuse it. Include **expires in** per row, or the digest
 goes stale the moment something ages out.
 
 > On calling this an RL loop: worth being precise, because it changes what to build. Nobody
 > is fine-tuning a frontier model from one mailbox. The near-term value is **prompt-time
-> context** — _"here are the last N edits this human made to your drafts"_ is a strong
+> context** — *"here are the last N edits this human made to your drafts"* is a strong
 > steering signal available immediately, with no training pipeline at all. Retaining the
 > diffs is what makes either option possible, so retention is the requirement; training is
 > not.
 
 **Edit is the load-bearing verb, and the data model has no room for it.**
 
-Approve/Decline is a gate — the shape you build when the agent is a subordinate. _Edit_ is
+Approve/Decline is a gate — the shape you build when the agent is a subordinate. *Edit* is
 collaboration: the human amends the proposal and then approves the amended thing. That is the
 difference between this and a file manager with a notifications tray, and it is worth the
 extra design.
@@ -375,16 +375,16 @@ Edit means:
 
 That last one changes the score from refinement 3, and it matters more than it looks:
 
-| outcome                 | what it says about the agent                                                                    |
-| ----------------------- | ----------------------------------------------------------------------------------------------- |
-| approved clean          | it understood the job                                                                           |
-| **approved after edit** | it was directionally right and mechanically wrong — _the most informative signal in the system_ |
-| declined                | it misread the job                                                                              |
+| outcome | what it says about the agent |
+|---|---|
+| approved clean | it understood the job |
+| **approved after edit** | it was directionally right and mechanically wrong — *the most informative signal in the system* |
+| declined | it misread the job |
 
 **Acceptance rate as originally framed hides the middle row entirely** by counting an edited
 approval as a win. An agent whose every proposal needs rewriting is not performing like one
 whose proposals ship untouched, and the edit diff is the highest-signal feedback the system
-will ever collect — it is a human saying _exactly_ what "right" looked like. Track it as its
+will ever collect — it is a human saying *exactly* what "right" looked like. Track it as its
 own rate; do not fold it into approvals.
 
 ⚠️ **Also add `expiresAt`** (see T0). `status: expired` exists with no field that produces
@@ -396,25 +396,25 @@ and the configuration surface (CLI + WebUI), plus the two controls it depends on
 This section builds the activity/queue half; s10 builds the config half.
 Three questions, and they have three different answers today:
 
-| question                          | state                                                                                                                                                                                                                      |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **what can it read / edit / do?** | ✅ modelled and rendered — `s03.E`'s scope expansion through the real `hasScope`, plus grants and credential references                                                                                                    |
-| **who can talk to it?**           | ⚠️ **enforced but invisible.** `config.allowedSenders` gates inbound at `services/agent/src/index.ts:209-211` (`skipped: <sender> not in allowedSenders`) — and the console renders `replyMode` but never `allowedSenders` |
-| **who will it respond to?**       | ❌ **not bounded at all** — no `allowedRecipients` anywhere in `services/`/`packages/`. **Built in `s10-agents` T1**, fail-closed; the config surface cannot honestly offer this control until then                        |
+| question | state |
+|---|---|
+| **what can it read / edit / do?** | ✅ modelled and rendered — `s03.E`'s scope expansion through the real `hasScope`, plus grants and credential references |
+| **who can talk to it?** | ⚠️ **enforced but invisible.** `config.allowedSenders` gates inbound at `services/agent/src/index.ts:209-211` (`skipped: <sender> not in allowedSenders`) — and the console renders `replyMode` but never `allowedSenders` |
+| **who will it respond to?** | ❌ **not bounded at all** — no `allowedRecipients` anywhere in `services/`/`packages/`. **Built in `s10-agents` T1**, fail-closed; the config surface cannot honestly offer this control until then |
 
 That third row is the finding. **Inbound has a gate; outbound has none.** For `analyst@` it
-does not bite — `digestTargets` is a fixed operator-written map. For a _social_ agent it is
+does not bite — `digestTargets` is a fixed operator-written map. For a *social* agent it is
 the whole problem: `docs/agents/motivatingExamples.md:82-111` describes `photos@` as
 CC-invited into event folders, receiving images from arbitrary external senders, joining
-_another account's_ `photos@`, and syndicating outward to pixelfed/bluesky — with
+*another account's* `photos@`, and syndicating outward to pixelfed/bluesky — with
 `Required: []`, i.e. no standing permissions, it just waits for mail.
 
 An agent whose whole job is emailing many people, with no bound on who it may email, is the
 confused-deputy shape. **This is the same control the Bureau already built, in a different
 realm:** `services/bureau/src/binding.ts` binds a credential to the origins it may reach, and
 refuses when unbound (invariant 5, fail closed). An agent that sends mail needs the
-equivalent for addresses — and by the same reasoning, unbound should mean _cannot send_,
-not _may send anywhere_.
+equivalent for addresses — and by the same reasoning, unbound should mean *cannot send*,
+not *may send anywhere*.
 
 **`config_json` is also the wrong home for this.** It is an untyped blob with no schema and
 no validation; `digestTargets` is an `analyst@`-specific key sharing a namespace with every
@@ -441,7 +441,7 @@ introspection queries, which today sit behind `x-internal-token` on the agent wo
 four `/console/*` routes. This is the task with the most server work behind it — sequence it
 accordingly.
 
-### T5 — Invocation cost, so the score can exist · _schema_
+### T5 — Invocation cost, so the score can exist · *schema*
 
 **Files:** `packages/mailstore/sql/data-plane.sql`, `infra/migrations.mjs`,
 `services/agent/src/`.
@@ -455,30 +455,29 @@ arithmetic division-free: prices are quoted per **million** tokens, so
 `cost_micros = tokens × price_per_million_dollars` — the "per million" and the "millionth of
 a dollar" cancel. SQLite `INTEGER` is 64-bit, so ~$9.2T of headroom; no bigint decision.
 
-**Frozen at capture, and store the FACTS alongside.** The cost is what it cost _then_ — an
+**Frozen at capture, and store the FACTS alongside.** The cost is what it cost *then* — an
 accounting fact that must NOT drift when `models.dev` prices move; recomputing historical
 spend from today's map is the real silent-wrongness. But bullmoose's cost is a blended
-_estimate_ (`models.ts:160`: `input + 3×output`), not an invoice, so keep `tokens_in/out` +
-`model` + `provider` to audit or recompute the _formula_ if it was wrong — store the answer,
+*estimate* (`models.ts:160`: `input + 3×output`), not an invoice, so keep `tokens_in/out` +
+`model` + `provider` to audit or recompute the *formula* if it was wrong — store the answer,
 keep the receipt.
 
 **NULL vs 0 is a real distinction, not a fallback:**
-
 - **`0`** = known and genuinely free — a `@local/` Ollama run reads "$0.00" because in dollar
   terms it was.
 - **`NULL`** = undetermined — an unpriceable provider (the `018` workers-ai bug) or a
-  pre-migration row — and renders _"not recorded,"_ never 0.
+  pre-migration row — and renders *"not recorded,"* never 0.
 
 So a local agent shows an honest zero; only the genuinely-unknown reads unrecorded. That
-split is exactly what the _"is this agent worth its spend"_ score needs — "free" and
+split is exactly what the *"is this agent worth its spend"* score needs — "free" and
 "unmeasured" must not collapse together.
 
 > **The facts are stored for a job that does not exist yet:** optimising model/provider for
 > **$/work**. That decomposes as `tokens/work × $/token`, and you cannot optimise what you
-did not record — which is the whole reason to keep the token facts and not just the rolled-up
-cost. Plausibly this becomes a standing background loop (Allen's territory — the analyst
-already reasons about spend). Not scoped here; flagged so the facts are understood as its
-substrate, not redundant columns beside `cost_micros`.
+> did not record — which is the whole reason to keep the token facts and not just the rolled-up
+> cost. Plausibly this becomes a standing background loop (Allen's territory — the analyst
+> already reasons about spend). Not scoped here; flagged so the facts are understood as its
+> substrate, not redundant columns beside `cost_micros`.
 >
 > **Now specified in `.plans/s11-scheduling/`** — the optimistic scheduler spends these facts
 > against a deadline (sit free, escalate near-due), and its own T5 is the `$/work` optimiser
@@ -493,19 +492,19 @@ any column exists.
 **What the approval queue shows: `tokenCount`, `costAmt`, `provider`. Deliberately NOT
 `modelName`.**
 
-The line is _whose business is it_. **Model choice is the agent's craft; provider is the
+The line is *whose business is it*. **Model choice is the agent's craft; provider is the
 operator's procurement.** You are paying, so where compute is bought is legitimately yours;
 which model the agent reached for is its own business, and putting it on every row invites
 exactly the wrong second-guessing — approving work because it came from a model you like
 rather than because the work is right.
 
 `modelName` still gets stored (debugging an agent producing garbage needs it) and still gets
-shown — on `/agents/<id>` as _what this agent is configured to use_. That is a property of
+shown — on `/agents/<id>` as *what this agent is configured to use*. That is a property of
 the agent, not of the decision in front of you.
 
 Provider is already first-class, so this is surfacing rather than modelling:
 `ModelCandidate.provider` (`services/agent/src/models.ts:29`), and the `@<source>/<vendor>/<model>`
-alias convention where the source segment _is_ "where it runs and who pays" — `@local/`
+alias convention where the source segment *is* "where it runs and who pays" — `@local/`
 free, `@cf/`, `@crof/`.
 
 ⚠️ **The price-arbitrage machinery exists and is currently inverted.** `rankByPrice` ranks
@@ -524,7 +523,7 @@ console will faithfully display a broken preference.
 **Done when:** the three numbers compute from real rows; an agent with no recorded cost
 renders "not recorded" rather than a flattering zero.
 
-### T6 — `/search` ✅ **DONE (stub)** · _cross-realm, and honest about what it can reach_
+### T6 — `/search` ✅ **DONE (stub)** · *cross-realm, and honest about what it can reach*
 
 **Files:** `webmail/src/pages/search.astro`, `services/jmap/`, `services/agent/src/mcp.ts`.
 
@@ -534,12 +533,12 @@ fake universal search.
 The realms are not equally searchable, and shipping without saying so would repeat the bug
 `common/004` just fixed — a search box whose scope note was quietly false:
 
-| realm    | today                                                                            |
-| -------- | -------------------------------------------------------------------------------- |
-| mail     | **FTS5**, indexed, ~0.4 ms at 0.1% selectivity                                   |
+| realm | today |
+|---|---|
+| mail | **FTS5**, indexed, ~0.4 ms at 0.1% selectivity |
 | contacts | full-scan `LIKE` — `queryContactCards`, the exact pattern just removed from mail |
-| calendar | full-scan `LIKE` — `queryCalendarEvents`                                         |
-| files    | **nothing** — no search path at all                                              |
+| calendar | full-scan `LIKE` — `queryCalendarEvents` |
+| files | **nothing** — no search path at all |
 
 - Ship `/search` fanning out to `Email/query` + `ContactCard/query` + `CalendarEvent/query`,
   with per-realm results and a visible scope note stating which realms are indexed and which
@@ -556,7 +555,7 @@ indexed vs scanned **and what is not searched at all**; the MCP `search` tool an
 share a code path; the response envelope declares its own coverage, so adding the attachment
 index later changes the data and not the shape.
 
-### T7 — Real login, folded into `s02` · _retire the interim door_
+### T7 — Real login, folded into `s02` · *retire the interim door*
 
 **Files:** `webmail/src/lib/app/`, `services/oauth/` (from `s02` T3).
 
@@ -593,7 +592,7 @@ T1 origin + door ──┬─→ T2 /settings ───────────�
 
 - **T2 and T3 need no server work at all.** They are the fastest path to the app feeling
   like a product, and both are pure surfacing.
-- **T4 has the most behind it** — `s03.D` T1 _and_ four `/console/*` routes. Do not start
+- **T4 has the most behind it** — `s03.D` T1 *and* four `/console/*` routes. Do not start
   the screens before the routes; that is exactly how `s03.E` ended up demo-only.
 - **T5 before T4**, or the agent dossier ships with three numbers it cannot compute. And
   `.feedback` `018` before T5, or the console faithfully renders an inverted price
@@ -609,25 +608,25 @@ T1 origin + door ──┬─→ T2 /settings ───────────�
 ## Decisions needed
 
 1. **Is `app.bullmoose.cc` public, or Tailscale-only to start?** A mail client on a public
-   hostname is a different risk posture than one on the tailnet. _Recommendation: public,
-   but only after T7 — the interim door should not face the internet._
+   hostname is a different risk posture than one on the tailnet. *Recommendation: public,
+   but only after T7 — the interim door should not face the internet.*
 2. **Does `/agents` show other people's agents on shared accounts?** The grant model allows
-   it; the console currently answers per-account. _Recommendation: yes, and label whose it
-   is — hiding it would make the access log the only place to find out._
-3. **Is the value estimate per-proposal or per-agent-per-period?** _Recommendation:
-   per-proposal, optional, aggregated up — a per-period number invites invention._
-4. **Does `/search` search _other people's_ shared realms?** _Recommendation: no, not in the
-   first cut. Cross-account search is a permissions surface of its own._
+   it; the console currently answers per-account. *Recommendation: yes, and label whose it
+   is — hiding it would make the access log the only place to find out.*
+3. **Is the value estimate per-proposal or per-agent-per-period?** *Recommendation:
+   per-proposal, optional, aggregated up — a per-period number invites invention.*
+4. **Does `/search` search *other people's* shared realms?** *Recommendation: no, not in the
+   first cut. Cross-account search is a permissions surface of its own.*
 5. **Does an agent with no `allowedRecipients` send freely, or not at all?** → **owned by
    `s10-agents` T1** (the outbound bound is that section's first task, fail-closed). The Bureau
-   answered the same question with fail-closed (invariant 5). _Recommendation: match it —
+   answered the same question with fail-closed (invariant 5). *Recommendation: match it —
    unbound means cannot send. It is the safer default and the inconsistency of having two
-   answers to one question is worse than either answer._
+   answers to one question is worse than either answer.*
 6. **Where does attachment extraction run?** Containers, a queue plus a durable consumer, or
-   an external service. _Recommendation: defer until someone actually wants it — the tiering
-   decision above is what needs to be true now, and it holds regardless of which one wins._
+   an external service. *Recommendation: defer until someone actually wants it — the tiering
+   decision above is what needs to be true now, and it holds regardless of which one wins.*
 7. **Does the typed agent-config core get its own columns, or stay in `config_json`?** →
    **owned by `s10-agents` T1** (typed columns for the core, blob for the remainder).
-   _Recommendation: columns for the four the console enforces (`allowedSenders`,
+   *Recommendation: columns for the four the console enforces (`allowedSenders`,
    `allowedRecipients`, `replyMode`, `enabled`), blob for the agent-specific remainder —
-   otherwise the console is parsing untyped JSON to decide what to warn about._
+   otherwise the console is parsing untyped JSON to decide what to warn about.*

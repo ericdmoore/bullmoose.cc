@@ -46,9 +46,7 @@ async function harness(heldCount: number) {
   const registry = new MethodRegistry<RequestContext>();
   registerActionProposalMethods(registry);
   w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT });
-  w.db.seed("agent_bindings", [
-    { id: "bind_bouncer", account_id: ACCOUNT, name: "bouncer", config_json: "{}" },
-  ]);
+  w.db.seed("agent_bindings", [{ id: "bind_bouncer", account_id: ACCOUNT, name: "bouncer", config_json: "{}" }]);
 
   const ctx: RequestContext = {
     env: w.env,
@@ -181,10 +179,7 @@ async function harness(heldCount: number) {
       decision_json: string | null;
       edited_payload_json: string | null;
       payload_json: string;
-    }>(
-      `SELECT status, decision_json, edited_payload_json, payload_json FROM agent_proposals WHERE id = ?`,
-      id,
-    )[0]!;
+    }>(`SELECT status, decision_json, edited_payload_json, payload_json FROM agent_proposals WHERE id = ?`, id)[0]!;
 
   return { w, call, store, quarantineId, inboxId, emailIds, ask, mailboxesOf, chain, proposalRow };
 }
@@ -264,15 +259,8 @@ describe("approve RELEASES the held mail — and teaches the filter", () => {
     // The agent's original payload is never overwritten — the diff between what
     // it asked for and what the human approved is the highest-signal feedback
     // in the system (s07 §T4).
-    expect(JSON.parse(h.proposalRow(id).payload_json).emailIds).toEqual([
-      "e_held_1",
-      "e_held_2",
-      "e_held_3",
-    ]);
-    expect(JSON.parse(h.proposalRow(id).edited_payload_json!).emailIds).toEqual([
-      "e_held_1",
-      "e_held_3",
-    ]);
+    expect(JSON.parse(h.proposalRow(id).payload_json).emailIds).toEqual(["e_held_1", "e_held_2", "e_held_3"]);
+    expect(JSON.parse(h.proposalRow(id).edited_payload_json!).emailIds).toEqual(["e_held_1", "e_held_3"]);
   });
 
   it("an edit may only NARROW the batch — a stranger's id is refused whole", async () => {
@@ -336,9 +324,7 @@ describe("decline CONFIRMS the shunts — the answer 'yes, that is spam'", () =>
     }
     expect(await labels(h.w)).toEqual({ ham: 0, spam: 2 });
     // A decline APPLIES something here, so it commits like an approve does.
-    expect((await h.w.accountDo.changes(ACCOUNT, "Email", "0")).updated.sort()).toEqual(
-      [...h.emailIds].sort(),
-    );
+    expect((await h.w.accountDo.changes(ACCOUNT, "Email", "0")).updated.sort()).toEqual([...h.emailIds].sort());
 
     // THE TAXONOMY INVARIANT: a decline here is an ANSWER, not a complaint
     // about the agent. Who decided, and their note — no reason, because none

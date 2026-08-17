@@ -9,11 +9,11 @@ Generated, committed JSON. **Do not hand-edit any `.json` in here**; run
 the TypeScript platform must agree about are enforced today only by code review, because
 across languages there is no import for a compiler to check (`arch.md` §5):
 
-| file              | pins                                                                        | a mismatch looks like                                                             |
-| ----------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `login-key.json`  | `deriveLoginKey` — `(email, password) → key`, plus the KDF parameters       | "wrong password" for a correct password                                           |
-| `scopes.json`     | `hasScope` — every `(granted[], required) → bool` over the whole vocabulary | a token that looks minted and silently does nothing, or one that permits too much |
-| `exit-codes.json` | `EXIT` and the whole `JMAP_EXIT` table                                      | every script that branches on `$?`                                                |
+| file | pins | a mismatch looks like |
+|---|---|---|
+| `login-key.json` | `deriveLoginKey` — `(email, password) → key`, plus the KDF parameters | "wrong password" for a correct password |
+| `scopes.json` | `hasScope` — every `(granted[], required) → bool` over the whole vocabulary | a token that looks minted and silently does nothing, or one that permits too much |
+| `exit-codes.json` | `EXIT` and the whole `JMAP_EXIT` table | every script that branches on `$?` |
 
 Each failure presents a long way from its cause, which is what makes a golden file worth
 the bytes.

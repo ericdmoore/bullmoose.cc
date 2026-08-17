@@ -4,13 +4,7 @@ import { resolveConsole, type ConsoleMode } from "../lib/app/console";
 import type { AgentConsoleClient, AgentSummary } from "../lib/console/ConsoleClient";
 import { ConsoleUnavailable } from "../lib/console/ConsoleClient";
 import { ACCESS_LOG_CAVEAT_LABELS } from "../lib/console/caveats";
-import {
-  CredentialVault,
-  cliCommandFor,
-  entryPlan,
-  rotateCommandFor,
-  type MintSpec,
-} from "../lib/console/credentials";
+import { CredentialVault, cliCommandFor, entryPlan, rotateCommandFor, type MintSpec } from "../lib/console/credentials";
 import { consoleGate } from "../lib/console/gate";
 import type { ConsoleOrigins } from "../lib/console/origins";
 import { OriginRefusal } from "../lib/console/origins";
@@ -48,11 +42,7 @@ interface Props {
   client?: JmapClient;
 }
 
-export default function AgentConsole({
-  reads: injectedReads,
-  vault: injectedVault,
-  client: injectedClient,
-}: Props) {
+export default function AgentConsole({ reads: injectedReads, vault: injectedVault, client: injectedClient }: Props) {
   const [session, setSession] = useState<Session | undefined>(undefined);
   const [reads, setReads] = useState<AgentConsoleClient | undefined>(injectedReads);
   const [vault, setVault] = useState<CredentialVault | undefined>(injectedVault);
@@ -153,10 +143,7 @@ export default function AgentConsole({
     };
   }, [reads, agentId]);
 
-  const resource = useMemo(
-    () => resources.find((r) => key(r) === resourceKeyId),
-    [resources, resourceKeyId],
-  );
+  const resource = useMemo(() => resources.find((r) => key(r) === resourceKeyId), [resources, resourceKeyId]);
 
   const loadResource = useCallback(() => {
     if (!reads || !resource) return;
@@ -280,8 +267,8 @@ export default function AgentConsole({
       ) : null}
       {mode === "live" && !origins.vault ? (
         <p class="banner banner-warn">
-          No vault origin is configured, so credential changes are refused rather than routed
-          through this site. Append <code>?vault=https://agent.example</code>, or use the CLI.
+          No vault origin is configured, so credential changes are refused rather than routed through this site. Append{" "}
+          <code>?vault=https://agent.example</code>, or use the CLI.
         </p>
       ) : null}
 
@@ -312,11 +299,7 @@ export default function AgentConsole({
               onReload={loadResource}
             />
             {resourceError ? <Unavailable detail={resourceError} /> : null}
-            {resourceView ? (
-              <PerResource view={resourceView} />
-            ) : resourceError ? null : (
-              <p class="muted">Loading…</p>
-            )}
+            {resourceView ? <PerResource view={resourceView} /> : resourceError ? null : <p class="muted">Loading…</p>}
           </>
         )}
       </div>
@@ -338,11 +321,10 @@ function Unavailable({ detail }: { detail: string }) {
       <h2>This data is not available</h2>
       <p>{detail}</p>
       <p class="muted">
-        The console reads authorization state, and JMAP has no noun for it. Grants, Bureau grants,
-        bindings and the delegated-access log answer through sVOL 015's introspection queries, which
-        are reachable today only over the worker-to-worker MCP endpoint. This screen requests a
-        browser-reachable projection of those same queries; until one is served it says so rather
-        than inventing contents.
+        The console reads authorization state, and JMAP has no noun for it. Grants, Bureau grants, bindings and the
+        delegated-access log answer through sVOL 015's introspection queries, which are reachable today only over the
+        worker-to-worker MCP endpoint. This screen requests a browser-reachable projection of those same queries; until
+        one is served it says so rather than inventing contents.
       </p>
     </section>
   );
@@ -377,14 +359,10 @@ function AgentPicker({
     <div class="picker">
       <label>
         Agent{" "}
-        <select
-          value={value}
-          onChange={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}
-        >
+        <select value={value} onChange={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}>
           {agents.map((a) => (
             <option key={a.accountId} value={a.accountId}>
-              {a.displayName ?? a.principal} — {a.enabledBindingCount}/{a.bindingCount} bindings
-              enabled
+              {a.displayName ?? a.principal} — {a.enabledBindingCount}/{a.bindingCount} bindings enabled
             </option>
           ))}
         </select>
@@ -412,8 +390,8 @@ function PerAgent({
         <section class="panel panel-alert">
           <h2>Dangerous combinations</h2>
           <p class="muted">
-            Each ingredient below is routine on its own screen. The finding only exists at the join,
-            which is why a per-ingredient list misses it.
+            Each ingredient below is routine on its own screen. The finding only exists at the join, which is why a
+            per-ingredient list misses it.
           </p>
           {view.combinations.map((c) => (
             <article key={c.id} class={`combo combo-${c.severity}`}>
@@ -439,9 +417,9 @@ function PerAgent({
           ))}
         </div>
         <p class="muted">
-          Effective permissions, expanded through the same rule the server's gate applies — never
-          the stored scope strings. This agent's token stores {chips(view.dossier.tokenScopes)} and
-          thereby allows {chips(view.tokenAllows)}
+          Effective permissions, expanded through the same rule the server's gate applies — never the stored scope
+          strings. This agent's token stores {chips(view.dossier.tokenScopes)} and thereby allows{" "}
+          {chips(view.tokenAllows)}
           {view.tokenHidden.length > 0 ? (
             <> — including {chips(view.tokenHidden)}, which nothing in the stored list names.</>
           ) : null}
@@ -480,8 +458,7 @@ function PerAgent({
                     <code>{r}</code>
                   </span>
                 ))}{" "}
-                — names only. No value is returned to this page, and no vault route could return
-                one.
+                — names only. No value is returned to this page, and no vault route could return one.
               </p>
             ) : null}
             <Warnings items={b.warnings} />
@@ -494,17 +471,11 @@ function PerAgent({
       <section class="panel">
         <h2>Credential references</h2>
         <p class="muted">
-          References, never values (bureau.md invariant 1). There is no reveal button and there is
-          nothing to reveal: the master key is not bound to the worker this page talks to.
+          References, never values (bureau.md invariant 1). There is no reveal button and there is nothing to reveal:
+          the master key is not bound to the worker this page talks to.
         </p>
         {view.credentials.map((c) => (
-          <Credential
-            key={c.credential.name}
-            status={c}
-            canMutate={canMutate}
-            onRevoke={onRevoke}
-            onOAuth={onOAuth}
-          />
+          <Credential key={c.credential.name} status={c} canMutate={canMutate} onRevoke={onRevoke} onOAuth={onOAuth} />
         ))}
         <AttachCredential canMutate={canMutate} />
       </section>
@@ -567,23 +538,17 @@ function Grant({ status }: { status: GrantStatus }) {
       <h3>
         <code>{g.grantId}</code>
         <span class={`pill pill-${status.state}`}>{status.state}</span>
-        <span class="pill">
-          {g.collection === null ? "whole account" : `${g.collection} ${g.collectionId ?? ""}`}
-        </span>
-        <span class="pill">
-          {g.expiresAt === null ? "no expiry" : `expires ${iso(g.expiresAt)}`}
-        </span>
-        {g.revokedAt !== null ? (
-          <span class="pill pill-revoked">revoked {iso(g.revokedAt)}</span>
-        ) : null}
+        <span class="pill">{g.collection === null ? "whole account" : `${g.collection} ${g.collectionId ?? ""}`}</span>
+        <span class="pill">{g.expiresAt === null ? "no expiry" : `expires ${iso(g.expiresAt)}`}</span>
+        {g.revokedAt !== null ? <span class="pill pill-revoked">revoked {iso(g.revokedAt)}</span> : null}
       </h3>
       <p>
         stored: {chips(g.scopes)} → <strong>allows: {chips(status.allows)}</strong>
       </p>
       {status.hidden.length > 0 ? (
         <p class="muted">
-          Conferred without being named: {chips(status.hidden)}. A chip list of the stored scopes
-          would have shown these as absent.
+          Conferred without being named: {chips(status.hidden)}. A chip list of the stored scopes would have shown these
+          as absent.
         </p>
       ) : null}
       <Warnings items={status.warnings} />
@@ -609,9 +574,7 @@ function Credential({
       <h3>
         <code>{c.name}</code>
         <span class="pill">{c.kind}</span>
-        <span class={status.selfEnforcedOnly ? "pill pill-hot" : "pill pill-on"}>
-          enforcement {c.enforcement}
-        </span>
+        <span class={status.selfEnforcedOnly ? "pill pill-hot" : "pill pill-on"}>enforcement {c.enforcement}</span>
         <span class="pill">{c.allow ?? "no destination — fails closed"}</span>
         {status.verbs.map((v) => (
           <span key={v} class="pill pill-verb">
@@ -651,9 +614,9 @@ function Credential({
       {rotating ? (
         <div class="cli-bounce">
           <p>
-            Rotating a raw key means typing one, and a browser form is the worst place for a secret
-            to pass through — clipboard, autofill, extensions, history. Run this instead; it posts
-            the same value to the same vault endpoint from a hidden prompt:
+            Rotating a raw key means typing one, and a browser form is the worst place for a secret to pass through —
+            clipboard, autofill, extensions, history. Run this instead; it posts the same value to the same vault
+            endpoint from a hidden prompt:
           </p>
           <pre>{rotateCommandFor(c.name)}</pre>
         </div>
@@ -673,19 +636,13 @@ function AttachCredential({ canMutate }: { canMutate: boolean }) {
       <summary>Attach a credential reference</summary>
       <div class="attach-body">
         <label>
-          name{" "}
-          <input
-            value={name}
-            onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)}
-          />
+          name <input value={name} onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)} />
         </label>
         <label>
           kind{" "}
           <select
             value={kind}
-            onChange={(e) =>
-              setKind((e.currentTarget as HTMLSelectElement).value as CredentialKind)
-            }
+            onChange={(e) => setKind((e.currentTarget as HTMLSelectElement).value as CredentialKind)}
           >
             <option value="api-key">api-key</option>
             <option value="oauth-refresh">oauth-refresh</option>
@@ -744,10 +701,7 @@ function ResourcePicker({
     <div class="picker">
       <label>
         Resource{" "}
-        <select
-          value={value}
-          onChange={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}
-        >
+        <select value={value} onChange={(e) => onChange((e.currentTarget as HTMLSelectElement).value)}>
           {resources.map((r) => (
             <option key={key(r)} value={key(r)}>
               {r.name} ({r.collection})
@@ -757,18 +711,12 @@ function ResourcePicker({
       </label>
       <label>
         as of{" "}
-        <input
-          type="datetime-local"
-          value={at}
-          onInput={(e) => onAt((e.currentTarget as HTMLInputElement).value)}
-        />
+        <input type="datetime-local" value={at} onInput={(e) => onAt((e.currentTarget as HTMLInputElement).value)} />
       </label>
       <button type="button" onClick={onReload}>
         Reconstruct
       </button>
-      <span class="muted">
-        Blank = now. Past instants reconstruct the authorization set as it stood then.
-      </span>
+      <span class="muted">Blank = now. Past instants reconstruct the authorization set as it stood then.</span>
     </div>
   );
 }
@@ -780,10 +728,9 @@ function PerResource({ view }: { view: ResourceView }) {
         <h2>The gap</h2>
         <p class="gap">{view.gapSummary}</p>
         <p class="muted">
-          "Who could have" and "who did" are two queries against two sources, and the gap between
-          them is the finding — not the two tables. A wide <em>could</em> with a narrow <em>did</em>{" "}
-          means over-permissioning; a <em>did</em> with no matching <em>could</em> means something
-          is broken.
+          "Who could have" and "who did" are two queries against two sources, and the gap between them is the finding —
+          not the two tables. A wide <em>could</em> with a narrow <em>did</em> means over-permissioning; a <em>did</em>{" "}
+          with no matching <em>could</em> means something is broken.
         </p>
         {view.findings.map((f, i) => (
           <article key={`${f.kind}-${i}`} class={`finding finding-${f.kind}`}>
@@ -819,9 +766,7 @@ function PerResource({ view }: { view: ResourceView }) {
                 <p class="muted">
                   granted {iso(c.grant.createdAt)}
                   {c.grant.revokedAt !== null ? `, revoked ${iso(c.grant.revokedAt)}` : ""}
-                  {c.grant.expiresAt !== null
-                    ? `, expires ${iso(c.grant.expiresAt)}`
-                    : ", no expiry"}
+                  {c.grant.expiresAt !== null ? `, expires ${iso(c.grant.expiresAt)}` : ", no expiry"}
                 </p>
               </article>
             ))

@@ -98,12 +98,7 @@ describe("sweepWatches — the deadline reminder", () => {
 });
 
 describe("sweepWatches — no-reply-from: the one that must not cry wolf", () => {
-  function seedInbound(
-    w: ReturnType<typeof fakeEnv>,
-    from: string,
-    receivedAt: number,
-    threadId = "t_x",
-  ) {
+  function seedInbound(w: ReturnType<typeof fakeEnv>, from: string, receivedAt: number, threadId = "t_x") {
     w.db.seed("emails", [
       {
         id: `e_${receivedAt}`,
@@ -143,9 +138,7 @@ describe("sweepWatches — no-reply-from: the one that must not cry wolf", () =>
       tier: number;
       evidence_json: string;
       payload_json: string;
-    }>(
-      `SELECT kind, tier, evidence_json, payload_json FROM agent_proposals WHERE id = '${watch.proposal_id}'`,
-    )[0]!;
+    }>(`SELECT kind, tier, evidence_json, payload_json FROM agent_proposals WHERE id = '${watch.proposal_id}'`)[0]!;
     expect(prop.kind).toBe("watch-followup");
     expect(prop.tier).toBe(2); // a send to a third party — the queue holds it
     // It cites the message the watch was set on.

@@ -1,5 +1,5 @@
 {
-  // Why oxlint, and why a linter and not a formatter.
+  // Why oxlint.
   //
   // `verify` already fails on `gofmt -l` and `go vet`, so Go had two gates and
   // TypeScript had none — the gap s06 named and never closed. This closes it.
@@ -7,10 +7,12 @@
   // which is the difference between a check that runs on every commit and one
   // people learn to skip.
   //
-  // Deliberately NOT a formatter. A formatter would rewrite most of the tree in
-  // a single commit and conflict with every branch in flight, to fix nothing
-  // that is wrong. Rule names here are eslint-compatible, so moving to eslint
-  // later is a config translation rather than a rewrite.
+  // FORMATTING LIVES IN `.oxfmtrc.json`, not here. This file's earlier note
+  // argued a formatter would "conflict with every branch in flight" — true when
+  // written, false by the time it mattered: the window narrowed to two
+  // one-commit branches and the reformat landed there. Rule names here stay
+  // eslint-compatible, so moving to eslint later is a config translation
+  // rather than a rewrite.
   //
   // NOT ENABLED YET: type-aware rules — where `no-floating-promises` lives, the
   // rule this codebase would most benefit from given how much it awaits D1. It

@@ -99,12 +99,7 @@ async function scaffold(): Promise<FakeWorker> {
 }
 
 /** Raw RFC 5322 directive. `topHeaders` sit where our MX's headers would. */
-function directiveRaw(opts: {
-  from?: string;
-  text: string;
-  msgId: string;
-  topHeaders?: string[];
-}): string {
+function directiveRaw(opts: { from?: string; text: string; msgId: string; topHeaders?: string[] }): string {
   return [
     ...(opts.topHeaders ?? []),
     `From: ${opts.from ?? ERIC}`,
@@ -255,19 +250,19 @@ describe("authenticatedDirective — what counts", () => {
     expect(authenticatedDirective([], "family.test")).toEqual({ ok: true, how: "internal" });
   });
   it("topmost dmarc=pass, no header.from named → authenticated", () => {
-    expect(
-      authenticatedDirective([ar("mx.cloudflare.net; spf=pass; dmarc=pass")], "family.test"),
-    ).toEqual({ ok: true, how: "dmarc" });
+    expect(authenticatedDirective([ar("mx.cloudflare.net; spf=pass; dmarc=pass")], "family.test")).toEqual({
+      ok: true,
+      how: "dmarc",
+    });
   });
   it("topmost dmarc=pass ALIGNED with the asker's domain → authenticated", () => {
-    expect(
-      authenticatedDirective([ar("mx; dmarc=pass header.from=family.test")], "family.test"),
-    ).toEqual({ ok: true, how: "dmarc" });
+    expect(authenticatedDirective([ar("mx; dmarc=pass header.from=family.test")], "family.test")).toEqual({
+      ok: true,
+      how: "dmarc",
+    });
   });
   it("dmarc=pass for some OTHER domain → refused (alignment is the point)", () => {
-    expect(
-      authenticatedDirective([ar("mx; dmarc=pass header.from=evil.test")], "family.test"),
-    ).toEqual({
+    expect(authenticatedDirective([ar("mx; dmarc=pass header.from=evil.test")], "family.test")).toEqual({
       ok: false,
     });
   });
@@ -280,10 +275,7 @@ describe("authenticatedDirective — what counts", () => {
   });
   it("only the TOPMOST header is consulted — a forged pass below ours is never read", () => {
     expect(
-      authenticatedDirective(
-        [ar("mx; dmarc=none"), ar("attacker; dmarc=pass header.from=family.test")],
-        "family.test",
-      ),
+      authenticatedDirective([ar("mx; dmarc=none"), ar("attacker; dmarc=pass header.from=family.test")], "family.test"),
     ).toEqual({ ok: false });
   });
 });
@@ -336,10 +328,7 @@ describe("the injection test — wrapper is instruction, payload is evidence", (
       address: string;
       via_proposal_id: string | null;
       actor: string | null;
-    }>(
-      `SELECT address, via_proposal_id, actor FROM book_membership_log WHERE account_id = ?`,
-      ASKER_ACC,
-    );
+    }>(`SELECT address, via_proposal_id, actor FROM book_membership_log WHERE account_id = ?`, ASKER_ACC);
     expect(chain).toEqual([
       expect.objectContaining({
         address: "crook@spamcorp.example",
@@ -351,12 +340,9 @@ describe("the injection test — wrapper is instruction, payload is evidence", (
     // What the PAYLOAD asked for: nothing. No deny-list entry (rival.com or
     // otherwise), no rescue — the held message stays held.
     expect(denyRows(w)).toEqual([]);
-    expect(
-      w.db.query(
-        `SELECT * FROM quarantine_events WHERE account_id = ? AND event = 'rescued'`,
-        ASKER_ACC,
-      ),
-    ).toEqual([]);
+    expect(w.db.query(`SELECT * FROM quarantine_events WHERE account_id = ? AND event = 'rescued'`, ASKER_ACC)).toEqual(
+      [],
+    );
     expect(inMailbox(w, ASKER_ACC, "e_held", QUARANTINE_ROLE)).toBe(true);
 
     // And the reply went to the asker only.
@@ -377,9 +363,7 @@ describe("the inbound gate", () => {
 
     expect(denyRows(w)).toEqual([]);
     expect(__recordedBayesLabels).toEqual([]);
-    expect(w.db.query(`SELECT * FROM book_membership_log WHERE account_id = ?`, ASKER_ACC)).toEqual(
-      [],
-    );
+    expect(w.db.query(`SELECT * FROM book_membership_log WHERE account_id = ?`, ASKER_ACC)).toEqual([]);
 
     const reply = replyTo(w, msgId);
     expect(reply?.to).toBe(ERIC);
@@ -433,9 +417,7 @@ describe("conversation 1 — the FN report", () => {
     });
     expect(invocation.status).toBe("done");
 
-    expect(denyRows(w)).toEqual([
-      { domain: "qwertyuiop.com", source: "directive", evidence: msgId },
-    ]);
+    expect(denyRows(w)).toEqual([{ domain: "qwertyuiop.com", source: "directive", evidence: msgId }]);
     // The bloom's derived index must not go stale on an ADD: the pointer is
     // invalidated so the exact checks decide until the next rebuild.
     expect(await w.env.ROUTES.get("boundary:bloom:current")).toBeNull();
@@ -465,9 +447,7 @@ describe("conversation 1 — the FN report", () => {
 
   it("refuses to deny-list one of the tenant's own domains", async () => {
     const w = await scaffold();
-    w.db.seed("domains", [
-      { domain: "family.test", tenant_id: TENANT, status: "active", created_at: 1 },
-    ]);
+    w.db.seed("domains", [{ domain: "family.test", tenant_id: TENANT, status: "active", created_at: 1 }]);
     const { msgId, invocation } = await driveDirective(w, {
       text: "add family.test to the deny list",
     });
@@ -493,9 +473,7 @@ describe("conversation 1 — the FN report", () => {
       ASKER_ACC,
       book!.id,
     );
-    expect(chain).toEqual([
-      expect.objectContaining({ address: "crook@spamcorp.example", via_proposal_id: msgId }),
-    ]);
+    expect(chain).toEqual([expect.objectContaining({ address: "crook@spamcorp.example", via_proposal_id: msgId })]);
     expect(denyRows(w)).toEqual([]); // sender tier, not domain tier
     const reply = replyTo(w, msgId);
     expect(reply?.preview).toContain("crook@spamcorp.example");
@@ -540,9 +518,7 @@ describe("conversation 2 — the FP explain + repair", () => {
       `SELECT stage, via_message_id, actor FROM quarantine_events WHERE account_id = ? AND event = 'rescued'`,
       ASKER_ACC,
     );
-    expect(rescued).toEqual([
-      expect.objectContaining({ stage: "sieve:rule-7", via_message_id: msgId, actor: ERIC }),
-    ]);
+    expect(rescued).toEqual([expect.objectContaining({ stage: "sieve:rule-7", via_message_id: msgId, actor: ERIC })]);
 
     // Repair 2: H into the asker's known-good (default) book.
     const kg = w.db.query<{ card_json: string }>(
@@ -596,9 +572,7 @@ describe("conversation 2 — the FP explain + repair", () => {
       text: "why didn't helen@herdomain.test's mail arrive?",
     });
     expect(invocation.status).toBe("done");
-    expect(denyRows(w)).toEqual([
-      { domain: "herdomain.test", source: "feed", evidence: "operator feed" },
-    ]);
+    expect(denyRows(w)).toEqual([{ domain: "herdomain.test", source: "feed", evidence: "operator feed" }]);
     const reply = replyTo(w, msgId);
     expect(reply?.preview).toContain("deny list");
     expect(reply?.preview).toContain("feed");
@@ -613,9 +587,7 @@ describe("conversation 2 — the FP explain + repair", () => {
     const reply = replyTo(w, msgId);
     expect(reply?.preview).toContain("no record of mail from ghost@nowhere.test");
     expect(reply?.preview).toContain("30 days");
-    expect(w.db.query(`SELECT * FROM quarantine_events WHERE account_id = ?`, ASKER_ACC)).toEqual(
-      [],
-    );
+    expect(w.db.query(`SELECT * FROM quarantine_events WHERE account_id = ?`, ASKER_ACC)).toEqual([]);
   });
 
   it("no address to look up → asks, writes nothing", async () => {
@@ -657,10 +629,11 @@ describe("pattern B wiring — delivery to bouncer@ triggers the conversation th
     });
     const execCtx = ctx();
     const res = await ingestWorker.fetch!(
-      new Request(
-        `https://ingest.test/dev/inject?from=${encodeURIComponent(ERIC)}&to=${encodeURIComponent(SELF)}`,
-        { method: "POST", headers: { "x-internal-token": TOKEN }, body: raw },
-      ),
+      new Request(`https://ingest.test/dev/inject?from=${encodeURIComponent(ERIC)}&to=${encodeURIComponent(SELF)}`, {
+        method: "POST",
+        headers: { "x-internal-token": TOKEN },
+        body: raw,
+      }),
       ingestEnv,
       execCtx,
     );
@@ -673,9 +646,7 @@ describe("pattern B wiring — delivery to bouncer@ triggers the conversation th
     );
     expect(inv).toHaveLength(1);
     expect(inv[0]!.status).toBe("done");
-    expect(denyRows(w)).toEqual([
-      expect.objectContaining({ domain: "qwertyuiop.com", source: "directive" }),
-    ]);
+    expect(denyRows(w)).toEqual([expect.objectContaining({ domain: "qwertyuiop.com", source: "directive" })]);
     // The reply went out through the relay, to the asker only.
     expect(w.submit.calls).toEqual([expect.objectContaining({ rcptTo: [ERIC] })]);
   });

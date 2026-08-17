@@ -58,13 +58,13 @@ Cards grouped by what the user wants to do; each card: platforms, what it
 connects (mail / calendar / contacts), a one-line why, and **Set it up →**
 linking to its guide.
 
-| task                          | pick                                 | notes                                                                                                                                                                      |
-| ----------------------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Email (modern)**            | **[Mailtemi](https://mailtemi.com)** | flagship rec — JMAP-native; calendaring shipping ([blog](https://mailtemi.com/blog/calendaring-progress/)). Verify current platforms + store links when building the page. |
-| Email (terminal)              | the `bullmoose` CLI                  | send/watch/search; power users                                                                                                                                             |
-| Calendar + Contacts (Apple)   | Apple Calendar / Contacts            | built-in CalDAV/CardDAV                                                                                                                                                    |
-| Calendar + Contacts (Android) | [DAVx5](https://www.davx5.com/)      | the Android CalDAV/CardDAV standard                                                                                                                                        |
-| Legacy mail                   | Apple Mail · Outlook · Thunderbird   | POP3/SMTP via popcorn — **carry the $0-homelab / ~$5-VPS cost caveat** from the playbook                                                                                   |
+| task | pick | notes |
+|---|---|---|
+| **Email (modern)** | **[Mailtemi](https://mailtemi.com)** | flagship rec — JMAP-native; calendaring shipping ([blog](https://mailtemi.com/blog/calendaring-progress/)). Verify current platforms + store links when building the page. |
+| Email (terminal) | the `bullmoose` CLI | send/watch/search; power users |
+| Calendar + Contacts (Apple) | Apple Calendar / Contacts | built-in CalDAV/CardDAV |
+| Calendar + Contacts (Android) | [DAVx5](https://www.davx5.com/) | the Android CalDAV/CardDAV standard |
+| Legacy mail | Apple Mail · Outlook · Thunderbird | POP3/SMTP via popcorn — **carry the $0-homelab / ~$5-VPS cost caveat** from the playbook |
 
 The page leads with Mailtemi (mail is the headline), then the DAV clients,
 then the legacy/popcorn row with its cost note.
@@ -76,7 +76,7 @@ The guides are `docs/playbooks/*.md`. Two ways to wire them:
 - **Repo canonical (recommended).** `docs/playbooks/` stays the source of
   truth; the Astro content collection points at it (or a thin loader copies
   at build). Docs live with the code, contributors edit Markdown, the site
-  is a _rendering_. Cost: a build-time **link-rewrite** — the playbooks use
+  is a *rendering*. Cost: a build-time **link-rewrite** — the playbooks use
   GitHub-relative links (`../carddav-setup.md`, `../../packages/…`); a
   remark/rehype step must rewrite them to site routes where a page exists,
   else to the GitHub blob URL. Front-matter (`title`, `client`, `cost`,

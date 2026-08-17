@@ -64,9 +64,7 @@ export function initializeResult(
 ): Record<string, unknown> {
   const asked = typeof requestedVersion === "string" ? requestedVersion : null;
   const protocolVersion =
-    asked && (LEGACY_SUPPORTED as readonly string[]).includes(asked)
-      ? asked
-      : LEGACY_PROTOCOL_VERSION;
+    asked && (LEGACY_SUPPORTED as readonly string[]).includes(asked) ? asked : LEGACY_PROTOCOL_VERSION;
   return {
     protocolVersion,
     // Tools only. We deliberately advertise no `resources`, no `prompts`, no

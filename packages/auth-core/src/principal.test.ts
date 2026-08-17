@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fakeD1 } from "@bullmoose/test-fakes";
 import { mintToken } from "./index";
-import {
-  authorizeAccount,
-  verifyBearer,
-  type AccountAccess,
-  type GrantRef,
-  type Principal,
-} from "./principal";
+import { authorizeAccount, verifyBearer, type AccountAccess, type GrantRef, type Principal } from "./principal";
 
 // authorizeAccount is a pure decision (no I/O), so these run with plain
 // object fixtures — no DB, no network, no mocks. Per .plans/devPrinciples.md:
@@ -77,12 +71,7 @@ describe("authorizeAccount — grant-reached accounts", () => {
 
   it("forbids when the token has the scope but no grant covers it", () => {
     // token has draft; grant only read → token ∩ grant excludes draft.
-    const d = authorizeAccount(
-      granted([grantRef({ scopes: ["read"] })]),
-      "a_eric",
-      "draft",
-      "mail",
-    );
+    const d = authorizeAccount(granted([grantRef({ scopes: ["read"] })]), "a_eric", "draft", "mail");
     expect(d).toEqual({
       ok: false,
       reason: "forbidden",
@@ -91,12 +80,7 @@ describe("authorizeAccount — grant-reached accounts", () => {
   });
 
   it("checks the token scope BEFORE the grant (token lacks scope wins)", () => {
-    const d = authorizeAccount(
-      granted([grantRef({ scopes: ["read", "draft"] })], ["read"]),
-      "a_eric",
-      "draft",
-      "mail",
-    );
+    const d = authorizeAccount(granted([grantRef({ scopes: ["read", "draft"] })], ["read"]), "a_eric", "draft", "mail");
     expect(d).toEqual({
       ok: false,
       reason: "forbidden",

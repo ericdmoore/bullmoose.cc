@@ -1,5 +1,5 @@
-import { PhotoIcon, UserCircleIcon } from "@heroicons/react/24/solid";
-import { ChevronDownIcon } from "@heroicons/react/16/solid";
+import { PhotoIcon, UserCircleIcon } from '@heroicons/react/24/solid'
+import { ChevronDownIcon } from '@heroicons/react/16/solid'
 
 export default function Example() {
   return (
@@ -13,10 +13,7 @@ export default function Example() {
 
           <div className="mt-10 space-y-8 border-b border-gray-900/10 pb-12 sm:space-y-0 sm:divide-y sm:divide-gray-900/10 sm:border-t sm:border-t-gray-900/10 sm:pb-0 dark:border-white/10 dark:sm:divide-white/10 dark:sm:border-t-white/10">
             <div className="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-              <label
-                htmlFor="username"
-                className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white"
-              >
+              <label htmlFor="username" className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white">
                 Username
               </label>
               <div className="mt-2 sm:col-span-2 sm:mt-0">
@@ -36,10 +33,7 @@ export default function Example() {
             </div>
 
             <div className="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-              <label
-                htmlFor="about"
-                className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white"
-              >
+              <label htmlFor="about" className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white">
                 About
               </label>
               <div className="mt-2 sm:col-span-2 sm:mt-0">
@@ -48,27 +42,19 @@ export default function Example() {
                   name="about"
                   rows={3}
                   className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:max-w-2xl sm:text-sm/6 dark:bg-white/5 dark:text-white dark:outline-white/10 dark:placeholder:text-gray-500 dark:focus:outline-indigo-500"
-                  defaultValue={""}
+                  defaultValue={''}
                 />
-                <p className="mt-3 text-sm/6 text-gray-600 dark:text-gray-400">
-                  Write a few sentences about yourself.
-                </p>
+                <p className="mt-3 text-sm/6 text-gray-600 dark:text-gray-400">Write a few sentences about yourself.</p>
               </div>
             </div>
 
             <div className="sm:grid sm:grid-cols-3 sm:items-center sm:gap-4 sm:py-6">
-              <label
-                htmlFor="photo"
-                className="block text-sm/6 font-medium text-gray-900 dark:text-white"
-              >
+              <label htmlFor="photo" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
                 Photo
               </label>
               <div className="mt-2 sm:col-span-2 sm:mt-0">
                 <div className="flex items-center gap-x-3">
-                  <UserCircleIcon
-                    aria-hidden="true"
-                    className="size-12 text-gray-300 dark:text-gray-500"
-                  />
+                  <UserCircleIcon aria-hidden="true" className="size-12 text-gray-300 dark:text-gray-500" />
                   <button
                     type="button"
                     className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xs inset-ring inset-ring-gray-300 hover:bg-gray-50 dark:bg-white/10 dark:text-white dark:shadow-none dark:inset-ring-white/5 dark:hover:bg-white/20"
@@ -89,28 +75,18 @@ export default function Example() {
               <div className="mt-2 sm:col-span-2 sm:mt-0">
                 <div className="flex max-w-2xl justify-center rounded-lg border border-dashed border-gray-900/25 px-6 py-10 dark:border-white/25">
                   <div className="text-center">
-                    <PhotoIcon
-                      aria-hidden="true"
-                      className="mx-auto size-12 text-gray-300 dark:text-gray-600"
-                    />
+                    <PhotoIcon aria-hidden="true" className="mx-auto size-12 text-gray-300 dark:text-gray-600" />
                     <div className="mt-4 flex text-sm/6 text-gray-600 dark:text-gray-400">
                       <label
                         htmlFor="file-upload"
                         className="relative cursor-pointer rounded-md bg-white font-semibold text-indigo-600 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-indigo-600 hover:text-indigo-500 dark:bg-transparent dark:text-indigo-400 dark:focus-within:outline-indigo-500 dark:hover:text-indigo-300"
                       >
                         <span>Upload a file</span>
-                        <input
-                          id="file-upload"
-                          name="file-upload"
-                          type="file"
-                          className="sr-only"
-                        />
+                        <input id="file-upload" name="file-upload" type="file" className="sr-only" />
                       </label>
                       <p className="pl-1">or drag and drop</p>
                     </div>
-                    <p className="text-xs/5 text-gray-600 dark:text-gray-400">
-                      PNG, JPG, GIF up to 10MB
-                    </p>
+                    <p className="text-xs/5 text-gray-600 dark:text-gray-400">PNG, JPG, GIF up to 10MB</p>
                   </div>
                 </div>
               </div>
@@ -119,9 +95,7 @@ export default function Example() {
         </div>
 
         <div>
-          <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">
-            Personal Information
-          </h2>
+          <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">Personal Information</h2>
           <p className="mt-1 max-w-2xl text-sm/6 text-gray-600 dark:text-gray-400">
             Use a permanent address where you can receive mail.
           </p>
@@ -164,10 +138,7 @@ export default function Example() {
             </div>
 
             <div className="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-              <label
-                htmlFor="email"
-                className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white"
-              >
+              <label htmlFor="email" className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white">
                 Email address
               </label>
               <div className="mt-2 sm:col-span-2 sm:mt-0">
@@ -182,10 +153,7 @@ export default function Example() {
             </div>
 
             <div className="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-              <label
-                htmlFor="country"
-                className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white"
-              >
+              <label htmlFor="country" className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white">
                 Country
               </label>
               <div className="mt-2 sm:col-span-2 sm:mt-0">
@@ -227,10 +195,7 @@ export default function Example() {
             </div>
 
             <div className="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-              <label
-                htmlFor="city"
-                className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white"
-              >
+              <label htmlFor="city" className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white">
                 City
               </label>
               <div className="mt-2 sm:col-span-2 sm:mt-0">
@@ -245,10 +210,7 @@ export default function Example() {
             </div>
 
             <div className="sm:grid sm:grid-cols-3 sm:items-start sm:gap-4 sm:py-6">
-              <label
-                htmlFor="region"
-                className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white"
-              >
+              <label htmlFor="region" className="block text-sm/6 font-medium text-gray-900 sm:pt-1.5 dark:text-white">
                 State / Province
               </label>
               <div className="mt-2 sm:col-span-2 sm:mt-0">
@@ -285,18 +247,14 @@ export default function Example() {
         <div>
           <h2 className="text-base/7 font-semibold text-gray-900 dark:text-white">Notifications</h2>
           <p className="mt-1 max-w-2xl text-sm/6 text-gray-600 dark:text-gray-400">
-            We'll always let you know about important changes, but you pick what else you want to
-            hear about.
+            We'll always let you know about important changes, but you pick what else you want to hear about.
           </p>
 
           <div className="mt-10 space-y-10 border-b border-gray-900/10 pb-12 sm:space-y-0 sm:divide-y sm:divide-gray-900/10 sm:border-t sm:border-t-gray-900/10 sm:pb-0 dark:border-white/10 dark:sm:divide-white/10 dark:sm:border-t-white/10">
             <fieldset>
               <legend className="sr-only">By email</legend>
               <div className="sm:grid sm:grid-cols-3 sm:gap-4 sm:py-6">
-                <div
-                  aria-hidden="true"
-                  className="text-sm/6 font-semibold text-gray-900 dark:text-white"
-                >
+                <div aria-hidden="true" className="text-sm/6 font-semibold text-gray-900 dark:text-white">
                   By email
                 </div>
                 <div className="mt-4 sm:col-span-2 sm:mt-0">
@@ -335,10 +293,7 @@ export default function Example() {
                         </div>
                       </div>
                       <div className="text-sm/6">
-                        <label
-                          htmlFor="comments"
-                          className="font-medium text-gray-900 dark:text-white"
-                        >
+                        <label htmlFor="comments" className="font-medium text-gray-900 dark:text-white">
                           Comments
                         </label>
                         <p id="comments-description" className="text-gray-500 dark:text-gray-400">
@@ -379,10 +334,7 @@ export default function Example() {
                         </div>
                       </div>
                       <div className="text-sm/6">
-                        <label
-                          htmlFor="candidates"
-                          className="font-medium text-gray-900 dark:text-white"
-                        >
+                        <label htmlFor="candidates" className="font-medium text-gray-900 dark:text-white">
                           Candidates
                         </label>
                         <p id="candidates-description" className="text-gray-500 dark:text-gray-400">
@@ -423,10 +375,7 @@ export default function Example() {
                         </div>
                       </div>
                       <div className="text-sm/6">
-                        <label
-                          htmlFor="offers"
-                          className="font-medium text-gray-900 dark:text-white"
-                        >
+                        <label htmlFor="offers" className="font-medium text-gray-900 dark:text-white">
                           Offers
                         </label>
                         <p id="offers-description" className="text-gray-500 dark:text-gray-400">
@@ -441,10 +390,7 @@ export default function Example() {
             <fieldset>
               <legend className="sr-only">Push notifications</legend>
               <div className="sm:grid sm:grid-cols-3 sm:items-baseline sm:gap-4 sm:py-6">
-                <div
-                  aria-hidden="true"
-                  className="text-sm/6 font-semibold text-gray-900 dark:text-white"
-                >
+                <div aria-hidden="true" className="text-sm/6 font-semibold text-gray-900 dark:text-white">
                   Push notifications
                 </div>
                 <div className="mt-1 sm:col-span-2 sm:mt-0">
@@ -517,5 +463,5 @@ export default function Example() {
         </button>
       </div>
     </form>
-  );
+  )
 }

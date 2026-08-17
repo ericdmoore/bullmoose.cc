@@ -7,17 +7,7 @@
   "defaultModel": "cheap",
   "maxTokens": 1024,
   "chartMinPoints": 10,
-  "categories": [
-    "saas",
-    "utilities",
-    "home",
-    "insurance",
-    "travel",
-    "food",
-    "health",
-    "pool",
-    "other"
-  ],
+  "categories": ["saas", "utilities", "home", "insurance", "travel", "food", "health", "pool", "other"],
   "modelAliases": {
     "cheap": [
       { "provider": "workers-ai", "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },

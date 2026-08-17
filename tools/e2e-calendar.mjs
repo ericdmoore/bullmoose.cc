@@ -102,9 +102,7 @@ assert(evSet.created.a.created && evSet.created.a.updated, "server-set timestamp
 const state0 = evSet.newState;
 
 // 5. get round-trips the JSCalendar blob + wire props
-const [[, evGet]] = await jmap([
-  ["CalendarEvent/get", { accountId: ACCT, ids: [standupId] }, "c3"],
-]);
+const [[, evGet]] = await jmap([["CalendarEvent/get", { accountId: ACCT, ids: [standupId] }, "c3"]]);
 const standup = evGet.list[0];
 assert(standup["@type"] === "Event" && standup.uid === "cal-e2e-standup", "JSCalendar envelope");
 assert(standup.calendarIds[workCal] === true, "calendarIds wire property");
@@ -112,19 +110,13 @@ assert(standup.recurrenceRules[0].frequency === "weekly", "recurrence rules stor
 
 // 6. time-range query: only events with an occurrence in the window
 const q = async (filter, expect, label) => {
-  const [[, r]] = await jmap([
-    ["CalendarEvent/query", { accountId: ACCT, filter, calculateTotal: true }, "q"],
-  ]);
+  const [[, r]] = await jmap([["CalendarEvent/query", { accountId: ACCT, filter, calculateTotal: true }, "q"]]);
   assert(
     JSON.stringify([...r.ids].sort()) === JSON.stringify([...expect].sort()),
     `${label}: got ${JSON.stringify(r.ids)} want ${JSON.stringify(expect)}`,
   );
 };
-await q(
-  { after: "2026-08-14T00:00:00Z", before: "2026-08-15T00:00:00Z" },
-  [dentistId],
-  "window hits dentist only",
-);
+await q({ after: "2026-08-14T00:00:00Z", before: "2026-08-15T00:00:00Z" }, [dentistId], "window hits dentist only");
 await q(
   { after: "2026-11-01T00:00:00Z", before: "2026-11-03T00:00:00Z" },
   [standupId],
@@ -135,11 +127,7 @@ await q(
   [bdayId],
   "unbounded yearly matches next year",
 );
-await q(
-  { after: "2026-08-20T00:00:00Z", before: "2026-08-21T00:00:00Z" },
-  [],
-  "empty window is empty",
-);
+await q({ after: "2026-08-20T00:00:00Z", before: "2026-08-21T00:00:00Z" }, [], "empty window is empty");
 await q({ inCalendar: workCal }, [standupId], "inCalendar filter");
 await q({ text: "dentist" }, [dentistId], "text filter");
 
@@ -158,10 +146,7 @@ assert(
   "wall-clock stays 09:00 across DST",
 );
 const utcHours = standups.map((o) => new Date(o.utcStart).getUTCHours());
-assert(
-  utcHours[0] === 14 && utcHours[5] === 15,
-  `UTC hour shifts at fall-back: ${utcHours.join(",")}`,
-);
+assert(utcHours[0] === 14 && utcHours[5] === 15, `UTC hour shifts at fall-back: ${utcHours.join(",")}`);
 const bdayOcc = occ.list.filter((o) => o.eventId === bdayId);
 assert(bdayOcc.length === 1 && bdayOcc[0].showWithoutTime === true, "all-day occurrence flagged");
 
@@ -183,10 +168,7 @@ const [[, patchRes]] = await jmap([
     "c5",
   ],
 ]);
-assert(
-  patchRes.updated && standupId in patchRes.updated,
-  `override patch: ${JSON.stringify(patchRes.notUpdated)}`,
-);
+assert(patchRes.updated && standupId in patchRes.updated, `override patch: ${JSON.stringify(patchRes.notUpdated)}`);
 const [[, occ2]] = await jmap([
   [
     "CalendarEvent/getOccurrences",
@@ -197,10 +179,7 @@ const [[, occ2]] = await jmap([
 const standups2 = occ2.list.filter((o) => o.eventId === standupId);
 assert(standups2.length === 5, `exclusion drops one: ${standups2.length}`);
 const moved = standups2.find((o) => o.recurrenceId === "2026-11-09T09:00:00");
-assert(
-  moved?.start === "2026-11-09T10:30:00" && moved?.title === "Standup (moved)",
-  "occurrence patch applied",
-);
+assert(moved?.start === "2026-11-09T10:30:00" && moved?.title === "Standup (moved)", "occurrence patch applied");
 
 // 9. uid immutability + calendar move
 const [[, uidTry]] = await jmap([
@@ -232,9 +211,7 @@ assert(moveRes.updated && dentistId in moveRes.updated, "moved calendars");
 await q({ inCalendar: workCal, text: "dentist" }, [dentistId], "move reflected in query");
 
 // 10. changes delta
-const [[, ch]] = await jmap([
-  ["CalendarEvent/changes", { accountId: ACCT, sinceState: state0 }, "c9"],
-]);
+const [[, ch]] = await jmap([["CalendarEvent/changes", { accountId: ACCT, sinceState: state0 }, "c9"]]);
 assert(ch.updated.includes(standupId) && ch.updated.includes(dentistId), "changes reports updates");
 
 // 11. calendar destroy: refused with events, cascades with flag
@@ -244,9 +221,7 @@ const [[, dOk]] = await jmap([
   ["Calendar/set", { accountId: ACCT, destroy: [workCal], onDestroyRemoveEvents: true }, "c11"],
 ]);
 assert(dOk.destroyed.includes(workCal), `cascade destroy: ${JSON.stringify(dOk.notDestroyed)}`);
-const [[, goneGet]] = await jmap([
-  ["CalendarEvent/get", { accountId: ACCT, ids: [standupId, dentistId] }, "c12"],
-]);
+const [[, goneGet]] = await jmap([["CalendarEvent/get", { accountId: ACCT, ids: [standupId, dentistId] }, "c12"]]);
 assert(goneGet.notFound.length === 2, "events gone with their calendar");
 
 // 12. sorting by start
@@ -274,11 +249,7 @@ const [[, mk]] = await jmap([
   ],
 ]);
 const [[, sorted]] = await jmap([
-  [
-    "CalendarEvent/query",
-    { accountId: ACCT, sort: [{ property: "start", isAscending: true }] },
-    "c14",
-  ],
+  ["CalendarEvent/query", { accountId: ACCT, sort: [{ property: "start", isAscending: true }] }, "c14"],
 ]);
 const earlyIdx = sorted.ids.indexOf(mk.created.y.id);
 const lateIdx = sorted.ids.indexOf(mk.created.x.id);

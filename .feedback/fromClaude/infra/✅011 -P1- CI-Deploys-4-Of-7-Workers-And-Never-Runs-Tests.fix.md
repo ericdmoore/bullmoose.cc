@@ -21,11 +21,11 @@ the list cannot drift again. Two hand-maintained copies is how this happened.
 # mail-typecheck.yml — rename the job to "verify"
 - run: npm ci
 - run: npm run typecheck
-- run: npm test # ← add
+- run: npm test          # ← add
 
 # deploy-mail.yml — gate before the first deploy step
 - run: npm run typecheck
-- run: npm test # ← add
+- run: npm test          # ← add
 ```
 
 The suite is ~19 tests and runs in well under a second, so there is no cost argument.
@@ -46,4 +46,4 @@ committed `wrangler.jsonc` files by regex is structurally unreachable by the run
 - Deploying `agent`/`anglebrackets` for the first time via CI may surface first-deploy ordering
   issues (issue `012`) — do a manual deploy of each once before trusting the workflow.
 - `coverage.yml` should stay manual (`workflow_dispatch`); that was a deliberate choice and is fine.
-  This issue is about the _gating_ workflows.
+  This issue is about the *gating* workflows.

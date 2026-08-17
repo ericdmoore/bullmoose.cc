@@ -28,14 +28,7 @@ const KNOWN_ROLES = new Set(["inbox", "sent", "drafts", "trash", "junk", "archiv
  * for "archive") and immutable on UPDATE, because re-roling an existing
  * mailbox is how you would launder a custom folder into the Inbox.
  */
-const MAILBOX_SERVER_SET = [
-  "id",
-  "totalEmails",
-  "unreadEmails",
-  "totalThreads",
-  "unreadThreads",
-  "myRights",
-] as const;
+const MAILBOX_SERVER_SET = ["id", "totalEmails", "unreadEmails", "totalThreads", "unreadThreads", "myRights"] as const;
 
 export function registerMailboxMethods(registry: MethodRegistry<RequestContext>): void {
   registry.register("Mailbox/get", async (args, ctx) => {
@@ -91,9 +84,9 @@ export function registerMailboxMethods(registry: MethodRegistry<RequestContext>)
 
     const filtered = applyMailboxFilter(rows, args.filter);
 
-    const sortSpecs = (args.sort as
-      | Array<{ property?: string; isAscending?: boolean }>
-      | undefined) ?? [{ property: "sortOrder", isAscending: true }];
+    const sortSpecs = (args.sort as Array<{ property?: string; isAscending?: boolean }> | undefined) ?? [
+      { property: "sortOrder", isAscending: true },
+    ];
     filtered.sort((a, b) => {
       for (const s of sortSpecs) {
         const dir = s.isAscending === false ? -1 : 1;
@@ -107,8 +100,7 @@ export function registerMailboxMethods(registry: MethodRegistry<RequestContext>)
     });
 
     const position = Math.max(0, typeof args.position === "number" ? args.position : 0);
-    const limit =
-      typeof args.limit === "number" ? Math.min(Math.max(1, args.limit), 256) : filtered.length;
+    const limit = typeof args.limit === "number" ? Math.min(Math.max(1, args.limit), 256) : filtered.length;
     const ids = filtered.slice(position, position + limit).map((r) => r.id);
 
     return {
@@ -176,10 +168,7 @@ export function requiredScopesForMailboxSet(args: Record<string, unknown>): stri
  * a subtree — checking against the table as it was when the method started
  * would get all three wrong.
  */
-async function mailboxSet(
-  args: Record<string, unknown>,
-  ctx: RequestContext,
-): Promise<Record<string, unknown>> {
+async function mailboxSet(args: Record<string, unknown>, ctx: RequestContext): Promise<Record<string, unknown>> {
   const access = await requireAccountScopes(ctx, args, requiredScopesForMailboxSet(args));
   if (access.granted) {
     // Same call as AddressBook/set and Calendar/set: a sharee may act on
@@ -266,10 +255,7 @@ async function mailboxSet(
         // keeps ingest's ensureRoleMailbox from silently re-creating the
         // Inbox under a NEW id on the next delivery, orphaning every client
         // that cached the old one.
-        throw new SetErrorSignal(
-          "forbidden",
-          `mailbox has the "${row.role}" role and cannot be destroyed`,
-        );
+        throw new SetErrorSignal("forbidden", `mailbox has the "${row.role}" role and cannot be destroyed`);
       }
       if ([...tree.values()].some((m) => m.parentId === id)) {
         throw new SetErrorSignal("mailboxHasChild");
@@ -279,14 +265,7 @@ async function mailboxSet(
       if (emailIds.length > 0 && !onDestroyRemoveEmails) {
         throw new SetErrorSignal("mailboxHasEmail");
       }
-      await removeEmailsFromMailbox(
-        store,
-        access.accountId,
-        id,
-        emailIds,
-        emailEntry,
-        countsTouched,
-      );
+      await removeEmailsFromMailbox(store, access.accountId, id, emailIds, emailEntry, countsTouched);
 
       await store.deleteMailbox(access.accountId, id);
       tree.delete(id);
@@ -362,14 +341,8 @@ async function removeEmailsFromMailbox(
  * Skips the DO round-trip when every entry is empty, like
  * commitCalendarEntries — a no-op /set should not burn a state bump.
  */
-async function commitMailboxEntries(
-  ctx: RequestContext,
-  accountId: string,
-  entries: ChangeEntry[],
-): Promise<string> {
-  const nonEmpty = entries.filter(
-    (e) => e.created.length + e.updated.length + e.destroyed.length > 0,
-  );
+async function commitMailboxEntries(ctx: RequestContext, accountId: string, entries: ChangeEntry[]): Promise<string> {
+  const nonEmpty = entries.filter((e) => e.created.length + e.updated.length + e.destroyed.length > 0);
   if (nonEmpty.length === 0) return accountState(ctx, accountId);
   const { newState } = await commitChanges(ctx.env.ACCOUNT_DO, accountId, nonEmpty);
   return newState;
@@ -431,11 +404,7 @@ function depthOf(tree: Map<string, MailboxRow>, id: string | null): number {
  * is not the only thing that has ever written parent_id, and an unbounded
  * recursion here would hang the request rather than fail it.
  */
-function subtreeHeight(
-  tree: Map<string, MailboxRow>,
-  id: string,
-  seen = new Set<string>(),
-): number {
+function subtreeHeight(tree: Map<string, MailboxRow>, id: string, seen = new Set<string>()): number {
   if (seen.has(id)) return 1;
   seen.add(id);
   const children = [...tree.values()].filter((m) => m.parentId === id);
@@ -467,11 +436,9 @@ function validateName(raw: unknown): string {
   // The session advertises maxSizeMailboxName in OCTETS (RFC 8620 §1.3),
   // so measure octets, not UTF-16 code units.
   if (utf8Octets(raw) > mailCapability.maxSizeMailboxName) {
-    throw new SetErrorSignal(
-      "invalidProperties",
-      `name must be at most ${mailCapability.maxSizeMailboxName} octets`,
-      ["name"],
-    );
+    throw new SetErrorSignal("invalidProperties", `name must be at most ${mailCapability.maxSizeMailboxName} octets`, [
+      "name",
+    ]);
   }
   return raw;
 }
@@ -489,13 +456,10 @@ function checkSiblingName(
   selfId: string | null,
 ): void {
   const clash = [...tree.values()].some(
-    (m) =>
-      m.id !== selfId && m.parentId === parentId && m.name.toLowerCase() === name.toLowerCase(),
+    (m) => m.id !== selfId && m.parentId === parentId && m.name.toLowerCase() === name.toLowerCase(),
   );
   if (clash) {
-    throw new SetErrorSignal("invalidProperties", `a mailbox named "${name}" already exists here`, [
-      "name",
-    ]);
+    throw new SetErrorSignal("invalidProperties", `a mailbox named "${name}" already exists here`, ["name"]);
   }
 }
 
@@ -512,9 +476,7 @@ function checkDepth(tree: Map<string, MailboxRow>, parentId: string | null, heig
 
 function validateSortOrder(raw: unknown): number {
   if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
-    throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", [
-      "sortOrder",
-    ]);
+    throw new SetErrorSignal("invalidProperties", "sortOrder must be an unsigned int", ["sortOrder"]);
   }
   return raw;
 }
@@ -522,11 +484,9 @@ function validateSortOrder(raw: unknown): number {
 /** isSubscribed has no column and Mailbox/get hardcodes true. */
 function validateIsSubscribed(raw: unknown): void {
   if (raw !== true) {
-    throw new SetErrorSignal(
-      "invalidProperties",
-      "this server does not support unsubscribing from a mailbox",
-      ["isSubscribed"],
-    );
+    throw new SetErrorSignal("invalidProperties", "this server does not support unsubscribing from a mailbox", [
+      "isSubscribed",
+    ]);
   }
 }
 
@@ -558,11 +518,7 @@ function validateNewMailbox(
       );
     }
     if ([...tree.values()].some((m) => m.role === spec.role)) {
-      throw new SetErrorSignal(
-        "invalidProperties",
-        `a mailbox with the "${spec.role}" role already exists`,
-        ["role"],
-      );
+      throw new SetErrorSignal("invalidProperties", `a mailbox with the "${spec.role}" role already exists`, ["role"]);
     }
     role = spec.role;
   }
@@ -621,9 +577,7 @@ function validateMailboxPatch(
     const seen = new Set<string>();
     for (let cursor: string | null = out.parentId; cursor !== null;) {
       if (cursor === row.id) {
-        throw new SetErrorSignal("invalidProperties", "parentId would create a cycle", [
-          "parentId",
-        ]);
+        throw new SetErrorSignal("invalidProperties", "parentId would create a cycle", ["parentId"]);
       }
       if (seen.has(cursor)) break; // pre-existing cycle; not this patch's doing
       seen.add(cursor);
@@ -663,10 +617,7 @@ function applyMailboxFilter(rows: MailboxRow[], filter: unknown): MailboxRow[] {
   if (typeof filter === "object" && "operator" in (filter as object)) {
     const op = filter as { operator: string; conditions: unknown[] };
     if (op.operator !== "AND") {
-      throw new MethodError(
-        "invalidArguments",
-        `Mailbox/query operator ${op.operator} unsupported`,
-      );
+      throw new MethodError("invalidArguments", `Mailbox/query operator ${op.operator} unsupported`);
     }
     return op.conditions.reduce<MailboxRow[]>((acc, c) => applyMailboxFilter(acc, c), [...rows]);
   }

@@ -47,12 +47,7 @@ const book = (id: string, writePolicy: BookWritePolicy): AddressBookRow => ({
   writePolicy,
 });
 
-const card = (
-  id: string,
-  bookId: string,
-  emails: string[],
-  extra: Partial<JSContactCard> = {},
-): ContactCardRow => ({
+const card = (id: string, bookId: string, emails: string[], extra: Partial<JSContactCard> = {}): ContactCardRow => ({
   id,
   addressBookId: bookId,
   uid: `u_${id}`,
@@ -127,9 +122,7 @@ describe("the chokepoint — one policy gate for every write path", () => {
     await expect(
       store.updateContactCard(ACCOUNT, card("c1", "ab_gov", ["eve@evil.com"]), AGENT),
     ).rejects.toBeInstanceOf(BookWriteRefused);
-    await expect(store.destroyContactCard(ACCOUNT, "c1", AGENT)).rejects.toBeInstanceOf(
-      BookWriteRefused,
-    );
+    await expect(store.destroyContactCard(ACCOUNT, "c1", AGENT)).rejects.toBeInstanceOf(BookWriteRefused);
     // Moving a card OUT of the governed book is a write to it too (narrowing).
     await expect(
       store.updateContactCard(ACCOUNT, card("c1", "ab_open", ["bob@good.com"]), AGENT),
@@ -175,9 +168,9 @@ describe("the chokepoint — one policy gate for every write path", () => {
   it("nested groups are refused into a governed book, and allowed in an open one", async () => {
     const { store } = await world();
     await store.insertContactCard(ACCOUNT, group("inner", "ab_open", []), HUMAN);
-    await expect(
-      store.insertContactCard(ACCOUNT, group("outer", "ab_gov", ["u_inner"]), HUMAN),
-    ).rejects.toMatchObject({ reason: "nested-group" });
+    await expect(store.insertContactCard(ACCOUNT, group("outer", "ab_gov", ["u_inner"]), HUMAN)).rejects.toMatchObject({
+      reason: "nested-group",
+    });
     await store.insertContactCard(ACCOUNT, group("outer", "ab_open", ["u_inner"]), HUMAN);
   });
 });
@@ -196,11 +189,7 @@ describe("the membership chain — card + chain commit together or neither", () 
     ]);
 
     // Move out of the governed book: removed rows for its whole contribution.
-    await store.updateContactCard(
-      ACCOUNT,
-      card("c1", "ab_open", ["ann@x.com", "cat@x.com"]),
-      HUMAN,
-    );
+    await store.updateContactCard(ACCOUNT, card("c1", "ab_open", ["ann@x.com", "cat@x.com"]), HUMAN);
     const afterMove = logOf(w, "ab_gov").slice(4);
     expect(afterMove).toEqual([
       { event: "removed", address: "ann@x.com", actor: "eric@bullmoose.cc", via_proposal_id: null },
@@ -244,11 +233,7 @@ describe("the membership chain — card + chain commit together or neither", () 
     // Same PRIMARY KEY → the batch throws; the chain row prepared alongside
     // the card INSERT must roll back with it, or the chain lies.
     await expect(
-      store.insertContactCard(
-        ACCOUNT,
-        { ...card("c1", "ab_gov", ["eve@evil.com"]), uid: "u_other" },
-        HUMAN,
-      ),
+      store.insertContactCard(ACCOUNT, { ...card("c1", "ab_gov", ["eve@evil.com"]), uid: "u_other" }, HUMAN),
     ).rejects.toThrow();
     expect(logOf(w, "ab_gov")).toHaveLength(1);
     expect(w.db.count("book_membership_log", "address = 'eve@evil.com'")).toBe(0);

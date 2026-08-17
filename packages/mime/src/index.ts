@@ -95,9 +95,7 @@ export function buildMime(draft: DraftMessage): Uint8Array {
   headers.push("MIME-Version: 1.0");
 
   const body = bodyNode(draft);
-  return new TextEncoder().encode(
-    headers.join(CRLF) + CRLF + body.headers + CRLF + CRLF + body.content,
-  );
+  return new TextEncoder().encode(headers.join(CRLF) + CRLF + body.headers + CRLF + CRLF + body.content);
 }
 
 interface Node {
@@ -139,11 +137,9 @@ function alternativeNode(draft: DraftMessage): Node {
 
 function multipart(subtype: string, parts: Node[]): Node {
   const boundary = `=_bm_${crypto.randomUUID().replaceAll("-", "")}`;
-  const content = [
-    ...parts.flatMap((p) => [`--${boundary}`, p.headers, "", p.content]),
-    `--${boundary}--`,
-    "",
-  ].join(CRLF);
+  const content = [...parts.flatMap((p) => [`--${boundary}`, p.headers, "", p.content]), `--${boundary}--`, ""].join(
+    CRLF,
+  );
   return {
     headers: `Content-Type: multipart/${subtype}; boundary="${boundary}"`,
     content,
@@ -152,9 +148,7 @@ function multipart(subtype: string, parts: Node[]): Node {
 
 function textPart(type: string, content: string): Node {
   return {
-    headers: [`Content-Type: ${type}; charset=utf-8`, "Content-Transfer-Encoding: base64"].join(
-      CRLF,
-    ),
+    headers: [`Content-Type: ${type}; charset=utf-8`, "Content-Transfer-Encoding: base64"].join(CRLF),
     content: wrap76(base64Bytes(new TextEncoder().encode(content))),
   };
 }
@@ -203,10 +197,7 @@ function filenameParam(name: string | null | undefined): string {
 function rfc2231(value: string): string {
   // encodeURIComponent leaves !'()*~ unescaped; the first four are outside
   // RFC 2231's attribute-char, so escape them by hand.
-  return encodeURIComponent(value).replaceAll(
-    /['()*!]/g,
-    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
+  return encodeURIComponent(value).replaceAll(/['()*!]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 
 // ---- helpers ---------------------------------------------------------

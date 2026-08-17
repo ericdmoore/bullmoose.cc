@@ -281,10 +281,7 @@ export const INVOCATION_STANDING_SCOPES: readonly string[] = [
  * Returns null when the account no longer resolves (deleted, or the principal
  * is gone), which is the same fail-closed answer `verifyBearer` gives.
  */
-export async function principalForInvocation(
-  db: D1Database,
-  identity: InvocationIdentity,
-): Promise<Principal | null> {
+export async function principalForInvocation(db: D1Database, identity: InvocationIdentity): Promise<Principal | null> {
   const row = await db
     .prepare(`SELECT login_email FROM principals WHERE id = ?`)
     .bind(identity.principalId)
@@ -292,9 +289,7 @@ export async function principalForInvocation(
   if (!row) return null;
 
   const reach = await reachableAccounts(db, identity.principalId);
-  const owned: AccountAccess | undefined = reach.find(
-    (a) => a.accountId === identity.accountId && !a.granted,
-  );
+  const owned: AccountAccess | undefined = reach.find((a) => a.accountId === identity.accountId && !a.granted);
   if (!owned) return null;
 
   return {

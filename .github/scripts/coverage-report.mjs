@@ -28,15 +28,12 @@ const rows = metrics.map((k) => {
   return `| ${name} | ${prev ? cell(prev[k]) : "—"} | ${cell(cur[k])} | ${delta(cur[k], prev?.[k])} |`;
 });
 
-console.log(
-  `## Coverage${prev ? " — vs. previous run" : " — baseline (no previous run to compare)"}`,
-);
+console.log(`## Coverage${prev ? " — vs. previous run" : " — baseline (no previous run to compare)"}`);
 console.log("");
 console.log("| Metric | Previous | Current | Δ (pp) |");
 console.log("|---|---|---|---|");
 console.log(rows.join("\n"));
 console.log("");
 console.log(
-  "Browse the full report: **Actions → this run → Artifacts → `coverage-html`** " +
-    "(download, open `index.html`).",
+  "Browse the full report: **Actions → this run → Artifacts → `coverage-html`** " + "(download, open `index.html`).",
 );

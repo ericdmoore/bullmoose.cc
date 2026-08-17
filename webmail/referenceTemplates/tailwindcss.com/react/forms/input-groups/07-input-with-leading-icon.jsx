@@ -1,4 +1,4 @@
-import { EnvelopeIcon } from "@heroicons/react/16/solid";
+import { EnvelopeIcon } from '@heroicons/react/16/solid'
 
 export default function Example() {
   return (
@@ -20,5 +20,5 @@ export default function Example() {
         />
       </div>
     </div>
-  );
+  )
 }

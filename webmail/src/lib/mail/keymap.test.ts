@@ -72,9 +72,7 @@ describe("resolveKey — typing wins", () => {
   });
 
   it("does not trap a contenteditable body", () => {
-    expect(resolveKey({ key: "e", target: { isContentEditable: true } }, "compose").handled).toBe(
-      false,
-    );
+    expect(resolveKey({ key: "e", target: { isContentEditable: true } }, "compose").handled).toBe(false);
   });
 
   it("still lets Escape out of a field", () => {
@@ -82,12 +80,8 @@ describe("resolveKey — typing wins", () => {
   });
 
   it("sends with Cmd/Ctrl+Enter from inside the composer", () => {
-    expect(resolveKey({ key: "Enter", metaKey: true, target: inField }, "compose").action).toBe(
-      "send",
-    );
-    expect(resolveKey({ key: "Enter", ctrlKey: true, target: inField }, "compose").action).toBe(
-      "send",
-    );
+    expect(resolveKey({ key: "Enter", metaKey: true, target: inField }, "compose").action).toBe("send");
+    expect(resolveKey({ key: "Enter", ctrlKey: true, target: inField }, "compose").action).toBe("send");
   });
 
   it("discards the composer on Escape", () => {

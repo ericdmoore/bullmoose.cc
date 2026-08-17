@@ -313,12 +313,7 @@ const DEFECTS: Defect[] = [
       count: 4,
     },
     rrule: "FREQ=YEARLY;BYMONTH=11;BYDAY=4TH;COUNT=4",
-    correct: [
-      "2026-11-26T17:00:00",
-      "2027-11-25T17:00:00",
-      "2028-11-23T17:00:00",
-      "2029-11-22T17:00:00",
-    ],
+    correct: ["2026-11-26T17:00:00", "2027-11-25T17:00:00", "2028-11-23T17:00:00", "2029-11-22T17:00:00"],
     wasExpandedTo: "the 26th of every November (byDay never read by the yearly branch)",
     wrongDates: ["2027-11-26T17:00:00", "2028-11-26T17:00:00", "2029-11-26T17:00:00"],
     reason: /byDay is discarded by the FREQ=YEARLY/,
@@ -334,12 +329,7 @@ const DEFECTS: Defect[] = [
       count: 4,
     },
     rrule: "FREQ=MONTHLY;BYMONTH=11;BYDAY=4TH;COUNT=4",
-    correct: [
-      "2026-11-26T17:00:00",
-      "2027-11-25T17:00:00",
-      "2028-11-23T17:00:00",
-      "2029-11-22T17:00:00",
-    ],
+    correct: ["2026-11-26T17:00:00", "2027-11-25T17:00:00", "2028-11-23T17:00:00", "2029-11-22T17:00:00"],
     wasExpandedTo: "the 4th Thursday of EVERY month, not just November",
     wrongDates: ["2026-12-24T17:00:00", "2027-01-28T17:00:00", "2027-02-25T17:00:00"],
     reason: /byMonth is discarded by the FREQ=MONTHLY/,
@@ -350,12 +340,7 @@ const DEFECTS: Defect[] = [
     timeZone: "Etc/UTC",
     rule: { frequency: "daily", byDay: [{ day: "mo" }], count: 4 },
     rrule: "FREQ=DAILY;BYDAY=MO;COUNT=4",
-    correct: [
-      "2026-03-09T09:00:00",
-      "2026-03-16T09:00:00",
-      "2026-03-23T09:00:00",
-      "2026-03-30T09:00:00",
-    ],
+    correct: ["2026-03-09T09:00:00", "2026-03-16T09:00:00", "2026-03-23T09:00:00", "2026-03-30T09:00:00"],
     wasExpandedTo: "every single day",
     wrongDates: ["2026-03-06T09:00:00", "2026-03-07T09:00:00", "2026-03-08T09:00:00"],
     reason: /byDay is discarded by the FREQ=DAILY/,
@@ -366,12 +351,7 @@ const DEFECTS: Defect[] = [
     timeZone: "Etc/UTC",
     rule: { frequency: "yearly", byMonth: ["12"], byMonthDay: [25], count: 4 },
     rrule: "FREQ=YEARLY;BYMONTH=12;BYMONTHDAY=25;COUNT=4",
-    correct: [
-      "2026-12-25T09:00:00",
-      "2027-12-25T09:00:00",
-      "2028-12-25T09:00:00",
-      "2029-12-25T09:00:00",
-    ],
+    correct: ["2026-12-25T09:00:00", "2027-12-25T09:00:00", "2028-12-25T09:00:00", "2029-12-25T09:00:00"],
     wasExpandedTo: "December 20th forever — five days early, every year",
     wrongDates: ["2027-12-20T09:00:00", "2028-12-20T09:00:00", "2029-12-20T09:00:00"],
     reason: /byMonthDay is discarded by the FREQ=YEARLY/,
@@ -522,11 +502,7 @@ const REJECTED: Array<[string, RecurrenceRule, RegExp]> = [
     { frequency: "monthly", bySetPosition: [2] },
     /needs byDay or byMonthDay/,
   ],
-  [
-    "BYDAY with a bogus day code",
-    { frequency: "weekly", byDay: [{ day: "xx" }] },
-    /is not a day code/,
-  ],
+  ["BYDAY with a bogus day code", { frequency: "weekly", byDay: [{ day: "xx" }] }, /is not a day code/],
   [
     "nthOfPeriod=0",
     { frequency: "monthly", byDay: [{ day: "mo", nthOfPeriod: 0 }] },
@@ -540,11 +516,7 @@ const REJECTED: Array<[string, RecurrenceRule, RegExp]> = [
   ],
   ["byYearDay", { frequency: "yearly", byYearDay: [100] }, /unknown rule part "byYearDay"/],
   ["byHour", { frequency: "daily", byHour: [9, 17] }, /unknown rule part "byHour"/],
-  [
-    "a non-Gregorian rscale",
-    { frequency: "yearly", rscale: "hebrew" },
-    /rscale=hebrew is not supported/,
-  ],
+  ["a non-Gregorian rscale", { frequency: "yearly", rscale: "hebrew" }, /rscale=hebrew is not supported/],
   [
     // The weekly branch anchors on Monday, which only shows when whole
     // weeks are skipped.
@@ -558,9 +530,7 @@ describe("value-level and unknown parts are refused too", () => {
   for (const [label, rule, reason] of REJECTED) {
     it(label, () => {
       expect(unsupportedRuleReason(rule)).toMatch(reason);
-      expect(() => eventSpan(event("2026-03-05T09:00:00", "Etc/UTC", [rule]))).toThrow(
-        UnsupportedRecurrenceError,
-      );
+      expect(() => eventSpan(event("2026-03-05T09:00:00", "Etc/UTC", [rule]))).toThrow(UnsupportedRecurrenceError);
     });
   }
 });
@@ -571,20 +541,11 @@ describe("the guard does not over-reject", () => {
     ["an explicit gregorian rscale", { frequency: "daily", rscale: "gregorian" }],
     ["skip=omit", { frequency: "monthly", byMonthDay: [31], skip: "omit" }],
     // Google Calendar emits WKST=SU on nearly every RRULE it writes.
-    [
-      "WKST=SU when INTERVAL is 1",
-      { frequency: "weekly", byDay: [{ day: "mo" }], firstDayOfWeek: "su" },
-    ],
-    [
-      "WKST=SU on a non-weekly rule",
-      { frequency: "monthly", byMonthDay: [1], firstDayOfWeek: "su" },
-    ],
+    ["WKST=SU when INTERVAL is 1", { frequency: "weekly", byDay: [{ day: "mo" }], firstDayOfWeek: "su" }],
+    ["WKST=SU on a non-weekly rule", { frequency: "monthly", byMonthDay: [1], firstDayOfWeek: "su" }],
     ["empty BY arrays (a no-op here)", { frequency: "yearly", byDay: [], byMonthDay: [] }],
     ["COUNT and UNTIL together", { frequency: "daily", count: 5, until: "2026-12-31T23:59:59" }],
-    [
-      "BYMONTH as numbers rather than strings",
-      { frequency: "yearly", byMonth: [3, 9] as unknown as string[] },
-    ],
+    ["BYMONTH as numbers rather than strings", { frequency: "yearly", byMonth: [3, 9] as unknown as string[] }],
     ["BYMONTHDAY=-31", { frequency: "monthly", byMonthDay: [-31] }],
   ];
   for (const [label, rule] of ok) {
@@ -713,12 +674,9 @@ describe("SUPPORTED_PARTS is the single source of truth", () => {
   });
 
   it("caps expansion regardless", () => {
-    const occ = expandOccurrences(
-      event("2026-01-01T09:00:00", "Etc/UTC", [{ frequency: "daily" }]),
-      {
-        before: Date.UTC(2100, 0, 1),
-      },
-    );
+    const occ = expandOccurrences(event("2026-01-01T09:00:00", "Etc/UTC", [{ frequency: "daily" }]), {
+      before: Date.UTC(2100, 0, 1),
+    });
     expect(occ.length).toBeLessThanOrEqual(MAX_OCCURRENCES);
   });
 });

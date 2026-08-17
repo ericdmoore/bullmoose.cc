@@ -86,9 +86,7 @@ describe("the two clocks stay DISTINCT (s07 §T0)", () => {
 
   it("a PENDING proposal is an 'expiring' item — its deadline clock, never the hold", () => {
     const p = proposal({ id: "pb", status: "pending", ...both });
-    expect(expiringItems([p], NOW, horizonEnd(NOW), ZONE).map((i) => i.id)).toEqual([
-      "expiring:pb",
-    ]);
+    expect(expiringItems([p], NOW, horizonEnd(NOW), ZONE).map((i) => i.id)).toEqual(["expiring:pb"]);
     expect(holdItems([p], NOW, horizonEnd(NOW), ZONE)).toEqual([]);
     const item = expiringItems([p], NOW, horizonEnd(NOW), ZONE)[0]!;
     expect(item.clockLabel).toBe("expires in 35m");
@@ -139,9 +137,7 @@ describe("horizon windowing", () => {
       status: "pending",
       expiresAt: new Date(NOW + 6 * HOUR).toISOString(),
     });
-    expect(expiringItems([near], NOW, horizonEnd(NOW), ZONE).map((i) => i.id)).toEqual([
-      "expiring:near",
-    ]);
+    expect(expiringItems([near], NOW, horizonEnd(NOW), ZONE).map((i) => i.id)).toEqual(["expiring:near"]);
   });
 
   it("ignores proposals with no deadline at all — no invented clock", () => {

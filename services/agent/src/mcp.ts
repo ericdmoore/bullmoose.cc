@@ -11,12 +11,7 @@ import {
   resolveInvocationToken,
   type InvocationIdentity,
 } from "@bullmoose/auth-core/invocation";
-import {
-  describeDenial,
-  effectiveNodeAuthority,
-  mayUse,
-  type NodeAuthority,
-} from "@bullmoose/scheduling";
+import { describeDenial, effectiveNodeAuthority, mayUse, type NodeAuthority } from "@bullmoose/scheduling";
 import { EMAIL_TOOLS } from "./emailTools.js";
 import { INTROSPECT_TOOLS } from "./introspectTools.js";
 import { ToolError } from "./jmapBridge.js";
@@ -241,9 +236,7 @@ export interface ToolDef {
  * are the expensive kind. When the answer is ambiguous the error NAMES the
  * candidates, so the next call succeeds instead of the model guessing.
  */
-function defaultAccountId(
-  principal: Principal,
-): { ok: true; accountId: string } | { ok: false; detail: string } {
+function defaultAccountId(principal: Principal): { ok: true; accountId: string } | { ok: false; detail: string } {
   // Owned only, and there is no fallback to grant-reached accounts on
   // purpose. It would be unreachable anyway — `principal.ts:149` resolves
   // grants only when the principal owns at least one account, because a
@@ -328,8 +321,7 @@ const ANALYTICS_TOOLS: ToolDef[] = [
     },
     async run({ env }, args) {
       const top = clampInt(args.top, 10, 1, 50);
-      const month =
-        typeof args.month === "string" && /^\d{4}-\d{2}$/.test(args.month) ? args.month : null;
+      const month = typeof args.month === "string" && /^\d{4}-\d{2}$/.test(args.month) ? args.month : null;
       const { results } = await env.DB.prepare(
         `SELECT vendor, currency, SUM(amount_cents) AS total_cents, COUNT(*) AS txns
          FROM spend_facts WHERE account_id = ? ${month ? "AND period_month = ?" : ""}
@@ -426,11 +418,7 @@ export const TOOLS: ToolDef[] = [
  *   cheap, and it is worth protecting: a future third credential type should
  *   also land here as a `Principal` and nowhere else.
  */
-export async function handleMcp(
-  request: Request,
-  env: Env,
-  authenticated?: Principal,
-): Promise<Response> {
+export async function handleMcp(request: Request, env: Env, authenticated?: Principal): Promise<Response> {
   if (request.method !== "POST") {
     return json({ error: "MCP: POST JSON-RPC only" }, 405);
   }
@@ -533,45 +521,24 @@ export async function handleMcp(
       // -32020 HeaderMismatch, not -32600. The spec assigns this code and a
       // client keys its retry on it; a generic "invalid request" is
       // indistinguishable from a malformed body.
-      return rpcError(
-        msg.id,
-        HEADER_MISMATCH,
-        "MCP-Protocol-Version header must equal _meta protocolVersion",
-        400,
-      );
+      return rpcError(msg.id, HEADER_MISMATCH, "MCP-Protocol-Version header must equal _meta protocolVersion", 400);
     }
     if (!SUPPORTED_VERSIONS.includes(headerVersion)) {
-      return rpcError(
-        msg.id,
-        UNSUPPORTED_PROTOCOL_VERSION,
-        `unsupported protocol version: ${headerVersion}`,
-        400,
-        {
-          supported: SUPPORTED_VERSIONS,
-          requested: headerVersion,
-        },
-      );
+      return rpcError(msg.id, UNSUPPORTED_PROTOCOL_VERSION, `unsupported protocol version: ${headerVersion}`, 400, {
+        supported: SUPPORTED_VERSIONS,
+        requested: headerVersion,
+      });
     }
     if (typeof meta[CAPS_META] !== "object" || meta[CAPS_META] === null) {
       // -32021 MissingRequiredClientCapability, not -32602.
-      return rpcError(
-        msg.id,
-        MISSING_CLIENT_CAPABILITY,
-        "_meta clientCapabilities is required per request",
-        400,
-      );
+      return rpcError(msg.id, MISSING_CLIENT_CAPABILITY, "_meta clientCapabilities is required per request", 400);
     }
     // `Mcp-Method` is REQUIRED on the modern lane and must agree with the
     // body. It exists so an intermediary can route without parsing JSON —
     // which only works if the two cannot disagree.
     const methodHeader = request.headers.get("Mcp-Method");
     if (methodHeader && methodHeader !== msg.method) {
-      return rpcError(
-        msg.id,
-        HEADER_MISMATCH,
-        "Mcp-Method header does not match the request method",
-        400,
-      );
+      return rpcError(msg.id, HEADER_MISMATCH, "Mcp-Method header does not match the request method", 400);
     }
   }
 
@@ -723,9 +690,7 @@ function visibleTools(
   envelope: { invocationId: string; effective: NodeAuthority } | null,
 ): ToolDef[] {
   if (!envelope) return TOOLS;
-  return TOOLS.filter(
-    (t) => principalHasScope(principal, t.scope) && envelopeAllows(envelope, t.name).ok,
-  );
+  return TOOLS.filter((t) => principalHasScope(principal, t.scope) && envelopeAllows(envelope, t.name).ok);
 }
 
 async function handleToolCall(
@@ -794,13 +759,7 @@ async function handleToolCall(
       `INSERT INTO grant_audit (grant_id, principal, account_id, method, at)
        VALUES (?, ?, ?, ?, ?)`,
     )
-      .bind(
-        decision.auditGrant.grantId,
-        principal.username,
-        accountId,
-        `mcp:${tool.name}`,
-        Date.now(),
-      )
+      .bind(decision.auditGrant.grantId, principal.username, accountId, `mcp:${tool.name}`, Date.now())
       .run();
   }
 

@@ -72,9 +72,7 @@ describe("no code path puts a token in a URL", () => {
 
     it(`${where} never builds a token query string`, () => {
       expect(src, "a literal ?token= / &token=").not.toMatch(/[?&]token=/);
-      expect(src, "URLSearchParams.set/append('token')").not.toMatch(
-        /\.(set|append)\(\s*["'`]token/,
-      );
+      expect(src, "URLSearchParams.set/append('token')").not.toMatch(/\.(set|append)\(\s*["'`]token/);
       expect(src, "access_token in a navigable URL").not.toMatch(/[?&]access_token=/);
     });
 

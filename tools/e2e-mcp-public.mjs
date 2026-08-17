@@ -100,11 +100,7 @@ section("A1 — the 401 that teaches");
       .then((r) => r.json())
       .catch(() => null);
     check(!!prm, "the advertised resource_metadata URL resolves", prmUrl);
-    check(
-      prm?.resource === RESOURCE,
-      "PRM resource equals the canonical URI",
-      `${prm?.resource} !== ${RESOURCE}`,
-    );
+    check(prm?.resource === RESOURCE, "PRM resource equals the canonical URI", `${prm?.resource} !== ${RESOURCE}`);
     // Claude uses the FIRST entry and does not fall back, so a list longer
     // than one is a silent single point of failure.
     check(
@@ -112,11 +108,7 @@ section("A1 — the 401 that teaches");
       "PRM names exactly one authorization server",
       JSON.stringify(prm?.authorization_servers),
     );
-    check(
-      prm?.authorization_servers?.[0] === AUTH,
-      "and it is the expected one",
-      prm?.authorization_servers?.[0],
-    );
+    check(prm?.authorization_servers?.[0] === AUTH, "and it is the expected one", prm?.authorization_servers?.[0]);
     check(
       !(prm?.resource ?? "/").endsWith("/") && !(prm?.resource ?? "").includes("#"),
       "resource URI has no trailing slash and no fragment (RFC 8707)",
@@ -137,10 +129,7 @@ section("A1 — the 401 that teaches");
 }
 
 section("A2 — protected resource metadata at both well-known paths");
-for (const path of [
-  "/.well-known/oauth-protected-resource/mcp",
-  "/.well-known/oauth-protected-resource",
-]) {
+for (const path of ["/.well-known/oauth-protected-resource/mcp", "/.well-known/oauth-protected-resource"]) {
   const res = await fetch(`${MCP}${path}`);
   // RFC 9728 §3.1 is path INSERTION, not suffixing; clients probe the
   // inserted form first and fall back to the root form.
@@ -154,25 +143,16 @@ let asMeta = null;
   check(res.ok, "AS metadata is served", `got ${res.status}`);
   asMeta = await res.json().catch(() => null);
   check(asMeta?.issuer === AUTH, "issuer matches the origin", asMeta?.issuer);
-  check(
-    !!asMeta?.authorization_endpoint && !!asMeta?.token_endpoint,
-    "authorize + token endpoints present",
-  );
+  check(!!asMeta?.authorization_endpoint && !!asMeta?.token_endpoint, "authorize + token endpoints present");
   // BOTH CIMD signals or Claude silently falls back to DCR, which registers a
   // fresh client on every connection.
-  check(
-    asMeta?.client_id_metadata_document_supported === true,
-    "advertises client_id_metadata_document_supported",
-  );
+  check(asMeta?.client_id_metadata_document_supported === true, "advertises client_id_metadata_document_supported");
   check(
     (asMeta?.token_endpoint_auth_methods_supported ?? []).includes("none"),
     'advertises "none" auth method — the second CIMD signal',
   );
   check((asMeta?.code_challenge_methods_supported ?? []).includes("S256"), "advertises PKCE S256");
-  check(
-    !(asMeta?.code_challenge_methods_supported ?? []).includes("plain"),
-    "and does NOT advertise plain PKCE",
-  );
+  check(!(asMeta?.code_challenge_methods_supported ?? []).includes("plain"), "and does NOT advertise plain PKCE");
 }
 
 section("A4 — refusals that do not need a credential");
@@ -190,11 +170,7 @@ section("A4 — refusals that do not need a credential");
 {
   const res = await fetch(`${MCP}/mcp`, { method: "GET" });
   // HTTP+SSE was removed in 2026-07-28 and is not implemented here.
-  check(
-    res.status === 405,
-    "GET /mcp is 405 — the SSE era is not implemented",
-    `got ${res.status}`,
-  );
+  check(res.status === 405, "GET /mcp is 405 — the SSE era is not implemented", `got ${res.status}`);
 }
 {
   const res = await fetch(`${MCP}/drain`, { method: "POST" });
@@ -320,9 +296,7 @@ if (!EMAIL || !PASSWORD) {
     if (process.env.BM_E2E_DEBUG) {
       // Deliberately not the token itself — a live credential does not belong
       // in a terminal, even behind a debug flag.
-      console.log(
-        `       DEBUG scope=${body?.scope} resource=${body?.resource} expires_in=${body?.expires_in}`,
-      );
+      console.log(`       DEBUG scope=${body?.scope} resource=${body?.resource} expires_in=${body?.expires_in}`);
     }
     check(res.ok, "code exchanges for a token", `${res.status} ${JSON.stringify(body)}`);
     token = body?.access_token;
@@ -362,11 +336,7 @@ if (!EMAIL || !PASSWORD) {
         return null;
       }
     })();
-    check(
-      answer?.principal === EMAIL.toLowerCase(),
-      "and it is the human who consented",
-      answer?.principal,
-    );
+    check(answer?.principal === EMAIL.toLowerCase(), "and it is the human who consented", answer?.principal);
     // The grant was `read`; the token must not carry the human's full authority.
     check(
       Array.isArray(answer?.tokenScopes) && answer.tokenScopes.join() === "read",
@@ -386,11 +356,7 @@ if (!EMAIL || !PASSWORD) {
       },
       { token, headers: { "MCP-Protocol-Version": "2025-06-18" } },
     );
-    check(
-      json?.error?.code === -32020,
-      "header/_meta mismatch is -32020 HeaderMismatch",
-      JSON.stringify(json?.error),
-    );
+    check(json?.error?.code === -32020, "header/_meta mismatch is -32020 HeaderMismatch", JSON.stringify(json?.error));
     check(res.status === 400, "with a 400");
   }
   if (token) {
@@ -403,11 +369,7 @@ if (!EMAIL || !PASSWORD) {
       },
       { token },
     );
-    check(
-      json?.error?.code === -32021,
-      "missing clientCapabilities is -32021",
-      JSON.stringify(json?.error),
-    );
+    check(json?.error?.code === -32021, "missing clientCapabilities is -32021", JSON.stringify(json?.error));
   }
   if (token) {
     const { json } = await rpc(
@@ -423,11 +385,7 @@ if (!EMAIL || !PASSWORD) {
       },
       { token },
     );
-    check(
-      json?.error?.code === -32004,
-      "an account the token cannot reach is -32004",
-      JSON.stringify(json?.error),
-    );
+    check(json?.error?.code === -32004, "an account the token cannot reach is -32004", JSON.stringify(json?.error));
   }
 
   section("B6 — both protocol eras on the same endpoint");
@@ -511,11 +469,7 @@ if (!EMAIL || !PASSWORD) {
       },
       { token },
     );
-    check(
-      res.status === 401,
-      "and the token issued from that code is now DEAD",
-      `got ${res.status}`,
-    );
+    check(res.status === 401, "and the token issued from that code is now DEAD", `got ${res.status}`);
   }
 }
 

@@ -18,9 +18,7 @@ function world() {
   const w = fakeEnv();
   w.db.seedAccount({ accountId: ACCOUNT, loginEmail: SELF, displayName: "Eric" });
   // The Sent mailbox — `mb.role='sent'` is what scopes the scan to sent mail.
-  w.db.seed("mailboxes", [
-    { id: "mb_sent", account_id: ACCOUNT, name: "Sent", role: "sent", sort_order: 0 },
-  ]);
+  w.db.seed("mailboxes", [{ id: "mb_sent", account_id: ACCOUNT, name: "Sent", role: "sent", sort_order: 0 }]);
   return w;
 }
 
@@ -58,12 +56,7 @@ function seedSent(
 }
 
 /** A reply landing in the account (any mailbox) from `sender` on `threadId`. */
-function seedReply(
-  w: ReturnType<typeof fakeEnv>,
-  sender: string,
-  threadId: string,
-  receivedAt: number,
-) {
+function seedReply(w: ReturnType<typeof fakeEnv>, sender: string, threadId: string, receivedAt: number) {
   w.db.seed("emails", [
     {
       id: `re_${receivedAt}`,

@@ -112,9 +112,7 @@ describe("uniqueName — the sidestep's rule, so both paths agree", () => {
 
   it("suffixes BEFORE the extension so the file still opens", () => {
     expect(uniqueName("report.pdf", new Set(["report.pdf"]))).toBe("report (2).pdf");
-    expect(uniqueName("report.pdf", new Set(["report.pdf", "report (2).pdf"]))).toBe(
-      "report (3).pdf",
-    );
+    expect(uniqueName("report.pdf", new Set(["report.pdf", "report (2).pdf"]))).toBe("report (3).pdf");
   });
 
   it("treats a leading dot as a dotfile, not an extension", () => {
@@ -122,9 +120,7 @@ describe("uniqueName — the sidestep's rule, so both paths agree", () => {
   });
 
   it("does not treat a long tail as an extension", () => {
-    expect(uniqueName("v1.2026-final-cut", new Set(["v1.2026-final-cut"]))).toBe(
-      "v1.2026-final-cut (2)",
-    );
+    expect(uniqueName("v1.2026-final-cut", new Set(["v1.2026-final-cut"]))).toBe("v1.2026-final-cut (2)");
   });
 
   it("builds its candidate set from a directory's children", () => {

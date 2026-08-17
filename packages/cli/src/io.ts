@@ -301,9 +301,7 @@ export function installEpipeGuard(): void {
 
 export function isBrokenPipe(err: unknown): boolean {
   const code = (err as { code?: string } | null)?.code;
-  return (
-    code === "EPIPE" || code === "ERR_STREAM_DESTROYED" || code === "ERR_STREAM_WRITE_AFTER_END"
-  );
+  return code === "EPIPE" || code === "ERR_STREAM_DESTROYED" || code === "ERR_STREAM_WRITE_AFTER_END";
 }
 
 // ────────────────────── §1.4 stdin as an input source ────────────────────────
@@ -428,10 +426,7 @@ export function conflict(message: string): never {
 export function failSetError(verb: string, err: unknown): never {
   const e = (err ?? {}) as { type?: string; description?: string };
   const detail = e.description ? ` — ${e.description}` : "";
-  throw new CliError(
-    `${verb} failed: ${e.type ?? "unknown"}${detail}`,
-    exitCodeForJmapType(e.type),
-  );
+  throw new CliError(`${verb} failed: ${e.type ?? "unknown"}${detail}`, exitCodeForJmapType(e.type));
 }
 
 /** Print `error: …` on stderr and exit with the mapped code. The one exit path. */

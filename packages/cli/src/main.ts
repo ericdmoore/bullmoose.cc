@@ -43,22 +43,10 @@ import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
 import { cmdCalendar } from "./calendar.js";
 import { cmdMailbox } from "./mailbox.js";
-import {
-  appendHtmlSignature,
-  appendTextSignature,
-  cmdIdentity,
-  type JmapIdentity,
-} from "./identity.js";
+import { appendHtmlSignature, appendTextSignature, cmdIdentity, type JmapIdentity } from "./identity.js";
 import { cmdBlobs, cmdShare } from "./blobs.js";
 import { cmdTriage } from "./triage.js";
-import {
-  findCommand,
-  helpJson,
-  renderCommand,
-  renderMan,
-  renderMarkdown,
-  renderOverview,
-} from "./help.js";
+import { findCommand, helpJson, renderCommand, renderMan, renderMarkdown, renderOverview } from "./help.js";
 
 // §1.2, and it has to be the FIRST thing that happens: every line below is a
 // write to a pipe that a `| head` may already have closed. `.plans/s05-cli-crud/
@@ -490,9 +478,7 @@ async function cmdInit(): Promise<void> {
 
   const accountId = account ?? session.primaryAccounts["urn:ietf:params:jmap:mail"];
   if (!accountId || !session.accounts[accountId]) {
-    notFound(
-      `account ${accountId ?? "(none)"} not in session; available: ${Object.keys(session.accounts).join(", ")}`,
-    );
+    notFound(`account ${accountId ?? "(none)"} not in session; available: ${Object.keys(session.accounts).join(", ")}`);
   }
 
   const accounts = Object.entries(session.accounts).map(([id, a]) => ({
@@ -548,12 +534,10 @@ function cmdAccounts(): void {
     return;
   }
   const rows = settings.accounts.map((a) => {
-    const state = db
-      .prepare("SELECT email_state, last_sync FROM sync_state WHERE account_id = ?")
-      .get(a.accountId) as { email_state: string | null; last_sync: number | null } | undefined;
-    const count = db
-      .prepare("SELECT COUNT(*) AS n FROM emails WHERE account_id = ?")
-      .get(a.accountId) as { n: number };
+    const state = db.prepare("SELECT email_state, last_sync FROM sync_state WHERE account_id = ?").get(a.accountId) as
+      | { email_state: string | null; last_sync: number | null }
+      | undefined;
+    const count = db.prepare("SELECT COUNT(*) AS n FROM emails WHERE account_id = ?").get(a.accountId) as { n: number };
     return {
       accountId: a.accountId,
       address: a.address ?? null,
@@ -569,9 +553,7 @@ function cmdAccounts(): void {
     return;
   }
   for (const r of rows) {
-    const synced = r.lastSync
-      ? `synced ${r.lastSync.slice(0, 16).replace("T", " ")}`
-      : "never synced";
+    const synced = r.lastSync ? `synced ${r.lastSync.slice(0, 16).replace("T", " ")}` : "never synced";
     const label = r.address ?? r.name ?? r.accountId.slice(-8);
     out(
       `${r.isDefault ? "★" : " "} ${label.padEnd(28)} ${String(r.messages).padStart(6)} msgs  ` +
@@ -598,8 +580,7 @@ async function cmdSend(): Promise<void> {
   const fromAccounts = opts.from ? matchAccounts(settings, opts.from) : [];
   if (fromAccounts.length > 1) {
     usage(
-      `--from "${opts.from}" matches ${fromAccounts.length} accounts; ` +
-        `name the sending account with --account`,
+      `--from "${opts.from}" matches ${fromAccounts.length} accounts; ` + `name the sending account with --account`,
     );
   }
   const sendAccount = fromAccounts[0]?.accountId ?? pickAccount(settings, opts.account).accountId;
@@ -686,11 +667,7 @@ async function cmdSend(): Promise<void> {
       // multipart/alternative and not the other, depending on which part the
       // recipient's client renders.
       text: appendTextSignature(assets.text, identity.textSignature ?? ""),
-      html: appendHtmlSignature(
-        assets.html,
-        identity.htmlSignature ?? "",
-        identity.textSignature ?? "",
-      ),
+      html: appendHtmlSignature(assets.html, identity.htmlSignature ?? "", identity.textSignature ?? ""),
       inline: assets.inline,
       attachments: assets.attachments,
     });
@@ -767,10 +744,7 @@ async function cmdSend(): Promise<void> {
       to: rcptTo.map((a) => a.email),
     });
   } else {
-    out(
-      `sent ${draftId} to ${rcptTo.map((a) => a.email).join(", ")} ` +
-        `(submission ${submission.id}${extras})`,
-    );
+    out(`sent ${draftId} to ${rcptTo.map((a) => a.email).join(", ")} ` + `(submission ${submission.id}${extras})`);
   }
 
   // Keep the local log current; best-effort.
@@ -864,9 +838,7 @@ async function cmdAgent(): Promise<void> {
     );
   }
   if (!opts.config && !opts.fleet) {
-    usage(
-      "agent serve requires --config <agent.json> (one binding) or --fleet <fleet.json> (fleet host)",
-    );
+    usage("agent serve requires --config <agent.json> (one binding) or --fleet <fleet.json> (fleet host)");
   }
   if (opts.config && opts.fleet) usage("agent serve takes --config OR --fleet, not both");
   const settings = requireSettings(db);
@@ -874,9 +846,7 @@ async function cmdAgent(): Promise<void> {
   // --fleet: ONE login as a runtime principal, served accounts DISCOVERED
   // from grants (s11 T8). --config: the original one-binding shape, the
   // login's own accounts — unchanged.
-  const fleet = opts.fleet
-    ? loadFleetConfig(opts.fleet)
-    : fleetFromSingle(loadAgentConfig(opts.config!));
+  const fleet = opts.fleet ? loadFleetConfig(opts.fleet) : fleetFromSingle(loadAgentConfig(opts.config!));
   await agentServe(db, client, settings, fleet, { once: opts.once, discover: !!opts.fleet });
 }
 
@@ -1232,8 +1202,7 @@ function cmdMailboxes(): void {
 
 function printRows(rows: LogRow[], showAccount = false): void {
   const settings = requireSettings(db);
-  const labelFor = (id: string) =>
-    accountLabel(settings.accounts.find((a) => a.accountId === id) ?? { accountId: id });
+  const labelFor = (id: string) => accountLabel(settings.accounts.find((a) => a.accountId === id) ?? { accountId: id });
   // §1.8 first: --ids is the `| xargs` shape and outranks every other format.
   if (io.ids) {
     emitIds(rows.map((r) => r.id));

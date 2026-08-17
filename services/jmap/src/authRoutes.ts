@@ -108,14 +108,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
     `INSERT INTO tokens (id, principal_id, secret_hash, name, scopes, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
   )
-    .bind(
-      minted.id,
-      principal.id,
-      minted.secretHash,
-      body.name ?? "device",
-      JSON.stringify(scopes),
-      Date.now(),
-    )
+    .bind(minted.id, principal.id, minted.secretHash, body.name ?? "device", JSON.stringify(scopes), Date.now())
     .run();
 
   const { results: accounts } = await env.DB.prepare(
@@ -140,12 +133,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
   });
 }
 
-export async function handleTokens(
-  request: Request,
-  url: URL,
-  env: Env,
-  principal: Principal,
-): Promise<Response> {
+export async function handleTokens(request: Request, url: URL, env: Env, principal: Principal): Promise<Response> {
   // Resolve principal id from the login email (tokens are per-principal).
   const p = await env.DB.prepare(`SELECT id FROM principals WHERE login_email = ?`)
     .bind(principal.username)
@@ -186,14 +174,7 @@ export async function handleTokens(
       `INSERT INTO tokens (id, principal_id, secret_hash, name, scopes, created_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
     )
-      .bind(
-        minted.id,
-        p.id,
-        minted.secretHash,
-        body.name ?? "token",
-        JSON.stringify(scopes),
-        Date.now(),
-      )
+      .bind(minted.id, p.id, minted.secretHash, body.name ?? "token", JSON.stringify(scopes), Date.now())
       .run();
     return json({ token: minted.token, tokenId: minted.id, scopes });
   }
@@ -201,9 +182,7 @@ export async function handleTokens(
   if (request.method === "DELETE") {
     const id = url.pathname.split("/")[3];
     if (!id) return json({ error: "token id required" }, 400);
-    const res = await env.DB.prepare(`DELETE FROM tokens WHERE id = ? AND principal_id = ?`)
-      .bind(id, p.id)
-      .run();
+    const res = await env.DB.prepare(`DELETE FROM tokens WHERE id = ? AND principal_id = ?`).bind(id, p.id).run();
     return json({ revoked: (res.meta.changes ?? 0) > 0 });
   }
 

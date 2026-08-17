@@ -35,16 +35,15 @@ import { addDenyDomain, rebuildBoundaryBloom, type BoundaryEnv } from "./boundar
  * resolved from the domain's own quarantine chain rows. The bloom rebuilds
  * ONCE per sweep, and only when something was actually added.
  */
-export async function sweepGraduations(
-  env: BoundaryEnv,
-): Promise<{ graduated: string[]; bloomRebuilt: boolean }> {
+export async function sweepGraduations(env: BoundaryEnv): Promise<{ graduated: string[]; bloomRebuilt: boolean }> {
   let rejects: Array<{ domain: string; rejects: number }>;
   let rescues: Array<{ domain: string; rescues: number }>;
   try {
     rejects = (
-      await env.DB.prepare(
-        `SELECT domain, SUM(count) AS rejects FROM deny_counters GROUP BY domain`,
-      ).all<{ domain: string; rejects: number }>()
+      await env.DB.prepare(`SELECT domain, SUM(count) AS rejects FROM deny_counters GROUP BY domain`).all<{
+        domain: string;
+        rejects: number;
+      }>()
     ).results;
     rescues = (
       await env.DB.prepare(
@@ -53,9 +52,7 @@ export async function sweepGraduations(
       ).all<{ domain: string; rescues: number }>()
     ).results;
   } catch (err) {
-    console.error(
-      `graduation sweep degraded to no-op (${err instanceof Error ? err.message : err})`,
-    );
+    console.error(`graduation sweep degraded to no-op (${err instanceof Error ? err.message : err})`);
     return { graduated: [], bloomRebuilt: false };
   }
 

@@ -8,13 +8,13 @@ attachment path at all** — `services/jmap/src/methods/email.ts:517` hardcodes
 - an agent cannot email you a report it generated (Eric's artifact use case);
 - the sidestep is inbound-only by necessity, not by choice.
 
-**Prefer the inversion where possible.** For _agent-authored_ artifacts the better shape is
+**Prefer the inversion where possible.** For *agent-authored* artifacts the better shape is
 file-first: write the FileNode, then send mail that REFERENCES it via `/api/share`. Cheaper
 (no MB through SMTP), revocable (a share link can be withdrawn; an attachment cannot), one
 canonical copy the agent can revise, and `file_nodes.last_writer_binding` already records
 which agent made it. Both `FileNode/set` and `/api/share` exist today.
 
-Compose attachments are still needed for mail to the _outside world_, where the recipient
+Compose attachments are still needed for mail to the *outside world*, where the recipient
 has no access to our drive and the bytes must travel. That is the case this task is for.
 
 Related gap, worth deciding at the same time: **`file_nodes` has no `write_policy`** while

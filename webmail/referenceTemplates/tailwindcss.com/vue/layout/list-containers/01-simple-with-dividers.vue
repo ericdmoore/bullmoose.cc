@@ -7,5 +7,5 @@
 </template>
 
 <script setup>
-const items = [{ id: 1 }, { id: 2 }, { id: 3 }];
+const items = [{ id: 1 }, { id: 2 }, { id: 3 }]
 </script>

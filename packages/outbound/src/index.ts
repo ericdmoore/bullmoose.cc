@@ -111,17 +111,14 @@ export class CloudflareRelay implements OutboundRelay {
       ...(Object.keys(headers).length > 0 ? { headers } : {}),
     };
 
-    const res = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${this.opts.accountId}/email/sending/send`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.opts.apiToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
+    const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${this.opts.accountId}/email/sending/send`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.opts.apiToken}`,
+        "content-type": "application/json",
       },
-    );
+      body: JSON.stringify(body),
+    });
     if (!res.ok) {
       throw new Error(`Cloudflare Email send failed (${res.status}): ${await res.text()}`);
     }

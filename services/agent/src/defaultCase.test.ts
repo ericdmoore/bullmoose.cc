@@ -55,9 +55,7 @@ async function scaffold() {
   const store = new Mailstore(w.env.DB, w.env.BLOBS);
   w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT, displayName: "Emily" });
   w.db.seed("identities", [{ id: "id_emily", account_id: ACCOUNT, email: SELF }]);
-  w.db.seed("agent_bindings", [
-    { id: "bind_emily", account_id: ACCOUNT, name: "emily", config_json: REPLY_CONFIG },
-  ]);
+  w.db.seed("agent_bindings", [{ id: "bind_emily", account_id: ACCOUNT, name: "emily", config_json: REPLY_CONFIG }]);
 
   const raw = buildMime({
     from: [{ email: SENDER }],

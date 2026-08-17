@@ -26,12 +26,7 @@
 
 import { backReference, type JmapClient } from "../jmap/JmapClient";
 import type { Invocation } from "../jmap/types";
-import {
-  CANDIDATE_EVENT_LIMIT,
-  DEFAULT_OCCURRENCE_CAP,
-  truncationOf,
-  type Truncation,
-} from "./scope";
+import { CANDIDATE_EVENT_LIMIT, DEFAULT_OCCURRENCE_CAP, truncationOf, type Truncation } from "./scope";
 import type { Calendar, CalendarEvent, Occurrence } from "./types";
 
 export const CALENDAR_ACCOUNT_CAP = "urn:ietf:params:jmap:calendars";
@@ -49,17 +44,12 @@ export interface CalendarListResult {
   state: string;
 }
 
-export async function loadCalendars(
-  client: JmapClient,
-  accountId: string,
-): Promise<CalendarListResult> {
+export async function loadCalendars(client: JmapClient, accountId: string): Promise<CalendarListResult> {
   const result = (await client.requestOne("Calendar/get", { accountId, ids: null })) as {
     list?: Calendar[];
     state?: string;
   };
-  const calendars = [...(result.list ?? [])].sort(
-    (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name),
-  );
+  const calendars = [...(result.list ?? [])].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
   return { calendars, state: result.state ?? "" };
 }
 
@@ -81,11 +71,7 @@ export interface WindowRequest {
   inCalendar?: string;
 }
 
-export async function loadWindow(
-  client: JmapClient,
-  accountId: string,
-  req: WindowRequest,
-): Promise<WindowResult> {
+export async function loadWindow(client: JmapClient, accountId: string, req: WindowRequest): Promise<WindowResult> {
   const cap = req.maxOccurrences ?? DEFAULT_OCCURRENCE_CAP;
   const window = { after: req.after, before: req.before };
 
@@ -133,8 +119,7 @@ export async function loadWindow(
   // The other two are best-effort: a window still renders without the honesty
   // count or the blobs, and failing the whole load over either would be worse.
   const queryResp = pick(responses, "q");
-  const matchingEvents =
-    queryResp && queryResp[0] !== "error" ? (queryResp[1] as { total?: number }).total : undefined;
+  const matchingEvents = queryResp && queryResp[0] !== "error" ? (queryResp[1] as { total?: number }).total : undefined;
 
   const getResp = pick(responses, "g");
   const events: Record<string, CalendarEvent> = {};
@@ -312,9 +297,7 @@ function flattenErrors(
  * writes need the `calendar` scope (`calendars.ts:200`) and there is no
  * per-operation split to name.
  */
-export function refusalOf(
-  detail: { type?: string; description?: string } | undefined,
-): CalendarRefusal {
+export function refusalOf(detail: { type?: string; description?: string } | undefined): CalendarRefusal {
   const type = detail?.type ?? "error";
   const message =
     type === "forbidden"

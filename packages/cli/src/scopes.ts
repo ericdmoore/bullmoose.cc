@@ -23,12 +23,7 @@ export const REALM_SCOPES = ["contacts", "calendar", "vault", "files"] as const;
 /** What `bullmoose login` / `bullmoose token create` may ask for (no `admin`).
  * `agent` (s10 T1) is the agent-runtime MARKER: it grants nothing and only
  * narrows — governed address books refuse agent-marked writers. */
-export const SELF_SERVICE_SCOPES: readonly string[] = [
-  ...MAIL_SCOPES,
-  ...REALM_SCOPES,
-  "mail",
-  "agent",
-];
+export const SELF_SERVICE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "mail", "agent"];
 
 /** What `bullmoose admin token create` may ask for — the operator plane. */
 export const TOKEN_SCOPES: readonly string[] = [...SELF_SERVICE_SCOPES, "admin"];
@@ -47,9 +42,7 @@ export const SCOPE_SUGGESTIONS: ReadonlyArray<{ scopes: string; use: string }> =
   { scopes: "mail,contacts,calendar", use: "a full device (JMAP + CardDAV + CalDAV)" },
 ];
 
-export type ParsedScopes =
-  | { ok: true; scopes: string[] | undefined }
-  | { ok: false; error: string };
+export type ParsedScopes = { ok: true; scopes: string[] | undefined } | { ok: false; error: string };
 
 /**
  * Parse a `--scopes a,b,c` flag.
@@ -63,11 +56,7 @@ export type ParsedScopes =
  * `--scopes ""` is a typo, and both "the server default" and "a token that
  * can do nothing" are worse guesses than saying so.
  */
-export function parseScopeFlag(
-  raw: string | undefined,
-  allowed: readonly string[],
-  required: boolean,
-): ParsedScopes {
+export function parseScopeFlag(raw: string | undefined, allowed: readonly string[], required: boolean): ParsedScopes {
   if (raw === undefined) {
     if (!required) return { ok: true, scopes: undefined };
     return { ok: false, error: `--scopes is required.\n${scopeHelp(allowed)}` };

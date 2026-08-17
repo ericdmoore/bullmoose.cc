@@ -236,12 +236,7 @@ interface Called {
   db: FakeWorker["db"];
 }
 
-async function callTool(
-  name: string,
-  args: Record<string, unknown>,
-  fx: Fixture,
-  w = world(fx),
-): Promise<Called> {
+async function callTool(name: string, args: Record<string, unknown>, fx: Fixture, w = world(fx)): Promise<Called> {
   const req = new Request("https://agent/mcp/analytics", {
     method: "POST",
     headers: headers(),
@@ -497,14 +492,7 @@ describe("015 — effective permissions, not raw scopes", () => {
   it("13. `mail` expands to the six verbs it actually confers", () => {
     // Done-when #3, and the claim the whole tool exists to make. Derived
     // through `hasScope` itself, so it cannot drift from the gate.
-    expect(effectiveScopes(["mail"])).toEqual([
-      "read",
-      "annotate",
-      "draft",
-      "move",
-      "send",
-      "delete",
-    ]);
+    expect(effectiveScopes(["mail"])).toEqual(["read", "annotate", "draft", "move", "send", "delete"]);
   });
 
   it("14. `mail` does NOT confer the realm scopes (common/001 is closed)", () => {
@@ -532,21 +520,9 @@ describe("015 — effective permissions, not raw scopes", () => {
   });
 
   it("16. whoami reports the TOKEN's effective permissions the same way", async () => {
-    const r = await callTool(
-      "whoami",
-      { accountId: "a_eric" },
-      eric({ scopes: ["mail", "contacts"] }),
-    );
+    const r = await callTool("whoami", { accountId: "a_eric" }, eric({ scopes: ["mail", "contacts"] }));
     expect(r.out.tokenScopes).toEqual(["mail", "contacts"]);
-    expect(r.out.tokenAllows).toEqual([
-      "read",
-      "annotate",
-      "draft",
-      "move",
-      "send",
-      "delete",
-      "contacts",
-    ]);
+    expect(r.out.tokenAllows).toEqual(["read", "annotate", "draft", "move", "send", "delete", "contacts"]);
   });
 
   it("17. on a grant-reached account, whoami reports token ∩ grant", async () => {
@@ -648,9 +624,7 @@ describe("015 — my_agents does not disclose binding config", () => {
       "my_agents",
       { accountId: "a_eric" },
       eric({
-        bindings: [
-          { id: "b_x", accountId: "a_eric", name: "loose", config: { replyMode: "send" } },
-        ],
+        bindings: [{ id: "b_x", accountId: "a_eric", name: "loose", config: { replyMode: "send" } }],
       }),
     );
     const warnings = JSON.stringify(r.out.bindings[0].warnings);

@@ -13,13 +13,7 @@ import {
   rowClocks,
   waitedLabel,
 } from "../lib/approvals/clocks";
-import {
-  applyEdit,
-  diffLines,
-  editorFor,
-  payloadDiff,
-  type EditorForm,
-} from "../lib/approvals/edit";
+import { applyEdit, diffLines, editorFor, payloadDiff, type EditorForm } from "../lib/approvals/edit";
 import {
   NEEDS_INFO_HINT,
   NEEDS_INFO_VERB,
@@ -119,8 +113,7 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
           if (resolved.mode === "demo") {
             // Demo-only and loaded on demand, so the fixtures and the fake
             // `/set` never reach a live bundle (the demoCalendar.ts pattern).
-            const { demoApprovalsOptions, installApprovalsDemo } =
-              await import("../lib/approvals/demoApprovals");
+            const { demoApprovalsOptions, installApprovalsDemo } = await import("../lib/approvals/demoApprovals");
             installApprovalsDemo(resolved.demo.client, demoApprovalsOptions(location.search));
             if (!cancelled) setIsDemo(true);
           }
@@ -178,9 +171,7 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
   const pending = ordered.filter((p) => p.status === "pending");
   const infoRequested = ordered.filter((p) => p.status === "info-requested");
   const held = ordered.filter((p) => p.status === "held");
-  const history = ordered.filter(
-    (p) => p.status !== "pending" && p.status !== "info-requested" && p.status !== "held",
-  );
+  const history = ordered.filter((p) => p.status !== "pending" && p.status !== "info-requested" && p.status !== "held");
 
   // Master-detail (triple panel, s07 T10 / Eric 2026-08-15): the rail is the
   // shell, this island owns the middle "headers" column and the right detail.
@@ -302,16 +293,14 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
   return (
     <main class="apq">
       {isDemo ? (
-        <p class="banner">
-          Sample data. Decisions here are kept in this browser tab and reach no server.
-        </p>
+        <p class="banner">Sample data. Decisions here are kept in this browser tab and reach no server.</p>
       ) : null}
 
       <header class="apq-head">
         <h1>Approvals</h1>
         <p class="muted apq-sub">
-          What agents want to do, waiting on you. Approve, edit, or decline — an edit is kept beside
-          the agent's original, so the difference is never lost.
+          What agents want to do, waiting on you. Approve, edit, or decline — an edit is kept beside the agent's
+          original, so the difference is never lost.
         </p>
         {/* The queue spans every account you can reach — yours, and each agent
             account a supervisory grant opens (s10 T7). Saying so is what makes
@@ -333,19 +322,14 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
 
       {loading ? <p class="muted apq-pad">Loading the queue…</p> : null}
 
-      {!loading && pending.length === 0 ? (
-        <p class="muted apq-pad">Nothing is waiting on you.</p>
-      ) : null}
+      {!loading && pending.length === 0 ? <p class="muted apq-pad">Nothing is waiting on you.</p> : null}
 
       {ordered.length > 0 ? (
         <div class="grid grid-cols-1 gap-x-6 lg:grid-cols-[22rem_1fr]">
           {/* COLUMN 2 — the headers. A compact, grouped, selectable list:
               what needs you first, then the secondary states. This is the
               "second column" of the triple-panel; the rail is the first. */}
-          <nav
-            aria-label="Proposals"
-            class="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
-          >
+          <nav aria-label="Proposals" class="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
             <HeaderGroup
               label="Waiting on you"
               tone="primary"
@@ -401,9 +385,7 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
                   onDecline={(reason, note) =>
                     void act(selected.id, { status: "rejected", reason, ...(note ? { note } : {}) })
                   }
-                  onNeedsInfo={(question) =>
-                    void act(selected.id, { status: "info-requested", question })
-                  }
+                  onNeedsInfo={(question) => void act(selected.id, { status: "info-requested", question })}
                   onSubmitEdit={(form) => submitEdit(selected, form)}
                   onCorrectDue={(dueAt) => void correctDue(selected.id, dueAt)}
                 />
@@ -454,10 +436,7 @@ function HeaderGroup(props: {
   return (
     <div class="mb-4">
       <h2
-        class={
-          "px-2 pb-1 text-xs font-semibold tracking-wide uppercase " +
-          (muted ? "text-gray-400" : "text-gray-500")
-        }
+        class={"px-2 pb-1 text-xs font-semibold tracking-wide uppercase " + (muted ? "text-gray-400" : "text-gray-500")}
       >
         {label} <span class="ml-1 font-normal text-gray-400">{items.length}</span>
       </h2>
@@ -478,12 +457,7 @@ function HeaderGroup(props: {
                     : "hover:bg-gray-50 dark:hover:bg-white/5")
                 }
               >
-                <span
-                  class={
-                    "line-clamp-2 " +
-                    (muted ? "text-gray-500" : "font-medium text-gray-900 dark:text-white")
-                  }
-                >
+                <span class={"line-clamp-2 " + (muted ? "text-gray-500" : "font-medium text-gray-900 dark:text-white")}>
                   {summarizeProposal(p)}
                 </span>
                 <span class="flex items-center gap-x-2 text-xs text-gray-500">
@@ -777,9 +751,7 @@ function RowHead({ p, label }: { p: ActionProposal; label: string }) {
       {label ? <span class="pill apq-account">{label}</span> : null}
       <span class="pill">{p.kind}</span>
       <span class={`pill apq-tier-${p.tier}`}>{tierLabel(p.tier)}</span>
-      {p.status !== "pending" ? (
-        <span class={`pill apq-status-${p.status}`}>{p.status}</span>
-      ) : null}
+      {p.status !== "pending" ? <span class={`pill apq-status-${p.status}`}>{p.status}</span> : null}
     </header>
   );
 }
@@ -825,8 +797,7 @@ function EditedDiff({ p }: { p: ActionProposal }) {
           </pre>
         ) : (
           <p key={f.key} class="apq-fine">
-            <code>{f.key}</code>: {JSON.stringify(f.before ?? null)} →{" "}
-            {JSON.stringify(f.after ?? null)}
+            <code>{f.key}</code>: {JSON.stringify(f.before ?? null)} → {JSON.stringify(f.after ?? null)}
           </p>
         ),
       )}
@@ -854,9 +825,7 @@ function EditPanel(props: {
             <input
               type="text"
               value={form.subject}
-              onInput={(e) =>
-                props.onChange({ ...form, subject: (e.target as HTMLInputElement).value })
-              }
+              onInput={(e) => props.onChange({ ...form, subject: (e.target as HTMLInputElement).value })}
             />
           </label>
           <label class="apq-label">
@@ -864,9 +833,7 @@ function EditPanel(props: {
             <textarea
               rows={8}
               value={form.text}
-              onInput={(e) =>
-                props.onChange({ ...form, text: (e.target as HTMLTextAreaElement).value })
-              }
+              onInput={(e) => props.onChange({ ...form, text: (e.target as HTMLTextAreaElement).value })}
             />
           </label>
         </>
@@ -877,9 +844,7 @@ function EditPanel(props: {
             rows={10}
             spellcheck={false}
             value={form.json}
-            onInput={(e) =>
-              props.onChange({ ...form, json: (e.target as HTMLTextAreaElement).value })
-            }
+            onInput={(e) => props.onChange({ ...form, json: (e.target as HTMLTextAreaElement).value })}
           />
         </label>
       )}
@@ -974,8 +939,8 @@ function DuePanel(props: {
   return (
     <div class="apq-editor">
       <p class="apq-fine">
-        When the work itself is due — the agent read it out of the message, so fix it if the reading
-        is wrong. Clearing it means "no deadline": the work is never treated as urgent.
+        When the work itself is due — the agent read it out of the message, so fix it if the reading is wrong. Clearing
+        it means "no deadline": the work is never treated as urgent.
       </p>
       <label class="apq-label">
         Due (your local time)
@@ -986,11 +951,7 @@ function DuePanel(props: {
         />
       </label>
       <div class="actions">
-        <button
-          type="button"
-          disabled={props.busy || props.value.trim().length === 0}
-          onClick={props.onSubmit}
-        >
+        <button type="button" disabled={props.busy || props.value.trim().length === 0} onClick={props.onSubmit}>
           Save due date
         </button>
         <button type="button" disabled={props.busy} onClick={props.onClear}>

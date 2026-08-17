@@ -12,11 +12,7 @@ const jmap = async (methodCalls) => {
     method: "POST",
     headers: H,
     body: JSON.stringify({
-      using: [
-        "urn:ietf:params:jmap:core",
-        "urn:ietf:params:jmap:mail",
-        "urn:ietf:params:jmap:submission",
-      ],
+      using: ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ietf:params:jmap:submission"],
       methodCalls,
     }),
   });
@@ -35,10 +31,7 @@ assert(noAuth.status === 401, "no token → 401");
 const session = await (await fetch(`${BASE}/.well-known/jmap`, { headers: H })).json();
 assert(session.accounts[ACCT], "session lists dev account");
 assert(session.apiUrl.endsWith("/api/jmap"), "apiUrl");
-assert(
-  session.capabilities["urn:ietf:params:jmap:core"].maxCallsInRequest === 16,
-  "core capability",
-);
+assert(session.capabilities["urn:ietf:params:jmap:core"].maxCallsInRequest === 16, "core capability");
 
 // 3. Mailbox/get
 let [[name, mb]] = await jmap([["Mailbox/get", { accountId: ACCT, ids: null }, "c0"]]);
@@ -101,9 +94,7 @@ assert(
 // 6. filters: text match + notKeyword excludes
 const [f1] = await jmap([["Email/query", { accountId: ACCT, filter: { text: "draft ☕" } }, "f"]]);
 assert(f1[1].ids.length === 1, "text filter matches");
-const [f2] = await jmap([
-  ["Email/query", { accountId: ACCT, filter: { notKeyword: "$draft" } }, "f"],
-]);
+const [f2] = await jmap([["Email/query", { accountId: ACCT, filter: { notKeyword: "$draft" } }, "f"]]);
 assert(f2[1].ids.length === 0, "notKeyword excludes the draft");
 
 // 7. Email/set patch: unset $seen, move Drafts → Sent
@@ -122,18 +113,12 @@ const [[, patchRes]] = await jmap([
     "p",
   ],
 ]);
-assert(
-  patchRes.updated && draftId in patchRes.updated,
-  `patch applied: ${JSON.stringify(patchRes.notUpdated)}`,
-);
+assert(patchRes.updated && draftId in patchRes.updated, `patch applied: ${JSON.stringify(patchRes.notUpdated)}`);
 const [gv] = await jmap([
   ["Email/get", { accountId: ACCT, ids: [draftId], properties: ["keywords", "mailboxIds"] }, "v"],
 ]);
 assert(!gv[1].list[0].keywords["$seen"], "$seen removed");
-assert(
-  gv[1].list[0].mailboxIds[sent.id] === true && !gv[1].list[0].mailboxIds[drafts.id],
-  "moved to Sent",
-);
+assert(gv[1].list[0].mailboxIds[sent.id] === true && !gv[1].list[0].mailboxIds[drafts.id], "moved to Sent");
 
 // 8. Mailbox counts reflect the move
 const [mb2] = await jmap([["Mailbox/get", { accountId: ACCT, ids: [sent.id, drafts.id] }, "m"]]);
@@ -148,10 +133,7 @@ assert(
 const [ch] = await jmap([["Email/changes", { accountId: ACCT, sinceState: "0" }, "ch"]]);
 assert(ch[1].created.includes(draftId), "changes since 0: created contains draft");
 const [ch2] = await jmap([["Email/changes", { accountId: ACCT, sinceState: state0 }, "ch2"]]);
-assert(
-  ch2[1].newState !== state0 || ch2[1].created.length + ch2[1].updated.length >= 0,
-  "changes from state0 ok",
-);
+assert(ch2[1].newState !== state0 || ch2[1].created.length + ch2[1].updated.length >= 0, "changes from state0 ok");
 
 // 10. Thread/get + Identity/get
 await jmap([["Thread/get", { accountId: ACCT, ids: [got.id ? g[1].list[0].id : draftId] }, "t"]]);

@@ -153,14 +153,10 @@ function world(fx: Fixture = {}): FakeWorker {
     })),
   );
 
-  const withAccount = <T extends object>(rows: T[]) =>
-    rows.map((r) => ({ account_id: ACCOUNT, ...r }));
+  const withAccount = <T extends object>(rows: T[]) => rows.map((r) => ({ account_id: ACCOUNT, ...r }));
   w.db.seed("mailboxes", withAccount(MAILBOXES));
   w.db.seed("emails", withAccount(fx.emails ?? [emailRow()]));
-  w.db.seed(
-    "email_mailboxes",
-    withAccount(fx.emailMailboxes ?? [{ email_id: "e_1", mailbox_id: INBOX }]),
-  );
+  w.db.seed("email_mailboxes", withAccount(fx.emailMailboxes ?? [{ email_id: "e_1", mailbox_id: INBOX }]));
   w.db.seed("email_keywords", withAccount(fx.emailKeywords ?? []));
   return w;
 }
@@ -185,11 +181,7 @@ interface RpcReply {
   text: string;
 }
 
-async function callTool(
-  w: FakeWorker,
-  name: string,
-  args: Record<string, unknown>,
-): Promise<RpcReply> {
+async function callTool(w: FakeWorker, name: string, args: Record<string, unknown>): Promise<RpcReply> {
   const req = new Request("https://agent/mcp/analytics", {
     method: "POST",
     headers: {
@@ -307,10 +299,7 @@ describe("reading mail over MCP", () => {
 
   it("reads a real message body out of the blob", async () => {
     const w = world();
-    const blobId = await putBody(
-      w,
-      mimeMessage("amazon@example.com", "Order", "Your order shipped.\r\n"),
-    );
+    const blobId = await putBody(w, mimeMessage("amazon@example.com", "Order", "Your order shipped.\r\n"));
     w.db.query(`UPDATE emails SET blob_id = ? WHERE id = 'e_1'`, blobId);
 
     const r = await callTool(w, "email_get_body", { accountId: ACCOUNT, ids: ["e_1"] });
@@ -354,9 +343,7 @@ describe("reading mail over MCP", () => {
     expect(boxes.map((b) => b.role).sort()).toEqual(["archive", "drafts", "inbox", "trash"]);
 
     const justArchive = await callTool(w, "mailbox_list", { accountId: ACCOUNT, role: "archive" });
-    expect((justArchive.data.mailboxes as Array<{ id: string }>).map((b) => b.id)).toEqual([
-      ARCHIVE,
-    ]);
+    expect((justArchive.data.mailboxes as Array<{ id: string }>).map((b) => b.id)).toEqual([ARCHIVE]);
   });
 });
 
@@ -515,12 +502,10 @@ describe("email_destroy is a hard delete and says so", () => {
     expect(r.body.result!.isError).toBeUndefined();
     expect(r.data).toMatchObject({ id: "e_1", destroyed: true });
 
-    const got = await callJmap<{ list: unknown[]; notFound: string[] }>(
-      w.env,
-      principalFor([ACCOUNT]),
-      "Email/get",
-      { accountId: ACCOUNT, ids: ["e_1"] },
-    );
+    const got = await callJmap<{ list: unknown[]; notFound: string[] }>(w.env, principalFor([ACCOUNT]), "Email/get", {
+      accountId: ACCOUNT,
+      ids: ["e_1"],
+    });
     expect(got.list).toEqual([]);
     expect(got.notFound).toEqual(["e_1"]);
     expect(mailboxesOf(w, "e_1")).toEqual([]);
@@ -555,18 +540,14 @@ describe("the per-tool scope gate refuses the specific verb", () => {
 
   it("refuses email_move to a read-only token", async () => {
     const w = world({ scopes: ["read"] });
-    refused(
-      await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }),
-    );
+    refused(await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }));
     expect(mailboxesOf(w, "e_1")).toEqual([INBOX]);
     expect(w.accountDo.commits).toEqual([]);
   });
 
   it("refuses email_destroy to a read-only token", async () => {
     const w = world({ scopes: ["read"] });
-    refused(
-      await callTool(w, "email_destroy", { accountId: ACCOUNT, emailId: "e_1", confirm: true }),
-    );
+    refused(await callTool(w, "email_destroy", { accountId: ACCOUNT, emailId: "e_1", confirm: true }));
     expect(mailboxesOf(w, "e_1")).toEqual([INBOX]);
   });
 
@@ -581,9 +562,7 @@ describe("the per-tool scope gate refuses the specific verb", () => {
     });
     expect(moved.body.result!.isError).toBeUndefined();
 
-    refused(
-      await callTool(w, "email_destroy", { accountId: ACCOUNT, emailId: "e_1", confirm: true }),
-    );
+    refused(await callTool(w, "email_destroy", { accountId: ACCOUNT, emailId: "e_1", confirm: true }));
     expect(mailboxesOf(w, "e_1")).toEqual([ARCHIVE]);
   });
 
@@ -608,9 +587,7 @@ describe("the per-tool scope gate refuses the specific verb", () => {
     });
     expect(flagged.body.result!.isError).toBeUndefined();
 
-    refused(
-      await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }),
-    );
+    refused(await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }));
     expect(mailboxesOf(w, "e_1")).toEqual([INBOX]);
   });
 
@@ -625,12 +602,8 @@ describe("the per-tool scope gate refuses the specific verb", () => {
     });
     expect(drafted.body.result!.isError).toBeUndefined();
 
-    refused(
-      await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }),
-    );
-    refused(
-      await callTool(w, "email_destroy", { accountId: ACCOUNT, emailId: "e_1", confirm: true }),
-    );
+    refused(await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }));
+    refused(await callTool(w, "email_destroy", { accountId: ACCOUNT, emailId: "e_1", confirm: true }));
   });
 
   it("still lets a read-only token read", async () => {
@@ -649,21 +622,15 @@ describe("the per-tool scope gate refuses the specific verb", () => {
     const r = await callTool(w, "email_query", { accountId: ACCOUNT });
     expect(r.status).toBe(200);
     expect(r.body.result!.isError).toBeUndefined();
-    refused(
-      await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }),
-    );
-    refused(
-      await callTool(w, "email_destroy", { accountId: ACCOUNT, emailId: "e_1", confirm: true }),
-    );
+    refused(await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }));
+    refused(await callTool(w, "email_destroy", { accountId: ACCOUNT, emailId: "e_1", confirm: true }));
   });
 
   it("cannot reach another principal's mail", async () => {
     // done-when #5, first half.
     const w = world({ owns: ["a_allen"], others: [ACCOUNT] });
     refused(await callTool(w, "email_query", { accountId: ACCOUNT }));
-    refused(
-      await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }),
-    );
+    refused(await callTool(w, "email_move", { accountId: ACCOUNT, emailId: "e_1", role: "archive" }));
     expect(mailboxesOf(w, "e_1")).toEqual([INBOX]);
   });
 

@@ -71,9 +71,7 @@ describe("week and day grids", () => {
   });
 
   it("gives a day exactly one day", () => {
-    expect(gridDays({ kind: "day", anchor: july(8), weekStartsOn: 0 }).map(dayKey)).toEqual([
-      "2026-07-08",
-    ]);
+    expect(gridDays({ kind: "day", anchor: july(8), weekStartsOn: 0 }).map(dayKey)).toEqual(["2026-07-08"]);
   });
 
   it("anchors a week on the requested first day", () => {
@@ -96,12 +94,8 @@ describe("paging and switching views", () => {
   });
 
   it("pages a week by seven days and a day by one", () => {
-    expect(dayKey(shiftGrid({ kind: "week", anchor: july(8), weekStartsOn: 0 }, 1).anchor)).toBe(
-      "2026-07-15",
-    );
-    expect(dayKey(shiftGrid({ kind: "day", anchor: july(8), weekStartsOn: 0 }, -1).anchor)).toBe(
-      "2026-07-07",
-    );
+    expect(dayKey(shiftGrid({ kind: "week", anchor: july(8), weekStartsOn: 0 }, 1).anchor)).toBe("2026-07-15");
+    expect(dayKey(shiftGrid({ kind: "day", anchor: july(8), weekStartsOn: 0 }, -1).anchor)).toBe("2026-07-07");
   });
 
   it("keeps the anchored DAY when switching month → week → day", () => {
@@ -113,9 +107,7 @@ describe("paging and switching views", () => {
     expect(gridDays(asWeek).map(dayKey)).toContain("2026-07-23");
     expect(dayKey(withView(asWeek, "day").anchor)).toBe("2026-07-23");
     // And back: a month grid ignores the day, so nothing changes on screen.
-    expect(gridDays(withView(asWeek, "month")).map(dayKey)).toEqual(
-      gridDays(month(july(1))).map(dayKey),
-    );
+    expect(gridDays(withView(asWeek, "month")).map(dayKey)).toEqual(gridDays(month(july(1))).map(dayKey));
   });
 
   it("keys a window by the DAYS ON SCREEN, not by the raw anchor", () => {
@@ -180,16 +172,12 @@ describe("the query window is wider than the grid, on purpose", () => {
 describe("labels", () => {
   it("names a month, a day and three shapes of week", () => {
     expect(gridTitle(month(july(1)))).toBe("July 2026");
-    expect(gridTitle({ kind: "day", anchor: july(8), weekStartsOn: 0 })).toBe(
-      "Wednesday, July 8, 2026",
-    );
+    expect(gridTitle({ kind: "day", anchor: july(8), weekStartsOn: 0 })).toBe("Wednesday, July 8, 2026");
     expect(gridTitle({ kind: "week", anchor: july(8), weekStartsOn: 0 })).toBe("July 5–11, 2026");
-    expect(gridTitle({ kind: "week", anchor: july(1), weekStartsOn: 0 })).toBe(
-      "June 28 – July 4, 2026",
+    expect(gridTitle({ kind: "week", anchor: july(1), weekStartsOn: 0 })).toBe("June 28 – July 4, 2026");
+    expect(gridTitle({ kind: "week", anchor: { year: 2025, month: 12, day: 31 }, weekStartsOn: 0 })).toBe(
+      "December 28, 2025 – January 3, 2026",
     );
-    expect(
-      gridTitle({ kind: "week", anchor: { year: 2025, month: 12, day: 31 }, weekStartsOn: 0 }),
-    ).toBe("December 28, 2025 – January 3, 2026");
   });
 
   it("rotates the weekday headings with the first day of the week", () => {

@@ -249,10 +249,7 @@ export function sharedAccountSession(): Session {
 
 // ── the backend ───────────────────────────────────────────────────────────
 
-export function installContactsDemo(
-  client: FakeJmapClient,
-  opts: ContactsDemoOptions = {},
-): ContactsDemoBackend {
+export function installContactsDemo(client: FakeJmapClient, opts: ContactsDemoOptions = {}): ContactsDemoBackend {
   const allBooks = opts.books ?? demoAddressBooks();
   const cards = opts.cards ?? demoContactCards();
   const allowed = opts.allowedBookIds ? new Set(opts.allowedBookIds) : null;
@@ -264,8 +261,7 @@ export function installContactsDemo(
     allBooks
       .filter((b) => !allowed || allowed.has(b.id))
       .map((b) => (allowed ? { ...b, myRights: SHAREE_RIGHTS, shareWith: null } : b));
-  const canSee = (bookId: string | undefined): boolean =>
-    bookId !== undefined && (!allowed || allowed.has(bookId));
+  const canSee = (bookId: string | undefined): boolean => bookId !== undefined && (!allowed || allowed.has(bookId));
   const visibleCards = (): ContactCard[] => cards.filter((c) => canSee(bookIdOf(c)));
 
   let stateCounter = 0;
@@ -291,10 +287,7 @@ export function installContactsDemo(
       // The whole method, refused — not per object. A sharee manages cards,
       // never books (contacts.ts:117-122).
       if (!mayManageBooks) {
-        return [
-          "error",
-          { type: "forbidden", description: "only the account owner manages address books" },
-        ];
+        return ["error", { type: "forbidden", description: "only the account owner manages address books" }];
       }
       if (guardState(args)) return ["error", { type: "stateMismatch" }];
 
@@ -306,9 +299,7 @@ export function installContactsDemo(
       const destroyed: string[] = [];
       const notDestroyed: Record<string, SetError> = {};
 
-      for (const [cid, spec] of Object.entries(
-        (args.create as Record<string, Record<string, unknown>>) ?? {},
-      )) {
+      for (const [cid, spec] of Object.entries((args.create as Record<string, Record<string, unknown>>) ?? {})) {
         const name = spec.name;
         if (typeof name !== "string" || name.length === 0) {
           notCreated[cid] = { type: "invalidProperties", properties: ["name"] };
@@ -328,9 +319,7 @@ export function installContactsDemo(
         created[cid] = { id: book.id, isDefault: book.isDefault, myRights: OWNER_RIGHTS };
       }
 
-      for (const [id, patch] of Object.entries(
-        (args.update as Record<string, Record<string, unknown>>) ?? {},
-      )) {
+      for (const [id, patch] of Object.entries((args.update as Record<string, Record<string, unknown>>) ?? {})) {
         const book = allBooks.find((b) => b.id === id);
         if (!book) {
           notUpdated[id] = { type: "notFound" };
@@ -360,8 +349,7 @@ export function installContactsDemo(
         destroyed.push(id);
       }
 
-      const touched =
-        Object.keys(created).length + Object.keys(updated).length + destroyed.length > 0;
+      const touched = Object.keys(created).length + Object.keys(updated).length + destroyed.length > 0;
       return {
         accountId: ACCOUNT,
         oldState,
@@ -390,9 +378,7 @@ export function installContactsDemo(
     "ContactCard/query": (args) => {
       const filter = (args.filter as DemoFilter | null) ?? null;
       const matched = visibleCards().filter((c) => matches(c, filter));
-      matched.sort(
-        sorter(args.sort as Array<{ property: string; isAscending: boolean }> | undefined),
-      );
+      matched.sort(sorter(args.sort as Array<{ property: string; isAscending: boolean }> | undefined));
       const position = Math.max(0, typeof args.position === "number" ? args.position : 0);
       const limit = Math.min(Math.max(1, typeof args.limit === "number" ? args.limit : 100), 256);
       return {
@@ -420,9 +406,7 @@ export function installContactsDemo(
       const notDestroyed: Record<string, SetError> = {};
       let seq = cards.length;
 
-      for (const [cid, spec] of Object.entries(
-        (args.create as Record<string, Record<string, unknown>>) ?? {},
-      )) {
+      for (const [cid, spec] of Object.entries((args.create as Record<string, Record<string, unknown>>) ?? {})) {
         if (spec.id !== undefined) {
           notCreated[cid] = {
             type: "invalidProperties",
@@ -492,9 +476,7 @@ export function installContactsDemo(
         created[cid] = { id: card.id, uid: card.uid, created: card.created, updated: card.updated };
       }
 
-      for (const [id, patch] of Object.entries(
-        (args.update as Record<string, Record<string, unknown>>) ?? {},
-      )) {
+      for (const [id, patch] of Object.entries((args.update as Record<string, Record<string, unknown>>) ?? {})) {
         const card = cards.find((c) => c.id === id && canSee(bookIdOf(c)));
         if (!card) {
           notUpdated[id] = { type: "notFound" };
@@ -518,8 +500,7 @@ export function installContactsDemo(
         }
       }
 
-      const touched =
-        Object.keys(created).length + Object.keys(updated).length + destroyed.length > 0;
+      const touched = Object.keys(created).length + Object.keys(updated).length + destroyed.length > 0;
       return {
         accountId: ACCOUNT,
         oldState,
@@ -588,9 +569,7 @@ interface DemoFilterCondition {
   phone?: string;
   note?: string;
 }
-type DemoFilter =
-  | DemoFilterCondition
-  | { operator: "AND" | "OR" | "NOT"; conditions: DemoFilter[] };
+type DemoFilter = DemoFilterCondition | { operator: "AND" | "OR" | "NOT"; conditions: DemoFilter[] };
 
 /** Mirrors `buildContactFilter` (mailstore:1762-1843). */
 function matches(card: ContactCard, filter: DemoFilter | null): boolean {
@@ -608,8 +587,7 @@ function matches(card: ContactCard, filter: DemoFilter | null): boolean {
   const anyOf = (map: unknown, fields: string[], needle: string): boolean =>
     values(map).some((entry) => fields.some((f) => like(entry[f] as string | undefined, needle)));
   const nameHit = (needle: string): boolean =>
-    like(card.name?.full, needle) ||
-    (card.name?.components ?? []).some((comp) => like(comp.value, needle));
+    like(card.name?.full, needle) || (card.name?.components ?? []).some((comp) => like(comp.value, needle));
 
   if (c.inAddressBook !== undefined && bookIdOf(card) !== c.inAddressBook) return false;
   if (c.uid !== undefined && card.uid !== c.uid) return false;
@@ -644,10 +622,8 @@ function sorter(sort: Array<{ property: string; isAscending: boolean }> | undefi
       const dir = s.isAscending ? 1 : -1;
       let cmp = 0;
       if (s.property === "name") cmp = displayName(a).localeCompare(displayName(b));
-      else if (s.property === "created")
-        cmp = Date.parse(a.created ?? "") - Date.parse(b.created ?? "");
-      else if (s.property === "updated")
-        cmp = Date.parse(a.updated ?? "") - Date.parse(b.updated ?? "");
+      else if (s.property === "created") cmp = Date.parse(a.created ?? "") - Date.parse(b.created ?? "");
+      else if (s.property === "updated") cmp = Date.parse(a.updated ?? "") - Date.parse(b.updated ?? "");
       if (cmp !== 0) return cmp * dir;
     }
     return a.id.localeCompare(b.id);

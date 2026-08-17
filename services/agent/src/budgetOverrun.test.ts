@@ -52,9 +52,7 @@ async function scaffold(bindingConfig: string = BUDGETED_CONFIG) {
   const store = new Mailstore(w.env.DB, w.env.BLOBS);
   w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT, displayName: "Photos" });
   w.db.seed("identities", [{ id: "id_photos", account_id: ACCOUNT, email: SELF }]);
-  w.db.seed("agent_bindings", [
-    { id: "bind_photos", account_id: ACCOUNT, name: "photos", config_json: bindingConfig },
-  ]);
+  w.db.seed("agent_bindings", [{ id: "bind_photos", account_id: ACCOUNT, name: "photos", config_json: bindingConfig }]);
 
   const raw = buildMime({
     from: [{ email: SENDER }],
@@ -181,8 +179,7 @@ function seedFreeClaim(w: FakeWorker, agoMs: number) {
   ]);
 }
 
-const payloadOf = (p: { payload_json: string }) =>
-  JSON.parse(p.payload_json) as Record<string, unknown>;
+const payloadOf = (p: { payload_json: string }) => JSON.parse(p.payload_json) as Record<string, unknown>;
 
 // ---- detection -------------------------------------------------------------
 
@@ -370,9 +367,7 @@ describe("idempotence: mark once → ask once", () => {
     // The representative gets claimed and completes (say the overage was
     // approved and the drain took it). The marker stays on the row — the
     // idempotence check reads it WITHOUT a status filter for exactly this.
-    s.w.db.sqlite.exec(
-      `UPDATE agent_invocations SET status = 'done', done_at = ${Date.now()} WHERE id = 'inv_wait'`,
-    );
+    s.w.db.sqlite.exec(`UPDATE agent_invocations SET status = 'done', done_at = ${Date.now()} WHERE id = 'inv_wait'`);
     s.seedInvocation("inv_new"); // fresh work arrives, still over cap
     expect(await s.sweep()).toEqual({ asked: 0 });
     expect(s.proposals()).toHaveLength(1);
@@ -601,9 +596,7 @@ describe('needsInfo — "what would it cost?" is answered from the record', () =
     // round past-due (guarded by the gate's own budget fragment), and T3's
     // backstop — which claims outside the policy gate for exactly this reason —
     // runs it on the next sweep.
-    s.w.db.sqlite.exec(
-      `UPDATE agent_invocations SET due_at = ${Date.now()} WHERE id = 'inv_answer'`,
-    );
+    s.w.db.sqlite.exec(`UPDATE agent_invocations SET due_at = ${Date.now()} WHERE id = 'inv_answer'`);
     expect(await drainOnly(s.w)).toBe(0); // the gated path refuses it, as designed
     await s.cron();
 

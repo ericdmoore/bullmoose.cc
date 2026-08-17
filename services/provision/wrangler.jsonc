@@ -9,8 +9,8 @@
       // Control plane; shares shard0 for the MVP.
       "binding": "DB",
       "database_name": "bullmoose-mail-shard0",
-      "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9",
-    },
+      "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9"
+    }
   ],
   "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }],
 
@@ -21,8 +21,8 @@
     // (e.g. bullmoose-jmap.<subdomain>.workers.dev, later mail.<domain>).
     // Enables the _jmap._tcp SRV record → `bullmoose login <email>`
     // works with no --base.
-    "JMAP_HOST": "bullmoose-jmap.eric-d-moore.workers.dev",
-  },
+    "JMAP_HOST": "bullmoose-jmap.eric-d-moore.workers.dev"
+  }
   // Secrets (wrangler secret put):
   //   ADMIN_TOKEN            — bearer token for this admin API
   //   CF_API_TOKEN           — Zone:Edit + Email Routing:Edit + DNS:Edit

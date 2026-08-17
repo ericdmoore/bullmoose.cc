@@ -98,10 +98,7 @@ export interface FieldDiff {
  * approval" — the retained original on the left, the human's word on the
  * right.
  */
-export function payloadDiff(
-  original: Record<string, unknown>,
-  edited: Record<string, unknown>,
-): FieldDiff[] {
+export function payloadDiff(original: Record<string, unknown>, edited: Record<string, unknown>): FieldDiff[] {
   const out: FieldDiff[] = [];
   for (const key of Object.keys(original)) {
     if (!(key in edited)) out.push({ key, before: original[key] });
@@ -132,13 +129,10 @@ export function diffLines(before: string, after: string): DiffLine[] {
   const a = before.split("\n");
   const b = after.split("\n");
   // lcs[i][j] = LCS length of a[i..] vs b[j..]
-  const lcs: number[][] = Array.from({ length: a.length + 1 }, () =>
-    new Array<number>(b.length + 1).fill(0),
-  );
+  const lcs: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
   for (let i = a.length - 1; i >= 0; i--) {
     for (let j = b.length - 1; j >= 0; j--) {
-      lcs[i]![j] =
-        a[i] === b[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+      lcs[i]![j] = a[i] === b[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
     }
   }
   const out: DiffLine[] = [];

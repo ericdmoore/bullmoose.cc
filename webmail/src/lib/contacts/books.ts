@@ -98,10 +98,7 @@ export function defaultContactsAccount(session: Session): ContactsAccount | unde
  * (contacts.ts:73), so a brand-new account returns one book rather than none.
  * A sharee never triggers that, which is correct: it is not their account.
  */
-export async function loadAddressBooks(
-  client: JmapClient,
-  accountId: string,
-): Promise<AddressBook[]> {
+export async function loadAddressBooks(client: JmapClient, accountId: string): Promise<AddressBook[]> {
   const result = await client.requestOne("AddressBook/get", { accountId, ids: null });
   return ((result.list as AddressBook[] | undefined) ?? []).map(normalizeBook).sort(compareBooks);
 }
@@ -174,10 +171,7 @@ export function bookName(books: AddressBook[], id: string | undefined): string |
  * A card whose book is not in `books` is not writable: either it is outside
  * this grant, or the list is stale. Both mean "do not offer it".
  */
-export function mayWriteCard(
-  books: AddressBook[],
-  card: { addressBookIds?: Record<string, boolean> },
-): boolean {
+export function mayWriteCard(books: AddressBook[], card: { addressBookIds?: Record<string, boolean> }): boolean {
   const id = bookIdOf(card.addressBookIds);
   return books.find((b) => b.id === id)?.myRights.mayWrite === true;
 }

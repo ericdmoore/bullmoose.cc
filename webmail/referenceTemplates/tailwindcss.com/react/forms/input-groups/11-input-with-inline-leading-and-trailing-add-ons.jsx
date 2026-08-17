@@ -6,9 +6,7 @@ export default function Example() {
       </label>
       <div className="mt-2">
         <div className="flex items-center rounded-md bg-white px-3 outline-1 -outline-offset-1 outline-gray-300 focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-indigo-600 dark:bg-white/5 dark:outline-white/10 dark:focus-within:outline-indigo-500">
-          <div className="shrink-0 text-base text-gray-500 select-none sm:text-sm/6 dark:text-gray-400">
-            $
-          </div>
+          <div className="shrink-0 text-base text-gray-500 select-none sm:text-sm/6 dark:text-gray-400">$</div>
           <input
             id="price"
             name="price"
@@ -26,5 +24,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  );
+  )
 }

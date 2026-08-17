@@ -2,10 +2,7 @@ export default function Example() {
   return (
     <div className="flex items-center justify-between">
       <span className="flex grow flex-col">
-        <label
-          id="availability-label"
-          className="text-sm/6 font-medium text-gray-900 dark:text-white"
-        >
+        <label id="availability-label" className="text-sm/6 font-medium text-gray-900 dark:text-white">
           Available to hire
         </label>
         <span id="availability-description" className="text-sm text-gray-500 dark:text-gray-400">
@@ -24,5 +21,5 @@ export default function Example() {
         />
       </div>
     </div>
-  );
+  )
 }

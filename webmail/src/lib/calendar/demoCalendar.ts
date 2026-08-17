@@ -84,8 +84,7 @@ export interface DemoCalendarBackend {
 
 // ── the one bit of real zone arithmetic, and it is the server's ───────────
 
-const asUtcMs = (dt: CivilDateTime): number =>
-  Date.UTC(dt.year, dt.month - 1, dt.day, dt.hour, dt.minute, dt.second);
+const asUtcMs = (dt: CivilDateTime): number => Date.UTC(dt.year, dt.month - 1, dt.day, dt.hour, dt.minute, dt.second);
 
 /**
  * Local wall clock in an IANA zone → UTC epoch ms.
@@ -425,10 +424,7 @@ export function createDemoCalendar(nowMs: number = Date.now()): DemoCalendarBack
           },
         ];
       }
-      const cap = Math.min(
-        typeof args.maxOccurrences === "number" ? args.maxOccurrences : 200,
-        1000,
-      );
+      const cap = Math.min(typeof args.maxOccurrences === "number" ? args.maxOccurrences : 200, 1000);
       const inCalendar = typeof args.inCalendar === "string" ? args.inCalendar : undefined;
       const ids = Array.isArray(args.ids) ? (args.ids as string[]) : undefined;
 
@@ -456,13 +452,10 @@ export function createDemoCalendar(nowMs: number = Date.now()): DemoCalendarBack
       const destroyed: string[] = [];
       const notDestroyed: Record<string, unknown> = {};
 
-      for (const [cid, spec] of Object.entries(
-        (args.create as Record<string, Record<string, unknown>>) ?? {},
-      )) {
+      for (const [cid, spec] of Object.entries((args.create as Record<string, Record<string, unknown>>) ?? {})) {
         const calendarId =
-          Object.entries((spec.calendarIds as Record<string, boolean>) ?? {}).find(
-            ([, v]) => v === true,
-          )?.[0] ?? calendars.find((c) => c.isDefault)?.id;
+          Object.entries((spec.calendarIds as Record<string, boolean>) ?? {}).find(([, v]) => v === true)?.[0] ??
+          calendars.find((c) => c.isDefault)?.id;
         if (!calendarId || !calendars.some((c) => c.id === calendarId)) {
           notCreated[cid] = { type: "invalidProperties", properties: ["calendarIds"] };
           continue;
@@ -495,9 +488,7 @@ export function createDemoCalendar(nowMs: number = Date.now()): DemoCalendarBack
         created[cid] = { id, uid, created: nowIso, updated: nowIso };
       }
 
-      for (const [id, patch] of Object.entries(
-        (args.update as Record<string, Record<string, unknown>>) ?? {},
-      )) {
+      for (const [id, patch] of Object.entries((args.update as Record<string, Record<string, unknown>>) ?? {})) {
         const row = rows.find((r) => r.id === id);
         if (!row) {
           notUpdated[id] = { type: "notFound" };
@@ -517,8 +508,7 @@ export function createDemoCalendar(nowMs: number = Date.now()): DemoCalendarBack
         }
       }
 
-      const touched =
-        Object.keys(created).length + Object.keys(updated).length + destroyed.length > 0;
+      const touched = Object.keys(created).length + Object.keys(updated).length + destroyed.length > 0;
       return {
         accountId: ACCOUNT,
         oldState,
@@ -545,11 +535,7 @@ export function createDemoCalendar(nowMs: number = Date.now()): DemoCalendarBack
  * and re-expands on the next read, and this one cannot without becoming the
  * second expander the header forbids.
  */
-function applyPatch(
-  row: DemoEventRow,
-  patch: Record<string, unknown>,
-  calendars: Calendar[],
-): string | null {
+function applyPatch(row: DemoEventRow, patch: Record<string, unknown>, calendars: Calendar[]): string | null {
   const next = structuredClone(row.event) as Record<string, unknown>;
   let nextCalendarId = row.calendarId;
 
@@ -588,10 +574,7 @@ function applyPatch(
 }
 
 /** Attach the calendar realm to a running demo client. */
-export function installDemoCalendar(
-  client: FakeJmapClient,
-  nowMs: number = Date.now(),
-): DemoCalendarBackend {
+export function installDemoCalendar(client: FakeJmapClient, nowMs: number = Date.now()): DemoCalendarBackend {
   const backend = createDemoCalendar(nowMs);
   for (const [name, handler] of Object.entries(backend.handlers)) client.setHandler(name, handler);
   return backend;

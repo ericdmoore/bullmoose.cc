@@ -1,12 +1,12 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import { Dialog, DialogBackdrop, DialogPanel, TransitionChild } from "@headlessui/react";
-import { HeartIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { PencilIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { useState } from 'react'
+import { Dialog, DialogBackdrop, DialogPanel, TransitionChild } from '@headlessui/react'
+import { HeartIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { PencilIcon, PlusIcon } from '@heroicons/react/20/solid'
 
 export default function Example() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(true)
 
   return (
     <div>
@@ -55,9 +55,7 @@ export default function Example() {
                           <h2 className="text-base font-semibold text-gray-900 dark:text-white">
                             <span className="sr-only">Details for </span>IMG_4985.HEIC
                           </h2>
-                          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                            3.9 MB
-                          </p>
+                          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">3.9 MB</p>
                         </div>
                         <button
                           type="button"
@@ -123,9 +121,7 @@ export default function Example() {
                               src="https://images.unsplash.com/photo-1502685104226-ee32379fefbe?ixlib=rb-=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=3&w=1024&h=1024&q=80"
                               className="size-8 rounded-full bg-gray-100 outline -outline-offset-1 outline-black/5 dark:bg-gray-800 dark:outline-white/10"
                             />
-                            <p className="ml-4 text-sm font-medium text-gray-900 dark:text-white">
-                              Aimee Douglas
-                            </p>
+                            <p className="ml-4 text-sm font-medium text-gray-900 dark:text-white">Aimee Douglas</p>
                           </div>
                           <button
                             type="button"
@@ -141,9 +137,7 @@ export default function Example() {
                               src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixqx=oilqXxSqey&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
                               className="size-8 rounded-full bg-gray-100 outline -outline-offset-1 outline-black/5 dark:bg-gray-800 dark:outline-white/10"
                             />
-                            <p className="ml-4 text-sm font-medium text-gray-900 dark:text-white">
-                              Andrea McMillan
-                            </p>
+                            <p className="ml-4 text-sm font-medium text-gray-900 dark:text-white">Andrea McMillan</p>
                           </div>
                           <button
                             type="button"
@@ -189,5 +183,5 @@ export default function Example() {
         </div>
       </Dialog>
     </div>
-  );
+  )
 }

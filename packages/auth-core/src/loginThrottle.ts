@@ -113,10 +113,7 @@ export async function beginLoginAttempt(
     block: ipBlocked ? "ip" : emailBlocked ? "email" : null,
     retryAfterSeconds: ipWin ? Math.max(1, Math.ceil((ipWin.resetAt - now) / 1000)) : 1,
     async fail() {
-      await Promise.all([
-        write(kv, emailKey, bump(emailWin, now), now),
-        write(kv, ipKey, bump(ipWin, now), now),
-      ]);
+      await Promise.all([write(kv, emailKey, bump(emailWin, now), now), write(kv, ipKey, bump(ipWin, now), now)]);
     },
     async succeed() {
       await Promise.all([kv.delete(emailKey), kv.delete(ipKey)]);
@@ -157,9 +154,6 @@ function bump(win: Window | null, now: number): Window {
  * demo-keys worker documents on its record writes).
  */
 function write(kv: KVNamespace, key: string, win: Window, now: number): Promise<void> {
-  const expiration = Math.max(
-    Math.ceil(win.resetAt / 1000),
-    Math.floor(now / 1000) + KV_MIN_EXPIRY_S,
-  );
+  const expiration = Math.max(Math.ceil(win.resetAt / 1000), Math.floor(now / 1000) + KV_MIN_EXPIRY_S);
   return kv.put(key, JSON.stringify(win), { expiration });
 }

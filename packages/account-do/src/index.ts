@@ -40,8 +40,7 @@ const LOG_WINDOW = 4096;
 const MAX_CHANGES_DEFAULT = 1024;
 
 const logKey = (seq: number) => `log:${seq.toString().padStart(12, "0")}`;
-const pendingKey = (fireAt: number, id: string) =>
-  `pending:${fireAt.toString().padStart(14, "0")}:${id}`;
+const pendingKey = (fireAt: number, id: string) => `pending:${fireAt.toString().padStart(14, "0")}:${id}`;
 
 /**
  * An armed response (agent-integration.md §8): fire at fireAt unless the
@@ -346,17 +345,10 @@ export class AccountDO implements DurableObject {
   // Hibernatable WebSocket callbacks. Full JMAP-over-WS (RFC 8887) request
   // handling is future work; for now the socket is push-only.
   async webSocketMessage(ws: WebSocket, _message: string | ArrayBuffer): Promise<void> {
-    ws.send(
-      JSON.stringify({ "@type": "RequestError", type: "urn:ietf:params:jmap:error:notRequest" }),
-    );
+    ws.send(JSON.stringify({ "@type": "RequestError", type: "urn:ietf:params:jmap:error:notRequest" }));
   }
 
-  async webSocketClose(
-    ws: WebSocket,
-    code: number,
-    _reason: string,
-    _clean: boolean,
-  ): Promise<void> {
+  async webSocketClose(ws: WebSocket, code: number, _reason: string, _clean: boolean): Promise<void> {
     ws.close(code === 1005 ? 1000 : code);
   }
 }
@@ -374,10 +366,7 @@ export function accountStub(ns: DurableObjectNamespace, accountId: string): Dura
 }
 
 /** Helper for workers: arm a pending response on the account's alarm. */
-export async function armResponder(
-  ns: DurableObjectNamespace,
-  pending: PendingResponse,
-): Promise<void> {
+export async function armResponder(ns: DurableObjectNamespace, pending: PendingResponse): Promise<void> {
   const res = await accountStub(ns, pending.accountId).fetch("https://do/arm", {
     method: "POST",
     body: JSON.stringify(pending),

@@ -17,9 +17,9 @@
 >
 > **Two further dead paths this issue didn't catch**, both from the same tensr port:
 >
-> 1. Done-detection read the ✅ off the first _line_ of the file. This repo puts it on the
->    _filename_, so it matched **1 file out of 13**. Both are accepted now, filename
->    canonical, and only _leading_ glyphs count (`title.includes("✅")` would close an
+> 1. Done-detection read the ✅ off the first *line* of the file. This repo puts it on the
+>    *filename*, so it matched **1 file out of 13**. Both are accepted now, filename
+>    canonical, and only *leading* glyphs count (`title.includes("✅")` would close an
 >    issue whose title merely quoted a checkmark).
 > 2. `numberOf`/`priorityOf` matched `001-P1-slug.md`. Every filename here is
 >    `001 -P1- slug.md`, **with spaces** — so both returned `null` for every file in the
@@ -27,14 +27,13 @@
 >    nothing. Fixed; the index is now priority-ordered and `next.<provider>` is real.
 >
 > **Decisions taken**, both recorded in `readme.md`:
->
 > - The `refactors/` sub-track is **dropped** (no such folder exists here), as proposed.
 > - The `📦completed/` archive is **dropped**, against the proposal. It never existed in
 >   this repo — 13 issues were closed in place — and issues cross-reference each other by
 >   path (`common/021`, `cli/010`), which relocating them would break. Closed items fold
 >   away under `<details>` instead. The script's only write is `_index.md`.
 > - Issue numbers are **one sequence per provider**, shared across its subsystem folders
->   (`fromClaude` 001–027, `fromCodex` 001–007). The original's severity _bands_ keyed off
+>   (`fromClaude` 001–027, `fromCodex` 001–007). The original's severity *bands* keyed off
 >   the number were a tensr convention this repo never adopted, and the data contradicts
 >   them (`024 -P1-` is a P1 in what they called the "medium" band) — so they are gone,
 >   replaced by a single `next.<provider>`.
@@ -52,7 +51,7 @@ Found while running the `.feedback` process itself — the janitor/indexer is cu
 folders (`forIOS/`, plus an optional `refactors/` sub-track). It discovers them with:
 
 ```js
-const isCategoryDir = (name) => name.startsWith("for"); // reindex.mjs:59
+const isCategoryDir = (name) => name.startsWith("for");   // reindex.mjs:59
 ```
 
 This repo's taxonomy is `from<Provider>/<subsystem>/`, and the subsystem folders come from
@@ -66,7 +65,7 @@ infra   → false
 
 (`"from"` vs `"for"` is a near-miss that reads as though it should match.)
 
-Result, even with the indexer now copied _into_ each provider folder:
+Result, even with the indexer now copied *into* each provider folder:
 
 ```
 $ node .feedback/fromClaude/reindex.mjs --dry-run
@@ -82,15 +81,15 @@ folder names on disk, so the file that claims to be authoritative governs nothin
 
 The mapping is otherwise consistent — folder name = `label ?? name`:
 
-| config entry                           | folder    |
-| -------------------------------------- | --------- |
-| `common`, `cli`, `webUI`               | same      |
-| `cloud-infra` (label `infra`)          | `infra`   |
+| config entry | folder |
+|---|---|
+| `common`, `cli`, `webUI` | same |
+| `cloud-infra` (label `infra`) | `infra` |
 | `agentic-components` (label `agentic`) | `agentic` |
 
 ## Minor
 
 - `config.yml:5` — `agentic-components ` has a trailing space in the YAML value.
-- `.feedback/readme.md`'s Clean Up section is truncated mid-sentence: _"A reinde file will"_.
+- `.feedback/readme.md`'s Clean Up section is truncated mid-sentence: *"A reinde file will"*.
 - The naming template says `{Issue Nuumnber}` (typo) and `-P{num}-` is undefined — I have assumed
   **P = priority** (P1 highest) for the files filed in this pass.

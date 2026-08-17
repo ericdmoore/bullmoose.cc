@@ -166,23 +166,14 @@ describe("--dry-run touches nothing", () => {
     // `fetch` with a throw, so any call at all fails the run.
     const preloadDir = mkdtempSync(resolve(tmpdir(), "bm-explorer-dry-"));
     const preload = resolve(preloadDir, "nofetch.mjs");
-    writeFileSync(
-      preload,
-      `globalThis.fetch = () => { throw new Error("NETWORK CALL DURING --dry-run"); };\n`,
-    );
+    writeFileSync(preload, `globalThis.fetch = () => { throw new Error("NETWORK CALL DURING --dry-run"); };\n`);
 
     const envPath = resolve(ROOT, ".env");
     const envBefore = existsSync(envPath) ? readFileSync(envPath) : null;
 
     const out = execFileSync(
       process.execPath,
-      [
-        "--import",
-        `file://${preload}`,
-        resolve(ROOT, "infra/bootstrap.mjs"),
-        "explorer",
-        "--dry-run",
-      ],
+      ["--import", `file://${preload}`, resolve(ROOT, "infra/bootstrap.mjs"), "explorer", "--dry-run"],
       { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     );
 
@@ -206,21 +197,11 @@ describe("--dry-run touches nothing", () => {
   it("13. --off previews the reversal and still writes nothing", () => {
     const preloadDir = mkdtempSync(resolve(tmpdir(), "bm-explorer-off-"));
     const preload = resolve(preloadDir, "nofetch.mjs");
-    writeFileSync(
-      preload,
-      `globalThis.fetch = () => { throw new Error("NETWORK CALL DURING --dry-run"); };\n`,
-    );
+    writeFileSync(preload, `globalThis.fetch = () => { throw new Error("NETWORK CALL DURING --dry-run"); };\n`);
 
     const out = execFileSync(
       process.execPath,
-      [
-        "--import",
-        `file://${preload}`,
-        resolve(ROOT, "infra/bootstrap.mjs"),
-        "explorer",
-        "--off",
-        "--dry-run",
-      ],
+      ["--import", `file://${preload}`, resolve(ROOT, "infra/bootstrap.mjs"), "explorer", "--off", "--dry-run"],
       { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     );
 

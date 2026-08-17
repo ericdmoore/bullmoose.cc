@@ -10,8 +10,8 @@
 - The birthday party changed locations.
 - Apparently you're supposed to remember to bring **two dozen individually wrapped, nut-free snacks** next Thursday.
 
-It's all floating in your email.
-How's that working for you?
+It's all floating in your email. 
+How's that working for you? 
 
 Ever have days where there are more hours than you have discipline?
 
@@ -26,7 +26,7 @@ remember to call them. You star the soccer email. You text your husband a screen
 
 Let's face it your inbox is trying to be a second brain - but its really just fancy post-it-notes.
 
-It remembers every message you've ever received ---
+It remembers every message you've ever received --- 
 but somehow **you** are expected to remember what matters across all that.
 
 # What if email could keep up?

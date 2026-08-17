@@ -87,8 +87,7 @@ export class ConsoleUnavailable extends Error {
     detail?: string,
   ) {
     super(
-      `The console read interface is not available: ${endpoint} returned ${status}` +
-        (detail ? ` — ${detail}` : ""),
+      `The console read interface is not available: ${endpoint} returned ${status}` + (detail ? ` — ${detail}` : ""),
     );
     this.name = "ConsoleUnavailable";
   }
@@ -153,9 +152,7 @@ export class HttpConsoleClient implements AgentConsoleClient {
   }
 
   agentDossier(accountId: string): Promise<AgentDossier> {
-    return this.get<AgentDossier>(
-      CONSOLE_ENDPOINTS.dossier.replace("{accountId}", encodeURIComponent(accountId)),
-    );
+    return this.get<AgentDossier>(CONSOLE_ENDPOINTS.dossier.replace("{accountId}", encodeURIComponent(accountId)));
   }
 
   listResources(accountId: string): Promise<ConsoleResource[]> {
@@ -175,9 +172,7 @@ export class HttpConsoleClient implements AgentConsoleClient {
 
   /** LIVE today. `credentialView` already returns exactly this shape. */
   async listCredentials(): Promise<ConsoleCredential[]> {
-    const body = await this.get<{ credentials: ConsoleCredential[] }>(
-      CONSOLE_ENDPOINTS.credentials,
-    );
+    const body = await this.get<{ credentials: ConsoleCredential[] }>(CONSOLE_ENDPOINTS.credentials);
     return body.credentials;
   }
 }
@@ -225,10 +220,7 @@ export class FakeConsoleClient implements AgentConsoleClient {
     return this.data.resources[accountId] ?? [];
   }
 
-  async resourceDossier(
-    resource: ConsoleResource,
-    window: ResourceWindow,
-  ): Promise<ResourceDossier> {
+  async resourceDossier(resource: ConsoleResource, window: ResourceWindow): Promise<ResourceDossier> {
     this.calls.push(`resourceDossier:${resourceKey(resource)}@${window.at}`);
     const d = this.data.resourceDossiers[resourceKey(resource)];
     if (!d) {

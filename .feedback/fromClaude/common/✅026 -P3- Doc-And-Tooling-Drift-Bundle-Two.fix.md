@@ -45,12 +45,12 @@ assert it, and it already has fixtures with multiple emails.
 
 Scope it to what Apple actually sends, not to RFC 4918 in full:
 
-| property                       | maps to                                          |
-| ------------------------------ | ------------------------------------------------ |
-| `displayname`                  | `Calendar/set` / `AddressBook/set` update `name` |
-| `{apple}calendar-color`        | `Calendar/set` update `color`                    |
-| `{caldav}calendar-description` | `Calendar/set` update `description`              |
-| everything else                | `403 Forbidden` in the multistatus, per-property |
+| property | maps to |
+|---|---|
+| `displayname` | `Calendar/set` / `AddressBook/set` update `name` |
+| `{apple}calendar-color` | `Calendar/set` update `color` |
+| `{caldav}calendar-description` | `Calendar/set` update `description` |
+| everything else | `403 Forbidden` in the multistatus, per-property |
 
 **The response shape is the part that is easy to get wrong.** `PROPPATCH` returns `207
 Multi-Status` with a `<propstat>` per property and a status per `<propstat>` — a partial
@@ -58,7 +58,6 @@ success is normal and must not be reported as a whole-request failure. `dav.ts` 
 multistatus responses for `PROPFIND`; reuse that builder rather than hand-rolling a second one.
 
 **Bread-crumbs:**
-
 - Route it exactly like `009` did: branch in the `handleDav` dispatcher **before**
   `requireBook`/`requireCalendar`, or the 404-before-405 trap `009` documented bites again.
 - Bump the collection `ctag` and `commitChanges` on success — same choreography as every other

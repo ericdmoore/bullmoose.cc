@@ -51,10 +51,7 @@ const OAUTH_KV_TITLE = "OAUTH_KV";
 
 import { MIGRATIONS } from "./migrations.mjs";
 
-const SCHEMAS = [
-  "packages/mailstore/sql/data-plane.sql",
-  "packages/mailstore/sql/control-plane.sql",
-];
+const SCHEMAS = ["packages/mailstore/sql/data-plane.sql", "packages/mailstore/sql/control-plane.sql"];
 
 // Deploy order IS the binding graph, derived from the wrangler configs:
 //
@@ -77,16 +74,7 @@ const SCHEMAS = [
 // `oauth` precedes `agent`, which binds OAUTH to validate access tokens —
 // the same edge, and the same failure if reversed (deploying against a
 // service that does not exist yet), as bureau-before-agent.
-export const DEPLOY_ORDER = [
-  "submit",
-  "jmap",
-  "bureau",
-  "oauth",
-  "agent",
-  "ingest",
-  "provision",
-  "anglebrackets",
-];
+export const DEPLOY_ORDER = ["submit", "jmap", "bureau", "oauth", "agent", "ingest", "provision", "anglebrackets"];
 
 const cfg = (w) => `services/${w}/wrangler.jsonc`;
 // Configs that carry resource ids to wire. anglebrackets has no KV binding —
@@ -295,18 +283,13 @@ function run(bin, cmdArgs, { capture = false, input, allowFail = false } = {}) {
     input,
     encoding: "utf8",
     shell: isWin, // npm/npx need shell resolution on Windows
-    stdio: capture
-      ? ["pipe", "pipe", "inherit"]
-      : input !== undefined
-        ? ["pipe", "inherit", "inherit"]
-        : "inherit",
+    stdio: capture ? ["pipe", "pipe", "inherit"] : input !== undefined ? ["pipe", "inherit", "inherit"] : "inherit",
   });
   if (r.error) {
     if (allowFail) return { status: 1, stdout: "" };
     die(`could not run ${bin}: ${r.error.message}`);
   }
-  if (r.status !== 0 && !allowFail)
-    die(`${bin} ${cmdArgs.slice(0, 3).join(" ")}… exited ${r.status}`);
+  if (r.status !== 0 && !allowFail) die(`${bin} ${cmdArgs.slice(0, 3).join(" ")}… exited ${r.status}`);
   return { status: r.status ?? 0, stdout: r.stdout ?? "" };
 }
 const wrangler = (a, opts) => run("npx", ["wrangler", ...a], opts);
@@ -322,8 +305,7 @@ function parseJson(text, fallback) {
     return fallback;
   }
 }
-const firstOf = (obj, keys) =>
-  keys.map((k) => obj?.[k]).find((v) => typeof v === "string" && v.length > 0);
+const firstOf = (obj, keys) => keys.map((k) => obj?.[k]).find((v) => typeof v === "string" && v.length > 0);
 
 // ─────────────────────── wire: the JSONC id rewrite ─────────────────────────
 // Pure + exported so it can be unit-tested without touching real files. Anchored
@@ -480,11 +462,7 @@ function loadEnv() {
   // working and, more importantly, does NOT read as "no secrets present" —
   // that is the state the rotation guard turns into a refusal, and without
   // this fallback the guard would fire on the one machine that is correct.
-  const from = existsSync(rel(ENV_FILE))
-    ? ENV_FILE
-    : existsSync(rel(ENV_LEGACY))
-      ? ENV_LEGACY
-      : null;
+  const from = existsSync(rel(ENV_FILE)) ? ENV_FILE : existsSync(rel(ENV_LEGACY)) ? ENV_LEGACY : null;
   if (!from) return env;
   for (const line of readFileSync(rel(from), "utf8").split("\n")) {
     const m = line.match(/^\s*([A-Z][A-Z0-9_]+)\s*=\s*(.*)$/);
@@ -502,9 +480,7 @@ function loadEnv() {
     }
   }
   if (from === ENV_LEGACY) {
-    warn(
-      `read ${ENV_LEGACY} — migrating to ${ENV_FILE}; delete the old file once this run succeeds`,
-    );
+    warn(`read ${ENV_LEGACY} — migrating to ${ENV_FILE}; delete the old file once this run succeeds`);
   }
 
   // Fill canonical names from role-named aliases. Canonical wins if both exist.
@@ -608,16 +584,13 @@ function resolveIds({ mustExist = true } = {}) {
   // versa: `endsWith` is what tolerates wrangler's "<worker>-ROUTES" naming,
   // and an unanchored match would happily return the wrong namespace.
   const kvList = Array.isArray(kvs) ? kvs : [];
-  const matchKv = (title) =>
-    kvList.find((x) => x?.title === title || x?.title?.endsWith(`-${title}`));
+  const matchKv = (title) => kvList.find((x) => x?.title === title || x?.title?.endsWith(`-${title}`));
   const kv = matchKv(KV_TITLE);
   const d1Id = firstOf(d1, ["uuid", "database_id", "id"]);
   const kvId = firstOf(kv, ["id", "namespace_id"]);
   const oauthKvId = firstOf(matchKv(OAUTH_KV_TITLE), ["id", "namespace_id"]);
   if (mustExist && (!d1Id || !kvId)) {
-    die(
-      `could not resolve ids (d1=${d1Id ?? "?"}, kv=${kvId ?? "?"}). Run the 'resources' phase first.`,
-    );
+    die(`could not resolve ids (d1=${d1Id ?? "?"}, kv=${kvId ?? "?"}). Run the 'resources' phase first.`);
   }
   return { d1Id, kvId, oauthKvId };
 }
@@ -652,9 +625,7 @@ function resources() {
 function wire() {
   step("wire — resource ids → services/*/wrangler.jsonc");
   const { d1Id, kvId, oauthKvId } = resolveIds();
-  info(
-    `d1 ${paint(c.dim, d1Id)}   kv ${paint(c.dim, kvId)}   oauth-kv ${paint(c.dim, oauthKvId ?? "—")}`,
-  );
+  info(`d1 ${paint(c.dim, d1Id)}   kv ${paint(c.dim, kvId)}   oauth-kv ${paint(c.dim, oauthKvId ?? "—")}`);
   let n = 0;
   for (const path of CONFIGS) {
     const before = readFileSync(rel(path), "utf8");
@@ -719,10 +690,10 @@ function migrate() {
     for (const sql of m.up) {
       // SQLite has no ADD COLUMN IF NOT EXISTS, so a partially-applied group
       // re-runs into `duplicate column name`. That is success, not failure.
-      const r = wrangler(
-        ["d1", "execute", D1_NAME, "--remote", "--command", sql, ...(YES ? ["--yes"] : [])],
-        { capture: true, allowFail: true },
-      );
+      const r = wrangler(["d1", "execute", D1_NAME, "--remote", "--command", sql, ...(YES ? ["--yes"] : [])], {
+        capture: true,
+        allowFail: true,
+      });
       if (r.status !== 0 && !/duplicate column name/i.test(r.stdout)) {
         die(`${m.id} failed on: ${sql.split("\n")[0].trim()}`);
       }
@@ -737,9 +708,7 @@ function migrate() {
   if (unknown.length) {
     warn(`could not read state for: ${unknown.join(", ")} — applied blind, verify by hand`);
   }
-  info(
-    applied ? `${applied} migration(s) applied` : "nothing to do — every migration already applied",
-  );
+  info(applied ? `${applied} migration(s) applied` : "nothing to do — every migration already applied");
 }
 
 /**
@@ -847,9 +816,7 @@ function secrets() {
       for (const w of spec.workers) putSecret(name, w, value);
       ok(`${name} → ${spec.workers.join(", ")}`);
     } else if (spec.required) {
-      warn(
-        `${name} not set in ${ENV_FILE} — add it (${spec.note || "required"}) and re-run 'secrets'`,
-      );
+      warn(`${name} not set in ${ENV_FILE} — add it (${spec.note || "required"}) and re-run 'secrets'`);
     } else {
       info(`${name} skipped (${spec.note || "optional"})`);
     }
@@ -928,9 +895,7 @@ async function exploreDns(env, on) {
   // resort rather than the first choice.
   const token = env.CF_API_TOKEN ?? env.BULLMOOSE_RUNTIME_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN;
   if (!token) {
-    warn(
-      `no API token for DNS — set CF_API_TOKEN (DNS:Edit on ${EXPLORE_ZONE}) in ${ENV_FILE}. DNS untouched.`,
-    );
+    warn(`no API token for DNS — set CF_API_TOKEN (DNS:Edit on ${EXPLORE_ZONE}) in ${ENV_FILE}. DNS untouched.`);
     return false;
   }
 
@@ -947,10 +912,7 @@ async function exploreDns(env, on) {
     return false;
   }
 
-  const found = await cfApi(
-    token,
-    `/zones/${zoneId}/dns_records?name=${encodeURIComponent(EXPLORE_HOSTNAME)}`,
-  );
+  const found = await cfApi(token, `/zones/${zoneId}/dns_records?name=${encodeURIComponent(EXPLORE_HOSTNAME)}`);
   if (!found.success) {
     warn(`DNS read for ${EXPLORE_HOSTNAME} failed: ${cfMessage(found)} — DNS untouched`);
     return false;
@@ -960,16 +922,12 @@ async function exploreDns(env, on) {
   if (on) {
     if (records.length > 0) {
       const r = records[0];
-      ok(
-        `DNS ${EXPLORE_HOSTNAME} (exists: ${r.type} → ${r.content}${r.proxied ? ", proxied" : ""})`,
-      );
+      ok(`DNS ${EXPLORE_HOSTNAME} (exists: ${r.type} → ${r.content}${r.proxied ? ", proxied" : ""})`);
       // An unproxied record answers with its own content and never reaches a
       // Worker route — for 100:: that is a black hole, for a CNAME it is the
       // app. Either way the explorer would look deployed and serve nothing.
       if (!r.proxied) {
-        warn(
-          `that record is NOT proxied — a grey-cloud record never reaches a Worker route. Orange-cloud it.`,
-        );
+        warn(`that record is NOT proxied — a grey-cloud record never reaches a Worker route. Orange-cloud it.`);
         return false;
       }
       return true;
@@ -996,9 +954,7 @@ async function exploreDns(env, on) {
     if (del.success || del.status === 404) gone++;
     else warn(`could not delete ${r.type} ${r.name}: ${cfMessage(del)}`);
   }
-  ok(
-    `DNS ${EXPLORE_HOSTNAME} removed (${gone}/${records.length}) — the hostname no longer resolves`,
-  );
+  ok(`DNS ${EXPLORE_HOSTNAME} removed (${gone}/${records.length}) — the hostname no longer resolves`);
   return gone === records.length;
 }
 
@@ -1008,9 +964,7 @@ function exploreConfigEdit(on) {
   const before = readFileSync(rel(path), "utf8");
   const r = exploreSwitch(before, on);
   for (const what of r.missing) {
-    warn(
-      `${path}: no line matching the ${what} — the file drifted from bootstrap's literals; edit it by hand`,
-    );
+    warn(`${path}: no line matching the ${what} — the file drifted from bootstrap's literals; edit it by hand`);
   }
   for (const what of r.already) ok(`${path} ${what} (already ${on ? "on" : "off"})`);
   if (!r.changed) return r;
@@ -1028,9 +982,7 @@ async function exploreRegister(env) {
   const plan = exploreRegistrationPlan(env);
   if (!plan.register) {
     ok(`OAuth client (already registered — ${env.EXPLORE_CLIENT_ID})`);
-    info(
-      "not re-registering: a second registration orphans a client the AS cannot enumerate or revoke",
-    );
+    info("not re-registering: a second registration orphans a client the AS cannot enumerate or revoke");
     return false;
   }
   if (DRY) {
@@ -1046,20 +998,15 @@ async function exploreRegister(env) {
       body: JSON.stringify(plan.body),
     });
   } catch (e) {
-    warn(
-      `could not reach ${plan.url} (${e}) — nothing registered; re-run this phase once the AS is up`,
-    );
+    warn(`could not reach ${plan.url} (${e}) — nothing registered; re-run this phase once the AS is up`);
     return false;
   }
   if (!res.ok) {
-    warn(
-      `${plan.url} returned ${res.status} — nothing registered, and nothing written to ${ENV_FILE}`,
-    );
+    warn(`${plan.url} returned ${res.status} — nothing registered, and nothing written to ${ENV_FILE}`);
     return false;
   }
   const body = await res.json().catch(() => null);
-  const id =
-    typeof body?.client_id === "string" && body.client_id.length > 0 ? body.client_id : null;
+  const id = typeof body?.client_id === "string" && body.client_id.length > 0 ? body.client_id : null;
   if (!id) {
     warn(`${plan.url} returned no client_id — nothing stored`);
     return false;
@@ -1112,11 +1059,7 @@ function exploreSecrets(env) {
     minted = true;
   }
   saveEnv(env);
-  info(
-    minted
-      ? `minted EXPLORE_COOKIE_KEY into ${ENV_FILE}`
-      : `reusing EXPLORE_COOKIE_KEY from ${ENV_FILE}`,
-  );
+  info(minted ? `minted EXPLORE_COOKIE_KEY into ${ENV_FILE}` : `reusing EXPLORE_COOKIE_KEY from ${ENV_FILE}`);
 
   for (const [name, spec] of Object.entries(EXPLORE_SECRETS)) {
     const value = env[name];
@@ -1127,8 +1070,7 @@ function exploreSecrets(env) {
         // have this yet. Say so rather than reporting a problem that only
         // exists because this was a preview.
         info(`${name} not shown — a real run has it by now, from step 3`);
-      } else
-        warn(`${name} not set — sign-in will answer 503 "explorer_not_configured" until it is`);
+      } else warn(`${name} not set — sign-in will answer 503 "explorer_not_configured" until it is`);
       continue;
     }
     for (const w of spec.workers) putSecret(name, w, value);
@@ -1265,10 +1207,7 @@ async function doctor() {
         `200 with HTML — a client reads that as "found the server". Expected a redirect to ${site}/.well-known/jmap`,
       );
     } else {
-      fail(
-        "apex autodiscovery",
-        `${r.status} ${r.headers.get("content-type") ?? ""} — expected a redirect`,
-      );
+      fail("apex autodiscovery", `${r.status} ${r.headers.get("content-type") ?? ""} — expected a redirect`);
     }
   } catch (e) {
     fail("apex autodiscovery", String(e));
@@ -1278,13 +1217,9 @@ async function doctor() {
   try {
     const r = await fetch(`${site}/.well-known/jmap`);
     const ct = r.headers.get("content-type") ?? "";
-    if (r.status === 401 && ct.includes("json"))
-      pass("session endpoint", "401 JSON (unauthenticated, correct)");
+    if (r.status === 401 && ct.includes("json")) pass("session endpoint", "401 JSON (unauthenticated, correct)");
     else if (ct.includes("html"))
-      fail(
-        "session endpoint",
-        `${r.status} HTML — the worker route is not serving this path; Pages is`,
-      );
+      fail("session endpoint", `${r.status} HTML — the worker route is not serving this path; Pages is`);
     else pass("session endpoint", `${r.status} ${ct}`);
   } catch (e) {
     fail("session endpoint", String(e));
@@ -1296,10 +1231,7 @@ async function doctor() {
       const r = await fetch(`${site}${path}`);
       const ct = r.headers.get("content-type") ?? "";
       if (ct.includes("html"))
-        fail(
-          `route ${path}`,
-          `${r.status} HTML — falls through to Pages, so the worker route is missing`,
-        );
+        fail(`route ${path}`, `${r.status} HTML — falls through to Pages, so the worker route is missing`);
       else pass(`route ${path}`, `${r.status} ${ct.split(";")[0]}`);
     } catch (e) {
       fail(`route ${path}`, String(e));
@@ -1337,10 +1269,7 @@ async function doctor() {
         // carries `default-src 'none'`. A 401 without it came from somewhere
         // other than src/explore/ — which is worth knowing, because it means
         // the request is not reaching the code this check is about.
-        fail(
-          "explorer /",
-          `401 but without the sign-in page's CSP — that refusal did not come from src/explore/`,
-        );
+        fail("explorer /", `401 but without the sign-in page's CSP — that refusal did not come from src/explore/`);
       } else {
         pass("explorer /", "401 sign-in page");
       }
@@ -1357,8 +1286,7 @@ async function doctor() {
       try {
         const r = await fetch(`${exploreOrigin}/`, { method: "POST" });
         const allow = r.headers.get("allow") ?? "";
-        if (r.status === 405 && allow.includes("GET"))
-          pass("explorer read-only", "POST / → 405 allow: GET");
+        if (r.status === 405 && allow.includes("GET")) pass("explorer read-only", "POST / → 405 allow: GET");
         else
           fail(
             "explorer read-only",
@@ -1391,11 +1319,7 @@ async function doctor() {
       ["GET /.well-known/jmap", `${site}/.well-known/jmap`, { method: "GET" }],
       // The attack shape itself. Unauthenticated it is refused before the body
       // is parsed, so this changes nothing on the deployment.
-      [
-        "POST /api/jmap",
-        `${site}/api/jmap`,
-        { method: "POST", body: '{"using":[],"methodCalls":[]}' },
-      ],
+      ["POST /api/jmap", `${site}/api/jmap`, { method: "POST", body: '{"using":[],"methodCalls":[]}' }],
     ];
     for (const [label, target, init] of csrfProbes) {
       try {
@@ -1442,8 +1366,7 @@ async function doctor() {
   // until a human runs an admin command and reads a bare 401.
   const adminUrl = process.env.BULLMOOSE_PROVISION_URL ?? env.BULLMOOSE_PROVISION_URL;
   if (!env.ADMIN_TOKEN) console.log("  · admin token       not in " + ENV_FILE + " — skipped");
-  else if (!adminUrl)
-    console.log("  · admin token       set BULLMOOSE_PROVISION_URL to check it — skipped");
+  else if (!adminUrl) console.log("  · admin token       set BULLMOOSE_PROVISION_URL to check it — skipped");
   else {
     try {
       const r = await fetch(`${adminUrl}/agent-bindings`, {
@@ -1466,8 +1389,7 @@ async function doctor() {
   // reachable while erroring on every request.
   const token = env.BULLMOOSE_RUNTIME_TOKEN ?? env.CLOUDFLARE_API_TOKEN;
   const account = env.CLOUDFLARE_ACCOUNT_ID;
-  if (!token || !account)
-    console.log("  · worker traffic    needs CLOUDFLARE_ACCOUNT_ID + a runtime token — skipped");
+  if (!token || !account) console.log("  · worker traffic    needs CLOUDFLARE_ACCOUNT_ID + a runtime token — skipped");
   else {
     const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     const query = `query { viewer { accounts(filter:{accountTag:"${account}"}) {
@@ -1494,9 +1416,7 @@ async function doctor() {
     }
   }
 
-  console.log(
-    bad === 0 ? "\ndone — doctor: nothing to report" : `\ndone — doctor: ${bad} problem(s) above`,
-  );
+  console.log(bad === 0 ? "\ndone — doctor: nothing to report" : `\ndone — doctor: ${bad} problem(s) above`);
   if (bad > 0) process.exitCode = 1;
 }
 
@@ -1561,9 +1481,7 @@ async function main() {
     die(`unknown phase '${phaseArg}'. one of: all ${ALL.join(" ")} explorer doctor`);
 
   const plan = phaseArg === "all" ? ALL : [phaseArg];
-  console.log(
-    `bullmoose bootstrap — ${paint(c.cyn, plan.join(" → "))}${DRY ? paint(c.yel, "  (dry-run)") : ""}`,
-  );
+  console.log(`bullmoose bootstrap — ${paint(c.cyn, plan.join(" → "))}${DRY ? paint(c.yel, "  (dry-run)") : ""}`);
 
   // Read .env BEFORE the liveness check below. loadEnv exports the wrangler
   // credentials into process.env, and the check consults them — so doing this
@@ -1598,9 +1516,7 @@ async function main() {
     }
   }
   for (const p of plan) await PHASES[p]();
-  console.log(
-    `\n${paint(c.grn, "done")} — ${plan.join(", ")}${DRY ? " (dry-run; nothing changed)" : ""}`,
-  );
+  console.log(`\n${paint(c.grn, "done")} — ${plan.join(", ")}${DRY ? " (dry-run; nothing changed)" : ""}`);
 }
 
 // Only run when invoked directly — importing (for tests) must not execute.

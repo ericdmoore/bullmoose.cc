@@ -44,11 +44,7 @@ function id(): string {
  * happen — including on a shard whose schema predates this table, which must
  * keep issuing tokens rather than refusing to log in.
  */
-export async function recordConsent(
-  db: MaybeDb,
-  rec: ConsentRecord,
-  now: number,
-): Promise<string | null> {
+export async function recordConsent(db: MaybeDb, rec: ConsentRecord, now: number): Promise<string | null> {
   const rowId = id();
   try {
     await db
@@ -86,12 +82,7 @@ export async function recordConsent(
  * revocation. Scoped to one client so revoking Claude Code does not silently
  * disconnect claude.ai.
  */
-export async function revokeConsent(
-  db: MaybeDb,
-  principalId: string,
-  clientId: string,
-  now: number,
-): Promise<number> {
+export async function revokeConsent(db: MaybeDb, principalId: string, clientId: string, now: number): Promise<number> {
   try {
     const res = await db
       .prepare(

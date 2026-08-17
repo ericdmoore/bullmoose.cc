@@ -26,13 +26,7 @@
 /** `pending` is the queue; `info-requested` is waiting on the AGENT to answer a
  * needsInfo question (s10 T3 — the decision clock is paused); `held` is the
  * tier-2 hold tray; the rest are history. */
-export type ProposalStatus =
-  | "pending"
-  | "info-requested"
-  | "approved"
-  | "rejected"
-  | "held"
-  | "expired";
+export type ProposalStatus = "pending" | "info-requested" | "approved" | "rejected" | "held" | "expired";
 
 /** Reversibility, and therefore what approve is allowed to do (arch.md §2). */
 export type ProposalTier = 1 | 2 | 3;
@@ -175,10 +169,7 @@ export interface ActionProposal {
  * down, but `id` is required — a row with no id is not decidable and is
  * dropped by the caller.
  */
-export function parseProposal(
-  raw: Record<string, unknown>,
-  fallbackAccountId = "",
-): ActionProposal | null {
+export function parseProposal(raw: Record<string, unknown>, fallbackAccountId = ""): ActionProposal | null {
   if (typeof raw.id !== "string" || raw.id.length === 0) return null;
   const tierNum = typeof raw.tier === "number" ? raw.tier : 0;
   return {
@@ -211,9 +202,7 @@ export function parseProposal(
     amendments: Array.isArray(raw.amendments)
       ? raw.amendments.filter(
           (a): a is ProposalAmendment =>
-            a !== null &&
-            typeof a === "object" &&
-            typeof (a as ProposalAmendment).question === "string",
+            a !== null && typeof a === "object" && typeof (a as ProposalAmendment).question === "string",
         )
       : [],
     invocationStatus: str(raw.invocationStatus) ?? "",
@@ -221,14 +210,7 @@ export function parseProposal(
   };
 }
 
-const STATUSES: ReadonlySet<string> = new Set([
-  "pending",
-  "info-requested",
-  "approved",
-  "rejected",
-  "held",
-  "expired",
-]);
+const STATUSES: ReadonlySet<string> = new Set(["pending", "info-requested", "approved", "rejected", "held", "expired"]);
 
 function isStatus(v: unknown): v is ProposalStatus {
   return typeof v === "string" && STATUSES.has(v);
@@ -239,7 +221,5 @@ function str(v: unknown): string | null {
 }
 
 function obj(v: unknown): Record<string, unknown> {
-  return v !== null && typeof v === "object" && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : {};
+  return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }

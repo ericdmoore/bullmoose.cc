@@ -21,14 +21,7 @@
 // opposite of dead code and worth knowing before assuming a gap is work.
 
 import { AGENT_CAP, CORE_CAP, capabilityForMethod, hasCapability } from "./capabilities";
-import type {
-  ChangesResult,
-  Id,
-  Invocation,
-  ResultReference,
-  Session,
-  UploadResult,
-} from "./types";
+import type { ChangesResult, Id, Invocation, ResultReference, Session, UploadResult } from "./types";
 
 /** Build an RFC 8620 §3.7 back-reference to a prior call's result. */
 export function backReference(resultOf: string, name: string, path: string): ResultReference {
@@ -51,10 +44,7 @@ export class JmapRequestError extends Error {
 export interface WebSocketLike {
   send(data: string): void;
   close(): void;
-  addEventListener(
-    type: "open" | "message" | "close" | "error",
-    listener: (ev: { data?: unknown }) => void,
-  ): void;
+  addEventListener(type: "open" | "message" | "close" | "error", listener: (ev: { data?: unknown }) => void): void;
 }
 export type WebSocketFactory = (url: string) => WebSocketLike;
 
@@ -101,15 +91,8 @@ export interface JmapClient {
    * heap first. `Uint8Array` stays accepted for tests and the CLI-shaped path.
    */
   upload(accountId: Id, body: Blob | Uint8Array, type: string): Promise<UploadResult>;
-  download(
-    accountId: Id,
-    blobId: string,
-    opts?: { name?: string; type?: string },
-  ): Promise<Uint8Array>;
-  watch(
-    onChange: (changed: Record<Id, Record<string, string>>) => void,
-    opts?: WatchOptions,
-  ): Promise<() => void>;
+  download(accountId: Id, blobId: string, opts?: { name?: string; type?: string }): Promise<Uint8Array>;
+  watch(onChange: (changed: Record<Id, Record<string, string>>) => void, opts?: WatchOptions): Promise<() => void>;
 }
 
 export interface FetchJmapClientOptions {
@@ -141,8 +124,7 @@ export class FetchJmapClient implements JmapClient {
     this.doFetch = (opts.fetch ?? globalThis.fetch).bind(globalThis);
     this.makeSocket =
       opts.webSocketFactory ??
-      ((url: string) =>
-        new (globalThis as { WebSocket: new (u: string) => WebSocketLike }).WebSocket(url));
+      ((url: string) => new (globalThis as { WebSocket: new (u: string) => WebSocketLike }).WebSocket(url));
   }
 
   private authHeaders(extra: Record<string, string> = {}): Record<string, string> {
@@ -273,9 +255,7 @@ export class FetchJmapClient implements JmapClient {
     const acct = accountId ?? (await this.primaryAccountId());
     const since = sinceState ?? this.cursors.get(collection);
     if (since === undefined) {
-      throw new JmapRequestError(
-        `no cursor for ${collection}; seed it from an initial /query first`,
-      );
+      throw new JmapRequestError(`no cursor for ${collection}; seed it from an initial /query first`);
     }
     const result = (await this.requestOne(`${collection}/changes`, {
       accountId: acct,
@@ -310,11 +290,7 @@ export class FetchJmapClient implements JmapClient {
     return (await res.json()) as UploadResult;
   }
 
-  async download(
-    accountId: Id,
-    blobId: string,
-    opts: { name?: string; type?: string } = {},
-  ): Promise<Uint8Array> {
+  async download(accountId: Id, blobId: string, opts: { name?: string; type?: string } = {}): Promise<Uint8Array> {
     const session = await this.session();
     const url = session.downloadUrl
       .replaceAll("{accountId}", encodeURIComponent(accountId))

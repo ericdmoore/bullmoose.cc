@@ -1,12 +1,9 @@
-import { ChevronDownIcon } from "@heroicons/react/16/solid";
+import { ChevronDownIcon } from '@heroicons/react/16/solid'
 
 export default function Example() {
   return (
     <div>
-      <label
-        htmlFor="phone-number"
-        className="block text-sm/6 font-medium text-gray-900 dark:text-white"
-      >
+      <label htmlFor="phone-number" className="block text-sm/6 font-medium text-gray-900 dark:text-white">
         Phone number
       </label>
       <div className="mt-2">
@@ -38,5 +35,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  );
+  )
 }

@@ -291,8 +291,7 @@ function cardFromBlock(props: VProp[], warnings: string[]): Card {
       groupLabels.set(p.group, cleanLabel(unescapeText(p.value)));
     }
   }
-  const labelOf = (p: VProp): string | undefined =>
-    p.group ? groupLabels.get(p.group) : undefined;
+  const labelOf = (p: VProp): string | undefined => (p.group ? groupLabels.get(p.group) : undefined);
 
   const emails: Record<string, unknown> = {};
   const phones: Record<string, unknown> = {};
@@ -348,9 +347,7 @@ function cardFromBlock(props: VProp[], warnings: string[]): Card {
         const [orgName, ...units] = parts;
         organizations[nextId("org")] = {
           ...(orgName ? { name: orgName } : {}),
-          ...(units.filter(Boolean).length > 0
-            ? { units: units.filter(Boolean).map((u) => ({ name: u })) }
-            : {}),
+          ...(units.filter(Boolean).length > 0 ? { units: units.filter(Boolean).map((u) => ({ name: u })) } : {}),
         };
         break;
       }
@@ -518,15 +515,9 @@ function deterministicUid(card: Card): string {
   const key = [
     name?.full ?? "",
     ...(name?.components?.map((c) => c.value ?? "") ?? []),
-    ...Object.values((card.emails as Record<string, { address?: string }>) ?? {}).map(
-      (e) => e.address ?? "",
-    ),
-    ...Object.values((card.phones as Record<string, { number?: string }>) ?? {}).map(
-      (e) => e.number ?? "",
-    ),
-    ...Object.values((card.organizations as Record<string, { name?: string }>) ?? {}).map(
-      (o) => o.name ?? "",
-    ),
+    ...Object.values((card.emails as Record<string, { address?: string }>) ?? {}).map((e) => e.address ?? ""),
+    ...Object.values((card.phones as Record<string, { number?: string }>) ?? {}).map((e) => e.number ?? ""),
+    ...Object.values((card.organizations as Record<string, { name?: string }>) ?? {}).map((o) => o.name ?? ""),
   ].join("|");
   return `urn:bullmoose:vcf:${createHash("sha256").update(key).digest("hex").slice(0, 24)}`;
 }

@@ -41,9 +41,7 @@ async function scaffold(): Promise<FakeWorker> {
   );
   // A live binding, so "no invocation was created" is a real assertion and
   // not the vacuous absence of any binding at all.
-  w.db.seed("agent_bindings", [
-    { id: "bind_b", account_id: ACCOUNT, name: "emily", config_json: "{}" },
-  ]);
+  w.db.seed("agent_bindings", [{ id: "bind_b", account_id: ACCOUNT, name: "emily", config_json: "{}" }]);
   return w;
 }
 
@@ -111,10 +109,11 @@ interface InjectResult {
 
 async function inject(w: FakeWorker, raw: string, from = SENDER): Promise<InjectResult> {
   const res = await worker.fetch(
-    new Request(
-      `https://ingest.test/dev/inject?from=${encodeURIComponent(from)}&to=ada@example.test`,
-      { method: "POST", headers: { "x-internal-token": TOKEN }, body: raw },
-    ),
+    new Request(`https://ingest.test/dev/inject?from=${encodeURIComponent(from)}&to=ada@example.test`, {
+      method: "POST",
+      headers: { "x-internal-token": TOKEN },
+      body: raw,
+    }),
     { ...w.env, DEV_INJECT: "1" } as unknown as Env,
     ctx(),
   );
@@ -141,11 +140,8 @@ function fakeMessage(raw: string, from = SENDER) {
 }
 
 const roleMailboxId = (w: FakeWorker, role: string): string | null =>
-  w.db.query<{ id: string }>(
-    `SELECT id FROM mailboxes WHERE account_id = ? AND role = ?`,
-    ACCOUNT,
-    role,
-  )[0]?.id ?? null;
+  w.db.query<{ id: string }>(`SELECT id FROM mailboxes WHERE account_id = ? AND role = ?`, ACCOUNT, role)[0]?.id ??
+  null;
 
 const mailboxesOf = (w: FakeWorker, emailId: string): string[] =>
   w.db
@@ -157,9 +153,7 @@ const mailboxesOf = (w: FakeWorker, emailId: string): string[] =>
     .map((r) => r.mailbox_id);
 
 const seedDeny = (w: FakeWorker, domain: string, source = "feed") =>
-  w.db.seed("domain_deny_list", [
-    { tenant_id: TENANT, domain, added_at: 1, source, evidence: null },
-  ]);
+  w.db.seed("domain_deny_list", [{ tenant_id: TENANT, domain, added_at: 1, source, evidence: null }]);
 
 beforeEach(() => __resetBoundaryBloomCache());
 
@@ -263,10 +257,7 @@ describe("stage 1 — REJECT-STORE (blocked books)", () => {
     expect(rejections).toEqual([]); // accepted at SMTP — rescuable, never bounced
     expect(forwards).toEqual([]);
 
-    const emailId = w.db.query<{ id: string }>(
-      `SELECT id FROM emails WHERE account_id = ?`,
-      ACCOUNT,
-    )[0]!.id;
+    const emailId = w.db.query<{ id: string }>(`SELECT id FROM emails WHERE account_id = ?`, ACCOUNT)[0]!.id;
     const quarantineId = roleMailboxId(w, QUARANTINE_ROLE);
     expect(quarantineId).not.toBeNull();
     expect(mailboxesOf(w, emailId)).toEqual([quarantineId]);
@@ -290,10 +281,7 @@ describe("stage 1 — REJECT-STORE (blocked books)", () => {
       stage: string;
       email_id: string;
       actor: string | null;
-    }>(
-      `SELECT event, sender, domain, stage, email_id, actor FROM quarantine_events WHERE account_id = ?`,
-      ACCOUNT,
-    );
+    }>(`SELECT event, sender, domain, stage, email_id, actor FROM quarantine_events WHERE account_id = ?`, ACCOUNT);
     expect(events).toEqual([
       {
         event: "shunted",
@@ -317,10 +305,7 @@ describe("stage 1 — REJECT-STORE (blocked books)", () => {
       name: "HouseBlocked",
       members: [SENDER],
     });
-    await w.env.ROUTES.put(
-      `boundary:tenant-blocked:${TENANT}`,
-      JSON.stringify({ accountId: bouncerAccount, bookId }),
-    );
+    await w.env.ROUTES.put(`boundary:tenant-blocked:${TENANT}`, JSON.stringify({ accountId: bouncerAccount, bookId }));
     await rebuildBoundaryBloom(boundaryEnv(w)); // KV-configured books are unioned in
 
     const res = await inject(w, mime());
@@ -427,10 +412,7 @@ describe("stage 2 — envelope auth (Authentication-Results)", () => {
 
   it("dmarc=none is not a fail signal (conservative: explicit fail only)", async () => {
     const w = await scaffold();
-    const res = await inject(
-      w,
-      mime({ topHeaders: ["Authentication-Results: mx.cloudflare.net; dmarc=none"] }),
-    );
+    const res = await inject(w, mime({ topHeaders: ["Authentication-Results: mx.cloudflare.net; dmarc=none"] }));
     expect(res.quarantined).toBeUndefined();
   });
 });
@@ -445,10 +427,7 @@ describe("DefaultCase — pinned against the real email() handler", () => {
     expect(forwards).toEqual([]);
 
     // Exactly one stored email, in exactly the inbox.
-    const emails = w.db.query<{ id: string }>(
-      `SELECT id FROM emails WHERE account_id = ?`,
-      ACCOUNT,
-    );
+    const emails = w.db.query<{ id: string }>(`SELECT id FROM emails WHERE account_id = ?`, ACCOUNT);
     expect(emails).toHaveLength(1);
     const inboxId = roleMailboxId(w, "inbox");
     expect(inboxId).not.toBeNull();
@@ -457,9 +436,7 @@ describe("DefaultCase — pinned against the real email() handler", () => {
     // The only mailbox is the inbox — no quarantine mailbox materializes
     // until a shunt actually happens.
     expect(
-      w.db
-        .query<{ role: string }>(`SELECT role FROM mailboxes WHERE account_id = ?`, ACCOUNT)
-        .map((r) => r.role),
+      w.db.query<{ role: string }>(`SELECT role FROM mailboxes WHERE account_id = ?`, ACCOUNT).map((r) => r.role),
     ).toEqual(["inbox"]);
 
     // The enqueue is today's enqueue: pending, and every s12-authored column
@@ -474,9 +451,7 @@ describe("DefaultCase — pinned against the real email() handler", () => {
       `SELECT status, sender_class, effort_prior, privacy, due_at FROM agent_invocations WHERE account_id = ?`,
       ACCOUNT,
     );
-    expect(inv).toEqual([
-      { status: "pending", sender_class: null, effort_prior: null, privacy: null, due_at: null },
-    ]);
+    expect(inv).toEqual([{ status: "pending", sender_class: null, effort_prior: null, privacy: null, due_at: null }]);
 
     // No boundary table was touched, no boundary key was written.
     expect(w.db.count("quarantine_events")).toBe(0);

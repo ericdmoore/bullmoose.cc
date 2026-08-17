@@ -164,7 +164,7 @@ Email becomes infrastructure.
 
 **Your intent becomes the interface.**
 
----
+------------------------------------------------------------------------
 
 Email solved how to send a message anywhere on Earth.
 

@@ -45,11 +45,7 @@ export function movePatch(email: Pick<Email, "mailboxIds">, toMailboxId: string)
 }
 
 /** Archive = move out of the Inbox, keeping any other filing. */
-export function archivePatch(
-  email: Pick<Email, "mailboxIds">,
-  inboxId: string,
-  archiveId: string,
-): EmailPatch {
+export function archivePatch(email: Pick<Email, "mailboxIds">, inboxId: string, archiveId: string): EmailPatch {
   // If Archive and Inbox are the same mailbox there is nothing to do; emitting
   // `{id: true, id: null}` would leave the message homeless.
   if (inboxId === archiveId) return {};
@@ -165,11 +161,7 @@ export async function applyTriage(
  * the row, it does not move it to Trash. `trashPatch` is what a delete KEY
  * should call.
  */
-export async function destroyEmails(
-  client: JmapClient,
-  accountId: string,
-  ids: string[],
-): Promise<TriageResult> {
+export async function destroyEmails(client: JmapClient, accountId: string, ids: string[]): Promise<TriageResult> {
   if (ids.length === 0) return { updated: [], notUpdated: [] };
   const [response] = await client.request([["Email/set", { accountId, destroy: ids }, "d0"]]);
   if (!response) return { updated: [], notUpdated: [] };

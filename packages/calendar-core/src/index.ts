@@ -68,9 +68,7 @@ const MAX_ITERATIONS = 20000;
 /** "PT1H30M" | "P1D" | "PT45M" → milliseconds (dates approximate: D=24h). */
 export function parseDuration(raw: unknown): number {
   if (typeof raw !== "string") return 0;
-  const m = raw.match(
-    /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/,
-  );
+  const m = raw.match(/^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$/);
   if (!m) return 0;
   const [, sign, w, d, h, min, s] = m;
   const ms =
@@ -144,8 +142,7 @@ function wallClockAt(utcMs: number, timeZone: string): LocalDateTime {
   };
 }
 
-const asUtcMs = (dt: LocalDateTime) =>
-  Date.UTC(dt.year, dt.month - 1, dt.day, dt.hour, dt.minute, dt.second);
+const asUtcMs = (dt: LocalDateTime) => Date.UTC(dt.year, dt.month - 1, dt.day, dt.hour, dt.minute, dt.second);
 
 /**
  * Local wall-clock in an IANA zone → UTC epoch ms. Two-pass offset
@@ -167,8 +164,7 @@ export function zonedToUtc(dt: LocalDateTime, timeZone: string): number {
 
 // ---- date field arithmetic (calendar-safe) -----------------------------
 
-const daysInMonth = (year: number, month: number) =>
-  new Date(Date.UTC(year, month, 0)).getUTCDate();
+const daysInMonth = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
 
 function addDays(dt: LocalDateTime, days: number): LocalDateTime {
   const d = new Date(asUtcMs(dt) + days * 86_400_000);
@@ -250,8 +246,7 @@ const META_DEFAULTS: Record<string, string> = {
 };
 
 /** Absent, or present-but-empty (an empty BY array is a no-op here). */
-const isPresent = (v: unknown): boolean =>
-  v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);
+const isPresent = (v: unknown): boolean => v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);
 
 const isPosInt = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 1;
 
@@ -313,10 +308,7 @@ export function unsupportedRuleReason(rule: RecurrenceRule): string | null {
   if (isPresent(rule.count) && !isPosInt(rule.count)) {
     return `count must be a positive integer, got ${String(rule.count)}`;
   }
-  if (
-    isPresent(rule.until) &&
-    (typeof rule.until !== "string" || !parseLocalDateTime(rule.until))
-  ) {
+  if (isPresent(rule.until) && (typeof rule.until !== "string" || !parseLocalDateTime(rule.until))) {
     // An unparseable UNTIL is dropped by the expander, turning a bounded
     // series into an unbounded one (end_at written as NULL).
     return `until must be a LocalDateTime ("2026-12-31T23:59:59"), got ${JSON.stringify(rule.until)}`;
@@ -429,9 +421,7 @@ export function expandOccurrences(event: JSCalendarEvent, opts: ExpandOptions = 
   const durationMs = parseDuration(event.duration) || (event.showWithoutTime ? 86_400_000 : 0);
   const max = Math.min(opts.maxOccurrences ?? MAX_OCCURRENCES, MAX_OCCURRENCES);
 
-  const rules = Array.isArray(event.recurrenceRules)
-    ? (event.recurrenceRules as RecurrenceRule[])
-    : [];
+  const rules = Array.isArray(event.recurrenceRules) ? (event.recurrenceRules as RecurrenceRule[]) : [];
   const overrides = (event.recurrenceOverrides ?? {}) as Record<string, Record<string, unknown>>;
 
   // Base series: the master start plus rule expansions (deduped).
@@ -493,9 +483,7 @@ export function expandOccurrences(event: JSCalendarEvent, opts: ExpandOptions = 
   out.sort((a, b) => a.startMs - b.startMs);
 
   const windowed = out.filter(
-    (o) =>
-      (opts.before === undefined || o.startMs < opts.before) &&
-      (opts.after === undefined || o.endMs > opts.after),
+    (o) => (opts.before === undefined || o.startMs < opts.before) && (opts.after === undefined || o.endMs > opts.after),
   );
   return windowed.slice(0, max);
 }
@@ -559,8 +547,7 @@ function expandRule(
     if (skipToMs !== null) {
       const stepMs = interval * 7 * 86_400_000;
       const behind = skipToMs - asUtcMs(weekStart) - 2 * stepMs;
-      if (behind > stepMs)
-        weekStart = addDays(weekStart, Math.floor(behind / stepMs) * interval * 7);
+      if (behind > stepMs) weekStart = addDays(weekStart, Math.floor(behind / stepMs) * interval * 7);
     }
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       let done = false;
@@ -598,8 +585,7 @@ function expandRule(
           const nth = spec.nthOfPeriod;
           if (nth === undefined || nth === 0) candidates.push(...matches);
           else if (nth > 0 && matches[nth - 1]) candidates.push(matches[nth - 1]!);
-          else if (nth < 0 && matches[matches.length + nth])
-            candidates.push(matches[matches.length + nth]!);
+          else if (nth < 0 && matches[matches.length + nth]) candidates.push(matches[matches.length + nth]!);
         }
       } else if (byMonthDay.length > 0) {
         for (const md of byMonthDay) {
@@ -698,9 +684,7 @@ export function eventSpan(event: JSCalendarEvent): EventSpan {
   const durationMs = parseDuration(event.duration) || (event.showWithoutTime ? 86_400_000 : 0);
   const startMs = zonedToUtc(start, timeZone);
 
-  const rules = Array.isArray(event.recurrenceRules)
-    ? (event.recurrenceRules as RecurrenceRule[])
-    : [];
+  const rules = Array.isArray(event.recurrenceRules) ? (event.recurrenceRules as RecurrenceRule[]) : [];
   // Before the unbounded short-circuit below, which returns without ever
   // calling expandOccurrences — a bad unbounded rule would otherwise slip
   // straight past the gate.

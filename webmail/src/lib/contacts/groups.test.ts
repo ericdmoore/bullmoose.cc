@@ -144,12 +144,7 @@ describe("resolving membership against the server", () => {
 
   it("round-trips an added member through the real patch path", async () => {
     const { client, elk } = withDemo();
-    const result = await updateCard(
-      client,
-      "acct-fake",
-      "cc-elk",
-      addMemberPatch(elk(), "urn:uuid:ada"),
-    );
+    const result = await updateCard(client, "acct-fake", "cc-elk", addMemberPatch(elk(), "urn:uuid:ada"));
     expect(result.error).toBeUndefined();
     expect(memberUids(elk())).toContain("urn:uuid:ada");
 

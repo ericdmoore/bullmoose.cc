@@ -11,11 +11,11 @@
 
 ## Status — updated 2026-08-09
 
-| Task                          | State                             | Notes                                                                                                                                                                            |
-| ----------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **T1 — per-agent**            | ✅ **done**                       | `lib/console/perAgent.ts` + `scopes.ts`. Bindings, credential _references_, A2A grants, Bureau grants, spend, recent actions, **effective** permissions, dangerous combinations. |
-| **T2 — credential lifecycle** | ✅ **done** (one route requested) | `lib/console/credentials.ts` + `origins.ts`. Attach/rotate/revoke and OAuth initiation, all direct to the vault origin. Raw keys bounce to the CLI.                              |
-| **T3 — per-resource**         | ✅ **done**                       | `lib/console/perResource.ts`. Point-in-time who-could beside who-did, with the gap rendered as findings.                                                                         |
+| Task | State | Notes |
+|---|---|---|
+| **T1 — per-agent** | ✅ **done** | `lib/console/perAgent.ts` + `scopes.ts`. Bindings, credential *references*, A2A grants, Bureau grants, spend, recent actions, **effective** permissions, dangerous combinations. |
+| **T2 — credential lifecycle** | ✅ **done** (one route requested) | `lib/console/credentials.ts` + `origins.ts`. Attach/rotate/revoke and OAuth initiation, all direct to the vault origin. Raw keys bounce to the CLI. |
+| **T3 — per-resource** | ✅ **done** | `lib/console/perResource.ts`. Point-in-time who-could beside who-did, with the gap rendered as findings. |
 
 Built in `webmail/` on the s03.C shell: `src/pages/console.astro` hosts one Preact
 island (`components/AgentConsole.tsx`), and the shell's topbar grows an **Agents** link
@@ -25,15 +25,15 @@ behind `hasAgentCapability`. **128 new tests** (webmail 245 → 373; repo 1248 �
 
 1. ✅ **Both questions answerable in one screen each** — two tabs, each a full screen.
 2. ✅ **Point-in-time correct** — a grant revoked 4 days ago still appears in the
-   who-could set for an instant 6 days ago, marked _no longer live_; absent at _now_.
+   who-could set for an instant 6 days ago, marked *no longer live*; absent at *now*.
    Driven in a browser, not only asserted.
 3. ✅ **Effective permissions shown** — every scope list renders `stored: … → allows: …`
-   plus what it confers _without naming_. `scopes.test.ts` drives the REAL `hasScope`
+   plus what it confers *without naming*. `scopes.test.ts` drives the REAL `hasScope`
    from `@bullmoose/auth-core` and asserts agreement across ~2 300 pairs.
 4. ✅ **No secret transits the site backend** — asserted, not conventioned; see below.
 5. ✅ **Reads an s04-defined model** — `enforcement`, `bureau_grants` and the verb
-   vocabulary all come from `bureau.md` §5/§5.1/§5.2. Spend renders as _the ledger, not
-   a budget_; nothing here invents a policy value.
+   vocabulary all come from `bureau.md` §5/§5.1/§5.2. Spend renders as *the ledger, not
+   a budget*; nothing here invents a policy value.
 
 ### The one thing this slice requests rather than builds
 
@@ -44,7 +44,7 @@ tools answer these exact questions, but `/mcp/analytics` is gated on `x-internal
 whole deployment — `015` refused to proxy it and so does this.
 
 So `HttpConsoleClient` names a browser-reachable projection of `015`'s own queries
-(`CONSOLE_ENDPOINTS`), and until it is served the UI says _which endpoint is missing_
+(`CONSOLE_ENDPOINTS`), and until it is served the UI says *which endpoint is missing*
 rather than inventing contents. **`GET /vault/credentials` is live and really called.**
 `POST /vault/oauth/start` + its callback are the other unserved route.
 
@@ -67,13 +67,13 @@ elements and **zero** secret inputs, and the generated CSP carries `form-action 
 `caveats.test.ts` reads `introspectTools.ts` off disk to prove it — reword either side
 and the test fails rather than the two surfaces telling users different things.
 `buildResourceView` puts them on the view model, so a renderer cannot produce a who-did
-panel without them; an empty trail renders `emptyMeans` _in place of_ the table.
+panel without them; an empty trail renders `emptyMeans` *in place of* the table.
 `common/033`'s NULL provenance renders as a `not-captured` **finding**, and blank writer
-cells are hatched and labelled _not captured_, never left blank.
+cells are hatched and labelled *not captured*, never left blank.
 
 ---
 
-## T1 — Per-agent view — _"Can Allen even do that?"_
+## T1 — Per-agent view — *"Can Allen even do that?"*
 
 **Blocks:** webmail (s03.C shell) · `services/agent` vault API **[live]** ·
 s04 policy read interface.
@@ -105,13 +105,13 @@ a convention.
 
 ---
 
-## T3 — Per-resource view — _"Who could have messed up VendorsBook?"_
+## T3 — Per-resource view — *"Who could have messed up VendorsBook?"*
 
 **Blocks:** s03.A tombstones + provenance · `grant_audit`.
 
-- **who _could_**: the authorization set covering the resource, reconstructed
+- **who *could***: the authorization set covering the resource, reconstructed
   **at a chosen time** (requires s03.A's tombstones).
-- **who _did_**: `grant_audit` joined with the record's `last_writer_*` provenance.
+- **who *did***: `grant_audit` joined with the record's `last_writer_*` provenance.
 - Rendered side by side, with the gap called out.
 
 **Done when:** a since-revoked grant still appears for the window in which it was live;
@@ -143,16 +143,16 @@ not to invent it here.
 
 1. **`services/agent/src/introspectTools.ts` is stale since `s03.A` landed tombstones,
    in two places that now report the opposite of the truth.** Its own comment still says
-   _"`revokeGrant` is a hard `DELETE FROM grants` and `s03.A`'s tombstones do not
-   exist"_; `provision/src/index.ts:1594` has since made revocation
+   *"`revokeGrant` is a hard `DELETE FROM grants` and `s03.A`'s tombstones do not
+   exist"*; `provision/src/index.ts:1594` has since made revocation
    `UPDATE grants SET revoked_at = ?`.
    - `renderGrant().live` is computed from `expires_at` alone (`:234`), so `my_access`
      and `who_can_access` report a **revoked grant as `live: true`**.
    - `readAccessLog()` derives `grant_live` from
      `SELECT COUNT(*) FROM grants WHERE id = ?` (`:596`), which now counts the
      tombstoned row — so access under a since-revoked grant renders as
-     `grantStatus: "live"`, and its `note` (_"Revocation is a hard DELETE with no
-     tombstone"_) is no longer true.
+     `grantStatus: "live"`, and its `note` (*"Revocation is a hard DELETE with no
+     tombstone"*) is no longer true.
    - Neither `grantsAsGrantee` nor `grantsAsTarget` filters `revoked_at IS NULL`.
 
    The console diverges deliberately (`ConsoleGrant.revokedAt`; `grantState()` reads the
@@ -161,7 +161,7 @@ not to invent it here.
    `grant_live` subquery to `WHERE g.id = ? AND g.revoked_at IS NULL`.
 
 2. **`sVOL 023` should be regraded `E4-I1` and its filename/index updated.** Its own
-   _Open questions_ §1 argues this and the ledger still says `I2`; this slice is now
+   *Open questions* §1 argues this and the ledger still says `I2`; this slice is now
    built and human-verifiable in a browser (revoke a grant, reload, watch the answer
    change), and nothing depends on it. `_context.md` / `_verify.sh` deliberately not
    edited here.

@@ -1,4 +1,4 @@
-import { ArrowLongLeftIcon, ArrowLongRightIcon } from "@heroicons/react/20/solid";
+import { ArrowLongLeftIcon, ArrowLongRightIcon } from '@heroicons/react/20/solid'
 
 export default function Example() {
   return (
@@ -8,10 +8,7 @@ export default function Example() {
           href="#"
           className="inline-flex items-center border-t-2 border-transparent pt-4 pr-1 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-white/20 dark:hover:text-gray-200"
         >
-          <ArrowLongLeftIcon
-            aria-hidden="true"
-            className="mr-3 size-5 text-gray-400 dark:text-gray-500"
-          />
+          <ArrowLongLeftIcon aria-hidden="true" className="mr-3 size-5 text-gray-400 dark:text-gray-500" />
           Previous
         </a>
       </div>
@@ -64,12 +61,9 @@ export default function Example() {
           className="inline-flex items-center border-t-2 border-transparent pt-4 pl-1 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-white/20 dark:hover:text-gray-200"
         >
           Next
-          <ArrowLongRightIcon
-            aria-hidden="true"
-            className="ml-3 size-5 text-gray-400 dark:text-gray-500"
-          />
+          <ArrowLongRightIcon aria-hidden="true" className="ml-3 size-5 text-gray-400 dark:text-gray-500" />
         </a>
       </div>
     </nav>
-  );
+  )
 }

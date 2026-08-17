@@ -1,17 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { pickAccountId, requireSettings, type Settings } from "./db.js";
-import {
-  EXIT,
-  emitIds,
-  emitJson,
-  emitNdjson,
-  exitCodeForJmapType,
-  fail,
-  note,
-  usage,
-  type IoOpts,
-} from "./io.js";
+import { EXIT, emitIds, emitJson, emitNdjson, exitCodeForJmapType, fail, note, usage, type IoOpts } from "./io.js";
 import { JmapClient } from "./jmap.js";
 import { reconcileEmails } from "./sync.js";
 import { resolveMailbox } from "./mailbox.js";
@@ -176,9 +166,7 @@ async function runUpdate(
       patch = labelPatch(adds, removes);
       extra.add = adds;
       extra.remove = removes;
-      destDesc =
-        (adds.length ? ` +[${adds.join(", ")}]` : "") +
-        (removes.length ? ` -[${removes.join(", ")}]` : "");
+      destDesc = (adds.length ? ` +[${adds.join(", ")}]` : "") + (removes.length ? ` -[${removes.join(", ")}]` : "");
       // The empty-mailbox guard (`email.ts:403`): a remove that would leave a
       // message in zero mailboxes is an error, not an archive. Catch it here
       // naming `move`, rather than letting a bare `invalidProperties` surface.
@@ -293,12 +281,7 @@ export function collectIds(positionals: string[]): string[] {
   return piped.split(/\s+/).filter(Boolean);
 }
 
-function resolveAccount(
-  db: DatabaseSync,
-  settings: Settings,
-  opts: TriageOpts,
-  firstId: string,
-): string {
+function resolveAccount(db: DatabaseSync, settings: Settings, opts: TriageOpts, firstId: string): string {
   // An explicit --account wins and is checked for ambiguity. Otherwise resolve
   // the owning account of the first id from the local mirror (as `read` does),
   // falling back to the default — every id in one Email/set must share it.
@@ -385,11 +368,7 @@ interface Box {
   role: string | null;
 }
 
-async function accountMailboxes(
-  db: DatabaseSync,
-  client: JmapClient,
-  accountId: string,
-): Promise<Box[]> {
+async function accountMailboxes(db: DatabaseSync, client: JmapClient, accountId: string): Promise<Box[]> {
   // Local mirror first (`019` bread-crumbs); fall back to a live Mailbox/get
   // when the mirror is empty — e.g. before the first `sync`.
   const rows = db
@@ -516,9 +495,6 @@ function report(opts: TriageOpts, outcome: Outcome, extra: Record<string, unknow
     // Non-zero if ANY id failed (`019` done-when #7). Take the code from the
     // first failure's type — notFound → 3, forbidden → 4 — so a single-cause
     // batch reports its true cause.
-    fail(
-      `${outcome.verb}: ${outcome.failed.length} of ${total} failed`,
-      exitCodeForJmapType(outcome.failed[0]!.type),
-    );
+    fail(`${outcome.verb}: ${outcome.failed.length} of ${total} failed`, exitCodeForJmapType(outcome.failed[0]!.type));
   }
 }

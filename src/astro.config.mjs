@@ -31,8 +31,7 @@ function rewritePlaybookLinks() {
           const resolved = resolveFromPlaybooks(p);
           const sibling = resolved.match(/^docs\/playbooks\/([^/]+)\.md$/);
           node.properties.href =
-            (sibling ? `/guides/${sibling[1]}` : `${REPO_BLOB}/${resolved}`) +
-            (hash ? `#${hash}` : "");
+            (sibling ? `/guides/${sibling[1]}` : `${REPO_BLOB}/${resolved}`) + (hash ? `#${hash}` : "");
         }
       }
       if (node.children) node.children.forEach(walk);

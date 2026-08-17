@@ -2,7 +2,6 @@
 
 > **Status: wave 1 LANDED** — T1+T6 (PR #91), T8 (PR #90), T2 (PR #93), 2026-08-13.
 > Deltas from the build, authoritative where they refine the text below:
->
 > - **NULL-due sit-free applies only while a free runtime is live** (a `claimant_free=1`
 >   claim within 15 min — decision 3's absence-inference). The literal "NULL = free-only
 >   indefinitely" would strand every invocation on a homelab-less prod; forcing that
@@ -20,44 +19,44 @@
 > - ⚠️ **Deploy**: `invocation-due-at`, `invocation-facet-columns`,
 >   `invocation-claimant-columns` are deploy blockers — `migrate` before deploying
 >   jmap/agent. Not yet deployed to prod.
-> - **For T3**: the overdue backstop claims _outside_ the policy gate but MUST keep the
+> - **For T3**: the overdue backstop claims *outside* the policy gate but MUST keep the
 >   pinned term (pinned overdue work sits + alerts, decision 0); the homelab-down alert
 >   signal is `claimant_free=1 AND claimed_at >= now − 15min` per account.
 
 > Ordered build for [`readme.md`](./readme.md): make the invocation queue claim-**smart** —
 > sit for free, escalate near-due, spend paid budget on the next deadline not the first job.
 >
-> **Guiding constraint:** the scheduler is an _eligibility_ layer, not a new queue. It answers
-> one question — _"may this runtime claim this invocation yet?"_ — over the existing pull queue.
+> **Guiding constraint:** the scheduler is an *eligibility* layer, not a new queue. It answers
+> one question — *"may this runtime claim this invocation yet?"* — over the existing pull queue.
 > It must never override the §8 cloud-watchdog liveness backstop.
 
 ---
 
 ## Tasks (in dependency order)
 
-### T1 — `due_at` on the invocation · _the field the scheduler reads_
+### T1 — `due_at` on the invocation · *the field the scheduler reads*
 
 **Files:** `packages/mailstore/sql/data-plane.sql` + `infra/migrations.mjs`, `services/agent`
 (extraction), `webmail/src/lib/approvals/` (surface it).
 
 - Add `due_at INTEGER` (epoch ms, nullable) to `agent_invocations`. NULL = "no known deadline"
-  → the scheduler treats it as _never urgent_ (free-runtime-only, indefinitely). Migration with
+  → the scheduler treats it as *never urgent* (free-runtime-only, indefinitely). Migration with
   an executable check.
 - **Extraction happens at the boundary, not in the claiming agent** (jobs-and-facets §6 —
   the discussion caught this: eligibility needs `due_at` BEFORE any claim exists, because
   sit-free-vs-escalate is a pre-claim decision). Deterministic patterns (explicit dates,
   "by Friday", "EOD") at enqueue; model extraction only where a binding opts in; no match →
-  NULL (never-urgent). It remains a _proposal_, not a hidden field: it surfaces on the
+  NULL (never-urgent). It remains a *proposal*, not a hidden field: it surfaces on the
   approval row beside the two clocks so a human can see and correct a mis-read deadline
   (readme caution 3).
 - ⚠️ Distinct from `budgets.deadlineMs` (a loop kill-switch) and from `ActionProposal.expiresAt`
-  (the _human's_ decide-by). `due_at` is the _work's_ business deadline. Three clocks now; keep
+  (the *human's* decide-by). `due_at` is the *work's* business deadline. Three clocks now; keep
   them apart, same discipline as `expiresAt` vs `holdUntil`.
 
 **Done when:** an invocation carries an inferred `due_at`; it renders on the approval row and is
 correctable; NULL means never-urgent.
 
-### T2 — The eligibility policy · _sit free, escalate near-due_
+### T2 — The eligibility policy · *sit free, escalate near-due*
 
 **Files:** `services/agent` (the claim gate), `packages/auth-core` or a new `scheduling` module
 (pure policy).
@@ -93,13 +92,13 @@ past `due_at`, T3).
 **Done when:** the claim path consults `mayClaim`; a `@local` daemon claims deferred work a paid
 runtime declines; near-due, the paid runtime picks up unclaimed work.
 
-### T3 — Reconcile with the watchdog · _optimism must not strand work_
+### T3 — Reconcile with the watchdog · *optimism must not strand work*
 
 **Files:** the cloud watchdog (§8 mechanism).
 
 The scheduler's patience and the watchdog's liveness guarantee must compose, not fight:
 
-- The watchdog already fires when _no runtime_ claims within the pickup SLA. s11 adds a second
+- The watchdog already fires when *no runtime* claims within the pickup SLA. s11 adds a second
   trigger: **`due_at` passed with the invocation still `pending`** → the watchdog claims it on
   the paid runtime unconditionally. Optimism ends at the deadline; the backstop takes over.
 - Assert the invariant: **no invocation with a past `due_at` sits `pending`.** A test proves a
@@ -112,7 +111,7 @@ overdue) both reach the watchdog.
 ### T4 — RETIRED: there is no `defer` verb (2026-08-13)
 
 Eric's call, and the taxonomy discussion supported it: the only use he could imagine was
-queue hygiene ("hide things until tomorrow"), which is a _view_ concern, not a decision
+queue hygiene ("hide things until tomorrow"), which is a *view* concern, not a decision
 verb. The **capability** survives without the verb:
 
 - **The scheduling override is editing `due_at`** — T1 already makes it human-correctable
@@ -124,16 +123,16 @@ verb. The **capability** survives without the verb:
 The taxonomy's non-reject actions are `tookItMyself` and `needsInfo`; the invariant
 excludes those two from negative signal. T5–T8 numbering is unchanged.
 
-### T5 — The `$/work` optimiser · _which model a deadline-pressed run escalates to_ — deferred
+### T5 — The `$/work` optimiser · *which model a deadline-pressed run escalates to* — deferred
 
-The escalation in T2 decides _whether_ to spend; this decides _what to spend it on_ —
+The escalation in T2 decides *whether* to spend; this decides *what to spend it on* —
 tokens/work × $/token against the deadline, picking the cheapest model that meets the quality
 bar. Depends on enough T5-cost history to estimate `$/work` per model, and on a quality signal
 (the decline taxonomy's approve-rate per model is a candidate). Named, not scoped — this is the
 standing "Allen's background loop" the T5 spec forward-referenced. Do not build until the cost
 history is real.
 
-### T6 — Facets at the boundary · _what the gate reads_
+### T6 — Facets at the boundary · *what the gate reads*
 
 **Files:** `packages/mailstore/sql/data-plane.sql` + `infra/migrations.mjs` (facet columns on
 `agent_invocations`), `services/ingest` (mechanical facets), the boundary agent (judged
@@ -157,7 +156,7 @@ facet, nobody hand-authors per message:
 `mayClaim` (T2) reads them; a floor test proves a stamp cannot lower a binding's privacy
 class; an unfaceted invocation behaves byte-identically to today.
 
-### T7 — Jobs: the DAG · _tasks, sub-tasks, and the planner node_
+### T7 — Jobs: the DAG · *tasks, sub-tasks, and the planner node*
 
 **Files:** `packages/mailstore/sql/data-plane.sql` + `infra/migrations.mjs` (`job_id`,
 `parent_id`, `needs` on `agent_invocations`; a `jobs` table for the underivable), the claim
@@ -187,7 +186,7 @@ runtimes process in parallel; a join node synthesizes; the aggregate budget stop
 runaway fan-out; the attenuation test refuses an amplifying child; Job progress renders
 from the derived view.
 
-### T8 — The fleet host · _one daemon, N agents, discovery from grants_
+### T8 — The fleet host · *one daemon, N agents, discovery from grants*
 
 **Files:** `packages/cli/src/agent.ts` (multi-binding serve), `services/jmap` (claim-grant
 resolution — the machinery exists: `authorizeAccount`), provisioning (the claim grant).
@@ -208,7 +207,7 @@ agents means five logins — wrong shape.
 revoked claim grant stops claims for that binding without a restart; the declared
 capability vector excludes the host from unfit work.
 
-### T9 — Budget overrun is a decision, not a dead end · _the stranding hole, closed_
+### T9 — Budget overrun is a decision, not a dead end · *the stranding hole, closed*
 
 **Files:** `services/agent` (the sweep that detects it), `services/jmap/src/methods/actionProposal.ts`
 (a new proposal kind), `webmail/src/lib/approvals/` + the Go CLI (render it).
@@ -217,34 +216,34 @@ capability vector excludes the host from unfit work.
 budget, when no free runtime is live, sits until the month rolls. The overdue backstop cannot
 help — no deadline means it never fires — and the policy gate says "budget exhausted → free
 claimants only" while nobody free is listening. Narrow today (no binding sets `spendPerMonth`),
-reachable the moment a budget exists _and_ the homelab runs intermittently.
+reachable the moment a budget exists *and* the homelab runs intermittently.
 
 **The resolution (Eric, 2026-08-13): A + C + D together** — surface it, treat it as an operator
 decision, and make the decision a proposal. Which lands on a line worth stating once and
 reusing:
 
 > **Marker when nothing can be decided; proposal when something can.**
-> T3 chose a durable marker for pinned-overdue _because privacy admits no human override_ —
+> T3 chose a durable marker for pinned-overdue *because privacy admits no human override* —
 > there is no question to ask, so a proposal row would duplicate a fact the invocation already
-> holds. Budget is the opposite: _"spend anyway?"_ is a real question with a real answer, so it
+> holds. Budget is the opposite: *"spend anyway?"* is a real question with a real answer, so it
 > earns the queue. The two mechanisms are not rivals; the distinction is whether a human choice
 > exists.
 
-- **Batch per binding, not per invocation.** One proposal — _"`photos@` is out of budget; 12
-  invocations waiting; approve overage?"_ — never 12. A per-invocation proposal would be an
+- **Batch per binding, not per invocation.** One proposal — *"`photos@` is out of budget; 12
+  invocations waiting; approve overage?"* — never 12. A per-invocation proposal would be an
   alert storm wearing a decision's clothes, and the queue's whole value is that it is short.
 - **The T3 marker becomes the idempotence key.** Mark once → propose once. That is how A and D
   compose instead of duplicating: the marker is the machine fact, the proposal is the human
   question, and the marker is what stops the sweep re-asking every hour.
 - **Approve means a bounded overage, not a raised cap** — this binding, this period, capped
-  (an amount or a count). Raising `spendPerMonth` permanently is a _config_ edit, and now has
+  (an amount or a count). Raising `spendPerMonth` permanently is a *config* edit, and now has
   a real route (`PATCH /agent-bindings/{id}`). Keeping those separate means one click never
   silently becomes a standing policy.
-- **`needsInfo` fits perfectly here**: _"how much would finishing the queue cost?"_ is exactly
+- **`needsInfo` fits perfectly here**: *"how much would finishing the queue cost?"* is exactly
   the question, and the agent can answer it from the s07 T5 cost facts rather than guessing.
 - **Decline means keep waiting** — it is not a failure and the work is not cancelled.
 - ⚠️ **The taxonomy invariant gains a third exclusion.** A budget decline says nothing about
-  the agent's _work quality_ — training on it would teach an agent to stop proposing things
+  the agent's *work quality* — training on it would teach an agent to stop proposing things
   the human wanted but could not afford that month. Add it beside `tookItMyself`/`needsInfo`
   in `decline-taxonomy.md`'s excluded-from-negative-signal rule when the first RL consumer
   lands.
@@ -271,19 +270,19 @@ s12 bouncer@ — stamps T6's judged facets; deterministic sieve is its own secti
 ## Decisions needed
 
 0. **Privacy is a pin, not a preference — and it collides with the watchdog.** Cost routing
-   says _"prefer free"_; privacy routing says _"MUST run local"_ — a hard constraint on the
+   says *"prefer free"*; privacy routing says *"MUST run local"* — a hard constraint on the
    claimant set (e.g. a binding whose mail must never transit a paid cloud model). These are
    different axes: the scheduler may escalate a cost-preferred job past `due_at`, but a
-   privacy-**pinned** invocation is exempt from T3's cloud-escalation backstop _by
-   definition_ — when the homelab is down and `due_at` passes, the system must choose between
+   privacy-**pinned** invocation is exempt from T3's cloud-escalation backstop *by
+   definition* — when the homelab is down and `due_at` passes, the system must choose between
    violating privacy and violating liveness. **Privacy wins: the work sits, and the human is
    alerted** (the invariant "no past-due invocation sits pending" gains the qualifier
-   "…unclaimed _silently_"). Needs a `runtimePin: local | any` on the binding when built;
+   "…unclaimed *silently*"). Needs a `runtimePin: local | any` on the binding when built;
    named now so T2/T3 leave room for it.
 
 1. **The escalation window — fixed, or cost-scaled?** A cheap job might escalate 10 min before
-   due; an expensive one an hour, to leave retry room. _Recommendation: cost-scaled — the window
-   is a function of the estimate and a retry budget, not a constant._
+   due; an expensive one an hour, to leave retry room. *Recommendation: cost-scaled — the window
+   is a function of the estimate and a retry budget, not a constant.*
 2. **`due_at` extraction — RESOLVED (2026-08-13):** only deadline-shaped bodies, at the
    boundary, deterministic patterns first, NULL otherwise (never-urgent). A wrong `due_at`
    is worse than none. See T1 and jobs-and-facets §6.

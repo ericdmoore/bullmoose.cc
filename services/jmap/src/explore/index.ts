@@ -4,14 +4,7 @@ import { buildRegistry, type RequestContext } from "../methods";
 import type { Env } from "../index";
 import { EXPLORE_COOKIE, clearCookieHeader, parseCookies, readExploreCookie } from "./cookie";
 import { exploreOauthCallback, exploreOauthStart } from "./oauth";
-import {
-  TYPES,
-  TYPE_NAMES,
-  linksFor,
-  type ExploreLink,
-  type LinkBuilder,
-  type TypeSpec,
-} from "./types";
+import { TYPES, TYPE_NAMES, linksFor, type ExploreLink, type LinkBuilder, type TypeSpec } from "./types";
 
 /**
  * s21 — the explorer: navigable read-only JSON, so a browser plus a
@@ -63,11 +56,7 @@ const MAX_LIMIT = 200;
  * step. Called from `services/jmap/src/index.ts` only when the request arrived
  * on the explore hostname.
  */
-export async function exploreUnauthenticated(
-  request: Request,
-  url: URL,
-  env: Env,
-): Promise<Response | null> {
+export async function exploreUnauthenticated(request: Request, url: URL, env: Env): Promise<Response | null> {
   // READ-ONLY, checked first and without reference to any credential. A
   // non-GET on this host is refused whether or not a cookie is present, so
   // there is no shape of request that reaches a write from here.
@@ -128,10 +117,7 @@ export async function exploreUnauthenticated(
  * grant or a deleted account takes effect immediately rather than whenever the
  * cookie happens to expire.
  */
-export async function exploreCookiePrincipal(
-  request: Request,
-  env: Env,
-): Promise<Principal | null> {
+export async function exploreCookiePrincipal(request: Request, env: Env): Promise<Principal | null> {
   if (!env.EXPLORE_COOKIE_KEY) return null;
   const raw = parseCookies(request.headers.get("cookie"))[EXPLORE_COOKIE];
   const session = await readExploreCookie(env.EXPLORE_COOKIE_KEY, raw, Date.now());
@@ -191,27 +177,18 @@ export async function handleExplore(url: URL, env: Env, principal: Principal): P
 
   if (segments.length === 0) return exploreJson(indexDocument(base, principal));
   if (segments.length > 2) {
-    return exploreJson(
-      { error: { type: "notFound" }, detail: "the grammar is /{Type} and /{Type}/{id}" },
-      404,
-    );
+    return exploreJson({ error: { type: "notFound" }, detail: "the grammar is /{Type} and /{Type}/{id}" }, 404);
   }
 
   const typeName = segments[0] as string;
   const spec = TYPES[typeName];
   if (!spec) {
-    return exploreJson(
-      { error: { type: "notFound" }, detail: `unknown type "${typeName}"`, types: TYPE_NAMES },
-      404,
-    );
+    return exploreJson({ error: { type: "notFound" }, detail: `unknown type "${typeName}"`, types: TYPE_NAMES }, 404);
   }
 
   const accountId = url.searchParams.get("accountId") ?? principal.accounts[0]?.accountId ?? null;
   if (!accountId) {
-    return exploreJson(
-      { error: { type: "accountNotFound" }, detail: "this credential reaches no account" },
-      404,
-    );
+    return exploreJson({ error: { type: "accountNotFound" }, detail: "this credential reaches no account" }, 404);
   }
 
   const ctx: RequestContext = { env, principal };
@@ -354,9 +331,7 @@ async function listDocument(
   // whose size is an exact multiple of `limit` ends on one empty page, which
   // terminates.
   const next =
-    limit !== undefined && ids !== null && ids.length === limit
-      ? pageHref(url, base, position + limit)
-      : undefined;
+    limit !== undefined && ids !== null && ids.length === limit ? pageHref(url, base, position + limit) : undefined;
 
   return exploreJson({
     _self: pageHref(url, base, spec.query ? position : undefined),
@@ -454,10 +429,7 @@ function intParam(url: URL, name: string, fallback: number): number {
  * question than the one asked, and on a read-everything surface "you got more
  * than you filtered for" is the failure that matters.
  */
-function collectFilter(
-  spec: TypeSpec,
-  url: URL,
-): { value: Record<string, unknown> | null } | { error: string } {
+function collectFilter(spec: TypeSpec, url: URL): { value: Record<string, unknown> | null } | { error: string } {
   const out: Record<string, unknown> = {};
   for (const [key, raw] of url.searchParams) {
     if (RESERVED_PARAMS.has(key)) continue;
@@ -517,11 +489,7 @@ function methodErrorResponse(err: MethodError, spec: TypeSpec, accountId: string
  * `no-store` because every document is account data. `no-referrer` so a URL —
  * which carries account and object ids — never leaves on an outbound request.
  */
-export function exploreJson(
-  data: unknown,
-  status = 200,
-  headers: Record<string, string> = {},
-): Response {
+export function exploreJson(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data, null, 2), {
     status,
     headers: {

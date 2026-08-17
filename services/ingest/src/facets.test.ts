@@ -98,9 +98,10 @@ describe("mechanicalRequires — capabilities derived from the work itself", () 
   });
 
   it("derives vision from any image/* attachment, case-insensitively", () => {
-    expect(
-      mechanicalRequires({ bodyTextChars: 4, attachmentTypes: ["application/pdf", "IMAGE/PNG"] }),
-    ).toEqual({ contextTokens: 1, vision: true });
+    expect(mechanicalRequires({ bodyTextChars: 4, attachmentTypes: ["application/pdf", "IMAGE/PNG"] })).toEqual({
+      contextTokens: 1,
+      vision: true,
+    });
   });
 
   it("a PDF alone requires no vision", () => {

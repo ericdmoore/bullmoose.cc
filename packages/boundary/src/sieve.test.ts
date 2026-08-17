@@ -22,9 +22,7 @@ const pass = (id: string, all: SieveRule["all"]): SieveRule => ({ id, all, actio
 
 describe("sieveVerdict — ordering, first match wins", () => {
   const m = msg();
-  const rejectFromExample = reject("r-example", [
-    { kind: "contains", field: "fromDomain", value: "example.com" },
-  ]);
+  const rejectFromExample = reject("r-example", [{ kind: "contains", field: "fromDomain", value: "example.com" }]);
   const passAlice = pass("p-alice", [{ kind: "contains", field: "from", value: "alice@" }]);
 
   it("reject listed first → FAIL names the reject rule", () => {
@@ -47,10 +45,7 @@ describe("sieveVerdict — ordering, first match wins", () => {
   });
 
   it("no rule matches → PASS with NO ruleId", () => {
-    const out = sieveVerdict(
-      [reject("r", [{ kind: "contains", field: "subject", value: "zzz" }])],
-      m,
-    );
+    const out = sieveVerdict([reject("r", [{ kind: "contains", field: "subject", value: "zzz" }])], m);
     expect(out).toEqual({ verdict: "PASS" });
     expect("ruleId" in out).toBe(false);
   });
@@ -67,18 +62,8 @@ describe("sieveVerdict — ordering, first match wins", () => {
 describe("sieveVerdict — every matcher kind", () => {
   type Row = [name: string, rule: SieveRule, m: BoundaryMessage, want: "PASS" | "FAIL"];
   const rows: Row[] = [
-    [
-      "contains/from hits",
-      reject("r", [{ kind: "contains", field: "from", value: "ALICE" }]),
-      msg(),
-      "FAIL",
-    ],
-    [
-      "contains/from misses",
-      reject("r", [{ kind: "contains", field: "from", value: "bob" }]),
-      msg(),
-      "PASS",
-    ],
+    ["contains/from hits", reject("r", [{ kind: "contains", field: "from", value: "ALICE" }]), msg(), "FAIL"],
+    ["contains/from misses", reject("r", [{ kind: "contains", field: "from", value: "bob" }]), msg(), "PASS"],
     [
       "contains/fromDomain hits",
       reject("r", [{ kind: "contains", field: "fromDomain", value: "example" }]),
@@ -91,54 +76,29 @@ describe("sieveVerdict — every matcher kind", () => {
       msg(),
       "FAIL",
     ],
-    [
-      "glob/from anchored hit",
-      reject("r", [{ kind: "glob", field: "from", value: "*@example.com" }]),
-      msg(),
-      "FAIL",
-    ],
+    ["glob/from anchored hit", reject("r", [{ kind: "glob", field: "from", value: "*@example.com" }]), msg(), "FAIL"],
     [
       "glob/fromDomain ? hit",
       reject("r", [{ kind: "glob", field: "fromDomain", value: "example.co?" }]),
       msg(),
       "FAIL",
     ],
-    [
-      "glob/subject hit",
-      reject("r", [{ kind: "glob", field: "subject", value: "quarterly*" }]),
-      msg(),
-      "FAIL",
-    ],
+    ["glob/subject hit", reject("r", [{ kind: "glob", field: "subject", value: "quarterly*" }]), msg(), "FAIL"],
     [
       "headerPresent hits (name case-insensitive)",
       reject("r", [{ kind: "headerPresent", name: "list-id" }]),
       msg(),
       "FAIL",
     ],
-    [
-      "headerPresent misses",
-      reject("r", [{ kind: "headerPresent", name: "x-mailer" }]),
-      msg(),
-      "PASS",
-    ],
-    [
-      "headerContains hits",
-      reject("r", [{ kind: "headerContains", name: "LIST-ID", value: "staff" }]),
-      msg(),
-      "FAIL",
-    ],
+    ["headerPresent misses", reject("r", [{ kind: "headerPresent", name: "x-mailer" }]), msg(), "PASS"],
+    ["headerContains hits", reject("r", [{ kind: "headerContains", name: "LIST-ID", value: "staff" }]), msg(), "FAIL"],
     [
       "headerContains on an absent header misses",
       reject("r", [{ kind: "headerContains", name: "x-mailer", value: "bulk" }]),
       msg(),
       "PASS",
     ],
-    [
-      "headerGlob hits",
-      reject("r", [{ kind: "headerGlob", name: "list-id", value: "<staff.*>" }]),
-      msg(),
-      "FAIL",
-    ],
+    ["headerGlob hits", reject("r", [{ kind: "headerGlob", name: "list-id", value: "<staff.*>" }]), msg(), "FAIL"],
     [
       "headerGlob on an absent header misses",
       reject("r", [{ kind: "headerGlob", name: "x-mailer", value: "*" }]),

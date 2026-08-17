@@ -86,10 +86,7 @@ export default function Example() {
                     </svg>
                   </div>
                 </div>
-                <label
-                  htmlFor="remember-me"
-                  className="block text-sm/6 text-gray-900 dark:text-gray-300"
-                >
+                <label htmlFor="remember-me" className="block text-sm/6 text-gray-900 dark:text-gray-300">
                   Remember me
                 </label>
               </div>
@@ -115,7 +112,7 @@ export default function Example() {
           </form>
 
           <p className="text-center text-sm/6 text-gray-500 dark:text-gray-400">
-            Not a member?{" "}
+            Not a member?{' '}
             <a
               href="#"
               className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
@@ -126,5 +123,5 @@ export default function Example() {
         </div>
       </div>
     </>
-  );
+  )
 }

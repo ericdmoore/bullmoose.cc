@@ -59,9 +59,7 @@ export function deriveScopeNote(plan: {
     // Named gaps lead: they are the tier boundary (what an upgrade would add),
     // not an accident of this session's grants.
     ...plan.gaps.map((g) => `${g.label} — ${g.reason}`),
-    ...plan.coverage
-      .filter((c) => !c.searched)
-      .map((c) => `${c.label} — ${c.reason ?? "not searched"}`),
+    ...plan.coverage.filter((c) => !c.searched).map((c) => `${c.label} — ${c.reason ?? "not searched"}`),
     ...(plan.sharedAccountsExcluded > 0 ? [SHARED_NOT_SEARCHED] : []),
   ];
 

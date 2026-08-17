@@ -11,13 +11,13 @@ then repoints delivery to it.
 Two facts combine:
 
 1. **The address is not unique.** `packages/mailstore/sql/control-plane.sql:46` —
-   `UNIQUE (account_id, email)` on `identities`. That constrains an address _within_ an
+   `UNIQUE (account_id, email)` on `identities`. That constrains an address *within* an
    account, not across accounts. Compare `principals.login_email` at `:27`, which **is**
    globally `UNIQUE` — so the schema knows how to express this and does so one table away.
 
 2. **Delivery is last-write-wins.** `services/provision/src/index.ts:387` —
    `INSERT OR REPLACE INTO routes (domain, localpart, kind, target) VALUES (?, ?, 'mailbox', ?)`.
-   `INSERT OR REPLACE` is a _delete-then-insert_ in SQLite, so the previous row for that
+   `INSERT OR REPLACE` is a *delete-then-insert* in SQLite, so the previous row for that
    `(domain, localpart)` is destroyed, not merged.
 
 ## What actually happens
@@ -46,14 +46,14 @@ for accounts, so cleaning up the duplicate afterwards requires direct SQL.
 
 ## What would make the answer clear
 
-Whether the correct behaviour is _reject_ or _adopt_:
+Whether the correct behaviour is *reject* or *adopt*:
 
 - **Reject** (409 on an address that already routes somewhere) is safer and matches
   `principals.login_email`'s existing posture.
 - **Adopt** (make the call idempotent — return the existing account) is friendlier to retries
   and bootstrap re-runs, which is where this actually bites.
 
-These are not exclusive: reject on a _different_ target, adopt on the _same_ one.
+These are not exclusive: reject on a *different* target, adopt on the *same* one.
 
 ## Related
 

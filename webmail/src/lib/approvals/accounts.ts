@@ -44,9 +44,7 @@ export interface ApprovalsAccount {
  * server is the gate, and a UI that hid a button a server would have honoured
  * is its own kind of lie. Present-and-false is the honest hide.
  */
-export function approvalsAccounts(
-  session: Pick<Session, "capabilities" | "accounts">,
-): ApprovalsAccount[] {
+export function approvalsAccounts(session: Pick<Session, "capabilities" | "accounts">): ApprovalsAccount[] {
   if (!hasAgentCapability(session)) return [];
   const out: ApprovalsAccount[] = [];
   for (const [accountId, account] of Object.entries(session.accounts)) {

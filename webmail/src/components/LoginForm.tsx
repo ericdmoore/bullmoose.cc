@@ -77,19 +77,14 @@ export default function LoginForm() {
               setError(undefined);
             }}
           />
-          <button
-            type="button"
-            class="door-reveal"
-            aria-pressed={reveal}
-            onClick={() => setReveal(!reveal)}
-          >
+          <button type="button" class="door-reveal" aria-pressed={reveal} onClick={() => setReveal(!reveal)}>
             {reveal ? "Hide" : "Show"}
           </button>
         </div>
 
         <p id="door-help" class="door-help">
-          Mint one with <code>bullmoose token create</code>. It is shown once — the{" "}
-          <code>tk_…</code> id in listings is not it.
+          Mint one with <code>bullmoose token create</code>. It is shown once — the <code>tk_…</code> id in listings is
+          not it.
         </p>
 
         {error ? (
@@ -131,10 +126,10 @@ export default function LoginForm() {
       {/* Say what this is. An interim door that looks like a product login is
           how a temporary thing becomes permanent. */}
       <p class="door-note">
-        This is an interim door. It takes a token you already have and keeps it in this browser; it
-        is not a login system, there is no password and no account recovery. Real sign-in is the
-        OAuth flow at <code>auth.bullmoose.cc</code> — s07 T7, on the authorization server s02 T3
-        builds — and this page is deleted when that lands.
+        This is an interim door. It takes a token you already have and keeps it in this browser; it is not a login
+        system, there is no password and no account recovery. Real sign-in is the OAuth flow at{" "}
+        <code>auth.bullmoose.cc</code> — s07 T7, on the authorization server s02 T3 builds — and this page is deleted
+        when that lands.
       </p>
     </main>
   );
