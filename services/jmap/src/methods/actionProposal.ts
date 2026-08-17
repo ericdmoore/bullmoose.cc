@@ -166,7 +166,7 @@ const HELD_MAIL_REVIEW = "held-mail-review";
  * doorman to stop asking about mail it cannot judge, i.e. to guess — the exact
  * behaviour the mid-band proposal exists to replace.
  */
-const NO_FAULT_KINDS = new Set(["budget-overrun", HELD_MAIL_REVIEW]);
+const NO_FAULT_KINDS = new Set(["budget-overrun", HELD_MAIL_REVIEW, "watch-offer"]);
 
 /**
  * The tier-2 post-approval retraction window. A tier-2 approve enters the hold
@@ -1240,6 +1240,56 @@ async function applyProposal(
       // cannot keep. The reversibility that makes this tier 1 is real; the
       // machine affordance for it is `move`, not a proposal replay.
       return { entries };
+    }
+
+    case "watch-offer": {
+      // s20 T1↔T4 — the agent-offered Watch. The sweep noticed a question you
+      // sent that went unanswered and OFFERED to watch it (services/agent
+      // waitingOn.ts); approving arms an ordinary `no-reply-from` Watch, the
+      // same row `Watch/set` would write. Tier 1 and reversible: an armed watch
+      // egresses nothing until it fires, and firing is itself only a proposal —
+      // the undo simply cancels it.
+      const p = safeJson(row.payload_json);
+      const to = str(p.to);
+      const threadId = str(p.threadId);
+      const sentAt = Number(p.sentAt);
+      const durationMs = Number(p.watchDurationMs);
+      if (!to || !threadId || !Number.isFinite(sentAt) || !Number.isFinite(durationMs)) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "a watch-offer payload needs to/threadId/sentAt/watchDurationMs",
+          ["payload"],
+        );
+      }
+      const now = Date.now();
+      const watchId = `w_${crypto.randomUUID()}`;
+      await ctx.env.DB.prepare(
+        `INSERT INTO watches
+           (id, account_id, owner, condition_type, condition_json, deadline_at,
+            action_type, action_json, status, source_ref, created_at)
+         VALUES (?, ?, ?, 'no-reply-from', ?, ?, 'draft-followup', ?, 'armed', ?, ?)`,
+      )
+        .bind(
+          watchId,
+          access.accountId,
+          ctx.principal.username,
+          JSON.stringify({ sender: to, threadId }),
+          now + durationMs,
+          JSON.stringify({ to }),
+          str(p.emailId) ?? null,
+          // created_at is BACKDATED to the original send: `no-reply-from`
+          // evaluates "did a reply arrive since `created_at`", and the honest
+          // anchor is when you sent the message, not when you approved the
+          // offer — otherwise a reply that landed between offer and approval
+          // would be missed and the watch would fire spuriously.
+          Number.isFinite(sentAt) ? sentAt : now,
+        )
+        .run();
+      return {
+        entries: [{ collection: "Watch", created: [watchId], updated: [], destroyed: [] }],
+        // The undo handle a tier-1 application keeps (arch.md §2).
+        undo: { action: "cancel-watch", watchId },
+      };
     }
 
     default:

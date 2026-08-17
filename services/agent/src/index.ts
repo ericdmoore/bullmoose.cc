@@ -23,6 +23,7 @@ import { proposeMidBandHolds } from "./midBandProposal.js";
 import { classifyScreened } from "./bouncerClassify.js";
 import { commitHeldProposals } from "./commitHeld.js";
 import { sweepWatches } from "./watches.js";
+import { sweepWaitingOn } from "./waitingOn.js";
 import { runBouncer } from "./bouncer.js";
 import { runRemind } from "./remind.js";
 import { runLedger } from "./ledger.js";
@@ -221,6 +222,12 @@ export default {
     // sweep's commitHeldProposals will carry if approved — the cadence the
     // whole exception-not-firehose model runs on.
     await sweepWatches(env);
+    // s20 T1↔T4 — the anti-star: notice a question you sent that has gone
+    // unanswered and OFFER to watch it, rather than making you flag it. After
+    // sweepWatches so a thread the human already armed a watch on (or that just
+    // fired one) is seen as handled and not re-offered. Emits tier-1 offers;
+    // approving one arms an ordinary no-reply-from watch the loop above fires.
+    await sweepWaitingOn(env);
   },
 } satisfies ExportedHandler<Env>;
 

@@ -59,7 +59,11 @@ export type ProposalKind =
   // confirm?" The mid-band is definitionally the band bouncer@ cannot decide,
   // so it comes here as ONE batched question instead of accruing in a folder
   // nobody owns.
-  | "held-mail-review";
+  | "held-mail-review"
+  // s20 T1↔T4 — the anti-star: "you emailed X and haven't heard back; want me
+  // to watch this and draft a follow-up?" The agent NOTICED — you flagged
+  // nothing. Approving arms a no-reply-from Watch (reversible, tier 1).
+  | "watch-offer";
 
 /** What the proposal acts on. */
 export interface ProposalSubject {
