@@ -99,10 +99,25 @@ signal, so history survives (the s12 rescue→Bayes correction shape). Changes c
 a human corrects it in one write that records the negative without erasing the claim; and an
 `anchor`-less annotation is *refused*.
 
-### A2 — The extraction pass · *where the Watch detector graduates, and s11 T5 gets fed*
+### A2 — The extraction pass · *where the Watch detector graduates, and s11 T5 gets fed* — LANDED (2026-08-17)
 
-**Files:** an extractor in `services/agent/src/` (a cron pass beside `sweepWaitingOn`), an
-`Annotation`-writing helper, cost capture reusing the s07 T5 stamp.
+> **Built as a PIPELINE, not a cron sweep** (`services/agent/src/extract.ts`, `pipeline: "extract"`).
+> The plan first said "a cron pass beside sweepWaitingOn"; a pipeline is better, and it is the
+> point where the firehose-economics risk actually gets managed. A binding pipeline is **opt-in**
+> (runs only for an account that provisioned an extract binding — it spends nothing until turned
+> on), runs **once per delivered message** with the cost **stamped by the ordinary finish() path**
+> (→ the per-extraction history s11 T5 was starved for), and is **budget-bounded** by the binding's
+> s11 budget — three bounds inherited free from the drain. On top, a **deterministic cue pre-filter**
+> skips the model entirely for a message with no commitment-shaped language (a newsletter is a free
+> no-op), and the model output is parsed **defensively** (garbage → nothing; the injection posture
+> is bouncerClassify's — the message is evidence, never instructions). The `sweepWaitingOn` detector
+> graduated: it now also writes a deterministic `task` Annotation (confidence NULL — it is certain,
+> not estimated) anchored to the sent message. 9 new tests. **DEFERRED, and it is genuinely Eric's
+> call**: `provisionExtractor` (which model menu, and turning it on for a real account — the spend
+> decision). The capability is inert until then.
+
+**Files:** `services/agent/src/extract.ts` (the pipeline) + dispatch in `index.ts`, the
+`sweepWaitingOn` graduation, cost capture reusing the s07 T5 stamp.
 
 Reads new/changed mail and writes anchored, classed annotations: a commitment you made ("I'll
 send the calc Friday"), a decision, a task. **Cost recorded per extraction** — the

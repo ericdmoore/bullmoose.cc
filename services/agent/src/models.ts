@@ -54,9 +54,11 @@ export interface ModelCandidate {
 /** agent_bindings.config_json — everything that makes a binding an agent. */
 export interface BindingConfig {
   /** "reply" (default — Emily-style), "ledger" (Allen-style), "bouncer"
-   *  (s12 2-D — the boundary agent's conversational surface, bouncer.ts) or
-   *  "remind" (s20 wave 2 — the remind@ mail-native Watches door, remind.ts). */
-  pipeline?: "reply" | "ledger" | "bouncer" | "remind";
+   *  (s12 2-D — the boundary agent's conversational surface, bouncer.ts),
+   *  "remind" (s20 wave 2 — the remind@ mail-native Watches door, remind.ts) or
+   *  "extract" (s18 A2 — the extraction pass: reads a delivered message and
+   *  writes commitment/decision/task Annotations, extract.ts). */
+  pipeline?: "reply" | "ledger" | "bouncer" | "remind" | "extract";
   persona?: string; // L1
   replyMode?: "send" | "draft";
   allowedSenders?: string[];

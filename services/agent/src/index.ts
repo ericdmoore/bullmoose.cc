@@ -26,6 +26,7 @@ import { sweepWatches } from "./watches.js";
 import { sweepWaitingOn } from "./waitingOn.js";
 import { runBouncer } from "./bouncer.js";
 import { runRemind } from "./remind.js";
+import { runExtract } from "./extract.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "@bullmoose/mailstore/outboundBound";
@@ -744,6 +745,16 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
         }),
       done,
     );
+  }
+
+  // s18 A2 — the extraction pass. Reads the delivered message and writes
+  // commitment/decision/task Annotations; it SENDS nothing, so it needs none of
+  // the outbound machinery below and returns before it. After the
+  // humanOriginated gate (no extracting from automation) and the allowedSenders
+  // gate (empty for an extract binding, so all human mail reaches it). Cost is
+  // stamped by the ordinary finish() → s11 T5. See extract.ts.
+  if (cfg.pipeline === "extract") {
+    return runExtract(env, job, cfg, email, parsed, done);
   }
 
   // The outbound twin of the gate above (s10 T1). Everything the reply
