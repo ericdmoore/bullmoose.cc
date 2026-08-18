@@ -35,6 +35,19 @@ describe("CollectionColumn — expanded", () => {
     />,
   );
 
+  it("offers the create verb exactly once per viewport", () => {
+    // The header button and the FAB are the same verb in two places (s25 T5).
+    // Rendering both at one width is the bug this pins: the button carries
+    // `max-lg:hidden` and the FAB `lg:hidden`, so narrow gets the FAB and wide
+    // gets the button — never two blue buttons stacked on a phone.
+    const button = html.slice(html.indexOf("New contact"));
+    expect(html).toContain("max-lg:hidden");
+    expect(html).toContain("lg:hidden");
+    // and the column still names itself where the button has stepped aside
+    expect(html).toContain("Contacts");
+    expect(button.length).toBeGreaterThan(0);
+  });
+
   it("is a labelled column of grouped, selectable rows", () => {
     expect(html).toContain('aria-label="Contacts collections"');
     expect(html).toContain("Address books");

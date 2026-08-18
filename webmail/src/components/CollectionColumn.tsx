@@ -359,10 +359,24 @@ export default function CollectionColumn(props: CollectionColumnProps) {
         header={
           <div class="flex items-center gap-x-1 px-2 pt-2 pb-1">
             {newLabel && onNew ? (
-              <Button variant="primary" size="sm" onClick={() => onNew()} disabled={newDisabled} class="grow">
-                <PlusIcon class="size-4" strokeWidth={2} />
-                {newLabel}
-              </Button>
+              <>
+                {/* Below `lg` the same verb is already reachable as the FAB, so the
+                    header button hides rather than doubling it — one create
+                    affordance per viewport, which is the whole point of the FAB.
+                    The column keeps a heading there instead, since a tray of
+                    collections with no name reads as orphaned. */}
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => onNew()}
+                  disabled={newDisabled}
+                  class="grow max-lg:hidden"
+                >
+                  <PlusIcon class="size-4" strokeWidth={2} />
+                  {newLabel}
+                </Button>
+                <span class="grow px-1 text-sm font-semibold text-gray-900 lg:hidden dark:text-white">{title}</span>
+              </>
             ) : (
               <span class="grow px-1 text-sm font-semibold text-gray-900 dark:text-white">{title}</span>
             )}
