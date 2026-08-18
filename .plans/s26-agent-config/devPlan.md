@@ -25,6 +25,22 @@ Emily's page, the way renaming a contact happens on the card. Settings keeps the
 | correction/training toggles (when learning loops land) | this agent's correction stats |
 | — | everything below |
 
+## Found while capturing: the supervisory-grant annotate gap
+
+Eric hit "insufficient scope — needs annotate" in the UI. Diagnosed live (2026-08-18): his own
+token is the `mail` bundle and passes the annotate gate (probe-verified against production);
+the refusal comes on **grant-reached agent accounts**, where effective scopes = token ∩ grant
+and `SUPERVISORY_GRANT_SCOPES = ["read", "draft"]` — no `annotate`. Marking an agent's mail
+read, flagging, or any keyword flip in a supervised mailbox is correctly refused under today's
+grant.
+
+*Recommendation (Eric to confirm — it widens an authz default):* add `annotate` to the
+supervisory grant — keyword flips are reversible, non-egress, and "triage my agent's mailbox"
+is squarely what supervision is for. Note the migration wrinkle: grants freeze scopes at mint,
+so existing supervisors need revoke + re-grant (or a one-time UPDATE); `superviseBinding`'s
+idempotent adopt will NOT widen an existing row. Until then the UI should grey these actions
+from effective scopes (the approvals rowAuthority pattern, applied to mail triage).
+
 ## The dossier — what an agent's page carries
 
 All of this EXISTS in the schema today; s26 T1 is a read surface, not new state:
@@ -53,11 +69,23 @@ gated, overage-asks in approvals — all shipped). But an agent enabled TODAY ha
 nothing HISTORICAL: pointX = enablement time while data runs back to PointP. The extractor will
 never touch the archive on its own.
 
-**T3 adds the backfill verb**: `POST /agent-bindings/{id}/backfill {sinceDays, budgetMicros}` —
-mints pending invocations for historical mail (newest-first, so value lands early), bounded by
-its OWN budget envelope (never the monthly cap), NULL-due (so the paid drain treats it as
-sit-free work and a homelab runtime may eat it for free), idempotent per (binding, email). The
-dossier shows backfill progress as part of the ledger.
+**The behaviour Eric wants (2026-08-18), in three rules:**
+
+1. **The historical floor is `created_at`.** A new agent is bounded to current + future work by
+   default — it never reprocesses old news. Moving the floor BACKWARD is an explicit act that
+   needs approval (a tier-1 proposal: "crm@ asks to read mail back to 2023 — allow?"). Whether
+   backfill fits is per-agent character: crm@ perusing the whole archive makes sense; Allen
+   backfilling three-year-old spending does not ("I either didn't care, or I dealt with it") —
+   the floor default encodes that, and the approval is where the exception is granted.
+2. **Surplus burns the backlog.** Near the end of a budget cycle, when the projected surplus is
+   safely estimable (spend rate vs days remaining), the agent works its backlog with the
+   surplus — newest-first, NULL-due (so a homelab runtime may eat it free), stopping at the
+   floor. v1: the cron computes surplus and mints backfill invocations inside it; the dossier
+   ledger shows "backfilling: surplus $0.83 of $2.00, 41 of 210 messages". No new approval —
+   the human already approved the budget; this spends the APPROVED money instead of wasting it.
+3. **Manual backfill stays available**: `POST /agent-bindings/{id}/backfill {sinceDays,
+   budgetMicros}` — its own envelope, never the monthly cap, idempotent per (binding, email);
+   crossing the floor triggers the rule-1 approval.
 
 ## Provider credentials: BYOK via the Bureau
 
@@ -74,6 +102,18 @@ Platform key stays the default; BYOK is opt-in per tenant. (T4.)
 provider behind the slug, within constraints) — it does not pick models. Model choice is ours,
 and today it is a static alias menu ranked by price.
 
+**The Host → Model hierarchy (Eric's frame, confirmed — the code already agrees):** Host
+(provider) is choice 1 — `[openrouter | workers-ai | gateway | @local]` — and the model list is
+subordinate to it (`ModelCandidate {provider, model}` is exactly this pair). Two refinements:
+an ALIAS is a portfolio ACROSS hosts (the fallback chain: try @local's list, then OR's), and
+`@local` is not a provider entry but a CLAIMANT — the homelab runtime resolves its own model
+list. **Discovery per host** (the dossier's model picker and the CLI both need it): OpenRouter
+`GET /api/v1/models`; Workers AI the CF catalog API; the gateway depends on its BYOK providers;
+`@local` speaks OpenAI-compat `/v1/models` — probe in order **LiteLLM (:4000) → Ollama
+(:11434/v1) → vLLM (:8000) → llama.cpp (:8080)**, LiteLLM first because on this homelab it IS
+the hub (nothing talks to Ollama directly; `hermesModels` is the prior art). CLI verb:
+`bullmoose models [--host]`.
+
 **Eric's program**: Allen A/B tests models to discover the platform's price-quality frontier,
 and builds the dataset — human + agent outcomes — that could train our own task→model
 classifier. The judgment data ALREADY accrues; what is missing is assignment and the join:
@@ -82,9 +122,24 @@ classifier. The judgment data ALREADY accrues; what is missing is assignment and
   reasons (wrongContent/wrongAction — decline-taxonomy's negative signal, with the no-fault
   kinds correctly excluded); approved-after-edit diffs (quality miss that still shipped);
   annotation dismissals (extractor false positives); yanks; needsInfo rounds.
-- **T5a — assignment**: per-invocation model variation over the alias menu (deterministic split
-  by invocation id; the menu already supports candidates), recorded on the row it already
-  stamps.
+**What to A/B (Eric's question, answered from the call sites that exist):**
+
+| Arena | The outcome label (already recorded) |
+|---|---|
+| **Extraction** (extract.ts) | annotation dismissals vs resolutions; human filings the model missed |
+| **Reply drafting** (Emily) | approved-clean vs approved-after-EDIT (the diff!) vs declined-wrongContent |
+| **Mid-band classify** (bouncerClassify) | rescues / confirms — actual ham/spam ground truth |
+| **Ledger extraction** (Allen) | digest corrections |
+| **Contact merge** (crm@, when it lands) | merge proposals are approvals — every decision is a label |
+| **needsInfo answers** | rounds-per-question (chronic rounds = poor answers) |
+| **Finder retrieval** (later) | did the human open a result |
+
+And not only MODELS: prompt variants (EXTRACT_SYSTEM versions), cue-filter thresholds and
+confidence floors are arms in the same harness — (model × prompt × pipeline), one assignment
+mechanism.
+
+- **T5a — assignment**: per-invocation variation over the alias menu (deterministic split by
+  invocation id; the menu already supports candidates), recorded on the row it already stamps.
 - **T5b — the join + report**: a periodic Allen digest — cost vs correction-rate per model per
   pipeline — the price-quality frontier, delivered as mail (Allen's native medium).
 - **T5c — the learned router (later)**: when the frontier is stable, a per-task model policy
