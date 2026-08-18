@@ -83,6 +83,17 @@ never touch the archive on its own.
    floor. v1: the cron computes surplus and mints backfill invocations inside it; the dossier
    ledger shows "backfilling: surplus $0.83 of $2.00, 41 of 210 messages". No new approval —
    the human already approved the budget; this spends the APPROVED money instead of wasting it.
+3a. **Scouts, then troops (Eric).** Backfill need not pay frontier prices for every old
+   message: run a CASCADE. Pass 1 — a cheap scout (an `@local` model, or the free-tier cloud
+   model) sweeps the backlog and marks `data-of-potential-interest`; pass 2 — the
+   efficient-frontier model circles back to ONLY the flagged items. Surgical backfill: the
+   paid spend lands where a scout already found signal. This is the bouncerClassify tiering
+   (regex → cheap classifier → expensive judgment) applied to history, and it composes with
+   the claim system for free: scout invocations are NULL-due free-runtime-preferred work (the
+   homelab eats them at $0), and each flag mints a paid invocation carrying the scout's note
+   as evidence. The scout's verdict is itself assignment data for the frontier program (T5) —
+   scouts that flag well are measurable.
+
 3. **Manual backfill stays available**: `POST /agent-bindings/{id}/backfill {sinceDays,
    budgetMicros}` — its own envelope, never the monthly cap, idempotent per (binding, email);
    crossing the floor triggers the rule-1 approval.
@@ -102,12 +113,18 @@ Platform key stays the default; BYOK is opt-in per tenant. (T4.)
 provider behind the slug, within constraints) — it does not pick models. Model choice is ours,
 and today it is a static alias menu ranked by price.
 
-**The Host → Model hierarchy (Eric's frame, confirmed — the code already agrees):** Host
-(provider) is choice 1 — `[openrouter | workers-ai | gateway | @local]` — and the model list is
-subordinate to it (`ModelCandidate {provider, model}` is exactly this pair). Two refinements:
-an ALIAS is a portfolio ACROSS hosts (the fallback chain: try @local's list, then OR's), and
-`@local` is not a provider entry but a CLAIMANT — the homelab runtime resolves its own model
-list. **Discovery per host** (the dossier's model picker and the CLI both need it): OpenRouter
+**The Host → Model hierarchy, with Eric's correction adopted:** Host is choice 1 —
+`[openrouter | workers-ai | gateway | @local]` — and models are subordinate to the host
+(`ModelCandidate {provider, model}` is that pair; "provider" in code = host). The first cut of
+this doc called @local "a claimant, not a provider" — **wrong factoring**. Eric's model is
+cleaner and is now the house model: **HOST = where models live** (@local is a host: the machine
+whose LiteLLM/Ollama serve a model list) and **CLAIMANT = the runtime that takes work off the
+queue** (the cloud worker, or the CLI runner). They are orthogonal axes joined by
+REACHABILITY: the cloud claimant can reach openrouter/workers-ai/gateway but not @local; the
+CLI claimant runs beside @local and can reach every host (it may carry an OR key too). An
+ALIAS is a portfolio across hosts (the fallback chain), and which candidates a given claimant
+may attempt is the reachability matrix — which is also exactly why scout/troops works: scouts
+= CLI claimant × @local host, troops = cloud claimant × frontier host. **Discovery per host** (the dossier's model picker and the CLI both need it): OpenRouter
 `GET /api/v1/models`; Workers AI the CF catalog API; the gateway depends on its BYOK providers;
 `@local` speaks OpenAI-compat `/v1/models` — probe in order **LiteLLM (:4000) → Ollama
 (:11434/v1) → vLLM (:8000) → llama.cpp (:8080)**, LiteLLM first because on this homelab it IS
@@ -146,6 +163,30 @@ mechanism.
   replaces the static menu. Enters as a ranked menu rewrite, not a new mechanism — the
   fallback chain and budget gates hold unchanged.
 
+## @local is a PEER dependency — the onboarding ladder
+
+Is ollama a dependency? **No — a peer.** The product is COMPLETE without any local host: the
+cloud path (free-tier Workers AI + BYOK OpenRouter) is the zero-install default, and @local is
+an enhancement (privacy pins, free backlog/scout work, out-of-budget drainage). Nothing may
+ever require it, and nothing installs it without consent. The ladder, one strategy that
+generalizes from the West-Wing-loving suburban mom (techie among her friends, first time in a
+terminal) to the terminal-native:
+
+- **Rung 0 — never opens a terminal.** The web app is the whole product; the staff works from
+  the cloud. She is not a degraded user; she is the DEFAULT user.
+- **Rung 1 — one guided command.** `bullmoose local setup`: the CLI PROBES first (LiteLLM
+  :4000, Ollama :11434/v1, vLLM :8000, llama.cpp :8080 — the /v1/models sweep); if a host is
+  already running it connects and stops. If none, it OFFERS the managed install — "I can
+  install Ollama (one program, ~a coffee's worth of download) and pull a starter model —
+  proceed?" — and does it for her on yes (brew/winget under the hood). Do it WITH her, never
+  hand her a page of commands.
+- **Rung 2 — already runs something.** `bullmoose local connect --host http://…` points at any
+  OpenAI-compat endpoint; discovery does the rest. No opinions about her stack.
+
+Detect → connect → offer → install-with-consent, in that order. Ollama is the managed-install
+choice only because it is the simplest single binary — not a blessed runtime; the probe order
+treats every OpenAI-compat host as equal once running.
+
 ## Tasks
 
 T1 — **the dossier read surface**: Agents realm detail panel (quad-panel pattern, T0 primitives)
@@ -156,7 +197,8 @@ T3 — **backfill**: the verb + envelope + ledger progress.
 T4 — **BYOK via Bureau**: per-tenant provider credentials; guardrails ride the key.
 T5 — **the frontier**: a/b assignment → outcome join → Allen's digest → (later) learned router.
 T6 — **CLI parity**: `bullmoose agent …` learns the extract pipeline (Eric's @local
-     out-of-budget path) and the dossier verbs (`show`, `budget`, `model`, `backfill`).
+     out-of-budget path), the dossier verbs (`show`, `budget`, `model`, `backfill`), and the
+     @local ladder (`local setup` / `local connect`, `models [--host]`).
 
 Sequencing: T1 first (it is the reading surface every other task's knobs land on); T3 and T6
 are independent; T4 waits for a second tenant to want it; T5a can start accruing assignments
