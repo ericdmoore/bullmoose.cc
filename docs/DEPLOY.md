@@ -635,7 +635,7 @@ idempotent.
 ## 5. First light
 
 ```sh
-bullmoose login eric@bullmoose.cc --base https://bullmoose-jmap.<acct>.workers.dev
+bullmoose login eric@bullmoose.cc   # autodiscovery; add --base to override
 bullmoose watch                     # leave running
 
 # from Gmail/anywhere: send mail to eric@bullmoose.cc
@@ -648,11 +648,44 @@ echo "it lives" | bullmoose send --to <your-gmail> --subject "first light"
 Outbound deliverability check: confirm the received message shows
 SPF/DKIM/DMARC pass (Gmail: "show original").
 
+**Where `login` lands, and why it is not what it used to be.** There is no
+`_jmap._tcp` SRV record (see §6.1), so discovery uses the RFC 8620 §2.2
+well-known fallback: `https://bullmoose.cc/.well-known/jmap`, which **302s to
+`https://app.bullmoose.cc/.well-known/jmap`** (`src/public/_redirects`), and
+that redirect target is the stored base. It has to be — the apex serves that
+one path and nothing else the CLI needs (`POST /auth/login` there is 405).
+
+The `--base https://bullmoose-jmap.<acct>.workers.dev` this step used to print
+is **dead**: that hostname now returns 404 on every path, session resource
+included. If a device still holds it (PR #201's live smoke found one), it does
+not need a fresh token — `bullmoose repoint --base https://app.bullmoose.cc`,
+or bare `bullmoose repoint` to re-run discovery, rewrites the stored base and
+keeps the credential.
+
 ## 6. Post-deploy hardening (in rough order)
 
-1. Custom domains for the workers (`mail.bullmoose.cc` etc.) instead of
-   workers.dev — then plant the `_jmap._tcp` SRV record (autodiscovery
-   is next on the roadmap)
+1. ~~Custom domains for the workers (`mail.bullmoose.cc` etc.) instead of
+   workers.dev — then plant the `_jmap._tcp` SRV record~~ — **partly done,
+   partly abandoned; read before believing either half.**
+   - **`mail.bullmoose.cc` was never provisioned and does not resolve.** It is
+     a name in this wish, not a host: nothing has ever served it, and no
+     config in this repo asks for it. Do not point a client at it.
+   - The workers that did get names have them: `mcp.bullmoose.cc`
+     (`services/agent`), `auth.bullmoose.cc` (`services/oauth`) and
+     `dav.bullmoose.cc` (`services/anglebrackets`), each a
+     `custom_domain: true` route in its own `wrangler.jsonc`. The jmap worker
+     went a different way — Worker **routes** on `app.bullmoose.cc`, sharing
+     the origin with Pages (§ *The app surface*) — so it has no custom domain
+     and needs none.
+   - **The SRV record is not coming.** Cloudflare cannot serve a working
+     `_jmap._tcp` for a proxied host: the target must be a hostname that
+     resolves to the origin, and a proxied one does not. The record was
+     retired on 2026-08-13. Autodiscovery is live anyway, on the well-known
+     rung — see §5. `cli-go/internal/discover/discover.go` carries the same
+     warning where it would otherwise be re-learned the hard way.
+   - Still genuinely open: `services/provision`'s `JMAP_HOST` var, which is
+     the SRV target the provisioner plants for each tenant domain, is still
+     set to the dead `bullmoose-jmap.eric-d-moore.workers.dev`.
 2. Spam gate at ingest (honor Email Routing verdict headers)
 3. GHA deploy workflow (see `.github/workflows/deploy-mail.yml`) once
    `BULLMOOSE_RUNTIME_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` repo secrets exist

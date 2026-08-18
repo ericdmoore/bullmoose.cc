@@ -6,8 +6,16 @@ mailboxes/folders, threads, server-side search, live push, drafts, vacation —
 and it is entirely **serverless and $0** (no popcorn, unlike the
 [Apple Mail playbook](apple-mail-and-calendar.md)).
 
-Endpoint placeholder: `jmap.<your-domain>` is your jmap worker's Workers
-custom domain (or the `bullmoose-jmap.<acct>.workers.dev` fallback).
+Endpoint placeholder: `jmap.<your-domain>` is wherever your jmap worker
+answers `/.well-known/jmap`. On this deployment that is
+**`https://app.bullmoose.cc`** — Pages and the jmap Worker routes share one
+origin (`services/jmap/wrangler.jsonc`). The old
+`bullmoose-jmap.<acct>.workers.dev` fallback is **not** it: that URL now 404s
+on every path, including the session resource.
+
+You should not have to know any of this — `bullmoose login you@example.com`
+with no `--base` finds it, following the `/.well-known/jmap` redirect the way
+RFC 8620 §2.2 says to.
 
 ## 1. Create the account
 

@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { EXIT, fail, notFound, usage } from "./io.js";
+import { BULLMOOSE_ORIGIN } from "./discover.js";
+import type { JmapError } from "./jmap.js";
 
 /**
  * Bootstrap file support: anywhere the CLI takes a server URL, a
@@ -12,7 +14,7 @@ import { EXIT, fail, notFound, usage } from "./io.js";
  * bundle written by an operator (e.g. minted alongside an admin token)
  * and carried to the device out-of-band:
  *
- *   { "base": "https://mail.bullmoose.cc",   // or "url" for admin
+ *   { "base": "https://app.bullmoose.cc",    // or "url" for admin
  *     "token": "bm_...",
  *     "accountId": "t_..__a_.." }             // optional
  *
@@ -139,6 +141,42 @@ export function requireSettings(db: DatabaseSync): Settings {
   }
   if (accounts.length === 0) accounts = [{ accountId }];
   return { base, token, accountId, accounts };
+}
+
+/**
+ * Turn "the stored server is gone" into the one command that repairs it.
+ *
+ * A 404 on `/.well-known/jmap` is not the same failure as a 500 or a timeout:
+ * the session resource is the one path every JMAP server must serve, so a 404
+ * there means the host is not a JMAP server ANY MORE — retired, or renamed —
+ * rather than briefly unwell. Retrying will never fix it, and the bare form
+ * (`session fetch failed: HTTP 404 …`, often followed by a page of 404 HTML)
+ * does not tell a user that their own config holds the wrong URL.
+ *
+ * The narrowness is the point. It fires only when the failing base is the one
+ * in `config`, so `bullmoose init --base <typo>` still gets the plain error —
+ * that URL was typed a second ago and there is no stored row to repair. And it
+ * only ANNOTATES: the exit code still comes from `exitCodeFor`, so a script
+ * branching on 3 sees no change.
+ *
+ * Found by PR #201's live smoke, whose `~/.bullmoose/mail.db` still named
+ * `bullmoose-jmap.eric-d-moore.workers.dev` — a host that now 404s everything.
+ */
+export function annotateStaleBase(err: unknown, db: DatabaseSync): unknown {
+  if (!(err instanceof Error)) return err;
+  const failed = err as JmapError;
+  if (failed.httpStatus !== 404 || !failed.baseUrl) return err;
+  const stored = getConfig(db, "base");
+  if (!stored || stored !== failed.baseUrl) return err;
+  failed.message =
+    `${stored} no longer serves /.well-known/jmap (HTTP 404).\n` +
+    `That host is gone, not down — the session resource is the one path every ` +
+    `JMAP server answers, so retrying will not help.\n\n` +
+    `Repoint this device (the token and account are kept):\n` +
+    `  bullmoose repoint --base <url>\n` +
+    `  bullmoose repoint                  # or rediscover from your address\n\n` +
+    `bullmoose.cc's own server is ${BULLMOOSE_ORIGIN}.`;
+  return failed;
 }
 
 /**

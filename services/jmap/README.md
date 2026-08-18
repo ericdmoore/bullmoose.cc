@@ -1,10 +1,23 @@
 # bullmoose-jmap
 
 The client-facing worker — the JMAP server proper. Public at
-`https://jmap.bullmoose.cc` (Workers custom domain) and
-`bullmoose-jmap.eric-d-moore.workers.dev` (the `_jmap._tcp` SRV target;
-kept on workers.dev because Cloudflare rewrites SRV targets that point
-at proxied hostnames).
+**`https://app.bullmoose.cc`**, which is the only address this repo
+configures: five Worker `routes` in `wrangler.jsonc` claim the API paths
+on a hostname Pages otherwise serves, so app and API share one origin and
+no browser request crosses an origin boundary.
+
+Two other names have answered for this worker and neither is that:
+
+- `https://jmap.bullmoose.cc` — a Workers custom domain attached out of
+  band. It still answers (401 on `/.well-known/jmap`, 2026-08-18), but no
+  `wrangler.jsonc` here declares it, so a fresh deploy of this repo does
+  not create it. Prefer `app.bullmoose.cc` in anything durable.
+- `bullmoose-jmap.eric-d-moore.workers.dev` — **dead.** It 404s on every
+  path including the session resource. It was the `_jmap._tcp` SRV target,
+  kept on workers.dev because Cloudflare cannot serve an SRV pointing at a
+  proxied hostname; that record was retired on 2026-08-13 and autodiscovery
+  now runs on the RFC 8620 §2.2 well-known rung instead. `services/provision`
+  still names it in `JMAP_HOST` — see docs/DEPLOY.md §6.1.
 
 ## Surface
 

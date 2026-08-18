@@ -193,7 +193,7 @@ guards, different muscle.
 ```mermaid
 flowchart LR
   subgraph modern [Modern]
-    J[JMAP client] -->|HTTPS 443| JW[jmap.bullmoose.cc]
+    J[JMAP client] -->|HTTPS 443| JW[app.bullmoose.cc]
   end
   subgraph legacy [Legacy -- via popcorn on alpaca]
     P[POP3 client] -->|POP3S 9995| PC[popcorn]

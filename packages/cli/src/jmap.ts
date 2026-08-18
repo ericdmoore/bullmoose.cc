@@ -74,6 +74,13 @@ const USING = ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "urn:ie
 export interface JmapError extends Error {
   jmapType?: string;
   httpStatus?: number;
+  /**
+   * The base whose SESSION RESOURCE refused, set only by `session()`. It lets a
+   * caller tell "the URL you just typed is wrong" from "the URL saved in your
+   * config is wrong" — only the second has a stored row to repair, and only
+   * that one earns the repoint hint (`db.ts` annotateStaleBase).
+   */
+  baseUrl?: string;
 }
 
 /**
@@ -122,7 +129,19 @@ export class JmapClient {
     const res = await fetch(`${this.base}/.well-known/jmap`, { headers: this.headers() });
     if (!res.ok) {
       const body = await res.text();
-      throw transportError(`session fetch failed: HTTP ${res.status} ${body}`, res.status, body);
+      // A refusal from a JMAP server is short JSON and worth quoting. A refusal
+      // from something that is NOT one is a 404 page, and pasting it means
+      // several screens of Cloudflare's markup where the error should be — the
+      // exact failure cli-go/internal/discover was written to stop. Name it
+      // instead; `annotateStaleBase` turns the useful case into a repair.
+      const type = res.headers.get("content-type") ?? "";
+      const quoted =
+        type.includes("json") || (!type && body.length <= 200)
+          ? body
+          : `(${type || "no content-type"}, ${body.length} bytes — not a JMAP error)`;
+      const err = transportError(`session fetch failed: HTTP ${res.status} ${quoted}`, res.status, body);
+      err.baseUrl = this.base;
+      throw err;
     }
     this.sessionCache = (await res.json()) as Session;
     return this.sessionCache;

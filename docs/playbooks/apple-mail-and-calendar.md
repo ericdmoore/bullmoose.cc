@@ -14,9 +14,13 @@ calendar/contacts on Apple and read mail in a JMAP client, skip §3 and use
 the [JMAP-client playbook](jmap-client.md) for mail.
 
 Endpoints below use placeholders; map them to your deploy:
-`jmap.<your-domain>`, `dav.<your-domain>` (Workers custom domains, or the
-`*.workers.dev` fallbacks), and `pop.<your-domain>` (wherever you run
-popcorn).
+`jmap.<your-domain>`, `dav.<your-domain>` and `pop.<your-domain>` (wherever
+you run popcorn). On this deployment those are `https://app.bullmoose.cc`
+(Worker routes sharing the origin with Pages) and `https://dav.bullmoose.cc`
+(a `custom_domain` route on `services/anglebrackets`). **Do not fall back to
+a `*.workers.dev` name for JMAP** — `bullmoose-jmap.eric-d-moore.workers.dev`
+has stopped serving and answers 404 on every path, which a client reports as
+"mailbox not found" rather than "wrong server".
 
 ## 1. Create the account
 

@@ -27,6 +27,9 @@ log in and store a bearer token for this account
 .B discover
 show what autodiscovery finds and probe the server
 .TP
+.B repoint
+move this device to a different server URL, keeping the token
+.TP
 .B init
 configure an account from an existing token (no password login)
 .TP
@@ -199,6 +202,29 @@ Resolves the JMAP base for an email or domain (SRV _jmap._tcp, then .well\-known
 .EX
 bullmoose discover example.com
 .EE
+.SS repoint
+.B Synopsis:
+.br
+bullmoose repoint [\-\-base <url>]
+.PP
+Rewrites the stored JMAP base and nothing else — the token, the default account and the local mirror are kept. With no \-\-base the server is re\-autodiscovered from your own address, which is what you want when a deployment has moved: `login`'s answer today, applied to the config `login` wrote months ago. The new base is VALIDATED with the token you already hold before anything is written, so a wrong URL leaves the old one in place; if the new server does not serve your account, it says so and changes nothing. Reach for this when a command fails with `no longer serves /.well\-known/jmap` — a 404 there means the host is gone, not down.
+.PP
+.B Flags:
+.TP
+.B \-\-base <url>
+the new JMAP base, or file:// path to a bootstrap bundle; omit to autodiscover
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose repoint \-\-base https://app.bullmoose.cc
+.EE
+the host moved
+.PP
+.EX
+bullmoose repoint
+.EE
+re\-run autodiscovery on your own address
 .SS init
 .B Synopsis:
 .br

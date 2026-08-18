@@ -17,6 +17,7 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 | [`help`](#help) | show help — for everything, one command, or as a machine-readable spec |
 | [`login`](#login) | log in and store a bearer token for this account |
 | [`discover`](#discover) | show what autodiscovery finds and probe the server |
+| [`repoint`](#repoint) | move this device to a different server URL, keeping the token |
 | [`init`](#init) | configure an account from an existing token (no password login) |
 | [`token`](#token) | mint / list / revoke device app-passwords for this account |
 | [`accounts`](#accounts) | list this login's accounts (★ = default; local counts shown) |
@@ -144,7 +145,32 @@ Resolves the JMAP base for an email or domain (SRV _jmap._tcp, then .well-known/
 bullmoose discover example.com
 ```
 
-See also: [`login`](#login)
+See also: [`login`](#login), [`repoint`](#repoint)
+
+## repoint
+
+move this device to a different server URL, keeping the token
+
+```
+bullmoose repoint [--base <url>]
+```
+
+Rewrites the stored JMAP base and nothing else — the token, the default account and the local mirror are kept. With no --base the server is re-autodiscovered from your own address, which is what you want when a deployment has moved: `login`'s answer today, applied to the config `login` wrote months ago. The new base is VALIDATED with the token you already hold before anything is written, so a wrong URL leaves the old one in place; if the new server does not serve your account, it says so and changes nothing. Reach for this when a command fails with `no longer serves /.well-known/jmap` — a 404 there means the host is gone, not down.
+
+| flag | description |
+|---|---|
+| `--base <url>` | the new JMAP base, or file:// path to a bootstrap bundle; omit to autodiscover |
+
+**Examples**
+
+```sh
+bullmoose repoint --base https://app.bullmoose.cc
+# the host moved
+bullmoose repoint
+# re-run autodiscovery on your own address
+```
+
+See also: [`discover`](#discover), [`login`](#login), [`init`](#init)
 
 ## init
 

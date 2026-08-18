@@ -5,7 +5,7 @@ package cmd
 // writes — typically alongside a freshly minted token — and carries to the
 // device out of band:
 //
-//	{ "base": "https://mail.bullmoose.cc",   // or "url", for admin bundles
+//	{ "base": "https://app.bullmoose.cc",    // or "url", for admin bundles
 //	  "token": "bm_…",
 //	  "accountId": "t_…__a_…" }              // optional
 //
