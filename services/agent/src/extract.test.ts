@@ -96,6 +96,25 @@ describe("runExtract — writes Annotations from a delivered message", () => {
     );
   });
 
+  it("PRE-FILTER: List-Unsubscribe bulk mail spends NO model call, even with cue-shaped copy", async () => {
+    const { w, run } = world("[]");
+    const done = vi.fn(async () => {});
+    await runExtract(
+      w.env,
+      job,
+      CFG,
+      inbound({ subject: "SALE ends soon", body: "Order by Friday and save 20%!" }),
+      { headers: [{ key: "List-Unsubscribe", value: "<mailto:u@x>" }] },
+      done,
+    );
+    expect(run).not.toHaveBeenCalled();
+    expect(annotations(w)).toEqual([]);
+    expect(done).toHaveBeenCalledWith(
+      "done",
+      expect.objectContaining({ note: expect.stringContaining("List-Unsubscribe") }),
+    );
+  });
+
   it("PRE-FILTER: a cue-less message spends NO model call and writes nothing", async () => {
     const { w, run } = world("[]");
     const done = vi.fn(async () => {});

@@ -101,9 +101,16 @@ export async function runExtract(
   job: ExtractJob,
   cfg: BindingConfig,
   email: EmailRow,
-  parsed: { text?: string },
+  parsed: { text?: string; headers?: Array<{ key: string; value: string }> },
   done: Finish,
 ): Promise<void> {
+  // Marketing blasts that dodge the shared humanOriginated gate (no List-Id,
+  // no Precedence) still carry List-Unsubscribe — and their copy is exactly
+  // the false-cue shape ("Order by Friday!"). Extract-scoped on purpose: the
+  // reply/bouncer pipelines keep their own gates unchanged.
+  if (parsed.headers?.some((h) => h.key.toLowerCase() === "list-unsubscribe")) {
+    return done("done", { note: "skipped: List-Unsubscribe (bulk mail) — no model call" });
+  }
   const bodyText = parsed.text ?? email.preview ?? "";
   // Pre-filter: no cue → no model call. Free.
   if (!EXTRACT_CUES.test(`${email.subject ?? ""}\n${bodyText.slice(0, SCAN)}`)) {
