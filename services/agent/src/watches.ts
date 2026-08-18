@@ -1,4 +1,5 @@
 import { emitProposal } from "./proposals.js";
+import { composeWatchFollowup } from "./watchCompose.js";
 import type { Env } from "./models.js";
 
 /**
@@ -10,13 +11,18 @@ import type { Env } from "./models.js";
  * about it only when it fires. This is the "agent consumes the firehose, human
  * gets exceptions" principle made into a primitive.
  *
- * ## Deterministic in v1, on purpose
+ * ## Deterministic CONDITIONS, on purpose
  *
  * Every condition here is a plain predicate the cron can decide without a
  * model call. An LLM-judged condition ("tell me only if the shipment won't
  * arrive by Friday") is v2, and it enters as a CLASSIFIER over new mail that
  * flips a deterministic watch — never a free-running agent loop. The sweep
- * stays a state machine; nothing here spends a token.
+ * stays a state machine; DECIDING to fire never spends a token.
+ *
+ * The one place a model now enters (s20 wave 3, drafting-on-fire): a firing
+ * `draft-followup` composes its body through the standard binding pipeline —
+ * budget-gated, cost-frozen, template on any failure (watchCompose.ts) — so
+ * the proposal arrives actionable instead of intent-only.
  *
  * ## Firing produces a PROPOSAL, never a direct action
  *
@@ -151,36 +157,74 @@ export async function hasInboundSince(
 }
 
 /**
- * Mint the carrier invocation and emit the fired watch's proposal. The carrier
- * is `done` on arrival with cost 0 — no model ran — the same shape every
- * proposal's invocation is in by the time a human sees it (budgetOverrun.ts).
+ * Mint the carrier invocation and emit the fired watch's proposal.
+ *
+ * A `notify` carrier is `done` on arrival with cost 0 — no model ran — the
+ * same shape every proposal's invocation is in by the time a human sees it
+ * (budgetOverrun.ts). A `draft-followup` now COMPOSES its body first (s20
+ * wave 3, watchCompose.ts): when a model wrote it, the carrier carries the
+ * composing BINDING's id (so the spend lands in that binding's monthly-budget
+ * sum — a fake id would be uncounted money) and the frozen cost/token receipt
+ * (s07 T5), which IS the proposal row's cost block (proposal PK == invocation
+ * PK) — the µ$ figure in Approvals. The template path stays a genuinely-free
+ * carrier: cost 0, the old shape exactly.
+ *
+ * Compose failure never blocks the fire — composeWatchFollowup never throws;
+ * its worst answer is the deterministic template, and the proposal ALWAYS
+ * carries a usable body.
  */
 async function fire(env: Env, w: WatchRow, now: number): Promise<string> {
   const action = safeJson(w.action_json);
   const carrierId = `inv_${crypto.randomUUID()}`;
-  const bindingId = typeof action.bindingId === "string" ? action.bindingId : "watch";
-  const bindingName = typeof action.bindingName === "string" ? action.bindingName : "remind@";
+  const isFollowup = w.action_type === "draft-followup";
+
+  // Drafting-on-fire. Seeded by the carrier id so a retried fire composes
+  // (and explores) identically — the extract discipline.
+  const composed = isFollowup ? await composeWatchFollowup(env, w, carrierId, now) : null;
+
+  const bindingId = composed?.bindingId ?? (typeof action.bindingId === "string" ? action.bindingId : "watch");
+  const bindingName =
+    composed?.bindingName ?? (typeof action.bindingName === "string" ? action.bindingName : "remind@");
+  // NULL-vs-0 (s07 T5): template/notify = nothing ran = genuinely free (0);
+  // model = the frozen figure, which may honestly be null (unpriceable).
+  const cost = composed?.cost ?? null;
+  const carrierResult = {
+    kind: "watch-fired",
+    watchId: w.id,
+    ...(composed
+      ? {
+          composed: composed.composed,
+          ...(composed.model ? { model: composed.model, arm: composed.arm } : {}),
+          ...(composed.fallbackReason ? { fallbackReason: composed.fallbackReason } : {}),
+        }
+      : {}),
+  };
 
   await env.DB.prepare(
     `INSERT INTO agent_invocations
        (id, account_id, binding_id, binding_name, status, context_json,
-        created_at, claimed_at, done_at, cost_micros, result_json)
-     VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, 0, ?)`,
+        created_at, claimed_at, done_at, provider, model, tokens_in, tokens_out,
+        cost_micros, result_json)
+     VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       carrierId,
       w.account_id,
       bindingId,
       bindingName,
-      JSON.stringify({ kind: "watch-fired", watchId: w.id }),
+      JSON.stringify({ kind: "watch-fired", watchId: w.id, ...(isFollowup ? { pipeline: "watch-compose" } : {}) }),
       now,
       now,
       now,
-      JSON.stringify({ kind: "watch-fired", watchId: w.id }),
+      cost?.provider ?? null,
+      cost?.model ?? null,
+      cost?.tokensIn ?? null,
+      cost?.tokensOut ?? null,
+      cost ? cost.costMicros : 0,
+      JSON.stringify(carrierResult),
     )
     .run();
 
-  const isFollowup = w.action_type === "draft-followup";
   const cond = safeJson(w.condition_json);
   const evidence = w.source_ref
     ? [
@@ -196,21 +240,36 @@ async function fire(env: Env, w: WatchRow, now: number): Promise<string> {
     env,
     { id: carrierId, account_id: w.account_id },
     {
-      // A follow-up is a real send (tier 2, agent-initiated → the queue holds
-      // it). A notify is an FYI marker (tier 1, reversible — clearing it
-      // touches nothing in the world).
+      // A follow-up leads to outbound mail to a third party (tier 2,
+      // agent-initiated → the queue holds it). A notify is an FYI marker
+      // (tier 1, reversible — clearing it touches nothing in the world).
       kind: isFollowup ? "watch-followup" : "watch-notify",
       tier: isFollowup ? 2 : 1,
       subject: w.source_ref ? { realm: "Email", objectId: w.source_ref } : { realm: "Watch", objectId: w.id },
       payload: {
+        // The intent fields, kept for display…
         watchId: w.id,
         conditionType: w.condition_type,
-        // For a follow-up, the recipient and the note the human wrote when
-        // arming it. The actual draft text is composed at approval time or by
-        // the human — v1 carries the intent, not a model-generated body
-        // (drafting-on-fire is a v2 refinement once cost history exists).
-        to: typeof action.to === "string" ? action.to : typeof cond.sender === "string" ? cond.sender : null,
-        note: typeof action.note === "string" ? action.note : null,
+        to: composed
+          ? composed.to
+          : typeof action.to === "string"
+            ? action.to
+            : typeof cond.sender === "string"
+              ? cond.sender
+              : null,
+        note: composed ? composed.note : typeof action.note === "string" ? action.note : null,
+        // …and for a follow-up, the ACTIONABLE draft (s20 wave 3): subject +
+        // body + which path composed it. applyProposal turns this into a
+        // Drafts-mailbox draft on approval; old intent-only rows (fired
+        // before this shipped) get the template synthesized at apply time.
+        ...(composed
+          ? {
+              subject: composed.subject,
+              body: composed.body,
+              composed: composed.composed,
+              ...(composed.model ? { model: composed.model, arm: composed.arm } : {}),
+            }
+          : {}),
       },
       rationale: watchRationale(w, cond),
       evidence,
