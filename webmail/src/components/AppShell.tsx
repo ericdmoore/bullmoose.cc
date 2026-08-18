@@ -39,6 +39,26 @@ import Composer from "./Composer";
 import CollectionColumn from "./CollectionColumn";
 import { buildMailboxTree, flattenTree } from "../lib/mail/mailboxes";
 import type { CollectionGroup } from "../lib/shell/collections";
+import {
+  ArchiveBoxIcon,
+  FolderIcon,
+  InboxIcon,
+  NoSymbolIcon,
+  PaperAirplaneIcon,
+  PencilSquareIcon,
+  TrashIcon,
+  type IconProps,
+} from "./icons";
+
+/** Mailbox role → its Heroicon (s24 T3b — real SVG, not font dingbats). */
+const ROLE_ICON: Record<string, (p: IconProps) => preact.JSX.Element> = {
+  inbox: InboxIcon,
+  drafts: PencilSquareIcon,
+  sent: PaperAirplaneIcon,
+  archive: ArchiveBoxIcon,
+  junk: NoSymbolIcon,
+  trash: TrashIcon,
+};
 import MessageView from "./MessageView";
 import ThreadListView from "./ThreadListView";
 
@@ -287,14 +307,7 @@ export default function AppShell({ client: injected }: Props) {
   // order, role glyphs as row glyphs, unread as the count badge, nesting as
   // depth (a discrete padding class — this retires MailboxSidebar's inline
   // paddingLeft, the one CSP-boundary violation).
-  const ROLE_GLYPH: Record<string, string> = {
-    inbox: "✉",
-    drafts: "✎",
-    sent: "➤",
-    archive: "▤",
-    junk: "⊘",
-    trash: "⌦",
-  };
+
   const mailboxGroups: CollectionGroup[] = useMemo(
     () => [
       {
@@ -302,7 +315,7 @@ export default function AppShell({ client: injected }: Props) {
         items: flattenTree(buildMailboxTree(mailboxes)).map((n) => ({
           id: n.id,
           label: n.name,
-          glyph: n.role ? (ROLE_GLYPH[n.role] ?? "○") : "○",
+          icon: (n.role ? ROLE_ICON[n.role] : undefined) ?? FolderIcon,
           depth: n.depth,
           count: n.unreadEmails > 0 ? n.unreadEmails : undefined,
         })),

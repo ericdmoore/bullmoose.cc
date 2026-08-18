@@ -1,3 +1,5 @@
+import type { JSX } from "preact";
+
 // The CollectionColumn's pure selection model (s24 T1). The component is
 // markup; what a collection IS — groups of items, a valid selection, keyboard
 // order — lives here where it can be tested as functions.
@@ -11,8 +13,10 @@ export interface CollectionItem {
   /** A short right-aligned annotation badge — "default", "read-only". Text
    *  where `count` is numbers; a row may carry either (count wins if both). */
   note?: string;
-  /** A small leading text glyph — Mail's role marks (✉ ✎ ➤). Decorative. */
-  glyph?: string;
+  /** A small leading icon — Mail's role marks, as a component from
+   *  `components/icons` (never a text glyph: dingbats render as tofu on any
+   *  machine missing the font, and the Tailwind UI look is SVG). Decorative. */
+  icon?: (props: { class?: string }) => JSX.Element;
   /** Tree indent steps (Mail's folder nesting). Rendered as a discrete
    *  padding class, clamped — never inline style (CSP). */
   depth?: number;
