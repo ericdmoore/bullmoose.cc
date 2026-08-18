@@ -148,7 +148,7 @@ export const SECTIONS: readonly Section[] = [
   },
   {
     id: "search",
-    label: "Search",
+    label: "Finder",
     href: "/search",
     // Live as of s07 T6, as the stub-that-names-its-limits: one query fans out
     // to mail (FTS5-indexed), contacts and calendar (full scans), and the page
