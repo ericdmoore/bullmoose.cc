@@ -1,5 +1,20 @@
 # s24 — a stateless component library, the Collection column, and the contextual search bar
 
+> **LANDED (overnight 2026-08-17→18): T0–T5, six squash-merged PRs (#171–#177), each visually
+> verified against production with a real session.** T0 the library (14→20 icons, 7 primitives,
+> render-tested via preact-render-to-string, ShellNav consuming it); T1 the CollectionColumn; T2
+> Contacts; T3 Mail (MailboxSidebar deleted, the inline-style CSP violation with it); T3b visual
+> polish from the first screenshots (real Heroicons for mailbox roles — the text dingbats rendered
+> as tofu — and self-stretch so columns fill the frame); T4 Approvals (live lifecycle, Decided
+> dropped, Due-soon saved view); T5 the contextual top-bar filter — which the s07 T1 token
+> invariant made BETTER than spec'd: the bar never navigates (CSP form-action 'none' +
+> tokenInUrl.test.ts), it dispatches `bm:search` to the active surface, deep links (?q=) read at
+> mount. **Remaining: T6 (responsive/mobile drawer for the CollectionColumn)** and the follow-on
+> realm adoptions (Files, Settings, Agents). One open observation, NOT from this work
+> (bisect-proven to pre-date it by 4+ days): the mail LIST pane shows "Loading…" under the
+> Kitesurf screenshot harness even in ?demo=1, while the store path passes in Node — needs one
+> real-browser check.
+
 > Eric, reading contacts + mail + approvals together: "these need a quadruple-panel shell —
 > `NavSidebar → CollectionColumn → HeaderColumn → DetailPanel`", and "search should get bumped up
 > to the top-most bar." And, crucially: s24 should first **translate the Tailwind UI components +
