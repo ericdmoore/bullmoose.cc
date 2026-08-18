@@ -204,6 +204,13 @@ T3 — **backfill**: the verb + envelope + ledger progress.
      the-backlog + scouts-then-troops (#187). The true per-request budget envelope
      (claim-gate CASE term) LANDED 2026-08-18 (#195).
 T4 — **BYOK via Bureau**: per-tenant provider credentials; guardrails ride the key.
+     ✅ **LANDED 2026-08-18 (#203 + #204)** — the key never enters the agent worker: Bureau
+     proxies the call and injects the header (`POST /internal/bureau/binding-use`, authorized
+     by rows the caller cannot write). Resolution order candidate credRef → binding default →
+     platform env, where env is reached ONLY when nobody named a credential — a named-but-
+     unresolvable one refuses rather than spending the operator's key. #204 wired the three
+     tenant-facing pipelines (extract, mailVerbs, watchCompose); the bouncer/ledger/proposals
+     paths deliberately stay on the platform budget.
 T5 — **the frontier**: a/b assignment → outcome join → Allen's digest → (later) learned router.
      ✅ **T5a assignment LANDED 2026-08-18** — `chooseArm` (deterministic FNV-1a per invocation)
      in `models.ts`, arm recorded in result_json; extract is the first arena (explore arm live on
@@ -211,6 +218,11 @@ T5 — **the frontier**: a/b assignment → outcome join → Allen's digest → 
 T6 — **CLI parity**: `bullmoose agent …` learns the extract pipeline (Eric's @local
      out-of-budget path), the dossier verbs (`show`, `budget`, `model`, `backfill`), and the
      @local ladder (`local setup` / `local connect`, `models [--host]`).
+     ✅ **DOSSIER VERBS LANDED 2026-08-18 (#201)** — `agent show|budget|model|backfill|enable|
+     disable`, split by which plane can reach each door (session vs ADMIN_TOKEN) and refusing
+     to fake success when it cannot. `--set` is read-modify-write because `POST /extractor`
+     rewrites the whole config; re-provisioning a DISABLED binding needs `--yes` (a tuning
+     knob may not un-pull the kill switch).
      ✅ **LANDED 2026-08-18 (#192)** — extract in the runner (byte-drift-guarded prompt), `models`,
      `local connect`/`local setup` (install-with-consent, rung-0 default); live-smoked on alpaca.
 
@@ -225,6 +237,16 @@ any time — data compounds, so earlier is better.
 3. **Assignment ratio for T5a** — *recommendation: 10% exploration over the menu's non-primary
    candidates; 0% for tier-3-producing pipelines.*
 4. **Where Allen's frontier digest lands** — *recommendation: mail (his medium), monthly.*
+
+## Open follow-ups (surfaced by the wave-4 build, 2026-08-18)
+- **`AgentBinding/get` does not exist.** `AgentBinding` has only `/set` (#198), so a client
+  cannot enumerate an account's bindings. Both #202 (the mail verbs) and #201 (the CLI) work
+  around it by naming `extractor` by convention. That convention is standing in for an API.
+- **Budget/model writes have no session-reachable door** — only the INTERNAL_TOKEN provisioning
+  plane. #201 exits honestly rather than faking it; a `AgentBinding/set` that accepts budgets
+  and model aliases (with the same scope discipline) would close it.
+- **No BYOK surface.** #203/#204 shipped the whole path with no UI; sealing a key is an
+  operator-plane POST today.
 
 ## References
 - `services/provision/src/index.ts` — bindings CRUD, enable/disable, lifecycle, extractor

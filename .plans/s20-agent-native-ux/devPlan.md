@@ -83,7 +83,7 @@ the action wants to DO.
 end — created from webmail, CLI, or a FWD to remind@; fires from the cron; the draft
 appears in the approvals queue citing the Watch; the Watch shows as fired.
 
-### T2 — Verbs on mail · *radical verbs, familiar surface*
+### T2 — Verbs on mail · *radical verbs, familiar surface* — ✅ LANDED 2026-08-18 (#202: **Answer**, **Watch**, **Bring X into this** as tier-1 proposals that apply into your own Drafts. **Schedule** and **Delegate** honestly deferred — no `create-event` apply case, no agent-to-agent handoff yet. `watch-notify`'s missing apply case fixed in passing. Known convention debt: the binding is named `extractor` because no `AgentBinding/get` exists.)
 
 **Files:** `webmail/src/components/MessageView.tsx` (action bar), `AppShell.tsx`,
 `services/agent` (intent → proposal pipeline).

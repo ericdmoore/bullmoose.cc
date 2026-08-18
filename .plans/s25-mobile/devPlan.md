@@ -76,12 +76,12 @@ The mobile drawer becomes the tray: realm rows (from `sections.ts`) that expand 
 collections inline (the T2 tree rendering again). Ships in two steps: tray with plain rows, then
 leaf-nodes over the plumbing contract above.
 
-### T5 — the contextual [New] as a FAB + search collapse
+### T5 — the contextual [New] as a FAB + search collapse — ✅ LANDED 2026-08-18 (#200: the FAB is CollectionColumn's own button relocated — one label source, no FAB where a realm has no [New]; clearance via scroll-container padding, not z-index. Finder's clearance line followed in #204.)
 The standardized [New] becomes a floating action button (bottom-right, safe-area aware,
 realm-contextual as always) on narrow screens; the top-bar search collapses to an icon that
 expands full-width (the `bm:search` plumbing is untouched).
 
-### T6 — swipe triage · *mail only, deliberately — stretch*
+### T6 — swipe triage · *mail only, deliberately — stretch* — ✅ LANDED 2026-08-18 (#200: swipe reveals, never commits; axis decided once at 10px; the trailing click cancelled in the capture phase on the row shell so #194's anchors still tap through; real Undo via the recorded inverse patch.)
 Swipe-to-archive/trash on mail rows. **REFUSED for Approvals**: a decision queue's ethos is
 deliberateness, and a flick that fires a tier-2 send is the wrong affordance. Named here so it
 does not creep in later.
