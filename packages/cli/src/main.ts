@@ -20,6 +20,7 @@ import {
   emitIds,
   emitJson,
   emitNdjson,
+  exitFlushed,
   installEpipeGuard,
   failSetError,
   notFound,
@@ -39,6 +40,7 @@ import { cmdAdmin } from "./admin.js";
 import { cmdLogin, cmdToken } from "./tokens.js";
 import { agentServe, fleetFromSingle, loadAgentConfig, loadFleetConfig } from "./agent.js";
 import { cmdAgentInvoke } from "./agentInvoke.js";
+import { cmdLocal, cmdModels, defaultConfirm, execToStderr } from "./local.js";
 import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
 import { cmdCalendar } from "./calendar.js";
@@ -104,6 +106,9 @@ const parseCommandLine = () =>
       // ---- fleet host (s11 T8): one daemon, N bindings, discovery from grants
       fleet: { type: "string" },
       once: { type: "boolean", default: false },
+      // ---- @local ladder (s26 T6): models / local setup|connect ----
+      host: { type: "string" },
+      "key-env": { type: "string" },
       // ---- agent invoke (sVOL 007) ----
       email: { type: "string" },
       note: { type: "string" },
@@ -212,15 +217,15 @@ if (command === "help" || opts.help || !command) {
   const topic = command && command !== "help" ? command : positionals[1];
   if (opts.json) {
     outRaw(`${helpJson()}\n`);
-    process.exit(EXIT.OK);
+    await exitFlushed(EXIT.OK);
   }
   if (opts.man) {
     outRaw(renderMan());
-    process.exit(EXIT.OK);
+    await exitFlushed(EXIT.OK);
   }
   if (opts.markdown) {
     out(renderMarkdown());
-    process.exit(EXIT.OK);
+    await exitFlushed(EXIT.OK);
   }
   if (topic) {
     const c = findCommand(topic);
@@ -299,6 +304,18 @@ try {
       break;
     case "agent":
       await cmdAgent();
+      break;
+    // ---- @local ladder (s26 T6) ----
+    case "models":
+      await cmdModels(db, { host: opts.host, keyEnv: opts["key-env"], yes: opts.yes ?? false, ...io });
+      break;
+    case "local":
+      await cmdLocal(
+        db,
+        positionals.slice(1),
+        { host: opts.host, keyEnv: opts["key-env"], yes: opts.yes ?? false, ...io },
+        { exec: execToStderr, confirm: defaultConfirm({ yes: opts.yes ?? false }) },
+      );
       break;
     case "contacts":
       await cmdContacts(db, positionals.slice(1), {

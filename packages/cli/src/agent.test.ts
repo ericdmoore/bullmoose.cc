@@ -60,6 +60,11 @@ function fakeServer(invocations: FakeInvocation[]) {
     async refreshSession(): Promise<Session> {
       throw new Error("not used by fleetDrain");
     },
+    async downloadBlob(): Promise<Uint8Array> {
+      // The reply pipeline never touches raw blobs; extract.test.ts has its
+      // own fake with real bytes.
+      throw new Error("not used by the reply pipeline");
+    },
     async one(method, args) {
       const accountId = args.accountId as string;
       calls.push({ method, accountId });
@@ -127,6 +132,10 @@ function fakeServer(invocations: FakeInvocation[]) {
   };
   return { client, calls, drafts, setCalls, revoke: (id: string) => revoked.add(id) };
 }
+
+const noBlob = async (): Promise<Uint8Array> => {
+  throw new Error("unused");
+};
 
 const ref = (accountId: string): AccountRef => ({ accountId });
 const servedOf = (...ids: string[]) => new Map(ids.map((id) => [id, ref(id)]));
@@ -230,6 +239,7 @@ describe("fleetDrain drops a revoked account without a restart", () => {
       async one() {
         throw new Error("fetch failed: ECONNREFUSED");
       },
+      downloadBlob: noBlob,
     };
     await fleetDrain(client, served, FLEET, quiet);
     expect(served.has("a_hermes")).toBe(true);
@@ -341,6 +351,7 @@ describe("discoverAccounts: the served set comes from grants, freshly", () => {
       async one() {
         throw new Error("unused");
       },
+      downloadBlob: noBlob,
       async refreshSession() {
         refreshes++;
         return session({
@@ -367,6 +378,7 @@ describe("discoverAccounts: the served set comes from grants, freshly", () => {
       async one() {
         throw new Error("unused");
       },
+      downloadBlob: noBlob,
       async refreshSession() {
         return session({ a_legacy: { name: "legacy" } });
       },
