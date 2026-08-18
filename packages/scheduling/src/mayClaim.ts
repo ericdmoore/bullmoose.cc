@@ -160,6 +160,69 @@ export function budgetExhausted(p: { capMicros: number | null; spentMicros: numb
 }
 
 /**
+ * THE BACKFILL ENVELOPE, pure (s26 T3 v2) — the twin of
+ * `backfillEnvelopeExhaustedSql`'s comparison.
+ *
+ * A manual backfill (`POST /agent-bindings/{id}/backfill {budgetMicros}`)
+ * names its own money: the envelope rides on every row it mints
+ * (`context_json.backfillBudgetMicros`), and an envelope-carrying row draws
+ * from THAT purse, not the binding's monthly cap — the admin already sized
+ * this spend when they typed the number, and a monthly gate would make the
+ * archive compete with live mail for a budget that was never meant to cover
+ * it.
+ *
+ *   exhausted  ⟺  backfillSpent ≥ envelope
+ *
+ * `backfillSpent` is the binding's ALL-TIME summed `cost_micros` over
+ * finished backfill-tagged runs — all time, not month-bucketed, because an
+ * envelope is per-request money, not a monthly allowance; and NULL costs add
+ * nothing (unknown is not a spend), exactly as in the monthly sum. A later
+ * request's envelope therefore reads as a TOTAL backfill ceiling: prior
+ * backfill spend counts against it, which is the conservative direction.
+ *
+ * A 0 envelope is exhausted from the first moment — "mint the rows, spend
+ * nothing paid" — mirroring `spendPerMonth: 0`. Exhaustion is NOT an error
+ * and narrows the claimant set exactly as the monthly cap does: the rows sit
+ * pending, a free (homelab) runtime may still eat them at $0, and the next
+ * envelope or surplus pass picks them back up.
+ */
+export function backfillEnvelopeExhausted(p: { envelopeMicros: number; backfillSpentMicros: number }): boolean {
+  return p.backfillSpentMicros >= p.envelopeMicros;
+}
+
+/**
+ * The ONE budget verdict a row gets — the fold callers use to fill
+ * `BudgetState.budgetExhausted`, stated here so the pure and SQL formulations
+ * of the envelope CASE cannot drift apart (claimGateAgreement.test.ts holds
+ * them together):
+ *
+ *   envelope-carrying backfill row → its envelope, INSTEAD OF the monthly cap;
+ *   every other row (live work, an envelope-less manual backfill, a surplus
+ *   mint) → the monthly cap, exactly as before.
+ *
+ * `backfillEnvelopeMicros` is non-null ONLY when the row is backfill-tagged
+ * (`context_json.backfill === true`) AND carries a numeric
+ * `backfillBudgetMicros` — the caller's contract, matching
+ * `backfillEnvelopeSql`. Junk degrades to null, i.e. to the monthly gate:
+ * garbage can reroute a row back to today's behavior, never widen its money.
+ */
+export function effectiveBudgetExhausted(p: {
+  capMicros: number | null;
+  spentMicros: number;
+  overageMicros: number;
+  backfillEnvelopeMicros: number | null;
+  backfillSpentMicros: number;
+}): boolean {
+  if (p.backfillEnvelopeMicros !== null) {
+    return backfillEnvelopeExhausted({
+      envelopeMicros: p.backfillEnvelopeMicros,
+      backfillSpentMicros: p.backfillSpentMicros,
+    });
+  }
+  return budgetExhausted(p);
+}
+
+/**
  * Parse the untrusted `claimant` argument off a claim call. Absent or
  * malformed → paid with no vector — the conservative default. `isFree` counts
  * only as the literal boolean true; capability fields keep only well-typed

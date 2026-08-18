@@ -204,12 +204,12 @@ describe("satWithYouLabel — always past tense", () => {
     expect(satWithYouLabel(item, NOW)).toBe("sat with you 7d 0h");
   });
 
-  it("a yanked row reads past tense despite its coerced 'pending' parse", () => {
-    // parseProposal cannot carry `yanked` and degrades it to "pending" —
-    // waitedLabel would therefore say "waiting on you", presenting a
-    // retracted action as live. This label must not.
+  it("a yanked row reads past tense", () => {
+    // `parseProposal` once degraded `yanked` to "pending" (the enum has since
+    // learned it — approvals/rows.test.ts); either way a retracted action
+    // must read as history here, never as "waiting on you".
     const item = decided({ status: "yanked" });
-    expect(item.proposal.status).toBe("pending"); // the trap, demonstrated
+    expect(item.proposal.status).toBe("yanked");
     expect(satWithYouLabel(item, NOW)).toBe("sat with you 2h 0m");
   });
 });

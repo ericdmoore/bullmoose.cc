@@ -23,10 +23,28 @@
 //               never a hidden field.
 // The arithmetic that keeps them apart lives in `clocks.ts`, with tests.
 
-/** `pending` is the queue; `info-requested` is waiting on the AGENT to answer a
+/**
+ * Every state the server writes, mirrored EXACTLY (actionProposal.ts's
+ * decide/yank/hold/commit writes plus the agent worker's expire sweep —
+ * rows.test.ts extracts the set from those sources and holds this list to it,
+ * so a new server state fails a test by name instead of parsing as "pending").
+ *
+ * `pending` is the queue; `info-requested` is waiting on the AGENT to answer a
  * needsInfo question (s10 T3 — the decision clock is paused); `held` is the
- * tier-2 hold tray; the rest are history. */
-export type ProposalStatus = "pending" | "info-requested" | "approved" | "rejected" | "held" | "expired";
+ * tier-2 hold tray; the rest are history — `expired` (the chance lapsed),
+ * `yanked` (approved, then taken back inside the hold window — s03.D T2; a
+ * RETRACTION, so it must never re-present as decidable), and the two verdicts.
+ */
+export const PROPOSAL_STATUSES = [
+  "pending",
+  "info-requested",
+  "approved",
+  "rejected",
+  "held",
+  "expired",
+  "yanked",
+] as const;
+export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 
 /** Reversibility, and therefore what approve is allowed to do (arch.md §2). */
 export type ProposalTier = 1 | 2 | 3;
@@ -227,7 +245,7 @@ export function parseProposal(raw: Record<string, unknown>, fallbackAccountId = 
   };
 }
 
-const STATUSES: ReadonlySet<string> = new Set(["pending", "info-requested", "approved", "rejected", "held", "expired"]);
+const STATUSES: ReadonlySet<string> = new Set(PROPOSAL_STATUSES);
 
 function isStatus(v: unknown): v is ProposalStatus {
   return typeof v === "string" && STATUSES.has(v);

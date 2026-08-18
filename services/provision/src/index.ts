@@ -3555,10 +3555,18 @@ function backfillPrivacy(configJson: string): string | null {
  *                  behind the floor is refused with 409 — that ask is a
  *                  floor move, which is rule 1's approval, not this verb.
  *
- * `budgetMicros` is RECORDED, not enforced, in v1: it rides in the response
- * and in each minted row's context_json so the v2 envelope has the number,
- * but spend is still gated by the binding's monthly budget. Absent is null
- * ("no envelope named"), never 0 ("a $0 envelope") — the money-honesty rule.
+ * `budgetMicros` is the backfill's ENVELOPE, and since s26 T3 v2 it is
+ * ENFORCED: it rides in the response and in each minted row's context_json,
+ * and the claim gate (`backfillEnvelopeSql` / `backfillEnvelopeExhaustedSql`,
+ * @bullmoose/scheduling) draws envelope-carrying rows from THAT purse instead
+ * of the binding's monthly budget — prior backfill spend counts against it,
+ * NULL costs count as unknown (never a spend), and when it is spent through
+ * the remaining rows simply WAIT: a free homelab claimant still eats them at
+ * $0, and the next envelope or surplus pass picks the rest up. Exhaustion is
+ * not an error and raises no budget-overrun ask (a monthly overage would
+ * release nothing for these rows). Absent is null ("no envelope named" — the
+ * monthly budget gates as before), never 0 ("a $0 envelope": mint the rows,
+ * spend nothing paid) — the money-honesty rule.
  *
  * No ACCOUNT_DO here, so no changelog push: the rows sit as the durable
  * cursor until a claimant's next wake-up, which is exactly what non-urgent
@@ -3706,8 +3714,8 @@ async function backfillBinding(id: string, body: { sinceDays?: number; budgetMic
           emailId: e.id,
           threadId: e.thread_id,
           backfill: true,
-          // v1: the envelope is RECORDED on the work it covers, not enforced —
-          // the v2 claim-gate envelope reads it from here.
+          // The envelope rides on the work it covers — the claim gate
+          // (backfillEnvelopeSql) reads it from exactly here.
           ...(budgetMicros !== null ? { backfillBudgetMicros: budgetMicros } : {}),
         }),
         now,
@@ -3734,11 +3742,16 @@ async function backfillBinding(id: string, body: { sinceDays?: number; budgetMic
     // Reached the cap ⇒ the window's far edge was NOT reached; re-run the same
     // call to walk further back (idempotence makes the re-run safe).
     capped: candidates.length === BACKFILL_MINT_CAP,
-    // v1: recorded, not an enforced envelope. null = "no envelope named".
+    // The ENFORCED envelope (s26 T3 v2). null = "no envelope named" — the
+    // monthly budget gates those rows exactly as before.
     budgetMicros,
     note:
-      `minted rows are NULL-due (sit-free): a live homelab claimant may eat them at $0, and the paid ` +
-      `drain treats them as non-urgent inside the binding's monthly budget`,
+      budgetMicros !== null
+        ? `minted rows are NULL-due (sit-free): a live homelab claimant may eat them at $0, and the paid ` +
+          `drain draws them from this backfill's own envelope (budgetMicros) instead of the monthly ` +
+          `budget — once prior backfill spend reaches it, the rest wait for the next envelope or surplus`
+        : `minted rows are NULL-due (sit-free): a live homelab claimant may eat them at $0, and the paid ` +
+          `drain treats them as non-urgent inside the binding's monthly budget (no envelope named)`,
   });
 }
 

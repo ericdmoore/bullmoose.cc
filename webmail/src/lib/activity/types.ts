@@ -5,12 +5,13 @@
 // names the shapes the feed renders.
 //
 // ⚠️ Why decided rows get their OWN parser instead of riding `parseProposal`
-// alone: the approvals client type does not carry `yanked` (its queue never
-// renders one — a yanked row already egressed nothing and needs no verb), so
-// `parseProposal` coerces an unknown status to "pending". For a QUEUE that is
-// the safe degradation; for a HISTORY it would be the exact lie this section
-// exists to end — a retracted action re-presented as waiting. So the decided
-// partition reads the RAW status string and keeps it.
+// alone: `parseProposal` coerces an UNKNOWN status to "pending". For a QUEUE
+// that is the safe degradation; for a HISTORY it would be the exact lie this
+// section exists to end — a retracted action re-presented as waiting. The
+// approvals enum has since learned `yanked` (it mirrors the server exactly,
+// rows.test.ts holds it there), but this partition still reads the RAW status
+// string and keeps it, so a state the enum meets AFTER this build ships
+// renders as itself here rather than as "pending".
 
 import { parseProposal, type ActionProposal } from "../approvals/types";
 
@@ -22,8 +23,8 @@ export function isDecidedStatus(v: unknown): v is DecidedStatus {
   return typeof v === "string" && (DECIDED_STATUSES as readonly string[]).includes(v);
 }
 
-/** One decided proposal in the feed. `proposal.status` may read "pending"
- *  for a yanked row (see module header) — `status` here is the truth. */
+/** One decided proposal in the feed. `status` is read RAW off the wire (see
+ *  module header) and is the truth even if `proposal.status` ever degrades. */
 export interface DecidedItem {
   type: "decided";
   /** Feed-unique key — prefixed so a proposal id and a watch id can never
