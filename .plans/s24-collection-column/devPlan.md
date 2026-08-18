@@ -38,6 +38,7 @@ The shell itself (`AppTw.astro:101-111`) provides **exactly one column — the n
 | **Approvals** | Waiting on you / on the agent / Hold tray / Decided (today's `HeaderGroup`s, promoted out) |
 | **Files** | folders / roots |
 | **Calendar** | calendars (when it grows one) |
+| **Ask** (s20 T5) | chat sessions — recent / pinned; the bar filters them |
 
 ## The architecture decision — a shared component, not a shell-hoisted column
 
@@ -57,19 +58,31 @@ chrome.** Reasoning, and it is the load-bearing decision:
 
 The consistency Eric wants comes from **one component + shared tokens**, not from one DOM location.
 
-## The global search bar
+## The top bar: one contextual filter, uniform across realms (Ask included)
 
-There is **no global search today** — Mail, Contacts, and the `/search` surface each hand-roll their
+There is **no top-bar search today** — Mail, Contacts, and the `/search` surface each hand-roll their
 own `.topbar > .search` form, and `ShellNav`'s header (`ShellNav.tsx:507-604`) holds only the avatar
-menu. That header is the home:
+menu. That header is the home, and the bar has **exactly one rule, uniform everywhere** (Eric,
+2026-08-17): *filter the ACTIVE realm's collection.* Its scope, placeholder, and accepted syntax key
+off the active nav icon — so it is not one weak "search everything" box; it is a realm-aware filter
+that **absorbs** each surface's own bar into a single one whose meaning is wherever you're standing:
 
-- **One search input in the ShellNav header, on every surface**, submitting to the existing `/search`
-  cross-realm fanout (`SearchApp.tsx` already deep-links `?q=`). This retires the redundant
-  per-surface cross-realm bars (`AppShell.tsx:549`, `SearchApp.tsx:142`, `ContactsApp.tsx` topbar).
-- **Scoped power-syntax stays in-surface.** Mail's `from:/to:/is:unread` filter is a different verb —
-  *filter this list*, not *find across everything* — so it stays as an in-surface control (a filter
-  on the header column, or in the CollectionColumn). v1: the global bar is for cross-realm FIND;
-  scoped filtering does not move. (Decision 2.)
+| In this realm… | …the bar filters | with syntax |
+|---|---|---|
+| **Mail** | messages | `from:/to:/is:unread` |
+| **Contacts** | cards | name / org |
+| **Files** | nodes | name / type |
+| **Approvals** | proposals | agent / tier |
+| **Ask** | **your chat sessions** | — |
+
+**Ask is itself a realm** (a nav section — this is **s20 T5**, "research over your own history"), and
+that is what makes the rule uniform. You go to Ask to *find* something you can't filter to — *"find
+the thread where Sergio agreed to the boards"* — as a **directed chat session**: turn-taking,
+cross-realm, agent-mediated, narrowing until you have it. Your past sessions are Ask's collection, so
+— by the same one rule — **the search bar in the Ask realm filters over your chats** (Eric). There
+are not two search verbs; there is one (*filter the active realm's collection*), and Ask is the realm
+where the collection happens to be conversations and the *content* of a session is itself a find.
+
 - **Watch the header height.** `AppTw.astro:75-76` hardcodes `h-16` / `4rem`; the `frame="surface"`
   calc (`h-[calc(100vh-4rem)]`) depends on it. A taller bar updates both.
 
@@ -110,10 +123,13 @@ header column to that group. Turns Approvals from its current 2-pane (`22rem 1fr
 rail + collection + header + detail. Optional and last: if the four groups stay few, stacked-in-header
 is defensible — this is the "maybe" Eric flagged.
 
-### T5 — the global search bar · *independent of T1–T4*
+### T5 — the contextual top-bar filter · *independent of T1–T4*
 
-Add the search input to `ShellNav`'s header (`ShellNav.tsx:513`), submitting to `/search`. Retire the
-per-surface cross-realm search forms. Keep scoped filters (Decision 2). Mind the `h-16` height.
+One search input in `ShellNav`'s header (`ShellNav.tsx:513`) that reads the active section and filters
+THAT realm's collection — placeholder, scope and syntax all keyed off the nav icon. It absorbs the
+per-surface bars (`AppShell.tsx:549`, `SearchApp.tsx:142`, `ContactsApp.tsx` topbar), which then
+retire. In the **Ask** realm the same bar filters chat sessions (s20 T5). Mind the `h-16` header
+height. *This is the top-bar half of the sprint and rides independently of the CollectionColumn work.*
 
 ### T6 — responsive · *the CollectionColumn on a narrow screen*
 
@@ -137,8 +153,11 @@ component. T5 (search) is independent and can land anytime. T4 (Approvals) is th
 1. ~~Shell-hoisted column or shared component?~~ **Shared component** (this plan's premise) — data
    locality + parallel-safety, same four-column result. Revisit only if a cross-surface collection
    behaviour appears that a component can't carry.
-2. **Does the global bar absorb scoped syntax** (mail `from:/to:`)? *Recommendation: no, v1.* Global =
-   cross-realm find; scoped filtering stays in-surface where the syntax is meaningful.
+2. ~~Does the global bar absorb scoped syntax?~~ **RESOLVED (Eric): the bar is a CONTEXTUAL filter over
+   the active realm's collection — uniform everywhere, Ask included (there it filters chats).** It
+   absorbs each surface's scoped syntax rather than replacing it with a weaker cross-realm box. A
+   generic "search everything" bar is rejected; cross-realm *finding* is Ask's job (its own realm,
+   s20 T5), not a mode of the bar.
 3. **Promote Approvals to the quad (T4)?** Eric's "maybe" — decide once T2/T3 show the component in use.
 4. **Does the CollectionColumn get its own resize+collapse, or inherit the rail's width memory?**
    *Recommendation: its own, same class-swap mechanism, remembered per surface.*
@@ -161,3 +180,5 @@ component. T5 (search) is independent and can land anytime. T4 (Approvals) is th
 - `webmail/src/layouts/AppTw.astro` — the current chrome + `frame` knob
 - PRs #166 (shell polish) / #167 (approvals width) / #168 (signed-in identity) — the landed shell
 - `.plans/s07-app-surface/` — the shell's origin sprint
+- `.plans/s20-agent-native-ux/devPlan.md` T5 — **Ask**, the realm whose collection is chat sessions
+  and whose content is a directed find; the top-bar filter is uniform over it
