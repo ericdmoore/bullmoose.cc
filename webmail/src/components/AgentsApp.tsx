@@ -1,14 +1,16 @@
 /** @jsxImportSource preact */
 import { useEffect, useMemo, useState } from "preact/hooks";
 import AgentConsole from "./AgentConsole";
-import AgentDossierPanel from "./AgentDossierPanel";
+import AgentDossierPanel, { type BindingToggle } from "./AgentDossierPanel";
 import CollectionColumn from "./CollectionColumn";
 import { Avatar, Badge, Column, ListContainer, ListRow, SurfaceFrame } from "./ui";
+import { applyBindingEnabled, setBindingEnabled } from "../lib/agents/api";
 import {
   ALL_AGENTS_COLLECTION,
   CONSOLE_COLLECTION,
   agentCollections,
   agentListRows,
+  agentRowId,
   buildDossierView,
   filterAgentRows,
   parseAgentRowId,
@@ -42,6 +44,7 @@ interface Props {
 
 export default function AgentsApp({ reads: injectedReads, client: injectedClient }: Props) {
   const [session, setSession] = useState<Session | undefined>(undefined);
+  const [client, setClient] = useState<JmapClient | undefined>(injectedClient);
   const [reads, setReads] = useState<AgentConsoleClient | undefined>(injectedReads);
   const [mode, setMode] = useState<ConsoleMode>("demo");
   const [fatal, setFatal] = useState<string | undefined>(undefined);
@@ -55,6 +58,12 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => Date.now());
+
+  // ── the kill switch (s26 T2): optimistic flip + reconcile ────────────────
+  // One row busy at a time (the control is on the selected dossier); refusals
+  // are kept PER ROW so a wall message survives switching away and back.
+  const [toggleBusyRow, setToggleBusyRow] = useState<string | undefined>(undefined);
+  const [toggleErrors, setToggleErrors] = useState<Record<string, string>>({});
 
   // ── bootstrap: session, then the console read client ─────────────────────
   useEffect(() => {
@@ -73,6 +82,7 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
         const live = await jmap.session();
         if (cancelled) return;
         setSession(live);
+        setClient(jmap);
         if (!injectedReads) {
           const resolved = resolveConsole();
           setReads(resolved.reads);
@@ -147,6 +157,43 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
     const dossier = parsed && dossiers[parsed.accountId];
     return parsed && dossier ? buildDossierView(dossier, parsed.bindingId, now) : undefined;
   }, [active, dossiers, now]);
+
+  // ── the ONE write this realm makes (s26 T2) ──────────────────────────────
+  // Flip locally first (the read model is a projection, and the /set response
+  // is the reconcile — AgentBinding has no /changes), then let the server's
+  // word stand: its `updated[id].enabled` on success, the prior state plus
+  // the refusal sentence on failure. The wall's message is shown verbatim —
+  // "requires the send capability" teaches more than a softened paraphrase.
+  async function flipBinding(accountId: string, bindingId: string, next: boolean): Promise<void> {
+    if (!client) return;
+    const rowId = agentRowId(accountId, bindingId);
+    setToggleBusyRow(rowId);
+    setToggleErrors((prev) => {
+      const { [rowId]: _cleared, ...rest } = prev;
+      return rest;
+    });
+    setDossiers((prev) => applyBindingEnabled(prev, accountId, bindingId, next));
+    const outcome = await setBindingEnabled(client, accountId, bindingId, next);
+    if (outcome.ok) {
+      setDossiers((prev) => applyBindingEnabled(prev, accountId, bindingId, outcome.enabled));
+    } else {
+      setDossiers((prev) => applyBindingEnabled(prev, accountId, bindingId, !next));
+      setToggleErrors((prev) => ({ ...prev, [rowId]: outcome.message }));
+    }
+    setToggleBusyRow(undefined);
+  }
+
+  const toggle: BindingToggle | undefined =
+    client && active
+      ? {
+          busy: toggleBusyRow === active.id,
+          ...(toggleErrors[active.id] !== undefined ? { error: toggleErrors[active.id] as string } : {}),
+          onToggle: (next: boolean) => {
+            const parsed = parseAgentRowId(active.id);
+            if (parsed) void flipBinding(parsed.accountId, parsed.bindingId, next);
+          },
+        }
+      : undefined;
 
   // ── shells (div, not main — AppTw owns the landmark) ─────────────────────
   if (fatal) {
@@ -254,7 +301,7 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
             <Column aria-label="Agent dossier" class="min-w-0 grow">
               <div class="px-6 pt-4">
                 {detail ? (
-                  <AgentDossierPanel view={detail} />
+                  <AgentDossierPanel view={detail} toggle={toggle} />
                 ) : !loading ? (
                   <p class="text-sm text-gray-500 dark:text-gray-400">Select an agent to read its dossier.</p>
                 ) : null}

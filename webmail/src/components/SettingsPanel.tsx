@@ -1,5 +1,6 @@
 /** @jsxImportSource preact */
 import { useEffect, useState } from "preact/hooks";
+import SettingsAgentsSection from "./SettingsAgentsSection";
 import { resolveClient, type ClientMode } from "../lib/app/client";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Identity } from "../lib/mail/types";
@@ -436,6 +437,11 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
           </form>
         )}
       </section>
+
+      {/* ── agents (s26 T2) — the POLICY side of the dossier/Settings split.
+          The section resolves its own console reads and shares this panel's
+          client; behind the agent capability it renders the honest floor. */}
+      <SettingsAgentsSection client={client} />
     </main>
   );
 

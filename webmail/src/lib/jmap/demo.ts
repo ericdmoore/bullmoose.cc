@@ -823,6 +823,46 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
         notDestroyed: {},
       };
     },
+
+    // ── AgentBinding/set (s26 T2) — the kill switch, demo-shaped ──────────
+    // Mirrors `services/jmap/src/methods/agentBinding.ts`: `send` gates the
+    // flip (the capability wall's scope — a supervisory grant's read/annotate/
+    // draft never opens this door), and exactly ONE property is writable.
+    // The demo keeps the flip in this tab only: the console fixture is a
+    // separate in-memory store, so a reload re-reads the sample state — the
+    // same bargain the settings demo banner already states.
+    "AgentBinding/set": (args) => {
+      if (!scopes.has("send")) {
+        return [
+          "error",
+          {
+            type: "forbidden",
+            description:
+              "flipping a binding's kill switch requires the send capability (a human action); " +
+              "a supervisory grant does not carry it",
+          },
+        ];
+      }
+      const updated: Record<string, { enabled: boolean }> = {};
+      const notUpdated: Record<string, unknown> = {};
+      for (const [id, patch] of Object.entries((args.update as Record<string, Record<string, unknown>>) ?? {})) {
+        const unknown = Object.keys(patch).filter((k) => k !== "enabled");
+        if (unknown.length > 0) {
+          notUpdated[id] = {
+            type: "invalidProperties",
+            description: `AgentBinding/set v1 writes exactly one property, "enabled"`,
+            properties: unknown,
+          };
+          continue;
+        }
+        if (typeof patch.enabled !== "boolean") {
+          notUpdated[id] = { type: "invalidProperties", description: "enabled must be true or false" };
+          continue;
+        }
+        updated[id] = { enabled: patch.enabled };
+      }
+      return { accountId: ACCOUNT, updated, notUpdated };
+    },
   };
 
   // Drop the agent capability by rebuilding the capability map without it —
