@@ -1,0 +1,37 @@
+#!/bin/sh
+# bullmoose pre-commit — keep every commit oxfmt-clean and oxlint-clean, so
+# formatting never drifts far enough to need a repo-wide reflow again (the
+# "oxmft mega-change" that motivated this hook). It mirrors CI exactly
+# (.github/workflows/mail-typecheck.yml runs `npm run fmt:check` + `npm run
+# lint`), scoped to the files you are actually committing so it stays fast.
+#
+#   • formats staged JS/TS/JSON in place and re-stages them, so the commit
+#     records the formatted bytes — you never push something CI will reject;
+#   • lints the JS/TS subset and BLOCKS the commit on a real error.
+#
+# Bypass in a genuine pinch with `git commit --no-verify`; CI is the backstop.
+# Wired by the root `prepare` script (`git config core.hooksPath .githooks`),
+# so it activates on `npm install` — no husky, no extra dependency.
+set -e
+
+# Staged, added/copied/modified only, and only the extensions oxc handles.
+# (Repo convention: no spaces in paths, so word-splitting $staged is safe.)
+staged=$(git diff --cached --name-only --diff-filter=ACM -- \
+  '*.ts' '*.tsx' '*.mts' '*.cts' '*.js' '*.mjs' '*.cjs' '*.jsx' '*.json' '*.jsonc')
+[ -z "$staged" ] && exit 0
+
+# Prefer the installed binary (fast, offline); fall back to `npx --yes` for a
+# clone whose deps are not installed yet (non-interactive: never prompts).
+if [ -x node_modules/.bin/oxfmt ]; then oxfmt="node_modules/.bin/oxfmt"; else oxfmt="npx --yes oxfmt"; fi
+if [ -x node_modules/.bin/oxlint ]; then oxlint="node_modules/.bin/oxlint"; else oxlint="npx --yes oxlint"; fi
+
+# Format in place and re-stage, so the commit records the formatted bytes.
+$oxfmt --write $staged
+git add $staged
+
+# Lint only the JS/TS subset — oxlint has nothing to say about JSON. A real
+# error exits non-zero and, under `set -e`, aborts the commit.
+lintable=$(echo "$staged" | grep -E '\.(ts|tsx|mts|cts|js|mjs|cjs|jsx)$' || true)
+[ -n "$lintable" ] && $oxlint $lintable
+
+exit 0

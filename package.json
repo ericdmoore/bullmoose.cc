@@ -20,6 +20,7 @@
     "fmt:check": "oxfmt --check",
     "gen:conformance": "UPDATE_CONFORMANCE=1 vitest run conformance",
     "lint": "oxlint",
+    "prepare": "git config core.hooksPath .githooks || true",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && npm run -w webmail typecheck && npm run -w @bullmoose/cli typecheck"
