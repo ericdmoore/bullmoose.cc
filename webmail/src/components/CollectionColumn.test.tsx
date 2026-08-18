@@ -59,6 +59,58 @@ describe("CollectionColumn — expanded", () => {
   });
 });
 
+describe("CollectionColumn — the T2 extensions (Contacts, the second caller)", () => {
+  it("a note renders as a neutral badge; count wins when both are present", () => {
+    const html = render(
+      <CollectionColumn
+        title="Contacts"
+        groups={[
+          {
+            id: "g",
+            items: [
+              { id: "ro", label: "Shared", note: "read-only" },
+              { id: "both", label: "Inbox", count: 7, note: "default" },
+            ],
+          },
+        ]}
+        onSelect={() => {}}
+      />,
+    );
+    expect(html).toContain("read-only");
+    expect(html).toContain(">7<");
+    expect(html).not.toContain("default"); // count won
+  });
+
+  it("newDisabled disables (not hides) the standardized [New]", () => {
+    const html = render(
+      <CollectionColumn
+        title="C"
+        groups={[]}
+        onSelect={() => {}}
+        newLabel="New contact"
+        onNew={() => {}}
+        newDisabled
+      />,
+    );
+    expect(html).toContain("New contact");
+    expect(html).toContain("disabled");
+  });
+
+  it("actions and footer slots render in place", () => {
+    const html = render(
+      <CollectionColumn
+        title="C"
+        groups={[{ id: "g", items: [{ id: "a", label: "A" }] }]}
+        onSelect={() => {}}
+        actions={<i>second-create</i>}
+        footer={<em>manage-books</em>}
+      />,
+    );
+    expect(html).toContain("<i>second-create</i>");
+    expect(html).toContain("<em>manage-books</em>");
+  });
+});
+
 describe("CollectionColumn — variants", () => {
   it("without onNew it shows the title instead of a create button", () => {
     const html = render(<CollectionColumn title="Approvals" groups={GROUPS} onSelect={() => {}} />);
