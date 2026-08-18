@@ -145,7 +145,7 @@ describe("AgentDossierPanel — identity", () => {
 describe("AgentDossierPanel — the disabled binding", () => {
   const html = render(<AgentDossierPanel view={view("ab_2")} />);
 
-  it("says the kill switch is thrown and where the verb lives (no session door)", () => {
+  it("with NO toggle wired, says the kill switch is thrown and where the operator verb lives", () => {
     expect(html).toContain(">disabled<");
     expect(html).toContain("kill switch");
     expect(html).toContain("bullmoose admin agent enable ab_2");
@@ -156,5 +156,54 @@ describe("AgentDossierPanel — the disabled binding", () => {
     expect(html).toContain("$0.00 spent this month");
     expect(html).toContain("No aliases configured");
     expect(html).toContain("Nothing recorded yet for this agent.");
+  });
+});
+
+// ── s26 T2: the kill switch goes live when a toggle is wired ───────────────
+// The panel stays stateless: busy, error and the handler arrive as props from
+// the island (AgentsApp owns the optimistic flip against AgentBinding/set).
+
+const noToggle = () => {
+  throw new Error("onToggle must not fire during render");
+};
+
+describe("AgentDossierPanel — the toggle, wired", () => {
+  it("an ENABLED binding offers the disable verb and says what disabling does", () => {
+    const html = render(<AgentDossierPanel view={view("ab_1")} toggle={{ busy: false, onToggle: noToggle }} />);
+    expect(html).toContain("Disable agent");
+    expect(html).toContain("held, not cancelled");
+    expect(html).not.toContain("bullmoose admin agent enable");
+  });
+
+  it("a DISABLED binding offers enable and drops the operator-verb fallback", () => {
+    const html = render(<AgentDossierPanel view={view("ab_2")} toggle={{ busy: false, onToggle: noToggle }} />);
+    expect(html).toContain("Enable agent");
+    expect(html).toContain("kill switch is thrown");
+    // The session door EXISTS now — pointing at the CLI would be a lie.
+    expect(html).not.toContain("bullmoose admin agent enable");
+  });
+
+  it("busy renders Saving… on a disabled button; a refusal renders as an alert, verbatim", () => {
+    const busy = render(<AgentDossierPanel view={view("ab_1")} toggle={{ busy: true, onToggle: noToggle }} />);
+    expect(busy).toContain("Saving…");
+    expect(busy).toContain("disabled");
+
+    const refused = render(
+      <AgentDossierPanel
+        view={view("ab_1")}
+        toggle={{
+          busy: false,
+          error: "flipping a binding's kill switch requires the send capability",
+          onToggle: noToggle,
+        }}
+      />,
+    );
+    expect(refused).toContain('role="alert"');
+    expect(refused).toContain("send capability");
+  });
+
+  it("still no inline style anywhere (CSP)", () => {
+    const html = render(<AgentDossierPanel view={view("ab_2")} toggle={{ busy: false, onToggle: noToggle }} />);
+    expect(html).not.toContain("style=");
   });
 });

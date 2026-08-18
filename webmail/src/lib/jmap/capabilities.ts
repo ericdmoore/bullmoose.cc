@@ -69,6 +69,7 @@ export function capabilityForMethod(methodName: string): string {
     case "FileNode":
       return FILENODE_CAP;
     case "AgentInvocation":
+    case "AgentBinding":
     case "ActionProposal":
     case "Watch":
     case "Annotation":

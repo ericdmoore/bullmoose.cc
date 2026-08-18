@@ -6,6 +6,7 @@ import { registerThreadMethods } from "./thread";
 import { registerIdentityMethods } from "./identity";
 import { registerSubmissionMethods } from "./submission";
 import { registerAgentMethods } from "./agent";
+import { registerAgentBindingMethods } from "./agentBinding";
 import { registerActionProposalMethods } from "./actionProposal";
 import { registerWatchMethods } from "./watch";
 import { registerAnnotationMethods } from "./annotation";
@@ -25,6 +26,7 @@ export function buildRegistry(): MethodRegistry<RequestContext> {
   registerIdentityMethods(registry);
   registerSubmissionMethods(registry);
   registerAgentMethods(registry);
+  registerAgentBindingMethods(registry);
   registerActionProposalMethods(registry);
   registerWatchMethods(registry);
   registerAnnotationMethods(registry);
