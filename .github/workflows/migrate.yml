@@ -28,13 +28,20 @@ name: Migrate D1
 # VAULT_MASTER_KEY unrecoverably. bootstrap now refuses that without --rotate,
 # and this workflow never gives it the chance.
 
+# The run TITLES itself by mode: a green dry-run used to be indistinguishable
+# from a green apply in the run list, which cost a live debugging session (the
+# annotations table "migrated" green and did not exist — 2026-08-18). Dispatch
+# now APPLIES by default; tick the box for a preview, and either way the run
+# name says which one happened.
+run-name: "Migrate — ${{ inputs.dry_run == true && 'DRY RUN (nothing applied)' || 'APPLY' }}"
+
 on:
   workflow_dispatch:
     inputs:
       dry_run:
         description: "Preview only — print every statement, touch nothing"
         type: boolean
-        default: true
+        default: false
 
 jobs:
   migrate:
