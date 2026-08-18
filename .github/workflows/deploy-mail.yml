@@ -40,8 +40,8 @@ jobs:
       # infra/bootstrap.mjs — that file carries the derivation.
       #
       #   submit         no deps
-      #   jmap           services: submit          · declares AccountDO
       #   bureau         no deps                   · holds VAULT_MASTER_KEY
+      #   jmap           services: submit, bureau  · declares AccountDO
       #   oauth          no deps                   · holds OAUTH_KV
       #   agent          services: submit, bureau, oauth · DO script_name: jmap
       #   ingest         services: AGENT -> agent  · DO script_name: jmap
@@ -52,21 +52,24 @@ jobs:
       # `bullmoose-agent`. The previous order (submit → jmap → ingest →
       # provision) both skipped agent entirely and had it in the wrong place.
       #
-      # bureau BEFORE agent: services/agent/wrangler.jsonc binds
-      # `bullmoose-bureau` (s04 T3a — the credential vault's master key moved
-      # there), so the same failure mode sits one edge further up the graph.
+      # bureau BEFORE agent AND jmap: both bind `bullmoose-bureau` (s04 T3a —
+      # the credential vault's master key moved there), so the same failure
+      # mode sits one edge further up the graph. jmap joined that list in s26
+      # T4's surface pass: ProviderCredential/set seals a tenant's provider key
+      # over the binding, because VAULT_MASTER_KEY is bound to bureau and to
+      # nothing else — least of all to the worker that renders untrusted email.
       - name: Deploy submit
         run: npx wrangler deploy -c services/submit/wrangler.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Deploy jmap
-        run: npx wrangler deploy -c services/jmap/wrangler.jsonc
+      - name: Deploy bureau
+        run: npx wrangler deploy -c services/bureau/wrangler.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Deploy bureau
-        run: npx wrangler deploy -c services/bureau/wrangler.jsonc
+      - name: Deploy jmap
+        run: npx wrangler deploy -c services/jmap/wrangler.jsonc
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

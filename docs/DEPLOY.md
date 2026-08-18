@@ -375,8 +375,8 @@ it, run the backfill with `deep=0` and leave `bodyText` unindexed for history.
 
 ```sh
 npm run -w services/submit        deploy   # 1. no dependencies
-npm run -w services/jmap          deploy   # 2. declares AccountDO; binds SUBMIT
-npm run -w services/bureau        deploy   # 3. holds VAULT_MASTER_KEY; no deps
+npm run -w services/bureau        deploy   # 2. holds VAULT_MASTER_KEY; no deps
+npm run -w services/jmap          deploy   # 3. declares AccountDO; binds SUBMIT + BUREAU
 npm run -w services/agent         deploy   # 4. binds SUBMIT + BUREAU + AccountDO
 npm run -w services/ingest        deploy   # 5. binds AGENT -> agent, + AccountDO
 npm run -w services/provision     deploy   # 6. control plane; binds BUREAU (BYOK)
@@ -395,10 +395,14 @@ npm run -w services/anglebrackets deploy   # 7. CardDAV/CalDAV face (binds Accou
 > (s04 T3a), so deploying agent first fails against a service that does not
 > exist. Same three files must stay in sync.
 >
-> **and bureau must precede provision** (s26 T4). `POST /provider-keys` seals a
-> tenant's own model-provider key, and sealing is a hop — `services/provision`
-> holds no master key either. The order above already satisfies this; the edge
-> is called out so a future reshuffle does not quietly break it.
+> **and bureau must precede provision AND jmap** (s26 T4). `POST /provider-keys`
+> and the session-reachable `ProviderCredential/set` both seal a tenant's own
+> model-provider key, and sealing is a hop — neither worker holds a master key.
+> jmap in particular must never hold one: it renders attacker-authored email
+> HTML, which is exactly the class of worker T3a moved `VAULT_MASTER_KEY` away
+> from. **This moved jmap from position 2 to position 3** in all three files; on
+> an already-deployed account the reorder is a no-op, and on a clean one it is
+> the difference between a working deploy and a service binding to nothing.
 
 `services/demo-keys` is deliberately absent from this list, from
 `DEPLOY_ORDER`, and from CI. Tracked as `.feedback/fromClaude/infra/013`.

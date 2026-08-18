@@ -10,6 +10,22 @@ import {
   resolveMintScopes,
 } from "@bullmoose/auth-core";
 import { BUREAU_VERBS, isBureauVerb } from "@bullmoose/auth-core/principal";
+// s26 T4 — the BYOK core, shared with the session door
+// (`services/jmap/src/methods/providerCredential.ts`). ONE implementation of
+// seal → grant → attach, because two writers of `config_json.providerCredentials`
+// is two things the Bureau's own "does this binding name this credential?"
+// check can disagree with. See that file's header.
+import {
+  BYOK_PROVIDERS,
+  DEFAULT_HEADER_RECIPE,
+  attachCredentialToBindings,
+  credentialExists,
+  grantFetchOnCredential,
+  isCredRef,
+  normalizeAllow,
+  normalizeHeaderRecipe,
+  sealProviderKey,
+} from "./byokProvision";
 
 /**
  * Provision — multi-domain onboarding, fully API-driven (§8 of the design
@@ -1528,7 +1544,17 @@ async function revokeToken(id: string, env: Env) {
 
 // ---- grants (Phase 3: cross-account delegation + sharing) ---------------
 
-const GRANTABLE_SCOPES = new Set([
+/**
+ * What an account→account grant may confer.
+ *
+ * Exported since s26 T4's surface pass so the session BYOK door's tests can
+ * assert an ABSENCE against the real list: `vault` is not here, which is what
+ * makes "custody of a provider key does not delegate through a share" a
+ * structural fact rather than a policy anyone has to remember. If a future
+ * widening adds it, `providerCredential.test.ts` fails rather than the door
+ * silently opening to every supervisor.
+ */
+export const GRANTABLE_SCOPES = new Set([
   "read",
   "annotate",
   "draft",
@@ -2771,14 +2797,6 @@ interface ProviderKeyBody {
   expiresDays?: number;
 }
 
-/** Hosts that authenticate with a bearer, and can therefore carry a tenant's
- *  own key. `workers-ai` runs on the platform's account binding and `mock` runs
- *  nowhere — neither has a key to bring, so neither is offered one. */
-const BYOK_PROVIDERS: Record<string, { defaultAllow?: string }> = {
-  openrouter: { defaultAllow: "https://openrouter.ai" },
-  gateway: {},
-};
-
 async function provisionProviderKey(body: ProviderKeyBody, env: Env) {
   if (!env.BUREAU || !env.INTERNAL_TOKEN) {
     return json({ error: "BYOK not configured on this deployment (no BUREAU binding)" }, 501);
@@ -2794,7 +2812,7 @@ async function provisionProviderKey(body: ProviderKeyBody, env: Env) {
     return json({ error: `provider must be one of ${Object.keys(BYOK_PROVIDERS).join(", ")}` }, 400);
   }
   const credRef = typeof body.credRef === "string" && body.credRef ? body.credRef : provider;
-  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(credRef)) {
+  if (!isCredRef(credRef)) {
     return json({ error: "credRef must be alnum . _ - up to 64 chars" }, 400);
   }
 
@@ -2811,7 +2829,7 @@ async function provisionProviderKey(body: ProviderKeyBody, env: Env) {
       400,
     );
   }
-  const header = normalizeHeaderRecipe(body.header ?? "Authorization: Bearer {}");
+  const header = normalizeHeaderRecipe(body.header ?? DEFAULT_HEADER_RECIPE);
   if (!header) {
     return json({ error: 'header must be "Header-Name: …{}…" (the {} is the value slot)' }, 400);
   }
@@ -2826,48 +2844,29 @@ async function provisionProviderKey(body: ProviderKeyBody, env: Env) {
     .first<{ principal_id: string; login_email: string }>();
   if (!owner) return json({ error: `account ${account.id} has no principal` }, 404);
 
-  const existing = await env.DB.prepare(`SELECT id FROM vault_credentials WHERE principal_id = ? AND name = ?`)
-    .bind(owner.principal_id, credRef)
-    .first<{ id: string }>();
+  const existed = await credentialExists(env.DB, owner.principal_id, credRef);
 
-  // 1 — SEAL. `mode: "mint"` upserts, so a re-run rewrites ciphertext AND
-  // contract together: this door computes the whole contract every time, and a
-  // rotate-only path would leave an allowlist behind that no longer matches
-  // what was asked for. (The narrower key-only rotate is the tenant's own
-  // `POST /vault/credentials/{name}/rotate`, on their own bearer.)
-  const sealed = await env.BUREAU.fetch("https://bureau.internal/internal/bureau/seal", {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-internal-token": env.INTERNAL_TOKEN },
-    body: JSON.stringify({
-      mode: "mint",
-      principalId: owner.principal_id,
-      name: credRef,
-      kind: "api-key",
-      metaJson: JSON.stringify({ allow, header, scope: "actor", enforcement: "federated" }),
-      secret: body.key,
-    }),
+  // 1 — SEAL, 2 — GRANT, 3 — ATTACH. All three live in `byokProvision.ts`, so
+  // this door and the session door (`services/jmap` ProviderCredential/set)
+  // write the same rows by construction rather than by review. Fail closed on
+  // the seal and write nothing else: a grant or an attachment pointing at a
+  // credential that was never sealed is a config that looks live and is not.
+  const sealed = await sealProviderKey(env, { principalId: owner.principal_id, credRef, allow, header }, body.key);
+  if (!sealed.ok) return json({ error: sealed.error }, sealed.status);
+
+  const grantId = await grantFetchOnCredential(env.DB, owner.principal_id, credRef, {
+    actor: "admin",
+    expiresDays: body.expiresDays,
   });
-  if (!sealed.ok) {
-    // Fail closed and write NOTHING else: a grant or an attachment pointing at
-    // a credential that was never sealed is a config that looks live and is not.
-    return json({ error: `bureau refused the seal (${sealed.status})` }, 502);
-  }
-
-  // 2 — GRANT. Mint ≠ authorize; this door does both, deliberately and in one
-  // place, because "sealed but unusable" is not a state an operator asked for.
-  // Same upsert-and-reinstate as `POST /bureau-grants` — a previously revoked
-  // BYOK key can be brought back by re-posting it.
-  const grantId = await grantFetchOnCredential(env, owner.principal_id, credRef, body.expiresDays);
-
-  // 3 — ATTACH. The Bureau refuses a credential the binding's own config does
-  // not name, so this is not bookkeeping: it is the third of the three
-  // row-derived checks that replace a bearer on the BYOK door.
-  const attached = await attachCredentialToBindings(env, account.id, provider, credRef, body.bindingName);
+  const attached = await attachCredentialToBindings(env.DB, account.id, provider, credRef, {
+    actor: "admin",
+    bindingName: body.bindingName,
+  });
 
   return json({
     ok: true,
-    created: !existing,
-    rotated: !!existing,
+    created: !existed,
+    rotated: existed,
     accountId: account.id,
     principal: owner.login_email,
     provider,
@@ -2889,142 +2888,6 @@ async function provisionProviderKey(body: ProviderKeyBody, env: Env) {
         }
       : {}),
   });
-}
-
-/**
- * `(principal, credRef, "fetch")`, upserted — the same statement
- * `createBureauGrant` runs, factored to one place so the two doors cannot drift
- * on the reinstate semantics (a tombstone must not make a capability
- * ungrantable forever).
- *
- * `fetch` and only `fetch`: a model call is a proxied HTTP request, and the
- * Class B verbs are signing oracles that an API-key credential has no business
- * answering anyway (bureau.md §4.1).
- */
-async function grantFetchOnCredential(
-  env: Env,
-  principalId: string,
-  credRef: string,
-  expiresDays?: number,
-): Promise<string> {
-  const id = `bg_${crypto.randomUUID()}`;
-  const now = Date.now();
-  const expiresAt = expiresDays ? now + expiresDays * 86_400_000 : null;
-  await env.DB.prepare(
-    `INSERT INTO bureau_grants (id, principal_id, cred_name, verb, created_by,
-       created_at, expires_at, revoked_at)
-     VALUES (?, ?, ?, 'fetch', 'admin', ?, ?, NULL)
-     ON CONFLICT (principal_id, cred_name, verb) DO UPDATE SET
-       revoked_at = NULL, created_at = excluded.created_at,
-       created_by = excluded.created_by, expires_at = excluded.expires_at`,
-  )
-    .bind(id, principalId, credRef, now, expiresAt)
-    .run();
-  const row = await env.DB.prepare(
-    `SELECT id FROM bureau_grants WHERE principal_id = ? AND cred_name = ? AND verb = 'fetch'`,
-  )
-    .bind(principalId, credRef)
-    .first<{ id: string }>();
-  const grantId = row?.id ?? id;
-  await logGrantLifecycle(env, grantId, "created", now);
-  return grantId;
-}
-
-/**
- * Write `providerCredentials[provider] = credRef` onto the account's bindings.
- *
- * Which bindings, when none is named: every binding on the account that already
- * has a route to that provider, plus any that already named a credential for it
- * (a re-run must find its own previous work). A binding with no `openrouter`
- * candidate has nothing to authenticate, so attaching there would be noise in a
- * config an operator has to read.
- *
- * Binding-WIDE rather than per candidate: `providerCredentials` covers every
- * present and future route to that host, so adding a second OpenRouter model to
- * the menu later cannot accidentally fall back to the platform key.
- */
-async function attachCredentialToBindings(
-  env: Env,
-  accountId: string,
-  provider: string,
-  credRef: string,
-  bindingName?: string,
-): Promise<Array<{ id: string; name: string }>> {
-  const { results } = await env.DB.prepare(
-    `SELECT id, name, config_json FROM agent_bindings WHERE account_id = ? ORDER BY name`,
-  )
-    .bind(accountId)
-    .all<{ id: string; name: string; config_json: string }>();
-
-  const attached: Array<{ id: string; name: string }> = [];
-  for (const binding of results) {
-    const config = safeConfig(binding.config_json);
-    if (bindingName ? binding.name !== bindingName : !routesToProvider(config, provider)) continue;
-    const existing = config.providerCredentials;
-    const providerCredentials: Record<string, unknown> =
-      typeof existing === "object" && existing !== null && !Array.isArray(existing)
-        ? { ...(existing as Record<string, unknown>) }
-        : {};
-    providerCredentials[provider] = credRef;
-    config.providerCredentials = providerCredentials;
-    await env.DB.prepare(`UPDATE agent_bindings SET config_json = ? WHERE account_id = ? AND id = ?`)
-      .bind(JSON.stringify(config), accountId, binding.id)
-      .run();
-    attached.push({ id: binding.id, name: binding.name });
-  }
-  return attached;
-}
-
-/** Does this binding's model menu (or an existing attachment) reach this host? */
-function routesToProvider(config: Record<string, unknown>, provider: string): boolean {
-  const existing = config.providerCredentials;
-  if (typeof existing === "object" && existing !== null && !Array.isArray(existing)) {
-    if ((existing as Record<string, unknown>)[provider] !== undefined) return true;
-  }
-  const aliases = config.modelAliases;
-  if (typeof aliases !== "object" || aliases === null || Array.isArray(aliases)) return false;
-  for (const menu of Object.values(aliases as Record<string, unknown>)) {
-    if (!Array.isArray(menu)) continue;
-    for (const candidate of menu) {
-      if (typeof candidate !== "object" || candidate === null) continue;
-      if ((candidate as { provider?: unknown }).provider === provider) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Normalize a destination-allowlist entry to a canonical origin (bureau.md §6),
- * or null. Deliberately the same normalization the vault's mint path performs
- * (`services/agent/src/vault.ts`) — the Bureau RE-PARSES the stored string on
- * every use and matches scheme+host+port structurally, so the value of
- * canonicalizing here is that an operator reading the row sees what the
- * enforcement point will see.
- */
-function normalizeAllow(raw: string): string | null {
-  const val = raw.trim().toLowerCase();
-  if (!val) return null;
-  const wild = /^(?:(https?):\/\/)?(\*\.[a-z0-9.-]+)$/.exec(val);
-  if (wild) return `${wild[1] ?? "https"}://${wild[2]}`;
-  try {
-    const u = new URL(val.includes("://") ? val : `https://${val}`);
-    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
-    if (!u.hostname || u.hostname.includes("*")) return null;
-    if (u.username || u.password) return null;
-    return `${u.protocol}//${u.hostname}${u.port ? `:${u.port}` : ""}`;
-  } catch {
-    return null;
-  }
-}
-
-/** `"Header-Name: …{}…"` — a field name, a colon, and the slot the credential
- *  lands in. This shape can only produce a HEADER (invariant 8): there is no
- *  branch anywhere that puts a credential in a URL. */
-function normalizeHeaderRecipe(raw: string): string | null {
-  const val = raw.trim();
-  if (!val.includes("{}")) return null;
-  if (!/^[!#$%&'*+.^_`|~0-9a-z-]+:\s*\S/i.test(val)) return null;
-  return val;
 }
 
 /**
