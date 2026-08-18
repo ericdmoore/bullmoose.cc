@@ -106,11 +106,16 @@ describe("the supervisory grant's scopes", () => {
     // This assertion is exact on purpose. If a tier-3 KIND ships, adding
     // `send` back is correct — but it must be re-argued from the tier that
     // actually produces it, not from this one, which never did.
-    expect([...SUPERVISORY_GRANT_SCOPES]).toEqual(["read", "draft"]);
+    expect([...SUPERVISORY_GRANT_SCOPES]).toEqual(["read", "annotate", "draft"]);
     expect(SUPERVISORY_GRANT_SCOPES as readonly string[]).not.toContain("send");
-    // NOT the `mail` bundle: that adds annotate/move/delete, i.e. the authority
-    // to reorganise and DELETE the agent's mailbox. Supervision is not custody.
+    // NOT the `mail` bundle: that adds move/delete, i.e. the authority to
+    // reorganise and DELETE the agent's mailbox. Supervision is not custody —
+    // but `annotate` (2026-08-18) is IN: marking the supervised mail read or
+    // flagged while reviewing it is exactly what a supervisor does, and a
+    // keyword flip is reversible state, not structure.
     expect(SUPERVISORY_GRANT_SCOPES as readonly string[]).not.toContain("mail");
+    expect(SUPERVISORY_GRANT_SCOPES as readonly string[]).not.toContain("move");
+    expect(SUPERVISORY_GRANT_SCOPES as readonly string[]).not.toContain("delete");
     // …and no realm: deciding proposals is no business of the agent's address
     // book, its calendar or the credential store.
     for (const realm of ["contacts", "calendar", "files", "vault", "admin"]) {
@@ -134,13 +139,13 @@ describe("POST /agent-bindings mints the supervisory grant", () => {
     expect(body.supervision.granted).toBe(true);
     expect(body.supervision.created).toBe(true);
     expect(body.supervision.owner).toEqual({ email: `eric@${DOMAIN}`, accountId: eric.accountId });
-    expect(body.supervision.scopes).toEqual(["read", "draft"]);
+    expect(body.supervision.scopes).toEqual(["read", "annotate", "draft"]);
 
     // The row: whole-account (collection NULL — the mail domain has no
     // collection-scoped grant, so a scoped one could not carry the queue).
     const rows = liveGrants(h, eric.accountId, emily.accountId);
     expect(rows.length).toBe(1);
-    expect(JSON.parse(rows[0]!.scopes)).toEqual(["read", "draft"]);
+    expect(JSON.parse(rows[0]!.scopes)).toEqual(["read", "annotate", "draft"]);
     expect(rows[0]!.collection).toBeNull();
     // …and its birth is in the lifecycle chain, like every other grant.
     expect(h.db.count("grant_lifecycle", "grant_id = ? AND event = 'created'", rows[0]!.id)).toBe(1);
@@ -259,7 +264,7 @@ describe("POST /agent-bindings/{id}/supervisor — the backfill for agents that 
     };
     expect(first.ok).toBe(true);
     expect(first.supervision.created).toBe(true);
-    expect(first.supervision.scopes).toEqual(["read", "draft"]);
+    expect(first.supervision.scopes).toEqual(["read", "annotate", "draft"]);
 
     // IDEMPOTENT: an operator must be able to run this over every binding
     // without thinking about which ones already have it.
@@ -379,7 +384,7 @@ describe("POST /bouncer supervises the whole household", () => {
     for (const human of [dad, mom]) {
       const rows = liveGrants(h, human.accountId, body.accountId);
       expect(rows.length).toBe(1);
-      expect(JSON.parse(rows[0]!.scopes)).toEqual(["read", "draft"]);
+      expect(JSON.parse(rows[0]!.scopes)).toEqual(["read", "annotate", "draft"]);
     }
     // The agent account is NOT a supervisor of the bouncer.
     expect(h.db.count("grants", "grantee_account_id NOT IN (?, ?)", dad.accountId, mom.accountId)).toBe(0);
