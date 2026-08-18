@@ -97,7 +97,7 @@ export default function CollectionColumn(props: CollectionColumnProps) {
 
   if (collapsed) {
     return (
-      <div class="flex h-full min-h-0 w-10 shrink-0 flex-col items-center border-r border-gray-200 pt-2 dark:border-white/10">
+      <div class="flex min-h-0 w-10 shrink-0 flex-col items-center self-stretch border-r border-gray-200 pt-2 dark:border-white/10">
         <IconButton label={`Expand ${title.toLowerCase()} collections`} size="sm" onClick={() => toggle(false)}>
           <ChevronRightIcon class="size-4" />
         </IconButton>
@@ -147,11 +147,7 @@ export default function CollectionColumn(props: CollectionColumnProps) {
                   <span
                     class={`flex min-w-0 grow items-center gap-x-1.5 ${DEPTH_PAD[Math.min(item.depth ?? 0, DEPTH_PAD.length - 1)]}`}
                   >
-                    {item.glyph ? (
-                      <span class="shrink-0 text-gray-400" aria-hidden="true">
-                        {item.glyph}
-                      </span>
-                    ) : null}
+                    {item.icon ? <item.icon class="size-4 shrink-0 text-gray-400" /> : null}
                     <span class="min-w-0 truncate">{item.label}</span>
                   </span>
                   {item.count ? <Badge>{item.count}</Badge> : item.note ? <Badge>{item.note}</Badge> : null}

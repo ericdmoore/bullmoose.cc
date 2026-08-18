@@ -19,7 +19,7 @@ export default function Column({
   children: ComponentChildren;
 }) {
   return (
-    <section class={cx("flex h-full min-h-0 min-w-0 flex-col", cls)} aria-label={ariaLabel}>
+    <section class={cx("flex min-h-0 min-w-0 flex-col self-stretch", cls)} aria-label={ariaLabel}>
       {header ? <div class="shrink-0">{header}</div> : null}
       <div class="min-h-0 grow overflow-y-auto">{children}</div>
     </section>
