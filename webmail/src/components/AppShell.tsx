@@ -4,6 +4,7 @@ import { hasAgentCapability } from "../lib/jmap/capabilities";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
 import { resolveClient, type ClientMode } from "../lib/app/client";
+import { runListLoad } from "../lib/app/listLoad";
 import {
   buildForwardDraft,
   buildReplyDraft,
@@ -223,6 +224,13 @@ export default function AppShell({ client: injected }: Props) {
   }, [mailboxes]);
 
   // ── list, driven by mailbox + search ────────────────────────────────────
+  //
+  // Each run supersedes the last, and the load it supersedes is a promise
+  // already in flight — so every write back into state goes through
+  // `runListLoad`, which delivers only while `storeRef.current` still points at
+  // the store that started it (lib/app/listLoad.ts). `storeRef` is the ONE
+  // record of which load owns the list: assigned on entry, dropped by the
+  // cleanup below, and read by the paging call in `onLoadMore` too.
   useEffect(() => {
     if (!client || !accountId || !mailbox) return;
     const spec: SearchSpec = { ...searchSpec, inMailbox: mailbox.id };
@@ -232,11 +240,15 @@ export default function AppShell({ client: injected }: Props) {
     setLoading(true);
     setCursor(0);
     setSelected(new Set());
-    void store
-      .reload()
-      .then(() => syncStore(store))
-      .catch((err: unknown) => notify(String(err instanceof Error ? err.message : err)))
-      .finally(() => setLoading(false));
+    runListLoad(
+      () => store.reload(),
+      () => storeRef.current === store,
+      {
+        onResult: () => syncStore(store),
+        onError: (message) => notify(message),
+        onSettled: () => setLoading(false),
+      },
+    );
     return () => {
       off();
       if (storeRef.current === store) storeRef.current = undefined;
@@ -892,10 +904,21 @@ export default function AppShell({ client: injected }: Props) {
                 const store = storeRef.current;
                 if (!store || loading) return;
                 setLoading(true);
-                void store
-                  .loadMore()
-                  .then(() => syncStore(store))
-                  .finally(() => setLoading(false));
+                // Same guard as the reload above, and for a sharper reason:
+                // paging starts long after the effect body returned, so a
+                // mailbox switch mid-page would otherwise append page 2 of the
+                // list you LEFT onto the list you are looking at. This path also
+                // had no `catch` at all — a failed page died as an unhandled
+                // rejection with nothing on screen to say so.
+                runListLoad(
+                  () => store.loadMore(),
+                  () => storeRef.current === store,
+                  {
+                    onResult: () => syncStore(store),
+                    onError: (message) => notify(message),
+                    onSettled: () => setLoading(false),
+                  },
+                );
               }}
             />
           )}
