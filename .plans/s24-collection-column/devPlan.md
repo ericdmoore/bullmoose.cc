@@ -1,9 +1,13 @@
-# s24 — the Collection column (the fourth panel), and the global search bar
+# s24 — a stateless component library, the Collection column, and the contextual search bar
 
 > Eric, reading contacts + mail + approvals together: "these need a quadruple-panel shell —
 > `NavSidebar → CollectionColumn → HeaderColumn → DetailPanel`", and "search should get bumped up
-> to the top-most bar." Spec written 2026-08-17 against the shell the s07 rewrite just landed
-> (`ShellNav.tsx`, `AppTw.astro`, PRs #166/#167/#168).
+> to the top-most bar." And, crucially: s24 should first **translate the Tailwind UI components +
+> Heroicons into a stateless Astro/Preact component library** — an internal set the whole project
+> leverages — with unit tests, rather than hand-cutting markup per surface. So this sprint is two
+> things: the **library** (T0) and the **shell composition** (T1–T6) that consumes it. Spec written
+> 2026-08-17 against the shell the s07 rewrite just landed (`ShellNav.tsx`, `AppTw.astro`, PRs
+> #166/#167/#168).
 
 ## The insight: this is a CONSOLIDATION, not an invention
 
@@ -103,7 +107,63 @@ drawers/menus/palettes and this repo deliberately does not depend on it (`ShellN
 | **contextual top-bar search** (T5) | `navigation/navbars/11-with-search-in-column-layout.html` (search inside a column layout) / `08-with-search.html` |
 | **Ask** — directed find (s20 T5) | `navigation/command-palettes/03-with-preview.html` (find + preview) and `08-with-groups.html` — a command palette IS a directed-find UI, the right seed for Ask's entry |
 
+## The internal component library (the T0 foundation)
+
+Today there is no component library — icons are copy-pasted inline `<svg>` (six in `ShellNav` alone),
+and each surface re-derives buttons/badges/rows from raw template markup. s24 fixes that **first**:
+translate the Tailwind UI primitives + Heroicons this sprint needs into a small **stateless** Preact
+library, so the quad-panel is *assembled from parts*, not hand-cut each time (Eric). The rule that
+already governs the repo applies here — **thin component, pure tested logic** (the ApprovalsQueue →
+`lib/approvals` split):
+
+```
+webmail/src/
+  components/
+    icons/    Heroicons → stateless Preact SVG — <InboxIcon class="size-5"/>, one file per glyph,
+              class-driven (size via class, never inline style — CSP). Replaces the inline <svg>s.
+    ui/       stateless presentational primitives — Button, IconButton, Badge/Pill, Avatar, Card,
+              Panel, ListContainer + Row, Column, SurfaceFrame, MenuShell (markup only; the open/
+              close is a tiny consumer-owned hook, since @headlessui is not a dependency).
+  lib/
+    ui/       the PURE class-logic behind them — buttonClasses(variant,size), badgeTone(tone),
+              columnClasses(...) — the tested functions; the component is markup over them.
+```
+
+- **Stateless by construction.** These carry no data-fetching and no app state — they take props and
+  render. State lives in the surfaces (`AppShell`, `ContactsApp`, …) as today; the library is the
+  vocabulary those islands compose. So the `CollectionColumn` (T1) becomes `<Column>` + `<ListRow>` +
+  an icon, not a bespoke block.
+- **Composition utilities**, not just widgets: `<SurfaceFrame>` (the full-bleed, one-viewport
+  `frame="surface"` wrapper) and a columns recipe (`<Columns>` / documented grid classes) are what
+  make a screen a declarative arrangement of panels rather than a hand-tuned grid per page.
+- **Tested without jsdom**, honouring the repo's "vitest in plain Node" constraint two ways:
+  `lib/ui/*.test.ts` tests the pure class-logic as functions (the existing pattern); `components/ui/
+  *.test.tsx` renders each primitive with **`preact-render-to-string`** (a new devDependency — SSR to
+  an HTML string in plain Node, no jsdom) and asserts on the markup/classes. Stateless comps are
+  exactly what render-to-string tests cleanly.
+- **preact/compat**: `@astrojs/preact` can alias `react→preact/compat` (`preact({ compat: true })`) if
+  we ever import a template's React source directly — but we hand-translate markup, so it stays
+  optional; enable it only if a specific component's JS is worth porting rather than rewriting.
+- **Grow on demand, not a catalog port.** Translate only what T1–T5 consume (the shell's icons;
+  Button/Badge/Avatar/ListContainer/Column/SurfaceFrame). The library earns each addition by a second
+  caller — the same rule that keeps the shared backend packages honest.
+
 ## Tasks
+
+### T0 — the stateless component library · *the foundation everything else consumes*
+
+**Files:** `webmail/src/components/icons/*`, `webmail/src/components/ui/*`, `webmail/src/lib/ui/*`,
+`+ preact-render-to-string` devDependency.
+
+Translate the Heroicons the shell already uses (the six inline in `ShellNav`, plus the nav-item set)
+into stateless icon components, and build the first primitive set (Button, Badge, Avatar,
+ListContainer + Row, Column, SurfaceFrame) from the templates the Provenance table cites — class-logic
+as pure tested functions in `lib/ui`, markup asserted via `preact-render-to-string`. No `@headlessui`,
+no `@heroicons` dependency; the icons become source we own.
+
+**Done when:** the shell's inline `<svg>`s are replaced by `icons/*` components; a `CollectionColumn`
+can be assembled from `<Column>`/`<ListRow>`/icons; and every primitive has a pure class-logic test +
+a render-to-string test, all in plain Node.
 
 ### T1 — the shared `<CollectionColumn>` component · *the substrate*
 
@@ -156,14 +216,16 @@ drawer (`ShellNav.tsx:377-407`). The four-column desktop layout degrades to a na
 ## Sequencing
 
 ```
-T1 component ──┬── T2 Contacts ──┬── T4 Approvals (optional)
-               └── T3 Mail ──────┘
-T5 search (independent) ────────────
+T0 lib ──┬── T1 CollectionColumn ──┬── T2 Contacts ──┬── T4 Approvals (optional)
+         │                          └── T3 Mail ──────┘
+         └── T5 search (its input + icons come from T0) ─────
 T6 responsive (rides each adoption)
 ```
 
-T1 gates the adoptions. **T2 (Contacts) first** — closest to the shape, lowest risk, proves the
-component. T5 (search) is independent and can land anytime. T4 (Approvals) is the "maybe", last.
+**T0 gates everything** — icons + primitives first, so T1–T5 compose them rather than re-cut markup.
+T1 (the `CollectionColumn`, assembled from T0's `<Column>`/`<ListRow>`/icons) gates the adoptions;
+**T2 (Contacts) first** — closest to the shape, lowest risk, proves both the component and the library.
+T5 (search) is otherwise independent. T4 (Approvals) is the "maybe", last.
 
 ## Decisions
 
@@ -178,6 +240,12 @@ component. T5 (search) is independent and can land anytime. T4 (Approvals) is th
 3. **Promote Approvals to the quad (T4)?** Eric's "maybe" — decide once T2/T3 show the component in use.
 4. **Does the CollectionColumn get its own resize+collapse, or inherit the rail's width memory?**
    *Recommendation: its own, same class-swap mechanism, remembered per surface.*
+5. **Component-render test tool.** *Recommendation: add `preact-render-to-string` (SSR-to-string,
+   plain Node, no jsdom) — it fits the repo's no-jsdom vitest and tests stateless comps cleanly.
+   Reject `@testing-library`/jsdom: it would introduce a browser env the rest of the suite avoids.*
+6. **Where the library lives.** *Recommendation: `webmail/src/components/{icons,ui}` + `lib/ui`
+   (webmail-local), not a shared `packages/*` — it is Preact/Astro and webmail-only; the shared
+   packages are backend/core. Promote to a package only if a second frontend ever appears.*
 
 ## Constraints (from the landed shell)
 
