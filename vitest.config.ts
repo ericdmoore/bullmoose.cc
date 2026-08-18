@@ -8,6 +8,15 @@ const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 // fakes and need no network. Worker-level integration (miniflare/D1) can be
 // added later for the shell paths that resist faking.
 export default defineConfig({
+  // s24 T0: the component-library tests are .test.tsx rendering Preact via
+  // preact-render-to-string. esbuild's default JSX transform is the classic
+  // React one (which would demand a React global); the automatic runtime with
+  // preact as the import source honours the same `/** @jsxImportSource */`
+  // convention every island already carries.
+  esbuild: {
+    jsx: "automatic",
+    jsxImportSource: "preact",
+  },
   // Resolve workspace packages from THIS checkout, mirroring the `paths` in
   // tsconfig.json. Without it Node's upward node_modules lookup wins, and in
   // a git worktree (`.claude/worktrees/*`) that lookup lands on the PARENT
@@ -57,6 +66,9 @@ export default defineConfig({
       "packages/**/*.test.ts",
       "services/**/*.test.ts",
       "webmail/**/*.test.ts",
+      // s24 T0: the stateless component library IS unit-tested — stateless
+      // Preact rendered via preact-render-to-string in plain Node (no jsdom).
+      "webmail/**/*.test.tsx",
       "infra/**/*.test.ts",
       "tools/**/*.test.ts",
       "conformance/**/*.test.ts",
