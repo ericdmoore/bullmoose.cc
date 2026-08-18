@@ -38,6 +38,7 @@ import Composer from "./Composer";
 import CollectionColumn from "./CollectionColumn";
 import { buildMailboxTree, flattenTree } from "../lib/mail/mailboxes";
 import type { CollectionGroup } from "../lib/shell/collections";
+import { hrefWithParam, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
 import {
   ArchiveBoxIcon,
   FolderIcon,
@@ -140,7 +141,15 @@ export default function AppShell({ client: injected }: Props) {
         setMailboxes(boxes);
         setIdentities(ids);
         setIdentityId(ids[0]?.id ?? "");
-        setMailbox(findByRole(boxes, "inbox") ?? boxes[0]);
+        // s25 T3/T4 — `?c=<mailboxId>` preselects the collection (the realm
+        // tray's leaf-node links land here); absent or unknown, the inbox
+        // default stands.
+        const preselect = urlParam("c");
+        setMailbox(
+          (preselect !== undefined ? boxes.find((b) => b.id === preselect) : undefined) ??
+            findByRole(boxes, "inbox") ??
+            boxes[0],
+        );
       } catch (err) {
         if (!cancelled) setFatal(String(err instanceof Error ? err.message : err));
       }
@@ -177,6 +186,23 @@ export default function AppShell({ client: injected }: Props) {
     if (!q) return;
     const byName = new Map(mailboxes.map((m) => [m.name.toLowerCase(), m.id]));
     setSearchSpec(parseSearchInput(q, byName));
+  }, [mailboxes]);
+
+  // s25 T4 — publish the top-level mailbox tree for the chrome's realm tray
+  // (lib/shell/publish.ts): label, live unread count, and a `?c=` link that
+  // preselects the mailbox via the block above. Re-published whenever the
+  // mailboxes move, so the tray's counts follow triage.
+  useEffect(() => {
+    if (mailboxes.length === 0) return;
+    publishCollections(
+      "mail",
+      buildMailboxTree(mailboxes).map((n) => ({
+        id: n.id,
+        label: n.name,
+        ...(n.unreadEmails > 0 ? { count: n.unreadEmails } : {}),
+        href: publishedHref("/mail", n.id),
+      })),
+    );
   }, [mailboxes]);
 
   // ── list, driven by mailbox + search ────────────────────────────────────
@@ -280,13 +306,17 @@ export default function AppShell({ client: injected }: Props) {
     [client, accountId, targetRows, syncStore],
   );
 
+  // By THREAD ID, not row: the s25 T3 deep link (`/mail?thread=<id>`) opens
+  // threads that have no loaded row yet, and the keyboard path just passes
+  // `row.threadId`. This is the in-page half of the T3 split — clicks travel
+  // the URL (ThreadListView's `hrefFor`), j/k + Enter stay here.
   const openThread = useCallback(
-    async (row: ThreadRow) => {
+    async (threadId: string) => {
       if (!client) return;
       setView("thread");
       setDetail(undefined);
       try {
-        const loaded = await loadThread(client, accountId, row.threadId);
+        const loaded = await loadThread(client, accountId, threadId);
         setDetail(loaded);
         setExpanded(defaultExpanded(loaded.emails));
         setShowQuotes(false);
@@ -311,6 +341,22 @@ export default function AppShell({ client: injected }: Props) {
     },
     [client, accountId, syncStore],
   );
+
+  // s25 T3 — the detail URL, read ONCE at mount: `/mail?thread=<id>` opens
+  // that thread the way a click just did on some other device. This is what
+  // makes the browser back button work — the row links navigate here (MPA),
+  // so Back is simply `/mail` again. Read-only: nothing ever WRITES the
+  // param after mount (that would take a history call, and this app makes
+  // exactly one, in client.ts — tokenInUrl.test.ts), so in-page keyboard
+  // navigation can drift from the URL. The URL is the click path; the state
+  // is the keyboard path.
+  const threadParsed = useRef(false);
+  useEffect(() => {
+    if (threadParsed.current || !client || !accountId) return;
+    threadParsed.current = true;
+    const id = urlParam("thread");
+    if (id !== undefined) void openThread(id);
+  }, [client, accountId, openThread]);
 
   const startCompose = useCallback((spec: DraftSpec) => {
     setDraft(spec);
@@ -437,7 +483,7 @@ export default function AppShell({ client: injected }: Props) {
           break;
         case "openSelected": {
           const row = rows[cursor];
-          if (row) void openThread(row);
+          if (row) void openThread(row.threadId);
           break;
         }
         case "back":
@@ -709,7 +755,10 @@ export default function AppShell({ client: injected }: Props) {
               cursor={cursor}
               selected={selected}
               loading={loading}
-              onOpen={(row) => void openThread(row)}
+              // s25 T3 — the click path is a real link (`?q=`/`?demo=`
+              // survive via hrefWithParam); onOpen stays the keyboard path.
+              hrefFor={(row) => hrefWithParam("/mail", "thread", row.threadId)}
+              onOpen={(row) => void openThread(row.threadId)}
               onCursor={setCursor}
               onToggleSelect={(row) =>
                 setSelected((prev) => {

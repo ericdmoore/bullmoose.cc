@@ -16,6 +16,15 @@ interface Props {
   onCursor: (index: number) => void;
   onToggleSelect: (row: ThreadRow) => void;
   onLoadMore: () => void;
+  /**
+   * s25 T3 — the detail URL for a row (`/mail?thread=<id>`). When present the
+   * row's body renders as a real `<a>`, so a CLICK is MPA navigation and the
+   * browser back button just works; `onOpen` remains the KEYBOARD path
+   * (j/k + Enter stay in-page, no reload mid-triage). Two paths on purpose —
+   * the URL is the click path — and neither touches history
+   * (tokenInUrl.test.ts: MPA links are not history calls).
+   */
+  hrefFor?: (row: ThreadRow) => string;
 }
 
 export default function ThreadListView({
@@ -28,6 +37,7 @@ export default function ThreadListView({
   onCursor,
   onToggleSelect,
   onLoadMore,
+  hrefFor,
 }: Props) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -96,6 +106,35 @@ export default function ThreadListView({
         const index = window.start + i;
         const isCursor = index === cursor;
         const isSelected = selected.has(row.threadId);
+        // The row's readable body. With `hrefFor` it is a real link — the
+        // MPA click path (native back); without it, the container's onClick
+        // opens in-page as before. The select checkbox stays a sibling
+        // button either way: interactive content may not nest inside an <a>.
+        const body = (
+          <>
+            <div class="row-top">
+              <span class="row-from">
+                {row.participants.join(", ") || "(unknown)"}
+                {row.loadedCount > 1 ? <span class="row-count"> {row.loadedCount}</span> : null}
+              </span>
+              <span class="row-date">{formatDate(row.receivedAt)}</span>
+            </div>
+            <div class="row-subject">
+              {row.flagged ? (
+                <span class="row-flag" aria-label="Flagged">
+                  {"★"}
+                </span>
+              ) : null}
+              {row.subject}
+              {row.hasAttachment ? (
+                <span class="row-clip" aria-label="Has attachment">
+                  {"\u{1F4CE}"}
+                </span>
+              ) : null}
+            </div>
+            <div class="row-preview">{row.latest.preview}</div>
+          </>
+        );
         return (
           <div
             key={row.threadId}
@@ -110,7 +149,9 @@ export default function ThreadListView({
             style={{ height: `${ROW_HEIGHT}px` }}
             onClick={() => {
               onCursor(index);
-              onOpen(row);
+              // Link present → the anchor navigates; opening here too would
+              // race the load against the unload.
+              if (!hrefFor) onOpen(row);
             }}
           >
             <button
@@ -125,29 +166,13 @@ export default function ThreadListView({
             >
               {isSelected ? "▣" : "□"}
             </button>
-            <div class="row-body">
-              <div class="row-top">
-                <span class="row-from">
-                  {row.participants.join(", ") || "(unknown)"}
-                  {row.loadedCount > 1 ? <span class="row-count"> {row.loadedCount}</span> : null}
-                </span>
-                <span class="row-date">{formatDate(row.receivedAt)}</span>
-              </div>
-              <div class="row-subject">
-                {row.flagged ? (
-                  <span class="row-flag" aria-label="Flagged">
-                    {"★"}
-                  </span>
-                ) : null}
-                {row.subject}
-                {row.hasAttachment ? (
-                  <span class="row-clip" aria-label="Has attachment">
-                    {"\u{1F4CE}"}
-                  </span>
-                ) : null}
-              </div>
-              <div class="row-preview">{row.latest.preview}</div>
-            </div>
+            {hrefFor ? (
+              <a class="row-body" href={hrefFor(row)}>
+                {body}
+              </a>
+            ) : (
+              <div class="row-body">{body}</div>
+            )}
           </div>
         );
       })}
