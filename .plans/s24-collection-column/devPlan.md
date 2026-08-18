@@ -42,6 +42,7 @@ The four-panel generalises across **seven realms**; each is `Collection → List
 | Realm (nav icon) | CollectionColumn | List (Header) | Detail |
 |---|---|---|---|
 | **Agents** | agent groups — *Most Recent Actions*, … | the agents | agent detail |
+| **Approvals** | LIFECYCLE first — Waiting on you / on the agent / Hold tray / Decided — then saved views: Due soon, High cost, by agent, by realm | proposals | the proposal |
 | **Mail** | Inbox / folders / tags | messages | message |
 | **Ask** (s20 T5) | saved queries; grouped by date (Year › Month) | queries | the query + its conversation |
 | **Contacts** | groups — All / Family / Church / Cousins / Fantasy Football | contacts | contact card |
@@ -204,13 +205,14 @@ Replace `MailboxSidebar.tsx` with `<CollectionColumn>` fed by the mailbox tree. 
 `style={{paddingLeft}}` tree indent** (`MailboxSidebar.tsx:35`) — it is the one live CSP-boundary
 violation, and the class-swap discipline replaces it.
 
-### T4 — Approvals promotes its status groups · *the full quad — Eric's "maybe"*
+### T4 — Approvals promotes its status groups · *the full quad — the lifecycle IS its collection*
 
 Pull the four stacked `HeaderGroup`s (`ApprovalsQueue.tsx:345-370`) OUT of the header column into a
 `<CollectionColumn>` (Waiting on you / on the agent / Hold / Decided); selecting one filters the
 header column to that group. Turns Approvals from its current 2-pane (`22rem 1fr`) into the full
-rail + collection + header + detail. Optional and last: if the four groups stay few, stacked-in-header
-is defensible — this is the "maybe" Eric flagged.
+rail + collection + header + detail. Under the four lifecycle states sit the saved views (Due soon,
+High cost, by agent, by realm; Decision 7). Last in the sequence, but confirmed — Approvals is its
+own realm, and the lifecycle it already renders IS the CollectionColumn.
 
 ### T5 — the contextual top-bar filter · *independent of T1–T4*
 
@@ -228,7 +230,7 @@ drawer (`ShellNav.tsx:377-407`). The four-column desktop layout degrades to a na
 ## Sequencing
 
 ```
-T0 lib ──┬── T1 CollectionColumn ──┬── T2 Contacts ──┬── T4 Approvals (optional)
+T0 lib ──┬── T1 CollectionColumn ──┬── T2 Contacts ──┬── T4 Approvals
          │                          └── T3 Mail ──────┘
          └── T5 search (its input + icons come from T0) ─────
 T6 responsive (rides each adoption)
@@ -237,7 +239,7 @@ T6 responsive (rides each adoption)
 **T0 gates everything** — icons + primitives first, so T1–T5 compose them rather than re-cut markup.
 T1 (the `CollectionColumn`, assembled from T0's `<Column>`/`<ListRow>`/icons) gates the adoptions;
 **T2 (Contacts) first** — closest to the shape, lowest risk, proves both the component and the library.
-T5 (search) is otherwise independent. T4 (Approvals) is the "maybe", last.
+T5 (search) is otherwise independent. T4 (Approvals) is last, but confirmed (Decision 7).
 
 ## Decisions
 
@@ -249,7 +251,8 @@ T5 (search) is otherwise independent. T4 (Approvals) is the "maybe", last.
    absorbs each surface's scoped syntax rather than replacing it with a weaker cross-realm box. A
    generic "search everything" bar is rejected; cross-realm *finding* is Ask's job (its own realm,
    s20 T5), not a mode of the bar.
-3. **Promote Approvals to the quad (T4)?** Eric's "maybe" — decide once T2/T3 show the component in use.
+3. ~~Promote Approvals to the quad (T4)?~~ **RESOLVED (Eric): yes** — Approvals is its own realm and
+   the lifecycle is its collection (see Decision 7). T4 stands.
 4. **Does the CollectionColumn get its own resize+collapse, or inherit the rail's width memory?**
    *Recommendation: its own, same class-swap mechanism, remembered per surface.*
 5. **Component-render test tool.** *Recommendation: add `preact-render-to-string` (SSR-to-string,
@@ -258,15 +261,15 @@ T5 (search) is otherwise independent. T4 (Approvals) is the "maybe", last.
 6. **Where the library lives.** *Recommendation: `webmail/src/components/{icons,ui}` + `lib/ui`
    (webmail-local), not a shared `packages/*` — it is Preact/Astro and webmail-only; the shared
    packages are backend/core. Promote to a package only if a second frontend ever appears.*
-7. **Where does Approvals live?** — it is **absent from the IA above**, and that is the interesting
-   question. Its forward-looking queue overlaps **Agents** ("Most Recent Actions" = agent actions
-   awaiting you), and its *retrospective twin is **Activity*** (s23, literally "the retrospective twin
-   of /approvals"). *Options: (a) keep Approvals its own realm; (b) fold the pending queue into
-   **Agents** as an "actions" collection and let **Activity** carry the decided history; (c) both — a
-   thin Approvals realm that is a saved view over Agents' actions.* This is Eric's call and it decides
-   whether T4 ("Approvals adopts the CollectionColumn") stays a task or dissolves into Agents+Activity.
-   *Recommendation: (b)* — it removes a noun rather than reshaping one, and the two halves (pending →
-   Agents, decided → Activity) are already how s20/s23 think about it.
+7. ~~Where does Approvals live?~~ **RESOLVED (Eric): its own realm.** Its CollectionColumn leads with
+   the **lifecycle** — Waiting on you / on the agent / Hold tray / Decided (today's `HeaderGroup`s,
+   promoted out) — because a decision queue's spine is *does this need me now*. Under it sit a few
+   **saved views** (Due soon, High cost, by agent, by realm), the way Mail carries Inbox + folders +
+   tags. The finer facets (model, exact cost) are the contextual bar's filter, not collections —
+   **By Model is dropped as a collection** (a human decides by content, not by which LLM drafted it).
+   Its overlap with **Agents** (pending = agent actions) and **Activity** (decided = the retrospective,
+   s23) stays a cross-LINK — the same objects seen from a decision lens vs a staff lens vs a history
+   lens — not a fold. T4 stands.
 
 ### The realm roster vs the build
 
