@@ -57,7 +57,12 @@ export type ProposalKind =
   // s20 T1↔T4 — the anti-star: "you emailed X and haven't heard back; want me
   // to watch this and draft a follow-up?" The agent NOTICED — you flagged
   // nothing. Approving arms a no-reply-from Watch (reversible, tier 1).
-  | "watch-offer";
+  | "watch-offer"
+  // s26 T3 — "may this agent read mail back to <date>?" (the history floor,
+  // rule 1). Approving writes the floor into the binding — backfill itself
+  // stays a separate, budgeted admin call, so this spends nothing by itself.
+  // Reversible, tier 1; declining is a preference, never a fault.
+  | "floor-request";
 
 /** What the proposal acts on. */
 export interface ProposalSubject {
