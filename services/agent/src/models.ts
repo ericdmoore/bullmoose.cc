@@ -62,6 +62,36 @@ export interface ModelCandidate {
   model: string;
 }
 
+/**
+ * s26 T5a — frontier assignment. Deterministic per-invocation exploration over
+ * an alias menu: with P(exploreRate), a non-primary candidate is rotated to
+ * the front, so outcome labels (dismissals, edits, declines) accrue against
+ * MORE than one model and Allen's price-quality frontier has data to join.
+ * Deterministic by seed (the invocation id) so a retry explores identically —
+ * an assignment is a fact about the invocation, not a coin flipped per run.
+ * The fallback chain semantics are untouched: exploration reorders the menu,
+ * it never shrinks it.
+ */
+export function chooseArm(
+  candidates: ModelCandidate[],
+  seed: string,
+  exploreRate: number,
+): { ordered: ModelCandidate[]; arm: "exploit" | "explore" } {
+  if (candidates.length < 2 || exploreRate <= 0) return { ordered: candidates, arm: "exploit" };
+  // FNV-1a over the seed — stable, dependency-free, spread enough for buckets.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  const roll = (h % 1000) / 1000;
+  if (roll >= exploreRate) return { ordered: candidates, arm: "exploit" };
+  // Which alternate: a second hash bucket over the non-primary candidates.
+  const alt = 1 + (Math.floor(h / 1000) % (candidates.length - 1));
+  const ordered = [candidates[alt]!, ...candidates.slice(0, alt), ...candidates.slice(alt + 1)];
+  return { ordered, arm: "explore" };
+}
+
 /** agent_bindings.config_json — everything that makes a binding an agent. */
 export interface BindingConfig {
   /** "reply" (default — Emily-style), "ledger" (Allen-style), "bouncer"
@@ -76,6 +106,9 @@ export interface BindingConfig {
   defaultModel?: string;
   modelAliases?: Record<string, ModelCandidate[]>;
   maxTokens?: number;
+  /** s26 T5a — per-invocation exploration over the alias menu. OFF unless set;
+   *  applied by pipelines that opt in (extract first — never a tier-3 producer). */
+  frontier?: { exploreRate?: number };
   // ---- ledger pipeline ----
   /** Default digest recipient. */
   digestTo?: string;

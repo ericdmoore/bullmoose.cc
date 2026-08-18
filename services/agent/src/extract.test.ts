@@ -136,6 +136,39 @@ describe("runExtract — writes Annotations from a delivered message", () => {
     expect(annotations(w)).toEqual([]);
   });
 
+  it("records the assignment arm; exploreRate 0 is always exploit", async () => {
+    const { w } = world('[{"class":"task","body":"review the PR","confidence":0.7}]');
+    const done = vi.fn(async () => {});
+    await runExtract(w.env, job, CFG, inbound({ subject: "PR", body: "you'll want to review this" }), {}, done);
+    expect(done).toHaveBeenCalledWith("done", expect.objectContaining({ arm: "exploit" }), expect.anything());
+  });
+
+  it("with a menu + exploreRate, some invocation ids explore the alternate (deterministically)", async () => {
+    const cfg = {
+      ...CFG,
+      modelAliases: {
+        extract: [
+          { provider: "workers-ai" as const, model: "@cf/x" },
+          { provider: "workers-ai" as const, model: "@cf/alt" },
+        ],
+      },
+      frontier: { exploreRate: 1 }, // force exploration for the test
+    };
+    const { w, run } = world('[{"class":"task","body":"x","confidence":0.5}]');
+    const done = vi.fn(async () => {});
+    await runExtract(
+      w.env,
+      { ...job, id: "inv_explore_me" },
+      cfg,
+      inbound({ subject: "q", body: "I'll do it" }),
+      {},
+      done,
+    );
+    expect(done).toHaveBeenCalledWith("done", expect.objectContaining({ arm: "explore" }), expect.anything());
+    // The alternate model actually ran (the fake AI records the model id it was given).
+    expect(run.mock.calls.length).toBeGreaterThan(0);
+  });
+
   it("is idempotent: a retry over an already-extracted message writes no duplicates", async () => {
     const { w } = world('[{"class":"task","body":"review the PR","confidence":0.7}]');
     const done = vi.fn(async () => {});

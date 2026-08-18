@@ -2566,7 +2566,16 @@ async function provisionRemind(body: { tenantId: string; domain: string; localpa
  * with `POST /agent-bindings/{id}/disable`.
  */
 async function provisionExtractor(
-  body: { email: string; model?: string; provider?: string; maxTokens?: number; budgetMicros?: number },
+  body: {
+    email: string;
+    model?: string;
+    provider?: string;
+    maxTokens?: number;
+    budgetMicros?: number;
+    /** s26 T5a — extra menu candidates the frontier explores over. */
+    exploreModels?: Array<{ provider: string; model: string }>;
+    exploreRate?: number;
+  },
   env: Env,
 ) {
   const email = String(body.email ?? "").toLowerCase();
@@ -2579,10 +2588,16 @@ async function provisionExtractor(
   // in approvals. Default $2/month; pass budgetMicros to change, 0 to refuse
   // all paid claims (the hard floor).
   const budget = Number.isFinite(Number(body.budgetMicros)) ? Number(body.budgetMicros) : 2_000_000;
+  const arms = Array.isArray(body.exploreModels)
+    ? body.exploreModels.filter((m) => typeof m?.provider === "string" && typeof m?.model === "string")
+    : [];
   const config: Record<string, unknown> = {
     pipeline: "extract",
-    modelAliases: { extract: [{ provider, model }] },
+    modelAliases: { extract: [{ provider, model }, ...arms] },
     defaultModel: "extract",
+    ...(arms.length > 0
+      ? { frontier: { exploreRate: Number.isFinite(Number(body.exploreRate)) ? Number(body.exploreRate) : 0.2 } }
+      : {}),
     budgets: { spendPerMonth: budget },
     ...(Number.isFinite(Number(body.maxTokens)) ? { maxTokens: Number(body.maxTokens) } : {}),
   };
