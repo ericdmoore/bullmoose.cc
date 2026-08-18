@@ -65,6 +65,10 @@ const SEARCHABLE: Partial<Record<SectionId, { placeholder: string; hint?: string
     placeholder: "Search contacts",
     hint: "Names, nicknames, organizations, email addresses, phone numbers and notes.",
   },
+  agents: {
+    placeholder: "Filter agents",
+    hint: "Filters the realm's agent list — binding name, address, pipeline.",
+  },
   search: { placeholder: "Search everything" },
 };
 const WIDTH_KEY = "bm.nav.width";

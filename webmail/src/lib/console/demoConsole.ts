@@ -159,6 +159,16 @@ const allen: AgentDossier = {
         senderAllowlist: { active: false },
         modelAliasCount: 3,
       },
+      economics: {
+        budgetMicros: 2_000_000,
+        defaultModel: "cheap",
+        modelMenu: [
+          { alias: "cheap", candidates: ["workers-ai/llama-3.3-70b", "openrouter/gemini-2.5-flash"] },
+          { alias: "smart", candidates: ["openrouter/claude-sonnet-4"] },
+          { alias: "local", candidates: ["@local/qwen3-30b"] },
+        ],
+        exploreRate: 0.1,
+      },
       credentialRefs: ["aws-mcp", "google-oauth"],
     },
     {
@@ -172,6 +182,7 @@ const allen: AgentDossier = {
         replyMode: "draft",
         senderAllowlist: { active: true, count: 4 },
       },
+      economics: { budgetMicros: null, defaultModel: null, modelMenu: [], exploreRate: null },
       credentialRefs: [],
     },
   ],
@@ -240,6 +251,8 @@ const allen: AgentDossier = {
       note: null,
       createdAt: ago(0.2),
       doneAt: ago(0.19),
+      costMicros: 4_200,
+      model: "workers-ai/llama-3.3-70b",
     },
     {
       invocationId: "inv_8",
@@ -250,6 +263,9 @@ const allen: AgentDossier = {
       note: "skipped: noreply@vendor.example not in allowedSenders",
       createdAt: ago(1),
       doneAt: ago(1),
+      // NULL cost — undetermined, renders "cost not recorded", never $0.00.
+      costMicros: null,
+      model: null,
     },
     {
       invocationId: "inv_7",
@@ -260,9 +276,27 @@ const allen: AgentDossier = {
       note: "model provider returned 429",
       createdAt: ago(3),
       doneAt: ago(3),
+      // 0 is a real price: known and genuinely free (the homelab claimant).
+      costMicros: 0,
+      model: "@local/qwen3-30b",
     },
   ],
   spend: { currency: "USD", totalCents: 4_211, rows: 38, since: ago(90) },
+  // s26 T1 — the work ledger the dossier renders: counts, oldest-pending age,
+  // and the month spend in the claim gate's own arithmetic.
+  ledgers: [
+    {
+      bindingId: "ab_1",
+      pending: 2,
+      running: 1,
+      done: 34,
+      failed: 3,
+      oldestPendingAt: ago(0.6),
+      monthSpendMicros: 1_130_000,
+      monthOverageMicros: 0,
+    },
+  ],
+  ledgerMonthStart: Date.UTC(2026, 7, 1),
 };
 
 const analyst: AgentDossier = {
@@ -282,6 +316,12 @@ const analyst: AgentDossier = {
         replyMode: "draft",
         senderAllowlist: { active: true, count: 2 },
       },
+      economics: {
+        budgetMicros: 500_000,
+        defaultModel: null,
+        modelMenu: [{ alias: "cheap", candidates: ["workers-ai/llama-3.3-70b"] }],
+        exploreRate: null,
+      },
       credentialRefs: [],
     },
   ],
@@ -291,6 +331,8 @@ const analyst: AgentDossier = {
   grantsGiven: [],
   invocations: [],
   spend: { currency: "USD", totalCents: 118, rows: 6, since: ago(90) },
+  ledgers: [],
+  ledgerMonthStart: Date.UTC(2026, 7, 1),
 };
 
 const vendorsDossier: ResourceDossier = {

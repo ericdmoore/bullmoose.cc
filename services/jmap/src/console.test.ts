@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { mintToken } from "@bullmoose/auth-core";
+import { budgetMonthStartMs, budgetPeriodKey } from "@bullmoose/scheduling";
 import { fakeEnv, type FakeWorker } from "@bullmoose/test-fakes";
 import worker from "./index";
 import type { Env } from "./index";
@@ -176,7 +177,13 @@ function world(): { w: FakeWorker; env: Env } {
         replyMode: "send",
         persona: "You are Allen.",
         allowedSenders: ["eric@bullmoose.cc"],
-        modelAliases: { cheap: [], smart: [] },
+        modelAliases: {
+          cheap: [{ provider: "workers-ai", model: "llama-3.3-70b" }],
+          smart: [{ provider: "openrouter", model: "claude-sonnet-4" }],
+        },
+        defaultModel: "cheap",
+        budgets: { spendPerMonth: 2_000_000 },
+        frontier: { exploreRate: 0.1 },
       }),
     },
     {
@@ -615,6 +622,125 @@ describe("GET /console/agents/{accountId}", () => {
     expect(own.body.bindings).toEqual([]);
     const given = own.body.grantsGiven as Array<Record<string, unknown>>;
     expect(given.map((g) => g.grantId)).toEqual(["g_eric_into_stranger"]);
+  });
+});
+
+// ---- the s26 T1 dossier projections ----------------------------------------
+
+describe("GET /console/agents/{accountId} — economics + work ledger (s26 T1)", () => {
+  it("projects binding economics: the cap, the menu as host/model labels, the frontier rate", async () => {
+    const { env } = world();
+    const { body } = await get(env, "/console/agents/acct_allen", full.token);
+    const bindings = body.bindings as Array<Record<string, unknown>>;
+    expect(bindings[0]?.economics).toEqual({
+      budgetMicros: 2_000_000,
+      defaultModel: "cheap",
+      modelMenu: [
+        { alias: "cheap", candidates: ["workers-ai/llama-3.3-70b"] },
+        { alias: "smart", candidates: ["openrouter/claude-sonnet-4"] },
+      ],
+      exploreRate: 0.1,
+    });
+    // The unparseable blob answers with the same nulls an unconfigured one
+    // does — never invented zeros.
+    expect(bindings[1]?.economics).toEqual({
+      budgetMicros: null,
+      defaultModel: null,
+      modelMenu: [],
+      exploreRate: null,
+    });
+    // Still derived-and-enumerated: no persona, no allowlisted address.
+    expect(JSON.stringify(bindings)).not.toContain("You are Allen");
+    expect(JSON.stringify(bindings)).not.toContain("eric@bullmoose.cc");
+  });
+
+  it("carries per-run cost on invocations, NULL intact (never rendered $0.00)", async () => {
+    const { env } = world();
+    const { body } = await get(env, "/console/agents/acct_allen", full.token);
+    const invs = body.invocations as Array<Record<string, unknown>>;
+    const priced = invs.find((i) => i.invocationId === "inv_9");
+    const unpriced = invs.find((i) => i.invocationId === "inv_8");
+    expect(priced?.costMicros).toBe(1_250_000);
+    expect(unpriced?.costMicros).toBeNull();
+  });
+
+  it("aggregates the work ledger per binding, in the claim gate's month arithmetic", async () => {
+    const { w, env } = world();
+    const monthStart = budgetMonthStartMs(NOW);
+    // A binding whose rows straddle the month boundary. Timestamps are pinned
+    // to the SAME month start the server computes, so this cannot flap on the
+    // 1st of a month the way ago(N) seeds would.
+    const inv = (id: string, over: Record<string, unknown>): Record<string, unknown> => ({
+      id,
+      account_id: "acct_allen",
+      binding_id: "ab_led",
+      binding_name: "allen-led",
+      status: "done",
+      context_json: "{}",
+      created_at: monthStart + 1_000,
+      ...over,
+    });
+    w.db.seed("agent_invocations", [
+      // The queue: two pending (one older — the cursor's age anchor), one running.
+      inv("led_p1", { status: "pending", created_at: monthStart - 5_000 }),
+      inv("led_p2", { status: "pending", created_at: monthStart + 1_000 }),
+      inv("led_r1", { status: "running", created_at: monthStart + 2_000 }),
+      // Completed THIS month: a priced done, an unpriced done (not counted —
+      // SUM skips NULL), and a priced FAILED (done_at set → the gate counts
+      // it; money spent is spent even when the run failed).
+      inv("led_d1", { done_at: monthStart + 10_000, cost_micros: 300_000 }),
+      inv("led_d2", { done_at: monthStart + 11_000, cost_micros: null }),
+      inv("led_f1", { status: "failed", done_at: monthStart + 12_000, cost_micros: 50_000 }),
+      // Completed LAST month: excluded from the month sum, still counted done.
+      inv("led_d0", { done_at: monthStart - 10_000, cost_micros: 1_000_000 }),
+    ]);
+    // An approved overage raises the EFFECTIVE ceiling for this period only.
+    w.db.seed("agent_budget_overages", [
+      {
+        account_id: "acct_allen",
+        binding_id: "ab_led",
+        period_key: budgetPeriodKey(NOW),
+        amount_micros: 500_000,
+        proposal_id: "prop_x",
+        approved_by: "p_eric",
+        approved_at: NOW,
+      },
+      {
+        // A stale period's overage must NOT ride into this month.
+        account_id: "acct_allen",
+        binding_id: "ab_led",
+        period_key: "2001-01",
+        amount_micros: 9_000_000,
+        proposal_id: "prop_old",
+        approved_by: "p_eric",
+        approved_at: NOW,
+      },
+    ]);
+
+    const { body } = await get(env, "/console/agents/acct_allen", full.token);
+    expect(body.ledgerMonthStart).toBe(monthStart);
+    const ledgers = body.ledgers as Array<Record<string, unknown>>;
+    expect(ledgers.find((l) => l.bindingId === "ab_led")).toEqual({
+      bindingId: "ab_led",
+      pending: 2,
+      running: 1,
+      done: 3,
+      failed: 1,
+      oldestPendingAt: monthStart - 5_000,
+      monthSpendMicros: 350_000,
+      monthOverageMicros: 500_000,
+    });
+    // ab_1's own rows aggregate too — and with no overage this period, 0.
+    const ab1 = ledgers.find((l) => l.bindingId === "ab_1");
+    expect(ab1?.monthOverageMicros).toBe(0);
+    expect(ab1).toMatchObject({ pending: 0, running: 0, failed: 0, done: 2 });
+  });
+
+  it("an account with no invocations has an empty ledger, not an invented one", async () => {
+    const { env } = world();
+    const own = await get(env, "/console/agents/acct_stranger", stranger.token);
+    expect(own.body.ledgers).toEqual([]);
+    expect(typeof own.body.ledgerMonthStart).toBe("number");
   });
 });
 

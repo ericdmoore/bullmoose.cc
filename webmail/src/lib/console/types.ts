@@ -128,6 +128,42 @@ export interface ConsoleBindingConfig {
   configUnparseable?: boolean;
 }
 
+/** One alias on a binding's model menu — the fallback chain as `host/model`
+ *  labels, in fallback order. Names, never keys. */
+export interface ConsoleModelMenuEntry {
+  alias: string;
+  candidates: string[];
+}
+
+/**
+ * The dossier's economics projection of a binding's config (s26 T1): the cap
+ * the claim gate enforces (`$.budgets.spendPerMonth`, µUSD), the model menu,
+ * and the frontier exploration rate (s26 T5a). Derived and enumerated server-
+ * side — never the config, never persona/allowlist/credential data.
+ */
+export interface ConsoleBindingEconomics {
+  budgetMicros: number | null;
+  defaultModel: string | null;
+  modelMenu: ConsoleModelMenuEntry[];
+  exploreRate: number | null;
+}
+
+/**
+ * Per-binding work-ledger aggregates (s26 T1). `monthSpendMicros` is the claim
+ * gate's own arithmetic (completed rows this UTC month, COALESCEd to 0), so
+ * spent-vs-remaining renders the number that actually stops paid work.
+ */
+export interface ConsoleBindingLedger {
+  bindingId: string;
+  pending: number;
+  running: number;
+  done: number;
+  failed: number;
+  oldestPendingAt: number | null;
+  monthSpendMicros: number;
+  monthOverageMicros: number;
+}
+
 export interface ConsoleBinding {
   bindingId: string;
   name: string;
@@ -135,6 +171,8 @@ export interface ConsoleBinding {
   slaSeconds: number | null;
   enabled: boolean;
   config: ConsoleBindingConfig;
+  /** Optional for deploy skew: a server that predates s26 T1 omits it. */
+  economics?: ConsoleBindingEconomics;
   /** Credential handles this binding's MCP servers reference. Values never. */
   credentialRefs?: string[];
 }
@@ -148,6 +186,11 @@ export interface ConsoleInvocation {
   note: string | null;
   createdAt: number;
   doneAt: number | null;
+  /** s07 T5. NULL ≠ 0 — null renders "cost not recorded", 0 renders "free".
+   *  Optional for deploy skew (absent from a pre-s26 server). */
+  costMicros?: number | null;
+  /** The model the run used — the cost's receipt. */
+  model?: string | null;
 }
 
 /** `grant_audit.method` has four shapes; `parseAuditMethod` mirrors all four. */
@@ -222,6 +265,11 @@ export interface AgentDossier {
   grantsGiven: ConsoleGrant[];
   invocations: ConsoleInvocation[];
   spend: ConsoleSpend | null;
+  /** s26 T1 — absent from a pre-s26 server, and a binding with no invocations
+   *  has no row (absence = all-zero, not unknown). */
+  ledgers?: ConsoleBindingLedger[];
+  /** The UTC month start (epoch ms) the ledger month sums cover. */
+  ledgerMonthStart?: number;
 }
 
 /** Everything the per-resource view needs, in one payload. */
