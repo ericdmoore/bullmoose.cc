@@ -51,13 +51,13 @@ may say "as of 9:12".
 
 ## Tasks
 
-### T1 — platform foundation · *the unglamorous bugs first*
+### T1 — platform foundation · *the unglamorous bugs first* — ✅ LANDED 2026-08-18 (#189)
 `100vh` → `dvh` in the `frame="surface"` calc (the mobile-Safari dancing-toolbar bug),
 `env(safe-area-inset-*)` for bottom chrome, a responsive audit of the five landed surfaces, and
 the harness gains a PHONE profile (390×844, `mobile: true` via the existing
 `Emulation.setDeviceMetricsOverride`) so every PR screenshots desktop AND phone.
 
-### T2 — the tree model, one source three renderings
+### T2 — the tree model, one source three renderings — ✅ LANDED 2026-08-18 (#189)
 `lib/shell/collections.ts` grows one level of nesting (`CollectionItem.children?`, expanded
 state) plus `disabled?/reason?` (the planned-section idiom). Renderings: the desktop
 CollectionColumn learns inline expand; the **collection sheet** (new, from

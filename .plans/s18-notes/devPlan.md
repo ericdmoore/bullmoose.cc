@@ -65,7 +65,7 @@ to split them out — not before.
 
 ## The Annotation track · *higher value — it composes with shipped work and feeds s11 T5*
 
-### A1 — The Annotation entity + `Annotation/*` JMAP · *the substrate*
+### A1 — The Annotation entity + `Annotation/*` JMAP · *the substrate* — LANDED (2026-08-17)
 
 **Files:** `packages/mailstore/sql/control-plane.sql` (new `annotations` table),
 `services/jmap/src/methods/annotation.ts` (+ registry), `infra/migrations.mjs` (non-blocking,
@@ -134,7 +134,7 @@ that annotation's offered action rather than a free-floating queue row.
 the sentence, at a stated confidence, correctable in one click, and the shipped waiting-on
 detector emits its `task` annotation instead of a bare proposal.
 
-### A3 — Margin rendering · *the medium.com surface*
+### A3 — Margin rendering · *the medium.com surface* — LANDED (2026-08-18, #188 + #190 wiring)
 
 **Files:** `webmail/src/components/MessageView.tsx` (a gutter/rail — net-new; recon confirmed
 none exists), a `lib/annotations/` presentation module, an `Annotation` island.

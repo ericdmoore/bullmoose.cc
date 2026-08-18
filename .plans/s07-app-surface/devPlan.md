@@ -441,7 +441,7 @@ introspection queries, which today sit behind `x-internal-token` on the agent wo
 four `/console/*` routes. This is the task with the most server work behind it — sequence it
 accordingly.
 
-### T5 — Invocation cost, so the score can exist · *schema*
+### T5 — Invocation cost, so the score can exist · *schema* — ✅ **DONE** (costs frozen at completion; µ$ figures now ride every approval row)
 
 **Files:** `packages/mailstore/sql/data-plane.sql`, `infra/migrations.mjs`,
 `services/agent/src/`.
@@ -555,7 +555,7 @@ indexed vs scanned **and what is not searched at all**; the MCP `search` tool an
 share a code path; the response envelope declares its own coverage, so adding the attachment
 index later changes the data and not the shape.
 
-### T7 — Real login, folded into `s02` · *retire the interim door*
+### T7 — Real login, folded into `s02` · *retire the interim door* — ✅ **DONE** (2026-08-18, #191: PKCE sign-in primary, paste-a-token demoted to Advanced)
 
 **Files:** `webmail/src/lib/app/`, `services/oauth/` (from `s02` T3).
 

@@ -191,14 +191,24 @@ treats every OpenAI-compat host as equal once running.
 
 T1 — **the dossier read surface**: Agents realm detail panel (quad-panel pattern, T0 primitives)
      over data that exists; config VERBS wired to the existing endpoints.
+     ✅ **LANDED 2026-08-18 (#186)** — read-only dossier quad; the session-reachable write door
+     was honestly punted to T2.
 T2 — **Settings/Agents domain**: the policy page (defaults for new agents; the discriminator
      rule documented in-page).
 T3 — **backfill**: the verb + envelope + ledger progress.
+     ✅ **LANDED 2026-08-18** — v1 routes + floor-request approval door (#184); v2 surplus-burns-
+     the-backlog + scouts-then-troops (#187). The true per-request budget envelope (claim-gate
+     term) deferred by #184 is in build.
 T4 — **BYOK via Bureau**: per-tenant provider credentials; guardrails ride the key.
 T5 — **the frontier**: a/b assignment → outcome join → Allen's digest → (later) learned router.
+     ✅ **T5a assignment LANDED 2026-08-18** — `chooseArm` (deterministic FNV-1a per invocation)
+     in `models.ts`, arm recorded in result_json; extract is the first arena (explore arm live on
+     eric@'s extractor). ✅ **Digest LANDED (#183)**. Outcome join + learned router still open.
 T6 — **CLI parity**: `bullmoose agent …` learns the extract pipeline (Eric's @local
      out-of-budget path), the dossier verbs (`show`, `budget`, `model`, `backfill`), and the
      @local ladder (`local setup` / `local connect`, `models [--host]`).
+     ✅ **LANDED 2026-08-18 (#192)** — extract in the runner (byte-drift-guarded prompt), `models`,
+     `local connect`/`local setup` (install-with-consent, rung-0 default); live-smoked on alpaca.
 
 Sequencing: T1 first (it is the reading surface every other task's knobs land on); T3 and T6
 are independent; T4 waits for a second tenant to want it; T5a can start accruing assignments
