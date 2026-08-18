@@ -112,6 +112,8 @@ export interface FakeEnv {
   AI?: Ai;
   GATEWAY_COMPAT_URL?: string;
   GATEWAY_TOKEN?: string;
+  OPENROUTER_API_TOKEN?: string;
+  OPENROUTER_BASE_URL?: string;
 }
 
 export interface FakeWorker {

@@ -194,6 +194,41 @@ describe("callModel returns the usage each provider already sends", () => {
     const { usage } = await callModel(w.env, PAID, messages, 64);
     expect(usage).toBeUndefined();
   });
+
+  it("openrouter: hits the OpenAI-compat base with its own key and maps usage", async () => {
+    const w = fakeEnv();
+    w.env.OPENROUTER_API_TOKEN = "sk-or-123";
+    let seen: { url: string; auth: string | null; model: unknown } | undefined;
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      seen = {
+        url,
+        auth: new Headers(init.headers).get("authorization"),
+        model: JSON.parse(init.body as string).model,
+      };
+      return Response.json({
+        choices: [{ message: { content: "extracted []" } }],
+        usage: { prompt_tokens: 40, completion_tokens: 3 },
+      });
+    });
+    const { output, usage } = await callModel(
+      w.env,
+      { provider: "openrouter", model: "minimax/minimax-m3" },
+      messages,
+      64,
+    );
+    expect(output).toBe("extracted []");
+    expect(usage).toEqual({ tokensIn: 40, tokensOut: 3 });
+    expect(seen!.url).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect(seen!.auth).toBe("Bearer sk-or-123");
+    expect(seen!.model).toBe("minimax/minimax-m3");
+  });
+
+  it("openrouter: throws (does not silently fall through) when the key is unset", async () => {
+    const w = fakeEnv();
+    await expect(
+      callModel(w.env, { provider: "openrouter", model: "minimax/minimax-m3" }, messages, 64),
+    ).rejects.toThrow(/OpenRouter not configured/);
+  });
 });
 
 describe("refreshPricing keeps the blend for ranking AND the legs for cost", () => {

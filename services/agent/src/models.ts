@@ -16,6 +16,17 @@ export interface Env {
   GATEWAY_COMPAT_URL?: string;
   GATEWAY_TOKEN?: string;
   /**
+   * OpenRouter (s18 — the paid extractor route). An OpenAI-compatible
+   * aggregator: one key reaches every hosted model by its `vendor/model` id
+   * (e.g. `minimax/minimax-m3`). A dedicated provider rather than repointing
+   * the dormant `gateway` — it names what it is and carries its OWN key, so a
+   * future gateway user cannot surprise this route (and vice-versa). Set as a
+   * Cloudflare secret: `wrangler secret put OPENROUTER_API_TOKEN`.
+   */
+  OPENROUTER_API_TOKEN?: string;
+  /** Override the OpenRouter base (default https://openrouter.ai/api/v1). */
+  OPENROUTER_BASE_URL?: string;
+  /**
    * The Bureau (s04 T3a). There is deliberately NO master-key binding on this
    * worker: the credential vault's key was moved to `services/bureau`, so every
    * seal and every unseal is a hop across this binding and the agent worker
@@ -47,7 +58,7 @@ export interface Env {
 
 /** One route a model alias can resolve to. */
 export interface ModelCandidate {
-  provider: "workers-ai" | "gateway" | "mock";
+  provider: "workers-ai" | "gateway" | "openrouter" | "mock";
   model: string;
 }
 
@@ -146,6 +157,33 @@ export async function callModel(
       output: typeof out.response === "string" ? out.response : JSON.stringify(out.response),
       usage: toUsage(out.usage),
     };
+  }
+
+  // openrouter — a dedicated OpenAI-compatible route (s18). Same request shape
+  // as the gateway below, its own key and base. OpenRouter asks (does not
+  // require) an X-Title for its dashboard; we send one and nothing more.
+  if (c.provider === "openrouter") {
+    if (!env.OPENROUTER_API_TOKEN) {
+      throw new Error("OpenRouter not configured (OPENROUTER_API_TOKEN)");
+    }
+    const base = env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+    const res = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${env.OPENROUTER_API_TOKEN}`,
+        "content-type": "application/json",
+        "x-title": "bullmoose",
+      },
+      body: JSON.stringify({ model: c.model, messages, max_tokens: maxTokens }),
+    });
+    if (!res.ok) throw new Error(`openrouter ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) throw new Error("empty openrouter response");
+    return { output: content, usage: toUsage(data.usage) };
   }
 
   // gateway — AI Gateway's OpenAI-compatible endpoint; provider prefix in
