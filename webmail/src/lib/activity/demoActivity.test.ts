@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FakeJmapClient } from "../jmap/FakeJmapClient";
-import { demoWatches, demoYankedProposal, installActivityDemo } from "./demoActivity";
+import { demoProposals } from "../approvals/demoApprovals";
+import { demoWatches, installActivityDemo } from "./demoActivity";
 
 const ACCOUNT = "acct-fake";
 const NOW = Date.parse("2026-08-11T12:00:00Z");
@@ -16,17 +17,24 @@ describe("the composed backend", () => {
     const { client } = harness();
     const res = await client.requestOne("ActionProposal/query", { accountId: ACCOUNT });
     const ids = res.ids as string[];
-    // The approvals set's own history rows, plus the one activity-only fixture.
+    // The approvals set's own history rows — the yanked one now included, so
+    // this module appends nothing and there is no second copy to drift.
     for (const id of ["ap-edited-weekly", "ap-event-webinar", "ap-thread-vendor", "ap-files-receipts"]) {
       expect(ids, id).toContain(id);
     }
-    expect(ids).toContain("ap-yanked-sergio");
+    expect(ids).toContain("ap-yanked-boards");
+    // …and nothing BEYOND that set: this module appends no fixtures of its own.
+    expect([...ids].sort()).toEqual(
+      demoProposals(NOW)
+        .map((p) => p.id)
+        .sort(),
+    );
   });
 
   it("the yanked fixture records who pulled it back — the record needs its principal", () => {
-    const p = demoYankedProposal(NOW) as unknown as Record<string, unknown>;
-    expect(p.status).toBe("yanked");
-    expect((p.decision as { by?: string }).by).toBe("fake@bullmoose.test");
+    const p = demoProposals(NOW).find((r) => r.status === "yanked")!;
+    expect(p.id).toBe("ap-yanked-boards");
+    expect(p.decision?.by).toBe("fake@bullmoose.test");
     expect(p.decidedAt).toBeTruthy();
   });
 });

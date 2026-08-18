@@ -339,3 +339,72 @@ describe("DefaultCase and the untouched edges", () => {
     expect(res.notUpdated.inv_taken!.description).toMatch(/already claimed/);
   });
 });
+
+/**
+ * THE 008 KILL SWITCH, THROUGH THE REAL CLAIM (s26 T2 follow-up).
+ *
+ * `AgentBinding/set` and the Settings→Agents page promise: "Disabling holds
+ * queued work; nothing is cancelled." CREATE has honored the switch since 007
+ * (the interlock above refuses a NEW invocation against a disabled binding),
+ * but the rows a human queued BEFORE flipping it are what "holds queued work"
+ * is actually about — and until the gate grew `bindingDisabledSql` they stayed
+ * claimable through this method by any claimant that declared itself free,
+ * which is exactly what the fleet host and the `bullmoose agent` CLI declare.
+ * The switch stopped new work and let the backlog keep running.
+ *
+ * These are the server-side obligations of that sentence, at the one place the
+ * pending→running transition happens.
+ */
+describe("the kill switch holds queued work (008, through AgentInvocation/set)", () => {
+  /** A second binding on the same account, switched OFF, with a row already
+   *  queued against it — the state a human creates by disabling a busy agent. */
+  function disabledBinding(h: ReturnType<typeof harness>, invId: string, extra: Record<string, unknown> = {}) {
+    h.w.db.seed("agent_bindings", [{ id: "bind_off", account_id: ACCOUNT, name: "switched-off", enabled: 0 }]);
+    h.seedInv(invId, { binding_id: "bind_off", binding_name: "switched-off", ...extra });
+  }
+
+  it("a FREE claimant cannot take a disabled binding's queued row", async () => {
+    const h = harness();
+    disabledBinding(h, "inv_off");
+    const res = await h.claim("inv_off", FREE);
+    expect(res.updated).toEqual({});
+    expect(res.notUpdated.inv_off!.type).toBe("forbidden");
+    expect(h.rowOf("inv_off").status).toBe("pending");
+  });
+
+  it("neither can the paid cloud, on work that is already overdue", async () => {
+    const h = harness();
+    disabledBinding(h, "inv_off", { due_at: Date.now() - 2 * HOUR });
+    expect((await h.claim("inv_off")).notUpdated.inv_off!.type).toBe("forbidden");
+    expect(h.rowOf("inv_off").status).toBe("pending");
+  });
+
+  it("HELD, not cancelled: re-enabling resumes the SAME row, no requeue", async () => {
+    const h = harness();
+    disabledBinding(h, "inv_off");
+    expect((await h.claim("inv_off", FREE)).notUpdated.inv_off!.type).toBe("forbidden");
+    h.w.db.query(`UPDATE agent_bindings SET enabled = 1 WHERE id = 'bind_off'`);
+    expect((await h.claim("inv_off", FREE)).updated).toEqual({ inv_off: null });
+    expect(h.rowOf("inv_off").status).toBe("running");
+  });
+
+  it("the switch is per-binding: an enabled binding's work on the same account is untouched", async () => {
+    const h = harness();
+    disabledBinding(h, "inv_off");
+    h.seedInv("inv_on");
+    expect((await h.claim("inv_off", FREE)).notUpdated.inv_off!.type).toBe("forbidden");
+    expect((await h.claim("inv_on", FREE)).updated).toEqual({ inv_on: null });
+  });
+
+  it("completion is still never gated — a run in flight when the switch flips still finishes", async () => {
+    // The promise is that nothing is CANCELLED. A runtime that legitimately
+    // claimed before the flip owns that invocation and must be able to record
+    // what happened; failing its write would lose work the human never asked
+    // to lose.
+    const h = harness();
+    disabledBinding(h, "inv_mid", { status: "running", claimed_at: 5 });
+    const res = await h.set({ update: { inv_mid: { status: "done", result: { ok: 1 } } } });
+    expect(res.updated).toEqual({ inv_mid: null });
+    expect(h.rowOf("inv_mid").status).toBe("done");
+  });
+});

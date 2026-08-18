@@ -166,10 +166,39 @@ describe("CollectionColumn — expandable nodes (s25 T2)", () => {
   it("a disabled row is greyed WITH its reason — never a dead row", () => {
     const html = render(<CollectionColumn title="Approvals" groups={NESTED} onSelect={() => {}} />);
     expect(html).toContain("High cost");
-    expect(html).toContain("coming with cost data"); // visible beside the label
+    expect(html).toContain("coming with cost data"); // visible under the label
     expect(html).toContain('title="coming with cost data"');
     expect(html).toContain("disabled"); // a native disabled button: unselectable for free
     expect(html).toContain("opacity-60");
+  });
+
+  /**
+   * …and never HALF a row either. Before this, the label and its reason were
+   * truncating flex SIBLINGS in a `w-56` column, so at the real width both
+   * shrank and the Finder's empty states rendered "No saved que… save a find
+   * to k…". Neither string is long; there was simply only ever room for one.
+   *
+   * The structure is the fix, so the structure is what is asserted: one
+   * `flex-col` wrapper holding the label above the hint, and no `truncate` on
+   * the hint at all (it wraps — a hint that needs two lines gets two lines).
+   * A width-based assertion is impossible here (there is no layout engine in
+   * a string renderer), but "are these two competing for one line?" is a
+   * question about the tree, and that the tree can answer.
+   */
+  it("the reason stacks UNDER the label instead of competing with it for the width", () => {
+    const html = render(<CollectionColumn title="Approvals" groups={NESTED} onSelect={() => {}} />);
+    expect(html).toMatch(
+      /<span class="flex min-w-0 grow flex-col"><span class="truncate">High cost<\/span><span class="[^"]*">coming with cost data<\/span><\/span>/,
+    );
+    // The hint wraps rather than truncating — the second half of the same bug.
+    expect(html).not.toMatch(/<span class="[^"]*truncate[^"]*">coming with cost data<\/span>/);
+    expect(html).toMatch(/<span class="[^"]*break-words[^"]*">coming with cost data<\/span>/);
+  });
+
+  it("an ENABLED row is unchanged: one line, label centred against its badge", () => {
+    const html = render(<CollectionColumn title="Approvals" groups={NESTED} onSelect={() => {}} />);
+    expect(html).toContain("items-center");
+    expect(html).toMatch(/<span class="truncate">Waiting on you<\/span>/);
   });
 });
 

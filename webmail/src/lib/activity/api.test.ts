@@ -31,7 +31,7 @@ describe("loadActivity over the demo backend — the /activity?demo=1 path", () 
     const { items } = await loadActivity(harness(), [ACCOUNT]);
     const yanked = items.find((i) => i.type === "decided" && i.status === "yanked");
     expect(yanked).toBeDefined();
-    expect(yanked!.id).toBe("decided:ap-yanked-sergio");
+    expect(yanked!.id).toBe("decided:ap-yanked-boards");
   });
 
   it("serves the fired watches and never the armed one", async () => {

@@ -13,7 +13,11 @@
 //   • `/set` is `update` only — a `create` is refused with the server's own
 //     sentence: proposals are produced by the agent worker (:191-197).
 //   • only `pending` is decidable, and only to `approved`/`rejected`
-//     (:211-219). `held` is NOT re-decidable here — the yank is s03.D T2.
+//     (:211-219). `held` is NOT re-decidable through this backend's `/set` —
+//     the server grew the yank verb in s03.D T2 and this fake has not; what it
+//     DOES carry is a `yanked` FIXTURE (`ap-yanked-boards`), so the terminal
+//     state the history grouping handles is demonstrable in demo mode instead
+//     of being a branch only production data ever reaches.
 //   • a tier-2 approve enters the hold tray: status `held`,
 //     `holdUntil = now + 5min` (:61, :268-289). Nothing egresses.
 //   • a tier-3 approve demands the `send` scope — the capability wall
@@ -103,8 +107,8 @@ export function demoProposals(now: number): ActionProposal[] {
   const hour = 3600_000;
   const day = 24 * hour;
 
-  // `accountId` is stamped once at the end rather than typed into eleven
-  // fixtures: the demo has ONE account, and a per-row literal would be eleven
+  // `accountId` is stamped once at the end rather than typed into a dozen
+  // fixtures: the demo has ONE account, and a per-row literal would be a dozen
   // chances to drift from the account the fake backend answers as (s10 T7).
   const rows: Omit<ActionProposal, "accountId">[] = [
     {
@@ -525,6 +529,56 @@ export function demoProposals(now: number): ActionProposal[] {
       tokensIn: null,
       tokensOut: null,
       costModel: null,
+    },
+    {
+      // History: YANKED — approved into the hold tray, then pulled back before
+      // the window closed (s03.D T2). The state the tray exists FOR, and the
+      // one the demo backend could not previously produce at all: the fixture
+      // set went straight from `held` to the two verdicts, so `yanked` was a
+      // status the terminal grouping claimed to handle and no demo visitor
+      // (or screenshot, or test of the history rendering) had ever seen.
+      //
+      // Everything about it mirrors the server's yank write
+      // (actionProposal.ts): `status: "yanked"`, a `decidedAt` — a human DID
+      // decide, twice — and the `holdUntil` it was retracted inside, left in
+      // the past so the row reads as history rather than as a live tray entry.
+      // It is deliberately NOT a decline: a yank is a retraction of an
+      // approval, so it carries no `reason` from the decline enum, and the
+      // learning loop counts it as neither an approve nor a reject.
+      id: "ap-yanked-boards",
+      agent: "Emily",
+      kind: "reply-draft",
+      tier: 2,
+      subject: { realm: "Email", objectId: "e-quote" },
+      payload: {
+        to: "vendor@example.test",
+        self: "eric@bullmoose.test",
+        subject: "Re: Spring order — confirming quantities",
+        text: "Confirming 40 units at the quoted price — please go ahead.\n\n— Eric",
+        blobId: "blob-prop-boards",
+        messageId: "prop-boards@bullmoose.test",
+        mode: "send",
+      },
+      editedPayload: null,
+      rationale: "The vendor asked for written confirmation and the thread carries the quote and the quantities.",
+      evidence: [{ realm: "Email", objectId: "e-quote", note: "the quote being confirmed" }],
+      status: "yanked",
+      decision: { by: USERNAME, note: "the quantities were wrong — pulled it back to recount" },
+      createdAt: iso(now - 8 * hour),
+      decidedAt: iso(now - 6 * hour),
+      // Approved 6h ago, so the 5-minute window shut 5h55m ago: the yank
+      // landed inside it, and nothing was ever sent.
+      holdUntil: iso(now - 6 * hour + HOLD_WINDOW_MS),
+      expiresAt: iso(now - 6 * hour + 7 * day),
+      dueAt: null,
+      question: null,
+      amendments: [],
+      invocationStatus: "done",
+      claimedAt: null,
+      costMicros: 1730,
+      tokensIn: 1204,
+      tokensOut: 288,
+      costModel: "openrouter/minimax/minimax-m3",
     },
   ];
   return rows.map((r) => ({ ...r, accountId: ACCOUNT }));

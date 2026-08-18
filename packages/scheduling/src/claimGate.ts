@@ -25,11 +25,12 @@ import { jobBudgetExhaustedSql, needsSatisfiedSql } from "./jobGraph.js";
 // The gate is a CONJUNCTION, and s11 T3's watchdog needs a strict SUBSET of
 // its terms: the overdue backstop claims OUTSIDE the policy gate (a gated
 // claim would refuse budget-exhausted overdue work — which is the whole point
-// of a backstop) while KEEPING the privacy pin and fit (devPlan decision 0:
-// pinned work sits, and the human is alerted). So each term is its own
-// exported expression and `claimGateSql` is their fold, rather than the
-// backstop re-typing a hand-copied `privacy <> 'pinned'` that could drift
-// from this one the day the pin gains a second class.
+// of a backstop) while KEEPING the privacy pin, fit, and the 008 kill switch
+// (devPlan decision 0: pinned work sits and the human is alerted; and a
+// deadline is not a reason to run an agent an operator switched off). So each
+// term is its own exported expression and `claimGateSql` is their fold, rather
+// than the backstop re-typing a hand-copied `privacy <> 'pinned'` that could
+// drift from this one the day the pin gains a second class.
 //
 // Every fragment below returns a BARE boolean expression (parenthesized, no
 // leading ` AND`) so it can be conjoined, negated, or dropped. Placeholders
@@ -118,6 +119,82 @@ export function budgetExhaustedSql(inv: string): string {
     `\n                              AND gate_o.binding_id = ${inv}.binding_id` +
     `\n                              AND gate_o.period_key = ?))`
   );
+}
+
+/**
+ * THE 008 KILL SWITCH — 0 placeholders. True when this row's binding is
+ * switched OFF, i.e. when the claim must be refused. Folded as
+ * `NOT bindingDisabledSql(...)` in `claimGateSql`.
+ *
+ * ── Why the gate needed it ────────────────────────────────────────────────
+ * `AgentBinding/set` (s26 T2) made the switch session-reachable, and the
+ * Settings→Agents page promises exactly this: "Disabling holds queued work;
+ * nothing is cancelled." The refusal existed at CREATE (agent.ts's interlock)
+ * and in the cloud drain's SELECT join — but neither touches the rows a human
+ * queued BEFORE flipping the switch, which is the entire point of the
+ * sentence. Those stayed claimable through `AgentInvocation/set` by any
+ * claimant, and by a FREE one in particular: the fleet host and the
+ * `bullmoose agent` CLI both declare `isFree: true`. The switch stopped new
+ * work and let the backlog keep running.
+ *
+ * ── Why it sits OUTSIDE the `isFree` short-circuit ────────────────────────
+ * Every money term (`budgetExhaustedSql`, `jobBudgetExhaustedSql`, the
+ * envelope) lives INSIDE it, because exhaustion is a reason to prefer the
+ * runtime that costs nothing — a free claimant is the answer to a budget, not
+ * a party to it. An off switch is not a budget. "Your homelab may still run
+ * it for free" is not what a human clicking Disable is agreeing to, so this
+ * term binds every claimant, exactly like `needsSatisfiedSql`.
+ *
+ * ── It is a WAIT, not an error and not a fault ────────────────────────────
+ * Structurally identical to `budgetExhaustedSql`: it NARROWS the claimant set
+ * inside the guarded UPDATE, so a refused row simply does not transition. It
+ * stays `pending`, keeps its facets and its clocks, costs nothing, and
+ * becomes claimable again the instant the binding is re-enabled — no
+ * requeue, no new row, nothing cancelled. Completion (`done`/`failed`) is
+ * never gated by anything, here included: a runtime that legitimately claimed
+ * before the flip still owns its invocation and must be able to record what
+ * happened.
+ *
+ * ── The two absences, which are NOT the same absence ──────────────────────
+ * `EXISTS` false — no binding row at all — reads as NOT disabled, i.e. the
+ * row claims exactly as it did before this term. That is the same
+ * absence-is-not-evidence rule `budgetExhaustedSql` follows, and it is
+ * deliberate: the promise being kept here is about DISABLED bindings, while
+ * an invocation whose binding was destroyed is a different question already
+ * answered elsewhere (both drain SELECTs INNER JOIN `agent_bindings`, and
+ * auth-core refuses to resolve such a row's invocation token). Stranding it
+ * silently here would be a second, unasked-for behaviour change.
+ *
+ * The COALESCE runs the OTHER way, and that asymmetry is the honest part.
+ * `agent_bindings.enabled` is `NOT NULL DEFAULT 1`, so the COALESCE cannot
+ * fire today; it is there so that if the column ever becomes nullable, an
+ * UNREADABLE switch reads as OFF. An unreadable budget cap honestly means "no
+ * cap was set"; an unreadable kill switch does not mean "the human left it
+ * on". Same reason `<> 1` and not `= 0`: only the literal enabled value
+ * counts as enabled.
+ */
+export function bindingDisabledSql(inv: string): string {
+  return (
+    `EXISTS (` +
+    `\n                SELECT 1 FROM agent_bindings gate_k` +
+    `\n                WHERE gate_k.account_id = ${inv}.account_id AND gate_k.id = ${inv}.binding_id` +
+    `\n                  AND COALESCE(gate_k.enabled, 0) <> 1)`
+  );
+}
+
+/**
+ * Pure twin of `bindingDisabledSql` — the same predicate stated as a function
+ * so the two cannot drift (the `needsSatisfied` / `jobBudgetExhausted`
+ * discipline; killSwitch.test.ts holds them to one table).
+ *
+ * `null`/`undefined` = the EXISTS found no binding row → NOT disabled.
+ * A present row's `enabled` is disabled unless it is exactly 1, with an
+ * unreadable value reading as OFF — see the SQL for why the two absences
+ * point in opposite directions.
+ */
+export function bindingDisabled(binding: { enabled: number | null } | null | undefined): boolean {
+  if (binding === null || binding === undefined) return false;
+  return (binding.enabled ?? 0) !== 1;
 }
 
 /**
@@ -240,10 +317,10 @@ export function dueWindowBinds(p: { now: number; escalationWindowMs: number }): 
 
 /**
  * The whole gate, to be appended to a claim statement's WHERE (it begins with
- * ` AND`) — fit ∧ needs ∧ (free ∨ (pin ∧ budget ∧ jobBudget ∧ due)), the fold
- * of the fragments above. `inv` is how the statement refers to the
- * agent_invocations row under test: the table name itself in an UPDATE, the
- * FROM-alias in a SELECT. Placeholders are positional — bind
+ * ` AND`) — switched-on ∧ fit ∧ needs ∧ (free ∨ (pin ∧ budget ∧ jobBudget ∧
+ * due)), the fold of the fragments above. `inv` is how the statement refers
+ * to the agent_invocations row under test: the table name itself in an
+ * UPDATE, the FROM-alias in a SELECT. Placeholders are positional — bind
  * `claimGateBinds()` in order, after the statement's own binds.
  *
  * s11 T7 adds the two DAG terms, and WHERE each sits is the whole design:
@@ -269,9 +346,15 @@ export function dueWindowBinds(p: { now: number; escalationWindowMs: number }): 
  * branch runs), so `claimGateBinds` and every caller are again untouched.
  * The pure statement of the same CASE is `effectiveBudgetExhausted`
  * (mayClaim.ts); the agreement test's envelope table holds the two together.
+ *
+ * s26 T2 follow-up adds `bindingDisabledSql` — the 008 kill switch — as the
+ * FIRST term and OUTSIDE the `isFree` short-circuit, so a disabled binding's
+ * already-queued rows are claimable by nobody rather than by everyone free.
+ * Zero placeholders again; every caller's bind order is untouched.
  */
 export function claimGateSql(inv: string): string {
   return (
+    `\n AND NOT ${bindingDisabledSql(inv)}` +
     `\n AND ${claimFitSql(inv)}` +
     `\n AND ${needsSatisfiedSql(inv)}` +
     `\n AND (? = 1` +

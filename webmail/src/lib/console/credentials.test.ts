@@ -10,7 +10,7 @@ import {
 } from "./credentials";
 import { OriginRefusal } from "./origins";
 
-const SITE = "https://mail.bullmoose.cc";
+const SITE = "https://app.bullmoose.cc";
 const VAULT = "https://agent.bullmoose.cc";
 const SECRET = "sk_live_THIS_IS_THE_SECRET_VALUE";
 

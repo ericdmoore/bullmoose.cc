@@ -52,6 +52,23 @@ describe("the discriminator is a complete rule, not a fragment", () => {
     expect(DISCRIMINATOR_NO).toContain("Agents realm");
     expect(DISCRIMINATOR_NO).toContain("verb");
   });
+
+  it("every character in it is one the section's font stack can actually draw", () => {
+    // The live page rendered "Yes □ it belongs here" — a U+2192 arrow with no
+    // glyph in `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.
+    // Copy nobody can read is not copy, so the rule is: this string uses only
+    // ASCII plus the punctuation the rest of the app already renders (em dash,
+    // ellipsis, middle dot). Anything outside that set fails here by name
+    // rather than in a screenshot nobody takes.
+    const DRAWABLE = new Set(["—", "…", "·", "’"]);
+    for (const s of [DISCRIMINATOR_QUESTION, DISCRIMINATOR_YES, DISCRIMINATOR_NO]) {
+      const exotic = [...s].filter((ch) => ch.charCodeAt(0) > 127 && !DRAWABLE.has(ch));
+      expect(exotic, `${s} carries ${exotic.map((c) => `U+${c.charCodeAt(0).toString(16)}`).join(", ")}`).toEqual([]);
+    }
+    // …and the connector is present, so the rule still reads as a rule.
+    expect(DISCRIMINATOR_YES).toContain("Yes —");
+    expect(DISCRIMINATOR_NO).toContain("No —");
+  });
 });
 
 const row = (over: Partial<AgentListRow>): AgentListRow => ({
