@@ -160,9 +160,11 @@ backstops both. So the account and binding are made identically; what differs is
 *which runtime claims the work*.
 
 **Cloud-backed** — the deployed `agent` worker runs the binding (ingest poke +
-5-minute sweep). Persona, `defaultModel`, and `modelAliases` (Workers AI, or
+5-minute sweep). Persona, `defaultModel`, and `modelAliases` (Workers AI free tier,
+`openrouter` — live since 2026-08-18, one key reaching any hosted model — or
 `gateway` once [AI Gateway](docs/architecture/ai-surface.md) is wired) live in
-the binding config. Nothing to run:
+the binding config, beside the budget cap (`budgets.spendPerMonth`, µUSD) the
+paid drain refuses to spend past. Nothing to run:
 
 ```sh
 bullmoose admin account create emily@example.com --tenant t_home --name "Editor Emily"

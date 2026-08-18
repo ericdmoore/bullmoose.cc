@@ -447,6 +447,7 @@ full matrix, by hand:
 | `CF_API_TOKEN` | provision | token #1 |
 | `SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY` | provision + submit | IAM user |
 | `CF_EMAIL_API_TOKEN` | submit — only if RELAY=cloudflare (requires Workers Paid) | CF sending token |
+| `OPENROUTER_API_TOKEN` | agent — only if any binding uses provider `openrouter` (the extractor default) | OpenRouter key |
 
 ```sh
 npx wrangler secret put INTERNAL_TOKEN -c services/jmap/wrangler.jsonc
@@ -457,6 +458,37 @@ npx wrangler secret put INTERNAL_TOKEN -c services/jmap/wrangler.jsonc
 runs purely on the token table. Submit's `RELAY` var: `ses` (default;
 sandbox delivers to your verified inbox on day one) or `mock` for
 inbound-only first.
+
+### Turning on the extractor (s18 A2 — a PAID pipeline, per account)
+
+The extraction pass is inert until provisioned, and it spends money. The flip, in order
+(first performed live 2026-08-18):
+
+```sh
+# 1. verify the model slug exists on OpenRouter (authenticated models list)
+curl -s -H "Authorization: Bearer $OPENROUTER_API_TOKEN" https://openrouter.ai/api/v1/models \
+  | grep -o 'minimax/minimax-m3'
+# 2. the worker secret (see the matrix above)
+npx wrangler secret put OPENROUTER_API_TOKEN -c services/agent/wrangler.jsonc
+# 3. refresh the pricing cache so the FIRST run books dollars (else it freezes NULL)
+curl -X POST https://mcp.bullmoose.cc/internal/refresh-pricing -H "x-internal-token: $INTERNAL_TOKEN"
+# 4. flip — one human account; ships CAPPED ($2/month default; budgetMicros overrides)
+curl -X POST https://bullmoose-provision.<subdomain>.workers.dev/extractor \
+  -H "authorization: Bearer $ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"email":"you@your.domain"}'
+```
+
+Re-`POST /extractor` with `{model, provider}` SWAPS the model in place (config_json is
+deliberately PATCH-immutable; re-provision is the sanctioned path). Kill switch:
+`POST /agent-bindings/{id}/disable`. The smoke: mail yourself a commitment-shaped sentence
+with NO deadline cue ("I'll get you the calc, promise") — a deadline stamps `due_at` and the
+paid drain will deliberately sit on it until near due. Newsletters never spend: the
+humanOriginated gate plus the pipeline's own List-Unsubscribe skip run before any model call.
+
+> ⚠️ Schema first: the extractor writes `annotations` — run the migrations
+> (`migrate.yml` dispatch, which **applies by default** as of #180 and titles the run
+> `APPLY` vs `DRY RUN`; or `node infra/bootstrap.mjs migrate --yes`). The first flip failed
+> exactly here: workers deployed, table absent, invocation failed clean (no spend).
 
 ### The app surface — `app.bullmoose.cc` (Pages + Worker routes, ONE origin)
 

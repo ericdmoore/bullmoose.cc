@@ -84,7 +84,35 @@ them at call time); the envelope vault (`vault.ts`) keeps owning everything
 agents use *as tools* (OAuth refresh tokens, third-party API keys). Don't
 split-brain a single key across both.
 
-## 4. Sequencing
+## 4. Hosts, models, and money — the routing model as built (2026-08-18)
+
+The vocabulary settled during s26 capture (`.plans/s26-agent-config/devPlan.md` is the full
+treatment; this is the standing summary):
+
+- **HOST = where models live**: `openrouter | workers-ai | gateway | @local`. Models are
+  subordinate to the host — a candidate is the pair `{provider, model}` (`ModelCandidate`,
+  services/agent/src/models.ts; "provider" in code means host). `openrouter` is a dedicated
+  provider with its OWN secret (`OPENROUTER_API_TOKEN`) rather than a repoint of the dormant
+  gateway — it names what it is, and a future gateway user cannot surprise it. OpenRouter picks
+  HOSTING for the model you chose; it never picks the model — model choice is ours.
+- **CLAIMANT = the runtime that takes work off the queue**: the cloud worker, or the CLI
+  runner. Orthogonal to host, joined by REACHABILITY: the cloud claimant reaches
+  openrouter/workers-ai/gateway but never @local; the CLI claimant runs beside @local and can
+  reach every host. @local is a peer dependency — the product is complete without it
+  (onboarding ladder in s26).
+- **An alias is a portfolio across hosts** — the fallback chain, ranked free-first
+  (`rankByPrice`: Workers AI prices 0 by policy; unpriceable candidates sort last).
+- **Money**: a binding's cap lives at `config_json.$.budgets.spendPerMonth` (µUSD). The claim
+  gate stops the PAID drain at the cap; pending invocations wait as the durable cursor;
+  `proposeBudgetOverruns` raises a bounded, month-scoped ask in approvals. A free claimant
+  ignores the cap — out-of-budget backlogs drain at $0 when a homelab runtime is up.
+- **Cost is frozen at completion** (s07 T5): provider/model/tokens/µUSD stamped on the
+  invocation, surfaced on every approval row. **NULL means "not recorded", 0 means "known
+  free" — they never collapse.** The models.dev pricing cache must be fresh for dollars to
+  book: `POST /internal/refresh-pricing` on the agent worker (a stale cache freezes NULL
+  forever on rows completed under it).
+
+## 5. Sequencing
 
 1. **AI Gateway** — near-term, alongside the next agent-worker touch.
 2. **Cherry-picked scheduling** (`agents-sdk.md` §3) — when per-agent

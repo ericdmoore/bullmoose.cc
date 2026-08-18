@@ -99,7 +99,11 @@ signal, so history survives (the s12 rescue→Bayes correction shape). Changes c
 a human corrects it in one write that records the negative without erasing the claim; and an
 `anchor`-less annotation is *refused*.
 
-### A2 — The extraction pass · *where the Watch detector graduates, and s11 T5 gets fed* — LANDED (2026-08-17)
+### A2 — The extraction pass · *where the Watch detector graduates, and s11 T5 gets fed* — LANDED (2026-08-17) · **FLIPPED LIVE (2026-08-18)**
+
+> Provisioned on Eric's account: `openrouter/minimax/minimax-m3`, $2/month cap, List-Unsubscribe
+> hardened. First run: 410/217 tokens, two annotations (a commitment @0.92, a decision @0.95),
+> live in the Commitments glance. Flip runbook now in docs/DEPLOY.md.
 
 > **Built as a PIPELINE, not a cron sweep** (`services/agent/src/extract.ts`, `pipeline: "extract"`).
 > The plan first said "a cron pass beside sweepWaitingOn"; a pipeline is better, and it is the
