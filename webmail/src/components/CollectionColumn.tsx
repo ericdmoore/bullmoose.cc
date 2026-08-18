@@ -2,6 +2,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { Badge, Button, Column, IconButton, ListContainer, ListRow } from "./ui";
+import CreateFab from "./CreateFab";
 import { ChevronDoubleLeftIcon, ChevronRightIcon, PlusIcon } from "./icons";
 import { listRowClasses } from "../lib/ui/classes";
 import { stepSelection, toggleExpansion, type CollectionGroup, type CollectionItem } from "../lib/shell/collections";
@@ -24,6 +25,11 @@ import { stepSelection, toggleExpansion, type CollectionGroup, type CollectionIt
  * render literally the same rows — inline-expandable children (one level),
  * and disabled rows greyed WITH their reason (the planned-section idiom:
  * never a dead row).
+ *
+ * s25 T5: the [New] gains a SECOND POSITION, not a second definition. Below
+ * `lg` the same `newLabel`/`onNew`/`newDisabled` render as a `<CreateFab>` in
+ * the thumb zone; at `lg` and up only the column's button exists. One source,
+ * two placements — see CreateFab.tsx.
  *
  * CSP: collapse, expansion and every responsive behaviour are discrete class
  * swaps (w-56 ↔ w-10, rotate-90, max-lg:*), never inline style. The [New]
@@ -287,22 +293,36 @@ export default function CollectionColumn(props: CollectionColumnProps) {
     if (next !== undefined && next !== selectedId) onSelect(next);
   };
 
+  // s25 T5 — the SAME create verb, in the thumb zone. Rendered from these very
+  // props (not a re-declaration), so the label, the handler and the disabled
+  // reason cannot drift from the column's button; `lg:hidden` inside
+  // `CreateFab` keeps the desktop showing exactly one of them. A realm that
+  // passes no `newLabel`/`onNew` gets no FAB, which is the whole of the
+  // "never invent a verb" rule.
+  const fab = newLabel && onNew ? <CreateFab label={newLabel} onClick={onNew} disabled={newDisabled} /> : null;
+
   if (collapsed) {
     // Below lg the strip turns horizontal — a slim full-width bar (a 40px-wide
     // vertical sliver makes no sense stacked). `narrow="hidden"` removes it
     // there entirely: the surface's collection sheet is the picker instead.
+    // The FAB is a SIBLING of that strip, not a child: when the column is
+    // hidden below lg, the create verb must still be there — that is exactly
+    // the screen the FAB exists for.
     return (
-      <div
-        class={
-          (narrow === "hidden" ? "max-lg:hidden " : "") +
-          "flex min-h-0 shrink-0 items-center self-stretch border-gray-200 max-lg:w-full max-lg:flex-row max-lg:gap-x-2 max-lg:border-b max-lg:px-2 max-lg:py-1 lg:w-10 lg:flex-col lg:border-r lg:pt-2 dark:border-white/10"
-        }
-      >
-        <IconButton label={`Expand ${title.toLowerCase()} collections`} size="sm" onClick={() => toggle(false)}>
-          <ChevronRightIcon class="size-4" />
-        </IconButton>
-        <span class="text-xs text-gray-500 lg:hidden dark:text-gray-400">{title}</span>
-      </div>
+      <>
+        <div
+          class={
+            (narrow === "hidden" ? "max-lg:hidden " : "") +
+            "flex min-h-0 shrink-0 items-center self-stretch border-gray-200 max-lg:w-full max-lg:flex-row max-lg:gap-x-2 max-lg:border-b max-lg:px-2 max-lg:py-1 lg:w-10 lg:flex-col lg:border-r lg:pt-2 dark:border-white/10"
+          }
+        >
+          <IconButton label={`Expand ${title.toLowerCase()} collections`} size="sm" onClick={() => toggle(false)}>
+            <ChevronRightIcon class="size-4" />
+          </IconButton>
+          <span class="text-xs text-gray-500 lg:hidden dark:text-gray-400">{title}</span>
+        </div>
+        {fab}
+      </>
     );
   }
 
@@ -315,38 +335,41 @@ export default function CollectionColumn(props: CollectionColumnProps) {
       : "w-full shrink-0 border-gray-200 max-lg:max-h-[45dvh] max-lg:border-b lg:w-56 lg:border-r dark:border-white/10";
 
   return (
-    <Column
-      aria-label={`${title} collections`}
-      class={props.class ?? defaultClass}
-      header={
-        <div class="flex items-center gap-x-1 px-2 pt-2 pb-1">
-          {newLabel && onNew ? (
-            <Button variant="primary" size="sm" onClick={() => onNew()} disabled={newDisabled} class="grow">
-              <PlusIcon class="size-4" strokeWidth={2} />
-              {newLabel}
-            </Button>
-          ) : (
-            <span class="grow px-1 text-sm font-semibold text-gray-900 dark:text-white">{title}</span>
-          )}
-          {storageKey ? (
-            <IconButton label={`Collapse ${title.toLowerCase()} collections`} size="sm" onClick={() => toggle(true)}>
-              <ChevronDoubleLeftIcon class="size-4" strokeWidth={2} />
-            </IconButton>
-          ) : null}
-        </div>
-      }
-    >
-      {actions ? <div class="px-2 pb-1">{actions}</div> : null}
-      <nav class="px-2 pb-2" onKeyDown={onKeyDown}>
-        <CollectionTree
-          groups={groups}
-          selectedId={selectedId}
-          onSelect={onSelect}
-          expanded={expanded}
-          onToggle={toggleNode}
-        />
-      </nav>
-      {footer ? <div class="border-t border-gray-200 px-2 py-2 dark:border-white/10">{footer}</div> : null}
-    </Column>
+    <>
+      <Column
+        aria-label={`${title} collections`}
+        class={props.class ?? defaultClass}
+        header={
+          <div class="flex items-center gap-x-1 px-2 pt-2 pb-1">
+            {newLabel && onNew ? (
+              <Button variant="primary" size="sm" onClick={() => onNew()} disabled={newDisabled} class="grow">
+                <PlusIcon class="size-4" strokeWidth={2} />
+                {newLabel}
+              </Button>
+            ) : (
+              <span class="grow px-1 text-sm font-semibold text-gray-900 dark:text-white">{title}</span>
+            )}
+            {storageKey ? (
+              <IconButton label={`Collapse ${title.toLowerCase()} collections`} size="sm" onClick={() => toggle(true)}>
+                <ChevronDoubleLeftIcon class="size-4" strokeWidth={2} />
+              </IconButton>
+            ) : null}
+          </div>
+        }
+      >
+        {actions ? <div class="px-2 pb-1">{actions}</div> : null}
+        <nav class="px-2 pb-2" onKeyDown={onKeyDown}>
+          <CollectionTree
+            groups={groups}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            expanded={expanded}
+            onToggle={toggleNode}
+          />
+        </nav>
+        {footer ? <div class="border-t border-gray-200 px-2 py-2 dark:border-white/10">{footer}</div> : null}
+      </Column>
+      {fab}
+    </>
   );
 }

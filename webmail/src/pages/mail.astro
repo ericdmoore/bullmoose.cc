@@ -196,5 +196,40 @@ import App from "../layouts/AppTw.astro";
     .body {
       flex-direction: column;
     }
+
+    /* s25 T5 — the FAB's clearance. The floating [New] sits bottom-right on a
+       phone, and a fixed button takes no space in flow, so the LAST thread row
+       (and the foot of an open message) would sit underneath it: reachable
+       only by scrolling past the end, which most lists will not do. The fix is
+       not a z-index — the scroll containers pad themselves out from under the
+       button. 72px is `FAB_CLEARANCE_PX` (lib/ui/classes.ts); the inset keeps
+       it clear of the home indicator too (the T1 groundwork). */
+    .thread-list,
+    .thread-view {
+      padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    }
+  }
+
+  /* s25 T6 — the toast learned a second half: a sentence and, when the action
+     is reversible, the way back. Laid out here rather than in webmail.css
+     because only mail renders an Undo today (the standing per-page rule). */
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .toast-undo {
+    border: 1px solid currentcolor;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    padding: 2px 10px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    flex: none;
+  }
+  .toast-undo:hover {
+    background: rgb(255 255 255 / 15%);
   }
 </style>

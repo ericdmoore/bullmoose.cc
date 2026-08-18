@@ -33,6 +33,7 @@ import {
   trashPatch,
   type EmailPatch,
 } from "../lib/mail/triage";
+import { restorePatches } from "../lib/mail/undo";
 import type { Email, Identity, Mailbox } from "../lib/mail/types";
 import Composer from "./Composer";
 import CollectionColumn from "./CollectionColumn";
@@ -60,7 +61,7 @@ const ROLE_ICON: Record<string, (p: IconProps) => preact.JSX.Element> = {
   trash: TrashIcon,
 };
 import MessageView from "./MessageView";
-import ThreadListView from "./ThreadListView";
+import ThreadListView, { type SwipeAction } from "./ThreadListView";
 
 type View = "list" | "thread" | "compose";
 
@@ -103,8 +104,24 @@ export default function AppShell({ client: injected }: Props) {
 
   const [searchSpec, setSearchSpec] = useState<SearchSpec>({});
   const [toast, setToast] = useState<string | undefined>(undefined);
+  // s25 T6 — the recourse a gesture owes you. One action deep, deliberately:
+  // the toast that reports a swipe carries the way to reverse it, and the next
+  // toast replaces both. Anything older is recovered where it actually is —
+  // in Archive or Trash, because both verbs are MOVES (triage.ts).
+  const [undoAction, setUndoAction] = useState<{ label: string; run: () => void } | undefined>(undefined);
   const [helpOpen, setHelpOpen] = useState(false);
   const chord = useRef<string | undefined>(undefined);
+
+  /** Say something, optionally with the way back. Every toast goes through
+   *  here so a stale Undo can never outlive the message it belonged to. */
+  const notify = useCallback((message: string, undo?: { label: string; run: () => void }) => {
+    setToast(message);
+    setUndoAction(undo);
+  }, []);
+  const dismissToast = useCallback(() => {
+    setToast(undefined);
+    setUndoAction(undefined);
+  }, []);
 
   // ── bootstrap ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -218,7 +235,7 @@ export default function AppShell({ client: injected }: Props) {
     void store
       .reload()
       .then(() => syncStore(store))
-      .catch((err: unknown) => setToast(String(err instanceof Error ? err.message : err)))
+      .catch((err: unknown) => notify(String(err instanceof Error ? err.message : err)))
       .finally(() => setLoading(false));
     return () => {
       off();
@@ -288,13 +305,13 @@ export default function AppShell({ client: injected }: Props) {
 
       const result = await applyTriage(client, accountId, patches);
       if (result.refusal) {
-        setToast(result.refusal.message);
+        notify(result.refusal.message);
         await store.refresh();
         syncStore(store);
         return;
       }
       if (result.notUpdated.length > 0) {
-        setToast(`${result.notUpdated.length} message(s) could not be updated.`);
+        notify(`${result.notUpdated.length} message(s) could not be updated.`);
         await store.refresh();
       }
       setSelected(new Set());
@@ -303,7 +320,105 @@ export default function AppShell({ client: injected }: Props) {
         .then(setMailboxes)
         .catch(() => undefined);
     },
-    [client, accountId, targetRows, syncStore],
+    [client, accountId, targetRows, syncStore, notify],
+  );
+
+  // ── s25 T6: swipe triage ────────────────────────────────────────────────
+
+  /**
+   * Which verbs a swipe may reveal HERE. Derived from the account's mailboxes,
+   * not hardcoded: an account with no Archive gets one button rather than a
+   * button that would collect a `forbidden` refusal on tap. The verbs are the
+   * two the keyboard already has (`e` and `#`) — T6 adds a position, not a
+   * vocabulary.
+   */
+  const swipeActions = useMemo<SwipeAction[]>(() => {
+    const actions: SwipeAction[] = [];
+    if (roleId("inbox") && roleId("archive")) actions.push({ id: "archive", label: "Archive", tone: "neutral" });
+    if (roleId("trash")) actions.push({ id: "trash", label: "Trash", tone: "danger" });
+    return actions;
+  }, [roleId]);
+
+  /**
+   * Fire one revealed verb, on ONE row, with a way back.
+   *
+   * Separate from `runTriage` for two reasons that both matter. It acts on the
+   * row you swiped rather than on `targetRows()` — a checkbox selection made
+   * ten rows ago must not ride along with a gesture aimed at this one. And it
+   * remembers each message's filing BEFORE the patch, which is what makes the
+   * toast's Undo an exact inverse (`lib/mail/undo.ts`) rather than a guess.
+   */
+  const runSwipe = useCallback(
+    async (row: ThreadRow, action: SwipeAction["id"]) => {
+      const store = storeRef.current;
+      if (!client || !store) return;
+      const inbox = roleId("inbox");
+      const archive = roleId("archive");
+      const trash = roleId("trash");
+
+      const emailsById = new Map(store.getEmails().map((e) => [e.id, e]));
+      const patches: Record<string, EmailPatch> = {};
+      const before: Record<string, Record<string, boolean>> = {};
+      for (const id of row.emailIds) {
+        const email = emailsById.get(id);
+        if (!email) continue;
+        const patch =
+          action === "archive"
+            ? inbox && archive
+              ? archivePatch(email, inbox, archive)
+              : {}
+            : trash
+              ? trashPatch(email, trash)
+              : {};
+        if (Object.keys(patch).length === 0) continue;
+        patches[id] = patch;
+        before[id] = { ...(email.mailboxIds ?? {}) };
+      }
+      if (Object.keys(patches).length === 0) {
+        notify(action === "archive" ? "This account has no Archive mailbox." : "This account has no Trash mailbox.");
+        return;
+      }
+
+      // Optimistic: the row leaves now, the server catches up.
+      store.removeLocal(Object.keys(patches));
+      syncStore(store);
+
+      const result = await applyTriage(client, accountId, patches);
+      if (result.refusal) {
+        notify(result.refusal.message);
+        await store.refresh();
+        syncStore(store);
+        return;
+      }
+      void loadMailboxes(client, accountId)
+        .then(setMailboxes)
+        .catch(() => undefined);
+
+      const inverse = restorePatches(before, patches);
+      notify(action === "archive" ? "Archived." : "Moved to Trash.", {
+        label: "Undo",
+        run: () => {
+          void (async () => {
+            const undone = await applyTriage(client, accountId, inverse);
+            if (undone.refusal) {
+              notify(undone.refusal.message);
+              return;
+            }
+            // Put it back on screen from the server's answer, not from a
+            // local guess: the message may have moved again underneath us.
+            const current = storeRef.current;
+            if (current) {
+              await current.refresh();
+              syncStore(current);
+            }
+            void loadMailboxes(client, accountId)
+              .then(setMailboxes)
+              .catch(() => undefined);
+          })();
+        },
+      });
+    },
+    [client, accountId, roleId, syncStore, notify],
   );
 
   // By THREAD ID, not row: the s25 T3 deep link (`/mail?thread=<id>`) opens
@@ -328,14 +443,14 @@ export default function AppShell({ client: injected }: Props) {
           for (const e of unread) store?.patchLocal(e.id, { keywords: { $seen: true } });
           if (store) syncStore(store);
           const result = await applyTriage(client, accountId, patches);
-          if (result.refusal) setToast(result.refusal.message);
+          if (result.refusal) notify(result.refusal.message);
           else
             void loadMailboxes(client, accountId)
               .then(setMailboxes)
               .catch(() => undefined);
         }
       } catch (err) {
-        setToast(String(err instanceof Error ? err.message : err));
+        notify(String(err instanceof Error ? err.message : err));
         setView("list");
       }
     },
@@ -412,7 +527,7 @@ export default function AppShell({ client: injected }: Props) {
       setView("list");
       setDraft(undefined);
       setDraftId(undefined);
-      setToast("Message sent.");
+      notify("Message sent.");
       await storeRef.current?.refresh();
       if (storeRef.current) syncStore(storeRef.current);
     } catch (err) {
@@ -434,7 +549,7 @@ export default function AppShell({ client: injected }: Props) {
         ...(draftId ? { replaces: draftId } : {}),
       });
       setDraftId(saved.id);
-      setToast("Draft saved.");
+      notify("Draft saved.");
     } catch (err) {
       setComposeError(String(err instanceof Error ? err.message : err));
     }
@@ -496,7 +611,7 @@ export default function AppShell({ client: injected }: Props) {
           if (inbox && archive) {
             void runTriage((email) => archivePatch(email, inbox, archive), { remove: true });
             if (view === "thread") setView("list");
-          } else setToast("This account has no Archive mailbox.");
+          } else notify("This account has no Archive mailbox.");
           break;
         }
         case "trash": {
@@ -504,7 +619,7 @@ export default function AppShell({ client: injected }: Props) {
           if (trash) {
             void runTriage((email) => trashPatch(email, trash), { remove: true });
             if (view === "thread") setView("list");
-          } else setToast("This account has no Trash mailbox.");
+          } else notify("This account has no Trash mailbox.");
           break;
         }
         case "toggleFlag": {
@@ -758,6 +873,11 @@ export default function AppShell({ client: injected }: Props) {
               // s25 T3 — the click path is a real link (`?q=`/`?demo=`
               // survive via hrefWithParam); onOpen stays the keyboard path.
               hrefFor={(row) => hrefWithParam("/mail", "thread", row.threadId)}
+              // s25 T6 — swipe triage, mail only. The gesture REVEALS these;
+              // a tap on one commits, and the toast that follows carries the
+              // Undo. See the contract at the top of ThreadListView.
+              swipeActions={swipeActions}
+              onSwipeAction={(row, action) => void runSwipe(row, action)}
               onOpen={(row) => void openThread(row.threadId)}
               onCursor={setCursor}
               onToggleSelect={(row) =>
@@ -791,8 +911,18 @@ export default function AppShell({ client: injected }: Props) {
       </div>
 
       {toast ? (
-        <div class="toast" role="status" onClick={() => setToast(undefined)}>
-          {toast}
+        // s25 T6 — the toast grew a verb. `role="status"` still announces the
+        // sentence; the Undo beside it is a real button, so the recourse a
+        // swipe promised is reachable by keyboard and screen reader and not
+        // only by the thumb that caused it. Clicking anywhere dismisses, as
+        // before — the Undo's own click bubbles here, which is what we want.
+        <div class="toast" role="status" onClick={dismissToast}>
+          <span>{toast}</span>
+          {undoAction ? (
+            <button type="button" class="toast-undo" onClick={() => undoAction.run()}>
+              {undoAction.label}
+            </button>
+          ) : null}
         </div>
       ) : null}
 

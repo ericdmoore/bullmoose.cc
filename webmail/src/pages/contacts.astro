@@ -246,5 +246,16 @@ import App from "../layouts/AppTw.astro";
     .body {
       flex-direction: column;
     }
+
+    /* s25 T5 — clearance for the "New contact" FAB. Same rule as /mail: the
+       floating button takes no space in flow, so the scroll containers pad
+       themselves out from under it rather than letting it cover the last card
+       (and the detail pane's own actions). 72px is `FAB_CLEARANCE_PX`
+       (lib/ui/classes.ts); the inset clears the home indicator. */
+    .card-list,
+    .card-detail,
+    .contacts-panes {
+      padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    }
   }
 </style>

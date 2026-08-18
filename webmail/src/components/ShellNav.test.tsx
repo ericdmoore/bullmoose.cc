@@ -1,7 +1,7 @@
 /** @jsxImportSource preact */
 import { describe, expect, it } from "vitest";
 import { render } from "preact-render-to-string";
-import { RealmTray } from "./ShellNav";
+import ShellNav, { RealmTray } from "./ShellNav";
 import { STALE_AFTER_MS, type PublishedCollections } from "../lib/shell/publish";
 import type { Section, SectionId } from "../lib/app/sections";
 
@@ -140,5 +140,43 @@ describe("RealmTray — the user's order is a preference, not a replacement", ()
     expect(settingsAt).toBeGreaterThan(-1);
     expect(settingsAt).toBeLessThan(mailAt);
     expect(mailAt).toBeLessThan(approvalsAt);
+  });
+});
+
+// s25 T5 — the contextual search bar, collapsed. SSR renders the whole
+// ShellNav at its FIRST state (effects do not run in preact-render-to-string,
+// which is exactly the collapsed one), so what is testable here is the
+// starting shape — and that is the shape the invariants live in.
+
+describe("ShellNav — the collapsing search (s25 T5)", () => {
+  const html = render(<ShellNav section="mail" email="eric@bullmoose.cc" />);
+
+  it("starts collapsed on a phone: a magnifier trigger that is lg:hidden", () => {
+    expect(html).toContain('aria-controls="bm-global-search"');
+    expect(html).toContain('aria-expanded="false"');
+  });
+
+  it("hides the FIELD below lg and keeps it at lg — one element, two widths", () => {
+    expect(html).toContain("max-lg:hidden");
+    expect(html).toContain('id="bm-global-search"');
+  });
+
+  it("still renders exactly ONE search input — the collapse is a class, not a second field", () => {
+    expect(html.match(/id="bm-global-search"/g)).toHaveLength(1);
+  });
+
+  it("the form still cannot navigate (the s07 T1 invariant, unchanged)", () => {
+    expect(html).toContain("<form");
+    expect(html).not.toMatch(/<form[^>]*\b(action|method)=/);
+  });
+
+  it("a realm with no wired search renders neither trigger nor field", () => {
+    const bare = render(<ShellNav section="calendar" email="eric@bullmoose.cc" />);
+    expect(bare).not.toContain("bm-global-search");
+    expect(bare).not.toContain("<form");
+  });
+
+  it("writes no inline style anywhere in the chrome (CSP)", () => {
+    expect(html).not.toContain("style=");
   });
 });

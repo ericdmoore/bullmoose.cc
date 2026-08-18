@@ -18,9 +18,16 @@ const BUTTON_BASE =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 " +
   "disabled:opacity-50 disabled:pointer-events-none";
 
+/** The standardized [New] SURFACE (s24 Decision 8) — colour and hover only,
+ *  no elevation. Split out because the FAB (s25 T5) is the same verb in a
+ *  different position: it must read as the same button while carrying a
+ *  floating shadow instead of the flat one. Sharing the string is what keeps
+ *  "same verb" true rather than merely claimed. */
+const PRIMARY_SURFACE = "bg-brand-600 text-white hover:bg-brand-500";
+
 const BUTTON_VARIANT: Record<ButtonVariant, string> = {
   // The standardized [New] look (s24 Decision 8) — one primary, everywhere.
-  primary: "bg-brand-600 text-white shadow-xs hover:bg-brand-500",
+  primary: `${PRIMARY_SURFACE} shadow-xs`,
   secondary:
     "bg-white text-gray-900 shadow-xs ring-1 ring-inset ring-gray-300 hover:bg-gray-50 " +
     "dark:bg-white/10 dark:text-white dark:ring-white/10 dark:hover:bg-white/20",
@@ -86,4 +93,68 @@ export function listRowClasses(opts: { active?: boolean; muted?: boolean } = {})
     opts.active ? "bg-brand-50 ring-1 ring-brand-500/30 dark:bg-white/10" : "hover:bg-gray-50 dark:hover:bg-white/5",
     opts.muted ? "text-gray-500" : "text-gray-900 dark:text-white",
   );
+}
+
+// ── s25 T5: the phone's chrome ────────────────────────────────────────────
+//
+// TWO RULES hold every string below, and both are load-bearing:
+//
+//  1. NO INLINE STYLE. Positioning, the safe-area insets and every transition
+//     are utility classes, because the generated CSP carries a `style-src`
+//     with no 'unsafe-inline' (ShellNav.tsx explains why that stays).
+//  2. SHOW/HIDE IS ALWAYS VARIANT-SCOPED (`lg:hidden`, `max-lg:hidden`), never
+//     a bare `hidden` fighting a bare `flex`. Two display utilities with no
+//     variant between them resolve by Tailwind's own source order, not by the
+//     order you typed them — a coin flip. A variant always wins over the
+//     unvariant base, so the breakpoint decides and the class list reads true.
+
+/**
+ * The floating action button (s25 T5) — the realm's [New], moved into the
+ * thumb zone on a phone. Bottom-right, above `env(safe-area-inset-bottom)` so
+ * it clears the home indicator (the T1 groundwork), and `lg:hidden` because
+ * the desktop already has the column's button and two of the same verb on one
+ * screen is one too many.
+ *
+ * Extended (icon + words), not a bare `+`: the label is the whole point —
+ * "New message" in Mail, "New contact" in Contacts, "New find" in Finder —
+ * and an unlabelled circle turns a realm-contextual verb into a guess.
+ */
+export function fabClasses(): string {
+  return cx(
+    "fixed right-4 bottom-4 z-40 inline-flex items-center gap-x-2",
+    "mr-[env(safe-area-inset-right)] mb-[env(safe-area-inset-bottom)]",
+    "rounded-full px-4 py-3 text-sm font-semibold shadow-lg",
+    PRIMARY_SURFACE,
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
+    "disabled:pointer-events-none disabled:opacity-50",
+    "lg:hidden",
+  );
+}
+
+/**
+ * How much room a fixed FAB needs at the foot of a scroll container. The rule
+ * the plan is explicit about: the button must never COVER the last row, so
+ * the list pads itself out from under it rather than floating over content.
+ * A number rather than a class because the padding is applied in each page's
+ * own CSS (where it composes with `env(safe-area-inset-bottom)`); this is the
+ * value that CSS mirrors, and the one the test pins.
+ */
+export const FAB_CLEARANCE_PX = 72;
+
+/**
+ * The header search, collapsed (s25 T5). Below `lg` the bar is a magnifier
+ * that expands IN PLACE; at `lg` and up it is always the full field, so the
+ * desktop header is what it was.
+ *
+ * The `bm:search` plumbing underneath is untouched — no navigation, no form
+ * action, no history call (tokenInUrl.test.ts holds ShellNav to all three).
+ */
+export function searchFieldClasses(open: boolean): string {
+  return cx("flex min-w-0 flex-1 items-center", !open && "max-lg:hidden");
+}
+
+/** Header chrome that steps aside while the narrow search is expanded, so the
+ *  field gets the whole bar instead of a 90px slot. Desktop never yields. */
+export function searchYieldClasses(open: boolean): string {
+  return open ? "max-lg:hidden" : "";
 }
