@@ -40,6 +40,7 @@ import { cmdAdmin } from "./admin.js";
 import { cmdLogin, cmdToken } from "./tokens.js";
 import { agentServe, fleetFromSingle, loadAgentConfig, loadFleetConfig } from "./agent.js";
 import { cmdAgentInvoke } from "./agentInvoke.js";
+import { cmdAgentDossier, isDossierVerb } from "./agentDossier.js";
 import { cmdLocal, cmdModels, defaultConfirm, execToStderr } from "./local.js";
 import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
@@ -109,6 +110,18 @@ const parseCommandLine = () =>
       // ---- @local ladder (s26 T6): models / local setup|connect ----
       host: { type: "string" },
       "key-env": { type: "string" },
+      // ---- agent dossier verbs (s26 T6): show/budget/model/backfill ----
+      // `--set` carries the new value for whichever knob the verb names (a
+      // µUSD budget, a <host>/<model> candidate); `--explore` is repeatable
+      // and REPLACES the frontier arms rather than appending, so the menu a
+      // command prints is the menu it wrote.
+      set: { type: "string" },
+      explore: { type: "string", multiple: true },
+      since: { type: "string" },
+      budget: { type: "string" },
+      // Mints the floor-request approval INSTEAD of a backfill — never an
+      // automatic escalation, because the ask is for archive access.
+      "request-floor": { type: "boolean", default: false },
       // ---- agent invoke (sVOL 007) ----
       email: { type: "string" },
       note: { type: "string" },
@@ -849,9 +862,28 @@ async function cmdAgent(): Promise<void> {
     });
     return;
   }
+  // The DOSSIER verbs (s26 T6): read and tune ONE named binding. A third
+  // module because they speak to a third set of doors — the console
+  // projection, AgentBinding/set, and the provision worker — none of which
+  // `serve` or `invoke` touch.
+  if (isDossierVerb(verb)) {
+    await cmdAgentDossier(db, positionals.slice(1), {
+      account: opts.account,
+      set: opts.set,
+      explore: opts.explore,
+      since: opts.since,
+      budget: opts.budget,
+      requestFloor: opts["request-floor"] ?? false,
+      yes: opts.yes ?? false,
+      ...io,
+    });
+    return;
+  }
   if (verb !== "serve") {
     usage(
-      "bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations | rm <invId>",
+      "bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | " +
+        "invocations | rm <invId> | show <binding> | budget <binding> [--set <µUSD>] | model <binding> " +
+        "[--set <host>/<model>] | backfill <binding> --since <date> | enable|disable <binding>",
     );
   }
   if (!opts.config && !opts.fleet) {
