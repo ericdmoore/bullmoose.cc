@@ -71,10 +71,20 @@ While SES is sandboxed, recipients must be verified (same as any send).
 | `POPCORN_SMTP_LISTEN` | *(off)* | SMTP submission (kettle-corn); e.g. `:9587` |
 | `POPCORN_SMTP_MAX_SIZE` | `26214400` | DATA cap in bytes (25 MB) |
 | `POPCORN_TLS_CERT` / `_KEY` | *(empty)* | PEM paths; both unset = plaintext **dev only** |
-| `POPCORN_JMAP_BASE` | *(SRV discovery)* | e.g. `https://jmap.bullmoose.cc` |
+| `POPCORN_JMAP_BASE` | *(SRV discovery — see below)* | `https://app.bullmoose.cc` here; **set it** |
 | `POPCORN_DELE_MODE` | `archive` | or `noop` |
 | `POPCORN_MAX_MESSAGES` | `200` | maildrop window, newest N |
 | `POPCORN_IDLE_TIMEOUT` | `5m` | per-command deadline |
+
+⚠️ **`POPCORN_JMAP_BASE` is effectively required, whatever the default column
+says.** `jmap.Discover` resolves `_jmap._tcp.<domain>` and has no other rung,
+and that record was retired on 2026-08-13: Cloudflare cannot serve a working
+SRV for a proxied host, because the target must be a hostname that resolves to
+the origin. So discovery fails for `bullmoose.cc` — loudly, naming this var,
+but it fails. Set it to `https://app.bullmoose.cc` (verified answering
+`/.well-known/jmap` on 2026-08-18). The two CLIs took the other route and
+added the RFC 8620 §2.2 well-known rung (`packages/cli/src/discover.ts`,
+`cli-go/internal/discover`); folding that back into popcorn is still open.
 
 **Port 443?** Sure — on a DNS-only (grey-cloud) hostname the port is
 yours, and most clients accept custom ports. Just don't put the record

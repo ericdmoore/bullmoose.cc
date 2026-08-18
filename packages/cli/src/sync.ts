@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { mkdirSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { JmapClient, Invocation } from "./jmap.js";
-import type { AccountRef } from "./db.js";
+import { annotateStaleBase, type AccountRef } from "./db.js";
 
 /**
  * Sync engine. Incremental when the server can replay our cursor
@@ -129,7 +129,13 @@ export async function syncAll(
       const stats = await sync(db, client, account.accountId, opts);
       results.push({ account, stats });
     } catch (err) {
-      results.push({ account, error: err instanceof Error ? err.message : String(err) });
+      // Annotated HERE and not only at main.ts's catch, because this is the one
+      // command that does not rethrow: a per-account failure is reported and the
+      // run continues, so a dead stored base would reach the user as a bare
+      // "HTTP 404" with no mention of the repair. `annotateStaleBase` is a no-op
+      // for every other failure.
+      const reported = annotateStaleBase(err, db);
+      results.push({ account, error: reported instanceof Error ? reported.message : String(reported) });
     }
   }
   return results;

@@ -29,8 +29,12 @@ external dependency, and the same data shows up in your native apps and
 ## 2. Where the platform is today (grounding for a fresh context)
 
 Live on the Cloudflare **free tier**, five workers
-(`bullmoose-{jmap,ingest,submit,provision,agent}.eric-d-moore.workers.dev`),
-`jmap.bullmoose.cc` custom domain:
+(`bullmoose-{jmap,ingest,submit,provision,agent}`). Where each ANSWERS has
+moved on since this was written, and the workers.dev names are no longer a
+safe assumption — `bullmoose-jmap.eric-d-moore.workers.dev` 404s on every
+path today. The client-facing origin is **`https://app.bullmoose.cc`** (Pages
+plus the jmap Worker routes, one origin), with `mcp.`, `auth.` and `dav.`
+custom domains on the agent, oauth and anglebrackets workers:
 
 - **Core**: D1 `bullmoose-mail-shard0`, R2 `bullmoose-mail-blobs`, KV
   routes/suppression. **AccountDO** = single-writer per account with a

@@ -181,7 +181,25 @@ export const COMMANDS: Command[] = [
     description:
       "Resolves the JMAP base for an email or domain (SRV _jmap._tcp, then .well-known/jmap), prints the method and base, and probes the session endpoint. Read-only; no auth.",
     examples: [{ cmd: "bullmoose discover example.com" }],
-    seeAlso: ["login"],
+    seeAlso: ["login", "repoint"],
+  },
+  {
+    name: "repoint",
+    synopsis: "bullmoose repoint [--base <url>]",
+    summary: "move this device to a different server URL, keeping the token",
+    description:
+      "Rewrites the stored JMAP base and nothing else — the token, the default account and the local mirror are kept. With no --base the server is re-autodiscovered from your own address, which is what you want when a deployment has moved: `login`'s answer today, applied to the config `login` wrote months ago. The new base is VALIDATED with the token you already hold before anything is written, so a wrong URL leaves the old one in place; if the new server does not serve your account, it says so and changes nothing. Reach for this when a command fails with `no longer serves /.well-known/jmap` — a 404 there means the host is gone, not down.",
+    flags: [
+      {
+        flag: "--base <url>",
+        desc: "the new JMAP base, or file:// path to a bootstrap bundle; omit to autodiscover",
+      },
+    ],
+    examples: [
+      { cmd: "bullmoose repoint --base https://app.bullmoose.cc", note: "the host moved" },
+      { cmd: "bullmoose repoint", note: "re-run autodiscovery on your own address" },
+    ],
+    seeAlso: ["discover", "login", "init"],
   },
   {
     name: "init",

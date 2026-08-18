@@ -101,7 +101,14 @@ func runLoginWith(s *bmio.Streams, argv []string, deps loginDeps) int {
 			return die(s, err)
 		}
 		base = found.Base
-		s.Note("discovered " + found.Base + " (via " + found.Via + ")")
+		// A base nobody typed is never silent, and a base that came from a
+		// redirect is doubly so — the name the user knows is the one they will
+		// look for when something later goes wrong.
+		line := "discovered " + found.Base + " (via " + found.Via + ")"
+		if found.RedirectedFrom != "" {
+			line += " — " + found.RedirectedFrom + " redirected the session resource here"
+		}
+		s.Note(line)
 	}
 
 	password, err := readPassword(a, deps)

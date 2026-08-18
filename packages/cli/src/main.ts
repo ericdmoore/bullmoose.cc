@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { marked } from "marked";
 import {
   accountLabel,
+  annotateStaleBase,
   defaultDbPath,
   isFileUrl,
   loadBootstrap,
@@ -38,6 +39,7 @@ import { buildMime } from "./mime.js";
 import { pidPaths, readAlivePid, watch, writePid } from "./watch.js";
 import { cmdAdmin } from "./admin.js";
 import { cmdLogin, cmdToken } from "./tokens.js";
+import { cmdRepoint } from "./repoint.js";
 import { agentServe, fleetFromSingle, loadAgentConfig, loadFleetConfig } from "./agent.js";
 import { cmdAgentInvoke } from "./agentInvoke.js";
 import { cmdAgentDossier, isDossierVerb } from "./agentDossier.js";
@@ -290,6 +292,9 @@ try {
     case "discover":
       await cmdDiscover();
       break;
+    case "repoint":
+      await cmdRepoint(db, requireSettings(db), { base: opts.base, ...io });
+      break;
     case "token":
       await cmdToken(db, requireSettings(db), positionals.slice(1), {
         name: opts.name,
@@ -467,7 +472,11 @@ try {
   // The single exit path. `die` maps the error to a code from the §1.5 table:
   // a JMAP error type first (so `stateMismatch` → 5 and `notFound` → 3), then
   // an HTTP status, then the CLI's own judgement, then 1.
-  die(err);
+  //
+  // `annotateStaleBase` runs first because ONE of those failures is repairable
+  // and the bare form does not say so: a 404 on the session resource of the
+  // base we have STORED means the host is gone, and the fix is one command.
+  die(annotateStaleBase(err, db));
 }
 
 // ---- commands ----------------------------------------------------------
@@ -907,13 +916,17 @@ async function cmdDiscover(): Promise<void> {
   if (!target) usage("bullmoose discover <email-or-domain>");
   if (!target.includes("@")) target = `probe@${target}`;
 
+  // `resolveJmapBase` probes as part of settling the base (it has to: a
+  // cross-origin redirect is what decides the answer), so its verdict is reused
+  // here rather than re-fetched.
   const found = await resolveJmapBase(target);
-  const probe = await probeSession(found.base);
+  const probe = found.probe ?? (await probeSession(found.base));
   if (io.json) {
     emitJson({
       domain: found.domain,
       via: found.via,
       base: found.base,
+      ...(found.redirectedFrom ? { redirectedFrom: found.redirectedFrom } : {}),
       ok: probe.ok,
       detail: probe.detail,
     });
@@ -923,6 +936,7 @@ async function cmdDiscover(): Promise<void> {
       `method:  ${found.via === "fallback" ? "no SRV record — well-known fallback" : `SRV _jmap._tcp (${found.via})`}`,
     );
     out(`base:    ${found.base}`);
+    if (found.redirectedFrom) out(`         (${found.redirectedFrom} redirected the session resource here)`);
     out(`session: ${probe.ok ? "✓" : "✗"} ${probe.detail}`);
   }
   process.exit(probe.ok ? EXIT.OK : EXIT.FAIL);
