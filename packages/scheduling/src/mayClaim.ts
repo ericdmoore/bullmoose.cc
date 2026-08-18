@@ -91,6 +91,18 @@ export interface BudgetState {
    */
   budgetExhausted: boolean;
   /**
+   * s17 — this row is HANDED-OFF work and the binding that handed it is out of
+   * money for the month. Pure twin of `handoffOriginBudgetExhaustedSql`.
+   *
+   * OPTIONAL, and absent means false, which is the DefaultCase in the strong
+   * sense: an ordinary invocation was not handed to anyone, so there is no
+   * second month to consult and a caller that predates handoffs states nothing
+   * and gets exactly today's verdict. Compute it with `budgetExhausted()` over
+   * the HANDING binding's numbers — same function, different binding — so the
+   * two months can never be arithmetically different questions.
+   */
+  handoffOriginBudgetExhausted?: boolean;
+  /**
    * A free claimant (`claimant_free = 1`) claimed on this account within
    * FREE_RUNTIME_LIVE_MS of now — readme decision 3's absence-inference.
    */
@@ -292,6 +304,8 @@ export function fit(capabilities: ClaimCapabilities | null | undefined, requires
  *   2. budget exhausted    → never, regardless of due-ness. Exhaustion narrows
  *      the claimant set; it does not fail the invocation. (Past-due liveness
  *      is T3's watchdog, which claims OUTSIDE this gate.)
+ *   2b. the HANDING binding's budget exhausted (s17, handed-off rows only) →
+ *      never, for the same reason and by the same arithmetic.
  *   3. due_at set          → eligible from (due_at − escalationWindow) on,
  *      past-due included.
  *   4. due_at NULL         → eligible unless a free runtime is live (the
@@ -307,6 +321,13 @@ export function policy(
   if (claimant.isFree) return true;
   if (facets.privacy === "pinned") return false;
   if (budget.budgetExhausted) return false;
+  // s17 — and the HANDING binding's month, for handed-off work only. A
+  // CONJUNCTION with the line above, never a substitution: a binding that has
+  // spent its month must not be able to keep working on a colleague's money by
+  // handing its backlog over. See `handoffOriginBudgetExhaustedSql` for the
+  // full budget decision and for why the sender's cap is a gate rather than a
+  // purse.
+  if (budget.handoffOriginBudgetExhausted === true) return false;
   if (facets.dueAt !== null) return facets.dueAt - budget.escalationWindowMs <= now;
   return !budget.freeRuntimeLive;
 }

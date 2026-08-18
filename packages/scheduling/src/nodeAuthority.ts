@@ -137,6 +137,19 @@ export interface BindingJobConfig {
   budgetMicros?: unknown;
   maxNodes?: unknown;
   maxDepth?: unknown;
+  /**
+   * s17 — `{ mayHandTo?: string[], acceptsFrom?: string[] }`, the reciprocal
+   * agent-to-agent handoff allowlists (`parseHandoffPolicy`, handoff.ts).
+   *
+   * It is declared HERE, beside the ceiling keys, so `config_json.jobs` has one
+   * documented shape — but it is NOT read by `bindingCeiling` and it must never
+   * be: a ceiling is a bound on what work may do, and this is a route between
+   * bindings. Absent reads as NO handoff (fail-closed), which is the opposite
+   * of how every key above degrades, and mixing the two readings in one
+   * function is exactly how a fail-closed control quietly becomes a
+   * fail-open one.
+   */
+  handoff?: unknown;
 }
 
 export function bindingCeiling(
@@ -382,7 +395,7 @@ async function delegationChain(
   accountId: string,
   node: Pick<JobNodeRow, "id" | "binding_id" | "job_id" | "parent_id" | "authority_json">,
 ): Promise<
-  | { ok: true; envelopes: Array<string | null>; crossings: ChainBinding[] }
+  | { ok: true; hops: ChainHop[]; envelopes: Array<string | null>; crossings: ChainBinding[] }
   | { ok: false; denial: AuthorityDenial; note: string }
 > {
   const deny = (why: string, requested: string): { ok: false; denial: AuthorityDenial; note: string } => {
@@ -448,7 +461,43 @@ async function delegationChain(
     });
   }
 
-  return { ok: true, envelopes: hops.map((h) => h.authorityJson), crossings };
+  return { ok: true, hops, envelopes: hops.map((h) => h.authorityJson), crossings };
+}
+
+/**
+ * THE CHAIN, AS A ROUTE — root-first `{invocationId, bindingId}` for every hop
+ * above and including this node.
+ *
+ * s17's handoff needs to know which bindings a piece of work has already passed
+ * under, to refuse a cycle (no binding twice) and to count crossings against
+ * `HANDOFF_MAX_HOPS`. It reads THE SAME WALK the authority fold does rather
+ * than a second query of its own, and that is the whole reason it lives here:
+ * a loop check that disagreed with the fold about what the chain is would be a
+ * loop check on a different graph.
+ *
+ * Fail-closed by inheritance. Every refusal `delegationChain` makes — an
+ * unbounded walk, a `parent_id` cycle, a missing parent, a graft into another
+ * Job — is returned here unchanged, so "I cannot read this chain" is never
+ * answered with a short route. A chain nobody can read is not a chain nobody
+ * has crossed.
+ *
+ * An invocation with no `job_id` has no chain at all and returns an EMPTY
+ * route rather than a denial: it is the DefaultCase, not a fault, and the
+ * caller (which knows whether a Job is required) decides what an empty route
+ * means. `handOff` requires a Job and says so in its own words.
+ */
+export async function delegationPath(
+  env: AuthorityDb,
+  accountId: string,
+  node: Pick<JobNodeRow, "id" | "binding_id" | "job_id" | "parent_id" | "authority_json">,
+): Promise<
+  | { ok: true; path: Array<{ invocationId: string; bindingId: string }> }
+  | { ok: false; denial: AuthorityDenial; note: string }
+> {
+  if (!node.job_id) return { ok: true, path: [] };
+  const chain = await delegationChain(env, accountId, node);
+  if (!chain.ok) return chain;
+  return { ok: true, path: chain.hops.map((h) => ({ invocationId: h.id, bindingId: h.bindingId })) };
 }
 
 /**

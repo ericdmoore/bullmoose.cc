@@ -289,10 +289,17 @@ describe("axis: urgency — a child may not be due before its parent", () => {
 });
 
 describe("axis: identity — decomposition decides structure, never permission", () => {
-  it("REFUSES a child on another binding (that is agents:invoke, still deferred)", () => {
+  it("REFUSES a child on another binding — a cross-binding hop is a HANDOFF, not a plan entry", () => {
+    // s17 un-defers `agents:invoke`, and this refusal is what SURVIVED it. A
+    // handoff builds a narrowed ceiling (sender ∩ receiver) whose `bindingId`
+    // IS the receiver's and hands THAT to this function, so a plan that names
+    // another binding directly — skipping the reciprocal allowlists, the cycle
+    // rule and the intersection — is refused exactly as it always was. The
+    // refusal is the seam, not the ban.
     const r = refusals(parent(), { bindingId: "bind_cj" });
     expect(r.map((x) => x.axis)).toEqual(["identity"]);
-    expect(r[0]!.why).toContain("agents:invoke");
+    expect(r[0]!.why).toContain("HANDOFF");
+    expect(r[0]!.why).toContain("a plan may not mint one directly");
   });
 
   it("REFUSES a child on another account", () => {

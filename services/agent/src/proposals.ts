@@ -1,5 +1,11 @@
 import { commitChanges } from "@bullmoose/account-do";
-import { effectiveNodeAuthority, type JobNodeRow } from "@bullmoose/scheduling";
+import {
+  describeHandoff,
+  effectiveNodeAuthority,
+  parseHandoffProvenance,
+  type HandoffProvenance,
+  type JobNodeRow,
+} from "@bullmoose/scheduling";
 import { buildMime } from "@bullmoose/mime";
 import type { Mailstore } from "@bullmoose/mailstore";
 import { callWithFallback, invocationCost, type BindingConfig, type Env, type InvocationCost } from "./models.js";
@@ -62,6 +68,7 @@ export async function emitProposal(
   spec: ProposalSpec,
 ): Promise<string> {
   const now = Date.now();
+  const { rationale, evidence } = withHandoffProvenance(spec, await handoffOf(env, job));
   await env.DB.prepare(
     `INSERT INTO agent_proposals
        (id, account_id, kind, tier, subject_json, payload_json, rationale,
@@ -75,8 +82,8 @@ export async function emitProposal(
       spec.tier,
       JSON.stringify(spec.subject),
       JSON.stringify(spec.payload),
-      spec.rationale,
-      JSON.stringify(spec.evidence),
+      rationale,
+      JSON.stringify(evidence),
       now,
       spec.expiresAt ?? now + (spec.expiresInMs ?? DEFAULT_EXPIRY_MS),
     )
@@ -403,4 +410,69 @@ export async function expireStaleProposals(env: Env): Promise<void> {
       { collection: "ActionProposal", created: [], updated: ids, destroyed: [] },
     ]);
   }
+}
+
+/**
+ * s17 — PROVENANCE SURVIVES THE HOP.
+ *
+ * A handed-off node is an ordinary invocation, so everything it proposes goes
+ * through `emitProposal` — which means this is the ONE place that has to know
+ * about handoffs for every proposal kind to carry the chain. `reply-draft`,
+ * `budget-overrun`, and whatever s17's successors add all inherit it here
+ * rather than each remembering to.
+ *
+ * ── WHY IT LANDS IN `rationale` AND `evidence` AND NOT A NEW COLUMN ────────
+ * The Activity realm (s23) is the retrospective surface for exactly this
+ * question — *"what happened in my name?"* — and it reads DECIDED
+ * `ActionProposal` rows, projecting `rationale` ("the agent's why") and
+ * `evidence[]` ("looked at:") straight onto the row (`ActivityRows.tsx`). Both
+ * already render, in `/activity` and in `/approvals`. A new `handoff_json`
+ * column would need a migration, a JMAP projection, a webmail parser and a
+ * renderer to say a sentence two shipped fields already say — and it would say
+ * it only where somebody remembered to read it. So the chain rides the surfaces
+ * that exist:
+ *
+ *   rationale   PREFIXED with "emily handed this to allen — <why>." A human
+ *               scanning the queue sees whose decision this was before they
+ *               read what is being asked, because "why is Allen drafting this?"
+ *               is the first question a delegated proposal raises.
+ *   evidence    one entry pointing at the HANDING INVOCATION, realm
+ *               `AgentInvocation`, so the note is anchored to a row somebody
+ *               can go and read rather than to a name.
+ *
+ * The agent's own rationale is never REWRITTEN, only preceded — the
+ * `editedPayload` discipline (`webmail/src/lib/approvals/types.ts`:
+ * "rationale/evidence are never rewritten") applies to the agent's words, and
+ * losing them to make room for the chain would trade one provenance for
+ * another.
+ *
+ * FAIL-SOFT, deliberately: an unreadable context reads as "no handoff" and the
+ * proposal is emitted unchanged. A provenance note is not an authorization —
+ * nothing is gated on it — so a failure to decorate must never cost a human the
+ * decision itself. The gates that ARE load-bearing (the fold, the claim gate,
+ * `/approvals`) all fail closed; this one fails quiet, because that is the
+ * direction that keeps a legible mistake from becoming a lost proposal.
+ */
+async function handoffOf(env: Env, job: Pick<ProposalJob, "id" | "account_id">): Promise<HandoffProvenance | null> {
+  try {
+    const row = await env.DB.prepare(`SELECT context_json FROM agent_invocations WHERE account_id = ? AND id = ?`)
+      .bind(job.account_id, job.id)
+      .first<{ context_json: string | null }>();
+    return parseHandoffProvenance(row?.context_json);
+  } catch {
+    return null;
+  }
+}
+
+/** Pure half of the above — the decoration, so it is testable without a DB. */
+export function withHandoffProvenance(
+  spec: Pick<ProposalSpec, "rationale" | "evidence">,
+  handoff: HandoffProvenance | null,
+): { rationale: string; evidence: ProposalSpec["evidence"] } {
+  if (handoff === null) return { rationale: spec.rationale, evidence: spec.evidence };
+  const sentence = describeHandoff(handoff);
+  return {
+    rationale: `${sentence}. ${spec.rationale}`,
+    evidence: [...spec.evidence, { realm: "AgentInvocation", objectId: handoff.from.invocationId, note: sentence }],
+  };
 }
