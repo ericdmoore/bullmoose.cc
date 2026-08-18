@@ -29,7 +29,7 @@ import { sweepWaitingOn } from "./waitingOn.js";
 import { runBouncer } from "./bouncer.js";
 import { runRemind } from "./remind.js";
 import { runExtract } from "./extract.js";
-import { parseVerbRequest, runMailVerb } from "./mailVerbs.js";
+import { parseVerbRequest, runComposeVerb, runMailVerb, verbNeedsEmail } from "./mailVerbs.js";
 import { surplusBackfill } from "./surplusBackfill.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
@@ -675,6 +675,21 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
     return runJobNode(env, job, context, done);
   }
 
+  // s20 T3 — `compose`, the front door of writing. Dispatched HERE, above the
+  // email requirement, for the reason the three kinds above are: an intent
+  // typed into the composer ("ask Sergio whether he's comfortable with me
+  // selling assembled boards") names its own recipient and usually has no
+  // source message at all, so the requirement below would fail a verb the
+  // human pressed. When the composer DID find a recent exchange with that
+  // person it passes the id along, and the row is loaded as background —
+  // tolerantly, because a missing anchor must degrade to "no context", never
+  // to a failed ask.
+  const earlyVerb = parseVerbRequest(context);
+  if (earlyVerb && !verbNeedsEmail(earlyVerb.verb)) {
+    const anchor = job.email_id ? await store.getEmailRow(job.account_id, job.email_id) : null;
+    return runComposeVerb(env, job, cfg, anchor, earlyVerb, done);
+  }
+
   if (!job.email_id) return done("failed", { note: "no email context" });
   const email = await store.getEmailRow(job.account_id, job.email_id);
   if (!email) return done("failed", { note: `email ${job.email_id} missing` });
@@ -696,7 +711,7 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   // CONVERSING with automation, which drafting into your own Drafts folder is
   // not. Anything that is not a known verb parses to null and falls through
   // to the pipelines below exactly as before. See mailVerbs.ts.
-  const verbRequest = parseVerbRequest(context);
+  const verbRequest = earlyVerb;
   if (verbRequest) return runMailVerb(env, job, cfg, email, parsed, verbRequest, done);
 
   // Ledger pipeline diverges before any reply-path gate: receipts come

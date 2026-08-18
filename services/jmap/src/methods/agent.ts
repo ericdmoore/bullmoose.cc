@@ -13,6 +13,16 @@ import {
 import { accountState, proxyChanges, requireAccount, setError, type RequestContext, type SetError } from "./common";
 
 /**
+ * The verbs an invocation may carry with NO message to act on — s20 T3's
+ * `compose`, the composer's intent mode. Mirrors `NO_EMAIL_VERBS` in
+ * `services/agent/src/mailVerbs.ts`, which is where the runtime dispatches
+ * them above its own email requirement. Two copies, because a Worker cannot
+ * import across services; a verb missing from this one is refused at the door
+ * rather than stranded in the queue, which is the safe direction.
+ */
+const NO_EMAIL_VERBS = new Set<string>(["compose"]);
+
+/**
  * AgentInvocation methods (urn:bullmoose:params:jmap:agent) — the
  * pull-based invocation queue from agent-integration.md §2. Runtimes
  * (bullmoose agent serve, cloud workers) watch the changelog for pending
@@ -248,8 +258,31 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
       // (`services/agent/src/index.ts` — `if (!job.email_id) …failed`), so a
       // no-email invocation is marked failed within one drain cycle. This is
       // the "invoke on a thread" framing s03.D T3 asks for.
+      //
+      // ONE EXCEPTION, and it exists because the runtime's own requirement now
+      // has one: s20 T3's `compose` verb is dispatched ABOVE that check (the
+      // shape `answer-info-request`, `bouncer-classify` and `job-node` already
+      // use), because "what do you want to happen?" typed into the composer
+      // names its own recipient and usually has no source message at all.
+      // Refusing it here would refuse a verb the human pressed, for a reason
+      // that is no longer true. Everything else keeps the hard requirement
+      // verbatim — including an `answer` with no message, which really would
+      // fail one drain cycle later.
+      //
+      // ⚠️ This list is the second copy of `NO_EMAIL_VERBS`
+      // (services/agent/src/mailVerbs.ts); a Worker cannot import across
+      // services, so the two are kept honest by tests on both sides rather
+      // than by the compiler. A verb added there without being added here is
+      // refused at the door, which is the safe direction to be wrong in.
+      const params =
+        props.params && typeof props.params === "object" && !Array.isArray(props.params)
+          ? (props.params as Record<string, unknown>)
+          : undefined;
+      const verb = typeof params?.verb === "string" ? params.verb : undefined;
+      const emailOptional = verb !== undefined && NO_EMAIL_VERBS.has(verb);
+
       const emailId = typeof props.emailId === "string" ? props.emailId : undefined;
-      if (!emailId) {
+      if (!emailId && !emailOptional) {
         notCreated[cid] = {
           type: "invalidProperties",
           description: "emailId is required — invoke acts on an existing message",
@@ -257,16 +290,20 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
         };
         continue;
       }
-      const email = await ctx.env.DB.prepare(`SELECT id FROM emails WHERE account_id = ? AND id = ?`)
-        .bind(access.accountId, emailId)
-        .first<{ id: string }>();
-      if (!email) {
-        notCreated[cid] = {
-          type: "invalidProperties",
-          description: `email "${emailId}" not found in this account`,
-          properties: ["emailId"],
-        };
-        continue;
+      if (emailId) {
+        // Supplied is supplied: a compose that names a background message must
+        // still name a REAL one, or the id is a lie the runtime would carry.
+        const email = await ctx.env.DB.prepare(`SELECT id FROM emails WHERE account_id = ? AND id = ?`)
+          .bind(access.accountId, emailId)
+          .first<{ id: string }>();
+        if (!email) {
+          notCreated[cid] = {
+            type: "invalidProperties",
+            description: `email "${emailId}" not found in this account`,
+            properties: ["emailId"],
+          };
+          continue;
+        }
       }
 
       // context_json mirrors ingest's shape but omits `envelopeTo`: an
@@ -274,7 +311,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
       // the ledger digest-target selection. The human's reason rides in `note`.
       const threadId = typeof props.threadId === "string" ? props.threadId : undefined;
       const note = typeof props.note === "string" ? props.note : undefined;
-      const context: Record<string, unknown> = { emailId };
+      const context: Record<string, unknown> = emailId ? { emailId } : {};
       if (threadId) context.threadId = threadId;
       if (note) context.note = note;
       if (props.params !== undefined) context.params = props.params;
@@ -331,7 +368,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
             access.accountId,
             binding.id,
             binding.name,
-            emailId,
+            emailId ?? null,
             JSON.stringify(context),
             createdAt,
             access.accountId,
@@ -356,7 +393,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
              (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at)
            VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
         )
-          .bind(invId, access.accountId, binding.id, binding.name, emailId, JSON.stringify(context), createdAt)
+          .bind(invId, access.accountId, binding.id, binding.name, emailId ?? null, JSON.stringify(context), createdAt)
           .run();
       }
       created[cid] = {
@@ -364,7 +401,7 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
         bindingId: binding.id,
         bindingName: binding.name,
         status: "pending",
-        emailId,
+        emailId: emailId ?? null,
         createdAt: new Date(createdAt).toISOString(),
       };
     }

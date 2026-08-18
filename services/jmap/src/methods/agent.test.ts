@@ -165,6 +165,64 @@ describe("AgentInvocation/set create rejects each bad target distinguishably", (
 
 // ---- destroy --------------------------------------------------------------
 
+describe("AgentInvocation/set create and the one verb that acts on no message", () => {
+  // s20 T3. The emailId requirement exists because the runtime hard-required
+  // email context; `compose` is dispatched ABOVE that check now (services/agent
+  // index.ts), so refusing it here would refuse a verb the human pressed for a
+  // reason that is no longer true. The list is deliberately tiny and everything
+  // outside it keeps the hard requirement verbatim.
+  it("a compose may carry no emailId, and lands a drainable row with email_id NULL", async () => {
+    const h = harness();
+    const res = await h.set({
+      create: {
+        c: { bindingName: "emily", params: { verb: "compose", person: "sergio@boards.example", intent: "ask Sergio" } },
+      },
+    });
+    expect(res.notCreated).toEqual({});
+    expect(res.created.c!.emailId).toBeNull();
+
+    const row = h.w.db.query<{ email_id: string | null; status: string; context_json: string }>(
+      `SELECT email_id, status, context_json FROM agent_invocations`,
+    )[0]!;
+    expect(row.email_id).toBeNull();
+    expect(row.status).toBe("pending");
+    // The context carries the params and NOT an emailId key it does not have.
+    const context = JSON.parse(row.context_json);
+    expect(context.emailId).toBeUndefined();
+    expect(context.params.verb).toBe("compose");
+  });
+
+  it("a compose MAY still name background, and a fake id is still refused", async () => {
+    const h = harness();
+    const ok = await h.set({
+      create: { c: { bindingName: "emily", emailId: EMAIL, params: { verb: "compose", person: "s@x.test" } } },
+    });
+    expect(ok.notCreated).toEqual({});
+    expect(ok.created.c!.emailId).toBe(EMAIL);
+
+    const bad = await h.set({
+      create: { c: { bindingName: "emily", emailId: "e_ghost", params: { verb: "compose" } } },
+    });
+    expect(bad.notCreated.c!.type).toBe("invalidProperties");
+    expect(bad.notCreated.c!.properties).toContain("emailId");
+  });
+
+  it("every OTHER verb keeps the hard requirement — including one with no params at all", async () => {
+    const h = harness();
+    const answer = await h.set({ create: { c: { bindingName: "emily", params: { verb: "answer" } } } });
+    expect(answer.notCreated.c!.type).toBe("invalidProperties");
+    expect(answer.notCreated.c!.properties).toContain("emailId");
+
+    const bare = await h.set({ create: { c: { bindingName: "emily" } } });
+    expect(bare.notCreated.c!.type).toBe("invalidProperties");
+
+    const junk = await h.set({ create: { c: { bindingName: "emily", params: ["compose"] } } });
+    expect(junk.notCreated.c!.type).toBe("invalidProperties");
+
+    expect(h.w.db.count("agent_invocations")).toBe(0);
+  });
+});
+
 describe("AgentInvocation/set destroy purges an invocation", () => {
   it("destroys a pending invocation; it leaves /get and appears in /changes", async () => {
     const h = harness();

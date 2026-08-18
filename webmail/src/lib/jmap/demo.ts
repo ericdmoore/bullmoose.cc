@@ -925,13 +925,24 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
           notCreated[cid] = { type: "notFound", description: `no such binding "${name}" on this account` };
           continue;
         }
-        if (typeof spec.emailId !== "string" || !findEmail(spec.emailId)) {
+        // Mirrors the server's one exception (services/jmap agent.ts,
+        // `NO_EMAIL_VERBS`): s20 T3's `compose` may carry no message at all,
+        // because a new message usually has none. Supplied is still checked —
+        // a compose that names background must name a real message.
+        const verb = (spec.params as { verb?: unknown } | undefined)?.verb;
+        const emailOptional = verb === "compose";
+        if (typeof spec.emailId !== "string" && !emailOptional) {
           notCreated[cid] = { type: "invalidProperties", description: "emailId is required" };
           continue;
         }
+        if (typeof spec.emailId === "string" && !findEmail(spec.emailId)) {
+          notCreated[cid] = { type: "invalidProperties", description: `email "${spec.emailId}" not found` };
+          continue;
+        }
+        const emailId = typeof spec.emailId === "string" ? spec.emailId : null;
         const id = `inv_demo_${invocations.length + 1}`;
-        invocations.push({ id, bindingName: name, emailId: spec.emailId, status: "pending", params: spec.params });
-        created[cid] = { id, bindingName: name, status: "pending", emailId: spec.emailId };
+        invocations.push({ id, bindingName: name, emailId, status: "pending", params: spec.params });
+        created[cid] = { id, bindingName: name, status: "pending", emailId };
       }
       return { accountId: ACCOUNT, oldState: state(), newState: bump(), created, notCreated };
     },

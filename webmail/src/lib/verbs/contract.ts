@@ -31,8 +31,12 @@ import type { Email, EmailAddress } from "../mail/types";
 export const VERB_BINDING_NAME = "extractor";
 
 /** The verbs that compile to an agent invocation. Watch does not: it arms
- *  through `Watch/set`, the CRUD s20 T1 already shipped. */
-export type AgentVerb = "answer" | "bring-in";
+ *  through `Watch/set`, the CRUD s20 T1 already shipped.
+ *
+ *  `compose` (s20 T3) is the composer's intent mode — the only one of the
+ *  three that acts on no message at all, which is why its invocation carries
+ *  no `emailId` unless the lookup found background worth naming. */
+export type AgentVerb = "answer" | "bring-in" | "compose";
 
 /**
  * The default Watch contract a bare "watch this" arms (s20 T1, decision 1):
@@ -127,7 +131,23 @@ export function watchArmedMessage(spec: WatchSpec): string {
 
 /** What the message view says while an ask is in flight, and after it lands. */
 export function askSentMessage(verb: AgentVerb, person?: string): string {
-  return verb === "answer"
-    ? "Asked. The draft reply will appear in your approvals when it is written."
-    : `Asked. A draft bringing ${person ?? "them"} in will appear in your approvals when it is written.`;
+  if (verb === "answer") return "Asked. The draft reply will appear in your approvals when it is written.";
+  if (verb === "compose") return composeAskedMessage(person ?? "them");
+  return `Asked. A draft bringing ${person ?? "them"} in will appear in your approvals when it is written.`;
+}
+
+/**
+ * What the composer says once an intent has been sent (s20 T3).
+ *
+ * Three facts, and the third is the one that must never be dropped: where the
+ * draft will appear, who it is to, and that NOTHING has been sent. T3 ends at
+ * an editable draft by construction — approval writes into your own Drafts and
+ * your own composer does the sending — so the sentence says so out loud rather
+ * than leaving a person to wonder what they just set in motion.
+ */
+export function composeAskedMessage(to: string): string {
+  return (
+    `Asked. A draft to ${to} will appear in your approvals when it is written — ` +
+    "you edit it there, and nothing is sent until you send it."
+  );
 }
