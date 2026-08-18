@@ -1,10 +1,10 @@
 bullmoose-help-artifact 1
-spec packages/cli/src/help.ts sha256=8dca1897527aa714e0376dbf81b829068c6cbc237e4da0e7f37ab723dd377dd5
-body sha256=cdea0df423b69a9d047ffdb24b81d078a2b8d351e954353f7c11ab0b3f95f0c8
+spec packages/cli/src/help.ts sha256=0a548071677fc7a2d137ee70ea752333be05d7962a204feb1c9f1929543efab2
+body sha256=02d5921384296d6268b133424f71669ec284c40d28f7549c876b875f8eb633a4
 placeholder __BM_TOPIC__
 commands help login discover init token accounts sync send read watch vacation agent models local contacts calendar creds log search show mailboxes mailbox flag seen move label archive junk trash rm delete blobs share identity admin
 --
-entry json 0 68529 0
+entry json 0 74684 0
 {
   "name": "bullmoose",
   "tagline": "the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP",
@@ -436,9 +436,9 @@ entry json 0 68529 0
     },
     {
       "name": "agent",
-      "synopsis": "bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId>",
-      "summary": "run the homelab agent runtime (single binding or fleet host), and trigger agents on demand",
-      "description": "`serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and runs the binding's pipeline. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config (`apiKeyEnv` absent on openai-compatible = a keyless @local endpoint like Ollama). --once drains and exits (cron-friendly). With --config the config's `binding` must match the server-side binding name (see `admin agent bind`).\n\nPipelines (s26 T6): the config's `pipeline` field picks the pass — `reply` (default) drafts replies in template mode; `extract` mirrors the cloud extraction pass (List-Unsubscribe skip, cue pre-filter, idempotence by sourceRef) and writes commitment/decision/task Annotations over Annotation/set, so the login's token needs the `annotate` scope. An extract config may carry a `modelMenu` (fallback chain, best first — config order is the ranking) and `frontier: {exploreRate}` (deterministic per-invocation exploration, the s26 T5a assignment). The runner claims as the FREE claimant and records cost honestly in the result: 0 only for genuinely free routes (mock, keyless @local, or `free: true`), null where undetermined.\n\n--fleet (s11 T8) turns the process into a FLEET HOST: ONE login as a runtime principal serving N bindings across N accounts. Which accounts it serves is DISCOVERED from grants, not declared — each agent account grants the runtime principal claim authority (a whole-account grant whose scopes cover `draft`), and the daemon serves whatever granted it. Adding an agent = minting a grant (no restart); revoking the grant stops that binding's claims without touching the rest. fleet.json maps binding name → {persona, model} and may declare host `capabilities` {vision, contextTokens, tools} — the daemon then skips invocations whose declared requirements it cannot satisfy. Model configs stay local: they describe the host's capability, never an agent's identity.\n\n`invoke` (sVOL 007) is the on-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.",
+      "synopsis": "bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId> | show <binding> | budget <binding> [--set <µUSD>] | model <binding> [--set <host>/<model>] [--explore <host>/<model>]… | backfill <binding> --since <date> [--budget <µUSD>] [--request-floor] | enable|disable <binding>",
+      "summary": "run the homelab agent runtime (single binding or fleet host), trigger agents on demand, and read or tune one agent's dossier",
+      "description": "`serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and runs the binding's pipeline. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config (`apiKeyEnv` absent on openai-compatible = a keyless @local endpoint like Ollama). --once drains and exits (cron-friendly). With --config the config's `binding` must match the server-side binding name (see `admin agent bind`).\n\nPipelines (s26 T6): the config's `pipeline` field picks the pass — `reply` (default) drafts replies in template mode; `extract` mirrors the cloud extraction pass (List-Unsubscribe skip, cue pre-filter, idempotence by sourceRef) and writes commitment/decision/task Annotations over Annotation/set, so the login's token needs the `annotate` scope. An extract config may carry a `modelMenu` (fallback chain, best first — config order is the ranking) and `frontier: {exploreRate}` (deterministic per-invocation exploration, the s26 T5a assignment). The runner claims as the FREE claimant and records cost honestly in the result: 0 only for genuinely free routes (mock, keyless @local, or `free: true`), null where undetermined.\n\n--fleet (s11 T8) turns the process into a FLEET HOST: ONE login as a runtime principal serving N bindings across N accounts. Which accounts it serves is DISCOVERED from grants, not declared — each agent account grants the runtime principal claim authority (a whole-account grant whose scopes cover `draft`), and the daemon serves whatever granted it. Adding an agent = minting a grant (no restart); revoking the grant stops that binding's claims without touching the rest. fleet.json maps binding name → {persona, model} and may declare host `capabilities` {vision, contextTokens, tools} — the daemon then skips invocations whose declared requirements it cannot satisfy. Model configs stay local: they describe the host's capability, never an agent's identity.\n\n`invoke` (sVOL 007) is the on-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.\n\nThe DOSSIER verbs (s26 T6) read and tune ONE named binding — `<binding>` is its name or its id, resolved on the account `--account` selects, exactly as everywhere else. `show` is the whole dossier: address, pipeline, enabled state, model menu (primary + explore arms), budget spent-vs-remaining this cycle in the same arithmetic the claim gate enforces, the work-ledger counts, the recent invocations with their frozen cost (a null cost prints \"not recorded\", never a flattering $0.00), and the backfill history floor. `--json` emits the whole structure as one object with `_self`/`_links` (the console projection it was read from, and the lifecycle chain when the operator plane is configured).\n\nThe verbs sit on THREE different doors and each says which. Reads and `enable`/`disable` are SESSION-reachable on your own mail token: reads go to the console projection (`read` scope, owner-only) and the kill switch to `AgentBinding/set`, which is gated on the `send` scope — a supervisory grant and an agent token both lack it, so neither can throw a switch. `budget --set`, `model --set/--explore` and `backfill` are OPERATOR-plane (the provision worker's ADMIN_TOKEN, from `admin init`): `AgentBinding/set` writes only `enabled` and `PATCH /agent-bindings` refuses `config_json` by design, so the money and the menu have no session door. When a door is out of reach the command says exactly that, names the call that would work, and writes nothing — it never reports success it did not get, and server refusals are printed verbatim rather than re-worded into a guess.\n\nTwo hazards the verbs surface rather than hide. The only budget/model door is `POST /extractor`, a re-provision-in-place that rewrites the binding's whole config — so `budget --set` and `model --set` read the current menu, arms, rate and maxTokens back first and re-send them unchanged, and because that door also sets `enabled = 1`, re-provisioning a DISABLED binding is refused (exit 5) unless `--yes` accepts the re-enable. And `backfill` requires `--since`: the route assumes 90 days when nobody names a window, and how far into an archive an agent reads is not a default a CLI should pick. A window reaching behind the binding's history floor is refused with the server's own sentence and NOTHING is queued — moving the floor back is a tier-1 approval, which `--request-floor` mints (and only mints: it queues no work).",
       "subcommands": [
         {
           "name": "serve",
@@ -459,6 +459,31 @@ entry json 0 68529 0
           "name": "rm",
           "synopsis": "agent rm <invId>",
           "summary": "purge an invocation (a running one is refused)"
+        },
+        {
+          "name": "show",
+          "synopsis": "agent show <binding> [--account <sel>] [--json|--ids]",
+          "summary": "the agent's dossier: pipeline, state, model menu, budget spent-vs-remaining, queue, recent cost, floor"
+        },
+        {
+          "name": "budget",
+          "synopsis": "agent budget <binding> [--set <µUSD>] [--dry-run] [--yes]",
+          "summary": "read the spend envelope; --set writes it through the operator-plane re-provision (ADMIN_TOKEN)"
+        },
+        {
+          "name": "model",
+          "synopsis": "agent model <binding> [--set <host>/<model>] [--explore <host>/<model>]… [--dry-run] [--yes]",
+          "summary": "read the model menu; --set swaps the primary and --explore REPLACES the frontier arms (ADMIN_TOKEN)"
+        },
+        {
+          "name": "backfill",
+          "synopsis": "agent backfill <binding> --since <YYYY-MM-DD|ISO|Nd> [--budget <µUSD>] [--request-floor] [--dry-run]",
+          "summary": "mint pending invocations over the archive, floor-bounded; --request-floor asks instead (ADMIN_TOKEN)"
+        },
+        {
+          "name": "enable / disable",
+          "synopsis": "agent enable|disable <binding> [--account <sel>] [--dry-run]",
+          "summary": "the kill switch, over AgentBinding/set on your own session token (needs the `send` scope)"
         }
       ],
       "flags": [
@@ -481,6 +506,30 @@ entry json 0 68529 0
         {
           "flag": "--note <text>",
           "desc": "invoke: a human note stored in the invocation context"
+        },
+        {
+          "flag": "--set <value>",
+          "desc": "budget: the monthly cap in micro-USD (2000000 = $2.00). model: the primary candidate as <host>/<model> — the same string `show` prints"
+        },
+        {
+          "flag": "--explore <host>/<model>",
+          "desc": "model: a frontier arm (s26 T5a); repeatable. REPLACES the existing arms, so pass every one you want kept"
+        },
+        {
+          "flag": "--since <date>",
+          "desc": "backfill: how far back to reach — YYYY-MM-DD, an ISO datetime, or <n>d. REQUIRED; there is no default window"
+        },
+        {
+          "flag": "--budget <µUSD>",
+          "desc": "backfill: this run's own envelope, enforced at the claim gate. Omitted, the rows draw on the binding's monthly budget instead"
+        },
+        {
+          "flag": "--request-floor",
+          "desc": "backfill: mint the tier-1 approval to move the history floor back INSTEAD of backfilling — it queues no work"
+        },
+        {
+          "flag": "--yes",
+          "desc": "budget/model: accept that the re-provision door re-enables a binding you had disabled"
         }
       ],
       "examples": [
@@ -510,6 +559,30 @@ entry json 0 68529 0
         {
           "cmd": "bullmoose agent serve --config extractor.json --once",
           "note": "extractor.json: {\"binding\":\"extractor\",\"pipeline\":\"extract\",\"model\":{\"provider\":\"openai-compatible\",\"baseURL\":\"http://localhost:11434\"}}"
+        },
+        {
+          "cmd": "bullmoose agent show extractor",
+          "note": "the whole dossier for one agent"
+        },
+        {
+          "cmd": "bullmoose agent show extractor --json | jq '.budget.remainingMicros'",
+          "note": "one object, so jq reads it without a wrapper"
+        },
+        {
+          "cmd": "bullmoose agent disable extractor",
+          "note": "the kill switch, on your own session token"
+        },
+        {
+          "cmd": "bullmoose agent budget extractor --set 5000000",
+          "note": "$5.00/month; operator plane"
+        },
+        {
+          "cmd": "bullmoose agent model extractor --set openrouter/minimax/minimax-m3 --explore openrouter/qwen/qwen3-30b",
+          "note": "swap the primary and set the frontier arms in one re-provision"
+        },
+        {
+          "cmd": "bullmoose agent backfill extractor --since 30d --budget 500000 --dry-run",
+          "note": "see the exact request before any invocation is minted"
         }
       ],
       "seeAlso": [
@@ -1528,7 +1601,7 @@ entry json 0 68529 0
 }
 
 
-entry man 0 52351 0
+entry man 0 57668 0
 .TH BULLMOOSE 1 "" "bullmoose" "User Commands"
 .SH NAME
 bullmoose \- the CLI for the bullmoose personal\-data platform — mail, contacts, calendar, email\-native agents, and operator admin, over JMAP
@@ -1583,7 +1656,7 @@ push\-triggered live sync: print new mail as it arrives
 manage the RFC 8621 vacation responder
 .TP
 .B agent
-run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+run the homelab agent runtime (single binding or fleet host), trigger agents on demand, and read or tune one agent's dossier
 .TP
 .B models
 list the models OpenAI\-compatible hosts serve — the @local /v1/models sweep
@@ -1952,7 +2025,7 @@ bullmoose vacation on \-\-subject "Away" \-\-body "Back Monday." \-\-until 2026\
 .SS agent
 .B Synopsis:
 .br
-bullmoose agent serve \-\-config <agent.json>|\-\-fleet <fleet.json> [\-\-once] | invoke <binding> \-\-email <id> | invocations [<status>] | rm <invId>
+bullmoose agent serve \-\-config <agent.json>|\-\-fleet <fleet.json> [\-\-once] | invoke <binding> \-\-email <id> | invocations [<status>] | rm <invId> | show <binding> | budget <binding> [\-\-set <µUSD>] | model <binding> [\-\-set <host>/<model>] [\-\-explore <host>/<model>]… | backfill <binding> \-\-since <date> [\-\-budget <µUSD>] [\-\-request\-floor] | enable|disable <binding>
 .PP
 `serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and runs the binding's pipeline. Providers: mock | anthropic | openai\-compatible; API keys by env reference, never in the config (`apiKeyEnv` absent on openai\-compatible = a keyless @local endpoint like Ollama). \-\-once drains and exits (cron\-friendly). With \-\-config the config's `binding` must match the server\-side binding name (see `admin agent bind`).
 
@@ -1961,6 +2034,12 @@ Pipelines (s26 T6): the config's `pipeline` field picks the pass — `reply` (de
 \-\-fleet (s11 T8) turns the process into a FLEET HOST: ONE login as a runtime principal serving N bindings across N accounts. Which accounts it serves is DISCOVERED from grants, not declared — each agent account grants the runtime principal claim authority (a whole\-account grant whose scopes cover `draft`), and the daemon serves whatever granted it. Adding an agent = minting a grant (no restart); revoking the grant stops that binding's claims without touching the rest. fleet.json maps binding name → {persona, model} and may declare host `capabilities` {vision, contextTokens, tools} — the daemon then skips invocations whose declared requirements it cannot satisfy. Model configs stay local: they describe the host's capability, never an agent's identity.
 
 `invoke` (sVOL 007) is the on\-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.
+
+The DOSSIER verbs (s26 T6) read and tune ONE named binding — `<binding>` is its name or its id, resolved on the account `\-\-account` selects, exactly as everywhere else. `show` is the whole dossier: address, pipeline, enabled state, model menu (primary + explore arms), budget spent\-vs\-remaining this cycle in the same arithmetic the claim gate enforces, the work\-ledger counts, the recent invocations with their frozen cost (a null cost prints "not recorded", never a flattering $0.00), and the backfill history floor. `\-\-json` emits the whole structure as one object with `_self`/`_links` (the console projection it was read from, and the lifecycle chain when the operator plane is configured).
+
+The verbs sit on THREE different doors and each says which. Reads and `enable`/`disable` are SESSION\-reachable on your own mail token: reads go to the console projection (`read` scope, owner\-only) and the kill switch to `AgentBinding/set`, which is gated on the `send` scope — a supervisory grant and an agent token both lack it, so neither can throw a switch. `budget \-\-set`, `model \-\-set/\-\-explore` and `backfill` are OPERATOR\-plane (the provision worker's ADMIN_TOKEN, from `admin init`): `AgentBinding/set` writes only `enabled` and `PATCH /agent\-bindings` refuses `config_json` by design, so the money and the menu have no session door. When a door is out of reach the command says exactly that, names the call that would work, and writes nothing — it never reports success it did not get, and server refusals are printed verbatim rather than re\-worded into a guess.
+
+Two hazards the verbs surface rather than hide. The only budget/model door is `POST /extractor`, a re\-provision\-in\-place that rewrites the binding's whole config — so `budget \-\-set` and `model \-\-set` read the current menu, arms, rate and maxTokens back first and re\-send them unchanged, and because that door also sets `enabled = 1`, re\-provisioning a DISABLED binding is refused (exit 5) unless `\-\-yes` accepts the re\-enable. And `backfill` requires `\-\-since`: the route assumes 90 days when nobody names a window, and how far into an archive an agent reads is not a default a CLI should pick. A window reaching behind the binding's history floor is refused with the server's own sentence and NOTHING is queued — moving the floor back is a tier\-1 approval, which `\-\-request\-floor` mints (and only mints: it queues no work).
 .PP
 .B Subcommands:
 .TP
@@ -1975,6 +2054,21 @@ list the invocation queue (default: pending) \(em \f[CR]agent invocations [pendi
 .TP
 .B rm
 purge an invocation (a running one is refused) \(em \f[CR]agent rm <invId>\fR
+.TP
+.B show
+the agent's dossier: pipeline, state, model menu, budget spent\-vs\-remaining, queue, recent cost, floor \(em \f[CR]agent show <binding> [\-\-account <sel>] [\-\-json|\-\-ids]\fR
+.TP
+.B budget
+read the spend envelope; \-\-set writes it through the operator\-plane re\-provision (ADMIN_TOKEN) \(em \f[CR]agent budget <binding> [\-\-set <µUSD>] [\-\-dry\-run] [\-\-yes]\fR
+.TP
+.B model
+read the model menu; \-\-set swaps the primary and \-\-explore REPLACES the frontier arms (ADMIN_TOKEN) \(em \f[CR]agent model <binding> [\-\-set <host>/<model>] [\-\-explore <host>/<model>]… [\-\-dry\-run] [\-\-yes]\fR
+.TP
+.B backfill
+mint pending invocations over the archive, floor\-bounded; \-\-request\-floor asks instead (ADMIN_TOKEN) \(em \f[CR]agent backfill <binding> \-\-since <YYYY\-MM\-DD|ISO|Nd> [\-\-budget <µUSD>] [\-\-request\-floor] [\-\-dry\-run]\fR
+.TP
+.B enable / disable
+the kill switch, over AgentBinding/set on your own session token (needs the `send` scope) \(em \f[CR]agent enable|disable <binding> [\-\-account <sel>] [\-\-dry\-run]\fR
 .PP
 .B Flags:
 .TP
@@ -1992,6 +2086,24 @@ invoke: the message the agent acts on (required)
 .TP
 .B \-\-note <text>
 invoke: a human note stored in the invocation context
+.TP
+.B \-\-set <value>
+budget: the monthly cap in micro\-USD (2000000 = $2.00). model: the primary candidate as <host>/<model> — the same string `show` prints
+.TP
+.B \-\-explore <host>/<model>
+model: a frontier arm (s26 T5a); repeatable. REPLACES the existing arms, so pass every one you want kept
+.TP
+.B \-\-since <date>
+backfill: how far back to reach — YYYY\-MM\-DD, an ISO datetime, or <n>d. REQUIRED; there is no default window
+.TP
+.B \-\-budget <µUSD>
+backfill: this run's own envelope, enforced at the claim gate. Omitted, the rows draw on the binding's monthly budget instead
+.TP
+.B \-\-request\-floor
+backfill: mint the tier\-1 approval to move the history floor back INSTEAD of backfilling — it queues no work
+.TP
+.B \-\-yes
+budget/model: accept that the re\-provision door re\-enables a binding you had disabled
 .PP
 .B Examples:
 .PP
@@ -2028,6 +2140,36 @@ clear the pending queue
 bullmoose agent serve \-\-config extractor.json \-\-once
 .EE
 extractor.json: {"binding":"extractor","pipeline":"extract","model":{"provider":"openai\-compatible","baseURL":"http://localhost:11434"}}
+.PP
+.EX
+bullmoose agent show extractor
+.EE
+the whole dossier for one agent
+.PP
+.EX
+bullmoose agent show extractor \-\-json | jq '.budget.remainingMicros'
+.EE
+one object, so jq reads it without a wrapper
+.PP
+.EX
+bullmoose agent disable extractor
+.EE
+the kill switch, on your own session token
+.PP
+.EX
+bullmoose agent budget extractor \-\-set 5000000
+.EE
+$5.00/month; operator plane
+.PP
+.EX
+bullmoose agent model extractor \-\-set openrouter/minimax/minimax\-m3 \-\-explore openrouter/qwen/qwen3\-30b
+.EE
+swap the primary and set the frontier arms in one re\-provision
+.PP
+.EX
+bullmoose agent backfill extractor \-\-since 30d \-\-budget 500000 \-\-dry\-run
+.EE
+see the exact request before any invocation is minted
 .SS models
 .B Synopsis:
 .br
@@ -2919,7 +3061,7 @@ Local SQLite message log (override with \-\-db or $BULLMOOSE_DB).
 Project docs: https://github.com/ericdmoore/bullmoose.cc
 
 
-entry markdown 0 54347 0
+entry markdown 0 59480 0
 # bullmoose CLI
 
 > the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP
@@ -2947,7 +3089,7 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 | [`read`](#read) | print a message (newest if no id) |
 | [`watch`](#watch) | push-triggered live sync: print new mail as it arrives |
 | [`vacation`](#vacation) | manage the RFC 8621 vacation responder |
-| [`agent`](#agent) | run the homelab agent runtime (single binding or fleet host), and trigger agents on demand |
+| [`agent`](#agent) | run the homelab agent runtime (single binding or fleet host), trigger agents on demand, and read or tune one agent's dossier |
 | [`models`](#models) | list the models OpenAI-compatible hosts serve — the @local /v1/models sweep |
 | [`local`](#local) | the @local onboarding ladder — detect, connect, or install a local model host (with consent) |
 | [`contacts`](#contacts) | read and write the contacts core (vCard ⇄ JSContact) |
@@ -3268,10 +3410,10 @@ bullmoose vacation on --subject "Away" --body "Back Monday." --until 2026-07-15
 
 ## agent
 
-run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+run the homelab agent runtime (single binding or fleet host), trigger agents on demand, and read or tune one agent's dossier
 
 ```
-bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId>
+bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId> | show <binding> | budget <binding> [--set <µUSD>] | model <binding> [--set <host>/<model>] [--explore <host>/<model>]… | backfill <binding> --since <date> [--budget <µUSD>] [--request-floor] | enable|disable <binding>
 ```
 
 `serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and runs the binding's pipeline. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config (`apiKeyEnv` absent on openai-compatible = a keyless @local endpoint like Ollama). --once drains and exits (cron-friendly). With --config the config's `binding` must match the server-side binding name (see `admin agent bind`).
@@ -3281,6 +3423,12 @@ Pipelines (s26 T6): the config's `pipeline` field picks the pass — `reply` (de
 --fleet (s11 T8) turns the process into a FLEET HOST: ONE login as a runtime principal serving N bindings across N accounts. Which accounts it serves is DISCOVERED from grants, not declared — each agent account grants the runtime principal claim authority (a whole-account grant whose scopes cover `draft`), and the daemon serves whatever granted it. Adding an agent = minting a grant (no restart); revoking the grant stops that binding's claims without touching the rest. fleet.json maps binding name → {persona, model} and may declare host `capabilities` {vision, contextTokens, tools} — the daemon then skips invocations whose declared requirements it cannot satisfy. Model configs stay local: they describe the host's capability, never an agent's identity.
 
 `invoke` (sVOL 007) is the on-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.
+
+The DOSSIER verbs (s26 T6) read and tune ONE named binding — `<binding>` is its name or its id, resolved on the account `--account` selects, exactly as everywhere else. `show` is the whole dossier: address, pipeline, enabled state, model menu (primary + explore arms), budget spent-vs-remaining this cycle in the same arithmetic the claim gate enforces, the work-ledger counts, the recent invocations with their frozen cost (a null cost prints "not recorded", never a flattering $0.00), and the backfill history floor. `--json` emits the whole structure as one object with `_self`/`_links` (the console projection it was read from, and the lifecycle chain when the operator plane is configured).
+
+The verbs sit on THREE different doors and each says which. Reads and `enable`/`disable` are SESSION-reachable on your own mail token: reads go to the console projection (`read` scope, owner-only) and the kill switch to `AgentBinding/set`, which is gated on the `send` scope — a supervisory grant and an agent token both lack it, so neither can throw a switch. `budget --set`, `model --set/--explore` and `backfill` are OPERATOR-plane (the provision worker's ADMIN_TOKEN, from `admin init`): `AgentBinding/set` writes only `enabled` and `PATCH /agent-bindings` refuses `config_json` by design, so the money and the menu have no session door. When a door is out of reach the command says exactly that, names the call that would work, and writes nothing — it never reports success it did not get, and server refusals are printed verbatim rather than re-worded into a guess.
+
+Two hazards the verbs surface rather than hide. The only budget/model door is `POST /extractor`, a re-provision-in-place that rewrites the binding's whole config — so `budget --set` and `model --set` read the current menu, arms, rate and maxTokens back first and re-send them unchanged, and because that door also sets `enabled = 1`, re-provisioning a DISABLED binding is refused (exit 5) unless `--yes` accepts the re-enable. And `backfill` requires `--since`: the route assumes 90 days when nobody names a window, and how far into an archive an agent reads is not a default a CLI should pick. A window reaching behind the binding's history floor is refused with the server's own sentence and NOTHING is queued — moving the floor back is a tier-1 approval, which `--request-floor` mints (and only mints: it queues no work).
 
 **Subcommands**
 
@@ -3292,6 +3440,16 @@ Pipelines (s26 T6): the config's `pipeline` field picks the pass — `reply` (de
   `agent invocations [pending|running|done|failed]`
 - **rm** — purge an invocation (a running one is refused)  
   `agent rm <invId>`
+- **show** — the agent's dossier: pipeline, state, model menu, budget spent-vs-remaining, queue, recent cost, floor  
+  `agent show <binding> [--account <sel>] [--json|--ids]`
+- **budget** — read the spend envelope; --set writes it through the operator-plane re-provision (ADMIN_TOKEN)  
+  `agent budget <binding> [--set <µUSD>] [--dry-run] [--yes]`
+- **model** — read the model menu; --set swaps the primary and --explore REPLACES the frontier arms (ADMIN_TOKEN)  
+  `agent model <binding> [--set <host>/<model>] [--explore <host>/<model>]… [--dry-run] [--yes]`
+- **backfill** — mint pending invocations over the archive, floor-bounded; --request-floor asks instead (ADMIN_TOKEN)  
+  `agent backfill <binding> --since <YYYY-MM-DD|ISO|Nd> [--budget <µUSD>] [--request-floor] [--dry-run]`
+- **enable / disable** — the kill switch, over AgentBinding/set on your own session token (needs the `send` scope)  
+  `agent enable|disable <binding> [--account <sel>] [--dry-run]`
 
 | flag | description |
 |---|---|
@@ -3300,6 +3458,12 @@ Pipelines (s26 T6): the config's `pipeline` field picks the pass — `reply` (de
 | `--once` | serve: drain the queue once and exit |
 | `--email <emailId>` | invoke: the message the agent acts on (required) |
 | `--note <text>` | invoke: a human note stored in the invocation context |
+| `--set <value>` | budget: the monthly cap in micro-USD (2000000 = $2.00). model: the primary candidate as <host>/<model> — the same string `show` prints |
+| `--explore <host>/<model>` | model: a frontier arm (s26 T5a); repeatable. REPLACES the existing arms, so pass every one you want kept |
+| `--since <date>` | backfill: how far back to reach — YYYY-MM-DD, an ISO datetime, or <n>d. REQUIRED; there is no default window |
+| `--budget <µUSD>` | backfill: this run's own envelope, enforced at the claim gate. Omitted, the rows draw on the binding's monthly budget instead |
+| `--request-floor` | backfill: mint the tier-1 approval to move the history floor back INSTEAD of backfilling — it queues no work |
+| `--yes` | budget/model: accept that the re-provision door re-enables a binding you had disabled |
 
 **Examples**
 
@@ -3317,6 +3481,18 @@ bullmoose agent invocations --ids | xargs -n1 bullmoose agent rm
 # clear the pending queue
 bullmoose agent serve --config extractor.json --once
 # extractor.json: {"binding":"extractor","pipeline":"extract","model":{"provider":"openai-compatible","baseURL":"http://localhost:11434"}}
+bullmoose agent show extractor
+# the whole dossier for one agent
+bullmoose agent show extractor --json | jq '.budget.remainingMicros'
+# one object, so jq reads it without a wrapper
+bullmoose agent disable extractor
+# the kill switch, on your own session token
+bullmoose agent budget extractor --set 5000000
+# $5.00/month; operator plane
+bullmoose agent model extractor --set openrouter/minimax/minimax-m3 --explore openrouter/qwen/qwen3-30b
+# swap the primary and set the frontier arms in one re-provision
+bullmoose agent backfill extractor --since 30d --budget 500000 --dry-run
+# see the exact request before any invocation is minted
 ```
 
 See also: [`admin agent bind`](#admin), [`watch`](#watch), [`models`](#models), [`local`](#local)
@@ -4018,7 +4194,7 @@ See also: [`token`](#token), [`agent`](#agent)
 
 
 
-entry overview 0 5756 0
+entry overview 0 5790 0
 bullmoose — the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP
 
 Usage:
@@ -4039,7 +4215,7 @@ Commands:
   read         print a message (newest if no id)
   watch        push-triggered live sync: print new mail as it arrives
   vacation     manage the RFC 8621 vacation responder
-  agent        run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+  agent        run the homelab agent runtime (single binding or fleet host), trigger agents on demand, and read or tune one agent's dossier
   models       list the models OpenAI-compatible hosts serve — the @local /v1/models sweep
   local        the @local onboarding ladder — detect, connect, or install a local model host (with consent)
   contacts     read and write the contacts core (vCard ⇄ JSContact)
@@ -4107,7 +4283,7 @@ Exit codes:
 Run `bullmoose help <command>` for details. The database is the server's own data-plane schema — open it directly with `sqlite3` for anything the commands don't cover.
 
 
-entry overview-usage 2 0 5756
+entry overview-usage 2 0 5790
 
 bullmoose — the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP
 
@@ -4129,7 +4305,7 @@ Commands:
   read         print a message (newest if no id)
   watch        push-triggered live sync: print new mail as it arrives
   vacation     manage the RFC 8621 vacation responder
-  agent        run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+  agent        run the homelab agent runtime (single binding or fleet host), trigger agents on demand, and read or tune one agent's dossier
   models       list the models OpenAI-compatible hosts serve — the @local /v1/models sweep
   local        the @local onboarding ladder — detect, connect, or install a local model host (with consent)
   contacts     read and write the contacts core (vCard ⇄ JSContact)
@@ -4472,11 +4648,11 @@ EXAMPLES
   $ bullmoose vacation on --subject "Away" --body "Back Monday." --until 2026-07-15
 
 
-entry command:agent 0 4771 0
-bullmoose agent — run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+entry command:agent 0 9995 0
+bullmoose agent — run the homelab agent runtime (single binding or fleet host), trigger agents on demand, and read or tune one agent's dossier
 
 SYNOPSIS
-  bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId>
+  bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId> | show <binding> | budget <binding> [--set <µUSD>] | model <binding> [--set <host>/<model>] [--explore <host>/<model>]… | backfill <binding> --since <date> [--budget <µUSD>] [--request-floor] | enable|disable <binding>
 
 DESCRIPTION
   `serve` watches the AgentInvocation queue over the same push channel as
@@ -4514,6 +4690,39 @@ DESCRIPTION
   that `admin agent disable` has turned off (the 008 kill switch): you cannot
   fire an agent whose off switch is pulled. `invocations` lists the queue
   (default: pending), and `rm` purges one — a running invocation is refused.
+  The DOSSIER verbs (s26 T6) read and tune ONE named binding — `<binding>` is
+  its name or its id, resolved on the account `--account` selects, exactly as
+  everywhere else. `show` is the whole dossier: address, pipeline, enabled
+  state, model menu (primary + explore arms), budget spent-vs-remaining this
+  cycle in the same arithmetic the claim gate enforces, the work-ledger
+  counts, the recent invocations with their frozen cost (a null cost prints
+  "not recorded", never a flattering $0.00), and the backfill history floor.
+  `--json` emits the whole structure as one object with `_self`/`_links` (the
+  console projection it was read from, and the lifecycle chain when the
+  operator plane is configured). The verbs sit on THREE different doors and
+  each says which. Reads and `enable`/`disable` are SESSION-reachable on your
+  own mail token: reads go to the console projection (`read` scope,
+  owner-only) and the kill switch to `AgentBinding/set`, which is gated on the
+  `send` scope — a supervisory grant and an agent token both lack it, so
+  neither can throw a switch. `budget --set`, `model --set/--explore` and
+  `backfill` are OPERATOR-plane (the provision worker's ADMIN_TOKEN, from
+  `admin init`): `AgentBinding/set` writes only `enabled` and `PATCH
+  /agent-bindings` refuses `config_json` by design, so the money and the menu
+  have no session door. When a door is out of reach the command says exactly
+  that, names the call that would work, and writes nothing — it never reports
+  success it did not get, and server refusals are printed verbatim rather than
+  re-worded into a guess. Two hazards the verbs surface rather than hide. The
+  only budget/model door is `POST /extractor`, a re-provision-in-place that
+  rewrites the binding's whole config — so `budget --set` and `model --set`
+  read the current menu, arms, rate and maxTokens back first and re-send them
+  unchanged, and because that door also sets `enabled = 1`, re-provisioning a
+  DISABLED binding is refused (exit 5) unless `--yes` accepts the re-enable.
+  And `backfill` requires `--since`: the route assumes 90 days when nobody
+  names a window, and how far into an archive an agent reads is not a default
+  a CLI should pick. A window reaching behind the binding's history floor is
+  refused with the server's own sentence and NOTHING is queued — moving the
+  floor back is a tier-1 approval, which `--request-floor` mints (and only
+  mints: it queues no work).
 
 SUBCOMMANDS
   serve — run the homelab runtime; claims the queue (fleet: N bindings, one login, discovery from grants)
@@ -4524,6 +4733,16 @@ SUBCOMMANDS
       agent invocations [pending|running|done|failed]
   rm — purge an invocation (a running one is refused)
       agent rm <invId>
+  show — the agent's dossier: pipeline, state, model menu, budget spent-vs-remaining, queue, recent cost, floor
+      agent show <binding> [--account <sel>] [--json|--ids]
+  budget — read the spend envelope; --set writes it through the operator-plane re-provision (ADMIN_TOKEN)
+      agent budget <binding> [--set <µUSD>] [--dry-run] [--yes]
+  model — read the model menu; --set swaps the primary and --explore REPLACES the frontier arms (ADMIN_TOKEN)
+      agent model <binding> [--set <host>/<model>] [--explore <host>/<model>]… [--dry-run] [--yes]
+  backfill — mint pending invocations over the archive, floor-bounded; --request-floor asks instead (ADMIN_TOKEN)
+      agent backfill <binding> --since <YYYY-MM-DD|ISO|Nd> [--budget <µUSD>] [--request-floor] [--dry-run]
+  enable / disable — the kill switch, over AgentBinding/set on your own session token (needs the `send` scope)
+      agent enable|disable <binding> [--account <sel>] [--dry-run]
 
 FLAGS
   --config <agent.json>      serve: one-binding agent definition (binding, persona, model{provider,baseURL,apiKeyEnv})
@@ -4531,6 +4750,12 @@ FLAGS
   --once                     serve: drain the queue once and exit
   --email <emailId>          invoke: the message the agent acts on (required)
   --note <text>              invoke: a human note stored in the invocation context
+  --set <value>              budget: the monthly cap in micro-USD (2000000 = $2.00). model: the primary candidate as <host>/<model> — the same string `show` prints
+  --explore <host>/<model>   model: a frontier arm (s26 T5a); repeatable. REPLACES the existing arms, so pass every one you want kept
+  --since <date>             backfill: how far back to reach — YYYY-MM-DD, an ISO datetime, or <n>d. REQUIRED; there is no default window
+  --budget <µUSD>            backfill: this run's own envelope, enforced at the claim gate. Omitted, the rows draw on the binding's monthly budget instead
+  --request-floor            backfill: mint the tier-1 approval to move the history floor back INSTEAD of backfilling — it queues no work
+  --yes                      budget/model: accept that the re-provision door re-enables a binding you had disabled
 
 EXAMPLES
   $ bullmoose agent serve --config hermes.json
@@ -4546,6 +4771,18 @@ EXAMPLES
       clear the pending queue
   $ bullmoose agent serve --config extractor.json --once
       extractor.json: {"binding":"extractor","pipeline":"extract","model":{"provider":"openai-compatible","baseURL":"http://localhost:11434"}}
+  $ bullmoose agent show extractor
+      the whole dossier for one agent
+  $ bullmoose agent show extractor --json | jq '.budget.remainingMicros'
+      one object, so jq reads it without a wrapper
+  $ bullmoose agent disable extractor
+      the kill switch, on your own session token
+  $ bullmoose agent budget extractor --set 5000000
+      $5.00/month; operator plane
+  $ bullmoose agent model extractor --set openrouter/minimax/minimax-m3 --explore openrouter/qwen/qwen3-30b
+      swap the primary and set the frontier arms in one re-provision
+  $ bullmoose agent backfill extractor --since 30d --budget 500000 --dry-run
+      see the exact request before any invocation is minted
 
 SEE ALSO: bullmoose help admin agent bind, bullmoose help watch, bullmoose help models, bullmoose help local
 
@@ -5280,7 +5517,7 @@ EXAMPLES
 SEE ALSO: bullmoose help token, bullmoose help agent
 
 
-entry unknown-topic 2 0 5787
+entry unknown-topic 2 0 5821
 
 unknown command: __BM_TOPIC__
 
@@ -5304,7 +5541,7 @@ Commands:
   read         print a message (newest if no id)
   watch        push-triggered live sync: print new mail as it arrives
   vacation     manage the RFC 8621 vacation responder
-  agent        run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+  agent        run the homelab agent runtime (single binding or fleet host), trigger agents on demand, and read or tune one agent's dossier
   models       list the models OpenAI-compatible hosts serve — the @local /v1/models sweep
   local        the @local onboarding ladder — detect, connect, or install a local model host (with consent)
   contacts     read and write the contacts core (vCard ⇄ JSContact)
@@ -5371,7 +5608,7 @@ Exit codes:
 
 Run `bullmoose help <command>` for details. The database is the server's own data-plane schema — open it directly with `sqlite3` for anything the commands don't cover.
 
-entry unknown-command 2 0 5787
+entry unknown-command 2 0 5821
 
 unknown command: __BM_TOPIC__
 
@@ -5395,7 +5632,7 @@ Commands:
   read         print a message (newest if no id)
   watch        push-triggered live sync: print new mail as it arrives
   vacation     manage the RFC 8621 vacation responder
-  agent        run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+  agent        run the homelab agent runtime (single binding or fleet host), trigger agents on demand, and read or tune one agent's dossier
   models       list the models OpenAI-compatible hosts serve — the @local /v1/models sweep
   local        the @local onboarding ladder — detect, connect, or install a local model host (with consent)
   contacts     read and write the contacts core (vCard ⇄ JSContact)
