@@ -272,14 +272,19 @@ describe("the untyped remainder survives every edit", () => {
     const cfg = storedConfig(f);
     // Every remainder key, value-for-value — this is the "do not CRUD a blob"
     // rule as an assertion: the route touched two keys and nothing else.
+    // `createdAt` is the platform's own stamp (s26 T3: the binding's birth,
+    // the backfill verb's default history floor), written at create and part
+    // of the remainder every write must preserve.
     for (const [k, v] of Object.entries(REMAINDER)) expect(cfg[k]).toEqual(v);
-    expect(Object.keys(cfg).sort()).toEqual([...Object.keys(REMAINDER), "replyMode", "allowedSenders"].sort());
+    expect(Object.keys(cfg).sort()).toEqual(
+      [...Object.keys(REMAINDER), "createdAt", "replyMode", "allowedSenders"].sort(),
+    );
   });
 
   it("names the preserved keys in the response, so the caller can see the blob survived", async () => {
     const f = await fixture();
     const out = await body<{ preserved: string[] }>(await patch(f, { replyMode: "send" }));
-    expect(out.preserved.sort()).toEqual(Object.keys(REMAINDER).sort());
+    expect(out.preserved.sort()).toEqual([...Object.keys(REMAINDER), "createdAt"].sort());
   });
 
   it("refuses an unparseable config_json rather than replacing it", async () => {

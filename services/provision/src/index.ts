@@ -31,6 +31,11 @@ import { BUREAU_VERBS, isBureauVerb } from "@bullmoose/auth-core/principal";
  *   POST   /agent-bindings/{id}/enable
  *   POST   /agent-bindings/{id}/supervisor {ownerEmail?} → the supervisory
  *                                 grant, minted after the fact (s10 T7)
+ *   POST   /agent-bindings/{id}/backfill {sinceDays?, budgetMicros?}
+ *                                 → mint PENDING invocations over the archive,
+ *                                 newest-first, NULL-due, floor-bounded (s26 T3)
+ *   POST   /agent-bindings/{id}/floor-request {toEpochMs} → the rule-1 approval:
+ *                                 a tier-1 proposal to move the history floor BACK
  *   PATCH  /agent-bindings/{id}   → the TYPED CORE only (s10 T4)
  *   GET    /agent-bindings/{id}/lifecycle → the binding's provenance chain
  *   DELETE /agent-bindings/{id}   → refuses while invocations are queued
@@ -181,6 +186,28 @@ export default {
         return superviseBinding(
           bindingSupervisor[1] as string,
           await readJson<{ ownerEmail?: string }>(request),
+          url,
+          env,
+        );
+      }
+      // s26 T3 — BACKFILL: mint pending invocations over the account's
+      // archive, newest-first, NULL-due, bounded below by the history floor.
+      const bindingBackfill = url.pathname.match(/^\/agent-bindings\/([^/]+)\/backfill$/);
+      if (request.method === "POST" && bindingBackfill) {
+        return backfillBinding(
+          bindingBackfill[1] as string,
+          await readJson<{ sinceDays?: number; budgetMicros?: number }>(request),
+          url,
+          env,
+        );
+      }
+      // s26 T3 — the rule-1 approval: moving the history floor BACK is an act
+      // that needs a human. Mints a tier-1 `floor-request` proposal.
+      const bindingFloor = url.pathname.match(/^\/agent-bindings\/([^/]+)\/floor-request$/);
+      if (request.method === "POST" && bindingFloor) {
+        return requestHistoryFloor(
+          bindingFloor[1] as string,
+          await readJson<{ toEpochMs?: number }>(request),
           url,
           env,
         );
@@ -2196,6 +2223,12 @@ async function createAgentBinding(
     : await resolveAgentOwner(env, account.id, body.ownerEmail);
 
   const id = `bind_${crypto.randomUUID().slice(0, 8)}`;
+  // s26 T3 — the binding's BIRTH rides in the blob (`agent_bindings` has no
+  // created_at column, and adding one is a hand-run migration this repo
+  // rations). It is the backfill verb's DEFAULT HISTORY FLOOR: a new agent is
+  // bounded to current + future work, and only an approved `floor-request`
+  // (config_json.historyFloor) reaches behind it. A caller-supplied createdAt
+  // wins so a deliberate fixture can say otherwise.
   await env.DB.prepare(
     `INSERT INTO agent_bindings
        (id, account_id, name, trigger_on, sla_seconds, enabled, config_json, recipients_book_id)
@@ -2206,7 +2239,7 @@ async function createAgentBinding(
       account.id,
       body.name,
       body.slaSeconds ?? null,
-      JSON.stringify(body.config ?? {}),
+      JSON.stringify({ createdAt: Date.now(), ...(body.config ?? {}) }),
       body.recipientsBookId ?? null,
     )
     .run();
@@ -2608,10 +2641,21 @@ async function provisionExtractor(
   // Re-provision UPDATES the model menu in place — the swap path (Llama → Qwen
   // → minimax). config_json is read-only on PATCH by design, so this is where
   // a shape change legitimately happens.
-  const existing = await env.DB.prepare(`SELECT id FROM agent_bindings WHERE account_id = ? AND name = 'extractor'`)
+  const existing = await env.DB.prepare(
+    `SELECT id, config_json FROM agent_bindings WHERE account_id = ? AND name = 'extractor'`,
+  )
     .bind(account.id)
-    .first<{ id: string }>();
+    .first<{ id: string; config_json: string }>();
   if (existing) {
+    // s26 T3 — the swap replaces the MENU, never the binding's history state:
+    // `createdAt` (its birth, the default floor) and `historyFloor` (an
+    // APPROVED widening — a human decided it) survive the rewrite. Losing the
+    // floor on a model swap would silently re-run an approval.
+    const prior = safeConfig(existing.config_json);
+    if (typeof prior.createdAt === "number" && Number.isFinite(prior.createdAt)) config.createdAt = prior.createdAt;
+    if (typeof prior.historyFloor === "number" && Number.isFinite(prior.historyFloor)) {
+      config.historyFloor = prior.historyFloor;
+    }
     await env.DB.prepare(`UPDATE agent_bindings SET config_json = ?, enabled = 1 WHERE id = ?`)
       .bind(JSON.stringify(config), existing.id)
       .run();
@@ -3417,6 +3461,433 @@ async function deleteAgentBinding(id: string, url: URL, env: Env) {
     accountId: binding.account_id,
     name: binding.name,
     steps,
+  });
+}
+
+// ---- backfill: the cursor's missing half (s26 T3) ---------------------
+
+/**
+ * How many invocations one backfill call may mint. The cap keeps a single
+ * admin POST from turning a decade of archive into one unbounded write burst;
+ * re-running the (idempotent) call walks further back, newest-first.
+ */
+const BACKFILL_MINT_CAP = 500;
+
+/** The default window when the caller names none — devPlan decision 2. */
+const BACKFILL_DEFAULT_SINCE_DAYS = 90;
+
+const DAY_MS = 86_400_000;
+
+/** How long a human has to decide a floor-request before it expires. */
+const FLOOR_REQUEST_EXPIRY_MS = 7 * 24 * 3600_000;
+
+/** config_json, parsed junk-tolerantly: operator-written TEXT must degrade to
+ *  "nothing declared", never throw. (The WRITE paths stay strict — see
+ *  patchAgentBinding's refusal to rewrite an unparseable blob.) */
+function safeConfig(configJson: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(configJson || "{}") as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The binding's EFFECTIVE HISTORY FLOOR (devPlan rule 1): how far back its
+ * backfill may reach.
+ *
+ *   `historyFloor`  an approved widening (the floor-request round trip wrote
+ *                   it) — wins when present;
+ *   `createdAt`     the binding's birth, stamped by createAgentBinding — the
+ *                   default: a new agent never reprocesses old news;
+ *   neither         a pre-s26 binding. The floor is UNKNOWN, and unknown is
+ *                   not "unbounded": backfill fails closed and points at the
+ *                   floor-request verb, which ESTABLISHES a floor by approval.
+ */
+function effectiveHistoryFloor(configJson: string): {
+  floorMs: number | null;
+  source: "historyFloor" | "createdAt" | null;
+} {
+  const cfg = safeConfig(configJson);
+  if (typeof cfg.historyFloor === "number" && Number.isFinite(cfg.historyFloor)) {
+    return { floorMs: cfg.historyFloor, source: "historyFloor" };
+  }
+  if (typeof cfg.createdAt === "number" && Number.isFinite(cfg.createdAt)) {
+    return { floorMs: cfg.createdAt, source: "createdAt" };
+  }
+  return { floorMs: null, source: null };
+}
+
+/** The binding's declared privacy floor, junk-tolerant (the ingest stamp's
+ *  rule, restated here because the two workers share no module): a typo can
+ *  only fail to raise, never lower. */
+function backfillPrivacy(configJson: string): string | null {
+  const v = safeConfig(configJson).privacyFloor;
+  return v === "open" || v === "internal" || v === "pinned" ? v : null;
+}
+
+/**
+ * `POST /agent-bindings/{id}/backfill {sinceDays?, budgetMicros?}` — the
+ * manual backfill verb (devPlan rule 3). The queue-as-cursor answers FORWARD
+ * progress; this mints the HISTORICAL half: PENDING invocations for the
+ * binding's account's mail in [max(now − sinceDays, floor), now), so the
+ * ordinary drain — budget gate and all — runs the same pipeline over the
+ * archive that delivery runs over today's mail.
+ *
+ * The load-bearing choices:
+ *
+ *   NEWEST-FIRST   recent history is worth more than old history, and the
+ *                  mint cap means one call may not reach the window's far
+ *                  edge — the newest slice must be the one that lands.
+ *   NULL due_at    sit-free work. The claim gate reads NULL-due as
+ *                  never-urgent: a live homelab claimant may eat it at $0,
+ *                  and the paid drain treats it as non-urgent rather than as
+ *                  a deadline breach (claimGate.ts dueWindowSql).
+ *   IDEMPOTENT     per (binding, email): a message that already has an
+ *                  invocation for this binding — delivered live, or minted by
+ *                  an earlier backfill — is skipped, enforced INSIDE each
+ *                  INSERT (guarded INSERT…SELECT), so even a concurrent
+ *                  double-POST cannot double-mint.
+ *   FLOOR-BOUNDED  the DEFAULT window clamps to the effective floor and says
+ *                  so (`floorClamped`); an EXPLICIT `sinceDays` that reaches
+ *                  behind the floor is refused with 409 — that ask is a
+ *                  floor move, which is rule 1's approval, not this verb.
+ *
+ * `budgetMicros` is RECORDED, not enforced, in v1: it rides in the response
+ * and in each minted row's context_json so the v2 envelope has the number,
+ * but spend is still gated by the binding's monthly budget. Absent is null
+ * ("no envelope named"), never 0 ("a $0 envelope") — the money-honesty rule.
+ *
+ * No ACCOUNT_DO here, so no changelog push: the rows sit as the durable
+ * cursor until a claimant's next wake-up, which is exactly what non-urgent
+ * means.
+ */
+async function backfillBinding(id: string, body: { sinceDays?: number; budgetMicros?: number }, url: URL, env: Env) {
+  const found = await resolveBinding(id, url, env);
+  if ("response" in found) return found.response;
+  const { binding } = found;
+
+  // A tombstoned account's queue can never drain (the drain skips it), and a
+  // disabled binding's rows would pile up HELD — the invisible-backlog trap
+  // the kill switch's response exists to surface. Both refuse rather than
+  // minting work that silently sits.
+  if (binding.deleted_at !== null) {
+    return json(
+      {
+        error: `account ${binding.account_id} is deleted — backfill would mint invocations nothing can ever drain`,
+        bindingId: binding.id,
+        accountId: binding.account_id,
+      },
+      409,
+    );
+  }
+  if (binding.enabled !== 1) {
+    return json(
+      {
+        error:
+          `binding ${binding.id} is disabled — backfill would mint held work that drains all at once on ` +
+          `enable. Enable it first (POST /agent-bindings/${binding.id}/enable), then backfill`,
+        bindingId: binding.id,
+        accountId: binding.account_id,
+      },
+      409,
+    );
+  }
+
+  const sinceDaysExplicit = body.sinceDays !== undefined;
+  if (
+    sinceDaysExplicit &&
+    (typeof body.sinceDays !== "number" || !Number.isFinite(body.sinceDays) || body.sinceDays <= 0)
+  ) {
+    return json({ error: "sinceDays must be a positive number of days" }, 400);
+  }
+  const budgetGiven = body.budgetMicros !== undefined;
+  if (
+    budgetGiven &&
+    (typeof body.budgetMicros !== "number" || !Number.isFinite(body.budgetMicros) || body.budgetMicros < 0)
+  ) {
+    return json({ error: "budgetMicros must be a non-negative integer (micro-USD)" }, 400);
+  }
+  const budgetMicros = budgetGiven ? Math.floor(body.budgetMicros as number) : null;
+
+  const now = Date.now();
+  const floor = effectiveHistoryFloor(binding.config_json);
+  if (floor.floorMs === null) {
+    // Pre-s26 binding: no historyFloor, no createdAt. There is no honest
+    // default window — guessing one would either reprocess an archive nobody
+    // approved or silently skip one somebody wanted. Fail closed, and name
+    // the verb that establishes a floor ON PURPOSE.
+    return json(
+      {
+        error:
+          `binding ${binding.id} has no history floor: it predates the floor stamp (no createdAt, no ` +
+          `historyFloor in config_json), so there is no honest default for how far back it may read. ` +
+          `Establish one explicitly: POST /agent-bindings/${binding.id}/floor-request {toEpochMs} mints ` +
+          `the approval; once approved, re-run this backfill`,
+        bindingId: binding.id,
+        accountId: binding.account_id,
+        floorMs: null,
+      },
+      409,
+    );
+  }
+
+  const sinceDays = sinceDaysExplicit ? (body.sinceDays as number) : BACKFILL_DEFAULT_SINCE_DAYS;
+  const requestedStartMs = now - sinceDays * DAY_MS;
+  if (sinceDaysExplicit && requestedStartMs < floor.floorMs) {
+    // An explicit ask past the floor is not a window to clamp — it is a
+    // request to MOVE the floor, and that is an act needing approval
+    // (devPlan rule 1). Refuse with the path to the approval; the default
+    // window (no sinceDays) clamps instead, below.
+    return json(
+      {
+        error:
+          `sinceDays=${sinceDays} reaches back to ${new Date(requestedStartMs).toISOString()}, behind this ` +
+          `binding's history floor (${new Date(floor.floorMs).toISOString()}, from ${floor.source}). Moving ` +
+          `the floor back is an approval, not a parameter: POST /agent-bindings/${binding.id}/floor-request ` +
+          `{toEpochMs: ${requestedStartMs}} to ask, and re-run the backfill once it is approved`,
+        bindingId: binding.id,
+        accountId: binding.account_id,
+        floorMs: floor.floorMs,
+        floorSource: floor.source,
+        requestedStartMs,
+      },
+      409,
+    );
+  }
+  const floorClamped = requestedStartMs < floor.floorMs;
+  const windowStartMs = floorClamped ? floor.floorMs : requestedStartMs;
+
+  // The candidates, NEWEST-FIRST, minus every message this binding already has
+  // an invocation for (live delivery or an earlier backfill) — that difference
+  // is what the cap slices.
+  const { results: candidates } = await env.DB.prepare(
+    `SELECT e.id, e.thread_id FROM emails e
+     WHERE e.account_id = ?1 AND e.received_at >= ?2 AND e.received_at < ?3
+       AND NOT EXISTS (SELECT 1 FROM agent_invocations ai
+                       WHERE ai.account_id = e.account_id AND ai.binding_id = ?4 AND ai.email_id = e.id)
+     ORDER BY e.received_at DESC
+     LIMIT ?5`,
+  )
+    .bind(binding.account_id, windowStartMs, now, binding.id, BACKFILL_MINT_CAP)
+    .all<{ id: string; thread_id: string }>();
+
+  const skippedRow = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM emails e
+     WHERE e.account_id = ?1 AND e.received_at >= ?2 AND e.received_at < ?3
+       AND EXISTS (SELECT 1 FROM agent_invocations ai
+                   WHERE ai.account_id = e.account_id AND ai.binding_id = ?4 AND ai.email_id = e.id)`,
+  )
+    .bind(binding.account_id, windowStartMs, now, binding.id)
+    .first<{ n: number }>();
+
+  const privacy = backfillPrivacy(binding.config_json);
+  let minted = 0;
+  if (candidates.length > 0) {
+    // One guarded INSERT per email, newest-first, batched (transactional in
+    // D1). The NOT EXISTS re-check inside each statement is the idempotence
+    // guarantee under concurrency — the SELECT above was only the shortlist.
+    const statements = candidates.map((e) =>
+      env.DB.prepare(
+        `INSERT INTO agent_invocations
+           (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at, privacy)
+         SELECT ?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8
+          WHERE NOT EXISTS (SELECT 1 FROM agent_invocations
+                            WHERE account_id = ?2 AND binding_id = ?3 AND email_id = ?5)`,
+      ).bind(
+        `inv_${crypto.randomUUID()}`,
+        binding.account_id,
+        binding.id,
+        binding.name,
+        e.id,
+        JSON.stringify({
+          emailId: e.id,
+          threadId: e.thread_id,
+          backfill: true,
+          // v1: the envelope is RECORDED on the work it covers, not enforced —
+          // the v2 claim-gate envelope reads it from here.
+          ...(budgetMicros !== null ? { backfillBudgetMicros: budgetMicros } : {}),
+        }),
+        now,
+        privacy,
+      ),
+    );
+    const results = await env.DB.batch(statements);
+    minted = results.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
+  }
+
+  return json({
+    ok: true,
+    bindingId: binding.id,
+    accountId: binding.account_id,
+    minted,
+    skipped: skippedRow?.n ?? 0,
+    floorClamped,
+    // The window that actually ran, and why — so `floorClamped: true` is
+    // legible without re-deriving the arithmetic.
+    windowStartMs,
+    windowEndMs: now,
+    floorMs: floor.floorMs,
+    floorSource: floor.source,
+    // Reached the cap ⇒ the window's far edge was NOT reached; re-run the same
+    // call to walk further back (idempotence makes the re-run safe).
+    capped: candidates.length === BACKFILL_MINT_CAP,
+    // v1: recorded, not an enforced envelope. null = "no envelope named".
+    budgetMicros,
+    note:
+      `minted rows are NULL-due (sit-free): a live homelab claimant may eat them at $0, and the paid ` +
+      `drain treats them as non-urgent inside the binding's monthly budget`,
+  });
+}
+
+/**
+ * `POST /agent-bindings/{id}/floor-request {toEpochMs}` — rule 1's approval,
+ * as a proposal in the ordinary queue.
+ *
+ * Moving the history floor BACK is an act that needs a human ("crm@ asks to
+ * read mail back to 2023 — allow?"), so this verb does not write the floor: it
+ * mints a tier-1 `floor-request` proposal on the carrier-invocation pattern
+ * (waitingOn.ts `offer`, budgetOverrun.ts), and `applyProposal` (services/jmap
+ * actionProposal.ts) writes `config_json.historyFloor` on APPROVE. Tier 1 is
+ * honest: approving moves a bound, spends nothing and egresses nothing —
+ * backfill itself stays a separate, budgeted call — and the undo restores the
+ * previous floor. Declining is a preference, never a fault (NO_FAULT_KINDS).
+ *
+ * Idempotent per pending ask: re-POSTing the same toEpochMs returns the
+ * pending proposal; a DIFFERENT toEpochMs while one is pending is refused —
+ * two open questions about the same floor is how a queue contradicts itself.
+ */
+async function requestHistoryFloor(id: string, body: { toEpochMs?: number }, url: URL, env: Env) {
+  const found = await resolveBinding(id, url, env);
+  if ("response" in found) return found.response;
+  const { binding } = found;
+  if (binding.deleted_at !== null) {
+    return json(
+      {
+        error: `account ${binding.account_id} is deleted — a floor-request would ask a question nobody can act on`,
+        bindingId: binding.id,
+        accountId: binding.account_id,
+      },
+      409,
+    );
+  }
+
+  const now = Date.now();
+  const toEpochMs = body.toEpochMs;
+  if (typeof toEpochMs !== "number" || !Number.isFinite(toEpochMs) || toEpochMs <= 0) {
+    return json({ error: "toEpochMs required: the epoch-ms instant the floor should move back to" }, 400);
+  }
+  if (toEpochMs > now) {
+    return json({ error: `toEpochMs ${toEpochMs} is in the future — a history floor bounds the PAST` }, 400);
+  }
+  const floor = effectiveHistoryFloor(binding.config_json);
+  if (floor.floorMs !== null && toEpochMs >= floor.floorMs) {
+    return json(
+      {
+        error:
+          `the floor already stands at ${new Date(floor.floorMs).toISOString()} (from ${floor.source}) — ` +
+          `${new Date(toEpochMs).toISOString()} is not behind it, so there is nothing to approve. ` +
+          `(Backfill already reaches it; moving a floor FORWARD is not this verb.)`,
+        bindingId: binding.id,
+        floorMs: floor.floorMs,
+      },
+      400,
+    );
+  }
+
+  // One open question per floor. subject_json is our own serialization, so
+  // exact equality is a safe key.
+  const subjectJson = JSON.stringify({ realm: "AgentBinding", objectId: binding.id });
+  const pending = await env.DB.prepare(
+    `SELECT id, payload_json FROM agent_proposals
+     WHERE account_id = ? AND kind = 'floor-request' AND status = 'pending' AND subject_json = ?`,
+  )
+    .bind(binding.account_id, subjectJson)
+    .first<{ id: string; payload_json: string }>();
+  if (pending) {
+    const asked = safeConfig(pending.payload_json).toEpochMs;
+    if (asked === toEpochMs) {
+      return json({ ok: true, proposalId: pending.id, minted: false, note: "this exact ask is already pending" });
+    }
+    return json(
+      {
+        error:
+          `a floor-request for ${binding.id} is already pending (proposal ${pending.id}, asking for ` +
+          `${typeof asked === "number" ? new Date(asked).toISOString() : "an unreadable instant"}) — decide ` +
+          `it before asking differently`,
+        proposalId: pending.id,
+      },
+      409,
+    );
+  }
+
+  // The carrier invocation: done on arrival, cost 0 — no model ran, and 0 is
+  // the honest figure for "nothing was spent" (never NULL, which means
+  // "spent but unrecorded"). The proposal id IS the invocation id.
+  const carrierId = `inv_${crypto.randomUUID()}`;
+  await env.DB.prepare(
+    `INSERT INTO agent_invocations
+       (id, account_id, binding_id, binding_name, status, context_json,
+        created_at, claimed_at, done_at, cost_micros, result_json)
+     VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, 0, ?)`,
+  )
+    .bind(
+      carrierId,
+      binding.account_id,
+      binding.id,
+      binding.name,
+      JSON.stringify({ kind: "floor-request", bindingId: binding.id, toEpochMs }),
+      now,
+      now,
+      now,
+      JSON.stringify({ kind: "floor-request", toEpochMs }),
+    )
+    .run();
+
+  const currentFloorMs = floor.floorMs; // may be null — a pre-s26 binding ESTABLISHES its floor here
+  await env.DB.prepare(
+    `INSERT INTO agent_proposals
+       (id, account_id, kind, tier, subject_json, payload_json, rationale,
+        evidence_json, status, created_at, expires_at)
+     VALUES (?, ?, 'floor-request', 1, ?, ?, ?, ?, 'pending', ?, ?)`,
+  )
+    .bind(
+      carrierId,
+      binding.account_id,
+      subjectJson,
+      JSON.stringify({
+        bindingId: binding.id,
+        bindingName: binding.name,
+        toEpochMs,
+        currentFloorMs,
+        floorSource: floor.source,
+      }),
+      `"${binding.name}" asks to read mail back to ${new Date(toEpochMs).toISOString().slice(0, 10)}. ` +
+        (currentFloorMs === null
+          ? `It has no history floor today (it predates the floor stamp), so this ESTABLISHES one. `
+          : `Its floor stands at ${new Date(currentFloorMs).toISOString().slice(0, 10)} (${floor.source}). `) +
+        `Approving moves the floor and nothing else — backfill stays a separate, budgeted call, so this ` +
+        `spends nothing by itself. Declining leaves history out of reach, and says nothing bad about the agent.`,
+      JSON.stringify([
+        { realm: "AgentBinding", objectId: binding.id, note: "the binding whose history floor would move" },
+      ]),
+      now,
+      now + FLOOR_REQUEST_EXPIRY_MS,
+    )
+    .run();
+
+  return json({
+    ok: true,
+    proposalId: carrierId,
+    minted: true,
+    kind: "floor-request",
+    tier: 1,
+    bindingId: binding.id,
+    accountId: binding.account_id,
+    toEpochMs,
+    currentFloorMs,
   });
 }
 

@@ -170,6 +170,9 @@ export const NO_FAULT_KINDS: ReadonlySet<string> = new Set([
   // preference about your own follow-ups, never "you were wrong to notice I'm
   // waiting". No fault reaches the agent.
   "watch-offer",
+  // s26 T3 — declining a floor-request says "the archive stays out of reach",
+  // a preference about your own history, never a judgment of the agent's work.
+  "floor-request",
 ]);
 
 /** Whether the decline panel must collect a reason before it can submit. */
@@ -291,6 +294,15 @@ export function summarizeProposal(p: ActionProposal): string {
       const who = s(p.payload.to) || "(unknown recipient)";
       const about = s(p.payload.sentSubject);
       return `Waiting on ${who}${about ? ` — “${about}”` : ""} — watch & follow up?`;
+    }
+    case "floor-request": {
+      // s26 T3 — the history floor (rule 1). Lead with WHO and HOW FAR BACK,
+      // because that is the whole decision; approving moves the floor and
+      // nothing else (backfill stays a separate, budgeted call).
+      const who = s(p.payload.bindingName) || s(p.payload.bindingId) || p.subject.objectId;
+      const t = num(p.payload.toEpochMs);
+      const back = t === null ? "(unknown date)" : new Date(t).toISOString().slice(0, 10);
+      return `${who} asks to read mail back to ${back} — moves its history floor`;
     }
     case "grant-request": {
       // The allowlist widening (s10 T3): grantType "recipient" is "let me

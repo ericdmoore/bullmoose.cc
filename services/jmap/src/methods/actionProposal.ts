@@ -161,7 +161,17 @@ const HELD_MAIL_REVIEW = "held-mail-review";
  * doorman to stop asking about mail it cannot judge, i.e. to guess — the exact
  * behaviour the mid-band proposal exists to replace.
  */
-const NO_FAULT_KINDS = new Set(["budget-overrun", HELD_MAIL_REVIEW, "watch-offer"]);
+/**
+ * ⚠️ A FIFTH EXCLUSION (s26 T3): a declined `floor-request` is not negative
+ * feedback either — it is a PREFERENCE. The proposal asks "may this agent read
+ * mail back to <date>?" (the history floor, devPlan rule 1), and declining says
+ * "no, the archive stays out of reach" — a statement about the human's mailbox,
+ * never about the agent's work. Whether backfill fits is per-agent character
+ * (crm@ perusing the whole archive makes sense; Allen re-reading three-year-old
+ * spending does not), so the decline records taste, and a fault here would
+ * teach an agent to stop asking for history the human merely didn't want read.
+ */
+const NO_FAULT_KINDS = new Set(["budget-overrun", HELD_MAIL_REVIEW, "watch-offer", "floor-request"]);
 
 /**
  * The tier-2 post-approval retraction window. A tier-2 approve enters the hold
@@ -1262,6 +1272,101 @@ async function applyProposal(
         entries: [{ collection: "Watch", created: [watchId], updated: [], destroyed: [] }],
         // The undo handle a tier-1 application keeps (arch.md §2).
         undo: { action: "cancel-watch", watchId },
+      };
+    }
+
+    case "floor-request": {
+      // s26 T3 — the history-floor approval (devPlan rule 1). The provision
+      // worker minted the ask (`POST /agent-bindings/{id}/floor-request`);
+      // approving writes `config_json.historyFloor` on the binding, which is
+      // the bound the backfill verb reads. Tier 1 and honest about it: the
+      // write moves a BOUND and nothing else — no invocation is minted, no
+      // money moves, no mail is read — because backfill itself stays a
+      // separate, budgeted admin call. The undo restores the previous floor
+      // (null = "had none", which is distinct from 0 = "the epoch").
+      const bindingId = str(payload.bindingId);
+      const toEpochMs = payload.toEpochMs;
+      if (!bindingId || typeof toEpochMs !== "number" || !Number.isFinite(toEpochMs) || toEpochMs <= 0) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "a floor-request payload needs bindingId and a positive epoch-ms toEpochMs",
+          ["payload"],
+        );
+      }
+      const binding = await ctx.env.DB.prepare(
+        `SELECT id, config_json FROM agent_bindings WHERE account_id = ? AND id = ?`,
+      )
+        .bind(access.accountId, bindingId)
+        .first<{ id: string; config_json: string }>();
+      if (!binding) {
+        throw new SetErrorSignal("invalidProperties", `binding "${bindingId}" not found in this account`, ["payload"]);
+      }
+      // The blob's pre-image, and the same refusal `PATCH /agent-bindings`
+      // makes: a read-modify-write over an unparseable blob would destroy the
+      // agent-specific remainder it exists to preserve.
+      let cfg: Record<string, unknown>;
+      try {
+        const parsed = JSON.parse(binding.config_json || "{}") as unknown;
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error();
+        cfg = parsed as Record<string, unknown>;
+      } catch {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `binding ${bindingId} has a config_json this approval cannot parse as an object — repair the row ` +
+            "rather than letting an approval rewrite it blind",
+          ["payload"],
+        );
+      }
+      const previousFloorMs =
+        typeof cfg.historyFloor === "number" && Number.isFinite(cfg.historyFloor) ? cfg.historyFloor : null;
+      const nextJson = JSON.stringify({ ...cfg, historyFloor: Math.floor(toEpochMs) });
+      const now = Date.now();
+      // The lifecycle row and the config write ride ONE batch, both guarded on
+      // the same pre-image (the patchAgentBinding pattern): a lost CAS leaves
+      // neither a moved floor nor a chain row describing a move that never
+      // happened. `via_proposal_id` is the WHY — this is exactly the column's
+      // purpose (s10 T2).
+      const results = await ctx.env.DB.batch([
+        ctx.env.DB.prepare(
+          `INSERT INTO binding_lifecycle
+               (account_id, binding_id, event, old_value, new_value, actor, via_proposal_id, at)
+             SELECT ?, ?, 'history-floor-changed', ?, ?, ?, ?, ?
+              WHERE EXISTS (SELECT 1 FROM agent_bindings
+                             WHERE account_id = ? AND id = ? AND config_json = ?)`,
+        ).bind(
+          access.accountId,
+          bindingId,
+          previousFloorMs === null ? null : String(previousFloorMs),
+          String(Math.floor(toEpochMs)),
+          ctx.principal.username,
+          row.id,
+          now,
+          access.accountId,
+          bindingId,
+          binding.config_json,
+        ),
+        ctx.env.DB.prepare(
+          `UPDATE agent_bindings SET config_json = ?
+            WHERE account_id = ? AND id = ? AND config_json = ?`,
+        ).bind(nextJson, access.accountId, bindingId, binding.config_json),
+      ]);
+      if ((results[results.length - 1]?.meta.changes ?? 0) === 0) {
+        // The compare-and-swap lost — another writer touched config_json
+        // between the read and this write. Nothing landed (the chain row
+        // carried the same predicate); the approval fails loudly so the human
+        // retries against the binding as it now is, rather than clobbering a
+        // concurrent edit.
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `binding ${bindingId} changed while this approval was being applied — nothing was written; retry`,
+          ["payload"],
+        );
+      }
+      // No changelog entries: agent_bindings is admin-plane config, not a
+      // synced collection (the budget-overrun precedent).
+      return {
+        entries: [],
+        undo: { action: "restore-floor", bindingId, previousFloorMs },
       };
     }
 
