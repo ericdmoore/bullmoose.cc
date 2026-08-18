@@ -39,6 +39,8 @@ import {
   type ApprovalsAccount,
 } from "../lib/approvals/rows";
 import type { ActionProposal, RejectReason } from "../lib/approvals/types";
+import CollectionColumn from "./CollectionColumn";
+import type { CollectionGroup } from "../lib/shell/collections";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
 
@@ -171,24 +173,58 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
   const pending = ordered.filter((p) => p.status === "pending");
   const infoRequested = ordered.filter((p) => p.status === "info-requested");
   const held = ordered.filter((p) => p.status === "held");
-  const history = ordered.filter((p) => p.status !== "pending" && p.status !== "info-requested" && p.status !== "held");
 
   // Master-detail (triple panel, s07 T10 / Eric 2026-08-15): the rail is the
   // shell, this island owns the middle "headers" column and the right detail.
   // `ordered` already sorts pending-first with the near-due at the top, so the
   // first item is the one most wanting a decision — the right default focus.
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
-  const selected = ordered.find((p) => p.id === selectedId) ?? ordered[0];
+
+  // s24 T4 — the Collection column: the LIVE lifecycle (Decided is dropped —
+  // history bloats a decision queue; the retrospective is Activity's realm,
+  // s23) plus the first saved view. The header column shows ONE collection's
+  // rows, chosen here.
+  const [collection, setCollection] = useState("pending");
+  const dueSoon = useMemo(() => pending.filter((p) => isNearExpiry(rowClocks(p, now))), [pending, now]);
+  const collections: CollectionGroup[] = useMemo(
+    () => [
+      {
+        id: "lifecycle",
+        label: "Queue",
+        items: [
+          { id: "pending", label: "Waiting on you", count: pending.length },
+          { id: "info", label: "Waiting on the agent", count: infoRequested.length },
+          { id: "held", label: "Hold tray", count: held.length },
+        ],
+      },
+      {
+        id: "views",
+        label: "Views",
+        items: [{ id: "due-soon", label: "Due soon", count: dueSoon.length }],
+      },
+    ],
+    [pending.length, infoRequested.length, held.length, dueSoon.length],
+  );
+  const activeList =
+    collection === "info"
+      ? infoRequested
+      : collection === "held"
+        ? held
+        : collection === "due-soon"
+          ? dueSoon
+          : pending;
+
+  const selected = activeList.find((p) => p.id === selectedId) ?? activeList[0];
   // Keep a valid selection as the queue changes under us (a decided row leaves,
-  // a new proposal arrives) without yanking focus off something the human is
-  // mid-decision on.
+  // a new proposal arrives, the human switches collections) without yanking
+  // focus off something the human is mid-decision on.
   useEffect(() => {
-    if (ordered.length === 0) {
+    if (activeList.length === 0) {
       if (selectedId !== undefined) setSelectedId(undefined);
       return;
     }
-    if (!ordered.some((p) => p.id === selectedId)) setSelectedId(ordered[0]!.id);
-  }, [ordered, selectedId]);
+    if (!activeList.some((p) => p.id === selectedId)) setSelectedId(activeList[0]!.id);
+  }, [activeList, selectedId]);
 
   async function reload(): Promise<void> {
     if (!client || accounts.length === 0) return;
@@ -331,51 +367,39 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
       {!loading && pending.length === 0 ? <p class="muted apq-pad">Nothing is waiting on you.</p> : null}
 
       {ordered.length > 0 ? (
-        <div class="apq-panes grid grid-cols-1 lg:grid-cols-[22rem_1fr]">
-          {/* COLUMN 2 — the headers. A compact, grouped, selectable list:
-              what needs you first, then the secondary states. This is the
-              "second column" of the triple-panel; the rail is the first.
+        <div class="apq-panes grid grid-cols-1 lg:grid-cols-[auto_22rem_1fr]">
+          {/* COLUMN 2 — the collections (s24 T4): the LIVE lifecycle, then the
+              saved views. Decided is gone from the queue on purpose — the
+              active UI shows what is live; history is a realm (Activity, s23),
+              not a section here. */}
+          <CollectionColumn
+            title="Approvals"
+            storageKey="bm.cc.approvals"
+            groups={collections}
+            selectedId={collection}
+            onSelect={setCollection}
+          />
 
-              It scrolls ITSELF (`apq-pane`) rather than sticking to the
-              viewport. Sticky was the right tool when the document scrolled;
-              now the page is exactly one window tall and each pane owns its
-              own overflow, which is what Mail does and why its list and
-              message move independently. */}
+          {/* COLUMN 3 — the headers of the ACTIVE collection only. */}
           <nav aria-label="Proposals" class="apq-pane">
             <HeaderGroup
-              label="Waiting on you"
-              tone="primary"
-              items={pending}
+              label={
+                collection === "info"
+                  ? "Waiting on the agent"
+                  : collection === "held"
+                    ? "Hold tray"
+                    : collection === "due-soon"
+                      ? "Due soon"
+                      : "Waiting on you"
+              }
+              tone={collection === "pending" || collection === "due-soon" ? "primary" : undefined}
+              items={activeList}
               now={now}
               accounts={accounts}
               selectedId={selected?.id}
               onSelect={setSelectedId}
             />
-            <HeaderGroup
-              label="Waiting on the agent"
-              items={infoRequested}
-              now={now}
-              accounts={accounts}
-              selectedId={selected?.id}
-              onSelect={setSelectedId}
-            />
-            <HeaderGroup
-              label="Hold tray"
-              items={held}
-              now={now}
-              accounts={accounts}
-              selectedId={selected?.id}
-              onSelect={setSelectedId}
-            />
-            <HeaderGroup
-              label="Decided"
-              items={history}
-              now={now}
-              accounts={accounts}
-              selectedId={selected?.id}
-              onSelect={setSelectedId}
-              muted
-            />
+            {activeList.length === 0 ? <p class="muted apq-pad">Nothing here right now.</p> : null}
           </nav>
 
           {/* COLUMN 3 — the detail, subordinate to the header column: the full
