@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { homeTarget, resolveClient } from "./client";
+import { forgetLoginCallbackInUrl, homeTarget, resolveClient } from "./client";
 
 // THE invariant of s07 T1: a token never enters a URL.
 //
@@ -178,5 +178,28 @@ describe("driven: the token is gone before anything else runs", () => {
       expect(target).not.toContain(TOKEN);
       expect(target).not.toMatch(/token/);
     }
+  });
+});
+
+describe("driven: the OAuth callback is gone the same way (s07 T7)", () => {
+  // An authorization code is a bearer for one exchange. The login island
+  // strips it BEFORE the exchange begins, through the same single history
+  // call the ?token= strip uses — this drives that call end to end.
+  it("strips code/state/iss in one replaceState, leaving clean history", () => {
+    loc.href = `${ORIGIN}/login?code=cabc123&state=s1&iss=${encodeURIComponent("https://auth.bullmoose.cc")}`;
+    forgetLoginCallbackInUrl();
+
+    expect(seen).toHaveLength(1);
+    expect(loc.href).toBe(`${ORIGIN}/login`);
+    for (const url of seen) {
+      expect(url).not.toContain("cabc123");
+      expect(url).not.toMatch(/[?&](code|state|iss)=/);
+    }
+  });
+
+  it("touches history not at all when there is no callback to strip", () => {
+    loc.href = `${ORIGIN}/login`;
+    forgetLoginCallbackInUrl();
+    expect(seen).toHaveLength(0);
   });
 });
