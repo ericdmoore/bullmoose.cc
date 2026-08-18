@@ -64,14 +64,14 @@ CollectionColumn learns inline expand; the **collection sheet** (new, from
 `navigation/command-palettes` + dialog markup, hand-rolled interactivity, class-swap animations —
 CSP holds); the list header gains the tappable title that summons it.
 
-### T3 — drill-in detail URLs, the native back button
+### T3 — drill-in detail URLs, the native back button — ✅ LANDED 2026-08-18 (#194)
 List→Detail becomes REAL NAVIGATION: `/mail?thread=…`, `/contacts?card=…`, `/approvals?p=…` as
 links, read at mount. The browser back button just works — the make-or-break mobile gesture — and
 every detail becomes deep-linkable. NOTE the invariant: the app makes exactly ONE history call
 (tokenInUrl.test.ts) — this adds zero; MPA links are not history calls. Desktop keeps the
 side-by-side panels (the param selects; the layout decides by width).
 
-### T4 — the realm tray + leaf-nodes
+### T4 — the realm tray + leaf-nodes — ✅ LANDED 2026-08-18 (#194: `lib/shell/publish.ts` contract + RealmTray)
 The mobile drawer becomes the tray: realm rows (from `sections.ts`) that expand published
 collections inline (the T2 tree rendering again). Ships in two steps: tray with plain rows, then
 leaf-nodes over the plumbing contract above.
