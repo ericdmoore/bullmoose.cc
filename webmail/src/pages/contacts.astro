@@ -232,4 +232,15 @@ import App from "../layouts/AppTw.astro";
       overflow-y: auto;
     }
   }
+
+  /* s25 T1 — the 390px audit: same egregious bug as /mail, same fix. `.body`
+     is a flex ROW, so the CollectionColumn's fixed width crushed the card
+     list on a phone; below lg it stacks (the column renders itself full-width
+     and height-capped there). 1023.98px = below Tailwind's lg, where the
+     column swaps its own width classes. */
+  @media (max-width: 1023.98px) {
+    .body {
+      flex-direction: column;
+    }
+  }
 </style>

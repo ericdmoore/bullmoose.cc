@@ -171,4 +171,18 @@ import App from "../layouts/AppTw.astro";
   .person-item-body {
     min-width: 0;
   }
+
+  /* s25 T1 — the 390px audit's one egregious mail bug: `.body` is a flex ROW
+     (webmail.css), so the CollectionColumn's fixed width beside the list left
+     the list ~10ch wide on a phone. Below lg the column stacks instead — the
+     CollectionColumn renders itself full-width and height-capped there (its
+     `narrow="stack"` default), and the list keeps the rest of the screen.
+     Interim until Mail adopts the collection sheet + T3's list⇄detail
+     navigation; kept on this page so the shared webmail.css stays untouched
+     by a parallel task (the standing per-page rule). */
+  @media (max-width: 1023.98px) {
+    .body {
+      flex-direction: column;
+    }
+  }
 </style>

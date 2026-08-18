@@ -106,5 +106,9 @@ describe("Column / SurfaceFrame", () => {
     );
     expect(html.match(/<section/g)).toHaveLength(2);
     expect(html).toContain("flex h-full min-h-0 w-full");
+    // s25 T1: below lg the row stacks and scrolls as one — three fixed-width
+    // columns beside each other at 390px is the audit's crushing bug.
+    expect(html).toContain("max-lg:flex-col");
+    expect(html).toContain("max-lg:overflow-y-auto");
   });
 });

@@ -202,7 +202,7 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
             {/* COLUMN 3 — the agents. */}
             <Column
               aria-label="Agents"
-              class="w-80 shrink-0 border-r border-gray-200 dark:border-white/10"
+              class="w-full shrink-0 border-gray-200 max-lg:border-b lg:w-80 lg:border-r dark:border-white/10"
               header={
                 <h2 class="px-4 pt-4 pb-1 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
                   All agents <span class="ml-1 font-normal text-gray-400">{visible.length}</span>

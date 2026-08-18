@@ -111,6 +111,102 @@ describe("CollectionColumn — the T2 extensions (Contacts, the second caller)",
   });
 });
 
+// ── s25 T2 — the tree renderings: inline-expandable children (one level) and
+// the planned-row idiom (disabled + reason, never a dead row). ────────────
+
+const NESTED: CollectionGroup[] = [
+  {
+    id: "queue",
+    label: "Queue",
+    items: [
+      { id: "pending", label: "Waiting on you", count: 3 },
+      {
+        id: "by-agent",
+        label: "By agent",
+        children: [
+          { id: "agent-allen", label: "Allen", count: 2 },
+          { id: "agent-piper", label: "Piper" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "views",
+    label: "Views",
+    items: [{ id: "high-cost", label: "High cost", disabled: true, reason: "coming with cost data" }],
+  },
+];
+
+describe("CollectionColumn — expandable nodes (s25 T2)", () => {
+  it("a collapsed parent shows its chevron but not its children", () => {
+    const html = render(<CollectionColumn title="Approvals" groups={NESTED} onSelect={() => {}} />);
+    expect(html).toContain('aria-label="Expand By agent"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("Allen");
+  });
+
+  it("defaultExpanded renders the children inline, indented one step", () => {
+    const html = render(
+      <CollectionColumn
+        title="Approvals"
+        groups={NESTED}
+        selectedId="agent-allen"
+        onSelect={() => {}}
+        defaultExpanded={["by-agent"]}
+      />,
+    );
+    expect(html).toContain('aria-label="Collapse By agent"');
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain("rotate-90"); // the chevron turns by class swap, never inline style
+    expect(html).toContain("Allen");
+    expect(html).toContain("pl-4"); // one discrete indent step (CSP: a class, not paddingLeft)
+    expect(html).toContain('aria-current="true"'); // a child can be the selection
+  });
+
+  it("a disabled row is greyed WITH its reason — never a dead row", () => {
+    const html = render(<CollectionColumn title="Approvals" groups={NESTED} onSelect={() => {}} />);
+    expect(html).toContain("High cost");
+    expect(html).toContain("coming with cost data"); // visible beside the label
+    expect(html).toContain('title="coming with cost data"');
+    expect(html).toContain("disabled"); // a native disabled button: unselectable for free
+    expect(html).toContain("opacity-60");
+  });
+});
+
+describe("CollectionColumn — narrow behaviour (s25 T1)", () => {
+  it("stacks full-width and height-capped below lg by default", () => {
+    const html = render(<CollectionColumn title="Mail" groups={GROUPS} onSelect={() => {}} />);
+    expect(html).toContain("w-full");
+    expect(html).toContain("max-lg:max-h-[45dvh]");
+    expect(html).toContain("lg:w-56");
+  });
+
+  it("narrow='hidden' removes it below lg (the surface summons the sheet instead)", () => {
+    const html = render(<CollectionColumn title="Approvals" groups={GROUPS} onSelect={() => {}} narrow="hidden" />);
+    expect(html).toContain("max-lg:hidden");
+    expect(html).not.toContain("max-lg:max-h");
+  });
+
+  it("the collapsed strip turns horizontal below lg — and disappears when narrow='hidden'", () => {
+    const stacked = render(
+      <CollectionColumn title="Mail" groups={GROUPS} onSelect={() => {}} storageKey="k" defaultCollapsed />,
+    );
+    expect(stacked).toContain("max-lg:flex-row");
+    expect(stacked).not.toContain("max-lg:hidden");
+    const hidden = render(
+      <CollectionColumn
+        title="Approvals"
+        groups={GROUPS}
+        onSelect={() => {}}
+        storageKey="k"
+        defaultCollapsed
+        narrow="hidden"
+      />,
+    );
+    expect(hidden).toContain("max-lg:hidden");
+  });
+});
+
 describe("CollectionColumn — variants", () => {
   it("without onNew it shows the title instead of a create button", () => {
     const html = render(<CollectionColumn title="Approvals" groups={GROUPS} onSelect={() => {}} />);

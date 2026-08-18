@@ -910,7 +910,10 @@ code {
   border-radius: 10px;
   padding: 20px 24px;
   min-width: 320px;
+  /* dvh with a vh fallback (s25 T1): 80vh of the LARGE viewport can put the
+     card's bottom under mobile Safari's toolbar; dvh tracks the real one. */
   max-height: 80vh;
+  max-height: 80dvh;
   overflow-y: auto;
 }
 .help-card h2 {

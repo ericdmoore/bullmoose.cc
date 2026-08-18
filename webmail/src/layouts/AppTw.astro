@@ -72,8 +72,12 @@ const { title, section, frame = "document" } = Astro.props;
 // `min-h-0` matters more than it looks: without it a flex/grid child refuses
 // to shrink below its content and the inner `overflow-y-auto` never engages —
 // the pane grows instead of scrolling, which is the whole bug.
+// 100dvh, not 100vh (s25 T1): on mobile Safari 100vh is the LARGE viewport —
+// the one with the toolbar retracted — so a 100vh surface overflows by the
+// toolbar's height whenever it is showing, and the panes' bottom edge hides
+// under it. dvh tracks the toolbar as it comes and goes.
 const frameClass =
-  frame === "surface" ? "h-[calc(100vh-4rem)] min-h-0 overflow-hidden" : "py-6";
+  frame === "surface" ? "h-[calc(100dvh-4rem)] min-h-0 overflow-hidden" : "py-6";
 const innerClass = frame === "surface" ? "h-full min-h-0" : "px-4 sm:px-6 lg:px-8";
 ---
 
@@ -81,7 +85,11 @@ const innerClass = frame === "surface" ? "h-full min-h-0" : "px-4 sm:px-6 lg:px-
 <html lang="en" class="h-full">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- viewport-fit=cover (s25 T1): without it iOS letterboxes the page
+         inside the safe area and every env(safe-area-inset-*) reads 0 — the
+         bottom sheet (and T4's tab bar) pad themselves with those insets to
+         clear the home indicator, so they must actually have a value. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{title}</title>
     <meta name="robots" content="noindex" />
     <!--
