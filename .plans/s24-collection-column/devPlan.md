@@ -35,14 +35,24 @@ The shell itself (`AppTw.astro:101-111`) provides **exactly one column — the n
    ShellNav   CollectionColumn   HeaderColumn      DetailPanel
 ```
 
-| Surface | CollectionColumn holds |
-|---|---|
-| **Mail** | Inbox / folders / tags / saved searches |
-| **Contacts** | All contacts / address books / groups |
-| **Approvals** | Waiting on you / on the agent / Hold tray / Decided (today's `HeaderGroup`s, promoted out) |
-| **Files** | folders / roots |
-| **Calendar** | calendars (when it grows one) |
-| **Ask** (s20 T5) | chat sessions — recent / pinned; the bar filters them |
+### The information architecture (Eric, 2026-08-17)
+
+The four-panel generalises across **seven realms**; each is `Collection → List → Detail` under the rail:
+
+| Realm (nav icon) | CollectionColumn | List (Header) | Detail |
+|---|---|---|---|
+| **Agents** | agent groups — *Most Recent Actions*, … | the agents | agent detail |
+| **Mail** | Inbox / folders / tags | messages | message |
+| **Ask** (s20 T5) | saved queries; grouped by date (Year › Month) | queries | the query + its conversation |
+| **Contacts** | groups — All / Family / Church / Cousins / Fantasy Football | contacts | contact card |
+| **Files** | groups — From Agents / From Photos / Tagged | files (a folder) | **preview** |
+| **Activity** (s23) — *new, mark "coming soon"* | activity groups — by agent (picker) / contacts / files / dates | activities | activity detail |
+| **Settings** | domains — Mail / Contacts / Calendar / Files / Agents / Grants | named settings | the setting's config |
+
+**The exception — Calendar.** It does **not** take the four-panel: `Calendar(icon) → calendar selector →
+Month | Week | Day` (existing functionality). The quad is the *default*, not a mandate — a realm whose
+detail is a time-grid keeps its own shape. Calendar is where the pattern correctly stops, and naming
+that stop is what keeps the pattern honest rather than procrustean.
 
 ## The architecture decision — a shared component, not a shell-hoisted column
 
@@ -76,8 +86,10 @@ that **absorbs** each surface's own bar into a single one whose meaning is where
 | **Mail** | messages | `from:/to:/is:unread` |
 | **Contacts** | cards | name / org |
 | **Files** | nodes | name / type |
-| **Approvals** | proposals | agent / tier |
+| **Agents** | agent actions | agent |
 | **Ask** | **your chat sessions** | — |
+
+…and so for every realm in the IA above — the bar filters whatever List you're standing in.
 
 **Ask is itself a realm** (a nav section — this is **s20 T5**, "research over your own history"), and
 that is what makes the rule uniform. You go to Ask to *find* something you can't filter to — *"find
@@ -246,6 +258,23 @@ T5 (search) is otherwise independent. T4 (Approvals) is the "maybe", last.
 6. **Where the library lives.** *Recommendation: `webmail/src/components/{icons,ui}` + `lib/ui`
    (webmail-local), not a shared `packages/*` — it is Preact/Astro and webmail-only; the shared
    packages are backend/core. Promote to a package only if a second frontend ever appears.*
+7. **Where does Approvals live?** — it is **absent from the IA above**, and that is the interesting
+   question. Its forward-looking queue overlaps **Agents** ("Most Recent Actions" = agent actions
+   awaiting you), and its *retrospective twin is **Activity*** (s23, literally "the retrospective twin
+   of /approvals"). *Options: (a) keep Approvals its own realm; (b) fold the pending queue into
+   **Agents** as an "actions" collection and let **Activity** carry the decided history; (c) both — a
+   thin Approvals realm that is a saved view over Agents' actions.* This is Eric's call and it decides
+   whether T4 ("Approvals adopts the CollectionColumn") stays a task or dissolves into Agents+Activity.
+   *Recommendation: (b)* — it removes a noun rather than reshaping one, and the two halves (pending →
+   Agents, decided → Activity) are already how s20/s23 think about it.
+
+### The realm roster vs the build
+
+The IA names **seven** quad-panel realms; s24's tasks build the **library + the pattern**, not all
+seven adoptions at once. **Contacts (T2)** and **Mail (T3)** prove it; **Agents, Files, Settings** are
+cheap follow-on adoptions once T0+T1 exist (each is `Collection → List → Detail` over data it already
+has); **Activity** rides s23 and ships behind a "coming soon" until then; **Approvals** waits on
+Decision 7. None of the follow-ons need new substrate — they are the library paying off.
 
 ## Constraints (from the landed shell)
 
