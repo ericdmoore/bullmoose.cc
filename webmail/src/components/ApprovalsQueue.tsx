@@ -41,6 +41,7 @@ import {
 } from "../lib/approvals/rows";
 import type { ActionProposal, RejectReason } from "../lib/approvals/types";
 import CollectionColumn from "./CollectionColumn";
+import CollectionSheet, { CollectionSheetButton } from "./CollectionSheet";
 import type { CollectionGroup } from "../lib/shell/collections";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
@@ -214,6 +215,19 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
         : collection === "due-soon"
           ? dueSoon
           : pending;
+  const collectionLabel =
+    collection === "info"
+      ? "Waiting on the agent"
+      : collection === "held"
+        ? "Hold tray"
+        : collection === "due-soon"
+          ? "Due soon"
+          : "Waiting on you";
+
+  // s25 T2 — the collection sheet: below lg the CollectionColumn is hidden
+  // and the list title above summons the SAME tree as a bottom sheet (a
+  // picker, not a screen — zero stack depth).
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const selected = activeList.find((p) => p.id === selectedId) ?? activeList[0];
   // Keep a valid selection as the queue changes under us (a decided row leaves,
@@ -379,20 +393,16 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
             groups={collections}
             selectedId={collection}
             onSelect={setCollection}
+            narrow="hidden"
           />
 
-          {/* COLUMN 3 — the headers of the ACTIVE collection only. */}
+          {/* COLUMN 3 — the headers of the ACTIVE collection only. Below lg
+              its title is the tappable summon for the collection sheet
+              (s25 T2); on desktop the HeaderGroup label stands unchanged. */}
           <nav aria-label="Proposals" class="apq-pane">
+            <CollectionSheetButton label={collectionLabel} open={sheetOpen} onOpen={() => setSheetOpen(true)} />
             <HeaderGroup
-              label={
-                collection === "info"
-                  ? "Waiting on the agent"
-                  : collection === "held"
-                    ? "Hold tray"
-                    : collection === "due-soon"
-                      ? "Due soon"
-                      : "Waiting on you"
-              }
+              label={collectionLabel}
               tone={collection === "pending" || collection === "due-soon" ? "primary" : undefined}
               items={activeList}
               now={now}
@@ -449,6 +459,19 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
           </section>
         </div>
       ) : null}
+
+      {/* The collection sheet (s25 T2) — the same tree the desktop column
+          renders, summoned from the list title on small screens. Same
+          storageKey, so expansion memory is one tree, not two. */}
+      <CollectionSheet
+        title="Approvals"
+        storageKey="bm.cc.approvals"
+        groups={collections}
+        selectedId={collection}
+        onSelect={setCollection}
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+      />
     </div>
   );
 }
@@ -473,8 +496,13 @@ function HeaderGroup(props: {
   if (items.length === 0) return null;
   return (
     <div class="mb-4">
+      {/* max-lg:hidden — below lg the CollectionSheetButton above already
+          carries this label as the sheet's summon (s25 T2). */}
       <h2
-        class={"px-2 pb-1 text-xs font-semibold tracking-wide uppercase " + (muted ? "text-gray-400" : "text-gray-500")}
+        class={
+          "px-2 pb-1 text-xs font-semibold tracking-wide uppercase max-lg:hidden " +
+          (muted ? "text-gray-400" : "text-gray-500")
+        }
       >
         {label} <span class="ml-1 font-normal text-gray-400">{items.length}</span>
       </h2>
