@@ -8,6 +8,9 @@ export interface CollectionItem {
   /** Right-aligned count badge; absent and 0 both render nothing (a zero is
    *  noise in a picker — the group still exists, it is just empty). */
   count?: number | null;
+  /** A short right-aligned annotation badge — "default", "read-only". Text
+   *  where `count` is numbers; a row may carry either (count wins if both). */
+  note?: string;
   muted?: boolean;
 }
 

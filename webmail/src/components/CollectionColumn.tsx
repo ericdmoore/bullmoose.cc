@@ -1,4 +1,5 @@
 /** @jsxImportSource preact */
+import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { Badge, Button, Column, IconButton, ListContainer, ListRow } from "./ui";
 import { ChevronDoubleLeftIcon, ChevronRightIcon, PlusIcon } from "./icons";
@@ -31,6 +32,12 @@ export interface CollectionColumnProps {
   /** The standardized [New] (Decision 8): omit both to render no create. */
   newLabel?: string;
   onNew?: () => void;
+  /** Disable (not hide) the create — the realm exists, this session can't write. */
+  newDisabled?: boolean;
+  /** Surface-specific extras under the header (a second create, a hint). */
+  actions?: ComponentChildren;
+  /** Surface-specific block after the groups (Contacts' manage-books). */
+  footer?: ComponentChildren;
   /** localStorage key for the collapse memory; omit = not collapsible. */
   storageKey?: string;
   /** Test/SSR seam: the collapsed state before any stored preference lands. */
@@ -39,7 +46,19 @@ export interface CollectionColumnProps {
 }
 
 export default function CollectionColumn(props: CollectionColumnProps) {
-  const { title, groups, selectedId, onSelect, newLabel, onNew, storageKey, defaultCollapsed } = props;
+  const {
+    title,
+    groups,
+    selectedId,
+    onSelect,
+    newLabel,
+    onNew,
+    newDisabled,
+    storageKey,
+    defaultCollapsed,
+    actions,
+    footer,
+  } = props;
   const [collapsed, setCollapsed] = useState(defaultCollapsed ?? false);
 
   // Adopt the stored preference on mount (never during render — SSR parity).
@@ -89,7 +108,7 @@ export default function CollectionColumn(props: CollectionColumnProps) {
       header={
         <div class="flex items-center gap-x-1 px-2 pt-2 pb-1">
           {newLabel && onNew ? (
-            <Button variant="primary" size="sm" onClick={() => onNew()} class="grow">
+            <Button variant="primary" size="sm" onClick={() => onNew()} disabled={newDisabled} class="grow">
               <PlusIcon class="size-4" strokeWidth={2} />
               {newLabel}
             </Button>
@@ -104,6 +123,7 @@ export default function CollectionColumn(props: CollectionColumnProps) {
         </div>
       }
     >
+      {actions ? <div class="px-2 pb-1">{actions}</div> : null}
       <nav class="px-2 pb-2" onKeyDown={onKeyDown}>
         {groups.map((g) => (
           <div key={g.id} class="mb-3">
@@ -121,13 +141,14 @@ export default function CollectionColumn(props: CollectionColumnProps) {
                   onSelect={() => onSelect(item.id)}
                 >
                   <span class="min-w-0 grow truncate">{item.label}</span>
-                  {item.count ? <Badge>{item.count}</Badge> : null}
+                  {item.count ? <Badge>{item.count}</Badge> : item.note ? <Badge>{item.note}</Badge> : null}
                 </ListRow>
               ))}
             </ListContainer>
           </div>
         ))}
       </nav>
+      {footer ? <div class="border-t border-gray-200 px-2 py-2 dark:border-white/10">{footer}</div> : null}
     </Column>
   );
 }

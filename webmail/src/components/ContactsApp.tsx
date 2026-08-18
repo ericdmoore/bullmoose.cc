@@ -1,6 +1,9 @@
 /** @jsxImportSource preact */
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { resolveClient, type ClientMode } from "../lib/app/client";
+import CollectionColumn from "./CollectionColumn";
+import { Button } from "./ui";
+import type { CollectionGroup } from "../lib/shell/collections";
 import {
   bookIdOf,
   bookScopeNote,
@@ -489,6 +492,27 @@ export default function ContactsApp({ client: injected }: Props) {
   const scopeNote = account ? bookScopeNote(account, books) : undefined;
   const selectedBook = books.find((b) => b.id === bookId);
   const canWriteHere = targetBooks.length > 0;
+
+  // s24 T2 — the CollectionColumn's feed: "All" + each address book, with the
+  // rights/default annotation as the row's note (read-only wins — it changes
+  // what you can DO; "default" is trivia by comparison).
+  const bookGroups: CollectionGroup[] = useMemo(
+    () => [
+      {
+        id: "books",
+        label: "Address books",
+        items: [
+          { id: "", label: "All address books" },
+          ...books.map((b) => ({
+            id: b.id,
+            label: b.name,
+            note: !b.myRights.mayWrite ? "read-only" : b.isDefault ? "default" : undefined,
+          })),
+        ],
+      },
+    ],
+    [books],
+  );
   const editingCard = view === "edit" || view === "new";
 
   return (
@@ -559,115 +583,97 @@ export default function ContactsApp({ client: injected }: Props) {
       {scopeNote ? <p class="banner banner-warn">{scopeNote}</p> : null}
 
       <div class="body">
-        <aside class="sidebar">
-          <div class="contacts-actions">
-            <button class="compose-button" disabled={!canWriteHere} onClick={startNew}>
-              New contact
-            </button>
-            <button class="link-button" disabled={!canWriteHere} onClick={() => void newGroup()}>
-              New group
-            </button>
-          </div>
-          {!canWriteHere ? (
-            <p class="muted contacts-hint">
-              No address book here is writable for this session, so nothing can be added.
-            </p>
-          ) : null}
-
-          <ul class="book-list">
-            <li>
-              <button
-                class={`book-row${bookId === "" ? " is-selected" : ""}`}
-                onClick={() => {
-                  setBookId("");
-                  setSelectedId(undefined);
-                }}
-              >
-                <span class="book-name">All address books</span>
-              </button>
-            </li>
-            {books.map((b) => (
-              <li>
-                <button
-                  class={`book-row${bookId === b.id ? " is-selected" : ""}`}
-                  onClick={() => {
-                    setBookId(b.id);
-                    setSelectedId(undefined);
-                  }}
-                >
-                  <span class="book-name">{b.name}</span>
-                  {b.isDefault ? <span class="pill">default</span> : null}
-                  {b.myRights.mayWrite ? null : <span class="pill">read-only</span>}
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          {canManageBooks ? (
-            <details class="attach" open={booksOpen} onToggle={() => setBooksOpen((v) => !v)}>
-              <summary>Manage address books</summary>
-              <div class="attach-body">
-                <button
-                  disabled={busy}
-                  onClick={() => {
-                    const name = prompt("Name for the new address book")?.trim();
-                    if (name && client) {
-                      void bookAction(
-                        () => createBook(client, accountId, name),
-                        null,
-                        `Address book “${name}” created.`,
-                      );
-                    }
-                  }}
-                >
-                  New address book
-                </button>
-                {selectedBook ? (
-                  <>
-                    <button
-                      disabled={busy}
-                      onClick={() => {
-                        const name = prompt("Rename to", selectedBook.name)?.trim();
-                        if (name && client) {
-                          void bookAction(
-                            () => renameBook(client, accountId, selectedBook.id, name),
-                            selectedBook,
-                            "Address book renamed.",
-                          );
-                        }
-                      }}
-                    >
-                      Rename “{selectedBook.name}”
-                    </button>
-                    <button
-                      class="danger"
-                      disabled={busy || !selectedBook.myRights.mayDelete}
-                      onClick={() => {
-                        // The server refuses a non-empty book unless told twice
-                        // (`addressBookHasContents`), which IS the confirmation
-                        // step — so ask once, then obey the answer.
-                        const withContents = confirm(
-                          `Delete “${selectedBook.name}”?\n\n` +
-                            "A contact lives in exactly one address book, so any contacts inside " +
-                            "it are deleted too. Cancel to keep everything.",
+        <CollectionColumn
+          title="Contacts"
+          storageKey="bm.cc.contacts"
+          groups={bookGroups}
+          selectedId={bookId}
+          onSelect={(id) => {
+            setBookId(id);
+            setSelectedId(undefined);
+          }}
+          newLabel="New contact"
+          onNew={startNew}
+          newDisabled={!canWriteHere}
+          actions={
+            <>
+              <Button variant="ghost" size="sm" disabled={!canWriteHere} onClick={() => void newGroup()}>
+                New group
+              </Button>
+              {!canWriteHere ? (
+                <p class="muted contacts-hint">
+                  No address book here is writable for this session, so nothing can be added.
+                </p>
+              ) : null}
+            </>
+          }
+          footer={
+            canManageBooks ? (
+              <details class="attach" open={booksOpen} onToggle={() => setBooksOpen((v) => !v)}>
+                <summary>Manage address books</summary>
+                <div class="attach-body">
+                  <button
+                    disabled={busy}
+                    onClick={() => {
+                      const name = prompt("Name for the new address book")?.trim();
+                      if (name && client) {
+                        void bookAction(
+                          () => createBook(client, accountId, name),
+                          null,
+                          `Address book “${name}” created.`,
                         );
-                        if (withContents && client) {
-                          void bookAction(
-                            () => destroyBook(client, accountId, selectedBook.id, true),
-                            selectedBook,
-                            "Address book deleted.",
-                          ).then(() => setBookId(""));
-                        }
-                      }}
-                    >
-                      Delete “{selectedBook.name}”
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            </details>
-          ) : null}
-        </aside>
+                      }
+                    }}
+                  >
+                    New address book
+                  </button>
+                  {selectedBook ? (
+                    <>
+                      <button
+                        disabled={busy}
+                        onClick={() => {
+                          const name = prompt("Rename to", selectedBook.name)?.trim();
+                          if (name && client) {
+                            void bookAction(
+                              () => renameBook(client, accountId, selectedBook.id, name),
+                              selectedBook,
+                              "Address book renamed.",
+                            );
+                          }
+                        }}
+                      >
+                        Rename “{selectedBook.name}”
+                      </button>
+                      <button
+                        class="danger"
+                        disabled={busy || !selectedBook.myRights.mayDelete}
+                        onClick={() => {
+                          // The server refuses a non-empty book unless told twice
+                          // (`addressBookHasContents`), which IS the confirmation
+                          // step — so ask once, then obey the answer.
+                          const withContents = confirm(
+                            `Delete “${selectedBook.name}”?\n\n` +
+                              "A contact lives in exactly one address book, so any contacts inside " +
+                              "it are deleted too. Cancel to keep everything.",
+                          );
+                          if (withContents && client) {
+                            void bookAction(
+                              () => destroyBook(client, accountId, selectedBook.id, true),
+                              selectedBook,
+                              "Address book deleted.",
+                            ).then(() => setBookId(""));
+                          }
+                        }}
+                      >
+                        Delete “{selectedBook.name}”
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </details>
+            ) : undefined
+          }
+        />
 
         <main class="content">
           <p class="scope-line">
