@@ -86,6 +86,23 @@ where the collection happens to be conversations and the *content* of a session 
 - **Watch the header height.** `AppTw.astro:75-76` hardcodes `h-16` / `4rem`; the `frame="surface"`
   calc (`h-[calc(100vh-4rem)]`) depends on it. A taller bar updates both.
 
+## Provenance — every piece starts from a reference template
+
+The webmail UI is adapted from the licensed Tailwind UI set in
+`webmail/referenceTemplates/tailwindcss.com/` (the standing rule; the shell already does this). Each
+s24 piece has a near-exact starting template — we take its **markup + Tailwind classes** and
+**hand-roll the interactivity in vanilla Preact**, because the templates ship `@headlessui/react` for
+drawers/menus/palettes and this repo deliberately does not depend on it (`ShellNav.tsx:12`).
+
+| s24 piece | Start from |
+|---|---|
+| The quad-panel frame | `application-shells/multi-column/06-full-width-with-narrow-sidebar-and-header.html` — a narrow nav rail + a top header + a multi-column body: rail + top bar + (collection/header/detail) exactly |
+| variants | `05-full-width-with-narrow-sidebar.html`, `01-full-width-three-column.html`, `04-constrained-with-sticky-columns.html` (the sticky columns matter for `frame="surface"`) |
+| **CollectionColumn** (T1) | the secondary sidebar in the multi-column shells + `navigation/sidebar-navigation/*` for the item/active-state styling |
+| **HeaderColumn** list | `layout/list-containers/*` (e.g. `01-simple-with-dividers`) — the same family the approvals list already uses |
+| **contextual top-bar search** (T5) | `navigation/navbars/11-with-search-in-column-layout.html` (search inside a column layout) / `08-with-search.html` |
+| **Ask** — directed find (s20 T5) | `navigation/command-palettes/03-with-preview.html` (find + preview) and `08-with-groups.html` — a command palette IS a directed-find UI, the right seed for Ask's entry |
+
 ## Tasks
 
 ### T1 — the shared `<CollectionColumn>` component · *the substrate*
