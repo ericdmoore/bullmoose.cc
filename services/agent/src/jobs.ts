@@ -346,7 +346,7 @@ export async function expandPlan(env: Env, parent: JobNodeRow, plan: unknown): P
 
   const ids = new Map(result.children.map((c) => [c.key, `inv_${crypto.randomUUID()}`]));
   const now = Date.now();
-  const changes = await insertChildren(env, parent, job, result.children, ids, now);
+  const changes = await insertJobChildren(env, parent, job, result.children, ids, now);
   if (changes !== result.children.length) {
     // The pure check passed and the SQL guard still refused: a sibling planner
     // expanded the same Job between the two. Nothing was written (one
@@ -393,13 +393,24 @@ export async function expandPlan(env: Env, parent: JobNodeRow, plan: unknown): P
  * A single `INSERT … SELECT … WHERE` evaluates the guard once for the whole
  * batch and inserts N rows or 0.
  */
-async function insertChildren(
+export async function insertJobChildren(
   env: Env,
   parent: JobNodeRow,
   job: { id: string; budget_micros: number | null; max_nodes: number; max_depth: number },
   children: readonly AttenuatedChild[],
   ids: Map<string, string>,
   now: number,
+  /**
+   * The DISPLAY NAME for a child's binding. s17 fixes a latent lie here: this
+   * function used to write `parent.binding_name` onto every child
+   * unconditionally, which was correct only because `attenuateChild`'s identity
+   * axis made every child same-binding. A HANDOFF child runs on another
+   * binding, so an unconditional copy would put the sender's NAME over the
+   * receiver's ID — a denormalization lie every progress, audit and Activity
+   * surface reads. The resolver is a parameter rather than a lookup here
+   * because the caller has already read the row it names.
+   */
+  nameFor: (bindingId: string) => string = () => parent.binding_name,
 ): Promise<number> {
   const COLUMNS = 15;
   const rowSelect = `SELECT ${new Array(COLUMNS).fill("?").join(", ")}`;
@@ -409,7 +420,7 @@ async function insertChildren(
       ids.get(c.key)!,
       c.accountId,
       c.bindingId,
-      parent.binding_name,
+      nameFor(c.bindingId),
       "pending",
       c.emailId,
       // The plan-local key rides the context as `jobKey`: it is how a progress

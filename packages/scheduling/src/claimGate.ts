@@ -265,6 +265,94 @@ export function backfillEnvelopeExhaustedSql(inv: string): string {
 }
 
 /**
+ * THE HANDING BINDING'S MONTHLY CAP (s17) — 2 placeholders, `monthStartMs` and
+ * `periodKey`, exactly the pair `budgetExhaustedSql` takes and with exactly its
+ * arithmetic. True when this row is HANDED-OFF work and the binding that handed
+ * it is out of money for the month, i.e. when the claim must be refused.
+ *
+ * ── THE BUDGET DECISION, STATED WHERE IT IS ENFORCED ──────────────────────
+ *
+ * "Does handed-off work spend the sender's envelope or the receiver's?"
+ * Neither alone. It spends the **receiver's purse** and it is **gated by BOTH
+ * months** — the same intersection shape as the authority it rides under:
+ *
+ *   THE PURSE IS THE RECEIVER'S. The work runs as a node on the receiving
+ *   binding, so `finish()` stamps its `cost_micros` on the receiving row and
+ *   the receiver's monthly sum sees it — which is correct attribution: the
+ *   receiver's binding made the model call, chose the model, and its dossier
+ *   should show what its work cost. Nothing double-counts, because no row is
+ *   ever summed under two bindings.
+ *
+ *   THE GATE IS BOTH. `budgetExhaustedSql` already refuses a paid claim when
+ *   the ROW's own binding is out; this term adds the HANDING binding as a
+ *   conjunction. Without it, a binding that has spent its month hands its
+ *   backlog to a colleague and keeps working on someone else's money — which
+ *   is the same laundering shape one level up from the authority question, and
+ *   the one the readme calls systemic: the failure mode of a chief of staff is
+ *   never her own lane.
+ *
+ * ── WHAT THIS HONESTLY IS, AND IS NOT ─────────────────────────────────────
+ * It is a GATE on the sender, not a PURSE it drains. The handed-off row's cost
+ * lands on the receiver, so the sender's monthly sum does not grow from
+ * handing work off; a sender with headroom can hand off more work than its own
+ * cap would have bought. What still bounds that total is the receiver's cap,
+ * the Job's aggregate `budget_micros` (jobBudgetExhaustedSql, a conjunction
+ * here too) and the envelope's `budgetMicros` (the fold). Making the sender's
+ * month a real purse would mean widening the population of THE monthly sum —
+ * and s26 T3 v2 already refused exactly that move, because the console dossier
+ * and the surplus projection mirror that sum verbatim and a gate that counted
+ * differently from every surface reading it is the drift this package exists
+ * to prevent. So: a new conjunctive term, no change to what "this binding's
+ * monthly spend" means anywhere.
+ *
+ * ── THE ARITHMETIC, matching `budgetExhaustedSql` line for line ───────────
+ * Same UTC month bucket, same `cost_micros` sum over FINISHED rows (NULL costs
+ * add nothing — unknown is not a spend, and 0 is a real, known, free run), same
+ * `cap + approved overage` effective ceiling, so an approved T9 overrun on the
+ * SENDER releases handed-off work exactly as it releases the sender's own.
+ *
+ * ── THE THREE ABSENCES, all of which read as NOT exhausted ────────────────
+ *   not a handoff       `json_extract` finds no `$.handoff.from.bindingId`, so
+ *                       no binding matches and EXISTS is false. This is the
+ *                       DefaultCase and it is why every ordinary invocation is
+ *                       unaffected by the term existing.
+ *   junk context_json   guarded by `json_valid` BEFORE `json_extract`, which
+ *                       THROWS on malformed JSON rather than returning NULL
+ *                       (the lesson `expandPlan`'s usage sum already learned).
+ *                       Junk degrades to "not a handoff" — garbage can return a
+ *                       row to today's behavior, never widen its money.
+ *   origin binding gone no row, no readable cap, not exhausted — the same
+ *                       absence-is-not-evidence rule the monthly cap follows.
+ *                       Note this absence is NOT a hole: the AUTHORITY side
+ *                       fails closed on the same fact (`chainBindingAuthority`
+ *                       DENIES a chain whose ancestor binding no longer
+ *                       exists), so the work stops at the pre-flight rather
+ *                       than at the money.
+ */
+export function handoffOriginBudgetExhaustedSql(inv: string): string {
+  return (
+    `EXISTS (` +
+    `\n                SELECT 1 FROM agent_bindings gate_hb` +
+    `\n                WHERE gate_hb.account_id = ${inv}.account_id` +
+    `\n                  AND ${inv}.context_json IS NOT NULL` +
+    `\n                  AND json_valid(${inv}.context_json)` +
+    `\n                  AND gate_hb.id = json_extract(${inv}.context_json, '$.handoff.from.bindingId')` +
+    `\n                  AND json_valid(gate_hb.config_json)` +
+    `\n                  AND json_type(gate_hb.config_json, '$.budgets.spendPerMonth') IN ('integer', 'real')` +
+    `\n                  AND (SELECT COALESCE(SUM(gate_hs.cost_micros), 0) FROM agent_invocations gate_hs` +
+    `\n                       WHERE gate_hs.account_id = ${inv}.account_id` +
+    `\n                         AND gate_hs.binding_id = gate_hb.id` +
+    `\n                         AND gate_hs.done_at IS NOT NULL AND gate_hs.done_at >= ?)` +
+    `\n                      >= json_extract(gate_hb.config_json, '$.budgets.spendPerMonth')` +
+    `\n                         + (SELECT COALESCE(SUM(gate_ho.amount_micros), 0)` +
+    `\n                            FROM agent_budget_overages gate_ho` +
+    `\n                            WHERE gate_ho.account_id = ${inv}.account_id` +
+    `\n                              AND gate_ho.binding_id = gate_hb.id` +
+    `\n                              AND gate_ho.period_key = ?))`
+  );
+}
+
+/**
  * THE ABSENCE-INFERENCE (readme decision 3) — 1 placeholder, the cutoff
  * `freeRuntimeLiveCutoff(now)`. A free claimant claimed on this row's account
  * within FREE_RUNTIME_LIVE_MS, i.e. "a homelab runtime is here right now".
@@ -347,6 +435,14 @@ export function dueWindowBinds(p: { now: number; escalationWindowMs: number }): 
  * The pure statement of the same CASE is `effectiveBudgetExhausted`
  * (mayClaim.ts); the agreement test's envelope table holds the two together.
  *
+ * s17 adds `handoffOriginBudgetExhaustedSql` INSIDE the `isFree` short-circuit
+ * beside the other money terms (a free claimant is the answer to a budget, not
+ * a party to it) and as a CONJUNCTION, not a substitution: handed-off work must
+ * clear BOTH the receiving binding's month and the HANDING binding's. It is the
+ * first fragment to add placeholders since T9 — two, immediately after the
+ * monthly pair, so only `claimGateBinds` changed and no caller re-ordered
+ * anything by hand.
+ *
  * s26 T2 follow-up adds `bindingDisabledSql` — the 008 kill switch — as the
  * FIRST term and OUTSIDE the `isFree` short-circuit, so a disabled binding's
  * already-queued rows are claimable by nobody rather than by everyone free.
@@ -362,6 +458,7 @@ export function claimGateSql(inv: string): string {
     `\n          AND (CASE WHEN ${backfillEnvelopeSql(inv)}` +
     `\n               THEN NOT ${backfillEnvelopeExhaustedSql(inv)}` +
     `\n               ELSE NOT ${budgetExhaustedSql(inv)} END)` +
+    `\n          AND NOT ${handoffOriginBudgetExhaustedSql(inv)}` +
     `\n          AND NOT ${jobBudgetExhaustedSql(inv)}` +
     `\n          AND ${dueWindowSql(inv)}))`
   );
@@ -390,6 +487,14 @@ export function claimGateBinds(p: ClaimGateParams): Array<number | string | null
     // halves of the budget comparison can never key different months — a
     // sweep that straddles midnight UTC on the 1st still compares one period
     // against itself.
+    budgetPeriodKey(p.monthStartMs),
+    // s17 — the HANDING binding's month, the same two values keyed the same
+    // way. Two more placeholders rather than reusing the pair above, because
+    // placeholders are positional and the two subqueries are two statements'
+    // worth of text; deriving both from `monthStartMs` is what keeps a sweep
+    // that straddles midnight UTC on the 1st from comparing different months
+    // on the two sides of one conjunction.
+    p.monthStartMs,
     budgetPeriodKey(p.monthStartMs),
     ...dueWindowBinds(p),
   ];
