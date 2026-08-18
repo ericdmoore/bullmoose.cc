@@ -14,12 +14,12 @@ const pageNames = () =>
 const ids = () => SECTIONS.map((s) => s.id);
 const at = (id: SectionId) => ids().indexOf(id);
 
-describe("the eight sections", () => {
-  it("is exactly the eight nouns", () => {
+describe("the nine sections", () => {
+  it("is exactly the nine nouns", () => {
     expect(new Set(ids())).toEqual(
-      new Set(["approvals", "agents", "calendar", "mail", "contacts", "files", "search", "settings"]),
+      new Set(["approvals", "agents", "activity", "calendar", "mail", "contacts", "files", "search", "settings"]),
     );
-    expect(SECTIONS).toHaveLength(8);
+    expect(SECTIONS).toHaveLength(9);
   });
 
   it("does not contain a section for `/` — home is a view, not a noun", () => {
@@ -49,6 +49,15 @@ describe("the ORDER is the claim", () => {
   it("leads with the queue: what needs me, and who is asking", () => {
     expect(ids()[0]).toBe("approvals");
     expect(ids()[1]).toBe("agents");
+  });
+
+  it("keeps activity in the first cluster — accountability, not history-of-time", () => {
+    // s23: activity is the retrospective twin of approvals. After `calendar`
+    // it reads as a timeline; next to `settings` it reads as a debug log.
+    // Between agents and calendar it reads as what it is: the record of what
+    // was decided in your name.
+    expect(ids()[2]).toBe("activity");
+    expect(at("activity")).toBeLessThan(at("calendar"));
   });
 
   it("does NOT lead with mail — that would be a mail client with extras", () => {

@@ -9,6 +9,7 @@ export { default as CheckBadgeIcon } from "./CheckBadgeIcon";
 export { default as ChevronDoubleLeftIcon } from "./ChevronDoubleLeftIcon";
 export { default as ChevronDownMiniIcon } from "./ChevronDownMiniIcon";
 export { default as ChevronRightIcon } from "./ChevronRightIcon";
+export { default as ClockIcon } from "./ClockIcon";
 export { default as Cog6ToothIcon } from "./Cog6ToothIcon";
 export { default as ComputerDesktopIcon } from "./ComputerDesktopIcon";
 export { default as EnvelopeIcon } from "./EnvelopeIcon";

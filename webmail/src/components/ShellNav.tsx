@@ -10,6 +10,7 @@ import {
   ChevronDoubleLeftIcon,
   ChevronDownMiniIcon,
   ChevronRightIcon,
+  ClockIcon,
   Cog6ToothIcon,
   ComputerDesktopIcon,
   EnvelopeIcon,
@@ -106,6 +107,7 @@ const nearestStep = (px: number): number => {
 const SECTION_ICON: Record<SectionId, (p: IconProps) => JSX.Element> = {
   approvals: CheckBadgeIcon,
   agents: ComputerDesktopIcon,
+  activity: ClockIcon,
   calendar: CalendarIcon,
   mail: EnvelopeIcon,
   contacts: UsersIcon,
