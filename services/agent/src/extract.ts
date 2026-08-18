@@ -3,6 +3,7 @@ import type { EmailRow } from "@bullmoose/mailstore";
 import {
   callModel,
   callWithFallback,
+  modelCallContext,
   chooseArm,
   invocationCost,
   type BindingConfig,
@@ -44,6 +45,15 @@ export interface ExtractJob {
   id: string;
   account_id: string;
   binding_name: string;
+  /** The binding's id, when the dispatcher has it (index.ts's Job always
+   *  does). Carried for ONE reason: BYOK (s26 T4) keys a tenant's sealed
+   *  provider credential on (account, binding), so a call that should spend
+   *  the tenant's key needs the id, not just the name. Optional for the same
+   *  reason context_json is — pure-pipeline callers and tests need not
+   *  fabricate one. Absent + credentials configured makes `callWithFallback`
+   *  REFUSE rather than quietly spend the platform key; absent + no
+   *  credentials is the ordinary homelab path. */
+  binding_id?: string;
   /** The invocation's context_json, when the dispatcher has it (index.ts's
    *  Job always does). Read for ONE bit: `backfill: true`, the flag both
    *  backfill mints stamp (provision v1, surplusBackfill.ts), which routes
@@ -250,7 +260,13 @@ export async function runExtract(
   // keyed to the invocation id, recorded in the result. Extraction is the
   // first arena (low stakes, labels accrue as dismissals/resolutions).
   const { ordered, arm } = chooseArm(menu, job.id, cfg.frontier?.exploreRate ?? 0);
-  const { output, usage, used } = await callWithFallback(env, ordered, prompt, cfg.maxTokens ?? 1024);
+  const { output, usage, used } = await callWithFallback(
+    env,
+    ordered,
+    prompt,
+    cfg.maxTokens ?? 1024,
+    job.binding_id ? modelCallContext({ account_id: job.account_id, binding_id: job.binding_id }, cfg) : undefined,
+  );
   // Freeze the cost at capture (s07 T5) — this is the per-extraction history
   // s11 T5 needs. NULL = undetermined; 0 = genuinely free.
   const cost = await invocationCost(env, used, usage);

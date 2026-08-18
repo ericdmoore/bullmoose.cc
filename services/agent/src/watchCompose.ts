@@ -1,6 +1,7 @@
 import { budgetExhaustedSql, budgetMonthStartMs, budgetPeriodKey } from "@bullmoose/scheduling";
 import {
   callWithFallback,
+  modelCallContext,
   chooseArm,
   invocationCost,
   type BindingConfig,
@@ -197,6 +198,7 @@ export async function composeWatchFollowup(
       ordered,
       prompt,
       binding.cfg.maxTokens ?? COMPOSE_MAX_TOKENS,
+      modelCallContext({ account_id: w.account_id, binding_id: binding.id }, binding.cfg),
     );
     const body = sanitizeComposedBody(output);
     if (!body) {

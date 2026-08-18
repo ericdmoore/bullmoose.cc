@@ -279,5 +279,14 @@ import App from "../layouts/AppTw.astro";
       border-top: 1px solid var(--line);
       padding: 12px 0 0;
     }
+
+    /* s25 T5 — the FAB's clearance, the same rule mail.astro carries and for
+       the same reason: the fixed [New find] takes no space in flow, so without
+       this the last result row sits under it. 72px is `FAB_CLEARANCE_PX`
+       (lib/ui/classes.ts); the inset clears the home indicator. */
+    .finder-list,
+    .finder-detail {
+      padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    }
   }
 </style>
