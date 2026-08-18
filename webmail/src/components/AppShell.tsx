@@ -36,7 +36,9 @@ import {
 } from "../lib/mail/triage";
 import type { Email, Identity, Mailbox } from "../lib/mail/types";
 import Composer from "./Composer";
-import MailboxSidebar from "./MailboxSidebar";
+import CollectionColumn from "./CollectionColumn";
+import { buildMailboxTree, flattenTree } from "../lib/mail/mailboxes";
+import type { CollectionGroup } from "../lib/shell/collections";
 import MessageView from "./MessageView";
 import ThreadListView from "./ThreadListView";
 
@@ -279,6 +281,34 @@ export default function AppShell({ client: injected }: Props) {
   const currentIdentity = useMemo(
     () => identities.find((i) => i.id === identityId) ?? identities[0],
     [identities, identityId],
+  );
+
+  // s24 T3 — the CollectionColumn's feed: the mailbox tree flattened in visual
+  // order, role glyphs as row glyphs, unread as the count badge, nesting as
+  // depth (a discrete padding class — this retires MailboxSidebar's inline
+  // paddingLeft, the one CSP-boundary violation).
+  const ROLE_GLYPH: Record<string, string> = {
+    inbox: "✉",
+    drafts: "✎",
+    sent: "➤",
+    archive: "▤",
+    junk: "⊘",
+    trash: "⌦",
+  };
+  const mailboxGroups: CollectionGroup[] = useMemo(
+    () => [
+      {
+        id: "mailboxes",
+        items: flattenTree(buildMailboxTree(mailboxes)).map((n) => ({
+          id: n.id,
+          label: n.name,
+          glyph: n.role ? (ROLE_GLYPH[n.role] ?? "○") : "○",
+          depth: n.depth,
+          count: n.unreadEmails > 0 ? n.unreadEmails : undefined,
+        })),
+      },
+    ],
+    [mailboxes],
   );
 
   const doSend = useCallback(async () => {
@@ -607,16 +637,23 @@ export default function AppShell({ client: injected }: Props) {
       ) : null}
 
       <div class="body">
-        <MailboxSidebar
-          mailboxes={mailboxes}
+        <CollectionColumn
+          title="Mail"
+          storageKey="bm.cc.mail"
+          groups={mailboxGroups}
           selectedId={mailbox?.id}
-          onSelect={(m) => {
-            setMailbox(m);
-            setView("list");
+          onSelect={(id) => {
+            const m = mailboxes.find((x) => x.id === id);
+            if (m) {
+              setMailbox(m);
+              setView("list");
+            }
           }}
-          onCompose={() => {
+          newLabel="New message"
+          onNew={() => {
             if (currentIdentity) startCompose(newDraft({ identity: currentIdentity }));
           }}
+          newDisabled={!currentIdentity}
         />
 
         <main class="content">

@@ -11,6 +11,11 @@ export interface CollectionItem {
   /** A short right-aligned annotation badge — "default", "read-only". Text
    *  where `count` is numbers; a row may carry either (count wins if both). */
   note?: string;
+  /** A small leading text glyph — Mail's role marks (✉ ✎ ➤). Decorative. */
+  glyph?: string;
+  /** Tree indent steps (Mail's folder nesting). Rendered as a discrete
+   *  padding class, clamped — never inline style (CSP). */
+  depth?: number;
   muted?: boolean;
 }
 

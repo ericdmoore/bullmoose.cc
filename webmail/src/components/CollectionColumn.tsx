@@ -45,6 +45,10 @@ export interface CollectionColumnProps {
   class?: string;
 }
 
+/** Tree indent as discrete classes, clamped (CSP: never inline style — this
+ *  replaces MailboxSidebar's style={{paddingLeft}} violation). */
+const DEPTH_PAD = ["", "pl-4", "pl-8", "pl-12", "pl-16"] as const;
+
 export default function CollectionColumn(props: CollectionColumnProps) {
   const {
     title,
@@ -140,7 +144,16 @@ export default function CollectionColumn(props: CollectionColumnProps) {
                   muted={item.muted}
                   onSelect={() => onSelect(item.id)}
                 >
-                  <span class="min-w-0 grow truncate">{item.label}</span>
+                  <span
+                    class={`flex min-w-0 grow items-center gap-x-1.5 ${DEPTH_PAD[Math.min(item.depth ?? 0, DEPTH_PAD.length - 1)]}`}
+                  >
+                    {item.glyph ? (
+                      <span class="shrink-0 text-gray-400" aria-hidden="true">
+                        {item.glyph}
+                      </span>
+                    ) : null}
+                    <span class="min-w-0 truncate">{item.label}</span>
+                  </span>
                   {item.count ? <Badge>{item.count}</Badge> : item.note ? <Badge>{item.note}</Badge> : null}
                 </ListRow>
               ))}
