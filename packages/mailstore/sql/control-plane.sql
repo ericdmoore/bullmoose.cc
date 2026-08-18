@@ -438,3 +438,44 @@ CREATE TABLE IF NOT EXISTS annotations (
 );
 CREATE INDEX IF NOT EXISTS annotations_class ON annotations (account_id, class, status);
 CREATE INDEX IF NOT EXISTS annotations_recent ON annotations (account_id, status, created_at);
+
+-- Notes (s18 N1) — the OTHER half of the s18 split, and deliberately not the
+-- same table. A Note is a document YOU AUTHOR: standalone, no anchor, no
+-- class, no confidence, no status. An Annotation (above) is a claim about your
+-- mail that you ADJUDICATE. Eric resolved this explicitly (s18 devPlan, "The
+-- decision: two entities"): the verbs diverge — you edit a Note, you
+-- confirm/dismiss an Annotation — so they are two nouns, not one wearing a
+-- trench coat. The four columns this table does NOT have (anchor_json, class,
+-- confidence, status) are the distinction, written down as an absence.
+--
+-- It is also NOT a never-sent draft (readme.md §1): modelling it as one leaks
+-- notes into Apple Mail's Drafts and wants an invented mailbox role — the
+-- `quarantine`-role mistake s12 spent a day undoing.
+--
+-- FEDERATION SEAM (s18 N3, NOT BUILT). The plan's arc is "a private document
+-- that federates," and three columns here are the identity a federated note
+-- would need: a stable opaque `id`, an `owner` (the principal whose DKIM
+-- domain would authenticate the mention mail), and a monotonic `revision` so a
+-- far end can say "I was shown rev 2, this is rev 5". Nothing here sends,
+-- shares or discloses anything today. The columns federation would ADD — a
+-- structured mentions list, an origin ref for a note materialised from a
+-- remote mention, and the record of an un-revocable disclosure — are
+-- deliberately absent rather than present-and-unused: see FUTURE(s18 N2/N3) in
+-- services/jmap/src/methods/note.ts.
+CREATE TABLE IF NOT EXISTS notes (
+  id           TEXT PRIMARY KEY,           -- nt_<uuid>, stable and never reused
+  account_id   TEXT NOT NULL REFERENCES accounts(id),
+  owner        TEXT NOT NULL,              -- authoring principal's login, set once at create
+  title        TEXT NOT NULL DEFAULT '',
+  body         TEXT NOT NULL DEFAULT '',   -- INLINE (s18 Decision 4: a note that needs R2 is a file)
+  revision     INTEGER NOT NULL DEFAULT 1, -- bumped on every content write; last-writer-wins
+  -- Provenance (s03.A T1) on the edit, beside the immutable `owner` on the
+  -- record: who wrote it LAST, and under which agent binding if any.
+  last_writer_principal TEXT,
+  last_writer_binding   TEXT,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
+-- The one query a notes list runs: this account's notes, most recently edited
+-- first. There is no status/class axis to index — that is the other entity.
+CREATE INDEX IF NOT EXISTS notes_recent ON notes (account_id, updated_at);
