@@ -3,6 +3,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { resolveClient } from "../lib/app/client";
 import { SECTIONS, type Section, type SectionId } from "../lib/app/sections";
+import { searchFieldClasses, searchYieldClasses } from "../lib/ui/classes";
 import { toggleExpansion } from "../lib/shell/collections";
 import {
   COLLECTIONS_EVENT,
@@ -63,6 +64,12 @@ const COLLAPSE_KEY = "bm.nav.collapsed";
  * invariant + CSP form-action 'none'): it dispatches a `bm:search` CustomEvent
  * the active surface island consumes. Inbound deep links (`?q=`) still work —
  * each surface reads them at mount.
+ *
+ * s25 T5 collapses this bar below `lg` to a magnifier that expands in place.
+ * The COLLAPSE IS PURELY PRESENTATIONAL: same `<form>`, same input, same
+ * `bm-global-search` id, same event. A tap toggles a class, it does not
+ * navigate and it does not add an entry to history — the two invariants
+ * tokenInUrl.test.ts enforces over this exact file.
  */
 const SEARCHABLE: Partial<Record<SectionId, { placeholder: string; hint?: string }>> = {
   mail: {
@@ -453,6 +460,13 @@ export default function ShellNav({ section, email: emailProp }: Props) {
   // drawer's leaf-nodes. Read on mount and re-read on every `bm:collections`
   // (a surface publishing while the chrome is up) and on drawer open (a
   // cheap freshness pass, so the staleness verdict is judged at look time).
+  // s25 T5 — the narrow-screen search state. Below `lg` the contextual bar is
+  // a magnifier until you tap it; at `lg` and up this flag is inert (the field
+  // is always shown, the trigger never rendered). Not persisted: an expanded
+  // search is a moment, not a preference.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+
   const [published, setPublished] = useState<Partial<Record<SectionId, PublishedCollections>>>({});
   // Which realms are showing their leaves. Session state, not a preference:
   // a drawer you summon is re-read each time, unlike the resident rail.
@@ -559,18 +573,27 @@ export default function ShellNav({ section, email: emailProp }: Props) {
     });
   };
 
-  // One Escape listener for both overlays. Two widgets each owning a global
-  // key handler is how one of them ends up silently swallowing the other's.
+  // One Escape listener for every overlay. Widgets each owning a global key
+  // handler is how one of them ends up silently swallowing the other's.
+  // s25 T5 folded the expanded narrow search in here for the same reason.
   useEffect(() => {
-    if (!drawerOpen && !menuOpen) return;
+    if (!drawerOpen && !menuOpen && !searchOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       setMenuOpen(false);
       setDrawerOpen(false);
+      setSearchOpen(false);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [drawerOpen, menuOpen]);
+  }, [drawerOpen, menuOpen, searchOpen]);
+
+  // Expanding puts the caret where the person is already looking. It happens
+  // in an effect, not in the click handler: the field is `max-lg:hidden` until
+  // this render lands, and focusing a display:none input is a no-op.
+  useEffect(() => {
+    if (searchOpen) searchRef.current?.focus();
+  }, [searchOpen]);
 
   // Click-outside. The drawer needs this too now that it has NO backdrop —
   // without a scrim there is nothing to click on to dismiss it, and a panel
@@ -729,9 +752,35 @@ export default function ShellNav({ section, email: emailProp }: Props) {
           {/* s24 T5 — the contextual filter: one bar whose meaning is wherever
               you are standing. Prefilled from `?q=` so a deep-linked search
               stays visible and refinable. */}
+          {/*
+            s25 T5 — THE COLLAPSE. Below `lg` the bar is a magnifier that
+            expands IN PLACE; the field is the same element either way, so the
+            `bm:search` plumbing under it is untouched — no navigation, no
+            second input, no `id` that appears twice in one document
+            (`bm-global-search` is what surfaces and tests reach for).
+            At `lg` and up the trigger never renders and the field never
+            hides: the desktop header is exactly what it was.
+          */}
+          {searchable && !searchOpen ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                aria-expanded={false}
+                aria-controls="bm-global-search"
+                class="-m-2.5 p-2.5 text-gray-700 lg:hidden dark:text-gray-200"
+              >
+                <span class="sr-only">{searchable.placeholder}</span>
+                <MagnifyingGlassIcon class="size-6" />
+              </button>
+              {/* The collapsed bar still holds the space the field will take,
+                  so the avatar does not slide across the header on expand. */}
+              <div class="flex-1 lg:hidden" />
+            </>
+          ) : null}
           {searchable ? (
             <form
-              class="flex min-w-0 flex-1 items-center"
+              class={searchFieldClasses(searchOpen)}
               onSubmit={(ev) => {
                 // No navigation, ever (tokenInUrl.test.ts holds this file to
                 // it, and the generated CSP's form-action 'none' would refuse
@@ -747,6 +796,7 @@ export default function ShellNav({ section, email: emailProp }: Props) {
                 <MagnifyingGlassIcon class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-gray-400" />
                 <span class="sr-only">{searchable.placeholder}</span>
                 <input
+                  ref={searchRef}
                   id="bm-global-search"
                   name="q"
                   type="search"
@@ -756,6 +806,18 @@ export default function ShellNav({ section, email: emailProp }: Props) {
                   class="w-full rounded-md bg-gray-100 py-1.5 pr-3 pl-9 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-2 focus:-outline-offset-1 focus:outline-brand-600 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500"
                 />
               </label>
+              {/* The way back. An expanded search that can only be dismissed
+                  by Escape strands anyone on a phone, which has no Escape. */}
+              {searchOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchOpen(false)}
+                  class="-mr-2 ml-1 shrink-0 p-2 text-gray-700 lg:hidden dark:text-gray-200"
+                >
+                  <span class="sr-only">Close search</span>
+                  <XMarkIcon class="size-5" />
+                </button>
+              ) : null}
             </form>
           ) : (
             <div class="flex-1" />
@@ -765,7 +827,10 @@ export default function ShellNav({ section, email: emailProp }: Props) {
             settings and sign-out included — rather than being scattered across
             the header. One place to look for "me".
           */}
-          <div class="relative flex items-center" ref={menuRef}>
+          {/* s25 T5: while the narrow search is expanded these step aside, so
+              the field gets the whole bar rather than a 90px slot. Desktop
+              never yields — `searchYieldClasses` is a `max-lg:` rule. */}
+          <div class={"relative flex items-center " + searchYieldClasses(searchOpen)} ref={menuRef}>
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
@@ -828,7 +893,7 @@ export default function ShellNav({ section, email: emailProp }: Props) {
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
-            class="-m-2.5 p-2.5 text-gray-700 lg:hidden dark:text-gray-200"
+            class={"-m-2.5 p-2.5 text-gray-700 lg:hidden dark:text-gray-200 " + searchYieldClasses(searchOpen)}
             aria-expanded={drawerOpen}
           >
             <span class="sr-only">Open sections</span>
