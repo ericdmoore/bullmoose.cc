@@ -51,7 +51,13 @@
     // the Authorization Server supports the capability", and handleMcp
     // rejects any token whose aud is not this exact URI.
     "MCP_RESOURCE_URI": "https://mcp.bullmoose.cc/mcp",
-    "ISSUER": "https://auth.bullmoose.cc"
+    "ISSUER": "https://auth.bullmoose.cc",
+    // The webmail's CIMD client id (s07 T7) — the ONE client that may
+    // exchange an access token for a bm_ session at /webmail/session. It is
+    // a client-id metadata document URL served by the app's own origin
+    // (webmail/public/oauth/client.json), so no registration step exists to
+    // drift: the id, the document, and this allowance all name the same URL.
+    "WEBMAIL_CLIENT_ID": "https://app.bullmoose.cc/oauth/client.json"
   }
 
   // No secrets of its own. The provider derives its key material from the

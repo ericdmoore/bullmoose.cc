@@ -26,6 +26,9 @@
 
 export const MAIL_SCOPES: readonly string[];
 export const REALM_SCOPES: readonly string[];
+/** `lib/app/oauth.test.ts` holds SESSION_SCOPES inside this list — the one
+ *  list the AS's consent screen validates a scope parameter against. */
+export const OAUTH_SCOPES: readonly string[];
 export function hasScope(granted: readonly string[], required: string): boolean;
 
 export interface ParsedToken {

@@ -1,0 +1,9 @@
+{
+  "client_id": "https://app.bullmoose.cc/oauth/client.json",
+  "client_name": "bullmoose webmail",
+  "client_uri": "https://app.bullmoose.cc",
+  "redirect_uris": ["https://app.bullmoose.cc/login"],
+  "token_endpoint_auth_method": "none",
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"]
+}

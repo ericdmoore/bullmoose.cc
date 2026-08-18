@@ -5,6 +5,7 @@ import { consentPage, deriveScript, errorPage } from "./consent.js";
 import { AUTH_DOCS, docsResponse } from "./docs.js";
 import { recordConsent } from "./consentMirror.js";
 import { revoke } from "./revoke.js";
+import { webmailSession, type UnwrappedToken } from "./webmailSession.js";
 import { anyRedirectMatches, CLAUDE_REDIRECT_URIS, redirectHost } from "./redirects.js";
 
 /**
@@ -46,6 +47,8 @@ export interface Env {
   DEV_ACCOUNT_ID: string;
   DEV_TENANT_ID: string;
   DEV_USERNAME: string;
+  /** The webmail's CIMD client id — the one client `/webmail/session` serves. */
+  WEBMAIL_CLIENT_ID: string;
   OAUTH_PROVIDER: {
     parseAuthRequest(request: Request): Promise<AuthRequestLike>;
     lookupClient(clientId: string): Promise<ClientLike | null>;
@@ -55,6 +58,7 @@ export interface Env {
       options?: { limit?: number; cursor?: string },
     ): Promise<{ items: Array<{ id: string; clientId: string }>; cursor?: string }>;
     revokeGrant(grantId: string, userId: string): Promise<void>;
+    unwrapToken(token: string): Promise<UnwrappedToken | null>;
   };
 }
 
@@ -92,6 +96,10 @@ export const authorizeHandler = {
     if (url.pathname === "/derive.js") return deriveScript();
     // Owner revocation: disconnect a connected app (s02 T4's second half).
     if (url.pathname === "/revoke" && request.method === "POST") return revoke(request, env);
+    // The webmail's access-token → bm_ session exchange (s07 T7). The module
+    // handles its own OPTIONS/405 because the provider CORS-handles only its
+    // own endpoints.
+    if (url.pathname === "/webmail/session") return webmailSession(request, env);
     // Documentation at the root and at /docs, for the same reason as the MCP
     // surface: the first thing a developer does with a hostname is open it.
     // /health keeps the bare identifier for anything watching it.
@@ -110,7 +118,15 @@ async function present(request: Request, env: Env): Promise<Response> {
     return errorPage("This authorization request is not valid.", String(err));
   }
 
-  const client = await env.OAUTH_PROVIDER.lookupClient(authReq.clientId);
+  // `lookupClient` THROWS for a CIMD client whose metadata document cannot be
+  // fetched or does not validate (CimdFetchError) — an unreachable static
+  // asset must render as an error page, not a worker 500.
+  let client: ClientLike | null;
+  try {
+    client = await env.OAUTH_PROVIDER.lookupClient(authReq.clientId);
+  } catch (err) {
+    return errorPage("This client could not be identified.", String(err));
+  }
   if (!client) return errorPage("Unknown client.", `No client is registered as ${authReq.clientId}.`);
 
   // The redirect URI is checked by the provider too; checking it HERE as well
