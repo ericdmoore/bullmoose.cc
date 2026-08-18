@@ -2,13 +2,21 @@ import { describe, expect, it } from "vitest";
 import { FakeJmapClient } from "../jmap/FakeJmapClient";
 import { createDemoBackend } from "../jmap/demo";
 import { armWatch, askAgent, askCompose } from "./api";
-import { VERB_BINDING_NAME, addBusinessDays } from "./contract";
+import { addBusinessDays } from "./contract";
 import type { Email } from "../mail/types";
 
 // s20 T2 — the verbs' two doors. What each sends on the wire, and — the part
 // that matters more — what each SAYS when the server says no. A verb that
 // fails must fail the way the margin does: in place, in a sentence, with the
 // mail still readable behind it.
+
+// Since #206 both verb doors ask `AgentBinding/get` which binding to run on,
+// so every fake server here serves a roster. One enabled binding is the
+// ordinary case; the refusal paths get their own fakes below.
+const ROSTER_BINDING = { id: "bind_1", name: "extractor", enabled: true };
+const roster = (bindings: { id: string; name: string; enabled: boolean }[] = [ROSTER_BINDING]) => ({
+  "AgentBinding/get": () => ({ accountId: "acct_a", list: bindings, notFound: [] }),
+});
 
 const email = {
   id: "e_1",
@@ -22,6 +30,7 @@ describe("armWatch — through Watch/set, the CRUD T1 already shipped", () => {
     const seen: Record<string, unknown>[] = [];
     const client = new FakeJmapClient({
       handlers: {
+        ...roster(),
         "Watch/set": (args) => {
           seen.push(args);
           return {
@@ -48,6 +57,7 @@ describe("armWatch — through Watch/set, the CRUD T1 already shipped", () => {
     let called = false;
     const client = new FakeJmapClient({
       handlers: {
+        ...roster(),
         "Watch/set": () => {
           called = true;
           return {};
@@ -62,6 +72,7 @@ describe("armWatch — through Watch/set, the CRUD T1 already shipped", () => {
   it("the annotate wall greys the verbs rather than inviting it again", async () => {
     const client = new FakeJmapClient({
       handlers: {
+        ...roster(),
         "Watch/set": () => ["error", { type: "forbidden", description: "token lacks scope: annotate" }],
       },
     });
@@ -73,6 +84,7 @@ describe("armWatch — through Watch/set, the CRUD T1 already shipped", () => {
   it("a row-level refusal surfaces the server's own sentence", async () => {
     const client = new FakeJmapClient({
       handlers: {
+        ...roster(),
         "Watch/set": (args) => ({
           accountId: args.accountId as string,
           created: {},
@@ -90,6 +102,7 @@ describe("askAgent — through the on-demand AgentInvocation trigger", () => {
     const seen: Record<string, unknown>[] = [];
     const client = new FakeJmapClient({
       handlers: {
+        ...roster(),
         "AgentInvocation/set": (args) => {
           seen.push(args);
           return { accountId: args.accountId as string, created: { v: { id: "inv_1", status: "pending" } } };
@@ -100,7 +113,7 @@ describe("askAgent — through the on-demand AgentInvocation trigger", () => {
     expect(outcome.ok).toBe(true);
 
     const spec = (seen[0]!.create as Record<string, Record<string, unknown>>).v!;
-    expect(spec.bindingName).toBe(VERB_BINDING_NAME);
+    expect(spec.bindingId).toBe(ROSTER_BINDING.id);
     expect(spec.emailId).toBe("e_1");
     expect(spec.threadId).toBe("t_1");
     expect(spec.params).toEqual({ verb: "answer" });
@@ -112,6 +125,7 @@ describe("askAgent — through the on-demand AgentInvocation trigger", () => {
     const seen: Record<string, unknown>[] = [];
     const client = new FakeJmapClient({
       handlers: {
+        ...roster(),
         "AgentInvocation/set": (args) => {
           seen.push(args);
           return { accountId: args.accountId as string, created: { v: { id: "inv_2" } } };
@@ -127,6 +141,7 @@ describe("askAgent — through the on-demand AgentInvocation trigger", () => {
     let called = false;
     const client = new FakeJmapClient({
       handlers: {
+        ...roster(),
         "AgentInvocation/set": () => {
           called = true;
           return {};
@@ -138,24 +153,38 @@ describe("askAgent — through the on-demand AgentInvocation trigger", () => {
     expect(outcome.ok === false && outcome.message).toContain("rather ask than guess");
   });
 
-  it("no agent on the mailbox: the notFound is translated into the human's truth", async () => {
+  it("no agent on the mailbox: refused from the ROSTER, before any invocation is attempted", async () => {
+    // #206 moved this refusal earlier and made it true rather than inferred:
+    // v1 guessed a name, got `notFound`, and translated it. Now the roster
+    // read answers empty and nothing is created at all.
+    let attempted = false;
     const client = new FakeJmapClient({
       handlers: {
-        "AgentInvocation/set": (args) => ({
-          accountId: args.accountId as string,
-          created: {},
-          notCreated: { v: { type: "notFound", description: 'no such binding "extractor" on this account' } },
-        }),
+        ...roster([]),
+        "AgentInvocation/set": () => {
+          attempted = true;
+          return {};
+        },
       },
     });
     const outcome = await askAgent(client, "acct_a", email, { verb: "answer" });
+    expect(attempted).toBe(false);
     expect(outcome.ok === false && outcome.message).toContain("No agent is set up on this mailbox yet");
+  });
+
+  it("every agent switched off reads differently from having none — one is undoable", async () => {
+    const client = new FakeJmapClient({
+      handlers: { ...roster([{ id: "bind_1", name: "extractor", enabled: false }]) },
+    });
+    const outcome = await askAgent(client, "acct_a", email, { verb: "answer" });
+    expect(outcome.ok === false && outcome.message).toContain("switched off");
   });
 
   it("the kill switch's refusal is passed through VERBATIM — it names its own cure", async () => {
     const server = 'binding "extractor" is disabled (008 kill switch) — re-enable it before invoking: …';
     const client = new FakeJmapClient({
       handlers: {
+        ...roster(),
         "AgentInvocation/set": (args) => ({
           accountId: args.accountId as string,
           created: {},
@@ -170,7 +199,7 @@ describe("askAgent — through the on-demand AgentInvocation trigger", () => {
   it("a server that has never heard of the method says so plainly", async () => {
     // FakeJmapClient answers `unknownMethod` for an unhandled name — exactly
     // what an older deployment returns.
-    const client = new FakeJmapClient({ handlers: {} });
+    const client = new FakeJmapClient({ handlers: { ...roster() } });
     const outcome = await askAgent(client, "acct_a", email, { verb: "answer" });
     expect(outcome.ok === false && outcome.message).toBe("This mailbox's server does not offer agent verbs yet.");
     const watch = await armWatch(client, "acct_a", email, Date.now());
@@ -210,6 +239,7 @@ describe("askCompose — the composer's intent mode (s20 T3)", () => {
     const seen: Record<string, unknown>[] = [];
     const client = new FakeJmapClient({
       handlers: {
+        ...roster(),
         "AgentInvocation/set": (args) => {
           seen.push(args);
           return { accountId: args.accountId as string, created: { v: { id: "inv_1" } }, notCreated: {} };
@@ -233,7 +263,7 @@ describe("askCompose — the composer's intent mode (s20 T3)", () => {
 
     expect(outcome.ok).toBe(true);
     const spec = (seen[0]!.create as Record<string, Record<string, unknown>>).v!;
-    expect(spec.bindingName).toBe(VERB_BINDING_NAME);
+    expect(spec.bindingId).toBe(ROSTER_BINDING.id);
     expect(spec).not.toHaveProperty("emailId");
     expect(spec.params).toEqual({
       verb: "compose",
@@ -266,6 +296,7 @@ describe("askCompose — the composer's intent mode (s20 T3)", () => {
     let called = false;
     const client = new FakeJmapClient({
       handlers: {
+        ...roster(),
         "AgentInvocation/set": () => {
           called = true;
           return {};
@@ -286,15 +317,8 @@ describe("askCompose — the composer's intent mode (s20 T3)", () => {
   });
 
   it("translates the missing binding, and greys itself on a scope wall", async () => {
-    const missing = new FakeJmapClient({
-      handlers: {
-        "AgentInvocation/set": (args) => ({
-          accountId: args.accountId as string,
-          created: {},
-          notCreated: { v: { type: "notFound", description: 'no such binding "extractor" on this account' } },
-        }),
-      },
-    });
+    // Same move as the answer door: an empty roster refuses before creating.
+    const missing = new FakeJmapClient({ handlers: { ...roster([]) } });
     expect((await askCompose(missing, "acct_a", ASK)).ok === false).toBe(true);
     expect((await askCompose(missing, "acct_a", ASK)) as { message: string }).toMatchObject({
       message: expect.stringContaining("No agent is set up on this mailbox yet"),
@@ -302,6 +326,7 @@ describe("askCompose — the composer's intent mode (s20 T3)", () => {
 
     const walled = new FakeJmapClient({
       handlers: {
+        ...roster(),
         "AgentInvocation/set": () => ["error", { type: "forbidden", description: "token lacks scope: draft" }],
       },
     });
@@ -309,7 +334,7 @@ describe("askCompose — the composer's intent mode (s20 T3)", () => {
   });
 
   it("an older server says so plainly rather than throwing", async () => {
-    const outcome = await askCompose(new FakeJmapClient({ handlers: {} }), "acct_a", ASK);
+    const outcome = await askCompose(new FakeJmapClient({ handlers: { ...roster() } }), "acct_a", ASK);
     expect(outcome.ok === false && outcome.message).toBe("This mailbox's server does not offer agent verbs yet.");
   });
 

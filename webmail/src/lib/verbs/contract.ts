@@ -14,21 +14,41 @@ import type { Email, EmailAddress } from "../mail/types";
 /**
  * The binding an `AgentInvocation/set` create names for a verb.
  *
- * `create` requires a bindingId or bindingName, and there is no JMAP method
- * that LISTS an account's bindings (`AgentBinding` has only `/set`; the roster
- * lives behind the owner-only console projection, which a thread view has no
- * business fetching). So the door names the one binding an opted-in account
- * reliably has: `extractor`, provisioned per-account by `POST /extractor`,
- * whose whole job is cheap per-message model calls. It is the SAME binding
- * `watchCompose.resolveComposeBinding` falls back to on the server, for the
- * same reason.
+ * `create` requires a bindingId or bindingName, so the door asks the account
+ * which bindings it has and uses one that is enabled.
  *
- * When it is absent the server answers `notFound` and the bar says so in a
- * sentence — no verbs, no guessing, no throw. That refusal is the honest
- * degradation, and closing it properly means a binding-list read, which is
- * named as follow-up work rather than smuggled in here.
+ * v1 named `extractor` by convention, because no method listed an account's
+ * bindings. `AgentBinding/get` (s26, #206) is that method, so the convention
+ * is retired: `pickVerbBinding` below reads the roster and chooses. The
+ * preference order is not arbitrary — an account may run several bindings,
+ * and the one whose job is cheap per-message model calls is the right host
+ * for a verb, which is what `extractor` was always a proxy for.
+ *
+ * When the roster is empty (or every binding is disabled) the bar says so in
+ * a sentence — no verbs, no guessing, no throw. That refusal is still the
+ * honest degradation; it is just now told the truth by the server instead of
+ * inferred from one missing name.
  */
-export const VERB_BINDING_NAME = "extractor";
+
+/** The binding a verb prefers, by name, when an account runs more than one.
+ *  Anything enabled will serve; this only decides who goes first. */
+export const VERB_BINDING_PREFERENCE = ["extractor"] as const;
+
+/** Pick the binding a verb should run on, or `undefined` when none can.
+ *  Pure over the `AgentBinding/get` projection so it is testable without a
+ *  client: disabled bindings are never chosen (a disabled binding is inert by
+ *  contract — #199), preferred names win, and otherwise the first enabled one
+ *  in the server's own order is taken rather than a name we invented. */
+export function pickVerbBinding<T extends { id: string; name: string; enabled: boolean }>(
+  bindings: readonly T[],
+): T | undefined {
+  const live = bindings.filter((b) => b.enabled);
+  for (const preferred of VERB_BINDING_PREFERENCE) {
+    const hit = live.find((b) => b.name === preferred);
+    if (hit) return hit;
+  }
+  return live[0];
+}
 
 /** The verbs that compile to an agent invocation. Watch does not: it arms
  *  through `Watch/set`, the CRUD s20 T1 already shipped.
