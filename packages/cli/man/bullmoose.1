@@ -1332,6 +1332,8 @@ bullmoose admin <noun> <verb> …
 .PP
 Onboarding and administration. `admin init` stores the provision URL + admin token; the rest manage tenants, domains, accounts, agent bindings, tokens, and grants. A tenant id (e.g. t_home) is a slug you choose — a namespace, not a secret.
 
+Onboarding ONE person is six of these, in order: `tenant create` (once per household/org) → `domain add` (once per domain) → `account create` → `password` → `extractor on` → optionally `byok seal`. `docs/playbooks/onboarding\-a\-second\-human.md` is that path written out, including the parts the person does themselves. Account creation is deliberately operator\-gated: there is no self\-signup, so every account on this deployment exists because someone with the admin token decided it should.
+
 Lifecycle verbs come in two flavours. REVERSIBLE ones — `agent disable|enable`, `domain suspend|resume`, both renames — just run. IRREVERSIBLE ones — `tenant delete`, `domain delete`, `account delete`, `agent unbind` — refuse without `\-\-yes`; use `\-\-dry\-run` first to see what they would do.
 
 `agent disable` is the kill switch: both the ingest enqueue path and the agent drain gate on the binding's `enabled` column, so disabling stops an agent being invoked at all. Invocations already queued are HELD, not cancelled — the count is printed, and they resume on `enable`.
@@ -1363,6 +1365,12 @@ mint operator/agent tokens for any account (\-\-scopes required; only this comma
 .TP
 .B grant
 cross\-account delegation (effective rights = token ∩ grant) \(em \f[CR]admin grant create <grantee\-email> <target\-email> [\-\-scopes read,contacts] [\-\-book <id>] [\-\-expires <days>] | list [<email>] | revoke <id>\fR
+.TP
+.B extractor
+turn the extraction pass on for ONE account — a PAID pipeline, capped ($2.00/month unless \-\-budget says otherwise) \(em \f[CR]admin extractor on <account\-email> [\-\-provider <host>] [\-\-model <slug>] [\-\-budget <micro\-USD>] [\-\-explore <host>/<model>]…\fR
+.TP
+.B byok
+seal a tenant's OWN model\-provider key so their provider\-side guardrails apply to their agents \(em \f[CR]admin byok seal <account\-email> [\-\-provider openrouter] [\-\-allow <origin>] [\-\-name <binding>] [\-\-expires <days>] [\-\-key\-env <VAR>]\fR
 .PP
 .B Flags:
 .TP
@@ -1374,6 +1382,21 @@ on `agent disable|enable|unbind`, the binding's account — only needed if one b
 .TP
 .B \-\-include\-deleted
 on `account list`, also show tombstoned accounts (the forensic view; they are hidden by default)
+.TP
+.B \-\-provider <host>
+on `extractor on` / `byok seal`, the HOST a model or key lives at (default openrouter)
+.TP
+.B \-\-model <slug>
+on `extractor on`, the model id as that host spells it
+.TP
+.B \-\-budget <micro\-USD>
+on `extractor on`, the monthly cap (2000000 = $2.00; 0 refuses every paid claim)
+.TP
+.B \-\-explore <host>/<model>
+on `extractor on`, repeatable frontier arms added beside the primary candidate
+.TP
+.B \-\-key\-env <VAR>
+on `byok seal`, the NAME of the env var holding the key — there is no \-\-key, because a key in argv is in your shell history
 .PP
 .B Examples:
 .PP
@@ -1428,6 +1451,16 @@ bullmoose admin token create hermes@example.com \-\-name hermes\-bridge \-\-scop
 .EX
 bullmoose admin grant create partner@example.com you@example.com \-\-scopes read,contacts \-\-book <bookId> \-\-expires 365
 .EE
+.PP
+.EX
+bullmoose admin extractor on partner@example.com
+.EE
+the first thing a new account has to SHOW for itself; capped at $2.00/month
+.PP
+.EX
+OR_KEY=sk\-or\-… bullmoose admin byok seal partner@example.com \-\-key\-env OR_KEY
+.EE
+their key, their provider\-side guardrails; write\-only, and spendable only at openrouter.ai
 .SH GLOBAL OPTIONS
 .TP
 .B \-\-db <path>

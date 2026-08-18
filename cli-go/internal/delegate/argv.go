@@ -56,6 +56,8 @@ var valueFlags = map[string]bool{
 	"calendar": true, "occurrence": true,
 	// ---- watch / agent ----
 	"sla": true, "allow": true, "reply-mode": true, "exec": true,
+	// ---- operator onboarding (`admin extractor on` / `admin byok seal`) ----
+	"provider": true, "model": true,
 	// ---- the agent config surface (s10 T4, Go-native `agents`) ----
 	// Go-native-only commands still declare their value flags on BOTH sides:
 	// this map's job is to know where a token ENDS, and a flag missing here

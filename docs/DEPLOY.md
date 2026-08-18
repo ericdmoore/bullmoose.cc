@@ -481,10 +481,12 @@ curl -s -H "Authorization: Bearer $OPENROUTER_API_TOKEN" https://openrouter.ai/a
 npx wrangler secret put OPENROUTER_API_TOKEN -c services/agent/wrangler.jsonc
 # 3. refresh the pricing cache so the FIRST run books dollars (else it freezes NULL)
 curl -X POST https://mcp.bullmoose.cc/internal/refresh-pricing -H "x-internal-token: $INTERNAL_TOKEN"
-# 4. flip — one human account; ships CAPPED ($2/month default; budgetMicros overrides)
-curl -X POST https://bullmoose-provision.<subdomain>.workers.dev/extractor \
-  -H "authorization: Bearer $ADMIN_TOKEN" -H "content-type: application/json" \
-  -d '{"email":"you@your.domain"}'
+# 4. flip — one human account; ships CAPPED ($2/month default; --budget overrides)
+bullmoose admin extractor on you@your.domain
+#   …the same route by hand, if the CLI is not to hand:
+#   curl -X POST https://bullmoose-provision.<subdomain>.workers.dev/extractor \
+#     -H "authorization: Bearer $ADMIN_TOKEN" -H "content-type: application/json" \
+#     -d '{"email":"you@your.domain"}'
 ```
 
 Re-`POST /extractor` with `{model, provider}` SWAPS the model in place (config_json is
@@ -508,26 +510,31 @@ guardrails, route/model allowlists, their own spend cap, their own usage log.
 Nothing in this repo implements or mirrors any of that; it rides along because
 the request authenticates as them.
 
-Two ways in. The tenant's own, on their own bearer (scope `vault`), which never
-involves an operator:
+Two doors, and both now do all three steps at once — seal, grant `fetch`,
+attach the ref to the bindings on that account that route to the provider.
+
+**The tenant's own** (#210), which never involves an operator: Settings →
+Agents in the web app, over `ProviderCredential/set`. It needs a session
+carrying the **`vault`** scope, which hosted sign-in deliberately cannot grant
+(`vault` is in neither `OAUTH_SCOPES` nor `GRANTABLE_SCOPES` — custody of a
+secret does not arrive through a consent screen or a share). The self-service
+ladder to one is `bullmoose login <them> --scopes mail,vault`, then paste that
+token into the app's *Advanced* door. `PUT /vault/credentials` on the agent
+worker is still there as the raw vault write, but it seals ONLY — a key sealed
+that way is granted and attached by nobody and will never be spent.
+
+**The operator door**, for when you are doing it on their behalf:
 
 ```sh
-curl -X PUT https://mcp.bullmoose.cc/vault/credentials \
-  -H "authorization: Bearer $THEIR_TOKEN" -H "content-type: application/json" \
-  -d '{"name":"openrouter","kind":"api-key","secret":"sk-or-…",
-       "allow":"https://openrouter.ai","header":"Authorization: Bearer {}"}'
-# then an operator grants the verb and attaches the ref (below), or:
-#   POST /bureau-grants {"principalEmail":…,"credRef":"openrouter","verb":"fetch"}
-```
-
-…and the operator door, which does all three steps at once — seal, grant
-`fetch`, attach the ref to every binding on that account that routes to the
-provider:
-
-```sh
-curl -X POST https://bullmoose-provision.<subdomain>.workers.dev/provider-keys \
-  -H "authorization: Bearer $ADMIN_TOKEN" -H "content-type: application/json" \
-  -d '{"email":"you@your.domain","key":"sk-or-…"}'
+OR_KEY=sk-or-… bullmoose admin byok seal you@your.domain --key-env OR_KEY
+#   [--provider openrouter|gateway] [--allow <origin>] [--name <binding>] [--expires <days>]
+#   there is no --key: a key in argv is in your shell history, in `ps`, and in
+#   any log that echoed the command. --key-env names a VARIABLE.
+#
+#   the same route by hand:
+#   curl -X POST https://bullmoose-provision.<subdomain>.workers.dev/provider-keys \
+#     -H "authorization: Bearer $ADMIN_TOKEN" -H "content-type: application/json" \
+#     -d '{"email":"you@your.domain","key":"sk-or-…"}'
 # → {"ok":true,"created":true,"credRef":"openrouter","allow":"https://openrouter.ai",
 #    "bindings":[{"id":"…","name":"extractor"}],"keyReadable":false}
 ```
@@ -549,7 +556,18 @@ What to expect operationally:
   destination-refused credential makes the invocation FAIL with the reason on
   the row. It never falls back to the platform key — that would put a tenant's
   mail through an account whose guardrails are not theirs, and bill you for it.
-  Give the binding a free `workers-ai` candidate if you want a soft landing.
+
+  A free `workers-ai` candidate on the menu is often suggested here as a "soft
+  landing". ⚠️ **Read what it actually does before adding one.** On a BACKFILL
+  row it is the scout of scouts-then-troops (`extract.ts`: free sweep, paid
+  pass only on the flagged ones — the intended shape). On an ordinary
+  live-delivery row there is no scout branch: the whole menu goes to
+  `callWithFallback` → `rankByPrice`, which prices `workers-ai` at **0 by
+  policy** and sorts ascending, so the free route becomes the **primary**
+  extractor and the paid model becomes its fallback. That may well be what you
+  want; it is not a landing that only happens on failure, and it is why
+  `POST /extractor` does not add one by default — the default menu is the model
+  the operator asked for, and nothing else.
 - **`POST /agent-bindings/{id}/disable` still stops the spend**, because the
   Bureau checks `enabled` on every BYOK call.
 - cost accounting is unchanged: µUSD still books against the binding (NULL =
@@ -631,6 +649,10 @@ The tenant id (`t_bullmoose`) is a slug you choose — a namespace for an org or
 family, reused by every `--tenant` flag; it is not a credential. `<ADMIN_TOKEN>`
 is, and lives in `.env` (`grep ADMIN_TOKEN .env`).
 
+This section onboards **you**. Onboarding somebody who is *not* you — including
+what they do themselves, and the handful of things they still cannot — is
+[`playbooks/onboarding-a-second-human.md`](playbooks/onboarding-a-second-human.md).
+
 Note: `domain add` wires Email Routing + catch-all→ingest + SES identity
 + DKIM/MAIL FROM/DMARC. If skipping SES for now, expect the `ses:*`
 steps to report failures — re-run later; the Cloudflare steps are
@@ -687,9 +709,17 @@ keeps the credential.
      retired on 2026-08-13. Autodiscovery is live anyway, on the well-known
      rung — see §5. `cli-go/internal/discover/discover.go` carries the same
      warning where it would otherwise be re-learned the hard way.
-   - Still genuinely open: `services/provision`'s `JMAP_HOST` var, which is
+   - ~~Still genuinely open: `services/provision`'s `JMAP_HOST` var, which is
      the SRV target the provisioner plants for each tenant domain, is still
-     set to the dead `bullmoose-jmap.eric-d-moore.workers.dev`.
+     set to the dead `bullmoose-jmap.eric-d-moore.workers.dev`.~~ **Closed
+     2026-08-18** — it now names `app.bullmoose.cc`, verified answering
+     `/.well-known/jmap` with 401 (the 401 *is* the yes). This mattered more
+     than "an unused record": autodiscovery's rungs are SRV → SRV-over-DoH →
+     well-known, and **rung 1 short-circuits**, so a planted-but-dead target
+     does not degrade to the working fallback — it pre-empts it. Every domain
+     onboarded while that var was stale got a DNS record that breaks the login
+     it exists to enable. Unset the var to skip the record entirely; that is
+     the right move for a fork whose app origin differs.
 2. Spam gate at ingest (honor Email Routing verdict headers)
 3. GHA deploy workflow (see `.github/workflows/deploy-mail.yml`) once
    `BULLMOOSE_RUNTIME_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` repo secrets exist
