@@ -195,6 +195,10 @@ T1 — **the dossier read surface**: Agents realm detail panel (quad-panel patte
      was honestly punted to T2.
 T2 — **Settings/Agents domain**: the policy page (defaults for new agents; the discriminator
      rule documented in-page).
+     ✅ **LANDED 2026-08-18 (#198)** — `AgentBinding/set` (enabled only; scope=`send` so
+     supervisory grants can't reach it; audit row + CAS) consumed by the dossier toggle AND
+     Settings→Agents. Known gap (#198 body): claim paths lack an `enabled` term — disabled
+     bindings' queued rows stay claimable. Next-batch candidate.
 T3 — **backfill**: the verb + envelope + ledger progress.
      ✅ **LANDED 2026-08-18** — v1 routes + floor-request approval door (#184); v2 surplus-burns-
      the-backlog + scouts-then-troops (#187). The true per-request budget envelope
