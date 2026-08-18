@@ -1,15 +1,18 @@
 ---
-// The search section (s07 T6). A thin static host; the section itself is one
-// Preact island, the same "SPA-in-an-island" shape as `/mail` and `/contacts`.
+// The Finder (s20 T5) — directed find over your OWN mail history, replacing
+// the s07 T6 cross-realm search stub at the same address. The section id and
+// href stay `search`/`/search` (other surfaces key off the id — ShellNav's
+// SEARCHABLE map, the ?q= deep-link); only the label and the surface changed.
+// A thin static host; the section itself is one Preact island, the same
+// "SPA-in-an-island" shape as `/mail` and `/contacts`.
 //
-// This is the cross-realm STUB the plan asks for — it fans one query out to
-// `Email/query` + `ContactCard/query` + `CalendarEvent/query` and NAMES its
-// own limits instead of faking a universal search: mail is FTS5-indexed,
-// contacts and calendar are full scans, files has no search path at all, and
-// attachment contents wait on the extraction index (devPlan refinement 4).
-// The scope note carrying that is derived in `lib/search/scope.ts`, and the
-// planner/fan-out live in `lib/search/` as pure modules so the future MCP
-// `search` tool can share them (the "same query planner" clause of T6).
+// What this page is now: the standard quad — rail → CollectionColumn (saved
+// queries / sessions / Year › Month date groups) → results grouped by thread
+// → the excerpt detail. A find is a SESSION: one query plus a chain of
+// removable refinement chips (`lib/finder/session.ts`), each narrowing the
+// last through the same `Email/query` filter `/mail` builds. The cross-realm
+// fan-out modules stay in `lib/search/` (tested, the future MCP tool's seam);
+// the honest v1 loop is mail-only and the page's scope note says so.
 //
 // client:only — the section is authenticated and interactive, so it runs in
 // the browser rather than at build time. (A comment in the template would land
@@ -20,115 +23,261 @@
 // inline hydration scripts — hand-writing it once already produced a page that
 // rendered empty while `astro build` and the whole suite reported success
 // (s03.C/devPlan.md:69-74, and the note in layouts/AppTw.astro).
-import SearchApp from "../components/SearchApp.tsx";
+import FinderApp from "../components/FinderApp.tsx";
 import App from "../layouts/AppTw.astro";
 ---
 
-<App title="bullmoose — search" section="search">
-  <SearchApp client:only="preact" />
+<App title="bullmoose — finder" section="search" frame="surface">
+  <FinderApp client:only="preact" />
 </App>
 
 <style is:global>
-  /* Search-specific layout only. Everything structural (.app, .topbar,
-     .search, .search-scope, .banner, .panel, .pill, .muted) is reused from
-     styles/webmail.css rather than restated — and these rules live on the
-     page instead of in that shared stylesheet so this section can land
-     without touching a file a parallel s07 task is editing (the same call
-     contacts.astro made). */
+  /* Finder-specific layout only. Everything structural (.app, .body,
+     .search-scope, .banner, .scope-line, .pill, .muted, .toast, .link-button)
+     is reused from styles/webmail.css rather than restated — and these rules
+     live on the page instead of in that shared stylesheet so this section can
+     land without touching a file a parallel task is editing (the same call
+     contacts.astro and approvals.astro made). No inline styles anywhere: the
+     generated CSP carries no 'unsafe-inline' in style-src. */
 
-  .search button[type="submit"] {
+  /* frame="surface": the island owns exactly one viewport of height and the
+     panes scroll themselves. Same explicit height .apq uses on /approvals —
+     the layout's wrapper is a plain block, so the height must be claimed. */
+  .finder {
+    height: 100%;
+    min-height: 0;
+  }
+  .finder .body {
+    min-height: 0;
+  }
+  .finder-content {
+    min-width: 0;
+  }
+  .finder-status {
+    padding: 12px 16px;
+  }
+
+  /* ── the session line: query + removable refinement chips ─────────────── */
+  .finder-chips {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 16px 4px;
+  }
+  .finder-query {
+    font-weight: 600;
+  }
+  .finder-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--bg-alt);
+    font-size: 12.5px;
+  }
+  .finder-chip-x {
+    border: none;
+    background: none;
+    padding: 0 5px;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--fg-muted);
+    border-radius: 999px;
+  }
+  .finder-chip-x:hover {
+    color: var(--fg);
+    background: var(--bg-sunken);
+  }
+
+  /* ── the refine controls (the human's half of the loop) ───────────────── */
+  .finder-refine {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 16px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .finder-refine-label {
+    font-size: 12.5px;
+  }
+  .finder-refine-input {
     font: inherit;
     color: inherit;
-    padding: 6px 14px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 12px;
+    width: 15em;
+  }
+  .finder-refine-select {
+    font: inherit;
+    color: inherit;
+    background: var(--bg-alt);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 3px 6px;
+    max-width: 11em;
+  }
+  .finder-refine-btn {
+    font: inherit;
+    font-size: 12.5px;
+    color: inherit;
+    padding: 4px 12px;
     border: 1px solid var(--line);
     border-radius: 999px;
     background: var(--bg);
   }
-  .search button[type="submit"]:disabled {
+  .finder-refine-btn:disabled {
     color: var(--fg-muted);
+    cursor: default;
+  }
+  .finder-refine-btn:not(:disabled):hover {
+    background: var(--bg-alt);
+  }
+  .finder-refine-spacer {
+    flex: 1;
   }
 
-  /* One line per coverage fact; the shared .scope-line is a results row and
-     deliberately not reused here (SearchApp.tsx). */
-  .search-scope .scope-item {
-    display: block;
-  }
-
-  .search-results {
+  /* ── list + detail panes ──────────────────────────────────────────────── */
+  .finder-panes {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    padding: 12px 16px 32px;
-    max-width: 860px;
+    display: grid;
+    grid-template-columns: minmax(320px, 1fr) minmax(280px, 420px);
+    gap: 16px;
+    padding: 0 16px 16px;
+    overflow: hidden;
   }
-  .search-hint {
-    font-size: 13px;
+  .finder-list {
+    min-width: 0;
+    overflow-y: auto;
+    padding-top: 8px;
+  }
+  .finder-detail {
+    min-width: 0;
+    overflow-y: auto;
+    border-left: 1px solid var(--line);
+    padding: 12px 0 12px 16px;
+  }
+  .finder-empty {
+    padding: 24px 16px;
+    max-width: 560px;
+  }
+  .finder-hint {
+    font-size: 12.5px;
+  }
+  .finder-empty-list {
+    padding: 12px 2px;
   }
 
-  .realm-group {
-    margin-bottom: 20px;
+  /* ── thread groups ────────────────────────────────────────────────────── */
+  .finder-thread {
+    margin-bottom: 18px;
   }
-  .realm-group h2 {
+  .finder-thread-head {
     display: flex;
     align-items: baseline;
     gap: 8px;
-    margin: 0 0 6px;
-    font-size: 15px;
-    letter-spacing: 0.01em;
+    margin: 0 0 4px;
+    font-size: 14px;
   }
-  .realm-total {
-    font-size: 12.5px;
-    font-weight: 400;
+  .finder-thread-subject {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  /* A realm that was not searched must read as switched off, never as an
-     empty result — "no matches" and "not searched" are different facts. */
-  .realm-off h2 {
-    color: var(--fg-muted);
+  .finder-thread-when {
+    margin-left: auto;
+    font-size: 12px;
+    white-space: nowrap;
   }
-  .realm-off p {
-    margin: 0;
-    font-size: 12.5px;
-  }
-  .realm-error {
-    display: block;
-    margin: 0 0 6px;
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: 12.5px;
-  }
-
-  .hit-list {
+  .finder-hits {
     list-style: none;
     margin: 0;
     padding: 0;
   }
-  .hit-row {
+  .finder-hit {
     display: flex;
     align-items: baseline;
     gap: 10px;
-    padding: 7px 2px;
+    width: 100%;
+    padding: 6px 8px;
+    border: none;
     border-bottom: 1px solid var(--line);
+    background: none;
+    text-align: left;
   }
-  .hit-title {
+  .finder-hit:hover {
+    background: var(--bg-alt);
+  }
+  .finder-hit.is-selected {
+    background: var(--accent-soft);
+  }
+  .finder-hit-sender {
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     flex-shrink: 0;
-    max-width: 45%;
+    max-width: 40%;
   }
-  .hit-snippet {
+  .finder-hit-preview {
     flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--fg-muted);
     font-size: 13px;
   }
-  .hit-when {
+  .finder-hit-when {
     font-size: 12px;
     white-space: nowrap;
     margin-left: auto;
+  }
+
+  /* ── the excerpt detail ───────────────────────────────────────────────── */
+  .finder-detail-subject {
+    margin: 0 0 6px;
+    font-size: 16px;
+  }
+  .finder-detail-meta {
+    margin: 0 0 12px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 13px;
+  }
+  .finder-detail-sender {
+    font-weight: 600;
+  }
+  .finder-detail-excerpt {
+    margin: 0 0 12px;
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+  .finder-detail-note {
+    font-size: 12.5px;
+  }
+
+  /* s25 T1 — below lg the quad degrades to a stack (the CollectionColumn
+     renders itself full-width and height-capped there); the panes stack too. */
+  @media (max-width: 1023.98px) {
+    .finder .body {
+      flex-direction: column;
+    }
+    .finder-panes {
+      grid-template-columns: 1fr;
+    }
+    .finder-detail {
+      border-left: none;
+      border-top: 1px solid var(--line);
+      padding: 12px 0 0;
+    }
   }
 </style>
