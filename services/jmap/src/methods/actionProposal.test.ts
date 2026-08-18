@@ -1364,6 +1364,37 @@ describe("ATTACK: fail-closed — an unbound or revoked binding cannot send at a
     expect(h.w.submit.calls).toEqual([]);
   });
 });
+// ---- the µUSD cost block on the read model (Eric 2026-08-18) --------------
+
+describe("the proposal read model carries the invocation's frozen cost", () => {
+  it("projects costMicros/tokens/costModel, and NULL survives as null (not 0)", async () => {
+    const h = harness();
+    seedProposal(h.w, { id: "inv_cost", kind: "reply-draft", tier: 2 });
+    h.w.db.query(
+      `UPDATE agent_invocations SET provider = 'openrouter', model = 'minimax/minimax-m3',
+         tokens_in = 1832, tokens_out = 412, cost_micros = 2140 WHERE id = 'inv_cost'`,
+    );
+    seedProposal(h.w, { id: "inv_free", kind: "watch-offer", tier: 1 });
+    h.w.db.query(`UPDATE agent_invocations SET cost_micros = 0 WHERE id = 'inv_free'`);
+    seedProposal(h.w, { id: "inv_unknown", kind: "reply-draft", tier: 2 });
+
+    const got = await h.call<{ list: Array<Record<string, unknown>> }>("ActionProposal/get", {
+      ids: ["inv_cost", "inv_free", "inv_unknown"],
+    });
+    const by = new Map(got.list.map((p) => [p.id, p]));
+    expect(by.get("inv_cost")).toMatchObject({
+      costMicros: 2140,
+      tokensIn: 1832,
+      tokensOut: 412,
+      costModel: "openrouter/minimax/minimax-m3",
+    });
+    // 0 is KNOWN FREE; null is NOT RECORDED — they must never collapse.
+    expect(by.get("inv_free")!.costMicros).toBe(0);
+    expect(by.get("inv_unknown")!.costMicros).toBeNull();
+    expect(by.get("inv_unknown")!.costModel).toBeNull();
+  });
+});
+
 // ---- s20 T1↔T4: the agent-offered Watch (watch-offer) ---------------------
 
 describe("approving a watch-offer arms a no-reply-from Watch", () => {

@@ -43,6 +43,10 @@ function proposal(partial: Partial<ActionProposal> & Pick<ActionProposal, "id">)
     question: null,
     amendments: [],
     invocationStatus: "done",
+    costMicros: null,
+    tokensIn: null,
+    tokensOut: null,
+    costModel: null,
     claimedAt: null,
     ...partial,
   };

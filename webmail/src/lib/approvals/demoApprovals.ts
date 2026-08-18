@@ -144,6 +144,10 @@ export function demoProposals(now: number): ActionProposal[] {
       amendments: [],
       invocationStatus: "done",
       claimedAt: null,
+      costMicros: 2140,
+      tokensIn: 1832,
+      tokensOut: 412,
+      costModel: "openrouter/minimax/minimax-m3",
     },
     {
       // Tier 1: reversible, applies immediately on approve, undo handle kept.
@@ -178,6 +182,10 @@ export function demoProposals(now: number): ActionProposal[] {
       amendments: [],
       invocationStatus: "done",
       claimedAt: null,
+      costMicros: null,
+      tokensIn: null,
+      tokensOut: null,
+      costModel: null,
     },
     {
       // Tier 3: the irreversible egress applyProposal actually handles
@@ -216,6 +224,10 @@ export function demoProposals(now: number): ActionProposal[] {
       amendments: [],
       invocationStatus: "done",
       claimedAt: null,
+      costMicros: null,
+      tokensIn: null,
+      tokensOut: null,
+      costModel: null,
     },
     {
       // grant-request shares the queue (arch.md §1): what / why / approve-deny,
@@ -247,6 +259,10 @@ export function demoProposals(now: number): ActionProposal[] {
       amendments: [],
       invocationStatus: "done",
       claimedAt: null,
+      costMicros: null,
+      tokensIn: null,
+      tokensOut: null,
+      costModel: null,
     },
     {
       // needsInfo, ANSWERED (s10 T3): a recipient widening that was challenged
@@ -290,6 +306,10 @@ export function demoProposals(now: number): ActionProposal[] {
       ],
       invocationStatus: "done",
       claimedAt: null,
+      costMicros: null,
+      tokensIn: null,
+      tokensOut: null,
+      costModel: null,
     },
     {
       // needsInfo, OPEN (s10 T3): the ball is in the agent's court. No verbs,
@@ -323,6 +343,10 @@ export function demoProposals(now: number): ActionProposal[] {
       ],
       invocationStatus: "pending",
       claimedAt: null,
+      costMicros: null,
+      tokensIn: null,
+      tokensOut: null,
+      costModel: null,
     },
     {
       // Already in the hold tray: approved 2 minutes ago, retraction window
@@ -356,6 +380,10 @@ export function demoProposals(now: number): ActionProposal[] {
       amendments: [],
       invocationStatus: "done",
       claimedAt: null,
+      costMicros: null,
+      tokensIn: null,
+      tokensOut: null,
+      costModel: null,
     },
     {
       // History: approved AFTER EDIT — the middle outcome (s07 §T4's table).
@@ -401,6 +429,10 @@ export function demoProposals(now: number): ActionProposal[] {
       amendments: [],
       invocationStatus: "done",
       claimedAt: null,
+      costMicros: null,
+      tokensIn: null,
+      tokensOut: null,
+      costModel: null,
     },
     {
       // History: rejected, with the no-thanks signal recorded (arch.md §3).
@@ -424,6 +456,10 @@ export function demoProposals(now: number): ActionProposal[] {
       amendments: [],
       invocationStatus: "done",
       claimedAt: null,
+      costMicros: null,
+      tokensIn: null,
+      tokensOut: null,
+      costModel: null,
     },
     {
       // History under the OLD taxonomy: declined `notNow`, a reason the enum no
@@ -457,6 +493,10 @@ export function demoProposals(now: number): ActionProposal[] {
       amendments: [],
       invocationStatus: "done",
       claimedAt: null,
+      costMicros: null,
+      tokensIn: null,
+      tokensOut: null,
+      costModel: null,
     },
     {
       // History: expired — the chance the human lost. The sweep flipped it;
@@ -481,6 +521,10 @@ export function demoProposals(now: number): ActionProposal[] {
       amendments: [],
       invocationStatus: "done",
       claimedAt: null,
+      costMicros: null,
+      tokensIn: null,
+      tokensOut: null,
+      costModel: null,
     },
   ];
   return rows.map((r) => ({ ...r, accountId: ACCOUNT }));

@@ -199,6 +199,15 @@ interface ProposalJoinRow {
   inv_status: string;
   claimed_at: number | null;
   email_id: string | null;
+  // s07 T5's frozen cost, surfaced on the queue (Eric 2026-08-18): what this
+  // proposal's invocation actually cost. NULL and 0 stay DISTINCT end to end —
+  // 0 is "known free" (a carrier, the Workers AI allocation), NULL is "not
+  // recorded" — the one honesty rule of the cost columns.
+  cost_micros: number | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  cost_provider: string | null;
+  cost_model: string | null;
 }
 
 const SELECT_JOIN = `
@@ -207,7 +216,9 @@ const SELECT_JOIN = `
          p.decision_json, p.created_at, p.decided_at, p.hold_until, p.expires_at,
          p.question, p.amendments_json, p.expires_remaining_ms,
          inv.binding_id, inv.binding_name, inv.status AS inv_status,
-         inv.claimed_at, inv.email_id
+         inv.claimed_at, inv.email_id,
+         inv.cost_micros, inv.tokens_in, inv.tokens_out,
+         inv.provider AS cost_provider, inv.model AS cost_model
     FROM agent_proposals p
     JOIN agent_invocations inv
       ON inv.account_id = p.account_id AND inv.id = p.id`;
@@ -1476,6 +1487,12 @@ function proposalToJmap(r: ProposalJoinRow, dueAt: number | null = null): Record
     amendments: safeJsonArray(r.amendments_json ?? "[]"),
     // the read-model surface projected from the invocation:
     invocationStatus: r.inv_status,
+    // The cost block (s07 T5 → the queue). Absent usage stays null — a client
+    // must render "not recorded", never a flattering $0.
+    costMicros: r.cost_micros,
+    tokensIn: r.tokens_in,
+    tokensOut: r.tokens_out,
+    costModel: r.cost_model ? `${r.cost_provider ?? ""}${r.cost_provider ? "/" : ""}${r.cost_model}` : null,
     claimedAt: r.claimed_at ? new Date(r.claimed_at).toISOString() : null,
   };
 }

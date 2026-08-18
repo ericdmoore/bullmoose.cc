@@ -4,6 +4,7 @@ import { defaultSession } from "../jmap/FakeJmapClient";
 import type { ActionProposal } from "./types";
 import { parseProposal } from "./types";
 import {
+  costLabel,
   HOLD_UNWIRED_NOTE,
   REJECT_REASONS,
   RETIRED_REJECT_REASONS,
@@ -289,5 +290,23 @@ describe("declineNeedsReason — the no-fault kinds (the enum's mirror)", () => 
     // inherited it. Mirrored here, once, next to the enum it qualifies.
     expect(declineNeedsReason("budget-overrun")).toBe(false);
     expect(declineNeedsReason("held-mail-review")).toBe(false);
+  });
+});
+
+describe("costLabel — the µUSD figure holds the NULL-vs-0 honesty rule", () => {
+  it("null is 'not recorded' — never a dollar figure", () => {
+    expect(costLabel({ costMicros: null, costModel: null })).toBe("cost not recorded");
+    expect(costLabel({ costMicros: null, costModel: "openrouter/minimax" })).toBe("cost not recorded");
+  });
+  it("0 is 'free' — distinct from unknown", () => {
+    expect(costLabel({ costMicros: 0, costModel: null })).toBe("free");
+  });
+  it("small spends render in µ$, larger in dollars, with the model when known", () => {
+    expect(costLabel({ costMicros: 2140, costModel: null })).toBe("2,140 µ$");
+    expect(costLabel({ costMicros: 2140, costModel: "openrouter/minimax/minimax-m3" })).toBe(
+      "2,140 µ$ · openrouter/minimax/minimax-m3",
+    );
+    expect(costLabel({ costMicros: 12_500_000, costModel: null })).toBe("$12.50");
+    expect(costLabel({ costMicros: 10_000, costModel: null })).toBe("$0.01");
   });
 });
