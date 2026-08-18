@@ -1,0 +1,588 @@
+import { commitChanges } from "@bullmoose/account-do";
+import { buildMime } from "@bullmoose/mime";
+import { Mailstore } from "@bullmoose/mailstore";
+import { budgetMonthStartMs, budgetPeriodKey } from "@bullmoose/scheduling";
+import type { Env } from "./models.js";
+
+/**
+ * s26 T5b — Allen's frontier digest: the JOIN and the REPORT.
+ *
+ * T5a records the assignment (extract.ts stamps `{arm, model}` on the result
+ * and finish() freezes provider/model/tokens/cost on the row). The outcome
+ * labels were already accruing before anyone asked for them — annotation
+ * dismissals and resolutions (s18 A1). What was missing is the join: **cost vs
+ * correction rate, per model per pipeline** — the price-quality frontier. This
+ * module computes it once a month and delivers it as MAIL, Allen's native
+ * medium (devPlan decision 4).
+ *
+ * ## The join, and its honesty rules
+ *
+ * Per (pipeline, provider/model) over one UTC month of `done` invocations:
+ * runs, total cost, tokens; for the extract pipeline, annotations joined by
+ * (account_id, email_id → annotations.source_ref) bucket into dismissed /
+ * resolved / still-open — the dismissal rate is the extractor's labeled
+ * false-positive rate, the negative signal the frontier prices against.
+ *
+ * NULL-vs-0 cost is load-bearing here exactly as it is on the row (s07 T5):
+ * a NULL `cost_micros` is an UNPRICED run, counted and said out loud, never
+ * summed as $0.00. A model whose runs are all unpriced shows "—", not a
+ * flattering zero. Rows without a provider/model stamp (skips, multi-call
+ * ledger runs — s07 T5 scopes the stamp to single-call invocations) are not
+ * model runs and stay out of the table; the header does not pretend the digest
+ * sees them.
+ *
+ * ## Cadence and idempotence — the T9 marker pattern, guarded-INSERT flavor
+ *
+ * The sweep runs on every cron tick but generates only for the PREVIOUS UTC
+ * month — the digest fires once, when the month rolls. One digest per
+ * (account, period): the marker is a carrier `agent_invocations` row with a
+ * DETERMINISTIC id (`inv_frontier-digest_<YYYY-MM>`), so the guard is the
+ * primary key itself — `INSERT OR IGNORE`, and `changes === 0` means a prior
+ * (or racing) sweep already sent it. Same compose as budgetOverrun.ts: the
+ * durable fact is a row, finished on arrival, cost 0 (no model ran). An empty
+ * month writes nothing at all — no marker, no mail, silence.
+ *
+ * For first-value and testing there is also a FORCED path: the internal-token
+ * gated `POST /internal/frontier-digest` (the refresh-pricing route pattern)
+ * renders a month-to-date preview on demand. Forced runs never touch the
+ * marker — an operator preview must not consume the month-roll's one shot,
+ * and must be re-runnable.
+ *
+ * ## Delivery
+ *
+ * v1 recipient: the account's own primary identity (self-digest); a config
+ * knob can come later. The ledger's SUBMIT relay is deliberately NOT reused —
+ * it is binding-scoped (outbound bound, digestTo config) and this digest is
+ * account-scoped with no binding to govern it. Instead the digest lands
+ * directly in the account's own inbox via the mailstore insert pattern the
+ * ledger uses for its sent copy: buildMime → putBlob → insertEmail →
+ * commitChanges. Nothing egresses, so no outbound gate is implicated.
+ *
+ * Deterministic (no model call, no randomness in any decision) and fail-open
+ * on missing tables — the sweepWatches posture: a digest that cannot read is
+ * a warned no-op, never a crashed cron.
+ */
+
+/** How many accounts one sweep may digest. Bounds a pathological fan-out the
+ * same way OVERRUN_BINDING_LIMIT does. */
+const DIGEST_ACCOUNT_LIMIT = 50;
+
+/** The carrier row's synthetic binding id/name. Not a real binding on
+ * purpose: the digest is account-scoped, and a synthetic name keeps the row
+ * out of every per-binding join (budget medians, dossier binding views)
+ * while staying visible as an honest record of "digest generated". */
+export const FRONTIER_DIGEST_BINDING = "frontier-digest";
+
+/** The marker's deterministic id — the idempotence key IS the primary key. */
+export function frontierMarkerId(periodKey: string): string {
+  return `inv_${FRONTIER_DIGEST_BINDING}_${periodKey}`;
+}
+
+// ---- the join (pure) ---------------------------------------------------
+
+/** One `done` invocation with a provider/model stamp, as the SQL fetches it. */
+export interface FrontierInvocation {
+  pipeline: string;
+  provider: string;
+  model: string;
+  emailId: string | null;
+  /** NULL = undetermined ("unpriced"), never 0. 0 = genuinely free. */
+  costMicros: number | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+}
+
+/** One agent-authored annotation, keyed by the email it annotates. */
+export interface FrontierAnnotation {
+  emailId: string;
+  status: string; // open | resolved | dismissed
+}
+
+export interface FrontierRow {
+  pipeline: string;
+  provider: string;
+  model: string;
+  runs: number;
+  /** Runs whose cost_micros is known (0 counts — free is a price). */
+  pricedRuns: number;
+  /** Runs whose cost was never determined. Counted, never summed as 0. */
+  unpricedRuns: number;
+  /** Sum over PRICED runs only. */
+  costMicros: number;
+  tokensIn: number;
+  tokensOut: number;
+  /** Outcome labels — extract pipeline only; null elsewhere (no label source). */
+  annotations: { total: number; dismissed: number; resolved: number; open: number } | null;
+}
+
+/**
+ * The join math, pure: group invocations by (pipeline, provider/model),
+ * NULL-safe over cost, and attribute annotation outcomes to the extract
+ * invocation that wrote them (via the email id — extract's idempotence
+ * guarantees at most one extraction per message, so the attribution is 1:1
+ * in practice; a pathological duplicate attributes to each).
+ */
+export function joinFrontier(invocations: FrontierInvocation[], annotations: FrontierAnnotation[]): FrontierRow[] {
+  const groups = new Map<string, FrontierRow>();
+  const emailToGroups = new Map<string, Set<string>>();
+
+  for (const inv of invocations) {
+    const key = `${inv.pipeline}\u0000${inv.provider}\u0000${inv.model}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = {
+        pipeline: inv.pipeline,
+        provider: inv.provider,
+        model: inv.model,
+        runs: 0,
+        pricedRuns: 0,
+        unpricedRuns: 0,
+        costMicros: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+        annotations: inv.pipeline === "extract" ? { total: 0, dismissed: 0, resolved: 0, open: 0 } : null,
+      };
+      groups.set(key, g);
+    }
+    g.runs += 1;
+    if (typeof inv.costMicros === "number") {
+      g.pricedRuns += 1;
+      g.costMicros += inv.costMicros;
+    } else {
+      g.unpricedRuns += 1;
+    }
+    g.tokensIn += inv.tokensIn ?? 0;
+    g.tokensOut += inv.tokensOut ?? 0;
+    if (inv.pipeline === "extract" && inv.emailId) {
+      let set = emailToGroups.get(inv.emailId);
+      if (!set) emailToGroups.set(inv.emailId, (set = new Set()));
+      set.add(key);
+    }
+  }
+
+  for (const an of annotations) {
+    for (const key of emailToGroups.get(an.emailId) ?? []) {
+      const a = groups.get(key)?.annotations;
+      if (!a) continue;
+      a.total += 1;
+      if (an.status === "dismissed") a.dismissed += 1;
+      else if (an.status === "resolved") a.resolved += 1;
+      else a.open += 1;
+    }
+  }
+
+  // Deterministic order: pipeline, then cheapest per priced run first (the
+  // frontier reads left-to-right as "is the pricier model earning it?");
+  // all-unpriced rows sort last — an unknown price is not a low one.
+  const perRun = (r: FrontierRow) => (r.pricedRuns > 0 ? r.costMicros / r.pricedRuns : Number.POSITIVE_INFINITY);
+  return [...groups.values()].sort(
+    (x, y) =>
+      x.pipeline.localeCompare(y.pipeline) ||
+      perRun(x) - perRun(y) ||
+      `${x.provider}/${x.model}`.localeCompare(`${y.provider}/${y.model}`),
+  );
+}
+
+// ---- rendering (pure) --------------------------------------------------
+
+export interface FrontierDigestInput {
+  periodKey: string; // YYYY-MM
+  startMs: number;
+  endMs: number;
+  /** Forced month-to-date previews are labelled as such. */
+  partial: boolean;
+  /** MIN(done_at) of any invocation carrying an arm assignment, or null. */
+  firstAssignmentAt: number | null;
+  /** "photos 10%" — bindings with a configured exploreRate, or the none-set note. */
+  exploreNote: string;
+  rows: FrontierRow[];
+}
+
+const num = (n: number) => n.toLocaleString("en-US");
+const pct = (part: number, total: number) => `${Math.round((100 * part) / total)}%`;
+const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+export function renderFrontierDigest(d: FrontierDigestInput): { subject: string; text: string } {
+  const subject = `Frontier digest — ${d.periodKey}${d.partial ? " (month to date, forced preview)" : ""}`;
+
+  const lines: string[] = [];
+  lines.push("The price-quality frontier — cost vs correction rate, per model per pipeline.");
+  lines.push(`Period: ${day(d.startMs)} to ${day(d.endMs)} (UTC${d.partial ? ", month to date" : ""}).`);
+  lines.push("");
+  lines.push(
+    d.firstAssignmentAt !== null
+      ? `Assignment data since ${day(d.firstAssignmentAt)} (first recorded explore/exploit arm).`
+      : "No explore/exploit assignment recorded yet — every run below took its menu's head.",
+  );
+  lines.push(`Exploration rate as configured: ${d.exploreNote}.`);
+  lines.push(
+    "Unpriced runs are counted, never zeroed: a run whose cost was undetermined is",
+    "reported as unpriced and left out of the µ$ figures — it is never $0.00.",
+  );
+
+  const pipelines = [...new Set(d.rows.map((r) => r.pipeline))];
+  let hasNonExtract = false;
+  for (const pipeline of pipelines) {
+    const rows = d.rows.filter((r) => r.pipeline === pipeline);
+    if (pipeline !== "extract") hasNonExtract = true;
+    lines.push("", `── ${pipeline} ${"─".repeat(Math.max(2, 58 - pipeline.length))}`);
+    lines.push(...renderTable(rows));
+    const tokIn = rows.reduce((s, r) => s + r.tokensIn, 0);
+    const tokOut = rows.reduce((s, r) => s + r.tokensOut, 0);
+    lines.push(`tokens: ${num(tokIn)} in / ${num(tokOut)} out`);
+    for (const r of rows) {
+      if (r.unpricedRuns > 0) {
+        lines.push(
+          `* ${r.provider}/${r.model}: ${r.unpricedRuns} of ${r.runs} run${r.runs === 1 ? "" : "s"} unpriced ` +
+            "(cost undetermined; excluded from µ$ figures).",
+        );
+      }
+    }
+  }
+
+  lines.push("");
+  if (hasNonExtract) {
+    lines.push(
+      "Outcome labels (dismiss/resolve/open) come from annotation adjudication and",
+      "apply to the extract pipeline only; other pipelines report cost and volume.",
+    );
+  }
+  lines.push(
+    "Reading it: within a pipeline, a model that costs less per run without a worse",
+    "dismiss% sits on the frontier; a pricier model earns its keep only through a",
+    "lower dismiss% or a higher resolve%.",
+    "",
+    "— frontier digest · bullmoose agent",
+  );
+  return { subject, text: lines.join("\n") };
+}
+
+/** The frontier table: model | runs | µ$ total | µ$/run | dismiss% | resolve% | open. */
+function renderTable(rows: FrontierRow[]): string[] {
+  const header = ["model", "runs", "µ$ total", "µ$/run", "dismiss%", "resolve%", "open"];
+  const body = rows.map((r) => {
+    const star = r.unpricedRuns > 0 ? "*" : "";
+    const total = r.pricedRuns === 0 ? `—${star}` : `${num(r.costMicros)}${star}`;
+    const perRun = r.pricedRuns === 0 ? "—" : num(Math.round(r.costMicros / r.pricedRuns));
+    const a = r.annotations;
+    const dismiss = a && a.total > 0 ? pct(a.dismissed, a.total) : "—";
+    const resolve = a && a.total > 0 ? pct(a.resolved, a.total) : "—";
+    const open = a ? String(a.open) : "—";
+    return [`${r.provider}/${r.model}`, String(r.runs), total, perRun, dismiss, resolve, open];
+  });
+  const all = [header, ...body];
+  const widths = header.map((_, i) => Math.max(...all.map((row) => row[i]!.length)));
+  return all.map((row) =>
+    row
+      .map((cell, i) => (i === 0 ? cell.padEnd(widths[i]!) : cell.padStart(widths[i]!)))
+      .join("  ")
+      .trimEnd(),
+  );
+}
+
+// ---- the sweep ---------------------------------------------------------
+
+interface DigestAccount {
+  account_id: string;
+  tenant_id: string;
+}
+
+/**
+ * The monthly pass, wired at the END of the scheduled sweep. Generates the
+ * PREVIOUS UTC month's digest for every account with model-stamped work in
+ * that month, once per (account, period). Empty months are skipped silently.
+ */
+export async function sweepFrontierDigest(env: Env, now: number = Date.now()): Promise<{ sent: number }> {
+  const monthStart = budgetMonthStartMs(now);
+  const startMs = budgetMonthStartMs(monthStart - 1); // previous month opens…
+  const endMs = monthStart; // …and closes where this one starts
+  const periodKey = budgetPeriodKey(startMs);
+
+  let accounts: DigestAccount[];
+  try {
+    accounts = await discoverAccounts(env, startMs, endMs, null);
+  } catch {
+    // Missing table (pre-migration shard): a digest with nothing to read is a
+    // no-op, said out loud, not a crashed cron — the sweepWatches posture.
+    console.warn("frontier digest sweep degraded to no-op (missing agent_invocations table?)");
+    return { sent: 0 };
+  }
+
+  let sent = 0;
+  for (const acct of accounts) {
+    try {
+      const emailId = await digestOne(env, acct, { periodKey, startMs, endMs, partial: false, mark: true, now });
+      if (emailId) sent += 1;
+    } catch (err) {
+      // One account's failure must not sink the batch.
+      console.error(`frontier digest: ${acct.account_id} failed: ${String(err).slice(0, 160)}`);
+    }
+  }
+  return { sent };
+}
+
+/**
+ * POST /internal/frontier-digest — the forced path (internal-token gated by
+ * the caller, index.ts, exactly like /internal/refresh-pricing). Body
+ * (optional JSON): `{ period?: "YYYY-MM", accountId?: string }`. Defaults to
+ * a month-to-date preview of the CURRENT month. Never touches the marker:
+ * a preview is re-runnable and must not consume the month-roll's one shot.
+ */
+export async function handleFrontierDigestForce(request: Request, env: Env): Promise<Response> {
+  let body: { period?: unknown; accountId?: unknown } = {};
+  try {
+    body = (await request.json()) as typeof body;
+  } catch {
+    // no body / malformed body → the defaults
+  }
+  const now = Date.now();
+  let startMs: number;
+  let endMs: number;
+  let periodKey: string;
+  if (body.period !== undefined) {
+    if (typeof body.period !== "string" || !/^\d{4}-\d{2}$/.test(body.period)) {
+      return json({ error: `bad period ${JSON.stringify(body.period)} — want "YYYY-MM"` }, 400);
+    }
+    const [y, m] = body.period.split("-").map(Number) as [number, number];
+    if (m < 1 || m > 12) return json({ error: `bad period "${body.period}" — want YYYY-MM` }, 400);
+    startMs = Date.UTC(y, m - 1, 1);
+    endMs = Date.UTC(y, m, 1);
+    periodKey = body.period;
+  } else {
+    startMs = budgetMonthStartMs(now);
+    endMs = now; // month to date
+    periodKey = budgetPeriodKey(now);
+  }
+  const accountFilter = typeof body.accountId === "string" ? body.accountId : null;
+
+  const accounts = await discoverAccounts(env, startMs, endMs, accountFilter);
+  const digests: Array<{ accountId: string; emailId: string }> = [];
+  for (const acct of accounts) {
+    const emailId = await digestOne(env, acct, {
+      periodKey,
+      startMs,
+      endMs,
+      partial: endMs >= now, // month-to-date, or a month forced before it closed
+      mark: false,
+      now,
+    });
+    if (emailId) digests.push({ accountId: acct.account_id, emailId });
+  }
+  return json({ period: periodKey, forced: true, digests });
+}
+
+/** Accounts with model-stamped done work in the window — the digest's subjects. */
+async function discoverAccounts(
+  env: Env,
+  startMs: number,
+  endMs: number,
+  accountFilter: string | null,
+): Promise<DigestAccount[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT DISTINCT inv.account_id, a.tenant_id
+       FROM agent_invocations inv
+       JOIN accounts a ON a.id = inv.account_id
+      WHERE a.deleted_at IS NULL AND inv.status = 'done'
+        AND inv.done_at >= ? AND inv.done_at < ?
+        AND inv.provider IS NOT NULL AND inv.model IS NOT NULL
+        ${accountFilter ? "AND inv.account_id = ?" : ""}
+      ORDER BY inv.account_id LIMIT ${DIGEST_ACCOUNT_LIMIT}`,
+  )
+    .bind(...(accountFilter ? [startMs, endMs, accountFilter] : [startMs, endMs]))
+    .all<DigestAccount>();
+  return results;
+}
+
+/**
+ * One account's digest: guard (marker), join, render, deliver. Returns the
+ * digest email's id, or null when nothing was sent (already sent this period,
+ * or the account has no identity to deliver to).
+ */
+async function digestOne(
+  env: Env,
+  acct: DigestAccount,
+  opts: { periodKey: string; startMs: number; endMs: number; partial: boolean; mark: boolean; now: number },
+): Promise<string | null> {
+  const { periodKey, startMs, endMs } = opts;
+  const markerId = frontierMarkerId(periodKey);
+
+  // ---- the marker: send once per (account, period) -----------------------
+  // Guarded INSERT — the deterministic id makes the primary key the guard, so
+  // a raced sweep loses on `changes` rather than double-sending. Written
+  // BEFORE the send (mark once → send once, the T9 order); a failed send
+  // deletes it so the next cron retries rather than burning the period.
+  if (opts.mark) {
+    const ins = await env.DB.prepare(
+      `INSERT OR IGNORE INTO agent_invocations
+         (id, account_id, binding_id, binding_name, status, context_json,
+          created_at, claimed_at, done_at, cost_micros, result_json)
+       VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, 0, ?)`,
+    )
+      .bind(
+        markerId,
+        acct.account_id,
+        FRONTIER_DIGEST_BINDING,
+        FRONTIER_DIGEST_BINDING,
+        JSON.stringify({ kind: "frontier-digest", periodKey }),
+        opts.now,
+        opts.now,
+        opts.now,
+        JSON.stringify({ kind: "frontier-digest", periodKey }),
+      )
+      .run();
+    if (ins.meta.changes !== 1) return null; // already sent this period
+  }
+
+  const unmark = () =>
+    opts.mark
+      ? env.DB.prepare(`DELETE FROM agent_invocations WHERE account_id = ? AND id = ?`)
+          .bind(acct.account_id, markerId)
+          .run()
+      : Promise.resolve(null);
+
+  try {
+    // ---- the join ---------------------------------------------------------
+    const { results: invRows } = await env.DB.prepare(
+      `SELECT COALESCE(json_extract(COALESCE(b.config_json, '{}'), '$.pipeline'), 'reply') AS pipeline,
+              inv.provider, inv.model, inv.email_id AS emailId,
+              inv.cost_micros AS costMicros, inv.tokens_in AS tokensIn, inv.tokens_out AS tokensOut
+         FROM agent_invocations inv
+         LEFT JOIN agent_bindings b ON b.account_id = inv.account_id AND b.id = inv.binding_id
+        WHERE inv.account_id = ? AND inv.status = 'done'
+          AND inv.done_at >= ? AND inv.done_at < ?
+          AND inv.provider IS NOT NULL AND inv.model IS NOT NULL`,
+    )
+      .bind(acct.account_id, startMs, endMs)
+      .all<FrontierInvocation>();
+    if (invRows.length === 0) {
+      // Discovery raced a delete, or a forced run over an empty window.
+      await unmark();
+      return null;
+    }
+
+    // Outcome labels for the extract rows: agent-authored annotations whose
+    // source_ref is one of this window's extracted emails. Adjudication has
+    // no deadline — a dismissal recorded next month still counts against the
+    // model that earned it, so the annotation side is NOT period-filtered.
+    const { results: annRows } = await env.DB.prepare(
+      `SELECT an.source_ref AS emailId, an.status
+         FROM annotations an
+        WHERE an.account_id = ? AND an.author_kind = 'agent'
+          AND an.source_ref IN (
+            SELECT inv.email_id
+              FROM agent_invocations inv
+              LEFT JOIN agent_bindings b ON b.account_id = inv.account_id AND b.id = inv.binding_id
+             WHERE inv.account_id = ? AND inv.status = 'done'
+               AND inv.done_at >= ? AND inv.done_at < ?
+               AND inv.provider IS NOT NULL AND inv.model IS NOT NULL
+               AND inv.email_id IS NOT NULL
+               AND COALESCE(json_extract(COALESCE(b.config_json, '{}'), '$.pipeline'), 'reply') = 'extract')`,
+    )
+      .bind(acct.account_id, acct.account_id, startMs, endMs)
+      .all<FrontierAnnotation>();
+
+    const rows = joinFrontier(invRows, annRows);
+
+    // ---- the honest header's facts ----------------------------------------
+    const first = await env.DB.prepare(
+      `SELECT MIN(done_at) AS v FROM agent_invocations
+        WHERE account_id = ? AND result_json IS NOT NULL
+          AND json_extract(result_json, '$.arm') IS NOT NULL`,
+    )
+      .bind(acct.account_id)
+      .first<{ v: number | null }>();
+    const { results: rated } = await env.DB.prepare(
+      `SELECT name, json_extract(config_json, '$.frontier.exploreRate') AS rate
+         FROM agent_bindings WHERE account_id = ? AND enabled = 1 ORDER BY name`,
+    )
+      .bind(acct.account_id)
+      .all<{ name: string; rate: number | null }>();
+    const withRate = rated.filter((r) => typeof r.rate === "number" && r.rate > 0);
+    const exploreNote =
+      withRate.length > 0
+        ? withRate.map((r) => `${r.name} ${Math.round((r.rate as number) * 100)}%`).join(", ")
+        : "none configured (every run takes its menu's head)";
+
+    const { subject, text } = renderFrontierDigest({
+      periodKey,
+      startMs,
+      endMs: opts.partial ? Math.min(endMs, opts.now) : endMs,
+      partial: opts.partial,
+      firstAssignmentAt: first?.v ?? null,
+      exploreNote,
+      rows,
+    });
+
+    // ---- delivery: self-digest into the account's own inbox ---------------
+    const store = new Mailstore(env.DB, env.BLOBS);
+    const identities = await store.getIdentities(acct.account_id);
+    const self = identities[0]?.email;
+    if (!self) {
+      console.warn(`frontier digest: ${acct.account_id} has no identity — skipped`);
+      await unmark(); // retry once the account is whole
+      return null;
+    }
+
+    const now = Date.now();
+    const messageId = `${crypto.randomUUID()}@${self.split("@")[1] ?? "localhost"}`;
+    const raw = buildMime({
+      from: [{ name: "frontier digest", email: self }],
+      to: [{ email: self }],
+      subject,
+      messageId,
+      date: new Date(now),
+      text,
+      extraHeaders: [
+        "Auto-Submitted: auto-generated",
+        "X-Auto-Response-Suppress: All",
+        `X-Bullmoose-Invocation: ${opts.mark ? markerId : `forced-${periodKey}`}`,
+      ],
+    });
+    const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
+    const blobId = await store.putBlob(acct.tenant_id, acct.account_id, buf);
+    const inboxId = await store.ensureRoleMailbox(acct.account_id, "inbox", "Inbox");
+    const emailId = `e_${crypto.randomUUID()}`;
+    await store.insertEmail(acct.account_id, {
+      id: emailId,
+      blobId,
+      threadId: `t_${crypto.randomUUID()}`,
+      messageId,
+      inReplyTo: null,
+      subject,
+      from: [{ name: "frontier digest", email: self }],
+      to: [{ email: self }],
+      cc: [],
+      bcc: [],
+      preview: text.slice(0, 256),
+      bodyText: text, // full body into the FTS index (common/004)
+      size: raw.byteLength,
+      receivedAt: now,
+      hasAttachment: false,
+      attachments: [],
+      mailboxIds: [inboxId],
+      keywords: ["$agent"], // unseen on purpose — it lands to be read
+    });
+
+    if (opts.mark) {
+      await env.DB.prepare(`UPDATE agent_invocations SET result_json = ? WHERE account_id = ? AND id = ?`)
+        .bind(JSON.stringify({ kind: "frontier-digest", periodKey, emailId }), acct.account_id, markerId)
+        .run();
+    }
+    await commitChanges(env.ACCOUNT_DO, acct.account_id, [
+      { collection: "Email", created: [emailId] },
+      { collection: "Mailbox", updated: [inboxId] },
+      ...(opts.mark ? [{ collection: "AgentInvocation", created: [markerId] }] : []),
+    ]);
+    return emailId;
+  } catch (err) {
+    await unmark(); // a failed send must not burn the period
+    throw err;
+  }
+}
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}

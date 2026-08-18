@@ -18,6 +18,7 @@ import {
   type ClaimantIdentity,
 } from "@bullmoose/scheduling";
 import { proposeBudgetOverruns } from "./budgetOverrun.js";
+import { handleFrontierDigestForce, sweepFrontierDigest } from "./frontierDigest.js";
 import { runJobNode } from "./jobNode.js";
 import { proposeMidBandHolds } from "./midBandProposal.js";
 import { classifyScreened } from "./bouncerClassify.js";
@@ -170,6 +171,11 @@ export default {
       if (url.pathname === "/internal/refresh-pricing") {
         return json(await refreshPricing(env));
       }
+      if (url.pathname === "/internal/frontier-digest") {
+        // s26 T5b — force a frontier-digest preview (month to date by default);
+        // the cron path below sends the real one when the UTC month rolls.
+        return handleFrontierDigestForce(request, env);
+      }
       if (url.pathname === "/internal/vault/verify") {
         return handleVaultVerify(request, env);
       }
@@ -229,6 +235,11 @@ export default {
     // fired one) is seen as handled and not re-offered. Emits tier-1 offers;
     // approving one arms an ordinary no-reply-from watch the loop above fires.
     await sweepWaitingOn(env);
+    // s26 T5b — Allen's frontier digest, once per UTC month when it rolls:
+    // the cost × correction-rate join per model per pipeline, mailed to the
+    // account's own inbox. Last, and idempotent per (account, period) — the
+    // marker row makes every later tick of the month a no-op (frontierDigest.ts).
+    await sweepFrontierDigest(env);
   },
 } satisfies ExportedHandler<Env>;
 
