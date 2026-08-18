@@ -82,6 +82,22 @@ describe("POST /extractor", () => {
     expect(cfg.modelAliases.extract).toEqual([{ provider: "openrouter", model: "minimax/minimax-m3" }]);
   });
 
+  it("ships CAPPED by default ($2/month) — a paid pipeline is never uncapped", async () => {
+    const h = harness();
+    await seedHuman(h);
+    await h.call("/extractor", { email: `dad@${DOMAIN}` });
+    const cfg = JSON.parse(extractorBinding(h)[0]!.config_json) as { budgets: { spendPerMonth: number } };
+    expect(cfg.budgets.spendPerMonth).toBe(2_000_000);
+  });
+
+  it("budgetMicros overrides the cap (0 = refuse all paid claims)", async () => {
+    const h = harness();
+    await seedHuman(h);
+    await h.call("/extractor", { email: `dad@${DOMAIN}`, budgetMicros: 0 });
+    const cfg = JSON.parse(extractorBinding(h)[0]!.config_json) as { budgets: { spendPerMonth: number } };
+    expect(cfg.budgets.spendPerMonth).toBe(0);
+  });
+
   it("accepts an explicit model/provider — shop around", async () => {
     const h = harness();
     await seedHuman(h);

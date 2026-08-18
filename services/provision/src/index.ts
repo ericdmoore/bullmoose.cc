@@ -2562,17 +2562,24 @@ async function provisionRemind(body: { tenantId: string; domain: string; localpa
  * with `POST /agent-bindings/{id}/disable`.
  */
 async function provisionExtractor(
-  body: { email: string; model?: string; provider?: string; maxTokens?: number },
+  body: { email: string; model?: string; provider?: string; maxTokens?: number; budgetMicros?: number },
   env: Env,
 ) {
   const email = String(body.email ?? "").toLowerCase();
   if (!email) return json({ error: "email required" }, 400);
   const provider = typeof body.provider === "string" ? body.provider : "openrouter";
   const model = typeof body.model === "string" ? body.model : "minimax/minimax-m3";
+  // A paid pipeline never ships uncapped: the s11 budget gate reads
+  // $.budgets.spendPerMonth (µUSD), the drain refuses claims past it, pending
+  // rows wait as the durable cursor, and proposeBudgetOverruns raises the ask
+  // in approvals. Default $2/month; pass budgetMicros to change, 0 to refuse
+  // all paid claims (the hard floor).
+  const budget = Number.isFinite(Number(body.budgetMicros)) ? Number(body.budgetMicros) : 2_000_000;
   const config: Record<string, unknown> = {
     pipeline: "extract",
     modelAliases: { extract: [{ provider, model }] },
     defaultModel: "extract",
+    budgets: { spendPerMonth: budget },
     ...(Number.isFinite(Number(body.maxTokens)) ? { maxTokens: Number(body.maxTokens) } : {}),
   };
 
