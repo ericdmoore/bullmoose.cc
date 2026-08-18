@@ -29,6 +29,7 @@ import { sweepWaitingOn } from "./waitingOn.js";
 import { runBouncer } from "./bouncer.js";
 import { runRemind } from "./remind.js";
 import { runExtract } from "./extract.js";
+import { parseVerbRequest, runMailVerb } from "./mailVerbs.js";
 import { surplusBackfill } from "./surplusBackfill.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
@@ -685,6 +686,18 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   const blob = await store.getBlob(job.tenant_id, job.account_id, email.blobId);
   if (!blob) return done("failed", { note: "raw blob missing" });
   const parsed = await PostalMime.parse(await blob.arrayBuffer());
+
+  // s20 T2 — the mail verbs (Answer, Bring X into this). Routed by the
+  // INVOCATION's own context (`params.verb`, written by `AgentInvocation/set`
+  // create), not by the binding's `pipeline`, and BEFORE every gate below.
+  // Both halves are deliberate: a verb is the human asking about the message
+  // in front of them, so it must work wherever the account's agent lives; and
+  // the humanOriginated / allowedSenders gates exist to stop an agent
+  // CONVERSING with automation, which drafting into your own Drafts folder is
+  // not. Anything that is not a known verb parses to null and falls through
+  // to the pipelines below exactly as before. See mailVerbs.ts.
+  const verbRequest = parseVerbRequest(context);
+  if (verbRequest) return runMailVerb(env, job, cfg, email, parsed, verbRequest, done);
 
   // Ledger pipeline diverges before any reply-path gate: receipts come
   // from automated senders (Auto-Submitted, bulk) on purpose, and the
