@@ -830,6 +830,8 @@ export default function AppShell({ client: injected }: Props) {
             <Composer
               draft={draft}
               identities={identities}
+              client={client}
+              accountId={accountId}
               identityId={currentIdentity?.id ?? ""}
               sending={sending}
               error={composeError}

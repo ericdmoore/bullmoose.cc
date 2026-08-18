@@ -27,14 +27,46 @@ import type { RecipientVia } from "../intent/resolve";
 import type { Email } from "../mail/types";
 import { describeRefusal } from "../mail/triage";
 import {
-  VERB_BINDING_NAME,
   askSentMessage,
   composeAskedMessage,
   isAddress,
   watchArmedMessage,
+  pickVerbBinding,
   watchSpecFor,
   type AgentVerb,
 } from "./contract";
+
+/**
+ * Which binding runs this verb, asked rather than assumed (#206's
+ * `AgentBinding/get` retired the `extractor` convention).
+ *
+ * Returns a sentence instead of a binding when the account has none that can
+ * run it, because the two failures read differently to a human: an account
+ * with no agent at all is not the same as one whose agent you switched off,
+ * and the second is a thing you can undo. Both are refusals here — the verb
+ * never guesses a name and never throws.
+ */
+async function resolveVerbBinding(
+  client: JmapClient,
+  accountId: string,
+): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  let response;
+  try {
+    [response] = await client.request([["AgentBinding/get", { accountId, ids: null }, "b0"]]);
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+  const list = (response?.[1] as { list?: { id: string; name: string; enabled: boolean }[] } | undefined)?.list ?? [];
+  const picked = pickVerbBinding(list);
+  if (picked) return { ok: true, id: picked.id };
+  return {
+    ok: false,
+    message:
+      list.length === 0
+        ? "No agent is set up on this mailbox yet, so there is nothing to ask."
+        : "Every agent on this mailbox is switched off. Turn one back on and I can help.",
+  };
+}
 
 export type VerbOutcome =
   | { ok: true; message: string }
@@ -120,6 +152,9 @@ export async function askAgent(
     return refused("Who should I bring in? An email address, please — I would rather ask than guess.");
   }
 
+  const binding = await resolveVerbBinding(client, accountId);
+  if (!binding.ok) return refused(binding.message);
+
   let response;
   try {
     [response] = await client.request([
@@ -129,7 +164,7 @@ export async function askAgent(
           accountId,
           create: {
             v: {
-              bindingName: VERB_BINDING_NAME,
+              bindingId: binding.id,
               emailId: email.id,
               threadId: email.threadId,
               note: spec.note ?? undefined,
@@ -203,6 +238,9 @@ export async function askCompose(client: JmapClient, accountId: string, ask: Com
   const intent = ask.intent.trim();
   if (!intent) return refused("Tell me what you want to happen, and I will draft it.");
 
+  const binding = await resolveVerbBinding(client, accountId);
+  if (!binding.ok) return refused(binding.message);
+
   let response;
   try {
     [response] = await client.request([
@@ -212,7 +250,7 @@ export async function askCompose(client: JmapClient, accountId: string, ask: Com
           accountId,
           create: {
             v: {
-              bindingName: VERB_BINDING_NAME,
+              bindingId: binding.id,
               // Only when the lookup found one. `AgentInvocation/set` create
               // requires an emailId for every verb EXCEPT this one, precisely
               // because a new message usually has no source (services/jmap
@@ -270,7 +308,10 @@ function unknownMethodSentence(detail: { type?: string }): string | null {
  */
 function notCreatedSentence(err: { type?: string; description?: string } | undefined): string {
   if (err?.type === "notFound") {
-    return `No agent is set up on this mailbox yet, so there is nothing to ask. (Looking for a binding named “${VERB_BINDING_NAME}”.)`;
+    // The roster read already picked a live binding, so a notFound here means
+    // it went away between the two calls — rare, and honestly a race, not a
+    // missing setup.
+    return "That agent is no longer available on this mailbox.";
   }
   return err?.description ?? `The server refused: ${err?.type ?? "unknown"}.`;
 }

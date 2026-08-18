@@ -28,11 +28,13 @@ import type { MethodHandler } from "./FakeJmapClient";
 
 const ACCOUNT = "acct-fake";
 
-/** The binding the verb door names (`lib/verbs/contract.ts VERB_BINDING_NAME`).
- *  Spelled here rather than imported so the demo stays a MIRROR of a server:
- *  when the two disagree, the "no agent is set up yet" path is what renders,
- *  which is exactly the behaviour worth being able to see. */
+/** The binding the demo account runs. Spelled here rather than imported so the
+ *  demo stays a MIRROR of a server: when the two disagree, the "no agent is
+ *  set up yet" path is what renders, which is exactly the behaviour worth
+ *  being able to see. Since #206 the verb door asks for the roster rather
+ *  than assuming a name, so the demo serves one. */
 const DEMO_BINDING = "extractor";
+const DEMO_BINDING_ID = "bind_demo_1";
 
 export interface DemoOptions {
   /**
@@ -351,6 +353,10 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
   // "Answer" ends where the real one begins — a row waiting for an agent.
   const watches: Record<string, Record<string, unknown>> = {};
   const invocations: Array<Record<string, unknown>> = [];
+  /** The demo binding's kill switch, so `AgentBinding/set` and `/get` agree
+   *  within a tab (a reload re-reads the sample state — the bargain the
+   *  settings demo banner already states). */
+  let bindingEnabled = true;
 
   const counts = (mailboxId: string) => {
     const inBox = emails.filter((e) => e.mailboxIds[mailboxId] === true);
@@ -841,6 +847,35 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
       };
     },
 
+    // ── AgentBinding/get (#206) — the roster, so nothing has to guess ─────
+    // Mirrors `services/jmap/src/methods/agentBinding.ts`'s projection shape:
+    // id / name / enabled, plus the console-derived halves. Read-gated the
+    // same way (`read`), because a session that can read its mail can see
+    // which agents run on it.
+    "AgentBinding/get": (args) => {
+      if (!scopes.has("read")) {
+        return ["error", { type: "forbidden", description: "token lacks scope: read" }];
+      }
+      const roster = [
+        {
+          id: DEMO_BINDING_ID,
+          name: DEMO_BINDING,
+          triggerOn: "message.received",
+          slaSeconds: 300,
+          enabled: bindingEnabled,
+          config: { pipeline: "extract", modelAliasCount: 2 },
+          economics: { budgetMicros: 2_000_000, spentMicros: 41_284 },
+        },
+      ];
+      const ids = args.ids as string[] | null | undefined;
+      const list = ids == null ? roster : roster.filter((b) => ids.includes(b.id));
+      return {
+        accountId: ACCOUNT,
+        list,
+        notFound: (ids ?? []).filter((id) => !roster.some((b) => b.id === id)),
+      };
+    },
+
     // ── AgentBinding/set (s26 T2) — the kill switch, demo-shaped ──────────
     // Mirrors `services/jmap/src/methods/agentBinding.ts`: `send` gates the
     // flip (the capability wall's scope — a supervisory grant's read/annotate/
@@ -876,6 +911,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
           notUpdated[id] = { type: "invalidProperties", description: "enabled must be true or false" };
           continue;
         }
+        if (id === DEMO_BINDING_ID) bindingEnabled = patch.enabled;
         updated[id] = { enabled: patch.enabled };
       }
       return { accountId: ACCOUNT, updated, notUpdated };
@@ -918,7 +954,11 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
       const created: Record<string, unknown> = {};
       const notCreated: Record<string, unknown> = {};
       for (const [cid, spec] of Object.entries((args.create as Record<string, Record<string, unknown>>) ?? {})) {
-        const name = typeof spec.bindingName === "string" ? spec.bindingName : "";
+        // The server takes either (services/jmap agent.ts: "one of bindingId |
+        // bindingName is required"); since #206 the verb door sends the id.
+        const byId = typeof spec.bindingId === "string" ? spec.bindingId : "";
+        const name =
+          byId === DEMO_BINDING_ID ? DEMO_BINDING : typeof spec.bindingName === "string" ? spec.bindingName : byId;
         if (name !== DEMO_BINDING) {
           // The server's own wording — the sentence the door translates into
           // "no agent is set up on this mailbox yet".

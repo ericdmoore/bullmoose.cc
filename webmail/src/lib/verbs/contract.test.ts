@@ -3,6 +3,7 @@ import {
   WATCH_BUSINESS_DAYS,
   addBusinessDays,
   askSentMessage,
+  pickVerbBinding,
   isAddress,
   verbCounterparty,
   watchArmedMessage,
@@ -92,5 +93,29 @@ describe("the sentences say what was actually arranged", () => {
     // The one dishonest thing this surface could do is imply the draft exists.
     expect(askSentMessage("answer")).toContain("will appear in your approvals");
     expect(askSentMessage("bring-in", "kim@x.test")).toContain("kim@x.test");
+  });
+});
+
+describe("pickVerbBinding — the roster read that retired the `extractor` convention (#206)", () => {
+  const b = (id: string, name: string, enabled = true) => ({ id, name, enabled });
+
+  it("prefers the extraction binding when an account runs several", () => {
+    const picked = pickVerbBinding([b("b1", "responder"), b("b2", "extractor"), b("b3", "allen")]);
+    expect(picked?.id).toBe("b2");
+  });
+
+  it("never picks a disabled binding — disabled is inert by contract (#199)", () => {
+    expect(pickVerbBinding([b("b1", "extractor", false)])).toBeUndefined();
+    // and the preference does not override the switch: a live non-preferred
+    // binding beats a switched-off preferred one.
+    expect(pickVerbBinding([b("b1", "extractor", false), b("b2", "responder")])?.id).toBe("b2");
+  });
+
+  it("falls back to the server's own order rather than a name we invented", () => {
+    expect(pickVerbBinding([b("b7", "responder"), b("b9", "allen")])?.id).toBe("b7");
+  });
+
+  it("an empty roster is undefined, not a throw — the door says it in a sentence", () => {
+    expect(pickVerbBinding([])).toBeUndefined();
   });
 });
