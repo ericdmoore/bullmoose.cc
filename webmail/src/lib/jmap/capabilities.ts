@@ -70,6 +70,11 @@ export function capabilityForMethod(methodName: string): string {
       return FILENODE_CAP;
     case "AgentInvocation":
     case "AgentBinding":
+    // s26 T4 — the BYOK door. Under the agent capability rather than a
+    // capability of its own: it is agent configuration (which credential a
+    // binding spends), and `lib/console/gate.ts` already hides every agent
+    // surface when that URN is absent, so one gate covers it.
+    case "ProviderCredential":
     case "ActionProposal":
     case "Watch":
     case "Annotation":

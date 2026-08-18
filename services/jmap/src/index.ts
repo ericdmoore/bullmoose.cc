@@ -45,8 +45,23 @@ export interface Env extends AuthEnv {
   ACCOUNT_DO: DurableObjectNamespace;
   /** Service binding to bullmoose-submit for EmailSubmission sends. */
   SUBMIT: Fetcher;
-  /** Shared secret expected by the submit worker's /internal/* routes. */
+  /** Shared secret expected by the submit worker's /internal/* routes — and,
+   *  since s26 T4, by the Bureau's (the seal hop below uses the same value;
+   *  see docs/DEPLOY.md's INTERNAL_TOKEN worker list). */
   INTERNAL_TOKEN: string;
+  /**
+   * The Bureau (s04 T3a), for `ProviderCredential/set` only (s26 T4).
+   *
+   * This worker holds no master key and must not: it renders attacker-authored
+   * email, which is precisely the class of worker T3a moved the key AWAY from.
+   * Sealing a tenant's provider key is therefore a HOP — the plaintext crosses
+   * this binding once on its way in, and nothing comes back but an
+   * acknowledgement, because no route on the Bureau returns a secret.
+   *
+   * Optional so a deployment without it degrades to a 501 on that one method
+   * rather than failing to boot; every other method here is unaffected.
+   */
+  BUREAU?: Fetcher;
   /** HMAC key for expiring public share links (/share/*). */
   SHARE_SIGNING_KEY?: string;
 

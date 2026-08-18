@@ -133,8 +133,19 @@
   // (services/agent's OAUTH binding has the same shape for the same reason).
   // Leaving it out by default also keeps this worker's deploy graph unchanged
   // for anyone not running an explorer.
+  //
+  // BUREAU is s26 T4's: the session-reachable BYOK door
+  // (`src/methods/providerCredential.ts`) seals a tenant's provider key, and
+  // sealing is a HOP because VAULT_MASTER_KEY is bound to services/bureau and
+  // nowhere else -- deliberately not to THIS worker, which renders
+  // attacker-authored email HTML and is exactly the kind of worker s04 T3a
+  // moved the key away from. The binding is optional in code (Env.BUREAU?), so
+  // a deployment without it answers 501 on that one method and is otherwise
+  // unaffected; where it IS deployed, bureau must deploy first (same class of
+  // dependency as bureau before agent and provision; docs/DEPLOY.md §2).
   "services": [
-    { "binding": "SUBMIT", "service": "bullmoose-submit" }
+    { "binding": "SUBMIT", "service": "bullmoose-submit" },
+    { "binding": "BUREAU", "service": "bullmoose-bureau" }
     // , { "binding": "OAUTH", "service": "bullmoose-oauth" }
   ],
 
