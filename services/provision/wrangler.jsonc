@@ -14,6 +14,13 @@
   ],
   "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }],
 
+  // BUREAU — for `POST /provider-keys` (s26 T4 BYOK) and nothing else. This
+  // worker holds NO master key: sealing a tenant's provider key is a hop across
+  // this binding, exactly as it is from services/agent (s04 T3a). So
+  // bullmoose-bureau must deploy BEFORE this worker — the deploy order in
+  // infra/bootstrap.mjs already puts it there, and docs/DEPLOY.md §2 says why.
+  "services": [{ "binding": "BUREAU", "service": "bullmoose-bureau" }],
+
   "vars": {
     "SES_REGION": "us-west-2",
     "INGEST_WORKER_NAME": "bullmoose-ingest",
@@ -28,4 +35,13 @@
   //   CF_API_TOKEN           — Zone:Edit + Email Routing:Edit + DNS:Edit
   //   SES_ACCESS_KEY_ID      — IAM scoped to ses identity management
   //   SES_SECRET_ACCESS_KEY
+  //   INTERNAL_TOKEN         — the shared /internal/* secret; gates the Bureau's
+  //                            seal route. ONE value across the workers that
+  //                            hold it (infra/bootstrap.mjs GENERATED). Without
+  //                            it POST /provider-keys answers 501 and every
+  //                            other verb here is unaffected.
+  //
+  // A tenant's provider key is NOT a secret on this worker: it arrives in one
+  // request body, crosses the BUREAU binding, and is sealed under a master key
+  // this worker does not have. Nothing here can read one back.
 }

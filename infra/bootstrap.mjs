@@ -59,7 +59,7 @@ const SCHEMAS = ["packages/mailstore/sql/data-plane.sql", "packages/mailstore/sq
 //   jmap           services: submit          · declares AccountDO
 //   agent          services: submit          · durable_objects script_name: jmap
 //   ingest         services: AGENT -> agent  · durable_objects script_name: jmap
-//   provision      no deps
+//   provision      services: BUREAU -> bureau   (s26 T4, POST /provider-keys)
 //   anglebrackets  durable_objects script_name: jmap
 //
 // agent MUST precede ingest — services/ingest/wrangler.jsonc:28 binds
@@ -84,7 +84,11 @@ const CONFIGS = DEPLOY_ORDER.map(cfg);
 // Secrets we generate: name → { bytes, workers }. INTERNAL_TOKEN is ONE value
 // shared across all its workers (the /internal/* + agent-poke shared secret).
 export const GENERATED = {
-  INTERNAL_TOKEN: { bytes: 24, workers: ["jmap", "submit", "ingest", "agent", "bureau"] },
+  // `provision` joined this list in s26 T4: `POST /provider-keys` seals a
+  // tenant's provider key by calling the Bureau's `/internal/*` surface, which
+  // is gated on this shared value. It grants provision no new READ: the Bureau
+  // has no route that returns a secret to anyone holding it.
+  INTERNAL_TOKEN: { bytes: 24, workers: ["jmap", "submit", "ingest", "agent", "bureau", "provision"] },
   SHARE_SIGNING_KEY: { bytes: 32, workers: ["jmap"] },
   ADMIN_TOKEN: { bytes: 24, workers: ["provision"] },
   // ONE key, ONE home (s04 T3a, arch.md OQ1). This list having exactly one entry
