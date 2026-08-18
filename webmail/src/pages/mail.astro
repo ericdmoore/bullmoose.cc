@@ -172,6 +172,18 @@ import App from "../layouts/AppTw.astro";
     min-width: 0;
   }
 
+  /* s25 T3 — the thread row's body is now a real link (`/mail?thread=…`,
+     ThreadListView `hrefFor`): native back, deep-linkable detail. Dressed as
+     the div it replaced so the swap is invisible — the row already carries
+     the hover/cursor affordances. Kept on this page, not webmail.css (the
+     standing parallel-work rule). */
+  .thread-row a.row-body {
+    color: inherit;
+    text-decoration: none;
+    display: block;
+    min-width: 0;
+  }
+
   /* s25 T1 — the 390px audit's one egregious mail bug: `.body` is a flex ROW
      (webmail.css), so the CollectionColumn's fixed width beside the list left
      the list ~10ch wide on a phone. Below lg the column stacks instead — the
