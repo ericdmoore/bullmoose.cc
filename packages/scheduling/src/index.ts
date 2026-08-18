@@ -4,7 +4,9 @@ export {
   ESCALATION_WINDOW_MIN_MS,
   ESCALATION_WINDOW_NO_HISTORY_MS,
   FREE_RUNTIME_LIVE_MS,
+  backfillEnvelopeExhausted,
   budgetExhausted,
+  effectiveBudgetExhausted,
   escalationWindowMs,
   fit,
   mayClaim,
@@ -75,6 +77,8 @@ export {
   type NodeStatus,
 } from "./jobGraph.js";
 export {
+  backfillEnvelopeExhaustedSql,
+  backfillEnvelopeSql,
   bindingEscalationWindowMs,
   bindingMedianCostMicros,
   budgetExhaustedSql,

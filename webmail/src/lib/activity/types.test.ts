@@ -71,13 +71,15 @@ describe("the decided partition", () => {
 });
 
 describe("parseDecided", () => {
-  it("keeps the raw status — including `yanked`, which parseProposal cannot carry", () => {
-    // The approvals client type has no `yanked` (its queue never renders one),
-    // so `parseProposal` coerces it to "pending" — the safe queue degradation
-    // that would be a LIE here: a retracted action re-presented as waiting.
+  it("keeps the raw status — `yanked` included, agreeing with the (since-fixed) approvals enum", () => {
+    // The approvals enum once lacked `yanked`, so `parseProposal` coerced it
+    // to "pending" — a retracted action re-presented as waiting, the lie this
+    // raw read was built to end. The enum now mirrors the server exactly
+    // (approvals/rows.test.ts), so both reads agree; the raw read stays as
+    // the belt for whatever state comes AFTER this build.
     const item = parseDecided(rawProposal({ status: "yanked" }))!;
     expect(item.status).toBe("yanked");
-    expect(item.proposal.status).toBe("pending"); // the coercion, named
+    expect(item.proposal.status).toBe("yanked"); // the coercion, ended
     expect(item.type).toBe("decided");
   });
 

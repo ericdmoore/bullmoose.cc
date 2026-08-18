@@ -121,6 +121,73 @@ export function budgetExhaustedSql(inv: string): string {
 }
 
 /**
+ * THE BACKFILL ENVELOPE EXISTS — 0 placeholders (s26 T3 v2). True when this
+ * row is backfill-tagged (`context_json.backfill === true`, the flag both the
+ * manual verb and the surplus pass stamp) AND carries its own money
+ * (`backfillBudgetMicros`, which only the manual verb writes, and only when
+ * the caller named one). Same garbage tolerance as `claimFitSql`: junk
+ * context, a string "true", or a string budget all read as NO envelope —
+ * degrading a row to the monthly gate (today's behavior), never widening its
+ * money.
+ *
+ * Exported alone because two callers need the predicate WITHOUT the
+ * exhaustion sum: `claimGateSql`'s CASE picks which purse a row draws from,
+ * and `budgetOverrun.ts` excludes envelope rows from its stranded
+ * counterfactual — a monthly overage cannot release a row that does not read
+ * the monthly budget, and asking a human to approve money that would release
+ * nothing is worse than not asking (the jobBudget precedent, jobGraph.ts).
+ */
+export function backfillEnvelopeSql(inv: string): string {
+  return (
+    `(${inv}.context_json IS NOT NULL` +
+    `\n      AND json_valid(${inv}.context_json)` +
+    `\n      AND COALESCE(json_type(${inv}.context_json, '$.backfill'), 'x') = 'true'` +
+    `\n      AND COALESCE(json_type(${inv}.context_json, '$.backfillBudgetMicros'), 'x') IN ('integer', 'real'))`
+  );
+}
+
+/**
+ * THE BACKFILL ENVELOPE, spent through — 0 placeholders. Only meaningful
+ * under `backfillEnvelopeSql` (the CASE guard guarantees the row's
+ * context_json is valid before `json_extract` runs). The twin of
+ * `backfillEnvelopeExhausted()` in mayClaim.ts, in `budgetExhaustedSql`'s
+ * exact arithmetic style:
+ *
+ *   SUM(cost_micros) over this binding's FINISHED backfill-tagged rows
+ *     ≥ this row's `backfillBudgetMicros`
+ *
+ * ALL-TIME, deliberately — an envelope is per-request money, not a monthly
+ * allowance, so there is no month bucket and no period key (and therefore no
+ * placeholders: every existing caller's bind order is untouched). NULL costs
+ * sum as nothing — unknown is not a spend — same as the monthly gate; and a
+ * T9 monthly overage does not raise an envelope, because the human who
+ * approved "spend more this month" was not asked about the archive.
+ *
+ * ── How it composes with the monthly cap ──────────────────────────────────
+ * As a SUBSTITUTION, not a conjunction (contrast jobBudgetExhaustedSql): an
+ * envelope row never reads the monthly cap at claim time. Its spend still
+ * LANDS in `cost_micros` like any other run, so the monthly sum sees it and
+ * live work stops earlier that month — total spend stays bounded by
+ * cap + envelope, the conservative direction. Splitting the monthly sum's
+ * population was considered and refused: the dossier (console.ts) and the
+ * surplus projection mirror that sum verbatim, and a gate that counted
+ * differently from every surface reading it would be the drift this package
+ * exists to prevent.
+ */
+export function backfillEnvelopeExhaustedSql(inv: string): string {
+  return (
+    `((SELECT COALESCE(SUM(gate_bf.cost_micros), 0) FROM agent_invocations gate_bf` +
+    `\n        WHERE gate_bf.account_id = ${inv}.account_id` +
+    `\n          AND gate_bf.binding_id = ${inv}.binding_id` +
+    `\n          AND gate_bf.done_at IS NOT NULL` +
+    `\n          AND gate_bf.context_json IS NOT NULL` +
+    `\n          AND json_valid(gate_bf.context_json)` +
+    `\n          AND COALESCE(json_type(gate_bf.context_json, '$.backfill'), 'x') = 'true')` +
+    `\n     >= json_extract(${inv}.context_json, '$.backfillBudgetMicros'))`
+  );
+}
+
+/**
  * THE ABSENCE-INFERENCE (readme decision 3) — 1 placeholder, the cutoff
  * `freeRuntimeLiveCutoff(now)`. A free claimant claimed on this row's account
  * within FREE_RUNTIME_LIVE_MS, i.e. "a homelab runtime is here right now".
@@ -193,6 +260,15 @@ export function dueWindowBinds(p: { now: number; escalationWindowMs: number }): 
  *
  * Both take zero placeholders (the graph is entirely in the rows), so every
  * existing caller's bind order is untouched.
+ *
+ * s26 T3 v2 replaces the bare monthly term with a CASE: an envelope-carrying
+ * backfill row (`backfillEnvelopeSql`) draws from its own envelope INSTEAD OF
+ * the monthly cap — see `backfillEnvelopeExhaustedSql` for why substitution,
+ * not conjunction. Both new fragments take zero placeholders, and the monthly
+ * term keeps its two inside the ELSE (placeholders are positional whatever
+ * branch runs), so `claimGateBinds` and every caller are again untouched.
+ * The pure statement of the same CASE is `effectiveBudgetExhausted`
+ * (mayClaim.ts); the agreement test's envelope table holds the two together.
  */
 export function claimGateSql(inv: string): string {
   return (
@@ -200,7 +276,9 @@ export function claimGateSql(inv: string): string {
     `\n AND ${needsSatisfiedSql(inv)}` +
     `\n AND (? = 1` +
     `\n      OR (${notPinnedSql(inv)}` +
-    `\n          AND NOT ${budgetExhaustedSql(inv)}` +
+    `\n          AND (CASE WHEN ${backfillEnvelopeSql(inv)}` +
+    `\n               THEN NOT ${backfillEnvelopeExhaustedSql(inv)}` +
+    `\n               ELSE NOT ${budgetExhaustedSql(inv)} END)` +
     `\n          AND NOT ${jobBudgetExhaustedSql(inv)}` +
     `\n          AND ${dueWindowSql(inv)}))`
   );

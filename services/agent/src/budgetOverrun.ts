@@ -1,6 +1,7 @@
 import { commitChanges } from "@bullmoose/account-do";
 import {
   ESCALATION_WINDOW_MAX_MS,
+  backfillEnvelopeSql,
   bindingEscalationWindowMs,
   bindingMedianCostMicros,
   budgetExhaustedSql,
@@ -156,6 +157,13 @@ export async function proposeBudgetOverruns(
         AND ${dueWindowSql("inv")}
         AND ${needsSatisfiedSql("inv")}
         AND NOT ${jobBudgetExhaustedSql("inv")}
+        -- An envelope-carrying backfill row draws from ITS envelope, not the
+        -- monthly budget (s26 T3 v2), so a monthly overage would release
+        -- nothing for it — same reason job-budget-held rows are excluded:
+        -- asking a human to approve money that frees no work is worse than
+        -- not asking. Envelope exhaustion is not an error; those rows wait
+        -- for the next envelope or surplus.
+        AND NOT ${backfillEnvelopeSql("inv")}
         -- ALREADY ASKED THIS PERIOD? The marker is the key, and it is read
         -- WITHOUT a status filter on purpose: once the overage is approved the
         -- marked row gets claimed and completes, and a re-ask must still not
@@ -200,7 +208,8 @@ async function proposeOne(
         AND ${claimFitSql("inv")}
         AND ${dueWindowSql("inv")}
         AND ${needsSatisfiedSql("inv")}
-        AND NOT ${jobBudgetExhaustedSql("inv")}`;
+        AND NOT ${jobBudgetExhaustedSql("inv")}
+        AND NOT ${backfillEnvelopeSql("inv")}`;
   const strandedBinds = [
     c.account_id,
     c.binding_id,
