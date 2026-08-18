@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeEnv } from "@bullmoose/test-fakes";
 import {
   callModel,
+  chooseArm,
   invocationCost,
   priceMicros,
   rankByPrice,
@@ -228,6 +229,41 @@ describe("callModel returns the usage each provider already sends", () => {
     await expect(
       callModel(w.env, { provider: "openrouter", model: "minimax/minimax-m3" }, messages, 64),
     ).rejects.toThrow(/OpenRouter not configured/);
+  });
+});
+
+describe("chooseArm — frontier assignment (s26 T5a)", () => {
+  const MENU: ModelCandidate[] = [
+    { provider: "openrouter", model: "minimax/minimax-m3" },
+    { provider: "workers-ai", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" },
+    { provider: "openrouter", model: "minimax/minimax-m1" },
+  ];
+
+  it("is deterministic: the same seed always draws the same arm", () => {
+    const a = chooseArm(MENU, "inv_abc", 0.5);
+    const b = chooseArm(MENU, "inv_abc", 0.5);
+    expect(a.arm).toBe(b.arm);
+    expect(a.ordered.map((c) => c.model)).toEqual(b.ordered.map((c) => c.model));
+  });
+
+  it("exploreRate 0, or a single candidate, is pure exploit — menu untouched", () => {
+    expect(chooseArm(MENU, "inv_x", 0).arm).toBe("exploit");
+    expect(chooseArm([MENU[0]!], "inv_x", 1).arm).toBe("exploit");
+    expect(chooseArm(MENU, "inv_x", 0).ordered).toEqual(MENU);
+  });
+
+  it("explores at roughly the configured rate, and an explore leads with a NON-primary", () => {
+    let explored = 0;
+    for (let i = 0; i < 1000; i++) {
+      const { ordered, arm } = chooseArm(MENU, `inv_${i}`, 0.2);
+      if (arm === "explore") {
+        explored++;
+        expect(ordered[0]!.model).not.toBe(MENU[0]!.model);
+        expect(ordered).toHaveLength(MENU.length); // reordered, never shrunk
+      }
+    }
+    expect(explored).toBeGreaterThan(100);
+    expect(explored).toBeLessThan(320);
   });
 });
 

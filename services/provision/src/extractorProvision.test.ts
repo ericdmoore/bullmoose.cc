@@ -133,6 +133,29 @@ describe("POST /extractor", () => {
     expect(cfg.modelAliases.extract).toEqual([{ provider: "openrouter", model: "qwen/qwen-2.5-72b-instruct" }]);
   });
 
+  it("exploreModels append to the menu and switch the frontier on (default rate 0.2)", async () => {
+    const h = harness();
+    await seedHuman(h);
+    await h.call("/extractor", {
+      email: `dad@${DOMAIN}`,
+      exploreModels: [{ provider: "workers-ai", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" }],
+    });
+    const cfg = JSON.parse(extractorBinding(h)[0]!.config_json) as {
+      modelAliases: Record<string, Array<{ provider: string; model: string }>>;
+      frontier?: { exploreRate: number };
+    };
+    expect(cfg.modelAliases.extract).toHaveLength(2);
+    expect(cfg.frontier?.exploreRate).toBe(0.2);
+  });
+
+  it("no exploreModels → no frontier block — assignment stays off by default", async () => {
+    const h = harness();
+    await seedHuman(h);
+    await h.call("/extractor", { email: `dad@${DOMAIN}` });
+    const cfg = JSON.parse(extractorBinding(h)[0]!.config_json) as { frontier?: unknown };
+    expect(cfg.frontier).toBeUndefined();
+  });
+
   it("404s for an unknown account — nothing to turn on", async () => {
     const h = harness();
     const res = await h.call("/extractor", { email: `ghost@${DOMAIN}` });

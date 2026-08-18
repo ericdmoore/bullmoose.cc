@@ -1,6 +1,13 @@
 import { commitChanges } from "@bullmoose/account-do";
 import type { EmailRow } from "@bullmoose/mailstore";
-import { callWithFallback, invocationCost, type BindingConfig, type Env, type InvocationCost } from "./models.js";
+import {
+  callWithFallback,
+  chooseArm,
+  invocationCost,
+  type BindingConfig,
+  type Env,
+  type InvocationCost,
+} from "./models.js";
 
 /**
  * Extraction (s18 A2) — the pass that reads a delivered message and writes
@@ -142,7 +149,11 @@ export async function runExtract(
     },
   ];
 
-  const { output, usage, used } = await callWithFallback(env, candidates, prompt, cfg.maxTokens ?? 1024);
+  // s26 T5a — frontier assignment: deterministic exploration over the menu,
+  // keyed to the invocation id, recorded in the result. Extraction is the
+  // first arena (low stakes, labels accrue as dismissals/resolutions).
+  const { ordered, arm } = chooseArm(candidates, job.id, cfg.frontier?.exploreRate ?? 0);
+  const { output, usage, used } = await callWithFallback(env, ordered, prompt, cfg.maxTokens ?? 1024);
   // Freeze the cost at capture (s07 T5) — this is the per-extraction history
   // s11 T5 needs. NULL = undetermined; 0 = genuinely free.
   const cost = await invocationCost(env, used, usage);
@@ -150,7 +161,7 @@ export async function runExtract(
 
   const items = parseExtraction(output).slice(0, MAX_PER_MESSAGE);
   if (items.length === 0) {
-    return done("done", { note: "no commitments/decisions/tasks found", model }, cost);
+    return done("done", { note: "no commitments/decisions/tasks found", model, arm }, cost);
   }
 
   const now = Date.now();
@@ -171,5 +182,5 @@ export async function runExtract(
   await commitChanges(env.ACCOUNT_DO, job.account_id, [
     { collection: "Annotation", created: ids, updated: [], destroyed: [] },
   ]);
-  return done("done", { note: `extracted ${ids.length}`, count: ids.length, model }, cost);
+  return done("done", { note: `extracted ${ids.length}`, count: ids.length, model, arm }, cost);
 }
