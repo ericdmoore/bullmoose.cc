@@ -1887,7 +1887,11 @@ async function accountByAddressAny(env: Env, email: string) {
  * contacts/calendar domains only (`grantCoversDomain`, principal.ts), so a
  * collection-scoped grant could not carry the mail-domain queue at all.
  */
-export const SUPERVISORY_GRANT_SCOPES = ["read", "draft"] as const;
+// `annotate` joined 2026-08-18 (Eric): marking an agent's mail read/flagged
+// WHILE reviewing it is supervision, not custody — keyword flips are
+// reversible and touch no mailbox structure. move/delete stay out: those
+// reorganise and destroy, which supervision is not.
+export const SUPERVISORY_GRANT_SCOPES = ["read", "annotate", "draft"] as const;
 
 /** What a provisioning response says about supervision — always present, so a
  *  caller can never mistake "we did not try" for "there is nothing to see". */
