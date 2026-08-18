@@ -197,8 +197,8 @@ T2 — **Settings/Agents domain**: the policy page (defaults for new agents; the
      rule documented in-page).
 T3 — **backfill**: the verb + envelope + ledger progress.
      ✅ **LANDED 2026-08-18** — v1 routes + floor-request approval door (#184); v2 surplus-burns-
-     the-backlog + scouts-then-troops (#187). The true per-request budget envelope (claim-gate
-     term) deferred by #184 is in build.
+     the-backlog + scouts-then-troops (#187). The true per-request budget envelope
+     (claim-gate CASE term) LANDED 2026-08-18 (#195).
 T4 — **BYOK via Bureau**: per-tenant provider credentials; guardrails ride the key.
 T5 — **the frontier**: a/b assignment → outcome join → Allen's digest → (later) learned router.
      ✅ **T5a assignment LANDED 2026-08-18** — `chooseArm` (deterministic FNV-1a per invocation)

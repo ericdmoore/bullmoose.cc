@@ -25,7 +25,7 @@ on the contact card, T4's comment pattern) and inline in the flow that produced 
 (T6's sketch redlining). The queue holds what the human did not naturally encounter.
 In-place approval writes the identical ledger rows.
 
-### T1 — Watches · *the one new noun* — ENGINE LANDED (2026-08-15) · remind@ DOOR LANDED (2026-08-16)
+### T1 — Watches · *the one new noun* — ENGINE LANDED (2026-08-15) · remind@ DOOR LANDED (2026-08-16) · DRAFT-ON-FIRE LANDED (2026-08-18, #196: watch-followup composes via the extract idiom, template fallback, applies both payload formats — the hold-tray wedge is dead)
 
 > **Wave 1 built**: the `watches` table + migration, `services/agent/src/watches.ts`
 > (the cron sweep — deterministic `deadline` and `no-reply-from` conditions, fire→proposal,
@@ -201,7 +201,7 @@ Two views only, chosen because they answer the two questions a chief of staff is
 **Done when:** the home view shows Waiting-on and Commitments with evidence links; a
 correction updates the row AND lands a training label; extraction cost is queryable.
 
-### T5 — Ask · *research over your own history*
+### T5 — Ask · *research over your own history* — v1 LANDED (2026-08-18, #197: the Finder realm — sessions + refinement chips, mail-only, agent-refinement seam marked for T5b)
 
 **Files:** `webmail/src/pages/search.astro` (mode toggle), a conversational surface over
 the **existing MCP tool layer** (`services/agent/src/mcp.ts`).
