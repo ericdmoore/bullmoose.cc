@@ -54,6 +54,9 @@ export interface DemoBackend {
   identities: Identity[];
   /** Submissions the demo "sent" — assert against this instead of a relay. */
   sent: Array<{ emailId: string; identityId: string; rcptTo: string[] }>;
+  /** The margin's rows (s18 A3), anchored to the demo mail — mutated by
+   *  `Annotation/set`, so a test can watch a dismissal land. */
+  annotations: Array<Record<string, unknown>>;
   state(): string;
 }
 
@@ -230,6 +233,79 @@ export function demoEmails(): Email[] {
   ];
 }
 
+/**
+ * The margin's demo rows (s18 A3), anchored to the demo mail above so
+ * `/mail?demo=1` shows a real margin: open the **Project Elk** thread for the
+ * three voices (assert / "Sounds like" / a dismissed one rendering muted), the
+ * **Invoice 0042** thread for the hedging register and a null rationale
+ * ("Why: not stated"). Every anchor names an ORIGINAL message id — the reply
+ * `e-thread-2` quotes Grace's kickoff sentence, and precisely because anchors
+ * bind to the original, the quoted copy never grows a duplicate note.
+ */
+export function demoAnnotations(): Array<Record<string, unknown>> {
+  const day = 86_400_000;
+  const now = Date.UTC(2026, 6, 3, 12, 0, 0);
+  return [
+    {
+      id: "an-elk-decision",
+      authorKind: "agent",
+      author: "scribe",
+      anchor: { realm: "Email", objectId: "e-thread-1" },
+      class: "decision",
+      body: "Project Elk kicks off Monday",
+      confidence: 0.95,
+      status: "open",
+      rationale: "“Kicking this off Monday.”",
+      sourceRef: "e-thread-1",
+      createdAt: now - 2 * day,
+      updatedAt: now - 2 * day,
+    },
+    {
+      id: "an-elk-commitment",
+      authorKind: "agent",
+      author: "scribe",
+      anchor: { realm: "Email", objectId: "e-thread-2" },
+      class: "commitment",
+      body: "You told Grace Monday works for the kickoff",
+      confidence: 0.72,
+      status: "open",
+      rationale: null,
+      sourceRef: "e-thread-2",
+      createdAt: now - 2 * day,
+      updatedAt: now - 2 * day,
+    },
+    {
+      // Dismissed: renders muted, no verbs — the judgment is the record.
+      id: "an-elk-task-dismissed",
+      authorKind: "agent",
+      author: "scribe",
+      anchor: { realm: "Email", objectId: "e-thread-1" },
+      class: "task",
+      body: "Prepare an agenda before the kickoff",
+      confidence: 0.55,
+      status: "dismissed",
+      rationale: "“Agenda attached next time” sounded like a to-do",
+      sourceRef: "e-thread-1",
+      createdAt: now - 2 * day,
+      updatedAt: now - 1 * day,
+    },
+    {
+      id: "an-invoice-task",
+      authorKind: "agent",
+      author: "scribe",
+      anchor: { realm: "Email", objectId: "e-invoice" },
+      class: "task",
+      body: "Invoice 0042 wants paying",
+      confidence: 0.4,
+      status: "open",
+      rationale: null,
+      sourceRef: "e-invoice",
+      createdAt: now - 1 * day,
+      updatedAt: now - 1 * day,
+    },
+  ];
+}
+
 // ── the backend ───────────────────────────────────────────────────────────
 
 export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
@@ -238,6 +314,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
   const identities = opts.identities ?? demoIdentities();
   const scopes = new Set(opts.scopes ?? ["read", "annotate", "draft", "move", "send", "delete"]);
   const sent: DemoBackend["sent"] = [];
+  const annotations = demoAnnotations();
   let stateCounter = 0;
   const state = (): string => String(stateCounter);
   const bump = (): string => String(++stateCounter);
@@ -620,6 +697,132 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
         notDestroyed: {},
       };
     },
+
+    // ── Annotation/* (s18 A3) — the margin's substrate, warts included ────
+    // Mirrors `services/jmap/src/methods/annotation.ts`: query defaults to
+    // OPEN (a terminal status is asked for explicitly), a claim is immutable
+    // (`set` update moves `status` only), and a claim closes ONCE — the second
+    // write refuses, because a dismissal is a training signal already emitted.
+
+    "Annotation/query": (args) => {
+      const filter = (args.filter ?? {}) as { class?: string; status?: string; objectId?: string };
+      const status = typeof filter.status === "string" ? filter.status : "open";
+      const ids = annotations
+        .filter((r) => r.status === status)
+        .filter((r) => !filter.class || r.class === filter.class)
+        .filter(
+          (r) => !filter.objectId || (r.anchor as { objectId?: string } | undefined)?.objectId === filter.objectId,
+        )
+        .sort((a, b) => (b.createdAt as number) - (a.createdAt as number))
+        .map((r) => r.id as string);
+      return { accountId: ACCOUNT, queryState: state(), ids };
+    },
+
+    "Annotation/get": (args) => {
+      const ids = args.ids === null || args.ids === undefined ? undefined : (args.ids as string[]);
+      const list = ids ? annotations.filter((r) => ids.includes(r.id as string)) : annotations;
+      return {
+        accountId: ACCOUNT,
+        state: state(),
+        list,
+        notFound: (ids ?? []).filter((id) => !annotations.some((r) => r.id === id)),
+      };
+    },
+
+    "Annotation/set": (args) => {
+      // The lightest mail-write verb gates the margin's verbs, exactly as the
+      // server does (`requireAccount(ctx, args, "annotate")`).
+      if (!scopes.has("annotate")) {
+        return ["error", { type: "forbidden", description: "token lacks scope: annotate" }];
+      }
+      const oldState = state();
+      const now = Date.now();
+      const created: Record<string, unknown> = {};
+      const notCreated: Record<string, unknown> = {};
+      const updated: Record<string, null> = {};
+      const notUpdated: Record<string, unknown> = {};
+
+      for (const [cid, spec] of Object.entries((args.create as Record<string, Record<string, unknown>>) ?? {})) {
+        const anchor = spec.anchor as { realm?: unknown; objectId?: unknown } | undefined;
+        // The invariant, at the door: no anchor, no annotation.
+        if (!anchor || typeof anchor.realm !== "string" || typeof anchor.objectId !== "string") {
+          notCreated[cid] = {
+            type: "invalidProperties",
+            description: "anchor {realm, objectId} is required — an annotation is always about something",
+          };
+          continue;
+        }
+        const cls = String(spec.class ?? "");
+        if (!["commitment", "decision", "task"].includes(cls)) {
+          notCreated[cid] = {
+            type: "invalidProperties",
+            description: "class must be one of commitment | decision | task",
+          };
+          continue;
+        }
+        const body = typeof spec.body === "string" ? spec.body.trim() : "";
+        if (!body) {
+          notCreated[cid] = { type: "invalidProperties", description: "body (the claim) is required" };
+          continue;
+        }
+        const id = `an-demo-${annotations.length + 1}`;
+        annotations.push({
+          id,
+          authorKind: "human", // the demo session is a human token, so a filed
+          author: "eric@bullmoose.test", // claim carries no confidence — it is
+          anchor, //                        true because they said so.
+          class: cls,
+          body,
+          confidence: null,
+          status: "open",
+          rationale: typeof spec.rationale === "string" ? spec.rationale : null,
+          sourceRef: typeof spec.sourceRef === "string" ? spec.sourceRef : null,
+          createdAt: now,
+          updatedAt: now,
+        });
+        created[cid] = { id, status: "open" };
+      }
+
+      for (const [id, patch] of Object.entries((args.update as Record<string, Record<string, unknown>>) ?? {})) {
+        if (Object.keys(patch).some((k) => k !== "status")) {
+          notUpdated[id] = {
+            type: "invalidProperties",
+            description:
+              "an annotation's claim is immutable — set `status` (resolved | dismissed); you do not rewrite it",
+          };
+          continue;
+        }
+        const status = String(patch.status ?? "");
+        if (status !== "resolved" && status !== "dismissed") {
+          notUpdated[id] = { type: "invalidProperties", description: "status must be resolved | dismissed" };
+          continue;
+        }
+        const row = annotations.find((r) => r.id === id && r.status === "open");
+        if (!row) {
+          notUpdated[id] = {
+            type: "invalidProperties",
+            description: "no open annotation with that id (already resolved, dismissed or unknown)",
+          };
+          continue;
+        }
+        row.status = status;
+        row.updatedAt = now;
+        updated[id] = null;
+      }
+
+      const touched = Object.keys(created).length + Object.keys(updated).length > 0;
+      return {
+        accountId: ACCOUNT,
+        oldState,
+        newState: touched ? bump() : oldState,
+        created,
+        notCreated,
+        updated,
+        notUpdated,
+        destroyed: [],
+        notDestroyed: {},
+      };
+    },
   };
 
   // Drop the agent capability by rebuilding the capability map without it —
@@ -640,7 +843,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
       : undefined;
 
   const client = new FakeJmapClient({ handlers, ...(session ? { session } : {}) });
-  return { client, mailboxes, emails, identities, sent, state };
+  return { client, mailboxes, emails, identities, sent, annotations, state };
 }
 
 /** Every capability except the agent one. */
