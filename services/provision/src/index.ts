@@ -565,8 +565,18 @@ async function addDomain(body: { tenantId: string; domain: string }, env: Env) {
   });
   steps.push({ step: "cf:dmarc", ok: dmarc.ok, detail: dmarc.detail });
 
-  // 7b. JMAP autodiscovery (RFC 8620 §2.2): _jmap._tcp SRV → jmap worker,
+  // 7b. JMAP autodiscovery (RFC 8620 §2.2): _jmap._tcp SRV → the app origin,
   // so `bullmoose login user@<domain>` needs no --base.
+  //
+  // This is the step that decides whether the FIRST command a new human runs
+  // works, and it is the one with a silent failure mode: the client's rungs are
+  // SRV → SRV-over-DoH → `https://<domain>/.well-known/jmap`, and rung 1 short-
+  // circuits. A record pointing at a host that has stopped answering therefore
+  // does not degrade to the fallback — it PRE-EMPTS it, and the login fails on
+  // a domain that would have worked with no record at all. Whatever `JMAP_HOST`
+  // names must answer `/.well-known/jmap` (401 counts, and is the usual answer);
+  // leaving the var unset is the honest choice when nothing does. See the note
+  // on the var in `wrangler.jsonc` for the window this deployment got wrong.
   if (env.JMAP_HOST) {
     const srv = await cf(env, `/zones/${zoneId}/dns_records`, {
       method: "POST",
@@ -588,7 +598,9 @@ async function addDomain(body: { tenantId: string; domain: string }, env: Env) {
     steps.push({
       step: "cf:jmap-srv",
       ok: true,
-      detail: "skipped — set JMAP_HOST var to enable autodiscovery",
+      detail:
+        "skipped — no JMAP_HOST var; clients fall through to the " +
+        "https://<domain>/.well-known/jmap rung, or need `login --base <app-origin>`",
     });
   }
 

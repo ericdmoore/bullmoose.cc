@@ -158,6 +158,13 @@ const parseCommandLine = () =>
       sla: { type: "string" },
       allow: { type: "string" },
       "reply-mode": { type: "string" },
+      // ---- operator onboarding (`admin extractor on` / `admin byok seal`) ----
+      // The HOST/model pair, spelled the way the provisioning routes take it
+      // (`POST /extractor` {provider, model}, `POST /provider-keys` {provider}).
+      // There is deliberately no `--key`: a provider key arrives by env-var
+      // REFERENCE or hidden prompt, never in argv.
+      provider: { type: "string" },
+      model: { type: "string" },
       // ---- the agent config surface (s10 T4): `agents` is GO-NATIVE and has
       //      no case in the switch below, but its value-taking flags are
       //      declared here anyway. `cli-go/internal/delegate/argv.go` mirrors
@@ -460,6 +467,11 @@ try {
         account: opts.account,
         yes: opts.yes,
         includeDeleted: opts["include-deleted"],
+        provider: opts.provider,
+        model: opts.model,
+        budget: opts.budget,
+        explore: opts.explore,
+        keyEnv: opts["key-env"],
         ...io,
       });
       break;
