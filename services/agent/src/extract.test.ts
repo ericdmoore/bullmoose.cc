@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fakeEnv } from "@bullmoose/test-fakes";
 import type { EmailRow } from "@bullmoose/mailstore";
-import { parseExtraction, runExtract, type ExtractJob } from "./extract";
+import { parseExtraction, parseScoutVerdict, runExtract, type ExtractJob } from "./extract";
 
 // s18 A2 — the extraction pass. A model reads a delivered message and writes
 // commitment/decision/task Annotations. The bounds that keep it honest: a
@@ -186,5 +186,147 @@ describe("runExtract — writes Annotations from a delivered message", () => {
       "failed",
       expect.objectContaining({ note: expect.stringContaining("model menu") }),
     );
+  });
+});
+
+// ---- s26 T3 v2: scouts, then troops (backfill rows only) -------------------
+//
+// A backfill-minted row (context_json.backfill) with a FREE candidate
+// (workers-ai) beside a paid one runs the cheap scout first: NO → done free,
+// no paid call; YES → the PAID candidates take the extraction, with the
+// scout's verdict riding the result. Live rows are character-for-character
+// the pre-v2 path — no scout key, no reordered menu.
+
+describe("parseScoutVerdict — one defensive line", () => {
+  it("reads a leading YES/NO and keeps the why as the note", () => {
+    expect(parseScoutVerdict("NO — routine newsletter, no commitments.")).toEqual({
+      verdict: "no",
+      note: "routine newsletter, no commitments.",
+    });
+    expect(parseScoutVerdict("YES - promises a load calc by Friday")).toEqual({
+      verdict: "yes",
+      note: "promises a load calc by Friday",
+    });
+  });
+  it("tolerates chatty wrappers, casing, and quoting", () => {
+    expect(parseScoutVerdict('"Yes" — there is a deadline in here').verdict).toBe("yes");
+    expect(parseScoutVerdict("Answer: NO, nothing actionable").verdict).toBe("no");
+  });
+  it("an unparseable answer ESCALATES (yes) — unsure must not silently discard mail", () => {
+    const v = parseScoutVerdict("hard to say, could go either way?");
+    expect(v.verdict).toBe("yes");
+    expect(v.note).toContain("unparseable");
+  });
+});
+
+describe("runExtract — the scout branch", () => {
+  const backfillJob: ExtractJob = {
+    ...job,
+    id: "inv_backfill",
+    context_json: JSON.stringify({ emailId: "e_msg", backfill: true }),
+  };
+  // A menu with a free scout AND paid troops — the shape rule 3a needs.
+  const MENU_CFG = {
+    pipeline: "extract" as const,
+    defaultModel: "extract",
+    modelAliases: {
+      extract: [
+        { provider: "workers-ai" as const, model: "@cf/scout" },
+        { provider: "mock" as const, model: "paid" },
+      ],
+    },
+  };
+  const cueful = () => inbound({ subject: "the calc", body: "I'll send it by Friday" });
+  /** A `done` whose recorded calls keep their types, so a test can read the
+   *  result object back without casting. */
+  const doneFn = () => vi.fn(async (_s: "done" | "failed", _r: Record<string, unknown>, _c?: unknown) => {});
+
+  it("scout says NO: done FREE — no paid call, verdict recorded, cost 0", async () => {
+    const { w, run } = world("NO — routine notification, nothing promised.");
+    const done = vi.fn(async () => {});
+    await runExtract(w.env, backfillJob, MENU_CFG, cueful(), {}, done);
+
+    expect(run).toHaveBeenCalledOnce(); // the scout, and ONLY the scout
+    expect(annotations(w)).toEqual([]);
+    expect(done).toHaveBeenCalledWith(
+      "done",
+      expect.objectContaining({
+        note: "scouted: nothing — no paid call",
+        scout: { verdict: "no", note: "routine notification, nothing promised.", model: "workers-ai/@cf/scout" },
+      }),
+      // The scout's cost is the whole cost: workers-ai → known, genuinely free.
+      expect.objectContaining({ costMicros: 0 }),
+    );
+  });
+
+  it("scout says YES: the PAID candidate runs the extraction, scout note carried in the result", async () => {
+    const { w, run } = world("YES — promises a load calc by Friday.");
+    const done = vi.fn(async () => {});
+    await runExtract(w.env, backfillJob, MENU_CFG, cueful(), {}, done);
+
+    // The free model ran once (as the scout); the extraction went to the
+    // PAID candidate — the mock provider needs no AI binding, so exactly one
+    // AI.run call means the troops were not the free model.
+    expect(run).toHaveBeenCalledOnce();
+    expect(done).toHaveBeenCalledWith(
+      "done",
+      expect.objectContaining({
+        model: "mock/paid",
+        scout: expect.objectContaining({
+          verdict: "yes",
+          note: "promises a load calc by Friday.",
+          model: "workers-ai/@cf/scout",
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("a LIVE row with the same menu is untouched: no scout call, no scout key", async () => {
+    const { w, run } = world('[{"class":"task","body":"review the PR","confidence":0.7}]');
+    const done = doneFn();
+    await runExtract(
+      w.env,
+      { ...job, context_json: JSON.stringify({ emailId: "e_msg" }) },
+      MENU_CFG,
+      cueful(),
+      {},
+      done,
+    );
+
+    // One model call — the extraction itself (the free candidate ranks first
+    // by price, exactly as before v2), and no scout in the result.
+    expect(run).toHaveBeenCalledOnce();
+    expect(annotations(w)).toHaveLength(1);
+    const result = done.mock.calls[0]![1];
+    expect(result.scout).toBeUndefined();
+    expect(result.model).toBe("workers-ai/@cf/scout");
+  });
+
+  it("a backfill row with a FREE-ONLY menu takes the ordinary path (nobody to send as troops)", async () => {
+    const { w, run } = world('[{"class":"task","body":"review the PR","confidence":0.7}]');
+    const done = doneFn();
+    await runExtract(w.env, backfillJob, CFG, cueful(), {}, done);
+    expect(run).toHaveBeenCalledOnce(); // the extraction, not a scout
+    const result = done.mock.calls[0]![1];
+    expect(result.scout).toBeUndefined();
+    expect(annotations(w)).toHaveLength(1);
+  });
+
+  it("a broken scout FAILS OPEN to the ordinary fallback chain — never a lost message", async () => {
+    const w = fakeEnv();
+    w.db.seedAccount({ accountId: ACCOUNT, loginEmail: "eric@bullmoose.cc", displayName: "Eric" });
+    const run = vi.fn(async () => {
+      throw new Error("AI runtime down");
+    });
+    (w.env as { AI?: unknown }).AI = { run };
+    const done = doneFn();
+    await runExtract(w.env, backfillJob, MENU_CFG, cueful(), {}, done);
+
+    // The scout threw; the ordinary path then tried the free candidate (also
+    // down) and fell through to the paid mock — the pre-v2 fallback semantics.
+    expect(done).toHaveBeenCalledWith("done", expect.objectContaining({ model: "mock/paid" }), expect.anything());
+    const result = done.mock.calls[0]![1];
+    expect(result.scout).toBeUndefined();
   });
 });

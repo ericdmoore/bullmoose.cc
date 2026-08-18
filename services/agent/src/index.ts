@@ -28,6 +28,7 @@ import { sweepWaitingOn } from "./waitingOn.js";
 import { runBouncer } from "./bouncer.js";
 import { runRemind } from "./remind.js";
 import { runExtract } from "./extract.js";
+import { surplusBackfill } from "./surplusBackfill.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "@bullmoose/mailstore/outboundBound";
@@ -240,6 +241,7 @@ export default {
     // account's own inbox. Last, and idempotent per (account, period) — the
     // marker row makes every later tick of the month a no-op (frontierDigest.ts).
     await sweepFrontierDigest(env);
+    await surplusBackfill(env); // s26 T3 v2 — surplus burns the backlog, last and fail-open (surplusBackfill.ts)
   },
 } satisfies ExportedHandler<Env>;
 
