@@ -106,8 +106,6 @@ export default function ContactsApp({ client: injected }: Props) {
   const [loading, setLoading] = useState(false);
   const pagerRef = useRef<HTMLButtonElement | null>(null);
   const [exhausted, setExhausted] = useState(false);
-
-  const [searchInput, setSearchInput] = useState("");
   const [spec, setSpec] = useState<ContactSearchSpec>({});
 
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
@@ -513,40 +511,28 @@ export default function ContactsApp({ client: injected }: Props) {
     ],
     [books],
   );
+  // s24 T5 — the contextual bar deep-links: /contacts?q=… (a plain GET from
+  // the chrome). Submitted, never live — exactly the doctrine this file
+  // already followed; the submission just happens in the chrome now.
+  useEffect(() => {
+    const q = new URLSearchParams(location.search).get("q")?.trim();
+    if (q) setSpec({ text: q });
+    const onSearch = (ev: Event) => {
+      const next = String((ev as CustomEvent<{ q?: string }>).detail?.q ?? "").trim();
+      setSpec(next ? { text: next } : {});
+      setSelectedId(undefined);
+    };
+    globalThis.addEventListener("bm:search", onSearch);
+    return () => globalThis.removeEventListener("bm:search", onSearch);
+  }, []);
+
   const editingCard = view === "edit" || view === "new";
 
   return (
     <div class="app contacts">
       <header class="topbar">
-        <form
-          class="search"
-          onSubmit={(ev) => {
-            ev.preventDefault();
-            // Submitted, never live: see this file's header and cards.ts.
-            setSpec(searchInput.trim() ? { text: searchInput.trim() } : {});
-          }}
-        >
-          <input
-            type="search"
-            value={searchInput}
-            placeholder="Search contacts"
-            aria-describedby="contact-scope"
-            onInput={(ev) => setSearchInput((ev.currentTarget as HTMLInputElement).value)}
-          />
-          <button type="submit">Search</button>
-          {spec.text ? (
-            <button
-              type="button"
-              class="link-button"
-              onClick={() => {
-                setSearchInput("");
-                setSpec({});
-              }}
-            >
-              Clear
-            </button>
-          ) : null}
-        </form>
+        {/* s24 T5 — the search bar moved UP into the shared chrome (ShellNav);
+            /contacts?q=… deep-links the same submitted search. */}
 
         {accounts.length > 1 ? (
           <label class="contacts-account">
@@ -677,6 +663,13 @@ export default function ContactsApp({ client: injected }: Props) {
 
         <main class="content">
           <p class="scope-line">
+            {spec.text ? (
+              <>
+                <a class="link-button" href="/contacts">
+                  Clear search
+                </a>{" "}
+              </>
+            ) : null}
             {describeContactScope(spec, selectedBook?.name)}
             {typeof total === "number" ? ` ${total} match${total === 1 ? "" : "es"}.` : ""}
           </p>

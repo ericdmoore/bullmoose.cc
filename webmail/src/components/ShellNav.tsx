@@ -45,6 +45,27 @@ interface Props {
 }
 
 const COLLAPSE_KEY = "bm.nav.collapsed";
+
+/**
+ * s24 T5 — the contextual top-bar filter. ONE rule, uniform: the bar filters
+ * the ACTIVE realm's collection. Scope, placeholder and syntax key off the
+ * active section; a realm without a wired consumer renders no bar (progressive
+ * absorption, not a dead input). Submission NEVER navigates (the s07 T1
+ * invariant + CSP form-action 'none'): it dispatches a `bm:search` CustomEvent
+ * the active surface island consumes. Inbound deep links (`?q=`) still work —
+ * each surface reads them at mount.
+ */
+const SEARCHABLE: Partial<Record<SectionId, { placeholder: string; hint?: string }>> = {
+  mail: {
+    placeholder: "Search mail — from:  to:  subject:  is:unread  has:attachment",
+    hint: "Searches subject, sender, recipients and full message bodies. Matches whole words.",
+  },
+  contacts: {
+    placeholder: "Search contacts",
+    hint: "Names, nicknames, organizations, email addresses, phone numbers and notes.",
+  },
+  search: { placeholder: "Search everything" },
+};
 const WIDTH_KEY = "bm.nav.width";
 const isLive = (s: Section): boolean => s.status === "live";
 
@@ -245,6 +266,17 @@ export default function ShellNav({ section, email: emailProp }: Props) {
   const [widthStep, setWidthStep] = useState(DEFAULT_WIDTH);
   const [order, setOrder] = useState<SectionId[]>([]);
   const [dragging, setDragging] = useState(false);
+  // s24 T5 — the contextual bar's realm + the deep-linked query (read once;
+  // the island mounts after navigation, so location is settled).
+  const searchable = section ? SEARCHABLE[section] : undefined;
+  const [initialQ] = useState(() => {
+    try {
+      return new URLSearchParams(globalThis.location?.search ?? "").get("q") ?? "";
+    } catch {
+      return "";
+    }
+  });
+
   const menuRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -489,7 +521,41 @@ export default function ShellNav({ section, email: emailProp }: Props) {
           size.pad
         }
       >
-        <div class="flex flex-1 justify-end gap-x-4 self-stretch lg:gap-x-6">
+        <div class="flex flex-1 items-center gap-x-4 self-stretch lg:gap-x-6">
+          {/* s24 T5 — the contextual filter: one bar whose meaning is wherever
+              you are standing. Prefilled from `?q=` so a deep-linked search
+              stays visible and refinable. */}
+          {searchable ? (
+            <form
+              class="flex min-w-0 flex-1 items-center"
+              onSubmit={(ev) => {
+                // No navigation, ever (tokenInUrl.test.ts holds this file to
+                // it, and the generated CSP's form-action 'none' would refuse
+                // one regardless). The bar FILTERS THE ACTIVE REALM: submit
+                // dispatches to the surface island, which owns the search
+                // state. Cross-realm finding is the Search realm's job.
+                ev.preventDefault();
+                const q = (ev.currentTarget.elements.namedItem("q") as HTMLInputElement | null)?.value ?? "";
+                globalThis.dispatchEvent(new CustomEvent("bm:search", { detail: { q } }));
+              }}
+            >
+              <label class="relative block w-full max-w-lg">
+                <MagnifyingGlassIcon class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-gray-400" />
+                <span class="sr-only">{searchable.placeholder}</span>
+                <input
+                  id="bm-global-search"
+                  name="q"
+                  type="search"
+                  defaultValue={initialQ}
+                  placeholder={searchable.placeholder}
+                  title={searchable.hint}
+                  class="w-full rounded-md bg-gray-100 py-1.5 pr-3 pl-9 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-2 focus:-outline-offset-1 focus:outline-brand-600 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500"
+                />
+              </label>
+            </form>
+          ) : (
+            <div class="flex-1" />
+          )}
           {/*
             Everything the person can do about themselves lives on the avatar —
             settings and sign-out included — rather than being scattered across
