@@ -38,7 +38,6 @@ export default function SearchApp({ client: injected }: Props) {
   const [modeReason, setModeReason] = useState<string | undefined>(undefined);
   const [fatal, setFatal] = useState<string | undefined>(undefined);
 
-  const [input, setInput] = useState("");
   const [plan, setPlan] = useState<SearchPlan | undefined>(undefined);
   const [response, setResponse] = useState<SearchResponse | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -117,9 +116,16 @@ export default function SearchApp({ client: injected }: Props) {
     if (!client || !session) return;
     const q = new URLSearchParams(location.search).get("q") ?? "";
     if (q.trim() !== "") {
-      setInput(q);
       void run(q);
     }
+    // s24 T5 — the chrome bar submits here as a `bm:search` event (never a
+    // navigation); in THIS realm the bar means "search everything".
+    const onSearch = (ev: Event) => {
+      const next = String((ev as CustomEvent<{ q?: string }>).detail?.q ?? "").trim();
+      if (next) void run(next);
+    };
+    globalThis.addEventListener("bm:search", onSearch);
+    return () => globalThis.removeEventListener("bm:search", onSearch);
   }, [client, session, run]);
 
   const note = useMemo(() => (plan ? deriveScopeNote(plan) : undefined), [plan]);
@@ -139,24 +145,8 @@ export default function SearchApp({ client: injected }: Props) {
   return (
     <div class="app">
       <header class="topbar">
-        <form
-          class="search"
-          onSubmit={(ev) => {
-            ev.preventDefault();
-            void run(input);
-          }}
-        >
-          <input
-            type="search"
-            value={input}
-            placeholder="Search everything you own — mail, contacts, calendar"
-            aria-describedby="search-scope"
-            onInput={(ev) => setInput((ev.currentTarget as HTMLInputElement).value)}
-          />
-          <button type="submit" disabled={busy || !client}>
-            Search
-          </button>
-        </form>
+        {/* s24 T5 — the bar lives in the shared chrome; /search?q=… deep-links
+            here and the chrome bar is prefilled for refinement. */}
       </header>
 
       {/* The deliverable (s07 T6): coverage, declared — derived from the plan

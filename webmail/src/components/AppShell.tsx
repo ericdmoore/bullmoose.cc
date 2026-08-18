@@ -16,7 +16,6 @@ import {
 import { KEY_HELP, resolveKey, type KeyContext } from "../lib/mail/keymap";
 import { findByRole, loadMailboxes, moveTargets } from "../lib/mail/mailboxes";
 import {
-  SEARCH_SCOPE_NOTE,
   buildEmailFilter,
   describeSearchScope,
   isEmptySpec,
@@ -101,12 +100,10 @@ export default function AppShell({ client: injected }: Props) {
   const [sending, setSending] = useState(false);
   const [composeError, setComposeError] = useState<string | undefined>(undefined);
 
-  const [searchInput, setSearchInput] = useState("");
   const [searchSpec, setSearchSpec] = useState<SearchSpec>({});
   const [toast, setToast] = useState<string | undefined>(undefined);
   const [helpOpen, setHelpOpen] = useState(false);
   const chord = useRef<string | undefined>(undefined);
-  const searchRef = useRef<HTMLInputElement | null>(null);
 
   // ── bootstrap ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -157,6 +154,30 @@ export default function AppShell({ client: injected }: Props) {
     setRows([...store.getRows()]);
     setTotal(store.getTotal());
   }, []);
+
+  // s24 T5 — the contextual bar: submissions arrive as a `bm:search` event
+  // from the chrome island (never a navigation — the s07 T1 invariant), and a
+  // deep-linked /mail?q=… is parsed once after mailboxes load, because `in:`
+  // folder terms resolve against mailbox names. Clearing links back to /mail.
+  useEffect(() => {
+    const onSearch = (ev: Event) => {
+      const q = String((ev as CustomEvent<{ q?: string }>).detail?.q ?? "");
+      const byName = new Map(mailboxes.map((m) => [m.name.toLowerCase(), m.id]));
+      setSearchSpec(q.trim() ? parseSearchInput(q, byName) : {});
+      setView("list");
+    };
+    globalThis.addEventListener("bm:search", onSearch);
+    return () => globalThis.removeEventListener("bm:search", onSearch);
+  }, [mailboxes]);
+  const qParsed = useRef(false);
+  useEffect(() => {
+    if (qParsed.current || mailboxes.length === 0) return;
+    qParsed.current = true;
+    const q = new URLSearchParams(location.search).get("q");
+    if (!q) return;
+    const byName = new Map(mailboxes.map((m) => [m.name.toLowerCase(), m.id]));
+    setSearchSpec(parseSearchInput(q, byName));
+  }, [mailboxes]);
 
   // ── list, driven by mailbox + search ────────────────────────────────────
   useEffect(() => {
@@ -495,7 +516,8 @@ export default function AppShell({ client: injected }: Props) {
           break;
         }
         case "search":
-          searchRef.current?.focus();
+          // The bar lives in the chrome island now (s24 T5) — reach it by id.
+          document.querySelector<HTMLInputElement>("#bm-global-search")?.focus();
           break;
         case "refresh":
           void storeRef.current?.refresh().then(() => {
@@ -584,66 +606,18 @@ export default function AppShell({ client: injected }: Props) {
 
   return (
     <div class="app">
-      <header class="topbar">
-        {/* Brand and identity moved up into the shared chrome (layouts/App.astro)
-            when the app grew a section nav — two "bullmoose" wordmarks and two
-            copies of the signed-in address stacked on one screen. What is left
-            here is the mail section's own bar: search, and the agent seam. */}
-        <form
-          class="search"
-          onSubmit={(ev) => {
-            ev.preventDefault();
-            const byName = new Map(mailboxes.map((m) => [m.name.toLowerCase(), m.id]));
-            setSearchSpec(parseSearchInput(searchInput, byName));
-          }}
-        >
-          <input
-            ref={searchRef}
-            type="search"
-            value={searchInput}
-            placeholder="Search mail — from:  to:  subject:  is:unread  has:attachment"
-            aria-describedby="search-scope"
-            onInput={(ev) => setSearchInput((ev.currentTarget as HTMLInputElement).value)}
-          />
-          {!isEmptySpec(searchSpec) ? (
-            <button
-              type="button"
-              class="link-button"
-              onClick={() => {
-                setSearchInput("");
-                setSearchSpec({});
-              }}
-            >
-              Clear
-            </button>
-          ) : null}
-        </form>
-        {/*
-          The console's entry point (s03.E), behind the same capability gate as
-          every other agent surface. With `urn:bullmoose:params:jmap:agent`
-          absent this renders NOTHING — no disabled button, no link to a page
-          that would only explain itself. The plain-client floor (arch.md §8.6)
-          is that the mail client is complete without it.
-
-          It survives the section nav rather than being replaced by it, and the
-          reason is exactly that gate: the nav is STATIC markup (App.astro), so
-          it cannot know whether this session carries the agent capability —
-          only the browser, after `session()`, knows that. A capability-less
-          account therefore sees "Agents" in the nav; this seam is the one that
-          still tells the truth, and the duplication is the cost of not
-          hydrating the whole nav to hide one word.
-        */}
-        {agentSeam ? (
+      {agentSeam ? (
+        <header class="topbar">
+          {/* s24 T5 — the search bar moved UP into the shared chrome (ShellNav):
+              one contextual filter whose meaning is the active realm. What
+              remains of mail's own bar is the capability-gated console seam,
+              which cannot live in the static nav (only the browser, after
+              session(), knows whether this session carries the agent cap). */}
           <a class="console-link" href="/agents">
             Agents
           </a>
-        ) : null}
-      </header>
-
-      {/* Search honesty: what the server actually matches (see search.ts). */}
-      <p id="search-scope" class="search-scope">
-        {SEARCH_SCOPE_NOTE}
-      </p>
+        </header>
+      ) : null}
 
       {mode === "demo" ? (
         <p class="banner">Demo data — nothing here is real mail{modeReason ? ` (${modeReason})` : ""}.</p>
@@ -670,7 +644,14 @@ export default function AppShell({ client: injected }: Props) {
         />
 
         <main class="content">
-          {!isEmptySpec(searchSpec) ? <p class="scope-line">{describeSearchScope(spec)}</p> : null}
+          {!isEmptySpec(searchSpec) ? (
+            <p class="scope-line">
+              {describeSearchScope(spec)}{" "}
+              <a class="link-button" href="/mail">
+                Clear
+              </a>
+            </p>
+          ) : null}
 
           {view === "compose" && draft ? (
             <Composer
