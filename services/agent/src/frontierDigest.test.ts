@@ -470,7 +470,10 @@ describe("sweepFrontierDigest — once per (account, period), when the month rol
     const SEPT = Date.UTC(2026, 8, 2);
     expect(await sweepFrontierDigest(w.env as never, SEPT)).toEqual({ sent: 1 });
     expect(await sweepFrontierDigest(w.env as never, SEPT)).toEqual({ sent: 0 });
-    const subjects = digestEmails(w).map((m) => m.subject);
+    // Both may land in the same millisecond — sort for a stable comparison.
+    const subjects = digestEmails(w)
+      .map((m) => m.subject)
+      .sort();
     expect(subjects).toEqual([`Frontier digest — 2026-07`, `Frontier digest — 2026-08`]);
   });
 
