@@ -672,6 +672,8 @@ export default function AppShell({ client: injected }: Props) {
           ) : view === "thread" && detail ? (
             <MessageView
               detail={detail}
+              client={client}
+              accountId={accountId}
               expanded={expanded}
               imagesAllowed={imagesAllowed}
               showQuotes={showQuotes}
