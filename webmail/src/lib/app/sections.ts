@@ -1,4 +1,4 @@
-// The eight sections, in order, with the reason each unbuilt one is dark.
+// The nine sections, in order, with the reason each unbuilt one is dark.
 //
 // ⚠️ THE ORDER IS A CLAIM, not a layout detail. The s07 devPlan's "What this is
 // NOT" section is explicit: this is a collaboration space for people and
@@ -7,11 +7,18 @@
 // extras"; lead with /files and you have built Drive. So the order runs
 // decide → when → who-and-what → tools:
 //
-//   approvals, agents   what needs me, and who is asking
+//   approvals, agents,  what needs me, who is asking —
+//   activity            — and what already happened in my name (s23)
 //   calendar            what is about to happen
 //   mail, contacts      the correspondence and the people in it
 //   files               storage, deliberately NOT the front of the product
 //   search, settings    tools over the above, not nouns of their own
+//
+// Activity sits in the FIRST cluster on purpose (s23 readme): it is the same
+// accountability family as approvals — the retrospective twin of the queue.
+// After `calendar` it would read as history-of-time; next to `settings` it
+// would read as a debug log, exactly the wrong frame for the record of what
+// was done in your name.
 //
 // `sections.test.ts` asserts that ordering, because a claim nobody checks is a
 // comment. `/` is not in this list at all: home is a VIEW (Looking Ahead +
@@ -21,7 +28,16 @@
 // dark" is data — one place to correct when a section ships, and something a
 // test can hold to the pages that actually exist.
 
-export type SectionId = "approvals" | "agents" | "calendar" | "mail" | "contacts" | "files" | "search" | "settings";
+export type SectionId =
+  | "approvals"
+  | "agents"
+  | "activity"
+  | "calendar"
+  | "mail"
+  | "contacts"
+  | "files"
+  | "search"
+  | "settings";
 
 interface SectionBase {
   id: SectionId;
@@ -71,6 +87,20 @@ export const SECTIONS: readonly Section[] = [
     // reachable. Its own caveats (which of its endpoints are unserved) are
     // rendered by the console itself, `AgentConsole.tsx:264`, rather than
     // duplicated into the nav where they would drift.
+    status: "live",
+  },
+  {
+    id: "activity",
+    label: "Activity",
+    href: "/activity",
+    // Live as of s23 v1: the retrospective feed — decided proposals (the
+    // Decided group that deliberately LEFT /approvals in s24 T4: the active
+    // UI shows what is live; history is a realm) plus the watches that fired.
+    // Read-only by design, generated wholly from events already written
+    // (anti-star: no filing, no "mark as reviewed"). Its own caveats — the
+    // per-account fan-in with no shared clock, and a server without Watch
+    // methods — are rendered by the section itself (lib/activity/*) rather
+    // than duplicated into the nav where they would drift.
     status: "live",
   },
   {
