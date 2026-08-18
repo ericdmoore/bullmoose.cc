@@ -28,6 +28,12 @@ import type { MethodHandler } from "./FakeJmapClient";
 
 const ACCOUNT = "acct-fake";
 
+/** The binding the verb door names (`lib/verbs/contract.ts VERB_BINDING_NAME`).
+ *  Spelled here rather than imported so the demo stays a MIRROR of a server:
+ *  when the two disagree, the "no agent is set up yet" path is what renders,
+ *  which is exactly the behaviour worth being able to see. */
+const DEMO_BINDING = "extractor";
+
 export interface DemoOptions {
   /**
    * Mail verbs this session holds. Default: everything. Narrow it to prove the
@@ -57,6 +63,11 @@ export interface DemoBackend {
   /** The margin's rows (s18 A3), anchored to the demo mail — mutated by
    *  `Annotation/set`, so a test can watch a dismissal land. */
   annotations: Array<Record<string, unknown>>;
+  /** s20 T2 — what the verbs wrote: watches armed by `Watch/set`, and
+   *  invocations queued by `AgentInvocation/set`. Assert against these
+   *  instead of a runtime; the demo has none. */
+  watches: Record<string, Record<string, unknown>>;
+  invocations: Array<Record<string, unknown>>;
   state(): string;
 }
 
@@ -334,6 +345,12 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
   } = { isEnabled: false, subject: null, textBody: null, fromDate: null, toDate: null };
 
   const findEmail = (id: string): Email | undefined => emails.find((e) => e.id === id);
+
+  // s20 T2 — what the two verb doors write. Armed watches and queued
+  // invocations, in this tab only: no runtime claims them here, so a demo
+  // "Answer" ends where the real one begins — a row waiting for an agent.
+  const watches: Record<string, Record<string, unknown>> = {};
+  const invocations: Array<Record<string, unknown>> = [];
 
   const counts = (mailboxId: string) => {
     const inBox = emails.filter((e) => e.mailboxIds[mailboxId] === true);
@@ -863,6 +880,61 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
       }
       return { accountId: ACCOUNT, updated, notUpdated };
     },
+
+    // ── the mail verbs' two doors (s20 T2), demo-shaped ───────────────────
+    // Mirrors the servers' gates, because the refusal paths are the point:
+    // `Watch/set` takes `annotate` (arming a watch enrolls the account in
+    // future cron work — services/jmap watch.ts), `AgentInvocation/set` takes
+    // `draft` (creating one causes an agent to draft — agent.ts), and the
+    // create branch refuses a binding this account does not have, by NAME, so
+    // the "no agent is set up yet" sentence is reachable in a browser.
+    "Watch/set": (args) => {
+      if (!scopes.has("annotate")) {
+        return ["error", { type: "forbidden", description: "token lacks scope: annotate" }];
+      }
+      const created: Record<string, unknown> = {};
+      const notCreated: Record<string, unknown> = {};
+      for (const [cid, spec] of Object.entries((args.create as Record<string, Record<string, unknown>>) ?? {})) {
+        const condition = (spec.condition ?? {}) as { sender?: unknown };
+        if (spec.conditionType === "no-reply-from" && typeof condition.sender !== "string") {
+          notCreated[cid] = { type: "invalidProperties", description: "no-reply-from needs condition.sender" };
+          continue;
+        }
+        if (!Number.isFinite(Number(spec.deadlineAt)) || Number(spec.deadlineAt) <= 0) {
+          notCreated[cid] = { type: "invalidProperties", description: "deadlineAt (epoch ms) is required" };
+          continue;
+        }
+        const id = `w_demo_${Object.keys(watches).length + 1}`;
+        watches[id] = { ...spec, id, status: "armed" };
+        created[cid] = { id, status: "armed" };
+      }
+      return { accountId: ACCOUNT, oldState: state(), newState: bump(), created, notCreated };
+    },
+
+    "AgentInvocation/set": (args) => {
+      if (!scopes.has("draft")) {
+        return ["error", { type: "forbidden", description: "token lacks scope: draft" }];
+      }
+      const created: Record<string, unknown> = {};
+      const notCreated: Record<string, unknown> = {};
+      for (const [cid, spec] of Object.entries((args.create as Record<string, Record<string, unknown>>) ?? {})) {
+        const name = typeof spec.bindingName === "string" ? spec.bindingName : "";
+        if (name !== DEMO_BINDING) {
+          // The server's own wording — the sentence the door translates into
+          // "no agent is set up on this mailbox yet".
+          notCreated[cid] = { type: "notFound", description: `no such binding "${name}" on this account` };
+          continue;
+        }
+        if (typeof spec.emailId !== "string" || !findEmail(spec.emailId)) {
+          notCreated[cid] = { type: "invalidProperties", description: "emailId is required" };
+          continue;
+        }
+        const id = `inv_demo_${invocations.length + 1}`;
+        invocations.push({ id, bindingName: name, emailId: spec.emailId, status: "pending", params: spec.params });
+        created[cid] = { id, bindingName: name, status: "pending", emailId: spec.emailId };
+      }
+      return { accountId: ACCOUNT, oldState: state(), newState: bump(), created, notCreated };
+    },
   };
 
   // Drop the agent capability by rebuilding the capability map without it —
@@ -883,7 +955,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
       : undefined;
 
   const client = new FakeJmapClient({ handlers, ...(session ? { session } : {}) });
-  return { client, mailboxes, emails, identities, sent, annotations, state };
+  return { client, mailboxes, emails, identities, sent, annotations, watches, invocations, state };
 }
 
 /** Every capability except the agent one. */

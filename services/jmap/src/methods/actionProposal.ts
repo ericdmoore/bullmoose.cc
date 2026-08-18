@@ -1344,51 +1344,104 @@ async function applyProposal(
         selfName = "";
       }
 
-      const now = Date.now();
-      const messageId = `${crypto.randomUUID()}@${self.split("@")[1] ?? "localhost"}`;
-      const raw = buildMime({
-        from: [{ name: selfName, email: self }],
-        to: [{ email: to }],
+      return draftIntoDrafts(access, store, {
+        to,
         subject,
-        messageId,
+        body,
+        self,
+        selfName,
         inReplyTo: orig?.message_id ?? null,
-        date: new Date(now),
-        text: body,
-        // No Auto-Submitted / X- headers: this MIME is the HUMAN's draft, and
-        // the bytes stored here are the bytes their composer will send.
       });
-      const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
-      const blobId = await store.putBlob(access.tenantId, access.accountId, buf);
-      const draftsMailbox = await store.ensureRoleMailbox(access.accountId, "drafts", "Drafts");
-      const emailId = `e_${crypto.randomUUID()}`;
-      await store.insertEmail(access.accountId, {
-        id: emailId,
-        blobId,
-        threadId: await store.resolveThreadId(access.accountId, orig?.message_id ?? null),
-        messageId,
-        inReplyTo: orig?.message_id ?? null,
+    }
+
+    case "verb-answer":
+    case "verb-bring-in": {
+      // s20 T2 — the mail verbs. `Answer` and `Bring X into this` are the
+      // human asking IN PLACE, on the message they are reading; the agent
+      // worker (services/agent mailVerbs.ts) composed a draft and emitted this
+      // proposal, and approving it puts the draft in the owner's own Drafts
+      // mailbox — the SAME write an approved `watch-followup` performs, which
+      // is why both share `draftIntoDrafts` rather than growing a second
+      // almost-identical draft path that could drift.
+      //
+      // TIER 1 and applied here, immediately. Nothing egresses: the draft is
+      // the owner's, their composer sends it, and their own submission path
+      // keeps its own gates — so there is no `assertOutboundAllowed` for the
+      // same reason `watch-followup` has none (the outbound bound governs a
+      // BINDING's reach, and this draft belongs to a person).
+      //
+      // The DECLINE side is deliberately ordinary: neither kind is in
+      // `NO_FAULT_KINDS`, because "that is not the reply I wanted"
+      // (wrongContent) and "don't offer to do this" (wrongAction) are exactly
+      // the corrections the s03.D taxonomy was built to carry, and a verb the
+      // human pressed is the cleanest possible feedback signal there is.
+      const to = str(payload.to);
+      if (!to) {
+        throw new SetErrorSignal("invalidProperties", `a ${row.kind} payload needs a recipient (\`to\`)`, ["payload"]);
+      }
+      const body = str(payload.body);
+      if (!body) {
+        // Loud, and it cannot wedge: a tier-1 approve fails in place with this
+        // sentence and the row stays `pending` for the human to decline. An
+        // empty draft is worse than an honest refusal.
+        throw new SetErrorSignal("invalidProperties", `a ${row.kind} payload needs a drafted \`body\``, ["payload"]);
+      }
+
+      // The message the verb acted on — for threading and the fallback
+      // subject. Tolerant: it may have been deleted since the ask.
+      const verbRef = safeJson(row.subject_json);
+      const verbOrigId = verbRef.realm === "Email" ? str(verbRef.objectId) : null;
+      const verbOrig = verbOrigId
+        ? await ctx.env.DB.prepare(`SELECT subject, message_id FROM emails WHERE account_id = ? AND id = ?`)
+            .bind(access.accountId, verbOrigId)
+            .first<{ subject: string | null; message_id: string | null }>()
+        : null;
+      const subject = str(payload.subject) ?? followupSubject(verbOrig?.subject ?? null, null);
+
+      // Whose voice: the account's primary sending identity (may_delete = 0
+      // sorts first), and the approver's own login name only as the last
+      // resort — the `watch-followup` rule, minus the watch lookup it has no
+      // watch for.
+      const verbIdents = await store.getIdentities(access.accountId);
+      const self = verbIdents[0]?.email ?? ctx.principal.username;
+      const selfName = verbIdents[0]?.name ?? "";
+
+      return draftIntoDrafts(access, store, {
+        to,
         subject,
-        from: [{ name: selfName, email: self }],
-        to: [{ email: to }],
-        cc: [],
-        bcc: [],
-        preview: body.slice(0, 256),
-        bodyText: body,
-        size: raw.byteLength,
-        receivedAt: now,
-        hasAttachment: false,
-        attachments: [],
-        mailboxIds: [draftsMailbox],
-        keywords: ["$draft", "$agent"],
+        body,
+        self,
+        selfName,
+        // A forward starts a message; everything else continues the
+        // conversation it came from. Threading a forward `In-Reply-To` the
+        // original would file it under a thread it is not part of.
+        inReplyTo: str(payload.mode) === "forward" ? null : (verbOrig?.message_id ?? null),
       });
-      return {
-        entries: [
-          { collection: "Email", created: [emailId], updated: [], destroyed: [] },
-          { collection: "Mailbox", created: [], updated: [draftsMailbox], destroyed: [] },
-        ],
-        // Reversible in the plainest way: the draft is a row, delete it.
-        undo: { action: "destroy-email", emailId },
-      };
+    }
+
+    case "watch-notify": {
+      // s20 T1 — a fired `notify` watch: the pure reminder. `fire()`
+      // (services/agent watches.ts) emits it at TIER 1 and says exactly what
+      // it is: "an FYI marker … reversible — clearing it touches nothing in
+      // the world". Approving one therefore writes NOTHING, and that is the
+      // case, not a stub: the decision itself — status `approved`,
+      // `decided_at`, the decider in `decision_json` — IS the whole effect the
+      // emit side promised. "Yes, I have seen my reminder."
+      //
+      // It is here because its ABSENCE was a bug of the same family as the
+      // `watch-followup` wedge (s20 wave 3): a kind with no case fell to the
+      // default throw, so approving a reminder answered `invalidProperties`
+      // and the row stayed pending — a one-shot visible error rather than a
+      // silent tray wedge, but the same "a producer emits a kind the applier
+      // has never heard of" mistake. Every kind `emitProposal` can mint now
+      // has a case.
+      //
+      // No `undo` handle, on the `held-mail-review` precedent: there is
+      // nothing to undo, and a handle naming an action nothing implements
+      // would be a promise this codebase cannot keep. The watch row is
+      // already `fired` — closed by the sweep that raised this — and a
+      // reminder that has been read cannot be un-read.
+      return { entries: [] };
     }
 
     case "floor-request": {
@@ -1493,6 +1546,81 @@ async function applyProposal(
         ["kind"],
       );
   }
+}
+
+/**
+ * Write one DRAFT into the account's Drafts mailbox — the application three
+ * approved kinds share (`watch-followup` since s20 wave 3, `verb-answer` and
+ * `verb-bring-in` since T2).
+ *
+ * All three end in the same place for the same reason: the artifact belongs to
+ * the HUMAN, not to a binding. Nothing relays, so no `assertOutboundAllowed`
+ * (the outbound bound governs a binding's reach); the MIME carries no
+ * Auto-Submitted or X- headers, because the bytes stored here are the bytes
+ * their own composer will send; and the undo handle is the plainest one there
+ * is — the draft is a row, delete it.
+ *
+ * One function rather than three near-copies: the differences between the
+ * callers are which voice signs it and whether it threads, and those are
+ * ARGUMENTS. A second hand-maintained copy of this write is how the keywords,
+ * the blob and the thread resolution come to disagree.
+ */
+async function draftIntoDrafts(
+  access: { accountId: string; tenantId: string },
+  store: Mailstore,
+  o: {
+    to: string;
+    subject: string;
+    body: string;
+    /** The sending identity's address and display name. */
+    self: string;
+    selfName: string;
+    /** The Message-ID this draft answers, or null to start a message. */
+    inReplyTo: string | null;
+  },
+): Promise<{ entries: ChangeEntry[]; undo: Record<string, unknown> }> {
+  const now = Date.now();
+  const messageId = `${crypto.randomUUID()}@${o.self.split("@")[1] ?? "localhost"}`;
+  const raw = buildMime({
+    from: [{ name: o.selfName, email: o.self }],
+    to: [{ email: o.to }],
+    subject: o.subject,
+    messageId,
+    inReplyTo: o.inReplyTo,
+    date: new Date(now),
+    text: o.body,
+  });
+  const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
+  const blobId = await store.putBlob(access.tenantId, access.accountId, buf);
+  const draftsMailbox = await store.ensureRoleMailbox(access.accountId, "drafts", "Drafts");
+  const emailId = `e_${crypto.randomUUID()}`;
+  await store.insertEmail(access.accountId, {
+    id: emailId,
+    blobId,
+    threadId: await store.resolveThreadId(access.accountId, o.inReplyTo),
+    messageId,
+    inReplyTo: o.inReplyTo,
+    subject: o.subject,
+    from: [{ name: o.selfName, email: o.self }],
+    to: [{ email: o.to }],
+    cc: [],
+    bcc: [],
+    preview: o.body.slice(0, 256),
+    bodyText: o.body,
+    size: raw.byteLength,
+    receivedAt: now,
+    hasAttachment: false,
+    attachments: [],
+    mailboxIds: [draftsMailbox],
+    keywords: ["$draft", "$agent"],
+  });
+  return {
+    entries: [
+      { collection: "Email", created: [emailId], updated: [], destroyed: [] },
+      { collection: "Mailbox", created: [], updated: [draftsMailbox], destroyed: [] },
+    ],
+    undo: { action: "destroy-email", emailId },
+  };
 }
 
 /** The two mailboxes a held-mail decision can touch, for the changelog. */

@@ -835,6 +835,40 @@ code {
   cursor: not-allowed;
 }
 
+/* ── agent verbs (s20 T2) ─────────────────────────────────────────────────
+   Beside Reply/Forward, never instead of them: the classic three keep the
+   default button, the asks are marked as the agent's by a softer fill. */
+.agent-verbs {
+  border-top: 1px dashed var(--line);
+  margin: 0 14px;
+  padding-top: 10px;
+}
+.agent-verbs .message-actions {
+  padding: 0 0 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.message-actions button.agent-verb {
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+}
+.message-actions button.agent-verb:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.agent-verb-input {
+  flex: 1;
+  min-width: 220px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font: inherit;
+}
+.agent-verb-note {
+  margin: 0 0 10px;
+}
+
 /* ── notices ─────────────────────────────────────────────────────────── */
 
 .notice {
