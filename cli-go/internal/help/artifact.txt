@@ -1,10 +1,10 @@
 bullmoose-help-artifact 1
-spec packages/cli/src/help.ts sha256=346437fe8119067ef097dca70dee4e62599ad88e58225f0ad0a0ea6f2fc6d14c
-body sha256=d3db93acade4beca4fbca3c82cf763aa80624ff4f0ae7944134cd2daeff69355
+spec packages/cli/src/help.ts sha256=8dca1897527aa714e0376dbf81b829068c6cbc237e4da0e7f37ab723dd377dd5
+body sha256=cdea0df423b69a9d047ffdb24b81d078a2b8d351e954353f7c11ab0b3f95f0c8
 placeholder __BM_TOPIC__
-commands help login discover init token accounts sync send read watch vacation agent contacts calendar creds log search show mailboxes mailbox flag seen move label archive junk trash rm delete blobs share identity admin
+commands help login discover init token accounts sync send read watch vacation agent models local contacts calendar creds log search show mailboxes mailbox flag seen move label archive junk trash rm delete blobs share identity admin
 --
-entry json 0 62959 0
+entry json 0 68529 0
 {
   "name": "bullmoose",
   "tagline": "the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP",
@@ -438,7 +438,7 @@ entry json 0 62959 0
       "name": "agent",
       "synopsis": "bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId>",
       "summary": "run the homelab agent runtime (single binding or fleet host), and trigger agents on demand",
-      "description": "`serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config. --once drains and exits (cron-friendly). With --config the config's `binding` must match the server-side binding name (see `admin agent bind`).\n\n--fleet (s11 T8) turns the process into a FLEET HOST: ONE login as a runtime principal serving N bindings across N accounts. Which accounts it serves is DISCOVERED from grants, not declared — each agent account grants the runtime principal claim authority (a whole-account grant whose scopes cover `draft`), and the daemon serves whatever granted it. Adding an agent = minting a grant (no restart); revoking the grant stops that binding's claims without touching the rest. fleet.json maps binding name → {persona, model} and may declare host `capabilities` {vision, contextTokens, tools} — the daemon then skips invocations whose declared requirements it cannot satisfy. Model configs stay local: they describe the host's capability, never an agent's identity.\n\n`invoke` (sVOL 007) is the on-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.",
+      "description": "`serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and runs the binding's pipeline. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config (`apiKeyEnv` absent on openai-compatible = a keyless @local endpoint like Ollama). --once drains and exits (cron-friendly). With --config the config's `binding` must match the server-side binding name (see `admin agent bind`).\n\nPipelines (s26 T6): the config's `pipeline` field picks the pass — `reply` (default) drafts replies in template mode; `extract` mirrors the cloud extraction pass (List-Unsubscribe skip, cue pre-filter, idempotence by sourceRef) and writes commitment/decision/task Annotations over Annotation/set, so the login's token needs the `annotate` scope. An extract config may carry a `modelMenu` (fallback chain, best first — config order is the ranking) and `frontier: {exploreRate}` (deterministic per-invocation exploration, the s26 T5a assignment). The runner claims as the FREE claimant and records cost honestly in the result: 0 only for genuinely free routes (mock, keyless @local, or `free: true`), null where undetermined.\n\n--fleet (s11 T8) turns the process into a FLEET HOST: ONE login as a runtime principal serving N bindings across N accounts. Which accounts it serves is DISCOVERED from grants, not declared — each agent account grants the runtime principal claim authority (a whole-account grant whose scopes cover `draft`), and the daemon serves whatever granted it. Adding an agent = minting a grant (no restart); revoking the grant stops that binding's claims without touching the rest. fleet.json maps binding name → {persona, model} and may declare host `capabilities` {vision, contextTokens, tools} — the daemon then skips invocations whose declared requirements it cannot satisfy. Model configs stay local: they describe the host's capability, never an agent's identity.\n\n`invoke` (sVOL 007) is the on-demand trigger: it queues a pending invocation for a binding against an EXISTING message, and a runtime — your own `serve`, or the cloud runtime on its cron — picks it up over the changelog. This is how a human starts an agent on a thread rather than waiting for inbound mail. It runs on this account's own mail token, not the operator admin token. It REFUSES a binding that `admin agent disable` has turned off (the 008 kill switch): you cannot fire an agent whose off switch is pulled. `invocations` lists the queue (default: pending), and `rm` purges one — a running invocation is refused.",
       "subcommands": [
         {
           "name": "serve",
@@ -506,11 +506,99 @@ entry json 0 62959 0
         {
           "cmd": "bullmoose agent invocations --ids | xargs -n1 bullmoose agent rm",
           "note": "clear the pending queue"
+        },
+        {
+          "cmd": "bullmoose agent serve --config extractor.json --once",
+          "note": "extractor.json: {\"binding\":\"extractor\",\"pipeline\":\"extract\",\"model\":{\"provider\":\"openai-compatible\",\"baseURL\":\"http://localhost:11434\"}}"
         }
       ],
       "seeAlso": [
         "admin agent bind",
-        "watch"
+        "watch",
+        "models",
+        "local"
+      ]
+    },
+    {
+      "name": "models",
+      "synopsis": "bullmoose models [--host <url>] [--key-env <NAME>]",
+      "summary": "list the models OpenAI-compatible hosts serve — the @local /v1/models sweep",
+      "description": "With --host, asks that one endpoint (`GET <url>/v1/models`) and a dead host is an error. Without it, probes the @local ladder's default ports in order — LiteLLM :4000, Ollama :11434, vLLM :8000, llama.cpp :8080 (plus the saved @local host from `local connect`, first) — and prints what each answering host serves; a host that is down is a quiet skip, not an error. A 401/403 counts as up-but-keyed: pass --key-env with the name of an environment variable holding the key (a reference — the key itself is never stored or printed). Records go to stdout (one model per line; --json emits NDJSON {host, base, id}); probe chrome goes to stderr.",
+      "flags": [
+        {
+          "flag": "--host <url>",
+          "desc": "ask one specific OpenAI-compatible endpoint instead of sweeping the ladder"
+        },
+        {
+          "flag": "--key-env <NAME>",
+          "desc": "env var holding the host's API key (LiteLLM master key etc.) — a reference, never the key"
+        }
+      ],
+      "examples": [
+        {
+          "cmd": "bullmoose models",
+          "note": "sweep the ladder; down hosts are skipped quietly"
+        },
+        {
+          "cmd": "bullmoose models --host http://alpaca.local:4000 --key-env LITELLM_MASTER_KEY"
+        },
+        {
+          "cmd": "bullmoose models --ids",
+          "note": "bare model ids, one per line"
+        }
+      ],
+      "seeAlso": [
+        "local",
+        "agent"
+      ]
+    },
+    {
+      "name": "local",
+      "synopsis": "bullmoose local setup [--yes] | connect --host <url> [--key-env <NAME>]",
+      "summary": "the @local onboarding ladder — detect, connect, or install a local model host (with consent)",
+      "description": "@local is a PEER, never a dependency: the product is complete without it, and nothing here installs anything without an explicit yes. `setup` (rung 1) PROBES first — LiteLLM :4000, Ollama :11434, vLLM :8000, llama.cpp :8080, the /v1/models sweep — and if a host answers it connects and stops. If a host answers but wants a key, it tells you how to connect and refuses to install a second runtime beside it. Only when nothing answers does it OFFER the managed Ollama install: the exact commands are printed first (brew / winget / the official installer, per platform), the install runs only on an explicit y — or --yes, which is the same consent given ahead of time — and a starter model is pulled before connecting. Declining is exit 0: the cloud staff keeps working. `connect` (rung 2) points the CLI at ANY OpenAI-compatible endpoint you already run — no opinions about your stack; it verifies /v1/models answers, saves the host (and the --key-env reference) in the CLI config, and reports the model list. The saved host is what `models` sweeps first and what agent configs mean by @local.",
+      "subcommands": [
+        {
+          "name": "setup",
+          "synopsis": "local setup [--yes]",
+          "summary": "probe the ladder; connect if a host answers, else offer the managed Ollama install"
+        },
+        {
+          "name": "connect",
+          "synopsis": "local connect --host <url> [--key-env <NAME>]",
+          "summary": "verify and save an OpenAI-compatible host you already run"
+        }
+      ],
+      "flags": [
+        {
+          "flag": "--host <url>",
+          "desc": "connect: the endpoint origin (a trailing /v1 is tolerated and stripped)"
+        },
+        {
+          "flag": "--key-env <NAME>",
+          "desc": "env var holding the host's API key — stored as a reference, never a value"
+        },
+        {
+          "flag": "--yes",
+          "desc": "setup: consent to the printed install plan ahead of time (for scripts); never implied"
+        }
+      ],
+      "examples": [
+        {
+          "cmd": "bullmoose local setup",
+          "note": "detect → connect → offer → install-with-consent, in that order"
+        },
+        {
+          "cmd": "bullmoose local connect --host http://localhost:11434",
+          "note": "rung 2: your own Ollama"
+        },
+        {
+          "cmd": "bullmoose local connect --host http://alpaca.local:4000 --key-env LITELLM_MASTER_KEY"
+        }
+      ],
+      "seeAlso": [
+        "models",
+        "agent"
       ]
     },
     {
@@ -1440,7 +1528,7 @@ entry json 0 62959 0
 }
 
 
-entry man 0 47765 0
+entry man 0 52351 0
 .TH BULLMOOSE 1 "" "bullmoose" "User Commands"
 .SH NAME
 bullmoose \- the CLI for the bullmoose personal\-data platform — mail, contacts, calendar, email\-native agents, and operator admin, over JMAP
@@ -1496,6 +1584,12 @@ manage the RFC 8621 vacation responder
 .TP
 .B agent
 run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+.TP
+.B models
+list the models OpenAI\-compatible hosts serve — the @local /v1/models sweep
+.TP
+.B local
+the @local onboarding ladder — detect, connect, or install a local model host (with consent)
 .TP
 .B contacts
 read and write the contacts core (vCard ⇄ JSContact)
@@ -1860,7 +1954,9 @@ bullmoose vacation on \-\-subject "Away" \-\-body "Back Monday." \-\-until 2026\
 .br
 bullmoose agent serve \-\-config <agent.json>|\-\-fleet <fleet.json> [\-\-once] | invoke <binding> \-\-email <id> | invocations [<status>] | rm <invId>
 .PP
-`serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai\-compatible; API keys by env reference, never in the config. \-\-once drains and exits (cron\-friendly). With \-\-config the config's `binding` must match the server\-side binding name (see `admin agent bind`).
+`serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and runs the binding's pipeline. Providers: mock | anthropic | openai\-compatible; API keys by env reference, never in the config (`apiKeyEnv` absent on openai\-compatible = a keyless @local endpoint like Ollama). \-\-once drains and exits (cron\-friendly). With \-\-config the config's `binding` must match the server\-side binding name (see `admin agent bind`).
+
+Pipelines (s26 T6): the config's `pipeline` field picks the pass — `reply` (default) drafts replies in template mode; `extract` mirrors the cloud extraction pass (List\-Unsubscribe skip, cue pre\-filter, idempotence by sourceRef) and writes commitment/decision/task Annotations over Annotation/set, so the login's token needs the `annotate` scope. An extract config may carry a `modelMenu` (fallback chain, best first — config order is the ranking) and `frontier: {exploreRate}` (deterministic per\-invocation exploration, the s26 T5a assignment). The runner claims as the FREE claimant and records cost honestly in the result: 0 only for genuinely free routes (mock, keyless @local, or `free: true`), null where undetermined.
 
 \-\-fleet (s11 T8) turns the process into a FLEET HOST: ONE login as a runtime principal serving N bindings across N accounts. Which accounts it serves is DISCOVERED from grants, not declared — each agent account grants the runtime principal claim authority (a whole\-account grant whose scopes cover `draft`), and the daemon serves whatever granted it. Adding an agent = minting a grant (no restart); revoking the grant stops that binding's claims without touching the rest. fleet.json maps binding name → {persona, model} and may declare host `capabilities` {vision, contextTokens, tools} — the daemon then skips invocations whose declared requirements it cannot satisfy. Model configs stay local: they describe the host's capability, never an agent's identity.
 
@@ -1927,6 +2023,82 @@ what is queued right now
 bullmoose agent invocations \-\-ids | xargs \-n1 bullmoose agent rm
 .EE
 clear the pending queue
+.PP
+.EX
+bullmoose agent serve \-\-config extractor.json \-\-once
+.EE
+extractor.json: {"binding":"extractor","pipeline":"extract","model":{"provider":"openai\-compatible","baseURL":"http://localhost:11434"}}
+.SS models
+.B Synopsis:
+.br
+bullmoose models [\-\-host <url>] [\-\-key\-env <NAME>]
+.PP
+With \-\-host, asks that one endpoint (`GET <url>/v1/models`) and a dead host is an error. Without it, probes the @local ladder's default ports in order — LiteLLM :4000, Ollama :11434, vLLM :8000, llama.cpp :8080 (plus the saved @local host from `local connect`, first) — and prints what each answering host serves; a host that is down is a quiet skip, not an error. A 401/403 counts as up\-but\-keyed: pass \-\-key\-env with the name of an environment variable holding the key (a reference — the key itself is never stored or printed). Records go to stdout (one model per line; \-\-json emits NDJSON {host, base, id}); probe chrome goes to stderr.
+.PP
+.B Flags:
+.TP
+.B \-\-host <url>
+ask one specific OpenAI\-compatible endpoint instead of sweeping the ladder
+.TP
+.B \-\-key\-env <NAME>
+env var holding the host's API key (LiteLLM master key etc.) — a reference, never the key
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose models
+.EE
+sweep the ladder; down hosts are skipped quietly
+.PP
+.EX
+bullmoose models \-\-host http://alpaca.local:4000 \-\-key\-env LITELLM_MASTER_KEY
+.EE
+.PP
+.EX
+bullmoose models \-\-ids
+.EE
+bare model ids, one per line
+.SS local
+.B Synopsis:
+.br
+bullmoose local setup [\-\-yes] | connect \-\-host <url> [\-\-key\-env <NAME>]
+.PP
+@local is a PEER, never a dependency: the product is complete without it, and nothing here installs anything without an explicit yes. `setup` (rung 1) PROBES first — LiteLLM :4000, Ollama :11434, vLLM :8000, llama.cpp :8080, the /v1/models sweep — and if a host answers it connects and stops. If a host answers but wants a key, it tells you how to connect and refuses to install a second runtime beside it. Only when nothing answers does it OFFER the managed Ollama install: the exact commands are printed first (brew / winget / the official installer, per platform), the install runs only on an explicit y — or \-\-yes, which is the same consent given ahead of time — and a starter model is pulled before connecting. Declining is exit 0: the cloud staff keeps working. `connect` (rung 2) points the CLI at ANY OpenAI\-compatible endpoint you already run — no opinions about your stack; it verifies /v1/models answers, saves the host (and the \-\-key\-env reference) in the CLI config, and reports the model list. The saved host is what `models` sweeps first and what agent configs mean by @local.
+.PP
+.B Subcommands:
+.TP
+.B setup
+probe the ladder; connect if a host answers, else offer the managed Ollama install \(em \f[CR]local setup [\-\-yes]\fR
+.TP
+.B connect
+verify and save an OpenAI\-compatible host you already run \(em \f[CR]local connect \-\-host <url> [\-\-key\-env <NAME>]\fR
+.PP
+.B Flags:
+.TP
+.B \-\-host <url>
+connect: the endpoint origin (a trailing /v1 is tolerated and stripped)
+.TP
+.B \-\-key\-env <NAME>
+env var holding the host's API key — stored as a reference, never a value
+.TP
+.B \-\-yes
+setup: consent to the printed install plan ahead of time (for scripts); never implied
+.PP
+.B Examples:
+.PP
+.EX
+bullmoose local setup
+.EE
+detect → connect → offer → install\-with\-consent, in that order
+.PP
+.EX
+bullmoose local connect \-\-host http://localhost:11434
+.EE
+rung 2: your own Ollama
+.PP
+.EX
+bullmoose local connect \-\-host http://alpaca.local:4000 \-\-key\-env LITELLM_MASTER_KEY
+.EE
 .SS contacts
 .B Synopsis:
 .br
@@ -2747,7 +2919,7 @@ Local SQLite message log (override with \-\-db or $BULLMOOSE_DB).
 Project docs: https://github.com/ericdmoore/bullmoose.cc
 
 
-entry markdown 0 49546 0
+entry markdown 0 54347 0
 # bullmoose CLI
 
 > the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP
@@ -2776,6 +2948,8 @@ _Generated from the CLI's command spec (`packages/cli/src/help.ts`). Regenerate 
 | [`watch`](#watch) | push-triggered live sync: print new mail as it arrives |
 | [`vacation`](#vacation) | manage the RFC 8621 vacation responder |
 | [`agent`](#agent) | run the homelab agent runtime (single binding or fleet host), and trigger agents on demand |
+| [`models`](#models) | list the models OpenAI-compatible hosts serve — the @local /v1/models sweep |
+| [`local`](#local) | the @local onboarding ladder — detect, connect, or install a local model host (with consent) |
 | [`contacts`](#contacts) | read and write the contacts core (vCard ⇄ JSContact) |
 | [`calendar`](#calendar) | browse and edit the calendar core (JSCalendar; recurrence expanded server-side) |
 | [`creds`](#creds) | manage the write-only, envelope-encrypted credential vault |
@@ -3100,7 +3274,9 @@ run the homelab agent runtime (single binding or fleet host), and trigger agents
 bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations [<status>] | rm <invId>
 ```
 
-`serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and drafts replies in template mode. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config. --once drains and exits (cron-friendly). With --config the config's `binding` must match the server-side binding name (see `admin agent bind`).
+`serve` watches the AgentInvocation queue over the same push channel as `watch`, claims pending work, and runs the binding's pipeline. Providers: mock | anthropic | openai-compatible; API keys by env reference, never in the config (`apiKeyEnv` absent on openai-compatible = a keyless @local endpoint like Ollama). --once drains and exits (cron-friendly). With --config the config's `binding` must match the server-side binding name (see `admin agent bind`).
+
+Pipelines (s26 T6): the config's `pipeline` field picks the pass — `reply` (default) drafts replies in template mode; `extract` mirrors the cloud extraction pass (List-Unsubscribe skip, cue pre-filter, idempotence by sourceRef) and writes commitment/decision/task Annotations over Annotation/set, so the login's token needs the `annotate` scope. An extract config may carry a `modelMenu` (fallback chain, best first — config order is the ranking) and `frontier: {exploreRate}` (deterministic per-invocation exploration, the s26 T5a assignment). The runner claims as the FREE claimant and records cost honestly in the result: 0 only for genuinely free routes (mock, keyless @local, or `free: true`), null where undetermined.
 
 --fleet (s11 T8) turns the process into a FLEET HOST: ONE login as a runtime principal serving N bindings across N accounts. Which accounts it serves is DISCOVERED from grants, not declared — each agent account grants the runtime principal claim authority (a whole-account grant whose scopes cover `draft`), and the daemon serves whatever granted it. Adding an agent = minting a grant (no restart); revoking the grant stops that binding's claims without touching the rest. fleet.json maps binding name → {persona, model} and may declare host `capabilities` {vision, contextTokens, tools} — the daemon then skips invocations whose declared requirements it cannot satisfy. Model configs stay local: they describe the host's capability, never an agent's identity.
 
@@ -3139,9 +3315,73 @@ bullmoose agent invocations
 # what is queued right now
 bullmoose agent invocations --ids | xargs -n1 bullmoose agent rm
 # clear the pending queue
+bullmoose agent serve --config extractor.json --once
+# extractor.json: {"binding":"extractor","pipeline":"extract","model":{"provider":"openai-compatible","baseURL":"http://localhost:11434"}}
 ```
 
-See also: [`admin agent bind`](#admin), [`watch`](#watch)
+See also: [`admin agent bind`](#admin), [`watch`](#watch), [`models`](#models), [`local`](#local)
+
+## models
+
+list the models OpenAI-compatible hosts serve — the @local /v1/models sweep
+
+```
+bullmoose models [--host <url>] [--key-env <NAME>]
+```
+
+With --host, asks that one endpoint (`GET <url>/v1/models`) and a dead host is an error. Without it, probes the @local ladder's default ports in order — LiteLLM :4000, Ollama :11434, vLLM :8000, llama.cpp :8080 (plus the saved @local host from `local connect`, first) — and prints what each answering host serves; a host that is down is a quiet skip, not an error. A 401/403 counts as up-but-keyed: pass --key-env with the name of an environment variable holding the key (a reference — the key itself is never stored or printed). Records go to stdout (one model per line; --json emits NDJSON {host, base, id}); probe chrome goes to stderr.
+
+| flag | description |
+|---|---|
+| `--host <url>` | ask one specific OpenAI-compatible endpoint instead of sweeping the ladder |
+| `--key-env <NAME>` | env var holding the host's API key (LiteLLM master key etc.) — a reference, never the key |
+
+**Examples**
+
+```sh
+bullmoose models
+# sweep the ladder; down hosts are skipped quietly
+bullmoose models --host http://alpaca.local:4000 --key-env LITELLM_MASTER_KEY
+bullmoose models --ids
+# bare model ids, one per line
+```
+
+See also: [`local`](#local), [`agent`](#agent)
+
+## local
+
+the @local onboarding ladder — detect, connect, or install a local model host (with consent)
+
+```
+bullmoose local setup [--yes] | connect --host <url> [--key-env <NAME>]
+```
+
+@local is a PEER, never a dependency: the product is complete without it, and nothing here installs anything without an explicit yes. `setup` (rung 1) PROBES first — LiteLLM :4000, Ollama :11434, vLLM :8000, llama.cpp :8080, the /v1/models sweep — and if a host answers it connects and stops. If a host answers but wants a key, it tells you how to connect and refuses to install a second runtime beside it. Only when nothing answers does it OFFER the managed Ollama install: the exact commands are printed first (brew / winget / the official installer, per platform), the install runs only on an explicit y — or --yes, which is the same consent given ahead of time — and a starter model is pulled before connecting. Declining is exit 0: the cloud staff keeps working. `connect` (rung 2) points the CLI at ANY OpenAI-compatible endpoint you already run — no opinions about your stack; it verifies /v1/models answers, saves the host (and the --key-env reference) in the CLI config, and reports the model list. The saved host is what `models` sweeps first and what agent configs mean by @local.
+
+**Subcommands**
+
+- **setup** — probe the ladder; connect if a host answers, else offer the managed Ollama install  
+  `local setup [--yes]`
+- **connect** — verify and save an OpenAI-compatible host you already run  
+  `local connect --host <url> [--key-env <NAME>]`
+
+| flag | description |
+|---|---|
+| `--host <url>` | connect: the endpoint origin (a trailing /v1 is tolerated and stripped) |
+| `--key-env <NAME>` | env var holding the host's API key — stored as a reference, never a value |
+| `--yes` | setup: consent to the printed install plan ahead of time (for scripts); never implied |
+
+**Examples**
+
+```sh
+bullmoose local setup
+# detect → connect → offer → install-with-consent, in that order
+bullmoose local connect --host http://localhost:11434
+# rung 2: your own Ollama
+bullmoose local connect --host http://alpaca.local:4000 --key-env LITELLM_MASTER_KEY
+```
+
+See also: [`models`](#models), [`agent`](#agent)
 
 ## contacts
 
@@ -3778,7 +4018,7 @@ See also: [`token`](#token), [`agent`](#agent)
 
 
 
-entry overview 0 5553 0
+entry overview 0 5756 0
 bullmoose — the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP
 
 Usage:
@@ -3800,6 +4040,8 @@ Commands:
   watch        push-triggered live sync: print new mail as it arrives
   vacation     manage the RFC 8621 vacation responder
   agent        run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+  models       list the models OpenAI-compatible hosts serve — the @local /v1/models sweep
+  local        the @local onboarding ladder — detect, connect, or install a local model host (with consent)
   contacts     read and write the contacts core (vCard ⇄ JSContact)
   calendar     browse and edit the calendar core (JSCalendar; recurrence expanded server-side)
   creds        manage the write-only, envelope-encrypted credential vault
@@ -3865,7 +4107,7 @@ Exit codes:
 Run `bullmoose help <command>` for details. The database is the server's own data-plane schema — open it directly with `sqlite3` for anything the commands don't cover.
 
 
-entry overview-usage 2 0 5553
+entry overview-usage 2 0 5756
 
 bullmoose — the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP
 
@@ -3888,6 +4130,8 @@ Commands:
   watch        push-triggered live sync: print new mail as it arrives
   vacation     manage the RFC 8621 vacation responder
   agent        run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+  models       list the models OpenAI-compatible hosts serve — the @local /v1/models sweep
+  local        the @local onboarding ladder — detect, connect, or install a local model host (with consent)
   contacts     read and write the contacts core (vCard ⇄ JSContact)
   calendar     browse and edit the calendar core (JSCalendar; recurrence expanded server-side)
   creds        manage the write-only, envelope-encrypted credential vault
@@ -4228,7 +4472,7 @@ EXAMPLES
   $ bullmoose vacation on --subject "Away" --body "Back Monday." --until 2026-07-15
 
 
-entry command:agent 0 3698 0
+entry command:agent 0 4771 0
 bullmoose agent — run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
 
 SYNOPSIS
@@ -4236,11 +4480,22 @@ SYNOPSIS
 
 DESCRIPTION
   `serve` watches the AgentInvocation queue over the same push channel as
-  `watch`, claims pending work, and drafts replies in template mode.
-  Providers: mock | anthropic | openai-compatible; API keys by env reference,
-  never in the config. --once drains and exits (cron-friendly). With --config
-  the config's `binding` must match the server-side binding name (see `admin
-  agent bind`). --fleet (s11 T8) turns the process into a FLEET HOST: ONE
+  `watch`, claims pending work, and runs the binding's pipeline. Providers:
+  mock | anthropic | openai-compatible; API keys by env reference, never in
+  the config (`apiKeyEnv` absent on openai-compatible = a keyless @local
+  endpoint like Ollama). --once drains and exits (cron-friendly). With
+  --config the config's `binding` must match the server-side binding name (see
+  `admin agent bind`). Pipelines (s26 T6): the config's `pipeline` field picks
+  the pass — `reply` (default) drafts replies in template mode; `extract`
+  mirrors the cloud extraction pass (List-Unsubscribe skip, cue pre-filter,
+  idempotence by sourceRef) and writes commitment/decision/task Annotations
+  over Annotation/set, so the login's token needs the `annotate` scope. An
+  extract config may carry a `modelMenu` (fallback chain, best first — config
+  order is the ranking) and `frontier: {exploreRate}` (deterministic
+  per-invocation exploration, the s26 T5a assignment). The runner claims as
+  the FREE claimant and records cost honestly in the result: 0 only for
+  genuinely free routes (mock, keyless @local, or `free: true`), null where
+  undetermined. --fleet (s11 T8) turns the process into a FLEET HOST: ONE
   login as a runtime principal serving N bindings across N accounts. Which
   accounts it serves is DISCOVERED from grants, not declared — each agent
   account grants the runtime principal claim authority (a whole-account grant
@@ -4289,8 +4544,85 @@ EXAMPLES
       what is queued right now
   $ bullmoose agent invocations --ids | xargs -n1 bullmoose agent rm
       clear the pending queue
+  $ bullmoose agent serve --config extractor.json --once
+      extractor.json: {"binding":"extractor","pipeline":"extract","model":{"provider":"openai-compatible","baseURL":"http://localhost:11434"}}
 
-SEE ALSO: bullmoose help admin agent bind, bullmoose help watch
+SEE ALSO: bullmoose help admin agent bind, bullmoose help watch, bullmoose help models, bullmoose help local
+
+
+entry command:models 0 1355 0
+bullmoose models — list the models OpenAI-compatible hosts serve — the @local /v1/models sweep
+
+SYNOPSIS
+  bullmoose models [--host <url>] [--key-env <NAME>]
+
+DESCRIPTION
+  With --host, asks that one endpoint (`GET <url>/v1/models`) and a dead host
+  is an error. Without it, probes the @local ladder's default ports in order —
+  LiteLLM :4000, Ollama :11434, vLLM :8000, llama.cpp :8080 (plus the saved
+  @local host from `local connect`, first) — and prints what each answering
+  host serves; a host that is down is a quiet skip, not an error. A 401/403
+  counts as up-but-keyed: pass --key-env with the name of an environment
+  variable holding the key (a reference — the key itself is never stored or
+  printed). Records go to stdout (one model per line; --json emits NDJSON
+  {host, base, id}); probe chrome goes to stderr.
+
+FLAGS
+  --host <url>               ask one specific OpenAI-compatible endpoint instead of sweeping the ladder
+  --key-env <NAME>           env var holding the host's API key (LiteLLM master key etc.) — a reference, never the key
+
+EXAMPLES
+  $ bullmoose models
+      sweep the ladder; down hosts are skipped quietly
+  $ bullmoose models --host http://alpaca.local:4000 --key-env LITELLM_MASTER_KEY
+  $ bullmoose models --ids
+      bare model ids, one per line
+
+SEE ALSO: bullmoose help local, bullmoose help agent
+
+
+entry command:local 0 2273 0
+bullmoose local — the @local onboarding ladder — detect, connect, or install a local model host (with consent)
+
+SYNOPSIS
+  bullmoose local setup [--yes] | connect --host <url> [--key-env <NAME>]
+
+DESCRIPTION
+  @local is a PEER, never a dependency: the product is complete without it,
+  and nothing here installs anything without an explicit yes. `setup` (rung 1)
+  PROBES first — LiteLLM :4000, Ollama :11434, vLLM :8000, llama.cpp :8080,
+  the /v1/models sweep — and if a host answers it connects and stops. If a
+  host answers but wants a key, it tells you how to connect and refuses to
+  install a second runtime beside it. Only when nothing answers does it OFFER
+  the managed Ollama install: the exact commands are printed first (brew /
+  winget / the official installer, per platform), the install runs only on an
+  explicit y — or --yes, which is the same consent given ahead of time — and a
+  starter model is pulled before connecting. Declining is exit 0: the cloud
+  staff keeps working. `connect` (rung 2) points the CLI at ANY
+  OpenAI-compatible endpoint you already run — no opinions about your stack;
+  it verifies /v1/models answers, saves the host (and the --key-env reference)
+  in the CLI config, and reports the model list. The saved host is what
+  `models` sweeps first and what agent configs mean by @local.
+
+SUBCOMMANDS
+  setup — probe the ladder; connect if a host answers, else offer the managed Ollama install
+      local setup [--yes]
+  connect — verify and save an OpenAI-compatible host you already run
+      local connect --host <url> [--key-env <NAME>]
+
+FLAGS
+  --host <url>               connect: the endpoint origin (a trailing /v1 is tolerated and stripped)
+  --key-env <NAME>           env var holding the host's API key — stored as a reference, never a value
+  --yes                      setup: consent to the printed install plan ahead of time (for scripts); never implied
+
+EXAMPLES
+  $ bullmoose local setup
+      detect → connect → offer → install-with-consent, in that order
+  $ bullmoose local connect --host http://localhost:11434
+      rung 2: your own Ollama
+  $ bullmoose local connect --host http://alpaca.local:4000 --key-env LITELLM_MASTER_KEY
+
+SEE ALSO: bullmoose help models, bullmoose help agent
 
 
 entry command:contacts 0 2812 0
@@ -4948,7 +5280,7 @@ EXAMPLES
 SEE ALSO: bullmoose help token, bullmoose help agent
 
 
-entry unknown-topic 2 0 5584
+entry unknown-topic 2 0 5787
 
 unknown command: __BM_TOPIC__
 
@@ -4973,6 +5305,8 @@ Commands:
   watch        push-triggered live sync: print new mail as it arrives
   vacation     manage the RFC 8621 vacation responder
   agent        run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+  models       list the models OpenAI-compatible hosts serve — the @local /v1/models sweep
+  local        the @local onboarding ladder — detect, connect, or install a local model host (with consent)
   contacts     read and write the contacts core (vCard ⇄ JSContact)
   calendar     browse and edit the calendar core (JSCalendar; recurrence expanded server-side)
   creds        manage the write-only, envelope-encrypted credential vault
@@ -5037,7 +5371,7 @@ Exit codes:
 
 Run `bullmoose help <command>` for details. The database is the server's own data-plane schema — open it directly with `sqlite3` for anything the commands don't cover.
 
-entry unknown-command 2 0 5584
+entry unknown-command 2 0 5787
 
 unknown command: __BM_TOPIC__
 
@@ -5062,6 +5396,8 @@ Commands:
   watch        push-triggered live sync: print new mail as it arrives
   vacation     manage the RFC 8621 vacation responder
   agent        run the homelab agent runtime (single binding or fleet host), and trigger agents on demand
+  models       list the models OpenAI-compatible hosts serve — the @local /v1/models sweep
+  local        the @local onboarding ladder — detect, connect, or install a local model host (with consent)
   contacts     read and write the contacts core (vCard ⇄ JSContact)
   calendar     browse and edit the calendar core (JSCalendar; recurrence expanded server-side)
   creds        manage the write-only, envelope-encrypted credential vault

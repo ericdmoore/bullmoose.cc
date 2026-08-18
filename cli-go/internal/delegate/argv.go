@@ -40,6 +40,8 @@ var valueFlags = map[string]bool{
 	"config": true,
 	// ---- fleet host (s11 T8) ----
 	"fleet": true,
+	// ---- @local ladder (s26 T6): models / local setup|connect ----
+	"host": true, "key-env": true,
 	// ---- agent invoke (sVOL 007) ----
 	"email": true, "note": true, "until": true, "expires": true, "kind": true,
 	"secret": true, "secret-env": true, "meta": true, "authorize-url": true,
