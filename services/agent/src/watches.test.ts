@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fakeEnv } from "@bullmoose/test-fakes";
 import { sweepWatches } from "./watches";
+import { templateFollowupBody } from "./watchCompose";
 
 // s20 T1 — the Watch engine. A star replaced by a contract: the sweep fires
 // watches whose deadline has passed, produces a PROPOSAL (never a direct
@@ -197,6 +198,158 @@ describe("sweepWatches — no-reply-from: the one that must not cry wolf", () =>
     });
     await sweepWatches(w.env, 1_000);
     expect(watchRow(w, "w_wrongsender").status).toBe("fired");
+  });
+});
+
+describe("sweepWatches — drafting-on-fire (s20 wave 3): the proposal arrives actionable", () => {
+  function seedComposeBinding(w: ReturnType<typeof fakeEnv>) {
+    w.db.seed("agent_bindings", [
+      {
+        id: "bind_scribe",
+        account_id: ACCOUNT,
+        name: "scribe",
+        enabled: 1,
+        config_json: JSON.stringify({
+          pipeline: "extract",
+          defaultModel: "extract",
+          modelAliases: { extract: [{ provider: "workers-ai", model: "@cf/x" }] },
+        }),
+      },
+    ]);
+  }
+
+  const followupWatch = {
+    id: "w_c",
+    condition_type: "no-reply-from",
+    condition: { sender: "sergio@example.com", threadId: "t_x" },
+    deadline_at: 500,
+    action_type: "draft-followup",
+    action: { to: "sergio@example.com", note: "the board quote" },
+    created_at: 100,
+  };
+
+  it("MODEL path: the payload carries the composed draft; the carrier carries the receipt", async () => {
+    const w = world();
+    seedComposeBinding(w);
+    const run = vi.fn(async () => ({
+      response: "Hi Sergio,\n\nJust checking in on the board quote.",
+      usage: { prompt_tokens: 200, completion_tokens: 60 },
+    }));
+    (w.env as { AI?: unknown }).AI = { run };
+    armWatch(w, followupWatch);
+    await sweepWatches(w.env, 1_000);
+
+    const watch = watchRow(w, "w_c");
+    expect(watch.status).toBe("fired");
+    const payload = JSON.parse(
+      w.db.query<{ payload_json: string }>(
+        `SELECT payload_json FROM agent_proposals WHERE id = '${watch.proposal_id}'`,
+      )[0]!.payload_json,
+    );
+    // The intent fields survive, and the actionable draft rides beside them.
+    expect(payload.to).toBe("sergio@example.com");
+    expect(payload.note).toBe("the board quote");
+    expect(payload.subject).toBe("Following up: the board quote");
+    expect(payload.body).toBe("Hi Sergio,\n\nJust checking in on the board quote.");
+    expect(payload.composed).toBe("model");
+    expect(payload.model).toBe("workers-ai/@cf/x");
+
+    // The carrier is attributed to the binding whose menu (and budget)
+    // composed it — proposal PK == invocation PK, so these ARE the cost
+    // columns Approvals shows (SELECT_JOIN in actionProposal.ts).
+    const inv = w.db.query<{
+      binding_id: string;
+      binding_name: string;
+      provider: string;
+      model: string;
+      tokens_in: number;
+      tokens_out: number;
+      cost_micros: number;
+      result_json: string;
+    }>(`SELECT * FROM agent_invocations WHERE id = '${watch.proposal_id}'`)[0]!;
+    expect(inv.binding_id).toBe("bind_scribe");
+    expect(inv.binding_name).toBe("scribe");
+    expect(inv.provider).toBe("workers-ai");
+    expect(inv.model).toBe("@cf/x");
+    expect(inv.tokens_in).toBe(200);
+    expect(inv.tokens_out).toBe(60);
+    expect(inv.cost_micros).toBe(0); // workers-ai: known, genuinely free
+    expect(JSON.parse(inv.result_json)).toMatchObject({ composed: "model", model: "workers-ai/@cf/x" });
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it("TEMPLATE path: no binding → the proposal STILL carries a usable body, carrier stays free", async () => {
+    const w = world();
+    armWatch(w, followupWatch);
+    await sweepWatches(w.env, 1_000);
+
+    const watch = watchRow(w, "w_c");
+    expect(watch.status).toBe("fired"); // composition never blocks the fire
+    const payload = JSON.parse(
+      w.db.query<{ payload_json: string }>(
+        `SELECT payload_json FROM agent_proposals WHERE id = '${watch.proposal_id}'`,
+      )[0]!.payload_json,
+    );
+    expect(payload.composed).toBe("template");
+    expect(payload.body).toBe(templateFollowupBody({ note: "the board quote" }));
+    expect(payload.subject).toBe("Following up: the board quote");
+    expect(payload.model).toBeUndefined();
+
+    // The carrier keeps the wave-1 shape exactly: nothing ran, genuinely free.
+    const inv = w.db.query<{
+      binding_id: string;
+      cost_micros: number;
+      provider: string | null;
+      result_json: string;
+    }>(`SELECT * FROM agent_invocations WHERE id = '${watch.proposal_id}'`)[0]!;
+    expect(inv.binding_id).toBe("watch");
+    expect(inv.cost_micros).toBe(0);
+    expect(inv.provider).toBeNull();
+    expect(JSON.parse(inv.result_json).composed).toBe("template");
+  });
+
+  it("a compose ERROR degrades to the template and the watch still fires", async () => {
+    const w = world();
+    seedComposeBinding(w);
+    (w.env as { AI?: unknown }).AI = {
+      run: vi.fn(async () => {
+        throw new Error("model down");
+      }),
+    };
+    armWatch(w, followupWatch);
+    await sweepWatches(w.env, 1_000);
+    const watch = watchRow(w, "w_c");
+    expect(watch.status).toBe("fired");
+    const payload = JSON.parse(
+      w.db.query<{ payload_json: string }>(
+        `SELECT payload_json FROM agent_proposals WHERE id = '${watch.proposal_id}'`,
+      )[0]!.payload_json,
+    );
+    expect(payload.composed).toBe("template");
+    expect(payload.body.length).toBeGreaterThan(0);
+  });
+
+  it("a NOTIFY watch composes nothing — the wave-1 payload, byte for byte", async () => {
+    const w = world();
+    seedComposeBinding(w);
+    const run = vi.fn(async () => ({ response: "never" }));
+    (w.env as { AI?: unknown }).AI = { run };
+    armWatch(w, {
+      id: "w_n",
+      condition_type: "deadline",
+      deadline_at: 500,
+      action_type: "notify",
+      action: { note: "pay the invoice" },
+    });
+    await sweepWatches(w.env, 1_000);
+    const watch = watchRow(w, "w_n");
+    const payload = JSON.parse(
+      w.db.query<{ payload_json: string }>(
+        `SELECT payload_json FROM agent_proposals WHERE id = '${watch.proposal_id}'`,
+      )[0]!.payload_json,
+    );
+    expect(payload).toEqual({ watchId: "w_n", conditionType: "deadline", to: null, note: "pay the invoice" });
+    expect(run).not.toHaveBeenCalled();
   });
 });
 

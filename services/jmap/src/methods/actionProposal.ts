@@ -1,8 +1,15 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
+import { buildMime } from "@bullmoose/mime";
 import { QUARANTINE_ROLE, type ContactCardRow, type JSContactCard, type Mailstore } from "@bullmoose/mailstore";
 import { OutboundRefused, assertOutboundAllowed } from "@bullmoose/mailstore/outboundBound";
 import { budgetExhaustedSql, budgetMonthStartMs, budgetPeriodKey, jobBudgetExhaustedSql } from "@bullmoose/scheduling";
+// The one definition of the fallback follow-up body/subject, shared with the
+// fire-time compose (s20 wave 3) so an old-format (intent-only) proposal
+// applies with byte-identical text to the compose fallback. A cross-service
+// relative import on the commitHeld.ts precedent (agent → jmap, this is the
+// mirror); it pulls only pure functions.
+import { followupSubject, templateFollowupBody } from "../../../agent/src/watchCompose";
 import { authorizeAccount } from "../auth";
 import {
   accountState,
@@ -1272,6 +1279,115 @@ async function applyProposal(
         entries: [{ collection: "Watch", created: [watchId], updated: [], destroyed: [] }],
         // The undo handle a tier-1 application keeps (arch.md §2).
         undo: { action: "cancel-watch", watchId },
+      };
+    }
+
+    case "watch-followup": {
+      // s20 wave 3 — a fired watch's follow-up, applied at last. The fire
+      // path (services/agent watches.ts) composes the body at fire time and
+      // the payload arrives actionable ({to, subject, body, composed}); this
+      // was the missing case that wedged every approved follow-up in the hold
+      // tray ("not applied in this slice", retried forever).
+      //
+      // Approval creates a DRAFT in the Drafts mailbox, in the OWNER's voice
+      // — the reply pipeline's draft-mode shape (services/agent index.ts
+      // sendReply: MIME blob in R2, `$draft` + `$agent`, threaded onto the
+      // watched message). It does NOT egress: nothing relays, the human sends
+      // it from their own composer. That is why there is no
+      // assertOutboundAllowed here — the outbound bound governs a BINDING's
+      // reach, and this draft belongs to the human, not to a binding; their
+      // own submission path keeps its own gates.
+      //
+      // OLD-FORMAT TOLERANCE, load-bearing: a watch that fired before
+      // drafting-on-fire deployed carries the intent-only payload ({watchId,
+      // conditionType, to, note} — no body). Those rows are live in the tray
+      // RIGHT NOW; refusing them would re-create the wedge this case removes.
+      // The template body/subject are synthesized here from the intent
+      // fields — the same exported functions the fire-time fallback uses, so
+      // the two formats converge on identical text.
+      const to = str(payload.to);
+      if (!to) {
+        // No recipient = nobody to draft TO. Loud and visible (a tier-2 row
+        // stays held and reports each sweep; the human yanks or declines) —
+        // never a silent drop.
+        throw new SetErrorSignal("invalidProperties", "a watch-followup payload needs a recipient (`to`)", ["payload"]);
+      }
+      const note = str(payload.note);
+      const body = str(payload.body) ?? templateFollowupBody({ note });
+
+      // The watched message, for threading and the Re: subject — tolerant,
+      // it may have been deleted since the watch was armed.
+      const subjectRef = safeJson(row.subject_json);
+      const origId = subjectRef.realm === "Email" ? str(subjectRef.objectId) : null;
+      const orig = origId
+        ? await ctx.env.DB.prepare(`SELECT subject, message_id FROM emails WHERE account_id = ? AND id = ?`)
+            .bind(access.accountId, origId)
+            .first<{ subject: string | null; message_id: string | null }>()
+        : null;
+      const subject = str(payload.subject) ?? followupSubject(orig?.subject ?? null, note);
+
+      // Whose voice: the account's primary sending identity (may_delete=0
+      // sorts first — the provisioned primary), falling back to the watch's
+      // owner. The approver's login name is the last resort, never the first:
+      // on a grant-reached account it belongs to a different person.
+      const idents = await store.getIdentities(access.accountId);
+      let self = idents[0]?.email ?? null;
+      let selfName = idents[0]?.name ?? "";
+      if (!self) {
+        const watchId = str(payload.watchId);
+        const watch = watchId
+          ? await ctx.env.DB.prepare(`SELECT owner FROM watches WHERE account_id = ? AND id = ?`)
+              .bind(access.accountId, watchId)
+              .first<{ owner: string }>()
+          : null;
+        self = watch && watch.owner.includes("@") ? watch.owner : ctx.principal.username;
+        selfName = "";
+      }
+
+      const now = Date.now();
+      const messageId = `${crypto.randomUUID()}@${self.split("@")[1] ?? "localhost"}`;
+      const raw = buildMime({
+        from: [{ name: selfName, email: self }],
+        to: [{ email: to }],
+        subject,
+        messageId,
+        inReplyTo: orig?.message_id ?? null,
+        date: new Date(now),
+        text: body,
+        // No Auto-Submitted / X- headers: this MIME is the HUMAN's draft, and
+        // the bytes stored here are the bytes their composer will send.
+      });
+      const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
+      const blobId = await store.putBlob(access.tenantId, access.accountId, buf);
+      const draftsMailbox = await store.ensureRoleMailbox(access.accountId, "drafts", "Drafts");
+      const emailId = `e_${crypto.randomUUID()}`;
+      await store.insertEmail(access.accountId, {
+        id: emailId,
+        blobId,
+        threadId: await store.resolveThreadId(access.accountId, orig?.message_id ?? null),
+        messageId,
+        inReplyTo: orig?.message_id ?? null,
+        subject,
+        from: [{ name: selfName, email: self }],
+        to: [{ email: to }],
+        cc: [],
+        bcc: [],
+        preview: body.slice(0, 256),
+        bodyText: body,
+        size: raw.byteLength,
+        receivedAt: now,
+        hasAttachment: false,
+        attachments: [],
+        mailboxIds: [draftsMailbox],
+        keywords: ["$draft", "$agent"],
+      });
+      return {
+        entries: [
+          { collection: "Email", created: [emailId], updated: [], destroyed: [] },
+          { collection: "Mailbox", created: [], updated: [draftsMailbox], destroyed: [] },
+        ],
+        // Reversible in the plainest way: the draft is a row, delete it.
+        undo: { action: "destroy-email", emailId },
       };
     }
 
