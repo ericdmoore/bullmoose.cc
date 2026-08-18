@@ -3,6 +3,7 @@ import { emitProposal } from "./proposals.js";
 import { composeBudgetExhausted, followupSubject, sanitizeComposedBody } from "./watchCompose.js";
 import {
   callWithFallback,
+  modelCallContext,
   chooseArm,
   invocationCost,
   type BindingConfig,
@@ -391,7 +392,13 @@ async function compose(
       { role: "user" as const, content: verbEvidence(email, text, req) },
     ];
     const { ordered, arm } = chooseArm(menu, job.id, cfg.frontier?.exploreRate ?? 0);
-    const { output, usage, used } = await callWithFallback(env, ordered, prompt, cfg.maxTokens ?? VERB_MAX_TOKENS);
+    const { output, usage, used } = await callWithFallback(
+      env,
+      ordered,
+      prompt,
+      cfg.maxTokens ?? VERB_MAX_TOKENS,
+      modelCallContext(job, cfg),
+    );
     const cost = await invocationCost(env, used, usage);
     const model = `${used.provider}/${used.model}`;
 
