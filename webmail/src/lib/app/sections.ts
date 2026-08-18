@@ -1,4 +1,4 @@
-// The nine sections, in order, with the reason each unbuilt one is dark.
+// The ten sections, in order, with the reason each unbuilt one is dark.
 //
 // ⚠️ THE ORDER IS A CLAIM, not a layout detail. The s07 devPlan's "What this is
 // NOT" section is explicit: this is a collaboration space for people and
@@ -11,6 +11,7 @@
 //   activity            — and what already happened in my name (s23)
 //   calendar            what is about to happen
 //   mail, contacts      the correspondence and the people in it
+//   notes               your own writing (s18 N1) — authored, not filed
 //   files               storage, deliberately NOT the front of the product
 //   search, settings    tools over the above, not nouns of their own
 //
@@ -35,6 +36,7 @@ export type SectionId =
   | "calendar"
   | "mail"
   | "contacts"
+  | "notes"
   | "files"
   | "search"
   | "settings";
@@ -128,6 +130,24 @@ export const SECTIONS: readonly Section[] = [
     // unindexed search and the CardDAV group gap — are rendered by the section
     // itself (lib/contacts/cards.ts, lib/contacts/groups.ts) rather than
     // duplicated into the nav where they would drift.
+    status: "live",
+  },
+  {
+    id: "notes",
+    label: "Notes",
+    href: "/notes",
+    // Live as of s18 N1 — the human-authored noun, and deliberately NOT the
+    // agent's margin commentary: an Annotation is a claim about your mail that
+    // you adjudicate (it renders beside the message, s18 A3); a Note is a
+    // document you author. Two entities, resolved explicitly (s18 devPlan,
+    // 2026-08-17), and the nav must not imply one place for both.
+    //
+    // It sits after contacts and ahead of files on the header comment's own
+    // logic: the correspondence, the people in it, then YOUR OWN writing — all
+    // of it before storage, because a note is authored rather than filed. What
+    // the realm cannot do it says on its own face (lib/notes/notes.ts: nothing
+    // federates, an @address does nothing) rather than in the nav, which would
+    // drift.
     status: "live",
   },
   {
