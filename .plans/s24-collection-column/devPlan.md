@@ -42,7 +42,7 @@ The four-panel generalises across **seven realms**; each is `Collection → List
 | Realm (nav icon) | CollectionColumn | List (Header) | Detail |
 |---|---|---|---|
 | **Agents** | agent groups — *Most Recent Actions*, … | the agents | agent detail |
-| **Approvals** | LIFECYCLE first — Waiting on you / on the agent / Hold tray / Decided — then saved views: Due soon, High cost, by agent, by realm | proposals | the proposal |
+| **Approvals** | LIVE lifecycle — Waiting on you / on the agent / Hold tray (**not** Decided — history is Activity's) — then saved views: Due soon, High cost, by agent, by realm | proposals | the proposal |
 | **Mail** | Inbox / folders / tags | messages | message |
 | **Ask** (s20 T5) | saved queries; grouped by date (Year › Month) | queries | the query + its conversation |
 | **Contacts** | groups — All / Family / Church / Cousins / Fantasy Football | contacts | contact card |
@@ -102,6 +102,21 @@ where the collection happens to be conversations and the *content* of a session 
 
 - **Watch the header height.** `AppTw.astro:75-76` hardcodes `h-16` / `4rem`; the `frame="surface"`
   calc (`h-[calc(100vh-4rem)]`) depends on it. A taller bar updates both.
+
+## Create is contextual too — the standardized [New] button
+
+Every surface hand-rolls its own create affordance — mail's Compose (`AppShell.tsx` `view="compose"`),
+Contacts' "New contact / New group", Calendar's "New event". Standardize it (Eric): **one T0 `Button`
+primitive, one placement, a contextual action** — the label and what it creates key off the active
+realm, exactly as the search bar does. *New message / New contact / New query / New event / …* So the
+top-of-realm affordances become a matched pair: **New** (create in this realm) and **search** (filter
+this realm). Placement: top of the CollectionColumn — "create in what I'm looking at" — which is where
+Contacts already puts it (least churn); the styling is the T0 `Button` primary variant, never ad-hoc
+again.
+
+> **Principle it rides on (Eric): the active UI shows what is LIVE; history is a realm, not a section.**
+> Decided/done/archived does not clutter a working surface — it lives in **Activity** (s23). This is why
+> `Decided` leaves the approvals queue, and the test for any future "history" section is the same.
 
 ## Provenance — every piece starts from a reference template
 
@@ -207,12 +222,13 @@ violation, and the class-swap discipline replaces it.
 
 ### T4 — Approvals promotes its status groups · *the full quad — the lifecycle IS its collection*
 
-Pull the four stacked `HeaderGroup`s (`ApprovalsQueue.tsx:345-370`) OUT of the header column into a
-`<CollectionColumn>` (Waiting on you / on the agent / Hold / Decided); selecting one filters the
-header column to that group. Turns Approvals from its current 2-pane (`22rem 1fr`) into the full
-rail + collection + header + detail. Under the four lifecycle states sit the saved views (Due soon,
-High cost, by agent, by realm; Decision 7). Last in the sequence, but confirmed — Approvals is its
-own realm, and the lifecycle it already renders IS the CollectionColumn.
+Pull the stacked `HeaderGroup`s (`ApprovalsQueue.tsx:345-370`) OUT of the header column into a
+`<CollectionColumn>` — but only the LIVE states: **Waiting on you / on the agent / Hold tray**.
+**Decided drops out** (Eric: history bloats a decision queue) — the retrospective is **Activity**'s
+realm (s23); the active UI shows only what needs deciding. Selecting a state filters the header column
+to it; under the three live states sit the saved views (Due soon, High cost, by agent, by realm;
+Decision 7). Turns Approvals from its 2-pane (`22rem 1fr`) into rail + collection + header + detail.
+Also **removes today's muted `Decided` HeaderGroup** from the live queue. Last, but confirmed.
 
 ### T5 — the contextual top-bar filter · *independent of T1–T4*
 
@@ -262,14 +278,20 @@ T5 (search) is otherwise independent. T4 (Approvals) is last, but confirmed (Dec
    (webmail-local), not a shared `packages/*` — it is Preact/Astro and webmail-only; the shared
    packages are backend/core. Promote to a package only if a second frontend ever appears.*
 7. ~~Where does Approvals live?~~ **RESOLVED (Eric): its own realm.** Its CollectionColumn leads with
-   the **lifecycle** — Waiting on you / on the agent / Hold tray / Decided (today's `HeaderGroup`s,
-   promoted out) — because a decision queue's spine is *does this need me now*. Under it sit a few
+   the **live lifecycle** — Waiting on you / on the agent / Hold tray (today's `HeaderGroup`s minus
+   Decided) — because a decision queue's spine is *does this need me now*. **Decided is dropped**:
+   history bloats the queue (Eric), and the retrospective belongs to **Activity** (s23), not here. Under it sit a few
    **saved views** (Due soon, High cost, by agent, by realm), the way Mail carries Inbox + folders +
    tags. The finer facets (model, exact cost) are the contextual bar's filter, not collections —
    **By Model is dropped as a collection** (a human decides by content, not by which LLM drafted it).
    Its overlap with **Agents** (pending = agent actions) and **Activity** (decided = the retrospective,
    s23) stays a cross-LINK — the same objects seen from a decision lens vs a staff lens vs a history
    lens — not a fold. T4 stands.
+
+8. **[New] placement + contextual action.** *Recommendation: top of the CollectionColumn, the T0
+   `Button` primary variant, label/action keyed off the realm (New message / contact / query /
+   event). Alternative slot: the top bar beside search. Standardize the COMPONENT and the
+   contextual behaviour regardless of the final position.*
 
 ### The realm roster vs the build
 
