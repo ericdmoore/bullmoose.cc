@@ -203,6 +203,24 @@ export function describeReason(reason: string): string {
   return reason;
 }
 
+// ── the cost figure (Eric 2026-08-18: µUSD on every approval) ─────────────
+
+/**
+ * How a proposal's cost renders, holding the s07 T5 honesty rule at the glass:
+ *   null  → "cost not recorded" — usage the provider never reported, or an
+ *           unpriceable model; NEVER a dollar figure.
+ *   0     → "free" — a carrier invocation (no model ran) or the Workers AI
+ *           allocation; an honest zero, distinct from unknown.
+ *   n > 0 → the µUSD figure, with the model that spent it when known.
+ */
+export function costLabel(p: Pick<ActionProposal, "costMicros" | "costModel">): string {
+  if (p.costMicros === null) return "cost not recorded";
+  if (p.costMicros === 0) return "free";
+  const usd = p.costMicros / 1_000_000;
+  const money = usd >= 0.01 ? `$${usd.toFixed(2)}` : `${p.costMicros.toLocaleString()} µ$`;
+  return p.costModel ? `${money} · ${p.costModel}` : money;
+}
+
 // ── one-line summaries ────────────────────────────────────────────────────
 
 /**

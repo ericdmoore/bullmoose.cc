@@ -160,6 +160,14 @@ export interface ActionProposal {
   /** The live invocation status — the read-model surface (arch.md §5). */
   invocationStatus: string;
   claimedAt: string | null;
+  /** s07 T5's frozen cost. null = "not recorded" (absent usage / unpriceable),
+   *  0 = genuinely free — the two must never collapse (the queue renders them
+   *  differently on purpose). */
+  costMicros: number | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  /** "provider/model" that produced it, when one did. */
+  costModel: string | null;
 }
 
 /**
@@ -207,6 +215,10 @@ export function parseProposal(raw: Record<string, unknown>, fallbackAccountId = 
       : [],
     invocationStatus: str(raw.invocationStatus) ?? "",
     claimedAt: str(raw.claimedAt),
+    costMicros: typeof raw.costMicros === "number" ? raw.costMicros : null,
+    tokensIn: typeof raw.tokensIn === "number" ? raw.tokensIn : null,
+    tokensOut: typeof raw.tokensOut === "number" ? raw.tokensOut : null,
+    costModel: str(raw.costModel),
   };
 }
 

@@ -34,6 +34,7 @@ import {
   describeReason,
   payloadText,
   rowAuthority,
+  costLabel,
   summarizeProposal,
   tierLabel,
   type ApprovalsAccount,
@@ -510,6 +511,7 @@ function HeaderGroup(props: {
                   </span>
                   {accounts.length > 1 ? <span>{accountLabel(accounts, p.accountId)}</span> : null}
                   {waited ? <span class="truncate">· {waited}</span> : null}
+                  {p.costMicros ? <span>· {costLabel({ costMicros: p.costMicros, costModel: null })}</span> : null}
                 </span>
               </button>
             </li>
@@ -788,6 +790,14 @@ function RowHead({ p, label }: { p: ActionProposal; label: string }) {
       {label ? <span class="pill apq-account">{label}</span> : null}
       <span class="pill">{p.kind}</span>
       <span class={`pill apq-tier-${p.tier}`}>{tierLabel(p.tier)}</span>
+      {/* the µUSD figure (Eric 2026-08-18): what this proposal's invocation
+          actually cost — "free" and "not recorded" stay distinct (s07 T5). */}
+      <span
+        class="pill apq-cost"
+        title={p.tokensIn !== null ? `${p.tokensIn} in / ${p.tokensOut} out tokens` : undefined}
+      >
+        {costLabel(p)}
+      </span>
       {p.status !== "pending" ? <span class={`pill apq-status-${p.status}`}>{p.status}</span> : null}
     </header>
   );
