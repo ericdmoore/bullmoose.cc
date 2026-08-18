@@ -1355,7 +1355,8 @@ async function applyProposal(
     }
 
     case "verb-answer":
-    case "verb-bring-in": {
+    case "verb-bring-in":
+    case "verb-compose": {
       // s20 T2 — the mail verbs. `Answer` and `Bring X into this` are the
       // human asking IN PLACE, on the message they are reading; the agent
       // worker (services/agent mailVerbs.ts) composed a draft and emitted this
@@ -1363,6 +1364,16 @@ async function applyProposal(
       // mailbox — the SAME write an approved `watch-followup` performs, which
       // is why both share `draftIntoDrafts` rather than growing a second
       // almost-identical draft path that could drift.
+      //
+      // s20 T3 adds `verb-compose` — the composer's intent mode — as a THIRD
+      // LABEL on this one case, not a fourth apply path. What approval does is
+      // byte-for-byte what it does for an answer (a draft in your own Drafts,
+      // same keywords, same undo), so a separate case would be a copy waiting
+      // to drift; but the KIND is separate because "answer" would be a lie on
+      // the approval row and in the decline taxonomy, and a kind is how the
+      // queue tells a person what they are looking at. Two things differ, and
+      // both are read off `row.kind` below: a compose NEVER threads, and it
+      // never inherits a `Re:` subject from its background message.
       //
       // TIER 1 and applied here, immediately. Nothing egresses: the draft is
       // the owner's, their composer sends it, and their own submission path
@@ -1396,7 +1407,12 @@ async function applyProposal(
             .bind(access.accountId, verbOrigId)
             .first<{ subject: string | null; message_id: string | null }>()
         : null;
-      const subject = str(payload.subject) ?? followupSubject(verbOrig?.subject ?? null, null);
+      // A compose carries its own subject (the model's, or one derived from
+      // the human's own sentence). If it somehow arrives without one the draft
+      // gets a BLANK subject for the human to write — never `Re: <the message
+      // it was standing next to>`, which would announce a reply that isn't.
+      const subject =
+        str(payload.subject) ?? (row.kind === "verb-compose" ? "" : followupSubject(verbOrig?.subject ?? null, null));
 
       // Whose voice: the account's primary sending identity (may_delete = 0
       // sorts first), and the approver's own login name only as the last
@@ -1414,8 +1430,13 @@ async function applyProposal(
         selfName,
         // A forward starts a message; everything else continues the
         // conversation it came from. Threading a forward `In-Reply-To` the
-        // original would file it under a thread it is not part of.
-        inReplyTo: str(payload.mode) === "forward" ? null : (verbOrig?.message_id ?? null),
+        // original would file it under a thread it is not part of — and the
+        // same is true of a compose, whose subject row may point at the most
+        // recent exchange with the recipient purely as BACKGROUND. "Ask Sergio
+        // about selling assembled boards" is a new ask, not a reply to
+        // whatever you last said to each other.
+        inReplyTo:
+          row.kind === "verb-compose" || str(payload.mode) === "forward" ? null : (verbOrig?.message_id ?? null),
       });
     }
 
@@ -1549,9 +1570,9 @@ async function applyProposal(
 }
 
 /**
- * Write one DRAFT into the account's Drafts mailbox — the application three
+ * Write one DRAFT into the account's Drafts mailbox — the application four
  * approved kinds share (`watch-followup` since s20 wave 3, `verb-answer` and
- * `verb-bring-in` since T2).
+ * `verb-bring-in` since T2, `verb-compose` since T3).
  *
  * All three end in the same place for the same reason: the artifact belongs to
  * the HUMAN, not to a binding. Nothing relays, so no `assertOutboundAllowed`

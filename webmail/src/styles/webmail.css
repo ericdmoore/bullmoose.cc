@@ -972,6 +972,110 @@ code {
   color: var(--fg-muted);
   font-size: 12.5px;
 }
+
+/* ── compose → intent (s20 T3) ────────────────────────────────────────────
+   Two modes on one surface. The mode buttons read as a segmented control and
+   the classic editor is always one of them: intent mode is a door, never a
+   replacement. */
+.composer-modes {
+  display: flex;
+  gap: 6px;
+}
+.composer-mode {
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+.composer-mode.is-on {
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--fg-muted);
+}
+.intent-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.intent-label {
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.intent-box {
+  min-height: 84px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  resize: vertical;
+}
+.intent-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.intent-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.intent-row-label {
+  width: 64px;
+  flex: none;
+  color: var(--fg-muted);
+  font-size: 13px;
+  padding-top: 4px;
+}
+.intent-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.intent-evidence {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12.5px;
+}
+.intent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.intent-chip {
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  text-align: left;
+}
+.intent-chip.is-on {
+  background: var(--accent-soft);
+  border-color: var(--fg-muted);
+}
+.intent-inline-input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 5px 10px;
+  font: inherit;
+  flex: 1;
+  min-width: 0;
+}
+.intent-note {
+  margin: 0;
+}
 .link-button {
   border: none;
   background: none;

@@ -165,6 +165,66 @@ describe("the cloud drain treats an on-demand invocation like a mail-triggered o
     expect(drafts.n).toBe(2);
   });
 
+  // s20 T3 — the whole seam in one pass: the composer's ask, created through
+  // the REAL JMAP door with NO message, drained by the REAL worker, landing as
+  // a `verb-compose` proposal. The dispatch sits above `if (!job.email_id)`,
+  // and without it this row would come back "no email context" one cycle later
+  // — which is exactly what the door used to refuse it for.
+  it("drains a no-email compose ask to a verb-compose proposal", async () => {
+    const s = await scaffold();
+    const registry = new MethodRegistry<RequestContext>();
+    registerAgentMethods(registry);
+    const ctx: RequestContext = {
+      env: s.w.env,
+      principal: {
+        username: "emily@login.example",
+        scopes: ["read", "draft"],
+        accounts: [{ accountId: ACCOUNT, tenantId: TENANT, name: "Emily" }],
+      },
+    };
+    const created = (await registry.get("AgentInvocation/set")!(
+      {
+        accountId: ACCOUNT,
+        create: {
+          c: {
+            bindingName: "emily",
+            params: {
+              verb: "compose",
+              person: "sergio@boards.example",
+              intent: "ask Sergio whether he's comfortable with me selling assembled boards",
+              tone: "supportive",
+              constraints: ["no big commitment"],
+              recipientVia: "address-book+history",
+            },
+          },
+        },
+      },
+      ctx,
+    )) as { created: Record<string, { id: string }>; notCreated: Record<string, unknown> };
+    expect(created.notCreated).toEqual({});
+    const composeId = created.created.c!.id;
+
+    const { handled } = await s.drain();
+    expect(handled).toBe(1);
+    expect(s.statusOf(composeId)!.status).toBe("done");
+
+    const proposal = s.w.db.query<{ kind: string; tier: number; payload_json: string; subject_json: string }>(
+      `SELECT kind, tier, payload_json, subject_json FROM agent_proposals WHERE account_id = ? AND id = ?`,
+      ACCOUNT,
+      composeId,
+    )[0]!;
+    expect(proposal.kind).toBe("verb-compose");
+    expect(proposal.tier).toBe(1);
+    expect(JSON.parse(proposal.subject_json)).toEqual({ realm: "AgentInvocation", objectId: composeId });
+    const payload = JSON.parse(proposal.payload_json);
+    expect(payload.to).toBe("sergio@boards.example");
+    expect(payload.body).toBeTruthy();
+    expect(payload.recipientVia).toBe("address-book+history");
+    // Nothing egressed: a compose ends at a proposal, and approving it ends at
+    // a draft.
+    expect(s.w.submit.calls).toEqual([]);
+  });
+
   it("HOLDS a pending invocation against a disabled binding (the drain's enabled gate)", async () => {
     const s = await scaffold();
     // Queued while enabled, then the binding was disabled (bind_off). The drain

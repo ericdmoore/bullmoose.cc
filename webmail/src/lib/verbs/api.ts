@@ -23,11 +23,13 @@
 // the margin does: in place, quietly, with the mail still readable behind it.
 
 import type { JmapClient } from "../jmap/JmapClient";
+import type { RecipientVia } from "../intent/resolve";
 import type { Email } from "../mail/types";
 import { describeRefusal } from "../mail/triage";
 import {
   VERB_BINDING_NAME,
   askSentMessage,
+  composeAskedMessage,
   isAddress,
   watchArmedMessage,
   watchSpecFor,
@@ -162,6 +164,91 @@ export async function askAgent(
   }
   const err = result.notCreated?.v;
   return refused(notCreatedSentence(err));
+}
+
+/** An intent, ready to send: what the human wants to happen, to an address
+ *  they have already looked at. */
+export interface ComposeAsk {
+  /** The resolved recipient. An ADDRESS — this door never carries a name. */
+  to: string;
+  /** What the human typed into "what do you want to happen?", verbatim. */
+  intent: string;
+  tone?: string;
+  constraints?: string[];
+  /** How `to` was arrived at, so the approval row can repeat it. */
+  recipientVia?: RecipientVia;
+  /** The most recent message between you, when the lookup found one. Context
+   *  for the draft, never a parent: a compose does not thread (the apply case
+   *  in `services/jmap` enforces that, not this). */
+  anchorEmailId?: string;
+}
+
+/**
+ * The composer's intent mode (s20 T3) — the third door into the SAME machinery
+ * the message-view verbs use: an ordinary `AgentInvocation`, run by
+ * `services/agent mailVerbs.ts`, whose output is an ordinary tier-1 proposal
+ * that applies into your own Drafts.
+ *
+ * Two refusals happen here, before any round trip, and both are the same rule
+ * `bring-in` states: **this door never sends a name.** A recipient that is not
+ * an address means the resolution was ambiguous or empty, and the answer to
+ * that is to ask the human, not to spend money guessing. The composer will not
+ * even offer the button in that state; this is the belt.
+ */
+export async function askCompose(client: JmapClient, accountId: string, ask: ComposeAsk): Promise<VerbOutcome> {
+  const to = ask.to.trim();
+  if (!isAddress(to)) {
+    return refused("Which address should this go to? I would rather ask than guess.");
+  }
+  const intent = ask.intent.trim();
+  if (!intent) return refused("Tell me what you want to happen, and I will draft it.");
+
+  let response;
+  try {
+    [response] = await client.request([
+      [
+        "AgentInvocation/set",
+        {
+          accountId,
+          create: {
+            v: {
+              bindingName: VERB_BINDING_NAME,
+              // Only when the lookup found one. `AgentInvocation/set` create
+              // requires an emailId for every verb EXCEPT this one, precisely
+              // because a new message usually has no source (services/jmap
+              // agent.ts, `NO_EMAIL_VERBS`).
+              ...(ask.anchorEmailId ? { emailId: ask.anchorEmailId } : {}),
+              note: intent.slice(0, 300),
+              params: {
+                verb: "compose",
+                person: to,
+                intent,
+                ...(ask.tone ? { tone: ask.tone } : {}),
+                ...(ask.constraints && ask.constraints.length > 0 ? { constraints: ask.constraints } : {}),
+                ...(ask.recipientVia ? { recipientVia: ask.recipientVia } : {}),
+              },
+            },
+          },
+        },
+        "s0",
+      ],
+    ]);
+  } catch (err) {
+    return refused(err instanceof Error ? err.message : String(err));
+  }
+  if (!response) return refused("no response from the server");
+  if (response[0] === "error") {
+    const detail = response[1] as { type?: string; description?: string };
+    const refusal = describeRefusal(detail, ["draft"]);
+    return refused(unknownMethodSentence(detail) ?? refusal.message, refusal.type === "forbidden");
+  }
+
+  const result = response[1] as {
+    created?: Record<string, unknown>;
+    notCreated?: Record<string, { type?: string; description?: string }>;
+  };
+  if (result.created && "v" in result.created) return { ok: true, message: composeAskedMessage(to) };
+  return refused(notCreatedSentence(result.notCreated?.v));
 }
 
 /**

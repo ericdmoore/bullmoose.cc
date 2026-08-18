@@ -59,9 +59,9 @@ function harness() {
 function seedVerb(
   h: ReturnType<typeof harness>,
   id: string,
-  kind: "verb-answer" | "verb-bring-in",
+  kind: "verb-answer" | "verb-bring-in" | "verb-compose",
   payload: Record<string, unknown>,
-  o: { costMicros?: number | null; provider?: string | null } = {},
+  o: { costMicros?: number | null; provider?: string | null; subject?: { realm: string; objectId: string } } = {},
 ) {
   h.w.db.seed("agent_invocations", [
     {
@@ -85,7 +85,7 @@ function seedVerb(
       account_id: ACCOUNT,
       kind,
       tier: 1,
-      subject_json: JSON.stringify({ realm: "Email", objectId: "e_orig" }),
+      subject_json: JSON.stringify(o.subject ?? { realm: "Email", objectId: "e_orig" }),
       payload_json: JSON.stringify(payload),
       rationale: "you asked me to",
       evidence_json: JSON.stringify([{ realm: "Email", objectId: "e_orig" }]),
@@ -426,5 +426,146 @@ describe("no producer is left without an applier", () => {
     h.w.db.query(`UPDATE agent_proposals SET kind = 'verb-schedule' WHERE id = 'inv_x'`);
     const res = await h.set({ update: { inv_x: { status: "approved" } } });
     expect(res.notUpdated["inv_x"]!.description).toContain("not applied in this slice");
+  });
+});
+
+describe("verb-compose — the composer's intent mode applies into your own Drafts", () => {
+  // s20 T3. The THIRD label on the verbs' one apply case, not a fourth apply
+  // path: what approval does here is byte-for-byte what it does for an answer,
+  // which is why there is no second `draftIntoDrafts` to drift. Two things
+  // differ, and both are asserted below: a compose never threads, and it never
+  // inherits a `Re:` subject from the message it stood next to.
+  it("approve → a draft to the resolved recipient, in the owner's voice, with an undo handle", async () => {
+    const h = harness();
+    seedIdentity(h);
+    seedVerb(
+      h,
+      "inv_c1",
+      "verb-compose",
+      {
+        verb: "compose",
+        to: "sergio@boards.example",
+        subject: "Selling assembled boards",
+        body: "Sergio — would you mind if I sold a few assembled boards?",
+        composed: "model",
+        tone: "supportive",
+        constraints: ["no big commitment"],
+        recipientVia: "address-book+history",
+        ask: "ask Sergio whether he's comfortable with me selling assembled boards",
+      },
+      // A compose usually acts on no message at all — the invocation itself is
+      // its subject, and the apply path must not go looking for an email.
+      { subject: { realm: "AgentInvocation", objectId: "inv_c1" } },
+    );
+
+    const res = await h.set({ update: { inv_c1: { status: "approved" } } });
+    expect(res.notUpdated).toEqual({});
+
+    const prop = proposalRow(h, "inv_c1");
+    expect(prop.status).toBe("approved");
+    const decision = JSON.parse(prop.decision_json!);
+    expect(decision.undo).toEqual({ action: "destroy-email", emailId: expect.any(String) });
+
+    const drafts = draftRows(h);
+    expect(drafts).toHaveLength(1);
+    const d = drafts[0]!;
+    expect(d.subject).toBe("Selling assembled boards");
+    expect(d.preview).toContain("assembled boards");
+    expect(JSON.parse(d.from_json)[0].email).toBe(OWNER);
+    expect(JSON.parse(d.to_json)[0].email).toBe("sergio@boards.example");
+    expect(d.in_reply_to).toBeNull();
+    expect(keywordsOf(h, d.id)).toEqual(expect.arrayContaining(["$draft", "$agent"]));
+
+    const mailbox = h.w.db.query<{ role: string }>(
+      `SELECT m.role FROM mailboxes m
+        JOIN email_mailboxes em ON em.mailbox_id = m.id AND em.account_id = m.account_id
+       WHERE em.email_id = '${d.id}'`,
+    )[0]!;
+    expect(mailbox.role).toBe("drafts");
+
+    // T3 ends at a draft. Nothing relayed, here or anywhere on this path.
+    expect(h.w.submit.calls).toEqual([]);
+  });
+
+  it("NEVER threads into the message it used as background", async () => {
+    const h = harness();
+    seedIdentity(h);
+    seedOriginal(h);
+    seedVerb(h, "inv_c2", "verb-compose", {
+      verb: "compose",
+      to: "sergio@example.com",
+      subject: "Selling assembled boards",
+      body: "a new ask",
+    });
+
+    await h.set({ update: { inv_c2: { status: "approved" } } });
+
+    const d = draftRows(h)[0]!;
+    // The proposal's subject ref IS `e_orig` here — the last exchange with
+    // them — and it is background, not a parent. Threading it would file a new
+    // ask under an old conversation and announce a reply that isn't one.
+    expect(d.in_reply_to).toBeNull();
+    expect(d.thread_id).not.toBe("t_orig");
+    expect(d.subject).toBe("Selling assembled boards");
+  });
+
+  it("a subject-less compose gets a BLANK subject for the human, never `Re:` the background", async () => {
+    const h = harness();
+    seedIdentity(h);
+    seedOriginal(h);
+    seedVerb(h, "inv_c3", "verb-compose", { verb: "compose", to: "sergio@example.com", body: "a new ask" });
+
+    await h.set({ update: { inv_c3: { status: "approved" } } });
+
+    expect(draftRows(h)[0]!.subject).toBe("");
+  });
+
+  it("the approver's EDIT is what lands — the recipient included", async () => {
+    const h = harness();
+    seedIdentity(h);
+    seedVerb(
+      h,
+      "inv_c4",
+      "verb-compose",
+      { verb: "compose", to: "sergio.vidal@old.example", subject: "Boards", body: "the agent's words" },
+      { subject: { realm: "AgentInvocation", objectId: "inv_c4" } },
+    );
+
+    // The whole point of showing the resolution: when it IS wrong, correcting
+    // it is an ordinary edit-then-approve, and the agent's version is retained
+    // beside it as the feedback signal.
+    await h.set({
+      update: {
+        inv_c4: {
+          status: "approved",
+          editedPayload: {
+            verb: "compose",
+            to: "sergio.ramos@boards.example",
+            subject: "Boards",
+            body: "my words",
+          },
+        },
+      },
+    });
+
+    const d = draftRows(h)[0]!;
+    expect(JSON.parse(d.to_json)[0].email).toBe("sergio.ramos@boards.example");
+    expect(d.preview).toBe("my words");
+    const kept = h.w.db.query<{ payload_json: string; edited_payload_json: string }>(
+      `SELECT payload_json, edited_payload_json FROM agent_proposals WHERE id = 'inv_c4'`,
+    )[0]!;
+    expect(JSON.parse(kept.payload_json).to).toBe("sergio.vidal@old.example");
+    expect(JSON.parse(kept.edited_payload_json).to).toBe("sergio.ramos@boards.example");
+  });
+
+  it("a payload with no recipient fails IN PLACE and stays declinable — it cannot wedge", async () => {
+    const h = harness();
+    seedIdentity(h);
+    seedVerb(h, "inv_c5", "verb-compose", { verb: "compose", subject: "Boards", body: "words" });
+
+    const res = await h.set({ update: { inv_c5: { status: "approved" } } });
+    expect(res.notUpdated.inv_c5?.type).toBe("invalidProperties");
+    expect(proposalRow(h, "inv_c5").status).toBe("pending");
+    expect(draftRows(h)).toHaveLength(0);
   });
 });
