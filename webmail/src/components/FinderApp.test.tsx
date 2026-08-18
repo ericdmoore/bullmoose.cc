@@ -2,6 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { render } from "preact-render-to-string";
 import FinderApp, { FinderChips, HitDetail, RefineBar, ThreadGroups } from "./FinderApp";
+import CollectionColumn from "./CollectionColumn";
+import { buildFinderCollections } from "../lib/finder/collections";
 import type { FinderHit } from "../lib/finder/run";
 import { newSession, refine } from "../lib/finder/session";
 import { groupByThread } from "../lib/finder/threads";
@@ -129,5 +131,54 @@ describe("FinderApp shell", () => {
   it("renders the connecting state before any client resolves (effects do not run in SSR)", () => {
     const html = render(<FinderApp />);
     expect(html).toContain("Connecting…");
+  });
+});
+
+/**
+ * The empty Finder is the FIRST thing a new account sees on `/search`, and for
+ * a while it greeted them with "No saved que…", "No finds y…", "No dat…" — the
+ * label and its hint fighting over one line inside a `w-56` column. An
+ * explanation nobody can finish reading is worse than no explanation, and it
+ * made the product look broken at the exact moment it was working correctly.
+ *
+ * These are the REAL rows (`buildFinderCollections` with nothing in it, fed to
+ * the REAL column), asserted whole: each label appears as its own complete
+ * text node, each hint as its own, neither clipped by the other. The layout
+ * that guarantees it is asserted in `CollectionColumn.test.tsx`; this holds
+ * the Finder's three specific strings to it, because a future hint two words
+ * longer must not be able to eat a label again.
+ */
+describe("the empty Finder reads completely at the real column width", () => {
+  const html = render(
+    <CollectionColumn
+      title="Finder"
+      groups={buildFinderCollections({ saved: [], sessions: [], dateGroups: [] })}
+      onSelect={() => {}}
+    />,
+  );
+
+  it("every empty-state label is a whole text node, not a truncated fragment", () => {
+    for (const label of ["No saved queries", "No finds yet", "No dates"]) {
+      expect(html, label).toContain(`<span class="truncate">${label}</span>`);
+    }
+  });
+
+  it("every hint renders whole, on its own line under its label", () => {
+    for (const [label, hint] of [
+      ["No saved queries", "save a find to keep it"],
+      ["No finds yet", "search above to start one"],
+      ["No dates", "dates come from the current find"],
+    ]) {
+      expect(html, hint).toMatch(
+        new RegExp(`<span class="truncate">${label}</span><span class="[^"]*">${hint}</span></span>`),
+      );
+    }
+  });
+
+  it("each one is still a disabled row carrying its reason on `title` — the idiom is intact", () => {
+    expect(html).toContain('title="save a find to keep it"');
+    expect(html).toContain('title="search above to start one"');
+    expect(html).toContain('title="dates come from the current find"');
+    expect(html).toContain("cursor-not-allowed");
   });
 });

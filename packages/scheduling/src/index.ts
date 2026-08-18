@@ -79,6 +79,8 @@ export {
 export {
   backfillEnvelopeExhaustedSql,
   backfillEnvelopeSql,
+  bindingDisabled,
+  bindingDisabledSql,
   bindingEscalationWindowMs,
   bindingMedianCostMicros,
   budgetExhaustedSql,

@@ -134,11 +134,19 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
    * a `send`- or `delete`-only token does NOT satisfy `draft`.
    *
    * SAFETY INTERLOCK (008 kill switch): create REFUSES a binding whose
-   * `enabled = 0`. Both drain paths gate on `enabled` and neither cancels a
-   * queued row, so an invocation against a disabled binding would sit `pending`
-   * forever — a held black hole. Handing a human an on-demand trigger while
-   * ignoring the off switch is the ordering hazard 007 was sequenced after 008
-   * to avoid; the refusal is the interlock.
+   * `enabled = 0`. Nothing cancels a queued row, so an invocation against a
+   * disabled binding would sit `pending` forever — a held black hole. Handing
+   * a human an on-demand trigger while ignoring the off switch is the ordering
+   * hazard 007 was sequenced after 008 to avoid; the refusal is the interlock.
+   *
+   * The CLAIM honors the same switch (s26 T2 follow-up): `claimGateSql` folds
+   * `bindingDisabledSql`, outside the `isFree` short-circuit, so the rows
+   * queued BEFORE a human flipped the switch stop being claimable too — by the
+   * free fleet claimant as much as by the paid cloud. That is what makes
+   * Settings→Agents' "Disabling holds queued work; nothing is cancelled" true
+   * of both halves: refused, not failed, and claimable again the moment the
+   * binding is re-enabled. See `bindingDisabledSql` for why an off switch is
+   * not shaped like a budget.
    *
    * MANDATORY RULE 2 (s17 (d)): an `agent`-marked bearer may not CREATE without
    * presenting `invocationToken` — the credential its own claim returned — and

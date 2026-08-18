@@ -5,6 +5,7 @@ import { Mailstore } from "@bullmoose/mailstore";
 import {
   ESCALATION_WINDOW_MAX_MS,
   ESCALATION_WINDOW_NO_HISTORY_MS,
+  bindingDisabledSql,
   bindingEscalationWindowMs,
   budgetMonthStartMs,
   claimFitBinds,
@@ -455,14 +456,20 @@ async function claimOverdue(env: Env, claimant: ClaimantIdentity): Promise<numbe
       .all<Job>();
 
     for (const job of results) {
-      // The guarded claim, with the two surviving terms folded in — the
+      // The guarded claim, with the surviving terms folded in — the
       // pending→running transition itself refuses a row that got stamped
-      // `pinned`, or had its requirements raised, between SELECT and UPDATE.
+      // `pinned`, had its requirements raised, or whose binding was SWITCHED
+      // OFF between SELECT and UPDATE. The SELECT above already joins on
+      // `b.enabled = 1`; repeating it here is the same discipline every other
+      // surviving term follows, and the window it closes is real — a human
+      // hitting Disable while a sweep is mid-batch is precisely when they
+      // most mean it.
       const now = Date.now();
       const claim = await env.DB.prepare(
         `UPDATE agent_invocations SET status = 'running', claimed_at = ?, claimant_free = ?, claimant_caps_json = ?
          WHERE account_id = ? AND id = ? AND status = 'pending'
            AND due_at IS NOT NULL AND due_at <= ?
+           AND NOT ${bindingDisabledSql("agent_invocations")}
            AND ${notPinnedSql("agent_invocations")}
            AND ${claimFitSql("agent_invocations")}
            AND ${needsSatisfiedSql("agent_invocations")}`,

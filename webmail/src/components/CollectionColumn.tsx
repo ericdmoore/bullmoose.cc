@@ -22,8 +22,8 @@ import { stepSelection, toggleExpansion, type CollectionGroup, type CollectionIt
  * s25 T2: one source, three renderings. The tree markup lives in
  * `<CollectionTree>` below so this column and the bottom `<CollectionSheet>`
  * render literally the same rows — inline-expandable children (one level),
- * and disabled rows greyed WITH their reason (the planned-section idiom:
- * never a dead row).
+ * and disabled rows greyed WITH their reason, stacked under the label (the
+ * planned-section idiom: never a dead row, and never half of one either).
  *
  * CSP: collapse, expansion and every responsive behaviour are discrete class
  * swaps (w-56 ↔ w-10, rotate-90, max-lg:*), never inline style. The [New]
@@ -75,25 +75,42 @@ const DEPTH_PAD = ["", "pl-4", "pl-8", "pl-12", "pl-16"] as const;
 
 const depthPad = (depth: number | undefined) => DEPTH_PAD[Math.min(depth ?? 0, DEPTH_PAD.length - 1)];
 
-/** The row's inner content — leading icon, label, count/note badge. Shared by
- *  every row shape below. */
+/**
+ * The row's inner content — leading icon, label, count/note badge. Shared by
+ * every row shape below.
+ *
+ * A disabled row's REASON goes UNDER its label, not beside it, and that is a
+ * fix rather than a preference. Side by side, the two are truncating flex
+ * siblings inside a `w-56` column: at the real width there is room for about
+ * one of them, so flexbox shrinks both and the Finder's empty states read
+ * "No saved que… save a find to k…" — a planned-row idiom that renders as two
+ * fragments says less than a dead row would. Stacked, the label gets the
+ * column's full width and the hint wraps beneath it in the smaller, muted
+ * type, which is what it always meant to be. `CollectionColumn.test.tsx`
+ * asserts the structure, since the collision is invisible to a DOM query.
+ */
 function RowBody({ item, extraDepth = 0 }: { item: CollectionItem; extraDepth?: number }) {
+  const hint = item.disabled && item.reason ? item.reason : undefined;
   return (
     <>
-      <span class={`flex min-w-0 grow items-center gap-x-1.5 ${depthPad((item.depth ?? 0) + extraDepth)}`}>
+      <span
+        class={`flex min-w-0 grow gap-x-1.5 ${hint ? "items-start" : "items-center"} ${depthPad((item.depth ?? 0) + extraDepth)}`}
+      >
         {item.icon ? <item.icon class="size-4 shrink-0 text-gray-400" /> : null}
-        <span class="min-w-0 truncate">{item.label}</span>
-        {item.disabled && item.reason ? (
-          <span class="min-w-0 truncate text-xs font-normal text-gray-400 dark:text-gray-500">{item.reason}</span>
-        ) : null}
+        <span class="flex min-w-0 grow flex-col">
+          <span class="truncate">{item.label}</span>
+          {hint ? <span class="text-xs font-normal break-words text-gray-400 dark:text-gray-500">{hint}</span> : null}
+        </span>
       </span>
       {item.count ? <Badge>{item.count}</Badge> : item.note ? <Badge>{item.note}</Badge> : null}
     </>
   );
 }
 
-/** A greyed planned row (s25 T2): disabled, its reason visible beside the
- *  label AND on `title` — never a dead row, never a hidden one. A native
+/** A greyed planned row (s25 T2): disabled, its reason visible UNDER the
+ *  label AND on `title` — never a dead row, never a hidden one, and (since
+ *  the Finder's empty states proved it) never half a row either: see
+ *  `RowBody` for why the hint stacks rather than sits beside. A native
  *  `disabled` button, so selection and keyboard order skip it for free. */
 function DisabledRow({ item, extraDepth = 0 }: { item: CollectionItem; extraDepth?: number }) {
   return (

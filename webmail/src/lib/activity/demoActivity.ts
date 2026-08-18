@@ -2,10 +2,12 @@
 // installer (the `demoHome.ts` pattern) rather than cloning its fixtures:
 //
 //   • decided proposals — `installApprovalsDemo`'s own history rows (approved
-//     after edit, declined, declined under the retired taxonomy, expired),
-//     plus ONE new fixture: a yanked reply, because the yank verb landed
-//     server-side (s03.D T2) and this page is the only surface that renders
-//     the outcome.
+//     after edit, declined, declined under the retired taxonomy, expired, and
+//     the yanked reply). This module used to append a yanked fixture of its
+//     own, because the approvals set had none and this page renders the
+//     outcome; that fixture now lives WITH its realm (`demoApprovals.ts`,
+//     `ap-yanked-boards`) where `/approvals?demo=1` can show it too, and
+//     composing beats cloning exactly as this header always said.
 //   • fired watches — the `Watch/query|get` handlers the fake client does not
 //     otherwise carry, mirroring the server's semantics warts included
 //     (services/jmap/src/methods/watch.ts): armed-only is the DEFAULT view, a
@@ -15,11 +17,9 @@
 // parallel section work never edits one shared fake.
 
 import type { FakeJmapClient, MethodHandler } from "../jmap/FakeJmapClient";
-import { demoProposals, installApprovalsDemo, type ApprovalsDemoBackend } from "../approvals/demoApprovals";
-import type { ActionProposal } from "../approvals/types";
+import { installApprovalsDemo, type ApprovalsDemoBackend } from "../approvals/demoApprovals";
 
 const ACCOUNT = "acct-fake";
-const USERNAME = "fake@bullmoose.test";
 
 export interface ActivityDemoOptions {
   /** Anchor for the fixtures' clocks; defaults to wall time. */
@@ -39,51 +39,6 @@ export interface DemoWatchRow extends Record<string, unknown> {
   createdAt: number;
   firedAt: number | null;
   proposalId: string | null;
-}
-
-/**
- * The yanked row: a tier-2 reply approved into the hold tray, then pulled
- * back inside the window. `status: "yanked"` does not fit the approvals
- * client type on purpose — that queue never renders one — so the cast below
- * is the wire being more honest than the narrow type, exactly the case
- * `parseDecided` (types.ts) exists for.
- */
-export function demoYankedProposal(now: number): ActionProposal {
-  const iso = (ms: number): string => new Date(ms).toISOString();
-  const hour = 3600_000;
-  return {
-    id: "ap-yanked-sergio",
-    accountId: ACCOUNT,
-    agent: "Emily",
-    kind: "reply-draft",
-    tier: 2,
-    subject: { realm: "Email", objectId: "e-boards" },
-    payload: {
-      to: "sergio@example.test",
-      self: "eric@bullmoose.test",
-      subject: "Re: Board order — confirming quantities",
-      text: "Confirming 40 boards at the quoted price. Go ahead.\n\n— Eric",
-      mode: "send",
-    },
-    editedPayload: null,
-    rationale: "Sergio asked for written confirmation; the thread has the quote and the quantities.",
-    evidence: [{ realm: "Email", objectId: "e-boards", note: "the quote being confirmed" }],
-    status: "yanked",
-    decision: { by: USERNAME, note: "quantities were wrong — pulled it back to recount" },
-    createdAt: iso(now - 8 * hour),
-    decidedAt: iso(now - 6 * hour),
-    holdUntil: iso(now - 6 * hour + 5 * 60_000),
-    expiresAt: iso(now - 6 * hour),
-    dueAt: null,
-    question: null,
-    amendments: [],
-    invocationStatus: "done",
-    claimedAt: null,
-    costMicros: 1730,
-    tokensIn: 1204,
-    tokensOut: 288,
-    costModel: "openrouter/minimax/minimax-m3",
-  } as unknown as ActionProposal;
 }
 
 /**
@@ -151,10 +106,9 @@ export interface ActivityDemoBackend {
 /** Attach both sources to a running demo client. */
 export function installActivityDemo(client: FakeJmapClient, opts: ActivityDemoOptions = {}): ActivityDemoBackend {
   const now = opts.now ?? Date.now();
-  const approvals = installApprovalsDemo(client, {
-    now,
-    proposals: [...demoProposals(now), demoYankedProposal(now)],
-  });
+  // No `proposals` override: the approvals realm owns its own fixture set,
+  // yanked row included, and this page reads whatever it holds.
+  const approvals = installApprovalsDemo(client, { now });
   const watches = demoWatches(now);
 
   const byDeadlineAsc = (a: DemoWatchRow, b: DemoWatchRow): number =>

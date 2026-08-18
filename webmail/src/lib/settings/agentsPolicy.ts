@@ -28,9 +28,17 @@
 import { microsLabel, type AgentListRow } from "../agents/dossier";
 
 export const DISCRIMINATOR_QUESTION = "If this agent were deleted, would the value still mean anything?";
-export const DISCRIMINATOR_YES = "Yes → it belongs here in Settings: platform policy that outlives any one agent.";
+// The connector is an EM DASH, not the U+2192 arrow the prose first reached
+// for. The arrow renders as a missing-glyph box (□) in the section's font
+// stack — `system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`, none of
+// which is guaranteed to carry U+2192 — so the live page read "Yes □ it
+// belongs here". The em dash is in every one of those faces, already carries
+// the rest of this voice (see the sentence below and the section's own help
+// text), and says the same thing. `agentsPolicy.test.ts` pins it so the arrow
+// cannot creep back.
+export const DISCRIMINATOR_YES = "Yes — it belongs here in Settings: platform policy that outlives any one agent.";
 export const DISCRIMINATOR_NO =
-  "No → it lives on the agent's own page in the Agents realm, where changing it is a verb — " +
+  "No — it lives on the agent's own page in the Agents realm, where changing it is a verb: " +
   "swap model, set budget, enable or disable.";
 
 /** Mirror of provisionExtractor's default `budgetMicros` (µUSD). */

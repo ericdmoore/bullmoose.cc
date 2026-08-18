@@ -68,6 +68,33 @@ describe("the fixture set covers what the task needs drivable", () => {
   it("every row carries evidence — what the agent looked at", () => {
     for (const p of rows) expect(p.evidence.length, p.id).toBeGreaterThan(0);
   });
+
+  it("has a YANKED row — the tray's retraction, previously unreachable in demo mode", () => {
+    // The set went `held` → the two verdicts with nothing in between, so
+    // `yanked` was a terminal state every history surface claimed to render
+    // and no demo visitor could ever produce. One fixture makes it a thing you
+    // can look at instead of a branch that only production data exercises.
+    const yanked = rows.filter((p) => p.status === "yanked");
+    expect(yanked.map((p) => p.id)).toEqual(["ap-yanked-boards"]);
+    const row = yanked[0]!;
+    // A human decided, so the record names them — and it is a RETRACTION, not
+    // a decline: no reason from the decline enum belongs on it.
+    expect(row.decision?.by).toBe("fake@bullmoose.test");
+    expect(row.decision?.reason).toBeUndefined();
+    expect(row.decidedAt).not.toBeNull();
+    // Retracted INSIDE the window: the hold had not yet closed when it was
+    // pulled, which is what makes "nothing was sent" true of this row.
+    expect(Date.parse(row.decidedAt!)).toBeLessThan(Date.parse(row.holdUntil!));
+    // …and by now the window is long shut, so it reads as history, not tray.
+    expect(rowClocks(row, NOW).holdRemainingMs ?? 0).toBeLessThanOrEqual(0);
+  });
+
+  it("every terminal state the enum names is now demonstrable without production data", () => {
+    const present = new Set(rows.map((p) => p.status));
+    for (const status of ["approved", "rejected", "expired", "yanked"]) {
+      expect(present, status).toContain(status);
+    }
+  });
 });
 
 describe("server-wart mirrors (actionProposal.ts)", () => {

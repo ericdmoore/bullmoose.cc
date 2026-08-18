@@ -10,7 +10,7 @@
 // refused unless its origin is the vault's and demonstrably not the site's.
 // The refusal is a thrown error, not a warning: the failure mode being designed
 // against is a misconfiguration that silently routes a credential through
-// `mail.bullmoose.cc`, and a console that "degrades gracefully" there has
+// `app.bullmoose.cc`, and a console that "degrades gracefully" there has
 // already leaked.
 //
 // Why this can be a *client-side* control at all: the browser picks the URL. The
