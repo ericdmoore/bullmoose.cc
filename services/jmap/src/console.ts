@@ -1,4 +1,5 @@
 import { MAIL_SCOPES, REALM_SCOPES, hasScope } from "@bullmoose/auth-core";
+import { budgetMonthStartMs, budgetPeriodKey } from "@bullmoose/scheduling";
 import { accountAccess, isAgentPrincipal, principalHasScope, type AccountAccess, type Principal } from "./auth";
 import type { Env } from "./index";
 
@@ -104,6 +105,54 @@ interface ConsoleBindingConfig {
   configUnparseable?: boolean;
 }
 
+/** One alias on a binding's model menu — the fallback chain, as labels. */
+interface ConsoleModelMenuEntry {
+  alias: string;
+  /** `host/model` strings in fallback order. Names, never keys. */
+  candidates: string[];
+}
+
+/**
+ * The dossier's ECONOMICS projection of a binding's config (s26 T1) — the cap
+ * the claim gate enforces, the model menu the pipelines choose from, and the
+ * frontier assignment rate (s26 T5a). Enumerated derived fields, never the
+ * config: persona text, allowedSenders and credential refs stay off the wire
+ * exactly as in `describeBindingConfig`. This is a SEPARATE shape from that
+ * one, deliberately — `describeBindingConfig` mirrors the agent-facing MCP
+ * summary and `consoleContract.test.ts` pins the two together, while this is
+ * the OWNER's read of their own agent's budget and menu, which the MCP
+ * surface intentionally does not serve.
+ */
+interface ConsoleBindingEconomics {
+  /** `$.budgets.spendPerMonth`, µUSD. null = no monthly cap configured. */
+  budgetMicros: number | null;
+  defaultModel: string | null;
+  modelMenu: ConsoleModelMenuEntry[];
+  /** `$.frontier.exploreRate` (s26 T5a). null = frontier assignment off. */
+  exploreRate: number | null;
+}
+
+/**
+ * The work-ledger aggregates for one binding (s26 T1): the queue-as-cursor's
+ * counts, the oldest-pending age's anchor, and the month's completed spend in
+ * the SAME arithmetic the claim gate uses (`budgetExhaustedSql`): completed =
+ * `done_at IS NOT NULL`, month = `done_at >= budgetMonthStartMs(now)`, sum
+ * COALESCEd to 0 — so "remaining" on the dossier equals the number that
+ * actually decides when the paid claimant set narrows to free-only.
+ */
+interface ConsoleBindingLedger {
+  bindingId: string;
+  pending: number;
+  running: number;
+  done: number;
+  failed: number;
+  /** created_at of the oldest still-pending invocation; null = queue empty. */
+  oldestPendingAt: number | null;
+  monthSpendMicros: number;
+  /** Approved budget-overrun headroom for this period (s11 T9), µUSD. */
+  monthOverageMicros: number;
+}
+
 interface ConsoleBinding {
   bindingId: string;
   name: string;
@@ -111,6 +160,7 @@ interface ConsoleBinding {
   slaSeconds: number | null;
   enabled: boolean;
   config: ConsoleBindingConfig;
+  economics: ConsoleBindingEconomics;
   /** ⚠️ Deliberately absent — see `describeBindingConfig`. */
   credentialRefs?: string[];
 }
@@ -136,6 +186,11 @@ interface ConsoleInvocation {
   note: string | null;
   createdAt: number;
   doneAt: number | null;
+  /** s07 T5, frozen at capture. NULL ≠ 0: null = undetermined ("cost not
+   *  recorded"), 0 = known and genuinely free. */
+  costMicros: number | null;
+  /** The model the run actually used — the cost's receipt, never a secret. */
+  model: string | null;
 }
 
 interface ConsoleAuditRow {
@@ -192,6 +247,11 @@ interface AgentDossier {
   grantsGiven: ConsoleGrant[];
   invocations: ConsoleInvocation[];
   spend: ConsoleSpend | null;
+  /** s26 T1 — per-binding work-ledger aggregates. A binding with no
+   *  invocations has no row here; absence means all-zero, not unknown. */
+  ledgers: ConsoleBindingLedger[];
+  /** The UTC month start (epoch ms) every ledger's month sums cover. */
+  ledgerMonthStart: number;
 }
 
 interface ResourceDossier {
@@ -386,7 +446,8 @@ async function agentDossier(env: Env, principal: Principal, accountId: string): 
   // from "none exist" — see the deploy note in the report.
   const mayReadVault = hasScope(principal.scopes, "vault");
 
-  const [tokenScopes, bindings, credentials, bureauGrants, grantsHeld, grantsGiven, invocations, spend] =
+  const now = Date.now();
+  const [tokenScopes, bindings, credentials, bureauGrants, grantsHeld, grantsGiven, invocations, spend, ledgers] =
     await Promise.all([
       readTokenScopes(env, owner.principal_id),
       readBindings(env, access.accountId),
@@ -396,6 +457,7 @@ async function agentDossier(env: Env, principal: Principal, accountId: string): 
       readGrants(env, "target", access.accountId),
       readInvocations(env, access.accountId),
       readSpend(env, access.accountId),
+      readLedgers(env, access.accountId, now),
     ]);
 
   const dossier: AgentDossier = {
@@ -410,6 +472,8 @@ async function agentDossier(env: Env, principal: Principal, accountId: string): 
     grantsGiven,
     invocations,
     spend,
+    ledgers,
+    ledgerMonthStart: budgetMonthStartMs(now),
   };
   return json(dossier);
 }
@@ -464,6 +528,7 @@ async function readBindings(env: Env, accountId: string): Promise<ConsoleBinding
     slaSeconds: b.sla_seconds,
     enabled: b.enabled === 1,
     config: describeBindingConfig(b.config_json),
+    economics: describeBindingEconomics(b.config_json),
     // `credentialRefs` is deliberately ABSENT, not `[]`: nothing stores which
     // credentials a binding's MCP servers reference (`BindingConfig` has no
     // such field and no table joins one), and `[]` would assert "none" where
@@ -492,6 +557,45 @@ export function describeBindingConfig(configJson: string): ConsoleBindingConfig 
     hasPersona: typeof cfg.persona === "string" && cfg.persona.length > 0,
     senderAllowlist: senders.length > 0 ? { active: true, count: senders.length } : { active: false },
     modelAliasCount: Object.keys((cfg.modelAliases ?? {}) as Record<string, unknown>).length,
+  };
+}
+
+/**
+ * The dossier's economics read of a binding's config (s26 T1) — see the
+ * interface comment for why this is separate from `describeBindingConfig`.
+ * Every field is derived and enumerated; the raw config never reaches the
+ * wire, and an unparseable blob answers with the same nulls an unconfigured
+ * one does (the `configUnparseable` marker beside it already says why).
+ */
+export function describeBindingEconomics(configJson: string): ConsoleBindingEconomics {
+  let cfg: Record<string, unknown>;
+  try {
+    cfg = (JSON.parse(configJson || "{}") ?? {}) as Record<string, unknown>;
+  } catch {
+    return { budgetMicros: null, defaultModel: null, modelMenu: [], exploreRate: null };
+  }
+  const budgets = (cfg.budgets ?? {}) as Record<string, unknown>;
+  const budgetMicros =
+    typeof budgets.spendPerMonth === "number" && Number.isFinite(budgets.spendPerMonth) ? budgets.spendPerMonth : null;
+  const aliases = (cfg.modelAliases ?? {}) as Record<string, unknown>;
+  const modelMenu: ConsoleModelMenuEntry[] = Object.entries(aliases).map(([alias, cands]) => ({
+    alias,
+    candidates: Array.isArray(cands)
+      ? cands.map((c) => {
+          const cc = (c ?? {}) as Record<string, unknown>;
+          const provider = typeof cc.provider === "string" ? cc.provider : "?";
+          const model = typeof cc.model === "string" ? cc.model : "?";
+          return `${provider}/${model}`;
+        })
+      : [],
+  }));
+  const frontier = (cfg.frontier ?? {}) as Record<string, unknown>;
+  return {
+    budgetMicros,
+    defaultModel: typeof cfg.defaultModel === "string" ? cfg.defaultModel : null,
+    modelMenu,
+    exploreRate:
+      typeof frontier.exploreRate === "number" && Number.isFinite(frontier.exploreRate) ? frontier.exploreRate : null,
   };
 }
 
@@ -651,7 +755,7 @@ async function readGrants(env: Env, side: "grantee" | "target", accountId: strin
 
 async function readInvocations(env: Env, accountId: string): Promise<ConsoleInvocation[]> {
   const { results } = await env.DB.prepare(
-    `SELECT id, binding_id, binding_name, status, email_id, note, created_at, done_at
+    `SELECT id, binding_id, binding_name, status, email_id, note, created_at, done_at, cost_micros, model
        FROM agent_invocations WHERE account_id = ?
       ORDER BY created_at DESC LIMIT ?`,
   )
@@ -665,6 +769,8 @@ async function readInvocations(env: Env, accountId: string): Promise<ConsoleInvo
       note: string | null;
       created_at: number;
       done_at: number | null;
+      cost_micros: number | null;
+      model: string | null;
     }>();
   // `context_json` and `result_json` are deliberately not selected: the first
   // carries the triggering envelope recipient, and neither is on the wire shape.
@@ -677,6 +783,62 @@ async function readInvocations(env: Env, accountId: string): Promise<ConsoleInvo
     note: r.note,
     createdAt: r.created_at,
     doneAt: r.done_at,
+    costMicros: r.cost_micros ?? null,
+    model: r.model ?? null,
+  }));
+}
+
+/**
+ * The per-binding work-ledger aggregates (s26 T1). One grouped pass over the
+ * queue plus one over the period's approved overages; both are the dossier's
+ * numbers ONLY — the enforcement lives in `budgetExhaustedSql`, whose
+ * arithmetic the month term here reproduces (completed = done_at set, month =
+ * done_at >= UTC month start, sum COALESCEd to 0) so the two cannot disagree
+ * about when a binding's paid work stops.
+ */
+async function readLedgers(env: Env, accountId: string, now: number): Promise<ConsoleBindingLedger[]> {
+  const monthStart = budgetMonthStartMs(now);
+  const period = budgetPeriodKey(now);
+  const [{ results: rows }, { results: overs }] = await Promise.all([
+    env.DB.prepare(
+      `SELECT binding_id,
+              SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+              SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running,
+              SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS done,
+              SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+              MIN(CASE WHEN status = 'pending' THEN created_at END) AS oldest_pending_at,
+              COALESCE(SUM(CASE WHEN done_at IS NOT NULL AND done_at >= ? THEN cost_micros END), 0) AS month_spend
+         FROM agent_invocations WHERE account_id = ?
+        GROUP BY binding_id`,
+    )
+      .bind(monthStart, accountId)
+      .all<{
+        binding_id: string;
+        pending: number;
+        running: number;
+        done: number;
+        failed: number;
+        oldest_pending_at: number | null;
+        month_spend: number;
+      }>(),
+    env.DB.prepare(
+      `SELECT binding_id, COALESCE(SUM(amount_micros), 0) AS overage
+         FROM agent_budget_overages WHERE account_id = ? AND period_key = ?
+        GROUP BY binding_id`,
+    )
+      .bind(accountId, period)
+      .all<{ binding_id: string; overage: number }>(),
+  ]);
+  const overageBy = new Map(overs.map((o) => [o.binding_id, o.overage]));
+  return rows.map((r) => ({
+    bindingId: r.binding_id,
+    pending: r.pending,
+    running: r.running,
+    done: r.done,
+    failed: r.failed,
+    oldestPendingAt: r.oldest_pending_at,
+    monthSpendMicros: r.month_spend,
+    monthOverageMicros: overageBy.get(r.binding_id) ?? 0,
   }));
 }
 
