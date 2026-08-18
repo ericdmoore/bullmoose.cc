@@ -54,9 +54,14 @@ export function pickVerbBinding<T extends { id: string; name: string; enabled: b
  *  through `Watch/set`, the CRUD s20 T1 already shipped.
  *
  *  `compose` (s20 T3) is the composer's intent mode — the only one of the
- *  three that acts on no message at all, which is why its invocation carries
- *  no `emailId` unless the lookup found background worth naming. */
-export type AgentVerb = "answer" | "bring-in" | "compose";
+ *  four that acts on no message at all, which is why its invocation carries
+ *  no `emailId` unless the lookup found background worth naming.
+ *
+ *  `schedule` (s20 wave 6) is #202's deferral, closed: it reads the message in
+ *  front of you and proposes a HOLD on your own calendar. It was held back
+ *  because `applyProposal` had no case to land an approval in; it has one now
+ *  (`verb-schedule`, services/jmap actionProposal.ts), so the button exists. */
+export type AgentVerb = "answer" | "bring-in" | "compose" | "schedule";
 
 /**
  * The default Watch contract a bare "watch this" arms (s20 T1, decision 1):
@@ -153,7 +158,26 @@ export function watchArmedMessage(spec: WatchSpec): string {
 export function askSentMessage(verb: AgentVerb, person?: string): string {
   if (verb === "answer") return "Asked. The draft reply will appear in your approvals when it is written.";
   if (verb === "compose") return composeAskedMessage(person ?? "them");
+  if (verb === "schedule") return scheduleAskedMessage();
   return `Asked. A draft bringing ${person ?? "them"} in will appear in your approvals when it is written.`;
+}
+
+/**
+ * What the message view says once a Schedule ask has been sent.
+ *
+ * Three facts, and the last two are the ones a calendar verb must never leave
+ * a person guessing about: where the answer will appear, that approving is
+ * what puts anything anywhere, and that NOBODY IS INVITED — a hold reaches
+ * your own calendar and stops there. It also says "a hold", never "your
+ * meeting": the agent may well come back having found no time at all, and a
+ * sentence that promised a meeting would have promised the one thing this
+ * verb refuses to manufacture.
+ */
+export function scheduleAskedMessage(): string {
+  return (
+    "Asked. A proposed hold will appear in your approvals when it is written — you approve it onto your own " +
+    "calendar, and nobody is invited."
+  );
 }
 
 /**

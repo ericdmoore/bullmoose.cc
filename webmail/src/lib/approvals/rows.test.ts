@@ -155,6 +155,34 @@ describe("summarizeProposal — one line per row, grant-request included", () =>
     expect(summarizeProposal(p)).toBe("Reply to grace@example.test — “Re: Kickoff”");
   });
 
+  it("headlines a proposed hold by WHEN and with whom", () => {
+    const p = base({
+      kind: "verb-schedule",
+      tier: 1,
+      payload: {
+        verb: "schedule",
+        title: "Board quote call",
+        start: "2026-08-20T15:00:00",
+        timeZone: "America/New_York",
+        attendees: ["sergio@example.com", "kim@x.test", "dana@x.test"],
+      },
+    });
+    expect(summarizeProposal(p)).toBe(
+      "Hold 2026-08-20 15:00 America/New_York — “Board quote call” with sergio@example.com, kim@x.test +1",
+    );
+  });
+
+  it("a hold with NO time leads with that, because it is a different decision", () => {
+    const p = base({
+      kind: "verb-schedule",
+      tier: 1,
+      payload: { verb: "schedule", title: "Coffee sometime", start: null, attendees: [] },
+    });
+    // Not a gap papered over: the agent refused to invent a time, and the row
+    // says so where a person will read it.
+    expect(summarizeProposal(p)).toBe("Hold “Coffee sometime” — NO TIME chosen; write one in or decline");
+  });
+
   it("headlines a grant-request as an ask — same summarizer, same queue (arch.md §1)", () => {
     const p = base({
       kind: "grant-request",

@@ -251,6 +251,28 @@ export function summarizeProposal(p: ActionProposal): string {
       return `Follow up with ${s(p.payload.to) || "(unknown)"} — a watch you set came due`;
     case "watch-notify":
       return `Reminder — a watch you set came due`;
+    case "verb-schedule": {
+      // s20 wave 6 — the one verb kind with a summary case, because it is the
+      // one whose decision is IN the payload rather than in a body a person
+      // scrolls to: when, and with whom. Its siblings (`verb-answer`,
+      // `verb-bring-in`, `verb-compose`) are drafts you read, and they fall to
+      // the default line on purpose.
+      //
+      // A null start is not a gap to paper over — it is the agent saying it
+      // would not invent a time, and the row leads with that, because the
+      // decision it implies ("write one in") is different from the decision a
+      // timed hold implies ("yes, that time").
+      const when = s(p.payload.start);
+      const who = (Array.isArray(p.payload.attendees) ? p.payload.attendees : []).filter(
+        (a): a is string => typeof a === "string",
+      );
+      const with_ =
+        who.length > 0 ? ` with ${who.slice(0, 2).join(", ")}${who.length > 2 ? ` +${who.length - 2}` : ""}` : "";
+      const title = s(p.payload.title) || "(untitled)";
+      return when
+        ? `Hold ${when.replace("T", " ").slice(0, 16)}${s(p.payload.timeZone) ? ` ${s(p.payload.timeZone)}` : ""} — “${title}”${with_}`
+        : `Hold “${title}”${with_} — NO TIME chosen; write one in or decline`;
+    }
     case "unsubscribe":
       return `Unsubscribe from ${s(p.payload.listName) || s(p.payload.to) || p.subject.objectId}`;
     case "organize-files":

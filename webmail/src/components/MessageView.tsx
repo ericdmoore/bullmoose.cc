@@ -352,10 +352,19 @@ function MessageCard({
  *              drafts to the person named. The address is asked for, never
  *              guessed: picking which "Sergio" was meant is exactly the
  *              confident wrongness the queue exists to catch.
+ *   Schedule   an agent invocation that reads the message for a time somebody
+ *              actually proposed and offers a HOLD on your own calendar —
+ *              tentative, not-busy, nobody invited. It arrives with a time
+ *              only when the message named one; otherwise it arrives with
+ *              everything else and an empty when, for you to fill in. It was
+ *              absent until s20 wave 6 for one reason (#202): approving it
+ *              had nowhere to land. It lands now — `verb-schedule` in
+ *              services/jmap actionProposal.ts.
  *
- * Schedule and Delegate are deliberately absent — see the PR body. A verb
- * whose approval has nowhere to land would wedge the tray, and shipping fewer
- * verbs is the cheaper mistake.
+ * Delegate is still deliberately absent: it needs agent-to-agent handoff (the
+ * s17 invocation-token path) and a way to enumerate the agents you could
+ * delegate to. A verb whose approval has nowhere to land would wedge the tray,
+ * and shipping fewer verbs is the cheaper mistake.
  */
 export function AgentVerbs({
   email,
@@ -399,6 +408,17 @@ export function AgentVerbs({
           onClick={() => setBringOpen(!bringOpen)}
         >
           Bring in…
+        </button>
+        {/* The title is the whole promise, stated before the press: a hold,
+            on your calendar, reaching nobody. */}
+        <button
+          type="button"
+          class="agent-verb"
+          disabled={busy || blocked}
+          title="Propose a hold on your own calendar — tentative, and nobody is invited"
+          onClick={() => onAsk({ verb: "schedule" })}
+        >
+          Schedule
         </button>
       </div>
 

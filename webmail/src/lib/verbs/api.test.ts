@@ -137,6 +137,40 @@ describe("askAgent — through the on-demand AgentInvocation trigger", () => {
     expect(spec.params).toEqual({ verb: "bring-in", person: "kim@x.test", note: "she owns pricing" });
   });
 
+  it("schedule carries the wall clock — and only schedule does", async () => {
+    const seen: Record<string, unknown>[] = [];
+    const client = new FakeJmapClient({
+      handlers: {
+        ...roster(),
+        "AgentInvocation/set": (args) => {
+          seen.push(args);
+          return { accountId: args.accountId as string, created: { v: { id: "inv_s" } } };
+        },
+      },
+    });
+
+    const outcome = await askAgent(client, "acct_a", email, { verb: "schedule", timeZone: "America/New_York" });
+    expect(outcome.ok).toBe(true);
+    const spec = (seen[0]!.create as Record<string, Record<string, unknown>>).v!;
+    // "Thursday at 3" is meaningless without a wall clock to read it in, so
+    // the ask carries one. The server never guesses one for you.
+    expect(spec.params).toEqual({ verb: "schedule", timeZone: "America/New_York" });
+    // A hold, not a meeting — and the one fact a calendar verb must never
+    // leave a person guessing about.
+    expect(outcome.message).toContain("nobody is invited");
+    expect(outcome.message).toContain("your own calendar");
+
+    // No zone injected: the browser's own is sent, so the server still gets a
+    // wall clock rather than falling back to UTC.
+    await askAgent(client, "acct_a", email, { verb: "schedule" });
+    const auto = (seen[1]!.create as Record<string, Record<string, unknown>>).v!;
+    expect(typeof (auto.params as Record<string, unknown>).timeZone).toBe("string");
+
+    // A key nobody reads is how payloads grow fields nobody can explain.
+    await askAgent(client, "acct_a", email, { verb: "answer", timeZone: "America/New_York" });
+    expect((seen[2]!.create as Record<string, Record<string, unknown>>).v!.params).toEqual({ verb: "answer" });
+  });
+
   it("refuses to guess which Sergio you meant — client-side, no round trip", async () => {
     let called = false;
     const client = new FakeJmapClient({

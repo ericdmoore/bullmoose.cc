@@ -92,6 +92,54 @@ import App from "../layouts/AppTw.astro";
     background: var(--bg-sunken);
   }
 
+  /* ── the agent's offers (s20 T5b) ─────────────────────────────────────
+     Deliberately quieter than the human's own controls: a suggestion that
+     shouts is a suggestion that is hard to ignore, and ignoring it has to be
+     the cheapest thing on the page. No badge, no dot, no dismiss control. */
+  .finder-suggest {
+    padding: 6px 16px 2px;
+  }
+  .finder-suggest-note {
+    margin: 0 0 4px;
+    font-size: 12px;
+  }
+  .finder-suggest-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .finder-suggest-offer {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    max-width: 100%;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    padding: 4px 12px;
+    border: 1px dashed var(--line);
+    border-radius: 999px;
+    background: none;
+  }
+  .finder-suggest-offer:hover {
+    background: var(--bg-alt);
+    border-style: solid;
+  }
+  .finder-suggest-chip {
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .finder-suggest-reason {
+    font-size: 12px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   /* ── the refine controls (the human's half of the loop) ───────────────── */
   .finder-refine {
     display: flex;
