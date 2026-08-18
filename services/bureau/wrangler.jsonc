@@ -11,9 +11,10 @@
   // so the worker that runs every MCP tool and reads untrusted email has no code
   // path to a credential, by platform rather than by discipline.
   //
-  // No public route. Reachable only through the BUREAU service binding on
-  // `services/agent`, which is why this must deploy BEFORE agent (same class of
-  // dependency as agent before ingest; docs/DEPLOY.md §2).
+  // No public route. Reachable only through a BUREAU service binding — from
+  // `services/agent` (every verb) and, since s26 T4, from `services/provision`
+  // (the seal half, for BYOK). Which is why this must deploy BEFORE both (same
+  // class of dependency as agent before ingest; docs/DEPLOY.md §2).
   //
   // No R2, no KV, no DO, no AI, no SUBMIT: the smallest binding set that can do
   // the job. Every binding this worker does not have is a capability an attacker

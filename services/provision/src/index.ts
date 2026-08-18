@@ -42,6 +42,11 @@ import { BUREAU_VERBS, isBureauVerb } from "@bullmoose/auth-core/principal";
  *   POST   /bureau-grants         {principalEmail, credRef, verb, expiresDays?}
  *   GET    /bureau-grants         → the capability table (?email= / ?credRef=)
  *   DELETE /bureau-grants/{id}    → TOMBSTONE; credential + siblings survive
+ *   POST   /provider-keys         {email, key, provider?, bindingName?, allow?}
+ *                                 → s26 T4 BYOK: seal a tenant's own provider
+ *                                   key in the Bureau, grant `fetch` on it, and
+ *                                   attach its ref to their binding(s). The key
+ *                                   goes IN once and is never readable back.
  *
  * POST /domains is idempotent-ish: each step reports ok/detail so a failed
  * run can simply be re-run after fixing the underlying issue. POST /accounts
@@ -85,6 +90,20 @@ export interface Env {
   CF_API_TOKEN: string;
   SES_ACCESS_KEY_ID: string;
   SES_SECRET_ACCESS_KEY: string;
+  /**
+   * The Bureau (s04 T3a), for `POST /provider-keys` only (s26 T4).
+   *
+   * This worker holds no master key and never will: sealing a tenant's provider
+   * key is a HOP, the same as it is from `services/agent`. The plaintext
+   * crosses this binding once, on its way in, and nothing comes back but an
+   * acknowledgement — there is no route on the Bureau that returns a secret.
+   *
+   * Optional so a deployment without it degrades to a 501 on that one route
+   * rather than failing to boot; every other verb here is unaffected.
+   */
+  BUREAU?: Fetcher;
+  /** Shared with the Bureau's `/internal/*` surface. See `docs/DEPLOY.md`. */
+  INTERNAL_TOKEN?: string;
 }
 
 interface Step {
@@ -285,6 +304,12 @@ export default {
         );
       }
       if (route === "GET /bureau-grants") return listBureauGrants(url, env);
+      // s26 T4 — BYOK. The tenant's own provider key: sealed in the Bureau,
+      // granted, and named by their binding, so their provider-side guardrails
+      // apply to their agents' calls. Re-run to rotate the key in place.
+      if (route === "POST /provider-keys") {
+        return provisionProviderKey(await readJson<ProviderKeyBody>(request), env);
+      }
       if (request.method === "DELETE" && /^\/bureau-grants\/[^/]+$/.test(url.pathname)) {
         return revokeBureauGrant(url.pathname.split("/")[2] as string, env);
       }
@@ -2683,6 +2708,323 @@ async function provisionExtractor(
     bindingId: binding.bindingId,
     model: `${provider}/${model}`,
   });
+}
+
+// ---- BYOK: the tenant's own provider key (s26 T4) -----------------------
+
+/**
+ * `POST /provider-keys` — bring your own key.
+ *
+ * Eric, on discovering his own OpenRouter privacy redaction had rewritten an
+ * address to `[ADDRESS]`: *"we can let others turn on their OR guardrails etc
+ * via their own keys?"* Yes — and the striking part is how little there is to
+ * build. **A tenant's provider-side policy is not something this platform
+ * implements, mirrors or even reads. It applies because the request
+ * authenticates as them.** Their guardrails, their redaction rules, their route
+ * and model allowlists, their spend cap, their audit trail in their own
+ * provider console. Nothing here interprets any of it, and nothing here can
+ * drift from it. The whole feature is: use their key.
+ *
+ * What this door does, in the order that makes each step meaningful:
+ *
+ *   1. **seal** the key in the Bureau — the plaintext crosses the BUREAU
+ *      binding once, on the way in, and there is no route anywhere that returns
+ *      it. `byokProvision.test.ts` asserts that by trying every read surface;
+ *   2. **grant** `(principal, credRef, fetch)` — because minting a credential
+ *      authorizes nobody (bureau.md §5.1), and a sealed-but-ungranted key is a
+ *      key that silently does nothing;
+ *   3. **attach** the ref to the tenant's binding(s), which is what makes the
+ *      Bureau's own check ("does this binding name this credential?") pass.
+ *
+ * Re-running SWAPS in place, exactly as `POST /extractor` does for the model
+ * menu: same `credRef`, new ciphertext, same grant, same attachment. That is
+ * the rotation path — the tenant rolls their key at the provider, re-posts it
+ * here, and no agent config changes.
+ *
+ * The destination allowlist is the part that is easy to skip and must not be:
+ * a key sealed with `--allow https://openrouter.ai` can be spent at OpenRouter
+ * and NOWHERE else, whatever URL a compromised prompt talks an agent into
+ * composing. A credential with no allowlist is refused at use time (invariant
+ * 5), so this door always writes one.
+ *
+ * ⚠️ The `key` is write-only, here and everywhere downstream. It is never
+ * echoed in the response, never logged, never put in an error message. Presence
+ * is confirmed; the value is not.
+ */
+interface ProviderKeyBody {
+  email?: string;
+  /** The provider key itself. Write-only — in once, never back out. */
+  key?: string;
+  /** The HOST it authenticates at: `openrouter` (default) or `gateway`. */
+  provider?: string;
+  /** `vault_credentials.name`; defaults to the provider name. */
+  credRef?: string;
+  /** Destination binding (bureau.md §6). Defaults per provider; required for
+   *  `gateway`, whose endpoint is deployment-specific. */
+  allow?: string;
+  /** Injection recipe; defaults to `Authorization: Bearer {}`. */
+  header?: string;
+  /** Attach to ONE named binding instead of every binding that routes to this
+   *  provider. */
+  bindingName?: string;
+  /** Grant lifetime. NULL = no expiry, matching `POST /bureau-grants`. */
+  expiresDays?: number;
+}
+
+/** Hosts that authenticate with a bearer, and can therefore carry a tenant's
+ *  own key. `workers-ai` runs on the platform's account binding and `mock` runs
+ *  nowhere — neither has a key to bring, so neither is offered one. */
+const BYOK_PROVIDERS: Record<string, { defaultAllow?: string }> = {
+  openrouter: { defaultAllow: "https://openrouter.ai" },
+  gateway: {},
+};
+
+async function provisionProviderKey(body: ProviderKeyBody, env: Env) {
+  if (!env.BUREAU || !env.INTERNAL_TOKEN) {
+    return json({ error: "BYOK not configured on this deployment (no BUREAU binding)" }, 501);
+  }
+  const email = String(body?.email ?? "").toLowerCase();
+  if (!email) return json({ error: "email required" }, 400);
+  if (typeof body?.key !== "string" || body.key.length === 0) {
+    return json({ error: "key required" }, 400);
+  }
+  const provider = typeof body.provider === "string" ? body.provider : "openrouter";
+  const providerSpec = BYOK_PROVIDERS[provider];
+  if (!providerSpec) {
+    return json({ error: `provider must be one of ${Object.keys(BYOK_PROVIDERS).join(", ")}` }, 400);
+  }
+  const credRef = typeof body.credRef === "string" && body.credRef ? body.credRef : provider;
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(credRef)) {
+    return json({ error: "credRef must be alnum . _ - up to 64 chars" }, 400);
+  }
+
+  // The §5 contract, computed here rather than accepted from the caller: the
+  // whole point of a destination binding is that it is not negotiable per call.
+  const allow = normalizeAllow(body.allow ?? providerSpec.defaultAllow ?? "");
+  if (!allow) {
+    return json(
+      {
+        error:
+          `allow must be an origin (https://host[:port]) or wildcard (*.host)` +
+          `${providerSpec.defaultAllow ? "" : ` — required for provider "${provider}", which has no default endpoint`}`,
+      },
+      400,
+    );
+  }
+  const header = normalizeHeaderRecipe(body.header ?? "Authorization: Bearer {}");
+  if (!header) {
+    return json({ error: 'header must be "Header-Name: …{}…" (the {} is the value slot)' }, 400);
+  }
+
+  const account = await accountByAddress(env, email);
+  if (!account) return json({ error: `no live account for ${email}` }, 404);
+  const owner = await env.DB.prepare(
+    `SELECT a.principal_id, p.login_email FROM accounts a
+     JOIN principals p ON p.id = a.principal_id WHERE a.id = ?`,
+  )
+    .bind(account.id)
+    .first<{ principal_id: string; login_email: string }>();
+  if (!owner) return json({ error: `account ${account.id} has no principal` }, 404);
+
+  const existing = await env.DB.prepare(`SELECT id FROM vault_credentials WHERE principal_id = ? AND name = ?`)
+    .bind(owner.principal_id, credRef)
+    .first<{ id: string }>();
+
+  // 1 — SEAL. `mode: "mint"` upserts, so a re-run rewrites ciphertext AND
+  // contract together: this door computes the whole contract every time, and a
+  // rotate-only path would leave an allowlist behind that no longer matches
+  // what was asked for. (The narrower key-only rotate is the tenant's own
+  // `POST /vault/credentials/{name}/rotate`, on their own bearer.)
+  const sealed = await env.BUREAU.fetch("https://bureau.internal/internal/bureau/seal", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-internal-token": env.INTERNAL_TOKEN },
+    body: JSON.stringify({
+      mode: "mint",
+      principalId: owner.principal_id,
+      name: credRef,
+      kind: "api-key",
+      metaJson: JSON.stringify({ allow, header, scope: "actor", enforcement: "federated" }),
+      secret: body.key,
+    }),
+  });
+  if (!sealed.ok) {
+    // Fail closed and write NOTHING else: a grant or an attachment pointing at
+    // a credential that was never sealed is a config that looks live and is not.
+    return json({ error: `bureau refused the seal (${sealed.status})` }, 502);
+  }
+
+  // 2 — GRANT. Mint ≠ authorize; this door does both, deliberately and in one
+  // place, because "sealed but unusable" is not a state an operator asked for.
+  // Same upsert-and-reinstate as `POST /bureau-grants` — a previously revoked
+  // BYOK key can be brought back by re-posting it.
+  const grantId = await grantFetchOnCredential(env, owner.principal_id, credRef, body.expiresDays);
+
+  // 3 — ATTACH. The Bureau refuses a credential the binding's own config does
+  // not name, so this is not bookkeeping: it is the third of the three
+  // row-derived checks that replace a bearer on the BYOK door.
+  const attached = await attachCredentialToBindings(env, account.id, provider, credRef, body.bindingName);
+
+  return json({
+    ok: true,
+    created: !existing,
+    rotated: !!existing,
+    accountId: account.id,
+    principal: owner.login_email,
+    provider,
+    credRef,
+    allow,
+    header,
+    grantId,
+    bindings: attached,
+    // Presence, never the value — and stated in the response so an operator can
+    // see the guarantee rather than assume it.
+    keyStored: true,
+    keyReadable: false,
+    ...(attached.length === 0
+      ? {
+          note:
+            `sealed and granted, but NO binding on ${email} names it yet — ` +
+            `no candidate routes to "${provider}". Re-run with {"bindingName": "…"} ` +
+            `once the binding has a ${provider} route, or the key will never be used.`,
+        }
+      : {}),
+  });
+}
+
+/**
+ * `(principal, credRef, "fetch")`, upserted — the same statement
+ * `createBureauGrant` runs, factored to one place so the two doors cannot drift
+ * on the reinstate semantics (a tombstone must not make a capability
+ * ungrantable forever).
+ *
+ * `fetch` and only `fetch`: a model call is a proxied HTTP request, and the
+ * Class B verbs are signing oracles that an API-key credential has no business
+ * answering anyway (bureau.md §4.1).
+ */
+async function grantFetchOnCredential(
+  env: Env,
+  principalId: string,
+  credRef: string,
+  expiresDays?: number,
+): Promise<string> {
+  const id = `bg_${crypto.randomUUID()}`;
+  const now = Date.now();
+  const expiresAt = expiresDays ? now + expiresDays * 86_400_000 : null;
+  await env.DB.prepare(
+    `INSERT INTO bureau_grants (id, principal_id, cred_name, verb, created_by,
+       created_at, expires_at, revoked_at)
+     VALUES (?, ?, ?, 'fetch', 'admin', ?, ?, NULL)
+     ON CONFLICT (principal_id, cred_name, verb) DO UPDATE SET
+       revoked_at = NULL, created_at = excluded.created_at,
+       created_by = excluded.created_by, expires_at = excluded.expires_at`,
+  )
+    .bind(id, principalId, credRef, now, expiresAt)
+    .run();
+  const row = await env.DB.prepare(
+    `SELECT id FROM bureau_grants WHERE principal_id = ? AND cred_name = ? AND verb = 'fetch'`,
+  )
+    .bind(principalId, credRef)
+    .first<{ id: string }>();
+  const grantId = row?.id ?? id;
+  await logGrantLifecycle(env, grantId, "created", now);
+  return grantId;
+}
+
+/**
+ * Write `providerCredentials[provider] = credRef` onto the account's bindings.
+ *
+ * Which bindings, when none is named: every binding on the account that already
+ * has a route to that provider, plus any that already named a credential for it
+ * (a re-run must find its own previous work). A binding with no `openrouter`
+ * candidate has nothing to authenticate, so attaching there would be noise in a
+ * config an operator has to read.
+ *
+ * Binding-WIDE rather than per candidate: `providerCredentials` covers every
+ * present and future route to that host, so adding a second OpenRouter model to
+ * the menu later cannot accidentally fall back to the platform key.
+ */
+async function attachCredentialToBindings(
+  env: Env,
+  accountId: string,
+  provider: string,
+  credRef: string,
+  bindingName?: string,
+): Promise<Array<{ id: string; name: string }>> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, name, config_json FROM agent_bindings WHERE account_id = ? ORDER BY name`,
+  )
+    .bind(accountId)
+    .all<{ id: string; name: string; config_json: string }>();
+
+  const attached: Array<{ id: string; name: string }> = [];
+  for (const binding of results) {
+    const config = safeConfig(binding.config_json);
+    if (bindingName ? binding.name !== bindingName : !routesToProvider(config, provider)) continue;
+    const existing = config.providerCredentials;
+    const providerCredentials: Record<string, unknown> =
+      typeof existing === "object" && existing !== null && !Array.isArray(existing)
+        ? { ...(existing as Record<string, unknown>) }
+        : {};
+    providerCredentials[provider] = credRef;
+    config.providerCredentials = providerCredentials;
+    await env.DB.prepare(`UPDATE agent_bindings SET config_json = ? WHERE account_id = ? AND id = ?`)
+      .bind(JSON.stringify(config), accountId, binding.id)
+      .run();
+    attached.push({ id: binding.id, name: binding.name });
+  }
+  return attached;
+}
+
+/** Does this binding's model menu (or an existing attachment) reach this host? */
+function routesToProvider(config: Record<string, unknown>, provider: string): boolean {
+  const existing = config.providerCredentials;
+  if (typeof existing === "object" && existing !== null && !Array.isArray(existing)) {
+    if ((existing as Record<string, unknown>)[provider] !== undefined) return true;
+  }
+  const aliases = config.modelAliases;
+  if (typeof aliases !== "object" || aliases === null || Array.isArray(aliases)) return false;
+  for (const menu of Object.values(aliases as Record<string, unknown>)) {
+    if (!Array.isArray(menu)) continue;
+    for (const candidate of menu) {
+      if (typeof candidate !== "object" || candidate === null) continue;
+      if ((candidate as { provider?: unknown }).provider === provider) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Normalize a destination-allowlist entry to a canonical origin (bureau.md §6),
+ * or null. Deliberately the same normalization the vault's mint path performs
+ * (`services/agent/src/vault.ts`) — the Bureau RE-PARSES the stored string on
+ * every use and matches scheme+host+port structurally, so the value of
+ * canonicalizing here is that an operator reading the row sees what the
+ * enforcement point will see.
+ */
+function normalizeAllow(raw: string): string | null {
+  const val = raw.trim().toLowerCase();
+  if (!val) return null;
+  const wild = /^(?:(https?):\/\/)?(\*\.[a-z0-9.-]+)$/.exec(val);
+  if (wild) return `${wild[1] ?? "https"}://${wild[2]}`;
+  try {
+    const u = new URL(val.includes("://") ? val : `https://${val}`);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    if (!u.hostname || u.hostname.includes("*")) return null;
+    if (u.username || u.password) return null;
+    return `${u.protocol}//${u.hostname}${u.port ? `:${u.port}` : ""}`;
+  } catch {
+    return null;
+  }
+}
+
+/** `"Header-Name: …{}…"` — a field name, a colon, and the slot the credential
+ *  lands in. This shape can only produce a HEADER (invariant 8): there is no
+ *  branch anywhere that puts a credential in a URL. */
+function normalizeHeaderRecipe(raw: string): string | null {
+  const val = raw.trim();
+  if (!val.includes("{}")) return null;
+  if (!/^[!#$%&'*+.^_`|~0-9a-z-]+:\s*\S/i.test(val)) return null;
+  return val;
 }
 
 /**

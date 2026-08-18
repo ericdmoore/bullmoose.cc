@@ -379,7 +379,7 @@ npm run -w services/jmap          deploy   # 2. declares AccountDO; binds SUBMIT
 npm run -w services/bureau        deploy   # 3. holds VAULT_MASTER_KEY; no deps
 npm run -w services/agent         deploy   # 4. binds SUBMIT + BUREAU + AccountDO
 npm run -w services/ingest        deploy   # 5. binds AGENT -> agent, + AccountDO
-npm run -w services/provision     deploy   # 6. control plane, no deps
+npm run -w services/provision     deploy   # 6. control plane; binds BUREAU (BYOK)
 npm run -w services/anglebrackets deploy   # 7. CardDAV/CalDAV face (binds AccountDO)
 ```
 
@@ -394,6 +394,11 @@ npm run -w services/anglebrackets deploy   # 7. CardDAV/CalDAV face (binds Accou
 > graph. `services/agent/wrangler.jsonc` binds `BUREAU -> bullmoose-bureau`
 > (s04 T3a), so deploying agent first fails against a service that does not
 > exist. Same three files must stay in sync.
+>
+> **and bureau must precede provision** (s26 T4). `POST /provider-keys` seals a
+> tenant's own model-provider key, and sealing is a hop — `services/provision`
+> holds no master key either. The order above already satisfies this; the edge
+> is called out so a future reshuffle does not quietly break it.
 
 `services/demo-keys` is deliberately absent from this list, from
 `DEPLOY_ORDER`, and from CI. Tracked as `.feedback/fromClaude/infra/013`.
@@ -441,13 +446,13 @@ full matrix, by hand:
 
 | Secret | Worker | Value |
 |---|---|---|
-| `INTERNAL_TOKEN` | jmap, submit, ingest, agent (same value) | `openssl rand -hex 24` |
+| `INTERNAL_TOKEN` | jmap, submit, ingest, agent, bureau, provision (same value) | `openssl rand -hex 24` |
 | `SHARE_SIGNING_KEY` | jmap | `openssl rand -hex 32` |
 | `ADMIN_TOKEN` | provision | `openssl rand -hex 24` |
 | `CF_API_TOKEN` | provision | token #1 |
 | `SES_ACCESS_KEY_ID` / `SES_SECRET_ACCESS_KEY` | provision + submit | IAM user |
 | `CF_EMAIL_API_TOKEN` | submit — only if RELAY=cloudflare (requires Workers Paid) | CF sending token |
-| `OPENROUTER_API_TOKEN` | agent — only if any binding uses provider `openrouter` (the extractor default) | OpenRouter key |
+| `OPENROUTER_API_TOKEN` | agent — the PLATFORM's key, used when no binding brought its own (see BYOK below) | OpenRouter key |
 
 ```sh
 npx wrangler secret put INTERNAL_TOKEN -c services/jmap/wrangler.jsonc
@@ -489,6 +494,63 @@ humanOriginated gate plus the pipeline's own List-Unsubscribe skip run before an
 > (`migrate.yml` dispatch, which **applies by default** as of #180 and titles the run
 > `APPLY` vs `DRY RUN`; or `node infra/bootstrap.mjs migrate --yes`). The first flip failed
 > exactly here: workers deployed, table absent, invocation failed clean (no spend).
+
+### BYOK — a tenant brings their own provider key (s26 T4)
+
+By default every paid model call spends the PLATFORM's `OPENROUTER_API_TOKEN`.
+A tenant can instead seal their own, and then **their provider-side policy
+applies to their agents' traffic** — OpenRouter's privacy redaction and
+guardrails, route/model allowlists, their own spend cap, their own usage log.
+Nothing in this repo implements or mirrors any of that; it rides along because
+the request authenticates as them.
+
+Two ways in. The tenant's own, on their own bearer (scope `vault`), which never
+involves an operator:
+
+```sh
+curl -X PUT https://mcp.bullmoose.cc/vault/credentials \
+  -H "authorization: Bearer $THEIR_TOKEN" -H "content-type: application/json" \
+  -d '{"name":"openrouter","kind":"api-key","secret":"sk-or-…",
+       "allow":"https://openrouter.ai","header":"Authorization: Bearer {}"}'
+# then an operator grants the verb and attaches the ref (below), or:
+#   POST /bureau-grants {"principalEmail":…,"credRef":"openrouter","verb":"fetch"}
+```
+
+…and the operator door, which does all three steps at once — seal, grant
+`fetch`, attach the ref to every binding on that account that routes to the
+provider:
+
+```sh
+curl -X POST https://bullmoose-provision.<subdomain>.workers.dev/provider-keys \
+  -H "authorization: Bearer $ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"email":"you@your.domain","key":"sk-or-…"}'
+# → {"ok":true,"created":true,"credRef":"openrouter","allow":"https://openrouter.ai",
+#    "bindings":[{"id":"…","name":"extractor"}],"keyReadable":false}
+```
+
+Re-post to **rotate**: same handle, same grant, same attachment, new ciphertext.
+Revoke with `DELETE /bureau-grants/{id}` — the credential and its history
+survive, and the next call stops.
+
+What to expect operationally:
+
+- **the key is write-only.** It crosses the BUREAU binding once and is sealed
+  under `VAULT_MASTER_KEY`, which lives on `services/bureau` and nowhere else.
+  No route anywhere returns it — not to the agent worker, not to provision, not
+  to the tenant who set it.
+- **it can only be spent where it was sealed for.** `allow` is enforced on every
+  call by re-parsing the stored origin; a call to any other host is refused
+  before anything is decrypted.
+- **failures are honest, never silent.** A missing, revoked, expired or
+  destination-refused credential makes the invocation FAIL with the reason on
+  the row. It never falls back to the platform key — that would put a tenant's
+  mail through an account whose guardrails are not theirs, and bill you for it.
+  Give the binding a free `workers-ai` candidate if you want a soft landing.
+- **`POST /agent-bindings/{id}/disable` still stops the spend**, because the
+  Bureau checks `enabled` on every BYOK call.
+- cost accounting is unchanged: µUSD still books against the binding (NULL =
+  not recorded, 0 = known free). The tenant's own invoice is the other half of
+  the story and lives at their provider.
 
 ### The app surface — `app.bullmoose.cc` (Pages + Worker routes, ONE origin)
 
