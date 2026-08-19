@@ -1,3 +1,4 @@
+import PostalMime from "postal-mime";
 import { dispatch, RequestErrors, type JmapRequest } from "@bullmoose/jmap-core";
 import {
   AGENT_CAP,
@@ -13,6 +14,7 @@ import {
 import { accountStub } from "@bullmoose/account-do";
 import { Mailstore } from "@bullmoose/mailstore";
 import { authenticate, accountAccess, principalHasScope, type AuthEnv, type Principal } from "./auth";
+import { parsePartBlobId } from "./blobParts";
 import { handleLogin, handleTokens } from "./authRoutes";
 import { handleConsole } from "./console";
 import { buildSession } from "./session";
@@ -293,18 +295,81 @@ async function handleApi(request: Request, env: Env, principal: RequestContext["
 }
 
 async function handleDownload(url: URL, env: Env, principal: RequestContext["principal"]) {
-  const [, , , accountId, blobId] = url.pathname.split("/");
-  if (!accountId || !blobId) return json({ error: "bad download path" }, 400);
+  const [, , , accountId, blobParam] = url.pathname.split("/");
+  if (!accountId || !blobParam) return json({ error: "bad download path" }, 400);
   const access = accountAccess(principal, accountId);
   if (!access) return json({ error: "unknown account" }, 404);
 
+  // `url.pathname` keeps percent-encoding. Whole-blob ids (`b_` + hex) have
+  // nothing to encode, and the part separator `~` is unreserved so a
+  // by-the-book RFC 6570 client sends it literally too — but a client that
+  // over-encodes (`%7E`) must still resolve the same address. A segment that
+  // is not valid percent-encoding is used as-is; it can only 404.
+  let blobId = blobParam;
+  try {
+    blobId = decodeURIComponent(blobParam);
+  } catch {
+    /* not percent-encoded — use the raw segment */
+  }
+
   const store = new Mailstore(env.DB, env.BLOBS);
+
+  // Part-addressed download (blobParts.ts): serve ONE decoded body part of a
+  // stored message — account ownership already enforced above, same as any
+  // whole-blob download.
+  const part = parsePartBlobId(blobId);
+  if (part) return servePart(url, store, access.tenantId, accountId, part);
+
   const obj = await store.getBlob(access.tenantId, accountId, blobId);
   if (!obj) return json({ error: "blob not found" }, 404);
 
   return new Response(obj.body, {
     headers: {
       "content-type": url.searchParams.get("type") ?? "application/octet-stream",
+      "content-disposition": "attachment",
+      "cache-control": "private, immutable, max-age=31536000",
+    },
+  });
+}
+
+/**
+ * Serve one body part of a stored message, addressed as `<rawBlobId>~<partId>`.
+ *
+ * This is the download-side half of `Email/get`'s bodyStructure: the same
+ * PostalMime parse of the same raw blob, so the bytes served for part `t`/`h`
+ * are BY CONSTRUCTION the same string `bodyValues[partId].value` carries —
+ * except download always serves the whole part, never truncated
+ * (`maxBodyValueBytes` is a JMAP-side concern).
+ *
+ * An address that does not resolve — base blob gone, or a partId the message
+ * does not have — is indistinguishable from a missing blob: same 404, same
+ * shape, never a 500. The partId space here must match what fetchParsed
+ * (methods/email.ts) emits: `t` for the decoded text body, `h` for the html.
+ */
+async function servePart(
+  url: URL,
+  store: Mailstore,
+  tenantId: string,
+  accountId: string,
+  part: { blobId: string; partId: string },
+): Promise<Response> {
+  const obj = await store.getBlob(tenantId, accountId, part.blobId);
+  if (!obj) return json({ error: "blob not found" }, 404);
+
+  const parsed = await PostalMime.parse(await obj.arrayBuffer());
+  const content = part.partId === "t" ? parsed.text : part.partId === "h" ? parsed.html : undefined;
+  if (content === undefined) return json({ error: "blob not found" }, 404);
+
+  // `{type}` is honored the way the whole-blob path honors it, but the bytes
+  // here are the DECODED part re-encoded as UTF-8 — so when the requested (or
+  // defaulted) type names no charset, pin the one that is actually true.
+  const partType = part.partId === "h" ? "text/html" : "text/plain";
+  const requested = url.searchParams.get("type") ?? partType;
+  const contentType = /charset=/i.test(requested) ? requested : `${requested}; charset=utf-8`;
+
+  return new Response(new TextEncoder().encode(content), {
+    headers: {
+      "content-type": contentType,
       "content-disposition": "attachment",
       "cache-control": "private, immutable, max-age=31536000",
     },
