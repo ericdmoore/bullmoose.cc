@@ -3,6 +3,8 @@ import PostalMime from "postal-mime";
 import { MethodRegistry } from "@bullmoose/jmap-core";
 import { Mailstore } from "@bullmoose/mailstore";
 import { fakeEnv } from "@bullmoose/test-fakes";
+import { mintToken } from "@bullmoose/auth-core";
+import worker, { type Env } from "../index";
 import { registerEmailMethods } from "./email";
 import { registerSubmissionMethods } from "./submission";
 import type { RequestContext } from "./common";
@@ -27,6 +29,14 @@ import type { RequestContext } from "./common";
 //   3. A blobId leaf inside bodyStructure passes the same ownership boundary
 //      as the `attachments` property: a foreign blob is indistinguishable
 //      from a nonexistent one.
+//   4. Where a blobId leaf LANDS is decided by disposition and tree
+//      position, never by the fact that its bytes were uploaded. §4.6 lets a
+//      body leaf carry its content by blobId — Mailtemi uploads its body
+//      parts and references them exactly so — and routing every blobId leaf
+//      to the attachment bucket put a real message on the wire as
+//      multipart/mixed with an EMPTY inline text part and its actual body
+//      behind two Content-Disposition: attachment parts ("Mail
+//      Attachment.txt"/".html" in Apple Mail, no body at all; 2026-08-19).
 //
 // Harness is @bullmoose/test-fakes (sVOL 002): real SQLite on the live
 // schema, real R2 key semantics, the real AccountDO, and a recording SUBMIT
@@ -480,5 +490,201 @@ describe("the textBody/htmlBody form still works exactly as before", () => {
     const parsed = await PostalMime.parse(await h.rawOf(created));
     expect(parsed.text).toContain("plain");
     expect(parsed.html).toContain("<b>rich</b>");
+  });
+});
+
+// ---- body content by blobId: the upload-then-reference create --------------
+
+/**
+ * Upload through the REAL route (`POST /api/upload/{accountId}`, RFC 8620
+ * §6.1) — worker entrypoint, bearer auth and all — so the blobId the test
+ * references is the one Mailtemi would actually hold after its upload leg.
+ */
+async function uploadReal(h: ReturnType<typeof harness>, content: string, type: string): Promise<string> {
+  const minted = await mintToken();
+  h.w.db.seed("tokens", [
+    {
+      id: minted.id,
+      principal_id: `p_${ACCOUNT}`, // seedAccount's default principal
+      kind: "bearer",
+      secret_hash: minted.secretHash,
+      name: "upload",
+      scopes: JSON.stringify(["mail"]),
+      created_at: 1,
+      expires_at: null,
+      last_used_at: Date.now(), // recent → no last_used write to add noise
+    },
+  ]);
+  const res = await worker.fetch(
+    new Request(`https://jmap.bullmoose.cc/api/upload/${ACCOUNT}`, {
+      method: "POST",
+      body: content,
+      headers: { Authorization: `Bearer ${minted.token}`, "content-type": type },
+    }),
+    h.w.env as Env,
+  );
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { blobId: string }).blobId;
+}
+
+describe("a blobId leaf with inline-or-absent disposition IS the body (the 2026-08-19 shape)", () => {
+  it("mails Mailtemi's exact create as an inline body — alternative, zero attachment parts", async () => {
+    const h = harness();
+    const TEXT = "Hi from Mailtemi — this text must render INLINE.";
+    const HTML = "<p>Hi from Mailtemi — this html must render <b>INLINE</b>.</p>";
+    // The client's actual sequence: upload both body parts, then reference
+    // them as typed, disposition-less blobId leaves.
+    const txt = await uploadReal(h, TEXT, "text/plain");
+    const htm = await uploadReal(h, HTML, "text/html");
+    const created = ok(
+      await h.draft({
+        bodyStructure: {
+          type: "multipart/alternative",
+          subParts: [
+            { type: "text/plain", blobId: txt },
+            { type: "text/html", blobId: htm },
+          ],
+        },
+      }),
+    );
+
+    // What the wire carried before this rule: multipart/mixed, an empty
+    // inline text part, and the real body as two attachment parts.
+    const raw = await h.rawOf(created);
+    expect(raw).toContain("multipart/alternative");
+    expect(raw).not.toContain("multipart/mixed");
+    expect(raw).not.toContain("Content-Disposition: attachment");
+    const parsed = await PostalMime.parse(raw);
+    expect((parsed.text ?? "").trim()).toBe(TEXT);
+    expect(parsed.html).toContain("<b>INLINE</b>");
+    expect(parsed.attachments).toHaveLength(0);
+
+    const row = await h.store.getEmailRow(ACCOUNT, created.id as string);
+    expect(row!.hasAttachment).toBe(false);
+    expect(row!.attachments).toEqual([]);
+  });
+
+  it("concatenates a blob-carried text leaf with partId siblings in document order", async () => {
+    const h = harness();
+    const blob = await h.seedBlob("SECOND-FROM-BLOB");
+    const created = ok(
+      await h.draft({
+        bodyStructure: {
+          type: "multipart/mixed",
+          subParts: [
+            { type: "text/plain", partId: "a" },
+            { type: "text/plain", blobId: blob, disposition: "inline" },
+          ],
+        },
+        bodyValues: { a: { value: "FIRST-FROM-BODYVALUES" } },
+      }),
+    );
+    const parsed = await PostalMime.parse(await h.rawOf(created));
+    const first = parsed.text!.indexOf("FIRST-FROM-BODYVALUES");
+    const second = parsed.text!.indexOf("SECOND-FROM-BLOB");
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(second).toBeGreaterThan(first);
+  });
+
+  it('keeps a text leaf with disposition: "attachment" an attachment — type does not decide', async () => {
+    const h = harness();
+    const blob = await h.seedBlob("meeting notes, as a FILE");
+    const created = ok(
+      await h.draft({
+        bodyStructure: {
+          type: "multipart/mixed",
+          subParts: [
+            { type: "text/plain", partId: "t" },
+            { type: "text/plain", blobId: blob, name: "notes.txt", disposition: "attachment" },
+          ],
+        },
+        bodyValues: { t: { value: "see attached notes" } },
+      }),
+    );
+    const raw = await h.rawOf(created);
+    expect(raw).toContain("Content-Disposition: attachment");
+    expect(raw).toContain('filename="notes.txt"');
+    const parsed = await PostalMime.parse(raw);
+    expect((parsed.text ?? "").trim()).toBe("see attached notes");
+    expect(parsed.attachments).toHaveLength(1);
+    const row = await h.store.getEmailRow(ACCOUNT, created.id as string);
+    expect(row!.hasAttachment).toBe(true);
+  });
+
+  it("keeps a cid-referenced text leaf a related part — a cid is resolved from the HTML, not read as body", async () => {
+    const h = harness();
+    const blob = await h.seedBlob("snippet body");
+    const created = ok(
+      await h.draft({
+        bodyStructure: {
+          type: "multipart/related",
+          subParts: [
+            { type: "text/html", partId: "h" },
+            { type: "text/plain", blobId: blob, cid: "frag1" },
+          ],
+        },
+        bodyValues: { h: { value: '<p>see <a href="cid:frag1">fragment</a></p>' } },
+      }),
+    );
+    const raw = await h.rawOf(created);
+    expect(raw).toContain("multipart/related");
+    expect(raw).toContain("Content-ID: <frag1>");
+    // The meta round-trip is the proof of ROUTING: the part went through the
+    // attachment bucket (a related part, cid + inline, no paperclip) — it was
+    // not folded into the body buckets.
+    const row = await h.store.getEmailRow(ACCOUNT, created.id as string);
+    expect(row!.attachments.map((a) => ({ cid: a.cid, disposition: a.disposition }))).toEqual([
+      { cid: "frag1", disposition: "inline" },
+    ]);
+    expect(row!.hasAttachment).toBe(false);
+  });
+
+  it("decodes an inline body blob per its declared charset — latin-1 in, faithful text out", async () => {
+    const h = harness();
+    // "café" in ISO-8859-1: é is the single byte 0xE9, which is NOT valid
+    // UTF-8 — decoding this blob as the default charset would mojibake.
+    const blob = await h.seedBlob(new Uint8Array([0x63, 0x61, 0x66, 0xe9]));
+    const created = ok(
+      await h.draft({
+        bodyStructure: { type: "text/plain", charset: "iso-8859-1", blobId: blob },
+      }),
+    );
+    const parsed = await PostalMime.parse(await h.rawOf(created));
+    expect((parsed.text ?? "").trim()).toBe("café");
+  });
+
+  it("refuses a charset it cannot decode by name, rather than mailing mojibake", async () => {
+    const h = harness();
+    const blob = await h.seedBlob("whatever");
+    const err = refused(
+      await h.draft({
+        bodyStructure: { type: "text/plain", charset: "x-carrier-pigeon", blobId: blob },
+      }),
+    );
+    expect(err.type).toBe("invalidProperties");
+    expect(err.properties).toEqual(["bodyStructure/charset"]);
+    expect(err.description).toContain("x-carrier-pigeon");
+  });
+
+  it("an inline body blob crosses the same ownership boundary — foreign is nonexistent", async () => {
+    const h = harness();
+    const victimBlob = await h.seedBlob("ALLEN-PRIVATE-BODY", VICTIM);
+    const res = await h.draft({
+      bodyStructure: { type: "text/plain", blobId: victimBlob },
+    });
+    expect(res.created).toEqual({});
+    expect(res.notCreated.d!.type).toBe("blobNotFound");
+    expect(res.notCreated.d!.properties).toEqual(["bodyStructure/blobId"]);
+  });
+
+  it("an inline body blob counts against the same size ceiling as attachments", async () => {
+    const h = harness();
+    const { MAX_ATTACHMENT_BYTES_PER_EMAIL } = await import("@bullmoose/jmap-core");
+    const big = await h.seedBlob(new Uint8Array(MAX_ATTACHMENT_BYTES_PER_EMAIL + 1));
+    const res = await h.draft({
+      bodyStructure: { type: "text/plain", blobId: big },
+    });
+    expect(res.notCreated.d!.type).toBe("tooLarge");
+    expect(res.notCreated.d!.properties).toEqual(["bodyStructure"]);
   });
 });
