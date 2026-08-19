@@ -882,7 +882,11 @@ async function createDraft(
   const bodyValues = parseBodyValues(spec.bodyValues);
   let text: string | undefined;
   let html: string | undefined;
-  let attachmentSpecs: AttachmentSpec[];
+  // Blob-referencing parts (RFC 8621 §4.1.4 EmailBodyPart[]) — the
+  // `attachments` property, or the blobId leaves of a `bodyStructure`,
+  // whether those land as attachment parts or as the body itself. Resolved —
+  // and, crucially, AUTHORIZED — before a single byte reaches the builder.
+  let attachments: ResolvedAttachment[];
   if (spec.bodyStructure !== undefined && spec.bodyStructure !== null) {
     // §4.6: one form or the other. Merging would mean guessing which of two
     // bodies the client meant — refuse, naming both sides of the conflict.
@@ -901,13 +905,11 @@ async function createDraft(
       );
     }
     const flat = flattenBodyStructure(spec.bodyStructure, bodyValues);
-    text = flat.text;
-    html = flat.html;
-    attachmentSpecs = flat.attachments;
+    ({ text, html, attachments } = await resolveFlattenedBody(store, access, flat));
   } else {
     text = resolveBodyPart(spec.textBody, bodyValues, "textBody");
     html = resolveBodyPart(spec.htmlBody, bodyValues, "htmlBody");
-    attachmentSpecs = parseAttachmentSpecs(spec.attachments);
+    const attachmentSpecs = parseAttachmentSpecs(spec.attachments);
     // Content supplied but referenced by NOTHING would mail an empty body —
     // for a client that believes it wrote one, that is exactly the failure
     // this block exists to kill.
@@ -918,12 +920,8 @@ async function createDraft(
         ["bodyValues"],
       );
     }
+    attachments = await resolveAttachments(store, access, attachmentSpecs);
   }
-
-  // Attachments (RFC 8621 §4.1.4 EmailBodyPart[]) — from the `attachments`
-  // property or flattened out of bodyStructure. Resolved — and, crucially,
-  // AUTHORIZED — before a single byte reaches the builder.
-  const attachments = await resolveAttachments(store, access, attachmentSpecs);
 
   // stored == wire, from the create side: a client may stamp its own
   // Message-ID (RFC 8621 §4.1.3 `messageId`) and Date (`sentAt`) — Mailtemi
@@ -1160,9 +1158,11 @@ function parseAttachmentSpec(raw: unknown, path: string): AttachmentSpec {
     // RFC 8621 leaves `type` optional; octet-stream is the RFC 2046 §4.5.1
     // default for "bytes of unknown kind".
     type: typeof part.type === "string" && part.type !== "" ? part.type : "application/octet-stream",
-    // A blob's bytes pass through VERBATIM, so the client's charset is real
-    // information about them and rides onto the wire Content-Type. (Contrast
-    // partId content, which the server re-encodes: see flattenBodyStructure.)
+    // An attaching blob's bytes pass through VERBATIM, so the client's
+    // charset is real information about them and rides onto the wire
+    // Content-Type. (An INLINE body leaf instead consumes it to decode —
+    // see decodeInlineTextBlob — and partId content never carries one:
+    // §4.6 forbids it, the server re-encodes. See flattenBodyStructure.)
     charset: typeof part.charset === "string" && part.charset !== "" ? part.charset : null,
     name: typeof part.name === "string" && part.name !== "" ? part.name : null,
     cid,
@@ -1411,9 +1411,16 @@ function resolveBodyPart(partList: unknown, bodyValues: BodyValues, prop: "textB
  */
 const MAX_BODY_STRUCTURE_DEPTH = 8;
 
+/**
+ * One entry of a flattened text or html bucket, in document order: content
+ * already in hand (a partId leaf, resolved through bodyValues), or uploaded
+ * bytes still to be fetched and decoded (an inline blobId leaf).
+ */
+type BodySource = { value: string } | { blob: AttachmentSpec };
+
 interface FlattenedBody {
-  text?: string;
-  html?: string;
+  textSources: BodySource[];
+  htmlSources: BodySource[];
   attachments: AttachmentSpec[];
 }
 
@@ -1438,16 +1445,30 @@ interface FlattenedBody {
  *   on the part: §4.6 forbids `charset` next to partId precisely so the
  *   server picks the encoding, and UTF-8 represents every JSON string
  *   exactly.
- * - a blobId leaf is stored bytes: it becomes an attachment part with its
- *   declared type/charset/name/cid/disposition, authorized and size-bounded
- *   by `resolveAttachments` exactly like the `attachments` property.
+ * - a blobId leaf is stored bytes, and its DISPOSITION — not the fact that
+ *   the bytes were uploaded — decides where they land. RFC 8621 §4.6 lets a
+ *   body leaf carry its content by blobId, and Mailtemi composes exactly so:
+ *   it uploads its body parts, then references them as blobId leaves typed
+ *   text/plain and text/html with no disposition. Such a leaf — text/plain
+ *   or text/html, no cid, disposition absent or "inline" — is BODY content:
+ *   fetched, decoded per its declared charset, and bucketed just as a partId
+ *   leaf's content is. Anything else — an explicit disposition: "attachment"
+ *   whatever the type, a non-text type, a cid-referenced part (related
+ *   territory, resolved from the HTML) — becomes an attachment part with its
+ *   declared type/charset/name/cid/disposition. Either way the blob is
+ *   authorized and size-bounded by `resolveAttachments` exactly like the
+ *   `attachments` property. (Routing EVERY blobId leaf to the attachment
+ *   bucket is how a Mailtemi message went out as multipart/mixed with an
+ *   empty inline text part and its real body behind two
+ *   Content-Disposition: attachment parts — "Mail Attachment.txt" and
+ *   ".html" in Apple Mail, and no body at all.)
  * - everything else refuses BY NAME: a non-text type with partId content, a
  *   partId posing as an attachment, partId AND blobId on one leaf, a
  *   childless multipart, a tree deeper than MAX_BODY_STRUCTURE_DEPTH.
  */
 function flattenBodyStructure(root: unknown, bodyValues: BodyValues): FlattenedBody {
-  const texts: string[] = [];
-  const htmls: string[] = [];
+  const textSources: BodySource[] = [];
+  const htmlSources: BodySource[] = [];
   const attachments: AttachmentSpec[] = [];
 
   const walk = (raw: unknown, path: string, depth: number): void => {
@@ -1503,7 +1524,22 @@ function flattenBodyStructure(root: unknown, bodyValues: BodyValues): FlattenedB
       );
     }
     if (hasBlobId) {
-      attachments.push(parseAttachmentSpec(part, path));
+      const spec = parseAttachmentSpec(part, path);
+      // Inline-vs-attachment is a function of disposition and tree position,
+      // never of where the bytes came from. The RAW part is consulted for
+      // the disposition because parseAttachmentSpec defaults an absent one
+      // to "attachment" — right for the `attachments` property, but here
+      // absence is precisely the body-leaf signal.
+      const disp = typeof part.disposition === "string" ? part.disposition.trim().toLowerCase() : "";
+      const isBodyLeaf =
+        (declared === "text/plain" || declared === "text/html") &&
+        (disp === "" || disp === "inline") &&
+        spec.cid === null;
+      if (isBodyLeaf) {
+        (declared === "text/plain" ? textSources : htmlSources).push({ blob: spec });
+      } else {
+        attachments.push(spec);
+      }
       return;
     }
     if (!hasPartId) {
@@ -1535,16 +1571,67 @@ function flattenBodyStructure(root: unknown, bodyValues: BodyValues): FlattenedB
       );
     }
     const value = requireBodyValue(bodyValues, part.partId, path);
-    if (type === "text/plain") texts.push(value);
-    else htmls.push(value);
+    if (type === "text/plain") textSources.push({ value });
+    else htmlSources.push({ value });
   };
 
   walk(root, "bodyStructure", 0);
+  return { textSources, htmlSources, attachments };
+}
+
+/**
+ * Resolve a flattened bodyStructure into what `buildMime` consumes.
+ *
+ * Inline body blobs and attachment blobs cross ONE `resolveAttachments` call,
+ * so every blob-sourced byte in the create passes the same ownership boundary
+ * (a foreign blob is indistinguishable from a nonexistent one) and counts
+ * against the same MAX_ATTACHMENT_BYTES_PER_EMAIL ceiling — a body carried
+ * by blobId gets no bigger budget than an attachment does.
+ */
+async function resolveFlattenedBody(
+  store: Mailstore,
+  access: { accountId: string; tenantId: string },
+  flat: FlattenedBody,
+): Promise<{ text?: string; html?: string; attachments: ResolvedAttachment[] }> {
+  const inline = [...flat.textSources, ...flat.htmlSources].flatMap((s) => ("blob" in s ? [s.blob] : []));
+  const resolved = await resolveAttachments(store, access, [...inline, ...flat.attachments]);
+  const bytes = new Map<AttachmentSpec, Uint8Array>();
+  inline.forEach((spec, i) => bytes.set(spec, (resolved[i] as ResolvedAttachment).mime.content));
+
+  const render = (sources: BodySource[]) =>
+    sources.map((s) => ("blob" in s ? decodeInlineTextBlob(bytes.get(s.blob) as Uint8Array, s.blob) : s.value));
+  // Same joins partId content has always used — a blob-carried paragraph
+  // concatenates with its partId siblings in document order.
+  const texts = render(flat.textSources);
+  const htmls = render(flat.htmlSources);
   return {
     ...(texts.length > 0 ? { text: texts.join("\n\n") } : {}),
     ...(htmls.length > 0 ? { html: htmls.join("\n") } : {}),
-    attachments,
+    attachments: resolved.slice(inline.length),
   };
+}
+
+/**
+ * Decode an inline body leaf's uploaded bytes into the string `buildMime`
+ * will re-encode as UTF-8. The leaf's `charset` names the encoding of the
+ * uploaded bytes (absent → UTF-8). A label this runtime cannot decode
+ * REFUSES by name: mojibake mailed as the user's own words is body
+ * corruption, the failure class this path exists to kill — a client that
+ * means "ship these bytes untouched" says disposition: "attachment".
+ */
+function decodeInlineTextBlob(content: Uint8Array, spec: AttachmentSpec): string {
+  const label = spec.charset ?? "utf-8";
+  let decoder: TextDecoder;
+  try {
+    decoder = new TextDecoder(label);
+  } catch {
+    throw new SetErrorSignal(
+      "invalidProperties",
+      `${spec.path}: cannot decode charset "${label}" for an inline body part — upload it as UTF-8, or attach it with disposition "attachment"`,
+      [`${spec.path}/charset`],
+    );
+  }
+  return decoder.decode(content);
 }
 
 function fromJmapAddresses(value: unknown): EmailAddress[] {
