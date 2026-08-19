@@ -95,6 +95,10 @@ describe("the verb bar's markup", () => {
     expect(html).toContain(">Answer<");
     expect(html).toContain(">Watch<");
     expect(html).toContain("Bring in");
+    expect(html).toContain(">Schedule<");
+    // A calendar verb states its whole promise before it is pressed: a hold,
+    // on your own calendar, reaching nobody.
+    expect(html).toContain("tentative, and nobody is invited");
     // The contract is legible BEFORE it is armed — a resolved address the
     // human can see is how a wrong guess gets caught early.
     expect(html).toContain(`title="Watch for a reply from ${email.from[0]!.email}"`);
@@ -119,7 +123,7 @@ describe("the verb bar's markup", () => {
 
   it("a scope wall greys every ask rather than inviting the same refusal", () => {
     const html = render(<AgentVerbs email={email} cell={undefined} blocked onWatch={noop} onAsk={noop} />);
-    expect(html.match(/disabled/g)).toHaveLength(3);
+    expect(html.match(/disabled/g)).toHaveLength(4); // Answer, Watch, Bring in, Schedule
   });
 
   it("bring-in asks for an address rather than guessing a name", () => {

@@ -1,11 +1,12 @@
 /** @jsxImportSource preact */
 import { describe, expect, it } from "vitest";
 import { render } from "preact-render-to-string";
-import FinderApp, { FinderChips, HitDetail, RefineBar, ThreadGroups } from "./FinderApp";
+import FinderApp, { FinderChips, HitDetail, RefineBar, SuggestBar, ThreadGroups } from "./FinderApp";
 import CollectionColumn from "./CollectionColumn";
 import { buildFinderCollections } from "../lib/finder/collections";
 import type { FinderHit } from "../lib/finder/run";
 import { newSession, refine } from "../lib/finder/session";
+import { suggestRefinements } from "../lib/finder/suggest";
 import { groupByThread } from "../lib/finder/threads";
 import type { Mailbox } from "../lib/mail/types";
 
@@ -68,6 +69,57 @@ describe("RefineBar", () => {
     const blank = render(<RefineBar mailboxes={[]} onAdd={() => {}} canSave={false} onSave={() => {}} />);
     expect(blank).toContain('finder-save" disabled');
     expect(html).not.toContain('finder-save" disabled');
+  });
+});
+
+describe("SuggestBar — the agent's offers (s20 T5b)", () => {
+  const offers = suggestRefinements(newSession("elk permit from sergio", NOW), [
+    ...Array.from({ length: 5 }, (_, i) =>
+      hit({
+        id: `s${i}`,
+        threadId: `t${i}`,
+        receivedAt: "2026-08-01T00:00:00Z",
+        sender: "Sergio Ruiz",
+        senderEmail: "sergio@example.test",
+      }),
+    ),
+    ...Array.from({ length: 4 }, (_, i) =>
+      hit({
+        id: `a${i}`,
+        threadId: `u${i}`,
+        receivedAt: "2026-08-02T00:00:00Z",
+        sender: "Sergio's assistant",
+        senderEmail: "assistant@example.test",
+      }),
+    ),
+  ]);
+  const html = render(<SuggestBar suggestions={offers} onAccept={() => {}} />);
+
+  it("shows each offer as a chip WITH its reason — grounds you cannot see are grounds you cannot decline", () => {
+    expect(offers.length).toBeGreaterThan(1);
+    expect(html).toContain("from: sergio");
+    expect(html).toContain("assistant@example.test");
+    expect(html).toContain("rather than both");
+  });
+
+  it("says out loud that ignoring it is free", () => {
+    expect(html).toContain("nothing is applied until you click");
+  });
+
+  it("is buttons only — nothing checked, nothing selected, nothing to dismiss", () => {
+    // The anti-star, in markup: no checkbox, no toggle, no aria-pressed state,
+    // and no "don't show me this again" — the offers recompute and vanish on
+    // their own.
+    expect(html).not.toContain("checkbox");
+    expect(html).not.toContain("aria-pressed");
+    expect(html).not.toContain("aria-checked");
+    expect(html).not.toContain("Dismiss");
+    expect(html).not.toContain("<form");
+    expect(html).not.toContain(" style=");
+  });
+
+  it("renders NOTHING when there is nothing to offer — an empty strip is the agent taking up room", () => {
+    expect(render(<SuggestBar suggestions={[]} onAccept={() => {}} />)).toBe("");
   });
 });
 

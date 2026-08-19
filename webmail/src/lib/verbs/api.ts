@@ -23,6 +23,10 @@
 // the margin does: in place, quietly, with the mail still readable behind it.
 
 import type { JmapClient } from "../jmap/JmapClient";
+// The one place the viewer's own zone is read (`lib/calendar/civil.ts` keeps
+// it isolated so no pure function reaches for it). A `schedule` ask needs it,
+// because "Thursday at 3" is meaningless without a wall clock to read it in.
+import { browserTimeZone } from "../calendar/civil";
 import type { RecipientVia } from "../intent/resolve";
 import type { Email } from "../mail/types";
 import { describeRefusal } from "../mail/triage";
@@ -126,6 +130,17 @@ export interface AskSpec {
   person?: string;
   /** An optional one-line steer from the human. */
   note?: string;
+  /**
+   * `schedule` only — the IANA zone "Thursday at 3" should be read in.
+   *
+   * Defaulted from the browser rather than asked for, because the browser's
+   * zone IS the human's wall clock and nobody wants a dropdown before they can
+   * press a button. Injectable for tests, and for the day a settings screen
+   * knows better than `Intl` does. The server never guesses one: absent, it
+   * uses UTC and the proposal's rationale says which zone it used, because a
+   * hold an hour out is worse than no hold at all.
+   */
+  timeZone?: string;
 }
 
 /**
@@ -172,6 +187,10 @@ export async function askAgent(
                 verb: spec.verb,
                 ...(spec.person ? { person: spec.person.trim() } : {}),
                 ...(spec.note ? { note: spec.note.trim() } : {}),
+                // Only where it means something. A `timeZone` on an `answer`
+                // would be a field the server reads and nothing uses, which is
+                // how payloads grow keys nobody can explain.
+                ...(spec.verb === "schedule" ? { timeZone: spec.timeZone ?? browserTimeZone() } : {}),
               },
             },
           },
