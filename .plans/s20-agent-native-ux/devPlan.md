@@ -83,7 +83,7 @@ the action wants to DO.
 end — created from webmail, CLI, or a FWD to remind@; fires from the cron; the draft
 appears in the approvals queue citing the Watch; the Watch shows as fired.
 
-### T2 — Verbs on mail · *radical verbs, familiar surface* — ✅ LANDED 2026-08-18 (#202: **Answer**, **Watch**, **Bring X into this** as tier-1 proposals that apply into your own Drafts. **Schedule** and **Delegate** honestly deferred — no `create-event` apply case, no agent-to-agent handoff yet. `watch-notify`'s missing apply case fixed in passing. Known convention debt: the binding is named `extractor` because no `AgentBinding/get` exists.)
+### T2 — Verbs on mail · *radical verbs, familiar surface* — ✅ LANDED 2026-08-18 (#202: **Answer**, **Watch**, **Bring X into this** as tier-1 proposals that apply into your own Drafts. **Schedule** LANDED 2026-08-18 (#215: a HOLD, never a booking — `tentative`, `freeBusyStatus: free`, `scheduleAgent: none`, no `sendTo`, so nothing an iTIP implementation could deliver; the agent never invents a time, enforced in the prompt, a re-parse that drops anything the calendar's own parser rejects, and the apply case). **Delegate** still deferred — #214 built the handoff machinery, the verb's apply case + colleague chooser remain. `watch-notify`'s missing apply case fixed in passing. Known convention debt: the binding is named `extractor` because no `AgentBinding/get` exists.)
 
 **Files:** `webmail/src/components/MessageView.tsx` (action bar), `AppShell.tsx`,
 `services/agent` (intent → proposal pipeline).
@@ -201,7 +201,7 @@ Two views only, chosen because they answer the two questions a chief of staff is
 **Done when:** the home view shows Waiting-on and Commitments with evidence links; a
 correction updates the row AND lands a training label; extraction cost is queryable.
 
-### T5 — Ask · *research over your own history* — v1 LANDED (2026-08-18, #197: the Finder realm — sessions + refinement chips, mail-only, agent-refinement seam marked for T5b)
+### T5 — Ask · *research over your own history* — v1 LANDED (2026-08-18, #197: the Finder realm — sessions + refinement chips, mail-only). **T5b seam plugged (#215)**: suggestions are DIRECT, not invocation→proposal — a chip is not an act, the click IS the approval, and the drain is a 5-minute cron which would make a proposal a memo. No model call, so every offer provably narrows to a non-empty subset of what is on screen. Anti-star: no checkbox, no dismiss, nothing persisted.
 
 **Files:** `webmail/src/pages/search.astro` (mode toggle), a conversational surface over
 the **existing MCP tool layer** (`services/agent/src/mcp.ts`).
@@ -216,7 +216,19 @@ answers; every access is authorized and audited by the machinery that already ex
 - **Done when:** a natural-language question over real mail returns a cited answer whose
   every read appears in the access log.
 
-### T6 — Goals: the delegation contract, with an approvable plan · *the Situation question, resolved*
+### T6 — Goals: the delegation contract, with an approvable plan · *the Situation question, resolved* — ✅ LANDED 2026-08-18 (#216)
+
+> **The load-bearing move**: there is deliberately NO goal-shaped decision endpoint. A redline
+> sends the ordinary approve-with-`editedPayload`; a question sends the ordinary needsInfo.
+> Because nothing goal-shaped exists on the wire, nothing COULD write a different ledger —
+> "the venue moves, the ledger does not" is structural, not asserted.
+> Also: a Goal's id IS its Job's id; per-node budget = aggregate ÷ maxNodes (the aggregate is a
+> RESERVATION, so a root declaring the whole $750 would otherwise refuse its own first task);
+> `email`/`summary` checkpoints REFUSE to graduate to auto because nothing enforces them yet and
+> recording `auto` "would be a toggle that lies about what you handed over"; `mayNot` is prose,
+> not a deny-list, and the UI says so ("a clause that compiles to nothing is a clause that lies").
+> Deferred, stated: no model planner (decomposition derived from the contract's reach), margin
+> comments not joined into the timeline, single-account read, no demo fixture.
 
 **Files:** `services/agent/src/jobNode.ts` (plan-proposal interception),
 `services/jmap` (goal CRUD as a thin face over `jobs` rows), webmail goal view,
