@@ -366,3 +366,65 @@ describe("Email/changes with an unusable sinceState", () => {
     });
   });
 });
+
+// ---- Email/set create: stored == wire, from the create side --------------
+
+describe("Email/set create — client-stamped Message-ID and Date are respected", () => {
+  // The invariant behind the self-send threading fix (threadJoin.test.ts in
+  // services/ingest): whatever Message-ID the stored row claims must be the
+  // one in the MIME that goes to the relay. A client that stamps its own id
+  // (Mailtemi does) must find OUR store agreeing with it — generating a
+  // fresh id over the client's would re-open the stored != wire divergence
+  // at the very first step.
+
+  const create = async (
+    h: ReturnType<typeof harness>,
+    extra: Record<string, unknown>,
+  ): Promise<{ id: string; blob: string }> => {
+    const res = await h.call<{
+      created: Record<string, { id: string; blobId: string }>;
+      notCreated: Record<string, unknown>;
+    }>("Email/set", {
+      accountId: ACCOUNT,
+      create: {
+        d: {
+          mailboxIds: { [MAILBOX]: true },
+          keywords: { $draft: true },
+          from: [{ email: "eric@bullmoose.cc" }],
+          to: [{ email: "someone@example.com" }],
+          subject: "stamped",
+          textBody: [{ partId: "t" }],
+          bodyValues: { t: { value: "hello" } },
+          ...extra,
+        },
+      },
+    });
+    if (!res.created.d) throw new Error(`create failed: ${JSON.stringify(res.notCreated)}`);
+    const blob = await h.store.getBlob(TENANT, ACCOUNT, res.created.d.blobId);
+    return { id: res.created.d.id, blob: await blob!.text() };
+  };
+
+  it("a client-supplied messageId is stored AND stamped into the MIME — identically", async () => {
+    const h = harness();
+    const { id, blob } = await create(h, { messageId: ["client-chosen@mailtemi.example"] });
+
+    expect(blob).toContain("Message-ID: <client-chosen@mailtemi.example>");
+    expect((await h.store.getEmailRow(ACCOUNT, id))?.messageId).toBe("client-chosen@mailtemi.example");
+  });
+
+  it("a client-supplied sentAt becomes the Date header", async () => {
+    const h = harness();
+    const { blob } = await create(h, { sentAt: "2026-08-19T10:00:00Z" });
+
+    expect(blob).toContain("Date: Wed, 19 Aug 2026 10:00:00 +0000");
+  });
+
+  it("with neither supplied, we generate — and the generated id is stored == stamped too", async () => {
+    const h = harness();
+    const { id, blob } = await create(h, {});
+
+    const row = await h.store.getEmailRow(ACCOUNT, id);
+    expect(row?.messageId).toMatch(/@bullmoose\.cc$/); // ours, from the From domain
+    expect(blob).toContain(`Message-ID: <${row?.messageId}>`);
+  });
+});

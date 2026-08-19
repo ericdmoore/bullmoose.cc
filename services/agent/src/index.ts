@@ -1,7 +1,7 @@
 import PostalMime from "postal-mime";
 import { commitChanges } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
-import { Mailstore } from "@bullmoose/mailstore";
+import { Mailstore, normalizeMessageId } from "@bullmoose/mailstore";
 import {
   ESCALATION_WINDOW_MAX_MS,
   ESCALATION_WINDOW_NO_HISTORY_MS,
@@ -1001,6 +1001,15 @@ async function sendReply(
       }),
     });
     if (!res.ok) throw new Error(`submit relay failed (${res.status}): ${await res.text()}`);
+    // stored == wire: SES substitutes its own Message-ID for the one buildMime
+    // stamped (packages/outbound SendResult), and the human this agent replied
+    // TO will reply back citing the SES id. The row adopts the wire id so that
+    // reply — and any delivered self-copy — threads with this sent copy.
+    const relay = (await res.json()) as { relayMessageId: string; messageId?: string };
+    const wireId = normalizeMessageId(relay.messageId);
+    if (wireId !== null && wireId !== messageId) {
+      await store.updateEmailMessageId(job.account_id, emailId, wireId);
+    }
   }
 
   await commitChanges(env.ACCOUNT_DO, job.account_id, [

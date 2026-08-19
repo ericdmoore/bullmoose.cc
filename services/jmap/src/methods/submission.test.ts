@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MethodRegistry } from "@bullmoose/jmap-core";
-import { fakeEnv } from "@bullmoose/test-fakes";
+import { Mailstore } from "@bullmoose/mailstore";
+import { fakeEnv, type FakeWorkerOptions } from "@bullmoose/test-fakes";
 import { registerSubmissionMethods } from "./submission";
 import type { RequestContext } from "./common";
 
@@ -80,8 +81,8 @@ const draftFixture = (over: Fixture = {}): Fixture => ({
   ...over,
 });
 
-function harness(fx: Fixture, scopes: string[] = ["mail"]) {
-  const w = fakeEnv();
+function harness(fx: Fixture, scopes: string[] = ["mail"], envOpts: FakeWorkerOptions = {}) {
+  const w = fakeEnv(envOpts);
   w.db.seedAccount({ accountId: ACCOUNT, loginEmail: LOGIN_EMAIL, displayName: "Eric" });
   const withAccount = <T extends object>(rows: T[]) => rows.map((r) => ({ account_id: ACCOUNT, ...r }));
   w.db.seed("emails", withAccount(fx.emails ?? []));
@@ -106,7 +107,8 @@ function harness(fx: Fixture, scopes: string[] = ["mail"]) {
     },
   };
 
-  const call = (create: Record<string, unknown>) => handler({ accountId: ACCOUNT, create }, ctx);
+  const call = (create: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    handler({ accountId: ACCOUNT, create, ...extra }, ctx);
   const get = async (args: Record<string, unknown> = {}) =>
     (await getHandler({ accountId: ACCOUNT, ...args }, ctx)) as unknown as GetResponse;
   const changes = async (sinceState: string) =>
@@ -545,5 +547,81 @@ describe("EmailSubmission/get — ids, accounts, and scope", () => {
 
     const got = await h.get({ ids: ["es_seeded"] });
     expect(got.list.map((s) => s.id)).toContain("es_seeded");
+  });
+});
+
+// ---- stored == wire: the Message-ID reconcile -------------------------
+
+describe("EmailSubmission/set — the stored Message-ID adopts the relay's wire id", () => {
+  // The exact shape SES substitutes, pinned against the 2026-08-19 Gmail
+  // specimen: our raw message left stamped `<uuid@bullmoose.cc>` and arrived
+  // as `<{sesMessageId}@us-west-2.amazonses.com>`, Message-ID inside both
+  // validating DKIM h= lists. Stamping harder cannot win; reconciling from
+  // the relay's answer is the only honest direction.
+  const SES_WIRE_ID = "010101a01ba9762b-e5f1e023-e0f0-41d5-a521-0eecaf2a634b-000000@us-west-2.amazonses.com";
+
+  const send = (h: ReturnType<typeof harness>) =>
+    h.call({
+      s: {
+        emailId: "e_1",
+        identityId: "id_1",
+        envelope: { mailFrom: { email: IDENTITY_EMAIL }, rcptTo: [{ email: "to@example.com" }] },
+      },
+    });
+
+  it("rewrites the email row's message_id to the id the relay put on the wire", async () => {
+    const h = harness(draftFixture(), ["mail"], { relayStampedMessageId: SES_WIRE_ID });
+
+    const res = await send(h);
+    expect(res.notCreated).toEqual({});
+
+    const row = await new Mailstore(h.w.env.DB, h.w.env.BLOBS).getEmailRow(ACCOUNT, "e_1");
+    expect(row?.messageId).toBe(SES_WIRE_ID);
+  });
+
+  it("announces the email as updated, so clients drop their cached (stale) id", async () => {
+    const h = harness(draftFixture(), ["mail"], { relayStampedMessageId: SES_WIRE_ID });
+
+    const res = await send(h);
+    expect(res.notCreated).toEqual({});
+
+    const ch = await h.w.accountDo.changes(ACCOUNT, "Email", res.oldState as string);
+    expect(ch.updated).toContain("e_1");
+  });
+
+  it("leaves the stored id alone when the relay reports nothing (a relay that preserves the header)", async () => {
+    // Default fake submit: `{relayMessageId}` only — the Cloudflare/mock
+    // contract, where the wire carries the blob's own Message-ID and the
+    // stored value is already the wire value.
+    const h = harness(draftFixture());
+
+    const res = await send(h);
+    expect(res.notCreated).toEqual({});
+
+    const row = await new Mailstore(h.w.env.DB, h.w.env.BLOBS).getEmailRow(ACCOUNT, "e_1");
+    expect(row?.messageId).toBe("<m1@bullmoose.cc>"); // the seeded value, untouched
+    const ch = await h.w.accountDo.changes(ACCOUNT, "Email", res.oldState as string);
+    expect(ch.updated).not.toContain("e_1");
+  });
+
+  it("reconciled id and onSuccessUpdateEmail patch announce ONE Email update, not two", async () => {
+    const h = harness(draftFixture(), ["mail"], { relayStampedMessageId: SES_WIRE_ID });
+
+    const res = await h.call(
+      {
+        s: {
+          emailId: "e_1",
+          identityId: "id_1",
+          envelope: { mailFrom: { email: IDENTITY_EMAIL }, rcptTo: [{ email: "to@example.com" }] },
+        },
+      },
+      // The standard "clear $draft on success" dance, so this send both
+      // reconciles the Message-ID AND patches the email.
+      { onSuccessUpdateEmail: { "#s": { "keywords/$draft": null } } },
+    );
+    expect(res.notCreated).toEqual({});
+
+    const ch = await h.w.accountDo.changes(ACCOUNT, "Email", res.oldState as string);
+    expect(ch.updated.filter((id: string) => id === "e_1")).toHaveLength(1);
   });
 });

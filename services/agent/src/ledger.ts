@@ -1,5 +1,6 @@
 import { commitChanges } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
+import { normalizeMessageId } from "@bullmoose/mailstore";
 import type { EmailRow, Mailstore } from "@bullmoose/mailstore";
 import { callWithFallback, type BindingConfig, type Env } from "./models.js";
 import { assertOutboundAllowed, outboundRefusal } from "@bullmoose/mailstore/outboundBound";
@@ -530,6 +531,10 @@ ${hasChart ? chartHtml(agg) : `<p style="color:#777">${escapeHtml(progress.trim(
     }),
   });
   if (!res.ok) throw new Error(`digest relay failed (${res.status}): ${await res.text()}`);
+  // The relay runs before the row lands, so the sent copy can be stored under
+  // the Message-ID actually on the wire (SES substitutes its own — see
+  // packages/outbound SendResult). Replies and delivered copies cite that id.
+  const relay = (await res.json()) as { relayMessageId: string; messageId?: string };
 
   const sentId = await store.ensureRoleMailbox(job.account_id, "sent", "Sent");
   const emailId = `e_${crypto.randomUUID()}`;
@@ -537,7 +542,7 @@ ${hasChart ? chartHtml(agg) : `<p style="color:#777">${escapeHtml(progress.trim(
     id: emailId,
     blobId,
     threadId: `t_${crypto.randomUUID()}`,
-    messageId,
+    messageId: normalizeMessageId(relay.messageId) ?? messageId,
     inReplyTo: null,
     subject: d.subject,
     from: [{ name: job.binding_name, email: d.selfAddress }],
@@ -628,6 +633,8 @@ ${f.parsed.text ?? orig.preview}`;
     }),
   });
   if (!res.ok) throw new Error(`forward relay failed (${res.status}): ${await res.text()}`);
+  // Same wire-id adoption as the digest above.
+  const relay = (await res.json()) as { relayMessageId: string; messageId?: string };
 
   const sentId = await store.ensureRoleMailbox(job.account_id, "sent", "Sent");
   const emailId = `e_${crypto.randomUUID()}`;
@@ -635,7 +642,7 @@ ${f.parsed.text ?? orig.preview}`;
     id: emailId,
     blobId,
     threadId: `t_${crypto.randomUUID()}`,
-    messageId,
+    messageId: normalizeMessageId(relay.messageId) ?? messageId,
     inReplyTo: null,
     subject,
     from: [{ name: job.binding_name, email: f.selfAddress }],

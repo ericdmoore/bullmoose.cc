@@ -1308,8 +1308,23 @@ export class Mailstore {
     ]);
   }
 
-  /** Resolve threadId: join by In-Reply-To / References, else new thread. */
-  async resolveThreadId(accountId: string, inReplyTo: string | null): Promise<string> {
+  /**
+   * Resolve threadId: join by In-Reply-To, else by the message's OWN
+   * Message-ID, else new thread.
+   *
+   * The second join is the self-send correlation: when an account both sends
+   * a message and receives a delivered copy of it (self-addressed, cc'd, or
+   * intra-domain), the copy arrives with no In-Reply-To — it is not a reply —
+   * but with the SAME Message-ID the sent copy already has stored. Another
+   * stored copy of this exact message is the strongest thread evidence there
+   * is, so the copy joins its sibling's thread instead of founding a
+   * disconnected one. In-Reply-To still wins when both match: a reply's
+   * parent names the thread, and for a delivered copy of a reply the two
+   * joins agree anyway.
+   *
+   * No dedup here — both copies remain rows; they simply share a thread.
+   */
+  async resolveThreadId(accountId: string, inReplyTo: string | null, messageId?: string | null): Promise<string> {
     if (inReplyTo) {
       const parent = await this.db
         .prepare(`SELECT thread_id FROM emails WHERE account_id = ? AND message_id = ?`)
@@ -1317,7 +1332,34 @@ export class Mailstore {
         .first<{ thread_id: string }>();
       if (parent) return parent.thread_id;
     }
+    if (messageId) {
+      const sibling = await this.db
+        .prepare(`SELECT thread_id FROM emails WHERE account_id = ? AND message_id = ?`)
+        .bind(accountId, messageId)
+        .first<{ thread_id: string }>();
+      if (sibling) return sibling.thread_id;
+    }
     return `th_${crypto.randomUUID()}`;
+  }
+
+  /**
+   * Reconcile a stored message_id with the Message-ID actually on the wire.
+   *
+   * Exists for exactly one caller class: a send path whose relay REWRITES
+   * the Message-ID header after the bytes leave us (SES does, always — see
+   * packages/outbound SendResult). The invariant this restores is
+   * stored == wire: the id under which the world will reply to, deliver,
+   * and thread this message must be the id we hold, or every self-send
+   * splits into disconnected threads and every reply forks a new one.
+   * The stored BLOB keeps the pre-substitution header (message bytes are
+   * immutable once written); the row is the store's authority for
+   * correlation, and the row is what this corrects.
+   */
+  async updateEmailMessageId(accountId: string, emailId: string, messageId: string): Promise<void> {
+    await this.db
+      .prepare(`UPDATE emails SET message_id = ? WHERE account_id = ? AND id = ?`)
+      .bind(messageId, accountId, emailId)
+      .run();
   }
 
   // ---- Threads ------------------------------------------------------

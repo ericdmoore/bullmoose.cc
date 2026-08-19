@@ -3,6 +3,7 @@ import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
 import {
   QUARANTINE_ROLE,
+  normalizeMessageId,
   type ContactCardRow,
   type JSCalendarEventBlob,
   type JSContactCard,
@@ -1011,6 +1012,12 @@ async function applyProposal(
       if (!res.ok) {
         throw new SetErrorSignal("serverFail", `submit relay failed (${res.status})`);
       }
+      // The sent-copy row lands AFTER the relay answered, so it can be stored
+      // under the Message-ID actually on the wire: SES substitutes its own id
+      // for the one the drafted blob carries (packages/outbound SendResult),
+      // and the recipient's reply will cite the SES id. payload.messageId —
+      // the blob's stamp — is the fallback for relays that preserve it.
+      const relay = (await res.json()) as { relayMessageId: string; messageId?: string };
       const now = Date.now();
       const sentMailbox = await store.ensureRoleMailbox(access.accountId, "sent", "Sent");
       const emailId = `e_${crypto.randomUUID()}`;
@@ -1018,7 +1025,10 @@ async function applyProposal(
         id: emailId,
         blobId,
         threadId: await store.resolveThreadId(access.accountId, str(payload.inReplyTo) ?? null),
-        messageId: str(payload.messageId) ?? `${crypto.randomUUID()}@${self.split("@")[1] ?? "localhost"}`,
+        messageId:
+          normalizeMessageId(relay.messageId) ??
+          str(payload.messageId) ??
+          `${crypto.randomUUID()}@${self.split("@")[1] ?? "localhost"}`,
         inReplyTo: str(payload.inReplyTo) ?? null,
         subject,
         from: [{ name: row.binding_name, email: self }],

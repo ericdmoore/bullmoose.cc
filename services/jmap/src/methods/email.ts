@@ -869,7 +869,17 @@ async function createDraft(
   // AUTHORIZED — before a single byte reaches the builder.
   const attachments = await resolveAttachments(store, access, spec.attachments);
 
-  const messageId = `${crypto.randomUUID()}@${from[0]?.email.split("@")[1] ?? "localhost"}`;
+  // stored == wire, from the create side: a client may stamp its own
+  // Message-ID (RFC 8621 §4.1.3 `messageId`) and Date (`sentAt`) — Mailtemi
+  // and friends do. When it does, those values go INTO the MIME and into the
+  // row, identically; we generate only what the client left blank. Silently
+  // overwriting a client's Message-ID would re-open the divergence this
+  // exists to close: the client would hold one id, our store another.
+  const clientMessageId = normalizeMessageId(
+    Array.isArray(spec.messageId) && typeof spec.messageId[0] === "string" ? (spec.messageId[0] as string) : null,
+  );
+  const messageId = clientMessageId ?? `${crypto.randomUUID()}@${from[0]?.email.split("@")[1] ?? "localhost"}`;
+  const sentAt = typeof spec.sentAt === "string" ? new Date(spec.sentAt) : null;
   const raw = buildMime({
     from,
     to,
@@ -878,7 +888,7 @@ async function createDraft(
     subject,
     messageId,
     inReplyTo,
-    date: new Date(),
+    date: sentAt !== null && !Number.isNaN(sentAt.getTime()) ? sentAt : new Date(),
     ...(text !== undefined ? { text } : {}),
     ...(html !== undefined ? { html } : {}),
     // Absent, not empty, when there are none: `buildMime` collapses empty
@@ -1187,7 +1197,9 @@ async function importOne(
 
   const parsed = await PostalMime.parse(raw);
   const inReplyTo = normalizeMessageId(parsed.inReplyTo);
-  const threadId = await store.resolveThreadId(access.accountId, inReplyTo);
+  // Own-Message-ID as the fallback join (see resolveThreadId): importing a
+  // copy of a message the account already holds threads it with its sibling.
+  const threadId = await store.resolveThreadId(access.accountId, inReplyTo, normalizeMessageId(parsed.messageId));
 
   // Attachments become individual content-hash blobs, same as ingest.
   const attachments = [];

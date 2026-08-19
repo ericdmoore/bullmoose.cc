@@ -18,8 +18,16 @@ export interface FakeSubmit {
   readonly bodies: Array<Record<string, unknown>>;
 }
 
-/** The submit worker's `/internal/submit`, recording what it was handed. */
-export function fakeSubmit(relayMessageId = "relay-1"): FakeSubmit {
+/**
+ * The submit worker's `/internal/submit`, recording what it was handed.
+ *
+ * `stampedMessageId` mirrors the real worker's `messageId` response field:
+ * the Message-ID the relay REWROTE onto the wire (SES always substitutes its
+ * own — packages/outbound SendResult). Omitted by default, which models a
+ * relay that preserves the message's own header; callers under test must
+ * treat absence as "the blob's Message-ID is the wire's".
+ */
+export function fakeSubmit(relayMessageId = "relay-1", stampedMessageId?: string): FakeSubmit {
   const calls: RelayedEnvelope[] = [];
   const bodies: Array<Record<string, unknown>> = [];
   const binding = {
@@ -27,9 +35,15 @@ export function fakeSubmit(relayMessageId = "relay-1"): FakeSubmit {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       bodies.push(body);
       calls.push(body.envelope as RelayedEnvelope);
-      return new Response(JSON.stringify({ relayMessageId }), {
-        headers: { "content-type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          relayMessageId,
+          ...(stampedMessageId ? { messageId: stampedMessageId } : {}),
+        }),
+        {
+          headers: { "content-type": "application/json" },
+        },
+      );
     },
     // Fetcher also declares connect()/queue()/scheduled(); nothing calls them.
   } as unknown as Fetcher;
@@ -131,6 +145,8 @@ export interface FakeWorker {
 export interface FakeWorkerOptions extends FakeD1Options {
   /** `relayMessageId` the fake submit worker returns. */
   relayMessageId?: string;
+  /** Wire Message-ID the fake relay claims to have stamped (see fakeSubmit). */
+  relayStampedMessageId?: string;
 }
 
 /**
@@ -141,7 +157,7 @@ export function fakeEnv(opts: FakeWorkerOptions = {}): FakeWorker {
   const db = fakeD1(opts);
   const blobs = fakeR2();
   const kv = fakeKV();
-  const submit = fakeSubmit(opts.relayMessageId);
+  const submit = fakeSubmit(opts.relayMessageId, opts.relayStampedMessageId);
   // The DO gets the same bindings the jmap worker gives it, so a responder
   // fired through runAlarm() reads the same D1 rows the test seeded.
   const accountDo = fakeAccountDo({

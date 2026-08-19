@@ -360,7 +360,12 @@ async function deliver(
 
   const blobId = await store.putBlob(route.tenantId, route.accountId, raw);
   const inReplyTo = normalizeMessageId(parsed.inReplyTo);
-  const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
+  // Third argument: the delivered copy of a message this account SENT (self-
+  // addressed, cc'd, intra-domain) arrives with no In-Reply-To but with the
+  // Message-ID the sent copy already has stored — post-send reconcile, that is
+  // the relay's wire id (EmailSubmission/set). Joining on it is what lands the
+  // delivered copy in the SAME thread as the Sent copy instead of a new one.
+  const threadId = await store.resolveThreadId(route.accountId, inReplyTo, normalizeMessageId(parsed.messageId));
   const inboxId = await store.ensureRoleMailbox(route.accountId, "inbox", "Inbox");
 
   const stored = await storeAttachments(store, route, parsed);
@@ -519,7 +524,8 @@ async function quarantineDeliver(
 ): Promise<{ emailId: string; quarantined: string }> {
   const blobId = await store.putBlob(route.tenantId, route.accountId, m.raw);
   const inReplyTo = normalizeMessageId(m.parsed.inReplyTo);
-  const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
+  // Same self-send join as the inbox path — a held copy still threads home.
+  const threadId = await store.resolveThreadId(route.accountId, inReplyTo, normalizeMessageId(m.parsed.messageId));
   // Lazily ensured (the inbox precedent) so an account provisioned before the
   // seed existed still gets one on first shunt. The role is the REGISTERED
   // 'junk' (RFC 8621) so standards clients treat it as spam; the NAME is
@@ -603,7 +609,8 @@ async function screenDeliver(
 ): Promise<{ emailId: string; screened: string; invocations: number }> {
   const blobId = await store.putBlob(route.tenantId, route.accountId, m.raw);
   const inReplyTo = normalizeMessageId(m.parsed.inReplyTo);
-  const threadId = await store.resolveThreadId(route.accountId, inReplyTo);
+  // Same self-send join as the inbox path — a held copy still threads home.
+  const threadId = await store.resolveThreadId(route.accountId, inReplyTo, normalizeMessageId(m.parsed.messageId));
   const quarantineId = await store.ensureRoleMailbox(route.accountId, QUARANTINE_ROLE, QUARANTINE_NAME);
   const attachments = await storeAttachments(store, route, m.parsed);
 
