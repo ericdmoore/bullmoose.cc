@@ -39,7 +39,12 @@ export interface Session {
   apiUrl: string;
   downloadUrl: string;
   uploadUrl: string;
-  eventSourceUrl: string;
+  /**
+   * Absent until the server actually serves an EventSource endpoint — a URL
+   * that 404s is worse than no URL, because push-capable clients hammer it
+   * instead of falling back to polling (see services/jmap/src/session.ts).
+   */
+  eventSourceUrl?: string;
   state: string;
 }
 

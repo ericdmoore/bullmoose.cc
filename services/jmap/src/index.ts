@@ -102,6 +102,9 @@ const SUPPORTED_CAPS = new Set([
   CORE_CAP,
   MAIL_CAP,
   SUBMISSION_CAP,
+  // Tolerated in `using[]` even though the session no longer ADVERTISES it
+  // (the /api/ws socket is push-only, not RFC 8887 — see session.ts): a
+  // client that lists it anyway should not have its whole request refused.
   WEBSOCKET_CAP,
   VACATION_CAP,
   CONTACTS_CAP,

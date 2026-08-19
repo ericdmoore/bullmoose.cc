@@ -86,6 +86,22 @@ describe("loadThread — one round trip (invariant §6.5)", () => {
 });
 
 describe("renderMessage", () => {
+  it("never interprets a text/plain part in htmlBody as markup (RFC 8621 derivation)", () => {
+    // The server derives htmlBody per §4.1.4: a text-only message's htmlBody
+    // contains its text/plain part. Rendering must key off the part's TYPE.
+    const rendered = renderMessage(
+      email({
+        id: "a",
+        textBody: [{ partId: "t", blobId: null, type: "text/plain" }],
+        htmlBody: [{ partId: "t", blobId: null, type: "text/plain" }],
+        bodyValues: { t: { value: "1 < 2 && <b>not bold</b>" } },
+      }),
+    );
+    expect(rendered.isHtml).toBe(false);
+    expect(rendered.html).not.toContain("<b>");
+    expect(rendered.html).toContain("&lt;b&gt;");
+  });
+
   it("prefers the HTML part and sanitizes it", () => {
     const rendered = renderMessage(
       email({

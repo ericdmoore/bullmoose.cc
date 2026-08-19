@@ -38,7 +38,8 @@ export interface Session {
   apiUrl: string;
   downloadUrl: string;
   uploadUrl: string;
-  eventSourceUrl: string;
+  /** Absent: the server serves no EventSource endpoint (mirrors jmap-core). */
+  eventSourceUrl?: string;
   state: string;
 }
 

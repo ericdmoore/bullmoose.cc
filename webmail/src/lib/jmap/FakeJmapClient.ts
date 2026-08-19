@@ -18,7 +18,6 @@ import {
   MAIL_CAP,
   SUBMISSION_CAP,
   VACATION_CAP,
-  WEBSOCKET_CAP,
   hasCapability,
 } from "./capabilities";
 import type { JmapClient, RequestOptions, WatchOptions } from "./JmapClient";
@@ -53,7 +52,9 @@ export function defaultSession(): Session {
     [CALENDARS_CAP]: {},
     [FILENODE_CAP]: {},
     [AGENT_CAP]: {},
-    [WEBSOCKET_CAP]: { url: "wss://fake/api/ws", supportsPush: true },
+    // No WEBSOCKET_CAP: the real server stopped advertising RFC 8887 (its
+    // socket is push-only — services/jmap/src/session.ts), and the fake's job
+    // is to look exactly like the real session.
   };
   return {
     capabilities: allCaps,
@@ -76,7 +77,8 @@ export function defaultSession(): Session {
     apiUrl: "https://fake/api/jmap",
     downloadUrl: "https://fake/api/download/{accountId}/{blobId}/{name}?type={type}",
     uploadUrl: "https://fake/api/upload/{accountId}",
-    eventSourceUrl: "https://fake/api/eventsource",
+    // No eventSourceUrl — the real session stopped advertising the 404ing
+    // endpoint; absent beats dead (services/jmap/src/session.ts).
     state: "0",
   };
 }

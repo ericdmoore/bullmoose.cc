@@ -190,6 +190,16 @@ export async function proxyChanges(
   if (typeof since !== "string") {
     throw new MethodError("invalidArguments", "sinceState is required");
   }
+  // A state string this server never minted — another server's cursor, an
+  // older format, gibberish — is the same situation as one that aged out of
+  // the changelog window: the client's cursor is unusable. RFC 8620 §5.2's
+  // answer to both is `cannotCalculateChanges`, which tells the client to do
+  // one full resync. This used to fall through to the DO, come back as a 400,
+  // and be reported as `serverFail` — which clients treat as TRANSIENT, so
+  // they retried the same dead cursor forever and "silently stopped syncing".
+  if (!/^\d+$/.test(since)) {
+    throw new MethodError("cannotCalculateChanges");
+  }
 
   const url = new URL("https://do/changes");
   url.searchParams.set("collection", collection);
@@ -199,6 +209,8 @@ export async function proxyChanges(
   }
 
   const res = await accountStub(ctx.env.ACCOUNT_DO, access.accountId).fetch(url);
+  // 409 = the DO's "future or aged out of the window" — resync. Anything else
+  // non-ok is a GENUINE server fault and stays serverFail (retryable).
   if (res.status === 409) throw new MethodError("cannotCalculateChanges");
   if (!res.ok) throw new MethodError("serverFail", `changelog returned ${res.status}`);
 

@@ -256,6 +256,35 @@ async function resolveRole(
 
 // ---- read -------------------------------------------------------------
 
+/**
+ * The metadata set email_query/email_get have always returned — the server's
+ * OLD omitted-`properties` default. `Email/get` without `properties` now
+ * returns the RFC 8621 §4.4 default, which includes parse-priced properties
+ * (one blob fetch + MIME parse per message, and the full body part lists).
+ * These tools promise cheap metadata and "No bodies", so they must say what
+ * they mean.
+ */
+const METADATA_PROPERTIES = [
+  "id",
+  "blobId",
+  "threadId",
+  "mailboxIds",
+  "keywords",
+  "size",
+  "receivedAt",
+  "messageId",
+  "inReplyTo",
+  "from",
+  "to",
+  "cc",
+  "bcc",
+  "subject",
+  "sentAt",
+  "hasAttachment",
+  "preview",
+  "attachments",
+];
+
 const READ_TOOLS: ToolDef[] = [
   {
     name: "email_query",
@@ -308,6 +337,7 @@ const READ_TOOLS: ToolDef[] = [
       const got = await callJmap<{ list: Record<string, unknown>[] }>(env, principal, "Email/get", {
         accountId,
         ids: query.ids,
+        properties: METADATA_PROPERTIES,
       });
       return untrusted({
         accountId,
@@ -342,6 +372,7 @@ const READ_TOOLS: ToolDef[] = [
       const got = await callJmap<Record<string, unknown>>(env, principal, "Email/get", {
         accountId,
         ids: requireIds(args, 100),
+        properties: METADATA_PROPERTIES,
       });
       return untrusted(got);
     },
