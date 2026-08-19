@@ -83,6 +83,53 @@ export {
   type JobNodeRow,
   type NodeUseDecision,
 } from "./nodeAuthority.js";
+// s20 T6 — the delegation contract: a Goal's four clauses, what they compile
+// onto (which is entirely machinery that already exists), and the checkpoint
+// classes that thin one at a time rather than all at once.
+export {
+  CHECKPOINT_CLASSES,
+  GOAL_DEFAULT_MAX_DEPTH,
+  GOAL_DEFAULT_MAX_NODES,
+  GOAL_OUTREACH_KIND,
+  GOAL_PLAN_KIND,
+  GOAL_SUMMARY_KIND,
+  GRADUABLE_CLASSES,
+  attenuateContract,
+  checkpointClassOf,
+  compileContract,
+  contactAllowed,
+  contractRefusals,
+  defaultCheckpoints,
+  deriveGoalStatus,
+  isCheckpointClass,
+  microsToUsd,
+  parseGoalContract,
+  sketchFromContract,
+  usdToMicros,
+  type CheckpointClass,
+  type CheckpointMode,
+  type CheckpointPolicy,
+  type CheckpointSetting,
+  type ContractParse,
+  type ContractTask,
+  type GoalContract,
+  type GoalStatus,
+} from "./goalContract.js";
+// The attenuated WRITE paths. They live here rather than in services/agent
+// because s20 T6's plan-approval checkpoint creates a planner's tasks from
+// inside the JMAP worker, and an approved plan must meet exactly the checks a
+// planner's own output meets — one implementation, two callers.
+export {
+  expandPlanRows,
+  getJobNodeRow,
+  insertJobChildren,
+  joinContextRows,
+  startJobRows,
+  type ExpandResult,
+  type JobSpec,
+  type PlanSpec,
+  type StartJobResult,
+} from "./jobWrite.js";
 export {
   BLOCKED_SENTINEL,
   deriveJobStatus,

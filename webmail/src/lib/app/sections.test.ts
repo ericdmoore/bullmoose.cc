@@ -14,13 +14,14 @@ const pageNames = () =>
 const ids = () => SECTIONS.map((s) => s.id);
 const at = (id: SectionId) => ids().indexOf(id);
 
-describe("the ten sections", () => {
-  it("is exactly the ten nouns", () => {
+describe("the eleven sections", () => {
+  it("is exactly the eleven nouns", () => {
     expect(new Set(ids())).toEqual(
       new Set([
         "approvals",
         "agents",
         "activity",
+        "goals",
         "calendar",
         "mail",
         "contacts",
@@ -30,7 +31,7 @@ describe("the ten sections", () => {
         "settings",
       ]),
     );
-    expect(SECTIONS).toHaveLength(10);
+    expect(SECTIONS).toHaveLength(11);
   });
 
   it("does not contain a section for `/` — home is a view, not a noun", () => {

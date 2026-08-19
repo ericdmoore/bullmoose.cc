@@ -568,6 +568,32 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "goals-table",
+    why: "s20 T6: the Goal — a delegation contract with done-ness, keyed 1:1 to its Job (a Goal's id IS its jobs.id, the agent_proposals↔agent_invocations pattern). Holds only what cannot be derived: the human's sentence, the contract they bounded it with, and the two authored judgments (cancelled, accepted). NOT a deploy blocker: no claim statement names it, every read is inside the Goal/* methods, and a shard without it simply has no goals to list",
+    blocks: null,
+    check: tableExists("goals"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS goals (
+         id                  TEXT NOT NULL,
+         account_id          TEXT NOT NULL,
+         statement           TEXT NOT NULL,
+         contract_json       TEXT NOT NULL,
+         checkpoints_json    TEXT NOT NULL,
+         escalation_watch_id TEXT,
+         created_by          TEXT NOT NULL,
+         created_at          INTEGER NOT NULL,
+         cancelled_at        INTEGER,
+         cancelled_by        TEXT,
+         accepted_at         INTEGER,
+         accepted_by         TEXT,
+         PRIMARY KEY (account_id, id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS goals_created ON goals (account_id, created_at)`,
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
     id: "agent-invocation-tokens-table",
     why: "s17 per-invocation tokens: the `bmi_` credential row (identity only — no envelope copy, no scope list; the authority is recomputed from rows the holder cannot write). NOT a deploy blocker, unlike jobs-table: no claim statement names it, and the only read path is `resolveInvocationToken`, which cannot be reached on a shard that lacks the table because no token can have been minted there. The mint degrades to `updated[id] = null` — exactly the claim response that shipped before it",
     blocks: null,

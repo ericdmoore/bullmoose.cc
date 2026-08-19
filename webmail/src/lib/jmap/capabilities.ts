@@ -77,6 +77,9 @@ export function capabilityForMethod(methodName: string): string {
     case "ProviderCredential":
     case "ActionProposal":
     case "Watch":
+    // s20 T6 — a Goal is a delegation contract over the agent's own Job DAG,
+    // so it rides the same capability every other agent surface does.
+    case "Goal":
     case "Annotation":
       return AGENT_CAP;
     default:

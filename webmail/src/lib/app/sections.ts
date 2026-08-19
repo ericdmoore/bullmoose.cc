@@ -8,12 +8,21 @@
 // decide → when → who-and-what → tools:
 //
 //   approvals, agents,  what needs me, who is asking —
-//   activity            — and what already happened in my name (s23)
+//   activity, goals     — what already happened in my name (s23), and what
+//                         still stands in my name (s20 T6)
 //   calendar            what is about to happen
 //   mail, contacts      the correspondence and the people in it
 //   notes               your own writing (s18 N1) — authored, not filed
 //   files               storage, deliberately NOT the front of the product
 //   search, settings    tools over the above, not nouns of their own
+//
+// Goals closes that cluster for the same reason (s20 T6). Approvals asks what
+// needs me NOW; activity says what was done in my name; a goal is the standing
+// authority under which future work will be done in my name — the prospective
+// twin of the queue, and the one place the answer to "what did I hand over, and
+// which checkpoints still stop for me?" is legible. After `calendar` it would
+// read as a planner; beside `settings` it would read as configuration, and a
+// delegation you configure once and stop reading is the failure mode.
 //
 // Activity sits in the FIRST cluster on purpose (s23 readme): it is the same
 // accountability family as approvals — the retrospective twin of the queue.
@@ -33,6 +42,7 @@ export type SectionId =
   | "approvals"
   | "agents"
   | "activity"
+  | "goals"
   | "calendar"
   | "mail"
   | "contacts"
@@ -103,6 +113,18 @@ export const SECTIONS: readonly Section[] = [
     // per-account fan-in with no shared clock, and a server without Watch
     // methods — are rendered by the section itself (lib/activity/*) rather
     // than duplicated into the nav where they would drift.
+    status: "live",
+  },
+  {
+    id: "goals",
+    label: "Goals",
+    href: "/goals",
+    // Live as of s20 T6 over the `Goal/*` methods: a goal is a delegation
+    // contract with done-ness — a sentence, four clauses, and a workflow whose
+    // plan is itself approvable. The screen carries its own caveats (which
+    // checkpoint classes can graduate, and that the outreach bodies are
+    // templates until a model planner lands) rather than duplicating them into
+    // the nav where they would drift.
     status: "live",
   },
   {

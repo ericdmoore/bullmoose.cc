@@ -60,6 +60,9 @@ describe("capabilityForMethod", () => {
     // configuration), so a plain client never calls it either.
     ["ProviderCredential/get", AGENT_CAP],
     ["ProviderCredential/set", AGENT_CAP],
+    // s20 T6 — Goals is a face over the agent's Job DAG, same gate.
+    ["Goal/get", AGENT_CAP],
+    ["Goal/set", AGENT_CAP],
   ])("maps %s → %s", (method, cap) => {
     expect(capabilityForMethod(method)).toBe(cap);
   });
