@@ -123,7 +123,11 @@ export interface RenderedMessage {
  * returns sender markup unsanitized, which is invariant §6.3.
  */
 export function renderMessage(email: Email, opts: RenderOptions = {}): RenderedMessage {
-  const htmlPart = firstBodyValue(email, email.htmlBody);
+  // The server derives htmlBody per RFC 8621 §4.1.4, so for a text-only
+  // message it (correctly) contains the text/plain part. Rendering is chosen
+  // off the part's TYPE, never off which list it arrived in — a text/plain
+  // value must not be interpreted as markup.
+  const htmlPart = email.htmlBody?.[0]?.type === "text/html" ? firstBodyValue(email, email.htmlBody) : undefined;
   const textPart = firstBodyValue(email, email.textBody);
 
   if (htmlPart) {

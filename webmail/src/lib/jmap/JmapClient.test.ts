@@ -29,7 +29,6 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     apiUrl: "https://mail.test/api/jmap",
     downloadUrl: "https://mail.test/api/download/{accountId}/{blobId}/{name}?type={type}",
     uploadUrl: "https://mail.test/api/upload/{accountId}",
-    eventSourceUrl: "https://mail.test/api/eventsource",
     state: "0",
     ...overrides,
   };

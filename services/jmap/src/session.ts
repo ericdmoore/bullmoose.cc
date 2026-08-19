@@ -7,7 +7,6 @@ import {
   MAIL_CAP,
   SUBMISSION_CAP,
   VACATION_CAP,
-  WEBSOCKET_CAP,
   contactsCapability,
   coreCapability,
   mailCapability,
@@ -87,7 +86,6 @@ export function buildSession(origin: string, principal: Principal): Session {
   }
 
   const primary = principal.accounts.find((a) => !a.granted)?.accountId ?? "";
-  const wsOrigin = origin.replace(/^http/, "ws");
 
   return {
     capabilities: {
@@ -99,7 +97,14 @@ export function buildSession(origin: string, principal: Principal): Session {
       [CALENDARS_CAP]: {},
       [FILENODE_CAP]: {},
       [AGENT_CAP]: {},
-      [WEBSOCKET_CAP]: { url: `${wsOrigin}/api/ws`, supportsPush: true },
+      // ⚠️ Deliberately NOT advertised: `urn:ietf:params:jmap:websocket`
+      // (RFC 8887). The socket at /api/ws is real but PUSH-ONLY — it does not
+      // handle Request frames and does not select the `jmap` subprotocol, so
+      // an RFC 8887-conformant client that trusted the advertisement connected,
+      // aborted with 1006, and retried forever. Our own clients (`bullmoose
+      // watch`, agent serve, cli-go) dial /api/ws directly and never read this
+      // capability. Re-add WEBSOCKET_CAP when the socket actually implements
+      // RFC 8887 (subprotocol negotiation + Request/Response frames).
     },
     accounts,
     primaryAccounts: {
@@ -113,8 +118,11 @@ export function buildSession(origin: string, principal: Principal): Session {
     apiUrl: `${origin}/api/jmap`,
     downloadUrl: `${origin}/api/download/{accountId}/{blobId}/{name}?type={type}`,
     uploadUrl: `${origin}/api/upload/{accountId}`,
-    eventSourceUrl: `${origin}/api/eventsource`,
-    // Bump when the account list / capabilities change shape.
+    // ⚠️ No eventSourceUrl: this worker serves no /api/eventsource route, and
+    // advertising a URL that 404s made push-capable clients (RFC 8620 §7.3)
+    // hammer a dead endpoint instead of falling back to polling. Absent beats
+    // dead; restore it together with a real SSE endpoint.
+    // Bump `state` when the account list / capabilities change shape.
     state: "0",
   };
 }

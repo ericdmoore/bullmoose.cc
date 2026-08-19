@@ -1,4 +1,4 @@
-import PostalMime from "postal-mime";
+import PostalMime, { addressParser, decodeWords, type Address, type HeaderLine } from "postal-mime";
 import { MAX_ATTACHMENT_BYTES_PER_EMAIL, MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
 import { buildMime, type MimeAttachment } from "@bullmoose/mime";
@@ -24,8 +24,8 @@ import {
   type SetError,
 } from "./common";
 
-/** Metadata properties served straight from D1 (RFC 8621 §4.4 defaults). */
-const DEFAULT_PROPERTIES = [
+/** Metadata properties served straight from D1 — no blob fetch, no MIME parse. */
+const ROW_PROPERTIES = [
   "id",
   "blobId",
   "threadId",
@@ -46,7 +46,73 @@ const DEFAULT_PROPERTIES = [
   "attachments",
 ];
 
-const BODY_PROPERTIES = new Set(["bodyValues", "textBody", "htmlBody"]);
+/**
+ * Properties that can only be served by fetching the raw blob and parsing it
+ * (RFC 8621 §4.1.2–§4.1.4). Requesting ANY of these costs one R2 read plus a
+ * MIME parse per message — same price `bodyValues` always paid; `replyTo`,
+ * `sender`, `references` and `headers` simply were not served at all before,
+ * and a client that asked got SILENCE (the bug that made phone replies go to
+ * `From` when Reply-To differed). `header:*` forms are parsed too and are
+ * validated separately in `parseProperties`.
+ */
+const PARSED_PROPERTIES = new Set([
+  "bodyValues",
+  "textBody",
+  "htmlBody",
+  "bodyStructure",
+  "replyTo",
+  "sender",
+  "references",
+  "headers",
+]);
+
+/**
+ * RFC 8621 §4.4 — the EXACT default set when `properties` is omitted or null.
+ * Note this includes parse-priced properties (references/sender/replyTo and
+ * the body part lists), so a defaults `Email/get` fetches and parses each
+ * message's blob. Internal callers that want cheap metadata pass an explicit
+ * list (webmail's LIST_PROPERTIES, the agent's email tools).
+ */
+const DEFAULT_PROPERTIES = [
+  "id",
+  "blobId",
+  "threadId",
+  "mailboxIds",
+  "keywords",
+  "size",
+  "receivedAt",
+  "messageId",
+  "inReplyTo",
+  "references",
+  "sender",
+  "from",
+  "to",
+  "cc",
+  "bcc",
+  "replyTo",
+  "subject",
+  "sentAt",
+  "hasAttachment",
+  "preview",
+  "bodyValues",
+  "textBody",
+  "htmlBody",
+  "attachments",
+];
+
+const KNOWN_PROPERTIES = new Set([...ROW_PROPERTIES, ...PARSED_PROPERTIES]);
+
+/** RFC 8621 §4.1.2–§4.1.3 header-field forms. */
+const HEADER_FORMS = ["Raw", "Text", "Addresses", "GroupedAddresses", "MessageIds", "Date", "URLs"] as const;
+type HeaderForm = (typeof HEADER_FORMS)[number];
+
+interface HeaderProp {
+  /** The property string exactly as requested — echoed as the response key. */
+  prop: string;
+  name: string;
+  form: HeaderForm;
+  all: boolean;
+}
 
 export function registerEmailMethods(registry: MethodRegistry<RequestContext>): void {
   registry.register("Email/get", emailGet);
@@ -68,14 +134,16 @@ async function emailGet(args: Record<string, unknown>, ctx: RequestContext): Pro
     throw new MethodError("invalidArguments", "Email/get requires ids");
   }
   const ids = args.ids as string[];
-  const properties = (args.properties as string[] | undefined) ?? DEFAULT_PROPERTIES;
+  const { properties, headerProps } = parseProperties(args.properties);
 
-  const wantBodies =
-    properties.some((p) => BODY_PROPERTIES.has(p)) ||
-    args.fetchTextBodyValues === true ||
-    args.fetchHTMLBodyValues === true ||
-    args.fetchAllBodyValues === true;
+  const flags: BodyFetchFlags = {
+    text: args.fetchTextBodyValues === true,
+    html: args.fetchHTMLBodyValues === true,
+    all: args.fetchAllBodyValues === true,
+  };
   const maxBodyBytes = typeof args.maxBodyValueBytes === "number" ? args.maxBodyValueBytes : 0;
+
+  const needsParse = properties.some((p) => PARSED_PROPERTIES.has(p)) || headerProps.length > 0;
 
   const store = storeFor(ctx);
   const rows = await store.getEmailRows(access.accountId, ids);
@@ -85,8 +153,11 @@ async function emailGet(args: Record<string, unknown>, ctx: RequestContext): Pro
     const row = rows.get(id);
     if (!row) continue;
     const email = emailToJmap(row);
-    if (wantBodies) {
-      Object.assign(email, await fetchBodies(store, access.tenantId, access.accountId, row, maxBodyBytes));
+    if (needsParse) {
+      Object.assign(
+        email,
+        await fetchParsed(store, access.tenantId, access.accountId, row, maxBodyBytes, flags, headerProps),
+      );
     }
     list.push(pick(email, properties));
   }
@@ -97,6 +168,59 @@ async function emailGet(args: Record<string, unknown>, ctx: RequestContext): Pro
     list,
     notFound: ids.filter((id) => !rows.has(id)),
   };
+}
+
+/**
+ * Validate the `properties` argument. RFC 8620 §5.1: a property the server
+ * does not recognize MUST fail the call with `invalidArguments` — the old
+ * behavior (return the object without the key) is how "this server never
+ * serves bodyStructure" survived unnoticed until a real client rendered
+ * nothing.
+ */
+function parseProperties(value: unknown): { properties: string[]; headerProps: HeaderProp[] } {
+  if (value === undefined || value === null) return { properties: DEFAULT_PROPERTIES, headerProps: [] };
+  if (!Array.isArray(value) || value.some((p) => typeof p !== "string")) {
+    throw new MethodError("invalidArguments", "properties must be an array of strings");
+  }
+  const headerProps: HeaderProp[] = [];
+  for (const p of value as string[]) {
+    if (KNOWN_PROPERTIES.has(p)) continue;
+    const parsed = parseHeaderProperty(p);
+    if (!parsed) throw new MethodError("invalidArguments", `unknown property "${p}"`);
+    headerProps.push(parsed);
+  }
+  return { properties: value as string[], headerProps };
+}
+
+/**
+ * `header:{Name}` / `header:{Name}:as{Form}` / trailing `:all` (RFC 8621
+ * §4.1.3). An RFC 5322 field name cannot contain ":", so splitting on it is
+ * exact. Returns null for anything that does not fit the grammar — the caller
+ * turns that into `invalidArguments`.
+ */
+function parseHeaderProperty(prop: string): HeaderProp | null {
+  if (!prop.startsWith("header:")) return null;
+  const segments = prop.split(":");
+  const name = segments[1];
+  if (!name || segments.length > 4) return null;
+
+  let rest = segments.slice(2);
+  let all = false;
+  if (rest[rest.length - 1] === "all") {
+    all = true;
+    rest = rest.slice(0, -1);
+  }
+  let form: HeaderForm = "Raw";
+  if (rest.length === 1) {
+    const f = rest[0] as string;
+    if (!f.startsWith("as")) return null;
+    const candidate = f.slice(2) as HeaderForm;
+    if (!HEADER_FORMS.includes(candidate)) return null;
+    form = candidate;
+  } else if (rest.length > 1) {
+    return null;
+  }
+  return { prop, name, form, all };
 }
 
 function emailToJmap(row: EmailRow): Record<string, unknown> {
@@ -142,31 +266,303 @@ function toJmapAddresses(list: EmailAddress[]): Array<{ name: string | null; ema
   return list.map((a) => ({ name: a.name ?? null, email: a.email }));
 }
 
-/** Parse the raw blob on demand for bodyValues/textBody/htmlBody. */
-async function fetchBodies(
+interface BodyFetchFlags {
+  text: boolean;
+  html: boolean;
+  all: boolean;
+}
+
+/** An RFC 8621 §4.1.4 EmailBodyPart, as this server can honestly emit one. */
+interface BodyPartJson {
+  partId: string | null;
+  blobId: string | null;
+  size: number;
+  name: string | null;
+  type: string;
+  charset: string | null;
+  disposition: string | null;
+  cid: string | null;
+  language: string[] | null;
+  location: string | null;
+  subParts?: BodyPartJson[];
+  fileNodeId?: string | null;
+}
+
+/**
+ * Parse the raw blob on demand for every parse-priced property: the body part
+ * lists, `bodyStructure`, `bodyValues`, and the header-derived properties
+ * (`replyTo`, `sender`, `references`, `headers`, `header:*`).
+ *
+ * On `bodyStructure`: PostalMime flattens the message — it hands back ONE
+ * decoded text body, ONE html body and a list of attachments, not the original
+ * MIME tree — so the original nesting is not recoverable here. The tree built
+ * below is therefore deliberately simple and NEVER lies about what exists:
+ * every leaf is real, with its real type, real size and (for attachments) the
+ * real, downloadable blobId — the same blobIds the `attachments` property has
+ * always served. Text leaves carry `blobId: null` because the decoded text is
+ * not separately addressable as a blob in this pass; their content is reachable
+ * through `partId` + `bodyValues` (the fetch*BodyValues flags are honored),
+ * which RFC 8621 names as the primary path for text parts anyway.
+ */
+async function fetchParsed(
   store: Mailstore,
   tenantId: string,
   accountId: string,
   row: EmailRow,
   maxBytes: number,
+  flags: BodyFetchFlags,
+  headerProps: HeaderProp[],
 ): Promise<Record<string, unknown>> {
   const blob = await store.getBlob(tenantId, accountId, row.blobId);
-  if (!blob) return { bodyValues: {}, textBody: [], htmlBody: [] };
+  if (!blob) {
+    // The raw message is gone. Say "nothing", never invent parts.
+    const out: Record<string, unknown> = {
+      bodyValues: {},
+      textBody: [],
+      htmlBody: [],
+      bodyStructure: emptyBodyPart(),
+      replyTo: null,
+      sender: null,
+      references: null,
+      headers: [],
+    };
+    for (const h of headerProps) out[h.prop] = h.all ? [] : null;
+    return out;
+  }
   const parsed = await PostalMime.parse(await blob.arrayBuffer());
 
-  const bodyValues: Record<string, unknown> = {};
-  const textBody: unknown[] = [];
-  const htmlBody: unknown[] = [];
+  const textLeaf = parsed.text !== undefined ? textBodyPart("t", "text/plain", parsed.text) : null;
+  const htmlLeaf = parsed.html !== undefined ? textBodyPart("h", "text/html", parsed.html) : null;
+  const attLeaves = row.attachments.map(attachmentBodyPart);
 
-  if (parsed.text !== undefined) {
-    bodyValues.t = truncate(parsed.text, maxBytes);
-    textBody.push({ partId: "t", blobId: null, type: "text/plain", charset: "utf-8" });
+  // The synthetic-but-honest tree: text+html as alternatives, attachments as
+  // siblings under a mixed root — the shape virtually all such mail has.
+  const alternatives = [textLeaf, htmlLeaf].filter((p): p is BodyPartJson => p !== null);
+  const bodyRoot =
+    alternatives.length === 2 ? multipartBodyPart("multipart/alternative", alternatives) : (alternatives[0] ?? null);
+  const bodyStructure =
+    attLeaves.length > 0
+      ? multipartBodyPart("multipart/mixed", [...(bodyRoot ? [bodyRoot] : []), ...attLeaves])
+      : (bodyRoot ?? emptyBodyPart());
+
+  // RFC 8621 §4.1.4 derivation: when only one of text/html exists, BOTH lists
+  // point at it — a text-only client still gets something to show for an
+  // html-only message, and vice versa. The part keeps its true type either
+  // way; clients pick rendering off `type`, not off which list it came in.
+  const textBody = textLeaf ? [textLeaf] : htmlLeaf ? [htmlLeaf] : [];
+  const htmlBody = htmlLeaf ? [htmlLeaf] : textLeaf ? [textLeaf] : [];
+
+  // bodyValues honors the fetch*BodyValues flags (RFC 8621 §4.4): text for
+  // parts in textBody, html for parts in htmlBody, all for every text/* leaf.
+  // No flag set → empty object, exactly as specified.
+  const partContent: Record<string, string> = {};
+  if (textLeaf && parsed.text !== undefined) partContent.t = parsed.text;
+  if (htmlLeaf && parsed.html !== undefined) partContent.h = parsed.html;
+  const bodyValues: Record<string, unknown> = {};
+  const include = (parts: BodyPartJson[]) => {
+    for (const p of parts) {
+      const v = p.partId === null ? undefined : partContent[p.partId];
+      if (v !== undefined && p.partId !== null) bodyValues[p.partId] = truncate(v, maxBytes);
+    }
+  };
+  if (flags.all) include([...(textLeaf ? [textLeaf] : []), ...(htmlLeaf ? [htmlLeaf] : [])]);
+  if (flags.text) include(textBody);
+  if (flags.html) include(htmlBody);
+
+  const out: Record<string, unknown> = {
+    bodyValues,
+    textBody,
+    htmlBody,
+    bodyStructure,
+    replyTo: toParsedAddresses(parsed.replyTo),
+    sender: toParsedAddresses(parsed.sender ? [parsed.sender] : undefined),
+    references: parseMessageIdList(parsed.references),
+    headers: rawHeaders(parsed.headerLines),
+  };
+  for (const h of headerProps) out[h.prop] = headerValue(parsed.headerLines, h);
+  return out;
+}
+
+function textBodyPart(partId: string, type: string, content: string): BodyPartJson {
+  return {
+    partId,
+    blobId: null,
+    size: new TextEncoder().encode(content).byteLength,
+    name: null,
+    type,
+    charset: "utf-8",
+    disposition: null,
+    cid: null,
+    language: null,
+    location: null,
+  };
+}
+
+/** Same source of truth as the `attachments` property: the ingest-time row. */
+function attachmentBodyPart(a: AttachmentMeta): BodyPartJson {
+  return {
+    partId: null,
+    blobId: a.blobId,
+    size: a.size,
+    name: a.name,
+    type: a.type,
+    charset: null,
+    disposition: a.disposition,
+    cid: a.cid,
+    language: null,
+    location: null,
+    // The Files cross-link, same rationale as in emailToJmap above.
+    fileNodeId: a.fileNodeId ?? null,
+  };
+}
+
+function multipartBodyPart(type: string, subParts: BodyPartJson[]): BodyPartJson {
+  return {
+    partId: null,
+    blobId: null,
+    size: 0,
+    name: null,
+    type,
+    charset: null,
+    disposition: null,
+    cid: null,
+    language: null,
+    location: null,
+    subParts,
+  };
+}
+
+/** A message with no body at all: one empty text/plain leaf, nothing invented. */
+function emptyBodyPart(): BodyPartJson {
+  return {
+    partId: null,
+    blobId: null,
+    size: 0,
+    name: null,
+    type: "text/plain",
+    charset: "utf-8",
+    disposition: null,
+    cid: null,
+    language: null,
+    location: null,
+  };
+}
+
+// ---- header-derived properties (RFC 8621 §4.1.2–§4.1.3) ---------------
+
+type EmailAddressJson = { name: string | null; email: string };
+
+/** PostalMime addresses → RFC 8621 EmailAddress[], groups flattened. */
+function toParsedAddresses(list: Address[] | undefined): EmailAddressJson[] | null {
+  if (!list || list.length === 0) return null;
+  const out: EmailAddressJson[] = [];
+  const walk = (entries: Address[]) => {
+    for (const a of entries) {
+      if (a.group) walk(a.group);
+      else if (a.address) out.push({ name: a.name === "" ? null : (a.name ?? null), email: a.address });
+    }
+  };
+  walk(list);
+  return out.length > 0 ? out : null;
+}
+
+/**
+ * A raw References/Message-ID-shaped value → String[] per the MessageIds form:
+ * the angle-bracketed ids, or (malformed but seen in the wild) bare
+ * whitespace-separated tokens.
+ */
+function parseMessageIdList(raw: string | undefined | null): string[] | null {
+  if (!raw) return null;
+  const bracketed = [...raw.matchAll(/<([^<>\s]+)>/g)].map((m) => m[1] as string);
+  const ids =
+    bracketed.length > 0
+      ? bracketed
+      : raw
+          .trim()
+          .split(/\s+/)
+          .filter((t) => t !== "");
+  return ids.length > 0 ? ids : null;
+}
+
+/** `line` is the complete raw header line; split at the first colon. */
+function splitHeaderLine(line: string): { name: string; value: string } {
+  const idx = line.indexOf(":");
+  if (idx === -1) return { name: line, value: "" };
+  return { name: line.slice(0, idx), value: line.slice(idx + 1) };
+}
+
+/** The `headers` property: every field, original casing, Raw form values. */
+function rawHeaders(lines: HeaderLine[]): Array<{ name: string; value: string }> {
+  return lines.map((l) => {
+    const { name, value } = splitHeaderLine(l.line);
+    return { name, value };
+  });
+}
+
+function unfold(raw: string): string {
+  return raw.replace(/\r?\n/g, "");
+}
+
+/** One `header:*` property for one message. Absent header → null (or [] with :all). */
+function headerValue(lines: HeaderLine[], spec: HeaderProp): unknown {
+  const key = spec.name.toLowerCase();
+  const matches = lines.filter((l) => l.key === key);
+  if (spec.all) return matches.map((l) => headerForm(splitHeaderLine(l.line).value, spec.form));
+  const last = matches[matches.length - 1];
+  return last === undefined ? null : headerForm(splitHeaderLine(last.line).value, spec.form);
+}
+
+function headerForm(raw: string, form: HeaderForm): unknown {
+  switch (form) {
+    case "Raw":
+      return raw;
+    case "Text":
+      return decodeWords(unfold(raw)).trim();
+    case "Addresses":
+      return decodeAddressNames(toParsedAddresses(addressParser(unfold(raw), { flatten: true })) ?? []);
+    case "GroupedAddresses":
+      return toGroupedAddresses(addressParser(unfold(raw)));
+    case "MessageIds":
+      return parseMessageIdList(raw);
+    case "Date": {
+      const t = Date.parse(unfold(raw).trim());
+      return Number.isNaN(t) ? null : new Date(t).toISOString();
+    }
+    case "URLs": {
+      const urls = [...raw.matchAll(/<([^<>]+)>/g)].map((m) => m[1] as string);
+      return urls.length > 0 ? urls : null;
+    }
   }
-  if (parsed.html !== undefined) {
-    bodyValues.h = truncate(parsed.html, maxBytes);
-    htmlBody.push({ partId: "h", blobId: null, type: "text/html", charset: "utf-8" });
+}
+
+/** addressParser leaves RFC 2047 words in display names encoded; decode them. */
+function decodeAddressNames(addrs: EmailAddressJson[]): EmailAddressJson[] {
+  return addrs.map((a) => (a.name === null ? a : { ...a, name: decodeWords(a.name) }));
+}
+
+/** The GroupedAddresses form: groups kept, loose mailboxes under a null name. */
+function toGroupedAddresses(list: Address[]): Array<{ name: string | null; addresses: EmailAddressJson[] }> {
+  const groups: Array<{ name: string | null; addresses: EmailAddressJson[] }> = [];
+  let loose: EmailAddressJson[] = [];
+  const flushLoose = () => {
+    if (loose.length > 0) {
+      groups.push({ name: null, addresses: loose });
+      loose = [];
+    }
+  };
+  for (const a of list) {
+    if (a.group) {
+      flushLoose();
+      groups.push({
+        name: a.name ? decodeWords(a.name) : null,
+        addresses: decodeAddressNames(toParsedAddresses(a.group) ?? []),
+      });
+    } else if (a.address) {
+      loose.push({ name: a.name === "" ? null : decodeWords(a.name), email: a.address });
+    }
   }
-  return { bodyValues, textBody, htmlBody };
+  flushLoose();
+  return groups;
 }
 
 function truncate(value: string, maxBytes: number): Record<string, unknown> {
@@ -183,6 +579,13 @@ function truncate(value: string, maxBytes: number): Record<string, unknown> {
   return { value, isEncodingProblem: false, isTruncated: false };
 }
 
+/**
+ * Copy the requested properties. Every requested property was validated in
+ * `parseProperties` and materialized by `emailToJmap`/`fetchParsed`, so the
+ * `p in obj` guard is belt-and-braces (parse-priced props when parsing was
+ * skipped can only mean a bug upstream) — it can no longer silently eat a
+ * property the client asked for.
+ */
 function pick(obj: Record<string, unknown>, properties: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = { id: obj.id };
   for (const p of properties) if (p in obj) out[p] = obj[p];
