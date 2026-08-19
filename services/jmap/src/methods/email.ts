@@ -860,14 +860,65 @@ async function createDraft(
     Array.isArray(spec.inReplyTo) && typeof spec.inReplyTo[0] === "string" ? (spec.inReplyTo[0] as string) : null,
   );
 
-  // Body: resolve textBody/htmlBody partId refs against bodyValues.
-  const bodyValues = (spec.bodyValues as Record<string, { value?: string }> | undefined) ?? {};
-  const text = resolveBodyPart(spec.textBody, bodyValues);
-  const html = resolveBodyPart(spec.htmlBody, bodyValues);
+  // Body — RFC 8621 §4.6 gives a create two MUTUALLY EXCLUSIVE forms:
+  //
+  //   1. textBody/htmlBody + bodyValues — what our webmail, CLI and agent send;
+  //   2. bodyStructure + bodyValues — a client-authored part tree, the form
+  //      IMAP-heritage clients (Mailtemi) send.
+  //
+  // Ignoring form 2 is how a real message left this server with a
+  // cryptographically empty body: both DKIM bh= values on the received copy
+  // hashed the empty canonicalized body, because `text` and `html` came back
+  // undefined and buildMime emitted a headers-only message. The rule now is
+  // that body content NEVER silently vanishes: every partId must resolve
+  // through bodyValues, every shape we cannot mail faithfully refuses by
+  // name, and the only empty body that goes out is one the client explicitly
+  // wrote (RFC 5322 makes the body optional, so an empty create stays legal).
+  const bodyValues = parseBodyValues(spec.bodyValues);
+  let text: string | undefined;
+  let html: string | undefined;
+  let attachmentSpecs: AttachmentSpec[];
+  if (spec.bodyStructure !== undefined && spec.bodyStructure !== null) {
+    // §4.6: one form or the other. Merging would mean guessing which of two
+    // bodies the client meant — refuse, naming both sides of the conflict.
+    // An EMPTY textBody/htmlBody/attachments array carries no content, so it
+    // does not count as the other form; refusing on it would only break
+    // clients that emit vestigial empty lists next to their bodyStructure.
+    const conflicts = ["textBody", "htmlBody", "attachments"].filter((p) => {
+      const v = spec[p];
+      return v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0);
+    });
+    if (conflicts.length > 0) {
+      throw new SetErrorSignal(
+        "invalidProperties",
+        `bodyStructure and ${conflicts.join("/")} are mutually exclusive (RFC 8621 §4.6) — supply the body in one form`,
+        ["bodyStructure", ...conflicts],
+      );
+    }
+    const flat = flattenBodyStructure(spec.bodyStructure, bodyValues);
+    text = flat.text;
+    html = flat.html;
+    attachmentSpecs = flat.attachments;
+  } else {
+    text = resolveBodyPart(spec.textBody, bodyValues, "textBody");
+    html = resolveBodyPart(spec.htmlBody, bodyValues, "htmlBody");
+    attachmentSpecs = parseAttachmentSpecs(spec.attachments);
+    // Content supplied but referenced by NOTHING would mail an empty body —
+    // for a client that believes it wrote one, that is exactly the failure
+    // this block exists to kill.
+    if (text === undefined && html === undefined && Object.keys(bodyValues).length > 0) {
+      throw new SetErrorSignal(
+        "invalidProperties",
+        "bodyValues are present but no textBody/htmlBody/bodyStructure references them — this create would mail an empty body",
+        ["bodyValues"],
+      );
+    }
+  }
 
-  // Attachments (RFC 8621 §4.1.4 EmailBodyPart[]). Resolved — and, crucially,
+  // Attachments (RFC 8621 §4.1.4 EmailBodyPart[]) — from the `attachments`
+  // property or flattened out of bodyStructure. Resolved — and, crucially,
   // AUTHORIZED — before a single byte reaches the builder.
-  const attachments = await resolveAttachments(store, access, spec.attachments);
+  const attachments = await resolveAttachments(store, access, attachmentSpecs);
 
   const messageId = `${crypto.randomUUID()}@${from[0]?.email.split("@")[1] ?? "localhost"}`;
   const raw = buildMime({
@@ -934,17 +985,23 @@ interface ResolvedAttachment {
   meta: AttachmentMeta;
 }
 
-/** One `attachments` entry as the client sent it, after shape validation. */
+/** One blob-referencing part as the client sent it, after shape validation. */
 interface AttachmentSpec {
   blobId: string;
   type: string;
+  /** Content-Type charset parameter for the wire; never stored in meta. */
+  charset: string | null;
   name: string | null;
   cid: string | null;
   disposition: string;
+  /** JSON pointer blamed in SetErrors: `attachments/0`, `bodyStructure/subParts/2`. */
+  path: string;
 }
 
 /**
- * Turn `attachments: EmailBodyPart[]` from an `Email/set create` into bytes.
+ * Turn the blob-referencing EmailBodyParts of an `Email/set create` — the
+ * `attachments` property, or the blobId leaves of a `bodyStructure` — into
+ * bytes.
  *
  * ⚠️ THIS IS AN AUTHORIZATION BOUNDARY, not a lookup helper.
  *
@@ -979,27 +1036,25 @@ interface AttachmentSpec {
 async function resolveAttachments(
   store: Mailstore,
   access: { accountId: string; tenantId: string },
-  value: unknown,
+  specs: AttachmentSpec[],
 ): Promise<ResolvedAttachment[]> {
-  const specs = parseAttachmentSpecs(value);
   if (specs.length === 0) return [];
 
   // Pass 1 — ownership + size. No bodies.
   const sizes: number[] = [];
   let total = 0;
-  for (const [i, spec] of specs.entries()) {
+  for (const spec of specs) {
     const head = await store.headBlob(access.tenantId, access.accountId, spec.blobId);
     if (!head) {
-      throw new SetErrorSignal("blobNotFound", `no such blob in this account: ${spec.blobId}`, [
-        `attachments/${i}/blobId`,
-      ]);
+      throw new SetErrorSignal("blobNotFound", `no such blob in this account: ${spec.blobId}`, [`${spec.path}/blobId`]);
     }
     total += head.size;
     if (total > MAX_ATTACHMENT_BYTES_PER_EMAIL) {
       throw new SetErrorSignal(
         "tooLarge",
         `attachments exceed ${MAX_ATTACHMENT_BYTES_PER_EMAIL} bytes for one message`,
-        ["attachments"],
+        // Blame the whole property, whichever create form carried the parts.
+        [spec.path.split("/")[0] as string],
       );
     }
     sizes.push(head.size);
@@ -1011,12 +1066,14 @@ async function resolveAttachments(
     const obj = await store.getBlob(access.tenantId, access.accountId, spec.blobId);
     if (!obj) {
       // Only reachable if the blob was deleted between the two passes.
-      throw new SetErrorSignal("blobNotFound", `blob vanished mid-write: ${spec.blobId}`, [`attachments/${i}/blobId`]);
+      throw new SetErrorSignal("blobNotFound", `blob vanished mid-write: ${spec.blobId}`, [`${spec.path}/blobId`]);
     }
     const content = new Uint8Array(await obj.arrayBuffer());
     out.push({
       mime: {
-        type: spec.type,
+        // The charset rides the wire header only; `meta.type` below stays the
+        // bare media type, which is what JMAP's `type` property is defined as.
+        type: spec.charset ? `${spec.type}; charset=${spec.charset}` : spec.type,
         content,
         name: spec.name,
         cid: spec.cid,
@@ -1043,46 +1100,68 @@ function parseAttachmentSpecs(value: unknown): AttachmentSpec[] {
   if (!Array.isArray(value)) {
     throw new SetErrorSignal("invalidProperties", "attachments must be an EmailBodyPart[]", ["attachments"]);
   }
-  return value.map((raw, i) => {
-    const at = (p: string) => [`attachments/${i}/${p}`];
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-      throw new SetErrorSignal("invalidProperties", "each attachment must be an object", [`attachments/${i}`]);
-    }
-    const part = raw as Record<string, unknown>;
-    if (typeof part.blobId !== "string" || part.blobId === "") {
-      throw new SetErrorSignal("invalidProperties", "an attachment requires a blobId", at("blobId"));
-    }
-    if (part.type !== undefined && part.type !== null && typeof part.type !== "string") {
-      throw new SetErrorSignal("invalidProperties", "type must be a string", at("type"));
-    }
-    if (part.name !== undefined && part.name !== null && typeof part.name !== "string") {
-      throw new SetErrorSignal("invalidProperties", "name must be a string", at("name"));
-    }
-    if (part.cid !== undefined && part.cid !== null && typeof part.cid !== "string") {
-      throw new SetErrorSignal("invalidProperties", "cid must be a string", at("cid"));
-    }
-    if (part.disposition !== undefined && part.disposition !== null && typeof part.disposition !== "string") {
-      throw new SetErrorSignal("invalidProperties", "disposition must be a string", at("disposition"));
-    }
-    const cid = typeof part.cid === "string" && part.cid !== "" ? part.cid : null;
-    return {
-      blobId: part.blobId,
-      // RFC 8621 leaves `type` optional; octet-stream is the RFC 2046 §4.5.1
-      // default for "bytes of unknown kind".
-      type: typeof part.type === "string" && part.type !== "" ? part.type : "application/octet-stream",
-      name: typeof part.name === "string" && part.name !== "" ? part.name : null,
-      cid,
-      // A cid-carrying part is inline unless the client says otherwise; this
-      // is also the value `hasAttachment` is decided on, so it is stored, not
-      // just serialized.
-      disposition:
-        typeof part.disposition === "string" && part.disposition !== ""
-          ? part.disposition
-          : cid
-            ? "inline"
-            : "attachment",
-    };
-  });
+  return value.map((raw, i) => parseAttachmentSpec(raw, `attachments/${i}`));
+}
+
+/**
+ * Validate one blob-referencing EmailBodyPart, wherever in the create it sat —
+ * an `attachments` entry or a blobId leaf of a `bodyStructure`. `path` is the
+ * JSON pointer blamed if the part (or, later, its blob) refuses.
+ */
+function parseAttachmentSpec(raw: unknown, path: string): AttachmentSpec {
+  const at = (p: string) => [`${path}/${p}`];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new SetErrorSignal("invalidProperties", "each attachment must be an object", [path]);
+  }
+  const part = raw as Record<string, unknown>;
+  if (typeof part.blobId !== "string" || part.blobId === "") {
+    throw new SetErrorSignal("invalidProperties", "an attachment requires a blobId", at("blobId"));
+  }
+  if (part.type !== undefined && part.type !== null && typeof part.type !== "string") {
+    throw new SetErrorSignal("invalidProperties", "type must be a string", at("type"));
+  }
+  if (part.name !== undefined && part.name !== null && typeof part.name !== "string") {
+    throw new SetErrorSignal("invalidProperties", "name must be a string", at("name"));
+  }
+  if (part.cid !== undefined && part.cid !== null && typeof part.cid !== "string") {
+    throw new SetErrorSignal("invalidProperties", "cid must be a string", at("cid"));
+  }
+  if (part.disposition !== undefined && part.disposition !== null && typeof part.disposition !== "string") {
+    throw new SetErrorSignal("invalidProperties", "disposition must be a string", at("disposition"));
+  }
+  // A charset lands inside a Content-Type header line, so it is confined to
+  // charset-label characters — never a place CRLF or `;` can ride through.
+  if (
+    part.charset !== undefined &&
+    part.charset !== null &&
+    part.charset !== "" &&
+    (typeof part.charset !== "string" || !/^[A-Za-z0-9._:-]+$/.test(part.charset))
+  ) {
+    throw new SetErrorSignal("invalidProperties", "charset must be a charset label", at("charset"));
+  }
+  const cid = typeof part.cid === "string" && part.cid !== "" ? part.cid : null;
+  return {
+    blobId: part.blobId,
+    // RFC 8621 leaves `type` optional; octet-stream is the RFC 2046 §4.5.1
+    // default for "bytes of unknown kind".
+    type: typeof part.type === "string" && part.type !== "" ? part.type : "application/octet-stream",
+    // A blob's bytes pass through VERBATIM, so the client's charset is real
+    // information about them and rides onto the wire Content-Type. (Contrast
+    // partId content, which the server re-encodes: see flattenBodyStructure.)
+    charset: typeof part.charset === "string" && part.charset !== "" ? part.charset : null,
+    name: typeof part.name === "string" && part.name !== "" ? part.name : null,
+    cid,
+    // A cid-carrying part is inline unless the client says otherwise; this
+    // is also the value `hasAttachment` is decided on, so it is stored, not
+    // just serialized.
+    disposition:
+      typeof part.disposition === "string" && part.disposition !== ""
+        ? part.disposition
+        : cid
+          ? "inline"
+          : "attachment",
+    path,
+  };
 }
 
 /**
@@ -1240,11 +1319,215 @@ function importAddresses(list: Array<{ name?: string; address?: string }>): Emai
     .map((a) => ({ ...(a.name ? { name: a.name } : {}), email: a.address as string }));
 }
 
-function resolveBodyPart(partList: unknown, bodyValues: Record<string, { value?: string }>): string | undefined {
-  if (!Array.isArray(partList) || partList.length === 0) return undefined;
-  const partId = (partList[0] as { partId?: string }).partId;
-  if (!partId) return undefined;
-  return bodyValues[partId]?.value;
+// ---- body content on create (RFC 8621 §4.6) ---------------------------
+
+type BodyValues = Record<string, { value?: unknown }>;
+
+function parseBodyValues(value: unknown): BodyValues {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new SetErrorSignal("invalidProperties", "bodyValues must map partId to EmailBodyValue", ["bodyValues"]);
+  }
+  return value as BodyValues;
+}
+
+/**
+ * The string behind a partId. RFC 8621 §4.6: "if a partId is given, this
+ * partId MUST be present in the bodyValues property". A dangling reference
+ * used to resolve to `undefined`, which mailed a HEADERS-ONLY message — the
+ * silent empty body this file now refuses to produce — so it is an error
+ * naming both ends of the broken reference, never a default.
+ */
+function requireBodyValue(bodyValues: BodyValues, partId: string, path: string): string {
+  const value = bodyValues[partId]?.value;
+  if (typeof value !== "string") {
+    throw new SetErrorSignal(
+      "invalidProperties",
+      `partId "${partId}" has no string value in bodyValues (RFC 8621 §4.6 requires one)`,
+      [`${path}/partId`, `bodyValues/${partId}`],
+    );
+  }
+  return value;
+}
+
+/**
+ * Resolve `textBody`/`htmlBody` — the simple §4.6 create form — to content.
+ *
+ * On create each list is exactly one part of the matching text type whose
+ * partId resolves through bodyValues. Every other shape used to flatten
+ * SILENTLY to "no body here"; each now refuses with the property named.
+ */
+function resolveBodyPart(partList: unknown, bodyValues: BodyValues, prop: "textBody" | "htmlBody"): string | undefined {
+  if (partList === undefined || partList === null) return undefined;
+  if (!Array.isArray(partList)) {
+    throw new SetErrorSignal("invalidProperties", `${prop} must be an EmailBodyPart[]`, [prop]);
+  }
+  if (partList.length === 0) return undefined;
+  if (partList.length > 1) {
+    throw new SetErrorSignal("invalidProperties", `${prop} must contain exactly one part on create (RFC 8621 §4.6)`, [
+      prop,
+    ]);
+  }
+  const raw = partList[0];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new SetErrorSignal("invalidProperties", `${prop}/0 must be an EmailBodyPart`, [`${prop}/0`]);
+  }
+  const part = raw as { partId?: unknown; type?: unknown };
+  const expected = prop === "textBody" ? "text/plain" : "text/html";
+  if (typeof part.type === "string" && part.type.trim().toLowerCase() !== expected) {
+    throw new SetErrorSignal("invalidProperties", `${prop} must be ${expected}, not "${part.type}"`, [
+      `${prop}/0/type`,
+    ]);
+  }
+  if (typeof part.partId !== "string" || part.partId === "") {
+    throw new SetErrorSignal("invalidProperties", `${prop}/0 requires a partId naming an entry in bodyValues`, [
+      `${prop}/0/partId`,
+    ]);
+  }
+  return requireBodyValue(bodyValues, part.partId, `${prop}/0`);
+}
+
+/**
+ * Depth at which a bodyStructure stops being mail and starts being a payload.
+ * Real client trees are ≤4 (mixed > related > alternative > leaf); this is a
+ * refusal bound, not a target.
+ */
+const MAX_BODY_STRUCTURE_DEPTH = 8;
+
+interface FlattenedBody {
+  text?: string;
+  html?: string;
+  attachments: AttachmentSpec[];
+}
+
+/**
+ * Map a client-authored `bodyStructure` tree — RFC 8621 §4.6's second create
+ * form, the one IMAP-heritage clients such as Mailtemi send — onto what
+ * `buildMime` can express: at most one text/plain body, at most one text/html
+ * body, plus attachment parts (cid-referenced → multipart/related, the rest
+ * → multipart/mixed).
+ *
+ * Flattening rules. Content is preserved or the create is REFUSED — never
+ * silently dropped, because "mailed something other than what the client
+ * composed" is the failure class this function exists to kill:
+ *
+ * - multipart/* parts recurse into `subParts` (non-empty, no partId/blobId of
+ *   their own). The subtype is not interpreted beyond "has children":
+ *   alternative, related and mixed all flatten into the same three buckets,
+ *   and buildMime re-nests those canonically.
+ * - a partId leaf is authored content: text/plain or text/html only — all a
+ *   bodyValues string can faithfully become. Several text leaves concatenate
+ *   in document order. Content is emitted as UTF-8 regardless of any charset
+ *   on the part: §4.6 forbids `charset` next to partId precisely so the
+ *   server picks the encoding, and UTF-8 represents every JSON string
+ *   exactly.
+ * - a blobId leaf is stored bytes: it becomes an attachment part with its
+ *   declared type/charset/name/cid/disposition, authorized and size-bounded
+ *   by `resolveAttachments` exactly like the `attachments` property.
+ * - everything else refuses BY NAME: a non-text type with partId content, a
+ *   partId posing as an attachment, partId AND blobId on one leaf, a
+ *   childless multipart, a tree deeper than MAX_BODY_STRUCTURE_DEPTH.
+ */
+function flattenBodyStructure(root: unknown, bodyValues: BodyValues): FlattenedBody {
+  const texts: string[] = [];
+  const htmls: string[] = [];
+  const attachments: AttachmentSpec[] = [];
+
+  const walk = (raw: unknown, path: string, depth: number): void => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new SetErrorSignal("invalidProperties", `${path} must be an EmailBodyPart`, [path]);
+    }
+    const part = raw as Record<string, unknown>;
+    if (part.type !== undefined && part.type !== null && typeof part.type !== "string") {
+      throw new SetErrorSignal("invalidProperties", `${path}/type must be a string`, [`${path}/type`]);
+    }
+    const declared = typeof part.type === "string" && part.type.trim() !== "" ? part.type.trim().toLowerCase() : null;
+    const hasPartId = part.partId !== undefined && part.partId !== null;
+    const hasBlobId = part.blobId !== undefined && part.blobId !== null;
+
+    if (declared?.startsWith("multipart/")) {
+      if (hasPartId || hasBlobId) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `${path}: a ${declared} part carries subParts, not partId/blobId`,
+          [path],
+        );
+      }
+      if (depth >= MAX_BODY_STRUCTURE_DEPTH) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `bodyStructure nests deeper than ${MAX_BODY_STRUCTURE_DEPTH} levels — not a shape this server will mail`,
+          [path],
+        );
+      }
+      const subs = part.subParts;
+      if (!Array.isArray(subs) || subs.length === 0) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `${path}: a ${declared} part requires a non-empty subParts array`,
+          [`${path}/subParts`],
+        );
+      }
+      for (const [i, sub] of subs.entries()) walk(sub, `${path}/subParts/${i}`, depth + 1);
+      return;
+    }
+
+    // A leaf.
+    if (part.subParts !== undefined && part.subParts !== null) {
+      throw new SetErrorSignal("invalidProperties", `${path}: subParts is only valid on a multipart/* part`, [
+        `${path}/subParts`,
+      ]);
+    }
+    if (hasPartId && hasBlobId) {
+      throw new SetErrorSignal(
+        "invalidProperties",
+        `${path}: a part may carry partId or blobId, not both (RFC 8621 §4.6)`,
+        [`${path}/partId`, `${path}/blobId`],
+      );
+    }
+    if (hasBlobId) {
+      attachments.push(parseAttachmentSpec(part, path));
+      return;
+    }
+    if (!hasPartId) {
+      throw new SetErrorSignal(
+        "invalidProperties",
+        `${path}: a leaf part requires partId (content in bodyValues) or blobId (uploaded content)`,
+        [path],
+      );
+    }
+    if (typeof part.partId !== "string" || part.partId === "") {
+      throw new SetErrorSignal("invalidProperties", `${path}/partId must be a non-empty string`, [`${path}/partId`]);
+    }
+    if (typeof part.disposition === "string" && part.disposition.trim().toLowerCase() === "attachment") {
+      // "Authored text, presented as an attached file" is not expressible
+      // here (buildMime attaches bytes by reference only) — and quietly
+      // inlining it into the body would change what the message says it is.
+      throw new SetErrorSignal(
+        "invalidProperties",
+        `${path}: partId content cannot be sent as an attachment — upload it and reference a blobId`,
+        [`${path}/disposition`],
+      );
+    }
+    const type = declared ?? "text/plain";
+    if (type !== "text/plain" && type !== "text/html") {
+      throw new SetErrorSignal(
+        "invalidProperties",
+        `${path}: cannot compose a "${type}" part from bodyValues — text/plain and text/html only; other content attaches by blobId`,
+        [`${path}/type`],
+      );
+    }
+    const value = requireBodyValue(bodyValues, part.partId, path);
+    if (type === "text/plain") texts.push(value);
+    else htmls.push(value);
+  };
+
+  walk(root, "bodyStructure", 0);
+  return {
+    ...(texts.length > 0 ? { text: texts.join("\n\n") } : {}),
+    ...(htmls.length > 0 ? { html: htmls.join("\n") } : {}),
+    attachments,
+  };
 }
 
 function fromJmapAddresses(value: unknown): EmailAddress[] {
