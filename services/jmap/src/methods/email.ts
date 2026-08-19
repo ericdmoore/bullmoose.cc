@@ -23,6 +23,7 @@ import {
   type RequestContext,
   type SetError,
 } from "./common";
+import { partBlobId } from "../blobParts";
 
 /** Metadata properties served straight from D1 — no blob fetch, no MIME parse. */
 const ROW_PROPERTIES = [
@@ -299,10 +300,14 @@ interface BodyPartJson {
  * below is therefore deliberately simple and NEVER lies about what exists:
  * every leaf is real, with its real type, real size and (for attachments) the
  * real, downloadable blobId — the same blobIds the `attachments` property has
- * always served. Text leaves carry `blobId: null` because the decoded text is
- * not separately addressable as a blob in this pass; their content is reachable
- * through `partId` + `bodyValues` (the fetch*BodyValues flags are honored),
- * which RFC 8621 names as the primary path for text parts anyway.
+ * always served. Text leaves carry a PART-ADDRESSED blobId,
+ * `<rawBlobId>~<partId>` (blobParts.ts), which the download door resolves by
+ * re-parsing the raw message and serving just that part. This is not
+ * decoration: clients like Mailtemi ignore `bodyValues` entirely and fetch
+ * every part by blobId through the download template, so a text leaf without
+ * a fetchable blobId renders as a body that never loads. `bodyValues` still
+ * works too (the fetch*BodyValues flags are honored), and both paths decode
+ * the same raw blob — the bytes agree by construction.
  */
 async function fetchParsed(
   store: Mailstore,
@@ -331,8 +336,8 @@ async function fetchParsed(
   }
   const parsed = await PostalMime.parse(await blob.arrayBuffer());
 
-  const textLeaf = parsed.text !== undefined ? textBodyPart("t", "text/plain", parsed.text) : null;
-  const htmlLeaf = parsed.html !== undefined ? textBodyPart("h", "text/html", parsed.html) : null;
+  const textLeaf = parsed.text !== undefined ? textBodyPart("t", "text/plain", parsed.text, row.blobId) : null;
+  const htmlLeaf = parsed.html !== undefined ? textBodyPart("h", "text/html", parsed.html, row.blobId) : null;
   const attLeaves = row.attachments.map(attachmentBodyPart);
 
   // The synthetic-but-honest tree: text+html as alternatives, attachments as
@@ -383,10 +388,10 @@ async function fetchParsed(
   return out;
 }
 
-function textBodyPart(partId: string, type: string, content: string): BodyPartJson {
+function textBodyPart(partId: string, type: string, content: string, rawBlobId: string): BodyPartJson {
   return {
     partId,
-    blobId: null,
+    blobId: partBlobId(rawBlobId, partId),
     size: new TextEncoder().encode(content).byteLength,
     name: null,
     type,

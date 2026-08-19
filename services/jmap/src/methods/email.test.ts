@@ -143,7 +143,7 @@ describe("bodyStructure on a real multipart message", () => {
     const id = await h.importRaw(MULTIPART_RAW);
     const res = await h.get({
       ids: [id],
-      properties: ["bodyStructure", "bodyValues", "textBody", "htmlBody", "attachments"],
+      properties: ["blobId", "bodyStructure", "bodyValues", "textBody", "htmlBody", "attachments"],
       fetchAllBodyValues: true,
     });
     const email = res.list[0]!;
@@ -152,11 +152,14 @@ describe("bodyStructure on a real multipart message", () => {
     expect(root.type).toBe("multipart/mixed");
     expect(root.subParts).toHaveLength(2);
 
+    // Text leaves carry PART-ADDRESSED blobIds (`<rawBlobId>~<partId>`,
+    // blobParts.ts) — Mailtemi et al. never read bodyValues, they download
+    // every leaf by blobId, so a null here is a body that never renders.
     const alt = root.subParts![0]!;
     expect(alt.type).toBe("multipart/alternative");
     const [text, html] = alt.subParts as [Part, Part];
-    expect(text).toMatchObject({ partId: "t", blobId: null, type: "text/plain", charset: "utf-8" });
-    expect(html).toMatchObject({ partId: "h", blobId: null, type: "text/html", charset: "utf-8" });
+    expect(text).toMatchObject({ partId: "t", blobId: `${email.blobId}~t`, type: "text/plain", charset: "utf-8" });
+    expect(html).toMatchObject({ partId: "h", blobId: `${email.blobId}~h`, type: "text/html", charset: "utf-8" });
     expect(text.size).toBeGreaterThan(0);
     expect(html.size).toBeGreaterThan(0);
 
@@ -188,10 +191,12 @@ describe("bodyStructure on a real multipart message", () => {
   it("a single-part message IS its own bodyStructure — no invented multipart", async () => {
     const h = harness();
     const id = await h.importRaw(TEXT_ONLY_RAW);
-    const res = await h.get({ ids: [id], properties: ["bodyStructure"] });
-    const root = res.list[0]!.bodyStructure as Part;
+    const res = await h.get({ ids: [id], properties: ["blobId", "bodyStructure"] });
+    const email = res.list[0]!;
+    const root = email.bodyStructure as Part;
     expect(root.type).toBe("text/plain");
     expect(root.partId).toBe("t");
+    expect(root.blobId).toBe(`${email.blobId}~t`);
     expect(root.subParts).toBeUndefined();
   });
 });
