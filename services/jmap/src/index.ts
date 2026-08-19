@@ -284,6 +284,28 @@ async function handleApi(request: Request, env: Env, principal: RequestContext["
     return problem(RequestErrors.unknownCapability, 400, `unsupported: ${unknown.join(", ")}`);
   }
 
+  // TEMPORARY DIAGNOSTIC (2026-08-19, remove within days): third-party clients
+  // are fetching in shapes our Email/get mishandles (subjects render empty in
+  // Mailtemi while the data is provably present). Log the SHAPE of every
+  // request — method names, requested property/argument NAMES, capability list
+  // — never values, never filters' contents, never mail. Visible via
+  // `wrangler tail`; nothing is persisted.
+  try {
+    const ua = request.headers.get("user-agent") ?? "";
+    if (!ua.startsWith("bullmoose-webmail")) {
+      const shape = body.methodCalls.map(([name, args]) => ({
+        m: name,
+        args: Object.keys(args ?? {}),
+        props: Array.isArray((args as { properties?: unknown })?.properties)
+          ? ((args as { properties: unknown[] }).properties as unknown[]).map(String)
+          : undefined,
+      }));
+      console.log("jmap-shape", JSON.stringify({ ua: ua.slice(0, 60), using: body.using, calls: shape }));
+    }
+  } catch {
+    // diagnostics must never break the request
+  }
+
   const ctx: RequestContext = { env, principal };
   const response = await dispatch(body, registry, ctx, "0");
   return json(response);
