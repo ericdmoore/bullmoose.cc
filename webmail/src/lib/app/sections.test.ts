@@ -17,9 +17,20 @@ const at = (id: SectionId) => ids().indexOf(id);
 describe("the nine sections", () => {
   it("is exactly the nine nouns", () => {
     expect(new Set(ids())).toEqual(
-      new Set(["approvals", "agents", "activity", "calendar", "mail", "contacts", "files", "search", "settings"]),
+      new Set([
+        "approvals",
+        "agents",
+        "activity",
+        "goals",
+        "calendar",
+        "mail",
+        "contacts",
+        "files",
+        "search",
+        "settings",
+      ]),
     );
-    expect(SECTIONS).toHaveLength(9);
+    expect(SECTIONS).toHaveLength(10);
   });
 
   it("does not contain a section for `/` — home is a view, not a noun", () => {

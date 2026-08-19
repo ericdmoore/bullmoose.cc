@@ -3,7 +3,17 @@ import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
 import { QUARANTINE_ROLE, type ContactCardRow, type JSContactCard, type Mailstore } from "@bullmoose/mailstore";
 import { OutboundRefused, assertOutboundAllowed } from "@bullmoose/mailstore/outboundBound";
-import { budgetExhaustedSql, budgetMonthStartMs, budgetPeriodKey, jobBudgetExhaustedSql } from "@bullmoose/scheduling";
+import {
+  budgetExhaustedSql,
+  budgetMonthStartMs,
+  budgetPeriodKey,
+  contractRefusals,
+  describeRefusals,
+  expandPlanRows,
+  getJobNodeRow,
+  jobBudgetExhaustedSql,
+  parseGoalContract,
+} from "@bullmoose/scheduling";
 // The one definition of the fallback follow-up body/subject, shared with the
 // fire-time compose (s20 wave 3) so an old-format (intent-only) proposal
 // applies with byte-identical text to the compose fallback. A cross-service
@@ -1356,6 +1366,7 @@ async function applyProposal(
 
     case "verb-answer":
     case "verb-bring-in":
+    case "goal-outreach":
     case "verb-compose": {
       // s20 T2 — the mail verbs. `Answer` and `Bring X into this` are the
       // human asking IN PLACE, on the message they are reading; the agent
@@ -1364,6 +1375,14 @@ async function applyProposal(
       // mailbox — the SAME write an approved `watch-followup` performs, which
       // is why both share `draftIntoDrafts` rather than growing a second
       // almost-identical draft path that could drift.
+      //
+      // s20 T6 adds `goal-outreach` — a message a GOAL wants to send — as a
+      // fourth label, on exactly the T3 reasoning below: the application is
+      // byte-for-byte identical (a draft in your own Drafts, same keywords,
+      // same undo), and the KIND stays separate because the queue tells a
+      // person what they are looking at and the decline taxonomy needs to know
+      // what it is learning about. "That is not the message I wanted" about a
+      // goal's outreach is feedback on the GOAL, not on the compose verb.
       //
       // s20 T3 adds `verb-compose` — the composer's intent mode — as a THIRD
       // LABEL on this one case, not a fourth apply path. What approval does is
@@ -1411,8 +1430,10 @@ async function applyProposal(
       // the human's own sentence). If it somehow arrives without one the draft
       // gets a BLANK subject for the human to write — never `Re: <the message
       // it was standing next to>`, which would announce a reply that isn't.
-      const subject =
-        str(payload.subject) ?? (row.kind === "verb-compose" ? "" : followupSubject(verbOrig?.subject ?? null, null));
+      // A compose and a goal's outreach both START a message; the two
+      // message-view verbs continue one. Read once, used twice below.
+      const startsAMessage = row.kind === "verb-compose" || row.kind === "goal-outreach";
+      const subject = str(payload.subject) ?? (startsAMessage ? "" : followupSubject(verbOrig?.subject ?? null, null));
 
       // Whose voice: the account's primary sending identity (may_delete = 0
       // sorts first), and the approver's own login name only as the last
@@ -1435,8 +1456,7 @@ async function applyProposal(
         // recent exchange with the recipient purely as BACKGROUND. "Ask Sergio
         // about selling assembled boards" is a new ask, not a reply to
         // whatever you last said to each other.
-        inReplyTo:
-          row.kind === "verb-compose" || str(payload.mode) === "forward" ? null : (verbOrig?.message_id ?? null),
+        inReplyTo: startsAMessage || str(payload.mode) === "forward" ? null : (verbOrig?.message_id ?? null),
       });
     }
 
@@ -1557,6 +1577,178 @@ async function applyProposal(
       return {
         entries: [],
         undo: { action: "restore-floor", bindingId, previousFloorMs },
+      };
+    }
+
+    case "goal-plan": {
+      // ── s20 T6 — THE PLAN-APPROVAL CHECKPOINT, APPLIED ────────────────────
+      //
+      // A NEW CLASS OF APPROVAL: every other case in this function gates
+      // EGRESS — may this leave the building? This one gates EXECUTION — may
+      // these tasks exist at all? Approving it CREATES THE TASKS, here, in the
+      // same transaction as the decision, through the same `expandPlanRows`
+      // a planner's own output goes through (@bullmoose/scheduling jobWrite.ts).
+      //
+      // That shared function is the point, and it is why this case is short.
+      // We have wedged three producers this month by emitting a kind whose
+      // apply case did not exist or did not do the thing; the way to not wedge
+      // a fourth is to make approval call the SAME code path the auto route
+      // calls, rather than a second implementation that agrees with it today.
+      //
+      // ── "EDIT IS APPROVAL, INLINE" — and why the ledger does not move ─────
+      // The human redlines the sketch where the goal was expressed; an edit
+      // that leaves nothing unresolved IS the approval, with no second "and do
+      // you approve?" (readme principle 6). That venue change needs NOTHING
+      // here, and that is the design: an inline redline sends the ordinary
+      // `{ status: "approved", editedPayload }` this method has always taken,
+      // so the same proposal, decision and provenance rows are written as if
+      // it had gone through the queue. `payload` below is already the
+      // effective payload — the human's edit when there is one, the agent's
+      // original otherwise.
+      //
+      // ── THE EDIT IS UNTRUSTED, EXACTLY LIKE THE MODEL OUTPUT IT EDITS ────
+      // Which is why both checks run again on this side. A redline that raises
+      // a task's budget above the goal's, or points one at a recipient the
+      // contract does not reach, is refused with nothing created and the row
+      // left `pending` — monotonic attenuation does not have a "but a human
+      // typed it" exception, because the whole reason the bound exists is that
+      // the person approving cannot re-derive it in their head.
+      const goalId = str(payload.goalId);
+      const tasks = payload.tasks;
+      if (!Array.isArray(tasks) || tasks.length === 0) {
+        throw new SetErrorSignal("invalidProperties", "a goal-plan payload needs a non-empty `tasks` list", [
+          "payload",
+        ]);
+      }
+
+      // The planner node IS this proposal — a proposal's id is its
+      // invocation's id — so the plan expands from the row that proposed it,
+      // and the attenuation chain is re-folded from the binding down through
+      // every hop by `expandPlanRows` itself.
+      const planner = await getJobNodeRow(ctx.env, access.accountId, row.id);
+      if (!planner || !planner.job_id) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "the planner node behind this plan no longer exists — nothing was created",
+          ["payload"],
+        );
+      }
+      if (goalId !== null && goalId !== planner.job_id) {
+        // A payload naming a different goal than the node it hangs off would
+        // be an approval applied to somebody else's workflow. The node wins;
+        // the mismatch is refused rather than reconciled.
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `this plan names goal ${goalId} but its planner belongs to ${planner.job_id}`,
+          ["payload"],
+        );
+      }
+
+      const goal = await ctx.env.DB.prepare(
+        `SELECT id, contract_json, cancelled_at FROM goals WHERE account_id = ? AND id = ?`,
+      )
+        .bind(access.accountId, planner.job_id)
+        .first<{ id: string; contract_json: string; cancelled_at: number | null }>();
+      if (!goal) {
+        throw new SetErrorSignal("invalidProperties", `no goal ${planner.job_id} on this account`, ["payload"]);
+      }
+      if (goal.cancelled_at) {
+        // Standing authority, revoked. An approval that landed after a cancel
+        // would resurrect a delegation the human deliberately ended, which is
+        // the one thing a revocation has to be able to promise.
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "this goal was cancelled — its authority is revoked, so its plan cannot be started",
+          ["status"],
+        );
+      }
+      let contract;
+      try {
+        contract = parseGoalContract(JSON.parse(goal.contract_json || "null") as unknown);
+      } catch {
+        contract = { ok: false as const, why: "the stored contract is not valid JSON" };
+      }
+      if (!contract.ok) {
+        // An unreadable contract is an UNKNOWN bound, and an unknown bound is
+        // never a permissive one — the rule the whole s17 gate is built on.
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `this goal's contract cannot be read (${contract.why}), so its plan cannot be authorized`,
+          ["payload"],
+        );
+      }
+
+      const contractRefused = contractRefusals(contract.contract, tasks as Array<Record<string, unknown>>);
+      if (contractRefused.length > 0) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `the goal's contract refuses this plan: ${describeRefusals(contractRefused)}`,
+          ["payload"],
+        );
+      }
+
+      const expanded = await expandPlanRows(ctx.env, planner, { tasks });
+      if (!expanded.ok) {
+        // All-or-nothing, and it already is: `expandPlanRows` writes every
+        // child or none. The row stays `pending`, so the human can redline
+        // again rather than losing the sketch to a failed approval.
+        throw new SetErrorSignal("invalidProperties", `the plan was refused: ${describeRefusals(expanded.refusals)}`, [
+          "payload",
+        ]);
+      }
+
+      return {
+        entries: [
+          {
+            collection: "AgentInvocation",
+            created: expanded.created.map((c) => c.id),
+            updated: [],
+            destroyed: [],
+          },
+        ],
+        // A tier-1 undo handle that names a call which EXISTS (the watch-notify
+        // rule: never promise an action nothing implements). `Goal/set
+        // { status: "cancelled" }` fails every pending node of this goal, which
+        // is exactly "un-create the tasks I just authorized".
+        undo: { action: "cancel-goal", goalId: planner.job_id },
+      };
+    }
+
+    case "goal-summary": {
+      // s20 T6 — the compiled answer, and the ONE judgment no derivation can
+      // make. A Job's status is a view over its tasks, so it can say "every
+      // node finished"; it cannot say whether three structural engineers are
+      // WILLING, because done-when is a sentence and reading it is a person's
+      // job. Approving this proposal records that person's verdict on the goal
+      // — the only reason this case writes anything at all.
+      //
+      // Deliberately NOT a `NO_FAULT_KIND`: declining a summary is "no, that
+      // does not meet what I asked for", which is exactly the wrongContent
+      // signal the decline taxonomy was built to carry, and the goal stays open.
+      const summaryGoalId = str(payload.goalId);
+      if (!summaryGoalId) {
+        throw new SetErrorSignal("invalidProperties", "a goal-summary payload needs a `goalId`", ["payload"]);
+      }
+      const now = Date.now();
+      const accepted = await ctx.env.DB.prepare(
+        `UPDATE goals SET accepted_at = ?, accepted_by = ?
+          WHERE account_id = ? AND id = ? AND cancelled_at IS NULL`,
+      )
+        .bind(now, ctx.principal.username, access.accountId, summaryGoalId)
+        .run();
+      if ((accepted.meta.changes ?? 0) === 0) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `goal ${summaryGoalId} is not open on this account — nothing was accepted`,
+          ["payload"],
+        );
+      }
+      return {
+        entries: [{ collection: "Goal", created: [], updated: [summaryGoalId], destroyed: [] }],
+        // Accepting is reversible in the only sense that matters: the verdict
+        // is a fact about a human's reading, and clearing it puts the goal back
+        // where it was without touching a single node.
+        undo: { action: "reopen-goal", goalId: summaryGoalId },
       };
     }
 

@@ -9,6 +9,7 @@ import { registerAgentMethods } from "./agent";
 import { registerAgentBindingMethods } from "./agentBinding";
 import { registerActionProposalMethods } from "./actionProposal";
 import { registerWatchMethods } from "./watch";
+import { registerGoalMethods } from "./goal";
 import { registerAnnotationMethods } from "./annotation";
 import { registerVacationMethods } from "./vacation";
 import { registerContactsMethods } from "./contacts";
@@ -30,6 +31,7 @@ export function buildRegistry(): MethodRegistry<RequestContext> {
   registerAgentBindingMethods(registry);
   registerActionProposalMethods(registry);
   registerWatchMethods(registry);
+  registerGoalMethods(registry);
   registerAnnotationMethods(registry);
   registerVacationMethods(registry);
   registerContactsMethods(registry);
