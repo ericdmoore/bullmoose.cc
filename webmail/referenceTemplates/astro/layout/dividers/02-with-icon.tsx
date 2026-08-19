@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { PlusIcon } from '../../_kit/heroicons/20-solid'
+import { PlusIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
   return (
@@ -12,5 +12,5 @@ export default function Example() {
       </div>
       <div aria-hidden="true" className="w-full border-t border-gray-300 dark:border-white/15" />
     </div>
-  )
+  );
 }

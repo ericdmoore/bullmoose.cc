@@ -7,5 +7,5 @@ export default function Example() {
         <p className="mt-1 ml-2 truncate text-sm text-gray-500 dark:text-gray-400">in Engineering</p>
       </div>
     </div>
-  )
+  );
 }

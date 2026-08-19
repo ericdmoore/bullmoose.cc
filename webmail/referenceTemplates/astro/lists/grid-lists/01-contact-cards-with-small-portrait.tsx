@@ -1,62 +1,62 @@
 /** @jsxImportSource preact */
-import { EnvelopeIcon, PhoneIcon } from '../../_kit/heroicons/20-solid'
+import { EnvelopeIcon, PhoneIcon } from "../../_kit/heroicons/20-solid";
 
 const people = [
   {
-    name: 'Jane Cooper',
-    title: 'Regional Paradigm Technician',
-    role: 'Admin',
-    email: 'janecooper@example.com',
-    telephone: '+1-202-555-0170',
+    name: "Jane Cooper",
+    title: "Regional Paradigm Technician",
+    role: "Admin",
+    email: "janecooper@example.com",
+    telephone: "+1-202-555-0170",
     imageUrl:
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60',
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60",
   },
   {
-    name: 'Cody Fisher',
-    title: 'Product Directives Officer',
-    role: 'Admin',
-    email: 'codyfisher@example.com',
-    telephone: '+1-202-555-0114',
+    name: "Cody Fisher",
+    title: "Product Directives Officer",
+    role: "Admin",
+    email: "codyfisher@example.com",
+    telephone: "+1-202-555-0114",
     imageUrl:
-      'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60',
+      "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60",
   },
   {
-    name: 'Esther Howard',
-    title: 'Forward Response Developer',
-    email: 'estherhoward@example.com',
-    telephone: '+1-202-555-0143',
-    role: 'Admin',
+    name: "Esther Howard",
+    title: "Forward Response Developer",
+    email: "estherhoward@example.com",
+    telephone: "+1-202-555-0143",
+    role: "Admin",
     imageUrl:
-      'https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60',
+      "https://images.unsplash.com/photo-1520813792240-56fc4a3765a7?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60",
   },
   {
-    name: 'Jenny Wilson',
-    title: 'Central Security Manager',
-    role: 'Admin',
-    email: 'jennywilson@example.com',
-    telephone: '+1-202-555-0184',
+    name: "Jenny Wilson",
+    title: "Central Security Manager",
+    role: "Admin",
+    email: "jennywilson@example.com",
+    telephone: "+1-202-555-0184",
     imageUrl:
-      'https://images.unsplash.com/photo-1498551172505-8ee7ad69f235?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60',
+      "https://images.unsplash.com/photo-1498551172505-8ee7ad69f235?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60",
   },
   {
-    name: 'Kristin Watson',
-    title: 'Lead Implementation Liaison',
-    role: 'Admin',
-    email: 'kristinwatson@example.com',
-    telephone: '+1-202-555-0191',
+    name: "Kristin Watson",
+    title: "Lead Implementation Liaison",
+    role: "Admin",
+    email: "kristinwatson@example.com",
+    telephone: "+1-202-555-0191",
     imageUrl:
-      'https://images.unsplash.com/photo-1532417344469-368f9ae6d187?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60',
+      "https://images.unsplash.com/photo-1532417344469-368f9ae6d187?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60",
   },
   {
-    name: 'Cameron Williamson',
-    title: 'Internal Applications Engineer',
-    role: 'Admin',
-    email: 'cameronwilliamson@example.com',
-    telephone: '+1-202-555-0108',
+    name: "Cameron Williamson",
+    title: "Internal Applications Engineer",
+    role: "Admin",
+    email: "cameronwilliamson@example.com",
+    telephone: "+1-202-555-0108",
     imageUrl:
-      'https://images.unsplash.com/photo-1566492031773-4f4e44671857?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60',
+      "https://images.unsplash.com/photo-1566492031773-4f4e44671857?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=4&w=256&h=256&q=60",
   },
-]
+];
 
 export default function Example() {
   return (
@@ -107,5 +107,5 @@ export default function Example() {
         </li>
       ))}
     </ul>
-  )
+  );
 }

@@ -28,7 +28,7 @@ export default function Example() {
                 Sign in to your account
               </h2>
               <p className="mt-2 text-sm/6 text-gray-500 dark:text-gray-400">
-                Not a member?{' '}
+                Not a member?{" "}
                 <a
                   href="#"
                   className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
@@ -201,5 +201,5 @@ export default function Example() {
         </div>
       </div>
     </>
-  )
+  );
 }

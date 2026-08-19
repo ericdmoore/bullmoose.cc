@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { EnvelopeIcon, PhoneIcon } from '../../_kit/heroicons/20-solid'
+import { EnvelopeIcon, PhoneIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
   return (
@@ -40,5 +40,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

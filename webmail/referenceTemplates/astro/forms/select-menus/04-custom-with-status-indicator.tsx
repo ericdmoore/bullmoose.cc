@@ -1,28 +1,28 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from '../../_kit/headless'
-import { ChevronUpDownIcon } from '../../_kit/heroicons/16-solid'
-import { CheckIcon } from '../../_kit/heroicons/20-solid'
+import { useState } from "preact/hooks";
+import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from "../../_kit/headless";
+import { ChevronUpDownIcon } from "../../_kit/heroicons/16-solid";
+import { CheckIcon } from "../../_kit/heroicons/20-solid";
 
 const people = [
-  { id: 1, name: 'Wade Cooper', online: true },
-  { id: 2, name: 'Arlene Mccoy', online: false },
-  { id: 3, name: 'Devon Webb', online: false },
-  { id: 4, name: 'Tom Cook', online: true },
-  { id: 5, name: 'Tanya Fox', online: false },
-  { id: 6, name: 'Hellen Schmidt', online: true },
-  { id: 7, name: 'Caroline Schultz', online: true },
-  { id: 8, name: 'Mason Heaney', online: false },
-  { id: 9, name: 'Claudie Smitham', online: true },
-  { id: 10, name: 'Emil Schaefer', online: false },
-]
+  { id: 1, name: "Wade Cooper", online: true },
+  { id: 2, name: "Arlene Mccoy", online: false },
+  { id: 3, name: "Devon Webb", online: false },
+  { id: 4, name: "Tom Cook", online: true },
+  { id: 5, name: "Tanya Fox", online: false },
+  { id: 6, name: "Hellen Schmidt", online: true },
+  { id: 7, name: "Caroline Schultz", online: true },
+  { id: 8, name: "Mason Heaney", online: false },
+  { id: 9, name: "Claudie Smitham", online: true },
+  { id: 10, name: "Emil Schaefer", online: false },
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
-  const [selected, setSelected] = useState(people[3])
+  const [selected, setSelected] = useState(people[3]);
 
   return (
     <Listbox value={selected} onChange={setSelected}>
@@ -31,10 +31,10 @@ export default function Example() {
         <ListboxButton className="grid w-full cursor-default grid-cols-1 rounded-md bg-white py-1.5 pr-2 pl-3 text-left text-gray-900 outline-1 -outline-offset-1 outline-gray-300 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-600 sm:text-sm/6 dark:bg-white/5 dark:text-white dark:outline-white/10 dark:focus-visible:outline-indigo-500">
           <span className="col-start-1 row-start-1 flex items-center gap-3 pr-6">
             <span
-              aria-label={selected.online ? 'Online' : 'Offline'}
+              aria-label={selected.online ? "Online" : "Offline"}
               className={classNames(
-                selected.online ? 'bg-green-400 forced-colors:bg-[Highlight]' : 'bg-gray-200 dark:bg-gray-600',
-                'inline-block size-2 shrink-0 rounded-full border border-transparent',
+                selected.online ? "bg-green-400 forced-colors:bg-[Highlight]" : "bg-gray-200 dark:bg-gray-600",
+                "inline-block size-2 shrink-0 rounded-full border border-transparent",
               )}
             />
             <span className="block truncate">{selected.name}</span>
@@ -59,13 +59,13 @@ export default function Example() {
                 <span
                   aria-hidden="true"
                   className={classNames(
-                    person.online ? 'bg-green-400 forced-colors:bg-[Highlight]' : 'bg-gray-200 dark:bg-white/25',
-                    'inline-block size-2 shrink-0 rounded-full border border-transparent',
+                    person.online ? "bg-green-400 forced-colors:bg-[Highlight]" : "bg-gray-200 dark:bg-white/25",
+                    "inline-block size-2 shrink-0 rounded-full border border-transparent",
                   )}
                 />
                 <span className="ml-3 block truncate font-normal group-data-selected:font-semibold">
                   {person.name}
-                  <span className="sr-only"> is {person.online ? 'online' : 'offline'}</span>
+                  <span className="sr-only"> is {person.online ? "online" : "offline"}</span>
                 </span>
               </div>
 
@@ -77,5 +77,5 @@ export default function Example() {
         </ListboxOptions>
       </div>
     </Listbox>
-  )
+  );
 }

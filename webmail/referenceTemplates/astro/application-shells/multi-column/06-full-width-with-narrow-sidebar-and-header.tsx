@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
+import { useState } from "preact/hooks";
 import {
   Dialog,
   DialogBackdrop,
@@ -9,7 +9,7 @@ import {
   MenuItem,
   MenuItems,
   TransitionChild,
-} from '../../_kit/headless'
+} from "../../_kit/headless";
 import {
   Bars3Icon,
   BellIcon,
@@ -20,28 +20,28 @@ import {
   HomeIcon,
   UsersIcon,
   XMarkIcon,
-} from '../../_kit/heroicons/24-outline'
-import { ChevronDownIcon, MagnifyingGlassIcon } from '../../_kit/heroicons/20-solid'
+} from "../../_kit/heroicons/24-outline";
+import { ChevronDownIcon, MagnifyingGlassIcon } from "../../_kit/heroicons/20-solid";
 
 const navigation = [
-  { name: 'Dashboard', href: '#', icon: HomeIcon, current: true },
-  { name: 'Team', href: '#', icon: UsersIcon, current: false },
-  { name: 'Projects', href: '#', icon: FolderIcon, current: false },
-  { name: 'Calendar', href: '#', icon: CalendarIcon, current: false },
-  { name: 'Documents', href: '#', icon: DocumentDuplicateIcon, current: false },
-  { name: 'Reports', href: '#', icon: ChartPieIcon, current: false },
-]
+  { name: "Dashboard", href: "#", icon: HomeIcon, current: true },
+  { name: "Team", href: "#", icon: UsersIcon, current: false },
+  { name: "Projects", href: "#", icon: FolderIcon, current: false },
+  { name: "Calendar", href: "#", icon: CalendarIcon, current: false },
+  { name: "Documents", href: "#", icon: DocumentDuplicateIcon, current: false },
+  { name: "Reports", href: "#", icon: ChartPieIcon, current: false },
+];
 const userNavigation = [
-  { name: 'Your profile', href: '#' },
-  { name: 'Sign out', href: '#' },
-]
+  { name: "Your profile", href: "#" },
+  { name: "Sign out", href: "#" },
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <>
@@ -90,9 +90,9 @@ export default function Example() {
                           href={item.href}
                           className={classNames(
                             item.current
-                              ? 'bg-gray-800 text-white'
-                              : 'text-gray-400 hover:bg-gray-800 hover:text-white',
-                            'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
+                              ? "bg-gray-800 text-white"
+                              : "text-gray-400 hover:bg-gray-800 hover:text-white",
+                            "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
                           )}
                         >
                           <item.icon aria-hidden="true" className="size-6 shrink-0" />
@@ -123,8 +123,8 @@ export default function Example() {
                   <a
                     href={item.href}
                     className={classNames(
-                      item.current ? 'bg-white/5 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white',
-                      'group flex gap-x-3 rounded-md p-3 text-sm/6 font-semibold',
+                      item.current ? "bg-white/5 text-white" : "text-gray-400 hover:bg-white/5 hover:text-white",
+                      "group flex gap-x-3 rounded-md p-3 text-sm/6 font-semibold",
                     )}
                   >
                     <item.icon aria-hidden="true" className="size-6 shrink-0" />
@@ -222,5 +222,5 @@ export default function Example() {
         </aside>
       </div>
     </>
-  )
+  );
 }

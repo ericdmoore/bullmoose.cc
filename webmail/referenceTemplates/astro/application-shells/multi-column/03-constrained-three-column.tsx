@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { BellIcon } from '../../_kit/heroicons/24-outline'
+import { BellIcon } from "../../_kit/heroicons/24-outline";
 
 export default function Example() {
   return (
@@ -54,5 +54,5 @@ export default function Example() {
         </div>
       </div>
     </>
-  )
+  );
 }

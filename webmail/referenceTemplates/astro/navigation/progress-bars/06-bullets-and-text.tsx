@@ -1,12 +1,12 @@
 /** @jsxImportSource preact */
-import { CheckCircleIcon } from '../../_kit/heroicons/20-solid'
+import { CheckCircleIcon } from "../../_kit/heroicons/20-solid";
 
 const steps = [
-  { name: 'Create account', href: '#', status: 'complete' },
-  { name: 'Profile information', href: '#', status: 'current' },
-  { name: 'Theme', href: '#', status: 'upcoming' },
-  { name: 'Preview', href: '#', status: 'upcoming' },
-]
+  { name: "Create account", href: "#", status: "complete" },
+  { name: "Profile information", href: "#", status: "current" },
+  { name: "Theme", href: "#", status: "upcoming" },
+  { name: "Preview", href: "#", status: "upcoming" },
+];
 
 export default function Example() {
   return (
@@ -15,7 +15,7 @@ export default function Example() {
         <ol role="list" className="space-y-6">
           {steps.map((step) => (
             <li key={step.name}>
-              {step.status === 'complete' ? (
+              {step.status === "complete" ? (
                 <a href={step.href} className="group">
                   <span className="flex items-start">
                     <span className="relative flex size-5 shrink-0 items-center justify-center">
@@ -29,7 +29,7 @@ export default function Example() {
                     </span>
                   </span>
                 </a>
-              ) : step.status === 'current' ? (
+              ) : step.status === "current" ? (
                 <a href={step.href} aria-current="step" className="flex items-start">
                   <span aria-hidden="true" className="relative flex size-5 shrink-0 items-center justify-center">
                     <span className="absolute size-4 rounded-full bg-indigo-200 dark:bg-indigo-900" />
@@ -54,5 +54,5 @@ export default function Example() {
         </ol>
       </nav>
     </div>
-  )
+  );
 }

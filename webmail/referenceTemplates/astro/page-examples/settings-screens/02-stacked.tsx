@@ -1,7 +1,7 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Dialog, DialogPanel } from '../../_kit/headless'
-import { Bars3Icon } from '../../_kit/heroicons/20-solid'
+import { useState } from "preact/hooks";
+import { Dialog, DialogPanel } from "../../_kit/headless";
+import { Bars3Icon } from "../../_kit/heroicons/20-solid";
 import {
   BellIcon,
   CreditCardIcon,
@@ -10,29 +10,29 @@ import {
   UserCircleIcon,
   UsersIcon,
   XMarkIcon,
-} from '../../_kit/heroicons/24-outline'
+} from "../../_kit/heroicons/24-outline";
 
 const navigation = [
-  { name: 'Home', href: '#' },
-  { name: 'Invoices', href: '#' },
-  { name: 'Clients', href: '#' },
-  { name: 'Expenses', href: '#' },
-]
+  { name: "Home", href: "#" },
+  { name: "Invoices", href: "#" },
+  { name: "Clients", href: "#" },
+  { name: "Expenses", href: "#" },
+];
 const secondaryNavigation = [
-  { name: 'General', href: '#', icon: UserCircleIcon, current: true },
-  { name: 'Security', href: '#', icon: FingerPrintIcon, current: false },
-  { name: 'Notifications', href: '#', icon: BellIcon, current: false },
-  { name: 'Plan', href: '#', icon: CubeIcon, current: false },
-  { name: 'Billing', href: '#', icon: CreditCardIcon, current: false },
-  { name: 'Team members', href: '#', icon: UsersIcon, current: false },
-]
+  { name: "General", href: "#", icon: UserCircleIcon, current: true },
+  { name: "Security", href: "#", icon: FingerPrintIcon, current: false },
+  { name: "Notifications", href: "#", icon: BellIcon, current: false },
+  { name: "Plan", href: "#", icon: CubeIcon, current: false },
+  { name: "Billing", href: "#", icon: CreditCardIcon, current: false },
+  { name: "Team members", href: "#", icon: UsersIcon, current: false },
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <>
@@ -134,18 +134,18 @@ export default function Example() {
                     href={item.href}
                     className={classNames(
                       item.current
-                        ? 'bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white'
-                        : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white',
-                      'group flex gap-x-3 rounded-md py-2 pr-3 pl-2 text-sm/6 font-semibold',
+                        ? "bg-gray-50 text-indigo-600 dark:bg-white/5 dark:text-white"
+                        : "text-gray-700 hover:bg-gray-50 hover:text-indigo-600 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white",
+                      "group flex gap-x-3 rounded-md py-2 pr-3 pl-2 text-sm/6 font-semibold",
                     )}
                   >
                     <item.icon
                       aria-hidden="true"
                       className={classNames(
                         item.current
-                          ? 'text-indigo-600 dark:text-white'
-                          : 'text-gray-400 group-hover:text-indigo-600 dark:text-gray-500 dark:group-hover:text-white',
-                        'size-6 shrink-0',
+                          ? "text-indigo-600 dark:text-white"
+                          : "text-gray-400 group-hover:text-indigo-600 dark:text-gray-500 dark:group-hover:text-white",
+                        "size-6 shrink-0",
                       )}
                     />
                     {item.name}
@@ -329,5 +329,5 @@ export default function Example() {
         </main>
       </div>
     </>
-  )
+  );
 }

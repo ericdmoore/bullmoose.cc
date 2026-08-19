@@ -1,37 +1,37 @@
 /** @jsxImportSource preact */
-import { useLayoutEffect, useRef, useState } from 'preact/hooks'
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 
 const people = [
   {
-    name: 'Lindsay Walton',
-    title: 'Front-end Developer',
-    email: 'lindsay.walton@example.com',
-    role: 'Member',
+    name: "Lindsay Walton",
+    title: "Front-end Developer",
+    email: "lindsay.walton@example.com",
+    role: "Member",
   },
   // More people...
-]
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
-  const checkbox = useRef()
-  const [checked, setChecked] = useState(false)
-  const [indeterminate, setIndeterminate] = useState(false)
-  const [selectedPeople, setSelectedPeople] = useState([])
+  const checkbox = useRef();
+  const [checked, setChecked] = useState(false);
+  const [indeterminate, setIndeterminate] = useState(false);
+  const [selectedPeople, setSelectedPeople] = useState([]);
 
   useLayoutEffect(() => {
-    const isIndeterminate = selectedPeople.length > 0 && selectedPeople.length < people.length
-    setChecked(selectedPeople.length === people.length)
-    setIndeterminate(isIndeterminate)
-    checkbox.current.indeterminate = isIndeterminate
-  }, [selectedPeople])
+    const isIndeterminate = selectedPeople.length > 0 && selectedPeople.length < people.length;
+    setChecked(selectedPeople.length === people.length);
+    setIndeterminate(isIndeterminate);
+    checkbox.current.indeterminate = isIndeterminate;
+  }, [selectedPeople]);
 
   function toggleAll() {
-    setSelectedPeople(checked || indeterminate ? [] : people)
-    setChecked(!checked && !indeterminate)
-    setIndeterminate(false)
+    setSelectedPeople(checked || indeterminate ? [] : people);
+    setChecked(!checked && !indeterminate);
+    setIndeterminate(false);
   }
 
   return (
@@ -204,5 +204,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -8,5 +8,5 @@ export default function Example() {
       </div>
       <div className="bg-gray-50 px-4 py-5 sm:p-6 dark:bg-gray-800/50">{/* Content goes here */}</div>
     </div>
-  )
+  );
 }

@@ -1,94 +1,94 @@
 /** @jsxImportSource preact */
-import { ChevronLeftIcon, ChevronRightIcon } from '../../_kit/heroicons/20-solid'
-import { Menu, MenuButton, MenuItem, MenuItems } from '../../_kit/headless'
-import { EllipsisVerticalIcon } from '../../_kit/heroicons/24-outline'
+import { ChevronLeftIcon, ChevronRightIcon } from "../../_kit/heroicons/20-solid";
+import { Menu, MenuButton, MenuItem, MenuItems } from "../../_kit/headless";
+import { EllipsisVerticalIcon } from "../../_kit/heroicons/24-outline";
 
 const meetings = [
   {
     id: 1,
-    name: 'Leslie Alexander',
+    name: "Leslie Alexander",
     imageUrl:
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    start: '1:00 PM',
-    startDatetime: '2022-01-21T13:00',
-    end: '2:30 PM',
-    endDatetime: '2022-01-21T14:30',
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    start: "1:00 PM",
+    startDatetime: "2022-01-21T13:00",
+    end: "2:30 PM",
+    endDatetime: "2022-01-21T14:30",
   },
   {
     id: 2,
-    name: 'Michael Foster',
+    name: "Michael Foster",
     imageUrl:
-      'https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    start: '3:00 PM',
-    startDatetime: '2022-01-21T15:00',
-    end: '4:30 PM',
-    endDatetime: '2022-01-21T16:30',
+      "https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    start: "3:00 PM",
+    startDatetime: "2022-01-21T15:00",
+    end: "4:30 PM",
+    endDatetime: "2022-01-21T16:30",
   },
   {
     id: 3,
-    name: 'Dries Vincent',
+    name: "Dries Vincent",
     imageUrl:
-      'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    start: '5:00 PM',
-    startDatetime: '2022-01-21T17:00',
-    end: '6:30 PM',
-    endDatetime: '2022-01-21T18:30',
+      "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    start: "5:00 PM",
+    startDatetime: "2022-01-21T17:00",
+    end: "6:30 PM",
+    endDatetime: "2022-01-21T18:30",
   },
   {
     id: 4,
-    name: 'Lindsay Walton',
+    name: "Lindsay Walton",
     imageUrl:
-      'https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
-    start: '7:00 PM',
-    startDatetime: '2022-01-21T19:00',
-    end: '8:30 PM',
-    endDatetime: '2022-01-21T20:30',
+      "https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+    start: "7:00 PM",
+    startDatetime: "2022-01-21T19:00",
+    end: "8:30 PM",
+    endDatetime: "2022-01-21T20:30",
   },
-]
+];
 const days = [
-  { date: '2021-12-27' },
-  { date: '2021-12-28' },
-  { date: '2021-12-29' },
-  { date: '2021-12-30' },
-  { date: '2021-12-31' },
-  { date: '2022-01-01', isCurrentMonth: true },
-  { date: '2022-01-02', isCurrentMonth: true },
-  { date: '2022-01-03', isCurrentMonth: true },
-  { date: '2022-01-04', isCurrentMonth: true },
-  { date: '2022-01-05', isCurrentMonth: true },
-  { date: '2022-01-06', isCurrentMonth: true },
-  { date: '2022-01-07', isCurrentMonth: true },
-  { date: '2022-01-08', isCurrentMonth: true },
-  { date: '2022-01-09', isCurrentMonth: true },
-  { date: '2022-01-10', isCurrentMonth: true },
-  { date: '2022-01-11', isCurrentMonth: true },
-  { date: '2022-01-12', isCurrentMonth: true, isToday: true },
-  { date: '2022-01-13', isCurrentMonth: true },
-  { date: '2022-01-14', isCurrentMonth: true },
-  { date: '2022-01-15', isCurrentMonth: true },
-  { date: '2022-01-16', isCurrentMonth: true },
-  { date: '2022-01-17', isCurrentMonth: true },
-  { date: '2022-01-18', isCurrentMonth: true },
-  { date: '2022-01-19', isCurrentMonth: true },
-  { date: '2022-01-20', isCurrentMonth: true },
-  { date: '2022-01-21', isCurrentMonth: true, isSelected: true },
-  { date: '2022-01-22', isCurrentMonth: true },
-  { date: '2022-01-23', isCurrentMonth: true },
-  { date: '2022-01-24', isCurrentMonth: true },
-  { date: '2022-01-25', isCurrentMonth: true },
-  { date: '2022-01-26', isCurrentMonth: true },
-  { date: '2022-01-27', isCurrentMonth: true },
-  { date: '2022-01-28', isCurrentMonth: true },
-  { date: '2022-01-29', isCurrentMonth: true },
-  { date: '2022-01-30', isCurrentMonth: true },
-  { date: '2022-01-31', isCurrentMonth: true },
-  { date: '2022-02-01' },
-  { date: '2022-02-02' },
-  { date: '2022-02-03' },
-  { date: '2022-02-04' },
-  { date: '2022-02-05' },
-  { date: '2022-02-06' },
-]
+  { date: "2021-12-27" },
+  { date: "2021-12-28" },
+  { date: "2021-12-29" },
+  { date: "2021-12-30" },
+  { date: "2021-12-31" },
+  { date: "2022-01-01", isCurrentMonth: true },
+  { date: "2022-01-02", isCurrentMonth: true },
+  { date: "2022-01-03", isCurrentMonth: true },
+  { date: "2022-01-04", isCurrentMonth: true },
+  { date: "2022-01-05", isCurrentMonth: true },
+  { date: "2022-01-06", isCurrentMonth: true },
+  { date: "2022-01-07", isCurrentMonth: true },
+  { date: "2022-01-08", isCurrentMonth: true },
+  { date: "2022-01-09", isCurrentMonth: true },
+  { date: "2022-01-10", isCurrentMonth: true },
+  { date: "2022-01-11", isCurrentMonth: true },
+  { date: "2022-01-12", isCurrentMonth: true, isToday: true },
+  { date: "2022-01-13", isCurrentMonth: true },
+  { date: "2022-01-14", isCurrentMonth: true },
+  { date: "2022-01-15", isCurrentMonth: true },
+  { date: "2022-01-16", isCurrentMonth: true },
+  { date: "2022-01-17", isCurrentMonth: true },
+  { date: "2022-01-18", isCurrentMonth: true },
+  { date: "2022-01-19", isCurrentMonth: true },
+  { date: "2022-01-20", isCurrentMonth: true },
+  { date: "2022-01-21", isCurrentMonth: true, isSelected: true },
+  { date: "2022-01-22", isCurrentMonth: true },
+  { date: "2022-01-23", isCurrentMonth: true },
+  { date: "2022-01-24", isCurrentMonth: true },
+  { date: "2022-01-25", isCurrentMonth: true },
+  { date: "2022-01-26", isCurrentMonth: true },
+  { date: "2022-01-27", isCurrentMonth: true },
+  { date: "2022-01-28", isCurrentMonth: true },
+  { date: "2022-01-29", isCurrentMonth: true },
+  { date: "2022-01-30", isCurrentMonth: true },
+  { date: "2022-01-31", isCurrentMonth: true },
+  { date: "2022-02-01" },
+  { date: "2022-02-02" },
+  { date: "2022-02-03" },
+  { date: "2022-02-04" },
+  { date: "2022-02-05" },
+  { date: "2022-02-06" },
+];
 
 export default function Example() {
   return (
@@ -123,17 +123,17 @@ export default function Example() {
         {days.map((day, dayIdx) => (
           <div
             key={day.date}
-            data-first-line={dayIdx <= 6 ? '' : undefined}
+            data-first-line={dayIdx <= 6 ? "" : undefined}
             className="py-2 not-data-first-line:border-t not-data-first-line:border-gray-200 dark:not-data-first-line:border-white/10"
           >
             <button
               type="button"
-              data-is-today={day.isToday ? '' : undefined}
-              data-is-selected={day.isSelected ? '' : undefined}
-              data-is-current-month={day.isCurrentMonth ? '' : undefined}
+              data-is-today={day.isToday ? "" : undefined}
+              data-is-selected={day.isSelected ? "" : undefined}
+              data-is-current-month={day.isCurrentMonth ? "" : undefined}
               className="mx-auto flex size-8 items-center justify-center rounded-full not-data-is-selected:not-data-is-today:not-data-is-current-month:text-gray-400 not-data-is-selected:hover:bg-gray-200 not-data-is-selected:not-data-is-today:data-is-current-month:text-gray-900 data-is-selected:font-semibold data-is-selected:text-white data-is-selected:not-data-is-today:bg-gray-900 data-is-today:font-semibold not-data-is-selected:data-is-today:text-indigo-600 data-is-selected:data-is-today:bg-indigo-600 dark:not-data-is-selected:not-data-is-today:not-data-is-current-month:text-gray-500 dark:not-data-is-selected:hover:bg-white/10 dark:not-data-is-selected:not-data-is-today:data-is-current-month:text-white dark:data-is-selected:not-data-is-today:bg-white dark:data-is-selected:not-data-is-today:text-gray-900 dark:not-data-is-selected:data-is-today:text-indigo-400 dark:data-is-selected:data-is-today:bg-indigo-500"
             >
-              <time dateTime={day.date}>{day.date.split('-').pop().replace(/^0/, '')}</time>
+              <time dateTime={day.date}>{day.date.split("-").pop().replace(/^0/, "")}</time>
             </button>
           </div>
         ))}
@@ -152,7 +152,7 @@ export default function Example() {
               <div className="flex-auto">
                 <p className="text-gray-900 dark:text-white">{meeting.name}</p>
                 <p className="mt-0.5">
-                  <time dateTime={meeting.startDatetime}>{meeting.start}</time> -{' '}
+                  <time dateTime={meeting.startDatetime}>{meeting.start}</time> -{" "}
                   <time dateTime={meeting.endDatetime}>{meeting.end}</time>
                 </p>
               </div>
@@ -192,5 +192,5 @@ export default function Example() {
         </ol>
       </section>
     </div>
-  )
+  );
 }

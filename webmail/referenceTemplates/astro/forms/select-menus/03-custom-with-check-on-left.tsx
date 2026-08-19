@@ -1,24 +1,24 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from '../../_kit/headless'
-import { ChevronUpDownIcon } from '../../_kit/heroicons/16-solid'
-import { CheckIcon } from '../../_kit/heroicons/20-solid'
+import { useState } from "preact/hooks";
+import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from "../../_kit/headless";
+import { ChevronUpDownIcon } from "../../_kit/heroicons/16-solid";
+import { CheckIcon } from "../../_kit/heroicons/20-solid";
 
 const people = [
-  { id: 1, name: 'Wade Cooper' },
-  { id: 2, name: 'Arlene Mccoy' },
-  { id: 3, name: 'Devon Webb' },
-  { id: 4, name: 'Tom Cook' },
-  { id: 5, name: 'Tanya Fox' },
-  { id: 6, name: 'Hellen Schmidt' },
-  { id: 7, name: 'Caroline Schultz' },
-  { id: 8, name: 'Mason Heaney' },
-  { id: 9, name: 'Claudie Smitham' },
-  { id: 10, name: 'Emil Schaefer' },
-]
+  { id: 1, name: "Wade Cooper" },
+  { id: 2, name: "Arlene Mccoy" },
+  { id: 3, name: "Devon Webb" },
+  { id: 4, name: "Tom Cook" },
+  { id: 5, name: "Tanya Fox" },
+  { id: 6, name: "Hellen Schmidt" },
+  { id: 7, name: "Caroline Schultz" },
+  { id: 8, name: "Mason Heaney" },
+  { id: 9, name: "Claudie Smitham" },
+  { id: 10, name: "Emil Schaefer" },
+];
 
 export default function Example() {
-  const [selected, setSelected] = useState(people[3])
+  const [selected, setSelected] = useState(people[3]);
 
   return (
     <Listbox value={selected} onChange={setSelected}>
@@ -52,5 +52,5 @@ export default function Example() {
         </ListboxOptions>
       </div>
     </Listbox>
-  )
+  );
 }

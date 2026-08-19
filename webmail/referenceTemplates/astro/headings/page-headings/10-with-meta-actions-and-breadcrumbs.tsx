@@ -9,8 +9,8 @@ import {
   LinkIcon,
   MapPinIcon,
   PencilIcon,
-} from '../../_kit/heroicons/20-solid'
-import { Menu, MenuButton, MenuItem, MenuItems } from '../../_kit/headless'
+} from "../../_kit/heroicons/20-solid";
+import { Menu, MenuButton, MenuItem, MenuItems } from "../../_kit/headless";
 
 export default function Example() {
   return (
@@ -128,5 +128,5 @@ export default function Example() {
         </Menu>
       </div>
     </div>
-  )
+  );
 }

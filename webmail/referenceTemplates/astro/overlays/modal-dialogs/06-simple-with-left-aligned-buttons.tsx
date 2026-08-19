@@ -1,10 +1,10 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '../../_kit/headless'
-import { ExclamationTriangleIcon } from '../../_kit/heroicons/24-outline'
+import { useState } from "preact/hooks";
+import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from "../../_kit/headless";
+import { ExclamationTriangleIcon } from "../../_kit/heroicons/24-outline";
 
 export default function Example() {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(true);
 
   return (
     <div>
@@ -64,5 +64,5 @@ export default function Example() {
         </div>
       </Dialog>
     </div>
-  )
+  );
 }

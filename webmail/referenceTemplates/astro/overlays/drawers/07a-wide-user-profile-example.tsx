@@ -1,11 +1,11 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Dialog, DialogPanel, DialogTitle, Menu, MenuButton, MenuItem, MenuItems } from '../../_kit/headless'
-import { XMarkIcon } from '../../_kit/heroicons/24-outline'
-import { EllipsisVerticalIcon } from '../../_kit/heroicons/20-solid'
+import { useState } from "preact/hooks";
+import { Dialog, DialogPanel, DialogTitle, Menu, MenuButton, MenuItem, MenuItems } from "../../_kit/headless";
+import { XMarkIcon } from "../../_kit/heroicons/24-outline";
+import { EllipsisVerticalIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(true);
 
   return (
     <div>
@@ -169,5 +169,5 @@ export default function Example() {
         </div>
       </Dialog>
     </div>
-  )
+  );
 }

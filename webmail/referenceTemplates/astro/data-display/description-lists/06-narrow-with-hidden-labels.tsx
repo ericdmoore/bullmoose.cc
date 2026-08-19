@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { CalendarDaysIcon, CreditCardIcon, UserCircleIcon } from '../../_kit/heroicons/20-solid'
+import { CalendarDaysIcon, CreditCardIcon, UserCircleIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
   return (
@@ -51,5 +51,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

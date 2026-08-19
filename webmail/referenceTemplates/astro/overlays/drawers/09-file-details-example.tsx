@@ -1,11 +1,11 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Dialog, DialogBackdrop, DialogPanel, TransitionChild } from '../../_kit/headless'
-import { HeartIcon, XMarkIcon } from '../../_kit/heroicons/24-outline'
-import { PencilIcon, PlusIcon } from '../../_kit/heroicons/20-solid'
+import { useState } from "preact/hooks";
+import { Dialog, DialogBackdrop, DialogPanel, TransitionChild } from "../../_kit/headless";
+import { HeartIcon, XMarkIcon } from "../../_kit/heroicons/24-outline";
+import { PencilIcon, PlusIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(true);
 
   return (
     <div>
@@ -182,5 +182,5 @@ export default function Example() {
         </div>
       </Dialog>
     </div>
-  )
+  );
 }

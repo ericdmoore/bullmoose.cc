@@ -41,13 +41,47 @@ From the repo root:
 
 ```sh
 node webmail/referenceTemplates/astro/_generate.mjs
+npx oxfmt webmail/referenceTemplates/astro   # generator output is not pre-formatted
+npx oxlint webmail/referenceTemplates/astro  # must be clean before committing
 ```
 
 Needs network once, to pull Heroicons SVGs from jsDelivr. The generator
-overwrites the `.tsx` / `.astro` files and `_kit/heroicons/*`; it does not
-touch `_kit/headless.tsx`.
+overwrites the `.tsx` / `.astro` files, `_kit/heroicons/*.tsx` and
+`_kit/heroicons/props.ts`; it does not touch `_kit/headless.tsx`.
 
-## Not part of the app build
+Do not skip the lint step. The generator's first run emitted all 125 icon
+components with their SVG markup as a bare JSX attribute containing `\"`
+escapes — which JSX does not honour, so every icon module was a syntax error.
+They merged anyway, because at the time nothing in CI read this subtree.
 
-These files live outside `webmail/src/`, so `astro build` / `tsc` never see
-them. Lint and format already ignore `webmail/referenceTemplates/**`.
+## What the gates cover
+
+These files live outside `webmail/src/`, so `astro build` and
+`npm run -w webmail typecheck` never see them — `webmail/tsconfig.json`
+includes `src/**` only, and the root `tsconfig.json` excludes `webmail`
+entirely. **They are not typechecked by anything.**
+
+What does cover them, as of the PR that fixed the above:
+
+| Gate | Covers | Notes |
+|---|---|---|
+| `npx oxlint` | the 369 `.tsx` | catches non-parsing files — the failure that shipped |
+| `npx oxfmt --check` | the 369 `.tsx` | |
+| typecheck | nothing | 106 known errors in 70 leaf templates; see below |
+
+`.oxlintrc.json` / `.oxfmtrc.json` ignore only
+`webmail/referenceTemplates/tailwindcss.com/**` (the licensed originals). This
+tree is our code and is linted, with `no-unused-vars` off for it alone: the
+ports are 1:1 with the React source, and twelve identifiers upstream declares
+are ones upstream never uses.
+
+The 364 leaf templates are 1:1 ports of untyped React demo code and do not
+survive `strict` — `event.target.value` on an untyped handler,
+`useState(null)` inferring `null`, and demo data whose shape is Tailwind's
+rather than ours. Typing them means inventing structure the originals do not
+have, and the generator would overwrite it. `_kit/` — the shared foundation
+every template imports — *is* fully typed and clean under `strict`.
+
+Note the 364 `.astro` wrappers are read by no gate at all: oxlint and oxfmt
+both skip `.astro`. Each is the same eight-line island, so there is little to
+check, but it is not nothing.

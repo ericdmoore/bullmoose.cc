@@ -8,5 +8,5 @@ export default function Example() {
         {/* We use less vertical padding on card footers at all sizes than on headers or body sections */}
       </div>
     </div>
-  )
+  );
 }

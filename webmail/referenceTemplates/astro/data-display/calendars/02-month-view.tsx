@@ -5,84 +5,84 @@ import {
   ChevronRightIcon,
   ClockIcon,
   EllipsisHorizontalIcon,
-} from '../../_kit/heroicons/20-solid'
-import { Menu, MenuButton, MenuItem, MenuItems } from '../../_kit/headless'
+} from "../../_kit/heroicons/20-solid";
+import { Menu, MenuButton, MenuItem, MenuItems } from "../../_kit/headless";
 
 const events = [
-  { id: 1, name: 'Maple syrup museum', time: '3PM', datetime: '2022-01-15T09:00', href: '#' },
-  { id: 2, name: 'Hockey game', time: '7PM', datetime: '2022-01-22T19:00', href: '#' },
-]
+  { id: 1, name: "Maple syrup museum", time: "3PM", datetime: "2022-01-15T09:00", href: "#" },
+  { id: 2, name: "Hockey game", time: "7PM", datetime: "2022-01-22T19:00", href: "#" },
+];
 const days = [
-  { date: '2021-12-27', events: [] },
-  { date: '2021-12-28', events: [] },
-  { date: '2021-12-29', events: [] },
-  { date: '2021-12-30', events: [] },
-  { date: '2021-12-31', events: [] },
-  { date: '2022-01-01', isCurrentMonth: true, events: [] },
-  { date: '2022-01-02', isCurrentMonth: true, events: [] },
+  { date: "2021-12-27", events: [] },
+  { date: "2021-12-28", events: [] },
+  { date: "2021-12-29", events: [] },
+  { date: "2021-12-30", events: [] },
+  { date: "2021-12-31", events: [] },
+  { date: "2022-01-01", isCurrentMonth: true, events: [] },
+  { date: "2022-01-02", isCurrentMonth: true, events: [] },
   {
-    date: '2022-01-03',
+    date: "2022-01-03",
     isCurrentMonth: true,
     events: [
-      { id: 1, name: 'Design review', time: '10AM', datetime: '2022-01-03T10:00', href: '#' },
-      { id: 2, name: 'Sales meeting', time: '2PM', datetime: '2022-01-03T14:00', href: '#' },
+      { id: 1, name: "Design review", time: "10AM", datetime: "2022-01-03T10:00", href: "#" },
+      { id: 2, name: "Sales meeting", time: "2PM", datetime: "2022-01-03T14:00", href: "#" },
     ],
   },
-  { date: '2022-01-04', isCurrentMonth: true, events: [] },
-  { date: '2022-01-05', isCurrentMonth: true, events: [] },
-  { date: '2022-01-06', isCurrentMonth: true, events: [] },
+  { date: "2022-01-04", isCurrentMonth: true, events: [] },
+  { date: "2022-01-05", isCurrentMonth: true, events: [] },
+  { date: "2022-01-06", isCurrentMonth: true, events: [] },
   {
-    date: '2022-01-07',
+    date: "2022-01-07",
     isCurrentMonth: true,
-    events: [{ id: 3, name: 'Date night', time: '6PM', datetime: '2022-01-08T18:00', href: '#' }],
+    events: [{ id: 3, name: "Date night", time: "6PM", datetime: "2022-01-08T18:00", href: "#" }],
   },
-  { date: '2022-01-08', isCurrentMonth: true, events: [] },
-  { date: '2022-01-09', isCurrentMonth: true, events: [] },
-  { date: '2022-01-10', isCurrentMonth: true, events: [] },
-  { date: '2022-01-11', isCurrentMonth: true, events: [] },
+  { date: "2022-01-08", isCurrentMonth: true, events: [] },
+  { date: "2022-01-09", isCurrentMonth: true, events: [] },
+  { date: "2022-01-10", isCurrentMonth: true, events: [] },
+  { date: "2022-01-11", isCurrentMonth: true, events: [] },
   {
-    date: '2022-01-12',
+    date: "2022-01-12",
     isCurrentMonth: true,
     isToday: true,
-    events: [{ id: 6, name: "Sam's birthday party", time: '2PM', datetime: '2022-01-25T14:00', href: '#' }],
+    events: [{ id: 6, name: "Sam's birthday party", time: "2PM", datetime: "2022-01-25T14:00", href: "#" }],
   },
-  { date: '2022-01-13', isCurrentMonth: true, events: [] },
-  { date: '2022-01-14', isCurrentMonth: true, events: [] },
-  { date: '2022-01-15', isCurrentMonth: true, events: [] },
-  { date: '2022-01-16', isCurrentMonth: true, events: [] },
-  { date: '2022-01-17', isCurrentMonth: true, events: [] },
-  { date: '2022-01-18', isCurrentMonth: true, events: [] },
-  { date: '2022-01-19', isCurrentMonth: true, events: [] },
-  { date: '2022-01-20', isCurrentMonth: true, events: [] },
-  { date: '2022-01-21', isCurrentMonth: true, events: [] },
+  { date: "2022-01-13", isCurrentMonth: true, events: [] },
+  { date: "2022-01-14", isCurrentMonth: true, events: [] },
+  { date: "2022-01-15", isCurrentMonth: true, events: [] },
+  { date: "2022-01-16", isCurrentMonth: true, events: [] },
+  { date: "2022-01-17", isCurrentMonth: true, events: [] },
+  { date: "2022-01-18", isCurrentMonth: true, events: [] },
+  { date: "2022-01-19", isCurrentMonth: true, events: [] },
+  { date: "2022-01-20", isCurrentMonth: true, events: [] },
+  { date: "2022-01-21", isCurrentMonth: true, events: [] },
   {
-    date: '2022-01-22',
+    date: "2022-01-22",
     isCurrentMonth: true,
     isSelected: true,
     events: [
-      { id: 4, name: 'Maple syrup museum', time: '3PM', datetime: '2022-01-22T15:00', href: '#' },
-      { id: 5, name: 'Hockey game', time: '7PM', datetime: '2022-01-22T19:00', href: '#' },
+      { id: 4, name: "Maple syrup museum", time: "3PM", datetime: "2022-01-22T15:00", href: "#" },
+      { id: 5, name: "Hockey game", time: "7PM", datetime: "2022-01-22T19:00", href: "#" },
     ],
   },
-  { date: '2022-01-23', isCurrentMonth: true, events: [] },
-  { date: '2022-01-24', isCurrentMonth: true, events: [] },
-  { date: '2022-01-25', isCurrentMonth: true, events: [] },
-  { date: '2022-01-26', isCurrentMonth: true, events: [] },
-  { date: '2022-01-27', isCurrentMonth: true, events: [] },
-  { date: '2022-01-28', isCurrentMonth: true, events: [] },
-  { date: '2022-01-29', isCurrentMonth: true, events: [] },
-  { date: '2022-01-30', isCurrentMonth: true, events: [] },
-  { date: '2022-01-31', isCurrentMonth: true, events: [] },
-  { date: '2022-02-01', events: [] },
-  { date: '2022-02-02', events: [] },
-  { date: '2022-02-03', events: [] },
+  { date: "2022-01-23", isCurrentMonth: true, events: [] },
+  { date: "2022-01-24", isCurrentMonth: true, events: [] },
+  { date: "2022-01-25", isCurrentMonth: true, events: [] },
+  { date: "2022-01-26", isCurrentMonth: true, events: [] },
+  { date: "2022-01-27", isCurrentMonth: true, events: [] },
+  { date: "2022-01-28", isCurrentMonth: true, events: [] },
+  { date: "2022-01-29", isCurrentMonth: true, events: [] },
+  { date: "2022-01-30", isCurrentMonth: true, events: [] },
+  { date: "2022-01-31", isCurrentMonth: true, events: [] },
+  { date: "2022-02-01", events: [] },
+  { date: "2022-02-02", events: [] },
+  { date: "2022-02-03", events: [] },
   {
-    date: '2022-02-04',
-    events: [{ id: 7, name: 'Cinema with friends', time: '9PM', datetime: '2022-02-04T21:00', href: '#' }],
+    date: "2022-02-04",
+    events: [{ id: 7, name: "Cinema with friends", time: "9PM", datetime: "2022-02-04T21:00", href: "#" }],
   },
-  { date: '2022-02-05', events: [] },
-  { date: '2022-02-06', events: [] },
-]
+  { date: "2022-02-05", events: [] },
+  { date: "2022-02-06", events: [] },
+];
 
 export default function Example() {
   return (
@@ -277,15 +277,15 @@ export default function Example() {
             {days.map((day) => (
               <div
                 key={day.date}
-                data-is-today={day.isToday ? '' : undefined}
-                data-is-current-month={day.isCurrentMonth ? '' : undefined}
+                data-is-today={day.isToday ? "" : undefined}
+                data-is-current-month={day.isCurrentMonth ? "" : undefined}
                 className="group relative bg-gray-50 px-3 py-2 text-gray-500 data-is-current-month:bg-white dark:bg-gray-900 dark:text-gray-400 dark:not-data-is-current-month:before:pointer-events-none dark:not-data-is-current-month:before:absolute dark:not-data-is-current-month:before:inset-0 dark:not-data-is-current-month:before:bg-gray-800/50 dark:data-is-current-month:bg-gray-900"
               >
                 <time
                   dateTime={day.date}
                   className="relative group-not-data-is-current-month:opacity-75 in-data-is-today:flex in-data-is-today:size-6 in-data-is-today:items-center in-data-is-today:justify-center in-data-is-today:rounded-full in-data-is-today:bg-indigo-600 in-data-is-today:font-semibold in-data-is-today:text-white dark:in-data-is-today:bg-indigo-500"
                 >
-                  {day.date.split('-').pop().replace(/^0/, '')}
+                  {day.date.split("-").pop().replace(/^0/, "")}
                 </time>
                 {day.events.length > 0 ? (
                   <ol className="mt-2">
@@ -317,16 +317,16 @@ export default function Example() {
               <button
                 key={day.date}
                 type="button"
-                data-is-today={day.isToday ? '' : undefined}
-                data-is-selected={day.isSelected ? '' : undefined}
-                data-is-current-month={day.isCurrentMonth ? '' : undefined}
+                data-is-today={day.isToday ? "" : undefined}
+                data-is-selected={day.isSelected ? "" : undefined}
+                data-is-current-month={day.isCurrentMonth ? "" : undefined}
                 className="group relative flex h-14 flex-col px-3 py-2 not-data-is-current-month:bg-gray-50 not-data-is-selected:not-data-is-current-month:not-data-is-today:text-gray-500 hover:bg-gray-100 focus:z-10 data-is-current-month:bg-white not-data-is-selected:data-is-current-month:not-data-is-today:text-gray-900 data-is-current-month:hover:bg-gray-100 data-is-selected:font-semibold data-is-selected:text-white data-is-today:font-semibold not-data-is-selected:data-is-today:text-indigo-600 dark:not-data-is-current-month:bg-gray-900 dark:not-data-is-selected:not-data-is-current-month:not-data-is-today:text-gray-400 dark:not-data-is-current-month:before:pointer-events-none dark:not-data-is-current-month:before:absolute dark:not-data-is-current-month:before:inset-0 dark:not-data-is-current-month:before:bg-gray-800/50 dark:hover:bg-gray-900/50 dark:data-is-current-month:bg-gray-900 dark:not-data-is-selected:data-is-current-month:not-data-is-today:text-white dark:data-is-current-month:hover:bg-gray-900/50 dark:not-data-is-selected:data-is-today:text-indigo-400"
               >
                 <time
                   dateTime={day.date}
                   className="ml-auto group-not-data-is-current-month:opacity-75 in-data-is-selected:flex in-data-is-selected:size-6 in-data-is-selected:items-center in-data-is-selected:justify-center in-data-is-selected:rounded-full in-data-is-selected:not-in-data-is-today:bg-gray-900 in-data-is-selected:in-data-is-today:bg-indigo-600 dark:in-data-is-selected:not-in-data-is-today:bg-white dark:in-data-is-selected:not-in-data-is-today:text-gray-900 dark:in-data-is-selected:in-data-is-today:bg-indigo-500"
                 >
-                  {day.date.split('-').pop().replace(/^0/, '')}
+                  {day.date.split("-").pop().replace(/^0/, "")}
                 </time>
                 <span className="sr-only">{day.events.length} events</span>
                 {day.events.length > 0 ? (
@@ -366,5 +366,5 @@ export default function Example() {
         </ol>
       </div>
     </div>
-  )
+  );
 }

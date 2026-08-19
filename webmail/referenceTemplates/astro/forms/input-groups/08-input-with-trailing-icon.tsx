@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { QuestionMarkCircleIcon } from '../../_kit/heroicons/16-solid'
+import { QuestionMarkCircleIcon } from "../../_kit/heroicons/16-solid";
 
 export default function Example() {
   return (
@@ -21,5 +21,5 @@ export default function Example() {
         />
       </div>
     </div>
-  )
+  );
 }

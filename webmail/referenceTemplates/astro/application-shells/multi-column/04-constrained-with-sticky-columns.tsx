@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { BellIcon } from '../../_kit/heroicons/24-outline'
+import { BellIcon } from "../../_kit/heroicons/24-outline";
 
 export default function Example() {
   return (
@@ -41,5 +41,5 @@ export default function Example() {
         <aside className="sticky top-8 hidden w-96 shrink-0 xl:block">{/* Right column area */}</aside>
       </div>
     </div>
-  )
+  );
 }

@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
+import { useState } from "preact/hooks";
 import {
   Dialog,
   DialogBackdrop,
@@ -9,7 +9,7 @@ import {
   MenuItem,
   MenuItems,
   TransitionChild,
-} from '../../_kit/headless'
+} from "../../_kit/headless";
 import {
   ChartBarSquareIcon,
   Cog6ToothIcon,
@@ -18,219 +18,219 @@ import {
   ServerIcon,
   SignalIcon,
   XMarkIcon,
-} from '../../_kit/heroicons/24-outline'
-import { Bars3Icon, ChevronRightIcon, ChevronUpDownIcon, MagnifyingGlassIcon } from '../../_kit/heroicons/20-solid'
+} from "../../_kit/heroicons/24-outline";
+import { Bars3Icon, ChevronRightIcon, ChevronUpDownIcon, MagnifyingGlassIcon } from "../../_kit/heroicons/20-solid";
 
 const navigation = [
-  { name: 'Projects', href: '#', icon: FolderIcon, current: false },
-  { name: 'Deployments', href: '#', icon: ServerIcon, current: true },
-  { name: 'Activity', href: '#', icon: SignalIcon, current: false },
-  { name: 'Domains', href: '#', icon: GlobeAltIcon, current: false },
-  { name: 'Usage', href: '#', icon: ChartBarSquareIcon, current: false },
-  { name: 'Settings', href: '#', icon: Cog6ToothIcon, current: false },
-]
+  { name: "Projects", href: "#", icon: FolderIcon, current: false },
+  { name: "Deployments", href: "#", icon: ServerIcon, current: true },
+  { name: "Activity", href: "#", icon: SignalIcon, current: false },
+  { name: "Domains", href: "#", icon: GlobeAltIcon, current: false },
+  { name: "Usage", href: "#", icon: ChartBarSquareIcon, current: false },
+  { name: "Settings", href: "#", icon: Cog6ToothIcon, current: false },
+];
 const teams = [
-  { id: 1, name: 'Planetaria', href: '#', initial: 'P', current: false },
-  { id: 2, name: 'Protocol', href: '#', initial: 'P', current: false },
-  { id: 3, name: 'Tailwind Labs', href: '#', initial: 'T', current: false },
-]
+  { id: 1, name: "Planetaria", href: "#", initial: "P", current: false },
+  { id: 2, name: "Protocol", href: "#", initial: "P", current: false },
+  { id: 3, name: "Tailwind Labs", href: "#", initial: "T", current: false },
+];
 const statuses = {
-  offline: 'text-gray-400 bg-gray-100 dark:text-gray-500 dark:bg-gray-100/10',
-  online: 'text-green-500 bg-green-500/10 dark:text-green-400 dark:bg-green-400/10',
-  error: 'text-rose-500 bg-rose-500/10 dark:text-rose-400 dark:bg-rose-400/10',
-}
+  offline: "text-gray-400 bg-gray-100 dark:text-gray-500 dark:bg-gray-100/10",
+  online: "text-green-500 bg-green-500/10 dark:text-green-400 dark:bg-green-400/10",
+  error: "text-rose-500 bg-rose-500/10 dark:text-rose-400 dark:bg-rose-400/10",
+};
 const environments = {
-  Preview: 'text-gray-500 bg-gray-50 ring-gray-200 dark:text-gray-400 dark:bg-gray-400/10 dark:ring-gray-400/20',
+  Preview: "text-gray-500 bg-gray-50 ring-gray-200 dark:text-gray-400 dark:bg-gray-400/10 dark:ring-gray-400/20",
   Production:
-    'text-indigo-500 bg-indigo-50 ring-indigo-200 dark:text-indigo-400 dark:bg-indigo-400/10 dark:ring-indigo-400/30',
-}
+    "text-indigo-500 bg-indigo-50 ring-indigo-200 dark:text-indigo-400 dark:bg-indigo-400/10 dark:ring-indigo-400/30",
+};
 const deployments = [
   {
     id: 1,
-    href: '#',
-    projectName: 'ios-app',
-    teamName: 'Planetaria',
-    status: 'offline',
-    statusText: 'Initiated 1m 32s ago',
-    description: 'Deploys from GitHub',
-    environment: 'Preview',
+    href: "#",
+    projectName: "ios-app",
+    teamName: "Planetaria",
+    status: "offline",
+    statusText: "Initiated 1m 32s ago",
+    description: "Deploys from GitHub",
+    environment: "Preview",
   },
   {
     id: 2,
-    href: '#',
-    projectName: 'mobile-api',
-    teamName: 'Planetaria',
-    status: 'online',
-    statusText: 'Deployed 3m ago',
-    description: 'Deploys from GitHub',
-    environment: 'Production',
+    href: "#",
+    projectName: "mobile-api",
+    teamName: "Planetaria",
+    status: "online",
+    statusText: "Deployed 3m ago",
+    description: "Deploys from GitHub",
+    environment: "Production",
   },
   {
     id: 3,
-    href: '#',
-    projectName: 'tailwindcss.com',
-    teamName: 'Tailwind Labs',
-    status: 'offline',
-    statusText: 'Deployed 3h ago',
-    description: 'Deploys from GitHub',
-    environment: 'Preview',
+    href: "#",
+    projectName: "tailwindcss.com",
+    teamName: "Tailwind Labs",
+    status: "offline",
+    statusText: "Deployed 3h ago",
+    description: "Deploys from GitHub",
+    environment: "Preview",
   },
   {
     id: 4,
-    href: '#',
-    projectName: 'company-website',
-    teamName: 'Tailwind Labs',
-    status: 'online',
-    statusText: 'Deployed 1d ago',
-    description: 'Deploys from GitHub',
-    environment: 'Preview',
+    href: "#",
+    projectName: "company-website",
+    teamName: "Tailwind Labs",
+    status: "online",
+    statusText: "Deployed 1d ago",
+    description: "Deploys from GitHub",
+    environment: "Preview",
   },
   {
     id: 5,
-    href: '#',
-    projectName: 'relay-service',
-    teamName: 'Protocol',
-    status: 'online',
-    statusText: 'Deployed 1d ago',
-    description: 'Deploys from GitHub',
-    environment: 'Production',
+    href: "#",
+    projectName: "relay-service",
+    teamName: "Protocol",
+    status: "online",
+    statusText: "Deployed 1d ago",
+    description: "Deploys from GitHub",
+    environment: "Production",
   },
   {
     id: 6,
-    href: '#',
-    projectName: 'android-app',
-    teamName: 'Planetaria',
-    status: 'online',
-    statusText: 'Deployed 5d ago',
-    description: 'Deploys from GitHub',
-    environment: 'Preview',
+    href: "#",
+    projectName: "android-app",
+    teamName: "Planetaria",
+    status: "online",
+    statusText: "Deployed 5d ago",
+    description: "Deploys from GitHub",
+    environment: "Preview",
   },
   {
     id: 7,
-    href: '#',
-    projectName: 'api.protocol.chat',
-    teamName: 'Protocol',
-    status: 'error',
-    statusText: 'Failed to deploy 6d ago',
-    description: 'Deploys from GitHub',
-    environment: 'Preview',
+    href: "#",
+    projectName: "api.protocol.chat",
+    teamName: "Protocol",
+    status: "error",
+    statusText: "Failed to deploy 6d ago",
+    description: "Deploys from GitHub",
+    environment: "Preview",
   },
   {
     id: 8,
-    href: '#',
-    projectName: 'planetaria.tech',
-    teamName: 'Planetaria',
-    status: 'online',
-    statusText: 'Deployed 6d ago',
-    description: 'Deploys from GitHub',
-    environment: 'Preview',
+    href: "#",
+    projectName: "planetaria.tech",
+    teamName: "Planetaria",
+    status: "online",
+    statusText: "Deployed 6d ago",
+    description: "Deploys from GitHub",
+    environment: "Preview",
   },
-]
+];
 const activityItems = [
   {
     user: {
-      name: 'Michael Foster',
+      name: "Michael Foster",
       imageUrl:
-        'https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+        "https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
     },
-    projectName: 'ios-app',
-    commit: '2d89f0c8',
-    branch: 'main',
-    date: '1h',
-    dateTime: '2023-01-23T11:00',
+    projectName: "ios-app",
+    commit: "2d89f0c8",
+    branch: "main",
+    date: "1h",
+    dateTime: "2023-01-23T11:00",
   },
   {
     user: {
-      name: 'Lindsay Walton',
+      name: "Lindsay Walton",
       imageUrl:
-        'https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+        "https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
     },
-    projectName: 'mobile-api',
-    commit: '249df660',
-    branch: 'main',
-    date: '3h',
-    dateTime: '2023-01-23T09:00',
+    projectName: "mobile-api",
+    commit: "249df660",
+    branch: "main",
+    date: "3h",
+    dateTime: "2023-01-23T09:00",
   },
   {
     user: {
-      name: 'Courtney Henry',
+      name: "Courtney Henry",
       imageUrl:
-        'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+        "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
     },
-    projectName: 'ios-app',
-    commit: '11464223',
-    branch: 'main',
-    date: '12h',
-    dateTime: '2023-01-23T00:00',
+    projectName: "ios-app",
+    commit: "11464223",
+    branch: "main",
+    date: "12h",
+    dateTime: "2023-01-23T00:00",
   },
   {
     user: {
-      name: 'Courtney Henry',
+      name: "Courtney Henry",
       imageUrl:
-        'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+        "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
     },
-    projectName: 'company-website',
-    commit: 'dad28e95',
-    branch: 'main',
-    date: '2d',
-    dateTime: '2023-01-21T13:00',
+    projectName: "company-website",
+    commit: "dad28e95",
+    branch: "main",
+    date: "2d",
+    dateTime: "2023-01-21T13:00",
   },
   {
     user: {
-      name: 'Michael Foster',
+      name: "Michael Foster",
       imageUrl:
-        'https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+        "https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
     },
-    projectName: 'relay-service',
-    commit: '624bc94c',
-    branch: 'main',
-    date: '5d',
-    dateTime: '2023-01-18T12:34',
+    projectName: "relay-service",
+    commit: "624bc94c",
+    branch: "main",
+    date: "5d",
+    dateTime: "2023-01-18T12:34",
   },
   {
     user: {
-      name: 'Courtney Henry',
+      name: "Courtney Henry",
       imageUrl:
-        'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+        "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
     },
-    projectName: 'api.protocol.chat',
-    commit: 'e111f80e',
-    branch: 'main',
-    date: '1w',
-    dateTime: '2023-01-16T15:54',
+    projectName: "api.protocol.chat",
+    commit: "e111f80e",
+    branch: "main",
+    date: "1w",
+    dateTime: "2023-01-16T15:54",
   },
   {
     user: {
-      name: 'Michael Foster',
+      name: "Michael Foster",
       imageUrl:
-        'https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+        "https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
     },
-    projectName: 'api.protocol.chat',
-    commit: '5e136005',
-    branch: 'main',
-    date: '1w',
-    dateTime: '2023-01-16T11:31',
+    projectName: "api.protocol.chat",
+    commit: "5e136005",
+    branch: "main",
+    date: "1w",
+    dateTime: "2023-01-16T11:31",
   },
   {
     user: {
-      name: 'Whitney Francis',
+      name: "Whitney Francis",
       imageUrl:
-        'https://images.unsplash.com/photo-1517365830460-955ce3ccd263?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+        "https://images.unsplash.com/photo-1517365830460-955ce3ccd263?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
     },
-    projectName: 'ios-app',
-    commit: '5c1fd07f',
-    branch: 'main',
-    date: '2w',
-    dateTime: '2023-01-09T08:45',
+    projectName: "ios-app",
+    commit: "5c1fd07f",
+    branch: "main",
+    date: "2w",
+    dateTime: "2023-01-09T08:45",
   },
-]
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <>
@@ -287,18 +287,18 @@ export default function Example() {
                               href={item.href}
                               className={classNames(
                                 item.current
-                                  ? 'bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white'
-                                  : 'text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
-                                'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
+                                  ? "bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white"
+                                  : "text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white",
+                                "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
                               )}
                             >
                               <item.icon
                                 aria-hidden="true"
                                 className={classNames(
                                   item.current
-                                    ? 'text-indigo-600 dark:text-white'
-                                    : 'text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-white',
-                                  'size-6 shrink-0',
+                                    ? "text-indigo-600 dark:text-white"
+                                    : "text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-white",
+                                  "size-6 shrink-0",
                                 )}
                               />
                               {item.name}
@@ -316,17 +316,17 @@ export default function Example() {
                               href={team.href}
                               className={classNames(
                                 team.current
-                                  ? 'bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white'
-                                  : 'text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
-                                'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
+                                  ? "bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white"
+                                  : "text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white",
+                                "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
                               )}
                             >
                               <span
                                 className={classNames(
                                   team.current
-                                    ? 'border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white'
-                                    : 'border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white',
-                                  'flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5',
+                                    ? "border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white"
+                                    : "border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white",
+                                  "flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5",
                                 )}
                               >
                                 {team.initial}
@@ -384,18 +384,18 @@ export default function Example() {
                           href={item.href}
                           className={classNames(
                             item.current
-                              ? 'bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white'
-                              : 'text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
-                            'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
+                              ? "bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white"
+                              : "text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white",
+                            "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
                           )}
                         >
                           <item.icon
                             aria-hidden="true"
                             className={classNames(
                               item.current
-                                ? 'text-indigo-600 dark:text-white'
-                                : 'text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-white',
-                              'size-6 shrink-0',
+                                ? "text-indigo-600 dark:text-white"
+                                : "text-gray-400 group-hover:text-indigo-600 dark:group-hover:text-white",
+                              "size-6 shrink-0",
                             )}
                           />
                           {item.name}
@@ -413,17 +413,17 @@ export default function Example() {
                           href={team.href}
                           className={classNames(
                             team.current
-                              ? 'bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white'
-                              : 'text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
-                            'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
+                              ? "bg-gray-100 text-indigo-600 dark:bg-white/5 dark:text-white"
+                              : "text-gray-700 hover:bg-gray-100 hover:text-indigo-600 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white",
+                            "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
                           )}
                         >
                           <span
                             className={classNames(
                               team.current
-                                ? 'border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white'
-                                : 'border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white',
-                              'flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5',
+                                ? "border-indigo-600 text-indigo-600 dark:border-white/20 dark:text-white"
+                                : "border-gray-200 text-gray-400 group-hover:border-indigo-600 group-hover:text-indigo-600 dark:border-white/10 dark:group-hover:border-white/20 dark:group-hover:text-white",
+                              "flex size-6 shrink-0 items-center justify-center rounded-lg border bg-white text-[0.625rem] font-medium dark:bg-white/5",
                             )}
                           >
                             {team.initial}
@@ -529,7 +529,7 @@ export default function Example() {
                 <li key={deployment.id} className="relative flex items-center space-x-4 px-4 py-4 sm:px-6 lg:px-8">
                   <div className="min-w-0 flex-auto">
                     <div className="flex items-center gap-x-3">
-                      <div className={classNames(statuses[deployment.status], 'flex-none rounded-full p-1')}>
+                      <div className={classNames(statuses[deployment.status], "flex-none rounded-full p-1")}>
                         <div className="size-2 rounded-full bg-current" />
                       </div>
                       <h2 className="min-w-0 text-sm/6 font-semibold text-gray-900 dark:text-white">
@@ -552,7 +552,7 @@ export default function Example() {
                   <div
                     className={classNames(
                       environments[deployment.environment],
-                      'flex-none rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset',
+                      "flex-none rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset",
                     )}
                   >
                     {deployment.environment}
@@ -589,7 +589,7 @@ export default function Example() {
                   </div>
                   <p className="mt-3 truncate text-sm text-gray-500">
                     Pushed to <span className="text-gray-700 dark:text-gray-400">{item.projectName}</span> (
-                    <span className="font-mono text-gray-700 dark:text-gray-400">{item.commit}</span> on{' '}
+                    <span className="font-mono text-gray-700 dark:text-gray-400">{item.commit}</span> on{" "}
                     <span className="text-gray-700 dark:text-gray-400">{item.branch}</span>)
                   </p>
                 </li>
@@ -599,5 +599,5 @@ export default function Example() {
         </div>
       </div>
     </>
-  )
+  );
 }

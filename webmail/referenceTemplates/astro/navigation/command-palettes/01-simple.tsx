@@ -7,33 +7,33 @@ import {
   Dialog,
   DialogPanel,
   DialogBackdrop,
-} from '../../_kit/headless'
-import { MagnifyingGlassIcon } from '../../_kit/heroicons/20-solid'
-import { useState } from 'preact/hooks'
+} from "../../_kit/headless";
+import { MagnifyingGlassIcon } from "../../_kit/heroicons/20-solid";
+import { useState } from "preact/hooks";
 
 const people = [
-  { id: 1, name: 'Leslie Alexander', url: '#' },
+  { id: 1, name: "Leslie Alexander", url: "#" },
   // More people...
-]
+];
 
 export default function Example() {
-  const [query, setQuery] = useState('')
-  const [open, setOpen] = useState(true)
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(true);
 
   const filteredPeople =
-    query === ''
+    query === ""
       ? []
       : people.filter((person) => {
-          return person.name.toLowerCase().includes(query.toLowerCase())
-        })
+          return person.name.toLowerCase().includes(query.toLowerCase());
+        });
 
   return (
     <Dialog
       className="relative z-10"
       open={open}
       onClose={() => {
-        setOpen(false)
-        setQuery('')
+        setOpen(false);
+        setQuery("");
       }}
     >
       <DialogBackdrop
@@ -49,7 +49,7 @@ export default function Example() {
           <Combobox
             onChange={(person) => {
               if (person) {
-                window.location = person.url
+                window.location = person.url;
               }
             }}
           >
@@ -59,7 +59,7 @@ export default function Example() {
                 className="col-start-1 row-start-1 h-12 w-full pr-4 pl-11 text-base text-gray-900 outline-hidden placeholder:text-gray-400 sm:text-sm dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500"
                 placeholder="Search..."
                 onChange={(event) => setQuery(event.target.value)}
-                onBlur={() => setQuery('')}
+                onBlur={() => setQuery("")}
               />
               <MagnifyingGlassIcon
                 className="pointer-events-none col-start-1 row-start-1 ml-4 size-5 self-center text-gray-400 dark:text-gray-500"
@@ -84,12 +84,12 @@ export default function Example() {
               </ComboboxOptions>
             )}
 
-            {query !== '' && filteredPeople.length === 0 && (
+            {query !== "" && filteredPeople.length === 0 && (
               <p className="p-4 text-sm text-gray-500 dark:text-gray-400">No people found.</p>
             )}
           </Combobox>
         </DialogPanel>
       </div>
     </Dialog>
-  )
+  );
 }

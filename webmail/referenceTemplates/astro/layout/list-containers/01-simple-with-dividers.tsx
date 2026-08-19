@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-const items = [{ id: 1 }, { id: 2 }, { id: 3 }]
+const items = [{ id: 1 }, { id: 2 }, { id: 3 }];
 
 export default function Example() {
   return (
@@ -10,5 +10,5 @@ export default function Example() {
         </li>
       ))}
     </ul>
-  )
+  );
 }

@@ -1,25 +1,25 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from '../../_kit/headless'
-import { CheckIcon, ChevronDownIcon } from '../../_kit/heroicons/20-solid'
+import { useState } from "preact/hooks";
+import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from "../../_kit/headless";
+import { CheckIcon, ChevronDownIcon } from "../../_kit/heroicons/20-solid";
 
 const publishingOptions = [
   {
-    value: 'published',
-    title: 'Published',
-    description: 'This job posting can be viewed by anyone who has the link.',
+    value: "published",
+    title: "Published",
+    description: "This job posting can be viewed by anyone who has the link.",
     current: true,
   },
   {
-    value: 'draft',
-    title: 'Draft',
-    description: 'This job posting will no longer be publicly accessible.',
+    value: "draft",
+    title: "Draft",
+    description: "This job posting will no longer be publicly accessible.",
     current: false,
   },
-]
+];
 
 export default function Example() {
-  const [selected, setSelected] = useState(publishingOptions[0])
+  const [selected, setSelected] = useState(publishingOptions[0]);
 
   return (
     <Listbox value={selected} onChange={setSelected}>
@@ -62,5 +62,5 @@ export default function Example() {
         </ListboxOptions>
       </div>
     </Listbox>
-  )
+  );
 }

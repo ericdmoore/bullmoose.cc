@@ -15,14 +15,7 @@ import type { ComponentChildren, JSX, VNode } from "preact";
 type Tag = keyof JSX.IntrinsicElements | string;
 type Rest = Record<string, unknown>;
 
-const STRIP = new Set([
-  "transition",
-  "static",
-  "hold",
-  "anchor",
-  "modal",
-  "unmount",
-]);
+const STRIP = new Set(["transition", "static", "hold", "anchor", "modal", "unmount"]);
 
 function split(props: Rest) {
   const rest: Rest = {};
@@ -37,12 +30,7 @@ function split(props: Rest) {
   return rest;
 }
 
-function El({
-  as = "div",
-  children,
-  ref,
-  ...props
-}: Rest & { as?: Tag; children?: ComponentChildren; ref?: unknown }) {
+function El({ as = "div", children, ref, ...props }: Rest & { as?: Tag; children?: ComponentChildren; ref?: unknown }) {
   return createElement(as as string, { ref, ...split(props) }, children);
 }
 
@@ -79,14 +67,7 @@ export function Dialog({
 
 export function DialogBackdrop(props: Rest) {
   const { onClose } = useContext(DialogCtx);
-  return (
-    <El
-      as="div"
-      aria-hidden="true"
-      onClick={() => callOnClose(onClose, false)}
-      {...props}
-    />
-  );
+  return <El as="div" aria-hidden="true" onClick={() => callOnClose(onClose, false)} {...props} />;
 }
 
 export function DialogPanel(props: Rest & { children?: ComponentChildren }) {
@@ -234,14 +215,11 @@ export function ListboxOptions({ children, ...rest }: Rest & { children?: Compon
   );
 }
 
-export function ListboxOption({
-  value,
-  children,
-  ...rest
-}: Rest & { value?: unknown; children?: ComponentChildren }) {
+export function ListboxOption({ value, children, ...rest }: Rest & { value?: unknown; children?: ComponentChildren }) {
   const { value: selected, onChange, setOpen } = useContext(ListboxCtx);
   const [focus, setFocus] = useState(false);
-  const isSelected = selected === value || (selected != null && value != null && JSON.stringify(selected) === JSON.stringify(value));
+  const isSelected =
+    selected === value || (selected != null && value != null && JSON.stringify(selected) === JSON.stringify(value));
   return (
     <El
       role="option"
@@ -352,11 +330,7 @@ export function ComboboxOptions({ children, ...rest }: Rest & { children?: Compo
   );
 }
 
-export function ComboboxOption({
-  value,
-  children,
-  ...rest
-}: Rest & { value?: unknown; children?: ComponentChildren }) {
+export function ComboboxOption({ value, children, ...rest }: Rest & { value?: unknown; children?: ComponentChildren }) {
   const { onChange, setOpen, setActiveOption, value: selected } = useContext(ComboboxCtx);
   const [focus, setFocus] = useState(false);
   const isSelected = selected === value;
@@ -509,7 +483,9 @@ export function Tab({ children, ...rest }: Rest & { children?: ComponentChildren
   );
 }
 
-const PanelCtx = createContext({ selected: 0, register: () => 0 });
+/** `register` hands each TabPanel its index on first render, in mount order. */
+type PanelBag = { selected: number; register: () => number };
+const PanelCtx = createContext<PanelBag>({ selected: 0, register: () => 0 });
 
 export function TabPanels({ children, ...rest }: Rest & { children?: ComponentChildren }) {
   const { selected } = useContext(TabCtx);

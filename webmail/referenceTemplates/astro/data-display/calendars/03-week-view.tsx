@@ -1,6 +1,11 @@
 /** @jsxImportSource preact */
-import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, EllipsisHorizontalIcon } from '../../_kit/heroicons/20-solid'
-import { Menu, MenuButton, MenuItem, MenuItems } from '../../_kit/headless'
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  EllipsisHorizontalIcon,
+} from "../../_kit/heroicons/20-solid";
+import { Menu, MenuButton, MenuItem, MenuItems } from "../../_kit/headless";
 
 export default function Example() {
   return (
@@ -163,47 +168,47 @@ export default function Example() {
         </div>
       </header>
       <div className="isolate flex flex-auto flex-col overflow-auto bg-white dark:bg-gray-900">
-        <div style={{ width: '165%' }} className="flex max-w-full flex-none flex-col sm:max-w-none md:max-w-full">
+        <div style={{ width: "165%" }} className="flex max-w-full flex-none flex-col sm:max-w-none md:max-w-full">
           <div className="sticky top-0 z-30 flex-none bg-white shadow-sm ring-1 ring-black/5 sm:pr-8 dark:bg-gray-900 dark:shadow-none dark:ring-white/20">
             <div className="grid grid-cols-7 text-sm/6 text-gray-500 sm:hidden dark:text-gray-400">
               <button type="button" className="flex flex-col items-center pt-2 pb-3">
-                M{' '}
+                M{" "}
                 <span className="mt-1 flex size-8 items-center justify-center font-semibold text-gray-900 dark:text-white">
                   10
                 </span>
               </button>
               <button type="button" className="flex flex-col items-center pt-2 pb-3">
-                T{' '}
+                T{" "}
                 <span className="mt-1 flex size-8 items-center justify-center font-semibold text-gray-900 dark:text-white">
                   11
                 </span>
               </button>
               <button type="button" className="flex flex-col items-center pt-2 pb-3">
-                W{' '}
+                W{" "}
                 <span className="mt-1 flex size-8 items-center justify-center rounded-full bg-indigo-600 font-semibold text-white dark:bg-indigo-500">
                   12
                 </span>
               </button>
               <button type="button" className="flex flex-col items-center pt-2 pb-3">
-                T{' '}
+                T{" "}
                 <span className="mt-1 flex size-8 items-center justify-center font-semibold text-gray-900 dark:text-white">
                   13
                 </span>
               </button>
               <button type="button" className="flex flex-col items-center pt-2 pb-3">
-                F{' '}
+                F{" "}
                 <span className="mt-1 flex size-8 items-center justify-center font-semibold text-gray-900 dark:text-white">
                   14
                 </span>
               </button>
               <button type="button" className="flex flex-col items-center pt-2 pb-3">
-                S{' '}
+                S{" "}
                 <span className="mt-1 flex size-8 items-center justify-center font-semibold text-gray-900 dark:text-white">
                   15
                 </span>
               </button>
               <button type="button" className="flex flex-col items-center pt-2 pb-3">
-                S{' '}
+                S{" "}
                 <span className="mt-1 flex size-8 items-center justify-center font-semibold text-gray-900 dark:text-white">
                   16
                 </span>
@@ -214,19 +219,19 @@ export default function Example() {
               <div className="col-end-1 w-14" />
               <div className="flex items-center justify-center py-3">
                 <span>
-                  Mon{' '}
+                  Mon{" "}
                   <span className="items-center justify-center font-semibold text-gray-900 dark:text-white">10</span>
                 </span>
               </div>
               <div className="flex items-center justify-center py-3">
                 <span>
-                  Tue{' '}
+                  Tue{" "}
                   <span className="items-center justify-center font-semibold text-gray-900 dark:text-white">11</span>
                 </span>
               </div>
               <div className="flex items-center justify-center py-3">
                 <span className="flex items-baseline">
-                  Wed{' '}
+                  Wed{" "}
                   <span className="ml-1.5 flex size-8 items-center justify-center rounded-full bg-indigo-600 font-semibold text-white dark:bg-indigo-500">
                     12
                   </span>
@@ -234,25 +239,25 @@ export default function Example() {
               </div>
               <div className="flex items-center justify-center py-3">
                 <span>
-                  Thu{' '}
+                  Thu{" "}
                   <span className="items-center justify-center font-semibold text-gray-900 dark:text-white">13</span>
                 </span>
               </div>
               <div className="flex items-center justify-center py-3">
                 <span>
-                  Fri{' '}
+                  Fri{" "}
                   <span className="items-center justify-center font-semibold text-gray-900 dark:text-white">14</span>
                 </span>
               </div>
               <div className="flex items-center justify-center py-3">
                 <span>
-                  Sat{' '}
+                  Sat{" "}
                   <span className="items-center justify-center font-semibold text-gray-900 dark:text-white">15</span>
                 </span>
               </div>
               <div className="flex items-center justify-center py-3">
                 <span>
-                  Sun{' '}
+                  Sun{" "}
                   <span className="items-center justify-center font-semibold text-gray-900 dark:text-white">16</span>
                 </span>
               </div>
@@ -263,7 +268,7 @@ export default function Example() {
             <div className="grid flex-auto grid-cols-1 grid-rows-1">
               {/* Horizontal lines */}
               <div
-                style={{ gridTemplateRows: 'repeat(48, minmax(3.5rem, 1fr))' }}
+                style={{ gridTemplateRows: "repeat(48, minmax(3.5rem, 1fr))" }}
                 className="col-start-1 col-end-2 row-start-1 grid divide-y divide-gray-100 dark:divide-white/5"
               >
                 <div className="row-end-1 h-7" />
@@ -427,11 +432,11 @@ export default function Example() {
 
               {/* Events */}
               <ol
-                style={{ gridTemplateRows: '1.75rem repeat(288, minmax(0, 1fr)) auto' }}
+                style={{ gridTemplateRows: "1.75rem repeat(288, minmax(0, 1fr)) auto" }}
                 className="col-start-1 col-end-2 row-start-1 grid grid-cols-1 sm:grid-cols-7 sm:pr-8"
               >
                 <li
-                  style={{ gridRow: '74 / span 12' }}
+                  style={{ gridRow: "74 / span 12" }}
                   className="relative mt-px flex sm:col-start-3 dark:before:pointer-events-none dark:before:absolute dark:before:inset-1 dark:before:z-0 dark:before:rounded-lg dark:before:bg-gray-900"
                 >
                   <a
@@ -445,7 +450,7 @@ export default function Example() {
                   </a>
                 </li>
                 <li
-                  style={{ gridRow: '92 / span 30' }}
+                  style={{ gridRow: "92 / span 30" }}
                   className="relative mt-px flex sm:col-start-3 dark:before:pointer-events-none dark:before:absolute dark:before:inset-1 dark:before:z-0 dark:before:rounded-lg dark:before:bg-gray-900"
                 >
                   <a
@@ -459,7 +464,7 @@ export default function Example() {
                   </a>
                 </li>
                 <li
-                  style={{ gridRow: '122 / span 24' }}
+                  style={{ gridRow: "122 / span 24" }}
                   className="relative mt-px hidden sm:col-start-6 sm:flex dark:before:pointer-events-none dark:before:absolute dark:before:inset-1 dark:before:z-0 dark:before:rounded-lg dark:before:bg-gray-900"
                 >
                   <a
@@ -480,5 +485,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

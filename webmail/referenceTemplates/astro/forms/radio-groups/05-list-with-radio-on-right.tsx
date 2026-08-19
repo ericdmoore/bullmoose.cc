@@ -1,9 +1,9 @@
 /** @jsxImportSource preact */
 const accounts = [
-  { id: 'checking', name: 'Checking', description: 'CIBC ••••6610' },
-  { id: 'savings', name: 'Savings', description: 'Bank of America ••••0149' },
-  { id: 'mastercard', name: 'Mastercard', description: 'Capital One ••••7877' },
-]
+  { id: "checking", name: "Checking", description: "CIBC ••••6610" },
+  { id: "savings", name: "Savings", description: "Bank of America ••••0149" },
+  { id: "mastercard", name: "Mastercard", description: "Capital One ••••7877" },
+];
 
 export default function Example() {
   return (
@@ -23,7 +23,7 @@ export default function Example() {
             </div>
             <div className="ml-3 flex h-6 items-center">
               <input
-                defaultChecked={account.id === 'checking'}
+                defaultChecked={account.id === "checking"}
                 id={`account-${account.id}`}
                 name="account"
                 type="radio"
@@ -35,5 +35,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  )
+  );
 }

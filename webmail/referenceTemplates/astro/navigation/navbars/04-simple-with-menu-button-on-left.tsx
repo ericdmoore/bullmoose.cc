@@ -1,6 +1,14 @@
 /** @jsxImportSource preact */
-import { Disclosure, DisclosureButton, DisclosurePanel, Menu, MenuButton, MenuItem, MenuItems } from '../../_kit/headless'
-import { Bars3Icon, BellIcon, XMarkIcon } from '../../_kit/heroicons/24-outline'
+import {
+  Disclosure,
+  DisclosureButton,
+  DisclosurePanel,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuItems,
+} from "../../_kit/headless";
+import { Bars3Icon, BellIcon, XMarkIcon } from "../../_kit/heroicons/24-outline";
 
 export default function Example() {
   return (
@@ -150,5 +158,5 @@ export default function Example() {
         </div>
       </DisclosurePanel>
     </Disclosure>
-  )
+  );
 }

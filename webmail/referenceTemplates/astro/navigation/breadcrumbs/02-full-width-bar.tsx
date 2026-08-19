@@ -1,10 +1,10 @@
 /** @jsxImportSource preact */
-import { HomeIcon } from '../../_kit/heroicons/20-solid'
+import { HomeIcon } from "../../_kit/heroicons/20-solid";
 
 const pages = [
-  { name: 'Projects', href: '#', current: false },
-  { name: 'Project Nero', href: '#', current: true },
-]
+  { name: "Projects", href: "#", current: false },
+  { name: "Project Nero", href: "#", current: true },
+];
 
 export default function Example() {
   return (
@@ -35,7 +35,7 @@ export default function Example() {
               </svg>
               <a
                 href={page.href}
-                aria-current={page.current ? 'page' : undefined}
+                aria-current={page.current ? "page" : undefined}
                 className="ml-4 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               >
                 {page.name}
@@ -45,5 +45,5 @@ export default function Example() {
         ))}
       </ol>
     </nav>
-  )
+  );
 }

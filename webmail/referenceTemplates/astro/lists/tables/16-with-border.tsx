@@ -2,44 +2,44 @@
 const plans = [
   {
     id: 1,
-    name: 'Hobby',
-    memory: '4 GB RAM',
-    cpu: '4 CPUs',
-    storage: '128 GB SSD disk',
-    price: '$40',
+    name: "Hobby",
+    memory: "4 GB RAM",
+    cpu: "4 CPUs",
+    storage: "128 GB SSD disk",
+    price: "$40",
     isCurrent: false,
   },
   {
     id: 2,
-    name: 'Startup',
-    memory: '8 GB RAM',
-    cpu: '6 CPUs',
-    storage: '256 GB SSD disk',
-    price: '$80',
+    name: "Startup",
+    memory: "8 GB RAM",
+    cpu: "6 CPUs",
+    storage: "256 GB SSD disk",
+    price: "$80",
     isCurrent: true,
   },
   {
     id: 3,
-    name: 'Business',
-    memory: '16 GB RAM',
-    cpu: '8 CPUs',
-    storage: '512 GB SSD disk',
-    price: '$160',
+    name: "Business",
+    memory: "16 GB RAM",
+    cpu: "8 CPUs",
+    storage: "512 GB SSD disk",
+    price: "$160",
     isCurrent: false,
   },
   {
     id: 4,
-    name: 'Enterprise',
-    memory: '1024 GB RAM',
-    cpu: '12 CPUs',
-    storage: '128 GB SSD disk',
-    price: '$240',
+    name: "Enterprise",
+    memory: "1024 GB RAM",
+    cpu: "12 CPUs",
+    storage: "128 GB SSD disk",
+    price: "$240",
     isCurrent: false,
   },
-]
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -103,8 +103,8 @@ export default function Example() {
               <tr key={plan.id}>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-transparent',
-                    'relative py-4 pr-3 pl-4 text-sm sm:pl-6',
+                    planIdx === 0 ? "" : "border-t border-transparent",
+                    "relative py-4 pr-3 pl-4 text-sm sm:pl-6",
                   )}
                 >
                   <div className="font-medium text-gray-900 dark:text-white">
@@ -126,32 +126,32 @@ export default function Example() {
                 </td>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-gray-200 dark:border-white/10',
-                    'hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400',
+                    planIdx === 0 ? "" : "border-t border-gray-200 dark:border-white/10",
+                    "hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400",
                   )}
                 >
                   {plan.memory}
                 </td>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-gray-200 dark:border-white/10',
-                    'hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400',
+                    planIdx === 0 ? "" : "border-t border-gray-200 dark:border-white/10",
+                    "hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400",
                   )}
                 >
                   {plan.cpu}
                 </td>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-gray-200 dark:border-white/10',
-                    'hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400',
+                    planIdx === 0 ? "" : "border-t border-gray-200 dark:border-white/10",
+                    "hidden px-3 py-3.5 text-sm text-gray-500 lg:table-cell dark:text-gray-400",
                   )}
                 >
                   {plan.storage}
                 </td>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-gray-200 dark:border-white/10',
-                    'px-3 py-3.5 text-sm text-gray-500 dark:text-gray-400',
+                    planIdx === 0 ? "" : "border-t border-gray-200 dark:border-white/10",
+                    "px-3 py-3.5 text-sm text-gray-500 dark:text-gray-400",
                   )}
                 >
                   <div className="sm:hidden">{plan.price}/mo</div>
@@ -159,8 +159,8 @@ export default function Example() {
                 </td>
                 <td
                   className={classNames(
-                    planIdx === 0 ? '' : 'border-t border-transparent',
-                    'relative py-3.5 pr-4 pl-3 text-right text-sm font-medium sm:pr-6',
+                    planIdx === 0 ? "" : "border-t border-transparent",
+                    "relative py-3.5 pr-4 pl-3 text-right text-sm font-medium sm:pr-6",
                   )}
                 >
                   <button
@@ -180,5 +180,5 @@ export default function Example() {
         </table>
       </div>
     </div>
-  )
+  );
 }

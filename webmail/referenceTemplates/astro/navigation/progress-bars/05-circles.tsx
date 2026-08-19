@@ -1,16 +1,16 @@
 /** @jsxImportSource preact */
-import { CheckIcon } from '../../_kit/heroicons/20-solid'
+import { CheckIcon } from "../../_kit/heroicons/20-solid";
 
 const steps = [
-  { name: 'Step 1', href: '#', status: 'complete' },
-  { name: 'Step 2', href: '#', status: 'complete' },
-  { name: 'Step 3', href: '#', status: 'current' },
-  { name: 'Step 4', href: '#', status: 'upcoming' },
-  { name: 'Step 5', href: '#', status: 'upcoming' },
-]
+  { name: "Step 1", href: "#", status: "complete" },
+  { name: "Step 2", href: "#", status: "complete" },
+  { name: "Step 3", href: "#", status: "current" },
+  { name: "Step 4", href: "#", status: "upcoming" },
+  { name: "Step 5", href: "#", status: "upcoming" },
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -18,8 +18,8 @@ export default function Example() {
     <nav aria-label="Progress">
       <ol role="list" className="flex items-center">
         {steps.map((step, stepIdx) => (
-          <li key={step.name} className={classNames(stepIdx !== steps.length - 1 ? 'pr-8 sm:pr-20' : '', 'relative')}>
-            {step.status === 'complete' ? (
+          <li key={step.name} className={classNames(stepIdx !== steps.length - 1 ? "pr-8 sm:pr-20" : "", "relative")}>
+            {step.status === "complete" ? (
               <>
                 <div aria-hidden="true" className="absolute inset-0 flex items-center">
                   <div className="h-0.5 w-full bg-indigo-600 dark:bg-indigo-500" />
@@ -32,7 +32,7 @@ export default function Example() {
                   <span className="sr-only">{step.name}</span>
                 </a>
               </>
-            ) : step.status === 'current' ? (
+            ) : step.status === "current" ? (
               <>
                 <div aria-hidden="true" className="absolute inset-0 flex items-center">
                   <div className="h-0.5 w-full bg-gray-200 dark:bg-white/15" />
@@ -67,5 +67,5 @@ export default function Example() {
         ))}
       </ol>
     </nav>
-  )
+  );
 }

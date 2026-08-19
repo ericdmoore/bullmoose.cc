@@ -1,24 +1,24 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from '../../_kit/headless'
-import { ChevronUpDownIcon } from '../../_kit/heroicons/16-solid'
-import { CheckIcon } from '../../_kit/heroicons/20-solid'
+import { useState } from "preact/hooks";
+import { Label, Listbox, ListboxButton, ListboxOption, ListboxOptions } from "../../_kit/headless";
+import { ChevronUpDownIcon } from "../../_kit/heroicons/16-solid";
+import { CheckIcon } from "../../_kit/heroicons/20-solid";
 
 const people = [
-  { id: 1, name: 'Wade Cooper', username: '@wadecooper' },
-  { id: 2, name: 'Arlene Mccoy', username: '@arlenemccoy' },
-  { id: 3, name: 'Devon Webb', username: '@devonwebb' },
-  { id: 4, name: 'Tom Cook', username: '@tomcook' },
-  { id: 5, name: 'Tanya Fox', username: '@tanyafox' },
-  { id: 6, name: 'Hellen Schmidt', username: '@hellenschmidt' },
-  { id: 7, name: 'Caroline Schultz', username: '@carolineschultz' },
-  { id: 8, name: 'Mason Heaney', username: '@masonheaney' },
-  { id: 9, name: 'Claudie Smitham', username: '@claudiesmitham' },
-  { id: 10, name: 'Emil Schaefer', username: '@emilschaefer' },
-]
+  { id: 1, name: "Wade Cooper", username: "@wadecooper" },
+  { id: 2, name: "Arlene Mccoy", username: "@arlenemccoy" },
+  { id: 3, name: "Devon Webb", username: "@devonwebb" },
+  { id: 4, name: "Tom Cook", username: "@tomcook" },
+  { id: 5, name: "Tanya Fox", username: "@tanyafox" },
+  { id: 6, name: "Hellen Schmidt", username: "@hellenschmidt" },
+  { id: 7, name: "Caroline Schultz", username: "@carolineschultz" },
+  { id: 8, name: "Mason Heaney", username: "@masonheaney" },
+  { id: 9, name: "Claudie Smitham", username: "@claudiesmitham" },
+  { id: 10, name: "Emil Schaefer", username: "@emilschaefer" },
+];
 
 export default function Example() {
-  const [selected, setSelected] = useState(people[3])
+  const [selected, setSelected] = useState(people[3]);
 
   return (
     <Listbox value={selected} onChange={setSelected}>
@@ -60,5 +60,5 @@ export default function Example() {
         </ListboxOptions>
       </div>
     </Listbox>
-  )
+  );
 }

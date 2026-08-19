@@ -1,49 +1,49 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Dialog, DialogPanel, DialogTitle } from '../../_kit/headless'
-import { XMarkIcon } from '../../_kit/heroicons/24-outline'
-import { LinkIcon, PlusIcon, QuestionMarkCircleIcon } from '../../_kit/heroicons/20-solid'
+import { useState } from "preact/hooks";
+import { Dialog, DialogPanel, DialogTitle } from "../../_kit/headless";
+import { XMarkIcon } from "../../_kit/heroicons/24-outline";
+import { LinkIcon, PlusIcon, QuestionMarkCircleIcon } from "../../_kit/heroicons/20-solid";
 
 const team = [
   {
-    name: 'Tom Cook',
-    email: 'tom.cook@example.com',
-    href: '#',
+    name: "Tom Cook",
+    email: "tom.cook@example.com",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
   {
-    name: 'Whitney Francis',
-    email: 'whitney.francis@example.com',
-    href: '#',
+    name: "Whitney Francis",
+    email: "whitney.francis@example.com",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1517365830460-955ce3ccd263?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1517365830460-955ce3ccd263?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
   {
-    name: 'Leonard Krasner',
-    email: 'leonard.krasner@example.com',
-    href: '#',
+    name: "Leonard Krasner",
+    email: "leonard.krasner@example.com",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1519345182560-3f2917c472ef?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1519345182560-3f2917c472ef?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
   {
-    name: 'Floyd Miles',
-    email: 'floyd.miles@example.com',
-    href: '#',
+    name: "Floyd Miles",
+    email: "floyd.miles@example.com",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1463453091185-61582044d556?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1463453091185-61582044d556?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
   {
-    name: 'Emily Selman',
-    email: 'emily.selman@example.com',
-    href: '#',
+    name: "Emily Selman",
+    email: "emily.selman@example.com",
+    href: "#",
     imageUrl:
-      'https://images.unsplash.com/photo-1502685104226-ee32379fefbe?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
-]
+];
 
 export default function Example() {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(true);
 
   return (
     <div>
@@ -118,7 +118,7 @@ export default function Example() {
                                 name="project-description"
                                 rows={3}
                                 className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-600 sm:text-sm/6 dark:bg-white/5 dark:text-white dark:outline-white/10 dark:placeholder:text-gray-500 dark:focus:outline-indigo-500"
-                                defaultValue={''}
+                                defaultValue={""}
                               />
                             </div>
                           </div>
@@ -284,5 +284,5 @@ export default function Example() {
         </div>
       </Dialog>
     </div>
-  )
+  );
 }

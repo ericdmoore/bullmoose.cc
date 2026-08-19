@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { ExclamationTriangleIcon } from '../../_kit/heroicons/20-solid'
+import { ExclamationTriangleIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
   return (
@@ -10,7 +10,7 @@ export default function Example() {
         </div>
         <div className="ml-3">
           <p className="text-sm text-yellow-700 dark:text-yellow-300">
-            You have no credits left.{' '}
+            You have no credits left.{" "}
             <a
               href="#"
               className="font-medium text-yellow-700 underline hover:text-yellow-600 dark:text-yellow-300 dark:hover:text-yellow-200"
@@ -21,5 +21,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }
