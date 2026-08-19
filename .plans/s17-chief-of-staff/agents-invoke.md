@@ -1,7 +1,20 @@
 # `agents:invoke` — the blocker, and Eric's answer to it
 
-**Status: deferred, with a promising resolution not yet built.**
-Written 2026-08-15 after a design pass stopped rather than implementing.
+**Status: ✅ BUILT 2026-08-18 (#214) — the deferral is resolved.**
+Handoff ships as a cross-binding Job node: `ceiling = effective(sender) ∩ ceiling(receiver)`,
+proven over a 500-case cross-product and again through the use-time fold. The refusal at
+`attenuation.ts` SURVIVES — a handoff builds a narrowed ceiling whose bindingId is the
+receiver's and hands *that* to the same function, so a plain plan still cannot mint a
+colleague's node. `services/agent/src/index.ts` needed zero lines. Both write-path defects
+predicted below (§"Two write-path defects") were real and are fixed. The kill switch is
+asymmetric on purpose: a disabled RECEIVER waits (bouncing would re-run under the sender's
+authority), a disabled SENDER is refused. Egress is asserted un-launderable — every
+ingredient for a direct send present, still a tier-2 proposal with `submit.calls === 0`.
+The `Delegate` VERB remains unbuilt (its apply case + a colleague chooser); the A∩B-vs-B
+fork below is answered in practice by re-checking against the receiver's book with a human
+in the loop, without being resolved in principle.
+
+Originally written 2026-08-15 after a design pass stopped rather than implementing.
 
 ## Why the design pass stopped
 

@@ -177,7 +177,19 @@ person-panel renders the commitments and waits involving whoever's message is op
 
 ---
 
-## The Note track · *the readme's original arc — a private document that federates*
+## The Note track · *the readme's original arc — a private document that federates* — N1 LANDED (2026-08-18, #212)
+
+> **N1 (#212)**: the `notes` table, `Note/get|set|query` (read on `read`, write on `draft` —
+> a dedicated realm scope was rejected because `DEFAULT_LOGIN_SCOPES` is `["mail"]`, so every
+> existing token would have silently lost the realm), and the `/notes` realm. Note-vs-Annotation
+> is encoded four ways: the absent columns, a `Note/set` that refuses `anchor`/`class`/
+> `confidence`/`status`/`rationale` BY NAME pointing at `Annotation/set`, separate client types,
+> and UI prose a test asserts. **Federation is a seam, not a feature** — identity is id + immutable
+> owner + monotonic revision; mentions/origin-ref/disclosure columns are deliberately ABSENT
+> rather than present-and-unused, and the realm renders a disabled "Shared with me" row plus a
+> "notes do not travel yet" line so the UI never implies the missing half.
+> ⚠️ **The migration was not applied at merge time** — until `migrate.yml` runs with
+> `dry_run=false`, `Note/*` answers "no such table" and `/notes` is a dead page.
 
 ### N1 — The Note entity + `Note/*` JMAP
 
