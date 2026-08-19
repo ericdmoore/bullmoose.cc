@@ -1,6 +1,6 @@
 # s17 — CJ, the chief of staff
 
-> **Status: PARTIAL.** The spine SHIPPED: Jobs + attenuation (s11 T7) and per-invocation `bmi_` tokens, all four steps (#143, #146 — see `per-invocation-tokens.md`). Step 2 (`agents:invoke`) is still deferred at `attenuation.ts`, blocked on the identity-substitution question in `agents-invoke.md`. Step 3 (CJ herself) is not started.
+> **Status: PARTIAL.** The spine SHIPPED: Jobs + attenuation (s11 T7) and per-invocation `bmi_` tokens, all four steps (#143, #146 — see `per-invocation-tokens.md`). Step 2 (`agents:invoke`) **shipped 2026-08-18 (#214)** — the deferral at `attenuation.ts` is lifted (`attenuation.test.ts:292-304` asserts it), handoff being a cross-binding Job node whose ceiling is the intersection of sender and receiver. ⚠️ **But the capability has no production caller**: `delegate()`, `handOff()` and `openDelegation()` are reached only from `handoff.test.ts`. The machinery exists and nothing can invoke it — the `Delegate` verb (its `applyProposal` case + a colleague chooser) is what closes that, and `MAIL_VERBS` does not yet parse the word. Step 3 (CJ herself) is not started.
 > powerful as she can be."* Until now CJ has existed only as a character — she is named in
 > `s10`, in `motivatingExamples.md`, and, tellingly, in `actionProposal.ts` **only as the
 > thing a rule protects against**: the gate is literally called *CJ-cannot-self-approve*.
