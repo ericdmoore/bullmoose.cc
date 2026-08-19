@@ -14,12 +14,24 @@ const pageNames = () =>
 const ids = () => SECTIONS.map((s) => s.id);
 const at = (id: SectionId) => ids().indexOf(id);
 
-describe("the nine sections", () => {
-  it("is exactly the nine nouns", () => {
+describe("the eleven sections", () => {
+  it("is exactly the eleven nouns", () => {
     expect(new Set(ids())).toEqual(
-      new Set(["approvals", "agents", "activity", "calendar", "mail", "contacts", "files", "search", "settings"]),
+      new Set([
+        "approvals",
+        "agents",
+        "activity",
+        "goals",
+        "calendar",
+        "mail",
+        "contacts",
+        "notes",
+        "files",
+        "search",
+        "settings",
+      ]),
     );
-    expect(SECTIONS).toHaveLength(9);
+    expect(SECTIONS).toHaveLength(11);
   });
 
   it("does not contain a section for `/` — home is a view, not a noun", () => {
@@ -68,6 +80,14 @@ describe("the ORDER is the claim", () => {
   it("puts files behind mail and contacts — this is not Drive with agents", () => {
     expect(at("files")).toBeGreaterThan(at("mail"));
     expect(at("files")).toBeGreaterThan(at("contacts"));
+  });
+
+  it("puts notes with the nouns you work in, ahead of storage", () => {
+    // s18 N1: a note is AUTHORED, not filed. Behind the correspondence and the
+    // people in it; ahead of /files, which is where documents are stored
+    // rather than written.
+    expect(at("notes")).toBeGreaterThan(at("contacts"));
+    expect(at("notes")).toBeLessThan(at("files"));
   });
 
   it("ends with the tools, which are verbs over the nouns rather than nouns", () => {

@@ -25,11 +25,12 @@ import { jobBudgetExhaustedSql, needsSatisfiedSql } from "./jobGraph.js";
 // The gate is a CONJUNCTION, and s11 T3's watchdog needs a strict SUBSET of
 // its terms: the overdue backstop claims OUTSIDE the policy gate (a gated
 // claim would refuse budget-exhausted overdue work — which is the whole point
-// of a backstop) while KEEPING the privacy pin and fit (devPlan decision 0:
-// pinned work sits, and the human is alerted). So each term is its own
-// exported expression and `claimGateSql` is their fold, rather than the
-// backstop re-typing a hand-copied `privacy <> 'pinned'` that could drift
-// from this one the day the pin gains a second class.
+// of a backstop) while KEEPING the privacy pin, fit, and the 008 kill switch
+// (devPlan decision 0: pinned work sits and the human is alerted; and a
+// deadline is not a reason to run an agent an operator switched off). So each
+// term is its own exported expression and `claimGateSql` is their fold, rather
+// than the backstop re-typing a hand-copied `privacy <> 'pinned'` that could
+// drift from this one the day the pin gains a second class.
 //
 // Every fragment below returns a BARE boolean expression (parenthesized, no
 // leading ` AND`) so it can be conjoined, negated, or dropped. Placeholders
@@ -121,6 +122,237 @@ export function budgetExhaustedSql(inv: string): string {
 }
 
 /**
+ * THE 008 KILL SWITCH — 0 placeholders. True when this row's binding is
+ * switched OFF, i.e. when the claim must be refused. Folded as
+ * `NOT bindingDisabledSql(...)` in `claimGateSql`.
+ *
+ * ── Why the gate needed it ────────────────────────────────────────────────
+ * `AgentBinding/set` (s26 T2) made the switch session-reachable, and the
+ * Settings→Agents page promises exactly this: "Disabling holds queued work;
+ * nothing is cancelled." The refusal existed at CREATE (agent.ts's interlock)
+ * and in the cloud drain's SELECT join — but neither touches the rows a human
+ * queued BEFORE flipping the switch, which is the entire point of the
+ * sentence. Those stayed claimable through `AgentInvocation/set` by any
+ * claimant, and by a FREE one in particular: the fleet host and the
+ * `bullmoose agent` CLI both declare `isFree: true`. The switch stopped new
+ * work and let the backlog keep running.
+ *
+ * ── Why it sits OUTSIDE the `isFree` short-circuit ────────────────────────
+ * Every money term (`budgetExhaustedSql`, `jobBudgetExhaustedSql`, the
+ * envelope) lives INSIDE it, because exhaustion is a reason to prefer the
+ * runtime that costs nothing — a free claimant is the answer to a budget, not
+ * a party to it. An off switch is not a budget. "Your homelab may still run
+ * it for free" is not what a human clicking Disable is agreeing to, so this
+ * term binds every claimant, exactly like `needsSatisfiedSql`.
+ *
+ * ── It is a WAIT, not an error and not a fault ────────────────────────────
+ * Structurally identical to `budgetExhaustedSql`: it NARROWS the claimant set
+ * inside the guarded UPDATE, so a refused row simply does not transition. It
+ * stays `pending`, keeps its facets and its clocks, costs nothing, and
+ * becomes claimable again the instant the binding is re-enabled — no
+ * requeue, no new row, nothing cancelled. Completion (`done`/`failed`) is
+ * never gated by anything, here included: a runtime that legitimately claimed
+ * before the flip still owns its invocation and must be able to record what
+ * happened.
+ *
+ * ── The two absences, which are NOT the same absence ──────────────────────
+ * `EXISTS` false — no binding row at all — reads as NOT disabled, i.e. the
+ * row claims exactly as it did before this term. That is the same
+ * absence-is-not-evidence rule `budgetExhaustedSql` follows, and it is
+ * deliberate: the promise being kept here is about DISABLED bindings, while
+ * an invocation whose binding was destroyed is a different question already
+ * answered elsewhere (both drain SELECTs INNER JOIN `agent_bindings`, and
+ * auth-core refuses to resolve such a row's invocation token). Stranding it
+ * silently here would be a second, unasked-for behaviour change.
+ *
+ * The COALESCE runs the OTHER way, and that asymmetry is the honest part.
+ * `agent_bindings.enabled` is `NOT NULL DEFAULT 1`, so the COALESCE cannot
+ * fire today; it is there so that if the column ever becomes nullable, an
+ * UNREADABLE switch reads as OFF. An unreadable budget cap honestly means "no
+ * cap was set"; an unreadable kill switch does not mean "the human left it
+ * on". Same reason `<> 1` and not `= 0`: only the literal enabled value
+ * counts as enabled.
+ */
+export function bindingDisabledSql(inv: string): string {
+  return (
+    `EXISTS (` +
+    `\n                SELECT 1 FROM agent_bindings gate_k` +
+    `\n                WHERE gate_k.account_id = ${inv}.account_id AND gate_k.id = ${inv}.binding_id` +
+    `\n                  AND COALESCE(gate_k.enabled, 0) <> 1)`
+  );
+}
+
+/**
+ * Pure twin of `bindingDisabledSql` — the same predicate stated as a function
+ * so the two cannot drift (the `needsSatisfied` / `jobBudgetExhausted`
+ * discipline; killSwitch.test.ts holds them to one table).
+ *
+ * `null`/`undefined` = the EXISTS found no binding row → NOT disabled.
+ * A present row's `enabled` is disabled unless it is exactly 1, with an
+ * unreadable value reading as OFF — see the SQL for why the two absences
+ * point in opposite directions.
+ */
+export function bindingDisabled(binding: { enabled: number | null } | null | undefined): boolean {
+  if (binding === null || binding === undefined) return false;
+  return (binding.enabled ?? 0) !== 1;
+}
+
+/**
+ * THE BACKFILL ENVELOPE EXISTS — 0 placeholders (s26 T3 v2). True when this
+ * row is backfill-tagged (`context_json.backfill === true`, the flag both the
+ * manual verb and the surplus pass stamp) AND carries its own money
+ * (`backfillBudgetMicros`, which only the manual verb writes, and only when
+ * the caller named one). Same garbage tolerance as `claimFitSql`: junk
+ * context, a string "true", or a string budget all read as NO envelope —
+ * degrading a row to the monthly gate (today's behavior), never widening its
+ * money.
+ *
+ * Exported alone because two callers need the predicate WITHOUT the
+ * exhaustion sum: `claimGateSql`'s CASE picks which purse a row draws from,
+ * and `budgetOverrun.ts` excludes envelope rows from its stranded
+ * counterfactual — a monthly overage cannot release a row that does not read
+ * the monthly budget, and asking a human to approve money that would release
+ * nothing is worse than not asking (the jobBudget precedent, jobGraph.ts).
+ */
+export function backfillEnvelopeSql(inv: string): string {
+  return (
+    `(${inv}.context_json IS NOT NULL` +
+    `\n      AND json_valid(${inv}.context_json)` +
+    `\n      AND COALESCE(json_type(${inv}.context_json, '$.backfill'), 'x') = 'true'` +
+    `\n      AND COALESCE(json_type(${inv}.context_json, '$.backfillBudgetMicros'), 'x') IN ('integer', 'real'))`
+  );
+}
+
+/**
+ * THE BACKFILL ENVELOPE, spent through — 0 placeholders. Only meaningful
+ * under `backfillEnvelopeSql` (the CASE guard guarantees the row's
+ * context_json is valid before `json_extract` runs). The twin of
+ * `backfillEnvelopeExhausted()` in mayClaim.ts, in `budgetExhaustedSql`'s
+ * exact arithmetic style:
+ *
+ *   SUM(cost_micros) over this binding's FINISHED backfill-tagged rows
+ *     ≥ this row's `backfillBudgetMicros`
+ *
+ * ALL-TIME, deliberately — an envelope is per-request money, not a monthly
+ * allowance, so there is no month bucket and no period key (and therefore no
+ * placeholders: every existing caller's bind order is untouched). NULL costs
+ * sum as nothing — unknown is not a spend — same as the monthly gate; and a
+ * T9 monthly overage does not raise an envelope, because the human who
+ * approved "spend more this month" was not asked about the archive.
+ *
+ * ── How it composes with the monthly cap ──────────────────────────────────
+ * As a SUBSTITUTION, not a conjunction (contrast jobBudgetExhaustedSql): an
+ * envelope row never reads the monthly cap at claim time. Its spend still
+ * LANDS in `cost_micros` like any other run, so the monthly sum sees it and
+ * live work stops earlier that month — total spend stays bounded by
+ * cap + envelope, the conservative direction. Splitting the monthly sum's
+ * population was considered and refused: the dossier (console.ts) and the
+ * surplus projection mirror that sum verbatim, and a gate that counted
+ * differently from every surface reading it would be the drift this package
+ * exists to prevent.
+ */
+export function backfillEnvelopeExhaustedSql(inv: string): string {
+  return (
+    `((SELECT COALESCE(SUM(gate_bf.cost_micros), 0) FROM agent_invocations gate_bf` +
+    `\n        WHERE gate_bf.account_id = ${inv}.account_id` +
+    `\n          AND gate_bf.binding_id = ${inv}.binding_id` +
+    `\n          AND gate_bf.done_at IS NOT NULL` +
+    `\n          AND gate_bf.context_json IS NOT NULL` +
+    `\n          AND json_valid(gate_bf.context_json)` +
+    `\n          AND COALESCE(json_type(gate_bf.context_json, '$.backfill'), 'x') = 'true')` +
+    `\n     >= json_extract(${inv}.context_json, '$.backfillBudgetMicros'))`
+  );
+}
+
+/**
+ * THE HANDING BINDING'S MONTHLY CAP (s17) — 2 placeholders, `monthStartMs` and
+ * `periodKey`, exactly the pair `budgetExhaustedSql` takes and with exactly its
+ * arithmetic. True when this row is HANDED-OFF work and the binding that handed
+ * it is out of money for the month, i.e. when the claim must be refused.
+ *
+ * ── THE BUDGET DECISION, STATED WHERE IT IS ENFORCED ──────────────────────
+ *
+ * "Does handed-off work spend the sender's envelope or the receiver's?"
+ * Neither alone. It spends the **receiver's purse** and it is **gated by BOTH
+ * months** — the same intersection shape as the authority it rides under:
+ *
+ *   THE PURSE IS THE RECEIVER'S. The work runs as a node on the receiving
+ *   binding, so `finish()` stamps its `cost_micros` on the receiving row and
+ *   the receiver's monthly sum sees it — which is correct attribution: the
+ *   receiver's binding made the model call, chose the model, and its dossier
+ *   should show what its work cost. Nothing double-counts, because no row is
+ *   ever summed under two bindings.
+ *
+ *   THE GATE IS BOTH. `budgetExhaustedSql` already refuses a paid claim when
+ *   the ROW's own binding is out; this term adds the HANDING binding as a
+ *   conjunction. Without it, a binding that has spent its month hands its
+ *   backlog to a colleague and keeps working on someone else's money — which
+ *   is the same laundering shape one level up from the authority question, and
+ *   the one the readme calls systemic: the failure mode of a chief of staff is
+ *   never her own lane.
+ *
+ * ── WHAT THIS HONESTLY IS, AND IS NOT ─────────────────────────────────────
+ * It is a GATE on the sender, not a PURSE it drains. The handed-off row's cost
+ * lands on the receiver, so the sender's monthly sum does not grow from
+ * handing work off; a sender with headroom can hand off more work than its own
+ * cap would have bought. What still bounds that total is the receiver's cap,
+ * the Job's aggregate `budget_micros` (jobBudgetExhaustedSql, a conjunction
+ * here too) and the envelope's `budgetMicros` (the fold). Making the sender's
+ * month a real purse would mean widening the population of THE monthly sum —
+ * and s26 T3 v2 already refused exactly that move, because the console dossier
+ * and the surplus projection mirror that sum verbatim and a gate that counted
+ * differently from every surface reading it is the drift this package exists
+ * to prevent. So: a new conjunctive term, no change to what "this binding's
+ * monthly spend" means anywhere.
+ *
+ * ── THE ARITHMETIC, matching `budgetExhaustedSql` line for line ───────────
+ * Same UTC month bucket, same `cost_micros` sum over FINISHED rows (NULL costs
+ * add nothing — unknown is not a spend, and 0 is a real, known, free run), same
+ * `cap + approved overage` effective ceiling, so an approved T9 overrun on the
+ * SENDER releases handed-off work exactly as it releases the sender's own.
+ *
+ * ── THE THREE ABSENCES, all of which read as NOT exhausted ────────────────
+ *   not a handoff       `json_extract` finds no `$.handoff.from.bindingId`, so
+ *                       no binding matches and EXISTS is false. This is the
+ *                       DefaultCase and it is why every ordinary invocation is
+ *                       unaffected by the term existing.
+ *   junk context_json   guarded by `json_valid` BEFORE `json_extract`, which
+ *                       THROWS on malformed JSON rather than returning NULL
+ *                       (the lesson `expandPlan`'s usage sum already learned).
+ *                       Junk degrades to "not a handoff" — garbage can return a
+ *                       row to today's behavior, never widen its money.
+ *   origin binding gone no row, no readable cap, not exhausted — the same
+ *                       absence-is-not-evidence rule the monthly cap follows.
+ *                       Note this absence is NOT a hole: the AUTHORITY side
+ *                       fails closed on the same fact (`chainBindingAuthority`
+ *                       DENIES a chain whose ancestor binding no longer
+ *                       exists), so the work stops at the pre-flight rather
+ *                       than at the money.
+ */
+export function handoffOriginBudgetExhaustedSql(inv: string): string {
+  return (
+    `EXISTS (` +
+    `\n                SELECT 1 FROM agent_bindings gate_hb` +
+    `\n                WHERE gate_hb.account_id = ${inv}.account_id` +
+    `\n                  AND ${inv}.context_json IS NOT NULL` +
+    `\n                  AND json_valid(${inv}.context_json)` +
+    `\n                  AND gate_hb.id = json_extract(${inv}.context_json, '$.handoff.from.bindingId')` +
+    `\n                  AND json_valid(gate_hb.config_json)` +
+    `\n                  AND json_type(gate_hb.config_json, '$.budgets.spendPerMonth') IN ('integer', 'real')` +
+    `\n                  AND (SELECT COALESCE(SUM(gate_hs.cost_micros), 0) FROM agent_invocations gate_hs` +
+    `\n                       WHERE gate_hs.account_id = ${inv}.account_id` +
+    `\n                         AND gate_hs.binding_id = gate_hb.id` +
+    `\n                         AND gate_hs.done_at IS NOT NULL AND gate_hs.done_at >= ?)` +
+    `\n                      >= json_extract(gate_hb.config_json, '$.budgets.spendPerMonth')` +
+    `\n                         + (SELECT COALESCE(SUM(gate_ho.amount_micros), 0)` +
+    `\n                            FROM agent_budget_overages gate_ho` +
+    `\n                            WHERE gate_ho.account_id = ${inv}.account_id` +
+    `\n                              AND gate_ho.binding_id = gate_hb.id` +
+    `\n                              AND gate_ho.period_key = ?))`
+  );
+}
+
+/**
  * THE ABSENCE-INFERENCE (readme decision 3) — 1 placeholder, the cutoff
  * `freeRuntimeLiveCutoff(now)`. A free claimant claimed on this row's account
  * within FREE_RUNTIME_LIVE_MS, i.e. "a homelab runtime is here right now".
@@ -173,10 +405,10 @@ export function dueWindowBinds(p: { now: number; escalationWindowMs: number }): 
 
 /**
  * The whole gate, to be appended to a claim statement's WHERE (it begins with
- * ` AND`) — fit ∧ needs ∧ (free ∨ (pin ∧ budget ∧ jobBudget ∧ due)), the fold
- * of the fragments above. `inv` is how the statement refers to the
- * agent_invocations row under test: the table name itself in an UPDATE, the
- * FROM-alias in a SELECT. Placeholders are positional — bind
+ * ` AND`) — switched-on ∧ fit ∧ needs ∧ (free ∨ (pin ∧ budget ∧ jobBudget ∧
+ * due)), the fold of the fragments above. `inv` is how the statement refers
+ * to the agent_invocations row under test: the table name itself in an
+ * UPDATE, the FROM-alias in a SELECT. Placeholders are positional — bind
  * `claimGateBinds()` in order, after the statement's own binds.
  *
  * s11 T7 adds the two DAG terms, and WHERE each sits is the whole design:
@@ -193,14 +425,40 @@ export function dueWindowBinds(p: { now: number; escalationWindowMs: number }): 
  *
  * Both take zero placeholders (the graph is entirely in the rows), so every
  * existing caller's bind order is untouched.
+ *
+ * s26 T3 v2 replaces the bare monthly term with a CASE: an envelope-carrying
+ * backfill row (`backfillEnvelopeSql`) draws from its own envelope INSTEAD OF
+ * the monthly cap — see `backfillEnvelopeExhaustedSql` for why substitution,
+ * not conjunction. Both new fragments take zero placeholders, and the monthly
+ * term keeps its two inside the ELSE (placeholders are positional whatever
+ * branch runs), so `claimGateBinds` and every caller are again untouched.
+ * The pure statement of the same CASE is `effectiveBudgetExhausted`
+ * (mayClaim.ts); the agreement test's envelope table holds the two together.
+ *
+ * s17 adds `handoffOriginBudgetExhaustedSql` INSIDE the `isFree` short-circuit
+ * beside the other money terms (a free claimant is the answer to a budget, not
+ * a party to it) and as a CONJUNCTION, not a substitution: handed-off work must
+ * clear BOTH the receiving binding's month and the HANDING binding's. It is the
+ * first fragment to add placeholders since T9 — two, immediately after the
+ * monthly pair, so only `claimGateBinds` changed and no caller re-ordered
+ * anything by hand.
+ *
+ * s26 T2 follow-up adds `bindingDisabledSql` — the 008 kill switch — as the
+ * FIRST term and OUTSIDE the `isFree` short-circuit, so a disabled binding's
+ * already-queued rows are claimable by nobody rather than by everyone free.
+ * Zero placeholders again; every caller's bind order is untouched.
  */
 export function claimGateSql(inv: string): string {
   return (
+    `\n AND NOT ${bindingDisabledSql(inv)}` +
     `\n AND ${claimFitSql(inv)}` +
     `\n AND ${needsSatisfiedSql(inv)}` +
     `\n AND (? = 1` +
     `\n      OR (${notPinnedSql(inv)}` +
-    `\n          AND NOT ${budgetExhaustedSql(inv)}` +
+    `\n          AND (CASE WHEN ${backfillEnvelopeSql(inv)}` +
+    `\n               THEN NOT ${backfillEnvelopeExhaustedSql(inv)}` +
+    `\n               ELSE NOT ${budgetExhaustedSql(inv)} END)` +
+    `\n          AND NOT ${handoffOriginBudgetExhaustedSql(inv)}` +
     `\n          AND NOT ${jobBudgetExhaustedSql(inv)}` +
     `\n          AND ${dueWindowSql(inv)}))`
   );
@@ -229,6 +487,14 @@ export function claimGateBinds(p: ClaimGateParams): Array<number | string | null
     // halves of the budget comparison can never key different months — a
     // sweep that straddles midnight UTC on the 1st still compares one period
     // against itself.
+    budgetPeriodKey(p.monthStartMs),
+    // s17 — the HANDING binding's month, the same two values keyed the same
+    // way. Two more placeholders rather than reusing the pair above, because
+    // placeholders are positional and the two subqueries are two statements'
+    // worth of text; deriving both from `monthStartMs` is what keeps a sweep
+    // that straddles midnight UTC on the 1st from comparing different months
+    // on the two sides of one conjunction.
+    p.monthStartMs,
     budgetPeriodKey(p.monthStartMs),
     ...dueWindowBinds(p),
   ];

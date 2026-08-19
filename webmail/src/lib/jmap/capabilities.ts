@@ -69,8 +69,17 @@ export function capabilityForMethod(methodName: string): string {
     case "FileNode":
       return FILENODE_CAP;
     case "AgentInvocation":
+    case "AgentBinding":
+    // s26 T4 — the BYOK door. Under the agent capability rather than a
+    // capability of its own: it is agent configuration (which credential a
+    // binding spends), and `lib/console/gate.ts` already hides every agent
+    // surface when that URN is absent, so one gate covers it.
+    case "ProviderCredential":
     case "ActionProposal":
     case "Watch":
+    // s20 T6 — a Goal is a delegation contract over the agent's own Job DAG,
+    // so it rides the same capability every other agent surface does.
+    case "Goal":
     case "Annotation":
       return AGENT_CAP;
     default:

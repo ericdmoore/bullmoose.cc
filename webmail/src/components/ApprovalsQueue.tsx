@@ -41,7 +41,9 @@ import {
 } from "../lib/approvals/rows";
 import type { ActionProposal, RejectReason } from "../lib/approvals/types";
 import CollectionColumn from "./CollectionColumn";
+import CollectionSheet, { CollectionSheetButton } from "./CollectionSheet";
 import type { CollectionGroup } from "../lib/shell/collections";
+import { hrefWithParam, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
 
@@ -179,13 +181,22 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
   // shell, this island owns the middle "headers" column and the right detail.
   // `ordered` already sorts pending-first with the near-due at the top, so the
   // first item is the one most wanting a decision — the right default focus.
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  //
+  // s25 T3 — `/approvals?p=<id>` (the HeaderGroup rows' REAL links) lands
+  // here: read once, in the initializer, and the self-repair below keeps it
+  // only while the proposal is actually in the active list.
+  const [selectedId, setSelectedId] = useState<string | undefined>(() => urlParam("p"));
 
   // s24 T4 — the Collection column: the LIVE lifecycle (Decided is dropped —
   // history bloats a decision queue; the retrospective is Activity's realm,
   // s23) plus the first saved view. The header column shows ONE collection's
-  // rows, chosen here.
-  const [collection, setCollection] = useState("pending");
+  // rows, chosen here — or by `?c=` (s25 T4: the realm tray's leaf-nodes
+  // link straight to a lifecycle state), validated against the known ids so
+  // a mistyped link degrades to the default rather than an empty screen.
+  const [collection, setCollection] = useState(() => {
+    const c = urlParam("c");
+    return c !== undefined && ["pending", "info", "held", "due-soon"].includes(c) ? c : "pending";
+  });
   const dueSoon = useMemo(() => pending.filter((p) => isNearExpiry(rowClocks(p, now))), [pending, now]);
   const collections: CollectionGroup[] = useMemo(
     () => [
@@ -214,18 +225,52 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
         : collection === "due-soon"
           ? dueSoon
           : pending;
+  const collectionLabel =
+    collection === "info"
+      ? "Waiting on the agent"
+      : collection === "held"
+        ? "Hold tray"
+        : collection === "due-soon"
+          ? "Due soon"
+          : "Waiting on you";
+
+  // s25 T2 — the collection sheet: below lg the CollectionColumn is hidden
+  // and the list title above summons the SAME tree as a bottom sheet (a
+  // picker, not a screen — zero stack depth).
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const selected = activeList.find((p) => p.id === selectedId) ?? activeList[0];
   // Keep a valid selection as the queue changes under us (a decided row leaves,
   // a new proposal arrives, the human switches collections) without yanking
-  // focus off something the human is mid-decision on.
+  // focus off something the human is mid-decision on. Not while loading:
+  // before the queue arrives the list is empty for a moment, and repairing
+  // against that emptiness would wipe a deep-linked `?p=` (s25 T3) on mount.
   useEffect(() => {
+    if (loading) return;
     if (activeList.length === 0) {
       if (selectedId !== undefined) setSelectedId(undefined);
       return;
     }
     if (!activeList.some((p) => p.id === selectedId)) setSelectedId(activeList[0]!.id);
-  }, [activeList, selectedId]);
+  }, [activeList, selectedId, loading]);
+
+  // s25 T4 — publish the LIVE lifecycle states for the chrome's realm tray
+  // (lib/shell/publish.ts): the three queues with their counts, each `?c=`
+  // link landing on the initializer above. Republished as counts move, so
+  // "Approvals ▸ Waiting on you 3" in the tray is the queue's own number.
+  useEffect(() => {
+    if (loading || gate.state !== "open") return;
+    publishCollections("approvals", [
+      { id: "pending", label: "Waiting on you", count: pending.length, href: publishedHref("/approvals", "pending") },
+      {
+        id: "info",
+        label: "Waiting on the agent",
+        count: infoRequested.length,
+        href: publishedHref("/approvals", "info"),
+      },
+      { id: "held", label: "Hold tray", count: held.length, href: publishedHref("/approvals", "held") },
+    ]);
+  }, [loading, gate.state, pending.length, infoRequested.length, held.length]);
 
   async function reload(): Promise<void> {
     if (!client || accounts.length === 0) return;
@@ -379,26 +424,24 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
             groups={collections}
             selectedId={collection}
             onSelect={setCollection}
+            narrow="hidden"
           />
 
-          {/* COLUMN 3 — the headers of the ACTIVE collection only. */}
+          {/* COLUMN 3 — the headers of the ACTIVE collection only. Below lg
+              its title is the tappable summon for the collection sheet
+              (s25 T2); on desktop the HeaderGroup label stands unchanged. */}
           <nav aria-label="Proposals" class="apq-pane">
+            <CollectionSheetButton label={collectionLabel} open={sheetOpen} onOpen={() => setSheetOpen(true)} />
             <HeaderGroup
-              label={
-                collection === "info"
-                  ? "Waiting on the agent"
-                  : collection === "held"
-                    ? "Hold tray"
-                    : collection === "due-soon"
-                      ? "Due soon"
-                      : "Waiting on you"
-              }
+              label={collectionLabel}
               tone={collection === "pending" || collection === "due-soon" ? "primary" : undefined}
               items={activeList}
               now={now}
               accounts={accounts}
               selectedId={selected?.id}
-              onSelect={setSelectedId}
+              // s25 T3 — rows are REAL links; `?c=`/`?demo=` survive via
+              // hrefWithParam, and the `?p=` initializer above is the landing.
+              hrefFor={(id) => hrefWithParam("/approvals", "p", id)}
             />
             {activeList.length === 0 ? <p class="muted apq-pad">Nothing here right now.</p> : null}
           </nav>
@@ -449,6 +492,19 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
           </section>
         </div>
       ) : null}
+
+      {/* The collection sheet (s25 T2) — the same tree the desktop column
+          renders, summoned from the list title on small screens. Same
+          storageKey, so expansion memory is one tree, not two. */}
+      <CollectionSheet
+        title="Approvals"
+        storageKey="bm.cc.approvals"
+        groups={collections}
+        selectedId={collection}
+        onSelect={setCollection}
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+      />
     </div>
   );
 }
@@ -458,6 +514,12 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
  * summary, a tier chip, and how long it has waited — under a small heading so
  * "waiting on you" reads apart from "decided". Renders nothing when empty, so
  * the column shows only the states that actually have items.
+ *
+ * s25 T3: the rows are REAL `<a href>`s built by `hrefFor` — selecting a
+ * proposal is MPA navigation to `/approvals?p=<id>`, so the browser back
+ * button steps out of a decision the native way and every proposal is
+ * deep-linkable. No history calls anywhere in this (tokenInUrl.test.ts's
+ * ONE-call invariant: MPA links are not history calls).
  */
 function HeaderGroup(props: {
   label: string;
@@ -465,16 +527,22 @@ function HeaderGroup(props: {
   now: number;
   accounts: ApprovalsAccount[];
   selectedId: string | undefined;
-  onSelect: (id: string) => void;
+  /** The row's detail URL — `/approvals?p=<id>`, current query preserved. */
+  hrefFor: (id: string) => string;
   tone?: "primary";
   muted?: boolean;
 }) {
-  const { label, items, now, accounts, selectedId, onSelect, tone, muted } = props;
+  const { label, items, now, accounts, selectedId, hrefFor, tone, muted } = props;
   if (items.length === 0) return null;
   return (
     <div class="mb-4">
+      {/* max-lg:hidden — below lg the CollectionSheetButton above already
+          carries this label as the sheet's summon (s25 T2). */}
       <h2
-        class={"px-2 pb-1 text-xs font-semibold tracking-wide uppercase " + (muted ? "text-gray-400" : "text-gray-500")}
+        class={
+          "px-2 pb-1 text-xs font-semibold tracking-wide uppercase max-lg:hidden " +
+          (muted ? "text-gray-400" : "text-gray-500")
+        }
       >
         {label} <span class="ml-1 font-normal text-gray-400">{items.length}</span>
       </h2>
@@ -484,9 +552,8 @@ function HeaderGroup(props: {
           const waited = waitedLabel(p, rowClocks(p, now));
           return (
             <li key={p.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(p.id)}
+              <a
+                href={hrefFor(p.id)}
                 aria-current={active ? "true" : undefined}
                 class={
                   "flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left text-sm " +
@@ -513,7 +580,7 @@ function HeaderGroup(props: {
                   {waited ? <span class="truncate">· {waited}</span> : null}
                   {p.costMicros ? <span>· {costLabel({ costMicros: p.costMicros, costModel: null })}</span> : null}
                 </span>
-              </button>
+              </a>
             </li>
           );
         })}

@@ -4,6 +4,7 @@ import { resolveClient, type ClientMode } from "../lib/app/client";
 import CollectionColumn from "./CollectionColumn";
 import { Button } from "./ui";
 import type { CollectionGroup } from "../lib/shell/collections";
+import { hrefWithParam, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
 import {
   bookIdOf,
   bookScopeNote,
@@ -99,7 +100,12 @@ export default function ContactsApp({ client: injected }: Props) {
   const [accounts, setAccounts] = useState<ContactsAccount[]>([]);
   const [accountId, setAccountId] = useState<string>("");
   const [books, setBooks] = useState<AddressBook[]>([]);
-  const [bookId, setBookId] = useState<string>("");
+  // s25 T3/T4 — `?c=<bookId>` preselects the address book (the realm tray's
+  // leaf-node links land here); the books effect below self-repairs to "All"
+  // if the id turns out not to exist. Read once, in the initializer — the
+  // island mounts after navigation, so location is settled (ShellNav's
+  // `initialQ` pattern).
+  const [bookId, setBookId] = useState<string>(() => urlParam("c") ?? "");
 
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [total, setTotal] = useState<number | undefined>(undefined);
@@ -108,7 +114,11 @@ export default function ContactsApp({ client: injected }: Props) {
   const [exhausted, setExhausted] = useState(false);
   const [spec, setSpec] = useState<ContactSearchSpec>({});
 
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  // s25 T3 — `/contacts?card=<id>` is the row's REAL link (native back, deep-
+  // linkable people); reading it here at mount is the other half. In-page
+  // paths (a group's member list, post-save focus) still call setSelectedId —
+  // the URL is the click path, the state is everything else's.
+  const [selectedId, setSelectedId] = useState<string | undefined>(() => urlParam("card"));
   const [card, setCard] = useState<ContactCard | undefined>(undefined);
   const [members, setMembers] = useState<ContactCard[]>([]);
   const [missingMembers, setMissingMembers] = useState<string[]>([]);
@@ -188,6 +198,18 @@ export default function ContactsApp({ client: injected }: Props) {
       cancelled = true;
     };
   }, [client, accountId, reloadKey]);
+
+  // s25 T4 — publish the address books for the chrome's realm tray
+  // (lib/shell/publish.ts): each book as a leaf whose `?c=` link preselects
+  // it via the initializer above. No counts — AddressBook carries none, and
+  // inventing one would cost a full scan per book (cards.ts).
+  useEffect(() => {
+    if (books.length === 0) return;
+    publishCollections(
+      "contacts",
+      books.map((b) => ({ id: b.id, label: b.name, href: publishedHref("/contacts", b.id) })),
+    );
+  }, [books]);
 
   // ── every group in the account, for the join control ────────────────────
   // Cheap and bounded (`kind: "group"` narrows the same scan), and it has to
@@ -678,12 +700,14 @@ export default function ContactsApp({ client: injected }: Props) {
             <ul class="card-list">
               {cards.map((c) => (
                 <li>
-                  <button
+                  {/* s25 T3 — a real link (`?q=`/`?demo=`/`?c=` survive via
+                      hrefWithParam): the browser back button leaves the card
+                      the native way, and every person is deep-linkable. The
+                      `?card=` initializer above is where this lands. */}
+                  <a
                     class={`card-row${c.id === selectedId ? " is-selected" : ""}`}
-                    onClick={() => {
-                      setSelectedId(c.id);
-                      setView("detail");
-                    }}
+                    href={hrefWithParam("/contacts", "card", c.id)}
+                    aria-current={c.id === selectedId ? "true" : undefined}
                   >
                     <span class="card-name">
                       {displayName(c)}
@@ -694,7 +718,7 @@ export default function ContactsApp({ client: injected }: Props) {
                         ? `${memberUids(c).length} member${memberUids(c).length === 1 ? "" : "s"}`
                         : (firstEmail(c) ?? firstPhone(c) ?? firstOrganization(c) ?? "")}
                     </span>
-                  </button>
+                  </a>
                 </li>
               ))}
               {cards.length === 0 && !loading ? (

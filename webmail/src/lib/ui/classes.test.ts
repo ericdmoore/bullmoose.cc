@@ -5,8 +5,12 @@ import {
   badgeClasses,
   buttonClasses,
   cx,
+  FAB_CLEARANCE_PX,
+  fabClasses,
   iconButtonClasses,
   listRowClasses,
+  searchFieldClasses,
+  searchYieldClasses,
 } from "./classes";
 
 // s24 T0 — the pure class-logic behind the primitives. These are the tested
@@ -79,5 +83,61 @@ describe("listRowClasses", () => {
   it("muted drops the strong foreground", () => {
     expect(listRowClasses({ muted: true })).toContain("text-gray-500");
     expect(listRowClasses()).toContain("text-gray-900");
+  });
+});
+
+// ── s25 T5 ────────────────────────────────────────────────────────────────
+
+describe("fabClasses", () => {
+  it("is the SAME primary surface as the column's [New] — one verb, two places", () => {
+    // Not "looks similar": the colour string is literally shared, so a change
+    // to the standardized create button reaches the FAB without a second edit.
+    expect(fabClasses()).toContain("bg-brand-600");
+    expect(fabClasses()).toContain("hover:bg-brand-500");
+    expect(buttonClasses("primary")).toContain("bg-brand-600");
+  });
+
+  it("is phone-only — the desktop keeps exactly one create affordance", () => {
+    expect(fabClasses()).toContain("lg:hidden");
+  });
+
+  it("floats in the thumb zone, above the safe-area inset", () => {
+    expect(fabClasses()).toContain("fixed");
+    expect(fabClasses()).toContain("right-4");
+    expect(fabClasses()).toContain("bottom-4");
+    expect(fabClasses()).toContain("mb-[env(safe-area-inset-bottom)]");
+  });
+
+  it("keeps the shared focus ring and the disabled treatment", () => {
+    expect(fabClasses()).toContain("focus-visible:outline-2");
+    expect(fabClasses()).toContain("disabled:opacity-50");
+  });
+
+  it("carries no inline style (CSP: style-src has no 'unsafe-inline')", () => {
+    expect(fabClasses()).not.toMatch(/style\s*=|;\s*$/);
+  });
+
+  it("reserves real clearance, so the button never covers the last row", () => {
+    expect(FAB_CLEARANCE_PX).toBeGreaterThan(56);
+  });
+});
+
+describe("the collapsing search (s25 T5)", () => {
+  it("hides the field below lg ONLY while collapsed; desktop always shows it", () => {
+    expect(searchFieldClasses(false)).toContain("max-lg:hidden");
+    expect(searchFieldClasses(true)).not.toContain("hidden");
+    expect(searchFieldClasses(true)).toContain("flex");
+  });
+
+  it("hides with a VARIANT, never a bare `hidden` fighting a bare `flex`", () => {
+    // Two unvariant display utilities resolve by Tailwind's source order, not
+    // by the order they were typed. `max-lg:` always beats the base, so the
+    // breakpoint decides.
+    expect(searchFieldClasses(false).split(" ")).not.toContain("hidden");
+  });
+
+  it("the header yields only on narrow screens, and only while expanded", () => {
+    expect(searchYieldClasses(true)).toBe("max-lg:hidden");
+    expect(searchYieldClasses(false)).toBe("");
   });
 });

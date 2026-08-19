@@ -191,14 +191,40 @@ treats every OpenAI-compat host as equal once running.
 
 T1 — **the dossier read surface**: Agents realm detail panel (quad-panel pattern, T0 primitives)
      over data that exists; config VERBS wired to the existing endpoints.
+     ✅ **LANDED 2026-08-18 (#186)** — read-only dossier quad; the session-reachable write door
+     was honestly punted to T2.
 T2 — **Settings/Agents domain**: the policy page (defaults for new agents; the discriminator
      rule documented in-page).
+     ✅ **LANDED 2026-08-18 (#198)** — `AgentBinding/set` (enabled only; scope=`send` so
+     supervisory grants can't reach it; audit row + CAS) consumed by the dossier toggle AND
+     Settings→Agents. Known gap (#198 body): claim paths lack an `enabled` term — disabled
+     bindings' queued rows stay claimable. Next-batch candidate.
 T3 — **backfill**: the verb + envelope + ledger progress.
+     ✅ **LANDED 2026-08-18** — v1 routes + floor-request approval door (#184); v2 surplus-burns-
+     the-backlog + scouts-then-troops (#187). The true per-request budget envelope
+     (claim-gate CASE term) LANDED 2026-08-18 (#195).
 T4 — **BYOK via Bureau**: per-tenant provider credentials; guardrails ride the key.
+     ✅ **LANDED 2026-08-18 (#203 + #204)** — the key never enters the agent worker: Bureau
+     proxies the call and injects the header (`POST /internal/bureau/binding-use`, authorized
+     by rows the caller cannot write). Resolution order candidate credRef → binding default →
+     platform env, where env is reached ONLY when nobody named a credential — a named-but-
+     unresolvable one refuses rather than spending the operator's key. #204 wired the three
+     tenant-facing pipelines (extract, mailVerbs, watchCompose); the bouncer/ledger/proposals
+     paths deliberately stay on the platform budget.
 T5 — **the frontier**: a/b assignment → outcome join → Allen's digest → (later) learned router.
+     ✅ **T5a assignment LANDED 2026-08-18** — `chooseArm` (deterministic FNV-1a per invocation)
+     in `models.ts`, arm recorded in result_json; extract is the first arena (explore arm live on
+     eric@'s extractor). ✅ **Digest LANDED (#183)**. Outcome join + learned router still open.
 T6 — **CLI parity**: `bullmoose agent …` learns the extract pipeline (Eric's @local
      out-of-budget path), the dossier verbs (`show`, `budget`, `model`, `backfill`), and the
      @local ladder (`local setup` / `local connect`, `models [--host]`).
+     ✅ **DOSSIER VERBS LANDED 2026-08-18 (#201)** — `agent show|budget|model|backfill|enable|
+     disable`, split by which plane can reach each door (session vs ADMIN_TOKEN) and refusing
+     to fake success when it cannot. `--set` is read-modify-write because `POST /extractor`
+     rewrites the whole config; re-provisioning a DISABLED binding needs `--yes` (a tuning
+     knob may not un-pull the kill switch).
+     ✅ **LANDED 2026-08-18 (#192)** — extract in the runner (byte-drift-guarded prompt), `models`,
+     `local connect`/`local setup` (install-with-consent, rung-0 default); live-smoked on alpaca.
 
 Sequencing: T1 first (it is the reading surface every other task's knobs land on); T3 and T6
 are independent; T4 waits for a second tenant to want it; T5a can start accruing assignments
@@ -211,6 +237,28 @@ any time — data compounds, so earlier is better.
 3. **Assignment ratio for T5a** — *recommendation: 10% exploration over the menu's non-primary
    candidates; 0% for tier-3-producing pipelines.*
 4. **Where Allen's frontier digest lands** — *recommendation: mail (his medium), monthly.*
+
+## Open follow-ups (surfaced by the wave-4 build, 2026-08-18)
+- ~~**`AgentBinding/get` does not exist.**~~ ✅ **CLOSED (#206)** — `AgentBinding/get` ships the
+  roster (no `/query`: bounded collections take `/get` alone, the Identity precedent). The verbs
+  adopted it in #211 via `pickVerbBinding`, which never picks a disabled binding and falls back
+  to the server's own order rather than a name we invented.
+- ~~**Budget/model writes have no session-reachable door.**~~ ✅ **CLOSED (#206)** — `/set` learned
+  budgets and the model menu on the `send` scope, preserving every unmentioned config key
+  (proved both directions). **The CLI has not adopted it yet** — still on the operator plane;
+  its help now says so rather than claiming no door exists.
+- ~~**No BYOK surface.**~~ ✅ **CLOSED (#210)** — `ProviderCredential/{get,set}` sealed through the
+  Bureau, gated on **`vault`** (NOT `send`): `vault` is absent from `GRANTABLE_SCOPES`, so no
+  operator act can make a delegated session able to seal. The status READ is gated lower on
+  purpose, so a refusing credential can never look fine.
+
+## Still open (2026-08-18)
+- **The provisioner plants a dead SRV target.** `services/provision/wrangler.jsonc` `JMAP_HOST`
+  is still the 404ing workers.dev host — the upstream source of the stale base #201 found on a
+  real machine. Every tenant provisioned since the cutover carries it.
+- **`POST /extractor` never validated the model menu** (found by #206): `provider` is a free
+  string, so an unknown host fails later at spend time inside `callModel` rather than at
+  provision time.
 
 ## References
 - `services/provision/src/index.ts` — bindings CRUD, enable/disable, lifecycle, extractor

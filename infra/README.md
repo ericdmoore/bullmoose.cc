@@ -109,7 +109,7 @@ incremental-sync test.
 ## 5. Smoke test
 
 ```sh
-TOKEN=... BASE=https://bullmoose-jmap.<account>.workers.dev
+TOKEN=... BASE=https://app.bullmoose.cc   # NOT bullmoose-jmap.<acct>.workers.dev — that 404s now
 ACCT=t_dev__a_local
 
 # session

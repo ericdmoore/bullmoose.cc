@@ -127,6 +127,10 @@ import App from "../layouts/AppTw.astro";
     border-bottom: 1px solid var(--line);
     background: none;
     text-align: left;
+    /* s25 T3 — the row became a real link (/contacts?card=…); dressed as the
+       button it replaced. */
+    color: inherit;
+    text-decoration: none;
   }
   .card-row:hover {
     background: var(--bg-alt);
@@ -230,6 +234,28 @@ import App from "../layouts/AppTw.astro";
     .contacts-panes {
       grid-template-columns: 1fr;
       overflow-y: auto;
+    }
+  }
+
+  /* s25 T1 — the 390px audit: same egregious bug as /mail, same fix. `.body`
+     is a flex ROW, so the CollectionColumn's fixed width crushed the card
+     list on a phone; below lg it stacks (the column renders itself full-width
+     and height-capped there). 1023.98px = below Tailwind's lg, where the
+     column swaps its own width classes. */
+  @media (max-width: 1023.98px) {
+    .body {
+      flex-direction: column;
+    }
+
+    /* s25 T5 — clearance for the "New contact" FAB. Same rule as /mail: the
+       floating button takes no space in flow, so the scroll containers pad
+       themselves out from under it rather than letting it cover the last card
+       (and the detail pane's own actions). 72px is `FAB_CLEARANCE_PX`
+       (lib/ui/classes.ts); the inset clears the home indicator. */
+    .card-list,
+    .card-detail,
+    .contacts-panes {
+      padding-bottom: calc(72px + env(safe-area-inset-bottom));
     }
   }
 </style>

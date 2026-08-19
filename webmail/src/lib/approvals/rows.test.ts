@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { AGENT_CAP, MAIL_CAP } from "../jmap/capabilities";
 import { defaultSession } from "../jmap/FakeJmapClient";
 import type { ActionProposal } from "./types";
-import { parseProposal } from "./types";
+import { parseProposal, PROPOSAL_STATUSES } from "./types";
 import {
   costLabel,
   HOLD_UNWIRED_NOTE,
@@ -153,6 +155,34 @@ describe("summarizeProposal — one line per row, grant-request included", () =>
     expect(summarizeProposal(p)).toBe("Reply to grace@example.test — “Re: Kickoff”");
   });
 
+  it("headlines a proposed hold by WHEN and with whom", () => {
+    const p = base({
+      kind: "verb-schedule",
+      tier: 1,
+      payload: {
+        verb: "schedule",
+        title: "Board quote call",
+        start: "2026-08-20T15:00:00",
+        timeZone: "America/New_York",
+        attendees: ["sergio@example.com", "kim@x.test", "dana@x.test"],
+      },
+    });
+    expect(summarizeProposal(p)).toBe(
+      "Hold 2026-08-20 15:00 America/New_York — “Board quote call” with sergio@example.com, kim@x.test +1",
+    );
+  });
+
+  it("a hold with NO time leads with that, because it is a different decision", () => {
+    const p = base({
+      kind: "verb-schedule",
+      tier: 1,
+      payload: { verb: "schedule", title: "Coffee sometime", start: null, attendees: [] },
+    });
+    // Not a gap papered over: the agent refused to invent a time, and the row
+    // says so where a person will read it.
+    expect(summarizeProposal(p)).toBe("Hold “Coffee sometime” — NO TIME chosen; write one in or decline");
+  });
+
   it("headlines a grant-request as an ask — same summarizer, same queue (arch.md §1)", () => {
     const p = base({
       kind: "grant-request",
@@ -273,6 +303,39 @@ describe("parseProposal (types.ts)", () => {
   it("fails an unknown tier CLOSED — unknown reversibility reads as irreversible", () => {
     expect(parseProposal({ id: "x", tier: 9 })?.tier).toBe(3);
     expect(parseProposal({ id: "x" })?.tier).toBe(3);
+  });
+
+  it("carries `yanked` — a retraction must never re-present as pending", () => {
+    // The s03.D T2 retraction: a held proposal the human took back. Before
+    // the enum learned it, `parseProposal` coerced the unknown status to
+    // "pending" and the queue re-offered Approve on an action the human had
+    // just retracted — the exact lie the yank verb exists to prevent.
+    const p = parseProposal({ id: "x", status: "yanked" });
+    expect(p?.status).toBe("yanked");
+  });
+
+  it("mirrors the server's status enum EXACTLY — a new server state must fail here, loudly", () => {
+    // The authority is what the server actually WRITES: every
+    // `status = '<value>'` in the ActionProposal methods (decide / yank /
+    // hold / commit) and the agent worker's sweeps (expire, needsInfo
+    // reopen). Extracted from the source so a state added there without a
+    // client mapping fails this test by name instead of silently parsing as
+    // "pending" (how `yanked` slipped through).
+    const serverFiles = [
+      "../../../../services/jmap/src/methods/actionProposal.ts",
+      "../../../../services/agent/src/proposals.ts",
+    ].map((rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8"));
+    const serverStates = new Set<string>();
+    for (const src of serverFiles) {
+      for (const m of src.matchAll(/status\s*=\s*'([a-z-]+)'/g)) serverStates.add(m[1]!);
+    }
+    // Guard the extraction itself: an empty or tiny set means the regex went
+    // stale, not that the server simplified its lifecycle.
+    expect(serverStates.size).toBeGreaterThanOrEqual(7);
+    // Every server state is known to the client…
+    for (const s of serverStates) expect(PROPOSAL_STATUSES, `server writes "${s}"`).toContain(s);
+    // …and the client invents none the server never writes.
+    for (const s of PROPOSAL_STATUSES) expect([...serverStates], `client carries "${s}"`).toContain(s);
   });
 });
 

@@ -23,3 +23,213 @@ import App from "../layouts/AppTw.astro";
 <App title="bullmoose webmail" section="mail" frame="surface">
   <AppShell client:only="preact" />
 </App>
+
+<style is:global>
+  /* ── the margin (s18 A3) — annotations in-situ, below the message card ──
+     Global because the island renders these classes at runtime; no inline
+     styles (CSP). Collapsed to one small chip by default so the reading
+     surface stays calm. Class accents ride the left border. */
+  .anno-margin {
+    margin: -6px 0 14px;
+    padding-left: 14px;
+  }
+  .anno-chip {
+    border: 1px solid var(--line);
+    background: var(--bg-alt);
+    color: var(--fg-muted);
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .anno-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+  }
+  .anno-note {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--fg-muted);
+    border-radius: 6px;
+    background: var(--bg-alt);
+    padding: 8px 12px;
+    font-size: 13px;
+    max-width: 640px;
+  }
+  .anno-commitment {
+    border-left-color: var(--accent);
+  }
+  .anno-decision {
+    border-left-color: var(--warn);
+  }
+  .anno-closed {
+    opacity: 0.55;
+  }
+  .anno-head {
+    margin: 0;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .anno-class {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--fg-muted);
+  }
+  .anno-author,
+  .anno-status {
+    font-size: 11.5px;
+    color: var(--fg-muted);
+  }
+  .anno-status {
+    margin-left: auto;
+    font-style: italic;
+  }
+  .anno-claim {
+    margin: 4px 0 2px;
+    line-height: 1.4;
+  }
+  .anno-why {
+    margin: 0;
+    font-size: 12px;
+    font-style: italic;
+    color: var(--fg-muted);
+  }
+  .anno-verbs {
+    display: flex;
+    gap: 8px;
+    margin: 8px 0 0;
+  }
+  .anno-verbs button {
+    border: 1px solid var(--line);
+    background: var(--bg);
+    border-radius: 5px;
+    padding: 2px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .anno-verbs button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .anno-error {
+    margin: 8px 0 0;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    color: var(--error);
+    background: var(--error-soft);
+    max-width: 640px;
+  }
+
+  /* ── the person-panel (the A3 rider): open items in this thread ── */
+  .person-panel {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--bg-alt);
+    padding: 10px 14px;
+    margin: 0 0 12px;
+  }
+  .person-panel-head {
+    margin: 0;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+  .person-panel-title {
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .person-panel-sub {
+    font-size: 12px;
+    color: var(--fg-muted);
+  }
+  .person-panel-list {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+  }
+  .person-item {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    padding: 3px 0;
+    font-size: 13px;
+  }
+  .person-item-class {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--fg-muted);
+    flex: none;
+  }
+  .person-item-body {
+    min-width: 0;
+  }
+
+  /* s25 T3 — the thread row's body is now a real link (`/mail?thread=…`,
+     ThreadListView `hrefFor`): native back, deep-linkable detail. Dressed as
+     the div it replaced so the swap is invisible — the row already carries
+     the hover/cursor affordances. Kept on this page, not webmail.css (the
+     standing parallel-work rule). */
+  .thread-row a.row-body {
+    color: inherit;
+    text-decoration: none;
+    display: block;
+    min-width: 0;
+  }
+
+  /* s25 T1 — the 390px audit's one egregious mail bug: `.body` is a flex ROW
+     (webmail.css), so the CollectionColumn's fixed width beside the list left
+     the list ~10ch wide on a phone. Below lg the column stacks instead — the
+     CollectionColumn renders itself full-width and height-capped there (its
+     `narrow="stack"` default), and the list keeps the rest of the screen.
+     Interim until Mail adopts the collection sheet + T3's list⇄detail
+     navigation; kept on this page so the shared webmail.css stays untouched
+     by a parallel task (the standing per-page rule). */
+  @media (max-width: 1023.98px) {
+    .body {
+      flex-direction: column;
+    }
+
+    /* s25 T5 — the FAB's clearance. The floating [New] sits bottom-right on a
+       phone, and a fixed button takes no space in flow, so the LAST thread row
+       (and the foot of an open message) would sit underneath it: reachable
+       only by scrolling past the end, which most lists will not do. The fix is
+       not a z-index — the scroll containers pad themselves out from under the
+       button. 72px is `FAB_CLEARANCE_PX` (lib/ui/classes.ts); the inset keeps
+       it clear of the home indicator too (the T1 groundwork). */
+    .thread-list,
+    .thread-view {
+      padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    }
+  }
+
+  /* s25 T6 — the toast learned a second half: a sentence and, when the action
+     is reversible, the way back. Laid out here rather than in webmail.css
+     because only mail renders an Undo today (the standing per-page rule). */
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .toast-undo {
+    border: 1px solid currentcolor;
+    border-radius: 6px;
+    background: none;
+    color: inherit;
+    padding: 2px 10px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    flex: none;
+  }
+  .toast-undo:hover {
+    background: rgb(255 255 255 / 15%);
+  }
+</style>

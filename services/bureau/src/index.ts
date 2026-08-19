@@ -1,4 +1,5 @@
 import { verbPermittedForKind } from "./binding.js";
+import { handleBindingUse } from "./byok.js";
 import { runFetchVerb } from "./fetchVerb.js";
 import { authorizeUse, type UseRequest } from "./grants.js";
 import { reseal, sealAndStore, verifyOpenable } from "./vault.js";
@@ -15,6 +16,12 @@ import type { Env } from "./models.js";
  *
  *   POST /internal/bureau/seal    (x-internal-token)  seal-on-mint / rotate
  *   POST /internal/bureau/verify  (x-internal-token)  decrypt-and-discard health check
+ *   POST /internal/bureau/binding-use
+ *                                 (x-internal-token)  s26 T4 BYOK — the model
+ *                                 router's door: `fetch` only, authorized by
+ *                                 (binding enabled ∧ config names the credRef ∧
+ *                                 account's own principal) + the SAME grant.
+ *                                 `byok.ts` holds the whole argument.
  *   POST /bureau/use              (Bearer)            authorize, audit, RUN a verb
  *
  * Reached only over the BUREAU service binding from `services/agent`; there is
@@ -54,6 +61,15 @@ export default {
 
       if (url.pathname === "/internal/bureau/seal") {
         return handleSeal(request, env);
+      }
+      // s26 T4 — BYOK. A USE path behind the internal token, which exists
+      // because `callModel` holds no bearer to present; `byok.ts` documents
+      // what replaces step 0 and why the substitution is of equal strength.
+      // It ends in the same `runFetchVerb`, so the destination binding, the
+      // kind gate, header-only injection and "only the result comes back" are
+      // the same code, not a parallel implementation.
+      if (url.pathname === "/internal/bureau/binding-use") {
+        return handleBindingUse(request, env);
       }
       if (url.pathname === "/internal/bureau/verify") {
         const body = (await request.json()) as { principalEmail?: string; name?: string };

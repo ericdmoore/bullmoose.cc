@@ -3,6 +3,7 @@ import { fakeD1, type FakeD1 } from "@bullmoose/test-fakes";
 import {
   ESCALATION_WINDOW_NO_HISTORY_MS,
   budgetExhausted,
+  effectiveBudgetExhausted,
   mayClaim,
   type BudgetState,
   type ClaimantIdentity,
@@ -587,6 +588,248 @@ describe("claim gate: SQL and mayClaim agree", () => {
     // Anchor: the stranded set is non-empty (otherwise T9 could never fire).
     expect(strandedCount).toBeGreaterThan(0);
     db.close();
+  });
+
+  it("the backfill envelope (s26 T3 v2): an envelope row draws from ITS purse, and only its purse", async () => {
+    // The v1 verb RECORDED `budgetMicros` on every row it minted
+    // (`context_json.backfillBudgetMicros`) and enforced nothing — an
+    // envelope-exhausted row was still claimed, and an envelope row of a
+    // monthly-exhausted binding sat on a budget that was never its money.
+    // This table is the honest version, and it holds the pure fold
+    // (`effectiveBudgetExhausted`) and the SQL CASE to one verdict per case.
+    const CAP_5 = JSON.stringify({ budgets: { spendPerMonth: 5_000_000 } });
+    const ENVELOPE_CASES: Record<
+      string,
+      {
+        config?: string; // binding config; default: $5/month cap
+        context: string | null; // the row under test's context_json
+        /** Finished backfill-tagged rows (the envelope's spend population). */
+        backfillDone?: Array<{ cost: number | null; lastMonth?: boolean }>;
+        /** Finished NON-backfill spend, this month (the monthly population). */
+        liveDoneCost?: number;
+        /** A T9 overage approved THIS period. */
+        overage?: number;
+        claimant?: "free" | "paid"; // default paid
+        /** The envelope the pure caller should read off the row (null = none). */
+        envelope: number | null;
+        claimable: boolean;
+      }
+    > = {
+      // THE POINT: monthly cap spent through, envelope open → still claimable.
+      // Backfill does not wait on money that was never covering it.
+      "envelope-open-monthly-exhausted": {
+        context: JSON.stringify({ emailId: "e", backfill: true, backfillBudgetMicros: 1_000_000 }),
+        liveDoneCost: 5_000_000,
+        envelope: 1_000_000,
+        claimable: true,
+      },
+      // THE OTHER HALF: envelope spent through, monthly cap wide open →
+      // refused. The v1 gate claimed this row; that claim is the deferred bug.
+      "envelope-exhausted-monthly-open": {
+        context: JSON.stringify({ emailId: "e", backfill: true, backfillBudgetMicros: 500_000 }),
+        backfillDone: [{ cost: 500_000 }],
+        envelope: 500_000,
+        claimable: false,
+      },
+      // A $0 envelope = "mint the rows, spend nothing paid" — exhausted from
+      // the first moment, mirroring spendPerMonth: 0.
+      "envelope-zero": {
+        context: JSON.stringify({ emailId: "e", backfill: true, backfillBudgetMicros: 0 }),
+        envelope: 0,
+        claimable: false,
+      },
+      // An envelope is per-request money, not a monthly allowance: last
+      // month's backfill spend still counts against it (all-time sum).
+      "envelope-counts-last-months-backfill": {
+        context: JSON.stringify({ emailId: "e", backfill: true, backfillBudgetMicros: 500_000 }),
+        backfillDone: [{ cost: 500_000, lastMonth: true }],
+        envelope: 500_000,
+        claimable: false,
+      },
+      // NULL-cost honesty, the monthly gate's exact reading: an unpriced run
+      // adds NOTHING to the envelope's spend — unknown is not a spend.
+      "envelope-null-costs-dont-count": {
+        context: JSON.stringify({ emailId: "e", backfill: true, backfillBudgetMicros: 500_000 }),
+        backfillDone: [{ cost: null }, { cost: null }],
+        envelope: 500_000,
+        claimable: true,
+      },
+      // Live (non-backfill) spend belongs to the monthly sum, never to the
+      // envelope's.
+      "envelope-ignores-live-spend": {
+        context: JSON.stringify({ emailId: "e", backfill: true, backfillBudgetMicros: 500_000 }),
+        liveDoneCost: 4_000_000,
+        envelope: 500_000,
+        claimable: true,
+      },
+      // A T9 overage raises the MONTHLY ceiling — the human who approved
+      // "spend more this month" was not asked about the archive.
+      "envelope-overage-does-not-lift": {
+        context: JSON.stringify({ emailId: "e", backfill: true, backfillBudgetMicros: 500_000 }),
+        backfillDone: [{ cost: 500_000 }],
+        overage: 9_000_000,
+        envelope: 500_000,
+        claimable: false,
+      },
+      // Exhaustion NARROWS the claimant set, exactly like the monthly cap: a
+      // free (homelab) runtime still eats envelope-exhausted rows at $0.
+      "envelope-exhausted-free-claimant": {
+        context: JSON.stringify({ emailId: "e", backfill: true, backfillBudgetMicros: 500_000 }),
+        backfillDone: [{ cost: 500_000 }],
+        claimant: "free",
+        envelope: 500_000,
+        claimable: true,
+      },
+      // ---- no envelope → the monthly gate, exactly as before ----
+      // The surplus pass's shape: backfill-tagged, no budget key. Its comment
+      // is a promise — "still inside the binding's monthly cap".
+      "no-envelope-monthly-open": {
+        context: JSON.stringify({ emailId: "e", backfill: true, surplusPeriod: "2026-08" }),
+        envelope: null,
+        claimable: true,
+      },
+      "no-envelope-monthly-exhausted": {
+        context: JSON.stringify({ emailId: "e", backfill: true, surplusPeriod: "2026-08" }),
+        liveDoneCost: 5_000_000,
+        envelope: null,
+        claimable: false,
+      },
+      // Garbage can only reroute a row to the monthly gate, never widen money:
+      // a string budget is NO envelope, so the open monthly cap admits the row
+      // even though the "envelope" is nominally spent through.
+      "junk-string-budget-is-no-envelope": {
+        context: JSON.stringify({ emailId: "e", backfill: true, backfillBudgetMicros: "500000" }),
+        backfillDone: [{ cost: 600_000 }],
+        envelope: null,
+        claimable: true,
+      },
+      // A budget WITHOUT the backfill tag is also no envelope (nothing mints
+      // this shape; a hand-written row must not buy itself a purse).
+      "budget-without-backfill-tag-is-no-envelope": {
+        context: JSON.stringify({ emailId: "e", backfillBudgetMicros: 500_000 }),
+        backfillDone: [{ cost: 600_000 }],
+        envelope: null,
+        claimable: true,
+      },
+    };
+
+    let e = 0;
+    const mismatches: string[] = [];
+    for (const [name, c] of Object.entries(ENVELOPE_CASES)) {
+      e += 1;
+      const db = fakeD1();
+      const accountId = `a_env_${e}`;
+      const bindingId = `b_env_${e}`;
+      const invId = `inv_env_${e}`;
+      db.seed("agent_bindings", [
+        { id: bindingId, account_id: accountId, name: `env${e}`, config_json: c.config ?? CAP_5 },
+      ]);
+      db.seed("agent_invocations", [
+        {
+          id: invId,
+          account_id: accountId,
+          binding_id: bindingId,
+          binding_name: `env${e}`,
+          status: "pending",
+          created_at: 1,
+          due_at: null,
+          context_json: c.context,
+        },
+      ]);
+      let k = 0;
+      for (const h of c.backfillDone ?? []) {
+        k += 1;
+        const doneAt = h.lastMonth ? MONTH_START - 1 : NOW - HOUR;
+        db.seed("agent_invocations", [
+          {
+            id: `${invId}_bf${k}`,
+            account_id: accountId,
+            binding_id: bindingId,
+            binding_name: `env${e}`,
+            status: "done",
+            created_at: 1,
+            claimed_at: doneAt - 1,
+            done_at: doneAt,
+            cost_micros: h.cost,
+            context_json: JSON.stringify({ emailId: `e${k}`, backfill: true }),
+          },
+        ]);
+      }
+      if (c.liveDoneCost) {
+        db.seed("agent_invocations", [
+          {
+            id: `${invId}_live`,
+            account_id: accountId,
+            binding_id: bindingId,
+            binding_name: `env${e}`,
+            status: "done",
+            created_at: 1,
+            claimed_at: NOW - HOUR,
+            done_at: NOW - HOUR + 1,
+            cost_micros: c.liveDoneCost,
+            context_json: JSON.stringify({ emailId: "elive" }),
+          },
+        ]);
+      }
+      if (c.overage) {
+        db.seed("agent_budget_overages", [
+          {
+            account_id: accountId,
+            binding_id: bindingId,
+            period_key: PERIOD,
+            amount_micros: c.overage,
+            proposal_id: `${invId}_o`,
+            approved_by: "eric",
+            approved_at: NOW - HOUR,
+          },
+        ]);
+      }
+
+      // The pure verdict, from the SAME fixture numbers. The monthly spend
+      // population is every finished run (backfill included — envelope spend
+      // still lands in the month it happened); the envelope's population is
+      // finished backfill-tagged runs, all time, NULLs adding nothing.
+      const thisMonthBackfill = (c.backfillDone ?? [])
+        .filter((h) => !h.lastMonth)
+        .reduce((s, h) => s + (h.cost ?? 0), 0);
+      const allTimeBackfill = (c.backfillDone ?? []).reduce((s, h) => s + (h.cost ?? 0), 0);
+      const claimant = CLAIMANTS[c.claimant ?? "paid"]!;
+      const budgetState: BudgetState = {
+        budgetExhausted: effectiveBudgetExhausted({
+          capMicros: 5_000_000,
+          spentMicros: (c.liveDoneCost ?? 0) + thisMonthBackfill,
+          overageMicros: c.overage ?? 0,
+          backfillEnvelopeMicros: c.envelope,
+          backfillSpentMicros: allTimeBackfill,
+        }),
+        freeRuntimeLive: false,
+        escalationWindowMs: ESCALATION_WINDOW_NO_HISTORY_MS,
+      };
+      const pure = mayClaim({ dueAt: null, privacy: null, requires: null }, claimant, budgetState, NOW);
+
+      const row = await db
+        .prepare(
+          `SELECT 1 AS hit FROM agent_invocations
+           WHERE account_id = ? AND id = ? AND status = 'pending'${claimGateSql("agent_invocations")}`,
+        )
+        .bind(
+          accountId,
+          invId,
+          ...claimGateBinds({
+            now: NOW,
+            claimant,
+            escalationWindowMs: ESCALATION_WINDOW_NO_HISTORY_MS,
+            monthStartMs: MONTH_START,
+          }),
+        )
+        .first<{ hit: number }>();
+      const sql = row !== null;
+
+      if (pure !== c.claimable) mismatches.push(`${name}: pure=${pure}, expected ${c.claimable}`);
+      if (sql !== c.claimable) mismatches.push(`${name}: sql=${sql}, expected ${c.claimable}`);
+      db.close();
+    }
+    expect(mismatches).toEqual([]);
   });
 
   it("the T9 period key and period end bracket the month the spend sum uses", () => {

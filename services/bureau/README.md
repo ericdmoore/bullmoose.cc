@@ -31,8 +31,9 @@ the same reason — they conflate the key with the vault. §1's contract is that
   mints anything. Adding a token-issuing route here would route around the two
   kill switches (`008`'s `agent_bindings.enabled`, `s03.A`'s
   `grants.revoked_at`) that the whole authentication model is built to inherit.
-- **Not publicly routed.** Reachable only over the `BUREAU` service binding on
-  `services/agent`.
+- **Not publicly routed.** Reachable only over a `BUREAU` service binding —
+  from `services/agent` (every verb) and, since s26 T4, from
+  `services/provision` (`/internal/bureau/seal` for BYOK).
 - **Not a generic executor.** The rejected `exec(code)` design (bureau.md §2)
   failed because it had no closed set of things it could do. The verb vocabulary
   is closed, small, and typed to the credential's kind.
@@ -43,6 +44,7 @@ the same reason — they conflate the key with the vault. §1's contract is that
 |---|---|---|
 | `POST /internal/bureau/seal` | `x-internal-token` | seal-on-mint / rotate; writes `enc_json` |
 | `POST /internal/bureau/verify` | `x-internal-token` | decrypt-and-discard health check → `{ok}` |
+| `POST /internal/bureau/binding-use` | `x-internal-token` | s26 T4 BYOK — `fetch` for one binding with its tenant's own key |
 | `POST /bureau/use` | `Bearer` (invocation token) | authenticate → authorize `(principal, credRef, verb)` → audit → **run the verb** |
 
 ```jsonc
@@ -78,11 +80,38 @@ are followed, re-checking the allowlist each time.
 **501** — but from *behind* the kind gate, so an unimplemented verb pointed at
 the wrong kind is a 403 and not a 501. They are **T5**.
 
-**Egress redaction is not here yet** (§7, **T4**). §7 ranks it explicitly *below*
+**Egress redaction is not here yet** (§7, **s04 T4** — not to be confused with
+s26 T4 below, which is BYOK). §7 ranks it explicitly *below*
 destination binding — redaction stops accidents, binding stops adversaries — so
 it is the piece that may arrive second. The seam is wired:
 `fetchVerb.ts`'s `EgressFilter` receives the response text plus the exact values
 the request injected.
+
+## BYOK: `/internal/bureau/binding-use` (s26 T4)
+
+The model router (`services/agent/src/models.ts`) runs beneath every pipeline and
+holds no bearer — the cloud claim path mints a `bmi_` token and drops the
+plaintext — so it cannot use `/bureau/use`. This door replaces step 0 with three
+checks over rows the caller cannot write, and keeps everything else:
+
+1. `agent_bindings.enabled` — `008`'s kill switch reaches BYOK spend;
+2. the binding's own `config_json` NAMES the credRef — `config_json` is the
+   operator plane, so which credentials a binding may spend is not the caller's
+   to decide;
+3. the credential resolves under the ACCOUNT'S OWN principal — binding A can
+   never reach tenant B's key, which is what makes handing this to a second
+   tenant safe.
+
+Then the same standing grant, the same kind gate, the same destination binding,
+the same header-only injection, the same `runFetchVerb`. The verb is fixed to
+`fetch`: an internal-token-reachable `sign_sigv4` would be a signing oracle,
+which is a different and much larger thing than "let a tenant's agent spend a
+tenant's model key".
+
+The feature this exists for is not in this repo. A tenant's OpenRouter
+guardrails, redaction and allowlists apply to their agents' calls because the
+call authenticates as them — we do not interpret, mirror or re-implement any of
+it, so it cannot drift from what their provider console says.
 
 ## Bindings, and the ones it deliberately lacks
 
@@ -115,6 +144,6 @@ npx wrangler secret put VAULT_MASTER_KEY -c services/bureau/wrangler.jsonc
 npx wrangler secret put INTERNAL_TOKEN   -c services/bureau/wrangler.jsonc
 ```
 
-Deploy **before** `services/agent`, which binds it. On an existing deployment the
-key must be moved rather than regenerated — a fresh random value cannot open rows
-already sealed. See [`docs/DEPLOY.md`](../../docs/DEPLOY.md) §2.
+Deploy **before** `services/agent` and `services/provision`, both of which bind
+it. On an existing deployment the key must be moved rather than regenerated — a
+fresh random value cannot open rows already sealed. See [`docs/DEPLOY.md`](../../docs/DEPLOY.md) §2.

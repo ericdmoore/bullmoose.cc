@@ -1,4 +1,4 @@
-// The nine sections, in order, with the reason each unbuilt one is dark.
+// The ten sections, in order, with the reason each unbuilt one is dark.
 //
 // ⚠️ THE ORDER IS A CLAIM, not a layout detail. The s07 devPlan's "What this is
 // NOT" section is explicit: this is a collaboration space for people and
@@ -8,11 +8,21 @@
 // decide → when → who-and-what → tools:
 //
 //   approvals, agents,  what needs me, who is asking —
-//   activity            — and what already happened in my name (s23)
+//   activity, goals     — what already happened in my name (s23), and what
+//                         still stands in my name (s20 T6)
 //   calendar            what is about to happen
 //   mail, contacts      the correspondence and the people in it
+//   notes               your own writing (s18 N1) — authored, not filed
 //   files               storage, deliberately NOT the front of the product
 //   search, settings    tools over the above, not nouns of their own
+//
+// Goals closes that cluster for the same reason (s20 T6). Approvals asks what
+// needs me NOW; activity says what was done in my name; a goal is the standing
+// authority under which future work will be done in my name — the prospective
+// twin of the queue, and the one place the answer to "what did I hand over, and
+// which checkpoints still stop for me?" is legible. After `calendar` it would
+// read as a planner; beside `settings` it would read as configuration, and a
+// delegation you configure once and stop reading is the failure mode.
 //
 // Activity sits in the FIRST cluster on purpose (s23 readme): it is the same
 // accountability family as approvals — the retrospective twin of the queue.
@@ -32,9 +42,11 @@ export type SectionId =
   | "approvals"
   | "agents"
   | "activity"
+  | "goals"
   | "calendar"
   | "mail"
   | "contacts"
+  | "notes"
   | "files"
   | "search"
   | "settings";
@@ -104,6 +116,18 @@ export const SECTIONS: readonly Section[] = [
     status: "live",
   },
   {
+    id: "goals",
+    label: "Goals",
+    href: "/goals",
+    // Live as of s20 T6 over the `Goal/*` methods: a goal is a delegation
+    // contract with done-ness — a sentence, four clauses, and a workflow whose
+    // plan is itself approvable. The screen carries its own caveats (which
+    // checkpoint classes can graduate, and that the outreach bodies are
+    // templates until a model planner lands) rather than duplicating them into
+    // the nav where they would drift.
+    status: "live",
+  },
+  {
     id: "calendar",
     label: "Calendar",
     href: "/calendar",
@@ -131,6 +155,24 @@ export const SECTIONS: readonly Section[] = [
     status: "live",
   },
   {
+    id: "notes",
+    label: "Notes",
+    href: "/notes",
+    // Live as of s18 N1 — the human-authored noun, and deliberately NOT the
+    // agent's margin commentary: an Annotation is a claim about your mail that
+    // you adjudicate (it renders beside the message, s18 A3); a Note is a
+    // document you author. Two entities, resolved explicitly (s18 devPlan,
+    // 2026-08-17), and the nav must not imply one place for both.
+    //
+    // It sits after contacts and ahead of files on the header comment's own
+    // logic: the correspondence, the people in it, then YOUR OWN writing — all
+    // of it before storage, because a note is authored rather than filed. What
+    // the realm cannot do it says on its own face (lib/notes/notes.ts: nothing
+    // federates, an @address does nothing) rather than in the nav, which would
+    // drift.
+    status: "live",
+  },
+  {
     id: "files",
     label: "Files",
     href: "/files",
@@ -148,7 +190,7 @@ export const SECTIONS: readonly Section[] = [
   },
   {
     id: "search",
-    label: "Search",
+    label: "Finder",
     href: "/search",
     // Live as of s07 T6, as the stub-that-names-its-limits: one query fans out
     // to mail (FTS5-indexed), contacts and calendar (full scans), and the page

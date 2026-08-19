@@ -91,6 +91,18 @@ export interface BudgetState {
    */
   budgetExhausted: boolean;
   /**
+   * s17 — this row is HANDED-OFF work and the binding that handed it is out of
+   * money for the month. Pure twin of `handoffOriginBudgetExhaustedSql`.
+   *
+   * OPTIONAL, and absent means false, which is the DefaultCase in the strong
+   * sense: an ordinary invocation was not handed to anyone, so there is no
+   * second month to consult and a caller that predates handoffs states nothing
+   * and gets exactly today's verdict. Compute it with `budgetExhausted()` over
+   * the HANDING binding's numbers — same function, different binding — so the
+   * two months can never be arithmetically different questions.
+   */
+  handoffOriginBudgetExhausted?: boolean;
+  /**
    * A free claimant (`claimant_free = 1`) claimed on this account within
    * FREE_RUNTIME_LIVE_MS of now — readme decision 3's absence-inference.
    */
@@ -157,6 +169,69 @@ export function escalationWindowMs(pastDurationsMs: readonly number[]): number {
 export function budgetExhausted(p: { capMicros: number | null; spentMicros: number; overageMicros: number }): boolean {
   if (p.capMicros === null) return false;
   return p.spentMicros >= p.capMicros + p.overageMicros;
+}
+
+/**
+ * THE BACKFILL ENVELOPE, pure (s26 T3 v2) — the twin of
+ * `backfillEnvelopeExhaustedSql`'s comparison.
+ *
+ * A manual backfill (`POST /agent-bindings/{id}/backfill {budgetMicros}`)
+ * names its own money: the envelope rides on every row it mints
+ * (`context_json.backfillBudgetMicros`), and an envelope-carrying row draws
+ * from THAT purse, not the binding's monthly cap — the admin already sized
+ * this spend when they typed the number, and a monthly gate would make the
+ * archive compete with live mail for a budget that was never meant to cover
+ * it.
+ *
+ *   exhausted  ⟺  backfillSpent ≥ envelope
+ *
+ * `backfillSpent` is the binding's ALL-TIME summed `cost_micros` over
+ * finished backfill-tagged runs — all time, not month-bucketed, because an
+ * envelope is per-request money, not a monthly allowance; and NULL costs add
+ * nothing (unknown is not a spend), exactly as in the monthly sum. A later
+ * request's envelope therefore reads as a TOTAL backfill ceiling: prior
+ * backfill spend counts against it, which is the conservative direction.
+ *
+ * A 0 envelope is exhausted from the first moment — "mint the rows, spend
+ * nothing paid" — mirroring `spendPerMonth: 0`. Exhaustion is NOT an error
+ * and narrows the claimant set exactly as the monthly cap does: the rows sit
+ * pending, a free (homelab) runtime may still eat them at $0, and the next
+ * envelope or surplus pass picks them back up.
+ */
+export function backfillEnvelopeExhausted(p: { envelopeMicros: number; backfillSpentMicros: number }): boolean {
+  return p.backfillSpentMicros >= p.envelopeMicros;
+}
+
+/**
+ * The ONE budget verdict a row gets — the fold callers use to fill
+ * `BudgetState.budgetExhausted`, stated here so the pure and SQL formulations
+ * of the envelope CASE cannot drift apart (claimGateAgreement.test.ts holds
+ * them together):
+ *
+ *   envelope-carrying backfill row → its envelope, INSTEAD OF the monthly cap;
+ *   every other row (live work, an envelope-less manual backfill, a surplus
+ *   mint) → the monthly cap, exactly as before.
+ *
+ * `backfillEnvelopeMicros` is non-null ONLY when the row is backfill-tagged
+ * (`context_json.backfill === true`) AND carries a numeric
+ * `backfillBudgetMicros` — the caller's contract, matching
+ * `backfillEnvelopeSql`. Junk degrades to null, i.e. to the monthly gate:
+ * garbage can reroute a row back to today's behavior, never widen its money.
+ */
+export function effectiveBudgetExhausted(p: {
+  capMicros: number | null;
+  spentMicros: number;
+  overageMicros: number;
+  backfillEnvelopeMicros: number | null;
+  backfillSpentMicros: number;
+}): boolean {
+  if (p.backfillEnvelopeMicros !== null) {
+    return backfillEnvelopeExhausted({
+      envelopeMicros: p.backfillEnvelopeMicros,
+      backfillSpentMicros: p.backfillSpentMicros,
+    });
+  }
+  return budgetExhausted(p);
 }
 
 /**
@@ -229,6 +304,8 @@ export function fit(capabilities: ClaimCapabilities | null | undefined, requires
  *   2. budget exhausted    → never, regardless of due-ness. Exhaustion narrows
  *      the claimant set; it does not fail the invocation. (Past-due liveness
  *      is T3's watchdog, which claims OUTSIDE this gate.)
+ *   2b. the HANDING binding's budget exhausted (s17, handed-off rows only) →
+ *      never, for the same reason and by the same arithmetic.
  *   3. due_at set          → eligible from (due_at − escalationWindow) on,
  *      past-due included.
  *   4. due_at NULL         → eligible unless a free runtime is live (the
@@ -244,6 +321,13 @@ export function policy(
   if (claimant.isFree) return true;
   if (facets.privacy === "pinned") return false;
   if (budget.budgetExhausted) return false;
+  // s17 — and the HANDING binding's month, for handed-off work only. A
+  // CONJUNCTION with the line above, never a substitution: a binding that has
+  // spent its month must not be able to keep working on a colleague's money by
+  // handing its backlog over. See `handoffOriginBudgetExhaustedSql` for the
+  // full budget decision and for why the sender's cap is a gate rather than a
+  // purse.
+  if (budget.handoffOriginBudgetExhausted === true) return false;
   if (facets.dueAt !== null) return facets.dueAt - budget.escalationWindowMs <= now;
   return !budget.freeRuntimeLive;
 }

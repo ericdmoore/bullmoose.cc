@@ -42,6 +42,23 @@ import type { PrivacyClass } from "./mayClaim.js";
 /** Privacy as an ORDER, tightest last. A child may raise, never lower. */
 const PRIVACY_RANK: Record<PrivacyClass, number> = { open: 0, internal: 1, pinned: 2 };
 
+/**
+ * The TIGHTER of two privacy classes, `null`-tolerant (null = unstamped, the
+ * weakest thing there is — it constrains nothing, so it loses to any class).
+ *
+ * Exported because s17's handoff needs exactly this and must not grow a second
+ * rank table: when work crosses to another binding, the child's floor is the
+ * tighter of the sender's stamp and the RECEIVER's declared `privacyFloor` —
+ * otherwise a chain could carry A's `open` work under B, whose operator set a
+ * floor of `internal`, and the floor rule (jobs-and-facets §6) would hold
+ * everywhere except the one hop that crossed an administrative boundary.
+ */
+export function tightestPrivacy(a: PrivacyClass | null, b: PrivacyClass | null): PrivacyClass | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return PRIVACY_RANK[a] >= PRIVACY_RANK[b] ? a : b;
+}
+
 /** Is this an authored privacy class at all? (An unknown string is refused.) */
 export function isPrivacyClass(v: unknown): v is PrivacyClass {
   return v === "open" || v === "internal" || v === "pinned";
@@ -140,6 +157,15 @@ export interface Refusal {
     | "privacy"
     | "urgency"
     | "identity"
+    /**
+     * s17 — the CROSS-BINDING hop itself was refused: no reciprocal permission
+     * on the operator plane, a binding already in this chain (a cycle), or one
+     * crossing too many. Its own axis rather than "identity" because the fix is
+     * an operator's, not a planner's: the plan is fine, the route is not, and an
+     * audit that counts refusals by axis should be able to see "CJ tried to hand
+     * to a colleague who does not accept from her" as its own number.
+     */
+    | "handoff"
     | "job"
     | "needs"
     | "context"
@@ -238,9 +264,13 @@ function asStringSet(v: unknown): string[] | null {
  *                the PAID cloud, so a child that minted `due_at = now` would
  *                buy itself a cloud model its parent was told to wait for.
  *   identity     accountId/bindingId must equal the parent's. A child on
- *                another binding is agent→agent delegation — `agents:invoke`,
- *                still deferred (s17 step 2). Refusing it here is what keeps
- *                this task from quietly shipping that.
+ *                another binding is agent→agent delegation, and it does not
+ *                come through here: `handoff.ts` builds a NARROWED ceiling
+ *                (sender ∩ receiver, plus the receiver's privacy floor) whose
+ *                `bindingId` IS the receiver's, and hands THAT to this
+ *                function — so the axis below still holds, and a planner that
+ *                names another binding in a plain plan is still refused. The
+ *                refusal is the seam, not the ban.
  *   job          jobId must equal the parent's: a node cannot escape into
  *                another Job's budget.
  *   needs        plan-local keys only, and only keys of EARLIER tasks — which
@@ -271,7 +301,7 @@ export function attenuateChild(
       "identity",
       String(req.bindingId),
       parent.bindingId,
-      "a child runs under its parent's binding — cross-binding delegation is agents:invoke, deferred",
+      "a child runs under its parent's binding — a cross-binding hop is a HANDOFF (handoff.ts), which intersects both bindings' ceilings and checks the reciprocal allowlists; a plan may not mint one directly",
     );
   }
   if (req.jobId !== undefined && req.jobId !== parent.jobId) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { OriginRefusal, SECRET_FIELDS, carriesSecret, normalizeOrigin, readBase, resolveTarget } from "./origins";
 
-const SITE = "https://mail.bullmoose.cc";
+const SITE = "https://app.bullmoose.cc";
 const VAULT = "https://agent.bullmoose.cc";
 
 describe("normalizeOrigin", () => {
@@ -66,10 +66,10 @@ describe("resolveTarget — the T2 boundary", () => {
   });
 
   it("REFUSES an absolute path that escapes the vault origin", () => {
-    expect(() => resolveTarget({ vault: VAULT, site: SITE }, "https://mail.bullmoose.cc/steal", "secret")).toThrow(
+    expect(() => resolveTarget({ vault: VAULT, site: SITE }, "https://app.bullmoose.cc/steal", "secret")).toThrow(
       OriginRefusal,
     );
-    expect(() => resolveTarget({ vault: VAULT, site: SITE }, "//mail.bullmoose.cc/steal", "secret")).toThrow(
+    expect(() => resolveTarget({ vault: VAULT, site: SITE }, "//app.bullmoose.cc/steal", "secret")).toThrow(
       OriginRefusal,
     );
   });

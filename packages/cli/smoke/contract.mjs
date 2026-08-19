@@ -584,6 +584,120 @@ async function main() {
       const r = sh("$BM archive em_008 2>/dev/null", env);
       eq(r.stdout.trim(), "em_008", "stdout carries only the acted-on id");
     });
+
+    // ---- s26 T6b: the agent dossier verbs ------------------------------
+    //
+    // The properties here are ALL process-boundary properties, which is why
+    // they live in the smoke rather than in agentDossier.test.ts: exit codes
+    // under `--json` (where the refusal path ends in `exitFlushed`), stdout vs
+    // stderr under real redirection, and a `--json` payload surviving a pipe.
+
+    check("§026", "`agent show --json` is exactly one object, and jq-able through a pipe", () => {
+      const r = sh("$BM agent show extractor --json 2>/dev/null", env);
+      eq(r.code, 0, `exit code (stderr: ${r.stderr})`);
+      eq(r.stdout.trimEnd().split("\n").length, 1, "one line, one value (§1.3 show-style)");
+      const view = JSON.parse(r.stdout);
+      eq(view.binding.name, "extractor", "the named binding");
+      eq(view.budget.remainingMicros, 1_690_000, "cap + overage − spent");
+      assert(view._self.endsWith(`/console/agents/${account}`), `_self is the document read: ${view._self}`);
+      assert(view._links.account && view._links.agents, "HAL links follow the house convention");
+      // No operator credential is configured in this smoke, so the lifecycle
+      // link would resolve to nothing — the explorer's rule is to omit it.
+      assert(!view._links.lifecycle, "a link nobody could follow must be omitted, not fabricated");
+    });
+
+    check("§026", "the dossier is a record: `> /dev/null` leaves only chrome", () => {
+      const r = sh("$BM agent show extractor > /dev/null", env);
+      eq(r.code, 0, "exit code");
+      eq(r.stdout, "", "stdout must be empty when redirected away");
+      assert(/does not separate them/.test(r.stderr), `the caveat belongs on stderr:\n${r.stderr}`);
+    });
+
+    check("§026", "a NULL cost prints `not recorded`, never a flattering $0.00", () => {
+      const r = sh("$BM agent show extractor 2>/dev/null", env);
+      assert(/not recorded/.test(r.stdout), `the undetermined cost must say so:\n${r.stdout}`);
+      assert(/\$0\.002100/.test(r.stdout), "a sub-cent cost keeps its digits");
+    });
+
+    check("§026", "`agent show --ids | xargs` composes — the id is a bare token", () => {
+      const r = sh("$BM agent show extractor --ids 2>/dev/null | xargs -n1 echo bound", env);
+      eq(r.code, 0, "exit code");
+      eq(r.stdout.trim(), "bound bind_extract", "one bare id, through xargs");
+    });
+
+    check("§026", "`agent show --json | head -c1` exits 0 — EPIPE on the dossier path too", () => {
+      const r = sh("$BM agent show extractor --json 2>/dev/null | head -c1", env);
+      eq(r.code, 0, "exit code");
+      assert(!/EPIPE|node:internal/.test(r.stderr), `stack trace leaked:\n${r.stderr}`);
+    });
+
+    check("§026", "an unknown binding exits 3 and names what the account carries", () => {
+      const r = bm("agent show allen");
+      eq(r.code, 3, "not found");
+      assert(/extractor/.test(r.stderr), "the refusal lists the real bindings");
+      assert(/--account/.test(r.stderr), "and names the flag that reaches another account");
+    });
+
+    check("§026", "`agent disable` really writes, and `show` reflects it", () => {
+      const off = sh("$BM agent disable extractor 2>/dev/null", env);
+      eq(off.code, 0, "exit code");
+      assert(/DISABLED/.test(off.stdout), `stdout carries the record:\n${off.stdout}`);
+      const view = JSON.parse(sh("$BM agent show extractor --json 2>/dev/null", env).stdout);
+      eq(view.binding.enabled, false, "the switch really moved");
+      const on = sh("$BM agent enable extractor 2>/dev/null", env);
+      eq(on.code, 0, "re-enable");
+      eq(JSON.parse(sh("$BM agent show extractor --json 2>/dev/null", env).stdout).binding.enabled, true, "back on");
+    });
+
+    check("§026", "`agent disable --dry-run` writes nothing at all", () => {
+      const r = bm("agent disable extractor --dry-run");
+      eq(r.code, 0, "exit code");
+      eq(JSON.parse(sh("$BM agent show extractor --json 2>/dev/null", env).stdout).binding.enabled, true, "unchanged");
+    });
+
+    check("§026", "an operator-plane verb with no operator credential exits 4 and names the fix", () => {
+      const r = bm("agent budget extractor --set 5000000");
+      eq(r.code, 4, "auth: the door exists, this credential cannot reach it");
+      assert(/bullmoose admin init/.test(r.stderr), `the message must name what would work:\n${r.stderr}`);
+      assert(/Nothing was written/.test(r.stderr), "and must not imply a partial write");
+    });
+
+    check("§026", "…and under --json the SAME refusal is a record on stdout, still exit 4", () => {
+      // The `exitFlushed` path: a payload written and then `process.exit`ed is
+      // truncated for any piped reader, and only a real process can show that.
+      const r = sh("$BM agent budget extractor --set 5000000 --json 2>/dev/null", env);
+      eq(r.code, 4, "exit code survives the flush");
+      const rec = JSON.parse(r.stdout);
+      eq(rec.written, false, "the record says plainly that nothing was written");
+      eq(rec.door.plane, "operator", "and which plane the door is on");
+    });
+
+    check("§026", "a binding with no config door is refused BY NAME, exit 2", () => {
+      const r = bm("agent budget emily --set 5000000");
+      eq(r.code, 2, "usage: no door exists for this binding, whatever you type here");
+      assert(/AgentBinding\/set v1 writes only/.test(r.stderr), `the refusal must teach the map:\n${r.stderr}`);
+    });
+
+    check("§026", "reads need no operator credential: `agent budget` and `agent model` answer anyway", () => {
+      const b = sh("$BM agent budget extractor --json 2>/dev/null", env);
+      eq(b.code, 0, "budget read");
+      eq(JSON.parse(b.stdout).capMicros, 2_000_000, "the cap");
+      const m = sh("$BM agent model extractor --json 2>/dev/null", env);
+      eq(m.code, 0, "model read");
+      eq(JSON.parse(m.stdout).menu[0].candidates[0], "openrouter/minimax/minimax-m3", "the primary candidate");
+    });
+
+    check("§026", "`agent backfill` without --since is exit 2 — the window is never defaulted", () => {
+      const r = bm("agent backfill extractor");
+      eq(r.code, 2, "usage");
+      assert(/--since is required/.test(r.stderr), `the refusal must say why:\n${r.stderr}`);
+    });
+
+    check("§026", "`agent backfill` with no operator credential exits 4 and queues nothing", () => {
+      const r = bm("agent backfill extractor --since 30d");
+      eq(r.code, 4, "auth");
+      assert(/Nothing was queued/.test(r.stderr), "it must not imply work started");
+    });
   } finally {
     server.kill("SIGTERM");
     rmSync(dir, { recursive: true, force: true });

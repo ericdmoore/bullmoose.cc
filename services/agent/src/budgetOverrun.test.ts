@@ -462,6 +462,38 @@ describe("DefaultCase: nothing stranded, nothing asked", () => {
     expect(s.proposals()).toEqual([]);
   });
 
+  it("over cap but every waiter carries a backfill ENVELOPE → its own purse, never this month's question", async () => {
+    // s26 T3 v2: an envelope-carrying backfill row draws from its envelope,
+    // not the monthly budget, so a monthly overage would release NOTHING for
+    // it — the jobBudget precedent: never ask a human to approve money that
+    // frees no work. Envelope exhaustion is not an error either; the row
+    // simply waits for the next envelope or surplus.
+    const s = await scaffold();
+    s.spend(CAP);
+    s.seedInvocation("inv_bf", {
+      context_json: JSON.stringify({ emailId: "e_thread", backfill: true, backfillBudgetMicros: 500_000 }),
+    });
+
+    expect(await s.sweep()).toEqual({ asked: 0 });
+    expect(s.proposals()).toEqual([]);
+  });
+
+  it("an envelope waiter does not INFLATE a real ask's count or estimate", async () => {
+    const s = await scaffold();
+    s.spend(CAP); // one $5.00 run = the cost history: median $5.00
+    s.seedInvocation("inv_wait_a");
+    s.seedInvocation("inv_wait_b");
+    s.seedInvocation("inv_bf", {
+      context_json: JSON.stringify({ emailId: "e_thread", backfill: true, backfillBudgetMicros: 500_000 }),
+    });
+
+    expect(await s.sweep()).toEqual({ asked: 1 });
+    const p = s.proposals()[0]!;
+    // Two stranded waiters — the envelope row is not part of this question,
+    // so the human is quoted the cost of clearing what the grant would clear.
+    expect(payloadOf(p).waitingCount).toBe(2);
+  });
+
   it("a DISABLED binding's backlog is held, not asked about — the kill switch wins", async () => {
     const s = await scaffold();
     s.w.db.sqlite.exec(`UPDATE agent_bindings SET enabled = 0 WHERE id = 'bind_photos'`);

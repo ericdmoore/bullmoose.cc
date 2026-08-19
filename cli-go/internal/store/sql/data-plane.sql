@@ -468,6 +468,65 @@ CREATE TABLE IF NOT EXISTS jobs (
   PRIMARY KEY (account_id, id)
 );
 
+-- s20 T6 — THE GOAL: a delegation contract with done-ness, and the standing
+-- authority under which a Job runs.
+--
+-- **A Goal's id IS its Job's id** — the `agent_proposals` ↔ `agent_invocations`
+-- pattern, applied again, and for the same reason: a Goal is a FACE over a
+-- Job, not a parallel store, so the two cannot drift and every derived number
+-- (progress, spend, status) is read straight off the nodes. What lives here is
+-- only what a `jobs` row cannot hold and nothing can derive — the human's
+-- sentence, the contract they bounded it with, and the two judgments a machine
+-- must never make on its own (cancel, accept).
+--
+--   statement        what the human wants to be true, in their own words.
+--   contract_json    {may:{tools,contact}, mayNot[], escalateWhen, doneWhen,
+--                    budgetUsd} — the delegation primitive. It COMPILES onto
+--                    machinery that already exists (packages/scheduling
+--                    goalContract.ts): tools → the root node's envelope and
+--                    therefore every descendant's by monotonic attenuation,
+--                    budgetUsd → jobs.budget_micros, escalateWhen → a Watch.
+--                    Stored as the human authored it, never as the compiled
+--                    form, so the face and the enforcement can be compared.
+--   checkpoints_json {plan|email|summary: {mode, by, at}} — which classes still
+--                    stop for a human. Per CLASS, never globally: a goal that
+--                    graduated wholesale is the silently-widening autonomy the
+--                    whole product exists to prevent, and rendering this is
+--                    what makes the widening un-silent.
+--   cancelled_at     the standing authority, REVOKED. An authored fact: a
+--                    cancelled goal whose nodes happen to be done is not
+--                    "done", and no derivation can see that somebody stopped it.
+--   accepted_at      the human's verdict that `doneWhen` is met. Also authored,
+--                    and deliberately distinct from "every node finished" —
+--                    nothing here can read "three engineers willing", and a
+--                    system that marked its own homework would be claiming
+--                    done-ness rather than reporting it.
+--
+-- NOT stored, because it is derived: status, progress, milestones, spend. The
+-- timeline is the goal's proposals in time order; the status is a view over the
+-- nodes (deriveJobStatus) plus the two authored facts above.
+--
+-- New table, so a plain schema re-run (CREATE TABLE IF NOT EXISTS) DOES create
+-- it. Existing DBs: infra/migrations.mjs `goals-table`. NOT a deploy blocker,
+-- unlike jobs-table: no claim statement names it, every read is inside the
+-- `Goal/*` methods, and a shard without it simply has no goals to list.
+CREATE TABLE IF NOT EXISTS goals (
+  id                  TEXT NOT NULL,     -- == jobs.id (the 1:1 key)
+  account_id          TEXT NOT NULL,
+  statement           TEXT NOT NULL,     -- the human's sentence
+  contract_json       TEXT NOT NULL,     -- may / mayNot / escalateWhen / doneWhen / budgetUsd
+  checkpoints_json    TEXT NOT NULL,     -- per-class manual|auto, with provenance
+  escalation_watch_id TEXT,              -- the Watch `escalateWhen` armed, if any
+  created_by          TEXT NOT NULL,
+  created_at          INTEGER NOT NULL,  -- epoch ms
+  cancelled_at        INTEGER,
+  cancelled_by        TEXT,
+  accepted_at         INTEGER,
+  accepted_by         TEXT,
+  PRIMARY KEY (account_id, id)
+);
+CREATE INDEX IF NOT EXISTS goals_created ON goals (account_id, created_at);
+
 -- s17 — THE PER-INVOCATION TOKEN (.plans/s17-chief-of-staff/per-invocation-tokens.md).
 --
 -- The SECOND credential type in a system whose token model is deliberately one

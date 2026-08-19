@@ -212,6 +212,20 @@ export function outRaw(chunk: string | Uint8Array): void {
   process.stdout.write(chunk);
 }
 
+/**
+ * Exit only after stdout has drained. `process.exit()` tears down writes still
+ * queued in Node's stream buffer, and a pipe takes only 64 KiB synchronously —
+ * so the moment a payload outgrows that (`help --json` crossed it first, s26),
+ * exiting right after the write truncates it mid-byte for any piped consumer.
+ * An empty write's callback queues behind every pending chunk; EPIPE lands in
+ * the callback too, which is exactly "done" for a reader that hung up (§1.2).
+ */
+export function exitFlushed(code: ExitCode): Promise<never> {
+  return new Promise(() => {
+    process.stdout.write("", () => process.exit(code));
+  });
+}
+
 /** Chrome: progress, summaries, decoration, hints. stderr. */
 export function note(line = ""): void {
   process.stderr.write(`${line}\n`);

@@ -14,18 +14,50 @@
   ],
   "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }],
 
+  // BUREAU — for `POST /provider-keys` (s26 T4 BYOK) and nothing else. This
+  // worker holds NO master key: sealing a tenant's provider key is a hop across
+  // this binding, exactly as it is from services/agent (s04 T3a). So
+  // bullmoose-bureau must deploy BEFORE this worker — the deploy order in
+  // infra/bootstrap.mjs already puts it there, and docs/DEPLOY.md §2 says why.
+  "services": [{ "binding": "BUREAU", "service": "bullmoose-bureau" }],
+
   "vars": {
     "SES_REGION": "us-west-2",
     "INGEST_WORKER_NAME": "bullmoose-ingest",
-    // Set after first deploy to the jmap worker's public hostname
-    // (e.g. bullmoose-jmap.<subdomain>.workers.dev, later mail.<domain>).
-    // Enables the _jmap._tcp SRV record → `bullmoose login <email>`
-    // works with no --base.
-    "JMAP_HOST": "bullmoose-jmap.eric-d-moore.workers.dev"
+    // The SRV target `POST /domains` plants as `_jmap._tcp.<domain>`, so
+    // `bullmoose login <someone>@<that domain>` needs no --base. It must be a
+    // hostname that ANSWERS `/.well-known/jmap` — the app origin, where the
+    // jmap worker's routes live (`services/jmap/wrangler.jsonc`).
+    //
+    // ⚠️ A STALE VALUE HERE IS WORSE THAN AN EMPTY ONE, and that is not
+    // hypothetical: this said `bullmoose-jmap.eric-d-moore.workers.dev` until
+    // 2026-08-18, well after that host began 404ing every path — including its
+    // session resource (docs/DEPLOY.md §5 and §6.1 both recorded it, §6.1 as
+    // still-open). Autodiscovery's rungs are
+    // ordered SRV → SRV-over-DoH → `https://<domain>/.well-known/jmap`
+    // (`packages/cli/src/discover.ts`), and rung 1 SHORT-CIRCUITS: a record
+    // that resolves is believed, so a planted-but-dead target does not fall
+    // through to the working fallback — it replaces it. Every domain onboarded
+    // in that window got a DNS record that breaks the login it exists to
+    // enable. Verified answering before this was changed:
+    //   curl -o /dev/null -w '%{http_code}' https://app.bullmoose.cc/.well-known/jmap  → 401
+    // (401 is the YES — the session resource is there and wants a bearer.)
+    // Unset the var to skip the record entirely and leave the well-known rung
+    // to answer; that is the right move for a fork whose app origin differs.
+    "JMAP_HOST": "app.bullmoose.cc"
   }
   // Secrets (wrangler secret put):
   //   ADMIN_TOKEN            — bearer token for this admin API
   //   CF_API_TOKEN           — Zone:Edit + Email Routing:Edit + DNS:Edit
   //   SES_ACCESS_KEY_ID      — IAM scoped to ses identity management
   //   SES_SECRET_ACCESS_KEY
+  //   INTERNAL_TOKEN         — the shared /internal/* secret; gates the Bureau's
+  //                            seal route. ONE value across the workers that
+  //                            hold it (infra/bootstrap.mjs GENERATED). Without
+  //                            it POST /provider-keys answers 501 and every
+  //                            other verb here is unaffected.
+  //
+  // A tenant's provider key is NOT a secret on this worker: it arrives in one
+  // request body, crosses the BUREAU binding, and is sealed under a master key
+  // this worker does not have. Nothing here can read one back.
 }

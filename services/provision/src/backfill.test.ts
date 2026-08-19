@@ -244,7 +244,11 @@ describe("POST /agent-bindings/{id}/backfill — idempotence, order, budget", ()
     expect(mintWrites.map((w) => w.args[4])).toEqual(["e_new", "e_mid", "e_old"]);
   });
 
-  it("budgetMicros is RECORDED, not enforced: echoed in the response and stamped into each row's context", async () => {
+  it("budgetMicros is the ENVELOPE: echoed in the response and stamped into each row's context, where the claim gate reads it", async () => {
+    // Enforcement itself lives in the claim gate (backfillEnvelopeSql /
+    // backfillEnvelopeExhaustedSql — claimGateAgreement.test.ts's envelope
+    // table); this verb's whole duty is stamping the number where the gate
+    // looks, so THAT is what is pinned here.
     const h = harness();
     const { accountId, bindingId } = await seedExtractor(h);
     seedEmail(h, accountId, "e_1", NOW - 1 * DAY);

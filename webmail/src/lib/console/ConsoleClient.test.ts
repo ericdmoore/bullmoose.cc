@@ -10,7 +10,7 @@ import { DEMO_NOW, VENDORS_BOOK, createDemoConsole, demoConsoleData } from "./de
 import { consoleGate } from "./gate";
 import type { Session } from "../jmap/types";
 
-const SITE = "https://mail.bullmoose.cc";
+const SITE = "https://app.bullmoose.cc";
 const VAULT = "https://agent.bullmoose.cc";
 const DAY = 86_400_000;
 

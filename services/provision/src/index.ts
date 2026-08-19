@@ -10,6 +10,22 @@ import {
   resolveMintScopes,
 } from "@bullmoose/auth-core";
 import { BUREAU_VERBS, isBureauVerb } from "@bullmoose/auth-core/principal";
+// s26 T4 — the BYOK core, shared with the session door
+// (`services/jmap/src/methods/providerCredential.ts`). ONE implementation of
+// seal → grant → attach, because two writers of `config_json.providerCredentials`
+// is two things the Bureau's own "does this binding name this credential?"
+// check can disagree with. See that file's header.
+import {
+  BYOK_PROVIDERS,
+  DEFAULT_HEADER_RECIPE,
+  attachCredentialToBindings,
+  credentialExists,
+  grantFetchOnCredential,
+  isCredRef,
+  normalizeAllow,
+  normalizeHeaderRecipe,
+  sealProviderKey,
+} from "./byokProvision";
 
 /**
  * Provision — multi-domain onboarding, fully API-driven (§8 of the design
@@ -42,6 +58,11 @@ import { BUREAU_VERBS, isBureauVerb } from "@bullmoose/auth-core/principal";
  *   POST   /bureau-grants         {principalEmail, credRef, verb, expiresDays?}
  *   GET    /bureau-grants         → the capability table (?email= / ?credRef=)
  *   DELETE /bureau-grants/{id}    → TOMBSTONE; credential + siblings survive
+ *   POST   /provider-keys         {email, key, provider?, bindingName?, allow?}
+ *                                 → s26 T4 BYOK: seal a tenant's own provider
+ *                                   key in the Bureau, grant `fetch` on it, and
+ *                                   attach its ref to their binding(s). The key
+ *                                   goes IN once and is never readable back.
  *
  * POST /domains is idempotent-ish: each step reports ok/detail so a failed
  * run can simply be re-run after fixing the underlying issue. POST /accounts
@@ -85,6 +106,20 @@ export interface Env {
   CF_API_TOKEN: string;
   SES_ACCESS_KEY_ID: string;
   SES_SECRET_ACCESS_KEY: string;
+  /**
+   * The Bureau (s04 T3a), for `POST /provider-keys` only (s26 T4).
+   *
+   * This worker holds no master key and never will: sealing a tenant's provider
+   * key is a HOP, the same as it is from `services/agent`. The plaintext
+   * crosses this binding once, on its way in, and nothing comes back but an
+   * acknowledgement — there is no route on the Bureau that returns a secret.
+   *
+   * Optional so a deployment without it degrades to a 501 on that one route
+   * rather than failing to boot; every other verb here is unaffected.
+   */
+  BUREAU?: Fetcher;
+  /** Shared with the Bureau's `/internal/*` surface. See `docs/DEPLOY.md`. */
+  INTERNAL_TOKEN?: string;
 }
 
 interface Step {
@@ -285,6 +320,12 @@ export default {
         );
       }
       if (route === "GET /bureau-grants") return listBureauGrants(url, env);
+      // s26 T4 — BYOK. The tenant's own provider key: sealed in the Bureau,
+      // granted, and named by their binding, so their provider-side guardrails
+      // apply to their agents' calls. Re-run to rotate the key in place.
+      if (route === "POST /provider-keys") {
+        return provisionProviderKey(await readJson<ProviderKeyBody>(request), env);
+      }
       if (request.method === "DELETE" && /^\/bureau-grants\/[^/]+$/.test(url.pathname)) {
         return revokeBureauGrant(url.pathname.split("/")[2] as string, env);
       }
@@ -524,8 +565,18 @@ async function addDomain(body: { tenantId: string; domain: string }, env: Env) {
   });
   steps.push({ step: "cf:dmarc", ok: dmarc.ok, detail: dmarc.detail });
 
-  // 7b. JMAP autodiscovery (RFC 8620 §2.2): _jmap._tcp SRV → jmap worker,
+  // 7b. JMAP autodiscovery (RFC 8620 §2.2): _jmap._tcp SRV → the app origin,
   // so `bullmoose login user@<domain>` needs no --base.
+  //
+  // This is the step that decides whether the FIRST command a new human runs
+  // works, and it is the one with a silent failure mode: the client's rungs are
+  // SRV → SRV-over-DoH → `https://<domain>/.well-known/jmap`, and rung 1 short-
+  // circuits. A record pointing at a host that has stopped answering therefore
+  // does not degrade to the fallback — it PRE-EMPTS it, and the login fails on
+  // a domain that would have worked with no record at all. Whatever `JMAP_HOST`
+  // names must answer `/.well-known/jmap` (401 counts, and is the usual answer);
+  // leaving the var unset is the honest choice when nothing does. See the note
+  // on the var in `wrangler.jsonc` for the window this deployment got wrong.
   if (env.JMAP_HOST) {
     const srv = await cf(env, `/zones/${zoneId}/dns_records`, {
       method: "POST",
@@ -547,7 +598,9 @@ async function addDomain(body: { tenantId: string; domain: string }, env: Env) {
     steps.push({
       step: "cf:jmap-srv",
       ok: true,
-      detail: "skipped — set JMAP_HOST var to enable autodiscovery",
+      detail:
+        "skipped — no JMAP_HOST var; clients fall through to the " +
+        "https://<domain>/.well-known/jmap rung, or need `login --base <app-origin>`",
     });
   }
 
@@ -1503,7 +1556,17 @@ async function revokeToken(id: string, env: Env) {
 
 // ---- grants (Phase 3: cross-account delegation + sharing) ---------------
 
-const GRANTABLE_SCOPES = new Set([
+/**
+ * What an account→account grant may confer.
+ *
+ * Exported since s26 T4's surface pass so the session BYOK door's tests can
+ * assert an ABSENCE against the real list: `vault` is not here, which is what
+ * makes "custody of a provider key does not delegate through a share" a
+ * structural fact rather than a policy anyone has to remember. If a future
+ * widening adds it, `providerCredential.test.ts` fails rather than the door
+ * silently opening to every supervisor.
+ */
+export const GRANTABLE_SCOPES = new Set([
   "read",
   "annotate",
   "draft",
@@ -2685,6 +2748,160 @@ async function provisionExtractor(
   });
 }
 
+// ---- BYOK: the tenant's own provider key (s26 T4) -----------------------
+
+/**
+ * `POST /provider-keys` — bring your own key.
+ *
+ * Eric, on discovering his own OpenRouter privacy redaction had rewritten an
+ * address to `[ADDRESS]`: *"we can let others turn on their OR guardrails etc
+ * via their own keys?"* Yes — and the striking part is how little there is to
+ * build. **A tenant's provider-side policy is not something this platform
+ * implements, mirrors or even reads. It applies because the request
+ * authenticates as them.** Their guardrails, their redaction rules, their route
+ * and model allowlists, their spend cap, their audit trail in their own
+ * provider console. Nothing here interprets any of it, and nothing here can
+ * drift from it. The whole feature is: use their key.
+ *
+ * What this door does, in the order that makes each step meaningful:
+ *
+ *   1. **seal** the key in the Bureau — the plaintext crosses the BUREAU
+ *      binding once, on the way in, and there is no route anywhere that returns
+ *      it. `byokProvision.test.ts` asserts that by trying every read surface;
+ *   2. **grant** `(principal, credRef, fetch)` — because minting a credential
+ *      authorizes nobody (bureau.md §5.1), and a sealed-but-ungranted key is a
+ *      key that silently does nothing;
+ *   3. **attach** the ref to the tenant's binding(s), which is what makes the
+ *      Bureau's own check ("does this binding name this credential?") pass.
+ *
+ * Re-running SWAPS in place, exactly as `POST /extractor` does for the model
+ * menu: same `credRef`, new ciphertext, same grant, same attachment. That is
+ * the rotation path — the tenant rolls their key at the provider, re-posts it
+ * here, and no agent config changes.
+ *
+ * The destination allowlist is the part that is easy to skip and must not be:
+ * a key sealed with `--allow https://openrouter.ai` can be spent at OpenRouter
+ * and NOWHERE else, whatever URL a compromised prompt talks an agent into
+ * composing. A credential with no allowlist is refused at use time (invariant
+ * 5), so this door always writes one.
+ *
+ * ⚠️ The `key` is write-only, here and everywhere downstream. It is never
+ * echoed in the response, never logged, never put in an error message. Presence
+ * is confirmed; the value is not.
+ */
+interface ProviderKeyBody {
+  email?: string;
+  /** The provider key itself. Write-only — in once, never back out. */
+  key?: string;
+  /** The HOST it authenticates at: `openrouter` (default) or `gateway`. */
+  provider?: string;
+  /** `vault_credentials.name`; defaults to the provider name. */
+  credRef?: string;
+  /** Destination binding (bureau.md §6). Defaults per provider; required for
+   *  `gateway`, whose endpoint is deployment-specific. */
+  allow?: string;
+  /** Injection recipe; defaults to `Authorization: Bearer {}`. */
+  header?: string;
+  /** Attach to ONE named binding instead of every binding that routes to this
+   *  provider. */
+  bindingName?: string;
+  /** Grant lifetime. NULL = no expiry, matching `POST /bureau-grants`. */
+  expiresDays?: number;
+}
+
+async function provisionProviderKey(body: ProviderKeyBody, env: Env) {
+  if (!env.BUREAU || !env.INTERNAL_TOKEN) {
+    return json({ error: "BYOK not configured on this deployment (no BUREAU binding)" }, 501);
+  }
+  const email = String(body?.email ?? "").toLowerCase();
+  if (!email) return json({ error: "email required" }, 400);
+  if (typeof body?.key !== "string" || body.key.length === 0) {
+    return json({ error: "key required" }, 400);
+  }
+  const provider = typeof body.provider === "string" ? body.provider : "openrouter";
+  const providerSpec = BYOK_PROVIDERS[provider];
+  if (!providerSpec) {
+    return json({ error: `provider must be one of ${Object.keys(BYOK_PROVIDERS).join(", ")}` }, 400);
+  }
+  const credRef = typeof body.credRef === "string" && body.credRef ? body.credRef : provider;
+  if (!isCredRef(credRef)) {
+    return json({ error: "credRef must be alnum . _ - up to 64 chars" }, 400);
+  }
+
+  // The §5 contract, computed here rather than accepted from the caller: the
+  // whole point of a destination binding is that it is not negotiable per call.
+  const allow = normalizeAllow(body.allow ?? providerSpec.defaultAllow ?? "");
+  if (!allow) {
+    return json(
+      {
+        error:
+          `allow must be an origin (https://host[:port]) or wildcard (*.host)` +
+          `${providerSpec.defaultAllow ? "" : ` — required for provider "${provider}", which has no default endpoint`}`,
+      },
+      400,
+    );
+  }
+  const header = normalizeHeaderRecipe(body.header ?? DEFAULT_HEADER_RECIPE);
+  if (!header) {
+    return json({ error: 'header must be "Header-Name: …{}…" (the {} is the value slot)' }, 400);
+  }
+
+  const account = await accountByAddress(env, email);
+  if (!account) return json({ error: `no live account for ${email}` }, 404);
+  const owner = await env.DB.prepare(
+    `SELECT a.principal_id, p.login_email FROM accounts a
+     JOIN principals p ON p.id = a.principal_id WHERE a.id = ?`,
+  )
+    .bind(account.id)
+    .first<{ principal_id: string; login_email: string }>();
+  if (!owner) return json({ error: `account ${account.id} has no principal` }, 404);
+
+  const existed = await credentialExists(env.DB, owner.principal_id, credRef);
+
+  // 1 — SEAL, 2 — GRANT, 3 — ATTACH. All three live in `byokProvision.ts`, so
+  // this door and the session door (`services/jmap` ProviderCredential/set)
+  // write the same rows by construction rather than by review. Fail closed on
+  // the seal and write nothing else: a grant or an attachment pointing at a
+  // credential that was never sealed is a config that looks live and is not.
+  const sealed = await sealProviderKey(env, { principalId: owner.principal_id, credRef, allow, header }, body.key);
+  if (!sealed.ok) return json({ error: sealed.error }, sealed.status);
+
+  const grantId = await grantFetchOnCredential(env.DB, owner.principal_id, credRef, {
+    actor: "admin",
+    expiresDays: body.expiresDays,
+  });
+  const attached = await attachCredentialToBindings(env.DB, account.id, provider, credRef, {
+    actor: "admin",
+    bindingName: body.bindingName,
+  });
+
+  return json({
+    ok: true,
+    created: !existed,
+    rotated: existed,
+    accountId: account.id,
+    principal: owner.login_email,
+    provider,
+    credRef,
+    allow,
+    header,
+    grantId,
+    bindings: attached,
+    // Presence, never the value — and stated in the response so an operator can
+    // see the guarantee rather than assume it.
+    keyStored: true,
+    keyReadable: false,
+    ...(attached.length === 0
+      ? {
+          note:
+            `sealed and granted, but NO binding on ${email} names it yet — ` +
+            `no candidate routes to "${provider}". Re-run with {"bindingName": "…"} ` +
+            `once the binding has a ${provider} route, or the key will never be used.`,
+        }
+      : {}),
+  });
+}
+
 /**
  * bouncer@'s supervisory grants (s10 T7): one per HUMAN PRINCIPAL of the
  * household, not one owner.
@@ -3555,10 +3772,18 @@ function backfillPrivacy(configJson: string): string | null {
  *                  behind the floor is refused with 409 — that ask is a
  *                  floor move, which is rule 1's approval, not this verb.
  *
- * `budgetMicros` is RECORDED, not enforced, in v1: it rides in the response
- * and in each minted row's context_json so the v2 envelope has the number,
- * but spend is still gated by the binding's monthly budget. Absent is null
- * ("no envelope named"), never 0 ("a $0 envelope") — the money-honesty rule.
+ * `budgetMicros` is the backfill's ENVELOPE, and since s26 T3 v2 it is
+ * ENFORCED: it rides in the response and in each minted row's context_json,
+ * and the claim gate (`backfillEnvelopeSql` / `backfillEnvelopeExhaustedSql`,
+ * @bullmoose/scheduling) draws envelope-carrying rows from THAT purse instead
+ * of the binding's monthly budget — prior backfill spend counts against it,
+ * NULL costs count as unknown (never a spend), and when it is spent through
+ * the remaining rows simply WAIT: a free homelab claimant still eats them at
+ * $0, and the next envelope or surplus pass picks the rest up. Exhaustion is
+ * not an error and raises no budget-overrun ask (a monthly overage would
+ * release nothing for these rows). Absent is null ("no envelope named" — the
+ * monthly budget gates as before), never 0 ("a $0 envelope": mint the rows,
+ * spend nothing paid) — the money-honesty rule.
  *
  * No ACCOUNT_DO here, so no changelog push: the rows sit as the durable
  * cursor until a claimant's next wake-up, which is exactly what non-urgent
@@ -3706,8 +3931,8 @@ async function backfillBinding(id: string, body: { sinceDays?: number; budgetMic
           emailId: e.id,
           threadId: e.thread_id,
           backfill: true,
-          // v1: the envelope is RECORDED on the work it covers, not enforced —
-          // the v2 claim-gate envelope reads it from here.
+          // The envelope rides on the work it covers — the claim gate
+          // (backfillEnvelopeSql) reads it from exactly here.
           ...(budgetMicros !== null ? { backfillBudgetMicros: budgetMicros } : {}),
         }),
         now,
@@ -3734,11 +3959,16 @@ async function backfillBinding(id: string, body: { sinceDays?: number; budgetMic
     // Reached the cap ⇒ the window's far edge was NOT reached; re-run the same
     // call to walk further back (idempotence makes the re-run safe).
     capped: candidates.length === BACKFILL_MINT_CAP,
-    // v1: recorded, not an enforced envelope. null = "no envelope named".
+    // The ENFORCED envelope (s26 T3 v2). null = "no envelope named" — the
+    // monthly budget gates those rows exactly as before.
     budgetMicros,
     note:
-      `minted rows are NULL-due (sit-free): a live homelab claimant may eat them at $0, and the paid ` +
-      `drain treats them as non-urgent inside the binding's monthly budget`,
+      budgetMicros !== null
+        ? `minted rows are NULL-due (sit-free): a live homelab claimant may eat them at $0, and the paid ` +
+          `drain draws them from this backfill's own envelope (budgetMicros) instead of the monthly ` +
+          `budget — once prior backfill spend reaches it, the rest wait for the next envelope or surplus`
+        : `minted rows are NULL-due (sit-free): a live homelab claimant may eat them at $0, and the paid ` +
+          `drain treats them as non-urgent inside the binding's monthly budget (no envelope named)`,
   });
 }
 

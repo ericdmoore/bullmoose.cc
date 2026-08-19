@@ -84,6 +84,14 @@ them at call time); the envelope vault (`vault.ts`) keeps owning everything
 agents use *as tools* (OAuth refresh tokens, third-party API keys). Don't
 split-brain a single key across both.
 
+> Two different things are called BYOK, and s26 T4 added the second. The
+> gateway's own is *"provider keys stored in the Cloudflare gateway"* — the
+> PLATFORM's account, one set of keys for everyone. Ours is per TENANT: their
+> key, sealed in the Bureau, carrying their guardrails. They compose — a
+> `gateway` candidate with a `credRef` authenticates with the tenant's gateway
+> credential instead of the platform's `GATEWAY_TOKEN` — but they are not the
+> same feature and the distinction is worth keeping in the vocabulary.
+
 ## 4. Hosts, models, and money — the routing model as built (2026-08-18)
 
 The vocabulary settled during s26 capture (`.plans/s26-agent-config/devPlan.md` is the full
@@ -106,6 +114,17 @@ treatment; this is the standing summary):
   gate stops the PAID drain at the cap; pending invocations wait as the durable cursor;
   `proposeBudgetOverruns` raises a bounded, month-scoped ask in approvals. A free claimant
   ignores the cap — out-of-budget backlogs drain at $0 when a homelab runtime is up.
+- **WHOSE KEY PAYS is a per-binding fact** (s26 T4, BYOK). A binding's config may name a
+  Bureau-sealed credential — `providerCredentials: {openrouter: "<handle>"}`, or `credRef` on
+  a single candidate — and then `callModel` proxies that host's request through the Bureau,
+  which injects the tenant's key as a header and returns only the response. Resolution order:
+  candidate `credRef` → binding `providerCredentials[host]` → the platform's env key. The last
+  step is reached only when **nobody named a credential**; a named-but-unresolvable one FAILS
+  the call rather than borrowing the platform's key. The payoff is that a tenant's
+  provider-side guardrails (OpenRouter's privacy redaction, route allowlists, their own caps)
+  apply to their agents automatically — we implement none of it; the request is theirs.
+  Operator flow in `docs/DEPLOY.md`; the authorization argument in
+  `services/bureau/src/byok.ts`.
 - **Cost is frozen at completion** (s07 T5): provider/model/tokens/µUSD stamped on the
   invocation, surfaced on every approval row. **NULL means "not recorded", 0 means "known
   free" — they never collapse.** The models.dev pricing cache must be fresh for dollars to

@@ -114,6 +114,76 @@ const contactCards = [
   },
 ];
 
+/**
+ * The agent plane (s26 T6b): two bindings and the console projection the
+ * dossier verbs read, plus enough of `AgentBinding/set` to make `disable` a
+ * REAL state change — the smoke needs `show` to reflect what `disable` wrote,
+ * not to agree with a constant.
+ *
+ * `extractor` carries a menu, a budget and a ledger; `emily` deliberately
+ * carries none of it, because "a binding with no config door" is one of the
+ * refusals under test.
+ */
+const bindings = new Map([
+  [
+    "bind_extract",
+    {
+      bindingId: "bind_extract",
+      name: "extractor",
+      triggerOn: "mailbox-delivery",
+      slaSeconds: null,
+      enabled: true,
+      config: { pipeline: "extract", replyMode: "draft", hasPersona: false, modelAliasCount: 1 },
+      economics: {
+        budgetMicros: 2_000_000,
+        defaultModel: "extract",
+        modelMenu: [{ alias: "extract", candidates: ["openrouter/minimax/minimax-m3", "openrouter/qwen/qwen3-30b"] }],
+        exploreRate: 0.2,
+      },
+    },
+  ],
+  [
+    "bind_emily",
+    {
+      bindingId: "bind_emily",
+      name: "emily",
+      triggerOn: "mailbox-delivery",
+      slaSeconds: 3600,
+      enabled: true,
+      config: { pipeline: "reply", replyMode: "draft", hasPersona: true },
+      economics: { budgetMicros: null, defaultModel: null, modelMenu: [], exploreRate: null },
+    },
+  ],
+]);
+
+const agentInvocations = [
+  {
+    invocationId: "inv_aaa",
+    bindingId: "bind_extract",
+    bindingName: "extractor",
+    status: "done",
+    emailId: "em_000",
+    note: null,
+    createdAt: 1_760_000_000_000,
+    doneAt: 1_760_000_001_000,
+    costMicros: 2100,
+    model: "openrouter/minimax/minimax-m3",
+  },
+  {
+    // NULL cost is "undetermined", not free — the dossier must not print $0.00.
+    invocationId: "inv_bbb",
+    bindingId: "bind_extract",
+    bindingName: "extractor",
+    status: "failed",
+    emailId: "em_001",
+    note: null,
+    createdAt: 1_759_000_000_000,
+    doneAt: 1_759_000_002_000,
+    costMicros: null,
+    model: null,
+  },
+];
+
 const err = (type, description) => ["error", description ? { type, description } : { type }, "c0"];
 
 /** RFC 8620 PatchObject set semantics: full-replace (no sub) or per-key add/remove. */
@@ -317,6 +387,33 @@ function invoke([name, args, callId]) {
         state: "1",
         list: [{ id: "id_1", email: "you@smoke.test", name: "You" }],
       });
+
+    // ---- the kill switch (s26 T2 / #198) --------------------------------
+    // v1 writes exactly `enabled`; anything else is refused BY NAME, which is
+    // the behaviour the CLI must surface verbatim rather than re-word.
+    case "AgentBinding/set": {
+      const updated = {};
+      const notUpdated = {};
+      for (const [id, patch] of Object.entries(args.update ?? {})) {
+        const binding = bindings.get(id);
+        if (!binding) {
+          notUpdated[id] = { type: "notFound", description: "no such binding on this account" };
+          continue;
+        }
+        const unknown = Object.keys(patch).filter((k) => k !== "enabled");
+        if (unknown.length > 0) {
+          notUpdated[id] = {
+            type: "invalidProperties",
+            description: `AgentBinding/set v1 writes exactly one property, "enabled" (the kill switch). Refused: ${unknown.join(", ")}`,
+            properties: unknown,
+          };
+          continue;
+        }
+        binding.enabled = patch.enabled === true;
+        updated[id] = { enabled: binding.enabled };
+      }
+      return reply({ accountId: ACCOUNT, updated, notUpdated });
+    }
 
     // ---- contacts (sVOL 017) --------------------------------------------
     case "AddressBook/get":
@@ -525,6 +622,38 @@ const server = createServer(async (req, res) => {
   if (url.pathname === "/api" && req.method === "POST") {
     const body = JSON.parse(await text(req));
     return send(200, { methodResponses: (body.methodCalls ?? []).map(invoke) });
+  }
+
+  // The console projection (s03.E / s26 T1) — the dossier verbs' READ door.
+  // Session-reachable on the ordinary mail token, which is the property the
+  // smoke exercises: no operator credential is configured anywhere here.
+  if (url.pathname.startsWith("/console/agents/")) {
+    return send(200, {
+      accountId: ACCOUNT,
+      principalId: "p_you",
+      principal: "you@smoke.test",
+      tokenScopes: ["mail"],
+      bindings: [...bindings.values()],
+      credentials: [],
+      bureauGrants: [],
+      grantsHeld: [],
+      grantsGiven: [],
+      invocations: agentInvocations,
+      spend: { currency: "USD", totalCents: 0, rows: 1, since: 1_759_000_000_000 },
+      ledgers: [
+        {
+          bindingId: "bind_extract",
+          pending: 3,
+          running: 0,
+          done: 128,
+          failed: 1,
+          oldestPendingAt: 1_760_100_000_000,
+          monthSpendMicros: 410_000,
+          monthOverageMicros: 100_000,
+        },
+      ],
+      ledgerMonthStart: 1_754_006_400_000,
+    });
   }
 
   if (url.pathname.startsWith("/api/blobs/")) {

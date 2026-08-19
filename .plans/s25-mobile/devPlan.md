@@ -51,37 +51,37 @@ may say "as of 9:12".
 
 ## Tasks
 
-### T1 — platform foundation · *the unglamorous bugs first*
+### T1 — platform foundation · *the unglamorous bugs first* — ✅ LANDED 2026-08-18 (#189)
 `100vh` → `dvh` in the `frame="surface"` calc (the mobile-Safari dancing-toolbar bug),
 `env(safe-area-inset-*)` for bottom chrome, a responsive audit of the five landed surfaces, and
 the harness gains a PHONE profile (390×844, `mobile: true` via the existing
 `Emulation.setDeviceMetricsOverride`) so every PR screenshots desktop AND phone.
 
-### T2 — the tree model, one source three renderings
+### T2 — the tree model, one source three renderings — ✅ LANDED 2026-08-18 (#189)
 `lib/shell/collections.ts` grows one level of nesting (`CollectionItem.children?`, expanded
 state) plus `disabled?/reason?` (the planned-section idiom). Renderings: the desktop
 CollectionColumn learns inline expand; the **collection sheet** (new, from
 `navigation/command-palettes` + dialog markup, hand-rolled interactivity, class-swap animations —
 CSP holds); the list header gains the tappable title that summons it.
 
-### T3 — drill-in detail URLs, the native back button
+### T3 — drill-in detail URLs, the native back button — ✅ LANDED 2026-08-18 (#194)
 List→Detail becomes REAL NAVIGATION: `/mail?thread=…`, `/contacts?card=…`, `/approvals?p=…` as
 links, read at mount. The browser back button just works — the make-or-break mobile gesture — and
 every detail becomes deep-linkable. NOTE the invariant: the app makes exactly ONE history call
 (tokenInUrl.test.ts) — this adds zero; MPA links are not history calls. Desktop keeps the
 side-by-side panels (the param selects; the layout decides by width).
 
-### T4 — the realm tray + leaf-nodes
+### T4 — the realm tray + leaf-nodes — ✅ LANDED 2026-08-18 (#194: `lib/shell/publish.ts` contract + RealmTray)
 The mobile drawer becomes the tray: realm rows (from `sections.ts`) that expand published
 collections inline (the T2 tree rendering again). Ships in two steps: tray with plain rows, then
 leaf-nodes over the plumbing contract above.
 
-### T5 — the contextual [New] as a FAB + search collapse
+### T5 — the contextual [New] as a FAB + search collapse — ✅ LANDED 2026-08-18 (#200: the FAB is CollectionColumn's own button relocated — one label source, no FAB where a realm has no [New]; clearance via scroll-container padding, not z-index. Finder's clearance line followed in #204.)
 The standardized [New] becomes a floating action button (bottom-right, safe-area aware,
 realm-contextual as always) on narrow screens; the top-bar search collapses to an icon that
 expands full-width (the `bm:search` plumbing is untouched).
 
-### T6 — swipe triage · *mail only, deliberately — stretch*
+### T6 — swipe triage · *mail only, deliberately — stretch* — ✅ LANDED 2026-08-18 (#200: swipe reveals, never commits; axis decided once at 10px; the trailing click cancelled in the capture phase on the row shell so #194's anchors still tap through; real Undo via the recorded inverse patch.)
 Swipe-to-archive/trash on mail rows. **REFUSED for Approvals**: a decision queue's ethos is
 deliberateness, and a flick that fires a tier-2 send is the wrong affordance. Named here so it
 does not creep in later.

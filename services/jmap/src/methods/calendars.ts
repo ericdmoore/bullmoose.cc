@@ -505,8 +505,18 @@ function eventToJmap(row: CalendarEventRow): Record<string, unknown> {
   return { ...row.event, id: row.id, calendarIds: { [row.calendarId]: true } };
 }
 
-/** Validate + normalize a JSCalendar event, extract indexed columns. */
-function buildEventRow(
+/**
+ * Validate + normalize a JSCalendar event, extract indexed columns.
+ *
+ * EXPORTED for a second caller, deliberately: `applyProposal`'s `verb-schedule`
+ * case (actionProposal.ts) writes a calendar event when a human approves a
+ * proposed hold, and a near-copy of this function there is how the two paths
+ * come to disagree about what a valid `start` is, which uid gets minted, or how
+ * the indexed span is derived. It throws `SetErrorSignal` (below); the apply
+ * case catches and re-signals in its own vocabulary, because a Worker's method
+ * modules do not share an error class.
+ */
+export function buildEventRow(
   event: JSCalendarEventBlob,
   calendarId: string,
   existingId: string | null,

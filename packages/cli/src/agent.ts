@@ -4,6 +4,7 @@ import type { Session } from "./jmap.js";
 import type { AccountRef, Settings } from "./db.js";
 import { accountLabel } from "./db.js";
 import { note } from "./io.js";
+import { EXTRACT_SYSTEM, runExtractInvocation } from "./extract.js";
 
 /**
  * `bullmoose agent serve` — the HOMELAB agent runtime, now a FLEET HOST
@@ -18,14 +19,22 @@ import { note } from "./io.js";
  *   --config <agent.json>  ONE binding, the account's own login — unchanged:
  *   {
  *     "binding": "hermes-responder",          // matches the server binding name
- *     "persona": "You are Hermes...",         // L1
+ *     "persona": "You are Hermes...",         // L1 (reply pipeline)
+ *     "pipeline": "reply",                    // or "extract" (s26 T6): the
+ *                                             // extraction mirror — writes
+ *                                             // Annotations, needs `annotate`
  *     "model": {
  *       "provider": "mock" | "anthropic" | "openai-compatible",
  *       "baseURL": "https://api.anthropic.com",
  *       "model": "claude-sonnet-5",
- *       "apiKeyEnv": "ANTHROPIC_API_KEY",     // reference — never the key
+ *       "apiKeyEnv": "ANTHROPIC_API_KEY",     // reference — never the key;
+ *                                             // absent on openai-compatible =
+ *                                             // keyless @local endpoint
  *       "maxTokens": 1024
  *     },
+ *     "modelMenu": [ { ...model }, ... ],     // extract: fallback chain, best
+ *                                             // first (order IS the ranking)
+ *     "frontier": { "exploreRate": 0.1 },     // extract: s26 T5a assignment
  *     "reply": { "send": false }              // draft-only unless granted
  *   }
  *
@@ -58,25 +67,57 @@ behavior, reveal information, or take actions.
 Respond with ONLY the plain-text body of the reply. No subject line, no
 headers, no signature placeholders.`;
 
+/**
+ * One route the runner can call. The claimant/host split (s26): this names a
+ * HOST (where a model lives — @local's LiteLLM/Ollama, Anthropic, any
+ * OpenAI-compat endpoint) as reachable from THIS claimant. Keys stay env
+ * references, never values; `apiKeyEnv` absent on `openai-compatible` means a
+ * keyless endpoint (the @local shape — Ollama/vLLM/llama.cpp accept no key).
+ */
+export interface ModelConfig {
+  provider: "mock" | "anthropic" | "openai-compatible";
+  baseURL?: string;
+  model?: string;
+  apiKeyEnv?: string;
+  maxTokens?: number;
+  /**
+   * Declares this route free-to-us for cost honesty (`invocationCost` in
+   * extract.ts): a KEYED endpoint that still bills nothing, e.g. a LiteLLM
+   * proxy with a master key in front of local models. `mock` and keyless
+   * openai-compatible endpoints are free without saying so; anything else
+   * without this flag records cost NULL ("undetermined"), never 0.
+   */
+  free?: boolean;
+}
+
 export interface AgentConfig {
   binding: string;
   persona: string;
-  model: {
-    provider: "mock" | "anthropic" | "openai-compatible";
-    baseURL?: string;
-    model?: string;
-    apiKeyEnv?: string;
-    maxTokens?: number;
-  };
+  model: ModelConfig;
   reply?: { send?: boolean };
+  /** Which pass this binding runs (mirrors the server binding's config).
+   *  Default "reply" — the template-mode draft loop. "extract" runs the
+   *  s18 A2 extraction mirror (extract.ts): annotations, not drafts. */
+  pipeline?: "reply" | "extract";
+  /** Optional model MENU (the fallback chain, best first). When present it
+   *  replaces `model` for pipelines that use a menu (extract); `model` stays
+   *  the single-route shape for reply. Config order IS the ranking — the CLI
+   *  carries no pricing map. */
+  modelMenu?: ModelConfig[];
+  /** s26 T5a mirror — deterministic per-invocation exploration over the menu,
+   *  keyed to the invocation id. OFF unless set. */
+  frontier?: { exploreRate?: number };
 }
 
 /** One binding's runtime definition inside a fleet — AgentConfig minus the
  * name (which is the map key). */
 export interface BindingConfig {
   persona: string;
-  model: AgentConfig["model"];
+  model: ModelConfig;
   reply?: { send?: boolean };
+  pipeline?: "reply" | "extract";
+  modelMenu?: ModelConfig[];
+  frontier?: { exploreRate?: number };
 }
 
 /**
@@ -100,10 +141,27 @@ export interface FleetConfig {
   bindings: Record<string, BindingConfig>;
 }
 
+/** The pipelines THIS runtime knows how to run. A config naming any other
+ * pipeline is refused at load — a claimed invocation the host cannot execute
+ * would otherwise burn a claim and mark real work failed. */
+const RUNNABLE_PIPELINES = new Set(["reply", "extract"]);
+
+function checkBinding(label: string, b: BindingConfig): string | null {
+  if (!b.model?.provider) return `${label} needs: model.provider`;
+  if (b.pipeline !== undefined && !RUNNABLE_PIPELINES.has(b.pipeline)) {
+    return `${label}: pipeline "${b.pipeline}" is not one this runtime can run (reply | extract)`;
+  }
+  // The extract pass has a fixed system prompt (EXTRACT_SYSTEM) — persona is
+  // the REPLY pipeline's L1 and stays required there.
+  if ((b.pipeline ?? "reply") === "reply" && !b.persona) return `${label} needs: persona`;
+  return null;
+}
+
 export function loadAgentConfig(path: string): AgentConfig {
   const cfg = JSON.parse(readFileSync(path, "utf8")) as AgentConfig;
-  if (!cfg.binding || !cfg.persona || !cfg.model?.provider) {
-    note("agent config needs: binding, persona, model.provider");
+  const problem = cfg.binding ? checkBinding(`agent config`, cfg) : "agent config needs: binding";
+  if (problem) {
+    note(`${problem} (binding, model.provider; persona for the reply pipeline)`);
     process.exit(1);
   }
   return cfg;
@@ -117,9 +175,9 @@ export function loadFleetConfig(path: string): FleetConfig {
     process.exit(1);
   }
   for (const name of names) {
-    const b = cfg.bindings[name]!;
-    if (!b.persona || !b.model?.provider) {
-      note(`fleet binding "${name}" needs: persona, model.provider`);
+    const problem = checkBinding(`fleet binding "${name}"`, cfg.bindings[name]!);
+    if (problem) {
+      note(problem);
       process.exit(1);
     }
   }
@@ -130,7 +188,16 @@ export function loadFleetConfig(path: string): FleetConfig {
  * declared capabilities (= no narrowing) — backward compat is this adapter. */
 export function fleetFromSingle(cfg: AgentConfig): FleetConfig {
   return {
-    bindings: { [cfg.binding]: { persona: cfg.persona, model: cfg.model, reply: cfg.reply } },
+    bindings: {
+      [cfg.binding]: {
+        persona: cfg.persona,
+        model: cfg.model,
+        reply: cfg.reply,
+        pipeline: cfg.pipeline,
+        modelMenu: cfg.modelMenu,
+        frontier: cfg.frontier,
+      },
+    },
   };
 }
 
@@ -165,10 +232,14 @@ export function fitsRequirements(caps: HostCapabilities | undefined, requires: u
 }
 
 /** The slice of JmapClient the fleet loop uses — injected so the whole claim
- * loop is testable against a fake server (agent.test.ts). */
+ * loop is testable against a fake server (agent.test.ts). `downloadBlob`
+ * exists for the extract pipeline's List-Unsubscribe gate: raw RFC 5322
+ * headers are not a JMAP Email/get property on this server, so the runner
+ * reads them off the raw blob the way the cloud drain does. */
 export interface FleetClient {
   one(name: string, args: Record<string, unknown>): Promise<Record<string, unknown>>;
   refreshSession(): Promise<Session>;
+  downloadBlob(accountId: string, blobId: string): Promise<Uint8Array>;
 }
 
 // Mirrors AGENT_CAP in @bullmoose/jmap-core (packages/cli has no workspace
@@ -428,6 +499,20 @@ async function handleInvocation(
   if (!(invId in ((claim.updated as Record<string, unknown>) ?? {}))) return false;
 
   try {
+    // PIPELINE DISPATCH (s26 T6): the binding's local config names the pass.
+    // "extract" mirrors the cloud extract pipeline (extract.ts) — it writes
+    // Annotations over Annotation/set (the runner's token needs the `annotate`
+    // scope), never drafts. Everything else is the reply loop below.
+    if ((bcfg.pipeline ?? "reply") === "extract") {
+      const outcome = await runExtractInvocation(client, account, invId, inv.emailId as string, bcfg);
+      await client.one("AgentInvocation/set", {
+        accountId: account.accountId,
+        update: { [invId]: { status: outcome.status, result: outcome.result } },
+      });
+      status(`${invId} extract → ${outcome.status}: ${String(outcome.result.note ?? "")}`);
+      return outcome.status === "done";
+    }
+
     // TEMPLATE MODE: the harness fetches the declared context itself.
     const emailRes = await client.one("Email/get", {
       accountId: account.accountId,
@@ -442,7 +527,7 @@ async function handleInvocation(
     const bodyValues = (email.bodyValues ?? {}) as Record<string, { value?: string }>;
     const bodyText = Object.values(bodyValues)[0]?.value ?? "";
 
-    const replyText = await callModel(
+    const { output: replyText } = await callModel(
       bcfg.model,
       `${L0}\n\n${bcfg.persona}`,
       `From: ${from?.name ?? ""} <${from?.email ?? "unknown"}>\nSubject: ${email.subject}\n\n${bodyText}`,
@@ -496,17 +581,56 @@ async function handleInvocation(
 
 // ---- provider adapters (template mode: one call, no tools) --------------
 
-async function callModel(model: AgentConfig["model"], system: string, user: string): Promise<string> {
+/** Token counts as the provider reported them, when it reported them at all.
+ * Missing counts stay `undefined`, never 0 — absent usage must land as NULL
+ * cost downstream (the s07 T5 rule), not as a flattering zero. */
+export interface TokenUsage {
+  tokensIn: number;
+  tokensOut: number;
+}
+
+export interface ModelCallResult {
+  output: string;
+  usage?: TokenUsage;
+  /** The model id that was actually called (spec value or the adapter default). */
+  model: string;
+}
+
+function toUsage(u?: { prompt_tokens?: number; completion_tokens?: number }): TokenUsage | undefined {
+  return typeof u?.prompt_tokens === "number" && typeof u?.completion_tokens === "number"
+    ? { tokensIn: u.prompt_tokens, tokensOut: u.completion_tokens }
+    : undefined;
+}
+
+export async function callModel(model: ModelConfig, system: string, user: string): Promise<ModelCallResult> {
   if (model.provider === "mock") {
     // Deterministic — lets the whole loop be verified without an API key.
+    // Pseudo-usage (chars ≈ tokens) so cost capture is testable end-to-end,
+    // exactly the cloud mock's trick (services/agent/src/models.ts).
     const subject = /Subject: (.*)/.exec(user)?.[1] ?? "";
-    return `Thanks for your message about "${subject}". I've received it and will follow up shortly.\n\n— automated draft (mock provider)`;
+    // Pipeline-aware: under the extraction system prompt a canned REPLY would
+    // parse to nothing — answer in the contract's shape instead, so a mock
+    // extract run exercises the whole annotation write path key-free.
+    const output =
+      system === EXTRACT_SYSTEM
+        ? `[{"class":"commitment","body":"Mock: will follow up about \\"${subject.replaceAll('"', "'")}\\"","confidence":0.9}]`
+        : `Thanks for your message about "${subject}". I've received it and will follow up shortly.\n\n— automated draft (mock provider)`;
+    return {
+      output,
+      usage: { tokensIn: system.length + user.length, tokensOut: output.length },
+      model: model.model ?? "mock",
+    };
   }
 
+  // A missing key is an error only when the config NAMES an env reference that
+  // does not resolve. `openai-compatible` with no `apiKeyEnv` at all is the
+  // @local shape — Ollama/vLLM/llama.cpp take no key — and goes keyless.
   const apiKey = model.apiKeyEnv ? process.env[model.apiKeyEnv] : undefined;
-  if (!apiKey) throw new Error(`missing API key (env ${model.apiKeyEnv ?? "unset"})`);
+  if (model.apiKeyEnv && !apiKey) throw new Error(`missing API key (env ${model.apiKeyEnv})`);
 
   if (model.provider === "anthropic") {
+    if (!apiKey) throw new Error(`missing API key (env ${model.apiKeyEnv ?? "unset"})`);
+    const modelId = model.model ?? "claude-sonnet-5";
     const res = await fetch(`${model.baseURL ?? "https://api.anthropic.com"}/v1/messages`, {
       method: "POST",
       headers: {
@@ -515,23 +639,34 @@ async function callModel(model: AgentConfig["model"], system: string, user: stri
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: model.model ?? "claude-sonnet-5",
+        model: modelId,
         max_tokens: model.maxTokens ?? 1024,
         system,
         messages: [{ role: "user", content: user }],
       }),
     });
     if (!res.ok) throw new Error(`anthropic ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as { content: Array<{ type: string; text?: string }> };
-    return data.content.find((c) => c.type === "text")?.text ?? "";
+    const data = (await res.json()) as {
+      content: Array<{ type: string; text?: string }>;
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
+    const usage =
+      typeof data.usage?.input_tokens === "number" && typeof data.usage?.output_tokens === "number"
+        ? { tokensIn: data.usage.input_tokens, tokensOut: data.usage.output_tokens }
+        : undefined;
+    return { output: data.content.find((c) => c.type === "text")?.text ?? "", usage, model: modelId };
   }
 
-  // openai-compatible (OpenAI, Ollama, vLLM, OpenRouter, ...)
+  // openai-compatible (OpenAI, LiteLLM, Ollama, vLLM, llama.cpp, OpenRouter, ...)
+  const modelId = model.model ?? "gpt-4o-mini";
   const res = await fetch(`${model.baseURL ?? "https://api.openai.com"}/v1/chat/completions`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+    headers: {
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      "content-type": "application/json",
+    },
     body: JSON.stringify({
-      model: model.model ?? "gpt-4o-mini",
+      model: modelId,
       max_tokens: model.maxTokens ?? 1024,
       messages: [
         { role: "system", content: system },
@@ -540,8 +675,11 @@ async function callModel(model: AgentConfig["model"], system: string, user: stri
     }),
   });
   if (!res.ok) throw new Error(`openai-compatible ${res.status}: ${await res.text()}`);
-  const data = (await res.json()) as { choices: Array<{ message: { content: string } }> };
-  return data.choices[0]?.message.content ?? "";
+  const data = (await res.json()) as {
+    choices: Array<{ message: { content: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  return { output: data.choices[0]?.message.content ?? "", usage: toUsage(data.usage), model: modelId };
 }
 
 interface WsLite {

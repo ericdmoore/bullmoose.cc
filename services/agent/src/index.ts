@@ -5,6 +5,7 @@ import { Mailstore } from "@bullmoose/mailstore";
 import {
   ESCALATION_WINDOW_MAX_MS,
   ESCALATION_WINDOW_NO_HISTORY_MS,
+  bindingDisabledSql,
   bindingEscalationWindowMs,
   budgetMonthStartMs,
   claimFitBinds,
@@ -28,6 +29,8 @@ import { sweepWaitingOn } from "./waitingOn.js";
 import { runBouncer } from "./bouncer.js";
 import { runRemind } from "./remind.js";
 import { runExtract } from "./extract.js";
+import { parseVerbRequest, runComposeVerb, runMailVerb, verbNeedsEmail } from "./mailVerbs.js";
+import { surplusBackfill } from "./surplusBackfill.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
 import { assertOutboundAllowed, outboundRefusal } from "@bullmoose/mailstore/outboundBound";
@@ -240,6 +243,7 @@ export default {
     // account's own inbox. Last, and idempotent per (account, period) — the
     // marker row makes every later tick of the month a no-op (frontierDigest.ts).
     await sweepFrontierDigest(env);
+    await surplusBackfill(env); // s26 T3 v2 — surplus burns the backlog, last and fail-open (surplusBackfill.ts)
   },
 } satisfies ExportedHandler<Env>;
 
@@ -453,14 +457,20 @@ async function claimOverdue(env: Env, claimant: ClaimantIdentity): Promise<numbe
       .all<Job>();
 
     for (const job of results) {
-      // The guarded claim, with the two surviving terms folded in — the
+      // The guarded claim, with the surviving terms folded in — the
       // pending→running transition itself refuses a row that got stamped
-      // `pinned`, or had its requirements raised, between SELECT and UPDATE.
+      // `pinned`, had its requirements raised, or whose binding was SWITCHED
+      // OFF between SELECT and UPDATE. The SELECT above already joins on
+      // `b.enabled = 1`; repeating it here is the same discipline every other
+      // surviving term follows, and the window it closes is real — a human
+      // hitting Disable while a sweep is mid-batch is precisely when they
+      // most mean it.
       const now = Date.now();
       const claim = await env.DB.prepare(
         `UPDATE agent_invocations SET status = 'running', claimed_at = ?, claimant_free = ?, claimant_caps_json = ?
          WHERE account_id = ? AND id = ? AND status = 'pending'
            AND due_at IS NOT NULL AND due_at <= ?
+           AND NOT ${bindingDisabledSql("agent_invocations")}
            AND ${notPinnedSql("agent_invocations")}
            AND ${claimFitSql("agent_invocations")}
            AND ${needsSatisfiedSql("agent_invocations")}`,
@@ -665,6 +675,21 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
     return runJobNode(env, job, context, done);
   }
 
+  // s20 T3 — `compose`, the front door of writing. Dispatched HERE, above the
+  // email requirement, for the reason the three kinds above are: an intent
+  // typed into the composer ("ask Sergio whether he's comfortable with me
+  // selling assembled boards") names its own recipient and usually has no
+  // source message at all, so the requirement below would fail a verb the
+  // human pressed. When the composer DID find a recent exchange with that
+  // person it passes the id along, and the row is loaded as background —
+  // tolerantly, because a missing anchor must degrade to "no context", never
+  // to a failed ask.
+  const earlyVerb = parseVerbRequest(context);
+  if (earlyVerb && !verbNeedsEmail(earlyVerb.verb)) {
+    const anchor = job.email_id ? await store.getEmailRow(job.account_id, job.email_id) : null;
+    return runComposeVerb(env, job, cfg, anchor, earlyVerb, done);
+  }
+
   if (!job.email_id) return done("failed", { note: "no email context" });
   const email = await store.getEmailRow(job.account_id, job.email_id);
   if (!email) return done("failed", { note: `email ${job.email_id} missing` });
@@ -676,6 +701,18 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   const blob = await store.getBlob(job.tenant_id, job.account_id, email.blobId);
   if (!blob) return done("failed", { note: "raw blob missing" });
   const parsed = await PostalMime.parse(await blob.arrayBuffer());
+
+  // s20 T2 — the mail verbs (Answer, Bring X into this). Routed by the
+  // INVOCATION's own context (`params.verb`, written by `AgentInvocation/set`
+  // create), not by the binding's `pipeline`, and BEFORE every gate below.
+  // Both halves are deliberate: a verb is the human asking about the message
+  // in front of them, so it must work wherever the account's agent lives; and
+  // the humanOriginated / allowedSenders gates exist to stop an agent
+  // CONVERSING with automation, which drafting into your own Drafts folder is
+  // not. Anything that is not a known verb parses to null and falls through
+  // to the pipelines below exactly as before. See mailVerbs.ts.
+  const verbRequest = earlyVerb;
+  if (verbRequest) return runMailVerb(env, job, cfg, email, parsed, verbRequest, done);
 
   // Ledger pipeline diverges before any reply-path gate: receipts come
   // from automated senders (Auto-Submitted, bulk) on purpose, and the

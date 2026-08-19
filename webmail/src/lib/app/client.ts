@@ -153,21 +153,54 @@ export function defaultBase(): string {
  * rewrite rather than trusting the call site.
  */
 export function urlWithoutToken(href: string): string | null {
+  return urlWithoutParams(href, [TOKEN_PARAM]);
+}
+
+/**
+ * The OAuth callback's params (s07 T7). An authorization code is a bearer
+ * for one exchange — briefer than a token, but the same reasoning applies
+ * for the seconds it is live: it must not survive into history, a `Referer`,
+ * or whatever gets copied out of the address bar. `state`/`iss`/`error` are
+ * not secrets, but leaving them behind makes a reload replay a dead
+ * callback, so the whole callback is stripped as one unit.
+ */
+const LOGIN_CALLBACK_PARAMS = ["code", "state", "iss", "error", "error_description"] as const;
+
+/** Exported for the test, same bargain as `urlWithoutToken`. */
+export function urlWithoutLoginCallback(href: string): string | null {
+  return urlWithoutParams(href, LOGIN_CALLBACK_PARAMS);
+}
+
+function urlWithoutParams(href: string, names: readonly string[]): string | null {
   let url: URL;
   try {
     url = new URL(href);
   } catch {
     return null;
   }
-  if (!url.searchParams.has(TOKEN_PARAM)) return null;
-  url.searchParams.delete(TOKEN_PARAM);
+  if (!names.some((n) => url.searchParams.has(n))) return null;
+  for (const n of names) url.searchParams.delete(n);
   return url.toString();
 }
 
+/**
+ * The login island calls this the moment it reads the callback, BEFORE the
+ * async exchange begins. It lives here, not in the island, because this
+ * module makes the app's ONE history call — `tokenInUrl.test.ts` sweeps
+ * every other file for `replaceState` and would fail a second call site.
+ */
+export function forgetLoginCallbackInUrl(): void {
+  forgetInUrl(urlWithoutLoginCallback);
+}
+
 function forgetTokenInUrl(): void {
+  forgetInUrl(urlWithoutToken);
+}
+
+function forgetInUrl(strip: (href: string) => string | null): void {
   try {
     const href = globalThis.location?.href;
-    const clean = href ? urlWithoutToken(href) : null;
+    const clean = href ? strip(href) : null;
     if (clean) globalThis.history?.replaceState(globalThis.history.state ?? null, "", clean);
   } catch {
     // A browser that refuses `replaceState` (sandboxed frame, opaque origin)

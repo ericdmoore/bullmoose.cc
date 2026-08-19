@@ -253,7 +253,7 @@ per-surface bars (`AppShell.tsx:549`, `SearchApp.tsx:142`, `ContactsApp.tsx` top
 retire. In the **Ask** realm the same bar filters chat sessions (s20 T5). Mind the `h-16` header
 height. *This is the top-bar half of the sprint and rides independently of the CollectionColumn work.*
 
-### T6 — responsive · *the CollectionColumn on a narrow screen*
+### T6 — responsive · *the CollectionColumn on a narrow screen* — ✅ LANDED via s25 T2 (#189: CollectionTree `narrow` prop + CollectionSheet)
 
 On mobile the CollectionColumn collapses to a drawer/toggle, mirroring the rail's existing mobile
 drawer (`ShellNav.tsx:377-407`). The four-column desktop layout degrades to a navigable stack.

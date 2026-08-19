@@ -163,7 +163,13 @@ export class FakeJmapClient implements JmapClient {
     if (!resp) throw new JmapRequestError(`no response for ${name}`);
     if (resp[0] === "error") {
       const detail = resp[1] as { type?: string; description?: string };
-      throw new JmapRequestError(`${name} → ${detail.type ?? "error"}`, detail.type);
+      // Same message shape as the real client (JmapClient.ts requestOne): the
+      // server's description rides along, so a surface that shows the refusal
+      // verbatim behaves identically against fake and live.
+      throw new JmapRequestError(
+        `${name} → ${detail.type ?? "error"}${detail.description ? `: ${detail.description}` : ""}`,
+        detail.type,
+      );
     }
     return resp[1];
   }

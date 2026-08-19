@@ -88,6 +88,25 @@ import App from "../layouts/AppTw.astro";
   .apq-pane + .apq-pane {
     border-left: 1px solid var(--line);
   }
+  /* s25 T1 — the 390px audit: below lg the grid is one column (grid-cols-1),
+     but each pane kept its own fixed-height scroll region, so the stack
+     overflowed an unscrollable container and the detail was unreachable.
+     Stacked, the CONTAINER scrolls and the panes flow; the divider turns
+     horizontal to match. (The CollectionColumn is `narrow="hidden"` here —
+     the s25 T2 collection sheet is the phone's picker instead.) */
+  @media (max-width: 1023.98px) {
+    .apq-panes {
+      overflow-y: auto;
+    }
+    .apq-pane {
+      overflow-y: visible;
+      min-height: auto;
+    }
+    .apq-pane + .apq-pane {
+      border-left: none;
+      border-top: 1px solid var(--line);
+    }
+  }
   .apq-head h1 { margin: 0 0 4px; font-size: 20px; }
   .apq-sub { margin: 0 0 16px; font-size: 13px; }
   .apq-h2 { font-size: 13px; text-transform: uppercase; color: var(--fg-muted); margin: 20px 0 4px; }

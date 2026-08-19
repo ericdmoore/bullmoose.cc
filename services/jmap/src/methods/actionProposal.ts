@@ -1,9 +1,37 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
-import { QUARANTINE_ROLE, type ContactCardRow, type JSContactCard, type Mailstore } from "@bullmoose/mailstore";
+import { buildMime } from "@bullmoose/mime";
+import {
+  QUARANTINE_ROLE,
+  type ContactCardRow,
+  type JSCalendarEventBlob,
+  type JSContactCard,
+  type Mailstore,
+} from "@bullmoose/mailstore";
 import { OutboundRefused, assertOutboundAllowed } from "@bullmoose/mailstore/outboundBound";
-import { budgetExhaustedSql, budgetMonthStartMs, budgetPeriodKey, jobBudgetExhaustedSql } from "@bullmoose/scheduling";
+import {
+  budgetExhaustedSql,
+  budgetMonthStartMs,
+  budgetPeriodKey,
+  contractRefusals,
+  describeRefusals,
+  expandPlanRows,
+  getJobNodeRow,
+  jobBudgetExhaustedSql,
+  parseGoalContract,
+} from "@bullmoose/scheduling";
+// The one definition of the fallback follow-up body/subject, shared with the
+// fire-time compose (s20 wave 3) so an old-format (intent-only) proposal
+// applies with byte-identical text to the compose fallback. A cross-service
+// relative import on the commitHeld.ts precedent (agent → jmap, this is the
+// mirror); it pulls only pure functions.
+import { followupSubject, templateFollowupBody } from "../../../agent/src/watchCompose";
 import { authorizeAccount } from "../auth";
+// The ONE JSCalendar validator/normalizer, shared with `CalendarEvent/set`
+// rather than re-typed: the `verb-schedule` case below writes an event when a
+// human approves a proposed hold, and a second copy of "what is a legal start"
+// is how the two paths drift apart.
+import { buildEventRow } from "./calendars";
 import {
   accountState,
   proxyChanges,
@@ -1275,6 +1303,351 @@ async function applyProposal(
       };
     }
 
+    case "watch-followup": {
+      // s20 wave 3 — a fired watch's follow-up, applied at last. The fire
+      // path (services/agent watches.ts) composes the body at fire time and
+      // the payload arrives actionable ({to, subject, body, composed}); this
+      // was the missing case that wedged every approved follow-up in the hold
+      // tray ("not applied in this slice", retried forever).
+      //
+      // Approval creates a DRAFT in the Drafts mailbox, in the OWNER's voice
+      // — the reply pipeline's draft-mode shape (services/agent index.ts
+      // sendReply: MIME blob in R2, `$draft` + `$agent`, threaded onto the
+      // watched message). It does NOT egress: nothing relays, the human sends
+      // it from their own composer. That is why there is no
+      // assertOutboundAllowed here — the outbound bound governs a BINDING's
+      // reach, and this draft belongs to the human, not to a binding; their
+      // own submission path keeps its own gates.
+      //
+      // OLD-FORMAT TOLERANCE, load-bearing: a watch that fired before
+      // drafting-on-fire deployed carries the intent-only payload ({watchId,
+      // conditionType, to, note} — no body). Those rows are live in the tray
+      // RIGHT NOW; refusing them would re-create the wedge this case removes.
+      // The template body/subject are synthesized here from the intent
+      // fields — the same exported functions the fire-time fallback uses, so
+      // the two formats converge on identical text.
+      const to = str(payload.to);
+      if (!to) {
+        // No recipient = nobody to draft TO. Loud and visible (a tier-2 row
+        // stays held and reports each sweep; the human yanks or declines) —
+        // never a silent drop.
+        throw new SetErrorSignal("invalidProperties", "a watch-followup payload needs a recipient (`to`)", ["payload"]);
+      }
+      const note = str(payload.note);
+      const body = str(payload.body) ?? templateFollowupBody({ note });
+
+      // The watched message, for threading and the Re: subject — tolerant,
+      // it may have been deleted since the watch was armed.
+      const subjectRef = safeJson(row.subject_json);
+      const origId = subjectRef.realm === "Email" ? str(subjectRef.objectId) : null;
+      const orig = origId
+        ? await ctx.env.DB.prepare(`SELECT subject, message_id FROM emails WHERE account_id = ? AND id = ?`)
+            .bind(access.accountId, origId)
+            .first<{ subject: string | null; message_id: string | null }>()
+        : null;
+      const subject = str(payload.subject) ?? followupSubject(orig?.subject ?? null, note);
+
+      // Whose voice: the account's primary sending identity (may_delete=0
+      // sorts first — the provisioned primary), falling back to the watch's
+      // owner. The approver's login name is the last resort, never the first:
+      // on a grant-reached account it belongs to a different person.
+      const idents = await store.getIdentities(access.accountId);
+      let self = idents[0]?.email ?? null;
+      let selfName = idents[0]?.name ?? "";
+      if (!self) {
+        const watchId = str(payload.watchId);
+        const watch = watchId
+          ? await ctx.env.DB.prepare(`SELECT owner FROM watches WHERE account_id = ? AND id = ?`)
+              .bind(access.accountId, watchId)
+              .first<{ owner: string }>()
+          : null;
+        self = watch && watch.owner.includes("@") ? watch.owner : ctx.principal.username;
+        selfName = "";
+      }
+
+      return draftIntoDrafts(access, store, {
+        to,
+        subject,
+        body,
+        self,
+        selfName,
+        inReplyTo: orig?.message_id ?? null,
+      });
+    }
+
+    case "verb-answer":
+    case "verb-bring-in":
+    case "goal-outreach":
+    case "verb-compose": {
+      // s20 T2 — the mail verbs. `Answer` and `Bring X into this` are the
+      // human asking IN PLACE, on the message they are reading; the agent
+      // worker (services/agent mailVerbs.ts) composed a draft and emitted this
+      // proposal, and approving it puts the draft in the owner's own Drafts
+      // mailbox — the SAME write an approved `watch-followup` performs, which
+      // is why both share `draftIntoDrafts` rather than growing a second
+      // almost-identical draft path that could drift.
+      //
+      // s20 T6 adds `goal-outreach` — a message a GOAL wants to send — as a
+      // fourth label, on exactly the T3 reasoning below: the application is
+      // byte-for-byte identical (a draft in your own Drafts, same keywords,
+      // same undo), and the KIND stays separate because the queue tells a
+      // person what they are looking at and the decline taxonomy needs to know
+      // what it is learning about. "That is not the message I wanted" about a
+      // goal's outreach is feedback on the GOAL, not on the compose verb.
+      //
+      // s20 T3 adds `verb-compose` — the composer's intent mode — as a THIRD
+      // LABEL on this one case, not a fourth apply path. What approval does is
+      // byte-for-byte what it does for an answer (a draft in your own Drafts,
+      // same keywords, same undo), so a separate case would be a copy waiting
+      // to drift; but the KIND is separate because "answer" would be a lie on
+      // the approval row and in the decline taxonomy, and a kind is how the
+      // queue tells a person what they are looking at. Two things differ, and
+      // both are read off `row.kind` below: a compose NEVER threads, and it
+      // never inherits a `Re:` subject from its background message.
+      //
+      // TIER 1 and applied here, immediately. Nothing egresses: the draft is
+      // the owner's, their composer sends it, and their own submission path
+      // keeps its own gates — so there is no `assertOutboundAllowed` for the
+      // same reason `watch-followup` has none (the outbound bound governs a
+      // BINDING's reach, and this draft belongs to a person).
+      //
+      // The DECLINE side is deliberately ordinary: neither kind is in
+      // `NO_FAULT_KINDS`, because "that is not the reply I wanted"
+      // (wrongContent) and "don't offer to do this" (wrongAction) are exactly
+      // the corrections the s03.D taxonomy was built to carry, and a verb the
+      // human pressed is the cleanest possible feedback signal there is.
+      const to = str(payload.to);
+      if (!to) {
+        throw new SetErrorSignal("invalidProperties", `a ${row.kind} payload needs a recipient (\`to\`)`, ["payload"]);
+      }
+      const body = str(payload.body);
+      if (!body) {
+        // Loud, and it cannot wedge: a tier-1 approve fails in place with this
+        // sentence and the row stays `pending` for the human to decline. An
+        // empty draft is worse than an honest refusal.
+        throw new SetErrorSignal("invalidProperties", `a ${row.kind} payload needs a drafted \`body\``, ["payload"]);
+      }
+
+      // The message the verb acted on — for threading and the fallback
+      // subject. Tolerant: it may have been deleted since the ask.
+      const verbRef = safeJson(row.subject_json);
+      const verbOrigId = verbRef.realm === "Email" ? str(verbRef.objectId) : null;
+      const verbOrig = verbOrigId
+        ? await ctx.env.DB.prepare(`SELECT subject, message_id FROM emails WHERE account_id = ? AND id = ?`)
+            .bind(access.accountId, verbOrigId)
+            .first<{ subject: string | null; message_id: string | null }>()
+        : null;
+      // A compose carries its own subject (the model's, or one derived from
+      // the human's own sentence). If it somehow arrives without one the draft
+      // gets a BLANK subject for the human to write — never `Re: <the message
+      // it was standing next to>`, which would announce a reply that isn't.
+      // A compose and a goal's outreach both START a message; the two
+      // message-view verbs continue one. Read once, used twice below.
+      const startsAMessage = row.kind === "verb-compose" || row.kind === "goal-outreach";
+      const subject = str(payload.subject) ?? (startsAMessage ? "" : followupSubject(verbOrig?.subject ?? null, null));
+
+      // Whose voice: the account's primary sending identity (may_delete = 0
+      // sorts first), and the approver's own login name only as the last
+      // resort — the `watch-followup` rule, minus the watch lookup it has no
+      // watch for.
+      const verbIdents = await store.getIdentities(access.accountId);
+      const self = verbIdents[0]?.email ?? ctx.principal.username;
+      const selfName = verbIdents[0]?.name ?? "";
+
+      return draftIntoDrafts(access, store, {
+        to,
+        subject,
+        body,
+        self,
+        selfName,
+        // A forward starts a message; everything else continues the
+        // conversation it came from. Threading a forward `In-Reply-To` the
+        // original would file it under a thread it is not part of — and the
+        // same is true of a compose, whose subject row may point at the most
+        // recent exchange with the recipient purely as BACKGROUND. "Ask Sergio
+        // about selling assembled boards" is a new ask, not a reply to
+        // whatever you last said to each other.
+        inReplyTo: startsAMessage || str(payload.mode) === "forward" ? null : (verbOrig?.message_id ?? null),
+      });
+    }
+
+    case "verb-schedule": {
+      // s20 wave 6 — the SCHEDULE verb's landing place, and the whole reason
+      // #202 shipped without the verb: "there is no `create-event` apply case
+      // and no proposal-shaped path into `CalendarEvent`, so shipping the
+      // button would mean shipping a kind whose approval has nowhere to land."
+      // This is that case. The producer is services/agent `runScheduleVerb`.
+      //
+      // What approval writes: ONE event in the account's default calendar,
+      // through `buildEventRow` — the SAME validator/normalizer
+      // `CalendarEvent/set` create runs (exported from ./calendars for exactly
+      // this second caller), so an event an approval writes and an event the
+      // calendar UI writes cannot disagree about uid minting, the indexed
+      // span, or what a legal `start` is.
+      //
+      // ## A HOLD, NOT A BOOKING — enforced here, not asked for politely
+      //
+      // Three properties are stamped by this case and are not the payload's to
+      // set, because each is a claim the agent has no standing to make:
+      //
+      //   status: "tentative"      nobody has agreed to this yet. The human
+      //                            promotes it in their calendar app when the
+      //                            other side confirms.
+      //   freeBusyStatus: "free"   a proposed slot does not get to say you are
+      //                            busy. Blocking someone's availability on the
+      //                            strength of an unanswered email is exactly
+      //                            the "commitment nobody made" this verb is
+      //                            built to avoid.
+      //   participants[*]          recorded with `scheduleAgent: "none"`,
+      //                            `expectReply: false` and NO `sendTo` — so
+      //                            the blob names who the meeting is with and
+      //                            carries no address any iTIP implementation
+      //                            could deliver to. Nothing is invited.
+      //
+      // Together those are why this is TIER 1: the write is one row in the
+      // owner's own calendar, it reaches nobody, and the undo handle deletes
+      // it (`CalendarEvent/set { destroy }` is the method that honours it, the
+      // `destroy-contact` precedent).
+      //
+      // ## The refusal that is a feature
+      //
+      // A `start` of null is the agent saying "the message named no time and I
+      // will not invent one" (mailVerbs.ts `templateHold`). It fails HERE, in
+      // place, with a sentence that says what to type — the row stays
+      // `pending`, editable through `editedPayload` and declinable. That is
+      // the #196-safe shape, not a wedge: an approve answers, the tray keeps
+      // moving, and the human's edit is what lands.
+      //
+      // ## The capability wall
+      //
+      // `ActionProposal/set` gates on `("draft", "mail")`, and `mail` covers
+      // exactly the six mail verbs — it does NOT cover `calendar`
+      // (auth-core `hasScope`, common/001). So this case re-runs the same gate
+      // `CalendarEvent/set` runs, against the approver's own token, and
+      // refuses in place when it does not hold: approving a proposal must not
+      // be a way to perform a write your token could not perform directly.
+      // A webmail session asks for `calendar` at login
+      // (`webmail/src/lib/app/oauth.ts` SESSION_SCOPES), so this bites a
+      // mail-only pasted token and a delegate whose grant is scoped to
+      // somebody's address book — which is precisely who it should bite.
+      const calendarAuth = authorizeAccount(ctx.principal, access.accountId, "calendar", "calendar");
+      if (!calendarAuth.ok) {
+        throw new SetErrorSignal(
+          "forbidden",
+          calendarAuth.reason === "accountNotFound"
+            ? "no such account"
+            : `this hold writes to your calendar, and ${calendarAuth.detail} — nothing was written`,
+        );
+      }
+
+      const start = str(payload.start);
+      if (!start) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "this hold has no start time — the agent would not invent one. Edit a `start` into the payload " +
+            '("2026-08-20T15:00:00", the wall clock in `timeZone`) and approve again, or decline.',
+          ["payload"],
+        );
+      }
+      const holdTitle = str(payload.title) ?? "";
+      const attendees = (Array.isArray(payload.attendees) ? payload.attendees : [])
+        .filter((a): a is string => typeof a === "string" && a.includes("@"))
+        .map((a) => a.trim().toLowerCase());
+
+      // Whose calendar this is — the `verb-answer` identity rule verbatim, and
+      // used for one thing: dropping the owner from the participant list. You
+      // are not an attendee of your own hold, and `needs-action` against your
+      // own address would be a question addressed to nobody.
+      const holdIdents = await store.getIdentities(access.accountId);
+      const holdSelf = (holdIdents[0]?.email ?? ctx.principal.username).toLowerCase();
+      const participants: Record<string, unknown> = {};
+      let seat = 0;
+      for (const address of [...new Set(attendees)]) {
+        if (address === holdSelf) continue;
+        seat += 1;
+        participants[`p${seat}`] = {
+          "@type": "Participant",
+          email: address,
+          roles: { attendee: true },
+          participationStatus: "needs-action",
+          expectReply: false,
+          // The load-bearing field. "none" is RFC 8984 for "no scheduling
+          // messages will be sent for this participant" — the blob says who
+          // the hold is with without any client treating it as an invitation
+          // to deliver.
+          scheduleAgent: "none",
+        };
+      }
+
+      const holdEvent: Record<string, unknown> = {
+        title: holdTitle || "Hold",
+        start,
+        duration: str(payload.duration) ?? "PT30M",
+        timeZone: str(payload.timeZone) ?? "Etc/UTC",
+        status: "tentative",
+        freeBusyStatus: "free",
+        ...(str(payload.description) ? { description: str(payload.description) } : {}),
+        ...(seat > 0 ? { participants } : {}),
+      };
+
+      const { id: calendarId, change: calendarChange } = await store.ensureDefaultCalendar(access.accountId);
+      let eventRow;
+      try {
+        eventRow = buildEventRow(holdEvent as JSCalendarEventBlob, calendarId, null, null);
+      } catch (err) {
+        // `buildEventRow` throws calendars.ts's own SetErrorSignal (a Worker's
+        // method modules do not share an error class), so its sentence is
+        // re-signalled in this file's vocabulary rather than becoming an
+        // opaque serverFail. Fails in place: an unresolvable timezone or a
+        // malformed start leaves the row pending and says which field.
+        const why = err instanceof Error ? err.message : String(err);
+        throw new SetErrorSignal("invalidProperties", `this hold is not a valid calendar event: ${why}`, ["payload"]);
+      }
+      await store.insertCalendarEvents(access.accountId, [eventRow]);
+      // CalDAV's sync token for the collection. `CalendarEvent/set` bumps it on
+      // every write; an approval that skipped it would leave an Apple Calendar
+      // client believing the calendar had not changed.
+      await store.bumpCalendarCtags(access.accountId, [calendarId]);
+
+      const holdEntries: ChangeEntry[] = [
+        { collection: "CalendarEvent", created: [eventRow.id], updated: [], destroyed: [] },
+      ];
+      if (calendarChange) {
+        holdEntries.push({
+          collection: "Calendar",
+          created: calendarChange === "created" ? [calendarId] : [],
+          updated: calendarChange === "updated" ? [calendarId] : [],
+          destroyed: [],
+        });
+      }
+      return { entries: holdEntries, undo: { action: "destroy-event", eventId: eventRow.id } };
+    }
+
+    case "watch-notify": {
+      // s20 T1 — a fired `notify` watch: the pure reminder. `fire()`
+      // (services/agent watches.ts) emits it at TIER 1 and says exactly what
+      // it is: "an FYI marker … reversible — clearing it touches nothing in
+      // the world". Approving one therefore writes NOTHING, and that is the
+      // case, not a stub: the decision itself — status `approved`,
+      // `decided_at`, the decider in `decision_json` — IS the whole effect the
+      // emit side promised. "Yes, I have seen my reminder."
+      //
+      // It is here because its ABSENCE was a bug of the same family as the
+      // `watch-followup` wedge (s20 wave 3): a kind with no case fell to the
+      // default throw, so approving a reminder answered `invalidProperties`
+      // and the row stayed pending — a one-shot visible error rather than a
+      // silent tray wedge, but the same "a producer emits a kind the applier
+      // has never heard of" mistake. Every kind `emitProposal` can mint now
+      // has a case.
+      //
+      // No `undo` handle, on the `held-mail-review` precedent: there is
+      // nothing to undo, and a handle naming an action nothing implements
+      // would be a promise this codebase cannot keep. The watch row is
+      // already `fired` — closed by the sweep that raised this — and a
+      // reminder that has been read cannot be un-read.
+      return { entries: [] };
+    }
+
     case "floor-request": {
       // s26 T3 — the history-floor approval (devPlan rule 1). The provision
       // worker minted the ask (`POST /agent-bindings/{id}/floor-request`);
@@ -1370,6 +1743,178 @@ async function applyProposal(
       };
     }
 
+    case "goal-plan": {
+      // ── s20 T6 — THE PLAN-APPROVAL CHECKPOINT, APPLIED ────────────────────
+      //
+      // A NEW CLASS OF APPROVAL: every other case in this function gates
+      // EGRESS — may this leave the building? This one gates EXECUTION — may
+      // these tasks exist at all? Approving it CREATES THE TASKS, here, in the
+      // same transaction as the decision, through the same `expandPlanRows`
+      // a planner's own output goes through (@bullmoose/scheduling jobWrite.ts).
+      //
+      // That shared function is the point, and it is why this case is short.
+      // We have wedged three producers this month by emitting a kind whose
+      // apply case did not exist or did not do the thing; the way to not wedge
+      // a fourth is to make approval call the SAME code path the auto route
+      // calls, rather than a second implementation that agrees with it today.
+      //
+      // ── "EDIT IS APPROVAL, INLINE" — and why the ledger does not move ─────
+      // The human redlines the sketch where the goal was expressed; an edit
+      // that leaves nothing unresolved IS the approval, with no second "and do
+      // you approve?" (readme principle 6). That venue change needs NOTHING
+      // here, and that is the design: an inline redline sends the ordinary
+      // `{ status: "approved", editedPayload }` this method has always taken,
+      // so the same proposal, decision and provenance rows are written as if
+      // it had gone through the queue. `payload` below is already the
+      // effective payload — the human's edit when there is one, the agent's
+      // original otherwise.
+      //
+      // ── THE EDIT IS UNTRUSTED, EXACTLY LIKE THE MODEL OUTPUT IT EDITS ────
+      // Which is why both checks run again on this side. A redline that raises
+      // a task's budget above the goal's, or points one at a recipient the
+      // contract does not reach, is refused with nothing created and the row
+      // left `pending` — monotonic attenuation does not have a "but a human
+      // typed it" exception, because the whole reason the bound exists is that
+      // the person approving cannot re-derive it in their head.
+      const goalId = str(payload.goalId);
+      const tasks = payload.tasks;
+      if (!Array.isArray(tasks) || tasks.length === 0) {
+        throw new SetErrorSignal("invalidProperties", "a goal-plan payload needs a non-empty `tasks` list", [
+          "payload",
+        ]);
+      }
+
+      // The planner node IS this proposal — a proposal's id is its
+      // invocation's id — so the plan expands from the row that proposed it,
+      // and the attenuation chain is re-folded from the binding down through
+      // every hop by `expandPlanRows` itself.
+      const planner = await getJobNodeRow(ctx.env, access.accountId, row.id);
+      if (!planner || !planner.job_id) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "the planner node behind this plan no longer exists — nothing was created",
+          ["payload"],
+        );
+      }
+      if (goalId !== null && goalId !== planner.job_id) {
+        // A payload naming a different goal than the node it hangs off would
+        // be an approval applied to somebody else's workflow. The node wins;
+        // the mismatch is refused rather than reconciled.
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `this plan names goal ${goalId} but its planner belongs to ${planner.job_id}`,
+          ["payload"],
+        );
+      }
+
+      const goal = await ctx.env.DB.prepare(
+        `SELECT id, contract_json, cancelled_at FROM goals WHERE account_id = ? AND id = ?`,
+      )
+        .bind(access.accountId, planner.job_id)
+        .first<{ id: string; contract_json: string; cancelled_at: number | null }>();
+      if (!goal) {
+        throw new SetErrorSignal("invalidProperties", `no goal ${planner.job_id} on this account`, ["payload"]);
+      }
+      if (goal.cancelled_at) {
+        // Standing authority, revoked. An approval that landed after a cancel
+        // would resurrect a delegation the human deliberately ended, which is
+        // the one thing a revocation has to be able to promise.
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "this goal was cancelled — its authority is revoked, so its plan cannot be started",
+          ["status"],
+        );
+      }
+      let contract;
+      try {
+        contract = parseGoalContract(JSON.parse(goal.contract_json || "null") as unknown);
+      } catch {
+        contract = { ok: false as const, why: "the stored contract is not valid JSON" };
+      }
+      if (!contract.ok) {
+        // An unreadable contract is an UNKNOWN bound, and an unknown bound is
+        // never a permissive one — the rule the whole s17 gate is built on.
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `this goal's contract cannot be read (${contract.why}), so its plan cannot be authorized`,
+          ["payload"],
+        );
+      }
+
+      const contractRefused = contractRefusals(contract.contract, tasks as Array<Record<string, unknown>>);
+      if (contractRefused.length > 0) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `the goal's contract refuses this plan: ${describeRefusals(contractRefused)}`,
+          ["payload"],
+        );
+      }
+
+      const expanded = await expandPlanRows(ctx.env, planner, { tasks });
+      if (!expanded.ok) {
+        // All-or-nothing, and it already is: `expandPlanRows` writes every
+        // child or none. The row stays `pending`, so the human can redline
+        // again rather than losing the sketch to a failed approval.
+        throw new SetErrorSignal("invalidProperties", `the plan was refused: ${describeRefusals(expanded.refusals)}`, [
+          "payload",
+        ]);
+      }
+
+      return {
+        entries: [
+          {
+            collection: "AgentInvocation",
+            created: expanded.created.map((c) => c.id),
+            updated: [],
+            destroyed: [],
+          },
+        ],
+        // A tier-1 undo handle that names a call which EXISTS (the watch-notify
+        // rule: never promise an action nothing implements). `Goal/set
+        // { status: "cancelled" }` fails every pending node of this goal, which
+        // is exactly "un-create the tasks I just authorized".
+        undo: { action: "cancel-goal", goalId: planner.job_id },
+      };
+    }
+
+    case "goal-summary": {
+      // s20 T6 — the compiled answer, and the ONE judgment no derivation can
+      // make. A Job's status is a view over its tasks, so it can say "every
+      // node finished"; it cannot say whether three structural engineers are
+      // WILLING, because done-when is a sentence and reading it is a person's
+      // job. Approving this proposal records that person's verdict on the goal
+      // — the only reason this case writes anything at all.
+      //
+      // Deliberately NOT a `NO_FAULT_KIND`: declining a summary is "no, that
+      // does not meet what I asked for", which is exactly the wrongContent
+      // signal the decline taxonomy was built to carry, and the goal stays open.
+      const summaryGoalId = str(payload.goalId);
+      if (!summaryGoalId) {
+        throw new SetErrorSignal("invalidProperties", "a goal-summary payload needs a `goalId`", ["payload"]);
+      }
+      const now = Date.now();
+      const accepted = await ctx.env.DB.prepare(
+        `UPDATE goals SET accepted_at = ?, accepted_by = ?
+          WHERE account_id = ? AND id = ? AND cancelled_at IS NULL`,
+      )
+        .bind(now, ctx.principal.username, access.accountId, summaryGoalId)
+        .run();
+      if ((accepted.meta.changes ?? 0) === 0) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `goal ${summaryGoalId} is not open on this account — nothing was accepted`,
+          ["payload"],
+        );
+      }
+      return {
+        entries: [{ collection: "Goal", created: [], updated: [summaryGoalId], destroyed: [] }],
+        // Accepting is reversible in the only sense that matters: the verdict
+        // is a fact about a human's reading, and clearing it puts the goal back
+        // where it was without touching a single node.
+        undo: { action: "reopen-goal", goalId: summaryGoalId },
+      };
+    }
+
     default:
       throw new SetErrorSignal(
         "invalidProperties",
@@ -1377,6 +1922,81 @@ async function applyProposal(
         ["kind"],
       );
   }
+}
+
+/**
+ * Write one DRAFT into the account's Drafts mailbox — the application four
+ * approved kinds share (`watch-followup` since s20 wave 3, `verb-answer` and
+ * `verb-bring-in` since T2, `verb-compose` since T3).
+ *
+ * All three end in the same place for the same reason: the artifact belongs to
+ * the HUMAN, not to a binding. Nothing relays, so no `assertOutboundAllowed`
+ * (the outbound bound governs a binding's reach); the MIME carries no
+ * Auto-Submitted or X- headers, because the bytes stored here are the bytes
+ * their own composer will send; and the undo handle is the plainest one there
+ * is — the draft is a row, delete it.
+ *
+ * One function rather than three near-copies: the differences between the
+ * callers are which voice signs it and whether it threads, and those are
+ * ARGUMENTS. A second hand-maintained copy of this write is how the keywords,
+ * the blob and the thread resolution come to disagree.
+ */
+async function draftIntoDrafts(
+  access: { accountId: string; tenantId: string },
+  store: Mailstore,
+  o: {
+    to: string;
+    subject: string;
+    body: string;
+    /** The sending identity's address and display name. */
+    self: string;
+    selfName: string;
+    /** The Message-ID this draft answers, or null to start a message. */
+    inReplyTo: string | null;
+  },
+): Promise<{ entries: ChangeEntry[]; undo: Record<string, unknown> }> {
+  const now = Date.now();
+  const messageId = `${crypto.randomUUID()}@${o.self.split("@")[1] ?? "localhost"}`;
+  const raw = buildMime({
+    from: [{ name: o.selfName, email: o.self }],
+    to: [{ email: o.to }],
+    subject: o.subject,
+    messageId,
+    inReplyTo: o.inReplyTo,
+    date: new Date(now),
+    text: o.body,
+  });
+  const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer;
+  const blobId = await store.putBlob(access.tenantId, access.accountId, buf);
+  const draftsMailbox = await store.ensureRoleMailbox(access.accountId, "drafts", "Drafts");
+  const emailId = `e_${crypto.randomUUID()}`;
+  await store.insertEmail(access.accountId, {
+    id: emailId,
+    blobId,
+    threadId: await store.resolveThreadId(access.accountId, o.inReplyTo),
+    messageId,
+    inReplyTo: o.inReplyTo,
+    subject: o.subject,
+    from: [{ name: o.selfName, email: o.self }],
+    to: [{ email: o.to }],
+    cc: [],
+    bcc: [],
+    preview: o.body.slice(0, 256),
+    bodyText: o.body,
+    size: raw.byteLength,
+    receivedAt: now,
+    hasAttachment: false,
+    attachments: [],
+    mailboxIds: [draftsMailbox],
+    keywords: ["$draft", "$agent"],
+  });
+  return {
+    entries: [
+      { collection: "Email", created: [emailId], updated: [], destroyed: [] },
+      { collection: "Mailbox", created: [], updated: [draftsMailbox], destroyed: [] },
+    ],
+    undo: { action: "destroy-email", emailId },
+  };
 }
 
 /** The two mailboxes a held-mail decision can touch, for the changelog. */

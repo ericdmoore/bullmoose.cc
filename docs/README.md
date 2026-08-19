@@ -59,8 +59,10 @@ Deliver-and-forward is a property of the KV route value
 
 The ingest worker stores the message first, then `message.forward()`s the
 copies — a forward failure never bounces mail already delivered. Point a
-JMAP client at `jmap.bullmoose.cc` (or `bullmoose login eric@bullmoose.cc`,
-which finds it by SRV).
+JMAP client at `https://app.bullmoose.cc` (or `bullmoose login
+eric@bullmoose.cc`, which finds it: no SRV record exists — Cloudflare cannot
+serve one for a proxied host — so discovery uses the RFC 8620 §2.2 well-known
+rung and follows the apex's redirect).
 
 ---
 
@@ -188,7 +190,7 @@ agents (§2, §3) are unaffected.
 
 | protocol | endpoint | auth | notes |
 |---|---|---|---|
-| JMAP | `jmap.bullmoose.cc` | Bearer or Basic (token) | modern clients, the CLI |
+| JMAP | `app.bullmoose.cc` | Bearer or Basic (token) | modern clients, the CLI |
 | POP3S | `alpaca…ts.net:9995` (popcorn) | app-password | legacy download clients |
 | SMTP submission | `alpaca…ts.net:9587` (popcorn) | app-password | legacy send; kettle-corn |
 

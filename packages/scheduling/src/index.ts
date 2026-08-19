@@ -4,7 +4,9 @@ export {
   ESCALATION_WINDOW_MIN_MS,
   ESCALATION_WINDOW_NO_HISTORY_MS,
   FREE_RUNTIME_LIVE_MS,
+  backfillEnvelopeExhausted,
   budgetExhausted,
+  effectiveBudgetExhausted,
   escalationWindowMs,
   fit,
   mayClaim,
@@ -24,6 +26,7 @@ export {
   attenuatePlan,
   describeRefusals,
   isPrivacyClass,
+  tightestPrivacy,
   type AttenuatedChild,
   type AttenuationResult,
   type ChildRequest,
@@ -33,6 +36,26 @@ export {
   type NodeCeiling,
   type Refusal,
 } from "./attenuation.js";
+// s17 — the CROSS-BINDING hop: `attenuation.ts` refuses one, and this is the
+// one door that builds a ceiling narrow enough for it to be safe.
+export {
+  HANDOFF_MAX_HOPS,
+  HANDOFF_REASON_MAX,
+  NO_HANDOFF,
+  describeHandoff,
+  parseHandoffPolicy,
+  parseHandoffProvenance,
+  planHandoff,
+  stampHandoff,
+  type HandoffArgs,
+  type HandoffChain,
+  type HandoffPlan,
+  type HandoffPolicy,
+  type HandoffProvenance,
+  type HandoffReceiver,
+  type HandoffResult,
+  type HandoffSender,
+} from "./handoff.js";
 export {
   NO_AUTHORITY,
   describeDenial,
@@ -52,6 +75,7 @@ export {
 export {
   authorizeNodeUse,
   bindingCeiling,
+  delegationPath,
   effectiveNodeAuthority,
   effectiveNodeCeiling,
   type AuthorityDb,
@@ -59,6 +83,53 @@ export {
   type JobNodeRow,
   type NodeUseDecision,
 } from "./nodeAuthority.js";
+// s20 T6 — the delegation contract: a Goal's four clauses, what they compile
+// onto (which is entirely machinery that already exists), and the checkpoint
+// classes that thin one at a time rather than all at once.
+export {
+  CHECKPOINT_CLASSES,
+  GOAL_DEFAULT_MAX_DEPTH,
+  GOAL_DEFAULT_MAX_NODES,
+  GOAL_OUTREACH_KIND,
+  GOAL_PLAN_KIND,
+  GOAL_SUMMARY_KIND,
+  GRADUABLE_CLASSES,
+  attenuateContract,
+  checkpointClassOf,
+  compileContract,
+  contactAllowed,
+  contractRefusals,
+  defaultCheckpoints,
+  deriveGoalStatus,
+  isCheckpointClass,
+  microsToUsd,
+  parseGoalContract,
+  sketchFromContract,
+  usdToMicros,
+  type CheckpointClass,
+  type CheckpointMode,
+  type CheckpointPolicy,
+  type CheckpointSetting,
+  type ContractParse,
+  type ContractTask,
+  type GoalContract,
+  type GoalStatus,
+} from "./goalContract.js";
+// The attenuated WRITE paths. They live here rather than in services/agent
+// because s20 T6's plan-approval checkpoint creates a planner's tasks from
+// inside the JMAP worker, and an approved plan must meet exactly the checks a
+// planner's own output meets — one implementation, two callers.
+export {
+  expandPlanRows,
+  getJobNodeRow,
+  insertJobChildren,
+  joinContextRows,
+  startJobRows,
+  type ExpandResult,
+  type JobSpec,
+  type PlanSpec,
+  type StartJobResult,
+} from "./jobWrite.js";
 export {
   BLOCKED_SENTINEL,
   deriveJobStatus,
@@ -75,6 +146,10 @@ export {
   type NodeStatus,
 } from "./jobGraph.js";
 export {
+  backfillEnvelopeExhaustedSql,
+  backfillEnvelopeSql,
+  bindingDisabled,
+  bindingDisabledSql,
   bindingEscalationWindowMs,
   bindingMedianCostMicros,
   budgetExhaustedSql,
@@ -89,6 +164,7 @@ export {
   dueWindowSql,
   freeRuntimeLiveCutoff,
   freeRuntimeLiveSql,
+  handoffOriginBudgetExhaustedSql,
   medianMicros,
   notPinnedSql,
   type ClaimGateParams,

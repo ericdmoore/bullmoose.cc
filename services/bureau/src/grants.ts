@@ -283,21 +283,30 @@ async function envelopeAllowsCredential(
  * account-scoped, so it carries the principal's first owned account — which is
  * what makes the use visible in that account's access log — falling back to the
  * principal id when the principal owns none.
+ *
+ * `accountId` is the exception a caller may pass when it KNOWS which account the
+ * use is for: the s26 T4 BYOK door runs on behalf of one binding, on one
+ * account, so guessing "first owned" there would file a household's mail-agent
+ * spend under whichever account happened to be created first. Exported for that
+ * caller only — every attempt through every door lands on this one path.
  */
-async function auditUse(
+export async function auditUse(
   env: Env,
   principalEmail: string,
   principalId: string,
   credRef: string,
   verb: string,
   grantId: string | null,
+  accountId?: string,
 ): Promise<void> {
-  const acct = await env.DB.prepare(
-    `SELECT id FROM accounts WHERE principal_id = ? AND deleted_at IS NULL
+  const acct = accountId
+    ? { id: accountId }
+    : await env.DB.prepare(
+        `SELECT id FROM accounts WHERE principal_id = ? AND deleted_at IS NULL
      ORDER BY created_at LIMIT 1`,
-  )
-    .bind(principalId)
-    .first<{ id: string }>();
+      )
+        .bind(principalId)
+        .first<{ id: string }>();
   await env.DB.prepare(
     `INSERT INTO grant_audit (grant_id, principal, account_id, method, at)
      VALUES (?, ?, ?, ?, ?)`,

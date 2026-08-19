@@ -13,6 +13,7 @@ import {
 } from "../lib/activity/feed";
 import type { ActivityItem } from "../lib/activity/types";
 import { accountLabel, approvalsAccounts } from "../lib/approvals/rows";
+import { urlParam } from "../lib/shell/publish";
 import { DecidedDetail, FeedRow, WatchDetail } from "./ActivityRows";
 import CollectionColumn from "./CollectionColumn";
 import type { JmapClient } from "../lib/jmap/JmapClient";
@@ -53,7 +54,10 @@ export default function ActivityApp({ client: injectedClient, now: fixedNow }: P
   const [failures, setFailures] = useState<Record<string, string>>({});
   const [watchesUnavailable, setWatchesUnavailable] = useState(false);
   const [collection, setCollection] = useState<string>("all");
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  // s25 T3 — `/activity?a=<id>` deep-links a record: read once at mount (the
+  // MPA detail-URL pattern every surface follows now), self-repaired below
+  // once the feed arrives. The rows themselves keep their in-page selection.
+  const [selectedId, setSelectedId] = useState<string | undefined>(() => urlParam("a"));
 
   // A retrospective does not need a ticking clock: "3h ago" moving to "3h 1m
   // ago" helps nobody decide anything. One `now`, taken at mount.
@@ -135,14 +139,17 @@ export default function ActivityApp({ client: injectedClient, now: fixedNow }: P
 
   const selected = activeList.find((i) => i.id === selectedId) ?? activeList[0];
   // Keep a valid selection as the feed or the collection changes under us —
-  // the same self-repair the approvals master-detail does.
+  // the same self-repair the approvals master-detail does. Not while
+  // loading: repairing against the momentary empty feed would wipe a
+  // deep-linked `?a=` (s25 T3) before the record it names arrives.
   useEffect(() => {
+    if (loading) return;
     if (activeList.length === 0) {
       if (selectedId !== undefined) setSelectedId(undefined);
       return;
     }
     if (!activeList.some((i) => i.id === selectedId)) setSelectedId(activeList[0]!.id);
-  }, [activeList, selectedId]);
+  }, [activeList, selectedId, loading]);
 
   // ── shells ──────────────────────────────────────────────────────────────
   // `div`, not `main`: AppTw.astro owns the page's one <main>.

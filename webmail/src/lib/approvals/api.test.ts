@@ -25,13 +25,14 @@ describe("loadQueue", () => {
   it("returns the whole collection in one query→get round trip", async () => {
     const { client } = harness();
     const { proposals, state } = await loadQueue(client, ACCOUNT);
-    expect(proposals.length).toBe(11);
+    expect(proposals.length).toBe(12);
     expect(state).toBe("0");
     // Every status the arch names is present in the fixture set, so the whole
     // surface — queue, waiting-on-agent, hold tray, history — is drivable
-    // without a server.
+    // without a server. `yanked` joined the list once the demo could produce
+    // one; before that it was the only status here nobody could look at.
     const statuses = new Set(proposals.map((p) => p.status));
-    for (const s of ["pending", "info-requested", "held", "approved", "rejected", "expired"]) {
+    for (const s of ["pending", "info-requested", "held", "approved", "rejected", "expired", "yanked"]) {
       expect(statuses, `fixture set is missing status ${s}`).toContain(s);
     }
     // …and all three tiers among the PENDING rows, plus the shared-queue ask.

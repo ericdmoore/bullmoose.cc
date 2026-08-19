@@ -56,25 +56,30 @@ const SCHEMAS = ["packages/mailstore/sql/data-plane.sql", "packages/mailstore/sq
 // Deploy order IS the binding graph, derived from the wrangler configs:
 //
 //   submit         no deps
-//   jmap           services: submit          · declares AccountDO
+//   bureau         no deps                   · holds VAULT_MASTER_KEY
+//   jmap           services: submit, BUREAU   · declares AccountDO
 //   agent          services: submit          · durable_objects script_name: jmap
 //   ingest         services: AGENT -> agent  · durable_objects script_name: jmap
-//   provision      no deps
+//   provision      services: BUREAU -> bureau   (s26 T4, POST /provider-keys)
 //   anglebrackets  durable_objects script_name: jmap
 //
 // agent MUST precede ingest — services/ingest/wrangler.jsonc:28 binds
 // `bullmoose-agent`, so on a clean account ingest deploys against a service
 // that does not exist yet. This list previously had ingest at 3 and agent at
 // 5, which only ever worked because agent already existed from a prior run.
-// bureau BEFORE agent: services/agent/wrangler.jsonc binds BUREAU ->
-// bullmoose-bureau, so on a clean account the reverse order deploys agent
+// bureau BEFORE agent, jmap AND provision: all three bind BUREAU ->
+// bullmoose-bureau, so on a clean account the reverse order deploys them
 // against a service that does not exist yet. Same class of dependency as
-// agent-before-ingest (infra/011); docs/DEPLOY.md §2 and
+// agent-before-ingest (infra/011). jmap joined that list in s26 T4's
+// surface pass: ProviderCredential/set seals a tenant's provider key, and
+// sealing is a HOP because VAULT_MASTER_KEY is bound to bureau and to
+// nothing else -- least of all to the worker that renders untrusted email.
+// docs/DEPLOY.md §2 and
 // .github/workflows/deploy-mail.yml must stay in sync with this list.
 // `oauth` precedes `agent`, which binds OAUTH to validate access tokens —
 // the same edge, and the same failure if reversed (deploying against a
 // service that does not exist yet), as bureau-before-agent.
-export const DEPLOY_ORDER = ["submit", "jmap", "bureau", "oauth", "agent", "ingest", "provision", "anglebrackets"];
+export const DEPLOY_ORDER = ["submit", "bureau", "jmap", "oauth", "agent", "ingest", "provision", "anglebrackets"];
 
 const cfg = (w) => `services/${w}/wrangler.jsonc`;
 // Configs that carry resource ids to wire. anglebrackets has no KV binding —
@@ -84,7 +89,11 @@ const CONFIGS = DEPLOY_ORDER.map(cfg);
 // Secrets we generate: name → { bytes, workers }. INTERNAL_TOKEN is ONE value
 // shared across all its workers (the /internal/* + agent-poke shared secret).
 export const GENERATED = {
-  INTERNAL_TOKEN: { bytes: 24, workers: ["jmap", "submit", "ingest", "agent", "bureau"] },
+  // `provision` joined this list in s26 T4: `POST /provider-keys` seals a
+  // tenant's provider key by calling the Bureau's `/internal/*` surface, which
+  // is gated on this shared value. It grants provision no new READ: the Bureau
+  // has no route that returns a secret to anyone holding it.
+  INTERNAL_TOKEN: { bytes: 24, workers: ["jmap", "submit", "ingest", "agent", "bureau", "provision"] },
   SHARE_SIGNING_KEY: { bytes: 32, workers: ["jmap"] },
   ADMIN_TOKEN: { bytes: 24, workers: ["provision"] },
   // ONE key, ONE home (s04 T3a, arch.md OQ1). This list having exactly one entry

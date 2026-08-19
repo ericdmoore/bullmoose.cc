@@ -40,6 +40,10 @@ var valueFlags = map[string]bool{
 	"config": true,
 	// ---- fleet host (s11 T8) ----
 	"fleet": true,
+	// ---- @local ladder (s26 T6): models / local setup|connect ----
+	"host": true, "key-env": true,
+	// ---- agent dossier verbs (s26 T6): show/budget/model/backfill ----
+	"set": true, "explore": true, "since": true, "budget": true,
 	// ---- agent invoke (sVOL 007) ----
 	"email": true, "note": true, "until": true, "expires": true, "kind": true,
 	"secret": true, "secret-env": true, "meta": true, "authorize-url": true,
@@ -52,6 +56,8 @@ var valueFlags = map[string]bool{
 	"calendar": true, "occurrence": true,
 	// ---- watch / agent ----
 	"sla": true, "allow": true, "reply-mode": true, "exec": true,
+	// ---- operator onboarding (`admin extractor on` / `admin byok seal`) ----
+	"provider": true, "model": true,
 	// ---- the agent config surface (s10 T4, Go-native `agents`) ----
 	// Go-native-only commands still declare their value flags on BOTH sides:
 	// this map's job is to know where a token ENDS, and a flag missing here
@@ -108,6 +114,10 @@ var booleanFlags = map[string]bool{
 	"offline": true, "daemon": true, "status": true, "stop": true,
 	"json": true, "ids": true, "dry-run": true, "unset": true, "no-sync": true,
 	"help": true, "man": true, "markdown": true,
+	// s26 T6 — `agent backfill --request-floor` mints the approval instead of
+	// backfilling. Boolean, so the scanner skips it either way; help.go needs
+	// it to tell "a flag that takes nothing" from "no such flag".
+	"request-floor": true,
 }
 
 // shortValueFlags: the spec declares exactly two short options, and only one of

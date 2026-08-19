@@ -30,7 +30,20 @@
 //
 // This is a divergence from the TypeScript twin, and an intentional one; the
 // contract suite has no `login` case, so 61/61 is unaffected. Recorded in the
-// wave report as a delta to fold back into discover.ts.
+// wave report as a delta to fold back into discover.ts. PARTIALLY FOLDED BACK:
+// discover.ts now probes and adopts a redirect (below); the candidate LADDER —
+// trying every rung and naming each failure — is still Go-only.
+//
+// ── The redirect, which is where the live deployment actually lives ────────
+//
+// `https://<domain>/.well-known/jmap` may redirect, and RFC 8620 §2.2 says the
+// client follows it: the session resource is the FINAL URL. That is not a
+// detail for bullmoose.cc. The apex is a Pages site that 302s exactly that one
+// path to `https://app.bullmoose.cc/.well-known/jmap` (src/public/_redirects)
+// and serves nothing else the CLI needs — POST /auth/login to the apex is 405.
+// So a probe that merely SUCCEEDS through the redirect while reporting the apex
+// as the base produces a config that cannot log in. The base is therefore the
+// origin that answered, not the name we started from.
 package discover
 
 import (
@@ -55,6 +68,10 @@ type Result struct {
 	Base   string
 	Via    string // "srv" | "srv-doh" | "fallback"
 	Domain string
+	// RedirectedFrom is the candidate we started from, set only when the session
+	// resource redirected to a DIFFERENT origin and Base was rewritten to it.
+	// Empty otherwise. `login` prints it so a base nobody typed is never silent.
+	RedirectedFrom string
 }
 
 // Resolver holds the two effects discovery has, so a test can drive every rung
@@ -93,6 +110,16 @@ func (r *Resolver) client() *http.Client {
 	return &http.Client{Timeout: 15 * time.Second}
 }
 
+// probeClient is client() with automatic redirect following turned OFF, so the
+// probe sees each hop and can tell WHERE the session resource finally answered.
+// It is a copy rather than a mutation because the client may be the caller's
+// (tests inject one) and CheckRedirect is not ours to change on it.
+func (r *Resolver) probeClient() *http.Client {
+	c := *r.client()
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &c
+}
+
 // Resolve finds the JMAP base for an address, or explains why it could not.
 func (r *Resolver) Resolve(ctx context.Context, email string) (Result, error) {
 	at := strings.LastIndex(email, "@")
@@ -106,8 +133,15 @@ func (r *Resolver) Resolve(ctx context.Context, email string) (Result, error) {
 
 	var tried []string
 	for _, c := range candidates {
-		ok, detail := r.probe(ctx, c.Base)
+		ok, detail, answeredAt := r.probe(ctx, c.Base)
 		if ok {
+			// The session resource is allowed to live somewhere else, and where
+			// it ANSWERED is the base — see the package header. Only a
+			// cross-origin hop rewrites anything; a redirect within the same
+			// origin (http→https, a trailing slash) leaves the base alone.
+			if answeredAt != "" && answeredAt != c.Base {
+				c.RedirectedFrom, c.Base = c.Base, answeredAt
+			}
 			return c, nil
 		}
 		tried = append(tried, fmt.Sprintf("  %-40s %s (%s)", c.Base+"/.well-known/jmap", detail, c.Via))
@@ -222,33 +256,83 @@ func (r *Resolver) lookupDoH(ctx context.Context, name string) []*net.SRV {
 	return out
 }
 
-// probe asks the candidate whether it is a JMAP server — discover.ts:94
+// maxRedirects bounds the manual follow below. Five is Cloudflare's own limit
+// for a redirect chain and far more than a session resource has any excuse for.
+const maxRedirects = 5
+
+// probe asks the candidate whether it is a JMAP server — discover.ts's
 // probeSession, including the case that decides everything: an UNAUTHENTICATED
 // GET of the session resource answers 401, and that is a YES. The bodies here are
 // never printed; only these short verdicts are.
-func (r *Resolver) probe(ctx context.Context, base string) (bool, string) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/.well-known/jmap", nil)
+//
+// The third return is the ORIGIN THAT ANSWERED, which is not always the origin
+// asked (RFC 8620 §2.2: the client follows redirects, and the session resource
+// is the final URL). Redirects are followed HERE rather than by http.Client for
+// two reasons: the client is injected by tests, so its CheckRedirect is not ours
+// to set; and after a RoundTripper has rewritten the request — which is exactly
+// how internal/discover's tests reach an httptest server — `resp.Request.URL` is
+// the rewritten URL and reading the answer off it would report the stub's
+// address as the user's server.
+func (r *Resolver) probe(ctx context.Context, base string) (bool, string, string) {
+	target, err := url.Parse(base + "/.well-known/jmap")
 	if err != nil {
-		return false, "not a usable URL"
+		return false, "not a usable URL", ""
 	}
-	resp, err := r.client().Do(req)
-	if err != nil {
-		return false, transportDetail(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusUnauthorized {
-		return true, "JMAP server present (auth required — expected)"
-	}
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		if strings.Contains(resp.Header.Get("content-type"), "json") {
-			return true, "JMAP session served"
+	for hop := 0; ; hop++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+		if err != nil {
+			return false, "not a usable URL", ""
 		}
-		// The HTML-dump case, named rather than pasted: a parked domain, a
-		// marketing page, or a proxy that answers everything with 200.
-		return false, fmt.Sprintf("responds, but not with a JMAP session (%s)",
-			contentType(resp.Header.Get("content-type")))
+		resp, err := r.probeClient().Do(req)
+		if err != nil {
+			return false, transportDetail(err), ""
+		}
+		// Read the verdict, then close: nothing below needs the body.
+		status, ctype, location := resp.StatusCode, resp.Header.Get("content-type"), resp.Header.Get("location")
+		resp.Body.Close()
+
+		if isRedirect(status) && location != "" {
+			if hop >= maxRedirects {
+				return false, fmt.Sprintf("redirected more than %d times", maxRedirects), ""
+			}
+			next, err := target.Parse(location) // resolves a relative Location
+			if err != nil {
+				return false, "redirected to an unusable URL", ""
+			}
+			target = next
+			continue
+		}
+
+		// `origin` is empty unless the answer came from somewhere else, so the
+		// ordinary case rewrites nothing.
+		origin := ""
+		if hop > 0 {
+			origin = target.Scheme + "://" + target.Host
+		}
+		if status == http.StatusUnauthorized {
+			return true, "JMAP server present (auth required — expected)", origin
+		}
+		if status >= 200 && status < 300 {
+			if strings.Contains(ctype, "json") {
+				return true, "JMAP session served", origin
+			}
+			// The HTML-dump case, named rather than pasted: a parked domain, a
+			// marketing page, or a proxy that answers everything with 200.
+			return false, fmt.Sprintf("responds, but not with a JMAP session (%s)", contentType(ctype)), ""
+		}
+		return false, fmt.Sprintf("HTTP %d", status), ""
 	}
-	return false, fmt.Sprintf("HTTP %d", resp.StatusCode)
+}
+
+// isRedirect covers the four status codes that carry a Location a GET should
+// follow. 304 is deliberately absent — it is a cache answer, not a move.
+func isRedirect(status int) bool {
+	switch status {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
+		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return true
+	}
+	return false
 }
 
 // transportDetail keeps a connection failure to one line. net's errors are

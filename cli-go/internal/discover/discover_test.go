@@ -247,3 +247,99 @@ func TestNotAnEmailAddress(t *testing.T) {
 		}
 	}
 }
+
+// TestWellKnownRedirectMovesTheBase is the live bullmoose.cc shape, and the bug
+// it fixes: the apex is a Pages site that 302s ONLY /.well-known/jmap to
+// app.bullmoose.cc. Probing through the redirect and then reporting the apex as
+// the base yields a config that discovers fine and cannot log in — the apex
+// answers POST /auth/login with 405. The base has to be the origin that
+// answered (RFC 8620 §2.2).
+func TestWellKnownRedirectMovesTheBase(t *testing.T) {
+	apex := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("location", "https://app.bullmoose.cc/.well-known/jmap")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer apex.Close()
+	app := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+	}))
+	defer app.Close()
+
+	// Two origins, routed by the hostname discovery ASKED for — recording it
+	// here rather than in a handler, because the rewrite that lets these tests
+	// run without a network is exactly what erases it downstream.
+	var asked []string
+	r := &Resolver{LookupSRV: noSRV, HTTP: &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			asked = append(asked, req.URL.Host+req.URL.Path)
+			dest := app.URL
+			if req.URL.Host == "bullmoose.cc" {
+				dest = apex.URL
+			}
+			clone := req.Clone(req.Context())
+			clone.URL.Scheme = "http"
+			clone.URL.Host = strings.TrimPrefix(dest, "http://")
+			return http.DefaultTransport.RoundTrip(clone)
+		}),
+	}}
+	got, err := r.Resolve(context.Background(), "eric@bullmoose.cc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Base != "https://app.bullmoose.cc" {
+		t.Errorf("base = %q, want the origin that answered (https://app.bullmoose.cc)", got.Base)
+	}
+	if got.RedirectedFrom != "https://bullmoose.cc" {
+		t.Errorf("redirectedFrom = %q, want https://bullmoose.cc — a moved base must not be silent", got.RedirectedFrom)
+	}
+	if got.Via != "fallback" {
+		t.Errorf("via = %q, want fallback — a redirect does not change which RUNG answered", got.Via)
+	}
+	want := []string{"bullmoose.cc/.well-known/jmap", "app.bullmoose.cc/.well-known/jmap"}
+	if len(asked) != 2 || asked[0] != want[0] || asked[1] != want[1] {
+		t.Errorf("requests = %v, want %v", asked, want)
+	}
+}
+
+// TestSameOriginRedirectLeavesTheBaseAlone: only a CROSS-ORIGIN hop is a move.
+// A server that normalises a path must not rewrite the user's base.
+func TestSameOriginRedirectLeavesTheBaseAlone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/jmap" {
+			w.Header().Set("location", "/.well-known/jmap/")
+			w.WriteHeader(http.StatusMovedPermanently)
+			return
+		}
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	r := &Resolver{LookupSRV: noSRV, HTTP: rewriteTo(srv, nil)}
+	got, err := r.Resolve(context.Background(), "eric@bullmoose.cc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Base != "https://bullmoose.cc" || got.RedirectedFrom != "" {
+		t.Errorf("base = %q (from %q), want https://bullmoose.cc unmoved", got.Base, got.RedirectedFrom)
+	}
+}
+
+// TestRedirectLoopIsRefusedNotFollowedForever — a bounded follow, reported as a
+// candidate that failed rather than as a hang.
+func TestRedirectLoopIsRefusedNotFollowedForever(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("location", "https://elsewhere.example/.well-known/jmap")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer srv.Close()
+
+	r := &Resolver{LookupSRV: noSRV, HTTP: rewriteTo(srv, nil)}
+	if _, err := r.Resolve(context.Background(), "eric@bullmoose.cc"); err == nil {
+		t.Fatal("a redirect loop was accepted as a discovered server")
+	}
+	if hits > maxRedirects+1 {
+		t.Errorf("followed %d hops, want at most %d", hits, maxRedirects+1)
+	}
+}

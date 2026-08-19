@@ -1,18 +1,22 @@
 /** @jsxImportSource preact */
 import { useEffect, useMemo, useState } from "preact/hooks";
 import AgentConsole from "./AgentConsole";
-import AgentDossierPanel from "./AgentDossierPanel";
+import AgentDossierPanel, { type BindingCredential, type BindingToggle } from "./AgentDossierPanel";
 import CollectionColumn from "./CollectionColumn";
 import { Avatar, Badge, Column, ListContainer, ListRow, SurfaceFrame } from "./ui";
+import { applyBindingEnabled, setBindingEnabled } from "../lib/agents/api";
 import {
   ALL_AGENTS_COLLECTION,
   CONSOLE_COLLECTION,
   agentCollections,
   agentListRows,
+  agentRowId,
   buildDossierView,
   filterAgentRows,
   parseAgentRowId,
 } from "../lib/agents/dossier";
+import { detachFromBinding, readByokStatus } from "../lib/byok/api";
+import { bindingByokView, type ByokStatus } from "../lib/byok/status";
 import { resolveClient } from "../lib/app/client";
 import { resolveConsole, type ConsoleMode } from "../lib/app/console";
 import type { AgentConsoleClient, AgentSummary } from "../lib/console/ConsoleClient";
@@ -42,6 +46,7 @@ interface Props {
 
 export default function AgentsApp({ reads: injectedReads, client: injectedClient }: Props) {
   const [session, setSession] = useState<Session | undefined>(undefined);
+  const [client, setClient] = useState<JmapClient | undefined>(injectedClient);
   const [reads, setReads] = useState<AgentConsoleClient | undefined>(injectedReads);
   const [mode, setMode] = useState<ConsoleMode>("demo");
   const [fatal, setFatal] = useState<string | undefined>(undefined);
@@ -55,6 +60,22 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => Date.now());
+
+  // ── the kill switch (s26 T2): optimistic flip + reconcile ────────────────
+  // One row busy at a time (the control is on the selected dossier); refusals
+  // are kept PER ROW so a wall message survives switching away and back.
+  const [toggleBusyRow, setToggleBusyRow] = useState<string | undefined>(undefined);
+  const [toggleErrors, setToggleErrors] = useState<Record<string, string>>({});
+
+  // ── BYOK (s26 T4): whose key pays for this agent's model calls ───────────
+  // Per ACCOUNT, because that is what the door is scoped to (and what the
+  // credential is: sealed against the principal, not the binding). Read
+  // best-effort: a server that predates this method, or a session the read
+  // refuses, leaves the section absent rather than erroring the whole dossier —
+  // the realm's other four sections are not BYOK's to break.
+  const [byok, setByok] = useState<Record<string, ByokStatus>>({});
+  const [byokBusyRow, setByokBusyRow] = useState<string | undefined>(undefined);
+  const [byokErrors, setByokErrors] = useState<Record<string, string>>({});
 
   // ── bootstrap: session, then the console read client ─────────────────────
   useEffect(() => {
@@ -73,6 +94,7 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
         const live = await jmap.session();
         if (cancelled) return;
         setSession(live);
+        setClient(jmap);
         if (!injectedReads) {
           const resolved = resolveConsole();
           setReads(resolved.reads);
@@ -124,6 +146,24 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
     };
   }, [reads, gate.state]);
 
+  // The BYOK status for every account the realm lists, once the roster is in.
+  useEffect(() => {
+    if (!client || agents.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const settled = await Promise.all(agents.map((a) => readByokStatus(client, a.accountId)));
+      if (cancelled) return;
+      const byAccount: Record<string, ByokStatus> = {};
+      settled.forEach((res, i) => {
+        if (res.ok) byAccount[agents[i]!.accountId] = res.value;
+      });
+      setByok(byAccount);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, agents]);
+
   // ── the contextual filter (s24 T5): bm:search + the ?q= deep link ────────
   useEffect(() => {
     const q = new URLSearchParams(globalThis.location?.search ?? "").get("q");
@@ -147,6 +187,99 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
     const dossier = parsed && dossiers[parsed.accountId];
     return parsed && dossier ? buildDossierView(dossier, parsed.bindingId, now) : undefined;
   }, [active, dossiers, now]);
+
+  // ── the ONE write this realm makes (s26 T2) ──────────────────────────────
+  // Flip locally first (the read model is a projection, and the /set response
+  // is the reconcile — AgentBinding has no /changes), then let the server's
+  // word stand: its `updated[id].enabled` on success, the prior state plus
+  // the refusal sentence on failure. The wall's message is shown verbatim —
+  // "requires the send capability" teaches more than a softened paraphrase.
+  async function flipBinding(accountId: string, bindingId: string, next: boolean): Promise<void> {
+    if (!client) return;
+    const rowId = agentRowId(accountId, bindingId);
+    setToggleBusyRow(rowId);
+    setToggleErrors((prev) => {
+      const { [rowId]: _cleared, ...rest } = prev;
+      return rest;
+    });
+    setDossiers((prev) => applyBindingEnabled(prev, accountId, bindingId, next));
+    const outcome = await setBindingEnabled(client, accountId, bindingId, next);
+    if (outcome.ok) {
+      setDossiers((prev) => applyBindingEnabled(prev, accountId, bindingId, outcome.enabled));
+    } else {
+      setDossiers((prev) => applyBindingEnabled(prev, accountId, bindingId, !next));
+      setToggleErrors((prev) => ({ ...prev, [rowId]: outcome.message }));
+    }
+    setToggleBusyRow(undefined);
+  }
+
+  /**
+   * The dossier's ONE BYOK write: detach this agent from the tenant's key.
+   *
+   * No optimistic flip, unlike the kill switch — and the difference is not
+   * inconsistency. `enabled` is one boolean whose next value the client already
+   * knows; a detach changes the binding's config AND the credential's
+   * in-use/unused state AND every other agent's summary, and the honest way to
+   * know the result is the server's recomputed status, which the response
+   * carries for exactly this reason (there is no /changes for this collection).
+   */
+  async function detachCredential(accountId: string, bindingId: string, provider: string): Promise<void> {
+    if (!client) return;
+    const rowId = agentRowId(accountId, bindingId);
+    setByokBusyRow(rowId);
+    setByokErrors((prev) => {
+      const { [rowId]: _cleared, ...rest } = prev;
+      return rest;
+    });
+    const outcome = await detachFromBinding(client, accountId, bindingId, provider);
+    if (outcome.ok) {
+      setByok((prev) => ({
+        ...prev,
+        ...(prev[accountId]
+          ? {
+              [accountId]: {
+                ...prev[accountId]!,
+                refs: outcome.value.refs,
+                credentials: outcome.value.credentials,
+                platformKeyBindings: outcome.value.platformKeyBindings,
+              },
+            }
+          : {}),
+      }));
+    } else {
+      setByokErrors((prev) => ({ ...prev, [rowId]: outcome.message }));
+    }
+    setByokBusyRow(undefined);
+  }
+
+  const credential: BindingCredential | undefined = (() => {
+    if (!active) return undefined;
+    const parsed = parseAgentRowId(active.id);
+    if (!parsed) return undefined;
+    const status = byok[parsed.accountId];
+    if (!status) return undefined;
+    const view = bindingByokView(status, parsed.bindingId, now);
+    return {
+      view,
+      busy: byokBusyRow === active.id,
+      ...(byokErrors[active.id] !== undefined ? { error: byokErrors[active.id] as string } : {}),
+      onDetach: () => {
+        if (view.ref) void detachCredential(parsed.accountId, parsed.bindingId, view.ref.provider);
+      },
+    };
+  })();
+
+  const toggle: BindingToggle | undefined =
+    client && active
+      ? {
+          busy: toggleBusyRow === active.id,
+          ...(toggleErrors[active.id] !== undefined ? { error: toggleErrors[active.id] as string } : {}),
+          onToggle: (next: boolean) => {
+            const parsed = parseAgentRowId(active.id);
+            if (parsed) void flipBinding(parsed.accountId, parsed.bindingId, next);
+          },
+        }
+      : undefined;
 
   // ── shells (div, not main — AppTw owns the landmark) ─────────────────────
   if (fatal) {
@@ -202,7 +335,7 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
             {/* COLUMN 3 — the agents. */}
             <Column
               aria-label="Agents"
-              class="w-80 shrink-0 border-r border-gray-200 dark:border-white/10"
+              class="w-full shrink-0 border-gray-200 max-lg:border-b lg:w-80 lg:border-r dark:border-white/10"
               header={
                 <h2 class="px-4 pt-4 pb-1 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
                   All agents <span class="ml-1 font-normal text-gray-400">{visible.length}</span>
@@ -254,7 +387,7 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
             <Column aria-label="Agent dossier" class="min-w-0 grow">
               <div class="px-6 pt-4">
                 {detail ? (
-                  <AgentDossierPanel view={detail} />
+                  <AgentDossierPanel view={detail} toggle={toggle} credential={credential} />
                 ) : !loading ? (
                   <p class="text-sm text-gray-500 dark:text-gray-400">Select an agent to read its dossier.</p>
                 ) : null}

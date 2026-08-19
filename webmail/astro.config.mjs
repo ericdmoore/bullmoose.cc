@@ -6,8 +6,17 @@ import { defineConfig } from "astro/config";
 // s03.C webmail shell. Static output (Cloudflare Pages, the same proven path as
 // the marketing site). The authenticated mail surfaces mount as Preact islands —
 // the "SPA-in-an-island" shape from arch.md §1.
+//
+// `site` is the host this build is actually SERVED from, because that is what
+// Astro puts in canonical URLs, sitemaps and `Astro.site`. It is
+// `app.bullmoose.cc` — the one origin where Pages and the jmap Worker routes
+// meet (docs/DEPLOY.md §"The app surface", and `.github/workflows/deploy-app.yml`
+// which CNAMEs `app` → `bullmoose-app.pages.dev`). It matches
+// `lib/app/oauth.ts`'s `APP_ORIGIN`, which is the value the OAuth AS has
+// registered; `mail.bullmoose.cc` was never provisioned and resolves to
+// nothing, so every absolute URL this build emitted pointed at a dead host.
 export default defineConfig({
-  site: "https://mail.bullmoose.cc",
+  site: "https://app.bullmoose.cc",
   integrations: [preact()],
 
   // Tailwind v4 (s07 nav spike). A Vite plugin rather than an Astro

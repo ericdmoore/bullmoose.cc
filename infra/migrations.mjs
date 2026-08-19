@@ -167,6 +167,33 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "notes-table",
+    why: "s18 N1 notes — the human-authored standalone document (the OTHER s18 entity, NOT an annotation); without it Note/get|set|query answer 'no such table' and the /notes realm is a dead page",
+    // Non-blocking, the annotations-table/watches-table precedent: no request
+    // path AUTHORIZES against this table, so its absence breaks one realm's
+    // answers rather than the deploy — a plain schema re-run creates it.
+    // Listed so `bootstrap migrate` owns the set on an existing shard.
+    blocks: null,
+    check: tableExists("notes"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS notes (
+         id           TEXT PRIMARY KEY,
+         account_id   TEXT NOT NULL,
+         owner        TEXT NOT NULL,
+         title        TEXT NOT NULL DEFAULT '',
+         body         TEXT NOT NULL DEFAULT '',
+         revision     INTEGER NOT NULL DEFAULT 1,
+         last_writer_principal TEXT,
+         last_writer_binding   TEXT,
+         created_at   INTEGER NOT NULL,
+         updated_at   INTEGER NOT NULL
+       )`,
+      "CREATE INDEX IF NOT EXISTS notes_recent ON notes (account_id, updated_at)",
+    ],
+    absent: [],
+  },
+
+  {
     id: "oauth-consents-table",
     why: "s02 T4's D1 mirror of OAuth grants; without it the console answers 'who can reach my mail' with silence for every connected client",
     // Non-blocking: nothing AUTHORIZES against this table (KV stays canonical),
@@ -536,6 +563,32 @@ export const MIGRATIONS = [
          created_at         INTEGER NOT NULL,
          PRIMARY KEY (account_id, id)
        )`,
+    ],
+    absent: [], // an empty database: the table simply is not there
+  },
+
+  {
+    id: "goals-table",
+    why: "s20 T6: the Goal — a delegation contract with done-ness, keyed 1:1 to its Job (a Goal's id IS its jobs.id, the agent_proposals↔agent_invocations pattern). Holds only what cannot be derived: the human's sentence, the contract they bounded it with, and the two authored judgments (cancelled, accepted). NOT a deploy blocker: no claim statement names it, every read is inside the Goal/* methods, and a shard without it simply has no goals to list",
+    blocks: null,
+    check: tableExists("goals"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS goals (
+         id                  TEXT NOT NULL,
+         account_id          TEXT NOT NULL,
+         statement           TEXT NOT NULL,
+         contract_json       TEXT NOT NULL,
+         checkpoints_json    TEXT NOT NULL,
+         escalation_watch_id TEXT,
+         created_by          TEXT NOT NULL,
+         created_at          INTEGER NOT NULL,
+         cancelled_at        INTEGER,
+         cancelled_by        TEXT,
+         accepted_at         INTEGER,
+         accepted_by         TEXT,
+         PRIMARY KEY (account_id, id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS goals_created ON goals (account_id, created_at)`,
     ],
     absent: [], // an empty database: the table simply is not there
   },

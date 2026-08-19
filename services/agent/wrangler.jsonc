@@ -71,8 +71,17 @@
   // Secrets (wrangler secret put):
   //   INTERNAL_TOKEN       — shared with ingest (poke) and submit (relay)
   //   GATEWAY_TOKEN        — AI Gateway auth, only when gateway aliases exist
-  //   OPENROUTER_API_TOKEN — OpenRouter key (s18 extractor); required for any
-  //                          `provider: "openrouter"` model candidate to run
+  //   OPENROUTER_API_TOKEN — the PLATFORM's OpenRouter key (s18 extractor). The
+  //                          FALLBACK, not the only path: since s26 T4 a binding
+  //                          may name a Bureau-sealed credential of its own
+  //                          (config_json.providerCredentials / a candidate's
+  //                          credRef), and then the call authenticates as the
+  //                          TENANT and carries THEIR provider-side guardrails.
+  //                          This secret is used only when nothing named a
+  //                          credential — a named-but-unresolvable one fails the
+  //                          call rather than quietly spending this key. Still
+  //                          required for a single-tenant/homelab deployment,
+  //                          which is the common case.
   // Vars (set once the AI Gateway exists):
   //   GATEWAY_COMPAT_URL   — https://gateway.ai.cloudflare.com/v1/<acct>/bullmoose/compat
   //   OPENROUTER_BASE_URL  — optional; defaults to https://openrouter.ai/api/v1

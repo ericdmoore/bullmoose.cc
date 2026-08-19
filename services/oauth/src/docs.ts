@@ -130,6 +130,16 @@ token is required deliberately: a connected app cannot manage the roster of
 connected apps, itself included. An app that wants to revoke only its own
 token uses standard OAuth token revocation instead.
 
+## The webmail session exchange (first-party only)
+
+\`POST /webmail/session\` with an access token as the bearer returns a
+bullmoose \`bm_\` session token — how signing in at \`app.bullmoose.cc\`
+becomes a mailbox session. It answers **only** for tokens granted to the
+webmail's own client id; every other connected app receives 403 and keeps
+exactly the OAuth token it consented to. The minted session appears in your
+token listings as \`webmail session\`, expires after 30 days, and is revoked
+like any device token.
+
 bullmoose is self-hosted mail for people and agents. https://bullmoose.cc
 `;
 

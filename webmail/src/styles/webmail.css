@@ -413,6 +413,70 @@ code {
   color: var(--warn);
 }
 
+/* ── settings → agents (s26 T2) ──────────────────────────────────────────
+   The policy section: provision-time defaults (read-only, labeled) and the
+   roster with the one shared verb — the kill switch. */
+.settings-policy-default {
+  margin: 6px 0 10px;
+}
+.settings-policy-value {
+  margin: 0 0 2px;
+  font-size: 13.5px;
+}
+.settings-policy-tag {
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+.settings-roster {
+  list-style: none;
+  margin: 8px 0 10px;
+  padding: 0;
+}
+.settings-roster-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.settings-roster-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.settings-roster-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.settings-roster-off {
+  color: var(--error);
+  font-weight: 400;
+}
+.settings-roster-error {
+  font-size: 12.5px;
+  color: var(--error);
+}
+/* The quiet twin of .settings-submit — the disable verb should not glow. */
+.settings-btn-quiet {
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font-weight: 600;
+}
+.settings-btn-quiet:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* ── top bar ─────────────────────────────────────────────────────────── */
 
 .topbar {
@@ -771,6 +835,40 @@ code {
   cursor: not-allowed;
 }
 
+/* ── agent verbs (s20 T2) ─────────────────────────────────────────────────
+   Beside Reply/Forward, never instead of them: the classic three keep the
+   default button, the asks are marked as the agent's by a softer fill. */
+.agent-verbs {
+  border-top: 1px dashed var(--line);
+  margin: 0 14px;
+  padding-top: 10px;
+}
+.agent-verbs .message-actions {
+  padding: 0 0 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.message-actions button.agent-verb {
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+}
+.message-actions button.agent-verb:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.agent-verb-input {
+  flex: 1;
+  min-width: 220px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font: inherit;
+}
+.agent-verb-note {
+  margin: 0 0 10px;
+}
+
 /* ── notices ─────────────────────────────────────────────────────────── */
 
 .notice {
@@ -874,6 +972,110 @@ code {
   color: var(--fg-muted);
   font-size: 12.5px;
 }
+
+/* ── compose → intent (s20 T3) ────────────────────────────────────────────
+   Two modes on one surface. The mode buttons read as a segmented control and
+   the classic editor is always one of them: intent mode is a door, never a
+   replacement. */
+.composer-modes {
+  display: flex;
+  gap: 6px;
+}
+.composer-mode {
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+.composer-mode.is-on {
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--fg-muted);
+}
+.intent-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.intent-label {
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.intent-box {
+  min-height: 84px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  resize: vertical;
+}
+.intent-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.intent-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.intent-row-label {
+  width: 64px;
+  flex: none;
+  color: var(--fg-muted);
+  font-size: 13px;
+  padding-top: 4px;
+}
+.intent-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.intent-evidence {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12.5px;
+}
+.intent-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.intent-chip {
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  text-align: left;
+}
+.intent-chip.is-on {
+  background: var(--accent-soft);
+  border-color: var(--fg-muted);
+}
+.intent-inline-input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 5px 10px;
+  font: inherit;
+  flex: 1;
+  min-width: 0;
+}
+.intent-note {
+  margin: 0;
+}
 .link-button {
   border: none;
   background: none;
@@ -910,7 +1112,10 @@ code {
   border-radius: 10px;
   padding: 20px 24px;
   min-width: 320px;
+  /* dvh with a vh fallback (s25 T1): 80vh of the LARGE viewport can put the
+     card's bottom under mobile Safari's toolbar; dvh tracks the real one. */
   max-height: 80vh;
+  max-height: 80dvh;
   overflow-y: auto;
 }
 .help-card h2 {

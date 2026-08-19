@@ -3,6 +3,15 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { resolveClient } from "../lib/app/client";
 import { SECTIONS, type Section, type SectionId } from "../lib/app/sections";
+import { searchFieldClasses, searchYieldClasses } from "../lib/ui/classes";
+import { toggleExpansion } from "../lib/shell/collections";
+import {
+  COLLECTIONS_EVENT,
+  isStale,
+  publishedAtLabel,
+  readPublished,
+  type PublishedCollections,
+} from "../lib/shell/publish";
 import {
   Bars3Icon,
   CalendarIcon,
@@ -13,7 +22,9 @@ import {
   ClockIcon,
   Cog6ToothIcon,
   ComputerDesktopIcon,
+  DocumentTextIcon,
   EnvelopeIcon,
+  FlagIcon,
   FolderIcon,
   MagnifyingGlassIcon,
   UsersIcon,
@@ -55,6 +66,12 @@ const COLLAPSE_KEY = "bm.nav.collapsed";
  * invariant + CSP form-action 'none'): it dispatches a `bm:search` CustomEvent
  * the active surface island consumes. Inbound deep links (`?q=`) still work —
  * each surface reads them at mount.
+ *
+ * s25 T5 collapses this bar below `lg` to a magnifier that expands in place.
+ * The COLLAPSE IS PURELY PRESENTATIONAL: same `<form>`, same input, same
+ * `bm-global-search` id, same event. A tap toggles a class, it does not
+ * navigate and it does not add an entry to history — the two invariants
+ * tokenInUrl.test.ts enforces over this exact file.
  */
 const SEARCHABLE: Partial<Record<SectionId, { placeholder: string; hint?: string }>> = {
   mail: {
@@ -69,7 +86,14 @@ const SEARCHABLE: Partial<Record<SectionId, { placeholder: string; hint?: string
     placeholder: "Filter agents",
     hint: "Filters the realm's agent list — binding name, address, pipeline.",
   },
-  search: { placeholder: "Search everything" },
+  notes: {
+    placeholder: "Filter notes",
+    hint: "Scans every note's title and body — there is no index behind it.",
+  },
+  search: {
+    placeholder: "Find in your history",
+    hint: "Starts a new Finder session over your own mail \u2014 refine with chips from there.",
+  },
 };
 const WIDTH_KEY = "bm.nav.width";
 const isLive = (s: Section): boolean => s.status === "live";
@@ -112,9 +136,11 @@ const SECTION_ICON: Record<SectionId, (p: IconProps) => JSX.Element> = {
   approvals: CheckBadgeIcon,
   agents: ComputerDesktopIcon,
   activity: ClockIcon,
+  goals: FlagIcon,
   calendar: CalendarIcon,
   mail: EnvelopeIcon,
   contacts: UsersIcon,
+  notes: DocumentTextIcon,
   files: FolderIcon,
   search: MagnifyingGlassIcon,
   settings: Cog6ToothIcon,
@@ -230,6 +256,161 @@ function NavList({
 }
 
 /**
+ * The realm tray (s25 T4) — the mobile drawer's nav list, grown leaf-nodes.
+ *
+ * Realm rows come from `sections.ts` exactly as the rail's do; what GROWS is
+ * that a realm whose surface has PUBLISHED its collections (lib/shell/
+ * publish.ts) gets a chevron and expands them inline — `Mail ▸ Inbox 12 ·
+ * Sent`, one tap from anywhere to Mail→Sent. The Gmail-drawer pattern, and
+ * Eric's "merge Realm + Category" made real.
+ *
+ * The rendering is the CollectionTree idiom (CollectionColumn.tsx): the
+ * chevron is its own button BESIDE the row (a button inside a link is invalid
+ * HTML), expansion is a class-swapped rotate-90, and the expansion set is the
+ * same pure `toggleExpansion`. The tree component itself is deliberately NOT
+ * reused: its rows are `onSelect` BUTTONS for surfaces that own in-page
+ * state, and the tray's rows must be literal `<a href>` — real MPA
+ * navigation, zero history calls, which is exactly the shape the
+ * tokenInUrl.test.ts sweep allows without exception.
+ *
+ * Honesty rules, straight from the plumbing contract:
+ *   unpublished realm  → a plain row, no chevron (absence is not an error);
+ *   stale (>10 min)    → counts muted, with "as of 9:12" naming the instant;
+ *   planned section    → disabled with its reason, same as the rail.
+ *
+ * Pure given its props (published data, expansion set, clock all injected),
+ * so it render-tests in plain Node like every other piece of this chrome.
+ * The desktop rail is UNCHANGED — it keeps NavList.
+ */
+export function RealmTray({
+  section,
+  onNavigate,
+  order,
+  published,
+  expandedIds,
+  onToggle,
+  now = Date.now(),
+  sections = SECTIONS,
+}: {
+  section?: SectionId;
+  onNavigate?: () => void;
+  /** The user's own order, if they have set one — same preference the rail honours. */
+  order?: SectionId[];
+  /** What each realm last published; a missing key renders a plain row. */
+  published: Partial<Record<SectionId, PublishedCollections>>;
+  /** Realm ids whose leaf-nodes are showing. */
+  expandedIds: ReadonlySet<string>;
+  onToggle: (id: SectionId) => void;
+  /** The staleness clock — injected so tests are deterministic. */
+  now?: number;
+  /** Test seam: every shipped section is live today, so the planned-row
+   *  branch is only reachable with a fabricated roster. */
+  sections?: readonly Section[];
+}) {
+  // The same preference-over-shipped merge NavList does: unknown ids append,
+  // so a section added later still appears for someone who reordered.
+  const ordered = order?.length
+    ? [
+        ...order.map((id) => sections.find((s) => s.id === id)).filter((s): s is Section => !!s),
+        ...sections.filter((s) => !order.includes(s.id)),
+      ]
+    : sections;
+
+  return (
+    <ul role="list" class="-mx-2 space-y-1">
+      {ordered.map((s) => {
+        const current = s.id === section;
+        const shape = "flex items-center rounded-md p-2 gap-x-3";
+
+        if (s.status !== "live") {
+          // The planned-section idiom, unchanged from the rail: disabled WITH
+          // its reason, never a dead row and never a 404.
+          return (
+            <li key={s.id}>
+              <span
+                class={shape + " cursor-not-allowed text-sm/6 font-semibold text-gray-500"}
+                title={s.detail}
+                aria-disabled="true"
+              >
+                <Icon id={s.id} className="size-6 shrink-0 opacity-40" />
+                <span class="flex flex-col">
+                  {s.label}
+                  <span class="text-xs font-normal text-gray-500">{s.reason}</span>
+                </span>
+              </span>
+            </li>
+          );
+        }
+
+        const record = published[s.id];
+        const leaves = record?.items ?? [];
+        const open = leaves.length > 0 && expandedIds.has(s.id);
+        const stale = record !== undefined && isStale(record, now);
+
+        return (
+          <li key={s.id}>
+            <div class="flex items-center gap-x-0.5">
+              <a
+                href={s.href}
+                onClick={onNavigate}
+                aria-current={current ? "page" : undefined}
+                class={
+                  shape +
+                  " min-w-0 grow text-sm/6 font-semibold " +
+                  (current ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-white")
+                }
+              >
+                <Icon id={s.id} className="size-6 shrink-0" />
+                <span class="truncate">{s.label}</span>
+              </a>
+              {leaves.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => onToggle(s.id)}
+                  aria-expanded={open}
+                  aria-label={`${open ? "Collapse" : "Expand"} ${s.label} collections`}
+                  class="shrink-0 rounded-md p-2 text-gray-400 hover:bg-gray-800 hover:text-white"
+                >
+                  <ChevronRightIcon
+                    class={"size-4 transition-transform duration-150 " + (open ? "rotate-90" : "")}
+                    strokeWidth={2}
+                  />
+                </button>
+              ) : null}
+            </div>
+            {open && record ? (
+              <ul role="list" class="mt-0.5 space-y-0.5">
+                {leaves.map((item) => (
+                  <li key={item.id}>
+                    <a
+                      href={item.href}
+                      onClick={onNavigate}
+                      class="flex items-center gap-x-2 rounded-md py-1.5 pr-2 pl-11 text-sm text-gray-400 hover:bg-gray-800 hover:text-white"
+                    >
+                      <span class="min-w-0 grow truncate">{item.label}</span>
+                      {item.count ? (
+                        <span class={"shrink-0 text-xs tabular-nums " + (stale ? "text-gray-600" : "text-gray-400")}>
+                          {item.count}
+                        </span>
+                      ) : null}
+                    </a>
+                  </li>
+                ))}
+                {stale ? (
+                  // Staleness is honest: the muted counts above are dated out
+                  // loud, not passed off as live.
+                  <li class="py-0.5 pr-2 pl-11 text-xs text-gray-600">as of {publishedAtLabel(record.at)}</li>
+                ) : null}
+              </ul>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
  * The brand mark. `/mark.svg` is `art/stripped_favicon.svg` — the 128×128
  * mark drawn FOR small sizes — not the 1024×1024 `antlerO.svg`, whose fine
  * paths collapse into a flat pink/blue block at 32px (seen in the first
@@ -283,8 +464,38 @@ export default function ShellNav({ section, email: emailProp }: Props) {
     }
   });
 
+  // s25 T4 — the realm tray's data: what each surface has published for the
+  // drawer's leaf-nodes. Read on mount and re-read on every `bm:collections`
+  // (a surface publishing while the chrome is up) and on drawer open (a
+  // cheap freshness pass, so the staleness verdict is judged at look time).
+  // s25 T5 — the narrow-screen search state. Below `lg` the contextual bar is
+  // a magnifier until you tap it; at `lg` and up this flag is inert (the field
+  // is always shown, the trigger never rendered). Not persisted: an expanded
+  // search is a moment, not a preference.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const [published, setPublished] = useState<Partial<Record<SectionId, PublishedCollections>>>({});
+  // Which realms are showing their leaves. Session state, not a preference:
+  // a drawer you summon is re-read each time, unlike the resident rail.
+  const [trayOpenIds, setTrayOpenIds] = useState<ReadonlySet<string>>(new Set());
+
   const menuRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const readAll = () => {
+      const next: Partial<Record<SectionId, PublishedCollections>> = {};
+      for (const s of SECTIONS) {
+        const record = readPublished(s.id);
+        if (record) next[s.id] = record;
+      }
+      setPublished(next);
+    };
+    readAll();
+    globalThis.addEventListener(COLLECTIONS_EVENT, readAll);
+    return () => globalThis.removeEventListener(COLLECTIONS_EVENT, readAll);
+  }, [drawerOpen]);
 
   // Preferences are adopted on mount rather than read during render: reading
   // localStorage while rendering breaks hydration and throws in private mode.
@@ -370,18 +581,27 @@ export default function ShellNav({ section, email: emailProp }: Props) {
     });
   };
 
-  // One Escape listener for both overlays. Two widgets each owning a global
-  // key handler is how one of them ends up silently swallowing the other's.
+  // One Escape listener for every overlay. Widgets each owning a global key
+  // handler is how one of them ends up silently swallowing the other's.
+  // s25 T5 folded the expanded narrow search in here for the same reason.
   useEffect(() => {
-    if (!drawerOpen && !menuOpen) return;
+    if (!drawerOpen && !menuOpen && !searchOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       setMenuOpen(false);
       setDrawerOpen(false);
+      setSearchOpen(false);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [drawerOpen, menuOpen]);
+  }, [drawerOpen, menuOpen, searchOpen]);
+
+  // Expanding puts the caret where the person is already looking. It happens
+  // in an effect, not in the click handler: the field is `max-lg:hidden` until
+  // this render lands, and focusing a display:none input is a no-op.
+  useEffect(() => {
+    if (searchOpen) searchRef.current?.focus();
+  }, [searchOpen]);
 
   // Click-outside. The drawer needs this too now that it has NO backdrop —
   // without a scrim there is nothing to click on to dismiss it, and a panel
@@ -440,7 +660,16 @@ export default function ShellNav({ section, email: emailProp }: Props) {
             </button>
           </div>
           <nav class="flex flex-1 flex-col">
-            <NavList section={section} order={order} onNavigate={() => setDrawerOpen(false)} />
+            {/* s25 T4 — the drawer is the realm TRAY: NavList's rows grown
+                published leaf-nodes. The desktop rail below keeps NavList. */}
+            <RealmTray
+              section={section}
+              order={order}
+              onNavigate={() => setDrawerOpen(false)}
+              published={published}
+              expandedIds={trayOpenIds}
+              onToggle={(id) => setTrayOpenIds((prev) => toggleExpansion(prev, id))}
+            />
           </nav>
         </div>
       </div>
@@ -531,9 +760,35 @@ export default function ShellNav({ section, email: emailProp }: Props) {
           {/* s24 T5 — the contextual filter: one bar whose meaning is wherever
               you are standing. Prefilled from `?q=` so a deep-linked search
               stays visible and refinable. */}
+          {/*
+            s25 T5 — THE COLLAPSE. Below `lg` the bar is a magnifier that
+            expands IN PLACE; the field is the same element either way, so the
+            `bm:search` plumbing under it is untouched — no navigation, no
+            second input, no `id` that appears twice in one document
+            (`bm-global-search` is what surfaces and tests reach for).
+            At `lg` and up the trigger never renders and the field never
+            hides: the desktop header is exactly what it was.
+          */}
+          {searchable && !searchOpen ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                aria-expanded={false}
+                aria-controls="bm-global-search"
+                class="-m-2.5 p-2.5 text-gray-700 lg:hidden dark:text-gray-200"
+              >
+                <span class="sr-only">{searchable.placeholder}</span>
+                <MagnifyingGlassIcon class="size-6" />
+              </button>
+              {/* The collapsed bar still holds the space the field will take,
+                  so the avatar does not slide across the header on expand. */}
+              <div class="flex-1 lg:hidden" />
+            </>
+          ) : null}
           {searchable ? (
             <form
-              class="flex min-w-0 flex-1 items-center"
+              class={searchFieldClasses(searchOpen)}
               onSubmit={(ev) => {
                 // No navigation, ever (tokenInUrl.test.ts holds this file to
                 // it, and the generated CSP's form-action 'none' would refuse
@@ -549,6 +804,7 @@ export default function ShellNav({ section, email: emailProp }: Props) {
                 <MagnifyingGlassIcon class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-gray-400" />
                 <span class="sr-only">{searchable.placeholder}</span>
                 <input
+                  ref={searchRef}
                   id="bm-global-search"
                   name="q"
                   type="search"
@@ -558,6 +814,18 @@ export default function ShellNav({ section, email: emailProp }: Props) {
                   class="w-full rounded-md bg-gray-100 py-1.5 pr-3 pl-9 text-sm text-gray-900 placeholder:text-gray-500 focus:outline-2 focus:-outline-offset-1 focus:outline-brand-600 dark:bg-white/5 dark:text-white dark:placeholder:text-gray-500"
                 />
               </label>
+              {/* The way back. An expanded search that can only be dismissed
+                  by Escape strands anyone on a phone, which has no Escape. */}
+              {searchOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchOpen(false)}
+                  class="-mr-2 ml-1 shrink-0 p-2 text-gray-700 lg:hidden dark:text-gray-200"
+                >
+                  <span class="sr-only">Close search</span>
+                  <XMarkIcon class="size-5" />
+                </button>
+              ) : null}
             </form>
           ) : (
             <div class="flex-1" />
@@ -567,7 +835,10 @@ export default function ShellNav({ section, email: emailProp }: Props) {
             settings and sign-out included — rather than being scattered across
             the header. One place to look for "me".
           */}
-          <div class="relative flex items-center" ref={menuRef}>
+          {/* s25 T5: while the narrow search is expanded these step aside, so
+              the field gets the whole bar rather than a 90px slot. Desktop
+              never yields — `searchYieldClasses` is a `max-lg:` rule. */}
+          <div class={"relative flex items-center " + searchYieldClasses(searchOpen)} ref={menuRef}>
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
@@ -630,7 +901,7 @@ export default function ShellNav({ section, email: emailProp }: Props) {
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
-            class="-m-2.5 p-2.5 text-gray-700 lg:hidden dark:text-gray-200"
+            class={"-m-2.5 p-2.5 text-gray-700 lg:hidden dark:text-gray-200 " + searchYieldClasses(searchOpen)}
             aria-expanded={drawerOpen}
           >
             <span class="sr-only">Open sections</span>

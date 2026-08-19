@@ -1,7 +1,39 @@
 /** @jsxImportSource preact */
-import { Avatar, Badge, ListContainer, ListRow } from "./ui";
+import { Avatar, Badge, Button, ListContainer, ListRow } from "./ui";
 import type { BadgeTone } from "../lib/ui/classes";
 import { spendBarToneClass, type DossierView, type InvocationRow } from "../lib/agents/dossier";
+import type { BindingByokView } from "../lib/byok/status";
+
+/**
+ * The kill-switch control's wiring (s26 T2). The panel stays STATELESS: the
+ * island owns the optimistic flip, the busy flag and the refusal message, and
+ * hands them down. When no toggle is wired (no writable client) the panel
+ * falls back to naming the operator verb — the T1 behaviour, kept honest.
+ */
+export interface BindingToggle {
+  busy: boolean;
+  error?: string;
+  onToggle: (next: boolean) => void;
+}
+
+/**
+ * The BYOK control's wiring (s26 T4). Same bargain as the toggle: the panel
+ * stays STATELESS and the island owns the call, the busy flag and the refusal.
+ *
+ * Only DETACH lives here, and that is the s26 discriminator applied rather than
+ * a scope cut. Ask the rule — *"if this agent were deleted, would the value
+ * still mean anything?"* — of each half: the KEY is sealed against the
+ * PRINCIPAL, survives every agent on the account and is not even
+ * account-scoped, so adding, rotating and revoking it belong in Settings →
+ * Agents; **which** binding spends it is a line in that binding's `config_json`
+ * that dies with it, so it belongs here, with detach as its verb.
+ */
+export interface BindingCredential {
+  view: BindingByokView;
+  busy: boolean;
+  error?: string;
+  onDetach: () => void;
+}
 
 // s26 T1 — the dossier detail panel: one agent binding's page, STATELESS.
 // Everything shown is a value `lib/agents/dossier.ts` already derived and
@@ -43,7 +75,25 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: Bad
   );
 }
 
-export default function AgentDossierPanel({ view }: { view: DossierView }) {
+/** BYOK status → the chip tone. Every failure is `error` on purpose: a binding
+ *  whose credential does not resolve REFUSES every model call, which is a
+ *  broken agent, not a warning. */
+const BYOK_TONE: Record<BindingByokView["copy"]["tone"], BadgeTone> = {
+  success: "success",
+  warn: "warn",
+  error: "error",
+  neutral: "neutral",
+};
+
+export default function AgentDossierPanel({
+  view,
+  toggle,
+  credential,
+}: {
+  view: DossierView;
+  toggle?: BindingToggle;
+  credential?: BindingCredential;
+}) {
   const { binding, address, economics, models, ledger, recent } = view;
   return (
     <article aria-label={`Dossier for ${binding.name}`} class="flex flex-col gap-y-6 pb-8">
@@ -73,15 +123,46 @@ export default function AgentDossierPanel({ view }: { view: DossierView }) {
         </div>
       </header>
 
-      {/* Enable/disable is a real verb (the 008 kill switch) with no
-          session-reachable door yet — the console surface is read-only by
-          contract. Say where the verb lives instead of hiding the state. */}
-      {!binding.enabled ? (
-        <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-400/10 dark:text-red-200">
-          The kill switch is thrown: nothing invokes this agent and queued work sits. Re-enabling is an operator verb —{" "}
-          <code class="font-mono text-xs">bullmoose admin agent enable {binding.bindingId}</code>.
-        </p>
-      ) : null}
+      {/* ── the kill switch (008), live since s26 T2 ─────────────────── */}
+      {/* One session-reachable door: `AgentBinding/set` (lib/agents/api.ts),
+          gated on `send` — the capability wall's scope, which a supervisory
+          grant never carries. Disable is a PAUSE: queued work is HELD, not
+          cancelled, and resumes on enable (the provision verb's own rule). */}
+      <section aria-label="Kill switch">
+        {!binding.enabled ? (
+          <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-400/10 dark:text-red-200">
+            The kill switch is thrown: nothing invokes this agent and queued work is held, resuming on enable.
+            {!toggle ? (
+              <>
+                {" "}
+                Re-enabling from here is not wired — the operator verb is{" "}
+                <code class="font-mono text-xs">bullmoose admin agent enable {binding.bindingId}</code>.
+              </>
+            ) : null}
+          </p>
+        ) : null}
+        {toggle ? (
+          <div class={binding.enabled ? "" : "mt-2"}>
+            <Button
+              variant={binding.enabled ? "danger" : "primary"}
+              disabled={toggle.busy}
+              onClick={() => toggle.onToggle(!binding.enabled)}
+            >
+              {toggle.busy ? "Saving…" : binding.enabled ? "Disable agent" : "Enable agent"}
+            </Button>
+            {binding.enabled ? (
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                Disabling stops new work at enqueue; anything already queued is held, not cancelled.
+              </p>
+            ) : null}
+            {toggle.error ? (
+              <p class="mt-1.5 text-sm text-red-700 dark:text-red-300" role="alert">
+                {toggle.error}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
 
       {/* ── economics ────────────────────────────────────────────────── */}
       <section aria-label="Economics">
@@ -145,6 +226,60 @@ export default function AgentDossierPanel({ view }: { view: DossierView }) {
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{models.exploreLabel}</p>
         ) : null}
       </section>
+
+      {/* ── whose key pays, and whose guardrails apply (s26 T4) ──────── */}
+      {/* Sits directly under the model menu because it answers the question
+          that menu raises: these calls go somewhere and something authorizes
+          them. The status is never decorative — a refusing binding makes NO
+          model calls at all, and the copy says so rather than letting a reader
+          assume a quiet fallback happened. */}
+      {credential && credential.view.byokCapable ? (
+        <section aria-label="Provider credential">
+          <SectionHeading>Provider key</SectionHeading>
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Badge tone={BYOK_TONE[credential.view.copy.tone]}>{credential.view.copy.label}</Badge>
+            {credential.view.ref ? (
+              <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{credential.view.ref.credRef}</span>
+            ) : null}
+            {credential.view.host ? (
+              <span class="text-xs text-gray-500 dark:text-gray-400">spendable only at {credential.view.host}</span>
+            ) : null}
+          </div>
+          <p
+            class={
+              "mt-1 text-sm " +
+              (credential.view.copy.tone === "error"
+                ? "font-medium text-red-700 dark:text-red-300"
+                : "text-gray-700 dark:text-gray-300")
+            }
+          >
+            {credential.view.copy.detail}
+          </p>
+          {credential.view.sealedLabel ? (
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {credential.view.sealedLabel}
+              {credential.view.rotatedLabel ? ` · ${credential.view.rotatedLabel}` : ""} · the key itself is never shown
+            </p>
+          ) : null}
+          {credential.view.canDetach ? (
+            <div class="mt-2">
+              <Button variant="secondary" disabled={credential.busy} onClick={() => credential.onDetach()}>
+                {credential.busy ? "Saving…" : "Use the platform key instead"}
+              </Button>
+              {/* Detach is not delete, and the button must not imply it is. */}
+              <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                Detaches your key from THIS agent only. Your key stays sealed and stays available to your other agents;
+                to stop it being used anywhere, revoke it in Settings → Agents.
+              </p>
+            </div>
+          ) : null}
+          {credential.error ? (
+            <p class="mt-1.5 text-sm text-red-700 dark:text-red-300" role="alert">
+              {credential.error}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {/* ── the work ledger ──────────────────────────────────────────── */}
       <section aria-label="Work ledger">

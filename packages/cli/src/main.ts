@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { marked } from "marked";
 import {
   accountLabel,
+  annotateStaleBase,
   defaultDbPath,
   isFileUrl,
   loadBootstrap,
@@ -20,6 +21,7 @@ import {
   emitIds,
   emitJson,
   emitNdjson,
+  exitFlushed,
   installEpipeGuard,
   failSetError,
   notFound,
@@ -37,8 +39,11 @@ import { buildMime } from "./mime.js";
 import { pidPaths, readAlivePid, watch, writePid } from "./watch.js";
 import { cmdAdmin } from "./admin.js";
 import { cmdLogin, cmdToken } from "./tokens.js";
+import { cmdRepoint } from "./repoint.js";
 import { agentServe, fleetFromSingle, loadAgentConfig, loadFleetConfig } from "./agent.js";
 import { cmdAgentInvoke } from "./agentInvoke.js";
+import { cmdAgentDossier, isDossierVerb } from "./agentDossier.js";
+import { cmdLocal, cmdModels, defaultConfirm, execToStderr } from "./local.js";
 import { cmdContacts } from "./contacts.js";
 import { cmdCreds } from "./creds.js";
 import { cmdCalendar } from "./calendar.js";
@@ -104,6 +109,21 @@ const parseCommandLine = () =>
       // ---- fleet host (s11 T8): one daemon, N bindings, discovery from grants
       fleet: { type: "string" },
       once: { type: "boolean", default: false },
+      // ---- @local ladder (s26 T6): models / local setup|connect ----
+      host: { type: "string" },
+      "key-env": { type: "string" },
+      // ---- agent dossier verbs (s26 T6): show/budget/model/backfill ----
+      // `--set` carries the new value for whichever knob the verb names (a
+      // µUSD budget, a <host>/<model> candidate); `--explore` is repeatable
+      // and REPLACES the frontier arms rather than appending, so the menu a
+      // command prints is the menu it wrote.
+      set: { type: "string" },
+      explore: { type: "string", multiple: true },
+      since: { type: "string" },
+      budget: { type: "string" },
+      // Mints the floor-request approval INSTEAD of a backfill — never an
+      // automatic escalation, because the ask is for archive access.
+      "request-floor": { type: "boolean", default: false },
       // ---- agent invoke (sVOL 007) ----
       email: { type: "string" },
       note: { type: "string" },
@@ -138,6 +158,13 @@ const parseCommandLine = () =>
       sla: { type: "string" },
       allow: { type: "string" },
       "reply-mode": { type: "string" },
+      // ---- operator onboarding (`admin extractor on` / `admin byok seal`) ----
+      // The HOST/model pair, spelled the way the provisioning routes take it
+      // (`POST /extractor` {provider, model}, `POST /provider-keys` {provider}).
+      // There is deliberately no `--key`: a provider key arrives by env-var
+      // REFERENCE or hidden prompt, never in argv.
+      provider: { type: "string" },
+      model: { type: "string" },
       // ---- the agent config surface (s10 T4): `agents` is GO-NATIVE and has
       //      no case in the switch below, but its value-taking flags are
       //      declared here anyway. `cli-go/internal/delegate/argv.go` mirrors
@@ -212,15 +239,15 @@ if (command === "help" || opts.help || !command) {
   const topic = command && command !== "help" ? command : positionals[1];
   if (opts.json) {
     outRaw(`${helpJson()}\n`);
-    process.exit(EXIT.OK);
+    await exitFlushed(EXIT.OK);
   }
   if (opts.man) {
     outRaw(renderMan());
-    process.exit(EXIT.OK);
+    await exitFlushed(EXIT.OK);
   }
   if (opts.markdown) {
     out(renderMarkdown());
-    process.exit(EXIT.OK);
+    await exitFlushed(EXIT.OK);
   }
   if (topic) {
     const c = findCommand(topic);
@@ -272,6 +299,9 @@ try {
     case "discover":
       await cmdDiscover();
       break;
+    case "repoint":
+      await cmdRepoint(db, requireSettings(db), { base: opts.base, ...io });
+      break;
     case "token":
       await cmdToken(db, requireSettings(db), positionals.slice(1), {
         name: opts.name,
@@ -299,6 +329,18 @@ try {
       break;
     case "agent":
       await cmdAgent();
+      break;
+    // ---- @local ladder (s26 T6) ----
+    case "models":
+      await cmdModels(db, { host: opts.host, keyEnv: opts["key-env"], yes: opts.yes ?? false, ...io });
+      break;
+    case "local":
+      await cmdLocal(
+        db,
+        positionals.slice(1),
+        { host: opts.host, keyEnv: opts["key-env"], yes: opts.yes ?? false, ...io },
+        { exec: execToStderr, confirm: defaultConfirm({ yes: opts.yes ?? false }) },
+      );
       break;
     case "contacts":
       await cmdContacts(db, positionals.slice(1), {
@@ -425,6 +467,11 @@ try {
         account: opts.account,
         yes: opts.yes,
         includeDeleted: opts["include-deleted"],
+        provider: opts.provider,
+        model: opts.model,
+        budget: opts.budget,
+        explore: opts.explore,
+        keyEnv: opts["key-env"],
         ...io,
       });
       break;
@@ -437,7 +484,11 @@ try {
   // The single exit path. `die` maps the error to a code from the §1.5 table:
   // a JMAP error type first (so `stateMismatch` → 5 and `notFound` → 3), then
   // an HTTP status, then the CLI's own judgement, then 1.
-  die(err);
+  //
+  // `annotateStaleBase` runs first because ONE of those failures is repairable
+  // and the bare form does not say so: a 404 on the session resource of the
+  // base we have STORED means the host is gone, and the fix is one command.
+  die(annotateStaleBase(err, db));
 }
 
 // ---- commands ----------------------------------------------------------
@@ -832,9 +883,28 @@ async function cmdAgent(): Promise<void> {
     });
     return;
   }
+  // The DOSSIER verbs (s26 T6): read and tune ONE named binding. A third
+  // module because they speak to a third set of doors — the console
+  // projection, AgentBinding/set, and the provision worker — none of which
+  // `serve` or `invoke` touch.
+  if (isDossierVerb(verb)) {
+    await cmdAgentDossier(db, positionals.slice(1), {
+      account: opts.account,
+      set: opts.set,
+      explore: opts.explore,
+      since: opts.since,
+      budget: opts.budget,
+      requestFloor: opts["request-floor"] ?? false,
+      yes: opts.yes ?? false,
+      ...io,
+    });
+    return;
+  }
   if (verb !== "serve") {
     usage(
-      "bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | invocations | rm <invId>",
+      "bullmoose agent serve --config <agent.json>|--fleet <fleet.json> [--once] | invoke <binding> --email <id> | " +
+        "invocations | rm <invId> | show <binding> | budget <binding> [--set <µUSD>] | model <binding> " +
+        "[--set <host>/<model>] | backfill <binding> --since <date> | enable|disable <binding>",
     );
   }
   if (!opts.config && !opts.fleet) {
@@ -858,13 +928,17 @@ async function cmdDiscover(): Promise<void> {
   if (!target) usage("bullmoose discover <email-or-domain>");
   if (!target.includes("@")) target = `probe@${target}`;
 
+  // `resolveJmapBase` probes as part of settling the base (it has to: a
+  // cross-origin redirect is what decides the answer), so its verdict is reused
+  // here rather than re-fetched.
   const found = await resolveJmapBase(target);
-  const probe = await probeSession(found.base);
+  const probe = found.probe ?? (await probeSession(found.base));
   if (io.json) {
     emitJson({
       domain: found.domain,
       via: found.via,
       base: found.base,
+      ...(found.redirectedFrom ? { redirectedFrom: found.redirectedFrom } : {}),
       ok: probe.ok,
       detail: probe.detail,
     });
@@ -874,6 +948,7 @@ async function cmdDiscover(): Promise<void> {
       `method:  ${found.via === "fallback" ? "no SRV record — well-known fallback" : `SRV _jmap._tcp (${found.via})`}`,
     );
     out(`base:    ${found.base}`);
+    if (found.redirectedFrom) out(`         (${found.redirectedFrom} redirected the session resource here)`);
     out(`session: ${probe.ok ? "✓" : "✗"} ${probe.detail}`);
   }
   process.exit(probe.ok ? EXIT.OK : EXIT.FAIL);

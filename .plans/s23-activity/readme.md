@@ -1,6 +1,8 @@
 # s23 — Activity · *what happened in my name while I wasn't looking*
 
-**Status:** design note, nothing built. Written 2026-08-17 from Eric's ask:
+**Status:** v1 LANDED 2026-08-18 (#185) — the `/activity` realm (quad-panel, decided-without-you
+grouping, authority chain rendered per row). This note remains the design source for v2
+(deeper provenance, policy-rule links). Originally written 2026-08-17 from Eric's ask:
 
 > *"We may also need an AgentActivityLog — especially for things that I did not
 > directly touch (delegated approval to CJ, or policy-based-approval rule, etc).
