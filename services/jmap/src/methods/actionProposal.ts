@@ -1,7 +1,13 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges, type ChangeEntry } from "@bullmoose/account-do";
 import { buildMime } from "@bullmoose/mime";
-import { QUARANTINE_ROLE, type ContactCardRow, type JSContactCard, type Mailstore } from "@bullmoose/mailstore";
+import {
+  QUARANTINE_ROLE,
+  type ContactCardRow,
+  type JSCalendarEventBlob,
+  type JSContactCard,
+  type Mailstore,
+} from "@bullmoose/mailstore";
 import { OutboundRefused, assertOutboundAllowed } from "@bullmoose/mailstore/outboundBound";
 import {
   budgetExhaustedSql,
@@ -21,6 +27,11 @@ import {
 // mirror); it pulls only pure functions.
 import { followupSubject, templateFollowupBody } from "../../../agent/src/watchCompose";
 import { authorizeAccount } from "../auth";
+// The ONE JSCalendar validator/normalizer, shared with `CalendarEvent/set`
+// rather than re-typed: the `verb-schedule` case below writes an event when a
+// human approves a proposed hold, and a second copy of "what is a legal start"
+// is how the two paths drift apart.
+import { buildEventRow } from "./calendars";
 import {
   accountState,
   proxyChanges,
@@ -1458,6 +1469,158 @@ async function applyProposal(
         // whatever you last said to each other.
         inReplyTo: startsAMessage || str(payload.mode) === "forward" ? null : (verbOrig?.message_id ?? null),
       });
+    }
+
+    case "verb-schedule": {
+      // s20 wave 6 — the SCHEDULE verb's landing place, and the whole reason
+      // #202 shipped without the verb: "there is no `create-event` apply case
+      // and no proposal-shaped path into `CalendarEvent`, so shipping the
+      // button would mean shipping a kind whose approval has nowhere to land."
+      // This is that case. The producer is services/agent `runScheduleVerb`.
+      //
+      // What approval writes: ONE event in the account's default calendar,
+      // through `buildEventRow` — the SAME validator/normalizer
+      // `CalendarEvent/set` create runs (exported from ./calendars for exactly
+      // this second caller), so an event an approval writes and an event the
+      // calendar UI writes cannot disagree about uid minting, the indexed
+      // span, or what a legal `start` is.
+      //
+      // ## A HOLD, NOT A BOOKING — enforced here, not asked for politely
+      //
+      // Three properties are stamped by this case and are not the payload's to
+      // set, because each is a claim the agent has no standing to make:
+      //
+      //   status: "tentative"      nobody has agreed to this yet. The human
+      //                            promotes it in their calendar app when the
+      //                            other side confirms.
+      //   freeBusyStatus: "free"   a proposed slot does not get to say you are
+      //                            busy. Blocking someone's availability on the
+      //                            strength of an unanswered email is exactly
+      //                            the "commitment nobody made" this verb is
+      //                            built to avoid.
+      //   participants[*]          recorded with `scheduleAgent: "none"`,
+      //                            `expectReply: false` and NO `sendTo` — so
+      //                            the blob names who the meeting is with and
+      //                            carries no address any iTIP implementation
+      //                            could deliver to. Nothing is invited.
+      //
+      // Together those are why this is TIER 1: the write is one row in the
+      // owner's own calendar, it reaches nobody, and the undo handle deletes
+      // it (`CalendarEvent/set { destroy }` is the method that honours it, the
+      // `destroy-contact` precedent).
+      //
+      // ## The refusal that is a feature
+      //
+      // A `start` of null is the agent saying "the message named no time and I
+      // will not invent one" (mailVerbs.ts `templateHold`). It fails HERE, in
+      // place, with a sentence that says what to type — the row stays
+      // `pending`, editable through `editedPayload` and declinable. That is
+      // the #196-safe shape, not a wedge: an approve answers, the tray keeps
+      // moving, and the human's edit is what lands.
+      //
+      // ## The capability wall
+      //
+      // `ActionProposal/set` gates on `("draft", "mail")`, and `mail` covers
+      // exactly the six mail verbs — it does NOT cover `calendar`
+      // (auth-core `hasScope`, common/001). So this case re-runs the same gate
+      // `CalendarEvent/set` runs, against the approver's own token, and
+      // refuses in place when it does not hold: approving a proposal must not
+      // be a way to perform a write your token could not perform directly.
+      // A webmail session asks for `calendar` at login
+      // (`webmail/src/lib/app/oauth.ts` SESSION_SCOPES), so this bites a
+      // mail-only pasted token and a delegate whose grant is scoped to
+      // somebody's address book — which is precisely who it should bite.
+      const calendarAuth = authorizeAccount(ctx.principal, access.accountId, "calendar", "calendar");
+      if (!calendarAuth.ok) {
+        throw new SetErrorSignal(
+          "forbidden",
+          calendarAuth.reason === "accountNotFound"
+            ? "no such account"
+            : `this hold writes to your calendar, and ${calendarAuth.detail} — nothing was written`,
+        );
+      }
+
+      const start = str(payload.start);
+      if (!start) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "this hold has no start time — the agent would not invent one. Edit a `start` into the payload " +
+            '("2026-08-20T15:00:00", the wall clock in `timeZone`) and approve again, or decline.',
+          ["payload"],
+        );
+      }
+      const holdTitle = str(payload.title) ?? "";
+      const attendees = (Array.isArray(payload.attendees) ? payload.attendees : [])
+        .filter((a): a is string => typeof a === "string" && a.includes("@"))
+        .map((a) => a.trim().toLowerCase());
+
+      // Whose calendar this is — the `verb-answer` identity rule verbatim, and
+      // used for one thing: dropping the owner from the participant list. You
+      // are not an attendee of your own hold, and `needs-action` against your
+      // own address would be a question addressed to nobody.
+      const holdIdents = await store.getIdentities(access.accountId);
+      const holdSelf = (holdIdents[0]?.email ?? ctx.principal.username).toLowerCase();
+      const participants: Record<string, unknown> = {};
+      let seat = 0;
+      for (const address of [...new Set(attendees)]) {
+        if (address === holdSelf) continue;
+        seat += 1;
+        participants[`p${seat}`] = {
+          "@type": "Participant",
+          email: address,
+          roles: { attendee: true },
+          participationStatus: "needs-action",
+          expectReply: false,
+          // The load-bearing field. "none" is RFC 8984 for "no scheduling
+          // messages will be sent for this participant" — the blob says who
+          // the hold is with without any client treating it as an invitation
+          // to deliver.
+          scheduleAgent: "none",
+        };
+      }
+
+      const holdEvent: Record<string, unknown> = {
+        title: holdTitle || "Hold",
+        start,
+        duration: str(payload.duration) ?? "PT30M",
+        timeZone: str(payload.timeZone) ?? "Etc/UTC",
+        status: "tentative",
+        freeBusyStatus: "free",
+        ...(str(payload.description) ? { description: str(payload.description) } : {}),
+        ...(seat > 0 ? { participants } : {}),
+      };
+
+      const { id: calendarId, change: calendarChange } = await store.ensureDefaultCalendar(access.accountId);
+      let eventRow;
+      try {
+        eventRow = buildEventRow(holdEvent as JSCalendarEventBlob, calendarId, null, null);
+      } catch (err) {
+        // `buildEventRow` throws calendars.ts's own SetErrorSignal (a Worker's
+        // method modules do not share an error class), so its sentence is
+        // re-signalled in this file's vocabulary rather than becoming an
+        // opaque serverFail. Fails in place: an unresolvable timezone or a
+        // malformed start leaves the row pending and says which field.
+        const why = err instanceof Error ? err.message : String(err);
+        throw new SetErrorSignal("invalidProperties", `this hold is not a valid calendar event: ${why}`, ["payload"]);
+      }
+      await store.insertCalendarEvents(access.accountId, [eventRow]);
+      // CalDAV's sync token for the collection. `CalendarEvent/set` bumps it on
+      // every write; an approval that skipped it would leave an Apple Calendar
+      // client believing the calendar had not changed.
+      await store.bumpCalendarCtags(access.accountId, [calendarId]);
+
+      const holdEntries: ChangeEntry[] = [
+        { collection: "CalendarEvent", created: [eventRow.id], updated: [], destroyed: [] },
+      ];
+      if (calendarChange) {
+        holdEntries.push({
+          collection: "Calendar",
+          created: calendarChange === "created" ? [calendarId] : [],
+          updated: calendarChange === "updated" ? [calendarId] : [],
+          destroyed: [],
+        });
+      }
+      return { entries: holdEntries, undo: { action: "destroy-event", eventId: eventRow.id } };
     }
 
     case "watch-notify": {

@@ -1087,7 +1087,7 @@ export const COMMANDS: Command[] = [
     synopsis: "bullmoose admin <noun> <verb> …",
     summary: "operator surface — wraps the provision worker (separate credentials)",
     description:
-      "Onboarding and administration. `admin init` stores the provision URL + admin token; the rest manage tenants, domains, accounts, agent bindings, tokens, and grants. A tenant id (e.g. t_home) is a slug you choose — a namespace, not a secret.\n\nLifecycle verbs come in two flavours. REVERSIBLE ones — `agent disable|enable`, `domain suspend|resume`, both renames — just run. IRREVERSIBLE ones — `tenant delete`, `domain delete`, `account delete`, `agent unbind` — refuse without `--yes`; use `--dry-run` first to see what they would do.\n\n`agent disable` is the kill switch: both the ingest enqueue path and the agent drain gate on the binding's `enabled` column, so disabling stops an agent being invoked at all. Invocations already queued are HELD, not cancelled — the count is printed, and they resume on `enable`.\n\n`account delete` is a SOFT delete: it removes the delivery route (D1 row and the ingest KV key together, so mail bounces immediately) and tombstones the account so it stops authenticating, but the account's mail, calendars, contacts and blobs live in a different database and are retained. The command prints exactly what it kept.",
+      "Onboarding and administration. `admin init` stores the provision URL + admin token; the rest manage tenants, domains, accounts, agent bindings, tokens, and grants. A tenant id (e.g. t_home) is a slug you choose — a namespace, not a secret.\n\nOnboarding ONE person is six of these, in order: `tenant create` (once per household/org) → `domain add` (once per domain) → `account create` → `password` → `extractor on` → optionally `byok seal`. `docs/playbooks/onboarding-a-second-human.md` is that path written out, including the parts the person does themselves. Account creation is deliberately operator-gated: there is no self-signup, so every account on this deployment exists because someone with the admin token decided it should.\n\nLifecycle verbs come in two flavours. REVERSIBLE ones — `agent disable|enable`, `domain suspend|resume`, both renames — just run. IRREVERSIBLE ones — `tenant delete`, `domain delete`, `account delete`, `agent unbind` — refuse without `--yes`; use `--dry-run` first to see what they would do.\n\n`agent disable` is the kill switch: both the ingest enqueue path and the agent drain gate on the binding's `enabled` column, so disabling stops an agent being invoked at all. Invocations already queued are HELD, not cancelled — the count is printed, and they resume on `enable`.\n\n`account delete` is a SOFT delete: it removes the delivery route (D1 row and the ingest KV key together, so mail bounces immediately) and tombstones the account so it stops authenticating, but the account's mail, calendars, contacts and blobs live in a different database and are retained. The command prints exactly what it kept.",
     subcommands: [
       {
         name: "init",
@@ -1134,6 +1134,19 @@ export const COMMANDS: Command[] = [
           "admin grant create <grantee-email> <target-email> [--scopes read,contacts] [--book <id>] [--expires <days>] | list [<email>] | revoke <id>",
         summary: "cross-account delegation (effective rights = token ∩ grant)",
       },
+      {
+        name: "extractor",
+        synopsis:
+          "admin extractor on <account-email> [--provider <host>] [--model <slug>] [--budget <micro-USD>] [--explore <host>/<model>]…",
+        summary:
+          "turn the extraction pass on for ONE account — a PAID pipeline, capped ($2.00/month unless --budget says otherwise)",
+      },
+      {
+        name: "byok",
+        synopsis:
+          "admin byok seal <account-email> [--provider openrouter] [--allow <origin>] [--name <binding>] [--expires <days>] [--key-env <VAR>]",
+        summary: "seal a tenant's OWN model-provider key so their provider-side guardrails apply to their agents",
+      },
     ],
     flags: [
       {
@@ -1147,6 +1160,23 @@ export const COMMANDS: Command[] = [
       {
         flag: "--include-deleted",
         desc: "on `account list`, also show tombstoned accounts (the forensic view; they are hidden by default)",
+      },
+      {
+        flag: "--provider <host>",
+        desc: "on `extractor on` / `byok seal`, the HOST a model or key lives at (default openrouter)",
+      },
+      { flag: "--model <slug>", desc: "on `extractor on`, the model id as that host spells it" },
+      {
+        flag: "--budget <micro-USD>",
+        desc: "on `extractor on`, the monthly cap (2000000 = $2.00; 0 refuses every paid claim)",
+      },
+      {
+        flag: "--explore <host>/<model>",
+        desc: "on `extractor on`, repeatable frontier arms added beside the primary candidate",
+      },
+      {
+        flag: "--key-env <VAR>",
+        desc: "on `byok seal`, the NAME of the env var holding the key — there is no --key, because a key in argv is in your shell history",
       },
     ],
     examples: [
@@ -1181,6 +1211,14 @@ export const COMMANDS: Command[] = [
       },
       {
         cmd: "bullmoose admin grant create partner@example.com you@example.com --scopes read,contacts --book <bookId> --expires 365",
+      },
+      {
+        cmd: "bullmoose admin extractor on partner@example.com",
+        note: "the first thing a new account has to SHOW for itself; capped at $2.00/month",
+      },
+      {
+        cmd: "OR_KEY=sk-or-… bullmoose admin byok seal partner@example.com --key-env OR_KEY",
+        note: "their key, their provider-side guardrails; write-only, and spendable only at openrouter.ai",
       },
     ],
     seeAlso: ["token", "agent"],

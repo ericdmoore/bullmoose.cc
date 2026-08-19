@@ -22,6 +22,7 @@ import {
   ClockIcon,
   Cog6ToothIcon,
   ComputerDesktopIcon,
+  DocumentTextIcon,
   EnvelopeIcon,
   FlagIcon,
   FolderIcon,
@@ -85,6 +86,10 @@ const SEARCHABLE: Partial<Record<SectionId, { placeholder: string; hint?: string
     placeholder: "Filter agents",
     hint: "Filters the realm's agent list — binding name, address, pipeline.",
   },
+  notes: {
+    placeholder: "Filter notes",
+    hint: "Scans every note's title and body — there is no index behind it.",
+  },
   search: {
     placeholder: "Find in your history",
     hint: "Starts a new Finder session over your own mail \u2014 refine with chips from there.",
@@ -135,6 +140,7 @@ const SECTION_ICON: Record<SectionId, (p: IconProps) => JSX.Element> = {
   calendar: CalendarIcon,
   mail: EnvelopeIcon,
   contacts: UsersIcon,
+  notes: DocumentTextIcon,
   files: FolderIcon,
   search: MagnifyingGlassIcon,
   settings: Cog6ToothIcon,

@@ -4,6 +4,7 @@ import {
   describeRefusals,
   expandPlanRows,
   getJobNodeRow,
+  insertJobChildren,
   joinContextRows,
   startJobRows,
   type BindingJobConfig,
@@ -16,7 +17,10 @@ import {
 import type { Env } from "./models.js";
 
 export type { BindingJobConfig, ExpandResult, JobNodeRow, JobSpec, PlanSpec, StartJobResult };
-export { bindingCeiling };
+// Re-exported for s17 handoff (see handoff.ts), which inserts ONE cross-binding
+// child through the same guarded statement a plan expansion uses — the whole
+// point of it being one statement.
+export { bindingCeiling, insertJobChildren };
 
 /**
  * s11 T7 — THE JOB HARNESS, as this worker sees it: the changelog half.

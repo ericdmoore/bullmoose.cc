@@ -12,6 +12,7 @@ export { default as ChevronRightIcon } from "./ChevronRightIcon";
 export { default as ClockIcon } from "./ClockIcon";
 export { default as Cog6ToothIcon } from "./Cog6ToothIcon";
 export { default as ComputerDesktopIcon } from "./ComputerDesktopIcon";
+export { default as DocumentTextIcon } from "./DocumentTextIcon";
 export { default as EnvelopeIcon } from "./EnvelopeIcon";
 export { default as FlagIcon } from "./FlagIcon";
 export { default as FolderIcon } from "./FolderIcon";

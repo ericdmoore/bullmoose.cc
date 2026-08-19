@@ -26,6 +26,7 @@ export {
   attenuatePlan,
   describeRefusals,
   isPrivacyClass,
+  tightestPrivacy,
   type AttenuatedChild,
   type AttenuationResult,
   type ChildRequest,
@@ -35,6 +36,26 @@ export {
   type NodeCeiling,
   type Refusal,
 } from "./attenuation.js";
+// s17 — the CROSS-BINDING hop: `attenuation.ts` refuses one, and this is the
+// one door that builds a ceiling narrow enough for it to be safe.
+export {
+  HANDOFF_MAX_HOPS,
+  HANDOFF_REASON_MAX,
+  NO_HANDOFF,
+  describeHandoff,
+  parseHandoffPolicy,
+  parseHandoffProvenance,
+  planHandoff,
+  stampHandoff,
+  type HandoffArgs,
+  type HandoffChain,
+  type HandoffPlan,
+  type HandoffPolicy,
+  type HandoffProvenance,
+  type HandoffReceiver,
+  type HandoffResult,
+  type HandoffSender,
+} from "./handoff.js";
 export {
   NO_AUTHORITY,
   describeDenial,
@@ -54,6 +75,7 @@ export {
 export {
   authorizeNodeUse,
   bindingCeiling,
+  delegationPath,
   effectiveNodeAuthority,
   effectiveNodeCeiling,
   type AuthorityDb,
@@ -100,6 +122,7 @@ export {
 export {
   expandPlanRows,
   getJobNodeRow,
+  insertJobChildren,
   joinContextRows,
   startJobRows,
   type ExpandResult,
@@ -141,6 +164,7 @@ export {
   dueWindowSql,
   freeRuntimeLiveCutoff,
   freeRuntimeLiveSql,
+  handoffOriginBudgetExhaustedSql,
   medianMicros,
   notPinnedSql,
   type ClaimGateParams,

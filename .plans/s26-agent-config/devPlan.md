@@ -239,14 +239,26 @@ any time — data compounds, so earlier is better.
 4. **Where Allen's frontier digest lands** — *recommendation: mail (his medium), monthly.*
 
 ## Open follow-ups (surfaced by the wave-4 build, 2026-08-18)
-- **`AgentBinding/get` does not exist.** `AgentBinding` has only `/set` (#198), so a client
-  cannot enumerate an account's bindings. Both #202 (the mail verbs) and #201 (the CLI) work
-  around it by naming `extractor` by convention. That convention is standing in for an API.
-- **Budget/model writes have no session-reachable door** — only the INTERNAL_TOKEN provisioning
-  plane. #201 exits honestly rather than faking it; a `AgentBinding/set` that accepts budgets
-  and model aliases (with the same scope discipline) would close it.
-- **No BYOK surface.** #203/#204 shipped the whole path with no UI; sealing a key is an
-  operator-plane POST today.
+- ~~**`AgentBinding/get` does not exist.**~~ ✅ **CLOSED (#206)** — `AgentBinding/get` ships the
+  roster (no `/query`: bounded collections take `/get` alone, the Identity precedent). The verbs
+  adopted it in #211 via `pickVerbBinding`, which never picks a disabled binding and falls back
+  to the server's own order rather than a name we invented.
+- ~~**Budget/model writes have no session-reachable door.**~~ ✅ **CLOSED (#206)** — `/set` learned
+  budgets and the model menu on the `send` scope, preserving every unmentioned config key
+  (proved both directions). **The CLI has not adopted it yet** — still on the operator plane;
+  its help now says so rather than claiming no door exists.
+- ~~**No BYOK surface.**~~ ✅ **CLOSED (#210)** — `ProviderCredential/{get,set}` sealed through the
+  Bureau, gated on **`vault`** (NOT `send`): `vault` is absent from `GRANTABLE_SCOPES`, so no
+  operator act can make a delegated session able to seal. The status READ is gated lower on
+  purpose, so a refusing credential can never look fine.
+
+## Still open (2026-08-18)
+- **The provisioner plants a dead SRV target.** `services/provision/wrangler.jsonc` `JMAP_HOST`
+  is still the 404ing workers.dev host — the upstream source of the stale base #201 found on a
+  real machine. Every tenant provisioned since the cutover carries it.
+- **`POST /extractor` never validated the model menu** (found by #206): `provider` is a free
+  string, so an unknown host fails later at spend time inside `callModel` rather than at
+  provision time.
 
 ## References
 - `services/provision/src/index.ts` — bindings CRUD, enable/disable, lifecycle, extractor

@@ -423,7 +423,12 @@ describe("no producer is left without an applier", () => {
   it("an unknown kind still refuses loudly — the default case is intact", async () => {
     const h = harness();
     seedVerb(h, "inv_x", "verb-answer", { verb: "answer", to: "s@x.test", body: "x" });
-    h.w.db.query(`UPDATE agent_proposals SET kind = 'verb-schedule' WHERE id = 'inv_x'`);
+    // `verb-schedule` stood here until s20 wave 6, as the canonical kind with
+    // a producer and no applier. It HAS an applier now
+    // (actionProposalSchedule.test.ts drives it end to end), so `verb-delegate`
+    // takes the role: still deferred, still waiting on agent-to-agent handoff,
+    // and still the shape this assertion exists to catch.
+    h.w.db.query(`UPDATE agent_proposals SET kind = 'verb-delegate' WHERE id = 'inv_x'`);
     const res = await h.set({ update: { inv_x: { status: "approved" } } });
     expect(res.notUpdated["inv_x"]!.description).toContain("not applied in this slice");
   });

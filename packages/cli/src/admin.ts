@@ -1,7 +1,19 @@
 import { readFileSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { getConfig, isFileUrl, loadBootstrap, setConfig } from "./db.js";
-import { emitIds, emitJson, emitNdjson, exitCodeForHttpStatus, fail, note, out, usage, type IoOpts } from "./io.js";
+import {
+  EXIT,
+  emitIds,
+  emitJson,
+  emitNdjson,
+  exitCodeForHttpStatus,
+  fail,
+  note,
+  out,
+  usage,
+  type IoOpts,
+} from "./io.js";
+import { parseCandidate, parseMicros } from "./agentDossier.js";
 import { TOKEN_SCOPES, parseScopeFlag } from "./scopes.js";
 import { deriveLoginKey, promptHidden } from "./tokens.js";
 
@@ -42,6 +54,8 @@ export const IMPLEMENTED = [
   "account list",
   "account rename",
   "account delete",
+  "extractor on",
+  "byok seal",
   "agent bind",
   "agent list",
   "agent disable",
@@ -83,7 +97,8 @@ export interface AdminOpts extends IoOpts {
   scopes?: string;
   principal?: string;
   sla?: string;
-  /** agent bind: comma-separated allowed sender addresses. */
+  /** agent bind: comma-separated allowed sender addresses.
+   *  byok seal: the destination ORIGIN a sealed key may be spent at. */
   allow?: string;
   /** agent bind: "send" | "draft" (cloud runtime default: draft). */
   replyMode?: string;
@@ -99,6 +114,16 @@ export interface AdminOpts extends IoOpts {
   yes?: boolean;
   /** account list: show tombstoned accounts too. */
   includeDeleted?: boolean;
+  /** extractor on / byok seal: the HOST a model or a key lives at. */
+  provider?: string;
+  /** extractor on: the model slug, spelled as the host spells it. */
+  model?: string;
+  /** extractor on: the monthly cap in micro-USD (2000000 = $2.00). */
+  budget?: string;
+  /** extractor on: repeatable `<host>/<model>` frontier arms. */
+  explore?: string[];
+  /** byok seal: the NAME of the env var holding the key — never a key. */
+  keyEnv?: string;
 }
 
 export async function cmdAdmin(db: DatabaseSync, args: string[], opts: AdminOpts): Promise<void> {
@@ -290,6 +315,105 @@ export async function cmdAdmin(db: DatabaseSync, args: string[], opts: AdminOpts
         // data plane is a different database and R2 has no GC path at all.
         for (const line of res.retained ?? []) note(`  retained: ${line}`);
         if (res.note) note(res.note);
+      });
+      return;
+    }
+    // ── the two steps that make a new account USEFUL, and were raw curl ────
+    //
+    // `docs/DEPLOY.md` documented both as `curl` against the provision worker,
+    // which meant the last two steps of onboarding a person were the only two
+    // an operator could not do with the tool they had just run six times.
+    // Neither adds a capability: same route, same admin bearer, with the
+    // argument checking moved to where a mistake is cheap.
+    case "extractor on": {
+      if (!arg) {
+        usage(
+          "bullmoose admin extractor on <account-email> [--provider <host>] [--model <slug>]\n" +
+            "                       [--budget <micro-USD>] [--explore <host>/<model>]…",
+        );
+      }
+      // Re-provision-in-place is the SANCTIONED model swap (`config_json` is
+      // PATCH-immutable by design), so this verb is not in IRREVERSIBLE. It
+      // does set `enabled = 1` though, so `--dry-run` is how you notice before
+      // it un-pulls a kill switch somebody else pulled.
+      const explore = (opts.explore ?? []).map((raw) => parseCandidate(raw, "--explore"));
+      const arms = explore.length > 0 ? ` with ${explore.length} explore arm(s)` : "";
+      if (dryRun(opts, `provision the extractor on ${arg}${arms}`)) return;
+      const res = (await api("POST", "/extractor", {
+        email: arg,
+        ...(opts.provider ? { provider: opts.provider } : {}),
+        ...(opts.model ? { model: opts.model } : {}),
+        ...(opts.budget !== undefined ? { budgetMicros: parseMicros(opts.budget, "--budget") } : {}),
+        ...(explore.length > 0 ? { exploreModels: explore } : {}),
+      })) as { created: boolean; accountId: string; bindingId: string; model: string };
+      report(res, opts, () => {
+        out(
+          `${res.created ? "extractor provisioned" : "extractor re-provisioned (model swapped in place)"} ` +
+            `on ${arg} — binding ${res.bindingId}, model ${res.model}`,
+        );
+        // The cap is the whole reason this pipeline is safe to turn on, and an
+        // operator who never sees the number cannot know it is there.
+        note(
+          opts.budget === undefined
+            ? "  budget: the route's $2.00/month default (--budget to change; 0 refuses every paid claim)"
+            : `  budget: ${opts.budget} µUSD/month`,
+        );
+        note("  it reads mail delivered from now on — the history floor is the binding's birth");
+      });
+      return;
+    }
+    case "byok seal": {
+      if (!arg) {
+        usage(
+          "bullmoose admin byok seal <account-email> [--provider openrouter] [--allow <origin>]\n" +
+            "                       [--name <binding>] [--expires <days>] [--key-env <VAR>]\n" +
+            "       the key comes from --key-env, $BULLMOOSE_PROVIDER_KEY or a hidden prompt — never argv",
+        );
+      }
+      // NEVER a flag. A key in argv is in the shell history, in `ps`, and in
+      // whatever CI log echoed the invocation — and this is a credential the
+      // platform is deliberately built so that nothing can read it back, which
+      // would make an accidental disclosure permanent and unverifiable.
+      const key =
+        (opts.keyEnv ? process.env[opts.keyEnv] : undefined) ??
+        process.env.BULLMOOSE_PROVIDER_KEY ??
+        (await promptHidden(`provider key for ${arg} (not echoed): `));
+      if (!key) {
+        fail(
+          opts.keyEnv ? `$${opts.keyEnv} is empty — --key-env names a variable, not a key` : "no key given",
+          EXIT.USAGE,
+        );
+      }
+      // Validated rather than coerced: `Number("ninety")` is NaN, which
+      // JSON.stringify writes as `null`, which the route reads as "no expiry".
+      // A grant that silently never expires is the opposite of what was asked.
+      if (opts.expires !== undefined && !/^\d+$/.test(opts.expires.trim())) {
+        usage(`--expires takes a whole number of days. Got: "${opts.expires}"`);
+      }
+      const res = (await api("POST", "/provider-keys", {
+        email: arg,
+        key,
+        ...(opts.provider ? { provider: opts.provider } : {}),
+        ...(opts.allow ? { allow: opts.allow } : {}),
+        ...(opts.name ? { bindingName: opts.name } : {}),
+        ...(opts.expires ? { expiresDays: Number(opts.expires) } : {}),
+      })) as {
+        rotated: boolean;
+        credRef: string;
+        provider: string;
+        allow: string;
+        bindings: Array<{ id: string; name: string }>;
+        note?: string;
+      };
+      report(res, opts, () => {
+        out(
+          `${res.rotated ? "rotated" : "sealed"} the ${res.provider} key for ${arg} ` +
+            `as "${res.credRef}" — spendable only at ${res.allow}`,
+        );
+        for (const b of res.bindings) out(`  attached to ${b.name} (${b.id})`);
+        // The empty case looks like success and is not: sealed, granted, and
+        // named by nothing, so nothing will ever spend it.
+        if (res.note) note(`  ${res.note}`);
       });
       return;
     }

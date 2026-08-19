@@ -99,7 +99,7 @@ CJ when s17 lands). Every verb compiles to an `AgentInvocation` whose output is 
 - **Done when:** each verb produces a correct proposal in the queue with the source
   message as evidence, and declining one feeds the s03.D decline taxonomy.
 
-### T3 — Compose → Intent · *the front door of writing*
+### T3 — Compose → Intent · *the front door of writing* — ✅ LANDED 2026-08-18 (#208, wired live in #211): intent mode reuses T2's pipeline (no second path); recipients resolved from the address book + correspondence history and shown as an EDITABLE plan card with stated evidence; inside a 1-point margin it refuses to choose and offers candidates. Fallback is a scaffold, never a canned commitment.
 
 **Files:** `webmail/src/components/Composer.tsx`.
 

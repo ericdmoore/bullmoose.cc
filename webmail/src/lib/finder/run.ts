@@ -13,10 +13,19 @@
 // pretending contacts rows can be narrowed by `has:attachment` would be the
 // dishonest version. `FINDER_SCOPE_NOTE` says so on the page.
 //
-// FUTURE(s20-t5b): agent-directed refinement plugs in here — the s20 T5 "Ask"
-// endgame runs this same module server-side through the MCP tool layer, with
-// the agent choosing the next refinement instead of the human. `runFind` is
-// already pure over an injected client for exactly that reason.
+// s20 T5b — AGENT-DIRECTED REFINEMENT landed beside this module rather than
+// inside it, and the split is the point: `runFind` still does one thing, and
+// the agent's half (`./suggest.ts`) is pure over the SESSION and the RESULT
+// this function returns. So the suggester cannot issue a query of its own,
+// cannot re-run yours, and cannot narrow anything — it can only hand the
+// component a list of chips to OFFER. What it says about your results is
+// bounded by what you already fetched.
+//
+// The T5 "Ask" endgame is still ahead and still wants this module server-side
+// through the MCP tool layer; `runFind` stays pure over an injected client for
+// exactly that reason. What changed is that the seam now has something in it,
+// and the thing in it needs no server at all — see `suggest.ts` for why a
+// five-minute invocation drain is not where an interactive find loop lives.
 
 import type { JmapClient } from "../jmap/JmapClient";
 import { buildEmailFilter } from "../mail/search";

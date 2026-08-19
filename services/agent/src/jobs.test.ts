@@ -433,7 +433,12 @@ describe("ATTENUATION, enforced by the harness at every depth", () => {
     expect(axes).toEqual(expect.arrayContaining(["tools", "credentials"]));
   });
 
-  it("a task naming ANOTHER binding is refused — agents:invoke stays deferred", async () => {
+  it("a task naming ANOTHER binding is refused — a cross-binding hop must go through handOff", async () => {
+    // s17 built agent-to-agent delegation and did NOT do it by relaxing this
+    // line. `handOff` (services/agent/src/handoff.ts) checks the reciprocal
+    // operator allowlists, the cycle rule and the crossing cap, and intersects
+    // both bindings' ceilings BEFORE calling the same attenuation — so a
+    // planner naming a colleague in a plain plan still gets nowhere.
     const s = await scaffold();
     const plan = { tasks: [echo("delegate", "x", { bindingId: "bind_cj" })] };
     await startPlannerJob(s.env, plan);
@@ -441,7 +446,7 @@ describe("ATTENUATION, enforced by the harness at every depth", () => {
     expect(s.nodes()).toHaveLength(1);
     const refusals = s.result(s.root().id).refusals as Array<{ axis: string; why: string }>;
     expect(refusals[0]!.axis).toBe("identity");
-    expect(refusals[0]!.why).toContain("agents:invoke");
+    expect(refusals[0]!.why).toContain("HANDOFF");
   });
 
   it("a task minting a RESERVED context kind is refused", async () => {

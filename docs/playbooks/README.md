@@ -9,8 +9,13 @@ Prerequisites for every playbook: the platform deployed
 ([`../DEPLOY.md`](../DEPLOY.md)) and the operator CLI pointed at it
 (`bullmoose admin init --url … --token "$ADMIN_TOKEN"`).
 
+Start with **[onboarding a second human](onboarding-a-second-human.md)** if the
+question is "how does a person who is not me get an account and see something
+useful" — the others all begin *after* somebody has been provisioned.
+
 | playbook | for | cost |
 |---|---|---|
+| [Onboarding a second human](onboarding-a-second-human.md) | a person who is **not** the operator — account → sign-in → first extraction | **$0** + a capped $2/mo extractor |
 | [Apple Mail + Apple Calendar](apple-mail-and-calendar.md) | macOS/iOS native Mail, Calendar, Contacts | calendar/contacts **$0**; Mail needs the popcorn shim — **$0** homelab+Tailscale or **~$5/mo** VPS |
 | [JMAP client (Mailtemi)](jmap-client.md) | modern, full-fidelity mail (folders, threads, push) | **$0**, serverless |
 | [Family sharing](family-sharing.md) | a household — shared contacts/calendar, per-device passwords | **$0**, serverless |

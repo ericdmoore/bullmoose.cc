@@ -11,6 +11,7 @@ import { registerActionProposalMethods } from "./actionProposal";
 import { registerWatchMethods } from "./watch";
 import { registerGoalMethods } from "./goal";
 import { registerAnnotationMethods } from "./annotation";
+import { registerNoteMethods } from "./note";
 import { registerVacationMethods } from "./vacation";
 import { registerContactsMethods } from "./contacts";
 import { registerCalendarMethods } from "./calendars";
@@ -33,6 +34,7 @@ export function buildRegistry(): MethodRegistry<RequestContext> {
   registerWatchMethods(registry);
   registerGoalMethods(registry);
   registerAnnotationMethods(registry);
+  registerNoteMethods(registry);
   registerVacationMethods(registry);
   registerContactsMethods(registry);
   registerCalendarMethods(registry);

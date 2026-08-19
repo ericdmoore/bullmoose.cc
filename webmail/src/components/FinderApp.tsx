@@ -4,6 +4,7 @@ import { resolveClient, type ClientMode } from "../lib/app/client";
 import { buildFinderCollections, parseCollectionId } from "../lib/finder/collections";
 import { deriveDateGroups, windowRefinement } from "../lib/finder/dateGroups";
 import { FINDER_SCOPE_NOTE, runFind, type FinderHit, type FinderResult } from "../lib/finder/run";
+import { SUGGEST_NOTE, applySuggestion, suggestRefinements, type FinderSuggestion } from "../lib/finder/suggest";
 import {
   chipLabel,
   isBlank,
@@ -50,9 +51,15 @@ import { Button } from "./ui";
 //  • one page of results, no pager — the answer to "too many" is a chip.
 //  • a saved query's count is stamped with when it was measured.
 //
-// FUTURE(s20-t5b): agent-directed refinement plugs in here — the agent
-// proposes the next chip (via the MCP tool layer over these same lib/finder
-// modules) instead of the human picking one from the RefineBar.
+// s20 T5b — AGENT-DIRECTED REFINEMENT, the seam #197 marked here. The agent
+// proposes the next chip; the human takes it or ignores it. It renders as its
+// own strip above the RefineBar and it is an OFFER, never an application:
+// `SuggestBar` calls `applySuggestion` from a click handler and from nowhere
+// else, and the chip it produces goes through the same `refine()` the human's
+// own controls call, so an accepted suggestion is an ordinary removable chip
+// with no privileged agent state behind it. The argument for a direct
+// suggestion over an invocation → proposal — and for why nothing here can
+// silently narrow your find — is in `lib/finder/suggest.ts`.
 
 interface Props {
   /** Injected in tests; the screen resolves its own otherwise (invariant §6.1). */
@@ -202,6 +209,22 @@ export default function FinderApp({ client: injected }: Props) {
     [current, runSession],
   );
 
+  /**
+   * Take one of the agent's offers (s20 T5b). Byte-for-byte the `addChip`
+   * path, plus the free-text rewrite an offer may carry — because an accepted
+   * suggestion IS an ordinary refinement, and giving it its own run path is
+   * how it would quietly stop being one.
+   */
+  const acceptSuggestion = useCallback(
+    (offer: FinderSuggestion) => {
+      if (!current) return;
+      setActiveSaved(undefined);
+      setCollectionId(`session:${current.id}`);
+      void runSession(applySuggestion(current, offer));
+    },
+    [current, runSession],
+  );
+
   const removeChip = useCallback(
     (index: number) => {
       if (!current) return;
@@ -214,6 +237,13 @@ export default function FinderApp({ client: injected }: Props) {
 
   // ── collection column ───────────────────────────────────────────────────
   const dateGroups = useMemo(() => deriveDateGroups((result?.hits ?? []).map((h) => h.receivedAt)), [result]);
+  /** Pure over the session and the page the browser already holds — no
+   *  request, no model, no spend, and therefore nothing that can hang. An
+   *  empty list renders as nothing at all. */
+  const suggestions = useMemo(
+    () => (current ? suggestRefinements(current, result?.hits ?? []) : []),
+    [current, result],
+  );
   const collections = useMemo(
     () =>
       buildFinderCollections({
@@ -350,6 +380,12 @@ export default function FinderApp({ client: injected }: Props) {
           {current ? (
             <>
               <FinderChips session={current} onRemove={removeChip} />
+              {/* The offers sit ABOVE the human's own controls and below the
+                  chain they would join — visible, ignorable, and never in the
+                  way of the RefineBar. Hidden while a find is in flight: the
+                  offers describe the page on screen, and the page on screen is
+                  about to be replaced. */}
+              {!busy ? <SuggestBar suggestions={suggestions} onAccept={acceptSuggestion} /> : null}
               <RefineBar mailboxes={mailboxes} onAdd={addChip} canSave={!isBlank(current)} onSave={onSaveQuery} />
             </>
           ) : null}
@@ -423,8 +459,49 @@ export function FinderChips({ session, onRemove }: { session: FinderSession; onR
   );
 }
 
-/** The refinement controls — the human picks the next chip. This row is the
- *  seam the agent-mediated version replaces (see the FUTURE note atop). */
+/**
+ * The agent's offers (s20 T5b) — "you probably mean these three months",
+ * "from Sergio, not Sergio's assistant".
+ *
+ * Three rules, all of them visible in this markup:
+ *
+ *   • it is a STRIP OF BUTTONS, not a state. Nothing is pre-selected, nothing
+ *     is checked, and there is no dismiss control — a "don't show me this"
+ *     toggle is a star by another name, and these recompute from the current
+ *     result and disappear on their own when they stop applying;
+ *   • every offer shows its REASON beside it, because an offer whose grounds
+ *     you cannot see is not something you can meaningfully decline;
+ *   • nothing renders at all when there is nothing to offer. An empty strip
+ *     explaining its own emptiness would be the agent taking up room to say
+ *     it has nothing to say.
+ */
+export function SuggestBar({
+  suggestions,
+  onAccept,
+}: {
+  suggestions: FinderSuggestion[];
+  onAccept: (offer: FinderSuggestion) => void;
+}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <div class="finder-suggest" role="group" aria-label="Suggested refinements">
+      <p class="muted finder-suggest-note">{SUGGEST_NOTE}</p>
+      <ul class="finder-suggest-list">
+        {suggestions.map((s) => (
+          <li key={s.id}>
+            <button type="button" class="finder-suggest-offer" onClick={() => onAccept(s)}>
+              <span class="finder-suggest-chip">{chipLabel(s.refinement)}</span>
+              <span class="muted finder-suggest-reason">{s.reason}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** The refinement controls — the human picks the next chip. The agent's own
+ *  offers are the SuggestBar above; both end in the same `refine()`. */
 export function RefineBar({
   mailboxes,
   onAdd,
