@@ -111,8 +111,12 @@ export function registerGoalMethods(registry: MethodRegistry<RequestContext>): v
       ).results;
     }
 
-    const list = [];
-    for (const row of rows) list.push(await project(ctx, access.accountId, row));
+    const facts = await goalFacts(
+      ctx,
+      access.accountId,
+      rows.map((r) => r.id),
+    );
+    const list = rows.map((row) => project(row, facts));
     const found = new Set(rows.map((r) => r.id));
     return {
       accountId: access.accountId,
@@ -382,7 +386,8 @@ async function createGoal(
     accepted_at: null,
     accepted_by: null,
   };
-  return { ok: true, id: started.jobId, rootId: started.rootId, watchId, goal: await project(ctx, accountId, row) };
+  const facts = await goalFacts(ctx, accountId, [started.jobId]);
+  return { ok: true, id: started.jobId, rootId: started.rootId, watchId, goal: project(row, facts) };
 }
 
 // ---- update ---------------------------------------------------------------
@@ -508,53 +513,99 @@ async function updateGoal(
 // ---- the projection (everything derived) ---------------------------------
 
 /**
- * A goal, as a client reads it. TWO queries beyond the row itself — the nodes
- * and the proposals — and everything else is arithmetic over them.
+ * Everything the projection needs, for a WHOLE PAGE of goals, in three queries.
  *
- * Deliberately not a stored projection, on `jobView`'s reasoning: at bullmoose
- * scale a goal is tens of rows on an indexed `(account_id, job_id)` scan, and
- * the reconcile test a materialization would owe costs more than the scan does.
+ * The obvious shape was three queries per goal, and it was an N+1 the moment
+ * `Goal/get { ids: null }` — the roster read every client makes — returned more
+ * than a couple of rows. Fanned in on `job_id IN (…)` instead, over the index
+ * `invocations_job` already provides, then folded per goal in memory.
+ *
+ * Still deliberately NOT a stored projection, on `jobView`'s reasoning: at
+ * bullmoose scale a goal is tens of rows on an indexed scan, and the reconcile
+ * test a materialization would owe costs more than the scan does.
  */
-async function project(ctx: RequestContext, accountId: string, row: GoalRow): Promise<Record<string, unknown>> {
-  const parsed = parseGoalContract(safeJson(row.contract_json));
-  const contract: GoalContract | null = parsed.ok ? parsed.contract : null;
+interface GoalFacts {
+  nodes: Map<string, JobNodeState[]>;
+  spend: Map<string, number>;
+  milestones: Map<string, MilestoneRow[]>;
+  jobs: Map<string, { budget_micros: number | null; max_nodes: number }>;
+}
+
+async function goalFacts(ctx: RequestContext, accountId: string, ids: readonly string[]): Promise<GoalFacts> {
+  const facts: GoalFacts = { nodes: new Map(), spend: new Map(), milestones: new Map(), jobs: new Map() };
+  if (ids.length === 0) return facts;
+  const marks = ids.map(() => "?").join(",");
 
   const { results: nodeRows } = await ctx.env.DB.prepare(
-    `SELECT inv.id, inv.status, inv.needs_json, inv.cost_micros,
+    `SELECT inv.id, inv.job_id, inv.status, inv.needs_json, inv.cost_micros,
             EXISTS (SELECT 1 FROM agent_proposals p
                      WHERE p.account_id = inv.account_id AND p.id = inv.id
                        AND p.status = 'info-requested') AS paused
        FROM agent_invocations inv
-      WHERE inv.account_id = ? AND inv.job_id = ?`,
+      WHERE inv.account_id = ? AND inv.job_id IN (${marks})`,
   )
-    .bind(accountId, row.id)
-    .all<{ id: string; status: string; needs_json: string | null; cost_micros: number | null; paused: number }>();
+    .bind(accountId, ...ids)
+    .all<{
+      id: string;
+      job_id: string;
+      status: string;
+      needs_json: string | null;
+      cost_micros: number | null;
+      paused: number;
+    }>();
+  for (const r of nodeRows) {
+    const list = facts.nodes.get(r.job_id) ?? [];
+    list.push({
+      id: r.id,
+      status: r.status as JobNodeState["status"],
+      needs: parseNeeds(r.needs_json),
+      paused: r.paused === 1,
+    });
+    facts.nodes.set(r.job_id, list);
+    facts.spend.set(r.job_id, (facts.spend.get(r.job_id) ?? 0) + (r.cost_micros ?? 0));
+  }
 
-  const nodes: JobNodeState[] = nodeRows.map((r) => ({
-    id: r.id,
-    status: r.status as JobNodeState["status"],
-    needs: parseNeeds(r.needs_json),
-    paused: r.paused === 1,
-  }));
-
-  // The milestones: this goal's own proposals, time-ordered. A goal's timeline
+  // The milestones: each goal's own proposals, time-ordered. A goal's timeline
   // IS its proposals — never a second event log, because two logs of the same
   // decisions is one log and one liability.
   const { results: proposals } = await ctx.env.DB.prepare(
-    `SELECT p.id, p.kind, p.status, p.created_at, p.decided_at, p.rationale
+    `SELECT p.id, inv.job_id, p.kind, p.status, p.created_at, p.decided_at, p.rationale
        FROM agent_proposals p
        JOIN agent_invocations inv ON inv.account_id = p.account_id AND inv.id = p.id
-      WHERE p.account_id = ? AND inv.job_id = ?
-      ORDER BY p.created_at ASC LIMIT 256`,
+      WHERE p.account_id = ? AND inv.job_id IN (${marks})
+      ORDER BY p.created_at ASC LIMIT 1024`,
   )
-    .bind(accountId, row.id)
-    .all<MilestoneRow>();
+    .bind(accountId, ...ids)
+    .all<MilestoneRow & { job_id: string }>();
+  for (const p of proposals) {
+    const list = facts.milestones.get(p.job_id) ?? [];
+    list.push(p);
+    facts.milestones.set(p.job_id, list);
+  }
 
-  const job = await ctx.env.DB.prepare(`SELECT budget_micros, max_nodes FROM jobs WHERE account_id = ? AND id = ?`)
-    .bind(accountId, row.id)
-    .first<{ budget_micros: number | null; max_nodes: number }>();
+  const { results: jobs } = await ctx.env.DB.prepare(
+    `SELECT id, budget_micros, max_nodes FROM jobs WHERE account_id = ? AND id IN (${marks})`,
+  )
+    .bind(accountId, ...ids)
+    .all<{ id: string; budget_micros: number | null; max_nodes: number }>();
+  for (const j of jobs) facts.jobs.set(j.id, { budget_micros: j.budget_micros, max_nodes: j.max_nodes });
 
-  const planCheckpointOpen = proposals.some((p) => p.kind === GOAL_PLAN_KIND && p.status === "pending");
+  return facts;
+}
+
+/**
+ * A goal, as a client reads it — a pure fold over the row and the facts above.
+ * Nothing here is stored: status, progress and the timeline are all counted
+ * from the same nodes and proposals every other surface reads.
+ */
+function project(row: GoalRow, facts: GoalFacts): Record<string, unknown> {
+  const parsed = parseGoalContract(safeJson(row.contract_json));
+  const contract: GoalContract | null = parsed.ok ? parsed.contract : null;
+  const nodes = facts.nodes.get(row.id) ?? [];
+  const milestones = facts.milestones.get(row.id) ?? [];
+  const job = facts.jobs.get(row.id);
+
+  const planCheckpointOpen = milestones.some((p) => p.kind === GOAL_PLAN_KIND && p.status === "pending");
   const status = deriveGoalStatus({
     jobStatus: deriveJobStatus(nodes),
     planCheckpointOpen,
@@ -582,7 +633,7 @@ async function project(ctx: RequestContext, accountId: string, row: GoalRow): Pr
     escalationWatchId: row.escalation_watch_id,
     budgetMicros: job?.budget_micros ?? null,
     maxNodes: job?.max_nodes ?? null,
-    spentMicros: nodeRows.reduce((sum, r) => sum + (r.cost_micros ?? 0), 0),
+    spentMicros: facts.spend.get(row.id) ?? 0,
     progress: {
       total: nodes.length,
       pending: nodes.filter((n) => n.status === "pending").length,
@@ -590,7 +641,7 @@ async function project(ctx: RequestContext, accountId: string, row: GoalRow): Pr
       done: nodes.filter((n) => n.status === "done").length,
       failed: nodes.filter((n) => n.status === "failed").length,
     },
-    milestones: proposals.map((p) => ({
+    milestones: milestones.map((p) => ({
       proposalId: p.id,
       kind: p.kind,
       checkpointClass: checkpointClassOf(p.kind),

@@ -192,6 +192,52 @@ describe("everything a client reads is derived", () => {
     expect(milestones[0]!.status).toBe("pending");
   });
 
+  it("reads a whole roster in one fan-in, and one goal's nodes never leak into another's", async () => {
+    // The projection is three queries for the PAGE, not three per goal — an
+    // N+1 the moment `Goal/get { ids: null }` (the roster read every client
+    // makes) returns more than a couple of rows. What has to survive the
+    // batching is the per-goal fold, so: two goals, different node counts.
+    const h = harness();
+    const first = goalId(await h.create());
+    const second = goalId(await h.create({ statement: "find a roofer" }));
+    h.w.db.seed("agent_invocations", [
+      {
+        id: "inv_t1",
+        account_id: ACCOUNT,
+        binding_id: "bind_cj",
+        binding_name: "cj",
+        status: "done",
+        context_json: "{}",
+        created_at: 5,
+        cost_micros: 40,
+        job_id: first,
+        parent_id: "x",
+        depth: 1,
+      },
+      {
+        id: "inv_t2",
+        account_id: ACCOUNT,
+        binding_id: "bind_cj",
+        binding_name: "cj",
+        status: "pending",
+        context_json: "{}",
+        created_at: 6,
+        cost_micros: 0,
+        job_id: first,
+        parent_id: "x",
+        depth: 1,
+      },
+    ]);
+
+    const got = await h.call<{ list: Array<Record<string, unknown>> }>("Goal/get", { ids: [first, second] });
+    const byId = new Map(got.list.map((g) => [g.id as string, g]));
+    // Each goal counts its OWN root plus whatever it actually has.
+    expect((byId.get(first)!.progress as { total: number }).total).toBe(3);
+    expect((byId.get(second)!.progress as { total: number }).total).toBe(1);
+    expect(byId.get(first)!.spentMicros).toBe(40);
+    expect(byId.get(second)!.spentMicros).toBe(0);
+  });
+
   it("says which checkpoint classes are still manual AND which could ever graduate", async () => {
     const h = harness();
     const id = goalId(await h.create());
