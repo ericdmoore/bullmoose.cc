@@ -1,21 +1,21 @@
 /** @jsxImportSource preact */
-import { CheckIcon } from '../../_kit/heroicons/20-solid'
+import { CheckIcon } from "../../_kit/heroicons/20-solid";
 
 const steps = [
-  { name: 'Create account', description: 'Vitae sed mi luctus laoreet.', href: '#', status: 'complete' },
+  { name: "Create account", description: "Vitae sed mi luctus laoreet.", href: "#", status: "complete" },
   {
-    name: 'Profile information',
-    description: 'Cursus semper viverra facilisis et et some more.',
-    href: '#',
-    status: 'current',
+    name: "Profile information",
+    description: "Cursus semper viverra facilisis et et some more.",
+    href: "#",
+    status: "current",
   },
-  { name: 'Business information', description: 'Penatibus eu quis ante.', href: '#', status: 'upcoming' },
-  { name: 'Theme', description: 'Faucibus nec enim leo et.', href: '#', status: 'upcoming' },
-  { name: 'Preview', description: 'Iusto et officia maiores porro ad non quas.', href: '#', status: 'upcoming' },
-]
+  { name: "Business information", description: "Penatibus eu quis ante.", href: "#", status: "upcoming" },
+  { name: "Theme", description: "Faucibus nec enim leo et.", href: "#", status: "upcoming" },
+  { name: "Preview", description: "Iusto et officia maiores porro ad non quas.", href: "#", status: "upcoming" },
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -23,8 +23,8 @@ export default function Example() {
     <nav aria-label="Progress">
       <ol role="list" className="overflow-hidden">
         {steps.map((step, stepIdx) => (
-          <li key={step.name} className={classNames(stepIdx !== steps.length - 1 ? 'pb-10' : '', 'relative')}>
-            {step.status === 'complete' ? (
+          <li key={step.name} className={classNames(stepIdx !== steps.length - 1 ? "pb-10" : "", "relative")}>
+            {step.status === "complete" ? (
               <>
                 {stepIdx !== steps.length - 1 ? (
                   <div
@@ -44,7 +44,7 @@ export default function Example() {
                   </span>
                 </a>
               </>
-            ) : step.status === 'current' ? (
+            ) : step.status === "current" ? (
               <>
                 {stepIdx !== steps.length - 1 ? (
                   <div
@@ -89,5 +89,5 @@ export default function Example() {
         ))}
       </ol>
     </nav>
-  )
+  );
 }

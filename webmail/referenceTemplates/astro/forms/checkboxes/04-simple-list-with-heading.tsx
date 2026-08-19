@@ -1,11 +1,11 @@
 /** @jsxImportSource preact */
 const people = [
-  { id: 1, name: 'Annette Black', selected: true },
-  { id: 2, name: 'Cody Fisher', selected: true },
-  { id: 3, name: 'Courtney Henry', selected: false },
-  { id: 4, name: 'Kathryn Murphy', selected: false },
-  { id: 5, name: 'Theresa Webb', selected: false },
-]
+  { id: 1, name: "Annette Black", selected: true },
+  { id: 2, name: "Cody Fisher", selected: true },
+  { id: 3, name: "Courtney Henry", selected: false },
+  { id: 4, name: "Kathryn Murphy", selected: false },
+  { id: 5, name: "Theresa Webb", selected: false },
+];
 
 export default function Example() {
   return (
@@ -54,5 +54,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  )
+  );
 }

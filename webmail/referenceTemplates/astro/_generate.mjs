@@ -6,8 +6,16 @@
  * Writes webmail/referenceTemplates/astro/{same path}/{name}.tsx
  *        webmail/referenceTemplates/astro/{same path}/{name}.astro
  *        webmail/referenceTemplates/astro/_kit/heroicons/{24-outline,24-solid,20-solid,16-solid}.tsx
+ *        webmail/referenceTemplates/astro/_kit/heroicons/props.ts
  *
- * Re-run from the repo root: `node webmail/referenceTemplates/astro/_generate.mjs`
+ * Re-run from the repo root:
+ *   node webmail/referenceTemplates/astro/_generate.mjs
+ *   npx oxfmt webmail/referenceTemplates/astro   # generated output is not pre-formatted
+ *   npx oxlint webmail/referenceTemplates/astro  # must be clean before committing
+ *
+ * That lint step is not optional politeness: the first run of this generator
+ * emitted 125 icon components that could not be parsed at all, and they merged
+ * because nothing in CI looked at this subtree. See `jsxExprString` below.
  */
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
@@ -68,6 +76,16 @@ function transformReact(src, destTsx) {
     return `from '${relKit(destTsx, `heroicons/${file}`)}'`;
   });
 
+  // 81 of the upstream templates ship the same untyped `classNames` helper.
+  // Its rest parameter is an implicit `any[]`, which is the single largest
+  // source of type errors in the ports. The call sites pass class strings,
+  // `cond ? 'a' : 'b'`, and `flag && 'a'` — so this union is what they actually
+  // hand it, not a guess. Behaviour is unchanged; only the signature is added.
+  s = s.replace(
+    /^function classNames\(\.\.\.classes\) \{$/m,
+    "function classNames(...classes: (string | false | null | undefined)[]) {",
+  );
+
   if (!s.startsWith("/** @jsxImportSource")) {
     s = `/** @jsxImportSource preact */\n${s}`;
   }
@@ -116,22 +134,79 @@ async function fetchIcon(stylePath, iconName) {
 
 function innerOf(svg) {
   const viewBox = /viewBox="([^"]+)"/.exec(svg)?.[1] ?? "0 0 24 24";
-  const inner = svg.replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "").trim();
+  const inner = svg
+    .replace(/^[\s\S]*?<svg[^>]*>/, "")
+    .replace(/<\/svg>\s*$/, "")
+    .trim();
   const stroke = /stroke="currentColor"/.test(svg);
   return { viewBox, inner, stroke };
 }
 
-function tsString(s) {
-  return JSON.stringify(s);
+/**
+ * Render `s` as a JS string literal for use inside a JSX *expression container*
+ * (`attr={...}`), NOT as a bare JSX attribute (`attr="..."`).
+ *
+ * This distinction is the bug this generator shipped once already: JSON.stringify
+ * escapes `"` as `\"`, which is correct for a JS string literal but meaningless in
+ * a JSX attribute, where the value simply ends at the first `"`. The rest of the
+ * icon markup was then parsed as JSX attributes and every icon module failed to
+ * compile ("Invalid Unicode escape sequence").
+ *
+ * Single quotes, because Heroicon markup is full of `"` and contains no
+ * apostrophes or backslashes — so the literal needs no escaping at all beyond
+ * newlines, and oxfmt (which picks whichever quote yields fewer escapes) leaves
+ * it alone.
+ */
+function jsxExprString(s) {
+  const body = s.replaceAll("\\", "\\\\").replaceAll("'", "\\'").replaceAll("\n", "\\n");
+  return `'${body}'`;
 }
 
-function writeIconModule(exports) {
-  // exports: [{ name, svg }]
+/** Emit the shared prop type every icon module imports. */
+function renderIconPropsModule() {
+  return `import type { JSX } from "preact";
+
+/**
+ * Props accepted by every inlined Heroicon in this kit.
+ *
+ * An icon renders exactly one <svg> and forwards what it is given to it, so it
+ * accepts the SVG attributes Preact accepts — nothing invented. Preact's
+ * SVGAttributes already extends HTMLAttributes, which is where \`class\` and the
+ * React-style \`className\` alias both come from; the Tailwind UI templates we
+ * port pass \`className\`, and it type-checks for that reason rather than by
+ * special-casing here.
+ *
+ * \`viewBox\` and \`stroke\` are excluded. Both are genuine SVG attributes, but
+ * each icon hard-codes its own viewBox, and \`stroke\` is destructured off as an
+ * internal fill-vs-stroke *flag* rather than the paint value its SVG name
+ * implies. A caller passing either would have it silently swallowed, so
+ * accepting them would be a lie about what the component does.
+ */
+export interface IconProps extends Omit<JSX.SVGAttributes<SVGSVGElement>, "viewBox" | "stroke"> {}
+`;
+}
+
+/**
+ * @param {{name: string, viewBox: string, inner: string, stroke: boolean}[]} icons
+ */
+function renderIconModule(icons) {
   const lines = [
     "/** @jsxImportSource preact */",
     "/** Inlined Heroicons (MIT) used by the Tailwind UI React templates. */",
     "",
-    "function Icon({ viewBox, inner, stroke, className, class: cls, ...rest }) {",
+    'import type { IconProps } from "./props";',
+    "",
+    "/** An icon's own geometry, plus everything the caller forwards to the <svg>. */",
+    "interface InlineIconProps extends IconProps {",
+    "  /** viewBox of the source Heroicon. */",
+    "  viewBox: string;",
+    "  /** Inner markup of the source Heroicon, injected verbatim. */",
+    "  inner: string;",
+    "  /** Outline icons stroke rather than fill; solid icons do the reverse. */",
+    "  stroke: boolean;",
+    "}",
+    "",
+    "function Icon({ viewBox, inner, stroke, className, class: cls, ...rest }: InlineIconProps) {",
     "  const extra = stroke",
     '    ? { fill: "none", stroke: "currentColor", "stroke-width": "1.5" }',
     '    : { fill: "currentColor" };',
@@ -148,16 +223,23 @@ function writeIconModule(exports) {
     "}",
     "",
   ];
-  for (const { name, svg } of exports.sort((a, b) => a.name.localeCompare(b.name))) {
-    const { viewBox, inner, stroke } = innerOf(svg);
-    lines.push(`export function ${name}(props) {`);
+  for (const { name, viewBox, inner, stroke } of icons) {
+    lines.push(`export function ${name}(props: IconProps) {`);
     lines.push(
-      `  return <Icon viewBox=${tsString(viewBox)} inner=${tsString(inner)} stroke={${stroke}} {...props} />;`,
+      `  return <Icon viewBox=${JSON.stringify(viewBox)} inner={${jsxExprString(inner)}} stroke={${stroke}} {...props} />;`,
     );
     lines.push(`}`);
     lines.push("");
   }
   return lines.join("\n");
+}
+
+/** @param {{name: string, svg: string}[]} exports */
+function writeIconModule(exports) {
+  const icons = exports
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(({ name, svg }) => ({ name, ...innerOf(svg) }));
+  return renderIconModule(icons);
 }
 
 async function collectIconImports(files) {
@@ -170,7 +252,10 @@ async function collectIconImports(files) {
       const style = m[2];
       if (!byStyle.has(style)) byStyle.set(style, new Set());
       for (const spec of m[1].split(",")) {
-        const name = spec.trim().split(/\s+as\s+/)[0].trim();
+        const name = spec
+          .trim()
+          .split(/\s+as\s+/)[0]
+          .trim();
         if (name) byStyle.get(style).add(name);
       }
     }
@@ -185,6 +270,7 @@ async function main() {
 
   const byStyle = await collectIconImports(files);
   await mkdir(join(OUT, "_kit/heroicons"), { recursive: true });
+  await writeFile(join(OUT, "_kit/heroicons/props.ts"), renderIconPropsModule());
   for (const [style, names] of byStyle) {
     const exports = [];
     for (const name of names) {
@@ -204,7 +290,10 @@ async function main() {
     await mkdir(dirname(destTsx), { recursive: true });
     const src = await readFile(srcPath, "utf8");
     await writeFile(destTsx, transformReact(src, destTsx));
-    const base = rel.split("/").pop().replace(/\.jsx$/, "");
+    const base = rel
+      .split("/")
+      .pop()
+      .replace(/\.jsx$/, "");
     const catalogPath = rel.replace(/\.jsx$/, "");
     await writeFile(destAstro, astroWrapper(catalogPath, base));
     n++;
@@ -212,7 +301,13 @@ async function main() {
   console.log(`wrote ${n} .tsx + ${n} .astro`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Exported so the emitters can be exercised (and the icon modules rebuilt from
+// already-inlined data) without a network round-trip to the Heroicons CDN.
+export { astroWrapper, jsxExprString, renderIconModule, renderIconPropsModule, transformReact };
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

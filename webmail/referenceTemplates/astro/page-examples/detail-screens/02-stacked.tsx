@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
+import { useState } from "preact/hooks";
 import {
   Dialog,
   DialogPanel,
@@ -12,7 +12,7 @@ import {
   MenuButton,
   MenuItem,
   MenuItems,
-} from '../../_kit/headless'
+} from "../../_kit/headless";
 import {
   Bars3Icon,
   CalendarDaysIcon,
@@ -26,90 +26,90 @@ import {
   PaperClipIcon,
   UserCircleIcon,
   XMarkIcon as XMarkIconMini,
-} from '../../_kit/heroicons/20-solid'
-import { BellIcon, XMarkIcon as XMarkIconOutline } from '../../_kit/heroicons/24-outline'
-import { CheckCircleIcon } from '../../_kit/heroicons/24-solid'
+} from "../../_kit/heroicons/20-solid";
+import { BellIcon, XMarkIcon as XMarkIconOutline } from "../../_kit/heroicons/24-outline";
+import { CheckCircleIcon } from "../../_kit/heroicons/24-solid";
 
 const navigation = [
-  { name: 'Home', href: '#' },
-  { name: 'Invoices', href: '#' },
-  { name: 'Clients', href: '#' },
-  { name: 'Expenses', href: '#' },
-]
+  { name: "Home", href: "#" },
+  { name: "Invoices", href: "#" },
+  { name: "Clients", href: "#" },
+  { name: "Expenses", href: "#" },
+];
 const invoice = {
-  subTotal: '$8,800.00',
-  tax: '$1,760.00',
-  total: '$10,560.00',
+  subTotal: "$8,800.00",
+  tax: "$1,760.00",
+  total: "$10,560.00",
   items: [
     {
       id: 1,
-      title: 'Logo redesign',
-      description: 'New logo and digital asset playbook.',
-      hours: '20.0',
-      rate: '$100.00',
-      price: '$2,000.00',
+      title: "Logo redesign",
+      description: "New logo and digital asset playbook.",
+      hours: "20.0",
+      rate: "$100.00",
+      price: "$2,000.00",
     },
     {
       id: 2,
-      title: 'Website redesign',
-      description: 'Design and program new company website.',
-      hours: '52.0',
-      rate: '$100.00',
-      price: '$5,200.00',
+      title: "Website redesign",
+      description: "Design and program new company website.",
+      hours: "52.0",
+      rate: "$100.00",
+      price: "$5,200.00",
     },
     {
       id: 3,
-      title: 'Business cards',
+      title: "Business cards",
       description: 'Design and production of 3.5" x 2.0" business cards.',
-      hours: '12.0',
-      rate: '$100.00',
-      price: '$1,200.00',
+      hours: "12.0",
+      rate: "$100.00",
+      price: "$1,200.00",
     },
     {
       id: 4,
-      title: 'T-shirt design',
-      description: 'Three t-shirt design concepts.',
-      hours: '4.0',
-      rate: '$100.00',
-      price: '$400.00',
+      title: "T-shirt design",
+      description: "Three t-shirt design concepts.",
+      hours: "4.0",
+      rate: "$100.00",
+      price: "$400.00",
     },
   ],
-}
+};
 const activity = [
-  { id: 1, type: 'created', person: { name: 'Chelsea Hagon' }, date: '7d ago', dateTime: '2023-01-23T10:32' },
-  { id: 2, type: 'edited', person: { name: 'Chelsea Hagon' }, date: '6d ago', dateTime: '2023-01-23T11:03' },
-  { id: 3, type: 'sent', person: { name: 'Chelsea Hagon' }, date: '6d ago', dateTime: '2023-01-23T11:24' },
+  { id: 1, type: "created", person: { name: "Chelsea Hagon" }, date: "7d ago", dateTime: "2023-01-23T10:32" },
+  { id: 2, type: "edited", person: { name: "Chelsea Hagon" }, date: "6d ago", dateTime: "2023-01-23T11:03" },
+  { id: 3, type: "sent", person: { name: "Chelsea Hagon" }, date: "6d ago", dateTime: "2023-01-23T11:24" },
   {
     id: 4,
-    type: 'commented',
+    type: "commented",
     person: {
-      name: 'Chelsea Hagon',
+      name: "Chelsea Hagon",
       imageUrl:
-        'https://images.unsplash.com/photo-1550525811-e5869dd03032?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+        "https://images.unsplash.com/photo-1550525811-e5869dd03032?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
     },
-    comment: 'Called client, they reassured me the invoice would be paid by the 25th.',
-    date: '3d ago',
-    dateTime: '2023-01-23T15:56',
+    comment: "Called client, they reassured me the invoice would be paid by the 25th.",
+    date: "3d ago",
+    dateTime: "2023-01-23T15:56",
   },
-  { id: 5, type: 'viewed', person: { name: 'Alex Curren' }, date: '2d ago', dateTime: '2023-01-24T09:12' },
-  { id: 6, type: 'paid', person: { name: 'Alex Curren' }, date: '1d ago', dateTime: '2023-01-24T09:20' },
-]
+  { id: 5, type: "viewed", person: { name: "Alex Curren" }, date: "2d ago", dateTime: "2023-01-24T09:12" },
+  { id: 6, type: "paid", person: { name: "Alex Curren" }, date: "1d ago", dateTime: "2023-01-24T09:20" },
+];
 const moods = [
-  { name: 'Excited', value: 'excited', icon: FireIcon, iconColor: 'text-white', bgColor: 'bg-red-500' },
-  { name: 'Loved', value: 'loved', icon: HeartIcon, iconColor: 'text-white', bgColor: 'bg-pink-400' },
-  { name: 'Happy', value: 'happy', icon: FaceSmileIcon, iconColor: 'text-white', bgColor: 'bg-green-400' },
-  { name: 'Sad', value: 'sad', icon: FaceFrownIcon, iconColor: 'text-white', bgColor: 'bg-yellow-400' },
-  { name: 'Thumbsy', value: 'thumbsy', icon: HandThumbUpIcon, iconColor: 'text-white', bgColor: 'bg-blue-500' },
-  { name: 'I feel nothing', value: null, icon: XMarkIconMini, iconColor: 'text-gray-400', bgColor: 'bg-transparent' },
-]
+  { name: "Excited", value: "excited", icon: FireIcon, iconColor: "text-white", bgColor: "bg-red-500" },
+  { name: "Loved", value: "loved", icon: HeartIcon, iconColor: "text-white", bgColor: "bg-pink-400" },
+  { name: "Happy", value: "happy", icon: FaceSmileIcon, iconColor: "text-white", bgColor: "bg-green-400" },
+  { name: "Sad", value: "sad", icon: FaceFrownIcon, iconColor: "text-white", bgColor: "bg-yellow-400" },
+  { name: "Thumbsy", value: "thumbsy", icon: HandThumbUpIcon, iconColor: "text-white", bgColor: "bg-blue-500" },
+  { name: "I feel nothing", value: null, icon: XMarkIconMini, iconColor: "text-gray-400", bgColor: "bg-transparent" },
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [selected, setSelected] = useState(moods[5])
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [selected, setSelected] = useState(moods[5]);
 
   return (
     <>
@@ -206,7 +206,7 @@ export default function Example() {
               <div
                 style={{
                   clipPath:
-                    'polygon(100% 38.5%, 82.6% 100%, 60.2% 37.7%, 52.4% 32.1%, 47.5% 41.8%, 45.2% 65.6%, 27.5% 23.4%, 0.1% 35.3%, 17.9% 0%, 27.7% 23.4%, 76.2% 2.5%, 74.2% 56%, 100% 38.5%)',
+                    "polygon(100% 38.5%, 82.6% 100%, 60.2% 37.7%, 52.4% 32.1%, 47.5% 41.8%, 45.2% 65.6%, 27.5% 23.4%, 0.1% 35.3%, 17.9% 0%, 27.7% 23.4%, 76.2% 2.5%, 74.2% 56%, 100% 38.5%)",
                 }}
                 className="aspect-1154/678 w-288.5 bg-linear-to-br from-[#FF80B5] to-[#9089FC]"
               />
@@ -331,13 +331,13 @@ export default function Example() {
               <h2 className="text-base font-semibold text-gray-900 dark:text-white">Invoice</h2>
               <dl className="mt-6 grid grid-cols-1 text-sm/6 sm:grid-cols-2">
                 <div className="sm:pr-4">
-                  <dt className="inline text-gray-500 dark:text-gray-400">Issued on</dt>{' '}
+                  <dt className="inline text-gray-500 dark:text-gray-400">Issued on</dt>{" "}
                   <dd className="inline text-gray-700 dark:text-gray-300">
                     <time dateTime="2023-23-01">January 23, 2023</time>
                   </dd>
                 </div>
                 <div className="mt-2 sm:mt-0 sm:pl-4">
-                  <dt className="inline text-gray-500 dark:text-gray-400">Due on</dt>{' '}
+                  <dt className="inline text-gray-500 dark:text-gray-400">Due on</dt>{" "}
                   <dd className="inline text-gray-700 dark:text-gray-300">
                     <time dateTime="2023-31-01">January 31, 2023</time>
                   </dd>
@@ -463,13 +463,13 @@ export default function Example() {
                   <li key={activityItem.id} className="relative flex gap-x-4">
                     <div
                       className={classNames(
-                        activityItemIdx === activity.length - 1 ? 'h-6' : '-bottom-6',
-                        'absolute top-0 left-0 flex w-6 justify-center',
+                        activityItemIdx === activity.length - 1 ? "h-6" : "-bottom-6",
+                        "absolute top-0 left-0 flex w-6 justify-center",
                       )}
                     >
                       <div className="w-px bg-gray-200 dark:bg-white/10" />
                     </div>
-                    {activityItem.type === 'commented' ? (
+                    {activityItem.type === "commented" ? (
                       <>
                         <img
                           alt=""
@@ -481,7 +481,7 @@ export default function Example() {
                             <div className="py-0.5 text-xs/5 text-gray-500 dark:text-gray-400">
                               <span className="font-medium text-gray-900 dark:text-white">
                                 {activityItem.person.name}
-                              </span>{' '}
+                              </span>{" "}
                               commented
                             </div>
                             <time
@@ -497,7 +497,7 @@ export default function Example() {
                     ) : (
                       <>
                         <div className="relative flex size-6 flex-none items-center justify-center bg-white dark:bg-gray-900">
-                          {activityItem.type === 'paid' ? (
+                          {activityItem.type === "paid" ? (
                             <CheckCircleIcon
                               aria-hidden="true"
                               className="size-6 text-indigo-600 dark:text-indigo-500"
@@ -507,7 +507,7 @@ export default function Example() {
                           )}
                         </div>
                         <p className="flex-auto py-0.5 text-xs/5 text-gray-500 dark:text-gray-400">
-                          <span className="font-medium text-gray-900 dark:text-white">{activityItem.person.name}</span>{' '}
+                          <span className="font-medium text-gray-900 dark:text-white">{activityItem.person.name}</span>{" "}
                           {activityItem.type} the invoice.
                         </p>
                         <time
@@ -540,7 +540,7 @@ export default function Example() {
                       rows={2}
                       placeholder="Add your comment..."
                       className="block w-full resize-none bg-transparent px-3 py-1.5 text-base text-gray-900 placeholder:text-gray-400 focus:outline-none sm:text-sm/6 dark:text-white dark:placeholder:text-gray-500"
-                      defaultValue={''}
+                      defaultValue={""}
                     />
                   </div>
 
@@ -571,7 +571,7 @@ export default function Example() {
                                     <span
                                       className={classNames(
                                         selected.bgColor,
-                                        'flex size-8 items-center justify-center rounded-full',
+                                        "flex size-8 items-center justify-center rounded-full",
                                       )}
                                     >
                                       <selected.icon aria-hidden="true" className="size-5 shrink-0 text-white" />
@@ -596,12 +596,12 @@ export default function Example() {
                                     <div
                                       className={classNames(
                                         mood.bgColor,
-                                        'flex size-8 items-center justify-center rounded-full',
+                                        "flex size-8 items-center justify-center rounded-full",
                                       )}
                                     >
                                       <mood.icon
                                         aria-hidden="true"
-                                        className={classNames(mood.iconColor, 'size-5 shrink-0')}
+                                        className={classNames(mood.iconColor, "size-5 shrink-0")}
                                       />
                                     </div>
                                     <span className="ml-3 block truncate font-medium">{mood.name}</span>
@@ -627,5 +627,5 @@ export default function Example() {
         </div>
       </main>
     </>
-  )
+  );
 }

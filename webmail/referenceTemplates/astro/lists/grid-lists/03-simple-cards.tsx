@@ -1,15 +1,15 @@
 /** @jsxImportSource preact */
-import { EllipsisVerticalIcon } from '../../_kit/heroicons/20-solid'
+import { EllipsisVerticalIcon } from "../../_kit/heroicons/20-solid";
 
 const projects = [
-  { name: 'Graph API', initials: 'GA', href: '#', members: 16, bgColor: 'bg-pink-600 dark:bg-pink-700' },
-  { name: 'Component Design', initials: 'CD', href: '#', members: 12, bgColor: 'bg-purple-600 dark:bg-purple-700' },
-  { name: 'Templates', initials: 'T', href: '#', members: 16, bgColor: 'bg-yellow-500 dark:bg-yellow-600' },
-  { name: 'React Components', initials: 'RC', href: '#', members: 8, bgColor: 'bg-green-500 dark:bg-green-600' },
-]
+  { name: "Graph API", initials: "GA", href: "#", members: 16, bgColor: "bg-pink-600 dark:bg-pink-700" },
+  { name: "Component Design", initials: "CD", href: "#", members: 12, bgColor: "bg-purple-600 dark:bg-purple-700" },
+  { name: "Templates", initials: "T", href: "#", members: 16, bgColor: "bg-yellow-500 dark:bg-yellow-600" },
+  { name: "React Components", initials: "RC", href: "#", members: 8, bgColor: "bg-green-500 dark:bg-green-600" },
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -22,7 +22,7 @@ export default function Example() {
             <div
               className={classNames(
                 project.bgColor,
-                'flex w-16 shrink-0 items-center justify-center rounded-l-md text-sm font-medium text-white',
+                "flex w-16 shrink-0 items-center justify-center rounded-l-md text-sm font-medium text-white",
               )}
             >
               {project.initials}
@@ -51,5 +51,5 @@ export default function Example() {
         ))}
       </ul>
     </div>
-  )
+  );
 }

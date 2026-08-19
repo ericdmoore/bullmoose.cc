@@ -7,5 +7,5 @@ export default function Example() {
         Lorem ipsum dolor sit amet consectetur adipisicing elit quam corrupti consectetur.
       </p>
     </div>
-  )
+  );
 }

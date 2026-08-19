@@ -6,49 +6,49 @@ import {
   PhotoIcon,
   TableCellsIcon,
   ViewColumnsIcon,
-} from '../../_kit/heroicons/24-outline'
+} from "../../_kit/heroicons/24-outline";
 
 const items = [
   {
-    title: 'Create a List',
-    description: 'Another to-do system you’ll try but eventually give up on.',
+    title: "Create a List",
+    description: "Another to-do system you’ll try but eventually give up on.",
     icon: Bars4Icon,
-    background: 'bg-pink-500',
+    background: "bg-pink-500",
   },
   {
-    title: 'Create a Calendar',
-    description: 'Stay on top of your deadlines, or don’t — it’s up to you.',
+    title: "Create a Calendar",
+    description: "Stay on top of your deadlines, or don’t — it’s up to you.",
     icon: CalendarIcon,
-    background: 'bg-yellow-500',
+    background: "bg-yellow-500",
   },
   {
-    title: 'Create a Gallery',
-    description: 'Great for mood boards and inspiration.',
+    title: "Create a Gallery",
+    description: "Great for mood boards and inspiration.",
     icon: PhotoIcon,
-    background: 'bg-green-500',
+    background: "bg-green-500",
   },
   {
-    title: 'Create a Board',
-    description: 'Track tasks in different stages of your project.',
+    title: "Create a Board",
+    description: "Track tasks in different stages of your project.",
     icon: ViewColumnsIcon,
-    background: 'bg-blue-500',
+    background: "bg-blue-500",
   },
   {
-    title: 'Create a Spreadsheet',
-    description: 'Lots of numbers and things — good for nerds.',
+    title: "Create a Spreadsheet",
+    description: "Lots of numbers and things — good for nerds.",
     icon: TableCellsIcon,
-    background: 'bg-indigo-500',
+    background: "bg-indigo-500",
   },
   {
-    title: 'Create a Timeline',
-    description: 'Get a birds-eye-view of your procrastination.',
+    title: "Create a Timeline",
+    description: "Get a birds-eye-view of your procrastination.",
     icon: ClockIcon,
-    background: 'bg-purple-500',
+    background: "bg-purple-500",
   },
-]
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -66,7 +66,7 @@ export default function Example() {
           <li key={itemIdx} className="flow-root">
             <div className="relative -m-2 flex items-center space-x-4 rounded-xl p-2 focus-within:outline-2 focus-within:outline-indigo-600 hover:bg-gray-50 dark:focus-within:outline-indigo-500 dark:hover:bg-white/5">
               <div
-                className={classNames(item.background, 'flex size-16 shrink-0 items-center justify-center rounded-lg')}
+                className={classNames(item.background, "flex size-16 shrink-0 items-center justify-center rounded-lg")}
               >
                 <item.icon aria-hidden="true" className="size-6 text-white" />
               </div>
@@ -94,5 +94,5 @@ export default function Example() {
         </a>
       </div>
     </div>
-  )
+  );
 }

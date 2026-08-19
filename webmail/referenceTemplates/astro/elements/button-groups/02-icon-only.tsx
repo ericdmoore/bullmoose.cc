@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { ChevronLeftIcon, ChevronRightIcon } from '../../_kit/heroicons/20-solid'
+import { ChevronLeftIcon, ChevronRightIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
   return (
@@ -19,5 +19,5 @@ export default function Example() {
         <ChevronRightIcon aria-hidden="true" className="size-5" />
       </button>
     </span>
-  )
+  );
 }

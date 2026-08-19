@@ -1,11 +1,11 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Transition } from '../../_kit/headless'
-import { CheckCircleIcon } from '../../_kit/heroicons/24-outline'
-import { XMarkIcon } from '../../_kit/heroicons/20-solid'
+import { useState } from "preact/hooks";
+import { Transition } from "../../_kit/headless";
+import { CheckCircleIcon } from "../../_kit/heroicons/24-outline";
+import { XMarkIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
-  const [show, setShow] = useState(true)
+  const [show, setShow] = useState(true);
 
   return (
     <>
@@ -33,7 +33,7 @@ export default function Example() {
                     <button
                       type="button"
                       onClick={() => {
-                        setShow(false)
+                        setShow(false);
                       }}
                       className="inline-flex rounded-md text-gray-400 hover:text-gray-500 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-600 dark:hover:text-white dark:focus:outline-indigo-500"
                     >
@@ -48,5 +48,5 @@ export default function Example() {
         </div>
       </div>
     </>
-  )
+  );
 }

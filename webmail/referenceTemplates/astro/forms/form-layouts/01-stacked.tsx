@@ -1,6 +1,6 @@
 /** @jsxImportSource preact */
-import { PhotoIcon, UserCircleIcon } from '../../_kit/heroicons/24-solid'
-import { ChevronDownIcon } from '../../_kit/heroicons/16-solid'
+import { PhotoIcon, UserCircleIcon } from "../../_kit/heroicons/24-solid";
+import { ChevronDownIcon } from "../../_kit/heroicons/16-solid";
 
 export default function Example() {
   return (
@@ -43,7 +43,7 @@ export default function Example() {
                   name="about"
                   rows={3}
                   className="block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6 dark:bg-white/5 dark:text-white dark:outline-white/10 dark:placeholder:text-gray-500 dark:focus:outline-indigo-500"
-                  defaultValue={''}
+                  defaultValue={""}
                 />
               </div>
               <p className="mt-3 text-sm/6 text-gray-600 dark:text-gray-400">Write a few sentences about yourself.</p>
@@ -422,5 +422,5 @@ export default function Example() {
         </button>
       </div>
     </form>
-  )
+  );
 }

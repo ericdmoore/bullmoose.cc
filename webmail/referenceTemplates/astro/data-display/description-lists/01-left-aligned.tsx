@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { PaperClipIcon } from '../../_kit/heroicons/20-solid'
+import { PaperClipIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
   return (
@@ -87,5 +87,5 @@ export default function Example() {
         </dl>
       </div>
     </div>
-  )
+  );
 }

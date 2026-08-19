@@ -1,13 +1,13 @@
 /** @jsxImportSource preact */
 const stats = [
-  { name: 'Revenue', value: '$405,091.00', change: '+4.75%', changeType: 'positive' },
-  { name: 'Overdue invoices', value: '$12,787.00', change: '+54.02%', changeType: 'negative' },
-  { name: 'Outstanding invoices', value: '$245,988.00', change: '-1.39%', changeType: 'positive' },
-  { name: 'Expenses', value: '$30,156.00', change: '+10.18%', changeType: 'negative' },
-]
+  { name: "Revenue", value: "$405,091.00", change: "+4.75%", changeType: "positive" },
+  { name: "Overdue invoices", value: "$12,787.00", change: "+54.02%", changeType: "negative" },
+  { name: "Outstanding invoices", value: "$245,988.00", change: "-1.39%", changeType: "positive" },
+  { name: "Expenses", value: "$30,156.00", change: "+10.18%", changeType: "negative" },
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -21,8 +21,8 @@ export default function Example() {
           <dt className="text-sm/6 font-medium text-gray-500 dark:text-gray-400">{stat.name}</dt>
           <dd
             className={classNames(
-              stat.changeType === 'negative' ? 'text-rose-600 dark:text-rose-400' : 'text-gray-700 dark:text-gray-300',
-              'text-xs font-medium',
+              stat.changeType === "negative" ? "text-rose-600 dark:text-rose-400" : "text-gray-700 dark:text-gray-300",
+              "text-xs font-medium",
             )}
           >
             {stat.change}
@@ -33,5 +33,5 @@ export default function Example() {
         </div>
       ))}
     </dl>
-  )
+  );
 }

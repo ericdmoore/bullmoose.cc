@@ -21,5 +21,5 @@ export default function Example() {
       </svg>
       <span className="mt-2 block text-sm font-semibold text-gray-900 dark:text-white">Create a new database</span>
     </button>
-  )
+  );
 }

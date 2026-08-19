@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { PlusIcon } from '../../_kit/heroicons/20-solid'
+import { PlusIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
   return (
@@ -18,5 +18,5 @@ export default function Example() {
         </button>
       </div>
     </div>
-  )
+  );
 }

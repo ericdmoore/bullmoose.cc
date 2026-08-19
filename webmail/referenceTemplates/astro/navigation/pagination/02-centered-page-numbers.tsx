@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { ArrowLongLeftIcon, ArrowLongRightIcon } from '../../_kit/heroicons/20-solid'
+import { ArrowLongLeftIcon, ArrowLongRightIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
   return (
@@ -66,5 +66,5 @@ export default function Example() {
         </a>
       </div>
     </nav>
-  )
+  );
 }

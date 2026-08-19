@@ -1,12 +1,12 @@
 /** @jsxImportSource preact */
 const sides = [
-  { id: null, name: 'None' },
-  { id: 1, name: 'Baked beans' },
-  { id: 2, name: 'Coleslaw' },
-  { id: 3, name: 'French fries' },
-  { id: 4, name: 'Garden salad' },
-  { id: 5, name: 'Mashed potatoes' },
-]
+  { id: null, name: "None" },
+  { id: 1, name: "Baked beans" },
+  { id: 2, name: "Coleslaw" },
+  { id: 3, name: "French fries" },
+  { id: 4, name: "Garden salad" },
+  { id: 5, name: "Mashed potatoes" },
+];
 
 export default function Example() {
   return (
@@ -33,5 +33,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  )
+  );
 }

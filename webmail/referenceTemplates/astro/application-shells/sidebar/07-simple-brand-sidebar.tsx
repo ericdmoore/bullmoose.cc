@@ -1,6 +1,6 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Dialog, DialogBackdrop, DialogPanel, TransitionChild } from '../../_kit/headless'
+import { useState } from "preact/hooks";
+import { Dialog, DialogBackdrop, DialogPanel, TransitionChild } from "../../_kit/headless";
 import {
   Bars3Icon,
   CalendarIcon,
@@ -10,28 +10,28 @@ import {
   HomeIcon,
   UsersIcon,
   XMarkIcon,
-} from '../../_kit/heroicons/24-outline'
+} from "../../_kit/heroicons/24-outline";
 
 const navigation = [
-  { name: 'Dashboard', href: '#', icon: HomeIcon, current: true },
-  { name: 'Team', href: '#', icon: UsersIcon, current: false },
-  { name: 'Projects', href: '#', icon: FolderIcon, current: false },
-  { name: 'Calendar', href: '#', icon: CalendarIcon, current: false },
-  { name: 'Documents', href: '#', icon: DocumentDuplicateIcon, current: false },
-  { name: 'Reports', href: '#', icon: ChartPieIcon, current: false },
-]
+  { name: "Dashboard", href: "#", icon: HomeIcon, current: true },
+  { name: "Team", href: "#", icon: UsersIcon, current: false },
+  { name: "Projects", href: "#", icon: FolderIcon, current: false },
+  { name: "Calendar", href: "#", icon: CalendarIcon, current: false },
+  { name: "Documents", href: "#", icon: DocumentDuplicateIcon, current: false },
+  { name: "Reports", href: "#", icon: ChartPieIcon, current: false },
+];
 const teams = [
-  { id: 1, name: 'Heroicons', href: '#', initial: 'H', current: false },
-  { id: 2, name: 'Tailwind Labs', href: '#', initial: 'T', current: false },
-  { id: 3, name: 'Workcation', href: '#', initial: 'W', current: false },
-]
+  { id: 1, name: "Heroicons", href: "#", initial: "H", current: false },
+  { id: 2, name: "Tailwind Labs", href: "#", initial: "T", current: false },
+  { id: 3, name: "Workcation", href: "#", initial: "W", current: false },
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <>
@@ -88,18 +88,18 @@ export default function Example() {
                               href={item.href}
                               className={classNames(
                                 item.current
-                                  ? 'bg-indigo-700 text-white dark:bg-indigo-950/25'
-                                  : 'text-indigo-200 hover:bg-indigo-700 hover:text-white dark:text-indigo-100 dark:hover:bg-indigo-950/25',
-                                'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
+                                  ? "bg-indigo-700 text-white dark:bg-indigo-950/25"
+                                  : "text-indigo-200 hover:bg-indigo-700 hover:text-white dark:text-indigo-100 dark:hover:bg-indigo-950/25",
+                                "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
                               )}
                             >
                               <item.icon
                                 aria-hidden="true"
                                 className={classNames(
                                   item.current
-                                    ? 'text-white'
-                                    : 'text-indigo-200 group-hover:text-white dark:text-indigo-100',
-                                  'size-6 shrink-0',
+                                    ? "text-white"
+                                    : "text-indigo-200 group-hover:text-white dark:text-indigo-100",
+                                  "size-6 shrink-0",
                                 )}
                               />
                               {item.name}
@@ -117,9 +117,9 @@ export default function Example() {
                               href={team.href}
                               className={classNames(
                                 team.current
-                                  ? 'bg-indigo-700 text-white dark:bg-indigo-950/25'
-                                  : 'text-indigo-200 hover:bg-indigo-700 hover:text-white dark:text-indigo-100 dark:hover:bg-indigo-950/25',
-                                'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
+                                  ? "bg-indigo-700 text-white dark:bg-indigo-950/25"
+                                  : "text-indigo-200 hover:bg-indigo-700 hover:text-white dark:text-indigo-100 dark:hover:bg-indigo-950/25",
+                                "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
                               )}
                             >
                               <span className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-indigo-400 bg-indigo-500 text-[0.625rem] font-medium text-white dark:border-indigo-500/50 dark:bg-indigo-700">
@@ -164,18 +164,18 @@ export default function Example() {
                           href={item.href}
                           className={classNames(
                             item.current
-                              ? 'bg-indigo-700 text-white dark:bg-indigo-950/25'
-                              : 'text-indigo-200 hover:bg-indigo-700 hover:text-white dark:text-indigo-100 dark:hover:bg-indigo-950/25',
-                            'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
+                              ? "bg-indigo-700 text-white dark:bg-indigo-950/25"
+                              : "text-indigo-200 hover:bg-indigo-700 hover:text-white dark:text-indigo-100 dark:hover:bg-indigo-950/25",
+                            "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
                           )}
                         >
                           <item.icon
                             aria-hidden="true"
                             className={classNames(
                               item.current
-                                ? 'text-white'
-                                : 'text-indigo-200 group-hover:text-white dark:text-indigo-100',
-                              'size-6 shrink-0',
+                                ? "text-white"
+                                : "text-indigo-200 group-hover:text-white dark:text-indigo-100",
+                              "size-6 shrink-0",
                             )}
                           />
                           {item.name}
@@ -193,9 +193,9 @@ export default function Example() {
                           href={team.href}
                           className={classNames(
                             team.current
-                              ? 'bg-indigo-700 text-white dark:bg-indigo-950/25'
-                              : 'text-indigo-200 hover:bg-indigo-700 hover:text-white dark:text-indigo-100 dark:hover:bg-indigo-950/25',
-                            'group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold',
+                              ? "bg-indigo-700 text-white dark:bg-indigo-950/25"
+                              : "text-indigo-200 hover:bg-indigo-700 hover:text-white dark:text-indigo-100 dark:hover:bg-indigo-950/25",
+                            "group flex gap-x-3 rounded-md p-2 text-sm/6 font-semibold",
                           )}
                         >
                           <span className="flex size-6 shrink-0 items-center justify-center rounded-lg border border-indigo-400 bg-indigo-500 text-[0.625rem] font-medium text-white dark:border-indigo-500/50 dark:bg-indigo-700">
@@ -251,5 +251,5 @@ export default function Example() {
         </main>
       </div>
     </>
-  )
+  );
 }

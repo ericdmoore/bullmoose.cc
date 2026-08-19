@@ -1,9 +1,9 @@
 /** @jsxImportSource preact */
-import { useState } from 'preact/hooks'
-import { Transition } from '../../_kit/headless'
+import { useState } from "preact/hooks";
+import { Transition } from "../../_kit/headless";
 
 export default function Example() {
-  const [show, setShow] = useState(true)
+  const [show, setShow] = useState(true);
 
   return (
     <>
@@ -30,7 +30,7 @@ export default function Example() {
                     <button
                       type="button"
                       onClick={() => {
-                        setShow(false)
+                        setShow(false);
                       }}
                       className="flex w-full items-center justify-center rounded-none rounded-tr-lg px-4 py-3 text-sm font-medium text-indigo-600 hover:text-indigo-500 focus:z-10 focus:outline-2 focus:outline-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300 dark:focus:outline-indigo-400"
                     >
@@ -41,7 +41,7 @@ export default function Example() {
                     <button
                       type="button"
                       onClick={() => {
-                        setShow(false)
+                        setShow(false);
                       }}
                       className="flex w-full items-center justify-center rounded-none rounded-br-lg px-4 py-3 text-sm font-medium text-gray-700 hover:text-gray-500 focus:outline-2 focus:outline-indigo-500 dark:text-gray-300 dark:hover:text-white dark:focus:outline-indigo-400"
                     >
@@ -55,5 +55,5 @@ export default function Example() {
         </div>
       </div>
     </>
-  )
+  );
 }

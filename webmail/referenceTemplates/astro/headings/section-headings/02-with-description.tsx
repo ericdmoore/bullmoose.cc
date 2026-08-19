@@ -8,5 +8,5 @@ export default function Example() {
         Fringilla egestas justo massa purus sagittis malesuada.
       </p>
     </div>
-  )
+  );
 }

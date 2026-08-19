@@ -1,6 +1,6 @@
 /** @jsxImportSource preact */
-import { Menu, MenuButton, MenuItem, MenuItems } from '../../_kit/headless'
-import { CodeBracketIcon, EllipsisVerticalIcon, FlagIcon, StarIcon } from '../../_kit/heroicons/20-solid'
+import { Menu, MenuButton, MenuItem, MenuItems } from "../../_kit/headless";
+import { CodeBracketIcon, EllipsisVerticalIcon, FlagIcon, StarIcon } from "../../_kit/heroicons/20-solid";
 
 export default function Example() {
   return (
@@ -71,5 +71,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

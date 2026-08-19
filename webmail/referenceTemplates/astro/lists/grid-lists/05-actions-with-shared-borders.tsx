@@ -6,55 +6,55 @@ import {
   ClockIcon,
   ReceiptRefundIcon,
   UsersIcon,
-} from '../../_kit/heroicons/24-outline'
+} from "../../_kit/heroicons/24-outline";
 
 const actions = [
   {
-    title: 'Request time off',
-    href: '#',
+    title: "Request time off",
+    href: "#",
     icon: ClockIcon,
-    iconForeground: 'text-teal-700 dark:text-teal-400',
-    iconBackground: 'bg-teal-50 dark:bg-teal-500/10',
+    iconForeground: "text-teal-700 dark:text-teal-400",
+    iconBackground: "bg-teal-50 dark:bg-teal-500/10",
   },
   {
-    title: 'Benefits',
-    href: '#',
+    title: "Benefits",
+    href: "#",
     icon: CheckBadgeIcon,
-    iconForeground: 'text-purple-700 dark:text-purple-400',
-    iconBackground: 'bg-purple-50 dark:bg-purple-500/10',
+    iconForeground: "text-purple-700 dark:text-purple-400",
+    iconBackground: "bg-purple-50 dark:bg-purple-500/10",
   },
   {
-    title: 'Schedule a one-on-one',
-    href: '#',
+    title: "Schedule a one-on-one",
+    href: "#",
     icon: UsersIcon,
-    iconForeground: 'text-sky-700 dark:text-sky-400',
-    iconBackground: 'bg-sky-50 dark:bg-sky-500/10',
+    iconForeground: "text-sky-700 dark:text-sky-400",
+    iconBackground: "bg-sky-50 dark:bg-sky-500/10",
   },
   {
-    title: 'Payroll',
-    href: '#',
+    title: "Payroll",
+    href: "#",
     icon: BanknotesIcon,
-    iconForeground: 'text-yellow-700 dark:text-yellow-400',
-    iconBackground: 'bg-yellow-50 dark:bg-yellow-500/10',
+    iconForeground: "text-yellow-700 dark:text-yellow-400",
+    iconBackground: "bg-yellow-50 dark:bg-yellow-500/10",
   },
   {
-    title: 'Submit an expense',
-    href: '#',
+    title: "Submit an expense",
+    href: "#",
     icon: ReceiptRefundIcon,
-    iconForeground: 'text-rose-700 dark:text-rose-400',
-    iconBackground: 'bg-rose-50 dark:bg-rose-500/10',
+    iconForeground: "text-rose-700 dark:text-rose-400",
+    iconBackground: "bg-rose-50 dark:bg-rose-500/10",
   },
   {
-    title: 'Training',
-    href: '#',
+    title: "Training",
+    href: "#",
     icon: AcademicCapIcon,
-    iconForeground: 'text-indigo-700 dark:text-indigo-400',
-    iconBackground: 'bg-indigo-50 dark:bg-indigo-500/10',
+    iconForeground: "text-indigo-700 dark:text-indigo-400",
+    iconBackground: "bg-indigo-50 dark:bg-indigo-500/10",
   },
-]
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -64,15 +64,15 @@ export default function Example() {
         <div
           key={action.title}
           className={classNames(
-            actionIdx === 0 ? 'rounded-tl-lg rounded-tr-lg sm:rounded-tr-none' : '',
-            actionIdx === 1 ? 'sm:rounded-tr-lg' : '',
-            actionIdx === actions.length - 2 ? 'sm:rounded-bl-lg' : '',
-            actionIdx === actions.length - 1 ? 'rounded-br-lg rounded-bl-lg sm:rounded-bl-none' : '',
-            'group relative border-gray-200 bg-white p-6 focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-indigo-600 sm:odd:not-nth-last-2:border-b sm:even:border-l sm:even:not-last:border-b dark:border-white/10 dark:bg-gray-800/50 dark:focus-within:outline-indigo-500',
+            actionIdx === 0 ? "rounded-tl-lg rounded-tr-lg sm:rounded-tr-none" : "",
+            actionIdx === 1 ? "sm:rounded-tr-lg" : "",
+            actionIdx === actions.length - 2 ? "sm:rounded-bl-lg" : "",
+            actionIdx === actions.length - 1 ? "rounded-br-lg rounded-bl-lg sm:rounded-bl-none" : "",
+            "group relative border-gray-200 bg-white p-6 focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-indigo-600 sm:odd:not-nth-last-2:border-b sm:even:border-l sm:even:not-last:border-b dark:border-white/10 dark:bg-gray-800/50 dark:focus-within:outline-indigo-500",
           )}
         >
           <div>
-            <span className={classNames(action.iconBackground, action.iconForeground, 'inline-flex rounded-lg p-3')}>
+            <span className={classNames(action.iconBackground, action.iconForeground, "inline-flex rounded-lg p-3")}>
               <action.icon aria-hidden="true" className="size-6" />
             </span>
           </div>
@@ -100,5 +100,5 @@ export default function Example() {
         </div>
       ))}
     </div>
-  )
+  );
 }

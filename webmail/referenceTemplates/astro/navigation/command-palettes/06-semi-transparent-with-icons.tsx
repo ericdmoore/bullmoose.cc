@@ -7,41 +7,41 @@ import {
   Dialog,
   DialogPanel,
   DialogBackdrop,
-} from '../../_kit/headless'
-import { MagnifyingGlassIcon } from '../../_kit/heroicons/20-solid'
-import { DocumentPlusIcon, FolderIcon, FolderPlusIcon, HashtagIcon, TagIcon } from '../../_kit/heroicons/24-outline'
-import { useState } from 'preact/hooks'
+} from "../../_kit/headless";
+import { MagnifyingGlassIcon } from "../../_kit/heroicons/20-solid";
+import { DocumentPlusIcon, FolderIcon, FolderPlusIcon, HashtagIcon, TagIcon } from "../../_kit/heroicons/24-outline";
+import { useState } from "preact/hooks";
 
 const projects = [
-  { id: 1, name: 'Workflow Inc. / Website Redesign', url: '#' },
+  { id: 1, name: "Workflow Inc. / Website Redesign", url: "#" },
   // More projects...
-]
-const recent = [projects[0]]
+];
+const recent = [projects[0]];
 const quickActions = [
-  { name: 'Add new file...', icon: DocumentPlusIcon, shortcut: 'N', url: '#' },
-  { name: 'Add new folder...', icon: FolderPlusIcon, shortcut: 'F', url: '#' },
-  { name: 'Add hashtag...', icon: HashtagIcon, shortcut: 'H', url: '#' },
-  { name: 'Add label...', icon: TagIcon, shortcut: 'L', url: '#' },
-]
+  { name: "Add new file...", icon: DocumentPlusIcon, shortcut: "N", url: "#" },
+  { name: "Add new folder...", icon: FolderPlusIcon, shortcut: "F", url: "#" },
+  { name: "Add hashtag...", icon: HashtagIcon, shortcut: "H", url: "#" },
+  { name: "Add label...", icon: TagIcon, shortcut: "L", url: "#" },
+];
 
 export default function Example() {
-  const [query, setQuery] = useState('')
-  const [open, setOpen] = useState(true)
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(true);
 
   const filteredProjects =
-    query === ''
+    query === ""
       ? []
       : projects.filter((project) => {
-          return project.name.toLowerCase().includes(query.toLowerCase())
-        })
+          return project.name.toLowerCase().includes(query.toLowerCase());
+        });
 
   return (
     <Dialog
       className="relative z-10"
       open={open}
       onClose={() => {
-        setOpen(false)
-        setQuery('')
+        setOpen(false);
+        setQuery("");
       }}
     >
       <DialogBackdrop
@@ -57,7 +57,7 @@ export default function Example() {
           <Combobox
             onChange={(item) => {
               if (item) {
-                window.location = item.url
+                window.location = item.url;
               }
             }}
           >
@@ -67,7 +67,7 @@ export default function Example() {
                 className="col-start-1 row-start-1 h-12 w-full bg-transparent pr-4 pl-11 text-base text-gray-900 outline-hidden placeholder:text-gray-500 sm:text-sm dark:text-white dark:placeholder:text-gray-400"
                 placeholder="Search..."
                 onChange={(event) => setQuery(event.target.value)}
-                onBlur={() => setQuery('')}
+                onBlur={() => setQuery("")}
               />
               <MagnifyingGlassIcon
                 className="pointer-events-none col-start-1 row-start-1 ml-4 size-5 self-center text-gray-900/40 dark:text-gray-500"
@@ -75,20 +75,20 @@ export default function Example() {
               />
             </div>
 
-            {(query === '' || filteredProjects.length > 0) && (
+            {(query === "" || filteredProjects.length > 0) && (
               <ComboboxOptions
                 static
                 as="ul"
                 className="max-h-80 scroll-py-2 divide-y divide-gray-500/10 overflow-y-auto dark:divide-white/10"
               >
                 <li className="p-2">
-                  {query === '' && (
+                  {query === "" && (
                     <h2 className="mt-4 mb-2 px-3 text-xs font-semibold text-gray-900 dark:text-white">
                       Recent searches
                     </h2>
                   )}
                   <ul className="text-sm text-gray-700 dark:text-gray-300">
-                    {(query === '' ? recent : filteredProjects).map((project) => (
+                    {(query === "" ? recent : filteredProjects).map((project) => (
                       <ComboboxOption
                         as="li"
                         key={project.id}
@@ -107,7 +107,7 @@ export default function Example() {
                     ))}
                   </ul>
                 </li>
-                {query === '' && (
+                {query === "" && (
                   <li className="p-2">
                     <h2 className="sr-only">Quick actions</h2>
                     <ul className="text-sm text-gray-700 dark:text-gray-300">
@@ -135,7 +135,7 @@ export default function Example() {
               </ComboboxOptions>
             )}
 
-            {query !== '' && filteredProjects.length === 0 && (
+            {query !== "" && filteredProjects.length === 0 && (
               <div className="px-6 py-14 text-center sm:px-14">
                 <FolderIcon className="mx-auto size-6 text-gray-900/40 dark:text-gray-500" aria-hidden="true" />
                 <p className="mt-4 text-sm text-gray-900 dark:text-white">
@@ -147,5 +147,5 @@ export default function Example() {
         </DialogPanel>
       </div>
     </Dialog>
-  )
+  );
 }

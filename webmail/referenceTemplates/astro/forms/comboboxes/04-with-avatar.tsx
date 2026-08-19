@@ -1,37 +1,37 @@
 /** @jsxImportSource preact */
-import { Combobox, ComboboxButton, ComboboxInput, ComboboxOption, ComboboxOptions, Label } from '../../_kit/headless'
-import { ChevronDownIcon } from '../../_kit/heroicons/20-solid'
-import { UserIcon } from '../../_kit/heroicons/16-solid'
-import { useState } from 'preact/hooks'
+import { Combobox, ComboboxButton, ComboboxInput, ComboboxOption, ComboboxOptions, Label } from "../../_kit/headless";
+import { ChevronDownIcon } from "../../_kit/heroicons/20-solid";
+import { UserIcon } from "../../_kit/heroicons/16-solid";
+import { useState } from "preact/hooks";
 
 const people = [
   {
     id: 1,
-    name: 'Leslie Alexander',
+    name: "Leslie Alexander",
     imageUrl:
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80',
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
   },
   // More users...
-]
+];
 
 export default function Example() {
-  const [query, setQuery] = useState('')
-  const [selectedPerson, setSelectedPerson] = useState(null)
+  const [query, setQuery] = useState("");
+  const [selectedPerson, setSelectedPerson] = useState(null);
 
   const filteredPeople =
-    query === ''
+    query === ""
       ? people
       : people.filter((person) => {
-          return person.name.toLowerCase().includes(query.toLowerCase())
-        })
+          return person.name.toLowerCase().includes(query.toLowerCase());
+        });
 
   return (
     <Combobox
       as="div"
       value={selectedPerson}
       onChange={(person) => {
-        setQuery('')
-        setSelectedPerson(person)
+        setQuery("");
+        setSelectedPerson(person);
       }}
     >
       <Label className="block text-sm/6 font-medium text-gray-900 dark:text-white">Assigned to</Label>
@@ -39,7 +39,7 @@ export default function Example() {
         <ComboboxInput
           className="block w-full rounded-md bg-white py-1.5 pr-12 pl-3 text-base text-gray-900 outline-1 -outline-offset-1 outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-indigo-600 sm:text-sm/6 dark:bg-white/5 dark:text-white dark:outline-white/10 dark:placeholder:text-gray-500 dark:focus:outline-indigo-500"
           onChange={(event) => setQuery(event.target.value)}
-          onBlur={() => setQuery('')}
+          onBlur={() => setQuery("")}
           displayValue={(person) => person?.name}
         />
         <ComboboxButton className="absolute inset-y-0 right-0 flex items-center rounded-r-md px-2 focus:outline-hidden">
@@ -85,5 +85,5 @@ export default function Example() {
         </ComboboxOptions>
       </div>
     </Combobox>
-  )
+  );
 }

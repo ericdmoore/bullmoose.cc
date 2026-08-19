@@ -1,16 +1,16 @@
 /** @jsxImportSource preact */
-import { ChevronDownIcon } from '../../_kit/heroicons/16-solid'
+import { ChevronDownIcon } from "../../_kit/heroicons/16-solid";
 
 const tabs = [
-  { name: 'Applied', href: '#', count: '52', current: false },
-  { name: 'Phone Screening', href: '#', count: '6', current: false },
-  { name: 'Interview', href: '#', count: '4', current: true },
-  { name: 'Offer', href: '#', current: false },
-  { name: 'Disqualified', href: '#', current: false },
-]
+  { name: "Applied", href: "#", count: "52", current: false },
+  { name: "Phone Screening", href: "#", count: "6", current: false },
+  { name: "Interview", href: "#", count: "4", current: true },
+  { name: "Offer", href: "#", current: false },
+  { name: "Disqualified", href: "#", current: false },
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -39,12 +39,12 @@ export default function Example() {
               <a
                 key={tab.name}
                 href="#"
-                aria-current={tab.current ? 'page' : undefined}
+                aria-current={tab.current ? "page" : undefined}
                 className={classNames(
                   tab.current
-                    ? 'border-indigo-500 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
-                    : 'border-transparent text-gray-500 hover:border-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:border-white/20 dark:hover:text-white',
-                  'flex border-b-2 px-1 py-4 text-sm font-medium whitespace-nowrap',
+                    ? "border-indigo-500 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400"
+                    : "border-transparent text-gray-500 hover:border-gray-200 hover:text-gray-700 dark:text-gray-400 dark:hover:border-white/20 dark:hover:text-white",
+                  "flex border-b-2 px-1 py-4 text-sm font-medium whitespace-nowrap",
                 )}
               >
                 {tab.name}
@@ -52,9 +52,9 @@ export default function Example() {
                   <span
                     className={classNames(
                       tab.current
-                        ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400'
-                        : 'bg-gray-100 text-gray-900 dark:bg-white/10 dark:text-gray-300',
-                      'ml-3 hidden rounded-full px-2.5 py-0.5 text-xs font-medium md:inline-block',
+                        ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400"
+                        : "bg-gray-100 text-gray-900 dark:bg-white/10 dark:text-gray-300",
+                      "ml-3 hidden rounded-full px-2.5 py-0.5 text-xs font-medium md:inline-block",
                     )}
                   >
                     {tab.count}
@@ -66,5 +66,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

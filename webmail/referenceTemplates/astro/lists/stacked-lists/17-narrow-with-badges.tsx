@@ -1,48 +1,48 @@
 /** @jsxImportSource preact */
-import { ChevronRightIcon } from '../../_kit/heroicons/20-solid'
+import { ChevronRightIcon } from "../../_kit/heroicons/20-solid";
 
 const deployments = [
   {
     id: 1,
-    href: '#',
-    projectName: 'ios-app',
-    teamName: 'Planetaria',
-    status: 'offline',
-    statusText: 'Initiated 1m 32s ago',
-    description: 'Deploys from GitHub',
-    environment: 'Preview',
+    href: "#",
+    projectName: "ios-app",
+    teamName: "Planetaria",
+    status: "offline",
+    statusText: "Initiated 1m 32s ago",
+    description: "Deploys from GitHub",
+    environment: "Preview",
   },
   {
     id: 2,
-    href: '#',
-    projectName: 'mobile-api',
-    teamName: 'Planetaria',
-    status: 'online',
-    statusText: 'Deployed 3m ago',
-    description: 'Deploys from GitHub',
-    environment: 'Production',
+    href: "#",
+    projectName: "mobile-api",
+    teamName: "Planetaria",
+    status: "online",
+    statusText: "Deployed 3m ago",
+    description: "Deploys from GitHub",
+    environment: "Production",
   },
   {
     id: 3,
-    href: '#',
-    projectName: 'tailwindcss.com',
-    teamName: 'Tailwind Labs',
-    status: 'offline',
-    statusText: 'Deployed 3h ago',
-    description: 'Deploys from GitHub',
-    environment: 'Preview',
+    href: "#",
+    projectName: "tailwindcss.com",
+    teamName: "Tailwind Labs",
+    status: "offline",
+    statusText: "Deployed 3h ago",
+    description: "Deploys from GitHub",
+    environment: "Preview",
   },
   {
     id: 4,
-    href: '#',
-    projectName: 'api.protocol.chat',
-    teamName: 'Protocol',
-    status: 'error',
-    statusText: 'Failed to deploy 6d ago',
-    description: 'Deploys from GitHub',
-    environment: 'Preview',
+    href: "#",
+    projectName: "api.protocol.chat",
+    teamName: "Protocol",
+    status: "error",
+    statusText: "Failed to deploy 6d ago",
+    description: "Deploys from GitHub",
+    environment: "Preview",
   },
-]
+];
 
 export default function Example() {
   return (
@@ -51,17 +51,17 @@ export default function Example() {
         <li key={deployment.id} className="relative flex items-center space-x-4 py-4">
           <div className="min-w-0 flex-auto">
             <div className="flex items-center gap-x-3">
-              {deployment.status === 'offline' ? (
+              {deployment.status === "offline" ? (
                 <div className="flex-none rounded-full bg-gray-100/10 p-1 text-gray-500 dark:bg-white/10">
                   <div className="size-2 rounded-full bg-current" />
                 </div>
               ) : null}
-              {deployment.status === 'online' ? (
+              {deployment.status === "online" ? (
                 <div className="flex-none rounded-full bg-green-100 p-1 text-green-500 dark:bg-green-400/20 dark:text-green-400">
                   <div className="size-2 rounded-full bg-current" />
                 </div>
               ) : null}
-              {deployment.status === 'error' ? (
+              {deployment.status === "error" ? (
                 <div className="flex-none rounded-full bg-rose-100 p-1 text-rose-500 dark:bg-rose-400/20 dark:text-rose-400">
                   <div className="size-2 rounded-full bg-current" />
                 </div>
@@ -83,12 +83,12 @@ export default function Example() {
               <p className="whitespace-nowrap">{deployment.statusText}</p>
             </div>
           </div>
-          {deployment.environment === 'Preview' ? (
+          {deployment.environment === "Preview" ? (
             <div className="flex-none rounded-full bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 inset-ring inset-ring-gray-500/10 dark:bg-gray-400/10 dark:text-gray-400 dark:inset-ring-gray-400/20">
               {deployment.environment}
             </div>
           ) : null}
-          {deployment.environment === 'Production' ? (
+          {deployment.environment === "Production" ? (
             <div className="flex-none rounded-full bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 inset-ring inset-ring-indigo-700/10 dark:bg-indigo-400/10 dark:text-indigo-400 dark:inset-ring-indigo-400/30">
               {deployment.environment}
             </div>
@@ -97,5 +97,5 @@ export default function Example() {
         </li>
       ))}
     </ul>
-  )
+  );
 }

@@ -1,14 +1,14 @@
 /** @jsxImportSource preact */
-import { CheckIcon } from '../../_kit/heroicons/24-solid'
+import { CheckIcon } from "../../_kit/heroicons/24-solid";
 
 const steps = [
-  { id: '01', name: 'Job Details', description: 'Vitae sed mi luctus laoreet.', href: '#', status: 'complete' },
-  { id: '02', name: 'Application form', description: 'Cursus semper viverra.', href: '#', status: 'current' },
-  { id: '03', name: 'Preview', description: 'Penatibus eu quis ante.', href: '#', status: 'upcoming' },
-]
+  { id: "01", name: "Job Details", description: "Vitae sed mi luctus laoreet.", href: "#", status: "complete" },
+  { id: "02", name: "Application form", description: "Cursus semper viverra.", href: "#", status: "current" },
+  { id: "03", name: "Preview", description: "Penatibus eu quis ante.", href: "#", status: "upcoming" },
+];
 
-function classNames(...classes) {
-  return classes.filter(Boolean).join(' ')
+function classNames(...classes: (string | false | null | undefined)[]) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Example() {
@@ -23,12 +23,12 @@ export default function Example() {
             <li key={step.id} className="relative overflow-hidden lg:flex-1">
               <div
                 className={classNames(
-                  stepIdx === 0 ? 'rounded-t-md border-b-0' : '',
-                  stepIdx === steps.length - 1 ? 'rounded-b-md border-t-0' : '',
-                  'overflow-hidden border border-gray-200 lg:border-0 dark:border-white/15',
+                  stepIdx === 0 ? "rounded-t-md border-b-0" : "",
+                  stepIdx === steps.length - 1 ? "rounded-b-md border-t-0" : "",
+                  "overflow-hidden border border-gray-200 lg:border-0 dark:border-white/15",
                 )}
               >
-                {step.status === 'complete' ? (
+                {step.status === "complete" ? (
                   <a href={step.href} className="group">
                     <span
                       aria-hidden="true"
@@ -36,8 +36,8 @@ export default function Example() {
                     />
                     <span
                       className={classNames(
-                        stepIdx !== 0 ? 'lg:pl-9' : '',
-                        'flex items-start px-6 py-5 text-sm font-medium',
+                        stepIdx !== 0 ? "lg:pl-9" : "",
+                        "flex items-start px-6 py-5 text-sm font-medium",
                       )}
                     >
                       <span className="shrink-0">
@@ -51,7 +51,7 @@ export default function Example() {
                       </span>
                     </span>
                   </a>
-                ) : step.status === 'current' ? (
+                ) : step.status === "current" ? (
                   <a href={step.href} aria-current="step">
                     <span
                       aria-hidden="true"
@@ -59,8 +59,8 @@ export default function Example() {
                     />
                     <span
                       className={classNames(
-                        stepIdx !== 0 ? 'lg:pl-9' : '',
-                        'flex items-start px-6 py-5 text-sm font-medium',
+                        stepIdx !== 0 ? "lg:pl-9" : "",
+                        "flex items-start px-6 py-5 text-sm font-medium",
                       )}
                     >
                       <span className="shrink-0">
@@ -82,8 +82,8 @@ export default function Example() {
                     />
                     <span
                       className={classNames(
-                        stepIdx !== 0 ? 'lg:pl-9' : '',
-                        'flex items-start px-6 py-5 text-sm font-medium',
+                        stepIdx !== 0 ? "lg:pl-9" : "",
+                        "flex items-start px-6 py-5 text-sm font-medium",
                       )}
                     >
                       <span className="shrink-0">
@@ -120,5 +120,5 @@ export default function Example() {
         </ol>
       </nav>
     </div>
-  )
+  );
 }

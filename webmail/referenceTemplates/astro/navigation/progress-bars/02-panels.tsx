@@ -1,11 +1,11 @@
 /** @jsxImportSource preact */
-import { CheckIcon } from '../../_kit/heroicons/24-solid'
+import { CheckIcon } from "../../_kit/heroicons/24-solid";
 
 const steps = [
-  { id: '01', name: 'Job details', href: '#', status: 'complete' },
-  { id: '02', name: 'Application form', href: '#', status: 'current' },
-  { id: '03', name: 'Preview', href: '#', status: 'upcoming' },
-]
+  { id: "01", name: "Job details", href: "#", status: "complete" },
+  { id: "02", name: "Application form", href: "#", status: "current" },
+  { id: "03", name: "Preview", href: "#", status: "upcoming" },
+];
 
 export default function Example() {
   return (
@@ -16,7 +16,7 @@ export default function Example() {
       >
         {steps.map((step, stepIdx) => (
           <li key={step.name} className="relative md:flex md:flex-1">
-            {step.status === 'complete' ? (
+            {step.status === "complete" ? (
               <a href={step.href} className="group flex w-full items-center">
                 <span className="flex items-center px-6 py-4 text-sm font-medium">
                   <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 group-hover:bg-indigo-800 dark:bg-indigo-500 dark:group-hover:bg-indigo-400">
@@ -25,7 +25,7 @@ export default function Example() {
                   <span className="ml-4 text-sm font-medium text-gray-900 dark:text-white">{step.name}</span>
                 </span>
               </a>
-            ) : step.status === 'current' ? (
+            ) : step.status === "current" ? (
               <a href={step.href} aria-current="step" className="flex items-center px-6 py-4 text-sm font-medium">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-indigo-600 dark:border-indigo-400">
                   <span className="text-indigo-600 dark:text-indigo-400">{step.id}</span>
@@ -71,5 +71,5 @@ export default function Example() {
         ))}
       </ol>
     </nav>
-  )
+  );
 }

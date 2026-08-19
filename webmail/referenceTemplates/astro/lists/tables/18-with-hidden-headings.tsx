@@ -1,64 +1,64 @@
 /** @jsxImportSource preact */
-import { Fragment } from 'preact'
-import { ArrowDownCircleIcon, ArrowPathIcon, ArrowUpCircleIcon } from '../../_kit/heroicons/20-solid'
+import { Fragment } from "preact";
+import { ArrowDownCircleIcon, ArrowPathIcon, ArrowUpCircleIcon } from "../../_kit/heroicons/20-solid";
 
 const days = [
   {
-    date: 'Today',
-    dateTime: '2023-03-22',
+    date: "Today",
+    dateTime: "2023-03-22",
     transactions: [
       {
         id: 1,
-        invoiceNumber: '00012',
-        href: '#',
-        amount: '$7,600.00 USD',
-        tax: '$500.00',
-        status: 'Paid',
-        client: 'Reform',
-        description: 'Website redesign',
+        invoiceNumber: "00012",
+        href: "#",
+        amount: "$7,600.00 USD",
+        tax: "$500.00",
+        status: "Paid",
+        client: "Reform",
+        description: "Website redesign",
         icon: ArrowUpCircleIcon,
       },
       {
         id: 2,
-        invoiceNumber: '00011',
-        href: '#',
-        amount: '$10,000.00 USD',
-        status: 'Withdraw',
-        client: 'Tom Cook',
-        description: 'Salary',
+        invoiceNumber: "00011",
+        href: "#",
+        amount: "$10,000.00 USD",
+        status: "Withdraw",
+        client: "Tom Cook",
+        description: "Salary",
         icon: ArrowDownCircleIcon,
       },
       {
         id: 3,
-        invoiceNumber: '00009',
-        href: '#',
-        amount: '$2,000.00 USD',
-        tax: '$130.00',
-        status: 'Overdue',
-        client: 'Tuple',
-        description: 'Logo design',
+        invoiceNumber: "00009",
+        href: "#",
+        amount: "$2,000.00 USD",
+        tax: "$130.00",
+        status: "Overdue",
+        client: "Tuple",
+        description: "Logo design",
         icon: ArrowPathIcon,
       },
     ],
   },
   {
-    date: 'Yesterday',
-    dateTime: '2023-03-21',
+    date: "Yesterday",
+    dateTime: "2023-03-21",
     transactions: [
       {
         id: 4,
-        invoiceNumber: '00010',
-        href: '#',
-        amount: '$14,000.00 USD',
-        tax: '$900.00',
-        status: 'Paid',
-        client: 'SavvyCal',
-        description: 'Website redesign',
+        invoiceNumber: "00010",
+        href: "#",
+        amount: "$14,000.00 USD",
+        tax: "$900.00",
+        status: "Paid",
+        client: "SavvyCal",
+        description: "Website redesign",
         icon: ArrowUpCircleIcon,
       },
     ],
   },
-]
+];
 
 export default function Example() {
   return (
@@ -102,17 +102,17 @@ export default function Example() {
                                 <div className="text-sm/6 font-medium text-gray-900 dark:text-white">
                                   {transaction.amount}
                                 </div>
-                                {transaction.status === 'Paid' ? (
+                                {transaction.status === "Paid" ? (
                                   <div className="rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 inset-ring inset-ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:inset-ring-green-500/20">
                                     {transaction.status}
                                   </div>
                                 ) : null}
-                                {transaction.status === 'Withdraw' ? (
+                                {transaction.status === "Withdraw" ? (
                                   <div className="rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 inset-ring inset-ring-gray-500/10 dark:bg-gray-700/50 dark:text-gray-400 dark:inset-ring-gray-500/20">
                                     {transaction.status}
                                   </div>
                                 ) : null}
-                                {transaction.status === 'Overdue' ? (
+                                {transaction.status === "Overdue" ? (
                                   <div className="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 inset-ring inset-ring-red-600/10 dark:bg-red-900/30 dark:text-red-400 dark:inset-ring-red-500/20">
                                     {transaction.status}
                                   </div>
@@ -160,5 +160,5 @@ export default function Example() {
         </div>
       </div>
     </div>
-  )
+  );
 }

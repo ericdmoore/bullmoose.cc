@@ -1,16 +1,16 @@
 /** @jsxImportSource preact */
-import { CheckCircleIcon } from '../../_kit/heroicons/20-solid'
+import { CheckCircleIcon } from "../../_kit/heroicons/20-solid";
 
 const mailingLists = [
-  { id: 'newsletter', title: 'Newsletter', description: 'Last message sent an hour ago', users: '621 users' },
+  { id: "newsletter", title: "Newsletter", description: "Last message sent an hour ago", users: "621 users" },
   {
-    id: 'existing-customers',
-    title: 'Existing customers',
-    description: 'Last message sent 2 weeks ago',
-    users: '1200 users',
+    id: "existing-customers",
+    title: "Existing customers",
+    description: "Last message sent 2 weeks ago",
+    users: "1200 users",
   },
-  { id: 'trial-users', title: 'Trial users', description: 'Last message sent 4 days ago', users: '2740 users' },
-]
+  { id: "trial-users", title: "Trial users", description: "Last message sent 4 days ago", users: "2740 users" },
+];
 
 export default function Example() {
   return (
@@ -44,5 +44,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  )
+  );
 }

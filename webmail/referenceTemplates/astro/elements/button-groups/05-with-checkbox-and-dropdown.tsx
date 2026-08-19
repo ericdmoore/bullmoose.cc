@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { ChevronDownIcon } from '../../_kit/heroicons/16-solid'
+import { ChevronDownIcon } from "../../_kit/heroicons/16-solid";
 
 export default function Example() {
   return (
@@ -51,5 +51,5 @@ export default function Example() {
         />
       </div>
     </span>
-  )
+  );
 }

@@ -2,37 +2,37 @@
 const projects = [
   {
     id: 1,
-    name: 'Logo redesign',
-    description: 'New logo and digital asset playbook.',
-    hours: '20.0',
-    rate: '$100.00',
-    price: '$2,000.00',
+    name: "Logo redesign",
+    description: "New logo and digital asset playbook.",
+    hours: "20.0",
+    rate: "$100.00",
+    price: "$2,000.00",
   },
   {
     id: 2,
-    name: 'Website redesign',
-    description: 'Design and program new company website.',
-    hours: '52.0',
-    rate: '$100.00',
-    price: '$5,200.00',
+    name: "Website redesign",
+    description: "Design and program new company website.",
+    hours: "52.0",
+    rate: "$100.00",
+    price: "$5,200.00",
   },
   {
     id: 3,
-    name: 'Business cards',
+    name: "Business cards",
     description: 'Design and production of 3.5" x 2.0" business cards.',
-    hours: '12.0',
-    rate: '$100.00',
-    price: '$1,200.00',
+    hours: "12.0",
+    rate: "$100.00",
+    price: "$1,200.00",
   },
   {
     id: 4,
-    name: 'T-shirt design',
-    description: 'Three t-shirt design concepts.',
-    hours: '4.0',
-    rate: '$100.00',
-    price: '$400.00',
+    name: "T-shirt design",
+    description: "Three t-shirt design concepts.",
+    hours: "4.0",
+    rate: "$100.00",
+    price: "$400.00",
   },
-]
+];
 
 export default function Example() {
   return (
@@ -41,7 +41,7 @@ export default function Example() {
         <div className="sm:flex-auto">
           <h1 className="text-base font-semibold text-gray-900 dark:text-white">Invoice</h1>
           <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
-            For work completed from <time dateTime="2022-08-01">August 1, 2022</time> to{' '}
+            For work completed from <time dateTime="2022-08-01">August 1, 2022</time> to{" "}
             <time dateTime="2022-08-31">August 31, 2022</time>.
           </p>
         </div>
@@ -164,5 +164,5 @@ export default function Example() {
         </table>
       </div>
     </div>
-  )
+  );
 }

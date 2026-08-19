@@ -1,9 +1,9 @@
 /** @jsxImportSource preact */
 const notificationMethods = [
-  { id: 'email', title: 'Email' },
-  { id: 'sms', title: 'Phone (SMS)' },
-  { id: 'push', title: 'Push notification' },
-]
+  { id: "email", title: "Email" },
+  { id: "sms", title: "Phone (SMS)" },
+  { id: "push", title: "Push notification" },
+];
 
 export default function Example() {
   return (
@@ -14,7 +14,7 @@ export default function Example() {
         {notificationMethods.map((notificationMethod) => (
           <div key={notificationMethod.id} className="flex items-center">
             <input
-              defaultChecked={notificationMethod.id === 'email'}
+              defaultChecked={notificationMethod.id === "email"}
               id={notificationMethod.id}
               name="notification-method"
               type="radio"
@@ -30,5 +30,5 @@ export default function Example() {
         ))}
       </div>
     </fieldset>
-  )
+  );
 }

@@ -68,5 +68,5 @@ export default function Example() {
         </span>
       </span>
     </>
-  )
+  );
 }

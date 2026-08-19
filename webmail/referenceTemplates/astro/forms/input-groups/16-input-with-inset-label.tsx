@@ -13,5 +13,5 @@ export default function Example() {
         className="block w-full text-gray-900 placeholder:text-gray-400 focus:outline-none sm:text-sm/6 dark:bg-transparent dark:text-white dark:placeholder:text-gray-500"
       />
     </div>
-  )
+  );
 }
