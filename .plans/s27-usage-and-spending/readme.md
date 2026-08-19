@@ -52,3 +52,9 @@ Need a record of spending
 - for each agent
 - for typed-tasks
 
+
+## Regarding Model Selection
+
+Highlight USD Savings at Token Usage 
+Over a Benchmark 
+Maybe we also claim Opus5 as benchmark costs - and we see how much we can drive below that benchmark.
