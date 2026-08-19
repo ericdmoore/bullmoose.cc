@@ -375,6 +375,10 @@ export async function proposeSummary(
   inputs: Array<{ id: string; result: unknown }>,
 ): Promise<{ ok: true; proposalId: string; text: string } | { ok: false; why: string }> {
   if (!goal) return { ok: false, why: "a summary task can only run under a goal" };
+  // Revocation has to bite HERE too, not only at the plan checkpoint: a node
+  // already running when the human cancelled must not still land a proposal in
+  // their queue, which would be a cancelled goal asking for a decision.
+  if (goal.row.cancelled_at) return { ok: false, why: "the goal was cancelled — its authority is revoked" };
   if (!goal.contract) return { ok: false, why: "the goal's contract cannot be read, so its bounds are unknown" };
   const text = compileSummary({ statement: goal.row.statement, doneWhen: goal.contract.doneWhen, inputs });
   const proposalId = await emitProposal(

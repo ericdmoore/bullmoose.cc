@@ -259,6 +259,25 @@ describe("the contract bites before a human is ever asked", () => {
   });
 });
 
+describe("revocation bites everywhere a goal node could still speak", () => {
+  it("a node already claimed when the goal was cancelled proposes NOTHING", async () => {
+    const s = scaffold();
+    const started = await startGoalJob(s, { checkpoints: { plan: { mode: "auto" } } });
+    await s.drain(); // the planner expands: three outreach leaves and a join
+
+    // The human cancels between the plan and the work — the ordinary race, and
+    // the one a "recorded but not enforced" revocation would lose.
+    s.w.db.query(`UPDATE goals SET cancelled_at = ? WHERE account_id = ? AND id = ?`, 99, ACCOUNT, started.jobId);
+    await s.drain();
+    await s.drain();
+
+    expect(s.proposals()).toHaveLength(0);
+    const ran = s.nodes().filter((n) => n.status === "failed");
+    expect(ran.length).toBeGreaterThan(0);
+    expect(JSON.parse(ran[ran.length - 1]!.result_json!).note).toContain("cancelled");
+  });
+});
+
 describe("the goal's leaves are ordinary nodes whose output is an ordinary proposal", () => {
   it("an outreach leaf proposes ONE message, and a summarize join compiles the answers", async () => {
     const s = scaffold();
