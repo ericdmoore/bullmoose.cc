@@ -1,5 +1,6 @@
 import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
 import { commitChanges } from "@bullmoose/account-do";
+import { normalizeMessageId } from "@bullmoose/mailstore";
 import type { EmailAddress, EmailRow, Mailstore, StoredSubmission } from "@bullmoose/mailstore";
 import type { AccountAccess } from "../auth";
 import {
@@ -138,12 +139,19 @@ async function emailSubmissionSet(
   /** creation-ref (#cid) → { submissionId, emailId } for onSuccess handling. */
   const byRef = new Map<string, { submissionId: string; emailId: string }>();
 
+  // Emails whose stored message_id was reconciled to the relay's wire
+  // Message-ID (SES substitutes its own — see submitOne). A real change to
+  // an Email property, so it must reach the changelog or clients keep the
+  // stale id in cache forever.
+  const emailsStamped = new Set<string>();
+
   const create = (args.create as Record<string, CreateSpec> | undefined) ?? {};
   for (const [cid, spec] of Object.entries(create)) {
     try {
       const result = await submitOne(ctx, store, access, spec);
       created[cid] = { id: result.submissionId, undoStatus: "final", sendAt: result.sendAt };
       createdIds.push(result.submissionId);
+      if (result.emailUpdated) emailsStamped.add(result.emailId);
       byRef.set(cid, result);
     } catch (err) {
       notCreated[cid] =
@@ -169,13 +177,18 @@ async function emailSubmissionSet(
     }
   }
 
+  // One Email-updated entry covers both kinds of update this method makes:
+  // the onSuccessUpdateEmail patches above and the message_id reconciles
+  // from submitOne (deduped — a send with both touches the email once).
+  const emailsChanged = [...new Set([...emailsStamped, ...emailsUpdated])];
+
   let newState = oldState;
-  if (createdIds.length > 0 || emailsUpdated.length > 0) {
+  if (createdIds.length > 0 || emailsChanged.length > 0) {
     const entries = [];
     if (createdIds.length > 0) {
       entries.push({ collection: "EmailSubmission", created: createdIds });
     }
-    if (emailsUpdated.length > 0) entries.push({ collection: "Email", updated: emailsUpdated });
+    if (emailsChanged.length > 0) entries.push({ collection: "Email", updated: emailsChanged });
     if (mailboxesTouched.size > 0) {
       entries.push({ collection: "Mailbox", updated: [...mailboxesTouched] });
     }
@@ -200,7 +213,7 @@ async function submitOne(
   store: Mailstore,
   access: AccountAccess,
   spec: CreateSpec,
-): Promise<{ submissionId: string; emailId: string; sendAt: string }> {
+): Promise<{ submissionId: string; emailId: string; sendAt: string; emailUpdated: boolean }> {
   if (!spec.emailId || !spec.identityId) {
     throw new MethodError("invalidArguments", "emailId and identityId are required");
   }
@@ -264,7 +277,24 @@ async function submitOne(
   if (!res.ok) {
     throw new MethodError("serverFail", `relay returned ${res.status}: ${await res.text()}`);
   }
-  const { relayMessageId } = (await res.json()) as { relayMessageId: string };
+  const { relayMessageId, messageId: relayStamped } = (await res.json()) as {
+    relayMessageId: string;
+    /** Wire Message-ID, present only when the relay REWROTE the header. */
+    messageId?: string;
+  };
+
+  // stored == wire. SES substitutes its own Message-ID for the one in the
+  // raw message (always — see packages/outbound SendResult), so the id the
+  // draft was stamped with is NOT the id the world received. The recipient
+  // replies to the SES id; the delivered copy of a self-send carries the
+  // SES id; both correlate against this row's message_id. Left stale, every
+  // such lookup misses and threads fork — the Mailtemi near-duplicate bug.
+  // The relay reports what it put on the wire; the row adopts it.
+  const wireMessageId = normalizeMessageId(relayStamped);
+  const messageIdChanged = wireMessageId !== null && wireMessageId !== email.messageId;
+  if (messageIdChanged) {
+    await store.updateEmailMessageId(access.accountId, spec.emailId, wireMessageId);
+  }
 
   const submissionId = `es_${crypto.randomUUID()}`;
   const sendAtMs = Date.now();
@@ -282,6 +312,7 @@ async function submitOne(
     submissionId,
     emailId: spec.emailId,
     sendAt: new Date(sendAtMs).toISOString(),
+    emailUpdated: messageIdChanged,
   };
 }
 

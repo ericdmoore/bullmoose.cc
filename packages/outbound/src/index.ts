@@ -15,6 +15,23 @@ export interface Envelope {
 
 export interface SendResult {
   relayMessageId: string;
+  /**
+   * The RFC 5322 Message-ID actually on the wire — normalized, no angle
+   * brackets — present ONLY when the relay SUBSTITUTED its own id for the
+   * one in the raw message. Absent means the wire carries the message's own
+   * `Message-ID:` header (Cloudflare re-attaches it; mock sends nothing).
+   *
+   * SES is the relay that substitutes: "If you provide a Message-ID header,
+   * Amazon SES overrides the header with its own value" (SES Developer
+   * Guide, "Amazon SES header fields" — and the SendRawEmail API reference
+   * says the same of Message-ID and Date). Verified live 2026-08-19: a raw
+   * message stamped `<uuid@bullmoose.cc>` arrived at Gmail as
+   * `<{sesMessageId}@us-west-2.amazonses.com>`, with Message-ID inside both
+   * validating DKIM h= lists — SES signs AFTER substituting. A caller that
+   * wants its stored Message-ID to equal the wire's must therefore
+   * reconcile from this field; it cannot win by stamping harder.
+   */
+  messageId?: string;
 }
 
 export interface OutboundRelay {
@@ -29,6 +46,7 @@ export interface OutboundRelay {
 export class SesRelay implements OutboundRelay {
   private aws: AwsClient;
   private endpoint: string;
+  private region: string;
 
   constructor(opts: {
     accessKeyId: string;
@@ -44,6 +62,7 @@ export class SesRelay implements OutboundRelay {
       service: "ses",
     });
     this.endpoint = `https://email.${opts.region}.amazonaws.com/v2/email/outbound-emails`;
+    this.region = opts.region;
     this.configurationSet = opts.configurationSet;
   }
 
@@ -67,7 +86,13 @@ export class SesRelay implements OutboundRelay {
       throw new Error(`SES send failed (${res.status}): ${await res.text()}`);
     }
     const data = (await res.json()) as { MessageId: string };
-    return { relayMessageId: data.MessageId };
+    return {
+      relayMessageId: data.MessageId,
+      // The Message-ID SES stamps over ours is derived from the response:
+      // `<{MessageId}@{region}.amazonses.com>`. Format pinned against the
+      // 2026-08-19 Gmail specimen (region us-west-2), see SendResult.
+      messageId: `${data.MessageId}@${this.region}.amazonses.com`,
+    };
   }
 }
 

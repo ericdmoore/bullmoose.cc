@@ -35,10 +35,14 @@ interface ScaffoldOpts {
   seedBook?: boolean;
   /** Addresses seeded into the book, one individual card each. */
   members?: string[];
+  /** Wire Message-ID the fake relay claims to have stamped (SES contract). */
+  relayStampedMessageId?: string;
 }
 
 async function scaffold(opts: ScaffoldOpts) {
-  const w = fakeEnv();
+  const w = fakeEnv(
+    opts.relayStampedMessageId === undefined ? {} : { relayStampedMessageId: opts.relayStampedMessageId },
+  );
   const store = new Mailstore(w.env.DB, w.env.BLOBS);
 
   w.db.seedAccount({ accountId: ACCOUNT, tenantId: TENANT, displayName: "Allen" });
@@ -376,5 +380,31 @@ describe("the reply pipeline shares the gate", () => {
     // Neither egress NOR a proposal: an unbounded agent does not even ask.
     expect(w.submit.calls).toEqual([]);
     expect(w.db.count("agent_proposals")).toBe(0);
+  });
+});
+
+describe("stored == wire: the agent's Sent copy adopts the relay's Message-ID", () => {
+  it("a ledger send stores its row under the id SES stamped, not the one buildMime did", async () => {
+    // Same divergence as the human path (services/jmap submission.ts): SES
+    // substitutes its own Message-ID for the header in the relayed blob, and
+    // the human this agent mailed will reply citing the SES id. The ledger
+    // inserts its Sent copy AFTER the relay answers, so the row is born with
+    // the wire id — resolveThreadId then threads that reply home.
+    const SES_WIRE_ID = "010101a01ba9762b-e5f1e023-e0f0-41d5-a521-0eecaf2a634b-000000@us-west-2.amazonses.com";
+    const s = await scaffold({
+      digestTo: "bob@good.com",
+      members: ["bob@good.com"],
+      relayStampedMessageId: SES_WIRE_ID,
+    });
+
+    const inv = await s.invoke();
+    expect(inv.note).not.toMatch(/outbound bound/);
+    expect(s.w.submit.calls).toHaveLength(1);
+
+    const sent = s.w.db.query<{ message_id: string }>(
+      `SELECT message_id FROM emails WHERE account_id = ? AND id != 'e_1'`,
+      ACCOUNT,
+    );
+    expect(sent.map((r) => r.message_id)).toEqual([SES_WIRE_ID]);
   });
 });

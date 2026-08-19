@@ -91,7 +91,16 @@ async function handleSubmit(body: SubmitBody, env: Env): Promise<Response> {
   // owned by the jmap worker's EmailSubmission/set — this endpoint only
   // relays. That also keeps this worker free of a Durable Object binding,
   // which would otherwise be circular with jmap's SUBMIT service binding.
-  return json({ relayMessageId: result.relayMessageId });
+  //
+  // `messageId` — present only when the relay REWROTE the message's own
+  // Message-ID header (SES always does; see SendResult in
+  // packages/outbound) — is the caller's one chance to reconcile its
+  // stored message_id with what is actually on the wire. Dropping it here
+  // would freeze the stored/wire divergence that splits self-send threads.
+  return json({
+    relayMessageId: result.relayMessageId,
+    ...(result.messageId ? { messageId: result.messageId } : {}),
+  });
 }
 
 /**
