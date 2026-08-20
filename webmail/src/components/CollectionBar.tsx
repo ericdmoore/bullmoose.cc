@@ -7,8 +7,8 @@ import { findItem, type CollectionGroup } from "../lib/shell/collections";
 import { cx } from "../lib/ui/classes";
 
 /**
- * Collapsed CollectionColumn as a bar ABOVE the list (Mail): realm / current
- * folder breadcrumb, a popover to pick another collection, and a control that
+ * Collapsed CollectionColumn as a bar ABOVE the list: realm / current
+ * collection breadcrumb, a popover to pick another, and a control that
  * restores the column. Desktop [New] lives here so collapsing the column does
  * not hide the create verb (the FAB remains the phone copy).
  */
@@ -26,6 +26,9 @@ export interface CollectionBarProps {
   defaultExpanded?: readonly string[];
   /** Test/SSR seam: the picker starts open. */
   defaultOpen?: boolean;
+  /** Extra classes on the bar (Approvals hides it below `lg` — the sheet is
+   *  the phone picker there, and two pickers on one title is one too many). */
+  class?: string;
 }
 
 export default function CollectionBar({
@@ -40,6 +43,7 @@ export default function CollectionBar({
   storageKey,
   defaultExpanded,
   defaultOpen = false,
+  class: cls,
 }: CollectionBarProps) {
   const [open, setOpen] = useState(defaultOpen);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -70,7 +74,10 @@ export default function CollectionBar({
   return (
     <div
       ref={rootRef}
-      class="relative flex shrink-0 items-center gap-x-2 border-b border-gray-200 px-2 py-1.5 dark:border-white/10"
+      class={cx(
+        "relative flex shrink-0 items-center gap-x-2 border-b border-gray-200 px-2 py-1.5 dark:border-white/10",
+        cls,
+      )}
     >
       <IconButton label={`Show ${title.toLowerCase()} collections as a column`} size="sm" onClick={onExpand}>
         <ChevronRightIcon class="size-4" />

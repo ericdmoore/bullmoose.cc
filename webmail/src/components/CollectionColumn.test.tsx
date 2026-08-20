@@ -321,4 +321,18 @@ describe("CollectionColumn — variants", () => {
     expect(html).toContain("lg:hidden"); // the FAB remains
     expect(html).toContain("New message");
   });
+
+  it("collapseMode='bar' without a create verb renders nothing — Approvals and Agents have no FAB", () => {
+    const html = render(
+      <CollectionColumn
+        title="Approvals"
+        groups={GROUPS}
+        onSelect={() => {}}
+        storageKey="k"
+        defaultCollapsed
+        collapseMode="bar"
+      />,
+    );
+    expect(html).toBe("");
+  });
 });
