@@ -14,7 +14,8 @@ import {
   type ApprovalsAccount,
 } from "../lib/approvals/rows";
 import type { ActionProposal } from "../lib/approvals/types";
-import CollectionColumn from "./CollectionColumn";
+import CollectionBar from "./CollectionBar";
+import CollectionColumn, { useCollapsed } from "./CollectionColumn";
 import CollectionSheet, { CollectionSheetButton } from "./CollectionSheet";
 import type { CollectionGroup } from "../lib/shell/collections";
 import { hrefWithParam, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
@@ -22,7 +23,7 @@ import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
 import { Alert, Badge, Column, EmptyState, PageNotice, StackedList, StackedRow, StatusDot, SurfaceFrame } from "./ui";
 import { ChevronRightIcon } from "./icons";
-import type { BadgeTone } from "../lib/ui/classes";
+import { cx, type BadgeTone } from "../lib/ui/classes";
 import { HeldRow, HistoryRow, InfoRequestedRow, PendingRow, type Panel } from "./ApprovalsDetail";
 
 // The approval queue (s07 T4) — the cross-agent review surface, and the
@@ -167,6 +168,7 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
     const c = urlParam("c");
     return c !== undefined && ["pending", "info", "held", "due-soon"].includes(c) ? c : "pending";
   });
+  const { collapsed: queuesCollapsed, toggle: toggleQueues } = useCollapsed("bm.cc.approvals");
   const dueSoon = useMemo(() => pending.filter((p) => isNearExpiry(rowClocks(p, now))), [pending, now]);
   const collections: CollectionGroup[] = useMemo(
     () => [
@@ -368,6 +370,9 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
         <CollectionColumn
           title="Approvals"
           storageKey="bm.cc.approvals"
+          collapseMode="bar"
+          collapsed={queuesCollapsed}
+          onCollapsedChange={toggleQueues}
           groups={collections}
           selectedId={collection}
           onSelect={setCollection}
@@ -378,9 +383,22 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
           aria-label="Proposals"
           class="w-full shrink-0 border-gray-200 max-lg:border-b lg:w-80 lg:border-r dark:border-white/10"
           header={
-            <div class="px-2 pt-3 pb-1">
-              <CollectionSheetButton label={collectionLabel} open={sheetOpen} onOpen={() => setSheetOpen(true)} />
-            </div>
+            <>
+              {queuesCollapsed ? (
+                <CollectionBar
+                  title="Approvals"
+                  storageKey="bm.cc.approvals"
+                  groups={collections}
+                  selectedId={collection}
+                  onSelect={setCollection}
+                  onExpand={() => toggleQueues(false)}
+                  class="max-lg:hidden"
+                />
+              ) : null}
+              <div class={cx("px-2 pt-3 pb-1", queuesCollapsed && "lg:hidden")}>
+                <CollectionSheetButton label={collectionLabel} open={sheetOpen} onOpen={() => setSheetOpen(true)} />
+              </div>
+            </>
           }
         >
           {loading ? <p class="px-4 py-3 text-sm text-gray-500">Loading the queue…</p> : null}

@@ -1,7 +1,8 @@
 /** @jsxImportSource preact */
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { resolveClient, type ClientMode } from "../lib/app/client";
-import CollectionColumn from "./CollectionColumn";
+import CollectionBar from "./CollectionBar";
+import CollectionColumn, { useCollapsed } from "./CollectionColumn";
 import { Button } from "./ui";
 import type { CollectionGroup } from "../lib/shell/collections";
 import { hrefWithParam, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
@@ -106,6 +107,7 @@ export default function ContactsApp({ client: injected }: Props) {
   // island mounts after navigation, so location is settled (ShellNav's
   // `initialQ` pattern).
   const [bookId, setBookId] = useState<string>(() => urlParam("c") ?? "");
+  const { collapsed: booksCollapsed, toggle: toggleBooks } = useCollapsed("bm.cc.contacts");
 
   const [cards, setCards] = useState<ContactCard[]>([]);
   const [total, setTotal] = useState<number | undefined>(undefined);
@@ -594,6 +596,9 @@ export default function ContactsApp({ client: injected }: Props) {
         <CollectionColumn
           title="Contacts"
           storageKey="bm.cc.contacts"
+          collapseMode="bar"
+          collapsed={booksCollapsed}
+          onCollapsedChange={toggleBooks}
           groups={bookGroups}
           selectedId={bookId}
           onSelect={(id) => {
@@ -697,57 +702,75 @@ export default function ContactsApp({ client: injected }: Props) {
           </p>
 
           <div class="contacts-panes">
-            <ul class="card-list">
-              {cards.map((c) => (
-                <li>
-                  {/* s25 T3 — a real link (`?q=`/`?demo=`/`?c=` survive via
+            <div class="card-col">
+              {booksCollapsed ? (
+                <CollectionBar
+                  title="Contacts"
+                  storageKey="bm.cc.contacts"
+                  groups={bookGroups}
+                  selectedId={bookId}
+                  onSelect={(id) => {
+                    setBookId(id);
+                    setSelectedId(undefined);
+                  }}
+                  onExpand={() => toggleBooks(false)}
+                  newLabel="New contact"
+                  onNew={startNew}
+                  newDisabled={!canWriteHere}
+                />
+              ) : null}
+              <ul class="card-list">
+                {cards.map((c) => (
+                  <li>
+                    {/* s25 T3 — a real link (`?q=`/`?demo=`/`?c=` survive via
                       hrefWithParam): the browser back button leaves the card
                       the native way, and every person is deep-linkable. The
                       `?card=` initializer above is where this lands. */}
-                  <a
-                    class={`card-row${c.id === selectedId ? " is-selected" : ""}`}
-                    href={hrefWithParam("/contacts", "card", c.id)}
-                    aria-current={c.id === selectedId ? "true" : undefined}
-                  >
-                    <span class="card-name">
-                      {displayName(c)}
-                      {isGroup(c) ? <span class="pill pill-on">group</span> : null}
-                    </span>
-                    <span class="card-sub muted">
-                      {isGroup(c)
-                        ? `${memberUids(c).length} member${memberUids(c).length === 1 ? "" : "s"}`
-                        : (firstEmail(c) ?? firstPhone(c) ?? firstOrganization(c) ?? "")}
-                    </span>
-                  </a>
-                </li>
-              ))}
-              {cards.length === 0 && !loading ? (
-                <li class="empty-means">
-                  {spec.text
-                    ? `Nothing matched “${spec.text}” in the fields this search reaches.`
-                    : "This address book has no contacts yet."}
-                </li>
-              ) : null}
-              {/* The pager lives INSIDE the scrolling list, as its last row: the
+                    <a
+                      class={`card-row${c.id === selectedId ? " is-selected" : ""}`}
+                      href={hrefWithParam("/contacts", "card", c.id)}
+                      aria-current={c.id === selectedId ? "true" : undefined}
+                    >
+                      <span class="card-name">
+                        {displayName(c)}
+                        {isGroup(c) ? <span class="pill pill-on">group</span> : null}
+                      </span>
+                      <span class="card-sub muted">
+                        {isGroup(c)
+                          ? `${memberUids(c).length} member${memberUids(c).length === 1 ? "" : "s"}`
+                          : (firstEmail(c) ?? firstPhone(c) ?? firstOrganization(c) ?? "")}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+                {cards.length === 0 && !loading ? (
+                  <li class="empty-means">
+                    {spec.text
+                      ? `Nothing matched “${spec.text}” in the fields this search reaches.`
+                      : "This address book has no contacts yet."}
+                  </li>
+                ) : null}
+                {/* The pager lives INSIDE the scrolling list, as its last row: the
                   list is the scroll container, so a control outside it can never
                   be reached by scrolling to the bottom of the names. It is still a
                   real button — the observer below clicks it when it scrolls into
                   view, but keyboard and screen-reader users reach it the same way
                   they always could. Infinite scroll that is ONLY an observer
                   strands anyone who does not scroll with a mouse. */}
-              {!exhausted ? (
-                <li class="card-pager">
-                  <button
-                    ref={pagerRef}
-                    class="link-button"
-                    disabled={loading}
-                    onClick={() => void runQuery(cards.length)}
-                  >
-                    {loading ? "Loading…" : "Load more"}
-                  </button>
-                </li>
-              ) : null}
-            </ul>
+                {!exhausted ? (
+                  <li class="card-pager">
+                    <button
+                      ref={pagerRef}
+                      class="link-button"
+                      disabled={loading}
+                      onClick={() => void runQuery(cards.length)}
+                    >
+                      {loading ? "Loading…" : "Load more"}
+                    </button>
+                  </li>
+                ) : null}
+              </ul>
+            </div>
 
             <section class="card-detail">
               {editingCard ? (

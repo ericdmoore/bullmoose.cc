@@ -3,7 +3,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { Badge, Button, Column, IconButton, ListContainer, ListRow } from "./ui";
 import CreateFab from "./CreateFab";
-import { ChevronDoubleLeftIcon, ChevronRightIcon, PlusIcon } from "./icons";
+import { ChevronDoubleLeftIcon, ChevronRightIcon, ChevronUpIcon, PlusIcon } from "./icons";
 import { cx, listRowClasses } from "../lib/ui/classes";
 import {
   iconRailItems,
@@ -43,8 +43,9 @@ import {
  * Button + PlusIcon, label supplied by the realm ("New contact"). Collapsed,
  * the same verb is an icon-only Plus on the rail (desktop) / FAB (phone), and
  * items that carry a glyph stay as an icon rail so Mail's Inbox/Drafts/Archive
- * remain reachable without expanding. Mail opts into `collapseMode="bar"`
- * instead: the column leaves and a CollectionBar sits above the thread list.
+ * remain reachable without expanding. Mail, Approvals, Contacts, and Agents
+ * opt into `collapseMode="bar"` instead: the column leaves and a CollectionBar
+ * sits above the list.
  */
 
 export interface CollectionColumnProps {
@@ -86,12 +87,13 @@ export interface CollectionColumnProps {
    * Where the column goes when collapsed:
    * `rail` (default) — a thin icon strip beside the list (the s24 strip).
    * `bar` — the column leaves; the surface renders `<CollectionBar>` above
-   * the list (Mail: a breadcrumb + folder popover). This column then renders
+   * the list (a breadcrumb + collection popover). This column then renders
    * only the FAB so the create verb survives on the phone.
    */
   collapseMode?: "rail" | "bar";
   /** Controlled collapse. Omit both and the column owns the flag (and the
-   *  storageKey memory). Mail lifts this so the bar and the column agree. */
+   *  storageKey memory). Surfaces that render CollectionBar lift this so
+   *  the bar and the column agree. */
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
   class?: string;
@@ -468,7 +470,11 @@ export default function CollectionColumn(props: CollectionColumnProps) {
             )}
             {storageKey ? (
               <IconButton label={`Collapse ${title.toLowerCase()} collections`} size="sm" onClick={() => toggle(true)}>
-                <ChevronDoubleLeftIcon class="size-4" strokeWidth={2} />
+                {collapseMode === "bar" ? (
+                  <ChevronUpIcon class="size-4" strokeWidth={2} />
+                ) : (
+                  <ChevronDoubleLeftIcon class="size-4" strokeWidth={2} />
+                )}
               </IconButton>
             ) : null}
           </div>

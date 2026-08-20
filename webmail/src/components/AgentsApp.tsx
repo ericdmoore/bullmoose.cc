@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import AgentConsole from "./AgentConsole";
 import AgentDossierPanel, { type BindingCredential, type BindingToggle } from "./AgentDossierPanel";
-import CollectionColumn from "./CollectionColumn";
+import CollectionBar from "./CollectionBar";
+import CollectionColumn, { useCollapsed } from "./CollectionColumn";
 import { Avatar, Badge, Column, EmptyState, ListContainer, ListRow, PageNotice, SurfaceFrame, Alert } from "./ui";
 import { applyBindingEnabled, setBindingEnabled } from "../lib/agents/api";
 import {
@@ -52,6 +53,7 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
   const [fatal, setFatal] = useState<string | undefined>(undefined);
 
   const [collection, setCollection] = useState<CollectionId>(ALL_AGENTS_COLLECTION);
+  const { collapsed: collectionsCollapsed, toggle: toggleCollections } = useCollapsed("bm.cc.agents");
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [dossiers, setDossiers] = useState<Record<string, AgentDossier>>({});
   const [failures, setFailures] = useState<Record<string, string>>({});
@@ -305,6 +307,19 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
     );
   }
 
+  const pickCollection = (id: string) =>
+    setCollection(id === CONSOLE_COLLECTION ? CONSOLE_COLLECTION : ALL_AGENTS_COLLECTION);
+  const collectionBar = collectionsCollapsed ? (
+    <CollectionBar
+      title="Agents"
+      storageKey="bm.cc.agents"
+      groups={collections}
+      selectedId={collection}
+      onSelect={pickCollection}
+      onExpand={() => toggleCollections(false)}
+    />
+  ) : null;
+
   return (
     <div class="flex h-full min-h-0 w-full flex-col">
       {mode === "demo" ? (
@@ -316,16 +331,24 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
         <CollectionColumn
           title="Agents"
           storageKey="bm.cc.agents"
+          collapseMode="bar"
+          collapsed={collectionsCollapsed}
+          onCollapsedChange={toggleCollections}
           groups={collections}
           selectedId={collection}
-          onSelect={(id) => setCollection(id === CONSOLE_COLLECTION ? CONSOLE_COLLECTION : ALL_AGENTS_COLLECTION)}
+          onSelect={pickCollection}
         />
 
         {collection === CONSOLE_COLLECTION ? (
           /* The s03.E console, whole — its own bootstrap, views and vault
-             flows, exactly as it ran when it WAS this page. */
-          <div class="min-h-0 min-w-0 grow overflow-y-auto">
-            <AgentConsole />
+             flows, exactly as it ran when it WAS this page. Collapsed, the
+             collection bar sits above it so Access console stays reachable
+             without restoring the column. */
+          <div class="flex min-h-0 min-w-0 grow flex-col">
+            {collectionBar}
+            <div class="min-h-0 min-w-0 grow overflow-y-auto">
+              <AgentConsole />
+            </div>
           </div>
         ) : (
           <>
@@ -334,9 +357,11 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
               aria-label="Agents"
               class="w-full shrink-0 border-gray-200 max-lg:border-b lg:w-80 lg:border-r dark:border-white/10"
               header={
-                <h2 class="px-4 pt-4 pb-1 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
-                  All agents <span class="ml-1 font-normal text-gray-400">{visible.length}</span>
-                </h2>
+                collectionBar ?? (
+                  <h2 class="px-4 pt-4 pb-1 text-xs font-semibold tracking-wide text-gray-500 uppercase dark:text-gray-400">
+                    All agents <span class="ml-1 font-normal text-gray-400">{visible.length}</span>
+                  </h2>
+                )
               }
             >
               <div class="px-2 pb-4">

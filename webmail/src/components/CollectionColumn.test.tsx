@@ -71,6 +71,7 @@ describe("CollectionColumn — expanded", () => {
 
   it("offers the collapse affordance when a storageKey is given", () => {
     expect(html).toContain("Collapse contacts collections");
+    expect(html).toContain("m18.75 4.5"); // rail mode: double-left, still sideways
   });
 });
 
@@ -303,6 +304,15 @@ describe("CollectionColumn — variants", () => {
     expect(html).not.toContain("planned");
   });
 
+  it("collapseMode='bar' points the collapse chevron up, not sideways", () => {
+    const html = render(
+      <CollectionColumn title="Mail" groups={GROUPS} onSelect={() => {}} storageKey="k" collapseMode="bar" />,
+    );
+    expect(html).toContain("Collapse mail collections");
+    expect(html).toContain("M4.5 15.75"); // ChevronUp
+    expect(html).not.toContain("m18.75 4.5"); // not the sideways double-left
+  });
+
   it("collapseMode='bar' hides the rail — the surface's CollectionBar is the picker", () => {
     const html = render(
       <CollectionColumn
@@ -320,5 +330,19 @@ describe("CollectionColumn — variants", () => {
     expect(html).not.toContain("Expand mail collections");
     expect(html).toContain("lg:hidden"); // the FAB remains
     expect(html).toContain("New message");
+  });
+
+  it("collapseMode='bar' without a create verb renders nothing — Approvals and Agents have no FAB", () => {
+    const html = render(
+      <CollectionColumn
+        title="Approvals"
+        groups={GROUPS}
+        onSelect={() => {}}
+        storageKey="k"
+        defaultCollapsed
+        collapseMode="bar"
+      />,
+    );
+    expect(html).toBe("");
   });
 });
