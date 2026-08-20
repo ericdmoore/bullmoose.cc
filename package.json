@@ -12,6 +12,7 @@
     "coverage": "vitest run --coverage",
     "coverage:baseline": "node .github/scripts/coverage-ratchet.mjs --update",
     "coverage:ratchet": "node .github/scripts/coverage-ratchet.mjs",
+    "dev": "sh infra/localDev.sh",
     "dev:ingest": "npm run dev -w services/ingest",
     "dev:jmap": "npm run dev -w services/jmap",
     "dev:provision": "npm run dev -w services/provision",
