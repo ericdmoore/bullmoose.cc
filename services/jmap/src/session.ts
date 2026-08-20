@@ -118,10 +118,15 @@ export function buildSession(origin: string, principal: Principal): Session {
     apiUrl: `${origin}/api/jmap`,
     downloadUrl: `${origin}/api/download/{accountId}/{blobId}/{name}?type={type}`,
     uploadUrl: `${origin}/api/upload/{accountId}`,
-    // ⚠️ No eventSourceUrl: this worker serves no /api/eventsource route, and
-    // advertising a URL that 404s made push-capable clients (RFC 8620 §7.3)
-    // hammer a dead endpoint instead of falling back to polling. Absent beats
-    // dead; restore it together with a real SSE endpoint.
+    // RFC 8620 §2 REQUIRES this property, as a URI Template with the three
+    // §7.3 variables — and the route is real now (eventsource.ts serves it).
+    // History, so nobody half-reverts this: the URL used to 404, push-capable
+    // clients hammered the dead endpoint, and #230 removed the field — at
+    // which point strictly-typed clients (BoogieMail's Swift decoder) refused
+    // to decode the Session at all and hung at the front door. Both halves
+    // are load-bearing: the field must be advertised AND the route must serve
+    // text/event-stream. Change one, change both.
+    eventSourceUrl: `${origin}/api/eventsource?types={types}&closeafter={closeafter}&ping={ping}`,
     // Bump `state` when the account list / capabilities change shape.
     state: "0",
   };

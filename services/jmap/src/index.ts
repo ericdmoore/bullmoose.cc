@@ -17,6 +17,7 @@ import { authenticate, accountAccess, principalHasScope, type AuthEnv, type Prin
 import { parsePartBlobId } from "./blobParts";
 import { handleLogin, handleTokens } from "./authRoutes";
 import { handleConsole } from "./console";
+import { handleEventSource } from "./eventsource";
 import { buildSession } from "./session";
 import { buildRegistry, type RequestContext } from "./methods";
 import { cookieAuthAllowed, isExploreHost } from "./explore/cookie";
@@ -235,6 +236,16 @@ export default {
         return handleBlobDelete(url, env, principal);
       }
       return json({ error: "method not allowed" }, 405);
+    }
+
+    // Push, RFC 8620 §7.3: the EventSource channel the session's
+    // `eventSourceUrl` template points at. Same auth gate as every route
+    // above (native EventSource clients send Authorization headers); same
+    // `read` bar as /api/ws, because it discloses exactly the same thing —
+    // that state moved.
+    if (request.method === "GET" && url.pathname === "/api/eventsource") {
+      if (!principalHasScope(principal, "read")) return json({ error: "forbidden" }, 403);
+      return handleEventSource(request, url, { env, principal });
     }
 
     // Push: proxy the WebSocket straight to the account's Durable Object.
