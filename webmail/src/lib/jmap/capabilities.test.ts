@@ -9,9 +9,11 @@ import {
   FILENODE_CAP,
   MAIL_CAP,
   SUBMISSION_CAP,
+  DEFAULT_MAX_OBJECTS_IN_SET,
   capabilityForMethod,
   hasAgentCapability,
   hasCapability,
+  maxObjectsInSet,
 } from "./capabilities";
 import type { Session } from "./types";
 
@@ -96,5 +98,38 @@ describe("createDemoBackend can drop the agent capability", () => {
 
   it("keeps the console gate closed against that session", () => {
     expect(consoleGate({ capabilities: {} }).visible).toBe(false);
+  });
+});
+
+// ── s34: the bulk-write ceiling ────────────────────────────────────────────
+
+describe("maxObjectsInSet", () => {
+  const withCore = (core: unknown): Pick<Session, "capabilities"> => ({ capabilities: { [CORE_CAP]: core } });
+
+  it("reads what the session actually advertises", () => {
+    expect(maxObjectsInSet(withCore({ maxObjectsInSet: 500 }))).toBe(500);
+    expect(maxObjectsInSet(withCore({ maxObjectsInSet: 64 }))).toBe(64);
+  });
+
+  it("falls back to the RFC floor when the core capability says nothing", () => {
+    // `FakeJmapClient` serves `{}` for every capability, and a bulk delete has
+    // to work against it — conservatively, but it has to work.
+    expect(maxObjectsInSet(withCore({}))).toBe(DEFAULT_MAX_OBJECTS_IN_SET);
+    expect(maxObjectsInSet({ capabilities: {} })).toBe(DEFAULT_MAX_OBJECTS_IN_SET);
+    expect(maxObjectsInSet(withCore(null))).toBe(DEFAULT_MAX_OBJECTS_IN_SET);
+  });
+
+  it("refuses a value that would break the caller rather than trusting the wire", () => {
+    // Zero or negative is an infinite chunk loop in the browser; a fraction is
+    // a chunk size nothing can honour.
+    expect(maxObjectsInSet(withCore({ maxObjectsInSet: 0 }))).toBe(DEFAULT_MAX_OBJECTS_IN_SET);
+    expect(maxObjectsInSet(withCore({ maxObjectsInSet: -1 }))).toBe(DEFAULT_MAX_OBJECTS_IN_SET);
+    expect(maxObjectsInSet(withCore({ maxObjectsInSet: "lots" }))).toBe(DEFAULT_MAX_OBJECTS_IN_SET);
+    expect(maxObjectsInSet(withCore({ maxObjectsInSet: Infinity }))).toBe(DEFAULT_MAX_OBJECTS_IN_SET);
+    expect(maxObjectsInSet(withCore({ maxObjectsInSet: 10.9 }))).toBe(10);
+  });
+
+  it("honours a caller-supplied fallback", () => {
+    expect(maxObjectsInSet({ capabilities: {} }, 25)).toBe(25);
   });
 });

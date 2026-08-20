@@ -45,24 +45,43 @@ import {
 import {
   GROUP_SYNC_CAVEAT,
   addMemberPatch,
+  addMembersPatch,
+  describeGroupAdd,
   groupCreateSpec,
   isGroup,
   loadGroupMembers,
   loadGroupsContaining,
   memberUids,
+  planGroupAdd,
   removeMemberPatch,
 } from "../lib/contacts/groups";
+import {
+  DELETE_VERB,
+  confirmDeleteCards,
+  describeBatchOutcome,
+  describeSelection,
+  selectionTitle,
+  headerCheck,
+  retainSelected,
+  toggleAll,
+  toggleSelected,
+  type HeaderCheck,
+} from "../lib/contacts/selection";
 import type { AddressBook, ContactCard } from "../lib/contacts/types";
 import {
   createBook,
   createCard,
   destroyBook,
   destroyCard,
+  destroyCards,
   describeSetError,
   renameBook,
   saveCardEdit,
+  type BatchFailure,
   type CardWriteResult,
 } from "../lib/contacts/write";
+import { maxObjectsInSet } from "../lib/jmap/capabilities";
+import { REALM_PICK_EVENT, publishRealmChrome, readRealmPick } from "../lib/shell/realmChrome";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
 
@@ -83,6 +102,16 @@ import type { Session } from "../lib/jmap/types";
 //    per account, never an assumption that this session owns what it can see.
 //  • **Groups are cards.** There is no group sidebar pretending to be a
 //    folder tree; a group is a row in the same list with a member panel.
+//
+// s34 adds a fourth, from a real 3,557-card address book:
+//
+//  • **Bulk is the point, and bulk is dangerous.** Selection state lives here
+//    but every rule about it is `lib/contacts/selection.ts` (what "select
+//    all" may mean over a paged list, what a delete prompt must say, why an
+//    outcome is never "done"). Deleting N cards is one `ContactCard/set` per
+//    chunk (`lib/contacts/write.ts`); adding N cards to a group is one
+//    `/set update` of ONE object, because membership lives on the group's
+//    card and speaks uid rather than id (`lib/contacts/groups.ts`).
 
 type View = "detail" | "edit" | "new";
 
@@ -121,6 +150,11 @@ export default function ContactsApp({ client: injected }: Props) {
   // paths (a group's member list, post-save focus) still call setSelectedId —
   // the URL is the click path, the state is everything else's.
   const [selectedId, setSelectedId] = useState<string | undefined>(() => urlParam("card"));
+  // s34 — the BULK selection, which is a different thing from `selectedId`:
+  // that is "the card I am reading", this is "the cards I am about to act
+  // on". Two names, because conflating them is how a bulk delete acquires an
+  // extra victim.
+  const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
   const [card, setCard] = useState<ContactCard | undefined>(undefined);
   const [members, setMembers] = useState<ContactCard[]>([]);
   const [missingMembers, setMissingMembers] = useState<string[]>([]);
@@ -145,6 +179,10 @@ export default function ContactsApp({ client: injected }: Props) {
   const account = accounts.find((a) => a.id === accountId);
   const canManageBooks = account?.isPersonal === true;
   const targetBooks = useMemo(() => writableBooks(books), [books]);
+  // How many objects one `ContactCard/set` may carry. Read from the LIVE
+  // session rather than assumed: over-batching is refused as a whole call,
+  // which would turn a 3,000-card delete into zero deletes.
+  const setLimit = useMemo(() => (session ? maxObjectsInSet(session) : undefined), [session]);
 
   // ── bootstrap ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -212,6 +250,60 @@ export default function ContactsApp({ client: injected }: Props) {
       books.map((b) => ({ id: b.id, label: b.name, href: publishedHref("/contacts", b.id) })),
     );
   }, [books]);
+
+  // s34 — the account picker, hung in the SHARED top bar beside the identity
+  // chip instead of in this section's own header row (Eric's annotation,
+  // 2026-08-20). The mechanism and the reasons are `lib/shell/realmChrome.ts`;
+  // from here it is one publish. Still only when there is a genuine choice:
+  // `isRenderableControl` drops a one-option control, and this publishes
+  // `undefined` for it, so the two ends agree.
+  useEffect(() => {
+    if (accounts.length < 2) {
+      publishRealmChrome(undefined);
+      return;
+    }
+    publishRealmChrome({
+      realm: "contacts",
+      label: "Account",
+      // "(shared)" carries over verbatim from the old <select>: which account
+      // is not yours is the one thing this control must never blur.
+      options: accounts.map((a) => ({ id: a.id, label: a.isPersonal ? a.name : `${a.name} (shared)` })),
+      selectedId: accountId,
+    });
+    return () => publishRealmChrome(undefined);
+  }, [accounts, accountId]);
+
+  // …and the pick coming back. `switchAccount` is the same reset the old
+  // in-page <select> did, plus the bulk selection: card ids do not span
+  // accounts, so keeping them would arm a delete against another account's
+  // rows.
+  const switchAccount = useCallback((id: string) => {
+    setAccountId(id);
+    setSelectedId(undefined);
+    setBookId("");
+    setChecked(new Set());
+  }, []);
+
+  useEffect(() => {
+    const onPick = (ev: Event) => {
+      const id = readRealmPick(ev, "contacts");
+      if (id !== undefined) switchAccount(id);
+    };
+    globalThis.addEventListener(REALM_PICK_EVENT, onPick);
+    return () => globalThis.removeEventListener(REALM_PICK_EVENT, onPick);
+  }, [switchAccount]);
+
+  // ── the bulk selection's lifetime ───────────────────────────────────────
+  //
+  // A card id means "this card" — but a SELECTION means "these rows, in this
+  // list, under this filter", and that second meaning expires the moment the
+  // list is re-queried. Carrying ids across an address-book switch or a new
+  // search leaves a Delete button armed against rows that are no longer on
+  // screen, which is precisely the accident that has no undo. So: same
+  // dependencies as `runQuery`, cleared outright rather than pruned.
+  useEffect(() => {
+    setChecked(new Set());
+  }, [accountId, bookId, spec]);
 
   // ── every group in the account, for the join control ────────────────────
   // Cheap and bounded (`kind: "group"` narrows the same scan), and it has to
@@ -425,6 +517,182 @@ export default function ContactsApp({ client: injected }: Props) {
     }
   }, [client, accountId, card, report, refresh]);
 
+  // ── bulk ────────────────────────────────────────────────────────────────
+  //
+  // Two verbs, and they are NOT the same shape of write — which is the whole
+  // reason the bar reads `[Delete] [Add to group ▾]` and not one generic
+  // "apply":
+  //
+  //   Delete — N cards destroyed. `ContactCard/set destroy` per chunk of
+  //     `maxObjectsInSet`, final, confirmed with the exact count.
+  //   Add to group — ONE card updated. Membership lives on the GROUP's card
+  //     as a map of member UIDs (`groups.ts`), so 412 contacts joining a
+  //     group is a single `/set update` of a single object and the 412 cards
+  //     are never written at all. It is also additive and reversible, which
+  //     is why it needs no confirmation where Delete does.
+  //
+  // What they DO share is the tail — `finishBulk` — because the dangerous
+  // parts are the parts that are the same each time: say what happened in a
+  // sentence that adds up, keep the failures selected so a retry needs no
+  // re-picking, and re-query. A third bulk action is a plan, a write, and one
+  // control in the bar; it is not another copy of this.
+
+  /** id → a name a person recognises, for the outcome sentence. */
+  const nameOfCard = useCallback(
+    (id: string) => {
+      const found = cards.find((c) => c.id === id);
+      return found ? displayName(found) : id;
+    },
+    [cards],
+  );
+
+  const finishBulk = useCallback(
+    (outcome: { done: readonly string[]; failed: readonly BatchFailure[] }, sentence: string) => {
+      setToast(sentence);
+      // Clear on success; on a PARTIAL failure keep exactly the ids that
+      // failed, so a retry needs no re-picking and the bar keeps saying how
+      // many are still outstanding.
+      setChecked(
+        outcome.failed.length === 0
+          ? new Set()
+          : retainSelected(
+              checked,
+              outcome.failed.map((f) => f.id),
+            ),
+      );
+      refresh();
+    },
+    [checked, refresh],
+  );
+
+  const bulkDelete = useCallback(async () => {
+    if (!client || !accountId) return;
+    const ids = [...checked];
+    if (ids.length === 0) return;
+    // The confirmation states the EXACT count, and it is the only gate: there
+    // is no trash for a contact, so "are you sure" has to carry the number
+    // that distinguishes four rows from four thousand (selection.ts).
+    if (!confirm(confirmDeleteCards(ids.length))) return;
+    setBusy(true);
+    try {
+      const outcome = await destroyCards(client, accountId, ids, setLimit === undefined ? {} : { chunkSize: setLimit });
+      // The open card may have been one of them.
+      if (selectedId !== undefined && outcome.done.includes(selectedId)) setSelectedId(undefined);
+      finishBulk(outcome, describeBatchOutcome(DELETE_VERB, outcome, nameOfCard));
+    } catch (err) {
+      setToast(message(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [client, accountId, checked, selectedId, setLimit, finishBulk, nameOfCard]);
+
+  /**
+   * Add the selection to an existing group.
+   *
+   * `planGroupAdd` does the id → uid translation first and puts every selected
+   * id in exactly one bucket — add, already-a-member, or refused-with-a-reason
+   * — so nothing can go quietly missing between "I ticked it" and "it is in
+   * the group". A card with no uid is the case that matters: uid is server-set
+   * and immutable, so it cannot be minted here, and skipping it silently would
+   * tell someone their contact is in a group when it is not.
+   *
+   * The write goes through `saveCardEdit` rather than a bare `updateCard`
+   * because the empty-group patch shape rewrites the whole `members` object
+   * (see `addMembersPatch`) and could otherwise clobber somebody else's first
+   * add. A conflict means NOTHING was written, so the whole plan is reported
+   * as failed rather than half-claimed.
+   */
+  const addSelectionToGroup = useCallback(
+    async (group: ContactCard) => {
+      if (!client || !accountId) return;
+      const ids = [...checked];
+      if (ids.length === 0) return;
+      const plan = planGroupAdd(cards, ids, group);
+      const name = displayName(group);
+      setBusy(true);
+      try {
+        // Nothing new to write: everything selected is already a member, or
+        // refused. Still reported — a no-op the user cannot see is a bug.
+        if (plan.add.length === 0) {
+          const outcome = { done: plan.already, failed: plan.refused };
+          finishBulk(outcome, describeGroupAdd(name, { ...outcome, already: plan.already }, nameOfCard));
+          return;
+        }
+
+        const result = await saveCardEdit(
+          client,
+          accountId,
+          group,
+          addMembersPatch(
+            group,
+            plan.add.map((a) => a.uid),
+          ),
+        );
+        const failure = result.conflict
+          ? `“${name}” changed while this selection was open, so nothing was added. Reload and try again.`
+          : (result.refusal?.message ?? (result.error ? describeSetError(result.error, group) : undefined));
+
+        const outcome =
+          failure === undefined
+            ? { done: [...plan.add.map((a) => a.id), ...plan.already], failed: plan.refused }
+            : {
+                done: plan.already,
+                failed: [...plan.refused, ...plan.add.map((a) => ({ id: a.id, message: failure }))],
+              };
+        finishBulk(outcome, describeGroupAdd(name, { ...outcome, already: plan.already }, nameOfCard));
+      } catch (err) {
+        setToast(message(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [client, accountId, checked, cards, finishBulk, nameOfCard],
+  );
+
+  /**
+   * "+ Create Group" — name it, make it, and put the selection in it, in one
+   * `ContactCard/set create`. `groupCreateSpec` already takes the member uids,
+   * so this is genuinely one call rather than create-then-add: a group that
+   * exists for a moment with none of the members you asked for is a state
+   * nobody needs to see.
+   */
+  const createGroupFromSelection = useCallback(async () => {
+    if (!client || !accountId) return;
+    const ids = [...checked];
+    if (ids.length === 0) return;
+    const name = prompt("Name for the new group")?.trim();
+    if (!name) return;
+    // A brand-new group has no members, so nothing can already be in it.
+    const plan = planGroupAdd(cards, ids, {});
+    setBusy(true);
+    try {
+      const result = await createCard(
+        client,
+        accountId,
+        groupCreateSpec(
+          name,
+          plan.add.map((a) => a.uid),
+          defaultTargetBook(books)?.id,
+        ),
+      );
+      const failure = result.refusal?.message ?? (result.error ? describeSetError(result.error, null) : undefined);
+      const outcome =
+        failure === undefined
+          ? { done: plan.add.map((a) => a.id), failed: plan.refused }
+          : {
+              done: [] as string[],
+              failed: [...plan.refused, ...plan.add.map((a) => ({ id: a.id, message: failure }))],
+            };
+      // Open what was just made, so the group is visible rather than asserted.
+      if (failure === undefined && result.id) setSelectedId(result.id);
+      finishBulk(outcome, describeGroupAdd(name, { ...outcome, already: [] }, nameOfCard));
+    } catch (err) {
+      setToast(message(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [client, accountId, checked, cards, books, finishBulk, nameOfCard]);
+
   const newGroup = useCallback(async () => {
     if (!client || !accountId) return;
     const name = prompt("Name for the new group")?.trim();
@@ -514,6 +782,15 @@ export default function ContactsApp({ client: injected }: Props) {
   const scopeNote = account ? bookScopeNote(account, books) : undefined;
   const selectedBook = books.find((b) => b.id === bookId);
   const canWriteHere = targetBooks.length > 0;
+  // "Select all" can only ever mean the rows that are LOADED — the list is
+  // paged and the query is a full scan, so there is no honest way to select
+  // 3,557 matches from a screen showing 50 (selection.ts).
+  const visibleIds = useMemo(() => cards.map((c) => c.id), [cards]);
+  const listCheck = headerCheck(visibleIds, checked);
+  // The groups the bar may offer. Membership writes the GROUP's card, so the
+  // rights that matter are its book's, not the selected contacts' — the same
+  // rule the detail pane's join control follows (`books.ts mayWriteCard`).
+  const joinableGroups = useMemo(() => allGroups.filter((g) => mayWriteCard(books, g)), [allGroups, books]);
 
   // s24 T2 — the CollectionColumn's feed: "All" + each address book, with the
   // rights/default annotation as the row's note (read-only wins — it changes
@@ -554,31 +831,12 @@ export default function ContactsApp({ client: injected }: Props) {
 
   return (
     <div class="app contacts">
-      <header class="topbar">
-        {/* s24 T5 — the search bar moved UP into the shared chrome (ShellNav);
-            /contacts?q=… deep-links the same submitted search. */}
-
-        {accounts.length > 1 ? (
-          <label class="contacts-account">
-            <span class="muted">Account</span>
-            <select
-              value={accountId}
-              onChange={(ev) => {
-                setAccountId((ev.currentTarget as HTMLSelectElement).value);
-                setSelectedId(undefined);
-                setBookId("");
-              }}
-            >
-              {accounts.map((a) => (
-                <option value={a.id}>
-                  {a.name}
-                  {a.isPersonal ? "" : " (shared)"}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-      </header>
+      {/* s24 T5 — the search bar moved UP into the shared chrome (ShellNav);
+          /contacts?q=… deep-links the same submitted search.
+          s34 — and so did the ACCOUNT PICKER: it is published to ShellNav's
+          header (see the realm-chrome effect above), which is what removed
+          this section's own `<header class="topbar">` entirely. There was
+          nothing else in it. */}
 
       {/* Search honesty, in the shape AppShell.tsx:599-602 established: what
           the server matches, next to the box, from the module that owns it. */}
@@ -719,9 +977,44 @@ export default function ContactsApp({ client: injected }: Props) {
                   newDisabled={!canWriteHere}
                 />
               ) : null}
+
+              <ListToolbar
+                check={listCheck}
+                loaded={cards.length}
+                onToggleAll={() => setChecked((prev) => toggleAll(visibleIds, prev))}
+              />
+
+              {checked.size > 0 ? (
+                <BulkBar
+                  count={checked.size}
+                  loaded={cards.length}
+                  total={total}
+                  busy={busy}
+                  groups={joinableGroups}
+                  canCreateGroup={canWriteHere}
+                  onClear={() => setChecked(new Set())}
+                  onDelete={() => void bulkDelete()}
+                  onAddToGroup={(group) => void addSelectionToGroup(group)}
+                  onCreateGroup={() => void createGroupFromSelection()}
+                />
+              ) : null}
+
               <ul class="card-list">
                 {cards.map((c) => (
-                  <li>
+                  <li class={`card-item${checked.has(c.id) ? " is-checked" : ""}`} key={c.id}>
+                    {/* The checkbox is a SIBLING of the anchor, never inside
+                      it — interactive content may not nest in an <a>, and the
+                      tap-vs-navigate hazard is the same one #200 solved for
+                      swipe (`ThreadListView.tsx`: the select control sits
+                      beside the row body either way). Ticking a row must not
+                      navigate; opening a row must not tick it. */}
+                    <input
+                      type="checkbox"
+                      class="card-check"
+                      checked={checked.has(c.id)}
+                      aria-label={`Select ${displayName(c)}`}
+                      onChange={() => setChecked((prev) => toggleSelected(prev, c.id))}
+                    />
                     {/* s25 T3 — a real link (`?q=`/`?demo=`/`?c=` survive via
                       hrefWithParam): the browser back button leaves the card
                       the native way, and every person is deep-linkable. The
@@ -815,6 +1108,205 @@ export default function ContactsApp({ client: injected }: Props) {
       {toast ? (
         <div class="toast" role="status" onClick={() => setToast(undefined)}>
           {toast}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ── the list's own chrome ──────────────────────────────────────────────────
+
+/**
+ * The list header: select-all, and how many rows it is talking about.
+ *
+ * The indeterminate state is a DOM PROPERTY, not an attribute — there is no
+ * `indeterminate=""` to render — so it is set through a ref callback. That
+ * makes it invisible to server rendering, which is exactly why the three-way
+ * state itself is `headerCheck()` in `lib/contacts/selection.ts` with its own
+ * tests: the rule is testable even though this line of DOM is not.
+ *
+ * `aria-checked` deliberately absent: ARIA prohibits it on a native
+ * checkbox, and the browser exposes `mixed` from the property on its own.
+ */
+function ListToolbar({ check, loaded, onToggleAll }: { check: HeaderCheck; loaded: number; onToggleAll: () => void }) {
+  return (
+    <div class="card-toolbar">
+      <label class="card-select-all">
+        <input
+          type="checkbox"
+          checked={check === "all"}
+          disabled={loaded === 0}
+          ref={(el) => {
+            if (el) el.indeterminate = check === "some";
+          }}
+          onChange={onToggleAll}
+        />
+        <span class="muted">
+          {check === "all" ? "Deselect all" : "Select all"}
+          {loaded > 0 ? ` ${loaded.toLocaleString()} loaded` : ""}
+        </span>
+      </label>
+    </div>
+  );
+}
+
+/**
+ * The bulk action bar — present only while something is selected.
+ *
+ * Eric's sketch: `[Delete] [Add to group ▾]`. Two controls, and the ▾ is a
+ * popover rather than a `<select>` on purpose — arrowing a closed `<select>`
+ * fires `change` per option in some browsers, and "+ Create Group" popping a
+ * `prompt()` from an arrow key is not a control, it is an ambush. The popover
+ * is the pattern `CollectionBar` already established here: click-outside,
+ * Escape, and a real `role="menu"`.
+ *
+ * ## The label is the act: ADD, never move
+ *
+ * Group membership is many-to-many — a contact can be in five groups, and
+ * leaving one is a separate act — so this control adds and only adds. It
+ * never removes a contact from anything, which is why "Add to group" is the
+ * whole of what it claims.
+ *
+ * A true move (remove from here, add to there) is a DIFFERENT, separately
+ * named action, not a mode this one slips into. An "Add to group" that
+ * sometimes silently removed would be worse than either verb alone, and this
+ * list has no "from" anyway: it is scoped by address book, never by group
+ * (`ContactSearchSpec.hasMember` exists and nothing sets it).
+ *
+ * ## The seam
+ *
+ * Eric's note says he is working on other bulk actions, so the shape is
+ * additive: an action is (a) a plan that accounts for every selected id, (b)
+ * one write, and (c) one control here. Anything DESTRUCTIVE goes through a
+ * counted confirmation first; anything additive and reversible does not.
+ *
+ * Delete stays enabled even where a book is read-only: rights are per book and
+ * a selection can span several, so the honest answer is to send it and report
+ * per-id refusals rather than to grey out a button for a reason true of only
+ * some of the rows.
+ */
+function BulkBar(props: {
+  count: number;
+  loaded: number;
+  /** Match total when the query knows it — `title` only, never the label. */
+  total?: number;
+  busy: boolean;
+  groups: ContactCard[];
+  canCreateGroup: boolean;
+  onClear: () => void;
+  onDelete: () => void;
+  onAddToGroup: (group: ContactCard) => void;
+  onCreateGroup: () => void;
+}) {
+  return (
+    <div class="bulk-bar" role="group" aria-label="Bulk actions">
+      <span class="bulk-count" title={selectionTitle(props.count, props.loaded, props.total)}>
+        {describeSelection(props.count, props.loaded)}
+      </span>
+
+      <button type="button" class="link-button" onClick={props.onClear}>
+        Clear
+      </button>
+
+      <span class="bulk-spacer" />
+
+      <button type="button" class="danger" disabled={props.busy} onClick={props.onDelete}>
+        Delete
+      </button>
+
+      <GroupMenu
+        groups={props.groups}
+        busy={props.busy}
+        canCreate={props.canCreateGroup}
+        onAdd={props.onAddToGroup}
+        onCreate={props.onCreateGroup}
+      />
+    </div>
+  );
+}
+
+/**
+ * The `[Add to group ▾]` menu: every group this session may write, then the
+ * create door. Dismissed by click-outside or Escape — the `CollectionBar`
+ * contract, because a popover that only closes on Escape strands anyone on a
+ * phone, which has no Escape.
+ *
+ * A group with no writable book never appears: membership writes the GROUP's
+ * card, so offering one would be offering a write the server then refuses.
+ * An empty list says so rather than rendering an empty box — and "+ Create
+ * Group" is still there, which is the actual next step from "no groups yet".
+ */
+function GroupMenu(props: {
+  groups: ContactCard[];
+  busy: boolean;
+  canCreate: boolean;
+  onAdd: (group: ContactCard) => void;
+  onCreate: () => void;
+  /** Test/SSR seam: the menu starts open. */
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(props.defaultOpen ?? false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div class="bulk-menu" ref={rootRef}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={props.busy}
+        onClick={() => setOpen((v) => !v)}
+      >
+        Add to group <span aria-hidden="true">▾</span>
+      </button>
+      {open ? (
+        <div class="bulk-menu-popover" role="menu" aria-label="Add to group">
+          {props.groups.length === 0 ? <p class="muted">No groups here yet.</p> : null}
+          {props.groups.map((g) => (
+            <button
+              type="button"
+              role="menuitem"
+              key={g.id}
+              onClick={() => {
+                setOpen(false);
+                props.onAdd(g);
+              }}
+            >
+              <span class="bulk-menu-name">{displayName(g)}</span>
+              <span class="muted">{memberUids(g).length}</span>
+            </button>
+          ))}
+          {props.canCreate ? (
+            <button
+              type="button"
+              role="menuitem"
+              class="bulk-menu-create"
+              onClick={() => {
+                setOpen(false);
+                props.onCreate();
+              }}
+            >
+              + Create Group
+            </button>
+          ) : (
+            <p class="muted">No address book here is writable, so no group can be created.</p>
+          )}
         </div>
       ) : null}
     </div>
@@ -957,9 +1449,23 @@ function CardDetail(props: {
         </p>
       ) : null}
 
+      {/* s34 — the uid is an IDENTIFIER, not information. Full-length,
+          `urn:bullmoose:vcf:95a430b…` was the longest line in the pane and
+          the least readable thing on it. It stays, because CardDAV debugging
+          runs on it (and because "some debugging depends on it" is a fact
+          about this system, not a hypothetical) — but clamped to a stub, with
+          the whole value on `title` and, since text-overflow is a rendering
+          effect only, still selectable and copyable in full. */}
       <p class="caveats">
         Last updated {card.updated ? new Date(card.updated).toLocaleString() : "at an unknown time"}
-        {card.uid ? ` · ${card.uid}` : ""}
+        {card.uid ? (
+          <>
+            {" · "}
+            <code class="card-urn" title={card.uid}>
+              {card.uid}
+            </code>
+          </>
+        ) : null}
       </p>
     </article>
   );

@@ -4,7 +4,7 @@ import { useEffect, useState } from "preact/hooks";
 import { Badge, Button, Column, IconButton, ListContainer, ListRow } from "./ui";
 import CreateFab from "./CreateFab";
 import { ChevronDoubleLeftIcon, ChevronRightIcon, ChevronUpIcon, PlusIcon } from "./icons";
-import { cx, listRowClasses } from "../lib/ui/classes";
+import { createLabelClasses, cx, listRowClasses } from "../lib/ui/classes";
 import {
   iconRailItems,
   stepSelection,
@@ -445,7 +445,11 @@ export default function CollectionColumn(props: CollectionColumnProps) {
         aria-label={`${title} collections`}
         class={props.class ?? defaultClass}
         header={
-          <div class="flex items-center gap-x-1 px-2 pt-2 pb-1">
+          /* s34 — `py-1` rather than `pt-2 pb-1`: with the label no longer
+             wrapping to two lines this row is a single control tall, and the
+             extra top padding was pushing the first collection down for
+             nothing (Eric: "tighten up the spacing here"). */
+          <div class="flex items-center gap-x-1 px-2 py-1">
             {newLabel && onNew ? (
               <>
                 {/* Below `lg` the same verb is already reachable as the FAB, so the
@@ -460,8 +464,9 @@ export default function CollectionColumn(props: CollectionColumnProps) {
                   disabled={newDisabled}
                   class="grow max-lg:hidden"
                 >
-                  <PlusIcon class="size-4" strokeWidth={2} />
-                  {newLabel}
+                  <PlusIcon class="size-4 shrink-0" strokeWidth={2} />
+                  {/* One line, ellipsis if it must — never "+ New / contact". */}
+                  <span class={createLabelClasses()}>{newLabel}</span>
                 </Button>
                 <span class="grow px-1 text-sm font-semibold text-gray-900 lg:hidden dark:text-white">{title}</span>
               </>

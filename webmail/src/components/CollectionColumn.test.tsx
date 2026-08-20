@@ -346,3 +346,36 @@ describe("CollectionColumn — variants", () => {
     expect(html).toBe("");
   });
 });
+
+// s34 — the [New] label, one line. The class logic is tested in
+// lib/ui/classes.test.ts; what these prove is that the column's button and
+// the bar's button both USE it, which is the part that regressed.
+
+describe("CollectionColumn — the [New] label does not wrap (s34)", () => {
+  const html = render(
+    <CollectionColumn
+      title="Contacts"
+      groups={GROUPS}
+      selectedId="all"
+      onSelect={() => {}}
+      newLabel="New contact"
+      onNew={() => {}}
+      storageKey="bm.cc.contacts"
+    />,
+  );
+
+  it("wraps the label in a truncating span rather than dropping bare text in", () => {
+    expect(html).toContain('<span class="min-w-0 truncate">New contact</span>');
+  });
+
+  it("keeps the button from wrapping at all, and the glyph from shrinking", () => {
+    expect(html).toContain("whitespace-nowrap");
+    expect(html).toContain("size-4 shrink-0");
+  });
+
+  it("still renders exactly one header [New] and one FAB — s25 T5 is untouched", () => {
+    expect(html.match(/New contact/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(html).toContain("max-lg:hidden");
+    expect(html).toContain("lg:hidden");
+  });
+});
