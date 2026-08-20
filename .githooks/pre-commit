@@ -26,7 +26,19 @@ if [ -x node_modules/.bin/oxfmt ]; then oxfmt="node_modules/.bin/oxfmt"; else ox
 if [ -x node_modules/.bin/oxlint ]; then oxlint="node_modules/.bin/oxlint"; else oxlint="npx --yes oxlint"; fi
 
 # Format in place and re-stage, so the commit records the formatted bytes.
-$oxfmt --write $staged
+#
+# oxfmt exits NON-ZERO with "Expected at least one target file" when every
+# staged path is one it ignores — e.g. a commit touching only
+# services/*/wrangler.jsonc, which .oxfmtrc.json excludes. Under `set -e` that
+# aborted the commit outright (hit 2026-08-20 declaring a worker route). An
+# empty target set is not a formatting failure; a real one still is, so match
+# that one message and let everything else stay fatal.
+if ! fmt_out=$($oxfmt --write $staged 2>&1); then
+  case "$fmt_out" in
+    *"Expected at least one target file"*) : ;;
+    *) printf '%s\n' "$fmt_out" >&2; exit 1 ;;
+  esac
+fi
 git add $staged
 
 # Lint only the JS/TS subset — oxlint has nothing to say about JSON. A real

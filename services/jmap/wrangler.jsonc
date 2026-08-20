@@ -34,7 +34,34 @@
     // They live here because this worker serves them and the API base is what
     // mints them; giving them their own hostname is a product decision, not a
     // routing one.
-    { "pattern": "app.bullmoose.cc/share/*", "zone_name": "bullmoose.cc" }
+    { "pattern": "app.bullmoose.cc/share/*", "zone_name": "bullmoose.cc" },
+
+    // ── jmap.bullmoose.cc — the API host, whole-host ──────────────────────
+    //
+    // Already LIVE as a Worker custom domain bound in the dashboard, and until
+    // now declared nowhere: the repo did not know a hostname it serves. That is
+    // the same class of drift that cost a day in 2026-08 — `mail.bullmoose.cc`
+    // was assumed by config and never existed, and the provisioner planted it
+    // as an SRV target, breaking the login it was meant to enable. Undeclared-
+    // but-live is no safer than declared-but-dead; both are the repo and the
+    // world disagreeing. This declaration catches the config up to reality.
+    //
+    // The DIVISION OF LABOUR, now that both names are owned here:
+    //   app.bullmoose.cc  — the human surface. Webmail (Pages) plus the paths
+    //                       above, same-origin so the browser needs no CORS.
+    //                       OAuth's registered client origin lives here
+    //                       (APP_ORIGIN, lib/app/oauth.ts); PKCE redirects
+    //                       resolve here; do not move it.
+    //   jmap.bullmoose.cc — the API. Whole host, no Pages app beneath it, for
+    //                       third-party JMAP clients (BoogieMail, Mailtemi) and
+    //                       for the `_jmap._tcp` SRV record RFC 8620 §2.2 wants
+    //                       (still unpublished — see the discovery notes in
+    //                       packages/cli/src/discover.ts).
+    //
+    // buildSession() derives every URL it returns from the REQUEST origin, so a
+    // client that connects here gets a self-consistent session pointing back at
+    // jmap.bullmoose.cc — verified live before this was written, not assumed.
+    { "pattern": "jmap.bullmoose.cc", "custom_domain": true }
 
     // ── s21, the explorer — DELIBERATELY COMMENTED OUT ────────────────────
     //
