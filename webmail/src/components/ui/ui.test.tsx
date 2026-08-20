@@ -1,7 +1,24 @@
 /** @jsxImportSource preact */
 import { describe, expect, it } from "vitest";
 import { render } from "preact-render-to-string";
-import { Avatar, Badge, Button, Column, IconButton, ListContainer, ListRow, SurfaceFrame } from "./index";
+import {
+  Alert,
+  Avatar,
+  Badge,
+  Breadcrumb,
+  Button,
+  Column,
+  DescList,
+  DescRow,
+  EmptyState,
+  IconButton,
+  ListContainer,
+  ListRow,
+  PageNotice,
+  StackedList,
+  StackedRow,
+  SurfaceFrame,
+} from "./index";
 import { PlusIcon } from "../icons";
 
 // s24 T0 — render tests, no jsdom: preact-render-to-string SSRs each stateless
@@ -110,5 +127,75 @@ describe("Column / SurfaceFrame", () => {
     // columns beside each other at 390px is the audit's crushing bug.
     expect(html).toContain("max-lg:flex-col");
     expect(html).toContain("max-lg:overflow-y-auto");
+  });
+});
+
+describe("Alert / EmptyState / StackedList / DescList / Breadcrumb", () => {
+  it("an alert is a role=alert with its title", () => {
+    const html = render(
+      <Alert tone="warn" title="Attention needed">
+        Fix the due date.
+      </Alert>,
+    );
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Attention needed");
+    expect(html).toContain("Fix the due date.");
+    expect(html).toContain("bg-yellow-50");
+  });
+  it("empty state carries the title and optional action", () => {
+    const html = render(
+      <EmptyState title="No projects" action={<Button variant="primary">New</Button>}>
+        Get started.
+      </EmptyState>,
+    );
+    expect(html).toContain("No projects");
+    expect(html).toContain("Get started.");
+    expect(html).toContain("New");
+  });
+  it("stacked rows are links or buttons, with aria-current when active", () => {
+    const html = render(
+      <StackedList>
+        <StackedRow href="/approvals?p=1" active>
+          Waiting
+        </StackedRow>
+        <StackedRow onSelect={() => {}}>Held</StackedRow>
+      </StackedList>,
+    );
+    expect(html).toContain('role="list"');
+    expect(html).toContain("divide-y");
+    expect(html).toContain('href="/approvals?p=1"');
+    expect(html).toContain('aria-current="true"');
+    expect(html).toContain("<button");
+  });
+  it("a description list is a dl of term/value pairs", () => {
+    const html = render(
+      <DescList title="Applicant">
+        <DescRow term="Full name">Margot</DescRow>
+      </DescList>,
+    );
+    expect(html).toContain("<dl");
+    expect(html).toContain("<dt");
+    expect(html).toContain("Full name");
+    expect(html).toContain("Margot");
+  });
+  it("breadcrumb current step is a span; earlier steps are buttons", () => {
+    const html = render(
+      <Breadcrumb
+        items={[
+          { label: "Files", onSelect: () => {} },
+          { label: "Projects", current: true },
+        ]}
+      />,
+    );
+    expect(html).toContain('aria-label="Breadcrumb"');
+    expect(html).toContain("<button");
+    expect(html).toContain("Projects");
+    expect(html).toContain('aria-current="page"');
+  });
+  it("PageNotice is a reading column, not a second H1", () => {
+    const html = render(<PageNotice title="No files here">This session has no Files realm.</PageNotice>);
+    expect(html).toContain("<h2");
+    expect(html).not.toContain("<h1");
+    expect(html).toContain("No files here");
   });
 });

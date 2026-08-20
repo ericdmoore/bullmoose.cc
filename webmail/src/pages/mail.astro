@@ -184,26 +184,12 @@ import App from "../layouts/AppTw.astro";
     min-width: 0;
   }
 
-  /* s25 T1 — the 390px audit's one egregious mail bug: `.body` is a flex ROW
-     (webmail.css), so the CollectionColumn's fixed width beside the list left
-     the list ~10ch wide on a phone. Below lg the column stacks instead — the
-     CollectionColumn renders itself full-width and height-capped there (its
-     `narrow="stack"` default), and the list keeps the rest of the screen.
-     Interim until Mail adopts the collection sheet + T3's list⇄detail
-     navigation; kept on this page so the shared webmail.css stays untouched
-     by a parallel task (the standing per-page rule). */
+  /* s25 T1 — FAB clearance. SurfaceFrame already stacks below lg; the
+     CollectionColumn's `narrow="stack"` default plus the frame's
+     `max-lg:flex-col` replaced the old `.body { flex-direction: column }`.
+     The floating [New] still needs list padding so the last row isn't
+     covered. 72px is `FAB_CLEARANCE_PX`. */
   @media (max-width: 1023.98px) {
-    .body {
-      flex-direction: column;
-    }
-
-    /* s25 T5 — the FAB's clearance. The floating [New] sits bottom-right on a
-       phone, and a fixed button takes no space in flow, so the LAST thread row
-       (and the foot of an open message) would sit underneath it: reachable
-       only by scrolling past the end, which most lists will not do. The fix is
-       not a z-index — the scroll containers pad themselves out from under the
-       button. 72px is `FAB_CLEARANCE_PX` (lib/ui/classes.ts); the inset keeps
-       it clear of the home indicator too (the T1 groundwork). */
     .thread-list,
     .thread-view {
       padding-bottom: calc(72px + env(safe-area-inset-bottom));

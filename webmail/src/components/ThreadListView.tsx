@@ -217,14 +217,16 @@ export default function ThreadListView({
         // button either way: interactive content may not nest inside an <a>.
         const body = (
           <>
-            <div class="row-top">
-              <span class="row-from">
+            <div class="row-top flex items-baseline justify-between gap-x-3">
+              <span class="row-from min-w-0 truncate text-sm/6 font-medium text-gray-900 dark:text-white">
                 {row.participants.join(", ") || "(unknown)"}
-                {row.loadedCount > 1 ? <span class="row-count"> {row.loadedCount}</span> : null}
+                {row.loadedCount > 1 ? <span class="row-count text-gray-500"> {row.loadedCount}</span> : null}
               </span>
-              <span class="row-date">{formatDate(row.receivedAt)}</span>
+              <span class="row-date shrink-0 text-xs/5 text-gray-500 dark:text-gray-400">
+                {formatDate(row.receivedAt)}
+              </span>
             </div>
-            <div class="row-subject">
+            <div class="row-subject truncate text-sm/6 text-gray-900 dark:text-white">
               {row.flagged ? (
                 <span class="row-flag" aria-label="Flagged">
                   {"★"}
@@ -237,7 +239,7 @@ export default function ThreadListView({
                 </span>
               ) : null}
             </div>
-            <div class="row-preview">{row.latest.preview}</div>
+            <div class="row-preview truncate text-xs/5 text-gray-500 dark:text-gray-400">{row.latest.preview}</div>
           </>
         );
         const isDragging = drag?.id === row.threadId;
@@ -250,12 +252,12 @@ export default function ThreadListView({
             role="option"
             aria-selected={isSelected}
             class={
-              "thread-row" +
+              "thread-row flex items-start gap-x-3 overflow-hidden border-b border-gray-100 px-4 py-2 dark:border-white/5" +
               (row.unread ? " is-unread" : "") +
-              (isCursor ? " is-cursor" : "") +
-              (isSelected ? " is-selected" : "") +
-              // Swiping, the row is a flex ITEM whose height comes from the
-              // shell; standing alone it keeps sizing itself as it always has.
+              (isCursor ? " is-cursor bg-gray-50 dark:bg-white/5" : "") +
+              (isSelected
+                ? " is-selected bg-brand-50 dark:bg-brand-500/10"
+                : " hover:bg-gray-50 dark:hover:bg-white/[0.03]") +
               (swipeOn ? " w-full shrink-0" : "")
             }
             style={swipeOn ? undefined : { height: `${ROW_HEIGHT}px` }}
@@ -268,7 +270,7 @@ export default function ThreadListView({
           >
             <button
               type="button"
-              class="row-select"
+              class="row-select mt-0.5 text-gray-400"
               aria-label={isSelected ? "Deselect" : "Select"}
               onClick={(ev) => {
                 ev.stopPropagation();

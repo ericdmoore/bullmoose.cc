@@ -95,6 +95,89 @@ export function listRowClasses(opts: { active?: boolean; muted?: boolean } = {})
   );
 }
 
+// ── Tailwind UI ports (alerts, empty states, stacked lists, forms) ────────
+//
+// Markup + classes from `webmail/referenceTemplates/astro/` (the licensed kit),
+// indigo swapped for brand so these match the chrome. Second callers earned
+// each of these: Approvals, Mail, Agents, Files, Activity, Goals.
+
+export type AlertTone = "info" | "warn" | "error" | "success";
+
+const ALERT_TONE: Record<AlertTone, string> = {
+  info: "bg-brand-50 dark:bg-brand-500/10 dark:outline dark:outline-brand-500/20",
+  warn: "bg-yellow-50 dark:bg-yellow-500/10 dark:outline dark:outline-yellow-500/15",
+  error: "bg-red-50 dark:bg-red-500/10 dark:outline dark:outline-red-500/15",
+  success: "bg-green-50 dark:bg-green-500/10 dark:outline dark:outline-green-500/15",
+};
+
+const ALERT_TITLE: Record<AlertTone, string> = {
+  info: "text-brand-800 dark:text-brand-100",
+  warn: "text-yellow-800 dark:text-yellow-100",
+  error: "text-red-800 dark:text-red-100",
+  success: "text-green-800 dark:text-green-100",
+};
+
+const ALERT_BODY: Record<AlertTone, string> = {
+  info: "text-brand-700 dark:text-brand-100/80",
+  warn: "text-yellow-700 dark:text-yellow-100/80",
+  error: "text-red-700 dark:text-red-100/80",
+  success: "text-green-700 dark:text-green-100/80",
+};
+
+const ALERT_ICON: Record<AlertTone, string> = {
+  info: "text-brand-400 dark:text-brand-300",
+  warn: "text-yellow-400 dark:text-yellow-300",
+  error: "text-red-400 dark:text-red-300",
+  success: "text-green-400 dark:text-green-300",
+};
+
+export function alertClasses(tone: AlertTone = "info"): string {
+  return cx("rounded-md p-4", ALERT_TONE[tone]);
+}
+export function alertTitleClasses(tone: AlertTone = "info"): string {
+  return cx("text-sm font-medium", ALERT_TITLE[tone]);
+}
+export function alertBodyClasses(tone: AlertTone = "info"): string {
+  return cx("text-sm", ALERT_BODY[tone]);
+}
+export function alertIconClasses(tone: AlertTone = "info"): string {
+  return cx("size-5", ALERT_ICON[tone]);
+}
+
+/** The divided stacked-list (Tailwind UI `lists/stacked-lists/01-simple`). */
+export function stackedListClasses(): string {
+  return "divide-y divide-gray-100 dark:divide-white/5";
+}
+
+export function stackedRowClasses(opts: { active?: boolean } = {}): string {
+  return cx(
+    "relative flex w-full items-center gap-x-4 py-4 pr-2 pl-2 text-left",
+    opts.active ? "bg-brand-50 dark:bg-white/5" : "hover:bg-gray-50 dark:hover:bg-white/[0.03]",
+  );
+}
+
+export type StatusDotTone = "neutral" | "success" | "warn" | "error";
+
+export function statusDotClasses(tone: StatusDotTone = "neutral"): string {
+  const ring: Record<StatusDotTone, string> = {
+    neutral: "bg-gray-100/80 text-gray-500 dark:bg-white/10",
+    success: "bg-green-100 text-green-500 dark:bg-green-400/20 dark:text-green-400",
+    warn: "bg-amber-100 text-amber-500 dark:bg-amber-400/20 dark:text-amber-400",
+    error: "bg-rose-100 text-rose-500 dark:bg-rose-400/20 dark:text-rose-400",
+  };
+  return cx("flex-none rounded-full p-1", ring[tone]);
+}
+
+/** Form fields (Tailwind UI `forms/input-groups`) — brand outline, never indigo. */
+export function inputClasses(): string {
+  return (
+    "block w-full rounded-md bg-white px-3 py-1.5 text-base text-gray-900 outline-1 -outline-offset-1 " +
+    "outline-gray-300 placeholder:text-gray-400 focus:outline-2 focus:-outline-offset-2 focus:outline-brand-600 " +
+    "sm:text-sm/6 dark:bg-white/5 dark:text-white dark:outline-white/10 dark:placeholder:text-gray-500 " +
+    "dark:focus:outline-brand-500"
+  );
+}
+
 // ── s25 T5: the phone's chrome ────────────────────────────────────────────
 //
 // TWO RULES hold every string below, and both are load-bearing:

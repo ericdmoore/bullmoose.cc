@@ -1,10 +1,9 @@
 /** @jsxImportSource preact */
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { hasAgentCapability } from "../lib/jmap/capabilities";
-import type { JmapClient } from "../lib/jmap/JmapClient";
-import type { Session } from "../lib/jmap/types";
 import { resolveClient, type ClientMode } from "../lib/app/client";
 import { runListLoad } from "../lib/app/listLoad";
+import type { JmapClient } from "../lib/jmap/JmapClient";
+import type { Session } from "../lib/jmap/types";
 import {
   buildForwardDraft,
   buildReplyDraft,
@@ -51,6 +50,16 @@ import {
   TrashIcon,
   type IconProps,
 } from "./icons";
+import MessageView from "./MessageView";
+import ThreadListView, { type SwipeAction } from "./ThreadListView";
+import { Alert, PageNotice, SurfaceFrame } from "./ui";
+
+type View = "list" | "thread" | "compose";
+
+interface Props {
+  /** Injected in tests; the app resolves its own otherwise (invariant §6.1). */
+  client?: JmapClient;
+}
 
 /** Mailbox role → its Heroicon (s24 T3b — real SVG, not font dingbats). */
 const ROLE_ICON: Record<string, (p: IconProps) => preact.JSX.Element> = {
@@ -61,15 +70,6 @@ const ROLE_ICON: Record<string, (p: IconProps) => preact.JSX.Element> = {
   junk: NoSymbolIcon,
   trash: TrashIcon,
 };
-import MessageView from "./MessageView";
-import ThreadListView, { type SwipeAction } from "./ThreadListView";
-
-type View = "list" | "thread" | "compose";
-
-interface Props {
-  /** Injected in tests; the app resolves its own otherwise (invariant §6.1). */
-  client?: JmapClient;
-}
 
 export default function AppShell({ client: injected }: Props) {
   const [client, setClient] = useState<JmapClient | undefined>(injected);
@@ -277,8 +277,6 @@ export default function AppShell({ client: injected }: Props) {
       stop?.();
     };
   }, [client, accountId]);
-
-  const agentSeam = session ? hasAgentCapability(session) : false;
 
   // ── actions ─────────────────────────────────────────────────────────────
 
@@ -753,50 +751,33 @@ export default function AppShell({ client: injected }: Props) {
 
   if (fatal) {
     return (
-      <main class="shell shell-error">
-        <h1>bullmoose webmail</h1>
+      <PageNotice title="Could not reach the server" error>
         <p>Could not reach the server: {fatal}</p>
-        {/* This used to tell the user to append `?token=…`, i.e. to type a
-            live credential into the address bar — which is the leak s07 T1
-            exists to close (lib/app/tokenInUrl.test.ts). The door does the
-            same job without the URL ever seeing it. */}
-        <p class="muted">
-          <a href="/login">Sign in again</a>, or append <code>?demo=1</code> to browse sample data.
+        <p class="mt-2">
+          <a href="/login" class="font-medium text-brand-600 hover:text-brand-500">
+            Sign in again
+          </a>
+          , or append <code>?demo=1</code> to browse sample data.
         </p>
-      </main>
+      </PageNotice>
     );
   }
 
   if (!client || !session) {
-    return (
-      <main class="shell">
-        <p class="muted">Connecting…</p>
-      </main>
-    );
+    return <PageNotice>Connecting…</PageNotice>;
   }
 
   const spec: SearchSpec = { ...searchSpec, inMailbox: mailbox?.id };
 
   return (
-    <div class="app">
-      {agentSeam ? (
-        <header class="topbar">
-          {/* s24 T5 — the search bar moved UP into the shared chrome (ShellNav):
-              one contextual filter whose meaning is the active realm. What
-              remains of mail's own bar is the capability-gated console seam,
-              which cannot live in the static nav (only the browser, after
-              session(), knows whether this session carries the agent cap). */}
-          <a class="console-link" href="/agents">
-            Agents
-          </a>
-        </header>
-      ) : null}
-
+    <div class="flex h-full min-h-0 w-full flex-col">
       {mode === "demo" ? (
-        <p class="banner">Demo data — nothing here is real mail{modeReason ? ` (${modeReason})` : ""}.</p>
+        <Alert tone="info" class="m-4 shrink-0">
+          Demo data — nothing here is real mail{modeReason ? ` (${modeReason})` : ""}.
+        </Alert>
       ) : null}
 
-      <div class="body">
+      <SurfaceFrame>
         <CollectionColumn
           title="Mail"
           storageKey="bm.cc.mail"
@@ -816,11 +797,11 @@ export default function AppShell({ client: injected }: Props) {
           newDisabled={!currentIdentity}
         />
 
-        <main class="content">
+        <section class="flex min-h-0 min-w-0 grow flex-col self-stretch" aria-label="Mail">
           {!isEmptySpec(searchSpec) ? (
-            <p class="scope-line">
+            <p class="border-b border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-white/10 dark:text-gray-400">
               {describeSearchScope(spec)}{" "}
-              <a class="link-button" href="/mail">
+              <a class="font-medium text-brand-600 hover:text-brand-500" href="/mail">
                 Clear
               </a>
             </p>
@@ -924,16 +905,8 @@ export default function AppShell({ client: injected }: Props) {
               }}
             />
           )}
-        </main>
-
-        {/*
-          The capability gate (arch.md §5, invariant §6.4). With
-          `urn:bullmoose:params:jmap:agent` absent this renders NOTHING — no
-          error, no empty panel, no dead region. s03.D fills it in; T2 is the
-          plain-client floor and must stay usable without it.
-        */}
-        {agentSeam ? <aside class="agent-seam" aria-label="Agent" /> : null}
-      </div>
+        </section>
+      </SurfaceFrame>
 
       {toast ? (
         // s25 T6 — the toast grew a verb. `role="status"` still announces the

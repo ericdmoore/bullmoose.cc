@@ -22,7 +22,6 @@ import {
 } from "../lib/goals/redline";
 import {
   GOALS_EMPTY,
-  GOALS_SUB,
   checkpointLine,
   milestoneLine,
   openPlanCheckpoint,
@@ -32,9 +31,28 @@ import {
   statusLabel,
   statusNote,
 } from "../lib/goals/view";
-import type { CheckpointClass, Goal, PlanPayload } from "../lib/goals/types";
+import type { CheckpointClass, Goal, GoalStatus, PlanPayload } from "../lib/goals/types";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
+import {
+  Alert,
+  Badge,
+  Button,
+  Column,
+  DescList,
+  DescRow,
+  EmptyState,
+  Field,
+  Input,
+  PageNotice,
+  StackedList,
+  StackedRow,
+  StatusDot,
+  SurfaceFrame,
+  Textarea,
+} from "./ui";
+import type { BadgeTone, StatusDotTone } from "../lib/ui/classes";
+import { ChevronRightIcon } from "./icons";
 
 /**
  * Goals (s20 T6) — the delegation contract, with an approvable plan.
@@ -132,74 +150,85 @@ export default function GoalsApp({ client: injectedClient }: Props) {
 
   if (fatal) {
     return (
-      <div class="shell shell-error">
-        <h1>Goals</h1>
-        <p role="alert">Could not reach the server: {fatal}</p>
-      </div>
+      <PageNotice title="Could not reach the server" error>
+        <p role="alert">{fatal}</p>
+      </PageNotice>
     );
   }
   if (!session) {
-    return (
-      <div class="shell">
-        <p class="muted">Connecting…</p>
-      </div>
-    );
+    return <PageNotice>Connecting…</PageNotice>;
   }
   if (!hasAgentCapability(session)) {
     return (
-      <div class="shell">
-        <h1>Goals</h1>
-        <p class="muted">
+      <PageNotice title="Goals are not available">
+        <p>
           This server does not advertise the bullmoose agent capability, so nothing can act in your name and there is
           nothing to delegate. Mail, contacts and calendar are unaffected.
         </p>
-        <p class="muted">
-          <a href="/mail">← back to mail</a>
+        <p class="mt-2">
+          <a href="/mail" class="font-medium text-brand-600 hover:text-brand-500">
+            Back to mail
+          </a>
         </p>
-      </div>
+      </PageNotice>
     );
   }
 
   return (
-    <div class="goal">
-      <header class="goal-head">
-        <h1>Goals</h1>
-        <p class="muted goal-sub">{GOALS_SUB}</p>
-        {notice ? <p class="goal-error">{notice}</p> : null}
-      </header>
+    <div class="flex h-full min-h-0 w-full flex-col">
+      {notice ? (
+        <Alert tone="error" class="m-4 shrink-0">
+          {notice}
+        </Alert>
+      ) : null}
 
-      <div class="goal-panes">
-        <section class="goal-pane goal-list" aria-label="Your goals">
-          <NewGoalForm client={client} accountId={accountId} onCreated={reload} />
-          {loading ? <p class="muted">Loading…</p> : null}
-          {!loading && ordered.length === 0 ? <p class="muted goal-empty">{GOALS_EMPTY}</p> : null}
-          <ul class="goal-rows">
-            {ordered.map((g) => (
-              <li key={g.id}>
-                <button
-                  type="button"
-                  class={g.id === selected?.id ? "goal-row goal-row-on" : "goal-row"}
-                  onClick={() => setSelectedId(g.id)}
-                >
-                  <span class="goal-row-statement">{g.statement}</span>
-                  <span class="goal-row-status">{statusLabel(g.status)}</span>
-                  <span class="goal-row-progress">{progressLine(g)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+      <SurfaceFrame>
+        <Column
+          aria-label="Your goals"
+          class="w-full shrink-0 border-gray-200 max-lg:border-b lg:w-96 lg:border-r dark:border-white/10"
+          header={
+            <div class="px-4 pt-4 pb-2">
+              <NewGoalForm client={client} accountId={accountId} onCreated={reload} />
+            </div>
+          }
+        >
+          {loading ? <p class="px-4 py-3 text-sm text-gray-500">Loading…</p> : null}
+          {!loading && ordered.length === 0 ? <EmptyState title="No goals yet">{GOALS_EMPTY}</EmptyState> : null}
+          <StackedList>
+            {ordered.map((g) => {
+              const tone = goalTone(g.status);
+              return (
+                <StackedRow key={g.id} active={g.id === selected?.id} onSelect={() => setSelectedId(g.id)}>
+                  <StatusDot tone={tone.dot} />
+                  <div class="min-w-0 flex-auto">
+                    <p class="line-clamp-2 text-sm/6 font-semibold text-gray-900 dark:text-white">{g.statement}</p>
+                    <p class="mt-1 text-xs/5 text-gray-500 dark:text-gray-400">{progressLine(g)}</p>
+                  </div>
+                  <Badge tone={tone.badge}>{statusLabel(g.status)}</Badge>
+                  <ChevronRightIcon class="size-5 flex-none text-gray-400" />
+                </StackedRow>
+              );
+            })}
+          </StackedList>
+        </Column>
 
-        <section class="goal-pane goal-detail" aria-label="Goal detail">
+        <Column aria-label="Goal detail" class="min-w-0 grow">
           {selected ? (
             <GoalDetail client={client} accountId={accountId} goal={selected} onChanged={reload} />
           ) : (
-            <p class="muted">Select a goal.</p>
+            <EmptyState title="Select a goal">The contract and checkpoints show here.</EmptyState>
           )}
-        </section>
-      </div>
+        </Column>
+      </SurfaceFrame>
     </div>
   );
+}
+
+function goalTone(status: GoalStatus): { badge: BadgeTone; dot: StatusDotTone } {
+  if (status === "accepted" || status === "done") return { badge: "success", dot: "success" };
+  if (status === "cancelled" || status === "stalled") return { badge: "error", dot: "error" };
+  if (status === "awaiting-plan" || status === "paused") return { badge: "warn", dot: "warn" };
+  return { badge: "accent", dot: "neutral" };
 }
 
 // ── one goal ───────────────────────────────────────────────────────────────
@@ -224,26 +253,28 @@ function GoalDetail(props: { client?: JmapClient; accountId: string; goal: Goal;
   };
 
   return (
-    <article class="goal-card">
-      <h2 class="goal-statement">{goal.statement}</h2>
-      <p class="goal-status">{statusLabel(goal.status)}</p>
-      {statusNote(goal) ? <p class="muted goal-statusnote">{statusNote(goal)}</p> : null}
-      <p class="muted goal-fine">
-        Stated by {goal.createdBy} · {progressLine(goal)}
-      </p>
-      <p class="muted goal-fine">{budgetLine(goal.budgetMicros, goal.spentMicros)}</p>
+    <article class="px-4 py-5 sm:px-6">
+      <div class="flex flex-wrap items-center gap-2">
+        <Badge tone={goalTone(goal.status).badge}>{statusLabel(goal.status)}</Badge>
+      </div>
+      <h2 class="mt-3 text-base/7 font-semibold text-gray-900 dark:text-white">{goal.statement}</h2>
+      {statusNote(goal) ? <p class="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">{statusNote(goal)}</p> : null}
 
-      {/* THE CONTRACT, verbatim and at the top: what you handed over is not a
-          settings page you configure once — it is the thing to re-read every
-          time you are asked to widen it. */}
-      <dl class="goal-contract">
+      <DescList
+        class="mt-4"
+        title="The contract"
+        description="What you handed over — re-read this every time you are asked to widen it."
+      >
+        <DescRow term="Stated by">
+          {goal.createdBy} · {progressLine(goal)}
+        </DescRow>
+        <DescRow term="Spend">{budgetLine(goal.budgetMicros, goal.spentMicros)}</DescRow>
         {contractLines(goal.contract).map((line) => (
-          <div key={line.label} class="goal-clause">
-            <dt>{line.label}</dt>
-            <dd>{line.value}</dd>
-          </div>
+          <DescRow key={line.label} term={line.label}>
+            {line.value}
+          </DescRow>
         ))}
-      </dl>
+      </DescList>
 
       {checkpoint && client ? (
         <PlanRedline
@@ -255,20 +286,19 @@ function GoalDetail(props: { client?: JmapClient; accountId: string; goal: Goal;
         />
       ) : null}
 
-      <section class="goal-checkpoints" aria-label="Checkpoints">
-        <h3>Checkpoints</h3>
-        <p class="muted goal-fine">
+      <section class="mt-8" aria-label="Checkpoints">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Checkpoints</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
           Checkpoints thin one class at a time, never all at once — a goal that graduated wholesale is exactly the
           silently-widening autonomy this product exists to prevent.
         </p>
-        <ul>
+        <ul class="mt-3 divide-y divide-gray-100 dark:divide-white/5">
           {(["plan", "email", "summary"] as CheckpointClass[]).map((cls) => (
-            <li key={cls} class="goal-checkpoint">
-              <span>{checkpointLine(cls, goal.checkpoints[cls])}</span>
+            <li key={cls} class="flex flex-wrap items-baseline justify-between gap-2 py-3 text-sm">
+              <span class="text-gray-700 dark:text-gray-300">{checkpointLine(cls, goal.checkpoints[cls])}</span>
               {goal.checkpoints[cls].graduable && goal.status !== "cancelled" ? (
-                <button
-                  type="button"
-                  class="goal-mini"
+                <Button
+                  size="sm"
                   disabled={busy}
                   onClick={() =>
                     void act(() =>
@@ -283,43 +313,45 @@ function GoalDetail(props: { client?: JmapClient; accountId: string; goal: Goal;
                   }
                 >
                   {goal.checkpoints[cls].mode === "auto" ? "Stop for me again" : "Let it run without me"}
-                </button>
+                </Button>
               ) : null}
             </li>
           ))}
         </ul>
       </section>
 
-      <section class="goal-milestones" aria-label="Milestones">
-        <h3>Milestones</h3>
+      <section class="mt-8" aria-label="Milestones">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Milestones</h3>
         {goal.milestones.length === 0 ? (
-          <p class="muted">Nothing has happened yet.</p>
+          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Nothing has happened yet.</p>
         ) : (
-          <ol>
+          <ol class="mt-3 list-decimal space-y-2 pl-5 text-sm">
             {orderMilestones(goal.milestones).map((m) => (
               <li key={m.proposalId}>
-                <span class="goal-milestone">{milestoneLine(m)}</span>
-                <span class="muted goal-fine"> {m.summary}</span>
+                <span class="font-medium text-gray-900 dark:text-white">{milestoneLine(m)}</span>
+                <span class="text-gray-500 dark:text-gray-400"> {m.summary}</span>
               </li>
             ))}
           </ol>
         )}
       </section>
 
-      {error ? <p class="goal-error">{error}</p> : null}
+      {error ? (
+        <Alert tone="error" class="mt-4">
+          {error}
+        </Alert>
+      ) : null}
 
       {goal.status !== "cancelled" && goal.status !== "accepted" ? (
-        <p>
-          <button
-            type="button"
-            class="goal-danger"
+        <p class="mt-6">
+          <Button
+            variant="danger"
             disabled={busy}
             onClick={() => void act(() => cancelGoal(client!, accountId, goal.id))}
           >
             Cancel this goal
-          </button>
-          <span class="muted goal-fine">
-            {" "}
+          </Button>
+          <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
             Revokes the standing authority and stops every waiting task. The record stays.
           </span>
         </p>
@@ -396,92 +428,106 @@ function PlanRedline(props: {
 
   if (!payload) {
     return (
-      <section class="goal-plan" aria-label="Plan awaiting approval">
-        <h3>The plan</h3>
-        <p class="muted">{error ?? "Loading the sketch…"}</p>
+      <section class="mt-8 rounded-lg ring-1 ring-brand-500/30 ring-inset" aria-label="Plan awaiting approval">
+        <div class="px-4 py-4">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">The plan</h3>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{error ?? "Loading the sketch…"}</p>
+        </div>
       </section>
     );
   }
 
   return (
-    <section class="goal-plan" aria-label="Plan awaiting approval">
-      <h3>The plan, before anything runs</h3>
-      <p class="muted goal-fine">
-        Nothing below exists yet. Approving creates these tasks; each message they produce still comes back to you as
-        its own approval.
-      </p>
-
-      <table class="goal-plantable">
-        <thead>
-          <tr>
-            <th scope="col">Task</th>
-            <th scope="col">Does</th>
-            <th scope="col">To</th>
-            <th scope="col">Keep?</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={row.key} class={row.dropped ? "goal-dropped" : undefined}>
-              <td>{row.key}</td>
-              <td>{row.op}</td>
-              <td>
-                {row.op === "outreach" ? (
-                  <input
-                    type="text"
-                    class="goal-input"
-                    value={row.to}
-                    aria-label={`Recipient for ${row.key}`}
-                    disabled={row.dropped}
-                    onInput={(e) => {
-                      const to = (e.currentTarget as HTMLInputElement).value;
-                      setRows(rows.map((r, j) => (j === i ? { ...r, to } : r)));
-                    }}
-                  />
-                ) : (
-                  <span class="muted">—</span>
-                )}
-              </td>
-              <td>
-                <button
-                  type="button"
-                  class="goal-mini"
-                  onClick={() => setRows(rows.map((r, j) => (j === i ? { ...r, dropped: !r.dropped } : r)))}
-                >
-                  {row.dropped ? "Put back" : "Strike"}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <label class="goal-question">
-        <span>Still unclear? Ask the planner instead.</span>
-        <textarea
-          class="goal-input"
-          rows={2}
-          value={question}
-          onInput={(e) => setQuestion((e.currentTarget as HTMLTextAreaElement).value)}
-        />
-      </label>
-
-      {decision.problems.map((p) => (
-        <p key={p} class="goal-error">
-          {p}
+    <section class="mt-8 rounded-lg ring-1 ring-brand-500/30 ring-inset" aria-label="Plan awaiting approval">
+      <div class="px-4 py-4">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white">The plan, before anything runs</h3>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Nothing below exists yet. Approving creates these tasks; each message they produce still comes back to you as
+          its own approval.
         </p>
-      ))}
-      {error ? <p class="goal-error">{error}</p> : null}
 
-      <p class="muted goal-fine">{redlineActionNote(decision)}</p>
-      <p class="goal-actions">
-        <button type="button" class="goal-primary" disabled={busy || blocked} onClick={() => void send()}>
-          {redlineActionLabel(decision)}
-        </button>
-        <button type="button" class="goal-mini" disabled={busy} onClick={() => void decline()}>
-          Not this workflow
-        </button>
-      </p>
+        <div class="mt-4 overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-300 dark:divide-white/15">
+            <thead>
+              <tr>
+                <th scope="col" class="py-2 pr-3 text-left text-xs font-semibold text-gray-900 dark:text-white">
+                  Task
+                </th>
+                <th scope="col" class="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white">
+                  Does
+                </th>
+                <th scope="col" class="px-3 py-2 text-left text-xs font-semibold text-gray-900 dark:text-white">
+                  To
+                </th>
+                <th scope="col" class="py-2 pl-3 text-left text-xs font-semibold text-gray-900 dark:text-white">
+                  Keep?
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200 dark:divide-white/10">
+              {rows.map((row, i) => (
+                <tr key={row.key} class={row.dropped ? "text-gray-400 line-through opacity-60" : undefined}>
+                  <td class="py-2 pr-3 text-sm">{row.key}</td>
+                  <td class="px-3 py-2 text-sm">{row.op}</td>
+                  <td class="px-3 py-2 text-sm">
+                    {row.op === "outreach" ? (
+                      <Input
+                        type="text"
+                        value={row.to}
+                        aria-label={`Recipient for ${row.key}`}
+                        disabled={row.dropped}
+                        onInput={(e) => {
+                          const to = (e.currentTarget as HTMLInputElement).value;
+                          setRows(rows.map((r, j) => (j === i ? { ...r, to } : r)));
+                        }}
+                      />
+                    ) : (
+                      <span class="text-gray-500">—</span>
+                    )}
+                  </td>
+                  <td class="py-2 pl-3">
+                    <Button
+                      size="sm"
+                      onClick={() => setRows(rows.map((r, j) => (j === i ? { ...r, dropped: !r.dropped } : r)))}
+                    >
+                      {row.dropped ? "Put back" : "Strike"}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <Field label="Still unclear? Ask the planner instead." class="mt-4">
+          <Textarea
+            rows={2}
+            value={question}
+            onInput={(e) => setQuestion((e.currentTarget as HTMLTextAreaElement).value)}
+          />
+        </Field>
+
+        {decision.problems.map((p) => (
+          <Alert key={p} tone="error" class="mt-2">
+            {p}
+          </Alert>
+        ))}
+        {error ? (
+          <Alert tone="error" class="mt-2">
+            {error}
+          </Alert>
+        ) : null}
+
+        <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">{redlineActionNote(decision)}</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <Button variant="primary" disabled={busy || blocked} onClick={() => void send()}>
+            {redlineActionLabel(decision)}
+          </Button>
+          <Button disabled={busy} onClick={() => void decline()}>
+            Not this workflow
+          </Button>
+        </div>
+      </div>
     </section>
   );
 }
@@ -536,86 +582,71 @@ function NewGoalForm(props: { client?: JmapClient; accountId: string; onCreated:
 
   if (!open) {
     return (
-      <p>
-        <button type="button" class="goal-primary" onClick={() => setOpen(true)}>
-          State a goal
-        </button>
-      </p>
+      <Button variant="primary" onClick={() => setOpen(true)}>
+        State a goal
+      </Button>
     );
   }
 
   return (
-    <div class="goal-new">
-      <label class="goal-field">
-        <span>What do you want to be true?</span>
-        <input
+    <div class="rounded-lg p-3 ring-1 ring-gray-200 ring-inset dark:ring-white/10">
+      <Field label="What do you want to be true?">
+        <Input
           type="text"
-          class="goal-input"
           value={form.statement}
           placeholder="get three structural engineers willing to evaluate the attic"
           onInput={(e) => setForm({ ...form, statement: (e.currentTarget as HTMLInputElement).value })}
         />
-      </label>
-      <label class="goal-field">
-        <span>May write to (addresses or @domains, comma separated)</span>
-        <input
+      </Field>
+      <Field label="May write to (addresses or @domains, comma separated)" class="mt-3">
+        <Input type="text" value={contact} onInput={(e) => setContact((e.currentTarget as HTMLInputElement).value)} />
+      </Field>
+      <Field label="May not (one per line — read at every checkpoint, never enforced by arithmetic)" class="mt-3">
+        <Textarea rows={2} value={mayNot} onInput={(e) => setMayNot((e.currentTarget as HTMLTextAreaElement).value)} />
+      </Field>
+      <Field label="Done when" class="mt-3">
+        <Input
           type="text"
-          class="goal-input"
-          value={contact}
-          onInput={(e) => setContact((e.currentTarget as HTMLInputElement).value)}
-        />
-      </label>
-      <label class="goal-field">
-        <span>May not (one per line — read at every checkpoint, never enforced by arithmetic)</span>
-        <textarea
-          class="goal-input"
-          rows={2}
-          value={mayNot}
-          onInput={(e) => setMayNot((e.currentTarget as HTMLTextAreaElement).value)}
-        />
-      </label>
-      <label class="goal-field">
-        <span>Done when</span>
-        <input
-          type="text"
-          class="goal-input"
           value={form.doneWhen}
           placeholder="three engineers have said yes"
           onInput={(e) => setForm({ ...form, doneWhen: (e.currentTarget as HTMLInputElement).value })}
         />
-      </label>
-      <label class="goal-field">
-        <span>Spend bound, US$ (what the agent may spend pursuing this — not what anyone may promise)</span>
-        <input
+      </Field>
+      <Field
+        label="Spend bound, US$ (what the agent may spend pursuing this — not what anyone may promise)"
+        class="mt-3"
+      >
+        <Input
           type="text"
-          class="goal-input"
           value={budget}
           placeholder="750"
           onInput={(e) => setBudget((e.currentTarget as HTMLInputElement).value)}
         />
-      </label>
-      <label class="goal-field">
-        <span>Escalate after (days, blank for never)</span>
-        <input
+      </Field>
+      <Field label="Escalate after (days, blank for never)" class="mt-3">
+        <Input
           type="text"
-          class="goal-input"
           value={form.escalateAfterDays === null ? "" : String(form.escalateAfterDays)}
           onInput={(e) => {
             const raw = (e.currentTarget as HTMLInputElement).value.trim();
             setForm({ ...form, escalateAfterDays: raw === "" ? null : Number(raw) });
           }}
         />
-      </label>
-      {error ? <p class="goal-error">{error}</p> : null}
-      <p class="goal-actions">
-        <button type="button" class="goal-primary" disabled={busy} onClick={() => void submit()}>
+      </Field>
+      {error ? (
+        <Alert tone="error" class="mt-3">
+          {error}
+        </Alert>
+      ) : null}
+      <div class="mt-3 flex flex-wrap gap-2">
+        <Button variant="primary" disabled={busy} onClick={() => void submit()}>
           State it
-        </button>
-        <button type="button" class="goal-mini" disabled={busy} onClick={() => setOpen(false)}>
+        </Button>
+        <Button disabled={busy} onClick={() => setOpen(false)}>
           Never mind
-        </button>
-      </p>
-      <p class="muted goal-fine">
+        </Button>
+      </div>
+      <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
         Stating a goal does not start anything: the agent proposes how it would work, and you approve that plan first.
       </p>
     </div>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  alertClasses,
   avatarClasses,
   avatarInitial,
   badgeClasses,
@@ -8,9 +9,13 @@ import {
   FAB_CLEARANCE_PX,
   fabClasses,
   iconButtonClasses,
+  inputClasses,
   listRowClasses,
   searchFieldClasses,
   searchYieldClasses,
+  stackedListClasses,
+  stackedRowClasses,
+  statusDotClasses,
 } from "./classes";
 
 // s24 T0 — the pure class-logic behind the primitives. These are the tested
@@ -83,6 +88,28 @@ describe("listRowClasses", () => {
   it("muted drops the strong foreground", () => {
     expect(listRowClasses({ muted: true })).toContain("text-gray-500");
     expect(listRowClasses()).toContain("text-gray-900");
+  });
+});
+
+describe("alert / stacked list / input (Tailwind UI ports)", () => {
+  it("alert tones are distinct", () => {
+    const tones = ["info", "warn", "error", "success"] as const;
+    expect(new Set(tones.map((t) => alertClasses(t))).size).toBe(tones.length);
+    expect(alertClasses("warn")).toContain("bg-yellow-50");
+    expect(alertClasses("info")).toContain("bg-brand-50");
+  });
+  it("stacked list is divided; active row uses the brand wash", () => {
+    expect(stackedListClasses()).toContain("divide-y");
+    expect(stackedRowClasses({ active: true })).toContain("bg-brand-50");
+    expect(stackedRowClasses()).toContain("hover:bg-gray-50");
+  });
+  it("status dots are distinct", () => {
+    expect(statusDotClasses("success")).toContain("text-green-500");
+    expect(statusDotClasses("error")).toContain("text-rose-500");
+  });
+  it("inputs outline in brand, never indigo", () => {
+    expect(inputClasses()).toContain("focus:outline-brand-600");
+    expect(inputClasses()).not.toContain("indigo");
   });
 });
 

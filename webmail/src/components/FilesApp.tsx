@@ -29,11 +29,30 @@ import {
   PARTIAL_SORT_NOTE,
   describeListing,
 } from "../lib/files/scope";
-import { ROOT_CRUMB, moveTargets, type Crumb } from "../lib/files/tree";
+import { ROOT_CRUMB, childrenOf, moveTargets, type Crumb } from "../lib/files/tree";
 import type { FileNode, FileWriteResult } from "../lib/files/types";
 import { FILENODE_CAP, hasCapability } from "../lib/jmap/capabilities";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
+import CollectionColumn from "./CollectionColumn";
+import type { CollectionGroup } from "../lib/shell/collections";
+import {
+  Alert,
+  Badge,
+  Breadcrumb,
+  Button,
+  Column,
+  DescList,
+  DescRow,
+  EmptyState,
+  Field,
+  Input,
+  PageNotice,
+  Select,
+  StackedList,
+  SurfaceFrame,
+} from "./ui";
+import { FolderIcon } from "./icons";
 
 // The Files section (s03.C T3, over s03.B's FileNode collection).
 //
@@ -210,6 +229,19 @@ export default function FilesApp({ client: injected, search }: Props) {
       stop?.();
     };
   }, [client, accountId, refresh]);
+
+  useEffect(() => {
+    if (!client || !accountId) return;
+    let cancelled = false;
+    void loadDirectories(client, accountId)
+      .then((res) => {
+        if (!cancelled) setDirectories(res.directories);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [client, accountId, reloadKey]);
 
   const children = page?.children ?? [];
   const selected = children.find((n) => n.id === selectedId);
@@ -432,428 +464,459 @@ export default function FilesApp({ client: injected, search }: Props) {
     [selected, directories],
   );
 
+  const fileGroups: CollectionGroup[] = useMemo(() => {
+    const dirs = directories ?? [];
+    const top = childrenOf(dirs, null);
+    return [
+      {
+        id: "places",
+        label: "Places",
+        items: [
+          { id: "root", label: "All files", icon: FolderIcon },
+          ...top.map((d) => ({
+            id: d.id,
+            label: d.name,
+            icon: FolderIcon,
+            note: d.role === ATTACHMENTS_ROLE ? "from mail" : undefined,
+            children: childrenOf(dirs, d.id).map((c) => ({
+              id: c.id,
+              label: c.name,
+              icon: FolderIcon,
+              note: c.role === ATTACHMENTS_ROLE ? "from mail" : undefined,
+            })),
+          })),
+        ],
+      },
+    ];
+  }, [directories]);
+
   // ── render ──────────────────────────────────────────────────────────────
 
   if (fatal) {
     return (
-      <main class="shell shell-error">
-        <h1>Files are not reachable</h1>
-        <p class="muted">{fatal}</p>
-        <p class="muted">
-          <a href="/login">Sign in again</a>, or append <code>?demo=1</code> to browse sample data.
+      <PageNotice title="Files are not reachable" error>
+        <p>{fatal}</p>
+        <p class="mt-2">
+          <a href="/login" class="font-medium text-brand-600 hover:text-brand-500">
+            Sign in again
+          </a>
+          , or append <code>?demo=1</code> to browse sample data.
         </p>
-      </main>
+      </PageNotice>
     );
   }
 
   if (!client || !session) {
-    return (
-      <main class="shell">
-        <p class="muted">Connecting…</p>
-      </main>
-    );
+    return <PageNotice>Connecting…</PageNotice>;
   }
 
-  // The plain-client floor (arch.md §8.6): with the capability absent this is a
-  // sentence, not an empty drive with five buttons that would 400.
   if (!hasCapability(session, FILENODE_CAP)) {
     return (
-      <main class="shell shell-error">
-        <h1>No files here</h1>
-        <p class="empty-means">{NO_CAPABILITY_NOTE}</p>
-        <p class="muted">
+      <PageNotice title="No files here">
+        <p>{NO_CAPABILITY_NOTE}</p>
+        <p class="mt-2">
           The capability this section needs is <code>{FILENODE_CAPABILITY}</code>.
         </p>
-      </main>
+      </PageNotice>
     );
   }
 
   if (accounts.length === 0) {
     return (
-      <main class="shell">
-        <h1>No files here</h1>
-        {/* Not "you have no files" — this session reaches no account that
-            advertises the Files capability at all, which is a different thing
-            and a different fix (session.ts:22-58). */}
-        <p class="empty-means">
-          This session reaches no account with a Files realm. A token scoped to mail only, or a grant that shares a
-          mailbox but not the account, both land here — the files are not missing, they are out of reach.
-        </p>
-      </main>
+      <PageNotice title="No files here">
+        This session reaches no account with a Files realm. A token scoped to mail only, or a grant that shares a
+        mailbox but not the account, both land here — the files are not missing, they are out of reach.
+      </PageNotice>
     );
   }
 
-  /** Are we inside the sidestep's folder? Only then is the missing reverse
-   *  link to the source message worth a sentence. */
   const inAttachments = page?.dir?.role === ATTACHMENTS_ROLE;
   const listingNote = describeListing(children.length, page?.total);
   const hasMore = typeof page?.total === "number" && page.total > children.length;
+  const crumbs = page?.trail.crumbs ?? [ROOT_CRUMB];
 
-  return (
-    <div class="app files">
-      <header class="topbar">
-        <nav class="crumbs" aria-label="Breadcrumb">
-          {/* Before the first listing lands there is still a place to be: the
-              root. An empty bar for a moment reads as a broken header. */}
-          {(page?.trail.crumbs ?? [ROOT_CRUMB]).map((crumb, i, all) =>
-            i === all.length - 1 ? (
-              <span class="crumb crumb-here" aria-current="page">
-                {crumb.name}
-              </span>
-            ) : (
-              <>
-                <button
-                  class="crumb link-button"
-                  onClick={() => {
-                    setDirId(crumb.id);
-                    setSelectedId(undefined);
-                    setLimit(CHILD_PAGE_SIZE);
-                  }}
-                >
-                  {crumb.name}
-                </button>
-                <span class="crumb-sep" aria-hidden="true">
-                  /
-                </span>
-              </>
-            ),
-          )}
-        </nav>
-
-        {accounts.length > 1 ? (
-          <label class="files-account">
-            <span class="muted">Account</span>
-            <select
-              value={accountId}
-              onChange={(ev) => {
-                setAccountId((ev.currentTarget as HTMLSelectElement).value);
-                setDirId(null);
-                setSelectedId(undefined);
-                setDirectories(undefined);
+  const filesFooter = (
+    <div class="px-2 pb-4">
+      {canWrite ? (
+        <>
+          <Field label="New folder" error={folderProblem} class="mb-3">
+            <Input
+              type="text"
+              value={folderName}
+              placeholder="Folder name"
+              aria-invalid={folderProblem ? "true" : undefined}
+              onInput={(ev) => {
+                setFolderName((ev.currentTarget as HTMLInputElement).value);
+                setFolderProblem(undefined);
               }}
-            >
-              {accounts.map((a) => (
-                <option value={a.id}>
-                  {a.name}
-                  {a.isPersonal ? "" : " (shared)"}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-      </header>
-
-      {mode === "demo" ? (
-        <p class="banner">Demo data — none of these files are real{modeReason ? ` (${modeReason})` : ""}.</p>
-      ) : null}
-
-      {page?.trail.truncated ? (
-        <p class="banner banner-warn">
-          The trail above is incomplete — a parent folder of this one could not be read, so this is not the full path.
-        </p>
-      ) : null}
-
-      {readRefusal ? <p class="banner banner-warn">{readRefusal.message}</p> : null}
-      {!readRefusal && writeRefused ? <p class="banner banner-warn">{NO_WRITE_SCOPE_NOTE}</p> : null}
-
-      <div class="body">
-        <aside class="sidebar">
-          {canWrite ? (
-            <>
-              <form
-                class="files-newfolder"
-                onSubmit={(ev) => {
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter") {
                   ev.preventDefault();
                   void submitFolder();
-                }}
-              >
-                <label>
-                  <span class="muted">New folder</span>
-                  <input
-                    type="text"
-                    value={folderName}
-                    placeholder="Folder name"
-                    aria-invalid={folderProblem ? "true" : undefined}
-                    aria-describedby={folderProblem ? "folder-problem" : undefined}
-                    onInput={(ev) => {
-                      setFolderName((ev.currentTarget as HTMLInputElement).value);
-                      setFolderProblem(undefined);
-                    }}
-                  />
-                </label>
-                <button type="submit" disabled={busy || folderName.trim() === ""}>
-                  Create folder
-                </button>
-                {folderProblem ? (
-                  <p id="folder-problem" class="files-problem">
-                    {folderProblem}
-                  </p>
-                ) : null}
-              </form>
-
-              {/* The accessible upload path. It is a real <input type="file">,
-                  labelled, keyboard-reachable and first — the drop zone below
-                  is the shortcut, not the interface. */}
-              <div class="files-upload">
-                <label class="files-upload-label" for="files-input">
-                  Upload files
-                </label>
-                <input
-                  id="files-input"
-                  type="file"
-                  multiple
-                  disabled={busy}
-                  onChange={(ev) => {
-                    const input = ev.currentTarget as HTMLInputElement;
-                    const picked = Array.from(input.files ?? []);
-                    // Clear so picking the same file twice still fires.
-                    input.value = "";
-                    void runUploads(picked);
-                  }}
-                />
-                <p class="muted files-hint">…or drop them onto the list.</p>
-              </div>
-            </>
-          ) : (
-            <p class="muted files-hint">
-              {readRefusal ? "Nothing can be changed here while files cannot be read." : NO_WRITE_SCOPE_NOTE}
-            </p>
-          )}
-
-          {uploads.length > 0 ? (
-            <section class="files-queue">
-              <h2 class="files-queue-h">Uploads</h2>
-              <ul>
-                {uploads.map((row) => (
-                  <li class={`files-queue-row is-${row.status}`}>
-                    <span class="files-queue-name">{row.name}</span>
-                    <span class="pill">{statusLabel(row.status)}</span>
-                    {row.renamedFrom ? (
-                      <span class="muted files-queue-note">renamed from “{row.renamedFrom}” — that name was taken</span>
-                    ) : null}
-                    {row.message ? <span class="files-queue-note">{row.message}</span> : null}
-                  </li>
-                ))}
-              </ul>
-              <div class="actions">
-                {uploads.some((r) => r.status === "failed") ? (
-                  <button disabled={busy} onClick={retryFailed}>
-                    Retry failed
-                  </button>
-                ) : null}
-                <button
-                  class="link-button"
-                  disabled={busy}
-                  onClick={() => setUploads((prev) => prev.filter((r) => r.status === "failed"))}
-                >
-                  Clear finished
-                </button>
-              </div>
-            </section>
-          ) : null}
-        </aside>
-
-        <main class="content">
-          <p class="scope-line">
-            {describeCount(page?.total ?? children.length)}
-            {listingNote ? ` ${listingNote}` : ""}
-            {hasMore ? ` ${PARTIAL_SORT_NOTE}` : ""}
-          </p>
-
-          <div class="files-panes">
-            <ul
-              class={`file-list${dropping ? " is-dropping" : ""}`}
-              onDragOver={(ev) => {
-                if (!canWrite) return;
-                ev.preventDefault();
-                setDropping(true);
+                }
               }}
-              onDragLeave={() => setDropping(false)}
-              onDrop={(ev) => {
-                ev.preventDefault();
-                setDropping(false);
-                if (!canWrite) return;
-                const dropped = Array.from(ev.dataTransfer?.files ?? []);
-                void runUploads(dropped);
-              }}
+            />
+          </Field>
+          <Button
+            variant="primary"
+            class="mb-4 w-full"
+            disabled={busy || folderName.trim() === ""}
+            onClick={() => void submitFolder()}
+          >
+            Create folder
+          </Button>
+          <label class="block text-sm/6 font-medium text-gray-900 dark:text-white" htmlFor="files-input">
+            Upload files
+          </label>
+          <input
+            id="files-input"
+            type="file"
+            multiple
+            disabled={busy}
+            class="mt-2 block w-full text-sm text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-brand-700 hover:file:bg-brand-100 dark:file:bg-brand-500/20 dark:file:text-brand-100"
+            onChange={(ev) => {
+              const input = ev.currentTarget as HTMLInputElement;
+              const picked = Array.from(input.files ?? []);
+              input.value = "";
+              void runUploads(picked);
+            }}
+          />
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">…or drop them onto the list.</p>
+        </>
+      ) : (
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          {readRefusal ? "Nothing can be changed here while files cannot be read." : NO_WRITE_SCOPE_NOTE}
+        </p>
+      )}
+      {uploads.length > 0 ? (
+        <section class="mt-4 border-t border-gray-100 pt-3 dark:border-white/10" aria-label="Uploads">
+          <h2 class="text-xs font-semibold tracking-wide text-gray-500 uppercase">Uploads</h2>
+          <ul class="mt-2 divide-y divide-gray-100 dark:divide-white/5">
+            {uploads.map((row) => (
+              <li key={row.key} class="py-2 text-xs">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="min-w-0 truncate font-medium text-gray-900 dark:text-white">{row.name}</span>
+                  <Badge tone={row.status === "failed" ? "error" : row.status === "done" ? "success" : "neutral"}>
+                    {statusLabel(row.status)}
+                  </Badge>
+                </div>
+                {row.renamedFrom ? (
+                  <p class="mt-0.5 text-gray-500">renamed from “{row.renamedFrom}” — that name was taken</p>
+                ) : null}
+                {row.message ? <p class="mt-0.5 text-red-600 dark:text-red-400">{row.message}</p> : null}
+              </li>
+            ))}
+          </ul>
+          <div class="mt-2 flex flex-wrap gap-2">
+            {uploads.some((r) => r.status === "failed") ? (
+              <Button size="sm" disabled={busy} onClick={retryFailed}>
+                Retry failed
+              </Button>
+            ) : null}
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() => setUploads((prev) => prev.filter((r) => r.status === "failed"))}
             >
-              {children.map((node) => (
-                <li>
-                  <button
-                    class={`file-row${node.id === selectedId ? " is-selected" : ""}`}
-                    onDblClick={() => {
-                      if (node.nodeType === "directory") {
-                        setDirId(node.id);
-                        setSelectedId(undefined);
-                        setLimit(CHILD_PAGE_SIZE);
-                      }
-                    }}
-                    onClick={() => {
-                      setSelectedId(node.id);
-                      setRenaming(false);
-                    }}
+              Clear finished
+            </Button>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <div class="flex h-full min-h-0 w-full flex-col">
+      {mode === "demo" ? (
+        <Alert tone="info" class="m-4 shrink-0">
+          Demo data — none of these files are real{modeReason ? ` (${modeReason})` : ""}.
+        </Alert>
+      ) : null}
+      {page?.trail.truncated ? (
+        <Alert tone="warn" class="mx-4 mb-2 shrink-0">
+          The trail above is incomplete — a parent folder of this one could not be read, so this is not the full path.
+        </Alert>
+      ) : null}
+      {readRefusal ? (
+        <Alert tone="warn" class="mx-4 mb-2 shrink-0">
+          {readRefusal.message}
+        </Alert>
+      ) : null}
+      {!readRefusal && writeRefused ? (
+        <Alert tone="warn" class="mx-4 mb-2 shrink-0">
+          {NO_WRITE_SCOPE_NOTE}
+        </Alert>
+      ) : null}
+
+      <SurfaceFrame>
+        <CollectionColumn
+          title="Files"
+          storageKey="bm.cc.files"
+          groups={fileGroups}
+          selectedId={dirId ?? "root"}
+          onSelect={(id) => {
+            setDirId(id === "root" ? null : id);
+            setSelectedId(undefined);
+            setLimit(CHILD_PAGE_SIZE);
+          }}
+          actions={
+            accounts.length > 1 ? (
+              <Field label="Account" class="px-2 pb-2">
+                <Select
+                  value={accountId}
+                  onChange={(ev) => {
+                    setAccountId((ev.currentTarget as HTMLSelectElement).value);
+                    setDirId(null);
+                    setSelectedId(undefined);
+                    setDirectories(undefined);
+                  }}
+                >
+                  {accounts.map((a) => (
+                    <option value={a.id}>
+                      {a.name}
+                      {a.isPersonal ? "" : " (shared)"}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null
+          }
+          footer={filesFooter}
+        />
+
+        <Column
+          aria-label="Folder contents"
+          class="w-full shrink-0 border-gray-200 max-lg:border-b lg:w-96 lg:border-r dark:border-white/10"
+          header={
+            <div class="flex flex-col gap-2 px-4 pt-4 pb-2">
+              <Breadcrumb
+                items={crumbs.map((crumb, i, all) => ({
+                  label: crumb.name,
+                  current: i === all.length - 1,
+                  onSelect:
+                    i === all.length - 1
+                      ? undefined
+                      : () => {
+                          setDirId(crumb.id);
+                          setSelectedId(undefined);
+                          setLimit(CHILD_PAGE_SIZE);
+                        },
+                }))}
+              />
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {describeCount(page?.total ?? children.length)}
+                {listingNote ? ` ${listingNote}` : ""}
+                {hasMore ? ` ${PARTIAL_SORT_NOTE}` : ""}
+              </p>
+            </div>
+          }
+        >
+          <div
+            class={
+              dropping
+                ? "min-h-full bg-brand-50 ring-1 ring-inset ring-brand-500/30 dark:bg-brand-500/10"
+                : "min-h-full"
+            }
+            onDragOver={(ev) => {
+              if (!canWrite) return;
+              ev.preventDefault();
+              setDropping(true);
+            }}
+            onDragLeave={() => setDropping(false)}
+            onDrop={(ev) => {
+              ev.preventDefault();
+              setDropping(false);
+              if (!canWrite) return;
+              const dropped = Array.from(ev.dataTransfer?.files ?? []);
+              void runUploads(dropped);
+            }}
+          >
+            {children.length === 0 && !loading ? (
+              <EmptyState title={dirId === null ? "Nothing in Files yet" : "This folder is empty"}>
+                {readRefusal
+                  ? "Nothing is listed because this session cannot read files."
+                  : dirId === null
+                    ? "Make a folder, drop something in, or wait — large incoming attachments file themselves here."
+                    : "Drop files here, or upload from the collection column."}
+              </EmptyState>
+            ) : (
+              <StackedList>
+                {children.map((node) => (
+                  <li
+                    key={node.id}
+                    class="relative flex items-center gap-x-2 py-3 pr-2 pl-2 hover:bg-gray-50 dark:hover:bg-white/[0.03]"
                   >
-                    <span class="file-icon" aria-hidden="true">
-                      {node.nodeType === "directory" ? "▸" : "·"}
-                    </span>
-                    <span class="file-name">{node.name}</span>
-                    {node.role === ATTACHMENTS_ROLE ? <span class="pill">from mail</span> : null}
-                    <span class="file-meta muted">
-                      {node.nodeType === "directory" ? "Folder" : formatSize(node.size)}
-                    </span>
-                  </button>
-                  {node.nodeType === "directory" ? (
                     <button
-                      class="link-button file-open"
+                      type="button"
+                      class={
+                        "flex min-w-0 flex-1 items-center gap-x-3 text-left " +
+                        (node.id === selectedId ? "font-semibold" : "")
+                      }
                       onClick={() => {
-                        setDirId(node.id);
-                        setSelectedId(undefined);
-                        setLimit(CHILD_PAGE_SIZE);
+                        setSelectedId(node.id);
+                        setRenaming(false);
+                      }}
+                      onDblClick={() => {
+                        if (node.nodeType === "directory") {
+                          setDirId(node.id);
+                          setSelectedId(undefined);
+                          setLimit(CHILD_PAGE_SIZE);
+                        }
                       }}
                     >
-                      Open
+                      <FolderIcon
+                        class={
+                          node.nodeType === "directory"
+                            ? "size-5 shrink-0 text-brand-500"
+                            : "size-5 shrink-0 text-gray-400"
+                        }
+                      />
+                      <span class="min-w-0 flex-auto">
+                        <span class="block truncate text-sm/6 font-semibold text-gray-900 dark:text-white">
+                          {node.name}
+                        </span>
+                        <span class="mt-0.5 block text-xs/5 text-gray-500 dark:text-gray-400">
+                          {node.nodeType === "directory" ? "Folder" : formatSize(node.size)}
+                        </span>
+                      </span>
+                      {node.role === ATTACHMENTS_ROLE ? <Badge>from mail</Badge> : null}
                     </button>
-                  ) : null}
-                </li>
-              ))}
-
-              {children.length === 0 && !loading ? (
-                <li class="empty-means">
-                  {readRefusal
-                    ? "Nothing is listed because this session cannot read files."
-                    : dirId === null
-                      ? "There is nothing in Files yet. Make a folder, drop something in, or wait — " +
-                        "large incoming attachments file themselves here."
-                      : "This folder is empty."}
-                </li>
-              ) : null}
-
-              {hasMore ? (
-                <li class="files-pager">
-                  <button class="link-button" disabled={loading} onClick={() => setLimit((n) => n + CHILD_PAGE_SIZE)}>
-                    {loading ? "Loading…" : `Load more (${(page?.total ?? 0) - children.length} left)`}
-                  </button>
-                </li>
-              ) : null}
-            </ul>
-
-            <section class="file-detail">
-              {selected ? (
-                <article class="panel">
-                  <h2>
-                    {selected.name}
-                    {selected.role === ATTACHMENTS_ROLE ? <span class="pill">from mail</span> : null}
-                  </h2>
-
-                  <div class="row">
-                    <p class="detail-line">
-                      <span class="muted">Kind</span> {formatType(selected.type, selected.nodeType)}
-                    </p>
-                    {selected.nodeType === "file" ? (
-                      <p class="detail-line">
-                        <span class="muted">Size</span> {formatSize(selected.size)}
-                      </p>
+                    {node.nodeType === "directory" ? (
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setDirId(node.id);
+                          setSelectedId(undefined);
+                          setLimit(CHILD_PAGE_SIZE);
+                        }}
+                      >
+                        Open
+                      </Button>
                     ) : null}
-                    <p class="detail-line">
-                      <span class="muted">Modified</span> {formatWhen(selected.modified)}
-                    </p>
-                    <p class="detail-line">
-                      <span class="muted">Added</span> {formatWhen(selected.created)}
-                    </p>
-                  </div>
+                  </li>
+                ))}
+              </StackedList>
+            )}
+            {hasMore ? (
+              <div class="px-4 py-3">
+                <Button disabled={loading} onClick={() => setLimit((n) => n + CHILD_PAGE_SIZE)}>
+                  {loading ? "Loading…" : `Load more (${(page?.total ?? 0) - children.length} left)`}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        </Column>
 
-                  {selected.role === ATTACHMENTS_ROLE ? <p class="caveats">{ATTACHMENTS_ROLE_NOTE}</p> : null}
-                  {inAttachments && selected.nodeType === "file" ? <p class="caveats">{NO_SOURCE_LINK_NOTE}</p> : null}
+        <Column aria-label="File detail" class="min-w-0 grow">
+          {selected ? (
+            <article class="px-4 py-5 sm:px-6">
+              <div class="flex flex-wrap items-center gap-2">
+                <h2 class="text-base/7 font-semibold text-gray-900 dark:text-white">{selected.name}</h2>
+                {selected.role === ATTACHMENTS_ROLE ? <Badge>from mail</Badge> : null}
+              </div>
+              <DescList class="mt-4">
+                <DescRow term="Kind">{formatType(selected.type, selected.nodeType)}</DescRow>
+                {selected.nodeType === "file" ? <DescRow term="Size">{formatSize(selected.size)}</DescRow> : null}
+                <DescRow term="Modified">{formatWhen(selected.modified)}</DescRow>
+                <DescRow term="Added">{formatWhen(selected.created)}</DescRow>
+              </DescList>
+              {selected.role === ATTACHMENTS_ROLE ? (
+                <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">{ATTACHMENTS_ROLE_NOTE}</p>
+              ) : null}
+              {inAttachments && selected.nodeType === "file" ? (
+                <p class="mt-3 text-sm text-gray-500 dark:text-gray-400">{NO_SOURCE_LINK_NOTE}</p>
+              ) : null}
 
-                  {/* Outside the write gate on purpose: reading the bytes back
-                      needs `read`, which anyone who can see this row already
-                      has. A read-only session can still get its files out. */}
-                  {selected.nodeType === "file" && selected.blobId ? (
-                    <div class="actions">
-                      <button disabled={busy} onClick={() => void download()}>
-                        Download
-                      </button>
+              {selected.nodeType === "file" && selected.blobId ? (
+                <div class="mt-4">
+                  <Button disabled={busy} onClick={() => void download()}>
+                    Download
+                  </Button>
+                </div>
+              ) : null}
+
+              {canWrite ? (
+                <div class="mt-4 flex flex-col gap-3">
+                  {renaming ? (
+                    <div class="flex flex-wrap items-end gap-2">
+                      <Field label="Rename" class="min-w-40 grow" error={nameProblem(renameValue) ?? undefined}>
+                        <Input
+                          type="text"
+                          value={renameValue}
+                          onInput={(ev) => setRenameValue((ev.currentTarget as HTMLInputElement).value)}
+                        />
+                      </Field>
+                      <Button
+                        variant="primary"
+                        disabled={busy || !!nameProblem(renameValue)}
+                        onClick={() => void submitRename()}
+                      >
+                        Save
+                      </Button>
+                      <Button onClick={() => setRenaming(false)}>Cancel</Button>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div class="flex flex-wrap gap-2">
+                      <Button
+                        disabled={busy}
+                        onClick={() => {
+                          setRenameValue(selected.name);
+                          setRenaming(true);
+                        }}
+                      >
+                        Rename
+                      </Button>
+                      <Button variant="danger" disabled={busy} onClick={() => void remove()}>
+                        Delete
+                      </Button>
+                    </div>
+                  )}
 
-                  {canWrite ? (
-                    <>
-                      {renaming ? (
-                        <form
-                          class="files-rename"
-                          onSubmit={(ev) => {
-                            ev.preventDefault();
-                            void submitRename();
-                          }}
-                        >
-                          <input
-                            type="text"
-                            value={renameValue}
-                            onInput={(ev) => setRenameValue((ev.currentTarget as HTMLInputElement).value)}
-                          />
-                          <button type="submit" disabled={busy || !!nameProblem(renameValue)}>
-                            Save
-                          </button>
-                          <button type="button" class="link-button" onClick={() => setRenaming(false)}>
-                            Cancel
-                          </button>
-                          {nameProblem(renameValue) ? <p class="files-problem">{nameProblem(renameValue)}</p> : null}
-                        </form>
+                  <details
+                    class="rounded-md ring-1 ring-gray-200 ring-inset dark:ring-white/10"
+                    onToggle={() => void openMoveTargets()}
+                  >
+                    <summary class="cursor-pointer px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">
+                      Move
+                    </summary>
+                    <div class="px-3 pb-3">
+                      {directories === undefined ? (
+                        <p class="text-sm text-gray-500">Loading folders…</p>
+                      ) : targets.length === 0 ? (
+                        <p class="text-sm text-gray-500">
+                          There is nowhere else to put this — make another folder first.
+                        </p>
                       ) : (
-                        <div class="actions">
-                          <button
+                        <div class="flex flex-wrap items-end gap-2">
+                          <Field label="Move to" class="min-w-40 grow">
+                            <Select name="target" aria-label="Move to" id="files-move-target">
+                              {targets.map((t) => (
+                                <option value={t.id ?? ""}>{t.name}</option>
+                              ))}
+                            </Select>
+                          </Field>
+                          <Button
                             disabled={busy}
                             onClick={() => {
-                              setRenameValue(selected.name);
-                              setRenaming(true);
+                              const el = document.getElementById("files-move-target") as HTMLSelectElement | null;
+                              if (el) void submitMove(el.value);
                             }}
                           >
-                            Rename
-                          </button>
-                          <button class="danger" disabled={busy} onClick={() => void remove()}>
-                            Delete
-                          </button>
+                            Move here
+                          </Button>
                         </div>
                       )}
-
-                      <details class="attach" onToggle={() => void openMoveTargets()}>
-                        <summary>Move</summary>
-                        <div class="attach-body">
-                          {directories === undefined ? (
-                            <p class="muted">Loading folders…</p>
-                          ) : targets.length === 0 ? (
-                            <p class="muted">There is nowhere else to put this — make another folder first.</p>
-                          ) : (
-                            <form
-                              onSubmit={(ev) => {
-                                ev.preventDefault();
-                                const value = (ev.currentTarget.elements.namedItem("target") as HTMLSelectElement)
-                                  .value;
-                                void submitMove(value);
-                              }}
-                            >
-                              <select name="target" aria-label="Move to">
-                                {targets.map((t) => (
-                                  <option value={t.id ?? ""}>{t.name}</option>
-                                ))}
-                              </select>
-                              <button type="submit" disabled={busy}>
-                                Move here
-                              </button>
-                            </form>
-                          )}
-                        </div>
-                      </details>
-                    </>
-                  ) : null}
-                </article>
-              ) : (
-                <p class="muted">Select an item.</p>
-              )}
-            </section>
-          </div>
-        </main>
-      </div>
+                    </div>
+                  </details>
+                </div>
+              ) : null}
+            </article>
+          ) : (
+            <EmptyState title="Select an item">Details show here.</EmptyState>
+          )}
+        </Column>
+      </SurfaceFrame>
 
       {toast ? (
         <div class="toast" role="status" onClick={() => setToast(undefined)}>

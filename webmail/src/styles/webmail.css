@@ -622,7 +622,7 @@ code {
 
 .thread-row {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: flex-start;
   padding: 8px 16px;
   border-bottom: 1px solid var(--line);
@@ -634,10 +634,6 @@ code {
 }
 .thread-row.is-cursor {
   box-shadow: inset 3px 0 0 var(--accent);
-  background: var(--bg-alt);
-}
-.thread-row.is-selected {
-  background: var(--accent-soft);
 }
 .thread-row.is-unread .row-from,
 .thread-row.is-unread .row-subject {

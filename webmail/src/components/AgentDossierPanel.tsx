@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { Avatar, Badge, Button, ListContainer, ListRow } from "./ui";
+import { Alert, Avatar, Badge, Button, EmptyState, ListContainer, ListRow } from "./ui";
 import type { BadgeTone } from "../lib/ui/classes";
 import { spendBarToneClass, type DossierView, type InvocationRow } from "../lib/agents/dossier";
 import type { BindingByokView } from "../lib/byok/status";
@@ -130,7 +130,7 @@ export default function AgentDossierPanel({
           cancelled, and resumes on enable (the provision verb's own rule). */}
       <section aria-label="Kill switch">
         {!binding.enabled ? (
-          <p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-400/10 dark:text-red-200">
+          <Alert tone="error">
             The kill switch is thrown: nothing invokes this agent and queued work is held, resuming on enable.
             {!toggle ? (
               <>
@@ -139,7 +139,7 @@ export default function AgentDossierPanel({
                 <code class="font-mono text-xs">bullmoose admin agent enable {binding.bindingId}</code>.
               </>
             ) : null}
-          </p>
+          </Alert>
         ) : null}
         {toggle ? (
           <div class={binding.enabled ? "" : "mt-2"}>
@@ -156,9 +156,9 @@ export default function AgentDossierPanel({
               </p>
             ) : null}
             {toggle.error ? (
-              <p class="mt-1.5 text-sm text-red-700 dark:text-red-300" role="alert">
+              <Alert tone="error" class="mt-2">
                 {toggle.error}
-              </p>
+              </Alert>
             ) : null}
           </div>
         ) : null}
@@ -274,9 +274,9 @@ export default function AgentDossierPanel({
             </div>
           ) : null}
           {credential.error ? (
-            <p class="mt-1.5 text-sm text-red-700 dark:text-red-300" role="alert">
+            <Alert tone="error" class="mt-2">
               {credential.error}
-            </p>
+            </Alert>
           ) : null}
         </section>
       ) : null}
@@ -299,7 +299,9 @@ export default function AgentDossierPanel({
       <section aria-label="Recent invocations">
         <SectionHeading>Recent invocations</SectionHeading>
         {recent.length === 0 ? (
-          <p class="text-sm text-gray-500 dark:text-gray-400">Nothing recorded yet for this agent.</p>
+          <EmptyState icon={null} title="Nothing recorded yet">
+            Nothing recorded yet for this agent.
+          </EmptyState>
         ) : (
           <ListContainer>
             {recent.map((r) => (
