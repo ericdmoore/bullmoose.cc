@@ -20,6 +20,15 @@ export interface RequestContext {
     binding?: string | null;
     invocation?: string | null;
   };
+  /**
+   * The origin the request arrived on (`https://app.bullmoose.cc`), for
+   * methods that must mint an absolute URL an EXTERNAL recipient can open —
+   * today that is only the outbound attachment sidestep's share links.
+   * Optional because some callers have no request URL (the agent MCP bridge);
+   * a feature needing it treats its absence as "not available here" and falls
+   * back to its pre-feature behaviour rather than minting a relative link.
+   */
+  origin?: string;
 }
 
 /**

@@ -26,10 +26,9 @@ import {
   isLive,
   listShareRecords,
   liveSharesForBlob,
-  newShareId,
-  putShareRecord,
+  mintShareLink,
   revokeShareRecord,
-  type ShareRecord,
+  shareSignature,
 } from "./shares";
 
 // The AccountDO class must be exported from the worker that declares it
@@ -289,7 +288,11 @@ async function handleApi(request: Request, env: Env, principal: RequestContext["
     return problem(RequestErrors.unknownCapability, 400, `unsupported: ${unknown.join(", ")}`);
   }
 
-  const ctx: RequestContext = { env, principal };
+  // `origin` is how a method can mint an ABSOLUTE URL a recipient outside
+  // this system can open (the outbound attachment sidestep's share links).
+  // It is the origin the client itself reached us on — the same value the
+  // session resource and /api/share already build URLs from.
+  const ctx: RequestContext = { env, principal, origin: new URL(request.url).origin };
   const response = await dispatch(body, registry, ctx, "0");
   return json(response);
 }
@@ -396,45 +399,11 @@ async function handleUpload(request: Request, url: URL, env: Env, principal: Req
 }
 
 // ---- expiring share links (the "Big Files" home: R2 + link worker) -----
-
-const SHARE_DEFAULT_TTL = 30 * 24 * 3600; // 30 days
-const SHARE_MAX_TTL = 90 * 24 * 3600;
-
-/**
- * The signed payload now ends in `shareId`.
- *
- * That binding is what stops a holder of one valid link from swapping in
- * another account's share id to dodge a revocation: the id is not a free
- * parameter, it is part of what was signed.
- *
- * ⚠️ IT IS ALSO A ONE-TIME FLUSH. Links minted before this change carry a
- * signature over the old five-field payload and no longer verify — they 403.
- * That is the intended outcome, not collateral: the state this unit exists to
- * fix is that nobody knows what links are out there, and every surviving old
- * link is one more unknown that can never be enumerated or revoked. Accepting
- * both payload shapes during a window would preserve exactly the population
- * we cannot account for. See unit `010` Open Question #5.
- */
-async function shareSignature(
-  key: string,
-  tenantId: string,
-  accountId: string,
-  blobId: string,
-  name: string,
-  exp: number,
-  shareId: string,
-): Promise<string> {
-  const hmacKey = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(key),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const payload = `${tenantId}:${accountId}:${blobId}:${name}:${exp}:${shareId}`;
-  const sig = await crypto.subtle.sign("HMAC", hmacKey, new TextEncoder().encode(payload));
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
+//
+// The mint itself (signature scheme, TTL clamp, record-before-URL) lives in
+// shares.ts as `mintShareLink`, because the outbound attachment sidestep
+// (methods/outboundSidestep.ts) mints through the SAME door — one signing
+// path, one KV record shape, whoever asks.
 
 async function handleShareCreate(
   request: Request,
@@ -449,8 +418,6 @@ async function handleShareCreate(
   if (!access) return json({ error: "unknown account" }, 404);
 
   const body = (await request.json()) as { name?: string; type?: string; ttlSeconds?: number };
-  const name = (body.name ?? "file").replaceAll("/", "_");
-  const ttl = Math.min(Math.max(60, body.ttlSeconds ?? SHARE_DEFAULT_TTL), SHARE_MAX_TTL);
 
   // Verify the blob exists before minting a link to it. `head` — this only
   // needs a boolean, and `getBlob` streamed the whole object to get one.
@@ -458,34 +425,16 @@ async function handleShareCreate(
   const head = await store.headBlob(access.tenantId, accountId, blobId);
   if (!head) return json({ error: "blob not found" }, 404);
 
-  const now = Date.now();
-  const exp = Math.floor(now / 1000) + ttl;
-  const shareId = newShareId();
-  const sig = await shareSignature(env.SHARE_SIGNING_KEY, access.tenantId, accountId, blobId, name, exp, shareId);
-
-  // Record BEFORE returning the URL. If the KV write fails the mint fails,
-  // and the caller gets no link — the alternative is handing out a URL that
-  // deny-by-default will refuse, which looks like a broken link rather than
-  // a failed mint, and would be unrevocable in exactly the way this unit
-  // exists to end.
-  const record: ShareRecord = {
-    shareId,
+  const minted = await mintShareLink(env.ROUTES, env.SHARE_SIGNING_KEY, url.origin, {
     tenantId: access.tenantId,
     accountId,
     blobId,
-    name,
+    name: body.name ?? "file",
     ...(body.type ? { type: body.type } : {}),
-    exp,
-    createdAt: now,
-  };
-  await putShareRecord(env.ROUTES, record, now);
+    ...(body.ttlSeconds !== undefined ? { ttlSeconds: body.ttlSeconds } : {}),
+  });
 
-  const shareUrl =
-    `${url.origin}/share/${access.tenantId}/${accountId}/${blobId}/${encodeURIComponent(name)}` +
-    `?exp=${exp}&sid=${shareId}&sig=${sig}` +
-    (body.type ? `&type=${encodeURIComponent(body.type)}` : "");
-
-  return json({ url: shareUrl, shareId, expiresAt: new Date(exp * 1000).toISOString() });
+  return json({ url: minted.url, shareId: minted.shareId, expiresAt: minted.expiresAt });
 }
 
 async function handleShareDownload(url: URL, env: Env): Promise<Response> {
