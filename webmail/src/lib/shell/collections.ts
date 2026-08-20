@@ -77,8 +77,17 @@ export function iconRailItems(
   return flattenItems(groups, expanded).filter((i) => !i.disabled && i.icon !== undefined);
 }
 
-/** Selectable = visible and not disabled. A disabled row is announced, never
- *  landed on. */
+export function findItem(groups: readonly CollectionGroup[], id: string | undefined): CollectionItem | undefined {
+  if (id === undefined) return undefined;
+  for (const g of groups) {
+    for (const item of g.items) {
+      if (item.id === id) return item;
+      const child = item.children?.find((c) => c.id === id);
+      if (child) return child;
+    }
+  }
+  return undefined;
+}
 function selectable(groups: readonly CollectionGroup[], expanded: ReadonlySet<string>): CollectionItem[] {
   return flattenItems(groups, expanded).filter((i) => !i.disabled);
 }

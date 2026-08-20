@@ -21,12 +21,12 @@ import {
   ChevronRightIcon,
   ClockIcon,
   Cog6ToothIcon,
-  ComputerDesktopIcon,
   DocumentTextIcon,
   EnvelopeIcon,
   FlagIcon,
   FolderIcon,
   MagnifyingGlassIcon,
+  RobotIcon,
   UsersIcon,
   XMarkIcon,
   type IconProps,
@@ -134,7 +134,7 @@ const nearestStep = (px: number): number => {
  *  glyph, render-tested. */
 const SECTION_ICON: Record<SectionId, (p: IconProps) => JSX.Element> = {
   approvals: CheckBadgeIcon,
-  agents: ComputerDesktopIcon,
+  agents: RobotIcon,
   activity: ClockIcon,
   goals: FlagIcon,
   calendar: CalendarIcon,
@@ -686,11 +686,9 @@ export default function ShellNav({ section, email: emailProp }: Props) {
               fold on a short viewport, which read as missing. Icon only. */}
           <div class={"flex h-16 shrink-0 items-center " + (collapsed ? "justify-center" : "justify-between")}>
             <Brand compact={collapsed} />
-            {/* A visible control, not an artifact: the first cut was a bare
-                gray-400 chevron on the dark rail — at that contrast it read
-                as a rendering glitch (Eric's screenshot). A ring and a filled
-                hover give it button affordance, and the double-chevron reads
-                as "collapse" rather than "back". */}
+            {/* A visible control, not an artifact: a pale filled chip on the
+                dark rail so the double-chevron reads as a button, not a
+                rendering glitch. */}
             {!collapsed && (
               <button
                 type="button"
@@ -698,7 +696,7 @@ export default function ShellNav({ section, email: emailProp }: Props) {
                 title="Collapse sidebar"
                 aria-label="Collapse sidebar"
                 aria-expanded={true}
-                class="rounded-md p-1.5 text-gray-300 ring-1 ring-white/15 hover:bg-gray-800 hover:text-white hover:ring-white/30"
+                class="rounded-md bg-gray-200 p-1.5 text-gray-900 hover:bg-white"
               >
                 <ChevronDoubleLeftIcon class="size-4" strokeWidth={2} />
               </button>
@@ -716,7 +714,7 @@ export default function ShellNav({ section, email: emailProp }: Props) {
               title="Expand sidebar"
               aria-label="Expand sidebar"
               aria-expanded={false}
-              class="-mx-2 flex items-center justify-center rounded-md p-2 text-gray-400 hover:bg-gray-800 hover:text-white"
+              class="-mx-2 flex items-center justify-center rounded-md bg-gray-200 p-2 text-gray-900 hover:bg-white"
             >
               <ChevronRightIcon class="size-6" />
             </button>

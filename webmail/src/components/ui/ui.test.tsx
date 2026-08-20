@@ -201,6 +201,18 @@ describe("Alert / EmptyState / StackedList / DescList / Breadcrumb", () => {
     expect(html).toContain("Projects");
     expect(html).toContain('aria-current="page"');
   });
+  it("a current step with onSelect is a button — the Mail folder bar opens a picker", () => {
+    const html = render(
+      <Breadcrumb
+        items={[
+          { label: "Mail", onSelect: () => {} },
+          { label: "Archive", current: true, onSelect: () => {} },
+        ]}
+      />,
+    );
+    expect(html).toContain("Archive</button>");
+    expect(html).toContain('aria-current="page"');
+  });
   it("PageNotice is a reading column, not a second H1", () => {
     const html = render(<PageNotice title="No files here">This session has no Files realm.</PageNotice>);
     expect(html).toContain("<h2");

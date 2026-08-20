@@ -31,7 +31,22 @@ export default function Breadcrumb({
                 <path d="M5.555 17.776l8-16 .894.448-8 16-.894-.448z" />
               </svg>
             ) : null}
-            {item.current || !item.onSelect ? (
+            {item.onSelect ? (
+              <button
+                type="button"
+                onClick={item.onSelect}
+                aria-current={item.current ? "page" : undefined}
+                class={cx(
+                  "text-sm font-medium whitespace-nowrap",
+                  i > 0 ? "ml-4" : "",
+                  item.current
+                    ? "text-gray-900 dark:text-white"
+                    : "text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
+                )}
+              >
+                {item.label}
+              </button>
+            ) : (
               <span
                 aria-current={item.current ? "page" : undefined}
                 class={cx(
@@ -42,17 +57,6 @@ export default function Breadcrumb({
               >
                 {item.label}
               </span>
-            ) : (
-              <button
-                type="button"
-                onClick={item.onSelect}
-                class={cx(
-                  "text-sm font-medium whitespace-nowrap text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200",
-                  i > 0 ? "ml-4" : "",
-                )}
-              >
-                {item.label}
-              </button>
             )}
           </li>
         ))}
