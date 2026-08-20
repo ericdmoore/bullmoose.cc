@@ -45,9 +45,13 @@ describe("CollectionColumn renders the FAB from its OWN [New] props", () => {
     const html = column({ newLabel: "New message", onNew: () => {} });
     // The column's button carries the words; the FAB carries them AND names
     // itself with them. One label prop behind all three.
-    expect(html).toContain("New message</button>");
+    //
+    // s34: both labels now sit in a <span> — the column's so it can truncate
+    // rather than wrap, the FAB's so it can nowrap. So the assertion is on
+    // the label appearing TWICE (once per position) plus the FAB's aria-label,
+    // which is what "one label prop, three places" actually means.
+    expect(html.match(/New message<\/span>/g)).toHaveLength(2);
     expect(html).toContain('aria-label="New message"');
-    expect(html).toContain("New message</span>");
     expect(html).toContain("lg:hidden");
   });
 

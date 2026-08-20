@@ -5,12 +5,14 @@ import {
   avatarInitial,
   badgeClasses,
   buttonClasses,
+  createLabelClasses,
   cx,
   FAB_CLEARANCE_PX,
   fabClasses,
   iconButtonClasses,
   inputClasses,
   listRowClasses,
+  realmSelectClasses,
   searchFieldClasses,
   searchYieldClasses,
   stackedListClasses,
@@ -171,5 +173,45 @@ describe("the collapsing search (s25 T5)", () => {
   it("the header yields only on narrow screens, and only while expanded", () => {
     expect(searchYieldClasses(true)).toBe("max-lg:hidden");
     expect(searchYieldClasses(false)).toBe("");
+  });
+});
+
+// ── s34: the [New] label, and the realm chrome picker ──────────────────────
+
+describe("a button label never wraps (s34)", () => {
+  it("every variant/size carries whitespace-nowrap and min-w-0", () => {
+    // "+ New / contact" across two lines in the w-56 collection column is the
+    // bug this pins (Eric's /contacts screenshot). `min-w-0` is what lets the
+    // button shrink so the label's truncate can ellipsis instead of overflow.
+    for (const variant of ["primary", "secondary", "ghost", "danger"] as const) {
+      for (const size of ["sm", "md"] as const) {
+        expect(buttonClasses(variant, size)).toContain("whitespace-nowrap");
+        expect(buttonClasses(variant, size)).toContain("min-w-0");
+      }
+    }
+  });
+
+  it("createLabelClasses truncates rather than wrapping", () => {
+    expect(createLabelClasses()).toContain("truncate");
+    expect(createLabelClasses()).toContain("min-w-0");
+  });
+
+  it("does NOT change the FAB, whose label is the whole point of it", () => {
+    // s25 T5 / #205: the extended FAB is shrink-to-fit and fixed-position, so
+    // it has nothing to truncate against and keeps its own nowrap.
+    expect(fabClasses()).toContain("lg:hidden");
+    expect(fabClasses()).not.toContain("truncate");
+    expect(FAB_CLEARANCE_PX).toBe(72);
+  });
+});
+
+describe("realmSelectClasses (s34)", () => {
+  it("clamps its width so a long account name cannot push the identity chip off the bar", () => {
+    expect(realmSelectClasses()).toContain("max-w-40");
+    expect(realmSelectClasses()).toContain("truncate");
+  });
+
+  it("carries a dark-mode surface, like every other header control", () => {
+    expect(realmSelectClasses()).toContain("dark:");
   });
 });

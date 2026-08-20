@@ -21,6 +21,7 @@
 // proven the card itself did not change, which is the only thing a contacts
 // write can actually lose.
 
+import { DEFAULT_MAX_OBJECTS_IN_SET } from "../jmap/capabilities";
 import type { JmapClient } from "../jmap/JmapClient";
 import { deepEqual } from "./form";
 import type { AddressBook, CardPatch, ContactCard, SetError } from "./types";
@@ -163,6 +164,173 @@ export async function destroyCard(
   opts: WriteOptions = {},
 ): Promise<CardWriteResult> {
   return setOne(client, "ContactCard/set", { accountId, ...ifInState(opts), destroy: [id] }, "destroy", id, "card");
+}
+
+// ── bulk: one call per CHUNK, never one call per card ─────────────────────
+//
+// `ContactCard/set` takes `destroy: [ids]` and `update: { id: patch }` as
+// SETS, so deleting 412 cards is a handful of requests, not 412 of them. The
+// naive loop is not merely slow: 412 sequential round trips from a browser
+// against your own Worker is a self-inflicted denial of service, and the
+// account-wide state counter (see this file's header) advances on every one of
+// them, so a concurrent edit elsewhere is fighting 412 moving targets instead
+// of one.
+//
+// Two deliberate choices:
+//
+//  • **No `ifInState`.** The header explains why account-wide state makes
+//    naïve optimistic concurrency actively bad UX for contacts; at 412 objects
+//    it is worse, because a mismatch would refuse the WHOLE chunk for a reason
+//    that has nothing to do with any card in it. `saveCardEdit`'s read-verify-
+//    write is the guard for edits that could LOSE something. A destroy loses
+//    nothing that a state check would have saved, and a book move rewrites one
+//    property that nothing else on this screen touches.
+//
+//  • **Chunks run in sequence, and a method-level refusal stops the run.** If
+//    the server refuses a whole call — `forbidden`, `accountNotFound` — every
+//    later chunk would be refused for the same reason, so they are reported as
+//    failed rather than sent. The caller gets one list of what happened, and
+//    it always adds up to the number of ids it passed in.
+
+/** One id the server refused, with the reason already in plain language. */
+export interface BatchFailure {
+  id: string;
+  message: string;
+}
+
+/**
+ * What a batched write actually did. `done` and `failed` together account for
+ * every id passed in — that total is the contract callers report from, and it
+ * is what makes "never a bare done" possible upstream.
+ */
+export interface BatchWriteResult {
+  /** Ids the server confirmed. */
+  done: string[];
+  /** Ids it refused, individually or as collateral of a refused call. */
+  failed: BatchFailure[];
+  /** The state after the last chunk that landed. */
+  newState?: string;
+}
+
+export interface BatchOptions {
+  /** Objects per `/set` call. Defaults to the RFC 8620 floor; callers should
+   *  pass the live session's `maxObjectsInSet` (`../jmap/capabilities.ts`). */
+  chunkSize?: number;
+}
+
+/** Split into runs of at most `size`. `size < 1` would loop forever, so it
+ *  clamps rather than trusting a capability object off the wire. */
+export function chunk<T>(items: readonly T[], size: number): T[][] {
+  const step = Math.max(1, Math.floor(size));
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += step) out.push(items.slice(i, i + step));
+  return out;
+}
+
+interface SetManyResponse {
+  updated?: Record<string, unknown>;
+  notUpdated?: Record<string, SetError>;
+  destroyed?: string[];
+  notDestroyed?: Record<string, SetError>;
+  newState?: string;
+}
+
+/** The shared engine: chunk, send, and attribute every id to done or failed. */
+async function setManyCards(
+  client: JmapClient,
+  accountId: string,
+  ids: readonly string[],
+  build: (batch: string[]) => Record<string, unknown>,
+  op: "update" | "destroy",
+  chunkSize: number,
+): Promise<BatchWriteResult> {
+  const done: string[] = [];
+  const failed: BatchFailure[] = [];
+  let newState: string | undefined;
+
+  // De-duplicated: a Set-backed selection cannot repeat an id, but a caller
+  // splicing two lists together can, and `destroy` would then report the
+  // second copy as `notFound` — a failure invented by the client.
+  const batches = chunk([...new Set(ids)], chunkSize);
+
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i] as string[];
+    const [response] = await client.request([["ContactCard/set", { accountId, ...build(batch) }, "w0"]]);
+
+    if (!response || response[0] === "error") {
+      const refusal = describeContactRefusal((response?.[1] ?? {}) as { type?: string }, "card");
+      // This chunk and every chunk after it: the refusal is about the call,
+      // not about any card, so re-sending the rest would only repeat it.
+      for (const remaining of batches.slice(i)) {
+        for (const id of remaining) failed.push({ id, message: refusal.message });
+      }
+      return { done, failed, ...(newState === undefined ? {} : { newState }) };
+    }
+
+    const result = response[1] as SetManyResponse;
+    if (typeof result.newState === "string") newState = result.newState;
+
+    if (op === "destroy") {
+      const confirmed = new Set(result.destroyed ?? []);
+      for (const id of batch) {
+        if (confirmed.has(id)) done.push(id);
+        else failed.push({ id, message: describeSetError(result.notDestroyed?.[id] ?? { type: "serverFail" }, null) });
+      }
+    } else {
+      const confirmed = result.updated ?? {};
+      for (const id of batch) {
+        if (id in confirmed) done.push(id);
+        else failed.push({ id, message: describeSetError(result.notUpdated?.[id] ?? { type: "serverFail" }, null) });
+      }
+    }
+  }
+
+  return { done, failed, ...(newState === undefined ? {} : { newState }) };
+}
+
+/** Delete many cards. Final — there is no trash for a contact. */
+export function destroyCards(
+  client: JmapClient,
+  accountId: string,
+  ids: readonly string[],
+  opts: BatchOptions = {},
+): Promise<BatchWriteResult> {
+  return setManyCards(
+    client,
+    accountId,
+    ids,
+    (batch) => ({ destroy: batch }),
+    "destroy",
+    opts.chunkSize ?? DEFAULT_MAX_OBJECTS_IN_SET,
+  );
+}
+
+/**
+ * Move many cards into one address book.
+ *
+ * "Which book am I in" is JMAP membership rather than JSContact content, so
+ * the patch is the same one-property `addressBookIds` write the single-card
+ * editor already sends (`ContactsApp`'s `save`) — `maxAddressBooksPerCard: 1`
+ * makes `{ [bookId]: true }` the whole of it. Nothing else on the card is
+ * touched, which is why this can go out un-guarded in bulk: there is no other
+ * field for a concurrent edit to lose.
+ */
+export function moveCards(
+  client: JmapClient,
+  accountId: string,
+  ids: readonly string[],
+  bookId: string,
+  opts: BatchOptions = {},
+): Promise<BatchWriteResult> {
+  const patch: CardPatch = { addressBookIds: { [bookId]: true } };
+  return setManyCards(
+    client,
+    accountId,
+    ids,
+    (batch) => ({ update: Object.fromEntries(batch.map((id) => [id, patch])) }),
+    "update",
+    opts.chunkSize ?? DEFAULT_MAX_OBJECTS_IN_SET,
+  );
 }
 
 /** A conflict `saveCardEdit` refused to resolve on the user's behalf. */
