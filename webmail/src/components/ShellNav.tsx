@@ -425,16 +425,28 @@ export function RealmTray({
 }
 
 /**
- * The brand mark. `/mark.svg` is `art/stripped_favicon.svg` — the 128×128
- * mark drawn FOR small sizes — not the 1024×1024 `antlerO.svg`, whose fine
- * paths collapse into a flat pink/blue block at 32px (seen in the first
- * Kitesurf screenshot of the shell). A file rather than inlined markup so
- * `img-src 'self'` covers it and the paths stay out of every page's HTML.
+ * The brand mark: `/antlerO.svg` (`art/antlerO.svg`), restored 2026-08-20.
+ *
+ * It was swapped for `/mark.svg` in #166 on the grounds that its fine paths
+ * "collapse into a flat pink/blue block at 32px" — an observation made from
+ * "the first Kitesurf screenshot of the shell". Kitesurf turned out to be
+ * Cloudflare's Boa/WASM browser, NOT Chromium, and it renders this app wrong
+ * enough to have manufactured a phantom bug we chased twice (see the s25
+ * harness note). A design decision resting on that renderer is a decision
+ * resting on nothing, so the mark comes back and a human judges it in a real
+ * browser.
+ *
+ * `mark.svg` stays in `public/` — it is the right file for a genuinely tiny
+ * target if one is ever needed, and deleting it would only make this
+ * reversible in one direction.
+ *
+ * A file rather than inlined markup so `img-src 'self'` covers it and the
+ * paths stay out of every page's HTML.
  */
 function Brand({ compact }: { compact?: boolean }) {
   return (
     <a href="/" class={"flex h-16 shrink-0 items-center gap-x-2 " + (compact ? "justify-center" : "")}>
-      <img src="/mark.svg" alt="bullmoose" class="size-8" />
+      <img src="/antlerO.svg" alt="bullmoose" class="size-8" />
       {!compact && <span class="font-semibold tracking-tight text-white">bullmoose</span>}
     </a>
   );

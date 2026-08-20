@@ -91,6 +91,12 @@ const innerClass = frame === "surface" ? "h-full min-h-0" : "px-4 sm:px-6 lg:px-
          clear the home indicator, so they must actually have a value. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{title}</title>
+    {/* The same mark as the rail (ShellNav's Brand). Declared explicitly
+        because nothing was: browsers fell back to /favicon.ico, which this
+        site does not serve, so every tab showed a blank page glyph. SVG
+        first for the sharp copy; sizes="any" keeps it from losing to a
+        future .ico. */}
+    <link rel="icon" href="/antlerO.svg" type="image/svg+xml" sizes="any" />
     <meta name="robots" content="noindex" />
     <!--
       No hand-written CSP here, same as App.astro and for the same reason: the
