@@ -1,4 +1,4 @@
-# s30 — Rules: the three-rung ladder · *filtering as staff work, with the manual override intact*
+# s31 — Rules: the three-rung ladder · *filtering as staff work, with the manual override intact*
 
 > **Status: DESIGN — resolved in conversation (Eric, 2026-08-19), nothing built.**
 > Born the night BoogieMail's Rules screen said *"This account's mail server does
