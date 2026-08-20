@@ -10,6 +10,7 @@ import {
   contactsCapability,
   coreCapability,
   mailCapability,
+  submissionCapability,
   type Session,
 } from "@bullmoose/jmap-core";
 import { authorizeAccount, type Principal } from "./auth";
@@ -58,7 +59,7 @@ export function buildSession(origin: string, principal: Principal): Session {
         accountCapabilities: wholeAccount
           ? {
               [MAIL_CAP]: mailCapability,
-              [SUBMISSION_CAP]: { maxDelayedSend: 0, submissionExtensions: {} },
+              [SUBMISSION_CAP]: submissionCapability,
               [VACATION_CAP]: {},
               [CONTACTS_CAP]: contactsCapability,
               [CALENDARS_CAP]: {},
@@ -75,7 +76,7 @@ export function buildSession(origin: string, principal: Principal): Session {
       isReadOnly: false,
       accountCapabilities: {
         [MAIL_CAP]: mailCapability,
-        [SUBMISSION_CAP]: { maxDelayedSend: 0, submissionExtensions: {} },
+        [SUBMISSION_CAP]: submissionCapability,
         [VACATION_CAP]: {},
         [CONTACTS_CAP]: contactsCapability,
         [CALENDARS_CAP]: {},

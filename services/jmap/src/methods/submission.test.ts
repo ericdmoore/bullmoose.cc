@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { MethodRegistry } from "@bullmoose/jmap-core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { MethodRegistry, dispatch, type Invocation } from "@bullmoose/jmap-core";
 import { Mailstore } from "@bullmoose/mailstore";
 import { fakeEnv, type FakeWorkerOptions } from "@bullmoose/test-fakes";
+import { registerEmailMethods } from "./email";
 import { registerSubmissionMethods } from "./submission";
 import type { RequestContext } from "./common";
 
@@ -623,5 +624,594 @@ describe("EmailSubmission/set — the stored Message-ID adopts the relay's wire 
 
     const ch = await h.w.accountDo.changes(ACCOUNT, "Email", res.oldState as string);
     expect(ch.updated.filter((id: string) => id === "e_1")).toHaveLength(1);
+  });
+});
+
+// =======================================================================
+// RFC 8620 §3.3 creation references — the batched create + submit round
+// trip. A single request `[Email/set create "big", EmailSubmission/set
+// {emailId: "#big"}]` is how batching clients send mail; before the
+// dispatcher grew a creation-id map this failed `invalidProperties
+// "email #big not found"` — found live, third-party client, 2026-08-19.
+// =======================================================================
+
+const draftCreateSpec = {
+  mailboxIds: { [DRAFTS_MB.id]: true },
+  keywords: { $draft: true },
+  from: [{ email: IDENTITY_EMAIL }],
+  to: [{ email: "someone@example.com" }],
+  subject: "batched",
+  textBody: [{ partId: "t" }],
+  bodyValues: { t: { value: "hello" } },
+};
+
+/** A registry with BOTH Email and EmailSubmission methods, driven through
+ * the real dispatcher — creation references resolve there or nowhere. */
+function dispatchHarness(fx: Fixture = draftFixture()) {
+  const h = harness(fx);
+  const registry = new MethodRegistry<RequestContext>();
+  registerEmailMethods(registry);
+  registerSubmissionMethods(registry);
+  const ctx: RequestContext = {
+    env: h.w.env,
+    principal: {
+      username: LOGIN_EMAIL,
+      scopes: ["mail"],
+      accounts: [{ accountId: ACCOUNT, tenantId: "t_bm", name: "Eric" }],
+    },
+  };
+  const run = (methodCalls: Invocation[], createdIds?: Record<string, string>) =>
+    dispatch({ using: [], methodCalls, ...(createdIds ? { createdIds } : {}) }, registry, ctx, "0");
+  return { ...h, run };
+}
+
+describe("EmailSubmission/set — #creationId back-references (RFC 8620 §3.3)", () => {
+  it("create draft + submit it, one request: emailId '#big' resolves to the created draft", async () => {
+    const h = dispatchHarness();
+
+    const res = await h.run([
+      ["Email/set", { accountId: ACCOUNT, create: { big: draftCreateSpec } }, "0"],
+      [
+        "EmailSubmission/set",
+        {
+          accountId: ACCOUNT,
+          create: { s: { emailId: "#big", identityId: "id_1", envelope: { rcptTo: [{ email: "x@y.z" }] } } },
+          onSuccessUpdateEmail: { "#s": { "keywords/$draft": null } },
+        },
+        "1",
+      ],
+    ]);
+
+    const [emailSet, subSet] = res.methodResponses as [Invocation, Invocation];
+    expect(emailSet[0]).toBe("Email/set");
+    expect(subSet[0]).toBe("EmailSubmission/set");
+
+    const draftId = (emailSet[1].created as Record<string, { id: string }>).big!.id;
+    const created = (subSet[1].created as Record<string, { id: string; undoStatus: string }>).s;
+    expect(created?.undoStatus).toBe("final");
+    expect(h.relayCalls).toEqual([{ mailFrom: IDENTITY_EMAIL, rcptTo: ["x@y.z"] }]);
+
+    // The submission row points at the resolved draft, not at a literal "#big".
+    const [row] = h.w.db.query<{ email_id: string }>(
+      `SELECT email_id FROM email_submissions WHERE account_id = ? AND id = ?`,
+      ACCOUNT,
+      created!.id,
+    );
+    expect(row?.email_id).toBe(draftId);
+
+    // And the onSuccess patch landed on the resolved draft too.
+    expect(
+      h.w.db.count("email_keywords", "account_id = ? AND email_id = ? AND keyword = '$draft'", ACCOUNT, draftId),
+    ).toBe(0);
+  });
+
+  it("an unresolvable ref is refused BY NAME, before anything relays", async () => {
+    const h = dispatchHarness();
+
+    const res = await h.run([
+      ["EmailSubmission/set", { accountId: ACCOUNT, create: { s: { emailId: "#big", identityId: "id_1" } } }, "0"],
+    ]);
+
+    const [subSet] = res.methodResponses as [Invocation];
+    expect(subSet[0]).toBe("EmailSubmission/set");
+    const err = (subSet[1].notCreated as Record<string, { type: string; description?: string }>).s;
+    expect(err?.type).toBe("invalidProperties");
+    expect(err?.description).toContain("#big");
+    expect(h.relayCalls).toEqual([]);
+  });
+
+  it("request.createdIds seeds the map (a ref minted in a PRIOR request resolves)", async () => {
+    const h = dispatchHarness();
+
+    const res = await h.run(
+      [
+        [
+          "EmailSubmission/set",
+          {
+            accountId: ACCOUNT,
+            create: { s: { emailId: "#big", identityId: "id_1", envelope: { rcptTo: [{ email: "x@y.z" }] } } },
+          },
+          "0",
+        ],
+      ],
+      { big: "e_1" }, // e_1 is the seeded draft
+    );
+
+    expect(h.relayCalls).toHaveLength(1);
+    // Per spec the response echoes the merged map — the seed plus this
+    // request's own creation.
+    const created = ((res.methodResponses[0] as Invocation)[1].created as Record<string, { id: string }>).s!;
+    expect(res.createdIds).toEqual({ big: "e_1", s: created.id });
+  });
+
+  it("a request without createdIds gets no createdIds in the response", async () => {
+    const h = dispatchHarness();
+    const res = await h.run([["Email/set", { accountId: ACCOUNT, create: { big: draftCreateSpec } }, "0"]]);
+    expect(res.createdIds).toBeUndefined();
+  });
+});
+
+// =======================================================================
+// onSuccessDestroyEmail (RFC 8621 §7.5) — "discard the draft once it
+// sends". Before this existed the argument was silently ignored and every
+// send-and-discard client accumulated ghost drafts.
+// =======================================================================
+
+describe("EmailSubmission/set — onSuccessDestroyEmail", () => {
+  it("destroys the sent draft via '#cid', through the changelog", async () => {
+    const h = harness(draftFixture());
+
+    const res = await h.call(
+      {
+        s: {
+          emailId: "e_1",
+          identityId: "id_1",
+          envelope: { mailFrom: { email: IDENTITY_EMAIL }, rcptTo: [{ email: "x@y.z" }] },
+        },
+      },
+      { onSuccessDestroyEmail: ["#s"] },
+    );
+
+    expect(res.notCreated).toEqual({});
+    expect(h.relayCalls).toHaveLength(1);
+    expect(h.w.db.count("emails", "account_id = ? AND id = 'e_1'", ACCOUNT)).toBe(0);
+
+    // Clients learn about it the same way they learn about any change.
+    const emails = await h.w.accountDo.changes(ACCOUNT, "Email", res.oldState as string);
+    expect(emails.destroyed).toContain("e_1");
+    expect(emails.updated).not.toContain("e_1");
+    const boxes = await h.w.accountDo.changes(ACCOUNT, "Mailbox", res.oldState as string);
+    expect(boxes.updated).toContain(DRAFTS_MB.id);
+  });
+
+  it("does not destroy when the send failed, and ignores unknown refs", async () => {
+    const h = harness(draftFixture());
+
+    const res = await h.call(
+      { s: { emailId: "e_1", identityId: "id_nope" } },
+      { onSuccessDestroyEmail: ["#s", "#never-existed", "es_unknown"] },
+    );
+
+    expect((res.notCreated as Record<string, { type: string }>).s?.type).toBe("invalidProperties");
+    expect(h.relayCalls).toEqual([]);
+    expect(h.w.db.count("emails", "account_id = ? AND id = 'e_1'", ACCOUNT)).toBe(1);
+  });
+});
+
+// =======================================================================
+// Delayed send (RFC 8621 §7, capability maxDelayedSend) — the window in
+// which "cancel" can mean something. Found live: a client's undo button
+// against undoStatus:final, with maxDelayedSend advertised as 0, so undo
+// could never exist. A future release time holds the row `pending` on the
+// AccountDO alarm; `undoStatus: "canceled"` wins or loses a compare-and-
+// swap against the relay claim, and the loser hears about it honestly.
+// =======================================================================
+
+describe("EmailSubmission/set — delayed send", () => {
+  const T0 = Date.parse("2026-08-19T12:00:00.000Z");
+  const HOLD = 60_000;
+  const SEND_AT = new Date(T0 + HOLD).toISOString();
+
+  const frozen = () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+  };
+  afterEach(() => vi.useRealTimers());
+
+  type H = ReturnType<typeof harness>;
+  const createHeld = async (h: H, extra: Record<string, unknown> = {}) => {
+    const res = await h.call(
+      { s: { emailId: "e_1", identityId: "id_1", sendAt: SEND_AT, envelope: { rcptTo: [{ email: "x@y.z" }] } } },
+      extra,
+    );
+    const created = (res.created as Record<string, { id: string; undoStatus: string; sendAt: string }>).s;
+    return { res, id: created?.id as string, created };
+  };
+  const rowOf = (h: H, id: string) =>
+    h.w.db.query<{ undo_status: string; relay_message_id: string | null; send_at: number }>(
+      `SELECT undo_status, relay_message_id, send_at FROM email_submissions WHERE account_id = ? AND id = ?`,
+      ACCOUNT,
+      id,
+    )[0];
+  const cancel = (h: H, id: string, extra: Record<string, unknown> = {}) =>
+    h.call({}, { update: { [id]: { undoStatus: "canceled" } }, ...extra });
+
+  it("a future sendAt holds the send: no relay, pending row, armed alarm", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const { res, id, created } = await createHeld(h);
+
+    expect(res.notCreated).toEqual({});
+    expect(created).toMatchObject({ undoStatus: "pending", sendAt: SEND_AT });
+    expect(h.relayCalls).toEqual([]);
+    expect(rowOf(h, id)).toMatchObject({ undo_status: "pending", relay_message_id: null, send_at: T0 + HOLD });
+    expect(h.w.accountDo.alarmAt(ACCOUNT)).toBe(T0 + HOLD);
+
+    // /get reads it back as a submission a client could still cancel.
+    const got = await h.get({ ids: [id] });
+    expect(got.list[0]).toMatchObject({ id, undoStatus: "pending", sendAt: SEND_AT });
+  });
+
+  it("the RFC 8621/4865 spelling — HOLDFOR on envelope.mailFrom.parameters — holds too", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const res = await h.call({
+      s: {
+        emailId: "e_1",
+        identityId: "id_1",
+        envelope: { mailFrom: { email: IDENTITY_EMAIL, parameters: { holdfor: "120" } }, rcptTo: [{ email: "x@y.z" }] },
+      },
+    });
+
+    const created = (res.created as Record<string, { id: string; undoStatus: string }>).s!;
+    expect(created.undoStatus).toBe("pending");
+    expect(h.relayCalls).toEqual([]);
+    expect(rowOf(h, created.id)?.send_at).toBe(T0 + 120_000);
+  });
+
+  it("the alarm relays at sendAt, and deferred onSuccessUpdateEmail fires at RELAY time", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const { res, id } = await createHeld(h, { onSuccessUpdateEmail: { "#s": { "keywords/$draft": null } } });
+
+    // The hold is the whole point: while the send is cancelable the draft
+    // must still LOOK like a draft — the patch has not been applied.
+    expect(h.w.db.count("email_keywords", "account_id = ? AND email_id = 'e_1' AND keyword = '$draft'", ACCOUNT)).toBe(
+      1,
+    );
+
+    vi.setSystemTime(T0 + HOLD + 1);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+
+    expect(h.relayCalls).toEqual([{ mailFrom: IDENTITY_EMAIL, rcptTo: ["x@y.z"] }]);
+    expect(rowOf(h, id)).toMatchObject({ undo_status: "final", relay_message_id: "relay-1" });
+    expect(h.w.db.count("email_keywords", "account_id = ? AND email_id = 'e_1' AND keyword = '$draft'", ACCOUNT)).toBe(
+      0,
+    );
+
+    // Both the flip to final and the deferred patch reach the changelog.
+    const subs = await h.w.accountDo.changes(ACCOUNT, "EmailSubmission", res.newState as string);
+    expect(subs.updated).toContain(id);
+    const emails = await h.w.accountDo.changes(ACCOUNT, "Email", res.newState as string);
+    expect(emails.updated).toContain("e_1");
+  });
+
+  it("pending → canceled: the alarm then never relays, and deferred destroy never fires", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const { res, id } = await createHeld(h, { onSuccessDestroyEmail: ["#s"] });
+    const res2 = await cancel(h, id);
+
+    expect((res2.updated as Record<string, unknown>)[id]).toBeNull();
+    expect(rowOf(h, id)?.undo_status).toBe("canceled");
+    const subs = await h.w.accountDo.changes(ACCOUNT, "EmailSubmission", res.newState as string);
+    expect(subs.updated).toContain(id);
+
+    vi.setSystemTime(T0 + HOLD + 1);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+
+    expect(h.relayCalls).toEqual([]);
+    expect(rowOf(h, id)?.undo_status).toBe("canceled");
+    expect(h.w.db.count("emails", "account_id = ? AND id = 'e_1'", ACCOUNT)).toBe(1);
+  });
+
+  it("after the alarm has fired, cancel refuses with cannotUnsend", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const { id } = await createHeld(h);
+    vi.setSystemTime(T0 + HOLD + 1);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+    expect(h.relayCalls).toHaveLength(1);
+
+    const res2 = await cancel(h, id);
+
+    expect((res2.notUpdated as Record<string, { type: string }>)[id]?.type).toBe("cannotUnsend");
+    expect(rowOf(h, id)?.undo_status).toBe("final");
+    expect(h.relayCalls).toHaveLength(1); // and certainly no second relay
+  });
+
+  it("cancel of an immediate (final) submission refuses with cannotUnsend", async () => {
+    const h = harness(draftFixture({ submissions: [submissionRow()] }));
+    const res = await h.call({}, { update: { es_seeded: { undoStatus: "canceled" } } });
+    expect((res.notUpdated as Record<string, { type: string }>).es_seeded?.type).toBe("cannotUnsend");
+  });
+
+  it("cancel is idempotent: an already-canceled submission updates cleanly", async () => {
+    const h = harness(
+      draftFixture({ submissions: [submissionRow({ id: "es_c", undo_status: "canceled", relay_message_id: null })] }),
+    );
+    const res = await h.call({}, { update: { es_c: { undoStatus: "canceled" } } });
+    expect((res.updated as Record<string, unknown>).es_c).toBeNull();
+  });
+
+  it("update accepts exactly {undoStatus: 'canceled'} and nothing else", async () => {
+    const h = harness(
+      draftFixture({ submissions: [submissionRow({ id: "es_p", undo_status: "pending", relay_message_id: null })] }),
+    );
+
+    const res = await h.call(
+      {},
+      {
+        update: {
+          es_p: { undoStatus: "final" },
+          "#nope": { undoStatus: "canceled" },
+        },
+      },
+    );
+
+    const notUpdated = res.notUpdated as Record<string, { type: string }>;
+    expect(notUpdated.es_p?.type).toBe("invalidProperties");
+    expect(notUpdated["#nope"]?.type).toBe("notFound");
+    expect(rowOf(h, "es_p")?.undo_status).toBe("pending");
+
+    const res2 = await h.call({}, { update: { es_p: { sendAt: SEND_AT } } });
+    expect((res2.notUpdated as Record<string, { type: string }>).es_p?.type).toBe("invalidProperties");
+  });
+
+  it("a sendAt beyond maxDelayedSend is refused by name", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const res = await h.call({
+      s: {
+        emailId: "e_1",
+        identityId: "id_1",
+        sendAt: new Date(T0 + 3 * 86_400_000).toISOString(),
+        envelope: { rcptTo: [{ email: "x@y.z" }] },
+      },
+    });
+
+    const err = (res.notCreated as Record<string, { type: string; description?: string }>).s;
+    expect(err?.type).toBe("invalidProperties");
+    expect(err?.description).toContain("maxDelayedSend");
+    expect(h.relayCalls).toEqual([]);
+    expect(h.w.db.count("email_submissions", "account_id = ?", ACCOUNT)).toBe(0);
+  });
+
+  it("a sendAt in the past means now: relayed immediately, final", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const res = await h.call({
+      s: {
+        emailId: "e_1",
+        identityId: "id_1",
+        sendAt: new Date(T0 - 1000).toISOString(),
+        envelope: { rcptTo: [{ email: "x@y.z" }] },
+      },
+    });
+
+    expect((res.created as Record<string, { undoStatus: string }>).s?.undoStatus).toBe("final");
+    expect(h.relayCalls).toHaveLength(1);
+  });
+
+  it("deferred onSuccessDestroyEmail destroys the draft at relay time, not accept time", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const { res, id } = await createHeld(h, { onSuccessDestroyEmail: ["#s"] });
+    expect(h.w.db.count("emails", "account_id = ? AND id = 'e_1'", ACCOUNT)).toBe(1);
+
+    vi.setSystemTime(T0 + HOLD + 1);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+
+    expect(h.relayCalls).toHaveLength(1);
+    expect(rowOf(h, id)?.undo_status).toBe("final");
+    expect(h.w.db.count("emails", "account_id = ? AND id = 'e_1'", ACCOUNT)).toBe(0);
+    const emails = await h.w.accountDo.changes(ACCOUNT, "Email", res.newState as string);
+    expect(emails.destroyed).toContain("e_1");
+  });
+
+  it("the undo dance: cancel + onSuccessUpdateEmail by plain id applies the patch NOW", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const { id } = await createHeld(h);
+    const res2 = await cancel(h, id, { onSuccessUpdateEmail: { [id]: { "keywords/$restored": true } } });
+
+    expect((res2.updated as Record<string, unknown>)[id]).toBeNull();
+    expect(
+      h.w.db.count("email_keywords", "account_id = ? AND email_id = 'e_1' AND keyword = '$restored'", ACCOUNT),
+    ).toBe(1);
+  });
+
+  it("a draft destroyed during the hold resolves to canceled, never a relay of dead bytes", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const { res, id } = await createHeld(h);
+    await new Mailstore(h.w.env.DB, h.w.env.BLOBS).destroyEmail(ACCOUNT, "e_1");
+
+    vi.setSystemTime(T0 + HOLD + 1);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+
+    expect(h.relayCalls).toEqual([]);
+    expect(rowOf(h, id)?.undo_status).toBe("canceled");
+    const subs = await h.w.accountDo.changes(ACCOUNT, "EmailSubmission", res.newState as string);
+    expect(subs.updated).toContain(id);
+  });
+
+  it("a transient relay failure re-queues with backoff and stays cancellable", async () => {
+    frozen();
+    const h = harness(draftFixture());
+    const { id } = await createHeld(h);
+
+    const binding = h.w.env.SUBMIT as unknown as { fetch: (...a: unknown[]) => Promise<Response> };
+    const realFetch = binding.fetch;
+    binding.fetch = async () => new Response("boom", { status: 500 });
+
+    const fireAt = T0 + HOLD + 1;
+    vi.setSystemTime(fireAt);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+
+    // Claim reverted, retry armed — the user can still cancel while we wait.
+    expect(rowOf(h, id)?.undo_status).toBe("pending");
+    expect(h.w.accountDo.alarmAt(ACCOUNT)).toBe(fireAt + 60_000);
+
+    binding.fetch = realFetch;
+    vi.setSystemTime(fireAt + 60_001);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+
+    expect(h.relayCalls).toHaveLength(1);
+    expect(rowOf(h, id)?.undo_status).toBe("final");
+  });
+
+  it("a cancel during the retry window wins: the retry relays nothing", async () => {
+    frozen();
+    const h = harness(draftFixture());
+    const { id } = await createHeld(h);
+
+    const binding = h.w.env.SUBMIT as unknown as { fetch: (...a: unknown[]) => Promise<Response> };
+    const realFetch = binding.fetch;
+    binding.fetch = async () => new Response("boom", { status: 500 });
+    vi.setSystemTime(T0 + HOLD + 1);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+    binding.fetch = realFetch;
+
+    const res2 = await cancel(h, id);
+    expect((res2.updated as Record<string, unknown>)[id]).toBeNull();
+
+    vi.setSystemTime(T0 + HOLD + 1 + 60_001);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+    expect(h.relayCalls).toEqual([]);
+    expect(rowOf(h, id)?.undo_status).toBe("canceled");
+  });
+
+  it("a relay-stamped Message-ID reconciles at relay time — delayed sends thread like immediate ones", async () => {
+    frozen();
+    const SES_ID = "<ses-stamped@wire.example>";
+    const h = harness(draftFixture(), ["mail"], { relayStampedMessageId: SES_ID });
+
+    const { res, id } = await createHeld(h);
+    vi.setSystemTime(T0 + HOLD + 1);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+
+    expect(rowOf(h, id)?.undo_status).toBe("final");
+    const row = await new Mailstore(h.w.env.DB, h.w.env.BLOBS).getEmailRow(ACCOUNT, "e_1");
+    // normalizeMessageId stores the bare form, same as the immediate path.
+    expect(row?.messageId).toBe("ses-stamped@wire.example");
+    const emails = await h.w.accountDo.changes(ACCOUNT, "Email", res.newState as string);
+    expect(emails.updated).toContain("e_1");
+  });
+
+  it("gives up after MAX attempts on an unreachable relay: canceled, said out loud", async () => {
+    frozen();
+    const h = harness(
+      draftFixture({ submissions: [submissionRow({ id: "es_p", undo_status: "pending", relay_message_id: null })] }),
+    );
+
+    // Inject the queue entry directly with attempts already at the brink —
+    // the accept path can never mint one this way, but nine failed passes do.
+    await h.w.env.ACCOUNT_DO.get(h.w.env.ACCOUNT_DO.idFromName(ACCOUNT)).fetch("https://do/delay", {
+      method: "POST",
+      body: JSON.stringify({
+        submissionId: "es_p",
+        accountId: ACCOUNT,
+        tenantId: "t_bm",
+        emailId: "e_1",
+        envelope: { mailFrom: IDENTITY_EMAIL, rcptTo: ["x@y.z"] },
+        fireAt: T0 + HOLD,
+        principal: LOGIN_EMAIL,
+        onSuccessPatch: null,
+        onSuccessDestroy: false,
+        attempts: 9,
+      }),
+    });
+
+    const binding = h.w.env.SUBMIT as unknown as { fetch: (...a: unknown[]) => Promise<Response> };
+    binding.fetch = async () => {
+      throw new Error("network down");
+    };
+
+    const before = await h.w.accountDo.state(ACCOUNT);
+    vi.setSystemTime(T0 + HOLD + 1);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+
+    expect(h.relayCalls).toEqual([]);
+    expect(rowOf(h, "es_p")?.undo_status).toBe("canceled");
+    const subs = await h.w.accountDo.changes(ACCOUNT, "EmailSubmission", before);
+    expect(subs.updated).toContain("es_p");
+  });
+
+  it("deferred patch: full-replace form applies, an unusable path is skipped, the send still lands", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const { id } = await createHeld(h, {
+      onSuccessUpdateEmail: { "#s": { keywords: { $sent: true }, "bogus/deep/path": true } },
+    });
+
+    vi.setSystemTime(T0 + HOLD + 1);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+
+    expect(rowOf(h, id)?.undo_status).toBe("final");
+    expect(h.w.db.count("email_keywords", "account_id = ? AND email_id = 'e_1' AND keyword = '$sent'", ACCOUNT)).toBe(
+      1,
+    );
+    expect(h.w.db.count("email_keywords", "account_id = ? AND email_id = 'e_1' AND keyword = '$draft'", ACCOUNT)).toBe(
+      0,
+    );
+  });
+
+  it("a deferred patch that would leave the email in no mailbox is skipped, never fails the send", async () => {
+    frozen();
+    const h = harness(draftFixture());
+
+    const { id } = await createHeld(h, { onSuccessUpdateEmail: { "#s": { [`mailboxIds/${DRAFTS_MB.id}`]: null } } });
+
+    vi.setSystemTime(T0 + HOLD + 1);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+
+    expect(rowOf(h, id)?.undo_status).toBe("final");
+    expect(h.relayCalls).toHaveLength(1);
+    expect(
+      h.w.db.count("email_mailboxes", "account_id = ? AND email_id = 'e_1' AND mailbox_id = ?", ACCOUNT, DRAFTS_MB.id),
+    ).toBe(1);
+  });
+
+  it("a permanent relay refusal (422 suppression) resolves to canceled, not an eternal pending", async () => {
+    frozen();
+    const h = harness(draftFixture());
+    const { res, id } = await createHeld(h);
+
+    const binding = h.w.env.SUBMIT as unknown as { fetch: (...a: unknown[]) => Promise<Response> };
+    binding.fetch = async () => new Response(JSON.stringify({ error: "recipients suppressed" }), { status: 422 });
+
+    vi.setSystemTime(T0 + HOLD + 1);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+
+    expect(rowOf(h, id)?.undo_status).toBe("canceled");
+    const subs = await h.w.accountDo.changes(ACCOUNT, "EmailSubmission", res.newState as string);
+    expect(subs.updated).toContain(id);
+
+    // And it does not come back: a later pass has nothing left to do.
+    vi.setSystemTime(T0 + HOLD + 120_000);
+    await h.w.accountDo.runAlarm(ACCOUNT);
+    expect(rowOf(h, id)?.undo_status).toBe("canceled");
   });
 });

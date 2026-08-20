@@ -70,6 +70,33 @@ export const contactsCapability = {
  */
 export const MAX_ATTACHMENT_BYTES_PER_EMAIL = 10_000_000;
 
+/**
+ * How far in the future `EmailSubmission/set` will schedule a send, in
+ * seconds — the RFC 8621 §1.3 `maxDelayedSend` value, and the ceiling the
+ * create path enforces (`services/jmap/src/methods/submission.ts`), one
+ * constant so the promise and the guard cannot drift.
+ *
+ * Why 24 hours: the window exists so `undoStatus: "pending"` →
+ * `"canceled"` can mean something (a send the client can still take back)
+ * and so "send this tomorrow morning" works, while keeping the tail short
+ * enough that a forgotten pending send is a same-day surprise, not a
+ * month-later one. Deliberately NOT config: one binding-free constant.
+ *
+ * ⚠️ There is no default hold. A create with no requested release time
+ * relays immediately, exactly as before this constant existed — a silent
+ * server-side delay on every send would change the meaning of "sent" under
+ * every existing client (CLI, webmail, agent runtime) at once. The hold is
+ * opt-in per submission: `sendAt`, or FUTURERELEASE `HOLDFOR`/`HOLDUNTIL`
+ * envelope parameters (RFC 4865), whichever the client speaks.
+ */
+export const MAX_DELAYED_SEND_SECONDS = 86_400;
+
+/** RFC 8621 §1.3 submission capability object (per-account). */
+export const submissionCapability = {
+  maxDelayedSend: MAX_DELAYED_SEND_SECONDS,
+  submissionExtensions: {},
+} as const;
+
 /** RFC 8621 §1.3 mail capability object (per-account). */
 export const mailCapability = {
   maxMailboxesPerEmail: null,
