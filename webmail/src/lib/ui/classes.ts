@@ -45,8 +45,14 @@ export function buttonClasses(variant: ButtonVariant = "secondary", size: Button
 }
 
 /** Square padding for an icon-only button; the label goes sr-only. */
-export function iconButtonClasses(size: ButtonSize = "md"): string {
-  return cx(BUTTON_BASE, BUTTON_VARIANT.ghost, size === "sm" ? "p-1" : "p-1.5");
+export function iconButtonClasses(size: ButtonSize = "md", opts: { active?: boolean } = {}): string {
+  return cx(
+    BUTTON_BASE,
+    opts.active
+      ? "bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-500/30 dark:bg-white/10 dark:text-brand-100"
+      : BUTTON_VARIANT.ghost,
+    size === "sm" ? "p-1" : "p-1.5",
+  );
 }
 
 export type BadgeTone = "neutral" | "accent" | "warn" | "error" | "success";

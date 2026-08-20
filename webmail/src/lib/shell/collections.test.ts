@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ensureSelection, flattenItems, stepSelection, toggleExpansion, type CollectionGroup } from "./collections";
+import {
+  ensureSelection,
+  flattenItems,
+  iconRailItems,
+  stepSelection,
+  toggleExpansion,
+  type CollectionGroup,
+  type CollectionItem,
+} from "./collections";
 
 // s24 T1 — the selection model. The properties that matter: selection is
 // always valid (the approvals self-repair, generalized), and keyboard order is
@@ -20,6 +28,23 @@ const GROUPS: CollectionGroup[] = [
 describe("flattenItems", () => {
   it("is visual order across groups", () => {
     expect(flattenItems(GROUPS).map((i) => i.id)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("iconRailItems", () => {
+  const Icon = (() => null) as unknown as CollectionItem["icon"];
+  const withIcons: CollectionGroup[] = [
+    {
+      id: "g",
+      items: [
+        { id: "inbox", label: "Inbox", icon: Icon },
+        { id: "plain", label: "No glyph" },
+        { id: "junk", label: "Junk", icon: Icon, disabled: true, reason: "planned" },
+      ],
+    },
+  ];
+  it("keeps only selectable items that carry a glyph", () => {
+    expect(iconRailItems(withIcons).map((i) => i.id)).toEqual(["inbox"]);
   });
 });
 

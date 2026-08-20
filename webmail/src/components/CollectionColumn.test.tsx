@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import { render } from "preact-render-to-string";
 import CollectionColumn from "./CollectionColumn";
 import type { CollectionGroup } from "../lib/shell/collections";
+import { InboxIcon, NoSymbolIcon, PencilSquareIcon } from "./icons";
 
 // s24 T1 — render tests (plain Node, preact-render-to-string). The behaviour
 // (selection model) is tested pure in lib/shell/collections.test.ts; here we
 // prove the MARKUP: groups render, selection carries aria-current, counts are
 // badges (zero renders nothing), [New] is the standardized primary Button, and
-// the collapsed strip is just the expand affordance.
+// the collapsed strip is the expand affordance plus an icon rail when items
+// carry glyphs.
 
 const GROUPS: CollectionGroup[] = [
   {
@@ -263,7 +265,41 @@ describe("CollectionColumn — variants", () => {
       <CollectionColumn title="Mail" groups={GROUPS} onSelect={() => {}} storageKey="k" defaultCollapsed />,
     );
     expect(html).toContain("Expand mail collections");
-    expect(html).toContain("w-10");
+    expect(html).toContain("w-12");
     expect(html).not.toContain("Address books"); // the list is gone, not hidden
+  });
+
+  it("collapsed keeps folder glyphs as an icon rail, and [New] as a plus", () => {
+    const html = render(
+      <CollectionColumn
+        title="Mail"
+        groups={[
+          {
+            id: "mailboxes",
+            items: [
+              { id: "inbox", label: "Inbox", icon: InboxIcon, count: 3 },
+              { id: "drafts", label: "Drafts", icon: PencilSquareIcon },
+              { id: "plain", label: "No glyph" },
+              { id: "junk", label: "Junk", icon: NoSymbolIcon, disabled: true, reason: "planned" },
+            ],
+          },
+        ]}
+        selectedId="inbox"
+        onSelect={() => {}}
+        newLabel="New message"
+        onNew={() => {}}
+        storageKey="k"
+        defaultCollapsed
+      />,
+    );
+    expect(html).toContain("Expand mail collections");
+    expect(html).toContain("Inbox, 3");
+    expect(html).toContain("Drafts");
+    expect(html).toContain("New message");
+    expect(html).toContain('aria-current="true"');
+    expect(html).toContain("bg-brand-50");
+    expect(html).not.toContain("No glyph");
+    expect(html).not.toContain("Junk");
+    expect(html).not.toContain("planned");
   });
 });

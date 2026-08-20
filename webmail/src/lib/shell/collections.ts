@@ -68,6 +68,15 @@ export function flattenItems(
   );
 }
 
+/** Selectable items that carry a glyph — the collapsed CollectionColumn rail.
+ *  Realms without icons (Approvals' lifecycle states) keep the expand-only strip. */
+export function iconRailItems(
+  groups: readonly CollectionGroup[],
+  expanded: ReadonlySet<string> = NO_EXPANSION,
+): CollectionItem[] {
+  return flattenItems(groups, expanded).filter((i) => !i.disabled && i.icon !== undefined);
+}
+
 /** Selectable = visible and not disabled. A disabled row is announced, never
  *  landed on. */
 function selectable(groups: readonly CollectionGroup[], expanded: ReadonlySet<string>): CollectionItem[] {

@@ -4,8 +4,14 @@ import { useEffect, useState } from "preact/hooks";
 import { Badge, Button, Column, IconButton, ListContainer, ListRow } from "./ui";
 import CreateFab from "./CreateFab";
 import { ChevronDoubleLeftIcon, ChevronRightIcon, PlusIcon } from "./icons";
-import { listRowClasses } from "../lib/ui/classes";
-import { stepSelection, toggleExpansion, type CollectionGroup, type CollectionItem } from "../lib/shell/collections";
+import { cx, listRowClasses } from "../lib/ui/classes";
+import {
+  iconRailItems,
+  stepSelection,
+  toggleExpansion,
+  type CollectionGroup,
+  type CollectionItem,
+} from "../lib/shell/collections";
 
 /**
  * The Collection column (s24 T1, grown by s25 T2) — the second panel of the
@@ -32,9 +38,12 @@ import { stepSelection, toggleExpansion, type CollectionGroup, type CollectionIt
  * two placements — see CreateFab.tsx.
  *
  * CSP: collapse, expansion and every responsive behaviour are discrete class
- * swaps (w-56 ↔ w-10, rotate-90, max-lg:*), never inline style. The [New]
+ * swaps (w-56 ↔ w-12, rotate-90, max-lg:*), never inline style. The [New]
  * button is the standardized create affordance (Decision 8) — the primary
- * Button + PlusIcon, label supplied by the realm ("New contact").
+ * Button + PlusIcon, label supplied by the realm ("New contact"). Collapsed,
+ * the same verb is an icon-only Plus on the rail (desktop) / FAB (phone), and
+ * items that carry a glyph stay as an icon rail so Mail's Inbox/Drafts/Archive
+ * remain reachable without expanding.
  */
 
 export interface CollectionColumnProps {
@@ -317,26 +326,69 @@ export default function CollectionColumn(props: CollectionColumnProps) {
   // passes no `newLabel`/`onNew` gets no FAB, which is the whole of the
   // "never invent a verb" rule.
   const fab = newLabel && onNew ? <CreateFab label={newLabel} onClick={onNew} disabled={newDisabled} /> : null;
+  const railItems = iconRailItems(groups, expanded);
 
   if (collapsed) {
-    // Below lg the strip turns horizontal — a slim full-width bar (a 40px-wide
+    // Below lg the strip turns horizontal — a slim full-width bar (a 48px-wide
     // vertical sliver makes no sense stacked). `narrow="hidden"` removes it
     // there entirely: the surface's collection sheet is the picker instead.
     // The FAB is a SIBLING of that strip, not a child: when the column is
     // hidden below lg, the create verb must still be there — that is exactly
     // the screen the FAB exists for.
+    //
+    // Items with glyphs stay as icon-only buttons (Mail: Inbox, Drafts,
+    // Archive, …). Realms that never set `icon` keep the expand-only strip.
+    // Desktop [New] lives here too: the header button is gone with the labels,
+    // and the FAB is phone-only.
     return (
       <>
         <div
-          class={
-            (narrow === "hidden" ? "max-lg:hidden " : "") +
-            "flex min-h-0 shrink-0 items-center self-stretch border-gray-200 max-lg:w-full max-lg:flex-row max-lg:gap-x-2 max-lg:border-b max-lg:px-2 max-lg:py-1 lg:w-10 lg:flex-col lg:border-r lg:pt-2 dark:border-white/10"
-          }
+          class={cx(
+            narrow === "hidden" && "max-lg:hidden",
+            "flex min-h-0 shrink-0 items-center self-stretch border-gray-200 max-lg:w-full max-lg:flex-row max-lg:gap-x-1 max-lg:border-b max-lg:px-2 max-lg:py-1 lg:w-12 lg:flex-col lg:gap-y-1 lg:border-r lg:pt-2 dark:border-white/10",
+          )}
         >
           <IconButton label={`Expand ${title.toLowerCase()} collections`} size="sm" onClick={() => toggle(false)}>
             <ChevronRightIcon class="size-4" />
           </IconButton>
           <span class="text-xs text-gray-500 lg:hidden dark:text-gray-400">{title}</span>
+          {newLabel && onNew ? (
+            <IconButton label={newLabel} size="sm" disabled={newDisabled} class="max-lg:hidden" onClick={() => onNew()}>
+              <PlusIcon class="size-4" strokeWidth={2} />
+            </IconButton>
+          ) : null}
+          {railItems.length > 0 ? (
+            <nav
+              class="flex min-h-0 min-w-0 flex-1 items-center gap-x-1 max-lg:overflow-x-auto lg:w-full lg:flex-col lg:overflow-y-auto lg:gap-y-1"
+              aria-label={`${title} collections`}
+              onKeyDown={onKeyDown}
+            >
+              {railItems.map((item) => {
+                const Icon = item.icon;
+                if (Icon === undefined) return null;
+                const label = item.count ? `${item.label}, ${item.count}` : item.label;
+                return (
+                  <IconButton
+                    key={item.id}
+                    label={label}
+                    size="sm"
+                    active={item.id === selectedId}
+                    onClick={() => onSelect(item.id)}
+                  >
+                    <span class="relative">
+                      <Icon class="size-4" />
+                      {item.count ? (
+                        <span
+                          class="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-brand-600"
+                          aria-hidden="true"
+                        />
+                      ) : null}
+                    </span>
+                  </IconButton>
+                );
+              })}
+            </nav>
+          ) : null}
         </div>
         {fab}
       </>

@@ -56,6 +56,11 @@ describe("iconButtonClasses", () => {
     expect(iconButtonClasses("md")).toContain("p-1.5");
     expect(iconButtonClasses("sm")).toContain("p-1");
   });
+  it("active is the collection selection wash, not the ghost hover", () => {
+    expect(iconButtonClasses("sm", { active: true })).toContain("bg-brand-50");
+    expect(iconButtonClasses("sm")).toContain("hover:bg-gray-100");
+    expect(iconButtonClasses("sm")).not.toContain("bg-brand-50");
+  });
 });
 
 describe("badgeClasses", () => {

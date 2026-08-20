@@ -52,7 +52,8 @@ import {
 } from "./icons";
 import MessageView from "./MessageView";
 import ThreadListView, { type SwipeAction } from "./ThreadListView";
-import { Alert, PageNotice, SurfaceFrame } from "./ui";
+import { Alert, EmptyState, PageNotice, SurfaceFrame } from "./ui";
+import { cx } from "../lib/ui/classes";
 
 type View = "list" | "thread" | "compose";
 
@@ -483,6 +484,14 @@ export default function AppShell({ client: injected }: Props) {
     if (id !== undefined) void openThread(id);
   }, [client, accountId, openThread]);
 
+  // Keep the list cursor on the open thread so the selection-column highlight
+  // matches the ItemDetail pane (desktop list + message).
+  useEffect(() => {
+    if (!detail) return;
+    const i = rows.findIndex((r) => r.threadId === detail.threadId);
+    if (i >= 0) setCursor((c) => (c === i ? c : i));
+  }, [detail, rows]);
+
   const startCompose = useCallback((spec: DraftSpec) => {
     setDraft(spec);
     setDraftId(undefined);
@@ -600,12 +609,24 @@ export default function AppShell({ client: injected }: Props) {
       if (!action) return;
 
       switch (action) {
-        case "next":
-          if (view === "list") setCursor((c) => Math.min(c + 1, Math.max(0, rows.length - 1)));
+        case "next": {
+          const next = Math.min(cursor + 1, Math.max(0, rows.length - 1));
+          setCursor(next);
+          if (view === "thread") {
+            const row = rows[next];
+            if (row && row.threadId !== detail?.threadId) void openThread(row.threadId);
+          }
           break;
-        case "prev":
-          if (view === "list") setCursor((c) => Math.max(0, c - 1));
+        }
+        case "prev": {
+          const next = Math.max(0, cursor - 1);
+          setCursor(next);
+          if (view === "thread") {
+            const row = rows[next];
+            if (row && row.threadId !== detail?.threadId) void openThread(row.threadId);
+          }
           break;
+        }
         case "openSelected": {
           const row = rows[cursor];
           if (row) void openThread(row.threadId);
@@ -797,14 +818,70 @@ export default function AppShell({ client: injected }: Props) {
           newDisabled={!currentIdentity}
         />
 
-        <section class="flex min-h-0 min-w-0 grow flex-col self-stretch" aria-label="Mail">
-          {!isEmptySpec(searchSpec) ? (
-            <p class="border-b border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-white/10 dark:text-gray-400">
-              {describeSearchScope(spec)}{" "}
-              <a class="font-medium text-brand-600 hover:text-brand-500" href="/mail">
-                Clear
-              </a>
-            </p>
+        <section class="flex min-h-0 min-w-0 grow flex-col self-stretch lg:flex-row" aria-label="Mail">
+          {view !== "compose" ? (
+            <div
+              class={cx(
+                "flex min-h-0 min-w-0 flex-col self-stretch",
+                "w-full lg:w-96 lg:shrink-0 lg:border-r lg:border-gray-200 dark:lg:border-white/10",
+                view === "thread" && "max-lg:hidden",
+              )}
+            >
+              {!isEmptySpec(searchSpec) ? (
+                <p class="border-b border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-white/10 dark:text-gray-400">
+                  {describeSearchScope(spec)}{" "}
+                  <a class="font-medium text-brand-600 hover:text-brand-500" href="/mail">
+                    Clear
+                  </a>
+                </p>
+              ) : null}
+
+              <ThreadListView
+                rows={rows}
+                total={total}
+                cursor={cursor}
+                selected={selected}
+                loading={loading}
+                // s25 T3 — the click path is a real link (`?q=`/`?demo=`
+                // survive via hrefWithParam); onOpen stays the keyboard path.
+                hrefFor={(row) => hrefWithParam("/mail", "thread", row.threadId)}
+                // s25 T6 — swipe triage, mail only. The gesture REVEALS these;
+                // a tap on one commits, and the toast that follows carries the
+                // Undo. See the contract at the top of ThreadListView.
+                swipeActions={swipeActions}
+                onSwipeAction={(row, action) => void runSwipe(row, action)}
+                onOpen={(row) => void openThread(row.threadId)}
+                onCursor={setCursor}
+                onToggleSelect={(row) =>
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(row.threadId)) next.delete(row.threadId);
+                    else next.add(row.threadId);
+                    return next;
+                  })
+                }
+                onLoadMore={() => {
+                  const store = storeRef.current;
+                  if (!store || loading) return;
+                  setLoading(true);
+                  // Same guard as the reload above, and for a sharper reason:
+                  // paging starts long after the effect body returned, so a
+                  // mailbox switch mid-page would otherwise append page 2 of the
+                  // list you LEFT onto the list you are looking at. This path also
+                  // had no `catch` at all — a failed page died as an unhandled
+                  // rejection with nothing on screen to say so.
+                  runListLoad(
+                    () => store.loadMore(),
+                    () => storeRef.current === store,
+                    {
+                      onResult: () => syncStore(store),
+                      onError: (message) => notify(message),
+                      onSettled: () => setLoading(false),
+                    },
+                  );
+                }}
+              />
+            </div>
           ) : null}
 
           {view === "compose" && draft ? (
@@ -826,84 +903,44 @@ export default function AppShell({ client: injected }: Props) {
               }}
             />
           ) : view === "thread" && detail ? (
-            <MessageView
-              detail={detail}
-              client={client}
-              accountId={accountId}
-              expanded={expanded}
-              imagesAllowed={imagesAllowed}
-              showQuotes={showQuotes}
-              onToggleExpand={(id) =>
-                setExpanded((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(id)) next.delete(id);
-                  else next.add(id);
-                  return next;
-                })
-              }
-              onAllowImages={(id) => setImagesAllowed((prev) => new Set(prev).add(id))}
-              onToggleQuotes={() => setShowQuotes((v) => !v)}
-              onReply={(email, all) => {
-                if (currentIdentity) {
-                  startCompose(buildReplyDraft(email, { identity: currentIdentity, replyAll: all }));
+            <div class="flex min-h-0 min-w-0 grow flex-col">
+              <MessageView
+                detail={detail}
+                client={client}
+                accountId={accountId}
+                expanded={expanded}
+                imagesAllowed={imagesAllowed}
+                showQuotes={showQuotes}
+                onToggleExpand={(id) =>
+                  setExpanded((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(id)) next.delete(id);
+                    else next.add(id);
+                    return next;
+                  })
                 }
-              }}
-              onForward={(email) => {
-                if (currentIdentity) startCompose(buildForwardDraft(email, { identity: currentIdentity }));
-              }}
-              onBack={() => {
-                setView("list");
-                setDetail(undefined);
-              }}
-            />
+                onAllowImages={(id) => setImagesAllowed((prev) => new Set(prev).add(id))}
+                onToggleQuotes={() => setShowQuotes((v) => !v)}
+                onReply={(email, all) => {
+                  if (currentIdentity) {
+                    startCompose(buildReplyDraft(email, { identity: currentIdentity, replyAll: all }));
+                  }
+                }}
+                onForward={(email) => {
+                  if (currentIdentity) startCompose(buildForwardDraft(email, { identity: currentIdentity }));
+                }}
+                onBack={() => {
+                  setView("list");
+                  setDetail(undefined);
+                }}
+              />
+            </div>
           ) : view === "thread" ? (
-            <p class="muted">Opening…</p>
+            <p class="p-4 text-sm text-gray-500 dark:text-gray-400">Opening…</p>
           ) : (
-            <ThreadListView
-              rows={rows}
-              total={total}
-              cursor={cursor}
-              selected={selected}
-              loading={loading}
-              // s25 T3 — the click path is a real link (`?q=`/`?demo=`
-              // survive via hrefWithParam); onOpen stays the keyboard path.
-              hrefFor={(row) => hrefWithParam("/mail", "thread", row.threadId)}
-              // s25 T6 — swipe triage, mail only. The gesture REVEALS these;
-              // a tap on one commits, and the toast that follows carries the
-              // Undo. See the contract at the top of ThreadListView.
-              swipeActions={swipeActions}
-              onSwipeAction={(row, action) => void runSwipe(row, action)}
-              onOpen={(row) => void openThread(row.threadId)}
-              onCursor={setCursor}
-              onToggleSelect={(row) =>
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(row.threadId)) next.delete(row.threadId);
-                  else next.add(row.threadId);
-                  return next;
-                })
-              }
-              onLoadMore={() => {
-                const store = storeRef.current;
-                if (!store || loading) return;
-                setLoading(true);
-                // Same guard as the reload above, and for a sharper reason:
-                // paging starts long after the effect body returned, so a
-                // mailbox switch mid-page would otherwise append page 2 of the
-                // list you LEFT onto the list you are looking at. This path also
-                // had no `catch` at all — a failed page died as an unhandled
-                // rejection with nothing on screen to say so.
-                runListLoad(
-                  () => store.loadMore(),
-                  () => storeRef.current === store,
-                  {
-                    onResult: () => syncStore(store),
-                    onError: (message) => notify(message),
-                    onSettled: () => setLoading(false),
-                  },
-                );
-              }}
-            />
+            <div class="hidden min-h-0 min-w-0 grow items-start justify-center lg:flex">
+              <EmptyState title="Select a conversation">Choose a message from the list to read it here.</EmptyState>
+            </div>
           )}
         </section>
       </SurfaceFrame>

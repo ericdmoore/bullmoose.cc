@@ -66,6 +66,15 @@ describe("IconButton", () => {
     expect(html).toContain("Open sections");
     expect(html).toContain("<svg");
   });
+  it("active is aria-current and the selection wash", () => {
+    const html = render(
+      <IconButton label="Inbox" active>
+        <PlusIcon class="size-4" />
+      </IconButton>,
+    );
+    expect(html).toContain('aria-current="true"');
+    expect(html).toContain("bg-brand-50");
+  });
 });
 
 describe("Badge / Avatar", () => {
