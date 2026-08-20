@@ -60,6 +60,7 @@ import {
   confirmDeleteCards,
   describeBatchOutcome,
   describeSelection,
+  selectionTitle,
   headerCheck,
   retainSelected,
   toggleAll,
@@ -987,6 +988,7 @@ export default function ContactsApp({ client: injected }: Props) {
                 <BulkBar
                   count={checked.size}
                   loaded={cards.length}
+                  total={total}
                   busy={busy}
                   groups={joinableGroups}
                   canCreateGroup={canWriteHere}
@@ -1186,6 +1188,8 @@ function ListToolbar({ check, loaded, onToggleAll }: { check: HeaderCheck; loade
 function BulkBar(props: {
   count: number;
   loaded: number;
+  /** Match total when the query knows it — `title` only, never the label. */
+  total?: number;
   busy: boolean;
   groups: ContactCard[];
   canCreateGroup: boolean;
@@ -1196,7 +1200,9 @@ function BulkBar(props: {
 }) {
   return (
     <div class="bulk-bar" role="group" aria-label="Bulk actions">
-      <span class="bulk-count">{describeSelection(props.count, props.loaded)}</span>
+      <span class="bulk-count" title={selectionTitle(props.count, props.loaded, props.total)}>
+        {describeSelection(props.count, props.loaded)}
+      </span>
 
       <button type="button" class="link-button" onClick={props.onClear}>
         Clear

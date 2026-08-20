@@ -7,6 +7,7 @@ import {
   describeSelection,
   headerCheck,
   retainSelected,
+  selectionTitle,
   toggleAll,
   toggleSelected,
   type BulkVerb,
@@ -109,7 +110,7 @@ describe("describeSelection", () => {
   it("names the LOADED denominator, never the total match count", () => {
     // The list is paged over a full-scan query: "412 of 1,203 loaded" is true,
     // "412 of 3,557" would imply a selection the screen cannot have made.
-    expect(describeSelection(412, 1203)).toBe("412 of 1,203 loaded selected");
+    expect(describeSelection(412, 1203)).toBe("412 of 1,203 selected");
     // Everything loaded is selected — no denominator worth printing.
     expect(describeSelection(50, 50)).toBe("50 selected");
   });
@@ -198,5 +199,26 @@ describe("describeBatchOutcome — never a bare “done”", () => {
 
   it("a verb with no destination gains no stray clause", () => {
     expect(describeBatchOutcome(DELETE_VERB, { done: ["a"], failed: [] })).not.toContain(" to ");
+  });
+});
+
+describe("selectionTitle — the long form the label gave up", () => {
+  it("spells out the denominator the label had to drop", () => {
+    // "loaded" left the label to stop the bulk bar wrapping; it lives here,
+    // where a tooltip costs no layout.
+    expect(selectionTitle(4, 5)).toBe("4 of 5 loaded rows selected");
+  });
+
+  it("names the match total, which the LABEL must never imply", () => {
+    expect(selectionTitle(4, 5, 3557)).toBe("4 of 5 loaded rows selected — 3,557 match this search");
+  });
+
+  it("says nothing extra when everything loaded is selected", () => {
+    expect(selectionTitle(5, 5)).toBe("5 selected");
+    expect(selectionTitle(5)).toBe("5 selected");
+  });
+
+  it("omits a total that cannot add information", () => {
+    expect(selectionTitle(4, 5, 5)).toBe("4 of 5 loaded rows selected");
   });
 });

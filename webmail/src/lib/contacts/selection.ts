@@ -86,11 +86,30 @@ export function retainSelected(selected: ReadonlySet<string>, ids: readonly stri
   return new Set([...selected].filter((id) => keep.has(id)));
 }
 
-/** "412 selected" / "412 of 1,203 loaded selected" — never "of 3,557". */
+/** "412 selected" / "412 of 1,203 selected" — never "of 3,557".
+ *
+ *  The word "loaded" used to sit before "selected" to make the denominator
+ *  explicit. It left the LABEL (2026-08-20) because at realistic widths it
+ *  wrapped the bulk bar onto a second line, and a control that reflows as you
+ *  select is worse than a terser one. The nuance did not disappear:
+ *  `selectionTitle` carries the long form into the bar's `title`, which costs
+ *  no layout, and "of N" already reads as a subset. What must NEVER happen is
+ *  the denominator becoming the MATCH total — see the select-all note above. */
 export function describeSelection(count: number, loaded?: number): string {
   if (count === 0) return "None selected";
   if (loaded === undefined || loaded <= count) return `${count.toLocaleString()} selected`;
-  return `${count.toLocaleString()} of ${loaded.toLocaleString()} loaded selected`;
+  return `${count.toLocaleString()} of ${loaded.toLocaleString()} selected`;
+}
+
+/** The long form, for `title` — where the denominator can be spelled out
+ *  without costing a line. `total` is the match count when the query knows it,
+ *  and is deliberately NOT in the visible label: a denominator of 3,557 next
+ *  to a select-all that only ever means "the loaded rows" is the exact
+ *  confusion the note above exists to prevent. */
+export function selectionTitle(count: number, loaded?: number, total?: number): string {
+  if (loaded === undefined || loaded <= count) return `${count.toLocaleString()} selected`;
+  const head = `${count.toLocaleString()} of ${loaded.toLocaleString()} loaded rows selected`;
+  return typeof total === "number" && total > loaded ? `${head} — ${total.toLocaleString()} match this search` : head;
 }
 
 /**
