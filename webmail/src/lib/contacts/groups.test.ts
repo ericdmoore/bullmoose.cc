@@ -5,7 +5,11 @@ import { installContactsDemo } from "./demo";
 import {
   GROUP_KIND,
   GROUP_SYNC_CAVEAT,
+  NOT_LOADED_REFUSAL,
+  NO_UID_REFUSAL,
   addMemberPatch,
+  addMembersPatch,
+  describeGroupAdd,
   groupCreateSpec,
   groupsContainingFilter,
   isGroup,
@@ -14,6 +18,7 @@ import {
   loadGroupsContaining,
   memberUids,
   membersFilter,
+  planGroupAdd,
   removeMemberPatch,
 } from "./groups";
 import type { ContactCard } from "./types";
@@ -186,5 +191,174 @@ describe("the CardDAV gap is stated, not hidden", () => {
     expect(GROUP_SYNC_CAVEAT).toMatch(/MEMBER/);
     expect(GROUP_SYNC_CAVEAT).toMatch(/Apple Contacts/);
     expect(GROUP_SYNC_CAVEAT).toMatch(/Cards themselves round-trip/);
+  });
+});
+
+// ── s34: bulk membership ───────────────────────────────────────────────────
+//
+// The cheap half of the bulk bar. Adding N contacts to a group writes ONE
+// card, because membership lives on the group — so what needs testing is not
+// batching (there is none to do) but the TRANSLATION: the list speaks `id`,
+// membership speaks `uid`, and that is where a contact can quietly go missing
+// between "I ticked it" and "it is in the group".
+
+describe("addMembersPatch — many members, one patch", () => {
+  it("writes the whole map for a group that has none, declaring kind with it", () => {
+    expect(addMembersPatch({}, ["urn:uuid:a", "urn:uuid:b"])).toEqual({
+      members: { "urn:uuid:a": true, "urn:uuid:b": true },
+      kind: "group",
+    });
+  });
+
+  it("uses PATH patches once the group has members, so a concurrent add survives", () => {
+    const { elk } = withDemo();
+    expect(addMembersPatch(elk(), ["urn:uuid:ada", "urn:uuid:zoe"])).toEqual({
+      "members/urn:uuid:ada": true,
+      "members/urn:uuid:zoe": true,
+    });
+  });
+
+  it("escapes pointer-reserved characters in every uid, not just the first", () => {
+    expect(addMembersPatch({ members: { seed: true } }, ["http://x.test/c/1", "a/b"])).toEqual({
+      "members/http:~1~1x.test~1c~11": true,
+      "members/a~1b": true,
+    });
+  });
+
+  it("drops uids already in the group — the caller reports those as members, not additions", () => {
+    const { elk } = withDemo();
+    expect(addMembersPatch(elk(), ["urn:uuid:grace", "urn:uuid:ada"])).toEqual({
+      "members/urn:uuid:ada": true,
+    });
+  });
+
+  it("an all-redundant add is an EMPTY patch, which saveCardEdit treats as nothing to do", () => {
+    const { elk } = withDemo();
+    expect(addMembersPatch(elk(), ["urn:uuid:grace"])).toEqual({});
+    expect(addMembersPatch({}, [])).toEqual({});
+  });
+
+  it("de-duplicates within one call", () => {
+    expect(addMembersPatch({ members: { seed: true } }, ["urn:uuid:a", "urn:uuid:a"])).toEqual({
+      "members/urn:uuid:a": true,
+    });
+  });
+
+  it("the single-member helper is the same function, so the two cannot drift", () => {
+    const { elk } = withDemo();
+    expect(addMemberPatch(elk(), "urn:uuid:ada")).toEqual(addMembersPatch(elk(), ["urn:uuid:ada"]));
+  });
+});
+
+describe("planGroupAdd — every selected id lands in exactly one bucket", () => {
+  const cards: ContactCard[] = [
+    { id: "cc-ada", uid: "urn:uuid:ada", name: { full: "Ada" } },
+    { id: "cc-grace", uid: "urn:uuid:grace", name: { full: "Grace" } },
+    { id: "cc-nouid", name: { full: "Imported Person" } },
+    { id: "cc-blank", uid: "", name: { full: "Blank Uid" } },
+  ];
+  const group = { members: { "urn:uuid:grace": true } };
+
+  it("splits into add / already / refused, accounting for every id", () => {
+    const ids = ["cc-ada", "cc-grace", "cc-nouid", "cc-gone"];
+    const plan = planGroupAdd(cards, ids, group);
+    expect(plan.add).toEqual([{ id: "cc-ada", uid: "urn:uuid:ada" }]);
+    expect(plan.already).toEqual(["cc-grace"]);
+    expect(plan.refused.map((r) => r.id)).toEqual(["cc-nouid", "cc-gone"]);
+    expect(plan.add.length + plan.already.length + plan.refused.length).toBe(ids.length);
+  });
+
+  it("REFUSES a card with no uid rather than silently skipping it", () => {
+    // uid is server-set and immutable (contacts.ts:466-468), so there is no
+    // uid to mint here — but telling someone their contact joined a group
+    // when it did not is the failure this whole design exists to prevent.
+    const plan = planGroupAdd(cards, ["cc-nouid", "cc-blank"], group);
+    expect(plan.add).toEqual([]);
+    expect(plan.refused).toEqual([
+      { id: "cc-nouid", message: NO_UID_REFUSAL },
+      { id: "cc-blank", message: NO_UID_REFUSAL },
+    ]);
+  });
+
+  it("refuses an id that is no longer loaded — reachable after a partial-failure re-query", () => {
+    expect(planGroupAdd(cards, ["cc-vanished"], group).refused).toEqual([
+      { id: "cc-vanished", message: NOT_LOADED_REFUSAL },
+    ]);
+  });
+
+  it("de-duplicates, so a repeated id is not double-counted", () => {
+    const plan = planGroupAdd(cards, ["cc-ada", "cc-ada"], group);
+    expect(plan.add).toHaveLength(1);
+  });
+
+  it("an EMPTY group has nobody already in it", () => {
+    const plan = planGroupAdd(cards, ["cc-ada", "cc-grace"], {});
+    expect(plan.add).toHaveLength(2);
+    expect(plan.already).toEqual([]);
+  });
+});
+
+describe("describeGroupAdd — the outcome names the group and the leftovers", () => {
+  const named = (id: string) => ({ "cc-ada": "Ada Lovelace", "cc-nouid": "Imported Person" })[id] ?? id;
+
+  it("names the destination, so two adds to two groups cannot read identically", () => {
+    expect(describeGroupAdd("Family", { done: ["a", "b"], failed: [], already: [] })).toBe(
+      "Added 2 contacts to “Family”.",
+    );
+    expect(describeGroupAdd("Work", { done: ["a"], failed: [], already: [] })).toBe("Added 1 contact to “Work”.");
+  });
+
+  it("reports both sides and names what was refused, with the reason", () => {
+    const said = describeGroupAdd(
+      "Family",
+      { done: ["cc-ada"], failed: [{ id: "cc-nouid", message: NO_UID_REFUSAL }], already: [] },
+      named,
+    );
+    expect(said).toContain("Added 1 of 2 contacts to “Family”.");
+    expect(said).toContain("1 could not be added");
+    expect(said).toContain(`Imported Person (${NO_UID_REFUSAL})`);
+  });
+
+  it("says out loud how many were already members, rather than rounding them into the count", () => {
+    const said = describeGroupAdd("Family", { done: ["a", "b", "c"], failed: [], already: ["b", "c"] });
+    expect(said).toContain("Added 3 contacts to “Family”.");
+    expect(said).toContain("2 were already a member.");
+    expect(describeGroupAdd("Family", { done: ["a"], failed: [], already: ["a"] })).toContain("One was already");
+  });
+
+  it("a total failure says nothing was added, and to where", () => {
+    const said = describeGroupAdd("Family", {
+      done: [],
+      failed: [{ id: "cc-x", message: "the server refused" }],
+      already: [],
+    });
+    expect(said).toContain("No contacts were added to “Family”.");
+    expect(said).not.toMatch(/^Added/);
+  });
+});
+
+describe("a bulk add really is ONE write", () => {
+  it("adds many members with a single ContactCard/set update of the group card", async () => {
+    const { client, backend, elk } = withDemo();
+    const before = client.sentBatches.length;
+
+    await updateCard(client, "acct-fake", "cc-elk", addMembersPatch(elk(), ["urn:uuid:ada", "urn:uuid:new"]));
+
+    // One call — and, more to the point, the MEMBER cards were never written.
+    expect(client.sentBatches.length - before).toBe(1);
+    const after = backend.cards.find((c) => c.id === "cc-elk")!;
+    expect(memberUids(after)).toContain("urn:uuid:ada");
+    expect(memberUids(after)).toContain("urn:uuid:new");
+    // …and the member that was already there survived the path patches.
+    expect(memberUids(after)).toContain("urn:uuid:grace");
+  });
+
+  it("creates a group WITH its members in one call, so a memberless moment never exists", () => {
+    const spec = groupCreateSpec("Carriers", ["urn:uuid:a", "urn:uuid:b"], "ab-personal");
+    expect(spec).toMatchObject({
+      kind: "group",
+      members: { "urn:uuid:a": true, "urn:uuid:b": true },
+      addressBookIds: { "ab-personal": true },
+    });
   });
 });

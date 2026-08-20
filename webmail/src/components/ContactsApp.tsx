@@ -45,16 +45,18 @@ import {
 import {
   GROUP_SYNC_CAVEAT,
   addMemberPatch,
+  addMembersPatch,
+  describeGroupAdd,
   groupCreateSpec,
   isGroup,
   loadGroupMembers,
   loadGroupsContaining,
   memberUids,
+  planGroupAdd,
   removeMemberPatch,
 } from "../lib/contacts/groups";
 import {
   DELETE_VERB,
-  MOVE_VERB,
   confirmDeleteCards,
   describeBatchOutcome,
   describeSelection,
@@ -62,7 +64,6 @@ import {
   retainSelected,
   toggleAll,
   toggleSelected,
-  type BulkVerb,
   type HeaderCheck,
 } from "../lib/contacts/selection";
 import type { AddressBook, ContactCard } from "../lib/contacts/types";
@@ -73,10 +74,9 @@ import {
   destroyCard,
   destroyCards,
   describeSetError,
-  moveCards,
   renameBook,
   saveCardEdit,
-  type BatchWriteResult,
+  type BatchFailure,
   type CardWriteResult,
 } from "../lib/contacts/write";
 import { maxObjectsInSet } from "../lib/jmap/capabilities";
@@ -107,8 +107,10 @@ import type { Session } from "../lib/jmap/types";
 //  • **Bulk is the point, and bulk is dangerous.** Selection state lives here
 //    but every rule about it is `lib/contacts/selection.ts` (what "select
 //    all" may mean over a paged list, what a delete prompt must say, why an
-//    outcome is never "done") and every write is one `ContactCard/set` per
-//    chunk (`lib/contacts/write.ts`), never one per card.
+//    outcome is never "done"). Deleting N cards is one `ContactCard/set` per
+//    chunk (`lib/contacts/write.ts`); adding N cards to a group is one
+//    `/set update` of ONE object, because membership lives on the group's
+//    card and speaks uid rather than id (`lib/contacts/groups.ts`).
 
 type View = "detail" | "edit" | "new";
 
@@ -152,7 +154,6 @@ export default function ContactsApp({ client: injected }: Props) {
   // on". Two names, because conflating them is how a bulk delete acquires an
   // extra victim.
   const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
-  const [moveBookId, setMoveBookId] = useState<string>("");
   const [card, setCard] = useState<ContactCard | undefined>(undefined);
   const [members, setMembers] = useState<ContactCard[]>([]);
   const [missingMembers, setMissingMembers] = useState<string[]>([]);
@@ -302,15 +303,6 @@ export default function ContactsApp({ client: injected }: Props) {
   useEffect(() => {
     setChecked(new Set());
   }, [accountId, bookId, spec]);
-
-  // Where a bulk move sends things. Self-repairing the way `bookId` is: a
-  // book that stopped being writable (or stopped existing) must not stay as
-  // the armed target of a move button.
-  useEffect(() => {
-    setMoveBookId((current) =>
-      targetBooks.some((b) => b.id === current) ? current : (defaultTargetBook(books)?.id ?? ""),
-    );
-  }, [targetBooks, books]);
 
   // ── every group in the account, for the join control ────────────────────
   // Cheap and bounded (`kind: "group"` narrows the same scan), and it has to
@@ -526,11 +518,23 @@ export default function ContactsApp({ client: injected }: Props) {
 
   // ── bulk ────────────────────────────────────────────────────────────────
   //
-  // One engine for every bulk verb, because the dangerous parts are the parts
-  // that are the same each time: batch the write, report an outcome that adds
-  // up, and decide what the selection means afterwards. A new bulk action
-  // ("Add to group", "Export") is a `BulkVerb` + a batched write + one button
-  // — not another copy of this.
+  // Two verbs, and they are NOT the same shape of write — which is the whole
+  // reason the bar reads `[Delete] [Add to group ▾]` and not one generic
+  // "apply":
+  //
+  //   Delete — N cards destroyed. `ContactCard/set destroy` per chunk of
+  //     `maxObjectsInSet`, final, confirmed with the exact count.
+  //   Add to group — ONE card updated. Membership lives on the GROUP's card
+  //     as a map of member UIDs (`groups.ts`), so 412 contacts joining a
+  //     group is a single `/set update` of a single object and the 412 cards
+  //     are never written at all. It is also additive and reversible, which
+  //     is why it needs no confirmation where Delete does.
+  //
+  // What they DO share is the tail — `finishBulk` — because the dangerous
+  // parts are the parts that are the same each time: say what happened in a
+  // sentence that adds up, keep the failures selected so a retry needs no
+  // re-picking, and re-query. A third bulk action is a plan, a write, and one
+  // control in the bar; it is not another copy of this.
 
   /** id → a name a person recognises, for the outcome sentence. */
   const nameOfCard = useCallback(
@@ -541,54 +545,152 @@ export default function ContactsApp({ client: injected }: Props) {
     [cards],
   );
 
-  const runBulk = useCallback(
-    async (verb: BulkVerb, write: (ids: string[]) => Promise<BatchWriteResult>) => {
+  const finishBulk = useCallback(
+    (outcome: { done: readonly string[]; failed: readonly BatchFailure[] }, sentence: string) => {
+      setToast(sentence);
+      // Clear on success; on a PARTIAL failure keep exactly the ids that
+      // failed, so a retry needs no re-picking and the bar keeps saying how
+      // many are still outstanding.
+      setChecked(
+        outcome.failed.length === 0
+          ? new Set()
+          : retainSelected(
+              checked,
+              outcome.failed.map((f) => f.id),
+            ),
+      );
+      refresh();
+    },
+    [checked, refresh],
+  );
+
+  const bulkDelete = useCallback(async () => {
+    if (!client || !accountId) return;
+    const ids = [...checked];
+    if (ids.length === 0) return;
+    // The confirmation states the EXACT count, and it is the only gate: there
+    // is no trash for a contact, so "are you sure" has to carry the number
+    // that distinguishes four rows from four thousand (selection.ts).
+    if (!confirm(confirmDeleteCards(ids.length))) return;
+    setBusy(true);
+    try {
+      const outcome = await destroyCards(client, accountId, ids, setLimit === undefined ? {} : { chunkSize: setLimit });
+      // The open card may have been one of them.
+      if (selectedId !== undefined && outcome.done.includes(selectedId)) setSelectedId(undefined);
+      finishBulk(outcome, describeBatchOutcome(DELETE_VERB, outcome, nameOfCard));
+    } catch (err) {
+      setToast(message(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [client, accountId, checked, selectedId, setLimit, finishBulk, nameOfCard]);
+
+  /**
+   * Add the selection to an existing group.
+   *
+   * `planGroupAdd` does the id → uid translation first and puts every selected
+   * id in exactly one bucket — add, already-a-member, or refused-with-a-reason
+   * — so nothing can go quietly missing between "I ticked it" and "it is in
+   * the group". A card with no uid is the case that matters: uid is server-set
+   * and immutable, so it cannot be minted here, and skipping it silently would
+   * tell someone their contact is in a group when it is not.
+   *
+   * The write goes through `saveCardEdit` rather than a bare `updateCard`
+   * because the empty-group patch shape rewrites the whole `members` object
+   * (see `addMembersPatch`) and could otherwise clobber somebody else's first
+   * add. A conflict means NOTHING was written, so the whole plan is reported
+   * as failed rather than half-claimed.
+   */
+  const addSelectionToGroup = useCallback(
+    async (group: ContactCard) => {
+      if (!client || !accountId) return;
       const ids = [...checked];
       if (ids.length === 0) return;
+      const plan = planGroupAdd(cards, ids, group);
+      const name = displayName(group);
       setBusy(true);
       try {
-        const outcome = await write(ids);
-        setToast(describeBatchOutcome(verb, outcome, nameOfCard));
-        // Clear on success; on a PARTIAL failure keep exactly the ids that
-        // failed, so a retry needs no re-picking and the bar keeps saying how
-        // many are still outstanding.
-        setChecked(
-          outcome.failed.length === 0
-            ? new Set()
-            : retainSelected(
-                checked,
-                outcome.failed.map((f) => f.id),
-              ),
+        // Nothing new to write: everything selected is already a member, or
+        // refused. Still reported — a no-op the user cannot see is a bug.
+        if (plan.add.length === 0) {
+          const outcome = { done: plan.already, failed: plan.refused };
+          finishBulk(outcome, describeGroupAdd(name, { ...outcome, already: plan.already }, nameOfCard));
+          return;
+        }
+
+        const result = await saveCardEdit(
+          client,
+          accountId,
+          group,
+          addMembersPatch(
+            group,
+            plan.add.map((a) => a.uid),
+          ),
         );
-        // The open card may have been one of them.
-        if (selectedId !== undefined && outcome.done.includes(selectedId)) setSelectedId(undefined);
-        refresh();
+        const failure = result.conflict
+          ? `“${name}” changed while this selection was open, so nothing was added. Reload and try again.`
+          : (result.refusal?.message ?? (result.error ? describeSetError(result.error, group) : undefined));
+
+        const outcome =
+          failure === undefined
+            ? { done: [...plan.add.map((a) => a.id), ...plan.already], failed: plan.refused }
+            : {
+                done: plan.already,
+                failed: [...plan.refused, ...plan.add.map((a) => ({ id: a.id, message: failure }))],
+              };
+        finishBulk(outcome, describeGroupAdd(name, { ...outcome, already: plan.already }, nameOfCard));
       } catch (err) {
         setToast(message(err));
       } finally {
         setBusy(false);
       }
     },
-    [checked, nameOfCard, selectedId, refresh],
+    [client, accountId, checked, cards, finishBulk, nameOfCard],
   );
 
-  const bulkDelete = useCallback(async () => {
+  /**
+   * "+ Create Group" — name it, make it, and put the selection in it, in one
+   * `ContactCard/set create`. `groupCreateSpec` already takes the member uids,
+   * so this is genuinely one call rather than create-then-add: a group that
+   * exists for a moment with none of the members you asked for is a state
+   * nobody needs to see.
+   */
+  const createGroupFromSelection = useCallback(async () => {
     if (!client || !accountId) return;
-    // The confirmation states the EXACT count, and it is the only gate: there
-    // is no trash for a contact, so "are you sure" has to carry the number
-    // that distinguishes four rows from four thousand (selection.ts).
-    if (!confirm(confirmDeleteCards(checked.size))) return;
-    await runBulk(DELETE_VERB, (ids) =>
-      destroyCards(client, accountId, ids, setLimit === undefined ? {} : { chunkSize: setLimit }),
-    );
-  }, [client, accountId, checked, runBulk, setLimit]);
-
-  const bulkMove = useCallback(async () => {
-    if (!client || !accountId || !moveBookId) return;
-    await runBulk(MOVE_VERB, (ids) =>
-      moveCards(client, accountId, ids, moveBookId, setLimit === undefined ? {} : { chunkSize: setLimit }),
-    );
-  }, [client, accountId, moveBookId, runBulk, setLimit]);
+    const ids = [...checked];
+    if (ids.length === 0) return;
+    const name = prompt("Name for the new group")?.trim();
+    if (!name) return;
+    // A brand-new group has no members, so nothing can already be in it.
+    const plan = planGroupAdd(cards, ids, {});
+    setBusy(true);
+    try {
+      const result = await createCard(
+        client,
+        accountId,
+        groupCreateSpec(
+          name,
+          plan.add.map((a) => a.uid),
+          defaultTargetBook(books)?.id,
+        ),
+      );
+      const failure = result.refusal?.message ?? (result.error ? describeSetError(result.error, null) : undefined);
+      const outcome =
+        failure === undefined
+          ? { done: plan.add.map((a) => a.id), failed: plan.refused }
+          : {
+              done: [] as string[],
+              failed: [...plan.refused, ...plan.add.map((a) => ({ id: a.id, message: failure }))],
+            };
+      // Open what was just made, so the group is visible rather than asserted.
+      if (failure === undefined && result.id) setSelectedId(result.id);
+      finishBulk(outcome, describeGroupAdd(name, { ...outcome, already: [] }, nameOfCard));
+    } catch (err) {
+      setToast(message(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [client, accountId, checked, cards, books, finishBulk, nameOfCard]);
 
   const newGroup = useCallback(async () => {
     if (!client || !accountId) return;
@@ -684,6 +786,10 @@ export default function ContactsApp({ client: injected }: Props) {
   // 3,557 matches from a screen showing 50 (selection.ts).
   const visibleIds = useMemo(() => cards.map((c) => c.id), [cards]);
   const listCheck = headerCheck(visibleIds, checked);
+  // The groups the bar may offer. Membership writes the GROUP's card, so the
+  // rights that matter are its book's, not the selected contacts' — the same
+  // rule the detail pane's join control follows (`books.ts mayWriteCard`).
+  const joinableGroups = useMemo(() => allGroups.filter((g) => mayWriteCard(books, g)), [allGroups, books]);
 
   // s24 T2 — the CollectionColumn's feed: "All" + each address book, with the
   // rights/default annotation as the row's note (read-only wins — it changes
@@ -882,12 +988,12 @@ export default function ContactsApp({ client: injected }: Props) {
                   count={checked.size}
                   loaded={cards.length}
                   busy={busy}
-                  books={targetBooks}
-                  moveBookId={moveBookId}
-                  onMoveBookId={setMoveBookId}
+                  groups={joinableGroups}
+                  canCreateGroup={canWriteHere}
                   onClear={() => setChecked(new Set())}
                   onDelete={() => void bulkDelete()}
-                  onMove={() => void bulkMove()}
+                  onAddToGroup={(group) => void addSelectionToGroup(group)}
+                  onCreateGroup={() => void createGroupFromSelection()}
                 />
               ) : null}
 
@@ -1045,33 +1151,48 @@ function ListToolbar({ check, loaded, onToggleAll }: { check: HeaderCheck; loade
 /**
  * The bulk action bar — present only while something is selected.
  *
+ * Eric's sketch: `[Delete] [Add to group ▾]`. Two controls, and the ▾ is a
+ * popover rather than a `<select>` on purpose — arrowing a closed `<select>`
+ * fires `change` per option in some browsers, and "+ Create Group" popping a
+ * `prompt()` from an arrow key is not a control, it is an ambush. The popover
+ * is the pattern `CollectionBar` already established here: click-outside,
+ * Escape, and a real `role="menu"`.
+ *
+ * ## The label is the act: ADD, never move
+ *
+ * Group membership is many-to-many — a contact can be in five groups, and
+ * leaving one is a separate act — so this control adds and only adds. It
+ * never removes a contact from anything, which is why "Add to group" is the
+ * whole of what it claims.
+ *
+ * A true move (remove from here, add to there) is a DIFFERENT, separately
+ * named action, not a mode this one slips into. An "Add to group" that
+ * sometimes silently removed would be worse than either verb alone, and this
+ * list has no "from" anyway: it is scoped by address book, never by group
+ * (`ContactSearchSpec.hasMember` exists and nothing sets it).
+ *
  * ## The seam
  *
- * Eric's note says he is "working on other Bulk Actions", so the shape here
- * is deliberately additive: every action is (a) a `BulkVerb` in
- * `selection.ts`, (b) a batched `ContactCard/set` helper in `write.ts`, and
- * (c) one control in this bar. Add to group, tag, export — each is those
- * three, and none of them needs a fourth outcome format or a second
- * confirmation idiom. Anything that DESTROYS goes through
- * `confirmDeleteCards`-style counting first.
+ * Eric's note says he is working on other bulk actions, so the shape is
+ * additive: an action is (a) a plan that accounts for every selected id, (b)
+ * one write, and (c) one control here. Anything DESTRUCTIVE goes through a
+ * counted confirmation first; anything additive and reversible does not.
  *
- * Delete stays enabled even where a book is read-only: rights are per book
- * and a selection can span several, so the honest answer is to send it and
- * report per-id refusals (`describeBatchOutcome`) rather than to grey out a
- * button for a reason that is true of only some of the rows. Move is
- * different — with nowhere writable to move TO, the action has no meaning at
- * all, so it is disabled with the picker it depends on.
+ * Delete stays enabled even where a book is read-only: rights are per book and
+ * a selection can span several, so the honest answer is to send it and report
+ * per-id refusals rather than to grey out a button for a reason true of only
+ * some of the rows.
  */
 function BulkBar(props: {
   count: number;
   loaded: number;
   busy: boolean;
-  books: AddressBook[];
-  moveBookId: string;
-  onMoveBookId: (id: string) => void;
+  groups: ContactCard[];
+  canCreateGroup: boolean;
   onClear: () => void;
   onDelete: () => void;
-  onMove: () => void;
+  onAddToGroup: (group: ContactCard) => void;
+  onCreateGroup: () => void;
 }) {
   return (
     <div class="bulk-bar" role="group" aria-label="Bulk actions">
@@ -1083,31 +1204,105 @@ function BulkBar(props: {
 
       <span class="bulk-spacer" />
 
-      {props.books.length > 0 ? (
-        <span class="bulk-move">
-          <label>
-            <span class="sr-only">Address book to move to</span>
-            <select
-              value={props.moveBookId}
-              disabled={props.busy}
-              onChange={(ev) => props.onMoveBookId((ev.currentTarget as HTMLSelectElement).value)}
-            >
-              {props.books.map((b) => (
-                <option value={b.id} key={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button type="button" disabled={props.busy || !props.moveBookId} onClick={props.onMove}>
-            Move to…
-          </button>
-        </span>
-      ) : null}
-
       <button type="button" class="danger" disabled={props.busy} onClick={props.onDelete}>
         Delete
       </button>
+
+      <GroupMenu
+        groups={props.groups}
+        busy={props.busy}
+        canCreate={props.canCreateGroup}
+        onAdd={props.onAddToGroup}
+        onCreate={props.onCreateGroup}
+      />
+    </div>
+  );
+}
+
+/**
+ * The `[Add to group ▾]` menu: every group this session may write, then the
+ * create door. Dismissed by click-outside or Escape — the `CollectionBar`
+ * contract, because a popover that only closes on Escape strands anyone on a
+ * phone, which has no Escape.
+ *
+ * A group with no writable book never appears: membership writes the GROUP's
+ * card, so offering one would be offering a write the server then refuses.
+ * An empty list says so rather than rendering an empty box — and "+ Create
+ * Group" is still there, which is the actual next step from "no groups yet".
+ */
+function GroupMenu(props: {
+  groups: ContactCard[];
+  busy: boolean;
+  canCreate: boolean;
+  onAdd: (group: ContactCard) => void;
+  onCreate: () => void;
+  /** Test/SSR seam: the menu starts open. */
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(props.defaultOpen ?? false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div class="bulk-menu" ref={rootRef}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={props.busy}
+        onClick={() => setOpen((v) => !v)}
+      >
+        Add to group <span aria-hidden="true">▾</span>
+      </button>
+      {open ? (
+        <div class="bulk-menu-popover" role="menu" aria-label="Add to group">
+          {props.groups.length === 0 ? <p class="muted">No groups here yet.</p> : null}
+          {props.groups.map((g) => (
+            <button
+              type="button"
+              role="menuitem"
+              key={g.id}
+              onClick={() => {
+                setOpen(false);
+                props.onAdd(g);
+              }}
+            >
+              <span class="bulk-menu-name">{displayName(g)}</span>
+              <span class="muted">{memberUids(g).length}</span>
+            </button>
+          ))}
+          {props.canCreate ? (
+            <button
+              type="button"
+              role="menuitem"
+              class="bulk-menu-create"
+              onClick={() => {
+                setOpen(false);
+                props.onCreate();
+              }}
+            >
+              + Create Group
+            </button>
+          ) : (
+            <p class="muted">No address book here is writable, so no group can be created.</p>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

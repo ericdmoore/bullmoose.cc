@@ -9,6 +9,7 @@ import {
   retainSelected,
   toggleAll,
   toggleSelected,
+  type BulkVerb,
 } from "./selection";
 
 // s34 — the bulk selection model, tested where it lives: plain Node, no DOM.
@@ -179,5 +180,23 @@ describe("describeBatchOutcome — never a bare “done”", () => {
 
   it("an empty run is honest about having done nothing", () => {
     expect(describeBatchOutcome(DELETE_VERB, { done: [], failed: [] })).toBe("Nothing was deleted.");
+  });
+
+  it("names a DESTINATION when the verb has one, in all three shapes", () => {
+    // Two adds to two different groups must not report identically — that is
+    // how a toast stops being evidence of what happened. (The group vocabulary
+    // itself lives in groups.ts; this pins the primitive it composes.)
+    const into: BulkVerb = { done: "Added", failed: "could not be added", target: "“Family”" };
+    expect(describeBatchOutcome(into, { done: ["a", "b"], failed: [] })).toBe("Added 2 contacts to “Family”.");
+    expect(describeBatchOutcome(into, { done: [], failed: [] })).toBe("Nothing was added to “Family”.");
+    const partial = describeBatchOutcome(into, { done: ["a"], failed: [fail("b", "no uid")] });
+    expect(partial).toContain("Added 1 of 2 contacts to “Family”.");
+    expect(describeBatchOutcome(into, { done: [], failed: [fail("b", "no uid")] })).toContain(
+      "No contacts were added to “Family”.",
+    );
+  });
+
+  it("a verb with no destination gains no stray clause", () => {
+    expect(describeBatchOutcome(DELETE_VERB, { done: ["a"], failed: [] })).not.toContain(" to ");
   });
 });

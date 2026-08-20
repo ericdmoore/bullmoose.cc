@@ -199,19 +199,52 @@ import App from "../layouts/AppTw.astro";
   .bulk-spacer {
     flex: 1;
   }
-  .bulk-move {
+  /* [Add to group ▾] — a popover, not a <select>: arrowing a closed select
+     fires change per option in some browsers, and "+ Create Group" popping a
+     prompt() from an arrow key is an ambush. Same shape as CollectionBar's
+     collection popover. */
+  .bulk-menu {
+    position: relative;
     display: inline-flex;
-    align-items: center;
-    gap: 4px;
   }
-  .bulk-bar select {
-    font: inherit;
-    color: inherit;
+  .bulk-menu-popover {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 20;
+    margin-top: 4px;
+    min-width: 15rem;
+    max-height: 20rem;
+    overflow-y: auto;
+    padding: 4px;
     background: var(--bg);
     border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 2px 4px;
-    max-width: 16ch;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  }
+  .bulk-menu-popover p {
+    margin: 0;
+    padding: 6px 8px;
+    font-size: 12.5px;
+  }
+  .bulk-menu-popover button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+  }
+  .bulk-menu-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bulk-menu-create {
+    margin-top: 4px;
+    border-top: 1px solid var(--line);
+    border-radius: 0 0 6px 6px;
+    color: var(--accent);
   }
   .bulk-bar button:not(.link-button) {
     font: inherit;
@@ -220,6 +253,15 @@ import App from "../layouts/AppTw.astro";
     background: var(--bg);
     border: 1px solid var(--line);
     border-radius: 6px;
+  }
+  .bulk-bar .bulk-menu-popover button {
+    background: none;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .bulk-bar .bulk-menu-popover button:hover {
+    background: var(--bg-alt);
   }
   .bulk-bar button:disabled {
     opacity: 0.5;

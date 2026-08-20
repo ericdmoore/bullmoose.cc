@@ -109,12 +109,19 @@ export function confirmDeleteCards(count: number): string {
 
 /** How a bulk verb reads in its outcome sentence. */
 export interface BulkVerb {
-  /** Past tense, sentence-initial: "Deleted", "Moved". */
+  /** Past tense, sentence-initial: "Deleted", "Added". */
   done: string;
-  /** The failure clause: "could not be deleted", "could not be moved". */
+  /** The failure clause: "could not be deleted", "could not be added". */
   failed: string;
   /** The unit, singular — "contact". */
   noun?: string;
+  /**
+   * Where they went, if the verb has a destination — `“Family”` renders as
+   * "Added 5 contacts to “Family”." A delete has none; an add to a named
+   * group has one, and leaving it out makes two adds to two different groups
+   * report identically, which is how a toast stops being evidence.
+   */
+  target?: string;
 }
 
 /** How many failures get named before the sentence gives up and counts. */
@@ -144,15 +151,18 @@ export function describeBatchOutcome(
   const ok = outcome.done.length;
   const bad = outcome.failed.length;
   const plural = (n: number) => (n === 1 ? noun : `${noun}s`);
+  const to = verb.target === undefined ? "" : ` to ${verb.target}`;
 
   if (bad === 0) {
-    return ok === 0 ? `Nothing was ${verb.done.toLowerCase()}.` : `${verb.done} ${ok.toLocaleString()} ${plural(ok)}.`;
+    return ok === 0
+      ? `Nothing was ${verb.done.toLowerCase()}${to}.`
+      : `${verb.done} ${ok.toLocaleString()} ${plural(ok)}${to}.`;
   }
 
   const head =
     ok === 0
-      ? `No ${noun}s were ${verb.done.toLowerCase()}.`
-      : `${verb.done} ${ok.toLocaleString()} of ${(ok + bad).toLocaleString()} ${plural(ok + bad)}.`;
+      ? `No ${noun}s were ${verb.done.toLowerCase()}${to}.`
+      : `${verb.done} ${ok.toLocaleString()} of ${(ok + bad).toLocaleString()} ${plural(ok + bad)}${to}.`;
 
   const named = outcome.failed
     .slice(0, NAMED_FAILURES)
@@ -163,7 +173,18 @@ export function describeBatchOutcome(
   return `${head} ${bad.toLocaleString()} ${verb.failed}: ${named}${more}.`;
 }
 
-/** The two verbs this screen bulk-applies today. Adding a third means adding
- *  a `BulkVerb` here and a button in the bar — not a new outcome format. */
+/**
+ * The verbs this screen bulk-applies. Adding another means adding a `BulkVerb`
+ * here and a control in the bar — not a new outcome format.
+ *
+ * `DELETE_VERB` is the bar's destructive half. The "add to group" verb is
+ * built per call because it names its destination — see `addToGroupVerb`
+ * (`groups.ts`), which is where membership vocabulary lives.
+ *
+ * `MOVE_VERB` pairs with `moveCards` (`write.ts`) — a bulk address-book move.
+ * Both are kept and tested as the seam for that action; neither is wired to a
+ * control today, because Eric's sketch of the bar is `[Delete] [Add to
+ * group ▾]` and three controls is one more than the sketch.
+ */
 export const DELETE_VERB: BulkVerb = { done: "Deleted", failed: "could not be deleted" };
 export const MOVE_VERB: BulkVerb = { done: "Moved", failed: "could not be moved" };
