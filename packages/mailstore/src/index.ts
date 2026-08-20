@@ -3609,6 +3609,31 @@ export class Mailstore {
   }
 
   /**
+   * Conditionally move a submission's `undoStatus` — the compare-and-swap
+   * that decides every delayed-send race. Both sides of the race go through
+   * this one method: cancel is `pending → canceled` (EmailSubmission/set
+   * update) and the relay claim is `pending → final` (AccountDO alarm), so
+   * whichever UPDATE lands first wins and the loser sees `false`. A canceled
+   * row is never relayed; a claimed row answers a late cancel with
+   * `cannotUnsend`. Returns whether the row actually moved.
+   */
+  async updateSubmissionUndoStatus(accountId: string, id: string, from: string, to: string): Promise<boolean> {
+    const res = await this.db
+      .prepare(`UPDATE email_submissions SET undo_status = ? WHERE account_id = ? AND id = ? AND undo_status = ?`)
+      .bind(to, accountId, id, from)
+      .run();
+    return (res.meta?.changes ?? 0) > 0;
+  }
+
+  /** Record the relay's id once a delayed submission has actually been sent. */
+  async setSubmissionRelayMessageId(accountId: string, id: string, relayMessageId: string | null): Promise<void> {
+    await this.db
+      .prepare(`UPDATE email_submissions SET relay_message_id = ? WHERE account_id = ? AND id = ?`)
+      .bind(relayMessageId, accountId, id)
+      .run();
+  }
+
+  /**
    * Submissions for an account. `ids` undefined = all; an EMPTY array is a
    * request for nothing and returns nothing (RFC 8620 §5.1) — deliberately
    * unlike `getMailboxes`, whose `ids && ids.length > 0` test treats `[]` as

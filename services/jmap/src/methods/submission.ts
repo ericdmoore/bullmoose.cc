@@ -1,5 +1,5 @@
-import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
-import { commitChanges } from "@bullmoose/account-do";
+import { MAX_DELAYED_SEND_SECONDS, MethodError, type CallMeta, type MethodRegistry } from "@bullmoose/jmap-core";
+import { commitChanges, scheduleDelayedSubmission, type DelayedSubmission } from "@bullmoose/account-do";
 import { normalizeMessageId } from "@bullmoose/mailstore";
 import type { EmailAddress, EmailRow, Mailstore, StoredSubmission } from "@bullmoose/mailstore";
 import type { AccountAccess } from "../auth";
@@ -19,10 +19,20 @@ import { resolveIdentities } from "./identity";
  * EmailSubmission — `set` (RFC 8621 §7.5), `get` (§7.1), `changes` (§7.2).
  *
  * Sends exit through the submit worker (service binding) which relays via SES
- * — Cloudflare cannot originate SMTP. `/set` supports create +
- * onSuccessUpdateEmail (the standard "move draft to Sent, clear $draft"
- * dance); update and destroy are not implemented, and the response says so
- * structurally rather than pretending.
+ * — Cloudflare cannot originate SMTP. `/set` supports:
+ *
+ *  - create, immediate or HELD: a future release time (`sendAt`, or RFC 4865
+ *    `HOLDFOR`/`HOLDUNTIL` envelope parameters — the RFC 8621 §7 spelling)
+ *    within `maxDelayedSend` inserts the row as `undoStatus: "pending"` and
+ *    queues the relay on the AccountDO alarm instead of relaying now;
+ *  - update, exactly one transition: `undoStatus` pending → "canceled", the
+ *    undo that the hold exists for. After the alarm has relayed, the same
+ *    update answers `cannotUnsend` (§7.5's SetError for exactly this);
+ *  - onSuccessUpdateEmail + onSuccessDestroyEmail (the standard "move draft
+ *    to Sent / discard the draft" dance) — applied inline for immediate
+ *    sends, DEFERRED to relay time for held ones;
+ *  - destroy is not implemented, and the response says so structurally
+ *    rather than pretending.
  */
 export function registerSubmissionMethods(registry: MethodRegistry<RequestContext>): void {
   registry.register("EmailSubmission/set", emailSubmissionSet);
@@ -51,14 +61,12 @@ export function registerSubmissionMethods(registry: MethodRegistry<RequestContex
  * as though the server had checked. `null` is the honest answer and it is what
  * RFC 8621 §7 prescribes when the information is unavailable.
  *
- * `undoStatus` is echoed from the column rather than hardcoded. Today it only
- * ever holds `'final'`, written at its single call site in `submitOne` below,
- * and `'final'` is nonetheless TRUE: the row is inserted only after the relay
- * accepted the message, and `maxDelayedSend` is 0 (`session.ts`), so the send
- * genuinely cannot be undone. It is a statement about cancelability, not about
- * delivery — the delivery claim is the one above, and it is null. Echoing
- * rather than hardcoding is also what makes a future `pending`/`canceled`
- * (delayed send) readable without touching this method.
+ * `undoStatus` is echoed from the column rather than hardcoded, and since
+ * delayed send landed the column genuinely varies: `'pending'` while a held
+ * send can still be canceled, `'canceled'` once it was (or once the relay
+ * permanently refused it — see AccountDO), `'final'` once the message is on
+ * the wire. It is a statement about cancelability, not about delivery — the
+ * delivery claim is the one above, and it is null.
  *
  * `relayMessageId` is not exposed: it is not an RFC 8621 property, it is the
  * upstream relay's internal id, and no client has a use for it.
@@ -122,12 +130,23 @@ function submissionToJmap(row: StoredSubmission): Record<string, unknown> {
 interface CreateSpec {
   emailId?: string;
   identityId?: string;
-  envelope?: { mailFrom?: { email?: string }; rcptTo?: Array<{ email?: string }> } | null;
+  /**
+   * Requested release time. RFC 8621 §7 makes `sendAt` server-set and spells
+   * the request as FUTURERELEASE parameters on `envelope.mailFrom` (RFC 4865
+   * `HOLDFOR` seconds / `HOLDUNTIL` timestamp); real clients send either
+   * spelling, so `requestedReleaseAt` accepts both.
+   */
+  sendAt?: string;
+  envelope?: {
+    mailFrom?: { email?: string; parameters?: Record<string, unknown> | null };
+    rcptTo?: Array<{ email?: string }>;
+  } | null;
 }
 
 async function emailSubmissionSet(
   args: Record<string, unknown>,
   ctx: RequestContext,
+  meta?: CallMeta,
 ): Promise<Record<string, unknown>> {
   const access = await requireAccount(ctx, args, "send");
   const store = storeFor(ctx);
@@ -138,6 +157,10 @@ async function emailSubmissionSet(
   const createdIds: string[] = [];
   /** creation-ref (#cid) → { submissionId, emailId } for onSuccess handling. */
   const byRef = new Map<string, { submissionId: string; emailId: string }>();
+  /** submissionId → its hold, for creates that were queued instead of relayed. */
+  const holds = new Map<string, DelayedSubmission>();
+  /** submissionId → cid, to unwind a hold whose DO queueing failed. */
+  const cidOf = new Map<string, string>();
 
   // Emails whose stored message_id was reconciled to the relay's wire
   // Message-ID (SES substitutes its own — see submitOne). A real change to
@@ -148,11 +171,15 @@ async function emailSubmissionSet(
   const create = (args.create as Record<string, CreateSpec> | undefined) ?? {};
   for (const [cid, spec] of Object.entries(create)) {
     try {
-      const result = await submitOne(ctx, store, access, spec);
-      created[cid] = { id: result.submissionId, undoStatus: "final", sendAt: result.sendAt };
+      const result = await submitOne(ctx, store, access, spec, meta);
+      created[cid] = { id: result.submissionId, undoStatus: result.undoStatus, sendAt: result.sendAt };
       createdIds.push(result.submissionId);
       if (result.emailUpdated) emailsStamped.add(result.emailId);
       byRef.set(cid, result);
+      if (result.hold) {
+        holds.set(result.submissionId, result.hold);
+        cidOf.set(result.submissionId, cid);
+      }
     } catch (err) {
       notCreated[cid] =
         err instanceof MethodError
@@ -161,14 +188,88 @@ async function emailSubmissionSet(
     }
   }
 
-  // onSuccessUpdateEmail: keys are "#cid" creation refs (or submission ids);
-  // values are Email PatchObjects applied to the submission's email.
+  // update (RFC 8621 §7.5): the ONLY mutable property is undoStatus, and the
+  // only transition is pending → canceled — the undo the delayed-send hold
+  // exists for. The transition is a compare-and-swap against the row (see
+  // Mailstore.updateSubmissionUndoStatus): if the AccountDO alarm claimed the
+  // row first the message is on the wire and the answer is `cannotUnsend`,
+  // the SetError the spec defines for exactly this moment.
+  const updated: Record<string, unknown> = {};
+  const notUpdated: Record<string, SetError> = {};
+  const submissionsUpdated: string[] = [];
+  /** submission id → emailId for successful updates (onSuccess key resolution). */
+  const updatedRefs = new Map<string, string>();
+  const update = (args.update as Record<string, Record<string, unknown>> | undefined) ?? {};
+  for (const [key, patch] of Object.entries(update)) {
+    // "#cid" keys resolve like any creation reference: this call's creates
+    // first, then earlier methods' (RFC 8620 §3.3).
+    const id = key.startsWith("#")
+      ? (byRef.get(key.slice(1))?.submissionId ?? meta?.createdIds.get(key.slice(1)))
+      : key;
+    if (!id) {
+      notUpdated[key] = setError("notFound", `reference ${key} does not match any created id in this request`);
+      continue;
+    }
+    const keys = Object.keys(patch ?? {});
+    if (keys.length !== 1 || keys[0] !== "undoStatus" || patch.undoStatus !== "canceled") {
+      notUpdated[key] = setError("invalidProperties", `only undoStatus may be updated, and only to "canceled"`);
+      continue;
+    }
+    const [row] = await store.getSubmissions(access.accountId, [id]);
+    if (!row) {
+      notUpdated[key] = setError("notFound");
+      continue;
+    }
+    if (row.undoStatus === "canceled") {
+      // Already what the client asked for — idempotent success.
+      updated[key] = null;
+      updatedRefs.set(id, row.emailId);
+      continue;
+    }
+    const moved = await store.updateSubmissionUndoStatus(access.accountId, id, "pending", "canceled");
+    if (!moved) {
+      notUpdated[key] = setError("cannotUnsend", "the message has already been sent");
+      continue;
+    }
+    updated[key] = null;
+    updatedRefs.set(id, row.emailId);
+    submissionsUpdated.push(id);
+  }
+
+  // destroy: not supported, and said so per id rather than silently dropped.
+  const destroyRequested = (args.destroy as string[] | undefined) ?? [];
+  const notDestroyed: Record<string, SetError> = {};
+  for (const id of destroyRequested) {
+    notDestroyed[id] = setError("forbidden", "EmailSubmission destroy is not supported");
+  }
+
+  /**
+   * onSuccess key resolution (RFC 8621 §7.5): a key names an EmailSubmission
+   * whose create/update succeeded in THIS call — "#cid" for creates, the
+   * plain id for updates (the cancel + "restore my draft" dance). A key that
+   * resolves to a HELD create returns its hold instead of applying now:
+   * deferred actions ride the DO queue and fire at relay time.
+   */
+  const resolveSuccessRef = (key: string): { submissionId: string; emailId: string } | undefined => {
+    if (key.startsWith("#")) return byRef.get(key.slice(1));
+    const emailId = updatedRefs.get(key);
+    return emailId ? { submissionId: key, emailId } : undefined;
+  };
+
+  // onSuccessUpdateEmail: values are Email PatchObjects applied to the
+  // submission's email — inline for immediate sends and successful updates,
+  // stored on the hold for pending ones (applied by AccountDO at relay time).
   const mailboxesTouched = new Set<string>();
   const emailsUpdated: string[] = [];
   const onSuccess = (args.onSuccessUpdateEmail as Record<string, Record<string, unknown>> | undefined) ?? {};
   for (const [key, patch] of Object.entries(onSuccess)) {
-    const ref = key.startsWith("#") ? byRef.get(key.slice(1)) : undefined;
+    const ref = resolveSuccessRef(key);
     if (!ref) continue; // send failed or unknown ref — nothing to update
+    const hold = holds.get(ref.submissionId);
+    if (hold) {
+      hold.onSuccessPatch = patch;
+      continue;
+    }
     try {
       await applyEmailPatch(store, access.accountId, ref.emailId, patch, mailboxesTouched);
       emailsUpdated.push(ref.emailId);
@@ -177,18 +278,73 @@ async function emailSubmissionSet(
     }
   }
 
+  // onSuccessDestroyEmail (RFC 8621 §7.5): destroy the submission's email —
+  // the "discard the draft once it sends" client dance. Same key resolution
+  // and same deferral as the patch map above. Authorization deliberately
+  // matches onSuccessUpdateEmail: the `send` scope that authorized the
+  // submission covers its onSuccess actions, because both are bounded to the
+  // email of a submission THIS call successfully created or updated — a
+  // draft the token was allowed to send — not to arbitrary ids. (Email/set
+  // destroy proper still demands the `delete` scope; that gate is for
+  // destroying any stored mail, which this cannot reach.)
+  const emailsDestroyed: string[] = [];
+  const onSuccessDestroy = (args.onSuccessDestroyEmail as string[] | undefined) ?? [];
+  for (const key of onSuccessDestroy) {
+    if (typeof key !== "string") continue;
+    const ref = resolveSuccessRef(key);
+    if (!ref) continue; // send failed or unknown ref — nothing to destroy
+    const hold = holds.get(ref.submissionId);
+    if (hold) {
+      hold.onSuccessDestroy = true;
+      continue;
+    }
+    try {
+      const row = await store.getEmailRow(access.accountId, ref.emailId);
+      if (!row) continue; // already gone
+      await store.destroyEmail(access.accountId, ref.emailId);
+      for (const mb of row.mailboxIds) mailboxesTouched.add(mb);
+      emailsDestroyed.push(ref.emailId);
+    } catch (err) {
+      console.error(`onSuccessDestroyEmail failed for ${ref.emailId}:`, err);
+    }
+  }
+
+  // Queue the holds — AFTER the onSuccess walk so each hold carries its
+  // deferred actions. A hold the DO refuses is unwound to notCreated: a
+  // pending row with no alarm behind it would sit "pending" forever, which
+  // is worse than an honest serverFail the client can retry.
+  for (const hold of holds.values()) {
+    try {
+      await scheduleDelayedSubmission(ctx.env.ACCOUNT_DO, hold);
+    } catch (err) {
+      await store.updateSubmissionUndoStatus(access.accountId, hold.submissionId, "pending", "canceled");
+      const cid = cidOf.get(hold.submissionId);
+      if (cid) {
+        delete created[cid];
+        notCreated[cid] = setError("serverFail", `could not queue delayed send: ${String(err)}`);
+      }
+      const at = createdIds.indexOf(hold.submissionId);
+      if (at >= 0) createdIds.splice(at, 1);
+    }
+  }
+
   // One Email-updated entry covers both kinds of update this method makes:
   // the onSuccessUpdateEmail patches above and the message_id reconciles
   // from submitOne (deduped — a send with both touches the email once).
-  const emailsChanged = [...new Set([...emailsStamped, ...emailsUpdated])];
+  // An email destroyed above is reported as destroyed, not also updated.
+  const emailsChanged = [...new Set([...emailsStamped, ...emailsUpdated])].filter(
+    (id) => !emailsDestroyed.includes(id),
+  );
 
   let newState = oldState;
-  if (createdIds.length > 0 || emailsChanged.length > 0) {
+  if (createdIds.length + submissionsUpdated.length + emailsChanged.length + emailsDestroyed.length > 0) {
     const entries = [];
-    if (createdIds.length > 0) {
-      entries.push({ collection: "EmailSubmission", created: createdIds });
+    if (createdIds.length > 0 || submissionsUpdated.length > 0) {
+      entries.push({ collection: "EmailSubmission", created: createdIds, updated: submissionsUpdated });
     }
-    if (emailsChanged.length > 0) entries.push({ collection: "Email", updated: emailsChanged });
+    if (emailsChanged.length > 0 || emailsDestroyed.length > 0) {
+      entries.push({ collection: "Email", updated: emailsChanged, destroyed: emailsDestroyed });
+    }
     if (mailboxesTouched.size > 0) {
       entries.push({ collection: "Mailbox", updated: [...mailboxesTouched] });
     }
@@ -201,11 +357,21 @@ async function emailSubmissionSet(
     newState,
     created,
     notCreated,
-    updated: {},
-    notUpdated: {},
+    updated,
+    notUpdated,
     destroyed: [],
-    notDestroyed: {},
+    notDestroyed,
   };
+}
+
+interface SubmitOutcome {
+  submissionId: string;
+  emailId: string;
+  sendAt: string;
+  undoStatus: "pending" | "final";
+  emailUpdated: boolean;
+  /** Present iff the send is HELD: queued on the AccountDO by the caller. */
+  hold?: DelayedSubmission;
 }
 
 async function submitOne(
@@ -213,26 +379,34 @@ async function submitOne(
   store: Mailstore,
   access: AccountAccess,
   spec: CreateSpec,
-): Promise<{ submissionId: string; emailId: string; sendAt: string; emailUpdated: boolean }> {
+  meta: CallMeta | undefined,
+): Promise<SubmitOutcome> {
   if (!spec.emailId || !spec.identityId) {
     throw new MethodError("invalidArguments", "emailId and identityId are required");
   }
 
-  const email = await store.getEmailRow(access.accountId, spec.emailId);
-  if (!email) throw new MethodError("invalidArguments", `email ${spec.emailId} not found`);
+  // RFC 8620 §3.3 creation references: a batching client submits the draft
+  // it created two lines up as `emailId: "#cid"`, and the dispatcher's
+  // creation-id map is where that cid became a real id. Unresolvable is a
+  // client error naming the ref, not a lookup miss.
+  const emailId = resolveCreationRef("emailId", spec.emailId, meta);
+  const identityId = resolveCreationRef("identityId", spec.identityId, meta);
+
+  const email = await store.getEmailRow(access.accountId, emailId);
+  if (!email) throw new MethodError("invalidArguments", `email ${emailId} not found`);
 
   // Only unsent drafts may be submitted. Without this a send-scoped token
   // could re-relay any stored message in the account — including inbound
   // mail it merely received — to recipients of its choosing.
   if (!(await isDraft(store, access.accountId, email))) {
-    throw new MethodError("forbidden", `email ${spec.emailId} is not a draft`);
+    throw new MethodError("forbidden", `email ${emailId} is not a draft`);
   }
 
   // Identity must be one Identity/get would have offered for this account.
   const identities = await resolveIdentities(ctx, access, store);
-  const identity = identities.find((i) => i.id === spec.identityId);
+  const identity = identities.find((i) => i.id === identityId);
   if (!identity) {
-    throw new MethodError("invalidArguments", `identity ${spec.identityId} not found`);
+    throw new MethodError("invalidArguments", `identity ${identityId} not found`);
   }
 
   // The identity — never the client — is authoritative for the sender.
@@ -256,6 +430,52 @@ async function submitOne(
     dedupe([...email.to, ...email.cc, ...email.bcc].map((a: EmailAddress) => a.email));
   if (rcptTo.length === 0) {
     throw new MethodError("invalidArguments", "no recipients");
+  }
+
+  // Delayed send (RFC 8621 §7 / capability `maxDelayedSend`): a future
+  // release time means the row is written `pending` and the relay is a
+  // PROMISE — an AccountDO alarm entry the caller queues after the
+  // onSuccess maps have been attached to it. No requested time, or one in
+  // the past, is the immediate path below, byte-for-byte the pre-hold
+  // behavior: default-off, because a silent server-side delay would change
+  // what "sent" means under every client that already exists.
+  const now = Date.now();
+  const releaseAt = requestedReleaseAt(spec, now);
+  if (releaseAt !== null && releaseAt > now) {
+    if (releaseAt - now > MAX_DELAYED_SEND_SECONDS * 1000) {
+      throw new MethodError(
+        "invalidArguments",
+        `requested sendAt is further out than maxDelayedSend (${MAX_DELAYED_SEND_SECONDS}s)`,
+      );
+    }
+    const submissionId = `es_${crypto.randomUUID()}`;
+    await store.insertSubmission(access.accountId, {
+      id: submissionId,
+      emailId,
+      identityId: identity.id,
+      envelope: { mailFrom, rcptTo },
+      undoStatus: "pending",
+      relayMessageId: null,
+      sendAt: releaseAt,
+    });
+    return {
+      submissionId,
+      emailId,
+      sendAt: new Date(releaseAt).toISOString(),
+      undoStatus: "pending",
+      emailUpdated: false,
+      hold: {
+        submissionId,
+        accountId: access.accountId,
+        tenantId: access.tenantId,
+        emailId,
+        envelope: { mailFrom, rcptTo },
+        fireAt: releaseAt,
+        principal: ctx.principal.username,
+        onSuccessPatch: null,
+        onSuccessDestroy: false,
+      },
+    };
   }
 
   const res = await ctx.env.SUBMIT.fetch("https://submit.internal/internal/submit", {
@@ -293,14 +513,14 @@ async function submitOne(
   const wireMessageId = normalizeMessageId(relayStamped);
   const messageIdChanged = wireMessageId !== null && wireMessageId !== email.messageId;
   if (messageIdChanged) {
-    await store.updateEmailMessageId(access.accountId, spec.emailId, wireMessageId);
+    await store.updateEmailMessageId(access.accountId, emailId, wireMessageId);
   }
 
   const submissionId = `es_${crypto.randomUUID()}`;
   const sendAtMs = Date.now();
   await store.insertSubmission(access.accountId, {
     id: submissionId,
-    emailId: spec.emailId,
+    emailId,
     identityId: identity.id,
     envelope: { mailFrom, rcptTo },
     undoStatus: "final",
@@ -310,10 +530,72 @@ async function submitOne(
 
   return {
     submissionId,
-    emailId: spec.emailId,
+    emailId,
     sendAt: new Date(sendAtMs).toISOString(),
+    undoStatus: "final",
     emailUpdated: messageIdChanged,
   };
+}
+
+/**
+ * Resolve an RFC 8620 §3.3 creation reference (`#cid`) against the
+ * dispatcher's creation-id map. Plain ids pass through untouched; a `#` value
+ * with no binding is refused BY NAME, because the alternative — treating
+ * "#big" as a literal id — turns a batching client's one-round-trip send into
+ * a baffling "email #big not found".
+ */
+function resolveCreationRef(field: string, value: string, meta: CallMeta | undefined): string {
+  if (!value.startsWith("#")) return value;
+  const resolved = meta?.createdIds.get(value.slice(1));
+  if (!resolved) {
+    throw new MethodError(
+      "invalidArguments",
+      `${field} reference ${value} does not match any created id in this request`,
+    );
+  }
+  return resolved;
+}
+
+/**
+ * The requested release time (epoch ms), or null for "now".
+ *
+ * Two spellings, both honored: RFC 8621 §7's own — FUTURERELEASE (RFC 4865)
+ * `HOLDFOR` (seconds) / `HOLDUNTIL` (timestamp) parameters on
+ * `envelope.mailFrom`, matched case-insensitively as SMTP extension keywords
+ * are — and a literal `sendAt` on the create, which the spec marks server-set
+ * but real batching clients send anyway and which round-trips through our own
+ * `/get` shape. Parameters win when both appear, being the spec's spelling.
+ * A malformed value is refused rather than silently sent immediately: the
+ * client asked for a hold, and "sent now by accident" is the one outcome it
+ * clearly did not want.
+ */
+function requestedReleaseAt(spec: CreateSpec, now: number): number | null {
+  const params = spec.envelope?.mailFrom?.parameters;
+  if (params && typeof params === "object") {
+    for (const [key, raw] of Object.entries(params)) {
+      const name = key.toUpperCase();
+      if (name === "HOLDFOR") {
+        const seconds = Number(raw);
+        if (!Number.isFinite(seconds) || seconds < 0) {
+          throw new MethodError("invalidArguments", `HOLDFOR must be a non-negative number of seconds`);
+        }
+        return now + seconds * 1000;
+      }
+      if (name === "HOLDUNTIL") {
+        const at = Date.parse(String(raw));
+        if (Number.isNaN(at)) {
+          throw new MethodError("invalidArguments", `HOLDUNTIL is not a valid date-time`);
+        }
+        return at;
+      }
+    }
+  }
+  if (typeof spec.sendAt === "string") {
+    const at = Date.parse(spec.sendAt);
+    if (Number.isNaN(at)) throw new MethodError("invalidArguments", `sendAt is not a valid date-time`);
+    return at;
+  }
+  return null;
 }
 
 /**
