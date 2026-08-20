@@ -40,7 +40,7 @@ import CollectionBar from "./CollectionBar";
 import CollectionColumn, { useCollapsed } from "./CollectionColumn";
 import { buildMailboxTree, flattenTree } from "../lib/mail/mailboxes";
 import type { CollectionGroup } from "../lib/shell/collections";
-import { hrefWithParam, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
+import { hrefWithParams, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
 import {
   ArchiveBoxIcon,
   FolderIcon,
@@ -434,10 +434,10 @@ export default function AppShell({ client: injected }: Props) {
     [client, accountId, roleId, syncStore, notify],
   );
 
-  // By THREAD ID, not row: the s25 T3 deep link (`/mail?thread=<id>`) opens
-  // threads that have no loaded row yet, and the keyboard path just passes
-  // `row.threadId`. This is the in-page half of the T3 split — clicks travel
-  // the URL (ThreadListView's `hrefFor`), j/k + Enter stay here.
+  // By THREAD ID, not row: `/mail?thread=<id>` still opens a thread on mount
+  // (the deep link, and cmd-click / copy-link). Primary clicks and j/k + Enter
+  // both fetch in-page so mailbox selection (Archive, …) survives. No history
+  // call — tokenInUrl.test.ts.
   const openThread = useCallback(
     async (threadId: string) => {
       if (!client) return;
@@ -471,13 +471,12 @@ export default function AppShell({ client: injected }: Props) {
   );
 
   // s25 T3 — the detail URL, read ONCE at mount: `/mail?thread=<id>` opens
-  // that thread the way a click just did on some other device. This is what
-  // makes the browser back button work — the row links navigate here (MPA),
-  // so Back is simply `/mail` again. Read-only: nothing ever WRITES the
-  // param after mount (that would take a history call, and this app makes
-  // exactly one, in client.ts — tokenInUrl.test.ts), so in-page keyboard
-  // navigation can drift from the URL. The URL is the click path; the state
-  // is the keyboard path.
+  // that thread on first paint (deep link, new tab, shared URL). Read-only:
+  // nothing ever WRITES the param after mount (that would take a history
+  // call, and this app makes exactly one, in client.ts — tokenInUrl.test.ts).
+  // In-page clicks fetch the message without navigating, so mailbox selection
+  // (Archive, …) is not reset to inbox by a remount. The URL can drift from
+  // the open thread; cmd-click / copy-link still use the row's href.
   const threadParsed = useRef(false);
   useEffect(() => {
     if (threadParsed.current || !client || !accountId) return;
@@ -868,9 +867,11 @@ export default function AppShell({ client: injected }: Props) {
                 cursor={cursor}
                 selected={selected}
                 loading={loading}
-                // s25 T3 — the click path is a real link (`?q=`/`?demo=`
-                // survive via hrefWithParam); onOpen stays the keyboard path.
-                hrefFor={(row) => hrefWithParam("/mail", "thread", row.threadId)}
+                // Real href for cmd-click / copy-link / new tab (`?q=`/`?demo=`
+                // survive; `?c=` carries the selected mailbox so a genuine hop
+                // does not dump you back in Inbox). Primary click is in-page:
+                // onOpen fetches the thread into ItemDetail without remounting.
+                hrefFor={(row) => hrefWithParams("/mail", { thread: row.threadId, c: mailbox?.id })}
                 // s25 T6 — swipe triage, mail only. The gesture REVEALS these;
                 // a tap on one commits, and the toast that follows carries the
                 // Undo. See the contract at the top of ThreadListView.
