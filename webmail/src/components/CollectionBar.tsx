@@ -1,7 +1,7 @@
 /** @jsxImportSource preact */
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Breadcrumb, Button, IconButton } from "./ui";
-import { ChevronDownMiniIcon, ChevronRightIcon, PlusIcon } from "./icons";
+import { ChevronDownIcon, ChevronDownMiniIcon, PlusIcon } from "./icons";
 import { CollectionTree, useExpansion } from "./CollectionColumn";
 import { findItem, type CollectionGroup } from "../lib/shell/collections";
 import { cx } from "../lib/ui/classes";
@@ -80,7 +80,7 @@ export default function CollectionBar({
       )}
     >
       <IconButton label={`Show ${title.toLowerCase()} collections as a column`} size="sm" onClick={onExpand}>
-        <ChevronRightIcon class="size-4" />
+        <ChevronDownIcon class="size-4" strokeWidth={2} />
       </IconButton>
       <div class="flex min-w-0 grow items-center gap-x-1">
         <Breadcrumb

@@ -33,5 +33,6 @@ describe("every exported icon", () => {
 
   it("strokeWidth is overridable where a call site needs it (the collapse chevron)", () => {
     expect(render(<icons.ChevronDoubleLeftIcon class="x" strokeWidth={2} />)).toContain('stroke-width="2"');
+    expect(render(<icons.ChevronUpIcon class="x" strokeWidth={2} />)).toContain('stroke-width="2"');
   });
 });

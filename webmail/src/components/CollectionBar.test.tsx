@@ -29,6 +29,7 @@ describe("CollectionBar", () => {
       />,
     );
     expect(html).toContain("Show mail collections as a column");
+    expect(html).toContain("M19.5 8.25"); // restore-column points down, matching collapse-up
     expect(html).toContain("Mail");
     expect(html).toContain("Archive");
     expect(html).toContain("New message");

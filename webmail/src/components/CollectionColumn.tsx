@@ -3,7 +3,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { Badge, Button, Column, IconButton, ListContainer, ListRow } from "./ui";
 import CreateFab from "./CreateFab";
-import { ChevronDoubleLeftIcon, ChevronRightIcon, PlusIcon } from "./icons";
+import { ChevronDoubleLeftIcon, ChevronRightIcon, ChevronUpIcon, PlusIcon } from "./icons";
 import { cx, listRowClasses } from "../lib/ui/classes";
 import {
   iconRailItems,
@@ -470,7 +470,11 @@ export default function CollectionColumn(props: CollectionColumnProps) {
             )}
             {storageKey ? (
               <IconButton label={`Collapse ${title.toLowerCase()} collections`} size="sm" onClick={() => toggle(true)}>
-                <ChevronDoubleLeftIcon class="size-4" strokeWidth={2} />
+                {collapseMode === "bar" ? (
+                  <ChevronUpIcon class="size-4" strokeWidth={2} />
+                ) : (
+                  <ChevronDoubleLeftIcon class="size-4" strokeWidth={2} />
+                )}
               </IconButton>
             ) : null}
           </div>
