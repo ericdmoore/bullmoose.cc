@@ -59,7 +59,9 @@
 import type { JmapClient } from "../jmap/JmapClient";
 import { CARD_LIST_PROPERTIES, loadCards, type ContactFilter } from "./cards";
 import { pointerToken } from "./form";
+import { describeBatchOutcome, type BulkVerb } from "./selection";
 import type { CardPatch, ContactCard } from "./types";
+import type { BatchFailure } from "./write";
 
 /** JSContact `kind` for a group card. */
 export const GROUP_KIND = "group";
@@ -102,16 +104,48 @@ export function isMember(group: Pick<ContactCard, "members">, uid: string): bool
  * wrong path (`pointerToken`, form.ts).
  */
 export function addMemberPatch(group: Pick<ContactCard, "members" | "kind">, uid: string): CardPatch {
-  const existing = memberUids(group);
-  if (existing.length === 0) {
+  return addMembersPatch(group, [uid]);
+}
+
+/**
+ * Add MANY members in one patch (s34).
+ *
+ * This is the whole reason a bulk "Add to group" is cheap where a bulk delete
+ * is not: membership lives on the GROUP's card, so adding 412 contacts to a
+ * group is **one `ContactCard/set update` of one object** — not 412 writes,
+ * and not even the chunked handful that `destroyCards` needs. The 412 cards
+ * themselves are never written at all.
+ *
+ * The same two shapes as the single-member version, for the same reason, and
+ * the choice between them is the concurrency story:
+ *
+ *   • The group already HAS members → one path patch per uid in a single
+ *     PatchObject (`{"members/a": true, "members/b": true}`). Path patches
+ *     touch only the keys they name, so a member somebody else added while
+ *     this bar was open survives.
+ *   • The group is EMPTY → the whole `members` object, because
+ *     `applyCardPatch` throws `patch path "members/x" does not exist` when the
+ *     parent is absent (contacts.ts:988-996). That shape CAN clobber a
+ *     concurrent first-add, which is exactly what `saveCardEdit`'s
+ *     read-verify-write exists to catch — so the caller routes through it.
+ *
+ * Uids already in the group are dropped: re-asserting `true` would be a no-op
+ * on the server but a lie in the patch, and the caller reports them as
+ * "already members" rather than as additions. An all-redundant add returns an
+ * empty patch, which `saveCardEdit` treats as "nothing to do".
+ */
+export function addMembersPatch(group: Pick<ContactCard, "members" | "kind">, uids: readonly string[]): CardPatch {
+  const fresh = [...new Set(uids)].filter((uid) => !isMember(group, uid));
+  if (fresh.length === 0) return {};
+  if (memberUids(group).length === 0) {
     // RFC 9553 §2.1.5: a card with `members` MUST have `kind: "group"`, so a
     // card being turned into a group declares both in the same patch.
     return {
-      members: { [uid]: true },
+      members: Object.fromEntries(fresh.map((uid) => [uid, true])),
       ...(isGroup(group) ? {} : { kind: GROUP_KIND }),
     };
   }
-  return { [`members/${pointerToken(uid)}`]: true };
+  return Object.fromEntries(fresh.map((uid) => [`members/${pointerToken(uid)}`, true]));
 }
 
 /**
@@ -133,6 +167,102 @@ export function groupCreateSpec(name: string, uids: string[] = [], bookId?: stri
     ...(uids.length > 0 ? { members: Object.fromEntries(uids.map((uid) => [uid, true])) } : {}),
     ...(bookId ? { addressBookIds: { [bookId]: true } } : {}),
   };
+}
+
+// ── planning a bulk add ────────────────────────────────────────────────────
+//
+// Membership speaks **uid**, the list speaks **id**, and the two are different
+// strings for the same card (see the header). So a bulk add has a translation
+// step, and that step is where a contact can quietly go missing — which is the
+// one thing it must not do.
+
+/** What a bulk "add these to that group" resolves to, with nothing dropped. */
+export interface GroupAddPlan {
+  /** Cards that will be added, and the uid each contributes. */
+  add: Array<{ id: string; uid: string }>;
+  /** Cards already in the group. Not failures — the intent is already true. */
+  already: string[];
+  /** Cards that CANNOT be added, each with a reason a person can act on. */
+  refused: BatchFailure[];
+}
+
+/**
+ * The sentence a card without a uid earns.
+ *
+ * A uid is server-set and IMMUTABLE (`contacts.ts:466-468`) — `ContactCard/set`
+ * refuses to create or update one — so the client cannot mint a uid for an
+ * existing card, and there is no repair to offer here beyond saying what is
+ * true. (Cards created through this app always get one; a uid-less card comes
+ * from an import or an older row.) The alternative — silently skipping it —
+ * would tell someone their contact is in a group when it is not, and that is
+ * the failure mode this whole outcome-reporting design exists to prevent.
+ *
+ * The same sentence the detail pane already shows for the single-card case.
+ */
+export const NO_UID_REFUSAL = "this card has no uid, so no group can name it";
+
+/** A selected id that is no longer in the loaded list — reachable after a
+ *  partial failure re-queries page 1 with a retained selection. */
+export const NOT_LOADED_REFUSAL = "this contact is no longer in the list — reload and try again";
+
+/**
+ * Resolve a selection into a plan. Every id passed in comes back in exactly
+ * one of the three buckets, which is what lets the caller report an outcome
+ * that adds up.
+ */
+export function planGroupAdd(
+  cards: readonly ContactCard[],
+  ids: readonly string[],
+  group: Pick<ContactCard, "members">,
+): GroupAddPlan {
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  const plan: GroupAddPlan = { add: [], already: [], refused: [] };
+  const seen = new Set<string>();
+
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const card = byId.get(id);
+    if (!card) {
+      plan.refused.push({ id, message: NOT_LOADED_REFUSAL });
+      continue;
+    }
+    const uid = typeof card.uid === "string" && card.uid.length > 0 ? card.uid : undefined;
+    if (uid === undefined) {
+      plan.refused.push({ id, message: NO_UID_REFUSAL });
+      continue;
+    }
+    if (isMember(group, uid)) plan.already.push(id);
+    else plan.add.push({ id, uid });
+  }
+
+  return plan;
+}
+
+/** The bulk verb for a group add. `target` renders the "to “Family”" clause. */
+export function addToGroupVerb(groupName: string): BulkVerb {
+  return { done: "Added", failed: "could not be added", target: `\u201C${groupName}\u201D` };
+}
+
+/**
+ * The outcome sentence for a bulk add. Same contract as every other bulk
+ * report: never a bare "done", both sides of the count named, failures named
+ * with their reason — plus one clause this verb needs and no other does.
+ *
+ * Contacts that were ALREADY in the group count as done, because the thing the
+ * person asked for is true of them. But it is said out loud, because "Added 5
+ * contacts" when only 3 moved is the kind of quiet rounding that makes a
+ * report untrustworthy.
+ */
+export function describeGroupAdd(
+  groupName: string,
+  outcome: { done: readonly string[]; failed: readonly BatchFailure[]; already: readonly string[] },
+  nameOf?: (id: string) => string,
+): string {
+  const base = describeBatchOutcome(addToGroupVerb(groupName), { done: outcome.done, failed: outcome.failed }, nameOf);
+  const n = outcome.already.length;
+  if (n === 0) return base;
+  return `${base} ${n === 1 ? "One was" : `${n.toLocaleString()} were`} already a member.`;
 }
 
 /**

@@ -151,6 +151,103 @@ your password" evaporates because there is no password.
 One mechanism closes the market's onboarding blocker and the HR agent's disclosure
 gate. That coincidence is the strongest argument for building this next.
 
+## Day one — what a second human actually needs
+
+> Eric, 2026-08-20, answering "who is the second human and what do they need on
+> day one." Recorded because every strategy in `.plans/s32-agent-market` assumes
+> strangers can arrive, and today they cannot: the operator sets the password and
+> therefore knows it (#213). This section is the concrete shape of arriving.
+
+### The external address is the trust anchor — and it dissolves the bootstrap paradox
+
+The hard problem above is that a first passkey needs an out-of-band anchor: you
+cannot email a link to prove control of the mailbox you are trying not to trust.
+**An external address is a different channel**, so the circle breaks:
+
+```
+admin provisions the account
+  → one-time enrollment link to her PERSONAL address (verified by click)
+  → she registers a passkey (and a second one, below)
+  → she now holds a credential the operator never knew
+```
+
+That single move closes the onboarding blocker AND the tier-3 disclosure gate.
+
+### Recovery is the weakest link, so design it first
+
+**An account is only as strong as its weakest recovery path.** If "forgot
+password" mails a reset to her personal address, then that address *is* the
+master key to everything — including the 401(k) disclosure the passkey ceremony
+exists to protect. Attackers go at recovery precisely because it is the path
+nobody hardens.
+
+| rung | mechanism | posture |
+|---|---|---|
+| primary | **two passkeys** (phone + laptop), both enrolled day one while she is already in the flow | redundancy without a weaker factor |
+| org default | **admin-requested reset** — a human in the loop, audited | the company answer |
+| last resort | external-address recovery that **notifies and delays**, never silently resets | the solo/family answer |
+
+Enrolling the second passkey during onboarding is the cheap move that avoids the
+expensive one later; a single authenticator guarantees a recovery event.
+
+### Defaults, not decisions
+
+"The admin decides her grants" makes the admin a bottleneck and guarantees drift
+between hires. Day one should be **pick a role → get a grant pack**; deviations
+go through the approval funnel. The admin approves exceptions, not authors policy
+per person. (This is the IdP-group→pack idea from the s32 conversation, minus the
+IdP — the directory is an accelerant, never the wedge.)
+
+### Requesting more, and the risk axis that matters
+
+A human can always ask for privileges; the ask lands in the **existing approval
+funnel** as a proposal — no new mechanism. Where an agent helps is *scoping* the
+request, and the sharp axis is **self versus other**:
+
+| shape | example | who decides |
+|---|---|---|
+| self · read | "my own 401(k) balance" | **tier-3 step-up, no human approval** — otherwise the 3am promise dies in a queue |
+| other · read | "Bob's compensation band" | human approval, always |
+| any · mutate | "change my direct deposit" | human approval + step-up |
+
+Self-access-read flowing on step-up alone is the whole point: the ceremony proves
+possession, and a queue would defeat the use case that justified building this.
+
+### What else day one needs
+
+- **She must see what the agents see of her.** *"Which agents can read my mail,
+  and what have they done in my name?"* — unanswerable today for a non-operator.
+  s03.E's console already computes exactly this and has never had this audience.
+  Without it, "you control the blast radius" is a claim she cannot check.
+- **She must be TOLD they read it, before she discovers it.** An extractor and a
+  bouncer will process her mail. In a company that is an employment and privacy
+  question; in a family it is a trust question. Stating it at enrollment is both
+  decent and differentiating — the ownership story made verifiable.
+- **A way to leave.** Offboarding is the twin of onboarding and holds the real
+  risk: revoke grants, decide what happens to her mail and drafts, decide what
+  happens to agent work done in her name, and ensure **the audit trail survives
+  her departure**. An account is only as safe as its deletion story.
+- **Something to work with.** A new mailbox has no history, so the extractor
+  extracts nothing and watches watch nothing — the product looks inert for a
+  week. Import is not only the monetizable complement s32 notes; it is a
+  FUNCTIONAL prerequisite for any agent to demonstrate value.
+- **A first conversation.** The most on-brand day one is a message from `help@`
+  that teaches the pattern *by being the pattern* — a correspondent, not a tour.
+- **An address decision, made once.** Local-part, whether it can change, aliases.
+  Small, early, and quietly hard to reverse.
+
+### Open questions
+
+1. Is the enrollment link single-use and short-lived (it should be), and what
+   happens when it expires — self-serve re-request, or admin re-issue?
+2. Does the external address stay on file after enrollment? It is recovery
+   surface forever if so; deleting it removes the last-resort rung.
+3. Family vs company defaults: the same product, two different recovery
+   postures. One setting, or two install profiles?
+4. Who tells her about agent processing — the enrollment page, `help@`'s first
+   message, or both? (Both, probably; the page is the record, the message is the
+   explanation.)
+
 ## Slices
 
 1. **Record the positive assurance** (`services/ingest`, `packages/mailstore`): keep

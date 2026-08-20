@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { render } from "preact-render-to-string";
 import ShellNav, { RealmTray } from "./ShellNav";
+import type { RealmChromeControl } from "../lib/shell/realmChrome";
 import { STALE_AFTER_MS, type PublishedCollections } from "../lib/shell/publish";
 import type { Section, SectionId } from "../lib/app/sections";
 
@@ -177,6 +178,74 @@ describe("ShellNav — the collapsing search (s25 T5)", () => {
   });
 
   it("writes no inline style anywhere in the chrome (CSP)", () => {
+    expect(html).not.toContain("style=");
+  });
+});
+
+// s34 — the realm chrome control: the one thing a SURFACE may hang in the
+// shared header, beside the identity chip. The publish/pick contract itself
+// is tested in lib/shell/realmChrome.test.ts; here we prove the RENDERING,
+// and that the identity chip still fits beside it.
+
+const ACCOUNT_PICKER: RealmChromeControl = {
+  realm: "contacts",
+  label: "Account",
+  options: [
+    { id: "acct-mine", label: "eric@bullmoose.cc" },
+    { id: "acct-shared", label: "family@bullmoose.cc (shared)" },
+  ],
+  selectedId: "acct-shared",
+};
+
+describe("ShellNav — the realm chrome control (s34)", () => {
+  const html = render(<ShellNav section="contacts" email="eric@bullmoose.cc" realmControl={ACCOUNT_PICKER} />);
+
+  it("renders the surface's picker in the header, with every option", () => {
+    expect(html).toContain('aria-label="Account"');
+    expect(html).toContain("eric@bullmoose.cc");
+    expect(html).toContain("family@bullmoose.cc (shared)");
+    expect(html).toContain('value="acct-shared"');
+  });
+
+  it("puts it BESIDE the identity chip, not below it — the picker precedes the avatar menu", () => {
+    // Eric's annotation was about position: the account picker sat a full row
+    // under the chrome. Both now live in the same header row, picker first.
+    const picker = html.indexOf('aria-label="Account"');
+    const chip = html.indexOf("Open user menu");
+    expect(picker).toBeGreaterThan(-1);
+    expect(chip).toBeGreaterThan(picker);
+  });
+
+  it("does not disturb the identity chip's own layout", () => {
+    // The chip's nowrap+truncate clamp (the second Kitesurf screenshot fix)
+    // survives, and so does its menu.
+    expect(html).toContain("max-w-56");
+    expect(html).toContain("Open user menu");
+  });
+
+  it("renders nothing for a realm you are not standing in", () => {
+    const elsewhere = render(<ShellNav section="mail" email="eric@bullmoose.cc" realmControl={ACCOUNT_PICKER} />);
+    expect(elsewhere).not.toContain('aria-label="Account"');
+  });
+
+  it("renders nothing when there is only one option — a picker needs a choice", () => {
+    const single = render(
+      <ShellNav
+        section="contacts"
+        email="eric@bullmoose.cc"
+        realmControl={{ ...ACCOUNT_PICKER, options: [ACCOUNT_PICKER.options[0]!] }}
+      />,
+    );
+    expect(single).not.toContain('aria-label="Account"');
+  });
+
+  it("renders nothing at all for a surface that published nothing", () => {
+    expect(render(<ShellNav section="contacts" email="eric@bullmoose.cc" />)).not.toContain('aria-label="Account"');
+  });
+
+  it("is a plain select — no form, no navigation, no inline style (CSP + tokenInUrl)", () => {
+    expect(html).toContain("<select");
+    expect(html).not.toMatch(/<select[^>]*\bform=/);
     expect(html).not.toContain("style=");
   });
 });

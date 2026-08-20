@@ -4,7 +4,7 @@ import { Breadcrumb, Button, IconButton } from "./ui";
 import { ChevronDownIcon, ChevronDownMiniIcon, PlusIcon } from "./icons";
 import { CollectionTree, useExpansion } from "./CollectionColumn";
 import { findItem, type CollectionGroup } from "../lib/shell/collections";
-import { cx } from "../lib/ui/classes";
+import { createLabelClasses, cx } from "../lib/ui/classes";
 
 /**
  * Collapsed CollectionColumn as a bar ABOVE the list: realm / current
@@ -105,8 +105,9 @@ export default function CollectionBar({
       </div>
       {newLabel && onNew ? (
         <Button variant="primary" size="sm" disabled={newDisabled} class="max-lg:hidden" onClick={() => onNew()}>
-          <PlusIcon class="size-4" strokeWidth={2} />
-          {newLabel}
+          <PlusIcon class="size-4 shrink-0" strokeWidth={2} />
+          {/* s34 — same one-line rule as the column's button (classes.ts). */}
+          <span class={createLabelClasses()}>{newLabel}</span>
         </Button>
       ) : null}
       {open ? (

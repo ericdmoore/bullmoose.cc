@@ -13,8 +13,16 @@ export function cx(...parts: Array<string | false | null | undefined>): string {
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md";
 
+// `whitespace-nowrap min-w-0` is the s34 fix, and it is load-bearing rather
+// than cosmetic: in the `w-56` collection column the [New] button is a `grow`
+// flex item, so "New contact" broke across two lines as "+ New / contact"
+// (Eric's /contacts screenshot, 2026-08-20). A button label that wraps is
+// almost always a bug — the label is a verb, not a paragraph — so the rule
+// lives on the base rather than on one caller. `min-w-0` is what lets the
+// button shrink at all, which is what makes the label's `truncate` (see
+// `createLabelClasses`) able to ellipsis instead of overflowing.
 const BUTTON_BASE =
-  "inline-flex items-center justify-center gap-x-1.5 rounded-md font-semibold " +
+  "inline-flex items-center justify-center gap-x-1.5 rounded-md font-semibold whitespace-nowrap min-w-0 " +
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 " +
   "disabled:opacity-50 disabled:pointer-events-none";
 
@@ -42,6 +50,43 @@ const BUTTON_SIZE: Record<ButtonSize, string> = {
 
 export function buttonClasses(variant: ButtonVariant = "secondary", size: ButtonSize = "md"): string {
   return cx(BUTTON_BASE, BUTTON_VARIANT[variant], BUTTON_SIZE[size]);
+}
+
+/**
+ * The [New] button's LABEL span (s34) — one line, an ellipsis rather than a
+ * second line.
+ *
+ * Shared by `CollectionColumn`'s header button and `CollectionBar`'s, so
+ * every realm's create verb behaves the same at a narrow column width: Mail's
+ * "New message", Contacts' "New contact", Finder's "New find". Truncating is
+ * the lesser evil — a clipped "New conta…" still reads as one verb, where
+ * "+ New / contact" reads as a broken layout and steals a line of the
+ * toolbar's height.
+ *
+ * NOT applied to `CreateFab`: the FAB is a `fixed`, shrink-to-fit element with
+ * no width to truncate against, and its label is the entire point of it being
+ * extended rather than a bare "+" (s25 T5). It carries its own
+ * `whitespace-nowrap` and keeps it.
+ */
+export function createLabelClasses(): string {
+  return "min-w-0 truncate";
+}
+
+/**
+ * The realm-chrome picker in the shared top bar (s34) — the one control a
+ * surface may hang beside the identity chip (`lib/shell/realmChrome.ts`).
+ *
+ * Sized to the 64px header row and capped in width, because the thing it
+ * usually holds is an email address: unclamped, a long account name pushes
+ * the identity chip off the bar, which is the exact failure the chip's own
+ * `max-w-56 truncate` already fixed once.
+ */
+export function realmSelectClasses(): string {
+  return cx(
+    "max-w-40 truncate rounded-md bg-gray-100 px-2 py-1 text-sm text-gray-900",
+    "focus:outline-2 focus:-outline-offset-1 focus:outline-brand-600",
+    "dark:bg-white/5 dark:text-white",
+  );
 }
 
 /** Square padding for an icon-only button; the label goes sr-only. */

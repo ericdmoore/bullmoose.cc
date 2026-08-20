@@ -3,7 +3,7 @@ import type { JSX } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { resolveClient } from "../lib/app/client";
 import { SECTIONS, type Section, type SectionId } from "../lib/app/sections";
-import { searchFieldClasses, searchYieldClasses } from "../lib/ui/classes";
+import { realmSelectClasses, searchFieldClasses, searchYieldClasses } from "../lib/ui/classes";
 import { toggleExpansion } from "../lib/shell/collections";
 import {
   COLLECTIONS_EVENT,
@@ -12,6 +12,13 @@ import {
   readPublished,
   type PublishedCollections,
 } from "../lib/shell/publish";
+import {
+  REALM_CHROME_EVENT,
+  currentRealmChrome,
+  isRenderableControl,
+  pickRealmChrome,
+  type RealmChromeControl,
+} from "../lib/shell/realmChrome";
 import {
   Bars3Icon,
   CalendarIcon,
@@ -54,6 +61,13 @@ import {
 interface Props {
   section?: SectionId;
   email?: string;
+  /**
+   * The active realm's one chrome control (s34) — normally arrives over
+   * `bm:realm-chrome` from the surface island; passed directly in tests and
+   * for anything that already knows it. See `lib/shell/realmChrome.ts` for
+   * why this is an event contract rather than a portal.
+   */
+  realmControl?: RealmChromeControl;
 }
 
 const COLLAPSE_KEY = "bm.nav.collapsed";
@@ -411,22 +425,34 @@ export function RealmTray({
 }
 
 /**
- * The brand mark. `/mark.svg` is `art/stripped_favicon.svg` — the 128×128
- * mark drawn FOR small sizes — not the 1024×1024 `antlerO.svg`, whose fine
- * paths collapse into a flat pink/blue block at 32px (seen in the first
- * Kitesurf screenshot of the shell). A file rather than inlined markup so
- * `img-src 'self'` covers it and the paths stay out of every page's HTML.
+ * The brand mark: `/antlerO.svg` (`art/antlerO.svg`), restored 2026-08-20.
+ *
+ * It was swapped for `/mark.svg` in #166 on the grounds that its fine paths
+ * "collapse into a flat pink/blue block at 32px" — an observation made from
+ * "the first Kitesurf screenshot of the shell". Kitesurf turned out to be
+ * Cloudflare's Boa/WASM browser, NOT Chromium, and it renders this app wrong
+ * enough to have manufactured a phantom bug we chased twice (see the s25
+ * harness note). A design decision resting on that renderer is a decision
+ * resting on nothing, so the mark comes back and a human judges it in a real
+ * browser.
+ *
+ * `mark.svg` stays in `public/` — it is the right file for a genuinely tiny
+ * target if one is ever needed, and deleting it would only make this
+ * reversible in one direction.
+ *
+ * A file rather than inlined markup so `img-src 'self'` covers it and the
+ * paths stay out of every page's HTML.
  */
 function Brand({ compact }: { compact?: boolean }) {
   return (
     <a href="/" class={"flex h-16 shrink-0 items-center gap-x-2 " + (compact ? "justify-center" : "")}>
-      <img src="/mark.svg" alt="bullmoose" class="size-8" />
+      <img src="/antlerO.svg" alt="bullmoose" class="size-8" />
       {!compact && <span class="font-semibold tracking-tight text-white">bullmoose</span>}
     </a>
   );
 }
 
-export default function ShellNav({ section, email: emailProp }: Props) {
+export default function ShellNav({ section, email: emailProp, realmControl: controlProp }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   // WHO IS SIGNED IN — sourced here, not passed in.
@@ -453,6 +479,13 @@ export default function ShellNav({ section, email: emailProp }: Props) {
   const [widthStep, setWidthStep] = useState(DEFAULT_WIDTH);
   const [order, setOrder] = useState<SectionId[]>([]);
   const [dragging, setDragging] = useState(false);
+  // s34 — the active realm's one chrome control (Contacts' account picker).
+  // Same shape as `sessionEmail` above: a prop wins, otherwise the chrome
+  // sources it itself. The latch read runs alongside the subscription because
+  // the surface island may have published BEFORE this one hydrated —
+  // `lib/shell/realmChrome.ts` has the whole argument.
+  const [publishedControl, setPublishedControl] = useState<RealmChromeControl | undefined>(undefined);
+  const realmControl = controlProp ?? publishedControl;
   // s24 T5 — the contextual bar's realm + the deep-linked query (read once;
   // the island mounts after navigation, so location is settled).
   const searchable = section ? SEARCHABLE[section] : undefined;
@@ -496,6 +529,18 @@ export default function ShellNav({ section, email: emailProp }: Props) {
     globalThis.addEventListener(COLLECTIONS_EVENT, readAll);
     return () => globalThis.removeEventListener(COLLECTIONS_EVENT, readAll);
   }, [drawerOpen]);
+
+  // s34 — the realm chrome control. The mount-time `currentRealmChrome()`
+  // read is not an optimisation: island hydration order is undefined, so a
+  // surface that published before this component mounted would otherwise
+  // never be heard. Skipped entirely when a caller supplied the control.
+  useEffect(() => {
+    if (controlProp) return;
+    const adopt = () => setPublishedControl(currentRealmChrome());
+    adopt();
+    globalThis.addEventListener(REALM_CHROME_EVENT, adopt);
+    return () => globalThis.removeEventListener(REALM_CHROME_EVENT, adopt);
+  }, [controlProp]);
 
   // Preferences are adopted on mount rather than read during render: reading
   // localStorage while rendering breaks hydration and throws in private mode.
@@ -828,6 +873,44 @@ export default function ShellNav({ section, email: emailProp }: Props) {
           ) : (
             <div class="flex-1" />
           )}
+          {/*
+            s34 — THE REALM'S OWN CONTROL, top-right, beside the identity chip.
+
+            Contacts' account picker used to sit in the section's private
+            `<header class="topbar">`, a full row below the real chrome, which
+            put "which account" one row away from "who am I" — the two facts
+            that qualify everything else on the page. It belongs here.
+
+            The chrome owns none of it: the surface island publishes the
+            options and receives the pick (`lib/shell/realmChrome.ts`), so
+            adding a second realm's control costs a publish call and nothing
+            here. A control with fewer than two options never renders —
+            `isRenderableControl` — which is what keeps this invisible for the
+            single-account session that most people have.
+
+            It yields to the narrow search like every other header control,
+            and the label hides below `lg` (the `<select>` keeps it as its
+            accessible name) so the phone header stays one row.
+          */}
+          {isRenderableControl(realmControl, section) ? (
+            <div class={"flex min-w-0 items-center gap-x-1.5 " + searchYieldClasses(searchOpen)}>
+              <span class="hidden shrink-0 text-xs text-gray-500 lg:inline dark:text-gray-400">
+                {realmControl.label}
+              </span>
+              <select
+                aria-label={realmControl.label}
+                value={realmControl.selectedId}
+                class={realmSelectClasses()}
+                onChange={(ev) => pickRealmChrome(realmControl.realm, (ev.currentTarget as HTMLSelectElement).value)}
+              >
+                {realmControl.options.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           {/*
             Everything the person can do about themselves lives on the avatar —
             settings and sign-out included — rather than being scattered across

@@ -35,21 +35,6 @@ import App from "../layouts/AppTw.astro";
      live on the page instead of in that shared stylesheet so this section can
      land without touching a file the other s07 T3 half is editing. */
 
-  .contacts-account {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-  }
-  .contacts-account select {
-    font: inherit;
-    color: inherit;
-    background: var(--bg-alt);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 3px 6px;
-  }
-
   .contacts-actions {
     display: flex;
     flex-direction: column;
@@ -127,14 +112,37 @@ import App from "../layouts/AppTw.astro";
     justify-content: center;
     padding: 0.75rem 0 1.25rem;
   }
+  /* s34 — the bulk-selection row. The checkbox is a SIBLING of the anchor
+     (see ContactsApp), so the flex container and the row's rule live on the
+     <li> and the anchor is just the growing part of it. The member list
+     inside .card-detail has no checkboxes and keeps its own rule. */
+  .card-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .card-item.is-checked {
+    background: var(--accent-soft);
+  }
+  .card-check {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
   .card-row {
     display: flex;
     flex-direction: column;
     gap: 2px;
     width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
     padding: 8px 10px;
     border: none;
-    border-bottom: 1px solid var(--line);
     background: none;
     text-align: left;
     /* s25 T3 — the row became a real link (/contacts?card=…); dressed as the
@@ -142,11 +150,128 @@ import App from "../layouts/AppTw.astro";
     color: inherit;
     text-decoration: none;
   }
+  .card-detail .card-row {
+    border-bottom: 1px solid var(--line);
+  }
   .card-row:hover {
     background: var(--bg-alt);
   }
   .card-row.is-selected {
     background: var(--accent-soft);
+  }
+
+  /* The list header: select-all plus how many rows it means. */
+  .card-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--line);
+    font-size: 12.5px;
+  }
+  .card-select-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-select-all input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  /* The bulk action bar — only rendered while something is selected, so it
+     never occupies a row for a state the page is not in. */
+  .bulk-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--line);
+    font-size: 12.5px;
+  }
+  .bulk-count {
+    font-weight: 600;
+  }
+  .bulk-spacer {
+    flex: 1;
+  }
+  /* [Add to group ▾] — a popover, not a <select>: arrowing a closed select
+     fires change per option in some browsers, and "+ Create Group" popping a
+     prompt() from an arrow key is an ambush. Same shape as CollectionBar's
+     collection popover. */
+  .bulk-menu {
+    position: relative;
+    display: inline-flex;
+  }
+  .bulk-menu-popover {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 20;
+    margin-top: 4px;
+    min-width: 15rem;
+    max-height: 20rem;
+    overflow-y: auto;
+    padding: 4px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  }
+  .bulk-menu-popover p {
+    margin: 0;
+    padding: 6px 8px;
+    font-size: 12.5px;
+  }
+  .bulk-menu-popover button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+  }
+  .bulk-menu-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bulk-menu-create {
+    margin-top: 4px;
+    border-top: 1px solid var(--line);
+    border-radius: 0 0 6px 6px;
+    color: var(--accent);
+  }
+  .bulk-bar button:not(.link-button) {
+    font: inherit;
+    padding: 2px 8px;
+    color: inherit;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  .bulk-bar .bulk-menu-popover button {
+    background: none;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .bulk-bar .bulk-menu-popover button:hover {
+    background: var(--bg-alt);
+  }
+  .bulk-bar button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  /* Same treatment `.actions .danger` gives the single-card Delete, so the
+     destructive verb reads the same at both scales. */
+  .bulk-bar .danger {
+    color: var(--error);
+    border-color: var(--error);
   }
   .card-name {
     display: flex;
@@ -181,6 +306,19 @@ import App from "../layouts/AppTw.astro";
     display: inline-block;
     min-width: 8ch;
     font-size: 12.5px;
+  }
+
+  /* s34 — the uid, de-emphasised and clamped. Still copyable in full:
+     text-overflow is a rendering effect, not a truncation of the text. */
+  .card-urn {
+    display: inline-block;
+    max-width: 22ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+    font-size: 11.5px;
+    opacity: 0.65;
   }
 
   .join-group {

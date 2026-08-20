@@ -43,6 +43,31 @@ export function hasAgentCapability(session: Pick<Session, "capabilities">): bool
 }
 
 /**
+ * RFC 8620 §2's floor when the server is silent about `maxObjectsInSet`.
+ *
+ * The live server advertises 500 (`packages/jmap-core/src/capabilities.ts`),
+ * and this mirrors it — but the number that matters is the one the SESSION
+ * says, because a caller who batches to a bigger figure than the server
+ * accepts gets `requestTooLarge` for the whole call, not a partial success.
+ */
+export const DEFAULT_MAX_OBJECTS_IN_SET = 500;
+
+/**
+ * How many objects one `Foo/set` may carry, from the session that is actually
+ * connected. Anything missing, non-numeric or below 1 falls back to the floor
+ * above: a bulk write must still go out against a server whose core
+ * capability object is `{}` (which is exactly what `FakeJmapClient` serves),
+ * it must simply go out in conservative chunks.
+ */
+export function maxObjectsInSet(session: Pick<Session, "capabilities">, fallback = DEFAULT_MAX_OBJECTS_IN_SET): number {
+  const core = session.capabilities[CORE_CAP];
+  if (core === null || typeof core !== "object") return fallback;
+  const advertised = (core as Record<string, unknown>).maxObjectsInSet;
+  if (typeof advertised !== "number" || !Number.isFinite(advertised) || advertised < 1) return fallback;
+  return Math.floor(advertised);
+}
+
+/**
  * Which capability URN a JMAP method needs in `using[]`. Used to compute a
  * request's `using[]` from the live session so a surface whose capability is
  * absent never sends a call that would 400 (arch.md §2, invariant §6.4).
