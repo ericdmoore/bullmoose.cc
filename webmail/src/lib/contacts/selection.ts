@@ -86,19 +86,25 @@ export function retainSelected(selected: ReadonlySet<string>, ids: readonly stri
   return new Set([...selected].filter((id) => keep.has(id)));
 }
 
-/** "412 selected" / "412 of 1,203 selected" — never "of 3,557".
+/** "412 of 1,203" — a bare ratio, and never "of 3,557".
  *
- *  The word "loaded" used to sit before "selected" to make the denominator
- *  explicit. It left the LABEL (2026-08-20) because at realistic widths it
- *  wrapped the bulk bar onto a second line, and a control that reflows as you
- *  select is worse than a terser one. The nuance did not disappear:
- *  `selectionTitle` carries the long form into the bar's `title`, which costs
- *  no layout, and "of N" already reads as a subset. What must NEVER happen is
- *  the denominator becoming the MATCH total — see the select-all note above. */
+ *  Two words left this label on 2026-08-20, both for the same reason: at
+ *  realistic widths "412 of 1,203 loaded selected" wrapped the bulk bar onto a
+ *  second line, and a control that reflows while you are still clicking rows is
+ *  worse than a terser one. "selected" went too — the bar only exists when
+ *  something is selected, so the word restated its own container.
+ *
+ *  The ratio is now uniform: "5 of 5" when everything loaded is picked, not a
+ *  bare "5", because a number whose shape changes as you select is the same
+ *  reflow problem in miniature.
+ *
+ *  The nuance did not disappear — `selectionTitle` carries the long form into
+ *  the bar's `title`, where a denominator costs no layout. What must NEVER
+ *  happen is the denominator becoming the MATCH total: see the select-all note
+ *  above. */
 export function describeSelection(count: number, loaded?: number): string {
-  if (count === 0) return "None selected";
-  if (loaded === undefined || loaded <= count) return `${count.toLocaleString()} selected`;
-  return `${count.toLocaleString()} of ${loaded.toLocaleString()} selected`;
+  if (loaded === undefined) return count.toLocaleString();
+  return `${count.toLocaleString()} of ${loaded.toLocaleString()}`;
 }
 
 /** The long form, for `title` — where the denominator can be spelled out

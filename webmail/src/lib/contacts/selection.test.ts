@@ -98,21 +98,28 @@ describe("retainSelected — what survives a partial failure", () => {
 });
 
 describe("describeSelection", () => {
-  it("says nothing grandiose about nothing", () => {
-    expect(describeSelection(0)).toBe("None selected");
+  it("is a bare ratio — the bar's existence already says 'selected'", () => {
+    expect(describeSelection(412, 1203)).toBe("412 of 1,203");
+    expect(describeSelection(1, 5)).toBe("1 of 5");
   });
 
-  it("counts, with thousands separators — the numbers here are four digits", () => {
-    expect(describeSelection(1)).toBe("1 selected");
-    expect(describeSelection(3557)).toBe("3,557 selected");
+  it("keeps the SHAPE constant when everything loaded is picked", () => {
+    // "5 of 5", not a bare "5": a label whose shape changes mid-selection
+    // reflows the bar, which is the whole reason these words left.
+    expect(describeSelection(50, 50)).toBe("50 of 50");
   });
 
-  it("names the LOADED denominator, never the total match count", () => {
-    // The list is paged over a full-scan query: "412 of 1,203 loaded" is true,
+  it("counts with thousands separators — the numbers here are four digits", () => {
+    expect(describeSelection(3557, 3557)).toBe("3,557 of 3,557");
+  });
+
+  it("falls back to the count alone when no denominator is known", () => {
+    expect(describeSelection(412)).toBe("412");
+  });
+
+  it("never names the total match count — see selectionTitle for that", () => {
     // "412 of 3,557" would imply a selection the screen cannot have made.
-    expect(describeSelection(412, 1203)).toBe("412 of 1,203 selected");
-    // Everything loaded is selected — no denominator worth printing.
-    expect(describeSelection(50, 50)).toBe("50 selected");
+    expect(describeSelection(412, 1203)).not.toContain("3,557");
   });
 });
 
