@@ -1,14 +1,14 @@
 /** @jsxImportSource preact */
 import { describe, expect, it } from "vitest";
 import { render } from "preact-render-to-string";
-import ThreadListView from "./ThreadListView";
+import ThreadListView, { isUnmodifiedPrimaryClick } from "./ThreadListView";
 import type { ThreadRow } from "../lib/mail/threadList";
 
-// s25 T3 — the list's rows become deep-linkable. With `hrefFor` the row body
-// is a real `<a href="/mail?thread=…">` (the click path: MPA navigation,
-// native back); without it the body stays a div and `onOpen` carries the
-// in-page path (keyboard j/k + Enter). SSR render, plain Node — the
-// virtual-window math is tested pure in lib/mail/virtual.
+// The row body is a real `<a href="/mail?thread=…">` so cmd-click / copy-link
+// still work; a primary click preventDefaults and onOpen fetches in-page
+// (mailbox selection must survive). Without hrefFor the body stays a div.
+// SSR render, plain Node — the virtual-window math is tested pure in
+// lib/mail/virtual.
 
 const row = (threadId: string, subject: string): ThreadRow =>
   ({
@@ -96,7 +96,7 @@ describe("ThreadListView — the T6 swipe layer", () => {
     expect(html).toContain("overflow-hidden");
   });
 
-  it("keeps the row a real link — a swipe layer must not cost the tap its navigation", () => {
+  it("keeps the row a real link — a swipe layer must not cost cmd-click its href", () => {
     const html = render(<ThreadListView {...swiping} />);
     expect(html).toContain('href="/mail?thread=T1"');
     expect(html).toContain('<a class="row-body"');
@@ -119,5 +119,19 @@ describe("ThreadListView — the T6 swipe layer", () => {
     const html = render(<ThreadListView {...swiping} />);
     expect(html).toContain("translate-x-0");
     expect(html).toContain("transition-transform");
+  });
+});
+
+describe("isUnmodifiedPrimaryClick", () => {
+  const left = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
+  it("a plain left click opens in-page", () => {
+    expect(isUnmodifiedPrimaryClick(left)).toBe(true);
+  });
+  it("cmd/ctrl/shift/alt and non-left keep the native <a> navigation", () => {
+    expect(isUnmodifiedPrimaryClick({ ...left, metaKey: true })).toBe(false);
+    expect(isUnmodifiedPrimaryClick({ ...left, ctrlKey: true })).toBe(false);
+    expect(isUnmodifiedPrimaryClick({ ...left, shiftKey: true })).toBe(false);
+    expect(isUnmodifiedPrimaryClick({ ...left, altKey: true })).toBe(false);
+    expect(isUnmodifiedPrimaryClick({ ...left, button: 1 })).toBe(false);
   });
 });

@@ -44,11 +44,10 @@ interface Props {
   onLoadMore: () => void;
   /**
    * s25 T3 — the detail URL for a row (`/mail?thread=<id>`). When present the
-   * row's body renders as a real `<a>`, so a CLICK is MPA navigation and the
-   * browser back button just works; `onOpen` remains the KEYBOARD path
-   * (j/k + Enter stay in-page, no reload mid-triage). Two paths on purpose —
-   * the URL is the click path — and neither touches history
-   * (tokenInUrl.test.ts: MPA links are not history calls).
+   * row's body renders as a real `<a>` so cmd-click / copy-link / new tab
+   * still work. A primary click preventDefaults and calls `onOpen` (in-page
+   * fetch) — an MPA hop remounts the shell and drops mailbox selection.
+   * Neither path touches history (tokenInUrl.test.ts).
    */
   hrefFor?: (row: ThreadRow) => string;
   /**
@@ -66,9 +65,11 @@ interface Props {
 /**
  * ## The tap-vs-swipe contract (s25 T6)
  *
- * Since #194 the row body is a real `<a href="/mail?thread=…">`, which is what
- * makes the browser back button work. A gesture layered on a link has to be
- * explicit about who wins, so:
+ * The row body is a real `<a href="/mail?thread=…">` so cmd-click, middle-click
+ * and copy-link still work. A primary click does NOT navigate — it fetches the
+ * thread into the detail pane in-page, because an MPA hop remounts the shell
+ * and drops mailbox selection (Archive → list → click → Inbox again). A
+ * gesture layered on that link has to be explicit about who wins, so:
  *
  *   TOUCH/PEN ONLY. `pointerdown` from a mouse is ignored outright. A mouse
  *   drag across a list is a text selection, and hijacking it would degrade the
@@ -79,9 +80,11 @@ interface Props {
  *   never reaches this component. The axis test in `extendDrag` is the second
  *   guard, decided once at 10px and never revisited.
  *
- *   A TAP NAVIGATES. Under 10px of horizontal travel nothing is suppressed:
- *   the click reaches the anchor and the MPA navigation happens as always. We
- *   never synthesize navigation, and we never `preventDefault` a tap.
+ *   A TAP OPENS IN-PAGE. Under 10px of horizontal travel nothing is suppressed:
+ *   the click reaches the anchor, which preventDefaults a primary click and
+ *   calls `onOpen`. Cmd/ctrl/shift/alt and non-primary buttons keep the native
+ *   navigation (new tab, etc.). We never synthesize a URL change, and we never
+ *   `preventDefault` a modified click.
  *
  *   A SWIPE DOES NOT. Past 10px the release sets `suppressClick`, and the
  *   click the browser fires next is cancelled in the CAPTURE phase on the
@@ -93,7 +96,7 @@ interface Props {
  *   that never arrives cannot eat a later tap.
  *
  *   AN OPEN ROW IS A MODE. While a row rests open, a tap on its body closes it
- *   instead of navigating (also cancelled in capture). Scrolling closes it
+ *   instead of opening (also cancelled in capture). Scrolling closes it
  *   too. The revealed buttons carry `data-swipe-action`, which is the one
  *   thing the capture handler lets through — a tap there is the commit.
  *
@@ -107,6 +110,18 @@ interface Props {
  *   the revealed buttons are real `<button>`s, so once a row is open they are
  *   in tab order too.
  */
+/** Primary unmodified click — fetch in-page. Cmd/ctrl/shift/alt and non-left
+ *  buttons keep the real `<a>` navigation (new tab, etc.). */
+export function isUnmodifiedPrimaryClick(ev: {
+  button?: number;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+}): boolean {
+  return (ev.button ?? 0) === 0 && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey && !ev.altKey;
+}
+
 export default function ThreadListView({
   rows,
   total,
@@ -263,8 +278,9 @@ export default function ThreadListView({
             style={swipeOn ? undefined : { height: `${ROW_HEIGHT}px` }}
             onClick={() => {
               onCursor(index);
-              // Link present → the anchor navigates; opening here too would
-              // race the load against the unload.
+              // Link present → primary click is handled on the `<a>` (in-page
+              // open). Opening here too would double-fetch. No href → the
+              // keyboard-era div body, so the row click is the open.
               if (!hrefFor) onOpen(row);
             }}
           >
@@ -281,7 +297,16 @@ export default function ThreadListView({
               {isSelected ? "▣" : "□"}
             </button>
             {hrefFor ? (
-              <a class="row-body" href={hrefFor(row)}>
+              <a
+                class="row-body"
+                href={hrefFor(row)}
+                onClick={(ev) => {
+                  if (!isUnmodifiedPrimaryClick(ev)) return;
+                  ev.preventDefault();
+                  onCursor(index);
+                  onOpen(row);
+                }}
+              >
                 {body}
               </a>
             ) : (
@@ -354,7 +379,7 @@ export default function ThreadListView({
                 return;
               }
               // An open row is a mode: the next tap on it closes, it does not
-              // navigate. Everything else falls through and the link works.
+              // open the thread. Everything else falls through to the anchor.
               if (isOpen) {
                 ev.preventDefault();
                 ev.stopPropagation();

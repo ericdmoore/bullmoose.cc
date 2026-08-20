@@ -3,6 +3,7 @@ import {
   COLLECTIONS_EVENT,
   STALE_AFTER_MS,
   hrefWithParam,
+  hrefWithParams,
   isStale,
   publishCollections,
   publishedAtLabel,
@@ -134,6 +135,12 @@ describe("hrefWithParam — the T3 detail links", () => {
 
   it("encodes the id — URLSearchParams, never string concat", () => {
     expect(hrefWithParam("/contacts", "card", "a&b=c", "")).toBe("/contacts?card=a%26b%3Dc");
+  });
+
+  it("hrefWithParams can set the collection beside the thread so a real hop keeps Archive", () => {
+    expect(hrefWithParams("/mail", { thread: "T2", c: "mb-archive" }, "?thread=T1&demo=1")).toBe(
+      "/mail?thread=T2&demo=1&c=mb-archive",
+    );
   });
 });
 
