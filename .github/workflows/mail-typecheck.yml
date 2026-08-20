@@ -6,8 +6,21 @@ name: verify
 # renders a required-but-SKIPPED check as pending forever — so a paths filter
 # would make any PR outside the filter permanently unmergeable. The suite is
 # ~31 tests in under a second; there is no cost argument for filtering.
+#
+# `push` is scoped to main, `pull_request` covers everything else. Unscoped,
+# BOTH fired for a same-repo branch, so every PR ran this identical job TWICE
+# and showed two `verify` rows — double the minutes, and a reviewer left
+# wondering which one mattered (2026-08-20: "they look the same"; they were).
+# coverage.yml already scopes push this way.
+#
+# This is NOT the paths-filter hazard above: nothing is skipped. A PR still
+# gets exactly one `verify` from `pull_request`, and the job id — the context
+# branch protection requires — is unchanged. The one behaviour lost is CI on a
+# pushed branch with no PR open yet, which is the cheapest possible thing to
+# lose and is restored the moment the PR exists.
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
