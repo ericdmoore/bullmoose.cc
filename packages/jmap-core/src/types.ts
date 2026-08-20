@@ -40,9 +40,12 @@ export interface Session {
   downloadUrl: string;
   uploadUrl: string;
   /**
-   * Absent until the server actually serves an EventSource endpoint — a URL
-   * that 404s is worse than no URL, because push-capable clients hammer it
-   * instead of falling back to polling (see services/jmap/src/session.ts).
+   * RFC 8620 §2 requires this (a URI Template with §7.3's `types`,
+   * `closeafter`, `ping` variables), and strictly-typed clients refuse to
+   * decode a Session without it — our server serves the route and advertises
+   * it (services/jmap/src/eventsource.ts). Optional HERE only because this
+   * type also decodes third-party sessions, which a lenient client must
+   * tolerate; session.test.ts pins that OUR session always carries it.
    */
   eventSourceUrl?: string;
   state: string;

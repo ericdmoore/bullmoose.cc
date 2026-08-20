@@ -77,8 +77,10 @@ export function defaultSession(): Session {
     apiUrl: "https://fake/api/jmap",
     downloadUrl: "https://fake/api/download/{accountId}/{blobId}/{name}?type={type}",
     uploadUrl: "https://fake/api/upload/{accountId}",
-    // No eventSourceUrl — the real session stopped advertising the 404ing
-    // endpoint; absent beats dead (services/jmap/src/session.ts).
+    // The same §7.3 URI template the real session advertises — the route is
+    // real now (services/jmap/src/eventsource.ts), and the fake's job is to
+    // look exactly like the real session.
+    eventSourceUrl: "https://fake/api/eventsource?types={types}&closeafter={closeafter}&ping={ping}",
     state: "0",
   };
 }
