@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import { resolveClient } from "../lib/app/client";
 import { loadActivity } from "../lib/activity/api";
 import {
-  ACTIVITY_SUB,
   FAN_IN_NOTE,
   WATCHES_UNAVAILABLE_NOTE,
   activityCollections,
@@ -16,6 +15,7 @@ import { accountLabel, approvalsAccounts } from "../lib/approvals/rows";
 import { urlParam } from "../lib/shell/publish";
 import { DecidedDetail, FeedRow, WatchDetail } from "./ActivityRows";
 import CollectionColumn from "./CollectionColumn";
+import { Alert, Column, EmptyState, PageNotice, StackedList, SurfaceFrame } from "./ui";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
 
@@ -155,113 +155,103 @@ export default function ActivityApp({ client: injectedClient, now: fixedNow }: P
   // `div`, not `main`: AppTw.astro owns the page's one <main>.
   if (fatal) {
     return (
-      <div class="shell shell-error">
-        <h1>Activity</h1>
-        <p role="alert">Could not reach the server: {fatal}</p>
-      </div>
+      <PageNotice title="Could not reach the server" error>
+        <p role="alert">{fatal}</p>
+      </PageNotice>
     );
   }
   if (!session) {
-    return (
-      <div class="shell">
-        <p class="muted">Connecting…</p>
-      </div>
-    );
+    return <PageNotice>Connecting…</PageNotice>;
   }
   if (gate.state !== "open") {
     return (
-      <div class="shell">
-        <h1>Activity</h1>
-        <p class="muted">{gate.reason}</p>
-        <p class="muted">
-          <a href="/mail">← back to mail</a>
+      <PageNotice title="Activity is not available">
+        <p>{gate.reason}</p>
+        <p class="mt-2">
+          <a href="/mail" class="font-medium text-brand-600 hover:text-brand-500">
+            Back to mail
+          </a>
         </p>
-      </div>
+      </PageNotice>
     );
   }
 
   return (
-    <div class="act">
+    <div class="flex h-full min-h-0 w-full flex-col">
       {isDemo ? (
-        <p class="banner">Sample data. This record is generated in this browser tab and reaches no server.</p>
+        <Alert tone="info" class="m-4 shrink-0">
+          Sample data. This record is generated in this browser tab and reaches no server.
+        </Alert>
       ) : null}
 
-      <header class="act-head">
-        <h1>Activity</h1>
-        <p class="muted act-sub">{ACTIVITY_SUB}</p>
-        {accounts.length > 1 ? (
-          <p class="muted act-fine">
-            Across {accounts.length} accounts: {accounts.map((a) => a.name).join(", ")}. {FAN_IN_NOTE}
-          </p>
-        ) : null}
-        {watchesUnavailable ? <p class="muted act-fine">{WATCHES_UNAVAILABLE_NOTE}</p> : null}
-      </header>
-
-      {/* One account failing must not take the record down, and must not
-          vanish either — a partial history that presents as complete is the
-          exact failure this section exists to end. */}
-      {Object.entries(failures).map(([id, why]) => (
-        <p key={id} class="act-error" role="alert">
-          {accountLabel(accounts, id)}: {why}
+      {accounts.length > 1 ? (
+        <p class="shrink-0 px-4 pb-2 text-xs text-gray-500 dark:text-gray-400">
+          Across {accounts.length} accounts: {accounts.map((a) => a.name).join(", ")}. {FAN_IN_NOTE}
         </p>
+      ) : null}
+      {watchesUnavailable ? (
+        <Alert tone="warn" class="mx-4 mb-2 shrink-0">
+          {WATCHES_UNAVAILABLE_NOTE}
+        </Alert>
+      ) : null}
+
+      {Object.entries(failures).map(([id, why]) => (
+        <Alert key={id} tone="error" class="mx-4 mb-2 shrink-0">
+          {accountLabel(accounts, id)}: {why}
+        </Alert>
       ))}
 
-      {loading ? <p class="muted act-pad">Reading the record…</p> : null}
+      <SurfaceFrame>
+        <CollectionColumn
+          title="Activity"
+          storageKey="bm.cc.activity"
+          groups={groups}
+          selectedId={collection}
+          onSelect={setCollection}
+        />
 
-      {!loading && ordered.length === 0 ? (
-        <p class="muted act-pad">
-          Nothing on the record yet — no proposal has been decided and no watch has fired. When something is, it lands
-          here.
-        </p>
-      ) : null}
+        <Column
+          aria-label="Activity"
+          class="w-full shrink-0 border-gray-200 max-lg:border-b lg:w-96 lg:border-r dark:border-white/10"
+        >
+          {loading ? <p class="px-4 py-3 text-sm text-gray-500">Reading the record…</p> : null}
+          {!loading && ordered.length === 0 ? (
+            <EmptyState title="Nothing on the record yet">
+              No proposal has been decided and no watch has fired. When something is, it lands here.
+            </EmptyState>
+          ) : null}
+          {!loading && ordered.length > 0 && activeList.length === 0 ? (
+            <EmptyState title="Nothing in this view">Try another collection.</EmptyState>
+          ) : null}
+          <StackedList>
+            {activeList.map((item) => (
+              <FeedRow
+                key={item.id}
+                item={item}
+                now={now}
+                active={item.id === selected?.id}
+                label={accounts.length > 1 ? accountLabel(accounts, item.accountId) : ""}
+                onSelect={() => setSelectedId(item.id)}
+              />
+            ))}
+          </StackedList>
+        </Column>
 
-      {ordered.length > 0 ? (
-        <div class="act-panes grid grid-cols-1 lg:grid-cols-[auto_24rem_1fr]">
-          {/* COLUMN 2 — the collections (v1: All / Decided / Watches fired;
-              by-agent and by-date pickers are v2). No [New] button: nothing
-              is ever created here — the record is generated, not filed. */}
-          <CollectionColumn
-            title="Activity"
-            storageKey="bm.cc.activity"
-            groups={groups}
-            selectedId={collection}
-            onSelect={setCollection}
-          />
-
-          {/* COLUMN 3 — the feed, newest first. */}
-          <nav aria-label="Activity" class="act-pane">
-            <ul role="list" class="space-y-0.5">
-              {activeList.map((item) => (
-                <FeedRow
-                  key={item.id}
-                  item={item}
-                  now={now}
-                  active={item.id === selected?.id}
-                  label={accounts.length > 1 ? accountLabel(accounts, item.accountId) : ""}
-                  onSelect={() => setSelectedId(item.id)}
-                />
-              ))}
-            </ul>
-            {activeList.length === 0 ? <p class="muted act-pad">Nothing in this view.</p> : null}
-          </nav>
-
-          {/* COLUMN 4 — the selected record, read-only. */}
-          <section aria-label="Detail" class="act-pane min-w-0">
-            {selected ? (
-              selected.type === "decided" ? (
-                <DecidedDetail
-                  key={selected.id}
-                  item={selected}
-                  now={now}
-                  label={accounts.length > 1 ? accountLabel(accounts, selected.accountId) : ""}
-                />
-              ) : (
-                <WatchDetail key={selected.id} item={selected} now={now} />
-              )
-            ) : null}
-          </section>
-        </div>
-      ) : null}
+        <Column aria-label="Detail" class="min-w-0 grow">
+          {selected ? (
+            selected.type === "decided" ? (
+              <DecidedDetail
+                key={selected.id}
+                item={selected}
+                now={now}
+                label={accounts.length > 1 ? accountLabel(accounts, selected.accountId) : ""}
+              />
+            ) : (
+              <WatchDetail key={selected.id} item={selected} now={now} />
+            )
+          ) : null}
+        </Column>
+      </SurfaceFrame>
     </div>
   );
 }

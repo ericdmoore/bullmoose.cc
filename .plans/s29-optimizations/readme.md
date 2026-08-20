@@ -26,3 +26,8 @@ Hot paths / fast paths: identify them first, then look for optimizations.
 > Both halves of this file were committed as an unresolved merge conflict on
 > 2026-08-19 and reconciled on the same day — the two threads are kept, the dangling
 > directory reference dropped.
+
+
+## Coverage Push
+
+Lets push up the test coverage too 

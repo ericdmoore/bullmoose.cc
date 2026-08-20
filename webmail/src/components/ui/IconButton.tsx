@@ -10,6 +10,8 @@ export interface IconButtonProps {
   label: string;
   size?: ButtonSize;
   disabled?: boolean;
+  /** Selected state on a compact rail (collapsed CollectionColumn folders). */
+  active?: boolean;
   onClick?: (e: MouseEvent) => void;
   class?: string;
   "aria-expanded"?: boolean;
@@ -20,6 +22,7 @@ export default function IconButton({
   label,
   size = "md",
   disabled,
+  active,
   onClick,
   class: cls,
   children,
@@ -28,11 +31,12 @@ export default function IconButton({
   return (
     <button
       type="button"
-      class={cx(iconButtonClasses(size), cls)}
+      class={cx(iconButtonClasses(size, { active }), cls)}
       disabled={disabled}
       onClick={onClick}
       title={label}
       {...rest}
+      aria-current={active ? "true" : undefined}
     >
       <span class="sr-only">{label}</span>
       {children}

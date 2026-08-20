@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import AgentConsole from "./AgentConsole";
 import AgentDossierPanel, { type BindingCredential, type BindingToggle } from "./AgentDossierPanel";
 import CollectionColumn from "./CollectionColumn";
-import { Avatar, Badge, Column, ListContainer, ListRow, SurfaceFrame } from "./ui";
+import { Avatar, Badge, Column, EmptyState, ListContainer, ListRow, PageNotice, SurfaceFrame, Alert } from "./ui";
 import { applyBindingEnabled, setBindingEnabled } from "../lib/agents/api";
 import {
   ALL_AGENTS_COLLECTION,
@@ -284,36 +284,33 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
   // ── shells (div, not main — AppTw owns the landmark) ─────────────────────
   if (fatal) {
     return (
-      <div class="shell shell-error">
-        <h1>Agents</h1>
-        <p role="alert">Could not reach the server: {fatal}</p>
-      </div>
+      <PageNotice title="Could not reach the server" error>
+        <p role="alert">{fatal}</p>
+      </PageNotice>
     );
   }
   if (!session) {
-    return (
-      <div class="shell">
-        <p class="muted">Connecting…</p>
-      </div>
-    );
+    return <PageNotice>Connecting…</PageNotice>;
   }
-  // The plain-client floor (arch.md §8.6): capability absent → an explanation.
   if (gate.state !== "open") {
     return (
-      <div class="shell">
-        <h1>Agents</h1>
-        <p class="muted">{gate.reason}</p>
-        <p class="muted">
-          <a href="/mail">← back to mail</a>
+      <PageNotice title="Agents are not available">
+        <p>{gate.reason}</p>
+        <p class="mt-2">
+          <a href="/mail" class="font-medium text-brand-600 hover:text-brand-500">
+            Back to mail
+          </a>
         </p>
-      </div>
+      </PageNotice>
     );
   }
 
   return (
     <div class="flex h-full min-h-0 w-full flex-col">
       {mode === "demo" ? (
-        <p class="banner">Sample data. This is a demo deployment — no real agents, budgets or invocations.</p>
+        <Alert tone="info" class="m-4 shrink-0">
+          Sample data. This is a demo deployment — no real agents, budgets or invocations.
+        </Alert>
       ) : null}
       <SurfaceFrame>
         <CollectionColumn
@@ -344,24 +341,24 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
             >
               <div class="px-2 pb-4">
                 {listError ? (
-                  <p class="px-2 py-1 text-sm text-red-700 dark:text-red-300" role="alert">
+                  <Alert tone="error" class="mx-2 mb-2">
                     {listError}
-                  </p>
+                  </Alert>
                 ) : null}
                 {Object.entries(failures).map(([who, why]) => (
-                  <p key={who} class="px-2 py-1 text-xs text-red-700 dark:text-red-300" role="alert">
+                  <Alert key={who} tone="error" class="mx-2 mb-2">
                     {who}: {why}
-                  </p>
+                  </Alert>
                 ))}
                 {loading ? <p class="px-2 py-1 text-sm text-gray-500">Loading agents…</p> : null}
                 {!loading && rows.length === 0 && !listError ? (
-                  <p class="px-2 py-1 text-sm text-gray-500 dark:text-gray-400">
+                  <EmptyState title="No agent bindings">
                     No agent bindings on the accounts you own. Provisioning an agent is an operator flow —{" "}
                     <code class="font-mono text-xs">bullmoose admin agent</code>.
-                  </p>
+                  </EmptyState>
                 ) : null}
                 {!loading && rows.length > 0 && visible.length === 0 ? (
-                  <p class="px-2 py-1 text-sm text-gray-500 dark:text-gray-400">Nothing matches “{query}”.</p>
+                  <EmptyState title="Nothing matches">Nothing matches “{query}”.</EmptyState>
                 ) : null}
                 <ListContainer>
                   {visible.map((r) => (
@@ -389,7 +386,7 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
                 {detail ? (
                   <AgentDossierPanel view={detail} toggle={toggle} credential={credential} />
                 ) : !loading ? (
-                  <p class="text-sm text-gray-500 dark:text-gray-400">Select an agent to read its dossier.</p>
+                  <EmptyState title="Select an agent">Read its dossier here.</EmptyState>
                 ) : null}
               </div>
             </Column>

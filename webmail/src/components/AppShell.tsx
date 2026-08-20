@@ -1,10 +1,9 @@
 /** @jsxImportSource preact */
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
-import { hasAgentCapability } from "../lib/jmap/capabilities";
-import type { JmapClient } from "../lib/jmap/JmapClient";
-import type { Session } from "../lib/jmap/types";
 import { resolveClient, type ClientMode } from "../lib/app/client";
 import { runListLoad } from "../lib/app/listLoad";
+import type { JmapClient } from "../lib/jmap/JmapClient";
+import type { Session } from "../lib/jmap/types";
 import {
   buildForwardDraft,
   buildReplyDraft,
@@ -51,6 +50,17 @@ import {
   TrashIcon,
   type IconProps,
 } from "./icons";
+import MessageView from "./MessageView";
+import ThreadListView, { type SwipeAction } from "./ThreadListView";
+import { Alert, EmptyState, PageNotice, SurfaceFrame } from "./ui";
+import { cx } from "../lib/ui/classes";
+
+type View = "list" | "thread" | "compose";
+
+interface Props {
+  /** Injected in tests; the app resolves its own otherwise (invariant §6.1). */
+  client?: JmapClient;
+}
 
 /** Mailbox role → its Heroicon (s24 T3b — real SVG, not font dingbats). */
 const ROLE_ICON: Record<string, (p: IconProps) => preact.JSX.Element> = {
@@ -61,15 +71,6 @@ const ROLE_ICON: Record<string, (p: IconProps) => preact.JSX.Element> = {
   junk: NoSymbolIcon,
   trash: TrashIcon,
 };
-import MessageView from "./MessageView";
-import ThreadListView, { type SwipeAction } from "./ThreadListView";
-
-type View = "list" | "thread" | "compose";
-
-interface Props {
-  /** Injected in tests; the app resolves its own otherwise (invariant §6.1). */
-  client?: JmapClient;
-}
 
 export default function AppShell({ client: injected }: Props) {
   const [client, setClient] = useState<JmapClient | undefined>(injected);
@@ -278,8 +279,6 @@ export default function AppShell({ client: injected }: Props) {
     };
   }, [client, accountId]);
 
-  const agentSeam = session ? hasAgentCapability(session) : false;
-
   // ── actions ─────────────────────────────────────────────────────────────
 
   const roleId = useCallback((role: Parameters<typeof findByRole>[1]) => findByRole(mailboxes, role)?.id, [mailboxes]);
@@ -485,6 +484,14 @@ export default function AppShell({ client: injected }: Props) {
     if (id !== undefined) void openThread(id);
   }, [client, accountId, openThread]);
 
+  // Keep the list cursor on the open thread so the selection-column highlight
+  // matches the ItemDetail pane (desktop list + message).
+  useEffect(() => {
+    if (!detail) return;
+    const i = rows.findIndex((r) => r.threadId === detail.threadId);
+    if (i >= 0) setCursor((c) => (c === i ? c : i));
+  }, [detail, rows]);
+
   const startCompose = useCallback((spec: DraftSpec) => {
     setDraft(spec);
     setDraftId(undefined);
@@ -602,12 +609,24 @@ export default function AppShell({ client: injected }: Props) {
       if (!action) return;
 
       switch (action) {
-        case "next":
-          if (view === "list") setCursor((c) => Math.min(c + 1, Math.max(0, rows.length - 1)));
+        case "next": {
+          const next = Math.min(cursor + 1, Math.max(0, rows.length - 1));
+          setCursor(next);
+          if (view === "thread") {
+            const row = rows[next];
+            if (row && row.threadId !== detail?.threadId) void openThread(row.threadId);
+          }
           break;
-        case "prev":
-          if (view === "list") setCursor((c) => Math.max(0, c - 1));
+        }
+        case "prev": {
+          const next = Math.max(0, cursor - 1);
+          setCursor(next);
+          if (view === "thread") {
+            const row = rows[next];
+            if (row && row.threadId !== detail?.threadId) void openThread(row.threadId);
+          }
           break;
+        }
         case "openSelected": {
           const row = rows[cursor];
           if (row) void openThread(row.threadId);
@@ -753,50 +772,33 @@ export default function AppShell({ client: injected }: Props) {
 
   if (fatal) {
     return (
-      <main class="shell shell-error">
-        <h1>bullmoose webmail</h1>
+      <PageNotice title="Could not reach the server" error>
         <p>Could not reach the server: {fatal}</p>
-        {/* This used to tell the user to append `?token=…`, i.e. to type a
-            live credential into the address bar — which is the leak s07 T1
-            exists to close (lib/app/tokenInUrl.test.ts). The door does the
-            same job without the URL ever seeing it. */}
-        <p class="muted">
-          <a href="/login">Sign in again</a>, or append <code>?demo=1</code> to browse sample data.
+        <p class="mt-2">
+          <a href="/login" class="font-medium text-brand-600 hover:text-brand-500">
+            Sign in again
+          </a>
+          , or append <code>?demo=1</code> to browse sample data.
         </p>
-      </main>
+      </PageNotice>
     );
   }
 
   if (!client || !session) {
-    return (
-      <main class="shell">
-        <p class="muted">Connecting…</p>
-      </main>
-    );
+    return <PageNotice>Connecting…</PageNotice>;
   }
 
   const spec: SearchSpec = { ...searchSpec, inMailbox: mailbox?.id };
 
   return (
-    <div class="app">
-      {agentSeam ? (
-        <header class="topbar">
-          {/* s24 T5 — the search bar moved UP into the shared chrome (ShellNav):
-              one contextual filter whose meaning is the active realm. What
-              remains of mail's own bar is the capability-gated console seam,
-              which cannot live in the static nav (only the browser, after
-              session(), knows whether this session carries the agent cap). */}
-          <a class="console-link" href="/agents">
-            Agents
-          </a>
-        </header>
-      ) : null}
-
+    <div class="flex h-full min-h-0 w-full flex-col">
       {mode === "demo" ? (
-        <p class="banner">Demo data — nothing here is real mail{modeReason ? ` (${modeReason})` : ""}.</p>
+        <Alert tone="info" class="m-4 shrink-0">
+          Demo data — nothing here is real mail{modeReason ? ` (${modeReason})` : ""}.
+        </Alert>
       ) : null}
 
-      <div class="body">
+      <SurfaceFrame>
         <CollectionColumn
           title="Mail"
           storageKey="bm.cc.mail"
@@ -816,14 +818,70 @@ export default function AppShell({ client: injected }: Props) {
           newDisabled={!currentIdentity}
         />
 
-        <main class="content">
-          {!isEmptySpec(searchSpec) ? (
-            <p class="scope-line">
-              {describeSearchScope(spec)}{" "}
-              <a class="link-button" href="/mail">
-                Clear
-              </a>
-            </p>
+        <section class="flex min-h-0 min-w-0 grow flex-col self-stretch lg:flex-row" aria-label="Mail">
+          {view !== "compose" ? (
+            <div
+              class={cx(
+                "flex min-h-0 min-w-0 flex-col self-stretch",
+                "w-full lg:w-96 lg:shrink-0 lg:border-r lg:border-gray-200 dark:lg:border-white/10",
+                view === "thread" && "max-lg:hidden",
+              )}
+            >
+              {!isEmptySpec(searchSpec) ? (
+                <p class="border-b border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-white/10 dark:text-gray-400">
+                  {describeSearchScope(spec)}{" "}
+                  <a class="font-medium text-brand-600 hover:text-brand-500" href="/mail">
+                    Clear
+                  </a>
+                </p>
+              ) : null}
+
+              <ThreadListView
+                rows={rows}
+                total={total}
+                cursor={cursor}
+                selected={selected}
+                loading={loading}
+                // s25 T3 — the click path is a real link (`?q=`/`?demo=`
+                // survive via hrefWithParam); onOpen stays the keyboard path.
+                hrefFor={(row) => hrefWithParam("/mail", "thread", row.threadId)}
+                // s25 T6 — swipe triage, mail only. The gesture REVEALS these;
+                // a tap on one commits, and the toast that follows carries the
+                // Undo. See the contract at the top of ThreadListView.
+                swipeActions={swipeActions}
+                onSwipeAction={(row, action) => void runSwipe(row, action)}
+                onOpen={(row) => void openThread(row.threadId)}
+                onCursor={setCursor}
+                onToggleSelect={(row) =>
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(row.threadId)) next.delete(row.threadId);
+                    else next.add(row.threadId);
+                    return next;
+                  })
+                }
+                onLoadMore={() => {
+                  const store = storeRef.current;
+                  if (!store || loading) return;
+                  setLoading(true);
+                  // Same guard as the reload above, and for a sharper reason:
+                  // paging starts long after the effect body returned, so a
+                  // mailbox switch mid-page would otherwise append page 2 of the
+                  // list you LEFT onto the list you are looking at. This path also
+                  // had no `catch` at all — a failed page died as an unhandled
+                  // rejection with nothing on screen to say so.
+                  runListLoad(
+                    () => store.loadMore(),
+                    () => storeRef.current === store,
+                    {
+                      onResult: () => syncStore(store),
+                      onError: (message) => notify(message),
+                      onSettled: () => setLoading(false),
+                    },
+                  );
+                }}
+              />
+            </div>
           ) : null}
 
           {view === "compose" && draft ? (
@@ -845,95 +903,47 @@ export default function AppShell({ client: injected }: Props) {
               }}
             />
           ) : view === "thread" && detail ? (
-            <MessageView
-              detail={detail}
-              client={client}
-              accountId={accountId}
-              expanded={expanded}
-              imagesAllowed={imagesAllowed}
-              showQuotes={showQuotes}
-              onToggleExpand={(id) =>
-                setExpanded((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(id)) next.delete(id);
-                  else next.add(id);
-                  return next;
-                })
-              }
-              onAllowImages={(id) => setImagesAllowed((prev) => new Set(prev).add(id))}
-              onToggleQuotes={() => setShowQuotes((v) => !v)}
-              onReply={(email, all) => {
-                if (currentIdentity) {
-                  startCompose(buildReplyDraft(email, { identity: currentIdentity, replyAll: all }));
+            <div class="flex min-h-0 min-w-0 grow flex-col">
+              <MessageView
+                detail={detail}
+                client={client}
+                accountId={accountId}
+                expanded={expanded}
+                imagesAllowed={imagesAllowed}
+                showQuotes={showQuotes}
+                onToggleExpand={(id) =>
+                  setExpanded((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(id)) next.delete(id);
+                    else next.add(id);
+                    return next;
+                  })
                 }
-              }}
-              onForward={(email) => {
-                if (currentIdentity) startCompose(buildForwardDraft(email, { identity: currentIdentity }));
-              }}
-              onBack={() => {
-                setView("list");
-                setDetail(undefined);
-              }}
-            />
+                onAllowImages={(id) => setImagesAllowed((prev) => new Set(prev).add(id))}
+                onToggleQuotes={() => setShowQuotes((v) => !v)}
+                onReply={(email, all) => {
+                  if (currentIdentity) {
+                    startCompose(buildReplyDraft(email, { identity: currentIdentity, replyAll: all }));
+                  }
+                }}
+                onForward={(email) => {
+                  if (currentIdentity) startCompose(buildForwardDraft(email, { identity: currentIdentity }));
+                }}
+                onBack={() => {
+                  setView("list");
+                  setDetail(undefined);
+                }}
+              />
+            </div>
           ) : view === "thread" ? (
-            <p class="muted">Opening…</p>
+            <p class="p-4 text-sm text-gray-500 dark:text-gray-400">Opening…</p>
           ) : (
-            <ThreadListView
-              rows={rows}
-              total={total}
-              cursor={cursor}
-              selected={selected}
-              loading={loading}
-              // s25 T3 — the click path is a real link (`?q=`/`?demo=`
-              // survive via hrefWithParam); onOpen stays the keyboard path.
-              hrefFor={(row) => hrefWithParam("/mail", "thread", row.threadId)}
-              // s25 T6 — swipe triage, mail only. The gesture REVEALS these;
-              // a tap on one commits, and the toast that follows carries the
-              // Undo. See the contract at the top of ThreadListView.
-              swipeActions={swipeActions}
-              onSwipeAction={(row, action) => void runSwipe(row, action)}
-              onOpen={(row) => void openThread(row.threadId)}
-              onCursor={setCursor}
-              onToggleSelect={(row) =>
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(row.threadId)) next.delete(row.threadId);
-                  else next.add(row.threadId);
-                  return next;
-                })
-              }
-              onLoadMore={() => {
-                const store = storeRef.current;
-                if (!store || loading) return;
-                setLoading(true);
-                // Same guard as the reload above, and for a sharper reason:
-                // paging starts long after the effect body returned, so a
-                // mailbox switch mid-page would otherwise append page 2 of the
-                // list you LEFT onto the list you are looking at. This path also
-                // had no `catch` at all — a failed page died as an unhandled
-                // rejection with nothing on screen to say so.
-                runListLoad(
-                  () => store.loadMore(),
-                  () => storeRef.current === store,
-                  {
-                    onResult: () => syncStore(store),
-                    onError: (message) => notify(message),
-                    onSettled: () => setLoading(false),
-                  },
-                );
-              }}
-            />
+            <div class="hidden min-h-0 min-w-0 grow items-start justify-center lg:flex">
+              <EmptyState title="Select a conversation">Choose a message from the list to read it here.</EmptyState>
+            </div>
           )}
-        </main>
-
-        {/*
-          The capability gate (arch.md §5, invariant §6.4). With
-          `urn:bullmoose:params:jmap:agent` absent this renders NOTHING — no
-          error, no empty panel, no dead region. s03.D fills it in; T2 is the
-          plain-client floor and must stay usable without it.
-        */}
-        {agentSeam ? <aside class="agent-seam" aria-label="Agent" /> : null}
-      </div>
+        </section>
+      </SurfaceFrame>
 
       {toast ? (
         // s25 T6 — the toast grew a verb. `role="status"` still announces the

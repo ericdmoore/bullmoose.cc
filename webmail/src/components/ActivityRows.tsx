@@ -20,13 +20,23 @@ import {
   summarizeWatch,
 } from "../lib/activity/feed";
 import type { ActivityItem, DecidedItem, WatchItem } from "../lib/activity/types";
+import { Badge, DescList, DescRow, StackedRow, StatusDot } from "./ui";
+import type { BadgeTone, StatusDotTone } from "../lib/ui/classes";
+import { ChevronRightIcon } from "./icons";
 
-/** Absolute instant for a detail line; the relative label leads, this anchors. */
 function absolute(ms: number): string {
   return new Date(ms)
     .toISOString()
     .replace("T", " ")
     .replace(/\.\d+Z$/, "Z");
+}
+
+function wordTone(word: string): { badge: BadgeTone; dot: StatusDotTone } {
+  if (word === "approved" || word === "accepted") return { badge: "success", dot: "success" };
+  if (word === "declined" || word === "rejected" || word === "expired") return { badge: "error", dot: "error" };
+  if (word === "yanked" || word === "held") return { badge: "warn", dot: "warn" };
+  if (word === "fired") return { badge: "accent", dot: "success" };
+  return { badge: "neutral", dot: "neutral" };
 }
 
 /** One selectable row in the feed's list column. */
@@ -39,121 +49,120 @@ export function FeedRow(props: {
   onSelect: () => void;
 }) {
   const { item, now, active, label } = props;
+  const word = statusWord(item);
+  const tone = wordTone(word);
   return (
-    <li>
-      <button
-        type="button"
-        onClick={props.onSelect}
-        aria-current={active ? "true" : undefined}
-        class={
-          "flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left text-sm " +
-          (active ? "bg-brand-50 ring-1 ring-brand-500/30 dark:bg-white/10" : "hover:bg-gray-50 dark:hover:bg-white/5")
-        }
-      >
-        <span class="line-clamp-2 font-medium text-gray-900 dark:text-white">{summarizeItem(item)}</span>
-        <span class="flex flex-wrap items-center gap-x-2 text-xs text-gray-500">
-          <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-white/10">{statusWord(item)}</span>
+    <StackedRow active={active} onSelect={props.onSelect}>
+      <StatusDot tone={tone.dot} />
+      <div class="min-w-0 flex-auto">
+        <p class="line-clamp-2 text-sm/6 font-semibold text-gray-900 dark:text-white">{summarizeItem(item)}</p>
+        <div class="mt-1 flex flex-wrap items-center gap-x-2 text-xs/5 text-gray-500 dark:text-gray-400">
           <span>{actorLabel(item)}</span>
           {label ? <span>· {label}</span> : null}
           <span>· {agoLabel(item.occurredAt, now)}</span>
           {item.type === "decided" && item.proposal.costMicros ? (
             <span>· {costLabel({ costMicros: item.proposal.costMicros, costModel: null })}</span>
           ) : null}
-        </span>
-      </button>
-    </li>
+        </div>
+      </div>
+      <Badge tone={tone.badge}>{word}</Badge>
+      <ChevronRightIcon class="size-5 flex-none text-gray-400" />
+    </StackedRow>
   );
 }
 
-/**
- * A decided proposal, read-only: WHAT the agent wanted, WHO decided it and on
- * what grounds, WHEN, and what it cost. The retained-payload discipline shows
- * through — when an edit landed, the body shown is the HUMAN's version and
- * says so, because that is what actually carried their word.
- */
 export function DecidedDetail({ item, now, label }: { item: DecidedItem; now: number; label: string }) {
   const p = item.proposal;
   const text = payloadText(p.editedPayload ?? p.payload);
+  const word = statusWord(item);
   return (
-    <article class="act-row">
-      <header class="act-rowhead">
-        <span class="pill">{p.agent}</span>
-        {label ? <span class="pill">{label}</span> : null}
-        <span class="pill">{p.kind}</span>
-        <span class="pill">{tierLabel(p.tier)}</span>
-        <span class="pill" title={p.tokensIn !== null ? `${p.tokensIn} in / ${p.tokensOut} out tokens` : undefined}>
+    <article class="px-4 py-5 sm:px-6">
+      <header class="flex flex-wrap items-center gap-2">
+        <Badge>{p.agent}</Badge>
+        {label ? <Badge>{label}</Badge> : null}
+        <Badge>{p.kind}</Badge>
+        <Badge>{tierLabel(p.tier)}</Badge>
+        <Badge title={p.tokensIn !== null ? `${p.tokensIn} in / ${p.tokensOut} out tokens` : undefined}>
           {costLabel(p)}
-        </span>
-        <span class={`pill act-status-${item.status}`}>{statusWord(item)}</span>
+        </Badge>
+        <Badge tone={wordTone(word).badge}>{word}</Badge>
       </header>
-      <p class="act-summary">{summarizeProposal(p)}</p>
-      {/* The line the whole section exists for: whose authority. */}
-      <p class="act-decision">
+      <h3 class="mt-3 text-base/7 font-semibold text-gray-900 dark:text-white">{summarizeProposal(p)}</h3>
+      <p class="mt-2 text-sm font-semibold text-gray-900 dark:text-white">
         {decisionLabel(item)}
         {p.decision?.note ? ` — “${p.decision.note}”` : ""}
       </p>
-      <p class="act-when">
-        {agoLabel(item.occurredAt, now)}
-        {item.occurredAt > 0 ? ` · ${absolute(item.occurredAt)}` : ""} · {satWithYouLabel(item, now)}
-      </p>
-      {p.rationale ? (
-        <p class="act-rationale">
-          <span class="muted">the agent's why:</span> {p.rationale}
-        </p>
-      ) : null}
-      {p.evidence.length > 0 ? (
-        <p class="act-evidence">
-          <span class="muted">looked at:</span>{" "}
-          {p.evidence.map((e, i) => (
-            <span key={i}>
-              {e.realm} {e.objectId}
-              {e.note ? ` — ${e.note}` : ""}
-              {i < p.evidence.length - 1 ? "; " : ""}
-            </span>
-          ))}
-        </p>
-      ) : null}
-      {text ? (
-        <>
-          {p.editedPayload ? (
-            <p class="act-fine">edited before approval — the version below is yours, kept beside the agent's:</p>
-          ) : null}
-          <pre class="act-body">{text}</pre>
-        </>
-      ) : null}
+      <DescList class="mt-4">
+        <DescRow term="When">
+          {agoLabel(item.occurredAt, now)}
+          {item.occurredAt > 0 ? ` · ${absolute(item.occurredAt)}` : ""} · {satWithYouLabel(item, now)}
+        </DescRow>
+        {p.rationale ? (
+          <DescRow term="The agent's why">
+            <span class="text-gray-500 dark:text-gray-400">the agent's why:</span> {p.rationale}
+          </DescRow>
+        ) : null}
+        {p.evidence.length > 0 ? (
+          <DescRow term="Looked at">
+            <span class="text-gray-500 dark:text-gray-400">looked at:</span>{" "}
+            {p.evidence.map((e, i) => (
+              <span key={i}>
+                {e.realm} {e.objectId}
+                {e.note ? ` — ${e.note}` : ""}
+                {i < p.evidence.length - 1 ? "; " : ""}
+              </span>
+            ))}
+          </DescRow>
+        ) : null}
+        {text ? (
+          <DescRow term={p.editedPayload ? "Your version" : "Payload"}>
+            {p.editedPayload ? (
+              <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                edited before approval — the version below is yours, kept beside the agent's:
+              </p>
+            ) : null}
+            <pre class="max-h-56 overflow-y-auto rounded-md bg-gray-50 px-3 py-2 text-xs/5 whitespace-pre-wrap text-gray-700 dark:bg-white/5 dark:text-gray-300">
+              {text}
+            </pre>
+          </DescRow>
+        ) : null}
+      </DescList>
     </article>
   );
 }
 
-/** A fired watch, read-only: what was being watched, what firing did, and —
- *  when the fire drafted something — where the resulting decision lives. */
 export function WatchDetail({ item, now }: { item: WatchItem; now: number }) {
   const w = item.watch;
   return (
-    <article class="act-row">
-      <header class="act-rowhead">
-        <span class="pill">watch</span>
-        <span class="pill">{w.conditionType}</span>
-        <span class="pill">{w.actionType}</span>
-        <span class="pill act-status-fired">fired</span>
+    <article class="px-4 py-5 sm:px-6">
+      <header class="flex flex-wrap items-center gap-2">
+        <Badge>watch</Badge>
+        <Badge>{w.conditionType}</Badge>
+        <Badge>{w.actionType}</Badge>
+        <Badge tone="accent">fired</Badge>
       </header>
-      <p class="act-summary">{summarizeWatch(w)}</p>
-      <p class="act-when">
-        {agoLabel(item.occurredAt, now)}
-        {item.occurredAt > 0 ? ` · ${absolute(item.occurredAt)}` : ""}
-      </p>
-      {w.deadlineAt !== null ? <p class="act-fine">the deadline it watched: {absolute(w.deadlineAt)}</p> : null}
-      {w.sourceRef ? <p class="act-fine">set from: {w.sourceRef}</p> : null}
-      {w.proposalId ? (
-        <p class="act-fine">
-          Firing produced proposal <code>{w.proposalId}</code> — if it still needs deciding, it is waiting in{" "}
-          <a href="/approvals">Approvals</a>.
-        </p>
-      ) : null}
-      <p class="act-fine muted">
-        A fired watch is a record, not a task — nothing here to re-arm or cancel. New watches are armed from the threads
-        they guard.
-      </p>
+      <h3 class="mt-3 text-base/7 font-semibold text-gray-900 dark:text-white">{summarizeWatch(w)}</h3>
+      <DescList class="mt-4">
+        <DescRow term="When">
+          {agoLabel(item.occurredAt, now)}
+          {item.occurredAt > 0 ? ` · ${absolute(item.occurredAt)}` : ""}
+        </DescRow>
+        {w.deadlineAt !== null ? <DescRow term="the deadline it watched:">{absolute(w.deadlineAt)}</DescRow> : null}
+        {w.sourceRef ? <DescRow term="set from:">{w.sourceRef}</DescRow> : null}
+        {w.proposalId ? (
+          <DescRow term="Proposal">
+            Firing produced proposal <code>{w.proposalId}</code> — if it still needs deciding, it is waiting in{" "}
+            <a href="/approvals" class="font-medium text-brand-600 hover:text-brand-500">
+              Approvals
+            </a>
+            .
+          </DescRow>
+        ) : null}
+        <DescRow term="Note">
+          A fired watch is a record, not a task — nothing here to re-arm or cancel. New watches are armed from the
+          threads they guard.
+        </DescRow>
+      </DescList>
     </article>
   );
 }

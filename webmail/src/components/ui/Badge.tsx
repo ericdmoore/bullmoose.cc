@@ -6,11 +6,17 @@ import { badgeClasses, cx, type BadgeTone } from "../../lib/ui/classes";
 export default function Badge({
   tone = "neutral",
   class: cls,
+  title,
   children,
 }: {
   tone?: BadgeTone;
   class?: string;
+  title?: string;
   children: ComponentChildren;
 }) {
-  return <span class={cx(badgeClasses(tone), cls)}>{children}</span>;
+  return (
+    <span class={cx(badgeClasses(tone), cls)} title={title}>
+      {children}
+    </span>
+  );
 }
