@@ -58,3 +58,8 @@ Need a record of spending
 Highlight USD Savings at Token Usage 
 Over a Benchmark 
 Maybe we also claim Opus5 as benchmark costs - and we see how much we can drive below that benchmark.
+
+
+also keep in mind that boogie mail offers a "Server Storage" UI surface that we do not yet fill. 
+we should take more seriously the thought that if our actions have side-effects of costing thr human money
+we should at min, be able to explain where/how it was spent. 
