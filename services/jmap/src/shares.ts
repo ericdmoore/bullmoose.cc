@@ -118,6 +118,118 @@ export async function putShareRecord(kv: KVNamespace, rec: ShareRecord, nowMs: n
   });
 }
 
+// ---- minting -----------------------------------------------------------
+
+export const SHARE_DEFAULT_TTL = 30 * 24 * 3600; // 30 days
+export const SHARE_MAX_TTL = 90 * 24 * 3600;
+
+/**
+ * The signed payload ends in `shareId`.
+ *
+ * That binding is what stops a holder of one valid link from swapping in
+ * another account's share id to dodge a revocation: the id is not a free
+ * parameter, it is part of what was signed.
+ *
+ * ⚠️ IT IS ALSO A ONE-TIME FLUSH. Links minted before this change carry a
+ * signature over the old five-field payload and no longer verify — they 403.
+ * That is the intended outcome, not collateral: the state this unit exists to
+ * fix is that nobody knows what links are out there, and every surviving old
+ * link is one more unknown that can never be enumerated or revoked. Accepting
+ * both payload shapes during a window would preserve exactly the population
+ * we cannot account for. See unit `010` Open Question #5.
+ */
+export async function shareSignature(
+  key: string,
+  tenantId: string,
+  accountId: string,
+  blobId: string,
+  name: string,
+  exp: number,
+  shareId: string,
+): Promise<string> {
+  const hmacKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const payload = `${tenantId}:${accountId}:${blobId}:${name}:${exp}:${shareId}`;
+  const sig = await crypto.subtle.sign("HMAC", hmacKey, new TextEncoder().encode(payload));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+export interface MintShareInput {
+  tenantId: string;
+  accountId: string;
+  blobId: string;
+  /** Display filename; `/` is replaced so it cannot alter the URL path. */
+  name: string;
+  /** Content type served on download, when the minter knows one. */
+  type?: string;
+  /** Clamped to [60, SHARE_MAX_TTL]; defaults to SHARE_DEFAULT_TTL. */
+  ttlSeconds?: number;
+  /** epoch ms; injectable so several mints can share one expiry instant. */
+  now?: number;
+}
+
+export interface MintedShare {
+  url: string;
+  shareId: string;
+  /** Link expiry, epoch SECONDS — the value inside the HMAC payload. */
+  exp: number;
+  /** ISO-8601 of `exp`, as the /api/share door has always returned it. */
+  expiresAt: string;
+}
+
+/**
+ * Mint one expiring share link: sign, RECORD, then hand back the URL.
+ *
+ * THE one mint implementation — `POST /api/share/*` and the outbound
+ * attachment sidestep (s03.B T3) both call this, so every link in existence
+ * is signed the same way and, more importantly, is written into KV before it
+ * is ever uttered. Record-before-URL is load-bearing: if the KV write fails
+ * the mint fails and the caller gets no link — the alternative is handing out
+ * a URL that deny-by-default will refuse, which looks like a broken link
+ * rather than a failed mint, and would be unrevocable in exactly the way the
+ * share-record unit exists to end.
+ *
+ * The caller verifies the blob exists (a `headBlob`) before minting; this
+ * function only turns an already-vouched-for blob into a link.
+ */
+export async function mintShareLink(
+  kv: KVNamespace,
+  signingKey: string,
+  origin: string,
+  input: MintShareInput,
+): Promise<MintedShare> {
+  const name = input.name.replaceAll("/", "_");
+  const now = input.now ?? Date.now();
+  const ttl = Math.min(Math.max(60, input.ttlSeconds ?? SHARE_DEFAULT_TTL), SHARE_MAX_TTL);
+  const exp = Math.floor(now / 1000) + ttl;
+  const shareId = newShareId();
+  const sig = await shareSignature(signingKey, input.tenantId, input.accountId, input.blobId, name, exp, shareId);
+
+  const record: ShareRecord = {
+    shareId,
+    tenantId: input.tenantId,
+    accountId: input.accountId,
+    blobId: input.blobId,
+    name,
+    ...(input.type ? { type: input.type } : {}),
+    exp,
+    createdAt: now,
+  };
+  await putShareRecord(kv, record, now);
+
+  const url =
+    `${origin}/share/${input.tenantId}/${input.accountId}/${input.blobId}/${encodeURIComponent(name)}` +
+    `?exp=${exp}&sid=${shareId}&sig=${sig}` +
+    (input.type ? `&type=${encodeURIComponent(input.type)}` : "");
+
+  return { url, shareId, exp, expiresAt: new Date(exp * 1000).toISOString() };
+}
+
 export async function getShareRecord(kv: KVNamespace, accountId: string, shareId: string): Promise<ShareRecord | null> {
   if (!shareId) return null;
   const raw = await kv.get(shareKey(accountId, shareId));

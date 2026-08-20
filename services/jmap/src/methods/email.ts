@@ -24,6 +24,13 @@ import {
   type SetError,
 } from "./common";
 import { partBlobId } from "../blobParts";
+import {
+  appendSidestepBlock,
+  applyOutboundSidestep,
+  planOutboundSidestep,
+  type AppliedSidestep,
+  type PlannedSidestep,
+} from "./outboundSidestep";
 
 /** Metadata properties served straight from D1 — no blob fetch, no MIME parse. */
 const ROW_PROPERTIES = [
@@ -632,6 +639,13 @@ interface EmailSetResult {
   notDestroyed: Record<string, SetError>;
   emailChanges: ChangeEntry;
   mailboxesTouched: Set<string>;
+  /**
+   * FileNodes minted by the outbound attachment sidestep during THIS call.
+   * Committed as a `FileNode` change entry even when the create that minted
+   * them ultimately refused — the nodes are real rows in the drive, and a
+   * FileNode no `/changes` entry announces is invisible to syncing clients.
+   */
+  fileNodesCreated: string[];
 }
 
 /**
@@ -693,13 +707,14 @@ async function emailSet(args: Record<string, unknown>, ctx: RequestContext): Pro
     notDestroyed: {},
     emailChanges: { collection: "Email", created: [], updated: [], destroyed: [] },
     mailboxesTouched: new Set(),
+    fileNodesCreated: [],
   };
 
   // -- create (drafts) --
   const create = (args.create as Record<string, Record<string, unknown>> | undefined) ?? {};
   for (const [cid, spec] of Object.entries(create)) {
     try {
-      r.created[cid] = await createDraft(store, access, spec, r);
+      r.created[cid] = await createDraft(ctx, store, access, spec, r);
     } catch (err) {
       r.notCreated[cid] = toCreateSetError(err);
     }
@@ -757,6 +772,9 @@ async function commitEmailChanges(ctx: RequestContext, accountId: string, r: Ema
   if (e.created.length + e.updated.length + e.destroyed.length > 0) entries.push(e);
   if (r.mailboxesTouched.size > 0) {
     entries.push({ collection: "Mailbox", updated: [...r.mailboxesTouched] });
+  }
+  if (r.fileNodesCreated.length > 0) {
+    entries.push({ collection: "FileNode", created: r.fileNodesCreated });
   }
   if (entries.length === 0) return accountState(ctx, accountId);
   const { newState } = await commitChanges(ctx.env.ACCOUNT_DO, accountId, entries);
@@ -840,6 +858,7 @@ function applySetPatch(target: Set<string>, sub: string | undefined, value: unkn
 
 /** Email/set create — build MIME for a simple draft, store blob + row. */
 async function createDraft(
+  ctx: RequestContext,
   store: Mailstore,
   access: { accountId: string; tenantId: string },
   spec: Record<string, unknown>,
@@ -887,6 +906,10 @@ async function createDraft(
   // whether those land as attachment parts or as the body itself. Resolved —
   // and, crucially, AUTHORIZED — before a single byte reaches the builder.
   let attachments: ResolvedAttachment[];
+  // Set iff the outbound attachment sidestep fired (s03.B T3): the create was
+  // over the cap, every non-inline attachment became a FileNode + expiring
+  // link, and the body gains the link block below.
+  let sidestep: AppliedSidestep | null = null;
   if (spec.bodyStructure !== undefined && spec.bodyStructure !== null) {
     // §4.6: one form or the other. Merging would mean guessing which of two
     // bodies the client meant — refuse, naming both sides of the conflict.
@@ -905,7 +928,19 @@ async function createDraft(
       );
     }
     const flat = flattenBodyStructure(spec.bodyStructure, bodyValues);
-    ({ text, html, attachments } = await resolveFlattenedBody(store, access, flat));
+    try {
+      ({ text, html, attachments } = await resolveFlattenedBody(store, access, flat));
+    } catch (err) {
+      // Body-content blobs (a text leaf carried by blobId) are the message's
+      // own words — reserved, never movable; only the attachment bucket can
+      // side-step. If the reserved bytes alone bust the cap, the re-run
+      // below rethrows the honest tooLarge.
+      const reserved = [...flat.textSources, ...flat.htmlSources].flatMap((s) => ("blob" in s ? [s.blob] : []));
+      const plan = await sidestepPlanFor(err, ctx, store, access, flat.attachments, reserved);
+      if (!plan) throw err;
+      ({ text, html, attachments } = await resolveFlattenedBody(store, access, { ...flat, attachments: plan.kept }));
+      sidestep = await applyOutboundSidestep(ctx, store, access, plan.moved, r.fileNodesCreated);
+    }
   } else {
     text = resolveBodyPart(spec.textBody, bodyValues, "textBody");
     html = resolveBodyPart(spec.htmlBody, bodyValues, "htmlBody");
@@ -920,7 +955,22 @@ async function createDraft(
         ["bodyValues"],
       );
     }
-    attachments = await resolveAttachments(store, access, attachmentSpecs);
+    try {
+      attachments = await resolveAttachments(store, access, attachmentSpecs);
+    } catch (err) {
+      const plan = await sidestepPlanFor(err, ctx, store, access, attachmentSpecs, []);
+      if (!plan) throw err;
+      attachments = await resolveAttachments(store, access, plan.kept);
+      sidestep = await applyOutboundSidestep(ctx, store, access, plan.moved, r.fileNodesCreated);
+    }
+  }
+
+  if (sidestep) {
+    // The recipient's copy of the truth: one line per file — name, human
+    // size, capability URL — plus the expiry date, stated plainly. Appended
+    // to every body variant the message has; created as a text body when an
+    // all-attachment send had none.
+    ({ text, html } = appendSidestepBlock(text, html, sidestep));
   }
 
   // stored == wire, from the create side: a client may stamp its own
@@ -957,6 +1007,11 @@ async function createDraft(
   const id = `e_${crypto.randomUUID()}`;
   const receivedAt = Date.now();
 
+  // Same rule as the INBOUND path (`importOne` below, and ingest): a CID
+  // image the HTML displays is not "an attachment" as a user means it, so it
+  // must not raise the paperclip. Disposition decides, not part count.
+  const hasAttachment = attachments.some((a) => a.meta.disposition !== "inline");
+
   await store.insertEmail(access.accountId, {
     id,
     blobId,
@@ -974,10 +1029,12 @@ async function createDraft(
     bodyText: text && text.trim() !== "" ? text : htmlToIndexText(html),
     size: raw.byteLength,
     receivedAt,
-    // Same rule as the INBOUND path (`importOne` below, and ingest): a CID
-    // image the HTML displays is not "an attachment" as a user means it, so it
-    // must not raise the paperclip. Disposition decides, not part count.
-    hasAttachment: attachments.some((a) => a.meta.disposition !== "inline"),
+    hasAttachment,
+    // stored == wire: only parts that are ON the MIME appear here. A
+    // side-stepped file is deliberately absent — it is not an attachment of
+    // this message any more; it is a FileNode in the drive plus a link in
+    // the body, and listing it here would promise a part download that has
+    // no part behind it.
     attachments: attachments.map((a) => a.meta),
     mailboxIds,
     keywords,
@@ -986,7 +1043,40 @@ async function createDraft(
   r.emailChanges.created.push(id);
   for (const mb of mailboxIds) r.mailboxesTouched.add(mb);
 
-  return { id, blobId, threadId, size: raw.byteLength };
+  return {
+    id,
+    blobId,
+    threadId,
+    size: raw.byteLength,
+    // When the sidestep fired, the stored email's attachments are NOT what
+    // the client asked for — RFC 8620 §5.3 says exactly this case is signaled
+    // by returning the property whose final value differs from the client's.
+    // A re-fetch would show the same thing; this makes the transformation
+    // visible in the create response itself, with no nonstandard fields.
+    ...(sidestep ? { attachments: attachments.map((a) => a.meta), hasAttachment } : {}),
+  };
+}
+
+/**
+ * Is this refusal one the outbound sidestep can turn into a success?
+ *
+ * `null` — for ANY of: the error is not `tooLarge`; sharing is not configured
+ * (no signing key, or a caller with no request origin such as the agent MCP
+ * bridge); or the plan itself finds nothing movable. The caller rethrows the
+ * ORIGINAL error, so wherever the sidestep cannot fire, `Email/set create`
+ * behaves byte-for-byte as it did before the sidestep existed.
+ */
+async function sidestepPlanFor(
+  err: unknown,
+  ctx: RequestContext,
+  store: Mailstore,
+  access: { accountId: string; tenantId: string },
+  movable: AttachmentSpec[],
+  reserved: AttachmentSpec[],
+): Promise<PlannedSidestep<AttachmentSpec> | null> {
+  if (!(err instanceof SetErrorSignal) || err.type !== "tooLarge") return null;
+  if (!ctx.env.SHARE_SIGNING_KEY || !ctx.origin) return null;
+  return planOutboundSidestep(store, access, movable, reserved, MAX_ATTACHMENT_BYTES_PER_EMAIL);
 }
 
 // ---- attachments on create -------------------------------------------
@@ -1099,8 +1189,11 @@ async function resolveAttachments(
         size: sizes[i] as number,
         cid: spec.cid,
         disposition: spec.disposition,
-        // The Files cross-link is ingest's to set (s03.B T3); a draft's
-        // attachment is not side-stepped into a FileNode.
+        // The Files cross-link is set only by INBOUND ingest (s03.B T3). An
+        // outbound part that rides the message never has one: the outbound
+        // sidestep removes a file from the attachment list entirely (FileNode
+        // + link in the body), so any part reaching this point stayed a plain
+        // attachment.
         fileNodeId: null,
       },
     });
