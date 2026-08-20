@@ -43,7 +43,8 @@ import {
  * Button + PlusIcon, label supplied by the realm ("New contact"). Collapsed,
  * the same verb is an icon-only Plus on the rail (desktop) / FAB (phone), and
  * items that carry a glyph stay as an icon rail so Mail's Inbox/Drafts/Archive
- * remain reachable without expanding.
+ * remain reachable without expanding. Mail opts into `collapseMode="bar"`
+ * instead: the column leaves and a CollectionBar sits above the thread list.
  */
 
 export interface CollectionColumnProps {
@@ -81,6 +82,18 @@ export interface CollectionColumnProps {
    * a picker costs zero stack depth, so the column would be redundant).
    */
   narrow?: "stack" | "hidden";
+  /**
+   * Where the column goes when collapsed:
+   * `rail` (default) — a thin icon strip beside the list (the s24 strip).
+   * `bar` — the column leaves; the surface renders `<CollectionBar>` above
+   * the list (Mail: a breadcrumb + folder popover). This column then renders
+   * only the FAB so the create verb survives on the phone.
+   */
+  collapseMode?: "rail" | "bar";
+  /** Controlled collapse. Omit both and the column owns the flag (and the
+   *  storageKey memory). Mail lifts this so the bar and the column agree. */
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
   class?: string;
 }
 
@@ -269,26 +282,11 @@ export function useExpansion(storageKey: string | undefined, defaultExpanded: re
   return { expanded, toggle };
 }
 
-export default function CollectionColumn(props: CollectionColumnProps) {
-  const {
-    title,
-    groups,
-    selectedId,
-    onSelect,
-    newLabel,
-    onNew,
-    newDisabled,
-    storageKey,
-    defaultCollapsed,
-    defaultExpanded,
-    narrow = "stack",
-    actions,
-    footer,
-  } = props;
-  const [collapsed, setCollapsed] = useState(defaultCollapsed ?? false);
-  const { expanded, toggle: toggleNode } = useExpansion(storageKey, defaultExpanded);
+/** Collapse memory — the same hook the surface uses when it lifts the flag
+ *  so a CollectionBar and this column cannot disagree. */
+export function useCollapsed(storageKey: string | undefined, defaultCollapsed = false) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
-  // Adopt the stored preference on mount (never during render — SSR parity).
   useEffect(() => {
     if (!storageKey) return;
     try {
@@ -307,6 +305,37 @@ export default function CollectionColumn(props: CollectionColumnProps) {
     } catch {
       /* same */
     }
+  };
+
+  return { collapsed, toggle };
+}
+
+export default function CollectionColumn(props: CollectionColumnProps) {
+  const {
+    title,
+    groups,
+    selectedId,
+    onSelect,
+    newLabel,
+    onNew,
+    newDisabled,
+    storageKey,
+    defaultCollapsed,
+    defaultExpanded,
+    narrow = "stack",
+    collapseMode = "rail",
+    collapsed: collapsedProp,
+    onCollapsedChange,
+    actions,
+    footer,
+  } = props;
+  const internal = useCollapsed(collapsedProp === undefined ? storageKey : undefined, defaultCollapsed ?? false);
+  const collapsed = collapsedProp ?? internal.collapsed;
+  const { expanded, toggle: toggleNode } = useExpansion(storageKey, defaultExpanded);
+
+  const toggle = (next: boolean) => {
+    if (onCollapsedChange) onCollapsedChange(next);
+    else internal.toggle(next);
   };
 
   // ArrowUp/Down move the selection in visual order (the pure model, which
@@ -329,6 +358,11 @@ export default function CollectionColumn(props: CollectionColumnProps) {
   const railItems = iconRailItems(groups, expanded);
 
   if (collapsed) {
+    // `bar` mode: the surface draws `<CollectionBar>` above the list. This
+    // column contributes only the FAB (phone create verb). The rail is the
+    // default for every other realm.
+    if (collapseMode === "bar") return <>{fab}</>;
+
     // Below lg the strip turns horizontal — a slim full-width bar (a 48px-wide
     // vertical sliver makes no sense stacked). `narrow="hidden"` removes it
     // there entirely: the surface's collection sheet is the picker instead.

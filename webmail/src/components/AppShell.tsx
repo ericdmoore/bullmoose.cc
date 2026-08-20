@@ -36,7 +36,8 @@ import {
 import { restorePatches } from "../lib/mail/undo";
 import type { Email, Identity, Mailbox } from "../lib/mail/types";
 import Composer from "./Composer";
-import CollectionColumn from "./CollectionColumn";
+import CollectionBar from "./CollectionBar";
+import CollectionColumn, { useCollapsed } from "./CollectionColumn";
 import { buildMailboxTree, flattenTree } from "../lib/mail/mailboxes";
 import type { CollectionGroup } from "../lib/shell/collections";
 import { hrefWithParam, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
@@ -113,6 +114,7 @@ export default function AppShell({ client: injected }: Props) {
   const [undoAction, setUndoAction] = useState<{ label: string; run: () => void } | undefined>(undefined);
   const [helpOpen, setHelpOpen] = useState(false);
   const chord = useRef<string | undefined>(undefined);
+  const { collapsed: foldersCollapsed, toggle: toggleFolders } = useCollapsed("bm.cc.mail");
 
   /** Say something, optionally with the way back. Every toast goes through
    *  here so a stale Undo can never outlive the message it belonged to. */
@@ -802,6 +804,9 @@ export default function AppShell({ client: injected }: Props) {
         <CollectionColumn
           title="Mail"
           storageKey="bm.cc.mail"
+          collapseMode="bar"
+          collapsed={foldersCollapsed}
+          onCollapsedChange={toggleFolders}
           groups={mailboxGroups}
           selectedId={mailbox?.id}
           onSelect={(id) => {
@@ -827,6 +832,27 @@ export default function AppShell({ client: injected }: Props) {
                 view === "thread" && "max-lg:hidden",
               )}
             >
+              {foldersCollapsed ? (
+                <CollectionBar
+                  title="Mail"
+                  storageKey="bm.cc.mail"
+                  groups={mailboxGroups}
+                  selectedId={mailbox?.id}
+                  onSelect={(id) => {
+                    const m = mailboxes.find((x) => x.id === id);
+                    if (m) {
+                      setMailbox(m);
+                      setView("list");
+                    }
+                  }}
+                  onExpand={() => toggleFolders(false)}
+                  newLabel="New message"
+                  onNew={() => {
+                    if (currentIdentity) startCompose(newDraft({ identity: currentIdentity }));
+                  }}
+                  newDisabled={!currentIdentity}
+                />
+              ) : null}
               {!isEmptySpec(searchSpec) ? (
                 <p class="border-b border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-white/10 dark:text-gray-400">
                   {describeSearchScope(spec)}{" "}

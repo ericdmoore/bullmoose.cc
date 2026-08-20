@@ -21,12 +21,12 @@ import {
   ChevronRightIcon,
   ClockIcon,
   Cog6ToothIcon,
-  ComputerDesktopIcon,
   DocumentTextIcon,
   EnvelopeIcon,
   FlagIcon,
   FolderIcon,
   MagnifyingGlassIcon,
+  RobotIcon,
   UsersIcon,
   XMarkIcon,
   type IconProps,
@@ -134,7 +134,7 @@ const nearestStep = (px: number): number => {
  *  glyph, render-tested. */
 const SECTION_ICON: Record<SectionId, (p: IconProps) => JSX.Element> = {
   approvals: CheckBadgeIcon,
-  agents: ComputerDesktopIcon,
+  agents: RobotIcon,
   activity: ClockIcon,
   goals: FlagIcon,
   calendar: CalendarIcon,

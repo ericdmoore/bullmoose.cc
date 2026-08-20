@@ -302,4 +302,23 @@ describe("CollectionColumn — variants", () => {
     expect(html).not.toContain("Junk");
     expect(html).not.toContain("planned");
   });
+
+  it("collapseMode='bar' hides the rail — the surface's CollectionBar is the picker", () => {
+    const html = render(
+      <CollectionColumn
+        title="Mail"
+        groups={GROUPS}
+        onSelect={() => {}}
+        storageKey="k"
+        defaultCollapsed
+        collapseMode="bar"
+        newLabel="New message"
+        onNew={() => {}}
+      />,
+    );
+    expect(html).not.toContain("w-12");
+    expect(html).not.toContain("Expand mail collections");
+    expect(html).toContain("lg:hidden"); // the FAB remains
+    expect(html).toContain("New message");
+  });
 });

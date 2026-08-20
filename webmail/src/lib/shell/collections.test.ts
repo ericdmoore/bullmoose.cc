@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ensureSelection,
+  findItem,
   flattenItems,
   iconRailItems,
   stepSelection,
@@ -45,6 +46,13 @@ describe("iconRailItems", () => {
   ];
   it("keeps only selectable items that carry a glyph", () => {
     expect(iconRailItems(withIcons).map((i) => i.id)).toEqual(["inbox"]);
+  });
+});
+
+describe("findItem", () => {
+  it("finds a top-level item and a child, and misses the unknown", () => {
+    expect(findItem(GROUPS, "b")?.label).toBe("B");
+    expect(findItem(GROUPS, "ghost")).toBeUndefined();
   });
 });
 
@@ -104,6 +112,9 @@ const TREE: CollectionGroup[] = [
 describe("flattenItems — expansion state is an input", () => {
   it("hides children by default (the s24 callers pass nothing and see no change)", () => {
     expect(flattenItems(TREE).map((i) => i.id)).toEqual(["pending", "by-agent", "held", "planned"]);
+  });
+  it("findItem still sees a child whose parent is collapsed", () => {
+    expect(findItem(TREE, "agent-allen")?.label).toBe("Allen");
   });
   it("an expanded parent's children follow it in visual order", () => {
     expect(flattenItems(TREE, new Set(["by-agent"])).map((i) => i.id)).toEqual([
