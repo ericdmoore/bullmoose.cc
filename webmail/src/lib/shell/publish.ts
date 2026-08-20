@@ -137,17 +137,30 @@ export function publishedAtLabel(at: number): string {
 /**
  * A detail link built FROM the current query, so `?q=`/`?demo=` (and any
  * sibling selection like `?c=`) survive the hop. URLSearchParams end to end —
- * ids are encoded, never concatenated.
+ * ids are encoded, never concatenated. `undefined` values drop the key
+ * (a surface that has no mailbox yet must not mint `?c=undefined`).
  */
+export function hrefWithParams(
+  path: string,
+  updates: Readonly<Record<string, string | undefined>>,
+  search: string = globalThis.location?.search ?? "",
+): string {
+  const params = new URLSearchParams(search);
+  for (const [name, value] of Object.entries(updates)) {
+    if (value === undefined) params.delete(name);
+    else params.set(name, value);
+  }
+  const q = params.toString();
+  return q === "" ? path : `${path}?${q}`;
+}
+
 export function hrefWithParam(
   path: string,
   name: string,
   id: string,
   search: string = globalThis.location?.search ?? "",
 ): string {
-  const params = new URLSearchParams(search);
-  params.set(name, id);
-  return `${path}?${params.toString()}`;
+  return hrefWithParams(path, { [name]: id }, search);
 }
 
 /**
