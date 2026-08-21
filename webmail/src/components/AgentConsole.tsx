@@ -204,17 +204,17 @@ export default function AgentConsole({ reads: injectedReads, vault: injectedVaul
 
   if (fatal) {
     return (
-      <main class="shell shell-error">
+      <div class="shell shell-error">
         <h1>Agent console</h1>
         <p>Could not reach the server: {fatal}</p>
-      </main>
+      </div>
     );
   }
   if (!session) {
     return (
-      <main class="shell">
+      <div class="shell">
         <p class="muted">Connecting…</p>
-      </main>
+      </div>
     );
   }
 
@@ -222,13 +222,13 @@ export default function AgentConsole({ reads: injectedReads, vault: injectedVaul
   // an explanation, not an error and not a dead region.
   if (gate.state !== "open") {
     return (
-      <main class="shell">
+      <div class="shell">
         <h1>Agent console</h1>
         <p class="muted">{gate.reason}</p>
         <p class="muted">
           <a href="/">← back to mail</a>
         </p>
-      </main>
+      </div>
     );
   }
 

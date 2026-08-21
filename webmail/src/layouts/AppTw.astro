@@ -9,9 +9,14 @@
 // signed-out page should not show a nav rail for sections you cannot reach.
 //
 // ⚠️ THIS LAYOUT OWNS THE PAGE'S ONE `<main>` (below). Islands must render a
-// `div`, not a `main`, or the page nests a landmark inside a landmark. Only
-// ApprovalsQueue has been corrected so far; the other eight still nest one,
-// which is invalid HTML and gives a screen reader two "main" regions.
+// `div`, not a `main`, or the page nests a landmark inside a landmark —
+// invalid HTML, and two "main" regions for a screen reader to choose between.
+// Every island rendered here now complies.
+//
+// The ONE exception is `LoginForm`, and it is not an exception to the rule:
+// `/login` renders under `App.astro`, which has no `<main>` of its own, so
+// LoginForm's is the page's only landmark. A blind sweep of "islands must not
+// render main" would strip it and leave that page with none.
 //
 // What was taken from the template and what was not:
 //

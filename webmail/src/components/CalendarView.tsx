@@ -302,16 +302,16 @@ export default function CalendarView({ client: injectedClient, now }: Props) {
   // ── refusals that are not screens ───────────────────────────────────────
   if (fatal) {
     return (
-      <main class="cal">
+      <div class="cal">
         <p class="cal-fatal">{fatal}</p>
-      </main>
+      </div>
     );
   }
   if (!session) {
     return (
-      <main class="cal">
+      <div class="cal">
         <p class="muted">Loading…</p>
-      </main>
+      </div>
     );
   }
   if (!hasCapability(session, CALENDARS_CAP)) {
@@ -319,17 +319,17 @@ export default function CalendarView({ client: injectedClient, now }: Props) {
     // (`AppShell.tsx:591`): a server that does not advertise calendars gets a
     // sentence, not a screen full of empty grid.
     return (
-      <main class="cal">
+      <div class="cal">
         <p class="cal-fatal">
           This account’s server does not advertise <code>{CALENDARS_CAP}</code>, so there is no calendar to show.
           Nothing is broken — this build simply has no calendar realm.
         </p>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main class="cal">
+    <div class="cal">
       <header class="cal-bar">
         <div class="cal-nav">
           <button type="button" onClick={() => setSpec(shiftGrid(spec, -1))} aria-label="Previous">
@@ -494,7 +494,7 @@ export default function CalendarView({ client: injectedClient, now }: Props) {
           />
         ) : null}
       </div>
-    </main>
+    </div>
   );
 }
 

@@ -47,8 +47,26 @@ import type { RequestContext } from "./common";
  * files in the drive, announced via the changelog accumulator the caller
  * passes in.
  *
- * No thumbnails in v1: Workers cannot resize images, so the block is names
- * and links only. Noted as follow-up in the dev plan.
+ * No thumbnails yet, so the block is names and links only. The reason
+ * recorded here — "Workers cannot resize images" — STOPPED BEING TRUE on
+ * 2026-08-20, when Image Transformations were enabled for the zone (sources
+ * scoped to `bullmoose.cc`/`*.bullmoose.cc`). The constraint is now a
+ * to-do, not a limit.
+ *
+ * ⚠️ When it is built, do NOT reach it by URL. `/cdn-cgi/image/…` fetches
+ * its source from the edge WITHOUT the caller's bearer token, and
+ * `/api/download/…` is gated on `principalHasScope(principal, "read")` — so
+ * the naive wiring 403s, and the "fix" that makes it work is making
+ * attachment blobs publicly fetchable. That would turn every attachment into
+ * a bearer-capability URL and delete the auth check this system is built on.
+ * The share mechanism is wrong here for the same reason: a share link is a
+ * capability for the FULL-FIDELITY original, which is far more than "show me
+ * a small picture".
+ *
+ * The shape that keeps the model: authenticate the principal, read the blob
+ * from R2 in this worker, and transform on a subrequest
+ * (`fetch(src, { cf: { image: … } })`). Auth first, transform second, no
+ * public URL ever minted.
  */
 
 /** `role` on the directory the sidestep files into. */
