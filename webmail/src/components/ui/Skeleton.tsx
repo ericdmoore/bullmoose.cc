@@ -14,7 +14,17 @@ import { cx } from "../../lib/ui/classes";
  * in Tailwind utilities, because the generated CSP allows no inline styles —
  * every size here is a class.
  */
-export type SkeletonVariant = "title" | "line" | "line-short" | "meta" | "block" | "avatar" | "row";
+export type SkeletonVariant =
+  | "title"
+  | "line"
+  | "line-short"
+  | "meta"
+  /** A card-sized region. */
+  | "block"
+  /** A whole message body — tall enough to hold the pane open. */
+  | "body"
+  | "avatar"
+  | "row";
 
 /** One placeholder shape. Decorative by definition — the announcement belongs
  *  to the surrounding `SkeletonRegion`, so a screen reader hears "Loading

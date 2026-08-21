@@ -1568,6 +1568,13 @@ code {
  * styles, so every size below is a class, not a style attribute.
  */
 .skeleton {
+  /* ⚠️ `display: block` is load-bearing. These render as <span>, and an INLINE
+   * element ignores width and height entirely — so every skeleton measured
+   * 0x0 and painted nothing at all. That shipped: it replaced Mail's
+   * "Opening…" with a genuinely empty pane, which is worse than the text it
+   * was meant to improve on. Caught by measuring the boxes in a browser;
+   * nothing in the markup or the class names looks wrong. */
+  display: block;
   position: relative;
   overflow: hidden;
   background: var(--bg-sunken);
@@ -1575,6 +1582,10 @@ code {
   /* Never collapse to nothing: a zero-height skeleton is the blank screen it
    * exists to prevent. */
   min-height: 12px;
+}
+/* The wrapper is a <span> for the same reason and needs the same fix. */
+.skeleton-lines {
+  display: block;
 }
 .skeleton::after {
   content: "";
@@ -1629,6 +1640,15 @@ code {
   width: 100%;
   margin: 12px 0;
 }
+/* The MESSAGE. One block standing for the whole body, tall enough to occupy
+ * the pane the way real content will — a short bar here would leave the
+ * column collapsed, which is the jump the skeleton exists to prevent. */
+.skeleton-body {
+  height: 60vh;
+  min-height: 240px;
+  width: 100%;
+  margin: 12px 0;
+}
 .skeleton-avatar {
   height: 36px;
   width: 36px;
@@ -1640,21 +1660,22 @@ code {
   margin: 6px 0;
 }
 
-/* ── The detail header stays reachable ──────────────────────────────────────
+/* ── Back belongs to the narrow layout only ─────────────────────────────────
  *
- * Back must be available at EVERY scroll position. The header used to scroll
- * away with the content, so on a long message the only modelled exit left the
- * screen and the reader was stranded with the browser's Back button — which
- * does something different (it leaves the realm).
+ * At `lg` and up the list and the message sit side by side, so the list never
+ * went anywhere and "Back" points at something already on screen — a control
+ * that undoes nothing. Below `lg` the message REPLACES the list, and Back is
+ * the only way back to it.
+ *
+ * It is deliberately NOT sticky. Pinning it puts a permanent bar across the
+ * top of the one pane whose whole job is to show a message, to keep offering
+ * an exit the reader is not looking for. It scrolls with the content like
+ * every other part of the message.
  */
-.thread-header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--bg);
-  /* Meets the pane edge, so nothing shows through as it scrolls under. */
-  padding-top: 8px;
-  border-bottom: 1px solid var(--line);
+@media (min-width: 64rem) {
+  .back-button {
+    display: none;
+  }
 }
 
 /* The thread skeleton mirrors MessageView's own frame, so the shapes sit
@@ -1662,18 +1683,10 @@ code {
 .thread-skeleton {
   padding: 0 16px 16px;
 }
-.thread-skeleton-message {
-  display: flex;
-  gap: 12px;
-  padding-top: 12px;
-}
-.thread-skeleton-copy {
-  flex: 1;
-  min-width: 0;
-}
 
-/* The contact skeleton mirrors CardDetail's frame — avatar, name, the meta
- * line under it, then the fields. */
+/* The contact skeleton: the name, its meta line, then the fields as one
+ * block. Same two-shape rule as the message — stand where the content goes,
+ * invent nothing that is not there. */
 .card-skeleton {
   padding: 16px;
 }
