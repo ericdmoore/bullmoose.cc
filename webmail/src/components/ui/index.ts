@@ -12,6 +12,7 @@ export { default as Field, Input, Select, Textarea } from "./Field";
 export { default as IconButton } from "./IconButton";
 export { ListContainer, ListRow } from "./ListContainer";
 export { default as PageNotice } from "./PageNotice";
+export { Skeleton, SkeletonLines, SkeletonRegion } from "./Skeleton";
 export { StackedList, StackedRow } from "./StackedList";
 export { default as StatusDot } from "./StatusDot";
 export { default as SurfaceFrame } from "./SurfaceFrame";

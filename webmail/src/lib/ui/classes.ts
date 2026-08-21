@@ -276,19 +276,35 @@ export function fabClasses(): string {
 export const FAB_CLEARANCE_PX = 72;
 
 /**
- * The header search, collapsed (s25 T5). Below `lg` the bar is a magnifier
- * that expands IN PLACE; at `lg` and up it is always the full field, so the
- * desktop header is what it was.
+ * The header search, collapsed.
+ *
+ * s25 T5 built this but gated it to below `lg` — "at `lg` and up it is always
+ * the full field, so the desktop header is what it was". The desktop header
+ * being what it was is the problem: at rest it spends the whole bar on an
+ * input whose placeholder is a syntax cheat-sheet (`from: to: subject:
+ * is:unread has:attachment`), teaching a query language in the one place that
+ * costs permanent width. Chrome should recede until asked, at EVERY width.
+ *
+ * So the qualifier is gone: closed is a magnifier everywhere, open is the
+ * whole bar everywhere. `searchYieldClasses` is what makes "open" wider than
+ * the field ever was at rest.
  *
  * The `bm:search` plumbing underneath is untouched — no navigation, no form
  * action, no history call (tokenInUrl.test.ts holds ShellNav to all three).
  */
 export function searchFieldClasses(open: boolean): string {
-  return cx("flex min-w-0 flex-1 items-center", !open && "max-lg:hidden");
+  // Closed emits `hidden` ALONE — never `flex … hidden` together. Two
+  // unvariant display utilities on one element resolve by Tailwind's source
+  // order rather than by the order they were typed, so a collapsed field that
+  // happened to render would be a source-order accident, not a decision. The
+  // previous version dodged this with a `max-lg:` variant; without a variant
+  // to lean on, the honest fix is to emit one display utility at a time.
+  return open ? "flex min-w-0 flex-1 items-center" : "hidden";
 }
 
-/** Header chrome that steps aside while the narrow search is expanded, so the
- *  field gets the whole bar instead of a 90px slot. Desktop never yields. */
+/** Header chrome that steps aside while the search is expanded, so the field
+ *  gets the whole bar instead of a 90px slot — the "expands beyond its current
+ *  width" half of the behaviour. */
 export function searchYieldClasses(open: boolean): string {
-  return open ? "max-lg:hidden" : "";
+  return open ? "hidden" : "";
 }

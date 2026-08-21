@@ -15,6 +15,9 @@ import {
   ListContainer,
   ListRow,
   PageNotice,
+  Skeleton,
+  SkeletonLines,
+  SkeletonRegion,
   StackedList,
   StackedRow,
   SurfaceFrame,
@@ -218,5 +221,67 @@ describe("Alert / EmptyState / StackedList / DescList / Breadcrumb", () => {
     expect(html).toContain("<h2");
     expect(html).not.toContain("<h1");
     expect(html).toContain("No files here");
+  });
+});
+
+describe("StackedRow — href and onSelect are not alternatives", () => {
+  // The component used to take one XOR the other, and that hard-coded a false
+  // choice into every realm: the href branch full-page-reloaded on every click
+  // (Contacts, Approvals) and the onSelect branch had no URL to share and no
+  // cmd-click at all (Files, Notes, Calendar, Goals, Agents, Activity). Mail
+  // was the only surface with both, because it bypassed this component.
+
+  it("renders a real link when given both, so cmd-click still works", () => {
+    const html = render(
+      <StackedRow href="/contacts?card=c1" onSelect={() => {}}>
+        Ada
+      </StackedRow>,
+    );
+    expect(html).toContain('href="/contacts?card=c1"');
+    expect(html).toContain("<a ");
+    expect(html).not.toContain("<button");
+  });
+
+  it("still renders a plain link when there is nothing to do in-page", () => {
+    const html = render(<StackedRow href="/contacts?card=c1">Ada</StackedRow>);
+    expect(html).toContain('href="/contacts?card=c1"');
+  });
+
+  it("falls back to a button only when the item has no URL", () => {
+    // A transient row with nowhere for a link to point — a button is honest
+    // there, and a link would be a lie to a screen reader.
+    const html = render(<StackedRow onSelect={() => {}}>Unsaved draft</StackedRow>);
+    expect(html).toContain("<button");
+    expect(html).not.toContain("<a ");
+  });
+});
+
+describe("Skeleton", () => {
+  it("is decorative — the region does the announcing, not the shapes", () => {
+    // Eight shapes each announcing themselves would read as eight blanks.
+    const html = render(<Skeleton variant="title" />);
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain("skeleton");
+    expect(html).toContain("skeleton-title");
+  });
+
+  it("names the CONTENT that is coming, not the act of loading", () => {
+    const html = render(
+      <SkeletonRegion label="the message">
+        <Skeleton variant="title" />
+      </SkeletonRegion>,
+    );
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain('aria-label="Loading the message"');
+    expect(html).toContain('role="status"');
+  });
+
+  it("ends a paragraph on a short line, the way real prose does", () => {
+    // A block of equal bars reads as a table and mis-sets the expectation.
+    // Match the exact class attribute: a looser pattern also catches the
+    // wrapper's own "skeleton-lines" and the "-short" variant.
+    const html = render(<SkeletonLines count={3} />);
+    expect(html.match(/class="skeleton skeleton-line"/g) ?? []).toHaveLength(2);
+    expect(html).toContain('class="skeleton skeleton-line-short"');
   });
 });

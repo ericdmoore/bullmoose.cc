@@ -819,14 +819,14 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
                 onClick={() => setSearchOpen(true)}
                 aria-expanded={false}
                 aria-controls="bm-global-search"
-                class="-m-2.5 p-2.5 text-gray-700 lg:hidden dark:text-gray-200"
+                class="-m-2.5 p-2.5 text-gray-700 dark:text-gray-200"
               >
                 <span class="sr-only">{searchable.placeholder}</span>
                 <MagnifyingGlassIcon class="size-6" />
               </button>
               {/* The collapsed bar still holds the space the field will take,
                   so the avatar does not slide across the header on expand. */}
-              <div class="flex-1 lg:hidden" />
+              <div class="flex-1" />
             </>
           ) : null}
           {searchable ? (
@@ -916,9 +916,10 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
             settings and sign-out included — rather than being scattered across
             the header. One place to look for "me".
           */}
-          {/* s25 T5: while the narrow search is expanded these step aside, so
-              the field gets the whole bar rather than a 90px slot. Desktop
-              never yields — `searchYieldClasses` is a `max-lg:` rule. */}
+          {/* While the search is expanded these step aside, so the field gets
+              the whole bar rather than a 90px slot — at every width now, not
+              just below `lg`. This is the "expands beyond its current width"
+              half: the open field is wider than the resting bar ever was. */}
           <div class={"relative flex items-center " + searchYieldClasses(searchOpen)} ref={menuRef}>
             <button
               type="button"
