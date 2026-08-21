@@ -148,7 +148,7 @@ export default {
       // On the explore host a browser is the client, so the refusal is a page
       // with a sign-in link rather than a JSON 401 it cannot act on. Same
       // status, same absence of authority.
-      if (onExplore) return signInPage();
+      if (onExplore) return signInPage(url.pathname + url.search);
       return json({ error: "unauthorized" }, 401, {
         // Basic is advertised for third-party clients that only speak
         // user+password — the "password" is a minted bm_ token (app password).
