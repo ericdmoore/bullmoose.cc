@@ -22,6 +22,7 @@ import {
   parseSearchInput,
   type SearchSpec,
 } from "../lib/mail/search";
+import { cachedIds, dropEmails, readEmails, writeEmails } from "../lib/app/emailStore";
 import { ThreadListStore, type ThreadRow } from "../lib/mail/threadList";
 import { defaultExpanded, loadThread, type ThreadDetail } from "../lib/mail/threadView";
 import {
@@ -452,12 +453,44 @@ export default function AppShell({ client: injected }: Props) {
       setView("thread");
       setDetail(undefined);
       setPendingRow(row);
+
+      // CACHE FIRST. An Email is immutable but for its flags (RFC 8621 §4.1),
+      // so a body we have read before needs no revalidation — it cannot have
+      // changed. The ids come from the row, which is why this costs no request
+      // to discover what to look for.
+      //
+      // The network call still runs, unawaited: it refreshes flags and picks
+      // up any message the row did not know about. So the reader sees the
+      // thread at once and the truth arrives behind it.
+      let painted = false;
+      if (row?.emailIds?.length) {
+        try {
+          const cached = await readEmails(row.emailIds);
+          const fromCache = threadFromCache(threadId, row.emailIds, cached);
+          if (fromCache) {
+            setDetail(fromCache);
+            setExpanded(defaultExpanded(fromCache.emails));
+            setShowQuotes(false);
+            setPendingRow(undefined);
+            painted = true;
+          }
+        } catch {
+          /* a cache miss is not an error — fall through to the network */
+        }
+      }
+
       try {
         const loaded = await loadThread(client, accountId, threadId);
         setDetail(loaded);
         setPendingRow(undefined);
-        setExpanded(defaultExpanded(loaded.emails));
-        setShowQuotes(false);
+        void writeEmails(loaded.emails);
+        // Only when the cache did not already paint: re-deriving these would
+        // collapse a message the reader had just opened, or re-hide quotes
+        // they had just expanded, the instant the network caught up.
+        if (!painted) {
+          setExpanded(defaultExpanded(loaded.emails));
+          setShowQuotes(false);
+        }
         // Opening marks read — the one triage action that fires without a key.
         const unread = loaded.emails.filter((e) => e.keywords.$seen !== true);
         if (unread.length > 0) {
@@ -473,13 +506,27 @@ export default function AppShell({ client: injected }: Props) {
               .catch(() => undefined);
         }
       } catch (err) {
-        notify(String(err instanceof Error ? err.message : err));
         setPendingRow(undefined);
-        setView("list");
+        // If the cache already painted, the reader is looking at a real
+        // thread; a failed background refresh is a stale-flags problem, not a
+        // reason to yank them back to the list.
+        if (!painted) {
+          notify(String(err instanceof Error ? err.message : err));
+          setView("list");
+        }
       }
     },
     [client, accountId, syncStore],
   );
+
+  // Reconcile the cached flags with the server once the client is up. Bodies
+  // are never revalidated (they cannot change); this is the other half — the
+  // read/unread and mailbox state that can, and that a cached message would
+  // otherwise show as it was when it was stored.
+  useEffect(() => {
+    if (!client || !accountId) return;
+    void syncCachedFlags(client, accountId, { cachedIds, readEmails, writeEmails, dropEmails }).catch(() => undefined);
+  }, [client, accountId]);
 
   // s25 T3 — the detail URL, read ONCE at mount: `/mail?thread=<id>` opens
   // that thread on first paint (deep link, new tab, shared URL). Read-only:
