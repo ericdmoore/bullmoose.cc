@@ -825,12 +825,19 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
           */}
           {searchable && !searchOpen ? (
             <>
+              {/* One gap-unit in, beyond the header's own padding. The
+                  trigger is the first thing after the rail, and on container
+                  padding alone it read as crowded against the rail edge
+                  rather than as the start of the header's content. `ml-4`
+                  rather than an eyeballed value because the header already
+                  spaces its items `gap-x-4` — the icon now sits at the same
+                  rhythm as everything beside it instead of at its own. */}
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
                 aria-expanded={false}
                 aria-controls="bm-global-search"
-                class="rounded-md p-2 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/5"
+                class="ml-4 rounded-md p-2 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/5"
               >
                 <span class="sr-only">{searchable.placeholder}</span>
                 <MagnifyingGlassIcon class="size-5" />
