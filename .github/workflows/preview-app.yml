@@ -1,0 +1,94 @@
+# A preview URL for every webmail PR.
+#
+# Why this exists: the app cannot be judged from a diff. Reviewing a change to
+# a loading state or a click handler means USING it, and the local path is not
+# a substitute — `npm run dev` (infra/localDev.sh) stands the workers up, but
+# the browser still has to reach them, and Eric's first attempt 404'd every
+# data request. A hosted preview sidesteps the whole question.
+#
+# It also cannot be done from a laptop: Pages deploys need
+# BULLMOOSE_SITE_DEPLOY_TOKEN, which exists only as a repository secret (the
+# runtime token that deploys Workers gets `Authentication error [code: 10000]`
+# from the Pages API). CI is the only place that holds the right key, so CI is
+# where preview deploys belong.
+#
+# ⚠️ A preview is the real app pointed at PRODUCTION data — same JMAP worker,
+# same mailbox. It is a different front end, not a sandbox. Treat anything you
+# do in one as done for real.
+name: Preview app
+
+on:
+  pull_request:
+    paths:
+      - "webmail/**"
+      - "packages/jmap-core/**"
+      - ".github/workflows/preview-app.yml"
+
+# One preview per PR: a new push replaces the running build rather than racing
+# it, so the URL in the comment always describes the newest commit.
+concurrency:
+  group: preview-app-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Build & deploy preview
+    runs-on: ubuntu-latest
+    # Forks do not get the deploy secret, and a run that silently produces no
+    # URL is worse than one that never starts.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      pull-requests: write
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run -w webmail build
+
+      - name: Deploy preview
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.BULLMOOSE_SITE_DEPLOY_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # `--branch` is what makes this a PREVIEW rather than production.
+          # Pages treats the production branch name (main) as a production
+          # deploy, so passing the head ref is load-bearing, not cosmetic.
+          command: >-
+            pages deploy webmail/dist
+            --project-name=bullmoose-app
+            --branch=${{ github.event.pull_request.head.ref }}
+            --commit-hash=${{ github.event.pull_request.head.sha }}
+
+      - name: Comment the URL
+        uses: actions/github-script@v7
+        env:
+          # wrangler-action exposes the deployment URL as an output; the
+          # per-commit alias it prints is the one worth linking, because the
+          # branch alias moves under you on the next push.
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+        with:
+          script: |
+            const url = process.env.URL;
+            if (!url) {
+              core.setFailed("No deployment URL — the preview did not publish.");
+              return;
+            }
+            const marker = "<!-- preview-app -->";
+            const body =
+              `${marker}\n### Preview\n\n${url}\n\n` +
+              "Commit `" + context.payload.pull_request.head.sha.slice(0, 7) + "`. " +
+              "Updated on every push to this PR.\n\n" +
+              "> This is the real app against **production data** — same JMAP worker, " +
+              "same mailbox. A different front end, not a sandbox.";
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const existing = await github.rest.issues.listComments({ owner, repo, issue_number });
+            // Update in place so a long PR does not accumulate one comment per push.
+            const mine = existing.data.find((c) => c.body?.startsWith(marker));
+            if (mine) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
