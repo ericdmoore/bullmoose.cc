@@ -66,6 +66,12 @@ is thin, from a SEARCH over the mailbox (the previous tournament email, the
 coach's earlier address). Prefill is evidence-gathering, not invention: every
 field carries where it came from.
 
+**Nothing here is triggered.** All three rungs run on delivery, unconditionally,
+for any account with the binding on. By the time the message is opened the
+offers already exist — the reader arrives to a decision, not to a button that
+starts some work. There is no "analyse this email" verb and there should never
+be one.
+
 A rung the ladder deliberately does NOT have: nothing writes to the calendar
 without a human. `verb-schedule` produces an offer; approval produces the event.
 
@@ -106,6 +112,40 @@ Shared, and shared exactly once:
 
 The margin's job is *judgment in context*; the queue's is *clearing what is
 waiting*. Same record, different question being asked of the reader.
+
+---
+
+## The manual button is a bug report
+
+The obvious design is a `+ Cal` affordance beside every date, which opens a
+prefilled popover. That is the wrong default, and it took Eric one sentence to
+say why:
+
+> *if I hit "schedule" that's fine — BUT it means the extraction pipeline was
+> sub-par.*
+
+So the shape inverts. **The reader approves; the reader does not initiate.**
+
+- Where the extractor found an event, the margin shows an offer that ALREADY
+  EXISTS, with approve / decline. That is the path, and it should be nearly
+  every path.
+- Where the extractor found a date but did not claim it as an event, `+ Cal` is
+  the fallback — and pressing it is a **labelled negative**, recorded exactly
+  the way `Not a real one` already is for annotations. The extractor missed
+  something the owner wanted, and now we know which sentence.
+- Where there was no date at all, there is nothing. We do not decorate prose
+  with affordances on the chance the reader wanted one.
+
+This is the anti-star principle applied to a second thing: manual filing is the
+old world. The agent notices; the human does not file. A `+ Cal` button on
+every date is a star by another name — it moves the noticing back onto the
+person and calls it a feature.
+
+**The metric this creates is the honest one.** Manual-schedule rate IS the
+extractor's miss rate, measured on real mail rather than a fixture. It should
+fall over time, and if it does not, rung 2 is the work. A design where the
+button is the feature can never produce that number, because every use looks
+like success.
 
 ---
 
@@ -200,10 +240,13 @@ once it exists. It is not on the critical line.
 
 Not a unit test — a standing check on the real thing:
 
-> Forward that tournament email to the mailbox with the ladder on. Two of the
-> three dates should be offered. The offers should be approvable from the
-> margin without leaving the message. Nothing should reach the calendar that
-> was not approved. And the cost of the whole thing should be legible in the
-> binding's ledger afterwards.
+> Forward that tournament email to the mailbox with the ladder on. WITHOUT
+> pressing anything, two of the three dates should already be offered by the
+> time the message is opened. The offers should be approvable from the margin
+> without leaving the message. Nothing should reach the calendar that was not
+> approved. And the cost of the whole thing should be legible in the binding's
+> ledger afterwards.
 
-If any of those four is false, the rung that made it false is the work.
+If any of those is false, the rung that made it false is the work. And if the
+third date has to be added by hand, that is not a failure of the test — it is
+the test producing its most useful output.
