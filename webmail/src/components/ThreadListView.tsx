@@ -13,6 +13,7 @@ import {
   type SwipeDrag,
   type SwipeTone,
 } from "../lib/ui/swipe";
+import { isUnmodifiedPrimaryClick } from "../lib/ui/navigation";
 import { ArchiveBoxIcon, TrashIcon, type IconProps } from "./icons";
 
 /** Fixed row height — the assumption that makes O(1) windowing possible. */
@@ -110,17 +111,12 @@ interface Props {
  *   the revealed buttons are real `<button>`s, so once a row is open they are
  *   in tab order too.
  */
-/** Primary unmodified click — fetch in-page. Cmd/ctrl/shift/alt and non-left
- *  buttons keep the real `<a>` navigation (new tab, etc.). */
-export function isUnmodifiedPrimaryClick(ev: {
-  button?: number;
-  metaKey?: boolean;
-  ctrlKey?: boolean;
-  shiftKey?: boolean;
-  altKey?: boolean;
-}): boolean {
-  return (ev.button ?? 0) === 0 && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey && !ev.altKey;
-}
+/** RE-EXPORTED, not defined here. This rule lived in this file alone — which
+ *  is why Mail was the only realm that could open a row without reloading the
+ *  page. It now lives in `lib/ui/navigation`, where `StackedRow` and every
+ *  other realm can reach it; the re-export keeps this module's existing
+ *  importers working. */
+export { isUnmodifiedPrimaryClick };
 
 export default function ThreadListView({
   rows,

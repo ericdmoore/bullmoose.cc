@@ -1551,3 +1551,108 @@ code {
     flex-wrap: wrap;
   }
 }
+
+/* ── Loading skeletons ──────────────────────────────────────────────────────
+ *
+ * A shape in the geometry of the content that is coming — never the word
+ * "Loading…". The label was what every realm shipped, and it fails twice: it
+ * says nothing about WHAT is arriving, and it collapses the region to one line
+ * so the layout jumps when data lands. The skeleton holds the space.
+ *
+ * The wave is a sheen swept across a tinted block, drawn in ::after so the
+ * element keeps whatever size the layout gave it. `prefers-reduced-motion`
+ * drops the sweep entirely: the affordance is the SHAPE, and the motion only
+ * says "not real yet", so a reader who has asked for stillness loses nothing.
+ *
+ * ⚠️ No inline styles anywhere — the generated CSP has no 'unsafe-inline' for
+ * styles, so every size below is a class, not a style attribute.
+ */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-sunken);
+  border-radius: 6px;
+  /* Never collapse to nothing: a zero-height skeleton is the blank screen it
+   * exists to prevent. */
+  min-height: 12px;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 55%), transparent);
+  animation: skeleton-wave 1.6s ease-in-out infinite;
+}
+@media (prefers-color-scheme: dark) {
+  .skeleton::after {
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 8%), transparent);
+  }
+}
+@keyframes skeleton-wave {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+    /* The flat tint IS the loading state here. */
+    display: none;
+  }
+}
+
+/* Sizes. Named for the ROLE they stand in for, so a skeleton block and the
+ * thing that replaces it can be kept the same height on purpose. */
+.skeleton-title {
+  height: 22px;
+  width: 60%;
+  margin: 8px 0 4px;
+}
+.skeleton-line {
+  height: 12px;
+  width: 100%;
+  margin: 8px 0;
+}
+.skeleton-line-short {
+  height: 12px;
+  width: 40%;
+  margin: 8px 0;
+}
+.skeleton-meta {
+  height: 12px;
+  width: 28%;
+  margin: 0 0 12px;
+}
+.skeleton-block {
+  height: 160px;
+  width: 100%;
+  margin: 12px 0;
+}
+.skeleton-avatar {
+  height: 36px;
+  width: 36px;
+  border-radius: 50%;
+}
+.skeleton-row {
+  height: 44px;
+  width: 100%;
+  margin: 6px 0;
+}
+
+/* ── The detail header stays reachable ──────────────────────────────────────
+ *
+ * Back must be available at EVERY scroll position. The header used to scroll
+ * away with the content, so on a long message the only modelled exit left the
+ * screen and the reader was stranded with the browser's Back button — which
+ * does something different (it leaves the realm).
+ */
+.thread-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+  /* Meets the pane edge, so nothing shows through as it scrolls under. */
+  padding-top: 8px;
+  border-bottom: 1px solid var(--line);
+}

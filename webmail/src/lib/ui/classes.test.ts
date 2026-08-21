@@ -156,22 +156,30 @@ describe("fabClasses", () => {
   });
 });
 
-describe("the collapsing search (s25 T5)", () => {
-  it("hides the field below lg ONLY while collapsed; desktop always shows it", () => {
-    expect(searchFieldClasses(false)).toContain("max-lg:hidden");
-    expect(searchFieldClasses(true)).not.toContain("hidden");
+describe("the collapsing search", () => {
+  it("is a magnifier at rest and a field when opened — at EVERY width", () => {
+    // s25 T5 gated this to below `lg`; the desktop header kept a permanently
+    // expanded input whose placeholder taught query syntax. Chrome recedes
+    // until asked, on desktop too.
+    expect(searchFieldClasses(false)).toContain("hidden");
+    expect(searchFieldClasses(false)).not.toContain("max-lg");
     expect(searchFieldClasses(true)).toContain("flex");
+    expect(searchFieldClasses(true)).not.toContain("hidden");
   });
 
-  it("hides with a VARIANT, never a bare `hidden` fighting a bare `flex`", () => {
-    // Two unvariant display utilities resolve by Tailwind's source order, not
-    // by the order they were typed. `max-lg:` always beats the base, so the
-    // breakpoint decides.
-    expect(searchFieldClasses(false).split(" ")).not.toContain("hidden");
+  it("never emits two display utilities at once", () => {
+    // `flex` and `hidden` on one element resolve by Tailwind's source order,
+    // not by the order they were typed — so emitting both would make the
+    // collapsed state a source-order accident rather than a decision.
+    const closed = searchFieldClasses(false).split(" ");
+    expect(closed).toContain("hidden");
+    expect(closed).not.toContain("flex");
+    const open = searchFieldClasses(true).split(" ");
+    expect(open).not.toContain("hidden");
   });
 
-  it("the header yields only on narrow screens, and only while expanded", () => {
-    expect(searchYieldClasses(true)).toBe("max-lg:hidden");
+  it("the header yields the whole bar while expanded, and only then", () => {
+    expect(searchYieldClasses(true)).toBe("hidden");
     expect(searchYieldClasses(false)).toBe("");
   });
 });

@@ -149,17 +149,27 @@ describe("RealmTray — the user's order is a preference, not a replacement", ()
 // which is exactly the collapsed one), so what is testable here is the
 // starting shape — and that is the shape the invariants live in.
 
-describe("ShellNav — the collapsing search (s25 T5)", () => {
+describe("ShellNav — the collapsing search", () => {
   const html = render(<ShellNav section="mail" email="eric@bullmoose.cc" />);
 
-  it("starts collapsed on a phone: a magnifier trigger that is lg:hidden", () => {
+  it("starts collapsed at EVERY width: a magnifier trigger", () => {
     expect(html).toContain('aria-controls="bm-global-search"');
     expect(html).toContain('aria-expanded="false"');
   });
 
-  it("hides the FIELD below lg and keeps it at lg — one element, two widths", () => {
-    expect(html).toContain("max-lg:hidden");
+  it("the trigger is no longer desktop-hidden", () => {
+    // s25 T5 gated the collapse to below `lg`, so the desktop header kept a
+    // permanently expanded field whose placeholder taught query syntax —
+    // spending the whole bar, at rest, on something nobody reads twice.
+    const trigger = /<button[^>]*aria-controls="bm-global-search"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(trigger).not.toBe("");
+    expect(trigger).not.toContain("lg:hidden");
+  });
+
+  it("hides the FIELD until asked, at every width", () => {
     expect(html).toContain('id="bm-global-search"');
+    expect(html).toContain('<form class="hidden">');
+    expect(html).not.toContain("max-lg:hidden");
   });
 
   it("still renders exactly ONE search input — the collapse is a class, not a second field", () => {
