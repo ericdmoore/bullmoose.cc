@@ -105,8 +105,15 @@ export interface ProposalEvidence {
  * categorically separate — the hard negative, not a stronger "no". `notNow` is
  * RETIRED: it conflated "I'll do it myself", "not due yet" (now a `dueAt`
  * correction, which records nothing) and "meh, later".
+ *
+ * `unintendedInvocation` is the odd one out and deliberately so: it is the only
+ * reason that steers NOTHING. The taxonomy's test is "does it change what the
+ * agent does next", and this one must not — it says the human mis-clicked, so
+ * the record is evidence about the click and not about the agent. Without it,
+ * an accidental invocation gets filed as wrongContent or wrongAction and the
+ * extractor learns from a mistake that was never its own.
  */
-export type RejectReason = "wrongContent" | "wrongAction" | "unsafe";
+export type RejectReason = "wrongContent" | "wrongAction" | "unsafe" | "unintendedInvocation";
 
 /**
  * What a STORED decision may carry, which is deliberately NOT the same set.

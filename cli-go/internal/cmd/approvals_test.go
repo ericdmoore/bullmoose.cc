@@ -1018,10 +1018,17 @@ func TestRejectReasons_NeedsInfoIsNeverAReason(t *testing.T) {
 			"(decline-taxonomy.md: the rule a learning pipeline must not break)")
 	}
 	// Mirrors REJECT_REASONS in services/jmap/src/methods/actionProposal.ts —
-	// the revised set of decline-taxonomy.md, `unsafe` in and `notNow` retired.
-	// The two sides now AGREE, and this is what pins the agreement: if either
-	// moves alone, this fails and they move together.
-	want := map[string]bool{"wrongContent": true, "wrongAction": true, "unsafe": true}
+	// the revised set of decline-taxonomy.md, `unsafe` in and `notNow` retired,
+	// plus `unintendedInvocation` (2026-08-21). The two sides now AGREE, and
+	// this is what pins the agreement: if either moves alone, this fails and
+	// they move together. It did exactly that when the fourth was added.
+	//
+	// `unintendedInvocation` is a reject reason but NOT a learning signal: it
+	// says the human mis-clicked, so the record is evidence about the UI and
+	// not about the agent. The exclusion lives server-side in LEARNING_REASONS
+	// — a pipeline that filters on "is it a decline" instead swallows it, which
+	// is the failure the reason exists to prevent.
+	want := map[string]bool{"wrongContent": true, "wrongAction": true, "unsafe": true, "unintendedInvocation": true}
 	if len(rejectReasons) != len(want) {
 		t.Errorf("rejectReasons has %d entries, want %d: %v", len(rejectReasons), len(want), rejectReasons)
 	}

@@ -138,3 +138,50 @@ training is optional.
 - `.plans/s03.D-coexistence/devPlan.md` T5 — repetition → policy (this note's owner)
 - `.plans/s11-scheduling/` — the scheduler that reads `due_at` (the edit that replaced the defer verb)
 - `.plans/s10-agents/` — where frequent `wrongAction` is fixed (config), not per-proposal
+
+---
+
+## `unintendedInvocation` — added 2026-08-21
+
+> *"I accidentally clicked schedule on a few emails that clearly had nothing to
+> schedule."* — Eric
+
+The existing set had no way to say **"my slip, not its mistake."** Declining an
+accidental invocation forced a choice between `wrongContent` and `wrongAction`,
+and both are lies: the agent's output was not bad and its selection was not
+wrong, because it was never asked a real question. The human pressed a button.
+
+This one **breaks the rule at the top of this note on purpose.** Every reason
+above earns its place by steering a correction. This one earns its place by
+steering *nothing* — and that is exactly the value, because the alternative is
+not "no signal", it is a **false** signal. Without it, every mis-click is
+recorded as evidence against the agent, and a learning pipeline dutifully
+trains on the human's own fumble.
+
+| | |
+|---|---|
+| what it means | the invocation should not have happened at all |
+| what it steers | nothing about generation or selection |
+| is it negative feedback? | **no — and it must be excluded, not merely down-weighted** |
+| what it IS evidence about | the UI. Repeated occurrences mean a button is too easy to hit by accident |
+
+### The rule a learning pipeline must not break
+
+Filter on an explicit allow-list — `LEARNING_REASONS` in `actionProposal.ts` —
+never on "is it a decline". A pipeline written as *"declines are negatives"*
+silently swallows this the day it is added, which is the failure this reason
+exists to prevent, arriving through the back door.
+
+### It is not `tookItMyself`
+
+`tookItMyself` says the proposal was CORRECT and the human handled it — mildly
+positive on selection. `unintendedInvocation` says there was no question. One
+is a compliment, the other is a non-event, and averaging them would be worse
+than either.
+
+### Where the signal does go
+
+Not nowhere: a rising `unintendedInvocation` rate is a **UI defect report**.
+It says an action sits somewhere a thumb finds by accident. That belongs in the
+same family as the manual-schedule rate in `s36` — a number the product should
+be trying to drive DOWN, measured on real use rather than guessed at.

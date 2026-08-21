@@ -158,7 +158,19 @@ import {
  * refuses a reject `reason` on those kinds entirely, so the negative signal
  * cannot be written in the first place — the same discipline that keeps
  * `needsInfo` out of this enum. */
-const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "unsafe"]);
+// ⚠️ `unintendedInvocation` is the ONE reason that must teach the agent
+// NOTHING. Every other reason is directional feedback — wrongContent steers
+// generation, wrongAction steers selection, unsafe is the hard negative. This
+// one says the invocation should never have happened: the human mis-clicked,
+// and the proposal is evidence about the CLICK, not about the agent's
+// judgment. Recording it as wrongContent or wrongAction would train the
+// extractor that its output was bad when it was never asked a real question —
+// poisoning the labelled set with the human's own slip.
+const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "unsafe", "unintendedInvocation"]);
+
+/** Reasons that carry a learning signal. `unintendedInvocation` is excluded by
+ *  design: a learning pipeline must filter on THIS, not on the reason list. */
+export const LEARNING_REASONS: ReadonlySet<string> = new Set(["wrongContent", "wrongAction", "unsafe"]);
 
 /**
  * s12 — the mid-band batch (services/agent `midBandProposal.ts` mints it under
@@ -2165,9 +2177,11 @@ function buildDecision(ctx: RequestContext, raw: unknown, kind: string): Record<
         );
       }
       if (typeof r.reason !== "string" || !REJECT_REASONS.has(r.reason)) {
-        throw new SetErrorSignal("invalidProperties", "decision.reason must be wrongContent | wrongAction | unsafe", [
-          "decision",
-        ]);
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "decision.reason must be wrongContent | wrongAction | unsafe | unintendedInvocation",
+          ["decision"],
+        );
       }
       decision.reason = r.reason;
     }
