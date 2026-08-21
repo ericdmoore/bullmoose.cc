@@ -45,6 +45,8 @@ import {
   Field,
   Input,
   PageNotice,
+  Skeleton,
+  SkeletonRegion,
   StackedList,
   StackedRow,
   StatusDot,
@@ -192,7 +194,13 @@ export default function GoalsApp({ client: injectedClient }: Props) {
             </div>
           }
         >
-          {loading ? <p class="px-4 py-3 text-sm text-gray-500">Loading…</p> : null}
+          {loading ? (
+            <SkeletonRegion label="your goals" class="px-4 py-3">
+              {Array.from({ length: 4 }, (_, i) => (
+                <Skeleton key={i} variant="row" />
+              ))}
+            </SkeletonRegion>
+          ) : null}
           {!loading && ordered.length === 0 ? <EmptyState title="No goals yet">{GOALS_EMPTY}</EmptyState> : null}
           <StackedList>
             {ordered.map((g) => {

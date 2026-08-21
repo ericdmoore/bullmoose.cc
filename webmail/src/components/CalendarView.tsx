@@ -11,6 +11,7 @@ import {
   updateEvent,
   type CalendarRefusal,
 } from "../lib/calendar/api";
+import { Skeleton, SkeletonRegion } from "./ui";
 import { browserTimeZone, dayKey, formatClock, parseDayKey, sameDay, type CivilDate } from "../lib/calendar/civil";
 import {
   DAY_CODES,
@@ -477,7 +478,13 @@ export default function CalendarView({ client: injectedClient, now }: Props) {
               onNew={openNew}
             />
           )}
-          {loading ? <p class="muted">Loading…</p> : null}
+          {loading ? (
+            <SkeletonRegion label="your calendar">
+              {Array.from({ length: 4 }, (_, i) => (
+                <Skeleton key={i} variant="row" />
+              ))}
+            </SkeletonRegion>
+          ) : null}
         </section>
 
         {draft ? (
