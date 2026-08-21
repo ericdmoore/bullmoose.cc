@@ -53,7 +53,7 @@ import {
 } from "./icons";
 import MessageView from "./MessageView";
 import ThreadListView, { type SwipeAction } from "./ThreadListView";
-import { Alert, EmptyState, PageNotice, SurfaceFrame } from "./ui";
+import { Alert, EmptyState, PageNotice, Skeleton, SkeletonLines, SkeletonRegion, SurfaceFrame } from "./ui";
 import { cx } from "../lib/ui/classes";
 
 type View = "list" | "thread" | "compose";
@@ -963,7 +963,24 @@ export default function AppShell({ client: injected }: Props) {
               />
             </div>
           ) : view === "thread" ? (
-            <p class="p-4 text-sm text-gray-500 dark:text-gray-400">Opening…</p>
+            // The pane used to be one line of text here, so opening a message
+            // collapsed the whole column and then jumped when the thread
+            // landed. The skeleton stands in the SHAPE of what is coming — a
+            // subject, its meta line, a sender and a body — so the layout is
+            // already correct when the content replaces it.
+            <SkeletonRegion label="the conversation" class="thread-view thread-skeleton">
+              <div class="thread-header">
+                <Skeleton variant="title" />
+                <Skeleton variant="meta" />
+              </div>
+              <div class="thread-skeleton-message">
+                <Skeleton variant="avatar" />
+                <div class="thread-skeleton-copy">
+                  <Skeleton variant="line-short" />
+                  <SkeletonLines count={4} />
+                </div>
+              </div>
+            </SkeletonRegion>
           ) : (
             <div class="hidden min-h-0 min-w-0 grow items-start justify-center lg:flex">
               <EmptyState title="Select a conversation">Choose a message from the list to read it here.</EmptyState>

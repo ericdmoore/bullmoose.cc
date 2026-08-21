@@ -3,9 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks"
 import { resolveClient, type ClientMode } from "../lib/app/client";
 import CollectionBar from "./CollectionBar";
 import CollectionColumn, { useCollapsed } from "./CollectionColumn";
-import { Button } from "./ui";
+import { Button, Skeleton, SkeletonLines, SkeletonRegion } from "./ui";
 import type { CollectionGroup } from "../lib/shell/collections";
 import { hrefWithParam, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
+import { isUnmodifiedPrimaryClick, syncDetailUrl } from "../lib/ui/navigation";
 import {
   bookIdOf,
   bookScopeNote,
@@ -1015,14 +1016,29 @@ export default function ContactsApp({ client: injected }: Props) {
                       aria-label={`Select ${displayName(c)}`}
                       onChange={() => setChecked((prev) => toggleSelected(prev, c.id))}
                     />
-                    {/* s25 T3 — a real link (`?q=`/`?demo=`/`?c=` survive via
-                      hrefWithParam): the browser back button leaves the card
-                      the native way, and every person is deep-linkable. The
-                      `?card=` initializer above is where this lands. */}
+                    {/* A real link (`?q=`/`?demo=`/`?c=` survive via
+                      hrefWithParam): every person is deep-linkable and the row
+                      is cmd-clickable. The `?card=` initializer above is where
+                      a fresh load lands.
+
+                      s25 T3 stopped here, and that meant every plain click was
+                      a FULL PAGE RELOAD — the whole app torn down and rebuilt
+                      to move a selection in the pane beside the list. The
+                      click handler is what Mail had and Contacts did not; the
+                      link is untouched, so cmd/middle-click still open a tab
+                      (lib/ui/navigation explains why each modifier matters). */}
                     <a
                       class={`card-row${c.id === selectedId ? " is-selected" : ""}`}
                       href={hrefWithParam("/contacts", "card", c.id)}
                       aria-current={c.id === selectedId ? "true" : undefined}
+                      onClick={(ev) => {
+                        if (!isUnmodifiedPrimaryClick(ev)) return;
+                        ev.preventDefault();
+                        setSelectedId(c.id);
+                        // Keep the address bar on the card being read, so the
+                        // link you would copy is the one you are looking at.
+                        syncDetailUrl(hrefWithParam("/contacts", "card", c.id));
+                      }}
                     >
                       <span class="card-name">
                         {displayName(c)}
@@ -1036,6 +1052,18 @@ export default function ContactsApp({ client: injected }: Props) {
                     </a>
                   </li>
                 ))}
+                {cards.length === 0 && loading ? (
+                  // The FIRST load rendered nothing at all here, so the column
+                  // was blank until results arrived and then snapped full. Rows
+                  // in the shape of contacts keep the column its own size.
+                  <li>
+                    <SkeletonRegion label="your contacts">
+                      {Array.from({ length: 6 }, (_, i) => (
+                        <Skeleton key={i} variant="row" />
+                      ))}
+                    </SkeletonRegion>
+                  </li>
+                ) : null}
                 {cards.length === 0 && !loading ? (
                   <li class="empty-means">
                     {spec.text
@@ -1097,6 +1125,18 @@ export default function ContactsApp({ client: injected }: Props) {
                     setView("detail");
                   }}
                 />
+              ) : selectedId ? (
+                // A contact IS selected and still arriving. "Select a
+                // contact." here was simply untrue — and it was the message
+                // the reader got on every single click, since `card` is
+                // undefined for the whole load. The skeleton says "coming",
+                // and holds the pane's shape while it does.
+                <SkeletonRegion label="the contact" class="card-skeleton">
+                  <Skeleton variant="avatar" />
+                  <Skeleton variant="title" />
+                  <Skeleton variant="meta" />
+                  <SkeletonLines count={3} />
+                </SkeletonRegion>
               ) : (
                 <p class="muted">Select a contact.</p>
               )}
