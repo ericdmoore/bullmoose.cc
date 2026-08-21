@@ -10,7 +10,10 @@ const email = (id: string, keywords: Record<string, boolean> = {}): Email =>
     keywords,
     subject: "s",
     receivedAt: "2026-08-21T00:00:00Z",
-  }) as Email;
+    // Through `unknown`: these tests exercise flag reconciliation, and the
+    // twelve properties they leave unset are exactly the ones the cache is
+    // forbidden to touch. Listing them would imply they mattered here.
+  }) as unknown as Email;
 
 function ports(seed: Email[]): SyncPorts & { store: Map<string, { email: Email }>; dropped: string[] } {
   const store = new Map(seed.map((e) => [e.id, { email: e }]));

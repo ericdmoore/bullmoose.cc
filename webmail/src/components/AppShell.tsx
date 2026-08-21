@@ -24,7 +24,8 @@ import {
 } from "../lib/mail/search";
 import { cachedIds, dropEmails, readEmails, writeEmails } from "../lib/app/emailStore";
 import { ThreadListStore, type ThreadRow } from "../lib/mail/threadList";
-import { defaultExpanded, loadThread, type ThreadDetail } from "../lib/mail/threadView";
+import { syncCachedFlags } from "../lib/mail/changesSync";
+import { defaultExpanded, loadThread, threadFromCache, type ThreadDetail } from "../lib/mail/threadView";
 import {
   applyTriage,
   archivePatch,
