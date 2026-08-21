@@ -1680,9 +1680,11 @@ code {
 
 /* The thread skeleton mirrors MessageView's own frame, so the shapes sit
  * exactly where the real subject, sender and body will land. */
-.thread-skeleton {
-  padding: 0 16px 16px;
-}
+/* NO padding of its own. `.thread-view` already sets `16px 24px 64px`, and an
+ * override here put the loading header 8px left and 16px high of where the
+ * real one lands — so the subject visibly jumped at the moment the body
+ * arrived, which is the single thing the skeleton exists to prevent. The
+ * loading state must share the loaded state's box, not approximate it. */
 
 /* The contact skeleton: the name, its meta line, then the fields as one
  * block. Same two-shape rule as the message — stand where the content goes,

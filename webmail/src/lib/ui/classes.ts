@@ -293,13 +293,25 @@ export const FAB_CLEARANCE_PX = 72;
  * action, no history call (tokenInUrl.test.ts holds ShellNav to all three).
  */
 export function searchFieldClasses(open: boolean): string {
-  // Closed emits `hidden` ALONE — never `flex … hidden` together. Two
-  // unvariant display utilities on one element resolve by Tailwind's source
-  // order rather than by the order they were typed, so a collapsed field that
-  // happened to render would be a source-order accident, not a decision. The
-  // previous version dodged this with a `max-lg:` variant; without a variant
-  // to lean on, the honest fix is to emit one display utility at a time.
-  return open ? "flex min-w-0 flex-1 items-center" : "hidden";
+  // ONE display utility, always `flex` — the open/closed difference is width,
+  // not display. Two reasons it has to be width:
+  //
+  //  1. `display: none` cannot animate. The field is meant to sweep open to
+  //     the right rather than appear, and a hidden element has no width to
+  //     interpolate from.
+  //  2. A `hidden` field keeps its DOM node, but so does this one — and the
+  //     input is uncontrolled, so whatever was typed survives a close and is
+  //     still there on reopen.
+  //
+  // `max-w-4xl` is the "almost twice" — the resting field was capped at
+  // `max-w-lg` (32rem); open it runs to 56rem, and `searchYieldClasses` takes
+  // the rest of the header out of its way so it has the room.
+  return cx(
+    "flex min-w-0 items-center overflow-hidden transition-[max-width,opacity] duration-200 ease-out",
+    // A reader who asked for less motion gets the same end state, instantly.
+    "motion-reduce:transition-none",
+    open ? "max-w-4xl flex-1 opacity-100" : "max-w-0 opacity-0",
+  );
 }
 
 /** Header chrome that steps aside while the search is expanded, so the field

@@ -166,10 +166,14 @@ describe("ShellNav — the collapsing search", () => {
     expect(trigger).not.toContain("lg:hidden");
   });
 
-  it("hides the FIELD until asked, at every width", () => {
+  it("keeps the FIELD mounted but collapsed, so nothing typed is lost", () => {
+    // Collapsed is `max-w-0`, not `display:none`. Two things follow: the width
+    // can animate, and the uncontrolled input keeps whatever was typed when
+    // the reader clicks away and comes back.
     expect(html).toContain('id="bm-global-search"');
-    expect(html).toContain('<form class="hidden">');
+    expect(html).toContain("max-w-0");
     expect(html).not.toContain("max-lg:hidden");
+    expect(html).not.toContain('<form class="hidden">');
   });
 
   it("still renders exactly ONE search input — the collapse is a class, not a second field", () => {

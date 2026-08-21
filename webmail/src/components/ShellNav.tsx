@@ -506,6 +506,8 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
   // is always shown, the trigger never rendered). Not persisted: an expanded
   // search is a moment, not a preference.
   const [searchOpen, setSearchOpen] = useState(false);
+  // The form element, so a click landing anywhere else can close it.
+  const searchBoxRef = useRef<HTMLFormElement | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const [published, setPublished] = useState<Partial<Record<SectionId, PublishedCollections>>>({});
@@ -652,15 +654,23 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
   // without a scrim there is nothing to click on to dismiss it, and a panel
   // you can only close from one small button is worse than the scrim was.
   useEffect(() => {
-    if (!menuOpen && !drawerOpen) return;
+    if (!menuOpen && !drawerOpen && !searchOpen) return;
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (menuOpen && menuRef.current && !menuRef.current.contains(t)) setMenuOpen(false);
       if (drawerOpen && drawerRef.current && !drawerRef.current.contains(t)) setDrawerOpen(false);
+      // Clicking away closes the search. Nothing is discarded: the field stays
+      // mounted (the collapse is width, not `display: none`) and the input is
+      // uncontrolled, so whatever was typed is still there on reopen. Closing
+      // is putting it away, not throwing it out.
+      if (searchOpen && searchBoxRef.current && !searchBoxRef.current.contains(t)) setSearchOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [menuOpen, drawerOpen]);
+    // `searchOpen` belongs here: without it the listener is never re-bound
+    // when the search opens, so the closure keeps the value from the render
+    // that installed it and the search never closes on an outside click.
+  }, [menuOpen, drawerOpen, searchOpen]);
 
   const size = collapsed ? COLLAPSED : WIDTHS[widthStep]!;
 
@@ -809,8 +819,9 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
             `bm:search` plumbing under it is untouched — no navigation, no
             second input, no `id` that appears twice in one document
             (`bm-global-search` is what surfaces and tests reach for).
-            At `lg` and up the trigger never renders and the field never
-            hides: the desktop header is exactly what it was.
+            The collapse applies at EVERY width now — a resting header that
+            spends its whole span on an input whose placeholder teaches query
+            syntax was the thing worth fixing, and the desktop had it worst.
           */}
           {searchable && !searchOpen ? (
             <>
@@ -819,10 +830,10 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
                 onClick={() => setSearchOpen(true)}
                 aria-expanded={false}
                 aria-controls="bm-global-search"
-                class="-m-2.5 p-2.5 text-gray-700 dark:text-gray-200"
+                class="rounded-md p-2 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/5"
               >
                 <span class="sr-only">{searchable.placeholder}</span>
-                <MagnifyingGlassIcon class="size-6" />
+                <MagnifyingGlassIcon class="size-5" />
               </button>
               {/* The collapsed bar still holds the space the field will take,
                   so the avatar does not slide across the header on expand. */}
@@ -831,6 +842,7 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
           ) : null}
           {searchable ? (
             <form
+              ref={searchBoxRef}
               class={searchFieldClasses(searchOpen)}
               onSubmit={(ev) => {
                 // No navigation, ever (tokenInUrl.test.ts holds this file to
@@ -843,7 +855,7 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
                 globalThis.dispatchEvent(new CustomEvent("bm:search", { detail: { q } }));
               }}
             >
-              <label class="relative block w-full max-w-lg">
+              <label class="relative block w-full">
                 <MagnifyingGlassIcon class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-gray-400" />
                 <span class="sr-only">{searchable.placeholder}</span>
                 <input
@@ -863,7 +875,7 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
                 <button
                   type="button"
                   onClick={() => setSearchOpen(false)}
-                  class="-mr-2 ml-1 shrink-0 p-2 text-gray-700 lg:hidden dark:text-gray-200"
+                  class="ml-1 shrink-0 rounded-md p-2 text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/5"
                 >
                   <span class="sr-only">Close search</span>
                   <XMarkIcon class="size-5" />

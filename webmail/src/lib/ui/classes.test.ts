@@ -157,25 +157,39 @@ describe("fabClasses", () => {
 });
 
 describe("the collapsing search", () => {
+  const tokens = (open: boolean) => searchFieldClasses(open).split(" ");
+
   it("is a magnifier at rest and a field when opened — at EVERY width", () => {
     // s25 T5 gated this to below `lg`; the desktop header kept a permanently
     // expanded input whose placeholder taught query syntax. Chrome recedes
-    // until asked, on desktop too.
-    expect(searchFieldClasses(false)).toContain("hidden");
+    // until asked, on desktop too — so no breakpoint variant may appear.
     expect(searchFieldClasses(false)).not.toContain("max-lg");
-    expect(searchFieldClasses(true)).toContain("flex");
-    expect(searchFieldClasses(true)).not.toContain("hidden");
+    expect(searchFieldClasses(true)).not.toContain("max-lg");
+    expect(tokens(false)).toContain("max-w-0");
+    expect(tokens(true)).toContain("max-w-4xl");
   });
 
-  it("never emits two display utilities at once", () => {
-    // `flex` and `hidden` on one element resolve by Tailwind's source order,
-    // not by the order they were typed — so emitting both would make the
-    // collapsed state a source-order accident rather than a decision.
-    const closed = searchFieldClasses(false).split(" ");
-    expect(closed).toContain("hidden");
-    expect(closed).not.toContain("flex");
-    const open = searchFieldClasses(true).split(" ");
-    expect(open).not.toContain("hidden");
+  it("collapses by WIDTH, never by display — `display:none` cannot animate", () => {
+    // And a hidden field would still hold its value, but width keeps the
+    // element laid out, which is what lets it sweep open instead of appear.
+    // Checked as TOKENS: `overflow-hidden` contains the substring "hidden"
+    // and a substring assertion here would pass for the wrong reason.
+    expect(tokens(false)).not.toContain("hidden");
+    expect(tokens(true)).not.toContain("hidden");
+    expect(tokens(false)).toContain("flex");
+    expect(tokens(true)).toContain("flex");
+  });
+
+  it("emits exactly one display utility in both states", () => {
+    const DISPLAY = ["block", "inline", "inline-block", "flex", "inline-flex", "grid", "hidden", "contents"];
+    for (const open of [true, false]) {
+      expect(tokens(open).filter((t) => DISPLAY.includes(t))).toEqual(["flex"]);
+    }
+  });
+
+  it("animates, and does not for a reader who asked it not to", () => {
+    expect(searchFieldClasses(true)).toContain("transition-[max-width,opacity]");
+    expect(searchFieldClasses(true)).toContain("motion-reduce:transition-none");
   });
 
   it("the header yields the whole bar while expanded, and only then", () => {
