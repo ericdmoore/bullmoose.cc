@@ -14,6 +14,7 @@ import {
   type SwipeTone,
 } from "../lib/ui/swipe";
 import { isUnmodifiedPrimaryClick } from "../lib/ui/navigation";
+import { SETTLE_MS } from "../lib/mail/prefetch";
 import { ArchiveBoxIcon, TrashIcon, type IconProps } from "./icons";
 
 /** Fixed row height — the assumption that makes O(1) windowing possible. */
@@ -51,6 +52,13 @@ interface Props {
    * Neither path touches history (tokenInUrl.test.ts).
    */
   hrefFor?: (row: ThreadRow) => string;
+  /** The SETTLED net (s35 phase 4): called with the rows on screen once the
+   *  list has stopped moving. Fired on a scroll pause, never during one — the
+   *  point is what the reader stopped at, not what flew past. */
+  onPrefetch?: (rows: readonly ThreadRow[]) => void;
+  /** The LATE signal: `pointerdown` on a row, ~100ms before its click, for
+   *  mouse and thumb alike. High confidence, so the caller fetches in full. */
+  onPrefetchIntent?: (row: ThreadRow) => void;
   /**
    * s25 T6 — swipe triage, MAIL ONLY (the sprint plan refuses it for
    * Approvals by name). Omit, or pass an empty list, and this file renders
@@ -129,6 +137,8 @@ export default function ThreadListView({
   onToggleSelect,
   onLoadMore,
   hrefFor,
+  onPrefetch,
+  onPrefetchIntent,
   swipeActions,
   onSwipeAction,
 }: Props) {
@@ -202,6 +212,17 @@ export default function ThreadListView({
   }
 
   const visible = rows.slice(window.start, window.end);
+
+  // Fire the speculative net once the list has been still for SETTLE_MS.
+  // Keyed on the WINDOW rather than on scrollTop, so a scroll that does not
+  // change which rows are shown does not re-ask for the same five.
+  useEffect(() => {
+    if (!onPrefetch) return;
+    const rowsNow = rows.slice(window.start, window.end);
+    if (rowsNow.length === 0) return;
+    const timer = setTimeout(() => onPrefetch(rowsNow), SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [window.start, window.end, rows, onPrefetch]);
 
   return (
     <div
@@ -296,6 +317,9 @@ export default function ThreadListView({
               <a
                 class="row-body"
                 href={hrefFor(row)}
+                // Before the click, not on it — finger-down to finger-up is
+                // real time we would otherwise spend doing nothing.
+                onPointerDown={() => onPrefetchIntent?.(row)}
                 onClick={(ev) => {
                   if (!isUnmodifiedPrimaryClick(ev)) return;
                   ev.preventDefault();
