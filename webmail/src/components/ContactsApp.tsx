@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks"
 import { resolveClient, type ClientMode } from "../lib/app/client";
 import CollectionBar from "./CollectionBar";
 import CollectionColumn, { useCollapsed } from "./CollectionColumn";
-import { Button, Skeleton, SkeletonLines, SkeletonRegion } from "./ui";
+import { Button, Skeleton, SkeletonRegion } from "./ui";
 import type { CollectionGroup } from "../lib/shell/collections";
 import { hrefWithParam, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
 import { isUnmodifiedPrimaryClick, syncDetailUrl } from "../lib/ui/navigation";
@@ -1132,10 +1132,9 @@ export default function ContactsApp({ client: injected }: Props) {
                 // undefined for the whole load. The skeleton says "coming",
                 // and holds the pane's shape while it does.
                 <SkeletonRegion label="the contact" class="card-skeleton">
-                  <Skeleton variant="avatar" />
                   <Skeleton variant="title" />
                   <Skeleton variant="meta" />
-                  <SkeletonLines count={3} />
+                  <Skeleton variant="block" />
                 </SkeletonRegion>
               ) : (
                 <p class="muted">Select a contact.</p>
