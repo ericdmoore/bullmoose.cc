@@ -1656,3 +1656,24 @@ code {
   padding-top: 8px;
   border-bottom: 1px solid var(--line);
 }
+
+/* The thread skeleton mirrors MessageView's own frame, so the shapes sit
+ * exactly where the real subject, sender and body will land. */
+.thread-skeleton {
+  padding: 0 16px 16px;
+}
+.thread-skeleton-message {
+  display: flex;
+  gap: 12px;
+  padding-top: 12px;
+}
+.thread-skeleton-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The contact skeleton mirrors CardDetail's frame — avatar, name, the meta
+ * line under it, then the fields. */
+.card-skeleton {
+  padding: 16px;
+}
