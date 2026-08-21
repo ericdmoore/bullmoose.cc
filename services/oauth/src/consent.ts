@@ -49,6 +49,17 @@ interface ConsentInput {
   authReq: { clientId: string; redirectUri: string; scope: string[]; state: string };
   /** Shown after a failed attempt, so the human is not left guessing. */
   error?: string;
+  /**
+   * Is this bullmoose's OWN webmail (`WEBMAIL_CLIENT_ID`)? The stranger-danger
+   * framing below is a defence against a client we cannot vouch for; aimed at
+   * ourselves it manufactures suspicion about our own front door, which is
+   * where the first phone tester stalled. First-party is a SAFE claim to make
+   * here and only here: the client id is pinned by env to one exact CIMD URL,
+   * and the code can still only be delivered to a redirect that document
+   * itself declares — an impersonator cannot borrow the name and redirect
+   * elsewhere. Anything else keeps the warning.
+   */
+  firstParty?: boolean;
 }
 
 /** What each scope actually permits, in a sentence a human can refuse. */
@@ -129,16 +140,22 @@ async function deriveLoginKey(email, password) {
 export function deriveScript(): Response {
   const js = `${DERIVE_FN_SRC}
 const form = document.getElementById("consent");
+const approveButton = form.querySelector("button.approve");
 form.addEventListener("submit", async (ev) => {
-  const decision = ev.submitter && ev.submitter.value;
-  if (decision === "deny") return; // nothing to derive
+  // WARNING: ev.submitter is ABSENT on implicit submission — the iOS keyboard's
+  // "Go", Enter from a text field — and in Safari before 15.4. Reading it
+  // unguarded threw a TypeError *after* preventDefault(), so the handler died
+  // with the form already cancelled: the button never changed, no error
+  // appeared, and sign-in did nothing at all. On a phone, where hitting "Go"
+  // after the password IS the natural gesture, that was the whole front door.
+  const button = ev.submitter || approveButton;
+  if (ev.submitter && ev.submitter.value === "deny") return; // let Cancel post natively
   ev.preventDefault();
   const email = form.email.value.trim();
   const password = form.password.value;
-  const button = ev.submitter;
-  button.disabled = true;
-  button.textContent = "Checking…";
+  const label = button ? button.textContent : "";
   try {
+    if (button) { button.disabled = true; button.textContent = "Checking…"; }
     form.loginKey.value = await deriveLoginKey(email, password);
     // The raw password never reaches the network.
     form.password.value = "";
@@ -147,9 +164,9 @@ form.addEventListener("submit", async (ev) => {
     form.appendChild(hidden);
     form.submit();
   } catch (err) {
-    button.disabled = false;
-    button.textContent = "Approve";
-    document.getElementById("err").textContent = "Could not sign in: " + err;
+    if (button) { button.disabled = false; button.textContent = label; }
+    const slot = document.getElementById("err");
+    if (slot) slot.textContent = "Could not sign in: " + err;
   }
 });
 `;
@@ -180,7 +197,7 @@ const STYLE = `
 `;
 
 export function consentPage(input: ConsentInput): Response {
-  const { client, authReq, error } = input;
+  const { client, authReq, error, firstParty = false } = input;
   const name = escape(client.clientName ?? client.clientId);
   // Expanded through the real gate vocabulary, so `mail` shows its verbs
   // rather than hiding them behind a bundle name.
@@ -207,22 +224,31 @@ export function consentPage(input: ConsentInput): Response {
     .map((s) => `<li>${escape(SCOPE_PROSE[s]!)}</li>`)
     .join("\n");
 
+  // "Connect bullmoose webmail to bullmoose?" — the client and the resource
+  // were the same word, so the question read as nonsense. Name the ACCOUNT as
+  // the thing being connected to; that reads correctly for a stranger and for
+  // ourselves. (Eric, first phone test: "the text is obscure".)
+  const host = escape(redirectHost(authReq.redirectUri));
+  const title = firstParty ? "Sign in to bullmoose" : `Connect ${name} to your bullmoose account`;
+  const heading = firstParty ? "Sign in to bullmoose" : `${name} wants to connect to your bullmoose account`;
+  const where = firstParty
+    ? `This is bullmoose's own webmail, at <strong>${host}</strong>. Your password is entered here, on
+       <strong>auth.bullmoose.cc</strong>, and never reaches it.`
+    : `If you approve, the access code is delivered to <strong>${host}</strong>.
+       Only continue if you recognize that address.`;
+
   const body = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Connect ${name} to bullmoose</title>
+<title>${title}</title>
 <style>${STYLE}</style>
-<h1>Connect ${name} to bullmoose?</h1>
-<p class="sub">It is asking to:</p>
+<h1>${heading}</h1>
+<p class="sub">${firstParty ? "It will be able to:" : "It is asking to:"}</p>
 <ul>
 ${lines || "<li>Nothing — this client requested no permissions.</li>"}
 </ul>
-<div class="where">
-  If you approve, the access code is delivered to
-  <strong>${escape(redirectHost(authReq.redirectUri))}</strong>.
-  Only continue if you recognize that address.
-</div>
+<div class="where">${where}</div>
 <form id="consent" method="post" action="/authorize">
   <input type="hidden" name="authRequest" value="${escape(JSON.stringify(authReq))}">
   <input type="hidden" name="scope" value="${escape(authReq.scope.join(" "))}">
@@ -233,7 +259,7 @@ ${lines || "<li>Nothing — this client requested no permissions.</li>"}
   <input id="password" name="password" type="password" autocomplete="current-password" required>
   <p id="err" class="err">${error ? escape(error) : ""}</p>
   <div class="row">
-    <button class="approve" type="submit" name="decision" value="approve">Approve</button>
+    <button class="approve" type="submit" name="decision" value="approve">${firstParty ? "Sign in" : "Approve"}</button>
     <button class="deny" type="submit" name="decision" value="deny">Cancel</button>
   </div>
 </form>
