@@ -168,7 +168,20 @@ describe("/oauth/callback", () => {
     const setCookie = res.headers.get("set-cookie") ?? "";
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("Secure");
-    expect(setCookie).toContain("SameSite=Strict");
+    // Lax, NOT Strict, and this assertion is load-bearing in that direction.
+    //
+    // Strict made the surface unusable the day it went live: a JSON viewer
+    // extension opens links in a new tab, that tab's initiator is the
+    // extension origin (cross-site), and Strict withholds the cookie on any
+    // cross-site-INITIATED navigation — so every link out of the index landed
+    // on the sign-in page while pasting the same URL into the same tab worked.
+    //
+    // Do not "harden" this back to Strict. The CSRF gate is cookieAuthAllowed
+    // (Host + method, server-side, asserted in csrf.test.ts), non-GET is
+    // refused before any credential resolves, and cross-origin script cannot
+    // read a JSON response it navigated to. Strict buys nothing here and
+    // costs the feature its usability. See cookie.ts:setCookieHeader.
+    expect(setCookie).toContain("SameSite=Lax");
     expect(setCookie).toContain("Max-Age=900"); // minutes, not days
     expect(setCookie).toContain("Path=/");
     // Host-only: a Domain= would send this read-everything credential to the
