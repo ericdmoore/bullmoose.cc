@@ -19,9 +19,9 @@ import { timingSafeEqualHex } from "@bullmoose/auth-core";
  *   - it names a principal, never a token — there is nothing in it to replay
  *     anywhere else, and account reach is re-derived from D1 on every request
  *     so a revoked grant stops working immediately;
- *   - it is `HttpOnly; Secure; SameSite=Strict` and host-only (no `Domain=`),
- *     so it is unreadable from script, never leaves TLS, and is not sent on
- *     any cross-site request.
+ *   - it is `HttpOnly; Secure; SameSite=Lax` and host-only (no `Domain=`), so
+ *     it is unreadable from script, never leaves TLS, and is not sent on any
+ *     cross-site SUBRESOURCE request (see the note on `Lax` below).
  *
  * ## ⚠️ And then the rule
  *
@@ -156,14 +156,47 @@ export async function readExploreCookie(
  * marketing apex and to `app.bullmoose.cc`, which is exactly wrong for a
  * read-everything credential (and is the second reason the explorer got its
  * own hostname).
+ *
+ * ## `Lax`, not `Strict` — and why that costs nothing here
+ *
+ * It was `Strict` on the day the explorer went live, and `Strict` made the
+ * surface unusable in the one way people actually browse it (Eric,
+ * 2026-08-21). A JSON viewer extension opens every link in a NEW TAB, and a
+ * tab opened by an extension has a `moz-extension://` initiator — cross-site.
+ * `Strict` withholds the cookie on any cross-site-INITIATED navigation, so
+ * every link out of the index document landed on the sign-in page. Pasting
+ * the same URL into the same tab worked, because address-bar navigation has
+ * no initiator and counts as same-site. That asymmetry is the signature.
+ *
+ * `Lax` sends the cookie on top-level GET navigations whatever initiated
+ * them, and still withholds it from cross-site SUBRESOURCES and every
+ * non-GET. What that gives up here is close to nothing:
+ *
+ *   - THE CSRF GATE IS NOT SameSite. It is `cookieAuthAllowed` — a
+ *     server-side check on the `Host` header and the method, which holds
+ *     against any client that can open a socket rather than only well-behaved
+ *     browsers. `explore/csrf.test.ts` presents a valid cookie to the API
+ *     origin in GET and POST shapes and requires a 401. That is unchanged.
+ *   - Writes were never reachable. `exploreUnauthenticated` refuses non-GET
+ *     BEFORE any credential is resolved, so there is no request shape that
+ *     reaches a write from this host with or without a cookie.
+ *   - A hostile page can now navigate a signed-in browser to an explorer URL,
+ *     and gets nothing for it: the response is JSON on another origin, which
+ *     its script cannot read, and the surface has nothing to actuate.
+ *
+ * So `Strict` was defence-in-depth behind a stronger check, and it was
+ * costing the feature its usability. `Lax` is the honest setting.
  */
 export function setCookieHeader(value: string, ttlSeconds = EXPLORE_COOKIE_TTL_SECONDS): string {
-  return `${EXPLORE_COOKIE}=${value}; Path=/; Max-Age=${ttlSeconds}; ` + "HttpOnly; Secure; SameSite=Strict";
+  return `${EXPLORE_COOKIE}=${value}; Path=/; Max-Age=${ttlSeconds}; ` + "HttpOnly; Secure; SameSite=Lax";
 }
 
-/** `Set-Cookie` that removes it. Same attributes, so the browser matches it. */
+/**
+ * `Set-Cookie` that removes it. Attributes must MATCH the setter or the
+ * browser keeps the original — which is why this tracks `Lax` too.
+ */
 export function clearCookieHeader(): string {
-  return `${EXPLORE_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict`;
+  return `${EXPLORE_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
 }
 
 /** Parse a `Cookie:` header. Last value wins, as browsers send it. */
