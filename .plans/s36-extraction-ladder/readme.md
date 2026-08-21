@@ -60,8 +60,9 @@ nothing, a model call on every receipt costs money. This rung is pure CPU.
 question over the message: which of these date-ish spans is an event the owner
 would want, and what are its fields. Not "summarise this email".
 
-**3 — the offer (structured).** What survives becomes an `ActionProposal`
-carrying `verb-schedule`, pre-filled from the message — and, where the message
+**3 — reconcile, then offer (structured).** What survives is checked against
+what we ALREADY HOLD (see below) and becomes an `ActionProposal` — create,
+update-with-a-diff, or nothing — pre-filled from the message — and, where the message
 is thin, from a SEARCH over the mailbox (the previous tournament email, the
 coach's earlier address). Prefill is evidence-gathering, not invention: every
 field carries where it came from.
@@ -112,6 +113,77 @@ Shared, and shared exactly once:
 
 The margin's job is *judgment in context*; the queue's is *clearing what is
 waiting*. Same record, different question being asked of the reader.
+
+---
+
+## Reconcile before offering
+
+Eric, extending the design: *"see if I already have the data — event in the
+calendar and offer to update it or create it; contact in a book and then offer
+an update or create."*
+
+This is the difference between this and every add-to-calendar button that ever
+shipped. Those extract and offer. They do not LOOK FIRST, which is why they
+produce duplicates, and why people stop trusting them after the second one.
+
+So rung 3 gets a step before it. For each extracted entity, read what we
+already hold, and produce one of three outcomes:
+
+| we hold | offer | why |
+|---|---|---|
+| nothing | **create** | the ordinary case |
+| the same thing, unchanged | **nothing at all** | see below |
+| the same thing, differing | **update, carrying a diff** | the interesting case |
+
+**The middle row is the one that matters most, and it is the one that is easy
+to get wrong.** A forwarded thread, a re-read, a reply quoting the original —
+all of these re-present facts already on file. The correct output is SILENCE.
+An offer that says "create the tournament event" when the tournament is already
+in the calendar is worse than no feature: it trains the reader to dismiss
+without reading, and once they do that the good offers die with the bad.
+
+**The diff is what makes an update reviewable.** "Update this event" is not a
+decision anyone can make. `start 8:00 am → 7:30 am` is. The proposal must
+carry the field-level change, and the margin must render it, or approval is
+just assent to something unseen.
+
+### Matching, and what to do when it is unclear
+
+- **Contact**: the email address is a strong key. A name is a weak one — two
+  people share a name and the wrong merge is hard to notice and harder to
+  undo. Phone sits in between.
+- **Event**: there is no natural key. Title similarity, start proximity and
+  participant overlap together, none alone.
+
+Where the match is ambiguous — two plausible candidates, a near-miss on time —
+the answer is **not to guess**. `needsInfo` already exists as a decision
+outcome, and this is exactly what it is for: the offer asks rather than
+asserts. A wrong create is a duplicate and annoying; a wrong UPDATE overwrites
+something true with something less true, and the reader may never find out.
+The asymmetry should make us conservative in one direction only.
+
+### What this needs that does not exist
+
+- `verb-schedule` is **create-only** today: one tentative, free-busy-free
+  event, nothing invited. There is no update path.
+- `create-contact` exists as an apply case; `update-contact` does not.
+- Neither carries a diff, because neither has ever needed one.
+
+### The authority this widens — say it out loud
+
+To reconcile, the extractor must READ the calendar and the contact books. That
+is a real widening of what a mail-reading pipeline can see, and it should be
+granted deliberately rather than acquired quietly:
+
+- **read only.** Reconciliation needs to know what exists. It never needs to
+  write; the write still goes through a human approval, as before.
+- scoped to the account whose mail triggered it, and attenuated like every
+  other grant — a binding that can read contacts to avoid duplicating them
+  must not thereby be able to enumerate them for anything else.
+
+If that trade is not worth making, the fallback is honest and cheap: offer
+create-only and accept the duplicates. It is worse, and it should be chosen
+knowingly rather than arrived at by not noticing there was a choice.
 
 ---
 
@@ -246,6 +318,9 @@ Not a unit test — a standing check on the real thing:
 > without leaving the message. Nothing should reach the calendar that was not
 > approved. And the cost of the whole thing should be legible in the binding's
 > ledger afterwards.
+
+Then forward it a SECOND time. Nothing new should be offered, because nothing
+new is true — and that silence is the harder half of the feature.
 
 If any of those is false, the rung that made it false is the work. And if the
 third date has to be added by hand, that is not a failure of the test — it is
