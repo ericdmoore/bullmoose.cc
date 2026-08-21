@@ -21,9 +21,22 @@ import type { CollectionGroup } from "../lib/shell/collections";
 import { hrefWithParam, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
-import { Alert, Badge, Column, EmptyState, PageNotice, StackedList, StackedRow, StatusDot, SurfaceFrame } from "./ui";
+import {
+  Alert,
+  Badge,
+  Column,
+  EmptyState,
+  PageNotice,
+  Skeleton,
+  SkeletonRegion,
+  StackedList,
+  StackedRow,
+  StatusDot,
+  SurfaceFrame,
+} from "./ui";
 import { ChevronRightIcon } from "./icons";
 import { cx, type BadgeTone } from "../lib/ui/classes";
+import { syncDetailUrl } from "../lib/ui/navigation";
 import { HeldRow, HistoryRow, InfoRequestedRow, PendingRow, type Panel } from "./ApprovalsDetail";
 
 // The approval queue (s07 T4) — the cross-agent review surface, and the
@@ -401,7 +414,13 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
             </>
           }
         >
-          {loading ? <p class="px-4 py-3 text-sm text-gray-500">Loading the queue…</p> : null}
+          {loading ? (
+            <SkeletonRegion label="the queue" class="px-4 py-3">
+              {Array.from({ length: 5 }, (_, i) => (
+                <Skeleton key={i} variant="row" />
+              ))}
+            </SkeletonRegion>
+          ) : null}
           {!loading && activeList.length === 0 ? (
             <EmptyState title="Nothing here right now">
               {collection === "pending" ? "Nothing is waiting on you." : "This view is empty."}
@@ -415,6 +434,7 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
             accounts={accounts}
             selectedId={selected?.id}
             hrefFor={(id) => hrefWithParam("/approvals", "p", id)}
+            onSelect={setSelectedId}
           />
         </Column>
 
@@ -484,11 +504,16 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
  * "waiting on you" reads apart from "decided". Renders nothing when empty, so
  * the column shows only the states that actually have items.
  *
- * s25 T3: the rows are REAL `<a href>`s built by `hrefFor` — selecting a
- * proposal is MPA navigation to `/approvals?p=<id>`, so the browser back
- * button steps out of a decision the native way and every proposal is
- * deep-linkable. No history calls anywhere in this (tokenInUrl.test.ts's
- * ONE-call invariant: MPA links are not history calls).
+ * The rows are REAL `<a href>`s built by `hrefFor`, so every proposal is
+ * deep-linkable and cmd-clickable.
+ *
+ * s25 T3 stopped there, and that made an ordinary click a FULL PAGE RELOAD —
+ * the whole app torn down and rebuilt to move a selection in the pane beside
+ * the list. `onSelect` is the other half: the plain click stays in the page
+ * and every modified click still belongs to the browser
+ * (`lib/ui/navigation` explains why each modifier matters). `syncDetailUrl`
+ * keeps the address bar on the proposal being read, via `replaceState` — so
+ * tokenInUrl.test.ts's one-call invariant is untouched.
  */
 function HeaderGroup(props: {
   label: string;
@@ -498,10 +523,12 @@ function HeaderGroup(props: {
   selectedId: string | undefined;
   /** The row's detail URL — `/approvals?p=<id>`, current query preserved. */
   hrefFor: (id: string) => string;
+  /** Open in-page. Passed ALONGSIDE `hrefFor`, never instead of it. */
+  onSelect: (id: string) => void;
   tone?: "primary";
   muted?: boolean;
 }) {
-  const { label, items, now, accounts, selectedId, hrefFor, tone, muted } = props;
+  const { label, items, now, accounts, selectedId, hrefFor, onSelect, tone, muted } = props;
   if (items.length === 0) return null;
   return (
     <div>
@@ -519,7 +546,15 @@ function HeaderGroup(props: {
           const waited = waitedLabel(p, rowClocks(p, now));
           const urgent = isNearExpiry(rowClocks(p, now));
           return (
-            <StackedRow key={p.id} href={hrefFor(p.id)} active={active}>
+            <StackedRow
+              key={p.id}
+              href={hrefFor(p.id)}
+              onSelect={() => {
+                onSelect(p.id);
+                syncDetailUrl(hrefFor(p.id));
+              }}
+              active={active}
+            >
               <StatusDot tone={urgent ? "error" : tone === "primary" ? "warn" : "neutral"} />
               <div class="min-w-0 flex-auto">
                 <p

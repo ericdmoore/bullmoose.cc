@@ -4,7 +4,19 @@ import AgentConsole from "./AgentConsole";
 import AgentDossierPanel, { type BindingCredential, type BindingToggle } from "./AgentDossierPanel";
 import CollectionBar from "./CollectionBar";
 import CollectionColumn, { useCollapsed } from "./CollectionColumn";
-import { Avatar, Badge, Column, EmptyState, ListContainer, ListRow, PageNotice, SurfaceFrame, Alert } from "./ui";
+import {
+  Alert,
+  Avatar,
+  Badge,
+  Column,
+  EmptyState,
+  ListContainer,
+  ListRow,
+  PageNotice,
+  Skeleton,
+  SkeletonRegion,
+  SurfaceFrame,
+} from "./ui";
 import { applyBindingEnabled, setBindingEnabled } from "../lib/agents/api";
 import {
   ALL_AGENTS_COLLECTION,
@@ -375,7 +387,13 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
                     {who}: {why}
                   </Alert>
                 ))}
-                {loading ? <p class="px-2 py-1 text-sm text-gray-500">Loading agents…</p> : null}
+                {loading ? (
+                  <SkeletonRegion label="your agents" class="px-2 py-1">
+                    {Array.from({ length: 4 }, (_, i) => (
+                      <Skeleton key={i} variant="row" />
+                    ))}
+                  </SkeletonRegion>
+                ) : null}
                 {!loading && rows.length === 0 && !listError ? (
                   <EmptyState title="No agent bindings">
                     No agent bindings on the accounts you own. Provisioning an agent is an operator flow —{" "}
