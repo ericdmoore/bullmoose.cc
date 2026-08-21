@@ -12,7 +12,7 @@
 // failure this file's epoch check exists to prevent.
 
 import type { Email } from "../mail/types";
-import { cacheEpochMatches, type CachedEmail } from "../mail/cachePolicy";
+import { cacheEpochMatches, selectExpired, type CachedEmail } from "../mail/cachePolicy";
 
 const DB_NAME = "bullmoose";
 const DB_VERSION = 1;
@@ -92,10 +92,52 @@ export async function writeEmails(emails: readonly Email[], now = Date.now()): P
   try {
     const tx = db.transaction(EMAILS, "readwrite");
     const store = tx.objectStore(EMAILS);
-    for (const email of emails) store.put({ email, epoch, cachedAt: now } satisfies CachedEmail);
+    for (const email of emails) {
+      // KEEP the original timestamp. The flag sync rewrites entries, so
+      // stamping `now` on every write would restart the expiry clock on
+      // anything Email/changes touched — a busy mailbox would keep mail on
+      // disk indefinitely behind a cap that looked like a week.
+      const prior = await request<CachedEmail | undefined>(store.get(email.id)).catch(() => undefined);
+      const cachedAt = prior && cacheEpochMatches(prior.epoch, epoch) ? prior.cachedAt : now;
+      store.put({ email, epoch, cachedAt } satisfies CachedEmail);
+    }
     await done(tx);
   } catch {
     /* quota, or a store that vanished under us */
+  } finally {
+    db.close();
+  }
+  // Opportunistic, and deliberately not awaited by the caller's path: eviction
+  // is housekeeping, and a reader waiting on it would be paying for storage
+  // hygiene with latency.
+  void sweepExpired(now);
+}
+
+/**
+ * Drop everything past `MAX_CACHE_AGE_MS`.
+ *
+ * Runs off the back of writes rather than a timer — a timer would need a
+ * lifecycle, would fire in backgrounded tabs, and would still miss the case
+ * that matters (a browser opened once a fortnight, where the sweep should
+ * happen on the way in). Reading always goes through the epoch gate, so an
+ * expired entry is never SERVED between sweeps; it is only occupying space.
+ */
+export async function sweepExpired(now = Date.now()): Promise<number> {
+  const epoch = currentEpoch();
+  if (!epoch) return 0;
+  const db = await open();
+  if (!db) return 0;
+  try {
+    const tx = db.transaction(EMAILS, "readwrite");
+    const store = tx.objectStore(EMAILS);
+    const all = await request<CachedEmail[]>(store.getAll());
+    const entries = new Map(all.map((row) => [row.email.id, row]));
+    const dead = selectExpired(entries, now);
+    for (const id of dead) store.delete(id);
+    await done(tx);
+    return dead.length;
+  } catch {
+    return 0;
   } finally {
     db.close();
   }

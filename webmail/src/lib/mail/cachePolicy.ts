@@ -29,7 +29,48 @@ export interface CachedEmail {
   email: Email;
   /** Sign-in this was written under — see `cacheEpochMatches`. */
   epoch: string;
+  /**
+   * When this message FIRST landed on the disk. Never renewed.
+   *
+   * ⚠️ The flag sync rewrites entries (`mergeMutable` → `writeEmails`), so a
+   * timestamp refreshed on every write would restart the clock on anything
+   * `Email/changes` touched — and an actively-flagged mailbox would keep its
+   * mail on disk indefinitely while appearing to have a 7-day cap. The
+   * expiry has to measure age, not activity.
+   */
   cachedAt: number;
+}
+
+/**
+ * How long a message may sit on the disk.
+ *
+ * NOT about staleness — bodies are immutable, so a month-old cached body is
+ * exactly as correct as a fresh one. This bounds two other things: how large
+ * the store may grow unattended, and how much mail is readable from a device
+ * that is lost or shared. A week is short enough to state as a property
+ * ("bullmoose keeps at most a week of mail on this device") and long enough
+ * that a thread reread across a working fortnight costs one slow load.
+ */
+export const MAX_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Which stored messages have outlived the window.
+ *
+ * Pure, and takes `now`, so the boundary is testable rather than a thing that
+ * only misbehaves at midnight on a Tuesday.
+ */
+export function selectExpired(
+  entries: ReadonlyMap<string, CachedEmail>,
+  now: number,
+  maxAgeMs: number = MAX_CACHE_AGE_MS,
+): string[] {
+  const dead: string[] = [];
+  for (const [id, entry] of entries) {
+    // A missing or nonsense timestamp counts as expired: an entry we cannot
+    // date is one we cannot promise anything about.
+    if (!Number.isFinite(entry.cachedAt) || now - entry.cachedAt > maxAgeMs) dead.push(id);
+  }
+  return dead;
 }
 
 /**

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   cacheEpochMatches,
+  MAX_CACHE_AGE_MS,
   mergeMutable,
   MUTABLE_PROPERTIES,
   partitionIds,
   planCacheSync,
+  selectExpired,
   type CachedEmail,
 } from "./cachePolicy";
 import type { Email } from "./types";
@@ -111,5 +113,38 @@ describe("cacheEpochMatches — the security gate", () => {
     // signOut at all; this is what covers them.
     expect(cacheEpochMatches("e1", null)).toBe(false);
     expect(cacheEpochMatches(null, null)).toBe(false);
+  });
+});
+
+describe("the age cap", () => {
+  const at = (id: string, cachedAt: number): [string, CachedEmail] => [id, { email: email(id), epoch: "e1", cachedAt }];
+  const NOW = 1_000_000_000_000;
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it("40. keeps a message inside the window and drops one past it", () => {
+    const entries = new Map([at("fresh", NOW - 6 * DAY), at("stale", NOW - 8 * DAY)]);
+    expect(selectExpired(entries, NOW)).toEqual(["stale"]);
+  });
+
+  it("41. the boundary is exactly seven days, not about seven days", () => {
+    expect(selectExpired(new Map([at("edge", NOW - MAX_CACHE_AGE_MS)]), NOW)).toEqual([]);
+    expect(selectExpired(new Map([at("edge", NOW - MAX_CACHE_AGE_MS - 1)]), NOW)).toEqual(["edge"]);
+  });
+
+  it("42. an entry we cannot date is expired", () => {
+    // A row from an older schema, or one corrupted in place. We cannot promise
+    // anything about how long it has been there, so it does not get to stay.
+    const entries = new Map([at("nan", Number.NaN), at("missing", undefined as unknown as number)]);
+    expect(selectExpired(entries, NOW).sort()).toEqual(["missing", "nan"]);
+  });
+
+  it("43. the cap measures AGE, so activity cannot extend it", () => {
+    // The trap this exists to avoid: the flag sync rewrites entries, so a
+    // timestamp renewed on write would restart the clock on every message
+    // Email/changes touched. A busy mailbox would then keep mail on disk
+    // indefinitely behind a cap that still read as seven days. `cachedAt` is
+    // written once and preserved by writeEmails on every rewrite.
+    const old = new Map([at("read-daily", NOW - 30 * DAY)]);
+    expect(selectExpired(old, NOW)).toEqual(["read-daily"]);
   });
 });
