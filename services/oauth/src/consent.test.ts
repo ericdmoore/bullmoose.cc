@@ -183,3 +183,100 @@ describe("every grantable scope is explained — the #128 drift guard", () => {
     expect(html).not.toContain("cannot explain");
   });
 });
+
+describe("the submit handler survives implicit submission — the phone bug", () => {
+  // Eric's first phone test could not sign in at all. On iOS the natural
+  // gesture after typing a password is the keyboard's "Go", which submits the
+  // form IMPLICITLY — and implicit submission leaves `ev.submitter` null (it
+  // is also absent in Safari before 15.4). The handler read `.disabled` off it
+  // *after* calling preventDefault(), so the TypeError killed the handler with
+  // the form already cancelled: no navigation, no error text, no change to the
+  // button. The front door simply did nothing. These tests run the shipped
+  // script, so a regression cannot hide behind a source grep.
+  async function runScript(submitter: { value: string; disabled: boolean; textContent: string } | null) {
+    const src = await deriveScript().text();
+    const calls = { submitted: 0, prevented: 0 };
+    const approve = { value: "approve", disabled: false, textContent: "Approve" };
+    const err = { textContent: "" };
+    const field = (value = "") => ({ value });
+    let handler!: (ev: unknown) => Promise<void>;
+    const form = {
+      email: field("someone@bullmoose.cc"),
+      password: field("correct horse battery staple"),
+      loginKey: field(""),
+      querySelector: () => approve,
+      addEventListener: (_: string, fn: (ev: unknown) => Promise<void>) => (handler = fn),
+      appendChild: () => undefined,
+      submit: () => calls.submitted++,
+    };
+    const document = {
+      getElementById: (id: string) => (id === "consent" ? form : err),
+      createElement: () => ({}) as Record<string, string>,
+    };
+    new Function("document", src)(document);
+    await handler({ submitter, preventDefault: () => calls.prevented++ });
+    return { form, calls, approve, err };
+  }
+
+  it("40. derives and submits when the keyboard submits the form (submitter is null)", async () => {
+    const { form, calls, err } = await runScript(null);
+    expect(calls.submitted, "the form must still post").toBe(1);
+    expect(form.loginKey.value, "the login key must be derived").toMatch(/^[0-9a-f]{64}$/);
+    expect(form.password.value, "the raw password must never reach the network").toBe("");
+    expect(err.textContent, "a working submit must not show an error").toBe("");
+  });
+
+  it("41. still labels the button it can find, so the wait is legible", async () => {
+    const { approve } = await runScript(null);
+    expect(approve.textContent).toBe("Checking…");
+    expect(approve.disabled).toBe(true);
+  });
+
+  it("42. lets Cancel post natively — deny has nothing to derive", async () => {
+    const deny = { value: "deny", disabled: false, textContent: "Cancel" };
+    const { calls, form } = await runScript(deny);
+    expect(calls.prevented, "deny must not be intercepted").toBe(0);
+    expect(calls.submitted, "the browser posts it, not us").toBe(0);
+    expect(form.loginKey.value).toBe("");
+  });
+});
+
+describe("first-party sign-in does not get the stranger-danger treatment", () => {
+  const WEBMAIL = "https://app.bullmoose.cc/oauth/client.json";
+  const render = (firstParty: boolean) =>
+    consentPage({
+      client: { clientId: WEBMAIL, clientName: "bullmoose webmail", redirectUris: [] },
+      authReq: { clientId: WEBMAIL, redirectUri: "https://app.bullmoose.cc/login", scope: ["mail"], state: "s" },
+      firstParty,
+    });
+
+  it("50. never asks the question that names the same thing twice", async () => {
+    // "Connect bullmoose webmail to bullmoose?" — client and resource were the
+    // same word, so the sentence carried no information.
+    expect(await render(true).text()).not.toContain("to bullmoose?");
+    expect(await render(false).text()).not.toContain("to bullmoose?");
+  });
+
+  it("51. tells the human they are signing in to our own webmail", async () => {
+    const html = await render(true).text();
+    expect(html).toContain("Sign in to bullmoose");
+    expect(html).toContain("bullmoose's own webmail");
+    expect(html).not.toContain("Only continue if you recognize");
+  });
+
+  it("52. keeps the warning for a client we cannot vouch for", async () => {
+    const stranger = consentPage({
+      client: { clientId: "https://claude.ai/mcp", clientName: "Claude", redirectUris: [] },
+      authReq: {
+        clientId: "https://claude.ai/mcp",
+        redirectUri: "https://claude.ai/api/mcp/auth_callback",
+        scope: ["mail"],
+        state: "s",
+      },
+    });
+    const html = await stranger.text();
+    expect(html).toContain("Only continue if you recognize that address");
+    expect(html).toContain("claude.ai");
+    expect(html).toContain("wants to connect to your bullmoose account");
+  });
+});

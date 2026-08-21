@@ -155,7 +155,7 @@ async function present(request: Request, env: Env): Promise<Response> {
     );
   }
 
-  return consentPage({ client, authReq });
+  return consentPage({ client, authReq, firstParty: client.clientId === env.WEBMAIL_CLIENT_ID });
 }
 
 /**
@@ -188,7 +188,7 @@ async function decide(request: Request, env: Env): Promise<Response> {
   // posting directly) must not be treated as a password attempt — we have no
   // server-side KDF to fall back on, by design.
   if (!email || !isLoginKey(loginKey)) {
-    return retry(form, "Enter your bullmoose address and password.");
+    return retry(form, "Enter your bullmoose address and password.", env);
   }
 
   // Same windows as /auth/login: the IP gate is the outer one, so a throttled
@@ -200,7 +200,7 @@ async function decide(request: Request, env: Env): Promise<Response> {
   }
   if (attempt.block === "email") {
     await attempt.fail();
-    return retry(form, INVALID);
+    return retry(form, INVALID, env);
   }
 
   const row = await env.DB.prepare(
@@ -215,11 +215,11 @@ async function decide(request: Request, env: Env): Promise<Response> {
   // neither answer reveals which accounts exist.
   if (!row) {
     await attempt.fail();
-    return retry(form, INVALID);
+    return retry(form, INVALID, env);
   }
   if (!timingSafeEqualHex(await hashLoginKey(loginKey), row.pw_hash)) {
     await attempt.fail();
-    return retry(form, INVALID);
+    return retry(form, INVALID, env);
   }
   await attempt.succeed();
 
@@ -275,7 +275,7 @@ async function decide(request: Request, env: Env): Promise<Response> {
 const INVALID = "That address and password did not match.";
 
 /** Re-render the consent screen with an error, preserving the request. */
-function retry(form: FormData, message: string): Response {
+function retry(form: FormData, message: string, env: Env): Response {
   const authReq = safeParse(String(form.get("authRequest") ?? "{}")) as unknown as ConsentAuthReq;
   if (typeof authReq?.clientId !== "string") {
     return errorPage("This authorization request expired.", "Start again from your client.");
@@ -284,6 +284,7 @@ function retry(form: FormData, message: string): Response {
     client: { clientId: authReq.clientId, redirectUris: [] },
     authReq,
     error: message,
+    firstParty: authReq.clientId === env.WEBMAIL_CLIENT_ID,
   });
 }
 
