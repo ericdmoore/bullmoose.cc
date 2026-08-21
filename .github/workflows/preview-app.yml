@@ -12,9 +12,22 @@
 # from the Pages API). CI is the only place that holds the right key, so CI is
 # where preview deploys belong.
 #
-# ⚠️ A preview is the real app pointed at PRODUCTION data — same JMAP worker,
-# same mailbox. It is a different front end, not a sandbox. Treat anything you
-# do in one as done for real.
+# ⚠️ WHAT A PREVIEW CAN AND CANNOT SHOW. The app is same-origin with the JMAP
+# worker by design — the worker answers /api/* on app.bullmoose.cc and sends no
+# CORS headers at all (services/jmap has no OPTIONS handler; sameOrigin.test.ts
+# pins the arrangement). A *.pages.dev preview is therefore a DIFFERENT origin
+# with no API behind it: Pages falls back to index.html for /api/*, so data
+# requests resolve to HTML and every list stays empty.
+#
+# So a preview is good for chrome, layout, copy, and loading states — the
+# skeletons in particular are easy to study, because without data they simply
+# stay up. It cannot exercise anything that needs a mailbox.
+#
+# Making previews fully live needs a host INSIDE the zone (e.g. a preview
+# Pages project bound to preview.bullmoose.cc, with that hostname added to the
+# jmap worker routes) so the same-origin arrangement holds. Adding CORS to a
+# credentialed mail API instead would be trading a deliberate security
+# property for reviewer convenience.
 name: Preview app
 
 on:
@@ -83,8 +96,12 @@ jobs:
               `${marker}\n### Preview\n\n${url}\n\n` +
               "Commit `" + context.payload.pull_request.head.sha.slice(0, 7) + "`. " +
               "Updated on every push to this PR.\n\n" +
-              "> This is the real app against **production data** — same JMAP worker, " +
-              "same mailbox. A different front end, not a sandbox.";
+              "> **Chrome only.** The app is same-origin with the JMAP worker on " +
+              "app.bullmoose.cc, which sends no CORS headers, so a *.pages.dev origin " +
+              "has no API behind it — lists stay empty and data requests resolve to " +
+              "HTML. Good for layout, copy and loading states (the skeletons stay up, " +
+              "which makes them easy to look at). Anything needing a mailbox has to be " +
+              "checked on app.bullmoose.cc.";
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
             const existing = await github.rest.issues.listComments({ owner, repo, issue_number });
