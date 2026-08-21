@@ -128,7 +128,7 @@
     // new resources. `node infra/bootstrap.mjs doctor` checks the result —
     // and reports "explorer: off" without complaint when EXPLORE_HOST is unset.
     //
-    // , { "pattern": "explore.bullmoose.cc/*", "zone_name": "bullmoose.cc" }
+    , { "pattern": "explore.bullmoose.cc/*", "zone_name": "bullmoose.cc" }
   ],
 
   // AccountDO lives in THIS worker; ingest/submit bind it via script_name.
@@ -173,7 +173,7 @@
   "services": [
     { "binding": "SUBMIT", "service": "bullmoose-submit" },
     { "binding": "BUREAU", "service": "bullmoose-bureau" }
-    // , { "binding": "OAUTH", "service": "bullmoose-oauth" }
+    , { "binding": "OAUTH", "service": "bullmoose-oauth" }
   ],
 
   "vars": {
