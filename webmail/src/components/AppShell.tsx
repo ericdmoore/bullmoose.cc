@@ -96,6 +96,9 @@ export default function AppShell({ client: injected }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [detail, setDetail] = useState<ThreadDetail | undefined>(undefined);
+  // The clicked row, held for the length of the fetch so the header can be
+  // real while the body is still a shape.
+  const [pendingRow, setPendingRow] = useState<ThreadRow | undefined>(undefined);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [imagesAllowed, setImagesAllowed] = useState<Set<string>>(new Set());
   const [showQuotes, setShowQuotes] = useState(false);
@@ -439,13 +442,20 @@ export default function AppShell({ client: injected }: Props) {
   // both fetch in-page so mailbox selection (Archive, …) survives. No history
   // call — tokenInUrl.test.ts.
   const openThread = useCallback(
-    async (threadId: string) => {
+    // `row` is the row that was clicked. The list ALREADY holds this thread's
+    // subject and message count (LIST_PROPERTIES), so there is no reason to
+    // shimmer them while the bodies travel — we can only be slow about the
+    // part we genuinely do not have. Absent on a cold `?thread=` deep link,
+    // where we really do know nothing yet, and the header falls back to bars.
+    async (threadId: string, row?: ThreadRow) => {
       if (!client) return;
       setView("thread");
       setDetail(undefined);
+      setPendingRow(row);
       try {
         const loaded = await loadThread(client, accountId, threadId);
         setDetail(loaded);
+        setPendingRow(undefined);
         setExpanded(defaultExpanded(loaded.emails));
         setShowQuotes(false);
         // Opening marks read — the one triage action that fires without a key.
@@ -464,6 +474,7 @@ export default function AppShell({ client: injected }: Props) {
         }
       } catch (err) {
         notify(String(err instanceof Error ? err.message : err));
+        setPendingRow(undefined);
         setView("list");
       }
     },
@@ -615,7 +626,7 @@ export default function AppShell({ client: injected }: Props) {
           setCursor(next);
           if (view === "thread") {
             const row = rows[next];
-            if (row && row.threadId !== detail?.threadId) void openThread(row.threadId);
+            if (row && row.threadId !== detail?.threadId) void openThread(row.threadId, row);
           }
           break;
         }
@@ -624,13 +635,13 @@ export default function AppShell({ client: injected }: Props) {
           setCursor(next);
           if (view === "thread") {
             const row = rows[next];
-            if (row && row.threadId !== detail?.threadId) void openThread(row.threadId);
+            if (row && row.threadId !== detail?.threadId) void openThread(row.threadId, row);
           }
           break;
         }
         case "openSelected": {
           const row = rows[cursor];
-          if (row) void openThread(row.threadId);
+          if (row) void openThread(row.threadId, row);
           break;
         }
         case "back":
@@ -877,7 +888,7 @@ export default function AppShell({ client: injected }: Props) {
                 // Undo. See the contract at the top of ThreadListView.
                 swipeActions={swipeActions}
                 onSwipeAction={(row, action) => void runSwipe(row, action)}
-                onOpen={(row) => void openThread(row.threadId)}
+                onOpen={(row) => void openThread(row.threadId, row)}
                 onCursor={setCursor}
                 onToggleSelect={(row) =>
                   setSelected((prev) => {
@@ -968,16 +979,47 @@ export default function AppShell({ client: injected }: Props) {
             // landed. The skeleton stands in the SHAPE of what is coming — a
             // subject, its meta line, a sender and a body — so the layout is
             // already correct when the content replaces it.
-            <SkeletonRegion label="the conversation" class="thread-view thread-skeleton">
-              {/* Two shapes, standing exactly where the two things go: the
-                  subject, and the message. Nothing else — an avatar circle
-                  here was inventing a element the message view does not
-                  have, which reads as a promise of content that never
-                  arrives. */}
-              <Skeleton variant="title" />
-              <Skeleton variant="meta" />
-              <Skeleton variant="body" />
-            </SkeletonRegion>
+            <div class="thread-view thread-skeleton">
+              {/* The header is REAL. Everything in it — the subject, the
+                  message count — came from the row that was clicked, and we
+                  had it before the click. Shimmering text we already hold is
+                  theatre; only the body is genuinely in flight.
+
+                  Back is here too, and deliberately: on a narrow screen the
+                  message has replaced the list, so without it a slow fetch is
+                  a trap with no way out. */}
+              <header class="thread-header">
+                <button
+                  type="button"
+                  class="back-button"
+                  onClick={() => {
+                    setView("list");
+                    setDetail(undefined);
+                    setPendingRow(undefined);
+                  }}
+                >
+                  ← Back
+                </button>
+                {pendingRow ? (
+                  <>
+                    <h1>{pendingRow.subject}</h1>
+                    <p class="thread-meta">
+                      {pendingRow.loadedCount} message{pendingRow.loadedCount === 1 ? "" : "s"}
+                    </p>
+                  </>
+                ) : (
+                  // A cold `?thread=` deep link: no row was clicked, so we
+                  // really do know nothing about it yet.
+                  <>
+                    <Skeleton variant="title" />
+                    <Skeleton variant="meta" />
+                  </>
+                )}
+              </header>
+              <SkeletonRegion label="the message">
+                <Skeleton variant="body" />
+              </SkeletonRegion>
+            </div>
           ) : (
             <div class="hidden min-h-0 min-w-0 grow items-start justify-center lg:flex">
               <EmptyState title="Select a conversation">Choose a message from the list to read it here.</EmptyState>
