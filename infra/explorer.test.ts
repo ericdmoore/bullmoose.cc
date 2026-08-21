@@ -28,6 +28,20 @@ const ROOT = resolve(import.meta.dirname, "..");
 const CONFIG = resolve(ROOT, "services/jmap/wrangler.jsonc");
 const committed = readFileSync(CONFIG, "utf8");
 
+/**
+ * The OFF state, derived rather than read.
+ *
+ * Until 2026-08-21 the committed file WAS off, so it doubled as the baseline
+ * for every toggle test below. It is on now (see test 1), so the baseline has
+ * to be computed — otherwise these tests would silently become no-ops the
+ * moment the switch flipped, which is the failure mode they exist to prevent.
+ *
+ * Deriving it also makes them test the MECHANISM rather than the current
+ * direction: they now pass in either state, and keep asserting that the edit
+ * is exact, reversible to the byte, and idempotent both ways.
+ */
+const off = exploreSwitch(committed, false).text;
+
 /** Whole-line `//` comments out, so JSON.parse can judge the result. */
 function stripJsonc(text: string): string {
   return text
@@ -37,18 +51,37 @@ function stripJsonc(text: string): string {
 }
 
 describe("exploreSwitch — the route/binding toggle in services/jmap/wrangler.jsonc", () => {
-  it("1. the committed file is OFF, which is the whole design", () => {
-    // If this ever fails, the explorer got committed in the on state and every
-    // deployment of this repo publishes explore.bullmoose.cc on its next
-    // deploy. `.plans/s21-explorer` open question 2: off by default is not a
-    // preference, it is the reason a read-everything surface is tolerable.
+  it("1. the committed file is ON — switched on deliberately, 2026-08-21", () => {
+    // This assertion USED TO SAY THE OPPOSITE, and the flip is the point.
+    //
+    // It read: "the committed file is OFF, which is the whole design", and
+    // warned that committing it on means every deployment of this repo
+    // publishes explore.bullmoose.cc. That warning was correct, and it is now
+    // the accepted trade rather than an accident — Eric, #223, "Let's switch
+    // it on!". s21 shipped 2,745 lines that had never served a request; code
+    // nobody can reach is not safe, it is just unexamined.
+    //
+    // What made it tolerable to flip: the surface is READ-ONLY and refuses
+    // writes before resolving a credential, the hostname is gated on an
+    // EXPLORE_HOST secret (so a fork or a stale checkout still serves
+    // nothing), auth is a real OAuth code flow with PKCE against
+    // auth.bullmoose.cc, and the DNS record is an AAAA to 100:: — which fails
+    // CLOSED if the route ever goes away, where a CNAME would quietly serve
+    // the app instead.
+    //
+    // Keep this assertion pointed at the CURRENT intent. It is a tripwire in
+    // both directions: it fired when the switch went on, and it should fire
+    // again if the file ever drifts back to off without someone deciding to.
     const parsed = JSON.parse(stripJsonc(committed));
-    expect(JSON.stringify(parsed.routes)).not.toContain("explore.bullmoose.cc");
-    expect(JSON.stringify(parsed.services)).not.toContain("OAUTH");
+    expect(parsed.routes).toContainEqual({
+      pattern: "explore.bullmoose.cc/*",
+      zone_name: "bullmoose.cc",
+    });
+    expect(parsed.services).toContainEqual({ binding: "OAUTH", service: "bullmoose-oauth" });
   });
 
   it("2. turning it on uncomments exactly the route and the OAUTH binding", () => {
-    const on = exploreSwitch(committed, true);
+    const on = exploreSwitch(off, true);
     expect(on.changed).toBe(true);
     expect(on.toggled.sort()).toEqual(["OAUTH binding", "route"]);
     expect(on.missing).toEqual([]);
@@ -62,8 +95,8 @@ describe("exploreSwitch — the route/binding toggle in services/jmap/wrangler.j
   });
 
   it("3. it changes ONLY those two lines", () => {
-    const on = exploreSwitch(committed, true);
-    const before = committed.split("\n");
+    const on = exploreSwitch(off, true);
+    const before = off.split("\n");
     const after = on.text.split("\n");
     expect(after.length).toBe(before.length);
     const moved = before.map((l, i) => [i, l, after[i]] as const).filter(([, a, b]) => a !== b);
@@ -76,32 +109,32 @@ describe("exploreSwitch — the route/binding toggle in services/jmap/wrangler.j
     // The property `--off` depends on. A toggle that re-indented, dropped a
     // trailing newline or normalised the leading comma would leave a diff on
     // every on/off cycle, and the operator would stop reading those diffs.
-    const on = exploreSwitch(committed, true);
-    const off = exploreSwitch(on.text, false);
-    expect(off.changed).toBe(true);
-    expect(off.text).toBe(committed);
+    const on = exploreSwitch(off, true);
+    const off2 = exploreSwitch(on.text, false);
+    expect(off2.changed).toBe(true);
+    expect(off2.text).toBe(off);
 
-    const onAgain = exploreSwitch(off.text, true);
+    const onAgain = exploreSwitch(off2.text, true);
     expect(onAgain.text).toBe(on.text);
   });
 
   it("5. is idempotent in both directions — a second call changes nothing", () => {
-    const on = exploreSwitch(committed, true);
+    const on = exploreSwitch(off, true);
     const again = exploreSwitch(on.text, true);
     expect(again.changed).toBe(false);
     expect(again.text).toBe(on.text);
     expect(again.already.sort()).toEqual(["OAUTH binding", "route"]);
 
-    const stillOff = exploreSwitch(committed, false);
+    const stillOff = exploreSwitch(off, false);
     expect(stillOff.changed).toBe(false);
-    expect(stillOff.text).toBe(committed);
+    expect(stillOff.text).toBe(off);
     expect(stillOff.already.sort()).toEqual(["OAUTH binding", "route"]);
   });
 
   it("6. reports a missing anchor instead of inventing a line", () => {
     // A file that drifted from bootstrap's literals must produce a warning, not
     // a second copy of the route appended somewhere plausible.
-    const drifted = committed.replace(/^.*"binding": "OAUTH".*$/m, "");
+    const drifted = off.replace(/^.*"binding": "OAUTH".*$/m, "");
     const r = exploreSwitch(drifted, true);
     expect(r.missing).toEqual(["OAUTH binding"]);
     expect(r.toggled).toEqual(["route"]);
@@ -187,11 +220,24 @@ describe("--dry-run touches nothing", () => {
 
     // And it actually ran all four steps rather than bailing early — otherwise
     // "no writes" would be true for an uninteresting reason.
+    //
+    // Each step is matched on its SUBJECT, not on the wording of one outcome.
+    // These used to read `would uncomment` / `would POST …/register`, which
+    // only holds while the switch is off and the client unregistered — so the
+    // day the explorer was turned on (2026-08-21) this test failed for a
+    // reason that had nothing to do with what it protects. Every step reports
+    // either "would …" or "✓ … (already …)", and both mean it ran.
+    // Each substring must hold in BOTH outcomes of its step, because both are
+    // legitimate: "would POST …/register" before the client exists, and
+    // "✓ OAuth client (already registered — …)" after. Matching one of them
+    // makes this test depend on whether a .env happens to be present, which
+    // is how it failed twice on 2026-08-21 — once for the switch being on,
+    // then again for the .env being absent. "register" is in both.
     expect(out).toContain("explore.bullmoose.cc");
-    expect(out).toContain("would ensure AAAA");
-    expect(out).toContain("would uncomment");
-    expect(out).toContain("would POST https://auth.bullmoose.cc/register");
-    expect(out).toContain("node infra/bootstrap.mjs deploy");
+    expect(out).toContain("AAAA"); // step 1: the DNS record
+    expect(out).toContain("services/jmap/wrangler.jsonc"); // step 2: the config edit
+    expect(out).toContain("register"); // step 3: "would POST …/register" | "already registered"
+    expect(out).toContain("node infra/bootstrap.mjs deploy"); // step 4: the handoff
   });
 
   it("13. --off previews the reversal and still writes nothing", () => {
