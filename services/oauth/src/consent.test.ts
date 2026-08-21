@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { deriveLoginKey } from "@bullmoose/auth-core";
-import { consentPage, DERIVE_FN_SRC, deriveScript } from "./consent";
+import { consentPage, DERIVE_FN_SRC, DERIVE_LEGACY_PATH, DERIVE_PATH, deriveScript } from "./consent";
 
 // s02 T3 — the consent screen is also the system's real login, so two
 // separate things need pinning: that the browser derives the SAME login key
@@ -278,5 +278,62 @@ describe("first-party sign-in does not get the stranger-danger treatment", () =>
     expect(html).toContain("Only continue if you recognize that address");
     expect(html).toContain("claude.ai");
     expect(html).toContain("wants to connect to your bullmoose account");
+  });
+});
+
+describe("the login script is cache-busted by its own content", () => {
+  // #253 shipped a bug that made sign-in do NOTHING — no request leaves the
+  // browser, so nothing logs it anywhere. The script was served as a fixed
+  // /derive.js with max-age=3600, so the FIX could not reach a device holding
+  // the broken copy for up to an hour, and there was no way to force it. A
+  // content-addressed name makes a stale copy unaddressable rather than
+  // merely unlikely.
+
+  /** The same FNV-1a the module uses — recomputed here from the SERVED bytes,
+   *  so this asserts the name really is derived from the content and is not a
+   *  constant someone bumps by hand. */
+  const fnv = (text: string) => {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(36);
+  };
+
+  it("60. names the file after a hash of the script it serves", async () => {
+    const body = await deriveScript().text();
+    expect(DERIVE_PATH).toBe(`/derive.${fnv(body)}.js`);
+  });
+
+  it("61. the consent page asks for the hashed name, never the fixed one", async () => {
+    const html = await consentPage({
+      client: { clientId: "c", redirectUris: [] },
+      authReq: { clientId: "c", redirectUri: "https://app.bullmoose.cc/login", scope: ["mail"], state: "s" },
+    }).text();
+    expect(html).toContain(`src="${DERIVE_PATH}"`);
+    expect(html).not.toContain('src="/derive.js"');
+  });
+
+  it("62. the hashed name may be cached forever — that is the point", () => {
+    const cc = deriveScript(DERIVE_PATH).headers.get("cache-control") ?? "";
+    expect(cc).toContain("immutable");
+    expect(cc).toContain("max-age=31536000");
+  });
+
+  it("63. the legacy name still works, but can never wedge a device again", async () => {
+    // A page rendered by the PREVIOUS deployment is in someone's browser right
+    // now and is asking for /derive.js. It must still get a working script.
+    const legacy = deriveScript(DERIVE_LEGACY_PATH);
+    expect(await legacy.text()).toBe(await deriveScript(DERIVE_PATH).text());
+    const cc = legacy.headers.get("cache-control") ?? "";
+    expect(cc).not.toContain("immutable");
+    expect(Number(/max-age=(\d+)/.exec(cc)?.[1] ?? Infinity)).toBeLessThanOrEqual(60);
+  });
+
+  it("64. a change to the script changes the URL — the property that matters", () => {
+    // Not a tautology: it pins that DIFFERENT bytes cannot share a name, which
+    // is the whole guarantee a content-addressed URL is bought for.
+    expect(fnv("form.submit()")).not.toBe(fnv("form.submit();"));
   });
 });

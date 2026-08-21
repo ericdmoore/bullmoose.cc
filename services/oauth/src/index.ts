@@ -1,7 +1,7 @@
 import { hashLoginKey, isLoginKey, OAUTH_SCOPES, timingSafeEqualHex, unknownScopes } from "@bullmoose/auth-core";
 import { beginLoginAttempt } from "@bullmoose/auth-core/loginThrottle";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
-import { consentPage, deriveScript, errorPage } from "./consent.js";
+import { consentPage, DERIVE_LEGACY_PATH, DERIVE_PATH, deriveScript, errorPage } from "./consent.js";
 import { AUTH_DOCS, docsResponse } from "./docs.js";
 import { recordConsent } from "./consentMirror.js";
 import { revoke } from "./revoke.js";
@@ -93,7 +93,11 @@ export const authorizeHandler = {
     }
     // The client-side key derivation. A file rather than an inline script so
     // the password page's CSP can stay `script-src 'self'`.
-    if (url.pathname === "/derive.js") return deriveScript();
+    // Both names: the hashed one the current page asks for, and the fixed
+    // one a page from the previous deployment is still pointing at.
+    if (url.pathname === DERIVE_PATH || url.pathname === DERIVE_LEGACY_PATH) {
+      return deriveScript(url.pathname);
+    }
     // Owner revocation: disconnect a connected app (s02 T4's second half).
     if (url.pathname === "/revoke" && request.method === "POST") return revoke(request, env);
     // The webmail's access-token → bm_ session exchange (s07 T7). The module
