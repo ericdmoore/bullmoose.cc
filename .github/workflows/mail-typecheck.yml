@@ -60,7 +60,12 @@ jobs:
       # Go command runs from `cli-go/`, never `go … ./cli-go`.
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          # READ FROM go.mod, never a literal here. A version string in this
+          # file is a second source of truth that drifts from the `toolchain`
+          # pin without anything noticing — and "CI builds one thing, a laptop
+          # builds another" is the failure #241 was made of. setup-go honours
+          # the `toolchain` directive, so the repo states the version once.
+          go-version-file: cli-go/go.mod
           # cli-go has no third-party deps (no go.sum); anchor setup-go's cache
           # key on go.mod so caching stays valid instead of warning.
           cache-dependency-path: cli-go/go.mod
