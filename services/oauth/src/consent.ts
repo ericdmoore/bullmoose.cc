@@ -137,8 +137,18 @@ async function deriveLoginKey(email, password) {
 }
 `;
 
-export function deriveScript(): Response {
-  const js = `${DERIVE_FN_SRC}
+/**
+ * The browser half of the login, built once at module load.
+ *
+ * ⚠️ CACHE-BUSTED BY CONTENT. This file was served as a fixed `/derive.js`
+ * with `max-age=3600`, and #253 showed why that is the wrong shape: a bug in
+ * this script does not fail loudly, it makes sign-in do NOTHING (no request
+ * leaves the browser, so no server log records it). Shipping the fix could
+ * not reach a device that already had the broken hour-long copy, and there
+ * was no way to force it. The name now changes whenever the bytes change, so
+ * a stale copy is not merely unlikely — it is unaddressable.
+ */
+const DERIVE_JS = `${DERIVE_FN_SRC}
 const form = document.getElementById("consent");
 const approveButton = form.querySelector("button.approve");
 form.addEventListener("submit", async (ev) => {
@@ -170,10 +180,39 @@ form.addEventListener("submit", async (ev) => {
   }
 });
 `;
-  return new Response(js, {
+
+/**
+ * FNV-1a, 32-bit. A CACHE KEY, not a security primitive: it only has to change
+ * when the bytes change, and it has to be synchronous (`crypto.subtle` is not,
+ * and the page render is). Collisions do not matter here — an attacker who can
+ * choose this script's contents already owns the worker.
+ */
+function contentHash(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
+
+/** The one URL the consent page points at. Changes with the script's bytes. */
+export const DERIVE_PATH = `/derive.${contentHash(DERIVE_JS)}.js`;
+
+/** The pre-#253 fixed name. Still served — a page rendered by the previous
+ *  deployment is in someone's browser right now and asks for this — but with
+ *  a lifetime short enough that it can never wedge a device again. */
+export const DERIVE_LEGACY_PATH = "/derive.js";
+
+export function deriveScript(pathname: string = DERIVE_PATH): Response {
+  const immutable = pathname === DERIVE_PATH;
+  return new Response(DERIVE_JS, {
     headers: {
       "content-type": "text/javascript; charset=utf-8",
-      "cache-control": "public, max-age=3600",
+      // Content-addressed: safe to keep forever. The legacy name is not, and
+      // a minute is enough to spare the worker a stampede without letting a
+      // broken copy outlive its fix.
+      "cache-control": immutable ? "public, max-age=31536000, immutable" : "public, max-age=60",
     },
   });
 }
@@ -263,7 +302,7 @@ ${lines || "<li>Nothing — this client requested no permissions.</li>"}
     <button class="deny" type="submit" name="decision" value="deny">Cancel</button>
   </div>
 </form>
-<script src="/derive.js"></script>`;
+<script src="${DERIVE_PATH}"></script>`;
   return new Response(body, {
     status: error ? 401 : 200,
     headers: {
