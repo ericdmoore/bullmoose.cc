@@ -291,20 +291,97 @@ better model.
 
 ---
 
+## V1 and V2
+
+**V1 — the ladder, and the two things it can be right about.**
+
+1. **Cues widened** to date and event shapes. Pure regex, no model, no UI.
+   Measurable on its own: how many messages newly qualify.
+2. **Signature → contact, create OR update.** Leads, because it is the most
+   likely to be RIGHT. The key is exact (an email address), detection is
+   substantially deterministic — `quote.ts` already splits a trailing `-- `
+   block, and beyond that convention a signature is definitionally the block
+   that REPEATS across a sender's messages — and the fields are largely regex.
+   A model is needed only for the messy middle: telling a job title from an
+   org name. Needs an email filter on `Contact/query`, which does not exist
+   (today: `inAddressBook`, `kind`, `uid`, booleans) and is small and useful
+   beyond this feature.
+3. **Event creation.** `verb-schedule` already lands. Create only.
+4. **Proposal idempotency**, from the first commit — see below.
+5. **The margin UI**, built LAST, when "what does a good offer look like" is
+   evidence rather than a guess.
+
+**V2 — the two hard things.**
+
+- **Proposed merges** for events (contacts do not need this — see 2).
+- **Contingent commitments.**
+
+### Why contacts lead and events follow
+
+Events are the flashier demo. Contacts are the one more likely to be right,
+and the payoff is the sharper one: *"Coach Wallace's number changed, update
+it?"* is a thing no other mail client offers, and it makes the product feel
+like it is paying attention rather than generating work.
+
+Note the asymmetry that puts event MERGE in V2 while contact merge is in V1: a
+contact has a natural key and an event does not. Nothing about events is
+harder except identity.
+
+### Proposal idempotency is V1, and is not reconciliation
+
+Keyed on thread plus normalized start, refuse to create a second proposal for
+the same extracted thing. No calendar read, no matching, no new authority.
+
+This is not an optimisation. Extraction runs per DELIVERED MESSAGE, and a
+thread is many messages that quote each other — the tournament email is a
+`Fwd:` carrying the schedule in quoted text. Two replies that quote it produce
+three identical offers for one tournament, on day one, without anyone
+forwarding anything. That is the "trains you to dismiss without reading"
+failure arriving immediately, and it costs one comparison to prevent.
+
+### Merges as a proposal, not a matcher (Eric's idea)
+
+> *proposed-merges could just be a different LLM proposal — created if the
+> event-creation LLM had the context that we already had similar data in the
+> calendar.*
+
+Better than the deterministic matcher this plan first sketched, and safe for a
+reason worth stating: **a proposed merge is not a write.** The objection to
+fuzzy matching was silent overwrite — but every update lands as a diff a human
+approves, so the model asserting identity is making a CHECKED claim. The
+asymmetry that made us conservative disappears once nothing destructive
+happens without review.
+
+Two guardrails:
+
+- the proposal must **name which event** it merges into and **show the diff**.
+  "This looks like an update" is not reviewable; `start 8:00 am → 7:30 am` is.
+- it must be able to decline to decide. Two plausible candidates is
+  `needsInfo`, which already exists — the offer asks instead of asserting.
+
+And a hybrid that keeps the ladder's economics: **narrow deterministically,
+judge with the model.** Something must choose which events go into the context
+window, and "every event in the calendar" is not a plan. A time window around
+the extracted date plus participant overlap picks a handful of candidates for
+free; the model decides among them. Cheap filter, expensive judgment only on
+what survives — the same shape as every other rung.
+
+Where an exact key exists, no model is involved at all: an `.ics` attachment
+carries a `UID`, and a contact has an address. Those merge deterministically
+in V1.
+
+---
+
 ## Order of work
 
-1. **Widen the cues to dates and events.** Pure regex, no model, no UI. Lands
-   alone and is measurable: how many messages newly qualify.
-2. **Event extraction → `verb-schedule` proposal.** The verb and the approval
-   path already exist; this is the extractor learning a second shape.
-3. **Span anchors**, with whole-message fallback.
-4. **The margin surface** — `+ Cal`, the prefilled popover, going through
-   `ActionProposal/set` and `canDecide`.
-5. **Contingent commitments**, only after 1–4 are real and only with the design
-   questions above answered.
+See the V1/V2 split above. Span anchors sit between (3) and (5): the margin
+cannot highlight a date it cannot re-find, and a span that will not re-anchor
+degrades to a whole-message note rather than highlighting the wrong sentence.
 
-Signature → contact extraction is a sibling of 2 and can follow the same path
-once it exists. It is not on the critical line.
+An earlier draft of this plan put signature extraction "not on the critical
+line". That was wrong, and the reason is worth keeping: it is MORE
+deterministic than event extraction, not less, so it is the cheapest rung that
+produces something the owner would miss if it stopped.
 
 ---
 
