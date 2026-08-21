@@ -43,6 +43,9 @@ export interface UnauthenticatedClient {
 
 export type ResolvedClient = LiveClient | DemoClient | UnauthenticatedClient;
 
+import { clearEmails, EPOCH_KEY } from "./emailStore";
+import { STATE_KEY } from "../mail/changesSync";
+
 const TOKEN_KEY = "bullmoose.token";
 const BASE_KEY = "bullmoose.apiBase";
 const TOKEN_PARAM = "token";
@@ -128,11 +131,38 @@ export function homeTarget(resolved: ResolvedClient): string {
 export function storeSession(token: string, baseUrl?: string): void {
   writeStorage(TOKEN_KEY, token);
   if (baseUrl !== undefined) writeStorage(BASE_KEY, baseUrl);
+  // A fresh identity for the message cache on every sign-in. Cached mail
+  // carries the epoch it was written under, so a different person signing in
+  // here — or the same one returning on a new token after a revocation —
+  // cannot read what the last session left on this disk. See
+  // `cacheEpochMatches`; this is the half that makes it work.
+  writeStorage(EPOCH_KEY, newEpoch());
 }
 
 export function signOut(): void {
   writeStorage(TOKEN_KEY, null);
   writeStorage(BASE_KEY, null);
+  // Drop the epoch FIRST: with it gone the cache is already unreadable, so a
+  // failed or slow wipe cannot leave readable mail behind. The wipe is then
+  // housekeeping rather than the thing security depends on.
+  writeStorage(EPOCH_KEY, null);
+  // The delta cursor goes too: a state from the last sign-in would ask the
+  // server for changes since a point the new session has no cache for, and
+  // the answer would be applied to nothing.
+  writeStorage(STATE_KEY, null);
+  void clearEmails();
+}
+
+/** Unguessable, and never sent anywhere — it exists only to tell one sign-in
+ *  apart from the next. `crypto.randomUUID` is present everywhere this app
+ *  runs; the fallback keeps a locked-down browser signing in rather than
+ *  throwing on the way to the mailbox. */
+function newEpoch(): string {
+  try {
+    return globalThis.crypto?.randomUUID?.() ?? String(Date.now());
+  } catch {
+    return String(Date.now());
+  }
 }
 
 /** The stored API base, so the door can show what is currently configured. */

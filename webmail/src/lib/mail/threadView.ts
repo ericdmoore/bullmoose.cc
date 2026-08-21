@@ -31,6 +31,37 @@ export interface ThreadDetail {
   notFound: string[];
 }
 
+/**
+ * Build a thread from cached messages alone — or null if we do not hold all
+ * of them.
+ *
+ * All-or-nothing on purpose. A half-cached thread rendered now and completed a
+ * moment later is a message that grows extra paragraphs under the reader's
+ * eyes, which is worse than a shimmer: it moves what they were in the middle
+ * of reading.
+ *
+ * The ids come from the ThreadRow that was clicked — the list already knows
+ * them, which is why nothing has to be fetched to find out what to look up.
+ */
+export function threadFromCache(
+  threadId: string,
+  emailIds: readonly string[],
+  cached: ReadonlyMap<string, { email: Email }>,
+): ThreadDetail | null {
+  if (emailIds.length === 0) return null;
+  const emails: Email[] = [];
+  for (const id of emailIds) {
+    const hit = cached.get(id);
+    if (!hit) return null;
+    emails.push(hit.email);
+  }
+  return {
+    threadId,
+    emails: emails.slice().sort((a, b) => Date.parse(a.receivedAt) - Date.parse(b.receivedAt)),
+    notFound: [],
+  };
+}
+
 /** Open a thread in one batched request. */
 export async function loadThread(
   client: JmapClient,
