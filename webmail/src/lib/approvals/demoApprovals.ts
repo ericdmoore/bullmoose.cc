@@ -51,7 +51,7 @@ const HOLD_WINDOW_MS = 5 * 60_000;
 /** Mirrors the server's enum (actionProposal.ts). `notNow` is retired — refused
  * on a new decision here exactly as the server refuses it, while the retired
  * fixture below proves an already-recorded one still reads. */
-const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "unsafe"]);
+const REJECT_REASONS = new Set(["wrongContent", "wrongAction", "unsafe", "unintendedInvocation"]);
 
 export interface ApprovalsDemoOptions {
   /** Anchor for the fixtures' clocks; defaults to wall time. */

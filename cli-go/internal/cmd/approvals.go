@@ -65,7 +65,10 @@ const approvalsUsage = "bullmoose approvals <list|show|approve|decline|needs-inf
 // offers one it rejects. The enum is the contract; the three move as one.
 //
 // What each reason steers (decline-taxonomy.md): `wrongContent` fixes
-// GENERATION, `wrongAction` fixes SELECTION, and `unsafe` — private information
+// GENERATION, `wrongAction` fixes SELECTION, `unintendedInvocation` steers
+// NOTHING (the human mis-clicked; the record is evidence about the click, not
+// the agent, and a learning pipeline must exclude it), and `unsafe` — private
+// information
 // leaked, or a commitment made on the human's behalf — is the categorically
 // separate HARD negative, not a stronger way of saying no.
 //
@@ -78,11 +81,11 @@ const approvalsUsage = "bullmoose approvals <list|show|approve|decline|needs-inf
 // invariant is that it never lands in a rejection record, and this set is where
 // the invariant is enforced on the client write path. `--reason needsInfo` is
 // refused in apDecline with a pointer at the verb.
-var rejectReasons = map[string]bool{"wrongContent": true, "wrongAction": true, "unsafe": true}
+var rejectReasons = map[string]bool{"wrongContent": true, "wrongAction": true, "unsafe": true, "unintendedInvocation": true}
 
 // rejectReasonList is the one place the enum is spelled for humans, so a usage
 // message can never drift from the set it describes.
-const rejectReasonList = "wrongContent, wrongAction, unsafe"
+const rejectReasonList = "wrongContent, wrongAction, unsafe, unintendedInvocation"
 
 // runApprovals is the front door for the six verbs. It is registered
 // Go-native-only (registry.go), so Dispatch routes here regardless of flags.

@@ -147,6 +147,11 @@ export const REJECT_REASONS: ReadonlyArray<{
     hint: "a hard stop, not a stronger no: weighted heavily and never tolerated twice",
     severe: true,
   },
+  {
+    reason: "unintendedInvocation",
+    label: "I didn't mean to ask",
+    hint: "my slip, not its mistake — this one teaches the agent nothing",
+  },
 ];
 
 /**

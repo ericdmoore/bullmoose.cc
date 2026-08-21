@@ -80,8 +80,27 @@ describe("tier rendering matches what approve DOES (arch.md §2)", () => {
 });
 
 describe("the no-thanks reasons (arch.md §3, decline-taxonomy.md)", () => {
-  it("offers exactly the server's enum — three, hard negative last", () => {
-    expect(REJECT_REASONS.map((r) => r.reason)).toEqual(["wrongContent", "wrongAction", "unsafe"]);
+  it("offers exactly the server's enum, hard negative last", () => {
+    expect(REJECT_REASONS.map((r) => r.reason)).toEqual([
+      "wrongContent",
+      "wrongAction",
+      "unsafe",
+      "unintendedInvocation",
+    ]);
+  });
+
+  it("offers a way to say the slip was MINE — and words it as one", () => {
+    // Without this, an accidental invocation has to be filed as wrongContent
+    // or wrongAction, and both are lies: the agent's output was not bad and
+    // its selection was not wrong, because it was never asked a real question.
+    // The label has to say so in the reader's voice, or nobody picks it over
+    // the two that sound like the software's fault.
+    const mine = REJECT_REASONS.find((r) => r.reason === "unintendedInvocation");
+    expect(mine, "the mis-click reason must be offered").toBeTruthy();
+    expect(mine!.label).toMatch(/didn't mean/i);
+    expect(mine!.hint).toMatch(/teaches the agent nothing/i);
+    // Not the hard negative — a slip is not an escalation.
+    expect(mine!.severe).toBeUndefined();
   });
 
   it("words `unsafe` as the categorically-separate hard stop, not another decline flavour", () => {

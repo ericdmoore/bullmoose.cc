@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MethodRegistry, AGENT_CAP } from "@bullmoose/jmap-core";
 import { fakeEnv } from "@bullmoose/test-fakes";
-import { registerActionProposalMethods } from "./actionProposal";
+import { LEARNING_REASONS, registerActionProposalMethods } from "./actionProposal.js";
 import { buildSession } from "../session";
 import type { Principal } from "../auth";
 import type { RequestContext } from "./common";
@@ -469,7 +469,7 @@ describe("rejecting captures the no-thanks signal", () => {
     });
   });
 
-  it("REFUSES the retired `notNow`, naming the three reasons that are left", async () => {
+  it("REFUSES the retired `notNow`, naming the reasons that are left", async () => {
     // The retirement has to bite on the WRITE path or it is a comment. `notNow`
     // was a grab-bag — "I'll do it myself" (positive on selection), "not due
     // yet" (a dueAt correction, which records nothing) and "meh, later" — so it
@@ -480,7 +480,9 @@ describe("rejecting captures the no-thanks signal", () => {
       update: { inv_retired: { status: "rejected", decision: { reason: "notNow" } } },
     });
     expect(res.notUpdated.inv_retired!.type).toBe("invalidProperties");
-    expect(res.notUpdated.inv_retired!.description).toBe("decision.reason must be wrongContent | wrongAction | unsafe");
+    expect(res.notUpdated.inv_retired!.description).toBe(
+      "decision.reason must be wrongContent | wrongAction | unsafe | unintendedInvocation",
+    );
     expect(res.notUpdated.inv_retired!.description).not.toContain("notNow");
     // Refused means refused: undecided, nothing recorded.
     expect(
@@ -1479,5 +1481,41 @@ describe("approving a watch-offer arms a no-reply-from Watch", () => {
     const ok = await h.set({ update: { inv_wo2: { status: "rejected" } } });
     expect(ok.updated.inv_wo2).toBeNull();
     expect(h.w.db.query(`SELECT * FROM watches`)).toEqual([]);
+  });
+});
+
+describe("unintendedInvocation is a decline that teaches nothing", () => {
+  // Eric, 2026-08-21: "I accidentally clicked schedule on a few emails that
+  // clearly had nothing to schedule." Before this reason existed the only
+  // options said the AGENT was wrong, so every mis-click was filed as evidence
+  // against it and a learning pipeline would train on the human's own slip.
+
+  it("is accepted on the write path like any other reason", async () => {
+    const h = harness(["mail"]);
+    seedProposal(h.w, { id: "inv_slip", kind: "reply-draft", tier: 2 });
+    const res = await h.set({
+      update: { inv_slip: { status: "rejected", decision: { reason: "unintendedInvocation" } } },
+    });
+    expect(res.notUpdated.inv_slip, JSON.stringify(res.notUpdated.inv_slip)).toBeUndefined();
+    // And it is RECORDED — the mis-click is kept as evidence about the UI, it
+    // is simply not fed to the agent (see the exclusion test below).
+    const row = h.w.db.query<{ status: string; decision_json: string | null }>(
+      "SELECT status, decision_json FROM agent_proposals WHERE account_id = ? AND id = ?",
+      ACCOUNT,
+      "inv_slip",
+    )[0]!;
+    expect(row.status).toBe("rejected");
+    expect(row.decision_json).toContain("unintendedInvocation");
+  });
+
+  it("is EXCLUDED from the learning set — the property the whole reason exists for", () => {
+    // The rule a learning pipeline must not break: filter on this allow-list,
+    // never on "is it a decline". A pipeline written as "declines are
+    // negatives" swallows a mis-click silently, which is the exact failure
+    // this reason was added to prevent, arriving through the back door.
+    expect(LEARNING_REASONS.has("wrongContent")).toBe(true);
+    expect(LEARNING_REASONS.has("wrongAction")).toBe(true);
+    expect(LEARNING_REASONS.has("unsafe")).toBe(true);
+    expect(LEARNING_REASONS.has("unintendedInvocation")).toBe(false);
   });
 });
