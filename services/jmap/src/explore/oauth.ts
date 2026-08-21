@@ -98,6 +98,47 @@ export function exploreConfig(env: Env): { ok: true; config: ExploreConfig } | {
 }
 
 /**
+ * Where to land after signing in — a same-origin PATH, or null.
+ *
+ * ## This is an open-redirect gate, and it fails closed
+ *
+ * Anything that survives here is later used as a `Location`, so the ONLY
+ * accepted shape is a path on this host. Rejected: an absolute URL, a
+ * scheme-relative `//evil.test/x` (which a browser resolves to another
+ * origin), a backslash (some parsers fold `\` to `/`), and control characters
+ * (header splitting). Rebuilt from the parsed pieces rather than passed
+ * through, so nothing unexamined reaches the header.
+ *
+ * A path is NOT a credential, so this does not touch the no-credential-in-a-URL
+ * rule — `exploreUnauthenticated` still refuses `access_token`/`token`, and
+ * that check runs on the way in regardless of what is in `return_to`.
+ */
+export function safeReturnTo(raw: string | null): string | null {
+  if (!raw) return null;
+  if (raw.length > 512) return null;
+  // Control characters and DEL, written as ESCAPES: a literal NUL here
+  // makes the file unsearchable by grep, which infra/sourceIsGreppable
+  // asserts against. These are the header-splitting bytes.
+  // no-control-regex is disabled for this line and only this line, on the
+  // same grounds as sanitize.ts: matching control characters IS the job.
+  // CR/LF in a value that becomes a `Location` header is response
+  // splitting, and refusing them is the entire point of the check.
+  // oxlint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return null;
+  if (!raw.startsWith("/")) return null;
+  if (raw.startsWith("//")) return null;
+  let u: URL;
+  try {
+    u = new URL(raw, "https://placeholder.invalid");
+  } catch {
+    return null;
+  }
+  if (u.host !== "placeholder.invalid") return null;
+  const path = u.pathname + u.search;
+  return path === "/" ? null : path;
+}
+
+/**
  * `GET /oauth/start` — begin an authorization.
  *
  * The PKCE verifier goes to KV under a random `state`, never to a cookie: a
@@ -106,7 +147,7 @@ export function exploreConfig(env: Env): { ok: true; config: ExploreConfig } | {
  * AS already hands `state` back for exactly this purpose. Single-use and
  * ten-minute TTL, so a replayed callback finds nothing.
  */
-export async function exploreOauthStart(env: Env): Promise<Response> {
+export async function exploreOauthStart(env: Env, returnTo?: string | null): Promise<Response> {
   const cfg = exploreConfig(env);
   if (!cfg.ok) return unconfigured(cfg.missing);
 
@@ -116,9 +157,16 @@ export async function exploreOauthStart(env: Env): Promise<Response> {
     new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))),
   );
 
-  await env.ROUTES.put(pkceKey(state), JSON.stringify({ verifier, createdAt: Date.now() }), {
-    expirationTtl: PKCE_TTL_SECONDS,
-  });
+  // The destination rides in KV BESIDE the verifier, not in the round trip
+  // through the AS. It never leaves this origin, the callback cannot be talked
+  // into a different landing by anything in the returned URL, and it expires
+  // with the state it belongs to.
+  const dest = safeReturnTo(returnTo ?? null);
+  await env.ROUTES.put(
+    pkceKey(state),
+    JSON.stringify({ verifier, createdAt: Date.now(), ...(dest ? { returnTo: dest } : {}) }),
+    { expirationTtl: PKCE_TTL_SECONDS },
+  );
 
   const authorize = new URL(`${cfg.config.issuer}/authorize`);
   authorize.searchParams.set("response_type", "code");
@@ -166,7 +214,10 @@ export async function exploreOauthCallback(url: URL, env: Env): Promise<Response
   const state = url.searchParams.get("state");
   if (!code || !state) return problem(400, "invalid_callback", "code and state are required");
 
-  const stored = (await env.ROUTES.get(pkceKey(state), "json")) as { verifier?: string } | null;
+  const stored = (await env.ROUTES.get(pkceKey(state), "json")) as {
+    verifier?: string;
+    returnTo?: string;
+  } | null;
   // Single use. Delete before the exchange, so a replay of the same callback
   // cannot ride the same verifier even if the exchange is slow.
   await env.ROUTES.delete(pkceKey(state));
@@ -239,7 +290,10 @@ export async function exploreOauthCallback(url: URL, env: Env): Promise<Response
   return new Response(null, {
     status: 302,
     headers: {
-      location: `https://${c.host}/`,
+      // Back to where the sign-in interrupted, not to the root. Re-validated
+      // on the way OUT as well as in: the KV record is ours, but a `Location`
+      // is worth checking twice and the cost is one function call.
+      location: `https://${c.host}${safeReturnTo(stored.returnTo ?? null) ?? "/"}`,
       "set-cookie": setCookieHeader(value),
       "cache-control": "no-store",
       "referrer-policy": "no-referrer",

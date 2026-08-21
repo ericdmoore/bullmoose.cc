@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EXPLORE_COOKIE, b64urlBytes, b64urlDecode } from "./cookie";
 import { ERIC, EXPLORE_HOST, harness } from "./harness";
+import { safeReturnTo } from "./oauth";
 
 /**
  * The explorer as an ordinary OAuth client (s21 step 3).
@@ -86,8 +87,9 @@ async function wired(overrides: Partial<Parameters<typeof fakeAs>[0]> = {}) {
 /** Drive /oauth/start and hand back the state the AS would echo. */
 async function start(
   h: Awaited<ReturnType<typeof harness>>,
+  path = "/oauth/start",
 ): Promise<{ res: Response; state: string; verifier: string }> {
-  const res = await h.explore("/oauth/start", { cookie: null });
+  const res = await h.explore(path, { cookie: null });
   const location = new URL(res.headers.get("location") ?? "");
   const state = location.searchParams.get("state") ?? "";
   const stored = JSON.parse((h.w.kv.store.get(`explore:pkce:${state}`)?.value ?? "{}") as string) as {
@@ -309,3 +311,80 @@ function decodeCookie(setCookie: string): { v: number; p: string; s: string[]; e
     e: number;
   };
 }
+
+describe("safeReturnTo — the open-redirect gate on the sign-in round trip", () => {
+  // A deep link that interrupts you for sign-in should send you BACK to it,
+  // not to the root (Eric, 2026-08-21). The destination is therefore
+  // attacker-influenceable, and it ends up in a `Location` header — so the
+  // gate matters more than the feature does.
+
+  it("keeps a same-origin path, with its query", () => {
+    expect(safeReturnTo("/Email?accountId=t_x")).toBe("/Email?accountId=t_x");
+    expect(safeReturnTo("/Mailbox")).toBe("/Mailbox");
+    expect(safeReturnTo("/Email/abc123")).toBe("/Email/abc123");
+  });
+
+  it("refuses every shape that could leave this origin", () => {
+    for (const hostile of [
+      "https://evil.test/x", // absolute
+      "http://evil.test/x",
+      "//evil.test/x", // scheme-relative — a browser resolves this off-origin
+      "///evil.test",
+      "\\evil.test", // some parsers fold a backslash to a slash
+      "/\\evil.test",
+      "javascript:alert(1)", // not a path at all
+      "data:text/html,x",
+      "Email", // relative, would resolve against whatever page it lands on
+      "",
+    ]) {
+      expect(safeReturnTo(hostile), hostile).toBeNull();
+    }
+  });
+
+  it("refuses control characters, which are how a header gets split", () => {
+    expect(safeReturnTo("/x\r\nLocation: https://evil.test")).toBeNull();
+    expect(safeReturnTo("/x\nSet-Cookie: a=b")).toBeNull();
+    expect(safeReturnTo("/x\u0000y")).toBeNull();
+  });
+
+  it("declines the root and an absent value, so the caller falls back to /", () => {
+    // Not an error — just nothing worth carrying through the round trip.
+    expect(safeReturnTo("/")).toBeNull();
+    expect(safeReturnTo(null)).toBeNull();
+  });
+
+  it("refuses an over-long value rather than putting it in a header", () => {
+    expect(safeReturnTo("/" + "a".repeat(600))).toBeNull();
+  });
+});
+
+describe("the sign-in round trip lands where it was interrupted", () => {
+  it("a deep link survives the AS and comes back as the Location", async () => {
+    // The whole point: /Email?accountId=… interrupted by sign-in must not
+    // dump you at the root afterwards.
+    const { h } = await wired();
+    const { state } = await start(h, "/oauth/start?return_to=%2FEmail%3FaccountId%3Dt_x");
+    const res = await h.explore(`/oauth/callback?code=code_live&state=${state}`, { cookie: null });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`https://${EXPLORE_HOST}/Email?accountId=t_x`);
+  });
+
+  it("the destination rides in KV, not through the authorization server", async () => {
+    // It never leaves this origin, so nothing in the AS round trip — or in a
+    // forged callback URL — can redirect the landing.
+    const { h } = await wired();
+    const { res, state } = await start(h, "/oauth/start?return_to=%2FMailbox");
+    expect(new URL(res.headers.get("location") ?? "").search).not.toContain("Mailbox");
+    const rec = JSON.parse((h.w.kv.store.get(`explore:pkce:${state}`)?.value ?? "{}") as string) as {
+      returnTo?: string;
+    };
+    expect(rec.returnTo).toBe("/Mailbox");
+  });
+
+  it("a hostile return_to falls back to the root instead of leaving the origin", async () => {
+    const { h } = await wired();
+    const { state } = await start(h, "/oauth/start?return_to=https%3A%2F%2Fevil.test%2Fx");
+    const res = await h.explore(`/oauth/callback?code=code_live&state=${state}`, { cookie: null });
+    expect(res.headers.get("location")).toBe(`https://${EXPLORE_HOST}/`);
+  });
+});

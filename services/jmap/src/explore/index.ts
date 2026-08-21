@@ -3,7 +3,7 @@ import { principalFromGrant, type Principal } from "@bullmoose/auth-core/princip
 import { buildRegistry, type RequestContext } from "../methods";
 import type { Env } from "../index";
 import { EXPLORE_COOKIE, clearCookieHeader, parseCookies, readExploreCookie } from "./cookie";
-import { exploreOauthCallback, exploreOauthStart } from "./oauth";
+import { exploreOauthCallback, exploreOauthStart, safeReturnTo } from "./oauth";
 import { TYPES, TYPE_NAMES, linksFor, type ExploreLink, type LinkBuilder, type TypeSpec } from "./types";
 
 /**
@@ -91,7 +91,7 @@ export async function exploreUnauthenticated(request: Request, url: URL, env: En
     }
   }
 
-  if (url.pathname === "/oauth/start") return exploreOauthStart(env);
+  if (url.pathname === "/oauth/start") return exploreOauthStart(env, url.searchParams.get("return_to"));
   if (url.pathname === "/oauth/callback") return exploreOauthCallback(url, env);
   if (url.pathname === "/signout") {
     return new Response(null, {
@@ -133,7 +133,17 @@ export async function exploreCookiePrincipal(request: Request, env: Env): Promis
  * a second page it has become an app, and the argument for the whole unit
  * weakens.
  */
-export function signInPage(): Response {
+export function signInPage(returnTo?: string | null): Response {
+  // Carry the interrupted destination through the sign-in, so a deep link
+  // lands where it pointed instead of dumping you at the root and making you
+  // navigate back by hand (Eric, 2026-08-21: "the salt in the wound").
+  //
+  // `safeReturnTo` decides what is allowed — a same-origin path and nothing
+  // else. It runs HERE too, not only at /oauth/start, so a rejected value
+  // never reaches the markup: this is the one place the explorer emits HTML,
+  // and an unvalidated string in an href is how that becomes an injection.
+  const dest = safeReturnTo(returnTo ?? null);
+  const startHref = dest ? `/oauth/start?return_to=${encodeURIComponent(dest)}` : "/oauth/start";
   const body = `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
@@ -141,7 +151,7 @@ export function signInPage(): Response {
 <title>bullmoose explorer</title>
 <h1>bullmoose explorer</h1>
 <p>Read-only JSON over the same JMAP methods every other client uses. Nothing here can write.</p>
-<p><a href="/oauth/start">Sign in with bullmoose</a></p>
+<p><a href="${startHref}">Sign in with bullmoose</a></p>
 <p>A session lasts 15 minutes and carries the <code>read</code> scope only.</p>
 </html>
 `;
