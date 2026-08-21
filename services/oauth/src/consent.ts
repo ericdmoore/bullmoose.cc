@@ -235,6 +235,15 @@ const STYLE = `
   .deny { background: transparent; border-color: #bbb; }
 `;
 
+/** The origin of a redirect URI, or "" when it will not parse. */
+function originOf(redirectUri: string): string {
+  try {
+    return new URL(redirectUri).origin;
+  } catch {
+    return "";
+  }
+}
+
 export function consentPage(input: ConsentInput): Response {
   const { client, authReq, error, firstParty = false } = input;
   const name = escape(client.clientName ?? client.clientId);
@@ -268,6 +277,10 @@ export function consentPage(input: ConsentInput): Response {
   // the thing being connected to; that reads correctly for a stranger and for
   // ourselves. (Eric, first phone test: "the text is obscure".)
   const host = escape(redirectHost(authReq.redirectUri));
+  // The origin the 302 will land on. A redirectUri that cannot be parsed
+  // leaves the directive at 'self': the request is malformed and will be
+  // refused downstream anyway, and a CSP is not the place to be lenient.
+  const formTarget = originOf(authReq.redirectUri);
   const title = firstParty ? "Sign in to bullmoose" : `Connect ${name} to your bullmoose account`;
   const heading = firstParty ? "Sign in to bullmoose" : `${name} wants to connect to your bullmoose account`;
   const where = firstParty
@@ -312,8 +325,22 @@ ${lines || "<li>Nothing — this client requested no permissions.</li>"}
       // being clickjacked. Both are the reason the script is a file and not
       // inline — 'unsafe-inline' on the password page is not a trade worth
       // making for one <script> tag.
+      // ⚠️ `form-action` MUST name the redirect origin, and this is the least
+      // obvious line on the page. Chrome enforces form-action against the
+      // REDIRECT TARGET of a form submission, not just its action: with
+      // `form-action 'self'` the POST to /authorize succeeded, returned its
+      // 302 to app.bullmoose.cc with a valid code — and the browser then
+      // refused to follow it. Sign-in hung on "Checking…" forever. Nothing
+      // failed anywhere a log could see it: the AS recorded a successful
+      // authorization, and the code was simply never delivered.
+      //
+      // Naming the origin is not a widening of trust. `authReq.redirectUri`
+      // has ALREADY been validated against the client's registered redirects
+      // before this page renders, so this says only "the destination the AS
+      // just approved" — which is exactly what the directive should permit.
       "content-security-policy":
-        "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+        `default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; ` +
+        `form-action 'self'${formTarget ? ` ${formTarget}` : ""}; frame-ancestors 'none'; base-uri 'none'`,
       "referrer-policy": "no-referrer",
       "cache-control": "no-store",
     },

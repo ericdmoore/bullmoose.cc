@@ -97,10 +97,13 @@ describe("consent page — what it says and what it refuses", () => {
     expect(html).toContain("claude.ai");
   });
 
-  it("22. refuses to be framed, and refuses to post anywhere but here", () => {
+  it("22. refuses to be framed, and posts only here or to the approved redirect", () => {
     const csp = page(["read"]).headers.get("content-security-policy")!;
     expect(csp).toContain("frame-ancestors 'none'");
-    expect(csp).toContain("form-action 'self'");
+    // NOT bare 'self': Chrome enforces form-action against the redirect TARGET,
+    // so 'self' alone silently kills the 302 that carries the code (see the
+    // "CSP lets the approved redirect actually happen" block below).
+    expect(csp).toContain("form-action 'self' https://claude.ai;");
     expect(csp).toContain("script-src 'self'");
     expect(csp).not.toContain("unsafe-inline'; script");
   });
@@ -335,5 +338,58 @@ describe("the login script is cache-busted by its own content", () => {
     // Not a tautology: it pins that DIFFERENT bytes cannot share a name, which
     // is the whole guarantee a content-addressed URL is bought for.
     expect(fnv("form.submit()")).not.toBe(fnv("form.submit();"));
+  });
+});
+
+describe("the CSP lets the approved redirect actually happen", () => {
+  // THE bug that stopped Eric signing in, found in his Network panel: the POST
+  // to /authorize returned 302 with a valid code, and Chrome refused to follow
+  // it. `form-action` is enforced against the REDIRECT TARGET of a form
+  // submission, not merely its action — verified in a real Chromium, where
+  // `form-action 'self'` blocks the hop and `'self' https://app.bullmoose.cc`
+  // permits it. Nothing logged an error: the AS recorded a successful
+  // authorization and the code was simply never delivered.
+  const csp = (redirectUri: string) =>
+    consentPage({
+      client: { clientId: "c", redirectUris: [] },
+      authReq: { clientId: "c", redirectUri, scope: ["mail"], state: "s" },
+    }).headers.get("content-security-policy") ?? "";
+
+  const directive = (header: string, name: string) =>
+    header
+      .split(";")
+      .map((d) => d.trim())
+      .find((d) => d.startsWith(name)) ?? "";
+
+  it("70. names the origin the code will be delivered to", () => {
+    expect(directive(csp("https://app.bullmoose.cc/login"), "form-action")).toBe(
+      "form-action 'self' https://app.bullmoose.cc",
+    );
+  });
+
+  it("71. names a third party's origin too — it is the AS's own decision", () => {
+    // Already validated against the client's registered redirects before this
+    // page renders, so this permits only what the AS just approved.
+    expect(directive(csp("https://claude.ai/api/mcp/auth_callback"), "form-action")).toBe(
+      "form-action 'self' https://claude.ai",
+    );
+  });
+
+  it("72. a redirect that will not parse widens nothing", () => {
+    expect(directive(csp("not a url"), "form-action")).toBe("form-action 'self'");
+  });
+
+  it("73. the origin is an ORIGIN — a path never leaks into the directive", () => {
+    const d = directive(csp("https://app.bullmoose.cc/login?x=1#frag"), "form-action");
+    expect(d).toBe("form-action 'self' https://app.bullmoose.cc");
+    expect(d).not.toContain("/login");
+  });
+
+  it("74. the rest of the policy is untouched", () => {
+    const header = csp("https://app.bullmoose.cc/login");
+    expect(directive(header, "default-src")).toBe("default-src 'none'");
+    expect(directive(header, "script-src")).toBe("script-src 'self'");
+    expect(directive(header, "frame-ancestors")).toBe("frame-ancestors 'none'");
+    expect(directive(header, "base-uri")).toBe("base-uri 'none'");
   });
 });
