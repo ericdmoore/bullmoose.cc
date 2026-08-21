@@ -746,27 +746,27 @@ export default function ContactsApp({ client: injected }: Props) {
 
   if (fatal) {
     return (
-      <main class="shell shell-error">
+      <div class="shell shell-error">
         <h1>Contacts are not reachable</h1>
         <p class="muted">{fatal}</p>
         <p class="muted">
           <a href="/login">Sign in again</a>, or append <code>?demo=1</code> to browse sample data.
         </p>
-      </main>
+      </div>
     );
   }
 
   if (!client || !session) {
     return (
-      <main class="shell">
+      <div class="shell">
         <p class="muted">Connecting…</p>
-      </main>
+      </div>
     );
   }
 
   if (accounts.length === 0) {
     return (
-      <main class="shell">
+      <div class="shell">
         <h1>No contacts here</h1>
         {/* Not "you have no contacts" — this session reaches no account that
             advertises the contacts capability at all, which is a different
@@ -775,7 +775,7 @@ export default function ContactsApp({ client: injected }: Props) {
           This session reaches no account with contacts. A token scoped to mail only, or a grant that shares a mailbox
           but no address book, both land here — the contacts are not missing, they are out of reach.
         </p>
-      </main>
+      </div>
     );
   }
 
@@ -946,7 +946,7 @@ export default function ContactsApp({ client: injected }: Props) {
           }
         />
 
-        <main class="content">
+        <div class="content">
           <p class="scope-line">
             {spec.text ? (
               <>
@@ -1102,7 +1102,7 @@ export default function ContactsApp({ client: injected }: Props) {
               )}
             </section>
           </div>
-        </main>
+        </div>
       </div>
 
       {toast ? (

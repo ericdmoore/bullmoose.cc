@@ -176,18 +176,18 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
 
   if (fatal) {
     return (
-      <main class="settings">
+      <div class="settings">
         <p class="settings-error" role="alert">
           {fatal}
         </p>
-      </main>
+      </div>
     );
   }
   if (loading) {
     return (
-      <main class="settings">
+      <div class="settings">
         <p class="settings-muted">Loading settings…</p>
-      </main>
+      </div>
     );
   }
 
@@ -196,7 +196,7 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
   const status = vacation ? vacationStatus(vacation) : undefined;
 
   return (
-    <main class="settings">
+    <div class="settings">
       {mode === "demo" ? (
         <p class="settings-banner">Sample data. Changes here are kept in this browser tab and reach no server.</p>
       ) : null}
@@ -442,7 +442,7 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
           The section resolves its own console reads and shares this panel's
           client; behind the agent capability it renders the honest floor. */}
       <SettingsAgentsSection client={client} />
-    </main>
+    </div>
   );
 
   function patchForm(part: Partial<IdentityForm>): void {

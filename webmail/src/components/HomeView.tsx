@@ -276,21 +276,21 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
   // ── shells ────────────────────────────────────────────────────────────────
   if (fatal) {
     return (
-      <main class="home home-error">
+      <div class="home home-error">
         <p role="alert">Could not reach the server: {fatal}</p>
-      </main>
+      </div>
     );
   }
   if (!session) {
     return (
-      <main class="home">
+      <div class="home">
         <p class="muted home-pad">Connecting…</p>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main class="home">
+    <div class="home">
       {isDemo ? (
         <p class="home-banner">Sample data. Decisions here are kept in this browser tab and reach no server.</p>
       ) : null}
@@ -401,7 +401,7 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
           </section>
         ) : null}
       </div>
-    </main>
+    </div>
   );
 }
 

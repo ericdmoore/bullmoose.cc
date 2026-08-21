@@ -1,4 +1,4 @@
-# s34 — The fast lane · *a delegate who can call the easy ones, and the evidence to widen her*
+# s35 — The fast lane · *a delegate who can call the easy ones, and the evidence to widen her*
 
 > **Status: DESIGN — from the 2026-08-20 conversation. Nothing built.**
 > Depends on [[s30-the-edit]] T2 for its measurement layer, and inherits
