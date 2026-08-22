@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { fakeEnv } from "@bullmoose/test-fakes";
 import type { EmailRow } from "@bullmoose/mailstore";
@@ -484,5 +485,24 @@ describe("event items carry their offer fields", () => {
       )[0]?.durationMinutes;
     expect(mk(99999)).toBe(24 * 60);
     expect(mk(1)).toBe(5);
+  });
+});
+
+describe("a decision tombstones the offer", () => {
+  // Eric, on the rung-3 draft: "once approved/disapproved that decision can be
+  // noted and effectively tombstone the proposal from re-surfacing."
+  //
+  // The first version keyed the dupe check on `status = 'pending'`, which
+  // would have re-offered a DECLINED date the moment a quoted reply arrived —
+  // overriding an answer the reader had already given. That is worse than the
+  // duplicate the check exists to prevent.
+  it("80. the dupe query filters on the moment, not on the status", () => {
+    // Asserted against the source because the query is the invariant: a
+    // `status =` clause creeping back in is precisely the regression.
+    const src = readFileSync(new URL("./extract.ts", import.meta.url), "utf8");
+    const q = src.slice(src.indexOf("SELECT 1 AS hit FROM agent_proposals"));
+    const clause = q.slice(0, q.indexOf("LIMIT 1"));
+    expect(clause).toContain("json_extract(payload_json, '$.start')");
+    expect(clause, "any status is a tombstone — pending, approved, declined or expired").not.toContain("status =");
   });
 });

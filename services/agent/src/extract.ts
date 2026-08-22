@@ -459,9 +459,16 @@ async function offerSchedules(
       // Already offered this moment? A quoted thread re-presents the same
       // event, and a second offer for it is how a reader learns to stop
       // reading offers.
+      //
+      // ⚠️ ANY status, not just `pending` — the decision is the tombstone.
+      // Filtering on pending would re-offer a date the reader DECLINED the
+      // moment a quoted reply arrived, which is worse than the duplicate it
+      // was meant to prevent: it overrides an answer they already gave. An
+      // approved one is in the calendar already, and an expired one was
+      // ignored on purpose. None of the three wants asking again.
       const dupe = await env.DB.prepare(
         `SELECT 1 AS hit FROM agent_proposals
-          WHERE account_id = ? AND kind = 'verb-schedule' AND status = 'pending'
+          WHERE account_id = ? AND kind = 'verb-schedule'
             AND json_extract(payload_json, '$.start') = ? LIMIT 1`,
       )
         .bind(job.account_id, start)
