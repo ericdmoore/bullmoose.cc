@@ -34,6 +34,30 @@
 // The nav is driven by `lib/app/sections` exactly as `App.astro` is, so the
 // section ORDER — which is a claim about what this product is, asserted by
 // sections.test.ts — cannot drift between the two shells.
+// WHY `client:load` AND NOT `client:only` — the fix for the flash Eric filmed
+// on 2026-08-22, and the reasoning is worth keeping because the old choice
+// looked deliberate and defensible.
+//
+// `client:only` renders NOTHING server-side. Every realm change is a real
+// navigation (the rail's links are real hrefs), so each one painted content
+// indented `lg:pl-72` beside an EMPTY column, and the rail appeared once the
+// bundle parsed. That gap was never a download — ShellNav is one shared chunk,
+// cached after the first realm. It was us choosing to paint nothing.
+//
+// The original reasoning was that the shell "depends on browser-only state".
+// Almost none of it does: the section list is static, the active section is a
+// prop, the logo is a logo. Exactly ONE element needs the client — the account
+// chip — because the session is a bearer token in localStorage and this page is
+// static output, so the server cannot know who is signed in.
+//
+// What made it safe to reverse: the chip now has THREE states (see ShellNav's
+// `settled`), so it can be neutral while it does not know rather than assert
+// "Not signed in" — which was the real "flash of the wrong thing" the old
+// comment feared, and a live bug once (2026-08-17).
+//
+// ⚠️ Keep long rationale HERE, not in an HTML comment beside the element. An
+// HTML comment in an .astro template is SHIPPED — this one was, on every page,
+// which is a silly thing to download in a change about rendering cost.
 import ShellNav from "../components/ShellNav.tsx";
 import { type SectionId } from "../lib/app/sections";
 import "../styles/tailwind.css";
@@ -111,13 +135,7 @@ const innerClass = frame === "surface" ? "h-full min-h-0" : "px-4 sm:px-6 lg:px-
     -->
   </head>
   <body class="h-full bg-white dark:bg-gray-900">
-    <!--
-      client:only rather than client:load — the shell is authenticated and its
-      contents depend on browser-only state (the stored session), so there is
-      nothing meaningful to render at build time and a server pass would only
-      produce a flash of the wrong thing.
-    -->
-    <ShellNav client:only="preact" section={section} />
+    <ShellNav client:load section={section} />
 
     <!-- The left padding tracks the rail's width, which is a CLIENT
          preference this server-rendered wrapper cannot know. ShellNav syncs
