@@ -23,7 +23,7 @@ name: Release CLI
 
 on:
   push:
-    tags: ['cli-go/v*']
+    tags: ["cli-go/v*"]
   workflow_dispatch:
 
 permissions:
