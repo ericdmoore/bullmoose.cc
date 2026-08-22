@@ -51,3 +51,16 @@
       publishes what the code already knows, and it serves both readers at once:
       machine-checkable input rules for an agent, and enough for a
       form-rendering extension to draw actual inputs for a human.
+- The Node CLI is FEATURE-FROZEN — decided 2026-08-22, Eric: *"no more node CLI
+  work. Only adding via golang."*
+    - Every new CLI capability lands in `cli-go`. That includes the client side
+      of a new JMAP type: the server half stays TypeScript because the workers
+      are TypeScript, but nothing new is taught to `packages/cli`.
+    - **Why it is a rule and not a preference:** the Node CLI is scheduled for
+      deletion (s08 T7), and a feature added to it is a feature that has to be
+      ported before it can be deleted. Every such addition moves the retirement
+      date away from itself.
+    - Bug fixes to `packages/cli` remain fine while it ships — the freeze is on
+      NEW surface, not on keeping the thing correct.
+    - The measurement that says how close retirement is stays `BULLMOOSE_TRACE`
+      and the contract suite, not anyone's sense of doneness (s08 T7).
