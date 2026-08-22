@@ -64,6 +64,18 @@ import MessageView from "./MessageView";
 import ThreadListView, { type SwipeAction } from "./ThreadListView";
 import { Alert, EmptyState, PageNotice, Skeleton, SkeletonRegion, SurfaceFrame } from "./ui";
 import { cx } from "../lib/ui/classes";
+import { nearestStep, readStep, writeStep, type WidthStep } from "../lib/ui/resizable";
+
+/** What the message list may be dragged to. `lg:w-96` is where it has always
+ *  been and stays the default, so nobody's layout moves on upgrade. */
+const LIST_WIDTHS: readonly WidthStep[] = [
+  { px: 320, w: "lg:w-80" },
+  { px: 384, w: "lg:w-96" },
+  { px: 448, w: "lg:w-[28rem]" },
+  { px: 512, w: "lg:w-[32rem]" },
+];
+const LIST_DEFAULT = 1;
+const LIST_WIDTH_KEY = "bm.mail.listWidth";
 
 type View = "list" | "thread" | "compose";
 
@@ -105,6 +117,34 @@ export default function AppShell({ client: injected }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const [detail, setDetail] = useState<ThreadDetail | undefined>(undefined);
+  // ── the list column's width ───────────────────────────────────────────────
+  // Four steps, remembered. The pane begins AFTER the nav rail, whose width the
+  // reader can also change, so the drag measures from this pane's own left
+  // edge — passing a raw clientX to `nearestStep` would snap a step wide by
+  // exactly the rail's width and read as the handle lagging the pointer.
+  const listPaneRef = useRef<HTMLDivElement | null>(null);
+  const [listStep, setListStep] = useState(() => readStep(LIST_WIDTH_KEY, LIST_WIDTHS, LIST_DEFAULT));
+  const [draggingList, setDraggingList] = useState(false);
+
+  useEffect(() => {
+    if (!draggingList) return;
+    const onMove = (e: PointerEvent) => {
+      const left = listPaneRef.current?.getBoundingClientRect().left ?? 0;
+      const step = nearestStep(e.clientX - left, LIST_WIDTHS);
+      setListStep((cur) => {
+        if (cur !== step) writeStep(LIST_WIDTH_KEY, step);
+        return step;
+      });
+    };
+    const onUp = () => setDraggingList(false);
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+  }, [draggingList]);
+
   // The clicked row, held for the length of the fetch so the header can be
   // real while the body is still a shape.
   const [pendingRow, setPendingRow] = useState<ThreadRow | undefined>(undefined);
@@ -947,12 +987,47 @@ export default function AppShell({ client: injected }: Props) {
         <section class="flex min-h-0 min-w-0 grow flex-col self-stretch lg:flex-row" aria-label="Mail">
           {view !== "compose" ? (
             <div
+              ref={listPaneRef}
               class={cx(
-                "flex min-h-0 min-w-0 flex-col self-stretch",
-                "w-full lg:w-96 lg:shrink-0 lg:border-r lg:border-gray-200 dark:lg:border-white/10",
+                "relative flex min-h-0 min-w-0 flex-col self-stretch",
+                "w-full lg:shrink-0 lg:border-r lg:border-gray-200 dark:lg:border-white/10",
+                LIST_WIDTHS[listStep]!.w,
                 view === "thread" && "max-lg:hidden",
               )}
             >
+              {/* Drag to resize, snapped to four widths (lib/ui/resizable).
+                  Steps rather than a continuous drag because the width has to
+                  land on a CLASS: the generated CSP has no 'unsafe-inline' for
+                  styles, so a computed pixel width is not expressible here.
+                  Desktop only — below `lg` the list is the whole pane and
+                  there is nothing to divide.
+
+                  A real <button role="slider"> so the keyboard can move it
+                  too; a divider only a pointer can reach is a preference
+                  half the readers cannot set. */}
+              <button
+                type="button"
+                role="slider"
+                aria-label="Resize the message list"
+                aria-valuenow={listStep}
+                aria-valuemin={0}
+                aria-valuemax={LIST_WIDTHS.length - 1}
+                class="absolute inset-y-0 -right-0.5 z-10 hidden w-1.5 cursor-col-resize bg-transparent hover:bg-brand-500/30 focus:bg-brand-500/40 focus:outline-none lg:block"
+                onPointerDown={(ev) => {
+                  ev.preventDefault();
+                  setDraggingList(true);
+                }}
+                onKeyDown={(ev) => {
+                  const delta = ev.key === "ArrowRight" ? 1 : ev.key === "ArrowLeft" ? -1 : 0;
+                  if (delta === 0) return;
+                  ev.preventDefault();
+                  setListStep((cur) => {
+                    const next = Math.max(0, Math.min(LIST_WIDTHS.length - 1, cur + delta));
+                    if (next !== cur) writeStep(LIST_WIDTH_KEY, next);
+                    return next;
+                  });
+                }}
+              />
               {foldersCollapsed ? (
                 <CollectionBar
                   title="Mail"
