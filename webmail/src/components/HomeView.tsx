@@ -1,5 +1,5 @@
 /** @jsxImportSource preact */
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { resolveClient } from "../lib/app/client";
 import { decide, loadQueues, type Verdict } from "../lib/approvals/api";
 import { expiryLabel, isNearExpiry, rowClocks, waitedLabel } from "../lib/approvals/clocks";
@@ -25,7 +25,7 @@ import type { Occurrence } from "../lib/calendar/types";
 import { horizonDays, lookingAhead, type HorizonItem } from "../lib/home/horizon";
 import { waitingApprovals } from "../lib/home/waiting";
 import { commitments, waitingOn } from "../lib/home/commitments";
-import { loadAnnotations } from "../lib/annotations/api";
+import { closeAnnotation, type CloseStatus, loadAnnotations } from "../lib/annotations/api";
 import type { Annotation } from "../lib/annotations/types";
 import { CALENDARS_CAP, hasCapability } from "../lib/jmap/capabilities";
 import type { JmapClient } from "../lib/jmap/JmapClient";
@@ -202,6 +202,51 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
     };
   }, [client, gate.state, approvalsKey]);
 
+  // ── Closing a glance from here (not only from the margin) ────────────────
+  // The verbs existed on AnnotationMargin, which only MessageView and NotesApp
+  // render — so a commitment could be noticed on home and not discharged
+  // there, and you had to go find the message it was anchored to. Noticing
+  // without being able to act is the friction that makes a list stop being
+  // trusted, so the glance carries the same two verbs.
+  //
+  // Optimistic, and deliberately so: the row leaves immediately, and only
+  // comes back if the write failed. Home is AMBIENT — the same rule the fetch
+  // above follows — so a failure here shows a quiet line on the row and never
+  // an error that takes the page down.
+  const [closing, setClosing] = useState<Record<string, true>>({});
+  const [closeFailed, setCloseFailed] = useState<Record<string, true>>({});
+
+  const closeGlance = useCallback(
+    (a: Annotation, status: CloseStatus) => {
+      if (!client || closing[a.id]) return;
+      setClosing((m) => ({ ...m, [a.id]: true }));
+      setCloseFailed((m) => {
+        const { [a.id]: _drop, ...rest } = m;
+        return rest;
+      });
+      // Remove it now; the queries behind these glances filter on `open`, so
+      // this matches what a refetch would return.
+      setAnnotations((rows) => rows.filter((r) => r.id !== a.id));
+      void closeAnnotation(client, a.accountId, a.id, status)
+        .then((res) => {
+          if (res.ok) return;
+          setAnnotations((rows) => (rows.some((r) => r.id === a.id) ? rows : [...rows, a]));
+          setCloseFailed((m) => ({ ...m, [a.id]: true }));
+        })
+        .catch(() => {
+          setAnnotations((rows) => (rows.some((r) => r.id === a.id) ? rows : [...rows, a]));
+          setCloseFailed((m) => ({ ...m, [a.id]: true }));
+        })
+        .finally(() => {
+          setClosing((m) => {
+            const { [a.id]: _done, ...rest } = m;
+            return rest;
+          });
+        });
+    },
+    [client, closing],
+  );
+
   // ── Looking Ahead — today/tomorrow occurrences (server-expanded) ──────────
   useEffect(() => {
     if (!client || !hasCalendar || !calendarAcct) return;
@@ -372,7 +417,13 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
             {waits.rows.length > 0 ? (
               <ul class="home-annos">
                 {waits.rows.map((a) => (
-                  <AnnotationRow key={a.id} a={a} />
+                  <AnnotationRow
+                    key={a.id}
+                    a={a}
+                    busy={Boolean(closing[a.id])}
+                    failed={Boolean(closeFailed[a.id])}
+                    onClose={(status) => closeGlance(a, status)}
+                  />
                 ))}
               </ul>
             ) : null}
@@ -393,7 +444,13 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
             {promised.rows.length > 0 ? (
               <ul class="home-annos">
                 {promised.rows.map((a) => (
-                  <AnnotationRow key={a.id} a={a} />
+                  <AnnotationRow
+                    key={a.id}
+                    a={a}
+                    busy={Boolean(closing[a.id])}
+                    failed={Boolean(closeFailed[a.id])}
+                    onClose={(status) => closeGlance(a, status)}
+                  />
                 ))}
               </ul>
             ) : null}
@@ -410,7 +467,28 @@ export default function HomeView({ client: injectedClient, now: fixedNow }: Prop
 // here. The panel header carries the category, so the row shows the claim and
 // — for an agent extraction — how sure it was. A human-filed claim (confidence
 // null) shows no badge: it is true because a human said so.
-function AnnotationRow({ a }: { a: Annotation }) {
+/**
+ * A glance row, with the same two verbs the margin carries.
+ *
+ * The wording is AnnotationMargin's, deliberately: "Resolve" means the thing
+ * happened, "Not a real one" means the extraction was wrong. Those are
+ * different facts about the agent, and collapsing them into one "dismiss"
+ * would throw away the only signal that says the reader misread something.
+ *
+ * `onClose` is optional so the row stays usable in a read-only context; when
+ * it is absent the row renders exactly as it did before.
+ */
+export function AnnotationRow({
+  a,
+  onClose,
+  busy,
+  failed,
+}: {
+  a: Annotation;
+  onClose?: (status: CloseStatus) => void;
+  busy?: boolean;
+  failed?: boolean;
+}) {
   const pct = a.confidence != null ? `${Math.round(a.confidence * 100)}%` : null;
   return (
     <li class="home-anno">
@@ -418,6 +496,21 @@ function AnnotationRow({ a }: { a: Annotation }) {
       {pct ? (
         <span class="home-anno-conf" title="the agent's confidence in this reading">
           {pct}
+        </span>
+      ) : null}
+      {onClose ? (
+        <span class="home-anno-verbs">
+          <button type="button" disabled={busy} onClick={() => onClose("resolved")}>
+            Resolve
+          </button>
+          <button type="button" disabled={busy} onClick={() => onClose("dismissed")}>
+            Not a real one
+          </button>
+        </span>
+      ) : null}
+      {failed ? (
+        <span class="home-anno-failed muted" role="alert">
+          Could not save that — still open.
         </span>
       ) : null}
     </li>
