@@ -95,6 +95,8 @@ type mailFake struct {
 	// shareListing is GET /api/shares/{accountId}'s body, raw for the same
 	// reason blobList is.
 	shareListing string
+	// vacation is VacationResponse/get's reply body; empty → a disabled one.
+	vacation string
 
 	// Refusal knobs.
 	refuseSubmission string // "method" | "seterror" | ""
@@ -671,6 +673,14 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 		nf, _ := json.Marshal(notFound)
 		return reply(fmt.Sprintf(`{"accountId":"a_you","state":"1","list":[%s],"notFound":%s}`,
 			strings.Join(list, ","), nf))
+	case "VacationResponse/get":
+		v := f.vacation
+		if v == "" {
+			v = `{"accountId":"a_you","list":[{"id":"singleton","isEnabled":false}]}`
+		}
+		return reply(v)
+	case "VacationResponse/set":
+		return reply(`{"accountId":"a_you","newState":"v2","updated":{"singleton":null}}`)
 	case "Email/import":
 		var imp struct {
 			Emails map[string]struct {
