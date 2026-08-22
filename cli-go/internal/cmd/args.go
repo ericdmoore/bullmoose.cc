@@ -37,6 +37,9 @@ type args struct {
 	File     string
 	Body     string
 	// ---- the Markdown pipeline (`send --expandMD`, s08 T6) ----
+	// Until is `vacation on --until <date>` — parsed to RFC 3339 at use.
+	Until string
+
 	ExpandMD string // "html" is the only accepted value; "" = plain text
 	LinkMax  string // MiB before a file becomes an expiring link (default 4)
 	LinkTTL  string // days an expiring link lives (default 30)
@@ -236,6 +239,8 @@ func parse(argv []string) args {
 				a.LinkMax = value()
 			case "linkTTL":
 				a.LinkTTL = value()
+			case "until":
+				a.Until = value()
 			case "yes":
 				a.Yes = true
 			case "to":

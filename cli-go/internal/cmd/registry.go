@@ -100,6 +100,16 @@ var registry = map[string]spec{
 	// That forced the managed install to be ported too; defaultConfirm is
 	// where the care went, because it is the one prompt whose wrong answer
 	// installs software.
+	// `discover` (s42): the autodiscovery ladder, read-only, no session needed.
+	"discover": {json: true, run: runDiscover,
+		// --db is owned and IGNORED, exactly as Node ignores it: it is a global
+		// flag there, and a command must own it or `--db` delegates.
+		value: []string{"db"}, boolean: []string{"json"}},
+	// `vacation` (s42): the RFC 8621 singleton. --until parses CLIENT-side so a
+	// garbage date refuses before any request.
+	"vacation": {json: true, run: runVacation,
+		value:   []string{"db", "account", "subject", "body", "until", "if-state"},
+		boolean: []string{"json", "dry-run"}},
 	// `share` (s42's first port): list + revoke over the /api/shares REST pair.
 	"share": {json: true, run: runShare,
 		value:   []string{"db", "account"},
