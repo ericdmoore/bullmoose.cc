@@ -92,6 +92,9 @@ type mailFake struct {
 	uploads  []uploadCall
 	shares   []string
 	emailSeq int
+	// shareListing is GET /api/shares/{accountId}'s body, raw for the same
+	// reason blobList is.
+	shareListing string
 
 	// Refusal knobs.
 	refuseSubmission string // "method" | "seterror" | ""
@@ -492,6 +495,23 @@ func (f *mailFake) handle(w http.ResponseWriter, r *http.Request) {
 			`"apiUrl":%q,"downloadUrl":%q}`,
 			f.base+"/jmap-endpoint",
 			f.base+"/dl/{accountId}/{blobId}/{name}/{type}")
+		return
+	case strings.HasPrefix(r.URL.Path, "/api/shares/"):
+		f.mu.Lock()
+		f.rest = append(f.rest, restCall{Method: r.Method, Path: r.URL.EscapedPath()})
+		body := f.shareListing
+		f.mu.Unlock()
+		w.Header().Set("content-type", "application/json")
+		if r.Method == http.MethodPost {
+			segs := strings.Split(r.URL.Path, "/")
+			id := segs[len(segs)-2] // .../{shareId}/revoke
+			fmt.Fprintf(w, `{"shareId":%q,"alreadyRevoked":false,"note":"revoked; edges may serve it for up to a minute"}`, id)
+			return
+		}
+		if body == "" {
+			body = `{"accountId":"a_you","shares":[]}`
+		}
+		_, _ = w.Write([]byte(body))
 		return
 	case strings.HasPrefix(r.URL.Path, "/api/upload/"):
 		body, _ := io.ReadAll(r.Body)
