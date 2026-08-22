@@ -100,6 +100,14 @@ var registry = map[string]spec{
 	// That forced the managed install to be ported too; defaultConfirm is
 	// where the care went, because it is the one prompt whose wrong answer
 	// installs software.
+	// `admin` (s42): the operator plane. Irreversible verbs demand --yes;
+	// --dry-run is exempt (a preview that demands confirmation is one nobody
+	// uses); the kill switch deliberately needs neither.
+	"admin": {json: true, run: runAdmin,
+		value: []string{"db", "url", "token", "tenant", "name", "password", "scopes", "principal",
+			"sla", "allow", "reply-mode", "config", "book", "expires", "account",
+			"provider", "model", "budget", "explore", "key-env"},
+		boolean: []string{"json", "ids", "dry-run", "yes", "include-deleted"}},
 	// `creds` (s42, ported EXACTLY — the guards are the product): the vault.
 	"creds": {json: true, run: runCreds,
 		value: []string{"db", "url", "kind", "secret", "secret-env", "meta", "allow", "header",

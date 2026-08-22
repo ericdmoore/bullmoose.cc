@@ -1,10 +1,10 @@
 bullmoose-help-artifact 1
-spec packages/cli/src/help.ts sha256=48adfec8f18e51b685ffcc88e462b3e79b36e33ef8c32e65bd1bfe323f5fb887
-body sha256=8b767c8a5bc77d9fd8b71f0b470cd7aa271efb0c5a47c38cf3dabfc173413c90
+spec packages/cli/src/help.ts sha256=7146586e07ed53c8ae8eb9f486415d2234a155ec250971751de649ef62356ee0
+body sha256=c4e8b9a00dc5035e0c4f7874e444033db801629baa7b79a8bb214acca4939c0b
 placeholder __BM_TOPIC__
 commands help login discover repoint init token accounts sync send read watch vacation agent models local contacts calendar creds log search show mailboxes mailbox flag seen move label archive junk trash rm delete blobs share identity admin
 --
-entry json 0 78811 0
+entry json 0 79016 0
 {
   "name": "bullmoose",
   "tagline": "the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP",
@@ -1580,6 +1580,10 @@ entry json 0 78811 0
           "desc": "confirm an irreversible verb (tenant/domain/account delete, agent unbind); nothing else needs it"
         },
         {
+          "flag": "--password <pw>",
+          "desc": "on `admin password`, the new password. Prefer $BULLMOOSE_PASSWORD or the hidden prompt — a flag value lands in shell history"
+        },
+        {
           "flag": "--account <email>",
           "desc": "on `agent disable|enable|unbind`, the binding's account — only needed if one binding id exists on more than one account"
         },
@@ -1667,7 +1671,7 @@ entry json 0 78811 0
 }
 
 
-entry man 0 61016 0
+entry man 0 61168 0
 .TH BULLMOOSE 1 "" "bullmoose" "User Commands"
 .SH NAME
 bullmoose \- the CLI for the bullmoose personal\-data platform — mail, contacts, calendar, email\-native agents, and operator admin, over JMAP
@@ -3047,6 +3051,9 @@ seal a tenant's OWN model\-provider key so their provider\-side guardrails apply
 .B \-\-yes
 confirm an irreversible verb (tenant/domain/account delete, agent unbind); nothing else needs it
 .TP
+.B \-\-password <pw>
+on `admin password`, the new password. Prefer $BULLMOOSE_PASSWORD or the hidden prompt — a flag value lands in shell history
+.TP
 .B \-\-account <email>
 on `agent disable|enable|unbind`, the binding's account — only needed if one binding id exists on more than one account
 .TP
@@ -3186,7 +3193,7 @@ Local SQLite message log (override with \-\-db or $BULLMOOSE_DB).
 Project docs: https://github.com/ericdmoore/bullmoose.cc
 
 
-entry markdown 0 62909 0
+entry markdown 0 63060 0
 # bullmoose CLI
 
 > the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP
@@ -4323,6 +4330,7 @@ Lifecycle verbs come in two flavours. REVERSIBLE ones — `agent disable|enable`
 | flag | description |
 |---|---|
 | `--yes` | confirm an irreversible verb (tenant/domain/account delete, agent unbind); nothing else needs it |
+| `--password <pw>` | on `admin password`, the new password. Prefer $BULLMOOSE_PASSWORD or the hidden prompt — a flag value lands in shell history |
 | `--account <email>` | on `agent disable\|enable\|unbind`, the binding's account — only needed if one binding id exists on more than one account |
 | `--include-deleted` | on `account list`, also show tombstoned accounts (the forensic view; they are hidden by default) |
 | `--provider <host>` | on `extractor on` / `byok seal`, the HOST a model or key lives at (default openrouter) |
@@ -5650,7 +5658,7 @@ EXAMPLES
 SEE ALSO: bullmoose help send, bullmoose help vacation, bullmoose help accounts
 
 
-entry command:admin 0 6490 0
+entry command:admin 0 6646 0
 bullmoose admin — operator surface — wraps the provision worker (separate credentials)
 
 SYNOPSIS
@@ -5705,6 +5713,7 @@ SUBCOMMANDS
 
 FLAGS
   --yes                      confirm an irreversible verb (tenant/domain/account delete, agent unbind); nothing else needs it
+  --password <pw>            on `admin password`, the new password. Prefer $BULLMOOSE_PASSWORD or the hidden prompt — a flag value lands in shell history
   --account <email>          on `agent disable|enable|unbind`, the binding's account — only needed if one binding id exists on more than one account
   --include-deleted          on `account list`, also show tombstoned accounts (the forensic view; they are hidden by default)
   --provider <host>          on `extractor on` / `byok seal`, the HOST a model or key lives at (default openrouter)

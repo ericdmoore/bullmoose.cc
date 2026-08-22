@@ -34,11 +34,14 @@ var Realm = []string{"contacts", "calendar", "vault", "files"}
 // SelfService is what `bullmoose login` and `bullmoose token create` may ask for
 // — no `admin` (scopes.ts:26). `agent` is the agent-runtime MARKER: it grants
 // nothing and only narrows.
-//
-// TOKEN_SCOPES (SelfService + admin) is deliberately NOT mirrored here: the only
-// command that uses it is `admin token create`, which this wave does not port,
-// and an unused constant is one nothing notices drifting.
 var SelfService = concat(Mail, Realm, []string{"mail", "agent"})
+
+// Token is TOKEN_SCOPES — SelfService plus `admin`, the operator vocabulary.
+// An earlier note here said this was "deliberately NOT mirrored" because
+// `admin token create` was unported; that premise expired when s42 ported it,
+// which is exactly why the note said an unused constant drifts — it was never
+// added until its user arrived.
+var Token = concat(SelfService, []string{"admin"})
 
 // Suggestions are printed whenever `--scopes` is missing or wrong (scopes.ts:37).
 // `token create` exists to make a NARROW credential for one device; a user who

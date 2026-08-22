@@ -48,6 +48,20 @@ type args struct {
 	// the token flag is --scopes, PLURAL, so there is no collision; the first
 	// draft renamed this to --cred-scope against an imagined one, and the
 	// parser-grammar drift test caught the invented flag immediately).
+	// ---- admin (s42 — the operator plane) ----
+	Tenant         string
+	Principal      string
+	SLA            string
+	ReplyMode      string
+	Expires        string
+	IncludeDeleted bool
+	Provider       string
+	Model          string
+	Budget         string
+	// Explore is repeatable — each use adds one frontier arm.
+	Explore []string
+	Config  string
+
 	Kind         string
 	Secret       string
 	SecretEnv    string
@@ -274,6 +288,28 @@ func parse(argv []string) args {
 				a.Until = value()
 			case "reply-to":
 				a.ReplyTo = value()
+			case "tenant":
+				a.Tenant = value()
+			case "principal":
+				a.Principal = value()
+			case "sla":
+				a.SLA = value()
+			case "reply-mode":
+				a.ReplyMode = value()
+			case "expires":
+				a.Expires = value()
+			case "include-deleted":
+				a.IncludeDeleted = true
+			case "provider":
+				a.Provider = value()
+			case "model":
+				a.Model = value()
+			case "budget":
+				a.Budget = value()
+			case "explore":
+				a.Explore = append(a.Explore, value())
+			case "config":
+				a.Config = value()
 			case "kind":
 				a.Kind = value()
 			case "secret":
