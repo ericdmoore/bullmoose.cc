@@ -62,6 +62,50 @@ export function threadFromCache(
   };
 }
 
+/**
+ * Fetch specific messages by id — ONE request for all of them.
+ *
+ * The prefetch path (s35 phase 4). Separate from `loadThread` because it skips
+ * `Thread/get` entirely: the caller already knows the ids, from the row it is
+ * speculating about, so there is nothing to look up first.
+ *
+ * `maxBodyBytes` is the whole economics of the cheap net. The server honours
+ * it and reports `isTruncated` (services/jmap email.ts), so speculating on a
+ * 2MB newsletter costs kilobytes. A truncated body is safe to cache because
+ * `mergeMutable` will never let it overwrite a full one.
+ *
+ * Returns [] rather than throwing on a refusal: every caller here is guessing,
+ * and a guess that fails must be silent.
+ */
+export async function loadEmailsById(
+  client: JmapClient,
+  accountId: string,
+  ids: readonly string[],
+  maxBodyBytes: number = MAX_BODY_BYTES,
+): Promise<Email[]> {
+  if (ids.length === 0) return [];
+  try {
+    const [res] = await client.request([
+      [
+        "Email/get",
+        {
+          accountId,
+          ids: [...ids],
+          properties: [...DETAIL_PROPERTIES],
+          fetchTextBodyValues: true,
+          fetchHTMLBodyValues: true,
+          maxBodyValueBytes: maxBodyBytes,
+        },
+        "p",
+      ],
+    ]);
+    if (!res || res[0] === "error") return [];
+    return ((res[1] as { list?: Email[] }).list ?? []) as Email[];
+  } catch {
+    return [];
+  }
+}
+
 /** Open a thread in one batched request. */
 export async function loadThread(
   client: JmapClient,

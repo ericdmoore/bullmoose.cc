@@ -23,9 +23,16 @@ import {
   type SearchSpec,
 } from "../lib/mail/search";
 import { cachedIds, dropEmails, readEmails, writeEmails } from "../lib/app/emailStore";
+import { mayPrefetch, PREFETCH_BODY_BYTES, readNetworkHints, selectPrefetch } from "../lib/mail/prefetch";
 import { ThreadListStore, type ThreadRow } from "../lib/mail/threadList";
 import { syncCachedFlags } from "../lib/mail/changesSync";
-import { defaultExpanded, loadThread, threadFromCache, type ThreadDetail } from "../lib/mail/threadView";
+import {
+  defaultExpanded,
+  loadEmailsById,
+  loadThread,
+  threadFromCache,
+  type ThreadDetail,
+} from "../lib/mail/threadView";
 import {
   applyTriage,
   archivePatch,
@@ -443,6 +450,62 @@ export default function AppShell({ client: injected }: Props) {
   // (the deep link, and cmd-click / copy-link). Primary clicks and j/k + Enter
   // both fetch in-page so mailbox selection (Archive, …) survives. No history
   // call — tokenInUrl.test.ts.
+  // ── prefetch on intent (s35 phase 4) ──────────────────────────────────────
+  //
+  // Two callbacks, deliberately different in cost. Both write straight to the
+  // cache, so a later open is a cache hit and never a second request.
+  //
+  // Neither can mark anything read: `Email/get` does not mutate, and opening
+  // marks read through a separate `Email/set` below. That is what makes
+  // guessing safe at all.
+  const prefetchGuard = useRef<AbortController | undefined>(undefined);
+
+  /** The cheap net — the rows the reader stopped on, bodies TRUNCATED. */
+  const prefetchVisible = useCallback(
+    (rows: readonly ThreadRow[]) => {
+      if (!client || !mayPrefetch(readNetworkHints())) return;
+      void (async () => {
+        try {
+          const ids = rows.flatMap((r) => r.emailIds ?? []);
+          const have = await readEmails(ids);
+          const wanted = selectPrefetch(ids, new Set(have.keys()));
+          if (wanted.length === 0) return; // a re-scrolled list costs nothing
+          const emails = await loadEmailsById(client, accountId, wanted, PREFETCH_BODY_BYTES);
+          await writeEmails(emails);
+        } catch {
+          // A guess that fails is not an error the reader should ever learn
+          // about — they did not ask for it.
+        }
+      })();
+    },
+    [client, accountId],
+  );
+
+  /** The late signal — one thread, in FULL, on pointerdown. */
+  const prefetchThread = useCallback(
+    (row: ThreadRow) => {
+      if (!client || !row.emailIds?.length) return;
+      // Only one speculative full fetch in flight: a reader dragging down a
+      // list touches many rows, and every one of them is a guess we are
+      // already about to replace.
+      prefetchGuard.current?.abort();
+      const guard = new AbortController();
+      prefetchGuard.current = guard;
+      void (async () => {
+        try {
+          const have = await readEmails(row.emailIds);
+          const wanted = row.emailIds.filter((id) => !have.has(id));
+          if (wanted.length === 0 || guard.signal.aborted) return;
+          const emails = await loadEmailsById(client, accountId, wanted);
+          if (!guard.signal.aborted) await writeEmails(emails);
+        } catch {
+          /* speculative */
+        }
+      })();
+    },
+    [client, accountId],
+  );
+
   const openThread = useCallback(
     // `row` is the row that was clicked. The list ALREADY holds this thread's
     // subject and message count (LIST_PROPERTIES), so there is no reason to
@@ -937,6 +1000,8 @@ export default function AppShell({ client: injected }: Props) {
                 swipeActions={swipeActions}
                 onSwipeAction={(row, action) => void runSwipe(row, action)}
                 onOpen={(row) => void openThread(row.threadId, row)}
+                onPrefetch={prefetchVisible}
+                onPrefetchIntent={prefetchThread}
                 onCursor={setCursor}
                 onToggleSelect={(row) =>
                   setSelected((prev) => {
