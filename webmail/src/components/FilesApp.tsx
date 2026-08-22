@@ -36,6 +36,8 @@ import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
 import CollectionColumn from "./CollectionColumn";
 import type { CollectionGroup } from "../lib/shell/collections";
+import { hrefWithParams, urlParam } from "../lib/shell/publish";
+import { isUnmodifiedPrimaryClick, syncDetailUrl } from "../lib/ui/navigation";
 import {
   Alert,
   Badge,
@@ -114,12 +116,27 @@ export default function FilesApp({ client: injected, search }: Props) {
   const [accounts, setAccounts] = useState<FilesAccount[]>([]);
   const [accountId, setAccountId] = useState<string>("");
 
-  const [dirId, setDirId] = useState<string | null>(null);
+  /** The query the deep links are read from and built onto — the injected one
+   *  in tests and the demo, the browser's otherwise. */
+  const queryString = search ?? globalThis.location?.search ?? "";
+
+  // `/files?c=<folder>&f=<node>` — the FOLDER and the row inside it, because a
+  // file id alone is not enough: a fresh load starts at the root, and a link
+  // to something three folders down would resolve to a listing that does not
+  // contain it. `?c=` is the collection param the other realms use, and here
+  // the collection column IS the folder tree.
+  const [dirId, setDirId] = useState<string | null>(() => {
+    const c = urlParam("c", queryString);
+    return c === undefined || c === "root" ? null : c;
+  });
   const [page, setPage] = useState<DirectoryPage | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [limit, setLimit] = useState(CHILD_PAGE_SIZE);
 
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  // Self-repaired by the directory load below: a `?f=` naming something that
+  // is not in this listing (moved, deleted, another account's) clears rather
+  // than pinning the detail pane to a file nobody can see.
+  const [selectedId, setSelectedId] = useState<string | undefined>(() => urlParam("f", queryString));
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
 
@@ -247,6 +264,31 @@ export default function FilesApp({ client: injected, search }: Props) {
   const selected = children.find((n) => n.id === selectedId);
   const readRefusal = page?.refusal;
   const canWrite = !readRefusal && !writeRefused;
+
+  // ── the two links this screen mints ─────────────────────────────────────
+  // Both are built from the LIVE `dirId` rather than from whatever the address
+  // bar happens to say: browsing into a folder changes the state first, and a
+  // row href assembled from a stale `?c=` would point at a file in the folder
+  // you just left. `hrefWithParams` drops a key whose value is `undefined`, so
+  // the root folder mints no `?c=` at all.
+  const fileHref = (nodeId: string): string =>
+    hrefWithParams("/files", { c: dirId ?? undefined, f: nodeId }, queryString);
+  const dirHref = (id: string | null): string =>
+    hrefWithParams("/files", { c: id ?? undefined, f: undefined }, queryString);
+
+  /**
+   * Browse into a folder (or back to the root) — the one place that happens.
+   *
+   * Four call sites used to inline the same three setters; they now also keep
+   * the address bar honest, which matters here more than elsewhere: the URL
+   * carries the folder, so a stale `?c=` would be a link to the wrong listing.
+   */
+  const openDirectory = (id: string | null): void => {
+    setDirId(id);
+    setSelectedId(undefined);
+    setLimit(CHILD_PAGE_SIZE);
+    syncDetailUrl(dirHref(id));
+  };
 
   // ── reporting a write ───────────────────────────────────────────────────
   const report = useCallback((result: FileWriteResult, subject: FileNode | null, ok: string): boolean => {
@@ -655,11 +697,7 @@ export default function FilesApp({ client: injected, search }: Props) {
           storageKey="bm.cc.files"
           groups={fileGroups}
           selectedId={dirId ?? "root"}
-          onSelect={(id) => {
-            setDirId(id === "root" ? null : id);
-            setSelectedId(undefined);
-            setLimit(CHILD_PAGE_SIZE);
-          }}
+          onSelect={(id) => openDirectory(id === "root" ? null : id)}
           actions={
             accounts.length > 1 ? (
               <Field label="Account" class="px-2 pb-2">
@@ -667,9 +705,8 @@ export default function FilesApp({ client: injected, search }: Props) {
                   value={accountId}
                   onChange={(ev) => {
                     setAccountId((ev.currentTarget as HTMLSelectElement).value);
-                    setDirId(null);
-                    setSelectedId(undefined);
                     setDirectories(undefined);
+                    openDirectory(null);
                   }}
                 >
                   {accounts.map((a) => (
@@ -694,14 +731,7 @@ export default function FilesApp({ client: injected, search }: Props) {
                 items={crumbs.map((crumb, i, all) => ({
                   label: crumb.name,
                   current: i === all.length - 1,
-                  onSelect:
-                    i === all.length - 1
-                      ? undefined
-                      : () => {
-                          setDirId(crumb.id);
-                          setSelectedId(undefined);
-                          setLimit(CHILD_PAGE_SIZE);
-                        },
+                  onSelect: i === all.length - 1 ? undefined : () => openDirectory(crumb.id),
                 }))}
               />
               <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -747,22 +777,35 @@ export default function FilesApp({ client: injected, search }: Props) {
                     key={node.id}
                     class="relative flex items-center gap-x-2 py-3 pr-2 pl-2 hover:bg-gray-50 dark:hover:bg-white/[0.03]"
                   >
-                    <button
-                      type="button"
+                    {/* A REAL link to `/files?c=<folder>&f=<node>`, and a
+                        plain click still selects in place. A file with no URL
+                        cannot be sent to anyone, opened in its own tab beside
+                        the folder, or linked to from a message — which for a
+                        drive is most of the point of having one. Every
+                        modified click falls through to the browser untouched
+                        (lib/ui/navigation.ts).
+
+                        `onDblClick` survives the change: a double click still
+                        fires a click first, which selects, and the second
+                        opens the folder. */}
+                    <a
+                      href={fileHref(node.id)}
+                      aria-current={node.id === selectedId ? "true" : undefined}
                       class={
                         "flex min-w-0 flex-1 items-center gap-x-3 text-left " +
                         (node.id === selectedId ? "font-semibold" : "")
                       }
-                      onClick={() => {
+                      onClick={(ev) => {
+                        if (!isUnmodifiedPrimaryClick(ev)) return;
+                        ev.preventDefault();
                         setSelectedId(node.id);
                         setRenaming(false);
+                        // Keep the address bar on the file being read, so the
+                        // link you would copy is the one you are looking at.
+                        syncDetailUrl(fileHref(node.id));
                       }}
                       onDblClick={() => {
-                        if (node.nodeType === "directory") {
-                          setDirId(node.id);
-                          setSelectedId(undefined);
-                          setLimit(CHILD_PAGE_SIZE);
-                        }
+                        if (node.nodeType === "directory") openDirectory(node.id);
                       }}
                     >
                       <FolderIcon
@@ -781,16 +824,9 @@ export default function FilesApp({ client: injected, search }: Props) {
                         </span>
                       </span>
                       {node.role === ATTACHMENTS_ROLE ? <Badge>from mail</Badge> : null}
-                    </button>
+                    </a>
                     {node.nodeType === "directory" ? (
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setDirId(node.id);
-                          setSelectedId(undefined);
-                          setLimit(CHILD_PAGE_SIZE);
-                        }}
-                      >
+                      <Button size="sm" onClick={() => openDirectory(node.id)}>
                         Open
                       </Button>
                     ) : null}

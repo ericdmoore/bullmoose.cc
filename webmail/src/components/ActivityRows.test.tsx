@@ -67,10 +67,17 @@ function fired(overrides: Record<string, unknown> = {}): WatchItem {
 }
 
 describe("FeedRow", () => {
-  it("is a button carrying summary, status, actor and when", () => {
-    const html = render(<FeedRow item={decided()} now={NOW} active={false} label="" onSelect={() => {}} />);
-    expect(html).toContain("<button");
-    expect(html).toContain('type="button"');
+  const HREF = "/activity?a=p1";
+
+  it("is a LINK carrying summary, status, actor and when", () => {
+    // A link, not a button: the row was `onSelect`-only, which left every
+    // decided record with no URL to cmd-click, copy or cite. The in-page
+    // selection is unchanged — `StackedRow` takes both, and the plain click
+    // still stays here (lib/ui/navigation.ts).
+    const html = render(<FeedRow item={decided()} now={NOW} active={false} label="" href={HREF} onSelect={() => {}} />);
+    expect(html).toContain("<a");
+    expect(html).toContain(`href="${HREF}"`);
+    expect(html).not.toContain("<button");
     expect(html).toContain("Reply to grace@example.test");
     expect(html).toContain("approved");
     expect(html).toContain("Emily");
@@ -79,12 +86,14 @@ describe("FeedRow", () => {
   });
 
   it("marks the active row for assistive tech, not just by color", () => {
-    const html = render(<FeedRow item={decided()} now={NOW} active={true} label="" onSelect={() => {}} />);
+    const html = render(<FeedRow item={decided()} now={NOW} active={true} label="" href={HREF} onSelect={() => {}} />);
     expect(html).toContain('aria-current="true"');
   });
 
   it("labels the account only on a merged feed", () => {
-    const merged = render(<FeedRow item={decided()} now={NOW} active={false} label="emily@…" onSelect={() => {}} />);
+    const merged = render(
+      <FeedRow item={decided()} now={NOW} active={false} label="emily@…" href={HREF} onSelect={() => {}} />,
+    );
     expect(merged).toContain("emily@…");
   });
 });

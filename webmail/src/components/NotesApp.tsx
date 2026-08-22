@@ -18,9 +18,11 @@ import {
   orderNotes,
 } from "../lib/notes/notes";
 import type { Note } from "../lib/notes/types";
-import { urlParam } from "../lib/shell/publish";
+import { hrefWithParam, urlParam } from "../lib/shell/publish";
+import { listRowClasses } from "../lib/ui/classes";
+import { isUnmodifiedPrimaryClick, syncDetailUrl } from "../lib/ui/navigation";
 import CollectionColumn from "./CollectionColumn";
-import { ListContainer, ListRow } from "./ui";
+import { ListContainer } from "./ui";
 import Button from "./ui/Button";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
@@ -307,15 +309,45 @@ export default function NotesApp({ client: injectedClient }: Props) {
         {/* COLUMN 3 — the notes, most recently edited first. */}
         <nav aria-label="Notes" class="notes-pane">
           {query ? <p class="muted notes-fine">{SEARCH_SCOPE_NOTE}</p> : null}
+          {/* The rows are REAL links to `/notes?n=<id>` — the param the
+              initializer above already read, which until now nothing on the
+              screen could produce. A note is a document, and a document with
+              no address cannot be cmd-clicked into its own tab or quoted in a
+              message; the plain click still stays in the page.
+
+              The anchor is hand-rolled rather than `<ListRow href … onSelect
+              …>` because `ListRow` still treats the two as ALTERNATIVES —
+              href renders a link with no handler, onSelect a button with no
+              URL. `StackedRow` has already been taught to take both; teaching
+              `ListRow` the same is the tidy-up this realm is waiting on, and
+              it is a shared-primitive change, not a Notes one. Classes come
+              from `listRowClasses` either way, so the row is the same row. */}
           <ListContainer>
-            {visible.map((n) => (
-              <ListRow key={n.id} active={!composing && n.id === selected?.id} onSelect={() => selectNote(n.id)}>
-                <span class="flex min-w-0 grow flex-col text-left">
-                  <span class="truncate">{noteTitle(n)}</span>
-                  <span class="truncate text-xs font-normal text-gray-400 dark:text-gray-500">{noteSnippet(n)}</span>
-                </span>
-              </ListRow>
-            ))}
+            {visible.map((n) => {
+              const active = !composing && n.id === selected?.id;
+              return (
+                <li key={n.id}>
+                  <a
+                    href={noteHref(n.id)}
+                    class={listRowClasses({ active })}
+                    aria-current={active ? "true" : undefined}
+                    onClick={(ev) => {
+                      // Modified clicks belong to the browser — see navigation.ts.
+                      if (!isUnmodifiedPrimaryClick(ev)) return;
+                      ev.preventDefault();
+                      selectNote(n.id);
+                    }}
+                  >
+                    <span class="flex min-w-0 grow flex-col text-left">
+                      <span class="truncate">{noteTitle(n)}</span>
+                      <span class="truncate text-xs font-normal text-gray-400 dark:text-gray-500">
+                        {noteSnippet(n)}
+                      </span>
+                    </span>
+                  </a>
+                </li>
+              );
+            })}
           </ListContainer>
           {!loading && visible.length === 0 ? (
             <p class="muted notes-pad">
@@ -403,6 +435,15 @@ export default function NotesApp({ client: injectedClient }: Props) {
   function selectNote(id: string): void {
     setComposing(null);
     setSelectedId(id);
+    // Keep the address bar on the note being read, so the link you would copy
+    // is the one you are looking at. `replaceState`, never push — opening a
+    // note is not a new page (lib/ui/navigation.ts).
+    syncDetailUrl(noteHref(id));
+  }
+
+  /** The row's detail URL — `/notes?n=<id>`, `?q=`/`?demo=` preserved. */
+  function noteHref(id: string): string {
+    return hrefWithParam("/notes", "n", id);
   }
 
   function setField(key: keyof Draft, value: string): void {
