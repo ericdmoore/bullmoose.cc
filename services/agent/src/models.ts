@@ -13,6 +13,8 @@
  */
 
 export interface Env {
+  /** Where deep links in mailed digests point. Optional; the hosted default. */
+  WEBMAIL_ORIGIN?: string;
   DB: D1Database;
   BLOBS: R2Bucket;
   ROUTES: KVNamespace; // reused for the models.dev pricing cache

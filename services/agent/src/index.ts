@@ -20,6 +20,7 @@ import {
 } from "@bullmoose/scheduling";
 import { proposeBudgetOverruns } from "./budgetOverrun.js";
 import { handleFrontierDigestForce, sweepFrontierDigest } from "./frontierDigest.js";
+import { sweepDraftsDigest } from "./draftsDigest.js";
 import { runJobNode } from "./jobNode.js";
 import { proposeMidBandHolds } from "./midBandProposal.js";
 import { classifyScreened } from "./bouncerClassify.js";
@@ -243,6 +244,9 @@ export default {
     // account's own inbox. Last, and idempotent per (account, period) — the
     // marker row makes every later tick of the month a no-op (frontierDigest.ts).
     await sweepFrontierDigest(env);
+    // Daily, beside the monthly: CJ's drafts digest (board #43). Same marker
+    // pattern, so a re-run or racing tick is a no-op.
+    await sweepDraftsDigest(env);
     await surplusBackfill(env); // s26 T3 v2 — surplus burns the backlog, last and fail-open (surplusBackfill.ts)
   },
 } satisfies ExportedHandler<Env>;
