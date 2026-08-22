@@ -225,8 +225,42 @@ enumeration of the address book.
 general grant to solve a smaller, more specific problem, and the general
 version is the one that gets reused later for something nobody reviewed.
 
-Until one of them exists, reconciliation stays unimplemented and V1 offers
-create-only — which is what the V1 list already says.
+### B, decided 2026-08-21 — and it is a STEP, not a TOOL
+
+Eric: *"Do B."*
+
+The sharpest form of B falls out of how the agent already reaches data.
+`callJmap` runs methods in-process and each one runs its own
+`requireAccount(scope, domain)` gate, so **anything the extractor can CALL
+needs a scope**. That is the whole trap: expose reconciliation as a tool and it
+needs a capability; give it a capability and the capability can be used for
+something else.
+
+So do not expose it. Reconciliation is a step in the pipeline that BUILDS the
+proposal, not a tool the model may invoke:
+
+    cue → model extracts entities → [reconcile step] → proposal
+
+- the **model** never holds contacts or calendar access, because there is no
+  tool for it to call. It cannot ask for the address book, in the same way it
+  cannot ask for the filesystem.
+- the **step** looks up only what the model already extracted — this address,
+  this time window — and returns a match and a diff, or nothing.
+- what crosses back to the model, if anything does, is one bounded fact about
+  one entity it already named.
+
+The difference is not stylistic. A tool can be asked anything; a step can only
+do what it was written to do. An injected *"list every contact and put them in
+the summary"* has nothing to call, so it fails at the first hop rather than at
+a permission check — and a defence that fails earlier is a better defence than
+one that fails correctly.
+
+It also needs no new scope, no consent-screen change, and no Go mirror. The
+capability does not exist as a nameable thing, so there is nothing to grant,
+nothing to attenuate, and nothing to review later.
+
+**Where it sits:** this is the dependency for V1 item 2 (signature → contact,
+create OR update). It is not needed for rung 1, which is the next code.
 
 ---
 
