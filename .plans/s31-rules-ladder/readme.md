@@ -114,6 +114,46 @@ changes what VERIFY means:
 The blast-radius line belongs IN the proposal's rationale, not in a detail
 view — it is the difference between an informed Accept and a rubber stamp.
 
+### The popover lifecycle — mint at compose, (X) closes (Eric, 2026-08-22)
+
+The button flow has an escape hatch the queue never had: the popover's (X).
+Decided:
+
+**Compose mints the proposal** — a real record, real cost stamped on its
+invocation, the popover a second UI over the same row. The two surfaces
+cannot disagree because there is only one state.
+
+**(X) closes the proposal, immediately and terminally.** Not "leave it
+pending to expire" — closed. Three consequences, each load-bearing:
+
+- **The close is NOT a decline.** It is closed-as-unanswered: no reason, no
+  training signal, nothing the composer learns. A mis-click ends as SILENCE,
+  which is the honest ending — the annotation posture arriving here (closed,
+  never deleted; the non-judgment is the record). This is also why the button
+  surface rarely needs `unintendedInvocation`: that reason exists because a
+  human was FORCED to record a decision to clear an item, and the (X) removes
+  the forcing. The reason stays in the enum for surfaces without an escape
+  hatch and for any mis-click proposal met later in the queue.
+- **Composed-then-closed is directly countable** — a status to query, not an
+  inference from expiry timing. The button being too easy to graze shows up
+  as a number, sibling to the manual-+Cal and unintendedInvocation rates.
+- **No queue debris.** Nothing pends, nothing waits out a TTL.
+
+⚠️ **A closed proposal must never tombstone a future ask.** Extraction's
+re-offer suppression treats ANY prior status as "do not ask again" — correct
+there, because those offers are UNSOLICITED. Button-initiated composition is
+SOLICITED: the human clicked. A mis-click-then-(X) on Tuesday must not block
+a deliberate [mark junk] on the same sender Thursday. Opposite rules for
+opposite directions of initiative, and the build must not share the dedup
+path between them.
+
+Build note: the terminal state wants to be DISTINCT (a `closed`/`dismissed`
+status) rather than an overload of `expired` — the metric above needs to
+tell a timeout from an explicit (X), and inferring it from timestamp
+arithmetic is the fragile version. The cost is the usual five mirrors
+(server enum, webmail types, demo, cli-go, and any learning allow-list);
+budget for them.
+
 ### One precision that keeps approval honest
 
 "The bouncer takes that as approval" must never be literal. The bouncer does
