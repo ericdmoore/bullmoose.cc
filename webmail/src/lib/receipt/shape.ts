@@ -172,7 +172,7 @@ export interface ReceiptInput {
 }
 
 /** `(accountId, bindingName)` — the join key for everything an agent PRODUCED. */
-const authorKey = (accountId: string, name: string): string => `${accountId} ${name}`;
+const authorKey = (accountId: string, name: string): string => `${accountId}\u0000${name}`;
 
 export function buildReceipt(input: ReceiptInput): Receipt {
   const { since } = input.window;
