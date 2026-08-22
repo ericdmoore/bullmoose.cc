@@ -36,6 +36,7 @@ describe("the grammar", () => {
       _self: string;
       _meta: { principal: string; readOnly: boolean; types: string[] };
       accounts: Array<{
+        _self: string;
         accountId: string;
         via: string;
         collections: Record<string, { href: string }>;
@@ -47,7 +48,12 @@ describe("the grammar", () => {
     expect(body._meta.readOnly).toBe(true);
     expect(body._meta.types).toEqual([...TYPE_NAMES]);
     expect(body.accounts).toHaveLength(1);
-    expect(body.accounts[0]).toMatchObject({ accountId: ERIC, via: "owned" });
+    // The account id is a URL too: it is the one value every other URL on
+    // this surface needs, so a bare one is the worst place to make a reader
+    // retype something. It points at the index narrowed to that account.
+    expect(body.accounts[0]).toMatchObject({ via: "owned" });
+    expect(body.accounts[0]!.accountId).toBe(`https://${EXPLORE_HOST}/?accountId=${ERIC}`);
+    expect(body.accounts[0]!._self).toBe(body.accounts[0]!.accountId);
     // Thread has no list projection, so the index must not offer one.
     expect(Object.keys(body.accounts[0]!.collections)).not.toContain("Thread");
     expect(Object.keys(body.accounts[0]!.collections)).toContain("Email");
@@ -68,7 +74,7 @@ describe("the grammar", () => {
 
     expect(body._self).toBe(`https://${EXPLORE_HOST}/Email/${ids.email(ERIC, 1)}?accountId=${ERIC}`);
     expect(body._meta).toMatchObject({
-      accountId: ERIC,
+      accountId: `https://${EXPLORE_HOST}/?accountId=${ERIC}`,
       type: "Email",
       methods: ["Email/get"],
       scopes: ["read"],
@@ -81,19 +87,26 @@ describe("the grammar", () => {
     const h = await harness();
     const body = await h.json<{
       _meta: { methods: string[]; position: number; limit: number; total: number; count: number };
-      ids: string[];
+      ids?: unknown;
       list: Array<Record<string, unknown>>;
     }>(await h.explore("/Email"));
 
     expect(body._meta.methods).toEqual(["Email/query", "Email/get"]);
     expect(body._meta.total).toBe(EMAIL_COUNT);
     expect(body._meta.count).toBe(EMAIL_COUNT);
-    expect(body.ids).toHaveLength(EMAIL_COUNT);
+    // NO bare-id array. `list` is the whole answer, and its length is the
+    // count — the top-level `ids` was a wall of opaque strings above the only
+    // clickable thing in the document (devPrinciples, HATEOAS).
+    expect(body.ids).toBeUndefined();
+    expect(body.list).toHaveLength(EMAIL_COUNT);
     // Every item in a list is itself clickable — that is what makes the browser
     // the client.
     for (const item of body.list) {
       expect(typeof item._self).toBe("string");
       expect(item._links).toBeDefined();
+      // `id` IS the self link — no bare ids anywhere on this surface.
+      expect(String(item.id)).toMatch(/^https:\/\//);
+      expect(item.id).toBe(item._self);
     }
   });
 
@@ -144,14 +157,17 @@ describe("the grammar", () => {
 
   it("filters map 1:1 onto JMAP filter conditions", async () => {
     const h = await harness();
-    const inInbox = await h.json<{ ids: string[] }>(await h.explore(`/Email?inMailbox=${ids.inbox(ERIC)}`));
-    expect(inInbox.ids).toHaveLength(EMAIL_COUNT);
-    const inArchive = await h.json<{ ids: string[] }>(await h.explore(`/Email?inMailbox=${ids.archive(ERIC)}`));
-    expect(inArchive.ids).toHaveLength(0);
+    type L = { list: Array<{ id: string }> };
+    const inInbox = await h.json<L>(await h.explore(`/Email?inMailbox=${ids.inbox(ERIC)}`));
+    expect(inInbox.list).toHaveLength(EMAIL_COUNT);
+    const inArchive = await h.json<L>(await h.explore(`/Email?inMailbox=${ids.archive(ERIC)}`));
+    expect(inArchive.list).toHaveLength(0);
 
-    // An empty value is the null parent — the top of a tree.
-    const roots = await h.json<{ ids: string[] }>(await h.explore("/FileNode?parentId="));
-    expect(roots.ids).toEqual([ids.dir(ERIC)]);
+    // An empty value is the null parent — the top of a tree. The id is a link,
+    // so the raw value is asserted where it actually lives: inside the href.
+    const roots = await h.json<L>(await h.explore("/FileNode?parentId="));
+    expect(roots.list).toHaveLength(1);
+    expect(roots.list[0]!.id).toContain(encodeURIComponent(ids.dir(ERIC)));
   });
 });
 
@@ -252,11 +268,14 @@ describe("_next: JMAP's own paging, re-expressed as a URL", () => {
     let pages = 0;
 
     while (url !== undefined) {
-      const body: { ids: string[]; _next?: string } = await h.json<{
-        ids: string[];
+      const body: { list: Array<{ id: string }>; _next?: string } = await h.json<{
+        list: Array<{ id: string }>;
         _next?: string;
       }>(await h.explore(url));
-      collected.push(...body.ids);
+      // Walk by the SELF LINKS, which is the only identity this surface
+      // exposes now — and a stronger check than the old id array, because a
+      // duplicate or a missing page shows up as a duplicate or missing URL.
+      collected.push(...body.list.map((o) => o.id));
       pages += 1;
       expect(pages, "paging did not terminate").toBeLessThan(10);
       url = body._next ? body._next.slice(`https://${EXPLORE_HOST}`.length) : undefined;
@@ -321,7 +340,10 @@ describe("isolation: another account, another tenant", () => {
         // roster that would confirm the id exists somewhere else.
         expect(Object.keys(body).sort(), path).toEqual(["_meta", "_self", "error"]);
         expect((body.error as { type: string }).type).toBe("notFound");
-        expect((body._meta as { accountId: string }).accountId).toBe(ERIC);
+        // Still ERIC's account — the id is a link now, so the claim is
+        // asserted where the value lives. What matters is unchanged: the
+        // request did NOT get scoped to the other account.
+        expect((body._meta as { accountId: string }).accountId).toBe(`https://${EXPLORE_HOST}/?accountId=${ERIC}`);
         // The other account's id may appear only as the echo of what was
         // asked for. Its DATA — every seeded display string ends in the
         // account id, after a space — must not.

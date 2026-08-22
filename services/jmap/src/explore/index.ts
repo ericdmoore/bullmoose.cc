@@ -185,7 +185,7 @@ export async function handleExplore(url: URL, env: Env, principal: Principal): P
     .filter((s) => s.length > 0)
     .map((s) => safeDecode(s));
 
-  if (segments.length === 0) return exploreJson(indexDocument(base, principal));
+  if (segments.length === 0) return exploreJson(indexDocument(base, principal, url.searchParams.get("accountId")));
   if (segments.length > 2) {
     return exploreJson({ error: { type: "notFound" }, detail: "the grammar is /{Type} and /{Type}/{id}" }, 404);
   }
@@ -209,7 +209,7 @@ export async function handleExplore(url: URL, env: Env, principal: Principal): P
       ? await listDocument(spec, url, base, accountId, ctx, links)
       : await objectDocument(spec, id, base, accountId, ctx, links);
   } catch (err) {
-    if (err instanceof MethodError) return methodErrorResponse(err, spec, accountId);
+    if (err instanceof MethodError) return methodErrorResponse(err, spec, accountId, base);
     throw err;
   }
 }
@@ -246,7 +246,7 @@ async function objectDocument(
       {
         error: { type: "notFound" },
         _self: self,
-        _meta: meta(spec, accountId, [spec.get]),
+        _meta: meta(base, spec, accountId, [spec.get]),
       },
       404,
     );
@@ -256,7 +256,7 @@ async function objectDocument(
     _self: self,
     _links: linksFor(spec.type, obj, links),
     _meta: {
-      ...meta(spec, accountId, [spec.get]),
+      ...meta(base, spec, accountId, [spec.get]),
       ...(typeof res.state === "string" ? { state: res.state } : {}),
     },
   });
@@ -276,7 +276,7 @@ async function listDocument(
         error: { type: "notFound" },
         detail: `${spec.type} has no list projection`,
         ...(spec.note ? { note: spec.note } : {}),
-        _meta: meta(spec, accountId, [spec.get]),
+        _meta: meta(base, spec, accountId, [spec.get]),
       },
       404,
     );
@@ -288,7 +288,7 @@ async function listDocument(
       {
         error: { type: "unsupportedFilter", description: filter.error },
         accepts: [...spec.filters],
-        _meta: meta(spec, accountId, spec.query ? [spec.query, spec.get] : [spec.get]),
+        _meta: meta(base, spec, accountId, spec.query ? [spec.query, spec.get] : [spec.get]),
       },
       400,
     );
@@ -325,10 +325,18 @@ async function listDocument(
   methods.push(spec.get);
   const objects = Array.isArray(res.list) ? (res.list as Record<string, unknown>[]) : [];
 
+  // `id` IS the self link — there are no bare ids on this surface.
+  //
+  // Eric, 2026-08-22, as the surface's only consumer: "lets really push in to
+  // HATEOAS — i dont really ever need bareIDs … they can basically be
+  // removed." A bare id is a dead end: to use it you must select it, know the
+  // grammar, and hand-assemble `/{Type}/{id}?accountId=`. The href is that
+  // work already done, and the raw value stays legible inside it.
   const items = objects.map((obj) => ({
     ...obj,
     ...(typeof obj.id === "string"
       ? {
+          id: objectHref(base, accountId, spec.type, obj.id),
           _self: objectHref(base, accountId, spec.type, obj.id),
           _links: linksFor(spec.type, obj, links),
         }
@@ -347,7 +355,7 @@ async function listDocument(
     _self: pageHref(url, base, spec.query ? position : undefined),
     ...(next ? { _next: next } : {}),
     _meta: {
-      ...meta(spec, accountId, methods),
+      ...meta(base, spec, accountId, methods),
       ...(spec.note ? { note: spec.note } : {}),
       ...(queryState !== undefined ? { queryState } : {}),
       ...(typeof res.state === "string" ? { state: res.state } : {}),
@@ -356,13 +364,34 @@ async function listDocument(
       count: items.length,
       ...(spec.filters.length > 0 ? { filters: [...spec.filters] } : {}),
     },
-    ...(ids !== null ? { ids } : {}),
+    // NO top-level `ids`. It was JMAP's `/query` result echoed verbatim — a
+    // wall of opaque strings sitting directly ABOVE the only thing you can
+    // click, which is how the person who wrote the navigable-JSON requirement
+    // came to browse this surface and conclude the links were missing.
+    //
+    // What it gives up, honestly: `/query` promises an ORDER that `/get` does
+    // not, and an id that vanished between the two would have appeared here
+    // and not in `list`. Neither has ever mattered while browsing.
+    // `_meta.count` still says how many came back.
     list: items,
   });
 }
 
 /** The root document: who you are, and every door from here. */
-function indexDocument(base: string, principal: Principal): Record<string, unknown> {
+/**
+ * An account's own URL: the index, narrowed to it.
+ *
+ * The account id is the one value every other URL on this surface needs, so
+ * leaving it bare is the worst possible place to make a reader retype
+ * something. The destination is the collections reachable IN that account —
+ * which is the question you have the moment you notice which account a
+ * document came from.
+ */
+function accountHref(base: string, accountId: string): string {
+  return `${base}/?accountId=${encodeURIComponent(accountId)}`;
+}
+
+function indexDocument(base: string, principal: Principal, only?: string | null): Record<string, unknown> {
   return {
     _self: `${base}/`,
     _meta: {
@@ -371,21 +400,24 @@ function indexDocument(base: string, principal: Principal): Record<string, unkno
       readOnly: true,
       types: TYPE_NAMES,
     },
-    accounts: principal.accounts.map((a) => ({
-      accountId: a.accountId,
-      name: a.name,
-      via: a.granted ? "granted" : "owned",
-      collections: Object.fromEntries(
-        TYPE_NAMES.filter((t) => (TYPES[t] as TypeSpec).listable).map((t) => [
-          t,
-          {
-            href: `${base}/${t}?accountId=${encodeURIComponent(a.accountId)}`,
-            type: t,
-            list: true,
-          } satisfies ExploreLink,
-        ]),
-      ),
-    })),
+    accounts: principal.accounts
+      .filter((a) => !only || a.accountId === only)
+      .map((a) => ({
+        _self: accountHref(base, a.accountId),
+        accountId: accountHref(base, a.accountId),
+        name: a.name,
+        via: a.granted ? "granted" : "owned",
+        collections: Object.fromEntries(
+          TYPE_NAMES.filter((t) => (TYPES[t] as TypeSpec).listable).map((t) => [
+            t,
+            {
+              href: `${base}/${t}?accountId=${encodeURIComponent(a.accountId)}`,
+              type: t,
+              list: true,
+            } satisfies ExploreLink,
+          ]),
+        ),
+      })),
   };
 }
 
@@ -455,9 +487,10 @@ function collectFilter(spec: TypeSpec, url: URL): { value: Record<string, unknow
 
 // ---- responses ---------------------------------------------------------
 
-function meta(spec: TypeSpec, accountId: string, methods: string[]): Record<string, unknown> {
+function meta(base: string, spec: TypeSpec, accountId: string, methods: string[]): Record<string, unknown> {
   return {
-    accountId,
+    // A URL. There are no bare ids on this surface (devPrinciples, HATEOAS).
+    accountId: accountHref(base, accountId),
     type: spec.type,
     // What was actually called. A reader who wants the same data over
     // `/api/jmap` can copy these names and the arguments straight across.
@@ -475,7 +508,7 @@ function meta(spec: TypeSpec, accountId: string, methods: string[]): Record<stri
  * `/api/jmap`. The status code is the only thing added, and it is a
  * translation of the type rather than a second opinion about it.
  */
-function methodErrorResponse(err: MethodError, spec: TypeSpec, accountId: string): Response {
+function methodErrorResponse(err: MethodError, spec: TypeSpec, accountId: string, base: string): Response {
   const status =
     err.type === "forbidden"
       ? 403
@@ -489,7 +522,7 @@ function methodErrorResponse(err: MethodError, spec: TypeSpec, accountId: string
           : err.type === "cannotCalculateChanges"
             ? 409
             : 500;
-  return exploreJson({ error: err.toArgs(), _meta: meta(spec, accountId, [spec.get]) }, status);
+  return exploreJson({ error: err.toArgs(), _meta: meta(base, spec, accountId, [spec.get]) }, status);
 }
 
 /**
