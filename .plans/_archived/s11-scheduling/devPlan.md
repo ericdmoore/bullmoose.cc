@@ -202,6 +202,19 @@ agents means five logins — wrong shape.
 - **The capability vector rides the connect** (T2's `fit`): the host declares what it can
   run (vision, context, tools); local backend config stays local — it describes the host's
   capability, never an agent's identity.
+  > **RETRACTED 2026-08-22.** The second clause — "stays local" as a RULE — was never a
+  > decision Eric made. It was written here, carried verbatim into the CLI's help text
+  > (`ef0b9ac`, #211), and from there quoted back at him as settled policy while he was
+  > considering whether Settings should show the models a box serves (#275). His answer:
+  > "I dont recall saying this … if I did, i no longer feel so strongly."
+  >
+  > The FACT survives and is useful: a model config describes the HOST's capability, not
+  > an agent's identity, which is why it lives in fleet.json beside the daemon. The
+  > PROHIBITION on it ever reaching the server does not, and #275 may reverse it.
+  >
+  > Left in place rather than deleted, because the lesson is the artifact: a plan
+  > sentence became product documentation became a constraint on a decision, and nobody
+  > decided any of it.
 
 **Done when:** one daemon process serves two bindings on two accounts with one login; a
 revoked claim grant stops claims for that binding without a restart; the declared
