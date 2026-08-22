@@ -76,7 +76,20 @@ rather than "free":
 **Tier 2 is where most systems stop and where breaches happen.** Anything about
 *your* salary, *your* balance, *your* dependents requires tier 3.
 
-## The challenge service
+## The challenge service — *"that you, Kevin?"*
+
+> Named 2026-08-21. Kevin Durant's burner account is the exact failure this
+> guards: the account was **authentic** — really his, really posting — and it
+> still was not the identity it presented as. That is hole #1, the one DMARC is
+> structurally blind to, in a form everyone already understands.
+>
+> The ceremony itself Eric christened the **passkey tea ceremony**, which is
+> only half a joke: WebAuthn calls these ceremonies, and a tea ceremony is slow
+> ON PURPOSE — the steps are meant to be observed rather than rushed. That is
+> precisely the difference between the described-act page below and a
+> click-through. Use "that you, Kevin?" for the question the service asks, and
+> "ceremony" for the mechanism.
+
 
 Eric's framing, and it is the right one: the phone tree where you key a PIN and the
 human agent sees only **PASS | FAIL**. That is the Bureau's own invariant — *ask,
