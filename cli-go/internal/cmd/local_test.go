@@ -16,12 +16,17 @@ package cmd
 //   - the summary is ONE stderr line however long the ladder gets.
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	bmio "github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/store"
 )
 
 func modelsServer(t *testing.T, status int, body string) *httptest.Server {
@@ -184,4 +189,82 @@ func TestDecideSetup(t *testing.T) {
 			t.Fatalf("want offer-install, got %+v", d)
 		}
 	})
+}
+
+func TestInstallPlanIsPerPlatform(t *testing.T) {
+	// The plan is printed VERBATIM before consent is asked for, so it is part
+	// of the consent: agreeing to "install Ollama" is not agreeing to whatever
+	// a script decides that means on this OS.
+	for _, tc := range []struct{ platform, wantFirst string }{
+		{"darwin", "brew"},
+		{"windows", "winget"},
+		{"linux", "sh"},
+		{"freebsd", "sh"}, // the fallback is the official installer, not a refusal
+	} {
+		p := installPlan(tc.platform)
+		if len(p.Steps) == 0 || p.Steps[0].Argv[0] != tc.wantFirst {
+			t.Errorf("installPlan(%q) first step = %v, want %s", tc.platform, p.Steps, tc.wantFirst)
+		}
+		if p.Starter != StarterModel || p.Base != "http://localhost:11434" {
+			t.Errorf("installPlan(%q) starter/base drifted: %+v", tc.platform, p)
+		}
+		for _, st := range p.Steps {
+			if st.Why == "" {
+				t.Errorf("installPlan(%q): a step with no reason cannot be consented to: %v", tc.platform, st.Argv)
+			}
+		}
+	}
+}
+
+func TestSetupDoesNotOfferWhenSomethingIsRunning(t *testing.T) {
+	// The rule the ladder exists for: never install a second runtime beside a
+	// working one. Both an OPEN host and a KEYED host must reach the offer
+	// zero times — a keyed host is still "something is running here".
+	//
+	// `exec` and `confirm` fail the test if reached at all, which is stronger
+	// than asserting on output: it proves the install path was not merely
+	// declined but never entered.
+	for _, tc := range []struct {
+		name     string
+		status   int
+		body     string
+		wantExit int
+	}{
+		{"an open host connects", 200, `{"data":[{"id":"m"}]}`, 0},
+		{"a keyed host refuses, and does not install", 401, `{}`, 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := modelsServer(t, tc.status, tc.body)
+			dbPath := filepath.Join(t.TempDir(), "mail.db")
+			db, err := store.Init(dbPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = db.Close() })
+			var out, errOut bytes.Buffer
+			s := bmio.NewTo(&out, &errOut)
+
+			deps := setupDeps{
+				exec: func(argv []string) int {
+					t.Fatalf("exec must not be reached when a host is running: %v", argv)
+					return 1
+				},
+				confirm: func(string) bool {
+					t.Fatal("consent must not be ASKED when a host is running")
+					return false
+				},
+				platform: "linux",
+				// Empty, not nil: the sweep must see ONLY the saved host below.
+				ladder: []LadderHost{},
+			}
+			// Point the saved-host rung at the test server so the sweep finds it
+			// without depending on the developer's own machine.
+			if err := saveHost(db, srv.URL, ""); err != nil {
+				t.Fatal(err)
+			}
+			if got := localSetup(s, db, args{}, deps); got != tc.wantExit {
+				t.Errorf("exit = %d, want %d", got, tc.wantExit)
+			}
+		})
+	}
 }

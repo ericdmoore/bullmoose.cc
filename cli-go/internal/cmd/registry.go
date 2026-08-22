@@ -95,6 +95,14 @@ var registry = map[string]spec{
 	// reaches argv.
 	// NOT goNative: Node HAS `models`, so the byte-identity contract applies and
 	// the suite must be able to drive both.
+	// `local` is registered WHOLE — connect and setup are verbs of one command,
+	// so there is no way to make one native and leave the other delegating.
+	// That forced the managed install to be ported too; defaultConfirm is
+	// where the care went, because it is the one prompt whose wrong answer
+	// installs software.
+	"local": {json: true, run: runLocal,
+		value:   []string{"db", "host", "key-env"},
+		boolean: []string{"json", "ids", "yes", "dry-run"}},
 	"models": {json: true, run: runModels,
 		// --db is owned because the sweep reads the SAVED @local host from the
 		// mirror's config table. Without it, `models --db <path>` would
@@ -103,14 +111,17 @@ var registry = map[string]spec{
 		value: []string{"db", "host", "key-env"}, boolean: []string{"json", "ids"}},
 	"read": {json: true, run: runRead,
 		value: []string{"db", "account"}, boolean: []string{"json", "ids", "raw"}},
-	// `send`'s set is exactly main.ts:568 cmdSend's reads and no more.
-	// DELIBERATELY ABSENT: --expandMD / --linkMax / --linkTTL (the Markdown →
-	// MIME pipeline, `marked` + processAssets + buildMime, not ported — decision
-	// 3, devPlan.md:179, is still open), and --dry-run/--if-state, which cmdSend
-	// does not read either. Any of them present → the invocation delegates and
-	// Node does the whole send.
+	// \`send\` owns the Markdown pipeline now (s08 T6): --expandMD renders with
+	// goldmark, resolves assets to cid:/attachment/expiring-link, assembles the
+	// RFC 5322 message and imports it. Byte-identity with Node is DELIBERATELY
+	// not claimed for the rendered HTML (the marked→goldmark divergence,
+	// internal/markdown) — the submission choreography and the chrome line are
+	// still exact. Moving these three flags INTO the owned set is what flips
+	// the invocation native; before this line, their presence delegated the
+	// whole send to Node.
 	"send": {json: true, run: runSend,
-		value:   []string{"db", "account", "from", "identity", "to", "cc", "bcc", "subject", "file", "body"},
+		value: []string{"db", "account", "from", "identity", "to", "cc", "bcc", "subject", "file", "body",
+			"expandMD", "linkMax", "linkTTL"},
 		boolean: []string{"json"}},
 	"approvals": {json: true, goNative: true, run: runApprovals},
 	"agents":    {json: true, goNative: true, run: runAgents},

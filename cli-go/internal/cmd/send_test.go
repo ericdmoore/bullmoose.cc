@@ -8,7 +8,13 @@ package cmd
 // from the Go code, because the Go code is the thing under test.
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/base64"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net/mail"
 	"os"
 	"path/filepath"
 	"strings"
@@ -460,5 +466,165 @@ func TestSend_ReconcileFailureIsSilent(t *testing.T) {
 	}
 	if !strings.HasPrefix(out, "sent em_new_1 ") {
 		t.Errorf("stdout = %q", out)
+	}
+}
+
+// ---- the Markdown pipeline (send --expandMD html, s08 T6) -----------------
+
+// The MD choreography: render → assets → BuildMime → upload → Email/import →
+// EmailSubmission/set. Byte-identity with Node is deliberately not asserted
+// for the rendered HTML (marked→goldmark, internal/markdown); what IS held
+// exact is the protocol around it — the call order, the import shape, and the
+// submission being identical to the plain path's.
+func TestSend_ExpandMD_Choreography(t *testing.T) {
+	f := newMailFake()
+	dir := t.TempDir()
+	img := filepath.Join(dir, "cat.png")
+	if err := os.WriteFile(img, []byte{0x89, 'P', 'N', 'G'}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	md := filepath.Join(dir, "note.md")
+	if err := os.WriteFile(md, []byte("# Hi\n\n![c](./cat.png)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, errOut, code := runCmd(t, runSend, sendEnv(t, f), "send",
+		"--to", "a@b.com", "--subject", "hi", "--file", md, "--expandMD", "html")
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, errOut)
+	}
+
+	// Email/set is ABSENT: the MD path imports a complete message instead.
+	want := []string{"Identity/get", "Mailbox/get", "Email/import", "EmailSubmission/set", "Email/get"}
+	if got := strings.Join(f.names(), ","); got != strings.Join(want, ",") {
+		t.Fatalf("call sequence = %s, want %s", got, strings.Join(want, ","))
+	}
+
+	// Exactly ONE upload — the assembled message. The image is inline (small),
+	// so it rides INSIDE the MIME, not as its own blob.
+	if len(f.uploads) != 1 {
+		t.Fatalf("uploads = %d, want 1 (the rfc822 blob; the inline image travels in it)", len(f.uploads))
+	}
+	up := f.uploads[0]
+	if up.Type != "message/rfc822" {
+		t.Errorf("upload content-type = %q", up.Type)
+	}
+
+	// The imported bytes PARSE BACK as the tree the pipeline promises:
+	// related > alternative(text, html) > image/png with the cid.
+	msg, err := mail.ReadMessage(bytes.NewReader(up.Body))
+	if err != nil {
+		t.Fatalf("the uploaded message does not parse: %v", err)
+	}
+	mt, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err != nil || mt != "multipart/related" {
+		t.Fatalf("top-level type = %q (%v), want multipart/related", mt, err)
+	}
+	var kinds []string
+	mr := multipart.NewReader(msg.Body, params["boundary"])
+	for {
+		p, err := mr.NextPart()
+		if err != nil {
+			break
+		}
+		k, _, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
+		kinds = append(kinds, k)
+	}
+	if strings.Join(kinds, ",") != "multipart/alternative,image/png" {
+		t.Errorf("related children = %v", kinds)
+	}
+
+	// The submission is the SAME shape as the plain path — emailId from the
+	// import, explicit envelope, Drafts→Sent on success. That non-fork is the
+	// point of returning only an id from createMarkdownDraft.
+	if got := f.argsOf("EmailSubmission/set"); !strings.Contains(got, `"emailId":"em_new_1"`) ||
+		!strings.Contains(got, `"mailboxIds/mb_drafts":null`) {
+		t.Errorf("submission diverged from the plain path: %s", got)
+	}
+
+	// The chrome names the pipeline, exactly as main.ts:748 does.
+	if !strings.Contains(out, "markdown→html, 1 inlined") {
+		t.Errorf("stdout = %q", out)
+	}
+}
+
+// Over --linkMax, the image is NOT carried: it is uploaded, shared, and the
+// message references the expiring URL in BOTH bodies.
+func TestSend_ExpandMD_LargeFileBecomesALink(t *testing.T) {
+	f := newMailFake()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "big.png"), make([]byte, 300_000), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	md := filepath.Join(dir, "note.md")
+	if err := os.WriteFile(md, []byte("![b](./big.png)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 0.2 MiB cap puts the 300 KB image over the line.
+	out, errOut, code := runCmd(t, runSend, sendEnv(t, f), "send",
+		"--to", "a@b.com", "--subject", "hi", "--file", md,
+		"--expandMD", "html", "--linkMax", "0.2", "--linkTTL", "7")
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, errOut)
+	}
+
+	// TWO uploads — the shared image, then the message — and one share mint.
+	if len(f.uploads) != 2 || len(f.shares) != 1 {
+		t.Fatalf("uploads = %d, shares = %d; want 2 and 1", len(f.uploads), len(f.shares))
+	}
+	if f.uploads[0].Type != "image/png" || f.uploads[1].Type != "message/rfc822" {
+		t.Errorf("upload order/types = %q, %q", f.uploads[0].Type, f.uploads[1].Type)
+	}
+	// The message carries the LINK, not the image. Both halves are asserted
+	// on DECODED parts, because the bodies are base64 — a raw-bytes substring
+	// check can never see the URL, and the first version of this assertion
+	// did exactly that. (Fifth substring-for-structure mistake this session;
+	// the tell never changes.)
+	msg, err := mail.ReadMessage(bytes.NewReader(f.uploads[1].Body))
+	if err != nil {
+		t.Fatalf("uploaded message does not parse: %v", err)
+	}
+	mt, params, _ := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if mt != "multipart/alternative" {
+		t.Fatalf("top-level = %q, want multipart/alternative (no image part at all)", mt)
+	}
+	sawURL := false
+	mr := multipart.NewReader(msg.Body, params["boundary"])
+	for {
+		part, err := mr.NextPart()
+		if err != nil {
+			break
+		}
+		enc, _ := io.ReadAll(part)
+		dec, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(string(enc), "\r\n", ""))
+		if err != nil {
+			t.Fatalf("part is not decodable base64: %v", err)
+		}
+		if bytes.Contains(dec, []byte("https://links.stub.test/s/1")) {
+			sawURL = true
+		}
+	}
+	if !sawURL {
+		t.Error("the share URL is in neither body")
+	}
+	if !strings.Contains(out, "1 linked (expires in 7d)") {
+		t.Errorf("stdout = %q", out)
+	}
+}
+
+// --expandMD with any value but html is refused before ANY request.
+func TestSend_ExpandMD_UnknownModeRefused(t *testing.T) {
+	f := newMailFake()
+	_, errOut, code := runCmd(t, runSend, sendEnv(t, f), "send",
+		"--to", "a@b.com", "--subject", "hi", "--body", "x", "--expandMD", "pdf")
+	if code == 0 {
+		t.Fatal("an unknown mode must be refused")
+	}
+	if len(f.names()) != 0 {
+		t.Fatalf("refusal must cost zero requests, got %v", f.names())
+	}
+	if !strings.Contains(errOut, "html") {
+		t.Errorf("the error should name the accepted value: %q", errOut)
 	}
 }
