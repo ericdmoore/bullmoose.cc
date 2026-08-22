@@ -98,6 +98,15 @@ type mailFake struct {
 	// vacation is VacationResponse/get's reply body; empty → a disabled one.
 	vacation string
 
+	// AgentInvocation fixtures (s43), raw for the same reason: `invocations
+	// --json` re-emits the server's rows verbatim, so a test must be able to
+	// pin a field the CLI predates and watch it survive.
+	invocationIDs  string // AgentInvocation/query's ids array, e.g. `["inv_1"]`
+	invocationList string // AgentInvocation/get's list array
+	// refuseInvocation, when set, is the raw SetError EVERY AgentInvocation/set
+	// create or destroy answers with — the disabled-binding / running-rm knob.
+	refuseInvocation string
+
 	// Refusal knobs.
 	refuseSubmission string // "method" | "seterror" | ""
 	// httpStatus, when non-zero, is the status EVERY JMAP POST and REST request
@@ -710,6 +719,41 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 		return reply(v)
 	case "VacationResponse/set":
 		return reply(`{"accountId":"a_you","newState":"v2","updated":{"singleton":null}}`)
+	case "AgentInvocation/query":
+		ids := f.invocationIDs
+		if ids == "" {
+			ids = "[]"
+		}
+		return reply(fmt.Sprintf(`{"accountId":"a_you","ids":%s}`, ids))
+	case "AgentInvocation/get":
+		list := f.invocationList
+		if list == "" {
+			list = "[]"
+		}
+		return reply(fmt.Sprintf(`{"accountId":"a_you","state":"agstate-1","list":%s}`, list))
+	case "AgentInvocation/set":
+		var set struct {
+			Create  map[string]json.RawMessage `json:"create"`
+			Destroy []string                   `json:"destroy"`
+		}
+		_ = json.Unmarshal(args, &set)
+		if len(set.Create) > 0 {
+			if f.refuseInvocation != "" {
+				return reply(fmt.Sprintf(`{"accountId":"a_you","notCreated":{"c":%s}}`, f.refuseInvocation))
+			}
+			f.seq++
+			return reply(fmt.Sprintf(
+				`{"accountId":"a_you","created":{"c":{"id":"inv_new_%d","status":"pending"}},"newState":"agstate-2"}`, f.seq))
+		}
+		if len(set.Destroy) > 0 {
+			if f.refuseInvocation != "" {
+				return reply(fmt.Sprintf(`{"accountId":"a_you","notDestroyed":{%q:%s}}`,
+					set.Destroy[0], f.refuseInvocation))
+			}
+			d, _ := json.Marshal(set.Destroy)
+			return reply(fmt.Sprintf(`{"accountId":"a_you","destroyed":%s,"newState":"agstate-2"}`, d))
+		}
+		return fail("invalidArguments", "empty AgentInvocation/set")
 	case "Email/import":
 		var imp struct {
 			Emails map[string]struct {

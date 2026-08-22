@@ -139,6 +139,10 @@ var selfParsers = map[string]struct{ file, fn string }{
 	"approvals": {"approvals.go", "parseApprovals"},
 	"agents":    {"agents.go", "parseAgents"},
 	"version":   {"version.go", "parseVersion"},
+	// `agent` is listed BEFORE it is registered (s43: the registry flip is
+	// last) so its grammar is held to the scanner tables from step 1 on —
+	// the oracle that refuses a typo'd or invented flag at birth.
+	"agent": {"agentinvoke.go", "parseAgent"},
 }
 
 // undocumentedByDesign is every flag the CLI accepts that the help spec does
