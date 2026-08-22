@@ -466,6 +466,41 @@ Note the asymmetry that puts event MERGE in V2 while contact merge is in V1: a
 contact has a natural key and an event does not. Nothing about events is
 harder except identity.
 
+### One event, one invocation — the shape the offer path has to take
+
+Found while starting rung 3 (2026-08-21). `emitProposal` uses `job.id` AS the
+proposal id, and every producer in the codebase does the same. That is not an
+accident of a helper: `actionProposal.ts` says the proposal collection is "a
+READ MODEL over `agent_invocations`, not a parallel store", with the
+invocation as the single source of truth for what the agent is doing.
+
+**So one extract pass cannot mint three proposals.** And a batched
+all-or-nothing proposal is the wrong answer to the brief — the whole point is
+that two of the three dates were wanted and one was not.
+
+The shape that fits what already exists: **extraction ENQUEUES one schedule
+invocation per event it finds.** Each mints its own proposal, carries its own
+cost stamp, its own budget accounting, and its own approve/decline. The
+invocation queue is already there and ingest already writes to it; extraction
+simply becomes a second producer.
+
+Three things fall out of that for free rather than needing design:
+
+- **idempotency keys on the invocation**, not on a new concept — a second
+  extract pass over a quoted thread finds the same event and must not enqueue
+  a second job for it.
+- **cost stays legible.** One invocation per offer means the per-offer price
+  is already stamped by the path every other invocation uses, which is what
+  makes "measure, do not estimate" true here too.
+- **the extract call itself stays one call.** Enqueuing is free; the second
+  model call, if any, belongs to the schedule invocation and is bounded by the
+  same budget.
+
+The cost is that an offer is now two hops from the message rather than one,
+and a failure in the second hop is a missing offer rather than a visible
+error. That wants the same treatment as everything else here: the miss shows
+up as a manual `+ Cal`, which is the metric.
+
 ### Proposal idempotency is V1, and is not reconciliation
 
 Keyed on thread plus normalized start, refuse to create a second proposal for
