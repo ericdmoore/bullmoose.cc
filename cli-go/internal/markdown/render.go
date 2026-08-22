@@ -75,8 +75,11 @@ var md = goldmark.New(
 // text, and a de-tagged HTML rendering is a worse one that also loses link
 // targets.
 func ToHTML(src string) (string, error) {
+	// Frontmatter never reaches the renderer — see frontmatter.go. Rendering it
+	// puts `title:` and `to:` in the recipient's message as a heading.
+	_, body := SplitFrontmatter(src)
 	var buf bytes.Buffer
-	if err := md.Convert([]byte(src), &buf); err != nil {
+	if err := md.Convert([]byte(body), &buf); err != nil {
 		return "", err
 	}
 	return buf.String(), nil
