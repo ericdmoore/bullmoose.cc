@@ -82,6 +82,10 @@ export function classLabel(cls: string): string {
       return "Decision";
     case "task":
       return "Task";
+    case "event":
+      return "Event";
+    case "contact":
+      return "Contact";
     default:
       return cls.charAt(0).toUpperCase() + cls.slice(1);
   }

@@ -6,7 +6,8 @@ import { accountState, requireAccount, type RequestContext } from "./common";
  * Annotation (urn:bullmoose:params:jmap:agent) — the agent-commentary noun
  * (s18 A1). An Annotation is a CLAIM ABOUT a message that you adjudicate, the
  * medium.com-style margin comment: anchored to a span, carrying a class
- * (commitment | decision | task), a confidence, and a status you move.
+ * (commitment | decision | task | event | contact), a confidence, and a
+ * status you move.
  *
  * It is the sibling of Note, and the split is the whole point (s18 devPlan):
  * a Note is a document you AUTHOR (edit, share, federate); an Annotation is a
@@ -44,7 +45,11 @@ interface AnnotationRow {
   updated_at: number;
 }
 
-const CLASS_TYPES = new Set(["commitment", "decision", "task"]);
+// s36 rung 1-2: `event` and `contact` join the original three. They are
+// OBSERVATIONS like the others — "there is a tournament Saturday" is a claim
+// the margin can show and the owner can dismiss. Turning one into a calendar
+// entry is a PROPOSAL and a separate approval; an annotation never writes.
+const CLASS_TYPES = new Set(["commitment", "decision", "task", "event", "contact"]);
 /** The transitions a client may make. `open` is the birth state (create only);
  *  a claim closes forward, to exactly one of these, and does not reopen. */
 const CLOSE_STATUSES = new Set(["resolved", "dismissed"]);

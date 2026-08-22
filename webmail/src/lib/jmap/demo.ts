@@ -779,7 +779,7 @@ export function createDemoBackend(opts: DemoOptions = {}): DemoBackend {
         if (!["commitment", "decision", "task"].includes(cls)) {
           notCreated[cid] = {
             type: "invalidProperties",
-            description: "class must be one of commitment | decision | task",
+            description: "class must be one of commitment | decision | task | event | contact",
           };
           continue;
         }

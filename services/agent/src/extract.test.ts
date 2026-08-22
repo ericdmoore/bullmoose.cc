@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fakeEnv } from "@bullmoose/test-fakes";
 import type { EmailRow } from "@bullmoose/mailstore";
-import { parseExtraction, parseScoutVerdict, runExtract, type ExtractJob } from "./extract";
+import { hasExtractCue, parseExtraction, parseScoutVerdict, runExtract, type ExtractJob } from "./extract.js";
 
 // s18 A2 — the extraction pass. A model reads a delivered message and writes
 // commitment/decision/task Annotations. The bounds that keep it honest: a
@@ -328,5 +328,49 @@ describe("runExtract — the scout branch", () => {
     expect(done).toHaveBeenCalledWith("done", expect.objectContaining({ model: "mock/paid" }), expect.anything());
     const result = done.mock.calls[0]![1];
     expect(result.scout).toBeUndefined();
+  });
+});
+
+describe("the widened cue filter (s36 rung 1)", () => {
+  // WIDE on purpose: the model is the filter, this only decides whether to pay
+  // for one. A missed event costs the owner something; a needless call costs a
+  // fraction of a cent, bounded by the binding's budget either way.
+
+  it("40. still admits the commitment language it always did", () => {
+    expect(hasExtractCue("I'll send the calc Friday")).toBe(true);
+    expect(hasExtractCue("we decided to go with the Amalfi coast")).toBe(true);
+  });
+
+  it("41. admits times, dates and weekdays", () => {
+    for (const t of ["arrive at 7:30 am", "kick-off 8am", "on 8/21", "Saturday", "Aug 21", "this weekend"]) {
+      expect(hasExtractCue(t), t).toBe(true);
+    }
+  });
+
+  it("42. admits the nouns that carry a time even without one", () => {
+    for (const t of ["tournament details", "please RSVP", "our next practice", "the reservation"]) {
+      expect(hasExtractCue(t), t).toBe(true);
+    }
+  });
+
+  it("43. admits signature shapes — a phone number is the strongest tell", () => {
+    expect(hasExtractCue("Call me on (312) 555-0147")).toBe(true);
+    expect(hasExtractCue("Best regards,\nCoach Wallace")).toBe(true);
+  });
+
+  it("44. a message with none of it still costs nothing", () => {
+    // The newsletter case, which is the reason the filter exists at all.
+    expect(hasExtractCue("Your weekly digest of industry news and opinion.")).toBe(false);
+    expect(hasExtractCue("Thanks for signing up. Click here to confirm.")).toBe(false);
+  });
+
+  it("45. admits the real tournament email — the message this was built for", () => {
+    // Eric's Fwd: U12G White. It already tripped the OLD filter on "we will",
+    // which is why widening was about what the MODEL looks for as much as what
+    // the regex admits. This pins that it stays admitted.
+    const real =
+      "Fwd: U12G White - Tournament Details\nHello Team,\nBelow are the details for our tournament " +
+      "this weekend. Please arrive 30 mins prior to Kick-off. Saturday 8:00 am, Sunday 7:30 am.";
+    expect(hasExtractCue(real)).toBe(true);
   });
 });
