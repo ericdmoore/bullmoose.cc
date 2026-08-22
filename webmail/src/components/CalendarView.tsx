@@ -60,6 +60,20 @@ import type { Session } from "../lib/jmap/types";
 // The grid is `CalendarEvent/getOccurrences` output (`api.ts`); the server
 // expands once, through `@bullmoose/calendar-core`, which is the copy with an
 // independent oracle behind it and the copy CalDAV serves.
+//
+// ⚠️ NO `?e=<eventId>` DEEP LINK, deliberately. The pass that gave Files,
+// Notes, Goals, Agents and Activity real row URLs (`lib/ui/navigation.ts`)
+// stopped at this door. Everywhere else a row opens a DETAIL PANE beside its
+// list, so the id IS the whole answer. Here there is no list and no detail
+// pane: a "row" is a chip inside a rendered week, and clicking it opens the
+// EDITOR. An event id on its own does not say which window to draw — the grid
+// anchors on today, the event may be in March, and `events` holds only what
+// the current window returned, so `openExisting` would find nothing and
+// silently do nothing. An honest link has to carry the period as well as the
+// id, fetch the event to learn its date when the two disagree, and answer
+// whether a URL may open an edit form at all. That is a design question about
+// what a calendar link IS, and shipping the half that resolves only when the
+// event happens to already be on screen would be worse than its absence.
 
 interface Props {
   /** Injected in tests; the screen resolves its own otherwise. */

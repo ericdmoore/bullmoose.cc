@@ -11,12 +11,14 @@ import {
   Column,
   EmptyState,
   ListContainer,
-  ListRow,
   PageNotice,
   Skeleton,
   SkeletonRegion,
   SurfaceFrame,
 } from "./ui";
+import { hrefWithParam, urlParam } from "../lib/shell/publish";
+import { listRowClasses } from "../lib/ui/classes";
+import { isUnmodifiedPrimaryClick, syncDetailUrl } from "../lib/ui/navigation";
 import { applyBindingEnabled, setBindingEnabled } from "../lib/agents/api";
 import {
   ALL_AGENTS_COLLECTION,
@@ -71,7 +73,10 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
   const [failures, setFailures] = useState<Record<string, string>>({});
   const [listError, setListError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  // `/agents?ag=<accountId>/<bindingId>` deep-links one dossier — read once at
+  // mount, the MPA detail-URL pattern every surface follows. `ag`, not `a`:
+  // that one is Activity's, and the two realms are one nav click apart.
+  const [selectedId, setSelectedId] = useState<string | undefined>(() => urlParam("ag"));
   const [query, setQuery] = useState("");
   const [now, setNow] = useState(() => Date.now());
 
@@ -193,8 +198,13 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
   const visible = useMemo(() => filterAgentRows(rows, query), [rows, query]);
   const collections = useMemo(() => agentCollections(rows), [rows]);
 
-  // Selection self-repair: the requested row if visible, else the first.
+  // Selection self-repair: the requested row if visible, else the first — so a
+  // `?ag=` naming a binding this session cannot reach degrades to the first
+  // agent rather than to an empty screen.
   const active = visible.find((r) => r.id === selectedId) ?? visible[0];
+  /** The row's detail URL — `/agents?ag=<rowId>`, current query preserved.
+   *  The id carries a `/` (accountId/bindingId); URLSearchParams encodes it. */
+  const agentHref = (id: string): string => hrefWithParam("/agents", "ag", id);
   const detail = useMemo(() => {
     if (!active) return undefined;
     const parsed = parseAgentRowId(active.id);
@@ -403,21 +413,45 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
                 {!loading && rows.length > 0 && visible.length === 0 ? (
                   <EmptyState title="Nothing matches">Nothing matches “{query}”.</EmptyState>
                 ) : null}
+                {/* The rows are REAL links to `/agents?ag=<rowId>`, and the
+                    plain click still selects in place. An agent is a principal
+                    you talk about — "look at what allen is doing" is a
+                    sentence that wants a URL in it, and cmd-clicking two
+                    dossiers apart is how you compare their budgets.
+
+                    Hand-rolled rather than `<ListRow href … onSelect …>`:
+                    `ListRow` still treats those as ALTERNATIVES (href → a link
+                    with no handler, onSelect → a button with no URL), the
+                    split `StackedRow` has already been brought out of. Same
+                    `listRowClasses`, so it is the same row. */}
                 <ListContainer>
                   {visible.map((r) => (
-                    <ListRow key={r.id} active={r.id === active?.id} onSelect={() => setSelectedId(r.id)}>
-                      <Avatar name={r.name} size="sm" />
-                      <span class="flex min-w-0 grow flex-col">
-                        <span class="flex items-center gap-x-1.5">
-                          <span class="truncate font-medium">{r.name}</span>
-                          {!r.enabled ? <Badge tone="error">off</Badge> : null}
+                    <li key={r.id}>
+                      <a
+                        href={agentHref(r.id)}
+                        class={listRowClasses({ active: r.id === active?.id })}
+                        aria-current={r.id === active?.id ? "true" : undefined}
+                        onClick={(ev) => {
+                          // Modified clicks belong to the browser — navigation.ts.
+                          if (!isUnmodifiedPrimaryClick(ev)) return;
+                          ev.preventDefault();
+                          setSelectedId(r.id);
+                          syncDetailUrl(agentHref(r.id));
+                        }}
+                      >
+                        <Avatar name={r.name} size="sm" />
+                        <span class="flex min-w-0 grow flex-col">
+                          <span class="flex items-center gap-x-1.5">
+                            <span class="truncate font-medium">{r.name}</span>
+                            {!r.enabled ? <Badge tone="error">off</Badge> : null}
+                          </span>
+                          <span class="truncate text-xs text-gray-500 dark:text-gray-400">
+                            {r.address} · {r.pipeline}
+                          </span>
                         </span>
-                        <span class="truncate text-xs text-gray-500 dark:text-gray-400">
-                          {r.address} · {r.pipeline}
-                        </span>
-                      </span>
-                      {r.pendingCount > 0 ? <Badge tone="warn">{r.pendingCount}</Badge> : null}
-                    </ListRow>
+                        {r.pendingCount > 0 ? <Badge tone="warn">{r.pendingCount}</Badge> : null}
+                      </a>
+                    </li>
                   ))}
                 </ListContainer>
               </div>

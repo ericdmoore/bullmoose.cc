@@ -12,12 +12,13 @@ import {
 } from "../lib/activity/feed";
 import type { ActivityItem } from "../lib/activity/types";
 import { accountLabel, approvalsAccounts } from "../lib/approvals/rows";
-import { urlParam } from "../lib/shell/publish";
+import { hrefWithParam, urlParam } from "../lib/shell/publish";
 import { DecidedDetail, FeedRow, WatchDetail } from "./ActivityRows";
 import CollectionColumn from "./CollectionColumn";
 import { Alert, Column, EmptyState, PageNotice, StackedList, SurfaceFrame } from "./ui";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
+import { syncDetailUrl } from "../lib/ui/navigation";
 
 // The Activity feed (s23 v1) — the retrospective twin of `/approvals`.
 // Approvals asks *what needs me?*; this answers *what was decided without me,
@@ -56,7 +57,8 @@ export default function ActivityApp({ client: injectedClient, now: fixedNow }: P
   const [collection, setCollection] = useState<string>("all");
   // s25 T3 — `/activity?a=<id>` deep-links a record: read once at mount (the
   // MPA detail-URL pattern every surface follows now), self-repaired below
-  // once the feed arrives. The rows themselves keep their in-page selection.
+  // once the feed arrives. The rows MINT that link as well now that they are
+  // real anchors — until they were, the param could only ever be typed.
   const [selectedId, setSelectedId] = useState<string | undefined>(() => urlParam("a"));
 
   // A retrospective does not need a ticking clock: "3h ago" moving to "3h 1m
@@ -138,6 +140,8 @@ export default function ActivityApp({ client: injectedClient, now: fixedNow }: P
   const groups = useMemo(() => activityCollections(ordered), [ordered]);
 
   const selected = activeList.find((i) => i.id === selectedId) ?? activeList[0];
+  /** The row's detail URL — `/activity?a=<id>`, current query preserved. */
+  const itemHref = (id: string): string => hrefWithParam("/activity", "a", id);
   // Keep a valid selection as the feed or the collection changes under us —
   // the same self-repair the approvals master-detail does. Not while
   // loading: repairing against the momentary empty feed would wipe a
@@ -231,7 +235,13 @@ export default function ActivityApp({ client: injectedClient, now: fixedNow }: P
                 now={now}
                 active={item.id === selected?.id}
                 label={accounts.length > 1 ? accountLabel(accounts, item.accountId) : ""}
-                onSelect={() => setSelectedId(item.id)}
+                href={itemHref(item.id)}
+                onSelect={() => {
+                  setSelectedId(item.id);
+                  // Keep the address bar on the record being read, so the link
+                  // you would copy is the one you are looking at.
+                  syncDetailUrl(itemHref(item.id));
+                }}
               />
             ))}
           </StackedList>

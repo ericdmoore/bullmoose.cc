@@ -39,20 +39,32 @@ function wordTone(word: string): { badge: BadgeTone; dot: StatusDotTone } {
   return { badge: "neutral", dot: "neutral" };
 }
 
-/** One selectable row in the feed's list column. */
+/**
+ * One row in the feed's list column.
+ *
+ * A REAL link (`href`) that ALSO stays in the page on a plain click
+ * (`onSelect`) — both together, which is what `StackedRow` is for. The row was
+ * `onSelect`-only, so a decision made in your name had no URL at all: nothing
+ * to cmd-click into a tab beside the queue, and nothing to paste into a
+ * message when asking "why did this go out?". A record you cannot cite is half
+ * a record. `lib/ui/navigation.ts` has why every modified click must fall
+ * through to the browser untouched.
+ */
 export function FeedRow(props: {
   item: ActivityItem;
   now: number;
   active: boolean;
   /** The row's account — only worth showing on a merged feed. */
   label: string;
+  /** Where this record lives — `/activity?a=<id>`. */
+  href: string;
   onSelect: () => void;
 }) {
-  const { item, now, active, label } = props;
+  const { item, now, active, label, href } = props;
   const word = statusWord(item);
   const tone = wordTone(word);
   return (
-    <StackedRow active={active} onSelect={props.onSelect}>
+    <StackedRow active={active} href={href} onSelect={props.onSelect}>
       <StatusDot tone={tone.dot} />
       <div class="min-w-0 flex-auto">
         <p class="line-clamp-2 text-sm/6 font-semibold text-gray-900 dark:text-white">{summarizeItem(item)}</p>

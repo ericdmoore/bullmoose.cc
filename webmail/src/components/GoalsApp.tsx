@@ -34,6 +34,8 @@ import {
 import type { CheckpointClass, Goal, GoalStatus, PlanPayload } from "../lib/goals/types";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
+import { hrefWithParam, urlParam } from "../lib/shell/publish";
+import { syncDetailUrl } from "../lib/ui/navigation";
 import {
   Alert,
   Badge,
@@ -94,7 +96,11 @@ export default function GoalsApp({ client: injectedClient }: Props) {
   const [notice, setNotice] = useState<string | undefined>(undefined);
 
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  // `/goals?g=<id>` deep-links one goal — read once at mount, the MPA
+  // detail-URL pattern every surface follows. A goal that is not in the list
+  // (cancelled, or someone else's link) falls through to the first, the same
+  // self-repair the selection already had.
+  const [selectedId, setSelectedId] = useState<string | undefined>(() => urlParam("g"));
   const [reloads, setReloads] = useState(0);
 
   useEffect(() => {
@@ -148,6 +154,8 @@ export default function GoalsApp({ client: injectedClient }: Props) {
 
   const ordered = useMemo(() => orderGoals(goals), [goals]);
   const selected = ordered.find((g) => g.id === selectedId) ?? ordered[0];
+  /** The row's detail URL — `/goals?g=<id>`, current query preserved. */
+  const goalHref = (id: string): string => hrefWithParam("/goals", "g", id);
   const reload = () => setReloads((n) => n + 1);
 
   if (fatal) {
@@ -202,11 +210,25 @@ export default function GoalsApp({ client: injectedClient }: Props) {
             </SkeletonRegion>
           ) : null}
           {!loading && ordered.length === 0 ? <EmptyState title="No goals yet">{GOALS_EMPTY}</EmptyState> : null}
+          {/* The rows are REAL links (`href`) AND stay in-page on a plain
+              click (`onSelect`) — both, never one (ui/StackedList.tsx). A
+              standing delegation is exactly the thing you want to hand to
+              someone in a message, and cmd-click to read beside the one you
+              have open. `syncDetailUrl` keeps the address bar on the goal
+              being read, via replaceState. */}
           <StackedList>
             {ordered.map((g) => {
               const tone = goalTone(g.status);
               return (
-                <StackedRow key={g.id} active={g.id === selected?.id} onSelect={() => setSelectedId(g.id)}>
+                <StackedRow
+                  key={g.id}
+                  active={g.id === selected?.id}
+                  href={goalHref(g.id)}
+                  onSelect={() => {
+                    setSelectedId(g.id);
+                    syncDetailUrl(goalHref(g.id));
+                  }}
+                >
                   <StatusDot tone={tone.dot} />
                   <div class="min-w-0 flex-auto">
                     <p class="line-clamp-2 text-sm/6 font-semibold text-gray-900 dark:text-white">{g.statement}</p>
