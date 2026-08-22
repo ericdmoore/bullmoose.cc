@@ -119,6 +119,13 @@ const parseCommandLine = () =>
       // command prints is the menu it wrote.
       set: { type: "string" },
       explore: { type: "string", multiple: true },
+      // Declared for GRAMMAR only (argv_test.go pins both tables): the Go
+      // CLI's session-plane budget/model verbs read these, and a value flag
+      // one front door knows and the other does not makes
+      // `bullmoose --rate X agents …` name X as the command. Not a feature —
+      // the Node CLI is frozen; this is the shared parse table staying true.
+      rate: { type: "string" },
+      default: { type: "string" },
       since: { type: "string" },
       budget: { type: "string" },
       // Mints the floor-request approval INSTEAD of a backfill — never an
