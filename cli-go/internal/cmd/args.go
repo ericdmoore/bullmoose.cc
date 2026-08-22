@@ -41,6 +41,14 @@ type args struct {
 	// must NOT fall through to stdin.
 	HasBody bool
 
+	// ---- the @local ladder (`local`, `models`, s08 T6) ----
+	//
+	// KeyEnv is the NAME of an environment variable, never a key. A local host
+	// behind LiteLLM's master key is reachable without that key ever appearing
+	// in argv, history, or a process listing.
+	Host   string
+	KeyEnv string
+
 	// ---- the credential gate (`login`, `init`, `token`) ----
 	//
 	// Every flag here records PRESENCE beside its value, for the same reason
@@ -209,6 +217,10 @@ func parse(argv []string) args {
 				a.Mailbox = value()
 			case "n":
 				a.N = value()
+			case "host":
+				a.Host = value()
+			case "key-env":
+				a.KeyEnv = value()
 			case "to":
 				a.To = append(a.To, value())
 			case "cc":

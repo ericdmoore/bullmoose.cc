@@ -89,6 +89,18 @@ var registry = map[string]spec{
 		boolean: []string{"json", "ids"}, short: []string{"n"}},
 	"accounts": {json: true, run: runAccounts,
 		value: []string{"db", "account"}, boolean: []string{"json", "ids"}},
+	// `models` (s08 T6) sweeps the @local ladder. No --db and no --account: it
+	// asks HOSTS, not the server, so it is the one read command that works with
+	// no session at all. --key-env names an env var; the key itself never
+	// reaches argv.
+	// NOT goNative: Node HAS `models`, so the byte-identity contract applies and
+	// the suite must be able to drive both.
+	"models": {json: true, run: runModels,
+		// --db is owned because the sweep reads the SAVED @local host from the
+		// mirror's config table. Without it, `models --db <path>` would
+		// delegate and this native path would never run for the one
+		// invocation that most needs a specific mirror.
+		value: []string{"db", "host", "key-env"}, boolean: []string{"json", "ids"}},
 	"read": {json: true, run: runRead,
 		value: []string{"db", "account"}, boolean: []string{"json", "ids", "raw"}},
 	// `send`'s set is exactly main.ts:568 cmdSend's reads and no more.
