@@ -49,9 +49,18 @@ type agentArgs struct {
 	Account string
 	Email   string
 	Note    string
-	JSON    bool
-	IDs     bool
-	DryRun  bool
+	// The dossier family (s43 step 2+). HasSet distinguishes read mode from
+	// `--set ""`, which must refuse as a bad value, not fall back to a read.
+	Set          string
+	HasSet       bool
+	Explore      []string
+	Since        string
+	Budget       string
+	RequestFloor bool
+	Yes          bool
+	JSON         bool
+	IDs          bool
+	DryRun       bool
 
 	Positionals []string
 }
@@ -92,6 +101,10 @@ func parseAgent(argv []string) agentArgs {
 				a.IDs = true
 			case "dry-run":
 				a.DryRun = true
+			case "request-floor":
+				a.RequestFloor = true
+			case "yes":
+				a.Yes = true
 			case "db":
 				a.DB = value()
 			case "account":
@@ -100,6 +113,15 @@ func parseAgent(argv []string) agentArgs {
 				a.Email = value()
 			case "note":
 				a.Note = value()
+			case "set":
+				a.Set = value()
+				a.HasSet = true
+			case "explore":
+				a.Explore = append(a.Explore, value())
+			case "since":
+				a.Since = value()
+			case "budget":
+				a.Budget = value()
 			}
 		default:
 			a.Positionals = append(a.Positionals, arg)
@@ -120,6 +142,22 @@ func runAgent(s *bmio.Streams, argv []string) int {
 	switch a.at(1) {
 	case "invoke", "invocations", "rm":
 		return runAgentInvoke(s, a)
+	case "show":
+		return runAgentShow(s, a)
+	case "budget":
+		if a.HasSet {
+			// s43 step 3. Unreachable in production until the registry flip
+			// (which lands only when every verb exists) — a guard, not a door.
+			s.Note("agent budget --set is s43 step 3; the Node CLI serves it until the registry flip")
+			return 1
+		}
+		return runAgentBudgetRead(s, a)
+	case "model":
+		if a.HasSet || len(a.Explore) > 0 {
+			s.Note("agent model --set/--explore is s43 step 3; the Node CLI serves it until the registry flip")
+			return 1
+		}
+		return runAgentModelRead(s, a)
 	default:
 		// serve and the dossier verbs land in s43 steps 2–6; the registry
 		// flip is LAST and alone, so until every case above exists, reaching

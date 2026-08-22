@@ -20,7 +20,10 @@ type adminFake struct {
 	mu    sync.Mutex
 	calls []struct{ Method, Path, Body string }
 	reply map[string]string // "METHOD path-prefix" → body
-	srv   *httptest.Server
+	// status, when non-zero, is what EVERY request answers — the
+	// operator-plane-unreachable fixture (s43 step 2).
+	status int
+	srv    *httptest.Server
 }
 
 func newAdminFake(t *testing.T) *adminFake {
@@ -37,8 +40,12 @@ func newAdminFake(t *testing.T) *adminFake {
 				reply = body
 			}
 		}
+		status := v.status
 		v.mu.Unlock()
 		w.Header().Set("content-type", "application/json")
+		if status != 0 {
+			w.WriteHeader(status)
+		}
 		_, _ = w.Write([]byte(reply))
 	}))
 	t.Cleanup(v.srv.Close)
