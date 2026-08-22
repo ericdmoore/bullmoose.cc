@@ -5,8 +5,9 @@ import { closeAnnotation, loadMarginAnnotations, type CloseStatus } from "../lib
 import { marginFor, personOpenItems } from "../lib/annotations/margin";
 import type { Annotation } from "../lib/annotations/types";
 import type { JmapClient } from "../lib/jmap/JmapClient";
+import { foldRecipients, summarizeRecipients } from "../lib/mail/recipients";
 import { renderMessage, threadAttachments, type ThreadDetail } from "../lib/mail/threadView";
-import { displayName, formatAddress, isFlagged, type Email } from "../lib/mail/types";
+import { displayName, formatAddress, isFlagged, type Email, type EmailAddress } from "../lib/mail/types";
 import { armWatch, askAgent, type AskSpec, type VerbOutcome } from "../lib/verbs/api";
 import { verbCounterparty } from "../lib/verbs/contract";
 import AnnotationMargin from "./AnnotationMargin";
@@ -264,7 +265,10 @@ function MessageCard({
     <section class={`message-card${expanded ? " is-expanded" : ""}`}>
       <header class="message-header" onClick={onToggleExpand}>
         <span class="message-from">{displayName(email.from[0])}</span>
-        <span class="message-to">to {email.to.map((a) => displayName(a)).join(", ") || "…"}</span>
+        {/* Summarized, not spelled out: this row is one click target and has
+            no room for a control, so it borrows the fold's names without its
+            button. The full list is one row down, in the expanded card. */}
+        <span class="message-to">to {summarizeRecipients(email.to) || "…"}</span>
         {isFlagged(email) ? <span class="message-flag">★</span> : null}
         <time class="message-date" dateTime={email.receivedAt}>
           {new Date(email.receivedAt).toLocaleString()}
@@ -274,8 +278,13 @@ function MessageCard({
       {expanded ? (
         <>
           <div class="message-addresses">
+            {/* From is never a wall — one sender, at most a couple of names. */}
             <div>From: {email.from.map(formatAddress).join(", ")}</div>
-            {email.cc.length > 0 ? <div>Cc: {email.cc.map(formatAddress).join(", ")}</div> : null}
+            {/* To is here because the header above only SUMMARIZES it. Without
+                this row a truncated header would be the only account of who a
+                message was sent to, and the rest would be unreachable. */}
+            {email.to.length > 0 ? <RecipientLine field="To" addresses={email.to} /> : null}
+            {email.cc.length > 0 ? <RecipientLine field="Cc" addresses={email.cc} /> : null}
           </div>
 
           {rendered.blockedRemoteCount > 0 && !allowImages ? (
@@ -337,6 +346,49 @@ function MessageCard({
         <p class="message-collapsed">{email.preview}</p>
       )}
     </section>
+  );
+}
+
+/**
+ * One address line, folded. `lib/mail/recipients` owns every choice about who
+ * is named and how; this is the markup, plus the two rules the markup has to
+ * keep:
+ *
+ *  - The control is a real <button> and the list is real elements — present
+ *    when open, absent when closed. The usual shortcut here is a hover
+ *    reveal, which puts the rest of the header out of reach of a keyboard
+ *    entirely, and out of reach of a touch screen with it.
+ *  - Open and closed differ by which elements exist, never by a `style=`
+ *    attribute: the webmail origin's CSP forbids inline styles.
+ */
+function RecipientLine({ field, addresses }: { field: string; addresses: EmailAddress[] }) {
+  const [open, setOpen] = useState(false);
+  const fold = useMemo(() => foldRecipients(addresses), [addresses]);
+
+  // Short lines are printed whole — a fold here would cost a click to reveal
+  // the one or two names it hid.
+  if (!fold.folded) {
+    return (
+      <div>
+        {field}: {fold.all.map((r) => r.full).join(", ")}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {field}: {open ? null : `${fold.visible} `}
+      <button type="button" class="recipient-more" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? "Show fewer" : fold.overflow}
+      </button>
+      {open ? (
+        <ul class="recipient-list">
+          {fold.all.map((r) => (
+            <li key={r.key}>{r.full}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

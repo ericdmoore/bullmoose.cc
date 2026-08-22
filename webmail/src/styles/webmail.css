@@ -1692,3 +1692,34 @@ code {
 .card-skeleton {
   padding: 16px;
 }
+
+/* ── the recipient fold ────────────────────────────────────────────────────
+ *
+ * A forwarded Cc of ~30 parents, printed inline, pushed the message itself
+ * off the first screen. The line now names a few and offers the rest behind a
+ * real button (see lib/mail/recipients + MessageView's RecipientLine).
+ *
+ * The control is styled as text rather than as a chip on purpose: it sits
+ * mid-sentence, where a bordered button would read as a separate action
+ * beside the header instead of the end of the line it completes. It keeps
+ * being a <button>, so focus and Enter work the way they already do.
+ */
+.recipient-more {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* Wrapped, not scrolled: thirty short entries are a few lines of text, and a
+ * scroll box inside a message is another thing to reach with a keyboard. */
+.recipient-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 4px 0 0;
+  padding: 0;
+}
