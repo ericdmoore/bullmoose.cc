@@ -185,3 +185,36 @@ Not nowhere: a rising `unintendedInvocation` rate is a **UI defect report**.
 It says an action sits somewhere a thumb finds by accident. That belongs in the
 same family as the manual-schedule rate in `s36` — a number the product should
 be trying to drive DOWN, measured on real use rather than guessed at.
+
+### A record is only immutable if the surface could express the truth
+
+A decision, once made, is a thing that happened: append-only, never edited, and
+an undo is a NEW decision that makes the first a transitive no-op. That is the
+model, and `ActionProposal/set` enforces it — terminal states stay terminal.
+
+**It presumes the reason could have been true.** When the only options on offer
+are wrong, what gets stored is not a decision — it is the closest available
+lie, and the surface authored it rather than the human. Eric, on being asked to
+justify correcting two such rows by hand:
+
+> *"I needed a none of the above option. Instead I was forced to lie. Thus we
+> changed it to not poison the training data."*
+
+That is the right reading and it is worth stating as a rule, because the
+opposite reading is seductive: immutability starts to feel like a reason to
+keep a record that was never accurate, which protects the AUDIT TRAIL at the
+expense of the thing the trail is supposed to be about.
+
+So:
+
+- a record produced by a surface that could not express the truth is a
+  **measurement error**, not history. Correct it.
+- and correct the SURFACE in the same breath, or the next person is forced
+  into the same lie and the correction becomes a recurring chore
+  (`unintendedInvocation`, above, is that half).
+- the immutability rule stands for every decision a human could have made
+  truthfully — which, after the fix, is all of them.
+
+The test for which case you are in is not "is the row terminal" but **"could
+this person have recorded what actually happened?"** If no, the record is
+evidence about the UI, and the UI is the bug.
