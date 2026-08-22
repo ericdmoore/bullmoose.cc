@@ -86,6 +86,22 @@ describe("compileSieve -- the mapping is faithful", () => {
     expect(sieveVerdict([r], msg).ruleId).toBeUndefined();
   });
 
+  it("15b. headerContains and headerGlob compile to header tests on the named header", () => {
+    const text = compileSieve([
+      rule({ all: [{ kind: "headerContains", name: "X-Mailer", value: "bulk" }] }),
+      rule({ id: "r2", all: [{ kind: "headerGlob", name: "List-Id", value: "*.deals.*" }] }),
+    ]);
+    expect(text).toContain('header :contains "X-Mailer" "bulk"');
+    expect(text).toContain('header :matches "List-Id" "*.deals.*"');
+  });
+
+  it("15c. a match the compiler does not know THROWS -- never silently emits nothing", () => {
+    // A silent fall-through would compile a rule that fires on less than the
+    // engine fires on, which is the exact lie the compiler exists to not tell.
+    const bogus = { kind: "contains", field: "body", value: "x" } as unknown as SieveRule["all"][number];
+    expect(() => compileSieve([rule({ all: [bogus] })])).toThrow(/unreachable/);
+  });
+
   it("16. require names exactly the advertised extensions", () => {
     // The capability's sieveExtensions and the script's require are the same
     // list BY CONSTRUCTION; this pins that neither drifts alone.
