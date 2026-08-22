@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fleetDrain, type FleetClient, type FleetConfig, type ModelConfig } from "./agent.js";
 import {
-  EXTRACT_CUES,
+  COMMITMENT_CUES,
+  CONTACT_CUES,
+  EVENT_CUES,
   EXTRACT_SYSTEM,
   MAX_PER_MESSAGE,
   SCAN,
@@ -39,8 +41,13 @@ describe("mirror guards — the cloud pass is the source of truth", () => {
   it("EXTRACT_SYSTEM is byte-identical to the cloud prompt", () => {
     expect(cloud).toContain(EXTRACT_SYSTEM);
   });
-  it("EXTRACT_CUES is the cloud pre-filter, verbatim", () => {
-    expect(cloud).toContain(EXTRACT_CUES.source);
+  it("every cue family is the cloud pre-filter, verbatim", () => {
+    // Three families now (s36 rung 1), and each is pinned separately: a
+    // widening that lands in the cloud and not here would mean the CLI
+    // silently skipping messages the hosted pass extracts from.
+    for (const re of [COMMITMENT_CUES, EVENT_CUES, CONTACT_CUES]) {
+      expect(cloud).toContain(re.source);
+    }
   });
   it("bounds match (MAX_PER_MESSAGE, SCAN)", () => {
     expect(cloud).toContain(`MAX_PER_MESSAGE = ${MAX_PER_MESSAGE}`);

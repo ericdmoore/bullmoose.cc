@@ -9,7 +9,7 @@
 //     the caller's account is threaded in as the fallback, exactly as
 //     `parseProposal` does for the pre-T7 servers.
 
-export type AnnotationClass = "commitment" | "decision" | "task";
+export type AnnotationClass = "commitment" | "decision" | "task" | "event" | "contact";
 export type AnnotationStatus = "open" | "resolved" | "dismissed";
 
 /** What the claim is about: `{realm, objectId}` — the proposal subject shape. */
