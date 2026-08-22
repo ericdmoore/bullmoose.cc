@@ -22,7 +22,13 @@ go 1.26
 // when a feature actually needs it.
 toolchain go1.26.7
 
+// goldmark (T6) renders `send --expandMD html`. Pure Go, no cgo, so the
+// single-static-binary and cross-compile goals hold. It is here because the
+// alternative was writing a Markdown parser, and the byte-identity contract
+// that would have forced matching `marked` was deliberately loosened for this
+// one path — see internal/markdown, and the golden corpus that replaced it.
 require (
+	github.com/yuin/goldmark v1.8.5
 	golang.org/x/term v0.45.0
 	modernc.org/sqlite v1.56.0
 )

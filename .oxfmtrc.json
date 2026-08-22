@@ -26,6 +26,12 @@
     // generator and the formatter rewrite each other forever.
     "conformance/**",
 
+    // Golden files: their exact bytes ARE the assertion. Reformatting one does
+    // not "tidy" it, it rewrites the expected output — and the test would then
+    // pass against whatever the formatter preferred. Same reasoning as
+    // conformance/ above, one layer further in.
+    "cli-go/internal/markdown/testdata/**",
+
     // The s21 explorer toggle works by uncommenting exact lines in
     // services/jmap/wrangler.jsonc, so the literal text is load-bearing and
     // infra/explorer.test.ts asserts on it. oxfmt also adds trailing commas
