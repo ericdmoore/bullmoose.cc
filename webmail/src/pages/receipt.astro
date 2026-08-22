@@ -1,0 +1,30 @@
+---
+// The extraction receipt (s36) — the answer to "what has the agent been doing,
+// and what did it cost?" without anyone opening a SQL client.
+//
+// s36's readme says *"do not estimate it — MEASURE it"*, and `invocationCost`
+// has stamped real per-invocation cost against a binding's budget since s07 T5.
+// Nothing read it back for a human. This page does, over the two reads that
+// already exist — `/console/agents/*` for the runs and the money,
+// `ActionProposal/*` + `Annotation/*` for what those runs produced — and names
+// as ABSENT anything neither door can answer, rather than showing a zero.
+//
+// `frame="document"`, not `"surface"`: this is a page you READ, top to bottom,
+// to form a judgement — not a multi-pane app you operate. There is nothing here
+// to decide; decisions live in `/approvals` and the record of them in
+// `/activity`.
+//
+// No `section` prop, deliberately: the rail's section list is a claim about
+// what this product IS (`lib/app/sections.ts`, asserted by sections.test.ts),
+// and a diagnostic surface does not earn a place in it on the strength of its
+// first commit. The page is reachable at `/receipt`.
+//
+// A thin static host for one Preact island. Visual treatment is Tailwind on the
+// island, so this page carries no extra CSS.
+import ReceiptView from "../components/ReceiptView.tsx";
+import App from "../layouts/AppTw.astro";
+---
+
+<App title="bullmoose — receipt" frame="document">
+  <ReceiptView client:only="preact" />
+</App>
