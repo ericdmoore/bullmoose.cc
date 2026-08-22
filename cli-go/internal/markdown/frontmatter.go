@@ -22,7 +22,7 @@ package markdown
 //
 // The raw block is RETURNED rather than discarded because the next slice wants
 // it: honouring `to:` / `subject:` as real message headers is designed in
-// `.plans/s39-markdown-headers`. Returning it keeps that door open without
+// `.plans/s40-markdown-headers`. Returning it keeps that door open without
 // deciding anything here.
 //
 // ## What counts as frontmatter

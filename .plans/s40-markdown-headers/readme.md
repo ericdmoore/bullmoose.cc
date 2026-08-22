@@ -1,4 +1,4 @@
-# s39 — Markdown headers · *a message is a file you can keep*
+# s40 — Markdown headers · *a message is a file you can keep*
 
 > **Status: DESIGN.** Suppression shipped with the renderer (#284); honouring is
 > unbuilt. Written 2026-08-22 from Eric's question — *"does goldmark support
@@ -97,10 +97,32 @@ there is no unsend.
 ## Slices
 
 **T1 — read and merge.** Parse the block, apply the precedence rule, print the
-resolved envelope under `--dry-run`. Needs a YAML parser, which would be the
-first in cli-go — or a deliberately tiny `key: value` reader, since the
-supported keys are a closed set and full YAML brings anchors, aliases and
-multi-document parsing that nothing here wants.
+resolved envelope under `--dry-run`.
+
+This is where a dependency finally becomes necessary — **suppression did not
+need one** and deliberately took none, because recognising a fenced block is
+string work and buying a YAML parser to delete its output would be paying for
+nothing. Honouring is different: the values have to be read.
+
+Three options, and the third is the recommendation:
+
+| option | what it costs |
+|---|---|
+| `github.com/yuin/goldmark-meta` | goldmark's own, same author; pulls `gopkg.in/yaml.v3` |
+| `go.abhg.dev/goldmark/frontmatter` | YAML **and** TOML; a second vocabulary to support forever |
+| a closed-set `key: value` reader | ~40 lines, no dependency |
+
+**Leaning the third**, and the reason is the security decision above rather
+than dependency asceticism: the honoured keys are a CLOSED SET of four, and a
+full YAML parser brings anchors, aliases, merge keys, multi-document streams
+and type coercion — surface that cannot be reached through those four keys and
+therefore cannot help, but that an attacker-supplied file can reach. A reader
+that only understands `key: value` cannot grow an injection through a parser
+feature nobody meant to enable.
+
+Both goldmark options remain right if the keys ever stop being a closed set —
+a `template:` or `variables:` block would want real YAML, and at that point the
+argument reverses.
 
 **T2 — the refusal path.** Whatever #3 decides, implemented as an explicit
 refusal with a sentence, not a silent drop.
