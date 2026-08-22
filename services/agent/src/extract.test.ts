@@ -1,7 +1,16 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { fakeEnv } from "@bullmoose/test-fakes";
 import type { EmailRow } from "@bullmoose/mailstore";
-import { hasExtractCue, parseExtraction, parseScoutVerdict, runExtract, type ExtractJob } from "./extract.js";
+import {
+  EXTRACT_SYSTEM,
+  hasExtractCue,
+  parseExtraction,
+  parseScoutVerdict,
+  runExtract,
+  type ExtractJob,
+  usableStart,
+} from "./extract.js";
 
 // s18 A2 — the extraction pass. A model reads a delivered message and writes
 // commitment/decision/task Annotations. The bounds that keep it honest: a
@@ -30,9 +39,13 @@ function world(modelResponse: string) {
   return { w, run };
 }
 
-function inbound(o: { subject?: string; body?: string }): EmailRow {
+function inbound(o: { id?: string; subject?: string; body?: string }): EmailRow {
   return {
-    id: "e_msg",
+    // Overridable so a test can deliver a SECOND, different message — without
+    // it the per-message idempotence guard skips the second run, and a test
+    // meant to exercise the moment-level dupe check passes for the wrong
+    // reason entirely.
+    id: o.id ?? "e_msg",
     from: [{ email: "bob@example.com" }],
     subject: o.subject ?? "",
     preview: (o.body ?? "").slice(0, 256),
@@ -372,5 +385,222 @@ describe("the widened cue filter (s36 rung 1)", () => {
       "Fwd: U12G White - Tournament Details\nHello Team,\nBelow are the details for our tournament " +
       "this weekend. Please arrive 30 mins prior to Kick-off. Saturday 8:00 am, Sunday 7:30 am.";
     expect(hasExtractCue(real)).toBe(true);
+  });
+});
+
+describe("the parser accepts what the prompt asks for", () => {
+  // This drifted once, silently, in the worst way an allow-list can: the
+  // prompt asked for `event` and `contact`, the model returned them, and the
+  // parser dropped every one. Nothing errored and nothing logged — the pass
+  // simply reported "nothing concrete" on messages full of dates. A parser
+  // narrower than its own prompt is a feature that looks shipped and is not.
+  it("50. keeps every class the prompt names", () => {
+    const answer = JSON.stringify([
+      { class: "commitment", body: "I'll send it Friday", confidence: 0.8 },
+      { class: "decision", body: "we chose the Amalfi coast", confidence: 0.7 },
+      { class: "task", body: "book the flights", confidence: 0.6 },
+      { class: "event", body: "tournament Saturday", confidence: 0.9 },
+      { class: "contact", body: "Coach Wallace, (312) 555-0147", confidence: 0.7 },
+    ]);
+    expect(parseExtraction(answer).map((i) => i.class)).toEqual(["commitment", "decision", "task", "event", "contact"]);
+  });
+
+  it("51. the prompt and the allow-list name the same set", () => {
+    // The coupling itself, so the next class to be added cannot land in one
+    // and not the other.
+    for (const cls of ["commitment", "decision", "task", "event", "contact"]) {
+      expect(EXTRACT_SYSTEM, `prompt must name ${cls}`).toContain(`"${cls}"`);
+      expect(parseExtraction(JSON.stringify([{ class: cls, body: "x", confidence: 1 }])), cls).toHaveLength(1);
+    }
+  });
+
+  it("52. still refuses a class neither of them names", () => {
+    expect(parseExtraction(JSON.stringify([{ class: "invoice", body: "x", confidence: 1 }]))).toEqual([]);
+  });
+});
+
+describe("usableStart — strict on purpose", () => {
+  // The asymmetry that sets the strictness: a refused `start` costs an OFFER
+  // and the item still lands as a note, so the reader sees the date and can
+  // add it by hand. A WRONG `start` puts a wrong entry in their calendar, and
+  // they may not find out until they miss the thing it was for.
+  it("60. accepts an ISO local time to the minute", () => {
+    expect(usableStart("2026-08-23T07:30:00")).toBe("2026-08-23T07:30:00");
+    expect(usableStart("2026-08-23T07:30")).toBe("2026-08-23T07:30");
+    expect(usableStart("2026-08-23T07:30:00Z")).toBe("2026-08-23T07:30:00Z");
+    expect(usableStart(" 2026-08-23T07:30:00 ")).toBe("2026-08-23T07:30:00");
+  });
+
+  it("61. refuses a bare date — 'sometime Saturday' is not a hold", () => {
+    expect(usableStart("2026-08-23")).toBeNull();
+  });
+
+  it("62. refuses prose, empty, and the wrong type", () => {
+    for (const bad of ["Saturday morning", "next week", "", null, undefined, 42, {}]) {
+      expect(usableStart(bad as unknown), String(bad)).toBeNull();
+    }
+  });
+
+  it("63. refuses a date that parses to nothing real", () => {
+    expect(usableStart("2026-13-45T99:99:00")).toBeNull();
+  });
+});
+
+describe("event items carry their offer fields", () => {
+  it("70. keeps start, title and duration on an event", () => {
+    const [item] = parseExtraction(
+      JSON.stringify([
+        {
+          class: "event",
+          body: "tournament Saturday",
+          confidence: 0.9,
+          start: "2026-08-23T07:30:00",
+          title: "U12G tournament",
+          durationMinutes: 480,
+        },
+      ]),
+    );
+    expect(item).toMatchObject({ start: "2026-08-23T07:30:00", title: "U12G tournament", durationMinutes: 480 });
+  });
+
+  it("71. an event with an unusable start stays a note", () => {
+    // Not dropped — the reader still sees "there is a tournament Saturday".
+    // It simply does not become a one-click hold.
+    const [item] = parseExtraction(
+      JSON.stringify([{ class: "event", body: "tournament Saturday", confidence: 0.9, start: "Saturday" }]),
+    );
+    expect(item?.class).toBe("event");
+    expect(item?.start).toBeUndefined();
+  });
+
+  it("72. offer fields never attach to a non-event", () => {
+    const [item] = parseExtraction(
+      JSON.stringify([{ class: "task", body: "book flights", confidence: 0.5, start: "2026-08-23T07:30:00" }]),
+    );
+    expect(item?.start).toBeUndefined();
+  });
+
+  it("73. duration is clamped to something a day can hold", () => {
+    const mk = (m: number) =>
+      parseExtraction(
+        JSON.stringify([
+          { class: "event", body: "x", confidence: 1, start: "2026-08-23T07:30:00", durationMinutes: m },
+        ]),
+      )[0]?.durationMinutes;
+    expect(mk(99999)).toBe(24 * 60);
+    expect(mk(1)).toBe(5);
+  });
+});
+
+describe("a decision tombstones the offer", () => {
+  // Eric, on the rung-3 draft: "once approved/disapproved that decision can be
+  // noted and effectively tombstone the proposal from re-surfacing."
+  //
+  // The first version keyed the dupe check on `status = 'pending'`, which
+  // would have re-offered a DECLINED date the moment a quoted reply arrived —
+  // overriding an answer the reader had already given. That is worse than the
+  // duplicate the check exists to prevent.
+  it("80. the dupe query filters on the moment, not on the status", () => {
+    // Asserted against the source because the query is the invariant: a
+    // `status =` clause creeping back in is precisely the regression.
+    const src = readFileSync(new URL("./extract.ts", import.meta.url), "utf8");
+    const q = src.slice(src.indexOf("SELECT 1 AS hit FROM agent_proposals"));
+    const clause = q.slice(0, q.indexOf("LIMIT 1"));
+    expect(clause).toContain("json_extract(payload_json, '$.start')");
+    expect(clause, "any status is a tombstone — pending, approved, declined or expired").not.toContain("status =");
+  });
+});
+
+describe("offers — a dated event becomes a verb-schedule proposal", () => {
+  // Production always carries a binding_id (index.ts's Job); an offer needs one
+  // because its carrier invocation must be attributable to the binding whose
+  // authority and budget it was made under.
+  const offerJob: ExtractJob = { ...job, binding_id: "bind_x" };
+  const dated = (start: unknown) =>
+    JSON.stringify([{ class: "event", body: "U12G tournament, arrive 7:30", confidence: 0.9, start }]);
+
+  it("90. mints ONE proposal per dated event, carried by its own invocation", async () => {
+    // A proposal's id IS its invocation's id, so three offers need three
+    // invocations — which is why this cannot be one proposal listing dates.
+    const { w } = world(
+      JSON.stringify([
+        { class: "event", body: "Saturday game", confidence: 0.9, start: "2026-08-23T08:00:00" },
+        { class: "event", body: "Sunday game", confidence: 0.9, start: "2026-08-24T07:30:00" },
+      ]),
+    );
+    await runExtract(
+      w.env,
+      offerJob,
+      CFG,
+      inbound({ subject: "Tournament", body: "Saturday 8:00 am" }),
+      {},
+      async () => {},
+    );
+    const rows = w.db.query<{ id: string; kind: string; status: string; payload_json: string }>(
+      "SELECT id, kind, status, payload_json FROM agent_proposals WHERE account_id = ?",
+      ACCOUNT,
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.kind === "verb-schedule" && r.status === "pending")).toBe(true);
+    expect(rows.map((r) => JSON.parse(r.payload_json).start).sort()).toEqual([
+      "2026-08-23T08:00:00",
+      "2026-08-24T07:30:00",
+    ]);
+    // Each has its own carrier invocation, done at cost 0 — no model was
+    // called for the offer; the extraction already paid for the thinking.
+    for (const r of rows) {
+      const inv = w.db.query<{ status: string; cost_micros: number }>(
+        "SELECT status, cost_micros FROM agent_invocations WHERE id = ?",
+        r.id,
+      )[0];
+      expect(inv).toMatchObject({ status: "done", cost_micros: 0 });
+    }
+  });
+
+  it("91. an event with no usable start stays a note and offers nothing", async () => {
+    const { w } = world(dated("Saturday morning"));
+    await runExtract(w.env, offerJob, CFG, inbound({ subject: "Tournament", body: "Saturday" }), {}, async () => {});
+    expect(w.db.query("SELECT id FROM agent_proposals WHERE account_id = ?", ACCOUNT)).toHaveLength(0);
+    // But the reader still sees the date.
+    expect(w.db.query("SELECT id FROM annotations WHERE account_id = ?", ACCOUNT)).toHaveLength(1);
+  });
+
+  it("92. the same moment is never offered twice — the quoted-thread case", async () => {
+    const { w } = world(dated("2026-08-23T08:00:00"));
+    const msg = inbound({ subject: "Tournament", body: "Saturday 8:00 am" });
+    await runExtract(w.env, offerJob, CFG, msg, {}, async () => {});
+    // A reply quoting the same schedule, arriving as its own delivery.
+    await runExtract(
+      w.env,
+      { ...offerJob, id: "inv_y" },
+      CFG,
+      inbound({ id: "e_two", subject: "Re: Tournament", body: "Saturday 8:00 am" }),
+      {},
+      async () => {},
+    );
+    expect(w.db.query("SELECT id FROM agent_proposals WHERE account_id = ?", ACCOUNT)).toHaveLength(1);
+  });
+
+  it("93. a DECLINED moment is not re-offered — the decision is the tombstone", async () => {
+    const { w } = world(dated("2026-08-23T08:00:00"));
+    await runExtract(
+      w.env,
+      offerJob,
+      CFG,
+      inbound({ subject: "Tournament", body: "Saturday 8am" }),
+      {},
+      async () => {},
+    );
+    await w.env.DB.prepare("UPDATE agent_proposals SET status = 'rejected' WHERE account_id = ?").bind(ACCOUNT).run();
+    await runExtract(
+      w.env,
+      { ...offerJob, id: "inv_z" },
+      CFG,
+      inbound({ id: "e_three", subject: "Re: Tournament", body: "Saturday 8am" }),
+      {},
+      async () => {},
+    );
+    // Still one: the answer already given is not asked again.
+    expect(w.db.query("SELECT id FROM agent_proposals WHERE account_id = ?", ACCOUNT)).toHaveLength(1);
   });
 });
