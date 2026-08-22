@@ -100,6 +100,12 @@ var registry = map[string]spec{
 	// That forced the managed install to be ported too; defaultConfirm is
 	// where the care went, because it is the one prompt whose wrong answer
 	// installs software.
+	// `creds` (s42, ported EXACTLY — the guards are the product): the vault.
+	"creds": {json: true, run: runCreds,
+		value: []string{"db", "url", "kind", "secret", "secret-env", "meta", "allow", "header",
+			"scope", "enforcement", "authorize-url", "token-url", "client-id",
+			"client-secret", "oauth-scopes", "port"},
+		boolean: []string{"json", "dry-run"}},
 	// `identity` (s42): list/show/signature/add/rm over Identity/get + /set.
 	"identity": {json: true, run: runIdentity,
 		value:   []string{"db", "account", "name", "reply-to", "bcc", "text", "html", "if-state"},
