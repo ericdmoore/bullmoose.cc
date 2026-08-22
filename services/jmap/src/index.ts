@@ -9,6 +9,7 @@ import {
   MAIL_CAP,
   SUBMISSION_CAP,
   VACATION_CAP,
+  SIEVE_CAP,
   WEBSOCKET_CAP,
 } from "@bullmoose/jmap-core";
 import { accountStub } from "@bullmoose/account-do";
@@ -109,6 +110,7 @@ const SUPPORTED_CAPS = new Set([
   // client that lists it anyway should not have its whole request refused.
   WEBSOCKET_CAP,
   VACATION_CAP,
+  SIEVE_CAP,
   CONTACTS_CAP,
   CALENDARS_CAP,
   FILENODE_CAP,

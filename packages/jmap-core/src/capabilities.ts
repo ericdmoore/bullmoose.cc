@@ -5,6 +5,8 @@ export const MAIL_CAP = "urn:ietf:params:jmap:mail";
 export const SUBMISSION_CAP = "urn:ietf:params:jmap:submission";
 export const WEBSOCKET_CAP = "urn:ietf:params:jmap:websocket";
 export const VACATION_CAP = "urn:ietf:params:jmap:vacationresponse";
+/** RFC 9661. Advertised only since SieveScript/get became real (s31 slice 1). */
+export const SIEVE_CAP = "urn:ietf:params:jmap:sieve";
 export const CONTACTS_CAP = "urn:ietf:params:jmap:contacts";
 /** JMAP for Calendars is still an IETF draft; we advertise the URN and
  * implement the pragmatic core (Calendar/CalendarEvent CRUD + query +
