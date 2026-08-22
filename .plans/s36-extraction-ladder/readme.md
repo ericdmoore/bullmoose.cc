@@ -331,20 +331,28 @@ observation) and not a plain proposal (not independently actionable). It is a
 **dependency between two proposals**: approving the calendar add is what makes
 the payment real.
 
-Design questions, unresolved and worth resolving deliberately:
+### DECIDED 2026-08-22 — the dependency's four rules
 
-- **Does the dependent become visible on approval, or is it visible-but-blocked
-  from the start?** Hidden-until-triggered is tidier; visible-but-blocked is
-  more honest — the reader sees the consequence before committing to the cause.
-  Leaning honest.
-- **What does declining the cause do to the dependent?** Withdraw it silently,
-  or leave it as a decided-no with its reason?
-- **How far does this go?** One edge is a feature; a general dependency graph is
-  a workflow engine, and this should not quietly become one. Proposal: exactly
-  one level, no chains, and revisit only with a second real example.
-- **Payment is the sharpest edge in the product.** A proposal that says "pay the
-  coach" must never be one approval away from moving money. The offer should
-  end at a prepared, reviewable handoff — not a transfer.
+Eric resolved the two open questions (both toward the honest option), and the
+two proposals already in the draft stand unchallenged:
+
+1. **Visible-but-blocked from the start.** Both proposals appear at once; the
+   dependent shows *"waits on: the calendar hold"* and cannot be decided until
+   the cause is approved. The reader sees the consequence BEFORE committing to
+   the cause — approving the tournament while blind to the payment it triggers
+   is the dishonest ordering. (Hidden-until-triggered was the tidier queue and
+   the worse contract.)
+2. **Declining the cause closes the dependent VISIBLY, reason recorded.** A
+   terminal closed state stamped "the thing this depended on was declined" —
+   in the queue's record, tombstoned against re-minting from a quoted reply.
+   No human decision is fabricated on the dependent; it closed because its
+   ground vanished. The s31 rule again: closed ≠ declined.
+3. **Exactly one level, no chains.** One edge is a feature; a general
+   dependency graph is a workflow engine, and this must not quietly become
+   one. Revisit only with a second real example in hand.
+4. **Payment ends at a prepared, reviewable handoff — never a transfer.** A
+   proposal that says "pay the coach" is never one approval away from moving
+   money.
 
 ---
 
