@@ -100,6 +100,14 @@ var registry = map[string]spec{
 	// That forced the managed install to be ported too; defaultConfirm is
 	// where the care went, because it is the one prompt whose wrong answer
 	// installs software.
+	// `identity` (s42): list/show/signature/add/rm over Identity/get + /set.
+	"identity": {json: true, run: runIdentity,
+		value:   []string{"db", "account", "name", "reply-to", "bcc", "text", "html", "if-state"},
+		boolean: []string{"json", "ids", "dry-run", "clear"}},
+	// `repoint` (s42): move the stored base WITHOUT re-authenticating.
+	// Validates before writing — see repoint.go.
+	"repoint": {json: true, run: runRepoint,
+		value: []string{"db", "base"}, boolean: []string{"json"}},
 	// `discover` (s42): the autodiscovery ladder, read-only, no session needed.
 	"discover": {json: true, run: runDiscover,
 		// --db is owned and IGNORED, exactly as Node ignores it: it is a global

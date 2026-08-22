@@ -673,6 +673,35 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 		nf, _ := json.Marshal(notFound)
 		return reply(fmt.Sprintf(`{"accountId":"a_you","state":"1","list":[%s],"notFound":%s}`,
 			strings.Join(list, ","), nf))
+	case "Identity/set":
+		var iset struct {
+			Create  map[string]json.RawMessage `json:"create"`
+			Update  map[string]json.RawMessage `json:"update"`
+			Destroy []string                   `json:"destroy"`
+		}
+		_ = json.Unmarshal(args, &iset)
+		parts := []string{`"accountId":"a_you"`, `"newState":"idstate-2"`}
+		if len(iset.Create) > 0 {
+			var made []string
+			n := 0
+			for cid := range iset.Create {
+				n++
+				made = append(made, fmt.Sprintf(`%q:{"id":"id_new_%d"}`, cid, n))
+			}
+			parts = append(parts, `"created":{`+strings.Join(made, ",")+`}`)
+		}
+		if len(iset.Update) > 0 {
+			var upd []string
+			for id := range iset.Update {
+				upd = append(upd, fmt.Sprintf("%q:null", id))
+			}
+			parts = append(parts, `"updated":{`+strings.Join(upd, ",")+`}`)
+		}
+		if len(iset.Destroy) > 0 {
+			b, _ := json.Marshal(iset.Destroy)
+			parts = append(parts, `"destroyed":`+string(b))
+		}
+		return reply(`{` + strings.Join(parts, ",") + `}`)
 	case "VacationResponse/get":
 		v := f.vacation
 		if v == "" {

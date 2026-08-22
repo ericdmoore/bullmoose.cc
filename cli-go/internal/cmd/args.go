@@ -40,6 +40,15 @@ type args struct {
 	// Until is `vacation on --until <date>` — parsed to RFC 3339 at use.
 	Until string
 
+	// ---- identity (`identity signature|add`, s42) ----
+	ReplyTo string
+	// Text/HTML are signature SOURCES (a path, or "-" for stdin), not content.
+	Text    string
+	HasText bool
+	HTML    string
+	HasHTML bool
+	Clear   bool
+
 	ExpandMD string // "html" is the only accepted value; "" = plain text
 	LinkMax  string // MiB before a file becomes an expiring link (default 4)
 	LinkTTL  string // days an expiring link lives (default 30)
@@ -241,6 +250,16 @@ func parse(argv []string) args {
 				a.LinkTTL = value()
 			case "until":
 				a.Until = value()
+			case "reply-to":
+				a.ReplyTo = value()
+			case "text":
+				a.Text = value()
+				a.HasText = true
+			case "html":
+				a.HTML = value()
+				a.HasHTML = true
+			case "clear":
+				a.Clear = true
 			case "yes":
 				a.Yes = true
 			case "to":
