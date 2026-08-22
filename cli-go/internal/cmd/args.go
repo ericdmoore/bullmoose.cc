@@ -41,6 +41,28 @@ type args struct {
 	Until string
 
 	// ---- identity (`identity signature|add`, s42) ----
+	// ---- creds (`creds set|oauth`, s42 — the vault) ----
+	//
+	// SecretEnv NAMES an env var; Secret carries a literal for scripting; the
+	// hidden prompt is the human path. CredScope carries --scope (singular —
+	// the token flag is --scopes, PLURAL, so there is no collision; the first
+	// draft renamed this to --cred-scope against an imagined one, and the
+	// parser-grammar drift test caught the invented flag immediately).
+	Kind         string
+	Secret       string
+	SecretEnv    string
+	Meta         string
+	Allow        string
+	Header       string
+	CredScope    string
+	Enforcement  string
+	AuthorizeURL string
+	TokenURL     string
+	ClientID     string
+	ClientSecret string
+	OAuthScopes  string
+	Port         string
+
 	ReplyTo string
 	// Text/HTML are signature SOURCES (a path, or "-" for stdin), not content.
 	Text    string
@@ -252,6 +274,34 @@ func parse(argv []string) args {
 				a.Until = value()
 			case "reply-to":
 				a.ReplyTo = value()
+			case "kind":
+				a.Kind = value()
+			case "secret":
+				a.Secret = value()
+			case "secret-env":
+				a.SecretEnv = value()
+			case "meta":
+				a.Meta = value()
+			case "allow":
+				a.Allow = value()
+			case "header":
+				a.Header = value()
+			case "scope":
+				a.CredScope = value()
+			case "enforcement":
+				a.Enforcement = value()
+			case "authorize-url":
+				a.AuthorizeURL = value()
+			case "token-url":
+				a.TokenURL = value()
+			case "client-id":
+				a.ClientID = value()
+			case "client-secret":
+				a.ClientSecret = value()
+			case "oauth-scopes":
+				a.OAuthScopes = value()
+			case "port":
+				a.Port = value()
 			case "text":
 				a.Text = value()
 				a.HasText = true
