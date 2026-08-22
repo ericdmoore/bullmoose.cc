@@ -3,6 +3,7 @@
 // policy. No storage, no workers, no clocks — the ingest wiring calls these.
 export type { BoundaryMessage } from "./message.js";
 export { globMatch, sieveVerdict, type SieveField, type SieveMatch, type SieveRule } from "./sieve.js";
+export { compileSieve, sieveString, HELD_FOLDER, SIEVE_EXTENSIONS } from "./sieveCompile.js";
 export {
   BAYES_HEADERS,
   DEFAULT_THRESHOLDS,

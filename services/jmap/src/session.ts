@@ -1,3 +1,4 @@
+import { sieveCapability } from "./methods/sieve";
 import {
   AGENT_CAP,
   CALENDARS_CAP,
@@ -6,6 +7,7 @@ import {
   FILENODE_CAP,
   MAIL_CAP,
   SUBMISSION_CAP,
+  SIEVE_CAP,
   VACATION_CAP,
   contactsCapability,
   coreCapability,
@@ -61,6 +63,7 @@ export function buildSession(origin: string, principal: Principal): Session {
               [MAIL_CAP]: mailCapability,
               [SUBMISSION_CAP]: submissionCapability,
               [VACATION_CAP]: {},
+              [SIEVE_CAP]: sieveCapability(),
               [CONTACTS_CAP]: contactsCapability,
               [CALENDARS_CAP]: {},
               [FILENODE_CAP]: {},
@@ -94,6 +97,7 @@ export function buildSession(origin: string, principal: Principal): Session {
       [MAIL_CAP]: {},
       [SUBMISSION_CAP]: {},
       [VACATION_CAP]: {},
+      [SIEVE_CAP]: sieveCapability(),
       [CONTACTS_CAP]: {},
       [CALENDARS_CAP]: {},
       [FILENODE_CAP]: {},
