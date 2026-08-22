@@ -39,9 +39,13 @@ function world(modelResponse: string) {
   return { w, run };
 }
 
-function inbound(o: { subject?: string; body?: string }): EmailRow {
+function inbound(o: { id?: string; subject?: string; body?: string }): EmailRow {
   return {
-    id: "e_msg",
+    // Overridable so a test can deliver a SECOND, different message — without
+    // it the per-message idempotence guard skips the second run, and a test
+    // meant to exercise the moment-level dupe check passes for the wrong
+    // reason entirely.
+    id: o.id ?? "e_msg",
     from: [{ email: "bob@example.com" }],
     subject: o.subject ?? "",
     preview: (o.body ?? "").slice(0, 256),
@@ -504,5 +508,99 @@ describe("a decision tombstones the offer", () => {
     const clause = q.slice(0, q.indexOf("LIMIT 1"));
     expect(clause).toContain("json_extract(payload_json, '$.start')");
     expect(clause, "any status is a tombstone — pending, approved, declined or expired").not.toContain("status =");
+  });
+});
+
+describe("offers — a dated event becomes a verb-schedule proposal", () => {
+  // Production always carries a binding_id (index.ts's Job); an offer needs one
+  // because its carrier invocation must be attributable to the binding whose
+  // authority and budget it was made under.
+  const offerJob: ExtractJob = { ...job, binding_id: "bind_x" };
+  const dated = (start: unknown) =>
+    JSON.stringify([{ class: "event", body: "U12G tournament, arrive 7:30", confidence: 0.9, start }]);
+
+  it("90. mints ONE proposal per dated event, carried by its own invocation", async () => {
+    // A proposal's id IS its invocation's id, so three offers need three
+    // invocations — which is why this cannot be one proposal listing dates.
+    const { w } = world(
+      JSON.stringify([
+        { class: "event", body: "Saturday game", confidence: 0.9, start: "2026-08-23T08:00:00" },
+        { class: "event", body: "Sunday game", confidence: 0.9, start: "2026-08-24T07:30:00" },
+      ]),
+    );
+    await runExtract(
+      w.env,
+      offerJob,
+      CFG,
+      inbound({ subject: "Tournament", body: "Saturday 8:00 am" }),
+      {},
+      async () => {},
+    );
+    const rows = w.db.query<{ id: string; kind: string; status: string; payload_json: string }>(
+      "SELECT id, kind, status, payload_json FROM agent_proposals WHERE account_id = ?",
+      ACCOUNT,
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.kind === "verb-schedule" && r.status === "pending")).toBe(true);
+    expect(rows.map((r) => JSON.parse(r.payload_json).start).sort()).toEqual([
+      "2026-08-23T08:00:00",
+      "2026-08-24T07:30:00",
+    ]);
+    // Each has its own carrier invocation, done at cost 0 — no model was
+    // called for the offer; the extraction already paid for the thinking.
+    for (const r of rows) {
+      const inv = w.db.query<{ status: string; cost_micros: number }>(
+        "SELECT status, cost_micros FROM agent_invocations WHERE id = ?",
+        r.id,
+      )[0];
+      expect(inv).toMatchObject({ status: "done", cost_micros: 0 });
+    }
+  });
+
+  it("91. an event with no usable start stays a note and offers nothing", async () => {
+    const { w } = world(dated("Saturday morning"));
+    await runExtract(w.env, offerJob, CFG, inbound({ subject: "Tournament", body: "Saturday" }), {}, async () => {});
+    expect(w.db.query("SELECT id FROM agent_proposals WHERE account_id = ?", ACCOUNT)).toHaveLength(0);
+    // But the reader still sees the date.
+    expect(w.db.query("SELECT id FROM annotations WHERE account_id = ?", ACCOUNT)).toHaveLength(1);
+  });
+
+  it("92. the same moment is never offered twice — the quoted-thread case", async () => {
+    const { w } = world(dated("2026-08-23T08:00:00"));
+    const msg = inbound({ subject: "Tournament", body: "Saturday 8:00 am" });
+    await runExtract(w.env, offerJob, CFG, msg, {}, async () => {});
+    // A reply quoting the same schedule, arriving as its own delivery.
+    await runExtract(
+      w.env,
+      { ...offerJob, id: "inv_y" },
+      CFG,
+      inbound({ id: "e_two", subject: "Re: Tournament", body: "Saturday 8:00 am" }),
+      {},
+      async () => {},
+    );
+    expect(w.db.query("SELECT id FROM agent_proposals WHERE account_id = ?", ACCOUNT)).toHaveLength(1);
+  });
+
+  it("93. a DECLINED moment is not re-offered — the decision is the tombstone", async () => {
+    const { w } = world(dated("2026-08-23T08:00:00"));
+    await runExtract(
+      w.env,
+      offerJob,
+      CFG,
+      inbound({ subject: "Tournament", body: "Saturday 8am" }),
+      {},
+      async () => {},
+    );
+    await w.env.DB.prepare("UPDATE agent_proposals SET status = 'rejected' WHERE account_id = ?").bind(ACCOUNT).run();
+    await runExtract(
+      w.env,
+      { ...offerJob, id: "inv_z" },
+      CFG,
+      inbound({ id: "e_three", subject: "Re: Tournament", body: "Saturday 8am" }),
+      {},
+      async () => {},
+    );
+    // Still one: the answer already given is not asked again.
+    expect(w.db.query("SELECT id FROM agent_proposals WHERE account_id = ?", ACCOUNT)).toHaveLength(1);
   });
 });

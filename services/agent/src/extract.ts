@@ -451,6 +451,12 @@ async function offerSchedules(
 ): Promise<number> {
   const dated = items.filter((i) => i.class === "event" && i.start);
   if (dated.length === 0) return 0;
+  // An offer needs a carrier INVOCATION, and `agent_invocations.binding_id` is
+  // NOT NULL — an offer has to be attributable to the binding whose authority
+  // and budget it was made under. The dispatcher always supplies one
+  // (index.ts's Job), so this is the pure-pipeline and test path: extract the
+  // notes, skip the offers, rather than fail the pass for want of an id.
+  if (!job.binding_id) return 0;
 
   let made = 0;
   for (const it of dated.slice(0, MAX_OFFERS_PER_MESSAGE)) {
@@ -485,7 +491,7 @@ async function offerSchedules(
         .bind(
           carrierId,
           job.account_id,
-          job.binding_id ?? null,
+          job.binding_id,
           job.binding_name,
           JSON.stringify({ kind: "extract-offer", emailId: email.id, start }),
           now,
