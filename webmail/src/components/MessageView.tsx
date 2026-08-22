@@ -11,6 +11,12 @@ import { displayName, formatAddress, isFlagged, type Email, type EmailAddress } 
 import { armWatch, askAgent, type AskSpec, type VerbOutcome } from "../lib/verbs/api";
 import { verbCounterparty } from "../lib/verbs/contract";
 import AnnotationMargin from "./AnnotationMargin";
+import MarginOffers from "./MarginOffers";
+import type { ActionProposal, RejectReason } from "../lib/approvals/types";
+import type { ApprovalsAccount } from "../lib/approvals/accounts";
+
+/** Stable empty set, so a bare render does not re-allocate per paint. */
+const EMPTY_BUSY: ReadonlySet<string> = new Set();
 import PersonPanel from "./PersonPanel";
 
 interface Props {
@@ -33,6 +39,18 @@ interface Props {
   onReply: (email: Email, all: boolean) => void;
   onForward: (email: Email) => void;
   onBack: () => void;
+  /**
+   * Offers anchored to this thread (s36 V1 item 5). ALL optional, same floor
+   * as the margin above: absent, the thread renders exactly as before. The
+   * shell owns the pending-proposal index (fetched once, zero requests per
+   * open — anchored.ts) and injects the slice for this thread.
+   */
+  offers?: readonly ActionProposal[];
+  offersAccount?: ApprovalsAccount;
+  offersBusy?: ReadonlySet<string>;
+  offersError?: string | null;
+  onApproveOffer?: (id: string) => void;
+  onDeclineOffer?: (id: string, reason: RejectReason | undefined) => void;
 }
 
 export default function MessageView({
@@ -48,6 +66,12 @@ export default function MessageView({
   onReply,
   onForward,
   onBack,
+  offers = [],
+  offersAccount,
+  offersBusy = EMPTY_BUSY,
+  offersError = null,
+  onApproveOffer,
+  onDeclineOffer,
 }: Props) {
   const attachments = useMemo(() => threadAttachments(detail.emails), [detail]);
   const subject = detail.emails[0]?.subject || "(no subject)";
@@ -164,6 +188,17 @@ export default function MessageView({
           {detail.notFound.length > 0 ? ` · ${detail.notFound.length} could not be loaded` : ""}
         </p>
       </header>
+
+      {onApproveOffer && onDeclineOffer ? (
+        <MarginOffers
+          offers={offers}
+          account={offersAccount}
+          busy={offersBusy}
+          error={offersError}
+          onApprove={onApproveOffer}
+          onDecline={onDeclineOffer}
+        />
+      ) : null}
 
       {attachments.length > 0 ? (
         <section class="attachment-tray" aria-label="Attachments">
