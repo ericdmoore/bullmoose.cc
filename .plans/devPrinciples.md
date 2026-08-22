@@ -20,3 +20,34 @@
       check justified by "the agent cannot mint it", and a blocker that had already been
       fixed. Cite `file:line` so the claim is checkable, or do not make it.
 
+- HATEOAS by default — decided 2026-08-22, after the explorer shipped with the
+  links already in it and Eric still could not find them:
+    - **An id in a response body is a dead end.** To use it a reader must select
+      it, know the grammar, and hand-assemble a URL. Emit the href; the raw id
+      stays legible inside it, so linking costs nothing and removes a step.
+    - **Deviating needs a stated reason**, the way `--force` or a scoped
+      lint-disable does. "It was easier" is not one.
+    - The argument that settles it is that BOTH readers now agree. A *compiled*
+      client prefers to CONSTRUCT — it has a spec, generates URL builders, and
+      treats ids as values to interpolate; that is why codegen-from-OpenAPI beat
+      HATEOAS the first time. An *LLM agent* prefers to FOLLOW: it has no
+      generated client, following requires zero prior knowledge, and
+      constructing requires knowing parameter names and encoding rules well
+      enough that a mistake yields a plausible-looking 404. A link is
+      self-documenting and cannot be malformed.
+    - So the constructing audience is served by `POST /api/jmap`, and every
+      browsable surface — the explorer today, anything like it later — is
+      link-first for the two audiences it actually has: a human pointing and
+      clicking, and an agent reading and following.
+    - **Ordering is part of navigability.** The explorer emitted a correct
+      `_links` on every list item and a wall of 25 opaque `ids` directly above
+      it; the person who WROTE the requirement read the wall and concluded the
+      links were missing. If the first thing on screen is not the thing you can
+      click, the affordance does not exist. Put the navigable keys first.
+    - For open input, prefer **RFC 6570 URI templates** — already the
+      convention next door, since JMAP's own `downloadUrl` / `uploadUrl` /
+      `eventSourceUrl` are templates — and describe the parameters with **JSON
+      Hyper-Schema `hrefSchema`** rather than a bare list of accepted names. It
+      publishes what the code already knows, and it serves both readers at once:
+      machine-checkable input rules for an agent, and enough for a
+      form-rendering extension to draw actual inputs for a human.
