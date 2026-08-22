@@ -1,0 +1,116 @@
+name: Release CLI
+
+# s08 T7 — "the point of the exercise". One job, per the plan: cross-compile
+# the Go CLI for darwin/linux × arm64/amd64 (+ windows/amd64, which pure-Go
+# makes free), checksum everything, attach it all to a GitHub release.
+#
+# Trigger: a tag matching `cli-go/v*`. The prefix is the Go submodule tag
+# convention — cli-go/ is its own module, so `cli-go/v0.1.0` is simultaneously
+# the release tag AND the tag `go install .../cli-go@v0.1.0` resolves. One
+# spelling, two ecosystems.
+#
+# workflow_dispatch is the DRY RUN: same build, same checksums, uploaded as a
+# workflow artifact and no release created — so the pipeline is testable
+# without burning a version number.
+#
+# What this deliberately does NOT do:
+#   - sign or notarize. macOS Gatekeeper will quarantine a downloaded binary;
+#     docs/install.md documents the `xattr -d` step. Notarization needs an
+#     Apple Developer identity and is its own decision, not a side effect of
+#     a release script.
+#   - delete the Node CLI. That is gated on the trace metric (devPlan T7):
+#     zero `delegated` for a full release. `agent` still delegates.
+
+on:
+  push:
+    tags: ['cli-go/v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # gh release create; the checkout is read as usual
+
+jobs:
+  release:
+    name: Cross-compile, checksum, release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # go.mod's `toolchain` line pins the compiler (the binary IS its stdlib
+      # patch level — the #241 lesson), so setup-go here only has to honour it.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli-go/go.mod
+          cache-dependency-path: cli-go/go.sum
+
+      # The artifacts ship only what passed. `verify` already gated the merge,
+      # but a tag can point anywhere; the release must not trust that.
+      - name: Tests gate the artifacts
+        working-directory: cli-go
+        run: |
+          gofmt -l . | tee /dev/stderr | wc -l | grep -qx 0
+          go vet ./...
+          go test ./...
+
+      - name: Cross-compile the matrix
+        working-directory: cli-go
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF" in
+            refs/tags/cli-go/*) VERSION="${GITHUB_REF#refs/tags/cli-go/}" ;;
+            *)                  VERSION="dev-${GITHUB_SHA:0:7}" ;;
+          esac
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p ../dist
+          for target in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64 windows/amd64; do
+            GOOS="${target%/*}"; GOARCH="${target#*/}"
+            ext=""; [ "$GOOS" = windows ] && ext=".exe"
+            # CGO_ENABLED=0 is belt-and-braces (the module is pure Go by
+            # design — go.mod's header defends that); -trimpath so the
+            # binary carries no runner paths; -X stamps the version the
+            # `version` command reports.
+            CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath \
+              -ldflags "-s -w -X github.com/ericdmoore/bullmoose.cc/cli-go/internal/cmd.releaseVersion=$VERSION" \
+              -o "../dist/bullmoose_${VERSION}_${GOOS}_${GOARCH}${ext}" .
+          done
+          ls -l ../dist
+
+      # The ldflags -X above is stringly wiring: rename the package or the
+      # variable and the stamp vanishes SILENTLY (unknown -X symbols are
+      # ignored). So run the runner's own binary and demand the tag back.
+      # `version` is Go-native-only — this also proves the binary answers
+      # with no Node anywhere near it.
+      - name: Smoke — the binary knows its version
+        run: |
+          set -euo pipefail
+          out="$(./dist/bullmoose_${VERSION}_linux_amd64 version)"
+          echo "$out"
+          case "$out" in
+            *"$VERSION"*) ;;
+            *) echo "::error::version stamp missing — the ldflags -X path broke"; exit 1 ;;
+          esac
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum bullmoose_* > checksums.txt && cat checksums.txt
+
+      - name: Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/cli-go/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF#refs/tags/}" \
+            --verify-tag \
+            --title "bullmoose CLI $VERSION" \
+            --notes "Install: [docs/install-cli.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/install-cli.md) — download, \`shasum -a 256 --check checksums.txt\`, \`chmod +x\`, done. Verify with \`bullmoose version\`." \
+            --generate-notes \
+            dist/bullmoose_* dist/checksums.txt
+
+      # Dry runs keep their artifacts too — that is what makes them a rehearsal
+      # rather than a log to squint at.
+      - name: Upload artifacts (dry runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/cli-go/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bullmoose-cli-${{ env.VERSION }}
+          path: dist/
+          retention-days: 7
