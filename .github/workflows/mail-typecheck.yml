@@ -66,8 +66,10 @@ jobs:
           # builds another" is the failure #241 was made of. setup-go honours
           # the `toolchain` directive, so the repo states the version once.
           go-version-file: cli-go/go.mod
-          # cli-go has no third-party deps (no go.sum); anchor setup-go's cache
-          # key on go.mod so caching stays valid instead of warning.
+          # Anchor setup-go's cache key on go.mod. This comment used to say
+          # "cli-go has no third-party deps (no go.sum)" — false since T5:
+          # golang.org/x/term, modernc.org/sqlite and (T6) goldmark are all
+          # there, each justified in go.mod itself. go.sum exists.
           cache-dependency-path: cli-go/go.mod
 
       # gofmt is not a test failure, so `go test`/`go vet` never catch it. Fail
