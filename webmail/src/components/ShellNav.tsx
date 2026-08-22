@@ -471,6 +471,16 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
   // leaves the chrome intact and lets the ISLAND route to /login. A nav bar
   // that navigates on its own would race the page it is framing.
   const [sessionEmail, setSessionEmail] = useState<string | undefined>(undefined);
+  // Two states could not express three. `email === undefined` meant BOTH "not
+  // resolved yet" and "resolved, nobody" — so the chip had to pick one, picked
+  // "Not signed in", and asserted it during every render before the session
+  // came back. That is what forced the whole shell to `client:only`: rendering
+  // nothing was the only way to avoid rendering a falsehood.
+  //
+  // With `settled` the chip can say nothing while it does not know, which is
+  // what lets the rail be SERVER-RENDERED — and the rail not being there at
+  // all is the flash Eric filmed on 2026-08-22.
+  const [settled, setSettled] = useState(false);
   const email = emailProp ?? sessionEmail;
   // Starts wide, then adopts the stored preference on mount. Reading
   // localStorage during render would break hydration and throw in private
@@ -559,14 +569,23 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
   }, []);
 
   useEffect(() => {
-    if (emailProp) return;
+    if (emailProp) {
+      setSettled(true);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       try {
         const resolved = resolveClient();
-        if (resolved.mode === "unauthenticated") return;
+        if (resolved.mode === "unauthenticated") {
+          if (!cancelled) setSettled(true);
+          return;
+        }
         const live = await resolved.client.session();
-        if (!cancelled) setSessionEmail(live.username);
+        if (!cancelled) {
+          setSessionEmail(live.username);
+          setSettled(true);
+        }
       } catch {
         /* offline, expired token, unreachable server — the chrome still
            renders and the island owns the error. Saying nothing is better
@@ -948,14 +967,25 @@ export default function ShellNav({ section, email: emailProp, realmControl: cont
               aria-haspopup="menu"
             >
               <span class="sr-only">Open user menu</span>
-              <span class="grid size-8 place-items-center rounded-full bg-gray-200 text-xs font-bold text-gray-700 dark:bg-white/10 dark:text-white">
-                {(email ?? "?").slice(0, 1).toUpperCase()}
+              {/* Neutral while unknown — an empty circle, not a "?" and not an
+                  initial. A blank shape resolving into your monogram reads as
+                  loading; a wrong letter resolving into a right one reads as a
+                  bug. Same line s35 drew for skeletons: stand where the
+                  content goes and claim nothing. */}
+              <span
+                class="grid size-8 place-items-center rounded-full bg-gray-200 text-xs font-bold text-gray-700 dark:bg-white/10 dark:text-white"
+                aria-hidden={email === undefined ? "true" : undefined}
+              >
+                {email === undefined ? "" : email.slice(0, 1).toUpperCase()}
               </span>
               {/* nowrap + truncate: "Not signed in" wrapped to three lines
                   and blew the header open (second Kitesurf screenshot); a
                   long address gets an ellipsis instead of a second line. */}
               <span class="hidden max-w-56 lg:flex lg:items-center lg:gap-x-1 lg:whitespace-nowrap">
-                <span class="truncate">{email ?? "Not signed in"}</span>
+                {/* "Not signed in" is a CLAIM, and it may only be made once
+                    the session has actually answered. Before that the slot is
+                    empty rather than wrong. */}
+                <span class="truncate">{email ?? (settled ? "Not signed in" : "")}</span>
                 <ChevronDownMiniIcon class="size-5 shrink-0 text-gray-400" />
               </span>
             </button>
