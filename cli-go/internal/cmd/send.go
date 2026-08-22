@@ -28,12 +28,18 @@ package cmd
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/markdown"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 
@@ -54,6 +60,7 @@ type identity struct {
 	Email         string `json:"email"`
 	Name          string `json:"name"`
 	TextSignature string `json:"textSignature"`
+	HTMLSignature string `json:"htmlSignature"`
 }
 
 // address is one recipient. splitAddresses produces only the email — a name is
@@ -181,6 +188,11 @@ func runSend(s *bmio.Streams, argv []string) int {
 	}
 
 	to := splitAddresses(a.To)
+	// --expandMD is validated HERE, above the first round trip, so a bad value
+	// costs zero requests — main.ts:589's rule, applied to the new flag.
+	if a.ExpandMD != "" && a.ExpandMD != "html" {
+		return die(s, bmio.Usage("--expandMD accepts only: html"))
+	}
 	cc := splitAddresses(a.CC)
 	bcc := splitAddresses(a.BCC)
 	// The gate, and it is above every round trip on purpose: no destination, no
@@ -224,6 +236,17 @@ func runSend(s *bmio.Streams, argv []string) int {
 	// received (main.ts:611, identity.ts:29).
 	signedBody := appendTextSignature(body, from.TextSignature)
 
+	// ---- the Markdown path (send --expandMD html) ---------------------------
+	//
+	// A DIFFERENT protocol from step 3 below, not a variation of it: the body
+	// is rendered, its local references become cid: parts / attachments /
+	// expiring links, and the complete RFC 5322 message is assembled HERE and
+	// imported as a blob. It has to be — inline images are cid: references
+	// into sibling MIME parts, which no Email/set field can express.
+	// (The mode itself was validated at the top, beside the recipient check,
+	// so an unknown value costs ZERO requests — the same rule as no --to.)
+	mdMode := a.ExpandMD == "html"
+
 	// ---- 2. Mailbox/get — the draft → Sent dance needs both roles -----------
 	mbRaw, err := client.One(ctx, "Mailbox/get",
 		map[string]any{"accountId": sendAccount, "ids": nil}, jmap.MailUsing)
@@ -255,42 +278,53 @@ func runSend(s *bmio.Streams, argv []string) int {
 		return die(s, bmio.NotFound("account is missing a drafts/sent role mailbox"))
 	}
 
-	// ---- 3. Email/set — create the draft ------------------------------------
-	//
-	// Bcc is stored on the draft but never written into the relayed MIME;
-	// delivery to those recipients rides on the explicit envelope below.
-	draft := draftSpec{
-		MailboxIDs: map[string]bool{draftsID: true},
-		Keywords:   map[string]bool{"$draft": true, "$seen": true},
-		From:       []namedAddress{{Name: from.Name, Email: from.Email}},
-		To:         to,
-		CC:         cc,
-		BCC:        bcc,
-		Subject:    subject,
-		BodyValues: map[string]bodyValue{"t": {Value: signedBody}},
-		TextBody:   []bodyPart{{PartID: "t", Type: "text/plain"}},
+	var draftID string
+	var mdExtras string
+	if mdMode {
+		id, extras, err := createMarkdownDraft(ctx, s, client, a, sendAccount, draftsID, from, body, to, cc, subject)
+		if err != nil {
+			return die(s, err)
+		}
+		draftID = id
+		mdExtras = extras
+	} else {
+		// ---- 3. Email/set — create the draft ------------------------------------
+		//
+		// Bcc is stored on the draft but never written into the relayed MIME;
+		// delivery to those recipients rides on the explicit envelope below.
+		draft := draftSpec{
+			MailboxIDs: map[string]bool{draftsID: true},
+			Keywords:   map[string]bool{"$draft": true, "$seen": true},
+			From:       []namedAddress{{Name: from.Name, Email: from.Email}},
+			To:         to,
+			CC:         cc,
+			BCC:        bcc,
+			Subject:    subject,
+			BodyValues: map[string]bodyValue{"t": {Value: signedBody}},
+			TextBody:   []bodyPart{{PartID: "t", Type: "text/plain"}},
+		}
+		setRaw, err := client.One(ctx, "Email/set", emailSetArgs{
+			AccountID: sendAccount,
+			Create:    map[string]draftSpec{"d": draft},
+		}, jmap.MailUsing)
+		if err != nil {
+			return die(s, err)
+		}
+		var setRes struct {
+			Created map[string]struct {
+				ID string `json:"id"`
+			} `json:"created"`
+			NotCreated map[string]setErr `json:"notCreated"`
+		}
+		if err := json.Unmarshal(setRaw, &setRes); err != nil {
+			return die(s, err)
+		}
+		created, ok := setRes.Created["d"]
+		if !ok || created.ID == "" {
+			return die(s, failSetError("draft creation", setRes.NotCreated, "d"))
+		}
+		draftID = created.ID
 	}
-	setRaw, err := client.One(ctx, "Email/set", emailSetArgs{
-		AccountID: sendAccount,
-		Create:    map[string]draftSpec{"d": draft},
-	}, jmap.MailUsing)
-	if err != nil {
-		return die(s, err)
-	}
-	var setRes struct {
-		Created map[string]struct {
-			ID string `json:"id"`
-		} `json:"created"`
-		NotCreated map[string]setErr `json:"notCreated"`
-	}
-	if err := json.Unmarshal(setRaw, &setRes); err != nil {
-		return die(s, err)
-	}
-	created, ok := setRes.Created["d"]
-	if !ok || created.ID == "" {
-		return die(s, failSetError("draft creation", setRes.NotCreated, "d"))
-	}
-	draftID := created.ID
 
 	// ---- 4. EmailSubmission/set — submit, and move Drafts → Sent on success --
 	//
@@ -355,11 +389,11 @@ func runSend(s *bmio.Streams, argv []string) int {
 			return die(s, err)
 		}
 	} else {
-		// `extras` (main.ts:748) is the Markdown pipeline's inline/attached/linked
-		// summary. The native path is plain-text only, so it is always empty here
-		// — an --expandMD invocation never reaches this code.
+		// `mdExtras` (main.ts:748) is the Markdown pipeline's summary —
+		// "markdown→html, 2 inlined, 1 linked (expires in 30d)". Empty on a
+		// plain-text send, so the line reads identically to before.
 		s.Out("sent " + draftID + " to " + strings.Join(emails, ", ") +
-			" (submission " + submission.ID + ")")
+			" (submission " + submission.ID + ")" + mdExtras)
 	}
 
 	// Keep the local log current; best-effort, exactly as main.ts:757 is.
@@ -552,4 +586,219 @@ func reconcileSent(db *sql.DB, client *jmap.Client, accountID, emailID string) {
 		return
 	}
 	_ = store.UpsertEmail(db, accountID, got.List[0])
+}
+
+// createMarkdownDraft is the --expandMD path: render → resolve assets →
+// BuildMime → upload → Email/import. A port of main.ts:690-737.
+//
+// It returns the imported draft's id; submission (step 4) is IDENTICAL to the
+// plain path and deliberately not duplicated here — the bcc envelope rule and
+// the Drafts→Sent move must not fork.
+func createMarkdownDraft(
+	ctx context.Context,
+	s *bmio.Streams,
+	client *jmap.Client,
+	a args,
+	sendAccount, draftsID string,
+	from identity,
+	body string,
+	to, cc []address,
+	subject string,
+) (string, string, error) {
+	// Numbers parse like main.ts:692-693: junk falls back, floors apply. The
+	// 0.1 MiB floor stops `--linkMax 0` from turning EVERY reference into a
+	// public link nobody asked for.
+	linkMaxMiB := parseFloatDefault(a.LinkMax, 4)
+	if linkMaxMiB < 0.1 {
+		linkMaxMiB = 0.1
+	}
+	linkMaxBytes := int64(linkMaxMiB * 1024 * 1024)
+	ttlDays := parseIntDefault(a.LinkTTL, 30)
+	if ttlDays < 1 {
+		ttlDays = 1
+	}
+
+	// Relative references resolve against the FILE'S directory when there is
+	// one, the cwd otherwise — an image beside the .md must work however the
+	// command was invoked.
+	baseDir := "."
+	if a.File != "" && a.File != "-" {
+		abs, err := filepath.Abs(a.File)
+		if err == nil {
+			baseDir = filepath.Dir(abs)
+		}
+	}
+
+	html, err := markdown.ToHTML(body)
+	if err != nil {
+		return "", "", err
+	}
+
+	share := func(name, mediaType string, content []byte) (string, error) {
+		up, err := client.Upload(ctx, sendAccount, content, mediaType)
+		if err != nil {
+			return "", err
+		}
+		link, err := client.CreateShareLink(ctx, sendAccount, up.BlobID, jmap.ShareLinkOptions{
+			Name: name, Type: mediaType, TTLSeconds: ttlDays * 24 * 3600,
+		})
+		if err != nil {
+			return "", err
+		}
+		return link.URL, nil
+	}
+
+	assets, err := markdown.ProcessAssets(body, html, baseDir, linkMaxBytes, share)
+	if err != nil {
+		return "", "", err
+	}
+	for _, w := range assets.Warnings {
+		s.Warn(w)
+	}
+
+	// Both alternatives carry the signature, or it appears in one half of the
+	// multipart/alternative and not the other, depending on which part the
+	// recipient's client happens to render.
+	text := appendTextSignature(assets.Text, from.TextSignature)
+	htmlBody := appendHTMLSignature(assets.HTML, from.HTMLSignature, from.TextSignature)
+
+	domain := "localhost"
+	if i := strings.LastIndex(from.Email, "@"); i >= 0 {
+		domain = from.Email[i+1:]
+	}
+	msgID, err := randomHexID()
+	if err != nil {
+		return "", "", err
+	}
+
+	raw, err := markdown.BuildMime(markdown.OutgoingMessage{
+		From:        []markdown.MimeAddress{{Name: from.Name, Email: from.Email}},
+		To:          mimeAddresses(to),
+		CC:          mimeAddresses(cc),
+		Subject:     subject,
+		MessageID:   msgID + "@" + domain,
+		Date:        time.Now(),
+		Text:        text,
+		HasText:     true,
+		HTML:        htmlBody,
+		HasHTML:     true,
+		Inline:      assets.Inline,
+		Attachments: assets.Attachments,
+	})
+	if err != nil {
+		return "", "", err
+	}
+
+	up, err := client.Upload(ctx, sendAccount, raw, "message/rfc822")
+	if err != nil {
+		return "", "", err
+	}
+
+	impRaw, err := client.One(ctx, "Email/import", emailImportArgs{
+		AccountID: sendAccount,
+		Emails: map[string]emailImportSpec{"d": {
+			BlobID:     up.BlobID,
+			MailboxIDs: map[string]bool{draftsID: true},
+			Keywords:   map[string]bool{"$draft": true, "$seen": true},
+		}},
+	}, jmap.MailUsing)
+	if err != nil {
+		return "", "", err
+	}
+	var impRes struct {
+		Created map[string]struct {
+			ID string `json:"id"`
+		} `json:"created"`
+		NotCreated map[string]setErr `json:"notCreated"`
+	}
+	if err := json.Unmarshal(impRaw, &impRes); err != nil {
+		return "", "", err
+	}
+	imported, ok := impRes.Created["d"]
+	if !ok || imported.ID == "" {
+		return "", "", failSetError("draft import", impRes.NotCreated, "d")
+	}
+
+	// The chrome line matches main.ts:738-744, so a script reading stderr sees
+	// the same story from either binary.
+	bits := []string{"markdown→html"}
+	if n := len(assets.Inline); n > 0 {
+		bits = append(bits, fmt.Sprintf("%d inlined", n))
+	}
+	if n := len(assets.Attachments); n > 0 {
+		bits = append(bits, fmt.Sprintf("%d attached", n))
+	}
+	if n := len(assets.Linked); n > 0 {
+		bits = append(bits, fmt.Sprintf("%d linked (expires in %dd)", n, ttlDays))
+	}
+	return imported.ID, ", " + strings.Join(bits, ", "), nil
+}
+
+// appendHTMLSignature is identity.ts:81. The html signature is an RFC 8621
+// SNIPPET and is appended as a fragment; a text-only signature still travels,
+// escaped inside <pre>, so it does not appear in one alternative and not the
+// other.
+func appendHTMLSignature(html, htmlSig, textSig string) string {
+	snippet := htmlSig
+	if snippet == "" && textSig != "" {
+		snippet = "<pre>" + htmlEscape(strings.TrimRight(textSig, "\n")) + "</pre>"
+	}
+	if snippet == "" {
+		return html
+	}
+	return html + "\n<div class=\"bm-signature\">\n<div>-- </div>\n" + snippet + "\n</div>\n"
+}
+
+func htmlEscape(t string) string {
+	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(t)
+}
+
+func mimeAddresses(as []address) []markdown.MimeAddress {
+	out := make([]markdown.MimeAddress, 0, len(as))
+	for _, a := range as {
+		out = append(out, markdown.MimeAddress{Email: a.Email})
+	}
+	return out
+}
+
+func parseFloatDefault(v string, def float64) float64 {
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || f != f {
+		return def
+	}
+	return f
+}
+
+func parseIntDefault(v string, def int) int {
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
+}
+
+func randomHexID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// emailImportArgs is Email/import with a single email.
+type emailImportArgs struct {
+	AccountID string                     `json:"accountId"`
+	Emails    map[string]emailImportSpec `json:"emails"`
+}
+
+type emailImportSpec struct {
+	BlobID     string          `json:"blobId"`
+	MailboxIDs map[string]bool `json:"mailboxIds"`
+	Keywords   map[string]bool `json:"keywords"`
 }

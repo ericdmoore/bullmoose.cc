@@ -18,6 +18,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -42,6 +43,12 @@ type recordedCall struct {
 // `/api/blobs/…` rather than a method (jmap.ts:218 records why there is no
 // session template to resolve), so its "which request did we send" assertions —
 // and its zero-request refusals — need their own log.
+type uploadCall struct {
+	BlobID string
+	Type   string
+	Body   []byte
+}
+
 type restCall struct {
 	Method string
 	Path   string
@@ -80,6 +87,11 @@ type mailFake struct {
 	// mirroring smoke/server.mjs:457: `b_0` is a 409 whose reason word is in no
 	// JMAP vocabulary, `b_boom` a 500.
 	blobRefusals map[string]restRefusal
+	// uploads records POST /api/upload bodies so a test can parse an imported
+	// message BACK — the assertion that actually matters for buildMime.
+	uploads  []uploadCall
+	shares   []string
+	emailSeq int
 
 	// Refusal knobs.
 	refuseSubmission string // "method" | "seterror" | ""
@@ -481,6 +493,26 @@ func (f *mailFake) handle(w http.ResponseWriter, r *http.Request) {
 			f.base+"/jmap-endpoint",
 			f.base+"/dl/{accountId}/{blobId}/{name}/{type}")
 		return
+	case strings.HasPrefix(r.URL.Path, "/api/upload/"):
+		body, _ := io.ReadAll(r.Body)
+		f.mu.Lock()
+		f.rest = append(f.rest, restCall{Method: r.Method, Path: r.URL.EscapedPath()})
+		n := len(f.uploads)
+		id := fmt.Sprintf("blob_up_%d", n+1)
+		f.uploads = append(f.uploads, uploadCall{BlobID: id, Type: r.Header.Get("Content-Type"), Body: body})
+		f.mu.Unlock()
+		w.Header().Set("content-type", "application/json")
+		fmt.Fprintf(w, `{"blobId":%q,"size":%d}`, id, len(body))
+		return
+	case strings.HasPrefix(r.URL.Path, "/api/share/"):
+		f.mu.Lock()
+		f.rest = append(f.rest, restCall{Method: r.Method, Path: r.URL.EscapedPath()})
+		n := len(f.shares)
+		f.shares = append(f.shares, r.URL.EscapedPath())
+		f.mu.Unlock()
+		w.Header().Set("content-type", "application/json")
+		fmt.Fprintf(w, `{"url":"https://links.stub.test/s/%d","expiresAt":"2026-09-21T00:00:00Z"}`, n+1)
+		return
 	case strings.HasPrefix(r.URL.Path, "/api/blobs/"):
 		f.mu.Lock()
 		// EscapedPath, not Path: the assertion is about what encodeURIComponent
@@ -619,6 +651,19 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 		nf, _ := json.Marshal(notFound)
 		return reply(fmt.Sprintf(`{"accountId":"a_you","state":"1","list":[%s],"notFound":%s}`,
 			strings.Join(list, ","), nf))
+	case "Email/import":
+		var imp struct {
+			Emails map[string]struct {
+				BlobID string `json:"blobId"`
+			} `json:"emails"`
+		}
+		_ = json.Unmarshal(args, &imp)
+		created := make([]string, 0, len(imp.Emails))
+		for cid := range imp.Emails {
+			f.emailSeq++
+			created = append(created, fmt.Sprintf("%q:{\"id\":\"em_new_%d\"}", cid, f.emailSeq))
+		}
+		return reply(`{"accountId":"a_you","created":{` + strings.Join(created, ",") + `}}`)
 	case "Email/set":
 		var a struct {
 			IfInState *string                    `json:"ifInState"`

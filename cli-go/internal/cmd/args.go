@@ -36,6 +36,11 @@ type args struct {
 	Identity string
 	File     string
 	Body     string
+	// ---- the Markdown pipeline (`send --expandMD`, s08 T6) ----
+	ExpandMD string // "html" is the only accepted value; "" = plain text
+	LinkMax  string // MiB before a file becomes an expiring link (default 4)
+	LinkTTL  string // days an expiring link lives (default 30)
+
 	// HasBody records PRESENCE, not truthiness: main.ts:778 tests
 	// `opts.body !== undefined`, so `--body ""` is an explicit empty body and
 	// must NOT fall through to stdin.
@@ -225,6 +230,12 @@ func parse(argv []string) args {
 				a.Host = value()
 			case "key-env":
 				a.KeyEnv = value()
+			case "expandMD":
+				a.ExpandMD = value()
+			case "linkMax":
+				a.LinkMax = value()
+			case "linkTTL":
+				a.LinkTTL = value()
 			case "yes":
 				a.Yes = true
 			case "to":
