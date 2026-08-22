@@ -64,7 +64,31 @@ gets built it should be the reconcile.
 
 ## Slices
 
-**T1 — the report.** `local setup` / `local connect`, and the daemon on start,
+### ⚠️ Both reporting surfaces live in the CLI that is being retired
+
+Found 2026-08-22 while scoping T1. The two places that would send a report —
+`local` (which does the discovery) and `agent serve` (the daemon that knows its
+own capabilities) — are **Node-only**. `cli-go` has no `local.go`, and of the
+agent verbs only `show` is native there.
+
+So T1 as originally written would add a feature to the binary [[s08-go-cli]] T7
+plans to delete, or wait on porting two commands that are among the seven still
+delegating.
+
+**That splits T1, and the split is an improvement:**
+
+- **T1a — the server half.** Storage plus the method that accepts a report.
+  Reporter-agnostic, buildable today, and it does not care which binary
+  eventually calls it. Follows the house rule that a facade calls the METHODS,
+  so this is a JMAP type rather than an ad-hoc route.
+- **T1b — the reporter.** Blocked on the `local` / `serve` ports (s08 T6), or
+  knowingly added to the Node CLI with the understanding that it moves. **Not
+  blocked on T1a**, which is the point of splitting them.
+
+Do T1a first regardless. It is the half with the schema decision in it, and the
+half that is wrong to guess at twice.
+
+**T1b — the report.** `local setup` / `local connect`, and the daemon on start,
 POST what they found: host, models, declared capabilities, timestamp. Stored
 against the reporting **token**, because a device is already an entity here.
 
