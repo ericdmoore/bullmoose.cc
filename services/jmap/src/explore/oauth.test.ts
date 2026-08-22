@@ -229,7 +229,9 @@ describe("/oauth/callback", () => {
 
     const listed = await h.explore("/Email", { cookie: value });
     expect(listed.status).toBe(200);
-    expect((await h.json<{ _meta: { accountId: string } }>(listed))._meta.accountId).toBe(ERIC);
+    expect((await h.json<{ _meta: { accountId: string } }>(listed))._meta.accountId).toBe(
+      `https://${EXPLORE_HOST}/?accountId=${ERIC}`,
+    );
   });
 
   it("a state is single-use: a replayed callback is refused", async () => {
