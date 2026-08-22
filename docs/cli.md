@@ -1134,6 +1134,7 @@ Lifecycle verbs come in two flavours. REVERSIBLE ones — `agent disable|enable`
 | flag | description |
 |---|---|
 | `--yes` | confirm an irreversible verb (tenant/domain/account delete, agent unbind); nothing else needs it |
+| `--password <pw>` | on `admin password`, the new password. Prefer $BULLMOOSE_PASSWORD or the hidden prompt — a flag value lands in shell history |
 | `--account <email>` | on `agent disable\|enable\|unbind`, the binding's account — only needed if one binding id exists on more than one account |
 | `--include-deleted` | on `account list`, also show tombstoned accounts (the forensic view; they are hidden by default) |
 | `--provider <host>` | on `extractor on` / `byok seal`, the HOST a model or key lives at (default openrouter) |

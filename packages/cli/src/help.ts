@@ -1154,6 +1154,10 @@ export const COMMANDS: Command[] = [
         desc: "confirm an irreversible verb (tenant/domain/account delete, agent unbind); nothing else needs it",
       },
       {
+        flag: "--password <pw>",
+        desc: "on `admin password`, the new password. Prefer $BULLMOOSE_PASSWORD or the hidden prompt — a flag value lands in shell history",
+      },
+      {
         flag: "--account <email>",
         desc: "on `agent disable|enable|unbind`, the binding's account — only needed if one binding id exists on more than one account",
       },
