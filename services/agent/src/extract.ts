@@ -211,9 +211,22 @@ export function usableStart(raw: unknown): string | null {
   // ISO 8601 local or zoned, to the minute at least. A bare date has no time
   // of day, and "sometime on Saturday" is not a hold anyone can keep.
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/.test(text)) return null;
-  const ms = Date.parse(text.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(text) ? text : `${text}Z`);
+  const zoned = text.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(text);
+  const ms = Date.parse(zoned ? text : `${text}Z`);
   if (!Number.isFinite(ms)) return null;
-  return text;
+  // Canonical WALL CLOCK, seconds precision: "2026-08-23T07:30:00". This is
+  // what the apply case's validator (`parseLocalDateTime`) demands, and this
+  // function used to wave through two shapes that validator does not honour:
+  //  - minute precision ("…T07:30") passed here and then FAILED AT APPROVAL —
+  //    an offer the reader could see but never take;
+  //  - a zone suffix ("…T15:00:00+02:00") passed here and the validator
+  //    silently DROPPED it, reinterpreting the digits as wall clock in the
+  //    hold's timeZone (Etc/UTC) — a hold two hours from where the message
+  //    put it. So a zoned instant is converted to its UTC wall clock, which
+  //    is exactly how the apply case will read it back.
+  if (zoned) return new Date(ms).toISOString().slice(0, 19);
+  const bare = text.slice(0, 19);
+  return bare.length === 16 ? `${bare}:00` : bare;
 }
 
 /** Pull the JSON array out of a model answer that may be fenced or chatty, and
@@ -413,6 +426,128 @@ function isBackfill(job: ExtractJob): boolean {
   }
 }
 
+// ── reconcile before offering (s36 V2) ─────────────────────────────────────
+//
+// "See if I already have the data" — the step that separates this from every
+// add-to-calendar button that ever shipped. Before an offer is minted, look
+// at the calendar. A STEP, not a tool: the model never holds calendar access
+// and cannot ask for it — this code looks up only the moment the model
+// already extracted, and hands back one bounded verdict. An injected "list
+// every event" has nothing to call.
+//
+// The agent worker reads the same D1 the JMAP worker writes (it already reads
+// `emails`, `annotations`, `mailboxes` this way), and the query rides the
+// `calendar_events_span (account_id, start_at)` index.
+
+/** How far around the extracted moment to look for the same event. Wide
+ *  enough to catch a reschedule ("moved from Saturday to Sunday") and the
+ *  wall-clock-vs-UTC skew of an owner whose events carry a home timezone;
+ *  narrow enough that last week's practice is not a candidate. */
+const RECONCILE_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+interface ReconcileTarget {
+  id: string;
+  title: string;
+  /** Wall clock in the EVENT's own timeZone, seconds precision. */
+  start: string;
+  duration: string | null;
+}
+
+export type ReconcileVerdict =
+  | { kind: "create" }
+  | { kind: "same" }
+  | { kind: "update"; target: ReconcileTarget; changes: Record<string, { from: string; to: string }> }
+  /** Two or more plausible holds — the offer must ask, not assert. */
+  | { kind: "ambiguous"; existing: string[] };
+
+/** Word-overlap similarity, 0..1 — |A∩B| / min(|A|,|B|). Deliberately dumb:
+ *  it narrows candidates for a human (or later a model) to judge, it never
+ *  decides a merge by itself. */
+export function titleOverlap(a: string, b: string): number {
+  const tok = (s: string): Set<string> => new Set(s.toLowerCase().match(/[a-z0-9]{2,}/g) ?? []);
+  const ta = tok(a);
+  const tb = tok(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let shared = 0;
+  for (const w of ta) if (tb.has(w)) shared++;
+  return shared / Math.min(ta.size, tb.size);
+}
+
+const SIMILAR = 0.5;
+
+/**
+ * One extracted event against the calendar: create, silence, or a diff.
+ *
+ * The comparison is WALL CLOCK to WALL CLOCK, never instant to instant. An
+ * event stores `start` as wall clock in its own timeZone; the model was asked
+ * for the owner's wall clock. Comparing strings keeps the diff in the frame
+ * the apply case writes back — `from`/`to` are both legal `start` values for
+ * THAT event, whatever its timezone — where converting through epoch ms would
+ * manufacture phantom moves for any owner whose calendar is not in UTC.
+ *
+ * The verdict table (the middle row is the one that matters most):
+ *
+ *   no similar title in the window        → create   (the ordinary case)
+ *   similar title, same wall clock        → same     (SILENCE — already held)
+ *   ONE similar title, moment moved       → update, carrying the diff
+ *   several similar titles, none matching → ambiguous (offer asks, not asserts)
+ *
+ * Recurring events are excluded outright: updating a series' master from one
+ * email would move every occurrence, and no diff a margin can render says
+ * that honestly.
+ */
+export async function reconcileSchedule(
+  env: Env,
+  accountId: string,
+  it: ExtractedItem,
+  start: string,
+): Promise<ReconcileVerdict> {
+  const ms = Date.parse(`${start}Z`);
+  const wanted = it.title ?? it.body;
+  const rows = await env.DB.prepare(
+    `SELECT id, title, event_json FROM calendar_events
+      WHERE account_id = ? AND is_recurring = 0
+        AND start_at BETWEEN ? AND ?
+      ORDER BY start_at LIMIT 8`,
+  )
+    .bind(accountId, ms - RECONCILE_WINDOW_MS, ms + RECONCILE_WINDOW_MS)
+    .all<{ id: string; title: string | null; event_json: string }>();
+
+  const similar: ReconcileTarget[] = [];
+  for (const r of rows.results ?? []) {
+    if (titleOverlap(r.title ?? "", wanted) < SIMILAR) continue;
+    let blob: Record<string, unknown>;
+    try {
+      blob = JSON.parse(r.event_json) as Record<string, unknown>;
+    } catch {
+      continue; // a row we cannot read is a row we must not offer to rewrite
+    }
+    if (typeof blob.start !== "string") continue;
+    similar.push({
+      id: r.id,
+      title: r.title ?? "",
+      start: blob.start.slice(0, 19),
+      duration: typeof blob.duration === "string" ? blob.duration : null,
+    });
+  }
+
+  if (similar.length === 0) return { kind: "create" };
+  if (similar.some((t) => t.start === start)) return { kind: "same" };
+  if (similar.length > 1) return { kind: "ambiguous", existing: similar.map((t) => t.title || "(untitled)") };
+
+  const target = similar[0]!;
+  const changes: Record<string, { from: string; to: string }> = { start: { from: target.start, to: start } };
+  // Duration rides along only when the START also moved and the message
+  // actually stated one — a lone duration "correction" from a model guess
+  // against the PT30M default is churn, not information.
+  if (it.durationMinutes) {
+    const to = `PT${it.durationMinutes}M`;
+    const from = target.duration ?? "PT30M";
+    if (from !== to) changes.duration = { from, to };
+  }
+  return { kind: "update", target, changes };
+}
+
 /**
  * Turn dated events into `verb-schedule` proposals — ONE PER EVENT.
  *
@@ -462,9 +597,15 @@ async function offerSchedules(
   for (const it of dated.slice(0, MAX_OFFERS_PER_MESSAGE)) {
     const start = it.start!;
     try {
-      // Already offered this moment? A quoted thread re-presents the same
-      // event, and a second offer for it is how a reader learns to stop
-      // reading offers.
+      // Look at the calendar FIRST. A forwarded thread re-presents facts
+      // already on file, and the correct output for "we already hold this,
+      // unchanged" is SILENCE — an offer to create what exists trains the
+      // reader to dismiss without reading, and the good offers die with it.
+      const verdict = await reconcileSchedule(env, job.account_id, it, start);
+      if (verdict.kind === "same") continue;
+
+      // Already offered this? A quoted thread would re-produce the identical
+      // offer on day one, with nobody forwarding anything.
       //
       // ⚠️ ANY status, not just `pending` — the decision is the tombstone.
       // Filtering on pending would re-offer a date the reader DECLINED the
@@ -472,34 +613,78 @@ async function offerSchedules(
       // was meant to prevent: it overrides an answer they already gave. An
       // approved one is in the calendar already, and an expired one was
       // ignored on purpose. None of the three wants asking again.
-      const dupe = await env.DB.prepare(
-        `SELECT 1 AS hit FROM agent_proposals
-          WHERE account_id = ? AND kind = 'verb-schedule'
-            AND json_extract(payload_json, '$.start') = ? LIMIT 1`,
-      )
-        .bind(job.account_id, start)
-        .first<{ hit: number }>();
+      //
+      // Creates are keyed on the moment; updates on (target, moment moved to)
+      // — so a DECLINED move stays declined, while a genuinely newer move of
+      // the same event ("7:30" then later "7:45") is a new question.
+      const dupe =
+        verdict.kind === "update"
+          ? await env.DB.prepare(
+              `SELECT 1 AS hit FROM agent_proposals
+                WHERE account_id = ? AND kind = 'verb-schedule-update'
+                  AND json_extract(payload_json, '$.targetEventId') = ?
+                  AND json_extract(payload_json, '$.changes.start.to') = ? LIMIT 1`,
+            )
+              .bind(job.account_id, verdict.target.id, start)
+              .first<{ hit: number }>()
+          : await env.DB.prepare(
+              `SELECT 1 AS hit FROM agent_proposals
+                WHERE account_id = ? AND kind = 'verb-schedule'
+                  AND json_extract(payload_json, '$.start') = ? LIMIT 1`,
+            )
+              .bind(job.account_id, start)
+              .first<{ hit: number }>();
       if (dupe) continue;
 
       const carrierId = `inv_${crypto.randomUUID()}`;
+      const carrierCtx = JSON.stringify({
+        kind: "extract-offer",
+        emailId: email.id,
+        start,
+        ...(verdict.kind === "update" ? { targetEventId: verdict.target.id } : {}),
+      });
       await env.DB.prepare(
         `INSERT INTO agent_invocations
            (id, account_id, binding_id, binding_name, status, context_json,
             created_at, claimed_at, done_at, cost_micros, result_json)
          VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, 0, ?)`,
       )
-        .bind(
-          carrierId,
-          job.account_id,
-          job.binding_id,
-          job.binding_name,
-          JSON.stringify({ kind: "extract-offer", emailId: email.id, start }),
-          now,
-          now,
-          now,
-          JSON.stringify({ kind: "extract-offer", emailId: email.id, start }),
-        )
+        .bind(carrierId, job.account_id, job.binding_id, job.binding_name, carrierCtx, now, now, now, carrierCtx)
         .run();
+
+      if (verdict.kind === "update") {
+        // The interesting case: the message moves a hold we already have.
+        // The proposal NAMES the event and CARRIES the diff, because "update
+        // this event" is not a decision anyone can make — `8:00 → 7:30` is.
+        const fmt = (s: string): string => s.replace("T", " ").slice(0, 16);
+        await emitProposal(
+          env,
+          { id: carrierId, account_id: job.account_id },
+          {
+            kind: "verb-schedule-update",
+            // TIER 1 like its sibling: the write touches one row already in
+            // the owner's own calendar, reaches nobody, and the undo handle
+            // restores the fields it moved.
+            tier: 1,
+            subject: { realm: "Email", objectId: email.id },
+            payload: {
+              verb: "schedule-update",
+              targetEventId: verdict.target.id,
+              targetTitle: verdict.target.title,
+              changes: verdict.changes,
+              composed: false,
+            },
+            rationale: `This message moves "${verdict.target.title || "(untitled)"}" — ${fmt(verdict.changes.start!.from)} → ${fmt(start)}. The hold is already on your calendar; approving moves it, declining leaves it where it is.`,
+            evidence: [
+              { realm: "Email", objectId: email.id, note: "the message that moved the time" },
+              { realm: "CalendarEvent", objectId: verdict.target.id, note: "the hold this would move" },
+            ],
+            expiresInMs: OFFER_EXPIRY_MS,
+          },
+        );
+        made++;
+        continue;
+      }
 
       await emitProposal(
         env,
@@ -519,7 +704,14 @@ async function offerSchedules(
             ...(it.durationMinutes ? { duration: `PT${it.durationMinutes}M` } : {}),
             composed: false,
           },
-          rationale: `This message names a time — "${it.body.slice(0, 140)}" — so here it is as a hold you can take or leave.`,
+          rationale:
+            verdict.kind === "ambiguous"
+              ? // Two plausible candidates is a question, not an assertion. A
+                // wrong CREATE is a duplicate the reader can see and delete; a
+                // wrong UPDATE overwrites something true. So the ambiguous case
+                // offers the reversible one and says why out loud.
+                `This message names a time — "${it.body.slice(0, 140)}" — and your calendar already holds ${verdict.existing.length} similar: ${verdict.existing.slice(0, 3).join("; ")}. This creates a NEW hold; if it is really one of those moved, decline this and adjust that one.`
+              : `This message names a time — "${it.body.slice(0, 140)}" — so here it is as a hold you can take or leave.`,
           evidence: [{ realm: "Email", objectId: email.id, note: "the message this time was stated in" }],
           expiresInMs: OFFER_EXPIRY_MS,
         },

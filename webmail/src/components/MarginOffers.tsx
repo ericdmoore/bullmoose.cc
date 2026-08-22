@@ -39,6 +39,18 @@ interface Props {
 
 /** What a schedule offer says about itself, in one line. */
 function offerLine(p: ActionProposal): string {
+  if (p.kind === "verb-schedule-update") {
+    // A merge offer's line IS the diff — approval must never be assent to
+    // something unseen. Same-day moves compress the right side to the time,
+    // so what changed is what the eye lands on.
+    const payload = (p.payload ?? {}) as { targetTitle?: unknown; changes?: unknown };
+    const title = typeof payload.targetTitle === "string" && payload.targetTitle !== "" ? payload.targetTitle : "Hold";
+    const st = ((payload.changes ?? {}) as Record<string, { from?: unknown; to?: unknown }>).start;
+    if (!st || typeof st.from !== "string" || typeof st.to !== "string") return title;
+    const from = st.from.replace("T", " ").slice(0, 16);
+    const to = st.from.slice(0, 10) === st.to.slice(0, 10) ? st.to.slice(11, 16) : st.to.replace("T", " ").slice(0, 16);
+    return `${title} — ${from} → ${to}`;
+  }
   const payload = (p.payload ?? {}) as { title?: unknown; start?: unknown };
   const title = typeof payload.title === "string" && payload.title !== "" ? payload.title : "Hold";
   const start = typeof payload.start === "string" ? payload.start : undefined;
@@ -65,7 +77,13 @@ export default function MarginOffers({ offers, account, busy, error = null, onAp
         return (
           <div key={p.id} class="margin-offer">
             <p class="margin-offer-line">
-              <span class="margin-offer-kind">{p.kind === "verb-schedule" ? "Add to calendar?" : "Offer"}</span>{" "}
+              <span class="margin-offer-kind">
+                {p.kind === "verb-schedule"
+                  ? "Add to calendar?"
+                  : p.kind === "verb-schedule-update"
+                    ? "Move on calendar?"
+                    : "Offer"}
+              </span>{" "}
               {offerLine(p)}
             </p>
             {authority.note !== "" ? (
