@@ -410,6 +410,59 @@ are already looking at, `preview` is free and the body is right there.
 
 ---
 
+## Offers have to arrive with the message
+
+Eric: *"seems like the offers and other proposal data may need to all be
+pre-fetched & cached in order to not seem slow."*
+
+Right, and it would be self-defeating not to: the margin's whole claim is that
+you decide in place, and a round trip to discover whether there is anything to
+decide puts the wait back exactly where the design removed it. Proposals are
+anchored to an email (`subject: {realm: "Email", objectId}`), so they can ride
+the trip that fetches the thread rather than following it.
+
+### But a proposal is NOT an email, and the cache rules differ
+
+The message cache is trivially correct because an Email is immutable but for
+its flags. **A proposal is mutable in the way that matters**: it moves from
+pending to approved, declined or expired, and it can move on another device,
+in the CLI, or by expiry while nothing here is watching.
+
+Worse, it cannot delta-sync. `ActionProposal/query` advertises
+`canCalculateChanges: false` and `/changes` throws `cannotCalculateChanges`,
+the same deliberate stub as `Email/queryChanges`. So there is no cheap way to
+ask what moved — the cache must RE-QUERY.
+
+Which fixes what the cache is for: **paint-first, never source of truth.** It
+exists so the margin renders instantly, and the re-query corrects it a beat
+later. A cached proposal is a snapshot with a shelf life, not a fact.
+
+### The stale-pending case, and why it is already safe
+
+The failure worth naming: the cache says `pending`, the reader presses
+Approve, and the thing was decided an hour ago somewhere else.
+
+That is safe today, and by accident of a good decision made elsewhere.
+`ActionProposal/set` refuses a non-pending row — *"terminal states stay
+terminal … the human already decided"* — so a stale approve gets a clear
+refusal rather than a second decision. The guard that made correcting Eric's
+mislabelled declines awkward is the same guard that makes an optimistic cache
+safe here. Worth keeping both facts in view before anyone "fixes" it.
+
+So the client rule is: render from cache, verify on decide, and show the
+refusal plainly if the answer moved.
+
+### Tombstone locally too
+
+When a decision is made here, write it through AND mark it locally, so the
+offer does not flash back into the margin on the next paint from a cache that
+has not caught up. The server already tombstones for re-OFFERING (rung 3 keys
+its dupe check on the moment across every status); this is the same idea one
+layer out — the reader should never see an answer they already gave being
+asked again, whichever surface asked it.
+
+---
+
 ## What this costs
 
 Do not estimate it — **measure it**. `invocationCost` already stamps real cost
