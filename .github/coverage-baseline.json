@@ -20,7 +20,7 @@
     "services/demo-keys": 0,
     "services/ingest": 93,
     "services/jmap": 86,
-    "services/oauth": 61,
+    "services/oauth": 67,
     "services/provision": 89,
     "services/submit": 0
   }

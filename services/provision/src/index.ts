@@ -165,6 +165,9 @@ export default {
       if (route === "POST /principals/password") {
         return setPassword((await request.json()) as { email: string; loginKey: string }, env);
       }
+      if (route === "POST /principals/enrollment-link") {
+        return mintEnrollmentLink((await request.json()) as { email: string }, env);
+      }
       if (route === "POST /tokens") {
         return mintPrincipalToken(
           (await request.json()) as {
@@ -1470,6 +1473,59 @@ async function findPrincipal(env: Env, email: string): Promise<{ id: string } | 
   return env.DB.prepare(`SELECT id FROM principals WHERE login_email = ?`)
     .bind(email.toLowerCase())
     .first<{ id: string }>();
+}
+
+/** How long an enrollment link lives. Long enough to text someone and let
+ *  them get to it tonight; short enough that a forgotten link is not a
+ *  standing credential. */
+const ENROLLMENT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Mint a one-time enrollment link (s33 day-one).
+ *
+ * THE POINT is who never learns what: `setPassword` above is operator-called,
+ * so every credential it sets is a credential the operator chose and knows —
+ * the distance #213 named. This link inverts it. The operator gets a URL and
+ * hands it over OUT-OF-BAND (a text message is a different channel — the s33
+ * trust anchor); the arriving human sets their own password at /enroll on the
+ * AS, and the operator never sees it.
+ *
+ * Storage follows the tokens table's rule to the letter: the plaintext is in
+ * the response ONCE, only its SHA-256 lands in the row. The URL carries the
+ * token in the FRAGMENT, which browsers do not send — so it stays out of the
+ * AS's access logs and out of any Referer.
+ *
+ * Minting again before use supersedes: the old row is consumed by the mint
+ * (audit trail intact), so a link that went to the wrong number can be killed
+ * by issuing a fresh one.
+ */
+async function mintEnrollmentLink(body: { email: string }, env: Env) {
+  if (!body.email) return json({ error: "email required" }, 400);
+  const principal = await findPrincipal(env, body.email);
+  if (!principal) return json({ error: `no principal for ${body.email}` }, 404);
+
+  const now = Date.now();
+  // Supersede any live link for this principal — see the header.
+  await env.DB.prepare(`UPDATE enrollments SET consumed_at = ? WHERE principal_id = ? AND consumed_at IS NULL`)
+    .bind(now, principal.id)
+    .run();
+
+  const secret = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  const secretHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const id = `en_${crypto.randomUUID()}`;
+  const expiresAt = now + ENROLLMENT_TTL_MS;
+  await env.DB.prepare(
+    `INSERT INTO enrollments (id, principal_id, secret_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)`,
+  )
+    .bind(id, principal.id, secretHash, now, expiresAt)
+    .run();
+
+  return json({
+    url: `https://auth.bullmoose.cc/enroll#${secret}`,
+    expiresAt,
+    note: "One-time; hand it over out-of-band. Minting again supersedes this link.",
+  });
 }
 
 async function setPassword(body: { email: string; loginKey: string }, env: Env) {
