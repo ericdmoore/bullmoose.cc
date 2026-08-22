@@ -1,6 +1,8 @@
 # s40 — Markdown headers · *a message is a file you can keep*
 
-> **Status: DESIGN.** Suppression shipped with the renderer (#284); honouring is
+> **Status: DESIGN — every open question ANSWERED 2026-08-22 (Eric); see
+> "Decisions" below. Unbuilt.**
+> Suppression shipped with the renderer (#284); honouring is
 > unbuilt. Written 2026-08-22 from Eric's question — *"does goldmark support
 > frontmatter?"* — and the answer that it does not, and that what it renders
 > instead is worse than nothing.
@@ -93,6 +95,82 @@ of the injection surface.
 **4. `--dry-run` must show the RESOLVED envelope.** Whatever the rules, a
 person must be able to see who this will actually reach before it goes, and
 there is no unsend.
+
+## Decisions — Eric, 2026-08-22
+
+Every question below the fold was answered. Recorded here so the parser gets
+written against a settled shape rather than a discussion.
+
+**1 · Keys.** `to`, `cc`, `bcc`, `subject`. **Not `from`** — the sending
+identity is derived from the CLI's primary identity, never from file content.
+*"Perhaps one day a CLI could send as a granted-sender — but not to start."*
+So the door is left open for a granted sender, and it is a GRANT that would
+open it, not a key in a document.
+
+**2 · Precedence.** The flag beats the file.
+
+**3 · Are file-supplied recipients allowed?** Yes — answered by #1. This
+overrides the cautious flags-only-for-recipients option this note proposed, and
+that is the right call for the case that motivated the feature: a file you
+wrote and named is a file you meant.
+
+⚠️ **The residual risk is therefore accepted, not eliminated**, and should stay
+visible: a `.md` that arrived by mail and is later piped supplies its own
+`to:`. `--dry-run` (#4) is the inspection path, but it is opt-in, so it does
+not protect the invocation nobody thought to check. **Worth deciding at build
+time:** whether a `to:` that came from the FILE rather than a flag should
+trigger the same confirm prompt #7 gives a missing subject. That would cost
+nothing in the intended case — where the sender is looking at their own file —
+and closes the attacker-file case. Not decided here.
+
+**4 · `--dry-run` shows the resolved envelope.** Agreed.
+
+**5 · Node.** *"Node-CLI will get zero."* This feature exists only in Go.
+
+**6 · Unknown keys.** Ignored, and **warned** — the key is named on stderr so a
+`subjcet:` typo is visible rather than silently doing nothing.
+
+**7 · MISSING keys.** The two required fields fail differently, and the
+asymmetry is right:
+
+| missing | behaviour |
+|---|---|
+| `to` — no file value and no flag | **error, cannot send.** There is no sensible default for a recipient |
+| `subject` — no file value and no flag | a message saying this is not recommended, then a **confirm prompt (Y/N)** |
+
+A subject-less mail is legal and occasionally meant; a recipient-less one is
+never anything but a mistake.
+
+## Later: the vocabulary may grow to templating
+
+Eric, same conversation: frontmatter could eventually carry values substituted
+into the body —
+
+```markdown
+---
+to: parents@school.test
+subject: PTA meeting
+firstName: Grace
+---
+
+Hey {firstName}, hope you can join us for the PTA meeting on Thursday evening.
+```
+
+**This reverses the parser recommendation, and the note already predicted it:**
+a closed set of four keys is safely read by a tiny `key: value` reader, but a
+`variables:` block is an open map — nested, typed, possibly a list for a mail
+merge — and that is what YAML is actually for. When templating is taken up,
+`goldmark-meta` becomes the right dependency rather than an oversized one.
+
+Two things worth writing down before that day, because they are easy to get
+wrong once substitution exists:
+
+- **Substitution happens in the BODY, never in the headers.** A `{firstName}`
+  that can appear in `to:` is a recipient computed from data, which is a
+  different feature with a different blast radius.
+- **An unresolved placeholder must not silently ship.** `Hey {firstName},`
+  going out verbatim because a key was missing is the failure mode of every
+  mail-merge system ever built; it should refuse, the way a missing `to` does.
 
 ## Slices
 
