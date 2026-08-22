@@ -18,6 +18,7 @@ import {
   describeReason,
   summarizeProposal,
   tierLabel,
+  waitsOnNote,
 } from "./rows";
 
 describe("approvalsGate — the plain-client floor (arch.md §8.6)", () => {
@@ -237,6 +238,15 @@ describe("summarizeProposal — one line per row, grant-request included", () =>
     );
   });
 
+  it("a contingent commitment headlines its text — the condition renders live, not baked in", () => {
+    const p = base({
+      kind: "contingent-commitment",
+      tier: 1,
+      payload: { verb: "commit", body: "Pay registration to the coach (Venmo or Zelle)", waitsOn: "inv_cause" },
+    });
+    expect(summarizeProposal(p)).toBe("Commitment — “Pay registration to the coach (Venmo or Zelle)”");
+  });
+
   it("headlines a grant-request as an ask — same summarizer, same queue (arch.md §1)", () => {
     const p = base({
       kind: "grant-request",
@@ -425,5 +435,51 @@ describe("costLabel — the µUSD figure holds the NULL-vs-0 honesty rule", () =
     );
     expect(costLabel({ costMicros: 12_500_000, costModel: null })).toBe("$12.50");
     expect(costLabel({ costMicros: 10_000, costModel: null })).toBe("$0.01");
+  });
+});
+
+describe("waitsOnNote — the dependency wall, as the UI reads it (s36 V2)", () => {
+  const mk = (over: Record<string, unknown>): ActionProposal =>
+    parseProposal({
+      id: "x",
+      agent: "extractor",
+      kind: "contingent-commitment",
+      tier: 1,
+      subject: { realm: "Email", objectId: "e1" },
+      payload: {},
+      rationale: "r",
+      evidence: [],
+      status: "pending",
+      createdAt: "2026-08-22T00:00:00Z",
+      ...over,
+    } as unknown as Record<string, unknown>)!;
+
+  const dep = mk({ id: "dep", payload: { verb: "commit", body: "pay the coach", waitsOn: "cause" } });
+  const cause = (status: string) =>
+    mk({
+      id: "cause",
+      kind: "verb-schedule",
+      payload: { verb: "schedule", title: "Tournament", start: "2026-08-23T08:00:00" },
+      status,
+    });
+
+  it("blocked while the cause is undecided — and the note names the cause", () => {
+    const note = waitsOnNote(dep, [cause("pending"), dep]);
+    expect(note).toContain("waits on:");
+    expect(note).toContain("Tournament");
+    expect(note).toContain("decide that first");
+  });
+
+  it("an approved cause stands the wall down", () => {
+    expect(waitsOnNote(dep, [cause("approved"), dep])).toBeNull();
+  });
+
+  it("a declined cause says the ground went away — the row is about to close itself", () => {
+    expect(waitsOnNote(dep, [cause("rejected"), dep])).toContain("went away");
+  });
+
+  it("no waitsOn, or a cause not in the list, is no note — the server is the wall", () => {
+    expect(waitsOnNote(cause("pending"), [cause("pending")])).toBeNull();
+    expect(waitsOnNote(dep, [dep])).toBeNull();
   });
 });

@@ -278,6 +278,13 @@ export function summarizeProposal(p: ActionProposal): string {
         ? `Hold ${when.replace("T", " ").slice(0, 16)}${s(p.payload.timeZone) ? ` ${s(p.payload.timeZone)}` : ""} — “${title}”${with_}`
         : `Hold “${title}”${with_} — NO TIME chosen; write one in or decline`;
     }
+    case "contingent-commitment": {
+      // s36 V2 — a commitment the message made conditional. The row says the
+      // commitment; whether it is still blocked is the CAUSE's state, checked
+      // live (waitsOnNote), not baked into this line.
+      const body = s(p.payload.body) || "(no text)";
+      return `Commitment — “${body.length > 90 ? `${body.slice(0, 90)}…` : body}”`;
+    }
     case "verb-schedule-update": {
       // s36 V2 — a merge, not a create. The row IS the diff, because "update
       // this event" is not a decision anyone can make and `8:00 → 7:30` is.
@@ -389,4 +396,24 @@ export function usdOrNull(v: unknown): string | null {
 /** The body preview a reply-shaped payload carries, if any. */
 export function payloadText(payload: Record<string, unknown>): string | null {
   return typeof payload.text === "string" && payload.text.length > 0 ? payload.text : null;
+}
+
+/**
+ * s36 V2 — the dependency wall, as the UI reads it. A proposal whose payload
+ * names `waitsOn` is VISIBLE-BUT-BLOCKED while its cause is undecided: the
+ * reader sees the consequence before committing to the cause, and cannot
+ * take it out of order. The server enforces the same rule at approval; this
+ * mirror exists so blocked renders as a sentence instead of a refusal after
+ * the tap. A cause missing from the list stands the wall down — the server
+ * is the wall, this is the courtesy.
+ */
+export function waitsOnNote(p: ActionProposal, all: readonly ActionProposal[]): string | null {
+  const causeId = typeof p.payload.waitsOn === "string" ? p.payload.waitsOn : "";
+  if (causeId === "") return null;
+  const cause = all.find((c) => c.id === causeId);
+  if (!cause || cause.status === "approved") return null;
+  if (cause.status === "rejected" || cause.status === "closed" || cause.status === "expired") {
+    return "the thing this depended on went away — this will close by itself";
+  }
+  return `waits on: ${summarizeProposal(cause)} — decide that first`;
 }

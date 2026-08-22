@@ -751,10 +751,72 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
             .run();
           propEntry.updated.push(id);
           updated[id] = null;
+
+          // The dependency cascade (s36 V2): declining a cause CLOSES its
+          // dependents, visibly and with the reason recorded. `closed` is a
+          // terminal state that is NOT a decline — no human decided the
+          // dependent and no learning label is written; it closed because
+          // its ground vanished. The row stays in the record (activity can
+          // answer "whatever happened to that payment ask?") and, because
+          // extract.ts's dupe checks key on ANY status, it tombstones
+          // re-minting from the next quoted reply.
+          const dependents = await ctx.env.DB.prepare(
+            `SELECT id FROM agent_proposals
+              WHERE account_id = ? AND status = 'pending'
+                AND json_extract(payload_json, '$.waitsOn') = ?`,
+          )
+            .bind(access.accountId, id)
+            .all<{ id: string }>();
+          for (const dep of dependents.results ?? []) {
+            await ctx.env.DB.prepare(
+              `UPDATE agent_proposals SET status = 'closed', decided_at = ?, decision_json = ?
+                WHERE account_id = ? AND id = ? AND status = 'pending'`,
+            )
+              .bind(
+                now,
+                JSON.stringify({
+                  by: decision.by,
+                  closed: "cause-declined",
+                  causeId: id,
+                  note: "closed: the thing this depended on was declined",
+                }),
+                access.accountId,
+                dep.id,
+              )
+              .run();
+            propEntry.updated.push(dep.id);
+          }
           continue;
         }
 
         // ---- approve ----
+        // The DEPENDENCY WALL (s36 V2, contingent commitments). A proposal
+        // whose payload names `waitsOn` is visible-but-blocked: it cannot be
+        // approved while the thing it depends on is undecided. Read from the
+        // AGENT'S payload, never the human's edit — the dependency is
+        // structural, not a field you edit away. Enforced at read time
+        // against the cause's status, so a yank that un-approves the cause
+        // re-blocks the dependent with no state to corrupt. One level only:
+        // a cause with its own `waitsOn` is not honoured, it is a bug.
+        {
+          const waitsOn = safeJson(row.payload_json).waitsOn;
+          if (typeof waitsOn === "string" && waitsOn !== "") {
+            const cause = await ctx.env.DB.prepare(`SELECT status FROM agent_proposals WHERE account_id = ? AND id = ?`)
+              .bind(access.accountId, waitsOn)
+              .first<{ status: string }>();
+            if (cause && cause.status !== "approved") {
+              throw new SetErrorSignal(
+                "invalidProperties",
+                cause.status === "rejected" || cause.status === "closed" || cause.status === "expired"
+                  ? `the thing this depended on was ${cause.status === "rejected" ? "declined" : cause.status} — this offer has no ground left; decline it or let it close`
+                  : "this waits on the hold it depends on — that one is still undecided. Approve the hold first, or decline this; declining the hold closes this by itself",
+                ["status"],
+              );
+            }
+            // A missing cause (destroyed) leaves nothing to check — the wall
+            // stands down rather than blocking forever on a ghost.
+          }
+        }
         if (row.kind === "grant-request" && ctx.agent?.binding === row.binding_name) {
           // CJ-cannot-self-approve (s10 T3): the approver of a grant-request
           // must not be the principal that benefits. When an agent binding
@@ -1751,6 +1813,70 @@ async function applyProposal(
             ...(durationChange ? { duration: durationChange.from } : {}),
           },
         },
+      };
+    }
+
+    case "contingent-commitment": {
+      // s36 V2 — the "made real" moment. The extractor found a commitment the
+      // message made CONDITIONAL on an event ("if she's going, pay the
+      // coach"), and held it as a proposal instead of asserting it as a flat
+      // note. Approval writes that note now — one open `commitment`
+      // annotation, the Commitments surface's raw material. TIER 1: a note in
+      // the owner's own account, reaches nobody, undo dismisses it. Payment
+      // stays a prepared, reviewable handoff — this records that you owe it;
+      // nothing here can move money.
+      //
+      // The dependency wall runs in the approve branch, but apply is ALSO
+      // reachable through the held-release sweep (`commitDueHeldProposals`),
+      // which never passes that branch — so the wall is re-checked here.
+      // Same rule: read `waitsOn` from the agent's payload, not the edit.
+      const commitWaitsOn = safeJson(row.payload_json).waitsOn;
+      if (typeof commitWaitsOn === "string" && commitWaitsOn !== "") {
+        const cause = await ctx.env.DB.prepare(`SELECT status FROM agent_proposals WHERE account_id = ? AND id = ?`)
+          .bind(access.accountId, commitWaitsOn)
+          .first<{ status: string }>();
+        if (cause && cause.status !== "approved") {
+          throw new SetErrorSignal(
+            "invalidProperties",
+            "this waits on the hold it depends on, and that hold is not approved — nothing was written",
+            ["status"],
+          );
+        }
+      }
+
+      const commitBody = str(payload.body)?.trim() ?? "";
+      if (!commitBody) {
+        throw new SetErrorSignal("invalidProperties", "this commitment carries no text — there is nothing to record", [
+          "payload",
+        ]);
+      }
+
+      const annotationId = `an_${crypto.randomUUID()}`;
+      const commitNow = Date.now();
+      await ctx.env.DB.prepare(
+        `INSERT INTO annotations
+           (id, account_id, author_kind, author, anchor_json, class, body,
+            confidence, status, rationale, source_ref, created_at, updated_at)
+         VALUES (?, ?, 'agent', ?, ?, 'commitment', ?, NULL, 'open', ?, ?, ?, ?)`,
+      )
+        .bind(
+          annotationId,
+          access.accountId,
+          row.binding_name,
+          row.subject_json,
+          commitBody,
+          "recorded on your approval — the message made it contingent, and the condition was met",
+          str(safeJson(row.subject_json).objectId) ?? null,
+          commitNow,
+          commitNow,
+        )
+        .run();
+
+      return {
+        entries: [{ collection: "Annotation", created: [annotationId], updated: [], destroyed: [] }],
+        // The inverse of "record it" is "dismiss it" — the annotation close
+        // verb that already exists — never a hard delete of the record.
+        undo: { action: "dismiss-annotation", annotationId },
       };
     }
 

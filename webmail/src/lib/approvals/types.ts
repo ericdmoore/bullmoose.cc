@@ -33,7 +33,10 @@
  * needsInfo question (s10 T3 — the decision clock is paused); `held` is the
  * tier-2 hold tray; the rest are history — `expired` (the chance lapsed),
  * `yanked` (approved, then taken back inside the hold window — s03.D T2; a
- * RETRACTION, so it must never re-present as decidable), and the two verdicts.
+ * RETRACTION, so it must never re-present as decidable), `closed` (s36 V2 —
+ * a contingent proposal whose CAUSE was declined or expired; terminal, but
+ * NOT a decline: nobody decided it, its ground vanished, and the reason
+ * rides `decision.note`), and the two verdicts.
  */
 export const PROPOSAL_STATUSES = [
   "pending",
@@ -43,6 +46,7 @@ export const PROPOSAL_STATUSES = [
   "held",
   "expired",
   "yanked",
+  "closed",
 ] as const;
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 

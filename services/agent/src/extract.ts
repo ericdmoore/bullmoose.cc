@@ -126,6 +126,11 @@ export const EXTRACT_SYSTEM = `You extract ENTITIES from one email, for the mail
   - contact: a person's details stated in the message, usually a signature block
     (a name with a phone, a title, an organisation, an address).
 
+A commitment MAY add "contingentOn": "<the start of the event in THIS email it
+depends on>" when the message makes it conditional on that event happening
+("if she's going Saturday, pay the coach" -> contingentOn is Saturday's start).
+Only when the condition is stated; an ordinary commitment carries no such field.
+
 Return ONLY a JSON array, nothing else. Each item:
   {"class": "commitment" | "decision" | "task" | "event" | "contact", "body": "<one plain sentence>", "confidence": <0 to 1>}
 An "event" item may add: "start": "<ISO 8601 local>", "title": "<short>", "durationMinutes": <number>.
@@ -193,6 +198,11 @@ interface ExtractedItem {
   start?: string;
   title?: string;
   durationMinutes?: number;
+  /** Commitment items only: the start of the event IN THIS MESSAGE the
+   *  commitment is conditional on ("if she's going Saturday, pay the coach").
+   *  Normalized like `start`; kept only when it names a dated event from the
+   *  same extraction, else the item degrades to an ordinary commitment. */
+  contingentOn?: string;
 }
 
 /**
@@ -250,7 +260,9 @@ export function parseExtraction(output: string): ExtractedItem[] {
     if (!CLASS_TYPES.has(cls) || !body) continue;
     const c = Number(r.confidence);
     const start = usableStart(r.start);
+    const contingentOn = cls === "commitment" ? usableStart(r.contingentOn) : null;
     out.push({
+      ...(contingentOn ? { contingentOn } : {}),
       ...(cls === "event" && start ? { start } : {}),
       ...(cls === "event" && typeof r.title === "string" && r.title.trim()
         ? { title: r.title.trim().slice(0, 200) }
@@ -377,8 +389,16 @@ export async function runExtract(
 
   const now = Date.now();
   const anchor = JSON.stringify({ realm: "Email", objectId: email.id });
+  // A commitment the model tied to a dated event in THIS message does not
+  // land as a flat open note — asserting it unconditionally is exactly what
+  // the message did not say. It becomes a contingent-commitment PROPOSAL
+  // (offerSchedules below), and APPROVAL is what writes the annotation: the
+  // "made real" moment. If minting fails, offerSchedules writes the flat
+  // note as fallback — the fact is never lost, only its conditionality.
+  const contingent = contingentItems(job, items);
   const ids: string[] = [];
   for (const it of items) {
+    if (contingent.has(it)) continue;
     const id = `an_${crypto.randomUUID()}`;
     await env.DB.prepare(
       `INSERT INTO annotations
@@ -546,6 +566,30 @@ export async function reconcileSchedule(
     if (from !== to) changes.duration = { from, to };
   }
   return { kind: "update", target, changes };
+}
+
+/** One message cannot spawn an unbounded pile of contingent commitments
+ *  either; they are rarer and louder than schedule offers. */
+const MAX_COMMIT_OFFERS = 2;
+
+/**
+ * The commitment items that ride as CONTINGENT PROPOSALS rather than flat
+ * notes: conditional on a dated event from the same extraction, and mintable
+ * at all (a carrier needs a binding). Items past the cap, or conditioned on
+ * something the model did not date, stay ordinary annotations — degraded,
+ * never dropped. Exported so the split is testable.
+ */
+export function contingentItems(job: ExtractJob, items: ExtractedItem[]): Set<ExtractedItem> {
+  const out = new Set<ExtractedItem>();
+  if (!job.binding_id) return out;
+  const datedStarts = new Set(items.filter((i) => i.class === "event" && i.start).map((i) => i.start!));
+  for (const it of items) {
+    if (out.size >= MAX_COMMIT_OFFERS) break;
+    if (it.class !== "commitment" || !it.contingentOn) continue;
+    if (!datedStarts.has(it.contingentOn)) continue;
+    out.add(it);
+  }
+  return out;
 }
 
 /**
@@ -720,6 +764,124 @@ async function offerSchedules(
     } catch {
       // An offer that fails is not an extraction that failed. The annotations
       // are already committed; the reader sees the date either way.
+    }
+  }
+
+  // ── contingent commitments (s36 V2) ─────────────────────
+  // "If she's going Saturday, pay the coach." A dependency between two
+  // proposals: the commitment waits on the hold, VISIBLE-BUT-BLOCKED from the
+  // start — the reader sees the consequence before committing to the cause.
+  // Exactly one level, never a chain: a dependent's cause is always a
+  // verb-schedule offer, which itself waits on nothing.
+  for (const it of contingentItems(job, items)) {
+    const contingentOn = it.contingentOn!;
+    try {
+      // One commitment offer per contingent moment, ANY status — same
+      // tombstone rule as everything above. No fallback note on a dupe:
+      // the question was already asked, or already answered.
+      const dupe = await env.DB.prepare(
+        `SELECT 1 AS hit FROM agent_proposals
+          WHERE account_id = ? AND kind = 'contingent-commitment'
+            AND json_extract(payload_json, '$.contingentOn') = ? LIMIT 1`,
+      )
+        .bind(job.account_id, contingentOn)
+        .first<{ hit: number }>();
+      if (dupe) continue;
+
+      // The ground this stands on: the schedule offer for that moment —
+      // usually minted seconds ago in the loop above.
+      const cause = await env.DB.prepare(
+        `SELECT id, status FROM agent_proposals
+          WHERE account_id = ? AND kind = 'verb-schedule'
+            AND json_extract(payload_json, '$.start') = ?
+          ORDER BY created_at DESC LIMIT 1`,
+      )
+        .bind(job.account_id, contingentOn)
+        .first<{ id: string; status: string }>();
+
+      // The ground was already REFUSED: the reader declined (or ignored to
+      // expiry) the event this depends on. Minting the dependent now would
+      // override an answer they already gave; a flat note would nag about
+      // it. Nothing is the honest output.
+      if (cause && (cause.status === "rejected" || cause.status === "expired" || cause.status === "closed")) {
+        continue;
+      }
+      // Blocked while the cause is undecided; standalone when the cause is
+      // already approved or when no offer exists at all (the reconcile step
+      // found the event already on the calendar — the ground is satisfied).
+      const waitsOn = cause && cause.status !== "approved" ? cause.id : null;
+
+      const carrierId = `inv_${crypto.randomUUID()}`;
+      const carrierCtx = JSON.stringify({
+        kind: "extract-offer",
+        emailId: email.id,
+        contingentOn,
+        ...(waitsOn ? { waitsOn } : {}),
+      });
+      await env.DB.prepare(
+        `INSERT INTO agent_invocations
+           (id, account_id, binding_id, binding_name, status, context_json,
+            created_at, claimed_at, done_at, cost_micros, result_json)
+         VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, 0, ?)`,
+      )
+        .bind(carrierId, job.account_id, job.binding_id, job.binding_name, carrierCtx, now, now, now, carrierCtx)
+        .run();
+
+      await emitProposal(
+        env,
+        { id: carrierId, account_id: job.account_id },
+        {
+          kind: "contingent-commitment",
+          // TIER 1: approval writes one commitment NOTE in the owner's own
+          // account (the Commitments surface), reaches nobody, and the undo
+          // handle dismisses it. Payment stays a prepared, reviewable
+          // handoff — approval records that you owe it, it never moves money.
+          tier: 1,
+          subject: { realm: "Email", objectId: email.id },
+          payload: {
+            verb: "commit",
+            body: it.body,
+            contingentOn,
+            ...(waitsOn ? { waitsOn } : {}),
+            composed: false,
+          },
+          rationale: waitsOn
+            ? `The message ties this to attending — "${it.body.slice(0, 140)}". It waits on that hold: approve the hold first, and declining the hold closes this by itself.`
+            : `The message ties this to an event already on your calendar — "${it.body.slice(0, 140)}". Approving records the commitment; declining leaves no note.`,
+          evidence: [{ realm: "Email", objectId: email.id, note: "the message that stated the condition" }],
+          expiresInMs: OFFER_EXPIRY_MS,
+        },
+      );
+      made++;
+    } catch {
+      // The offer could not be minted — fall back to the flat note the item
+      // would have been without this feature. Degraded, never lost.
+      try {
+        const id = `an_${crypto.randomUUID()}`;
+        await env.DB.prepare(
+          `INSERT INTO annotations
+             (id, account_id, author_kind, author, anchor_json, class, body,
+              confidence, status, rationale, source_ref, created_at, updated_at)
+           VALUES (?, ?, 'agent', ?, ?, 'commitment', ?, ?, 'open', NULL, ?, ?, ?)`,
+        )
+          .bind(
+            id,
+            job.account_id,
+            job.binding_name,
+            JSON.stringify({ realm: "Email", objectId: email.id }),
+            it.body,
+            it.confidence,
+            email.id,
+            now,
+            now,
+          )
+          .run();
+        await commitChanges(env.ACCOUNT_DO, job.account_id, [
+          { collection: "Annotation", created: [id], updated: [], destroyed: [] },
+        ]);
+      } catch {
+        // Even the fallback failed; the extraction itself still stands.
+      }
     }
   }
   return made;

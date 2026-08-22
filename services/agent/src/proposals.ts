@@ -405,6 +405,42 @@ export async function expireStaleProposals(env: Env): Promise<void> {
     arr.push(r.id);
     byAccount.set(r.account_id, arr);
   }
+
+  // The dependency cascade, expiry edition (s36 V2): a cause that expired was
+  // ignored on purpose, and its dependents lose their ground the same way a
+  // declined cause's do. `closed`, visibly, reason recorded — never a
+  // fabricated decision, and the tombstone keeps a quoted reply from
+  // re-minting the question.
+  for (const r of results) {
+    const { results: deps } = await env.DB.prepare(
+      `SELECT id FROM agent_proposals
+        WHERE account_id = ? AND status = 'pending'
+          AND json_extract(payload_json, '$.waitsOn') = ?`,
+    )
+      .bind(r.account_id, r.id)
+      .all<{ id: string }>();
+    for (const dep of deps) {
+      await env.DB.prepare(
+        `UPDATE agent_proposals SET status = 'closed', decided_at = ?, decision_json = ?
+          WHERE account_id = ? AND id = ? AND status = 'pending'`,
+      )
+        .bind(
+          now,
+          JSON.stringify({
+            by: "bullmoose",
+            closed: "cause-expired",
+            causeId: r.id,
+            note: "closed: the thing this depended on expired unanswered",
+          }),
+          r.account_id,
+          dep.id,
+        )
+        .run();
+      const arr = byAccount.get(r.account_id) ?? [];
+      arr.push(dep.id);
+      byAccount.set(r.account_id, arr);
+    }
+  }
   for (const [accountId, ids] of byAccount) {
     await commitChanges(env.ACCOUNT_DO, accountId, [
       { collection: "ActionProposal", created: [], updated: ids, destroyed: [] },

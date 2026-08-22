@@ -127,6 +127,11 @@ export function decisionLabel(item: DecidedItem): string {
       return "expired undecided — the deadline passed with no decision";
     case "yanked":
       return `yanked from the hold tray by ${by} — pulled back before it sent`;
+    case "closed":
+      // Not a decline: nobody decided this row — the thing it depended on
+      // was declined or expired, and the ground vanished. The server wrote
+      // the mechanism into decision.note; render it verbatim.
+      return p.decision?.note ?? "closed — the thing it depended on went away";
   }
 }
 

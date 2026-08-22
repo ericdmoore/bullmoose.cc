@@ -78,6 +78,9 @@ export function PendingRow(props: {
   now: number;
   busy: boolean;
   error: string | undefined;
+  /** s36 V2 — set when this row waits on an undecided cause. Replaces the
+   *  approve verb with the sentence: visible-but-blocked, not grey mystery. */
+  waitsNote?: string | null;
   panel: Panel | undefined;
   setPanel: (panel: Panel | undefined) => void;
   onApprove: () => void;
@@ -189,7 +192,11 @@ export function PendingRow(props: {
         />
       ) : (
         <ActionBar>
-          {authority.canApprove ? (
+          {props.waitsNote ? (
+            // Blocked, and it says why — the approve verb would only refuse.
+            // Decline stays: saying no to a blocked consequence is always open.
+            <span class="text-sm text-amber-700 dark:text-amber-300">{props.waitsNote}</span>
+          ) : authority.canApprove ? (
             <>
               <Button variant="primary" disabled={busy} onClick={props.onApprove}>
                 {approveVerb(p.tier)}
