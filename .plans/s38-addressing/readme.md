@@ -96,10 +96,10 @@ Proposed shape, in order:
 
 ## Open questions
 
-1. **Which subdomain?** `agents.` is clearest. `ai.` is shorter and ages
-   badly. `staff.` matches the chief-of-staff framing and is the most
-   *product-honest* — but it reads oddly for `bouncer@`, which is
-   infrastructure rather than staff. Leaning `agents.`
+1. ~~**Which subdomain?**~~ **RESOLVED 2026-08-22: `agents.`** — Eric,
+   "agents dot is also my preferred name". `ai.` ages badly and `staff.`, while
+   the most product-honest, reads oddly for `bouncer@`, which is infrastructure
+   rather than staff.
 2. **Do test personas get a third namespace?** `emily@` and `mallory@` are
    fixtures living on the production apex. Separate question, same smell.
 3. **Does the boundary treat the agent subdomain specially on INBOUND?** It
