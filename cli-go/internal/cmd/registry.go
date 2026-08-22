@@ -161,6 +161,11 @@ var registry = map[string]spec{
 		boolean: []string{"json"}},
 	"approvals": {json: true, goNative: true, run: runApprovals},
 	"agents":    {json: true, goNative: true, run: runAgents},
+	// `version` (s08 T7): which binary is this? GO-NATIVE — Node's version
+	// surface was npm, and Node gets zero new features. Exists because
+	// release-cli.yml ships binaries, and a shipped binary that cannot name
+	// its build turns every support question into mtime archaeology.
+	"version": {json: true, goNative: true, run: runVersion},
 	// ---- wave 3 (devPlan.md:154): the standalone gate ----
 	//
 	// `login` and `init` are the two commands that CREATE the local mirror, so

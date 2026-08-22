@@ -1,10 +1,12 @@
 # s08 — the Go CLI: one binary, no runtime
 
-> **Status: T1–T6 SHIPPED; T7 not started.** 112 of 113 invocations are native, and the
-> 61-case contract suite runs against BOTH binaries in `verify` so a port that changes
-> behaviour fails the build. Seven commands still delegate to the Node CLI. T7 — the
-> release pipeline and the Node-CLI retirement — has not begun; there is no
-> `release-cli.yml`.
+> **Status: T1–T6 SHIPPED; T7 pipeline LANDED, retirement pending.** After the s42
+> wave (share → admin), exactly ONE command still delegates to Node: `agent`.
+> `release-cli.yml` cross-compiles darwin/linux × arm64/amd64 (+ windows/amd64) on a
+> `cli-go/v*` tag, checksums, and attaches a GitHub release; `bullmoose version`
+> (Go-native-only) names the build. Remaining under T7: cut the first tag, flip
+> `~/bin/bullmoose` off the Node wrapper, and — only after `BULLMOOSE_TRACE` reports
+> zero delegated for a full release — delete the Node CLI.
 
 **This section had no readme until 2026-08-17** — the only numbered section that
 lacked one, which is part of why its `devPlan.md` under-reported itself by roughly ten

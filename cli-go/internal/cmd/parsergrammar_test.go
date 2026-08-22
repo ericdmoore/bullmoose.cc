@@ -138,6 +138,7 @@ var selfParsers = map[string]struct{ file, fn string }{
 	"watch":     {"watch.go", "parseWatch"},
 	"approvals": {"approvals.go", "parseApprovals"},
 	"agents":    {"agents.go", "parseAgents"},
+	"version":   {"version.go", "parseVersion"},
 }
 
 // undocumentedByDesign is every flag the CLI accepts that the help spec does
