@@ -1,6 +1,7 @@
 # s33 — the assurance ladder · *how do we know who is asking, and how sure are we?*
 
-> **Status: DESIGN.** From the 2026-08-19/20 conversation about `hr@` answering a
+> **Status: DESIGN; the CREDENTIAL RULE is resolved (2026-08-21) — see below.**
+> From the 2026-08-19/20 conversation about `hr@` answering a
 > benefits question at 3am. Nothing built. This is a **prerequisite** for any
 > `role@` that answers a question *about a person* — and, by coincidence worth
 > noticing, the same work that lets a second human exist at all (s26 T5 / #213).
@@ -247,6 +248,157 @@ possession, and a queue would defeat the use case that justified building this.
 4. Who tells her about agent processing — the enrollment page, `help@`'s first
    message, or both? (Both, probably; the page is the record, the message is the
    explanation.)
+
+## Credentials: what may exist, and what each may authorize
+
+> Resolved in conversation, Eric, 2026-08-21. Supersedes the assumption elsewhere
+> in this note that a password sits underneath the ladder.
+
+### No passwords
+
+Eric: *"I think when we ever make a form to create new human accounts — the
+account can't be fully completed without a passkey."*
+
+Taken further, and deliberately: **there is no account password at all.** The
+payoff above — *"'the operator knows your password' evaporates because there is
+no password"* — only lands if the password is absent rather than optional. A
+password kept "for now" is the rung that reintroduces everything the passkey
+removes: phishable, resettable, operator-knowable, and permanent once shipped.
+
+**This is already viable end to end.** `bullmoose init --token` configures a
+client *"from an existing token (no password login)"*, and `token create` mints
+scoped device credentials. So the path is passkey ceremony → mint token →
+`init`, with no password anywhere. Legacy clients (POP3/SMTP through popcorn)
+authenticate with `bm_` tokens and never see a ceremony.
+
+### The rule
+
+> **Two WebAuthn authenticators are required to complete an account. Any ONE
+> satisfies a ceremony.**
+
+Two, because *"a single authenticator guarantees a recovery event"* — enrol the
+phone and the laptop while she is already in the flow. Any one, because
+requiring 2-of-2 per ceremony is the treadmill open question 4 warns about and
+would kill the 3am use case that justified building this.
+
+Note that a U2F/YubiKey-style security key **is** a WebAuthn authenticator, not
+a separate factor type. "Passkey + security key" is two authenticators of the
+same kind, which is exactly what this rule asks for.
+
+### Additive credentials, capped below tier 3
+
+| credential | origin-bound | may authorize | may count toward the required two |
+|---|---|---|---|
+| passkey / security key | ✅ | up to **tier 3** | ✅ |
+| SSH key | ❌ | up to **tier 2** — CLI session, mint a token | ❌ |
+| TOTP | ❌ | up to **tier 2** | ❌ |
+
+**SSH keys** are a device credential, not a step-up factor: no origin binding,
+no user presence, and usually unencrypted on disk. Paste the public key
+GitHub-style, prove possession, mint a token — genuinely useful for a headless
+box with no browser. Never sufficient for a disclosure.
+
+**TOTP is permitted but capped**, which is a change from this note's earlier
+"naive OTP does not" framing — that framing was right about the risk and wrong
+to imply exclusion is the only response.
+
+The reason TOTP cannot reach tier 3 is NOT that users share codes. It is the
+real-time relay: a proxy page takes the code and replays it to the real server
+inside its window. The user typed it into what she believed was the login form,
+which is what she is supposed to do — her judgement was never engaged.
+Commodity kits (Evilginx, Modlishka, EvilProxy) make this the dominant MFA
+bypass, and s33's hole #2 supplies the perfect delivery vehicle: an authentic,
+DMARC-passing link from the company's own address.
+
+WebAuthn defeats that structurally rather than educationally — the assertion is
+computed over the RP ID, so a signature produced for a lookalike origin is
+arithmetically worthless at the real one.
+
+Capping rather than excluding prices the risk correctly: if a relay defeats her
+TOTP, the attacker holds a **tier-2 session that cannot disclose her 401(k)**.
+
+### Why the accessibility objection does not bite
+
+Eric, reasonably: an old OS or browser without WebAuthn would lock someone out.
+
+It does not, because **WebAuthn is needed at CEREMONY time, not at USE time.**
+Mail clients and the CLI authenticate with tokens and never touch it; the
+webmail needs a modern browser regardless (a Preact SPA behind a generated
+hash-based CSP). So the shape is: complete the ceremony once on any modern
+device — a phone is fine — then use whatever client you like, indefinitely,
+with a token. Someone with no modern device at all is the admin-reset rung.
+
+### Considered and rejected: per-account visual entropy (SiteKey)
+
+Eric raised the bank pattern — a per-account image or colour proving you are on
+the real page. **Recorded as rejected so it is not re-proposed**, on two
+grounds:
+
+1. **A proxy does not copy the page, it FETCHES it.** An AiTM relay takes the
+   username, asks our server for that account's image, and renders it. Any
+   entropy shown *before* authentication is entropy served to whoever asks —
+   and it makes the endpoint an enumeration oracle besides.
+2. **Users do not notice its absence.** Schechter et al., *The Emperor's New
+   Security Indicators* (IEEE S&P 2007): with the image removed entirely, ~92%
+   of participants entered their password anyway. Any indicator whose security
+   depends on a human noticing something MISSING fails in the field. Banks have
+   since retired it.
+
+**The half worth keeping is the telemetry**, and Eric's own framing was the
+right one: *"which would hopefully let us see the IP traffic, etc, and shut it
+off?"* If a relay must fetch from our origin to impersonate us, our origin sees
+the relay — and no picture is required to get that signal. Watch the auth
+endpoint for relay-shaped traffic (a datacenter ASN fetching a ceremony that
+claims to be a residential phone; one account initiating from two network paths
+seconds apart) and be able to kill a ceremony in flight. Detection, server-side,
+with the human out of the loop — which is precisely where SiteKey died.
+
+Per-account entropy that DOES work is already in this note: the described-act
+page. "Approve **hr@** disclosing **your 401(k) balance**…" is a claim whose
+content can be checked, not an ornament whose absence must be noticed.
+
+## Sign-up: the order, and why it is that order
+
+Eric's sketch, reordered on two principles — **cheap before expensive**, and
+**prove the channel before relying on it**. Nothing irreversible lands before
+the passkey exists.
+
+```
+1. Name + requested address      availability + a RESERVED denylist (below)
+2. External address → VERIFY NOW the trust anchor; everything downstream
+                                 inherits it, so it cannot come after payment
+3. Passkey ×2                    the account is NOT complete until this
+4. Disclosure: what agents read  before any mail exists to read
+5. Import                        or the product is inert for a week
+6. Payment                       after first value, not before it
+```
+
+**Payment cannot precede import.** This note already says a new mailbox gives
+the extractor nothing to extract; charging a card before the product can
+demonstrate itself is a churn machine.
+
+### 🔴 Reserved local-parts are not enforced anywhere today
+
+There is no denylist in `services/provision` or `packages/auth-core`. A
+self-serve address picker without one lets someone claim `postmaster@` or
+`abuse@` (RFC 2142), and — worse here — **the agent role addresses**:
+`help@`, `analyst@`, `bouncer@`, `hr@`, `editor@`, `remind@`, `corey@`. A human
+holding `bouncer@` receives the boundary agent's mail. This must land before
+any self-serve signup ships; filed separately.
+
+### BYO-install is a different flow, not step 6 of this one
+
+The sketch also collected two Cloudflare tokens. That is not sign-up — it is
+**provisioning an install on the customer's own Cloudflare account**, which is
+a different product with a different support burden, and this note's open
+question 3 already records the consequence: a BYO origin means a different RP
+ID, so passkeys do not port between installs.
+
+It also deserves its own consent screen because of what it is: **a long-lived
+Cloudflare token that can create Workers, D1 and R2 is effectively
+account-admin** — the highest-value secret in the whole flow, well above the
+card. That is a Bureau asset by definition ("we hold a secret you must never
+see") and must not sit in a form field beside anything else.
 
 ## Slices
 
