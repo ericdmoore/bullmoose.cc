@@ -8,6 +8,7 @@ import {
   parseExtraction,
   parseScoutVerdict,
   runExtract,
+  titleOverlap,
   type ExtractJob,
   usableStart,
 } from "./extract.js";
@@ -424,11 +425,21 @@ describe("usableStart — strict on purpose", () => {
   // and the item still lands as a note, so the reader sees the date and can
   // add it by hand. A WRONG `start` puts a wrong entry in their calendar, and
   // they may not find out until they miss the thing it was for.
-  it("60. accepts an ISO local time to the minute", () => {
+  it("60. accepts an ISO local time to the minute — and NORMALIZES it", () => {
+    // Canonical wall clock, seconds precision: what `parseLocalDateTime`
+    // demands at approval. The un-normalized forms used to pass here and then
+    // betray the reader downstream — minute precision failed AT APPROVAL
+    // (an offer visible but never takeable), and a zone suffix was silently
+    // dropped by the validator, landing the hold hours from where the
+    // message put it. Normalizing here makes the gate and the landing agree.
     expect(usableStart("2026-08-23T07:30:00")).toBe("2026-08-23T07:30:00");
-    expect(usableStart("2026-08-23T07:30")).toBe("2026-08-23T07:30");
-    expect(usableStart("2026-08-23T07:30:00Z")).toBe("2026-08-23T07:30:00Z");
+    expect(usableStart("2026-08-23T07:30")).toBe("2026-08-23T07:30:00");
     expect(usableStart(" 2026-08-23T07:30:00 ")).toBe("2026-08-23T07:30:00");
+    // Zoned input: the instant is known, so emit its UTC wall clock — exactly
+    // how the apply case reads it back (timeZone defaults to Etc/UTC).
+    expect(usableStart("2026-08-23T07:30:00Z")).toBe("2026-08-23T07:30:00");
+    expect(usableStart("2026-08-23T15:00:00+02:00")).toBe("2026-08-23T13:00:00");
+    expect(usableStart("2026-08-23T07:30:00.500Z")).toBe("2026-08-23T07:30:00");
   });
 
   it("61. refuses a bare date — 'sometime Saturday' is not a hold", () => {
@@ -500,14 +511,28 @@ describe("a decision tombstones the offer", () => {
   // would have re-offered a DECLINED date the moment a quoted reply arrived —
   // overriding an answer the reader had already given. That is worse than the
   // duplicate the check exists to prevent.
-  it("80. the dupe query filters on the moment, not on the status", () => {
+  it("80. every dupe query filters on the moment, not on the status", () => {
     // Asserted against the source because the query is the invariant: a
-    // `status =` clause creeping back in is precisely the regression.
+    // `status =` clause creeping back in is precisely the regression. There
+    // are now TWO dupe queries — updates key on (target, moment moved to),
+    // creates on the moment — and the tombstone rule binds both.
     const src = readFileSync(new URL("./extract.ts", import.meta.url), "utf8");
-    const q = src.slice(src.indexOf("SELECT 1 AS hit FROM agent_proposals"));
-    const clause = q.slice(0, q.indexOf("LIMIT 1"));
-    expect(clause).toContain("json_extract(payload_json, '$.start')");
-    expect(clause, "any status is a tombstone — pending, approved, declined or expired").not.toContain("status =");
+    const clauses: string[] = [];
+    for (let at = src.indexOf("SELECT 1 AS hit FROM agent_proposals"); at !== -1;) {
+      const q = src.slice(at);
+      clauses.push(q.slice(0, q.indexOf("LIMIT 1")));
+      at = src.indexOf("SELECT 1 AS hit FROM agent_proposals", at + 1);
+    }
+    expect(clauses).toHaveLength(2);
+    for (const clause of clauses) {
+      expect(clause, "any status is a tombstone — pending, approved, declined or expired").not.toContain("status =");
+    }
+    expect(clauses.some((c) => c.includes("json_extract(payload_json, '$.start')"))).toBe(true);
+    expect(
+      clauses.some(
+        (c) => c.includes("'$.targetEventId'") && c.includes("json_extract(payload_json, '$.changes.start.to')"),
+      ),
+    ).toBe(true);
   });
 });
 
@@ -602,5 +627,189 @@ describe("offers — a dated event becomes a verb-schedule proposal", () => {
     );
     // Still one: the answer already given is not asked again.
     expect(w.db.query("SELECT id FROM agent_proposals WHERE account_id = ?", ACCOUNT)).toHaveLength(1);
+  });
+});
+
+// ── s36 V2 — reconcile before offering ──────────────────────────────────────
+//
+// "See if I already have the data." The verdict table under test, with the
+// middle row first because it is the one that is easy to get wrong:
+//
+//   the same thing, unchanged  → SILENCE (no offer at all)
+//   the same thing, moved      → an UPDATE carrying the field diff
+//   nothing similar            → create, as before
+//   two plausible candidates   → create that says so (ask, don't assert)
+
+describe("reconcile — the calendar is looked at before an offer is minted", () => {
+  const offerJob: ExtractJob = { ...job, binding_id: "bind_x" };
+
+  /** A hold already on the calendar, wall clock in its own timeZone. */
+  async function seedEvent(
+    w: ReturnType<typeof fakeEnv>,
+    o: { id?: string; title: string; start: string; duration?: string; recurring?: boolean },
+  ) {
+    await w.env.DB.prepare(
+      `INSERT INTO calendar_events
+         (id, account_id, calendar_id, uid, event_json, title, start_at, end_at, is_recurring, created_at, updated_at)
+       VALUES (?, ?, 'cal_default', ?, ?, ?, ?, ?, ?, 1, 1)`,
+    )
+      .bind(
+        o.id ?? "ev_1",
+        ACCOUNT,
+        `urn:uuid:${o.id ?? "ev_1"}`,
+        JSON.stringify({
+          "@type": "Event",
+          title: o.title,
+          start: o.start,
+          duration: o.duration ?? "PT30M",
+          timeZone: "Etc/UTC",
+        }),
+        o.title,
+        Date.parse(`${o.start}Z`),
+        Date.parse(`${o.start}Z`) + 30 * 60 * 1000,
+        o.recurring ? 1 : 0,
+      )
+      .run();
+  }
+
+  const tournament = (start: string, extra: Record<string, unknown> = {}) =>
+    JSON.stringify([
+      {
+        class: "event",
+        body: "U12G tournament, arrive early",
+        confidence: 0.9,
+        start,
+        title: "U12G tournament",
+        ...extra,
+      },
+    ]);
+
+  const proposals = (w: ReturnType<typeof fakeEnv>) =>
+    w.db.query<{ id: string; kind: string; payload_json: string; rationale: string }>(
+      "SELECT id, kind, payload_json, rationale FROM agent_proposals WHERE account_id = ?",
+      ACCOUNT,
+    );
+
+  it("100. the same thing, unchanged — SILENCE, the hardest half of the feature", async () => {
+    // A forwarded thread re-presents facts already on file. An offer to
+    // create what exists trains the reader to dismiss without reading.
+    const { w } = world(tournament("2026-08-23T08:00:00"));
+    await seedEvent(w, { title: "U12G tournament", start: "2026-08-23T08:00:00" });
+    await runExtract(
+      w.env,
+      offerJob,
+      CFG,
+      inbound({ subject: "Fwd: Tournament", body: "Sat 8am" }),
+      {},
+      async () => {},
+    );
+    expect(proposals(w)).toHaveLength(0);
+    // But the annotation still lands — silence about the OFFER, not the fact.
+    expect(w.db.query("SELECT id FROM annotations WHERE account_id = ?", ACCOUNT)).toHaveLength(1);
+  });
+
+  it("101. the same thing, moved — an update NAMING the event and CARRYING the diff", async () => {
+    const { w } = world(tournament("2026-08-23T07:30:00", { durationMinutes: 120 }));
+    await seedEvent(w, { id: "ev_tourn", title: "U12G tournament", start: "2026-08-23T08:00:00" });
+    await runExtract(
+      w.env,
+      offerJob,
+      CFG,
+      inbound({ subject: "Re: Tournament", body: "moved to 7:30" }),
+      {},
+      async () => {},
+    );
+    const rows = proposals(w);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kind).toBe("verb-schedule-update");
+    const payload = JSON.parse(rows[0]!.payload_json);
+    expect(payload.targetEventId).toBe("ev_tourn");
+    expect(payload.changes.start).toEqual({ from: "2026-08-23T08:00:00", to: "2026-08-23T07:30:00" });
+    // Duration rides along because the start moved AND the message stated one.
+    expect(payload.changes.duration).toEqual({ from: "PT30M", to: "PT120M" });
+    // The rationale states the move in words a margin can show.
+    expect(rows[0]!.rationale).toContain("2026-08-23 08:00");
+    expect(rows[0]!.rationale).toContain("2026-08-23 07:30");
+    // The carrier is done at cost 0 — no model call minted this offer.
+    const inv = w.db.query<{ status: string; cost_micros: number }>(
+      "SELECT status, cost_micros FROM agent_invocations WHERE id = ?",
+      rows[0]!.id,
+    )[0];
+    expect(inv).toMatchObject({ status: "done", cost_micros: 0 });
+  });
+
+  it("102. a DECLINED move is not re-offered — the tombstone covers updates too", async () => {
+    const { w } = world(tournament("2026-08-23T07:30:00"));
+    await seedEvent(w, { id: "ev_tourn", title: "U12G tournament", start: "2026-08-23T08:00:00" });
+    await runExtract(
+      w.env,
+      offerJob,
+      CFG,
+      inbound({ subject: "Re: Tournament", body: "7:30 now" }),
+      {},
+      async () => {},
+    );
+    await w.env.DB.prepare("UPDATE agent_proposals SET status = 'rejected' WHERE account_id = ?").bind(ACCOUNT).run();
+    // A reply quoting the same move arrives as its own delivery.
+    await runExtract(
+      w.env,
+      { ...offerJob, id: "inv_y" },
+      CFG,
+      inbound({ id: "e_two", subject: "Re: Re: Tournament", body: "7:30 confirmed" }),
+      {},
+      async () => {},
+    );
+    expect(proposals(w)).toHaveLength(1); // still just the declined one
+  });
+
+  it("103. two plausible candidates — the offer ASKS instead of asserting", async () => {
+    // A wrong create is a duplicate the reader can see; a wrong update
+    // overwrites something true. Ambiguity resolves toward the reversible one.
+    const { w } = world(tournament("2026-08-23T07:30:00"));
+    await seedEvent(w, { id: "ev_a", title: "U12G tournament pool play", start: "2026-08-23T08:00:00" });
+    await seedEvent(w, { id: "ev_b", title: "U12G tournament final", start: "2026-08-23T15:00:00" });
+    await runExtract(
+      w.env,
+      offerJob,
+      CFG,
+      inbound({ subject: "Tournament", body: "7:30 arrival" }),
+      {},
+      async () => {},
+    );
+    const rows = proposals(w);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kind).toBe("verb-schedule"); // a create, not an update
+    expect(rows[0]!.rationale).toContain("already holds 2 similar");
+    expect(rows[0]!.rationale).toContain("U12G tournament pool play");
+  });
+
+  it("104. an unrelated event nearby changes nothing — create, as before", async () => {
+    const { w } = world(tournament("2026-08-23T07:30:00"));
+    await seedEvent(w, { title: "Dentist", start: "2026-08-23T09:00:00" });
+    await runExtract(w.env, offerJob, CFG, inbound({ subject: "Tournament", body: "Sat 7:30" }), {}, async () => {});
+    const rows = proposals(w);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kind).toBe("verb-schedule");
+    expect(JSON.parse(rows[0]!.payload_json).start).toBe("2026-08-23T07:30:00");
+  });
+
+  it("105. a recurring series is never a merge target", async () => {
+    // Updating a master from one email would move every occurrence, and no
+    // diff a margin can render says that honestly.
+    const { w } = world(tournament("2026-08-23T07:30:00"));
+    await seedEvent(w, { title: "U12G tournament", start: "2026-08-23T08:00:00", recurring: true });
+    await runExtract(w.env, offerJob, CFG, inbound({ subject: "Tournament", body: "Sat 7:30" }), {}, async () => {});
+    const rows = proposals(w);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kind).toBe("verb-schedule");
+  });
+});
+
+describe("titleOverlap — a narrowing heuristic, not a judge", () => {
+  it("110. overlap is |shared| / min(|a|,|b|), case- and punctuation-blind", () => {
+    expect(titleOverlap("U12G White Tournament", "u12g tournament")).toBe(1);
+    expect(titleOverlap("Dentist", "U12G tournament")).toBe(0);
+    expect(titleOverlap("", "anything")).toBe(0);
+    expect(titleOverlap("Practice", "practice")).toBe(1);
   });
 });

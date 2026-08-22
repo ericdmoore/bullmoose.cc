@@ -1645,6 +1645,115 @@ async function applyProposal(
       return { entries: holdEntries, undo: { action: "destroy-event", eventId: eventRow.id } };
     }
 
+    case "verb-schedule-update": {
+      // s36 V2 — the MERGE landing. The producer is extract.ts's reconcile
+      // step: the message re-states an event the calendar already holds, with
+      // a moment that moved. What approval writes is an UPDATE to that one
+      // named event — never a second copy — through the same `buildEventRow`
+      // the create path runs, in update mode (existingId/existing preserve
+      // id, uid, davName and created).
+      //
+      // Two properties make this reviewable where a bare "update" is not:
+      //
+      //   the payload NAMES the event (`targetEventId`) and CARRIES the diff
+      //   (`changes.start.from → .to`). The reader approved `8:00 → 7:30` on
+      //   a specific hold, not "whatever the agent meant".
+      //
+      //   the diff is CHECKED AT APPLY TIME. If the calendar moved since the
+      //   offer was minted — another device, the CalDAV client, an earlier
+      //   approval — the `from` no longer matches and this case REFUSES in
+      //   place. A wrong create is a duplicate the reader can see and delete;
+      //   a wrong update overwrites something true with something older,
+      //   which is the one write this whole design exists to never make.
+      //
+      // The capability wall is verb-schedule's, verbatim: approving must not
+      // perform a write the approver's own token could not.
+      const updAuth = authorizeAccount(ctx.principal, access.accountId, "calendar", "calendar");
+      if (!updAuth.ok) {
+        throw new SetErrorSignal(
+          "forbidden",
+          updAuth.reason === "accountNotFound"
+            ? "no such account"
+            : `this moves a hold on your calendar, and ${updAuth.detail} — nothing was written`,
+        );
+      }
+
+      const targetEventId = str(payload.targetEventId);
+      const rawChanges = (payload.changes ?? {}) as Record<string, unknown>;
+      const change = (v: unknown): { from: string; to: string } | null => {
+        if (!v || typeof v !== "object") return null;
+        const c = v as Record<string, unknown>;
+        return typeof c.from === "string" && typeof c.to === "string" ? { from: c.from, to: c.to } : null;
+      };
+      const startChange = change(rawChanges.start);
+      const durationChange = change(rawChanges.duration);
+      if (!targetEventId || (!startChange && !durationChange)) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "this update names no event or carries no changes — there is nothing to approve",
+          ["payload"],
+        );
+      }
+
+      const targetRow = (await store.getCalendarEvents(access.accountId, [targetEventId]))[0];
+      if (!targetRow) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          "the hold this update names is no longer on the calendar — nothing was written. Decline the offer; if the time still matters, the message is one click away.",
+          ["payload"],
+        );
+      }
+
+      const targetEvent = targetRow.event as Record<string, unknown>;
+      // The staleness check. Wall clock against wall clock, in the event's own
+      // timeZone — the same frame the reconcile step recorded `from` in.
+      const startNow = typeof targetEvent.start === "string" ? targetEvent.start.slice(0, 19) : "";
+      if (startChange && startNow !== startChange.from) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `the calendar moved since this was offered — "${str(payload.targetTitle) ?? targetEventId}" now starts ${startNow || "(unreadable)"}, not ${startChange.from}. Nothing was written; decline this offer and let the next message speak for itself.`,
+          ["payload"],
+        );
+      }
+      const durationNow = typeof targetEvent.duration === "string" ? targetEvent.duration : "PT30M";
+      if (durationChange && durationNow !== durationChange.from) {
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `the calendar moved since this was offered — the hold's length is now ${durationNow}, not ${durationChange.from}. Nothing was written.`,
+          ["payload"],
+        );
+      }
+
+      if (startChange) targetEvent.start = startChange.to;
+      if (durationChange) targetEvent.duration = durationChange.to;
+
+      let updatedRow;
+      try {
+        updatedRow = buildEventRow(targetEvent as JSCalendarEventBlob, targetRow.calendarId, targetRow.id, targetRow);
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        throw new SetErrorSignal("invalidProperties", `this update is not a valid calendar change: ${why}`, [
+          "payload",
+        ]);
+      }
+      await store.updateCalendarEvent(access.accountId, updatedRow);
+      await store.bumpCalendarCtags(access.accountId, [targetRow.calendarId]);
+
+      return {
+        entries: [{ collection: "CalendarEvent", created: [], updated: [targetRow.id], destroyed: [] }],
+        // The inverse, precisely: put back the fields this moved, nothing
+        // else. A destroy would undo more than was done.
+        undo: {
+          action: "restore-event-fields",
+          eventId: targetRow.id,
+          fields: {
+            ...(startChange ? { start: startChange.from } : {}),
+            ...(durationChange ? { duration: durationChange.from } : {}),
+          },
+        },
+      };
+    }
+
     case "watch-notify": {
       // s20 T1 — a fired `notify` watch: the pure reminder. `fire()`
       // (services/agent watches.ts) emits it at TIER 1 and says exactly what

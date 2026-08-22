@@ -93,6 +93,33 @@ describe("MarginOffers", () => {
     expect(html).toContain("proposal is approved, not pending");
   });
 
+  it("9. a MOVE offer renders the diff — approval is never assent to something unseen", () => {
+    const html = render(
+      <MarginOffers
+        offers={[
+          offer({
+            kind: "verb-schedule-update",
+            payload: {
+              verb: "schedule-update",
+              targetEventId: "ev_tourn",
+              targetTitle: "U12G tournament",
+              changes: { start: { from: "2026-08-23T08:00:00", to: "2026-08-23T07:30:00" } },
+            },
+          }),
+        ]}
+        account={account}
+        busy={new Set()}
+        onApprove={noop}
+        onDecline={noop}
+      />,
+    );
+    expect(html).toContain("Move on calendar?");
+    expect(html).toContain("U12G tournament");
+    // Same-day move: the right side is the time alone, what changed is what
+    // the eye lands on.
+    expect(html).toContain("2026-08-23 08:00 → 07:30");
+  });
+
   it("8. an offer with no start still renders its title rather than lying about a time", () => {
     const p = offer({ payload: { verb: "schedule", title: "Sometime thing" } });
     const html = render(

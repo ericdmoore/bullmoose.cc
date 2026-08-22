@@ -278,6 +278,26 @@ export function summarizeProposal(p: ActionProposal): string {
         ? `Hold ${when.replace("T", " ").slice(0, 16)}${s(p.payload.timeZone) ? ` ${s(p.payload.timeZone)}` : ""} — “${title}”${with_}`
         : `Hold “${title}”${with_} — NO TIME chosen; write one in or decline`;
     }
+    case "verb-schedule-update": {
+      // s36 V2 — a merge, not a create. The row IS the diff, because "update
+      // this event" is not a decision anyone can make and `8:00 → 7:30` is.
+      // The `to` side compresses to time-of-day when the day did not change,
+      // so the eye lands on what actually moved.
+      const changes = (p.payload.changes ?? {}) as Record<string, { from?: unknown; to?: unknown }>;
+      const title = s(p.payload.targetTitle) || "(untitled)";
+      const fmt = (v: string): string => v.replace("T", " ").slice(0, 16);
+      const parts: string[] = [];
+      const st = changes.start;
+      if (st && typeof st.from === "string" && typeof st.to === "string") {
+        const sameDay = st.from.slice(0, 10) === st.to.slice(0, 10);
+        parts.push(`${fmt(st.from)} → ${sameDay ? st.to.slice(11, 16) : fmt(st.to)}`);
+      }
+      const du = changes.duration;
+      if (du && typeof du.from === "string" && typeof du.to === "string") {
+        parts.push(`length ${du.from.replace(/^PT/, "")} → ${du.to.replace(/^PT/, "")}`);
+      }
+      return `Move “${title}” — ${parts.join(", ") || "(no changes carried)"}`;
+    }
     case "unsubscribe":
       return `Unsubscribe from ${s(p.payload.listName) || s(p.payload.to) || p.subject.objectId}`;
     case "organize-files":

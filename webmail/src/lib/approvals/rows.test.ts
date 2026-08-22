@@ -202,6 +202,41 @@ describe("summarizeProposal — one line per row, grant-request included", () =>
     expect(summarizeProposal(p)).toBe("Hold “Coffee sometime” — NO TIME chosen; write one in or decline");
   });
 
+  it("a MOVE headlines as the diff — “update this event” is not a decision, 8:00 → 7:30 is", () => {
+    const p = base({
+      kind: "verb-schedule-update",
+      tier: 1,
+      payload: {
+        verb: "schedule-update",
+        targetEventId: "ev_tourn",
+        targetTitle: "U12G tournament",
+        changes: { start: { from: "2026-08-23T08:00:00", to: "2026-08-23T07:30:00" } },
+      },
+    });
+    // Same day: the right side compresses to the time, so the eye lands on
+    // what actually moved.
+    expect(summarizeProposal(p)).toBe("Move “U12G tournament” — 2026-08-23 08:00 → 07:30");
+  });
+
+  it("a move across days spells both out, and a length change rides along", () => {
+    const p = base({
+      kind: "verb-schedule-update",
+      tier: 1,
+      payload: {
+        verb: "schedule-update",
+        targetEventId: "ev_tourn",
+        targetTitle: "U12G tournament",
+        changes: {
+          start: { from: "2026-08-23T08:00:00", to: "2026-08-24T09:00:00" },
+          duration: { from: "PT30M", to: "PT120M" },
+        },
+      },
+    });
+    expect(summarizeProposal(p)).toBe(
+      "Move “U12G tournament” — 2026-08-23 08:00 → 2026-08-24 09:00, length 30M → 120M",
+    );
+  });
+
   it("headlines a grant-request as an ask — same summarizer, same queue (arch.md §1)", () => {
     const p = base({
       kind: "grant-request",
