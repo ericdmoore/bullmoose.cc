@@ -167,6 +167,25 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "enrollments-table",
+    why: "s33 day-one — the one-time enrollment link. Without it POST /accounts/{id}/enrollment-link and the /enroll door answer 'no such table', and a second human cannot set a credential the operator never knew (#213)",
+    // Non-blocking, the notes-table precedent: nothing authorizes against
+    // this table, so its absence breaks enrollment rather than the deploy.
+    blocks: null,
+    check: tableExists("enrollments"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS enrollments (
+         id            TEXT PRIMARY KEY,
+         principal_id  TEXT NOT NULL REFERENCES principals(id),
+         secret_hash   TEXT NOT NULL,
+         created_at    INTEGER NOT NULL,
+         expires_at    INTEGER NOT NULL,
+         consumed_at   INTEGER
+       )`,
+    ],
+    absent: [],
+  },
+  {
     id: "notes-table",
     why: "s18 N1 notes — the human-authored standalone document (the OTHER s18 entity, NOT an annotation); without it Note/get|set|query answer 'no such table' and the /notes realm is a dead page",
     // Non-blocking, the annotations-table/watches-table precedent: no request

@@ -2,6 +2,7 @@ import { hashLoginKey, isLoginKey, OAUTH_SCOPES, timingSafeEqualHex, unknownScop
 import { beginLoginAttempt } from "@bullmoose/auth-core/loginThrottle";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { consentPage, DERIVE_LEGACY_PATH, DERIVE_PATH, deriveScript, errorPage } from "./consent.js";
+import { enrollPage, enrollScript, handleEnroll } from "./enroll.js";
 import { AUTH_DOCS, docsResponse } from "./docs.js";
 import { recordConsent } from "./consentMirror.js";
 import { revoke } from "./revoke.js";
@@ -98,6 +99,13 @@ export const authorizeHandler = {
     if (url.pathname === DERIVE_PATH || url.pathname === DERIVE_LEGACY_PATH) {
       return deriveScript(url.pathname);
     }
+    // The second human's door (s33 day-one, #213). GET renders, the page
+    // script moves the fragment token into the form, POST consumes it.
+    if (url.pathname === "/enroll") {
+      if (request.method === "POST") return handleEnroll(request, env);
+      return enrollPage();
+    }
+    if (url.pathname === "/enroll.js") return enrollScript();
     // Owner revocation: disconnect a connected app (s02 T4's second half).
     if (url.pathname === "/revoke" && request.method === "POST") return revoke(request, env);
     // The webmail's access-token → bm_ session exchange (s07 T7). The module

@@ -109,6 +109,21 @@ CREATE TABLE IF NOT EXISTS credentials (
   updated_at   INTEGER NOT NULL
 );
 
+-- One-time enrollment links (s33 day-one). The distance #213 named: the
+-- operator provisions the account, but the CREDENTIAL is set by the arriving
+-- human through a link the operator hands over out-of-band — so the operator
+-- never knows it. Same storage rule as tokens: plaintext shown once at mint,
+-- only its SHA-256 here. `consumed_at` is set, never deleted — the row is the
+-- audit record of an arrival.
+CREATE TABLE IF NOT EXISTS enrollments (
+  id            TEXT PRIMARY KEY,            -- en_<uuid>
+  principal_id  TEXT NOT NULL REFERENCES principals(id),
+  secret_hash   TEXT NOT NULL,
+  created_at    INTEGER NOT NULL,
+  expires_at    INTEGER NOT NULL,
+  consumed_at   INTEGER
+);
+
 -- Scoped revocable bearer tokens: device tokens, agent tokens, admin
 -- tokens — one table, one verification path. Plaintext secret is shown
 -- once at mint; only its SHA-256 is stored.
