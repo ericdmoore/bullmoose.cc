@@ -1,6 +1,7 @@
 # s31 — Rules: the three-rung ladder · *filtering as staff work, with the manual override intact*
 
-> **Status: DESIGN — resolved in conversation (Eric, 2026-08-19), nothing built.**
+> **Status: DESIGN — resolved in conversation (Eric, 2026-08-19; rung 2
+> grounded 2026-08-22), nothing built.**
 > Born the night BoogieMail's Rules screen said *"This account's mail server does
 > not support mail-filtering rules"* — which was honest, and wrong to leave true.
 
@@ -33,9 +34,10 @@ engine cannot run — and the composition lands as a **tier-2 proposal**, becaus
 a standing filter is *standing authority*: it changes how future mail is
 handled while you are not looking. The s20 T6 (#216) rule applies to the script
 itself: **redlining the sieve in place IS the approval** when the edit leaves
-nothing unresolved; an open question is the needsInfo cycle back to the
-bouncer. Same proposal/decision/provenance rows either way — the venue moves,
-the ledger does not.
+nothing unresolved. The needsInfo-cycle question is now answered — see "Rung
+2, grounded" below: Retry-with-nudge supersedes rather than edits. Same
+proposal/decision/provenance rows either way — the venue moves, the ledger
+does not.
 
 **Rung 3 — auto.** Graduated standing authority, the s20 T6 checkpoint
 pattern: once the human GRANTS the class, bouncer-composed rule changes
@@ -49,6 +51,82 @@ s03.D T5's missing repetition detector ("you've archived this sender five
 times; shall I file them automatically?"), the agent-offered twin of the
 language on-ramp, compiling through the same bouncer→sieve→proposal machinery.
 Rung 3 is a deliberate handover, prompted at most by an offer.
+
+## Rung 2, grounded — two intents, one machine (Eric, 2026-08-22)
+
+The rung-2 story, told concretely. You tell the bouncer "this email was
+garbage, don't want to see it again." Two shapes of intent arrive:
+
+- **General** — *"I don't like this."* The bouncer authors a BROAD rule.
+- **Specific** — *"this thing from sender X is noisy, what if we ___."* The
+  bouncer authors a NARROW rule.
+
+**The mechanics are identical, and that is the design.** The two intents
+differ only in what the composed rule QUANTIFIES OVER — the breadth lives
+inside the rule, not in the pipeline that carries it. Which is also why the
+button collapses into the same machinery: `[mark junk]` is intent arriving
+pre-parsed. One composer, one proposal, one verb row, three on-ramps
+(language, a message verb, the button):
+
+```
+intent → bouncer composes (its own dialect) → proposal
+       → [ Accept | Edit | Retry (with nudge) | Decline ]
+       → verify → apply
+```
+
+Note the product statement hiding in the button: `[mark junk]` here is a
+RULE-AUTHORING act, not a one-off label. "File this one message" is triage
+and already exists; "never again" is STANDING AUTHORITY, which is exactly why
+it rides the proposal machinery rather than a keystroke.
+
+### The verb row maps onto machinery that already exists
+
+- **Accept** = approve — `ActionProposal/set`, a ledger row.
+- **Edit** = the s20 T6 rule already cited above: redlining the sieve in place
+  IS the approval when the edit leaves nothing unresolved.
+- **Decline** = reject, and the taxonomy fits without stretching: a mis-clicked
+  `[mark junk]` is `unintendedInvocation` (teaches the composer NOTHING — the
+  reason that reason exists); a bad rule is `wrongContent` (trains
+  composition); "should not have offered" is `wrongAction` (trains selection).
+- **Retry (with nudge)** — the genuinely new verb, and it ANSWERS this plan's
+  open question about "the needsInfo cycle back to the bouncer." It is
+  needsInfo INVERTED: needsInfo asks the proposer to justify what it already
+  composed; retry hands the proposer new information and asks for a NEW
+  composition. And under the decision-immutability model (a proposal is a
+  thing that happened; decisions append, never edit): **a retry supersedes** —
+  the old proposal is tombstoned as answered, a new one is minted carrying the
+  nudge. Nothing is rewritten in place.
+
+### The one real difference between the intents: evidence
+
+Specific intent has a message in hand. General intent has no exemplar. That
+changes what VERIFY means:
+
+- **Specific:** run the composed rule against the triggering message (it must
+  catch it — a rule that misses its own exemplar failed composition), then
+  backtest the archive and report the BLAST RADIUS: *"this would have moved
+  47 messages last month — 3 of them you replied to."*
+- **General:** the backtest is the ONLY evidence there is, which makes it more
+  important, not less. Breadth is where filters go wrong, and the false
+  positive is mail you never see. A broad rule proposed without a blast-radius
+  report is asking for assent, not approval.
+
+The blast-radius line belongs IN the proposal's rationale, not in a detail
+view — it is the difference between an informed Accept and a rubber stamp.
+
+### One precision that keeps approval honest
+
+"The bouncer takes that as approval" must never be literal. The bouncer does
+not INTERPRET approval — *"sure, let's add that"* lands as
+`ActionProposal/set { approve }`, a ledger row, whichever surface carried it
+(button, margin, mail reply through the edit-is-approval parse). A composer
+judging its own approval is the exact failure the CJ-cannot-self-approve gate
+exists to prevent; the venue moves, the ledger does not.
+
+And the dialect constraint carries the s36 validated-output posture: the
+bouncer composes in its OWN supported dialect, so it structurally cannot
+write a rule the engine cannot run. Verification checks the rule's EFFECTS
+(the backtest); the dialect makes its FORM safe by construction.
 
 ## The read side
 
