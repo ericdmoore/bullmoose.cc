@@ -25,6 +25,9 @@ import {
 import { cachedIds, dropEmails, readEmails, writeEmails } from "../lib/app/emailStore";
 import { mayPrefetch, PREFETCH_BODY_BYTES, readNetworkHints, selectPrefetch } from "../lib/mail/prefetch";
 import { ThreadListStore, type ThreadRow } from "../lib/mail/threadList";
+import { approvalsAccounts, type ApprovalsAccount } from "../lib/approvals/accounts";
+import { indexByAnchor, offersForThread, withoutOffer, type AnchoredOffers } from "../lib/approvals/anchored";
+import { decide, loadQueue, type Verdict } from "../lib/approvals/api";
 import { syncCachedFlags } from "../lib/mail/changesSync";
 import {
   defaultExpanded,
@@ -623,6 +626,60 @@ export default function AppShell({ client: injected }: Props) {
     [client, accountId, syncStore],
   );
 
+  // ── offers for the margin (s36 V1 item 5) ────────────────────────────────
+  // The pending set, fetched ONCE and indexed by the message each offer is
+  // about (anchored.ts). Opening a message then costs zero requests — the
+  // margin paints from this index, and a decision goes through the SAME
+  // decide() the queue uses, so the two surfaces cannot disagree.
+  const [offerIndex, setOfferIndex] = useState<AnchoredOffers>(new Map());
+  const [offerAccount, setOfferAccount] = useState<ApprovalsAccount | undefined>(undefined);
+  const [offerBusy, setOfferBusy] = useState<ReadonlySet<string>>(new Set());
+  const [offerError, setOfferError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!client || !accountId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [{ proposals }, session] = await Promise.all([loadQueue(client, accountId), client.session()]);
+        if (cancelled) return;
+        setOfferIndex(indexByAnchor(proposals));
+        setOfferAccount(approvalsAccounts(session).find((a) => a.accountId === accountId));
+      } catch {
+        // Ambient commentary: a failed fetch leaves the mail perfectly
+        // readable, and the queue remains the fallback surface.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [client, accountId]);
+
+  const decideOffer = useCallback(
+    (id: string, verdict: Verdict) => {
+      if (!client) return;
+      setOfferError(null);
+      setOfferBusy((prev: ReadonlySet<string>) => new Set(prev).add(id));
+      void decide(client, accountId, id, verdict).then((out) => {
+        setOfferBusy((prev: ReadonlySet<string>) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        if (out.ok) {
+          // The local tombstone: the index cannot delta-sync, so forget the
+          // answered offer here or it flashes back on the next paint.
+          setOfferIndex((prev) => withoutOffer(prev, id));
+        } else {
+          // A stale approve on a proposal decided elsewhere lands here as the
+          // server's own refusal — shown, never retried silently.
+          setOfferError(out.message);
+        }
+      });
+    },
+    [client, accountId],
+  );
+
   // Reconcile the cached flags with the server once the client is up. Bodies
   // are never revalidated (they cannot change); this is the other half — the
   // read/unread and mailbox state that can, and that a cached message would
@@ -1132,6 +1189,15 @@ export default function AppShell({ client: injected }: Props) {
             <div class="flex min-h-0 min-w-0 grow flex-col">
               <MessageView
                 detail={detail}
+                offers={offersForThread(
+                  offerIndex,
+                  detail.emails.map((e) => e.id),
+                )}
+                offersAccount={offerAccount}
+                offersBusy={offerBusy}
+                offersError={offerError}
+                onApproveOffer={(id) => decideOffer(id, { status: "approved" })}
+                onDeclineOffer={(id, reason) => decideOffer(id, { status: "rejected", ...(reason ? { reason } : {}) })}
                 client={client}
                 accountId={accountId}
                 expanded={expanded}

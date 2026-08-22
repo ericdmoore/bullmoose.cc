@@ -1723,3 +1723,59 @@ code {
   margin: 4px 0 0;
   padding: 0;
 }
+
+/* ── Offers in the margin (s36 V1 item 5) ───────────────────────────────────
+ * Small and off the reading line: the message is the content, the offer is
+ * commentary that happens to carry verbs. */
+.margin-offers {
+  border-left: 3px solid var(--accent-soft);
+  margin: 12px 0;
+  padding: 4px 0 4px 12px;
+}
+.margin-offer {
+  margin: 6px 0;
+}
+.margin-offer-kind {
+  color: var(--accent);
+  font-weight: 600;
+}
+.margin-offer-line {
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+.margin-offer-wall {
+  color: var(--fg-muted);
+  font-size: 13px;
+  margin: 0;
+}
+.margin-offer-verbs {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.margin-verb {
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.margin-verb:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.margin-verb-approve {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.margin-offer-more {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.margin-offer-error {
+  color: var(--error);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
