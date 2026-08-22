@@ -48,6 +48,10 @@ type args struct {
 	// in argv, history, or a process listing.
 	Host   string
 	KeyEnv string
+	// Yes is consent given AHEAD of time for `local setup`'s managed install.
+	// It is the only thing besides an explicit y/yes that may proceed — see
+	// defaultConfirm, which fails closed on everything else.
+	Yes bool
 
 	// ---- the credential gate (`login`, `init`, `token`) ----
 	//
@@ -221,6 +225,8 @@ func parse(argv []string) args {
 				a.Host = value()
 			case "key-env":
 				a.KeyEnv = value()
+			case "yes":
+				a.Yes = true
 			case "to":
 				a.To = append(a.To, value())
 			case "cc":

@@ -95,6 +95,14 @@ var registry = map[string]spec{
 	// reaches argv.
 	// NOT goNative: Node HAS `models`, so the byte-identity contract applies and
 	// the suite must be able to drive both.
+	// `local` is registered WHOLE — connect and setup are verbs of one command,
+	// so there is no way to make one native and leave the other delegating.
+	// That forced the managed install to be ported too; defaultConfirm is
+	// where the care went, because it is the one prompt whose wrong answer
+	// installs software.
+	"local": {json: true, run: runLocal,
+		value:   []string{"db", "host", "key-env"},
+		boolean: []string{"json", "ids", "yes", "dry-run"}},
 	"models": {json: true, run: runModels,
 		// --db is owned because the sweep reads the SAVED @local host from the
 		// mirror's config table. Without it, `models --db <path>` would
