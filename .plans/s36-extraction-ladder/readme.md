@@ -185,6 +185,49 @@ If that trade is not worth making, the fallback is honest and cheap: offer
 create-only and accept the duplicates. It is worse, and it should be chosen
 knowingly rather than arrived at by not noticing there was a choice.
 
+### DECIDED 2026-08-21 — and the scope model cannot yet express it
+
+Eric: *"Extractor can have read access."*
+
+The grant is approved. It cannot be implemented as written, and that gap is
+the design work rather than a detail:
+
+    REALM_SCOPES = ["contacts", "calendar", "vault", "files"]
+    // "Holding a realm scope satisfies `read` … so a token gates reads
+    //  AND writes"
+
+There is **no read-only realm scope**. The consent screen already says the
+truth out loud — *"Read and change your contacts"*, *"Read and change your
+calendar, including creating and deleting events"* — so granting `contacts` to
+the extract binding grants far more than was approved.
+
+And what it grants is precisely what this plan exists to prevent: the pipeline
+that reads every delivered message would be able to write the calendar
+DIRECTLY, going around the approval that `verb-schedule` exists to require.
+"Nothing writes to the calendar without a human" would become a convention
+rather than a wall.
+
+Two ways to honour the grant as given:
+
+**A — a read-only realm scope.** `contacts:read` / `calendar:read`, or a
+modifier on the existing ones. Principled and reusable, but it touches
+auth-core, the consent prose, `SCOPE_PROSE`, `GRANTABLE_SCOPES` and the Go
+mirror, and every one of those has to agree or the wall has a door in it.
+
+**B — a purpose-built lookup, and no realm scope at all.** The extractor does
+not need to BROWSE contacts. It needs to answer one question: *do I already
+have this, and if so what differs?* A narrow server-side reconciliation that
+answers exactly that — take an address or a time window, return a match and a
+diff — hands over no general capability, and cannot be repurposed into an
+enumeration of the address book.
+
+**B is the attenuation-shaped answer** and is preferred. A is a bigger, more
+general grant to solve a smaller, more specific problem, and the general
+version is the one that gets reused later for something nobody reviewed.
+
+Until one of them exists, reconciliation stays unimplemented and V1 offers
+create-only — which is what the V1 list already says.
+
 ---
 
 ## The manual button is a bug report
