@@ -44,6 +44,8 @@ var valueFlags = map[string]bool{
 	"host": true, "key-env": true,
 	// ---- agent dossier verbs (s26 T6): show/budget/model/backfill ----
 	"set": true, "explore": true, "since": true, "budget": true,
+	// ---- agents budget/model, session plane (agenteconomics.go) ----
+	"rate": true, "default": true,
 	// ---- agent invoke (sVOL 007) ----
 	"email": true, "note": true, "until": true, "expires": true, "kind": true,
 	"secret": true, "secret-env": true, "meta": true, "authorize-url": true,

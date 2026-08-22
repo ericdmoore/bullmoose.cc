@@ -77,7 +77,7 @@ import (
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/store"
 )
 
-const agentsUsage = "bullmoose agents <list|show|edit|create|remove> [name] " +
+const agentsUsage = "bullmoose agents <list|show|edit|create|remove|budget|model> [name] " +
 	"[--kind analyst|photos|newsletters|custom] [--email addr] [--name n] " +
 	"[--reply-mode send|draft] [--allow-sender a@b] [--recipients-book id] " +
 	"[--enabled true|false] [--sla s] [--destroy --yes] [--dry-run] [--json|--ids]"
@@ -96,6 +96,15 @@ func runAgents(s *bmio.Streams, argv []string) int {
 		return agCreate(s, a)
 	case "remove":
 		return agRemove(s, a)
+	// The two SESSION-plane verbs (agenteconomics.go): a plain mail token
+	// tunes spend and models over AgentBinding/set. Every other verb here is
+	// the OPERATOR plane (provision) — mixed doors in one family is the
+	// documented shape ("the verbs sit on three different doors and each says
+	// which"), and each verb says which.
+	case "budget":
+		return agBudget(s, a)
+	case "model":
+		return agModel(s, a)
 	case "":
 		return die(s, bmio.Usage(agentsUsage))
 	default:
@@ -1229,9 +1238,11 @@ type agentsArgs struct {
 	DB, Email, Name, Kind           string
 	ReplyMode, RecipientsBook       string
 	Enabled, SLA                    string
-	HasBook                         bool // --recipients-book present, even if ""
-	AllowSenders                    []string
-	Positionals                     []string
+	// The session-plane economics verbs (budget/model — agenteconomics.go).
+	Set, Explore, Rate, Default, Account string
+	HasBook                              bool // --recipients-book present, even if ""
+	AllowSenders                         []string
+	Positionals                          []string
 }
 
 func parseAgents(argv []string) agentsArgs {
@@ -1282,6 +1293,16 @@ func parseAgents(argv []string) agentsArgs {
 				a.HasBook = true
 			case "enabled":
 				a.Enabled = value()
+			case "set":
+				a.Set = value()
+			case "explore":
+				a.Explore = value()
+			case "rate":
+				a.Rate = value()
+			case "default":
+				a.Default = value()
+			case "account":
+				a.Account = value()
 			case "sla":
 				a.SLA = value()
 			case "allow-sender":
