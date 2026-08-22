@@ -100,6 +100,10 @@ var registry = map[string]spec{
 	// That forced the managed install to be ported too; defaultConfirm is
 	// where the care went, because it is the one prompt whose wrong answer
 	// installs software.
+	// `share` (s42's first port): list + revoke over the /api/shares REST pair.
+	"share": {json: true, run: runShare,
+		value:   []string{"db", "account"},
+		boolean: []string{"json", "ids", "dry-run"}},
 	"local": {json: true, run: runLocal,
 		value:   []string{"db", "host", "key-env"},
 		boolean: []string{"json", "ids", "yes", "dry-run"}},
