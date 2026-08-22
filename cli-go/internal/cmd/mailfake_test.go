@@ -106,6 +106,12 @@ type mailFake struct {
 	// refuseInvocation, when set, is the raw SetError EVERY AgentInvocation/set
 	// create or destroy answers with — the disabled-binding / running-rm knob.
 	refuseInvocation string
+	// dossier is GET /console/agents/{accountId}'s body (s43 step 2), raw so a
+	// test can pin projection fields the CLI predates and watch them survive.
+	// dossierRefusal, when status≠0, answers instead — the console's three
+	// different refusal sentences are the fixture's point.
+	dossier        string
+	dossierRefusal restRefusal
 
 	// Refusal knobs.
 	refuseSubmission string // "method" | "seterror" | ""
@@ -506,6 +512,23 @@ func (f *mailFake) handle(w http.ResponseWriter, r *http.Request) {
 			`"apiUrl":%q,"downloadUrl":%q}`,
 			f.base+"/jmap-endpoint",
 			f.base+"/dl/{accountId}/{blobId}/{name}/{type}")
+		return
+	case strings.HasPrefix(r.URL.Path, "/console/agents/"):
+		f.mu.Lock()
+		f.rest = append(f.rest, restCall{Method: r.Method, Path: r.URL.EscapedPath()})
+		body, refusal := f.dossier, f.dossierRefusal
+		f.mu.Unlock()
+		w.Header().Set("content-type", "application/json")
+		if refusal.status != 0 {
+			w.WriteHeader(refusal.status)
+			_, _ = w.Write([]byte(refusal.body))
+			return
+		}
+		if body == "" {
+			body = `{"accountId":"a_you","principalId":"p_you","principal":"you@stub.test",` +
+				`"tokenScopes":["read"],"bindings":[],"invocations":[],"ledgers":[],"ledgerMonthStart":1754006400000}`
+		}
+		_, _ = w.Write([]byte(body))
 		return
 	case strings.HasPrefix(r.URL.Path, "/api/shares/"):
 		f.mu.Lock()
