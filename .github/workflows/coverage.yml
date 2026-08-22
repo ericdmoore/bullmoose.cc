@@ -43,8 +43,23 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # Go is a first-class part of this repo (the CLI is being ported to it),
+      # and the ratchet could not see it. A Go-only PR therefore got a green
+      # "Coverage ratchet" that had measured nothing the PR changed — worse
+      # than no check, because it reads as a guarantee. #284 passed it with
+      # 354 new lines of Go and not one statement counted.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli-go/go.mod
+          cache-dependency-path: cli-go/go.sum
+
       - name: Run coverage
         run: npm run coverage
+
+      - name: Go coverage, folded into the same summary
+        run: |
+          (cd cli-go && go test ./... -coverprofile=cover.out)
+          node .github/scripts/go-coverage.mjs cli-go/cover.out coverage/coverage-summary.json
 
       # A PR is allowed to lower a floor — some coverage drops are correct. It
       # should not be able to do it QUIETLY, so fetch the base branch's copy and
