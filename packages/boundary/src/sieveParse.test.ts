@@ -123,3 +123,54 @@ describe("refusals — a sentence with a line, never a silent drop", () => {
     expect(r.ok).toBe(false);
   });
 });
+
+describe("defensive corners — every refusal path answers with a sentence", () => {
+  it("30. block comments are skipped; the default comparator is tolerated, others refused", () => {
+    expect(ok(`/* a\nnote */ if header :comparator "i;ascii-casemap" :contains "Subject" "x" { keep; }`)).toHaveLength(
+      1,
+    );
+    expect(refusal(`if header :comparator "i;octet" :contains "Subject" "x" { keep; }`)).toContain("comparator");
+  });
+  it("31. :localpart, unknown tags, and constant tests", () => {
+    expect(refusal(`if address :localpart :contains "From" "x" { keep; }`)).toContain(":localpart");
+    expect(refusal(`if header :regex "Subject" "x" { keep; }`)).toContain(":regex is outside");
+    expect(refusal(`if true { keep; }`)).toContain("constant test");
+  });
+  it("32. a header-name list is an OR the dialect cannot say", () => {
+    expect(refusal(`if header :contains ["Subject", "Comments"] "x" { keep; }`)).toContain("one header name");
+  });
+  it("33. lexer torture: unterminated string, unterminated comment, stray colon", () => {
+    expect(refusal(`if header :contains "Subject" "x { keep; }`)).toContain("unterminated string");
+    expect(refusal(`/* never closed`)).toContain("unterminated comment");
+    expect(refusal(`if header : "Subject" "x" { keep; }`)).toContain("stray");
+  });
+  it("34. list punctuation: a non-string in a list, and a list never closed", () => {
+    expect(refusal(`require [fileinto];`)).toContain("expected a string in list");
+    expect(refusal(`require ["fileinto" "x"];`)).toContain("expected , or ]");
+    expect(refusal(`if exists ; { keep; }`)).toContain("expected a string");
+  });
+  it("35. block torture: a non-action token, and a block never closed", () => {
+    expect(refusal(`if exists "X" { "what"; }`)).toContain("expected an action");
+    expect(refusal(`if exists "X" { keep;`)).toContain("unexpected end");
+    expect(refusal(`if exists "X" { }`)).toContain("must carry keep or fileinto");
+  });
+  it("36. top level: a stray string, a bare stop, an if with nothing after it", () => {
+    expect(refusal(`"hello";`)).toContain("at top level");
+    expect(ok(`stop;`)).toEqual([]);
+    expect(refusal(`if`)).toContain("unexpected end");
+  });
+  it("37. expectPunc names what it wanted, even at end of script", () => {
+    expect(refusal(`if exists "X"`)).toContain('expected "{"');
+    expect(refusal(`require "fileinto"`)).toContain('expected ";"');
+  });
+});
+
+describe("the last two corners", () => {
+  it("38. escaped quotes and backslashes inside strings survive the lexer", () => {
+    const rules = ok(`if header :contains "Subject" "say \\"hi\\" \\\\ twice" { keep; }`);
+    expect(rules[0]!.all[0]).toMatchObject({ value: 'say "hi" \\ twice' });
+  });
+  it("39. a test the grammar has never heard of is refused by name", () => {
+    expect(refusal(`if envelope :contains "from" "x" { keep; }`)).toContain('"envelope" is outside the dialect');
+  });
+});

@@ -358,7 +358,6 @@ export function parseSieve(text: string): SieveParseResult {
     }
     return { ok: true, rules };
   } catch (err) {
-    if (err instanceof Refuse) return { ok: false, refusals: [err.message] };
-    return { ok: false, refusals: [String(err).slice(0, 200)] };
+    return { ok: false, refusals: [err instanceof Refuse ? err.message : String(err).slice(0, 200)] };
   }
 }
