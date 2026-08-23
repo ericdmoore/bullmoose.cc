@@ -1,0 +1,96 @@
+name: Release stack
+
+# s46 T1 — the deployable stack as downloads. `bullmoose cloud install`
+# downloads instead of builds (no Node, no checkout — the same move that
+# freed the CLI), so the worker bundles, configs, schema, migrations and the
+# built webmail must EXIST as artifacts. infra/stackBundle.mjs assembles
+# them; this workflow publishes to dl.bullmoose.cc/stack/<version>/ in the
+# layout popcorn established (checksummed, latest.txt flipped LAST).
+#
+# Trigger: a tag matching `stack/v*`. workflow_dispatch is the DRY RUN: same
+# build, same checksums, uploaded as a workflow artifact and nothing
+# published — the pipeline is testable without burning a version number.
+#
+# No GitHub release here (unlike release-cli.yml): a stack version is not a
+# thing a person downloads by hand from a Releases page; its one consumer is
+# the installer reading the bucket.
+#
+# RETENTION follows the bucket-wide policy (release-popcorn.yml carries the
+# full rationale): every version stays online forever; the stack/v* prefix
+# transitions to Infrequent Access after 180 days like popcorn/v* and
+# cli/v*; stack/latest.txt is re-uploaded per release so it stays hot.
+# Nothing expires; deletion is a deliberate manual act, never policy.
+
+on:
+  push:
+    tags: ["stack/v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Bundle, checksum, publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # The artifacts ship only what passed. `verify` already gated the
+      # merge, but a tag can point anywhere; the release must not trust that.
+      - name: Tests gate the artifacts
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build webmail
+        run: npm run -w webmail build
+
+      - name: Assemble the stack bundle
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF" in
+            refs/tags/stack/*) VERSION="${GITHUB_REF#refs/tags/stack/}" ;;
+            *)                 VERSION="dev-${GITHUB_SHA:0:7}" ;;
+          esac
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          node infra/stackBundle.mjs --version "$VERSION" --outdir dist/stack
+
+      - name: Publish to dl.bullmoose.cc (tags only)
+        if: startsWith(github.ref, 'refs/tags/stack/')
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          # npx --yes fetches wrangler on demand: an `npm install` inside this
+          # workspaces root touches the project lockfile (the release-popcorn
+          # maiden-run lesson). Evidence stays visible — nothing is muted.
+          put() { npx --yes wrangler@4 r2 object put "bullmoose-downloads/$1" --file "$2" --remote ${3:+--content-type "$3"}; }
+          (cd dist/stack && find . -type f | sed 's|^\./||' | sort) | while read -r f; do
+            ct=""
+            case "$f" in
+              *.json) ct="application/json" ;;
+              *.txt)  ct="text/plain" ;;
+            esac
+            put "stack/$VERSION/$f" "dist/stack/$f" "$ct"
+          done
+          # latest.txt LAST — the pointer flips only once its targets exist.
+          printf '%s' "$VERSION" > latest.txt
+          put "stack/latest.txt" latest.txt "text/plain"
+          echo "published: https://dl.bullmoose.cc/stack/$VERSION/manifest.json"
+
+      # Dry runs keep their artifacts too — that is what makes them a
+      # rehearsal rather than a log to squint at.
+      - name: Upload artifacts (dry runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/stack/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bullmoose-stack-${{ env.VERSION }}
+          path: dist/stack/
+          retention-days: 7
