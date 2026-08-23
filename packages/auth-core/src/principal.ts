@@ -29,6 +29,14 @@ export interface Principal {
   username: string;
   scopes: string[];
   accounts: AccountAccess[];
+  /**
+   * Present iff this principal authenticated with a minted `bm_` token; the
+   * OAuth and dev-bootstrap paths carry none. A named token IS a registered
+   * device (s37), so anything device-scoped — a DeviceReport, above all —
+   * binds to THIS id and never to a client-supplied one: one device must not
+   * be able to write another's self-description.
+   */
+  tokenId?: string;
 }
 
 export interface AuthEnv {
@@ -132,6 +140,7 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
     username: row.login_email,
     scopes: JSON.parse(row.scopes) as string[],
     accounts: await reachableAccounts(db, row.principal_id),
+    tokenId: parsed.id,
   };
 }
 

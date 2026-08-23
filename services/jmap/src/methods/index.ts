@@ -18,6 +18,7 @@ import { registerContactsMethods } from "./contacts";
 import { registerCalendarMethods } from "./calendars";
 import { registerFileNodeMethods } from "./filenode";
 import { registerProviderCredentialMethods } from "./providerCredential";
+import { registerDeviceReportMethods } from "./deviceReport";
 
 export type { RequestContext } from "./common";
 
@@ -42,5 +43,6 @@ export function buildRegistry(): MethodRegistry<RequestContext> {
   registerCalendarMethods(registry);
   registerFileNodeMethods(registry);
   registerProviderCredentialMethods(registry);
+  registerDeviceReportMethods(registry);
   return registry;
 }
