@@ -146,6 +146,28 @@ CREATE TABLE IF NOT EXISTS tokens (
 );
 CREATE INDEX IF NOT EXISTS tokens_principal ON tokens (principal_id);
 
+-- s37 T1a: what a device LAST REPORTED about itself — the model host it
+-- found, the models that host serves, the capabilities it declares. One row
+-- per token, because a device is already an entity here: a named token IS
+-- the registered device, and this row is its self-description. A separate
+-- ROW rather than columns on `tokens` (s37 decision 1), so `tokens` stays
+-- about authorization and this can churn without touching it.
+--
+-- Display-only (s37 decision 4): nothing routes on a self-report — the
+-- moment the server routes on a self-reported capability, a wrong report
+-- becomes a wrong decision rather than a wrong label. The row is a SNAPSHOT:
+-- render "as of <reported_at>", never "installed" (decision 2). Written only
+-- by DeviceReport/set, which binds token_id to the AUTHENTICATED token, so
+-- one device can never write another's report.
+--
+-- This is a NEW table, so a fresh CREATE TABLE IF NOT EXISTS run creates it
+-- on existing databases too (the migrate.yml pass).
+CREATE TABLE IF NOT EXISTS device_reports (
+  token_id     TEXT PRIMARY KEY REFERENCES tokens(id),
+  report_json  TEXT NOT NULL,     -- {host?, models?: [..], capabilities?: {..}, source?}
+  reported_at  INTEGER NOT NULL
+);
+
 -- Cross-account delegation + sharing (devPlan-handoff Phase 3). A grant
 -- lets every token of the principal owning grantee_account_id act on
 -- target_account_id, restricted to `scopes` — the SAME vocabulary as
