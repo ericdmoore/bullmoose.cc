@@ -11,6 +11,7 @@ import {
   costLabel,
   summarizeProposal,
   tierLabel,
+  waitsOnNote,
   type ApprovalsAccount,
 } from "../lib/approvals/rows";
 import type { ActionProposal } from "../lib/approvals/types";
@@ -449,6 +450,7 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
                 now={now}
                 busy={busyId === selected.id}
                 error={rowErrors[selected.id]}
+                waitsNote={waitsOnNote(selected, proposals)}
                 panel={panel && panel.id === selected.id ? panel : undefined}
                 setPanel={setPanel}
                 onApprove={() => void act(selected.id, { status: "approved" })}

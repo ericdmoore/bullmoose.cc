@@ -183,6 +183,19 @@ describe("decisionLabel — whose authority, the line the section exists for", (
     expect(decisionLabel(item)).toBe("yanked from the hold tray by eric@bullmoose.test — pulled back before it sent");
   });
 
+  it("closed renders the server's own note — the record answers 'whatever happened to that ask?'", () => {
+    // s36 V2: closed is terminal but NOT a decline — nobody decided the row,
+    // its ground vanished. The mechanism rides decision.note verbatim.
+    const item = decided({
+      status: "closed",
+      kind: "contingent-commitment",
+      decision: { by: "eric@bullmoose.test", note: "closed: the thing this depended on was declined" },
+    });
+    expect(decisionLabel(item)).toBe("closed: the thing this depended on was declined");
+    const bare = decided({ status: "closed", decision: null, decidedAt: null });
+    expect(decisionLabel(bare)).toBe("closed — the thing it depended on went away");
+  });
+
   it("a decision missing its principal degrades to unknown, never to silence", () => {
     expect(decisionLabel(decided({ decision: null }))).toBe("approved by unknown");
   });

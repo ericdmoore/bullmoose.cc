@@ -495,6 +495,57 @@ describe("the expiry sweep flips stale pending proposals to expired", () => {
     expect(changes.updated).toContain("inv_x");
   });
 
+  it("closes the dependents of what it expires — the cascade, expiry edition (s36 V2)", async () => {
+    const w = fakeEnv();
+    w.db.seed("agent_invocations", [
+      { id: "inv_cause", account_id: ACCOUNT, binding_id: "b", binding_name: "emily", status: "done", created_at: 1 },
+      { id: "inv_dep", account_id: ACCOUNT, binding_id: "b", binding_name: "emily", status: "done", created_at: 1 },
+    ]);
+    w.db.seed("agent_proposals", [
+      {
+        id: "inv_cause",
+        account_id: ACCOUNT,
+        kind: "verb-schedule",
+        tier: 1,
+        rationale: "r",
+        payload_json: JSON.stringify({ verb: "schedule", start: "2026-08-23T08:00:00" }),
+        status: "pending",
+        created_at: 1,
+        expires_at: Date.now() - 1000, // the cause lapses
+      },
+      {
+        id: "inv_dep",
+        account_id: ACCOUNT,
+        kind: "contingent-commitment",
+        tier: 1,
+        rationale: "r",
+        payload_json: JSON.stringify({ verb: "commit", body: "pay the coach", waitsOn: "inv_cause" }),
+        status: "pending",
+        created_at: 1,
+        expires_at: Date.now() + 3_600_000, // the dependent itself is NOT stale
+      },
+    ]);
+
+    await expireStaleProposals(w.env);
+
+    const dep = w.db.query<{ status: string; decision_json: string }>(
+      "SELECT status, decision_json FROM agent_proposals WHERE account_id = ? AND id = ?",
+      ACCOUNT,
+      "inv_dep",
+    )[0]!;
+    // Closed, NOT expired and NOT rejected: nobody decided it and its own
+    // clock had time left — its ground vanished, and the record says so.
+    expect(dep.status).toBe("closed");
+    const decision = JSON.parse(dep.decision_json);
+    expect(decision.closed).toBe("cause-expired");
+    expect(decision.causeId).toBe("inv_cause");
+    expect(decision.note).toContain("expired unanswered");
+
+    // Both rows ride the same /changes commit.
+    const changes = await w.accountDo.changes(ACCOUNT, "ActionProposal", "0");
+    expect(changes.updated).toEqual(expect.arrayContaining(["inv_cause", "inv_dep"]));
+  });
+
   it("leaves a proposal whose expires_at is still in the future", async () => {
     const w = fakeEnv();
     w.db.seed("agent_invocations", [

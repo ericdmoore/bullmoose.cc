@@ -16,7 +16,7 @@
 import { parseProposal, type ActionProposal } from "../approvals/types";
 
 /** Everything non-live — the statuses that make a proposal history. */
-export const DECIDED_STATUSES = ["approved", "rejected", "expired", "yanked"] as const;
+export const DECIDED_STATUSES = ["approved", "rejected", "expired", "yanked", "closed"] as const;
 export type DecidedStatus = (typeof DECIDED_STATUSES)[number];
 
 export function isDecidedStatus(v: unknown): v is DecidedStatus {

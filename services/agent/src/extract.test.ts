@@ -523,7 +523,7 @@ describe("a decision tombstones the offer", () => {
       clauses.push(q.slice(0, q.indexOf("LIMIT 1")));
       at = src.indexOf("SELECT 1 AS hit FROM agent_proposals", at + 1);
     }
-    expect(clauses).toHaveLength(2);
+    expect(clauses).toHaveLength(3);
     for (const clause of clauses) {
       expect(clause, "any status is a tombstone — pending, approved, declined or expired").not.toContain("status =");
     }
@@ -533,6 +533,8 @@ describe("a decision tombstones the offer", () => {
         (c) => c.includes("'$.targetEventId'") && c.includes("json_extract(payload_json, '$.changes.start.to')"),
       ),
     ).toBe(true);
+    // Contingent commitments: one offer per contingent moment, same rule.
+    expect(clauses.some((c) => c.includes("json_extract(payload_json, '$.contingentOn')"))).toBe(true);
   });
 });
 
@@ -802,6 +804,178 @@ describe("reconcile — the calendar is looked at before an offer is minted", ()
     const rows = proposals(w);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.kind).toBe("verb-schedule");
+  });
+});
+
+// ── s36 V2 — contingent commitments ─────────────────────────────────────────
+//
+// "If she's going Saturday, pay the coach." The commitment does not land as a
+// flat open note (the message did not assert it unconditionally); it becomes
+// a PROPOSAL that waits on the schedule offer, visible-but-blocked. Approval
+// of the dependent — allowed only once the cause is approved — is what writes
+// the note. One level, never a chain.
+
+describe("contingent commitments — a dependency between two proposals", () => {
+  const offerJob: ExtractJob = { ...job, binding_id: "bind_x" };
+
+  const TOURNAMENT = JSON.stringify([
+    {
+      class: "event",
+      body: "U12G tournament Saturday",
+      confidence: 0.9,
+      start: "2026-08-23T08:00:00",
+      title: "U12G tournament",
+    },
+    {
+      class: "commitment",
+      body: "Pay registration to the coach (Venmo or Zelle)",
+      confidence: 0.8,
+      contingentOn: "2026-08-23T08:00:00",
+    },
+  ]);
+
+  const proposals = (w: ReturnType<typeof fakeEnv>) =>
+    w.db.query<{ id: string; kind: string; status: string; payload_json: string; rationale: string }>(
+      "SELECT id, kind, status, payload_json, rationale FROM agent_proposals WHERE account_id = ? ORDER BY kind",
+      ACCOUNT,
+    );
+
+  it("120. parseExtraction keeps contingentOn on a commitment, normalized like start", () => {
+    const [item] = parseExtraction(
+      JSON.stringify([{ class: "commitment", body: "pay up", confidence: 0.8, contingentOn: "2026-08-23T08:00" }]),
+    );
+    expect(item?.contingentOn).toBe("2026-08-23T08:00:00");
+    // And never on a non-commitment.
+    const [ev] = parseExtraction(
+      JSON.stringify([{ class: "event", body: "x", confidence: 1, contingentOn: "2026-08-23T08:00:00" }]),
+    );
+    expect(ev?.contingentOn).toBeUndefined();
+  });
+
+  it("121. the pair: a blocked dependent waiting on the schedule offer, and NO flat note", async () => {
+    const { w } = world(TOURNAMENT);
+    await runExtract(
+      w.env,
+      offerJob,
+      CFG,
+      inbound({ subject: "Tournament", body: "Sat 8am, pay coach" }),
+      {},
+      async () => {},
+    );
+
+    const rows = proposals(w);
+    expect(rows.map((r) => r.kind).sort()).toEqual(["contingent-commitment", "verb-schedule"]);
+    const cause = rows.find((r) => r.kind === "verb-schedule")!;
+    const dep = rows.find((r) => r.kind === "contingent-commitment")!;
+    const payload = JSON.parse(dep.payload_json);
+    expect(payload.waitsOn).toBe(cause.id); // ONE level: the cause is the offer itself
+    expect(payload.body).toBe("Pay registration to the coach (Venmo or Zelle)");
+    expect(payload.contingentOn).toBe("2026-08-23T08:00:00");
+    expect(dep.rationale).toContain("declining the hold closes this by itself");
+
+    // The commitment did NOT also land as a flat open note — asserting it
+    // unconditionally is exactly what the message did not say. (The event's
+    // own annotation still lands.)
+    const notes = w.db.query<{ class: string; body: string }>(
+      "SELECT class, body FROM annotations WHERE account_id = ?",
+      ACCOUNT,
+    );
+    expect(notes.some((n) => n.class === "commitment")).toBe(false);
+    expect(notes.some((n) => n.class === "event")).toBe(true);
+  });
+
+  it("122. conditioned on something undated, it degrades to the ordinary flat note", async () => {
+    const { w } = world(
+      JSON.stringify([
+        { class: "event", body: "party sometime Saturday", confidence: 0.9 }, // no usable start
+        { class: "commitment", body: "bring a cake", confidence: 0.8, contingentOn: "2026-08-23T08:00:00" },
+      ]),
+    );
+    await runExtract(
+      w.env,
+      offerJob,
+      CFG,
+      inbound({ subject: "Party", body: "Saturday! bring cake" }),
+      {},
+      async () => {},
+    );
+    expect(proposals(w)).toHaveLength(0);
+    const notes = w.db.query<{ class: string }>("SELECT class FROM annotations WHERE account_id = ?", ACCOUNT);
+    expect(notes.some((n) => n.class === "commitment")).toBe(true); // degraded, never dropped
+  });
+
+  it("123. a declined cause is inherited — the dependent is never minted at all", async () => {
+    const { w } = world(TOURNAMENT);
+    await runExtract(w.env, offerJob, CFG, inbound({ subject: "Tournament", body: "Sat 8am" }), {}, async () => {});
+    // The reader declines the hold; the cascade closes the first dependent.
+    await w.env.DB.prepare("UPDATE agent_proposals SET status = 'rejected' WHERE kind = 'verb-schedule'").run();
+    await w.env.DB.prepare("UPDATE agent_proposals SET status = 'closed' WHERE kind = 'contingent-commitment'").run();
+    // A quoted reply re-presents the same condition.
+    await runExtract(
+      w.env,
+      { ...offerJob, id: "inv_y" },
+      CFG,
+      inbound({ id: "e_two", subject: "Re: Tournament", body: "Sat 8am, don't forget to pay" }),
+      {},
+      async () => {},
+    );
+    const rows = proposals(w);
+    // Still exactly the two decided rows — nothing re-minted, and no flat
+    // note nagging about a decision already made.
+    expect(rows).toHaveLength(2);
+    const notes = w.db.query<{ class: string }>("SELECT class FROM annotations WHERE account_id = ?", ACCOUNT);
+    expect(notes.some((n) => n.class === "commitment")).toBe(false);
+  });
+
+  it("124. the event already on the calendar — the dependent stands alone, unblocked", async () => {
+    const { w } = world(TOURNAMENT);
+    await w.env.DB.prepare(
+      `INSERT INTO calendar_events
+         (id, account_id, calendar_id, uid, event_json, title, start_at, end_at, is_recurring, created_at, updated_at)
+       VALUES ('ev_t', ?, 'cal_1', 'urn:uuid:t', ?, 'U12G tournament', ?, ?, 0, 1, 1)`,
+    )
+      .bind(
+        ACCOUNT,
+        JSON.stringify({
+          "@type": "Event",
+          title: "U12G tournament",
+          start: "2026-08-23T08:00:00",
+          timeZone: "Etc/UTC",
+        }),
+        Date.parse("2026-08-23T08:00:00Z"),
+        Date.parse("2026-08-23T08:30:00Z"),
+      )
+      .run();
+    await runExtract(
+      w.env,
+      offerJob,
+      CFG,
+      inbound({ subject: "Fwd: Tournament", body: "Sat 8am" }),
+      {},
+      async () => {},
+    );
+    const rows = proposals(w);
+    // The reconcile step silenced the schedule offer; the commitment still
+    // arrives, standalone — its ground (the event) is already satisfied.
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kind).toBe("contingent-commitment");
+    expect(JSON.parse(rows[0]!.payload_json).waitsOn).toBeUndefined();
+    expect(rows[0]!.rationale).toContain("already on your calendar");
+  });
+
+  it("125. one commitment offer per contingent moment — the quoted-thread tombstone", async () => {
+    const { w } = world(TOURNAMENT);
+    await runExtract(w.env, offerJob, CFG, inbound({ subject: "Tournament", body: "Sat 8am" }), {}, async () => {});
+    await runExtract(
+      w.env,
+      { ...offerJob, id: "inv_y" },
+      CFG,
+      inbound({ id: "e_two", subject: "Re: Tournament", body: "Sat 8am again" }),
+      {},
+      async () => {},
+    );
+    const rows = proposals(w).filter((r) => r.kind === "contingent-commitment");
+    expect(rows).toHaveLength(1);
   });
 });
 

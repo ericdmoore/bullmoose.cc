@@ -78,6 +78,11 @@ export const EXTRACT_SYSTEM = `You extract ENTITIES from one email, for the mail
   - contact: a person's details stated in the message, usually a signature block
     (a name with a phone, a title, an organisation, an address).
 
+A commitment MAY add "contingentOn": "<the start of the event in THIS email it
+depends on>" when the message makes it conditional on that event happening
+("if she's going Saturday, pay the coach" -> contingentOn is Saturday's start).
+Only when the condition is stated; an ordinary commitment carries no such field.
+
 Return ONLY a JSON array, nothing else. Each item:
   {"class": "commitment" | "decision" | "task" | "event" | "contact", "body": "<one plain sentence>", "confidence": <0 to 1>}
 An "event" item may add: "start": "<ISO 8601 local>", "title": "<short>", "durationMinutes": <number>.

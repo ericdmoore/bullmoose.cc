@@ -146,9 +146,17 @@ type Proposal struct {
 // waiting on the AGENT, with the decision clock paused. It must be listed here
 // — an unknown status falls back to `pending`, and rendering a paused row as
 // decidable would put a proposal back in a queue it is not in.
+//
+// `yanked` was MISSING from this map until s36 V2 (found while adding
+// `closed`): a retraction coerced to `pending` and re-presented as decidable
+// in the table — the exact bug webmail's enum-parity test exists to prevent,
+// on the one surface that test does not scan. `closed` (s36 V2) is terminal
+// but NOT a decline: a contingent proposal whose cause was declined or
+// expired; nobody decided it, its ground vanished.
 var statuses = map[string]bool{
 	"pending": true, "info-requested": true, "approved": true,
 	"rejected": true, "held": true, "expired": true,
+	"yanked": true, "closed": true,
 }
 
 // Parse coerces one ActionProposal/get list entry — mirrors parseProposal

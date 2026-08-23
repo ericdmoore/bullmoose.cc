@@ -120,6 +120,26 @@ describe("MarginOffers", () => {
     expect(html).toContain("2026-08-23 08:00 → 07:30");
   });
 
+  it("10. a blocked dependent renders its wall — visible, with no Approve to mis-tap", () => {
+    // s36 V2: the cause rides the same thread's offers, so the margin can say
+    // "waits on" BEFORE the tap instead of relaying a refusal after it.
+    const cause = offer(); // id p1, the pending schedule offer
+    const dep = offer({
+      id: "p2",
+      kind: "contingent-commitment",
+      payload: { verb: "commit", body: "Pay registration to the coach", waitsOn: "p1" },
+    });
+    const html = render(
+      <MarginOffers offers={[cause, dep]} account={account} busy={new Set()} onApprove={noop} onDecline={noop} />,
+    );
+    expect(html).toContain("Commitment?");
+    expect(html).toContain("Pay registration to the coach");
+    expect(html).toContain("waits on:");
+    // The cause still gets its Approve; the dependent gets exactly one
+    // approve button between them — count the approve class, not the word.
+    expect(html.match(/margin-verb-approve/g)).toHaveLength(1);
+  });
+
   it("8. an offer with no start still renders its title rather than lying about a time", () => {
     const p = offer({ payload: { verb: "schedule", title: "Sometime thing" } });
     const html = render(

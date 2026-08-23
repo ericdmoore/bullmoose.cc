@@ -57,8 +57,10 @@ function rawWatch(overrides: Record<string, unknown> = {}): Record<string, unkno
 }
 
 describe("the decided partition", () => {
-  it("is exactly the four non-live statuses", () => {
-    expect([...DECIDED_STATUSES]).toEqual(["approved", "rejected", "expired", "yanked"]);
+  it("is exactly the five non-live statuses", () => {
+    // `closed` joined in s36 V2: a contingent proposal whose cause was
+    // declined or expired — terminal, in the record, NOT a decline.
+    expect([...DECIDED_STATUSES]).toEqual(["approved", "rejected", "expired", "yanked", "closed"]);
     for (const s of DECIDED_STATUSES) expect(isDecidedStatus(s)).toBe(true);
   });
 

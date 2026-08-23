@@ -2,6 +2,7 @@
 import { useState } from "preact/hooks";
 import type { ActionProposal, RejectReason } from "../lib/approvals/types";
 import { rowAuthority, type ApprovalsAccount } from "../lib/approvals/accounts";
+import { waitsOnNote } from "../lib/approvals/rows";
 
 /**
  * Offers, rendered beside the message that caused them (s36 V1 item 5).
@@ -39,6 +40,10 @@ interface Props {
 
 /** What a schedule offer says about itself, in one line. */
 function offerLine(p: ActionProposal): string {
+  if (p.kind === "contingent-commitment") {
+    const body = (p.payload ?? {}).body;
+    return typeof body === "string" && body !== "" ? body : "Commitment";
+  }
   if (p.kind === "verb-schedule-update") {
     // A merge offer's line IS the diff — approval must never be assent to
     // something unseen. Same-day moves compress the right side to the time,
@@ -74,6 +79,10 @@ export default function MarginOffers({ offers, account, busy, error = null, onAp
       {offers.map((p) => {
         const authority = rowAuthority(p, account);
         const isBusy = busy.has(p.id);
+        // s36 V2 — visible-but-blocked. The cause rides the same thread's
+        // offers, so the wall is computable right here; the server enforces
+        // the same rule, this just says it before the tap instead of after.
+        const waits = waitsOnNote(p, offers);
         return (
           <div key={p.id} class="margin-offer">
             <p class="margin-offer-line">
@@ -82,7 +91,9 @@ export default function MarginOffers({ offers, account, busy, error = null, onAp
                   ? "Add to calendar?"
                   : p.kind === "verb-schedule-update"
                     ? "Move on calendar?"
-                    : "Offer"}
+                    : p.kind === "contingent-commitment"
+                      ? "Commitment?"
+                      : "Offer"}
               </span>{" "}
               {offerLine(p)}
             </p>
@@ -120,14 +131,18 @@ export default function MarginOffers({ offers, account, busy, error = null, onAp
               </div>
             ) : (
               <div class="margin-offer-verbs">
-                <button
-                  type="button"
-                  class="margin-verb margin-verb-approve"
-                  disabled={isBusy || !authority.canApprove}
-                  onClick={() => onApprove(p.id)}
-                >
-                  {isBusy ? "Deciding…" : "Approve"}
-                </button>
+                {waits ? (
+                  <span class="margin-offer-wall">{waits}</span>
+                ) : (
+                  <button
+                    type="button"
+                    class="margin-verb margin-verb-approve"
+                    disabled={isBusy || !authority.canApprove}
+                    onClick={() => onApprove(p.id)}
+                  >
+                    {isBusy ? "Deciding…" : "Approve"}
+                  </button>
+                )}
                 <button
                   type="button"
                   class="margin-verb"
