@@ -93,7 +93,9 @@ export default function MarginOffers({ offers, account, busy, error = null, onAp
                     ? "Move on calendar?"
                     : p.kind === "contingent-commitment"
                       ? "Commitment?"
-                      : "Offer"}
+                      : p.kind === "sieve-rule"
+                        ? "Never again?"
+                        : "Offer"}
               </span>{" "}
               {offerLine(p)}
             </p>

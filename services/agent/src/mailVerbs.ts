@@ -96,7 +96,7 @@ import {
  * human pressed must always come back with something.
  */
 
-export const MAIL_VERBS = ["answer", "bring-in", "compose", "schedule"] as const;
+export const MAIL_VERBS = ["answer", "bring-in", "compose", "schedule", "rule"] as const;
 export type MailVerb = (typeof MAIL_VERBS)[number];
 
 /**
@@ -150,6 +150,10 @@ export interface VerbRequest {
    *  proposal so the approval row can say where "Sergio" came from. This side
    *  never re-resolves and never guesses. */
   recipientVia?: RecipientVia;
+  /** `rule` only, and only on a RETRY: the superseded proposal's rule, so the
+   *  composer sees what the owner is nudging AWAY from. Our own earlier
+   *  output — not mail, not trusted less than the nudge that rides `note`. */
+  priorRule?: Record<string, unknown>;
   /** `schedule` only: the IANA zone the human's own browser is in, sent by the
    *  message view. It is the wall clock "Thursday at 3" is read against, and
    *  the zone the stored event carries. Absent (an old client, an odd
@@ -158,7 +162,11 @@ export interface VerbRequest {
   timeZone?: string;
 }
 
-type Finish = (status: "done" | "failed", result: Record<string, unknown>, cost?: InvocationCost) => Promise<void>;
+export type Finish = (
+  status: "done" | "failed",
+  result: Record<string, unknown>,
+  cost?: InvocationCost,
+) => Promise<void>;
 
 /** The invocation columns a verb run reads. */
 export interface VerbJob {
@@ -179,7 +187,7 @@ const VERB_MAX_TOKENS = 700;
 /** How long a verb's proposal waits for its asker before expiring. A verb is
  *  pressed deliberately, so its answer should not rot in the queue for a week
  *  the way a swept-up offer may. */
-const VERB_PROPOSAL_EXPIRY_MS = 3 * 24 * 3600_000;
+export const VERB_PROPOSAL_EXPIRY_MS = 3 * 24 * 3600_000;
 
 /**
  * Read the verb out of an invocation's context. `AgentInvocation/set` create
@@ -217,6 +225,9 @@ export function parseVerbRequest(context: Record<string, unknown>): VerbRequest 
     ...(constraints.length > 0 ? { constraints } : {}),
     ...((RECIPIENT_VIA as readonly string[]).includes(via) ? { recipientVia: via as RecipientVia } : {}),
     ...(isIanaZone(zone) ? { timeZone: zone } : {}),
+    ...(p.priorRule && typeof p.priorRule === "object" && !Array.isArray(p.priorRule)
+      ? { priorRule: p.priorRule as Record<string, unknown> }
+      : {}),
   };
 }
 
@@ -458,7 +469,7 @@ export async function runMailVerb(
  * The write is guarded on exactly that state, so it can never overwrite a real
  * figure `finish()` just stamped.
  */
-async function stampKnownFree(env: Env, job: VerbJob): Promise<void> {
+export async function stampKnownFree(env: Env, job: VerbJob): Promise<void> {
   try {
     await env.DB.prepare(
       `UPDATE agent_invocations SET cost_micros = 0
@@ -543,7 +554,7 @@ async function compose(
 }
 
 /** The extract menu resolution, verbatim: the default alias, else "cheap". */
-function verbMenu(cfg: BindingConfig): ModelCandidate[] | null {
+export function verbMenu(cfg: BindingConfig): ModelCandidate[] | null {
   const aliases = cfg.modelAliases ?? {};
   const aliasName = (cfg.defaultModel ?? "cheap").toLowerCase();
   const menu = aliases[aliasName] ?? aliases["cheap"];

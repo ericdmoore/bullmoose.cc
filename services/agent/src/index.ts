@@ -31,6 +31,7 @@ import { runBouncer } from "./bouncer.js";
 import { runRemind } from "./remind.js";
 import { runExtract } from "./extract.js";
 import { parseVerbRequest, runComposeVerb, runMailVerb, verbNeedsEmail } from "./mailVerbs.js";
+import { runRuleVerb } from "./ruleVerb.js";
 import { surplusBackfill } from "./surplusBackfill.js";
 import { runLedger } from "./ledger.js";
 import { handleMcp } from "./mcp.js";
@@ -716,6 +717,10 @@ async function runInvocation(env: Env, job: Job): Promise<void> {
   // not. Anything that is not a known verb parses to null and falls through
   // to the pipelines below exactly as before. See mailVerbs.ts.
   const verbRequest = earlyVerb;
+  // s31 rung 2 — `rule` composes a standing filter from the message in front
+  // of you. Dispatched here rather than inside runMailVerb so ruleVerb.ts
+  // imports FROM mailVerbs.ts and never the other way (no cycle).
+  if (verbRequest?.verb === "rule") return runRuleVerb(env, job, cfg, email, verbRequest, done);
   if (verbRequest) return runMailVerb(env, job, cfg, email, parsed, verbRequest, done);
 
   // Ledger pipeline diverges before any reply-path gate: receipts come

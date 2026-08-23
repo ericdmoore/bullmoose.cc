@@ -4,10 +4,12 @@ import { buildMime } from "@bullmoose/mime";
 import {
   QUARANTINE_ROLE,
   normalizeMessageId,
+  validateSieveRules,
   type ContactCardRow,
   type JSCalendarEventBlob,
   type JSContactCard,
   type Mailstore,
+  type SieveRule,
 } from "@bullmoose/mailstore";
 import { OutboundRefused, assertOutboundAllowed } from "@bullmoose/mailstore/outboundBound";
 import {
@@ -213,6 +215,13 @@ const HELD_MAIL_REVIEW = "held-mail-review";
  * teach an agent to stop asking for history the human merely didn't want read.
  */
 const NO_FAULT_KINDS = new Set(["budget-overrun", HELD_MAIL_REVIEW, "watch-offer", "floor-request"]);
+
+/** s31 popover lifecycle — the kinds a human may (X)-CLOSE without a reason.
+ *  Exactly the SOLICITED ones (the human clicked to mint them): a no-reason
+ *  exit on unsolicited offers would drain the decline taxonomy's labels. */
+const CLOSABLE_KINDS = new Set(["sieve-rule"]);
+/** s31 rung 2 — the kinds whose verb row carries Retry-with-nudge. */
+const RETRYABLE_KINDS = new Set(["sieve-rule"]);
 
 /**
  * The tier-2 post-approval retraction window. A tier-2 approve enters the hold
@@ -441,12 +450,123 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
         }
 
         const status = patch.status;
-        if (status !== "approved" && status !== "rejected" && status !== "info-requested" && status !== "yanked") {
+        if (
+          status !== "approved" &&
+          status !== "rejected" &&
+          status !== "info-requested" &&
+          status !== "yanked" &&
+          status !== "closed" &&
+          status !== "retry"
+        ) {
           throw new SetErrorSignal(
             "invalidProperties",
-            'status must be "approved", "rejected", "info-requested" or "yanked"',
+            'status must be "approved", "rejected", "info-requested", "yanked", "closed" or "retry"',
             ["status"],
           );
+        }
+
+        // ---- (X) close (s31 popover lifecycle): "not now", terminally ----
+        //
+        // A close is NOT a decline. It is closed-as-unanswered: no reason, no
+        // training signal, nothing the composer learns — a mis-click ends as
+        // SILENCE, which is the honest ending. Restricted to SOLICITED kinds
+        // (the human clicked to mint this): an unsolicited offer met in the
+        // queue keeps the decline taxonomy, because a generic no-reason exit
+        // would drain exactly the labels the taxonomy exists to collect. And
+        // a closed solicited proposal must never tombstone a future ask —
+        // the composer runs no dedup over this kind (ruleVerb.ts), so
+        // Tuesday's grazed (X) cannot block Thursday's deliberate click.
+        if (status === "closed") {
+          if (!CLOSABLE_KINDS.has(row.kind)) {
+            throw new SetErrorSignal(
+              "invalidPatch",
+              `a ${row.kind} proposal is not closeable — decline it (with a reason) or let it expire`,
+              ["status"],
+            );
+          }
+          if (patch.decision !== undefined) {
+            throw new SetErrorSignal(
+              "invalidProperties",
+              "a close carries no reason — it is not a decline, and nothing is learned from it",
+              ["decision"],
+            );
+          }
+          const closedAt = Date.now();
+          await ctx.env.DB.prepare(
+            `UPDATE agent_proposals SET status = 'closed', decided_at = ?, decision_json = ?
+              WHERE account_id = ? AND id = ? AND status = 'pending'`,
+          )
+            .bind(closedAt, JSON.stringify({ by: ctx.principal.username, closed: "dismissed" }), access.accountId, id)
+            .run();
+          propEntry.updated.push(id);
+          updated[id] = null;
+          continue;
+        }
+
+        // ---- retry with a nudge (s31 rung 2): supersede, never edit ----
+        //
+        // needsInfo INVERTED: needsInfo asks the proposer to justify what it
+        // already composed; retry hands the proposer new information and asks
+        // for a NEW composition. Under decision-immutability, a retry
+        // SUPERSEDES — the old proposal is tombstoned as answered, and a new
+        // invocation is minted carrying the nudge and the prior rule, on the
+        // same binding whose authority produced the original.
+        if (status === "retry") {
+          if (!RETRYABLE_KINDS.has(row.kind)) {
+            throw new SetErrorSignal(
+              "invalidPatch",
+              `a ${row.kind} proposal has no retry — edit it (the edit is the approval) or decline it`,
+              ["status"],
+            );
+          }
+          const nudge = typeof patch.note === "string" ? patch.note.trim().slice(0, 300) : "";
+          const subjectEmail = str(safeJson(row.subject_json).objectId);
+          const retryNow = Date.now();
+          await ctx.env.DB.prepare(
+            `UPDATE agent_proposals SET status = 'closed', decided_at = ?, decision_json = ?
+              WHERE account_id = ? AND id = ? AND status = 'pending'`,
+          )
+            .bind(
+              retryNow,
+              JSON.stringify({
+                by: ctx.principal.username,
+                closed: "superseded-by-retry",
+                ...(nudge ? { nudge } : {}),
+                note: "superseded: the owner asked for a new composition",
+              }),
+              access.accountId,
+              id,
+            )
+            .run();
+
+          const successorId = `inv_${crypto.randomUUID()}`;
+          await ctx.env.DB.prepare(
+            `INSERT INTO agent_invocations
+               (id, account_id, binding_id, binding_name, status, email_id, context_json, created_at)
+             VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+          )
+            .bind(
+              successorId,
+              access.accountId,
+              row.binding_id,
+              row.binding_name,
+              subjectEmail,
+              JSON.stringify({
+                params: {
+                  verb: "rule",
+                  ...(nudge ? { note: nudge } : {}),
+                  priorRule: safeJson(row.payload_json).rule ?? {},
+                },
+              }),
+              retryNow,
+            )
+            .run();
+          // The new pending row must reach /changes — a StateChange is what
+          // wakes a homelab runtime to drain it.
+          applyEntries.push({ collection: "AgentInvocation", created: [successorId], updated: [], destroyed: [] });
+          propEntry.updated.push(id);
+          updated[id] = null;
+          continue;
         }
 
         // ---- yank (s03.D T2): the retraction the hold window exists for ----
@@ -1880,6 +2000,70 @@ async function applyProposal(
       };
     }
 
+    case "sieve-rule": {
+      // s31 rung 2 — approval writes the composed rule into the RULEBOOK.
+      // Tier 2 put this through the hold tray (a standing filter is standing
+      // authority), so this case runs from `commitDueHeldProposals` after the
+      // yank window, under the approver recorded in decision.by.
+      //
+      // The rule's id IS the proposal's id (stamped by ruleVerb.ts), so the
+      // rulebook carries its own provenance: every negotiated rule names the
+      // ledger row a human approved, forever. The edit-is-approval path rides
+      // for free — `payload` here is editedPayload ?? original, so a redlined
+      // rule is what lands.
+      const proposedRule = payload.rule;
+      let appended: SieveRule;
+      try {
+        const [valid] = validateSieveRules([{ ...(proposedRule as object), id: row.id }]);
+        if (!valid || valid.all.length === 0) throw new Error("the rule has no conditions");
+        appended = valid;
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        throw new SetErrorSignal(
+          "invalidProperties",
+          `this is not a rule the boundary engine can run: ${why} — edit the payload or decline`,
+          ["payload"],
+        );
+      }
+
+      const existing = await ctx.env.DB.prepare(`SELECT rules_json FROM sieve_rules WHERE account_id = ?`)
+        .bind(access.accountId)
+        .first<{ rules_json: string }>();
+      let rules: SieveRule[] = [];
+      if (existing) {
+        try {
+          rules = validateSieveRules(JSON.parse(existing.rules_json));
+        } catch {
+          // An unreadable rulebook is not silently replaced — that would
+          // discard rules the engine may still be applying from a cached
+          // read. Refuse in place; the row stays pending.
+          throw new SetErrorSignal(
+            "serverFail",
+            "the existing rulebook is unreadable — refusing to append to what cannot be read",
+          );
+        }
+      }
+      // Idempotent by id: a re-run of the same approval must not double the
+      // rule; a different rule under the same id is this same proposal
+      // re-applied after an edit, and the newer composition wins.
+      const kept = rules.filter((r) => r.id !== appended.id);
+      kept.push(appended);
+      const ruleNow = Date.now();
+      await ctx.env.DB.prepare(
+        `INSERT INTO sieve_rules (account_id, rules_json, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(account_id) DO UPDATE SET rules_json = excluded.rules_json, updated_at = excluded.updated_at`,
+      )
+        .bind(access.accountId, JSON.stringify(kept), ruleNow)
+        .run();
+      // No ChangeEntry: sieve rules have no /changes collection. The state
+      // string SieveScript/get serves IS `updated_at`, which just moved — a
+      // standards client polling the script sees the new rule at once.
+      return {
+        entries: [],
+        undo: { action: "remove-sieve-rule", ruleId: appended.id },
+      };
+    }
+
     case "watch-notify": {
       // s20 T1 — a fired `notify` watch: the pure reminder. `fire()`
       // (services/agent watches.ts) emits it at TIER 1 and says exactly what
@@ -2580,7 +2764,11 @@ export async function commitDueHeldProposals(
       };
 
       const payload = row.edited_payload_json !== null ? safeJson(row.edited_payload_json) : safeJson(row.payload_json);
-      const { entries } = await applyProposal(commitCtx, access, row, payload);
+      // `undo` included: the first draft destructured `entries` alone, and
+      // every kind committed through the tray silently LOST its undo handle —
+      // the sieve-rule test caught it. The direct-apply path (tier 1/3) has
+      // always recorded it; the tray must not be the one venue that forgets.
+      const { entries, undo } = await applyProposal(commitCtx, access, row, payload);
 
       // Flip held → approved ONLY if a yank has not raced us; a zero-row
       // UPDATE means the human won and the apply above must be treated as
@@ -2591,7 +2779,7 @@ export async function commitDueHeldProposals(
         `UPDATE agent_proposals SET status = 'approved', decision_json = ?
          WHERE account_id = ? AND id = ? AND status = 'held'`,
       )
-        .bind(JSON.stringify({ ...decision, committedAt: now }), row.account_id, row.id)
+        .bind(JSON.stringify({ ...decision, committedAt: now, ...(undo ? { undo } : {}) }), row.account_id, row.id)
         .run();
       if ((res.meta?.changes ?? 0) === 0) {
         failed.push({ id: row.id, error: "yank raced the commit; status was no longer held" });
