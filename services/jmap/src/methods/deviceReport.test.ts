@@ -57,7 +57,9 @@ function harness(opts: { scopes?: string[]; tokenId?: string | null; granted?: b
           accountId: ACCOUNT,
           tenantId: TENANT,
           name: "Eric",
-          ...(opts.granted ? { granted: [{ grantId: "g_1" }] } : {}),
+          ...(opts.granted
+            ? { granted: [{ grantId: "g_1", scopes: ["read"], collection: null, collectionId: null }] }
+            : {}),
         },
       ],
       ...(opts.tokenId === null ? {} : { tokenId: opts.tokenId ?? "tk_laptop" }),
@@ -86,8 +88,8 @@ describe("DeviceReport/set", () => {
       report_json: string;
     }>;
     expect(rows).toHaveLength(1);
-    expect(rows[0].token_id).toBe("tk_laptop");
-    expect(JSON.parse(rows[0].report_json).host).toBe("http://localhost:11434");
+    expect(rows[0]!.token_id).toBe("tk_laptop");
+    expect(JSON.parse(rows[0]!.report_json).host).toBe("http://localhost:11434");
   });
 
   it("offers NO argument that names another device", async () => {
@@ -106,7 +108,7 @@ describe("DeviceReport/set", () => {
     await call("DeviceReport/set", { update: { self: { ...REPORT, models: ["llama3:8b"] } } });
     const rows = w.db.sqlite.prepare(`SELECT report_json FROM device_reports`).all() as Array<{ report_json: string }>;
     expect(rows).toHaveLength(1);
-    expect(JSON.parse(rows[0].report_json).models).toEqual(["llama3:8b"]);
+    expect(JSON.parse(rows[0]!.report_json).models).toEqual(["llama3:8b"]);
   });
 
   it("refuses a credential with no minted token", async () => {
@@ -141,7 +143,7 @@ describe("DeviceReport/set", () => {
       update: { self: { capabilities: { zebra: true, contextTokens: 8000 } } },
     });
     const rows = w.db.sqlite.prepare(`SELECT report_json FROM device_reports`).all() as Array<{ report_json: string }>;
-    expect(JSON.parse(rows[0].report_json).capabilities.zebra).toBe(true);
+    expect(JSON.parse(rows[0]!.report_json).capabilities.zebra).toBe(true);
   });
 });
 
