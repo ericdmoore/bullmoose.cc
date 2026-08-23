@@ -122,6 +122,15 @@ type mailFake struct {
 	// noDraftsMailbox empties Mailbox/query's answer — the one mid-pipeline
 	// failure whose message the serve loop must carry into `failed`.
 	noDraftsMailbox bool
+	// The extract mirror's fixtures (s43 step 5): blobRaw overrides the /dl/
+	// answer (the List-Unsubscribe gate reads raw headers); annotationIDs maps
+	// an Annotation/query status filter to its ids array; annotationList is
+	// Annotation/get's list; refuseAnnotation refuses every Annotation/set
+	// create with the given raw SetError (the missing-annotate-scope shape).
+	blobRaw          string
+	annotationIDs    map[string]string
+	annotationList   string
+	refuseAnnotation string
 
 	// Refusal knobs.
 	refuseSubmission string // "method" | "seterror" | ""
@@ -621,6 +630,10 @@ func (f *mailFake) handle(w http.ResponseWriter, r *http.Request) {
 		f.downloads = append(f.downloads, r.URL.EscapedPath())
 		f.mu.Unlock()
 		w.Header().Set("content-type", "message/rfc822")
+		if f.blobRaw != "" {
+			_, _ = w.Write([]byte(f.blobRaw))
+			return
+		}
 		_, _ = w.Write([]byte("Subject: raw\r\n\r\nraw body\r\n"))
 		return
 	case r.URL.Path != "/jmap-endpoint":
@@ -810,6 +823,41 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 			return reply(fmt.Sprintf(`{"accountId":"a_you","destroyed":%s,"newState":"agstate-2"}`, d))
 		}
 		return fail("invalidArguments", "empty AgentInvocation/set")
+	case "Annotation/query":
+		var q struct {
+			Filter struct {
+				Status string `json:"status"`
+			} `json:"filter"`
+		}
+		_ = json.Unmarshal(args, &q)
+		ids := f.annotationIDs[q.Filter.Status]
+		if ids == "" {
+			ids = "[]"
+		}
+		return reply(fmt.Sprintf(`{"accountId":"a_you","ids":%s}`, ids))
+	case "Annotation/get":
+		list := f.annotationList
+		if list == "" {
+			list = "[]"
+		}
+		return reply(fmt.Sprintf(`{"accountId":"a_you","list":%s}`, list))
+	case "Annotation/set":
+		var set struct {
+			Create map[string]json.RawMessage `json:"create"`
+		}
+		_ = json.Unmarshal(args, &set)
+		if f.refuseAnnotation != "" {
+			parts := make([]string, 0, len(set.Create))
+			for _, cid := range objectKeyOrder(args, "create") {
+				parts = append(parts, fmt.Sprintf(`%q:%s`, cid, f.refuseAnnotation))
+			}
+			return reply(`{"accountId":"a_you","created":{},"notCreated":{` + strings.Join(parts, ",") + `}}`)
+		}
+		parts := make([]string, 0, len(set.Create))
+		for i, cid := range objectKeyOrder(args, "create") {
+			parts = append(parts, fmt.Sprintf(`%q:{"id":"ann_%d"}`, cid, i+1))
+		}
+		return reply(`{"accountId":"a_you","created":{` + strings.Join(parts, ",") + `},"notCreated":{}}`)
 	case "AgentBinding/set":
 		var set struct {
 			Update map[string]struct {
