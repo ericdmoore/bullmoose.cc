@@ -59,9 +59,13 @@ type agentArgs struct {
 	Budget       string
 	RequestFloor bool
 	Yes          bool
-	JSON         bool
-	IDs          bool
-	DryRun       bool
+	// serve (s43 step 4+).
+	Config string
+	Fleet  string
+	Once   bool
+	JSON   bool
+	IDs    bool
+	DryRun bool
 
 	Positionals []string
 }
@@ -123,6 +127,12 @@ func parseAgent(argv []string) agentArgs {
 				a.Since = value()
 			case "budget":
 				a.Budget = value()
+			case "config":
+				a.Config = value()
+			case "fleet":
+				a.Fleet = value()
+			case "once":
+				a.Once = true
 			}
 		default:
 			a.Positionals = append(a.Positionals, arg)
@@ -167,6 +177,8 @@ func runAgentWith(s *bmio.Streams, argv []string, nowMs func() int64) int {
 		return runAgentKill(s, a, false)
 	case "backfill":
 		return runAgentBackfill(s, a, nowMs)
+	case "serve":
+		return runAgentServe(s, a)
 	default:
 		// serve and the dossier verbs land in s43 steps 2–6; the registry
 		// flip is LAST and alone, so until every case above exists, reaching

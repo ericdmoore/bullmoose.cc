@@ -115,6 +115,13 @@ type mailFake struct {
 	// refuseBinding, when set, is the raw SetError every AgentBinding/set
 	// update answers with — the kill switch's server-side refusals (s43 step 3).
 	refuseBinding string
+	// invocationClaimLost, when true, answers every AgentInvocation/set UPDATE
+	// with notUpdated — the lost-claim-race fixture (s43 step 4). A lost race
+	// must be a clean no-op, and this knob is how a test watches it be one.
+	invocationClaimLost bool
+	// noDraftsMailbox empties Mailbox/query's answer — the one mid-pipeline
+	// failure whose message the serve loop must carry into `failed`.
+	noDraftsMailbox bool
 
 	// Refusal knobs.
 	refuseSubmission string // "method" | "seterror" | ""
@@ -663,6 +670,11 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 		}
 		return reply(`{"accountId":"a_you","state":"1","list":` + f.mailboxes + `}`)
 
+	case "Mailbox/query":
+		if f.noDraftsMailbox {
+			return reply(`{"accountId":"a_you","ids":[]}`)
+		}
+		return reply(`{"accountId":"a_you","ids":["mb_drafts"]}`)
 	case "Mailbox/set":
 		// The same model services/jmap/src/methods/mailbox.ts and
 		// packages/cli/smoke/server.mjs:120 run, so a `mailbox` test here and the
@@ -760,9 +772,27 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 	case "AgentInvocation/set":
 		var set struct {
 			Create  map[string]json.RawMessage `json:"create"`
+			Update  map[string]json.RawMessage `json:"update"`
 			Destroy []string                   `json:"destroy"`
 		}
 		_ = json.Unmarshal(args, &set)
+		if len(set.Update) > 0 {
+			// The claim/complete surface (s43 step 4): echo `updated` per id —
+			// Node checks membership only — or lose the race via the knob.
+			ids := objectKeyOrder(args, "update")
+			if f.invocationClaimLost {
+				parts := make([]string, len(ids))
+				for i, id := range ids {
+					parts[i] = fmt.Sprintf(`%q:{"type":"stateMismatch"}`, id)
+				}
+				return reply(`{"accountId":"a_you","updated":{},"notUpdated":{` + strings.Join(parts, ",") + `}}`)
+			}
+			parts := make([]string, len(ids))
+			for i, id := range ids {
+				parts[i] = fmt.Sprintf(`%q:null`, id)
+			}
+			return reply(`{"accountId":"a_you","updated":{` + strings.Join(parts, ",") + `},"newState":"agstate-3"}`)
+		}
 		if len(set.Create) > 0 {
 			if f.refuseInvocation != "" {
 				return reply(fmt.Sprintf(`{"accountId":"a_you","notCreated":{"c":%s}}`, f.refuseInvocation))
