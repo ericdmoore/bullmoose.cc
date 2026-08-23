@@ -85,6 +85,8 @@ var valueFlags = map[string]bool{
 	"add": true, "remove": true, "role": true,
 	// ---- approvals needs-info (s10 T3) ----
 	"question": true, "reason": true,
+	// ---- cloud plan (s46 T2) ----
+	"zone": true, "stack-version": true, "stack-base": true,
 	// ---- paging ----
 	"n": true,
 }

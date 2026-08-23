@@ -268,6 +268,12 @@ var registry = map[string]spec{
 		boolean: []string{"json", "ids", "dry-run", "request-floor", "yes", "once"},
 		run:     runAgent,
 	},
+	// `cloud` (s46): the CLI as a CREATOR of a deployment. T2 ships `plan`
+	// only — read-only probe + printed plan; install/apply is T3. goNative
+	// like agents/approvals (no Node twin ever existed) so it self-governs
+	// its grammar — which is also why it may refuse --db: it talks to
+	// Cloudflare's API and dl.bullmoose.cc, never the mirror.
+	"cloud": {json: true, goNative: true, run: runCloud},
 }
 
 // triageVerbs is every spelling of a triage verb main.ts:368-376 routes to
