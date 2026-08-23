@@ -125,7 +125,12 @@ export function registerDeviceReportMethods(registry: MethodRegistry<RequestCont
         reported_at: number | null;
       }>();
 
-    const list = (results ?? []).map((row) => {
+    // Optional `ids` narrowing — the explorer's object route asks for one
+    // device by id; absent ids means the whole inventory, per JMAP /get.
+    const wanted = Array.isArray(args.ids) ? (args.ids as string[]) : null;
+    const rows = (results ?? []).filter((r) => !wanted || wanted.includes(r.id));
+    const notFound = wanted ? wanted.filter((id) => !rows.some((r) => r.id === id)) : [];
+    const list = rows.map((row) => {
       let report: Record<string, unknown> = {};
       if (row.report_json) {
         try {
@@ -143,7 +148,7 @@ export function registerDeviceReportMethods(registry: MethodRegistry<RequestCont
         // The snapshot half — null when the device never reported. Rendered
         // "as of reportedAt", never "installed" (s37 decision 2).
         host: (report.host as string | undefined) ?? null,
-        models: (report.models as string[] | undefined) ?? null,
+        models: (report.models as unknown[] | undefined) ?? null,
         capabilities: (report.capabilities as Record<string, unknown> | undefined) ?? null,
         source: (report.source as string | undefined) ?? null,
         reportedAt: row.reported_at,
@@ -154,7 +159,7 @@ export function registerDeviceReportMethods(registry: MethodRegistry<RequestCont
       accountId: access.accountId,
       state: await accountState(ctx, access.accountId),
       list,
-      notFound: [],
+      notFound,
     };
   });
 }
@@ -175,12 +180,32 @@ function sanitizeReport(raw: Record<string, unknown>): Record<string, unknown> {
   }
   if (raw.models !== undefined && raw.models !== null) {
     if (!Array.isArray(raw.models) || raw.models.length > MAX_MODELS) {
-      throw new MethodError("invalidArguments", `models must be an array of at most ${MAX_MODELS} ids`);
+      throw new MethodError("invalidArguments", `models must be an array of at most ${MAX_MODELS} entries`);
     }
     for (const m of raw.models) {
-      if (typeof m !== "string" || m.length > MAX_STRING) {
-        throw new MethodError("invalidArguments", `each model id must be a string of at most ${MAX_STRING} characters`);
+      // Two spellings, one meaning: a bare id ("llama3:8b"), or {id, kind}
+      // when the reporter knows WHAT the model is — a /v1/models sweep
+      // returns chat, embedding and OCR models indistinguishably, and the
+      // hierarchy is user -> devices -> models of several kinds (Eric,
+      // 2026-08-23). `kind` is a free string on purpose: tomorrow's kind
+      // must not need a server deploy to survive.
+      if (typeof m === "string") {
+        if (m.length > MAX_STRING) {
+          throw new MethodError("invalidArguments", `each model id must be at most ${MAX_STRING} characters`);
+        }
+        continue;
       }
+      if (typeof m === "object" && m !== null && !Array.isArray(m)) {
+        const entry = m as Record<string, unknown>;
+        if (typeof entry.id !== "string" || entry.id.length === 0 || entry.id.length > MAX_STRING) {
+          throw new MethodError("invalidArguments", "a model entry object needs an `id` string");
+        }
+        if (entry.kind !== undefined && (typeof entry.kind !== "string" || entry.kind.length > 64)) {
+          throw new MethodError("invalidArguments", "a model entry `kind` must be a short string");
+        }
+        continue;
+      }
+      throw new MethodError("invalidArguments", "each model entry must be an id string or an {id, kind} object");
     }
     out.models = raw.models;
   }

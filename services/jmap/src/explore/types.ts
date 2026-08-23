@@ -163,6 +163,20 @@ export const TYPES: Readonly<Record<string, TypeSpec>> = {
     listable: true,
     filters: ["inCalendar", "after", "before", "text", "title", "uid"],
   },
+  DeviceReport: {
+    type: "DeviceReport",
+    domain: "mail",
+    scopes: ["read"],
+    get: "DeviceReport/get",
+    listable: true,
+    filters: [],
+    // s37: the owner's device inventory — every minted token, its last-seen
+    // heartbeat, and what its host last reported it serves (chat, embedding
+    // and OCR models alike). Owner-only: the method refuses grant-reached
+    // callers and agent tokens, so on those sessions this collection 403s
+    // rather than lies. "As of reportedAt", never "installed".
+    note: "one entry per device token; owner-only; renders last-seen and the as-of model snapshot",
+  },
   FileNode: {
     type: "FileNode",
     domain: "files",

@@ -7,7 +7,7 @@ import {
   type MethodDomain,
   type Principal,
 } from "@bullmoose/auth-core/principal";
-import { ToolError } from "./jmapBridge.js";
+import { ToolError, callJmap } from "./jmapBridge.js";
 import type { BindingConfig } from "./models.js";
 import type { ToolDef } from "./mcp.js";
 
@@ -1167,6 +1167,81 @@ const INTROSPECTION_TOOLS: ToolDef[] = [
           principals: [...new Set(rows.map((r) => r.principal))],
         },
         limitations: ACCESS_LOG_LIMITATIONS,
+      };
+    },
+  },
+  {
+    name: "devices",
+    scope: "read",
+    domain: "mail",
+    // A projection of the caller's own principal, like whoami — the account
+    // gate has nothing to add, and the one tool that lists your machines
+    // should not demand you name one of their accounts first.
+    accountless: true,
+    description:
+      "Every CLI install and device of the CALLING user — one minted token per box, by " +
+      "tradition — with its last-seen heartbeat and, when the device has reported, the model " +
+      "host it found and the models that host serves (chat, embedding and OCR models alike, " +
+      "as the host lists them). `lastSeenAt` is the heartbeat: it refreshes on any " +
+      "authenticated call from that device, throttled to ~5-minute windows, so 'connected' " +
+      "means a recent lastSeenAt, never a listed row. The model list is a snapshot the " +
+      "device filed — read it 'as of reportedAt', never as 'installed'. Takes no arguments.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    async run({ env, principal }) {
+      // A thin client of DeviceReport/get (s37 T1a) through the bridge — the
+      // tokens-table query stays in the JMAP worker, which is also what
+      // keeps introspect.test's "never names a secret-bearing table" guard
+      // true of THIS module. The method's own refusals rule: agent-marked
+      // tokens and grant-reached accounts are turned away there, once.
+      const owned = principal.accounts.find((a) => !a.granted);
+      if (!owned) {
+        throw new ToolError("this token reaches only grant-shared accounts; the device inventory rides ownership.");
+      }
+      const res = await callJmap<{
+        list: Array<{
+          id: string;
+          name: string;
+          createdAt: number;
+          expiresAt: number | null;
+          lastUsedAt: number | null;
+          host: string | null;
+          models: unknown[] | null;
+          capabilities: Record<string, unknown> | null;
+          source: string | null;
+          reportedAt: number | null;
+        }>;
+      }>(env, principal, "DeviceReport/get", { accountId: owned.accountId });
+
+      const devices = res.list.map((d) => ({
+        name: d.name,
+        createdAt: d.createdAt,
+        expiresAt: d.expiresAt,
+        lastSeenAt: d.lastUsedAt,
+        // The caller can see which of the rows is the very device asking.
+        thisDevice: principal.tokenId !== undefined && principal.tokenId === d.id,
+        report:
+          d.reportedAt === null
+            ? null
+            : { host: d.host, models: d.models, capabilities: d.capabilities, source: d.source },
+        reportedAt: d.reportedAt,
+      }));
+
+      return {
+        principal: principal.username,
+        devices,
+        notes: [
+          "One user → one or more CLI installs (one per box, by tradition) → each with access " +
+            "to zero or more model hosts and their models. That hierarchy is what this lists.",
+          "`lastSeenAt` updates on ANY authenticated call from the device (throttled ~5 min). " +
+            "A minted token is not a running CLI: treat a stale lastSeenAt as absence, and " +
+            "never render a device as 'connected' from its existence alone.",
+          "`report` is what the device SAID about itself (display-only; nothing routes on " +
+            "it), filed by `bullmoose local` and the agent daemon on start. Absent report = " +
+            "the device never filed one — still a device.",
+        ],
       };
     },
   },
