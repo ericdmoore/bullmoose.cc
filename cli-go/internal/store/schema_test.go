@@ -24,7 +24,9 @@ import (
 func TestEmbeddedSchemaMatchesRepo(t *testing.T) {
 	for _, c := range []struct{ repo, embedded, copied string }{
 		{"packages/mailstore/sql/data-plane.sql", dataPlaneSQL, "cli-go/internal/store/sql/data-plane.sql"},
-		{"packages/cli/sql/local.sql", localSQL, "cli-go/internal/store/sql/local.sql"},
+		// packages/cli/sql/local.sql was the second row here until the Node
+		// CLI's removal; cli-go/internal/store/sql/local.sql is canonical now,
+		// and the embed IS the copy, so there is no pair left to compare.
 	} {
 		want, ok := repoFile(t, c.repo)
 		if !ok {

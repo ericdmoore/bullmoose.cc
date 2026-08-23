@@ -13,40 +13,27 @@ import (
 // this binary does not actually serve. Same for `--db`, without which no test —
 // and no `BULLMOOSE_DB`-less user — could route to the native path at all.
 func TestRegistryFlagsAreInstalled(t *testing.T) {
-	type installed struct {
-		value, boolean, short []string
-	}
-	got := map[string]installed{}
-	nativeOnly := map[string]bool{}
-	Install(
-		func(string, func([]string) int) {},
-		func(command string) { nativeOnly[command] = true },
-		func(command string, value, boolean, short []string) {
-			got[command] = installed{value, boolean, short}
-		},
-	)
-
+	// Post-removal, the registry's flag lists feed Route's guard DIRECTLY
+	// (unownedFlag) — there is no Install indirection left to observe, so the
+	// guarantees are asserted against the registry itself. The stakes moved,
+	// not the shape: an unlisted flag used to delegate; now it REFUSES, so a
+	// missing --db or --json is a command refusing its own documented flags.
 	for name, s := range registry {
 		if s.goNative {
-			if !nativeOnly[name] {
-				t.Errorf("%s is goNative but was not registered as native-only", name)
-			}
-			if _, ok := got[name]; ok {
-				t.Errorf("%s is goNative — it has no Node twin, so it needs no byte-identity guard", name)
+			// Route skips the flag guard for goNative commands (they answer
+			// their own --help and self-govern their grammar); a flag list on
+			// one would be dead config masquerading as a guard.
+			if len(s.value)+len(s.boolean)+len(s.short) > 0 {
+				t.Errorf("%s is goNative — Route never consults its flag lists; delete them or drop goNative", name)
 			}
 			continue
 		}
-		flags, ok := got[name]
-		if !ok {
-			t.Errorf("%s has a Node twin but no flag set was installed — every invocation would delegate", name)
-			continue
+		if !contains(s.value, "db") {
+			t.Errorf("%s does not own --db; `--db <path>` would be refused on a documented global flag", name)
 		}
-		if !contains(flags.value, "db") {
-			t.Errorf("%s does not own --db; the mirror path could never be chosen natively", name)
-		}
-		if s.json && !contains(flags.boolean, "json") {
+		if s.json && !contains(s.boolean, "json") {
 			t.Errorf("%s claims --json (cli/008) but does not own the flag, so every "+
-				"--json invocation delegates and the claim is untested", name)
+				"--json invocation would be refused and the claim is untested", name)
 		}
 	}
 }

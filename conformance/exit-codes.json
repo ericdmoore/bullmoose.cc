@@ -48,6 +48,6 @@
     "unsupportedSort": 2,
     "willDestroy": 5
   },
-  "source": "packages/cli/src/io.ts:52 EXIT, :96 JMAP_EXIT",
+  "source": "cli-go/internal/io/exit.go (EXIT + jmapExit; io.ts:52/:96 until the Node CLI's removal)",
   "unlistedJmapType": 1
 }

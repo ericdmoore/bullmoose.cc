@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── Node CLI + platform (TypeScript) ─────────────────────────────────
+      # ── Platform (TypeScript) ────────────────────────────────────────────
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -47,17 +47,11 @@ jobs:
       - run: npm run fmt:check
       - run: npm run lint
       - run: npm run typecheck
-      # `npm test` includes `src/contract.test.ts`, which runs the contract
-      # suite against the Node CLI. The explicit Node pass below re-runs it as a
-      # visible, symmetric twin of the Go pass; keeping both keeps the ratchet
-      # legible (Node green / Go red is the divergence signal, see below).
       - run: npm test
 
-      # ── Go CLI (the strangler front door) ────────────────────────────────
-      # s08 T3 (.plans/s08-go-cli/devPlan.md): the same 61-case contract suite
-      # runs against BOTH implementations, in this one required job, so a PR
-      # that breaks EITHER fails `verify`. cli-go is its OWN Go module — every
-      # Go command runs from `cli-go/`, never `go … ./cli-go`.
+      # ── Go CLI ───────────────────────────────────────────────────────────
+      # cli-go is its OWN Go module — every Go command runs from `cli-go/`,
+      # never `go … ./cli-go`.
       - uses: actions/setup-go@v5
         with:
           # READ FROM go.mod, never a literal here. A version string in this
@@ -121,57 +115,10 @@ jobs:
         working-directory: packages/popcorn
         run: go build ./...
 
-      # ── The ratchet: one contract suite, both binaries ───────────────────
-      # Node FIRST, then Go, on purpose. If a future port breaks a command, the
-      # Node step stays green and the Go step goes red — so the red X sits on
-      # "contract suite — Go binary" while its twin is green, and a reviewer
-      # reads the divergence directly: the reference passes, the port regressed.
-      - name: contract suite — Node CLI (reference, must be 61/0)
-        run: npm run -w @bullmoose/cli smoke
-
-      - name: contract suite — Go binary (must be 61/0)
-        env:
-          BULLMOOSE_CLI_BIN: ${{ github.workspace }}/cli-go/bin/bullmoose
-          # Explicit delegation target — never rely on the exe-relative walk in
-          # CI (arch.md §4: discovery is explicit, never a silent fallback).
-          BULLMOOSE_NODE_CLI: ${{ github.workspace }}/packages/cli/bin/bullmoose.mjs
-          # Append-only sink counted below. stderr is uncountable — 20+ contract
-          # cases run `2>/dev/null` (documented T2 finding), so the file is the
-          # only reliable source for the split.
-          BULLMOOSE_TRACE_FILE: ${{ runner.temp }}/bullmoose-trace.log
-        run: |
-          rm -f "$BULLMOOSE_TRACE_FILE"
-          npm run -w @bullmoose/cli smoke
-
-      # ── Port progress, as a number in every run ──────────────────────────
-      # `if: always()` so the split still surfaces when the Go pass fails —
-      # "how far along is the port" is visible even mid-regression.
-      - name: Go port progress (native/delegated split)
-        if: always()
-        run: |
-          trace="${{ runner.temp }}/bullmoose-trace.log"
-          if [ ! -f "$trace" ]; then
-            echo "No trace file produced (the Go contract pass did not run)." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          # grep -c exits 1 on zero matches; `|| true` keeps the count, not the
-          # exit status, under the shell's `set -e`.
-          native="$(grep -c 'bullmoose: native' "$trace" || true)"
-          delegated="$(grep -c 'bullmoose: delegated' "$trace" || true)"
-          total="$((native + delegated))"
-          {
-            echo "### Go CLI port progress"
-            echo ""
-            echo "Contract-suite CLI invocations traced from the Go binary:"
-            echo ""
-            echo "| disposition | invocations |"
-            echo "| --- | ---: |"
-            echo "| native | $native |"
-            echo "| delegated | $delegated |"
-            echo "| **total** | **$total** |"
-            if [ "$total" -gt 0 ]; then
-              pct="$((native * 100 / total))"
-              echo ""
-              echo "**${pct}% native** — $native of $total invocations served by Go, the rest delegated to the Node CLI."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+      # ── The contract suite is GONE, and that is the point ────────────────
+      # From T2 to the flip, this job ran the 75-case contract suite against
+      # BOTH binaries and summarised the native/delegated split — the port's
+      # progress metric. The port hit 100%, the Node CLI was removed, and the
+      # suite's real job ("the port did not change what the server sees")
+      # lives on as cli-go's own choreography tests, which `go test` above
+      # already runs. The metric retired with the thing it measured.

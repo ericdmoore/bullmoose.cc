@@ -37,7 +37,7 @@ type spec struct {
 	// GLOBAL_OPTIONS) yet was a silent no-op on eight commands. This bit must
 	// never claim support the command does not actually deliver.
 	json bool
-	// goNative marks a command with NO TypeScript counterpart. Install wires such
+	// goNative marks a command that never had a TypeScript counterpart. Route wires such
 	// a command through delegate.RegisterNativeOnly so Dispatch never delegates it
 	// (Node has no such command) — the "byte-identical to Node" invariant does not
 	// apply because there is nothing to match. `approvals` is the first (s08).
@@ -65,7 +65,7 @@ type spec struct {
 }
 
 // registry is the single source of truth for which commands this binary serves
-// natively. delegate.native is wired from exactly this set by Install, so routing
+// natively. Route dispatches from exactly this set, so routing
 // and capability cannot drift apart.
 //
 //   - wave 1: four read-only local-mirror commands (mailboxes/search/log/accounts).
@@ -324,29 +324,4 @@ func SupportsJSON(command string) (jsonSupported, implemented bool) {
 		}
 	}
 	return false, false
-}
-
-// Install wires every registered native command into the delegate's routing map
-// (via the callbacks main.go passes). Each handler is bound to the process
-// streams (bmio.New) at call time, so a broken-pipe mid-output exits 0 exactly as
-// io.ts does. A goNative command is additionally registered as native-only, so
-// Dispatch never delegates it. Keeping delegate.native derived from this registry
-// is what keeps the routing table and the cli/008 capability table the same source.
-func Install(
-	register func(command string, run func(argv []string) int),
-	registerNativeOnly func(command string),
-	registerFlags func(command string, value, boolean, short []string),
-) {
-	for name, s := range registry {
-		if s.run == nil {
-			continue
-		}
-		run := s.run
-		register(name, func(argv []string) int { return run(bmio.New(), argv) })
-		if s.goNative {
-			registerNativeOnly(name)
-			continue // no Node twin → no byte-identity guard to feed
-		}
-		registerFlags(name, s.value, s.boolean, s.short)
-	}
 }

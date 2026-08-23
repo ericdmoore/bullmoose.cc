@@ -51,7 +51,7 @@
       publishes what the code already knows, and it serves both readers at once:
       machine-checkable input rules for an agent, and enough for a
       form-rendering extension to draw actual inputs for a human.
-- The Node CLI is FEATURE-FROZEN — decided 2026-08-22, Eric: *"no more node CLI
+- (CLOSED 2026-08-22: the Node CLI was REMOVED the same day, soak waived — Eric: "literally the only user… ready to bury the CLI". The freeze completed its job.) The Node CLI is FEATURE-FROZEN — decided 2026-08-22, Eric: *"no more node CLI
   work. Only adding via golang."*
     - Every new CLI capability lands in `cli-go`. That includes the client side
       of a new JMAP type: the server half stays TypeScript because the workers

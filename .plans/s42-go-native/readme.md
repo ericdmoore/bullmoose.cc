@@ -1,8 +1,11 @@
 # s42 — Go native · *finish the port, and stop imitating Node while doing it*
 
-> **Status: DESIGN + a contract change, decided 2026-08-22 (Eric).** The port
-> continues under a NEW rule: equivalence, not imitation. Nothing built under
-> this section yet; s08's T6 work to date shipped under the old rule.
+> **Status: COMPLETE, 2026-08-22.** Every remaining command ported under this
+> section's rule (share → admin here; agent under [[s43-go-agent]]), the
+> registry flipped, and the Node CLI + `internal/delegate` were REMOVED in one
+> PR the same day — the soak waived by the only user. The contract suite
+> retired with the delegation it measured; its job lives on as cli-go's own
+> choreography tests.
 
 ## The decision
 

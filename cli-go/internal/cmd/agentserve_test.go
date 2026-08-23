@@ -280,27 +280,10 @@ func TestFitsRequirements(t *testing.T) {
 	}
 }
 
-func TestL0IsTheNodeSources(t *testing.T) {
-	// The injection pin is a WIRE FORMAT — the model sees it — so the port
-	// carries Node's bytes, pinned against the source the way internal/help
-	// pins its artifact. When Node is deleted, this test retires with it and
-	// the Go constant becomes the source of truth.
-	src, err := os.ReadFile(filepath.Join("..", "..", "..", "packages", "cli", "src", "agent.ts"))
-	if err != nil {
-		t.Fatalf("read agent.ts: %v", err)
-	}
-	_, after, found := strings.Cut(string(src), "const L0 = `")
-	if !found {
-		t.Fatal("agent.ts no longer declares L0 where this test looks — repoint it")
-	}
-	nodeL0, _, found := strings.Cut(after, "`")
-	if !found {
-		t.Fatal("unterminated L0 template literal?")
-	}
-	if agentL0 != nodeL0 {
-		t.Errorf("L0 drifted from the Node source:\n go: %q\nnode: %q", agentL0, nodeL0)
-	}
-}
+// TestL0IsTheNodeSources retired with the Node CLI: it pinned agentL0
+// byte-for-byte against packages/cli/src/agent.ts, and that file is gone.
+// The Go constant is the source of truth now — the pin's reasoning lives
+// on agentL0's own comment (a prompt the model sees is a wire format).
 
 func TestCallModel_Adapters(t *testing.T) {
 	ctx := context.Background()

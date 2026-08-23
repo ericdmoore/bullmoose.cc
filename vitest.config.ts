@@ -58,10 +58,9 @@ export default defineConfig({
     // files to node:sqlite and proves each drift check bites. Deploy DDL is the
     // one thing with no other test surface — it runs against a live D1 or not
     // at all — so it earns a place in the suite that gates `main`.
-    // `conformance/` is here for the same reason and one more: it is the only
-    // file that imports auth-core (workers-typed) and packages/cli/src/io.ts
-    // (Node-typed) together, so vitest — which needs no tsc program — is the
-    // ONLY place it can run. See conformance/README.md.
+    // `conformance/` is here for the same reason: the vectors are the
+    // cross-language contract the Go CLI's tests read back. See
+    // conformance/README.md.
     include: [
       "packages/**/*.test.ts",
       "services/**/*.test.ts",
@@ -99,7 +98,7 @@ export default defineConfig({
       include: ["packages/**/src/**/*.ts", "services/**/src/**/*.ts"],
       // packages/test-fakes is the test harness itself — reporting coverage of
       // it measures the suite's scaffolding, not the product.
-      exclude: ["**/*.test.ts", "**/dist/**", "packages/cli/**", "packages/test-fakes/**"],
+      exclude: ["**/*.test.ts", "**/dist/**", "packages/test-fakes/**"],
     },
   },
 });

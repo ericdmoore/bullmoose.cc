@@ -8,7 +8,6 @@
     "webmail"
   ],
   "scripts": {
-    "build:cli": "npm run -w @bullmoose/cli build",
     "coverage": "vitest run --coverage",
     "coverage:baseline": "node .github/scripts/coverage-ratchet.mjs --update",
     "coverage:ratchet": "node .github/scripts/coverage-ratchet.mjs",
@@ -24,7 +23,7 @@
     "prepare": "git config core.hooksPath .githooks || true",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit && npm run -w webmail typecheck && npm run -w @bullmoose/cli typecheck"
+    "typecheck": "tsc --noEmit && npm run -w webmail typecheck"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250620.0",

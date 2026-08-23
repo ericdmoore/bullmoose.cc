@@ -1,47 +1,31 @@
-// Command bullmoose is the Go front door for the bullmoose CLI.
+// Command bullmoose is the bullmoose CLI.
 //
-// s08 T2 (`.plans/s08-go-cli/devPlan.md:52`): it implements nothing and
-// delegates everything to the TypeScript CLI, which is the point. Because every
-// command delegates, `packages/cli/smoke/contract.mjs` passes 61/61 against this
-// binary from the first commit (`.plans/s08-go-cli/arch.md` §3), and it keeps
-// passing as commands migrate — the suite never goes red, it quietly changes
-// which implementation it is exercising.
+// It began as a strangler front door (s08 T2): a Go binary that implemented
+// nothing and delegated everything to the TypeScript CLI, flipping commands
+// native wave by wave while a 75-case contract suite held both binaries to
+// the same behaviour. The port completed with s43 (the agent daemon), the
+// delegation count reached zero, and the Node CLI and the delegate machinery
+// were removed together — this binary is no longer a front door to anything;
+// it is the CLI.
 //
-// Run the suite against this binary (cli-go is its own module — the repo root
-// is npm's, not Go's):
-//
-//	(cd cli-go && go build -o bin/bullmoose .)
-//	BULLMOOSE_CLI_BIN=$PWD/cli-go/bin/bullmoose npm run -w @bullmoose/cli smoke
-//
-// `BULLMOOSE_TRACE=1` reports `native` or `delegated` per invocation on stderr;
-// that split is the port's progress metric, and without it a green contract run
-// cannot tell a correct Go implementation from an absent one (arch.md §4).
+// What remains of the strangler era is the part that was always load-bearing:
+// internal/cmd's Route (command identification, help routing, and the flag
+// guard that refuses rather than silently ignores a flag a command does not
+// own), and the drift tests that keep each command's grammar, help page and
+// registry entry from diverging — they caught real bugs in every wave and
+// they outlive the port.
 package main
 
 import (
 	"os"
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/cmd"
-	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/delegate"
-	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
+	bmio "github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
 )
 
 func main() {
-	// §1.2, before any output: a native command's every write may hit a pipe a
-	// `| head` already closed, and the guard lets that exit 0 instead of dying
-	// on SIGPIPE (bmio.InstallSIGPIPE, io.ts:287 installEpipeGuard). No-op for
-	// delegated commands — Node installs its own guard in the child.
+	// §1.2, before any output: every write may hit a pipe a `| head` already
+	// closed, and the guard lets that exit 0 instead of dying on SIGPIPE.
 	bmio.InstallSIGPIPE()
-
-	// Wire the native commands into the delegate's routing map. Derived from
-	// cmd's registry so routing, the cli/008 capability table and the per-command
-	// owned-flag guard stay one source (cmd.Install). Go-native-only commands
-	// (approvals, s08) are also registered as native-only so Dispatch never
-	// delegates a command Node does not have.
-	cmd.Install(delegate.Register, delegate.RegisterNativeOnly, delegate.RegisterFlags)
-
-	// Dispatch does not always return: a child that died by a signal is
-	// reported by re-raising that signal here, so the parent's disposition is
-	// the child's (arch.md §4). os.Exit covers the ordinary path.
-	os.Exit(delegate.Dispatch(os.Args[1:]))
+	os.Exit(cmd.Route(os.Args[1:]))
 }

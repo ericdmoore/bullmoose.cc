@@ -380,7 +380,7 @@ func TestSelfParsingCommandsAreCovered(t *testing.T) {
 				}
 				t.Errorf("%s reads --%s but delegate's flag tables do not declare it: the "+
 					"front door cannot tell where the flag ends, so `bullmoose --%s X %s …` "+
-					"names X as the command.\n    fix: declare it in internal/delegate/argv.go "+
+					"names X as the command.\n    fix: declare it in route.go "+
 					"AND in main.ts's parseArgs spec (argv_test.go checks both directions)",
 					sp.fn, f, f, name)
 				continue
@@ -423,9 +423,9 @@ var scannerGapsByDesign = map[string]string{
 func scannerFlags(t *testing.T) grammar {
 	t.Helper()
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "../delegate/argv.go", nil, 0)
+	f, err := parser.ParseFile(fset, "route.go", nil, 0)
 	if err != nil {
-		t.Fatalf("parse delegate/argv.go: %v", err)
+		t.Fatalf("parse route.go: %v", err)
 	}
 	g := grammar{}
 	for _, name := range []struct {
@@ -434,7 +434,7 @@ func scannerFlags(t *testing.T) grammar {
 	}{{"valueFlags", true}, {"booleanFlags", false}} {
 		lit := mapLiteral(f, name.ident)
 		if lit == nil {
-			t.Fatalf("internal/delegate/argv.go no longer declares %s as a map literal — "+
+			t.Fatalf("route.go no longer declares %s as a map literal — "+
 				"this test would silently stop checking the front door", name.ident)
 		}
 		for _, elt := range lit.Elts {

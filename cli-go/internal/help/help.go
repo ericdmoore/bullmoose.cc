@@ -76,8 +76,11 @@ const formatLine = "bullmoose-help-artifact 1"
 // here because the drift test hashes it and every failure message points at it.
 const SpecPath = "packages/cli/src/help.ts"
 
-// Regenerate is the command that fixes every drift this package can report.
-const Regenerate = "npm run -w @bullmoose/cli gen:docs"
+// Regenerate names the fix for damage this package can report. The generator
+// (the Node CLI's gen:docs) is GONE — since the Node CLI's removal the
+// artifact is the help source itself, so the only fixes are restoring the
+// file from git or hand-editing a payload and re-recording its hash.
+const Regenerate = "the artifact is canonical since the Node CLI's removal — restore cli-go/internal/help/artifact.txt from git"
 
 // entry is one captured invocation: the bytes it wrote, and how it exited.
 // stdout and stderr are never both non-empty (the generator refuses to write an
