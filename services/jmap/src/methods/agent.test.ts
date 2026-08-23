@@ -346,3 +346,69 @@ describe("AgentInvocation projects and filters the watchdog's alert marker", () 
     expect(alerted.ids).toEqual(["inv_pin"]);
   });
 });
+
+describe("s45 slice 3 — the completion stamps the receipt COLUMNS", () => {
+  it("well-typed cost lands, COALESCE keeps an existing stamp, garbage degrades to absent", async () => {
+    const h = harness();
+    const made = await h.set({ create: { c: { bindingName: "emily", emailId: EMAIL } } });
+    const invId = made.created.c!.id as string;
+
+    await h.set({
+      update: {
+        [invId]: {
+          status: "done",
+          result: { note: "ok" },
+          cost: { provider: "openai-compatible", model: "qwen3:32b", costMicros: 0, tokensIn: 120, tokensOut: 40 },
+        },
+      },
+    });
+    const row = h.w.db.query<{
+      provider: string | null;
+      model: string | null;
+      cost_micros: number | null;
+      tokens_in: number | null;
+      tokens_out: number | null;
+    }>(`SELECT provider, model, cost_micros, tokens_in, tokens_out FROM agent_invocations WHERE id = '${invId}'`)[0]!;
+    // 0 = known free (the @local shape), never conflated with NULL.
+    expect(row).toEqual({
+      provider: "openai-compatible",
+      model: "qwen3:32b",
+      cost_micros: 0,
+      tokens_in: 120,
+      tokens_out: 40,
+    });
+
+    // A re-completion cannot blank or rewrite the frozen receipt.
+    await h.set({ update: { [invId]: { status: "done", cost: { provider: "liar", costMicros: 999 } } } });
+    const after = h.w.db.query<{ provider: string; cost_micros: number }>(
+      `SELECT provider, cost_micros FROM agent_invocations WHERE id = '${invId}'`,
+    )[0]!;
+    expect(after).toEqual({ provider: "openai-compatible", cost_micros: 0 });
+  });
+
+  it("a completion with no cost (the pre-s45 wire) stamps nothing — NULL stays 'not recorded'", async () => {
+    const h = harness();
+    const made = await h.set({ create: { c: { bindingName: "emily", emailId: EMAIL } } });
+    const invId = made.created.c!.id as string;
+    await h.set({ update: { [invId]: { status: "done", result: { note: "ok" } } } });
+    const row = h.w.db.query<{ provider: string | null; cost_micros: number | null }>(
+      `SELECT provider, cost_micros FROM agent_invocations WHERE id = '${invId}'`,
+    )[0]!;
+    expect(row).toEqual({ provider: null, cost_micros: null });
+  });
+
+  it("garbage cost fields degrade field-by-field, never a guess", async () => {
+    const h = harness();
+    const made = await h.set({ create: { c: { bindingName: "emily", emailId: EMAIL } } });
+    const invId = made.created.c!.id as string;
+    await h.set({
+      update: {
+        [invId]: { status: "done", cost: { provider: "ok", model: 7, costMicros: "cheap", tokensIn: -5 } },
+      },
+    });
+    const row = h.w.db.query<{ provider: string | null; model: string | null; cost_micros: number | null }>(
+      `SELECT provider, model, cost_micros FROM agent_invocations WHERE id = '${invId}'`,
+    )[0]!;
+    expect(row).toEqual({ provider: "ok", model: null, cost_micros: null });
+  });
+});

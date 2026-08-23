@@ -185,10 +185,15 @@ interface ConsoleInvocation {
   emailId: string | null;
   note: string | null;
   createdAt: number;
+  /** When a runtime won the claim — with doneAt, the honest run latency
+   *  (createdAt→doneAt would bill queue wait to the model). */
+  claimedAt: number | null;
   doneAt: number | null;
   /** s07 T5, frozen at capture. NULL ≠ 0: null = undetermined ("cost not
    *  recorded"), 0 = known and genuinely free. */
   costMicros: number | null;
+  /** The provider half of the receipt (s45 slice 3). */
+  provider: string | null;
   /** The model the run actually used — the cost's receipt, never a secret. */
   model: string | null;
 }
@@ -755,7 +760,8 @@ async function readGrants(env: Env, side: "grantee" | "target", accountId: strin
 
 async function readInvocations(env: Env, accountId: string): Promise<ConsoleInvocation[]> {
   const { results } = await env.DB.prepare(
-    `SELECT id, binding_id, binding_name, status, email_id, note, created_at, done_at, cost_micros, model
+    `SELECT id, binding_id, binding_name, status, email_id, note, created_at, claimed_at, done_at,
+            cost_micros, provider, model
        FROM agent_invocations WHERE account_id = ?
       ORDER BY created_at DESC LIMIT ?`,
   )
@@ -768,8 +774,10 @@ async function readInvocations(env: Env, accountId: string): Promise<ConsoleInvo
       email_id: string | null;
       note: string | null;
       created_at: number;
+      claimed_at: number | null;
       done_at: number | null;
       cost_micros: number | null;
+      provider: string | null;
       model: string | null;
     }>();
   // `context_json` and `result_json` are deliberately not selected: the first
@@ -782,8 +790,12 @@ async function readInvocations(env: Env, accountId: string): Promise<ConsoleInvo
     emailId: r.email_id,
     note: r.note,
     createdAt: r.created_at,
+    // s45 slice 3 — the latency pair: claimed_at -> done_at is the honest
+    // run time (created_at -> done_at would bill queue wait to the model).
+    claimedAt: r.claimed_at,
     doneAt: r.done_at,
     costMicros: r.cost_micros ?? null,
+    provider: r.provider ?? null,
     model: r.model ?? null,
   }));
 }

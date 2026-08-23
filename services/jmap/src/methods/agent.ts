@@ -436,12 +436,38 @@ export function registerAgentMethods(registry: MethodRegistry<RequestContext>): 
       if (status !== "running") {
         // Completion (done|failed) is a runtime finishing its own claim —
         // never eligibility-gated, and (as before) not state-guarded.
+        //
+        // s45 slice 3 — the COST STAMP joins the wire. A homelab completion
+        // used to carry its receipt only inside result_json, which left every
+        // @local run invisible to per-model aggregation ("not recorded"
+        // forever in the very table built to prove the free lane free). The
+        // columns are trust-but-audit like isFree: well-typed values land,
+        // garbage degrades to absent, and COALESCE keeps a stamp that
+        // already exists — a re-completion cannot blank a real figure.
+        const cost = patch.cost as Record<string, unknown> | undefined;
+        const num = (v: unknown): number | null =>
+          typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : null;
+        const str8 = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v.slice(0, 128) : null);
         const res = await ctx.env.DB.prepare(
           `UPDATE agent_invocations
-           SET status = ?, result_json = COALESCE(?, result_json), done_at = ?
+           SET status = ?, result_json = COALESCE(?, result_json), done_at = ?,
+               provider = COALESCE(provider, ?), model = COALESCE(model, ?),
+               cost_micros = COALESCE(cost_micros, ?),
+               tokens_in = COALESCE(tokens_in, ?), tokens_out = COALESCE(tokens_out, ?)
            WHERE account_id = ? AND id = ?`,
         )
-          .bind(status, resultJson, Date.now(), access.accountId, id)
+          .bind(
+            status,
+            resultJson,
+            Date.now(),
+            str8(cost?.provider),
+            str8(cost?.model),
+            num(cost?.costMicros),
+            num(cost?.tokensIn),
+            num(cost?.tokensOut),
+            access.accountId,
+            id,
+          )
           .run();
         if ((res.meta.changes ?? 0) > 0) updated[id] = null;
         else notUpdated[id] = setError("notFound", "no such invocation");
