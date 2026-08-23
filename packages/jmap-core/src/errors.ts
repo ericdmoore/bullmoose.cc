@@ -28,7 +28,11 @@ export type MethodErrorType =
   | "anchorNotFound"
   // SetError types surfaced through MethodError in /set-shaped methods:
   | "blobNotFound"
-  | "notFound";
+  | "notFound"
+  | "invalidProperties"
+  // RFC 9661 §2.2 -- a Sieve script the engine cannot run, refused whole
+  // with the parser's sentences (SieveScript/set):
+  | "invalidScript";
 
 /**
  * Thrown inside a method handler; the dispatcher converts it into an
