@@ -115,8 +115,11 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          npm install --no-save wrangler@4 >/dev/null 2>&1
-          put() { npx wrangler r2 object put "bullmoose-downloads/$1" --file "$2" --remote ${3:+--content-type "$3"}; }
+          # npx --yes fetches wrangler on demand: an `npm install` inside this
+          # workspaces root touches the project lockfile and failed exactly
+          # that way on the maiden run — MUTED, because both streams were
+          # aimed at /dev/null. Evidence stays visible from now on.
+          put() { npx --yes wrangler@4 r2 object put "bullmoose-downloads/$1" --file "$2" --remote ${3:+--content-type "$3"}; }
           for f in dist/bullmoose_* dist/checksums.txt; do
             put "cli/$VERSION/$(basename "$f")" "$f"
           done
