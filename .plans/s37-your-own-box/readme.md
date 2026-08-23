@@ -1,6 +1,14 @@
 # s37 — Your own box · *the machine you run it on, visible from the app*
 
-> **Status: DESIGN.** Nothing built. Written 2026-08-22 from
+> **Status: DESIGN — both blockers died within a day of writing.** Nothing
+> built yet, but as of 2026-08-23: the ⚠️ below ("both reporting surfaces live
+> in the CLI being retired") is RESOLVED — `local` and `agent serve` are
+> native Go (s42/s43) and the Node CLI is deleted, so T1b's reporter has one
+> home and it is the one that ships. T3's blocker is gone too:
+> `release-cli.yml` exists, binaries publish to dl.bullmoose.cc, and the
+> install command is a real curl. The closing paragraph's "112 of 113, seven
+> delegating" is history — the port completed and the metric retired with it.
+> Originally written 2026-08-22 from
 > [#275](https://github.com/ericdmoore/bullmoose.cc/issues/275) — *"Register CLI
 > into settings"* — after the constraint that would have blocked it was
 > retracted in #279.
