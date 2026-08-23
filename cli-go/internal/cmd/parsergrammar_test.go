@@ -143,6 +143,7 @@ var selfParsers = map[string]struct{ file, fn string }{
 	// last) so its grammar is held to the scanner tables from step 1 on —
 	// the oracle that refuses a typo'd or invented flag at birth.
 	"agent": {"agentinvoke.go", "parseAgent"},
+	"cloud": {"cloud.go", "parseCloud"},
 }
 
 // undocumentedByDesign is every flag the CLI accepts that the help spec does
