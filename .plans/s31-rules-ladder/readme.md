@@ -114,6 +114,40 @@ changes what VERIFY means:
 The blast-radius line belongs IN the proposal's rationale, not in a detail
 view — it is the difference between an informed Accept and a rubber stamp.
 
+### The verified-generation loop (2026-08-22) — rung 2's machinery, and shared
+
+Eric, pressing on the one-shot problem: *"there is no guarantee that bouncer
+makes valid SieveScript Rule on a one-shot. If we have a multiple turn there
+can be a verification step."* Right problem, and the answer is sharper than a
+model verification turn — the guarantee is STRUCTURAL, in three layers:
+
+1. **The model never emits Sieve.** It emits the dialect (`SieveRule` JSON),
+   schema-validated. `compileSieve` produces the RFC 5228 text
+   deterministically, with tests pinning the compiled text against
+   `sieveVerdict`'s actual behaviour. A model cannot produce an invalid
+   script — only an invalid JSON blob, which dies at the schema.
+2. **The engine is the verifier**, not a second model call. Exemplar check +
+   blast-radius backtest (above) are the engine running the real rule over
+   real mail. The engine cannot be wrong about what the engine does.
+3. **NEW — the retry-with-transcript loop.** When the schema rejects, or the
+   composed rule misses its own exemplar, the harness retries the model call
+   with the error appended — bounded (2 retries), each turn cost-stamped on
+   the SAME invocation, all before any proposal exists. This is multi-turn in
+   the harness-owned sense: the harness constructs every turn's input, the
+   model holds no authority between turns, and an injected email still has
+   nothing to call. Distinct from the human's Retry(nudge), which supersedes
+   a minted proposal; this loop runs silently inside composition. Exhausted
+   retries fail the invocation honestly — the button reports the failure, no
+   proposal is minted, nothing "best-effort" lands in the ruleset.
+
+The loop is SHARED machinery, built here with its first consumer. Extract's
+parser deliberately degrades to `[]` (a missed note costs little); a
+generator whose output must SATISFY a schema gets the loop instead — the
+distinction is whether failure costs an annotation or a wrong artifact.
+Second consumer extracts it into the harness proper; do not build it
+speculatively general. Related: `.plans/s44-tool-loop` places this as tier 2
+of three (step → verified generation → model-driven tools).
+
 ### The popover lifecycle — mint at compose, (X) closes (Eric, 2026-08-22)
 
 The button flow has an escape hatch the queue never had: the popover's (X).
