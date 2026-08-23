@@ -255,6 +255,19 @@ var registry = map[string]spec{
 		boolean:    []string{"json", "daemon", "status", "stop"},
 		run:        runWatch,
 	},
+	// `agent` (s43 step 7 — THE FLIP, deliberately alone): the last
+	// delegation ends here. Every verb landed and tested across steps 1–6;
+	// this entry only changes who ANSWERS. With it, BULLMOOSE_TRACE reports
+	// zero delegated across the full help-listed set — the s08 T7 retirement
+	// criterion starts its clock on this line.
+	"agent": {
+		json:       true,
+		selfParses: true,
+		value: []string{"db", "account", "email", "note", "set", "explore",
+			"since", "budget", "config", "fleet"},
+		boolean: []string{"json", "ids", "dry-run", "request-floor", "yes", "once"},
+		run:     runAgent,
+	},
 }
 
 // triageVerbs is every spelling of a triage verb main.ts:368-376 routes to

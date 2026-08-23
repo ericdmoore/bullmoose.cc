@@ -1,9 +1,14 @@
 # s43 — the agent port · *the last delegation, and it's a daemon*
 
-> **Status: DESIGN, written 2026-08-22.** `agent` is the ONLY command still
-> delegating to Node (verified: everything else help-listed traces `native`,
-> v0.1.0 is released and installed). s42 said this one "may deserve its own
-> section when reached" — it is reached, and it does. Nothing built yet.
+> **Status: FLIPPED, 2026-08-22 — the port is COMPLETE.** All seven steps
+> landed (#307 invoke, #308 dossier reads, #310 dossier writes, #311 serve
+> --once, #312 extract mirror, #314 fleet + persistent loop, then the
+> registry flip). Contract suite 75/75; trace: **131 native, 1 delegated** —
+> and the 1 is `log --no-such-flag`, the UNKNOWN-FLAG refusal the delegate
+> routes to Node BY DESIGN so parse-error bytes stay Node's. Every help-listed
+> COMMAND is native; that last invocation class is delegate-package policy and
+> dies with the delegate package in the removal PR (where refusals go native).
+> The s08 soak clock starts at the next release.
 
 ## Why a section and not another s42 row
 
