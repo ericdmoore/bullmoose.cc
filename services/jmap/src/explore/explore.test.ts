@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mintExploreCookie } from "./cookie";
-import { browserFamily, signInPage } from "./index";
+import { browserFamily, SIGN_IN_STYLE, signInPage, STYLE_CSP_HASH } from "./index";
 import { TYPES, TYPE_NAMES } from "./types";
 import { ALLEN, COOKIE_KEY, EMAIL_COUNT, ERIC, EXPLORE_HOST, ZED, harness, ids } from "./harness";
 
@@ -525,6 +525,39 @@ describe("the one scrap of HTML", () => {
     // The standards are one click away, and still no script/style/form.
     expect(chromePage).toContain("rfc8620");
     expect(chromePage).not.toMatch(/<script|<link|<form/i);
+  });
+
+  it("the stylesheet is allowed by HASH, and the hash is honest", async () => {
+    // Margins, dark-mode link contrast, and the deliberate monospace — all
+    // reported from a real phone (2026-08-23). The CSP names EXACTLY these
+    // bytes: not 'unsafe-inline' (which would bless any injected style), and
+    // this test re-derives the hash so the constant cannot drift from the
+    // style it vouches for.
+    const { createHash } = await import("node:crypto");
+    const derived = `sha256-${createHash("sha256").update(SIGN_IN_STYLE).digest("base64")}`;
+    expect(STYLE_CSP_HASH).toBe(derived);
+
+    const res = signInPage(null, null);
+    expect(res.headers.get("content-security-policy")).toContain(`style-src '${STYLE_CSP_HASH}'`);
+    expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
+    const html = await res.text();
+    expect(html).toContain(`<style>${SIGN_IN_STYLE}</style>`);
+    // The three fixes, present in the bytes: breathing room, a dark-mode
+    // link colour, and the scheme declaration that makes dark mode real.
+    expect(SIGN_IN_STYLE).toContain("padding:24px 20px");
+    expect(SIGN_IN_STYLE).toContain("prefers-color-scheme:dark");
+    expect(SIGN_IN_STYLE).toContain("color-scheme:light dark");
+    // Still no script, no external sheet, no form.
+    expect(html).not.toMatch(/<script|<link|<form/i);
+  });
+
+  it("Safari's row serves BOTH devices — Jayson on iPhone/iPad, JSON Peep on the Mac", async () => {
+    const SAFARI =
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1";
+    const html = await signInPage(null, SAFARI).text();
+    expect(html.indexOf("Safari-based")).toBeLessThan(html.indexOf("Chrome-based"));
+    expect(html).toContain("jayson.app");
+    expect(html).toContain("iPhone/iPad");
   });
 
   it("an expired cookie is the same as no cookie", async () => {
