@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { buildManifest, shippableMigrations } from "./stackBundle.mjs";
-import { DEPLOY_ORDER } from "./bootstrap.mjs";
+import { DEPLOY_ORDER, EXTERNAL, GENERATED } from "./bootstrap.mjs";
 import { MIGRATIONS } from "./migrations.mjs";
 
 // s46 T1. Two properties carry the safety story, so they get tests rather
@@ -37,8 +37,20 @@ describe("buildManifest", () => {
     ]),
   );
 
+  const build = (over: Record<string, unknown> = {}) =>
+    buildManifest({
+      version: "v1.2.3",
+      gitSha: "abc",
+      deployOrder: DEPLOY_ORDER,
+      files,
+      migrationCount: 3,
+      generated: GENERATED,
+      external: EXTERNAL,
+      ...over,
+    });
+
   it("carries the deploy order verbatim and links per the house JSON rule", () => {
-    const m = buildManifest({ version: "v1.2.3", gitSha: "abc", deployOrder: DEPLOY_ORDER, files, migrationCount: 3 });
+    const m = build();
     expect(m.deployOrder).toEqual(DEPLOY_ORDER);
     expect(m.workers.map((w: { name: string }) => w.name)).toEqual(DEPLOY_ORDER);
     expect(m._links.self.href).toBe("https://dl.bullmoose.cc/stack/v1.2.3/manifest.json");
@@ -48,9 +60,26 @@ describe("buildManifest", () => {
   it("refuses to name a file the bundle does not contain", () => {
     const missingOne = { ...files };
     delete missingOne["workers/jmap/index.js"];
-    expect(() =>
-      buildManifest({ version: "v1", gitSha: "abc", deployOrder: DEPLOY_ORDER, files: missingOne, migrationCount: 0 }),
-    ).toThrow(/workers\/jmap\/index\.js/);
+    expect(() => build({ files: missingOne })).toThrow(/workers\/jmap\/index\.js/);
+  });
+
+  it("ships both halves of the secrets story, names and shapes only", () => {
+    const m = build();
+    // Verbatim from bootstrap.mjs — the installer mints `generated` locally
+    // and asks the operator for `external`; the notes are the ask.
+    expect(m.secrets.generated).toEqual(GENERATED);
+    expect(m.secrets.external).toEqual(EXTERNAL);
+    for (const spec of Object.values(m.secrets.generated) as Array<{ bytes: number; workers: string[] }>) {
+      expect(spec.bytes).toBeGreaterThanOrEqual(24); // shapes, never values
+    }
+  });
+
+  it("VAULT_MASTER_KEY has one home, in the manifest too", () => {
+    // s04 T3a's platform guarantee, re-pinned at the layer every installer
+    // reads: add a second worker here and every install on earth binds the
+    // vault key into it. bootstrap.mjs documents the rule; the shipped
+    // manifest must not be able to drift from it.
+    expect(build().secrets.generated.VAULT_MASTER_KEY.workers).toEqual(["bureau"]);
   });
 });
 

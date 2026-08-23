@@ -40,7 +40,7 @@ import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFi
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { execFileSync } from "node:child_process";
-import { DEPLOY_ORDER } from "./bootstrap.mjs";
+import { DEPLOY_ORDER, EXTERNAL, GENERATED } from "./bootstrap.mjs";
 import { MIGRATIONS } from "./migrations.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -63,8 +63,15 @@ export function shippableMigrations(migrations) {
  * relative path in the bundle to its sha256; `deployOrder` rides verbatim
  * from bootstrap.mjs so there is no third copy of the binding graph to
  * drift (deployOrder.test.ts already pins the second).
+ *
+ * `secrets` is the other bootstrap knowledge the installer needs and the
+ * wrangler configs do not carry: which secrets to MINT locally (s46's
+ * custody rule — everything generated lands only in the user's account and
+ * config, the project sees nothing) and which the operator must SUPPLY,
+ * with the note that tells them what to go get. Names and shapes only —
+ * the same names the public bundles already reference as env.*.
  */
-export function buildManifest({ version, gitSha, deployOrder, files, migrationCount }) {
+export function buildManifest({ version, gitSha, deployOrder, files, migrationCount, generated, external }) {
   const workers = deployOrder.map((name) => ({
     name,
     bundle: `workers/${name}/index.js`,
@@ -83,6 +90,7 @@ export function buildManifest({ version, gitSha, deployOrder, files, migrationCo
     workers,
     schema: ["schema/control-plane.sql", "schema/data-plane.sql"],
     migrations: { file: "migrations.json", count: migrationCount },
+    secrets: { generated, external },
     webmail: "webmail.tar.gz",
     notIncluded: {
       "demo-keys": "absent from DEPLOY_ORDER; needs its own resource/secret story (.feedback/fromClaude/infra/013)",
@@ -165,6 +173,8 @@ function main() {
     deployOrder: DEPLOY_ORDER,
     files,
     migrationCount: MIGRATIONS.length,
+    generated: GENERATED,
+    external: EXTERNAL,
   });
   writeFileSync(join(outdir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 
