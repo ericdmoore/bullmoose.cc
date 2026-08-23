@@ -39,6 +39,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -432,6 +433,16 @@ func runAgentServe(s *bmio.Streams, a agentArgs) int {
 		return 1
 	}
 
+	// s45 — "@local" finally means what the docs always said it meant: the
+	// host `bullmoose local` saved. Resolved ONCE at startup, and a config
+	// that names @local with no saved host refuses BEFORE any claim is
+	// burned — a daemon that would fail every model call should not be
+	// eating jobs.
+	if err := resolveLocalModels(fleet, db); err != nil {
+		s.Note(err.Error())
+		return 1
+	}
+
 	// --fleet: ONE login as a runtime principal, served accounts DISCOVERED
 	// from grants. --config: the original one-binding shape, the login's own
 	// accounts — unchanged.
@@ -775,4 +786,47 @@ func runReplyPipeline(ctx context.Context, client *jmap.Client, acc account.Acco
 		return "", errors.New("draft create failed: " + string(detail))
 	}
 	return draft.ID, nil
+}
+
+// resolveLocalModels rewrites every model whose baseURL is the literal
+// "@local" to the host `bullmoose local` saved in the device mirror — the
+// sentence help.txt and docs/cli.md carried for a release before it was
+// true ("the saved host is what agent configs mean by @local"). The saved
+// key-env name rides along when the model names none, so a keyed LiteLLM
+// works without repeating the env var in every config. NOTE the cost rule:
+// isFreeRoute treats openai-compatible+keyless as the free @local shape —
+// a resolved host with a key env is priced NULL like any other keyed route.
+func resolveLocalModels(fleet *serveFleetConfig, db *sql.DB) error {
+	host := ""
+	keyEnv := ""
+	resolve := func(m *serveModelConfig) error {
+		if m == nil || m.BaseURL != "@local" {
+			return nil
+		}
+		if host == "" {
+			host = store.GetConfig(db, LocalHostKey)
+			keyEnv = store.GetConfig(db, LocalHostKeyEnv)
+		}
+		if host == "" {
+			return errors.New("this config says @local, but no local host is saved -- run `bullmoose local` first")
+		}
+		m.BaseURL = host
+		if m.APIKeyEnv == "" && keyEnv != "" {
+			m.APIKeyEnv = keyEnv
+		}
+		return nil
+	}
+	for name := range fleet.Bindings {
+		b := fleet.Bindings[name]
+		if err := resolve(&b.Model); err != nil {
+			return err
+		}
+		for i := range b.ModelMenu {
+			if err := resolve(&b.ModelMenu[i]); err != nil {
+				return err
+			}
+		}
+		fleet.Bindings[name] = b
+	}
+	return nil
 }
