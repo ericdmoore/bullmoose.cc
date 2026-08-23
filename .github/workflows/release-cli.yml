@@ -105,6 +105,26 @@ jobs:
             --generate-notes \
             dist/bullmoose_* dist/checksums.txt
 
+      # Mirror to R2 as well: dl.bullmoose.cc is the curl2shell front door for
+      # every bullmoose binary (popcorn established the layout), and the s37
+      # install story reads from it rather than from GitHub URL shapes.
+      - name: Mirror to dl.bullmoose.cc (tags only)
+        if: startsWith(github.ref, 'refs/tags/cli-go/')
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npm install --no-save wrangler@4 >/dev/null 2>&1
+          put() { npx wrangler r2 object put "bullmoose-downloads/$1" --file "$2" --remote ${3:+--content-type "$3"}; }
+          for f in dist/bullmoose_* dist/checksums.txt; do
+            put "cli/$VERSION/$(basename "$f")" "$f"
+          done
+          # latest.txt LAST — the pointer flips only once its targets exist.
+          printf '%s' "$VERSION" > latest.txt
+          put "cli/latest.txt" latest.txt "text/plain"
+          echo "mirrored: https://dl.bullmoose.cc/cli/$VERSION/"
+
       # Dry runs keep their artifacts too — that is what makes them a rehearsal
       # rather than a log to squint at.
       - name: Upload artifacts (dry runs)

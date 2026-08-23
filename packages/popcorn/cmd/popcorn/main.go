@@ -21,6 +21,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -30,7 +31,32 @@ import (
 	"bullmoose.cc/popcorn/internal/smtp"
 )
 
+// releaseVersion is stamped by release-popcorn.yml via `-ldflags -X`; its
+// zero value keeps a source build distinguishable from a release. The same
+// contract as the CLI's: the workflow's smoke step asserts the stamp landed,
+// because -X fails SILENTLY when a symbol moves.
+var releaseVersion = "dev"
+
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version", "-version", "--version":
+			// The CLI's field contract: fixed count, `awk '{print $2}'` is
+			// always the version — the update check greps this line.
+			commit := "unknown"
+			if info, ok := debug.ReadBuildInfo(); ok {
+				for _, s := range info.Settings {
+					if s.Key == "vcs.revision" && len(s.Value) >= 12 {
+						commit = s.Value[:12]
+					}
+				}
+			}
+			log.SetFlags(0)
+			os.Stdout.WriteString("popcorn " + releaseVersion + " " + runtime.GOOS + "/" + runtime.GOARCH +
+				" " + runtime.Version() + " " + commit + "\n")
+			return
+		}
+	}
 	cfg := pop3.Config{
 		JMAPBase:    os.Getenv("POPCORN_JMAP_BASE"),
 		DeleMode:    envOr("POPCORN_DELE_MODE", "archive"),
