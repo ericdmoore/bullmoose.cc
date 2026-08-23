@@ -432,32 +432,37 @@ func runAgentServe(s *bmio.Streams, a agentArgs) int {
 		return 1
 	}
 
-	if a.Fleet != "" || !a.Once {
-		// Grant discovery, the push channels and the periodic tick are s43
-		// steps 5–6. Unreachable in production until the registry flip —
-		// a guard, not a door.
-		s.Note("[agent:" + label + "] fleet discovery and the persistent listen loop land with s43 steps 5-6; " +
-			"the Node CLI serves them until the registry flip")
-		return 1
-	}
-
+	// --fleet: ONE login as a runtime principal, served accounts DISCOVERED
+	// from grants. --config: the original one-binding shape, the login's own
+	// accounts — unchanged.
+	discover := a.Fleet != ""
 	client := jmap.NewSessionClient(settings.Base, settings.Token)
-	return agentServeOnce(context.Background(), s, client, settings, fleet, label)
+	if a.Once {
+		return agentServeOnce(context.Background(), s, client, settings, fleet, label, discover)
+	}
+	return runAgentServePersistent(s, client, settings, fleet, label, discover)
 }
 
 func agentServeOnce(ctx context.Context, s *bmio.Streams, client *jmap.Client,
-	settings *store.Settings, fleet *serveFleetConfig, label string) int {
+	settings *store.Settings, fleet *serveFleetConfig, label string, discover bool) int {
 	status := func(m string) { s.Note("[agent:" + label + "] " + m) }
 
-	// Single-config mode: the login's own accounts, as before. (Fleet mode
-	// DISCOVERS the served set from grants — step 6.)
+	accounts := settings.Accounts
+	source := "own account"
+	if discover {
+		found, err := discoverAgentAccounts(ctx, client)
+		if err != nil {
+			return die(s, err)
+		}
+		accounts, source = found, "granted"
+	}
 	served := map[string]account.Account{}
 	order := []string{}
-	for _, acc := range settings.Accounts {
+	for _, acc := range accounts {
 		if _, dup := served[acc.AccountID]; !dup {
 			served[acc.AccountID] = acc
 			order = append(order, acc.AccountID)
-			status(account.Label(acc) + ": serving (own account)")
+			status(account.Label(acc) + ": serving (" + source + ")")
 		}
 	}
 
