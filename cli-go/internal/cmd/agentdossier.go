@@ -713,8 +713,19 @@ func renderDossierShow(s *bmio.Streams, view map[string]any) {
 			ci := int64(c)
 			created = &ci
 		}
+		// s45 slice 3 -- the measured pair beside the receipt: which provider
+		// answered, and how long the RUN took (claimed->done; created->done
+		// would bill queue wait to the model). Absent halves render as an
+		// em dash, never a fabricated zero.
+		latency := "—"
+		if cl, ok := o.Num("claimedAt"); ok {
+			if dn, ok2 := o.Num("doneAt"); ok2 && dn >= cl {
+				latency = fmt.Sprintf("%.1fs", (dn-cl)/1000)
+			}
+		}
 		s.Out("  " + o.JSString("invocationId") + "  " + padEnd(o.JSString("status"), 7) + "  " +
-			padStart(cost, 12) + "  " + padEnd(o.JSStringOr("model", "—"), 28) + "  " + stamp(created))
+			padStart(cost, 12) + "  " + padStart(latency, 7) + "  " +
+			padEnd(o.JSStringOr("provider", "—")+"/"+o.JSStringOr("model", "—"), 36) + "  " + stamp(created))
 	}
 }
 

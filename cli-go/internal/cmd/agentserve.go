@@ -663,9 +663,17 @@ func handleInvocation(ctx context.Context, client *jmap.Client, acc account.Acco
 			status(invID + " FAILED: " + err.Error())
 			return false, nil
 		}
+		// s45 slice 3 -- the receipt reaches the COLUMNS, not just result_json:
+		// without this, every @local run reads "not recorded" in the very
+		// table built to prove the free lane free. The server stamps
+		// trust-but-audit, COALESCE-guarded.
+		patch := map[string]any{"status": outcome.Status, "result": outcome.Result}
+		if cost, ok := outcome.Result["cost"]; ok {
+			patch["cost"] = cost
+		}
 		if _, err := client.One(ctx, "AgentInvocation/set", map[string]any{
 			"accountId": acc.AccountID,
-			"update":    map[string]any{invID: map[string]any{"status": outcome.Status, "result": outcome.Result}},
+			"update":    map[string]any{invID: patch},
 		}, jmap.MailUsing); err != nil {
 			return false, err
 		}
