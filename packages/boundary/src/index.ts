@@ -4,6 +4,7 @@
 export type { BoundaryMessage } from "./message.js";
 export { globMatch, sieveVerdict, type SieveField, type SieveMatch, type SieveRule } from "./sieve.js";
 export { compileSieve, sieveString, HELD_FOLDER, SIEVE_EXTENSIONS } from "./sieveCompile.js";
+export { parseSieve, type ParsedSieveRule, type SieveParseResult } from "./sieveParse.js";
 export {
   BAYES_HEADERS,
   DEFAULT_THRESHOLDS,

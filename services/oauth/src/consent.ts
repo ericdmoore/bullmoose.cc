@@ -97,6 +97,7 @@ export const SCOPE_PROSE: Record<string, string> = {
   contacts: "Read and change your contacts",
   calendar: "Read and change your calendar, including creating and deleting events",
   files: "Read and change your files, including uploading and deleting them",
+  rules: "Read and rewrite your mail-filtering rules — the standing filters that decide where future mail goes",
 };
 
 function escape(s: string): string {

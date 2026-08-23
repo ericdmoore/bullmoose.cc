@@ -64,7 +64,21 @@ export const MAIL_SCOPES = ["read", "annotate", "draft", "move", "send", "delete
  * realm. */
 export const REALM_SCOPES = ["contacts", "calendar", "vault", "files"] as const;
 
-export type Scope = (typeof MAIL_SCOPES)[number] | (typeof REALM_SCOPES)[number] | "mail" | "admin";
+/** The rulebook scope (s31 rung 1, DECIDED 2026-08-23): who may hand-write
+ * mail-filtering rules through `SieveScript/set`. A STANDALONE concrete
+ * scope, deliberately NOT in MAIL_SCOPES — a standing filter's false
+ * positive is mail you never see, and folding it into the `mail` bundle
+ * would silently hand every existing mail token the power to rewrite the
+ * rulebook. Not a realm either: it gates one method over one store, and the
+ * realm read-implication machinery has nothing to imply here. */
+export const RULES_SCOPE = "rules";
+
+export type Scope =
+  | (typeof MAIL_SCOPES)[number]
+  | (typeof REALM_SCOPES)[number]
+  | typeof RULES_SCOPE
+  | "mail"
+  | "admin";
 
 const MAIL_COVERS: ReadonlySet<string> = new Set<string>(MAIL_SCOPES);
 
@@ -141,7 +155,7 @@ export const AGENT_MARKER_SCOPE = "agent";
 /** Everything the operator plane (provision, behind ADMIN_TOKEN) may mint.
  * NB: the CLI's drift guard parses these array literals out of this source
  * (packages/cli/src/scopes.test.ts) — string literals only, comments outside. */
-export const TOKEN_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "mail", "admin", "agent"];
+export const TOKEN_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, RULES_SCOPE, "mail", "admin", "agent"];
 
 /**
  * What a self-service caller may mint — `/auth/login` (password-authenticated)
@@ -155,13 +169,13 @@ export const TOKEN_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES,
 // The agent marker is self-service-requestable because holding it only ever
 // NARROWS a token; what self-service must never allow is SHEDDING it — the
 // mint route forces it onto anything a marked token mints.
-export const SELF_SERVICE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "mail", "agent"];
+export const SELF_SERVICE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, RULES_SCOPE, "mail", "agent"];
 
 /**
  * Every scope that is a concrete permission rather than a bundle. `mail` is
  * excluded on purpose: it is the bundle, and expanding it is the point.
  */
-const CONCRETE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "admin"];
+const CONCRETE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, RULES_SCOPE, "admin"];
 
 /**
  * What a scope list ACTUALLY allows, derived by asking `hasScope` — the same
@@ -234,6 +248,7 @@ export const OAUTH_SCOPES: readonly string[] = [
   "contacts",
   "calendar",
   "files",
+  "rules",
   "mail",
 ];
 

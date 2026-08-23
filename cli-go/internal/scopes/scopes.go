@@ -34,7 +34,7 @@ var Realm = []string{"contacts", "calendar", "vault", "files"}
 // SelfService is what `bullmoose login` and `bullmoose token create` may ask for
 // — no `admin` (scopes.ts:26). `agent` is the agent-runtime MARKER: it grants
 // nothing and only narrows.
-var SelfService = concat(Mail, Realm, []string{"mail", "agent"})
+var SelfService = concat(Mail, Realm, []string{"rules", "mail", "agent"})
 
 // Token is TOKEN_SCOPES — SelfService plus `admin`, the operator vocabulary.
 // An earlier note here said this was "deliberately NOT mirrored" because
@@ -53,6 +53,7 @@ var Suggestions = []struct{ Scopes, Use string }{
 	{"read,draft,send", "a desktop or phone mail client"},
 	{"mail", "all six mail verbs; no contacts/calendar/vault"},
 	{"mail,contacts,calendar", "a full device (JMAP + CardDAV + CalDAV)"},
+	{"mail,rules", "a mail client that also edits filtering rules (Boogie)"},
 }
 
 // ParseFlag parses a `--scopes a,b,c` flag — scopes.ts:61 parseScopeFlag.

@@ -36,7 +36,7 @@ export const REALM_SCOPES = ["contacts", "calendar", "vault", "files"] as const;
  * excluded on purpose: it IS the bundle, and expanding it is the whole point.
  * MIRROR of `introspectTools.ts` CONCRETE_SCOPES.
  */
-export const CONCRETE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "admin"];
+export const CONCRETE_SCOPES: readonly string[] = [...MAIL_SCOPES, ...REALM_SCOPES, "rules", "admin"];
 
 const MAIL_COVERS = new Set<string>(MAIL_SCOPES);
 const WRITE_VERBS = new Set<string>(MAIL_SCOPES.filter((s) => s !== "read"));
@@ -92,6 +92,7 @@ export const PERMISSION_MEANING: Record<string, string> = {
   calendar: "read and write the calendar realm",
   vault: "act with third-party credentials stored in the vault",
   files: "read and write the files realm",
+  rules: "rewrite the mail-filtering rulebook — standing filters that decide where future mail goes",
   admin: "control-plane access — this should never appear on a grant",
 };
 

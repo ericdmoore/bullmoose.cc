@@ -1,5 +1,6 @@
-import type { MethodRegistry } from "@bullmoose/jmap-core";
-import { compileSieve, SIEVE_EXTENSIONS, type SieveRule } from "@bullmoose/boundary";
+import { MethodError, type MethodRegistry } from "@bullmoose/jmap-core";
+import { isAgentPrincipal } from "@bullmoose/auth-core/principal";
+import { compileSieve, parseSieve, SIEVE_EXTENSIONS, type SieveRule } from "@bullmoose/boundary";
 import { validateSieveRules } from "@bullmoose/mailstore";
 import { requireAccount, storeFor, type RequestContext } from "./common";
 
@@ -13,12 +14,11 @@ import { requireAccount, storeFor, type RequestContext } from "./common";
  * blob RFC 9661 expects, so any standards client's Rules screen becomes a
  * truthful rendering of the shared rulebook.
  *
- * READ-ONLY ON PURPOSE, for now. /set is rung 1 of the ladder and waits on
- * two decisions the plan assigns to Eric (the write scope, and coexistence
- * of the bouncer's operational rules). Until then /set is simply not
- * registered -- an unknown method, not a moralizing refusal: the plan
- * explicitly rejects "rules are staff-managed, ask the bouncer" as the
- * anti-star principle curdling into a star of its own.
+ * /set is RUNG 1 (below): hand-written rules, gated on the dedicated
+ * `rules` scope (DECIDED 2026-08-23), parsed back into the dialect by the
+ * compiler's inverse, and applied as a whole-script replace DIFFED BY
+ * PROVENANCE -- a hand save cannot silently drop a rule an approval
+ * created without the response saying so.
  *
  * ## The blob, and why /get re-compiles
  *
@@ -87,6 +87,163 @@ export function registerSieveMethods(registry: MethodRegistry<RequestContext>): 
       state: String(row.updated_at),
       list: wanted,
       notFound,
+    };
+  });
+
+  registry.register("SieveScript/set", async (args, ctx) => {
+    // The agent wall FIRST, before account resolution: an agent editing the
+    // rulebook without a proposal is exactly what the marker exists to
+    // prevent -- its road is rung 2 ([mark junk] -> proposal -> approval),
+    // and a marked token cannot even learn which accounts are reachable here.
+    if (ctx.agent || isAgentPrincipal(ctx.principal)) {
+      throw new MethodError(
+        "forbidden",
+        "agents do not hand-edit the rulebook -- an agent's rule change is a proposal a human approves (the rules ladder, rung 2)",
+      );
+    }
+    // The dedicated scope (DECIDED 2026-08-23). Structurally NOT covered by
+    // the `mail` bundle: a standing filter's false positive is mail you
+    // never see, and the power to rewrite the rulebook is granted by name.
+    const access = await requireAccount(ctx, args, "rules");
+    const store = storeFor(ctx);
+
+    const row = await ctx.env.DB.prepare(`SELECT rules_json, updated_at FROM sieve_rules WHERE account_id = ?`)
+      .bind(access.accountId)
+      .first<{ rules_json: string; updated_at: number }>();
+    const oldState = row ? String(row.updated_at) : "0";
+    if (typeof args.ifInState === "string" && args.ifInState !== oldState) {
+      throw new MethodError("stateMismatch", "the rulebook moved since you read it -- re-read and re-apply");
+    }
+    let prev: SieveRule[] = [];
+    if (row) {
+      try {
+        prev = validateSieveRules(JSON.parse(row.rules_json));
+      } catch {
+        throw new MethodError("serverFail", "the existing rulebook is unreadable -- refusing to overwrite it blind");
+      }
+    }
+
+    const created: Record<string, unknown> = {};
+    const notCreated: Record<string, unknown> = {};
+    const notUpdated: Record<string, unknown> = {};
+    const notDestroyed: Record<string, unknown> = {};
+    let updatedOut: Record<string, unknown> | null | undefined;
+    let destroyedOut: string[] = [];
+
+    /** The ONE write path: parse the incoming script, mint hand ids, diff by
+     *  provenance, and replace. Returns the server-set change report. */
+    const applyScript = async (text: string): Promise<Record<string, unknown> | null> => {
+      const parsed = parseSieve(text);
+      if (!parsed.ok) {
+        // RFC 9661's own error type, carrying every refusal sentence -- the
+        // client shows the human exactly which clause the engine cannot run.
+        throw new MethodError("invalidScript", parsed.refusals.join("; "));
+      }
+      const next: SieveRule[] = parsed.rules.map((r, i) => ({
+        // A recovered `# rule <id>` comment keeps its identity (negotiated
+        // rules stay traceable to their approval); a hand-new rule gets a
+        // hand id -- authored-by-hand IS its provenance.
+        id: r.id ?? `hand_${crypto.randomUUID().slice(0, 8)}_${i}`,
+        all: r.all,
+        action: r.action,
+      }));
+      let valid: SieveRule[];
+      try {
+        valid = validateSieveRules(next);
+      } catch (err) {
+        throw new MethodError("invalidScript", err instanceof Error ? err.message : String(err));
+      }
+
+      // The provenance diff. A hand save is a WHOLE-SCRIPT replace (one
+      // script, maxNumberScripts 1), so a negotiated rule -- id minted by an
+      // approval, `inv_` -- that the incoming script drops or alters is a
+      // change the response names OUT LOUD. Not refused: rung 1 is the
+      // power tool, and the human is the authority -- but never silent.
+      const nextById = new Map(valid.map((r) => [r.id, r]));
+      const removedNegotiated = prev.filter((r) => r.id.startsWith("inv_") && !nextById.has(r.id)).map((r) => r.id);
+      const changedNegotiated = prev
+        .filter((r) => {
+          const now = nextById.get(r.id);
+          return r.id.startsWith("inv_") && now !== undefined && JSON.stringify(now) !== JSON.stringify(r);
+        })
+        .map((r) => r.id);
+
+      const now = Date.now();
+      await ctx.env.DB.prepare(
+        `INSERT INTO sieve_rules (account_id, rules_json, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(account_id) DO UPDATE SET rules_json = excluded.rules_json, updated_at = excluded.updated_at`,
+      )
+        .bind(access.accountId, JSON.stringify(valid), now)
+        .run();
+
+      return removedNegotiated.length > 0 || changedNegotiated.length > 0
+        ? {
+            ...(removedNegotiated.length > 0 ? { removedNegotiated } : {}),
+            ...(changedNegotiated.length > 0 ? { changedNegotiated } : {}),
+          }
+        : null;
+    };
+
+    const scriptText = async (spec: Record<string, unknown>): Promise<string> => {
+      const blobId = typeof spec.blobId === "string" ? spec.blobId : "";
+      if (!blobId) throw new MethodError("invalidProperties", "a script write carries blobId (RFC 9661)");
+      const blob = await store.getBlob(access.tenantId, access.accountId, blobId);
+      if (!blob) throw new MethodError("blobNotFound", `no blob ${blobId} on this account`);
+      return await blob.text();
+    };
+
+    // ---- update: the ordinary Boogie save -------------------------------
+    const updateSpec = (args.update as Record<string, Record<string, unknown>> | undefined) ?? {};
+    for (const [id, patch] of Object.entries(updateSpec)) {
+      if (id !== "boundary") {
+        notUpdated[id] = { type: "notFound", description: "the one script is named boundary" };
+        continue;
+      }
+      updatedOut = await applyScript(await scriptText(patch));
+    }
+
+    // ---- create: only meaningful when no rulebook exists yet ------------
+    const createSpec = (args.create as Record<string, Record<string, unknown>> | undefined) ?? {};
+    for (const [cid, spec] of Object.entries(createSpec)) {
+      if (row || updatedOut !== undefined) {
+        notCreated[cid] = {
+          type: "overQuota",
+          description: "maxNumberScripts is 1 and the boundary script exists -- update it instead",
+        };
+        continue;
+      }
+      await applyScript(await scriptText(spec));
+      created[cid] = { id: "boundary", isActive: true };
+    }
+
+    // ---- destroy: the empty rulebook, through the same diff -------------
+    for (const id of (args.destroy as string[] | undefined) ?? []) {
+      if (id !== "boundary") {
+        notDestroyed[id] = { type: "notFound" };
+        continue;
+      }
+      const report = await applyScript(`require ${JSON.stringify(SIEVE_EXTENSIONS[0])};\n`);
+      destroyedOut = ["boundary"];
+      if (report) updatedOut = report; // dropped negotiated rules still named
+    }
+
+    // onSuccessActivateScript: with one always-active script this is a no-op,
+    // accepted so a conforming client's ordinary save does not error.
+
+    const after = await ctx.env.DB.prepare(`SELECT updated_at FROM sieve_rules WHERE account_id = ?`)
+      .bind(access.accountId)
+      .first<{ updated_at: number }>();
+
+    return {
+      accountId: access.accountId,
+      oldState,
+      newState: after ? String(after.updated_at) : oldState,
+      created,
+      notCreated,
+      updated: updatedOut !== undefined ? { boundary: updatedOut } : {},
+      notUpdated,
+      destroyed: destroyedOut,
+      notDestroyed,
     };
   });
 }
