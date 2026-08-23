@@ -1,17 +1,25 @@
 # s37 — Your own box · *the machine you run it on, visible from the app*
 
-> **Status: DESIGN — both blockers died within a day of writing.** Nothing
-> built yet, but as of 2026-08-23: the ⚠️ below ("both reporting surfaces live
-> in the CLI being retired") is RESOLVED — `local` and `agent serve` are
-> native Go (s42/s43) and the Node CLI is deleted, so T1b's reporter has one
-> home and it is the one that ships. T3's blocker is gone too:
-> `release-cli.yml` exists, binaries publish to dl.bullmoose.cc, and the
-> install command is a real curl. The closing paragraph's "112 of 113, seven
-> delegating" is history — the port completed and the metric retired with it.
+> **Status: DONE — shipped 2026-08-23, four PRs.**
+> T1a [#325](https://github.com/ericdmoore/bullmoose.cc/pull/325):
+> `Principal.tokenId`, `device_reports` (control-plane), `DeviceReport/set`
+> singleton-`self` + owner-only `/get`. T2 surfaces
+> [#326](https://github.com/ericdmoore/bullmoose.cc/pull/326): Explorer type,
+> MCP `devices` tool (accountless, thin `callJmap` client), model entries grew
+> `{id, kind}` for embedding/OCR. T1b
+> [#327](https://github.com/ericdmoore/bullmoose.cc/pull/327): reporters on
+> `local setup`/`connect`/saved-host and daemon start (`--once` deliberately
+> files nothing); fixed a live `runLocal` dispatch bug the tests had never
+> driven. T2 settings [#329](https://github.com/ericdmoore/bullmoose.cc/pull/329):
+> the reconcile view — enabled bindings' `@local/…` candidates joined against
+> reports, zero reports = zero claims, "last seen"/"as of" phrasing throughout.
+> T3 needed no PR: the install command is `docs/install-cli.md` +
+> dl.bullmoose.cc, both already live.
 > Originally written 2026-08-22 from
 > [#275](https://github.com/ericdmoore/bullmoose.cc/issues/275) — *"Register CLI
 > into settings"* — after the constraint that would have blocked it was
-> retracted in #279.
+> retracted in #279. The design below is preserved as written; the shipped
+> shape matches it.
 
 ## The question
 
