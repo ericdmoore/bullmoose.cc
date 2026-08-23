@@ -164,9 +164,29 @@ const VIEWER_ROWS: Record<BrowserFamily, string> = {
     `<a href="https://chromewebstore.google.com/detail/json-formatter/bcjindcccaagfpapjjmafapmmgkkhgoa" rel="noreferrer">JSON Formatter</a> — open source, renders <code>_links</code> as clickable.</li>`,
   firefox: `<li><strong>Firefox-based</strong>: nothing to install — Firefox ships a native JSON viewer, links clickable out of the box.</li>`,
   safari:
-    `<li><strong>Safari-based</strong>: ` +
-    `<a href="https://apps.apple.com/app/json-peep-for-safari/id1458969831" rel="noreferrer">JSON Peep</a> from the App Store.</li>`,
+    `<li><strong>Safari-based</strong>: on iPhone/iPad, ` +
+    `<a href="https://jayson.app" rel="noreferrer">Jayson</a> (App Store; includes a Safari extension); ` +
+    `on the Mac, <a href="https://apps.apple.com/app/json-peep-for-safari/id1458969831" rel="noreferrer">JSON Peep</a>.</li>`,
 };
+
+/**
+ * The one inline stylesheet, allowed through the CSP by HASH — not
+ * 'unsafe-inline', which would bless any injected style; exactly these bytes
+ * and no others (`STYLE_CSP_HASH` is pinned to them by a test). What it
+ * fixes, each reported from a real phone (Eric, 2026-08-23): text against
+ * the device walls (margins), invisible links in dark mode (the page
+ * declared no color-scheme, so dark Safari painted default dark-blue links
+ * on near-black), and the monospace look — liked, so made deliberate.
+ */
+export const SIGN_IN_STYLE =
+  ":root{color-scheme:light dark}" +
+  "body{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;max-width:40rem;margin:0 auto;" +
+  "padding:24px 20px;line-height:1.65;font-size:15px}" +
+  "code{font-size:13px}ul{padding-left:1.2rem}li{margin:6px 0}" +
+  "a{color:#1d4ed8}@media (prefers-color-scheme:dark){a{color:#8ab4f8}}";
+
+/** sha256 of SIGN_IN_STYLE, precomputed — the CSP names it, the test re-derives it. */
+export const STYLE_CSP_HASH = "sha256-GDAeNv8hsToOP1K3if11JS1eArS6VvrcwAdZ0yxqc4E=";
 
 export function signInPage(returnTo?: string | null, userAgent?: string | null): Response {
   // Carry the interrupted destination through the sign-in, so a deep link
@@ -188,6 +208,7 @@ export function signInPage(returnTo?: string | null, userAgent?: string | null):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>bullmoose explorer</title>
+<style>${SIGN_IN_STYLE}</style>
 <h1>bullmoose explorer</h1>
 <p>Read-only JSON over the same JMAP methods every other client uses. Nothing here can write.</p>
 <p><a href="${startHref}">Sign in with bullmoose</a></p>
@@ -206,7 +227,7 @@ ${viewers}
       "cache-control": "no-store",
       "referrer-policy": "no-referrer",
       "x-content-type-options": "nosniff",
-      "content-security-policy": "default-src 'none'; base-uri 'none'; form-action 'none'",
+      "content-security-policy": `default-src 'none'; style-src '${STYLE_CSP_HASH}'; base-uri 'none'; form-action 'none'`,
     },
   });
 }
