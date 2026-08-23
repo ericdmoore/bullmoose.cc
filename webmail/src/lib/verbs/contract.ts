@@ -61,7 +61,10 @@ export function pickVerbBinding<T extends { id: string; name: string; enabled: b
  *  front of you and proposes a HOLD on your own calendar. It was held back
  *  because `applyProposal` had no case to land an approval in; it has one now
  *  (`verb-schedule`, services/jmap actionProposal.ts), so the button exists. */
-export type AgentVerb = "answer" | "bring-in" | "compose" | "schedule";
+/** `rule` (s31 rung 2) is [mark junk] as intent arriving pre-parsed: the
+ *  bouncer composes a STANDING filter from the message in front of you, and
+ *  the composition lands as a tier-2 proposal the popover decides. */
+export type AgentVerb = "answer" | "bring-in" | "compose" | "schedule" | "rule";
 
 /**
  * The default Watch contract a bare "watch this" arms (s20 T1, decision 1):
@@ -156,6 +159,7 @@ export function watchArmedMessage(spec: WatchSpec): string {
 
 /** What the message view says while an ask is in flight, and after it lands. */
 export function askSentMessage(verb: AgentVerb, person?: string): string {
+  if (verb === "rule") return "Composing the rule…";
   if (verb === "answer") return "Asked. The draft reply will appear in your approvals when it is written.";
   if (verb === "compose") return composeAskedMessage(person ?? "them");
   if (verb === "schedule") return scheduleAskedMessage();

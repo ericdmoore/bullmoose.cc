@@ -26,7 +26,7 @@ const TENANT = "t_bm";
 const APPROVER = "eric@login.example";
 
 interface SetResult {
-  updated: Record<string, null>;
+  updated: Record<string, { successorId?: string } | null>;
   notUpdated: Record<string, { type: string; description?: string; properties?: string[] }>;
 }
 
@@ -249,6 +249,9 @@ describe("retry with a nudge — supersede, never edit", () => {
     );
     expect(successors).toHaveLength(1);
     const s = successors[0]!;
+    // RFC 8620 §5.3 server-set changes: the response NAMES the successor, so
+    // the popover can follow the re-composition instead of guessing by query.
+    expect(res.updated.inv_r1).toEqual({ successorId: s.id });
     expect(s.status).toBe("pending"); // the drain will claim and re-compose
     expect(s.binding_id).toBe("bind_bouncer"); // same authority as the original
     expect(s.email_id).toBe("e_noise");

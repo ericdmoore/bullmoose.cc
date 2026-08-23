@@ -469,3 +469,77 @@ describe("correctDueAt → the status-free { dueAt } patch (s11 T1)", () => {
     expect(backend.proposals.find((p) => p.id === "ap-reply-elk")!.dueAt).not.toBeNull(); // untouched
   });
 });
+
+describe("the s31 popover verbs — closed and retry, through decide()", () => {
+  const SIEVE = {
+    id: "ap-rule-1",
+    accountId: ACCOUNT,
+    agent: "bouncer",
+    kind: "sieve-rule",
+    tier: 2,
+    subject: { realm: "Email", objectId: "e-noise" },
+    payload: {
+      verb: "rule",
+      rule: {
+        id: "ap-rule-1",
+        all: [{ kind: "contains", field: "from", value: "blast@deals.example" }],
+        action: "reject",
+      },
+      blastRadius: { tested: 40, caught: 3, sampleIds: [], answeredCaught: 1 },
+    },
+    editedPayload: null,
+    rationale: "a standing rule",
+    evidence: [],
+    status: "pending",
+    decision: null,
+    createdAt: new Date(NOW - 5_000).toISOString(),
+    decidedAt: null,
+    holdUntil: null,
+    expiresAt: new Date(NOW + 3 * 24 * 3600_000).toISOString(),
+    dueAt: null,
+    question: null,
+    amendments: [],
+    invocationStatus: "done",
+    claimedAt: null,
+    costMicros: 0,
+    tokensIn: null,
+    tokensOut: null,
+    costModel: null,
+  } as unknown as import("./types").ActionProposal;
+
+  it("(X) closes with NO reason — and the record says dismissed, not declined", async () => {
+    const { client, backend } = harness({ proposals: [structuredClone(SIEVE)] });
+    const outcome = await decide(client, ACCOUNT, "ap-rule-1", { status: "closed" });
+    expect(outcome).toEqual({ ok: true });
+    const row = backend.proposals.find((p) => p.id === "ap-rule-1")!;
+    expect(row.status).toBe("closed");
+    expect(row.decision).toMatchObject({ closed: "dismissed" });
+    expect(row.decision?.reason).toBeUndefined(); // no learning label, ever
+  });
+
+  it("retry supersedes and the outcome NAMES the successor — the popover follows it", async () => {
+    const { client, backend } = harness({ proposals: [structuredClone(SIEVE)] });
+    const outcome = await decide(client, ACCOUNT, "ap-rule-1", {
+      status: "retry",
+      note: "broader — the whole domain",
+    });
+    expect(outcome.ok).toBe(true);
+    const successorId = outcome.ok ? outcome.successorId : undefined;
+    expect(typeof successorId).toBe("string");
+
+    const old = backend.proposals.find((p) => p.id === "ap-rule-1")!;
+    expect(old.status).toBe("closed");
+    expect(old.decision).toMatchObject({ closed: "superseded-by-retry", nudge: "broader — the whole domain" });
+
+    const successor = backend.proposals.find((p) => p.id === successorId)!;
+    expect(successor.status).toBe("pending");
+    expect(successor.kind).toBe("sieve-rule");
+  });
+
+  it("closed is for solicited kinds only — the taxonomy keeps its labels elsewhere", async () => {
+    const { client } = harness();
+    const outcome = await decide(client, ACCOUNT, "ap-reply-elk", { status: "closed" });
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.message).toContain("not closeable");
+  });
+});

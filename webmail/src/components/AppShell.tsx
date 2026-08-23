@@ -391,6 +391,33 @@ export default function AppShell({ client: injected }: Props) {
     [client, accountId, targetRows, syncStore, notify],
   );
 
+  /**
+   * s31 rung 2 — the triage half of [mark junk]: file ONE message to the
+   * junk-role mailbox, called as the rule popover closes. Bespoke rather
+   * than `runTriage` because that helper acts on the cursor/selection (whole
+   * threads), and this act is about exactly the message that was marked.
+   * Declining the RULE does not unfile the message — the two intents part
+   * ways here, by design.
+   */
+  const junkOne = useCallback(
+    async (email: Email) => {
+      const store = storeRef.current;
+      const to = roleId("junk");
+      if (!client || !store || !to) return;
+      store.removeLocal([email.id]);
+      syncStore(store);
+      const result = await applyTriage(client, accountId, { [email.id]: movePatch(email, to) });
+      if (result.refusal) {
+        notify(result.refusal.message);
+        await store.refresh();
+        syncStore(store);
+        return;
+      }
+      notify("Filed in Quarantined.");
+    },
+    [client, accountId, roleId, syncStore, notify],
+  );
+
   // ── s25 T6: swipe triage ────────────────────────────────────────────────
 
   /**
@@ -1198,6 +1225,7 @@ export default function AppShell({ client: injected }: Props) {
                 offersError={offerError}
                 onApproveOffer={(id) => decideOffer(id, { status: "approved" })}
                 onDeclineOffer={(id, reason) => decideOffer(id, { status: "rejected", ...(reason ? { reason } : {}) })}
+                onJunkFiled={roleId("junk") ? (email) => void junkOne(email) : undefined}
                 client={client}
                 accountId={accountId}
                 expanded={expanded}

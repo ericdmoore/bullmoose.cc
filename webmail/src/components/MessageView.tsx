@@ -12,6 +12,7 @@ import { armWatch, askAgent, type AskSpec, type VerbOutcome } from "../lib/verbs
 import { verbCounterparty } from "../lib/verbs/contract";
 import AnnotationMargin from "./AnnotationMargin";
 import MarginOffers from "./MarginOffers";
+import RulePopover from "./RulePopover";
 import type { ActionProposal, RejectReason } from "../lib/approvals/types";
 import type { ApprovalsAccount } from "../lib/approvals/accounts";
 
@@ -51,6 +52,11 @@ interface Props {
   offersError?: string | null;
   onApproveOffer?: (id: string) => void;
   onDeclineOffer?: (id: string, reason: RejectReason | undefined) => void;
+  /** s31 rung 2 — the triage half of [mark junk]: file THIS message to the
+   *  junk-role mailbox. Called as the popover closes (whatever was decided —
+   *  declining the RULE does not unfile the message). Absent when the
+   *  account has no junk mailbox; the rule half still works. */
+  onJunkFiled?: (email: Email) => void;
 }
 
 export default function MessageView({
@@ -72,6 +78,7 @@ export default function MessageView({
   offersError = null,
   onApproveOffer,
   onDeclineOffer,
+  onJunkFiled,
 }: Props) {
   const attachments = useMemo(() => threadAttachments(detail.emails), [detail]);
   const subject = detail.emails[0]?.subject || "(no subject)";
@@ -92,6 +99,8 @@ export default function MessageView({
   const [agentReady, setAgentReady] = useState(false);
   const [askState, setAskState] = useState<Record<string, AskCell>>({});
   const [asksBlocked, setAsksBlocked] = useState(false);
+  // ── the rung-2 popover (s31): one open at a time, keyed to its invocation ──
+  const [rulePop, setRulePop] = useState<{ invocationId: string; email: Email } | null>(null);
 
   useEffect(() => {
     setAnnotations([]);
@@ -137,6 +146,31 @@ export default function MessageView({
         }));
       });
   }, []);
+
+  /**
+   * [mark junk] — the ask that OPENS a surface rather than leaving a note:
+   * the invocation id is the future proposal's id, so the popover can follow
+   * the composition. A refusal lands in the same cell every other verb uses.
+   */
+  const markJunk = useCallback(
+    (email: Email) => {
+      if (!client || !accountId) return;
+      setAskState((prev) => ({ ...prev, [email.id]: { busy: true } }));
+      void askAgent(client, accountId, email, { verb: "rule" })
+        .then((res) => {
+          setAskState((prev) => ({ ...prev, [email.id]: { busy: false, ok: res.ok, message: res.message } }));
+          if (res.ok && res.invocationId) setRulePop({ invocationId: res.invocationId, email });
+          if (!res.ok && res.forbidden) setAsksBlocked(true);
+        })
+        .catch(() => {
+          setAskState((prev) => ({
+            ...prev,
+            [email.id]: { busy: false, ok: false, message: "The ask did not reach the server. Try again." },
+          }));
+        });
+    },
+    [client, accountId],
+  );
 
   const closeOne = useCallback(
     (id: string, status: CloseStatus) => {
@@ -232,6 +266,7 @@ export default function MessageView({
                     blocked: asksBlocked,
                     onWatch: () => runVerb(email.id, () => armWatch(client, accountId, email)),
                     onAsk: (spec: AskSpec) => runVerb(email.id, () => askAgent(client, accountId, email, spec)),
+                    onJunk: () => markJunk(email),
                   }
                 : undefined
             }
@@ -247,6 +282,21 @@ export default function MessageView({
           />
         </Fragment>
       ))}
+
+      {/* The rung-2 popover: a second UI over the proposal row the ask
+          minted. As it closes — whatever was decided — the triage half runs:
+          the message files to Quarantined. Two intents, one machine. */}
+      {rulePop && client && accountId ? (
+        <RulePopover
+          client={client}
+          accountId={accountId}
+          invocationId={rulePop.invocationId}
+          onDone={() => {
+            onJunkFiled?.(rulePop.email);
+            setRulePop(null);
+          }}
+        />
+      ) : null}
     </article>
   );
 }
@@ -264,6 +314,9 @@ interface VerbHandlers {
   blocked: boolean;
   onWatch: () => void;
   onAsk: (spec: AskSpec) => void;
+  /** s31 rung 2 — [mark junk]: mint a standing-rule proposal from THIS
+   *  message and decide it in the popover. Absent → the button is absent. */
+  onJunk?: () => void;
 }
 
 interface CardProps {
@@ -459,6 +512,7 @@ export function AgentVerbs({
   blocked,
   onWatch,
   onAsk,
+  onJunk,
   initiallyBringOpen = false,
 }: VerbHandlers & { email: Email; initiallyBringOpen?: boolean }): preact.JSX.Element {
   const [bringOpen, setBringOpen] = useState(initiallyBringOpen);
@@ -507,6 +561,21 @@ export function AgentVerbs({
         >
           Schedule
         </button>
+        {/* [mark junk] is a RULE-AUTHORING act (s31): "file this one" is
+            triage; "never again" is standing authority, so it opens the
+            popover where the composed rule is decided — and the message
+            itself files to Quarantined as the popover closes. */}
+        {onJunk ? (
+          <button
+            type="button"
+            class="agent-verb"
+            disabled={busy || blocked}
+            title="File this in Quarantined and propose a standing rule — never again"
+            onClick={onJunk}
+          >
+            Junk
+          </button>
+        ) : null}
       </div>
 
       {/* Deliberately not a <form>: a navigating form is the one thing this

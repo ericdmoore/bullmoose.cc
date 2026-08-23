@@ -135,6 +135,13 @@ export interface ProposalDecision {
   note?: string;
   /** The undo handle a tier-1 application keeps (actionProposal.ts:421). */
   undo?: Record<string, unknown>;
+  /** s31/s36 — WHY a `closed` row closed: "dismissed" (the (X)),
+   *  "superseded-by-retry", "cause-declined", "cause-expired". Free-form on
+   *  the read side, like everything in this record. */
+  closed?: string;
+  /** The retry's instruction to the composer, as recorded on the superseded
+   *  row. */
+  nudge?: string;
 }
 
 /**
