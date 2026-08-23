@@ -40,6 +40,8 @@ popcorn installer — safe on a machine that already runs popcorn.
   --allow-widen        permit a listen address reachable from further away
   --allow-plaintext    permit no-TLS on a routable address
   --program PATH       install the binary here (default: ~/bin on macOS)
+  --binary PATH        install THIS prebuilt binary instead of building from
+                       source (the curl2shell bootstrap's door; go not needed)
   --listen ADDR        POPCORN_LISTEN
   --smtp-listen ADDR   POPCORN_SMTP_LISTEN ("off" to ask for no SMTP face)
   --tls-cert PATH      POPCORN_TLS_CERT   (with --tls-key; popcorn needs both)
@@ -56,6 +58,7 @@ FORCE=0
 ALLOW_WIDEN=0
 ALLOW_PLAINTEXT=0
 WANT_PROGRAM=''
+WANT_BINARY=''
 WANT_LISTEN=''
 WANT_SMTP_LISTEN=''
 WANT_TLS_CERT=''
@@ -79,6 +82,11 @@ while [ $# -gt 0 ]; do
 	--program)
 		need_arg "$@"
 		WANT_PROGRAM=$2
+		shift
+		;;
+	--binary)
+		need_arg "$@"
+		WANT_BINARY=$2
 		shift
 		;;
 	--listen)
@@ -404,9 +412,21 @@ write_unit() { # PATH
 	printf 'unit: %s\n' "$1"
 }
 
-printf '\nbuilding…\n'
-(cd "$PKG" && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o dist/popcorn ./cmd/popcorn)
-install_to "$PKG/dist/popcorn" "$PLAN_PROGRAM"
+if [ -n "$WANT_BINARY" ]; then
+	# A prebuilt binary (the release pipeline's, checksum-verified by the
+	# bootstrap that handed it to us). Refuse a path that is not a file —
+	# installing nothing "successfully" is the worst outcome an installer has.
+	[ -f "$WANT_BINARY" ] || {
+		printf 'popcorn: --binary %s is not a file\n' "$WANT_BINARY" >&2
+		exit 2
+	}
+	printf '\nusing prebuilt binary…\n'
+	install_to "$WANT_BINARY" "$PLAN_PROGRAM"
+else
+	printf '\nbuilding…\n'
+	(cd "$PKG" && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o dist/popcorn ./cmd/popcorn)
+	install_to "$PKG/dist/popcorn" "$PLAN_PROGRAM"
+fi
 printf 'binary: %s\n' "$PLAN_PROGRAM"
 
 case $OS in
