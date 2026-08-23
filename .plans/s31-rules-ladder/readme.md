@@ -221,15 +221,54 @@ not speculate (lesson of #230/#238: the spec's word beats our theory of it).
   server doesn't report storage usage"). Blob sizes are derivable; pure polish;
   fold into this section's build or land it as a warm-up task.
 
-## Open questions for the build
+## Open questions for the build — now mostly answered
 
-1. Which sieve subset does our engine actually run, and does RFC 9661 require
-   advertising extensions honestly (`sieveExtensions` in the capability)?
-2. Coexistence: are the bouncer's operational rules (quarantine machinery) in
-   the same script a client sees, or a separate protected region? (Leaning:
-   same store, protected by provenance — a hand edit cannot silently disable a
-   boundary rule without the diff saying so.)
-3. The scope for `/set` rung-1 writes (`annotate` is wrong; likely `send`-class
-   authority or a considered new answer — argue it in the PR).
-4. Where rung-2 conversations live: the compose→intent pipeline (s20 T3), a
-   message verb (s20 T2), a rules@ door (remind@ precedent), or all three.
+1. ANSWERED in slice 1 (#305): the subset is the dialect, `sieveExtensions`
+   is exactly `["fileinto"]`, and the capability and `require` line share one
+   constant so neither drifts alone.
+2. Lean CONFIRMED standing: same store, protected by provenance. See the
+   rung-1 notes below for what that means under RFC 9661's whole-script
+   replace.
+3. **DECIDED 2026-08-23 (Eric): a NEW DEDICATED SCOPE — `rules`.** The
+   send-class alternative was argued and declined; the precision of "who may
+   rewrite the rulebook" earns its own named grant despite the mirror cost
+   (auth-core, consent prose, `SCOPE_PROSE`, `GRANTABLE_SCOPES`, token
+   minting, the Go mirror — budget all of them, the s36 lesson says they
+   drift alone otherwise). Agent-marked tokens are refused REGARDLESS of
+   scope and routed to rung 2 — that half was never open.
+4. ANSWERED by rungs 2a/2b (#313, #318): the message verb and the button,
+   one machine. The language on-ramp (compose→intent) and a rules@ door
+   remain future on-ramps into the same composer.
+
+### Rung 1 notes — learned the day Boogie rendered the editor (2026-08-23)
+
+Boogie showed its Edit Rule form the moment slice 1 deployed — RFC 9661 has
+no read-only advertisement, so a server that speaks the capability IMPLIES
+`/set`, and the client offers the editor in good faith. Eric: *"I did not
+write one yet. But the UI seems to think I could."* Until rung 1 ships,
+Done fails as an unknown method; nothing is written, but the gap is now
+VISIBLE product surface, not design debt.
+
+What the build actually entails:
+
+- **A sieve-subset PARSER** — the compiler's inverse. RFC 9661 `/set`
+  delivers the whole script as a blob of RFC 5228 text; the engine runs the
+  dialect. Parse exactly what `compileSieve` emits (round-trip property:
+  parse(compile(rules)) === rules), recover rule ids from the `# rule <id>`
+  comment lines the compiler already writes, and REFUSE honestly anything
+  the engine cannot run (`discard`, `redirect`, `vacation`, tests beyond the
+  dialect) — naming the supported subset in the refusal, never silently
+  dropping a clause.
+- **Whole-script replace, diffed by provenance.** One script,
+  `maxNumberScripts 1`, so a Boogie save is a FULL REPLACE. The write is
+  applied as a diff against the store: hand rules add/change/delete freely;
+  a negotiated rule (id = its proposal id) or boundary rule that the
+  incoming script drops or alters is a named change the response must say
+  out loud — a hand edit cannot silently disable what an approval created.
+- **Provenance stamps** ride the rule id namespace: negotiated ids are
+  invocation ids; hand-written ids get their own prefix. The ledger stays
+  the provenance for negotiated rules; hand rules record authored-by-hand.
+- **The `rules` scope** threads through every minting surface, and the
+  refusal for an unscoped token names the re-mint command — Eric's own
+  Boogie app-password predates the scope and is the first token that will
+  hit that sentence.
