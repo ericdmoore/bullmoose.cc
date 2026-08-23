@@ -456,9 +456,25 @@ func runAgentServe(s *bmio.Streams, a agentArgs) int {
 	discover := a.Fleet != ""
 	client := jmap.NewSessionClient(settings.Base, settings.Token)
 	if a.Once {
+		// --once is the cron/test drain; only the RESIDENT daemon is a device
+		// worth describing, so the report rides the persistent path alone —
+		// which also keeps every --once choreography table exact.
 		return agentServeOnce(context.Background(), s, client, settings, fleet, label, discover)
 	}
+	// s37 T1b: the daemon on start files its capability vector, best-effort.
+	reportDevice(db, daemonReport(fleet))
 	return runAgentServePersistent(s, client, settings, fleet, label, discover)
+}
+
+// daemonReport is the resident daemon's self-description (s37 T1b): the
+// source and the capability vector, verbatim from fleet.json — the same
+// bytes the claim declares, filed once where settings can render them.
+func daemonReport(fleet *serveFleetConfig) map[string]any {
+	report := map[string]any{"source": "serve"}
+	if len(fleet.Capabilities) > 0 && string(fleet.Capabilities) != "null" {
+		report["capabilities"] = fleet.Capabilities
+	}
+	return report
 }
 
 func agentServeOnce(ctx context.Context, s *bmio.Streams, client *jmap.Client,

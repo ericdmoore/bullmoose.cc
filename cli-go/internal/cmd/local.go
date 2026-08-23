@@ -346,7 +346,13 @@ func resolveKeyEnv(s *bmio.Streams, keyEnv string) (string, bool) {
 // runLocal is `bullmoose local` — local.ts:262 cmdLocal.
 func runLocal(s *bmio.Streams, argv []string) int {
 	a := parse(argv)
-	verb := a.at(0)
+	// at(1), NOT at(0): Positionals[0] is the command name (args.go:236).
+	// This read at(0) from the port until s37 T1b's tests became the first
+	// thing ever to drive runLocal end-to-end — every direct invocation of
+	// `local setup`/`local connect` had fallen to the usage line since the
+	// port, invisibly, because the unit tests called the verbs directly and
+	// no contract case could run them (they need a live model host).
+	verb := a.at(1)
 
 	db, err := store.Open(store.DBPath(a.DB))
 	if err != nil {
@@ -415,6 +421,7 @@ func localConnect(s *bmio.Streams, db *sql.DB, a args) int {
 		return 1
 	}
 	s.Note(fmt.Sprintf("connected: %s is the @local host (%d models) — saved", base, len(f.Models)))
+	reportDevice(db, localReport(base, f.Models)) // s37 T1b, best-effort
 	return 0
 }
 
@@ -476,6 +483,7 @@ func localSetup(s *bmio.Streams, db *sql.DB, a args, deps setupDeps) int {
 		}
 		s.Note(fmt.Sprintf("connected: %s at %s (%d models) — saved as the @local host. Nothing to install.",
 			f.Name, f.Base, len(f.Models)))
+		reportDevice(db, localReport(f.Base, f.Models)) // s37 T1b, best-effort
 		return 0
 
 	case "needs-key":
@@ -548,6 +556,7 @@ func localSetup(s *bmio.Streams, db *sql.DB, a args, deps setupDeps) int {
 	}
 	s.Note(fmt.Sprintf("connected: %s at %s (%d models) — saved as the @local host",
 		plan.Runtime, plan.Base, len(f.Models)))
+	reportDevice(db, localReport(plan.Base, f.Models)) // s37 T1b, best-effort
 	return 0
 }
 

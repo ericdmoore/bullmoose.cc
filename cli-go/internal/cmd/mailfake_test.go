@@ -116,6 +116,10 @@ type mailFake struct {
 	// refuseBinding, when set, is the raw SetError every AgentBinding/set
 	// update answers with — the kill switch's server-side refusals (s43 step 3).
 	refuseBinding string
+	// refuseDeviceReport, when set, is the METHOD error type every
+	// DeviceReport/set answers with — "unknownMethod" is the old-server
+	// fixture the T1b reporter must shrug at (s37).
+	refuseDeviceReport string
 	// invocationClaimLost, when true, answers every AgentInvocation/set UPDATE
 	// with notUpdated — the lost-claim-race fixture (s43 step 4). A lost race
 	// must be a clean no-op, and this knob is how a test watches it be one.
@@ -897,6 +901,13 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 			parts = append(parts, fmt.Sprintf(`%q:{"id":"ann_%d"}`, cid, i+1))
 		}
 		return reply(`{"accountId":"a_you","created":{` + strings.Join(parts, ",") + `},"notCreated":{}}`)
+	case "DeviceReport/set":
+		if f.refuseDeviceReport != "" {
+			return fail(f.refuseDeviceReport, "")
+		}
+		return reply(`{"accountId":"a_you","oldState":null,"newState":null,` +
+			`"created":{},"notCreated":{},"updated":{"self":null},"notUpdated":{},` +
+			`"destroyed":[],"notDestroyed":{}}`)
 	case "AgentBinding/set":
 		var set struct {
 			Update map[string]struct {
