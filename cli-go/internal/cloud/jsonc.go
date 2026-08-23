@@ -150,6 +150,11 @@ type WorkerConfig struct {
 			ScriptName string `json:"script_name"`
 		} `json:"bindings"`
 	} `json:"durable_objects"`
+	Migrations []struct {
+		Tag              string   `json:"tag"`
+		NewClasses       []string `json:"new_classes"`
+		NewSqliteClasses []string `json:"new_sqlite_classes"`
+	} `json:"migrations"`
 	Vars map[string]any `json:"vars"`
 }
 

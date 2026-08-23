@@ -55,11 +55,36 @@ type Manifest struct {
 
 // Stack is a fetched, verified slice of one published version: the manifest
 // plus every worker config, parsed. Bundles and the webmail tarball are NOT
-// fetched here — the plan needs shapes, not megabytes; apply (T3) fetches
-// the heavy files with the same per-file verification.
+// fetched here — the plan needs shapes, not megabytes; apply fetches the
+// heavy files on demand via FetchVerified, same per-file verification.
 type Stack struct {
 	Manifest Manifest
 	Configs  map[string]*WorkerConfig // by worker name, every deployOrder entry present
+
+	fetcher *Fetcher
+	version string
+}
+
+// FetchVerified downloads one more file of THIS stack version and verifies
+// it against the manifest's sha256 before returning it. Apply's only way to
+// bytes — there is no unverified path.
+func (st *Stack) FetchVerified(path string) ([]byte, error) {
+	if st.fetcher == nil {
+		return nil, fmt.Errorf("stack was not fetched from a mirror (test fixture?) — no way to fetch %s", path)
+	}
+	want, ok := st.Manifest.Files[path]
+	if !ok {
+		return nil, fmt.Errorf("%s: the manifest carries no checksum for it", path)
+	}
+	body, err := st.fetcher.get(st.version + "/" + path)
+	if err != nil {
+		return nil, err
+	}
+	got := sha256.Sum256(body)
+	if hex.EncodeToString(got[:]) != want {
+		return nil, fmt.Errorf("%s: sha256 mismatch against the manifest — torn upload or tampered mirror", path)
+	}
+	return body, nil
 }
 
 // Fetcher downloads one published stack version. Zero value is not usable;
@@ -127,7 +152,7 @@ func (f *Fetcher) Fetch(version string) (*Stack, error) {
 		return nil, fmt.Errorf("manifest has an empty deployOrder — refusing to plan nothing")
 	}
 
-	st := &Stack{Manifest: m, Configs: make(map[string]*WorkerConfig, len(m.DeployOrder))}
+	st := &Stack{Manifest: m, Configs: make(map[string]*WorkerConfig, len(m.DeployOrder)), fetcher: f, version: version}
 	for _, w := range m.Workers {
 		body, err := f.get(version + "/" + w.Config)
 		if err != nil {

@@ -24,6 +24,7 @@ package cmd
 
 import (
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/cloud"
@@ -33,6 +34,7 @@ import (
 type cloudArgs struct {
 	JSON         bool
 	Help         bool
+	Yes          bool
 	Zone         string
 	StackVersion string
 	StackBase    string
@@ -67,6 +69,8 @@ func parseCloud(argv []string) cloudArgs {
 				a.JSON = true
 			case "help":
 				a.Help = true
+			case "yes":
+				a.Yes = true
 			case "zone":
 				a.Zone = value()
 			case "stack-version":
@@ -90,11 +94,14 @@ func runCloud(s *bmio.Streams, argv []string) int {
 	// goNative: Route hands argv over untouched, so --help is answered here
 	// (the embedded spec predates this command; see undocumentedByDesign).
 	if a.Help {
-		s.Out("usage: bullmoose cloud plan --zone <domain> [--stack-version <v>] [--stack-base <url>] [--json]")
+		s.Out("usage: bullmoose cloud plan    --zone <domain> [--stack-version <v>] [--stack-base <url>] [--json]")
+		s.Out("       bullmoose cloud install --zone <domain> [--yes] [same flags]")
 		s.Out("")
-		s.Out("Read-only: probes the Cloudflare account CLOUDFLARE_API_TOKEN can see and")
-		s.Out("prints what installing the published stack onto <domain> would do — every")
-		s.Out("resource by name, refusals first. `cloud install` (apply) is s46 T3.")
+		s.Out("plan     read-only: probes the account CLOUDFLARE_API_TOKEN can see and prints")
+		s.Out("         what installing the published stack onto <domain> would do — every")
+		s.Out("         resource by name, refusals first.")
+		s.Out("install  the same plan, one honest yes (--yes skips the prompt), then apply:")
+		s.Out("         storage, D1 schema, workers, secrets, routes. Mail path lands in T4.")
 		return 0
 	}
 	if a.badFlag != "" {
@@ -107,33 +114,42 @@ func runCloud(s *bmio.Streams, argv []string) int {
 	switch verb {
 	case "plan":
 		return runCloudPlan(s, a)
+	case "install":
+		return runCloudInstall(s, a)
 	case "":
-		return die(s, bmio.Fail("cloud needs a verb: `bullmoose cloud plan --zone <domain>`", bmio.ExitUsage))
+		return die(s, bmio.Fail("cloud needs a verb: `bullmoose cloud plan|install --zone <domain>`", bmio.ExitUsage))
 	default:
-		return die(s, bmio.Fail("unknown cloud verb '"+verb+"' — only `plan` exists today (install is s46 T3)", bmio.ExitUsage))
+		return die(s, bmio.Fail("unknown cloud verb '"+verb+"' — `plan` and `install` exist today", bmio.ExitUsage))
 	}
 }
 
-func runCloudPlan(s *bmio.Streams, a cloudArgs) int {
+// cloudContext runs the shared read half — fetch, probe, plan. Returns a
+// non-zero code (and nils) when the read half itself failed.
+func cloudContext(s *bmio.Streams, a cloudArgs, verb string) (*cloud.Stack, *cloud.ProbeResult, *cloud.Plan, int) {
 	if a.Zone == "" {
-		return die(s, bmio.Fail("cloud plan needs --zone <domain> — the domain the stack would install onto", bmio.ExitUsage))
+		return nil, nil, nil, die(s, bmio.Fail("cloud "+verb+" needs --zone <domain> — the domain the stack targets", bmio.ExitUsage))
 	}
 	token := os.Getenv("CLOUDFLARE_API_TOKEN")
 	if token == "" {
-		return die(s, bmio.Fail("CLOUDFLARE_API_TOKEN is not set — the probe is read-only but still needs a token; see the plan's own output for the scopes apply would use", bmio.ExitUsage))
+		return nil, nil, nil, die(s, bmio.Fail("CLOUDFLARE_API_TOKEN is not set — see the plan's own output for the scopes apply would use", bmio.ExitUsage))
 	}
-
 	fetcher := cloud.NewFetcher(a.StackBase, nil)
 	st, err := fetcher.Fetch(a.StackVersion)
 	if err != nil {
-		return die(s, err)
+		return nil, nil, nil, die(s, err)
 	}
 	probe, err := cloud.Probe(cloud.NewCF(os.Getenv("CLOUDFLARE_API_BASE_URL"), token, nil), a.Zone)
 	if err != nil {
-		return die(s, err)
+		return nil, nil, nil, die(s, err)
 	}
-	plan := cloud.BuildPlan(st, probe, a.Zone)
+	return st, probe, cloud.BuildPlan(st, probe, a.Zone), 0
+}
 
+func runCloudPlan(s *bmio.Streams, a cloudArgs) int {
+	_, _, plan, code := cloudContext(s, a, "plan")
+	if code != 0 {
+		return code
+	}
 	if a.JSON {
 		if err := s.EmitJSON(plan); err != nil {
 			return die(s, err)
@@ -144,6 +160,61 @@ func runCloudPlan(s *bmio.Streams, a cloudArgs) int {
 	if len(plan.Refusals) > 0 || len(plan.Blocked) > 0 {
 		return int(bmio.ExitFail)
 	}
+	return 0
+}
+
+// runCloudInstall is the plan plus ONE honest yes plus apply. The prompt is
+// the rendered plan itself — nothing is asked that was not first shown
+// whole — and refusals/blocked gate BEFORE any prompt could (a question
+// whose yes cannot be honoured is not a question).
+func runCloudInstall(s *bmio.Streams, a cloudArgs) int {
+	st, probe, plan, code := cloudContext(s, a, "install")
+	if code != 0 {
+		return code
+	}
+	renderPlan(s, plan)
+	if len(plan.Refusals) > 0 || len(plan.Blocked) > 0 {
+		s.Note("install: the plan is not applyable as printed — resolve the refusals/blocked scopes above and re-run")
+		return int(bmio.ExitFail)
+	}
+
+	confirm := defaultConfirm(s, a.Yes)
+	if !confirm("\napply this plan to " + a.Zone + "? [y/N] ") {
+		s.Note("declined — nothing was applied; the same `cloud install` resumes whenever you are ready")
+		return int(bmio.ExitFail)
+	}
+
+	// Operator-supplied secrets ride from the environment, by exactly the
+	// names the manifest lists; values never touch argv.
+	external := map[string]string{}
+	for name := range st.Manifest.Secrets.External {
+		if v := os.Getenv(name); v != "" {
+			external[name] = v
+		}
+	}
+
+	applied, err := cloud.ApplyCore(cloud.NewCF(os.Getenv("CLOUDFLARE_API_BASE_URL"), os.Getenv("CLOUDFLARE_API_TOKEN"), nil),
+		st, probe, plan, cloud.ApplyOpts{Zone: a.Zone, External: external, Log: func(line string) { s.Note("  " + line) }})
+	if err != nil {
+		if applied != nil && len(applied.Steps) > 0 {
+			s.Note("install: stopped after " + strconv.Itoa(len(applied.Steps)) + " step(s) — the plan is resumable: fix the cause and re-run `cloud install`")
+		}
+		return die(s, err)
+	}
+
+	s.Out("")
+	s.Out("core stack applied to " + a.Zone + " (" + strconv.Itoa(len(applied.Steps)) + " steps).")
+	if v, ok := applied.Minted["ADMIN_TOKEN"]; ok {
+		s.Out("")
+		s.Out("ADMIN_TOKEN (minted locally, stored ONLY as a worker secret — save it now, it is not shown again):")
+		s.Out("  " + v)
+	}
+	for _, name := range applied.MissingExternal {
+		s.Out("still needed: " + name + " — set it in the environment and re-run `cloud install` (everything applied stays applied)")
+	}
+	s.Out("")
+	s.Out("not yet wired (by design): the mail path — MX + Email Routing + delivery verification is s46 T4;")
+	s.Out("the webmail app upload and `admin init` hand-off are T5.")
 	return 0
 }
 
