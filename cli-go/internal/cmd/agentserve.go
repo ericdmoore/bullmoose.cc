@@ -223,8 +223,17 @@ func callModel(ctx context.Context, m serveModelConfig, system, user string) (mo
 		if match := mockSubjectRe.FindStringSubmatch(user); match != nil {
 			subject = match[1]
 		}
-		output := "Thanks for your message about \"" + subject + "\". I've received it and will follow up shortly." +
-			"\n\n— automated draft (mock provider)"
+		// Pipeline-aware: under the extraction system prompt a canned REPLY
+		// would parse to nothing — answer in the contract's shape instead, so
+		// a mock extract run exercises the whole annotation write path key-free.
+		var output string
+		if system == extractSystem {
+			output = `[{"class":"commitment","body":"Mock: will follow up about \"` +
+				strings.ReplaceAll(subject, `"`, "'") + `\"","confidence":0.9}]`
+		} else {
+			output = "Thanks for your message about \"" + subject + "\". I've received it and will follow up shortly." +
+				"\n\n— automated draft (mock provider)"
+		}
 		model := m.Model
 		if model == "" {
 			model = "mock"
@@ -600,8 +609,32 @@ func handleInvocation(ctx context.Context, client *jmap.Client, acc account.Acco
 		return false, nil
 	}
 
-	// From here, failure completes the invocation as failed — best-effort,
-	// and the loop survives.
+	// PIPELINE DISPATCH: the binding's local config names the pass. "extract"
+	// mirrors the cloud extract pipeline (agentextract.go) — it writes
+	// Annotations, never drafts; its outcome (done OR failed) is a completion,
+	// not an error. From here, an ERROR completes the invocation as failed —
+	// best-effort, and the loop survives.
+	if bcfg.Pipeline == "extract" {
+		outcome, err := runExtractPipeline(ctx, client, acc, invID, emailID, bcfg)
+		if err != nil {
+			_, _ = client.One(ctx, "AgentInvocation/set", map[string]any{
+				"accountId": acc.AccountID,
+				"update":    map[string]any{invID: map[string]any{"status": "failed", "result": map[string]any{"error": err.Error()}}},
+			}, jmap.MailUsing)
+			status(invID + " FAILED: " + err.Error())
+			return false, nil
+		}
+		if _, err := client.One(ctx, "AgentInvocation/set", map[string]any{
+			"accountId": acc.AccountID,
+			"update":    map[string]any{invID: map[string]any{"status": outcome.Status, "result": outcome.Result}},
+		}, jmap.MailUsing); err != nil {
+			return false, err
+		}
+		note, _ := outcome.Result["note"].(string)
+		status(invID + " extract → " + outcome.Status + ": " + note)
+		return outcome.Status == "done", nil
+	}
+
 	draftID, err := runReplyPipeline(ctx, client, acc, bcfg, emailID)
 	if err != nil {
 		_, _ = client.One(ctx, "AgentInvocation/set", map[string]any{
