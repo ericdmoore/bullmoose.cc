@@ -49,6 +49,9 @@ export type PrivacyClass = "open" | "internal" | "pinned";
  * which cannot import this package: the CLI has no workspace deps by design).
  */
 export interface ClaimCapabilities {
+  /** s45: the model ids the claimant's host serves — declared facts, probed
+   *  not asserted, for the allocation surface. Never read by the fit gate. */
+  menu?: string[];
   vision?: boolean;
   contextTokens?: number;
   tools?: boolean;
@@ -247,12 +250,23 @@ export function normalizeClaimant(raw: unknown): ClaimantIdentity {
   const r = raw as { isFree?: unknown; capabilities?: unknown };
   let capabilities: ClaimCapabilities | null = null;
   if (typeof r.capabilities === "object" && r.capabilities !== null && !Array.isArray(r.capabilities)) {
-    const c = r.capabilities as { vision?: unknown; contextTokens?: unknown; tools?: unknown };
+    const c = r.capabilities as { vision?: unknown; contextTokens?: unknown; tools?: unknown; menu?: unknown };
     capabilities = {};
     if (typeof c.vision === "boolean") capabilities.vision = c.vision;
     if (typeof c.tools === "boolean") capabilities.tools = c.tools;
     if (typeof c.contextTokens === "number" && Number.isFinite(c.contextTokens)) {
       capabilities.contextTokens = c.contextTokens;
+    }
+    // s45 — the declared MENU: which model ids the host actually serves,
+    // probed at serve startup, recorded trust-but-audit like isFree. FACTS
+    // only, bounded (an id list, never a ranking — the plan's veto on any
+    // smartness scalar applies here); the fit SQL never reads it.
+    if (Array.isArray(c.menu)) {
+      const menu = c.menu
+        .filter((m): m is string => typeof m === "string" && m.length > 0)
+        .map((m) => m.slice(0, 128))
+        .slice(0, 64);
+      if (menu.length > 0) capabilities.menu = menu;
     }
   }
   return { isFree: r.isFree === true, capabilities };

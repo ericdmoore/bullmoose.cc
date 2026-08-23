@@ -9,6 +9,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	bmio "github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/store"
 	"io"
 	"net/http"
@@ -437,5 +438,48 @@ func TestResolveLocalModels(t *testing.T) {
 	// A literal base is never touched, and never inherits the key env.
 	if b.ModelMenu[1].BaseURL != "https://api.example.com" || b.ModelMenu[1].APIKeyEnv != "" {
 		t.Fatalf("literal base was touched: %+v", b.ModelMenu[1])
+	}
+}
+
+// s45 — the menu declaration: probed facts merged into the claim's
+// capabilities, existing keys preserved; a dead host declares nothing.
+func TestDeclareMenu(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = io.WriteString(w, `{"data":[{"id":"qwen3:32b"},{"id":"llama3:8b"}]}`)
+	}))
+	defer srv.Close()
+
+	fleet := &serveFleetConfig{
+		Capabilities: json.RawMessage(`{"tools":false,"contextTokens":32768}`),
+		Bindings: map[string]serveBindingConfig{
+			"emily": {Model: serveModelConfig{Provider: "openai-compatible", BaseURL: srv.URL, Model: "qwen3:32b"}},
+		},
+	}
+	var out, errOut strings.Builder
+	declareMenu(context.Background(), fleet, bmio.NewTo(&out, &errOut))
+
+	var caps map[string]any
+	if err := json.Unmarshal(fleet.Capabilities, &caps); err != nil {
+		t.Fatal(err)
+	}
+	if caps["tools"] != false || caps["contextTokens"] != float64(32768) {
+		t.Fatalf("existing facets not preserved: %v", caps)
+	}
+	menu, _ := caps["menu"].([]any)
+	if len(menu) != 2 || menu[0] != "llama3:8b" || menu[1] != "qwen3:32b" {
+		t.Fatalf("menu not declared sorted: %v", caps["menu"])
+	}
+
+	// A dead host declares nothing — an empty fact is not a fact.
+	dead := &serveFleetConfig{Bindings: map[string]serveBindingConfig{
+		"emily": {Model: serveModelConfig{Provider: "openai-compatible", BaseURL: "http://127.0.0.1:1"}},
+	}}
+	declareMenu(context.Background(), dead, bmio.NewTo(&out, &errOut))
+	if len(dead.Capabilities) != 0 {
+		t.Fatalf("dead host declared: %s", dead.Capabilities)
 	}
 }

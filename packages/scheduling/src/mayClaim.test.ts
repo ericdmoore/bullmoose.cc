@@ -201,6 +201,21 @@ describe("normalizeClaimant — absent or malformed = paid, no vector (conservat
     expect(normalizeClaimant({ capabilities: {} })).toEqual({ isFree: false, capabilities: {} });
   });
 
+  it("s45: the declared menu keeps well-typed ids, bounded — and garbage degrades to absent", () => {
+    // Facts, never rankings: an id list capped at 64 × 128 chars. The fit
+    // gate never reads it; it exists for the allocation surface.
+    expect(normalizeClaimant({ capabilities: { menu: ["qwen3:32b", "llama3:8b"] } }).capabilities).toEqual({
+      menu: ["qwen3:32b", "llama3:8b"],
+    });
+    expect(normalizeClaimant({ capabilities: { menu: ["ok", 7, "", null, "x".repeat(200)] } }).capabilities).toEqual({
+      menu: ["ok", "x".repeat(128)],
+    });
+    expect(normalizeClaimant({ capabilities: { menu: "not a list" } }).capabilities).toEqual({});
+    expect(
+      normalizeClaimant({ capabilities: { menu: Array.from({ length: 100 }, (_, i) => `m${i}`) } }).capabilities!.menu,
+    ).toHaveLength(64);
+  });
+
   it("liveness horizon is the documented 15 minutes", () => {
     expect(FREE_RUNTIME_LIVE_MS).toBe(15 * 60_000);
   });
