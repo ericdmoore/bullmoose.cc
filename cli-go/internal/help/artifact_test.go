@@ -33,25 +33,26 @@ import (
 // own, and a check that cannot run must say so rather than fail for the wrong
 // reason. In CI the repo is always there.
 func TestArtifactMatchesTheSpec(t *testing.T) {
+	// RETIRED WITH THE NODE CLI. This test hashed packages/cli/src/help.ts
+	// against the hash the artifact header records, catching the one failure
+	// mode this design has: help.ts edited, artifact not regenerated. With
+	// help.ts deleted, the artifact IS the help source — there is no spec left
+	// to drift from, and the payload-integrity half (TestArtifactIsIntact)
+	// carries the remaining guarantee: these bytes are the bytes the last
+	// generation captured. The specHash in the header stays as provenance.
+	//
+	// The debt this leaves is real and named: EDITING help now means either a
+	// hand-edit of artifact.txt (with its payload hash re-computed) or the
+	// future Go help-spec port. The parser-grammar drift tests still hold
+	// every command's flags to the artifact's documented pages, so the help
+	// cannot silently disagree with the parsers — it can only go stale as a
+	// whole, visibly, when commands change.
 	spec := load()
 	if spec.err != nil {
-		t.Fatalf("the embedded artifact does not parse: %v\n    fix: %s", spec.err, Regenerate)
+		t.Fatalf("the embedded artifact does not parse: %v", spec.err)
 	}
 	if spec.specHash == "" {
-		t.Fatalf("the artifact records no spec hash, so drift is unchecked\n    fix: %s", Regenerate)
-	}
-
-	source, ok := repoFile(t, SpecPath)
-	if !ok {
-		return
-	}
-	sum := sha256.Sum256(source)
-	if got := hex.EncodeToString(sum[:]); got != spec.specHash {
-		t.Errorf("%s has changed since cli-go/internal/help/artifact.txt was generated — "+
-			"this binary would print help the Node CLI no longer renders, and would answer "+
-			"`unknown command` for anything added since.\n"+
-			"    spec now: %s\n    artifact: %s\n    fix: %s",
-			SpecPath, got, spec.specHash, Regenerate)
+		t.Fatal("the artifact records no spec hash — its provenance header was damaged")
 	}
 }
 

@@ -60,14 +60,10 @@ go build -trimpath -o ~/bin/bullmoose .
 A source build reports `dev` plus its commit from the VCS stamp — so a support
 conversation can still pin it to a tree.
 
-## What still needs Node (temporary)
+## Nothing needs Node
 
-The binary answers every help-listed command natively **except `agent`**,
-which transparently delegates to the Node CLI (`packages/cli`) until its port
-lands (`.plans/s42-go-native`). On a machine without Node, everything else —
-login, send, read, sync, watch, admin, the works — runs from the one binary;
-only `bullmoose agent …` would refuse.
-
-The Node CLI itself is retired only when the trace metric
-(`BULLMOOSE_TRACE`) has reported zero delegated invocations for a full
-release — `.plans/s08-go-cli/devPlan.md` T7 is the criterion, not vibes.
+Since `cli-go/v0.2.0` every help-listed command — login, send, read, sync,
+watch, admin, `agent serve` and all — runs from the one static binary. The
+Node CLI that this binary strangler-replaced was removed from the repository
+on 2026-08-22 (`.plans/s08-go-cli`); there is no delegation, no `node` on the
+PATH required, and no second implementation to disagree with this one.

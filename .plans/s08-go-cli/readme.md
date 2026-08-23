@@ -1,15 +1,15 @@
 # s08 — the Go CLI: one binary, no runtime
 
-> **Status: T1–T7 SHIPPED; the SOAK begins.** Every help-listed command is native
-> (s42 + s43; `agent` flipped 2026-08-22). Contract suite 75/75; trace over it:
-> 131 native, 1 delegated — the 1 is the UNKNOWN-FLAG refusal (`log
-> --no-such-flag`), which the delegate routes to Node BY DESIGN so parse-error
-> bytes stay Node's; it is delegate-package policy, not a port gap. v0.1.0 is
-> released and installed as `~/bin/bullmoose`. Remaining: cut v0.2.0 (first
-> all-native release), soak ONE release at zero delegated commands, then the
-> removal PR — Node CLI + `internal/delegate` in one PR, at which point
-> unknown-flag refusals go native and the trace metric retires with the thing
-> it measured.
+> **Status: COMPLETE — the Node CLI is GONE (2026-08-22).** T1–T7 shipped; the
+> flip put every help-listed command native; Eric waived the soak ("literally
+> the only user… ready to bury the CLI") and the removal PR deleted
+> `packages/cli` and `internal/delegate` together. What survived the delegate:
+> the front-door scanner, help routing and the flag guard, moved to
+> `cli-go/internal/cmd/route.go` with unknown-flag refusals now native (exit 2,
+> flag named). The help artifact is canonical (the generator died with Node);
+> conformance/exit-codes.json is FROZEN as the exit-code contract, pinned by
+> `internal/io/exit_test.go`. Releases: v0.1.0 (first binary), v0.2.0 (first
+> all-native). The trace metric retired with the thing it measured.
 
 **This section had no readme until 2026-08-17** — the only numbered section that
 lacked one, which is part of why its `devPlan.md` under-reported itself by roughly ten
