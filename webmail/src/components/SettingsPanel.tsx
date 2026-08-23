@@ -1,6 +1,7 @@
 /** @jsxImportSource preact */
 import { useEffect, useState } from "preact/hooks";
 import SettingsAgentsSection from "./SettingsAgentsSection";
+import SettingsDevicesSection from "./SettingsDevicesSection";
 import { resolveClient, type ClientMode } from "../lib/app/client";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Identity } from "../lib/mail/types";
@@ -442,6 +443,10 @@ export default function SettingsPanel({ client: injected }: { client?: JmapClien
           The section resolves its own console reads and shares this panel's
           client; behind the agent capability it renders the honest floor. */}
       <SettingsAgentsSection client={client} />
+
+      {/* devices (s37 T2) — the machines, visible from here. Self-contained
+          like the agents section; the reconcile line is the point. */}
+      <SettingsDevicesSection client={client} />
     </div>
   );
 

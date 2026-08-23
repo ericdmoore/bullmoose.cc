@@ -1,0 +1,135 @@
+// s37 T2 — Settings → Devices: the reconcile view, which is the section's
+// reason to exist. A panel that lists installed models is a status page you
+// read once; the sentence people actually need arrives when a local agent
+// silently does nothing:
+//
+//   `extractor` references `@local/llama3` — no registered box reports
+//   serving it (last report 4h ago)
+//
+// Two read models, one join: DeviceReport/get (every minted token = a
+// device, with whatever it last reported) and the console dossier's
+// economics (which `@local/…` models the bindings reference).
+//
+// The staleness discipline is s37 decision 2, enforced in the SHAPES here so
+// the component cannot get it wrong: a device renders "last seen", never
+// "connected" (a minted token is not a running CLI), and a model list is a
+// snapshot rendered "as of", never "installed". And one rule of evidence:
+// with ZERO reports filed, the reconcile stays silent — "this host does not
+// serve X" claimed from no evidence would be exactly the confidently-wrong
+// rendering the decision bans.
+
+import { JmapRequestError, type JmapClient } from "../jmap/JmapClient";
+import type { ConsoleBinding } from "../console/types";
+
+export interface DeviceRow {
+  id: string;
+  name: string;
+  createdAt: number;
+  expiresAt: number | null;
+  lastUsedAt: number | null;
+  host: string | null;
+  /** Normalized model ids — the server accepts `"id"` or `{id, kind}`. */
+  models: string[] | null;
+  /** kind by id, for entries that declared one (chat | embedding | ocr | …). */
+  kinds: Record<string, string>;
+  source: string | null;
+  reportedAt: number | null;
+}
+
+/**
+ * The owner's device inventory, or `null` when the server predates s37
+ * (`unknownMethod` is feature detection, not an error — the DefaultCase
+ * rule). Anything else throws: a network failure must not render as "no
+ * devices".
+ */
+export async function loadDevices(client: JmapClient, accountId: string): Promise<DeviceRow[] | null> {
+  let res: Record<string, unknown>;
+  try {
+    res = await client.requestOne("DeviceReport/get", { accountId });
+  } catch (err) {
+    if (err instanceof JmapRequestError && err.jmapType === "unknownMethod") return null;
+    throw err;
+  }
+  const list = (res.list as Array<Record<string, unknown>> | undefined) ?? [];
+  return list.map((row) => {
+    const { ids, kinds } = normalizeModels(row.models);
+    return {
+      id: String(row.id ?? ""),
+      name: String(row.name ?? ""),
+      createdAt: Number(row.createdAt ?? 0),
+      expiresAt: (row.expiresAt as number | null) ?? null,
+      lastUsedAt: (row.lastUsedAt as number | null) ?? null,
+      host: (row.host as string | null) ?? null,
+      models: row.models == null ? null : ids,
+      kinds,
+      source: (row.source as string | null) ?? null,
+      reportedAt: (row.reportedAt as number | null) ?? null,
+    };
+  });
+}
+
+/** Both wire spellings, one reading. Unknown shapes are skipped, not thrown. */
+export function normalizeModels(models: unknown): { ids: string[]; kinds: Record<string, string> } {
+  const ids: string[] = [];
+  const kinds: Record<string, string> = {};
+  if (Array.isArray(models)) {
+    for (const m of models) {
+      if (typeof m === "string") {
+        ids.push(m);
+      } else if (m && typeof m === "object" && typeof (m as { id?: unknown }).id === "string") {
+        const entry = m as { id: string; kind?: unknown };
+        ids.push(entry.id);
+        if (typeof entry.kind === "string") kinds[entry.id] = entry.kind;
+      }
+    }
+  }
+  return { ids, kinds };
+}
+
+export interface LocalModelGap {
+  bindingName: string;
+  /** The bare model id, `@local/` already stripped. */
+  model: string;
+}
+
+/**
+ * The join. A gap is a `@local/…` candidate on an ENABLED binding that no
+ * device report lists. Only `@local` routes reconcile — a cloud candidate's
+ * availability is the provider's business, not a box's — and only when at
+ * least one report EXISTS: zero evidence supports no claim.
+ */
+export function reconcileLocalModels(
+  bindings: readonly Pick<ConsoleBinding, "name" | "enabled" | "economics">[],
+  devices: readonly DeviceRow[],
+): LocalModelGap[] {
+  if (!devices.some((d) => d.reportedAt !== null)) return [];
+  const served = new Set<string>();
+  for (const d of devices) for (const id of d.models ?? []) served.add(id);
+
+  const gaps: LocalModelGap[] = [];
+  const seen = new Set<string>();
+  for (const b of bindings) {
+    if (!b.enabled) continue; // a disabled binding references nothing that runs
+    for (const entry of b.economics?.modelMenu ?? []) {
+      for (const candidate of entry.candidates) {
+        if (!candidate.startsWith("@local/")) continue;
+        const model = candidate.slice("@local/".length);
+        if (served.has(model)) continue;
+        const key = `${b.name}:${model}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        gaps.push({ bindingName: b.name, model });
+      }
+    }
+  }
+  return gaps;
+}
+
+/** The newest report's timestamp — the "as of" every gap sentence carries. */
+export function latestReportAt(devices: readonly DeviceRow[]): number | null {
+  let latest: number | null = null;
+  for (const d of devices) {
+    if (d.reportedAt !== null && (latest === null || d.reportedAt > latest)) latest = d.reportedAt;
+  }
+  return latest;
+}
