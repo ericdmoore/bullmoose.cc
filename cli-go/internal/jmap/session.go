@@ -237,6 +237,16 @@ func (c *Client) Session(ctx context.Context) (*Session, error) {
 	return c.session, nil
 }
 
+// RefreshSession discards the cached session and fetches a fresh one — the
+// fleet daemon's discovery primitive (jmap.ts refreshSession). Grants fold
+// into the session per request, so only a FRESH fetch sees a newly minted
+// grant or a revocation; the cached copy answers "what could I reach when I
+// started", which is exactly the wrong question for a long-running claimant.
+func (c *Client) RefreshSession(ctx context.Context) (*Session, error) {
+	c.session = nil
+	return c.Session(ctx)
+}
+
 // endpoint is the URL Call posts to: the session's apiUrl for a session client,
 // else the computed path (client.go's note).
 func (c *Client) endpoint(ctx context.Context) (string, error) {

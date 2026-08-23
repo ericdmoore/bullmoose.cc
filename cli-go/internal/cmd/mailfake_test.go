@@ -31,6 +31,7 @@ import (
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/jsobj"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/ws/wstest"
 )
 
 // recordedCall is one method invocation the CLI sent.
@@ -131,6 +132,14 @@ type mailFake struct {
 	annotationIDs    map[string]string
 	annotationList   string
 	refuseAnnotation string
+	// Fleet fixtures (s43 step 6). sessionAccounts replaces the session
+	// resource's accounts map (MUTABLE under mu: the new-grant test edits it
+	// between ticks). refuseQueryFor answers AgentInvocation/query for ONE
+	// account with a method-level error — the live-revocation fixture.
+	sessionAccounts string
+	refuseQueryFor  map[string]string // accountId → jmap error type
+	// wsConns delivers each accepted /api/ws connection to the test.
+	wsConns chan *wstest.Conn
 
 	// Refusal knobs.
 	refuseSubmission string // "method" | "seterror" | ""
@@ -519,6 +528,22 @@ func (f *mailFake) start(t *testing.T) *httptest.Server {
 }
 
 func (f *mailFake) handle(w http.ResponseWriter, r *http.Request) {
+	// The WS door authenticates via the access_token query parameter, not a
+	// header — a browser WebSocket cannot set one, and the dial mirrors that.
+	if r.URL.Path == "/api/ws" {
+		if r.URL.Query().Get("access_token") == "" {
+			w.WriteHeader(401)
+			return
+		}
+		conn, err := wstest.Upgrade(w, r)
+		if err != nil {
+			return
+		}
+		if f.wsConns != nil {
+			f.wsConns <- conn
+		}
+		return
+	}
 	if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
 		w.WriteHeader(401)
 		_, _ = w.Write([]byte(`{"error":"bad token"}`))
@@ -526,9 +551,16 @@ func (f *mailFake) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case r.URL.Path == "/.well-known/jmap":
+		f.mu.Lock()
+		accounts := f.sessionAccounts
+		f.mu.Unlock()
+		if accounts == "" {
+			accounts = "{}"
+		}
 		w.Header().Set("content-type", "application/json")
-		fmt.Fprintf(w, `{"username":"you@stub.test","accounts":{},"primaryAccounts":{},`+
+		fmt.Fprintf(w, `{"username":"you@stub.test","accounts":%s,"primaryAccounts":{},`+
 			`"apiUrl":%q,"downloadUrl":%q}`,
+			accounts,
 			f.base+"/jmap-endpoint",
 			f.base+"/dl/{accountId}/{blobId}/{name}/{type}")
 		return
@@ -771,11 +803,18 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 	case "VacationResponse/set":
 		return reply(`{"accountId":"a_you","newState":"v2","updated":{"singleton":null}}`)
 	case "AgentInvocation/query":
+		var q struct {
+			AccountID string `json:"accountId"`
+		}
+		_ = json.Unmarshal(args, &q)
+		if typ := f.refuseQueryFor[q.AccountID]; typ != "" {
+			return fail(typ, "claim authority gone")
+		}
 		ids := f.invocationIDs
 		if ids == "" {
 			ids = "[]"
 		}
-		return reply(fmt.Sprintf(`{"accountId":"a_you","ids":%s}`, ids))
+		return reply(fmt.Sprintf(`{"accountId":%q,"ids":%s}`, q.AccountID, ids))
 	case "AgentInvocation/get":
 		list := f.invocationList
 		if list == "" {
