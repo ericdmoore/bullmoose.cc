@@ -10,6 +10,7 @@
   "dependencies": {
     "@bullmoose/account-do": "*",
     "@bullmoose/auth-core": "*",
+    "@bullmoose/boundary": "*",
     "@bullmoose/calendar-core": "*",
     "@bullmoose/jmap-core": "*",
     "@bullmoose/mailstore": "*",

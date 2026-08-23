@@ -278,6 +278,24 @@ export function summarizeProposal(p: ActionProposal): string {
         ? `Hold ${when.replace("T", " ").slice(0, 16)}${s(p.payload.timeZone) ? ` ${s(p.payload.timeZone)}` : ""} — “${title}”${with_}`
         : `Hold “${title}”${with_} — NO TIME chosen; write one in or decline`;
     }
+    case "sieve-rule": {
+      // s31 rung 2 — a standing filter. The row leads with the RULE in words
+      // and the blast radius beside it, because "add a filter" is not a
+      // decision anyone can make and "hold mail from X — would have held 3"
+      // is. The full rationale carries the rest.
+      const blast = (p.payload.blastRadius ?? {}) as { tested?: unknown; caught?: unknown };
+      const conditions = Array.isArray((p.payload.rule as { all?: unknown[] } | undefined)?.all)
+        ? ((p.payload.rule as { all: Array<{ field?: unknown; value?: unknown; name?: unknown }> }).all ?? [])
+        : [];
+      const what = conditions
+        .map((c) => `${s(c.field) || s(c.name) || "?"}~“${s(c.value) || "present"}”`)
+        .join(" AND ");
+      const radius =
+        typeof blast.caught === "number" && typeof blast.tested === "number"
+          ? ` · would have held ${blast.caught} of last ${blast.tested}`
+          : "";
+      return `Standing rule — ${what || "(no conditions)"}${radius}`;
+    }
     case "contingent-commitment": {
       // s36 V2 — a commitment the message made conditional. The row says the
       // commitment; whether it is still blocked is the CAUSE's state, checked

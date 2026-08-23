@@ -238,6 +238,23 @@ describe("summarizeProposal — one line per row, grant-request included", () =>
     );
   });
 
+  it("a standing rule headlines what it matches and its blast radius — informed Accept, not a rubber stamp", () => {
+    const p = base({
+      kind: "sieve-rule",
+      tier: 2,
+      payload: {
+        verb: "rule",
+        rule: {
+          id: "inv_r1",
+          all: [{ kind: "contains", field: "from", value: "blast@deals.example" }],
+          action: "reject",
+        },
+        blastRadius: { tested: 200, caught: 3, sampleIds: [], answeredCaught: 0 },
+      },
+    });
+    expect(summarizeProposal(p)).toBe("Standing rule — from~“blast@deals.example” · would have held 3 of last 200");
+  });
+
   it("a contingent commitment headlines its text — the condition renders live, not baked in", () => {
     const p = base({
       kind: "contingent-commitment",
