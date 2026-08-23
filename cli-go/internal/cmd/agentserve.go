@@ -49,6 +49,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/account"
 	bmio "github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
@@ -442,6 +443,12 @@ func runAgentServe(s *bmio.Streams, a agentArgs) int {
 		s.Note(err.Error())
 		return 1
 	}
+	// s45 — the MENU DECLARATION: probe what the configured hosts actually
+	// serve and declare the ids as facts on every claim. Probed, never
+	// asserted, and a dead host declares nothing — an empty fact is not a
+	// fact. Failure never blocks serving: the menu is for the allocation
+	// surface, not the fit gate.
+	declareMenu(context.Background(), fleet, s)
 
 	// --fleet: ONE login as a runtime principal, served accounts DISCOVERED
 	// from grants. --config: the original one-binding shape, the login's own
@@ -786,6 +793,70 @@ func runReplyPipeline(ctx context.Context, client *jmap.Client, acc account.Acco
 		return "", errors.New("draft create failed: " + string(detail))
 	}
 	return draft.ID, nil
+}
+
+// declareMenu probes each distinct openai-compatible base among the fleet's
+// models (2.5s each, the local.go ladder timeout) and merges the served
+// model ids into the capabilities object the claim already carries verbatim.
+// FACTS only — ids the host answered with, deduped, sorted, capped at 64 —
+// never a ranking: the s45 plan's "no smartness scalar" veto is enforced by
+// shape. The server's normalizeClaimant keeps the menu key trust-but-audit.
+func declareMenu(ctx context.Context, fleet *serveFleetConfig, s *bmio.Streams) {
+	bases := map[string]string{} // base -> apiKeyEnv
+	for _, b := range fleet.Bindings {
+		models := append([]serveModelConfig{b.Model}, b.ModelMenu...)
+		for _, m := range models {
+			if m.Provider == "openai-compatible" && m.BaseURL != "" {
+				if _, seen := bases[m.BaseURL]; !seen {
+					bases[m.BaseURL] = m.APIKeyEnv
+				}
+			}
+		}
+	}
+	if len(bases) == 0 {
+		return
+	}
+	client := &http.Client{}
+	set := map[string]bool{}
+	for base, keyEnv := range bases {
+		apiKey := ""
+		if keyEnv != "" {
+			apiKey = os.Getenv(keyEnv)
+		}
+		f := probeHost(ctx, client, LadderHost{Name: "config", Base: base}, apiKey, 2500*time.Millisecond)
+		if !f.Up {
+			s.Note("menu: " + base + " did not answer /v1/models -- declaring nothing for it")
+			continue
+		}
+		for _, id := range f.Models {
+			set[id] = true
+		}
+	}
+	if len(set) == 0 {
+		return
+	}
+	menu := make([]string, 0, len(set))
+	for id := range set {
+		menu = append(menu, id)
+	}
+	sort.Strings(menu)
+	if len(menu) > 64 {
+		menu = menu[:64]
+	}
+	caps := map[string]any{}
+	if len(fleet.Capabilities) > 0 && string(fleet.Capabilities) != "null" {
+		if err := json.Unmarshal(fleet.Capabilities, &caps); err != nil {
+			s.Note("menu: capabilities unreadable -- declared without a menu")
+			return
+		}
+	}
+	caps["menu"] = menu
+	raw, err := json.Marshal(caps)
+	if err != nil {
+		return
+	}
+	fleet.Capabilities = raw
+	s.Note(fmt.Sprintf("menu: declaring %d model(s) from %d host(s)", len(menu), len(bases)))
 }
 
 // resolveLocalModels rewrites every model whose baseURL is the literal
