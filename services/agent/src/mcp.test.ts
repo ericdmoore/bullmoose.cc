@@ -839,7 +839,7 @@ describe("tools/list publishes what a caller needs to pre-filter (s02 T6)", () =
       .filter((t: any) => t.accountless)
       .map((t: any) => t.name)
       .sort();
-    expect(flagged).toEqual(["revoke_app", "whoami"]);
+    expect(flagged).toEqual(["devices", "revoke_app", "whoami"]);
   });
 
   it("53. still carries the cache hint", async () => {
