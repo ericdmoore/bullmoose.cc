@@ -56,6 +56,18 @@ export async function loadQueue(client: JmapClient, accountId: string): Promise<
  * every other proposal decidable, so per-account errors are collected and
  * reported beside the rows rather than thrown.
  */
+/**
+ * One proposal by id — the rule popover's poll. The id is KNOWN before the
+ * row exists (proposal id == invocation id), so this is a /get, not a
+ * search; null means "not minted yet", which the caller treats as "keep
+ * waiting", never as an error.
+ */
+export async function getProposal(client: JmapClient, accountId: string, id: string): Promise<ActionProposal | null> {
+  const res = await client.requestOne("ActionProposal/get", { accountId, ids: [id] });
+  const raw = (res.list as unknown[] | undefined)?.[0];
+  return raw ? parseProposal(raw as Record<string, unknown>, accountId) : null;
+}
+
 export async function loadQueues(client: JmapClient, accountIds: string[]): Promise<MergedQueueResult> {
   if (accountIds.length === 0) return { proposals: [], states: {}, failures: {} };
 
@@ -119,9 +131,23 @@ export type Verdict =
   // (`NO_FAULT_KINDS` — a budget decline is about the wallet, a held-mail
   // decline is an ANSWER). Requiring it here made those verbs unsendable.
   | { status: "rejected"; reason?: RejectReason; note?: string }
-  | { status: "info-requested"; question: string };
+  | { status: "info-requested"; question: string }
+  /** s31 popover — (X): closed-as-unanswered. No reason, no training signal;
+   *  the server refuses one if a caller tries to smuggle it. */
+  | { status: "closed" }
+  /** s31 popover — retry-with-nudge: supersedes, and the response names the
+   *  successor invocation. The note rides the PATCH TOP LEVEL, not decision —
+   *  it is an instruction to the composer, not a judgment of the proposal. */
+  | { status: "retry"; note?: string };
 
-export type DecideOutcome = { ok: true } | { ok: false; message: string };
+export type DecideOutcome =
+  | {
+      ok: true;
+      /** Retry only: the successor invocation's id, which IS the id the
+       *  re-composed proposal will carry. The popover follows it. */
+      successorId?: string;
+    }
+  | { ok: false; message: string };
 
 export async function decide(
   client: JmapClient,
@@ -132,7 +158,7 @@ export async function decide(
 ): Promise<DecideOutcome> {
   const decision: Record<string, unknown> = {};
   if (verdict.status === "rejected" && verdict.reason) decision.reason = verdict.reason;
-  if (verdict.status !== "info-requested" && verdict.note) decision.note = verdict.note;
+  if ((verdict.status === "approved" || verdict.status === "rejected") && verdict.note) decision.note = verdict.note;
 
   const patch: Record<string, unknown> = {
     status: verdict.status,
@@ -143,6 +169,9 @@ export async function decide(
     // needsInfo carries ONLY the question — the server refuses a decision on
     // this verb (actionProposal.ts), and this module never builds one for it.
     ...(verdict.status === "info-requested" ? { question: verdict.question } : {}),
+    // The retry nudge rides the patch TOP LEVEL: it is an instruction to the
+    // composer, not a judgment of the proposal, and the server reads it there.
+    ...(verdict.status === "retry" && verdict.note ? { note: verdict.note } : {}),
   };
 
   let result: Record<string, unknown>;
@@ -158,7 +187,13 @@ export async function decide(
   }
 
   const updated = result.updated as Record<string, unknown> | undefined;
-  if (updated && id in updated) return { ok: true };
+  if (updated && id in updated) {
+    const serverSet = updated[id] as { successorId?: unknown } | null;
+    return {
+      ok: true,
+      ...(serverSet && typeof serverSet.successorId === "string" ? { successorId: serverSet.successorId } : {}),
+    };
+  }
 
   const notUpdated = (result.notUpdated as Record<string, { type?: string; description?: string }>)?.[id];
   return {

@@ -73,7 +73,14 @@ async function resolveVerbBinding(
 }
 
 export type VerbOutcome =
-  | { ok: true; message: string }
+  | {
+      ok: true;
+      message: string;
+      /** The created invocation's id — which IS the future proposal's id
+       *  (emitProposal mints on it). Surfaces that follow the composition
+       *  (the rule popover) poll ActionProposal/get with exactly this. */
+      invocationId?: string;
+    }
   | {
       ok: false;
       /** A sentence a person can act on (the triage `describeRefusal` shape). */
@@ -214,7 +221,15 @@ export async function askAgent(
     notCreated?: Record<string, { type?: string; description?: string }>;
   };
   if (result.created && "v" in result.created) {
-    return { ok: true, message: askSentMessage(spec.verb, spec.person) };
+    // The invocation's id IS the future proposal's id (emitProposal mints on
+    // the invocation's own id), so returning it is what lets a surface FOLLOW
+    // the composition — the rule popover polls ActionProposal/get with it.
+    const made = result.created.v as { id?: unknown };
+    return {
+      ok: true,
+      message: askSentMessage(spec.verb, spec.person),
+      ...(typeof made.id === "string" ? { invocationId: made.id } : {}),
+    };
   }
   const err = result.notCreated?.v;
   return refused(notCreatedSentence(err));

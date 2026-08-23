@@ -667,7 +667,7 @@ export function installApprovalsDemo(client: FakeJmapClient, opts: ApprovalsDemo
         ];
       }
 
-      const updated: Record<string, null> = {};
+      const updated: Record<string, Record<string, unknown> | null> = {};
       const notUpdated: Record<string, unknown> = {};
       const destroyed: string[] = [];
       const notDestroyed: Record<string, unknown> = {};
@@ -716,12 +716,78 @@ export function installApprovalsDemo(client: FakeJmapClient, opts: ApprovalsDemo
         }
 
         const status = patch.status;
-        if (status !== "approved" && status !== "rejected" && status !== "info-requested") {
+        if (
+          status !== "approved" &&
+          status !== "rejected" &&
+          status !== "info-requested" &&
+          status !== "closed" &&
+          status !== "retry"
+        ) {
           notUpdated[id] = {
             type: "invalidProperties",
-            description: 'status must be "approved", "rejected" or "info-requested"',
+            description: 'status must be "approved", "rejected", "info-requested", "closed" or "retry"',
             properties: ["status"],
           };
+          continue;
+        }
+
+        // ---- s31 popover verbs, mirroring the server exactly ----
+        // (X) close: solicited kinds only, NO reason — a smuggled one refuses.
+        if (status === "closed") {
+          if (row.kind !== "sieve-rule") {
+            notUpdated[id] = {
+              type: "invalidPatch",
+              description: `a ${row.kind} proposal is not closeable — decline it (with a reason) or let it expire`,
+              properties: ["status"],
+            };
+            continue;
+          }
+          if (patch.decision !== undefined) {
+            notUpdated[id] = {
+              type: "invalidProperties",
+              description: "a close carries no reason — it is not a decline, and nothing is learned from it",
+              properties: ["decision"],
+            };
+            continue;
+          }
+          row.status = "closed";
+          row.decidedAt = new Date(now).toISOString();
+          row.decision = { by: "you@demo", closed: "dismissed" };
+          updated[id] = null;
+          continue;
+        }
+        // retry: supersede and NAME the successor — the demo has no composer,
+        // so the successor proposal is synthesized on the spot, which is
+        // exactly enough for the popover's follow-the-successor loop.
+        if (status === "retry") {
+          if (row.kind !== "sieve-rule") {
+            notUpdated[id] = {
+              type: "invalidPatch",
+              description: `a ${row.kind} proposal has no retry — edit it (the edit is the approval) or decline it`,
+              properties: ["status"],
+            };
+            continue;
+          }
+          const nudge = typeof patch.note === "string" ? patch.note.trim().slice(0, 300) : "";
+          row.status = "closed";
+          row.decidedAt = new Date(now).toISOString();
+          row.decision = {
+            by: "you@demo",
+            closed: "superseded-by-retry",
+            ...(nudge ? { nudge } : {}),
+            note: "superseded: the owner asked for a new composition",
+          };
+          const successorId = `inv_demo_retry_${now}`;
+          proposals.push({
+            ...row,
+            id: successorId,
+            status: "pending",
+            decidedAt: null,
+            decision: null,
+            rationale: nudge ? `re-composed to your instruction: "${nudge}"` : "re-composed",
+            createdAt: new Date(now).toISOString(),
+          });
+          updated[id] = { successorId };
           continue;
         }
 

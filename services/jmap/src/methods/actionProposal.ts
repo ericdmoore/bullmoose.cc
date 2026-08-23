@@ -387,7 +387,9 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
       );
     }
 
-    const updated: Record<string, null> = {};
+    // Values are null except where the server has something to say back —
+    // RFC 8620 §5.3's server-set-changes shape (retry returns {successorId}).
+    const updated: Record<string, Record<string, unknown> | null> = {};
     const notUpdated: Record<string, SetError> = {};
     const destroyed: string[] = [];
     const notDestroyed: Record<string, SetError> = {};
@@ -565,7 +567,12 @@ export function registerActionProposalMethods(registry: MethodRegistry<RequestCo
           // wakes a homelab runtime to drain it.
           applyEntries.push({ collection: "AgentInvocation", created: [successorId], updated: [], destroyed: [] });
           propEntry.updated.push(id);
-          updated[id] = null;
+          // RFC 8620 §5.3: `updated` values carry server-set changes. The
+          // successor's id IS one — the popover that asked for the retry
+          // needs it to follow the re-composition (proposal id will equal
+          // this invocation id), and querying "newest pending sieve-rule on
+          // this email" instead would be a guess wearing a race.
+          updated[id] = { successorId };
           continue;
         }
 
