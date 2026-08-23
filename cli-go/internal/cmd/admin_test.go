@@ -21,14 +21,17 @@ type adminFake struct {
 	calls []struct{ Method, Path, Body string }
 	reply map[string]string // "METHOD path-prefix" → body
 	// status, when non-zero, is what EVERY request answers — the
-	// operator-plane-unreachable fixture (s43 step 2).
-	status int
-	srv    *httptest.Server
+	// operator-plane-unreachable fixture (s43 step 2). statusFor scopes a
+	// status to one "METHOD path-prefix", so a re-provision's GET can succeed
+	// while its POST refuses (s43 step 3).
+	status    int
+	statusFor map[string]int
+	srv       *httptest.Server
 }
 
 func newAdminFake(t *testing.T) *adminFake {
 	t.Helper()
-	v := &adminFake{reply: map[string]string{}}
+	v := &adminFake{reply: map[string]string{}, statusFor: map[string]int{}}
 	v.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		v.mu.Lock()
@@ -41,6 +44,12 @@ func newAdminFake(t *testing.T) *adminFake {
 			}
 		}
 		status := v.status
+		for key, st := range v.statusFor {
+			method, prefix, _ := strings.Cut(key, " ")
+			if r.Method == method && strings.HasPrefix(r.URL.Path, prefix) {
+				status = st
+			}
+		}
 		v.mu.Unlock()
 		w.Header().Set("content-type", "application/json")
 		if status != 0 {

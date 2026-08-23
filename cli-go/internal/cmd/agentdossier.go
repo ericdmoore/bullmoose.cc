@@ -458,34 +458,54 @@ func runAgentShow(s *bmio.Streams, a agentArgs) int {
 	return 0
 }
 
-// operatorConfigOf reads the binding's row off the operator plane and parses
-// its config_json — the floor's only home.
-func operatorConfigOf(ctx context.Context, api *adminAPI, address string, b *dossierBinding) (map[string]any, error) {
+// operatorBindingRow reads the binding's row off the operator plane — shared
+// by `show`'s floor enrichment (which catches the error into a note) and the
+// step-3 read-modify-writes (which surface it, hence "nothing was written").
+type adminBindingRow struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	ConfigJSON string `json:"config_json"`
+}
+
+func operatorBindingRow(ctx context.Context, api *adminAPI, address string, b *dossierBinding) (adminBindingRow, error) {
 	raw, err := api.call(ctx, http.MethodGet, "/agent-bindings?email="+url.QueryEscape(address), nil)
+	if err != nil {
+		return adminBindingRow{}, err
+	}
+	var res struct {
+		Bindings []adminBindingRow `json:"bindings"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return adminBindingRow{}, err
+	}
+	for _, row := range res.Bindings {
+		if row.ID == b.BindingID {
+			return row, nil
+		}
+	}
+	for _, row := range res.Bindings {
+		if row.Name == b.Name {
+			return row, nil
+		}
+	}
+	return adminBindingRow{}, &bmio.CliError{
+		Msg: fmt.Sprintf("the operator plane has no binding %s for %s — the console projection and %s disagree "+
+			"about this account; nothing was written", b.BindingID, address, api.base),
+		Code: bmio.ExitNotFound,
+	}
+}
+
+// operatorConfigOf parses the row's config_json — the floor's only home.
+func operatorConfigOf(ctx context.Context, api *adminAPI, address string, b *dossierBinding) (map[string]any, error) {
+	row, err := operatorBindingRow(ctx, api, address, b)
 	if err != nil {
 		return nil, err
 	}
-	var res struct {
-		Bindings []struct {
-			ID         string `json:"id"`
-			Name       string `json:"name"`
-			ConfigJSON string `json:"config_json"`
-		} `json:"bindings"`
+	var config map[string]any
+	if json.Unmarshal([]byte(row.ConfigJSON), &config) != nil || config == nil {
+		config = map[string]any{}
 	}
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return nil, err
-	}
-	for _, row := range res.Bindings {
-		if row.ID == b.BindingID || row.Name == b.Name {
-			var config map[string]any
-			if json.Unmarshal([]byte(row.ConfigJSON), &config) != nil || config == nil {
-				config = map[string]any{}
-			}
-			return config, nil
-		}
-	}
-	return nil, fmt.Errorf("the operator plane has no binding %s for %s — the console projection and %s disagree about this account",
-		b.BindingID, address, api.base)
+	return config, nil
 }
 
 // buildShow assembles the whole dossier as one object (§1.3: `--json` on a

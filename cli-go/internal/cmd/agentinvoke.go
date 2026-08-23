@@ -34,6 +34,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	bmio "github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/jmap"
@@ -138,6 +139,12 @@ const agentUsage = "usage: bullmoose agent serve --config <agent.json>|--fleet <
 	"backfill <binding> --since <date> | enable|disable <binding>"
 
 func runAgent(s *bmio.Streams, argv []string) int {
+	return runAgentWith(s, argv, func() int64 { return time.Now().UnixMilli() })
+}
+
+// runAgentWith carries the one effect a dossier test cannot have — the clock
+// backfill's --since arithmetic reads (the login.go deps pattern).
+func runAgentWith(s *bmio.Streams, argv []string, nowMs func() int64) int {
 	a := parseAgent(argv)
 	switch a.at(1) {
 	case "invoke", "invocations", "rm":
@@ -146,18 +153,20 @@ func runAgent(s *bmio.Streams, argv []string) int {
 		return runAgentShow(s, a)
 	case "budget":
 		if a.HasSet {
-			// s43 step 3. Unreachable in production until the registry flip
-			// (which lands only when every verb exists) — a guard, not a door.
-			s.Note("agent budget --set is s43 step 3; the Node CLI serves it until the registry flip")
-			return 1
+			return runAgentBudgetSet(s, a)
 		}
 		return runAgentBudgetRead(s, a)
 	case "model":
 		if a.HasSet || len(a.Explore) > 0 {
-			s.Note("agent model --set/--explore is s43 step 3; the Node CLI serves it until the registry flip")
-			return 1
+			return runAgentModelSet(s, a)
 		}
 		return runAgentModelRead(s, a)
+	case "enable":
+		return runAgentKill(s, a, true)
+	case "disable":
+		return runAgentKill(s, a, false)
+	case "backfill":
+		return runAgentBackfill(s, a, nowMs)
 	default:
 		// serve and the dossier verbs land in s43 steps 2–6; the registry
 		// flip is LAST and alone, so until every case above exists, reaching

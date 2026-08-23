@@ -112,6 +112,9 @@ type mailFake struct {
 	// different refusal sentences are the fixture's point.
 	dossier        string
 	dossierRefusal restRefusal
+	// refuseBinding, when set, is the raw SetError every AgentBinding/set
+	// update answers with — the kill switch's server-side refusals (s43 step 3).
+	refuseBinding string
 
 	// Refusal knobs.
 	refuseSubmission string // "method" | "seterror" | ""
@@ -777,6 +780,24 @@ func (f *mailFake) invoke(name string, args json.RawMessage, callID string) stri
 			return reply(fmt.Sprintf(`{"accountId":"a_you","destroyed":%s,"newState":"agstate-2"}`, d))
 		}
 		return fail("invalidArguments", "empty AgentInvocation/set")
+	case "AgentBinding/set":
+		var set struct {
+			Update map[string]struct {
+				Enabled *bool `json:"enabled"`
+			} `json:"update"`
+		}
+		_ = json.Unmarshal(args, &set)
+		for id, u := range set.Update {
+			if f.refuseBinding != "" {
+				return reply(fmt.Sprintf(`{"accountId":"a_you","notUpdated":{%q:%s}}`, id, f.refuseBinding))
+			}
+			enabled := "true"
+			if u.Enabled != nil && !*u.Enabled {
+				enabled = "false"
+			}
+			return reply(fmt.Sprintf(`{"accountId":"a_you","updated":{%q:{"enabled":%s}}}`, id, enabled))
+		}
+		return fail("invalidArguments", "empty AgentBinding/set")
 	case "Email/import":
 		var imp struct {
 			Emails map[string]struct {
