@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mintExploreCookie } from "./cookie";
+import { browserFamily, signInPage } from "./index";
 import { TYPES, TYPE_NAMES } from "./types";
 import { ALLEN, COOKIE_KEY, EMAIL_COUNT, ERIC, EXPLORE_HOST, ZED, harness, ids } from "./harness";
 
@@ -493,6 +494,37 @@ describe("the one scrap of HTML", () => {
     expect(html).not.toContain("bm_");
     // No script, no stylesheet, no form: `default-src 'none'` has to be true.
     expect(html).not.toMatch(/<script|<link|<form/i);
+  });
+
+  it("names the pretty-printer for the browser you are holding, YOUR family first", async () => {
+    // The premise is "the browser IS the explorer, with a pretty-print
+    // extension" — so the page says which one, detected server-side (the CSP
+    // forbids script). A wrong guess costs nothing: all three families are
+    // always listed, only the order moves.
+    const CHROME = "Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
+    const FIREFOX = "Mozilla/5.0 (Macintosh; rv:128.0) Gecko/20100101 Firefox/128.0";
+    const SAFARI = "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15";
+
+    expect(browserFamily(CHROME)).toBe("chrome");
+    expect(browserFamily(FIREFOX)).toBe("firefox");
+    expect(browserFamily(SAFARI)).toBe("safari");
+    expect(browserFamily(null)).toBe("chrome"); // unknown → largest population
+
+    const pageFor = async (ua: string) => await signInPage(null, ua).text();
+    const chromePage = await pageFor(CHROME);
+    expect(chromePage.indexOf("Chrome-based")).toBeLessThan(chromePage.indexOf("Firefox-based"));
+    expect(chromePage).toContain("chromewebstore.google.com");
+    const safariPage = await pageFor(SAFARI);
+    expect(safariPage.indexOf("Safari-based")).toBeLessThan(safariPage.indexOf("Chrome-based"));
+    expect(safariPage).toContain("apps.apple.com");
+    // Firefox's row is NOT a link: the viewer is built in, and sending
+    // someone to install what they already have would be the page lying.
+    const firefoxPage = await pageFor(FIREFOX);
+    expect(firefoxPage.indexOf("Firefox-based")).toBeLessThan(firefoxPage.indexOf("Chrome-based"));
+    expect(firefoxPage).toContain("nothing to install");
+    // The standards are one click away, and still no script/style/form.
+    expect(chromePage).toContain("rfc8620");
+    expect(chromePage).not.toMatch(/<script|<link|<form/i);
   });
 
   it("an expired cookie is the same as no cookie", async () => {

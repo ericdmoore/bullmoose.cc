@@ -129,11 +129,46 @@ export async function exploreCookiePrincipal(request: Request, env: Env): Promis
  * The ONE permitted scrap of HTML (`.plans/s21-explorer`, open question 3).
  *
  * No stylesheet, no script, no image — `default-src 'none'` is satisfiable
- * because the page is a heading, two sentences and a link. If this ever grows
- * a second page it has become an app, and the argument for the whole unit
- * weakens.
+ * because the page is a heading, a few sentences and links. If this ever
+ * grows a second page it has become an app, and the argument for the whole
+ * unit weakens.
+ *
+ * ## The pretty-printer shelf (Eric, 2026-08-23)
+ *
+ * The explorer's whole premise is "the browser IS the explorer — with a
+ * pretty-print extension." So the sign-in page names the extension for the
+ * browser you are holding, THAT browser's family first. Detection is
+ * SERVER-side UA sniffing, because the CSP forbids script and navigation
+ * links are the only capability this page has; a wrong guess costs nothing —
+ * all three families are listed, only the order moves. Firefox's row is not
+ * a link at all: it ships a native JSON viewer, and sending someone to
+ * install what they already have would be the page lying about the one
+ * thing it exists to explain.
  */
-export function signInPage(returnTo?: string | null): Response {
+
+type BrowserFamily = "chrome" | "firefox" | "safari";
+
+/** UA → family, coarse on purpose. Chrome/Edge/Brave/Arc all carry
+ *  `Chrome/`; Safari is `Safari/` WITHOUT it; Firefox says its name. An
+ *  unknown UA reads as chrome-family, the largest population. */
+export function browserFamily(userAgent: string | null): BrowserFamily {
+  const ua = userAgent ?? "";
+  if (/firefox\//i.test(ua)) return "firefox";
+  if (/safari\//i.test(ua) && !/chrome|chromium|crios|edg/i.test(ua)) return "safari";
+  return "chrome";
+}
+
+const VIEWER_ROWS: Record<BrowserFamily, string> = {
+  chrome:
+    `<li><strong>Chrome-based</strong> (Chrome, Edge, Brave, Arc): ` +
+    `<a href="https://chromewebstore.google.com/detail/json-formatter/bcjindcccaagfpapjjmafapmmgkkhgoa" rel="noreferrer">JSON Formatter</a> — open source, renders <code>_links</code> as clickable.</li>`,
+  firefox: `<li><strong>Firefox-based</strong>: nothing to install — Firefox ships a native JSON viewer, links clickable out of the box.</li>`,
+  safari:
+    `<li><strong>Safari-based</strong>: ` +
+    `<a href="https://apps.apple.com/app/json-peep-for-safari/id1458969831" rel="noreferrer">JSON Peep</a> from the App Store.</li>`,
+};
+
+export function signInPage(returnTo?: string | null, userAgent?: string | null): Response {
   // Carry the interrupted destination through the sign-in, so a deep link
   // lands where it pointed instead of dumping you at the root and making you
   // navigate back by hand (Eric, 2026-08-21: "the salt in the wound").
@@ -144,6 +179,10 @@ export function signInPage(returnTo?: string | null): Response {
   // and an unvalidated string in an href is how that becomes an injection.
   const dest = safeReturnTo(returnTo ?? null);
   const startHref = dest ? `/oauth/start?return_to=${encodeURIComponent(dest)}` : "/oauth/start";
+  // The reader's own family first; the other two follow in a stable order.
+  const family = browserFamily(userAgent ?? null);
+  const order: BrowserFamily[] = [family, ...(["chrome", "firefox", "safari"] as const).filter((f) => f !== family)];
+  const viewers = order.map((f) => VIEWER_ROWS[f]).join("\n");
   const body = `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
@@ -153,6 +192,11 @@ export function signInPage(returnTo?: string | null): Response {
 <p>Read-only JSON over the same JMAP methods every other client uses. Nothing here can write.</p>
 <p><a href="${startHref}">Sign in with bullmoose</a></p>
 <p>A session lasts 15 minutes and carries the <code>read</code> scope only.</p>
+<p>Every response carries <code>_self</code>, <code>_links</code> and <code>_next</code> — with a JSON pretty-printer, the browser is the whole client:</p>
+<ul>
+${viewers}
+</ul>
+<p>The shapes are the standards': <a href="https://www.rfc-editor.org/rfc/rfc8620" rel="noreferrer">RFC 8620 (JMAP)</a> and <a href="https://www.rfc-editor.org/rfc/rfc8621" rel="noreferrer">RFC 8621 (JMAP for Mail)</a>.</p>
 </html>
 `;
   return new Response(body, {
