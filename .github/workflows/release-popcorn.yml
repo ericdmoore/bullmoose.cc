@@ -20,7 +20,7 @@ name: Release popcorn
 # `wrangler r2 bucket lifecycle list bullmoose-downloads`): every published
 # version stays online FOREVER — pinning and forensics both want yesterday's
 # exact bytes, and a hundred releases is ~$0.15/month. Versioned prefixes
-# (popcorn/v*, cli/v*) transition to Infrequent Access after 90 days — R2's
+# (popcorn/v*, cli/v*) transition to Infrequent Access after 180 days — R2's
 # audit tier: cheaper at rest, still instantly servable, small retrieval fee
 # (there is no Glacier-style offline tier on R2; IA is as cold as it gets).
 # The hot path (latest.txt, install.sh, fullmonty.sh) is re-uploaded per
