@@ -9,6 +9,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/store"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -390,4 +391,51 @@ func TestCallModel_Adapters(t *testing.T) {
 func readAll(r *http.Request) ([]byte, error) {
 	defer r.Body.Close()
 	return io.ReadAll(r.Body)
+}
+
+// s45 — "@local" resolves to the saved host, or refuses before any claim.
+func TestResolveLocalModels(t *testing.T) {
+	dir := t.TempDir()
+	db, err := store.Init(dir + "/mail.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	fleet := &serveFleetConfig{Bindings: map[string]serveBindingConfig{
+		"emily": {
+			Model: serveModelConfig{Provider: "openai-compatible", BaseURL: "@local", Model: "qwen3:32b"},
+			ModelMenu: []serveModelConfig{
+				{Provider: "openai-compatible", BaseURL: "@local", Model: "llama3:8b"},
+				{Provider: "openai-compatible", BaseURL: "https://api.example.com", Model: "gpt"},
+			},
+		},
+	}}
+
+	// No saved host: refuse, naming the fix, before any claim is burned.
+	if err := resolveLocalModels(fleet, db); err == nil || !strings.Contains(err.Error(), "bullmoose local") {
+		t.Fatalf("expected the run-bullmoose-local refusal, got %v", err)
+	}
+
+	// The saved host (and its key env) is what @local means.
+	if err := store.SetConfig(db, LocalHostKey, "http://localhost:4000"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetConfig(db, LocalHostKeyEnv, "LITELLM_MASTER_KEY"); err != nil {
+		t.Fatal(err)
+	}
+	if err := resolveLocalModels(fleet, db); err != nil {
+		t.Fatal(err)
+	}
+	b := fleet.Bindings["emily"]
+	if b.Model.BaseURL != "http://localhost:4000" || b.Model.APIKeyEnv != "LITELLM_MASTER_KEY" {
+		t.Fatalf("primary not resolved: %+v", b.Model)
+	}
+	if b.ModelMenu[0].BaseURL != "http://localhost:4000" {
+		t.Fatalf("menu entry not resolved: %+v", b.ModelMenu[0])
+	}
+	// A literal base is never touched, and never inherits the key env.
+	if b.ModelMenu[1].BaseURL != "https://api.example.com" || b.ModelMenu[1].APIKeyEnv != "" {
+		t.Fatalf("literal base was touched: %+v", b.ModelMenu[1])
+	}
 }
