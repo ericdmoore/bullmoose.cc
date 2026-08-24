@@ -229,6 +229,20 @@ directory across invocations is where a poisoned file waits for the next
 job — the security argument and the billing argument reach the same
 verdict. Sandbox-seconds land in the s45 cost columns per invocation.
 
+**The free lane keeps its zeros (Eric's pricing question, 2026-08-24).**
+The sandbox's DEFINITION being server-side never required its EXECUTION to
+be: a capable homelab may satisfy the same tool contract LOCALLY — the
+same pinned image in a container on the box, identical interface, held to
+the identical conformance transcripts. The host declares `sandbox: true`
+as a capability FACT; the claim gate routes on it; an RPi declares false
+and its sandbox calls run cloud-side, metered and stamped. Knowability of
+need comes in three tiers: the attachment family is knowable AT ENQUEUE
+(MIME types set `requires.sandbox` deterministically, no prediction);
+mid-loop needs are unknowable by definition (that is what the loop is),
+but the harness sees the call before money moves; and the ledger ITEMIZES
+after — "model: $0 · sandbox: $0.00x" — because free was always measured
+zero, never an identity.
+
 Sequencing: after the first tool family — it is tool N+1 through the same
 door, with the same per-tool injection review, not a new architecture.
 
