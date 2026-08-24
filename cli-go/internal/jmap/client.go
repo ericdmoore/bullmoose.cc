@@ -294,3 +294,9 @@ func transportError(msg string, status int, body []byte) error {
 	}
 	return e
 }
+
+// Base is the JMAP origin this client was built for. Read by the agent
+// runtime to derive sibling service endpoints (s44 slice 2's MCP base) --
+// exposed rather than re-threaded through every call site, and read-only:
+// nothing may repoint a live client.
+func (c *Client) Base() string { return c.base }

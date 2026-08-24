@@ -483,3 +483,57 @@ func TestDeclareMenu(t *testing.T) {
 		t.Fatalf("dead host declared: %s", dead.Capabilities)
 	}
 }
+
+// s44 slice 2 — the endpoint resolution and the shelf line.
+func TestMcpBaseFor(t *testing.T) {
+	// Explicit wins, trailing slash trimmed.
+	if got := mcpBaseFor(&serveFleetConfig{MCPBase: "https://mcp.example.test/mcp/"}, "https://app.x.test"); got != "https://mcp.example.test/mcp" {
+		t.Errorf("explicit: %q", got)
+	}
+	// Derived: the leftmost label becomes "mcp" — the deployment's own shape.
+	if got := mcpBaseFor(&serveFleetConfig{}, "https://app.bullmoose.cc"); got != "https://mcp.bullmoose.cc/mcp" {
+		t.Errorf("derived: %q", got)
+	}
+	// Junk base yields nothing rather than a fabricated host.
+	if got := mcpBaseFor(&serveFleetConfig{}, "not a url"); got != "" {
+		t.Errorf("junk base must not fabricate: %q", got)
+	}
+}
+
+func TestToolShelf_SaysWhatItSaw(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"email_query"},{"name":"calendar_list"}]}}`)
+	}))
+	defer srv.Close()
+	got := toolShelf(context.Background(), &serveFleetConfig{MCPBase: srv.URL}, "https://app.x.test", "bmi_tok")
+	if !strings.Contains(got, "tools: 2") || !strings.Contains(got, "calendar_list, email_query") {
+		t.Errorf("shelf line: %q", got)
+	}
+}
+
+func TestToolShelf_EmptyAndRefusedReadDifferently(t *testing.T) {
+	// "none for this invocation" is the envelope answering; a refusal names
+	// the endpoint and the reason. Conflating them would hide a broken host.
+	empty := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}`)
+	}))
+	defer empty.Close()
+	if got := toolShelf(context.Background(), &serveFleetConfig{MCPBase: empty.URL}, "https://app.x.test", "bmi_tok"); !strings.Contains(got, "none for this invocation") {
+		t.Errorf("empty: %q", got)
+	}
+
+	refused := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(403)
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":1,"error":{"code":-32004,"message":"nope"}}`)
+	}))
+	defer refused.Close()
+	got := toolShelf(context.Background(), &serveFleetConfig{MCPBase: refused.URL}, "https://app.x.test", "bmi_tok")
+	if !strings.Contains(got, "refused") || !strings.Contains(got, "-32004") {
+		t.Errorf("refusal: %q", got)
+	}
+
+	// No endpoint at all says which knob fixes it.
+	if got := toolShelf(context.Background(), &serveFleetConfig{}, "not a url", "bmi_tok"); !strings.Contains(got, "set mcpBase") {
+		t.Errorf("no endpoint: %q", got)
+	}
+}
