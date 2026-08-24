@@ -128,6 +128,51 @@ the envelope as the EXPLICIT object of approval — today the envelope is
 implicit in the binding's grants. The first tool-looping binding makes that
 explicit or it ships without a contract.
 
+## Venue indifference (Eric, 2026-08-24) — one harness, two homes
+
+*"For the end-user I would like to design the system to the point where they
+are indifferent to where the job was invoked."* Named as an invariant,
+because most of it already holds and the loop is where it would quietly
+break:
+
+- **The tool vocabulary lives server-side, ONLY.** `tools/list` is the
+  platform's answer for both venues — cloud in-process, CLI over HTTPS with
+  the `bmi_` token — and neither runtime defines a tool locally. The moment
+  the CLI grows a local tool (a filesystem read, a shell), the venues fork
+  capability and indifference is dead. This is also the deep reason
+  venue-local-tool frameworks (sausheong/harness, reviewed 2026-08-24) were
+  declined.
+- **The loop spec is a CONFORMANCE ARTIFACT**, the pattern the repo already
+  trusts twice (scopes.json, the help artifact): golden transcripts — given
+  this model output, the harness parses/refuses/retries/stops THIS way —
+  generated once, replayed against both implementations. Two harnesses, one
+  oracle; drift is a red build, not a bug report.
+- **What may differ is measured, never semantic**: latency, cost, declared
+  capability facets (no vision → the claim gate routes elsewhere). The user
+  sees identical proposals, rationale and refusal sentences; the venue
+  appears only in the dossier's receipt — which cashier rang you up.
+
+The prior art: s43's eleven invariants were this contract for template mode
+(L0 as a wire format, byte-pinned by a Go test that reads the cloud source),
+and s45 slice 3 finished the receipt half — a homelab run lands in the same
+columns a cloud run does.
+
+## The ladder of problems — what each tier buys (Eric's question, 2026-08-24)
+
+What separates the tiers is WHAT IS UNKNOWN in advance:
+
+| tier | unknown | examples |
+|---|---|---|
+| **now** (template) | nothing — question known, evidence pre-fetchable | extract, reply draft, hold, sieve rule, classify, thread summary, anticipated reconcile joins |
+| **loop** (tier 3 machine) | WHERE the evidence is — the model picks the next look | "who is this sender?" enrichment; mailbox-grounded Q&A with citations ("did we settle the venue?" — also s33's hr@ story); reply drafts that VERIFY claims against history; extraction back-filled from prior threads (s36's own wish); "prep me for Dana" briefs (s16/s34 composites) |
+| **beyond** (loop + envelope + time) | the STEPS themselves — they will surprise | multi-week errands ("family reunion weekend": calendars → outreach proposals → watches → reconcile → holds); "renew the insurance" (Files + a thread over weeks; goal milestones become investigations); backlog negotiation with per-item evidence; the CRM as a STANDING process |
+
+Tier two keeps the shape "one final artifact, writes still proposals." Tier
+three has egress INSIDE it, which is why it requires the envelope section
+above and not merely the plumbing: checkpoints stay non-negotiable, payment
+still ends at a prepared handoff. The progression is the chief-of-staff
+framing arriving on schedule: clerk, then researcher, then staff work.
+
 ## Explicitly not
 
 - **No workflow engine.** One level of delegation stays one level; the job
