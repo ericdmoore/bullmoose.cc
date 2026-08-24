@@ -351,6 +351,24 @@ pointing at Podman-under-WSL2.
 The offer list is not a catalog of sandbox-adjacent tools; it is
 conforming executors for ONE contract.
 
+**Simplified to its true shape (Eric, 2026-08-24: "just always docker +
+a docker runner?").** Correct in substance, and the design IS that: ONE
+OCI runner — one code path, one flag set, one transcript suite — with a
+DETECTED BINARY NAME, because podman is a drop-in for the docker CLI and
+Apple `container` speaks the same run shape. The ladder is detection
+order inside one runner, not multiple executors. "Docker-compatible
+always" beats "Docker-the-product always" on three practical points:
+Desktop's commercial licensing (the recommendation liability, now
+load-bearing via s28), the daemon/VM footprint (the Colima
+memory-pressure saga is why alpaca has watchdogs; macOS 26 ships a
+runtime natively), and rootless-daemonless suiting an unattended host.
+Docker fully first-class when present; never the first install we
+recommend. AND the sharper cut this surfaces: the wazero floor is
+DEFERRED from v1 — a runtime-less host declaring false and metering
+cloud cents is honest and cheap, and the receipt-line nudge is exactly
+the instrument that says when the floor earns its complexity. v1 is two
+conforming executors total: one OCI runner + cloud.
+
 Two rules: (1) NEVER hand-roll the isolation — the build-in-repo culture's
 one standing exception; spend originality on the contract, not on
 seccomp. (2) Containment lives IN the conformance transcripts: negative
