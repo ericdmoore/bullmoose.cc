@@ -7,8 +7,10 @@ import {
   WATCHES_UNAVAILABLE_NOTE,
   activityCollections,
   activityGate,
+  actorLabel,
   filterFeed,
   orderFeed,
+  summarizeItem,
 } from "../lib/activity/feed";
 import type { ActivityItem } from "../lib/activity/types";
 import { accountLabel, approvalsAccounts } from "../lib/approvals/rows";
@@ -16,6 +18,7 @@ import { hrefWithParam, urlParam } from "../lib/shell/publish";
 import { DecidedDetail, FeedRow, WatchDetail } from "./ActivityRows";
 import CollectionColumn from "./CollectionColumn";
 import { publishGroups } from "../lib/shell/publishGroups";
+import { matchesQuery, useRealmSearch } from "../lib/shell/useRealmSearch";
 import { Alert, Column, EmptyState, PageNotice, StackedList, SurfaceFrame } from "./ui";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
@@ -138,14 +141,26 @@ export default function ActivityApp({ client: injectedClient, now: fixedNow }: P
 
   const ordered = useMemo(() => orderFeed(items), [items]);
   const activeList = useMemo(() => filterFeed(ordered, collection), [ordered, collection]);
+  const bar = useRealmSearch();
+  // #225 — narrows the collection in view; the feed row's own summary text is
+  // what a reader is scanning, so it is what the bar matches.
+  const shown = useMemo(
+    () => activeList.filter((i) => matchesQuery(bar, summarizeItem(i), actorLabel(i))),
+    [activeList, bar],
+  );
   const groups = useMemo(() => activityCollections(ordered), [ordered]);
 
   // s25 T4 (#226): the tray renders leaf-nodes only for realms that
   // publish. One line, off the SAME array the column renders, so the
   // two can never disagree about what this realm's collections are.
+  //
+  // Publishing `groups` (the collections) while rendering `shown` (the
+  // bar-filtered rows) is the correct pairing, not an oversight: the tray
+  // lists what this realm HAS, and a transient filter must not make a
+  // collection vanish from the chrome's index of the app.
   useEffect(() => publishGroups("activity", "/activity", groups), [groups]);
 
-  const selected = activeList.find((i) => i.id === selectedId) ?? activeList[0];
+  const selected = shown.find((i) => i.id === selectedId) ?? shown[0];
   /** The row's detail URL — `/activity?a=<id>`, current query preserved. */
   const itemHref = (id: string): string => hrefWithParam("/activity", "a", id);
   // Keep a valid selection as the feed or the collection changes under us —
@@ -154,12 +169,12 @@ export default function ActivityApp({ client: injectedClient, now: fixedNow }: P
   // deep-linked `?a=` (s25 T3) before the record it names arrives.
   useEffect(() => {
     if (loading) return;
-    if (activeList.length === 0) {
+    if (shown.length === 0) {
       if (selectedId !== undefined) setSelectedId(undefined);
       return;
     }
-    if (!activeList.some((i) => i.id === selectedId)) setSelectedId(activeList[0]!.id);
-  }, [activeList, selectedId, loading]);
+    if (!shown.some((i) => i.id === selectedId)) setSelectedId(shown[0]!.id);
+  }, [shown, selectedId, loading]);
 
   // ── shells ──────────────────────────────────────────────────────────────
   // `div`, not `main`: AppTw.astro owns the page's one <main>.
@@ -230,11 +245,11 @@ export default function ActivityApp({ client: injectedClient, now: fixedNow }: P
               No proposal has been decided and no watch has fired. When something is, it lands here.
             </EmptyState>
           ) : null}
-          {!loading && ordered.length > 0 && activeList.length === 0 ? (
+          {!loading && ordered.length > 0 && shown.length === 0 ? (
             <EmptyState title="Nothing in this view">Try another collection.</EmptyState>
           ) : null}
           <StackedList>
-            {activeList.map((item) => (
+            {shown.map((item) => (
               <FeedRow
                 key={item.id}
                 item={item}

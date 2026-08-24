@@ -17,6 +17,8 @@ import {
 import type { ActionProposal } from "../lib/approvals/types";
 import CollectionBar from "./CollectionBar";
 import CollectionColumn, { useCollapsed } from "./CollectionColumn";
+import { matchesQuery, useRealmSearch } from "../lib/shell/useRealmSearch";
+import { tally } from "../lib/approvals/tally";
 import CollectionSheet, { CollectionSheetButton } from "./CollectionSheet";
 import type { CollectionGroup } from "../lib/shell/collections";
 import { hrefWithParam, publishCollections, publishedHref, urlParam } from "../lib/shell/publish";
@@ -184,6 +186,26 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
   });
   const { collapsed: queuesCollapsed, toggle: toggleQueues } = useCollapsed("bm.cc.approvals");
   const dueSoon = useMemo(() => pending.filter((p) => isNearExpiry(rowClocks(p, now))), [pending, now]);
+
+  // #225 — the three saved views Decision 7 named and s24 never shipped.
+  // Each is a facet the ROW already carries, which is why they are cheap now
+  // even though the issue expected them not to be.
+  //
+  // Decision 7's two refusals are honoured and must stay honoured: **By Model
+  // is not a collection** ("a human decides by content, not by which LLM
+  // drafted it"), and finer facets belong to the contextual bar, not here.
+  const highCost = useMemo(() => {
+    // "High" is relative to THIS queue, not to an invented threshold: the
+    // costliest quartile, floored so a queue of cheap rows offers no view
+    // rather than a meaningless one.
+    const costed = pending.filter((p) => typeof p.costMicros === "number" && p.costMicros > 0);
+    if (costed.length < 4) return [];
+    const sorted = [...costed].sort((a, b) => (b.costMicros ?? 0) - (a.costMicros ?? 0));
+    return sorted.slice(0, Math.max(1, Math.ceil(sorted.length / 4)));
+  }, [pending]);
+
+  const byAgent = useMemo(() => tally(pending, (p) => p.agent), [pending]);
+  const byRealm = useMemo(() => tally(pending, (p) => p.subject.realm), [pending]);
   const collections: CollectionGroup[] = useMemo(
     () => [
       {
@@ -198,19 +220,41 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
       {
         id: "views",
         label: "Views",
-        items: [{ id: "due-soon", label: "Due soon", count: dueSoon.length }],
+        items: [
+          { id: "due-soon", label: "Due soon", count: dueSoon.length },
+          // #225 — Decision 7 specified four saved views and one shipped.
+          // These are the other three, over facets the row already carries.
+          { id: "high-cost", label: "High cost", count: highCost.length },
+          ...byAgent.map((a) => ({ id: `agent:${a.name}`, label: a.name, count: a.count })),
+          ...byRealm.map((r) => ({ id: `realm:${r.name}`, label: r.name, count: r.count })),
+        ],
       },
     ],
-    [pending.length, infoRequested.length, held.length, dueSoon.length],
+    [pending.length, infoRequested.length, held.length, dueSoon.length, highCost.length, byAgent, byRealm],
   );
-  const activeList =
-    collection === "info"
-      ? infoRequested
-      : collection === "held"
-        ? held
-        : collection === "due-soon"
-          ? dueSoon
-          : pending;
+  const activeList = useMemo(() => {
+    if (collection === "info") return infoRequested;
+    if (collection === "held") return held;
+    if (collection === "due-soon") return dueSoon;
+    if (collection === "high-cost") return highCost;
+    // The faceted views are `agent:<name>` / `realm:<name>` — the id carries
+    // its own filter, so adding an agent adds a view with no new plumbing.
+    const agent = collection.startsWith("agent:") ? collection.slice("agent:".length) : null;
+    if (agent) return pending.filter((p) => p.agent === agent);
+    const realm = collection.startsWith("realm:") ? collection.slice("realm:".length) : null;
+    if (realm) return pending.filter((p) => p.subject.realm === realm);
+    return pending;
+  }, [collection, infoRequested, held, dueSoon, highCost, pending]);
+
+  // #225 — the contextual bar over Approvals. The bar's rule is "filter the
+  // ACTIVE realm's collection", so it narrows the collection in view rather
+  // than searching across all of them: what you see filtered is what you
+  // were already looking at.
+  const bar = useRealmSearch();
+  const shown = useMemo(
+    () => activeList.filter((p) => matchesQuery(bar, p.agent, p.rationale, p.kind)),
+    [activeList, bar],
+  );
   const collectionLabel =
     collection === "info"
       ? "Waiting on the agent"
@@ -233,12 +277,12 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
   // against that emptiness would wipe a deep-linked `?p=` (s25 T3) on mount.
   useEffect(() => {
     if (loading) return;
-    if (activeList.length === 0) {
+    if (shown.length === 0) {
       if (selectedId !== undefined) setSelectedId(undefined);
       return;
     }
-    if (!activeList.some((p) => p.id === selectedId)) setSelectedId(activeList[0]!.id);
-  }, [activeList, selectedId, loading]);
+    if (!shown.some((p) => p.id === selectedId)) setSelectedId(shown[0]!.id);
+  }, [shown, selectedId, loading]);
 
   // s25 T4 — publish the LIVE lifecycle states for the chrome's realm tray
   // (lib/shell/publish.ts): the three queues with their counts, each `?c=`
@@ -422,7 +466,7 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
               ))}
             </SkeletonRegion>
           ) : null}
-          {!loading && activeList.length === 0 ? (
+          {!loading && shown.length === 0 ? (
             <EmptyState title="Nothing here right now">
               {collection === "pending" ? "Nothing is waiting on you." : "This view is empty."}
             </EmptyState>
@@ -430,7 +474,7 @@ export default function ApprovalsQueue({ client: injectedClient, now: fixedNow }
           <HeaderGroup
             label={collectionLabel}
             tone={collection === "pending" || collection === "due-soon" ? "primary" : undefined}
-            items={activeList}
+            items={shown}
             now={now}
             accounts={accounts}
             selectedId={selected?.id}

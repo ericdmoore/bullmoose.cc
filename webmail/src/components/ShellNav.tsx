@@ -108,6 +108,26 @@ const SEARCHABLE: Partial<Record<SectionId, { placeholder: string; hint?: string
     placeholder: "Find in your history",
     hint: "Starts a new Finder session over your own mail \u2014 refine with chips from there.",
   },
+  // #225 — the four realms that had a collection to filter and no bar over
+  // it. Settings is deliberately absent still: it is a set of SECTIONS, not
+  // a collection, and a filter that filters nothing is worse than none (the
+  // rule this issue is enforcing, applied honestly rather than uniformly).
+  approvals: {
+    placeholder: "Filter approvals",
+    hint: "Filters the queue in view — agent, subject and the proposed act.",
+  },
+  activity: {
+    placeholder: "Filter activity",
+    hint: "Filters the feed in view — what happened, and who did it.",
+  },
+  files: {
+    placeholder: "Filter files",
+    hint: "Filters this folder's names. Contents are not searched.",
+  },
+  goals: {
+    placeholder: "Filter goals",
+    hint: "Filters by the goal's own statement.",
+  },
 };
 const WIDTH_KEY = "bm.nav.width";
 const isLive = (s: Section): boolean => s.status === "live";
