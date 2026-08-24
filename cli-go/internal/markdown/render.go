@@ -58,6 +58,10 @@ var md = goldmark.New(
 		// own choices are pass-through (unsafe) or DELETE, and delete loses
 		// the sender's text without telling them.
 		renderer.WithNodeRenderers(util.Prioritized(escapeRawHTML{}, 1)),
+		// The two inline-style exceptions (#292): bordered table cells and a
+		// monospaced inline code span. Everything else stays client-default —
+		// see mailstyle.go for why those two and no others.
+		renderer.WithNodeRenderers(util.Prioritized(mailStyles{}, 1)),
 		// Hard-wrap OFF: a single newline in a Markdown paragraph is a
 		// continuation, not a <br>. Mail clients reflow anyway, and turning
 		// this on makes every wrapped-at-80 source file render as ragged
