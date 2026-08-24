@@ -103,7 +103,22 @@ export async function authenticate(request: Request, env: AuthEnv): Promise<Prin
  * expired token. `db` is injected, so the whole path is testable with a fake
  * D1 (no request, no env).
  */
-export async function verifyBearer(db: D1Database, raw: string): Promise<Principal | null> {
+/**
+ * The token row behind a `bm_` bearer: parse, look up, verify the secret,
+ * check expiry, stamp liveness. Everything a caller needs to become a
+ * principal, and nothing about ACCOUNTS — which is the difference between
+ * the two consumers.
+ *
+ * Factored out to pay `023`'s pre-ship ask (#227): `services/agent/src/vault.ts`
+ * hand-rolled this same `tokens ⋈ principals` join, and the copies had
+ * silently diverged — the vault's never stamped `last_used_at`, so a token
+ * used ONLY for vault calls looked dormant to every "last seen" surface
+ * s37 built. One implementation, one liveness rule.
+ */
+export async function verifyTokenRow(
+  db: D1Database,
+  raw: string,
+): Promise<{ tokenId: string; principalId: string; loginEmail: string; scopes: string[] } | null> {
   const parsed = parseToken(raw);
   if (!parsed) return null;
 
@@ -127,9 +142,6 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
   if (!(await verifyTokenSecret(parsed.secret, row.secret_hash))) return null;
   if (row.expires_at !== null && row.expires_at < Date.now()) return null;
 
-  // `deleted_at IS NULL` is what makes `DELETE /accounts/{id}` mean anything:
-  // the tombstone is a soft delete (sVOL 008), so without this filter a
-  // "deleted" account keeps authenticating and keeps serving its mail.
   // Throttled liveness bookkeeping — one small write per token per window.
   const now = Date.now();
   if (!row.last_used_at || now - row.last_used_at > LAST_USED_WRITE_INTERVAL_MS) {
@@ -137,10 +149,27 @@ export async function verifyBearer(db: D1Database, raw: string): Promise<Princip
   }
 
   return {
-    username: row.login_email,
-    scopes: JSON.parse(row.scopes) as string[],
-    accounts: await reachableAccounts(db, row.principal_id),
     tokenId: parsed.id,
+    principalId: row.principal_id,
+    loginEmail: row.login_email,
+    scopes: JSON.parse(row.scopes) as string[],
+  };
+}
+
+export async function verifyBearer(db: D1Database, raw: string): Promise<Principal | null> {
+  const token = await verifyTokenRow(db, raw);
+  if (!token) return null;
+
+  // `deleted_at IS NULL` is what makes `DELETE /accounts/{id}` mean anything:
+  // the tombstone is a soft delete (sVOL 008), so without this filter a
+  // "deleted" account keeps authenticating and keeps serving its mail. That
+  // filter lives in `reachableAccounts`, which is why the account read stays
+  // HERE rather than in the shared token core above.
+  return {
+    username: token.loginEmail,
+    scopes: token.scopes,
+    accounts: await reachableAccounts(db, token.principalId),
+    tokenId: token.tokenId,
   };
 }
 

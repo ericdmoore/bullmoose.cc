@@ -1,4 +1,5 @@
-import { hasScope, parseToken, verifyTokenSecret } from "@bullmoose/auth-core";
+import { hasScope } from "@bullmoose/auth-core";
+import { verifyTokenRow } from "@bullmoose/auth-core/principal";
 import type { Env } from "./models.js";
 
 /**
@@ -124,29 +125,13 @@ function normalizeHeader(raw: string): string | null {
 async function authenticateVault(request: Request, env: Env): Promise<VaultPrincipal | null> {
   const header = request.headers.get("Authorization") ?? "";
   if (!header.startsWith("Bearer ")) return null;
-  const parsed = parseToken(header.slice(7));
-  if (!parsed) return null;
-  const row = await env.DB.prepare(
-    `SELECT t.secret_hash, t.scopes, t.expires_at, t.principal_id, p.login_email
-     FROM tokens t JOIN principals p ON p.id = t.principal_id
-     WHERE t.id = ? AND t.kind = 'bearer'`,
-  )
-    .bind(parsed.id)
-    .first<{
-      secret_hash: string;
-      scopes: string;
-      expires_at: number | null;
-      principal_id: string;
-      login_email: string;
-    }>();
-  if (!row) return null;
-  if (!(await verifyTokenSecret(parsed.secret, row.secret_hash))) return null;
-  if (row.expires_at !== null && row.expires_at < Date.now()) return null;
-  return {
-    principalId: row.principal_id,
-    email: row.login_email,
-    scopes: JSON.parse(row.scopes) as string[],
-  };
+  // The SHARED token core (`023`'s pre-ship ask, paid at #227). This was a
+  // hand-rolled copy of the same `tokens ⋈ principals` join, and it had
+  // drifted: it never stamped `last_used_at`, so a vault-only token read as
+  // dormant on every "last seen" surface. One implementation now.
+  const token = await verifyTokenRow(env.DB, header.slice(7));
+  if (!token) return null;
+  return { principalId: token.principalId, email: token.loginEmail, scopes: token.scopes };
 }
 
 /** Call the Bureau over the service binding. The only way this worker can get a
