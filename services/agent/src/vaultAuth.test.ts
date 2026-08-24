@@ -46,7 +46,11 @@ describe("the shared token core", () => {
 
   it("refuses a wrong secret, an unknown id and an expired token alike", async () => {
     const { w, token, tokenId } = await world();
-    expect(await verifyTokenRow(w.env.DB, token.slice(0, -1) + "0")).toBeNull();
+    // Flip the last hex digit to a DIFFERENT one. `slice(0, -1) + "0"` is a
+    // no-op one time in sixteen — the token already ends in 0 — and that is
+    // a test that passes locally and fails in CI on the sixteenth run.
+    const last = token.at(-1)!;
+    expect(await verifyTokenRow(w.env.DB, token.slice(0, -1) + (last === "0" ? "1" : "0"))).toBeNull();
     expect(await verifyTokenRow(w.env.DB, "bm_000000000000_" + "0".repeat(48))).toBeNull();
     await w.env.DB.prepare(`UPDATE tokens SET expires_at = 1 WHERE id = ?`).bind(tokenId).run();
     expect(await verifyTokenRow(w.env.DB, token)).toBeNull();
