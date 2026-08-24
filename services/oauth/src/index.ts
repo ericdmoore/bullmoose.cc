@@ -3,6 +3,7 @@ import { beginLoginAttempt } from "@bullmoose/auth-core/loginThrottle";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { consentPage, DERIVE_LEGACY_PATH, DERIVE_PATH, deriveScript, errorPage } from "./consent.js";
 import { enrollOptions, enrollPage, enrollRegister, enrollScript } from "./enroll.js";
+import { assertionOptions, verifyAssertion } from "./webauthn.js";
 import { AUTH_DOCS, docsResponse } from "./docs.js";
 import { recordConsent } from "./consentMirror.js";
 import { revoke } from "./revoke.js";
@@ -115,6 +116,15 @@ export const authorizeHandler = {
     if (url.pathname === "/enroll.js") return enrollScript();
     if (url.pathname === "/enroll/webauthn/options" && request.method === "POST") return enrollOptions(request, env);
     if (url.pathname === "/enroll/webauthn/register" && request.method === "POST") return enrollRegister(request, env);
+    // Assertion options for passkey sign-in (s33 slice 3). Usernameless —
+    // no email is taken and no credential list returned, so this endpoint
+    // cannot be an account-existence oracle. The assertion itself rides the
+    // /authorize POST, where decide() shares one tail with the password path.
+    if (url.pathname === "/webauthn/login/options" && request.method === "POST") {
+      return new Response(JSON.stringify({ publicKey: await assertionOptions(env, "login") }), {
+        headers: { "content-type": "application/json" },
+      });
+    }
     // Owner revocation: disconnect a connected app (s02 T4's second half).
     if (url.pathname === "/revoke" && request.method === "POST") return revoke(request, env);
     // The webmail's access-token → bm_ session exchange (s07 T7). The module
@@ -201,48 +211,76 @@ async function decide(request: Request, env: Env): Promise<Response> {
     return errorPage("Not connected.", "You declined, so nothing was shared and no access was granted.");
   }
 
-  const email = String(form.get("email") ?? "")
-    .trim()
-    .toLowerCase();
-  const loginKey = String(form.get("loginKey") ?? "");
-  // A form post that skipped the client-side derivation (JS off, or a script
-  // posting directly) must not be treated as a password attempt — we have no
-  // server-side KDF to fall back on, by design.
-  if (!email || !isLoginKey(loginKey)) {
-    return retry(form, "Enter your bullmoose address and password.", env);
-  }
+  // Two heads, one tail (s33 slice 3): a passkey ASSERTION or the password
+  // loginKey resolves a principal; everything after — scope revalidation,
+  // the consent mirror, completeAuthorization — is identical and shared.
+  let row: { id: string; login_email: string };
+  const assertionField = String(form.get("assertion") ?? "");
+  if (assertionField) {
+    // No throttle here, deliberately: the challenge is single-use and
+    // KV-held, and the signature must verify against a registered key —
+    // there is nothing to brute-force that the challenge TTL does not
+    // already bound. The refusal is generic on purpose.
+    let parsed: Parameters<typeof verifyAssertion>[2];
+    try {
+      parsed = JSON.parse(assertionField);
+    } catch {
+      return retry(form, "That passkey response did not parse — try again.", env);
+    }
+    const outcome = await verifyAssertion(env, "login", parsed);
+    if ("refused" in outcome) {
+      return retry(form, "Passkey sign-in did not verify — try again.", env);
+    }
+    const p = await env.DB.prepare(`SELECT id, login_email FROM principals WHERE id = ?`)
+      .bind(outcome.principalId)
+      .first<{ id: string; login_email: string }>();
+    if (!p) return retry(form, "Passkey sign-in did not verify — try again.", env);
+    row = p;
+  } else {
+    const email = String(form.get("email") ?? "")
+      .trim()
+      .toLowerCase();
+    const loginKey = String(form.get("loginKey") ?? "");
+    // A form post that skipped the client-side derivation (JS off, or a script
+    // posting directly) must not be treated as a password attempt — we have no
+    // server-side KDF to fall back on, by design.
+    if (!email || !isLoginKey(loginKey)) {
+      return retry(form, "Enter your bullmoose address and password.", env);
+    }
 
-  // Same windows as /auth/login: the IP gate is the outer one, so a throttled
-  // caller sees the same refusal for every email, existing or not.
-  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
-  const attempt = await beginLoginAttempt(env.OAUTH_KV, email, ip);
-  if (attempt.block === "ip") {
-    return errorPage("Too many attempts.", `Try again in ${attempt.retryAfterSeconds} seconds.`, 429);
-  }
-  if (attempt.block === "email") {
-    await attempt.fail();
-    return retry(form, INVALID, env);
-  }
+    // Same windows as /auth/login: the IP gate is the outer one, so a throttled
+    // caller sees the same refusal for every email, existing or not.
+    const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+    const attempt = await beginLoginAttempt(env.OAUTH_KV, email, ip);
+    if (attempt.block === "ip") {
+      return errorPage("Too many attempts.", `Try again in ${attempt.retryAfterSeconds} seconds.`, 429);
+    }
+    if (attempt.block === "email") {
+      await attempt.fail();
+      return retry(form, INVALID, env);
+    }
 
-  const row = await env.DB.prepare(
-    `SELECT p.id, p.login_email, c.pw_hash
-     FROM principals p JOIN credentials c ON c.principal_id = p.id
-     WHERE p.login_email = ?`,
-  )
-    .bind(email)
-    .first<{ id: string; login_email: string; pw_hash: string }>();
-  // Identical response for an unknown address and a wrong password, and
-  // identically counted, so the windows trip at the same count either way and
-  // neither answer reveals which accounts exist.
-  if (!row) {
-    await attempt.fail();
-    return retry(form, INVALID, env);
+    const found = await env.DB.prepare(
+      `SELECT p.id, p.login_email, c.pw_hash
+       FROM principals p JOIN credentials c ON c.principal_id = p.id
+       WHERE p.login_email = ?`,
+    )
+      .bind(email)
+      .first<{ id: string; login_email: string; pw_hash: string }>();
+    // Identical response for an unknown address and a wrong password, and
+    // identically counted, so the windows trip at the same count either way and
+    // neither answer reveals which accounts exist.
+    if (!found) {
+      await attempt.fail();
+      return retry(form, INVALID, env);
+    }
+    if (!timingSafeEqualHex(await hashLoginKey(loginKey), found.pw_hash)) {
+      await attempt.fail();
+      return retry(form, INVALID, env);
+    }
+    await attempt.succeed();
+    row = found;
   }
-  if (!timingSafeEqualHex(await hashLoginKey(loginKey), row.pw_hash)) {
-    await attempt.fail();
-    return retry(form, INVALID, env);
-  }
-  await attempt.succeed();
 
   // The scopes are re-validated here rather than trusted: this form is
   // attacker-reachable, so a hidden field claiming `vault` must die against

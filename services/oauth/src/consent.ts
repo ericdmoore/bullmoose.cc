@@ -152,6 +152,47 @@ async function deriveLoginKey(email, password) {
 const DERIVE_JS = `${DERIVE_FN_SRC}
 const form = document.getElementById("consent");
 const approveButton = form.querySelector("button.approve");
+
+// s33 slice 3 — the passkey path. Usernameless: the server sends no
+// credential list (an empty one cannot leak which accounts exist), the
+// authenticator offers what it holds, and the assertion rides the SAME
+// /authorize POST the password path uses — one tail, two heads.
+const passkeyButton = form.querySelector("button.passkey");
+if (passkeyButton && typeof navigator !== "undefined" && navigator.credentials && navigator.credentials.get) {
+  const unb64u = (t) => Uint8Array.from(atob(t.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+  const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/[+]/g, "-").replace(/[/]/g, "_").replace(/=+$/, "");
+  passkeyButton.addEventListener("click", async () => {
+    const label = passkeyButton.textContent;
+    try {
+      passkeyButton.disabled = true; passkeyButton.textContent = "Waiting for your passkey…";
+      const optRes = await fetch("/webauthn/login/options", { method: "POST" });
+      const opt = await optRes.json();
+      if (!optRes.ok) throw new Error(opt.error || "could not start");
+      const pk = opt.publicKey;
+      pk.challenge = unb64u(pk.challenge);
+      const cred = await navigator.credentials.get({ publicKey: pk });
+      form.assertion.value = JSON.stringify({
+        id: cred.id,
+        response: {
+          clientDataJSON: b64u(cred.response.clientDataJSON),
+          authenticatorData: b64u(cred.response.authenticatorData),
+          signature: b64u(cred.response.signature),
+        },
+      });
+      form.password.value = "";
+      const hidden = document.createElement("input");
+      hidden.type = "hidden"; hidden.name = "decision"; hidden.value = "approve";
+      form.appendChild(hidden);
+      form.submit();
+    } catch (err) {
+      passkeyButton.disabled = false; passkeyButton.textContent = label;
+      const slot = document.getElementById("err");
+      if (slot) slot.textContent = "Passkey sign-in did not complete: " + err;
+    }
+  });
+} else if (passkeyButton) {
+  passkeyButton.remove(); // no WebAuthn here — the password path remains
+}
 form.addEventListener("submit", async (ev) => {
   // WARNING: ev.submitter is ABSENT on implicit submission — the iOS keyboard's
   // "Go", Enter from a text field — and in Safari before 15.4. Reading it
@@ -233,6 +274,7 @@ const STYLE = `
   .row { display: flex; gap: .6rem; margin-top: 1.5rem; }
   button { font: inherit; padding: .6rem 1.1rem; border-radius: .4rem; border: 1px solid transparent; cursor: pointer; }
   .approve { background: #1d4ed8; color: #fff; font-weight: 600; }
+  .passkey { background: #0f766e; color: #fff; font-weight: 600; }
   .deny { background: transparent; border-color: #bbb; }
 `;
 
@@ -306,12 +348,14 @@ ${lines || "<li>Nothing — this client requested no permissions.</li>"}
   <input type="hidden" name="authRequest" value="${escape(JSON.stringify(authReq))}">
   <input type="hidden" name="scope" value="${escape(authReq.scope.join(" "))}">
   <input type="hidden" name="loginKey" value="">
+  <input type="hidden" name="assertion" value="">
   <label for="email">Your bullmoose address</label>
   <input id="email" name="email" type="email" autocomplete="username" required spellcheck="false">
   <label for="password">Password</label>
   <input id="password" name="password" type="password" autocomplete="current-password" required>
   <p id="err" class="err">${error ? escape(error) : ""}</p>
   <div class="row">
+    <button class="passkey" type="button">Sign in with a passkey</button>
     <button class="approve" type="submit" name="decision" value="approve">${firstParty ? "Sign in" : "Approve"}</button>
     <button class="deny" type="submit" name="decision" value="deny">Cancel</button>
   </div>
@@ -340,7 +384,7 @@ ${lines || "<li>Nothing — this client requested no permissions.</li>"}
       // before this page renders, so this says only "the destination the AS
       // just approved" — which is exactly what the directive should permit.
       "content-security-policy":
-        `default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; ` +
+        `default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; ` +
         `form-action 'self'${formTarget ? ` ${formTarget}` : ""}; frame-ancestors 'none'; base-uri 'none'`,
       "referrer-policy": "no-referrer",
       "cache-control": "no-store",

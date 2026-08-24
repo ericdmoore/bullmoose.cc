@@ -207,7 +207,11 @@ describe("the submit handler survives implicit submission — the phone bug", ()
       email: field("someone@bullmoose.cc"),
       password: field("correct horse battery staple"),
       loginKey: field(""),
-      querySelector: () => approve,
+      // Selector-aware, minimally: the shipped script now also looks up the
+      // passkey button (s33 slice 3), and this harness runs with no
+      // `navigator`, which is exactly the no-WebAuthn branch — the script
+      // removes the button and leaves the password path alone.
+      querySelector: (sel: string) => (sel === "button.approve" ? approve : { remove: () => undefined }),
       addEventListener: (_: string, fn: (ev: unknown) => Promise<void>) => (handler = fn),
       appendChild: () => undefined,
       submit: () => calls.submitted++,
