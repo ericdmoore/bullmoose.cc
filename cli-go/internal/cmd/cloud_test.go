@@ -208,6 +208,11 @@ func cloudEnv(t *testing.T, stackURL, cfURL string) {
 	t.Helper()
 	t.Setenv("CLOUDFLARE_API_TOKEN", "test-token-not-a-secret")
 	t.Setenv("CLOUDFLARE_API_BASE_URL", cfURL)
+	// ⚠️ EVERY cloud test gets its own mirror. `install --yes` pre-consents
+	// the connect offer and WRITES the admin pair; without this the suite
+	// rewrites the developer's own ~/.bullmoose/mail.db with fixture values,
+	// which is exactly what happened while this was being built.
+	t.Setenv("BULLMOOSE_DB", t.TempDir()+"/mail.db")
 }
 
 func TestCloudPlan_FreshAccount(t *testing.T) {
@@ -379,8 +384,14 @@ func TestCloudInstall_YesAppliesAndHandsOff(t *testing.T) {
 	if !strings.Contains(out, "ADMIN_TOKEN") || !strings.Contains(out, "save it now") {
 		t.Errorf("no ADMIN_TOKEN hand-off:\n%s", out)
 	}
-	if !strings.Contains(out, "admin init --url https://bullmoose-provision.tea-industries.workers.dev") {
+	// The URL is still built from the account's REAL workers.dev subdomain —
+	// what changed is that --yes now CONNECTS this device rather than asking
+	// the operator to copy a token it just minted out of scrollback.
+	if !strings.Contains(out, "https://bullmoose-provision.tea-industries.workers.dev") {
 		t.Errorf("the hand-off must print the real admin-plane URL:\n%s", out)
+	}
+	if !strings.Contains(out, "admin plane connected") || !strings.Contains(out, "nothing to copy") {
+		t.Errorf("--yes pre-consents the connect offer:\n%s", out)
 	}
 	if !strings.Contains(out, "admin domain add tea.example") || !strings.Contains(out, "cloud doctor --zone tea.example") {
 		t.Errorf("the next-steps must name the stack's own mail wiring and its verification:\n%s", out)
