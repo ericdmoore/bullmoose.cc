@@ -71,9 +71,11 @@ type ApplyOpts struct {
 	Log func(string)
 }
 
-// ApplyCore executes the plan's core-resource half: storage, schema,
-// workers, secrets, routes. Pages/webmail and the mail path (MX, Email
-// Routing) are T4/T5 and deliberately absent — the receipt says so.
+// ApplyCore executes the plan: storage, schema, workers, secrets, routes,
+// the Pages project and its hostname. Deliberately absent, forever: the
+// webmail DEPLOYMENT (wrangler's file-hash protocol — the receipt hands
+// the operator the one command) and the mail path (provision's addDomain,
+// via `admin domain add` — the stack wires its own mail).
 func ApplyCore(cf *CF, st *Stack, probe *ProbeResult, plan *Plan, opts ApplyOpts) (*Applied, error) {
 	if len(plan.Refusals) > 0 {
 		return nil, fmt.Errorf("the plan contains %d refusal(s) — apply does not run over a refusal, ever", len(plan.Refusals))

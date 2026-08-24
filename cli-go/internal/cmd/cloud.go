@@ -1,11 +1,13 @@
 package cmd
 
 // `bullmoose cloud` — s46, the CLI as a CREATOR of a bullmoose deployment.
-// T2 ships the read-only half: `cloud plan --zone <domain>` probes the
-// Cloudflare account the token can see and prints, whole, what an install
-// would do — every resource by name, refusals above everything, the popcorn
-// consent model's third instance. `cloud install` (T3) is this plan plus
-// one honest yes plus apply; nothing in THIS verb mutates anything.
+// Four verbs, one consent model (popcorn's, third instance): `plan` probes
+// read-only and prints, whole, what an install would do — every resource
+// by name, refusals above everything; `install` is that plan plus one
+// honest yes plus apply, ending at the `admin init` hand-off; `update` is
+// install pointed at the newest published stack (reconcile makes the alias
+// true); `doctor` walks the zone's mail path read-only, fixes named per
+// gap. docs/install-cloud.md is the operator's side of this file.
 //
 // Inputs, and where they may travel:
 //
@@ -18,9 +20,9 @@ package cmd
 //	--stack-version/-base  which published stack to plan against; default
 //	                       is dl.bullmoose.cc/stack's latest.
 //
-// Exit codes: 0 = the plan is applyable as printed; 1 = the plan contains
-// refusals or blocked surfaces (each named, with the token scope to add);
-// 2 = the invocation itself is malformed.
+// Exit codes: 0 = applyable/applied/healthy; 1 = refusals, blocked
+// surfaces or mail-path gaps (each named, with the scope or command that
+// fixes it); 2 = the invocation itself is malformed.
 
 import (
 	"os"
