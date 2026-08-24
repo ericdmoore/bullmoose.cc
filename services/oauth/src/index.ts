@@ -2,7 +2,7 @@ import { hashLoginKey, isLoginKey, OAUTH_SCOPES, timingSafeEqualHex, unknownScop
 import { beginLoginAttempt } from "@bullmoose/auth-core/loginThrottle";
 import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { consentPage, DERIVE_LEGACY_PATH, DERIVE_PATH, deriveScript, errorPage } from "./consent.js";
-import { enrollPage, enrollScript, handleEnroll } from "./enroll.js";
+import { enrollOptions, enrollPage, enrollRegister, enrollScript } from "./enroll.js";
 import { AUTH_DOCS, docsResponse } from "./docs.js";
 import { recordConsent } from "./consentMirror.js";
 import { revoke } from "./revoke.js";
@@ -45,6 +45,13 @@ export interface Env {
   DB: D1Database;
   MCP_RESOURCE_URI: string;
   ISSUER: string;
+  /**
+   * s33: the WebAuthn RP ID — the origin-bound security boundary every
+   * passkey is scoped to. Unset = auth.bullmoose.cc (production). A
+   * BYO-domain install sets its own, and its passkeys do not port (s33
+   * OQ3, stated before anyone promises portability).
+   */
+  RP_ID?: string;
   DEV_ACCOUNT_ID: string;
   DEV_TENANT_ID: string;
   DEV_USERNAME: string;
@@ -99,13 +106,15 @@ export const authorizeHandler = {
     if (url.pathname === DERIVE_PATH || url.pathname === DERIVE_LEGACY_PATH) {
       return deriveScript(url.pathname);
     }
-    // The second human's door (s33 day-one, #213). GET renders, the page
-    // script moves the fragment token into the form, POST consumes it.
-    if (url.pathname === "/enroll") {
-      if (request.method === "POST") return handleEnroll(request, env);
-      return enrollPage();
-    }
+    // The second human's door (s33 day-one, #213; slice 2 made it the
+    // passkey tea ceremony — no password exists to set). GET renders; the
+    // page script drives two navigator.credentials.create ceremonies
+    // through the JSON pair below, and the link consumes when the SECOND
+    // authenticator completes the account.
+    if (url.pathname === "/enroll") return enrollPage();
     if (url.pathname === "/enroll.js") return enrollScript();
+    if (url.pathname === "/enroll/webauthn/options" && request.method === "POST") return enrollOptions(request, env);
+    if (url.pathname === "/enroll/webauthn/register" && request.method === "POST") return enrollRegister(request, env);
     // Owner revocation: disconnect a connected app (s02 T4's second half).
     if (url.pathname === "/revoke" && request.method === "POST") return revoke(request, env);
     // The webmail's access-token → bm_ session exchange (s07 T7). The module
