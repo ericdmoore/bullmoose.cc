@@ -84,6 +84,33 @@ type dossierBinding struct {
 	Enabled   bool                 `json:"enabled"`
 	Config    dossierBindingConfig `json:"config"`
 	Economics dossierEconomics     `json:"economics"`
+	// s44 slice 1 -- what this binding may REACH. A POINTER because a server
+	// predating the slice omits it, and "absent" must not render as "bounded
+	// by nothing" (deploy skew is not an authority statement).
+	Envelope *dossierEnvelope `json:"envelope"`
+}
+
+// dossierEnvelope MIRRORS @bullmoose/scheduling BindingEnvelope. Null
+// ceilings mean "not bounded here", never "none" -- the renderer says which.
+type dossierEnvelope struct {
+	Scopes             []string `json:"scopes"`
+	ToolCeiling        []string `json:"toolCeiling"`
+	ToolCeilingApplies string   `json:"toolCeilingApplies"`
+	CredentialCeiling  []string `json:"credentialCeiling"`
+	MaxNodes           *float64 `json:"maxNodes"`
+	MaxDepth           *float64 `json:"maxDepth"`
+	Budget             *struct {
+		CapMicros       *float64 `json:"capMicros"`
+		SpentMicros     float64  `json:"spentMicros"`
+		OverageMicros   float64  `json:"overageMicros"`
+		RemainingMicros *float64 `json:"remainingMicros"`
+	} `json:"budget"`
+	RecipientsBookID *string `json:"recipientsBookId"`
+	SenderGate       *struct {
+		Active bool    `json:"active"`
+		Count  float64 `json:"count"`
+	} `json:"senderGate"`
+	HistoryFloorAt *float64 `json:"historyFloorAt"`
 }
 
 type dossierLedger struct {
@@ -588,8 +615,9 @@ func buildShow(conn *dossierConn, floorMs *int64, floorSource, floorNote string,
 			"floorSource": orNull(floorSource),
 			"note":        floorNote,
 		},
-		"doors":  doorsFor(b, conn.admin != nil),
-		"_links": links,
+		"doors":    doorsFor(b, conn.admin != nil),
+		"envelope": b.Envelope, // nil when the server predates s44 slice 1
+		"_links":   links,
 	}
 }
 
@@ -633,6 +661,8 @@ func renderDossierShow(s *bmio.Streams, view map[string]any) {
 	fieldLine(s, "enabled", enabled)
 	fieldLine(s, "pipeline", fmt.Sprintf("%s   reply mode: %s   trigger: %s",
 		strOrDash(b["pipeline"]), strOrDash(b["replyMode"]), b["triggerOn"]))
+
+	renderEnvelope(s, view["envelope"])
 
 	menu := m["menu"].([]any)
 	defaultModel := ""
@@ -834,4 +864,94 @@ func runAgentModelRead(s *bmio.Streams, a agentArgs) int {
 		fieldLine(s, "", "  explore rate "+strconv.FormatFloat(*b.Economics.ExploreRate, 'f', -1, 64))
 	}
 	return 0
+}
+
+// renderEnvelope prints WHAT THIS BINDING MAY REACH (s44 slice 1) -- the
+// object a human judges before approving more of it. Every line names an
+// enforcer; where nothing bounds an axis, it SAYS SO rather than printing an
+// empty list, because "no ceiling declared" and "nothing allowed" are
+// opposite facts and an envelope read as the wrong one is worse than none.
+func renderEnvelope(s *bmio.Streams, raw any) {
+	env, ok := raw.(*dossierEnvelope)
+	if !ok || env == nil {
+		// Deploy skew, not an authority statement.
+		fieldLine(s, "envelope", "not reported by this server")
+		return
+	}
+	s.Out("")
+	s.Out("envelope — what this binding may reach")
+
+	fieldLine(s, "  scopes", strings.Join(env.Scopes, ", "))
+
+	tools := "no ceiling declared — bounded by the scopes above"
+	if env.ToolCeiling != nil {
+		tools = strings.Join(env.ToolCeiling, ", ")
+		if env.ToolCeilingApplies == "jobs-only" {
+			// The honesty that matters: a job-less invocation folds to
+			// tools:null, so this ceiling bounds delegated work only.
+			tools += "  (applies to delegated job work only)"
+		}
+	}
+	fieldLine(s, "  tools", tools)
+
+	creds := "no ceiling declared"
+	if env.CredentialCeiling != nil {
+		creds = strings.Join(env.CredentialCeiling, ", ")
+	}
+	fieldLine(s, "  credentials", creds)
+
+	if env.Budget != nil {
+		if env.Budget.CapMicros == nil {
+			fieldLine(s, "  budget", fmt.Sprintf("no cap recorded — spent %s this month", usdOf(env.Budget.SpentMicros)))
+		} else {
+			line := fmt.Sprintf("%s of %s spent", usdOf(env.Budget.SpentMicros), usdOf(*env.Budget.CapMicros))
+			if env.Budget.OverageMicros > 0 {
+				line += fmt.Sprintf(" (+%s approved overage)", usdOf(env.Budget.OverageMicros))
+			}
+			if env.Budget.RemainingMicros != nil {
+				line += fmt.Sprintf(" — %s left", usdOf(*env.Budget.RemainingMicros))
+			}
+			fieldLine(s, "  budget", line)
+		}
+	}
+
+	recipients := "NOBODY — no governing book, so it cannot send at all"
+	if env.RecipientsBookID != nil {
+		recipients = "the book " + *env.RecipientsBookID
+	}
+	fieldLine(s, "  may email", recipients)
+
+	if env.SenderGate != nil {
+		gate := "anyone (the trigger gate is off)"
+		if env.SenderGate.Active {
+			gate = fmt.Sprintf("%d allowlisted sender(s)", int(env.SenderGate.Count))
+		}
+		fieldLine(s, "  triggered by", gate)
+	}
+
+	floor := "none recorded — the backfill door fails closed"
+	if env.HistoryFloorAt != nil {
+		ms := int64(*env.HistoryFloorAt)
+		floor = "mail back to " + stamp(&ms)
+	}
+	fieldLine(s, "  history", floor)
+
+	if env.MaxNodes != nil || env.MaxDepth != nil {
+		fieldLine(s, "  job graph", fmt.Sprintf("max nodes %s, max depth %s", numOrDash(env.MaxNodes), numOrDash(env.MaxDepth)))
+	}
+	s.Out("")
+}
+
+func numOrDash(v *float64) string {
+	if v == nil {
+		return "—"
+	}
+	return fmt.Sprintf("%d", int64(*v))
+}
+
+// usdOf renders a float micro-USD the way usd() renders a pointer -- the
+// envelope's numbers arrive as JSON floats.
+func usdOf(micros float64) string {
+	v := int64(micros)
+	return usd(&v)
 }
