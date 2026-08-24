@@ -178,9 +178,8 @@ func BuildPlan(st *Stack, probe *ProbeResult, zone string) *Plan {
 	// The webmail — objects in a bucket, served by the webhost worker whose
 	// route the loop above already planned. No Pages project: that meant a
 	// second upload protocol (and a second token scope) for one static site.
-	const siteBucket = "bullmoose-webmail"
-	add(Item{Kind: "webmail", Name: siteBucket, Action: presence("R2 buckets", probe.R2, siteBucket),
-		Detail: "upload " + st.Manifest.Webmail + " to r2://" + siteBucket + ", served by bullmoose-webhost"})
+	add(Item{Kind: "webmail", Name: WebmailBucket, Action: presence("R2 buckets", probe.R2, WebmailBucket),
+		Detail: "upload " + st.Manifest.Webmail + " to r2://" + WebmailBucket + ", served by bullmoose-webhost"})
 	// The bucket itself is created by the r2 pass above only if a worker
 	// binds it; webhost does, so it is already in r2Names.
 

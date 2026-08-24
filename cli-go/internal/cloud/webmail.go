@@ -25,8 +25,11 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
@@ -34,6 +37,12 @@ import (
 // confusingly: a build that accidentally ships something enormous. R2 takes
 // far larger objects; this is a sanity bound on a STATIC SITE's files.
 const maxAssetBytes = 25 << 20 // 25 MiB
+
+// WebmailBucket is the site bucket, and it must equal the `bucket_name` of
+// the SITE binding in services/webhost/wrangler.jsonc — the uploader writes
+// there and the worker reads from there, so a mismatch is a deploy that
+// succeeds and serves nothing. webmail_test.go asserts the two agree.
+const WebmailBucket = "bullmoose-webmail"
 
 // Asset is one file of the built app, ready to PUT.
 type Asset struct {
@@ -85,17 +94,8 @@ func webmailAssets(targz []byte) ([]Asset, error) {
 	if len(assets) == 0 {
 		return nil, fmt.Errorf("webmail.tar.gz contained no files")
 	}
-	// An app with no entry point is a deploy that will 404 at the root, and
-	// the worker's SPA fallback would have nothing to fall back TO.
-	hasIndex := false
-	for _, a := range assets {
-		if a.Key == "index.html" {
-			hasIndex = true
-			break
-		}
-	}
-	if !hasIndex {
-		return nil, fmt.Errorf("webmail.tar.gz has no index.html at its root — the app would have no entry point")
+	if err := requireEntryPoint(assets); err != nil {
+		return nil, fmt.Errorf("webmail.tar.gz: %w", err)
 	}
 	return assets, nil
 }
@@ -203,6 +203,95 @@ func uploadWebmail(cf *CF, acct, bucket string, targz []byte, log func(string)) 
 	if err != nil {
 		return 0, err
 	}
+	return uploadAssets(cf, acct, bucket, assets, log)
+}
+
+/**
+ * UploadWebmailDir is the same upload from a BUILT DIRECTORY instead of the
+ * published tarball.
+ *
+ * This exists so there is exactly ONE implementation of "what it means to put
+ * the webmail in R2". Our own CI has a directory (`webmail/dist`) where a
+ * stranger's install has a tarball, and the temptation is a few lines of bash
+ * with `wrangler r2 object put` in a loop. That second implementation would
+ * own its own content-type table, its own key escaping and its own idea of
+ * whether index.html is required — and would drift from this one silently,
+ * which is the failure this repo keeps rediscovering. Same rules, same bytes,
+ * two front doors.
+ */
+func UploadWebmailDir(cf *CF, acct, bucket, dir string, log func(string)) (int, error) {
+	assets, err := webmailAssetsFromDir(dir)
+	if err != nil {
+		return 0, err
+	}
+	return uploadAssets(cf, acct, bucket, assets, log)
+}
+
+// webmailAssetsFromDir walks a built directory into the same Assets the
+// tarball path produces. Symlinks and irregular files are skipped rather than
+// followed: a static build is regular files, and following a link out of the
+// tree would upload something the build never meant to publish.
+func webmailAssetsFromDir(dir string) ([]Asset, error) {
+	var assets []Asset
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !d.Type().IsRegular() {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, p)
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if info.Size() > maxAssetBytes {
+			return fmt.Errorf("%s is %d bytes — larger than a static asset should ever be", rel, info.Size())
+		}
+		body, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		assets = append(assets, Asset{Key: filepath.ToSlash(rel), Body: body})
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", dir, err)
+	}
+	if len(assets) == 0 {
+		return nil, fmt.Errorf("%s contained no files — was the build run?", dir)
+	}
+	if err := requireEntryPoint(assets); err != nil {
+		return nil, err
+	}
+	return assets, nil
+}
+
+// requireEntryPoint — an app with no entry point is a deploy that will 404 at
+// the root, and the worker's SPA fallback would have nothing to fall back TO.
+func requireEntryPoint(assets []Asset) error {
+	for _, a := range assets {
+		if a.Key == "index.html" {
+			return nil
+		}
+	}
+	return fmt.Errorf("no index.html at the root — the app would have no entry point")
+}
+
+/**
+ * uploadAssets writes every asset, then reports the count.
+ *
+ * Deliberately ADDITIVE: objects the new build no longer contains are left
+ * alone. That is the right default for a fingerprinted build — a browser
+ * mid-session still resolves the `_astro/*` chunks its already-loaded HTML
+ * names, which a wholesale replace would break. The cost is that a genuinely
+ * deleted route keeps serving until someone prunes the bucket, which is a
+ * far cheaper wrong than an outage on every deploy.
+ */
+func uploadAssets(cf *CF, acct, bucket string, assets []Asset, log func(string)) (int, error) {
 	for i, a := range assets {
 		if err := cf.putR2Object(acct, bucket, a.Key, a.Body, contentTypeForAsset(a.Key)); err != nil {
 			// Partial is honest here: the objects already written stay, and
