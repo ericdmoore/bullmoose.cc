@@ -32,7 +32,12 @@ So in the `SettingsColumn` the Top Level Headers are not clickable and they are 
     - List of Agents Status
         - Enable/Disabel
         - Budget Edit
-4. Devices {<- non-clickable header value with sticky positioning }
+4. Tokens
+    - list of Named Tokens 
+        - actions: rename | revoke
+    - BulkActions:
+        - revoke
+5. Devices {<- non-clickable header value with sticky positioning }
     - Install Command
     - List of CLI installations
         - last heartbeat timeAgo (secAgo, s%60=minAgo, s%3600 = HoursAgo, s%86400 = DaysAgo)
