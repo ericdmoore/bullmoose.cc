@@ -87,11 +87,29 @@ func TestFlavor_IsAFactNotABoolean(t *testing.T) {
 
 // ---- integration: a real runtime, put through its paces --------------------
 
+// realRuntime yields a runtime that DEMONSTRABLY RUNS — not merely one whose
+// binary is on PATH. A CI host taught this distinction: it carries a podman
+// that fails every run (rootless mode without newuidmap), and tests that
+// trusted the LookPath reported "the network was reachable" when in truth
+// nothing had run at all. A containment assertion against a runtime that
+// cannot start is not a passing test or a failing one — it is a meaningless
+// one, and the honest answer is to skip.
 func realRuntime(t *testing.T) Runtime {
 	t.Helper()
 	r := Detect()
 	if r.Name == "" {
 		t.Skip("no container runtime on this host — the pure tests above still hold")
+	}
+	if !r.Usable(context.Background()) {
+		t.Skipf("%s is present but does not answer here — nothing to assert against", r.Name)
+	}
+	// The preflight: `info` says the runtime answers; only a real run proves
+	// it can execute, and everything below assumes it can.
+	res, err := r.Run(context.Background(), Spec{
+		Image: alpine, Argv: []string{"true"}, Limits: Limits{Wall: 90 * time.Second},
+	})
+	if err != nil || res.ExitCode != 0 {
+		t.Skipf("%s cannot run %s here (exit %d, err %v, stderr %q)", r.Name, alpine, res.ExitCode, err, res.Stderr)
 	}
 	return r
 }
@@ -217,5 +235,16 @@ func TestIntegration_OutputIsBounded(t *testing.T) {
 	// Output crosses BACK into a context window: its size is a cost.
 	if !res.Truncated || len(res.Stdout) > 4096+32 {
 		t.Fatalf("unbounded output: truncated=%v len=%d", res.Truncated, len(res.Stdout))
+	}
+}
+
+func TestUsable_AbsenceAndNonsenseBothReadFalse(t *testing.T) {
+	// The facet hangs on this: a binary that is not there, and one that
+	// cannot answer, must BOTH decline to declare a capability.
+	if (Runtime{}).Usable(context.Background()) {
+		t.Error("no runtime must never read as usable")
+	}
+	if (Runtime{Name: "nonesuch", Path: "/nonexistent/nonesuch"}).Usable(context.Background()) {
+		t.Error("a missing binary must never read as usable")
 	}
 }

@@ -88,6 +88,29 @@ func Detect() Runtime {
 	return Runtime{}
 }
 
+// Usable reports whether the detected runtime ANSWERS — not merely that its
+// binary is on PATH. The distinction is not academic: a CI host was found
+// carrying a podman that fails every run ("rootless mode with multiple IDs:
+// newuidmap not found"), and a host that declared `sandbox: "oci"` on the
+// strength of a LookPath would be advertising a capability it does not have.
+// Declared facts are PROBED, not asserted (the s45 rule) — so this is what
+// the facet hangs on.
+//
+// `info` is the cheap liveness question: it needs no image and no pull, and
+// it fails on exactly the shapes that matter (no daemon, no permission, a
+// runtime that cannot start). It does NOT prove containment — only a real
+// run does that, which is what the integration tests exist for.
+func (r Runtime) Usable(ctx context.Context) bool {
+	if r.Name == "" {
+		return false
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(probeCtx, r.Path, "info")
+	cmd.Env = []string{}
+	return cmd.Run() == nil
+}
+
 // Limits are the run's budget. Zero values take the small defaults.
 type Limits struct {
 	// Wall is the hard wall-clock ceiling for one run.

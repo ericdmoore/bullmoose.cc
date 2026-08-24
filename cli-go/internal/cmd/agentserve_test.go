@@ -546,7 +546,7 @@ func TestToolShelf_EmptyAndRefusedReadDifferently(t *testing.T) {
 func TestDeclareSandbox(t *testing.T) {
 	var out, errOut strings.Builder
 	fleet := &serveFleetConfig{Capabilities: json.RawMessage(`{"tools":false}`)}
-	declareSandbox(fleet, bmio.NewTo(&out, &errOut))
+	declareSandbox(context.Background(), fleet, bmio.NewTo(&out, &errOut))
 
 	var caps map[string]any
 	if err := json.Unmarshal(fleet.Capabilities, &caps); err != nil {
@@ -556,17 +556,21 @@ func TestDeclareSandbox(t *testing.T) {
 		t.Fatalf("existing facets must survive the merge: %v", caps)
 	}
 	flavor, declared := caps["sandbox"]
-	if hasRuntime := sandbox.Detect().Name != ""; hasRuntime {
+	// PROBED, not detected: a host whose runtime does not answer declares
+	// nothing, which is the whole point of the probe.
+	if usable := sandbox.Detect().Usable(context.Background()); usable {
 		// This host can run the image: the fact is declared, and it is a
 		// FLAVOR the scheduler can route on.
 		if !declared || flavor != "oci" {
-			t.Fatalf("a host with a runtime must declare oci: %v", caps)
+			t.Fatalf("a host with a WORKING runtime must declare oci: %v", caps)
 		}
 		if !strings.Contains(errOut.String(), "compute can run here") {
 			t.Errorf("the operator should be told: %q", errOut.String())
 		}
 	} else if declared {
-		// A host with nothing declares NOTHING — never a floor it lacks.
-		t.Fatalf("no runtime, yet declared %v", flavor)
+		// No runtime, or one that cannot answer: declare NOTHING. A
+		// capability advertised on a LookPath is one the scheduler would
+		// route work to and the host could not deliver.
+		t.Fatalf("unusable runtime, yet declared %v", flavor)
 	}
 }

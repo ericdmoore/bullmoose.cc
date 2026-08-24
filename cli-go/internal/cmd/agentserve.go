@@ -462,7 +462,7 @@ func runAgentServe(s *bmio.Streams, a agentArgs) int {
 	// means the free lane covers compute too; absent means sandbox work
 	// routes to the cloud and is metered there. A flavor, not a boolean, so
 	// a narrower executor can say which.
-	declareSandbox(fleet, s)
+	declareSandbox(context.Background(), fleet, s)
 
 	// --fleet: ONE login as a runtime principal, served accounts DISCOVERED
 	// from grants. --config: the original one-binding shape, the login's own
@@ -1049,9 +1049,19 @@ func toolShelf(ctx context.Context, fleet *serveFleetConfig, jmapBase, token str
 // the claim already carries. Detection only -- nothing is installed, and a
 // host with no runtime declares nothing rather than claiming a floor it
 // does not have.
-func declareSandbox(fleet *serveFleetConfig, s *bmio.Streams) {
-	flavor := sandbox.Detect().Flavor()
+func declareSandbox(ctx context.Context, fleet *serveFleetConfig, s *bmio.Streams) {
+	rt := sandbox.Detect()
+	flavor := rt.Flavor()
 	if flavor == "" {
+		return
+	}
+	// PROBED, never asserted (the s45 rule): a binary on PATH is not a
+	// working runtime. A CI host was found carrying a podman that fails
+	// every run; declaring "oci" from a LookPath would advertise a
+	// capability this box does not have, and the scheduler would route
+	// compute here on the strength of it.
+	if !rt.Usable(ctx) {
+		s.Note("sandbox: " + rt.Name + " found but not usable here — declaring nothing")
 		return
 	}
 	// ⚠️ ADDS to a declared vector; NEVER CREATES one. "No declared vector"
@@ -1071,6 +1081,6 @@ func declareSandbox(fleet *serveFleetConfig, s *bmio.Streams) {
 	caps["sandbox"] = flavor
 	if raw, err := json.Marshal(caps); err == nil {
 		fleet.Capabilities = raw
-		s.Note("sandbox: " + flavor + " (" + sandbox.Detect().Name + ") — compute can run here")
+		s.Note("sandbox: " + flavor + " (" + rt.Name + ") — compute can run here")
 	}
 }
