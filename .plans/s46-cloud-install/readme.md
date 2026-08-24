@@ -1,10 +1,34 @@
 # s46 — cloud install · *one binary, one token, your domain*
 
-> **Status: DESIGN, decided 2026-08-23 (Eric).** Sequenced AFTER s37. Written
-> the day the question crystallised: *"if you download the CLI and have a CF
-> token(s) — you can get bullmoose-setup on your own domain?"* The answer
-> today is NO, and the boundary is exactly one layer thick. This section is
-> that layer.
+> **Status: BUILT — T1–T6 shipped 2026-08-23, six PRs, one open proof.**
+> T1 [#330](https://github.com/ericdmoore/bullmoose.cc/pull/330) stack
+> publishing (`release-stack.yml` → dl.bullmoose.cc/stack, maiden
+> `stack/v0.1.0` live) + T2a [#331](https://github.com/ericdmoore/bullmoose.cc/pull/331)
+> manifest secrets story. T2 [#332](https://github.com/ericdmoore/bullmoose.cc/pull/332)
+> `cloud plan` (probe + pure plan, refusals first, 403s name the scope).
+> T3 [#333](https://github.com/ericdmoore/bullmoose.cc/pull/333) `cloud
+> install` (one honest yes; binding-graph order; ids from the account;
+> resumable by construction). T4 [#334](https://github.com/ericdmoore/bullmoose.cc/pull/334)
+> the mail BRIDGE — the path itself is provision's `addDomain` via `admin
+> domain add` (building it twice would drift), so T4 = workers.dev
+> reconciliation, the `admin init` hand-off, and read-only `cloud doctor`.
+> T5+T6 [#335](https://github.com/ericdmoore/bullmoose.cc/pull/335):
+> secrets NEVER rotate on re-run (the vault-orphaning T3 bug, killed),
+> our-shaped DNS reuses (shapes verified against production: Worker custom
+> domains are proxied `AAAA 100::`), Pages home + the one npx webmail
+> command, `cloud update` (= install, reconcile makes it true), and
+> docs/install-cloud.md.
+>
+> **Open: the risk-register live proof.** "Works on Eric's account" is
+> unfalsified until `cloud install` runs on a second account / spare zone
+> end to end (delivered message in, DKIM-aligned out). Needs a token only
+> Eric can mint; everything up to that gate is live-smoked read-only.
+>
+> Originally DESIGN, decided 2026-08-23 (Eric), sequenced after s37,
+> written the day the question crystallised: *"if you download the CLI and
+> have a CF token(s) — you can get bullmoose-setup on your own domain?"*
+> The answer was NO by exactly one layer. The layer now exists; the design
+> below is preserved as written.
 
 ## The boundary, stated as a table
 
