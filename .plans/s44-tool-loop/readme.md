@@ -259,6 +259,23 @@ narrower shelf via the FACET (`sandbox: "oci" | "wasi"`, requires matches
 on flavor — sqlite-over-CSV runs on the floor; pandas routes past it).
 Rung 3 — nothing detected → declare false → cloud executes, metered.
 
+**gVisor / Firecracker (Eric, 2026-08-24): a flag, and a no.** `runsc` is
+not an alternative to podman — it is an OCI runtime podman invokes with a
+flag, so it enters as opportunistic HARDENING inside rung 1: detected on
+Linux, used silently, zero contract change. Linux is exactly where the
+knob belongs — every macOS rung is already VM-backed (Apple container is
+VM-per-container; Colima is VM-shared), so the shared-kernel boundary
+exists only there. Firecracker is declined on three compounding grounds:
+wrong problem (multi-tenant DENSITY, AWS's; ours is single-tenant
+containment), wrong coverage (Linux+KVM only — excludes the primary
+host), wrong ownership (a VMM you assemble around — rootfs, guest
+kernels, orchestration — which violates never-hand-roll from the other
+direction: never hand-ASSEMBLE either). If Linux ever wants VM-grade,
+Kata Containers is that isolation packaged as what runsc is — a runtime
+flag. The rule that falls out: **the ladder's rungs are interfaces;
+isolation strength is a detected property WITHIN a rung, never a new
+rung.**
+
 Two rules: (1) NEVER hand-roll the isolation — the build-in-repo culture's
 one standing exception; spend originality on the contract, not on
 seccomp. (2) Containment lives IN the conformance transcripts: negative
