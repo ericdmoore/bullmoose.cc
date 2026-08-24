@@ -103,6 +103,8 @@ func runCloud(s *bmio.Streams, argv []string) int {
 		s.Out("install  the same plan, one honest yes (--yes skips the prompt), then apply:")
 		s.Out("         storage, D1 schema, workers, secrets, routes — ending at the `admin init`")
 		s.Out("         hand-off. The mail path is the stack's own job (`admin domain add`).")
+		s.Out("update   the same machinery against the newest published stack: reuse binds what")
+		s.Out("         exists, secrets are kept (never rotated), workers re-upload. One yes.")
 		s.Out("doctor   read-only walk of <domain>'s mail path — Email Routing, catch-all→ingest,")
 		s.Out("         MX, SES DKIM, DMARC — with the fixing command named per gap.")
 		return 0
@@ -119,12 +121,19 @@ func runCloud(s *bmio.Streams, argv []string) int {
 		return runCloudPlan(s, a)
 	case "install":
 		return runCloudInstall(s, a)
+	case "update":
+		// The fullmonty of the cloud half: the SAME machinery pointed at a
+		// newer stack/<version>. Apply is reconcile-by-construction (reuse
+		// binds existing ids, kept secrets are never rotated, our-shaped
+		// DNS reuses), so update IS install — the verb exists so the mental
+		// model matches popcorn's.
+		return runCloudInstall(s, a)
 	case "doctor":
 		return runCloudDoctor(s, a)
 	case "":
 		return die(s, bmio.Fail("cloud needs a verb: `bullmoose cloud plan|install|doctor --zone <domain>`", bmio.ExitUsage))
 	default:
-		return die(s, bmio.Fail("unknown cloud verb '"+verb+"' — `plan`, `install` and `doctor` exist today", bmio.ExitUsage))
+		return die(s, bmio.Fail("unknown cloud verb '"+verb+"' — `plan`, `install`, `update` and `doctor` exist today", bmio.ExitUsage))
 	}
 }
 
@@ -239,6 +248,20 @@ func runCloudInstall(s *bmio.Streams, a cloudArgs) int {
 	s.Out("  bullmoose admin tenant add <name>")
 	s.Out("  bullmoose admin domain add " + a.Zone + " --tenant <tenantId>   # MX + Email Routing + catch-all→ingest + SES DKIM/DMARC")
 	s.Out("  bullmoose cloud doctor --zone " + a.Zone + "                    # read-only: did the mail path land?")
+
+	// The webmail deployment is the ONE step that still runs through npx:
+	// Pages direct upload is wrangler's own file-hash protocol, and a Go
+	// reimplementation would be a drifting copy (the same reason the mail
+	// path is the stack's). The project and app.<zone> hostname were just
+	// applied above, so this single command is all that remains.
+	base := a.StackBase
+	if base == "" {
+		base = cloud.DefaultStackBase
+	}
+	s.Out("")
+	s.Out("webmail — app." + a.Zone + " serves after this one command (the tarball is checksummed in the manifest):")
+	s.Out("  d=$(mktemp -d) && curl -fsSL " + base + "/" + st.Manifest.Version + "/webmail.tar.gz | tar -xz -C \"$d\" && \\")
+	s.Out("    npx --yes wrangler@4 pages deploy \"$d\" --project-name bullmoose-app")
 	return 0
 }
 

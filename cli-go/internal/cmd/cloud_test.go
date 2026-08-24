@@ -366,6 +366,11 @@ func TestCloudInstall_YesAppliesAndHandsOff(t *testing.T) {
 	if !strings.Contains(out, "admin domain add tea.example") || !strings.Contains(out, "cloud doctor --zone tea.example") {
 		t.Errorf("the next-steps must name the stack's own mail wiring and its verification:\n%s", out)
 	}
+	// The webmail one-liner: the published tarball for THIS version, and
+	// the one remaining npx step said out loud.
+	if !strings.Contains(out, "/v9.9.9/webmail.tar.gz") || !strings.Contains(out, "pages deploy") {
+		t.Errorf("the webmail deploy command must ride the receipt:\n%s", out)
+	}
 	// External secret came from the environment, never argv.
 	if !strings.Contains(errOut, "secret SES_ACCESS_KEY_ID installed") {
 		t.Errorf("SES secret did not ride from env:\n%s", errOut)

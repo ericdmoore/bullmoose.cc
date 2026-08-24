@@ -32,22 +32,20 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"sort"
+	"strings"
 )
 
-// MintSecrets generates every `generated` secret exactly the way
-// infra/bootstrap.mjs does — randomBytes(bytes).toString("hex") — so a
-// stack installed by this path and one bootstrapped from the repo carry
-// the same secret SHAPE and every consumer's parsing assumptions hold.
-func MintSecrets(m *Manifest) (map[string]string, error) {
-	out := make(map[string]string, len(m.Secrets.Generated))
-	for name, spec := range m.Secrets.Generated {
-		b := make([]byte, spec.Bytes)
-		if _, err := rand.Read(b); err != nil {
-			return nil, fmt.Errorf("minting %s: %w", name, err)
-		}
-		out[name] = hex.EncodeToString(b)
+// mintSecret generates one secret exactly the way infra/bootstrap.mjs
+// does — randomBytes(bytes).toString("hex") — so a stack installed by this
+// path and one bootstrapped from the repo carry the same secret SHAPE and
+// every consumer's parsing assumptions hold.
+func mintSecret(bytes int) (string, error) {
+	b := make([]byte, bytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
 	}
-	return out, nil
+	return hex.EncodeToString(b), nil
 }
 
 // Applied is apply's receipt: what happened, and the minted values the
@@ -159,16 +157,57 @@ func ApplyCore(cf *CF, st *Stack, probe *ProbeResult, plan *Plan, opts ApplyOpts
 	}
 
 	// ---- secrets: minted now, installed right after each script upload ----
-	minted, err := MintSecrets(&st.Manifest)
-	if err != nil {
-		return applied, err
+	//
+	// ⚠️ MINT ONLY WHEN EVERY HOLDER IS BEING CREATED. Worker secrets are
+	// write-only; an existing install's values cannot be read back. Re-
+	// minting onto a reused script would ROTATE it — for a shared secret
+	// (INTERNAL_TOKEN) that splits the fleet mid-run, and for
+	// VAULT_MASTER_KEY it makes every credential the Bureau ever sealed
+	// permanently undecryptable. So: all holders Create → mint and install;
+	// any holder reused → the existing install keeps its own values, and a
+	// created holder that NEEDS a kept secret is a named gap, not a guess.
+	existing := map[string]bool{}
+	for _, w := range probe.Workers {
+		existing[w] = true
+	}
+	allHoldersCreate := func(spec []string) bool {
+		for _, short := range spec {
+			if cfg, ok := st.Configs[short]; ok && existing[cfg.Name] {
+				return false
+			}
+		}
+		return true
+	}
+	minted := map[string]string{}
+	kept := []string{}
+	for name, spec := range st.Manifest.Secrets.Generated {
+		if allHoldersCreate(spec.Workers) {
+			v, err := mintSecret(spec.Bytes)
+			if err != nil {
+				return applied, fmt.Errorf("minting %s: %w", name, err)
+			}
+			minted[name] = v
+		} else {
+			kept = append(kept, name)
+		}
+	}
+	sort.Strings(kept)
+	for _, name := range kept {
+		step("secret %s: an existing install holds it — kept, not rotated", name)
 	}
 	applied.Minted = minted
 	secretsFor := func(short string) map[string]string {
 		out := map[string]string{}
 		for name, spec := range st.Manifest.Secrets.Generated {
-			if has(spec.Workers, short) {
-				out[name] = minted[name]
+			if !has(spec.Workers, short) {
+				continue
+			}
+			if v, ok := minted[name]; ok {
+				out[name] = v
+			} else if !existing[st.Configs[short].Name] {
+				// A NEW holder of a KEPT secret: the right value is
+				// unreadable, a fresh one would split the shared secret.
+				step("worker %s: needs %s but the existing install owns it — set it by hand (wrangler secret put)", st.Configs[short].Name, name)
 			}
 		}
 		for name, spec := range st.Manifest.Secrets.External {
@@ -185,10 +224,6 @@ func ApplyCore(cf *CF, st *Stack, probe *ProbeResult, plan *Plan, opts ApplyOpts
 	}
 
 	// ---- workers, in deploy order ----
-	existing := map[string]bool{}
-	for _, w := range probe.Workers {
-		existing[w] = true
-	}
 	for _, short := range st.Manifest.DeployOrder {
 		cfg := st.Configs[short]
 		bundlePath := "workers/" + short + "/index.js"
@@ -258,6 +293,40 @@ func ApplyCore(cf *CF, st *Stack, probe *ProbeResult, plan *Plan, opts ApplyOpts
 				return applied, fmt.Errorf("route %s → %s: %w", pattern, cfg.Name, err)
 			}
 			step("route %s → %s", pattern, cfg.Name)
+		}
+	}
+
+	// ---- the webmail app's home: Pages project + its hostname ----
+	// The DEPLOYMENT (asset upload) is deliberately NOT here: Pages direct
+	// upload is wrangler's own file-hash protocol, and a reimplementation
+	// would be a drifting copy (the mail-path rule again). The receipt hands
+	// the operator the one wrangler command; this makes that command work
+	// with zero setup — project existing, hostname attached and its DNS
+	// record provisioned (the attach is what CREATES app.<zone>, per
+	// deploy-app.yml's derivation).
+	for _, it := range plan.Items {
+		if it.Kind != "pages" {
+			continue
+		}
+		if it.Action == Create {
+			if err := cf.postJSON("/accounts/"+acct+"/pages/projects",
+				map[string]any{"name": it.Name, "production_branch": "main"}, &json.RawMessage{}); err != nil {
+				return applied, fmt.Errorf("create pages project %s: %w", it.Name, err)
+			}
+			step("pages project %s created", it.Name)
+		} else {
+			step("pages project %s reused", it.Name)
+		}
+		host := "app." + opts.Zone
+		if err := cf.postJSON("/accounts/"+acct+"/pages/projects/"+it.Name+"/domains",
+			map[string]string{"name": host}, &json.RawMessage{}); err != nil {
+			// An already-attached domain answers 409 — the state we wanted.
+			if !strings.Contains(err.Error(), "409") {
+				return applied, fmt.Errorf("pages domain %s: %w", host, err)
+			}
+			step("pages domain %s already attached", host)
+		} else {
+			step("pages domain %s attached (DNS record provisioned)", host)
 		}
 	}
 
