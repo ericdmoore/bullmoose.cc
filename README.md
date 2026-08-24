@@ -43,9 +43,9 @@ simply mailboxes with a runtime attached. A typical personal deployment costs **
 - **Mail on your own domain** — a full JMAP server (RFC 8620/8621):
   send, receive, threads, search, push, drafts, vacation responses.
   Inbound arrives via [Cloudflare Email Routing](https://developers.cloudflare.com/email-routing/);
-  outbound relays through [AWS SES](https://aws.amazon.com/ses/) with
-  DKIM/SPF/DMARC wired by the provisioning API (swappable to Cloudflare
-  Email Sending once it exits beta).
+  outbound relays through [AWS SES](https://aws.amazon.com/ses/) or
+  Cloudflare Email Sending — your choice of one vendor or two (see
+  "Two shapes" below) — with DKIM/SPF/DMARC wired by the provisioning API.
 - **Contacts and calendar as the source of truth** — JSContact
   (RFC 9553/9610) and JSCalendar (RFC 8984) stored losslessly, with a
   capped on-demand recurrence engine (DST-correct, timezone-aware) and
@@ -229,8 +229,10 @@ a maintainer's concern, not a deployer's. The short way above consumes the
 artifacts this path produces, which is why it needs none of it.
 
 Other prerequisites: a domain on a [Cloudflare](https://www.cloudflare.com/)
-account (free plan works) and an [AWS](https://aws.amazon.com/ses/) account for
-SES outbound. Authenticate wrangler once with `npx wrangler login`.
+account and a way to send mail — Cloudflare's own Email Sending, or an
+[AWS](https://aws.amazon.com/ses/) account if you would rather trade setup for
+the free tier (see the two shapes below). Authenticate wrangler once with
+`npx wrangler login`.
 
 ```sh
 npm install && npm run typecheck
@@ -257,6 +259,48 @@ setups (Apple Mail + Calendar, a JMAP client like Mailtemi, family sharing),
 detail, [`docs/README.md`](docs/README.md) is the use-case cookbook (agents
 included), and [`tools/`](tools/README.md) holds the e2e suites everything is
 verified against.
+
+### Two shapes: pay for simplicity, or spend complexity to be frugal
+
+Same system either way. What changes is how many vendors you answer to, and
+every rung prices itself in **friction rather than dollars**.
+
+**A · All Cloudflare.** One provider, one bill, two credentials — the whole
+install fits on a page.
+
+```sh
+export CLOUDFLARE_API_TOKEN=…        # one token: Workers, D1, R2, DNS, Email Sending
+bullmoose cloud plan    --zone example.com     # read-only; refusals first
+bullmoose cloud install --zone example.com
+
+# send through Cloudflare: RELAY=cloudflare in services/submit/wrangler.jsonc
+npx wrangler secret put CF_EMAIL_API_TOKEN -c services/submit/wrangler.jsonc
+```
+
+Needs Workers Paid. ⚠️ The Cloudflare relay carries text and HTML; until it
+carries attachments, mail with **inline images or attached files wants SES**.
+
+**B · Very free.** The same install, then three independently optional
+frugality rungs — take one, take all three.
+
+```sh
+# 1. outbound: SES free tier, byte-exact MIME (RELAY=ses is the default)
+#    an IAM user scoped to ses:SendRawEmail only, DKIM CNAMEs in your zone,
+#    and a production-access ticket — until it clears you are in the sandbox.
+npx wrangler secret put SES_ACCESS_KEY_ID     -c services/submit/wrangler.jsonc
+npx wrangler secret put SES_SECRET_ACCESS_KEY -c services/submit/wrangler.jsonc
+
+# 2. thinking: your own models, keyless, honestly $0
+bullmoose local connect --host http://localhost:11434
+
+# 3. your box does the work — it declares what it can run, and claims for free
+bullmoose agent serve --fleet ~/.bullmoose/fleet.json
+```
+
+Four credentials, two vendors, one support ticket, one machine you keep
+alive — and no per-message, per-token or per-second bill. The trade shows up
+three times on purpose: **the paid path is one command, the free path is a few
+more.**
 
 ## Agent-backed accounts — cloud or local/homelab
 
