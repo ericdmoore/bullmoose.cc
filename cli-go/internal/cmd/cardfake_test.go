@@ -70,6 +70,14 @@ func (f *cardFake) withContacts() *cardFake {
 	return f
 }
 
+// withEventWrites answers CalendarEvent/set as the server does for a
+// successful single update — the read-side fake never needed it.
+func (f *cardFake) withEventWrites(id string) *cardFake {
+	f.replies["CalendarEvent/set"] = fmt.Sprintf(
+		`{"accountId":"a1","newState":"s2","updated":{%q:null},"notUpdated":{}}`, id)
+	return f
+}
+
 func (f *cardFake) withCalendars() *cardFake {
 	f.replies["Calendar/get"] = `{"accountId":"a_you","state":"calstate-1","list":[` +
 		`{"id":"cal_default","name":"Personal","isDefault":true},` +
