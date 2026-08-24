@@ -1,6 +1,7 @@
 import { verbPermittedForKind } from "./binding.js";
 import { handleBindingUse } from "./byok.js";
 import { runFetchVerb } from "./fetchVerb.js";
+import { runOAuthTokenVerb } from "./oauthTokenVerb.js";
 import { authorizeUse, type UseRequest } from "./grants.js";
 import { reseal, sealAndStore, verifyOpenable } from "./vault.js";
 import type { Env } from "./models.js";
@@ -182,9 +183,28 @@ async function handleUse(request: Request, env: Env): Promise<Response> {
     );
   }
 
-  // Class B (§3) — `sign_sigv4`, `oauth_token`, `hmac_sha256` are T5. Loud
-  // rather than silently permissive, which is the right way round for a
-  // security boundary under construction.
+  // Class B (§3) — `oauth_token` is now live (s04 T5's first, #4's
+  // unblocker): an `oauth-refresh` credential could be sealed since T3 and
+  // nothing could spend it, so every OAuth-shaped connector was dead on
+  // arrival. It is THIN by design — it exchanges, then hands the request to
+  // the same Class A runtime, so the allowlist, the manual-redirect rule
+  // and the single exit keep exactly one implementation.
+  if (verb === "oauth_token") {
+    return runOAuthTokenVerb(
+      env,
+      {
+        principalId: decision.principalId,
+        credRef: decision.grant.credRef,
+        kind: decision.kind,
+        meta: decision.meta,
+      },
+      body.request,
+    );
+  }
+
+  // `sign_sigv4` and `hmac_sha256` remain T5. Loud rather than silently
+  // permissive, which is the right way round for a security boundary under
+  // construction.
   return json(
     {
       error: `verb "${verb}" is authorized but not implemented yet`,
@@ -192,7 +212,7 @@ async function handleUse(request: Request, env: Env): Promise<Response> {
       grantId: decision.grant.grantId,
       credRef: decision.grant.credRef,
       kind: decision.kind,
-      hint: "Class B verbs are s04 T5; T3 built the Class A `fetch` runtime",
+      hint: "sign_sigv4/hmac_sha256 are still s04 T5; `fetch` and `oauth_token` are live",
     },
     501,
   );
