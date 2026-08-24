@@ -175,3 +175,6 @@ export {
 // reuses the SAME conservative parser so "by Friday" means the same instant on
 // both surfaces.
 export { EOD_UTC_HOUR, SCAN_LIMIT, extractDueAt, type DueExtractionInput } from "./dueDate.js";
+
+// s44 slice 1 — the envelope: a projection of authority already enforced.
+export { bindingEnvelope, type BindingEnvelope, type EnvelopeBindingRow, type EnvelopeSpend } from "./envelope.js";

@@ -164,6 +164,31 @@ export interface ConsoleBindingLedger {
   monthOverageMicros: number;
 }
 
+/** s44 slice 1 — MIRROR of `@bullmoose/scheduling` BindingEnvelope: what a
+ *  binding may reach, every field naming an enforcer that already exists.
+ *  NULL ceilings mean "not bounded here", never "none". */
+export interface ConsoleBindingEnvelope {
+  bindingId: string;
+  name: string;
+  enabled: boolean;
+  scopes: string[];
+  toolCeiling: string[] | null;
+  toolCeilingApplies: "jobs-only";
+  credentialCeiling: string[] | null;
+  maxNodes: number | null;
+  maxDepth: number | null;
+  budget: {
+    capMicros: number | null;
+    spentMicros: number;
+    overageMicros: number;
+    remainingMicros: number | null;
+  };
+  recipientsBookId: string | null;
+  /** Derived, never the addresses — third parties' data stays off the wire. */
+  senderGate: { active: boolean; count: number };
+  historyFloorAt: number | null;
+}
+
 export interface ConsoleBinding {
   bindingId: string;
   name: string;
@@ -173,6 +198,8 @@ export interface ConsoleBinding {
   config: ConsoleBindingConfig;
   /** Optional for deploy skew: a server that predates s26 T1 omits it. */
   economics?: ConsoleBindingEconomics;
+  /** Optional for the same reason: a server predating s44 slice 1 omits it. */
+  envelope?: ConsoleBindingEnvelope;
   /** Credential handles this binding's MCP servers reference. Values never. */
   credentialRefs?: string[];
 }

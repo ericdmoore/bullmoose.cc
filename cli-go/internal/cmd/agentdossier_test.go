@@ -8,6 +8,7 @@ package cmd
 
 import (
 	"encoding/json"
+	bmio "github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
 	"strings"
 	"testing"
 
@@ -333,5 +334,77 @@ func TestAgentModelRead_MenuWithDoors(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout missing %q\n%s", want, out)
 		}
+	}
+}
+
+// s44 slice 1 — the envelope renders as the object a human judges before
+// approving more of it: every axis named, and "not bounded here" said in
+// words rather than shown as an empty list.
+func TestRenderEnvelope(t *testing.T) {
+	capM, remM := 2_000_000.0, 1_750_000.0
+	book := "ab_governing"
+	floor := 1_690_000_000_000.0
+	env := &dossierEnvelope{
+		Scopes:             []string{"read", "draft", "calendar"},
+		ToolCeiling:        []string{"email.draft"},
+		ToolCeilingApplies: "jobs-only",
+		RecipientsBookID:   &book,
+		HistoryFloorAt:     &floor,
+	}
+	env.Budget = &struct {
+		CapMicros       *float64 `json:"capMicros"`
+		SpentMicros     float64  `json:"spentMicros"`
+		OverageMicros   float64  `json:"overageMicros"`
+		RemainingMicros *float64 `json:"remainingMicros"`
+	}{CapMicros: &capM, SpentMicros: 250_000, RemainingMicros: &remM}
+	env.SenderGate = &struct {
+		Active bool    `json:"active"`
+		Count  float64 `json:"count"`
+	}{Active: true, Count: 1}
+
+	var out, errOut strings.Builder
+	renderEnvelope(bmio.NewTo(&out, &errOut), env)
+	got := out.String()
+	for _, want := range []string{
+		"what this binding may reach",
+		"read, draft, calendar",
+		"applies to delegated job work only", // the ceiling that bites jobs only
+		"no ceiling declared",                // credentials: absence in WORDS
+		"$0.25 of $2.00 spent",
+		"$1.75 left",
+		"the book ab_governing",
+		"1 allowlisted sender(s)", // a COUNT — addresses never render
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestRenderEnvelope_AbsencesSpeak(t *testing.T) {
+	var out, errOut strings.Builder
+	// No governing book = cannot send AT ALL; no floor = the door fails
+	// closed; no cap = spend is still a fact. Each said, not implied.
+	renderEnvelope(bmio.NewTo(&out, &errOut), &dossierEnvelope{Scopes: []string{"read"}})
+	got := out.String()
+	for _, want := range []string{
+		"NOBODY — no governing book",
+		"none recorded — the backfill door fails closed",
+		"no ceiling declared — bounded by the scopes above",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestRenderEnvelope_DeploySkewIsNotAnAuthorityStatement(t *testing.T) {
+	var out, errOut strings.Builder
+	renderEnvelope(bmio.NewTo(&out, &errOut), nil)
+	if !strings.Contains(out.String(), "not reported by this server") {
+		t.Errorf("skew must say so, got: %q", out.String())
+	}
+	if strings.Contains(out.String(), "may reach") {
+		t.Errorf("absent envelope must not render as an envelope: %q", out.String())
 	}
 }

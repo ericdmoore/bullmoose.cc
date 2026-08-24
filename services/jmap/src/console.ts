@@ -1,5 +1,5 @@
 import { MAIL_SCOPES, REALM_SCOPES, hasScope } from "@bullmoose/auth-core";
-import { budgetMonthStartMs, budgetPeriodKey } from "@bullmoose/scheduling";
+import { bindingEnvelope, budgetMonthStartMs, budgetPeriodKey, type BindingEnvelope } from "@bullmoose/scheduling";
 import { accountAccess, isAgentPrincipal, principalHasScope, type AccountAccess, type Principal } from "./auth";
 import type { Env } from "./index";
 
@@ -161,6 +161,9 @@ interface ConsoleBinding {
   enabled: boolean;
   config: ConsoleBindingConfig;
   economics: ConsoleBindingEconomics;
+  /** s44 slice 1 — what this binding may REACH, projected from enforcers
+   *  (packages/scheduling envelope.ts). Read before widening anything. */
+  envelope: BindingEnvelope;
   /** ⚠️ Deliberately absent — see `describeBindingConfig`. */
   credentialRefs?: string[];
 }
@@ -455,7 +458,7 @@ async function agentDossier(env: Env, principal: Principal, accountId: string): 
   const [tokenScopes, bindings, credentials, bureauGrants, grantsHeld, grantsGiven, invocations, spend, ledgers] =
     await Promise.all([
       readTokenScopes(env, owner.principal_id),
-      readBindings(env, access.accountId),
+      readBindings(env, access.accountId, now),
       mayReadVault ? readCredentials(env, owner.principal_id) : Promise.resolve([]),
       mayReadVault ? readBureauGrants(env, owner.principal_id) : Promise.resolve([]),
       readGrants(env, "grantee", access.accountId),
@@ -512,9 +515,12 @@ async function readTokenScopes(env: Env, principalId: string): Promise<string[]>
   return [...out].sort();
 }
 
-async function readBindings(env: Env, accountId: string): Promise<ConsoleBinding[]> {
+async function readBindings(env: Env, accountId: string, now: number): Promise<ConsoleBinding[]> {
+  // s44 slice 1 — `recipients_book_id` joins the SELECT because the ENVELOPE
+  // needs it and it is the one axis whose absence is itself the enforcement
+  // (no book, no send — outboundBound.ts fails closed).
   const { results } = await env.DB.prepare(
-    `SELECT id, name, trigger_on, sla_seconds, enabled, config_json
+    `SELECT id, name, trigger_on, sla_seconds, enabled, config_json, recipients_book_id
        FROM agent_bindings WHERE account_id = ? ORDER BY name`,
   )
     .bind(accountId)
@@ -525,7 +531,15 @@ async function readBindings(env: Env, accountId: string): Promise<ConsoleBinding
       sla_seconds: number | null;
       enabled: number;
       config_json: string;
+      recipients_book_id: string | null;
     }>();
+  // Spend per binding, from the SAME arithmetic the claim gate refuses on
+  // (readLedgers): this month's done cost plus recorded overages.
+  const ledgers = await readLedgers(env, accountId, now);
+  const spendFor = (id: string) => {
+    const l = ledgers.find((x) => x.bindingId === id);
+    return { spentMicros: l?.monthSpendMicros ?? 0, overageMicros: l?.monthOverageMicros ?? 0 };
+  };
   return results.map((b) => ({
     bindingId: b.id,
     name: b.name,
@@ -534,6 +548,18 @@ async function readBindings(env: Env, accountId: string): Promise<ConsoleBinding
     enabled: b.enabled === 1,
     config: describeBindingConfig(b.config_json),
     economics: describeBindingEconomics(b.config_json),
+    // The envelope: what this binding may REACH, every field naming an
+    // enforcer that already exists (packages/scheduling envelope.ts).
+    envelope: bindingEnvelope(
+      {
+        id: b.id,
+        name: b.name,
+        enabled: b.enabled,
+        config_json: b.config_json,
+        recipients_book_id: b.recipients_book_id,
+      },
+      spendFor(b.id),
+    ),
     // `credentialRefs` is deliberately ABSENT, not `[]`: nothing stores which
     // credentials a binding's MCP servers reference (`BindingConfig` has no
     // such field and no table joins one), and `[]` would assert "none" where
