@@ -254,8 +254,16 @@ ledger row referencing the manifest-list digest — one definition, N
 platform builds, provenance intact. Containment is uniform flags all
 three speak: --network=none, read-only rootfs + tmpfs workdir,
 cpu/mem/pids caps, wall-clock timeout. Rung 2 — the zero-dependency
-floor: wazero (pure-Go WASI) embedded in the CLI binary, honest about its
-narrower shelf via the FACET (`sandbox: "oci" | "wasi"`, requires matches
+floor: wazero (pure-Go WASI) embedded in the CLI binary — and what the
+agent authors there is NOT Go and NOT shell params: WASI preview 1 has no
+exec and no process model, so wazero runs ONE module per call (argv, env,
+stdin/stdout, preopened dirs). The agent authors the INTERPRETED ARTIFACT
+— SQL for sqlite-wasm (ncruces/go-sqlite3 is exactly this: sqlite on
+wazero, pure Go, no cgo), a jq program for jq-wasm — which is the
+model-writes-the-query/engine-computes pattern again. The inversion that
+makes it the floor: STRONGEST containment (no exec, no network primitive
+to reach, FS only via preopens — nothing to enforce because nothing
+exists) and NARROWEST shelf. Honest about that shelf via the FACET (`sandbox: "oci" | "wasi"`, requires matches
 on flavor — sqlite-over-CSV runs on the floor; pandas routes past it).
 Rung 3 — nothing detected → declare false → cloud executes, metered.
 
