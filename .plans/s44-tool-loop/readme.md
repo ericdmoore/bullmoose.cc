@@ -313,6 +313,31 @@ elsewhere (the CLI never sudos). `--yes` pre-consents; `n` is recorded
 and never re-asks without a config flag. The prompt stays honest that
 declining leaves the wazero floor and the cloud — narrower, not nothing.
 
+**The executor admission test (distilled from three candidates, Eric,
+2026-08-24).** Three questions, in order, and failing any one is a no:
+
+  1. Does it speak an existing interface (OCI or WASI)? — nsjail fails
+     here: a jail CONSTRUCTOR, not a runtime; adopting it means authoring
+     seccomp policy ourselves (never-hand-assemble verbatim), and with no
+     image story the provenance chain has nowhere to attach. gVisor
+     already won that slot BEHIND the interface.
+  2. Does it add capability or isolation the detected rung lacks? —
+     ashishb/amazing-sandbox fails here: a wrapper over the backends the
+     ladder detects directly; indirection, not isolation — and it would
+     move our containment policy into a third party's flag semantics,
+     when the transcripts must assert against the actual runtime. (Also
+     a different actor: it CACHES agent credentials — its use case is our
+     rule 1's anti-pattern.)
+  3. Does maturity and license survive the recommendation liability? —
+     Docker Sandboxes (sbx) fails here today: proprietary + RC-stage, and
+     Docker underneath means the docker rung already executes anything it
+     could. WATCH though: if sbx becomes the ecosystem-standard "net-off
+     agent container" invocation, rung 1's detection may someday prefer
+     it over raw docker-run flags. Evidence-gated.
+
+The offer list is not a catalog of sandbox-adjacent tools; it is
+conforming executors for ONE contract.
+
 Two rules: (1) NEVER hand-roll the isolation — the build-in-repo culture's
 one standing exception; spend originality on the contract, not on
 seccomp. (2) Containment lives IN the conformance transcripts: negative
