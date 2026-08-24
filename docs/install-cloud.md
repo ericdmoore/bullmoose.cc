@@ -26,7 +26,6 @@ This project sees nothing — that is the point.
    | Account · D1 · Edit | the mailstore database + schema |
    | Account · Workers KV Storage · Edit | routing/session namespaces |
    | Account · Workers R2 Storage · Edit | the blob bucket |
-   | Account · Cloudflare Pages · Edit | the webmail app |
    | Zone · Zone · Read | find your zone, derive the account |
    | Zone · DNS · Edit | the app/api hostnames |
    | Zone · Workers Routes · Edit | bind paths on your hostnames |
@@ -79,14 +78,11 @@ The doctor is read-only and walks Email Routing, catch-all→ingest, MX,
 DKIM and DMARC, naming the fixing command per gap (and a token gap as a
 token gap — never as a mail problem).
 
-The webmail app is the one step that still runs through `npx` (Pages
-direct upload is wrangler's own file-hash protocol); the receipt prints it
-filled in:
-
-```sh
-d=$(mktemp -d) && curl -fsSL https://dl.bullmoose.cc/stack/<version>/webmail.tar.gz | tar -xz -C "$d" && \
-  npx --yes wrangler@4 pages deploy "$d" --project-name bullmoose-app
-```
+The webmail is already live at `https://app.example.com` when `cloud
+install` finishes — its files were uploaded to R2 and are served by the
+`bullmoose-webhost` worker. **There is no build step and nothing else to
+run:** the whole install is one binary against documented Cloudflare APIs,
+so you never need Node, npm, wrangler, or a checkout of this repository.
 
 From there: `bullmoose admin account add`, log in at `https://app.example.com`,
 and send yourself the first message.

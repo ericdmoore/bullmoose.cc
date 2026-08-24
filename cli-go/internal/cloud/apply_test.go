@@ -7,6 +7,9 @@ package cloud
 // that fires after one create is not a gate.
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +24,25 @@ import (
 // mirrorFake publishes a complete two-worker stack version v1: manifest,
 // configs, bundles, schema, migrations — checksums true, so the real
 // Fetcher/FetchVerified path is what the tests exercise.
+// tinySite is a real gzipped tar with the two files a static build must
+// have — the upload path parses this for real rather than a stub, because
+// "the tarball expands" is the claim under test.
+func tinySite() string {
+	var gzBuf bytes.Buffer
+	gz := gzip.NewWriter(&gzBuf)
+	tw := tar.NewWriter(gz)
+	for _, f := range []struct{ name, body string }{
+		{"index.html", "<!doctype html><title>bm</title>"},
+		{"_astro/app.abc123.js", "export const x = 1;"},
+	} {
+		_ = tw.WriteHeader(&tar.Header{Name: f.name, Mode: 0o644, Size: int64(len(f.body)), Typeflag: tar.TypeReg})
+		_, _ = tw.Write([]byte(f.body))
+	}
+	_ = tw.Close()
+	_ = gz.Close()
+	return gzBuf.String()
+}
+
 func mirrorFake(t *testing.T) *Fetcher {
 	t.Helper()
 	files := map[string]string{
@@ -47,6 +69,7 @@ func mirrorFake(t *testing.T) *Fetcher {
 		"workers/beta/index.js":    `export default { fetch() { return new Response("beta") } }`,
 		"schema/control-plane.sql": "CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY);",
 		"schema/data-plane.sql":    "CREATE TABLE IF NOT EXISTS emails (id TEXT PRIMARY KEY);",
+		"webmail.tar.gz":           tinySite(),
 		"migrations.json": `[{"id": "m1", "why": "w", "blocks": null,
 			"check": "SELECT count(*) AS n FROM pragma_table_info('accounts') WHERE name='deleted_at'",
 			"up": ["ALTER TABLE accounts ADD COLUMN deleted_at INTEGER"]}]`,
@@ -139,10 +162,9 @@ func (f *applyFake) server(t *testing.T) string {
 			w.Write(env(map[string]string{"id": "route-1"}))
 		case strings.HasSuffix(r.URL.Path, "/workers/domains"):
 			w.Write(env(map[string]string{"id": "domain-1"}))
-		case strings.HasSuffix(r.URL.Path, "/pages/projects"):
-			w.Write(env(map[string]string{"name": "bullmoose-app"}))
-		case strings.Contains(r.URL.Path, "/pages/projects/") && strings.HasSuffix(r.URL.Path, "/domains"):
-			w.Write(env(map[string]string{"id": "pd-1"}))
+		case strings.Contains(r.URL.Path, "/r2/buckets/") && strings.Contains(r.URL.Path, "/objects/"):
+			// R2 object PUT answers a bare 200, not an envelope.
+			w.WriteHeader(200)
 		default:
 			f.t.Errorf("unexpected: %s", op)
 			http.NotFound(w, r)
@@ -379,7 +401,7 @@ func TestApply_NewHolderOfKeptSecretIsANamedGap(t *testing.T) {
 	}
 }
 
-func TestApply_PagesProjectAndHostname(t *testing.T) {
+func TestApply_WebmailUploadsToR2(t *testing.T) {
 	st := fetchFixture(t)
 	probe := freshProbe()
 	fake, cf := newApplyFake(t)
@@ -387,11 +409,26 @@ func TestApply_PagesProjectAndHostname(t *testing.T) {
 		ApplyOpts{Zone: "tea.example", External: map[string]string{"SES_ACCESS_KEY_ID": "x"}}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(fake.bodies["POST /accounts/a1/pages/projects"], `"name":"bullmoose-app"`) {
-		t.Error("no pages project create")
+	var puts []string
+	for _, op := range fake.ops {
+		if strings.Contains(op, "/r2/buckets/bullmoose-webmail/objects/") {
+			puts = append(puts, op)
+		}
 	}
-	if !strings.Contains(fake.bodies["POST /accounts/a1/pages/projects/bullmoose-app/domains"], "app.tea.example") {
-		t.Error("no app hostname attach — the attach is what provisions app.<zone>")
+	if len(puts) != 2 {
+		t.Fatalf("expected both site files uploaded, got %v", puts)
+	}
+	// The KEY keeps its slashes — `_astro/app.js` must stay two segments, or
+	// the worker asks for an object nobody wrote.
+	joined := strings.Join(puts, " ")
+	if !strings.Contains(joined, "objects/index.html") || !strings.Contains(joined, "objects/_astro/app.abc123.js") {
+		t.Errorf("keys were mangled: %v", puts)
+	}
+	// And NO Pages call was made — the project is out of the stack.
+	for _, op := range fake.ops {
+		if strings.Contains(op, "/pages/") {
+			t.Errorf("Pages is still being called: %s", op)
+		}
 	}
 }
 
