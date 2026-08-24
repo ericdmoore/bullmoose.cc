@@ -103,3 +103,69 @@ func TestListTools_NonJSONIsNotAnEmptyShelf(t *testing.T) {
 		t.Fatalf("want an unreadable-reply error naming the status, got %v", err)
 	}
 }
+
+func TestCallTool_PassesTheModelsArgumentsThrough(t *testing.T) {
+	// The harness does not repair a malformed call: a "fixed" one would be
+	// calling something the model did not ask for. The server validates
+	// against the tool's own schema and refuses in its own words.
+	var gotName, gotArgs string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Params struct {
+				Name      string          `json:"name"`
+				Arguments json.RawMessage `json:"arguments"`
+			} `json:"params"`
+		}
+		_ = json.Unmarshal(body, &req)
+		gotName, gotArgs = req.Params.Name, string(req.Params.Arguments)
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"3 messages matched"}]}}`)
+	}))
+	defer srv.Close()
+
+	text, err := (&Client{Base: srv.URL, Token: "bmi_x"}).CallTool(context.Background(), "email_query", `{"text":"venue"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotName != "email_query" || gotArgs != `{"text":"venue"}` {
+		t.Fatalf("name=%q args=%q", gotName, gotArgs)
+	}
+	if text != "3 messages matched" {
+		t.Fatalf("text = %q", text)
+	}
+}
+
+func TestCallTool_EmptyArgumentsBecomeAnObject(t *testing.T) {
+	var gotArgs string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Params struct {
+				Arguments json.RawMessage `json:"arguments"`
+			} `json:"params"`
+		}
+		_ = json.Unmarshal(body, &req)
+		gotArgs = string(req.Params.Arguments)
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":1,"result":{"content":[]}}`)
+	}))
+	defer srv.Close()
+	if _, err := (&Client{Base: srv.URL, Token: "bmi_x"}).CallTool(context.Background(), "whoami", ""); err != nil {
+		t.Fatal(err)
+	}
+	if gotArgs != "{}" {
+		t.Fatalf("empty args must be an object, got %q", gotArgs)
+	}
+}
+
+func TestCallTool_IsErrorCarriesTheServersWords(t *testing.T) {
+	// A tool-level refusal must reach the model as a FACT it can answer
+	// around ("unavailable: …"), so the server's sentence rides the error.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":1,"result":{"isError":true,"content":[{"type":"text","text":"forbidden: this token lacks calendar"}]}}`)
+	}))
+	defer srv.Close()
+	_, err := (&Client{Base: srv.URL, Token: "bmi_x"}).CallTool(context.Background(), "calendar_list", "{}")
+	if err == nil || !strings.Contains(err.Error(), "lacks calendar") {
+		t.Fatalf("want the server's words, got %v", err)
+	}
+}

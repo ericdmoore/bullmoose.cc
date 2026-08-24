@@ -136,6 +136,50 @@ func (c *Client) ListTools(ctx context.Context) ([]Tool, error) {
 	return out.Tools, nil
 }
 
+// CallTool runs one tool and returns its text content. The arguments come
+// from the MODEL and are passed through as the model wrote them: this client
+// does not repair or reshape them, because a harness that "fixed" a malformed
+// call would be calling something the model did not ask for. The server
+// validates against the tool's own inputSchema and refuses in its own words.
+//
+// The gates that matter all live server-side and run per call: the scope
+// check (authorizeAccount) and THEN the envelope (mcp.ts's order is the
+// invariant). Nothing here decides authority; it only carries the
+// invocation's credential and hands back what came out.
+func (c *Client) CallTool(ctx context.Context, name, arguments string) (string, error) {
+	args := json.RawMessage("{}")
+	if strings.TrimSpace(arguments) != "" {
+		args = json.RawMessage(arguments)
+	}
+	var out struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		IsError bool `json:"isError"`
+	}
+	if err := c.call(ctx, "tools/call", map[string]any{"name": name, "arguments": args}, &out); err != nil {
+		return "", err
+	}
+	parts := make([]string, 0, len(out.Content))
+	for _, p := range out.Content {
+		if p.Text != "" {
+			parts = append(parts, p.Text)
+		}
+	}
+	text := strings.Join(parts, "\n")
+	if out.IsError {
+		// A tool-level error is still an ANSWER the caller must be able to
+		// hand the model as a fact ("unavailable: …"), so it returns as an
+		// error carrying the server's words rather than as empty content.
+		if text == "" {
+			text = "the tool reported an error with no message"
+		}
+		return "", errors.New(text)
+	}
+	return text, nil
+}
+
 func snippet(b []byte) string {
 	s := strings.TrimSpace(string(b))
 	if len(s) > 160 {

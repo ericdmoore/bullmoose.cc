@@ -113,14 +113,14 @@ type serveFleetConfig struct {
 // runnablePipelines: a config naming any other pipeline is refused at LOAD —
 // a claimed invocation the host cannot execute would burn a claim and mark
 // real work failed. "extract" joins in s43 step 5.
-var runnablePipelines = map[string]bool{"reply": true, "extract": true}
+var runnablePipelines = map[string]bool{"reply": true, "extract": true, "enrich": true}
 
 func checkServeBinding(label string, b serveBindingConfig) error {
 	if b.Model.Provider == "" {
 		return errors.New(label + " needs: model.provider")
 	}
 	if b.Pipeline != "" && !runnablePipelines[b.Pipeline] {
-		return fmt.Errorf("%s: pipeline %q is not one this runtime can run (reply | extract)", label, b.Pipeline)
+		return fmt.Errorf("%s: pipeline %q is not one this runtime can run (reply | extract | enrich)", label, b.Pipeline)
 	}
 	if (b.Pipeline == "" || b.Pipeline == "reply") && b.Persona == "" {
 		return errors.New(label + " needs: persona")
@@ -685,6 +685,35 @@ func handleInvocation(ctx context.Context, client *jmap.Client, acc account.Acco
 	// Annotations, never drafts; its outcome (done OR failed) is a completion,
 	// not an error. From here, an ERROR completes the invocation as failed —
 	// best-effort, and the loop survives.
+	// s44 slice 4 -- the loop's first consumer. Dispatched beside extract and
+	// shaped exactly like it (an outcome, never an error, so the loop
+	// survives): what differs is that the MODEL chooses the looks, and the
+	// invocation's own credential is what reaches them.
+	if bcfg.Pipeline == "enrich" {
+		outcome, err := runEnrichPipeline(ctx, client, acc, invID, emailID, bcfg, fleet, invToken)
+		if err != nil {
+			_, _ = client.One(ctx, "AgentInvocation/set", map[string]any{
+				"accountId": acc.AccountID,
+				"update":    map[string]any{invID: map[string]any{"status": "failed", "result": map[string]any{"error": err.Error()}}},
+			}, jmap.MailUsing)
+			status(invID + " FAILED: " + err.Error())
+			return false, nil
+		}
+		patch := map[string]any{"status": outcome.Status, "result": outcome.Result}
+		if cost, ok := outcome.Result["cost"]; ok {
+			patch["cost"] = cost
+		}
+		if _, err := client.One(ctx, "AgentInvocation/set", map[string]any{
+			"accountId": acc.AccountID,
+			"update":    map[string]any{invID: patch},
+		}, jmap.MailUsing); err != nil {
+			return false, err
+		}
+		note, _ := outcome.Result["note"].(string)
+		status(invID + " → " + note)
+		return true, nil
+	}
+
 	if bcfg.Pipeline == "extract" {
 		outcome, err := runExtractPipeline(ctx, client, acc, invID, emailID, bcfg)
 		if err != nil {
