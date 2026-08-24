@@ -863,7 +863,29 @@ func runAgentModelRead(s *bmio.Streams, a agentArgs) int {
 	if b.Economics.ExploreRate != nil {
 		fieldLine(s, "", "  explore rate "+strconv.FormatFloat(*b.Economics.ExploreRate, 'f', -1, 64))
 	}
+	// #343 — the menu says what MAY run; this says what actually happened
+	// when it did. Same rows the recent-invocation list prints, aggregated
+	// per (provider, model) so two candidates can be compared without the
+	// reader doing the arithmetic.
+	renderModelRollup(s, invocationsFor(conn.doc, b.BindingID))
 	return 0
+}
+
+// invocationsFor narrows the dossier's invocation window to ONE binding —
+// the menu being read belongs to that binding, and mixing another agent's
+// runs into its averages would answer a question nobody asked.
+func invocationsFor(doc *dossierDoc, bindingID string) []any {
+	out := make([]any, 0, len(doc.Invocations))
+	for _, raw := range doc.Invocations {
+		o, err := jsobj.Parse(raw)
+		if err != nil {
+			continue
+		}
+		if o.JSString("bindingId") == bindingID {
+			out = append(out, raw)
+		}
+	}
+	return out
 }
 
 // renderEnvelope prints WHAT THIS BINDING MAY REACH (s44 slice 1) -- the
