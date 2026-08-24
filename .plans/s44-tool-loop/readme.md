@@ -191,6 +191,18 @@ attached CSVs"; the .ics parse s36's UID-merge wanted; format conversion;
 ledger crunching. Tier-two problems where the unknown is the COMPUTATION,
 which no read-only noun serves and no model should eyeball.
 
+**The image is the provisioning layer (Eric's npx question, 2026-08-24).**
+`npx <pkg>` at run time is egress plus unpinned third-party code — refused
+by rule 2, and rightly. The capability moves one layer down: the sandbox
+IMAGE (node with vendored parsers, sqlite, python+pandas) is part of the
+server-side tool definition — baked, pinned, reviewed once like any tool
+admission. The model steers WHAT code runs against the data, never WHICH
+software exists. And the sqlite-over-CSV shape is the pattern at its
+purest: the model writes the query, the ENGINE computes the answer, and
+the SQL rides back as the citation — the sieve-rule instinct (generation
+is fallible; verification is deterministic; the artifact is reviewable)
+applied to data instead of filters.
+
 Sequencing: after the first tool family — it is tool N+1 through the same
 door, with the same per-tool injection review, not a new architecture.
 
