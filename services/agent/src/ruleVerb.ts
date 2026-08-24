@@ -1,7 +1,7 @@
 import type { EmailRow } from "@bullmoose/mailstore";
 import { SieveRulesInvalid, validateSieveRules, type SieveRule } from "@bullmoose/mailstore";
 import { sieveVerdict, type BoundaryMessage } from "@bullmoose/boundary";
-import { emitProposal } from "./proposals.js";
+import { emitGrantHeldProposal, emitProposal } from "./proposals.js";
 import { composeBudgetExhausted } from "./watchCompose.js";
 import {
   stampKnownFree,
@@ -360,25 +360,32 @@ export async function runRuleVerb(
   const rule: SieveRule = { id: job.id, ...composedRule.rule };
   const blast = await backtestRule(env, job.account_id, rule, email.id);
 
-  await emitProposal(
-    env,
-    { id: job.id, account_id: job.account_id },
-    {
-      kind: "sieve-rule",
-      tier: 2,
-      subject: { realm: "Email", objectId: email.id },
-      payload: {
-        verb: "rule",
-        rule,
-        blastRadius: blast,
-        composed: composedRule.composed,
-        ...(req.note ? { note: req.note } : {}),
-      },
-      rationale: ruleRationale(rule, blast, req.note),
-      evidence: [{ realm: "Email", objectId: email.id, note: "the message marked never-again" }],
-      expiresInMs: VERB_PROPOSAL_EXPIRY_MS,
+  // s31 rung 3: under the granted class, the SAME verified composition lands
+  // pre-decided (held, the approval path's own yank window, decision naming
+  // the grant) and the one jmap apply path commits it — auto never grows a
+  // second pipeline, and the ledger row exists either way. No grant → rung 2,
+  // a pending proposal, exactly as before.
+  const spec: Parameters<typeof emitProposal>[2] = {
+    kind: "sieve-rule",
+    tier: 2,
+    subject: { realm: "Email", objectId: email.id },
+    payload: {
+      verb: "rule",
+      rule,
+      blastRadius: blast,
+      composed: composedRule.composed,
+      ...(req.note ? { note: req.note } : {}),
     },
-  );
+    rationale: ruleRationale(rule, blast, req.note),
+    evidence: [{ realm: "Email", objectId: email.id, note: "the message marked never-again" }],
+    expiresInMs: VERB_PROPOSAL_EXPIRY_MS,
+  };
+  const granted = cfg.ruleAutoApply === true;
+  if (granted) {
+    await emitGrantHeldProposal(env, { id: job.id, account_id: job.account_id }, spec, "rule-auto-apply");
+  } else {
+    await emitProposal(env, { id: job.id, account_id: job.account_id }, spec);
+  }
 
   await done(
     "done",
@@ -387,6 +394,7 @@ export async function runRuleVerb(
       composed: composedRule.composed,
       turns: composedRule.turns,
       caught: blast.caught,
+      ...(granted ? { autoApplied: "held under grant:rule-auto-apply — yankable for 5 minutes" } : {}),
       ...(composedRule.model ? { model: composedRule.model } : {}),
       ...(composedRule.arm ? { arm: composedRule.arm } : {}),
       ...(composedRule.turns > 1 ? { costNote: "multi-turn: cost columns stay NULL (s07 T5)" } : {}),

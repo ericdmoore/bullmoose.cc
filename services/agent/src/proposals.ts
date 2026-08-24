@@ -59,6 +59,57 @@ interface ProposalJob {
 }
 
 /**
+ * s31 rung 3 — the same row emitProposal writes, but PRE-DECIDED under a
+ * standing grant: status 'held' with the SAME yank window an approval gets,
+ * so the one apply path (jmap's commitDueHeldProposals) commits it and the
+ * activity realm renders it as decided-without-you — which it was, and the
+ * decision names the authority: `by: "grant:rule-auto-apply"`. Revoking the
+ * grant returns the binding to rung 2; yanking inside the window undoes
+ * this one act. Twin of actionProposal.ts HOLD_WINDOW_MS — the window IS
+ * the approval path's, or "auto" would quietly mean "less retractable".
+ */
+export const GRANT_HOLD_WINDOW_MS = 5 * 60_000;
+
+export async function emitGrantHeldProposal(
+  env: Env,
+  job: Pick<ProposalJob, "id" | "account_id">,
+  spec: ProposalSpec,
+  grant: string,
+): Promise<string> {
+  const now = Date.now();
+  const { rationale, evidence } = withHandoffProvenance(spec, await handoffOf(env, job));
+  await env.DB.prepare(
+    `INSERT INTO agent_proposals
+       (id, account_id, kind, tier, subject_json, payload_json, rationale,
+        evidence_json, status, created_at, expires_at, decided_at, hold_until, decision_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'held', ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      job.id,
+      job.account_id,
+      spec.kind,
+      spec.tier,
+      JSON.stringify(spec.subject),
+      JSON.stringify(spec.payload),
+      rationale,
+      JSON.stringify(evidence),
+      now,
+      spec.expiresAt ?? now + (spec.expiresInMs ?? DEFAULT_EXPIRY_MS),
+      now,
+      now + GRANT_HOLD_WINDOW_MS,
+      JSON.stringify({
+        by: `grant:${grant}`,
+        note: "standing authority granted on this binding — yank within the window to undo this one; revoke the grant to return every future change to a proposal",
+      }),
+    )
+    .run();
+  await commitChanges(env.ACCOUNT_DO, job.account_id, [
+    { collection: "ActionProposal", created: [job.id], updated: [], destroyed: [] },
+  ]);
+  return job.id;
+}
+
+/**
  * Insert the proposal row (keyed to the invocation) and commit its changelog
  * entry. Returns the proposal id, which is the invocation id.
  */

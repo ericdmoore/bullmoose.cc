@@ -256,3 +256,49 @@ describe("runRuleVerb — the verified-generation loop", () => {
     expect(proposals(w)).toHaveLength(0);
   });
 });
+
+describe("rung 3 — the granted class auto-applies through the SAME machinery", () => {
+  it("granted: the row lands pre-decided (held, grant-named, the approval's own yank window)", async () => {
+    const w = world();
+    withModel(w, GOOD);
+    const done = vi.fn(async () => {});
+    const before = Date.now();
+    await runRuleVerb(w.env, job(), { ...CFG, ruleAutoApply: true }, email(), req(), done);
+
+    const rows = w.db.query<{ status: string; decision_json: string | null; hold_until: number | null }>(
+      "SELECT status, decision_json, hold_until FROM agent_proposals WHERE account_id = ?",
+      ACCOUNT,
+    );
+    expect(rows).toHaveLength(1);
+    // Held, not applied HERE: the one jmap apply path commits it after the
+    // window — auto never grows a second pipeline, and the window keeps the
+    // act yankable exactly as an approval would be.
+    expect(rows[0]!.status).toBe("held");
+    const decision = JSON.parse(rows[0]!.decision_json!);
+    expect(decision.by).toBe("grant:rule-auto-apply"); // the authority, named forever
+    expect(decision.note).toContain("revoke the grant");
+    expect(rows[0]!.hold_until).toBeGreaterThanOrEqual(before + 5 * 60_000);
+    // The invocation record says it out loud too.
+    const result = done.mock.calls[0]!;
+    expect(JSON.stringify(result)).toContain("grant:rule-auto-apply");
+  });
+
+  it("no grant: rung 2 exactly as before — a pending proposal, nobody decided", async () => {
+    const w = world();
+    withModel(w, GOOD);
+    await runRuleVerb(
+      w.env,
+      job(),
+      CFG,
+      email(),
+      req(),
+      vi.fn(async () => {}),
+    );
+    const rows = w.db.query<{ status: string; decision_json: string | null }>(
+      "SELECT status, decision_json FROM agent_proposals WHERE account_id = ?",
+      ACCOUNT,
+    );
+    expect(rows[0]!.status).toBe("pending");
+    expect(rows[0]!.decision_json).toBeNull();
+  });
+});
