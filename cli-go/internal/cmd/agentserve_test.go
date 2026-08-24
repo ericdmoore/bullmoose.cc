@@ -226,7 +226,7 @@ func TestAgentServe_ConfigRefusalsCostZero(t *testing.T) {
 		{"no persona for reply", `{"binding":"b","model":{"provider":"mock"}}`,
 			"agent config needs: persona"},
 		{"unrunnable pipeline", `{"binding":"b","persona":"p","model":{"provider":"mock"},"pipeline":"summarize"}`,
-			`pipeline "summarize" is not one this runtime can run (reply | extract)`},
+			`pipeline "summarize" is not one this runtime can run (reply | extract | enrich)`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newMailFake()
